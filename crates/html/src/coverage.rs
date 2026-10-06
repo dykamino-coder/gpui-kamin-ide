@@ -442,6 +442,9 @@ const CONSUMERS: &[&str] = &[
     include_str!("dom.rs"),
     include_str!("transition.rs"),
     include_str!("interact.rs"),
+    include_str!("anchor.rs"),
+    include_str!("motion.rs"),
+    include_str!("zoom.rs"),
 ];
 
 /// Читается ли поле в исходнике.
@@ -473,7 +476,17 @@ const ACCESSORS: &[(&str, &str)] = &[
     ("border_visible", "borders()"),
     // Логические свойства ложатся на физические поля отдельным проходом
     // сборщика документа (`doc::resolve_logical`).
-    ("logical", "resolve_logical()"),
+    ("logical", ".resolve_logical("),
+    ("side_seq", ".resolve_logical("),
+    // Каскад читает sequence при `all` reset; затем resolve_logical
+    // использует сохранённый порядок физических и логических declarations.
+    ("decl_seq", ".apply_decls("),
+    // Font-relative исходники разрешаются до создания элементов.
+    ("gradient_em", ".resolve_em("),
+    ("text_shadow_raw", ".resolve_em("),
+    ("transform_raw", ".resolve_em("),
+    ("shadow_raw", ".resolve_em("),
+    ("transform_origin_raw", ".resolve_em("),
     // Обособление осей читается предикатами: физическая ось зависит ещё и
     // от направления письма.
     ("contain_inline_size", "contains_width()"),

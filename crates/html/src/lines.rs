@@ -22,6 +22,13 @@
 
 pub mod tabs;
 
+mod atom_placement;
+mod content_baselines;
+mod selection_geometry;
+mod vertical_content_baselines;
+mod vertical_geometry;
+mod vertical_inline;
+
 use gpui::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior, Hsla,
     InspectorElementId, IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent,
@@ -148,6 +155,12 @@ pub struct Paragraph {
     vertical: bool,
     /// `vertical-rl` — строки набегают справа налево.
     vertical_rl: bool,
+    /// Dominant baseline in the rotated frame; sideways uses the real alphabetic baseline.
+    vertical_central_baseline: bool,
+    vertical_ccw: bool,
+    selection_vertical: Option<(Bounds<Pixels>, bool)>,
+    vertical_layout_origin: Point<Pixels>,
+    vertical_inline: Option<(crate::computed::orthogonal::InlineConstraint, Option<crate::computed::orthogonal::InlineKeyword>)>,
     /// Предел строки для ОРТОГОНАЛЬНОГО потока: ось строки абзаца совпала с
     /// осью потока родителя, а та не ограничена. По CSS Writing Modes §7.3
     /// предел берётся от ближайшего предка-контейнера прокрутки, а при его
@@ -516,6 +529,11 @@ impl Paragraph {
             word_spacing: px(0.),
             vertical: false,
             vertical_rl: false,
+            vertical_central_baseline: true,
+            vertical_ccw: false,
+            selection_vertical: None,
+            vertical_layout_origin: point(px(0.0), px(0.0)),
+            vertical_inline: None,
             ortho_limit: None,
             hanging: crate::computed::Hanging::default(),
             indent: Indent::default(),
@@ -1775,97 +1793,6 @@ impl Paragraph {
     /// Поставить атомы на места их строк: x — от продвижения до распорки
     /// плюс прижим строки (тот же, что у отрисовки), y — от базовой линии
     /// строки по `vertical-align`.
-    fn place_atoms(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        if self.atoms.is_empty() || self.lines.is_empty() {
-            return;
-        }
-        let segs = self.measure(window);
-        let pads = self.line_padding();
-        let lh = f32::from(self.line_height);
-        // След мест атомов: ATOM_DBG=1.
-        if {
-            static ON: std::sync::LazyLock<bool> =
-                std::sync::LazyLock::new(|| std::env::var("ATOM_DBG").is_ok());
-            *ON
-        } {
-            eprintln!(
-                "ATOMS lh={lh} fs={:?} strut={:?} runs={:?} boxes={:?} pads={pads:?} bounds={bounds:?} fonts={:?} text={:?} lines={:?} emph={:?} trim={:?}",
-                self.font_size,
-                self.strut,
-                self.run_metrics,
-                self.atom_boxes,
-                self.runs
-                    .iter()
-                    .map(|r| (r.font.family.clone(), r.font_size))
-                    .collect::<Vec<_>>(),
-                self.text,
-                self.lines
-                    .iter()
-                    .map(|l| l.range.clone())
-                    .collect::<Vec<_>>(),
-                self.emph_spans,
-                self.ruby_trim
-            );
-        }
-        let mut tops = Vec::with_capacity(self.lines.len());
-        let mut y = 0.0f32;
-        for (i, _) in self.lines.iter().enumerate() {
-            tops.push(y);
-            let (p, q) = pads.get(i).copied().unwrap_or((0.0, 0.0));
-            y += lh + p + q;
-        }
-        for k in 0..self.atoms.len() {
-            let Some(b) = self.atom_boxes.get(k).copied() else {
-                continue;
-            };
-            // Атом за концом последней строки остался в оборванном
-            // `line-clamp` хвосте: прежде он вставал на последнюю видимую
-            // строку поверх её текста (`line-clamp-auto-with-ruby-002`).
-            let Some(row) = self.lines.iter().position(|l| b.at < l.range.end) else {
-                self.atoms[k].hidden = true;
-                continue;
-            };
-            self.atoms[k].hidden = false;
-            let line = self.lines[row].clone();
-            let (p, q) = pads.get(row).copied().unwrap_or((0.0, 0.0));
-            let align = self.line_align(row, &line);
-            let free_raw = bounds.size.width - line.width - line.indent - px(self.flow_cut(row).1);
-            let hang = self.hang_first(line.range.start);
-            let shift = self.span(&segs, line.range.start, line.range.start + hang);
-            let lead = line.indent - shift;
-            let dx = if align == Align::Justify {
-                lead
-            } else {
-                line_offset(align, self.wrap.rtl, free_raw) + lead
-            };
-            let x = dx + self.x_at(&segs, b.at, Edge::Start)
-                - self.x_at(&segs, line.range.start, Edge::Start);
-            let top = match b.align {
-                AtomAlign::Top => tops[row],
-                AtomAlign::Bottom => tops[row] + lh + p + q - b.h,
-                _ => tops[row] + p + self.line_base(&line.range) + self.atom_top(&b),
-            };
-            // Корень атома ставится на ДРОБНОЕ абсолютное место, и края
-            // всех его коробок округляются на абсолютной координате — как в
-            // основном дереве (`taffy.rs` `layout_bounds`, KaminIDE patch
-            // `set_root_origin`). Округлённый угол корня давал точку
-            // расхождения с тем же атомом в гибком ряду
-            // (`flexbox-justify-content-horiz-002/004`).
-            let origin = point(bounds.origin.x + x, bounds.origin.y + px(top));
-            match self.atoms[k].root.get() {
-                Some(root) => {
-                    window.set_layout_root_origin(root, origin);
-                    self.atoms[k]
-                        .el
-                        .prepaint_at(point(px(0.), px(0.)), window, cx);
-                }
-                None => {
-                    self.atoms[k].el.prepaint_at(origin, window, cx);
-                }
-            }
-        }
-    }
-
     /// Трекинг, который добавлен ПОСЛЕДНЕМУ знаку отрезка.
     ///
     /// По css-text-3 §8.2 межбуквенный интервал в конце строки не действует:
@@ -3436,7 +3363,7 @@ fn trim_hanging(chunk: &str) -> usize {
 }
 
 impl Element for Paragraph {
-    type RequestLayoutState = ();
+    type RequestLayoutState = LayoutId;
     /// Область попадания заводится только у выделяемого абзаца.
     type PrepaintState = Option<Hitbox>;
 
@@ -3454,7 +3381,7 @@ impl Element for Paragraph {
         _inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
-    ) -> (LayoutId, ()) {
+    ) -> (LayoutId, LayoutId) {
         // Атомы раскладываются ДО замера: их ширина — продвижение распорки,
         // высота растит строку (см. `lay_atoms`).
         if !self.atoms.is_empty() {
@@ -3490,6 +3417,10 @@ impl Element for Paragraph {
         let wrap = self.wrap;
         let align = self.align;
         let vertical = self.vertical;
+        let lines_reversed = self.lines_reversed;
+        let vertical_central_baseline = self.vertical_central_baseline;
+        let vertical_ccw = self.vertical_ccw;
+        let vertical_inline = self.vertical_inline;
         let ortho_limit = self.ortho_limit;
         // Правила КУСКОВ обязаны доехать и до замера: без них щуп считает
         // абзац по общим правилам и отдаёт другое число строк, чем потом
@@ -3513,7 +3444,7 @@ impl Element for Paragraph {
         let hanging = self.hanging;
         let spacers = self.spacers.clone();
         let flow = self.flow.clone();
-        let id = window.request_measured_layout_with_baselines(
+        let id = window.request_measured_layout_with_physical_baselines(
             gpui::Style::default(),
             move |known, available, window, _cx| {
                 // Заданная ширина сильнее доступной: раскладка уже решила, в
@@ -3526,6 +3457,11 @@ impl Element for Paragraph {
                     align,
                     wrap,
                 );
+                probe.vertical = vertical;
+                probe.lines_reversed = lines_reversed;
+                probe.vertical_central_baseline = vertical_central_baseline;
+                probe.vertical_ccw = vertical_ccw;
+                probe.vertical_inline = vertical_inline;
                 probe.spans = spans.clone();
                 probe.word_spans = word_spans.clone();
                 probe.letter_spans = letter_spans.clone();
@@ -3555,23 +3491,7 @@ impl Element for Paragraph {
                 } else {
                     (known.width, available.width)
                 };
-                let limit = known_along.or(match space_along {
-                    gpui::AvailableSpace::Definite(w) => Some(w),
-                    // Ось потока родителя не ограничена — она и растёт под
-                    // содержимое. Ортогональному потоку предел приходит
-                    // СНАРУЖИ (§7.3): от ближайшего предка-контейнера
-                    // прокрутки, а без него — от окна. Брать вместо этого
-                    // другую сторону родителя нельзя: она про ширину колонки,
-                    // а не про длину строки (проверено, было в минус).
-                    // Ось потока родителя не ограничена и растёт под
-                    // содержимое. Ортогональному потоку предел приходит
-                    // СНАРУЖИ (§7.3): от контейнера прокрутки или от окна.
-                    gpui::AvailableSpace::MaxContent if vertical => ortho_limit,
-                    gpui::AvailableSpace::MaxContent => None,
-                    // По минимальному содержимому строка рвётся не где попало,
-                    // а по самому широкому неразрывному куском.
-                    gpui::AvailableSpace::MinContent => Some(probe.min_content(window)),
-                });
+                let limit = probe.measured_inline_limit(known_along, space_along, ortho_limit, window);
                 // Кегль подбирается ДО замера: коробка считается уже по
                 // подобранному, иначе её высота не сойдётся с отрисовкой.
                 // Подбирать есть смысл только под ЗАДАННЫЙ размер строки:
@@ -3579,6 +3499,9 @@ impl Element for Paragraph {
                 // (иначе кегль улетал в размер окна — `text-fit/writing-mode`).
                 if let Some(w) = known_along {
                     probe.apply_fit(w, window);
+                }
+                if vertical {
+                    probe.run_metrics = probe.measure_runs(window);
                 }
                 let lines = probe.split(limit, window);
                 if {
@@ -3675,65 +3598,25 @@ impl Element for Paragraph {
                         last_shift = line_height * (pads.len() - 1) as f32 + px(before + own);
                     }
                     let extra: f32 = pads.iter().map(|(a, b)| a + b).sum();
-                    line_height * lines.len() as f32 + px(extra)
+                    (if vertical { probe.line_height } else { line_height }) * lines.len() as f32 + px(extra)
                 };
                 if vertical {
-                    // Строка идёт вниз: её длина — это ВЫСОТА коробки, а
-                    // строки набегают вбок и занимают ширину. Стороны, уже
-                    // решённые родителем, не перебиваются — иначе сетка
-                    // считает дорожки по чужому числу.
-                    // Базовой линии у вертикального абзаца нет: у раскладки она
-                    // только по вертикальной оси, а строка идёт вниз.
-                    //
-                    // ЗАМЕРЕНО И ОТКАЧЕНО: возвращать отсюда ту же величину,
-                    // что и горизонтальный абзац (полулидинг плюс подъём).
-                    // Полный свод CSS3: 0 и 0 — четырнадцать пар
-                    // `grid-self-baseline-vertical-*` не сдвинулись ни на
-                    // сотую. Одной базовой линии мало: сеточный путь в
-                    // `vendor/taffy` выравнивание по ней ПО СТРОЧНОЙ ОСИ не
-                    // умеет вовсе (`compute/grid/mod.rs:291` и `:468`).
-                    return (
-                        size(known.width.unwrap_or(across), known.height.unwrap_or(width)),
-                        None,
-                        None,
-                    );
+                    let width = if vertical_inline.is_some() { limit.unwrap_or(width) } else { width };
+                    return probe.vertical_content_baselines(size(
+                        known.width.unwrap_or(across), known.height.unwrap_or(width),
+                    ));
                 }
-                // Первая базовая линия абзаца — она нужна выравниванию
-                // `align-items: baseline`. Считается ПОСЛЕ подбора кегля:
-                // `apply_fit` меняет и кегль, и высоту строки.
-                let baseline = probe.runs.first().map(|run| {
-                    let font = run.font.clone();
-                    let size = run.font_size.unwrap_or(probe.font_size);
-                    let id = window.text_system().resolve_font(&font);
-                    // Полулидинг считается сам: готовая `baseline_offset`
-                    // ВЫЧИТАЕТ спуск, а он в метриках хранится со знаком
-                    // минус (`direct_write.rs`), и лишний спуск уходил в
-                    // отступ сверху — базовая линия вставала ниже верной
-                    // (Ahem 16px: 14.4 вместо 12.8).
-                    let ascent = window.text_system().ascent(id, size);
-                    let descent = window.text_system().descent(id, size);
-                    let content = ascent + descent.abs();
-                    (line_height - content) / 2.0 + ascent
-                });
-                // С атомами базовая — та же, на какую встают атомы и набор
-                // первой строки (`line_base`), плюс её верхняя надбавка.
-                let baseline = match lines.first() {
-                    Some(first) if !probe.atom_boxes.is_empty() || !probe.box_spans.is_empty() => {
-                        Some(px(probe.line_base(&first.range)) + first_above)
-                    }
-                    _ => baseline,
-                };
-                // ПОСЛЕДНЯЯ базовая — для `last baseline` (css-align-3 §9.1:
-                // «last baseline set» блока — последняя строчная коробка).
+                let baseline = probe.measured_first_baseline(line_height, first_above, window);
                 let last_baseline = baseline.map(|b| b + last_shift);
-                (
-                    size(known.width.unwrap_or(width), known.height.unwrap_or(across)),
-                    baseline,
-                    last_baseline,
-                )
+                gpui::MeasuredContent {
+                    first_y: baseline,
+                    last_y: last_baseline,
+                    lines_y: Some(probe.content_line_baselines(baseline)),
+                    ..gpui::MeasuredContent::new(size(known.width.unwrap_or(width), known.height.unwrap_or(across)))
+                }
             },
         );
-        (id, ())
+        (id, id)
     }
 
     fn prepaint(
@@ -3741,12 +3624,12 @@ impl Element for Paragraph {
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _state: &mut (),
+        state: &mut LayoutId,
         window: &mut Window,
         _cx: &mut App,
     ) -> Option<Hitbox> {
-        // Предел переноса — длина СТРОКИ: по горизонтали это ширина коробки,
-        // по вертикали её высота.
+        // Предел переноса — длина строки по её физической оси.
+        self.vertical_layout_origin = window.layout_origin_unrounded(*state) - window.element_offset();
         let limit = if self.vertical {
             bounds.size.height
         } else {
@@ -3760,7 +3643,7 @@ impl Element for Paragraph {
         let limit = limit + px(1.0 / scale);
         self.apply_measured_fit();
         self.lines = self.split(Some(limit), window);
-        self.place_atoms(bounds, window, _cx);
+        self.place_atoms(*state, window, _cx);
         // Куски вне потока встают на своё место в строке: раскладываются
         // по содержимому и подготавливаются от угла своего знака.
         if !self.overlays.is_empty() {
@@ -3821,40 +3704,27 @@ impl Element for Paragraph {
         id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _state: &mut (),
+        _state: &mut LayoutId,
         hitbox: &mut Option<Hitbox>,
         window: &mut Window,
         cx: &mut App,
     ) {
-        // Вертикальное письмо: строки рисуются в ПОВЁРНУТОЙ системе координат
-        // самого абзаца. Раскладка при этом остаётся честной — коробка уже
-        // получила свои размеры от родителя по нужным осям, а поворот меняет
-        // только то, как в неё ложатся строки. Прежде поворачивался блок
-        // целиком, и ограничение родителя до текста не доходило вовсе.
+        // Поворачивается текст внутри уже рассчитанной по физическим осям коробки.
         if self.vertical {
-            let scale = window.scale_factor();
-            let dev = |v: Pixels| v.scale(scale);
-            // Поворот ПО ЧАСОВОЙ: (u, v) плоской коробки → (−v, u), строки
-            // набегают от ПРАВОГО края влево — так при любом письме. У
-            // `vertical-lr` первая строка левая за счёт обратного порядка
-            // строк (`lines_reversed`, его ставит `render::paragraph`), а
-            // угол от левого края уводил весь текст за коробку.
-            let corner = bounds.origin.x + bounds.size.width;
-            let matrix = gpui::TransformationMatrix::unit()
-                .translate(gpui::point(dev(corner), dev(bounds.origin.y)))
-                .rotate(gpui::Radians(std::f32::consts::FRAC_PI_2))
-                .translate(gpui::point(dev(-bounds.origin.x), dev(-bounds.origin.y)));
-            // Внутри поворота коробка «горизонтальная»: её ширина — это
-            // высота настоящей, и наоборот.
+            let bounds = self.vertical_paint_bounds(bounds, self.vertical_layout_origin, window.scale_factor());
+            let matrix = self.vertical_transform(bounds, window.scale_factor());
+            // Flat inline/block axes match the painted physical extent.
             let flat = Bounds {
                 origin: bounds.origin,
                 size: size(bounds.size.height, bounds.size.width),
             };
             let mut inner = std::mem::replace(self, Paragraph::empty());
             inner.vertical = false;
+            let selection = inner.selection_vertical.replace((bounds, inner.vertical_ccw));
             window.with_transformation(matrix, |window| {
                 inner.paint(id, _inspector_id, flat, _state, hitbox, window, cx);
             });
+            inner.selection_vertical = selection;
             inner.vertical = true;
             *self = inner;
             return;
@@ -4101,28 +3971,6 @@ impl Paragraph {
         out
     }
 
-    /// Байтовый индекс под точкой: сначала строка по высоте, потом знак по
-    /// ширине внутри неё.
-    fn index_at(&self, segs: &[Seg], bounds: Bounds<Pixels>, at: Point<Pixels>) -> usize {
-        if self.lines.is_empty() {
-            return 0;
-        }
-        let row = ((at.y - bounds.origin.y) / self.line_height)
-            .floor()
-            .max(0.) as usize;
-        let line = &self.lines[row.min(self.lines.len() - 1)];
-        let want = at.x - bounds.origin.x + self.x_at(segs, line.range.start, Edge::Start);
-        let mut best = line.range.start;
-        for (i, _) in self.text[line.range.clone()].char_indices() {
-            let idx = line.range.start + i;
-            if self.x_at(segs, idx, Edge::End) > want {
-                break;
-            }
-            best = idx;
-        }
-        best
-    }
-
     /// Тянуть выделение мышью.
     fn track_selection(
         &self,
@@ -4168,6 +4016,11 @@ impl Paragraph {
             word_spacing: self.word_spacing,
             vertical: self.vertical,
             vertical_rl: self.vertical_rl,
+            vertical_central_baseline: self.vertical_central_baseline,
+            vertical_ccw: self.vertical_ccw,
+            selection_vertical: self.selection_vertical,
+            vertical_layout_origin: self.vertical_layout_origin,
+            vertical_inline: self.vertical_inline,
             hanging: self.hanging,
             indent: self.indent,
             spacers: self.spacers.clone(),

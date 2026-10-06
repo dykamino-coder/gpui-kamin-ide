@@ -5,6 +5,8 @@
 //! Во-вторых, ровно она задаёт границу охвата: поле есть — свойство
 //! поддержано, поля нет — свойство игнорируется осознанно, а не потеряно.
 
+mod font_kerning;
+pub(crate) mod orthogonal;
 mod tab_size;
 
 use crate::css::{Decls, Rule};
@@ -2322,6 +2324,10 @@ pub struct Computed {
     /// Наследуется вниз, потому что искать его надо ВВЕРХ по дереву, а на
     /// момент раскладки ребёнка предков уже не видно.
     pub ortho_limit: Option<f32>,
+    /// Nearest ancestor scrollport, including an indefinite nearest scroller.
+    pub(crate) orthogonal_scrollport: Option<[orthogonal::AxisSizes; 2]>,
+    /// Used inline measurement contract of an ordinary orthogonal block.
+    pub(crate) orthogonal_inline: Option<orthogonal::InlineConstraint>,
     /// Ячейка таблицы, ПАРАЛЛЕЛЬНОЙ своему письму: доступное инлайн-место у
     /// неё ОПРЕДЕЛЕНО — это мера её КОЛОНКИ (css-tables-3
     /// §computing-column-measures), — и запасной предел §7.3
@@ -2503,9 +2509,9 @@ pub struct Computed {
     pub(crate) flex_item: bool,
     /// Довод `fit-content(<length-percentage>)` у `width`, `min-width`,
     /// `max-width` (по порядку); само значение остаётся `Len::FitContent`.
-    /// Новый вариант `Len` потянул бы правку полусотни `match` по крейту, а
-    /// потребитель у довода один — обёртка-сетка `render::content_sized`.
     pub(crate) fit_arg: [Option<Len>; 3],
+    /// Intrinsic min/max constraints rewritten as a preferred keyword retain their sizing wrapper.
+    pub(crate) intrinsic_wrapper_required: bool,
     pub clip_margin: Option<f32>,
     /// Коробка отсчёта края обрезки: 0 content, 1 padding, 2 border;
     /// None — умолчание (padding-box).
@@ -2841,9 +2847,8 @@ pub struct Computed {
     /// `font-synthesis-weight|style|small-caps: none` — подмена начертания
     /// запрещена (css-fonts-4 §6.5). Ложь = `none`, пусто = `auto`.
     pub font_synth: (Option<bool>, Option<bool>, Option<bool>),
-    /// `font-kerning` (css-fonts-4 §6.4): 0 `none`, 1 `normal`, 2 `auto`. Сам
-    /// кернинг уходит тегом `kern`; поле — ради оракула `@supports`: `auto`
-    /// тега не кладёт, и без поля свойство выглядело неподдержанным.
+    /// `font-kerning`: 0 `none`, 1 `normal`, 2 `auto`; inherits independently
+    /// of font-variant and resolves before font-feature-settings.
     pub font_kerning: Option<u8>,
     /// Знак акцента (`text-emphasis-style`, css-text-decor-3 §5): рисуется
     /// над каждым знаком базы, как надстрочная аннотация руби.
@@ -3452,6 +3457,7 @@ impl Computed {
         let mut all: Vec<(String, u32)> =
             crate::fonts::face_features(self.font_family.as_deref().unwrap_or(""));
         all.extend(self.font_features.iter().cloned());
+        self.add_kerning_feature(&mut all);
         // Шаг 4 §7.2: «setting a non-default value for the letter-spacing
         // property disables optional ligatures» (css-text-3 §8.2). Старше
         // `font-variant-ligatures`, младше `font-feature-settings`
@@ -3503,6 +3509,7 @@ impl Computed {
             monospace: self.monospace,
             letter_spacing: self.letter_spacing,
             font_features: self.font_features.clone(),
+            font_kerning: self.font_kerning,
             font_settings: self.font_settings.clone(),
             text_transform: self.text_transform,
             ellipsis: self.ellipsis,
@@ -3710,6 +3717,11 @@ impl Computed {
         // этих парах не решает — держат их другие корни.
         const SHORTHANDS: &[&str] = &["background"];
         let семья = |k: &'a str| -> &'a str {
+            // Kerning is a reset-only member of `font`; their source order
+            // must survive the shorthand-first ordering used below.
+            if k == "font-kerning" && d.contains_key("font") {
+                return "font";
+            }
             for root in SHORTHANDS {
                 if k.len() > root.len()
                     && k.starts_with(root)
@@ -6683,6 +6695,7 @@ impl Computed {
                 // (`font: 0 Ahem; font: inherit` оставлял нулевой кегль).
                 if v == "inherit" {
                     self.font_size = None;
+                    self.font_kerning = None;
                     self.font_family = None;
                     self.font_weight = None;
                     self.italic = None;
@@ -6770,6 +6783,7 @@ impl Computed {
                 self.italic = Some(false);
                 self.oblique = Some(false);
                 self.font_weight = Some(400);
+                self.font_kerning = Some(2);
                 self.line_height = Some(Len::Auto);
                 for token in split_outside_parens(head) {
                     let t = token.as_str();
@@ -7465,21 +7479,7 @@ impl Computed {
                 };
             }
             "font-kerning" => {
-                // css-fonts-4 §6.4: `none` гасит кернинг, `normal` включает,
-                // `auto` оставляет решение шрифту (у нас — включён).
-                let kern: u8 = match v.trim() {
-                    "none" => 0,
-                    "normal" => 1,
-                    "auto" => 2,
-                    // Негодное значение роняет объявление (§4.2), а не стирает
-                    // прежний `kern`.
-                    _ => return,
-                };
-                self.font_features.retain(|(t, _)| t != "kern");
-                if kern < 2 {
-                    self.font_features.push(("kern".to_string(), kern as u32));
-                }
-                self.font_kerning = Some(kern);
+                self.set_font_kerning(v);
             }
             "font-feature-settings" => {
                 // Низкоуровневые теги через запятую: `"tnum" 1, "liga" off`.

@@ -20,6 +20,9 @@
 //! цвет. Вторая включается там, где без неё пришлось бы врать про размер.
 
 mod tabs;
+pub(crate) mod physical_sides;
+mod physical_projection;
+mod inline_spacing;
 pub use tabs::tab_stops;
 
 use crate::computed::{Computed, TextAlign, TextTransform};
@@ -295,12 +298,12 @@ pub fn collect(
                         ) => crate::metrics::spacing_px(l, &family, size),
                         _ => 0.0,
                     };
-                    merged.inline_pad = Some([
+                    merged.inline_pad = Some(physical_sides::project(inherited, [
                         px_of(e.style.padding.top),
                         px_of(e.style.padding.right),
                         px_of(e.style.padding.bottom),
                         px_of(e.style.padding.left),
-                    ]);
+                    ]));
                     merged.inline_radius = Some(px_of(e.style.radius.tl));
                 }
                 // Рамка строчной коробки рисуется прогоном: и ровная, и
@@ -313,7 +316,7 @@ pub fn collect(
                 if let Some((color, width)) = uniform_border(&e.style, font_px) {
                     merged.inline_border = Some((color, [width; 4]));
                 } else if let Some(sided) = sided_border(&e.style, font_px) {
-                    merged.inline_border = Some(sided);
+                    merged.inline_border = Some((sided.0, physical_sides::project(inherited, sided.1)));
                 }
                 // Контур строчного куска рисует тот же прогон: коробки у
                 // куска нет, а место контур и не занимает. Рисуется только
@@ -401,7 +404,7 @@ pub fn collect(
                 // унаследованного `direction`. Замерено: CSS2 4765 -> 4765,
                 // приобретено 0 / потеряно 0. Уровень куска здесь ещё не
                 // посчитан, и подмена сводилась к тому же `direction`.
-                let ((mut mlead, mut mtrail), (mut lead, mut trail)) = inline_sides(e, &merged);
+                let ((mut mlead, mut mtrail), (mut lead, mut trail)) = inline_spacing::inline_sides(e, &merged, inherited);
                 if merged.rtl == Some(true) {
                     std::mem::swap(&mut lead, &mut trail);
                     std::mem::swap(&mut mlead, &mut mtrail);
@@ -444,7 +447,14 @@ pub fn collect(
                         _ => 16.0,
                     };
                     let bs = e.style.borders();
-                    let top = px_of(e.style.padding.top) + px_of(bs.top);
+                    let padding = e.style.padding;
+                    let flat = physical_sides::project(inherited, [
+                        px_of(padding.top) + px_of(bs.top),
+                        px_of(padding.right) + px_of(bs.right),
+                        px_of(padding.bottom) + px_of(bs.bottom),
+                        px_of(padding.left) + px_of(bs.left),
+                    ]);
+                    let top = flat[0];
                     // Высота области содержимого — подъём плюс спуск шрифта, как
                     // у полосы непустого куска (`run_background_quad`); кегль
                     // вместо неё оставлял под пустой коробкой светлую черту
@@ -481,6 +491,8 @@ pub fn collect(
                     sized.height = copy.style.height;
                     sized.margin = Default::default();
                     sized.position = None;
+                    physical_sides::project_box(inherited, &mut copy.style);
+                    physical_sides::project_box(inherited, &mut sized);
                     let boxel = crate::render::styled_div_with(&copy, &sized)
                         .absolute()
                         .top(gpui::px(dy));
@@ -1036,6 +1048,7 @@ pub fn style_first_line(pieces: Vec<Piece>, at: usize, style: &Computed) -> Vec<
                     // вопреки `font-synthesis-*: none`. Дописываются ПОСЛЕ
                     // своих: при повторе тега побеждает первая строка.
                     c.font_features.extend(style.font_features.iter().cloned());
+                    c.font_kerning = style.font_kerning.or(base.font_kerning);
                     c.font_family = style.font_family.clone().or(base.font_family.clone());
                     c.font_settings = style
                         .font_settings
@@ -1695,6 +1708,8 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     c.combine_upright = own.combine_upright.or(parent.combine_upright);
     c.rotated_line = own.rotated_line.or(parent.rotated_line);
     c.ortho_limit = own.ortho_limit.or(parent.ortho_limit);
+    c.orthogonal_scrollport = parent.orthogonal_scrollport;
+    c.orthogonal_inline = parent.orthogonal_inline;
     c.wrap_anywhere = own.wrap_anywhere.or(parent.wrap_anywhere);
     c.word_space_char = own.word_space_char.or(parent.word_space_char);
     c.autospace_alpha = own.autospace_alpha.or(parent.autospace_alpha);
@@ -1879,6 +1894,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     if c.font_features.is_empty() {
         c.font_features = parent.font_features.clone();
     }
+    c.font_kerning = own.font_kerning.or(parent.font_kerning);
     // `font-feature-settings` наследуется своим значением независимо от
     // `font-variant-*` ребёнка (css-fonts-4 §6.12: `font-variant: none` «does
     // not reset … font-feature-settings»).
@@ -2706,54 +2722,6 @@ pub fn word_spans(pieces: &[Piece], base_size: f32) -> Vec<(std::ops::Range<usiz
         at = end;
     }
     out
-}
-
-/// Боковые поля, рамки и отступы строчной коробки в точках.
-///
-/// Доля тут не считается: она берётся от ширины контейнера, которая на сборке
-/// кусков ещё не решена. Пропуск честнее приблизительной длины — её видно в
-/// сравнении с браузером.
-fn inline_sides(e: &Element, merged: &Computed) -> ((f32, f32), (f32, f32)) {
-    let size = match merged.font_size {
-        Some(Len::Px(v)) => v,
-        _ => 16.0,
-    };
-    let family = merged.font_family.clone().unwrap_or_default();
-    // Доля поля и отступа строчной коробки — от ширины содержащего блока
-    // (CSS 2.1 §8.3, §8.4: «percentage … refer to the width of the
-    // containing block»), то есть блока абзаца. Прежде доля молча давала
-    // ноль (`text-indent-percentage-001`: эталон `margin-left: 50%` на
-    // `<span>` стоял у края).
-    let cb = crate::render::avail_width();
-    let px_of = |l: Option<Len>| match l {
-        Some(Len::Px(_)) | Some(Len::Em(_)) | Some(Len::Ch(_)) | Some(Len::Ex(_)) => {
-            crate::metrics::spacing_px(l, &family, size)
-        }
-        Some(Len::Pct(k)) => cb.map_or(0.0, |w| k * w),
-        _ => 0.0,
-    };
-    let border = e.style.borders();
-    // Боковой отступ строчной коробки занимает место в строке ВСЕГДА (§8.4),
-    // фон там задан или нет: `padding-right: 4em` двигает следующее слово и
-    // рвёт строку. Прежде отступ гасился при заданном фоне — считалось, что
-    // его держит прогон текста (`inline_pad`), но прогон только КРАСИТ:
-    // ширина квада приходит разностью положений глифов, а раздутие на
-    // `pad[1]`/`pad[3]` продвижения не даёт.
-    //
-    // Замерено: CSS2 5170 -> 5173, CSS3 2352 -> 2351. Потеря одна и известна:
-    // `css-text/shaping-arabic-diacritics-002` 0.04 -> 9.14. Там отступ задан
-    // спану ВНУТРИ арабского слова, и распорка U+FEFF рвёт курсивное
-    // соединение — чинится не здесь, а прозрачностью распорки для набора.
-    // Поле возвращается ОТДЕЛЬНО от рамки с отступом: под полем виден фон
-    // ПРЕДКА (§8.3 — поля всегда прозрачны), а под рамкой и отступом — свой
-    // (§14.2). Одной распоркой обе полосы не выразить: фон у неё один.
-    (
-        (px_of(e.style.margin.left), px_of(e.style.margin.right)),
-        (
-            px_of(border.left) + px_of(e.style.padding.left),
-            px_of(border.right) + px_of(e.style.padding.right),
-        ),
-    )
 }
 
 /// Слой знака-распорки: ширину ему даёт трекинг на своём куске, а всё

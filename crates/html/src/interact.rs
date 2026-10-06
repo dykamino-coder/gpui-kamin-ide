@@ -7,12 +7,18 @@
 //! Ручка рисуется в углу самим элементом; тянуть её можно по той оси, которую
 //! разрешил CSS.
 
+pub(crate) mod physical_atomic_frame;
+mod vertical_line_baseline;
 use gpui::{
     AnyElement, App, Bounds, Div, Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior,
     InspectorElementId, IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent,
     MouseUpEvent, ParentElement, Pixels, Styled, Window, px,
 };
 use std::rc::Rc;
+
+mod spot_geometry;
+mod orthogonal_measure;
+mod vertical_style;
 
 /// По каким осям разрешено тянуть.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -4304,6 +4310,8 @@ pub struct VerticalText {
     /// заявляется честно — иначе гибкая ячейка считает коробку нулевой и
     /// `justify-content` уводит рисунок из виду (table-cell-align-005).
     fit_limit: Option<Pixels>,
+    inline_constraint: Option<crate::computed::orthogonal::InlineConstraint>,
+    inline_keyword: Option<crate::computed::orthogonal::InlineKeyword>,
     /// `writing-mode: sideways-lr` — поворот ПРОТИВ часовой стрелки.
     /// css-writing-modes-4, таблица Abstract-Physical Mapping: у `sideways-lr`
     /// line-left = НИЗ, line-right = ВЕРХ, over = ЛЕВО (у всех остальных
@@ -4325,68 +4333,6 @@ pub struct VerticalText {
     first_line: Option<(gpui::Font, Pixels, Option<Pixels>, bool)>,
 }
 
-impl VerticalText {
-    pub fn new(child: AnyElement) -> Self {
-        VerticalText {
-            child: Some(child),
-            natural: gpui::Size::default(),
-            fit_limit: None,
-            claim_cap: None,
-            key: None,
-            ccw: false,
-            col_min: false,
-            lr: false,
-            first_line: None,
-        }
-    }
-
-    /// Строки поданы снизу вверх (`vertical-lr`): первая — левая колонка.
-    pub fn lines_left_first(mut self, on: bool) -> Self {
-        self.lr = on;
-        self
-    }
-
-    /// Метрики первой строки — для базовой линии по оси x (см. `first_line`).
-    pub fn first_line(mut self, font: gpui::Font, size: Pixels, line_height: Option<Pixels>, central: bool) -> Self {
-        self.first_line = Some((font, size, line_height, central));
-        self
-    }
-
-    /// Поворот против часовой стрелки (`sideways-lr`).
-    pub fn counter_clockwise(mut self, on: bool) -> Self {
-        self.ccw = on;
-        self
-    }
-
-    /// Включить двухкадровый замер: заявка ширины уточняется фактом
-    /// прошлого кадра (перенос строк меняет число колонок).
-    pub fn keyed(mut self, key: u64) -> Self {
-        self.key = Some(key);
-        self
-    }
-
-    /// Заявить и высоту — потолком родителя, только при ПОЛНОМ зажиме
-    /// (строка длиннее потолка): короче потолка коробка прижимается к
-    /// содержимому сама, а заявка ломала поток соседей.
-    pub fn claiming_height(mut self, cap: Pixels) -> Self {
-        self.claim_cap = Some(cap);
-        self
-    }
-
-    /// Заявить высоту коробки, когда строка не длиннее предела: переносу
-    /// такая заявка не мешает (переносить нечего), а замер становится
-    /// честным для гибких родителей.
-    pub fn fit_within(mut self, limit: Pixels) -> Self {
-        self.fit_limit = Some(limit);
-        self
-    }
-
-    /// Мерить содержимое по МИНИМАЛЬНОМУ вдоль строки (см. поле `col_min`).
-    pub fn column_min(mut self, on: bool) -> Self {
-        self.col_min = on;
-        self
-    }
-}
 
 impl Element for VerticalText {
     type RequestLayoutState = ();
@@ -4437,11 +4383,11 @@ impl Element for VerticalText {
             },
             gpui::AvailableSpace::MaxContent,
         );
-        self.natural = self
-            .child
-            .as_mut()
-            .unwrap()
-            .layout_as_root(space, window, cx);
+        self.natural = if let Some(constraint) = self.inline_constraint {
+            orthogonal_measure::measure(self.child.as_mut().unwrap(), constraint, self.inline_keyword, window, cx)
+        } else {
+            self.child.as_mut().unwrap().layout_as_root_unrounded(space, window, cx)
+        };
         // Внутренний строчный размер повёрнутого текста — длина его самой
         // длинной строки (`natural.width` горизонтального абзаца до
         // поворота). Наружу высотой он не заявляется (см. ниже), и пробе
@@ -4453,10 +4399,8 @@ impl Element for VerticalText {
             }
         });
         let mut style = gpui::Style::default();
-        // Ширина заявляется, высота — НЕТ. Ширина повёрнутого блока это число
-        // строк, его меньше не сделать. А высота — длина строки, и её решает
-        // родитель: заявленная здесь, она делала коробку сколь угодно длинной,
-        // ограничение до текста не доходило, и он не переносился никогда.
+        // Ordinary orthogonal blocks claim the independently measured inline size;
+        // other contexts let their existing parent-sizing contract decide height.
         if {
             static ON: std::sync::LazyLock<bool> =
                 std::sync::LazyLock::new(|| std::env::var("VT_DBG").is_ok());
@@ -4467,10 +4411,12 @@ impl Element for VerticalText {
         // Факт прошлого кадра сильнее свободного замера: перенос строк при
         // решённой длине меняет число колонок, а свободный замер его не
         // видит (text-combine-upright-line-breaking-rules-001).
-        let claim = self
+        let claim = if self.inline_keyword.is_some() {
+            self.natural.height
+        } else { self
             .key
             .and_then(|k| VT_MEASURED.with(|c| c.borrow().get(&k).copied()))
-            .unwrap_or(self.natural.height);
+            .unwrap_or(self.natural.height) };
         if {
             static ON: std::sync::LazyLock<bool> =
                 std::sync::LazyLock::new(|| std::env::var("VT_DBG").is_ok());
@@ -4481,34 +4427,19 @@ impl Element for VerticalText {
         style.size.width = gpui::Length::Definite(gpui::DefiniteLength::Absolute(
             gpui::AbsoluteLength::Pixels(claim),
         ));
-        // Базовая линия по оси x — первая строка повёрнутого абзаца
-        // (css-writing-modes-4 §4.2): центральная при `mixed`/`upright` —
-        // середина строки; алфавитная при `sideways` — на `halfleading +
-        // ascent` от over-края строки (у поворота по часовой over — справа,
-        // у `sideways-lr` — слева). Первая строка справа у `vertical-rl`, слева
-        // у `vertical-lr` и `sideways-lr`. Отсчёт у `vertical-rl` — от
-        // ПРАВОГО края: так он верен при любой итоговой ширине коробки.
-        // Нужна сетке (`align-self: baseline` вертикальной сетки,
-        // `justify-self: baseline` с ортогональными элементами).
-        if let Some((font, size, lh, central)) = &self.first_line {
-            let ts = window.text_system();
-            let id = ts.resolve_font(font);
-            let ascent = ts.ascent(id, *size);
-            let descent = ts.descent(id, *size).abs();
-            let lh = lh.unwrap_or(ascent + descent);
-            let b = (lh - (ascent + descent)) / 2.0 + ascent;
-            let (offset, from_right) = if *central {
-                (lh / 2.0, !self.ccw && !self.lr)
-            } else if self.ccw {
-                (b, false)
-            } else if self.lr {
-                (lh - b, false)
-            } else {
-                (b, true)
-            };
-            style.baseline_x_hint = Some((f32::from(offset), from_right));
-        }
-        if let Some(cap) = self.claim_cap
+        vertical_line_baseline::apply(
+            &mut style,
+            self.child.as_mut().unwrap(),
+            self.natural,
+            self.ccw,
+            self.lr,
+            self.first_line.as_ref(),
+            window,
+            cx,
+        );
+        if self.inline_constraint.is_some() {
+            style.size.height = self.natural.width.into();
+        } else if let Some(cap) = self.claim_cap
             && self.natural.width >= cap
         {
             style.size.height = gpui::Length::Definite(gpui::DefiniteLength::Absolute(
@@ -4561,7 +4492,7 @@ impl Element for VerticalText {
                 gpui::AvailableSpace::Definite(along),
                 gpui::AvailableSpace::Definite(bounds.size.width),
             );
-            let sized = child.layout_as_root(space, window, cx);
+            let sized = child.layout_as_root_unrounded(space, window, cx);
             // Факт для следующего кадра: высота содержимого при решённой
             // длине строки — она и есть настоящая ширина повёрнутого блока.
             if let Some(k) = self.key
@@ -4783,11 +4714,7 @@ thread_local! {
 }
 
 /// Экранная точка для до-поворотной, если мы внутри повёрнутого абзаца.
-///
-/// Поворот — на четверть по часовой вокруг верхнего правого угла рамки
-/// (`VerticalText::paint`): до-поворотная `(px, py)` от угла рамки становится
-/// экранной `(x + w - py - thickness, y + px)`. Толщина — колонка строки, в
-/// которую коробка встала.
+/// Mapping follows the actual clockwise/counter-clockwise text frame.
 /// Идёт ли сейчас подготовка ПОВЁРНУТОГО абзаца (`VerticalText`).
 pub fn in_rotated_frame() -> bool {
     VT_FRAME.with(|c| c.get()).is_some()
@@ -5060,18 +4987,7 @@ pub fn spot_probe(spot: SpotCell, full: bool) -> AnyElement {
         probe = probe.w_0();
         probe.style().align_self = Some(gpui::AlignItems::FlexStart);
     }
-    probe
-        .child(gpui::canvas(
-            move |bounds, _, _| {
-                let mut now = spot.get();
-                now.rotated = VT_FRAME.with(|c| c.get()).is_some();
-                now.block_strut = full;
-                now.hole = Some(vt_map(bounds, gpui::px(now.line_thickness)));
-                spot.set(now);
-            },
-            |_, _, _, _| {},
-        ))
-        .into_any_element()
+    spot_geometry::probe(spot, full, probe.into_any_element())
 }
 
 /// Заместитель в конце списка: рисуется последним, но встаёт туда, где стояла
@@ -5173,7 +5089,7 @@ pub struct LatePlace {
 }
 
 impl Element for LatePlace {
-    type RequestLayoutState = ();
+    type RequestLayoutState = LayoutId;
     type PrepaintState = ();
 
     fn id(&self) -> Option<ElementId> {
@@ -5190,20 +5106,24 @@ impl Element for LatePlace {
         _inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
-    ) -> (LayoutId, ()) {
+    ) -> (LayoutId, LayoutId) {
         let layout_id = self.child.as_mut().unwrap().request_layout(window, cx);
-        (layout_id, ())
+        (layout_id, layout_id)
     }
 
     fn prepaint(
         &mut self,
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        _state: &mut (),
+        _bounds: Bounds<Pixels>,
+        layout_id: &mut LayoutId,
         window: &mut Window,
         cx: &mut App,
     ) {
+        let bounds = Bounds {
+            origin: window.layout_origin_unrounded(*layout_id),
+            size: window.layout_size_unrounded(*layout_id),
+        };
         let now = self.spot.get();
         let shift = match (now.hole, now.next_line) {
             // Блочный: слева — край содержимого родителя (там же, где стоит сам
@@ -5368,7 +5288,8 @@ impl Element for LatePlace {
             },
         );
         let child = self.child.as_mut().unwrap();
-        window.with_element_offset(shift, |window| child.prepaint(window, cx));
+        window.set_layout_placed_origin(*layout_id, bounds.origin + shift);
+        child.prepaint_at(gpui::point(px(0.0), px(0.0)), window, cx);
     }
 
     fn paint(
@@ -5376,7 +5297,7 @@ impl Element for LatePlace {
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _request: &mut (),
+        _request: &mut LayoutId,
         _prepaint: &mut (),
         window: &mut Window,
         cx: &mut App,

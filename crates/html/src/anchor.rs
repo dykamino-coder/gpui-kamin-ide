@@ -129,6 +129,7 @@ thread_local! {
 /// Расходник кадра — чистится в `interact::frame_sanitize`. Реестры текущего
 /// кадра не выбрасываются, а переезжают в `LAST_*`.
 pub fn reset() {
+    crate::render::absolute_overflow::reset();
     NAMED.with(|m| m.borrow_mut().clear());
     let named = NAMED_SEQ.with(|v| std::mem::take(&mut *v.borrow_mut()));
     LAST_NAMED.with(|v| *v.borrow_mut() = named);
@@ -152,6 +153,11 @@ pub fn next_seq() -> u32 {
         s.set(v);
         v
     })
+}
+
+/// Read the actual padding box of an absolute containing block in this frame.
+pub(crate) fn containing_bounds(node: u64) -> Option<Bounds<Pixels>> {
+    CB.with(|map| map.borrow().get(&node).copied())
 }
 
 /// Положить плоский трансформ на стек подготовки (`Transformed::prepaint`).

@@ -12,9 +12,12 @@ use crate::computed::{
 };
 use crate::value::Len;
 use gpui::{Div, InteractiveElement, Styled, px, relative};
+pub(crate) mod intrinsic_size;
+mod grid_flow_axes;
+mod flex_cross_default;
 
 /// Ширина/высота/отступ: доля родителя или пиксели.
-fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
+pub(crate) fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
     match l {
         Len::Px(v) => px(v).into(),
         Len::Pct(v) => relative(v),
@@ -149,18 +152,6 @@ fn to_content(j: Justify) -> gpui::AlignContent {
         // промежутков — сводить их в одно значение нельзя.
         Justify::Evenly => gpui::AlignContent::SpaceEvenly,
         Justify::Stretch => gpui::AlignContent::Stretch,
-    }
-}
-
-fn to_items(a: Align) -> gpui::AlignItems {
-    match a {
-        // §anchor-center вне абсолюта с якорем «behaves as center»; у
-        // абсолюта с якорем сдвиг довозит `anchor::AnchorPlace` поверх.
-        Align::Center | Align::AnchorCenter => gpui::AlignItems::Center,
-        Align::Start => gpui::AlignItems::FlexStart,
-        Align::End => gpui::AlignItems::FlexEnd,
-        Align::Stretch => gpui::AlignItems::Stretch,
-        Align::Baseline => gpui::AlignItems::Baseline,
     }
 }
 
@@ -302,6 +293,10 @@ pub fn self_align(a: Align, last: bool) -> gpui::AlignItems {
     }
 }
 
+#[path = "apply/alignment_axes.rs"]
+mod alignment_axes;
+pub(crate) mod item_metadata;
+
 pub fn apply(d: Div, c: &Computed) -> Div {
     let mut d = d;
     d = apply_layout(d, c);
@@ -313,6 +308,7 @@ pub fn apply(d: Div, c: &Computed) -> Div {
 /// Стиль контейнера-сетки: дорожки, неявные дорожки, направление.
 fn grid_style(mut d: Div, c: &Computed) -> Div {
     d = d.grid();
+    d.style().grid_axis_reversed = Some(grid_flow_axes::reversed(c));
     // Контейнер лунок на пути сетки (`dom::lanes_as_grid`): раскладку лунками
     // делает taffy. Порог `flow-tolerance: normal` — 1em (css-grid-3
     // Overview.bs:828-831), `infinite` разбор держит бесконечными точками.
@@ -667,6 +663,7 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
 }
 
 fn apply_layout(mut d: Div, c: &Computed) -> Div {
+    d.style().block_flow = Some(grid_flow_axes::block(c));
     match c.display {
         // Блок в GPUI — дефолт; отдельного вызова не требует.
         Some(Display::Flex) | Some(Display::InlineFlex) => d = d.flex(),
@@ -674,21 +671,19 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         // Базовая `inline-block` — ПОСЛЕДНЕЙ строки (CSS 2.1 §10.8.1: «the
         // baseline of its last line box in the normal flow»; css-inline-3
         // `baseline-source: auto` → `last` у `inline-block`). При обрезке —
-        // нижний край margin-бокса: тогда флаг не ставится, базовую прячет
-        // путь прокрутки.
+        // нижний край margin-бокса: адаптер подавляет содержательную базовую
+        // и родитель синтезирует её, сохраняя нижнее поле.
         Some(Display::InlineBlock) => {
             d = d.flex_shrink_0();
-            let visible = |o: Option<Overflow>| matches!(o, None | Some(Overflow::Visible));
             // Элемент гибкого контейнера и сетки блокифицирован (css-display-3
             // §2.7): его базовая — первая, как у блока.
             // Руби и строчная коробка, сыгранная `inline-block`
             // (`inline_display`), — не атомы: их базовая — базовая основы
             // (★ ЗАМЕРЕНО: `initial-letter-block-position-raise-over/under-ruby`
             // 0.24 → 1.25 / 0.25 → 0.60).
-            if visible(c.overflow_x)
-                && visible(c.overflow_y)
-                && !c.scroller
-                && !c.parent_flex_grid
+            // Keep the inline-block boundary flag for non-visible overflow too:
+            // native output adaptation then suppresses its content baseline.
+            if !c.parent_flex_grid
                 && c.ruby_role.is_none()
                 && c.inline_display != Some(true)
             {
@@ -901,22 +896,9 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         // и оба сжимались поровну (поймано сравнением с Chrome).
         d.style().flex_shrink = Some(shrink);
     }
-    // В письме `vertical-rl` поперечная ось идёт СПРАВА НАЛЕВО: её начало —
-    // правый край. У гибкой раскладки обратной поперечной оси нет, поэтому
-    // элемент, который не растягивается, прижимается к концу — это и есть
-    // правый край (замерено пробой: ряд в `vertical-rl` против колонки с
-    // прижимом вправо расходился на 5.42%).
-    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): обратная поперечная ось «по спеке» —
-    // колонка при `direction: rtl` и ряд при `vertical-rl` зеркалят
-    // `start`/`end` у `align-items` и у `align-self` детей (css-flexbox-1
-    // §9.6). css-flexbox 733 -> 733 (+1/−1), css-writing-modes 570 -> 564:
-    // шесть `text-orientation-*-100` с явным `flex-start` в vertical-rl
-    // ушли в «красное видно». Зеркало умолчания ниже — единственное, что
-    // подтверждено замером; явные значения оставлять физическими.
-    if c.vertical_rl == Some(true)
-        && c.align_items.is_none()
-        && matches!(c.display, Some(Display::Flex) | Some(Display::InlineFlex))
-    {
+    // The legacy cross-end default projects onto X only for physical columns.
+    // A logical vertical column has a Y cross axis and retains its stretch default.
+    if flex_cross_default::ends_on_x(c, dir) {
         d = d.items_end();
     }
     // ★ ЗАМЕРЕНО И ОТКАЧЕНО (повторно, теперь узко): зеркало поперечной оси у
@@ -960,7 +942,8 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // переполнена) — второй заход в раскладке им мешает (★ ЗАМЕРЕНО:
     // `grid-lanes-justify-content-001` 0.00 -> 1.37).
     if c.display != Some(Display::GridLanes)
-        && (c.align_items_safe || c.align_self_safe || c.align_content_safe || c.justify_content_safe)
+        && (c.align_items_safe || c.align_self_safe || c.align_content_safe || c.justify_content_safe
+            || c.justify_items_safe || c.justify_self_safe)
     {
         d.style().safe_alignment = Some((
             c.align_items_safe,
@@ -968,6 +951,7 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
             c.align_content_safe,
             c.justify_content_safe,
         ));
+        d.style().safe_justify_alignment = Some((c.justify_items_safe, c.justify_self_safe));
     }
     // `align-self` — про САМ элемент, а не про его детей. Раньше оба свойства
     // писались в одно поле, и элемент выравнивал содержимое вместо себя.
@@ -1036,32 +1020,12 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         .justify_items
         .filter(|a| *a != Align::Baseline || !real_grid || c.vertical != Some(true))
     {
-        d.style().justify_items = Some(to_items(a));
+        d.style().justify_items = Some(self_align(a, c.justify_items_last));
     }
     if let Some(a) = c.justify_self {
-        d.style().justify_self = Some(to_items(a));
+        d.style().justify_self = Some(self_align(a, c.justify_self_last));
     }
-    // Оси ВЕРТИКАЛЬНОЙ сетки: дорожки уже переставлены (`grid_style`, `flip`),
-    // и раскладка под нами считает оси физическими. `align-*` в CSS — про
-    // БЛОЧНУЮ ось, а она здесь горизонтальна, то есть это `justify-*`
-    // раскладки, и наоборот (css-grid-2 §10.1: align — block axis, justify —
-    // inline axis). Прежде `align-items: baseline` вертикальной сетки шёл по
-    // строчной оси, где каждый элемент стоит в своём ряду один, и не делал
-    // ничего (`grid-self-baseline-vertical-lr/rl-*`).
-    if real_grid && c.vertical == Some(true) {
-        let s = d.style();
-        std::mem::swap(&mut s.align_items, &mut s.justify_items);
-        // То же у распределения дорожек: `justify-content` — строчная ось
-        // (css-align-3 §5.1), у вертикальной сетки — физические ряды.
-        std::mem::swap(&mut s.align_content, &mut s.justify_content);
-        if let Some(safe) = s.safe_alignment.as_mut() {
-            std::mem::swap(&mut safe.2, &mut safe.3);
-        }
-    }
-    if c.parent_grid >= 2 {
-        let s = d.style();
-        std::mem::swap(&mut s.align_self, &mut s.justify_self);
-    }
+    alignment_axes::project(d.style(), real_grid && c.vertical == Some(true), c.parent_grid >= 2);
     // Биты базовой по оси x для элемента сетки (css-align-3 §9.1; Blink
     // baseline_utils.h `DetermineBaselineWritingMode`/`DetermineBaselineGroup`):
     // письмо базовой — своё у вертикального элемента, у горизонтального —
@@ -1069,23 +1033,7 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // Группа у правого края — когда это письмо `vertical-rl`. Синтез
     // центральный, когда у сетки вертикальное письмо не `sideways` (Blink
     // `parent_grid_font_baseline` = `GetFontBaseline()` сетки).
-    if c.parent_grid != 0 {
-        let item_vertical = c.vertical == Some(true);
-        let rl = if item_vertical { c.vertical_rl == Some(true) } else { c.parent_grid == 3 };
-        let mut bits = 0u8;
-        if rl {
-            bits |= 1;
-        }
-        if c.parent_grid >= 2 && !c.cb_sideways && c.text_sideways != Some(true) {
-            bits |= 2;
-        }
-        if item_vertical {
-            bits |= 4;
-        } else if c.parent_grid == 1 {
-            bits |= 8;
-        }
-        d.style().baseline_x_flags = Some(bits);
-    }
+    d.style().baseline_x_flags = item_metadata::baseline_x_flags(c);
     if let Some(r) = c.aspect_ratio
         && !ratio_as_auto_min(c)
     {
@@ -1149,15 +1097,12 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // прежде такая коробка оставалась border-box, и её содержимое ужималось
     // на ширину отступов (`padding-percentage-inherit-001`: 30 → 6 точек у
     // ребёнка).
-    let pct_pad = content_box
-        && [c.padding.left, c.padding.right, c.padding.top, c.padding.bottom]
-            .iter()
-            .any(|p| matches!(p, Some(Len::Pct(_))));
-    if pct_pad {
+    let native_content_box = intrinsic_size::native_content_box(c);
+    if native_content_box {
         d.style().content_box = Some(true);
     }
     let extra = |sides: &[Option<Len>]| -> f32 {
-        if !content_box || pct_pad {
+        if !content_box || native_content_box {
             return 0.0;
         }
         sides
@@ -1228,6 +1173,11 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     } else {
         None
     };
+    // Positioned boxes cannot use the intrinsic grid wrapper: it would change
+    // their containing block. Preserve authored keywords for native measurement.
+    if matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed)) {
+        d.style().sizing_keywords = Some(intrinsic_size::keywords(c));
+    }
     for (val, f) in [
         (natural_fit.map(|f| Len::Px(f.0)).or(c.width), 0u8),
         (natural_fit.map(|f| Len::Px(f.1)).or(c.height), 1),
@@ -1359,12 +1309,14 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
                 let mh = if bb { (w + pad_x) / r - pad_y } else { w / r };
                 let mh = clamp(mh.max(0.0), None, c.max_height);
                 d = d.min_h(px(mh + pad_y));
+                d.style().aspect_ratio_preferred_size = Some([None, Some(mh + pad_y)]);
             }
             (_, Some(Len::Px(h))) => {
                 let h = clamp(h, c.min_height, c.max_height);
                 let mw = if bb { (h + pad_y) * r - pad_x } else { h * r };
                 let mw = clamp(mw.max(0.0), None, c.max_width);
                 d = d.min_w(px(mw + pad_x));
+                d.style().aspect_ratio_preferred_size = Some([Some(mw + pad_x), None]);
             }
             _ => {}
         }
@@ -2433,63 +2385,5 @@ pub fn apply_text(mut d: Div, c: &Computed) -> Div {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::computed::Computed;
-    use crate::css::parse_decls;
-
-    /// Стиль применяется к настоящему `Div` и читается обратно из `Style` —
-    /// так проверяется именно маппинг, а не наше представление о нём.
-    fn styled(css: &str) -> gpui::StyleRefinement {
-        let mut c = Computed::default();
-        c.apply_decls(&parse_decls(css));
-        let mut d = apply(gpui::div(), &c);
-        d.style().clone()
-    }
-
-    #[test]
-    fn box_model_reaches_gpui() {
-        let s = styled("padding: 4px 8px; margin-top: 6px; border: 2px solid #333");
-        assert_eq!(s.padding.top, Some(px(4.).into()));
-        assert_eq!(s.padding.right, Some(px(8.).into()));
-        assert_eq!(s.margin.top, Some(px(6.).into()));
-        assert_eq!(s.border_widths.top, Some(px(2.).into()));
-        assert!(s.border_color.is_some());
-    }
-
-    #[test]
-    fn flex_layout_reaches_gpui() {
-        let s = styled("display: flex; flex-direction: column; align-items: center; gap: 6px");
-        assert_eq!(s.display, Some(gpui::Display::Flex));
-        assert_eq!(s.flex_direction, Some(gpui::FlexDirection::Column));
-        assert_eq!(s.align_items, Some(gpui::AlignItems::Center));
-        assert_eq!(s.gap.height, Some(px(6.).into()));
-    }
-
-    #[test]
-    fn percentage_width_becomes_a_fraction() {
-        let s = styled("width: 50%");
-        assert_eq!(s.size.width, Some(relative(0.5).into()));
-    }
-
-    #[test]
-    fn multiple_shadows_survive() {
-        let s = styled("box-shadow: 0 1px 2px #000, 0 4px 12px rgba(0,0,0,.5)");
-        assert_eq!(s.box_shadow.as_ref().map(Vec::len), Some(2));
-    }
-
-    #[test]
-    fn gradient_takes_first_and_last_stop() {
-        let s = styled("background: linear-gradient(90deg, #000000, #444444, #ffffff)");
-        assert!(s.background.is_some(), "градиент доехал до фона");
-    }
-
-    #[test]
-    fn unsupported_properties_leave_no_trace() {
-        // Ни фильтров, ни трансформов, ни z-index в GPUI нет: стиль обязан
-        // остаться пустым, а не получить приблизительную замену.
-        let s = styled("filter: blur(4px); transform: rotate(45deg); z-index: 5; float: left");
-        assert!(s.background.is_none() && s.opacity.is_none());
-        assert!(s.size.width.is_none() && s.size.height.is_none());
-    }
-}
+#[path = "apply/tests.rs"]
+mod tests;

@@ -828,16 +828,9 @@ impl Element for BandFlow {
         cx: &mut App,
     ) {
         let _ = bounds;
-        // Размер и начало хоста — БЕЗ округления к физической точке: дети
-        // кладутся ОТДЕЛЬНЫМ деревом, и его края округляются от начала этого
-        // дерева, а не от начала страницы (`taffy.rs` `layout_bounds`
-        // округляет абсолютные края). Чтобы округление сошлось с основным
-        // деревом, целая часть начала (в физических точках) уходит в
-        // смещение дерева, а дробная — в позиции детей: round(n + f) = n +
-        // round(f) (`float-nowrap-hyphen-rewind-1-ref2` при масштабе 1.25:
-        // хост на 9.0 логических = 11.25 физических, его текст на 12.5 →
-        // 13 в основном дереве, но 1.25 → 1 во вложенном — на точку левее и
-        // выше соседей).
+        // Отдельное дерево сохраняет точное начало хоста. Коробки и текст
+        // округляются от общего абсолютного места, без переноса дробной
+        // части начала в padding или позиции детей.
         let vert = self.vert;
         let unr = window.layout_size_unrounded(*state);
         let cb = f32::from(if vert.is_some() {
@@ -846,11 +839,6 @@ impl Element for BandFlow {
             unr.width
         });
         let origin = window.layout_origin_unrounded(*state);
-        let scale = window.scale_factor();
-        let (ox, oy) = (f32::from(origin.x) * scale, f32::from(origin.y) * scale);
-        let (ix, iy) = (ox.floor(), oy.floor());
-        let (fx, fy) = ((ox - ix) / scale, (oy - iy) / scale);
-        let origin = point(px(ix / scale), px(iy / scale));
         let cached = self
             .plan
             .borrow()
@@ -880,7 +868,7 @@ impl Element for BandFlow {
         } else {
             (cb, p.height)
         };
-        let mut host = div().relative().w(px(pw + fx)).h(px(ph + fy));
+        let mut host = div().relative().w(px(pw)).h(px(ph));
         // CSS 2.1 прил. E: фоны блоков потока (шаг 4) — РАНЬШЕ флоатов
         // (шаг 5): флоат лежит поверх блока, под которым стоит
         // (`clear-004`). Строки рядом с флоатом его не перекрывают — их
@@ -912,21 +900,22 @@ impl Element for BandFlow {
             host = host.child(
                 div()
                     .absolute()
-                    .left(px(left + fx))
-                    .top(px(top + fy))
+                    .left(px(left))
+                    .top(px(top))
                     .child(el),
             );
         }
         let mut el = host.into_any_element();
-        el.layout_as_root(
+        el.layout_as_root_at(
+            origin,
             size(
-                AvailableSpace::Definite(px(pw + fx)),
-                AvailableSpace::Definite(px(ph + fy)),
+                AvailableSpace::Definite(px(pw)),
+                AvailableSpace::Definite(px(ph)),
             ),
             window,
             cx,
         );
-        el.prepaint_at(origin, window, cx);
+        el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
         self.built.push(el);
     }
 

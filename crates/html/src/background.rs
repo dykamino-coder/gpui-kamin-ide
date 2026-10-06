@@ -12,6 +12,7 @@
 
 use crate::computed::{BgPos, BgRepeat, BgSize, Computed, Tiling};
 use crate::value::Len;
+mod sampling;
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, RenderImage, Styled, px};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -3448,8 +3449,7 @@ pub fn paint_tiles(
                     origin: at,
                     size: gpui::size(px(tile.0), px(tile.1)),
                 };
-                // Промах атласа рисовать нечем — пропускаем плитку молча.
-                let _ = window.paint_image(cell, corners, image.clone(), 0, false);
+                sampling::paint_tile(window, cell, corners, image.clone(), &found);
             }
         }
     });

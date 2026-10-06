@@ -7,6 +7,12 @@
 //! смещениями. Дети приходят с ИЗВЕСТНЫМИ размерами (инлайн-блоки с
 //! заданными сторонами — ровно то, чем WPT рисует картину обтекания).
 
+mod fragment_mask;
+mod column_measure;
+mod column_baselines;
+mod intrinsic_measure;
+mod row_element;
+
 use gpui::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
     LayoutId, Pixels, Size, Window, point, px, size,
@@ -158,134 +164,6 @@ impl FlowRow {
     }
 }
 
-impl Element for FlowRow {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
-
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        _cx: &mut App,
-    ) -> (LayoutId, ()) {
-        let sizes: Vec<(f32, f32)> = self.children.iter().map(|c| (c.w, c.h)).collect();
-        let shapes = self.shapes.clone();
-        let rtl = self.rtl;
-        let vertical_rl = self.vertical_rl;
-        let id = window.request_measured_layout(
-            gpui::Style::default(),
-            move |known, available, _window, _cx| {
-                // Предел инлайн-оси: в вертикальном письме это ВЫСОТА.
-                let pick = |k: Option<gpui::Pixels>, a: gpui::AvailableSpace| {
-                    k.map(f32::from).or(match a {
-                        gpui::AvailableSpace::Definite(v) => Some(f32::from(v)),
-                        _ => None,
-                    })
-                };
-                let limit = if vertical_rl {
-                    pick(known.height, available.height)
-                } else {
-                    pick(known.width, available.width)
-                }
-                .unwrap_or(0.0);
-                // Тот же обход, что и в layout(): без детей-элементов.
-                let probe = FlowRow {
-                    children: sizes
-                        .iter()
-                        .map(|&(w, h)| FlowChild {
-                            el: gpui::Empty.into_any_element(),
-                            w,
-                            h,
-                        })
-                        .collect(),
-                    shapes: shapes.clone(),
-                    rtl,
-                    vertical_rl,
-                    slots: std::cell::RefCell::new(Vec::new()),
-                };
-                let (h, _) = probe.layout(limit);
-                if vertical_rl {
-                    // Блок-прогресс — ширина (колонки), инлайн — высота.
-                    size(px(h), px(limit))
-                } else {
-                    size(px(limit), px(h))
-                }
-            },
-        );
-        (id, ())
-    }
-
-    fn prepaint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        _state: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        // Раскладка и подготовка детей — здесь: замер поддеревьев в фазе
-        // отрисовки запрещён самим окном.
-        let limit = if self.vertical_rl {
-            f32::from(bounds.size.height)
-        } else {
-            f32::from(bounds.size.width)
-        };
-        let bw = f32::from(bounds.size.width);
-        let vertical_rl = self.vertical_rl;
-        let (_, slots) = self.layout(limit);
-        let slots: Vec<(f32, f32)> = self
-            .children
-            .iter()
-            .zip(slots)
-            .map(|(c, (sx, sy))| {
-                if vertical_rl {
-                    // t-мир → физика: колонка sy идёт от ПРАВОГО края.
-                    (bw - sy - c.w, sx)
-                } else {
-                    (sx, sy)
-                }
-            })
-            .collect();
-        for (c, (sx, sy)) in self.children.iter_mut().zip(slots.iter()) {
-            let origin = point(bounds.origin.x + px(*sx), bounds.origin.y + px(*sy));
-            c.el.layout_as_root(
-                size(
-                    gpui::AvailableSpace::Definite(px(c.w)),
-                    gpui::AvailableSpace::Definite(px(c.h)),
-                ),
-                window,
-                cx,
-            );
-            c.el.prepaint_at(origin, window, cx);
-        }
-        *self.slots.borrow_mut() = slots;
-    }
-
-    fn paint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        _bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        for c in self.children.iter_mut() {
-            c.el.paint(window, cx);
-        }
-    }
-}
 
 impl IntoElement for FlowRow {
     type Element = Self;
@@ -1260,12 +1138,10 @@ impl ColumnStack {
                 ry + f.y,
                 f.h,
             );
-            let mask = gpui::ContentMask {
-                bounds: Bounds {
+            let mask = fragment_mask::snap(Bounds {
                     origin: point(b.origin.x + px(rel.0), b.origin.y + px(rel.1)),
                     size: b.size,
-                },
-            };
+                }, window.scale_factor());
             let kid = &mut self.children[f.kid];
             let el = if f.copy == 0 {
                 &mut kid.el
@@ -2630,8 +2506,8 @@ impl ColumnStack {
 }
 
 impl Element for ColumnStack {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
+    type RequestLayoutState = LayoutId;
+    type PrepaintState = Bounds<Pixels>;
 
     fn id(&self) -> Option<ElementId> {
         None
@@ -2647,175 +2523,8 @@ impl Element for ColumnStack {
         _inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
-    ) -> (LayoutId, ()) {
-        let heights: Vec<Kid> = self
-            .children
-            .iter()
-            .map(|c| Kid {
-                h: c.h,
-                mt: c.mt,
-                mb: c.mb,
-                monolith: c.monolith,
-                cuts: c.cuts.clone(),
-                force_before: c.force_before,
-                force_after: c.force_after,
-                avoid_before: c.avoid_before,
-                avoid_after: c.avoid_after,
-                forced: c.forced.clone(),
-                solid: c.solid.clone(),
-                span: c.span,
-                over: c.over,
-                clone_dec: c.clone_dec,
-                overflow_top: c.overflow_top,
-                repeat: c.repeat.as_ref().map_or(RepeatGeom::default(), |r| r.geom),
-                par: c.par,
-            })
-            .collect();
-        let count = self.count;
-        let fixed = self.fixed_height;
-        let gap = self.gap;
-        let rows = self.rows;
-        let copies = self.copies;
-        let axis = self.axis;
-        let row_phase = self.row_phase;
-        // Внутренние размеры многоколоночного контейнера. Спека их не
-        // определяет (css-multicol-1 §3.4: «This specification does not
-        // define how U is calculated»), единственное письменное определение —
-        // css-sizing-4 `intrinsic-sizing-notes.bs` §multicol-intrinsic; его же
-        // держит Blink (`column_layout_algorithm.cc:433`
-        // `ComputeMinMaxSizes`). Прежде замер отдавал НОЛЬ, и всякий
-        // многоколоночник, чью ширину решает содержимое (плавающий, строчная
-        // коробка, элемент гибкого контейнера или сетки), схлопывался в
-        // отбивку: `intrinsic-size-001` — зелёная коробка 60×100 вместо
-        // 100×100, эталоны `column-grid-lanes-container-baseline-*` — полоса
-        // в 25 px вместо 320.
-        //
-        // Детей меряем ТОЛЬКО когда ширину решает содержимое: обычному
-        // блочному контейнеру её даёт родитель, и второй проход раскладки там
-        // ничего не даст, кроме времени.
-        let intrinsic = self.intrinsic.filter(|_| !axis.is_vertical()).map(|Intrinsic(col_w)| {
-            let (mut kid_min, mut kid_max) = (0.0f32, 0.0f32);
-            let (mut span_min, mut span_max) = (0.0f32, 0.0f32);
-            for c in self.children.iter_mut() {
-                let mut measure = |el: &mut AnyElement, w: gpui::AvailableSpace| {
-                    f32::from(
-                        el.layout_as_root(
-                            size(w, gpui::AvailableSpace::MaxContent),
-                            window,
-                            cx,
-                        )
-                        .width,
-                    )
-                };
-                let mn = measure(&mut c.el, gpui::AvailableSpace::MinContent);
-                let mx = measure(&mut c.el, gpui::AvailableSpace::MaxContent);
-                // Спаннер идёт во всю ширину коробки: на число колонок он не
-                // умножается, а лишь ПОДНИМАЕТ итог — Blink
-                // `ComputeSpannersMinMaxSizes` (:523) через
-                // `MinMaxSizes::Encompass` (`min_max_sizes.h:26`, это `max`
-                // по обеим границам).
-                if c.span {
-                    span_min = span_min.max(mn);
-                    span_max = span_max.max(mx);
-                } else {
-                    kid_min = kid_min.max(mn);
-                    kid_max = kid_max.max(mx);
-                }
-            }
-            let n = count.max(1) as f32;
-            let gap_extra = gap * (n - 1.0);
-            let (mut mn, mut mx) = (kid_min, kid_max);
-            match col_w.filter(|w| *w > 0.0) {
-                // «The min-content inline size of a multi-column container
-                // with a computed column-width not auto is the smaller of its
-                // column-width and the largest min-content inline-size
-                // contribution of its contents.»
-                Some(w) => {
-                    mn = mn.min(w);
-                    mx = mx.max(w).max(mn);
-                }
-                // «…with a computed column-width of auto is the largest
-                // min-content inline-size contribution of its contents
-                // multiplied by its column-count …, plus its column-gap
-                // multiplied by column-count minus 1.» При ЗАДАННОЙ ширине
-                // колонки минимум на число колонок не умножается (Blink
-                // :482 — «column-count … is ignored in intrinsic min
-                // inline-size calculation, if column-width is specified»).
-                None => mn = mn * n + gap_extra,
-            }
-            mx = mx * n + gap_extra;
-            (mn.max(span_min), mx.max(span_max))
-        });
-        let id = window.request_measured_layout(
-            gpui::Style::default(),
-            move |known, available, _window, _cx| {
-                // Вертикальное письмо: место под прогрессию колонок — по
-                // СТРОЧНОЙ оси, то есть высота коробки (css-multicol-1 §2), а
-                // отдаём (блочный, строчный) как (ширина, высота).
-                if axis.is_vertical() {
-                    let inline = known
-                        .height
-                        .map(f32::from)
-                        .or(match available.height {
-                            gpui::AvailableSpace::Definite(v) => Some(f32::from(v)),
-                            _ => None,
-                        })
-                        .unwrap_or(0.0);
-                    let probe = ColumnStack {
-                        children: Vec::new(),
-                        count,
-                        gap,
-                        axis,
-                        row_phase,
-                        fixed_height: fixed,
-                        rule: None,
-                        rows,
-                        copies,
-                        gap_items: None,
-                        intrinsic: None,
-                        plan: std::cell::RefCell::new(Vec::new()),
-                        col_w: std::cell::Cell::new(0.0),
-                        lines_plan: std::cell::RefCell::new(Vec::new()),
-                        spans_plan: std::cell::RefCell::new(Vec::new()),
-                    };
-                    let (block, _, _, _) = probe.balance(&heights);
-                    return size(px(block), px(inline));
-                }
-                let w = known
-                    .width
-                    .map(f32::from)
-                    .or(match available.width {
-                        gpui::AvailableSpace::Definite(v) => Some(f32::from(v)),
-                        gpui::AvailableSpace::MinContent => {
-                            intrinsic.map(|(mn, _)| mn)
-                        }
-                        gpui::AvailableSpace::MaxContent => {
-                            intrinsic.map(|(_, mx)| mx)
-                        }
-                    })
-                    .unwrap_or(0.0);
-                let probe = ColumnStack {
-                    children: Vec::new(),
-                    count,
-                    gap,
-                    axis,
-                    row_phase,
-                    fixed_height: fixed,
-                    rule: None,
-                    rows,
-                    copies,
-                    gap_items: None,
-                    intrinsic: None,
-                    plan: std::cell::RefCell::new(Vec::new()),
-                    col_w: std::cell::Cell::new(0.0),
-                    lines_plan: std::cell::RefCell::new(Vec::new()),
-                    spans_plan: std::cell::RefCell::new(Vec::new()),
-                };
-                let (height, _, _, _) = probe.balance(&heights);
-                size(px(w), px(height))
-            },
-        );
-        (id, ())
+    ) -> (LayoutId, LayoutId) {
+        self.request_column_layout(window, cx)
     }
 
     fn prepaint(
@@ -2823,14 +2532,18 @@ impl Element for ColumnStack {
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _state: &mut (),
+        state: &mut LayoutId,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> Bounds<Pixels> {
         if self.axis.is_vertical() {
             self.prepaint_axis(bounds, window, cx);
-            return;
+            return bounds;
         }
+        let bounds = Bounds {
+            origin: window.layout_origin_unrounded(*state),
+            size: window.layout_size_unrounded(*state),
+        };
         let w = f32::from(bounds.size.width);
         let col_w = ((w - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0);
         let heights: Vec<Kid> = self
@@ -2897,7 +2610,8 @@ impl Element for ColumnStack {
             if let Some(r) = kid.repeat.as_mut() {
                 let mut band = |el: Option<&mut AnyElement>, at: f32| {
                     if let Some(el) = el {
-                        el.layout_as_root(
+                        el.layout_as_root_at(
+                            point(x, y + px(at)),
                             size(
                                 gpui::AvailableSpace::Definite(px(col_w)),
                                 gpui::AvailableSpace::Definite(px(full_h)),
@@ -2905,7 +2619,7 @@ impl Element for ColumnStack {
                             window,
                             cx,
                         );
-                        el.prepaint_at(point(x, y + px(at)), window, cx);
+                        el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
                     }
                 };
                 if let (Some((src, _)), true) = (r.head, f.head > 0.01 && f.copy > 0) {
@@ -2915,7 +2629,6 @@ impl Element for ColumnStack {
                     band(r.foot_els.get_mut(f.copy), f.h + f.foot - bh - src);
                 }
             }
-            let par = kid.par.group != 0;
             let el = if f.copy == 0 {
                 &mut kid.el
             } else {
@@ -2924,37 +2637,19 @@ impl Element for ColumnStack {
                     None => continue,
                 }
             };
-            // Строка flex (`Par`) — отдельный корень раскладки, и округление
-            // краёв к физической точке (`taffy.rs` `layout_bounds`) у неё своё:
-            // от НУЛЯ корня, а не от абсолютной координаты. Соседние строки
-            // по 5px при масштабе 1.25 расходились щелью в точку
-            // (`multi-line-column-flex-fragmentation-020`). Корень ставится на
-            // целую физическую точку, а дробный остаток сдвига уходит внутрь
-            // обёрткой с отступом — тогда оба края элемента округляются по
-            // абсолютной координате, как в одной раскладке.
-            let (x, lead) = if par {
-                use gpui::{ParentElement as _, Styled as _};
-                let s = window.scale_factor().max(0.01);
-                let x0 = px((f32::from(x) * s).floor() / s);
-                let frac = f32::from(x - x0).max(0.0);
-                let inner = std::mem::replace(el, gpui::Empty.into_any_element());
-                *el = gpui::div().pl(px(frac)).child(inner).into_any_element();
-                (x0, frac)
-            } else {
-                (x, 0.0)
-            };
             // Копия раскладывается ЦЕЛИКОМ и поднимается на срез: видимой её
             // часть делает маска в отрисовке. Иначе половина коробки просто
             // сжалась бы, а не продолжилась в следующей колонке.
-            let laid = el.layout_as_root(
+            let laid = el.layout_as_root_at(
+                point(x, if clone { y } else { y - px(f.from) }),
                 size(
-                    gpui::AvailableSpace::Definite(px(col_w + lead)),
+                    gpui::AvailableSpace::Definite(px(col_w)),
                     gpui::AvailableSpace::Definite(px(full_h)),
                 ),
                 window,
                 cx,
             );
-            el.prepaint_at(point(x, if clone { y } else { y - px(f.from) }), window, cx);
+            el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
             if kid.slack.is_some() {
                 kid.laid_w.set(kid.laid_w.get().max(f32::from(laid.width)));
             }
@@ -2964,7 +2659,8 @@ impl Element for ColumnStack {
         for &(kid, sy) in &spans {
             let kid = &mut self.children[kid];
             let h = kid.h;
-            kid.el.layout_as_root(
+            kid.el.layout_as_root_at(
+                point(bounds.origin.x, bounds.origin.y + px(sy)),
                 size(
                     gpui::AvailableSpace::Definite(bounds.size.width),
                     gpui::AvailableSpace::Definite(px(h)),
@@ -2972,7 +2668,7 @@ impl Element for ColumnStack {
                 window,
                 cx,
             );
-            kid.el.prepaint_at(point(bounds.origin.x, bounds.origin.y + px(sy)), window, cx);
+            kid.el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
         }
         // Границы для линеек промежутков (css-gaps-1 §gap-multicol): коробки
         // ЗАНЯТЫХ колонок каждой линии (как Blink `AddCrossGap` на колонку
@@ -3004,6 +2700,7 @@ impl Element for ColumnStack {
         }
         *self.plan.borrow_mut() = plan;
         *self.spans_plan.borrow_mut() = spans;
+        bounds
     }
 
     fn paint(
@@ -3011,8 +2708,8 @@ impl Element for ColumnStack {
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
+        _state: &mut LayoutId,
+        prepaint: &mut Bounds<Pixels>,
         window: &mut Window,
         cx: &mut App,
     ) {
@@ -3020,6 +2717,7 @@ impl Element for ColumnStack {
             self.paint_axis(bounds, window, cx);
             return;
         }
+        let bounds = *prepaint;
         // Линейки — по центрам промежутков, высотой в колонку, в каждой линии.
         // Это простая `column-rule` без рядов; при рядах `render.rs` отдаёт
         // линейки (в том числе `row-rule`, css-multicol-2 §rg) художнику
@@ -3053,13 +2751,16 @@ impl Element for ColumnStack {
                 for i in 1..used.get(l).copied().unwrap_or(0).min(self.count) {
                     let cx_ = i as f32 * (col_w + self.gap) - self.gap * 0.5;
                     window.paint_quad(gpui::fill(
-                        Bounds {
-                            origin: point(
-                                bounds.origin.x + px(cx_ - rw * 0.5),
-                                bounds.origin.y + px(ry),
-                            ),
-                            size: size(px(rw), px(rh)),
-                        },
+                        fragment_mask::snap(
+                            Bounds {
+                                origin: point(
+                                    bounds.origin.x + px(cx_ - rw * 0.5),
+                                    bounds.origin.y + px(ry),
+                                ),
+                                size: size(px(rw), px(rh)),
+                            },
+                            window.scale_factor(),
+                        ).bounds,
                         color,
                     ));
                 }
@@ -3112,21 +2813,18 @@ impl Element for ColumnStack {
             } else {
                 bounds.size.width
             };
-            let mask = gpui::ContentMask {
-                bounds: Bounds {
+            let mask = fragment_mask::snap(Bounds {
                     origin: point(x - spill, y),
                     size: size(px(col_w) + spill + spill, px(f.h)),
-                },
-            };
+                }, window.scale_factor());
             let kid = &mut self.children[f.kid];
             // Полосы повтора таблицы — каждая своей маской по своей полосе.
             if let Some(r) = kid.repeat.as_mut() {
-                let band_mask = |top: f32, h: f32| gpui::ContentMask {
-                    bounds: Bounds {
+                let mask_scale = window.scale_factor();
+                let band_mask = |top: f32, h: f32| fragment_mask::snap(Bounds {
                         origin: point(x - spill, y + px(top)),
                         size: size(px(col_w) + spill + spill, px(h)),
-                    },
-                };
+                    }, mask_scale);
                 if f.head > 0.01
                     && f.copy > 0
                     && let Some(el) = r.head_els.get_mut(f.copy - 1)

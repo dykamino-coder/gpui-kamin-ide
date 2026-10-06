@@ -6,6 +6,8 @@
 //! Наша часть — превратить его дерево в своё: с каскадом и без узлов, которые
 //! ничего не рисуют.
 
+mod subgrid_axes;
+
 use crate::computed::{Computed, Display, Position};
 use crate::css::{
     Decls, Keyframes, Media, Rule, Selector, parse_decls, parse_keyframes, parse_stylesheet_media,
@@ -901,17 +903,12 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                     // написано `subgrid`: своя ось подсетки остаётся своей
                     // (`subgrid-gap-decorations-003`: ряды `subgrid`, колонки
                     // `repeat(2, 1fr)` — прежний откат с сырой долей давал 99.00).
-                    if from_fr {
-                        let own_axis = if row_dir {
-                            child.style.subgrid_rows
-                        } else {
-                            child.style.subgrid_cols
-                        };
-                        let parallel = child.style.vertical.unwrap_or(false)
-                            == el.style.vertical.unwrap_or(false);
-                        if !(own_axis && parallel) {
-                            continue;
-                        }
+                    let parallel = child.style.vertical.unwrap_or(false)
+                        == el.style.vertical.unwrap_or(false);
+                    if !subgrid_axes::linked(&el.style, &child.style, row_dir)
+                        || (from_fr && !parallel)
+                    {
+                        continue;
                     }
                     let Some((at, span)) = slot else {
                         continue;
@@ -1012,8 +1009,6 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                     // Это отдельный корень (`scout-subgrid-orthogonal-2026-09`),
                     // трогать его здесь нельзя — три зелёных
                     // `row-subgrid-orthogonal-writing-mode-001/002/003`.
-                    let parallel = child.style.vertical.unwrap_or(false)
-                        == el.style.vertical.unwrap_or(false);
                     // ОРТОГОНАЛЬНАЯ подсетка: оси родителя и подсетки
                     // скрещены. `Computed` хранит дорожки ЛОГИЧЕСКИ
                     // (`apply::grid_style` переставляет их через `flip`), а

@@ -4,6 +4,37 @@
 //! собираются в один абзац (`inline.rs`). Списки, таблицы и картинки имеют
 //! свои правила — они и описаны в доке отдельными разделами.
 
+mod fragment_size;
+mod content_wrapper;
+use content_wrapper::{content_sized, content_sized_wraps};
+mod orthogonal_inline;
+mod native_vertical;
+mod rotated_atom;
+mod physical_atomic;
+mod vertical_flow_margins;
+mod native_paragraph_route;
+mod scroll_box;
+mod orthogonal_fixed_child;
+mod orthogonal_children;
+mod orthogonal_horizontal;
+use orthogonal_children::orthogonal_children;
+mod orthogonal_absolute;
+mod vertical_intrinsic;
+mod vertical_hug;
+mod native_intrinsic;
+mod animation_frame;
+mod animation_live;
+use animation_live::animated;
+mod table_roles;
+mod replaced_used_style;
+mod replaced_holder_ratio;
+mod replaced_content;
+use replaced_content::svg_replaced;
+mod ratio_basis;
+pub(crate) mod absolute_overflow;
+mod absolute_overflow_math;
+use fragment_size::shape_full;
+
 use crate::apply::{apply, apply_hover};
 use crate::computed::{Align, Computed, Display, FlexDir};
 use crate::dom::{Element, Node};
@@ -197,6 +228,10 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
         c
     };
     let mut d = apply(div(), paint);
+    if native_intrinsic::eligible(e) {
+        d.style().sizing_keywords = Some(crate::apply::intrinsic_size::keywords(c));
+    }
+    d = scroll_box::attach(d, e, c);
     // Проба якоря (css-anchor-position-1 §anchor-name) и содержащего блока
     // (§position-area): канвас во всю коробку пишет её рамку в реестр кадра
     // на подготовке — позже по дереву её прочтёт `anchor::AnchorPlace`
@@ -206,6 +241,9 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     // из `style`: `c` может быть `paint_off()` без этого флага
     // (§position-visibility: anchor-visible, «anchor box is invisible»).
     if let Some(probe) = crate::anchor::probe_for(e, c, style.hidden == Some(true)) {
+        d = d.child(probe);
+    }
+    if let Some(probe) = absolute_overflow::probe(c) {
         d = d.child(probe);
     }
     // `pointer-events: none` — элемент не реагирует на курсор, значит и слой
@@ -3580,7 +3618,7 @@ fn transpose_tree(c: &Element, rl: bool) -> Option<Element> {
 /// Строки собираются, но контейнер с переносом теряет высоту фрагмента: пары,
 /// которые держались стопкой детей, разваливаются. Половинить нельзя (это и
 /// есть откат 04.09); брать заново только с мерой по строкам (FRAG-LINES).
-fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
+fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     // Кадр меры строк (наследование и ширина) — только при `with_lines`.
     let _line_frame = LineScope::enter(c);
     let px_or = |l: &Option<Len>, strict: bool| match l {
@@ -4240,9 +4278,10 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                 // коробка `height: 0` с ребёнком 40px и `margin-top: -40px`
                 // — содержимое кончается на её верху, а мера давала поток
                 // 40, и коробка с края колонки уезжала в следующую).
-                (v + top + bot).max(stacked.map_or(0.0, |s| s.0 + s.1.min(0.0)) + bot)
+                fragment_size::border_size(v, &c.style, top + bot)
+                    .max(stacked.map_or(0.0, |s| s.0 + s.1.min(0.0)) + bot)
             } else {
-                v + top + bot
+                fragment_size::border_size(v, &c.style, top + bot)
             },
             mt,
             mb,
@@ -4346,19 +4385,6 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
             },
         },
     };
-    // `min-height` в точках — ПОЛ меры (CSS 2.1 §10.7). Прежде он не
-    // читался вовсе, и сетка с единственным рядом `min-height: 200px`
-    // мерилась содержимым, то есть нулём (`grid-item-fragmentation-001`;
-    // проба `target/probe-9f/p2-grid-item-fragmentation-001.html` = 0.00
-    // после подмены `min-height` на `height`). Прочие единицы, как и
-    // прежде, игнорируются — отказываться от всей укладки из-за них
-    // дороже, чем недомерить. Обрезающий потолок `max-height` ниже
-    // остаётся главнее: это не размер, а правило фрагментации Blink
-    // `kDisableFragmentation`.
-    let h = match &c.style.min_height {
-        Some(Len::Px(m)) => h.max(*m + top + bot),
-        _ => h,
-    };
     // Содержащий блок обязан дотянуться до низа своих
     // внепоточных потомков — только тогда фрагментация
     // родит под них колонки, а балансировка их посчитает
@@ -4373,22 +4399,7 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     } else {
         h
     };
-    // Коробка, ОБРЕЗАЮЩАЯ переполнение по блочной оси, выше `max-height` не
-    // растёт и фрагментов за ним не родит (Blink `FinishFragmentation`,
-    // `fragmentation_utils.cc`: «We have reached the end of a fragmentable
-    // node that clips overflow in the block direction … relayout without
-    // fragmentation» → `kDisableFragmentation`); мера от содержимого давала
-    // ей лишнюю колонку (`overflow-clip-012`: fieldset `overflow: clip;
-    // max-height: 200px`, с распоркой роста — 250). Видимое переполнение не
-    // трогается: его хвост — параллельный поток, и он пока не рисуется
-    // (`fieldset-007`, `block-max-height-*`).
-    let h = match (&c.style.max_height, c.style.overflow_y) {
-        (
-            Some(Len::Px(m)),
-            Some(crate::computed::Overflow::Hidden) | Some(crate::computed::Overflow::Clip),
-        ) => h.min(*m + top + bot),
-        _ => h,
-    };
+    let h = fragment_size::constrain(h, &c.style, top + bot, cx.viewport, unclamp);
     // css-gaps-1 §fragmentation / css-align-3 §column-row-gap: «the gap
     // disappears when it coincides with a fragmentation break»; Blink
     // `GridLayoutAlgorithm` `MaybeSuppressLastGap`: зазор рядов, в который
@@ -7838,8 +7849,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     let collapsed = by_layer(
         wrap_floats(
             collapsed,
-            inherited.width,
-            inherited.clear,
+            inherited,
             cb_top_open,
             match inherited.font_size {
                 Some(Len::Px(v)) => v,
@@ -8328,7 +8338,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     Some(Len::Px(v) | Len::Em(v) | Len::Ch(v) | Len::Ex(v)) if v < 0.0
                 )
             };
-            let hoist_margins = content_sized_wraps(&e.style)
+            let hoist_margins = content_sized_wraps(e)
                 && !replaced_tag(e)
                 && (negative(e.style.margin.left) || negative(e.style.margin.right));
             // Размещение в сетке тоже уезжает на обёртку (см.
@@ -8338,7 +8348,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // ставилась авто-размещением (`row-fill-reverse-align-self-001`:
             // `width: min-content; grid-row: 2` в лунках вставал в ряд 1).
             let placement = crate::apply::grid_item_placement(&e.style);
-            let hoist_place = content_sized_wraps(&e.style)
+            let hoist_place = content_sized_wraps(e)
                 && !replaced_tag(e)
                 && (placement.0.is_some() || placement.1.is_some());
             let stripped;
@@ -8633,8 +8643,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             let auto_len = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
             let holder_axis = if positioned_out
                 && e.style.vertical.is_none()
-                && (kw_len(e.style.height)
-                    || (auto_len(e.style.height) && kw_len(e.style.max_height)))
+                && auto_len(e.style.height) && kw_len(e.style.max_height)
                 && edge_set(e.style.inset.top)
                 && edge_set(e.style.inset.bottom)
             {
@@ -8649,8 +8658,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 // `left/right` во всё окно (`div-{min,max,fit}-content-
                 // orthogonal-*`: 13.5 %). Ветка высоты выше гейт сохраняет: в
                 // вертикальном письме это строчная ось, её пары не разбирались.
-                && (kw_len(e.style.width)
-                    || (auto_len(e.style.width) && kw_len(e.style.max_width)))
+                && auto_len(e.style.width) && kw_len(e.style.max_width)
                 && edge_set(e.style.inset.left)
                 && edge_set(e.style.inset.right)
             {
@@ -9097,11 +9105,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // Замещаемому дорожка по содержимому не нужна: его размер по
             // ключевому слову — природный, считается в `image_with`.
             let layered_built = layered(built, &e.style, inherited, layer_ok, under_tf);
-            let mut done = if replaced_tag(e) {
-                layered_built
-            } else {
-                content_sized(layered_built, &e.style, placement)
-            };
+            let mut done = content_wrapper::for_element(layered_built, e, inherited, placement);
             // Тело под корнем-донором фона холста при `vertical-rl`: записать
             // левый край коробки корня для отрисовки холста (см. `canvas_paint`).
             // Корень по содержимому = margin-box тела плюс рамка и отбивка
@@ -9416,174 +9420,6 @@ fn resolve_inline_pct(mut children: Vec<Node>, container: &Computed, vertical: b
     children
 }
 
-/// Ортогональный поток: горизонтальный блок внутри вертикального контейнера.
-///
-/// Доля полей считается от СТРОЧНОЙ оси контейнера — при вертикальном письме
-/// это его высота (css-writing-modes-3 §7.3, `sizing-orthogonal-percentage-
-/// margin-*`). Авто-ширина такого блока не безгранична: она зажимается
-/// доступным местом — физической шириной контейнера за вычетом боковых полей
-/// (§7.3 auto-sizing). Без зажима строка мерялась по содержимому и вылезала
-/// на сотни точек.
-fn orthogonal_children(children: Vec<Node>, container: &Computed, icb_w: f32) -> Vec<Node> {
-    let mut out = children;
-    let inline_size = match container.height {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    };
-    for node in out.iter_mut() {
-        let Node::Element(ch) = node else { continue };
-        if ch.inline || ch.style.vertical != Some(false) {
-            continue;
-        }
-        // Внепоточные не зажимаются: абсолютный элемент меряется от своего
-        // содержащего блока, а не от потока (available-size-003: зажатый
-        // абсолютный маркер вылезал красным).
-        if !in_flow(&ch.style) {
-            continue;
-        }
-        if let Some(il) = inline_size {
-            for side in [
-                &mut ch.style.margin.top,
-                &mut ch.style.margin.right,
-                &mut ch.style.margin.bottom,
-                &mut ch.style.margin.left,
-            ] {
-                if let Some(Len::Pct(k)) = side {
-                    *side = Some(Len::Px(*k * il));
-                }
-            }
-        }
-        // Доступное место ортогонального потока (css-writing-modes-3
-        // §7.3.1): фиксированный размер контейнера, а без него — НАЧАЛЬНЫЙ
-        // содержащий блок. Процентная ширина htb-ребёнка в вертикальном
-        // контейнере без размера считалась от сжатого по содержимому
-        // родителя (two-levels-of-orthogonal-flows-percentage: 50% от
-        // трёх букв вместо половины окна).
-        if let Some(Len::Pct(k)) = ch.style.width {
-            let base = match container.width {
-                Some(Len::Px(w)) => w,
-                _ => icb_w,
-            };
-            ch.style.width = Some(Len::Px(k * base));
-        }
-        // `width: auto`, записанный ЯВНО, разбор отдаёт как `Some(Len::Auto)`
-        // (`value.rs`: `Len::parse("auto")`), и `is_none()` читал его как
-        // заданную ширину — предел ортогонального потока не ставился вовсе.
-        // Этой записью открывается каждый тест `sizing-orthog-htb-in-v*`.
-        let explicit_auto = matches!(ch.style.width, Some(Len::Auto));
-        if (ch.style.width.is_none() || explicit_auto) && ch.style.max_width.is_none() {
-            let side = |l: Option<Len>| match l {
-                Some(Len::Px(v)) => v,
-                _ => 0.0,
-            };
-            let margins = side(ch.style.margin.left) + side(ch.style.margin.right);
-            match container.width {
-                // Заданный размер контейнера — доступное место потока
-                // целиком: авто-размер блочного ортогонального ребёнка
-                // РАСТЯГИВАЕТСЯ на него (stretch-fit, css-sizing-3 §5), а не
-                // жмётся к содержимому (two-levels-of-orthogonal-flows-fixed:
-                // жёлтый ребёнок обязан накрыть красный контейнер 10em).
-                // Явный `auto` при ЗАДАННОМ контейнере — shrink-to-fit
-                // (css-writing-modes-4 §7.3.2: «min(max-content, max(min-content,
-                // constraint))», constraint — размер контейнера): потолок в
-                // размер контейнера, а не растяжка. Без потолка длинная строка
-                // шла одной линией на всю max-content-ширину
-                // (`sizing-orthog-htb-in-v{lr,rl}-010/022`). Пол min-content
-                // потолком не выразить: длинное слово упрётся в предел и
-                // вылезет — его эталоны (`-011/-023`) сходятся в пределах
-                // допуска. Неявной ширине по-прежнему растяжка: потолок
-                // вместо неё замерен и откачен (E1).
-                Some(Len::Px(w)) if explicit_auto => {
-                    let b = ch.style.borders();
-                    let extra = side(ch.style.padding.left)
-                        + side(ch.style.padding.right)
-                        + side(b.left)
-                        + side(b.right);
-                    ch.style.max_width = Some(Len::Px((w - margins - extra).max(0.0)));
-                }
-                Some(Len::Px(w)) => {
-                    // Ширина здесь — то, что коробке отдаст раскладка, а
-                    // рендер к ЗАДАННОЙ ширине добавит отступы и рамку (как
-                    // общий разбор): их доля вычитается заранее, иначе
-                    // ребёнок вылезал из контейнера на их толщину.
-                    let b = ch.style.borders();
-                    let extra = side(ch.style.padding.left)
-                        + side(ch.style.padding.right)
-                        + side(b.left)
-                        + side(b.right);
-                    ch.style.width = Some(Len::Px((w - margins - extra).max(0.0)));
-                }
-                _ => {
-                    // css-writing-modes-4 §7.3.1: без фиксированного размера
-                    // контейнера предел ортогонального потока — начальный
-                    // содержащий блок за вычетом полей ребёнка (Blink
-                    // `space_utils.cc` fallback = ICB). Доля от сжатого по
-                    // содержимому родителя давала бесконечную строку
-                    // (`sizing-orthog-htb-in-vrl-*`).
-                    // Предел §7.3.2 — «stretch fit into» ICB, то есть по
-                    // ВНЕШНЕМУ краю; раскладке отдаётся размер содержимого
-                    // (рендер доложит к нему рамку и отбивки), поэтому их доля
-                    // вычитается заранее (`htb-in-vlr-016`: рамка 35).
-                    let b = ch.style.borders();
-                    let extra = side(ch.style.padding.left)
-                        + side(ch.style.padding.right)
-                        + side(b.left)
-                        + side(b.right);
-                    ch.style.max_width = Some(Len::Px((icb_w - margins - extra).max(0.0)));
-                }
-            }
-        }
-    }
-    out
-}
-
-/// Строчная ось вертикального контейнера по СОДЕРЖИМОМУ: кому из детей
-/// повёрнутый абзац обязан заявить высоту строкой (`hug_inline`).
-///
-/// Высоту повёрнутый абзац не заявляет (`VerticalText::request_layout`):
-/// длину строки решает родитель. Когда родитель сам размером в содержимое по
-/// строчной оси, решать некому — коробка схлопывалась в свои рамки, а глиф
-/// висел ниже (`target/mt/gr.html`, случай 2). Такой родитель — вертикальная
-/// СЕТКА с невытягивающим `justify-self`/`justify-items`: строчная ось
-/// элемента — по содержимому (css-grid-1 §6.6, css-align-3 §6.1 —
-/// растягивает только `stretch`/`normal`). Пометка идёт и вниз по цепочке
-/// потоковых блоков с `auto` высотой (`merged.hug_inline` — собственный флаг
-/// контейнера, `inline::inherit` начинает с `own.clone()`): их строчный
-/// размер — тот же shrink-to-fit. Вертикальный флоат (случай 4) сюда не
-/// доходит: его строит хост полос, и `float` до сборщика детей не доезжает.
-fn vertical_hug_children(children: Vec<Node>, own: &Computed, merged: &Computed) -> Vec<Node> {
-    let auto_inline = |c: &Computed| matches!(c.height, None | Some(Len::Auto));
-    let grid = matches!(own.display, Some(Display::Grid) | Some(Display::InlineGrid));
-    let shrink = merged.hug_claim && auto_inline(own) && !grid;
-    if !grid && !shrink {
-        return children;
-    }
-    let mut out = children;
-    for node in out.iter_mut() {
-        let Node::Element(ch) = node else { continue };
-        // Ортогональный ребёнок (своё горизонтальное письмо) — не наш случай:
-        // его строчная ось горизонтальна.
-        if ch.inline || ch.style.vertical == Some(false) || !in_flow(&ch.style) || !auto_inline(&ch.style) {
-            continue;
-        }
-        let hug = if grid {
-            matches!(
-                ch.style.justify_self.or(own.justify_items),
-                Some(Align::Start) | Some(Align::Center) | Some(Align::End) | Some(Align::Baseline)
-            )
-        } else {
-            !matches!(
-                ch.style.display,
-                Some(Display::Flex) | Some(Display::Grid) | Some(Display::Table)
-            )
-        };
-        if hug {
-            ch.style.hug_inline = true;
-            ch.style.hug_claim = true;
-        }
-    }
-    out
-}
 
 /// Зеркальный ортогональный случай: ВЕРТИКАЛЬНЫЙ блок внутри горизонтального
 /// контейнера. Его строчная ось — высота, и авто-размер по ней зажимается
@@ -9632,6 +9468,11 @@ fn orthogonal_vertical_children(children: Vec<Node>, container: &Computed) -> Ve
             && std::env::var("ANCH_BG").map_or(ch.style.bg_image.is_none(), |_| true)
         {
             ch.style.align_self = Some(crate::computed::Align::End);
+        }
+        // Ordinary orthogonal blocks now compute their own used inline size.
+        if orthogonal_fixed_child::normal_block_flow(&ch.style, container) {
+            ch.style.flex_shrink = Some(0.0);
+            continue;
         }
         if ch.style.height.is_some() || ch.style.max_height.is_some() {
             continue;
@@ -9837,26 +9678,23 @@ fn collapse_flow_margins(children: Vec<Node>, reverse: bool, lead: Option<f32>) 
     }
     let mut trailing: Option<f32> = lead.filter(|m| *m >= 0.0);
     for node in out.iter_mut() {
-        let Node::Element(child) = node else { continue };
-        // Плавающая коробка в схлопывании НЕ участвует (CSS 2.1 §8.3.1,
-        // дословно: «Margins of floating boxes do not collapse»;
-        // css-writing-modes-4 §7.4 переносит правило блочной оси на
-        // горизонталь вертикального письма). Она проходит цикл насквозь:
-        // своё ведущее поле сохраняет как есть, а `trailing` продолжает
-        // нести хвостовое поле последнего ПОТОКОВОГО брата — флоат
-        // внепоточен и соседство потоковых братьев не разрывает.
-        //
-        // Разбор `margin-collapse-vlr-011`: `#leftmost{margin-right:1em}`
-        // даёт `trailing = 25`, и плавающему `#rightmost{margin-left:1em}`
-        // цикл обнулял его собственные 25 — дети вставали в [0,25] и [50,75]
-        // вместо [0,25] и [75,100], и дальняя полоса шириной 24.8 CSS px
-        // оставалась красной. Зеркало — `margin-collapse-vrl-010`.
-        //
-        // Внепоточные (`absolute`/`fixed`) СОЗНАТЕЛЬНО не включены: §8.3.1
-        // запрещает схлопывание и им, но заложники там другие
-        // (`margin-collapse-vlr-023` 0.37, `margin-collapse-vrl-022` 0.01) —
-        // это отдельный замер.
-        if child.style.float.is_some_and(|f| f != 0) {
+        let child = match node {
+            Node::Element(child) => child,
+            Node::Text(text) if !text.trim().is_empty() => {
+                trailing = None;
+                continue;
+            }
+            _ => continue,
+        };
+        // Out-of-flow boxes neither collapse nor interrupt adjacent block margins.
+        if child.style.float.is_some_and(|f| f != 0)
+            || matches!(child.style.position, Some(crate::computed::Position::Absolute | crate::computed::Position::Fixed))
+        {
+            continue;
+        }
+        // An in-flow inline box forms a line, separating neighboring block margins.
+        if inline_level(child) {
+            trailing = None;
             continue;
         }
         // Ведущее поле ребёнка схлопывается с ведущим полем ЕГО первого
@@ -10024,13 +9862,10 @@ fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) -> AnyElement
     // элемент рисуется ПОЛОСОЙ 25×417 у левого края страницы, а должен быть
     // 100×100 внутри контейнера с полями 50. То есть вертикальный блок уходит
     // из коробки родителя — вот что чинить дальше.
-    // ЗАМЕРЕНО, ЭФФЕКТА НЕТ (03.09): прижимать АБСОЛЮТНУЮ коробку к началу
-    // ряда (`items_start`), чтобы по строчной оси вертикального письма она
-    // сжималась до содержимого, а не растягивалась на содержащий блок
-    // (§10.3.7; на голой пробе выходило 80x320 вместо 80x80). Срез
-    // css-writing-modes: 479 -> 479, ноль и ноль — до абсолютов эта обёртка
-    // не доезжает вовсе.
-    div().flex().flex_row().child(el).into_any_element()
+    // The row is an adapter for normal block flow, not a CSS flex item.
+    // Its own shrink default must not compress the child's used inline size:
+    // sizing-orthog-vlr-in-htb-007 measured 306px instead of 394px content.
+    div().flex().flex_row().flex_shrink_0().child(el).into_any_element()
 }
 
 thread_local! {
@@ -11055,8 +10890,7 @@ fn covered_flow_tail(
 
 fn wrap_floats(
     nodes: Vec<Node>,
-    cb_width: Option<Len>,
-    parent_clear: Option<i8>,
+    parent: &Computed,
     // Открыт ли ВЕРХНИЙ край содержащего блока для схлопывания с полем
     // первого ребёнка (§8.3.1). Только при открытом крае верхнее поле
     // очищающей коробки увозит вниз сам содержащий блок, а вместе с ним —
@@ -11072,6 +10906,8 @@ fn wrap_floats(
     // охватить флоаты, в том числе внутри вложенных блоков.
     parent_bfc: bool,
 ) -> Vec<Node> {
+    let cb_width = parent.width;
+    let parent_clear = parent.clear;
     // `clear: inherit` — сторона родителя (`clear-005`: `clear: left` на
     // контейнере и `inherit` на ребёнке). Разрешается здесь: своего
     // наследования у ненаследуемого свойства нет, а родительский стиль есть
@@ -11275,6 +11111,7 @@ fn wrap_floats(
                 break;
             }
             let mut floater = next.clone();
+            native_vertical::claim_float_inline_size(&mut floater.style, parent, &floater.children);
             floater.style.float = None;
             // ПРОБОВАЛИ И ОТКАТИЛИ: помечать плавающий кусок блочным
             // (`display: block` + `inline = false`), как велит CSS 2.1 §9.7.
@@ -13314,6 +13151,7 @@ fn band_kids(
                 // `letter-spacing-206`).
                 if float {
                     copy.style.flow_root = Some(true);
+                    native_vertical::claim_float_inline_size(&mut copy.style, &inherited, &copy.children);
                 }
                 if is_nest {
                     // Коробка `Kind::Nest` — без детей (их кладут полосы) и
@@ -13423,7 +13261,8 @@ fn band_kids(
                     // Общий путь отрисовки узла — тот же, что в потоке:
                     // таблица, замещаемый, список строятся своими ветками
                     // `element`.
-                    element(&copy, &inherited, &opts)
+                    let el = element(&copy, &inherited, &opts);
+                    if float { el } else { content_wrapper::for_element(el, &copy, &inherited, (None, None)) }
                 }
             });
         let clear = if float { None } else { c.style.clear };
@@ -16425,33 +16264,14 @@ fn upright_in_mixed(c: char) -> bool {
 }
 
 fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    // Вертикальное письмо: строка идёт сверху вниз. Поворачивается только
-    // текст — коробки блоков уже выстроены по горизонтальной оси потока.
-    //
-    // ПРОБОВАЛИ И ОТКАТИЛИ ТРИЖДЫ: отдать ось строки самому абзацу
-    // (`Paragraph::vertical`, машинерия на месте и работает). Третий раз —
-    // уже ПОСЛЕ того, как оси контейнеров стали логическими (гибкий ряд,
-    // сетка, таблица), то есть предполагаемая причина двух прежних откатов
-    // была снята. Всё равно минус: writing-modes 199 → 194, и ломается ровно
-    // то, что абзац раньше чинил (`available-size-022/023` 0.00 → 9.15,
-    // `three-levels-of-orthogonal-flows` 0.00 → 4.06), плюс всё семейство
-    // `text-combine-upright-*`. Значит дело НЕ только в осях контейнеров:
-    // ортогональный поток требует, чтобы родитель отдавал ребёнку
-    // ограничение по своей ОСИ ПОТОКА, а не по физической высоте, — а это
-    // ещё одна точка, в замере не найденная.
-    // Вертикальное письмо: строка идёт сверху вниз. Поворачивается только
-    // текст — коробки блоков уже выстроены по горизонтальной оси потока.
-    //
-    // Отдать ось строки самому абзацу (`Paragraph::vertical`) НЕЛЬЗЯ, пока в
-    // нём нет вертикальной ОТРИСОВКИ. Флаг влияет только на замер: предел
-    // переноса берётся по высоте. Сам проход рисования кладёт строку вдоль X
-    // (`shape_line` в точку `origin.x + dx, y`) и шагает по Y — при
-    // вертикальном письме строки от этого наступают друг на друга.
-    // Проверено пробой `target/vt.html` (десять знаков в коробке 100px против
-    // эталона с явным разрывом): одна плотная колонка вместо двух.
-    // Прежний комментарий «машинерия на месте и работает» был неверен.
-    // Порядок работ: сперва вертикальная отрисовка до совпадения на пробе,
-    // потом включение. Ограничение §7.3 и логические оси уже сделаны.
+    paragraph_routed(nodes, inherited, opts, None)
+}
+
+fn paragraph_routed(
+    nodes: &[Node], inherited: &Computed, opts: &RenderOpts,
+    native_request: Option<&native_paragraph_route::Request<'_>>,
+) -> AnyElement {
+    // Vertical paragraphs choose the physical text route after inline collection.
     if inherited.vertical == Some(true) {
         // `text-orientation: upright`: глифы СТОЯТ и идут сверху вниз —
         // никакого поворота. Это обычный горизонтальный абзац шириной в один
@@ -16532,7 +16352,8 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
         // `trim()` съедал его как юникод-пробел, и абзац уходил
         // горизонтальным путём шириной в один пробел.
         if plain.trim().is_empty() && !plain.contains('\u{a0}') {
-            let para = paragraph(nodes, &horizontal, opts);
+            // Pure-atom paragraphs paint physical boxes without a text transform.
+            let para = rotated_atom::without_text_turn(|| paragraph(nodes, &horizontal, opts));
             // Строка из одних атомов (картинка, пустая строчная коробка) идёт
             // горизонтальным путём и ложится у ВЕРХНЕГО края коробки абзаца.
             // Верно это, только пока inline-start — верх. Таблица
@@ -16560,65 +16381,24 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
             }
             return para;
         }
-        // Элемент СЕТКИ с вертикальным письмом: длина его строки — размер
-        // дорожки по блочной оси сетки, а он известен только раскладке
-        // (css-grid-2 §12.1 шаг 1: ортогональный элемент меряется под
-        // оценкой рядов; Blink `grid_layout_algorithm.cc:479-497` —
-        // повторный проход колонок по размеренным собственным рядам
-        // подсетки). Повёрнутая коробка ниже предел знает лишь из стиля
-        // (`ortho_limit` или окно), и `X X X X` в ряду 25px ложился одной
-        // колонкой во всю высоту (`subgrid/standalone-axis-size-010..013`,
-        // `column-subgrid-with-row-standalone-axis-size-*`). Абзац набирает
-        // строку сам (`lines::Paragraph::vertical`): предел — решённая
-        // раскладкой высота, а при её отсутствии — доступная.
-        //
-        // Гейт — элемент ПОДСЕТКИ: у него ось строки — собственная дорожка
-        // «standalone»-оси (`subgrid::standalone_tracks`), а повёрнутая
-        // коробка её не видит никогда. ★ ЗАМЕРЕНО: тот же путь для ЛЮБОГО
-        // элемента сетки — на парах среза css-grid/gaps/break-grid,
-        // разошедшихся с базой, +7/−16 сверх гейта подсетки (`grid-container-scrollbar-vertical-lr/rl-001`
-        // 0.00 -> 20, `orthogonal-positioned-grid-items-015`,
-        // `grid-self-baseline-changes-grid-area-size-009/012` — базовая по
-        // оси x у повёрнутой коробки своя, `VerticalText::first_line`).
-        if inherited.parent_subgrid && !ccw_line && nodes.iter().all(|n| matches!(n, Node::Text(_))) {
-            let mut flow = horizontal.clone();
-            flow.rotated_line = None;
-            flow.para_vertical = Some(inherited.vertical_rl == Some(true));
-            return paragraph(nodes, &flow, opts);
+        let mut flow = horizontal.clone();
+        flow.para_vertical = Some(inherited.vertical_rl == Some(true));
+        let fallback = inherited.ortho_limit.unwrap_or(opts.viewport.1);
+        flow.ortho_limit = Some(fallback);
+        flow.orthogonal_inline = native_vertical::constraint(inherited, fallback);
+        let built = std::cell::Cell::new(false);
+        let request = native_paragraph_route::Request { style: &flow, built: &built };
+        // Build atoms with legacy style; apply native flow only to a text Paragraph.
+        let inner = paragraph_routed(nodes, &horizontal, opts, Some(&request));
+        if built.get() {
+            return inner;
         }
-        let inner = paragraph(nodes, &horizontal, opts);
         // Спросить размер у родителя обход не может (замер внутри чужого
         // замера падает — см. `VerticalText::request_layout`). Зато предел
         // ортогонального потока уже принесён вниз стилем: задаём его ШИРИНОЙ
         // до поворота, и после поворота он становится высотой коробки — то
         // есть перенос считается по той оси, по которой идёт строка.
         let limit = inherited.ortho_limit.unwrap_or(opts.viewport.1);
-        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09, пятый заход): предел ортогонального
-        // потока без `ortho_limit` = ICB минус свои рамки/отбивки/поля и
-        // shrink-to-fit (`max_w` + `fit_within` только при `ortho_limit`
-        // = None, css-writing-modes-4 §7.3.1) — css-writing-modes 572 -> 554
-        // (+10/−28): десять `sizing-orthog-*-in-htb` позеленели, но
-        // `available-size-001…018`, `float-*-orthog-*`, `line-box-height-*`
-        // ушли в красное — у них тоже нет `ortho_limit`, а заявка высоты во
-        // весь ICB им противопоказана. Развилка та же, что в четырёх откатах
-        // ниже: предел обязан приходить от родителя, а не от окна.
-        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (четыре захода подряд): физическая высота
-        // повёрнутого блока по СОДЕРЖИМОМУ. Жёсткая ширина делает
-        // `natural.width` тождественно равной пределу, поэтому без
-        // `ortho_limit` не срабатывает ни один гейт заявки (высота нулевая), а
-        // с ним всегда срабатывает `fit_within` (высота во весь предел).
-        // Срез вертикального письма (571 пара, 423 зелёных):
-        //   1) `max_w` + безусловная заявка высоты, замер MaxContent — 407;
-        //   2) один `max_w`, замер MaxContent — 419;
-        //   3) `max_w` + замер ПОД пределом (`VerticalText::flowing`,
-        //      `AvailableSpace::Definite`) + безусловная заявка — 403
-        //      (приобретено 4, потеряно 24);
-        //   4) то же без безусловной заявки — 421 (лучший из четырёх).
-        // Во всех четырёх рушится семья `available-size-*`: заявленная высота
-        // ортогонального потока ломает их ожидание, а без заявки коробка
-        // остаётся нулевой. Значит развилка не в способе замера, а в том, что
-        // предел ортогонального потока обязан приходить от РОДИТЕЛЯ (§7.3), а
-        // не подменяться шириной обёртки. Возвращать вместе с ним.
         // …и всё же ОДИН случай жёсткую ширину не терпит: АБСОЛЮТНАЯ коробка
         // со свободной строчной осью. Её размер по этой оси — по содержимому
         // (§10.3.7), а жёсткая ширина делает `natural.width` тождественно
@@ -16636,20 +16416,6 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
             || inherited.hug_inline)
             && !matches!(inherited.height, Some(Len::Px(_)) | Some(Len::Pct(_)))
             && !(edge(inherited.inset.top) && edge(inherited.inset.bottom));
-        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09), пятый заход по §7.3.1 «Auto-sizing
-        // Block Containers in Orthogonal Flows»: без определённого предка
-        // брать пределом НАЧАЛЬНЫЙ содержащий блок (`max_w` + `fit_within`
-        // от окна). Срез вертикального письма 1086 пар: 596 -> 602,
-        // приобретено 29 (вся семья `sizing-orthog-{vlr,vrl}-in-htb-*`,
-        // `clip-rect-v*`, `caption-side-v*`), потеряно 23 —
-        // `available-size-003…018` (0.05-0.11 -> «красное видно»),
-        // `line-box-height-v{lr,rl}-*` (0.15 -> 0.67), четыре
-        // `float-*-orthog-*-in-htb-*` (0.02-0.32 -> 4.7-6.7),
-        // `direction-upright-001`, `border-slice-001`, `text-combine-*`.
-        // С вычетом собственных полей и рамки из предела — ещё хуже (592).
-        // Значит предел ICB как таковой верен, но коробке нужен НЕ он, а
-        // ближайший определённый scrollport (§7.3.1 п.2), которого у нас нет;
-        // возвращать вместе с ним.
         // Ячейка вертикальной таблицы: предел строки — мера её КОЛОНКИ, а не
         // инлайн-размер всего стола. Колонку решает решётка (дорожка
         // `MinMax(MinContent, Auto)` = «наибольший min-content ячеек
@@ -16661,16 +16427,22 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
         // 7 знаков вместо 3/2/2. Потолок при этом остаётся: колонка не шире
         // инлайн-размера стола.
         let col_min = inherited.ortho_col && inherited.ortho_limit.is_some();
-        let inner = if free_inline || col_min {
+        // Atomic content shares native text's fixed and shrink-to-fit inline sizing.
+        let inline_constraint = native_vertical::constraint(inherited, limit);
+        let inner = if let Some(constraint) = inline_constraint {
+            // A definite CSS inline size is also the percentage basis for anonymous
+            // rows (including <br>); available space alone does not establish it.
+            if constraint.fixed.is_some() {
+                div().w(px(constraint.used(0.0, 0.0))).child(inner).into_any_element()
+            } else {
+                inner
+            }
+        } else if free_inline || col_min {
             div().max_w(px(limit)).child(inner).into_any_element()
         } else {
             div().w(px(limit)).child(inner).into_any_element()
         };
-        // Высота заявляется только под ортогональным зажимом (max-height от
-        // §7.3) и только при ПОЛНОМ зажиме — иначе коробка без высоты
-        // схлопывалась в ноль (даже фон пропадал), а заявка без зажима
-        // делала её бесконечной (замерено: wm 118 → 104).
-        // Метрики первой строки — базовая по оси x (`VerticalText::first_line`).
+        // Intrinsic inline claims are independent of the first-line baseline metrics.
         let em = match inherited.font_size {
             Some(Len::Px(v)) => v,
             Some(Len::Em(k)) => k * opts.base_size(),
@@ -16692,13 +16464,16 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
             // высотой — предел (мера стола) её не режет, потому что
             // min-content колонки заведомо не больше него.
             .column_min(col_min)
+            .inline_keyword(native_vertical::keyword(inherited))
             .keyed(crate::interact::vt_seq_key(
                 text_id(&plain) ^ opts.doc_salt ^ (nodes.len() as u64).wrapping_mul(0x9E3779B9),
             ));
         // Настоящий предел от родителя (ортогональная ячейка): строка,
         // которая уже влезает, заявляет высоту честно — без неё гибкая
         // ячейка мерила коробку нулём и justify уводил глиф из виду.
-        let vt = if let Some(l) = inherited.ortho_limit {
+        let vt = if let Some(constraint) = inline_constraint {
+            vt.inline_constraint(constraint)
+        } else if let Some(l) = inherited.ortho_limit {
             vt.fit_within(px(l))
         } else if inherited.hug_claim {
             // Родитель размером в содержимое по строчной оси
@@ -16775,7 +16550,7 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
             .into_any_element();
         }
     }
-    paragraph_pieces(nodes, inherited, opts, 0, &Computed::default())
+    paragraph_pieces_routed(nodes, inherited, opts, 0, &Computed::default(), native_request)
 }
 
 /// Свой кегль абзаца в точках — точка отсчёта для строки-опоры и для долей.
@@ -17169,6 +16944,17 @@ fn paragraph_pieces(
     first_line_at: usize,
     first_line: &Computed,
 ) -> AnyElement {
+    paragraph_pieces_routed(nodes, inherited, opts, first_line_at, first_line, None)
+}
+
+fn paragraph_pieces_routed(
+    nodes: &[Node],
+    inherited: &Computed,
+    opts: &RenderOpts,
+    first_line_at: usize,
+    first_line: &Computed,
+    native_request: Option<&native_paragraph_route::Request<'_>>,
+) -> AnyElement {
     // Бюджет строк знака обрыва (авто-режим) забирается РАЗОМ, до сборки
     // кусков: куски строят вложенные абзацы (`inline-block`, `<svg>`), и
     // чужой бюджет им доставаться не должен.
@@ -17411,7 +17197,7 @@ fn paragraph_pieces(
             | Some(crate::computed::Align::Center) => true,
             _ => false,
         };
-        let original_margin = e.style.margin;
+        let original_margin = rotated_atom::margin(&e.style, inherited);
         let bare;
         let e = if wrapped {
             let mut copy = e.clone();
@@ -17772,20 +17558,18 @@ fn paragraph_pieces(
             opts.text.line_height = gpui::px(biggest * normal_fraction(inherited, &opts)).into();
         }
         let opts = &opts;
-        // `user-select: none` — абзац рисуется обычным текстом: ни области
-        // попадания, ни обработчиков мыши он тогда не создаёт.
-        // `pointer-events: none` снимает и выделение: элемент не должен
-        // ловить курсор ничем.
-        if inherited.no_select == Some(true) || inherited.pointer_events_none == Some(true) {
+        // Selection controls handlers, while native text retains its layout and paint.
+        let wrap_rules = crate::lines::rules(inherited);
+        let native = wrap_rules.is_some() && native_request.is_some_and(|request| request.accepts(&pieces, !line_atoms.is_empty()));
+        let selectable = inherited.no_select != Some(true) && inherited.pointer_events_none != Some(true);
+        if !native && !selectable {
             return gpui::StyledText::new(SharedString::from(text))
                 .with_runs(runs)
                 .into_any_element();
         }
-        // Своя строчная раскладка нужна там, где ширина строки и точка
-        // разрыва связаны: висящие пробелы, `break-spaces`, разрыв где угодно.
-        // В остальных случаях остаётся выделяемый текст движка — он умеет
-        // выделение мышью, а своя раскладка пока нет.
-        if let Some(wrap) = crate::lines::rules(inherited) {
+        // Native construction remains available without installing selection handlers.
+        if let Some(wrap) = wrap_rules {
+            let inherited = if native { native_request.unwrap().style } else { inherited };
             // Кегль абзаца — самый крупный кусок в нём: строка растёт под него,
             // и от него же считается высота строки в долях.
             //
@@ -17843,12 +17627,14 @@ fn paragraph_pieces(
                 crate::lines::align_for(inherited),
                 wrap,
             )
-            // Правила переноса вложенных кусков: `word-break` на `<span>`
-            // действует только на его знаки, а не на абзац целиком.
-            // `unicode-bidi: plaintext` (в том числе `dir="auto"`): сторона
-            // письма и логическая выключка решаются построчно.
+            // Preserve per-span wrapping and per-line plaintext direction;
+            // vertical sideways text uses alphabetic rather than central baselines.
             .reversed_lines(inherited.lines_reversed == Some(true))
             .vertical(inherited.para_vertical.is_some(), inherited.para_vertical == Some(true))
+            .ortho_limit(inherited.ortho_limit.map(px))
+            .vertical_central_baseline(inherited.sideways != Some(true) && inherited.text_sideways != Some(true))
+            .vertical_counter_clockwise(inherited.para_vertical == Some(false) && inherited.sideways == Some(true))
+            .vertical_inline_constraint(inherited.orthogonal_inline, native_vertical::keyword(inherited))
             .plaintext(
                 inherited
                     .bidi_plaintext
@@ -17968,8 +17754,15 @@ fn paragraph_pieces(
             .tab_stops(inline::tab_stops(&pieces, inherited, &opts.text))
             .overlays(inline::overlays(pieces))
             .atoms(line_atoms)
-            .ruby_trim(inherited.text_box_trim_start, inherited.text_box_trim_end)
-            .selectable(id, opts.selection_color());
+            .ruby_trim(inherited.text_box_trim_start, inherited.text_box_trim_end);
+            let para = if selectable {
+                para.selectable(id, opts.selection_color())
+            } else {
+                para
+            };
+            if native {
+                native_request.unwrap().built.set(true);
+            }
             return para.into_any_element();
         }
     }
@@ -18421,28 +18214,13 @@ fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
 /// при базах по 2ch раздавались, вторая дорожка выходила 4ch
 /// (`grid-lanes-intrinsic-sizing-cols-002-fr`; css-sizing-3 §5.1).
 fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
-    // `inline-block` стоит в строке абзаца — служебном ряду, — и доли его
-    // высоты и отступов решались от ряда, а не от блока, где написан абзац
-    // (CSS 2.1 §10.5, §8.4; `intrinsic-percent-replaced-014`: вторая коробка
-    // `height: 100%; padding-top: 100%` пропадала).
-    let resolved_pct;
-    let e = match (e.style.display == Some(Display::InlineBlock)
-        && e.style.inline_display != Some(true))
-    .then(|| pct_resolved_against_block(e, inherited))
-    .flatten()
-    {
-        Some(copy) => {
-            resolved_pct = copy;
-            &resolved_pct
-        }
-        None => e,
-    };
+    if let Some(physical) = rotated_atom::physical(e, inherited, opts) {
+        return Some(physical);
+    }
+    let resolved = rotated_atom::resolved(e, inherited);
+    let e = resolved.as_ref().unwrap_or(e);
     let el = atom_element_raw(e, inherited, opts)?;
-    // Только строчная ось горизонтального письма: в блочной оси ключевое
-    // слово — это `auto` (css-sizing-3 §5.1 «in the block axis … behaves as
-    // auto»), и дорожка по содержимому там ломала коробку
-    // (★ ЗАМЕРЕНО: `vert-/hori-block-size-small-or-larger-than-container-
-    // with-min-or-max-content-1/2a/2b` 0.00 -> 1.23/11.55 без этого гейта).
+    // CSS Sizing 3 §5.1: intrinsic keywords in the block axis behave as auto.
     let keyword = |l: Option<Len>| matches!(l, Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent));
     // Повёрнутый абзац вертикального письма (`rotated_line`) набирается
     // горизонтально, но ось строки там вертикальна.
@@ -18452,11 +18230,11 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
         && keyword(e.style.width)
         && !keyword(e.style.height);
     let wraps = inline_axis_only
-        && content_sized_wraps(&e.style)
+        && content_sized_wraps(e)
         && !replaced_tag(e)
         && !at_static_position(&e.style)
         && !matches!(e.tag.as_str(), "input" | "select" | "textarea" | "button");
-    Some(if wraps { content_sized(el, &e.style, (None, None)) } else { el })
+    Some(if wraps { content_sized(el, &e.style, &inline::inherit(inherited, &e.style), (None, None)) } else { el })
 }
 
 fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
@@ -19503,6 +19281,7 @@ fn content_limit_swapped(e: &Element) -> Option<Element> {
     } else {
         return None;
     }
+    copy.style.intrinsic_wrapper_required = true;
     Some(copy)
 }
 
@@ -19510,7 +19289,7 @@ fn content_limit_swapped(e: &Element) -> Option<Element> {
 /// `blocks`). `None` — решать нечего или блок не блочный: у гибкого и
 /// сеточного родителя размеры приходят от раскладки.
 fn pct_resolved_for_wrapper(e: &Element, inherited: &Computed) -> Option<Element> {
-    if !content_sized_wraps(&e.style) {
+    if !content_sized_wraps(e) {
         return None;
     }
     pct_resolved_against_block(e, inherited)
@@ -19595,149 +19374,6 @@ fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> Option<Eleme
         }
     }
     changed.then_some(copy)
-}
-
-fn content_sized_wraps(c: &Computed) -> bool {
-    let keyword = |l: Option<Len>| {
-        matches!(
-            l,
-            Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
-        )
-    };
-    // Обособленная ось содержимого не видит: размер по нему заменяется
-    // `contain-intrinsic-size` (css-contain-2 §size-containment), и мерить
-    // дорожкой сетки больше нечего.
-    let contained =
-        (keyword(c.width) && c.contains_width()) || (keyword(c.height) && c.contains_height());
-    if contained {
-        return false;
-    }
-    (keyword(c.width) || keyword(c.height))
-        && !matches!(
-            c.position,
-            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
-        )
-}
-
-fn content_sized(
-    el: AnyElement,
-    c: &Computed,
-    placement: (Option<gpui::GridLocation>, Option<gpui::GridLineNames>),
-) -> AnyElement {
-    let track = |l: Option<Len>| match l {
-        Some(Len::MinContent) => Some(gpui::GridTrack::MinContent),
-        Some(Len::MaxContent) => Some(gpui::GridTrack::MaxContent),
-        // `fit-content` — дорожка `auto`: она и есть «по содержимому, но не
-        // шире доступного».
-        Some(Len::FitContent) => Some(gpui::GridTrack::Auto),
-        _ => None,
-    };
-    let (col, row) = (
-        (!c.contains_width()).then(|| track(c.width)).flatten(),
-        (!c.contains_height()).then(|| track(c.height)).flatten(),
-    );
-    if col.is_none() && row.is_none() {
-        return el;
-    }
-    // Позиционированный элемент заворачивать нельзя: обёртка стала бы его
-    // содержащим блоком, и края отсчитывались бы от неё. Он и так не
-    // растягивается — размер по содержимому получается сам.
-    if matches!(
-        c.position,
-        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
-    ) {
-        return el;
-    }
-    let mut wrap = div().grid();
-    // `fit-content(N)` (css-sizing-3 §4.1): «the fit-content formula with the
-    // available space replaced by the specified argument» —
-    // min(max-content, max(min-content, N)). Дорожка `auto` считает ровно эту
-    // формулу от ширины сетки, значит довод и есть ширина обёртки. Доля — от
-    // родителя: при неопределённой базе (вклад в `min-content`/`max-content`)
-    // taffy её не решает и меряет обёртку содержимым, как велит §5.2.1
-    // (`fit-content-length-percentage-011/012/014`). Это НЕ пара «max-width =
-    // N» из отката в `value.rs`: там довод был потолком, здесь — место.
-    if matches!(c.width, Some(Len::FitContent)) && c.vertical != Some(true) {
-        match c.fit_arg[0] {
-            Some(Len::Px(v)) => wrap = wrap.w(px(v)),
-            Some(Len::Pct(k)) => wrap = wrap.w(gpui::relative(k)),
-            _ => {}
-        }
-    }
-    // Боковые поля сняты с элемента вызывающей стороной (дорожка сетки их не
-    // считает) — здесь они ставятся на саму обёртку, без лишней коробки:
-    // отдельный держатель менял раскладку соседей
-    // (`text-transform-fullwidth-008`).
-    let side = |l: Option<Len>| -> Option<f32> {
-        let size = match c.font_size {
-            Some(Len::Px(v)) => v,
-            _ => 16.0,
-        };
-        let family = c.font_family.clone().unwrap_or_default();
-        match l {
-            Some(Len::Px(_) | Len::Em(_) | Len::Ch(_) | Len::Ex(_)) => {
-                let v = crate::metrics::spacing_px(l, &family, size);
-                (v < 0.0).then_some(v)
-            }
-            _ => None,
-        }
-    };
-    if let Some(v) = side(c.margin.left) {
-        wrap = wrap.ml(px(v));
-    }
-    if let Some(v) = side(c.margin.right) {
-        wrap = wrap.mr(px(v));
-    }
-    // ★ ЗАМЕРЕНО ДВАЖДЫ И ОТКАЧЕНО: растягивать элемент на дорожку
-    // (`justify_items: Stretch`) — всем подряд css-text 1027 → 1023, только
-    // под `max-content` 1027 → 1026. Чинит `pre-wrap-017` (коробка шириной в
-    // дорожку), ломает `white-space-intrinsic-size-024/025` (обводка обязана
-    // облегать глифы). Значит дорожка местами шире содержимого, и сперва надо
-    // разобраться с НЕЙ, а не с выравниванием в ней.
-    // Авто-поля прижимают КОРОБКУ в свободном месте (CSS 2.1 §10.3.3):
-    // `margin-left: auto` при точечном max-content — прижим вправо
-    // (align-baseline-ref: правый столбец текста уезжал влево).
-    let auto = |l: Option<Len>| matches!(l, Some(Len::Auto));
-    wrap.style().justify_items = Some(match (auto(c.margin.left), auto(c.margin.right)) {
-        (true, false) => gpui::AlignItems::FlexEnd,
-        (true, true) => gpui::AlignItems::Center,
-        _ => gpui::AlignItems::FlexStart,
-    });
-    // Прижим внутри дорожки ничего не двигает, когда дорожка `max-content`
-    // ровно по коробке, а сама обёртка растянута на строку родителя:
-    // свободное место — между ДОРОЖКОЙ и краем сетки. Его делит
-    // `justify-content` (css-grid-1 §10.5); без него `margin-left: auto;
-    // width: max-content` оставался у левого края (`align-baseline-ref`).
-    match (auto(c.margin.left), auto(c.margin.right)) {
-        (true, false) => wrap.style().justify_content = Some(gpui::AlignContent::FlexEnd),
-        (true, true) => wrap.style().justify_content = Some(gpui::AlignContent::Center),
-        _ => {}
-    }
-    // Выравнивание элемента поперёк РОДИТЕЛЯ переезжает на обёртку: во
-    // флексе родителя стоит она, и без переноса `justify-items: center` в
-    // лунках глох на min-content-элементах
-    // (column-fill-reverse-justify-items-001). В вертикальном письме
-    // align-self несёт ось самого движка — перенос ломал ортогональные
-    // потоки (three-levels-of-orthogonal-flows).
-    if let Some(a) = c.align_self.filter(|_| c.vertical != Some(true)) {
-        // `anchor-center` без якоря ведёт себя как `center` (css-anchor-position-1 §5.2).
-        wrap.style().align_self = Some(crate::apply::self_align(a, c.align_self_last));
-    }
-    if let Some(col) = col {
-        wrap = wrap.grid_template_cols(vec![col]);
-    }
-    if let Some(row) = row {
-        wrap = wrap.grid_template_rows(vec![row]);
-    }
-    // Размещение элемента в сетке родителя — на обёртке (см. вызов).
-    let (location, names) = placement;
-    if let Some(location) = location {
-        wrap.style().grid_location = Some(location);
-    }
-    if let Some(names) = names {
-        wrap.style().grid_line_names = Some(Box::new(names));
-    }
-    wrap.child(el).into_any_element()
 }
 
 /// Абсолютный элемент, которому не задан ни один край.
@@ -21448,61 +21084,6 @@ fn hoist_from_scroll(e: &mut Element, inherited: &Computed, opts: &RenderOpts) {
     e.children = keep;
 }
 
-/// Замещаемый `<svg>` с учётом его CSS-коробки (CSS 2.1 §10.3.4): растр —
-/// содержимое, а при ненулевой рамке или отбивке (`svg_has_box`) — внутри
-/// стилевого `div` размером border-box, фон красит он. Прежде растр шёл
-/// голым и рамка не рисовалась вовсе (border-shape-clips-background-ref,
-/// mask-image-svg-child-will-change: маска ложится на коробку 200×200 с
-/// рамкой 50). Без рамки и отбивки — голый растр, путь прежний.
-/// `None` — рисунок не разобрался.
-fn svg_replaced(e: &Element, sized: &Element, merged: &Computed) -> Option<AnyElement> {
-    let boxed = svg_has_box(merged);
-    let inner;
-    let sized = if boxed {
-        let mut copy = sized.clone();
-        copy.style.background = None;
-        inner = copy;
-        &inner
-    } else {
-        sized
-    };
-    let raster = crate::svg::element(sized)?;
-    if !boxed {
-        return Some(raster);
-    }
-    let px_of = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
-    let (w, h) = crate::svg::size_of(sized);
-    let b = merged.borders();
-    let bw = w + px_of(b.left) + px_of(b.right) + px_of(merged.padding.left) + px_of(merged.padding.right);
-    let bh = h + px_of(b.top) + px_of(b.bottom) + px_of(merged.padding.top) + px_of(merged.padding.bottom);
-    Some(
-        styled_div_with(e, merged)
-            .w(px(bw))
-            .h(px(bh))
-            .flex_shrink_0()
-            .child(raster)
-            .into_any_element(),
-    )
-}
-
-/// У `<svg>` есть своя CSS-коробка — ненулевая рамка или отбивка
-/// (см. ветку `"svg"` в `element`): тогда растр кладётся в стилевой `div`.
-fn svg_has_box(c: &Computed) -> bool {
-    let nz = |l: Option<Len>| matches!(l, Some(Len::Px(v)) if v > 0.0);
-    let b = c.borders();
-    nz(b.top)
-        || nz(b.right)
-        || nz(b.bottom)
-        || nz(b.left)
-        || nz(c.padding.top)
-        || nz(c.padding.right)
-        || nz(c.padding.bottom)
-        || nz(c.padding.left)
-}
-
 fn scrollable(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
     use crate::computed::Overflow;
     let horizontal = e.style.overflow_x == Some(Overflow::Scroll);
@@ -21562,11 +21143,14 @@ fn scrollable(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<An
             // содержимое было видно ниже края панели.
             let outer_margin = inner.style.margin;
             inner.style.margin = Default::default();
+            let (built, native_box) = scroll_box::build(node.node_id, handle, h, v, outer_margin,
+                || element(&inner, &inherited, &opts));
+            if native_box { return built; }
             use gpui::{InteractiveElement, StatefulInteractiveElement};
             let mut d = crate::apply::margins(div(), &outer_margin)
                 .id(gpui::ElementId::Integer(node.node_id as u64 + 1))
                 .track_scroll(handle)
-                .child(element(&inner, &inherited, &opts));
+                .child(built);
             // Элемент потока родителя — ЭТА обёртка, а не внутренний узел: ей и
             // сжатие, которое блоку в потоке выключено (`flex_shrink: 0` из
             // `blocks()`), а во flex-контексте — 1. Без него автоминимум
@@ -21916,125 +21500,7 @@ fn bake_frozen(e: &Element, transforms: bool) -> Option<Element> {
     if !spec.frozen() {
         return None;
     }
-    let c = frame_at(frames, spec.frozen_t());
-    let mut inner = e.clone();
-    let st = &mut inner.style;
-    if c.opacity.is_some() {
-        st.opacity = c.opacity;
-    }
-    if c.background.is_some() {
-        st.background = c.background;
-    }
-    if c.color.is_some() {
-        st.color = c.color;
-    }
-    if c.width.is_some() {
-        st.width = c.width;
-    }
-    if c.height.is_some() {
-        st.height = c.height;
-    }
-    if c.translate.is_some() {
-        st.translate = c.translate;
-    }
-    if c.filter.is_some() {
-        st.filter = c.filter;
-    }
-    if c.backdrop_blur.is_some() {
-        st.backdrop_blur = c.backdrop_blur;
-    }
-    if c.backdrop_color.is_some() {
-        st.backdrop_color = c.backdrop_color;
-    }
-    // Тень фильтра запекается туда же: `inline::inherit` превратит её во
-    // внешнюю `box-shadow` у коробки со сплошным фоном (filters П3).
-    if c.drop_shadow.is_some() {
-        st.drop_shadow = c.drop_shadow;
-    }
-    if transforms {
-        if c.rotate_prop.is_some() {
-            st.rotate_prop = c.rotate_prop;
-        }
-        if c.scale_prop.is_some() {
-            st.scale_prop = c.scale_prop;
-        }
-        if c.transform.is_some() {
-            st.transform = c.transform;
-        }
-    }
-    Some(inner)
-}
-
-/// Обернуть элемент анимацией, если она задана.
-fn animated(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    let (Some(frames), Some(spec)) = (e.anim.clone(), e.style.animation.clone()) else {
-        return element(e, inherited, opts);
-    };
-    // Анимируется обёртка: у готового элемента стиль уже зафиксирован, а
-    // менять надо ровно те свойства, которые перечислены в кадрах.
-    //
-    // Внешний отступ переезжает НА обёртку: оставшись внутри, он переставал
-    // раздвигать соседей — блоки слипались против браузера.
-    // Остановленная анимация — не анимация: кадр `(-delay)/duration`
-    // запекается прямо в стиль элемента, и дальше работает весь обычный
-    // конвейер (фильтр по цветам, групповой blur). Живая обёртка здесь
-    // делала reftest недетерминированным по построению.
-    // Анимация, которая за жизнь страницы не сдвинется ни на точку, по сути
-    // остановлена: `animation: anim 2000000s; animation-delay: -1000000s`
-    // держит середину пути миллион секунд (`vh-interpolate-*`). Живая обёртка
-    // размеры в единицах окна не двигает вовсе, а запечённый кадр — ровно то,
-    // что показывает браузер (css-animations-1: отрицательная задержка —
-    // «appear to have begun execution at the specified offset»).
-    if let Some(inner) = bake_frozen(e, false) {
-        return element(&inner, inherited, opts);
-    }
-    let mut inner = e.clone();
-    inner.style.margin = crate::computed::Sides::default();
-    let el = element(&inner, inherited, opts);
-    let d = apply_margin(div(), &e.style).child(el);
-    let seconds = spec.seconds.max(0.05);
-    let mut anim = gpui::Animation::new(std::time::Duration::from_secs_f32(seconds));
-    if spec.infinite {
-        anim = anim.repeat();
-    }
-    if spec.alternate {
-        // Обратный ход через раз — это ровно «туда-сюда» по времени.
-        anim = anim.with_easing(gpui::pulsating_between(0.0, 1.0));
-    }
-    gpui::AnimationExt::with_animation(
-        d,
-        gpui::ElementId::Integer(e.node_id as u64),
-        anim,
-        move |d, delta| {
-            let c = frame_at(&frames, delta);
-            let mut d = d;
-            if let Some(o) = c.opacity {
-                d = d.opacity(o);
-            }
-            if let Some(bg) = c.background {
-                d = d.bg(bg.to_hsla());
-            }
-            if let Some(col) = c.color {
-                d = d.text_color(col.to_hsla());
-            }
-            if let Some(Len::Px(w)) = c.width {
-                d = d.w(px(w));
-            }
-            if let Some(Len::Px(h)) = c.height {
-                d = d.h(px(h));
-            }
-            if let Some((x, y)) = c.translate {
-                if let Len::Px(v) = x {
-                    d = d.left(px(v));
-                }
-                if let Len::Px(v) = y {
-                    d = d.top(px(v));
-                }
-            }
-            d
-        },
-    )
-    .into_any_element()
+    Some(animation_frame::sample(e, &frame_at(frames, spec.frozen_t()), transforms))
 }
 
 /// Блочный элемент.
@@ -22220,6 +21686,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     merged.first_line = e.first_line.as_ref().map(&resolved);
     // Единицы окна разрешаются здесь: размер окна знает только сборщик.
     merged.resolve_viewport(opts.viewport);
+    orthogonal_inline::resolve(&mut merged, inherited, opts.viewport, e.tag == "html");
     PAINT_VIEWPORT.with(|v| v.set(opts.viewport));
     // Элементы форм рисуются своим набором: без него поле ввода — пустой
     // прямоугольник, что выглядит поломкой разметки.
@@ -22426,6 +21893,10 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         // строчную раскладку (`white-space-pre-031`).
         _ => {
             let mut d = styled_div_with(e, &merged);
+            let overflow_plan = absolute_overflow::Plan::new(&merged, inherited);
+            if let Some(plan) = &overflow_plan {
+                plan.prepare(d.style());
+            }
             // ЗАМЕРЕНО И ЗАКРЕПЛЕНО: минимума высоты в видимую область на
             // коробке корня БОЛЬШЕ НЕТ. §10.6.3 — высота корня `auto`, ростом
             // с окно обязан быть начальный содержащий блок, а не коробка:
@@ -24458,9 +23929,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 Some(areas) => place_named_areas(areas, e.children.clone()),
                 None => e.children.clone(),
             };
-            // Отступы вдоль оси потока схлопываются — при вертикальном письме
-            // это ГОРИЗОНТАЛЬНЫЕ отступы соседей. В Chrome три полосы с
-            // `margin: 0 16px` стоят через 16, а не через 32.
+            // Resolve physical margins before preparing the vertical formatting context.
             let children = if merged.vertical == Some(true) {
                 // Поле самого контейнера по ведущей стороне оси потока —
                 // для схлопывания с первым ребёнком (§8.3.1). Ведущая
@@ -24489,6 +23958,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         e.style.overflow_y,
                         None | Some(crate::computed::Overflow::Visible)
                     ) || e.style.float.is_some()
+                        || e.style.display.is_some()
                         || e.style.flow_root == Some(true)
                         // css-align-3 §align-block — тот же список, что и в
                         // `own_context`: своё поле такая коробка с полем
@@ -24507,10 +23977,11 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 };
                 // Доли полей/отступов — в точки от высоты контейнера ДО
                 // схлопывания (см. `resolve_inline_pct`).
-                vertical_hug_children(
+                vertical_hug::children(
                     orthogonal_children(
-                        collapse_flow_margins(
+                        vertical_flow_margins::children(
                             resolve_inline_pct(children, &merged, true),
+                            &merged,
                             reverse,
                             lead_margin,
                         ),
@@ -24702,7 +24173,9 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // содержащего блока (нулевая вставка), сдвиг до края якоря
             // считает заместитель на подготовке кадра. Без якорных вставок
             // коробка возвращается как есть.
-            crate::anchor::place(d.children(kids).into_any_element(), &merged, inherited)
+            let child = d.children(kids).into_any_element();
+            let child = match overflow_plan { Some(plan) => plan.wrap(child), None => child };
+            crate::anchor::place(child, &merged, inherited)
         }
     }
 }
@@ -25132,7 +24605,7 @@ fn view_boxed(e: &Element, vb: (u8, [Len; 4])) -> Option<AnyElement> {
     boxed.style.contain_size = Some(false);
     boxed.style.contain_inline_size = Some(false);
     let (sx, sy) = (bw / vw, bh / vh);
-    let picture = gpui::img(ready)
+    let picture = gpui::img(ready).preserve_natural_pixels(true)
         .absolute()
         .left(px(-vx * sx))
         .top(px(-vy * sy))
@@ -25150,26 +24623,8 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
     // the opposite dimension will transfer through»; Blink
     // `ComputeReplacedSizeInternal`): `width: min-content; height: 100px` —
     // ширина из соотношения (`intrinsic-size-017…025`).
-    let kw = |l: Option<Len>| {
-        matches!(
-            l,
-            Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
-        )
-    };
-    let normalized;
-    let e = if kw(e.style.width) || kw(e.style.height) {
-        let mut copy = e.clone();
-        if kw(copy.style.width) {
-            copy.style.width = None;
-        }
-        if kw(copy.style.height) {
-            copy.style.height = None;
-        }
-        normalized = copy;
-        &normalized
-    } else {
-        e
-    };
+    let normalized = replaced_used_style::normalize(e, AVAIL_W.get());
+    let e = normalized.as_ref().unwrap_or(e);
     let src = e.attr("src").unwrap_or_default();
     // Размеры коробки ставит общий разбор стиля (`apply`): он же добавляет к
     // заданной ширине отступы и рамку, потому что раскладка под нами считает
@@ -25276,7 +24731,7 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                     None => gpui::img(SharedString::from(src.to_string())),
                 }
             }
-            Some(crate::background::Source::Raster(ready)) => gpui::img(ready),
+            Some(crate::background::Source::Raster(ready)) => gpui::img(ready).preserve_natural_pixels(true),
             _ => match local {
                 Some(path) => gpui::img(std::path::PathBuf::from(path)),
                 None => gpui::img(SharedString::from(src.to_string())),
@@ -25343,7 +24798,7 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             || e.style
                 .object_fit
                 .as_deref()
-                .is_some_and(|f| matches!(f, "contain" | "cover" | "none" | "scale-down"));
+                .is_some_and(|f| matches!(f, "fill" | "contain" | "cover" | "none" | "scale-down"));
         if let (true, Some(Len::Px(w)), Some(Len::Px(h))) =
             (wants_pipe, e.style.width, e.style.height)
         {
@@ -25428,7 +24883,7 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             }
         }
         let mut image = match (own, local) {
-            (Some(ready), _) => gpui::img(ready),
+            (Some(ready), _) => gpui::img(ready).preserve_natural_pixels(true),
             (None, Some(path)) => gpui::img(std::path::PathBuf::from(path)),
             (None, None) => gpui::img(SharedString::from(src.to_string())),
         };
@@ -25798,30 +25253,10 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             Some((w, h)) => d.w(px(w + sub_w)).h(px(h + sub_h)),
             None => d,
         };
-        // Элемент ГИБКОГО контейнера (`flex_item`): гибкий элемент — это держатель, а соотношение сторон стояло
-        // только на внутреннем рисунке, и раскладка flex его не видела. Рост
-        // `flex: 1` не тянул вторую сторону, растяжка колонки не давала высоты
-        // (css-flexbox-1 §9.4 п.7 и §9.8 с css-sizing-4 §5.1:
-        // `flex-aspect-ratio-023/024`). Соотношение переезжает на держатель,
-        // рисунок его заполняет.
-        if e.style.flex_item && узкая.is_none() {
-            let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
-            let (aw, ah) = (auto(e.style.width), auto(e.style.height));
-            // ★ ЗАМЕРЕНО И ОТКАЧЕНО: то же при ОБЕИХ авто-сторонах (рисунок
-            // природный с `max-w/max-h: 100%`) — `flex-aspect-ratio-027/028`
-            // 6.25 → 2.08: потолок режет только ширину, высота остаётся
-            // природной; нужен держатель с природным вкладом и рисунок по
-            // соотношению.
-            if let Some(r) = ratio_of().filter(|r| *r > 0.0)
-                && aw != ah
-                && !matches!(e.style.width, Some(Len::Pct(_)))
-                && !matches!(e.style.height, Some(Len::Pct(_)))
-            {
-                d.style().aspect_ratio = Some(r);
-                image = image.size_full().object_fit(gpui::ObjectFit::Fill);
-            }
+        if replaced_holder_ratio::apply(&mut d, &e.style, ratio_of(), узкая.is_some()) {
+            image = image.size_full().object_fit(gpui::ObjectFit::Fill);
         }
-        return d.child(image).into_any_element();
+        return d.child(replaced_content::position(image, &e.style)).into_any_element();
     }
     // Картинки БЕЗ АДРЕСА вовсе (`<img>` без `src`) не существует: коробки
     // она не порождает и в замер по содержимому не входит (HTML §4.8.4.4 —
@@ -28496,6 +27931,8 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // главной оси ниже min-content его решётки — `vendor/taffy` `flexbox.rs`,
     // признак `item_is_table` (`table-as-item-auto-min-width`, `-wide-content`).
     outer.style().item_is_table = Some(true);
+    // Table baselines come from rows, never the empty grid/caption shim.
+    outer.style().baseline_unavailable = Some(!have_rows);
     // КОРНЕВОЙ стол (`<html display: table>`): родитель — блок стенда, где
     // `align-self` не работает, и стол растягивался на всё окно. Гибкая
     // обёртка возвращает сжатие по содержимому и центрирование `margin: auto`.
@@ -29616,7 +29053,7 @@ fn col_element_widths(
 }
 
 fn is_cell(e: &Element) -> bool {
-    e.tag == "td" || e.tag == "th" || e.style.display == Some(Display::TableCell)
+    table_roles::is_cell(e)
 }
 
 /// Есть ли в поддереве ячейки содержимое, которое красится ПОЗЖЕ сросшихся
