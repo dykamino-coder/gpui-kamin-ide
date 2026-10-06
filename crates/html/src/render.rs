@@ -43,6 +43,8 @@ use replaced_content::svg_replaced;
 mod ratio_basis;
 pub(crate) mod absolute_overflow;
 mod absolute_overflow_math;
+mod ruby_hiding;
+mod ruby_transform;
 use fragment_size::shape_full;
 
 use crate::apply::{apply, apply_hover};
@@ -16988,6 +16990,14 @@ fn paragraph_pieces_routed(
             }
             None => e,
         };
+        let ruby_atom;
+        let e = match ruby_transform::used(e) {
+            Some(used) => {
+                ruby_atom = used;
+                &ruby_atom
+            }
+            None => e,
+        };
         // Боковые поля атома с собственным прижимом несёт ОБЁРТКА: внутри
         // неё они сдвигают коробку, но в продвижение строки не входят —
         // следующий кусок наезжал на предыдущий ровно на его поле
@@ -17500,6 +17510,7 @@ fn paragraph_pieces_routed(
                 }),
             )
             .rel_spans(inline::rel_spans(&pieces))
+            .ruby_justify(inherited.ruby_justify == Some(true), inherited.ruby_unit)
             .align_last(
                 inherited
                     .text_align_last
@@ -18827,6 +18838,13 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                 };
                 let mut style = style.clone();
                 style.nowrap = Some(true);
+                style.ruby_unit = true;
+                // CSS Ruby 1 §2.1.1: these units share an inline formatting
+                // context, rather than starting indented block paragraphs.
+                // Blink line_breaker.cc:846-848 excludes ruby sub-line breakers.
+                style.text_indent = Some(Len::Px(0.0));
+                style.text_indent_each_line = Some(false);
+                style.text_indent_hanging = Some(false);
                 if let [Node::Element(k)] = nodes
                     && matches!(
                         ruby_role(k),
@@ -18834,9 +18852,13 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                     )
                 {
                     let mut block = k.clone();
+                    ruby_transform::clear(&mut block.style);
                     block.style.display = Some(Display::Block);
                     block.style.inline_display = None;
                     block.style.ruby_role = None;
+                    block.style.text_indent = Some(Len::Px(0.0));
+                    block.style.text_indent_each_line = Some(false);
+                    block.style.text_indent_hanging = Some(false);
                     return div()
                         .children(blocks(&[Node::Element(block)], &style, opts))
                         .into_any_element();
@@ -18897,7 +18919,10 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                         if l.spanning {
                             continue;
                         }
-                        let ann = unit_box(l.units.get(i).unwrap_or(&empty), style);
+                        let nodes = l.units.get(i).unwrap_or(&empty);
+                        let base = ruby_hiding::text(seg.bases.get(i).unwrap_or(&empty));
+                        let nodes = if ruby_hiding::hidden(nodes, &base, style) { &empty } else { nodes };
+                        let ann = unit_box(nodes, style);
                         if level_under(k) {
                             under.push(ann);
                         } else {
@@ -18934,6 +18959,9 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                 let mut seg_el = cols.into_any_element();
                 for (k, (l, style)) in seg.levels.iter().zip(&level_style).enumerate() {
                     if l.spanning {
+                        let nodes = l.units.first().unwrap_or(&empty);
+                        let base: String = seg.bases.iter().map(|b| ruby_hiding::text(b)).collect();
+                        let nodes = if ruby_hiding::hidden(nodes, &base, style) { &empty } else { nodes };
                         let host = if level_under(k) {
                             under_stack().child(seg_el)
                         } else {
@@ -18945,7 +18973,7 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                                     .flex()
                                     .flex_col()
                                     .flex_shrink_0()
-                                    .child(unit_box(l.units.first().unwrap_or(&empty), style)),
+                                    .child(unit_box(nodes, style)),
                                 level_under(k),
                             )))
                             .into_any_element();

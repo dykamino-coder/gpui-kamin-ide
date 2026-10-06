@@ -1858,6 +1858,10 @@ pub struct Computed {
     pub text_align_last: Option<TextAlign>,
     /// `text-justify: none` — выключка запрещена, строка идёт как `start`.
     pub no_justify: Option<bool>,
+    /// CSS Text 4: ruby annotation justification excludes word spaces.
+    pub ruby_justify: Option<bool>,
+    /// Internal ruby unit promoted to a technical block for layout.
+    pub ruby_unit: bool,
     /// `hanging-punctuation` — какая пунктуация выходит за край строки.
     /// `text-box-trim` — срезать полулидинг первой/последней строки блока.
     pub text_box_trim_start: bool,
@@ -2880,6 +2884,9 @@ pub struct Computed {
     /// значением, а не пропадает, стоит ребёнку задать `font-variant`
     /// (`font-variant-04`).
     pub font_settings: Option<Vec<(String, u32)>>,
+    /// Font-specific names stay unresolved until the used family is known
+    /// (CSS Fonts 4 §font-variant-alternates-prop).
+    pub font_alternates: Option<crate::fonts::alternates::Alternates>,
     /// `font-synthesis-weight|style|small-caps: none` — подмена начертания
     /// запрещена (css-fonts-4 §6.5). Ложь = `none`, пусто = `auto`.
     pub font_synth: (Option<bool>, Option<bool>, Option<bool>),
@@ -2898,6 +2905,8 @@ pub struct Computed {
     pub ruby_under: Option<bool>,
     /// `ruby-align` (css-ruby-1 §4.3); `None` — начальное `space-around`.
     pub ruby_align: Option<RubyAlign>,
+    /// CSS Ruby §ruby-merge: 0 separate, 1 merge, 2 auto.
+    pub ruby_merge: Option<u8>,
     /// Роль руби-коробки из `display: ruby*` (css-ruby-1 §2.1). Не
     /// наследуется. `display` при этом остаётся строчным (`InlineBlock` +
     /// `inline_display`), у `block ruby` — `Block`: все `match` по `Display`
@@ -3527,6 +3536,10 @@ impl Computed {
         let mut all: Vec<(String, u32)> =
             crate::fonts::face_features(self.font_family.as_deref().unwrap_or(""));
         all.extend(self.font_features.iter().cloned());
+        all.extend(crate::fonts::alternates::resolve(
+            self.font_family.as_deref().unwrap_or(""),
+            self.font_alternates.as_ref(),
+        ));
         self.add_kerning_feature(&mut all);
         // Шаг 4 §7.2: «setting a non-default value for the letter-spacing
         // property disables optional ligatures» (css-text-3 §8.2). Старше
@@ -3581,6 +3594,8 @@ impl Computed {
             font_features: self.font_features.clone(),
             font_kerning: self.font_kerning,
             font_settings: self.font_settings.clone(),
+            font_alternates: self.font_alternates.clone(),
+            ruby_merge: self.ruby_merge,
             text_transform: self.text_transform,
             ellipsis: self.ellipsis,
             overflow_marker: self.overflow_marker.clone(),
@@ -5843,9 +5858,15 @@ impl Computed {
             // пробелы или знаки; у нас растягиваются пробелы, и это поведение
             // `auto`/`inter-word`.
             "text-justify" => {
+                if matches!(
+                    v,
+                    "none" | "auto" | "inter-word" | "inter-character" | "distribute" | "ruby"
+                ) {
+                    self.ruby_justify = Some(v == "ruby");
+                }
                 self.no_justify = match v {
                     "none" => Some(true),
-                    "auto" | "inter-word" | "inter-character" | "distribute" => Some(false),
+                    "auto" | "inter-word" | "inter-character" | "distribute" | "ruby" => Some(false),
                     _ => self.no_justify,
                 };
             }
@@ -6766,6 +6787,7 @@ impl Computed {
                 if v == "inherit" {
                     self.font_size = None;
                     self.font_kerning = None;
+                    self.font_alternates = None;
                     self.font_family = None;
                     self.font_weight = None;
                     self.italic = None;
@@ -6854,6 +6876,7 @@ impl Computed {
                 self.oblique = Some(false);
                 self.font_weight = Some(400);
                 self.font_kerning = Some(2);
+                self.font_alternates = Some(crate::fonts::alternates::normal());
                 self.line_height = Some(Len::Auto);
                 for token in split_outside_parens(head) {
                     let t = token.as_str();
@@ -7548,6 +7571,15 @@ impl Computed {
                     _ => self.ruby_align,
                 };
             }
+            "ruby-merge" => {
+                self.ruby_merge = match v {
+                    "separate" | "initial" => Some(0),
+                    "merge" => Some(1),
+                    "auto" => Some(2),
+                    "inherit" | "unset" => None,
+                    _ => self.ruby_merge,
+                };
+            }
             "font-kerning" => {
                 self.set_font_kerning(v);
             }
@@ -7569,6 +7601,18 @@ impl Computed {
             | "font-variant-east-asian"
             | "font-variant-position"
             | "font-variant-alternates" => {
+                if matches!(key, "font-variant" | "font-variant-alternates") {
+                    if v == "inherit" {
+                        self.font_alternates = None;
+                        return;
+                    }
+                    let Some(alternates) =
+                        crate::fonts::alternates::parse(v, key == "font-variant")
+                    else {
+                        return;
+                    };
+                    self.font_alternates = Some(alternates);
+                }
                 // Значения разделяются ПРОБЕЛОМ (css-fonts-4 §6); каждое
                 // свойство сперва чистит СВОЮ подгруппу тегов — повтор и
                 // `normal` переопределяют, а не копятся при наследовании.
@@ -7635,32 +7679,11 @@ impl Computed {
                         "ruby" => &[("ruby", 1)],
                         "sub" => &[("subs", 1)],
                         "super" => &[("sups", 1)],
-                        "historical-forms" => &[("hist", 1)],
+                        "historical-forms" => &[],
                         // `none` выключает лигатуры по умолчанию.
                         "none" => &[("liga", 0), ("clig", 0), ("calt", 0)],
                         "normal" => &[],
-                        raw => {
-                            // Функциональные альтернаты: номер -> ssNN/cvNN.
-                            let func = |name: &str, pre: &str| {
-                                raw.strip_prefix(name)
-                                    .and_then(|r| r.strip_suffix(')'))
-                                    .and_then(|n| n.trim().parse::<u32>().ok())
-                                    .filter(|n| (1..=99).contains(n))
-                                    .map(|n| format!("{pre}{n:02}"))
-                            };
-                            if let Some(t) =
-                                func("styleset(", "ss").or_else(|| func("character-variant(", "cv"))
-                            {
-                                self.font_features.push((t, 1));
-                            } else if raw.starts_with("swash(") {
-                                self.font_features.push(("swsh".into(), 1));
-                            } else if raw.starts_with("ornaments(") {
-                                self.font_features.push(("ornm".into(), 1));
-                            } else if raw.starts_with("annotation(") {
-                                self.font_features.push(("nalt".into(), 1));
-                            }
-                            &[]
-                        }
+                        _ => &[],
                     };
                     for (t, on) in push {
                         self.font_features.push(((*t).into(), *on));
@@ -11155,7 +11178,7 @@ pub fn generic_family(lower: &str) -> Option<&'static str> {
 }
 
 /// Родовое имя семейства — разряд шрифта, а не шрифт.
-fn is_generic(lower: &str) -> bool {
+pub(crate) fn is_generic(lower: &str) -> bool {
     generic_family(lower).is_some() || matches!(lower, "monospace" | "ui-monospace")
 }
 
@@ -12988,7 +13011,7 @@ pub(crate) fn feature_list(v: &str) -> Option<Vec<(String, u32)>> {
 /// Идентификатор по §4.1.3 начинается с буквы, подчёркивания, не-ASCII знака
 /// или экранирования; за ними идут буквы, цифры, дефисы, подчёркивания и
 /// экранирования. Цифра первой запрещена, дефис с цифрой следом — тоже.
-fn family_name_ok(part: &str) -> bool {
+pub(crate) fn family_name_ok(part: &str) -> bool {
     if part.is_empty() {
         return false;
     }

@@ -776,6 +776,10 @@ pub fn style_first_line(pieces: Vec<Piece>, at: usize, style: &Computed) -> Vec<
                     // своих: при повторе тега побеждает первая строка.
                     c.font_features.extend(style.font_features.iter().cloned());
                     c.font_kerning = style.font_kerning.or(base.font_kerning);
+                    c.font_alternates = style
+                        .font_alternates
+                        .clone()
+                        .or_else(|| base.font_alternates.clone());
                     c.font_family = style.font_family.clone().or(base.font_family.clone());
                     c.font_settings = style
                         .font_settings
@@ -1420,6 +1424,8 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     });
     c.text_align = own.text_align.or(parent.text_align);
     c.no_justify = own.no_justify.or(parent.no_justify);
+    c.ruby_justify = own.ruby_justify.or(parent.ruby_justify);
+    c.ruby_unit = own.ruby_unit || parent.ruby_unit;
     c.text_align_last = own.text_align_last.or(parent.text_align_last);
     c.hanging = own.hanging.or(parent.hanging);
     c.monospace = own.monospace.or(parent.monospace);
@@ -1576,6 +1582,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     // css-ruby-1 §4.1/§4.3: оба свойства наследуемые.
     c.ruby_under = own.ruby_under.or(parent.ruby_under);
     c.ruby_align = own.ruby_align.or(parent.ruby_align);
+    c.ruby_merge = own.ruby_merge.or(parent.ruby_merge);
     // `image-orientation` наследуется (css-images-3 §5.4, «Inherited: yes»):
     // в наборе его ставят на `body`, а действует он на каждой картинке.
     c.image_orient_none = own.image_orient_none.or(parent.image_orient_none);
@@ -1623,6 +1630,10 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
         c.font_features = parent.font_features.clone();
     }
     c.font_kerning = own.font_kerning.or(parent.font_kerning);
+    c.font_alternates = own
+        .font_alternates
+        .clone()
+        .or_else(|| parent.font_alternates.clone());
     // `font-feature-settings` наследуется своим значением независимо от
     // `font-variant-*` ребёнка (css-fonts-4 §6.12: `font-variant: none` «does
     // not reset … font-feature-settings»).
