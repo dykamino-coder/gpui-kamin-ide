@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 
 mod selector_tokens;
+mod stylesheet_tokens;
 
 /// Пара «свойство: значение». Значение хранится сырым — разбор откладывается
 /// до момента применения, чтобы неизвестные свойства не стоили ничего.
@@ -1540,7 +1541,9 @@ fn declared_prefixes(css: &str) -> std::collections::HashSet<String> {
     let mut set = std::collections::HashSet::new();
     let cleaned = strip_comments(css);
     let mut rest = cleaned.as_str();
-    while let Some((piece, tail)) = next_piece(rest) {
+    loop {
+        rest = stylesheet_tokens::start(rest);
+        let Some((piece, tail)) = next_piece(rest) else { break };
         rest = tail;
         let Piece::Statement { head } = piece else { break };
         let low = head.trim().to_ascii_lowercase();
@@ -1593,15 +1596,19 @@ pub fn parse_stylesheet_media(css: &str, media: Media) -> Vec<Rule> {
         NS_PREFIXES.with(|n| *n.borrow_mut() = Some(declared));
     }
     let _scope = NsScope(top);
-    sheet_rules(css, media)
+    sheet_rules(css, media, top)
 }
 
-fn sheet_rules(css: &str, media: Media) -> Vec<Rule> {
+fn sheet_rules(css: &str, media: Media, top: bool) -> Vec<Rule> {
     let mut out = vec![];
     let cleaned = strip_comments(css);
     let mut rest = cleaned.as_str();
     let mut order = 0usize;
-    while let Some((piece, tail)) = next_piece(rest) {
+    loop {
+        if top {
+            rest = stylesheet_tokens::start(rest);
+        }
+        let Some((piece, tail)) = next_piece(rest) else { break };
         rest = tail;
         // At-правило-ПРЕДЛОЖЕНИЕ блока не имеет и кончается точкой с запятой:
         // `@import`, `@charset`, `@namespace`, `@layer a, b;`. Ни одно из них
@@ -2308,19 +2315,6 @@ enum Piece<'a> {
 /// Пока искалась просто первая `{`, неизвестное at-правило с мусором в
 /// преамбуле (`@foo ] } ) … ;`) уводило разбор внутрь своего мусора, и вся
 /// таблица за ним разъезжалась (`matching-brackets-001`, `core-syntax-001`).
-/// Начинается ли кусок с at-правила: ведущие `<!--`/`-->` верхнего уровня
-/// — пробельные токены (css-syntax-3 §5.4.1), их пропускаем.
-fn statement_head(text: &str) -> bool {
-    let mut t = text.trim_start();
-    loop {
-        if let Some(r) = t.strip_prefix("<!--").or_else(|| t.strip_prefix("-->")) {
-            t = r.trim_start();
-        } else {
-            return t.starts_with('@') || t.is_empty();
-        }
-    }
-}
-
 fn next_piece(text: &str) -> Option<(Piece<'_>, &str)> {
     let mut square = 0i32;
     let mut round = 0i32;
@@ -2357,7 +2351,7 @@ fn next_piece(text: &str) -> Option<(Piece<'_>, &str)> {
             // .a, #b { color: red }` — ОДНО правило с негодным селектором, и
             // отбрасывается оно целиком (`at-charset-039`). Прежде `test;`
             // обрывалось на месте, и красное правило оживало.
-            ';' if square == 0 && round == 0 && statement_head(text) => {
+            ';' if square == 0 && round == 0 && stylesheet_tokens::statement_head(text) => {
                 let head = &text[..at];
                 return Some((Piece::Statement { head }, &text[at + 1..]));
             }
