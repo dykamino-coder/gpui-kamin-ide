@@ -19,6 +19,7 @@ use std::rc::Rc;
 mod spot_geometry;
 mod orthogonal_measure;
 mod vertical_style;
+mod combined_geometry;
 
 /// По каким осям разрешено тянуть.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -4164,31 +4165,13 @@ impl Element for CombinedUpright {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let scale_factor = window.scale_factor();
-        let dev = |v: Pixels| v.scale(scale_factor);
-        let cx_ = bounds.origin.x + bounds.size.width / 2.0;
-        let cy_ = bounds.origin.y + bounds.size.height / 2.0;
-        // Ужатие по строчной оси содержимого: длиннее кегля — в кегль.
-        let sx =
-            if self.compress && self.natural.width > px(self.em) && self.natural.width > px(0.0) {
-                self.em / f32::from(self.natural.width)
-            } else {
-                1.0
-            };
-        // Сначала ужатие от угла куска (кусок 2-4 кегля превращается в
-        // квадрат кегля), затем контр-поворот вокруг центра квадрата —
-        // квадрат переходит в себя. Порядок звеньев подобран ЗАМЕРОМ:
-        // скейл после поворота мял уже повёрнутые оси (плашка 160×40).
-        let matrix = gpui::TransformationMatrix::unit()
-            .translate(gpui::point(dev(bounds.origin.x), dev(bounds.origin.y)))
-            .scale(gpui::size(sx, 1.0))
-            .translate(gpui::point(
-                dev(bounds.origin.x) * -1.0,
-                dev(bounds.origin.y) * -1.0,
-            ))
-            .translate(gpui::point(dev(cx_), dev(cy_)))
-            .rotate(gpui::Radians(-std::f32::consts::FRAC_PI_2))
-            .translate(gpui::point(dev(cx_) * -1.0, dev(cy_) * -1.0));
+        let matrix = combined_geometry::transform(
+            bounds,
+            self.natural,
+            self.em,
+            self.compress,
+            window.scale_factor(),
+        );
         let child = self.child.as_mut().unwrap();
         window.with_transformation(matrix, |window| child.paint(window, cx));
     }

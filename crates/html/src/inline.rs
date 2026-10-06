@@ -23,6 +23,8 @@ mod tabs;
 pub(crate) mod physical_sides;
 mod physical_projection;
 mod inline_spacing;
+mod bidi_controls;
+pub use bidi_controls::bidi_marks;
 pub use tabs::tab_stops;
 
 use crate::computed::{Computed, TextAlign, TextTransform};
@@ -2123,37 +2125,6 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
         None => parent.tab_size_len,
     };
     c
-}
-
-/// Знаки управления двунаправленностью вокруг куска.
-///
-/// Отмена (`bidi-override`, тег `<bdo>`) ставит знаки в заданную сторону как
-/// есть; изоляция (`isolate`) прячет кусок от соседей; просто своя сторона —
-/// встраивание. Все три случая Юникод выражает парой знаков, и разбор их
-/// понимает — своего кода под них не нужно.
-pub fn bidi_marks(own: &Computed, merged: &Computed) -> (Option<char>, Option<char>) {
-    let rtl = merged.rtl == Some(true);
-    if own.bidi_override == Some(true) {
-        // Отмена: RLO/LRO … PDF.
-        let open = if rtl { '\u{202e}' } else { '\u{202d}' };
-        return (Some(open), Some('\u{202c}'));
-    }
-    if own.bidi_isolate == Some(true) {
-        // Изоляция: RLI/LRI … PDI.
-        let open = if rtl { '\u{2067}' } else { '\u{2066}' };
-        return (Some(open), Some('\u{2069}'));
-    }
-    // Своя сторона письма: RLE/LRE … PDF — только при `unicode-bidi: embed`
-    // (или атрибуте `dir`). У `normal` (по умолчанию) `direction` строчного
-    // элемента порядка знаков не меняет: `<span style="direction: rtl">`
-    // в rtl-блоке обкладывался RLE, латиница внутри уходила своим прогоном,
-    // и статическая точка абсолюта оказывалась не там, где текст
-    // (`static-position/v{lr,rl}-rtl-*`).
-    if own.rtl.is_some() && own.bidi_embed == Some(true) {
-        let open = if rtl { '\u{202b}' } else { '\u{202a}' };
-        return (Some(open), Some('\u{202c}'));
-    }
-    (None, None)
 }
 
 /// `hyphens: auto` — расставить знаки мягкого переноса по слогоразделу.

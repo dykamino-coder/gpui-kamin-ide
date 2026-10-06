@@ -24,6 +24,7 @@ pub mod tabs;
 
 mod atom_placement;
 mod content_baselines;
+mod controlled_shape;
 mod selection_geometry;
 mod vertical_content_baselines;
 mod vertical_geometry;
@@ -3236,27 +3237,6 @@ fn trim_runs(runs: &[TextRun], text: &str) -> Vec<TextRun> {
     out
 }
 
-/// Зеркальная пара знака: в правой стороне письма скобка смотрит в другую
-/// сторону. Список короткий — это те знаки, что встречаются в тексте, а не
-/// весь набор Юникода.
-fn mirror(ch: char) -> char {
-    match ch {
-        '(' => ')',
-        ')' => '(',
-        '[' => ']',
-        ']' => '[',
-        '{' => '}',
-        '}' => '{',
-        '<' => '>',
-        '>' => '<',
-        '«' => '»',
-        '»' => '«',
-        '‹' => '›',
-        '›' => '‹',
-        other => other,
-    }
-}
-
 /// Слово строки и сколько пробелов стоит перед ним от начала строки.
 struct Word {
     range: std::ops::Range<usize>,
@@ -4313,20 +4293,18 @@ impl Paragraph {
             format!("{body}{suffix}")
         };
         let body = body.as_str();
+        let body = controlled_shape::text(body, &mut piece, rtl);
         if !rtl {
             return Some(window.text_system().shape_line_spaced(
-                body.to_string().into(),
+                body,
                 self.font_size,
                 &piece,
                 None,
                 self.letter_spacing,
             ));
         }
-        // В правом прогоне парный знак смотрит в другую сторону: скобка,
-        // кавычка-ёлочка, знаки сравнения.
-        let mirrored: String = body.chars().map(mirror).collect();
         Some(window.text_system().shape_line_rtl(
-            mirrored.into(),
+            body,
             self.font_size,
             &piece,
             self.letter_spacing,
