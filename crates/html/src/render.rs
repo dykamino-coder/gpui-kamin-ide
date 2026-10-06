@@ -14,6 +14,7 @@ mod native_vertical;
 mod rotated_atom;
 mod physical_atomic;
 mod vertical_flow_margins;
+mod margin_edges;
 mod native_paragraph_route;
 mod scroll_box;
 mod orthogonal_fixed_child;
@@ -15054,34 +15055,11 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
                 }
             }
         }
-        // Поля КОРНЯ ни с чем не схлопываются (§8.3.1).
-        if e.tag == "html" || !top_edge_open(e) {
+        // Root margins do not collapse with their children (CSS 2.1 §8.3.1).
+        if e.tag == "html" {
             continue;
         }
-        // Верхнее поле родителя и ВСЯ ведущая цепочка полей потомков — одно
-        // поле (§8.3.1). Прежде поднималось поле ровно ОДНОГО ребёнка, и на
-        // следующем уровне то же поле внука поднималось повторно.
-        let mut path: Vec<usize> = vec![];
-        let mut eat: Vec<(Vec<usize>, bool)> = vec![];
-        // Дети `e` лежат в `e`: его ширина точками — содержащий блок для
-        // `bfc_no_fit` внутри цепи.
-        let cb_prev = CB_WIDTH.get();
-        if let Some(Len::Px(w)) = e.style.width
-            && w > 0.0
-        {
-            CB_WIDTH.set(Some(w));
-        }
-        let chain = with_inner_cb(&e.style, || leading_chain(&e.children, &mut path, &mut eat));
-        CB_WIDTH.set(cb_prev);
-        if let (Some(s), Some(own)) = (chain, margin_or_bail(e.style.margin.top, &e.style))
-            && !eat.is_empty()
-        {
-            pin_inherited_margins(e, true, false);
-            e.style.margin.top = Some(Len::Px(solve(adjoin(strut_of(own), s))));
-            for (p, deep) in &eat {
-                zero_at(&mut e.children, p, true, *deep);
-            }
-        }
+        margin_edges::collapse_top(e);
         // То же СНИЗУ: отступ последнего ребёнка протекает наружу, если
         // родителя от него не отделяют ни рамка, ни внутренний отступ, ни
         // заданная высота. Иначе следующий за родителем блок отодвигался на
@@ -15194,7 +15172,7 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
             }))
             .and_then(|(i, ch)| {
                 with_inner_cb(&e.style, || margin_px(ch.style.margin.bottom, &ch.style))
-                    .map(|v| (i, v))
+                    .map(|_| i)
             });
         // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): запрет поглощения, когда в хвосте
         // есть коробка с клиренсом (CSS 2.1 §8.3.1, «does not collapse with a top
@@ -15203,7 +15181,7 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
         // так и остались. Значит потеря не здесь: до этого места дело либо не
         // доходит (гейты выше), либо `child_bottom` уже `None` — искать
         // надо во втором проходе (`cleared_run`).
-        if let Some((i, v)) = child_bottom {
+        if let Some(i) = child_bottom {
             // Минимальная высота выше содержимого: поле последнего ребёнка
             // ПРИМЫКАЕТ к его нижнему краю (§8.3.1), но наружу не идёт и
             // родителя не растит — низ родителя решает `min-height` (§10.6.3).
@@ -15216,13 +15194,7 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
                 }
                 continue;
             }
-            let own = margin_px(e.style.margin.bottom, &e.style).unwrap_or(0.0);
-            pin_inherited_margins(e, false, true);
-            e.style.margin.bottom = Some(Len::Px(collapsed(own, v)));
-            if let Node::Element(ch) = &mut e.children[i] {
-                pin_inherited_margins(ch, false, true);
-                ch.style.margin.bottom = Some(Len::Px(0.0));
-            }
+            margin_edges::collapse_bottom(e);
         }
     }
     // Струна примыкающих полей соседей (§8.3.1). `emitted` — сколько точек уже
@@ -15329,12 +15301,6 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
         }
     }
     out
-}
-
-/// Слитый отступ CSS 2.1 §8.3.1: больший из положительных плюс меньший
-/// (самый отрицательный) из отрицательных.
-fn collapsed(a: f32, b: f32) -> f32 {
-    a.max(0.0).max(b.max(0.0)) + a.min(0.0).min(b.min(0.0))
 }
 
 /// Первый (по направлению итератора) IN-FLOW блочный ребёнок: плавающие,
