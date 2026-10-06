@@ -11,7 +11,7 @@ mod orthogonal_inline;
 mod native_vertical;
 mod containment_paint;
 mod page_boxes;
-use page_boxes::page_margin_boxes;
+mod page_counters;
 mod rotated_atom;
 mod physical_atomic;
 mod vertical_flow_margins;
@@ -1410,6 +1410,7 @@ pub fn render_paged(
     let mut none = false;
     let mut canvas: Option<gpui::Hsla> = None;
     let mut root = opts.root_style();
+    let document_counters = page_counters::PageCounters::from_document(nodes);
     crate::interact::frame_sanitize();
     IFRAME_DEPTH.with(|d| d.set(0));
     collect_mask_defs(nodes);
@@ -1789,12 +1790,8 @@ pub fn render_paged(
     PAGED.with(|p| p.set(false));
     // Марджин-боксы: наследуют от контекста страницы, а тот — от корня
     // (css-page-3 §page-properties; Blink `StyleForPage` от documentElement).
-    let margin_for: Option<crate::flow::MarginFn> = margin_decls.map(|f| {
-        let root = root.clone();
-        let opts = opts.clone();
-        std::rc::Rc::new(move |i: usize, name: &str, pages: usize, g: &crate::flow::PageGeom| {
-            page_margin_boxes(&f(i, name), i, pages, g, &root, &opts)
-        }) as crate::flow::MarginFn
+    let margin_for = margin_decls.map(|f| {
+        page_boxes::builder(f, root.clone(), opts.clone(), document_counters)
     });
     crate::flow::PageStack::new(kids, geom_for, icb_copies, icb_reach, fixed_copies, margin_for)
         .into_any_element()

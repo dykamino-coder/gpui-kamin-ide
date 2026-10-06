@@ -3646,7 +3646,7 @@ fn walk(
 /// Порядок именно такой (css-lists-3 §5): сперва создаются счётчики, затем
 /// накапливаются увеличения, затем присваиваются значения. Имена, которые
 /// узел СБРОСИЛ, возвращаются: на выходе из него область надо закрыть.
-fn apply_counter_decls(
+pub(crate) fn apply_counter_decls(
     style: &Computed,
     counters: &mut crate::counters::Counters,
     tag: &str,

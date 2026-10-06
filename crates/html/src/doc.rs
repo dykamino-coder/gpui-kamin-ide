@@ -10,6 +10,10 @@
 //! `render`. Пересборка происходит лишь когда сменилась сама разметка — что
 //! проверяется по хэшу, а не по строке целиком.
 
+#[path = "doc/box_style.rs"]
+mod box_style;
+use box_style::has_box_style;
+
 use crate::dom::Node;
 use crate::value::Len;
 use std::collections::hash_map::DefaultHasher;
@@ -99,43 +103,6 @@ impl Document {
     pub fn top_level_blocks(&self) -> usize {
         self.nodes.len()
     }
-}
-
-/// Задаёт ли стиль обёртки её КОРОБКУ, а не только текст внутри.
-///
-/// `body { width: 600px; position: relative }` — обычный способ задать
-/// систему координат странице, и снятая обёртка уносила её с собой: проценты
-/// внутри считались от окна, а абсолютные дети — от другого предка.
-fn has_box_style(c: &crate::computed::Computed) -> bool {
-    c.width.is_some()
-        || c.height.is_some()
-        || c.min_width.is_some()
-        || c.min_height.is_some()
-        || c.max_width.is_some()
-        || c.max_height.is_some()
-        || c.position.is_some()
-        || c.display.is_some()
-        || c.overflow_x.is_some()
-        || c.overflow_y.is_some()
-        // Вертикальное письмо задаёт ОСЬ ПОТОКА детей: без коробки её задать
-        // некому, а дети об этом знают только через родителя. ЯВНОЕ
-        // `horizontal-tb` — ось как у всех, коробки не требует: обёртка с
-        // ним ломала схлопку полей p с body (wm-propagation-body-044).
-        || c.vertical == Some(true)
-        // Поля и внутренние отступы обёртки сдвигают ВСЁ содержимое: браузер
-        // держит на `body` умолчание в 8 точек, и снятая обёртка уносила этот
-        // сдвиг с собой — страница прижималась к краю окна.
-        || any_side(&c.margin)
-        || any_side(&c.padding)
-        // Фон обёртки — её собственная краска: снятая обёртка уносила
-        // `html { background: … }` с собой, и корневой фон пропадал
-        // (страница выходила белой при пустом теле). Фоновая КАРТИНКА — та же
-        // краска: область её раскладки — сама коробка корня
-        // (background-size-document-root-vrl-*).
-        || c.background.is_some()
-        || c.gradient.is_some()
-        || c.bg_image.is_some()
-        || c.background_rcs.is_some()
 }
 
 /// Есть ли у обёртки НЕНУЛЕВОЙ отступ хоть с одной стороны.

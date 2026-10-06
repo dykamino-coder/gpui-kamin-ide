@@ -2,25 +2,48 @@
 
 use super::*;
 
+pub(super) fn builder(
+    declarations: PageMarginDeclsFn,
+    root: Computed,
+    opts: RenderOpts,
+    counters: page_counters::PageCounters,
+) -> crate::flow::MarginFn {
+    let counters = std::cell::RefCell::new(counters);
+    std::rc::Rc::new(move |i, name, pages, geometry| {
+        page_margin_boxes(
+            &declarations(i, name),
+            i,
+            pages,
+            geometry,
+            &root,
+            &opts,
+            &mut counters.borrow_mut(),
+        )
+    })
+}
+
 /// Марджин-боксы листа `page` из `pages` (css-page-3 §margin-boxes): элемент
 /// и мера каждой ПОРОЖДЁННОЙ коробки — `content` не `none`/`normal`
 /// (§populating-margin-boxes). Раскладку делает `flow::PageStack` по
 /// `page_margin`. Элемент — гибкая колонка во весь border box: так
 /// `vertical-align` коробки работает «как у ячейки таблицы» (§page-properties),
 /// а `text-align` наследует блок содержимого.
-pub(super) fn page_margin_boxes(
+fn page_margin_boxes(
     decls: &PageMarginDecls,
     page: usize,
     pages: usize,
     g: &crate::flow::PageGeom,
     root: &Computed,
     opts: &RenderOpts,
+    counters: &mut page_counters::PageCounters,
 ) -> Vec<crate::flow::MarginBox> {
     let (ctx, boxes) = decls;
     let mut ctx_own = Computed::default();
     for (k, v) in ctx {
         ctx_own.apply_one(k, v);
     }
+    page_counters::resolve(&mut ctx_own, root);
+    counters.begin(page, pages, &ctx_own);
     let ctx_style = inline::inherit(root, &ctx_own);
     let mut out = Vec::new();
     for (slot, list) in boxes {
@@ -51,12 +74,14 @@ pub(super) fn page_margin_boxes(
                 own.apply_one(k, v);
             }
         }
+        page_counters::resolve(&mut own, &ctx_own);
         let resolved = inline::inherit(&ctx_style, &own);
         let fs = match resolved.font_size {
             Some(Len::Px(v)) => v,
             _ => 16.0,
         };
-        let children = content_nodes(&items, &resolved, page, pages);
+        let mut content_counters = counters.for_margin(&own);
+        let children = content_nodes(&items, &resolved, &mut content_counters);
         let cb = crate::page_margin::containing_block(place, g.size, g.margin);
         // Длина по базе: `auto` — `None`; проценты — от содержащего блока по
         // СВОЕЙ оси (Blink `kContainingBlockSize`).
@@ -178,13 +203,9 @@ pub(super) fn page_margin_boxes(
 fn content_nodes(
     items: &[crate::computed::ContentItem],
     style: &Computed,
-    page: usize,
-    pages: usize,
+    counters: &mut crate::counters::Counters,
 ) -> Vec<Node> {
     use crate::computed::ContentItem;
-    let mut counters = crate::counters::Counters::default();
-    counters.reset("page", (page + 1) as i32);
-    counters.reset("pages", pages as i32);
     let mut children = Vec::new();
     let mut run = Vec::new();
     let flush = |run: &mut Vec<ContentItem>,
@@ -202,7 +223,7 @@ fn content_nodes(
     };
     for item in items {
         if let ContentItem::Image(src) = item {
-            flush(&mut run, &mut children, &mut counters);
+            flush(&mut run, &mut children, counters);
             if let Some(src) = crate::dom::content_image_src(src) {
                 let mut image = super::anon_element("img", vec![]);
                 image.inline = true;
@@ -213,6 +234,6 @@ fn content_nodes(
             run.push(item.clone());
         }
     }
-    flush(&mut run, &mut children, &mut counters);
+    flush(&mut run, &mut children, counters);
     children
 }

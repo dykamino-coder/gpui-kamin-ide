@@ -37,7 +37,7 @@ struct Entry {
 }
 
 /// Счётчики документа и адрес текущего узла в дереве коробок.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Counters {
     stack: HashMap<String, Vec<Entry>>,
     /// Active style-containment roots; their own directives stay outside.

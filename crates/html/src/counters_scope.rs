@@ -10,6 +10,13 @@ pub(crate) struct Scope {
 }
 
 impl Counters {
+    /// Page and margin contexts obscure the entire document chain of this name.
+    /// CSS Paged Media 3 §page-based-counters; Blink GetCounterValues:356-377.
+    pub(crate) fn obscure(&mut self, name: &str, value: i32) {
+        self.stack.remove(name);
+        self.reset(name, value);
+    }
+
     /// CSS Containment 2 §3.4: enter after the root's own counter directives.
     /// Blink counters_attachment_context.cc:250-255 uses the same boundary.
     pub(crate) fn enter_style_scope(&mut self) -> Scope {
