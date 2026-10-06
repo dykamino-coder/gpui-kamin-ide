@@ -10,6 +10,8 @@ use content_wrapper::{content_sized, content_sized_wraps};
 mod orthogonal_inline;
 mod native_vertical;
 mod containment_paint;
+mod paint_scope;
+use paint_scope::{DepthScope, snapshot as defer_depth, inside as inside_deferred};
 mod page_boxes;
 mod page_counters;
 mod rotated_atom;
@@ -8095,8 +8097,9 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             let paint_key = next_paint_key();
             // CSS2 Appendix E: descendants paint within their nearest stacking context.
             let layer_ok = !inside_deferred();
-            let _deferred_guard = DeferGuard::enter(
-                defers(&e.style, inherited, under_tf) || stacking_context(&e.style),
+            let geometry_layer_ok = !paint_scope::deferred();
+            let _deferred_guard = paint_scope::Guard::enter(
+                defers(&e.style, inherited, under_tf), stacking_context(&e.style),
             );
             // Ряд обтекания: текст рядом с плавающим блоком и остаток под ним.
             if e.tag == "kamin-float" {
@@ -8686,7 +8689,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 && !crate::inline::establishes_cb(inherited)
                 && (x_set || y_set);
             let to_icb = !ordered_context
-                && layer_ok
+                && geometry_layer_ok
                 && (fixed || orphan_abs)
                 && e.style.z_index.unwrap_or(0) >= 0
                 && !stays_positioned(&nodes[idx + 1..]);
@@ -8698,7 +8701,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // розовый квадрат уезжал с `.inner` на 270 px).
             let to_cb = !to_icb
                 && (!ordered_context || (x_set && y_set))
-                && layer_ok
+                && geometry_layer_ok
                 && far_abs
                 && e.style.z_index.unwrap_or(0) >= 0
                 && !stays_positioned(&nodes[idx + 1..]);
@@ -9692,22 +9695,6 @@ fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) -> AnyElement
     div().flex().flex_row().flex_shrink_0().child(el).into_any_element()
 }
 
-thread_local! {
-    /// Глубина вложенности отложенной отрисовки на время построения дерева.
-    ///
-    /// GPUI запрещает откладывать рисование изнутри уже отложенного —
-    /// `position: fixed` внутри `position: fixed` роняло окно
-    /// (`cannot call defer_draw during deferred drawing`). Отложен только
-    /// внешний слой, вложенные рисуются на месте: порядок наложения внутри
-    /// одного слоя всё равно задаётся порядком разметки.
-    static DEFERRED_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-}
-
-/// Строим ли мы сейчас поддерево отложенного элемента.
-fn inside_deferred() -> bool {
-    DEFERRED_DEPTH.with(|d| d.get()) > 0
-}
-
 /// Stacking contexts isolate descendant paint order (CSS2 Appendix E).
 fn stacking_context(c: &Computed) -> bool {
     // CSS Will Change §2.1; CSS Containment 2 §§3.2/3.3 also create contexts.
@@ -9786,51 +9773,6 @@ fn defers(c: &Computed, parent: &Computed, under_tf: bool) -> bool {
     (c.position == Some(crate::computed::Position::Fixed) && !under_tf)
         || c.position == Some(crate::computed::Position::Sticky)
         || (c.z_index.is_some_and(|z| z > 0) && z_index_applies(c, parent))
-}
-
-/// Счётчик глубины на время построения детей элемента.
-struct DeferGuard(bool);
-
-impl DeferGuard {
-    fn enter(deferred: bool) -> Self {
-        if deferred {
-            DEFERRED_DEPTH.with(|d| d.set(d.get() + 1));
-        }
-        Self(deferred)
-    }
-}
-
-impl Drop for DeferGuard {
-    fn drop(&mut self) {
-        if self.0 {
-            DEFERRED_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
-        }
-    }
-}
-
-/// Текущая глубина — её запоминают поддеревья, которые строятся не сейчас.
-fn defer_depth() -> usize {
-    DEFERRED_DEPTH.with(|d| d.get())
-}
-
-/// Вернуть запомненную глубину на время отложенного построения поддерева.
-///
-/// Лента прокрутки, переход и ручка размера строят детей на ОТРИСОВКЕ, а не
-/// при сборке дерева: к тому времени счётчик уже обнулён, и вложенный
-/// `position: fixed` внутри прокручиваемого `position: fixed` снова просился
-/// в отложенный слой — окно падало.
-struct DepthScope(usize);
-
-impl DepthScope {
-    fn enter(depth: usize) -> Self {
-        Self(DEFERRED_DEPTH.with(|d| d.replace(depth)))
-    }
-}
-
-impl Drop for DepthScope {
-    fn drop(&mut self) {
-        DEFERRED_DEPTH.with(|d| d.set(self.0));
-    }
 }
 
 /// `z-index`: порядок наложения.
