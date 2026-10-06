@@ -15,7 +15,7 @@ probe = ["dep:kamin-probe"]
 [dependencies]
 # Веб-содержимое (plan/101): offscreen-браузер вместо окон WebView2.
 # default-features off: `sandbox` на Windows меняет тип цели, `build-util` тянет clap.
-cef = { version = "150", default-features = false }
+cef = { version = "154", default-features = false }
 # Кадр CEF заворачиваем в RenderImage gpui — тип кадра берём из image той же версии.
 image = { version = "0.25", default-features = false }
 # Пре-декод SVG-иконок дерева (icon_raster) — та же версия, что в vendored gpui.
