@@ -10,6 +10,8 @@ mod cross_keyword;
 mod main_keyword;
 #[path = "flex_intrinsic_floor.rs"]
 mod intrinsic_floor;
+#[path = "flex_containment.rs"]
+mod containment;
 use crate::geometry::{Line, Point, Rect, Size};
 use crate::style::{
     AlignContent, AlignContentKeyword, AlignItems, AlignItemsKeyword, AlignSelf, AvailableSpace,
@@ -324,6 +326,7 @@ pub fn compute_flexbox_layout(
 
     // Pull these out earlier to avoid borrowing issues
     let contain = style.contain();
+    let contained_width = style.contained_intrinsic_size().width;
     let aspect_ratio = style.aspect_ratio();
     let padding = style
         .padding()
@@ -371,6 +374,14 @@ pub fn compute_flexbox_layout(
     let mut styled_based_known_dimensions = known_dimensions
         .or(min_max_definite_size.or(clamped_style_size))
         .maybe_max(padding_border_sum);
+    styled_based_known_dimensions.width = containment::intrinsic_width(
+        styled_based_known_dimensions.width,
+        contained_width,
+        inputs.available_space.width,
+        padding_border_sum.width,
+        min_size.width,
+        max_size.width,
+    );
 
     // Short-circuit layout if the container's size is fully determined by the container's size and the run mode
     // is ComputeSize (and thus the container's size is all that we're interested in)
@@ -491,11 +502,7 @@ pub fn compute_flexbox_layout(
         },
     );
 
-    // Layout containment suppresses the box's baseline for baseline-alignment purposes
-    if contain.suppresses_baseline() {
-        output.baselines = Baselines::NONE;
-        output.baselines_x = Baselines::NONE;
-    }
+    containment::suppress_baselines(&mut output, contain);
 
     output
 }

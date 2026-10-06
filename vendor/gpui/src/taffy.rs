@@ -590,6 +590,10 @@ impl ToTaffy<taffy::style::Style> for Style {
                     )
                 })
             }),
+            contained_intrinsic_size: taffy::Size {
+                width: self.contained_intrinsic_size[0].map(|size| size * scale_factor),
+                height: self.contained_intrinsic_size[1].map(|size| size * scale_factor),
+            },
             // KaminIDE patch: `contain: layout` — базовых линий нет.
             contain: if self.hides_baseline {
                 taffy::Contain::LAYOUT
