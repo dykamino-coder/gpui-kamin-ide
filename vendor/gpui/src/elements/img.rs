@@ -1,7 +1,14 @@
+//! Image loading, intrinsic sizing, and painting.
+
+mod natural_size;
+mod image_style;
+mod sampling;
+pub use image_style::{ImageStyle, StyledImage};
+
 use crate::{
-    AnyElement, AnyImageCache, App, Asset, AssetLogger, Bounds, DefiniteLength, Element, ElementId,
+    AnyElement, AnyImageCache, App, Asset, AssetLogger, Bounds, Element, ElementId,
     Entity, GlobalElementId, Hitbox, Image, ImageCache, InspectorElementId, InteractiveElement,
-    Interactivity, IntoElement, LayoutId, Length, ObjectFit, Pixels, RenderImage, Resource,
+    Interactivity, IntoElement, LayoutId, Length, Pixels, RenderImage, Resource,
     SMOOTH_SVG_SCALE_FACTOR, SharedString, SharedUri, StyleRefinement, Styled, SvgSize, Task,
     Window, px, swap_rgba_pa_to_bgra,
 };
@@ -121,55 +128,6 @@ where
 {
     fn from(value: F) -> Self {
         Self::Custom(Arc::new(value))
-    }
-}
-
-/// The style of an image element.
-pub struct ImageStyle {
-    grayscale: bool,
-    object_fit: ObjectFit,
-    loading: Option<Box<dyn Fn() -> AnyElement>>,
-    fallback: Option<Box<dyn Fn() -> AnyElement>>,
-}
-
-impl Default for ImageStyle {
-    fn default() -> Self {
-        Self {
-            grayscale: false,
-            object_fit: ObjectFit::Contain,
-            loading: None,
-            fallback: None,
-        }
-    }
-}
-
-/// Style an image element.
-pub trait StyledImage: Sized {
-    /// Get a mutable [ImageStyle] from the element.
-    fn image_style(&mut self) -> &mut ImageStyle;
-
-    /// Set the image to be displayed in grayscale.
-    fn grayscale(mut self, grayscale: bool) -> Self {
-        self.image_style().grayscale = grayscale;
-        self
-    }
-
-    /// Set the object fit for the image.
-    fn object_fit(mut self, object_fit: ObjectFit) -> Self {
-        self.image_style().object_fit = object_fit;
-        self
-    }
-
-    /// Set the object fit for the image.
-    fn with_fallback(mut self, fallback: impl Fn() -> AnyElement + 'static) -> Self {
-        self.image_style().fallback = Some(Box::new(fallback));
-        self
-    }
-
-    /// Set the object fit for the image.
-    fn with_loading(mut self, loading: impl Fn() -> AnyElement + 'static) -> Self {
-        self.image_style().loading = Some(Box::new(loading));
-        self
     }
 }
 
@@ -352,49 +310,11 @@ impl Element for Img {
                                     .get_or_insert(image_size.width / image_size.height);
                             }
 
-                            // KaminIDE patch: авто-ширина при высоте-ДОЛЕ
-                            // остаётся авто — её даёт соотношение от решённой
-                            // доли (css-sizing-4 §5.1 transferred size; Blink
-                            // `ComputeReplacedSize`). Прежде ширина становилась
-                            // природной, и `height: 100%` картинки 200×200 в
-                            // коробке 100 давал коробку шириной 200
-                            // (`intrinsic-percent-replaced-024/026`,
-                            // `grid-in-table-cell-with-img`). Не решилась доля
-                            // (блок неопределён, CSS 2.1 §10.5 — `auto`) —
-                            // лист отдаёт природный размер через замер.
-                            let pct_height = matches!(
-                                style.size.height,
-                                Length::Definite(DefiniteLength::Fraction(_))
+                            natural_for_measure = natural_size::resolve(
+                                &mut style,
+                                image_size,
+                                window.rem_size(),
                             );
-                            if matches!(style.size.width, Length::Auto) && pct_height {
-                                natural_for_measure = Some(image_size);
-                            } else if let Length::Auto = style.size.width {
-                                style.size.width = match style.size.height {
-                                    Length::Definite(DefiniteLength::Absolute(abs_length)) => {
-                                        let height_px = abs_length.to_pixels(window.rem_size());
-                                        Length::Definite(
-                                            px(image_size.width.0 * height_px.0
-                                                / image_size.height.0)
-                                            .into(),
-                                        )
-                                    }
-                                    _ => Length::Definite(image_size.width.into()),
-                                };
-                            }
-
-                            if let Length::Auto = style.size.height {
-                                style.size.height = match style.size.width {
-                                    Length::Definite(DefiniteLength::Absolute(abs_length)) => {
-                                        let width_px = abs_length.to_pixels(window.rem_size());
-                                        Length::Definite(
-                                            px(image_size.height.0 * width_px.0
-                                                / image_size.width.0)
-                                            .into(),
-                                        )
-                                    }
-                                    _ => Length::Definite(image_size.height.into()),
-                                };
-                            }
 
                             if global_id.is_some() && data.frame_count() > 1 {
                                 window.request_animation_frame();
@@ -520,27 +440,18 @@ impl Element for Img {
                     window,
                     cx,
                 ) {
-                    let new_bounds = self
-                        .style
-                        .object_fit
-                        .get_bounds(bounds, data.size(layout_state.frame_index));
+                    let new_bounds = image_style::position(
+                        self.style.object_fit.get_bounds(bounds, data.size(layout_state.frame_index)),
+                        bounds,
+                        self.style.object_position,
+                        window.rem_size(),
+                    );
                     // KaminIDE patch: временная трасса под IMG_DBG.
                     if std::env::var("IMG_DBG").is_ok() {
                         eprintln!("IMG bounds={:?} natural={:?}", bounds, data.size(layout_state.frame_index));
                     }
-                    let corner_radii = style
-                        .corner_radii
-                        .to_pixels(window.rem_size())
-                        .clamp_radii_for_quad_size(new_bounds.size);
-                    window
-                        .paint_image(
-                            new_bounds,
-                            corner_radii,
-                            data,
-                            layout_state.frame_index,
-                            self.style.grayscale,
-                        )
-                        .log_err();
+                    sampling::paint(window, new_bounds, style, data,
+                        layout_state.frame_index, &self.style).log_err();
                 } else if let Some(replacement) = &mut layout_state.replacement {
                     replacement.paint(window, cx);
                 }

@@ -109,14 +109,14 @@ fn measure(
     let body = &text[lead..];
     if narrow <= 0.0 {
         let below = wrapper
-            .wrap_line(&[LineFragment::text(body)], width)
+            .wrap_line_css(&[LineFragment::text(body)], width)
             .count()
             + 1;
         return (0, px(float_size.1 + below as f32 * line_height));
     }
     let beside_lines = (float_size.1 / line_height).ceil().max(1.0) as usize;
     let at = wrapper
-        .wrap_line(&[LineFragment::text(body)], px(narrow))
+        .wrap_line_css(&[LineFragment::text(body)], px(narrow))
         .nth(beside_lines - 1)
         .map(|b| lead + b.ix)
         // Текст кончился раньше, чем плавающий блок: резать нечего.
@@ -125,7 +125,7 @@ fn measure(
         0
     } else {
         wrapper
-            .wrap_line(
+            .wrap_line_css(
                 &[LineFragment::text(text[at..].trim_start_matches(ws))],
                 width,
             )
@@ -294,7 +294,7 @@ fn measure_first_line(
         .text_system()
         .line_wrapper(font.clone(), px(font_size));
     let boundaries: Vec<_> = wrapper
-        .wrap_line(&[LineFragment::text(text)], width)
+        .wrap_line_css(&[LineFragment::text(text)], width)
         .collect();
     let at = boundaries.first().map(|b| b.ix).unwrap_or(text.len());
     (at, px((boundaries.len() + 1) as f32 * line_height))
@@ -529,7 +529,7 @@ fn measure_columns(
         }
         boundaries.extend(
             wrapper
-                .wrap_line(&[LineFragment::text(seg)], px(inner))
+                .wrap_line_css(&[LineFragment::text(seg)], px(inner))
                 // Узкая колонка: только законные возможности переноса — перед
                 // границей пробел (css-text-3 §5, `overflow-wrap: normal`). Аварийный
                 // разрыв внутри слова отбрасывается, слово вылезает за край колонки,

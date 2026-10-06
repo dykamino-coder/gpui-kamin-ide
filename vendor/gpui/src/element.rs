@@ -287,6 +287,8 @@ impl Display for GlobalElementId {
     }
 }
 
+mod root_origin;
+
 trait ElementObject {
     fn inner_element(&mut self) -> &mut dyn Any;
 
@@ -295,6 +297,8 @@ trait ElementObject {
     fn prepaint(&mut self, window: &mut Window, cx: &mut App);
 
     fn paint(&mut self, window: &mut Window, cx: &mut App);
+
+    fn root_layout_id(&self) -> Option<LayoutId>;
 
     fn layout_as_root(
         &mut self,
@@ -624,6 +628,14 @@ where
     E: Element,
     E::RequestLayoutState: 'static,
 {
+    fn root_layout_id(&self) -> Option<LayoutId> {
+        match &self.phase {
+            ElementDrawPhase::RequestLayout { layout_id, .. }
+            | ElementDrawPhase::LayoutComputed { layout_id, .. } => Some(*layout_id),
+            _ => None,
+        }
+    }
+
     fn inner_element(&mut self) -> &mut dyn Any {
         &mut self.element
     }

@@ -1,15 +1,21 @@
 //! Alignment of tracks and final positioning of items
 use super::types::GridTrack;
-use crate::compute::common::alignment::{apply_alignment_fallback, compute_alignment_offset};
+use crate::compute::common::alignment::{
+    apply_alignment_fallback, compute_alignment_offset, resolve_self_alignment_safety,
+};
 use crate::geometry::{InBothAbsAxis, Line, Point, Rect, Size};
-use crate::style::{AlignContent, AlignItems, AlignSelf, AvailableSpace, CoreStyle, GridItemStyle, Overflow, Position};
+use crate::style::{
+    AlignContent, AlignItems, AlignItemsKeyword, AlignSelf, AvailableSpace, CoreStyle,
+    GridItemStyle, Overflow, Position,
+};
 use crate::tree::{Layout, LayoutPartialTreeExt, NodeId, SizingMode};
 use crate::util::sys::f32_max;
 use crate::util::{MaybeMath, MaybeResolve, ResolveOrZero};
 
 #[cfg(feature = "content_size")]
-use crate::compute::common::content_size::compute_content_size_contribution;
-use crate::{AbsoluteAxis, BoxSizing, LayoutGridContainer};
+use crate::compute::common::scrollable_overflow::compute_scrollable_overflow_contribution;
+use crate::compute::common::sizing_keyword::{resolve_sizing_keyword, SizingKeywordResolution};
+use crate::{AbsoluteAxis, BoxSizing, Direction, LayoutGridContainer};
 
 /// Align the grid tracks within the grid according to the align-content (rows) or
 /// justify-content (columns) property. This only does anything if the size of the
@@ -20,96 +26,177 @@ pub(super) fn align_tracks(
     border: Line<f32>,
     tracks: &mut [GridTrack],
     track_alignment_style: AlignContent,
-    // KaminIDE patch: приставка `safe` у `align-content`/`justify-content`
-    // (css-align-3 §4.4 «If the alignment subject overflows the alignment
-    // container, the alignment subject is aligned as if the alignment mode
-    // were start»).
-    is_safe: bool,
+    axis_is_reversed: bool,
 ) {
     let used_size: f32 = tracks.iter().map(|track| track.base_size).sum();
     let free_space = grid_container_content_box_size - used_size;
     let origin = padding.start + border.start;
 
     // Count the number of non-collapsed tracks (not counting gutters)
-    let num_tracks = tracks.iter().skip(1).step_by(2).filter(|track| !track.is_collapsed).count();
+    let num_tracks = tracks
+        .iter()
+        .skip(1)
+        .step_by(2)
+        .filter(|track| !track.is_collapsed)
+        .count();
 
     // Grid layout treats gaps as full tracks rather than applying them at alignment so we
     // simply pass zero here. Grid layout is never reversed.
     let gap = 0.0;
     let layout_is_reversed = false;
-    let track_alignment = apply_alignment_fallback(free_space, num_tracks, track_alignment_style, is_safe);
+    let track_alignment = apply_alignment_fallback(free_space, num_tracks, track_alignment_style);
+    let track_alignment = if axis_is_reversed {
+        track_alignment.reversed()
+    } else {
+        track_alignment
+    };
 
-    // KaminIDE patch: схлопнутая дорожка доли распределения не получает
-    // (css-grid-2 §7.2.3.2: «including any space allotted through distributed
-    // alignment»), а «первая» — первая ЖИВАЯ, не первая по счёту.
-    let first_live = tracks.iter().enumerate().find(|(i, t)| i % 2 == 1 && !t.is_collapsed).map(|(i, _)| i);
+    // If every track is collapsed then no track receives the alignment offset below, but the
+    // grid's lines should still be aligned within the container (e.g. at the inline-start edge
+    // for RTL), so apply the offset to the origin instead.
+    let empty_grid_offset = if num_tracks == 0 {
+        compute_alignment_offset(
+            free_space,
+            num_tracks,
+            gap,
+            track_alignment,
+            layout_is_reversed,
+            true,
+        )
+    } else {
+        0.0
+    };
 
-    // Compute offsets
-    let mut total_offset = origin;
-    tracks.iter_mut().enumerate().for_each(|(i, track)| {
+    // Compute offsets. Tracks are stored in logical order; when the axis is reversed (RTL)
+    // physical offsets are assigned right-to-left by iterating the tracks in reverse.
+    let mut total_offset = origin + empty_grid_offset;
+    let mut seen_non_collapsed_track = false;
+    let mut position_track = |i: usize, track: &mut GridTrack| {
         // Odd tracks are gutters (but slices are zero-indexed, so odd tracks have even indices)
         let is_gutter = i % 2 == 0;
+        let is_non_collapsed_track = !is_gutter && !track.is_collapsed;
 
-        let is_first = Some(i) == first_live;
+        // Alignment offsets should be applied only to non-collapsed tracks.
+        let is_first = is_non_collapsed_track && !seen_non_collapsed_track;
 
-        let offset = if is_gutter || track.is_collapsed {
-            0.0
+        let offset = if is_non_collapsed_track {
+            compute_alignment_offset(
+                free_space,
+                num_tracks,
+                gap,
+                track_alignment,
+                layout_is_reversed,
+                is_first,
+            )
         } else {
-            compute_alignment_offset(free_space, num_tracks, gap, track_alignment, layout_is_reversed, is_first)
+            0.0
         };
 
         track.offset = total_offset + offset;
         total_offset = total_offset + offset + track.base_size;
-    });
+        if is_non_collapsed_track {
+            seen_non_collapsed_track = true;
+        }
+    };
+    if axis_is_reversed {
+        tracks
+            .iter_mut()
+            .rev()
+            .enumerate()
+            .for_each(|(i, track)| position_track(i, track));
+    } else {
+        tracks
+            .iter_mut()
+            .enumerate()
+            .for_each(|(i, track)| position_track(i, track));
+    }
 }
 
 /// Align and size a grid item into it's final position
+#[allow(clippy::too_many_arguments)]
 pub(super) fn align_and_position_item(
     tree: &mut impl LayoutGridContainer,
     node: NodeId,
     order: u32,
     grid_area: Rect<f32>,
     container_alignment_styles: InBothAbsAxis<Option<AlignItems>>,
-    // KaminIDE patch: прокладки выравнивания по базовым — лишние поля по
-    // сторонам: сверху (`first baseline`), снизу (`last baseline`), слева и
-    // справа (группы по оси x); `x_end` — группа по x у правого края.
     shims: Rect<f32>,
     x_end: bool,
     margin_trim: u8,
-    // KaminIDE patch: четвёртое значение — ПЕРВАЯ базовая линия элемента из
-    // ИТОГОВОЙ раскладки (от верха его рамочной коробки), для базовой линии
-    // контейнера (css-grid-2 §10.8 «Grid Container Baselines»). Прежде она
-    // выбрасывалась, и контейнер брал низ рамки первого элемента. Пятое —
-    // ПОСЛЕДНЯЯ базовая (для последней базовой контейнера).
-) -> (Size<f32>, f32, f32, Option<f32>, Option<f32>) {
-    let grid_area_size = Size { width: grid_area.right - grid_area.left, height: grid_area.bottom - grid_area.top };
+    direction: Direction,
+    container_border_box_width: f32,
+    container_border: Rect<f32>,
+    #[cfg(feature = "content_size")] container_is_scroll_container: bool,
+) -> (Rect<f32>, f32, f32, Option<f32>, Option<f32>) {
+    let grid_area_size = Size {
+        width: grid_area.right - grid_area.left,
+        height: grid_area.bottom - grid_area.top,
+    };
 
     let style = tree.get_grid_child_style(node);
 
     let overflow = style.overflow();
+    #[cfg(feature = "content_size")]
+    let contain = style.contain();
     let scrollbar_width = style.scrollbar_width();
     let aspect_ratio = style.aspect_ratio();
-    let justify_self = style.justify_self();
-    let align_self = style.align_self();
+    // Resolve writing-mode-relative self-start/self-end keywords against the item's own
+    // direction. The horizontal axis is the inline axis (Taffy only supports horizontal-tb);
+    // the vertical (block) axis resolves them to plain start/end.
+    let item_direction = style.direction();
+    let justify_self = style
+        .justify_self()
+        .map(|align| align.resolve_self_relative(item_direction, direction, true));
+    let align_self = style
+        .align_self()
+        .map(|align| align.resolve_self_relative(item_direction, direction, false));
+    let container_alignment_styles = InBothAbsAxis {
+        horizontal: container_alignment_styles
+            .horizontal
+            .map(|align| align.resolve_self_relative(item_direction, direction, true)),
+        vertical: container_alignment_styles
+            .vertical
+            .map(|align| align.resolve_self_relative(item_direction, direction, false)),
+    };
 
     let position = style.position();
-    let inset_horizontal = style
-        .inset()
-        .horizontal_components()
-        .map(|size| size.resolve_to_option(grid_area_size.width, |val, basis| tree.calc(val, basis)));
-    let inset_vertical = style
-        .inset()
-        .vertical_components()
-        .map(|size| size.resolve_to_option(grid_area_size.height, |val, basis| tree.calc(val, basis)));
-    let padding =
-        style.padding().map(|p| p.resolve_or_zero(Some(grid_area_size.width), |val, basis| tree.calc(val, basis)));
-    let border =
-        style.border().map(|p| p.resolve_or_zero(Some(grid_area_size.width), |val, basis| tree.calc(val, basis)));
+    let inset_horizontal = style.inset().horizontal_components().map(|size| {
+        size.resolve_to_option(grid_area_size.width, |val, basis| tree.calc(val, basis))
+    });
+    let inset_vertical = style.inset().vertical_components().map(|size| {
+        size.resolve_to_option(grid_area_size.height, |val, basis| tree.calc(val, basis))
+    });
+    let padding = style.padding().map(|p| {
+        p.resolve_or_zero(Some(grid_area_size.width), |val, basis| {
+            tree.calc(val, basis)
+        })
+    });
+    let border = style.border().map(|p| {
+        p.resolve_or_zero(Some(grid_area_size.width), |val, basis| {
+            tree.calc(val, basis)
+        })
+    });
     let padding_border_size = (padding + border).sum_axes();
 
-    let box_sizing_adjustment =
-        if style.box_sizing() == BoxSizing::ContentBox { padding_border_size } else { Size::ZERO };
+    let box_sizing_adjustment = if style.box_sizing() == BoxSizing::ContentBox {
+        padding_border_size
+    } else {
+        Size::ZERO
+    };
 
+    // Linked axes ignore all authored size constraints, including native sizing keywords.
+    let subgridded = if position != Position::Absolute && style.grid_lanes().is_none() {
+        style.subgrid() & 3
+    } else {
+        0
+    };
+    let mut size_style = style.size();
+    if subgridded & 1 != 0 {
+        size_style.width = crate::style::Dimension::auto();
+    }
+    if subgridded & 2 != 0 {
+        size_style.height = crate::style::Dimension::auto();
+    }
     // KaminIDE patch: явное `stretch` (не `normal`) делает ось определённой
     // без соотношения сторон (css-grid-2 §6.2; Blink kStretchExplicit против
     // kStretchImplicit). Если обе оси определены так или длиной из стиля,
@@ -117,23 +204,30 @@ pub(super) fn align_and_position_item(
     // явно растянута только блочная, строчная при `normal` не тянется, а
     // выводится из соотношения (`grid-aspect-ratio-028/029`).
     let raw_margin = style.margin();
-    let style_size = style.size().maybe_resolve(grid_area_size, |val, basis| tree.calc(val, basis));
-    let stretched_w = position != Position::Absolute
-        && justify_self.or(container_alignment_styles.horizontal) == Some(AlignSelf::Stretch)
-        && !raw_margin.left.is_auto()
-        && !raw_margin.right.is_auto();
-    let stretched_h = position != Position::Absolute
-        && align_self.or(container_alignment_styles.vertical) == Some(AlignSelf::Stretch)
-        && !raw_margin.top.is_auto()
-        && !raw_margin.bottom.is_auto();
-    let aspect_ratio = if (style_size.width.is_some() || stretched_w) && (style_size.height.is_some() || stretched_h) {
+    let style_size = size_style.maybe_resolve(grid_area_size, |val, basis| tree.calc(val, basis));
+    let stretched_w = subgridded & 1 != 0
+        || (position != Position::Absolute
+            && justify_self
+                .or(container_alignment_styles.horizontal)
+                .is_some_and(|align| align.keyword == AlignItemsKeyword::Stretch)
+            && !raw_margin.left.is_auto()
+            && !raw_margin.right.is_auto());
+    let stretched_h = subgridded & 2 != 0
+        || (position != Position::Absolute
+            && align_self
+                .or(container_alignment_styles.vertical)
+                .is_some_and(|align| align.keyword == AlignItemsKeyword::Stretch)
+            && !raw_margin.top.is_auto()
+            && !raw_margin.bottom.is_auto());
+    let aspect_ratio = if (style_size.width.is_some() || stretched_w)
+        && (style_size.height.is_some() || stretched_h)
+    {
         None
     } else {
         aspect_ratio
     };
 
-    let inherent_size = style
-        .size()
+    let inherent_size = size_style
         .maybe_resolve(grid_area_size, |val, basis| tree.calc(val, basis))
         .maybe_apply_aspect_ratio(aspect_ratio)
         .maybe_add(box_sizing_adjustment);
@@ -156,11 +250,17 @@ pub(super) fn align_and_position_item(
     // specified width/height constraints». Иначе линии подсетки не совпали бы
     // с линиями родителя, по которым ей выданы дорожки. Лунки-подсетка в
     // дорожки сетки не связывается (`subgrid::linked_axes`).
-    let subgridded =
-        if position != Position::Absolute && style.grid_lanes().is_none() { style.subgrid() & 3 } else { 0 };
     let (mut inherent_size, mut min_size, mut max_size) = (inherent_size, min_size, max_size);
-    let justify_self = if subgridded & 1 != 0 { Some(AlignSelf::Stretch) } else { justify_self };
-    let align_self = if subgridded & 2 != 0 { Some(AlignSelf::Stretch) } else { align_self };
+    let justify_self = if subgridded & 1 != 0 {
+        Some(AlignSelf::STRETCH)
+    } else {
+        justify_self
+    };
+    let align_self = if subgridded & 2 != 0 {
+        Some(AlignSelf::STRETCH)
+    } else {
+        align_self
+    };
     if subgridded & 1 != 0 {
         inherent_size.width = None;
         min_size.width = Some(padding_border_size.width);
@@ -177,37 +277,47 @@ pub(super) fn align_and_position_item(
     // and the then height is calculated from the width according the aspect ratio
     // See: https://www.w3.org/TR/css-grid-1/#grid-item-sizing
     let mut alignment_styles = InBothAbsAxis {
-        horizontal: justify_self.or(container_alignment_styles.horizontal).unwrap_or_else(|| {
-            // KaminIDE patch: блочная ось явно растянута — строчная при
-            // `normal` берётся из соотношения, а не из растяжения.
-            if inherent_size.width.is_some() || (aspect_ratio.is_some() && stretched_h) {
-                AlignSelf::Start
-            } else {
-                AlignSelf::Stretch
-            }
-        }),
-        vertical: align_self.or(container_alignment_styles.vertical).unwrap_or_else(|| {
-            if inherent_size.height.is_some() || aspect_ratio.is_some() {
-                AlignSelf::Start
-            } else {
-                AlignSelf::Stretch
-            }
-        }),
+        horizontal: justify_self
+            .or(container_alignment_styles.horizontal)
+            .unwrap_or_else(|| {
+                if inherent_size.width.is_some()
+                    || size_style.width.is_sizing_keyword()
+                    || (aspect_ratio.is_some() && stretched_h)
+                {
+                    AlignSelf::START
+                } else {
+                    AlignSelf::STRETCH
+                }
+            }),
+        vertical: align_self
+            .or(container_alignment_styles.vertical)
+            .unwrap_or_else(|| {
+                if inherent_size.height.is_some()
+                    || size_style.height.is_sizing_keyword()
+                    || aspect_ratio.is_some()
+                {
+                    AlignSelf::START
+                } else {
+                    AlignSelf::STRETCH
+                }
+            }),
     };
 
     // Note: This is not a bug. It is part of the CSS spec that both horizontal and vertical margins
     // resolve against the WIDTH of the grid area.
-    let mut margin =
-        style.margin().map(|margin| margin.resolve_to_option(grid_area_size.width, |val, basis| tree.calc(val, basis)));
+    let mut margin = style.margin().map(|margin| {
+        margin.resolve_to_option(grid_area_size.width, |val, basis| tree.calc(val, basis))
+    });
+
     // KaminIDE patch: подсеточная ось — растяжка; `auto`-поле растяжку не
     // отменяет (выравнивание подсетки игнорируется целиком).
     if subgridded & 1 != 0 {
-        alignment_styles.horizontal = AlignSelf::Stretch;
+        alignment_styles.horizontal = AlignSelf::STRETCH;
         margin.left = margin.left.or(Some(0.0));
         margin.right = margin.right.or(Some(0.0));
     }
     if subgridded & 2 != 0 {
-        alignment_styles.vertical = AlignSelf::Stretch;
+        alignment_styles.vertical = AlignSelf::STRETCH;
         margin.top = margin.top.or(Some(0.0));
         margin.bottom = margin.bottom.or(Some(0.0));
     }
@@ -227,9 +337,60 @@ pub(super) fn align_and_position_item(
         margin.left = Some(0.0);
     }
 
+    drop(style);
+
     let grid_area_minus_item_margins_size = Size {
-        width: grid_area_size.width.maybe_sub(margin.left).maybe_sub(margin.right) - shims.left - shims.right,
-        height: grid_area_size.height.maybe_sub(margin.top).maybe_sub(margin.bottom) - shims.top - shims.bottom,
+        width: grid_area_size
+            .width
+            .maybe_sub(margin.left)
+            .maybe_sub(margin.right)
+            - shims.left
+            - shims.right,
+        height: grid_area_size
+            .height
+            .maybe_sub(margin.top)
+            .maybe_sub(margin.bottom)
+            - shims.top
+            - shims.bottom,
+    };
+
+    // A size that is a sizing keyword (min-content, max-content, fit-content,
+    // fit-content(...), stretch) either resolves to an exact size or is resolved
+    // by measuring the item under the corresponding available space constraint
+    let keyword_width = inherent_size.width.is_none().then(|| {
+        resolve_sizing_keyword(
+            size_style.width,
+            Some(grid_area_minus_item_margins_size.width),
+            Some(grid_area_size.width),
+        )
+    });
+    let keyword_height = inherent_size.height.is_none().then(|| {
+        resolve_sizing_keyword(
+            size_style.height,
+            Some(grid_area_minus_item_margins_size.height),
+            Some(grid_area_size.height),
+        )
+    });
+
+    // If both axes need to be measured then resolve them with a single measure call
+    let keyword_measured_size: Size<Option<f32>> = match (&keyword_width, &keyword_height) {
+        (
+            Some(Some(SizingKeywordResolution::Measure(available_width))),
+            Some(Some(SizingKeywordResolution::Measure(available_height))),
+        ) if position != Position::Absolute => tree
+            .measure_child_size_both(
+                node,
+                Size::NONE,
+                grid_area_size.map(Option::Some),
+                Size {
+                    width: *available_width,
+                    height: *available_height,
+                },
+                SizingMode::InherentSize,
+                Line::FALSE,
+            )
+            .map(Option::Some),
+        _ => Size::NONE,
     };
 
     // If node is absolutely positioned and width is not set explicitly, then deduce it
@@ -239,8 +400,33 @@ pub(super) fn align_and_position_item(
         // positioned element being set
         if position == Position::Absolute {
             if let (Some(left), Some(right)) = (inset_horizontal.start, inset_horizontal.end) {
-                return Some(f32_max(grid_area_minus_item_margins_size.width - left - right, 0.0));
+                return Some(f32_max(
+                    grid_area_minus_item_margins_size.width - left - right,
+                    0.0,
+                ));
             }
+        }
+
+        if let Some(Some(resolution)) = keyword_width {
+            return Some(match resolution {
+                SizingKeywordResolution::Exact(width) => width,
+                SizingKeywordResolution::Measure(available_width) => {
+                    keyword_measured_size.width.unwrap_or_else(|| {
+                        tree.measure_child_size(
+                            node,
+                            Size::NONE,
+                            grid_area_size.map(Option::Some),
+                            Size {
+                                width: available_width,
+                                height: AvailableSpace::Definite(grid_area_size.height),
+                            },
+                            SizingMode::InherentSize,
+                            AbsoluteAxis::Horizontal,
+                            Line::FALSE,
+                        )
+                    })
+                }
+            });
         }
 
         // Apply width based on stretch alignment if:
@@ -249,7 +435,7 @@ pub(super) fn align_and_position_item(
         //  - The node does not have auto margins in this axis.
         if margin.left.is_some()
             && margin.right.is_some()
-            && alignment_styles.horizontal == AlignSelf::Stretch
+            && alignment_styles.horizontal == AlignSelf::STRETCH
             && position != Position::Absolute
         {
             return Some(grid_area_minus_item_margins_size.width);
@@ -259,13 +445,49 @@ pub(super) fn align_and_position_item(
     });
 
     // Reapply aspect ratio after stretch and absolute position width adjustments
-    let Size { width, height } = Size { width, height: inherent_size.height }.maybe_apply_aspect_ratio(aspect_ratio);
+    let Size { width, height } = Size {
+        width,
+        height: inherent_size.height,
+    }
+    .maybe_apply_aspect_ratio(aspect_ratio);
 
     let height = height.or_else(|| {
         if position == Position::Absolute {
             if let (Some(top), Some(bottom)) = (inset_vertical.start, inset_vertical.end) {
-                return Some(f32_max(grid_area_minus_item_margins_size.height - top - bottom, 0.0));
+                return Some(f32_max(
+                    grid_area_minus_item_margins_size.height - top - bottom,
+                    0.0,
+                ));
             }
+        }
+
+        if let Some(Some(resolution)) = keyword_height {
+            return Some(match resolution {
+                SizingKeywordResolution::Exact(height) => height,
+                SizingKeywordResolution::Measure(available_height) => {
+                    keyword_measured_size.height.unwrap_or_else(|| {
+                        tree.measure_child_size(
+                            node,
+                            Size {
+                                width,
+                                height: None,
+                            },
+                            grid_area_size.map(Option::Some),
+                            Size {
+                                width: width.map(AvailableSpace::Definite).unwrap_or(
+                                    AvailableSpace::Definite(
+                                        grid_area_minus_item_margins_size.width,
+                                    ),
+                                ),
+                                height: available_height,
+                            },
+                            SizingMode::InherentSize,
+                            AbsoluteAxis::Vertical,
+                            Line::FALSE,
+                        )
+                    })
+                }
+            });
         }
 
         // Apply height based on stretch alignment if:
@@ -274,7 +496,7 @@ pub(super) fn align_and_position_item(
         //  - The node does not have auto margins in this axis.
         if margin.top.is_some()
             && margin.bottom.is_some()
-            && alignment_styles.vertical == AlignSelf::Stretch
+            && alignment_styles.vertical == AlignSelf::STRETCH
             && position != Position::Absolute
         {
             return Some(grid_area_minus_item_margins_size.height);
@@ -285,29 +507,21 @@ pub(super) fn align_and_position_item(
     // Reapply aspect ratio after stretch and absolute position height adjustments
     let Size { width, height } = Size { width, height }.maybe_apply_aspect_ratio(aspect_ratio);
 
-    // KaminIDE patch: a non-stretched in-flow item without a width is
-    // fit-content: min(max-content, max(min-content, stretch-fit))
-    // (css-grid-1 §6.2, css-sizing-3 §fit-content). Layout with a definite
-    // available width returns min(max-content, available), so an item wider
-    // than its track was squeezed into the track and its unbreakable content
-    // spilled out of its own box (`grid-self-baseline-001`: Ahem glyph poking
-    // through the right border). The floor is the item's min-content.
-    drop(style);
-    let width = if width.is_none() && position != Position::Absolute {
-        let fit = tree.measure_child_size(
-            node,
-            Size { width: None, height },
-            grid_area_size.map(Option::Some),
-            grid_area_minus_item_margins_size.map(AvailableSpace::Definite),
-            SizingMode::InherentSize,
-            AbsoluteAxis::Horizontal,
-            Line::FALSE,
-        );
+    // CSS Grid §6.2 and CSS Position §4.1 use fit-content for auto widths. A definite
+    // available-space probe is not this clamp: intrinsic grid/flex children can
+    // still return max-content. Resolve both bounds and the actual grid area.
+    let width = if width.is_none() {
         let min_content = tree.measure_child_size(
             node,
-            Size { width: None, height },
+            Size {
+                width: None,
+                height,
+            },
             grid_area_size.map(Option::Some),
-            Size { width: AvailableSpace::MinContent, height: AvailableSpace::Definite(grid_area_minus_item_margins_size.height) },
+            Size {
+                width: AvailableSpace::MinContent,
+                height: AvailableSpace::Definite(grid_area_size.height),
+            },
             SizingMode::InherentSize,
             AbsoluteAxis::Horizontal,
             Line::FALSE,
@@ -318,9 +532,15 @@ pub(super) fn align_and_position_item(
         // (`render::content_sized`) is a grid too (`col-wrap-012`).
         let max_content = tree.measure_child_size(
             node,
-            Size { width: None, height },
+            Size {
+                width: None,
+                height,
+            },
             grid_area_size.map(Option::Some),
-            Size { width: AvailableSpace::MaxContent, height: AvailableSpace::Definite(grid_area_minus_item_margins_size.height) },
+            Size {
+                width: AvailableSpace::MaxContent,
+                height: AvailableSpace::Definite(grid_area_size.height),
+            },
             SizingMode::InherentSize,
             AbsoluteAxis::Horizontal,
             Line::FALSE,
@@ -330,7 +550,7 @@ pub(super) fn align_and_position_item(
         // non-growable item by its flex base size (§9.9.1, flexbox.rs,
         // 7c3bf67) — the floor itself was right.
         let floor = min_content.min(max_content);
-        if floor > fit + 0.01 { Some(floor) } else { None }
+        Some(max_content.min(floor.max(grid_area_minus_item_margins_size.width)))
     } else {
         width
     };
@@ -339,28 +559,46 @@ pub(super) fn align_and_position_item(
     let Size { width, height } = Size { width, height }.maybe_clamp(min_size, max_size);
 
     // Layout node
+    let size = if position == Position::Absolute && (width.is_none() || height.is_none()) {
+        tree.measure_child_size_both(
+            node,
+            Size { width, height },
+            grid_area_size.map(Option::Some),
+            grid_area_size.map(AvailableSpace::Definite),
+            SizingMode::InherentSize,
+            Line::FALSE,
+        )
+        .map(Some)
+    } else {
+        Size { width, height }
+    };
+
     let layout_output = tree.perform_child_layout(
         node,
-        Size { width, height },
+        size,
         grid_area_size.map(Option::Some),
-        grid_area_minus_item_margins_size.map(AvailableSpace::Definite),
+        // Child layout accepts available margin-box space and deducts its own
+        // margins. Known sizes and fit-content clamps above are border-box
+        // sizes, but subtracting margins from this input would count them twice.
+        grid_area_size.map(AvailableSpace::Definite),
         SizingMode::InherentSize,
         Line::FALSE,
     );
 
     // Resolve final size
-    let Size { width, height } = Size { width, height }.unwrap_or(layout_output.size).maybe_clamp(min_size, max_size);
+    let Size { width, height } = size
+        .unwrap_or(layout_output.size)
+        .maybe_clamp(min_size, max_size);
 
-    // KaminIDE patch: группа по x у правого края (письмо базовой
-    // `vertical-rl`) и одиночный участник с ней — к ПРАВОМУ краю: запасное
-    // `safe self-start` элемента, у которого начало блока справа
-    // (`grid-justify-baseline-001`).
-    let x_alignment = match justify_self.unwrap_or(alignment_styles.horizontal) {
-        AlignSelf::Baseline if x_end => AlignSelf::End,
-        other => other,
-    };
+    // Baseline x groups are physical: writing-mode projection supplies x_end.
+    // Ordinary positional keywords still use native inline Direction.
+    let x_alignment = justify_self.unwrap_or(alignment_styles.horizontal);
+    let x_alignment = super::baseline_orientation::projected_x_alignment(x_alignment, x_end, direction);
     let (x, x_margin) = align_item_within_area(
-        Line { start: grid_area.left, end: grid_area.right },
+        Line {
+            start: grid_area.left,
+            end: grid_area.right,
+        },
         x_alignment,
         width,
         position,
@@ -368,9 +606,13 @@ pub(super) fn align_and_position_item(
         margin.horizontal_components(),
         shims.left,
         shims.right,
+        direction,
     );
     let (y, y_margin) = align_item_within_area(
-        Line { start: grid_area.top, end: grid_area.bottom },
+        Line {
+            start: grid_area.top,
+            end: grid_area.bottom,
+        },
         align_self.unwrap_or(alignment_styles.vertical),
         height,
         position,
@@ -378,14 +620,28 @@ pub(super) fn align_and_position_item(
         margin.vertical_components(),
         shims.top,
         shims.bottom,
+        Direction::Ltr,
     );
 
     let scrollbar_size = Size {
-        width: if overflow.y == Overflow::Scroll { scrollbar_width } else { 0.0 },
-        height: if overflow.x == Overflow::Scroll { scrollbar_width } else { 0.0 },
+        width: if overflow.y == Overflow::Scroll {
+            scrollbar_width
+        } else {
+            0.0
+        },
+        height: if overflow.x == Overflow::Scroll {
+            scrollbar_width
+        } else {
+            0.0
+        },
     };
 
-    let resolved_margin = Rect { left: x_margin.start, right: x_margin.end, top: y_margin.start, bottom: y_margin.end };
+    let resolved_margin = Rect {
+        left: x_margin.start,
+        right: x_margin.end,
+        top: y_margin.start,
+        bottom: y_margin.end,
+    };
 
     tree.set_unrounded_layout(
         node,
@@ -394,7 +650,7 @@ pub(super) fn align_and_position_item(
             location: Point { x, y },
             size: Size { width, height },
             #[cfg(feature = "content_size")]
-            content_size: layout_output.content_size,
+            scrollable_overflow_rect: layout_output.scrollable_overflow_rect,
             scrollbar_size,
             padding,
             border,
@@ -403,15 +659,43 @@ pub(super) fn align_and_position_item(
     );
 
     #[cfg(feature = "content_size")]
-    let contribution =
-        compute_content_size_contribution(Point { x, y }, Size { width, height }, layout_output.content_size, overflow);
+    let contribution = {
+        // Contributions to the container's scrollable overflow rect are measured from the
+        // container's padding-box origin (mirrored for RTL), matching the scrollable overflow region.
+        let contribution_location = if direction.is_rtl() {
+            Point {
+                x: container_border_box_width - (x + width) - container_border.right,
+                y: y - container_border.top,
+            }
+        } else {
+            Point {
+                x: x - container_border.left,
+                y: y - container_border.top,
+            }
+        };
+        compute_scrollable_overflow_contribution(
+            contribution_location,
+            Size { width, height },
+            layout_output.scrollable_overflow_rect,
+            overflow,
+            contain,
+            container_is_scroll_container,
+        )
+    };
     #[cfg(not(feature = "content_size"))]
-    let contribution = Size::ZERO;
+    let contribution = Rect::ZERO;
 
-    (contribution, y, height, layout_output.first_baselines.y, layout_output.last_or_first_y())
+    (
+        contribution,
+        y,
+        height,
+        layout_output.baselines.first,
+        layout_output.last_or_first_y(),
+    )
 }
 
 /// Align and size a grid item along a single axis
+#[allow(clippy::too_many_arguments)]
 pub(super) fn align_item_within_area(
     grid_area: Line<f32>,
     alignment_style: AlignSelf,
@@ -420,8 +704,8 @@ pub(super) fn align_item_within_area(
     inset: Line<Option<f32>>,
     margin: Line<Option<f32>>,
     baseline_shim: f32,
-    // KaminIDE patch: прокладка `last baseline` у конечного края.
     baseline_shim_end: f32,
+    direction: Direction,
 ) -> (f32, Line<f32>) {
     // Calculate grid area dimension in the axis
     let non_auto_margin = Line {
@@ -433,39 +717,63 @@ pub(super) fn align_item_within_area(
 
     // Expand auto margins to fill available space
     let auto_margin_count = margin.start.is_none() as u8 + margin.end.is_none() as u8;
-    // KaminIDE patch: у абсолюта с обоими `auto`-краями auto-поля равны нулю
-    // (css-position-3 §static position: «First set any auto values for
-    // margin-* to 0»; Blink absolute_utils.cc ComputeMargins) — коробка
-    // встаёт в статическую позицию, а не прижимается к концу области.
+    // Static-position abspos auto margins do not displace the alignment subject.
     let static_abs = position == Position::Absolute && inset.start.is_none() && inset.end.is_none();
-    let auto_margin_size =
-        if auto_margin_count > 0 && !static_abs { free_space / auto_margin_count as f32 } else { 0.0 };
+    let auto_margin_size = if auto_margin_count > 0 && !static_abs {
+        free_space / auto_margin_count as f32
+    } else {
+        0.0
+    };
     let resolved_margin = Line {
         start: margin.start.unwrap_or(auto_margin_size) + baseline_shim,
         end: margin.end.unwrap_or(auto_margin_size) + baseline_shim_end,
     };
 
+    let overflows = resolved_size + non_auto_margin.sum() > grid_area_size;
+    let alignment_keyword = resolve_self_alignment_safety(alignment_style, overflows);
+
     // Compute offset in the axis
-    let alignment_based_offset = match alignment_style {
-        AlignSelf::Start | AlignSelf::FlexStart => resolved_margin.start,
-        AlignSelf::End | AlignSelf::FlexEnd => grid_area_size - resolved_size - resolved_margin.end,
-        AlignSelf::Center => (grid_area_size - resolved_size + resolved_margin.start - resolved_margin.end) / 2.0,
+    let alignment_based_offset = match alignment_keyword {
         // TODO: Add support for baseline alignment. For now we treat it as "start".
-        AlignSelf::Baseline => resolved_margin.start,
-        AlignSelf::Stretch => resolved_margin.start,
-        // KaminIDE patch: группа последних базовых — у КОНЦА области, со
-        // своей прокладкой в нижнем поле; одиночный участник — запасное
-        // `safe self-end` (css-align-3 §9.3).
-        AlignSelf::LastBaseline => grid_area_size - resolved_size - resolved_margin.end,
+        AlignItemsKeyword::Start
+        | AlignItemsKeyword::FlexStart
+        | AlignItemsKeyword::Baseline
+        | AlignItemsKeyword::Stretch => {
+            if direction.is_rtl() {
+                grid_area_size - resolved_size - resolved_margin.end
+            } else {
+                resolved_margin.start
+            }
+        }
+        // Local last-baseline shims name physical end edges after writing-mode projection.
+        AlignItemsKeyword::LastBaseline => grid_area_size - resolved_size - resolved_margin.end,
+        AlignItemsKeyword::End | AlignItemsKeyword::FlexEnd => {
+            if direction.is_rtl() {
+                resolved_margin.start
+            } else {
+                grid_area_size - resolved_size - resolved_margin.end
+            }
+        }
+        AlignItemsKeyword::Center => {
+            (grid_area_size - resolved_size + resolved_margin.start - resolved_margin.end) / 2.0
+        }
+        // SelfStart/SelfEnd are resolved to Start/End against the item's own direction in
+        // `align_and_position_item`.
+        AlignItemsKeyword::SelfStart | AlignItemsKeyword::SelfEnd => unreachable!(),
     };
 
     let offset_within_area = if position == Position::Absolute {
-        if let Some(start) = inset.start {
-            start + non_auto_margin.start
-        } else if let Some(end) = inset.end {
-            grid_area_size - end - resolved_size - non_auto_margin.end
-        } else {
-            alignment_based_offset
+        match (inset.start, inset.end) {
+            (Some(start), Some(end)) => {
+                if direction.is_rtl() {
+                    grid_area_size - end - resolved_size - non_auto_margin.end
+                } else {
+                    start + non_auto_margin.start
+                }
+            }
+            (Some(start), None) => start + non_auto_margin.start,
+            (None, Some(end)) => grid_area_size - end - resolved_size - non_auto_margin.end,
+            (None, None) => alignment_based_offset,
         }
     } else {
         alignment_based_offset
@@ -473,8 +781,158 @@ pub(super) fn align_item_within_area(
 
     let mut start = grid_area.start + offset_within_area;
     if position == Position::Relative {
-        start += inset.start.or(inset.end.map(|pos| -pos)).unwrap_or(0.0);
+        let relative_inset = if direction.is_rtl() {
+            inset.end.map(|pos| -pos).or(inset.start)
+        } else {
+            inset.start.or(inset.end.map(|pos| -pos))
+        };
+        start += relative_inset.unwrap_or(0.0);
     }
 
     (start, resolved_margin)
+}
+
+#[cfg(test)]
+mod kamin_tests {
+    use super::*;
+
+    fn place(
+        align: AlignSelf,
+        size: f32,
+        margin: Line<Option<f32>>,
+        shims: Line<f32>,
+        direction: Direction,
+        absolute: bool,
+    ) -> (f32, Line<f32>) {
+        align_item_within_area(
+            Line {
+                start: 10.0,
+                end: 110.0,
+            },
+            align,
+            size,
+            if absolute {
+                Position::Absolute
+            } else {
+                Position::Relative
+            },
+            Line {
+                start: None,
+                end: None,
+            },
+            margin,
+            shims.start,
+            shims.end,
+            direction,
+        )
+    }
+
+    #[test]
+    fn first_and_last_shims_are_kept_on_separate_edges() {
+        let margins = Line {
+            start: Some(2.0),
+            end: Some(3.0),
+        };
+        let shims = Line {
+            start: 5.0,
+            end: 7.0,
+        };
+        assert_eq!(
+            place(
+                AlignSelf::BASELINE,
+                20.0,
+                margins,
+                shims,
+                Direction::Ltr,
+                false
+            )
+            .0,
+            17.0
+        );
+        assert_eq!(
+            place(
+                AlignSelf::LAST_BASELINE,
+                20.0,
+                margins,
+                shims,
+                Direction::Ltr,
+                false
+            )
+            .0,
+            80.0
+        );
+    }
+
+    #[test]
+    fn rtl_safe_end_overflow_falls_back_to_inline_start() {
+        let margins = Line {
+            start: Some(0.0),
+            end: Some(0.0),
+        };
+        assert_eq!(
+            place(
+                AlignSelf::SAFE_END,
+                120.0,
+                margins,
+                Line {
+                    start: 0.0,
+                    end: 0.0
+                },
+                Direction::Rtl,
+                false
+            )
+            .0,
+            -10.0
+        );
+    }
+
+    #[test]
+    fn static_abspos_auto_margins_do_not_force_centering() {
+        let (_, margins) = place(
+            AlignSelf::START,
+            20.0,
+            Line {
+                start: None,
+                end: None,
+            },
+            Line {
+                start: 0.0,
+                end: 0.0,
+            },
+            Direction::Ltr,
+            true,
+        );
+        assert_eq!(
+            margins,
+            Line {
+                start: 0.0,
+                end: 0.0
+            }
+        );
+    }
+
+    #[test]
+    fn ordinary_inflow_auto_margins_still_absorb_free_space() {
+        let (_, margins) = place(
+            AlignSelf::START,
+            20.0,
+            Line {
+                start: None,
+                end: None,
+            },
+            Line {
+                start: 0.0,
+                end: 0.0,
+            },
+            Direction::Ltr,
+            false,
+        );
+        assert_eq!(
+            margins,
+            Line {
+                start: 40.0,
+                end: 40.0
+            }
+        );
+    }
 }

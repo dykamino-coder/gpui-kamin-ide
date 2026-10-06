@@ -1,3 +1,17 @@
+mod alignment_adapter;
+mod measurement;
+mod line_baselines;
+mod measured_content;
+mod native_trace;
+pub use measured_content::MeasuredContent;
+pub use measurement::LayoutMeasurement;
+
+#[cfg(test)]
+mod root_origin_tests;
+
+#[cfg(test)]
+mod native_sizing_tests;
+
 use crate::{
     AbsoluteLength, App, Bounds, DefiniteLength, Edges, Length, Pixels, Point, Size, Style, Window,
     point, size,
@@ -7,16 +21,14 @@ use smallvec::SmallVec;
 use stacksafe::{StackSafe, stacksafe};
 use std::{fmt::Debug, ops::Range};
 use taffy::{
-    TaffyTree, TraversePartialTree as _,
+    TaffyTree,
     geometry::{Point as TaffyPoint, Rect as TaffyRect, Size as TaffySize},
     style::AvailableSpace as TaffyAvailableSpace,
     tree::NodeId,
 };
 
-/// KaminIDE patch: замер отдаёт не только размер, но и первую БАЗОВУЮ ЛИНИЮ
-/// (от верха коробки содержимого). Без неё `align-items: baseline` в taffy
-/// вырождается в выравнивание по нижним краям коробок. Третье значение —
-/// ПОСЛЕДНЯЯ базовая (последняя строка) для `last baseline`.
+/// Actual content geometry includes both physical baseline axes and optional line metadata.
+/// Legacy horizontal callback APIs adapt to this contract without synthesizing X baselines.
 type NodeMeasureFn = StackSafe<
     Box<
         dyn FnMut(
@@ -24,12 +36,16 @@ type NodeMeasureFn = StackSafe<
             Size<AvailableSpace>,
             &mut Window,
             &mut App,
-        ) -> (Size<Pixels>, Option<Pixels>, Option<Pixels>),
+        ) -> MeasuredContent,
     >,
 >;
 
+#[derive(Clone)]
 struct NodeContext {
-    measure: NodeMeasureFn,
+    measure: std::rc::Rc<std::cell::RefCell<NodeMeasureFn>>,
+    layout_lines: Option<Vec<Pixels>>,
+    layout_lines_x: Option<Vec<Pixels>>,
+    layout_lines_x_from_right: bool,
 }
 pub struct TaffyLayoutEngine {
     taffy: TaffyTree<NodeContext>,
@@ -40,6 +56,8 @@ pub struct TaffyLayoutEngine {
     /// KaminIDE patch: абсолютное начало КОРНЯ отдельного дерева (физические
     /// точки, без округления) — см. `set_root_origin`.
     root_origins: FxHashMap<LayoutId, (f32, f32)>,
+    /// Paint placement of a subtree, applied before device-pixel rounding.
+    placed_origins: FxHashMap<LayoutId, (f32, f32)>,
     computed_layouts: FxHashSet<LayoutId>,
 }
 
@@ -60,6 +78,7 @@ impl TaffyLayoutEngine {
             absolute_layout_bounds: FxHashMap::default(),
             absolute_unrounded: FxHashMap::default(),
             root_origins: FxHashMap::default(),
+            placed_origins: FxHashMap::default(),
             computed_layouts: FxHashSet::default(),
         }
     }
@@ -69,6 +88,7 @@ impl TaffyLayoutEngine {
         self.absolute_unrounded.clear();
         self.absolute_layout_bounds.clear();
         self.root_origins.clear();
+        self.placed_origins.clear();
         self.computed_layouts.clear();
     }
 
@@ -82,6 +102,18 @@ impl TaffyLayoutEngine {
     pub fn set_root_origin(&mut self, id: LayoutId, origin: Point<Pixels>, scale_factor: f32) {
         self.root_origins
             .insert(id, (origin.x.0 * scale_factor, origin.y.0 * scale_factor));
+        self.invalidate_placement(id);
+    }
+
+    /// Move an already laid out subtree without changing its containing block
+    /// or recomputing its size. Descendants round at their final paint position.
+    pub fn set_placed_origin(&mut self, id: LayoutId, origin: Point<Pixels>, scale_factor: f32) {
+        self.placed_origins
+            .insert(id, (origin.x.0 * scale_factor, origin.y.0 * scale_factor));
+        self.invalidate_placement(id);
+    }
+
+    fn invalidate_placement(&mut self, id: LayoutId) {
         let mut stack = SmallVec::<[LayoutId; 64]>::new();
         stack.push(id);
         while let Some(id) = stack.pop() {
@@ -138,9 +170,7 @@ impl TaffyLayoutEngine {
             style,
             rem_size,
             scale_factor,
-            move |known, available, window, cx| {
-                (measure(known, available, window, cx), None)
-            },
+            move |known, available, window, cx| (measure(known, available, window, cx), None),
         )
     }
 
@@ -176,7 +206,7 @@ impl TaffyLayoutEngine {
         style: Style,
         rem_size: Pixels,
         scale_factor: f32,
-        measure: impl FnMut(
+        mut measure: impl FnMut(
             Size<Option<Pixels>>,
             Size<AvailableSpace>,
             &mut Window,
@@ -184,64 +214,10 @@ impl TaffyLayoutEngine {
         ) -> (Size<Pixels>, Option<Pixels>, Option<Pixels>)
         + 'static,
     ) -> LayoutId {
-        let taffy_style = style.to_taffy(rem_size, scale_factor);
-
-        self.taffy
-            .new_leaf_with_context(
-                taffy_style,
-                NodeContext {
-                    measure: StackSafe::new(Box::new(measure)),
-                },
-            )
-            .expect(EXPECT_MESSAGE)
-            .into()
-    }
-
-    // Used to understand performance
-    #[allow(dead_code)]
-    fn count_all_children(&self, parent: LayoutId) -> anyhow::Result<u32> {
-        let mut count = 0;
-
-        for child in self.taffy.children(parent.0)? {
-            // Count this child.
-            count += 1;
-
-            // Count all of this child's children.
-            count += self.count_all_children(LayoutId(child))?
-        }
-
-        Ok(count)
-    }
-
-    // Used to understand performance
-    #[allow(dead_code)]
-    fn max_depth(&self, depth: u32, parent: LayoutId) -> anyhow::Result<u32> {
-        println!(
-            "{parent:?} at depth {depth} has {} children",
-            self.taffy.child_count(parent.0)
-        );
-
-        let mut max_child_depth = 0;
-
-        for child in self.taffy.children(parent.0)? {
-            max_child_depth = std::cmp::max(max_child_depth, self.max_depth(0, LayoutId(child))?);
-        }
-
-        Ok(depth + 1 + max_child_depth)
-    }
-
-    // Used to understand performance
-    #[allow(dead_code)]
-    fn get_edges(&self, parent: LayoutId) -> anyhow::Result<Vec<(LayoutId, LayoutId)>> {
-        let mut edges = Vec::new();
-
-        for child in self.taffy.children(parent.0)? {
-            edges.push((parent, LayoutId(child)));
-
-            edges.extend(self.get_edges(LayoutId(child))?);
-        }
-
-        Ok(edges)
+        self.request_measured_layout_with_line_data(style, rem_size, scale_factor, move |known, available, window, cx| {
+            let (size, first, last) = measure(known, available, window, cx);
+            (size, first, last, None)
+        })
     }
 
     #[stacksafe]
@@ -300,40 +276,8 @@ impl TaffyLayoutEngine {
             .compute_layout_with_measure(
                 id.into(),
                 available_space.into(),
-                |known_dimensions, available_space, _id, node_context, _style| {
-                    crate::frame_perf::LAYOUT_MEASURES
-                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    let _measure_started = std::time::Instant::now();
-                    let _measure_guard = MeasureTimer(_measure_started);
-                    let Some(node_context) = node_context else {
-                        return taffy::geometry::Size::default().into();
-                    };
-
-                    let known_dimensions = Size {
-                        width: known_dimensions.width.map(|e| Pixels(e / scale_factor)),
-                        height: known_dimensions.height.map(|e| Pixels(e / scale_factor)),
-                    };
-
-                    let available_space: Size<AvailableSpace> = available_space.into();
-                    let untransform = |ev: AvailableSpace| match ev {
-                        AvailableSpace::Definite(pixels) => {
-                            AvailableSpace::Definite(Pixels(pixels.0 / scale_factor))
-                        }
-                        AvailableSpace::MinContent => AvailableSpace::MinContent,
-                        AvailableSpace::MaxContent => AvailableSpace::MaxContent,
-                    };
-                    let available_space = size(
-                        untransform(available_space.width),
-                        untransform(available_space.height),
-                    );
-
-                    let (a, baseline, last_baseline): (Size<Pixels>, Option<Pixels>, Option<Pixels>) =
-                        (node_context.measure)(known_dimensions, available_space, window, cx);
-                    taffy::MeasureOutput {
-                        size: size(a.width.0 * scale_factor, a.height.0 * scale_factor).into(),
-                        baseline: baseline.map(|b| b.0 * scale_factor),
-                        last_baseline: last_baseline.map(|b| b.0 * scale_factor),
-                    }
+                |inputs, _id, node_context, style| {
+                    measurement::leaf(inputs, node_context, style, scale_factor, window, cx)
                 },
             )
             .expect(EXPECT_MESSAGE);
@@ -341,6 +285,7 @@ impl TaffyLayoutEngine {
             _taffy_started.elapsed().as_micros() as u32,
             std::sync::atomic::Ordering::Relaxed,
         );
+        native_trace::dump(self, id, scale_factor);
     }
 
     /// KaminIDE patch: размер узла БЕЗ округления к физической точке.
@@ -382,7 +327,11 @@ impl TaffyLayoutEngine {
     /// (`float-nowrap-hyphen-rewind-1-ref2`: текст на 1 px левее и выше).
     pub fn layout_origin_unrounded(&mut self, id: LayoutId, scale_factor: f32) -> Point<Pixels> {
         let _ = self.layout_bounds(id, scale_factor);
-        let (ax, ay) = self.absolute_unrounded.get(&id).copied().unwrap_or((0.0, 0.0));
+        let (ax, ay) = self
+            .absolute_unrounded
+            .get(&id)
+            .copied()
+            .unwrap_or((0.0, 0.0));
         point(Pixels(ax / scale_factor), Pixels(ay / scale_factor))
     }
 
@@ -409,8 +358,11 @@ impl TaffyLayoutEngine {
             // KaminIDE patch: корень с заданным местом (`set_root_origin`).
             None => self.root_origins.get(&id).copied().unwrap_or((0.0, 0.0)),
         };
-        let ax = parent_x + layout.location.x;
-        let ay = parent_y + layout.location.y;
+        let (ax, ay) = self
+            .placed_origins
+            .get(&id)
+            .copied()
+            .unwrap_or((parent_x + layout.location.x, parent_y + layout.location.y));
         self.absolute_unrounded.insert(id, (ax, ay));
 
         let (rx, ry) = (ax.round(), ay.round());
@@ -577,6 +529,9 @@ impl ToTaffy<taffy::style::Style> for Style {
 
         let mut out = taffy::style::Style {
             display: self.display.into(),
+            block_flow: self.block_flow.map(|[vertical, block_reverse, inline_reverse]| taffy::BlockFlow {
+                vertical, block_reverse, inline_reverse,
+            }),
             overflow: self.overflow.into(),
             scrollbar_width: self.scrollbar_width.to_taffy(rem_size, scale_factor),
             position: self.position.into(),
@@ -585,19 +540,34 @@ impl ToTaffy<taffy::style::Style> for Style {
             min_size: self.min_size.to_taffy(rem_size, scale_factor),
             max_size: self.max_size.to_taffy(rem_size, scale_factor),
             aspect_ratio: self.aspect_ratio,
+            aspect_ratio_preferred_size: taffy::Size {
+                width: self.aspect_ratio_preferred_size[0].map(|v| v * scale_factor),
+                height: self.aspect_ratio_preferred_size[1].map(|v| v * scale_factor),
+            },
             margin: self.margin.to_taffy(rem_size, scale_factor),
             padding: self.padding.to_taffy(rem_size, scale_factor),
             border: self.border_widths.to_taffy(rem_size, scale_factor),
-            align_items: self.align_items.map(|x| x.into()),
-            align_self: self.align_self.map(|x| x.into()),
-            align_content: self.align_content.map(|x| x.into()),
-            justify_content: self.justify_content.map(|x| x.into()),
-            safe_alignment: self.safe_alignment,
+            align_items: alignment_adapter::items(
+                self.align_items.map(Into::into),
+                self.safe_alignment.0,
+            ),
+            align_self: alignment_adapter::items(
+                self.align_self.map(Into::into),
+                self.safe_alignment.1,
+            ),
+            align_content: alignment_adapter::content(
+                self.align_content.map(Into::into),
+                self.safe_alignment.2,
+            ),
+            justify_content: alignment_adapter::content(
+                self.justify_content.map(Into::into),
+                self.safe_alignment.3,
+            ),
             gap: self.gap.to_taffy(rem_size, scale_factor),
             flex_direction: self.flex_direction.into(),
-            flex_wrap: self.flex_wrap.into(),
+            flex_wrap: alignment_adapter::flex_wrap(self.flex_wrap.into(), self.flex_balance_lines),
             // KaminIDE patch: `flex-wrap: balance` + `flex-line-count`.
-            flex_balance_lines: self.flex_balance_lines,
+            flex_line_count: self.flex_balance_lines.max(1),
             // KaminIDE patch: обратная поперечная ось однострочного контейнера.
             flex_cross_reverse: self.flex_cross_reverse,
             // KaminIDE patch: `box-sizing: content-box` силами раскладки.
@@ -611,17 +581,32 @@ impl ToTaffy<taffy::style::Style> for Style {
             // KaminIDE patch: `calc-size()`; длины выражения — в точки
             // раскладки (тот же множитель, что у прочих длин `to_taffy`).
             calc_size: self.calc_size.map(|f| {
-                f.map(|(mul, add, max, min)| (mul, add * scale_factor, max * scale_factor, min * scale_factor))
+                f.map(|(mul, add, max, min)| {
+                    (
+                        mul,
+                        add * scale_factor,
+                        max * scale_factor,
+                        min * scale_factor,
+                    )
+                })
             }),
             // KaminIDE patch: `contain: layout` — базовых линий нет.
-            hides_baseline: self.hides_baseline,
+            contain: if self.hides_baseline {
+                taffy::Contain::LAYOUT
+            } else {
+                taffy::Contain::NONE
+            },
             // KaminIDE patch: `inline-block` — последняя базовая.
             baseline_from_last: self.baseline_from_last,
+            baseline_unavailable: self.baseline_unavailable,
             // KaminIDE patch: базовая по оси x (вертикальное письмо).
             baseline_x_hint: self
                 .baseline_x_hint
                 .map(|(offset, from_right)| (offset * scale_factor, from_right)),
             baseline_x_flags: self.baseline_x_flags,
+            grid_axis_reversed: Some(taffy::Size {
+                width: self.grid_axis_reversed[0], height: self.grid_axis_reversed[1],
+            }),
             // KaminIDE patch: `margin-trim`, физические биты сторон.
             margin_trim: self.margin_trim,
             // KaminIDE patch: раскладка лунками; порог в точках раскладки.
@@ -645,11 +630,17 @@ impl ToTaffy<taffy::style::Style> for Style {
             // выражает то, чего короткая форма не умеет (колонка по
             // содержимому, фиксированная ширина, `minmax`).
             grid_template_rows: match &self.grid_template_rows {
-                Some(tracks) => tracks.iter().map(|t| to_grid_track(t, scale_factor)).collect(),
+                Some(tracks) => tracks
+                    .iter()
+                    .map(|t| to_grid_track(t, scale_factor))
+                    .collect(),
                 None => to_grid_repeat(&self.grid_rows),
             },
             grid_template_columns: match &self.grid_template_cols {
-                Some(tracks) => tracks.iter().map(|t| to_grid_track(t, scale_factor)).collect(),
+                Some(tracks) => tracks
+                    .iter()
+                    .map(|t| to_grid_track(t, scale_factor))
+                    .collect(),
                 None => match self.grid_cols_min {
                     // repeat(auto-fill, minmax(<min>, 1fr))
                     Some(min) => vec![repeat(
@@ -664,8 +655,14 @@ impl ToTaffy<taffy::style::Style> for Style {
                 },
             },
             // KaminIDE patch: выравнивание вдоль главной оси и неявные дорожки.
-            justify_items: self.justify_items.map(|x| x.into()),
-            justify_self: self.justify_self.map(|x| x.into()),
+            justify_items: alignment_adapter::items(
+                self.justify_items.map(Into::into),
+                self.safe_justify_alignment.0,
+            ),
+            justify_self: alignment_adapter::items(
+                self.justify_self.map(Into::into),
+                self.safe_justify_alignment.1,
+            ),
             grid_auto_flow: match self.grid_auto_flow.unwrap_or_default() {
                 crate::GridAutoFlow::Row => taffy::GridAutoFlow::Row,
                 crate::GridAutoFlow::Column => taffy::GridAutoFlow::Column,
@@ -710,6 +707,12 @@ impl ToTaffy<taffy::style::Style> for Style {
                 .unwrap_or_default(),
             ..Default::default()
         };
+        if let Some(keyword) = self.sizing_keywords[0] {
+            out.size.width = keyword.to_native(scale_factor);
+        }
+        if let Some(keyword) = self.sizing_keywords[1] {
+            out.size.height = keyword.to_native(scale_factor);
+        }
         if let Some(names) = self.grid_line_names.as_deref() {
             apply_grid_line_names(&mut out, names);
         }
@@ -723,7 +726,10 @@ fn apply_grid_line_names(out: &mut taffy::style::Style, names: &crate::GridLineN
     use taffy::style::{GridTemplateComponent, RepetitionCount};
     // Имена линий между КОМПОНЕНТАМИ шаблона (компонентов на один меньше,
     // чем линий); имена внутри авто-повтора — в сам повтор.
-    fn template(components: &mut [GridTemplateComponent<String>], axis: &crate::GridAxisLineNames) -> Vec<Vec<String>> {
+    fn template(
+        components: &mut [GridTemplateComponent<String>],
+        axis: &crate::GridAxisLineNames,
+    ) -> Vec<Vec<String>> {
         let mut lines = axis.before.clone();
         if axis.repeat.is_some() {
             lines.extend(axis.after.iter().cloned());
@@ -734,13 +740,18 @@ fn apply_grid_line_names(out: &mut taffy::style::Style, names: &crate::GridLineN
         // минус (`named.rs`, вычитание из `u16`).
         for component in components.iter_mut() {
             if let GridTemplateComponent::Repeat(repeat) = component {
-                repeat.line_names.resize(repeat.tracks.len() + 1, Vec::new());
+                repeat
+                    .line_names
+                    .resize(repeat.tracks.len() + 1, Vec::new());
             }
         }
         if let Some(body) = &axis.repeat {
             for component in components.iter_mut() {
                 if let GridTemplateComponent::Repeat(repeat) = component
-                    && matches!(repeat.count, RepetitionCount::AutoFill | RepetitionCount::AutoFit)
+                    && matches!(
+                        repeat.count,
+                        RepetitionCount::AutoFill | RepetitionCount::AutoFit
+                    )
                 {
                     let mut body = body.clone();
                     body.resize(repeat.tracks.len() + 1, Vec::new());
@@ -760,8 +771,12 @@ fn apply_grid_line_names(out: &mut taffy::style::Style, names: &crate::GridLineN
     }
     fn placement(p: &crate::GridNamedLine) -> taffy::GridPlacement<String> {
         match p {
-            crate::GridNamedLine::Line(name, n) => taffy::GridPlacement::NamedLine(name.clone(), *n),
-            crate::GridNamedLine::Span(name, n) => taffy::GridPlacement::NamedSpan(name.clone(), (*n).max(1)),
+            crate::GridNamedLine::Line(name, n) => {
+                taffy::GridPlacement::NamedLine(name.clone(), *n)
+            }
+            crate::GridNamedLine::Span(name, n) => {
+                taffy::GridPlacement::NamedSpan(name.clone(), (*n).max(1))
+            }
         }
     }
     if let Some(axis) = &names.columns {
@@ -849,9 +864,9 @@ impl ToTaffy<taffy::style::LengthPercentage> for DefiniteLength {
             DefiniteLength::Fraction(fraction) => {
                 taffy::style::LengthPercentage::percent(*fraction)
             }
-            DefiniteLength::Calc(add, fraction) => {
-                taffy::style::LengthPercentage::calc(taffy::tree::calc_handle(add * scale_factor, *fraction))
-            }
+            DefiniteLength::Calc(add, fraction) => taffy::style::LengthPercentage::calc(
+                taffy::tree::calc_handle(add * scale_factor, *fraction),
+            ),
         }
     }
 }
@@ -872,9 +887,9 @@ impl ToTaffy<taffy::style::LengthPercentageAuto> for DefiniteLength {
             DefiniteLength::Fraction(fraction) => {
                 taffy::style::LengthPercentageAuto::percent(*fraction)
             }
-            DefiniteLength::Calc(add, fraction) => {
-                taffy::style::LengthPercentageAuto::calc(taffy::tree::calc_handle(add * scale_factor, *fraction))
-            }
+            DefiniteLength::Calc(add, fraction) => taffy::style::LengthPercentageAuto::calc(
+                taffy::tree::calc_handle(add * scale_factor, *fraction),
+            ),
         }
     }
 }
@@ -892,9 +907,9 @@ impl ToTaffy<taffy::style::Dimension> for DefiniteLength {
                 }
             },
             DefiniteLength::Fraction(fraction) => taffy::style::Dimension::percent(*fraction),
-            DefiniteLength::Calc(add, fraction) => {
-                taffy::style::Dimension::calc(taffy::tree::calc_handle(add * scale_factor, *fraction))
-            }
+            DefiniteLength::Calc(add, fraction) => taffy::style::Dimension::calc(
+                taffy::tree::calc_handle(add * scale_factor, *fraction),
+            ),
         }
     }
 }

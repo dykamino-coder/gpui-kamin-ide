@@ -1,3 +1,6 @@
+mod sizing_keyword;
+pub use sizing_keyword::CssSizingKeyword;
+
 use std::{
     hash::{Hash, Hasher},
     iter, mem,
@@ -210,6 +213,10 @@ pub struct Style {
     pub max_size: Size<Length>,
     /// Sets the preferred aspect ratio for the item. The ratio is calculated as width divided by height.
     pub aspect_ratio: Option<f32>,
+    /// Preferred border-box size transferred through an authored aspect ratio.
+    pub aspect_ratio_preferred_size: [Option<f32>; 2],
+    /// Intrinsic width and height passed directly to the native layout.
+    pub sizing_keywords: [Option<CssSizingKeyword>; 2],
 
     // Spacing Properties
     /// How large should the margin be on each side?
@@ -234,6 +241,8 @@ pub struct Style {
     /// KaminIDE patch: приставка `safe` у выравнивания (css-align-3 §4.4) —
     /// `align_items`, `align_self`, `align_content`, `justify_content`.
     pub safe_alignment: (bool, bool, bool, bool),
+    /// Safety of inline-axis item/self alignment, projected with grid axes.
+    pub safe_justify_alignment: (bool, bool),
     /// How large should the gaps between items in a flex container be?
     #[refineable]
     pub gap: Size<DefiniteLength>,
@@ -269,6 +278,8 @@ pub struct Style {
     /// KaminIDE patch: наружу отдаётся ПОСЛЕДНЯЯ базовая (`inline-block`,
     /// css-inline-3 §baseline-source).
     pub baseline_from_last: bool,
+    /// The box has no exportable baseline, independently of layout containment.
+    pub baseline_unavailable: bool,
     /// KaminIDE patch: собственная базовая линия по оси x (повёрнутый
     /// вертикальный абзац): смещение и «от правого края».
     pub baseline_x_hint: Option<(f32, bool)>,
@@ -281,6 +292,10 @@ pub struct Style {
     pub margin_trim: u8,
     /// KaminIDE patch: контейнер-сетка раскладывается ЛУНКАМИ (css-grid-3).
     pub grid_lanes: Option<crate::GridLanesFlow>,
+    /// Physical grid track ordering after the caller projects writing mode: x and y.
+    pub grid_axis_reversed: [bool; 2],
+    /// Native block writing axes: vertical, reversed block flow, reversed inline flow.
+    pub block_flow: Option<[bool; 3]>,
     /// KaminIDE patch: ПОДСЕТКА (css-grid-2 §9) — физические биты taffy:
     /// 1 колонки, 2 ряды подсеточные; 4 / 8 — зазор колонок / рядов `normal`
     /// (зазор родителя). 0 — не подсетка.
@@ -938,6 +953,7 @@ impl Default for Style {
     fn default() -> Self {
         Style {
             safe_alignment: (false, false, false, false),
+            safe_justify_alignment: (false, false),
             display: Display::Block,
             visibility: Visibility::Visible,
             overflow: Point {
@@ -957,6 +973,8 @@ impl Default for Style {
             min_size: Size::auto(),
             max_size: Size::auto(),
             aspect_ratio: None,
+            aspect_ratio_preferred_size: [None; 2],
+            sizing_keywords: [None; 2],
             gap: Size::default(),
             // Alignment
             align_items: None,
@@ -981,10 +999,13 @@ impl Default for Style {
             calc_size: [None; 4],
             hides_baseline: false,
             baseline_from_last: false,
+            baseline_unavailable: false,
             baseline_x_hint: None,
             baseline_x_flags: 0,
             margin_trim: 0,
             grid_lanes: None,
+            grid_axis_reversed: [false; 2],
+            block_flow: None,
             grid_subgrid: 0,
             grid_line_names: None,
             flex_grow: 0.0,
@@ -1447,14 +1468,14 @@ pub enum Position {
 impl From<AlignItems> for taffy::style::AlignItems {
     fn from(value: AlignItems) -> Self {
         match value {
-            AlignItems::Start => Self::Start,
-            AlignItems::End => Self::End,
-            AlignItems::FlexStart => Self::FlexStart,
-            AlignItems::FlexEnd => Self::FlexEnd,
-            AlignItems::Center => Self::Center,
-            AlignItems::Baseline => Self::Baseline,
-            AlignItems::Stretch => Self::Stretch,
-            AlignItems::LastBaseline => Self::LastBaseline,
+            AlignItems::Start => Self::START,
+            AlignItems::End => Self::END,
+            AlignItems::FlexStart => Self::FLEX_START,
+            AlignItems::FlexEnd => Self::FLEX_END,
+            AlignItems::Center => Self::CENTER,
+            AlignItems::Baseline => Self::BASELINE,
+            AlignItems::Stretch => Self::STRETCH,
+            AlignItems::LastBaseline => Self::LAST_BASELINE,
         }
     }
 }
@@ -1462,15 +1483,15 @@ impl From<AlignItems> for taffy::style::AlignItems {
 impl From<AlignContent> for taffy::style::AlignContent {
     fn from(value: AlignContent) -> Self {
         match value {
-            AlignContent::Start => Self::Start,
-            AlignContent::End => Self::End,
-            AlignContent::FlexStart => Self::FlexStart,
-            AlignContent::FlexEnd => Self::FlexEnd,
-            AlignContent::Center => Self::Center,
-            AlignContent::Stretch => Self::Stretch,
-            AlignContent::SpaceBetween => Self::SpaceBetween,
-            AlignContent::SpaceEvenly => Self::SpaceEvenly,
-            AlignContent::SpaceAround => Self::SpaceAround,
+            AlignContent::Start => Self::START,
+            AlignContent::End => Self::END,
+            AlignContent::FlexStart => Self::FLEX_START,
+            AlignContent::FlexEnd => Self::FLEX_END,
+            AlignContent::Center => Self::CENTER,
+            AlignContent::Stretch => Self::STRETCH,
+            AlignContent::SpaceBetween => Self::SPACE_BETWEEN,
+            AlignContent::SpaceEvenly => Self::SPACE_EVENLY,
+            AlignContent::SpaceAround => Self::SPACE_AROUND,
         }
     }
 }

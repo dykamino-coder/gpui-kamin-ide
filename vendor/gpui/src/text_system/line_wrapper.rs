@@ -1,3 +1,7 @@
+//! Text wrapping and truncation with separate editor and CSS policies.
+mod break_classes;
+mod wrap_modes;
+
 use crate::{FontId, FontRun, Pixels, PlatformTextSystem, SharedString, TextRun, px};
 use collections::HashMap;
 use std::{iter, sync::Arc};
@@ -70,7 +74,7 @@ impl LineWrapper {
             }
             // Граница слова: разрыв разрешён между двумя не-словесными
             // знаками — те же правила, по которым идёт перенос.
-            if prev != ' ' && !Self::is_word_char(c) && !Self::is_word_char(prev) {
+            if prev != ' ' && !Self::is_css_word_char(c) && !Self::is_css_word_char(prev) {
                 cut_at(self, chunk_start, ix, &mut longest);
                 chunk_start = ix;
             }
@@ -96,11 +100,11 @@ impl LineWrapper {
         width
     }
 
-    /// Wrap a line of text to the given width with this wrapper's font and font size.
-    pub fn wrap_line<'a>(
+    fn wrap_line_policy<'a>(
         &'a mut self,
         fragments: &'a [LineFragment],
         wrap_width: Pixels,
+        css: bool,
     ) -> impl Iterator<Item = Boundary> + 'a {
         let mut width = px(0.);
         let mut first_non_whitespace_ix = None;
@@ -125,7 +129,12 @@ impl LineWrapper {
                             continue;
                         }
 
-                        if Self::is_word_char(c) {
+                        let word = if css {
+                            Self::is_css_word_char(c)
+                        } else {
+                            Self::is_word_char(c)
+                        };
+                        if word {
                             if prev_c == ' ' && c != ' ' && first_non_whitespace_ix.is_some() {
                                 last_candidate_ix = ix;
                                 last_candidate_width = width;
@@ -137,7 +146,7 @@ impl LineWrapper {
                             // not be left dangling at the end of a line.
                             if c != ' '
                                 && first_non_whitespace_ix.is_some()
-                                && !Self::is_no_break_after(prev_c)
+                                && (!css || !Self::is_no_break_after(prev_c))
                             {
                                 last_candidate_ix = ix;
                                 last_candidate_width = width;
@@ -179,7 +188,7 @@ impl LineWrapper {
                 // trailing spaces hang) и сам перенос не вызывает — иначе он
                 // переезжает в начало следующей строки и крадёт её ширину.
                 let hanging_space =
-                    matches!(candidate, WrapBoundaryCandidate::Char { character: ' ' });
+                    css && matches!(candidate, WrapBoundaryCandidate::Char { character: ' ' });
                 // KaminIDE patch: АВАРИЙНЫЙ разрыв (слово шире строки,
                 // законного кандидата нет) не ставится перед знаком, которым
                 // строка начаться не может: UAX #14 LB11 `× WJ` и LB12a
@@ -192,7 +201,8 @@ impl LineWrapper {
                 // красное 50, зелёное 50). Законный кандидат
                 // (`last_candidate_ix > 0`) по-прежнему сильнее: там переносим
                 // как раньше.
-                let glue_ahead = last_candidate_ix == 0
+                let glue_ahead = css
+                    && last_candidate_ix == 0
                     && matches!(
                         candidate,
                         WrapBoundaryCandidate::Char { character: c }
@@ -285,50 +295,7 @@ impl LineWrapper {
         // `2^3`, `a~b`, `a=1`, `Self::new`, etc.
         matches!(c, '-' | '_' | '.' | '\'' | '$' | '%' | '@' | '#' | '^' | '~' | ',' | '=' | ':') ||
         // `⋯` character is special used in Zed, to keep this at the end of the line.
-        matches!(c, '⋯') ||
-        // KaminIDE patch: characters a line may not START with — closing
-        // brackets, terminators, non-starters. Taken from the real UAX #14
-        // classes, not a hand-written list: the set spans the whole of
-        // Unicode (CJK, fullwidth forms, quotes, small kana).
-        Self::is_no_break_before(c)
-    }
-
-    /// KaminIDE patch: перед этими знаками нельзя переносить НИКОГДА —
-    /// UAX #14 LB11 (`× WJ`) и LB12a (`[^SP BA HY] × GL`).
-    fn is_glue_before(c: char) -> bool {
-        use unicode_linebreak::BreakClass::*;
-        matches!(
-            unicode_linebreak::break_property(c as u32),
-            NonBreakingGlue | WordJoiner
-        )
-    }
-
-    /// KaminIDE patch: a line may not END with these (UAX #14 class OP/GL).
-    ///
-    /// Every non-word character is a wrap candidate above, so without this an
-    /// opening bracket would be left dangling at the end of a line.
-    pub(crate) fn is_no_break_after(c: char) -> bool {
-        use unicode_linebreak::BreakClass::*;
-        matches!(
-            unicode_linebreak::break_property(c as u32),
-            OpenPunctuation | NonBreakingGlue | WordJoiner
-        )
-    }
-
-    /// KaminIDE patch: a line may not START with these (UAX #14 CL/CP/EX/IS/NS/SY).
-    fn is_no_break_before(c: char) -> bool {
-        use unicode_linebreak::BreakClass::*;
-        matches!(
-            unicode_linebreak::break_property(c as u32),
-            ClosePunctuation
-                | CloseParenthesis
-                | Exclamation
-                | InfixSeparator
-                | NonStarter
-                | Symbol
-                | NonBreakingGlue
-                | WordJoiner
-        )
+        matches!(c, '⋯')
     }
 
     #[inline(always)]
@@ -360,7 +327,7 @@ impl LineWrapper {
                 &[FontRun {
                     len: buffer.len(),
                     font_id: self.font_id,
-                                    font_size: self.font_size,
+                    font_size: self.font_size,
                 }],
             )
             .width
@@ -482,9 +449,14 @@ mod tests {
                     fallbacks: None,
                     weight: FontWeight::default(),
                     style: FontStyle::Normal,
+                    stretch: Default::default(),
                 },
                 color: Hsla::default(),
                 background_color: None,
+                font_size: None,
+                background_pad: [px(0.0); 4],
+                background_radius: px(0.0),
+                background_border: None,
                 underline: None,
                 strikethrough: None,
             })

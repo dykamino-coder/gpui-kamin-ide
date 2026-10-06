@@ -1245,13 +1245,22 @@ fn vs_poly_sprite(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index
 
 @fragment
 fn fs_poly_sprite(input: PolySpriteVarying) -> @location(0) vec4<f32> {
-    let sample = textureSample(t_sprite, s_sprite, input.tile_position);
+    var sample = textureSample(t_sprite, s_sprite, input.tile_position);
     // Alpha clip after using the derivatives.
     if (any(input.clip_distances < vec4<f32>(0.0))) {
         return vec4<f32>(0.0);
     }
 
     let sprite = b_poly_sprites[input.sprite_id];
+    if ((sprite.pad & 1u) != 0u) {
+        let tile_origin = vec2<i32>(sprite.tile.bounds.origin);
+        let source_position = (input.position.xy - sprite.bounds.origin)
+            / sprite.bounds.size * vec2<f32>(sprite.tile.bounds.size);
+        let source_texel = clamp(vec2<i32>(floor(source_position)), vec2<i32>(0),
+            vec2<i32>(sprite.tile.bounds.size) - vec2<i32>(1));
+        let texel = tile_origin + source_texel;
+        sample = textureLoad(t_sprite, texel, 0);
+    }
     let distance = quad_sdf(input.position.xy, sprite.bounds, sprite.corner_radii);
 
     var color = sample;

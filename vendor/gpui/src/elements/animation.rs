@@ -1,3 +1,8 @@
+//! Animation scheduling with an optional explicit snapshot timeline.
+
+mod clock;
+pub use clock::AnimationElapsedTime;
+
 use std::{
     rc::Rc,
     time::{Duration, Instant},
@@ -138,31 +143,14 @@ impl<E: IntoElement + 'static> Element for AnimationElement<E> {
         window: &mut Window,
         cx: &mut App,
     ) -> (crate::LayoutId, Self::RequestLayoutState) {
+        let elapsed_override = cx.try_global::<AnimationElapsedTime>().map(|time| time.0);
         window.with_element_state(global_id.unwrap(), |state, window| {
             let mut state = state.unwrap_or_else(|| AnimationState {
                 start: Instant::now(),
                 animation_ix: 0,
             });
-            let animation_ix = state.animation_ix;
-
-            let mut delta = state.start.elapsed().as_secs_f32()
-                / self.animations[animation_ix].duration.as_secs_f32();
-
-            let mut done = false;
-            if delta > 1.0 {
-                if self.animations[animation_ix].oneshot {
-                    if animation_ix >= self.animations.len() - 1 {
-                        done = true;
-                    } else {
-                        state.start = Instant::now();
-                        state.animation_ix += 1;
-                    }
-                    delta = 1.0;
-                } else {
-                    delta %= 1.0;
-                }
-            }
-            let delta = (self.animations[animation_ix].easing)(delta);
+            let (animation_ix, delta, done) =
+                clock::advance(&self.animations, &mut state, elapsed_override);
 
             debug_assert!(
                 (0.0..=1.0).contains(&delta),

@@ -8,29 +8,41 @@ mod dimension;
 mod block;
 #[cfg(feature = "flexbox")]
 mod flex;
+#[cfg(feature = "float_layout")]
+mod float;
 #[cfg(feature = "grid")]
 mod grid;
 
-pub use self::alignment::{AlignContent, AlignItems, AlignSelf, JustifyContent, JustifyItems, JustifySelf};
+pub use self::alignment::{
+    AlignContent, AlignContentKeyword, AlignItems, AlignItemsKeyword, AlignSelf, AlignmentSafety,
+    JustifyContent, JustifyItems, JustifySelf,
+};
 pub use self::available_space::AvailableSpace;
 pub use self::compact_length::CompactLength;
-pub use self::dimension::{Dimension, LengthPercentage, LengthPercentageAuto};
+pub use self::dimension::{
+    Dimension, ExpandedDimension, ExpandedLengthPercentage, ExpandedLengthPercentageAuto,
+    LengthPercentage, LengthPercentageAuto,
+};
 use crate::sys::DefaultCheapStr;
 
 #[cfg(feature = "block_layout")]
-pub use self::block::{BlockContainerStyle, BlockItemStyle, TextAlign};
+pub use self::block::{BlockContainerStyle, BlockFlow, BlockItemStyle, TextAlign};
 #[cfg(feature = "flexbox")]
 pub use self::flex::{FlexDirection, FlexWrap, FlexboxContainerStyle, FlexboxItemStyle};
+#[cfg(feature = "float_layout")]
+pub use self::float::{Clear, Float, FloatDirection};
 #[cfg(feature = "grid")]
 pub use self::grid::{
-    GenericGridPlacement, GenericGridTemplateComponent, GenericRepetition, GridAutoFlow, GridContainerStyle,
-    GridItemStyle, GridPlacement, GridTemplateComponent, GridTemplateRepetition, MaxTrackSizingFunction,
-    MinTrackSizingFunction, RepetitionCount, TrackSizingFunction,
+    ExpandedMaxTrackSizingFunction, ExpandedMinTrackSizingFunction, GenericGridPlacement,
+    GenericGridTemplateComponent, GenericRepetition, GridAutoFlow, GridAutoTracks,
+    GridContainerStyle, GridItemStyle, GridPlacement, GridTemplateComponent,
+    GridTemplateRepetition, GridTemplateTracks, MaxTrackSizingFunction, MinTrackSizingFunction,
+    RepetitionCount, TrackSizingFunction,
 };
 #[cfg(feature = "grid")]
 pub(crate) use self::grid::{GridAreaAxis, GridAreaEnd};
 #[cfg(feature = "grid")]
-pub use self::grid::{GridTemplateArea, NamedGridLine, TemplateLineNames};
+pub use self::grid::{GridTemplateArea, GridTemplateAreas, NamedGridLine, TemplateLineNames};
 #[cfg(feature = "grid")]
 pub(crate) use self::grid::{NonNamedGridPlacement, OriginZeroGridPlacement};
 
@@ -51,12 +63,28 @@ use crate::sys::String;
 /// consider `Arc<str>` or `string_cache::Atom`.
 #[cfg(any(feature = "alloc", feature = "std"))]
 pub trait CheapCloneStr:
-    AsRef<str> + for<'a> From<&'a str> + From<String> + PartialEq + Eq + Clone + Default + Debug + 'static
+    AsRef<str>
+    + for<'a> From<&'a str>
+    + From<String>
+    + PartialEq
+    + Eq
+    + Clone
+    + Default
+    + Debug
+    + 'static
 {
 }
 #[cfg(any(feature = "alloc", feature = "std"))]
 impl<T> CheapCloneStr for T where
-    T: AsRef<str> + for<'a> From<&'a str> + From<String> + PartialEq + Eq + Clone + Default + Debug + 'static
+    T: AsRef<str>
+        + for<'a> From<&'a str>
+        + From<String>
+        + PartialEq
+        + Eq
+        + Clone
+        + Default
+        + Debug
+        + 'static
 {
 }
 
@@ -92,6 +120,10 @@ pub trait CoreStyle {
         BoxGenerationMode::DEFAULT
     }
     /// Is block layout?
+    ///
+    /// This should only return `true` for `display: block`, and NOT for `display: flow-root`.
+    /// Flow-root boxes establish a new block formatting context and must not be treated as
+    /// being part of their parent's block formatting context (which is what this method controls).
     #[inline(always)]
     fn is_block(&self) -> bool {
         false
@@ -113,6 +145,19 @@ pub trait CoreStyle {
     fn calc_size(&self) -> [Option<(f32, f32, f32, f32)>; 4] {
         [None; 4]
     }
+
+    /// The direction of text, table and grid columns, and horizontal overflow.
+    #[inline(always)]
+    fn direction(&self) -> Direction {
+        Direction::Ltr
+    }
+    /// Physical grid axes supplied by a writing-mode adapter; otherwise use direction.
+    fn grid_axis_reversed(&self) -> Option<Size<bool>> {
+        None
+    }
+    /// Logical axes of a block container, supplied by its writing-mode adapter.
+    #[cfg(feature = "block_layout")]
+    fn block_flow(&self) -> Option<BlockFlow> { None }
 
     // Overflow properties
     /// How children overflowing their container should affect layout
@@ -146,16 +191,21 @@ pub trait CoreStyle {
     }
     /// Controls the minimum size of the item
     #[inline(always)]
-    fn min_size(&self) -> Size<Dimension> {
+    fn min_size(&self) -> Size<LengthPercentageAuto> {
         Style::<Self::CustomIdent>::DEFAULT.min_size
     }
     /// Controls the maximum size of the item
     #[inline(always)]
-    fn max_size(&self) -> Size<Dimension> {
+    fn max_size(&self) -> Size<LengthPercentageAuto> {
         Style::<Self::CustomIdent>::DEFAULT.max_size
     }
-    /// Sets the preferred aspect ratio for the item
-    /// The ratio is calculated as width divided by height.
+    /// Border-box preferred size transferred by an adapter from a definite ratio axis.
+    /// It supplies a percentage basis and wrapping constraint without fixing the used size.
+    fn aspect_ratio_preferred_size(&self) -> Size<Option<f32>> {
+        Size::NONE
+    }
+
+    /// Sets the preferred aspect ratio, calculated as width divided by height.
     #[inline(always)]
     fn aspect_ratio(&self) -> Option<f32> {
         Style::<Self::CustomIdent>::DEFAULT.aspect_ratio
@@ -218,6 +268,12 @@ pub trait CoreStyle {
     fn subgrid(&self) -> u8 {
         0
     }
+
+    /// The layout-affecting parts of the CSS `contain` property that apply to this node
+    #[inline(always)]
+    fn contain(&self) -> Contain {
+        Contain::NONE
+    }
 }
 
 /// KaminIDE patch: бит подсеточных КОЛОНОК (горизонтальная ось) в [`CoreStyle::subgrid`].
@@ -263,6 +319,7 @@ pub struct SubgridAxisTracks {
 /// subgrid's specified grid span»).
 #[cfg(feature = "grid")]
 #[derive(Clone, Debug, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SubgridLineNames<S: CheapCloneStr> {
     /// Линии до повтора.
     pub before: Vec<Vec<S>>,
@@ -284,8 +341,11 @@ impl<S: CheapCloneStr> SubgridLineNames<S> {
         let mut out: Vec<Vec<S>> = self.before.clone();
         if let Some(body) = &self.repeat {
             let fixed = self.before.len() + self.after.len();
-            let reps =
-                if fixed > span || body.is_empty() || body.len() > span { 0 } else { (span - fixed + 1) / body.len() };
+            let reps = if fixed > span || body.is_empty() || body.len() > span {
+                0
+            } else {
+                (span - fixed + 1) / body.len()
+            };
             for _ in 0..reps {
                 out.extend(body.iter().cloned());
             }
@@ -314,6 +374,7 @@ pub struct SubgridTracks {
 /// Оси ФИЗИЧЕСКИЕ: письмо переставляет их до нас.
 #[cfg(feature = "grid")]
 #[derive(Copy, Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct GridLanes {
     /// Ось решётки — РЯДЫ (`grid-lanes-direction: row`): лунки идут
     /// горизонтальными полосами, укладка — слева направо.
@@ -344,6 +405,9 @@ pub enum Display {
     /// The children will follow the block layout algorithm
     #[cfg(feature = "block_layout")]
     Block,
+    /// The children will follow the block layout algorithm and establish a new block formatting context
+    #[cfg(feature = "block_layout")]
+    FlowRoot,
     /// The children will follow the flexbox layout algorithm
     #[cfg(feature = "flexbox")]
     Flex,
@@ -364,11 +428,19 @@ impl Display {
     pub const DEFAULT: Display = Display::Grid;
 
     /// The default Display mode
-    #[cfg(all(feature = "block_layout", not(feature = "flexbox"), not(feature = "grid")))]
+    #[cfg(all(
+        feature = "block_layout",
+        not(feature = "flexbox"),
+        not(feature = "grid")
+    ))]
     pub const DEFAULT: Display = Display::Block;
 
     /// The default Display mode
-    #[cfg(all(not(feature = "flexbox"), not(feature = "grid"), not(feature = "block_layout")))]
+    #[cfg(all(
+        not(feature = "flexbox"),
+        not(feature = "grid"),
+        not(feature = "block_layout")
+    ))]
     pub const DEFAULT: Display = Display::None;
 }
 
@@ -378,12 +450,27 @@ impl Default for Display {
     }
 }
 
+#[cfg(feature = "parse")]
+crate::util::parse::impl_parse_for_keyword_enum!(Display,
+    "none" => None,
+    #[cfg(feature = "flexbox")]
+    "flex" => Flex,
+    #[cfg(feature = "grid")]
+    "grid" => Grid,
+    #[cfg(feature = "block_layout")]
+    "block" => Block,
+    #[cfg(feature = "block_layout")]
+    "flow-root" => FlowRoot,
+);
+
 impl core::fmt::Display for Display {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Display::None => write!(f, "NONE"),
             #[cfg(feature = "block_layout")]
             Display::Block => write!(f, "BLOCK"),
+            #[cfg(feature = "block_layout")]
+            Display::FlowRoot => write!(f, "FLOW-ROOT"),
             #[cfg(feature = "flexbox")]
             Display::Flex => write!(f, "FLEX"),
             #[cfg(feature = "grid")]
@@ -423,11 +510,12 @@ impl Default for BoxGenerationMode {
 /// which can be unintuitive.
 ///
 /// [`Position::Relative`] is the default value, in contrast to the default behavior in CSS.
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Position {
     /// The offset is computed relative to the final position given by the layout algorithm.
     /// Offsets do not affect the position of any other items; they are effectively a correction factor applied at the end.
+    #[default]
     Relative,
     /// The offset is computed relative to this item's closest positioned ancestor, if any.
     /// Otherwise, it is placed relative to the origin.
@@ -437,11 +525,11 @@ pub enum Position {
     Absolute,
 }
 
-impl Default for Position {
-    fn default() -> Self {
-        Self::Relative
-    }
-}
+#[cfg(feature = "parse")]
+crate::util::parse::impl_parse_for_keyword_enum!(Position,
+    "relative" => Relative,
+    "absolute" => Absolute,
+);
 
 /// Specifies whether size styles for this node are assigned to the node's "content box" or "border box"
 ///
@@ -456,20 +544,21 @@ impl Default for Position {
 ///   - `flex_basis`
 ///
 /// See <https://developer.mozilla.org/en-US/docs/Web/CSS/box-sizing>
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum BoxSizing {
     /// Size styles such size, min_size, max_size specify the box's "border box" (the size excluding margin but including padding/border)
+    #[default]
     BorderBox,
     /// Size styles such size, min_size, max_size specify the box's "content box" (the size excluding padding/border/margin)
     ContentBox,
 }
 
-impl Default for BoxSizing {
-    fn default() -> Self {
-        Self::BorderBox
-    }
-}
+#[cfg(feature = "parse")]
+crate::util::parse::impl_parse_for_keyword_enum!(BoxSizing,
+    "border-box" => BorderBox,
+    "content-box" => ContentBox,
+);
 
 /// How children overflowing their container should affect layout
 ///
@@ -507,7 +596,7 @@ impl Overflow {
     /// Returns true for overflow modes that contain their contents (`Overflow::Hidden`, `Overflow::Scroll`, `Overflow::Auto`)
     /// or else false for overflow modes that allow their contains to spill (`Overflow::Visible`).
     #[inline(always)]
-    pub(crate) fn is_scroll_container(self) -> bool {
+    pub fn is_scroll_container(self) -> bool {
         match self {
             Self::Visible | Self::Clip => false,
             Self::Hidden | Self::Scroll => true,
@@ -524,6 +613,188 @@ impl Overflow {
         }
     }
 }
+
+#[cfg(feature = "parse")]
+crate::util::parse::impl_parse_for_keyword_enum!(Overflow,
+    "visible" => Visible,
+    "hidden" => Hidden,
+    "clip" => Clip,
+    "scroll" => Scroll,
+);
+
+/// The layout-affecting parts of the CSS `contain` property.
+///
+/// Containment limits the ways in which a box's contents can affect layout outside of the box
+/// (and vice versa). Taffy implements the layout-relevant containment types:
+///
+///   - [`Contain::LAYOUT`]: the box establishes an independent formatting context, and is treated
+///     as having no baseline for baseline-alignment purposes (layout containment).
+///   - [`Contain::PAINT`]: the box establishes an independent formatting context. Paint
+///     containment's other effects (clipping, containing absolutely-positioned descendants,
+///     stacking context) are outside of Taffy's scope.
+///
+/// The `style` containment type has no effect on layout and is therefore not represented
+/// (it is accepted and ignored when parsing). Size and inline-size containment are not
+/// currently implemented.
+///
+/// <https://developer.mozilla.org/en-US/docs/Web/CSS/contain>
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Contain(u8);
+
+impl Contain {
+    /// No containment (the default)
+    pub const NONE: Contain = Contain(0);
+    /// Layout containment: the box establishes an independent formatting context and is treated
+    /// as having no baseline for baseline-alignment purposes.
+    /// <https://drafts.csswg.org/css-contain-2/#containment-layout>
+    pub const LAYOUT: Contain = Contain(1 << 0);
+    /// Paint containment: the box establishes an independent formatting context. Its other
+    /// effects don't affect layout.
+    /// <https://drafts.csswg.org/css-contain-2/#containment-paint>
+    pub const PAINT: Contain = Contain(1 << 1);
+    /// The containment implied by `contain: content` (`layout paint`, ignoring style containment)
+    pub const CONTENT: Contain = Contain(Contain::LAYOUT.0 | Contain::PAINT.0);
+
+    /// The default containment (no containment)
+    pub const DEFAULT: Contain = Contain::NONE;
+
+    /// Returns whether `self` contains all of the containment types in `other`
+    #[inline(always)]
+    pub const fn contains(self, other: Contain) -> bool {
+        self.0 & other.0 == other.0
+    }
+
+    /// Returns whether `self` contains any of the containment types in `other`
+    #[inline(always)]
+    pub const fn intersects(self, other: Contain) -> bool {
+        self.0 & other.0 != 0
+    }
+
+    /// Returns the union of the containment types in `self` and `other`
+    #[inline(always)]
+    pub const fn union(self, other: Contain) -> Contain {
+        Contain(self.0 | other.0)
+    }
+
+    /// Whether this containment causes the box to establish an independent formatting context
+    /// (both layout and paint containment do)
+    #[inline(always)]
+    pub const fn establishes_independent_formatting_context(self) -> bool {
+        self.intersects(Contain::LAYOUT.union(Contain::PAINT))
+    }
+
+    /// Whether this containment suppresses the box's baseline for baseline-alignment purposes
+    /// (layout containment does, paint containment does not)
+    #[inline(always)]
+    pub const fn suppresses_baseline(self) -> bool {
+        self.contains(Contain::LAYOUT)
+    }
+
+    /// Whether this containment prevents the box's overflowing content from contributing to an
+    /// ancestor's scrollable overflow region (layout containment treats such overflow as ink
+    /// overflow; paint containment clips it)
+    #[inline(always)]
+    pub const fn contains_scrollable_overflow(self) -> bool {
+        self.intersects(Contain::LAYOUT.union(Contain::PAINT))
+    }
+}
+
+impl core::ops::BitOr for Contain {
+    type Output = Contain;
+    #[inline(always)]
+    fn bitor(self, rhs: Contain) -> Contain {
+        self.union(rhs)
+    }
+}
+
+impl core::ops::BitOrAssign for Contain {
+    #[inline(always)]
+    fn bitor_assign(&mut self, rhs: Contain) {
+        *self = self.union(rhs);
+    }
+}
+
+#[cfg(feature = "parse")]
+impl crate::util::parse::FromCss for Contain {
+    fn from_css<'i>(
+        input: &mut crate::util::parse::Parser<'i, '_>,
+    ) -> crate::util::parse::CssParseResult<'i, Self> {
+        /// Duplicate-detection bit for the ignored `style` keyword, which does not map to a
+        /// `Contain` flag
+        const STYLE_BIT: u8 = 1 << 6;
+
+        let mut flags = Contain::NONE;
+        let mut seen: u8 = 0;
+
+        loop {
+            let ident = input.expect_ident()?.clone();
+            let (flag, seen_bit) = cssparser::match_ignore_ascii_case! { &*ident,
+                // Single-keyword values (only valid on their own; `parse_entirely` in the
+                // `FromStr` impl rejects trailing keywords, and a leading keyword before them
+                // is rejected by the `seen != 0` check below)
+                "none" | "content" => {
+                    if seen != 0 || !input.is_exhausted() {
+                        return Err(input.new_unexpected_token_error(crate::util::parse::Token::Ident(ident)));
+                    }
+                    return Ok(cssparser::match_ignore_ascii_case! { &*ident,
+                        "content" => Contain::CONTENT,
+                        _ => Contain::NONE,
+                    });
+                },
+                "layout" => (Contain::LAYOUT, Contain::LAYOUT.0),
+                "paint" => (Contain::PAINT, Contain::PAINT.0),
+                // `style` containment has no layout effect: accept and ignore it so that real
+                // CSS values round-trip
+                "style" => (Contain::NONE, STYLE_BIT),
+                _ => {
+                    return Err(input.new_unexpected_token_error(crate::util::parse::Token::Ident(ident)));
+                }
+            };
+
+            // Reject duplicate keywords
+            if seen & seen_bit != 0 {
+                return Err(
+                    input.new_unexpected_token_error(crate::util::parse::Token::Ident(ident))
+                );
+            }
+            seen |= seen_bit;
+            flags |= flag;
+
+            if input.is_exhausted() {
+                return Ok(flags);
+            }
+        }
+    }
+}
+#[cfg(feature = "parse")]
+crate::util::parse::from_str_from_css!(Contain);
+
+/// Sets the direction of text, table and grid columns, and horizontal overflow.
+/// <https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/direction>
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum Direction {
+    #[default]
+    /// Left-to-right
+    Ltr,
+    /// Right-to-left
+    Rtl,
+}
+
+impl Direction {
+    /// Returns true if the direction is right-to-left
+    #[inline]
+    pub(crate) fn is_rtl(&self) -> bool {
+        matches!(self, Direction::Rtl)
+    }
+}
+
+#[cfg(feature = "parse")]
+crate::util::parse::impl_parse_for_keyword_enum!(Direction,
+    "ltr" => Ltr,
+    "rtl" => Rtl,
+);
 
 /// A typed representation of the CSS style information for a single node.
 ///
@@ -556,12 +827,28 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     pub item_is_replaced: bool,
     /// Should size styles apply to the content box or the border box of the node
     pub box_sizing: BoxSizing,
+    /// Sets the direction of text, table and grid columns, and horizontal overflow.
+    pub direction: Direction,
+    /// Logical grid track order projected onto the physical x/y axes.
+    pub grid_axis_reversed: Option<Size<bool>>,
+    /// Native block layout in logical axes, retaining its BFC and margin rules.
+    #[cfg(feature = "block_layout")]
+    pub block_flow: Option<BlockFlow>,
 
     // Overflow properties
     /// How children overflowing their container should affect layout
     pub overflow: Point<Overflow>,
     /// How much space (in points) should be reserved for the scrollbars of `Overflow::Scroll` and `Overflow::Auto` nodes.
     pub scrollbar_width: f32,
+    /// The layout-affecting parts of the CSS `contain` property
+    pub contain: Contain,
+
+    #[cfg(feature = "float_layout")]
+    /// Should the box be floated
+    pub float: Float,
+    #[cfg(feature = "float_layout")]
+    /// Should the box clear floats
+    pub clear: Clear,
 
     // Position properties
     /// What should the `position` value of this struct use as a base offset?
@@ -576,14 +863,16 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     pub size: Size<Dimension>,
     /// Controls the minimum size of the item
     #[cfg_attr(feature = "serde", serde(default = "style_helpers::auto"))]
-    pub min_size: Size<Dimension>,
+    pub min_size: Size<LengthPercentageAuto>,
     /// Controls the maximum size of the item
     #[cfg_attr(feature = "serde", serde(default = "style_helpers::auto"))]
-    pub max_size: Size<Dimension>,
+    pub max_size: Size<LengthPercentageAuto>,
     /// Sets the preferred aspect ratio for the item
     ///
     /// The ratio is calculated as width divided by height.
     pub aspect_ratio: Option<f32>,
+    /// Border-box ratio transfer preserved independently of content expansion.
+    pub aspect_ratio_preferred_size: Size<Option<f32>>,
 
     // Spacing Properties
     /// How large should the margin be on each side?
@@ -612,7 +901,7 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     #[cfg(feature = "grid")]
     pub justify_self: Option<AlignSelf>,
     /// How should content contained within this item be aligned in the cross/block axis
-    #[cfg(any(feature = "flexbox", feature = "grid"))]
+    #[cfg(any(feature = "flexbox", feature = "grid", feature = "block_layout"))]
     pub align_content: Option<AlignContent>,
     /// How should content contained within this item be aligned in the main/inline axis
     #[cfg(any(feature = "flexbox", feature = "grid"))]
@@ -656,16 +945,16 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// KaminIDE patch: раскладка лунками (см. [`GridLanes`]).
     #[cfg(feature = "grid")]
     pub grid_lanes: Option<GridLanes>,
-    /// KaminIDE patch: коробка не отдаёт базовые линии наружу — родитель их
-    /// синтезирует (css-contain-2 §3.2 п.7: «the containment box is treated as
-    /// having no baseline»). Ставится движком для `contain: layout`.
-    pub hides_baseline: bool,
     /// KaminIDE patch: базовая для выравнивания снаружи — ПОСЛЕДНЯЯ
     /// (css-inline-3 §baseline-source: `auto` у `inline-block` — `last`;
     /// CSS 2.1 §10.8.1: «The baseline of an 'inline-block' is the baseline
     /// of its last line box in the normal flow»). Узел отдаёт последнюю
     /// базовую вместо первой.
     pub baseline_from_last: bool,
+    /// The box has no exportable baseline (for example a table with no rows).
+    /// This does not establish layout containment or change sizing.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub baseline_unavailable: bool,
     /// KaminIDE patch: собственная базовая линия по оси x у узла без своей
     /// раскладки текста (повёрнутый вертикальный абзац движка): смещение и
     /// флаг «от правого края» — у `vertical-rl` первая строка справа, и
@@ -696,6 +985,14 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// Should elements wrap, or stay in a single line?
     #[cfg(feature = "flexbox")]
     pub flex_wrap: FlexWrap,
+    /// The minimum number of flex lines requested for a multi-line container. When items are
+    /// balanced ([`FlexWrap::Balance`] or [`FlexWrap::BalanceReverse`]) they are balanced into
+    /// at least this many lines. For any multi-line container, definite cross-axis available
+    /// space for measuring items is divided between this many lines.
+    ///
+    /// 1 is the default value, and this value must be at least 1.
+    #[cfg(feature = "flexbox_balance")]
+    pub flex_line_count: u16,
 
     // Flexbox item properties
     /// Sets the initial main axis size of the item
@@ -732,7 +1029,7 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     // Grid container named properties
     /// Defines the rectangular grid areas
     #[cfg(feature = "grid")]
-    pub grid_template_areas: GridTrackVec<GridTemplateArea<S>>,
+    pub grid_template_areas: Option<GridTemplateAreas<S>>,
     /// The named lines between the columns
     #[cfg(feature = "grid")]
     pub grid_template_column_names: GridTrackVec<GridTrackVec<S>>,
@@ -763,8 +1060,20 @@ impl<S: CheapCloneStr> Style<S> {
         item_is_table: false,
         item_is_replaced: false,
         box_sizing: BoxSizing::BorderBox,
-        overflow: Point { x: Overflow::Visible, y: Overflow::Visible },
+        direction: Direction::Ltr,
+        grid_axis_reversed: None,
+        #[cfg(feature = "block_layout")]
+        block_flow: None,
+        overflow: Point {
+            x: Overflow::Visible,
+            y: Overflow::Visible,
+        },
         scrollbar_width: 0.0,
+        contain: Contain::NONE,
+        #[cfg(feature = "float_layout")]
+        float: Float::None,
+        #[cfg(feature = "float_layout")]
+        clear: Clear::None,
         position: Position::Relative,
         inset: Rect::auto(),
         margin: Rect::zero(),
@@ -774,6 +1083,7 @@ impl<S: CheapCloneStr> Style<S> {
         min_size: Size::auto(),
         max_size: Size::auto(),
         aspect_ratio: None,
+        aspect_ratio_preferred_size: Size::NONE,
         #[cfg(any(feature = "flexbox", feature = "grid"))]
         gap: Size::zero(),
         // Alignment
@@ -787,7 +1097,7 @@ impl<S: CheapCloneStr> Style<S> {
         justify_items: None,
         #[cfg(feature = "grid")]
         justify_self: None,
-        #[cfg(any(feature = "flexbox", feature = "grid"))]
+        #[cfg(any(feature = "flexbox", feature = "grid", feature = "block_layout"))]
         align_content: None,
         #[cfg(any(feature = "flexbox", feature = "grid"))]
         justify_content: None,
@@ -799,6 +1109,8 @@ impl<S: CheapCloneStr> Style<S> {
         flex_direction: FlexDirection::Row,
         #[cfg(feature = "flexbox")]
         flex_wrap: FlexWrap::NoWrap,
+        #[cfg(feature = "flexbox_balance")]
+        flex_line_count: 1,
         #[cfg(feature = "flexbox")]
         flex_balance_lines: 0,
         #[cfg(feature = "flexbox")]
@@ -808,8 +1120,8 @@ impl<S: CheapCloneStr> Style<S> {
         margin_trim: 0,
         #[cfg(feature = "grid")]
         grid_lanes: None,
-        hides_baseline: false,
         baseline_from_last: false,
+        baseline_unavailable: false,
         baseline_x_hint: None,
         baseline_x_flags: 0,
         #[cfg(feature = "grid")]
@@ -826,7 +1138,7 @@ impl<S: CheapCloneStr> Style<S> {
         #[cfg(feature = "grid")]
         grid_template_columns: GridTrackVec::new(),
         #[cfg(feature = "grid")]
-        grid_template_areas: GridTrackVec::new(),
+        grid_template_areas: None,
         #[cfg(feature = "grid")]
         grid_template_column_names: GridTrackVec::new(),
         #[cfg(feature = "grid")]
@@ -842,9 +1154,15 @@ impl<S: CheapCloneStr> Style<S> {
         #[cfg(feature = "grid")]
         grid_auto_flow: GridAutoFlow::Row,
         #[cfg(feature = "grid")]
-        grid_row: Line { start: GridPlacement::<S>::Auto, end: GridPlacement::<S>::Auto },
+        grid_row: Line {
+            start: GridPlacement::<S>::Auto,
+            end: GridPlacement::<S>::Auto,
+        },
         #[cfg(feature = "grid")]
-        grid_column: Line { start: GridPlacement::<S>::Auto, end: GridPlacement::<S>::Auto },
+        grid_column: Line {
+            start: GridPlacement::<S>::Auto,
+            end: GridPlacement::<S>::Auto,
+        },
     };
 }
 
@@ -883,6 +1201,15 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
         self.box_sizing
     }
     #[inline(always)]
+    fn direction(&self) -> Direction {
+        self.direction
+    }
+    fn grid_axis_reversed(&self) -> Option<Size<bool>> {
+        self.grid_axis_reversed
+    }
+    #[cfg(feature = "block_layout")]
+    fn block_flow(&self) -> Option<BlockFlow> { self.block_flow }
+    #[inline(always)]
     fn overflow(&self) -> Point<Overflow> {
         self.overflow
     }
@@ -903,12 +1230,16 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
         self.size
     }
     #[inline(always)]
-    fn min_size(&self) -> Size<Dimension> {
+    fn min_size(&self) -> Size<LengthPercentageAuto> {
         self.min_size
     }
     #[inline(always)]
-    fn max_size(&self) -> Size<Dimension> {
+    fn max_size(&self) -> Size<LengthPercentageAuto> {
         self.max_size
+    }
+    #[inline(always)]
+    fn aspect_ratio_preferred_size(&self) -> Size<Option<f32>> {
+        self.aspect_ratio_preferred_size
     }
     #[inline(always)]
     fn aspect_ratio(&self) -> Option<f32> {
@@ -952,6 +1283,10 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
     fn subgrid(&self) -> u8 {
         self.subgrid
     }
+    #[inline(always)]
+    fn contain(&self) -> Contain {
+        self.contain
+    }
 }
 
 impl<T: CoreStyle> CoreStyle for &'_ T {
@@ -979,6 +1314,15 @@ impl<T: CoreStyle> CoreStyle for &'_ T {
         (*self).box_sizing()
     }
     #[inline(always)]
+    fn direction(&self) -> Direction {
+        (*self).direction()
+    }
+    fn grid_axis_reversed(&self) -> Option<Size<bool>> {
+        (*self).grid_axis_reversed()
+    }
+    #[cfg(feature = "block_layout")]
+    fn block_flow(&self) -> Option<BlockFlow> { (*self).block_flow() }
+    #[inline(always)]
     fn overflow(&self) -> Point<Overflow> {
         (*self).overflow()
     }
@@ -999,12 +1343,16 @@ impl<T: CoreStyle> CoreStyle for &'_ T {
         (*self).size()
     }
     #[inline(always)]
-    fn min_size(&self) -> Size<Dimension> {
+    fn min_size(&self) -> Size<LengthPercentageAuto> {
         (*self).min_size()
     }
     #[inline(always)]
-    fn max_size(&self) -> Size<Dimension> {
+    fn max_size(&self) -> Size<LengthPercentageAuto> {
         (*self).max_size()
+    }
+    #[inline(always)]
+    fn aspect_ratio_preferred_size(&self) -> Size<Option<f32>> {
+        (*self).aspect_ratio_preferred_size()
     }
     #[inline(always)]
     fn aspect_ratio(&self) -> Option<f32> {
@@ -1048,6 +1396,10 @@ impl<T: CoreStyle> CoreStyle for &'_ T {
     fn subgrid(&self) -> u8 {
         (*self).subgrid()
     }
+    #[inline(always)]
+    fn contain(&self) -> Contain {
+        (*self).contain()
+    }
 }
 
 #[cfg(feature = "block_layout")]
@@ -1055,6 +1407,11 @@ impl<S: CheapCloneStr> BlockContainerStyle for Style<S> {
     #[inline(always)]
     fn text_align(&self) -> TextAlign {
         self.text_align
+    }
+
+    #[inline(always)]
+    fn align_content(&self) -> Option<AlignContent> {
+        self.align_content
     }
 }
 
@@ -1064,6 +1421,11 @@ impl<T: BlockContainerStyle> BlockContainerStyle for &'_ T {
     fn text_align(&self) -> TextAlign {
         (*self).text_align()
     }
+
+    #[inline(always)]
+    fn align_content(&self) -> Option<AlignContent> {
+        (*self).align_content()
+    }
 }
 
 #[cfg(feature = "block_layout")]
@@ -1072,6 +1434,18 @@ impl<S: CheapCloneStr> BlockItemStyle for Style<S> {
     fn is_table(&self) -> bool {
         self.item_is_table
     }
+
+    #[cfg(feature = "float_layout")]
+    #[inline(always)]
+    fn float(&self) -> Float {
+        self.float
+    }
+
+    #[cfg(feature = "float_layout")]
+    #[inline(always)]
+    fn clear(&self) -> Clear {
+        self.clear
+    }
 }
 
 #[cfg(feature = "block_layout")]
@@ -1079,6 +1453,18 @@ impl<T: BlockItemStyle> BlockItemStyle for &'_ T {
     #[inline(always)]
     fn is_table(&self) -> bool {
         (*self).is_table()
+    }
+
+    #[cfg(feature = "float_layout")]
+    #[inline(always)]
+    fn float(&self) -> Float {
+        (*self).float()
+    }
+
+    #[cfg(feature = "float_layout")]
+    #[inline(always)]
+    fn clear(&self) -> Clear {
+        (*self).clear()
     }
 }
 
@@ -1091,6 +1477,11 @@ impl<S: CheapCloneStr> FlexboxContainerStyle for Style<S> {
     #[inline(always)]
     fn flex_wrap(&self) -> FlexWrap {
         self.flex_wrap
+    }
+    #[cfg(feature = "flexbox_balance")]
+    #[inline(always)]
+    fn flex_line_count(&self) -> u16 {
+        self.flex_line_count
     }
     #[inline(always)]
     fn flex_balance_lines(&self) -> u16 {
@@ -1131,6 +1522,11 @@ impl<T: FlexboxContainerStyle> FlexboxContainerStyle for &'_ T {
     #[inline(always)]
     fn flex_wrap(&self) -> FlexWrap {
         (*self).flex_wrap()
+    }
+    #[cfg(feature = "flexbox_balance")]
+    #[inline(always)]
+    fn flex_line_count(&self) -> u16 {
+        (*self).flex_line_count()
     }
     #[inline(always)]
     fn flex_balance_lines(&self) -> u16 {
@@ -1228,7 +1624,9 @@ impl<S: CheapCloneStr> GridContainerStyle for Style<S> {
     type TemplateTrackList<'a>
         = core::iter::Map<
         core::slice::Iter<'a, GridTemplateComponent<S>>,
-        fn(&'a GridTemplateComponent<S>) -> GenericGridTemplateComponent<S, &'a GridTemplateRepetition<S>>,
+        fn(
+            &'a GridTemplateComponent<S>,
+        ) -> GenericGridTemplateComponent<S, &'a GridTemplateRepetition<S>>,
     >
     where
         Self: 'a;
@@ -1240,7 +1638,10 @@ impl<S: CheapCloneStr> GridContainerStyle for Style<S> {
 
     #[cfg(feature = "grid")]
     type TemplateLineNames<'a>
-        = core::iter::Map<core::slice::Iter<'a, GridTrackVec<S>>, fn(&GridTrackVec<S>) -> core::slice::Iter<'_, S>>
+        = core::iter::Map<
+        core::slice::Iter<'a, GridTrackVec<S>>,
+        fn(&GridTrackVec<S>) -> core::slice::Iter<'_, S>,
+    >
     where
         Self: 'a;
     #[cfg(feature = "grid")]
@@ -1255,7 +1656,11 @@ impl<S: CheapCloneStr> GridContainerStyle for Style<S> {
     }
     #[inline(always)]
     fn grid_template_columns(&self) -> Option<Self::TemplateTrackList<'_>> {
-        Some(self.grid_template_columns.iter().map(|c| c.as_component_ref()))
+        Some(
+            self.grid_template_columns
+                .iter()
+                .map(|c| c.as_component_ref()),
+        )
     }
     #[inline(always)]
     fn grid_auto_rows(&self) -> Self::AutoTrackList<'_> {
@@ -1293,19 +1698,45 @@ impl<S: CheapCloneStr> GridContainerStyle for Style<S> {
     #[inline(always)]
     #[cfg(feature = "grid")]
     fn grid_template_areas(&self) -> Option<Self::GridTemplateAreas<'_>> {
-        Some(self.grid_template_areas.iter().cloned())
+        self.grid_template_areas
+            .as_ref()
+            .map(|template| template.areas.iter().cloned())
+    }
+    #[inline(always)]
+    #[cfg(feature = "grid")]
+    fn grid_template_area_row_count(&self) -> u16 {
+        self.grid_template_areas
+            .as_ref()
+            .map(|template| template.row_count)
+            .unwrap_or(0)
+    }
+    #[inline(always)]
+    #[cfg(feature = "grid")]
+    fn grid_template_area_column_count(&self) -> u16 {
+        self.grid_template_areas
+            .as_ref()
+            .map(|template| template.column_count)
+            .unwrap_or(0)
     }
 
     #[inline(always)]
     #[cfg(feature = "grid")]
     fn grid_template_column_names(&self) -> Option<Self::TemplateLineNames<'_>> {
-        Some(self.grid_template_column_names.iter().map(|names| names.iter()))
+        Some(
+            self.grid_template_column_names
+                .iter()
+                .map(|names| names.iter()),
+        )
     }
 
     #[inline(always)]
     #[cfg(feature = "grid")]
     fn grid_template_row_names(&self) -> Option<Self::TemplateLineNames<'_>> {
-        Some(self.grid_template_row_names.iter().map(|names| names.iter()))
+        Some(
+            self.grid_template_row_names
+                .iter()
+                .map(|names| names.iter()),
+        )
     }
 
     #[inline(always)]
@@ -1367,6 +1798,14 @@ impl<T: GridContainerStyle> GridContainerStyle for &'_ T {
     #[inline(always)]
     fn grid_template_areas(&self) -> Option<Self::GridTemplateAreas<'_>> {
         (*self).grid_template_areas()
+    }
+    #[inline(always)]
+    fn grid_template_area_row_count(&self) -> u16 {
+        (*self).grid_template_area_row_count()
+    }
+    #[inline(always)]
+    fn grid_template_area_column_count(&self) -> u16 {
+        (*self).grid_template_area_column_count()
     }
     #[cfg(feature = "grid")]
     #[inline(always)]
@@ -1464,18 +1903,51 @@ mod tests {
         use super::GridPlacement;
 
         let old_defaults: Style<DefaultCheapStr> = Style {
+            #[cfg(any(feature = "flexbox", feature = "grid"))]
+            safe_alignment: (false, false, false, false),
+            calc_size: [None; 4],
+            #[cfg(feature = "flexbox")]
+            flex_balance_lines: 0,
+            #[cfg(feature = "flexbox")]
+            flex_cross_reverse: false,
+            percent_basis_from_parent: false,
+            #[cfg(any(feature = "flexbox", feature = "grid"))]
+            margin_trim: 0,
+            #[cfg(feature = "grid")]
+            grid_lanes: None,
+            baseline_from_last: false,
+        baseline_unavailable: false,
+            baseline_x_hint: None,
+            baseline_x_flags: 0,
+            #[cfg(feature = "grid")]
+            subgrid: 0,
+            #[cfg(feature = "grid")]
+            subgrid_column_names: None,
+            #[cfg(feature = "grid")]
+            subgrid_row_names: None,
             dummy: core::marker::PhantomData,
             display: Default::default(),
             item_is_table: false,
             item_is_replaced: false,
             box_sizing: Default::default(),
+            #[cfg(feature = "float_layout")]
+            float: Default::default(),
+            #[cfg(feature = "float_layout")]
+            clear: Default::default(),
+            direction: Default::default(),
+            grid_axis_reversed: None,
+            #[cfg(feature = "block_layout")]
+            block_flow: None,
             overflow: Default::default(),
             scrollbar_width: 0.0,
+            contain: Default::default(),
             position: Default::default(),
             #[cfg(feature = "flexbox")]
             flex_direction: Default::default(),
             #[cfg(feature = "flexbox")]
             flex_wrap: Default::default(),
+            #[cfg(feature = "flexbox_balance")]
+            flex_line_count: 1,
             #[cfg(any(feature = "flexbox", feature = "grid"))]
             align_items: Default::default(),
             #[cfg(any(feature = "flexbox", feature = "grid"))]
@@ -1484,7 +1956,7 @@ mod tests {
             justify_items: Default::default(),
             #[cfg(feature = "grid")]
             justify_self: Default::default(),
-            #[cfg(any(feature = "flexbox", feature = "grid"))]
+            #[cfg(any(feature = "flexbox", feature = "grid", feature = "block_layout"))]
             align_content: Default::default(),
             #[cfg(any(feature = "flexbox", feature = "grid"))]
             justify_content: Default::default(),
@@ -1505,6 +1977,7 @@ mod tests {
             min_size: Size::auto(),
             max_size: Size::auto(),
             aspect_ratio: Default::default(),
+            aspect_ratio_preferred_size: Size::NONE,
             #[cfg(feature = "grid")]
             grid_template_rows: Default::default(),
             #[cfg(feature = "grid")]
@@ -1522,13 +1995,51 @@ mod tests {
             #[cfg(feature = "grid")]
             grid_auto_flow: Default::default(),
             #[cfg(feature = "grid")]
-            grid_row: Line { start: GridPlacement::Auto, end: GridPlacement::Auto },
+            grid_row: Line {
+                start: GridPlacement::Auto,
+                end: GridPlacement::Auto,
+            },
             #[cfg(feature = "grid")]
-            grid_column: Line { start: GridPlacement::Auto, end: GridPlacement::Auto },
+            grid_column: Line {
+                start: GridPlacement::Auto,
+                end: GridPlacement::Auto,
+            },
         };
 
         assert_eq!(Style::DEFAULT, Style::<DefaultCheapStr>::default());
         assert_eq!(Style::DEFAULT, old_defaults);
+    }
+
+    #[test]
+    #[cfg(feature = "parse")]
+    fn parse_contain() {
+        use super::Contain;
+
+        fn parse(input: &str) -> Contain {
+            input.parse().unwrap()
+        }
+
+        assert_eq!(parse("none"), Contain::NONE);
+        assert_eq!(parse("content"), Contain::LAYOUT | Contain::PAINT);
+        assert_eq!(parse("layout"), Contain::LAYOUT);
+        assert_eq!(parse("style"), Contain::NONE);
+        assert_eq!(parse("paint"), Contain::PAINT);
+        assert_eq!(parse("layout paint"), Contain::LAYOUT | Contain::PAINT);
+        assert_eq!(parse("paint layout"), Contain::LAYOUT | Contain::PAINT);
+        assert_eq!(
+            parse("layout paint style"),
+            Contain::LAYOUT | Contain::PAINT
+        );
+        assert_eq!(parse("Paint LAYOUT"), Contain::LAYOUT | Contain::PAINT);
+        assert!("paint paint".parse::<Contain>().is_err());
+
+        assert!("".parse::<Contain>().is_err());
+        assert!("banana".parse::<Contain>().is_err());
+        assert!("layout layout".parse::<Contain>().is_err());
+        assert!("none layout".parse::<Contain>().is_err());
+        assert!("layout none".parse::<Contain>().is_err());
+        assert!("content layout".parse::<Contain>().is_err());
+        assert!("layout content".parse::<Contain>().is_err());
     }
 
     // NOTE: Please feel free the update the sizes in this test as required. This test is here to prevent unintentional size changes
@@ -1574,10 +2085,16 @@ mod tests {
         assert_type_size::<Rect<LengthPercentageAuto>>(32);
         assert_type_size::<Rect<Dimension>>(32);
 
-        // Alignment
-        assert_type_size::<AlignContent>(1);
-        assert_type_size::<AlignItems>(1);
-        assert_type_size::<Option<AlignItems>>(1);
+        // Alignment — `AlignContent` and `AlignItems` are structs of two `#[repr(u8)]` enums
+        // (position keyword + safety modifier). Niche-packing in the safety byte (only 2 of
+        // 256 values used) lets `Option<_>` stay the same size as the bare struct.
+        assert_type_size::<AlignContentKeyword>(1);
+        assert_type_size::<AlignItemsKeyword>(1);
+        assert_type_size::<AlignmentSafety>(1);
+        assert_type_size::<AlignContent>(2);
+        assert_type_size::<AlignItems>(2);
+        assert_type_size::<Option<AlignItems>>(2);
+        assert_type_size::<Option<AlignContent>>(2);
 
         // Flexbox Container
         assert_type_size::<FlexDirection>(1);
@@ -1595,12 +2112,20 @@ mod tests {
         assert_type_size::<GridTemplateComponent<String>>(56);
         assert_type_size::<GridPlacement<String>>(32);
         assert_type_size::<Line<GridPlacement<String>>>(64);
-        assert_type_size::<Style<String>>(536);
+        // The local payloads retain inline calc (80 B), two subgrid name groups
+        // (144 B), lanes (20 B), x-baseline hint (8 B), and 12 B of flags.
+        // Keep exact assertions: these additions deliberately raise String Style by 280 B, including the separate 16 B ratio basis.
+        assert_type_size::<[Option<(f32, f32, f32, f32)>; 4]>(80);
+        assert_type_size::<Option<SubgridLineNames<String>>>(72);
+        assert_type_size::<Option<GridLanes>>(20);
+        assert_type_size::<Option<(f32, bool)>>(8);
+        assert_type_size::<Size<Option<f32>>>(16);
+        assert_type_size::<Style<String>>(840);
 
         // String-type dependent (Arc<str>)
         assert_type_size::<GridTemplateComponent<Arc<str>>>(56);
         assert_type_size::<GridPlacement<Arc<str>>>(24);
         assert_type_size::<Line<GridPlacement<Arc<str>>>>(48);
-        assert_type_size::<Style<Arc<str>>>(504);
+        assert_type_size::<Style<Arc<str>>>(808);
     }
 }

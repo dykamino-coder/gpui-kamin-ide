@@ -1333,6 +1333,17 @@ float4 polychrome_sprite_fragment(PolychromeSpriteFragmentInput input): SV_Targe
     float2 tile_max = (float2(sprite.tile.bounds.origin) + float2(sprite.tile.bounds.size) - 0.5) / atlas_size;
     float2 uv = clamp(input.tile_position, tile_min, tile_max);
     float4 sample = t_sprite.Sample(s_sprite, uv);
+    if ((sprite.pad & 1u) != 0u) {
+        int2 tile_origin = int2(sprite.tile.bounds.origin);
+        // Source coordinates must not depend on where the atlas allocated a
+        // tile: interpolated normalized UVs lose precision at texel boundaries.
+        float2 source_position = (local_position - sprite.bounds.origin)
+            / sprite.bounds.size * float2(sprite.tile.bounds.size);
+        int2 source_texel = clamp(int2(floor(source_position)), int2(0, 0),
+            int2(sprite.tile.bounds.size) - 1);
+        int2 texel = tile_origin + source_texel;
+        sample = t_sprite.Load(int3(texel, 0));
+    }
     float distance = quad_sdf(local_position, sprite.bounds, sprite.corner_radii);
 
     float4 color = sample;

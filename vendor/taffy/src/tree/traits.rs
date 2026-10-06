@@ -127,6 +127,7 @@
 //! ```
 //!
 use super::{Layout, LayoutInput, LayoutOutput, NodeId, RequestedAxis, RunMode, SizingMode};
+use crate::CheapCloneStr;
 #[cfg(feature = "detailed_layout_info")]
 use crate::debug::debug_log;
 use crate::geometry::{AbsoluteAxis, Line, Size};
@@ -135,9 +136,8 @@ use crate::style::{AvailableSpace, CoreStyle};
 use crate::style::{FlexboxContainerStyle, FlexboxItemStyle};
 #[cfg(feature = "grid")]
 use crate::style::{GridContainerStyle, GridItemStyle};
-use crate::CheapCloneStr;
 #[cfg(feature = "block_layout")]
-use crate::{BlockContainerStyle, BlockItemStyle};
+use crate::{BlockContainerStyle, BlockContext, BlockItemStyle};
 
 #[cfg(all(feature = "grid", feature = "detailed_layout_info"))]
 use crate::compute::grid::DetailedGridInfo;
@@ -205,23 +205,10 @@ pub trait LayoutPartialTree: TraversePartialTree {
 /// The `Cache` struct implements a per-node cache that is compatible with this trait.
 pub trait CacheTree {
     /// Try to retrieve a cached result from the cache
-    fn cache_get(
-        &self,
-        node_id: NodeId,
-        known_dimensions: Size<Option<f32>>,
-        available_space: Size<AvailableSpace>,
-        run_mode: RunMode,
-    ) -> Option<LayoutOutput>;
+    fn cache_get(&mut self, node_id: NodeId, input: &LayoutInput) -> Option<LayoutOutput>;
 
     /// Store a computed size in the cache
-    fn cache_store(
-        &mut self,
-        node_id: NodeId,
-        known_dimensions: Size<Option<f32>>,
-        available_space: Size<AvailableSpace>,
-        run_mode: RunMode,
-        layout_output: LayoutOutput,
-    );
+    fn cache_store(&mut self, node_id: NodeId, input: &LayoutInput, layout_output: LayoutOutput);
 
     /// Clear all cache entries for the node
     fn cache_clear(&mut self, node_id: NodeId);
@@ -297,14 +284,23 @@ pub trait LayoutGridContainer: LayoutPartialTree {
     /// KaminIDE patch: записать дорожки подсетки (см. [`Self::get_subgrid_tracks`]).
     /// Новая запись, отличная от прежней, обязана сбросить кэш раскладки
     /// узла: результат подсетки зависит от дорожек, а ключ кэша их не знает.
-    fn set_subgrid_tracks(&mut self, _node_id: NodeId, _tracks: Option<crate::style::SubgridTracks>) {}
+    fn set_subgrid_tracks(
+        &mut self,
+        _node_id: NodeId,
+        _tracks: Option<crate::style::SubgridTracks>,
+    ) {
+    }
 
     /// Set the node's detailed grid information
     ///
     /// Implementing this method is optional. Doing so allows you to access details about the the grid such as
     /// the computed size of each grid track and the computed placement of each grid item.
     #[cfg(feature = "detailed_layout_info")]
-    fn set_detailed_grid_info(&mut self, _node_id: NodeId, _detailed_grid_info: DetailedGridInfo) {
+    fn set_detailed_grid_info(
+        &mut self,
+        _node_id: NodeId,
+        _detailed_grid_info: DetailedGridInfo<Self::CustomIdent>,
+    ) {
         debug_log!("LayoutGridContainer::set_detailed_grid_info called");
     }
 }
@@ -326,6 +322,18 @@ pub trait LayoutBlockContainer: LayoutPartialTree {
 
     /// Get the child's styles
     fn get_block_child_style(&self, child_node_id: NodeId) -> Self::BlockItemStyle<'_>;
+
+    /// Compute the specified node's size or full layout given the specified constraints
+    #[cfg(feature = "block_layout")]
+    fn compute_block_child_layout(
+        &mut self,
+        node_id: NodeId,
+        inputs: LayoutInput,
+        block_ctx: Option<&mut BlockContext<'_>>,
+    ) -> LayoutOutput {
+        let _ = block_ctx;
+        self.compute_child_layout(node_id, inputs)
+    }
 }
 
 // --- PRIVATE TRAITS
@@ -350,6 +358,10 @@ pub(crate) trait LayoutPartialTreeExt: LayoutPartialTree {
             node_id,
             LayoutInput {
                 known_dimensions,
+                known_dimensions_are_definite: Size {
+                    width: true,
+                    height: true,
+                },
                 parent_size,
                 available_space,
                 sizing_mode,
@@ -360,6 +372,37 @@ pub(crate) trait LayoutPartialTreeExt: LayoutPartialTree {
         )
         .size
         .get_abs(axis)
+    }
+
+    /// Compute the size of the node given the specified constraints
+    #[inline(always)]
+    #[allow(clippy::too_many_arguments)]
+    fn measure_child_size_both(
+        &mut self,
+        node_id: NodeId,
+        known_dimensions: Size<Option<f32>>,
+        parent_size: Size<Option<f32>>,
+        available_space: Size<AvailableSpace>,
+        sizing_mode: SizingMode,
+        vertical_margins_are_collapsible: Line<bool>,
+    ) -> Size<f32> {
+        self.compute_child_layout(
+            node_id,
+            LayoutInput {
+                known_dimensions,
+                known_dimensions_are_definite: Size {
+                    width: true,
+                    height: true,
+                },
+                parent_size,
+                available_space,
+                sizing_mode,
+                axis: RequestedAxis::Both,
+                run_mode: RunMode::ComputeSize,
+                vertical_margins_are_collapsible,
+            },
+        )
+        .size
     }
 
     /// Perform a full layout on the node given the specified constraints
@@ -377,6 +420,10 @@ pub(crate) trait LayoutPartialTreeExt: LayoutPartialTree {
             node_id,
             LayoutInput {
                 known_dimensions,
+                known_dimensions_are_definite: Size {
+                    width: true,
+                    height: true,
+                },
                 parent_size,
                 available_space,
                 sizing_mode,

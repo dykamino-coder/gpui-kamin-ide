@@ -1,7 +1,7 @@
 //! Implements placing items in the grid and resolving the implicit grid.
 //! <https://www.w3.org/TR/css-grid-1/#placement>
 use super::types::{CellOccupancyMatrix, CellOccupancyState, GridItem};
-use super::{NamedLineResolver, OriginZeroLine};
+use super::{MAX_OZ_LINE, MIN_OZ_LINE, NamedLineResolver, OriginZeroLine};
 use crate::geometry::Line;
 use crate::geometry::{AbsoluteAxis, InBothAbsAxis};
 use crate::style::{AlignItems, GridAutoFlow, OriginZeroGridPlacement};
@@ -9,10 +9,29 @@ use crate::tree::NodeId;
 use crate::util::sys::Vec;
 use crate::{CoreStyle, GridItemStyle};
 
+#[inline]
+/// Advances the cursor by one track.
+fn advance_position(position: OriginZeroLine) -> OriginZeroLine {
+    OriginZeroLine(position.0.saturating_add(1))
+}
+
+#[inline]
+/// Resolves an indefinite span starting at `position`.
+fn resolve_indefinite_grid_span(position: OriginZeroLine, span: u16) -> Line<OriginZeroLine> {
+    let position = position.0 as i32;
+    let span = span as i32;
+    let line = |value: i32| OriginZeroLine(value.clamp(i16::MIN as i32, i16::MAX as i32) as i16);
+    Line {
+        start: line(position),
+        end: line(position + span),
+    }
+}
+
 /// 8.5. Grid Item Placement Algorithm
 /// Place items into the grid, generating new rows/column into the implicit grid as required
 ///
 /// [Specification](https://www.w3.org/TR/css-grid-2/#auto-placement-algo)
+#[allow(clippy::too_many_arguments)]
 pub(super) fn place_grid_items<'a, S, ChildIter>(
     cell_occupancy_matrix: &mut CellOccupancyMatrix,
     items: &mut Vec<GridItem>,
@@ -27,10 +46,14 @@ pub(super) fn place_grid_items<'a, S, ChildIter>(
 {
     let primary_axis = grid_auto_flow.primary_axis();
     let secondary_axis = primary_axis.other_axis();
+    let explicit_col_count = cell_occupancy_matrix
+        .track_counts(AbsoluteAxis::Horizontal)
+        .explicit;
 
     let map_child_style_to_origin_zero_placement = {
-        let explicit_col_count = cell_occupancy_matrix.track_counts(AbsoluteAxis::Horizontal).explicit;
-        let explicit_row_count = cell_occupancy_matrix.track_counts(AbsoluteAxis::Vertical).explicit;
+        let explicit_row_count = cell_occupancy_matrix
+            .track_counts(AbsoluteAxis::Vertical)
+            .explicit;
         move |(index, node, style): (usize, NodeId, S)| -> (_, _, _, S) {
             let origin_zero_placement = InBothAbsAxis {
                 horizontal: named_line_resolver
@@ -48,7 +71,9 @@ pub(super) fn place_grid_items<'a, S, ChildIter>(
     let mut idx = 0;
     children_iter()
         .map(map_child_style_to_origin_zero_placement)
-        .filter(|(_, _, placement, _)| placement.horizontal.is_definite() && placement.vertical.is_definite())
+        .filter(|(_, _, placement, _)| {
+            placement.horizontal.is_definite() && placement.vertical.is_definite()
+        })
         .for_each(|(index, child_node, child_placement, style)| {
             idx += 1;
             #[cfg(test)]
@@ -75,15 +100,19 @@ pub(super) fn place_grid_items<'a, S, ChildIter>(
     children_iter()
         .map(map_child_style_to_origin_zero_placement)
         .filter(|(_, _, placement, _)| {
-            placement.get(secondary_axis).is_definite() && !placement.get(primary_axis).is_definite()
+            placement.get(secondary_axis).is_definite()
+                && !placement.get(primary_axis).is_definite()
         })
         .for_each(|(index, child_node, child_placement, style)| {
             idx += 1;
             #[cfg(test)]
             println!("Definite Secondary Item {idx}\n==============");
 
-            let (primary_span, secondary_span) =
-                place_definite_secondary_axis_item(&*cell_occupancy_matrix, child_placement, grid_auto_flow);
+            let (primary_span, secondary_span) = place_definite_secondary_axis_item(
+                &*cell_occupancy_matrix,
+                child_placement,
+                grid_auto_flow,
+            );
 
             record_grid_placement(
                 cell_occupancy_matrix,
@@ -121,9 +150,13 @@ pub(super) fn place_grid_items<'a, S, ChildIter>(
     // (which either have definite position only in the secondary axis or indefinite positions in both axis)
     let primary_axis = grid_auto_flow.primary_axis();
     let secondary_axis = primary_axis.other_axis();
-    let primary_neg_tracks = cell_occupancy_matrix.track_counts(primary_axis).negative_implicit as i16;
-    let secondary_neg_tracks = cell_occupancy_matrix.track_counts(secondary_axis).negative_implicit as i16;
-    let grid_start_position = (OriginZeroLine(-primary_neg_tracks), OriginZeroLine(-secondary_neg_tracks));
+    let primary_axis_grid_start_line = cell_occupancy_matrix
+        .track_counts(primary_axis)
+        .implicit_start_line();
+    let secondary_axis_grid_start_line = cell_occupancy_matrix
+        .track_counts(secondary_axis)
+        .implicit_start_line();
+    let grid_start_position = (primary_axis_grid_start_line, secondary_axis_grid_start_line);
     let mut grid_position = grid_start_position;
     let mut idx = 0;
     children_iter()
@@ -162,7 +195,7 @@ pub(super) fn place_grid_items<'a, S, ChildIter>(
             grid_position = match grid_auto_flow.is_dense() {
                 true => grid_start_position,
                 false => (primary_span.end, secondary_span.start),
-            }
+            };
         });
 }
 
@@ -174,7 +207,9 @@ fn place_definite_grid_item(
 ) -> (Line<OriginZeroLine>, Line<OriginZeroLine>) {
     // Resolve spans to tracks
     let primary_span = placement.get(primary_axis).resolve_definite_grid_lines();
-    let secondary_span = placement.get(primary_axis.other_axis()).resolve_definite_grid_lines();
+    let secondary_span = placement
+        .get(primary_axis.other_axis())
+        .resolve_definite_grid_lines();
 
     (primary_span, secondary_span)
 }
@@ -188,30 +223,36 @@ fn place_definite_secondary_axis_item(
 ) -> (Line<OriginZeroLine>, Line<OriginZeroLine>) {
     let primary_axis = auto_flow.primary_axis();
     let secondary_axis = primary_axis.other_axis();
+    let primary_axis_grid_start_line = cell_occupancy_matrix
+        .track_counts(primary_axis)
+        .implicit_start_line();
 
     let secondary_axis_placement = placement.get(secondary_axis).resolve_definite_grid_lines();
-    let primary_axis_grid_start_line = cell_occupancy_matrix.track_counts(primary_axis).implicit_start_line();
     let starting_position = match auto_flow.is_dense() {
         true => primary_axis_grid_start_line,
         false => cell_occupancy_matrix
-            .last_of_type(primary_axis, secondary_axis_placement.start, CellOccupancyState::AutoPlaced)
+            .last_of_type(
+                primary_axis,
+                secondary_axis_placement.start,
+                CellOccupancyState::AutoPlaced,
+            )
             .unwrap_or(primary_axis_grid_start_line),
     };
+    let primary_axis_span = placement.get(primary_axis).indefinite_span();
 
     let mut position: OriginZeroLine = starting_position;
     loop {
-        let primary_axis_placement = placement.get(primary_axis).resolve_indefinite_grid_tracks(position);
+        let primary_axis_placement = resolve_indefinite_grid_span(position, primary_axis_span);
 
-        let does_fit = cell_occupancy_matrix.line_area_is_unoccupied(
+        let collision = cell_occupancy_matrix.line_area_collision_jump(
             primary_axis,
             primary_axis_placement,
             secondary_axis_placement,
         );
 
-        if does_fit {
-            return (primary_axis_placement, secondary_axis_placement);
-        } else {
-            position += 1;
+        match collision {
+            None => return (primary_axis_placement, secondary_axis_placement),
+            Some(next_position) => position = next_position,
         }
     }
 }
@@ -225,20 +266,22 @@ fn place_indefinitely_positioned_item(
     grid_position: (OriginZeroLine, OriginZeroLine),
 ) -> (Line<OriginZeroLine>, Line<OriginZeroLine>) {
     let primary_axis = auto_flow.primary_axis();
+    let secondary_axis = primary_axis.other_axis();
 
     let primary_placement_style = placement.get(primary_axis);
-    let secondary_placement_style = placement.get(primary_axis.other_axis());
+    let secondary_placement_style = placement.get(secondary_axis);
 
     let secondary_span = secondary_placement_style.indefinite_span();
     let has_definite_primary_axis_position = primary_placement_style.is_definite();
-    let primary_axis_grid_start_line = cell_occupancy_matrix.track_counts(primary_axis).implicit_start_line();
-    let primary_axis_grid_end_line = cell_occupancy_matrix.track_counts(primary_axis).implicit_end_line();
-    let secondary_axis_grid_start_line =
-        cell_occupancy_matrix.track_counts(primary_axis.other_axis()).implicit_start_line();
-
-    let line_area_is_occupied = |primary_span, secondary_span| {
-        !cell_occupancy_matrix.line_area_is_unoccupied(primary_axis, primary_span, secondary_span)
-    };
+    let primary_axis_grid_start_line = cell_occupancy_matrix
+        .track_counts(primary_axis)
+        .implicit_start_line();
+    let primary_axis_grid_end_line = cell_occupancy_matrix
+        .track_counts(primary_axis)
+        .implicit_end_line();
+    let secondary_axis_grid_start_line = cell_occupancy_matrix
+        .track_counts(secondary_axis)
+        .implicit_start_line();
 
     let (mut primary_idx, mut secondary_idx) = grid_position;
 
@@ -251,7 +294,7 @@ fn place_indefinitely_positioned_item(
             true => secondary_axis_grid_start_line,
             false => {
                 if primary_span.start < primary_idx {
-                    secondary_idx + 1
+                    advance_position(secondary_idx)
                 } else {
                     secondary_idx
                 }
@@ -261,11 +304,16 @@ fn place_indefinitely_positioned_item(
         // Item has fixed primary axis position: so we simply increment the secondary axis position
         // until we find a space that the item fits in
         loop {
-            let secondary_span = Line { start: secondary_idx, end: secondary_idx + secondary_span };
+            let secondary_span = resolve_indefinite_grid_span(secondary_idx, secondary_span);
 
-            // If area is occupied, increment the index and try again
-            if line_area_is_occupied(primary_span, secondary_span) {
-                secondary_idx += 1;
+            // If area is occupied, jump the index past the collision and try again
+            let collision = cell_occupancy_matrix.line_area_collision_jump(
+                secondary_axis,
+                secondary_span,
+                primary_span,
+            );
+            if let Some(next_position) = collision {
+                secondary_idx = next_position;
                 continue;
             }
 
@@ -275,31 +323,74 @@ fn place_indefinitely_positioned_item(
     } else {
         let primary_span = primary_placement_style.indefinite_span();
 
+        // Whether the item spans every track in the primary axis. Such an item can only be
+        // placed at the primary axis grid start, in a stripe of entirely unoccupied tracks.
+        let spans_all_primary_tracks =
+            primary_span as usize >= cell_occupancy_matrix.track_counts(primary_axis).len();
+
         // Item does not have any fixed axis, so we search along the primary axis until we hit the end of the already
         // existent tracks, and then we reset the primary axis back to zero and increment the secondary axis index.
         // We continue in this vein until we find a space that the item fits in.
         loop {
-            let primary_span = Line { start: primary_idx, end: primary_idx + primary_span };
-            let secondary_span = Line { start: secondary_idx, end: secondary_idx + secondary_span };
+            let primary_span = resolve_indefinite_grid_span(primary_idx, primary_span);
+            let secondary_span = resolve_indefinite_grid_span(secondary_idx, secondary_span);
 
             // If the primary index is out of bounds, then increment the secondary index and reset the primary
             // index back to the start of the grid
             let primary_out_of_bounds = primary_span.end > primary_axis_grid_end_line;
             if primary_out_of_bounds {
-                secondary_idx += 1;
+                // If the span is out of bounds even at the search start position then it can never fit,
+                // as searching only ever moves the span further away from the start of the grid. Bail out
+                // and let `record_grid_placement` clamp the placement into the limited grid
+                if primary_idx == primary_axis_grid_start_line {
+                    return (primary_span, secondary_span);
+                }
+                secondary_idx = advance_position(secondary_idx);
                 primary_idx = primary_axis_grid_start_line;
                 continue;
             }
 
-            // If area is occupied, increment the primary index and try again
-            if line_area_is_occupied(primary_span, secondary_span) {
-                primary_idx += 1;
+            // If the item spans every primary axis track, it fits if and only if all of the
+            // secondary axis tracks it spans are entirely unoccupied. Jump the secondary index
+            // past any non-empty tracks in the spanned stripe.
+            if spans_all_primary_tracks {
+                match cell_occupancy_matrix.occupied_track_jump(secondary_axis, secondary_span) {
+                    Some(next_position) => {
+                        secondary_idx = next_position;
+                        primary_idx = primary_axis_grid_start_line;
+                        continue;
+                    }
+                    None => return (primary_span, secondary_span),
+                }
+            }
+
+            // If area is occupied, jump the primary index past the collision and try again
+            let collision = cell_occupancy_matrix.line_area_collision_jump(
+                primary_axis,
+                primary_span,
+                secondary_span,
+            );
+            if let Some(next_position) = collision {
+                primary_idx = next_position;
                 continue;
             }
 
             // Once we find a free space that's in bounds, return that position
             return (primary_span, secondary_span);
         }
+    }
+}
+
+/// Clamp a placement into the limited grid, preserving a span of at least 1 track.
+/// Items placed outside of the limited grid are clamped into it.
+///
+/// See: <https://www.w3.org/TR/css-grid-1/#overlarge-grids>
+fn clamp_span_to_limited_grid(span: Line<OriginZeroLine>) -> Line<OriginZeroLine> {
+    let start = span.start.0.clamp(MIN_OZ_LINE, MAX_OZ_LINE - 1);
+    let end = span.end.0.clamp(start + 1, MAX_OZ_LINE);
+    Line {
+        start: OriginZeroLine(start),
+        end: OriginZeroLine(end),
     }
 }
 
@@ -323,6 +414,11 @@ fn record_grid_placement<S: GridItemStyle>(
     println!("BEFORE placement:");
     #[cfg(test)]
     println!("{cell_occupancy_matrix:?}");
+
+    // Clamp placements into the limited grid to prevent arithmetic overflow when growing the
+    // implicit grid (https://www.w3.org/TR/css-grid-1/#overlarge-grids)
+    let primary_span = clamp_span_to_limited_grid(primary_span);
+    let secondary_span = clamp_span_to_limited_grid(secondary_span);
 
     // Mark area of grid as occupied
     cell_occupancy_matrix.mark_area_as(primary_axis, primary_span, secondary_span, placement_type);
@@ -352,13 +448,15 @@ fn record_grid_placement<S: GridItemStyle>(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
 
     mod test_placement_algorithm {
+        use crate::compute::grid::NamedLineResolver;
+        use crate::compute::grid::OriginZeroLine;
         use crate::compute::grid::implicit_grid::compute_grid_size_estimate;
+        use crate::compute::grid::types::CellOccupancyMatrix;
         use crate::compute::grid::types::TrackCounts;
         use crate::compute::grid::util::*;
-        use crate::compute::grid::CellOccupancyMatrix;
-        use crate::compute::grid::NamedLineResolver;
         use crate::prelude::*;
         use crate::style::GridAutoFlow;
 
@@ -375,9 +473,17 @@ mod tests {
             flow: GridAutoFlow,
         ) {
             // Setup test
-            let children_iter = || children.iter().map(|(index, style, _)| (*index, NodeId::from(*index), style));
+            let children_iter = || {
+                children
+                    .iter()
+                    .map(|(index, style, _)| (*index, NodeId::from(*index), style))
+            };
             let child_styles_iter = children.iter().map(|(_, style, _)| style);
-            let estimated_sizes = compute_grid_size_estimate(explicit_col_count, explicit_row_count, child_styles_iter);
+            let estimated_sizes = compute_grid_size_estimate(
+                explicit_col_count,
+                explicit_row_count,
+                child_styles_iter,
+            );
             let mut items = Vec::new();
             let mut cell_occupancy_matrix =
                 CellOccupancyMatrix::with_track_counts(estimated_sizes.0, estimated_sizes.1);
@@ -391,8 +497,8 @@ mod tests {
                 &mut items,
                 children_iter,
                 flow,
-                AlignSelf::Start,
-                AlignSelf::Start,
+                AlignSelf::START,
+                AlignSelf::START,
                 // TODO: actually test named line resolution
                 &name_resolver,
             );
@@ -400,18 +506,33 @@ mod tests {
             // Assert that each item has been placed in the right location
             let mut sorted_children = children.clone();
             sorted_children.sort_by_key(|child| child.0);
-            for (idx, ((id, _style, expected_placement), item)) in sorted_children.iter().zip(items.iter()).enumerate()
+            for (idx, ((id, _style, expected_placement), item)) in
+                sorted_children.iter().zip(items.iter()).enumerate()
             {
                 assert_eq!(item.node, NodeId::from(*id));
-                let actual_placement = (item.column.start, item.column.end, item.row.start, item.row.end);
-                assert_eq!(actual_placement, (*expected_placement).into_oz(), "Item {idx} (0-indexed)");
+                let actual_placement = (
+                    item.column.start,
+                    item.column.end,
+                    item.row.start,
+                    item.row.end,
+                );
+                assert_eq!(
+                    actual_placement,
+                    (*expected_placement).into_oz(),
+                    "Item {idx} (0-indexed)"
+                );
             }
 
             // Assert that the correct number of implicit rows have been generated
-            let actual_row_counts = *cell_occupancy_matrix.track_counts(crate::compute::grid::AbsoluteAxis::Vertical);
+            let actual_row_counts =
+                *cell_occupancy_matrix.track_counts(crate::compute::grid::AbsoluteAxis::Vertical);
             assert_eq!(actual_row_counts, expected_row_counts, "row track counts");
-            let actual_col_counts = *cell_occupancy_matrix.track_counts(crate::compute::grid::AbsoluteAxis::Horizontal);
-            assert_eq!(actual_col_counts, expected_col_counts, "column track counts");
+            let actual_col_counts =
+                *cell_occupancy_matrix.track_counts(crate::compute::grid::AbsoluteAxis::Horizontal);
+            assert_eq!(
+                actual_col_counts, expected_col_counts,
+                "column track counts"
+            );
         }
 
         #[test]
@@ -422,15 +543,46 @@ mod tests {
             let children = {
                 vec![
                     // node, style (grid coords), expected_placement (oz coords)
-                    (1, (line(1), auto(), line(1), auto()).into_grid_child(), (0, 1, 0, 1)),
-                    (2, (line(-4), auto(), line(-3), auto()).into_grid_child(), (-1, 0, 0, 1)),
-                    (3, (line(-3), auto(), line(-4), auto()).into_grid_child(), (0, 1, -1, 0)),
-                    (4, (line(3), span(2), line(5), auto()).into_grid_child(), (2, 4, 4, 5)),
+                    (
+                        1,
+                        (line(1), auto(), line(1), auto()).into_grid_child(),
+                        (0, 1, 0, 1),
+                    ),
+                    (
+                        2,
+                        (line(-4), auto(), line(-3), auto()).into_grid_child(),
+                        (-1, 0, 0, 1),
+                    ),
+                    (
+                        3,
+                        (line(-3), auto(), line(-4), auto()).into_grid_child(),
+                        (0, 1, -1, 0),
+                    ),
+                    (
+                        4,
+                        (line(3), span(2), line(5), auto()).into_grid_child(),
+                        (2, 4, 4, 5),
+                    ),
                 ]
             };
-            let expected_cols = TrackCounts { negative_implicit: 1, explicit: 2, positive_implicit: 2 };
-            let expected_rows = TrackCounts { negative_implicit: 1, explicit: 2, positive_implicit: 3 };
-            placement_test_runner(explicit_col_count, explicit_row_count, children, expected_cols, expected_rows, flow);
+            let expected_cols = TrackCounts {
+                negative_implicit: 1,
+                explicit: 2,
+                positive_implicit: 2,
+            };
+            let expected_rows = TrackCounts {
+                negative_implicit: 1,
+                explicit: 2,
+                positive_implicit: 3,
+            };
+            placement_test_runner(
+                explicit_col_count,
+                explicit_row_count,
+                children,
+                expected_cols,
+                expected_rows,
+                flow,
+            );
         }
 
         #[test]
@@ -441,15 +593,46 @@ mod tests {
             let children = {
                 vec![
                     // node, style (grid coords), expected_placement (oz coords)
-                    (1, (line(-1), line(-1), line(-1), line(-1)).into_grid_child(), (2, 3, 2, 3)),
-                    (2, (line(-1), span(2), line(-1), span(2)).into_grid_child(), (2, 4, 2, 4)),
-                    (3, (line(-4), line(-4), line(-4), line(-4)).into_grid_child(), (-1, 0, -1, 0)),
-                    (4, (line(-4), span(2), line(-4), span(2)).into_grid_child(), (-1, 1, -1, 1)),
+                    (
+                        1,
+                        (line(-1), line(-1), line(-1), line(-1)).into_grid_child(),
+                        (2, 3, 2, 3),
+                    ),
+                    (
+                        2,
+                        (line(-1), span(2), line(-1), span(2)).into_grid_child(),
+                        (2, 4, 2, 4),
+                    ),
+                    (
+                        3,
+                        (line(-4), line(-4), line(-4), line(-4)).into_grid_child(),
+                        (-1, 0, -1, 0),
+                    ),
+                    (
+                        4,
+                        (line(-4), span(2), line(-4), span(2)).into_grid_child(),
+                        (-1, 1, -1, 1),
+                    ),
                 ]
             };
-            let expected_cols = TrackCounts { negative_implicit: 1, explicit: 2, positive_implicit: 2 };
-            let expected_rows = TrackCounts { negative_implicit: 1, explicit: 2, positive_implicit: 2 };
-            placement_test_runner(explicit_col_count, explicit_row_count, children, expected_cols, expected_rows, flow);
+            let expected_cols = TrackCounts {
+                negative_implicit: 1,
+                explicit: 2,
+                positive_implicit: 2,
+            };
+            let expected_rows = TrackCounts {
+                negative_implicit: 1,
+                explicit: 2,
+                positive_implicit: 2,
+            };
+            placement_test_runner(
+                explicit_col_count,
+                explicit_row_count,
+                children,
+                expected_cols,
+                expected_rows,
+                flow,
+            );
         }
 
         #[test]
@@ -471,9 +654,24 @@ mod tests {
                     (8, auto_child.clone(), (1, 2, 3, 4)),
                 ]
             };
-            let expected_cols = TrackCounts { negative_implicit: 0, explicit: 2, positive_implicit: 0 };
-            let expected_rows = TrackCounts { negative_implicit: 0, explicit: 2, positive_implicit: 2 };
-            placement_test_runner(explicit_col_count, explicit_row_count, children, expected_cols, expected_rows, flow);
+            let expected_cols = TrackCounts {
+                negative_implicit: 0,
+                explicit: 2,
+                positive_implicit: 0,
+            };
+            let expected_rows = TrackCounts {
+                negative_implicit: 0,
+                explicit: 2,
+                positive_implicit: 2,
+            };
+            placement_test_runner(
+                explicit_col_count,
+                explicit_row_count,
+                children,
+                expected_cols,
+                expected_rows,
+                flow,
+            );
         }
 
         #[test]
@@ -495,9 +693,24 @@ mod tests {
                     (8, auto_child.clone(), (3, 4, 1, 2)),
                 ]
             };
-            let expected_cols = TrackCounts { negative_implicit: 0, explicit: 2, positive_implicit: 2 };
-            let expected_rows = TrackCounts { negative_implicit: 0, explicit: 2, positive_implicit: 0 };
-            placement_test_runner(explicit_col_count, explicit_row_count, children, expected_cols, expected_rows, flow);
+            let expected_cols = TrackCounts {
+                negative_implicit: 0,
+                explicit: 2,
+                positive_implicit: 2,
+            };
+            let expected_rows = TrackCounts {
+                negative_implicit: 0,
+                explicit: 2,
+                positive_implicit: 0,
+            };
+            placement_test_runner(
+                explicit_col_count,
+                explicit_row_count,
+                children,
+                expected_cols,
+                expected_rows,
+                flow,
+            );
         }
 
         #[test]
@@ -508,12 +721,31 @@ mod tests {
             let children = {
                 vec![
                     // output order, node, style (grid coords), expected_placement (oz coords)
-                    (1, (span(5), auto(), auto(), auto()).into_grid_child(), (0, 5, 0, 1)),
+                    (
+                        1,
+                        (span(5), auto(), auto(), auto()).into_grid_child(),
+                        (0, 5, 0, 1),
+                    ),
                 ]
             };
-            let expected_cols = TrackCounts { negative_implicit: 0, explicit: 2, positive_implicit: 3 };
-            let expected_rows = TrackCounts { negative_implicit: 0, explicit: 2, positive_implicit: 0 };
-            placement_test_runner(explicit_col_count, explicit_row_count, children, expected_cols, expected_rows, flow);
+            let expected_cols = TrackCounts {
+                negative_implicit: 0,
+                explicit: 2,
+                positive_implicit: 3,
+            };
+            let expected_rows = TrackCounts {
+                negative_implicit: 0,
+                explicit: 2,
+                positive_implicit: 0,
+            };
+            placement_test_runner(
+                explicit_col_count,
+                explicit_row_count,
+                children,
+                expected_cols,
+                expected_rows,
+                flow,
+            );
         }
 
         #[test]
@@ -524,15 +756,46 @@ mod tests {
             let children = {
                 vec![
                     // output order, node, style (grid coords), expected_placement (oz coords)
-                    (1, (span(2), auto(), line(1), auto()).into_grid_child(), (0, 2, 0, 1)),
-                    (2, (auto(), auto(), line(2), auto()).into_grid_child(), (0, 1, 1, 2)),
-                    (3, (auto(), auto(), line(1), auto()).into_grid_child(), (2, 3, 0, 1)),
-                    (4, (auto(), auto(), line(4), auto()).into_grid_child(), (0, 1, 3, 4)),
+                    (
+                        1,
+                        (span(2), auto(), line(1), auto()).into_grid_child(),
+                        (0, 2, 0, 1),
+                    ),
+                    (
+                        2,
+                        (auto(), auto(), line(2), auto()).into_grid_child(),
+                        (0, 1, 1, 2),
+                    ),
+                    (
+                        3,
+                        (auto(), auto(), line(1), auto()).into_grid_child(),
+                        (2, 3, 0, 1),
+                    ),
+                    (
+                        4,
+                        (auto(), auto(), line(4), auto()).into_grid_child(),
+                        (0, 1, 3, 4),
+                    ),
                 ]
             };
-            let expected_cols = TrackCounts { negative_implicit: 0, explicit: 2, positive_implicit: 1 };
-            let expected_rows = TrackCounts { negative_implicit: 0, explicit: 2, positive_implicit: 2 };
-            placement_test_runner(explicit_col_count, explicit_row_count, children, expected_cols, expected_rows, flow);
+            let expected_cols = TrackCounts {
+                negative_implicit: 0,
+                explicit: 2,
+                positive_implicit: 1,
+            };
+            let expected_rows = TrackCounts {
+                negative_implicit: 0,
+                explicit: 2,
+                positive_implicit: 2,
+            };
+            placement_test_runner(
+                explicit_col_count,
+                explicit_row_count,
+                children,
+                expected_cols,
+                expected_rows,
+                flow,
+            );
         }
 
         #[test]
@@ -543,14 +806,41 @@ mod tests {
             let children = {
                 vec![
                     // output order, node, style (grid coords), expected_placement (oz coords)
-                    (2, (auto(), auto(), line(2), auto()).into_grid_child(), (0, 1, 1, 2)),
-                    (1, (line(-4), auto(), line(2), auto()).into_grid_child(), (-1, 0, 1, 2)),
-                    (3, (auto(), auto(), line(1), auto()).into_grid_child(), (-1, 0, 0, 1)),
+                    (
+                        2,
+                        (auto(), auto(), line(2), auto()).into_grid_child(),
+                        (0, 1, 1, 2),
+                    ),
+                    (
+                        1,
+                        (line(-4), auto(), line(2), auto()).into_grid_child(),
+                        (-1, 0, 1, 2),
+                    ),
+                    (
+                        3,
+                        (auto(), auto(), line(1), auto()).into_grid_child(),
+                        (-1, 0, 0, 1),
+                    ),
                 ]
             };
-            let expected_cols = TrackCounts { negative_implicit: 1, explicit: 2, positive_implicit: 0 };
-            let expected_rows = TrackCounts { negative_implicit: 0, explicit: 2, positive_implicit: 0 };
-            placement_test_runner(explicit_col_count, explicit_row_count, children, expected_cols, expected_rows, flow);
+            let expected_cols = TrackCounts {
+                negative_implicit: 1,
+                explicit: 2,
+                positive_implicit: 0,
+            };
+            let expected_rows = TrackCounts {
+                negative_implicit: 0,
+                explicit: 2,
+                positive_implicit: 0,
+            };
+            placement_test_runner(
+                explicit_col_count,
+                explicit_row_count,
+                children,
+                expected_cols,
+                expected_rows,
+                flow,
+            );
         }
 
         #[test]
@@ -561,14 +851,41 @@ mod tests {
             let children = {
                 vec![
                     // output order, node, style (grid coords), expected_placement (oz coords)
-                    (1, (line(2), auto(), line(1), auto()).into_grid_child(), (1, 2, 0, 1)), // Definitely positioned in column 2
-                    (2, (span(2), auto(), auto(), auto()).into_grid_child(), (2, 4, 0, 1)), // Spans 2 columns, so positioned after item 1
-                    (3, (auto(), auto(), auto(), auto()).into_grid_child(), (0, 1, 0, 1)), // Spans 1 column, so should be positioned before item 1
+                    (
+                        1,
+                        (line(2), auto(), line(1), auto()).into_grid_child(),
+                        (1, 2, 0, 1),
+                    ), // Definitely positioned in column 2
+                    (
+                        2,
+                        (span(2), auto(), auto(), auto()).into_grid_child(),
+                        (2, 4, 0, 1),
+                    ), // Spans 2 columns, so positioned after item 1
+                    (
+                        3,
+                        (auto(), auto(), auto(), auto()).into_grid_child(),
+                        (0, 1, 0, 1),
+                    ), // Spans 1 column, so should be positioned before item 1
                 ]
             };
-            let expected_cols = TrackCounts { negative_implicit: 0, explicit: 4, positive_implicit: 0 };
-            let expected_rows = TrackCounts { negative_implicit: 0, explicit: 4, positive_implicit: 0 };
-            placement_test_runner(explicit_col_count, explicit_row_count, children, expected_cols, expected_rows, flow);
+            let expected_cols = TrackCounts {
+                negative_implicit: 0,
+                explicit: 4,
+                positive_implicit: 0,
+            };
+            let expected_rows = TrackCounts {
+                negative_implicit: 0,
+                explicit: 4,
+                positive_implicit: 0,
+            };
+            placement_test_runner(
+                explicit_col_count,
+                explicit_row_count,
+                children,
+                expected_cols,
+                expected_rows,
+                flow,
+            );
         }
 
         #[test]
@@ -579,14 +896,41 @@ mod tests {
             let children = {
                 vec![
                     // output order, node, style (grid coords), expected_placement (oz coords)
-                    (1, (auto(), span(3), auto(), auto()).into_grid_child(), (0, 3, 0, 1)), // Width 3
-                    (2, (auto(), span(3), auto(), auto()).into_grid_child(), (0, 3, 1, 2)), // Width 3 (wraps to next row)
-                    (3, (auto(), span(1), auto(), auto()).into_grid_child(), (3, 4, 1, 2)), // Width 1 (uses second row as we're already on it)
+                    (
+                        1,
+                        (auto(), span(3), auto(), auto()).into_grid_child(),
+                        (0, 3, 0, 1),
+                    ), // Width 3
+                    (
+                        2,
+                        (auto(), span(3), auto(), auto()).into_grid_child(),
+                        (0, 3, 1, 2),
+                    ), // Width 3 (wraps to next row)
+                    (
+                        3,
+                        (auto(), span(1), auto(), auto()).into_grid_child(),
+                        (3, 4, 1, 2),
+                    ), // Width 1 (uses second row as we're already on it)
                 ]
             };
-            let expected_cols = TrackCounts { negative_implicit: 0, explicit: 4, positive_implicit: 0 };
-            let expected_rows = TrackCounts { negative_implicit: 0, explicit: 4, positive_implicit: 0 };
-            placement_test_runner(explicit_col_count, explicit_row_count, children, expected_cols, expected_rows, flow);
+            let expected_cols = TrackCounts {
+                negative_implicit: 0,
+                explicit: 4,
+                positive_implicit: 0,
+            };
+            let expected_rows = TrackCounts {
+                negative_implicit: 0,
+                explicit: 4,
+                positive_implicit: 0,
+            };
+            placement_test_runner(
+                explicit_col_count,
+                explicit_row_count,
+                children,
+                expected_cols,
+                expected_rows,
+                flow,
+            );
         }
 
         #[test]
@@ -597,14 +941,99 @@ mod tests {
             let children = {
                 vec![
                     // output order, node, style (grid coords), expected_placement (oz coords)
-                    (1, (line(-5), auto(), line(1), auto()).into_grid_child(), (-2, -1, 0, 1)), // Row 1. Definitely positioned in column -2
-                    (2, (auto(), auto(), line(2), auto()).into_grid_child(), (-2, -1, 1, 2)), // Row 2. Auto positioned in column -2
-                    (3, (auto(), auto(), auto(), auto()).into_grid_child(), (-1, 0, 0, 1)), // Row 1. Auto positioned in column -1
+                    (
+                        1,
+                        (line(-5), auto(), line(1), auto()).into_grid_child(),
+                        (-2, -1, 0, 1),
+                    ), // Row 1. Definitely positioned in column -2
+                    (
+                        2,
+                        (auto(), auto(), line(2), auto()).into_grid_child(),
+                        (-2, -1, 1, 2),
+                    ), // Row 2. Auto positioned in column -2
+                    (
+                        3,
+                        (auto(), auto(), auto(), auto()).into_grid_child(),
+                        (-1, 0, 0, 1),
+                    ), // Row 1. Auto positioned in column -1
                 ]
             };
-            let expected_cols = TrackCounts { negative_implicit: 2, explicit: 2, positive_implicit: 0 };
-            let expected_rows = TrackCounts { negative_implicit: 0, explicit: 2, positive_implicit: 0 };
-            placement_test_runner(explicit_col_count, explicit_row_count, children, expected_cols, expected_rows, flow);
+            let expected_cols = TrackCounts {
+                negative_implicit: 2,
+                explicit: 2,
+                positive_implicit: 0,
+            };
+            let expected_rows = TrackCounts {
+                negative_implicit: 0,
+                explicit: 2,
+                positive_implicit: 0,
+            };
+            placement_test_runner(
+                explicit_col_count,
+                explicit_row_count,
+                children,
+                expected_cols,
+                expected_rows,
+                flow,
+            );
         }
+
+        #[test]
+        fn test_overlarge_placement_is_clamped() {
+            let explicit_col_count = 9_000;
+            let explicit_row_count = 0;
+            let style = (line(-19_005), auto(), auto(), auto()).into_grid_child();
+            let children = [(0, style)];
+            let estimated_sizes = compute_grid_size_estimate(
+                explicit_col_count,
+                explicit_row_count,
+                children.iter().map(|(_, style)| style),
+            );
+            let mut items = Vec::new();
+            let mut cell_occupancy_matrix =
+                CellOccupancyMatrix::with_track_counts(estimated_sizes.0, estimated_sizes.1);
+            let mut name_resolver = NamedLineResolver::new(&Style::DEFAULT, 0, 0);
+            name_resolver.set_explicit_column_count(explicit_col_count);
+            name_resolver.set_explicit_row_count(explicit_row_count);
+            place_grid_items(
+                &mut cell_occupancy_matrix,
+                &mut items,
+                || {
+                    children
+                        .iter()
+                        .map(|(index, style)| (*index, NodeId::from(*index), style))
+                },
+                GridAutoFlow::Row,
+                AlignSelf::START,
+                AlignSelf::START,
+                &name_resolver,
+            );
+            assert_eq!(
+                items[0].column,
+                Line {
+                    start: OriginZeroLine(-10_000),
+                    end: OriginZeroLine(-9_999)
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn auto_placement_cursor_saturates_at_integer_bounds() {
+        assert_eq!(
+            advance_position(OriginZeroLine(i16::MAX)),
+            OriginZeroLine(i16::MAX)
+        );
+    }
+
+    #[test]
+    fn indefinite_spans_saturate_at_integer_bounds() {
+        assert_eq!(
+            resolve_indefinite_grid_span(OriginZeroLine(i16::MAX), 1),
+            Line {
+                start: OriginZeroLine(i16::MAX),
+                end: OriginZeroLine(i16::MAX)
+            }
+        );
     }
 }

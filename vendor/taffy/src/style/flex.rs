@@ -1,5 +1,8 @@
 //! Style types for Flexbox layout
-use super::{AlignContent, AlignItems, AlignSelf, CoreStyle, Dimension, JustifyContent, LengthPercentage, Style};
+use super::{
+    AlignContent, AlignItems, AlignSelf, CoreStyle, Dimension, JustifyContent, LengthPercentage,
+    Style,
+};
 use crate::geometry::Size;
 
 /// The set of styles required for a Flexbox container
@@ -34,6 +37,15 @@ pub trait FlexboxContainerStyle: CoreStyle {
     #[inline(always)]
     fn percent_basis_from_parent(&self) -> bool {
         Style::<Self::CustomIdent>::DEFAULT.percent_basis_from_parent
+    }
+    /// The minimum number of flex lines requested for a multi-line container. When items are
+    /// balanced ([`FlexWrap::Balance`] or [`FlexWrap::BalanceReverse`]) they are balanced into
+    /// at least this many lines. For any multi-line container, definite cross-axis available
+    /// space for measuring items is divided between this many lines.
+    #[cfg(feature = "flexbox_balance")]
+    #[inline(always)]
+    fn flex_line_count(&self) -> u16 {
+        Style::<Self::CustomIdent>::DEFAULT.flex_line_count
     }
 
     /// How large should the gaps between items in a grid or flex container be?
@@ -107,22 +119,109 @@ use crate::geometry::AbsoluteAxis;
 /// Defaults to [`FlexWrap::NoWrap`]
 ///
 /// [Specification](https://www.w3.org/TR/css-flexbox-1/#flex-wrap-property)
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum FlexWrap {
     /// Items will not wrap and stay on a single line
+    #[default]
     NoWrap,
     /// Items will wrap according to this item's [`FlexDirection`]
     Wrap,
     /// Items will wrap in the opposite direction to this item's [`FlexDirection`]
     WrapReverse,
+    /// Items will wrap according to this item's [`FlexDirection`], and be balanced across
+    /// lines such that the largest line is as small as possible
+    ///
+    /// [Specification](https://drafts.csswg.org/css-flexbox-2/#balance-values)
+    #[cfg(feature = "flexbox_balance")]
+    Balance,
+    /// Items will wrap in the opposite direction to this item's [`FlexDirection`], and be
+    /// balanced across lines such that the largest line is as small as possible
+    ///
+    /// [Specification](https://drafts.csswg.org/css-flexbox-2/#balance-values)
+    #[cfg(feature = "flexbox_balance")]
+    BalanceReverse,
 }
 
-impl Default for FlexWrap {
-    fn default() -> Self {
-        Self::NoWrap
+impl FlexWrap {
+    /// Is this a wrapping mode (any value other than [`FlexWrap::NoWrap`])?
+    #[inline]
+    pub(crate) fn is_multi_line(self) -> bool {
+        self != Self::NoWrap
+    }
+
+    /// Do lines stack in the opposite direction to the cross axis?
+    #[inline]
+    pub(crate) fn is_reverse(self) -> bool {
+        match self {
+            Self::WrapReverse => true,
+            #[cfg(feature = "flexbox_balance")]
+            Self::BalanceReverse => true,
+            _ => false,
+        }
+    }
+
+    /// Are items balanced across lines?
+    #[cfg(feature = "flexbox_balance")]
+    #[inline]
+    pub(crate) fn is_balance(self) -> bool {
+        matches!(self, Self::Balance | Self::BalanceReverse)
     }
 }
+
+#[cfg(all(feature = "parse", not(feature = "flexbox_balance")))]
+crate::util::parse::impl_parse_for_keyword_enum!(FlexWrap,
+    "nowrap" => NoWrap,
+    "wrap" => Wrap,
+    "wrap-reverse" => WrapReverse,
+);
+
+#[cfg(all(feature = "parse", feature = "flexbox_balance"))]
+impl crate::util::parse::FromCss for FlexWrap {
+    fn from_css<'i>(
+        input: &mut crate::util::parse::Parser<'i, '_>,
+    ) -> crate::util::parse::CssParseResult<'i, Self> {
+        let mut wrap: Option<Self> = None;
+        let mut balance = false;
+        let mut is_first = true;
+        loop {
+            let ident = if is_first {
+                input.expect_ident()?.clone()
+            } else {
+                match input.try_parse(|input| input.expect_ident().cloned()) {
+                    Ok(ident) => ident,
+                    Err(_) => break,
+                }
+            };
+            let is_valid = cssparser::match_ignore_ascii_case! { &ident,
+                "nowrap" => {
+                    if is_first {
+                        return Ok(Self::NoWrap);
+                    }
+                    false
+                },
+                "wrap" => wrap.replace(Self::Wrap).is_none(),
+                "wrap-reverse" => wrap.replace(Self::WrapReverse).is_none(),
+                "balance" => !core::mem::replace(&mut balance, true),
+                _ => false,
+            };
+            if !is_valid {
+                return Err(
+                    input.new_unexpected_token_error(crate::util::parse::Token::Ident(ident))
+                );
+            }
+            is_first = false;
+        }
+        Ok(match (wrap, balance) {
+            (Some(Self::WrapReverse), true) => Self::BalanceReverse,
+            (_, true) => Self::Balance,
+            // At least one keyword is always parsed, so `wrap` must be `Some` if `balance` is false
+            (wrap, false) => wrap.unwrap_or(Self::NoWrap),
+        })
+    }
+}
+#[cfg(all(feature = "parse", feature = "flexbox_balance"))]
+crate::util::parse::from_str_from_css!(FlexWrap);
 
 /// The direction of the flexbox layout main axis.
 ///
@@ -135,12 +234,13 @@ impl Default for FlexWrap {
 /// The default behavior is [`FlexDirection::Row`].
 ///
 /// [Specification](https://www.w3.org/TR/css-flexbox-1/#flex-direction-property)
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum FlexDirection {
     /// Defines +x as the main axis
     ///
     /// Items will be added from left to right in a row.
+    #[default]
     Row,
     /// Defines +y as the main axis
     ///
@@ -156,34 +256,36 @@ pub enum FlexDirection {
     ColumnReverse,
 }
 
-impl Default for FlexDirection {
-    fn default() -> Self {
-        Self::Row
-    }
-}
+#[cfg(feature = "parse")]
+crate::util::parse::impl_parse_for_keyword_enum!(FlexDirection,
+    "row" => Row,
+    "column" => Column,
+    "row-reverse" => RowReverse,
+    "column-reverse" => ColumnReverse,
+);
 
 impl FlexDirection {
     #[inline]
     /// Is the direction [`FlexDirection::Row`] or [`FlexDirection::RowReverse`]?
-    pub(crate) fn is_row(self) -> bool {
+    pub(crate) const fn is_row(self) -> bool {
         matches!(self, Self::Row | Self::RowReverse)
     }
 
     #[inline]
     /// Is the direction [`FlexDirection::Column`] or [`FlexDirection::ColumnReverse`]?
-    pub(crate) fn is_column(self) -> bool {
+    pub(crate) const fn is_column(self) -> bool {
         matches!(self, Self::Column | Self::ColumnReverse)
     }
 
     #[inline]
     /// Is the direction [`FlexDirection::RowReverse`] or [`FlexDirection::ColumnReverse`]?
-    pub(crate) fn is_reverse(self) -> bool {
+    pub(crate) const fn is_reverse(self) -> bool {
         matches!(self, Self::RowReverse | Self::ColumnReverse)
     }
 
     #[inline]
     /// The `AbsoluteAxis` that corresponds to the main axis
-    pub(crate) fn main_axis(self) -> AbsoluteAxis {
+    pub(crate) const fn main_axis(self) -> AbsoluteAxis {
         match self {
             Self::Row | Self::RowReverse => AbsoluteAxis::Horizontal,
             Self::Column | Self::ColumnReverse => AbsoluteAxis::Vertical,
@@ -192,7 +294,7 @@ impl FlexDirection {
 
     #[inline]
     /// The `AbsoluteAxis` that corresponds to the cross axis
-    pub(crate) fn cross_axis(self) -> AbsoluteAxis {
+    pub(crate) const fn cross_axis(self) -> AbsoluteAxis {
         match self {
             Self::Row | Self::RowReverse => AbsoluteAxis::Vertical,
             Self::Column | Self::ColumnReverse => AbsoluteAxis::Horizontal,

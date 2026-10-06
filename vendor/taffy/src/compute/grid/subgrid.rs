@@ -19,21 +19,31 @@
 //!   шаблона: явных дорожек ровно по пролёту (§9 (b)), неявных в подсеточной
 //!   оси нет — область элемента зажимается (§9 (f) `#subgrid-implicit`),
 //!   выравнивание содержимого в этой оси не действует (§subgrid-grid-alignment).
-use super::explicit_grid::{compute_explicit_grid_size_in_axis, AutoRepeatStrategy};
+#[path = "fixed_standalone_tracks.rs"]
+mod fixed_standalone_tracks;
+use fixed_standalone_tracks::standalone_tracks_with_known;
+#[path = "nested_standalone_size.rs"]
+mod nested_standalone_size;
+use super::explicit_grid::{AutoRepeatStrategy, compute_explicit_grid_size_in_axis};
 use super::implicit_grid::compute_grid_size_estimate;
+use super::subgrid_tracks::axis_tracks;
 use super::placement::place_grid_items;
 use super::types::{CellOccupancyMatrix, GridItem, GridTrack, NamedLineResolver, TrackCounts};
-use super::OriginZeroLine;
+use super::{MAX_GRID_TRACKS, OriginZeroLine};
+use crate::GenericRepetition;
 use crate::geometry::{AbsoluteAxis, AbstractAxis, Line, Rect, Size};
 use crate::style::{
-    AlignItems, AlignSelf, MaxTrackSizingFunction, MinTrackSizingFunction, Overflow, Position, SubgridAxisTracks,
-    SubgridTracks, SUBGRID_COLUMNS, SUBGRID_COLUMN_GAP_NORMAL, SUBGRID_ROWS, SUBGRID_ROW_GAP_NORMAL,
+    AlignItems, AlignItemsKeyword, MaxTrackSizingFunction, MinTrackSizingFunction, Overflow,
+    Position, SUBGRID_COLUMN_GAP_NORMAL, SUBGRID_COLUMNS, SUBGRID_ROW_GAP_NORMAL, SUBGRID_ROWS,
+    SubgridAxisTracks, SubgridTracks,
 };
 use crate::tree::{LayoutPartialTreeExt, NodeId};
 use crate::util::sys::Vec;
 use crate::util::{MaybeResolve, ResolveOrZero};
-use crate::GenericRepetition;
-use crate::{BoxGenerationMode, CoreStyle, GridContainerStyle, GridItemStyle, LayoutGridContainer, LengthPercentage};
+use crate::{
+    BoxGenerationMode, CoreStyle, GridContainerStyle, GridItemStyle, LayoutGridContainer,
+    LengthPercentage,
+};
 
 /// Глубина вложенности подсеток, дальше которой сплющивание не идёт
 /// (страховка от патологических деревьев; у WPT — не глубже четырёх).
@@ -51,6 +61,9 @@ pub(super) struct PlacedGrid<S: crate::CheapCloneStr> {
     pub col_counts: TrackCounts,
     /// Число дорожек рядов.
     pub row_counts: TrackCounts,
+    /// Native auto-repeat counts used by track initialization and detailed names.
+    pub col_auto_repetition_count: u16,
+    pub row_auto_repetition_count: u16,
 }
 
 /// Подсеточные оси узла, выданные родителем; оси без бита в стиле
@@ -90,8 +103,12 @@ pub(super) fn place_items<Tree: LayoutGridContainer>(
     align_items: AlignItems,
     justify_items: AlignItems,
 ) -> PlacedGrid<Tree::CustomIdent> {
-    let sub_cols = sub.and_then(|s| s.columns.as_ref()).map(|a| a.count.max(1));
-    let sub_rows = sub.and_then(|s| s.rows.as_ref()).map(|a| a.count.max(1));
+    let sub_cols = sub
+        .and_then(|s| s.columns.as_ref())
+        .map(|a| bounded_subgrid_count(a.count));
+    let sub_rows = sub
+        .and_then(|s| s.rows.as_ref())
+        .map(|a| bounded_subgrid_count(a.count));
     let (col_auto_repetition_count, grid_template_col_count) = match sub_cols {
         Some(count) => (0, count),
         None => compute_explicit_grid_size_in_axis(
@@ -113,14 +130,19 @@ pub(super) fn place_items<Tree: LayoutGridContainer>(
         ),
     };
 
-    let mut name_resolver = NamedLineResolver::new(style, col_auto_repetition_count, row_auto_repetition_count);
+    let mut name_resolver =
+        NamedLineResolver::new(style, col_auto_repetition_count, row_auto_repetition_count);
     let explicit_col_count = match sub_cols {
-        Some(count) => count,
-        None => grid_template_col_count.max(name_resolver.area_column_count()),
+        Some(count) => count.min(MAX_GRID_TRACKS),
+        None => grid_template_col_count
+            .max(name_resolver.area_column_count())
+            .min(MAX_GRID_TRACKS),
     };
     let explicit_row_count = match sub_rows {
-        Some(count) => count,
-        None => grid_template_row_count.max(name_resolver.area_row_count()),
+        Some(count) => count.min(MAX_GRID_TRACKS),
+        None => grid_template_row_count
+            .max(name_resolver.area_row_count())
+            .min(MAX_GRID_TRACKS),
     };
     name_resolver.set_explicit_column_count(explicit_col_count);
     name_resolver.set_explicit_row_count(explicit_row_count);
@@ -128,19 +150,31 @@ pub(super) fn place_items<Tree: LayoutGridContainer>(
     // авто-повтор по пролёту) плюс явные имена родителя на тех же линиях
     // («These names are in addition to any line names specified locally on
     // the subgrid», §9 (d)).
-    for (columns, axis) in [(true, sub.and_then(|s| s.columns.as_ref())), (false, sub.and_then(|s| s.rows.as_ref()))] {
+    for (columns, axis) in [
+        (true, sub.and_then(|s| s.columns.as_ref())),
+        (false, sub.and_then(|s| s.rows.as_ref())),
+    ] {
         let Some(axis) = axis else { continue };
-        let count = axis.count.max(1);
-        let mut lines: Vec<Vec<Tree::CustomIdent>> =
-            style.subgrid_line_names(columns).map(|names| names.expand(count)).unwrap_or_default();
+        let count = bounded_subgrid_count(axis.count);
+        let mut lines: Vec<Vec<Tree::CustomIdent>> = style
+            .subgrid_line_names(columns)
+            .map(|names| names.expand(count))
+            .unwrap_or_default();
         lines.resize_with(count as usize + 1, Vec::new);
         for (line, inherited) in lines.iter_mut().zip(axis.names.iter()) {
-            line.extend(inherited.iter().map(|name| Tree::CustomIdent::from(name.as_str())));
+            line.extend(
+                inherited
+                    .iter()
+                    .map(|name| Tree::CustomIdent::from(name.as_str())),
+            );
         }
         name_resolver.set_subgrid_line_names(columns, &lines);
     }
 
-    let child_styles_iter = tree.child_ids(node).map(|child_node: NodeId| tree.get_grid_child_style(child_node));
+    let child_styles_iter = tree
+        .child_ids(node)
+        .map(|child_node: NodeId| tree.get_grid_child_style(child_node))
+        .filter(|style| contributes_to_placement(style));
     let (mut est_col_counts, mut est_row_counts) =
         compute_grid_size_estimate(explicit_col_count, explicit_row_count, child_styles_iter);
     // KaminIDE patch: оценка неявной сетки не видит ИМЕНОВАННЫХ граней
@@ -154,14 +188,20 @@ pub(super) fn place_items<Tree: LayoutGridContainer>(
         let widen = |counts: &mut TrackCounts, line: Line<P<OriginZeroLine>>, explicit: u16| {
             for side in [line.start, line.end] {
                 if let P::Line(l) = side {
-                    counts.negative_implicit = counts.negative_implicit.max(l.implied_negative_implicit_tracks());
-                    counts.positive_implicit =
-                        counts.positive_implicit.max(l.implied_positive_implicit_tracks(explicit));
+                    counts.negative_implicit = counts
+                        .negative_implicit
+                        .max(l.implied_negative_implicit_tracks());
+                    counts.positive_implicit = counts
+                        .positive_implicit
+                        .max(l.implied_positive_implicit_tracks(explicit));
                 }
             }
         };
         for child in tree.child_ids(node) {
             let child_style = tree.get_grid_child_style(child);
+            if !contributes_to_placement(&child_style) {
+                continue;
+            }
             let col = name_resolver
                 .resolve_column_names(&child_style.grid_column())
                 .map(|p| p.into_origin_zero_placement(explicit_col_count));
@@ -174,14 +214,13 @@ pub(super) fn place_items<Tree: LayoutGridContainer>(
     }
 
     let mut items = Vec::with_capacity(tree.child_count(node));
-    let mut cell_occupancy_matrix = CellOccupancyMatrix::with_track_counts(est_col_counts, est_row_counts);
+    let mut cell_occupancy_matrix =
+        CellOccupancyMatrix::with_track_counts(est_col_counts, est_row_counts);
     let in_flow_children_iter = || {
         tree.child_ids(node)
             .enumerate()
             .map(|(index, child_node)| (index, child_node, tree.get_grid_child_style(child_node)))
-            .filter(|(_, _, style)| {
-                style.box_generation_mode() != BoxGenerationMode::None && style.position() != Position::Absolute
-            })
+            .filter(|(_, _, style)| contributes_to_placement(style))
     };
     place_grid_items(
         &mut cell_occupancy_matrix,
@@ -204,7 +243,10 @@ pub(super) fn place_items<Tree: LayoutGridContainer>(
         let n = count as i16;
         let start = line.start.0.clamp(0, n - 1);
         let end = line.end.0.clamp(start + 1, n);
-        Line { start: OriginZeroLine(start), end: OriginZeroLine(end) }
+        Line {
+            start: OriginZeroLine(start),
+            end: OriginZeroLine(end),
+        }
     };
     if let Some(count) = sub_cols {
         for item in items.iter_mut() {
@@ -219,7 +261,15 @@ pub(super) fn place_items<Tree: LayoutGridContainer>(
         row_counts = TrackCounts::from_raw(0, count, 0);
     }
 
-    PlacedGrid { items, cell_occupancy_matrix, name_resolver, col_counts, row_counts }
+    PlacedGrid {
+        items,
+        cell_occupancy_matrix,
+        name_resolver,
+        col_counts,
+        row_counts,
+        col_auto_repetition_count,
+        row_auto_repetition_count,
+    }
 }
 
 /// Дорожки подсеточной оси из выданных размеров: первая и последняя линии
@@ -227,7 +277,7 @@ pub(super) fn place_items<Tree: LayoutGridContainer>(
 /// подсетки. Без размеров (родитель ещё не размерил ось) дорожки `auto`.
 pub(super) fn initialize_subgrid_tracks(tracks: &mut Vec<GridTrack>, axis: &SubgridAxisTracks) {
     tracks.clear();
-    let count = axis.count.max(1) as usize;
+    let count = bounded_subgrid_count(axis.count) as usize;
     tracks.reserve(count * 2 + 1);
     let gutter = || GridTrack::gutter(LengthPercentage::length(axis.gap));
     tracks.push(gutter());
@@ -235,9 +285,15 @@ pub(super) fn initialize_subgrid_tracks(tracks: &mut Vec<GridTrack>, axis: &Subg
         let track = match &axis.sizes {
             Some(sizes) => {
                 let size = sizes.get(i).copied().unwrap_or(0.0);
-                GridTrack::new(MinTrackSizingFunction::length(size), MaxTrackSizingFunction::length(size))
+                GridTrack::new(
+                    MinTrackSizingFunction::length(size),
+                    MaxTrackSizingFunction::length(size),
+                )
             }
-            None => GridTrack::new(MinTrackSizingFunction::auto(), MaxTrackSizingFunction::auto()),
+            None => GridTrack::new(
+                MinTrackSizingFunction::auto(),
+                MaxTrackSizingFunction::auto(),
+            ),
         };
         tracks.push(track);
         tracks.push(gutter());
@@ -260,9 +316,15 @@ fn subgrid_edges<Tree: LayoutGridContainer>(
     basis: Option<f32>,
 ) -> Rect<f32> {
     let basis = basis.or(Some(0.0));
-    let margin = style.margin().map(|m| m.resolve_or_zero(basis, |val, b| tree.calc(val, b)));
-    let border = style.border().map(|b| b.resolve_or_zero(basis, |val, bb| tree.calc(val, bb)));
-    let padding = style.padding().map(|p| p.resolve_or_zero(basis, |val, bb| tree.calc(val, bb)));
+    let margin = style
+        .margin()
+        .map(|m| m.resolve_or_zero(basis, |val, b| tree.calc(val, b)));
+    let border = style
+        .border()
+        .map(|b| b.resolve_or_zero(basis, |val, bb| tree.calc(val, bb)));
+    let padding = style
+        .padding()
+        .map(|p| p.resolve_or_zero(basis, |val, bb| tree.calc(val, bb)));
     let overflow = style.overflow();
     let scrollbar = style.scrollbar_width();
     Rect {
@@ -270,12 +332,20 @@ fn subgrid_edges<Tree: LayoutGridContainer>(
         right: margin.right
             + border.right
             + padding.right
-            + if overflow.y == Overflow::Scroll { scrollbar } else { 0.0 },
+            + if overflow.y == Overflow::Scroll {
+                scrollbar
+            } else {
+                0.0
+            },
         top: margin.top + border.top + padding.top,
         bottom: margin.bottom
             + border.bottom
             + padding.bottom
-            + if overflow.x == Overflow::Scroll { scrollbar } else { 0.0 },
+            + if overflow.x == Overflow::Scroll {
+                scrollbar
+            } else {
+                0.0
+            },
     }
 }
 
@@ -294,12 +364,14 @@ fn subgrid_gaps<Tree: LayoutGridContainer>(
         width: if bits & SUBGRID_COLUMN_GAP_NORMAL != 0 {
             parent_gap.width
         } else {
-            own.width.resolve_or_zero(basis.width, |val, b| tree.calc(val, b))
+            own.width
+                .resolve_or_zero(basis.width, |val, b| tree.calc(val, b))
         },
         height: if bits & SUBGRID_ROW_GAP_NORMAL != 0 {
             parent_gap.height
         } else {
-            own.height.resolve_or_zero(basis.height, |val, b| tree.calc(val, b))
+            own.height
+                .resolve_or_zero(basis.height, |val, b| tree.calc(val, b))
         },
     }
 }
@@ -345,12 +417,13 @@ pub(super) struct SubgridEdge {
 /// css-grid-3 Overview.bs:502-519). Возвращает края всех подсеток дерева —
 /// для пола дорожек (`apply_subgrid_floors`).
 pub(super) fn flatten_subgrid_items<Tree: LayoutGridContainer>(
-    tree: &Tree,
+    tree: &mut Tree,
     items: &mut Vec<GridItem>,
     container_gap: Size<f32>,
     inner_node_size: Size<Option<f32>>,
     axis_mask: u8,
     resolver: Option<&NamedLineResolver<Tree::CustomIdent>>,
+    root_axes: Size<bool>,
 ) -> Vec<SubgridEdge> {
     let own = items.len();
     let mut out: Vec<GridItem> = Vec::new();
@@ -369,11 +442,14 @@ pub(super) fn flatten_subgrid_items<Tree: LayoutGridContainer>(
             linked,
             area,
             area,
+            root_axes,
+            root_axes,
             resolver,
             Rect::ZERO,
             container_gap,
             container_gap,
             inner_node_size,
+            Size::NONE,
             &mut out,
             &mut edges,
             0,
@@ -404,7 +480,10 @@ pub(super) fn apply_lanes_auto_floors(
     auto_root: impl Fn(NodeId) -> bool,
 ) {
     let mut largest = 0.0f32;
-    for edge in edges.iter().filter(|e| e.columns == columns && auto_root(e.root)) {
+    for edge in edges
+        .iter()
+        .filter(|e| e.columns == columns && auto_root(e.root))
+    {
         let half = edge.delta / 2.0;
         let contribution = match edge.span.span() {
             0 | 1 => edge.start + edge.end,
@@ -438,9 +517,10 @@ pub(super) fn apply_subgrid_floors(
         track.subgrid_floor = 0.0;
     }
     for edge in edges.iter().filter(|e| e.columns == columns) {
-        let (Some(start), Some(end)) =
-            (edge.span.start.try_into_track_vec_index(counts), edge.span.end.try_into_track_vec_index(counts))
-        else {
+        let (Some(start), Some(end)) = (
+            edge.span.start.try_into_track_vec_index(counts),
+            edge.span.end.try_into_track_vec_index(counts),
+        ) else {
             continue;
         };
         if end <= start {
@@ -466,16 +546,19 @@ pub(super) fn apply_subgrid_floors(
 /// подсетки — `ext`.
 #[allow(clippy::too_many_arguments)]
 fn flatten_into<Tree: LayoutGridContainer>(
-    tree: &Tree,
+    tree: &mut Tree,
     node: NodeId,
     linked: u8,
     area: (Line<OriginZeroLine>, Line<OriginZeroLine>),
     local: (Line<OriginZeroLine>, Line<OriginZeroLine>),
+    root_axes: Size<bool>,
+    parent_axes: Size<bool>,
     parent_resolver: Option<&NamedLineResolver<Tree::CustomIdent>>,
     ext: Rect<f32>,
     parent_gap: Size<f32>,
     root_gap: Size<f32>,
     inner_node_size: Size<Option<f32>>,
+    known_content: Size<Option<f32>>,
     out: &mut Vec<GridItem>,
     edges_out: &mut Vec<SubgridEdge>,
     depth: u8,
@@ -485,12 +568,18 @@ fn flatten_into<Tree: LayoutGridContainer>(
     }
     let style = tree.get_grid_container_style(node);
     let bits = style.subgrid();
+    let own_axes = super::subgrid_flow::axes(&style);
     let edges = subgrid_edges(tree, &style, inner_node_size.width);
     let gap = subgrid_gaps(tree, &style, bits, parent_gap, inner_node_size);
     // Имена — у родителя на линиях пролёта (`local` — пролёт в координатах
     // РОДИТЕЛЯ, его имена считаются от его явной сетки).
     let inherited = |columns: bool, span: Line<OriginZeroLine>| -> Vec<Vec<String>> {
-        parent_resolver.map(|r| r.names_in_span(columns, span.start.0 + 1, span.span().max(1))).unwrap_or_default()
+        let mut names = parent_resolver
+            .map(|r| r.names_in_span(columns, span.start.0 + 1, span.span().max(1)))
+            .unwrap_or_default();
+        if if columns { own_axes.width != parent_axes.width }
+        else { own_axes.height != parent_axes.height } { names.reverse(); }
+        names
     };
     let sub = SubgridTracks {
         columns: (linked & SUBGRID_COLUMNS != 0).then(|| SubgridAxisTracks {
@@ -506,8 +595,8 @@ fn flatten_into<Tree: LayoutGridContainer>(
             names: inherited(false, local.1),
         }),
     };
-    let align_items = style.align_items().unwrap_or(AlignItems::Stretch);
-    let justify_items = style.justify_items().unwrap_or(AlignItems::Stretch);
+    let align_items = style.align_items().unwrap_or(AlignItems::STRETCH);
+    let justify_items = style.justify_items().unwrap_or(AlignItems::STRETCH);
     // Размер для `repeat(auto-*)` в СВОЕЙ оси подсетки здесь неизвестен —
     // повтор идёт один раз (css-grid-2 §7.2.3.2 «Otherwise, the specified
     // track list repeats only once»). Подсеточная ось повторов не знает.
@@ -515,14 +604,25 @@ fn flatten_into<Tree: LayoutGridContainer>(
         width: AutoRepeatStrategy::MinRepetitionsThatDoOverflow,
         height: AutoRepeatStrategy::MinRepetitionsThatDoOverflow,
     };
-    let placed = place_items(tree, node, &style, Size::NONE, strategy, Some(&sub), align_items, justify_items);
+    let placed = place_items(
+        tree,
+        node,
+        &style,
+        Size::NONE,
+        strategy,
+        Some(&sub),
+        align_items,
+        justify_items,
+    );
     drop(style);
+    let logical_ext = super::subgrid_flow::logical_edges(ext, root_axes);
+    let logical_edges = super::subgrid_flow::logical_edges(edges, root_axes);
     if linked & SUBGRID_COLUMNS != 0 {
         edges_out.push(SubgridEdge {
             columns: true,
             span: area.0,
-            start: ext.left + edges.left,
-            end: ext.right + edges.right,
+            start: logical_ext.left + logical_edges.left,
+            end: logical_ext.right + logical_edges.right,
             delta: gap.width - root_gap.width,
             root: node,
         });
@@ -531,8 +631,8 @@ fn flatten_into<Tree: LayoutGridContainer>(
         edges_out.push(SubgridEdge {
             columns: false,
             span: area.1,
-            start: ext.top + edges.top,
-            end: ext.bottom + edges.bottom,
+            start: logical_ext.top + logical_edges.top,
+            end: logical_ext.bottom + logical_edges.bottom,
             delta: gap.height - root_gap.height,
             root: node,
         });
@@ -542,17 +642,25 @@ fn flatten_into<Tree: LayoutGridContainer>(
     // содержимого (`standalone_tracks`): по ним сплющенный элемент меряется
     // поперёк вместо всей области подсетки.
     let style = tree.get_grid_container_style(node);
-    let own_cols =
-        (linked & SUBGRID_COLUMNS == 0).then(|| standalone_tracks(tree, &style, true, inner_node_size)).flatten();
-    let own_rows =
-        (linked & SUBGRID_ROWS == 0).then(|| standalone_tracks(tree, &style, false, inner_node_size)).flatten();
+    let own_cols = (linked & SUBGRID_COLUMNS == 0)
+        .then(|| standalone_tracks_with_known(tree, &style, true, inner_node_size, known_content))
+        .flatten();
+    let own_rows = (linked & SUBGRID_ROWS == 0)
+        .then(|| standalone_tracks_with_known(tree, &style, false, inner_node_size, known_content))
+        .flatten();
     // KaminIDE patch: см. `GridItem::subgrid_cross_auto` — у НЕподсеточной
     // оси без шаблона и без `grid-auto-*` дорожки неявные `auto`.
     let implicit_auto = |columns: bool| {
         let (template, auto) = if columns {
-            (style.grid_template_columns().map_or(true, |t| t.len() == 0), style.grid_auto_columns().len() == 0)
+            (
+                style.grid_template_columns().map_or(true, |t| t.len() == 0),
+                style.grid_auto_columns().len() == 0,
+            )
         } else {
-            (style.grid_template_rows().map_or(true, |t| t.len() == 0), style.grid_auto_rows().len() == 0)
+            (
+                style.grid_template_rows().map_or(true, |t| t.len() == 0),
+                style.grid_auto_rows().len() == 0,
+            )
         };
         template && auto
     };
@@ -561,26 +669,22 @@ fn flatten_into<Tree: LayoutGridContainer>(
         height: false,
     };
     drop(style);
-    let cross = |own: &Option<(Vec<f32>, f32)>, line: Line<OriginZeroLine>| -> Option<f32> {
-        let (sizes, gap) = own.as_ref()?;
-        let (s, e) = (line.start.0, line.end.0);
-        if s < 0 || e as usize > sizes.len() || e <= s {
-            return None;
-        }
-        Some(sizes[s as usize..e as usize].iter().sum::<f32>() + gap * (e - s - 1) as f32)
-    };
-    let PlacedGrid { items: placed_items, name_resolver: own_resolver, .. } = placed;
+    let PlacedGrid {
+        items: placed_items,
+        name_resolver: own_resolver,
+        ..
+    } = placed;
     let span_cols = area.0.span().max(1) as i16;
     let span_rows = area.1.span().max(1) as i16;
     for mut child in placed_items {
         let chained = linked_axes(tree, child.node) & linked;
         let column = if linked & SUBGRID_COLUMNS != 0 {
-            Line { start: area.0.start + child.column.start.0 as u16, end: area.0.start + child.column.end.0 as u16 }
+            super::subgrid_flow::project(child.column, area.0, own_axes.width != root_axes.width)
         } else {
             area.0
         };
         let row = if linked & SUBGRID_ROWS != 0 {
-            Line { start: area.1.start + child.row.start.0 as u16, end: area.1.start + child.row.end.0 as u16 }
+            super::subgrid_flow::project(child.row, area.1, own_axes.height != root_axes.height)
         } else {
             area.1
         };
@@ -603,45 +707,39 @@ fn flatten_into<Tree: LayoutGridContainer>(
         };
         if linked & SUBGRID_COLUMNS != 0 {
             let inner = (gap.width - root_gap.width) / 2.0;
-            if child.column.start.0 > 0 {
-                extra.left = inner;
-            }
-            if child.column.end.0 < span_cols {
-                extra.right = inner;
-            }
+            super::subgrid_flow::inner_edges(&mut extra, child.column, span_cols, inner, true, own_axes.width);
         }
         if linked & SUBGRID_ROWS != 0 {
             let inner = (gap.height - root_gap.height) / 2.0;
-            if child.row.start.0 > 0 {
-                extra.top = inner;
-            }
-            if child.row.end.0 < span_rows {
-                extra.bottom = inner;
-            }
+            super::subgrid_flow::inner_edges(&mut extra, child.row, span_rows, inner, false, own_axes.height);
         }
         child.subgrid_cross_auto = cross_auto;
-        if let Some(width) = cross(&own_cols, child.column) {
+        if let Some(width) = nested_standalone_size::cross(&own_cols, child.column) {
             child.subgrid_cross.width = Some(width);
             extra.left = 0.0;
             extra.right = 0.0;
         }
-        if let Some(height) = cross(&own_rows, child.row) {
+        if let Some(height) = nested_standalone_size::cross(&own_rows, child.row) {
             child.subgrid_cross.height = Some(height);
             extra.top = 0.0;
             extra.bottom = 0.0;
         }
         if chained != 0 {
+            let child_content = nested_standalone_size::content(tree, &child, chained);
             flatten_into(
                 tree,
                 child.node,
                 chained,
                 (column, row),
                 (child.column, child.row),
+                root_axes,
+                own_axes,
                 Some(&own_resolver),
                 extra,
                 gap,
                 root_gap,
                 inner_node_size,
+                child_content,
                 out,
                 edges_out,
                 depth + 1,
@@ -660,146 +758,16 @@ fn flatten_into<Tree: LayoutGridContainer>(
         // Общие базовые линии через подсетку — отдельный механизм (Blink
         // `GridBaselineAccumulator` по дереву размеров); здесь элемент
         // вкладывает только размеры.
-        if child.align_self == AlignSelf::Baseline {
-            child.align_self = AlignSelf::Start;
+        if child.align_self.keyword == AlignItemsKeyword::Baseline {
+            child.align_self.keyword = AlignItemsKeyword::Start;
         }
-        if child.justify_self == AlignSelf::Baseline {
-            child.justify_self = AlignSelf::Start;
+        if child.justify_self.keyword == AlignItemsKeyword::Baseline {
+            child.justify_self.keyword = AlignItemsKeyword::Start;
         }
         out.push(child);
     }
 }
 
-/// Собственные дорожки подсетки в её НЕподсеточной («standalone») оси —
-/// только когда размер не зависит от содержимого: размер подсетки в оси
-/// определён стилем, дорожки — точки или доли `fr` (без `auto`/по
-/// содержимому). Доли — css-grid-2 §12.7.1 «Find the Size of an fr» по
-/// остатку после точек и зазоров. Иначе `None` — элемент меряется по всей
-/// области подсетки (`standalone-axis-size-010`: `height: 100px`,
-/// `repeat(4, 1fr)` → ряды по 25, вертикальный текст переносится по 25).
-fn standalone_tracks<Tree: LayoutGridContainer>(
-    tree: &Tree,
-    style: &Tree::GridContainerStyle<'_>,
-    columns: bool,
-    basis: Size<Option<f32>>,
-) -> Option<(Vec<f32>, f32)> {
-    let size = style.size().maybe_resolve(basis, |val, b| tree.calc(val, b));
-    let mut size = if columns { size.width } else { size.height }?;
-    if style.box_sizing() == crate::BoxSizing::BorderBox {
-        let padding = style.padding().map(|p| p.resolve_or_zero(basis.width, |val, b| tree.calc(val, b)));
-        let border = style.border().map(|p| p.resolve_or_zero(basis.width, |val, b| tree.calc(val, b)));
-        size -= if columns {
-            padding.left + padding.right + border.left + border.right
-        } else {
-            padding.top + padding.bottom + border.top + border.bottom
-        };
-    }
-    let size = size.max(0.0);
-    let gap = if columns { style.gap().width } else { style.gap().height };
-    let gap = gap.resolve_or_zero(Some(size), |val, b| tree.calc(val, b));
-    let template = if columns { style.grid_template_columns() } else { style.grid_template_rows() }?;
-    // (точки, доля)
-    let mut tracks: Vec<(Option<f32>, f32)> = Vec::new();
-    let mut push = |t: crate::TrackSizingFunction| -> Option<()> {
-        let max = t.max_sizing_function();
-        let min = t.min_sizing_function();
-        if max.is_fr() {
-            tracks.push((None, max.into_raw().value()));
-            return Some(());
-        }
-        let hi = max.definite_value(Some(size), |val, b| tree.calc(val, b))?;
-        let lo = min.definite_value(Some(size), |val, b| tree.calc(val, b))?;
-        ((hi - lo).abs() < 0.001).then(|| tracks.push((Some(hi), 0.0)))
-    };
-    for component in template {
-        match component {
-            crate::GenericGridTemplateComponent::Single(t) => push(t)?,
-            crate::GenericGridTemplateComponent::Repeat(repeat) => match repeat.count() {
-                crate::RepetitionCount::Count(n) => {
-                    for _ in 0..n {
-                        for t in repeat.tracks() {
-                            push(t)?;
-                        }
-                    }
-                }
-                _ => return None,
-            },
-        }
-    }
-    if tracks.is_empty() {
-        return None;
-    }
-    let fixed: f32 = tracks.iter().filter_map(|t| t.0).sum();
-    let flex: f32 = tracks.iter().map(|t| t.1).sum();
-    let leftover = (size - fixed - gap * (tracks.len() as f32 - 1.0)).max(0.0);
-    let per = leftover / flex.max(1.0);
-    Some((tracks.iter().map(|t| t.0.unwrap_or(t.1 * per)).collect(), gap))
-}
-
-/// Размеры дорожек одной подсеточной оси из дорожек родителя.
-///
-/// `lines` — индексы линий области подсетки в векторе дорожек родителя
-/// (чётные: линии/зазоры, нечётные: дорожки). Линии подсетки совпадают с
-/// линиями родителя: начало первой дорожки — край области плюс край
-/// подсетки, внутренняя линия — середина зазора родителя (вместе с долей
-/// распределения содержимого) минус/плюс половина своего зазора
-/// (css-grid-2 §subgrid-gaps, Note: «the subgrid's gutters will visually
-/// center-align with the parent grid's gutters»). Размер бывает и
-/// отрицательным (`grid-gap-011-ref`: 25 / −50 / 25; Blink
-/// `accumulated_gutter_size_delta_` пола не имеет).
-#[allow(clippy::too_many_arguments)]
-fn axis_tracks(
-    tracks: &[GridTrack],
-    lines: Line<u16>,
-    lead: f32,
-    trail: f32,
-    gap: f32,
-    sized: bool,
-    use_offsets: bool,
-    fixed: Option<&[Option<f32>]>,
-    names: Vec<Vec<String>>,
-) -> SubgridAxisTracks {
-    let count = ((lines.end.saturating_sub(lines.start)) / 2).max(1);
-    let (first, last) = (lines.start as usize, lines.start as usize + 2 * count as usize);
-    // Размеры и позиции записей вектора в пределах пролёта (позиции — от
-    // его начальной линии). Неразмеренная ось годится, только если ВСЕ
-    // записи пролёта фиксированы (`fixed_track_sizes`): тогда их размер
-    // известен и до алгоритма дорожек.
-    let mut base: Vec<f32> = Vec::with_capacity(last - first + 1);
-    for i in first..=last {
-        let size =
-            if sized { tracks.get(i).map(|t| t.base_size) } else { fixed.and_then(|f| f.get(i).copied().flatten()) };
-        match size {
-            Some(size) => base.push(size),
-            None => return SubgridAxisTracks { count, sizes: None, gap, names },
-        }
-    }
-    let mut pos: Vec<f32> = Vec::with_capacity(base.len());
-    if sized && use_offsets {
-        let origin = tracks.get(first).map(|t| t.offset).unwrap_or(0.0);
-        for i in first..=last {
-            pos.push(tracks.get(i).map(|t| t.offset).unwrap_or(origin) - origin);
-        }
-    } else {
-        let mut acc = 0.0;
-        for size in &base {
-            pos.push(acc);
-            acc += size;
-        }
-    }
-    let mut sizes = Vec::with_capacity(count as usize);
-    for k in 0..count as usize {
-        let t = 1 + 2 * k;
-        let start = if k == 0 { pos[t] + lead } else { (pos[t - 2] + base[t - 2] + pos[t]) / 2.0 + gap / 2.0 };
-        let end = if k + 1 == count as usize {
-            pos[t] + base[t] - trail
-        } else {
-            (pos[t] + base[t] + pos[t + 2]) / 2.0 - gap / 2.0
-        };
-        sizes.push(end - start);
-    }
-    SubgridAxisTracks { count, sizes: Some(sizes), gap, names }
-}
 
 /// Размеры записей вектора дорожек, известные ДО алгоритма дорожек: у
 /// записи с одинаковыми определёнными гранями (`100px`, зазор) и у
@@ -817,8 +785,12 @@ pub(super) fn fixed_track_sizes<Tree: LayoutGridContainer>(
             if t.is_collapsed {
                 return Some(0.0);
             }
-            let min = t.min_track_sizing_function.definite_value(basis, |val, b| tree.calc(val, b));
-            let max = t.max_track_sizing_function.definite_value(basis, |val, b| tree.calc(val, b));
+            let min = t
+                .min_track_sizing_function
+                .definite_value(basis, |val, b| tree.calc(val, b));
+            let max = t
+                .max_track_sizing_function
+                .definite_value(basis, |val, b| tree.calc(val, b));
             match (min, max) {
                 (Some(a), Some(b)) if (a - b).abs() < 0.001 => Some(a),
                 _ => None,
@@ -844,6 +816,7 @@ pub(super) fn publish_subgrid_tracks<Tree: LayoutGridContainer>(
     container_gap: Size<f32>,
     inner_node_size: Size<Option<f32>>,
     resolver: &NamedLineResolver<Tree::CustomIdent>,
+    parent_axes: Size<bool>,
 ) {
     for item in items.iter().filter(|item| !item.flattened) {
         let linked = linked_axes(tree, item.node);
@@ -851,14 +824,15 @@ pub(super) fn publish_subgrid_tracks<Tree: LayoutGridContainer>(
             continue;
         }
         let style = tree.get_grid_container_style(item.node);
+        let child_axes = super::subgrid_flow::axes(&style);
         let bits = style.subgrid();
         let edges = subgrid_edges(tree, &style, inner_node_size.width);
         let gap = subgrid_gaps(tree, &style, bits, container_gap, inner_node_size);
         drop(style);
         let fixed_cols = (!sized.0 && linked & SUBGRID_COLUMNS != 0)
             .then(|| fixed_track_sizes(tree, columns, inner_node_size.width));
-        let fixed_rows =
-            (!sized.1 && linked & SUBGRID_ROWS != 0).then(|| fixed_track_sizes(tree, rows, inner_node_size.height));
+        let fixed_rows = (!sized.1 && linked & SUBGRID_ROWS != 0)
+            .then(|| fixed_track_sizes(tree, rows, inner_node_size.height));
         let tracks = SubgridTracks {
             columns: (linked & SUBGRID_COLUMNS != 0).then(|| {
                 axis_tracks(
@@ -870,7 +844,13 @@ pub(super) fn publish_subgrid_tracks<Tree: LayoutGridContainer>(
                     sized.0,
                     use_offsets,
                     fixed_cols.as_deref(),
-                    resolver.names_in_span(true, item.column.start.0 + 1, item.column.span().max(1)),
+                    resolver.names_in_span(
+                        true,
+                        item.column.start.0 + 1,
+                        item.column.span().max(1),
+                    ),
+                    parent_axes.width,
+                    child_axes.width,
                 )
             }),
             rows: (linked & SUBGRID_ROWS != 0).then(|| {
@@ -884,6 +864,8 @@ pub(super) fn publish_subgrid_tracks<Tree: LayoutGridContainer>(
                     use_offsets,
                     fixed_rows.as_deref(),
                     resolver.names_in_span(false, item.row.start.0 + 1, item.row.span().max(1)),
+                    parent_axes.height,
+                    child_axes.height,
                 )
             }),
         };
@@ -900,7 +882,10 @@ pub(super) fn partition_for_axis(items: &mut [GridItem], axis: AbstractAxis) -> 
         return items.len();
     }
     items.sort_by_key(|item| !item.sizes_axis(axis));
-    items.iter().take_while(|item| item.sizes_axis(axis)).count()
+    items
+        .iter()
+        .take_while(|item| item.sizes_axis(axis))
+        .count()
 }
 
 /// Записать подсетке-элементу ЛУНОК дорожки оси решётки её пролёта
@@ -918,17 +903,32 @@ pub(super) fn publish_lanes_subgrid<Tree: LayoutGridContainer>(
     container_gap: f32,
     inner_node_size: Size<Option<f32>>,
     names: Vec<Vec<String>>,
+    parent_axes: Size<bool>,
 ) {
     let bit = if rows { SUBGRID_ROWS } else { SUBGRID_COLUMNS };
     if linked_axes(tree, node) & bit == 0 {
         return;
     }
     let style = tree.get_grid_container_style(node);
+    let child_axes = super::subgrid_flow::axes(&style);
     let bits = style.subgrid();
     let edges = subgrid_edges(tree, &style, inner_node_size.width);
-    let gap = subgrid_gaps(tree, &style, bits, Size { width: container_gap, height: container_gap }, inner_node_size);
+    let gap = subgrid_gaps(
+        tree,
+        &style,
+        bits,
+        Size {
+            width: container_gap,
+            height: container_gap,
+        },
+        inner_node_size,
+    );
     drop(style);
-    let basis = if rows { inner_node_size.height } else { inner_node_size.width };
+    let basis = if rows {
+        inner_node_size.height
+    } else {
+        inner_node_size.width
+    };
     let fixed = (!sized).then(|| fixed_track_sizes(tree, tracks, basis));
     let tracks = if rows {
         SubgridTracks {
@@ -943,6 +943,8 @@ pub(super) fn publish_lanes_subgrid<Tree: LayoutGridContainer>(
                 true,
                 fixed.as_deref(),
                 names,
+                parent_axes.height,
+                child_axes.height,
             )),
         }
     } else {
@@ -957,6 +959,8 @@ pub(super) fn publish_lanes_subgrid<Tree: LayoutGridContainer>(
                 true,
                 fixed.as_deref(),
                 names,
+                parent_axes.width,
+                child_axes.width,
             )),
             rows: None,
         }
@@ -966,7 +970,52 @@ pub(super) fn publish_lanes_subgrid<Tree: LayoutGridContainer>(
 
 /// Связана ли подсеточная ось узла с осью решётки лунок (для растяжки
 /// элемента по §subgrid-box-alignment).
-pub(super) fn lanes_subgridded<Tree: LayoutGridContainer>(tree: &Tree, node: NodeId, rows: bool) -> bool {
+pub(super) fn lanes_subgridded<Tree: LayoutGridContainer>(
+    tree: &Tree,
+    node: NodeId,
+    rows: bool,
+) -> bool {
     let bit = if rows { SUBGRID_ROWS } else { SUBGRID_COLUMNS };
     linked_axes(tree, node) & bit != 0
+}
+
+/// Keep placement, name expansion and track initialization in the same signed-coordinate bounds.
+fn bounded_subgrid_count(count: u16) -> u16 {
+    count.clamp(1, MAX_GRID_TRACKS)
+}
+
+/// Hidden/abspos children never create implicit tracks, including named-line estimate widening.
+fn contributes_to_placement(style: &impl CoreStyle) -> bool {
+    style.box_generation_mode() != BoxGenerationMode::None && style.position() != Position::Absolute
+}
+
+#[cfg(test)]
+mod kamin_placement_tests {
+    use super::*;
+    use crate::style::Display;
+    type Style = crate::style::Style;
+
+    #[test]
+    fn absolute_and_hidden_styles_do_not_contribute_to_placement() {
+        let mut style = Style::DEFAULT;
+        style.position = Position::Absolute;
+        assert!(!contributes_to_placement(&style));
+        style.position = Position::Relative;
+        style.display = Display::None;
+        assert!(!contributes_to_placement(&style));
+    }
+
+    #[test]
+    fn visible_inflow_style_contributes_to_placement() {
+        assert!(contributes_to_placement(&Style::DEFAULT));
+    }
+
+    #[test]
+    fn oversized_inherited_span_keeps_positive_signed_coordinates() {
+        let count = bounded_subgrid_count(u16::MAX);
+        assert_eq!(count, MAX_GRID_TRACKS);
+        assert!(count as i16 > 0);
+        assert_eq!(bounded_subgrid_count(0), 1);
+        assert_eq!(bounded_subgrid_count(12), 12);
+    }
 }

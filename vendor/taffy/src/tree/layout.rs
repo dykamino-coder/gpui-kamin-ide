@@ -39,14 +39,23 @@ pub struct CollapsibleMarginSet {
 
 impl CollapsibleMarginSet {
     /// A default margin set with no collapsible margins
-    pub const ZERO: Self = Self { positive: 0.0, negative: 0.0 };
+    pub const ZERO: Self = Self {
+        positive: 0.0,
+        negative: 0.0,
+    };
 
     /// Create a set from a single margin
     pub fn from_margin(margin: f32) -> Self {
         if margin >= 0.0 {
-            Self { positive: margin, negative: 0.0 }
+            Self {
+                positive: margin,
+                negative: 0.0,
+            }
         } else {
-            Self { positive: 0.0, negative: margin }
+            Self {
+                positive: 0.0,
+                negative: margin,
+            }
         }
     }
 
@@ -109,7 +118,7 @@ impl TryFrom<RequestedAxis> for AbsoluteAxis {
 #[derive(Debug, Copy, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct LayoutInput {
-    /// Whether we only need to know the Node's size, or whe
+    /// Whether we only need to know the Node's size, or whether we need to perform a full layout
     pub run_mode: RunMode,
     /// Whether a Node's style sizes should be taken into account or ignored
     pub sizing_mode: SizingMode,
@@ -126,6 +135,17 @@ pub struct LayoutInput {
     ///   "The exact size of this node is WIDTHxHEIGHT. Please lay out your children"
     ///
     pub known_dimensions: Size<Option<f32>>,
+    /// Whether each known dimension should be treated as a *definite* size when laying out the node's
+    /// own content (resolving percentage sizes of children, and collecting flex items into flex lines).
+    ///
+    /// This should be set to `false` for a dimension when a parent imposes a known dimension on a node
+    /// that is derived from the node's own content, and is therefore indefinite per CSS. For example,
+    /// the post-flexing main size of a flex item is indefinite if the flex container's main size is
+    /// indefinite and the item's used flex basis is not definite
+    /// (see <https://www.w3.org/TR/css-flexbox-1/#definite-sizes>).
+    ///
+    /// This flag is ignored (treated as `true`) for axes where the corresponding known dimension is `None`.
+    pub known_dimensions_are_definite: Size<bool>,
     /// Parent size dimensions are intended to be used for percentage resolution.
     pub parent_size: Size<Option<f32>>,
     /// Available space represents an amount of space to layout into, and is used as a soft constraint
@@ -142,6 +162,10 @@ impl LayoutInput {
         run_mode: RunMode::PerformHiddenLayout,
         // The rest will be ignored
         known_dimensions: Size::NONE,
+        known_dimensions_are_definite: Size {
+            width: true,
+            height: true,
+        },
         parent_size: Size::NONE,
         available_space: Size::MAX_CONTENT,
         sizing_mode: SizingMode::InherentSize,
@@ -150,27 +174,55 @@ impl LayoutInput {
     };
 }
 
+/// The first and last baselines of a node in the horizontal axis (i.e. baselines for horizontal text,
+/// measured as an offset from the top edge of the node's border box).
+///
+/// A baseline is the line on which text sits. See <https://www.w3.org/TR/css-writing-modes-3/#intro-baselines>
+/// for details.
+#[derive(Debug, Copy, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
+pub struct Baselines {
+    /// The first baseline of the node, if any
+    pub first: Option<f32>,
+    /// The last baseline of the node, if any
+    pub last: Option<f32>,
+}
+
+impl Baselines {
+    /// A `Baselines` with neither a first nor a last baseline
+    pub const NONE: Self = Self {
+        first: None,
+        last: None,
+    };
+
+    /// Create a `Baselines` from just a first baseline
+    pub const fn from_first(first: Option<f32>) -> Self {
+        Self { first, last: None }
+    }
+}
+
 /// A struct containing the result of laying a single node, which is returned up to the parent node
 ///
 /// A baseline is the line on which text sits. Your node likely has a baseline if it is a text node, or contains
 /// children that may be text nodes. See <https://www.w3.org/TR/css-writing-modes-3/#intro-baselines> for details.
-/// If your node does not have a baseline (or you are unsure how to compute it), then simply return `Point::NONE`
-/// for the first_baselines field
+/// If your node does not have a baseline (or you are unsure how to compute it), then simply return `Baselines::NONE`
+/// for the baselines field
 #[derive(Debug, Copy, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct LayoutOutput {
     /// The size of the node
     pub size: Size<f32>,
     #[cfg(feature = "content_size")]
-    /// The size of the content within the node
-    pub content_size: Size<f32>,
-    /// The first baseline of the node in each dimension, if any
-    pub first_baselines: Point<Option<f32>>,
-    /// KaminIDE patch: ПОСЛЕДНЯЯ базовая линия по каждой оси (css-align-3
-    /// §9.1 «last baseline set»; Blink `PhysicalBoxFragment::LastBaseline`).
-    /// `None` — узел её не считал; потребитель берёт первую (у однострочного
-    /// содержимого они совпадают), см. `last_or_first`.
-    pub last_baselines: Point<Option<f32>>,
+    /// The scrollable overflow rectangle of the node's content
+    /// (see [`Layout::scrollable_overflow_rect`] for the coordinate conventions)
+    pub scrollable_overflow_rect: Rect<f32>,
+    /// The first and last baselines of the node in the horizontal axis, if any
+    pub baselines: Baselines,
+    /// KaminIDE: vertical-text first/last baselines, measured from the left
+    /// border-box edge along the physical x axis. Horizontal baselines remain
+    /// in the native baselines channel; the two axes must not alias.
+    pub baselines_x: Baselines,
+
     /// Top margin that can be collapsed with. This is used for CSS block layout and can be set to
     /// `CollapsibleMarginSet::ZERO` for other layout modes that don't support margin collapsing
     pub top_margin: CollapsibleMarginSet,
@@ -182,36 +234,18 @@ pub struct LayoutOutput {
     pub margins_can_collapse_through: bool,
 }
 
-/// KaminIDE patch: результат замера ЛИСТА — размер и, если он есть, первая
-/// базовая линия. Без неё выравнивание `align-items: baseline` вырождается в
-/// выравнивание по нижним краям коробок: `compute_leaf_layout` ставил
-/// `Point::NONE`, а гибкая раскладка берёт `unwrap_or(height)`.
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub struct MeasureOutput {
-    /// Размер листа.
-    pub size: Size<f32>,
-    /// Первая базовая линия по вертикали, от ВЕРХА коробки содержимого.
-    pub baseline: Option<f32>,
-    /// KaminIDE patch: ПОСЛЕДНЯЯ базовая линия по вертикали (последняя строка
-    /// абзаца), от ВЕРХА коробки содержимого — для `last baseline`
-    /// (css-align-3 §9.1). `None` — как первая.
-    pub last_baseline: Option<f32>,
-}
-
-impl From<Size<f32>> for MeasureOutput {
-    fn from(size: Size<f32>) -> Self {
-        Self { size, baseline: None, last_baseline: None }
-    }
-}
+#[path = "measured_output.rs"]
+mod measured_output;
+pub use measured_output::MeasureOutput;
 
 impl LayoutOutput {
     /// An all-zero `LayoutOutput` for hidden nodes
     pub const HIDDEN: Self = Self {
         size: Size::ZERO,
         #[cfg(feature = "content_size")]
-        content_size: Size::ZERO,
-        first_baselines: Point::NONE,
-        last_baselines: Point::NONE,
+        scrollable_overflow_rect: Rect::ZERO,
+        baselines: Baselines::NONE,
+        baselines_x: Baselines::NONE,
         top_margin: CollapsibleMarginSet::ZERO,
         bottom_margin: CollapsibleMarginSet::ZERO,
         margins_can_collapse_through: false,
@@ -220,50 +254,59 @@ impl LayoutOutput {
     /// A blank layout output
     pub const DEFAULT: Self = Self::HIDDEN;
 
-    /// Constructor to create a `LayoutOutput` from just the size and baselines
+    /// Constructor to create a `LayoutOutput` from just the size, scrollable overflow rectangle and baselines
     pub fn from_sizes_and_baselines(
         size: Size<f32>,
-        #[cfg_attr(not(feature = "content_size"), allow(unused_variables))] content_size: Size<f32>,
-        first_baselines: Point<Option<f32>>,
+        #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
+        scrollable_overflow_rect: Rect<f32>,
+        baselines: Baselines,
     ) -> Self {
-        Self::from_sizes_and_all_baselines(size, content_size, first_baselines, Point::NONE)
+        Self::from_sizes_and_all_baselines(
+            size,
+            scrollable_overflow_rect,
+            baselines,
+            Baselines::NONE,
+        )
     }
 
-    /// KaminIDE patch: то же, но с ПОСЛЕДНИМИ базовыми линиями.
+    /// KaminIDE: preserve both physical baseline axes through container output.
     pub fn from_sizes_and_all_baselines(
         size: Size<f32>,
-        #[cfg_attr(not(feature = "content_size"), allow(unused_variables))] content_size: Size<f32>,
-        first_baselines: Point<Option<f32>>,
-        last_baselines: Point<Option<f32>>,
+        #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
+        scrollable_overflow_rect: Rect<f32>,
+        baselines: Baselines,
+        baselines_x: Baselines,
     ) -> Self {
         Self {
             size,
             #[cfg(feature = "content_size")]
-            content_size,
-            first_baselines,
-            last_baselines,
+            scrollable_overflow_rect,
+            baselines,
+            baselines_x,
             top_margin: CollapsibleMarginSet::ZERO,
             bottom_margin: CollapsibleMarginSet::ZERO,
             margins_can_collapse_through: false,
         }
     }
 
-    /// KaminIDE patch: последняя базовая линия по вертикали, а без неё —
-    /// первая (узел последней не считал: однострочное содержимое, замер без
-    /// неё). Blink `LogicalBoxFragment::LastBaseline` тоже падает к первой
-    /// только через синтез, но у нас «не считал» значит «одна строка».
+    /// KaminIDE: a missing last baseline uses the first, as in the previous fork.
     pub fn last_or_first_y(&self) -> Option<f32> {
-        self.last_baselines.y.or(self.first_baselines.y)
+        self.baselines.last.or(self.baselines.first)
     }
 
-    /// Construct a `LayoutOutput` from just the container and content sizes
-    pub fn from_sizes(size: Size<f32>, content_size: Size<f32>) -> Self {
-        Self::from_sizes_and_baselines(size, content_size, Point::NONE)
+    /// Vertical counterpart, retaining an independent physical x channel.
+    pub fn last_or_first_x(&self) -> Option<f32> {
+        self.baselines_x.last.or(self.baselines_x.first)
+    }
+
+    /// Construct a `LayoutOutput` from just the container size and scrollable overflow rectangle
+    pub fn from_sizes(size: Size<f32>, scrollable_overflow_rect: Rect<f32>) -> Self {
+        Self::from_sizes_and_baselines(size, scrollable_overflow_rect, Baselines::NONE)
     }
 
     /// Construct a `LayoutOutput` from just the container's size.
     pub fn from_outer_size(size: Size<f32>) -> Self {
-        Self::from_sizes(size, Size::zero())
+        Self::from_sizes(size, Rect::ZERO)
     }
 }
 
@@ -281,9 +324,20 @@ pub struct Layout {
     /// The width and height of the node
     pub size: Size<f32>,
     #[cfg(feature = "content_size")]
-    /// The width and height of the content inside the node. This may be larger than the size of the node in the case of
-    /// overflowing content and is useful for computing a "scroll width/height" for scrollable nodes
-    pub content_size: Size<f32>,
+    /// The scrollable overflow rectangle of the node: the axis-aligned rectangle containing the
+    /// content of the node (the border boxes of its descendants plus their non-clipped overflow),
+    /// corresponding to the CSS "scrollable overflow rectangle"
+    /// (<https://www.w3.org/TR/css-overflow-3/#scrollable>), except that transforms are not
+    /// accounted for.
+    ///
+    /// Coordinates are measured from the node's *scroll origin*: the corner of the padding box at
+    /// the block-start/inline-start edge (the top-left corner in LTR, the top-*right* corner in
+    /// RTL), with `left`/`right` measuring along the inline axis in the direction of reachable
+    /// scrolling. The rectangle always contains the origin, so `left`/`top` are `<= 0.0` (negative
+    /// values represent overflow before the scroll origin, which is unreachable by scrolling) and
+    /// `right`/`bottom` are `>= 0.0` (representing the reachable extent of the content, which is
+    /// useful for computing a "scroll width/height" for scrollable nodes).
+    pub scrollable_overflow_rect: Rect<f32>,
     /// The size of the scrollbars in each dimension. If there is no scrollbar then the size will be zero.
     pub scrollbar_size: Size<f32>,
     /// The size of the borders of the node
@@ -313,7 +367,7 @@ impl Layout {
             location: Point::ZERO,
             size: Size::zero(),
             #[cfg(feature = "content_size")]
-            content_size: Size::zero(),
+            scrollable_overflow_rect: Rect::ZERO,
             scrollbar_size: Size::zero(),
             border: Rect::zero(),
             padding: Rect::zero(),
@@ -332,7 +386,7 @@ impl Layout {
             size: Size::zero(),
             location: Point::ZERO,
             #[cfg(feature = "content_size")]
-            content_size: Size::zero(),
+            scrollable_overflow_rect: Rect::ZERO,
             scrollbar_size: Size::zero(),
             border: Rect::zero(),
             padding: Rect::zero(),
@@ -343,19 +397,30 @@ impl Layout {
     /// Get the width of the node's content box
     #[inline]
     pub fn content_box_width(&self) -> f32 {
-        self.size.width - self.padding.left - self.padding.right - self.border.left - self.border.right
+        self.size.width
+            - self.padding.left
+            - self.padding.right
+            - self.border.left
+            - self.border.right
     }
 
     /// Get the height of the node's content box
     #[inline]
     pub fn content_box_height(&self) -> f32 {
-        self.size.height - self.padding.top - self.padding.bottom - self.border.top - self.border.bottom
+        self.size.height
+            - self.padding.top
+            - self.padding.bottom
+            - self.border.top
+            - self.border.bottom
     }
 
     /// Get the size of the node's content box
     #[inline]
     pub fn content_box_size(&self) -> Size<f32> {
-        Size { width: self.content_box_width(), height: self.content_box_height() }
+        Size {
+            width: self.content_box_width(),
+            height: self.content_box_height(),
+        }
     }
 
     /// Get x offset of the node's content box relative to it's parent's border box
@@ -371,22 +436,28 @@ impl Layout {
 
 #[cfg(feature = "content_size")]
 impl Layout {
-    /// Return the scroll width of the node.
-    /// The scroll width is the difference between the width and the content width, floored at zero
+    /// Return the maximum horizontal scroll offset of the node.
+    /// This is the reachable extent of the content less the width of the padding box, floored at zero.
     pub fn scroll_width(&self) -> f32 {
         f32_max(
             0.0,
-            self.content_size.width + f32_min(self.scrollbar_size.width, self.size.width) - self.size.width
+            self.scrollable_overflow_rect.right
+                + f32_min(self.scrollbar_size.width, self.size.width)
+                - self.size.width
+                + self.border.left
                 + self.border.right,
         )
     }
 
-    /// Return the scroll height of the node.
-    /// The scroll height is the difference between the height and the content height, floored at zero
+    /// Return the maximum vertical scroll offset of the node.
+    /// This is the reachable extent of the content less the height of the padding box, floored at zero.
     pub fn scroll_height(&self) -> f32 {
         f32_max(
             0.0,
-            self.content_size.height + f32_min(self.scrollbar_size.height, self.size.height) - self.size.height
+            self.scrollable_overflow_rect.bottom
+                + f32_min(self.scrollbar_size.height, self.size.height)
+                - self.size.height
+                + self.border.top
                 + self.border.bottom,
         )
     }
@@ -401,4 +472,40 @@ pub enum DetailedLayoutInfo {
     Grid(Box<crate::compute::grid::DetailedGridInfo>),
     /// For node that hasn't had any detailed information yet
     None,
+}
+
+#[cfg(test)]
+mod baseline_channel_tests {
+    use super::*;
+
+    #[test]
+    fn first_last_and_physical_axes_do_not_alias() {
+        let output = LayoutOutput::from_sizes_and_all_baselines(
+            Size {
+                width: 40.0,
+                height: 90.0,
+            },
+            Rect::ZERO,
+            Baselines {
+                first: Some(12.0),
+                last: Some(72.0),
+            },
+            Baselines {
+                first: Some(7.0),
+                last: Some(31.0),
+            },
+        );
+        assert_eq!(output.last_or_first_y(), Some(72.0));
+        assert_eq!(output.last_or_first_x(), Some(31.0));
+        assert_eq!(output.baselines.first, Some(12.0));
+        assert_eq!(output.baselines_x.first, Some(7.0));
+    }
+
+    #[test]
+    fn missing_last_falls_back_within_the_same_axis() {
+        let mut output = LayoutOutput::HIDDEN;
+        output.baselines = Baselines::from_first(Some(18.0));
+        assert_eq!(output.last_or_first_y(), Some(18.0));
+        assert_eq!(output.last_or_first_x(), None);
+    }
 }

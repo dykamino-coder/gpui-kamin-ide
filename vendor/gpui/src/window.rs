@@ -55,6 +55,9 @@ use util::{ResultExt, measure};
 use uuid::Uuid;
 
 mod prompts;
+mod image_sampling;
+mod line_baselines;
+pub use image_sampling::ImageSampling;
 
 use crate::util::atomic_incr_if_not_zero;
 pub use prompts::*;
@@ -3614,46 +3617,7 @@ impl Window {
         frame_index: usize,
         grayscale: bool,
     ) -> Result<()> {
-        self.invalidator.debug_assert_paint();
-
-        let scale_factor = self.scale_factor();
-        let bounds = bounds.scale(scale_factor);
-        let params = RenderImageParams {
-            image_id: data.id,
-            frame_index,
-        };
-
-        let tile = self
-            .sprite_atlas
-            .get_or_insert_with(&params.into(), &mut || {
-                Ok(Some((
-                    data.size(frame_index),
-                    Cow::Borrowed(
-                        data.as_bytes(frame_index)
-                            .expect("It's the caller's job to pass a valid frame index"),
-                    ),
-                )))
-            })?
-            .expect("Callback above only returns Some");
-        let content_mask = self.content_mask().scale(scale_factor);
-        let corner_radii = corner_radii.scale(scale_factor);
-        let opacity = self.element_opacity();
-
-        let transformation = self.current_transformation();
-        self.next_frame.scene.insert_primitive(PolychromeSprite {
-            transformation,
-            order: 0,
-            pad: 0,
-            grayscale,
-            bounds: bounds
-                .map_origin(|origin| origin.floor())
-                .map_size(|size| size.ceil()),
-            content_mask,
-            corner_radii,
-            tile,
-            opacity,
-        });
-        Ok(())
+        self.paint_image_with_sampling(bounds, corner_radii, data, frame_index, grayscale, ImageSampling::Linear)
     }
 
     /// KaminIDE patch: нарисовать ЧАСТЬ образа 1:1 без масштабирования.
@@ -4110,6 +4074,17 @@ impl Window {
             .as_mut()
             .unwrap()
             .set_root_origin(layout_id, origin, scale_factor);
+    }
+
+    /// Place a laid out subtree at its final absolute origin before rounding.
+    /// Its containing-block geometry and intrinsic size remain unchanged.
+    /// Prepaint it with zero element offset after this call.
+    pub fn set_layout_placed_origin(&mut self, layout_id: LayoutId, origin: Point<Pixels>) {
+        let scale_factor = self.scale_factor();
+        self.layout_engine
+            .as_mut()
+            .unwrap()
+            .set_placed_origin(layout_id, origin, scale_factor);
     }
 
     /// KaminIDE patch: смещение узла от родителя и его размер без округления

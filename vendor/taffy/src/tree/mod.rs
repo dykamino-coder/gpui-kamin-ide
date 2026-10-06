@@ -11,8 +11,8 @@ pub mod traits;
 
 pub use cache::{Cache, ClearState};
 pub use layout::{
-    CollapsibleMarginSet, Layout, LayoutInput, LayoutOutput, MeasureOutput, RequestedAxis, RunMode,
-    SizingMode,
+    Baselines, CollapsibleMarginSet, Layout, LayoutInput, LayoutOutput, MeasureOutput,
+    RequestedAxis, RunMode, SizingMode,
 };
 pub use node::NodeId;
 pub(crate) use traits::LayoutPartialTreeExt;
@@ -31,9 +31,101 @@ pub use traits::LayoutBlockContainer;
 mod taffy_tree;
 #[cfg(feature = "taffy_tree")]
 pub use taffy_tree::{TaffyError, TaffyResult, TaffyTree};
-// KaminIDE patch: дескрипторы calc(<точки> + <доля>) для gpui.
+#[cfg(feature = "taffy_tree")]
+mod kamin_calc;
+#[cfg(feature = "taffy_tree")]
+mod kamin_output;
 #[cfg(all(feature = "taffy_tree", feature = "std"))]
-pub use taffy_tree::calc_handle;
+pub use kamin_calc::calc_handle;
+#[cfg(feature = "taffy_tree")]
+pub use kamin_calc::calc_value;
 
 #[cfg(feature = "detailed_layout_info")]
 pub use layout::DetailedLayoutInfo;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
+mod flex_safe_alignment_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
+mod scroll_baseline_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
+mod grid_container_baseline_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
+mod flex_wrap_limit_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
+mod lanes_geometry_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
+mod lanes_flow_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
+mod subgrid_flow_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "block_layout"))]
+mod block_flow_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "block_layout", feature = "float_layout"))]
+mod block_flow_float_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
+mod lanes_constraint_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
+mod lanes_stack_measure_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
+mod lanes_intrinsic_keyword_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox", feature = "block_layout"))]
+mod ratio_preferred_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
+mod lanes_intrinsic_baseline_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "grid", feature = "block_layout"))]
+mod lanes_min_content_fraction_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "grid", feature = "flexbox"))]
+mod lanes_container_export_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
+mod baseline_orientation_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "grid", feature = "block_layout"))]
+mod grid_x_baseline_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "grid", feature = "block_layout"))]
+mod lanes_x_baseline_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox", feature = "block_layout", feature = "grid"))]
+mod block_fit_content_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox", feature = "block_layout", feature = "grid"))]
+mod flex_x_baseline_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox", feature = "block_layout", feature = "grid"))]
+mod flex_x_groups_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox", feature = "block_layout", feature = "grid"))]
+mod flex_x_relative_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
+mod flex_intrinsic_cross_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
+mod flex_fit_cross_tests;
+
+#[cfg(all(test, feature = "taffy_tree"))]
+mod leaf_xy_baselines_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
+mod grid_abspos_fit_tests;
+
+#[cfg(test)]
+mod lanes_absolute_flow_tests;
+
+#[cfg(test)]
+mod ratio_constraint_probe_tests;

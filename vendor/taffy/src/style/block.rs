@@ -1,5 +1,18 @@
 //! Style types for Block layout
+use crate::style::AlignContent;
 use crate::{CoreStyle, Style};
+
+/// Logical block axes projected onto physical coordinates by a writing-mode adapter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct BlockFlow {
+    /// The inline axis is physical y instead of x.
+    pub vertical: bool,
+    /// The block axis starts at the physical right edge in vertical writing.
+    pub block_reverse: bool,
+    /// The inline axis starts at its physical end (RTL or sideways-lr).
+    pub inline_reverse: bool,
+}
 
 /// The set of styles required for a Block layout container
 pub trait BlockContainerStyle: CoreStyle {
@@ -7,6 +20,12 @@ pub trait BlockContainerStyle: CoreStyle {
     #[inline(always)]
     fn text_align(&self) -> TextAlign {
         Style::<Self::CustomIdent>::DEFAULT.text_align
+    }
+
+    /// How children of this block container are aligned in the block (cross) axis
+    #[inline(always)]
+    fn align_content(&self) -> Option<AlignContent> {
+        Style::<Self::CustomIdent>::DEFAULT.align_content
     }
 }
 
@@ -16,6 +35,20 @@ pub trait BlockItemStyle: CoreStyle {
     #[inline(always)]
     fn is_table(&self) -> bool {
         false
+    }
+
+    /// Whether the item is a floated
+    #[cfg(feature = "float_layout")]
+    #[inline(always)]
+    fn float(&self) -> super::Float {
+        super::Float::None
+    }
+
+    /// Whether the item is a floated
+    #[cfg(feature = "float_layout")]
+    #[inline(always)]
+    fn clear(&self) -> super::Clear {
+        super::Clear::None
     }
 }
 
@@ -33,3 +66,11 @@ pub enum TextAlign {
     /// Corresponds to `-webkit-center` or `-moz-center` in browsers
     LegacyCenter,
 }
+
+#[cfg(feature = "parse")]
+crate::util::parse::impl_parse_for_keyword_enum!(TextAlign,
+    "auto" => Auto,
+    "-webkit-left" => LegacyLeft,
+    "-webkit-right" => LegacyRight,
+    "-webkit-center" => LegacyCenter,
+);
