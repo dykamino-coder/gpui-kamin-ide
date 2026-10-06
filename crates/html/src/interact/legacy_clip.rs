@@ -16,7 +16,8 @@ pub(super) fn resolve(edges: [Option<f32>; 4], width: f32, height: f32) -> [f32;
 pub(super) fn snap([x, y, width, height]: [f32; 4]) -> [f32; 4] {
     // Round endpoints after origin, shifts and device scale have been applied.
     // Rounding just the size loses the last column at fractional origins.
-    let edge = |value: f32| (value + 0.5).floor();
+    // Adding a half in f32 loses it at large coordinates, including EMPTY.
+    let edge = |value: f32| (f64::from(value) + 0.5).floor() as f32;
     let (left, top) = (edge(x), edge(y));
     let (right, bottom) = (edge(x + width), edge(y + height));
     if right <= left || bottom <= top {

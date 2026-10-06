@@ -1,10 +1,13 @@
 //! Resolve basic rectangular clips before snapping their absolute device edges.
-use super::Grouped;
+use super::{Grouped, legacy_clip};
 use gpui::{Bounds, LayoutId, Pixels, Window};
 
-fn basic_rectangle(group: &Grouped) -> bool {
+fn rectangular(group: &Grouped) -> bool {
     group.mask_clip_off.is_none()
-        && (group.clip_inset.is_some() || group.clip_edges.is_some() || group.clip_xywh.is_some())
+        && (group.clip_inset.is_some()
+            || group.clip_edges.is_some()
+            || group.clip_xywh.is_some()
+            || group.clip_rect.is_some())
 }
 
 pub(super) fn reference_box(
@@ -13,7 +16,7 @@ pub(super) fn reference_box(
     id: LayoutId,
     window: &mut Window,
 ) -> Bounds<Pixels> {
-    if basic_rectangle(group) {
+    if rectangular(group) {
         // CSS Shapes §3.1: percentages use the reference box, not its raster
         // bounds. Blink clip_path_clipper.cc:383 likewise retains layout geometry.
         Bounds {
@@ -26,21 +29,10 @@ pub(super) fn reference_box(
 }
 
 pub(super) fn device_edges(group: &Grouped, rect: [f32; 4]) -> [f32; 4] {
-    if !basic_rectangle(group) {
+    if !rectangular(group) {
         return rect;
     }
-    let [x, y, width, height] = rect;
-    // Snap once at the final position, like painted rectangular boxes. A
-    // snapped reference origin followed by fractional offsets rounds twice.
-    let edge = |value: f32| (value + 0.5).floor();
-    let (left, top) = (edge(x), edge(y));
-    let (right, bottom) = (edge(x + width), edge(y + height));
-    if right <= left || bottom <= top {
-        // Zero width disables the clip in the group shader.
-        [-1.0e7, -1.0e7, 1.0, 1.0]
-    } else {
-        [left, top, right - left, bottom - top]
-    }
+    legacy_clip::snap(rect)
 }
 
 pub(super) fn resolve(
@@ -124,19 +116,13 @@ pub(super) fn resolve(
             })
         })
         .or_else(|| {
-            // `clip: rect(t r b l)` — координаты краёв видимой области
-            // от углов коробки; auto — её край (clip-rect-auto-*).
-            group.clip_rect.map(|[t, r, b, l]| {
-                let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-                let (t, l) = (t.unwrap_or(0.0), l.unwrap_or(0.0));
-                let (r, b) = (r.unwrap_or(bw), b.unwrap_or(bh));
-                if r <= l || b <= t {
-                    // Вырожденная область — элемент скрыт ЦЕЛИКОМ:
-                    // коробка клипа уводится за экран
-                    // (clip-negative-values-001: right < left).
-                    return [-1.0e7, -1.0e7, 1.0, 1.0];
-                }
-                [l, t, r - l, b - t]
+            group.clip_rect.map(|edges| {
+                // CSS 2.1 §11.1.2: auto refers to the unrounded border-box edge.
+                legacy_clip::resolve(
+                    edges,
+                    f32::from(clip_bounds.size.width),
+                    f32::from(clip_bounds.size.height),
+                )
             })
         })
         .map(|[x, y, w, h]| {

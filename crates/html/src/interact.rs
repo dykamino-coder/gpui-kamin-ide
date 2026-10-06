@@ -18,6 +18,7 @@ use std::rc::Rc;
 
 mod spot_geometry;
 mod rectangular_clip;
+mod legacy_clip;
 mod mask_size;
 mod orthogonal_measure;
 mod vertical_style;
