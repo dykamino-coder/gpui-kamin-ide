@@ -13,6 +13,7 @@
 use crate::computed::{BgPos, BgRepeat, BgSize, Computed, Tiling};
 use crate::value::Len;
 mod sampling;
+mod svg_fragment;
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, RenderImage, Styled, px};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -1466,7 +1467,7 @@ pub fn source(src: &str) -> Option<Source> {
         };
         read_bytes(path)
             .map(|b| match view {
-                Some(id) => svg_view(b, id),
+                Some(id) => svg_fragment::resolve(b, id),
                 None => b,
             })
             .as_deref()
@@ -2699,44 +2700,6 @@ fn svg_size(markup: &str) -> Intrinsic {
 
 /// Подставить корню SVG `viewBox` его `<view id="…">` (SVG 2 §8.2). Не SVG
 /// или вида нет — байты как есть.
-fn svg_view(bytes: Vec<u8>, id: &str) -> Vec<u8> {
-    let Ok(text) = std::str::from_utf8(&bytes) else {
-        return bytes;
-    };
-    let attr = |tag: &str, name: &str| -> Option<String> {
-        let at = tag.find(&format!("{name}=\""))? + name.len() + 2;
-        Some(tag[at..at + tag[at..].find('"')?].to_string())
-    };
-    let mut from = 0;
-    let mut view_box = None;
-    while let Some(at) = text[from..].find("<view") {
-        let start = from + at;
-        let Some(end) = text[start..].find('>') else { break };
-        let tag = &text[start..start + end];
-        if attr(tag, "id").as_deref() == Some(id) {
-            view_box = attr(tag, "viewBox");
-            break;
-        }
-        from = start + end;
-    }
-    let Some(vb) = view_box else {
-        return bytes;
-    };
-    let Some(root) = text.find("<svg") else {
-        return bytes;
-    };
-    let root_end = root + text[root..].find('>').unwrap_or(4);
-    let tag = &text[root..root_end];
-    let new_tag = match tag.find("viewBox=\"") {
-        Some(at) => {
-            let v0 = at + 9;
-            let v1 = v0 + tag[v0..].find('"').unwrap_or(0);
-            format!("{}{}{}", &tag[..v0], vb, &tag[v1..])
-        }
-        None => format!("<svg viewBox=\"{vb}\"{}", &tag[4..]),
-    };
-    format!("{}{}{}", &text[..root], new_tag, &text[root_end..]).into_bytes()
-}
 
 fn read_bytes(src: &str) -> Option<Vec<u8>> {
     if let Some(rest) = src.strip_prefix("data:") {

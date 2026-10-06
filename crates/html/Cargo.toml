@@ -14,6 +14,8 @@ edition.workspace = true
 
 [dependencies]
 encoding_rs = "0.8.35"
+# XML source ranges preserve SVG markup when resolving URL fragments.
+roxmltree = "0.21.1"
 # Распаковка шрифтов в упаковках `woff` и `woff2` (правило `@font-face`):
 # у второй сверх сжатия ещё и перестроение таблицы глифов, руками её не брать.
 wuff = { version = "0.2.8", features = ["z", "brotli"] }

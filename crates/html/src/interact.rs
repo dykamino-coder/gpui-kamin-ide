@@ -883,12 +883,14 @@ impl Element for Grouped {
                                 [0.0, 0.0, bw * sf, bh * sf],
                                 true,
                             )
-                        } else if let Some((file, frag)) =
-                            l.rsplit_once('#').filter(|(f, _)| f.ends_with(".svg"))
+                        } else if let Some(markup) = l
+                            .rsplit_once('#')
+                            .filter(|(f, _)| f.ends_with(".svg"))
+                            .and_then(|(file, frag)| svg_fragment(file, frag))
                         {
-                            // Маска из внешнего рисунка (`url(file.svg#id)`).
-                            let markup = svg_fragment(file, frag)?
-                                .replace("clip-rule", "fill-rule");
+                            // CSS Masking §7.1: a <mask> reference is distinct
+                            // from an SVG image URL with an ordinary fragment.
+                            let markup = markup.replace("clip-rule", "fill-rule");
                             let markup = format!(
                                 r#"<svg xmlns="http://www.w3.org/2000/svg" width="{bw}" height="{bh}">{markup}</svg>"#
                             );
