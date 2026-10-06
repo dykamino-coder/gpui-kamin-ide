@@ -1990,6 +1990,8 @@ pub struct Computed {
     /// `justify-self: self-start`/`self-end` — по письму САМОГО элемента, как
     /// `align_self_own_axis` (`align-self-static-position-006`).
     pub justify_self_own_axis: bool,
+    /// Preserve line-left/line-right separately from flow-relative start/end.
+    pub justify_self_physical: Option<bool>,
     /// `last baseline`: запасное выравнивание — `end`, а не `start`
     /// (css-align-3 §9.3; `align-self-static-position-008`,
     /// `justify-self-static-position-001`). `Align::Baseline` его не различает.
@@ -6149,6 +6151,11 @@ impl Computed {
             }
             "justify-self" => {
                 self.justify_self = parse_align(v);
+                self.justify_self_physical = match v.split_whitespace().last() {
+                    Some("left") => Some(false),
+                    Some("right") => Some(true),
+                    _ => None,
+                };
                 self.justify_self_normal = v.trim() == "normal";
                 self.justify_self_safe = is_safe(v);
                 self.justify_self_own_axis = matches!(

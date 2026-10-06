@@ -39,3 +39,51 @@ pub(super) fn project(style: &mut gpui::StyleRefinement, container: bool, parent
         }
     }
 }
+
+/// CSS Align 3 positional-values: self-relative edges follow the subject;
+/// left/right follow line-left/line-right rather than the container's direction.
+pub(super) fn grid_self(style: &mut gpui::StyleRefinement, c: &crate::computed::Computed) {
+    if c.parent_grid == 0 {
+        return;
+    }
+    let vertical = c.parent_grid >= 2;
+    let parent_x_end = c.parent_grid == 3 || (!vertical && c.cb_rtl);
+    let own = super::grid_flow_axes::reversed(c);
+    let (align_axis, justify_axis) = if vertical { (0, 1) } else { (1, 0) };
+    let mirror = |value: &mut Option<gpui::AlignSelf>, flip: bool| {
+        if !flip {
+            return;
+        }
+        *value = value.map(|value| match value {
+            gpui::AlignSelf::Start => gpui::AlignSelf::End,
+            gpui::AlignSelf::End => gpui::AlignSelf::Start,
+            gpui::AlignSelf::FlexStart => gpui::AlignSelf::FlexEnd,
+            gpui::AlignSelf::FlexEnd => gpui::AlignSelf::FlexStart,
+            other => other,
+        });
+    };
+    if c.align_self_own_axis {
+        mirror(
+            &mut style.align_self,
+            own[align_axis] != (align_axis == 0 && parent_x_end),
+        );
+    }
+    if c.justify_self_own_axis {
+        mirror(
+            &mut style.justify_self,
+            own[justify_axis] != (justify_axis == 0 && parent_x_end),
+        );
+    }
+    if let Some(right) = c.justify_self_physical {
+        let end = if vertical {
+            right != (c.cb_sideways && !c.cb_vertical_rl)
+        } else {
+            right != parent_x_end
+        };
+        style.justify_self = Some(if end {
+            gpui::AlignSelf::FlexEnd
+        } else {
+            gpui::AlignSelf::FlexStart
+        });
+    }
+}

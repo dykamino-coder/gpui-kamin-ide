@@ -1816,7 +1816,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     // `direction` у элемента в rtl-колонке — тоже rtl, и зеркалить нечего
     // (поперечную ось rtl-колонки разворачивает сама раскладка,
     // `apply.rs`: `flex_cross_reverse` / `flip`).
-    if own.align_self_own_axis && own.rtl.or(parent.rtl).unwrap_or(false) != parent.rtl.unwrap_or(false) {
+    if c.parent_grid == 0 && own.align_self_own_axis && own.rtl.or(parent.rtl).unwrap_or(false) != parent.rtl.unwrap_or(false) {
         c.align_self = match c.align_self {
             Some(crate::computed::Align::Start) => Some(crate::computed::Align::End),
             Some(crate::computed::Align::End) => Some(crate::computed::Align::Start),
