@@ -335,6 +335,38 @@ impl TaffyLayoutEngine {
         point(Pixels(ax / scale_factor), Pixels(ay / scale_factor))
     }
 
+    /// KaminIDE patch: дорожки РОДИТЕЛЯ-сетки узла `child` — `(начало
+    /// рамочного бокса родителя без округления, дорожки по x, дорожки по y)`,
+    /// дорожки — `(начало, конец)` в логических точках от рамочного бокса
+    /// (`DetailedGridTracksInfo::positions`: с учётом рамки, паддинга, `gap`,
+    /// выравнивания содержимого и схлопнутых дорожек). Линейкам промежутков
+    /// (css-gaps-1 §gap-grid) нужна именно коллекция дорожек, как у Blink
+    /// `BuildGridTrackGapData`; `None` — родитель не сетка.
+    #[allow(clippy::type_complexity)]
+    pub fn parent_grid_tracks(
+        &mut self,
+        child: LayoutId,
+        scale_factor: f32,
+    ) -> Option<((f32, f32), Vec<(f32, f32)>, Vec<(f32, f32)>)> {
+        let parent = self.taffy.parent(child.0)?;
+        let taffy::DetailedLayoutInfo::Grid(info) = self.taffy.detailed_layout_info(parent) else {
+            return None;
+        };
+        let lines = |v: &Vec<taffy::Line<f32>>| -> Vec<(f32, f32)> {
+            v.iter()
+                .map(|l| (l.start / scale_factor, l.end / scale_factor))
+                .collect()
+        };
+        let (cols, rows) = (lines(&info.columns.positions), lines(&info.rows.positions));
+        let _ = self.layout_bounds(parent.into(), scale_factor);
+        let (ax, ay) = self
+            .absolute_unrounded
+            .get(&parent.into())
+            .copied()
+            .unwrap_or((0.0, 0.0));
+        Some(((ax / scale_factor, ay / scale_factor), cols, rows))
+    }
+
     pub fn layout_bounds(&mut self, id: LayoutId, scale_factor: f32) -> Bounds<Pixels> {
         if let Some(layout) = self.absolute_layout_bounds.get(&id).cloned() {
             return layout;

@@ -2116,16 +2116,96 @@ pub fn gap_context() -> Option<u64> {
 }
 
 /// Проба элемента сетки: как `edge_probe`, но пишет только границы.
-pub fn gap_item_probe(items: GapItems) -> AnyElement {
-    gpui::canvas(
-        move |bounds: Bounds<Pixels>, _, _| items.borrow_mut().push(bounds),
-        |_, _, _, _| {},
-    )
-    .absolute()
-    .top_0()
-    .left_0()
-    .size_full()
-    .into_any_element()
+///
+/// Абсолютная проба `top: 0; left: 0; size: 100%` ложится на ПАДДИНГ-бокс
+/// элемента (содержащий блок абсолютного потомка — padding box, CSS 2.1
+/// §10.1), а геометрия промежутков строится по РАМОЧНЫМ коробкам элементов
+/// (css-gaps-1 §gap-grid/§gap-flex: промежуток — между краями элементов,
+/// Blink `GapGeometry` берёт border-box фрагментов). `border` — толщины
+/// рамки элемента [top, right, bottom, left]: на них проба расширяется
+/// (`grid-gap-decorations-008`: элементы с `border: 1px`, линейки вставали
+/// на 1px внутрь от первой и последней линии сетки).
+pub fn gap_item_probe(items: GapItems, border: [f32; 4]) -> AnyElement {
+    GapItemProbe { items, border }.into_any_element()
+}
+
+/// Элемент пробы: границы берутся БЕЗ округления к точке устройства.
+/// Линейка ставится по середине промежутка между элементами, а эталон
+/// кладёт её абсолютной коробкой от точного начала (`top: 64.17px`) —
+/// от округлённых краёв элементов середина уезжает на долю точки, и при
+/// масштабе 1.25 край линейки округлялся на строку ниже
+/// (`flex-gap-decorations-048`: строка y=86 лишняя).
+struct GapItemProbe {
+    items: GapItems,
+    border: [f32; 4],
+}
+
+impl Element for GapItemProbe {
+    type RequestLayoutState = LayoutId;
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, LayoutId) {
+        let mut style = gpui::Style::default();
+        style.position = gpui::Position::Absolute;
+        style.inset.top = px(0.0).into();
+        style.inset.left = px(0.0).into();
+        style.size.width = gpui::relative(1.0).into();
+        style.size.height = gpui::relative(1.0).into();
+        let id = window.request_layout(style, [], cx);
+        (id, id)
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        state: &mut LayoutId,
+        window: &mut Window,
+        _cx: &mut App,
+    ) {
+        let origin = window.layout_origin_unrounded(*state);
+        let size = window.layout_size_unrounded(*state);
+        let [t, r, b, l] = self.border;
+        self.items.borrow_mut().push(Bounds {
+            origin: gpui::point(origin.x - px(l), origin.y - px(t)),
+            size: gpui::size(size.width + px(l + r), size.height + px(t + b)),
+        });
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _state: &mut LayoutId,
+        _prepaint: &mut (),
+        _window: &mut Window,
+        _cx: &mut App,
+    ) {
+    }
+}
+
+impl IntoElement for GapItemProbe {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
 }
 
 /// Правила линеек одной оси (css-gaps-1), уже в точках.
@@ -2187,6 +2267,19 @@ pub struct GapRuleSpec {
     /// §assigning; эталоны `*-multi-value-direction`/`-writing-mode`).
     pub rev_x: bool,
     pub rev_y: bool,
+    /// Паддинг контейнера [top, right, bottom, left] в точках: поле
+    /// содержимого = паддинг-бокс художника минус он.
+    pub pad: [f32; 4],
+    /// Протяжённость главных промежутков строк (`GapLayout::Lines`): 0 — по
+    /// элементам (многоколонник), 1 — гибкий контейнер, 2 — ленты. У гибкого
+    /// главный промежуток идёт от начала поля содержимого (или первого
+    /// элемента, если он левее) до конца поля содержимого (или центра
+    /// последнего поперечного промежутка) — Blink `FlexGapAccumulator`
+    /// (`SetContentStartOffsetsIfNeeded`, `content_main_end_ =
+    /// container_main_end`); у лент — через всё поле содержимого по оси
+    /// укладки («MainGaps span the final container content box (or the content
+    /// when it overflows)», `grid_lanes_layout_algorithm.cc`).
+    pub lines_extent: u8,
 }
 
 /// Допуск сравнения координат раскладки.
@@ -2382,6 +2475,34 @@ fn template_tracks(
     None
 }
 
+/// Дорожки сетки по x и по y в координатах окна.
+type GridTracks = (Vec<(f32, f32)>, Vec<(f32, f32)>);
+
+/// Дорожки без схлопнутых: схлопнутая (`auto-fit` без элементов, css-grid-1
+/// §7.2.3.2 «collapsed grid track… the gutters on either side of it…
+/// collapse») приходит из раскладки дорожкой нулевого размера, прижатой к
+/// соседу без зазора. При ненулевом `gap` такая дорожка — не дорожка и
+/// промежутков не даёт (Blink `CollapsedTrackIndexes`).
+fn uncollapsed(mut tracks: Vec<(f32, f32)>, gap: f32) -> Vec<(f32, f32)> {
+    // При `rtl` и обратных осях раскладка отдаёт дорожки в логическом
+    // порядке — здесь нужен физический.
+    tracks.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal));
+    if gap <= GAP_EPS {
+        return tracks;
+    }
+    let n = tracks.len();
+    (0..n)
+        .filter(|&k| {
+            let (s, e) = tracks[k];
+            let empty = e - s <= GAP_EPS;
+            let flush_prev = k > 0 && (s - tracks[k - 1].1).abs() <= GAP_EPS;
+            let flush_next = k + 1 < n && (tracks[k + 1].0 - e).abs() <= GAP_EPS;
+            !(empty && (flush_prev || flush_next))
+        })
+        .map(|k| tracks[k])
+        .collect()
+}
+
 /// Промежутки между соседними дорожками; нулевой зазор — тоже промежуток
 /// (`flex-gap-decorations-033`).
 fn gaps_of(tracks: &[(f32, f32)]) -> Vec<(f32, f32)> {
@@ -2513,8 +2634,28 @@ fn grid_runs(
     cross: Option<&GapAxisRule>,
     tpl_a: Option<&[f32]>,
     tpl_b: Option<&[f32]>,
+    abs: Option<(&[(f32, f32)], &[(f32, f32)])>,
 ) -> Vec<GapRun> {
     let flipped: Vec<GapItem> = items.iter().map(GapItem::flipped).collect();
+    // Дорожки раскладки сильнее всего: это и есть коллекция дорожек сетки
+    // (Blink `BuildGridTrackGapData`), с пустыми и схлопнутыми дорожками.
+    // Годны, только если каждый элемент стоит краями на линиях дорожек: при
+    // `rtl` и вертикальном письме раскладка отдаёт позиции в своей системе
+    // отсчёта, и тогда остаётся прежний счёт по элементам и шаблону.
+    let on_lines = |tracks: &[(f32, f32)], items: &[GapItem]| {
+        items.iter().all(|i| {
+            tracks.iter().any(|t| (t.0 - i.a0).abs() <= GAP_EPS)
+                && tracks.iter().any(|t| (t.1 - i.a1).abs() <= GAP_EPS)
+        })
+    };
+    if let Some((ta, tb)) = abs
+        && !ta.is_empty()
+        && !tb.is_empty()
+        && on_lines(ta, items)
+        && on_lines(tb, &flipped)
+    {
+        return grid_runs_on(items, &flipped, ta.to_vec(), tb.to_vec(), rule, cross);
+    }
     // Дорожки шаблона сильнее выведенных из коробок (css-gaps-1 §gap-grid;
     // Blink `BuildGridTrackGapData` строит геометрию из коллекции дорожек).
     // Привязка не сошлась — остаётся прежний счёт по элементам, картинка не
@@ -2525,6 +2666,17 @@ fn grid_runs(
     let tb = tpl_b
         .and_then(|t| template_tracks(t, gap_b, &flipped))
         .unwrap_or_else(|| tracks_a(&flipped, gap_b));
+    grid_runs_on(items, &flipped, ta, tb, rule, cross)
+}
+
+fn grid_runs_on(
+    items: &[GapItem],
+    flipped: &[GapItem],
+    ta: Vec<(f32, f32)>,
+    tb: Vec<(f32, f32)>,
+    rule: &GapAxisRule,
+    cross: Option<&GapAxisRule>,
+) -> Vec<GapRun> {
     let ga = gaps_of(&ta);
     let gb = gaps_of(&tb);
     let r0 = tb.first().map_or(0.0, |t| t.0);
@@ -2562,7 +2714,7 @@ fn grid_runs(
                         if let Some(c) = cross
                             && !blocked_here
                             && c.styles.at(j, gb.len()).unwrap_or(false)
-                            && occupied(&flipped, lo, hi, side.0, side.1, c.visibility)
+                            && occupied(flipped, lo, hi, side.0, side.1, c.visibility)
                         {
                             joins = true;
                         }
@@ -2605,10 +2757,11 @@ fn line_runs(
     main: Option<&GapAxisRule>,
     cross: Option<&GapAxisRule>,
     rev_cross: bool,
+    extent: Option<(u8, f32, f32)>,
 ) -> (Vec<GapRun>, Vec<GapRun>) {
     let lines = tracks_a(items, gap_a);
-    let r0 = items.iter().map(|i| i.b0).fold(f32::INFINITY, f32::min);
-    let r1 = items.iter().map(|i| i.b1).fold(f32::NEG_INFINITY, f32::max);
+    let mut r0 = items.iter().map(|i| i.b0).fold(f32::INFINITY, f32::min);
+    let mut r1 = items.iter().map(|i| i.b1).fold(f32::NEG_INFINITY, f32::max);
     let inner: Vec<Vec<(f32, f32)>> = lines
         .iter()
         .map(|&(s, _)| {
@@ -2621,6 +2774,21 @@ fn line_runs(
                 .collect()
         })
         .collect();
+    match extent {
+        Some((1, c0, c1)) => {
+            let last_cross = inner
+                .last()
+                .and_then(|v| v.last())
+                .map(|&(lo, hi)| (lo + hi) / 2.0);
+            r0 = r0.min(c0);
+            r1 = last_cross.map_or(c1, |x| x.max(c1));
+        }
+        Some((2, c0, c1)) => {
+            r0 = c0;
+            r1 = r1.max(c1);
+        }
+        _ => {}
+    }
     let cross_total: usize = inner.iter().map(Vec::len).sum();
     let main_count = lines.len().saturating_sub(1);
     let main_w = main.and_then(|m| m.widths.first()).unwrap_or(0.0);
@@ -2709,8 +2877,8 @@ impl GapRulePainter {
 }
 
 impl Element for GapRulePainter {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
+    type RequestLayoutState = LayoutId;
+    type PrepaintState = (Bounds<Pixels>, Option<GridTracks>);
 
     fn id(&self) -> Option<ElementId> {
         None
@@ -2726,10 +2894,17 @@ impl Element for GapRulePainter {
         _inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
-    ) -> (LayoutId, ()) {
+    ) -> (LayoutId, LayoutId) {
+        // Художник занимает паддинг-бокс контейнера: от него считается поле
+        // содержимого (протяжённость главных промежутков строк и лент).
         let mut style = gpui::Style::default();
         style.position = gpui::Position::Absolute;
-        (window.request_layout(style, [], cx), ())
+        style.inset.top = px(0.0).into();
+        style.inset.left = px(0.0).into();
+        style.size.width = gpui::relative(1.0).into();
+        style.size.height = gpui::relative(1.0).into();
+        let id = window.request_layout(style, [], cx);
+        (id, id)
     }
 
     fn prepaint(
@@ -2737,10 +2912,27 @@ impl Element for GapRulePainter {
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _window: &mut Window,
+        state: &mut LayoutId,
+        window: &mut Window,
         _cx: &mut App,
-    ) {
+    ) -> (Bounds<Pixels>, Option<GridTracks>) {
+        let bounds = Bounds {
+            origin: window.layout_origin_unrounded(*state),
+            size: window.layout_size_unrounded(*state),
+        };
+        let tracks = (self.spec.kind == GapLayout::Grid)
+            .then(|| window.parent_grid_tracks(*state))
+            .flatten()
+            .map(|(o, cols, rows)| {
+                let (ox, oy) = (f32::from(o.x), f32::from(o.y));
+                let gx = self.spec.gap_x.unwrap_or(0.0);
+                let gy = self.spec.gap_y.unwrap_or(0.0);
+                (
+                    uncollapsed(cols.iter().map(|&(a, b)| (ox + a, ox + b)).collect(), gx),
+                    uncollapsed(rows.iter().map(|&(a, b)| (oy + a, oy + b)).collect(), gy),
+                )
+            });
+        (bounds, tracks)
     }
 
     fn paint(
@@ -2748,11 +2940,13 @@ impl Element for GapRulePainter {
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
+        _state: &mut LayoutId,
+        prepaint: &mut (Bounds<Pixels>, Option<GridTracks>),
         window: &mut Window,
         _cx: &mut App,
     ) {
+        let bounds = prepaint.0;
+        let grid_tracks = prepaint.1.take();
         let items = std::mem::take(&mut *self.items.borrow_mut());
         if items.is_empty() {
             return;
@@ -2776,8 +2970,12 @@ impl Element for GapRulePainter {
                 // линеек, стоящих в промежутках по x, дорожки `a` идут по x, а
                 // поперечные `b` — по y; у линеек по y — наоборот.
                 let (tx, ty) = (spec.tracks_x.as_deref(), spec.tracks_y.as_deref());
+                // Дорожки раскладки: в вертикальном письме сетка уже
+                // повёрнута в `apply.rs`, и колонки gpui — физические x.
+                let abs_x = grid_tracks.as_ref().map(|(c, r)| (c.as_slice(), r.as_slice()));
+                let abs_y = grid_tracks.as_ref().map(|(c, r)| (r.as_slice(), c.as_slice()));
                 if let Some(r) = on_x {
-                    for mut run in grid_runs(&ix, spec.gap_x, spec.gap_y, r, on_y, tx, ty) {
+                    for mut run in grid_runs(&ix, spec.gap_x, spec.gap_y, r, on_y, tx, ty, abs_x) {
                         if spec.rev_x {
                             run.index = run.count - 1 - run.index;
                         }
@@ -2785,7 +2983,7 @@ impl Element for GapRulePainter {
                     }
                 }
                 if let Some(r) = on_y {
-                    for mut run in grid_runs(&iy, spec.gap_y, spec.gap_x, r, on_x, ty, tx) {
+                    for mut run in grid_runs(&iy, spec.gap_y, spec.gap_x, r, on_x, ty, tx, abs_y) {
                         if spec.rev_y {
                             run.index = run.count - 1 - run.index;
                         }
@@ -2809,7 +3007,20 @@ impl Element for GapRulePainter {
                 } else {
                     (spec.rev_x, spec.rev_y)
                 };
-                let (mains, crosses) = line_runs(&it, gap_a, main, cross, rev_cross);
+                let extent = (spec.lines_extent != 0).then(|| {
+                    let [pt, pr, pb, pl] = spec.pad;
+                    let (x0, y0) = (f32::from(bounds.origin.x), f32::from(bounds.origin.y));
+                    let (x1, y1) = (
+                        x0 + f32::from(bounds.size.width),
+                        y0 + f32::from(bounds.size.height),
+                    );
+                    if stacked_vertically {
+                        (spec.lines_extent, x0 + pl, x1 - pr)
+                    } else {
+                        (spec.lines_extent, y0 + pt, y1 - pb)
+                    }
+                });
+                let (mains, crosses) = line_runs(&it, gap_a, main, cross, rev_cross, extent);
                 if let Some(r) = main {
                     for mut run in mains {
                         if rev_main {
@@ -2854,6 +3065,21 @@ impl Element for GapRulePainter {
                         origin: gpui::point(gpui::px(s), gpui::px(c - w / 2.0)),
                         size: gpui::size(gpui::px(e - s), gpui::px(w)),
                     }
+                };
+                // Края — к точке устройства, как края коробок раскладки
+                // (округление абсолютной координаты, `TaffyLayoutEngine::
+                // layout_bounds`): иначе шейдер рисует долю точки, а эталон —
+                // абсолютная коробка — ровную строку.
+                let scale = window.scale_factor().max(0.01);
+                let edge = |v: Pixels| gpui::px((f32::from(v) * scale).round() / scale);
+                let (l, t) = (edge(rect.origin.x), edge(rect.origin.y));
+                let (r, b) = (
+                    edge(rect.origin.x + rect.size.width),
+                    edge(rect.origin.y + rect.size.height),
+                );
+                let rect = Bounds {
+                    origin: gpui::point(l, t),
+                    size: gpui::size(r - l, b - t),
                 };
                 window.paint_quad(gpui::fill(rect, colour.to_hsla()));
             }
