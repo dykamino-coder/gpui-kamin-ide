@@ -160,6 +160,11 @@ pub struct Paragraph {
     vertical_ccw: bool,
     selection_vertical: Option<(Bounds<Pixels>, bool)>,
     vertical_layout_origin: Point<Pixels>,
+    /// Exact (unsnapped) layout origin minus the snapped paint origin. Box
+    /// edges are snapped to device pixels, glyphs are not (Chromium paints
+    /// text at its LayoutUnit position): the paragraph hands this to
+    /// `Window::replace_glyph_offset` while painting its lines.
+    glyph_nudge: Point<Pixels>,
     vertical_inline: Option<(crate::computed::orthogonal::InlineConstraint, Option<crate::computed::orthogonal::InlineKeyword>)>,
     /// Предел строки для ОРТОГОНАЛЬНОГО потока: ось строки абзаца совпала с
     /// осью потока родителя, а та не ограничена. По CSS Writing Modes §7.3
@@ -533,6 +538,7 @@ impl Paragraph {
             vertical_ccw: false,
             selection_vertical: None,
             vertical_layout_origin: point(px(0.0), px(0.0)),
+            glyph_nudge: point(px(0.0), px(0.0)),
             vertical_inline: None,
             ortho_limit: None,
             hanging: crate::computed::Hanging::default(),
@@ -3630,6 +3636,18 @@ impl Element for Paragraph {
     ) -> Option<Hitbox> {
         // Предел переноса — длина строки по её физической оси.
         self.vertical_layout_origin = window.layout_origin_unrounded(*state) - window.element_offset();
+        // Snapping moves an edge by at most half a device pixel; anything
+        // larger means the node was placed outside its tree (`prepaint_at`).
+        self.glyph_nudge = {
+            let d = window.layout_origin_unrounded(*state) - bounds.origin;
+            let half = 0.5 / window.scale_factor().max(0.01) + 1e-4;
+            let ok = |v: Pixels| f32::from(v).abs() <= half;
+            if self.vertical || !(ok(d.x) && ok(d.y)) {
+                point(px(0.0), px(0.0))
+            } else {
+                d
+            }
+        };
         let limit = if self.vertical {
             bounds.size.height
         } else {
@@ -3729,6 +3747,7 @@ impl Element for Paragraph {
             *self = inner;
             return;
         }
+        let outer_nudge = window.replace_glyph_offset(self.glyph_nudge);
         let segs = self.measure(window);
         if self.run_metrics.len() != self.runs.len() {
             self.run_metrics = self.measure_runs(window);
@@ -3917,6 +3936,7 @@ impl Element for Paragraph {
                 y += step(i);
             }
         }
+        window.replace_glyph_offset(outer_nudge);
         for slot in self.atoms.iter_mut().filter(|s| !s.hidden) {
             slot.el.paint(window, cx);
         }
@@ -4020,6 +4040,7 @@ impl Paragraph {
             vertical_ccw: self.vertical_ccw,
             selection_vertical: self.selection_vertical,
             vertical_layout_origin: self.vertical_layout_origin,
+            glyph_nudge: self.glyph_nudge,
             vertical_inline: self.vertical_inline,
             hanging: self.hanging,
             indent: self.indent,

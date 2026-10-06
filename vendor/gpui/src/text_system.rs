@@ -319,6 +319,11 @@ impl TextSystem {
         }
     }
 
+    /// KaminIDE patch: see `PlatformTextSystem::pixel_exact_glyphs`.
+    pub(crate) fn pixel_exact_glyphs(&self, font_id: FontId) -> bool {
+        self.platform_text_system.pixel_exact_glyphs(font_id)
+    }
+
     pub(crate) fn rasterize_glyph(
         &self,
         params: &RenderGlyphParams,

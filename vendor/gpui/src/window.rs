@@ -841,6 +841,9 @@ pub struct Window {
     pub(crate) text_style_stack: Vec<TextStyleRefinement>,
     pub(crate) rendered_entity_stack: Vec<EntityId>,
     pub(crate) element_offset_stack: Vec<Point<Pixels>>,
+    /// KaminIDE patch: sub-pixel offset added to glyph origins (see
+    /// `Window::replace_glyph_offset`).
+    pub(crate) glyph_offset: Point<Pixels>,
     /// KaminIDE patch: стек преобразований (`transform` в CSS).
     ///
     /// Матрица действует на всё, что рисуется внутри: на подложку, рамку,
@@ -1269,6 +1272,7 @@ impl Window {
             text_style_stack: Vec::new(),
             rendered_entity_stack: Vec::new(),
             element_offset_stack: Vec::new(),
+            glyph_offset: Point::default(),
             transformation_stack: Vec::new(),
             mask_scale: None,
             mask_map: None,
@@ -3416,6 +3420,15 @@ impl Window {
         });
     }
 
+    /// KaminIDE patch: set the offset added to the origin of every glyph
+    /// painted afterwards and return the previous one. Layout snaps a box's
+    /// edges to device pixels, but text inside it belongs at the box's exact
+    /// (unsnapped) position: an HTML paragraph passes the difference here so
+    /// its glyphs keep the fractional position while its boxes stay snapped.
+    pub fn replace_glyph_offset(&mut self, offset: Point<Pixels>) -> Point<Pixels> {
+        std::mem::replace(&mut self.glyph_offset, offset)
+    }
+
     /// Paints a monochrome (non-emoji) glyph into the scene for the next frame at the current z-index.
     ///
     /// The y component of the origin is the baseline of the glyph.
@@ -3436,11 +3449,28 @@ impl Window {
 
         let element_opacity = self.element_opacity();
         let scale_factor = self.scale_factor();
-        let glyph_origin = origin.scale(scale_factor);
+        let glyph_origin = (origin + self.glyph_offset).scale(scale_factor);
 
-        let subpixel_variant = Point {
-            x: (glyph_origin.x.0.fract() * SUBPIXEL_VARIANTS_X as f32).floor() as u8,
-            y: (glyph_origin.y.0.fract() * SUBPIXEL_VARIANTS_Y as f32).floor() as u8,
+        // KaminIDE patch: a pixel-exact font (Ahem) keeps its sub-pixel
+        // position on BOTH axes (Windows/Linux otherwise drop the y fraction),
+        // quantized on one grid so that `pixel origin + variant` is the
+        // position itself; the 1e-3 guard keeps f32 noise (12.4999 for 12.5)
+        // from falling into the previous quarter.
+        let (pixel_origin, subpixel_variant) = if self.text_system().pixel_exact_glyphs(font_id) {
+            let n = SUBPIXEL_VARIANTS_X as f32;
+            let q = glyph_origin.map(|v| (v.0 * n + 1e-3).floor());
+            (
+                q.map(|v| ScaledPixels((v / n).floor())),
+                q.map(|v| v.rem_euclid(n) as u8),
+            )
+        } else {
+            (
+                glyph_origin.map(|px| px.floor()),
+                Point {
+                    x: (glyph_origin.x.0.fract() * SUBPIXEL_VARIANTS_X as f32).floor() as u8,
+                    y: (glyph_origin.y.0.fract() * SUBPIXEL_VARIANTS_Y as f32).floor() as u8,
+                },
+            )
         };
         let params = RenderGlyphParams {
             font_id,
@@ -3461,7 +3491,7 @@ impl Window {
                 })?
                 .expect("Callback above only errors or returns Some");
             let bounds = Bounds {
-                origin: glyph_origin.map(|px| px.floor()) + raster_bounds.origin.map(Into::into),
+                origin: pixel_origin + raster_bounds.origin.map(Into::into),
                 size: tile.bounds.size.map(Into::into),
             };
             let content_mask = self.content_mask().scale(scale_factor);

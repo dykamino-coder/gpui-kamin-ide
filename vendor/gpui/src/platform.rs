@@ -617,6 +617,13 @@ pub(crate) trait PlatformTextSystem: Send + Sync {
         raster_bounds: Bounds<DevicePixels>,
     ) -> Result<(Size<DevicePixels>, Vec<u8>)>;
     fn layout_line(&self, text: &str, font_size: Pixels, runs: &[FontRun]) -> LineLayout;
+    /// KaminIDE patch: glyphs of this font are axis-aligned em-grid rectangles
+    /// (the Ahem test font) and are rasterized bi-level at their exact
+    /// sub-pixel position, so their edges snap to device pixels exactly like
+    /// box edges do. All other fonts keep the platform's antialiased path.
+    fn pixel_exact_glyphs(&self, _font_id: FontId) -> bool {
+        false
+    }
 }
 
 pub(crate) struct NoopTextSystem;
