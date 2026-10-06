@@ -3510,7 +3510,10 @@ fn calculate_flex_item(
         last_y
     };
     item.last_baseline_pos = baseline_origin_y + last_y;
-    item.no_inline_block_baseline = layout_output.inline_block_last_y == Some(None);
+    // Only an item that HAS a baseline but hides it from inline-blocks counts:
+    // an item without any baseline still synthesizes one in the flex container.
+    item.no_inline_block_baseline = layout_output.inline_block_last_y == Some(None)
+        && layout_output.last_or_first_y().is_some();
     // x follows the local physical-position contract and retains both channels.
     // Clamp scroll-container baseline offsets to its own border box as for y.
     let baseline_x = |baseline: f32| {
