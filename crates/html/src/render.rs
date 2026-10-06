@@ -17708,6 +17708,7 @@ fn paragraph_pieces_routed(
                 }),
             )
             .rel_spans(inline::rel_spans(&pieces))
+            .ruby_justify(inherited.ruby_justify == Some(true), inherited.ruby_unit)
             .align_last(
                 inherited
                     .text_align_last
@@ -19014,6 +19015,7 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                 };
                 let mut style = style.clone();
                 style.nowrap = Some(true);
+                style.ruby_unit = true;
                 // CSS Ruby 1 §2.1.1: these units share an inline formatting
                 // context, rather than starting indented block paragraphs.
                 // Blink line_breaker.cc:846-848 excludes ruby sub-line breakers.

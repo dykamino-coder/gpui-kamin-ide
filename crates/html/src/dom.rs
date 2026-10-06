@@ -171,7 +171,7 @@ head, title, meta, link, template { display: none }
     q::after { content: close-quote }
     rp { display: none }
     rb, rt, rtc { white-space: nowrap }
-    rt, rtc { font-size: 50%; line-height: 1; text-emphasis: none }
+    rt, rtc { font-size: 50%; line-height: 1; text-emphasis: none; text-justify: ruby }
     rtc > rt { font-size: 100% }
     /* Языковые правила A.1: чжуинь (zh-TW) — 30% кегля, у китайского
        аннотация по центру. Без них строка под аннотацию росла на кегль

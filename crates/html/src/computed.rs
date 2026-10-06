@@ -1830,6 +1830,10 @@ pub struct Computed {
     pub text_align_last: Option<TextAlign>,
     /// `text-justify: none` — выключка запрещена, строка идёт как `start`.
     pub no_justify: Option<bool>,
+    /// CSS Text 4: ruby annotation justification excludes word spaces.
+    pub ruby_justify: Option<bool>,
+    /// Internal ruby unit promoted to a technical block for layout.
+    pub ruby_unit: bool,
     /// `hanging-punctuation` — какая пунктуация выходит за край строки.
     /// `text-box-trim` — срезать полулидинг первой/последней строки блока.
     pub text_box_trim_start: bool,
@@ -5779,9 +5783,15 @@ impl Computed {
             // пробелы или знаки; у нас растягиваются пробелы, и это поведение
             // `auto`/`inter-word`.
             "text-justify" => {
+                if matches!(
+                    v,
+                    "none" | "auto" | "inter-word" | "inter-character" | "distribute" | "ruby"
+                ) {
+                    self.ruby_justify = Some(v == "ruby");
+                }
                 self.no_justify = match v {
                     "none" => Some(true),
-                    "auto" | "inter-word" | "inter-character" | "distribute" => Some(false),
+                    "auto" | "inter-word" | "inter-character" | "distribute" | "ruby" => Some(false),
                     _ => self.no_justify,
                 };
             }

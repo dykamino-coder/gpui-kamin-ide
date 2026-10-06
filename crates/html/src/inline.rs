@@ -1696,6 +1696,8 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     });
     c.text_align = own.text_align.or(parent.text_align);
     c.no_justify = own.no_justify.or(parent.no_justify);
+    c.ruby_justify = own.ruby_justify.or(parent.ruby_justify);
+    c.ruby_unit = own.ruby_unit || parent.ruby_unit;
     c.text_align_last = own.text_align_last.or(parent.text_align_last);
     c.hanging = own.hanging.or(parent.hanging);
     c.monospace = own.monospace.or(parent.monospace);

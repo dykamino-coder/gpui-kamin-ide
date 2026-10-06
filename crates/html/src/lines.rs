@@ -24,6 +24,7 @@ pub mod tabs;
 
 mod atom_placement;
 mod content_baselines;
+mod ruby_justification;
 mod selection_geometry;
 mod vertical_content_baselines;
 mod vertical_geometry;
@@ -93,6 +94,8 @@ pub struct Paragraph {
     align: Align,
     /// Выключка последней строки (`text-align-last`), если задана.
     align_last: Option<Align>,
+    ruby_justify: bool,
+    ruby_unit: bool,
     /// `unicode-bidi: plaintext` — сторона письма выбирается для КАЖДОГО
     /// абзаца между жёсткими разрывами по его первому сильному знаку. В
     /// преформате такой абзац — это строка, поэтому и `start`/`end` у каждой
@@ -523,6 +526,8 @@ impl Paragraph {
             line_height,
             align,
             align_last: None,
+            ruby_justify: false,
+            ruby_unit: false,
             plaintext: None,
             lines_reversed: false,
             letter_spacing: px(0.),
@@ -1865,13 +1870,14 @@ impl Paragraph {
             Align::Justify => Align::Left,
             other => other,
         };
-        if last_line {
+        let align = if last_line {
             self.align_last.unwrap_or(flat(own_align))
         } else if no_stretch {
             flat(own_align)
         } else {
             own_align
-        }
+        };
+        self.ruby_line_align(align, &line.range)
     }
 
     /// Где в коробке стоит байт текста: левый верхний угол его знака.
@@ -4012,6 +4018,8 @@ impl Paragraph {
             line_height: self.line_height,
             align: self.align,
             align_last: self.align_last,
+            ruby_justify: self.ruby_justify,
+            ruby_unit: self.ruby_unit,
             letter_spacing: self.letter_spacing,
             word_spacing: self.word_spacing,
             vertical: self.vertical,
@@ -4770,7 +4778,7 @@ impl Paragraph {
                         spaces_before: spaces,
                     });
                 }
-                spaces += 1;
+                spaces += usize::from(!self.ruby_justify);
             } else if ch == '\u{9}' {
                 // Табуляция — ГРАНИЦА слова, хотя точкой раздачи и не служит.
                 // Её продвижение задаёт позиция табуляции (`Seg::offset`), и
