@@ -40,7 +40,17 @@ struct FontInfo {
     face_key: String,
     /// KaminIDE patch: запрошенные возможности OpenType — ключ шейпинга.
     features_key: String,
+    /// KaminIDE patch: the face is the Ahem test font. Its glyphs are
+    /// rectangles on the em grid (CSS WG test font), meant to coincide with
+    /// boxes of the same geometry; they are rasterized bi-level (see
+    /// `create_glyph_run_analysis`).
+    pixel_exact: bool,
 }
+
+/// KaminIDE patch: supersampling factor of `pixel_exact` glyphs. A multiple
+/// of `SUBPIXEL_VARIANTS_X`, so every quantized glyph origin is a whole pixel
+/// of the supersampled grid.
+const EXACT_SUPERSAMPLE: i32 = 8;
 
 pub(crate) struct DirectWriteTextSystem(RwLock<DirectWriteState>);
 
@@ -279,6 +289,14 @@ impl PlatformTextSystem for DirectWriteTextSystem {
         self.0.read().rasterize_glyph(params, raster_bounds)
     }
 
+    fn pixel_exact_glyphs(&self, font_id: FontId) -> bool {
+        self.0
+            .read()
+            .fonts
+            .get(font_id.0)
+            .is_some_and(|font| font.pixel_exact)
+    }
+
     fn layout_line(&self, text: &str, font_size: Pixels, runs: &[FontRun]) -> LineLayout {
         self.0
             .write()
@@ -510,6 +528,8 @@ impl DirectWriteState {
                     .any(|(tag, value)| tag == "vert" && *value > 0),
                 face_key: identifier.postscript_name.clone(),
                 features_key: format!("{:?}", font_features.tag_value_list()),
+                pixel_exact: family_name.eq_ignore_ascii_case("ahem")
+                    || identifier.postscript_name.eq_ignore_ascii_case("ahem"),
             };
             let font_id = FontId(self.fonts.len());
             self.fonts.push(font_info);
@@ -959,18 +979,40 @@ impl DirectWriteState {
             isSideways: BOOL(0),
             bidiLevel: 0,
         };
+        // KaminIDE patch: Ahem (`pixel_exact`) is placed at its full sub-pixel
+        // position on both axes (`Window::paint_glyph` quantizes y on the x
+        // grid for it) and rasterized bi-level by pixel-centre sampling: a
+        // pixel is inked iff its centre lies inside the outline, which for the
+        // font's em-grid rectangles is exactly the device-pixel snapping of a
+        // box with the same edges (each edge rounded to the nearest pixel
+        // line). Antialiasing instead left a partially inked row/column on
+        // every fractional edge (1.25 scale: 15px Ahem = 18.75 device px), so
+        // the glyph never equalled the box drawn by the reference.
+        // DirectWrite's ALIASED mode snaps the glyph origin to whole pixels
+        // and its antialiased coverage is filtered (thresholding it inks an
+        // extra pixel), so the glyph is rendered ALIASED and unhinted at
+        // `EXACT_SUPERSAMPLE`× resolution, where the quarter-pixel origin is a
+        // whole pixel, and sampled per device pixel (`rasterize_monochrome`).
+        // Every other font is unaffected.
+        let exact = font.pixel_exact;
+        let k = if exact { EXACT_SUPERSAMPLE as f32 } else { 1.0 };
         let transform = DWRITE_MATRIX {
-            m11: params.scale_factor,
+            m11: params.scale_factor * k,
             m12: 0.0,
             m21: 0.0,
-            m22: params.scale_factor,
+            m22: params.scale_factor * k,
             dx: 0.0,
             dy: 0.0,
+        };
+        let variants_y = if exact {
+            SUBPIXEL_VARIANTS_X
+        } else {
+            SUBPIXEL_VARIANTS_Y
         };
         let baseline_origin_x =
             params.subpixel_variant.x as f32 / SUBPIXEL_VARIANTS_X as f32 / params.scale_factor;
         let baseline_origin_y =
-            params.subpixel_variant.y as f32 / SUBPIXEL_VARIANTS_Y as f32 / params.scale_factor;
+            params.subpixel_variant.y as f32 / variants_y as f32 / params.scale_factor;
 
         let mut rendering_mode = DWRITE_RENDERING_MODE1::default();
         let mut grid_fit_mode = DWRITE_GRID_FIT_MODE::default();
@@ -990,9 +1032,13 @@ impl DirectWriteState {
             )?;
         }
         let rendering_mode = match rendering_mode {
+            _ if exact => DWRITE_RENDERING_MODE1_ALIASED,
             DWRITE_RENDERING_MODE1_OUTLINE => DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC,
             m => m,
         };
+        if exact {
+            grid_fit_mode = DWRITE_GRID_FIT_MODE_DISABLED;
+        }
 
         let glyph_analysis = unsafe {
             self.components.factory.CreateGlyphRunAnalysis(
@@ -1012,7 +1058,19 @@ impl DirectWriteState {
     fn raster_bounds(&self, params: &RenderGlyphParams) -> Result<Bounds<DevicePixels>> {
         let glyph_analysis = self.create_glyph_run_analysis(params)?;
 
-        let bounds = unsafe { glyph_analysis.GetAlphaTextureBounds(DWRITE_TEXTURE_ALIASED_1x1)? };
+        let mut bounds =
+            unsafe { glyph_analysis.GetAlphaTextureBounds(DWRITE_TEXTURE_ALIASED_1x1)? };
+        // KaminIDE patch: supersampled `pixel_exact` raster -> device pixels
+        // (a superset; columns without a sampled centre stay empty).
+        if self.fonts[params.font_id.0].pixel_exact && bounds.right > bounds.left {
+            let k = EXACT_SUPERSAMPLE;
+            bounds = RECT {
+                left: bounds.left.div_euclid(k),
+                top: bounds.top.div_euclid(k),
+                right: (bounds.right + k - 1).div_euclid(k),
+                bottom: (bounds.bottom + k - 1).div_euclid(k),
+            };
+        }
 
         if bounds.right < bounds.left {
             Ok(Bounds {
@@ -1078,6 +1136,36 @@ impl DirectWriteState {
             vec![0u8; glyph_bounds.size.width.0 as usize * glyph_bounds.size.height.0 as usize];
 
         let glyph_analysis = self.create_glyph_run_analysis(params)?;
+        if self.fonts[params.font_id.0].pixel_exact {
+            // KaminIDE patch: sample the supersampled bi-level raster at each
+            // device pixel's centre, taken just above/left of it (k/2 - 1):
+            // an edge exactly on the centre then counts like box edge
+            // rounding does (x.5 rounds up: excluded at the top/left,
+            // included at the bottom/right).
+            let k = EXACT_SUPERSAMPLE;
+            let (w, h) = (glyph_bounds.size.width.0, glyph_bounds.size.height.0);
+            let mut hi = vec![0u8; (w * k) as usize * (h * k) as usize];
+            unsafe {
+                glyph_analysis.CreateAlphaTexture(
+                    DWRITE_TEXTURE_ALIASED_1x1,
+                    &RECT {
+                        left: glyph_bounds.origin.x.0 * k,
+                        top: glyph_bounds.origin.y.0 * k,
+                        right: (glyph_bounds.origin.x.0 + w) * k,
+                        bottom: (glyph_bounds.origin.y.0 + h) * k,
+                    },
+                    &mut hi,
+                )?;
+            }
+            let c = k / 2 - 1;
+            for y in 0..h {
+                for x in 0..w {
+                    let sample = hi[((y * k + c) * w * k + x * k + c) as usize];
+                    bitmap_data[(y * w + x) as usize] = if sample >= 128 { 255 } else { 0 };
+                }
+            }
+            return Ok(bitmap_data);
+        }
         unsafe {
             glyph_analysis.CreateAlphaTexture(
                 DWRITE_TEXTURE_ALIASED_1x1,
