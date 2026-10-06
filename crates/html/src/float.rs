@@ -483,7 +483,7 @@ fn measure_columns(
     whole: bool,
     width: Pixels,
     window: &mut Window,
-) -> (Vec<usize>, usize, Pixels) {
+) -> (Vec<usize>, usize, Pixels, usize) {
     // Used column-count по фактической ширине (css-multicol §3.4,
     // ResolveUsedColumnCount): `columns: auto <w>` до замера не решается.
     let avail = f32::from(width);
@@ -514,7 +514,7 @@ fn measure_columns(
     // 1em) с границами по пробелам давал «A B | C D | E» — не прямоугольник.
     // Широкие колонки — как прежде.
     if narrow && whole {
-        return (Vec::new(), count, px(line_height));
+        return (Vec::new(), count, px(line_height), 1);
     }
     let mut wrapper = window
         .text_system()
@@ -573,7 +573,9 @@ fn measure_columns(
     let cuts: Vec<usize> = (1..count)
         .filter_map(|i| boundaries.get(i * per_col - 1).copied())
         .collect();
-    (cuts, count, px(per_col as f32 * line_height))
+    // Строк в первой колонке — самой высокой: колонки заполняются по
+    // порядку, первая не короче остальных.
+    (cuts, count, px(per_col as f32 * line_height), lines.min(per_col))
 }
 
 impl Element for ColumnFlow {
@@ -607,7 +609,7 @@ impl Element for ColumnFlow {
         let whole = self.whole;
         // css-multicol-1 §Overflow: заданная блочная высота ограничивает высоту
         // КОЛОНКИ, а не всей стопки — с ней рождаются переполняющие колонки.
-        let layout_id = window.request_measured_layout(
+        let layout_id = window.request_measured_layout_with_baselines(
             Style::default(),
             move |known, available, window, _cx| {
                 // Под `min-content`/`max-content` доступного места НЕТ, и
@@ -630,7 +632,7 @@ impl Element for ColumnFlow {
                         window,
                     ),
                 });
-                let (at, used, height) = measure_columns(
+                let (at, used, height, first_col_lines) = measure_columns(
                     &text,
                     count,
                     col_w,
@@ -644,7 +646,19 @@ impl Element for ColumnFlow {
                     window,
                 );
                 *cuts.borrow_mut() = (at, width, used);
-                size(width, height)
+                // css-align-3 §baseline-export, multi-column containers: первый
+                // набор базовых линий — у колонки с самой ВЕРХНЕЙ линией (все
+                // колонки начинаются сверху: первая строка), последний — у
+                // колонки с самой НИЖНЕЙ, то есть последняя строка первой,
+                // самой длинной колонки. Прежде текстовый поток базовой линии
+                // не отдавал вовсе, и строчная коробка-многоколоночник
+                // выравнивалась нижним краем (`baseline-008`).
+                let id = window.text_system().resolve_font(&font);
+                let ascent = window.text_system().ascent(id, px(font_size));
+                let descent = window.text_system().descent(id, px(font_size));
+                let first = (px(line_height) - (ascent + descent.abs())) / 2.0 + ascent;
+                let last = first + px(line_height * first_col_lines.saturating_sub(1) as f32);
+                (size(width, height), Some(first), Some(last))
             },
         );
         (layout_id, ())
@@ -661,7 +675,7 @@ impl Element for ColumnFlow {
     ) {
         let stale = self.cuts.borrow().1 != bounds.size.width;
         if stale && bounds.size.width > px(0.) {
-            let (at, used, _) = measure_columns(
+            let (at, used, _, _) = measure_columns(
                 &self.text,
                 self.count,
                 self.col_w,
