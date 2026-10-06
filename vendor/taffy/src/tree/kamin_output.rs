@@ -11,8 +11,13 @@ pub(super) fn adapt(mut output: LayoutOutput, style: &Style) -> LayoutOutput {
             offset
         });
     }
+    // A table (or its wrapper box) contributes no baseline to an enclosing
+    // inline-block, whatever block wrappers sit in between.
+    if style.no_inline_block_baseline {
+        output.inline_block_last_y = Some(None);
+    }
     if style.baseline_from_last {
-        output.baselines.first = output.last_or_first_y();
+        output.baselines.first = output.inline_block_last_y();
         output.baselines_x.first = output.last_or_first_x();
     }
     // General scroll-container baselines use native synthesis/clamping. The
@@ -25,6 +30,7 @@ pub(super) fn adapt(mut output: LayoutOutput, style: &Style) -> LayoutOutput {
     {
         output.baselines = Baselines::NONE;
         output.baselines_x = Baselines::NONE;
+        output.inline_block_last_y = None;
     }
     output
 }

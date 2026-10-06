@@ -108,6 +108,9 @@ struct FlexItem {
     last_baseline_from_end: f32,
     /// Last y baseline after final physical placement, from container top.
     last_baseline_pos: f32,
+    /// KaminIDE: the item exports no baseline to an enclosing `inline-block`
+    /// (a table or table wrapper; `LayoutOutput::inline_block_last_y`).
+    no_inline_block_baseline: bool,
     /// First x baseline after final physical placement, from container left.
     baseline_x_pos: Option<f32>,
     baseline_x_flags: u8,
@@ -791,7 +794,7 @@ fn compute_preliminary(
         .flat_map(|line| line.items.iter())
         .rev()
         .find_map(|child| child.last_baseline_x_pos.or(child.baseline_x_pos));
-    LayoutOutput::from_sizes_and_all_baselines(
+    let mut output = LayoutOutput::from_sizes_and_all_baselines(
         constants.container_size,
         inflow_overflow_rect.union(absolute_overflow_rect),
         Baselines {
@@ -802,7 +805,14 @@ fn compute_preliminary(
             first: first_x,
             last: last_x,
         },
-    )
+    );
+    // An anonymous flex wrapper whose every item is a table (wrapper) box hides
+    // the table baseline from an enclosing inline-block as the table itself does.
+    let mut items = flex_lines.iter().flat_map(|line| line.items.iter()).peekable();
+    if items.peek().is_some() && items.all(|item| item.no_inline_block_baseline) {
+        output.inline_block_last_y = Some(None);
+    }
+    output
 }
 
 /// Compute constants that can be reused during the flexbox algorithm.
@@ -1067,6 +1077,7 @@ fn generate_anonymous_flex_items(
                 baseline: 0.0,
                 last_baseline_from_end: 0.0,
                 last_baseline_pos: 0.0,
+                no_inline_block_baseline: false,
                 baseline_x_pos: None,
                 baseline_x_flags: child_style.baseline_x_flags(),
                 column_baseline: None,
@@ -3499,6 +3510,7 @@ fn calculate_flex_item(
         last_y
     };
     item.last_baseline_pos = baseline_origin_y + last_y;
+    item.no_inline_block_baseline = layout_output.inline_block_last_y == Some(None);
     // x follows the local physical-position contract and retains both channels.
     // Clamp scroll-container baseline offsets to its own border box as for y.
     let baseline_x = |baseline: f32| {

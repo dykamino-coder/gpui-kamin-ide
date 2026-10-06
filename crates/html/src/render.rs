@@ -27933,6 +27933,11 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     outer.style().item_is_table = Some(true);
     // Table baselines come from rows, never the empty grid/caption shim.
     outer.style().baseline_unavailable = Some(!have_rows);
+    // An enclosing `inline-block` takes no baseline from a table at any block
+    // depth (CSS 2.1 §10.8.1 counts line boxes only; Blink
+    // `block_layout_algorithm.cc` `PropagateBaselineFromBlockChild`: "table's
+    // don't contribute any baselines"). The wrappers below carry the same mark.
+    outer.style().no_inline_block_baseline = Some(true);
     // КОРНЕВОЙ стол (`<html display: table>`): родитель — блок стенда, где
     // `align-self` не работает, и стол растягивался на всё окно. Гибкая
     // обёртка возвращает сжатие по содержимому и центрирование `margin: auto`.
@@ -28186,6 +28191,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         if vertical && e.style.vertical_rl == Some(true) {
             cap_wrap.reverse();
         }
+        wrap.style().no_inline_block_baseline = Some(true);
         wrap.children(cap_wrap).into_any_element()
     };
     // Вторая половина §17.4: сама обёртка. Гибкий ряд возвращает сетке сжатие
@@ -28195,11 +28201,9 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         wrap.position = e.style.position;
         wrap.inset = e.style.inset;
         wrap.z_index = e.style.z_index;
-        return crate::apply::apply(div(), &wrap)
-            .flex()
-            .flex_row()
-            .child(outer)
-            .into_any_element();
+        let mut wrap = crate::apply::apply(div(), &wrap).flex().flex_row();
+        wrap.style().no_inline_block_baseline = Some(true);
+        return wrap.child(outer).into_any_element();
     }
     // Стол с `width: auto` СЖИМАЕТСЯ по содержимому (§17.5.2): у нас это
     // делает гибкий ряд-обёртка. Приём `align_self: FlexStart` выше работает
@@ -28225,6 +28229,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         if root_table {
             wrap = wrap.w_full();
         }
+        wrap.style().no_inline_block_baseline = Some(true);
         return wrap.child(outer).into_any_element();
     }
     outer.into_any_element()

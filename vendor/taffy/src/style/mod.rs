@@ -955,6 +955,10 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// This does not establish layout containment or change sizing.
     #[cfg_attr(feature = "serde", serde(default))]
     pub baseline_unavailable: bool,
+    /// KaminIDE: a table box or table wrapper box. Inside an `inline-block` it
+    /// contributes no baseline (see `LayoutOutput::inline_block_last_y`).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub no_inline_block_baseline: bool,
     /// KaminIDE patch: собственная базовая линия по оси x у узла без своей
     /// раскладки текста (повёрнутый вертикальный абзац движка): смещение и
     /// флаг «от правого края» — у `vertical-rl` первая строка справа, и
@@ -1122,6 +1126,7 @@ impl<S: CheapCloneStr> Style<S> {
         grid_lanes: None,
         baseline_from_last: false,
         baseline_unavailable: false,
+        no_inline_block_baseline: false,
         baseline_x_hint: None,
         baseline_x_flags: 0,
         #[cfg(feature = "grid")]
@@ -1917,6 +1922,7 @@ mod tests {
             grid_lanes: None,
             baseline_from_last: false,
         baseline_unavailable: false,
+            no_inline_block_baseline: false,
             baseline_x_hint: None,
             baseline_x_flags: 0,
             #[cfg(feature = "grid")]

@@ -484,6 +484,7 @@ pub(super) fn compute_block_layout_normalized(
     if contain.suppresses_baseline() {
         output.baselines = Baselines::NONE;
         output.baselines_x = Baselines::NONE;
+        output.inline_block_last_y = None;
     }
 
     output
@@ -689,7 +690,7 @@ fn compute_inner(
         mut intrinsic_outer_height,
         first_child_top_margin_set,
         last_child_bottom_margin_set,
-        (mut first_baseline, mut last_baseline, first_baseline_x, last_baseline_x),
+        (mut first_baseline, mut last_baseline, first_baseline_x, last_baseline_x, mut inline_block_last),
     ) = perform_final_layout_on_in_flow_children(
         tree,
         run_mode,
@@ -753,6 +754,7 @@ fn compute_inner(
             let group_offset = compute_alignment_offset(free_space, 1, 0.0, keyword, false, true);
             first_baseline = first_baseline.map(|baseline| baseline + group_offset);
             last_baseline = last_baseline.map(|baseline| baseline + group_offset);
+            inline_block_last = inline_block_last.map(|baseline| baseline + group_offset);
             for item in items.iter_mut() {
                 if let Some(layout) = item.final_layout.as_mut() {
                     layout.location.y += group_offset;
@@ -832,6 +834,7 @@ fn compute_inner(
             CollapsibleMarginSet::from_margin(margin_bottom)
         },
         margins_can_collapse_through: can_be_collapsed_through,
+        inline_block_last_y: Some(inline_block_last),
     };
 
     // Short-circuit if computing size.
@@ -1110,7 +1113,7 @@ fn perform_final_layout_on_in_flow_children(
     f32,
     CollapsibleMarginSet,
     CollapsibleMarginSet,
-    (Option<f32>, Option<f32>, Option<f32>, Option<f32>),
+    (Option<f32>, Option<f32>, Option<f32>, Option<f32>, Option<f32>),
 ) {
     // Resolve container_inner_width for sizing child nodes using initial content_box_inset
     let container_inner_width =
@@ -1162,6 +1165,7 @@ fn perform_final_layout_on_in_flow_children(
     let mut last_baseline: Option<f32> = None;
     let mut first_baseline_x: Option<f32> = None;
     let mut last_baseline_x: Option<f32> = None;
+    let mut inline_block_last: Option<f32> = None;
     // Whether the active margin set contains the margins of a self-collapsing element with
     // clearance. Such margins collapse with the margins of following siblings but the resulting
     // margin does not collapse with the bottom margin of the parent block.
@@ -1756,6 +1760,15 @@ fn perform_final_layout_on_in_flow_children(
             if let Some(baseline) = child_last_y {
                 last_baseline = Some(location.y + baseline);
             }
+            // Inside an `inline-block`, tables contribute no baseline (see
+            // `LayoutOutput::inline_block_last_y`).
+            if let Some(baseline) = exposed_baseline(
+                item_layout.inline_block_last_y(),
+                item_layout.size.height,
+                item.overflow.y.is_scroll_container(),
+            ) {
+                inline_block_last = Some(location.y + baseline);
+            }
             if first_baseline_x.is_none() {
                 first_baseline_x = exposed_baseline(
                     item_layout.baselines_x.first,
@@ -1897,6 +1910,7 @@ fn perform_final_layout_on_in_flow_children(
             last_baseline,
             first_baseline_x,
             last_baseline_x,
+            inline_block_last,
         ),
     )
 }

@@ -280,6 +280,9 @@ pub struct Style {
     pub baseline_from_last: bool,
     /// The box has no exportable baseline, independently of layout containment.
     pub baseline_unavailable: bool,
+    /// KaminIDE patch: a table box or its wrapper — contributes no baseline to an
+    /// enclosing `inline-block` (CSS 2.1 §10.8.1; Blink `PropagateBaselineFromBlockChild`).
+    pub no_inline_block_baseline: bool,
     /// KaminIDE patch: собственная базовая линия по оси x (повёрнутый
     /// вертикальный абзац): смещение и «от правого края».
     pub baseline_x_hint: Option<(f32, bool)>,
@@ -1000,6 +1003,7 @@ impl Default for Style {
             hides_baseline: false,
             baseline_from_last: false,
             baseline_unavailable: false,
+            no_inline_block_baseline: false,
             baseline_x_hint: None,
             baseline_x_flags: 0,
             margin_trim: 0,

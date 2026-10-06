@@ -232,6 +232,13 @@ pub struct LayoutOutput {
     /// Whether margins can be collapsed through this node. This is used for CSS block layout and can
     /// be set to `false` for other layout modes that don't support margin collapsing
     pub margins_can_collapse_through: bool,
+    /// KaminIDE: the last baseline this box exports to an enclosing `inline-block`
+    /// whose baseline is being computed. Block containers report it separately
+    /// because tables (at any block-flow depth) contribute no baseline in that mode
+    /// (CSS 2.1 §10.8.1 counts only line boxes; Blink `block_layout_algorithm.cc`
+    /// `PropagateBaselineFromBlockChild`: "table's don't contribute any baselines").
+    /// `None` means "same as [`Self::last_or_first_y`]".
+    pub inline_block_last_y: Option<Option<f32>>,
 }
 
 #[path = "measured_output.rs"]
@@ -249,6 +256,7 @@ impl LayoutOutput {
         top_margin: CollapsibleMarginSet::ZERO,
         bottom_margin: CollapsibleMarginSet::ZERO,
         margins_can_collapse_through: false,
+        inline_block_last_y: None,
     };
 
     /// A blank layout output
@@ -286,12 +294,18 @@ impl LayoutOutput {
             top_margin: CollapsibleMarginSet::ZERO,
             bottom_margin: CollapsibleMarginSet::ZERO,
             margins_can_collapse_through: false,
+            inline_block_last_y: None,
         }
     }
 
     /// KaminIDE: a missing last baseline uses the first, as in the previous fork.
     pub fn last_or_first_y(&self) -> Option<f32> {
         self.baselines.last.or(self.baselines.first)
+    }
+
+    /// KaminIDE: last baseline as seen by an enclosing `inline-block` (tables skipped).
+    pub fn inline_block_last_y(&self) -> Option<f32> {
+        self.inline_block_last_y.unwrap_or_else(|| self.last_or_first_y())
     }
 
     /// Vertical counterpart, retaining an independent physical x channel.
