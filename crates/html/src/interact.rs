@@ -1503,7 +1503,10 @@ impl Element for Transformed {
             }
         }
         if flat {
-            let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+            let (w, h) = {
+                let exact = window.layout_size_unrounded(*layout_id);
+                (f32::from(exact.width), f32::from(exact.height))
+            };
             let ox = f32::from(bounds.origin.x) + w * self.origin.0 + self.origin_px.0.unwrap_or(0.0);
             let oy = f32::from(bounds.origin.y) + h * self.origin.1 + self.origin_px.1.unwrap_or(0.0);
             let sx = self.tr[0][0] + w * self.tr[0][1] + h * self.tr[0][2];
@@ -1525,7 +1528,7 @@ impl Element for Transformed {
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _state: &mut LayoutId,
+        layout_id: &mut LayoutId,
         _prepaint: &mut (),
         window: &mut Window,
         cx: &mut App,
@@ -1542,8 +1545,14 @@ impl Element for Transformed {
         // не центр (доля из длины считается только здесь, где размер известен).
         // Доля × размер ПЛЮС точки: `calc(50% + 10px)` — смесь, и доля у
         // чистых точек равна нулю (css-transforms-1 §5.2).
-        let ox = f32::from(bounds.size.width) * self.origin.0 + self.origin_px.0.unwrap_or(0.0);
-        let oy = f32::from(bounds.size.height) * self.origin.1 + self.origin_px.1.unwrap_or(0.0);
+        // Доли (`transform-origin: 50%`, `translate(100%)`) — от размера
+        // раскладки, а не от округлённых к точке устройства краёв: 50px ×
+        // 1.25 = 62.5 округлялось до 63, и `translateY(100%)` уезжал на
+        // 0.4px от `translateY(50px)` (`transform-percent-*`).
+        let exact = window.layout_size_unrounded(*layout_id);
+        let (w, h) = (f32::from(exact.width), f32::from(exact.height));
+        let ox = w * self.origin.0 + self.origin_px.0.unwrap_or(0.0);
+        let oy = h * self.origin.1 + self.origin_px.1.unwrap_or(0.0);
         let origin = gpui::point(
             dev(f32::from(bounds.origin.x) + ox),
             dev(f32::from(bounds.origin.y) + oy),
@@ -1556,7 +1565,6 @@ impl Element for Transformed {
         // §transform-rendering), вокруг точки отсчёта: она уводится в ноль и
         // возвращается. Проценты сдвига считаются от собственного размера —
         // он известен только здесь, на отрисовке.
-        let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
         let shift = |row: [f32; 3]| (row[0] + w * row[1] + h * row[2]) * scale_factor;
         // Изнанка (css-transforms-2 §backface-visibility): элемент разложен и
         // держит место, но не рисуется. m33 — из полной 4×4 самого элемента;
