@@ -19014,6 +19014,12 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                 };
                 let mut style = style.clone();
                 style.nowrap = Some(true);
+                // CSS Ruby 1 §2.1.1: these units share an inline formatting
+                // context, rather than starting indented block paragraphs.
+                // Blink line_breaker.cc:846-848 excludes ruby sub-line breakers.
+                style.text_indent = Some(Len::Px(0.0));
+                style.text_indent_each_line = Some(false);
+                style.text_indent_hanging = Some(false);
                 if let [Node::Element(k)] = nodes
                     && matches!(
                         ruby_role(k),
@@ -19025,6 +19031,9 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                     block.style.display = Some(Display::Block);
                     block.style.inline_display = None;
                     block.style.ruby_role = None;
+                    block.style.text_indent = Some(Len::Px(0.0));
+                    block.style.text_indent_each_line = Some(false);
+                    block.style.text_indent_hanging = Some(false);
                     return div()
                         .children(blocks(&[Node::Element(block)], &style, opts))
                         .into_any_element();
