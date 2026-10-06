@@ -1328,7 +1328,7 @@ fn grid_table_items_keep_stretch(nodes: &mut [Node]) {
     }
 }
 
-/// Абсолютный ребёнок СЕТКИ или ГИБКОГО контейнера без заданных краёв стоит
+/// Абсолютный ребёнок СЕТКИ без заданных краёв стоит
 /// на статической позиции, а она отсчитывается от СОДЕРЖИМОГО контейнера
 /// (css-grid-2 §9.1, css-flexbox-1 §4.1), тогда как раскладка под нами кладёт
 /// такого ребёнка в коробку ПОЛЕЙ. Разницу забирает поле элемента: при
@@ -1338,12 +1338,14 @@ fn content_box_static_position(nodes: &mut [Node]) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
         content_box_static_position(&mut el.children);
+        // Гибкий контейнер сюда не входит: taffy (`flexbox.rs`,
+        // `perform_absolute_layout_on_absolute_children`) сам отсчитывает
+        // статическую позицию от `content_box_inset` (css-flexbox-1 §4.1), и
+        // добавочное поле удваивало отбивку контейнера
+        // (`flex-abspos-staticpos-margin-001`: коробка на отбивку правее и ниже).
         if !matches!(
             el.style.display,
-            Some(Display::Grid)
-                | Some(Display::InlineGrid)
-                | Some(Display::Flex)
-                | Some(Display::InlineFlex)
+            Some(Display::Grid) | Some(Display::InlineGrid)
         ) {
             continue;
         }
