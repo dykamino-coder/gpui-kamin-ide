@@ -2740,6 +2740,23 @@ fn grid_runs_on(
         .collect()
 }
 
+/// Строки гибкого контейнера по оси `a`: пересекающиеся протяжённости
+/// элементов сливаются в одну строку.
+fn line_groups(items: &[GapItem]) -> Vec<(f32, f32)> {
+    let mut v: Vec<(f32, f32)> = items.iter().map(|i| (i.a0, i.a1)).collect();
+    v.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal));
+    let mut out: Vec<(f32, f32)> = vec![];
+    for (lo, hi) in v {
+        match out.last_mut() {
+            Some(last) if lo < last.1 - GAP_EPS || (lo - last.0).abs() <= GAP_EPS => {
+                last.1 = last.1.max(hi)
+            }
+            _ => out.push((lo, hi)),
+        }
+    }
+    out
+}
+
 /// Строки/ленты: `a` — ось укладки строк, `b` — ось элементов строки. Главные
 /// промежутки — между строками, их пересекающие зазоры — ОБЪЕДИНЕНИЕ зазоров
 /// соседних строк (окна перекрытия Blink); поперечные — между соседними
@@ -2759,14 +2776,27 @@ fn line_runs(
     rev_cross: bool,
     extent: Option<(u8, f32, f32)>,
 ) -> (Vec<GapRun>, Vec<GapRun>) {
-    let lines = tracks_a(items, gap_a);
+    // Гибкие строки: строка — объединение поперечных протяжённостей её
+    // элементов (Blink: `line_cross_start/end` строки, а не начало каждого
+    // элемента), иначе при `align-items: flex-end` элементы разной высоты
+    // разбегались по разным «строкам» (`flex-gap-decorations-007`).
+    let flex = matches!(extent, Some((1, _, _)));
+    let lines = if flex { line_groups(items) } else { tracks_a(items, gap_a) };
     let mut r0 = items.iter().map(|i| i.b0).fold(f32::INFINITY, f32::min);
     let mut r1 = items.iter().map(|i| i.b1).fold(f32::NEG_INFINITY, f32::max);
     let inner: Vec<Vec<(f32, f32)>> = lines
         .iter()
-        .map(|&(s, _)| {
-            let mut row: Vec<&GapItem> =
-                items.iter().filter(|i| (i.a0 - s).abs() <= GAP_EPS).collect();
+        .map(|&(s, e)| {
+            let mut row: Vec<&GapItem> = items
+                .iter()
+                .filter(|i| {
+                    if flex {
+                        i.a0 >= s - GAP_EPS && i.a0 <= e + GAP_EPS
+                    } else {
+                        (i.a0 - s).abs() <= GAP_EPS
+                    }
+                })
+                .collect();
             row.sort_by(|x, y| x.b0.partial_cmp(&y.b0).unwrap_or(std::cmp::Ordering::Equal));
             row.windows(2)
                 .filter(|w| w[1].b0 - w[0].b1 >= -GAP_EPS)
