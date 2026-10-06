@@ -1,3 +1,4 @@
+mod border_snap;
 mod sizing_keyword;
 pub use sizing_keyword::CssSizingKeyword;
 
@@ -323,6 +324,9 @@ pub struct Style {
 
     /// The border style of this element
     pub border_style: BorderStyle,
+
+    /// Snap axis-aligned square CSS borders to device pixels; HTML opt-in.
+    pub css_border_snap: bool,
 
     /// The radius of the corners of this element
     #[refineable]
@@ -856,83 +860,7 @@ impl Style {
             window.paint_shadows_inset(inner, inner_radii, &self.inset_box_shadow, true);
         }
 
-        // KaminIDE patch: рамка коробки рисуется ДО потомков (CSS 2.1
-        // Appendix E: фон и рамка — шаги 2-3, потомки — 4-9). Прежде она
-        // шла после, и рамка родителя ложилась поверх детей: у всей семьи
-        // отступов и полей красная рамка эталона перекрывала чёрную рамку
-        // содержимого, хотя геометрия совпадала.
-        if self.is_border_visible() {
-            let border_widths = self.border_widths.to_pixels(rem_size);
-            let max_border_width = border_widths.max();
-            let max_corner_radius = corner_radii.max();
-
-            let top_bounds = Bounds::from_corners(
-                bounds.origin,
-                bounds.top_right() + point(Pixels::ZERO, max_border_width.max(max_corner_radius)),
-            );
-            let bottom_bounds = Bounds::from_corners(
-                bounds.bottom_left() - point(Pixels::ZERO, max_border_width.max(max_corner_radius)),
-                bounds.bottom_right(),
-            );
-            let left_bounds = Bounds::from_corners(
-                top_bounds.bottom_left(),
-                bottom_bounds.origin + point(max_border_width, Pixels::ZERO),
-            );
-            let right_bounds = Bounds::from_corners(
-                top_bounds.bottom_right() - point(max_border_width, Pixels::ZERO),
-                bottom_bounds.top_right(),
-            );
-
-            let mut background = self.border_color.unwrap_or_default();
-            background.a = 0.;
-            let quad = quad(
-                bounds,
-                corner_radii,
-                background,
-                border_widths,
-                self.border_color.unwrap_or_default(),
-                self.border_style,
-            );
-
-            // KaminIDE patch: четыре полосы-маски — оптимизация перерисовки
-            // (полосы не пересекаются, итог равен одному проходу). Под
-            // преобразованием они лежат в точках окна, а квад — под матрицей:
-            // повёрнутое кольцо резалось полосами неповёрнутой коробки
-            // (`2d-rotate-001`: рамка 10px под `rotate(30deg)`). Тогда — один
-            // проход без масок.
-            if window.current_transformation() != crate::TransformationMatrix::unit() {
-                window.paint_quad(quad);
-            } else {
-                window.with_content_mask(Some(ContentMask { bounds: top_bounds }), |window| {
-                    window.paint_quad(quad.clone());
-                });
-                window.with_content_mask(
-                    Some(ContentMask {
-                        bounds: right_bounds,
-                    }),
-                    |window| {
-                        window.paint_quad(quad.clone());
-                    },
-                );
-                window.with_content_mask(
-                    Some(ContentMask {
-                        bounds: bottom_bounds,
-                    }),
-                    |window| {
-                        window.paint_quad(quad.clone());
-                    },
-                );
-                window.with_content_mask(
-                    Some(ContentMask {
-                        bounds: left_bounds,
-                    }),
-                    |window| {
-                        window.paint_quad(quad);
-                    },
-                );
-            }
-        }
-
+        border_snap::paint(self, bounds, corner_radii, rem_size, window);
 
         continuation(window, cx);
 
@@ -1015,6 +943,7 @@ impl Default for Style {
             background: None,
             border_color: None,
             border_style: BorderStyle::default(),
+            css_border_snap: false,
             corner_radii: Corners::default(),
             box_shadow: Default::default(),
             inset_box_shadow: Default::default(),

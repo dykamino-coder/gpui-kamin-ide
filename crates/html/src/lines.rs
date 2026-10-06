@@ -26,6 +26,7 @@ mod atom_placement;
 mod content_baselines;
 mod controlled_shape;
 mod selection_geometry;
+mod text_raster_origin;
 mod vertical_content_baselines;
 mod vertical_geometry;
 mod vertical_inline;
@@ -4236,7 +4237,8 @@ impl Paragraph {
             // строчного элемента не появлялся вовсе — проверено пробой, где
             // `background: green; color: transparent` давал пустую страницу.
             let _ = shaped.paint_background(point(x, at.y), self.line_height, window, cx);
-            let _ = shaped.paint(point(x, at.y), self.line_height, window, cx);
+            let origin = self.text_raster_origin(&shaped, point(x, at.y), window);
+            let _ = shaped.paint(origin, self.line_height, window, cx);
             x += width;
         }
         // Строка-замена — за текстом строки, своим шрифтом и кеглем.
@@ -4270,6 +4272,7 @@ impl Paragraph {
             None,
             self.letter_spacing,
         );
+        let origin = self.text_raster_origin(&shaped, origin, window);
         let _ = shaped.paint(origin, self.line_height, window, cx);
     }
 
@@ -4416,7 +4419,12 @@ impl Paragraph {
                 // между половинками слова шов в точку — соседние отрезки
                 // округляются независимо (`text-autospace-001`: `XX`
                 // расходились).
-                if self.text[r.clone()].chars().nth(1).is_some() {
+                // A box spacer carries its entire advance in tracking (CSS 2.1
+                // section 8.3). Joining it to a preceding word discards that
+                // advance when the word is shaped with its own spacing.
+                if self.text[r.clone()].chars().nth(1).is_some()
+                    || self.spacers.binary_search(&r.start).is_ok()
+                {
                     cut(r.start);
                 }
                 cut(r.end);
@@ -4655,7 +4663,8 @@ impl Paragraph {
             let at = point(x + px(rx), y + dy + px(ry) + fix);
             // Подложка прогона — отдельным вызовом, см. выше.
             let _ = shaped.paint_background(at, self.line_height, window, cx);
-            let _ = shaped.paint(at, self.line_height, window, cx);
+            let origin = self.text_raster_origin(&shaped, at, window);
+            let _ = shaped.paint(origin, self.line_height, window, cx);
             // Пробелы между словами тоже принадлежат полосе коробки: без
             // этого фон и рамка `<span>` рвались на каждом пробеле. Промежуток
             // набирается своими прогонами (обе стороны — продолжение полосы) и
