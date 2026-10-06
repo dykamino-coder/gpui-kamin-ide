@@ -17,6 +17,28 @@ pub(super) fn paint_tile(
         window.current_transformation().rotation_scale,
         matches!(source_kind, super::Source::Raster(_)),
     );
+    let bounds = if sampling == ImageSampling::Nearest
+        && window.current_transformation() == gpui::TransformationMatrix::unit()
+    {
+        // CSS 2.1 section 14.2 defines the positioning area before painting.
+        // Blink background_image_geometry.cc:114-122 snaps the destination
+        // origin while retaining the tile size and source-image mapping.
+        // GPUI floors sprite origins, biasing fractional background offsets
+        // toward the preceding device pixel even beside snapped CSS borders.
+        let scale = window.scale_factor();
+        let edge = |value: Pixels| {
+            let physical = (f32::from(value) * scale).round();
+            let mut logical = physical / scale;
+            // Preserve the chosen integer through GPUI's later multiply/floor.
+            if logical * scale < physical {
+                logical = logical.next_up();
+            }
+            gpui::px(logical)
+        };
+        bounds.map_origin(edge)
+    } else {
+        bounds
+    };
     let _ = window.paint_image_with_sampling(bounds, corners, image, 0, false, sampling);
 }
 
