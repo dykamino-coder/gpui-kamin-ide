@@ -4687,12 +4687,12 @@ pub(crate) fn matches_ignoring_pseudo(
     }
     if direct {
         return path.last().is_some_and(|p| {
-            matches_compound(parent_sel, p) && matches_chain(parent_sel, path, path.len() - 1)
+            matches_ancestor_compound(parent_sel, p) && matches_chain(parent_sel, path, path.len() - 1)
         });
     }
     (0..path.len())
         .rev()
-        .any(|i| matches_compound(parent_sel, &path[i]) && matches_chain(parent_sel, path, i))
+        .any(|i| matches_ancestor_compound(parent_sel, &path[i]) && matches_chain(parent_sel, path, i))
 }
 
 /// Продолжение цепочки вверх для `.a .b .c`.
@@ -4706,12 +4706,28 @@ fn matches_chain(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
     }
     if direct {
         return at > 0
-            && matches_compound(parent_sel, &path[at - 1])
+            && matches_ancestor_compound(parent_sel, &path[at - 1])
             && matches_chain(parent_sel, path, at - 1);
     }
     (0..at)
         .rev()
-        .any(|i| matches_compound(parent_sel, &path[i]) && matches_chain(parent_sel, path, i))
+        .any(|i| matches_ancestor_compound(parent_sel, &path[i]) && matches_chain(parent_sel, path, i))
+}
+
+/// Компаунд ПРЕДКА: как `matches_compound`, но псевдоклассы действия
+/// пользователя на нём не выполняются.
+fn matches_ancestor_compound(sel: &Selector, node: &Ancestor) -> bool {
+    // Псевдоклассы действия пользователя у НЕ-предметного компаунда
+    // (`grid:hover item[style]`): в неподвижном кадре ни наведения, ни
+    // нажатия нет (selectors-4 §user-action: «matches while the user
+    // designates an element»), а пропуск делал предка всегда наведённым —
+    // правило красило всех потомков. Слой наведения строится только для
+    // предметного `:hover` (`dom.rs`, `pseudo == "hover"`).
+    let user_action = |p: &str| matches!(p, "hover" | "active");
+    if sel.pseudo.as_deref().is_some_and(user_action) || sel.also.iter().any(|p| user_action(p)) {
+        return false;
+    }
+    matches_compound(sel, node)
 }
 
 fn matches_compound(sel: &Selector, node: &Ancestor) -> bool {
