@@ -14067,7 +14067,15 @@ fn gap_rule_spec(
         return None;
     }
     let vertical = merged.vertical == Some(true);
+    // Лунки идут путём сетки (`dom::lanes_to_grid`: `display: grid` с
+    // пометкой `lanes_taffy`), но промежутки у них — ленты: главные между
+    // лентами через всё поле содержимого, поперечные — между элементами
+    // ленты (Blink `GridLanesGapAccumulator`).
+    let lanes = merged.lanes_taffy || merged.display == Some(Display::GridLanes);
     let kind = match merged.display {
+        _ if merged.lanes_taffy => GapLayout::Lines {
+            stacked_vertically: crate::dom::lanes_row_dir(merged) != vertical,
+        },
         Some(Display::Grid) | Some(Display::InlineGrid) => GapLayout::Grid,
         Some(Display::GridLanes) => {
             // Направление лент — как в `lanes()`: явное или по той оси, где
@@ -14163,7 +14171,7 @@ fn gap_rule_spec(
         pad_px(s.padding.left),
     ];
     let lines_extent = match merged.display {
-        Some(Display::GridLanes) => 2,
+        _ if lanes => 2,
         Some(Display::Grid) | Some(Display::InlineGrid) => 0,
         _ => 1,
     };

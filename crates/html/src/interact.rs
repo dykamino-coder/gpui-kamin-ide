@@ -2920,7 +2920,7 @@ impl Element for GapRulePainter {
             origin: window.layout_origin_unrounded(*state),
             size: window.layout_size_unrounded(*state),
         };
-        let tracks = (self.spec.kind == GapLayout::Grid)
+        let tracks = (self.spec.kind == GapLayout::Grid || self.spec.lines_extent == 2)
             .then(|| window.parent_grid_tracks(*state))
             .flatten()
             .map(|(o, cols, rows)| {
@@ -2962,7 +2962,24 @@ impl Element for GapRulePainter {
         };
         // (промежуток по x?, линейка, правило, главный промежуток строк?)
         let mut layers: Vec<(bool, GapRun, &GapAxisRule, bool)> = vec![];
-        match spec.kind {
+        // Ленты с элементом во несколько лент: такой элемент выравнивает
+        // ленты по укладке (css-grid-3 §grid-lanes-placement), и картина
+        // промежутков — решётка; модель строк его не представляет.
+        let kind = match spec.kind {
+            GapLayout::Lines { stacked_vertically } if spec.lines_extent == 2 => {
+                let it: Vec<GapItem> = items
+                    .iter()
+                    .map(|b| GapItem::from_bounds(b, !stacked_vertically))
+                    .collect();
+                let starts = uniq_sorted(it.iter().map(|i| i.a0).collect());
+                let spans = it
+                    .iter()
+                    .any(|i| starts.iter().any(|&s| s > i.a0 + GAP_EPS && s < i.a1 - GAP_EPS));
+                if spans { GapLayout::Grid } else { spec.kind }
+            }
+            k => k,
+        };
+        match kind {
             GapLayout::Grid => {
                 let ix: Vec<GapItem> = items.iter().map(|b| GapItem::from_bounds(b, true)).collect();
                 let iy: Vec<GapItem> = items.iter().map(|b| GapItem::from_bounds(b, false)).collect();
