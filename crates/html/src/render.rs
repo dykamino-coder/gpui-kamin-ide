@@ -10,6 +10,7 @@ use content_wrapper::{content_sized, content_sized_wraps};
 mod orthogonal_inline;
 mod native_vertical;
 mod rotated_atom;
+mod combined_text;
 mod physical_atomic;
 mod vertical_flow_margins;
 mod native_paragraph_route;
@@ -17132,45 +17133,8 @@ fn paragraph_pieces_routed(
                 crate::interact::CombinedUpright::upright_box(inner, em).into_any_element(),
             ));
         }
-        // `text-combine-upright` в повёрнутом абзаце: подходящий кусок
-        // (цифры не длиннее N или любой при `all`) — атом-квадрат кегля с
-        // контр-поворотом и ужатием (css-writing-modes-3 §9.1).
-        if inherited.rotated_line == Some(true)
-            && e.style.display.is_none()
-            && let Some(n) = inline::inherit(inherited, &e.style).combine_upright
-        {
-            let mut plain = String::new();
-            gather_text(&e.children, &mut plain);
-            let text = plain.trim().to_string();
-            let fits = !text.is_empty()
-                && (n == 0
-                    || (text.chars().all(|c| c.is_ascii_digit())
-                        && text.chars().count() <= n as usize));
-            if fits {
-                let mut merged = inline::inherit(inherited, &e.style);
-                merged.combine_upright = None;
-                let em = match merged.font_size {
-                    Some(Len::Px(v)) => v,
-                    _ => opts.base_size(),
-                };
-                // Сжатие ШРИФТОВОЙ фичей раньше масштаба (css-writing-modes-3
-                // §9.1.3): 2 знака — half-width, 3 — third, 4 — quarter.
-                // Шрифт без фичи набор игнорирует — тогда работает прежний
-                // масштаб (text-combine-upright-compression-004: qwid).
-                let feature = match text.chars().count() {
-                    2 => Some("hwid"),
-                    3 => Some("twid"),
-                    4 => Some("qwid"),
-                    _ => None,
-                };
-                if let Some(f) = feature {
-                    merged.font_features.push((f.to_string(), 1));
-                }
-                let inner = paragraph(&e.children, &merged, opts);
-                return Some(inline::Piece::Atom(
-                    crate::interact::CombinedUpright::new(inner, em).into_any_element(),
-                ));
-            }
+        if let Some(piece) = combined_text::piece(e, inherited, opts) {
+            return Some(piece);
         }
         // Остановленная анимация атома — запечённым кадром, как у блока в
         // `animated()`, но ВМЕСТЕ с `rotate`/`scale`/`transform`: матрицу
