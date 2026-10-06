@@ -1,6 +1,6 @@
 //! Decode CSS background sources and resolve color images after text inheritance.
 
-use super::{CACHE, CACHE_CAP, Source, decode, read_bytes, svg_view};
+use super::{CACHE, CACHE_CAP, Source, decode, read_bytes, svg_fragment};
 use std::{collections::HashMap, sync::Mutex};
 
 /// Ключ источника с учётом `image-orientation` (css-images-3 §5.4).
@@ -83,7 +83,7 @@ pub fn source(src: &str) -> Option<Source> {
         };
         read_bytes(path)
             .map(|b| match view {
-                Some(id) => svg_view(b, id),
+                Some(id) => svg_fragment::resolve(b, id),
                 None => b,
             })
             .as_deref()

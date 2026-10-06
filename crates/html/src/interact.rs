@@ -17,6 +17,7 @@ use gpui::{
 use std::rc::Rc;
 
 mod spot_geometry;
+mod rectangular_clip;
 mod orthogonal_measure;
 mod vertical_style;
 mod combined_geometry;
@@ -560,8 +561,8 @@ fn rasterize_mask_def(
 }
 
 impl Element for Grouped {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
+    type RequestLayoutState = LayoutId;
+    type PrepaintState = Bounds<Pixels>;
 
     fn id(&self) -> Option<ElementId> {
         None
@@ -577,21 +578,22 @@ impl Element for Grouped {
         _inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
-    ) -> (LayoutId, ()) {
+    ) -> (LayoutId, LayoutId) {
         let layout_id = self.child.as_mut().unwrap().request_layout(window, cx);
-        (layout_id, ())
+        (layout_id, layout_id)
     }
 
     fn prepaint(
         &mut self,
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
-        _bounds: Bounds<Pixels>,
-        _state: &mut (),
+        bounds: Bounds<Pixels>,
+        _state: &mut LayoutId,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> Bounds<Pixels> {
         self.child.as_mut().unwrap().prepaint(window, cx);
+        rectangular_clip::reference_box(self, bounds, *_state, window)
     }
 
     fn paint(
@@ -599,8 +601,8 @@ impl Element for Grouped {
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
+        _state: &mut LayoutId,
+        _prepaint: &mut Bounds<Pixels>,
         window: &mut Window,
         cx: &mut App,
     ) {
@@ -884,12 +886,14 @@ impl Element for Grouped {
                                 [0.0, 0.0, bw * sf, bh * sf],
                                 true,
                             )
-                        } else if let Some((file, frag)) =
-                            l.rsplit_once('#').filter(|(f, _)| f.ends_with(".svg"))
+                        } else if let Some(markup) = l
+                            .rsplit_once('#')
+                            .filter(|(f, _)| f.ends_with(".svg"))
+                            .and_then(|(file, frag)| svg_fragment(file, frag))
                         {
-                            // Маска из внешнего рисунка (`url(file.svg#id)`).
-                            let markup = svg_fragment(file, frag)?
-                                .replace("clip-rule", "fill-rule");
+                            // CSS Masking §7.1: a <mask> reference is distinct
+                            // from an SVG image URL with an ordinary fragment.
+                            let markup = markup.replace("clip-rule", "fill-rule");
                             let markup = format!(
                                 r#"<svg xmlns="http://www.w3.org/2000/svg" width="{bw}" height="{bh}">{markup}</svg>"#
                             );
@@ -1147,100 +1151,7 @@ impl Element for Grouped {
         });
         // Коробка окраски (`mask-clip`): вне её маска не красится — элемент
         // там скрыт (mask-size-contain-clip-padding).
-        let mask_clip = self
-            .mask_clip_off
-            .map(|[ct, cr, cb, cl]| {
-                [
-                    cl,
-                    ct,
-                    (f32::from(bounds.size.width) - cl - cr).max(0.0),
-                    (f32::from(bounds.size.height) - ct - cb).max(0.0),
-                ]
-            })
-            .or_else(|| {
-                // `clip-path: inset(...)` — срезы краёв (css-shapes-1).
-                self.clip_inset.map(|[t, r, b, l]| {
-                    let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-                    let side = |v: crate::value::Len, s: f32| match v {
-                        crate::value::Len::Px(p) => p,
-                        crate::value::Len::Pct(p) => p * s,
-                        _ => 0.0,
-                    };
-                    let (t, b) = (side(t, bh), side(b, bh));
-                    let (l, r) = (side(l, bw), side(r, bw));
-                    [l, t, (bw - l - r).max(0.0), (bh - t - b).max(0.0)]
-                })
-            })
-            .or_else(|| {
-                // `clip-path: rect(...)` — края от верхнего-левого угла.
-                self.clip_edges.map(|[t, r, b, l]| {
-                    let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-                    let side = |v: Option<crate::value::Len>, s: f32, def: f32| match v {
-                        Some(crate::value::Len::Px(p)) => p,
-                        Some(crate::value::Len::Pct(p)) => p * s,
-                        _ => def,
-                    };
-                    let (t, b) = (side(t, bh, 0.0), side(b, bh, bh));
-                    let (l, r) = (side(l, bw, 0.0), side(r, bw, bw));
-                    // css-shapes-1 `rect()`: правый край левее левого (нижний
-                    // выше верхнего) зажимается до него — область ПУСТА, элемент
-                    // скрыт целиком. Шейдер композита нулевую ширину читает как
-                    // «клипа нет» (`shaders.hlsl`: `mask_clip.z > 0.0`), поэтому
-                    // коробка уводится за экран — тот же приём, что у `clip:
-                    // rect()` ниже (clip-path-rect-004: `rect(50px 0 0 50px)`,
-                    // красная коробка 2.08).
-                    if r < l || b < t {
-                        return [-1.0e7, -1.0e7, 1.0, 1.0];
-                    }
-                    [l, t, r - l, b - t]
-                })
-            })
-            .or_else(|| {
-                // `clip-path: xywh(x y w h)` — прямоугольник от угла.
-                self.clip_xywh.map(|[x, y, w, h]| {
-                    let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-                    let side = |v: crate::value::Len, s: f32| match v {
-                        crate::value::Len::Px(p) => p,
-                        crate::value::Len::Pct(p) => p * s,
-                        _ => 0.0,
-                    };
-                    [
-                        side(x, bw),
-                        side(y, bh),
-                        side(w, bw).max(0.0),
-                        side(h, bh).max(0.0),
-                    ]
-                })
-            })
-            .or_else(|| {
-                // `clip: rect(t r b l)` — координаты краёв видимой области
-                // от углов коробки; auto — её край (clip-rect-auto-*).
-                self.clip_rect.map(|[t, r, b, l]| {
-                    let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-                    let (t, l) = (t.unwrap_or(0.0), l.unwrap_or(0.0));
-                    let (r, b) = (r.unwrap_or(bw), b.unwrap_or(bh));
-                    if r <= l || b <= t {
-                        // Вырожденная область — элемент скрыт ЦЕЛИКОМ:
-                        // коробка клипа уводится за экран
-                        // (clip-negative-values-001: right < left).
-                        return [-1.0e7, -1.0e7, 1.0, 1.0];
-                    }
-                    [l, t, r - l, b - t]
-                })
-            })
-            .map(|[x, y, w, h]| {
-                let sf = window.scale_factor();
-                let (dx, dy) = (
-                    self.clip_shift.0 + f32::from(bounds.size.width) * self.clip_shift.2,
-                    self.clip_shift.1 + f32::from(bounds.size.height) * self.clip_shift.3,
-                );
-                [
-                    (f32::from(bounds.origin.x) + x + dx) * sf,
-                    (f32::from(bounds.origin.y) + y + dy) * sf,
-                    w * sf,
-                    h * sf,
-                ]
-            });
+        let mask_clip = rectangular_clip::resolve(self, bounds, *_prepaint, window.scale_factor());
         // Подложка (наружные тени `border-shape`) — в текущий контекст ДО
         // композита группы: под буфером и вне его маски, на области выноса.
         let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));

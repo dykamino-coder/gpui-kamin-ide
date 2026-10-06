@@ -3687,6 +3687,7 @@ dependencies = [
  "markup5ever_rcdom 0.39.0+unofficial",
  "png",
  "raw-window-handle",
+ "roxmltree 0.21.1",
  "serde_json",
  "smallvec",
  "unicode-bidi",

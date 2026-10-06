@@ -13,11 +13,12 @@
 //! пересчитывается. Поэтому рисуем с запасом по плотности.
 
 use crate::dom::{Element, Node};
-use gpui::{AnyElement, ImageSource, IntoElement, RenderImage, Styled};
+use gpui::{AnyElement, ImageSource, IntoElement, RenderImage};
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex, OnceLock};
+mod device_image;
 
 /// Во сколько раз растрировать плотнее логического размера: на дробном
 /// системном масштабе (125%, 150%) картинка иначе выглядит мыльной.
@@ -1193,10 +1194,7 @@ pub fn element(e: &Element) -> Option<AnyElement> {
     let nx = if visible_x { neg_extent(true) } else { 0.0 };
     let ny = if visible_y { neg_extent(false) } else { 0.0 };
     let (cw, ch) = (rw + nx, rh + ny);
-    let image = rasterize(&serialize_sized(e, rw, rh, nx, ny), cw, ch)?;
-    let mut img = gpui::img(ImageSource::Render(image))
-        .w(gpui::px(cw))
-        .h(gpui::px(ch));
+    let mut img = device_image::element(serialize_sized(e, rw, rh, nx, ny), cw, ch)?;
     // CSS-фон самого <svg> (`svg { background: green }`): канва растра
     // прозрачна, фон красится коробкой картинки (svg-scale-001 и родня).
     if let Some(bg) = e.style.background {
