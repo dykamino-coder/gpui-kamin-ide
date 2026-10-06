@@ -1459,7 +1459,9 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
     // и рамка прибавляются к нему независимо от `box-sizing`. Раньше
     // ставилась голая величина, и taffy подпирал её суммой отступов —
     // выходило max(ci, pad) вместо ci + pad (`cis-007`, `cis-008`).
-    if c.contains_height() && matches!(c.height, None | Some(Len::Auto)) {
+    // CSS Containment 2 §3.1: intrinsic keywords also size the box as empty.
+    if c.contains_height() && matches!(c.height,
+        None | Some(Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent)) {
         let side = |l: Option<Len>| match l {
             Some(Len::Px(v)) => v,
             _ => 0.0,

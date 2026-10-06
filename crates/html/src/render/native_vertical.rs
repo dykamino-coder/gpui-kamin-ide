@@ -10,6 +10,11 @@ pub(super) fn claim_float_inline_size(
     parent: &Computed,
     children: &[crate::dom::Node],
 ) {
+    // CSS Containment 2 §3.1: a float's shrink-to-fit width must measure
+    // the empty containment box even after placement removes its float flag.
+    if style.contains_width() && matches!(style.width, None | Some(Len::Auto)) {
+        style.width = Some(Len::FitContent);
+    }
     // Native block children already establish the float's inline size and stretch together.
     // Only the rotated inline paragraph needs an explicit outer size claim.
     if children.iter().any(|node| {
