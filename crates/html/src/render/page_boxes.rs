@@ -123,6 +123,7 @@ fn page_margin_boxes(
         // `vertical-align` терял высоту (`alignment-001`: буквы у верха).
         let opts = opts.clone();
         let ctx_style = ctx_style.clone();
+        let intrinsic = [own.width, own.height];
         let build = move |size: Option<(f32, f32)>| -> AnyElement {
             let mut st = own.clone();
             for (k, v) in [
@@ -192,6 +193,7 @@ fn page_margin_boxes(
             probe,
             w,
             h,
+            intrinsic,
             margin,
         });
     }
