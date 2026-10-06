@@ -2053,6 +2053,7 @@ pub(crate) fn border_layer(c: &Computed) -> Option<(crate::value::Color, [f32; 4
 }
 
 fn apply_paint(mut d: Div, c: &Computed) -> Div {
+    d.style().css_border_snap = Some(true);
     // Смешивание больше не живёт на заливке: раньше блендер знал четыре
     // формулы и красил только фон узла, а CSS смешивает ВСЁ поддерево целиком.
     // Теперь оно считается при сборке буфера группы (см. `render::grouped`).
