@@ -9,6 +9,7 @@ mod content_wrapper;
 use content_wrapper::{content_sized, content_sized_wraps};
 mod orthogonal_inline;
 mod native_vertical;
+mod containment_paint;
 mod rotated_atom;
 mod physical_atomic;
 mod vertical_flow_margins;
@@ -9308,7 +9309,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     // Верхний слой: то, что обязано рисоваться поверх соседей, идёт последним
     // и возвращается на своё место замеренным сдвигом.
     out.extend(crate::interact::late_close());
-    out
+    containment_paint::collect(out, inherited)
 }
 
 /// `order`: визуальный порядок в гибкой строке.
