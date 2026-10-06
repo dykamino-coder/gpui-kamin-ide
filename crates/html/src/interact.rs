@@ -4085,7 +4085,11 @@ impl Element for ClampCut {
         // `SetLineClampEllipsisWidth`). Прежний набросок рисовал знак у
         // ПРАВОГО края коробки — мимо конца текста, мимо выключки и
         // мимо rtl.
-        let para = cut.filter(|_| self.limit.is_none()).and_then(|c| {
+        // Числовой предел, который `max-height` перехватил раньше N-й строки
+        // (`line-clamp: 4 auto` при `max-height: 3lh`), — та же точка
+        // обрыва, что в авто-режиме: §5.3 берёт ПЕРВУЮ из двух точек, и знак
+        // встаёт на последнюю строку перед ней (`line-clamp-041`).
+        let para = cut.filter(|_| !by_count).and_then(|c| {
             // Есть ли что резать. Как только бюджет применён, абзац УЖЕ
             // укорочен и сам за срез не выходит — признак защёлкивается
             // применённым бюджетом, иначе кадры зациклились бы:
@@ -4101,11 +4105,16 @@ impl Element for ClampCut {
             // числе когда точка стоит МЕЖДУ блоками и сам абзац видим
             // целиком. Абзацы в своём контексте форматирования
             // пропускаются: точкой среза их строки быть не могут.
+            // Последняя строка перед точкой — во ВЛОЖЕННОМ контексте
+            // форматирования (несчитаемая): знак не ставится вовсе, а не
+            // уходит на предыдущий считаемый абзац (css-overflow-4 §5.3:
+            // многоточие — на последней строке ПЕРЕД точкой среза в этом
+            // BFC; `line-clamp-auto-034/039`: «Line 4» без знака).
             entries
                 .iter()
-                .filter(|e| e.line > 0.0 && !e.skip_count)
+                .filter(|e| e.line > 0.0 && (e.skip_count || e.seq.is_some()))
                 .filter_map(|e| {
-                    let seq = e.seq?;
+                    let seq = if e.skip_count { None } else { e.seq };
                     let y0 = f32::from(e.bounds.origin.y);
                     let h = f32::from(e.bounds.size.height);
                     if h <= 0.0 {
@@ -4121,14 +4130,14 @@ impl Element for ClampCut {
                     (k >= 1).then_some((y0 + k as f32 * step, seq, k))
                 })
                 .max_by(|a, b| a.0.total_cmp(&b.0))
-                .map(|(_, seq, k)| (seq, k))
+                .and_then(|(_, seq, k)| seq.map(|s| (s, k)))
         });
         // Бюджет одного и того же абзаца только УЖИМАЕТСЯ: рост числа
         // строк на следующем кадре — это отражение нашей же правки, а не
         // новое измерение. Правило конечно (бюджет строго убывает и не
         // меньше единицы), поэтому кадр не может просить себя без конца.
         // Счётный режим несёт свой бюджет (см. выше); авто-режим — свой.
-        let para = if self.limit.is_some() { num_para } else { para };
+        let para = if by_count { num_para } else { para };
         let prev_para = clamp_para(self.key);
         let para = match (prev_para, para) {
             (Some((ps, pk)), Some((s, k))) if ps == s && k > pk => Some((ps, pk)),

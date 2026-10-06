@@ -125,6 +125,9 @@ pub struct Paragraph {
     /// блока, и строка-замена внутри `<span style="font-size:30px">`
     /// мерилась втрое шире нужного (`text-overflow-string-003…026`).
     marker_size: Option<Pixels>,
+    /// Цвет знака обрыва — цвет БЛОКА (css-overflow-4 §5.3: знак — анонимный
+    /// строчный ребёнок блока, а не куска у среза; `block-ellipsis-005`).
+    marker_color: Option<Hsla>,
     /// `text-fit`: подбор кегля под ширину коробки.
     fit: Option<crate::computed::TextFit>,
     /// Масштабируемые части подбора кегля (css-text-5 §text-fit): интервалы
@@ -585,6 +588,7 @@ impl Paragraph {
             overflow_marker: None,
             marker_font: None,
             marker_size: None,
+            marker_color: None,
             fit: None,
             fit_spacing_scalable: true,
             fit_line_height_fixed: false,
@@ -1505,6 +1509,12 @@ impl Paragraph {
         self.overflow_marker = mark;
         self.marker_font = font;
         self.marker_size = size;
+        self
+    }
+
+    /// Цвет знака обрыва — цвет блока.
+    pub fn marker_color(mut self, color: Option<Hsla>) -> Self {
+        self.marker_color = color;
         self
     }
 
@@ -4077,6 +4087,7 @@ impl Paragraph {
             overflow_marker: None,
             marker_font: None,
             marker_size: None,
+            marker_color: None,
             fit: self.fit,
             tab_stop: self.tab_stop.clone(),
             hyphen: self.hyphen.clone(),
@@ -4287,6 +4298,27 @@ impl Paragraph {
         // (`text-wrap-balance-line-clamp-002`: место под него при подборе
         // колонки считалось 8.8 точки вместо 35.2).
         run.font_size = None;
+        // Знак обрыва — анонимный строчный ребёнок САМОГО БЛОКА
+        // (css-overflow-4 §5.3 block-ellipsis: «wrapped in an anonymous
+        // inline whose parent is the block container»): шрифт, кегль и цвет —
+        // блочные, рамки и фона куска у среза у него нет. Эталоны:
+        // `block-ellipsis-005` (знак за `<span>` 1.5em bold italic — обычный
+        // teal блока), `webkit-line-clamp-031` (за жирным — нежирный).
+        if mark == ELLIPSIS
+            && self.overflow_marker.is_none()
+            && let Some(f) = self.marker_font.as_ref()
+        {
+            run.font = f.clone();
+            run.font_size = self.marker_size;
+            if let Some(c) = self.marker_color {
+                run.color = c;
+            }
+            run.background_color = None;
+            run.background_border = None;
+            run.background_pad = Default::default();
+            run.background_radius = px(0.);
+            return;
+        }
         if let (Some(m), Some(f)) = (self.overflow_marker.as_deref(), self.marker_font.as_ref())
             && mark == m
         {
@@ -4350,7 +4382,16 @@ impl Paragraph {
         let body = if suffix.is_empty() {
             body
         } else {
-            if let Some(last) = piece.last_mut() {
+            // Знак обрыва — свой прогон в стиле блока; знак переноса —
+            // часть слова и идёт стилем своего куска.
+            if suffix == ELLIPSIS && self.overflow_marker.is_none() && self.marker_font.is_some() {
+                if let Some(last) = piece.last() {
+                    let mut run = last.clone();
+                    run.len = suffix.len();
+                    self.style_marker_run(suffix, &mut run);
+                    piece.push(run);
+                }
+            } else if let Some(last) = piece.last_mut() {
                 last.len += suffix.len();
             }
             format!("{body}{suffix}")
