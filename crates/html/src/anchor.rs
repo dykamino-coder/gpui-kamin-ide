@@ -124,6 +124,34 @@ thread_local! {
     /// 0 — базовые стили, k — k-й элемент списка. Живёт между кадрами,
     /// чистится на сборке документа (`settle_static`).
     static CHOSEN: RefCell<HashMap<u64, usize>> = RefCell::new(HashMap::new());
+    /// This frame's build sized a box from the PREVIOUS frame's anchor
+    /// registry (`anchor-size()`, `position-area` cell percentages).
+    static USED_LAST: Cell<bool> = const { Cell::new(false) };
+    /// Extra frames requested for this document because those previous-frame
+    /// values changed (bounded, so an oscillating page cannot loop forever).
+    static REFRAMES: Cell<u32> = const { Cell::new(0) };
+}
+
+/// Sizes resolved before layout from the previous frame are only correct once
+/// the anchor geometry they read has settled; nothing else repaints a static
+/// page, so ask for one more frame while it is still changing.
+fn reframe_if_stale(window: &mut Window) {
+    if REFRAMES.with(|r| r.get()) < 8 {
+        REFRAMES.with(|r| r.set(r.get() + 1));
+        request_rebuild(window);
+    }
+}
+
+/// Rebuild the page on the next frame. Called from `prepaint`, where
+/// `window.refresh()` is ignored (GPUI drops invalidation while drawing), so the
+/// view is notified from a next-frame callback instead.
+fn request_rebuild(window: &mut Window) {
+    if let Some(view) = window.current_view_opt() {
+        window.on_next_frame(move |window, cx| {
+            cx.notify(view);
+            window.refresh();
+        });
+    }
 }
 
 /// Расходник кадра — чистится в `interact::frame_sanitize`. Реестры текущего
@@ -143,6 +171,7 @@ pub fn reset() {
     CELL_LAST.with(|m| *m.borrow_mut() = cell);
     SEQ.with(|s| s.set(0));
     TF_NEXT.with(|n| n.set(0));
+    USED_LAST.with(|u| u.set(false));
 }
 
 /// Порядковый номер сборки элемента в кадре: зовёт `render::element` в
@@ -322,6 +351,18 @@ pub fn probe_for(e: &crate::dom::Element, c: &Computed, hidden: bool) -> Option<
                 if implicit {
                     IMPLICIT.with(|m| m.borrow_mut().insert(id, rec));
                 }
+                if USED_LAST.with(|u| u.get()) {
+                    let same = |r: &AnchorRec| r.rect == rec.rect && r.rect_tf == rec.rect_tf;
+                    let stale = names.iter().any(|n| {
+                        !LAST_NAMED.with(|v| {
+                            v.borrow().iter().any(|(k, s, r)| k == n && *s == seq && same(r))
+                        })
+                    }) || (implicit
+                        && !LAST_IMPLICIT.with(|m| m.borrow().get(&id).is_some_and(|r| same(r))));
+                    if stale {
+                        reframe_if_stale(window);
+                    }
+                }
             },
             |_, _, _, _| {},
         )
@@ -374,6 +415,7 @@ pub fn settle_static(nodes: &mut [Node]) {
     // Новый документ: выбор `position-try` прошлого документа с теми же
     // `node_id` не должен пережить сборку.
     CHOSEN.with(|m| m.borrow_mut().clear());
+    REFRAMES.with(|r| r.set(0));
     let mut known = HashSet::new();
     names(nodes, &mut known);
     settle(nodes, &known);
@@ -1562,13 +1604,18 @@ impl Element for AnchorPlace {
         if plan.area.is_some() {
             AREA_NOW.with(|m| m.borrow_mut().insert(self.key, p.imcb));
             CELL_NOW.with(|m| m.borrow_mut().insert(self.key, p.cell));
+            let stale = AREA_LAST.with(|m| m.borrow().get(&self.key) != Some(&p.imcb))
+                || CELL_LAST.with(|m| m.borrow().get(&self.key) != Some(&p.cell));
+            if stale && USED_LAST.with(|u| u.get()) {
+                reframe_if_stale(window);
+            }
         }
         if self.plans.len() > 1 {
             let prev = CHOSEN.with(|m| m.borrow_mut().insert(self.key, k));
             // Объявления выбранного правила лягут в стиль на следующей
             // сборке (`apply_chosen`) — попросить её.
             if prev != Some(k) {
-                window.refresh();
+                request_rebuild(window);
             }
         }
         let mut hidden = false;
@@ -1696,6 +1743,7 @@ pub fn resolve_sizes(c: &mut Computed, inherited: &Computed) {
     let own_vertical = c.vertical == Some(true);
     let one = |l: Option<Len>, y_axis: bool| -> Option<Len> {
         let Some(Len::Anchor(i)) = l else { return l };
+        USED_LAST.with(|u| u.set(true));
         let mut f = anchor_get(i);
         for _ in 0..4 {
             let Some(cur) = f.take() else { break };
@@ -1746,6 +1794,7 @@ pub fn resolve_sizes(c: &mut Computed, inherited: &Computed) {
         && default_anchor.is_some()
         && let Some((cw, ch)) = CELL_LAST.with(|m| m.borrow().get(&c.anchor_key).copied())
     {
+        USED_LAST.with(|u| u.set(true));
         let of = |l: Option<Len>, base: f32| match l {
             Some(Len::Pct(p)) => Some(Len::Px(p * base)),
             other => other,
@@ -1774,6 +1823,9 @@ pub fn resolve_sizes(c: &mut Computed, inherited: &Computed) {
     c.max_height = one(c.max_height, true);
     if c.position_area.is_none() || default_anchor.is_none() {
         return;
+    }
+    if c.align_self == Some(Align::Stretch) || c.justify_self == Some(Align::Stretch) {
+        USED_LAST.with(|u| u.set(true));
     }
     let Some((w, h)) = AREA_LAST.with(|m| m.borrow().get(&c.anchor_key).copied()) else {
         return;
