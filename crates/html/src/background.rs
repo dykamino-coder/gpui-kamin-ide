@@ -13,6 +13,8 @@
 use crate::computed::{BgPos, BgRepeat, BgSize, Computed, Tiling};
 use crate::value::Len;
 mod sampling;
+mod sources;
+pub use sources::{key, key_exif, source};
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, RenderImage, Styled, px};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -1406,81 +1408,6 @@ pub fn rasterize_ellipse_px(
     gpui::bgra_bytes_to_image(w, h, bytes)
 }
 
-/// Ключ источника с учётом `image-orientation` (css-images-3 §5.4).
-///
-/// Разворот по EXIF — часть САМОЙ картинки: после него у неё другой природный
-/// размер, и кэш обязан различать развёрнутый растр и сырой. Отдельного
-/// параметра у `source` нет намеренно: кэш ключуется строкой, и приставка
-/// ключа дешевле, чем переписывание тринадцати мест вызова.
-pub fn key_exif(src: &str, c: &crate::computed::Computed) -> String {
-    if c.image_orient_none == Some(true) {
-        format!("exif-none|{src}")
-    } else {
-        src.to_string()
-    }
-}
-
-pub fn key(src: &str, c: &crate::computed::Computed) -> String {
-    key_exif(src, c)
-}
-
-/// Разобрать ссылку в источник картинки; результат запоминается.
-pub fn source(src: &str) -> Option<Source> {
-    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Ok(map) = cache.lock()
-        && let Some(hit) = map.get(src)
-    {
-        return hit.clone();
-    }
-    // Приставка снимается ДО чтения файла: читать надо настоящий адрес.
-    let (orient, src_plain) = match src.strip_prefix("exif-none|") {
-        Some(rest) => (false, rest),
-        None => (true, src),
-    };
-    let found = if let Some(shape) = src_plain.strip_prefix("shape:") {
-        Some(Source::Shape {
-            raw: shape.to_string(),
-        })
-    } else if src.starts_with("linear-gradient(")
-        || src.starts_with("radial-gradient(")
-        || src.starts_with("conic-gradient(")
-        // Повторяющиеся градиенты — те же записи (css-images-3 §4):
-        // растеризатор ниже их понимает, а опознание пропускало
-        // (`shape-outside-linear-gradient-004`).
-        || src.starts_with("repeating-linear-gradient(")
-        || src.starts_with("repeating-radial-gradient(")
-        || src.starts_with("repeating-conic-gradient(")
-        || src.starts_with("cross-fade(")
-    {
-        Some(Source::Gradient {
-            raw: src.to_string(),
-        })
-    } else {
-        // Фрагмент адреса рисунка — его `<view>` (SVG 2 §8.2 «Linking into
-        // SVG content»: `file.svg#id` показывает вид с тем `viewBox`): без
-        // разбора путь с `#` не читался вовсе, и фон пропадал
-        // (`background-size-cover-svg-view`, `-contain-svg-view`).
-        let (path, view) = match src_plain.split_once('#') {
-            Some((p, f)) if !src_plain.starts_with("data:") => (p, Some(f)),
-            _ => (src_plain, None),
-        };
-        read_bytes(path)
-            .map(|b| match view {
-                Some(id) => svg_view(b, id),
-                None => b,
-            })
-            .as_deref()
-            .and_then(|b| decode(b, orient))
-    };
-    if let Ok(mut map) = cache.lock() {
-        if map.len() >= CACHE_CAP {
-            map.clear();
-        }
-        map.insert(src.to_string(), found.clone());
-    }
-    found
-}
-
 // --- Общий путь формы обтекания (css-shapes-1 §3, §shape-margin) ---------
 //
 // Форма растрируется альфа-маской в холст margin-box (1 пиксель = 1 точка,
@@ -2191,6 +2118,9 @@ fn rasterize_cross_fade(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
 }
 
 fn rasterize_gradient(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
+    if crate::computed::parse_image_color(src).is_some() {
+        return sources::raster_color(src, w, h);
+    }
     if src.starts_with("cross-fade(") {
         return rasterize_cross_fade(src, w, h);
     }

@@ -6,6 +6,8 @@
 //! поддержано, поля нет — свойство игнорируется осознанно, а не потеряно.
 
 mod font_kerning;
+mod image_color;
+pub(crate) use image_color::parse as parse_image_color;
 pub(crate) mod orthogonal;
 mod tab_size;
 
@@ -5385,7 +5387,12 @@ impl Computed {
                 // эталоны `image-set-*-gradient-rendering-ref` выходили
                 // ПУСТЫМИ и сходились с пустым же тестом.
                 let v = top;
-                if gradient_as_raster(v) {
+                if let Some(image) = split_outside_parens(v)
+                    .iter()
+                    .find(|t| parse_image_color(t).is_some())
+                {
+                    self.apply_one("background-image", image);
+                } else if gradient_as_raster(v) {
                     self.bg_image = Some(v.to_string());
                 } else if let Some(url) = parse_url(v) {
                     self.bg_image = Some(url);
@@ -6623,32 +6630,21 @@ impl Computed {
                     // из одного цвета.
                     let inner = rest.rfind(')').map(|i| &rest[..i]).unwrap_or(rest);
                     let mut url = None;
-                    let mut color = None;
                     for part in crate::css::split_args(inner) {
                         let part = part.trim();
                         if let Some(u) = parse_url(part) {
                             url = Some(u);
-                        } else if let Some(c) = Color::parse(part.trim_matches(is_quote)) {
-                            color = Some(c);
                         }
                     }
-                    match (url, color) {
-                        (Some(u), _) => self.bg_image = Some(u),
-                        (None, Some(c)) => {
-                            self.gradient = Some(solid_gradient(c));
-                            // Картинка цвета без природных размеров (css-images-4
-                            // §2.2) — ей положена механика плитки: размер,
-                            // положение, повтор и цвет фона ПОД ней. Без сырой
-                            // записи заливка шла на всю коробку, а
-                            // `background-color` её перебивал.
-                            let css = format!(
-                                "rgba({}, {}, {}, {})",
-                                (c.r * 255.0).round(),
-                                (c.g * 255.0).round(),
-                                (c.b * 255.0).round(),
-                                c.a
-                            );
-                            self.gradient_raw = Some(format!("linear-gradient({css}, {css})"));
+                    match url {
+                        Some(u) => self.bg_image = Some(u),
+                        None if parse_image_color(v).is_some() => {
+                            // A color image has no natural dimensions (CSS Images 4
+                            // §2.3). Keep it in the image layer, including currentColor
+                            // until the element's text color has been resolved.
+                            self.bg_image = Some(v.to_string());
+                            self.gradient = None;
+                            self.gradient_raw = None;
                         }
                         _ => {}
                     }
@@ -10375,7 +10371,8 @@ fn background_shorthand_valid(v: &str) -> bool {
                 | "bottom"
                 | "center"
         ) || Len::parse(t).is_some()
-            || Color::parse(t).is_some();
+            || Color::parse(t).is_some()
+            || parse_image_color(t).is_some();
         if !known {
             return false;
         }
@@ -12886,20 +12883,6 @@ fn outline_width_of(v: &str) -> Option<Len> {
         "medium" => Some(Len::Px(3.0)),
         "thick" => Some(Len::Px(5.0)),
         _ => Len::parse(v).filter(|l| !matches!(l, Len::Pct(_))),
-    }
-}
-
-/// Присвоить размер коробки: отрицательная длина делает объявление
-/// НЕВАЛИДНЫМ, и слот не трогается вовсе (§10) — повторное свойство
-/// `width: 0; width: -1px` обязано оставить нуль от первой записи, а
-/// сброс в None делал ширину авто и красил красное (width-001 и родня).
-/// Сплошная заливка как градиент из одного цвета (image()/cross-fade()).
-fn solid_gradient(c: Color) -> Gradient {
-    Gradient {
-        angle_deg: 180.0,
-        from: c,
-        to: c,
-        ..Default::default()
     }
 }
 
