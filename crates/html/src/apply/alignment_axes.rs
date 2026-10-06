@@ -2,6 +2,22 @@
 //! A vertical container exchanges items/content; a vertical parent exchanges
 //! the child's self alignment independently of the child's own writing mode.
 
+pub(super) fn abspos_normal(style: &mut gpui::StyleRefinement, c: &crate::computed::Computed) {
+    use crate::computed::Position;
+    if !matches!(c.position, Some(Position::Absolute | Position::Fixed)) {
+        return;
+    }
+    // CSS Align 3 §align-abspos/justify-abspos: normal is start when
+    // determining the static position. Unlike auto, it does not inherit items.
+    // Native abspos sizing handles stretching between two definite insets.
+    if c.align_self_normal {
+        style.align_self = Some(gpui::AlignSelf::Start);
+    }
+    if c.justify_self_normal {
+        style.justify_self = Some(gpui::AlignSelf::Start);
+    }
+}
+
 pub(super) fn project(style: &mut gpui::StyleRefinement, container: bool, parent: bool) {
     if container {
         std::mem::swap(&mut style.align_items, &mut style.justify_items);

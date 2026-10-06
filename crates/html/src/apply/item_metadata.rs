@@ -67,6 +67,7 @@ pub(crate) fn project_wrapper(style: &mut gpui::StyleRefinement, c: &Computed) {
         style.safe_alignment = Some((false, c.align_self_safe, false, false));
         style.safe_justify_alignment = Some((false, c.justify_self_safe));
     }
+    super::alignment_axes::abspos_normal(style, c);
     super::alignment_axes::project(style, false, grid_mode(c) >= 2);
 }
 

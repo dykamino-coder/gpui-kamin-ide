@@ -2039,6 +2039,8 @@ pub struct Computed {
     /// `dom::lanes_as_grid`.
     pub lanes_taffy: bool,
     pub justify_self: Option<Align>,
+    /// Explicit normal must not take the parent's justify-items value.
+    pub justify_self_normal: bool,
 
     pub grid_rows: Option<Vec<TrackSize>>,
     pub grid_auto_cols: Option<TrackSize>,
@@ -6147,6 +6149,7 @@ impl Computed {
             }
             "justify-self" => {
                 self.justify_self = parse_align(v);
+                self.justify_self_normal = v.trim() == "normal";
                 self.justify_self_safe = is_safe(v);
                 self.justify_self_own_axis = matches!(
                     v.split_whitespace().last(),

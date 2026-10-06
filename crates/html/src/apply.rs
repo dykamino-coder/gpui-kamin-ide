@@ -1025,6 +1025,7 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     if let Some(a) = c.justify_self {
         d.style().justify_self = Some(self_align(a, c.justify_self_last));
     }
+    alignment_axes::abspos_normal(d.style(), c);
     alignment_axes::project(d.style(), real_grid && c.vertical == Some(true), c.parent_grid >= 2);
     // Биты базовой по оси x для элемента сетки (css-align-3 §9.1; Blink
     // baseline_utils.h `DetermineBaselineWritingMode`/`DetermineBaselineGroup`):
