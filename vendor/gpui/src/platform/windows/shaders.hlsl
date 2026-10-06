@@ -1535,9 +1535,18 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
     // один в один, матрица, маска скруглений и прозрачность элемента (pad).
     // Стоит ДО ветки групп (blur_pass > 2.5).
     if (q.blur_pass > 3.5) {
-        float4 o = backdrop_matrix(q, t_sprite.Sample(s_sprite, input.uv));
+        float4 backdrop = t_sprite.Sample(s_sprite, input.uv);
+        float4 o = backdrop_matrix(q, backdrop);
         float distance = quad_sdf(input.position.xy, q.bounds, q.corner_radii);
-        return float4(o.rgb, o.a * saturate(0.5 - distance) * q.pad);
+        float alpha = o.a * saturate(0.5 - distance) * q.pad;
+        if (backdrop.a == 1.0) {
+            // Compositing 1 §5.1: source-over onto an opaque backdrop is a
+            // weighted sum with opaque output. D3D11 §17.5 permits UNORM
+            // blend precision; compute in float to avoid weighting colors
+            // with quantized alpha (0.5 becomes 128/255).
+            return float4(lerp(backdrop.rgb, o.rgb, alpha), 1.0);
+        }
+        return float4(o.rgb, alpha);
     }
     // KaminIDE patch: композит буфера группы. Картинка уже готова — её
     // нельзя размазывать, поэтому выборка одна, а маска скруглений и
