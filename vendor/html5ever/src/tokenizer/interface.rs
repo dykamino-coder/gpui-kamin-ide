@@ -9,10 +9,10 @@
 
 use markup5ever::ns;
 
+use crate::LocalName;
 use crate::interface::Attribute;
 use crate::tendril::StrTendril;
 use crate::tokenizer::states;
-use crate::LocalName;
 use std::borrow::Cow;
 
 pub use self::TagKind::{EndTag, StartTag};

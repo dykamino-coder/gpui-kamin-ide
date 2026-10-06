@@ -1600,7 +1600,7 @@ fn own_containing_block(c: &Computed) -> bool {
 /// разбора этих трёх корней.
 fn collect_style_tags(handle: &Handle, out: &mut Vec<String>) {
     if let NodeData::Element { name, .. } = &handle.data
-        && name.local.as_ref() == "style"
+        && &*name.local == "style"
     {
         let mut sheet = String::new();
         for child in handle.children.borrow().iter() {
@@ -1778,7 +1778,7 @@ fn attr_of(handle: &Handle, key: &str) -> Option<String> {
     attrs
         .borrow()
         .iter()
-        .find(|a| a.name.local.as_ref() == key)
+        .find(|a| &*a.name.local == key)
         .map(|a| a.value.to_string())
 }
 
@@ -2587,7 +2587,7 @@ pub(crate) fn ancestor_of(child: &Handle, spot: Spot) -> Option<Ancestor> {
     let find = |key: &str| {
         attrs
             .iter()
-            .find(|a| a.name.local.as_ref() == key)
+            .find(|a| &*a.name.local == key)
             .map(|a| a.value.to_string())
     };
     Some(Ancestor {

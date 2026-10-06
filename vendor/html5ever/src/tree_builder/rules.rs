@@ -9,16 +9,16 @@
 
 // The tree builder rules, as a single, enormous nested match expression.
 
+use crate::QualName;
 use crate::encoding::extract_a_character_encoding_from_a_meta_element;
 use crate::interface::Quirks;
-use crate::tokenizer::states::{Rawtext, Rcdata, ScriptData};
 use crate::tokenizer::TagKind::{EndTag, StartTag};
+use crate::tokenizer::states::{Rawtext, Rcdata, ScriptData};
 use crate::tree_builder::tag_sets::*;
 use crate::tree_builder::types::*;
 use crate::tree_builder::{
-    html_elem, ElemName, NodeOrText::AppendNode, StrTendril, Tag, TreeBuilder, TreeSink,
+    ElemName, NodeOrText::AppendNode, StrTendril, Tag, TreeBuilder, TreeSink, html_elem,
 };
-use crate::QualName;
 use markup5ever::interface::tree_builder::create_element_with_flags;
 use markup5ever::{expanded_name, local_name, ns};
 use std::borrow::Cow::Borrowed;

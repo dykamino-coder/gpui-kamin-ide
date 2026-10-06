@@ -96,7 +96,7 @@ fn scan_style(
     let inline_decls: Decls = attrs
         .borrow()
         .iter()
-        .find(|a| a.name.local.as_ref() == "style")
+        .find(|a| &*a.name.local == "style")
         .map(|a| crate::css::parse_decls(&a.value))
         .unwrap_or_default();
     let mut matched: Vec<&Rule> = rules
