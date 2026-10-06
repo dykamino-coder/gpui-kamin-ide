@@ -25,9 +25,19 @@ pub(crate) fn keywords(style: &Computed) -> [Option<CssSizingKeyword>; 2] {
         }),
         _ => None,
     };
+    // CSS Containment 2 §3.1: apply_box already supplied the empty-box
+    // intrinsic size. Native keywords must not measure the real children again.
     [
-        keyword(style.width, style.fit_arg[0]),
-        keyword(style.height, None),
+        if style.contains_width() {
+            None
+        } else {
+            keyword(style.width, style.fit_arg[0])
+        },
+        if style.contains_height() {
+            None
+        } else {
+            keyword(style.height, None)
+        },
     ]
 }
 
