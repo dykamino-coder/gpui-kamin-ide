@@ -1,6 +1,6 @@
 //! Implements the track sizing algorithm
 //! <https://www.w3.org/TR/css-grid-1/#layout-algorithm>
-use super::types::{GridItem, GridTrack, TrackCounts};
+use super::types::{GridItem, GridTrack, GridTrackKind, TrackCounts};
 use crate::geometry::{AbstractAxis, Line, Size};
 use crate::style::{AlignContent, AlignContentKeyword, AlignItemsKeyword, AvailableSpace};
 use super::baseline_x::resolve_item_baselines_x;
@@ -487,6 +487,17 @@ fn initialize_track_sizes(
     axis_inner_node_size: Option<f32>,
 ) {
     for track in axis_tracks.iter_mut() {
+        // CSS Gaps 1 gap-percent: only the percentage part of a cyclic gap
+        // resolves against zero for intrinsic sizing. An ordinary track still
+        // follows the grid algorithm's indefinite-percentage rules below.
+        if track.kind == GridTrackKind::Gutter {
+            let gap = track.min_track_sizing_function
+                .definite_value(Some(axis_inner_node_size.unwrap_or(0.0)), |val, basis| tree.calc(val, basis))
+                .unwrap_or(0.0).max(0.0);
+            track.base_size = gap;
+            track.growth_limit = gap;
+            continue;
+        }
         // For each track, if the track’s min track sizing function is:
         // - A fixed sizing function
         //     Resolve to an absolute length and use that size as the track’s initial base size.

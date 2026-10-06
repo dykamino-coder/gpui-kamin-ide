@@ -1069,6 +1069,9 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
                 left: grid_area_left,
                 right: grid_area_right,
             };
+            // CSS Align 3 baseline-values: abspos has no sharing group, but its
+            // safe self-start/self-end fallback still follows the item's writing mode.
+            let baseline_x_end = child_style.baseline_x_flags() & 1 != 0;
             drop(child_style);
 
             // TODO: Baseline alignment support for absolutely positioned items (should check if is actually specified)
@@ -1080,7 +1083,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
                 grid_area,
                 container_alignment_styles,
                 Rect::ZERO,
-                false,
+                baseline_x_end,
                 0,
                 direction,
                 container_border_box.width,

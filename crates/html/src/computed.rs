@@ -2014,6 +2014,8 @@ pub struct Computed {
     /// `justify-self: self-start`/`self-end` — по письму САМОГО элемента, как
     /// `align_self_own_axis` (`align-self-static-position-006`).
     pub justify_self_own_axis: bool,
+    /// Preserve line-left/line-right separately from flow-relative start/end.
+    pub justify_self_physical: Option<bool>,
     /// `last baseline`: запасное выравнивание — `end`, а не `start`
     /// (css-align-3 §9.3; `align-self-static-position-008`,
     /// `justify-self-static-position-001`). `Align::Baseline` его не различает.
@@ -2063,6 +2065,8 @@ pub struct Computed {
     /// `dom::lanes_as_grid`.
     pub lanes_taffy: bool,
     pub justify_self: Option<Align>,
+    /// Explicit normal must not take the parent's justify-items value.
+    pub justify_self_normal: bool,
 
     pub grid_rows: Option<Vec<TrackSize>>,
     pub grid_auto_cols: Option<TrackSize>,
@@ -6209,6 +6213,12 @@ impl Computed {
             }
             "justify-self" => {
                 self.justify_self = parse_align(v);
+                self.justify_self_physical = match v.split_whitespace().last() {
+                    Some("left") => Some(false),
+                    Some("right") => Some(true),
+                    _ => None,
+                };
+                self.justify_self_normal = v.trim() == "normal";
                 self.justify_self_safe = is_safe(v);
                 self.justify_self_own_axis = matches!(
                     v.split_whitespace().last(),
@@ -12356,16 +12366,11 @@ fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
     (!out.is_empty()).then_some(out)
 }
 
-/// Разбить список дорожек по пробелам, не заходя внутрь скобок.
-/// ЗАМЕРЕНО И ОТКАЧЕНО: считать квадратную скобку так же, как круглую, чтобы
-/// многоимённая группа `[a b] 50px` не разрывалась по пробелу. Разрыв правда
-/// роняет ВЕСЬ список дорожек (`one(&token)?` на куске `[a`), но полный свод
-/// CSS3 дал приобретено 0, потеряно 1 —
-/// `grid-auto-repeat-multiple-values-005` 0.00 -> 3.60. Проверено по частям:
-/// счёт дорожек ни при чём, весь итог даёт сама группировка. Возвращаться
-/// вместе с настоящими именами линий (план — `target/scout-linenames.md`).
+/// CSS Grid 2 §7.2.2: a bracketed line-name group is one component, even
+/// with multiple names or without whitespace before the adjacent track.
+/// Use the same boundaries for sizes and names so their positions agree.
 fn tokenize_tracks(v: &str) -> Vec<String> {
-    split_outside_parens(v)
+    line_name_tokens(v)
 }
 
 /// Число колонок в `grid-template-columns`: и `repeat(3, 1fr)`, и `1fr 1fr`.

@@ -1027,6 +1027,8 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     if let Some(a) = c.justify_self {
         d.style().justify_self = Some(self_align(a, c.justify_self_last));
     }
+    alignment_axes::abspos_normal(d.style(), c);
+    alignment_axes::grid_self(d.style(), c);
     alignment_axes::project(d.style(), real_grid && c.vertical == Some(true), c.parent_grid >= 2);
     // Биты базовой по оси x для элемента сетки (css-align-3 §9.1; Blink
     // baseline_utils.h `DetermineBaselineWritingMode`/`DetermineBaselineGroup`):
@@ -1073,6 +1075,12 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         let basis_y = content(c.height, [c.padding.top, c.padding.bottom, edges.top, edges.bottom]);
         let basis_x = content(c.width, [c.padding.left, c.padding.right, edges.left, edges.right]);
         let gap_len = |l: Len, basis: Option<f32>| -> Option<gpui::DefiniteLength> {
+            // CSS Gaps 1 gap-percent: grid intrinsic sizing uses a zero
+            // percentage basis, then layout resolves against the content box.
+            // Preserve calc's constant term and percentage for those two phases.
+            if real_grid && basis.is_none() {
+                return Some(len_to_gpui(l));
+            }
             if let Len::Calc(i) = l
                 && let Some((k, add)) = crate::value::calc_get(i).pct_px()
             {

@@ -7,6 +7,7 @@
 //! ничего не рисуют.
 
 mod subgrid_axes;
+mod grid_static_position;
 
 use crate::computed::{Computed, Display, Position};
 use crate::css::{
@@ -447,7 +448,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     // подсетки: дальше они идут тем же кодом, что и сетка.
     lanes_as_grid(&mut out);
     hoist_grid_abspos(&mut out);
-    content_box_static_position(&mut out);
+    grid_static_position::adjust(&mut out);
     flex_items_lose_float(&mut out);
     align_self_from_dom_parent(&mut out, None);
     grid_table_items_keep_stretch(&mut out);
@@ -1328,56 +1329,6 @@ fn grid_table_items_keep_stretch(nodes: &mut [Node]) {
     }
 }
 
-/// Абсолютный ребёнок СЕТКИ без заданных краёв стоит
-/// на статической позиции, а она отсчитывается от СОДЕРЖИМОГО контейнера
-/// (css-grid-2 §9.1, css-flexbox-1 §4.1), тогда как раскладка под нами кладёт
-/// такого ребёнка в коробку ПОЛЕЙ. Разницу забирает поле элемента: при
-/// выравнивании к началу оно даёт левый отступ, к концу — правый, по центру —
-/// сдвиг на половину разницы, при растяжении — обе стороны сразу.
-fn content_box_static_position(nodes: &mut [Node]) {
-    for node in nodes.iter_mut() {
-        let Node::Element(el) = node else { continue };
-        content_box_static_position(&mut el.children);
-        // Гибкий контейнер сюда не входит: taffy (`flexbox.rs`,
-        // `perform_absolute_layout_on_absolute_children`) сам отсчитывает
-        // статическую позицию от `content_box_inset` (css-flexbox-1 §4.1), и
-        // добавочное поле удваивало отбивку контейнера
-        // (`flex-abspos-staticpos-margin-001`: коробка на отбивку правее и ниже).
-        if !matches!(
-            el.style.display,
-            Some(Display::Grid) | Some(Display::InlineGrid)
-        ) {
-            continue;
-        }
-        let pad = el.style.padding;
-        for child in el.children.iter_mut() {
-            let Node::Element(child) = child else {
-                continue;
-            };
-            if child.style.position != Some(Position::Absolute) {
-                continue;
-            }
-            // Элемент с заданными линиями стоит не на статической позиции, а в
-            // СВОЕЙ области сетки — поля туда добавлять нечего.
-            if child.style.grid_col.is_some() || child.style.grid_row.is_some() {
-                continue;
-            }
-            // `left: auto` — это ОТСУТСТВИЕ края, а не заданный край: именно
-            // при `auto` с обеих сторон элемент стоит на статической позиции.
-            let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
-            let inset = child.style.inset;
-            if auto(inset.left) && auto(inset.right) {
-                child.style.margin.left = add_len(child.style.margin.left, pad.left);
-                child.style.margin.right = add_len(child.style.margin.right, pad.right);
-            }
-            if auto(inset.top) && auto(inset.bottom) {
-                child.style.margin.top = add_len(child.style.margin.top, pad.top);
-                child.style.margin.bottom = add_len(child.style.margin.bottom, pad.bottom);
-            }
-        }
-    }
-}
-
 /// Сумма двух длин. Складываются только точки: смешивать доли и кегли здесь
 /// не с чем — контейнера в этот момент нет.
 /// Руби-роль коробки (css-ruby-1 §2.1): своё `display: ruby*`, иначе тег
@@ -1453,14 +1404,6 @@ fn wrap_misparented_ruby(children: Vec<Node>) -> Vec<Node> {
     flush(&mut run, &mut out);
     out.append(&mut pending);
     out
-}
-
-fn add_len(a: Option<Len>, b: Option<Len>) -> Option<Len> {
-    match (a, b) {
-        (Some(Len::Px(x)), Some(Len::Px(y))) => Some(Len::Px(x + y)),
-        (None, b) => b,
-        (a, _) => a,
-    }
 }
 
 /// Абсолютный ПОТОМОК сетки размещается по её линиям, а не по статической
