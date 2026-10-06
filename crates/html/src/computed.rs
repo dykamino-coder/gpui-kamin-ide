@@ -7,6 +7,7 @@
 
 mod font_kerning;
 mod mask_size;
+mod mask_shorthand;
 pub(crate) mod orthogonal;
 mod tab_size;
 
@@ -9214,13 +9215,14 @@ impl Computed {
             }
             "user-select" | "-webkit-user-select" => self.no_select = Some(matches!(v, "none")),
             "clip-path" | "mask" | "mask-image" => {
+                if key == "mask" && mask_shorthand::apply(self, v) {
+                    return;
+                }
                 // Маска-ИЗОБРАЖЕНИЕ (url/градиент): источник хранится строкой,
                 // растрируется при сборке группы, альфа умножается в композите
                 // буфера (css-masking §7.1; mask-image-1a).
                 if key != "clip-path" {
-                    if v.contains("-gradient(") {
-                        self.mask_image = Some(v.trim().to_string());
-                    } else if v.contains("url(") {
+                    if v.contains("-gradient(") || v.contains("url(") {
                         // Слоёв может быть несколько (`url(a), url(b)`) —
                         // строка хранится ЦЕЛИКОМ, разбор при отрисовке.
                         self.mask_image = Some(v.trim().to_string());

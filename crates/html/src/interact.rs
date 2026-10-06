@@ -925,7 +925,7 @@ impl Element for Grouped {
                             // сваливал оба слоя в (0,0) (mask-position-5).
                             let (ox, oy) = pos_of(i, tw, th);
                             (
-                                source.raster((tw, th))?,
+                                source.mask_raster((tw, th), sf)?,
                                 [ox * sf, oy * sf, tw * sf, th * sf],
                                 false,
                             )
@@ -1040,7 +1040,7 @@ impl Element for Grouped {
                         // чёткость даёт плотность растеризатора).
                         // Плитка в CSS-точках; рисунок масштабирует
                         // with_viewport (viewBox из своих размеров).
-                        _ => source.raster((tw, th))?,
+                        _ => source.mask_raster((tw, th), sf)?,
                     };
                     (img, tw, th)
                 }

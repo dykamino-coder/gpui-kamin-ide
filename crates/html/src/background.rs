@@ -13,6 +13,7 @@
 use crate::computed::{BgPos, BgRepeat, BgSize, Computed, Tiling};
 use crate::value::Len;
 mod sampling;
+mod gradient_raster;
 mod svg_fragment;
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, RenderImage, Styled, px};
 use std::collections::HashMap;
@@ -83,6 +84,21 @@ pub enum Source {
 }
 
 impl Source {
+    pub(crate) fn mask_raster(&self, tile: (f32, f32), scale: f32) -> Option<Arc<RenderImage>> {
+        if let Source::Gradient { raw } = self
+            && !raw.starts_with("cross-fade(")
+        {
+            // CSS Masking section 7.8 uses CSS image sizing, but coverage is sampled
+            // at device pixel centres. Avoid resizing a CSS-resolution alpha
+            // bitmap across sharp stops at fractional window scales.
+            let css = (tile.0.clamp(1.0, 2048.0), tile.1.clamp(1.0, 2048.0));
+            let w = (css.0 * scale).round().clamp(1.0, 4096.0) as u32;
+            let h = (css.1 * scale).round().clamp(1.0, 4096.0) as u32;
+            return gradient_raster::raster(raw, w, h, css, true);
+        }
+        self.raster(tile)
+    }
+
     /// Своя величина картинки.
     pub fn intrinsic(&self) -> Intrinsic {
         match self {
@@ -2192,125 +2208,7 @@ fn rasterize_cross_fade(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
 }
 
 fn rasterize_gradient(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
-    if src.starts_with("cross-fade(") {
-        return rasterize_cross_fade(src, w, h);
-    }
-    enum Mode {
-        /// Ход цвета вдоль оси под углом.
-        Axis { dx: f32, dy: f32 },
-        /// Оборот вокруг середины от верха по часовой (css-images-4 §2.3).
-        Sweep { from: f32 },
-    }
-    // Повторение — не отдельная запись, а замощение узора стопов вдоль линии
-    // (css-images-3 §3.6): приставка снимается здесь, а доля точки
-    // заворачивается по диапазону стопов ниже.
-    // Повторение — не отдельная запись, а замощение узора стопов вдоль линии
-    // (css-images-3 §3.6): приставка снимается здесь, а доля точки
-    // заворачивается по диапазону стопов ниже.
-    let repeating = src.starts_with("repeating-");
-    let src = src.strip_prefix("repeating-").unwrap_or(src);
-    let (mode, stops, space, hue) = if let Some(inner) = src
-        .strip_prefix("conic-gradient(")
-        .and_then(|t| t.strip_suffix(')'))
-    {
-        let parts = crate::css::split_args(inner);
-        let mut idx = 0usize;
-        let mut from = 0.0f32;
-        if let Some(first) = parts.first().map(|f| f.trim())
-            && (first.starts_with("from ") || first.starts_with("at "))
-        {
-            idx = 1;
-            if let Some(a) = first.strip_prefix("from ") {
-                from = angle_fraction(a.split_whitespace().next().unwrap_or("")).unwrap_or(0.0);
-            }
-        }
-        // Стоп: цвет и до двух позиций-углов; две позиции — это ДВА стопа
-        // одного цвета. Цвет с запятыми внутри (`rgba(…)`) остаётся одним
-        // словом только при резке вне скобок.
-        let mut raw: Vec<(crate::value::Color, Option<f32>)> = vec![];
-        for part in &parts[idx..] {
-            let words = crate::computed::split_outside_parens(part);
-            let Some(colour) = words.first().and_then(|w| crate::value::Color::parse(w)) else {
-                continue;
-            };
-            let angles: Vec<f32> = words[1..]
-                .iter()
-                .filter_map(|w| angle_fraction(w))
-                .collect();
-            if angles.is_empty() {
-                raw.push((colour, None));
-            }
-            for a in angles {
-                raw.push((colour, Some(a)));
-            }
-        }
-        if raw.is_empty() {
-            return None;
-        }
-        // Разбор конического живёт здесь и суффикс `in <space>` пока не
-        // читает: смешение остаётся в гамма-sRGB, как было.
-        (
-            Mode::Sweep { from },
-            place_stops(raw),
-            crate::computed::GradSpace::Srgb,
-            0u8,
-        )
-    } else {
-        let g = crate::computed::parse_gradient(src)?;
-        let angle = g.angle_deg.to_radians();
-        let (dx, dy) = (angle.sin(), -angle.cos());
-        // Смешанные позиции (точки + доли): точки переводятся в доли ТУТ —
-        // длина градиентной линии известна только по размеру плитки
-        // (css-images-3 §3.4.1: проекция коробки на ось).
-        let stops = if g.stops_raw.iter().any(|(_, _, p)| p.is_some()) {
-            let axis = (w as f32 * dx).abs() + (h as f32 * dy).abs();
-            // Доля и точки у ОДНОГО стопа складываются: `calc(100% - 10px)`
-            // приехал парой (1.0, −10) — css-values-4 §10.9, доля стопа
-            // решается только по длине оси. У стопов из `%` либо из точек
-            // вторая половина пуста, и `or` даёт прежний результат.
-            let raw: Vec<(crate::value::Color, Option<f32>)> = g
-                .stops_raw
-                .iter()
-                .map(|(c, f, p)| {
-                    let px = p.map(|v| if axis > 0.0 { v / axis } else { 0.0 });
-                    let at = match (f, px) {
-                        (Some(f), Some(px)) => Some(f + px),
-                        (f, px) => f.or(px),
-                    };
-                    (*c, at)
-                })
-                .collect();
-            place_stops(raw)
-        } else {
-            g.stops.clone()
-        };
-        (Mode::Axis { dx, dy }, stops, g.space, g.hue)
-    };
-
-    let mut bytes = Vec::with_capacity((w * h * 4) as usize);
-    for y in 0..h {
-        for x in 0..w {
-            let (fx, fy) = (
-                x as f32 / (w.max(2) - 1) as f32 - 0.5,
-                y as f32 / (h.max(2) - 1) as f32 - 0.5,
-            );
-            let t = match mode {
-                Mode::Axis { dx, dy } => (fx * dx + fy * dy + 0.5).clamp(0.0, 1.0),
-                Mode::Sweep { from } => {
-                    let turn = fx.atan2(-fy) / std::f32::consts::TAU;
-                    (turn - from).rem_euclid(1.0)
-                }
-            };
-            let t = if repeating { wrap_repeat(t, &stops) } else { t };
-            let colour = colour_at(&stops, t, space, hue);
-            // Порядок BGRA, премультипликация по прозрачности.
-            bytes.push((colour.b * colour.a * 255.0) as u8);
-            bytes.push((colour.g * colour.a * 255.0) as u8);
-            bytes.push((colour.r * colour.a * 255.0) as u8);
-            bytes.push((colour.a * 255.0) as u8);
-        }
-    }
-    gpui::bgra_bytes_to_image(w, h, bytes)
+    gradient_raster::raster(src, w, h, (w as f32, h as f32), false)
 }
 
 /// Угол позиции стопа в долях оборота: `90deg`, `25%`, `0.25turn`, голый `0`.
