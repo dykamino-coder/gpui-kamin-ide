@@ -165,6 +165,16 @@ pub struct Paragraph {
     /// text at its LayoutUnit position): the paragraph hands this to
     /// `Window::replace_glyph_offset` while painting its lines.
     glyph_nudge: Point<Pixels>,
+    /// Exact (unsnapped) inline size minus the snapped one: alignment
+    /// (`text-align: right/center`, rtl start) is measured from the exact
+    /// edges, so a right-aligned glyph ends on the box's exact right edge.
+    width_nudge: Pixels,
+    /// Exact (unsnapped) inline size of the box at paint time: the basis of
+    /// a percentage `text-indent` (css-text-3 §8.1: percentage of the
+    /// containing block's inline size). The paint-time line limit is the
+    /// snapped size plus one device pixel of slack, so a 50% indent landed
+    /// half a device pixel off (`text-indent-103`).
+    indent_basis: Option<Pixels>,
     vertical_inline: Option<(crate::computed::orthogonal::InlineConstraint, Option<crate::computed::orthogonal::InlineKeyword>)>,
     /// Предел строки для ОРТОГОНАЛЬНОГО потока: ось строки абзаца совпала с
     /// осью потока родителя, а та не ограничена. По CSS Writing Modes §7.3
@@ -539,6 +549,8 @@ impl Paragraph {
             selection_vertical: None,
             vertical_layout_origin: point(px(0.0), px(0.0)),
             glyph_nudge: point(px(0.0), px(0.0)),
+            width_nudge: px(0.0),
+            indent_basis: None,
             vertical_inline: None,
             ortho_limit: None,
             hanging: crate::computed::Hanging::default(),
@@ -958,7 +970,8 @@ impl Paragraph {
         if own == self.indent.hanging {
             return px(0.);
         }
-        let pct = self.indent.pct * f32::from(limit.unwrap_or(px(0.)));
+        let basis = limit.map(|l| self.indent_basis.unwrap_or(l));
+        let pct = self.indent.pct * f32::from(basis.unwrap_or(px(0.)));
         px(self.indent.px + pct)
     }
 
@@ -1049,6 +1062,7 @@ impl Paragraph {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.measure_key().hash(&mut h);
         limit.map(|l| f32::from(l).to_bits()).hash(&mut h);
+        self.indent_basis.map(|l| f32::from(l).to_bits()).hash(&mut h);
         let w = &self.wrap;
         [
             w.nowrap,
@@ -3636,6 +3650,15 @@ impl Element for Paragraph {
     ) -> Option<Hitbox> {
         // Предел переноса — длина строки по её физической оси.
         self.vertical_layout_origin = window.layout_origin_unrounded(*state) - window.element_offset();
+        self.width_nudge = {
+            let dw = window.layout_size_unrounded(*state).width - bounds.size.width;
+            let one = 1.0 / window.scale_factor().max(0.01) + 1e-4;
+            if self.vertical || f32::from(dw).abs() > one {
+                px(0.0)
+            } else {
+                dw
+            }
+        };
         // Snapping moves an edge by at most half a device pixel; anything
         // larger means the node was placed outside its tree (`prepaint_at`).
         self.glyph_nudge = {
@@ -3659,6 +3682,16 @@ impl Element for Paragraph {
         // одну точку устройства — иначе раскладка кадра расходится с замером.
         let scale = window.scale_factor().max(1.0);
         let limit = limit + px(1.0 / scale);
+        self.indent_basis = {
+            let exact = window.layout_size_unrounded(*state);
+            let exact = if self.vertical { exact.height } else { exact.width };
+            let snapped = if self.vertical {
+                bounds.size.height
+            } else {
+                bounds.size.width
+            };
+            (f32::from(exact - snapped).abs() <= 1.0 / scale + 1e-4).then_some(exact)
+        };
         self.apply_measured_fit();
         self.lines = self.split(Some(limit), window);
         self.place_atoms(*state, window, _cx);
@@ -3748,6 +3781,10 @@ impl Element for Paragraph {
             return;
         }
         let outer_nudge = window.replace_glyph_offset(self.glyph_nudge);
+        let bounds = Bounds {
+            origin: bounds.origin,
+            size: size(bounds.size.width + self.width_nudge, bounds.size.height),
+        };
         let segs = self.measure(window);
         if self.run_metrics.len() != self.runs.len() {
             self.run_metrics = self.measure_runs(window);
@@ -4041,6 +4078,8 @@ impl Paragraph {
             selection_vertical: self.selection_vertical,
             vertical_layout_origin: self.vertical_layout_origin,
             glyph_nudge: self.glyph_nudge,
+            width_nudge: self.width_nudge,
+            indent_basis: self.indent_basis,
             vertical_inline: self.vertical_inline,
             hanging: self.hanging,
             indent: self.indent,
