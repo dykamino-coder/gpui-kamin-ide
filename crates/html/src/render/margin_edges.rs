@@ -78,6 +78,14 @@ fn bottom_chain(
         if child.style.clear.is_some() && through_strut_no_clear(child).is_some() {
             return None;
         }
+        // A self-collapsing wrapper holding only floats places them at its
+        // top border edge, i.e. after the margins that precede it (CSS 2.1
+        // section 8.3.1: "as if the element had a non-zero bottom border").
+        // Lifting those earlier margins into the parent's end margin would
+        // pull the floats up by them; the chain ends at the wrapper.
+        if float_only_wrapper(child).is_some() {
+            return Some(strut);
+        }
         path.push(i);
         strut = adjoin(
             strut,
