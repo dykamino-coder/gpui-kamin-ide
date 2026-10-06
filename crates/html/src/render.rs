@@ -18896,15 +18896,22 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                 Some(under) => under,
                 None => k % 2 == 1,
             };
-            // Стопка «база, уровни наружу»: над базой — гибкая колонка с
-            // ОБРАТНЫМ порядком (база — первый DOM-ребёнок, см. выше), под
-            // базой — прямая.
-            let stack = |under: bool| {
-                if under {
-                    div().flex().flex_col().flex_shrink_0()
-                } else {
-                    div().flex().flex_col_reverse().flex_shrink_0()
-                }
+            // Стопка «база, уровни наружу»: под базой — прямая гибкая колонка.
+            let under_stack = || div().flex().flex_col().flex_shrink_0();
+            // Над базой — сетка 1×1: база и обёртка уровней делят одну
+            // ячейку. Первая базовая сетки — у первого по порядку элемента
+            // первого ряда (css-grid-2 §10.7 «grid baselines»: `row-major
+            // grid order`), то есть у базы. Прежняя `column-reverse` отдавала
+            // базовую линию ВИЗУАЛЬНО начального элемента (css-flexbox-1
+            // §8.5 «startmost flex item», Taffy 0.14) — обёртки уровней,
+            // а не базы (`ruby-align-001`, `empty-ruby-text-container-float`).
+            let over_stack = |base: AnyElement| {
+                div()
+                    .grid()
+                    .flex_shrink_0()
+                    .grid_template_cols(vec![gpui::GridTrack::Auto])
+                    .grid_template_rows(vec![gpui::GridTrack::Auto])
+                    .child(div().row_start(1).col_start(1).child(base))
             };
             // Уровни аннотаций уходят из БЛОЧНОГО потока колонки (css-ruby-1
             // §3.4: «ordinarily, ruby annotation containers and ruby
@@ -18931,7 +18938,15 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
             // давало строку на 15 dev ниже эталона и базу на 25 dev ниже.
             let level_wrap = |under: bool| {
                 let w = div().flex().flex_col().flex_shrink_0().h_0().min_h_0();
-                if under { w } else { w.justify_end() }
+                if under {
+                    w
+                } else {
+                    // Над базой: та же ячейка сетки `over_stack`, прижатая к
+                    // её верху; уровни свисают вверх от нуля.
+                    let mut w = w.justify_end().row_start(1).col_start(1);
+                    w.style().align_self = Some(gpui::AlignItems::Start);
+                    w
+                }
             };
             // Единица из ОДНОГО `<rb>`/`<rt>` (или элемента с ролью базы /
             // аннотации по `display`) рисуется его собственной БЛОЧНОЙ
@@ -19081,11 +19096,10 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                             over_anns.push(ann);
                         }
                     }
-                    // База — ПЕРВЫЙ DOM-ребёнок колонки, обёртка уровней идёт
-                    // после неё: в `column-reverse` она встаёт над базой, а
-                    // `offset_main` базы остаётся нулём. Внутри обёртки уровни
+                    // База — ПЕРВЫЙ элемент ячейки `over_stack`, обёртка уровней
+                    // идёт после неё в той же ячейке. Внутри обёртки уровни
                     // в обратном порядке: нулевой (ближний к базе) — внизу.
-                    let mut over = stack(false).child(unit_box(seg.bases.get(i).unwrap_or(&empty), &merged));
+                    let mut over = over_stack(unit_box(seg.bases.get(i).unwrap_or(&empty), &merged));
                     if !over_anns.is_empty() {
                         over = over.child(level_wrap(false).child(extent(
                             div()
@@ -19099,7 +19113,7 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                     let col = if under.is_empty() {
                         over.into_any_element()
                     } else {
-                        stack(true)
+                        under_stack()
                             .child(over)
                             .child(level_wrap(true).child(extent(
                                 div().flex().flex_col().flex_shrink_0().children(under),
@@ -19112,8 +19126,12 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                 let mut seg_el = cols.into_any_element();
                 for (k, (l, style)) in seg.levels.iter().zip(&level_style).enumerate() {
                     if l.spanning {
-                        seg_el = stack(level_under(k))
-                            .child(seg_el)
+                        let host = if level_under(k) {
+                            under_stack().child(seg_el)
+                        } else {
+                            over_stack(seg_el)
+                        };
+                        seg_el = host
                             .child(level_wrap(level_under(k)).child(extent(
                                 div()
                                     .flex()
