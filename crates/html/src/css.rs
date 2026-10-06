@@ -61,6 +61,7 @@ thread_local! {
 
 /// Сбросить реестр слоёв — на входе разбора документа.
 pub fn reset_layers() {
+    crate::fonts::alternates::reset();
     LAYERS.with(|l| l.borrow_mut().clear());
     LAYER_NEXT.with(|l| l.borrow_mut().clear());
     LAYER_NOW.with(|l| *l.borrow_mut() = (String::new(), Vec::new()));
@@ -1684,6 +1685,12 @@ fn sheet_rules(css: &str, media: Media) -> Vec<Rule> {
             let name = head.to_ascii_lowercase();
             let inner = if name.starts_with("@media") {
                 media.matches(&name)
+            } else if name
+                .strip_prefix("@font-feature-values")
+                .is_some_and(|s| s.starts_with(char::is_whitespace))
+            {
+                crate::fonts::alternates::register(&head[20..], body, layer_of_rules());
+                false
             } else if name.starts_with("@page") {
                 // Правило с головой (имя, `:first/:left/:right/:blank`,
                 // список) — в пул `PAGE_RULES`, каскад по листу решает
@@ -2333,7 +2340,7 @@ fn first_escape(tail: &str) -> &str {
 }
 
 /// Чем кончилась очередная запись таблицы.
-enum Piece<'a> {
+pub(crate) enum Piece<'a> {
     /// Правило с телом: заголовок и содержимое фигурных скобок.
     Block { head: &'a str, body: &'a str },
     /// At-правило-предложение: заголовок до точки с запятой, тела нет.
@@ -2363,7 +2370,7 @@ fn statement_head(text: &str) -> bool {
     }
 }
 
-fn next_piece(text: &str) -> Option<(Piece<'_>, &str)> {
+pub(crate) fn next_piece(text: &str) -> Option<(Piece<'_>, &str)> {
     let mut square = 0i32;
     let mut round = 0i32;
     let mut at = 0usize;

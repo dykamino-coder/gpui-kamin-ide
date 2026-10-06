@@ -18,6 +18,8 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
+pub mod alternates;
+
 thread_local! {
     /// Придуманное разметкой имя → имя, под которым шрифт знает система.
     static ALIASES: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
