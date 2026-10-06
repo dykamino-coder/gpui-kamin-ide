@@ -29,6 +29,8 @@ unicode-linebreak = "0.1"
 # Уровни встроенности по UBA: порядок ПРОГОНОВ строки на экране. Знаки внутри
 # прогона переставляет набор, здесь только порядок самих прогонов.
 unicode-bidi = "0.3.18"
+# Typographic units for text-combine-upright include combining marks.
+unicode-segmentation = "=1.13.3"
 # Слогораздел по образцам Лианга — `hyphens: auto`. Образцы вшиты в крейт по
 # языкам: своих словарей не заводим и в сеть не ходим.
 hypher = "0.1.7"
