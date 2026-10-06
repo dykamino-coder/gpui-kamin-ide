@@ -421,6 +421,8 @@ pub struct ColumnFlow {
     /// Текст — единственного ребёнка-монолита (`render::column_flow_in`): в
     /// узкой колонке его строки не режутся (`measure_columns`).
     whole: bool,
+    /// `orphans`/`widows` блока со строками (css-break-3 §4.4).
+    line_breaks: (usize, usize),
     cuts: Rc<std::cell::RefCell<(Vec<usize>, Pixels, usize)>>,
     child: Option<AnyElement>,
 }
@@ -450,9 +452,17 @@ impl ColumnFlow {
             line_height,
             fill_height,
             whole,
+            line_breaks: (1, 1),
             cuts: Rc::new(std::cell::RefCell::new((Vec::new(), px(0.), 1))),
             child: None,
         }
+    }
+
+    /// `orphans`/`widows` строк потока (css-break-3 §4.4): сколько строк блока
+    /// должно остаться в колонке до разрыва и после него.
+    pub fn line_breaks(mut self, orphans: usize, widows: usize) -> Self {
+        self.line_breaks = (orphans.max(1), widows.max(1));
+        self
     }
 }
 
@@ -481,6 +491,7 @@ fn measure_columns(
     line_height: f32,
     fill_height: Option<f32>,
     whole: bool,
+    line_breaks: (usize, usize),
     width: Pixels,
     window: &mut Window,
 ) -> (Vec<usize>, usize, Pixels) {
@@ -570,9 +581,37 @@ fn measure_columns(
         Some(h) if h >= line_height => ((h / line_height).floor() as usize).max(1),
         _ => lines.div_ceil(count).max(1),
     };
-    let cuts: Vec<usize> = (1..count)
-        .filter_map(|i| boundaries.get(i * per_col - 1).copied())
-        .collect();
+    // Разрыв после `k` строк. `orphans`/`widows` (css-break-3 §4.4): в колонке
+    // до разрыва не меньше `orphans` строк блока, после — не меньше `widows`.
+    // Строки идут одним блоком, и нарушить можно лишь `widows` у последнего
+    // разрыва: его переносят на `lines − widows`, если до него остаётся
+    // `orphans` (Blink `BreakBeforeChildIfNeeded` → `kBreakAppealViolatingOrphansAndWidows`
+    // уступает более ранней точке без нарушения). Иначе — прежний край.
+    let (orphans, widows) = line_breaks;
+    let plain: Vec<usize> = (1..count).map(|i| i * per_col).take_while(|&k| k < lines).collect();
+    let mut ks: Vec<usize> = Vec::with_capacity(plain.len());
+    let mut s = 0usize;
+    for _ in 1..count {
+        let mut e = s + per_col;
+        if e >= lines {
+            break;
+        }
+        if lines - e < widows {
+            let alt = lines.saturating_sub(widows);
+            if alt > s && alt - s >= orphans {
+                e = alt;
+            }
+        }
+        ks.push(e);
+        s = e;
+    }
+    // Баланс делит строки поровну на `count` колонок: перенос разрыва, после
+    // которого хвост в последнюю колонку не влезает, ему не годится (высоту
+    // колонки он не поднимает) — тогда прежние разрезы.
+    if fill_height.is_none() && lines - s > per_col {
+        ks = plain;
+    }
+    let cuts: Vec<usize> = ks.iter().filter_map(|&k| boundaries.get(k - 1).copied()).collect();
     (cuts, count, px(per_col as f32 * line_height))
 }
 
@@ -605,6 +644,7 @@ impl Element for ColumnFlow {
         let cuts = self.cuts.clone();
         let fill_height = self.fill_height;
         let whole = self.whole;
+        let line_breaks = self.line_breaks;
         // css-multicol-1 §Overflow: заданная блочная высота ограничивает высоту
         // КОЛОНКИ, а не всей стопки — с ней рождаются переполняющие колонки.
         let layout_id = window.request_measured_layout(
@@ -640,6 +680,7 @@ impl Element for ColumnFlow {
                     line_height,
                     fill_height,
                     whole,
+                    line_breaks,
                     width,
                     window,
                 );
@@ -671,6 +712,7 @@ impl Element for ColumnFlow {
                 self.line_height,
                 self.fill_height,
                 self.whole,
+                self.line_breaks,
                 bounds.size.width,
                 window,
             );
