@@ -27226,7 +27226,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // (наследование caption-side).
             let cap_side_bottom =
                 cap.style.caption_bottom.or(e.style.caption_bottom) == Some(true);
-            let built = styled_div(cap)
+            let built = styled_div_with(cap, &cm)
                 .flex()
                 .flex_col()
                 .children(blocks(&cap.children, &cm, opts))
