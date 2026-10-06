@@ -766,182 +766,21 @@ pub fn split_first_letter(pieces: Vec<Piece>, style: &Computed) -> Vec<Piece> {
     out
 }
 
-/// Пунктуация — общая категория Unicode `P*` (css-pseudo-4 §first-letter
-/// ссылается на UAX44). Таблицы категорий в крейте нет, поэтому перечень
-/// блоков: ASCII без символов `S*` (`$ + < = > ^ ` | ~`), Latin-1, общая и
-/// дополнительная пунктуация, скобки, CJK и полноширинные формы, эгейский
-/// разделитель (`first-letter-trailing-punctuation`: U+10100 входит в букву).
+/// Unicode categories, rather than script ranges, define first-letter punctuation.
+/// CSS 2.1 §5.12.2 includes Ps/Pe/Pi/Pf/Po; CSS Pseudo §first-letter
+/// additionally includes Pc/Pd in the leading punctuation sequence.
 fn is_punct(c: char) -> bool {
-    if c.is_ascii() {
-        return c.is_ascii_punctuation()
-            && !matches!(c, '$' | '+' | '<' | '=' | '>' | '^' | '`' | '|' | '~');
-    }
-    matches!(
-        c as u32,
-        0xA1 | 0xA7
-            | 0xAB
-            | 0xB6
-            | 0xB7
-            | 0xBB
-            | 0xBF
-            | 0x37E
-            | 0x387
-            | 0x55A..=0x55F
-            | 0x589
-            | 0x58A
-            | 0x5BE
-            | 0x5C0
-            | 0x5C3
-            | 0x5C6
-            | 0x5F3
-            | 0x5F4
-            | 0x609
-            | 0x60A
-            | 0x60C
-            | 0x60D
-            | 0x61B
-            | 0x61D..=0x61F
-            | 0x66A..=0x66D
-            | 0x6D4
-            | 0x964
-            | 0x965
-            | 0x970
-            | 0xE4F
-            | 0xE5A
-            | 0xE5B
-            | 0x2010..=0x2027
-            | 0x2030..=0x2043
-            | 0x2045..=0x2051
-            | 0x2053..=0x205E
-            | 0x207D
-            | 0x207E
-            | 0x208D
-            | 0x208E
-            | 0x2308..=0x230B
-            | 0x2329
-            | 0x232A
-            | 0x2768..=0x2775
-            | 0x27C5
-            | 0x27C6
-            | 0x27E6..=0x27EF
-            | 0x2983..=0x2998
-            | 0x29D8..=0x29DB
-            | 0x29FC
-            | 0x29FD
-            | 0x2E00..=0x2E2E
-            | 0x2E30..=0x2E4F
-            | 0x3001..=0x3003
-            | 0x3008..=0x3011
-            | 0x3014..=0x301F
-            | 0x3030
-            | 0x303D
-            | 0x30A0
-            | 0x30FB
-            | 0xFE10..=0xFE19
-            | 0xFE30..=0xFE52
-            | 0xFE54..=0xFE61
-            | 0xFE63
-            | 0xFE68
-            | 0xFE6A
-            | 0xFE6B
-            | 0xFF01..=0xFF03
-            | 0xFF05..=0xFF0A
-            | 0xFF0C..=0xFF0F
-            | 0xFF1A
-            | 0xFF1B
-            | 0xFF1F
-            | 0xFF20
-            | 0xFF3B..=0xFF3D
-            | 0xFF3F
-            | 0xFF5B
-            | 0xFF5D
-            | 0xFF5F..=0xFF65
-            | 0x10100..=0x10102
-            | 0x1039F
-            | 0x1091F
-    )
+    use unicode_properties::{GeneralCategoryGroup, UnicodeGeneralCategory};
+    c.general_category_group() == GeneralCategoryGroup::Punctuation
 }
 
-/// Открывающая пунктуация и тире (`Ps`, `Pd`): ХВОСТОМ первой буквы они не
-/// бывают («T(rail» → «T», «T–rail» → «T»).
+/// CSS Pseudo §first-letter excludes Ps/Pd from trailing punctuation.
 fn open_or_dash(c: char) -> bool {
-    let u = c as u32;
-    matches!(c, '(' | '[' | '{' | '-')
-        || matches!(
-            u,
-            0x58A
-                | 0x5BE
-                | 0xF3A
-                | 0xF3C
-                | 0x1400
-                | 0x169B
-                | 0x1806
-                | 0x2010..=0x2015
-                | 0x201A
-                | 0x201E
-                | 0x2045
-                | 0x207D
-                | 0x208D
-                | 0x2308
-                | 0x230A
-                | 0x2329
-                | 0x27C5
-                | 0x27E6
-                | 0x27E8
-                | 0x27EA
-                | 0x27EC
-                | 0x27EE
-                | 0x29D8
-                | 0x29DA
-                | 0x29FC
-                | 0x2E17
-                | 0x2E1A
-                | 0x2E22
-                | 0x2E24
-                | 0x2E26
-                | 0x2E28
-                | 0x2E3A
-                | 0x2E3B
-                | 0x2E40
-                | 0x2E42
-                | 0x3008
-                | 0x300A
-                | 0x300C
-                | 0x300E
-                | 0x3010
-                | 0x3014
-                | 0x3016
-                | 0x3018
-                | 0x301A
-                | 0x301C
-                | 0x301D
-                | 0x3030
-                | 0x30A0
-                | 0xFE31
-                | 0xFE32
-                | 0xFE35
-                | 0xFE37
-                | 0xFE39
-                | 0xFE3B
-                | 0xFE3D
-                | 0xFE3F
-                | 0xFE41
-                | 0xFE43
-                | 0xFE47
-                | 0xFE58
-                | 0xFE59
-                | 0xFE5B
-                | 0xFE5D
-                | 0xFE63
-                | 0xFF08
-                | 0xFF0D
-                | 0xFF3B
-                | 0xFF5B
-                | 0xFF5F
-                | 0xFF62
-        )
-        || ((0x2768..=0x2775).contains(&u) && u % 2 == 0)
-        || ((0x2983..=0x2998).contains(&u) && u % 2 == 1)
+    use unicode_properties::{GeneralCategory, UnicodeGeneralCategory};
+    matches!(
+        c.general_category(),
+        GeneralCategory::OpenPunctuation | GeneralCategory::DashPunctuation
+    )
 }
 
 /// Типографский пробел `Zs` без U+3000 (оба правила спеки его исключают).
