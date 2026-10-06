@@ -33,6 +33,7 @@ use replaced_content::svg_replaced;
 mod ratio_basis;
 pub(crate) mod absolute_overflow;
 mod absolute_overflow_math;
+mod ruby_hiding;
 use fragment_size::shape_full;
 
 use crate::apply::{apply, apply_hover};
@@ -19074,7 +19075,10 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                         if l.spanning {
                             continue;
                         }
-                        let ann = unit_box(l.units.get(i).unwrap_or(&empty), style);
+                        let nodes = l.units.get(i).unwrap_or(&empty);
+                        let base = ruby_hiding::text(seg.bases.get(i).unwrap_or(&empty));
+                        let nodes = if ruby_hiding::hidden(nodes, &base, style) { &empty } else { nodes };
+                        let ann = unit_box(nodes, style);
                         if level_under(k) {
                             under.push(ann);
                         } else {
@@ -19112,6 +19116,9 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                 let mut seg_el = cols.into_any_element();
                 for (k, (l, style)) in seg.levels.iter().zip(&level_style).enumerate() {
                     if l.spanning {
+                        let nodes = l.units.first().unwrap_or(&empty);
+                        let base: String = seg.bases.iter().map(|b| ruby_hiding::text(b)).collect();
+                        let nodes = if ruby_hiding::hidden(nodes, &base, style) { &empty } else { nodes };
                         seg_el = stack(level_under(k))
                             .child(seg_el)
                             .child(level_wrap(level_under(k)).child(extent(
@@ -19119,7 +19126,7 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                                     .flex()
                                     .flex_col()
                                     .flex_shrink_0()
-                                    .child(unit_box(l.units.first().unwrap_or(&empty), style)),
+                                    .child(unit_box(nodes, style)),
                                 level_under(k),
                             )))
                             .into_any_element();

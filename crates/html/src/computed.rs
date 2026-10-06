@@ -2865,6 +2865,8 @@ pub struct Computed {
     pub ruby_under: Option<bool>,
     /// `ruby-align` (css-ruby-1 §4.3); `None` — начальное `space-around`.
     pub ruby_align: Option<RubyAlign>,
+    /// CSS Ruby §ruby-merge: 0 separate, 1 merge, 2 auto.
+    pub ruby_merge: Option<u8>,
     /// Роль руби-коробки из `display: ruby*` (css-ruby-1 §2.1). Не
     /// наследуется. `display` при этом остаётся строчным (`InlineBlock` +
     /// `inline_display`), у `block ruby` — `Block`: все `match` по `Display`
@@ -3519,6 +3521,7 @@ impl Computed {
             font_kerning: self.font_kerning,
             font_settings: self.font_settings.clone(),
             font_alternates: self.font_alternates.clone(),
+            ruby_merge: self.ruby_merge,
             text_transform: self.text_transform,
             ellipsis: self.ellipsis,
             overflow_marker: self.overflow_marker.clone(),
@@ -7486,6 +7489,15 @@ impl Computed {
                     "space-between" => Some(RubyAlign::SpaceBetween),
                     "space-around" => Some(RubyAlign::SpaceAround),
                     _ => self.ruby_align,
+                };
+            }
+            "ruby-merge" => {
+                self.ruby_merge = match v {
+                    "separate" | "initial" => Some(0),
+                    "merge" => Some(1),
+                    "auto" => Some(2),
+                    "inherit" | "unset" => None,
+                    _ => self.ruby_merge,
                 };
             }
             "font-kerning" => {
