@@ -170,6 +170,10 @@ pub struct Paragraph {
     hanging: crate::computed::Hanging,
     /// Отступ первой строки (`text-indent`).
     indent: Indent,
+    /// Device-pixel slack added to the wrap limit at paint time (see
+    /// `prepaint`); percentages of `text-indent` resolve against the content
+    /// box width without it (css-text-3 §7.1).
+    limit_slack: Pixels,
     /// Места знаков-распорок (`inline::SPACER`) — байтовые смещения по
     /// возрастанию. Точки переноса считаются по тексту без них.
     spacers: Vec<usize>,
@@ -537,6 +541,7 @@ impl Paragraph {
             ortho_limit: None,
             hanging: crate::computed::Hanging::default(),
             indent: Indent::default(),
+            limit_slack: px(0.),
             spacers: Vec::new(),
             flow: std::sync::Arc::new((Vec::new(), Vec::new())),
             id: None,
@@ -952,7 +957,10 @@ impl Paragraph {
         if own == self.indent.hanging {
             return px(0.);
         }
-        let pct = self.indent.pct * f32::from(limit.unwrap_or(px(0.)));
+        // The wrap limit may carry one device pixel of rounding slack; the
+        // percentage basis is the containing block's content width.
+        let basis = limit.map_or(px(0.), |l| l - self.limit_slack);
+        let pct = self.indent.pct * f32::from(basis);
         px(self.indent.px + pct)
     }
 
@@ -3640,7 +3648,8 @@ impl Element for Paragraph {
         // влезала и рвалась заново (`hyphens-manual-011`). Возвращаем себе эту
         // одну точку устройства — иначе раскладка кадра расходится с замером.
         let scale = window.scale_factor().max(1.0);
-        let limit = limit + px(1.0 / scale);
+        self.limit_slack = px(1.0 / scale);
+        let limit = limit + self.limit_slack;
         self.apply_measured_fit();
         self.lines = self.split(Some(limit), window);
         self.place_atoms(*state, window, _cx);
@@ -4007,6 +4016,7 @@ impl Paragraph {
             strut_run: None,
             strut_box: self.strut_box,
             ortho_limit: self.ortho_limit,
+            limit_slack: self.limit_slack,
             runs: Vec::new(),
             font_size: self.font_size,
             line_height: self.line_height,
