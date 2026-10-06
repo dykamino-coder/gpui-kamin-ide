@@ -7,6 +7,9 @@
 
 use std::collections::HashMap;
 
+mod selector_tokens;
+mod stylesheet_tokens;
+
 /// Пара «свойство: значение». Значение хранится сырым — разбор откладывается
 /// до момента применения, чтобы неизвестные свойства не стоили ничего.
 pub type Decls = HashMap<String, String>;
@@ -252,7 +255,12 @@ impl Selector {
         let mut rest = s;
         let head_end = delim(rest);
         if head_end > 0 {
-            let name = unescape(rest[..head_end].trim()).to_ascii_lowercase();
+            let raw_name = rest[..head_end].trim();
+            let local = raw_name.rsplit_once('|').map_or(raw_name, |(_, local)| local);
+            if local != "*" && !selector_tokens::ident(local) {
+                return None;
+            }
+            let name = unescape(raw_name).to_ascii_lowercase();
             // Пространство имён нам чуждо: `*|div` — тот же div, `*|*` —
             // универсал (селекторы-4 §type-nmsp).
             // Пространство имён нам чуждо, но НЕОБЪЯВЛЕННЫЙ префикс делает
@@ -306,9 +314,12 @@ impl Selector {
                 if end == 0 && !body.starts_with(']') {
                     return None;
                 }
-                sel.attrs.push(parse_attr_sel(&body[..end])?);
+                sel.attrs.push(selector_tokens::attr(&body[..end])?);
                 rest = &body[end + 1..];
                 continue;
+            }
+            if matches!(kind, '.' | '#') && !selector_tokens::ident(name) {
+                return None;
             }
             match kind {
                 '.' => sel.classes.push(unescape(name)),
@@ -326,6 +337,15 @@ impl Selector {
                     let bare = name.trim_start_matches(':').to_ascii_lowercase();
                     if !bare.is_empty() && !known_pseudo(&bare) {
                         return None;
+                    }
+                    if bare.split('(').next() == Some("lang") {
+                        let args = bare.strip_prefix("lang(")?.strip_suffix(')')?;
+                        if split_top_level(args, ',')
+                            .iter()
+                            .any(|arg| selector_tokens::value(arg.trim()).is_none())
+                        {
+                            return None;
+                        }
                     }
                     // Пустышка от второго двоеточия `::after` — не
                     // псевдокласс, копить её нельзя.
@@ -423,6 +443,10 @@ impl Selector {
         // его сосед — `.b`, а предок соседа — `.a`.
         let mut sel = Selector::parse_compound(&compounds[0])?;
         for (comp, comb) in compounds[1..].iter().zip(&combs) {
+            // A pseudo-element must end the complex selector (Selectors §3.1).
+            if sel.pseudo.as_deref().is_some_and(is_pseudo_element) {
+                return None;
+            }
             let mut next = Selector::parse_compound(comp)?;
             match comb {
                 0 => next.ancestor = Some(Box::new((sel, false))),
@@ -529,71 +553,6 @@ fn is_pseudo_element(name: &str) -> bool {
             | "scroll-button"
     )
 }
-
-fn parse_attr_sel(raw: &str) -> Option<AttrSel> {
-    let raw = raw.trim();
-    let op_at = raw.char_indices().find(|(i, c)| {
-        *c == '=' || matches!(c, '~' | '|' | '^' | '$' | '*') && raw[i + 1..].starts_with('=')
-    });
-    let Some((i, op_ch)) = op_at else {
-        if raw.is_empty() {
-            return None;
-        }
-        return Some(AttrSel {
-            name: unescape(raw).to_ascii_lowercase(),
-            op: None,
-            ci: false,
-        });
-    };
-    let name = raw[..i].trim();
-    if name.is_empty() {
-        return None;
-    }
-    let (op, val_start) = match op_ch {
-        '=' => (0u8, i + 1),
-        '~' => (1, i + 2),
-        '|' => (2, i + 2),
-        '^' => (3, i + 2),
-        '$' => (4, i + 2),
-        _ => (5, i + 2),
-    };
-    let mut value = raw[val_start..].trim();
-    let mut ci = false;
-    if let Some(stripped) = value
-        .strip_suffix('i')
-        .or_else(|| value.strip_suffix('I'))
-        .map(str::trim_end)
-        && (stripped.ends_with('"')
-            || stripped.ends_with('\'')
-            || stripped.ends_with(char::is_whitespace))
-    {
-        ci = true;
-        value = stripped.trim_end();
-    }
-    let value = value
-        .strip_prefix('"')
-        .and_then(|v| v.strip_suffix('"'))
-        .or_else(|| value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')))
-        .unwrap_or(value);
-    let name = unescape(name).to_ascii_lowercase();
-    Some(AttrSel {
-        ci: ci || CI_ATTRS.contains(&name.as_str()),
-        name,
-        op: Some((op, unescape(value))),
-    })
-}
-
-/// Атрибуты HTML, значения которых сравниваются БЕЗ учёта регистра даже без
-/// флага ` i` (HTML, «Case-sensitivity of selectors»). Перечень закрытый:
-/// прочие атрибуты сравниваются посимвольно.
-const CI_ATTRS: &[&str] = &[
-    "accept", "accept-charset", "align", "alink", "axis", "bgcolor", "charset", "checked", "clear",
-    "codetype", "color", "compact", "declare", "defer", "dir", "direction", "disabled", "enctype",
-    "face", "frame", "hreflang", "http-equiv", "lang", "language", "link", "media", "method",
-    "multiple", "nohref", "noresize", "noshade", "nowrap", "readonly", "rel", "rev", "rules",
-    "scope", "scrolling", "selected", "shape", "target", "text", "type", "valign", "valuetype",
-    "vlink",
-];
 
 /// Где в значении стоит восклицательный знак — вне строк, скобок и
 /// экранирования. `content: "!"` пометкой важности не является.
@@ -1582,7 +1541,9 @@ fn declared_prefixes(css: &str) -> std::collections::HashSet<String> {
     let mut set = std::collections::HashSet::new();
     let cleaned = strip_comments(css);
     let mut rest = cleaned.as_str();
-    while let Some((piece, tail)) = next_piece(rest) {
+    loop {
+        rest = stylesheet_tokens::start(rest);
+        let Some((piece, tail)) = next_piece(rest) else { break };
         rest = tail;
         let Piece::Statement { head } = piece else { break };
         let low = head.trim().to_ascii_lowercase();
@@ -1635,15 +1596,19 @@ pub fn parse_stylesheet_media(css: &str, media: Media) -> Vec<Rule> {
         NS_PREFIXES.with(|n| *n.borrow_mut() = Some(declared));
     }
     let _scope = NsScope(top);
-    sheet_rules(css, media)
+    sheet_rules(css, media, top)
 }
 
-fn sheet_rules(css: &str, media: Media) -> Vec<Rule> {
+fn sheet_rules(css: &str, media: Media, top: bool) -> Vec<Rule> {
     let mut out = vec![];
     let cleaned = strip_comments(css);
     let mut rest = cleaned.as_str();
     let mut order = 0usize;
-    while let Some((piece, tail)) = next_piece(rest) {
+    loop {
+        if top {
+            rest = stylesheet_tokens::start(rest);
+        }
+        let Some((piece, tail)) = next_piece(rest) else { break };
         rest = tail;
         // At-правило-ПРЕДЛОЖЕНИЕ блока не имеет и кончается точкой с запятой:
         // `@import`, `@charset`, `@namespace`, `@layer a, b;`. Ни одно из них
@@ -2350,19 +2315,6 @@ enum Piece<'a> {
 /// Пока искалась просто первая `{`, неизвестное at-правило с мусором в
 /// преамбуле (`@foo ] } ) … ;`) уводило разбор внутрь своего мусора, и вся
 /// таблица за ним разъезжалась (`matching-brackets-001`, `core-syntax-001`).
-/// Начинается ли кусок с at-правила: ведущие `<!--`/`-->` верхнего уровня
-/// — пробельные токены (css-syntax-3 §5.4.1), их пропускаем.
-fn statement_head(text: &str) -> bool {
-    let mut t = text.trim_start();
-    loop {
-        if let Some(r) = t.strip_prefix("<!--").or_else(|| t.strip_prefix("-->")) {
-            t = r.trim_start();
-        } else {
-            return t.starts_with('@') || t.is_empty();
-        }
-    }
-}
-
 fn next_piece(text: &str) -> Option<(Piece<'_>, &str)> {
     let mut square = 0i32;
     let mut round = 0i32;
@@ -2399,7 +2351,7 @@ fn next_piece(text: &str) -> Option<(Piece<'_>, &str)> {
             // .a, #b { color: red }` — ОДНО правило с негодным селектором, и
             // отбрасывается оно целиком (`at-charset-039`). Прежде `test;`
             // обрывалось на месте, и красное правило оживало.
-            ';' if square == 0 && round == 0 && statement_head(text) => {
+            ';' if square == 0 && round == 0 && stylesheet_tokens::statement_head(text) => {
                 let head = &text[..at];
                 return Some((Piece::Statement { head }, &text[at + 1..]));
             }

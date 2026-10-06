@@ -31,6 +31,8 @@ unicode-linebreak = "0.1"
 unicode-bidi = "0.3.18"
 # Typographic units for text-combine-upright include combining marks.
 unicode-segmentation = "=1.13.3"
+# Unicode categories for first-letter punctuation in every script.
+unicode-properties = { version = "0.1.4", default-features = false, features = ["general-category"] }
 # Слогораздел по образцам Лианга — `hyphens: auto`. Образцы вшиты в крейт по
 # языкам: своих словарей не заводим и в сеть не ходим.
 hypher = "0.1.7"
