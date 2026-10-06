@@ -21,6 +21,7 @@
 
 mod first_letter;
 mod first_line_background;
+mod empty_inline;
 pub use first_letter::split_first_letter;
 
 mod tabs;
@@ -109,6 +110,11 @@ pub fn collapse_across_pieces(pieces: &mut [Piece]) {
             // Замещаемая коробка — не пробел: ряд на ней кончается.
             Piece::Atom(_) => prev_space = false,
             Piece::Text { text, style } => {
+                // A zero-advance empty-box metric marker is not document
+                // content and must not interrupt adjoining collapsible spaces.
+                if text == SPACER && style.letter_spacing == Some(Len::Px(0.0)) {
+                    continue;
+                }
                 // `white-space: pre*` пробелы бережёт — там схлопывать нечего.
                 // `pre-line` переводы строк бережёт, а ПРОБЕЛЫ схлопывает
                 // (§16.6): освобождать его от схлопки нельзя.
@@ -146,6 +152,20 @@ pub fn collect(
     children: &[Node],
     inherited: &Computed,
     atom: &mut dyn FnMut(&Element) -> Option<Piece>,
+) -> Vec<Piece> {
+    collect_with_empty_metrics(
+        children,
+        inherited,
+        atom,
+        empty_inline::has_text(children),
+    )
+}
+
+fn collect_with_empty_metrics(
+    children: &[Node],
+    inherited: &Computed,
+    atom: &mut dyn FnMut(&Element) -> Option<Piece>,
+    has_text: bool,
 ) -> Vec<Piece> {
     let mut out = vec![];
     // Место последней распорки зазора за коробкой (см. ниже).
@@ -238,7 +258,9 @@ pub fn collect(
                 // (`display-contents-inline-001` «красное видно»).
                 if e.style.display == Some(crate::computed::Display::Contents) {
                     let merged = inherit(inherited, &e.style);
-                    out.extend(collect(&e.children, &merged, atom));
+                    out.extend(collect_with_empty_metrics(
+                        &e.children, &merged, atom, has_text,
+                    ));
                     continue;
                 }
                 if let Some(piece) = atom(e) {
@@ -508,6 +530,20 @@ pub fn collect(
                         style: spacer_style(&merged, lead),
                     });
                 }
+                if blank
+                    && has_text
+                    && !atomic
+                    && lead == 0.0
+                    && trail == 0.0
+                    && empty_inline::different_metrics(&merged, inherited)
+                {
+                    // CSS 2.1 section 10.8: an empty inline box contributes
+                    // its line height and font metrics even without glyphs.
+                    out.push(Piece::Text {
+                        text: SPACER.into(),
+                        style: spacer_style(&merged, 0.0),
+                    });
+                }
                 // Своя сторона письма у куска — это знаки управления по
                 // Юникоду: разбор двунаправленности их и ждёт, а рисовать их
                 // не надо, ширины у них нет.
@@ -522,7 +558,7 @@ pub fn collect(
                 // потока: абсолютный элемент внутри `position: relative`
                 // спана стоит от СДВИНУТОГО места (`static-position/htb-*`).
                 out.extend(shift_overlays(
-                    collect(&e.children, &merged, atom),
+                    collect_with_empty_metrics(&e.children, &merged, atom, has_text),
                     &e.style,
                     merged.rotated_line == Some(true),
                 ));
