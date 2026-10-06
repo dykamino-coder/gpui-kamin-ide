@@ -20,6 +20,7 @@
 //! цвет. Вторая включается там, где без неё пришлось бы врать про размер.
 
 mod first_letter;
+mod first_line_background;
 pub use first_letter::split_first_letter;
 
 mod tabs;
@@ -749,7 +750,8 @@ pub fn style_first_line(pieces: Vec<Piece>, at: usize, style: &Computed) -> Vec<
                     // `inline_bg`: слой первой строки накладывается уже ПОСЛЕ
                     // сборки кусков, когда `inline_bg` посчитан по своему
                     // стилю (`c25-pseudo-elmnt-000`: зелёной полосы не было).
-                    c.inline_bg = style.background.or(base.inline_bg);
+                    c.inline_bg =
+                        first_line_background::paint_color(base.inline_bg, style.background);
                     c.line_height = style.line_height.or(base.line_height);
                     // ПРОБОВАЛИ И ОТКАТИЛИ: переносить сюда и сдвиг по
                     // вертикали (§5.12.1 относит `vertical-align` к свойствам
