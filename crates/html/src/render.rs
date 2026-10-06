@@ -8270,10 +8270,11 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         if let Node::Element(e) = n {
             // Ключ краски шага 8 — до сборки детей (см. `next_paint_key`).
             let paint_key = next_paint_key();
-            // Слой разрешён, только если ни один предок сам не отложен:
-            // вложенная отложенная отрисовка в GPUI запрещена.
+            // CSS2 Appendix E: descendants paint within their nearest stacking context.
             let layer_ok = !inside_deferred();
-            let _deferred_guard = DeferGuard::enter(defers(&e.style, inherited, under_tf));
+            let _deferred_guard = DeferGuard::enter(
+                defers(&e.style, inherited, under_tf) || stacking_context(&e.style),
+            );
             // Ряд обтекания: текст рядом с плавающим блоком и остаток под ним.
             if e.tag == "kamin-float" {
                 out.push(float_flow(e, inherited, opts));
@@ -9884,13 +9885,12 @@ fn inside_deferred() -> bool {
     DEFERRED_DEPTH.with(|d| d.get()) > 0
 }
 
-/// Образует ли коробка контекст наложения (CSS 2.1 прил. E; css-transforms-1
-/// §transform-rendering; css-color-3 §3.2 opacity; css-compositing isolation).
+/// Stacking contexts isolate descendant paint order (CSS2 Appendix E).
 fn stacking_context(c: &Computed) -> bool {
-    // css-will-change-1 §2.1: обещание свойства, создающего контекст, создаёт
-    // его уже сейчас; `z-index` сюда доезжает лишь там, где действует
-    // (`inline::inherit`).
+    // CSS Will Change §2.1; CSS Containment 2 §§3.2/3.3 also create contexts.
     c.will_change & crate::computed::wc::STACK != 0
+        || c.contain_layout == Some(true)
+        || c.contain_paint == Some(true)
         || c.transform.is_some()
         || c.translate.is_some()
         || c.opacity.is_some_and(|o| o < 1.0)
