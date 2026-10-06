@@ -2802,7 +2802,7 @@ fn default_size(i: Intrinsic, area: (f32, f32)) -> (f32, f32) {
 }
 
 /// Размер одной плитки в точках по правилам `background-size`.
-fn tile_size(i: Intrinsic, box_size: (f32, f32), size: BgSize) -> (f32, f32) {
+pub(crate) fn tile_size(i: Intrinsic, box_size: (f32, f32), size: BgSize) -> (f32, f32) {
     let (bw, bh) = box_size;
     // Соотношение для растяжений: своё, иначе — из умолчального размера.
     let auto = default_size(i, box_size);

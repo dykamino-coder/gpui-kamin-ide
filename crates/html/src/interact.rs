@@ -18,6 +18,7 @@ use std::rc::Rc;
 
 mod spot_geometry;
 mod rectangular_clip;
+mod mask_size;
 mod orthogonal_measure;
 mod vertical_style;
 
@@ -937,8 +938,9 @@ impl Element for Grouped {
                             )
                         } else {
                             let source = crate::background::source(l)?;
-                            let intr = source.intrinsic();
-                            let (tw, th) = (intr.w.unwrap_or(bw), intr.h.unwrap_or(bh));
+                            let (tw, th) = mask_size::tile(
+                                source.intrinsic(), self.mask_scale, (bw, bh), self.mask_size, self.mask_fit,
+                            );
                             // Плитка кладётся не в угол, а в точку СВОЕГО
                             // слоя: без этого `mask-position: top, bottom`
                             // сваливал оба слоя в (0,0) (mask-position-5).
@@ -985,57 +987,15 @@ impl Element for Grouped {
             let source = crate::background::source(src)?;
             let (img, tw, th) = match &source {
                 crate::background::Source::Raster(img) => {
-                    let s = img.size(0);
-                    // Интринзик — в единицах элемента (`mask_scale`).
-                    let (iw, ih) = (
-                        s.width.0 as f32 * self.mask_scale,
-                        s.height.0 as f32 * self.mask_scale,
+                    let (tw, th) = mask_size::tile(
+                        source.intrinsic(), self.mask_scale, (bw, bh), self.mask_size, self.mask_fit,
                     );
-                    // contain/cover: один множитель от пропорции интринзика.
-                    let k = match self.mask_fit {
-                        1 => Some((bw / iw.max(1.0)).min(bh / ih.max(1.0))),
-                        2 => Some((bw / iw.max(1.0)).max(bh / ih.max(1.0))),
-                        _ => None,
-                    };
-                    match (k, self.mask_size) {
-                        (Some(k), _) => (img.clone(), iw * k, ih * k),
-                        (None, Some((x, y))) => (img.clone(), len(x, bw, iw), len(y, bh, ih)),
-                        (None, None) => (img.clone(), iw, ih),
-                    }
+                    (img.clone(), tw, th)
                 }
                 _ => {
-                    // У рисунка может быть свой размер — contain/cover
-                    // считаются от него; без интринзика плитка = коробка.
-                    let mut intr = source.intrinsic();
-                    // Интринзик — в единицах элемента (`mask_scale`).
-                    intr.w = intr.w.map(|v| v * self.mask_scale);
-                    intr.h = intr.h.map(|v| v * self.mask_scale);
-                    let fit = match (self.mask_fit, intr.w, intr.h) {
-                        (1, Some(iw), Some(ih)) => {
-                            let k = (bw / iw.max(1.0)).min(bh / ih.max(1.0));
-                            Some((iw * k, ih * k))
-                        }
-                        (2, Some(iw), Some(ih)) => {
-                            let k = (bw / iw.max(1.0)).max(bh / ih.max(1.0));
-                            Some((iw * k, ih * k))
-                        }
-                        _ => None,
-                    };
-                    let (tw, th) = match (fit, self.mask_size) {
-                        (Some(t), _) => t,
-                        // `auto` в паре (`auto 50px`) — интринзик своей оси.
-                        (None, Some((x, y))) => (
-                            len(x, bw, intr.w.unwrap_or(bw)),
-                            len(y, bh, intr.h.unwrap_or(bh)),
-                        ),
-                        // auto: у рисунка со своим размером плитка — он
-                        // (mask-repeat-1: свг 50x50 мостится по коробке),
-                        // без интринзика — коробка.
-                        (None, None) => (
-                            intr.w.unwrap_or(bw),
-                            intr.h.unwrap_or(bh),
-                        ),
-                    };
+                    let (tw, th) = mask_size::tile(
+                        source.intrinsic(), self.mask_scale, (bw, bh), self.mask_size, self.mask_fit,
+                    );
                     // Растр — в физических точках окна: маска в CSS-точках
                     // растягивалась при композите и мылила край формы
                     // (clip-path-circle-010 и родня: 0.71 вместо нуля).
