@@ -12285,16 +12285,11 @@ fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
     (!out.is_empty()).then_some(out)
 }
 
-/// Разбить список дорожек по пробелам, не заходя внутрь скобок.
-/// ЗАМЕРЕНО И ОТКАЧЕНО: считать квадратную скобку так же, как круглую, чтобы
-/// многоимённая группа `[a b] 50px` не разрывалась по пробелу. Разрыв правда
-/// роняет ВЕСЬ список дорожек (`one(&token)?` на куске `[a`), но полный свод
-/// CSS3 дал приобретено 0, потеряно 1 —
-/// `grid-auto-repeat-multiple-values-005` 0.00 -> 3.60. Проверено по частям:
-/// счёт дорожек ни при чём, весь итог даёт сама группировка. Возвращаться
-/// вместе с настоящими именами линий (план — `target/scout-linenames.md`).
+/// CSS Grid 2 §7.2.2: a bracketed line-name group is one component, even
+/// with multiple names or without whitespace before the adjacent track.
+/// Use the same boundaries for sizes and names so their positions agree.
 fn tokenize_tracks(v: &str) -> Vec<String> {
-    split_outside_parens(v)
+    line_name_tokens(v)
 }
 
 /// Число колонок в `grid-template-columns`: и `repeat(3, 1fr)`, и `1fr 1fr`.
