@@ -7,6 +7,8 @@
 
 use std::collections::HashMap;
 
+mod selector_tokens;
+
 /// Пара «свойство: значение». Значение хранится сырым — разбор откладывается
 /// до момента применения, чтобы неизвестные свойства не стоили ничего.
 pub type Decls = HashMap<String, String>;
@@ -252,7 +254,12 @@ impl Selector {
         let mut rest = s;
         let head_end = delim(rest);
         if head_end > 0 {
-            let name = unescape(rest[..head_end].trim()).to_ascii_lowercase();
+            let raw_name = rest[..head_end].trim();
+            let local = raw_name.rsplit_once('|').map_or(raw_name, |(_, local)| local);
+            if local != "*" && !selector_tokens::ident(local) {
+                return None;
+            }
+            let name = unescape(raw_name).to_ascii_lowercase();
             // Пространство имён нам чуждо: `*|div` — тот же div, `*|*` —
             // универсал (селекторы-4 §type-nmsp).
             // Пространство имён нам чуждо, но НЕОБЪЯВЛЕННЫЙ префикс делает
@@ -306,9 +313,12 @@ impl Selector {
                 if end == 0 && !body.starts_with(']') {
                     return None;
                 }
-                sel.attrs.push(parse_attr_sel(&body[..end])?);
+                sel.attrs.push(selector_tokens::attr(&body[..end])?);
                 rest = &body[end + 1..];
                 continue;
+            }
+            if matches!(kind, '.' | '#') && !selector_tokens::ident(name) {
+                return None;
             }
             match kind {
                 '.' => sel.classes.push(unescape(name)),
@@ -326,6 +336,15 @@ impl Selector {
                     let bare = name.trim_start_matches(':').to_ascii_lowercase();
                     if !bare.is_empty() && !known_pseudo(&bare) {
                         return None;
+                    }
+                    if bare.split('(').next() == Some("lang") {
+                        let args = bare.strip_prefix("lang(")?.strip_suffix(')')?;
+                        if split_top_level(args, ',')
+                            .iter()
+                            .any(|arg| selector_tokens::value(arg.trim()).is_none())
+                        {
+                            return None;
+                        }
                     }
                     // Пустышка от второго двоеточия `::after` — не
                     // псевдокласс, копить её нельзя.
@@ -423,6 +442,10 @@ impl Selector {
         // его сосед — `.b`, а предок соседа — `.a`.
         let mut sel = Selector::parse_compound(&compounds[0])?;
         for (comp, comb) in compounds[1..].iter().zip(&combs) {
+            // A pseudo-element must end the complex selector (Selectors §3.1).
+            if sel.pseudo.as_deref().is_some_and(is_pseudo_element) {
+                return None;
+            }
             let mut next = Selector::parse_compound(comp)?;
             match comb {
                 0 => next.ancestor = Some(Box::new((sel, false))),
@@ -529,71 +552,6 @@ fn is_pseudo_element(name: &str) -> bool {
             | "scroll-button"
     )
 }
-
-fn parse_attr_sel(raw: &str) -> Option<AttrSel> {
-    let raw = raw.trim();
-    let op_at = raw.char_indices().find(|(i, c)| {
-        *c == '=' || matches!(c, '~' | '|' | '^' | '$' | '*') && raw[i + 1..].starts_with('=')
-    });
-    let Some((i, op_ch)) = op_at else {
-        if raw.is_empty() {
-            return None;
-        }
-        return Some(AttrSel {
-            name: unescape(raw).to_ascii_lowercase(),
-            op: None,
-            ci: false,
-        });
-    };
-    let name = raw[..i].trim();
-    if name.is_empty() {
-        return None;
-    }
-    let (op, val_start) = match op_ch {
-        '=' => (0u8, i + 1),
-        '~' => (1, i + 2),
-        '|' => (2, i + 2),
-        '^' => (3, i + 2),
-        '$' => (4, i + 2),
-        _ => (5, i + 2),
-    };
-    let mut value = raw[val_start..].trim();
-    let mut ci = false;
-    if let Some(stripped) = value
-        .strip_suffix('i')
-        .or_else(|| value.strip_suffix('I'))
-        .map(str::trim_end)
-        && (stripped.ends_with('"')
-            || stripped.ends_with('\'')
-            || stripped.ends_with(char::is_whitespace))
-    {
-        ci = true;
-        value = stripped.trim_end();
-    }
-    let value = value
-        .strip_prefix('"')
-        .and_then(|v| v.strip_suffix('"'))
-        .or_else(|| value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')))
-        .unwrap_or(value);
-    let name = unescape(name).to_ascii_lowercase();
-    Some(AttrSel {
-        ci: ci || CI_ATTRS.contains(&name.as_str()),
-        name,
-        op: Some((op, unescape(value))),
-    })
-}
-
-/// Атрибуты HTML, значения которых сравниваются БЕЗ учёта регистра даже без
-/// флага ` i` (HTML, «Case-sensitivity of selectors»). Перечень закрытый:
-/// прочие атрибуты сравниваются посимвольно.
-const CI_ATTRS: &[&str] = &[
-    "accept", "accept-charset", "align", "alink", "axis", "bgcolor", "charset", "checked", "clear",
-    "codetype", "color", "compact", "declare", "defer", "dir", "direction", "disabled", "enctype",
-    "face", "frame", "hreflang", "http-equiv", "lang", "language", "link", "media", "method",
-    "multiple", "nohref", "noresize", "noshade", "nowrap", "readonly", "rel", "rev", "rules",
-    "scope", "scrolling", "selected", "shape", "target", "text", "type", "valign", "valuetype",
-    "vlink",
-];
 
 /// Где в значении стоит восклицательный знак — вне строк, скобок и
 /// экранирования. `content: "!"` пометкой важности не является.
