@@ -4079,6 +4079,22 @@ impl Window {
         origin + self.element_offset()
     }
 
+    /// KaminIDE patch: дорожки родителя-сетки (см.
+    /// `TaffyLayoutEngine::parent_grid_tracks`); начало родителя — в окне,
+    /// со смещением текущего элемента.
+    #[allow(clippy::type_complexity)]
+    pub fn parent_grid_tracks(
+        &mut self,
+        child: LayoutId,
+    ) -> Option<(Point<Pixels>, Vec<(f32, f32)>, Vec<(f32, f32)>)> {
+        let scale_factor = self.scale_factor();
+        let ((x, y), cols, rows) = self
+            .layout_engine
+            .as_mut()?
+            .parent_grid_tracks(child, scale_factor)?;
+        Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
+    }
+
     /// After calling it, you can request the bounds of the given layout node id or any descendant.
     ///
     /// This method should only be called as part of the prepaint phase of element drawing.

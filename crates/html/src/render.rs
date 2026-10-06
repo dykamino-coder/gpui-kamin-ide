@@ -14133,7 +14133,15 @@ fn gap_rule_spec(
         return None;
     }
     let vertical = merged.vertical == Some(true);
+    // Лунки идут путём сетки (`dom::lanes_to_grid`: `display: grid` с
+    // пометкой `lanes_taffy`), но промежутки у них — ленты: главные между
+    // лентами через всё поле содержимого, поперечные — между элементами
+    // ленты (Blink `GridLanesGapAccumulator`).
+    let lanes = merged.lanes_taffy || merged.display == Some(Display::GridLanes);
     let kind = match merged.display {
+        _ if merged.lanes_taffy => GapLayout::Lines {
+            stacked_vertically: crate::dom::lanes_row_dir(merged) != vertical,
+        },
         Some(Display::Grid) | Some(Display::InlineGrid) => GapLayout::Grid,
         Some(Display::GridLanes) => {
             // Направление лент — как в `lanes()`: явное или по той оси, где
@@ -14215,7 +14223,27 @@ fn gap_rule_spec(
     } else {
         (rtl, false)
     };
+    // Поля контейнера: художник занимает его паддинг-бокс, а протяжённость
+    // главных промежутков строк и лент считается от поля содержимого.
+    let pad_px = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => v,
+        Some(Len::Em(k)) => k * size,
+        _ => 0.0,
+    };
+    let pad = [
+        pad_px(s.padding.top),
+        pad_px(s.padding.right),
+        pad_px(s.padding.bottom),
+        pad_px(s.padding.left),
+    ];
+    let lines_extent = match merged.display {
+        _ if lanes => 2,
+        Some(Display::Grid) | Some(Display::InlineGrid) => 0,
+        _ => 1,
+    };
     Some(crate::interact::GapRuleSpec {
+        pad,
+        lines_extent,
         rev_x,
         rev_y,
         col,
@@ -14267,6 +14295,8 @@ fn multicol_gap_rule_spec(
     {
         r.brk = 0;
     }
+    // Многоколонник: протяжённость — по колонкам стопки, как прежде.
+    spec.lines_extent = 0;
     spec.gap_x = Some(if vertical { row_gap } else { column_gap });
     spec.gap_y = Some(if vertical { column_gap } else { row_gap });
     Some(spec)
@@ -24068,8 +24098,20 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 )
                 && !(e.node_id == 0 && e.children.is_empty())
             {
+                // Проба ложится на паддинг-бокс; линейкам нужен рамочный.
+                let fs = match merged.font_size {
+                    Some(Len::Px(v)) => v,
+                    _ => opts.base_size(),
+                };
+                let bw = |l: Option<Len>| match l {
+                    Some(Len::Px(v)) => v,
+                    Some(Len::Em(k)) => k * fs,
+                    _ => 0.0,
+                };
+                let b = e.style.borders();
                 kids.push(crate::interact::gap_item_probe(
                     crate::interact::gap_items_for(key),
+                    [bw(b.top), bw(b.right), bw(b.bottom), bw(b.left)],
                 ));
             }
             if let Some((key, skip)) = crate::interact::clamp_context() {
