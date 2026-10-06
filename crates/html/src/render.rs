@@ -16768,7 +16768,6 @@ fn line_box_spans(
 /// растёт (`ruby-bidi-002`: эталон из ltr-абзаца с `text-align: right`).
 fn atoms_fit_line(inherited: &Computed, ruby: bool) -> bool {
     inherited.vertical != Some(true)
-        && inherited.rotated_line != Some(true)
         && (ruby || inherited.rtl != Some(true))
         && inherited.no_select != Some(true)
         && inherited.pointer_events_none != Some(true)
