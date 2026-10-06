@@ -1097,13 +1097,11 @@ impl Element for Grouped {
             };
             Some((
                 img,
-                Bounds {
-                    origin: gpui::point(
-                        bounds.origin.x + px(ol + ox),
-                        bounds.origin.y + px(ot + oy),
-                    ),
-                    size: gpui::size(px(tw.max(1.0)), px(th.max(1.0))),
-                },
+                mask_size::snap_tile(
+                    gpui::point(bounds.origin.x + px(ol + ox), bounds.origin.y + px(ot + oy)),
+                    (tw, th),
+                    window.scale_factor(),
+                ),
                 ((self.mask_no_repeat.0 as u32)
                     | ((self.mask_no_repeat.1 as u32) << 1)
                     | ((self.mask_luminance as u32) << 2)),
