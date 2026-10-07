@@ -19,6 +19,9 @@
 //! Первая ветка покрывает подавляющее большинство: жирный, курсив, ссылка,
 //! цвет. Вторая включается там, где без неё пришлось бы врать про размер.
 
+mod emphasis;
+pub use emphasis::emphasis_spans;
+
 mod first_letter;
 mod first_line_background;
 mod empty_inline;
@@ -2381,48 +2384,6 @@ fn zero_width_format(ch: char) -> bool {
             | 0x206A..=0x206F
             | 0xFEFF
     )
-}
-
-/// Куски со знаком акцента. Знак набирается в половину кегля своей базы
-/// (css-text-decor-3 §5.3, как аннотация руби с `font-size: 50%`) и встаёт
-/// на край строчной коробки куска (`line-height` куска, `normal` — доля
-/// `normal` шрифта абзаца).
-pub fn emphasis_spans(
-    pieces: &[Piece],
-    base_size: f32,
-    normal: f32,
-) -> Vec<crate::lines::EmphSpan> {
-    let mut out = Vec::new();
-    let mut at = 0usize;
-    for p in pieces {
-        let Piece::Text { text, style } = p else {
-            continue;
-        };
-        let end = at + text.len();
-        if let Some(mark) = style.text_emphasis.as_deref().filter(|m| !m.is_empty())
-            && text.chars().any(|c| !c.is_whitespace() && c != '\u{feff}')
-        {
-            let size = match style.font_size {
-                Some(Len::Px(v)) => v,
-                _ => base_size,
-            };
-            let line_height = match style.line_height {
-                Some(Len::Px(v)) => v,
-                Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-                _ => normal * size,
-            };
-            out.push(crate::lines::EmphSpan {
-                range: at..end,
-                under: style.emphasis_under,
-                size: size * 0.5,
-                line_height,
-                mark: mark.to_string(),
-                color: style.emphasis_color.map(Color::to_hsla),
-            });
-        }
-        at = end;
-    }
-    out
 }
 
 /// Межсловный интервал ПО КУСКАМ: отрезок байт → добавка к каждому пробелу.
