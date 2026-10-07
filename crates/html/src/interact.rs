@@ -3194,7 +3194,11 @@ pub fn edge_probe(
     doc_ix: u32,
     inset: [f32; 4],
 ) -> AnyElement {
-    gpui::canvas(
+    // Exact (unrounded) layout bounds: each collapsed border band is snapped
+    // once, from the grid line it is centred on (CSS 2.1 §17.6.2). Bands
+    // built from independently rounded cell edges left a device-pixel gap
+    // between two bands whose exact edges coincide.
+    gpui::canvas_with_unrounded_bounds(
         move |bounds: Bounds<Pixels>, _, _| {
             // Вжим границ внутрь: линии рамки самой таблицы лежат на
             // ВНУТРЕННИХ краях её рамочного места.
@@ -3526,7 +3530,20 @@ impl Element for EdgePainter {
                 .unwrap_or(std::cmp::Ordering::Equal)
                 .then(p.1.cmp(&q.1).reverse())
         });
+        // Snap every band edge to the device pixel grid the same way layout
+        // bounds are rounded (`round()` of the absolute edge), so two bands
+        // meeting at one exact coordinate share one device edge.
+        let scale = window.scale_factor();
+        let snap = |v: Pixels| gpui::px((f32::from(v) * scale).round() / scale);
         for (_, _, rect, colour) in segs {
+            let x0 = snap(rect.origin.x);
+            let y0 = snap(rect.origin.y);
+            let x1 = snap(rect.origin.x + rect.size.width);
+            let y1 = snap(rect.origin.y + rect.size.height);
+            let rect = Bounds {
+                origin: gpui::point(x0, y0),
+                size: gpui::size(x1 - x0, y1 - y0),
+            };
             window.paint_quad(gpui::fill(rect, colour.to_hsla()));
         }
     }
