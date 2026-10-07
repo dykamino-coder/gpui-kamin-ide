@@ -4079,6 +4079,16 @@ impl Window {
             .layout_size_unrounded(layout_id, scale_factor)
     }
 
+    /// KaminIDE patch: протяжённость содержимого узла без округления (см.
+    /// `TaffyLayoutEngine::layout_content_size_unrounded`).
+    pub fn layout_content_size_unrounded(&mut self, layout_id: LayoutId) -> Size<Pixels> {
+        let scale_factor = self.scale_factor();
+        self.layout_engine
+            .as_ref()
+            .unwrap()
+            .layout_content_size_unrounded(layout_id, scale_factor)
+    }
+
     /// KaminIDE patch: начало узла в окне без округления к физической точке
     /// (см. `TaffyLayoutEngine::layout_origin_unrounded`); как `layout_bounds`,
     /// со смещением текущего элемента.
