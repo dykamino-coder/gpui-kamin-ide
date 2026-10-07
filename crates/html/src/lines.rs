@@ -199,6 +199,8 @@ pub struct Paragraph {
     /// Edge spacers of inline boxes: (offset, box id, physical left, parent
     /// rtl) — see `inline::spacer_edges`.
     spacer_edges: Vec<(usize, u32, bool, bool)>,
+    /// Content extents `(box id, start, end)` of those boxes.
+    box_extents: Vec<(u32, usize, usize)>,
     /// Вырезы обтекания (`shape-outside`): формы слева и справа, в
     /// координатах от верха абзаца. Сужают СВОИ строки по их высоте.
     flow: std::sync::Arc<(Vec<crate::flow::FloatShape>, Vec<crate::flow::FloatShape>)>,
@@ -615,6 +617,7 @@ impl Paragraph {
             indent: Indent::default(),
             spacers: Vec::new(),
             spacer_edges: Vec::new(),
+            box_extents: Vec::new(),
             flow: std::sync::Arc::new((Vec::new(), Vec::new())),
             id: None,
             highlight: Hsla::default(),
@@ -795,6 +798,12 @@ impl Paragraph {
     /// Edge spacers with their inline boxes.
     pub fn spacer_edges(mut self, edges: Vec<(usize, u32, bool, bool)>) -> Self {
         self.spacer_edges = edges;
+        self
+    }
+
+    /// Content extents of inline boxes with edge spacers.
+    pub fn box_extents(mut self, extents: Vec<(u32, usize, usize)>) -> Self {
+        self.box_extents = extents;
         self
     }
 
@@ -3522,6 +3531,7 @@ impl Element for Paragraph {
         let hanging = self.hanging;
         let spacers = self.spacers.clone();
         let spacer_edges = self.spacer_edges.clone();
+        let box_extents = self.box_extents.clone();
         let flow = self.flow.clone();
         let id = window.request_measured_layout_with_physical_baselines(
             gpui::Style::default(),
@@ -3563,6 +3573,7 @@ impl Element for Paragraph {
                 probe.strut = strut;
                 probe.spacers = spacers.clone();
                 probe.spacer_edges = spacer_edges.clone();
+                probe.box_extents = box_extents.clone();
                 // Предел переноса берётся ПО ОСИ СТРОКИ: по горизонтали это
                 // ширина коробки, по вертикали — её высота. Уже решённая
                 // родителем сторона сильнее доступной.
@@ -4147,6 +4158,7 @@ impl Paragraph {
             indent: self.indent,
             spacers: self.spacers.clone(),
             spacer_edges: self.spacer_edges.clone(),
+            box_extents: self.box_extents.clone(),
             id: None,
             highlight: self.highlight,
             wrap: self.wrap,
@@ -4671,7 +4683,7 @@ impl Paragraph {
         // `unicode-bidi`, strong R/AL text) must be reordered here; without it
         // they were painted in logical order (CSS 2.1 §9.10, `bidi-text/*`).
         // Runs come in visual order; a word crossing a run edge is cut there.
-        let ltr_runs = self.ltr_line_runs(range);
+        let ltr_runs = self.line_visual_runs(range);
         if !ltr_runs.is_empty() {
             let mut split: Vec<Word> = Vec::with_capacity(words.len());
             for w in words {
@@ -4684,6 +4696,7 @@ impl Paragraph {
                             .iter()
                             .flat_map(|p| [*p, *p + crate::inline::SPACER.len()]),
                     )
+                    .chain(self.box_extents.iter().flat_map(|b| [b.1, b.2]))
                     .filter(|s| *s > at && *s < w.range.end)
                     .collect();
                 edges.sort_unstable();
@@ -4792,6 +4805,10 @@ impl Paragraph {
                     pts.push(p);
                     pts.push((p + crate::inline::SPACER.len()).min(e));
                 }
+                // Box content edges: a fragment of a box starts a piece.
+                for b in &self.box_extents {
+                    pts.extend([b.1, b.2].into_iter().filter(|p| *p > s && *p < e));
+                }
                 pts.sort_unstable();
                 pts.dedup();
                 let mut run: Vec<(usize, usize, bool)> =
@@ -4814,6 +4831,12 @@ impl Paragraph {
                     None => boxes.push((id, p, p)),
                 }
             }
+            for b in boxes.iter_mut() {
+                if let Some(x) = self.box_extents.iter().find(|x| x.0 == b.0) {
+                    b.1 = b.1.min(x.1);
+                    b.2 = b.2.max(x.2);
+                }
+            }
             boxes.sort_by_key(|b| b.2 - b.1);
             for &(id, lo, hi) in &boxes {
                 let own = |a: usize| {
@@ -4827,10 +4850,17 @@ impl Paragraph {
                 }
                 let rest: Vec<(usize, usize, bool)> =
                     units.iter().copied().filter(|u| own(u.0).is_none()).collect();
+                // Content of the box: between its markers when known, else
+                // strictly between its own edge spacers.
+                let (from_at, to_at) = self
+                    .box_extents
+                    .iter()
+                    .find(|b| b.0 == id)
+                    .map_or((lo + 1, hi), |b| (b.1, b.2));
                 let inside: Vec<usize> = rest
                     .iter()
                     .enumerate()
-                    .filter(|(_, u)| u.0 > lo && u.0 < hi && u.0 < u.1)
+                    .filter(|(_, u)| u.0 >= from_at && u.0 < to_at && u.0 < u.1)
                     .map(|(i, _)| i)
                     .collect();
                 let (Some(&first), Some(&last)) = (inside.first(), inside.last()) else {
@@ -4879,7 +4909,11 @@ impl Paragraph {
             })
         };
         let mut logical_run: Vec<(usize, Pixels)> = vec![];
-        if self.wrap.rtl && range.start < range.end && range.end <= self.text.len() {
+        if self.wrap.rtl
+            && ltr_place.is_empty()
+            && range.start < range.end
+            && range.end <= self.text.len()
+        {
             let info = unicode_bidi::BidiInfo::new(&self.text, Some(unicode_bidi::Level::rtl()));
             if let Some(para) = info
                 .paragraphs
@@ -4973,8 +5007,15 @@ impl Paragraph {
             // направо переворачивала порядок слов на выключенной строке.
             let x = match logical_run.iter().find(|(i, _)| *i == wi) {
                 Some((_, fixed)) => *fixed,
+                // A right-to-left line starts at its mirror axis: its
+                // logical extent ends at the visual left.
                 None if visual.is_some() => {
-                    bounds.origin.x + dx + visual.map_or(px(0.), |v| v.0)
+                    let left = if self.wrap.rtl {
+                        mirror - logical_at(range.end)
+                    } else {
+                        bounds.origin.x + dx
+                    };
+                    left + visual.map_or(px(0.), |v| v.0)
                 }
                 None if self.wrap.rtl => mirror - logical - shaped.width,
                 None => bounds.origin.x + dx + logical,
@@ -5165,26 +5206,31 @@ impl Paragraph {
     }
 
     /// Слова строки — куски между пробелами, каждое со счётом пробелов слева.
-    /// Visual level runs `(start, end, rtl)` of a left-to-right line, or none
-    /// when the line has no right-to-left run (UAX #9 L1–L2).
+    /// Visual level runs `(start, end, rtl)` of a line (UAX #9 L1–L2), or none
+    /// when the plain path suffices: a left-to-right line without a
+    /// right-to-left run, a right-to-left line of one right-to-left run and no
+    /// inline box edges (the mirror below places it).
     ///
     /// Box spacers (`inline::SPACER`, U+FEFF) are analysed as neutrals
     /// (U+FFFC, same UTF-8 length): as boundary neutrals X9 would give a
     /// trailing spacer the level of the embedding it follows, while the edges
     /// belong to the parent's level (CSS Writing Modes 4 §2.4).
-    fn ltr_line_runs(&self, range: &std::ops::Range<usize>) -> Vec<(usize, usize, bool)> {
-        if self.wrap.rtl || range.start >= range.end || range.end > self.text.len() {
+    fn line_visual_runs(&self, range: &std::ops::Range<usize>) -> Vec<(usize, usize, bool)> {
+        if range.start >= range.end || range.end > self.text.len() {
             return Vec::new();
         }
-        let needs = self.text[range.clone()].chars().any(|c| {
-            matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
-                || matches!(
-                    unicode_bidi::bidi_class(c),
-                    unicode_bidi::BidiClass::R
-                        | unicode_bidi::BidiClass::AL
-                        | unicode_bidi::BidiClass::AN
-                )
-        });
+        let rtl = self.wrap.rtl;
+        let edges = rtl && self.spacer_edges.iter().any(|e| range.contains(&e.0));
+        let needs = edges
+            || self.text[range.clone()].chars().any(|c| {
+                matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+                    || match unicode_bidi::bidi_class(c) {
+                        unicode_bidi::BidiClass::R | unicode_bidi::BidiClass::AL => !rtl,
+                        unicode_bidi::BidiClass::AN => true,
+                        unicode_bidi::BidiClass::L | unicode_bidi::BidiClass::EN => rtl,
+                        _ => false,
+                    }
+            });
         if !needs {
             return Vec::new();
         }
@@ -5194,8 +5240,10 @@ impl Paragraph {
                 text.replace_range(at..at + 3, "\u{fffc}");
             }
         }
-        let forced = if self.plaintext.is_some() {
+        let forced = if self.plaintext.is_some() && !rtl {
             None
+        } else if rtl {
+            Some(unicode_bidi::Level::rtl())
         } else {
             Some(unicode_bidi::Level::ltr())
         };
@@ -5207,12 +5255,16 @@ impl Paragraph {
         else {
             return Vec::new();
         };
+        if para.level.is_rtl() != rtl {
+            return Vec::new();
+        }
         let (levels, visual) = info.visual_runs(para, range.clone());
         let runs: Vec<(usize, usize, bool)> = visual
             .into_iter()
             .map(|r| (r.start, r.end, levels.get(r.start).is_some_and(|l| l.is_rtl())))
             .collect();
-        if runs.iter().any(|r| r.2) { runs } else { Vec::new() }
+        let mixed = if rtl { runs.iter().any(|r| !r.2) } else { runs.iter().any(|r| r.2) };
+        if mixed || edges { runs } else { Vec::new() }
     }
 
     fn words(&self, range: &std::ops::Range<usize>) -> Vec<Word> {

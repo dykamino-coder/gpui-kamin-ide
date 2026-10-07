@@ -554,6 +554,18 @@ fn collect_with_empty_metrics(
                 // Юникоду: разбор двунаправленности их и ждёт, а рисовать их
                 // не надо, ширины у них нет.
                 let (open, close) = bidi_marks(&e.style, &merged);
+                // Zero-length markers bound the box content between its edge
+                // spacers (`box_extents`); they add no text.
+                let box_marker = |start: bool| Piece::Text {
+                    text: String::new(),
+                    style: Computed {
+                        spacer_edge: Some((box_id, start, parent_rtl)),
+                        ..merged.clone()
+                    },
+                };
+                if box_id != 0 {
+                    out.push(box_marker(true));
+                }
                 if let Some(mark) = open {
                     out.push(Piece::Text {
                         text: mark.to_string(),
@@ -573,6 +585,9 @@ fn collect_with_empty_metrics(
                         text: mark.to_string(),
                         style: merged.clone(),
                     });
+                }
+                if box_id != 0 {
+                    out.push(box_marker(false));
                 }
                 if trail != 0.0 {
                     out.push(Piece::Text {
@@ -3470,6 +3485,30 @@ pub fn spacer_edges(pieces: &[Piece]) -> Vec<(usize, u32, bool, bool)> {
     out
 }
 
+/// Content extents `(box id, start, end)` of inline boxes with edge spacers,
+/// from the zero-length markers around their content.
+pub fn box_extents(pieces: &[Piece]) -> Vec<(u32, usize, usize)> {
+    let mut at = 0usize;
+    let mut out: Vec<(u32, usize, usize)> = Vec::new();
+    for p in pieces {
+        let Piece::Text { text, style } = p else {
+            continue;
+        };
+        if text.is_empty()
+            && let Some((id, start, _)) = style.spacer_edge
+        {
+            if start {
+                out.push((id, at, usize::MAX));
+            } else if let Some(b) = out.iter_mut().rev().find(|b| b.0 == id) {
+                b.2 = at;
+            }
+        }
+        at += text.len();
+    }
+    out.retain(|b| b.2 != usize::MAX);
+    out
+}
+
 pub fn spacers(pieces: &[Piece]) -> Vec<usize> {
     let mut at = 0usize;
     let mut out = Vec::new();
@@ -3829,7 +3868,7 @@ fn atom_glue(ch: char) -> bool {
 /// (`line-breaking-atomic-012/013`) приезжает внутри текста вместе с буквой и
 /// служебным не считается.
 fn glue_marker(p: &Piece) -> bool {
-    matches!(p, Piece::Text { text, .. } if text == "\u{200b}" || text == SPACER)
+    matches!(p, Piece::Text { text, .. } if text == "\u{200b}" || text == SPACER || text.is_empty())
 }
 
 /// Куски ряда, сгруппированные по правилу склейки с атомом (css-text-3 §5.1).
