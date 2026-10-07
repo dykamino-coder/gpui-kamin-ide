@@ -31,7 +31,11 @@ pub(super) fn normalize(style: &mut Computed, tag: &str, out_of_flow: bool) {
     let internal_table = matches!(
         style.display,
         Some(Display::TableCell | Display::TableRow | Display::TableRowGroup)
-    ) || style.col_role.is_some();
+    ) || style.col_role.is_some()
+        // The UA sheet's table display of these tags may not be written into
+        // `display` (contain-size-051: `<td>` with `contain: size`).
+        || (style.display.is_none()
+            && matches!(tag, "td" | "th" | "tr" | "tbody" | "thead" | "tfoot"));
     // Size containment excludes all internal table boxes, including cells.
     if no_box || non_atomic_inline || internal_ruby || internal_table {
         style.contain_size = None;
@@ -41,7 +45,9 @@ pub(super) fn normalize(style: &mut Computed, tag: &str, out_of_flow: bool) {
     if no_box
         || non_atomic_inline
         || internal_ruby
-        || (internal_table && style.display != Some(Display::TableCell))
+        || (internal_table
+            && style.display != Some(Display::TableCell)
+            && !(style.display.is_none() && matches!(tag, "td" | "th")))
     {
         style.contain_layout = None;
         style.contain_paint = None;
