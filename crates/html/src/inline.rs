@@ -3483,6 +3483,9 @@ pub fn strut_font(style: &Computed, base: &TextStyle) -> gpui::Font {
 
 fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun {
     let mut font = base.font();
+    if font.fallbacks.is_none() {
+        font.fallbacks = crate::fonts::document_fallbacks();
+    }
     // Названное семейство сильнее родового: подстановкой занимается система.
     // Пустое имя — «шрифт документа» (разбор `font-family`): база как есть.
     if let Some(family) = style.font_family.as_ref().filter(|f| !f.is_empty()) {

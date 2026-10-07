@@ -757,3 +757,39 @@ mod tests {
         assert!(range_has_space(Some("мусор")));
     }
 }
+
+/// Подстановка шрифта под японскую кану в тексте документа.
+///
+/// Глиф, которого нет в первом доступном шрифте, ищется подстановкой
+/// (css-fonts-4 §5.1 «system font fallback» — выбор за UA). Системная
+/// подстановка DirectWrite отдаёт хирагану/катакану «Yu Gothic UI», где кана
+/// ПРОПОРЦИОНАЛЬНАЯ: `あ` — 0.816em при `U+3000` в 1em (hmtx `YuGothR.ttc`).
+/// Браузер подбирает шрифт по письменности (Blink: карта «письменность →
+/// семейства» в `font_fallback_win.cc`, японская — текстовые «Yu Gothic»/
+/// «Meiryo», у которых кана моноширинная в 1em, как и у Noto CJK на Linux),
+/// и страницы на это рассчитывают: `ああ&#x3000;` должно совпасть с `あああ`
+/// (`trailing-ideographic-space-*`), а `あ&#x2004;あ` не помещаться в 2em
+/// (`trailing-other-space-separators-break-spaces-*`). Поэтому для каны
+/// документ просит «Yu Gothic» (затем «Meiryo», «MS Gothic») — только в её
+/// диапазонах; остальные знаки идут прежней системной подстановкой.
+/// Интерфейс IDE подстановок не задаёт и этого не касается.
+pub fn document_fallbacks() -> Option<gpui::FontFallbacks> {
+    if !cfg!(windows) {
+        return None;
+    }
+    static LIST: std::sync::OnceLock<gpui::FontFallbacks> = std::sync::OnceLock::new();
+    // CJK Symbols and Punctuation, хирагана, катакана; фонетические
+    // расширения катаканы.
+    const KANA: &[(u32, u32)] = &[(0x3000, 0x30FF), (0x31F0, 0x31FF)];
+    Some(
+        LIST.get_or_init(|| {
+            gpui::FontFallbacks::from_fonts(
+                ["Yu Gothic", "Meiryo", "MS Gothic"]
+                    .iter()
+                    .map(|f| gpui::FontFallbacks::restricted(f, KANA))
+                    .collect(),
+            )
+        })
+        .clone(),
+    )
+}
