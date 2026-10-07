@@ -1867,6 +1867,7 @@ fn stacked_flex_tree(c: &Element, depth: u8) -> bool {
                 && !out_of_flow(ks)
                 && ks.position.is_none()
                 && ks.flex_grow.is_none_or(|g| g == 0.0)
+                && ks.basis_content != Some(true)
                 && match ks.flex_basis {
                     None | Some(Len::Auto) => full(&ks.width),
                     _ => full(&ks.flex_basis),
@@ -1934,7 +1935,30 @@ fn float_only_box(c: &Element) -> Option<f32> {
 /// Атомарные строчные (`inline-flex`/`inline-grid`) — монолиты, но внутрь них
 /// спуск всё равно идёт: гейт осторожный.
 fn parallel_items_inside(c: &Element, depth: u8) -> bool {
-    let own = matches!(
+    // Элементы, идущие СТОПКОЙ по блочной оси, рядом не стоят: колонка flex
+    // без переноса (css-flexbox-1 §9.3: одна строка, элементы друг под
+    // другом) и сетка-стопка (`grid_stack`: одна колонка, ряд = элемент).
+    // Монолит такого элемента переполняет колонку, как в блоке (Blink
+    // `FinishFragmentation` растит фрагмент контейнера до конца монолита;
+    // `monolithic-overflow-003/004.tentative` во flex и сетке).
+    let stacked = (c.style.display == Some(Display::Flex)
+        && c.style.webkit_box != Some(true)
+        && c.style.vertical != Some(true)
+        && matches!(
+            c.style.flex_dir,
+            Some(crate::computed::FlexDir::Col) | Some(crate::computed::FlexDir::ColReverse)
+        )
+        && c.style.flex_wrap != Some(true))
+        || (c.style.display == Some(Display::Grid) && grid_stack(c));
+    // `break-inside: avoid` элемента без настоящего монолита — пожелание
+    // (css-break-4 §4.4): с верха колонки такой элемент выше колонки рвётся, а
+    // ветка переполнения (`overflow_top`) держала бы его целым
+    // (`single-line-column-flex-fragmentation-015`: элемент 250 в колонке 100).
+    let stacked = stacked
+        && !c.children.iter().any(
+            |n| matches!(n, Node::Element(k) if k.style.break_inside_avoid && avoid_only_monolith(k)),
+        );
+    let own = !stacked && matches!(
         c.style.display,
         Some(Display::Flex)
             | Some(Display::Grid)
@@ -2958,6 +2982,34 @@ fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
     }
 }
 
+/// Элемент КОЛОНКИ flex без переноса с главным размером по `flex-basis`
+/// (css-flexbox-1 §9.2 шаг 3): `flex-basis: content` — по содержимому, и
+/// `height` при этом не действует. Контейнер `height: auto` свободного места не
+/// даёт, и гибкость базу не меняет (§9.7). `None` — мера по `height`
+/// элемента, как прежде.
+fn basis_sized(c: &Element, k: &Element) -> Option<Element> {
+    use crate::computed::FlexDir;
+    let s = &c.style;
+    if k.inline
+        || s.display != Some(Display::Flex)
+        || s.webkit_box == Some(true)
+        || s.vertical == Some(true)
+        || s.flex_wrap == Some(true)
+        || !matches!(s.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse))
+        || !matches!(s.height, None | Some(Len::Auto))
+    {
+        return None;
+    }
+    let mut kk = k.clone();
+    // База в точках здесь не ставится: при `min-height: auto` элемент не
+    // меньше своего содержимого (§4.5), а этой меры у нас нет.
+    if k.style.basis_content != Some(true) {
+        return None;
+    }
+    kk.style.height = None;
+    Some(kk)
+}
+
 /// Хвост непоследнего фрагмента обычной коробки (`flow::StackChild::slack`):
 /// фрагмент, разорванный внутри коробки, занимает остаток фрагментаинера
 /// (css-break-3 §box-splitting «the box … continues to the end of the
@@ -3779,6 +3831,13 @@ fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
             c.style.flex_dir,
             None | Some(crate::computed::FlexDir::Row) | Some(crate::computed::FlexDir::RowReverse)
         ) && c.style.flex_wrap != Some(true));
+    let flex_col = flex_items
+        && c.style.vertical != Some(true)
+        && c.style.flex_wrap != Some(true)
+        && matches!(
+            c.style.flex_dir,
+            Some(crate::computed::FlexDir::Col) | Some(crate::computed::FlexDir::ColReverse)
+        );
     let flex_gap = match c.style.gap {
         Some((Some(Len::Px(v)), _)) if flex_items && c.style.vertical != Some(true) => v.max(0.0),
         _ => 0.0,
@@ -4050,6 +4109,13 @@ fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                         && (k.style.float.unwrap_or(0) == 0
                             || block_like_float(&k.style)) =>
                 {
+                    // Главный размер элемента КОЛОНКИ flex — его `flex-basis`
+                    // (css-flexbox-1 §9.2 шаг 3): `content` — по содержимому,
+                    // а `height` при этом не действует; в точках — сама база.
+                    // Контейнер `height: auto` свободного места не даёт, и
+                    // гибкость базу не меняет (§9.7).
+                    let based = if flex_col { basis_sized(c, k) } else { None };
+                    let k = based.as_ref().unwrap_or(k);
                     shape_full(k, depth - 1, cx).map(
                         |(h, mt, mb, cuts, forced, solid)| {
                             // Монолит-потомок — весь диапазон
@@ -4750,7 +4816,9 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
                 || k.style.position == Some(crate::computed::Position::Relative))
             && k.style.float.unwrap_or(0) == 0
         {
-            let (h, mt, mb, ..) = shape_full(k, depth - 1, ShapeCx::COLUMNS)?;
+            // Та же база элемента колонки flex, что у `shape_full`.
+            let based = basis_sized(c, k);
+            let (h, mt, mb, ..) = shape_full(based.as_ref().unwrap_or(k), depth - 1, ShapeCx::COLUMNS)?;
             (h, mt, mb)
         } else {
             return None;
@@ -5778,6 +5846,9 @@ fn row_item_width(ks: &Computed, main: f32) -> Option<f32> {
         Some(Len::Pct(p)) => Some(p * main),
         _ => None,
     };
+    if ks.basis_content == Some(true) {
+        return None;
+    }
     match ks.flex_basis {
         Some(Len::Auto) | None => px(&ks.width),
         _ => px(&ks.flex_basis),

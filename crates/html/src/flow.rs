@@ -1626,6 +1626,20 @@ impl ColumnStack {
                         placed = col < not_top;
                         continue;
                     }
+                    // Одно поле ребёнка (ни куска содержимого) уже ушло за край
+                    // пустой колонки: разрыв ложится в поле, и оно на разрыве
+                    // усекается (css-break-3 §5.2: «margins adjoining an
+                    // unforced break are truncated»), а коробка начинает
+                    // следующую колонку с верха (`flex-container-
+                    // fragmentation-006`: поле 200 при колонке 100). Поле —
+                    // не содержимое, правило «хоть что-то в каждом
+                    // фрагментаинере» его не держит.
+                    None if !placed && !paged && from <= 0.01 && cur > target + 0.01 => {
+                        col += 1;
+                        cur = 0.0;
+                        placed = col < not_top;
+                        continue;
+                    }
                     None if !mono && rest > target + 0.01 && room > 0.01 => {
                         out.push(Frag { kid, copy, col, y: cur, from, h: room, head: hd, foot: ft(room) });
                         from += room;
