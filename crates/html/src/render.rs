@@ -16613,6 +16613,11 @@ fn line_box_spans(
 /// растёт (`ruby-bidi-002`: эталон из ltr-абзаца с `text-align: right`).
 fn atoms_fit_line(inherited: &Computed, ruby: bool) -> bool {
     inherited.vertical != Some(true)
+        // A rotated paragraph of atoms only is a row whose end edge sits on
+        // the end of the paragraph box (`paragraph_routed`, pure-atom
+        // branch); a line box would add the strut's descent below the atoms
+        // (`wm-propagation-body-035`: the caption image rose by the descent).
+        && !(inherited.rotated_line == Some(true) && !rotated_atom::text_turn())
         && (ruby || inherited.rtl != Some(true))
         && inherited.no_select != Some(true)
         && inherited.pointer_events_none != Some(true)

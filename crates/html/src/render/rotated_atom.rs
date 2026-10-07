@@ -20,6 +20,12 @@ pub(super) fn without_text_turn<R>(build: impl FnOnce() -> R) -> R {
     build()
 }
 
+/// The paragraph being built is a rotated line that carries text (not the
+/// pure-atom branch of `without_text_turn`).
+pub(super) fn text_turn() -> bool {
+    HAS_TEXT_TURN.with(|cell| cell.get())
+}
+
 pub(super) fn physical(
     e: &Element,
     flow: &Computed,
