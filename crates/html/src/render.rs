@@ -5,6 +5,7 @@
 //! свои правила — они и описаны в доке отдельными разделами.
 
 mod fragment_size;
+mod outline_ring;
 mod band_clearance;
 use band_clearance::supported as band_clear_supported;
 mod content_wrapper;
@@ -1153,24 +1154,14 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
                 Some(Len::Em(k)) => k * em,
                 _ => 0.0,
             };
-            let mut ring = div()
-                .absolute()
-                .top(px(-(off + w + bpx(bw.top))))
-                .left(px(-(off + w + bpx(bw.left))))
-                .right(px(-(off + w + bpx(bw.right))))
-                .bottom(px(-(off + w + bpx(bw.bottom))))
-                .border(px(w))
-                .border_color(colour.to_hsla())
-                .rounded(px(corner));
-            // Узор контура — тем же примитивом, что узор рамки
-            // (`apply::apply_paint`): `dotted`/`dashed` шли сплошной, а эталон
-            // `outline-style-012-ref` пишет ту же фигуру `border: 4px dotted`.
-            match o.style {
-                Some(3) => ring.style().border_style = Some(gpui::BorderStyle::Dotted),
-                Some(4) => ring = ring.border_dashed(),
-                _ => {}
-            }
-            out.push(ring.into_any_element());
+            out.push(outline_ring::element(
+                [bpx(bw.top), bpx(bw.right), bpx(bw.bottom), bpx(bw.left)],
+                off,
+                w,
+                corner,
+                colour.to_hsla(),
+                o.style,
+            ));
         }
     }
 
