@@ -6,12 +6,8 @@
 //! по документу. Поэтому область обходится заранее — отдельным лёгким
 //! проходом, который разрешает стиль, но ничего не рисует.
 //!
-//! От Blink (`counters_attachment_context.cc`
-//! `CalculateInitialValueForReversed`) отличаемся тремя местами, и каждое
-//! проверено парой набора: свой `counter-increment` создатель учитывает
-//! (Blink его пропускает — `counter-reset-reversed-pseudo-003`), пунктом
-//! считается всякий `display: list-item`, а не только `<li>`, и неявный
-//! счётчик списочного контейнера в счёт входит.
+//! Вложенная область исключается из подсчёта; сброс на последующем брате
+//! завершает область создателя (css-lists-3 §4.3, §4.4.2).
 
 use crate::computed::{Computed, Display};
 use crate::css::{Decls, Rule};
@@ -26,10 +22,10 @@ struct Scan<'a> {
     num: i64,
     last: i32,
     done: bool,
+    scope_depth: usize,
 }
 
-/// Значение директивы для нашего имени: у `counter-increment: a 2 b` для
-/// имени `a` это 2, для `b` — единица по умолчанию.
+/// Increment for this name, with the implicit value of one.
 fn decl_value(decl: &Option<String>, name: &str) -> Option<i32> {
     let text = decl.as_deref()?;
     let mut it = text.split_whitespace().peekable();
@@ -66,8 +62,7 @@ fn tag_of(h: &Handle) -> String {
     }
 }
 
-/// Заводит ли узел счётчик этого имени — тогда его поддерево лежит в СВОЕЙ
-/// области и в чужой счёт не входит.
+/// Whether this node establishes a separate scope for this counter.
 fn instantiates(style: &Computed, h: &Handle, name: &str) -> bool {
     if decl_has(&style.counter_reset, name) {
         return true;
@@ -79,9 +74,7 @@ fn instantiates(style: &Computed, h: &Handle, name: &str) -> bool {
         && matches!(tag_of(h).as_str(), "ol" | "ul" | "menu" | "dir")
 }
 
-/// Стиль узла для обхода: тот же каскад, что и в отрисовке, но без
-/// презентационных атрибутов, слоя наведения и псевдострок — обходу нужны
-/// только директивы счётчиков и `display`.
+/// Resolve counter directives and display with the rendering cascade.
 fn scan_style(
     h: &Handle,
     me: &Ancestor,
@@ -171,7 +164,10 @@ impl Scan<'_> {
             return;
         }
         if !root && instantiates(&style, h, self.name) {
-            // Чужая область: её поддерево в наш счёт не входит вовсе.
+            // A sibling reset obscures this counter for all following siblings
+            // (§4.3); a descendant reset only excludes its own subtree.
+            // Blink core/css/counters_attachment_context.cc:159-169.
+            self.done |= path.len() == self.scope_depth;
             return;
         }
         let is_item = tag == "li" || style.display == Some(Display::ListItem);
@@ -229,11 +225,10 @@ pub(crate) fn reversed_initial(
         num: 0,
         last: 0,
         done: false,
+        scope_depth: path.len(),
     };
     scan.node(creator, me, path, sibs, true);
-    // Область счётчика включает последующих братьев создателя ВСЕГДА: запись
-    // живёт до конца родителя (§12.4.1), и прежний гейт «переживёт ли выход»
-    // потерял смысл вместе с жадным снятием области.
+    // Following siblings remain in scope until another reset obscures it.
     if !scan.done {
         let mut idx = sibs.pos;
         for (i, sib) in level.iter().enumerate().skip(pos + 1) {
