@@ -257,7 +257,7 @@ pub struct Paragraph {
     /// (css-text-decor-3 §5.3 «If emphasis marks … do not fit, the UA must
     /// increase the line height»): эталоны семьи `text-emphasis-line-height-*`
     /// строятся именно из руби.
-    emph_spans: Vec<(std::ops::Range<usize>, bool, f32)>,
+    emph_spans: Vec<EmphSpan>,
     /// Строчные коробки кусков ПОСТРОЧНО (CSS 2.1 §10.8.1): отрезок байт →
     /// `line-height` куска в точках. Непусто — у абзаца куски разного кегля,
     /// гарнитуры или высоты строки, и `line_height` абзаца — это СТРУТ блока,
@@ -328,6 +328,51 @@ pub fn collect_ruby_extents<T>(build: impl FnOnce() -> T) -> (T, RubyExtents) {
     let out = build();
     let mine = RUBY_EXTENTS.with(|r| r.replace(saved)).unwrap_or_default();
     (out, mine)
+}
+
+/// Получает ли знак `c` метку акцента (css-text-decor-3 §5.3): нет у
+/// разделителей (Z*), управляющих и неназначенных (Cc, Cf, Cn) и у
+/// пунктуации (P*), кроме знаков, что по NFKD сводятся к `#`, `%`, `‰`, `‱`,
+/// `٪`, `؉`, `؊`, `&`, `⁊`, `@`, `§`, `¶`, `⁋`, `⁓`, `〽` (здесь — сами они и
+/// их полноширинные и малые формы).
+fn emphasized(c: char) -> bool {
+    use unicode_properties::{GeneralCategory as G, GeneralCategoryGroup, UnicodeGeneralCategory};
+    if c.is_whitespace() {
+        return false;
+    }
+    match c.general_category_group() {
+        GeneralCategoryGroup::Separator => false,
+        GeneralCategoryGroup::Other => !matches!(
+            c.general_category(),
+            G::Control | G::Format | G::Unassigned
+        ),
+        GeneralCategoryGroup::Punctuation => matches!(
+            c,
+            '#' | '%' | '\u{2030}' | '\u{2031}' | '\u{066A}' | '\u{0609}' | '\u{060A}' | '&'
+                | '\u{204A}' | '@' | '\u{00A7}' | '\u{00B6}' | '\u{204B}' | '\u{2053}'
+                | '\u{303D}' | '\u{FF03}' | '\u{FF05}' | '\u{FF06}' | '\u{FF20}' | '\u{FE5F}'
+                | '\u{FE6A}' | '\u{FE60}' | '\u{FE6B}'
+        ),
+        _ => true,
+    }
+}
+
+/// Кусок со знаком акцента (`text-emphasis`, css-text-decor-3 §5).
+#[derive(Clone, Debug)]
+pub struct EmphSpan {
+    /// Отрезок байт текста абзаца.
+    pub range: std::ops::Range<usize>,
+    /// Знак под текстом (`text-emphasis-position: under`).
+    pub under: bool,
+    /// Кегль знака — половина кегля базы (§5.3: как аннотация руби).
+    pub size: f32,
+    /// `line-height` куска в точках: аннотация встаёт на край его строчной
+    /// коробки, а не на край кегля (как `<rt>` над базой руби).
+    pub line_height: f32,
+    /// Сам знак (первая буква строки или знак формы).
+    pub mark: String,
+    /// `text-emphasis-color`; пусто — цвет текста.
+    pub color: Option<gpui::Hsla>,
 }
 
 /// Стопка аннотаций руби, чью высоту строка должна знать (css-ruby-1 §3.4):
@@ -640,7 +685,7 @@ impl Paragraph {
     }
 
     /// Куски со знаком акцента (см. поле `emph_spans`).
-    pub fn emph_spans(mut self, spans: Vec<(std::ops::Range<usize>, bool, f32)>) -> Self {
+    pub fn emph_spans(mut self, spans: Vec<EmphSpan>) -> Self {
         self.emph_spans = spans;
         self
     }
@@ -870,7 +915,7 @@ impl Paragraph {
                 }
                 // Знак акцента стоит над (под) коробкой содержимого своего
                 // прогона и растит строку, только выходя за неё.
-                for (range, under, h) in &self.emph_spans {
+                for EmphSpan { range, under, size: h, .. } in &self.emph_spans {
                     if range.end <= line.range.start || range.start >= line.range.end {
                         continue;
                     }
@@ -3404,6 +3449,12 @@ impl Element for Paragraph {
         if !self.atoms.is_empty() {
             self.lay_atoms(window, cx);
         }
+        // Рост строки под знак акцента меряется подъёмом и спуском его
+        // прогона (`line_padding`); без замера при раскладке строка не росла
+        // и рост доставался только сдвигу набора на отрисовке.
+        if !self.emph_spans.is_empty() && self.run_metrics.len() != self.runs.len() {
+            self.run_metrics = self.measure_runs(window);
+        }
         if !self.box_spans.is_empty() {
             if self.run_metrics.len() != self.runs.len() {
                 self.run_metrics = self.measure_runs(window);
@@ -4258,12 +4309,101 @@ impl Paragraph {
             let _ = shaped.paint_background(point(x, at.y), self.line_height, window, cx);
             let origin = self.text_raster_origin(&shaped, point(x, at.y), window);
             let _ = shaped.paint(origin, self.line_height, window, cx);
+            if !rtl && !self.emph_spans.is_empty() {
+                self.paint_emphasis(&run, &shaped, point(x, at.y), window, cx);
+            }
             x += width;
         }
         // Строка-замена — за текстом строки, своим шрифтом и кеглем.
         if !self.wrap.rtl && !suffix.is_empty() && self.overflow_marker.as_deref() == Some(suffix) {
             let anchor = range.end.saturating_sub(1).max(range.start);
             self.paint_suffix(suffix, anchor, point(x, at.y), window, cx);
+        }
+    }
+
+    /// Знаки акцента прогона (css-text-decor-3 §5.3): «drawn exactly as if
+    /// each character was assigned the mark as its ruby annotation text …
+    /// and the ruby alignment as centered». Как `<rt>` над базой руби
+    /// (`render.rs`, рукав контейнера руби): коробка аннотации стоит на краю
+    /// строчной коробки базы (её `line-height`, полулидинг от подъёма и
+    /// спуска шрифта базы), сама она — строка кегля знака с `line-height: 1`
+    /// (UA `rt`), знак — по центру продвижения своего знака базы.
+    /// Пропускаются разделители (Z*), управляющие (Cc, Cf, Cn) и пунктуация
+    /// (P*), кроме перечисленных в §5.3 знаков.
+    fn paint_emphasis(
+        &self,
+        run: &std::ops::Range<usize>,
+        shaped: &gpui::ShapedLine,
+        at: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let src = &self.text[run.clone()];
+        // Индексы набора совпадают с байтами абзаца со сдвигом на обёртку
+        // направления (`controlled_shape`), только если текст прогона набран
+        // как есть (без выброшенных управляющих знаков).
+        let Some(lead) = shaped.text.as_ref().find(src) else {
+            return;
+        };
+        if self.run_metrics.len() != self.runs.len() {
+            return;
+        }
+        let scale = window.scale_factor();
+        let baseline =
+            at.y + (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent;
+        for span in &self.emph_spans {
+            let (s, e) = (span.range.start.max(run.start), span.range.end.min(run.end));
+            if s >= e {
+                continue;
+            }
+            let mut acc = 0usize;
+            let found = self.runs.iter().zip(&self.run_metrics).find_map(|(r, m)| {
+                let st = acc;
+                acc += r.len;
+                (s >= st && s < acc).then_some((r, *m))
+            });
+            let Some((base_run, (a, d))) = found else { continue };
+            let half = (span.line_height - a - d) / 2.0;
+            let box_top = baseline - px(a + half);
+            let mark_lh = px(span.size);
+            let top = if span.under {
+                box_top + px(span.line_height)
+            } else {
+                box_top - mark_lh
+            };
+            let mark_run = TextRun {
+                len: span.mark.len(),
+                font: base_run.font.clone(),
+                font_size: None,
+                color: span.color.unwrap_or(base_run.color),
+                background_color: None,
+                background_pad: Default::default(),
+                background_radius: px(0.),
+                background_border: None,
+                underline: None,
+                strikethrough: None,
+            };
+            let mark = window.text_system().shape_line(
+                SharedString::from(span.mark.clone()),
+                px(span.size),
+                &[mark_run],
+                None,
+            );
+            // Та же привязка базовой линии к точке устройства, что у строки
+            // (`text_raster_origin`), но от высоты строки знака.
+            let base = (mark_lh - mark.ascent - mark.descent) / 2.0 + mark.ascent;
+            let y = f32::from(top + base) * scale;
+            let y = top + px((y.round() - y) / scale);
+            for (i, c) in self.text[s..e].char_indices() {
+                if !emphasized(c) {
+                    continue;
+                }
+                let off = lead + s - run.start + i;
+                let x0 = shaped.x_for_index(off);
+                let x1 = shaped.x_for_index(off + c.len_utf8());
+                let x = at.x + x0 + (x1 - x0 - mark.width) / 2.0;
+                let _ = mark.paint(point(x, y), mark_lh, window, cx);
+            }
         }
     }
 

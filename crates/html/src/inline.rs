@@ -1591,6 +1591,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     }
     c.text_emphasis = own.text_emphasis.clone().or(parent.text_emphasis.clone());
     c.emphasis_under = own.emphasis_under || parent.emphasis_under;
+    c.emphasis_color = own.emphasis_color.or(parent.emphasis_color);
     // css-ruby-1 §4.1/§4.3: оба свойства наследуемые.
     c.ruby_under = own.ruby_under.or(parent.ruby_under);
     c.ruby_align = own.ruby_align.or(parent.ruby_align);
@@ -2382,13 +2383,15 @@ fn zero_width_format(ch: char) -> bool {
     )
 }
 
-/// Куски со знаком акцента: отрезок байт → (снизу?, высота знака). Знак
-/// набирается в половину кегля своей базы (css-text-decor-3 §5.3, как
-/// аннотация руби с `font-size: 50%`).
+/// Куски со знаком акцента. Знак набирается в половину кегля своей базы
+/// (css-text-decor-3 §5.3, как аннотация руби с `font-size: 50%`) и встаёт
+/// на край строчной коробки куска (`line-height` куска, `normal` — доля
+/// `normal` шрифта абзаца).
 pub fn emphasis_spans(
     pieces: &[Piece],
     base_size: f32,
-) -> Vec<(std::ops::Range<usize>, bool, f32)> {
+    normal: f32,
+) -> Vec<crate::lines::EmphSpan> {
     let mut out = Vec::new();
     let mut at = 0usize;
     for p in pieces {
@@ -2396,14 +2399,26 @@ pub fn emphasis_spans(
             continue;
         };
         let end = at + text.len();
-        if style.text_emphasis.as_deref().is_some_and(|m| !m.is_empty())
+        if let Some(mark) = style.text_emphasis.as_deref().filter(|m| !m.is_empty())
             && text.chars().any(|c| !c.is_whitespace() && c != '\u{feff}')
         {
             let size = match style.font_size {
                 Some(Len::Px(v)) => v,
                 _ => base_size,
             };
-            out.push((at..end, style.emphasis_under, size * 0.5));
+            let line_height = match style.line_height {
+                Some(Len::Px(v)) => v,
+                Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
+                _ => normal * size,
+            };
+            out.push(crate::lines::EmphSpan {
+                range: at..end,
+                under: style.emphasis_under,
+                size: size * 0.5,
+                line_height,
+                mark: mark.to_string(),
+                color: style.emphasis_color.map(Color::to_hsla),
+            });
         }
         at = end;
     }

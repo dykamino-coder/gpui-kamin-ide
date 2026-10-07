@@ -17517,7 +17517,11 @@ fn paragraph_pieces_routed(
                 if inherited.rotated_line == Some(true) || inherited.vertical == Some(true) {
                     Vec::new()
                 } else {
-                    inline::emphasis_spans(&pieces, biggest)
+                    inline::emphasis_spans(
+                        &pieces,
+                        biggest,
+                        crate::metrics::normal_line(&inherited.font_family.clone().unwrap_or_default()),
+                    )
                 },
             )
             .edge_spans(edges)

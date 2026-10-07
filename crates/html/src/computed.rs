@@ -2901,6 +2901,8 @@ pub struct Computed {
     pub text_emphasis: Option<String>,
     /// Акцент СНИЗУ (`text-emphasis-position: under`).
     pub emphasis_under: bool,
+    /// `text-emphasis-color` (css-text-decor-3 §5.2); пусто — `currentColor`.
+    pub emphasis_color: Option<Color>,
     /// `ruby-position` (css-ruby-1 §4.1): `Some(true)` — аннотация ПОД базой
     /// (`under`), `Some(false)` — над (`over`/`alternate`/`inter-character`),
     /// `None` — не задано. Наследуется (`inline::inherit`). Прежде делил флаг
@@ -7523,15 +7525,42 @@ impl Computed {
             | "text-emphasis-position" => {
                 // css-text-decor-3 §5: знак задаётся словом (форма +
                 // заливка) или строкой; `none` его снимает. Цвет знака —
-                // цвет текста, отдельного канала у нас нет.
+                // свой (`emphasis_color`), по умолчанию цвет текста.
                 if key == "text-emphasis-position" {
                     self.emphasis_under = v.split_whitespace().any(|w| w == "under");
                     return;
                 }
                 if key == "text-emphasis-color" {
+                    let t = v.trim();
+                    if t.eq_ignore_ascii_case("currentcolor") {
+                        self.emphasis_color = None;
+                    } else if let Some(c) = Color::parse(t) {
+                        self.emphasis_color = Some(c);
+                    }
                     return;
                 }
                 let v = v.trim();
+                // Сокращение `text-emphasis` несёт и цвет (§5.3): слово,
+                // которое разбирается как цвет, в стиль знака не идёт.
+                let style_words: Vec<&str> = if key == "text-emphasis" && !v.starts_with(['"', '\'']) {
+                    let mut kept = Vec::new();
+                    for w in v.split_whitespace() {
+                        if w.eq_ignore_ascii_case("currentcolor") {
+                            self.emphasis_color = None;
+                        } else if !matches!(w, "none" | "open" | "filled" | "dot" | "circle" | "double-circle" | "triangle" | "sesame")
+                            && let Some(c) = Color::parse(w)
+                        {
+                            self.emphasis_color = Some(c);
+                        } else {
+                            kept.push(w);
+                        }
+                    }
+                    kept
+                } else {
+                    v.split_whitespace().collect()
+                };
+                let joined = style_words.join(" ");
+                let v = joined.as_str();
                 if v == "none" || v.is_empty() {
                     self.text_emphasis = None;
                     return;
