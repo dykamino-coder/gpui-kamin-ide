@@ -20,6 +20,7 @@ mod spot_geometry;
 mod polygon_clip;
 mod rectangular_clip;
 mod mask_geometry;
+mod gap_rule_geometry;
 mod orthogonal_measure;
 mod vertical_style;
 mod combined_geometry;
@@ -2078,15 +2079,7 @@ pub fn gap_context() -> Option<u64> {
 
 /// Проба элемента сетки: как `edge_probe`, но пишет только границы.
 pub fn gap_item_probe(items: GapItems) -> AnyElement {
-    gpui::canvas(
-        move |bounds: Bounds<Pixels>, _, _| items.borrow_mut().push(bounds),
-        |_, _, _, _| {},
-    )
-    .absolute()
-    .top_0()
-    .left_0()
-    .size_full()
-    .into_any_element()
+    gap_rule_geometry::probe(items)
 }
 
 /// Правила линеек одной оси (css-gaps-1), уже в точках.
@@ -2816,6 +2809,7 @@ impl Element for GapRulePainter {
                         size: gpui::size(gpui::px(e - s), gpui::px(w)),
                     }
                 };
+                let rect = gap_rule_geometry::snap(rect, window);
                 window.paint_quad(gpui::fill(rect, colour.to_hsla()));
             }
         };
