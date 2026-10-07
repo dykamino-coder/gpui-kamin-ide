@@ -2392,6 +2392,10 @@ pub struct Computed {
     /// нулевой пробел): обычным пробелом или идеографическим. Точкой переноса
     /// она при этом быть не перестаёт.
     pub word_space_char: Option<char>,
+    /// Edge spacer of an inline box (`inline::SPACER`): (box id, physical
+    /// left edge, parent direction is rtl). Bidi reordering moves the edges to
+    /// the box's visually outermost fragments (CSS 2.1 §8.6).
+    pub spacer_edge: Option<(u32, bool, bool)>,
     /// `text-autospace` — зазор в 1/8 кегля между иероглифом и соседней
     /// буквой или цифрой (css-text-4 §7). Наследуется, поэтому живёт здесь;
     /// сами зазоры расставляет `inline::autospace_pieces` по кускам абзаца.

@@ -429,10 +429,22 @@ fn collect_with_empty_metrics(
                     std::mem::swap(&mut lead, &mut trail);
                     std::mem::swap(&mut mlead, &mut mtrail);
                 }
+                // Box identity of the edge spacers: the line painter moves them
+                // to the outermost visual fragments after bidi reordering.
+                let parent_rtl = inherited.rtl == Some(true);
+                let box_id = if mlead != 0.0 || lead != 0.0 || trail != 0.0 || mtrail != 0.0 {
+                    SPACER_BOX.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                } else {
+                    0
+                };
+                let edge = |mut style: Computed, leading: bool| {
+                    style.spacer_edge = Some((box_id, leading != parent_rtl, parent_rtl));
+                    style
+                };
                 if mlead != 0.0 {
                     out.push(Piece::Text {
                         text: SPACER.into(),
-                        style: margin_spacer_style(&merged, inherited, mlead),
+                        style: edge(margin_spacer_style(&merged, inherited, mlead), true),
                     });
                 }
                 // ПУСТАЯ строчная коробка: прогона текста у неё нет, а
@@ -521,7 +533,7 @@ fn collect_with_empty_metrics(
                 if lead != 0.0 {
                     out.push(Piece::Text {
                         text: SPACER.into(),
-                        style: spacer_style(&merged, lead),
+                        style: edge(spacer_style(&merged, lead), true),
                     });
                 }
                 if blank
@@ -565,13 +577,13 @@ fn collect_with_empty_metrics(
                 if trail != 0.0 {
                     out.push(Piece::Text {
                         text: SPACER.into(),
-                        style: spacer_style(&merged, trail),
+                        style: edge(spacer_style(&merged, trail), false),
                     });
                 }
                 if mtrail != 0.0 {
                     out.push(Piece::Text {
                         text: SPACER.into(),
-                        style: margin_spacer_style(&merged, inherited, mtrail),
+                        style: edge(margin_spacer_style(&merged, inherited, mtrail), false),
                     });
                 }
                 if atomic {
@@ -3436,6 +3448,28 @@ pub const ZWSP: &str = "\u{200b}";
 /// Считаются по тем же правилам, что и `text_and_runs`. Распорка — всегда
 /// СВОЙ кусок ровно из одного знака: так она и отличается от того же знака,
 /// пришедшего из документа.
+/// Box ids of inline edge spacers (`Computed::spacer_edge`); 0 means none.
+static SPACER_BOX: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+
+/// Edge spacers with their box: (byte offset, box id, physical left edge,
+/// parent rtl), in logical order.
+pub fn spacer_edges(pieces: &[Piece]) -> Vec<(usize, u32, bool, bool)> {
+    let mut at = 0usize;
+    let mut out = Vec::new();
+    for p in pieces {
+        let Piece::Text { text, style } = p else {
+            continue;
+        };
+        if text == SPACER
+            && let Some((id, left, parent_rtl)) = style.spacer_edge
+        {
+            out.push((at, id, left, parent_rtl));
+        }
+        at += text.len();
+    }
+    out
+}
+
 pub fn spacers(pieces: &[Piece]) -> Vec<usize> {
     let mut at = 0usize;
     let mut out = Vec::new();
