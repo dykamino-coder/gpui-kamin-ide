@@ -1353,6 +1353,17 @@ pub fn render_paged(
     geom_for: crate::flow::PageGeomFn,
     margin_decls: Option<PageMarginDeclsFn>,
 ) -> AnyElement {
+    render_paged_select(nodes, opts, geom_for, margin_decls, None)
+}
+
+/// `render_paged`, показывающий только листы `select` (номера с нуля).
+pub fn render_paged_select(
+    nodes: &[Node],
+    opts: &RenderOpts,
+    geom_for: crate::flow::PageGeomFn,
+    margin_decls: Option<PageMarginDeclsFn>,
+    select: Option<Vec<usize>>,
+) -> AnyElement {
     // Снятые обёртки и корень без коробки правят КАЖДЫЙ лист одинаково:
     // `none` — пустой лист без свойств `@page`, `canvas` — фон `html`/`body`.
     let mut none = false;
@@ -1420,6 +1431,12 @@ pub fn render_paged(
         }
         root = inline::inherit(&root, &e.style);
         nodes = e.children;
+    }
+    fill_used_page(&mut nodes, &root_page);
+    // Обёртка в ином режиме письма — ортогональный поток, монолит (css-break-3
+    // §4.1): снимать её нельзя, и у вертикального корня обёртки не снимаются.
+    if root.vertical != Some(true) {
+        hoist_named_wrappers(&mut nodes);
     }
     let geom_for: crate::flow::PageGeomFn = std::rc::Rc::new(move |i, name: &str| {
         let mut g = geom_for(i, name);
@@ -1742,6 +1759,7 @@ pub fn render_paged(
         page_boxes::builder(f, root.clone(), opts.clone(), document_counters)
     });
     crate::flow::PageStack::new(kids, geom_for, icb_copies, icb_reach, fixed_copies, margin_for)
+        .with_select(select)
         .into_any_element()
 }
 
@@ -3915,6 +3933,20 @@ fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     // законной точке ВНУТРИ предыдущего ребёнка (Blink `early_break_`,
     // `block_layout_algorithm.cc:1086`; `break-between-avoid-007`: c с
     // `break-before: avoid` после обёрток над a и b — разрыв между a и b).
+    // Начальное/конечное имя страницы поточных детей класса A (css-page-3
+    // §using-named-pages п. 4): несовпадение конца предыдущего с началом
+    // следующего — принудительный разрыв на их границе, и на ЛЮБОЙ глубине
+    // (Blink `fragmentation_utils.cc` `CalculateBreakBetweenValue`: имя
+    // ребёнка против имени текущего фрагмента контейнера). Только у страниц;
+    // `style.page` здесь уже несёт используемое значение (`fill_used_page`).
+    let page_kid: Vec<Option<(String, String)>> = kids
+        .iter()
+        .map(|n| match n {
+            Node::Element(k) if cx.paged && class_a_box(k) => Some(page_names(k, "")),
+            _ => None,
+        })
+        .collect();
+    let mut page_prev: Option<String> = None;
     let blk_avoid: Vec<(bool, bool)> = kids
         .iter()
         .map(|n| match n {
@@ -4349,6 +4381,17 @@ fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                         solid.push((open, y + lead + 0.05));
                     }
                 }
+            }
+            // Смена имени страницы между соседями — принудительный разрыв.
+            let renamed = match (&page_prev, page_kid.get(ki).and_then(|p| p.as_ref())) {
+                (Some(prev), Some((start, _))) => prev != start,
+                _ => false,
+            };
+            if renamed && !first && !(fb || force_next) {
+                forced.push(if flex_items { y + prev_mb } else { y });
+            }
+            if let Some(Some((_, end))) = page_kid.get(ki) {
+                page_prev = Some(end.clone());
             }
             force_next = fa;
             let start = y + lead;
@@ -6863,11 +6906,16 @@ fn edge_break(e: &Element, last: bool) -> bool {
 /// берётся используемое значение самой коробки.
 fn page_names(e: &Element, inherited: &str) -> (String, String) {
     let used = e.style.page.clone().unwrap_or_else(|| inherited.to_string());
+    // Крайняя дочерняя коробка — крайняя ПОТОЧНАЯ: абсолют и флоат в
+    // точках класса A не участвуют (Blink берёт имя первого уложенного
+    // поточного ребёнка, `SetPageNameIfNeeded`; `page-name-propagated-005`:
+    // абсолют последним ребёнком не возвращал имя самой коробки).
     let boxes: Vec<&Node> = e
         .children
         .iter()
         .filter(|n| !is_blank(n))
-        .filter(|n| !matches!(n, Node::Element(k) if matches!(k.style.display, Some(Display::None))))
+        .filter(|n| !matches!(n, Node::Element(k) if matches!(k.style.display, Some(Display::None))
+            || out_of_flow(&k.style) || k.style.float.unwrap_or(0) != 0))
         .collect();
     let via = |n: Option<&&Node>| match n {
         Some(Node::Element(k)) if class_a_box(k) => Some(page_names(k, &used)),
@@ -6882,6 +6930,102 @@ fn page_names(e: &Element, inherited: &str) -> (String, String) {
 /// идёт в коробки, css-page-3 §page-properties) и коробки по именам.
 pub type PageMarginDecls = (Vec<(String, String)>, Vec<(String, Vec<(String, String)>)>);
 pub type PageMarginDeclsFn = std::rc::Rc<dyn Fn(usize, &str) -> PageMarginDecls>;
+
+/// Используемое значение 'page' (css-page-3 §using-named-pages: `auto` —
+/// значение ближайшего предка с не-`auto`) — в `style.page` каждого
+/// элемента, чтобы мера фрагментации сравнивала имена на любой глубине.
+fn fill_used_page(nodes: &mut [Node], inherited: &str) {
+    for n in nodes.iter_mut() {
+        if let Node::Element(e) = n {
+            if e.style.page.is_none() && !inherited.is_empty() {
+                e.style.page = Some(inherited.to_string());
+            }
+            let used = e.style.page.clone().unwrap_or_default();
+            fill_used_page(&mut e.children, &used);
+        }
+    }
+}
+
+/// Есть ли внутри коробки смена имени страницы между соседями класса A
+/// (css-page-3 §using-named-pages п. 4) — на любой глубине.
+fn renames_inside(e: &Element) -> bool {
+    let kids: Vec<&Element> = e
+        .children
+        .iter()
+        .filter_map(|n| match n {
+            Node::Element(k) if class_a_box(k) => Some(k),
+            _ => None,
+        })
+        .collect();
+    kids.windows(2)
+        .any(|w| page_names(w[0], "").1 != page_names(w[1], "").0)
+        || kids.iter().any(|k| renames_inside(k))
+}
+
+/// Обёртка без собственной коробки на листе: блок без полей, рамок,
+/// отбивок, фона, размеров, разрывов и прочего, что видно или влияет на
+/// раскладку детей. Снятие такой обёртки раскладку не меняет.
+fn plain_wrapper(e: &Element) -> bool {
+    let zero = |l: &Option<Len>| matches!(l, None | Some(Len::Px(0.0)));
+    let st = &e.style;
+    let b = st.borders();
+    !e.inline
+        && matches!(st.display, None | Some(Display::Block))
+        && st.position.is_none()
+        && st.float.unwrap_or(0) == 0
+        && [&st.margin.top, &st.margin.right, &st.margin.bottom, &st.margin.left]
+            .iter()
+            .all(|l| zero(l))
+        && [&st.padding.top, &st.padding.right, &st.padding.bottom, &st.padding.left]
+            .iter()
+            .all(|l| zero(l))
+        && [&b.top, &b.right, &b.bottom, &b.left].iter().all(|l| zero(l))
+        && st.background.is_none_or(|c| c.a == 0.0)
+        && st.bg_image.is_none()
+        && st.width.is_none()
+        && st.height.is_none()
+        && st.min_width.is_none()
+        && st.min_height.is_none()
+        && st.max_width.is_none()
+        && st.max_height.is_none()
+        && st.overflow_x.is_none()
+        && st.overflow_y.is_none()
+        && st.opacity.is_none()
+        && st.transform.is_none()
+        && st.filter.is_none()
+        && st.outline.is_none()
+        && st.column_count.is_none()
+        && st.z_index.is_none()
+        && st.vertical != Some(true)
+        && !st.break_before_force
+        && !st.break_after_force
+        && e.children.iter().filter(|n| !is_blank(n)).all(|n| matches!(n, Node::Element(_)))
+}
+
+/// Снимает простые обёртки, внутри которых меняется имя страницы: их дети
+/// становятся детьми стопки, и разрыв по смене имени (css-page-3
+/// §using-named-pages п. 4) ставится между ними, как между детьми корня.
+/// Мера фрагментации (`shape_full`) у коробок с текстом неизвестна, и
+/// разрыв внутри такого ребёнка стопки иначе не ставится вовсе.
+fn hoist_named_wrappers(nodes: &mut Vec<Node>) {
+    loop {
+        let mut changed = false;
+        let mut out = Vec::with_capacity(nodes.len());
+        for n in std::mem::take(nodes) {
+            match n {
+                Node::Element(e) if plain_wrapper(&e) && renames_inside(&e) => {
+                    changed = true;
+                    out.extend(e.children);
+                }
+                n => out.push(n),
+            }
+        }
+        *nodes = out;
+        if !changed {
+            break;
+        }
+    }
+}
 
 /// Имя ПЕРВОЙ страницы (css-page-3 §using-named-pages, п. 3): start value
 /// первой поточной коробки класса A детей корня, иначе имя самого корня.
