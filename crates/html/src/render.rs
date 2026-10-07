@@ -296,7 +296,11 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
         if let Some(cut) = crate::interact::clamp_cut(e.node_id).filter(|c| !sized && c.is_finite()) {
             d = d.max_h(px(cut + mbp_y));
         }
-        d = d.overflow_hidden();
+        // Прячется только содержимое ЗА точкой среза — по блочной оси;
+        // оставленные строки по строчной оси переполняют коробку как
+        // обычно (css-overflow-4 §5.3: `overflow` клампом не меняется;
+        // `block-ellipsis-037`: непереносимое слово шире коробки).
+        d.style().overflow.y = Some(gpui::Overflow::Hidden);
     }
     if let Some(n) = e.style.clamp_lines().filter(|_| !multicol) {
         // Без `Styled::line_clamp`: тот попутно включает `overflow_hidden`,
@@ -338,7 +342,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
         // абзаца уже снял бюджет строк) — обрезки нет, и «Line 4…» видна под
         // коробкой с `height: 3lh` (`line-clamp-011/035`).
         if cut.is_finite() {
-            d = d.overflow_hidden();
+            d.style().overflow.y = Some(gpui::Overflow::Hidden);
         }
     }
     let empty = !e.children.iter().any(|n| !is_blank(n));
@@ -16589,9 +16593,6 @@ fn atom_line_align(
     // `line-clamp-auto-with-ruby-001/003` зеленеют (5.2 → 0.13/0.26), но
     // `-002` (руби за срезом) уходит 0.09 → 5.23 — срез встаёт строкой выше.
     // Возвращать вместе с настоящими низами строк в `ClampEntry`.
-    if ruby && crate::interact::clamp_context().is_some() {
-        return None;
-    }
     // Ортогональный поток внутри атома меряется от ДОСТУПНОГО места (§7.3
     // css-writing-modes-3), а замер «по содержимому» его не даёт: коробка с
     // `writing-mode: vertical-*` и строчной стороной `auto` внутри атома

@@ -1520,7 +1520,10 @@ impl Paragraph {
         // Место под многоточие отбирается ЦЕЛЫМИ кусками: строка обрывается по
         // точке переноса, а не посреди слова. Слово, которое с многоточием уже
         // не влезает, уходит со строки целиком — как в браузере.
-        if let Some(room) = limit.map(|w| w - ell) {
+        // `block-ellipsis: no-ellipsis` — знака нет, и место под него
+        // отбирать не у чего: строка остаётся как есть, даже если её
+        // непереносимое слово шире коробки (`block-ellipsis-023/024/037`).
+        if let Some(room) = limit.map(|w| w - ell).filter(|_| !self.clamp_str().is_empty()) {
             if self.span(&segs, head, end) > room {
                 end = self
                     .opportunities()
