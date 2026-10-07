@@ -780,6 +780,43 @@ impl Style {
         }
     }
 
+    /// KaminIDE patch: `overflow_mask` of an HTML box (`css_border_snap`)
+    /// computed from its unrounded geometry, each edge snapped to the device
+    /// pixel grid like its border edges (`border_snap`): Blink clips to the
+    /// pixel-snapped clip rect, so a clip edge and a border edge at the same
+    /// exact position cover the same device pixels (`overflow-clip-margin-013`,
+    /// `clip-under-filter-003`).
+    pub fn overflow_mask_snapped(
+        &self,
+        bounds: Bounds<Pixels>,
+        window: &Window,
+    ) -> Option<ContentMask<Pixels>> {
+        let exact = window
+            .css_exact_bounds
+            .filter(|(snapped, _)| *snapped == bounds)
+            .map(|(_, exact)| exact);
+        let exact = match exact {
+            Some(exact)
+                if self.css_border_snap
+                    && window.current_transformation()
+                        == crate::TransformationMatrix::unit() =>
+            {
+                exact
+            }
+            _ => return self.overflow_mask(bounds, window.rem_size()),
+        };
+        let mask = self.overflow_mask(exact, window.rem_size())?;
+        let scale = window.scale_factor();
+        let at = |v: Pixels| crate::px((f32::from(v) * scale).round() / scale);
+        let b = mask.bounds;
+        Some(ContentMask {
+            bounds: Bounds::from_corners(
+                point(at(b.left()), at(b.top())),
+                point(at(b.right()), at(b.bottom())),
+            ),
+        })
+    }
+
     /// Paints the background of an element styled with this style.
     pub fn paint(
         &self,

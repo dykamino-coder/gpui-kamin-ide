@@ -844,6 +844,10 @@ pub struct Window {
     /// KaminIDE patch: sub-pixel offset added to glyph origins (see
     /// `Window::replace_glyph_offset`).
     pub(crate) glyph_offset: Point<Pixels>,
+    /// KaminIDE patch: (snapped, unrounded) bounds of the `Div` whose style
+    /// is being painted, for device-pixel snapping of its CSS border edges
+    /// from the exact geometry (`style::border_snap`).
+    pub(crate) css_exact_bounds: Option<(Bounds<Pixels>, Bounds<Pixels>)>,
     /// KaminIDE patch: стек преобразований (`transform` в CSS).
     ///
     /// Матрица действует на всё, что рисуется внутри: на подложку, рамку,
@@ -1273,6 +1277,7 @@ impl Window {
             rendered_entity_stack: Vec::new(),
             element_offset_stack: Vec::new(),
             glyph_offset: Point::default(),
+            css_exact_bounds: None,
             transformation_stack: Vec::new(),
             mask_scale: None,
             mask_map: None,

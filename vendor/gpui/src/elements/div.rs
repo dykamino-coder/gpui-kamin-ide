@@ -1263,6 +1263,10 @@ impl Div {
 /// bounds of the children after the layout phase is complete.
 pub struct DivFrameState {
     child_layout_ids: SmallVec<[LayoutId; 2]>,
+    /// KaminIDE patch: this node's layout id and its unrounded window
+    /// bounds (set in prepaint) for device-pixel snapping of CSS borders.
+    layout_id: Option<LayoutId>,
+    exact_bounds: Option<Bounds<Pixels>>,
 }
 
 /// Interactivity state displayed an manipulated in the inspector.
@@ -1343,7 +1347,14 @@ impl Element for Div {
             )
         });
 
-        (layout_id, DivFrameState { child_layout_ids })
+        (
+            layout_id,
+            DivFrameState {
+                child_layout_ids,
+                layout_id: Some(layout_id),
+                exact_bounds: None,
+            },
+        )
     }
 
     #[stacksafe]
@@ -1397,7 +1408,27 @@ impl Element for Div {
             scroll_handle.scroll_to_active_item();
         }
 
-        self.interactivity.prepaint(
+        // KaminIDE patch: unrounded bounds of this node, only when they lie
+        // within half a device pixel of the snapped ones (a node moved by
+        // `prepaint_at` has no meaningful layout position).
+        request_layout.exact_bounds = request_layout.layout_id.and_then(|id| {
+            let origin = window.layout_origin_unrounded(id);
+            let size = window.layout_size_unrounded(id);
+            let exact = Bounds { origin, size };
+            let half = px(0.5 / window.scale_factor().max(0.01) + 1e-4);
+            let near = |a: Pixels, b: Pixels| (a - b).abs() <= half;
+            (near(exact.left(), bounds.left())
+                && near(exact.top(), bounds.top())
+                && near(exact.right(), bounds.right())
+                && near(exact.bottom(), bounds.bottom()))
+            .then_some(exact)
+        });
+        let outer_exact = std::mem::replace(
+            &mut window.css_exact_bounds,
+            request_layout.exact_bounds.map(|exact| (bounds, exact)),
+        );
+
+        let hitbox = self.interactivity.prepaint(
             global_id,
             inspector_id,
             bounds,
@@ -1405,6 +1436,8 @@ impl Element for Div {
             window,
             cx,
             |style, scroll_offset, hitbox, window, cx| {
+                // Children bring their own exact bounds.
+                window.css_exact_bounds = None;
                 // skip children
                 if style.display == Display::None {
                     return hitbox;
@@ -1422,7 +1455,9 @@ impl Element for Div {
 
                 hitbox
             },
-        )
+        );
+        window.css_exact_bounds = outer_exact;
+        hitbox
     }
 
     #[stacksafe]
@@ -1431,7 +1466,7 @@ impl Element for Div {
         global_id: Option<&GlobalElementId>,
         inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _request_layout: &mut Self::RequestLayoutState,
+        request_layout: &mut Self::RequestLayoutState,
         hitbox: &mut Option<Hitbox>,
         window: &mut Window,
         cx: &mut App,
@@ -1441,6 +1476,10 @@ impl Element for Div {
             .as_mut()
             .map(|provider| provider.provide(window, cx));
 
+        let outer_exact = std::mem::replace(
+            &mut window.css_exact_bounds,
+            request_layout.exact_bounds.map(|exact| (bounds, exact)),
+        );
         window.with_image_cache(image_cache, |window| {
             self.interactivity.paint(
                 global_id,
@@ -1450,6 +1489,8 @@ impl Element for Div {
                 window,
                 cx,
                 |style, window, cx| {
+                    // Own borders are painted; children bring their own bounds.
+                    window.css_exact_bounds = None;
                     // skip children
                     if style.display == Display::None {
                         return;
@@ -1494,6 +1535,7 @@ impl Element for Div {
                 },
             )
         });
+        window.css_exact_bounds = outer_exact;
     }
 }
 
@@ -1704,7 +1746,7 @@ impl Interactivity {
 
                 window.with_text_style(style.text_style().cloned(), |window| {
                     window.with_content_mask(
-                        style.overflow_mask(bounds, window.rem_size()),
+                        style.overflow_mask_snapped(bounds, window),
                         |window| {
                             let hitbox = if self.should_insert_hitbox(&style, window, cx) {
                                 Some(window.insert_hitbox(bounds, self.hitbox_behavior))
@@ -1867,7 +1909,7 @@ impl Interactivity {
                     style.paint(bounds, window, cx, |window: &mut Window, cx: &mut App| {
                         window.with_text_style(style.text_style().cloned(), |window| {
                             window.with_content_mask(
-                                style.overflow_mask(bounds, window.rem_size()),
+                                style.overflow_mask_snapped(bounds, window),
                                 |window| {
                                     window.with_tab_group(tab_group, |window| {
                                         if let Some(hitbox) = hitbox {

@@ -11,6 +11,7 @@ use crate::{
 /// border-box origin falls between device pixels.
 pub(super) fn snap(
     bounds: Bounds<Pixels>,
+    exact: Option<Bounds<Pixels>>,
     widths: Edges<Pixels>,
     scale: f32,
 ) -> (Bounds<Pixels>, Edges<Pixels>) {
@@ -19,10 +20,11 @@ pub(super) fn snap(
         point(at(bounds.left()), at(bounds.top())),
         point(at(bounds.right()), at(bounds.bottom())),
     );
-    let inner_left = at(bounds.left() + widths.left);
-    let inner_top = at(bounds.top() + widths.top);
-    let inner_right = at(bounds.right() - widths.right);
-    let inner_bottom = at(bounds.bottom() - widths.bottom);
+    let e = exact.unwrap_or(bounds);
+    let inner_left = at(e.left() + widths.left);
+    let inner_top = at(e.top() + widths.top);
+    let inner_right = at(e.right() - widths.right);
+    let inner_bottom = at(e.bottom() - widths.bottom);
     let widths = Edges {
         left: (inner_left - outer.left()).max(Pixels::ZERO),
         top: (inner_top - outer.top()).max(Pixels::ZERO),
@@ -48,7 +50,16 @@ pub(super) fn paint(
             && style.border_style == BorderStyle::Solid
             && window.current_transformation() == crate::TransformationMatrix::unit()
         {
-            snap(bounds, border_widths, window.scale_factor())
+            // Inner edges come from the unrounded border box when the
+            // snapped `bounds` belong to the Div being painted: rounding
+            // `round(x) + width` instead of `x + width` moved an inner edge
+            // by a device pixel off a clip or box edge at the same exact
+            // position (`overflow-clip-margin-013`).
+            let exact = window
+                .css_exact_bounds
+                .filter(|(snapped, _)| *snapped == bounds)
+                .map(|(_, exact)| exact);
+            snap(bounds, exact, border_widths, window.scale_factor())
         } else {
             (bounds, border_widths)
         };
