@@ -1,5 +1,5 @@
 //! String marker values are single CSS tokens even inside the list-style shorthand.
-//! CSS Lists 3 В§3.4 and В§3.6: placement and the marker string are independent components.
+//! CSS Lists 3 §3.4 and §3.6: placement and the marker string are independent components.
 use super::{Computed, collapse_segment_breaks, unescape_content};
 
 pub(super) fn apply_string(style: &mut Computed, key: &str, raw: &str) -> bool {
