@@ -9,7 +9,7 @@ use crate::{
 /// and contoured_border_geometry.cc, PixelSnappedContouredInnerBorder).
 /// Snapping the width alone would move the inner edge incorrectly when the
 /// border-box origin falls between device pixels.
-pub(super) fn snap(
+pub(crate) fn snap(
     bounds: Bounds<Pixels>,
     exact: Option<Bounds<Pixels>>,
     widths: Edges<Pixels>,
