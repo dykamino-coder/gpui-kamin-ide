@@ -24,6 +24,7 @@ pub mod tabs;
 
 mod atom_fit;
 mod atom_placement;
+mod ruby_overhang;
 mod content_baselines;
 mod controlled_shape;
 mod decor;
@@ -101,6 +102,9 @@ pub struct Paragraph {
     align_last: Option<Align>,
     ruby_justify: bool,
     ruby_unit: bool,
+    /// Ruby base paragraph: where to report its content width for the ruby
+    /// overhang computation (`ruby_base_with_overhang`).
+    ruby_base_sink: Option<std::rc::Rc<std::cell::Cell<Option<f32>>>>,
     /// `unicode-bidi: plaintext` — сторона письма выбирается для КАЖДОГО
     /// абзаца между жёсткими разрывами по его первому сильному знаку. В
     /// преформате такой абзац — это строка, поэтому и `start`/`end` у каждой
@@ -337,7 +341,77 @@ struct AtomSlot {
 /// Узлы стопок аннотаций одного руби: (под базой?, полулидинг базы, узел).
 /// Полулидинг вычитается: стопка стоит на краю коробки строки базы, а
 /// аннотация в браузере — на краю её СОДЕРЖИМОГО.
-pub type RubyExtents = Vec<(bool, f32, std::rc::Rc<std::cell::Cell<Option<LayoutId>>>)>;
+#[derive(Default)]
+pub struct RubyExtents {
+    pub levels: Vec<(bool, f32, std::rc::Rc<std::cell::Cell<Option<LayoutId>>>)>,
+    /// What the line needs to let the annotation overhang its neighbours
+    /// (`ruby_overhang_probe`, css-ruby-1 §4.4); `None` for non-ruby atoms.
+    pub overhang: Option<RubyOverhangInfo>,
+}
+
+impl RubyExtents {
+    pub fn is_empty(&self) -> bool {
+        self.levels.is_empty()
+    }
+}
+
+/// Inputs of the ruby overhang computation (Blink `ruby_utils.cc`
+/// `GetOverhang`): the overhang mode, half the annotation font size (the
+/// `auto` limit), whether `ruby-align: start` (overhang only at the end), the
+/// base content width reported by the base paragraph during layout, and the
+/// base's font size (no end overhang over larger following text).
+#[derive(Clone)]
+pub struct RubyOverhangInfo {
+    pub mode: crate::computed::RubyOverhang,
+    pub half_annotation_font: f32,
+    pub align_start: bool,
+    pub base_font: f32,
+    pub base_width: std::rc::Rc<std::cell::Cell<Option<f32>>>,
+}
+
+thread_local! {
+    /// Sink of the base paragraph that is being built for a ruby column
+    /// (`ruby_base_width_sink`): the paragraph records its max-content width
+    /// there when it is measured.
+    static RUBY_BASE_SINK: std::cell::RefCell<Option<std::rc::Rc<std::cell::Cell<Option<f32>>>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Build the ruby BASE unit while a width sink is active: the paragraph
+/// created inside takes the sink (`Paragraph::new`) and reports its content
+/// width into it. Also registers the overhang info for the atom being
+/// collected (`collect_ruby_extents`).
+pub fn ruby_base_with_overhang<T>(
+    mode: crate::computed::RubyOverhang,
+    half_annotation_font: f32,
+    align_start: bool,
+    base_font: f32,
+    build: impl FnOnce() -> T,
+) -> T {
+    let sink = std::rc::Rc::new(std::cell::Cell::new(None));
+    let saved = RUBY_BASE_SINK.with(|s| s.replace(Some(sink.clone())));
+    let out = build();
+    RUBY_BASE_SINK.with(|s| s.replace(saved));
+    RUBY_EXTENTS.with(|r| {
+        if let Some(v) = r.borrow_mut().as_mut()
+            && v.overhang.is_none()
+        {
+            v.overhang = Some(RubyOverhangInfo {
+                mode,
+                half_annotation_font,
+                align_start,
+                base_font,
+                base_width: sink,
+            });
+        }
+    });
+    out
+}
+
+/// Take the active base-width sink (for the first paragraph built under it).
+pub(crate) fn take_ruby_base_sink() -> Option<std::rc::Rc<std::cell::Cell<Option<f32>>>> {
+    RUBY_BASE_SINK.with(|s| s.borrow_mut().take())
+}
 
 thread_local! {
     /// Сбор узлов аннотаций для атома, который сейчас строится
@@ -351,7 +425,7 @@ thread_local! {
 /// Вложенный сбор (атом внутри атома) своё забирает сам: прежний список
 /// восстанавливается после вызова.
 pub fn collect_ruby_extents<T>(build: impl FnOnce() -> T) -> (T, RubyExtents) {
-    let saved = RUBY_EXTENTS.with(|r| r.replace(Some(Vec::new())));
+    let saved = RUBY_EXTENTS.with(|r| r.replace(Some(RubyExtents::default())));
     let out = build();
     let mine = RUBY_EXTENTS.with(|r| r.replace(saved)).unwrap_or_default();
     (out, mine)
@@ -436,7 +510,7 @@ pub fn ruby_extent(el: AnyElement, under: bool, inset: f32) -> AnyElement {
     let collecting = RUBY_EXTENTS.with(|r| {
         r.borrow_mut()
             .as_mut()
-            .map(|v| v.push((under, inset, slot.clone())))
+            .map(|v| v.levels.push((under, inset, slot.clone())))
             .is_some()
     });
     if !collecting {
@@ -457,6 +531,9 @@ struct AtomBox {
     /// Аннотации руби над и под коробкой (`ruby_extent`).
     over: f32,
     under: f32,
+    /// Ruby annotation overhang onto the preceding content (css-ruby-1 §4.4):
+    /// the atom is placed this far left of its spacer.
+    shift: f32,
 }
 
 /// Щуп базовой линии атома: пустой лист с базовой линией на своём верху.
@@ -643,6 +720,7 @@ impl Paragraph {
         wrap: Wrap,
     ) -> Self {
         Paragraph {
+            ruby_base_sink: take_ruby_base_sink(),
             text,
             runs,
             font_size,
@@ -2002,6 +2080,9 @@ impl Paragraph {
         }
         self.run_metrics = self.measure_runs(window);
         self.atom_boxes.clear();
+        // Ruby atoms whose annotation may overhang neighbours: resolved after
+        // the loop (the computation needs the whole paragraph).
+        let mut overhangs: Vec<(usize, usize, usize, f32, f32, f32, RubyOverhangInfo)> = Vec::new();
         for slot in self.atoms.iter_mut() {
             let rounded = slot.el.layout_as_root(
                 size(
@@ -2053,7 +2134,7 @@ impl Paragraph {
             // Уровни одной стороны стоят стопкой в каждой колонке; выход за
             // коробку — по самой высокой стопке.
             let (mut over, mut under) = (0.0f32, 0.0f32);
-            for (below, inset, id) in &slot.extents {
+            for (below, inset, id) in &slot.extents.levels {
                 let Some(id) = id.get() else { continue };
                 let h = f32::from(window.layout_exact(id).1.height) - inset;
                 if *below {
@@ -2062,6 +2143,21 @@ impl Paragraph {
                     over = over.max(h);
                 }
             }
+            let len = self.text[slot.at..]
+                .chars()
+                .next()
+                .map_or(0, char::len_utf8);
+            if let Some(info) = &slot.extents.overhang {
+                let ann_w = slot
+                    .extents
+                    .levels
+                    .iter()
+                    .filter_map(|(_, _, id)| id.get())
+                    .map(|id| f32::from(window.layout_exact(id).1.width))
+                    .fold(0.0f32, f32::max);
+                let base_w = info.base_width.get().unwrap_or(w);
+                overhangs.push((self.atom_boxes.len(), slot.at, len, w, base_w, ann_w, info.clone()));
+            }
             self.atom_boxes.push(AtomBox {
                 at: slot.at,
                 h: f32::from(s.height),
@@ -2069,14 +2165,23 @@ impl Paragraph {
                 align: slot.align,
                 over,
                 under,
+                shift: 0.0,
             });
             // Продвижение распорки — ширина атома. Идёт ПЕРВЫМ: поиск
             // диапазона берёт первое попадание.
-            let len = self.text[slot.at..]
-                .chars()
-                .next()
-                .map_or(0, char::len_utf8);
             self.letter_spans.insert(0, (slot.at..slot.at + len, px(w)));
+        }
+        // Свес аннотации руби над соседями (css-ruby-1 §4.4): распорка
+        // уже на свес, атом сдвинут влево на начальный свес.
+        for (k, at, len, w, base_w, ann_w, info) in overhangs {
+            let (start_oh, end_oh) = self.ruby_overhang(&info, at, len, w, base_w, ann_w, window);
+            if start_oh + end_oh <= 0.0 {
+                continue;
+            }
+            self.atom_boxes[k].shift = start_oh;
+            if let Some(span) = self.letter_spans.iter_mut().find(|(r, _)| *r == (at..at + len)) {
+                span.1 = px((w - start_oh - end_oh).max(0.0));
+            }
         }
         self.prepare_atom_fit(window, cx);
     }
@@ -2926,6 +3031,13 @@ impl Paragraph {
     /// смотрит правило абзаца и вложенного куска не видит. Без таких кусков
     /// результат совпадает с `trim_hanging`.
     fn hang_tail(&self, start: usize, end: usize) -> usize {
+        // A ruby base/annotation unit is laid out by its own sub-line breaker
+        // (Blink line_breaker.cc: ruby columns), whose trailing spaces do not
+        // hang: `<ruby>　　あ　　<rt>…</ruby>` keeps its 5em base
+        // (`ruby-overhang-spaces-*-ref`).
+        if self.ruby_unit {
+            return end;
+        }
         let mut at = end;
         for (i, ch) in self.text[start..end].char_indices().rev() {
             if ch == '\u{feff}' || !(hangs(ch) || zero_width(ch)) {
@@ -3761,6 +3873,7 @@ impl Element for Paragraph {
         let box_extents = self.box_extents.clone();
         let flow = self.flow.clone();
         let atom_fit = self.atom_fit.clone();
+        let ruby_base_sink = self.ruby_base_sink.clone();
         let id = window.request_measured_layout_with_physical_baselines(
             gpui::Style::default(),
             move |known, available, window, _cx| {
@@ -3890,6 +4003,11 @@ impl Element for Paragraph {
                         }
                     })
                     .fold(px(0.), |a: Pixels, b| if b > a { b } else { a });
+                // A ruby base unit (nowrap) reports its content width for the
+                // annotation overhang (`lay_atoms`).
+                if let Some(sink) = &ruby_base_sink {
+                    sink.set(Some(f32::from(content)));
+                }
                 // Fit-content is max(min-content, min(max-content, available))
                 // (css-sizing-3 §5.1): with a negative indent the max-content
                 // line can be NARROWER than the widest piece of a later line,
@@ -4488,6 +4606,7 @@ impl Paragraph {
             align_last: self.align_last,
             ruby_justify: self.ruby_justify,
             ruby_unit: self.ruby_unit,
+            ruby_base_sink: None,
             letter_spacing: self.letter_spacing,
             word_spacing: self.word_spacing,
             vertical: self.vertical,

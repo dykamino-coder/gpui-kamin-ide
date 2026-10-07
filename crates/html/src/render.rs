@@ -17451,7 +17451,7 @@ fn paragraph_pieces_routed(
             let extents = if ruby_role(e) == Some(crate::computed::RubyRole::Container) {
                 extents
             } else {
-                Vec::new()
+                crate::lines::RubyExtents::default()
             };
             // Абсолютная замещаемая — атом строки только РЯДОМ с текстом в
             // потоке: строка из одних внепоточных коробок нулевая (CSS 2.1
@@ -17639,7 +17639,7 @@ fn paragraph_pieces_routed(
                 inline::Piece::Atom(el) => {
                     let (align, extents) = aligns
                         .next()
-                        .unwrap_or((crate::lines::AtomAlign::Shift(0.0), Vec::new()));
+                        .unwrap_or((crate::lines::AtomAlign::Shift(0.0), crate::lines::RubyExtents::default()));
                     line_atoms.push((at, el, align, extents));
                     out.push(inline::Piece::Text {
                         text: inline::SPACER.to_string(),
@@ -19268,7 +19268,41 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                     // База — ПЕРВЫЙ элемент ячейки `over_stack`, обёртка уровней
                     // идёт после неё в той же ячейке. Внутри обёртки уровни
                     // в обратном порядке: нулевой (ближний к базе) — внизу.
-                    let mut over = over_stack(unit_box(seg.bases.get(i).unwrap_or(&empty), &merged));
+                    // css-ruby-1 §4.4 ruby-overhang: a single-column ruby lets
+                    // its line know the base content width, so an annotation
+                    // wider than the base may overhang the neighbours
+                    // (`lines::lay_atoms`, Blink `ruby_utils.cc` GetOverhang).
+                    let base_nodes = seg.bases.get(i).unwrap_or(&empty);
+                    let base_el = if segments.len() == 1 && columns == 1 && !seg.levels.is_empty() {
+                        let base_font = match merged.font_size {
+                            Some(Len::Px(v)) => v,
+                            _ => opts.base_size(),
+                        };
+                        // The annotation's own font size: UA `rt { font-size: 50% }`.
+                        let ann_font = seg
+                            .levels
+                            .first()
+                            .and_then(|l| l.units.first())
+                            .and_then(|u| match u.as_slice() {
+                                [Node::Element(k)] => match k.style.font_size {
+                                    Some(Len::Px(v)) => Some(v),
+                                    Some(Len::Pct(p)) | Some(Len::Em(p)) => Some(p * base_font),
+                                    _ => None,
+                                },
+                                _ => None,
+                            })
+                            .unwrap_or(base_font * 0.5);
+                        crate::lines::ruby_base_with_overhang(
+                            merged.ruby_overhang.unwrap_or(crate::computed::RubyOverhang::Auto),
+                            ann_font / 2.0,
+                            merged.ruby_align == Some(crate::computed::RubyAlign::Start),
+                            base_font,
+                            || unit_box(base_nodes, &merged),
+                        )
+                    } else {
+                        unit_box(base_nodes, &merged)
+                    };
+                    let mut over = over_stack(base_el);
                     if !over_anns.is_empty() {
                         over = over.child(level_wrap(false).child(extent(
                             div()
