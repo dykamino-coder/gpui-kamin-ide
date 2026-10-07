@@ -6,6 +6,7 @@
 
 mod outline;
 mod fragment_size;
+mod first_line_text;
 mod band_clearance;
 use band_clearance::supported as band_clear_supported;
 mod mask_geometry;
@@ -16653,7 +16654,7 @@ fn paragraph_routed(
         let nodes_owned = nodes.to_vec();
         let opts_owned = opts.clone();
         let mut plain = String::new();
-        gather_until_break(nodes, &mut plain);
+        first_line_text::gather(nodes, inherited.preserve_newlines == Some(true), &mut plain);
         let plain = crate::inline::transform_case(&normalize_for_shadow(&plain), inherited);
         if !plain.trim().is_empty() {
             let size = match base.font_size {
@@ -25793,27 +25794,6 @@ fn inline_level_box(e: &Element) -> bool {
         Some(_) => false,
         None => e.inline,
     }
-}
-
-fn gather_until_break(nodes: &[Node], out: &mut String) -> bool {
-    for n in nodes {
-        match n {
-            Node::Text(t) => {
-                if let Some(cut) = t.find('\n') {
-                    out.push_str(&t[..cut]);
-                    return true;
-                }
-                out.push_str(t);
-            }
-            Node::Element(e) if e.tag == "br" => return true,
-            Node::Element(e) => {
-                if gather_until_break(&e.children, out) {
-                    return true;
-                }
-            }
-        }
-    }
-    false
 }
 
 fn gather_text(nodes: &[Node], out: &mut String) {
