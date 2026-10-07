@@ -14,17 +14,21 @@ pub(super) fn snap(
     exact: Option<Bounds<Pixels>>,
     widths: Edges<Pixels>,
     scale: f32,
+    shift: [f32; 2],
 ) -> (Bounds<Pixels>, Edges<Pixels>) {
-    let at = |v: Pixels| px((f32::from(v) * scale).round() / scale);
+    // `shift` is the device translation of the current transformation: an
+    // edge snaps where it lands on the device grid.
+    let at = |v: Pixels, t: f32| px(((f32::from(v) * scale + t).round() - t) / scale);
+    let (x, y) = (|v: Pixels| at(v, shift[0]), |v: Pixels| at(v, shift[1]));
     let outer = Bounds::from_corners(
-        point(at(bounds.left()), at(bounds.top())),
-        point(at(bounds.right()), at(bounds.bottom())),
+        point(x(bounds.left()), y(bounds.top())),
+        point(x(bounds.right()), y(bounds.bottom())),
     );
     let e = exact.unwrap_or(bounds);
-    let inner_left = at(e.left() + widths.left);
-    let inner_top = at(e.top() + widths.top);
-    let inner_right = at(e.right() - widths.right);
-    let inner_bottom = at(e.bottom() - widths.bottom);
+    let inner_left = x(e.left() + widths.left);
+    let inner_top = y(e.top() + widths.top);
+    let inner_right = x(e.right() - widths.right);
+    let inner_bottom = y(e.bottom() - widths.bottom);
     let widths = Edges {
         left: (inner_left - outer.left()).max(Pixels::ZERO),
         top: (inner_top - outer.top()).max(Pixels::ZERO),
@@ -32,6 +36,16 @@ pub(super) fn snap(
         bottom: (outer.bottom() - inner_bottom).max(Pixels::ZERO),
     };
     (outer, widths)
+}
+
+/// The device translation of a transformation whose linear part is the
+/// identity within `f32` error (e.g. a text turn and its inverse around a
+/// physical atom in vertical writing): edges stay axis-aligned and can snap.
+fn translation_only(m: crate::TransformationMatrix) -> Option<[f32; 2]> {
+    let [[a, b], [c, d]] = m.rotation_scale;
+    let eps = 1e-5;
+    ((a - 1.0).abs() < eps && b.abs() < eps && c.abs() < eps && (d - 1.0).abs() < eps)
+        .then_some(m.translation)
 }
 
 /// Paint borders before descendants (CSS 2.1 Appendix E), with optional CSS
@@ -48,7 +62,7 @@ pub(super) fn paint(
         let (bounds, border_widths) = if style.css_border_snap
             && corner_radii.max() == Pixels::ZERO
             && style.border_style == BorderStyle::Solid
-            && window.current_transformation() == crate::TransformationMatrix::unit()
+            && translation_only(window.current_transformation()).is_some()
         {
             // Inner edges come from the unrounded border box when the
             // snapped `bounds` belong to the Div being painted: rounding
@@ -59,7 +73,8 @@ pub(super) fn paint(
                 .css_exact_bounds
                 .filter(|(snapped, _)| *snapped == bounds)
                 .map(|(_, exact)| exact);
-            snap(bounds, exact, border_widths, window.scale_factor())
+            let shift = translation_only(window.current_transformation()).unwrap_or([0.0; 2]);
+            snap(bounds, exact, border_widths, window.scale_factor(), shift)
         } else {
             (bounds, border_widths)
         };

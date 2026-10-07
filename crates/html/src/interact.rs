@@ -1186,6 +1186,10 @@ pub struct Transformed {
     /// (`prepaint`, `Window::set_layout_placed_origin`): `paint` рисует без
     /// матрицы.
     placed: bool,
+    /// Неокруглённое место коробки из подготовки: осевой поворот на
+    /// отрисовке округляет края от него (`layout_origin_unrounded` доступен
+    /// только до отрисовки).
+    exact_origin: Option<gpui::Point<Pixels>>,
 }
 
 /// Сплющивание плоскости z=0 в аффинную матрицу экрана
@@ -1198,6 +1202,23 @@ pub struct Transformed {
 /// рисует) берём касательную аффинную карту в центре коробки:
 /// детерминированно и одинаково для теста и эталона с той же гомографией
 /// (transform3d-matrix3d-003/-004). `None` — плоскость за глазом или ребром.
+/// Линейная часть — поворот на кратное 90° или отражение (знаковая
+/// перестановка) с точностью до ошибки `f32`, но НЕ единичная: точная
+/// матрица из 0/±1.
+fn quarter_turn(lin: [[f32; 2]; 2]) -> Option<[[f32; 2]; 2]> {
+    let unit = |v: f32| {
+        [-1.0f32, 0.0, 1.0]
+            .into_iter()
+            .find(|u| (v - u).abs() < 1e-5)
+    };
+    let m = [
+        [unit(lin[0][0])?, unit(lin[0][1])?],
+        [unit(lin[1][0])?, unit(lin[1][1])?],
+    ];
+    let det = m[0][0] * m[1][1] - m[0][1] * m[1][0];
+    (det.abs() == 1.0 && m != [[1.0, 0.0], [0.0, 1.0]]).then_some(m)
+}
+
 fn flatten_plane(f: &[[f32; 4]; 4], center: (f32, f32)) -> Option<gpui::TransformationMatrix> {
     const EPS: f32 = 1e-5;
     if crate::computed::det3_plane(f).abs() < EPS {
@@ -1273,6 +1294,7 @@ impl Transformed {
             frame_3d: None,
             under_3d: None,
             placed: false,
+            exact_origin: None,
         }
     }
 
@@ -1339,6 +1361,7 @@ impl Element for Transformed {
         // Поддерево переносится до округления (`set_layout_placed_origin`,
         // тот же механизм у `LatePlace`), края округляются на конечном месте.
         self.placed = false;
+        self.exact_origin = Some(window.layout_origin_unrounded(*layout_id));
         if flat && self.perspective.is_none() {
             let size = window.layout_size_unrounded(*layout_id);
             if let Some((sx, sy)) =
@@ -1478,13 +1501,49 @@ impl Element for Transformed {
             // (`Window::with_transformation_masked`): прежде обрезка стояла
             // на месте коробки до `transform` (`transform-clip-001`,
             // `transform-background-001/002`, `transform-fixed-bg-001/003`).
-            let matrix = gpui::TransformationMatrix::unit()
+            let quarter = quarter_turn(self.lin)
+                .filter(|_| window.current_transformation() == gpui::TransformationMatrix::unit());
+            let mut matrix = gpui::TransformationMatrix::unit()
                 .translate(origin)
                 .compose(gpui::TransformationMatrix {
-                    rotation_scale: self.lin,
+                    rotation_scale: quarter.unwrap_or(self.lin),
                     translation: [shift(self.tr[0]), shift(self.tr[1])],
                 })
                 .translate(back);
+            if quarter.is_some() {
+                // Поворот на кратное четверти (и отражение) оставляет коробку
+                // осевой: её края обязаны округляться к точке устройства так
+                // же, как у той же коробки, разложенной на месте (чистый сдвиг
+                // выше идёт через раскладку — round half up). Растеризатор
+                // по правилу «верх-лево» относит ровную половину вниз, а
+                // ошибка `f32` у `rotate(-90deg)` (cos ≈ −4e-8) решает
+                // ничью случайно — `offset-path-ray-011/013/014` против
+                // эталона `translate(...)`. Skia так же кладёт осевой
+                // прямоугольник по round(x) (`SkScan::FillRect`), а
+                // `gfx::SinCosDegrees` даёт точные 0/±1 у кратных 90°.
+                let sf = scale_factor;
+                let corner_min = |o: gpui::Point<Pixels>, w: f32, h: f32| {
+                    let mut m = (f32::INFINITY, f32::INFINITY);
+                    for (dx, dy) in [(0.0, 0.0), (w, 0.0), (0.0, h), (w, h)] {
+                        let p = matrix.apply(gpui::point(
+                            px((f32::from(o.x) + dx) * sf),
+                            px((f32::from(o.y) + dy) * sf),
+                        ));
+                        m = (m.0.min(f32::from(p.x)), m.1.min(f32::from(p.y)));
+                    }
+                    m
+                };
+                let exact_origin = self.exact_origin.unwrap_or(bounds.origin);
+                let exact = corner_min(exact_origin, w, h);
+                let cur = corner_min(
+                    bounds.origin,
+                    f32::from(bounds.size.width),
+                    f32::from(bounds.size.height),
+                );
+                let snap = |v: f32| ((v * 64.0).round() / 64.0 + 0.5).floor();
+                matrix.translation[0] += snap(exact.0) - cur.0;
+                matrix.translation[1] += snap(exact.1) - cur.1;
+            }
             let child = self.child.as_mut().unwrap();
             window.with_transformation_masked(matrix, |window| child.paint(window, cx));
             return;
@@ -1686,8 +1745,11 @@ impl IntoElement for Underlay {
 /// Прямоугольник ячейки + флаг «точная»: точная лежит целиком в своём
 /// ряду/колонке (span = 1), объединённая (rowspan/colspan) выходит за них.
 /// Область фона считается ТОЛЬКО по точным — объединённая растягивала бы
-/// градиент колонки на чужие дорожки; маски краски — по всем.
-pub type RowRects = std::rc::Rc<std::cell::RefCell<Vec<(Bounds<Pixels>, bool)>>>;
+/// градиент колонки на чужие дорожки; маски краски — по всем. Третье поле —
+/// тот же прямоугольник без округления к точке устройства: от него
+/// считается область позиционирования (CSS 2.1 §17.5.1, Blink — по
+/// неокруглённой геометрии ячеек), маски остаются округлёнными.
+pub type RowRects = std::rc::Rc<std::cell::RefCell<Vec<(Bounds<Pixels>, bool, Bounds<Pixels>)>>>;
 
 thread_local! {
     /// Буферы прямоугольников ПО РЯДАМ, переживающие перестройку дерева:
@@ -1820,23 +1882,30 @@ impl Element for CellsClipped {
         // Область ряда/колонки — охват ТОЧНЫХ ячеек (span = 1): от неё
         // считается и размер плитки, и `background-position`. Объединённые
         // лежат и на чужих дорожках — они только маски.
-        let exact: Vec<Bounds<Pixels>> =
-            rects.iter().filter(|(_, e)| *e).map(|(b, _)| *b).collect();
-        let all: Vec<Bounds<Pixels>> = rects.iter().map(|(b, _)| *b).collect();
-        let base = if exact.is_empty() { &all } else { &exact };
-        let mut area = base[0];
-        for r in &base[1..] {
-            let right = area.origin.x + area.size.width;
-            let bottom = area.origin.y + area.size.height;
-            let x0 = area.origin.x.min(r.origin.x);
-            let y0 = area.origin.y.min(r.origin.y);
-            let x1 = right.max(r.origin.x + r.size.width);
-            let y1 = bottom.max(r.origin.y + r.size.height);
-            area = Bounds {
-                origin: gpui::point(x0, y0),
-                size: gpui::size(x1 - x0, y1 - y0),
-            };
-        }
+        let union = |pick: &dyn Fn(&(Bounds<Pixels>, bool, Bounds<Pixels>)) -> Bounds<Pixels>| {
+            let exact: Vec<Bounds<Pixels>> = rects.iter().filter(|r| r.1).map(pick).collect();
+            let all: Vec<Bounds<Pixels>> = rects.iter().map(pick).collect();
+            let base = if exact.is_empty() { all } else { exact };
+            let mut area = base[0];
+            for r in &base[1..] {
+                let right = area.origin.x + area.size.width;
+                let bottom = area.origin.y + area.size.height;
+                let x0 = area.origin.x.min(r.origin.x);
+                let y0 = area.origin.y.min(r.origin.y);
+                let x1 = right.max(r.origin.x + r.size.width);
+                let y1 = bottom.max(r.origin.y + r.size.height);
+                area = Bounds {
+                    origin: gpui::point(x0, y0),
+                    size: gpui::size(x1 - x0, y1 - y0),
+                };
+            }
+            area
+        };
+        // Тень и обводка — по округлённым ячейкам (резкие края); фон
+        // позиционируется по неокруглённым (CSS 2.1 §17.5.1, как у Blink).
+        let area = union(&|r| r.0);
+        let positioning = union(&|r| r.2);
+        let all: Vec<Bounds<Pixels>> = rects.iter().map(|(b, _, _)| *b).collect();
         // Тень РЯДА — вокруг охвата всех его ячеек, без маски: она лежит
         // снаружи. Резкая (без размытия) рисуется кольцевым квадом — тот же
         // обход вырождения шейдера, что у обычных коробок.
@@ -1939,7 +2008,7 @@ impl Element for CellsClipped {
                 if let Some(bg) = self.style.background {
                     window.paint_quad(gpui::fill(rect, bg.to_hsla()));
                 }
-                crate::background::paint_area(&self.style, area, window);
+                crate::background::paint_area(&self.style, positioning, window);
             });
         }
     }
@@ -4158,32 +4227,131 @@ pub fn cell_rect_probe(
     shift: (f32, f32),
     border: [f32; 4],
 ) -> AnyElement {
-    gpui::canvas(
+    CellProbe {
+        child: Some(
+            gpui::div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+                .into_any_element(),
+        ),
+        rects,
+        exact,
+        shift,
+        border,
+    }
+    .into_any_element()
+}
+
+/// Проба ячейки (`cell_rect_probe`): записывает и округлённый прямоугольник
+/// (маски краски), и неокруглённый (область позиционирования фона полосы).
+/// Поле подкладки ячейки округляется от её внутреннего края рамки: 25px
+/// рамки при 1.25 сдвигали его на 0.2px, и плитка `top right` у tbody
+/// вставала на точку правее эталона (`background-position-applies-to-001a`).
+struct CellProbe {
+    child: Option<AnyElement>,
+    rects: RowRects,
+    exact: bool,
+    shift: (f32, f32),
+    border: [f32; 4],
+}
+
+impl CellProbe {
+    fn outer(&self, bounds: Bounds<Pixels>) -> Bounds<Pixels> {
+        let (shift, border) = (self.shift, self.border);
+        // Сдвиг краски относительно коробки ячейки: в сросшейся модели
+        // фоновая сетка начинается от середины рамки таблицы.
+        Bounds {
+            origin: gpui::point(
+                bounds.origin.x + gpui::px(shift.0 - border[3]),
+                bounds.origin.y + gpui::px(shift.1 - border[0]),
+            ),
+            size: gpui::size(
+                bounds.size.width + gpui::px(border[1] + border[3]),
+                bounds.size.height + gpui::px(border[0] + border[2]),
+            ),
+        }
+    }
+}
+
+impl Element for CellProbe {
+    type RequestLayoutState = LayoutId;
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, LayoutId) {
+        let layout_id = self.child.as_mut().unwrap().request_layout(window, cx);
+        (layout_id, layout_id)
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        layout_id: &mut LayoutId,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         // Запись В PREPAINT: подготовка ВСЕХ элементов идёт до отрисовки,
         // и полоса фона читает прямоугольники СВОЕГО кадра — с записью в
         // paint она рисовала прошлый кадр и мигала на каждой смене раскладки.
-        move |bounds: Bounds<Pixels>, _, _| {
-            // Сдвиг краски относительно коробки ячейки: в сросшейся модели
-            // фоновая сетка начинается от середины рамки таблицы.
-            let bounds = Bounds {
-                origin: gpui::point(
-                    bounds.origin.x + gpui::px(shift.0 - border[3]),
-                    bounds.origin.y + gpui::px(shift.1 - border[0]),
-                ),
-                size: gpui::size(
-                    bounds.size.width + gpui::px(border[1] + border[3]),
-                    bounds.size.height + gpui::px(border[0] + border[2]),
-                ),
-            };
-            rects.borrow_mut().push((bounds, exact));
-        },
-        |_, _, _, _| {},
-    )
-    .absolute()
-    .top_0()
-    .left_0()
-    .size_full()
-    .into_any_element()
+        let unrounded = Bounds {
+            origin: window.layout_origin_unrounded(*layout_id),
+            size: window.layout_size_unrounded(*layout_id),
+        };
+        // Неокруглённое берётся, только пока оно в пределах точки
+        // устройства от округлённого (иначе — другой кадр отсчёта).
+        let near = |a: Pixels, b: Pixels| (a - b).abs() <= px(1.0);
+        let unrounded = if near(unrounded.left(), bounds.left())
+            && near(unrounded.top(), bounds.top())
+            && near(unrounded.right(), bounds.right())
+            && near(unrounded.bottom(), bounds.bottom())
+        {
+            unrounded
+        } else {
+            bounds
+        };
+        self.rects
+            .borrow_mut()
+            .push((self.outer(bounds), self.exact, self.outer(unrounded)));
+        self.child.as_mut().unwrap().prepaint(window, cx);
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _state: &mut LayoutId,
+        _prepaint: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.child.as_mut().unwrap().paint(window, cx);
+    }
+}
+
+impl IntoElement for CellProbe {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
 }
 
 /// Строка вертикального письма: `writing-mode: vertical-rl` и `vertical-lr`.

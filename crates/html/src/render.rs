@@ -15237,6 +15237,12 @@ fn own_context(e: &Element) -> bool {
     own_context_style(&e.style)
         || (e.tag == "caption" && e.style.display.is_none())
         || e.style.is_caption == Some(true)
+        // A table (UA `display: table`, not written into `display`) never
+        // collapses through (CSS 2.2 section 17.4: the table wrapper box
+        // establishes a block formatting context); as a body's last child it
+        // let the preceding paragraph's end margin escape
+        // (`visibility-collapse-border-spacing-002`).
+        || (e.tag == "table" && e.style.display.is_none())
 }
 
 /// То же по ОДНОМУ СТИЛЮ, без узла: содержащий блок приходит в `blocks()`

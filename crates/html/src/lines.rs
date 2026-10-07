@@ -1609,7 +1609,17 @@ impl Paragraph {
                     .map(|(i, _)| head + i)
                     .filter(|at| *at > head && self.span(segs, head, *at) <= room)
                     .max()
-                    .unwrap_or(head)
+                    // css-overflow-3 §text-overflow: «The first character or
+                    // atomic inline-level element on a line must be clipped
+                    // rather than ellipsed» — when not even it fits, it stays
+                    // and the ellipsis follows it past the clip edge
+                    // (`text-overflow-008`: a 100px glyph in a 50px box).
+                    .unwrap_or_else(|| {
+                        self.text[head..end]
+                            .char_indices()
+                            .nth(1)
+                            .map_or(end, |(i, _)| head + i)
+                    })
             });
         }
         line.width = self.span(segs, head, end) + ell;

@@ -22,6 +22,8 @@ use gpui::{AnyElement, Bounds, IntoElement, Pixels, RenderImage, Styled, px};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
+mod exact_layer;
+
 type Cache = Mutex<HashMap<String, Option<Source>>>;
 static CACHE: OnceLock<Cache> = OnceLock::new();
 
@@ -2822,9 +2824,8 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
     }
     let style = c.clone();
     Some(
-        gpui::canvas(
-            |_, _, _| {},
-            move |bounds: Bounds<Pixels>, _, window, _| {
+        exact_layer::ExactLayer::new(
+            move |bounds: Bounds<Pixels>, window: &mut gpui::Window| {
                 if style.bg_fixed == Some(true) {
                     // Плитка меряется и отсчитывается от ОБЛАСТИ ПРОСМОТРА,
                     // а красится только внутри своей коробки: сдвиг между
@@ -2839,10 +2840,6 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                 }
             },
         )
-        .absolute()
-        .top_0()
-        .left_0()
-        .size_full()
         .into_any_element(),
     )
 }
@@ -3074,6 +3071,9 @@ pub fn paint_tiles(
             }
         }
     };
+    // Область позиционирования — по неокруглённой коробке, когда слой её
+    // знает (`exact_layer`); краска режется округлённой (`paint_box` выше).
+    let bounds = exact_layer::positioning(bounds);
     // Место под фон: свой край по `background-origin`.
     let bounds = Bounds {
         origin: gpui::point(
