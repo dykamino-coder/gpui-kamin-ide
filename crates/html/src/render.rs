@@ -28872,8 +28872,13 @@ fn hoist_relative(e: &mut Element) -> (f32, f32) {
         }
         let mut live = cur.children.iter().enumerate().filter(|(_, n)| !is_blank(n));
         let i = match (live.next(), live.next()) {
+            // Строчная коробка-обёртка (не атомарная) — тоже: её сдвиг
+            // относится и к блокам внутри неё (block-in-inline, CSS 2.1
+            // §9.2.1.1 — анонимные блоки части этой строчной коробки), а
+            // фрагменту он накладывается по css-break-3 §5.5
+            // (`out-of-flow-in-multicolumn-058/059`: цепочка `span.rel`).
             (Some((i, Node::Element(k))), None)
-                if !k.inline
+                if (!k.inline || k.style.display.is_none())
                     && matches!(
                         k.style.position,
                         None | Some(crate::computed::Position::Relative)
