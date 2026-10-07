@@ -10,6 +10,7 @@ use std::collections::HashMap;
 mod selector_tokens;
 mod stylesheet_tokens;
 mod variable_tokens;
+pub(crate) mod custom_properties;
 
 /// Пара «свойство: значение». Значение хранится сырым — разбор откладывается
 /// до момента применения, чтобы неизвестные свойства не стоили ничего.
@@ -25,6 +26,9 @@ pub const DECL_SEP: char = char::from_u32(1).unwrap();
 /// давали ОДИН исход. Имя начинается со служебного знака — свойства с
 /// таким именем в разметке не бывает.
 pub const ORDER_KEY: &str = "\u{2}order";
+
+/// Priority is metadata: an escaped `!` inside a custom value is not !important.
+pub(crate) const CUSTOM_IMPORTANT: &str = "\u{2}important:";
 
 /// Одно правило: с чем сопоставлять и что применять.
 #[derive(Clone, Debug)]
@@ -618,6 +622,9 @@ pub fn parse_decls(raw: &str) -> Decls {
         };
         let (k, v) = (&item[..colon], &item[colon + 1..]);
         let name = unescape(k.trim());
+        if name.starts_with('\u{2}') {
+            continue;
+        }
         let custom = name.starts_with("--");
         if custom && (name == "--" || !selector_tokens::ident(k.trim())) {
             continue;
@@ -646,10 +653,11 @@ pub fn parse_decls(raw: &str) -> Decls {
         if !variable_tokens::valid(value) {
             continue;
         }
-        // Пометка важности ОСТАЁТСЯ в значении: снимет её тот, кто раскладывает
+        // У обычных свойств пометка важности ОСТАЁТСЯ в значении: снимет её тот, кто раскладывает
         // каскад (`Computed::resolve_with_vars`), а срезав её здесь, мы теряли
         // важность целиком — объявление конкурировало на общих основаниях.
-        let val = &unescape_value(val);
+        let important = top_level_bang(val).is_some();
+        let val = &unescape_value(if custom { value } else { val });
         if !key.is_empty() && (custom || !val.is_empty()) {
             // Повтор того же свойства НЕ затирает прежнее на разборе:
             // действительность значения известна только применению
@@ -658,7 +666,7 @@ pub fn parse_decls(raw: &str) -> Decls {
             // разделителем и применяются по порядку. У пользовательских
             // свойств синтаксис уже проверен — последнее побеждает.
             if key.starts_with("--") {
-                out.insert(key, val.to_string());
+                custom_properties::store(&mut out, key, val.to_string(), important);
             } else {
                 // Порядок записи: имя запоминается при ПЕРВОМ появлении —
                 // повтор того же свойства применяется на его месте, внутри

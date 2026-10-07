@@ -2906,54 +2906,9 @@ fn walk(
             // и `.dark{--c:blue}` складывались в него подряд, и последнее
             // объявление красило ВЕСЬ документ — переключение темы классом
             // не работало в принципе.
-            let own_vars = {
-                let mut own = vars.clone();
-                let mut by_cascade: Vec<&&Rule> = matched.iter().collect();
-                by_cascade.sort_by(|a, b| {
-                    (a.origin, &a.layer, a.sel.specificity(), a.order)
-                        .cmp(&(b.origin, &b.layer, b.sel.specificity(), b.order))
-                });
-                for rule in by_cascade {
-                    for (k, v) in &rule.decls {
-                        if k.starts_with("--") {
-                            own.insert(k.clone(), v.clone());
-                        }
-                    }
-                }
-                for (k, v) in &inline_decls {
-                    if k.starts_with("--") {
-                        own.insert(k.clone(), v.clone());
-                    }
-                }
-                // Зарегистрированные `@property` (css-properties-values-api-1
-                // §2.4): значение, не подходящее под синтаксис, недействительно
-                // во время вычисления — свойство берёт унаследованное (если
-                // наследуется) или начальное; ненаследуемое у потомка без своего
-                // объявления — начальное; не заданное нигде — начальное.
-                for (name, reg) in crate::css::property_rules() {
-                    let set_here = matched.iter().any(|r| r.decls.contains_key(&name))
-                        || inline_decls.contains_key(&name);
-                    let parent = vars.get(&name).cloned();
-                    let fallback = if reg.inherits { parent.clone() } else { None }
-                        .or_else(|| reg.initial.clone());
-                    let value = if set_here {
-                        own.get(&name).cloned().filter(|v| syntax_accepts(&reg.syntax, v))
-                    } else if reg.inherits {
-                        parent
-                    } else {
-                        None
-                    };
-                    match value.or(fallback) {
-                        Some(v) => {
-                            own.insert(name, v);
-                        }
-                        None => {
-                            own.remove(&name);
-                        }
-                    }
-                }
-                own
-            };
+            let own_vars = crate::css::custom_properties::cascade(
+                &matched, &inline_decls, vars, &crate::css::property_rules(), syntax_accepts,
+            );
             let vars = &own_vars;
             // Используемая схема цвета (css-color-adjust-1 §color-scheme-prop):
             // своё `color-scheme` — последнее по каскаду, иначе родительская

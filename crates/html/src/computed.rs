@@ -3750,6 +3750,9 @@ impl Computed {
 
     pub fn apply_decls(&mut self, d: &Decls) {
         for (k, v) in d {
+            if k.starts_with(crate::css::CUSTOM_IMPORTANT) {
+                continue;
+            }
             for part in v.split(crate::css::DECL_SEP) {
                 self.apply_one(k, part);
             }
@@ -3931,7 +3934,8 @@ impl Computed {
         }
         for k in &ordered {
             let Some(v) = d.get(*k) else { continue };
-            if k.starts_with("--") || k.as_str() == crate::css::ORDER_KEY {
+            if k.starts_with("--") || k.as_str() == crate::css::ORDER_KEY
+                || k.starts_with(crate::css::CUSTOM_IMPORTANT) {
                 continue;
             }
             if let Some(at) = all_at
