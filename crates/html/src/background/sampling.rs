@@ -72,6 +72,25 @@ pub(super) fn paint_tile(
     } else {
         sampling
     };
+    let image = if sampling == ImageSampling::LinearSnapped
+        && window.current_transformation() == gpui::TransformationMatrix::unit()
+        && matches!(
+            source_kind,
+            super::Source::Vector { .. } | super::Source::Raster(_)
+        ) {
+        // CSS Images 3 §image-rendering permits bilinear smooth scaling.
+        // Filtering straight RGB darkens an opaque color beside transparent
+        // texels. Resolve premultiplied colors first, then upload straight
+        // BGRA at the destination resolution expected by GPUI's sprite path.
+        let sf = window.scale_factor();
+        let w = ((f32::from(bounds.right()) * sf).round() - (f32::from(bounds.left()) * sf).round())
+            .max(0.0) as u32;
+        let h = ((f32::from(bounds.bottom()) * sf).round() - (f32::from(bounds.top()) * sf).round())
+            .max(0.0) as u32;
+        super::alpha_sampling::resample(&image, w, h).unwrap_or(image)
+    } else {
+        image
+    };
     let _ = window.paint_image_with_sampling(bounds, corners, image, 0, false, sampling);
 }
 
