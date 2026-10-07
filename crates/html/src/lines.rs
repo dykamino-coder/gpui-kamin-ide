@@ -3433,6 +3433,12 @@ impl Element for Paragraph {
         if !self.atoms.is_empty() {
             self.lay_atoms(window, cx);
         }
+        // Рост строки под знак акцента меряется подъёмом и спуском его
+        // прогона (`line_padding`); без замера при раскладке строка не росла
+        // и рост доставался только сдвигу набора на отрисовке.
+        if !self.emph_spans.is_empty() && self.run_metrics.len() != self.runs.len() {
+            self.run_metrics = self.measure_runs(window);
+        }
         if !self.box_spans.is_empty() {
             if self.run_metrics.len() != self.runs.len() {
                 self.run_metrics = self.measure_runs(window);
