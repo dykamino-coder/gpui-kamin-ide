@@ -25,6 +25,7 @@ impl Element for FlowRow {
         let shapes = self.shapes.clone();
         let rtl = self.rtl;
         let vertical_rl = self.vertical_rl;
+        let inline_limit = self.inline_limit;
         let id = window.request_measured_layout(
             gpui::Style::default(),
             move |known, available, _window, _cx| {
@@ -35,8 +36,10 @@ impl Element for FlowRow {
                         _ => None,
                     })
                 };
+                // Известный инлайн-размер содержащего блока важнее замера:
+                // автовысотный хост вертикального письма предела не даёт.
                 let limit = if vertical_rl {
-                    pick(known.height, available.height)
+                    inline_limit.or(pick(known.height, available.height))
                 } else {
                     pick(known.width, available.width)
                 }
@@ -54,6 +57,8 @@ impl Element for FlowRow {
                     shapes: shapes.clone(),
                     rtl,
                     vertical_rl,
+                    inline_limit,
+                    block_lr: false,
                     slots: std::cell::RefCell::new(Vec::new()),
                 };
                 let (h, _) = probe.layout(limit);
@@ -90,13 +95,17 @@ impl Element for FlowRow {
         };
         let bw = f32::from(bounds.size.width);
         let vertical_rl = self.vertical_rl;
+        let block_lr = self.block_lr;
         let (_, slots) = self.layout(limit);
         let slots: Vec<(f32, f32)> = self
             .children
             .iter()
             .zip(slots)
             .map(|(c, (sx, sy))| {
-                if vertical_rl {
+                if vertical_rl && block_lr {
+                    // `vertical-lr`: колонка sy идёт от ЛЕВОГО края.
+                    (sy, sx)
+                } else if vertical_rl {
                     // t-мир → физика: колонка sy идёт от ПРАВОГО края.
                     (bw - sy - c.w, sx)
                 } else {
