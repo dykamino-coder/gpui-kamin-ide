@@ -17430,6 +17430,9 @@ fn paragraph_pieces_routed(
                     )
                 },
             )
+            // Линии украшений рисует сам абзац (css-text-decor-3 §2); у
+            // повёрнутого — прежний путь набора.
+            .decor_spans(inline::decor_spans(&pieces, &opts.text))
             .edge_spans(edges)
             .line_boxes(
                 boxes.as_ref().map(|b| b.0.clone()).unwrap_or_default(),

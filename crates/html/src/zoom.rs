@@ -48,6 +48,7 @@ struct Carried {
     tab_size: Option<f32>,
     text_shadow: Option<Shadow>,
     border_spacing: Option<(Option<f32>, Option<f32>)>,
+    underline_offset: Option<f32>,
 }
 
 /// Проход по дереву: действующий зум — произведение по предкам.
@@ -222,6 +223,23 @@ fn scale_own(c: &mut Computed, k: f32) {
     }
     // `vertical-align: 20px` хранится точками со знаком — тоже длина.
     c.vertical_shift_px = c.vertical_shift_px.map(|v| v * k);
+    // Длины украшений текста (css-text-decor-4): толщина, смещение
+    // подчёркивания, отступы концов.
+    let dl = |l: &mut crate::computed::DecorLen| {
+        match l {
+            crate::computed::DecorLen::Px(v) | crate::computed::DecorLen::Mix(_, v) => *v *= k,
+            _ => {}
+        }
+    };
+    if let Some(t) = c.td_thickness.as_mut() {
+        dl(t);
+    }
+    if let Some(o) = c.underline_offset.as_mut() {
+        dl(o);
+    }
+    if let Some(Some(pair)) = c.td_inset.as_mut() {
+        pair.iter_mut().for_each(dl);
+    }
 }
 
 /// Наследуемые длины в точках, у элемента не заданные: своё значение —
@@ -240,6 +258,9 @@ fn inherited(c: &mut Computed, own: f32, carried: &Carried) {
     if c.text_shadow.is_none() && let Some(mut sh) = carried.text_shadow {
         scale_shadow(&mut sh, own);
         c.text_shadow = Some(sh);
+    }
+    if c.underline_offset.is_none() && let Some(v) = carried.underline_offset {
+        c.underline_offset = Some(crate::computed::DecorLen::Px(v * own));
     }
     if c.border_spacing.is_none() && let Some((row, col)) = carried.border_spacing {
         let px = |v: Option<f32>| v.map(|v| Len::Px(v * own));
@@ -383,5 +404,10 @@ fn remember(c: &Computed, k: &mut Carried) {
     }
     if let Some((row, col)) = c.border_spacing {
         k.border_spacing = Some((px(row), px(col)));
+    }
+    match c.underline_offset {
+        Some(crate::computed::DecorLen::Px(v)) => k.underline_offset = Some(v),
+        Some(_) => k.underline_offset = None,
+        None => {}
     }
 }
