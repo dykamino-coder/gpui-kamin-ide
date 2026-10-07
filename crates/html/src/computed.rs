@@ -3970,7 +3970,18 @@ impl Computed {
                 // `var()` (css-values-5 §7.7): после него значение разбирается
                 // как обычное.
                 let resolved = resolve_sibling(resolve_attrs(k.as_str(), &resolve_vars(strip_important(part), vars)));
-                self.apply_one(k, &resolved);
+                // CSS Variables §3: invalid after substitution means unset;
+                // a preceding specified color cannot survive the computed value.
+                if k.as_str() == "color"
+                    && crate::css::variable_values::has_var(strip_important(part))
+                    && Color::parse(&resolved).is_none()
+                    && !matches!(resolved.trim().to_ascii_lowercase().as_str(),
+                        "inherit" | "initial" | "unset" | "revert" | "revert-layer")
+                {
+                    self.apply_one(k, "unset");
+                } else {
+                    self.apply_one(k, &resolved);
+                }
             }
         }
     }
@@ -11906,53 +11917,26 @@ fn resolve_attrs(key: &str, value: &str) -> String {
 }
 
 fn resolve_vars(value: &str, vars: &Decls) -> String {
-    let mut out = resolve_vars_once(value, vars);
-    for _ in 1..VAR_DEPTH {
-        if !out.contains("var(") {
-            break;
-        }
-        let next = resolve_vars_once(&out, vars);
+    let mut out = value.to_string();
+    for _ in 0..VAR_DEPTH {
+        let Some(next) = crate::css::variable_values::substitute(
+            &out, &mut |name| vars.get(name).cloned(),
+        ) else {
+            return "unset".into();
+        };
         if next == out {
             break;
         }
         out = next;
-    }
-    out
-}
-
-fn resolve_vars_once(value: &str, vars: &Decls) -> String {
-    if !value.contains("var(") {
-        return value.to_string();
-    }
-    let mut out = String::with_capacity(value.len());
-    let mut rest = value;
-    while let Some(at) = rest.find("var(") {
-        out.push_str(&rest[..at]);
-        let after = &rest[at + 4..];
-        // Конец записи — ПАРНАЯ скобка, а не первая попавшаяся: запасное
-        // значение само бывает записью со скобками. Пока бралась первая,
-        // `var(--c, rgba(0,0,0,.5))` при ЗАДАННОЙ переменной давал `red)` —
-        // лишняя скобка убивала значение. При незаданной выходило случайно
-        // верно, поэтому дефект и жил (CSS Variables §3).
-        let Some(close) = balanced_close(after) else {
-            out.push_str(&rest[at..]);
-            return out;
-        };
-        let inner = &after[..close];
-        // Запятая тоже ищется на верхнем уровне: внутри `rgba(0,0,0,.5)` их
-        // три, и разрез по первой откусил бы запасное значение.
-        let (name, fallback) = match top_level_comma(inner) {
-            Some(i) => (inner[..i].trim(), inner[i + 1..].trim()),
-            None => (inner.trim(), ""),
-        };
-        match vars.get(name) {
-            Some(v) => out.push_str(v),
-            None => out.push_str(fallback),
+        if !crate::css::variable_values::has_var(&out) {
+            break;
         }
-        rest = &after[close + 1..];
     }
-    out.push_str(rest);
-    out
+    if out.trim().is_empty() && crate::css::variable_values::has_var(value) {
+        "unset".into()
+    } else {
+        out
+    }
 }
 
 /// Одна дорожка сетки в терминах CSS.

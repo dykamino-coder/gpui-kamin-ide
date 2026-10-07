@@ -2906,8 +2906,12 @@ fn walk(
             // и `.dark{--c:blue}` складывались в него подряд, и последнее
             // объявление красило ВЕСЬ документ — переключение темы классом
             // не работало в принципе.
-            let own_vars = crate::css::custom_properties::cascade(
-                &matched, &inline_decls, vars, &crate::css::property_rules(), syntax_accepts,
+            let registered = crate::css::property_rules();
+            let cascaded = crate::css::custom_properties::cascade(
+                &matched, &inline_decls, vars, &registered, syntax_accepts,
+            );
+            let own_vars = crate::css::variable_values::compute(
+                &cascaded, vars, &registered, syntax_accepts,
             );
             let vars = &own_vars;
             // Используемая схема цвета (css-color-adjust-1 §color-scheme-prop):

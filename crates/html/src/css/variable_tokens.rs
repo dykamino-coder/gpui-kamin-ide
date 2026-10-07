@@ -69,7 +69,7 @@ fn sequence(raw: &str, fallback: bool, depth: usize) -> bool {
     true
 }
 
-fn escape_end(raw: &str, at: usize) -> usize {
+pub(super) fn escape_end(raw: &str, at: usize) -> usize {
     let mut end = at + 1;
     let mut digits = 0;
     while end < raw.len() && digits < 6 && raw.as_bytes()[end].is_ascii_hexdigit() {
@@ -87,7 +87,7 @@ fn escape_end(raw: &str, at: usize) -> usize {
     end
 }
 
-fn string_end(raw: &str, start: usize, quote: char) -> Option<usize> {
+pub(super) fn string_end(raw: &str, start: usize, quote: char) -> Option<usize> {
     let mut at = start + 1;
     while at < raw.len() {
         let c = raw[at..].chars().next()?;
@@ -106,7 +106,7 @@ fn string_end(raw: &str, start: usize, quote: char) -> Option<usize> {
     Some(raw.len())
 }
 
-fn block_end(raw: &str, start: usize, open: char) -> Option<usize> {
+pub(super) fn block_end(raw: &str, start: usize, open: char) -> Option<usize> {
     let close = match open {
         '(' => ')',
         '[' => ']',

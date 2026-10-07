@@ -11,6 +11,7 @@ mod selector_tokens;
 mod stylesheet_tokens;
 mod variable_tokens;
 pub(crate) mod custom_properties;
+pub(crate) mod variable_values;
 
 /// Пара «свойство: значение». Значение хранится сырым — разбор откладывается
 /// до момента применения, чтобы неизвестные свойства не стоили ничего.
