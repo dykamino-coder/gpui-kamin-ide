@@ -26704,6 +26704,10 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         layer_bg = Some(bg);
                     } else {
                         d = d.bg(bg.to_hsla());
+                        // A row/group background is replicated here only for
+                        // painting (CSS 2.1 section 17.5.1); it must not snap
+                        // each cell's text into an independent fill frame.
+                        d.style().css_synthetic_background = Some(true);
                     }
                 }
             }

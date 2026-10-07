@@ -4,8 +4,11 @@ use super::*;
 
 impl Paragraph {
     pub(crate) fn opaque_background(mut self, c: &crate::computed::Computed) -> Self {
+        let empty = |v| matches!(v, Some(crate::value::Len::Px(n) | crate::value::Len::Pct(n) | crate::value::Len::Em(n)) if n == 0.0);
         self.opaque_text_origin = c.background.is_some_and(|color| color.a == 1.0)
-            && c.bg_clip != Some(crate::computed::BgClip::Text);
+            && c.bg_clip != Some(crate::computed::BgClip::Text)
+            && !empty(c.width)
+            && !empty(c.height);
         self
     }
 
@@ -32,16 +35,19 @@ impl Paragraph {
         // Keep the raster origin coherent with an opaque box's snapped fill
         // (CSS 2.1 section 14.2), without clipping glyph overhang or changing
         // layout. Pixel-exact glyphs retain their own shared edge grid above.
-        let origin = if self.opaque_text_origin {
-            origin - self.glyph_nudge
-        } else {
-            origin
-        };
+        let base = (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent;
+        // A transparent descendant paints over its ancestor's fill (CSS 2.1
+        // section 14.2). Keep its exact relative position within that fill's
+        // device frame instead of independently snapping every paragraph.
+        let baseline = origin + self.glyph_nudge + point(px(0.0), base);
+        let background_offset = window
+            .css_text_background_offset(baseline)
+            .or(self.opaque_text_origin.then_some(self.glyph_nudge));
+        let origin = origin - background_offset.unwrap_or_default();
         // GPUI has no vertical subpixel variants on Windows/Linux; flooring the
         // baseline biases fractional half-leading upward. CSS 2.1 section 10.8.1
         // defines the baseline before rasterization, so preserve it in layout
         // and choose its nearest device pixel only for painting.
-        let base = (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent;
         let scale = window.scale_factor();
         // Window::paint_glyph adds the exact paragraph offset afterwards;
         // round the final baseline, including that offset, only once.
