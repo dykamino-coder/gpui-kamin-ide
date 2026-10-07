@@ -14,7 +14,7 @@ use crate::computed::{BgPos, BgRepeat, BgSize, Computed, Tiling};
 use crate::value::Len;
 use crate::color_space::gradient_colour_at as colour_at;
 mod sampling;
-mod alpha_sampling;
+pub(crate) mod alpha_sampling;
 mod float_geometry;
 use float_geometry::rrect_of;
 pub use float_geometry::rounded_float;

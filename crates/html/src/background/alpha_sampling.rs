@@ -1,4 +1,4 @@
-//! Filter background image colors in premultiplied alpha at device resolution.
+//! Filter image colors in premultiplied alpha at device resolution.
 
 use gpui::RenderImage;
 use std::{
@@ -9,7 +9,7 @@ use std::{
 type Cache = HashMap<(usize, u32, u32), Option<Arc<RenderImage>>>;
 static CACHE: OnceLock<Mutex<Cache>> = OnceLock::new();
 
-pub(super) fn resample(image: &Arc<RenderImage>, w: u32, h: u32) -> Option<Arc<RenderImage>> {
+pub(crate) fn resample(image: &Arc<RenderImage>, w: u32, h: u32) -> Option<Arc<RenderImage>> {
     let size = image.size(0);
     let (iw, ih) = (size.width.0 as usize, size.height.0 as usize);
     if w == 0 || h == 0 || w > 4096 || h > 4096 || (iw, ih) == (w as usize, h as usize) {
