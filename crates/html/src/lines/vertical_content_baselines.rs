@@ -10,6 +10,12 @@ impl Paragraph {
         self
     }
 
+    /// The paragraph is a rotated vertical line set with a central dominant baseline.
+    pub fn rotated_central(mut self, on: bool) -> Self {
+        self.rotated_central = on;
+        self
+    }
+
     pub(super) fn vertical_content_baselines(
         &self,
         content_size: gpui::Size<Pixels>,
