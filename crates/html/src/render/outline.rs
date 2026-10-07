@@ -93,7 +93,7 @@ pub(super) fn decorations(c: &Computed) -> Vec<AnyElement> {
                 _ => 0.0,
             };
             let ring_at = |reach: f32, width: f32, radius: f32| {
-                div()
+                let mut ring = div()
                     .absolute()
                     .top(px(-(reach + bpx(bw.top))))
                     .left(px(-(reach + bpx(bw.left))))
@@ -101,7 +101,16 @@ pub(super) fn decorations(c: &Computed) -> Vec<AnyElement> {
                     .bottom(px(-(reach + bpx(bw.bottom))))
                     .border(px(width))
                     .border_color(colour.to_hsla())
-                    .rounded(px(radius))
+                    .rounded(px(radius));
+                // Outlines and CSS borders share the device-pixel edge grid
+                // (CSS UI 4 outline-style refers to border-style). Keeping
+                // a fractional inner outline edge can expose a border that
+                // occupies the same geometric edge after border snapping.
+                // A translucent outline retains edge coverage like a
+                // translucent background. The two double-outline rings
+                // retain their shared fractional partition as well.
+                ring.style().css_border_snap = Some(o.style == Some(1) && colour.a >= 1.0);
+                ring
             };
             let third = (w / 3.0).round();
             if o.style == Some(OUTLINE_DOUBLE) && third >= 1.0 {
