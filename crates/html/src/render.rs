@@ -7184,6 +7184,16 @@ pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<A
 /// Разбор списка детей на блоки: инлайн-подряд склеивается в абзац.
 /// Абзац с пробой бюджета строк: если строится внутри clamp-контейнера,
 /// рядом с абзацем едет проба его границ и высоты строки.
+/// Строчное содержимое блочного контейнера рисуется на шаге 7 приложения E
+/// CSS 2.1 — после фонов и рамок ВСЕХ блоков потока своего контекста
+/// наложения (шаг 4) и флоатов (шаг 5), в порядке дерева, но до
+/// позиционированных (шаг 8). Обёртка раскладку не меняет: при открытом
+/// собирателе краски (`gpui::PaintCollect`) абзац уходит в него, иначе
+/// рисуется на месте (`gpui::PaintInline`).
+fn paint_inline_step7(para: AnyElement) -> AnyElement {
+    gpui::PaintInline::new(para).into_any_element()
+}
+
 fn paragraph_probed(taken: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // Знак обрыва АВТО-режима: бюджет строк ИМЕННО ЭТОГО абзаца посчитал
     // `ClampCut` прошлого кадра. Кладём его ДО сборки абзаца — многоточие
@@ -8340,7 +8350,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         }
         if !pending.is_empty() {
             let taken = std::mem::take(&mut pending);
-            out.push(paragraph_probed(&taken, inherited, opts));
+            out.push(paint_inline_step7(paragraph_probed(&taken, inherited, opts)));
         }
         // Позиционированные с `z-index: auto` красятся В ПОРЯДКЕ ДЕРЕВА
         // (CSS 2.1 прил. E, шаг 8; Blink `paint_layer_paint_order_iterator.h`
@@ -9306,7 +9316,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         }
     }
     if !pending.is_empty() {
-        out.push(paragraph_probed(&pending, inherited, opts));
+        out.push(paint_inline_step7(paragraph_probed(&pending, inherited, opts)));
     }
     // `text-box-trim` (css-inline-3 §4.2): у блочного контейнера срезается
     // блочно-начальная сторона ПЕРВОЙ отформатированной строки и

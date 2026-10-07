@@ -973,6 +973,15 @@ pub(crate) struct PaintCtx {
     image_cache_stack: Vec<AnyImageCache>,
 }
 
+/// KaminIDE patch: `PaintCtx` плюс растровая привязка текста (см.
+/// `Window::text_paint_ctx`).
+pub(crate) struct TextPaintCtx {
+    base: PaintCtx,
+    glyph_offset: Point<Pixels>,
+    css_text_backgrounds: Vec<(Bounds<Pixels>, Point<Pixels>, TransformationMatrix)>,
+    css_exact_bounds: Option<(Bounds<Pixels>, Bounds<Pixels>)>,
+}
+
 impl Window {
     pub(crate) fn new(
         handle: AnyWindowHandle,
@@ -2660,6 +2669,42 @@ impl Window {
         swap_all(self, &mut ctx);
         let r = f(self);
         swap_all(self, &mut ctx);
+        r
+    }
+
+    /// KaminIDE patch: снимок контекста краски ВМЕСТЕ с растровой привязкой
+    /// текста (сдвиг глифов, рамки непрозрачных подложек, точные границы
+    /// коробки) — для строчного содержимого, которое рисуется позже своего
+    /// места в дереве (CSS 2.1 прил. E, шаг 7), но обязано растрироваться
+    /// так же, как на месте.
+    pub(crate) fn text_paint_ctx(&self) -> TextPaintCtx {
+        TextPaintCtx {
+            base: self.paint_ctx(),
+            glyph_offset: self.glyph_offset,
+            css_text_backgrounds: self.css_text_backgrounds.clone(),
+            css_exact_bounds: self.css_exact_bounds,
+        }
+    }
+
+    /// KaminIDE patch: выполнить `f` в снятом `text_paint_ctx` окружении.
+    pub(crate) fn with_text_paint_ctx<R>(
+        &mut self,
+        ctx: TextPaintCtx,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let TextPaintCtx {
+            base,
+            glyph_offset,
+            mut css_text_backgrounds,
+            css_exact_bounds,
+        } = ctx;
+        let glyph = std::mem::replace(&mut self.glyph_offset, glyph_offset);
+        std::mem::swap(&mut self.css_text_backgrounds, &mut css_text_backgrounds);
+        let exact = std::mem::replace(&mut self.css_exact_bounds, css_exact_bounds);
+        let r = self.with_paint_ctx(base, f);
+        self.glyph_offset = glyph;
+        self.css_text_backgrounds = css_text_backgrounds;
+        self.css_exact_bounds = exact;
         r
     }
 
