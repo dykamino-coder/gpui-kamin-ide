@@ -125,10 +125,13 @@ pub(super) fn raster(
             };
             let t = if repeating { wrap_repeat(t, &stops) } else { t };
             let colour = colour_at(&stops, t, space, hue);
-            // Generated gradient masks store premultiplied BGRA.
-            bytes.push((colour.b * colour.a * 255.0) as u8);
-            bytes.push((colour.g * colour.a * 255.0) as u8);
-            bytes.push((colour.r * colour.a * 255.0) as u8);
+            // CSS Color 4 §5.1: reducing calculated component precision
+            // rounds to the nearest integer (ties toward +infinity).
+            // Truncation darkens a constant interpolated color relative to
+            // the same color painted directly. Masks store premultiplied BGRA.
+            bytes.push((colour.b * colour.a * 255.0).round() as u8);
+            bytes.push((colour.g * colour.a * 255.0).round() as u8);
+            bytes.push((colour.r * colour.a * 255.0).round() as u8);
             bytes.push((colour.a * 255.0) as u8);
         }
     }
