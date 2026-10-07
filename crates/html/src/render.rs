@@ -584,6 +584,10 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
             .border_b(px(b))
             .border_l(px(l))
             .border_color(colour.to_hsla());
+        // The layer IS the box's CSS border: it takes the same device-pixel
+        // edge snapping as the quad border (`apply::apply_paint`; CSS 2.1
+        // §8.5.3, Blink box_border_painter.cc snaps outer and inner rects).
+        layer.style().css_border_snap = Some(true);
         if c.border_dashed == Some(true) {
             layer = layer.border_dashed();
         }
