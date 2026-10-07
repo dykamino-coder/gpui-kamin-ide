@@ -799,7 +799,7 @@ fn snap_band(quad: crate::PaintQuad, window: &Window) -> crate::PaintQuad {
         return quad;
     }
     let (bounds, border_widths) =
-        crate::style::border_snap::snap(quad.bounds, None, w, window.scale_factor());
+        crate::style::border_snap::snap(quad.bounds, None, w, window.scale_factor(), [0.0, 0.0]);
     crate::PaintQuad {
         bounds,
         border_widths,
