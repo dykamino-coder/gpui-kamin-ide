@@ -8839,13 +8839,22 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 // раскладка (taffy: `static_position + margin`); обёртка
                 // прибавляла его второй раз (`tab-size-inheritance-001`:
                 // красная подложка на 50 точек правее).
+                // Обёртка — содержащий блок коробки для раскладки, и её ширина
+                // — доступная ширина shrink-to-fit (CSS 2.1 §10.3.7: ширина
+                // содержащего блока минус статическое смещение и поля;
+                // Blink `absolute_utils.cc` ComputeAbsoluteInlineSize берёт
+                // `available_size` от края до края содержащего блока). Без
+                // правого края обёртка была нулевой ширины, и `<h1>` с
+                // полями по умолчанию ломался после каждого слова
+                // (min-content). Правый край — только при ltr в
+                // горизонтальном письме: rtl ставит коробку от правого края
+                // обёртки, вертикальный заместитель нулевой и так.
+                let mr = margin_px(e.style.margin.right, &e.style).unwrap_or(0.0);
+                let stretch = inherited.rtl != Some(true) && inherited.vertical != Some(true);
                 let built = if (ml != 0.0 || mt != 0.0) && !below {
-                    div()
-                        .absolute()
-                        .left(px(ml))
-                        .top(px(mt))
-                        .child(built)
-                        .into_any_element()
+                    let wrap = div().absolute().left(px(ml)).top(px(mt));
+                    let wrap = if stretch { wrap.right(px(mr)) } else { wrap };
+                    wrap.child(built).into_any_element()
                 } else {
                     built
                 };
