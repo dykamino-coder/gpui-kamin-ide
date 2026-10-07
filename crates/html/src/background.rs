@@ -2850,7 +2850,7 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
     }
     let style = c.clone();
     Some(
-        gpui::canvas(
+        gpui::canvas_with_unrounded_bounds(
             |_, _, _| {},
             move |bounds: Bounds<Pixels>, _, window, _| {
                 if style.bg_fixed == Some(true) {
@@ -3154,7 +3154,7 @@ pub fn paint_tiles(
     // у канваса это весь холст, и полоса `repeat-x` обязана выходить за поля
     // корня (`background-root-016`: «extending … to the left and right edges
     // of the page»).
-    let clip = canvas.unwrap_or(paint_box);
+    let clip = sampling::snapped_clip(canvas.unwrap_or(paint_box), window);
     let start = origin(pos, box_size, tile);
     let shift = (
         f32::from(bounds.origin.x - clip.origin.x),
