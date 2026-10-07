@@ -9459,7 +9459,21 @@ fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
     if !ordered {
         return nodes;
     }
+    // css-flexbox-1 §5.4 (и css-grid-2 §9.1 по ссылке): «Absolutely-
+    // positioned children of a flex container are treated as having
+    // order: 0 for the purpose of determining their painting order relative
+    // to flex items» — внепоточный ребёнок `order` не слушает, и сортировка
+    // оставляет его в порядке разметки среди элементов с нулём
+    // (`flexbox-paint-ordering-003`).
     nodes.sort_by_key(|n| match n {
+        Node::Element(e)
+            if matches!(
+                e.style.position,
+                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            ) =>
+        {
+            0
+        }
         Node::Element(e) => e.style.order.unwrap_or(0),
         Node::Text(_) => 0,
     });
