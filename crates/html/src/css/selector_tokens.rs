@@ -62,20 +62,31 @@ fn escape(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> bool {
 }
 
 /// Attribute values must be one identifier or one complete CSS string token.
-pub(super) fn value(raw: &str) -> Option<&str> {
+pub(super) fn value(raw: &str) -> Option<String> {
     let Some(quote @ ('"' | '\'')) = raw.chars().next() else {
-        return ident(raw).then_some(raw);
+        return ident(raw).then(|| unescape(raw));
     };
-    let body = raw.strip_prefix(quote)?.strip_suffix(quote)?;
-    let mut chars = body.chars();
+    // CSS Syntax §3.3 normalizes CRLF, CR and form feed before tokenization.
+    let body = raw
+        .strip_prefix(quote)?
+        .strip_suffix(quote)?
+        .replace("\r\n", "\n")
+        .replace(['\r', '\u{c}'], "\n");
+    let mut chars = body.chars().peekable();
     while let Some(c) = chars.next() {
         if c == '\\' {
-            chars.next()?;
-        } else if c == quote || matches!(c, '\n' | '\r' | '\u{c}') {
+            if chars.peek() == Some(&'\n') {
+                chars.next();
+            } else if !escape(&mut chars) {
+                return None;
+            }
+        } else if c == quote || c == '\n' {
             return None;
         }
     }
-    Some(body)
+    // CSS Syntax §4.3.5 consumes a backslash-newline without appending either.
+    // Remove continuations before decoding: a hexadecimal \A remains a newline.
+    Some(unescape(&body.replace("\\\n", "")))
 }
 
 pub(super) fn attr(raw: &str) -> Option<AttrSel> {
@@ -123,7 +134,7 @@ pub(super) fn attr(raw: &str) -> Option<AttrSel> {
     Some(AttrSel {
         ci: ci || CI_ATTRS.contains(&name.as_str()),
         name,
-        op: Some((op, unescape(value))),
+        op: Some((op, value)),
     })
 }
 

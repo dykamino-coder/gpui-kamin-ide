@@ -12,7 +12,14 @@
 
 use crate::computed::{BgPos, BgRepeat, BgSize, Computed, Tiling};
 use crate::value::Len;
+use crate::color_space::gradient_colour_at as colour_at;
 mod sampling;
+mod alpha_sampling;
+mod float_geometry;
+use float_geometry::rrect_of;
+pub use float_geometry::rounded_float;
+mod mask_composite;
+pub use mask_composite::{MaskLayer, compose_mask_layers};
 mod conic;
 mod sources;
 pub use sources::{key, key_exif, source};
@@ -903,87 +910,6 @@ pub fn border_shape_outline_svg(
     ))
 }
 
-/// Слой готового полотна маски: растр плитки и её укладка в device px.
-pub struct MaskLayer {
-    pub image: Arc<RenderImage>,
-    /// Угол и размер плитки в точках полотна.
-    pub tile: [f32; 4],
-    /// Пооосный запрет мощения.
-    pub no_repeat: (bool, bool),
-    /// Оператор с накопленным низом: 0 add, 1 subtract, 2 intersect, 3 exclude.
-    pub op: u8,
-    /// Светимость вместо альфы (`mask-mode: luminance`, SVG `<mask>`).
-    pub luminance: bool,
-}
-
-/// Сложить слои маски в одно полотно (css-masking §7.12, `mask-composite`).
-///
-/// Слои компонуются С НИЖНЕГО (последнего в списке): оператор каждого
-/// действует между ним и стопкой под ним. Выход — альфа-полотно размером с
-/// коробку; примитивам выше оно уходит одной плиткой без мощения.
-pub fn compose_mask_layers(layers: &[MaskLayer], w: u32, h: u32) -> Option<Arc<RenderImage>> {
-    if layers.is_empty() {
-        return None;
-    }
-    let mut acc = vec![0.0f32; (w * h) as usize];
-    let mut first = true;
-    for layer in layers.iter().rev() {
-        let bytes = layer.image.as_bytes(0)?;
-        let size = layer.image.size(0);
-        let (iw, ih) = (size.width.0.max(1) as usize, size.height.0.max(1) as usize);
-        let [tx, ty, tw, th] = layer.tile;
-        if tw <= 0.0 || th <= 0.0 {
-            continue;
-        }
-        for y in 0..h as usize {
-            for x in 0..w as usize {
-                let mut u = (x as f32 + 0.5 - tx) / tw;
-                let mut v = (y as f32 + 0.5 - ty) / th;
-                let outside = (layer.no_repeat.0 && !(0.0..1.0).contains(&u))
-                    || (layer.no_repeat.1 && !(0.0..1.0).contains(&v));
-                let a = if outside {
-                    0.0
-                } else {
-                    u = u.rem_euclid(1.0);
-                    v = v.rem_euclid(1.0);
-                    let px_ = ((u * iw as f32) as usize).min(iw - 1);
-                    let py = ((v * ih as f32) as usize).min(ih - 1);
-                    let at4 = (py * iw + px_) * 4;
-                    if layer.luminance {
-                        // Цвет премультиплицирован — взвешенная сумма
-                        // сразу равна lum * a (порядок BGRA).
-                        (bytes[at4] as f32 * 0.0722
-                            + bytes[at4 + 1] as f32 * 0.7152
-                            + bytes[at4 + 2] as f32 * 0.2126)
-                            / 255.0
-                    } else {
-                        bytes[at4 + 3] as f32 / 255.0
-                    }
-                };
-                let at = y * w as usize + x;
-                let d = acc[at];
-                acc[at] = if first {
-                    a
-                } else {
-                    match layer.op {
-                        1 => a * (1.0 - d),
-                        2 => a * d,
-                        3 => a * (1.0 - d) + d * (1.0 - a),
-                        _ => a + d * (1.0 - a),
-                    }
-                };
-            }
-        }
-        first = false;
-    }
-    let mut bytes = Vec::with_capacity((w * h * 4) as usize);
-    for a in acc {
-        let v = (a * 255.0) as u8;
-        bytes.extend_from_slice(&[v, v, v, v]);
-    }
-    gpui::bgra_bytes_to_image(w, h, bytes)
-}
-
 /// Альфа-маска базовой формы `clip-path` (css-shapes-1 §3.1).
 ///
 /// `circle(R at X Y)` / `ellipse(RX RY at X Y)`: радиусы — точки, проценты
@@ -1651,131 +1577,6 @@ fn shape_mask(raw: &str, b: &ShapeBox, cols: usize, rows: usize) -> Option<Vec<u
     None
 }
 
-/// inset/rect/xywh/слово-коробка → прямоугольник (x,y,w,h) + радиусы.
-fn rrect_of(raw: &str, b: &ShapeBox) -> Option<((f32, f32, f32, f32), [(f32, f32); 4])> {
-    let len_px = |t: &str, base: f32| -> f32 {
-        match crate::value::Len::parse(t) {
-            Some(crate::value::Len::Px(v)) => v,
-            Some(crate::value::Len::Pct(k)) => k * base,
-            _ => 0.0,
-        }
-    };
-    let parse_round = |tail: &str| -> [(f32, f32); 4] {
-        // `round r1 r2 r3 r4 / v1 v2 v3 v4` — как border-radius.
-        let (hs, vs) = match tail.split_once('/') {
-            Some((a, c)) => (a, c),
-            None => (tail, tail),
-        };
-        let four = |src: &str, base: f32| -> [f32; 4] {
-            let v: Vec<f32> = src.split_whitespace().map(|t| len_px(t, base)).collect();
-            match v.len() {
-                0 => [0.0; 4],
-                1 => [v[0]; 4],
-                2 => [v[0], v[1], v[0], v[1]],
-                3 => [v[0], v[1], v[2], v[1]],
-                _ => [v[0], v[1], v[2], v[3]],
-            }
-        };
-        let h = four(hs, b.rw);
-        let v = four(vs, b.rh);
-        [(h[0], v[0]), (h[1], v[1]), (h[2], v[2]), (h[3], v[3])]
-    };
-    if let Some(at) = raw.find("inset(") {
-        let inner = raw[at + 6..]
-            .rsplit_once(')')
-            .map(|(a, _)| a)
-            .unwrap_or(&raw[at + 6..]);
-        {
-            let (sides_s, round_s) = match inner.split_once("round") {
-                Some((a, r)) => (a, Some(r)),
-                None => (inner, None),
-            };
-            let v: Vec<&str> = sides_s.split_whitespace().collect();
-            let side = |i: usize| v.get(i).copied().unwrap_or("0");
-            let (t, r, bo, l) = match v.len() {
-                1 => (side(0), side(0), side(0), side(0)),
-                2 => (side(0), side(1), side(0), side(1)),
-                3 => (side(0), side(1), side(2), side(1)),
-                _ => (side(0), side(1), side(2), side(3)),
-            };
-            let (t, r2, bo, l) = (
-                len_px(t, b.rh),
-                len_px(r, b.rw),
-                len_px(bo, b.rh),
-                len_px(l, b.rw),
-            );
-            let rect = (
-                b.rx + l,
-                b.ry + t,
-                (b.rw - l - r2).max(0.0),
-                (b.rh - t - bo).max(0.0),
-            );
-            let radii = round_s.map(parse_round).unwrap_or([(0.0, 0.0); 4]);
-            return Some((rect, radii));
-        }
-    }
-    // `rect(t r b l)` — края от сторон опорной коробки, `auto` значит край
-    // (css-shapes-1 §3.1). Отличается от `inset` тем, что правый и нижний
-    // отсчитываются от ЛЕВОГО и ВЕРХНЕГО края, а не внутрь от своих.
-    if let Some(at) = raw.find("rect(") {
-        let inner = raw[at + 5..]
-            .rsplit_once(')')
-            .map(|(a, _)| a)
-            .unwrap_or(&raw[at + 5..]);
-        let (sides_s, round_s) = match inner.split_once("round") {
-            Some((a, r)) => (a, Some(r)),
-            None => (inner, None),
-        };
-        let v: Vec<&str> = sides_s.split_whitespace().collect();
-        let edge = |i: usize, base: f32, dflt: f32| -> f32 {
-            match v.get(i).copied() {
-                None | Some("auto") => dflt,
-                Some(t) => len_px(t, base),
-            }
-        };
-        let (t, r2, bo, l) = (
-            edge(0, b.rh, 0.0),
-            edge(1, b.rw, b.rw),
-            edge(2, b.rh, b.rh),
-            edge(3, b.rw, 0.0),
-        );
-        let rect = (b.rx + l, b.ry + t, (r2 - l).max(0.0), (bo - t).max(0.0));
-        let radii = round_s.map(parse_round).unwrap_or([(0.0, 0.0); 4]);
-        return Some((rect, radii));
-    }
-    // `xywh(x y w h)` — угол и размер прямо (css-shapes-1 §3.1).
-    if let Some(at) = raw.find("xywh(") {
-        let inner = raw[at + 5..]
-            .rsplit_once(')')
-            .map(|(a, _)| a)
-            .unwrap_or(&raw[at + 5..]);
-        let (sides_s, round_s) = match inner.split_once("round") {
-            Some((a, r)) => (a, Some(r)),
-            None => (inner, None),
-        };
-        let v: Vec<&str> = sides_s.split_whitespace().collect();
-        let at_i = |i: usize, base: f32| -> f32 {
-            v.get(i).map_or(0.0, |t| len_px(t, base))
-        };
-        let rect = (
-            b.rx + at_i(0, b.rw),
-            b.ry + at_i(1, b.rh),
-            at_i(2, b.rw).max(0.0),
-            at_i(3, b.rh).max(0.0),
-        );
-        let radii = round_s.map(parse_round).unwrap_or([(0.0, 0.0); 4]);
-        return Some((rect, radii));
-    }
-    // Слово-коробка (или пустая/непонятная запись формы НЕ здесь — сюда
-    // приходят только распознанные): margin/border/padding/content-box без
-    // функции — прямоугольник опорной коробки с её радиусами.
-    let word_only = raw.split_whitespace().all(|w| w.ends_with("-box"));
-    if word_only && !raw.is_empty() {
-        return Some(((b.rx, b.ry, b.rw, b.rh), b.radius));
-    }
-    None
-}
-
 /// Контур для SVG-растеризатора: polygon / path / shape.
 fn svg_path_of(raw: &str, b: &ShapeBox) -> Option<(String, &'static str)> {
     let raw = raw.trim();
@@ -2247,51 +2048,6 @@ fn wrap_repeat(t: f32, stops: &[(crate::value::Color, f32)]) -> f32 {
 
 
 /// Цвет градиента в точке `t` (0..1) по расставленным стопам.
-fn colour_at(
-    stops: &[(crate::value::Color, f32)],
-    t: f32,
-    space: crate::computed::GradSpace,
-    hue: u8,
-) -> crate::value::Color {
-    let Some(first) = stops.first() else {
-        return crate::value::Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 0.0,
-        };
-    };
-    if t <= first.1 {
-        return first.0;
-    }
-    for pair in stops.windows(2) {
-        let (a, b) = (&pair[0], &pair[1]);
-        if t >= a.1 && t <= b.1 {
-            let k = if b.1 > a.1 {
-                (t - a.1) / (b.1 - a.1)
-            } else {
-                1.0
-            };
-            // Цвета смешиваются УЖЕ в пространстве интерполяции
-            // (css-color-4 §12.2): перевод туда, покомпонентная доля,
-            // перевод обратно. Прозрачность живёт отдельно от осей цвета
-            // и всегда линейна.
-            // Премультипликация (css-images-3 §3.5.3, css-color-4 §12.3):
-            // для прямоугольных осей она равна доле `k·a1 / alpha`.
-            let alpha = a.0.a + (b.0.a - a.0.a) * k;
-            let kc = if alpha > 0.0 { k * b.0.a / alpha } else { k };
-            let (r, g, bl) = crate::color_space::mix_in(space, hue, a.0, b.0, kc);
-            return crate::value::Color {
-                r,
-                g,
-                b: bl,
-                a: alpha,
-            };
-        }
-    }
-    stops.last().map(|s| s.0).unwrap_or(first.0)
-}
-
 /// Растр или рисунок — по содержимому файла, а не по расширению: у `data:`-URI
 /// расширения нет вовсе.
 fn decode(bytes: &[u8], orient: bool) -> Option<Source> {
