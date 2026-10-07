@@ -2883,6 +2883,11 @@ struct LineFrame {
     w: Option<f32>,
     /// Анонимный блок строк хоста (`group_inline_runs`): его срез — срез хоста.
     anon: bool,
+    /// Ширина детей-элементов этой коробки (`items_kind`): 0 — блочный поток,
+    /// 1 — растянутые на всю ширину (колонка flex и сетка-стопка при
+    /// `stretch`), 2 — ширина по раскладке (ряд flex, прочая сетка): известна
+    /// лишь заданная в точках.
+    items: u8,
 }
 
 /// Контекст меры строк для `shape_full`: включается только вокруг меры детей
@@ -2904,7 +2909,7 @@ fn with_lines<T>(base: &Computed, w: Option<f32>, opts: &RenderOpts, f: impl FnO
     let prev = LINE_CX.with(|l| {
         l.borrow_mut().replace(LineCx {
             opts: opts.clone(),
-            frames: vec![LineFrame { inh: base.clone(), w, anon: false }],
+            frames: vec![LineFrame { inh: base.clone(), w, anon: false, items: 0 }],
         })
     });
     let out = f();
@@ -2917,8 +2922,15 @@ fn with_lines<T>(base: &Computed, w: Option<f32>, opts: &RenderOpts, f: impl FnO
 /// Только обычный блок потока — у прочих ширину решает своя раскладка.
 fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
     let s = &c.style;
+    // Блочный flex-контейнер и сетка в потоке занимают ширину как блок
+    // (css-flexbox-1 §9.2 / css-grid-2 §6.1: «block-level … sized as a
+    // block»); ширину ИХ детей решает `items_kind`.
     if c.inline
-        || !matches!(s.display, None | Some(Display::Block) | Some(Display::ListItem))
+        || !matches!(
+            s.display,
+            None | Some(Display::Block) | Some(Display::ListItem) | Some(Display::Flex) | Some(Display::Grid)
+        )
+        || s.webkit_box == Some(true)
         || s.float.unwrap_or(0) != 0
         || !matches!(s.position, None | Some(crate::computed::Position::Relative))
         || table_box(c)
@@ -2946,6 +2958,56 @@ fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
     }
 }
 
+/// Хвост непоследнего фрагмента обычной коробки (`flow::StackChild::slack`):
+/// фрагмент, разорванный внутри коробки, занимает остаток фрагментаинера
+/// (css-break-3 §box-splitting «the box … continues to the end of the
+/// fragmentainer»; Blink `fragmentation_utils.cc` «Consumed block-size … is
+/// always stretched to the fragmentainers»). Художник хвоста красит его одним
+/// цветом по ширине копии — это точно, лишь когда у коробки сплошной фон без
+/// картинки и скруглений, а видимые боковые рамки того же цвета. Иначе `None`.
+fn slack_fill(c: &Element) -> Option<gpui::Hsla> {
+    let s = &c.style;
+    let bg = s.background?;
+    if s.bg_image.is_some()
+        || s.webkit_box == Some(true)
+        || [&s.radius.tl, &s.radius.tr, &s.radius.br, &s.radius.bl]
+            .into_iter()
+            .any(|r| !matches!(r, None | Some(Len::Px(0.0))))
+        || !visible_overflow(s)
+    {
+        return None;
+    }
+    let b = s.borders();
+    for (i, w) in [(1usize, &b.right), (3usize, &b.left)] {
+        let wide = match w {
+            None => false,
+            Some(Len::Px(v)) => *v > 0.0,
+            Some(_) => true,
+        };
+        if wide && s.border_colors[i].or(s.border_color).or(s.color) != Some(bg) {
+            return None;
+        }
+    }
+    Some(bg.to_hsla())
+}
+
+/// Как ширина детей коробки `c` известна мере строк (`LineFrame::items`).
+fn items_kind(c: &Element) -> u8 {
+    use crate::computed::FlexDir;
+    let s = &c.style;
+    match s.display {
+        Some(Display::Flex) => {
+            let col = matches!(s.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse));
+            let stretch = matches!(s.align_items, None | Some(Align::Stretch));
+            if col && stretch && s.vertical != Some(true) { 1 } else { 2 }
+        }
+        Some(Display::Grid) => {
+            if grid_stack(c) && matches!(s.justify_items, None | Some(Align::Stretch)) { 1 } else { 2 }
+        }
+        _ => 0,
+    }
+}
+
 /// Кадр меры строк на время `shape_full(c)`.
 struct LineScope(bool);
 
@@ -2960,8 +3022,17 @@ impl LineScope {
                 return LineScope(false);
             };
             let inh = crate::inline::inherit(&top.inh, &c.style);
-            let w = top.w.and_then(|pw| line_content_w(c, pw));
-            cx.frames.push(LineFrame { inh, w, anon: c.tag == "anon-block" });
+            let w = top.w.and_then(|pw| match top.items {
+                // Элемент flex/сетки шириной по раскладке: известна лишь
+                // заданная в точках.
+                2 if !matches!(c.style.width, Some(Len::Px(_))) => None,
+                // Растянутый элемент (css-flexbox-1 §9.4 шаг 11 / css-grid-2
+                // §11.3 `stretch`): ширина как у блока в потоке, если сам
+                // элемент выравнивание не переопределил.
+                1 if c.style.align_self.is_some() || c.style.justify_self.is_some() => None,
+                _ => line_content_w(c, pw),
+            });
+            cx.frames.push(LineFrame { inh, w, anon: c.tag == "anon-block", items: items_kind(c) });
             LineScope(true)
         })
     }
@@ -4141,10 +4212,16 @@ fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                 // только зазор: край внутри зазора уводит разрез к его началу,
                 // копия продолжается с его конца — тот же приём, что
                 // `grid_row_gaps` ниже (css-gaps-1 §fragmentation).
+                // Диапазон зазора начинается РОВНО на границе: с допуском
+                // вверх (`b - 0.05`) он перекрывал монолит предыдущего
+                // элемента, и `fill_at` шёл по цепочке перекрытий к началу
+                // ЭТОГО монолита — разрыв уходил выше целого элемента
+                // (`single-line-column-flex-fragmentation-061`: строка Ahem
+                // уезжала в следующую колонку вместе с рамкой). Край ровно на
+                // `b` по-прежнему режет здесь (`cuts` с тем же `need`).
                 let b = y + prev_mb;
                 if flex_gap > 0.0 {
-                    cuts.push((b - 0.05, b + flex_gap));
-                    solid.push((b - 0.05, b + flex_gap + 0.05));
+                    solid.push((b, b + flex_gap + 0.05));
                 }
                 cuts.push((b, b + flex_gap));
                 if fb || force_next {
@@ -23541,9 +23618,18 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     par: kid_par[ix],
                                     // Хвост непоследнего фрагмента таблицы — её фоном
                                     // (`flow.rs` `StackChild::slack`).
-                                    slack: (table_box(&copy) && !col_vert)
-                                        .then(|| copy.style.background.map(|c| c.to_hsla()))
-                                        .flatten(),
+                                    slack: if col_vert {
+                                        None
+                                    } else if table_box(&copy) {
+                                        copy.style.background.map(|c| c.to_hsla())
+                                    } else if dec.is_none() && over <= h + 0.01 {
+                                        // Продолжение одного лишь параллельного
+                                        // потока (`over`) — не продолжение коробки:
+                                        // она кончилась, хвоста у неё нет.
+                                        slack_fill(&copy)
+                                    } else {
+                                        None
+                                    },
                                     laid_w: Default::default(),
                                     // Повтор шапки/подвала таблицы — полосы своими
                                     // копиями (`flow::Repeat`); та же мера, что у
