@@ -10,6 +10,11 @@
 //! Числа матриц — из спецификации (CSS Color 4, приложение о преобразованиях).
 //! Менять их «на глаз» нельзя: они согласованы между собой и с точками белого.
 
+mod gradient_stop;
+pub(crate) use gradient_stop::{
+    colour_at as gradient_colour_at, out_of_gamut, parse as interpolation_color,
+};
+
 /// Точка белого D50 в XYZ — от неё считаются `lab`, `lch` и ProPhoto.
 const D50: [f32; 3] = [0.964_295_7, 1.0, 0.825_104_6];
 
@@ -245,42 +250,14 @@ fn hwb(body: &str) -> Option<(f32, f32, f32, f32)> {
 
 /// `lab()`/`oklab()`: светлота и две оси цветности.
 fn lab(body: &str, ok: bool) -> Option<(f32, f32, f32, f32)> {
-    let (list, a) = parts(body);
-    if list.len() < 3 {
-        return None;
-    }
-    // Доля светлоты считается от 100 в CIE Lab и от единицы в OKLab.
-    // Светлота ЗАЖИМАЕТСЯ в свой диапазон (CSS Color 4 §9.2): значения
-    // сверх сотни законны в записи, но обрезаются при вычислении.
-    let l =
-        number(&list[0], if ok { 1.0 } else { 100.0 })?.clamp(0.0, if ok { 1.0 } else { 100.0 });
-    let x = number(&list[1], if ok { 0.4 } else { 125.0 })?;
-    let y = number(&list[2], if ok { 0.4 } else { 125.0 })?;
-    let (r, g, b) = if ok {
-        oklab_to_srgb(l, x, y)
-    } else {
-        lab_to_srgb(l, x, y)
-    };
+    let (r, g, b, a) = gradient_stop::components(body, ok, false)?;
     let (r, g, b) = gamut_map(r, g, b);
     Some((r, g, b, a))
 }
 
 /// `lch()`/`oklch()`: та же светлота, но цветность задана длиной и углом.
 fn lch(body: &str, ok: bool) -> Option<(f32, f32, f32, f32)> {
-    let (list, a) = parts(body);
-    if list.len() < 3 {
-        return None;
-    }
-    let l =
-        number(&list[0], if ok { 1.0 } else { 100.0 })?.clamp(0.0, if ok { 1.0 } else { 100.0 });
-    let c = number(&list[1], if ok { 0.4 } else { 150.0 })?;
-    let h = number(&list[2], 1.0)?.to_radians();
-    let (x, y) = (c * h.cos(), c * h.sin());
-    let (r, g, b) = if ok {
-        oklab_to_srgb(l, x, y)
-    } else {
-        lab_to_srgb(l, x, y)
-    };
+    let (r, g, b, a) = gradient_stop::components(body, ok, true)?;
     let (r, g, b) = gamut_map(r, g, b);
     Some((r, g, b, a))
 }
@@ -521,7 +498,7 @@ fn color_mix(body: &str) -> Option<(f32, f32, f32, f32)> {
             }
             None => (raw, None),
         };
-        let c = crate::value::Color::parse(color)?;
+        let c = interpolation_color(color)?;
         Some(((c.r, c.g, c.b, c.a), share))
     };
     let (first, p1) = one(&it.next()?)?;
@@ -692,7 +669,7 @@ pub(crate) fn mix_in(
     use crate::computed::GradSpace as S;
     let lerp = |x: f32, y: f32| x + (y - x) * k;
     match space {
-        S::Srgb => (lerp(a.r, b.r), lerp(a.g, b.g), lerp(a.b, b.b)),
+        S::Srgb => gamut_map(lerp(a.r, b.r), lerp(a.g, b.g), lerp(a.b, b.b)),
         // Линейный свет: кривая sRGB снимается и возвращается. Все линейные
         // пространства дают тут один ответ (см. `GradSpace::Linear`).
         S::Linear => {

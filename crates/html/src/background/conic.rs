@@ -2,7 +2,6 @@
 
 use super::{Source, angle_fraction, colour_at, len_px, place_stops, split_top, wrap_repeat};
 use crate::computed::parse_pos_words;
-use crate::value::Color;
 use gpui::RenderImage;
 use std::sync::Arc;
 
@@ -63,7 +62,10 @@ pub(super) fn rasterize(raw: &str, size: (f32, f32), density: f32) -> Option<Arc
     let mut raw_stops = Vec::new();
     for part in &parts[idx..] {
         let words = crate::computed::split_outside_parens(part);
-        let Some(color) = words.first().and_then(|w| Color::parse(w)) else {
+        let Some(color) = words
+            .first()
+            .and_then(|w| crate::color_space::interpolation_color(w))
+        else {
             continue;
         };
         colors.push(words[0].clone());

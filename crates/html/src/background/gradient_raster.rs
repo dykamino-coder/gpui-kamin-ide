@@ -39,7 +39,10 @@ pub(super) fn raster(
         let mut raw: Vec<(crate::value::Color, Option<f32>)> = vec![];
         for part in &parts[idx..] {
             let words = crate::computed::split_outside_parens(part);
-            let Some(colour) = words.first().and_then(|w| crate::value::Color::parse(w)) else {
+            let Some(colour) = words
+                .first()
+                .and_then(|w| crate::color_space::interpolation_color(w))
+            else {
                 continue;
             };
             let angles: Vec<f32> = words[1..]

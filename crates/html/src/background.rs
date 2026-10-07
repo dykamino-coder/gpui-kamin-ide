@@ -12,6 +12,7 @@
 
 use crate::computed::{BgPos, BgRepeat, BgSize, Computed, Tiling};
 use crate::value::Len;
+use crate::color_space::gradient_colour_at as colour_at;
 mod sampling;
 mod alpha_sampling;
 mod float_geometry;
@@ -2047,51 +2048,6 @@ fn wrap_repeat(t: f32, stops: &[(crate::value::Color, f32)]) -> f32 {
 
 
 /// Цвет градиента в точке `t` (0..1) по расставленным стопам.
-fn colour_at(
-    stops: &[(crate::value::Color, f32)],
-    t: f32,
-    space: crate::computed::GradSpace,
-    hue: u8,
-) -> crate::value::Color {
-    let Some(first) = stops.first() else {
-        return crate::value::Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 0.0,
-        };
-    };
-    if t <= first.1 {
-        return first.0;
-    }
-    for pair in stops.windows(2) {
-        let (a, b) = (&pair[0], &pair[1]);
-        if t >= a.1 && t <= b.1 {
-            let k = if b.1 > a.1 {
-                (t - a.1) / (b.1 - a.1)
-            } else {
-                1.0
-            };
-            // Цвета смешиваются УЖЕ в пространстве интерполяции
-            // (css-color-4 §12.2): перевод туда, покомпонентная доля,
-            // перевод обратно. Прозрачность живёт отдельно от осей цвета
-            // и всегда линейна.
-            // Премультипликация (css-images-3 §3.5.3, css-color-4 §12.3):
-            // для прямоугольных осей она равна доле `k·a1 / alpha`.
-            let alpha = a.0.a + (b.0.a - a.0.a) * k;
-            let kc = if alpha > 0.0 { k * b.0.a / alpha } else { k };
-            let (r, g, bl) = crate::color_space::mix_in(space, hue, a.0, b.0, kc);
-            return crate::value::Color {
-                r,
-                g,
-                b: bl,
-                a: alpha,
-            };
-        }
-    }
-    stops.last().map(|s| s.0).unwrap_or(first.0)
-}
-
 /// Растр или рисунок — по содержимому файла, а не по расширению: у `data:`-URI
 /// расширения нет вовсе.
 fn decode(bytes: &[u8], orient: bool) -> Option<Source> {
