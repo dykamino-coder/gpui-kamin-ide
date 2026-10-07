@@ -10041,7 +10041,9 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
         // Куски строчного содержимого копят стиль хозяина: анонимная коробка
         // своего оформления не имеет, а спан внутри неё — имеет.
         let mut piece: Vec<Node> = vec![];
-        let flush = |piece: &mut Vec<Node>, out: &mut Vec<Node>| {
+        // Positions in `out` of this element's inline pieces.
+        let mut hosts: Vec<usize> = vec![];
+        let flush = |piece: &mut Vec<Node>, out: &mut Vec<Node>, hosts: &mut Vec<usize>| {
             // Кусок из одних схлопываемых пробелов коробки не создаёт —
             // иначе он рисовал бы фон и рамку строчного на пустом месте.
             let blank = piece.iter().all(|n| match n {
@@ -10054,6 +10056,7 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
             }
             let mut host = e.clone();
             host.children = std::mem::take(piece);
+            hosts.push(out.len());
             out.push(Node::Element(anon_element(
                 "anon-block",
                 vec![Node::Element(host)],
@@ -10064,7 +10067,7 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
         let kids = split_block_in_inline(&e.children);
         for child in &kids {
             if breaks_inline(child) {
-                flush(&mut piece, &mut out);
+                flush(&mut piece, &mut out, &mut hosts);
                 // Относительный сдвиг строчного хозяина переносится на
                 // вынесенный блок (§9.2.1.1: разрыв не отменяет смещения).
                 let mut block = match child {
@@ -10131,7 +10134,33 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
             }
             piece.push(child.clone());
         }
-        flush(&mut piece, &mut out);
+        flush(&mut piece, &mut out, &mut hosts);
+        // The pieces are fragments of ONE inline box: its start margin,
+        // border and padding go on the first fragment only, its end ones on
+        // the last (CSS 2.1 §9.2.1.1 with §8.6, css-break-3 §5.4
+        // `box-decoration-break: slice`; `split-inline-borders`).
+        let n = hosts.len();
+        for (k, &at) in hosts.iter().enumerate() {
+            let Some(Node::Element(anon)) = out.get_mut(at) else {
+                continue;
+            };
+            let Some(Node::Element(host)) = anon.children.first_mut() else {
+                continue;
+            };
+            // `box-decoration-break: clone` keeps every side on every fragment.
+            if host.style.bdb_clone {
+                continue;
+            }
+            let rtl = host.style.rtl == Some(true);
+            // Physical sides: 1 = right, 3 = left.
+            let (start, end) = if rtl { (1, 3) } else { (3, 1) };
+            if k > 0 {
+                drop_inline_side(&mut host.style, start);
+            }
+            if k + 1 < n {
+                drop_inline_side(&mut host.style, end);
+            }
+        }
     }
     // ПРОБОВАЛИ И ОТКАТИЛИ: сливать прогон между разрывами в ОДНУ анонимную
     // коробку (§9.2.1.1 обнимает всю строчную коробку, а не только куски
@@ -10142,6 +10171,23 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
     // `blocks()` и без склейки собирает такой прогон одним абзацем. Разница
     // эталонов лежит не в числе анонимных коробок.
     out
+}
+
+/// Remove the margin, border and padding of one physical inline side
+/// (1 = right, 3 = left) of a fragment of a split inline box.
+fn drop_inline_side(style: &mut crate::computed::Computed, side: usize) {
+    let zero = Some(crate::value::Len::Px(0.0));
+    let pick = |s: &mut crate::computed::Sides| {
+        if side == 1 {
+            s.right = zero;
+        } else {
+            s.left = zero;
+        }
+    };
+    pick(&mut style.margin);
+    pick(&mut style.padding);
+    pick(&mut style.border_width);
+    style.border_visible[side] = Some(false);
 }
 
 /// `initial-letter` (css-inline-3 §initial-letter): буквица — не кусок
