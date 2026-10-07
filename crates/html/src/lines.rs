@@ -28,6 +28,7 @@ mod controlled_shape;
 mod ruby_justification;
 mod selection_geometry;
 mod text_raster_origin;
+mod emphasis;
 mod vertical_content_baselines;
 mod vertical_geometry;
 mod vertical_inline;
@@ -168,11 +169,9 @@ pub struct Paragraph {
     vertical_ccw: bool,
     selection_vertical: Option<(Bounds<Pixels>, bool)>,
     vertical_layout_origin: Point<Pixels>,
-    /// Exact (unsnapped) layout origin minus the snapped paint origin. Box
-    /// edges are snapped to device pixels, glyphs are not (Chromium paints
-    /// text at its LayoutUnit position): the paragraph hands this to
-    /// `Window::replace_glyph_offset` while painting its lines.
+    /// Exact layout origin minus paint origin, scoped through GPUI while painting.
     glyph_nudge: Point<Pixels>,
+    opaque_text_origin: bool,
     /// Exact (unsnapped) inline size minus the snapped one: alignment
     /// (`text-align: right/center`, rtl start) is measured from the exact
     /// edges, so a right-aligned glyph ends on the box's exact right edge.
@@ -604,6 +603,7 @@ impl Paragraph {
             selection_vertical: None,
             vertical_layout_origin: point(px(0.0), px(0.0)),
             glyph_nudge: point(px(0.0), px(0.0)),
+            opaque_text_origin: false,
             width_nudge: px(0.0),
             indent_basis: None,
             vertical_inline: None,
@@ -4138,6 +4138,7 @@ impl Paragraph {
             selection_vertical: self.selection_vertical,
             vertical_layout_origin: self.vertical_layout_origin,
             glyph_nudge: self.glyph_nudge,
+            opaque_text_origin: self.opaque_text_origin,
             width_nudge: self.width_nudge,
             indent_basis: self.indent_basis,
             vertical_inline: self.vertical_inline,
@@ -4328,92 +4329,6 @@ impl Paragraph {
         if !self.wrap.rtl && !suffix.is_empty() && self.overflow_marker.as_deref() == Some(suffix) {
             let anchor = range.end.saturating_sub(1).max(range.start);
             self.paint_suffix(suffix, anchor, point(x, at.y), window, cx);
-        }
-    }
-
-    /// Знаки акцента прогона (css-text-decor-3 §5.3): «drawn exactly as if
-    /// each character was assigned the mark as its ruby annotation text …
-    /// and the ruby alignment as centered». Как `<rt>` над базой руби
-    /// (`render.rs`, рукав контейнера руби): коробка аннотации стоит на краю
-    /// строчной коробки базы (её `line-height`, полулидинг от подъёма и
-    /// спуска шрифта базы), сама она — строка кегля знака с `line-height: 1`
-    /// (UA `rt`), знак — по центру продвижения своего знака базы.
-    /// Пропускаются разделители (Z*), управляющие (Cc, Cf, Cn) и пунктуация
-    /// (P*), кроме перечисленных в §5.3 знаков.
-    fn paint_emphasis(
-        &self,
-        run: &std::ops::Range<usize>,
-        shaped: &gpui::ShapedLine,
-        at: Point<Pixels>,
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        let src = &self.text[run.clone()];
-        // Индексы набора совпадают с байтами абзаца со сдвигом на обёртку
-        // направления (`controlled_shape`), только если текст прогона набран
-        // как есть (без выброшенных управляющих знаков).
-        let Some(lead) = shaped.text.as_ref().find(src) else {
-            return;
-        };
-        if self.run_metrics.len() != self.runs.len() {
-            return;
-        }
-        let scale = window.scale_factor();
-        let baseline =
-            at.y + (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent;
-        for span in &self.emph_spans {
-            let (s, e) = (span.range.start.max(run.start), span.range.end.min(run.end));
-            if s >= e {
-                continue;
-            }
-            let mut acc = 0usize;
-            let found = self.runs.iter().zip(&self.run_metrics).find_map(|(r, m)| {
-                let st = acc;
-                acc += r.len;
-                (s >= st && s < acc).then_some((r, *m))
-            });
-            let Some((base_run, (a, d))) = found else { continue };
-            let half = (span.line_height - a - d) / 2.0;
-            let box_top = baseline - px(a + half);
-            let mark_lh = px(span.size);
-            let top = if span.under {
-                box_top + px(span.line_height)
-            } else {
-                box_top - mark_lh
-            };
-            let mark_run = TextRun {
-                len: span.mark.len(),
-                font: base_run.font.clone(),
-                font_size: None,
-                color: span.color.unwrap_or(base_run.color),
-                background_color: None,
-                background_pad: Default::default(),
-                background_radius: px(0.),
-                background_border: None,
-                underline: None,
-                strikethrough: None,
-            };
-            let mark = window.text_system().shape_line(
-                SharedString::from(span.mark.clone()),
-                px(span.size),
-                &[mark_run],
-                None,
-            );
-            // Та же привязка базовой линии к точке устройства, что у строки
-            // (`text_raster_origin`), но от высоты строки знака.
-            let base = (mark_lh - mark.ascent - mark.descent) / 2.0 + mark.ascent;
-            let y = f32::from(top + base) * scale;
-            let y = top + px((y.round() - y) / scale);
-            for (i, c) in self.text[s..e].char_indices() {
-                if !emphasized(c) {
-                    continue;
-                }
-                let off = lead + s - run.start + i;
-                let x0 = shaped.x_for_index(off);
-                let x1 = shaped.x_for_index(off + c.len_utf8());
-                let x = at.x + x0 + (x1 - x0 - mark.width) / 2.0;
-                let _ = mark.paint(point(x, y), mark_lh, window, cx);
-            }
         }
     }
 

@@ -57,6 +57,7 @@ use uuid::Uuid;
 mod prompts;
 mod image_sampling;
 mod line_baselines;
+mod css_text_background;
 pub use image_sampling::ImageSampling;
 
 use crate::util::atomic_incr_if_not_zero;
@@ -844,6 +845,8 @@ pub struct Window {
     /// KaminIDE patch: sub-pixel offset added to glyph origins (see
     /// `Window::replace_glyph_offset`).
     pub(crate) glyph_offset: Point<Pixels>,
+    /// Paint frames of opaque CSS fills; only HTML text queries this stack.
+    css_text_backgrounds: Vec<(Bounds<Pixels>, Point<Pixels>, TransformationMatrix)>,
     /// KaminIDE patch: (snapped, unrounded) bounds of the `Div` whose style
     /// is being painted, for device-pixel snapping of its CSS border edges
     /// from the exact geometry (`style::border_snap`).
@@ -1277,6 +1280,7 @@ impl Window {
             rendered_entity_stack: Vec::new(),
             element_offset_stack: Vec::new(),
             glyph_offset: Point::default(),
+            css_text_backgrounds: Vec::new(),
             css_exact_bounds: None,
             transformation_stack: Vec::new(),
             mask_scale: None,
@@ -3454,19 +3458,11 @@ impl Window {
 
         let element_opacity = self.element_opacity();
         let scale_factor = self.scale_factor();
-        // KaminIDE patch: only a pixel-exact font (Ahem) takes the paragraph's
-        // unsnapped offset: its bi-level squares must coincide with boxes of
-        // the same exact geometry. An antialiased font keeps the snapped box
-        // origin, so its edge coverage stays inside the snapped box and does
-        // not bleed into the neighbouring device pixel (a fixed box covering
-        // another at a .5 device edge left that glyph's fringe visible).
+        // Text retains its layout position independently of snapped box edges
+        // (CSS 2.1 section 10.8.1). The offset is scoped by the HTML paragraph;
+        // other GPUI elements keep their default zero offset.
         let pixel_exact = self.text_system().pixel_exact_glyphs(font_id);
-        let offset = if pixel_exact {
-            self.glyph_offset
-        } else {
-            Point::default()
-        };
-        let glyph_origin = (origin + offset).scale(scale_factor);
+        let glyph_origin = (origin + self.glyph_offset).scale(scale_factor);
 
         // KaminIDE patch: a pixel-exact font (Ahem) keeps its sub-pixel
         // position on BOTH axes (Windows/Linux otherwise drop the y fraction),

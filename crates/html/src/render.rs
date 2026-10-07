@@ -17366,8 +17366,8 @@ fn paragraph_pieces_routed(
                 crate::lines::align_for(inherited),
                 wrap,
             )
-            // Preserve per-span wrapping and per-line plaintext direction;
-            // vertical sideways text uses alphabetic rather than central baselines.
+            // Preserve wrapping, direction and the sideways alphabetic baseline.
+            .opaque_background(inherited)
             .reversed_lines(inherited.lines_reversed == Some(true))
             .vertical(inherited.para_vertical.is_some(), inherited.para_vertical == Some(true))
             .ortho_limit(inherited.ortho_limit.map(px))
@@ -26710,6 +26710,10 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         layer_bg = Some(bg);
                     } else {
                         d = d.bg(bg.to_hsla());
+                        // A row/group background is replicated here only for
+                        // painting (CSS 2.1 section 17.5.1); it must not snap
+                        // each cell's text into an independent fill frame.
+                        d.style().css_synthetic_background = Some(true);
                     }
                 }
             }

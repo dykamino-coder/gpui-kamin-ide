@@ -1489,49 +1489,51 @@ impl Element for Div {
                 window,
                 cx,
                 |style, window, cx| {
-                    // Own borders are painted; children bring their own bounds.
-                    window.css_exact_bounds = None;
-                    // skip children
-                    if style.display == Display::None {
-                        return;
-                    }
+                    window.with_css_text_background(style, bounds, |window| {
+                        // Own borders are painted; children bring their own bounds.
+                        window.css_exact_bounds = None;
+                        // skip children
+                        if style.display == Display::None {
+                            return;
+                        }
 
-                    // KaminIDE patch: обёртки `PaintLast` рисуются вторым
-                    // проходом (CSS 2.1 прил. E, шаг 8 — позиционированные
-                    // поверх потока), раскладка их не меняется.
-                    // При открытом собирателе (`paint_last`) обёртки сами
-                    // уходят в него; коробка с прозрачностью < 1 — свой
-                    // контекст наложения и сама собирает поддерево.
-                    if super::paint_last::hoist_open() {
-                        let children = &mut self.children;
-                        if style.opacity.is_some_and(|o| o < 1.0) {
-                            super::paint_last::hoist_collect(window, cx, |window, cx| {
+                        // KaminIDE patch: обёртки `PaintLast` рисуются вторым
+                        // проходом (CSS 2.1 прил. E, шаг 8 — позиционированные
+                        // поверх потока), раскладка их не меняется.
+                        // При открытом собирателе (`paint_last`) обёртки сами
+                        // уходят в него; коробка с прозрачностью < 1 — свой
+                        // контекст наложения и сама собирает поддерево.
+                        if super::paint_last::hoist_open() {
+                            let children = &mut self.children;
+                            if style.opacity.is_some_and(|o| o < 1.0) {
+                                super::paint_last::hoist_collect(window, cx, |window, cx| {
+                                    for child in children.iter_mut() {
+                                        child.paint(window, cx);
+                                    }
+                                });
+                            } else {
                                 for child in children.iter_mut() {
                                     child.paint(window, cx);
                                 }
-                            });
-                        } else {
-                            for child in children.iter_mut() {
-                                child.paint(window, cx);
                             }
+                            return;
                         }
-                        return;
-                    }
-                    let mut late = false;
-                    for child in &mut self.children {
-                        if child.downcast_mut::<crate::PaintLast>().is_some() {
-                            late = true;
-                            continue;
-                        }
-                        child.paint(window, cx);
-                    }
-                    if late {
+                        let mut late = false;
                         for child in &mut self.children {
                             if child.downcast_mut::<crate::PaintLast>().is_some() {
-                                child.paint(window, cx);
+                                late = true;
+                                continue;
+                            }
+                            child.paint(window, cx);
+                        }
+                        if late {
+                            for child in &mut self.children {
+                                if child.downcast_mut::<crate::PaintLast>().is_some() {
+                                    child.paint(window, cx);
+                                }
                             }
                         }
-                    }
+                    });
                 },
             )
         });

@@ -91,6 +91,38 @@ pub(super) fn paint_slice(
     // subtracting CSS edges can otherwise make an integer size slightly
     // larger, and the native ceil policy would add another device pixel.
     let snapped = window.current_transformation() == gpui::TransformationMatrix::unit();
+    if unscaled && snapped {
+        // CSS Backgrounds 3 section 6.6 leaves an unscaled slice on its native
+        // image grid. Snap its origin, as for a background tile, but retain
+        // its CSS size: snapping both destination edges can shorten a tile
+        // by a device pixel and rescale all its texels. The shared nine-piece
+        // region clips the natural tile instead of changing that mapping.
+        let scale = window.scale_factor();
+        let origin = cell.origin.map(|value| {
+            let device = (f32::from(value) * scale).round();
+            let logical = device / scale;
+            px(if logical * scale < device {
+                logical.next_up()
+            } else {
+                logical
+            })
+        });
+        let natural = Bounds {
+            origin,
+            size: gpui::size(px(dw), px(dh)),
+        };
+        window.with_content_mask(Some(gpui::ContentMask { bounds: cell }), |window| {
+            let _ = window.paint_image_with_sampling(
+                natural,
+                gpui::Corners::default(),
+                piece,
+                0,
+                false,
+                gpui::ImageSampling::Nearest,
+            );
+        });
+        return;
+    }
     let sampling = match (unscaled, snapped) {
         (true, true) => gpui::ImageSampling::NearestSnapped,
         (false, true) => gpui::ImageSampling::LinearSnapped,

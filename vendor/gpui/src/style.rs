@@ -332,6 +332,9 @@ pub struct Style {
 
     /// Snap axis-aligned square CSS borders to device pixels; HTML opt-in.
     pub css_border_snap: bool,
+    /// A table row/group fill replicated onto a cell is not the cell's own
+    /// CSS background (CSS 2.1 section 17.5.1). Keep its text layout frame.
+    pub css_synthetic_background: bool,
 
     /// The radius of the corners of this element
     #[refineable]
@@ -988,6 +991,7 @@ impl Default for Style {
             border_color: None,
             border_style: BorderStyle::default(),
             css_border_snap: false,
+            css_synthetic_background: false,
             corner_radii: Corners::default(),
             box_shadow: Default::default(),
             inset_box_shadow: Default::default(),
