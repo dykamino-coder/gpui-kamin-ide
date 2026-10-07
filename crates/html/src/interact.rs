@@ -1186,6 +1186,10 @@ pub struct Transformed {
     /// (`prepaint`, `Window::set_layout_placed_origin`): `paint` рисует без
     /// матрицы.
     placed: bool,
+    /// Неокруглённое место коробки из подготовки: осевой поворот на
+    /// отрисовке округляет края от него (`layout_origin_unrounded` доступен
+    /// только до отрисовки).
+    exact_origin: Option<gpui::Point<Pixels>>,
 }
 
 /// Сплющивание плоскости z=0 в аффинную матрицу экрана
@@ -1198,6 +1202,23 @@ pub struct Transformed {
 /// рисует) берём касательную аффинную карту в центре коробки:
 /// детерминированно и одинаково для теста и эталона с той же гомографией
 /// (transform3d-matrix3d-003/-004). `None` — плоскость за глазом или ребром.
+/// Линейная часть — поворот на кратное 90° или отражение (знаковая
+/// перестановка) с точностью до ошибки `f32`, но НЕ единичная: точная
+/// матрица из 0/±1.
+fn quarter_turn(lin: [[f32; 2]; 2]) -> Option<[[f32; 2]; 2]> {
+    let unit = |v: f32| {
+        [-1.0f32, 0.0, 1.0]
+            .into_iter()
+            .find(|u| (v - u).abs() < 1e-5)
+    };
+    let m = [
+        [unit(lin[0][0])?, unit(lin[0][1])?],
+        [unit(lin[1][0])?, unit(lin[1][1])?],
+    ];
+    let det = m[0][0] * m[1][1] - m[0][1] * m[1][0];
+    (det.abs() == 1.0 && m != [[1.0, 0.0], [0.0, 1.0]]).then_some(m)
+}
+
 fn flatten_plane(f: &[[f32; 4]; 4], center: (f32, f32)) -> Option<gpui::TransformationMatrix> {
     const EPS: f32 = 1e-5;
     if crate::computed::det3_plane(f).abs() < EPS {
@@ -1273,6 +1294,7 @@ impl Transformed {
             frame_3d: None,
             under_3d: None,
             placed: false,
+            exact_origin: None,
         }
     }
 
@@ -1339,6 +1361,7 @@ impl Element for Transformed {
         // Поддерево переносится до округления (`set_layout_placed_origin`,
         // тот же механизм у `LatePlace`), края округляются на конечном месте.
         self.placed = false;
+        self.exact_origin = Some(window.layout_origin_unrounded(*layout_id));
         if flat && self.perspective.is_none() {
             let size = window.layout_size_unrounded(*layout_id);
             if let Some((sx, sy)) =
@@ -1478,13 +1501,49 @@ impl Element for Transformed {
             // (`Window::with_transformation_masked`): прежде обрезка стояла
             // на месте коробки до `transform` (`transform-clip-001`,
             // `transform-background-001/002`, `transform-fixed-bg-001/003`).
-            let matrix = gpui::TransformationMatrix::unit()
+            let quarter = quarter_turn(self.lin)
+                .filter(|_| window.current_transformation() == gpui::TransformationMatrix::unit());
+            let mut matrix = gpui::TransformationMatrix::unit()
                 .translate(origin)
                 .compose(gpui::TransformationMatrix {
-                    rotation_scale: self.lin,
+                    rotation_scale: quarter.unwrap_or(self.lin),
                     translation: [shift(self.tr[0]), shift(self.tr[1])],
                 })
                 .translate(back);
+            if quarter.is_some() {
+                // Поворот на кратное четверти (и отражение) оставляет коробку
+                // осевой: её края обязаны округляться к точке устройства так
+                // же, как у той же коробки, разложенной на месте (чистый сдвиг
+                // выше идёт через раскладку — round half up). Растеризатор
+                // по правилу «верх-лево» относит ровную половину вниз, а
+                // ошибка `f32` у `rotate(-90deg)` (cos ≈ −4e-8) решает
+                // ничью случайно — `offset-path-ray-011/013/014` против
+                // эталона `translate(...)`. Skia так же кладёт осевой
+                // прямоугольник по round(x) (`SkScan::FillRect`), а
+                // `gfx::SinCosDegrees` даёт точные 0/±1 у кратных 90°.
+                let sf = scale_factor;
+                let corner_min = |o: gpui::Point<Pixels>, w: f32, h: f32| {
+                    let mut m = (f32::INFINITY, f32::INFINITY);
+                    for (dx, dy) in [(0.0, 0.0), (w, 0.0), (0.0, h), (w, h)] {
+                        let p = matrix.apply(gpui::point(
+                            px((f32::from(o.x) + dx) * sf),
+                            px((f32::from(o.y) + dy) * sf),
+                        ));
+                        m = (m.0.min(f32::from(p.x)), m.1.min(f32::from(p.y)));
+                    }
+                    m
+                };
+                let exact_origin = self.exact_origin.unwrap_or(bounds.origin);
+                let exact = corner_min(exact_origin, w, h);
+                let cur = corner_min(
+                    bounds.origin,
+                    f32::from(bounds.size.width),
+                    f32::from(bounds.size.height),
+                );
+                let snap = |v: f32| ((v * 64.0).round() / 64.0 + 0.5).floor();
+                matrix.translation[0] += snap(exact.0) - cur.0;
+                matrix.translation[1] += snap(exact.1) - cur.1;
+            }
             let child = self.child.as_mut().unwrap();
             window.with_transformation_masked(matrix, |window| child.paint(window, cx));
             return;
