@@ -15237,6 +15237,15 @@ fn own_context(e: &Element) -> bool {
     own_context_style(&e.style)
         || (e.tag == "caption" && e.style.display.is_none())
         || e.style.is_caption == Some(true)
+        // `continue: collapse` (`line-clamp: <N>`/`auto`, у легаси — пара
+        // `-webkit-box` по вертикали) делает блочный контейнер line-clamp
+        // контейнером — НЕЗАВИСИМЫМ блочным контекстом (css-overflow-4
+        // §continue «must establish an independent formatting context»,
+        // §line-clamp-containers): поле первого ребёнка через его верх не
+        // схлопывается (`line-clamp-auto-027`). Только собственный стиль:
+        // слитый несёт `line_clamp` потомкам для текста.
+        || ((e.style.clamp_lines().is_some() || e.style.clamp_auto == Some(true))
+            && !multicol_container(&e.style))
 }
 
 /// То же по ОДНОМУ СТИЛЮ, без узла: содержащий блок приходит в `blocks()`
@@ -17476,6 +17485,7 @@ fn paragraph_pieces_routed(
                 Some(measure_font(inherited, opts)),
                 Some(gpui::px(own_size(inherited, opts))),
             )
+            .clamp_mark(inherited.clamp_mark.clone())
             .marker_color(Some(
                 inherited
                     .color

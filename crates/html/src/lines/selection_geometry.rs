@@ -102,6 +102,7 @@ mod tests {
                 range: index..index + 1,
                 width: px(10.0),
                 ellipsis: false,
+                clamped: false,
                 hyphen: false,
                 indent: px(0.0),
             })
@@ -123,6 +124,7 @@ mod tests {
             range: 0..0,
             width: px(20.0),
             ellipsis: false,
+            clamped: false,
             hyphen: false,
             indent: px(0.0),
         }];

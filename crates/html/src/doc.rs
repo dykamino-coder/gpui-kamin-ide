@@ -624,6 +624,10 @@ fn settle_explicit_inherit(nodes: &mut [Node], parent: Option<&crate::computed::
             if e.style.grid_areas_inherit {
                 e.style.grid_areas = p.grid_areas.clone();
             }
+            if e.style.text_overflow_inherit {
+                e.style.ellipsis = p.ellipsis;
+                e.style.overflow_marker = p.overflow_marker.clone();
+            }
         }
         settle_explicit_inherit(&mut e.children, Some(&e.style));
     }

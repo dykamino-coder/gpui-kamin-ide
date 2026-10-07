@@ -118,6 +118,9 @@ pub struct Paragraph {
     text_overflow: bool,
     /// Маркер обрезки вместо многоточия (`text-overflow: <string>`).
     overflow_marker: Option<String>,
+    /// Знак строки обрыва `line-clamp` (`block-ellipsis`): None — U+2026,
+    /// пустая строка — `no-ellipsis`.
+    clamp_marker: Option<String>,
     /// Шрифт маркера: стиль БЛОКА-контейнера, не прогона у среза
     /// (css-overflow-4 §5) — иначе «123» набиралось Ahem-квадратами
     /// шрифта обрезанного куска.
@@ -552,6 +555,9 @@ struct Line {
     width: Pixels,
     /// Строка оборвана `line-clamp`: за её текстом рисуется многоточие.
     ellipsis: bool,
+    /// Знак обрыва поставил `line-clamp` (block-ellipsis), а не
+    /// `text-overflow`: у него свой знак (см. `line_mark`).
+    clamped: bool,
     /// Строка кончилась мягким переносом: за ней рисуется знак переноса.
     hyphen: bool,
     /// Отступ строки (`text-indent`). Отрицательный выводит строку за край.
@@ -636,6 +642,7 @@ impl Paragraph {
             clamp_force: false,
             text_overflow: false,
             overflow_marker: None,
+            clamp_marker: None,
             marker_font: None,
             marker_size: None,
             marker_color: None,
@@ -1146,6 +1153,7 @@ impl Paragraph {
         self.clamp_force.hash(&mut h);
         self.text_overflow.hash(&mut h);
         self.overflow_marker.hash(&mut h);
+        self.clamp_marker.hash(&mut h);
         self.marker_size
             .map(|s| f32::from(s).to_bits())
             .hash(&mut h);
@@ -1452,7 +1460,7 @@ impl Paragraph {
         // подбором не годится (css-text-4 §5: обрыв — часть последней
         // строки). Прошлый заход мерил ширину строки КАК ЕСТЬ; здесь хвост
         // сперва обрезается, как это делает сам обрыв (`ellipsize`).
-        let ell = self.suffix_width(self.marker_str(), 0, window);
+        let ell = self.suffix_width(self.clamp_str(), 0, window);
         let (mut narrow, mut wide) = (px(0.), limit);
         for _ in 0..12 {
             let middle = (narrow + wide) / 2.;
@@ -1498,7 +1506,7 @@ impl Paragraph {
             return lines;
         };
         let segs = self.measure(window);
-        let ell = self.suffix_width(self.marker_str(), last.range.start, window);
+        let ell = self.suffix_width(self.clamp_str(), last.range.start, window);
         let head = last.range.start;
         let mut end = head + trim_hanging(&self.text[last.range.clone()]);
         // Место под многоточие отбирается ЦЕЛЫМИ кусками: строка обрывается по
@@ -1522,6 +1530,7 @@ impl Paragraph {
             range: head..end,
             width,
             ellipsis: true,
+            clamped: true,
             hyphen: false,
             indent: last.indent,
         });
@@ -1559,6 +1568,12 @@ impl Paragraph {
         self.overflow_marker = mark;
         self.marker_font = font;
         self.marker_size = size;
+        self
+    }
+
+    /// `block-ellipsis` контейнера: знак строки обрыва `line-clamp`.
+    pub fn clamp_mark(mut self, mark: Option<String>) -> Self {
+        self.clamp_marker = mark;
         self
     }
 
@@ -2255,7 +2270,38 @@ impl Paragraph {
         self.overflow_marker.as_deref().unwrap_or(ELLIPSIS)
     }
 
+    /// Знак обрыва строки. Строку, оборванную `line-clamp`, метит
+    /// `block-ellipsis: auto` — это всегда U+2026 (css-overflow-4
+    /// §block-ellipsis: «auto: Render an ellipsis character (U+2026)»);
+    /// строка `text-overflow: <string>` относится только к обрезке по
+    /// строчной оси (`line-clamp-with-text-overflow-string-001`).
+    fn line_mark(&self, line: &Line) -> &str {
+        if line.clamped {
+            self.clamp_str()
+        } else {
+            self.marker_str()
+        }
+    }
+
+    /// Знак `block-ellipsis` строки обрыва `line-clamp`.
+    fn clamp_str(&self) -> &str {
+        self.clamp_marker.as_deref().unwrap_or(ELLIPSIS)
+    }
+
+    /// Знак — анонимный строчный ребёнок блока (стиль блока, вплетается в
+    /// набор строки): многоточие и строка `block-ellipsis`; строка
+    /// `text-overflow` рисуется отдельно (см. `paint_line`).
+    fn is_block_mark(&self, mark: &str) -> bool {
+        !mark.is_empty()
+            && (mark == ELLIPSIS || mark == self.clamp_str())
+            && self.overflow_marker.as_deref() != Some(mark)
+    }
+
     fn suffix_width(&self, mark: &str, at: usize, window: &mut Window) -> Pixels {
+        // `block-ellipsis: no-ellipsis` — знака нет, места под него тоже.
+        if mark.is_empty() {
+            return px(0.);
+        }
         let mut runs = slice_runs(&self.runs, &(at..at + 1));
         let Some(run) = runs.first_mut() else {
             return px(0.);
@@ -2434,6 +2480,7 @@ impl Paragraph {
                     range: start..at,
                     width,
                     ellipsis: false,
+                    clamped: false,
                     hyphen: false,
                     indent: ind,
                 });
@@ -2488,6 +2535,7 @@ impl Paragraph {
                     range: start..self.drop_collapsible_tail(start, cut),
                     width: self.span(&segs, head, tail) - self.tail_spacing(tail) + extra,
                     ellipsis: false,
+                    clamped: false,
                     hyphen,
                     indent: ind,
                 });
@@ -2526,6 +2574,7 @@ impl Paragraph {
                 range: start..end,
                 width: self.conditional_width(segs, head, end, bare, room),
                 ellipsis: false,
+                clamped: false,
                 hyphen: false,
                 indent,
             });
@@ -3952,9 +4001,13 @@ impl Element for Paragraph {
                 if line.ellipsis {
                     let text = self.span(&segs, line.range.start, range.end);
                     self.paint_suffix(
-                        self.marker_str(),
+                        self.line_mark(&line),
                         line.range.start,
                         point(bounds.origin.x + dx + text, y + above(i)),
+                        // На базовую линию строки — ту же, на которую
+                        // `paint_justified` опускает слова (`block-ellipsis-005`:
+                        // знак кегля блока за `<span>` 1.5em стоял выше).
+                        self.base_of(&range).map(px),
                         window,
                         cx,
                     );
@@ -4007,7 +4060,7 @@ impl Element for Paragraph {
             };
             // Знак обрыва и знак переноса набираются вместе со строкой.
             let mark = if line.ellipsis {
-                self.marker_str().to_string()
+                self.line_mark(&line).to_string()
             } else if line.hyphen {
                 self.hyphen.to_string()
             } else {
@@ -4144,6 +4197,7 @@ impl Paragraph {
             fit_line_height_fixed: self.fit_line_height_fixed,
             text_overflow: false,
             overflow_marker: None,
+            clamp_marker: None,
             marker_font: None,
             marker_size: None,
             marker_color: None,
@@ -4239,7 +4293,7 @@ impl Paragraph {
             // (`text-wrap-balance-line-clamp-004`).
             if !suffix.is_empty() && !self.text.is_empty() {
                 let anchor = range.start.min(self.text.len().saturating_sub(1));
-                self.paint_suffix(suffix, anchor, at, window, cx);
+                self.paint_suffix(suffix, anchor, at, None, window, cx);
             }
             return;
         }
@@ -4268,6 +4322,12 @@ impl Paragraph {
         };
         let (levels, visual) = info.visual_runs(para, range.clone());
         let mut x = at.x;
+        // Базовая линия набранного текста строки (от верха строки): знак
+        // обрыва, набранный ОТДЕЛЬНО, садится на неё (css-overflow-4 §5:
+        // маркер — строчный ребёнок блока на линии строки), а не на свою —
+        // у строки-замены кегля блока внутри крупного `<span>` своя базовая
+        // линия выше на разницу подъёмов (`text-overflow-string-*`).
+        let mut line_base: Option<Pixels> = None;
         for run in visual.into_iter() {
             let rtl = levels.get(run.start).is_some_and(|l| l.is_rtl());
             // Знак обрыва — у обрезанного КРАЯ: обычно это логический
@@ -4295,11 +4355,13 @@ impl Paragraph {
                 continue;
             };
             let width = shaped.width;
+            let base = (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent;
+            line_base = Some(line_base.map_or(base, |b: Pixels| b.max(base)));
             if at_start && !tail.is_empty() {
                 // Знак обрыва СЛЕВА от куска: рисуется на своём месте, а
                 // кусок сдвигается на его ширину.
                 let ell = self.suffix_width(tail, run.start, window);
-                self.paint_suffix(tail, run.start, point(x, at.y), window, cx);
+                self.paint_suffix(tail, run.start, point(x, at.y), Some(base), window, cx);
                 x += ell;
             }
             // Подложка прогона (`background` на `<span>`) рисуется ОТДЕЛЬНЫМ
@@ -4317,7 +4379,7 @@ impl Paragraph {
         // Строка-замена — за текстом строки, своим шрифтом и кеглем.
         if !self.wrap.rtl && !suffix.is_empty() && self.overflow_marker.as_deref() == Some(suffix) {
             let anchor = range.end.saturating_sub(1).max(range.start);
-            self.paint_suffix(suffix, anchor, point(x, at.y), window, cx);
+            self.paint_suffix(suffix, anchor, point(x, at.y), line_base, window, cx);
         }
     }
 
@@ -4414,9 +4476,13 @@ impl Paragraph {
         mark: &str,
         at: usize,
         origin: Point<Pixels>,
+        base: Option<Pixels>,
         window: &mut Window,
         cx: &mut App,
     ) {
+        if mark.is_empty() {
+            return;
+        }
         let mut runs = slice_runs(&self.runs, &(at..at + 1));
         let Some(run) = runs.first_mut() else {
             return;
@@ -4431,6 +4497,14 @@ impl Paragraph {
             None,
             self.letter_spacing,
         );
+        // Своя базовая линия набора — на базовую линию текста строки.
+        let origin = match base {
+            Some(b) => {
+                let own = (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent;
+                point(origin.x, origin.y + b - own)
+            }
+            None => origin,
+        };
         let origin = self.text_raster_origin(&shaped, origin, window);
         let _ = shaped.paint(origin, self.line_height, window, cx);
     }
@@ -4452,8 +4526,7 @@ impl Paragraph {
         // блочные, рамки и фона куска у среза у него нет. Эталоны:
         // `block-ellipsis-005` (знак за `<span>` 1.5em bold italic — обычный
         // teal блока), `webkit-line-clamp-031` (за жирным — нежирный).
-        if mark == ELLIPSIS
-            && self.overflow_marker.is_none()
+        if self.is_block_mark(mark)
             && let Some(f) = self.marker_font.as_ref()
         {
             run.font = f.clone();
@@ -4532,7 +4605,7 @@ impl Paragraph {
         } else {
             // Знак обрыва — свой прогон в стиле блока; знак переноса —
             // часть слова и идёт стилем своего куска.
-            if suffix == ELLIPSIS && self.overflow_marker.is_none() && self.marker_font.is_some() {
+            if self.is_block_mark(suffix) && self.marker_font.is_some() {
                 if let Some(last) = piece.last() {
                     let mut run = last.clone();
                     run.len = suffix.len();
