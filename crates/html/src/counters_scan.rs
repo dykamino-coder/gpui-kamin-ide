@@ -9,6 +9,10 @@
 //! Вложенная область исключается из подсчёта; сброс на последующем брате
 //! завершает область создателя (css-lists-3 §4.3, §4.4.2).
 
+#[path = "counters_scan_values.rs"]
+mod values;
+use values::{decl_has, decl_value};
+
 use crate::computed::{Computed, Display};
 use crate::css::{Decls, Rule};
 use crate::dom::{Ancestor, Sibs, Spot, ancestor_of, census_of, matches_ignoring_pseudo};
@@ -23,35 +27,6 @@ struct Scan<'a> {
     last: i32,
     done: bool,
     scope_depth: usize,
-}
-
-/// Increment for this name, with the implicit value of one.
-fn decl_value(decl: &Option<String>, name: &str) -> Option<i32> {
-    let text = decl.as_deref()?;
-    let mut it = text.split_whitespace().peekable();
-    let mut found = None;
-    while let Some(word) = it.next() {
-        let value = match it.peek().and_then(|n| n.parse::<i32>().ok()) {
-            Some(v) => {
-                it.next();
-                v
-            }
-            None => 1,
-        };
-        if word == name {
-            found = Some(value);
-        }
-    }
-    found
-}
-
-/// Названо ли имя в объявлении сброса — в том числе обратной записью.
-fn decl_has(decl: &Option<String>, name: &str) -> bool {
-    let reversed = format!("reversed({name})");
-    decl.as_deref().is_some_and(|t| {
-        t.split_whitespace()
-            .any(|w| w == name || w == reversed.as_str())
-    })
 }
 
 /// Имя тега узла.
@@ -96,11 +71,9 @@ fn scan_style(
         .iter()
         .filter(|r| crate::dom::matches(&r.sel, me, path, sibs))
         .collect();
-    Some(Computed::resolve_with_vars(
-        &mut matched,
-        &inline_decls,
-        vars,
-    ))
+    let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
+    crate::dom::apply_value_hint(&mut style, me);
+    Some(style)
 }
 
 /// Стиль псевдоэлемента, если правила дают ему коробку.
@@ -129,7 +102,7 @@ impl Scan<'_> {
     /// Шаг алгоритма для одного узла: сумма отрицаний увеличений, последний
     /// ненулевой шаг и обрыв на `counter-set`.
     fn step(&mut self, style: &Computed, is_item: bool) {
-        let neg = match decl_value(&style.counter_increment, self.name) {
+        let neg = match decl_value(&style.counter_increment, self.name, 1) {
             Some(v) => -v,
             // Неявный шаг пункта у обратного счётчика равен −1, значит его
             // отрицание — плюс единица.
@@ -139,7 +112,7 @@ impl Scan<'_> {
         if neg != 0 {
             self.last = neg;
         }
-        if let Some(set) = decl_value(&style.counter_set, self.name) {
+        if let Some(set) = decl_value(&style.counter_set, self.name, 0) {
             self.num += i64::from(set);
             self.done = true;
             return;
