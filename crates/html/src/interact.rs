@@ -18,6 +18,7 @@ use std::rc::Rc;
 
 mod spot_geometry;
 mod rectangular_clip;
+mod mask_geometry;
 mod legacy_clip;
 mod mask_size;
 mod polygon_clip;
@@ -565,7 +566,7 @@ fn rasterize_mask_def(
 
 impl Element for Grouped {
     type RequestLayoutState = LayoutId;
-    type PrepaintState = Bounds<Pixels>;
+    type PrepaintState = (Bounds<Pixels>, Bounds<Pixels>);
 
     fn id(&self) -> Option<ElementId> {
         None
@@ -594,9 +595,12 @@ impl Element for Grouped {
         _state: &mut LayoutId,
         window: &mut Window,
         cx: &mut App,
-    ) -> Bounds<Pixels> {
+    ) -> Self::PrepaintState {
         self.child.as_mut().unwrap().prepaint(window, cx);
-        rectangular_clip::reference_box(self, bounds, *_state, window)
+        let clip_bounds = rectangular_clip::reference_box(self, bounds, *_state, window);
+        // Mask positioning box before device snapping (css-masking-1 §7.7).
+        let mask_box = mask_geometry::positioning_box(self.mask.as_deref(), bounds, *_state, window);
+        (clip_bounds, mask_box)
     }
 
     fn paint(
@@ -605,7 +609,7 @@ impl Element for Grouped {
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         _state: &mut LayoutId,
-        _prepaint: &mut Bounds<Pixels>,
+        _prepaint: &mut Self::PrepaintState,
         window: &mut Window,
         cx: &mut App,
     ) {
@@ -721,7 +725,7 @@ impl Element for Grouped {
         // margin-box шире, content-box уже); проценты — доли её сторон,
         // точки — как есть (clip-path-polygon-008).
         let (polygon, polygon_clip) =
-            polygon_clip::geometry(self, bounds, *_prepaint, window.scale_factor());
+            polygon_clip::geometry(self, bounds, _prepaint.0, window.scale_factor());
         // Плитка маски: у растра — его точки как CSS-точки (density 1), у
         // рисунка без размера и градиента — сама коробка (mask-size auto,
         // css-masking §7.4); `mask-size` подменяет размер, `mask-position`
@@ -780,6 +784,7 @@ impl Element for Grouped {
                     .collect()
             };
             let src: &str = layers.first().map(String::as_str)?;
+            let bounds = _prepaint.1;
             // Коробка укладки (`mask-origin`): плитка и её свободное место
             // считаются от неё, а не от border-box.
             let [ot, or_, ob, ol] = self.mask_origin_off;
@@ -1089,7 +1094,7 @@ impl Element for Grouped {
         // Коробка окраски (`mask-clip`): вне её маска не красится — элемент
         // там скрыт (mask-size-contain-clip-padding).
         let mask_clip = polygon_clip::intersect(
-            rectangular_clip::resolve(self, bounds, *_prepaint, window.scale_factor()),
+            rectangular_clip::resolve(self, bounds, _prepaint.0, window.scale_factor()),
             polygon_clip,
         );
         // Подложка (наружные тени `border-shape`) — в текущий контекст ДО
