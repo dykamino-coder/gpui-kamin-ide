@@ -20190,17 +20190,8 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                     w: off + mw + sm,
                 },
             }
-        // ЗАМЕЧАНИЕ: особый путь картинки и градиента снят — общий
-        // растровый путь строит ту же маску в content-box и с подключённым
-        // `shape-margin` (см. `background::shape_profile`) раздувает её по
-        // обеим осям, а особый раздувал только по горизонтали.
         } else {
-            // Общий путь произвольной формы (css-shapes-1 §3): растровая
-            // маска margin-box -> интервалы строк -> дилатация Минковского
-            // диском shape-margin -> экстенты. Закрывает polygon (включая
-            // evenodd), inset/rect/xywh С радиусами `round`, слово-коробку
-            // с border-radius, path()/shape(), картинку и градиент с
-            // вертикальным полем (план target/scout-dilation.md).
+            // Geometric rounded boxes stay continuous; raster shapes retain dilation.
             let radius_of = |c: &Option<crate::value::Len>| match c {
                 Some(crate::value::Len::Px(v)) => (*v, *v),
                 Some(crate::value::Len::Pct(k)) => (k * bw, k * bh),
@@ -20225,50 +20216,57 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                 ],
                 threshold: f.style.shape_threshold.unwrap_or(0.0),
             };
-            // Ось разреза маски выбирается письмом. Сдвиг `off` кладётся
-            // только в горизонтали: в вертикали флоат стоит у инлайн-начала
-            // хоста, а `off` живёт в полосах, чья стенка там заведомо
-            // недостижима (`NO_WALL`) и смысла не имеет.
-            let profile = if vert_rl {
-                // Профиль адресуется от блок-старта: у `vertical-rl` это
-                // правый край (так его и строит `shape_profile_block`), у
-                // `vertical-lr` — левый, то есть тот же профиль задом наперёд.
-                let pside = if line_left_bottom { -side } else { side };
-                crate::background::shape_profile_block(&raw, &sb, sm.max(0.0), pside).map(|mut p| {
-                    if vert_lr {
-                        p.reverse();
-                    }
-                    p
-                })
-            } else {
-                crate::background::shape_profile(&raw, &sb, sm.max(0.0), side)
-            };
-            match profile {
-                Some(ext) => crate::flow::FloatShape::Profile {
+            if let Some(shape) = (!vert_rl && sm <= 0.0)
+                .then(|| crate::background::rounded_float(&raw, &sb, side))
+                .flatten()
+            {
+                crate::flow::FloatShape::RoundedBox {
                     top: 0.0,
-                    ext: std::sync::Arc::new(
-                        ext.into_iter()
-                            .map(|v| if v > 0.0 && !vert_rl { off + v } else { v })
-                            .collect(),
-                    ),
-                },
-                None if vert_rl => {
-                    // Непонятная запись в вертикали: занята вся блок-ось
-                    // margin-box на всю его инлайн-ось.
-                    crate::flow::FloatShape::Band {
-                        top: 0.0,
-                        h: mw,
-                        w: mh,
-                    }
+                    off,
+                    shape: std::sync::Arc::new(shape),
                 }
-                None => {
-                    // Непонятная запись: прямоугольник опорной коробки со
-                    // стороны текста.
-                    let w_cut = if side < 0 { bx + bw } else { mw - bx };
-                    crate::flow::FloatShape::Band {
-                        top: by,
-                        h: bh,
-                        w: off + w_cut + sm,
+            } else {
+                let profile = if vert_rl {
+                    // Профиль адресуется от блок-старта: у `vertical-rl` это
+                    // правый край (так его и строит `shape_profile_block`), у
+                    // `vertical-lr` — левый, то есть тот же профиль задом наперёд.
+                    let pside = if line_left_bottom { -side } else { side };
+                    crate::background::shape_profile_block(&raw, &sb, sm.max(0.0), pside).map(|mut p| {
+                        if vert_lr {
+                            p.reverse();
+                        }
+                        p
+                    })
+                } else {
+                    crate::background::shape_profile(&raw, &sb, sm.max(0.0), side)
+                };
+                match profile {
+                    Some(ext) => crate::flow::FloatShape::Profile {
+                        top: 0.0,
+                        ext: std::sync::Arc::new(
+                            ext.into_iter()
+                                .map(|v| if v > 0.0 && !vert_rl { off + v } else { v })
+                                .collect(),
+                        ),
+                    },
+                    None if vert_rl => {
+                        // Непонятная запись в вертикали: занята вся блок-ось
+                        // margin-box на всю его инлайн-ось.
+                        crate::flow::FloatShape::Band {
+                            top: 0.0,
+                            h: mw,
+                            w: mh,
+                        }
+                    }
+                    None => {
+                        // Непонятная запись: прямоугольник опорной коробки со
+                        // стороны текста.
+                        let w_cut = if side < 0 { bx + bw } else { mw - bx };
+                        crate::flow::FloatShape::Band {
+                            top: by,
+                            h: bh,
+                            w: off + w_cut + sm,
+                        }
                     }
                 }
             }
