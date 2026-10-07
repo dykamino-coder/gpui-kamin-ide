@@ -5,6 +5,7 @@
 //! Во-вторых, ровно она задаёт границу охвата: поле есть — свойство
 //! поддержано, поля нет — свойство игнорируется осознанно, а не потеряно.
 
+mod gradient_paint;
 mod font_kerning;
 mod image_color;
 pub(crate) use image_color::parse as parse_image_color;
@@ -3123,36 +3124,6 @@ impl Computed {
             .as_ref()?
             .pure_px_shift()
             .filter(|&(x, y)| x != 0.0 || y != 0.0)
-    }
-
-    /// Градиент, которому нужна МЕХАНИКА ПЛИТКИ (размер, повтор, позиция,
-    /// свой край): сплошная заливка её не умеет, рисует слой-картинка.
-    pub(crate) fn gradient_as_tile(&self) -> bool {
-        // Несколько слоёв рисует стопка плиток (`bg_layers`): заливка коробки
-        // верхним градиентом легла бы ПОД нижние слои.
-        if self.gradient.is_some() && self.bg_lists.iter().any(|(k, _)| k == "background" || k == "background-image") {
-            return true;
-        }
-        self.gradient_raw.is_some()
-            && (self.bg_size != crate::computed::BgSize::Auto
-                || self.bg_repeat.is_some()
-                || self.bg_pos.x.is_some()
-                || self.bg_pos.y.is_some()
-                || self.bg_origin.is_some()
-                // Пространство смешения, которого GPU-путь не выражает
-                // (всё, кроме гамма-sRGB и OKLab — css-color-4 §12.2):
-                // цвет обязан считаться на точку, иначе полярную дугу и
-                // линейный свет пришлось бы изображать полосами, а
-                // квантование полос уже замерено в минус (см. `HSL_ARC`).
-                || !matches!(
-                    self.gradient.as_ref().map(|g| g.space),
-                    None | Some(crate::computed::GradSpace::Srgb)
-                        | Some(crate::computed::GradSpace::Oklab)
-                )
-                // Цвет фона лежит ПОД всеми слоями (css-backgrounds-3 §3.1):
-                // у заливки коробки место одно, поэтому цвет — ей, градиент —
-                // слоем сверху (`bg-color-with-gradient`).
-                || self.background.is_some_and(|c| c.a > 0.0))
     }
 
     /// Место под логические значения — заводится по первому обращению: у
@@ -12946,7 +12917,7 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
     let mut all_legacy = true;
     for p in &parts[idx..] {
         let words = split_outside_parens(p);
-        let Some(colour) = words.first().and_then(|w| Color::parse(w)) else {
+        let Some(colour) = words.first().and_then(|w| crate::color_space::interpolation_color(w)) else {
             continue;
         };
         all_legacy &= legacy_srgb_color(words[0].as_str());
