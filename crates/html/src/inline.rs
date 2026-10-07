@@ -25,6 +25,7 @@ mod empty_inline;
 pub use first_letter::split_first_letter;
 
 mod tabs;
+mod lang_case;
 pub(crate) mod physical_sides;
 mod physical_projection;
 mod inline_spacing;
@@ -3117,8 +3118,14 @@ fn math_italic(ch: char) -> char {
 }
 
 fn transform_case_only(text: &str, style: &Computed) -> String {
+    // Языковые поправки регистра (css-text-3 §2.1.1, SpecialCasing.txt):
+    // `lang="tr"` даёт `i` → `İ`, `lang="el"` снимает ударения и т. д.
+    let tailoring = lang_case::tailoring(style.lang.as_deref());
     match style.text_transform {
-        Some(TextTransform::Upper) => text.to_uppercase(),
+        Some(TextTransform::Upper) => match tailoring {
+            Some(t) => lang_case::upper(text, t),
+            None => text.to_uppercase(),
+        },
         // Полноширинные двойники лежат ровно на 0xFEE0 выше своих знаков
         // ASCII; пробел заменяется отдельным знаком.
         Some(TextTransform::FullWidth) => text
@@ -3129,7 +3136,10 @@ fn transform_case_only(text: &str, style: &Computed) -> String {
                 _ => ch,
             })
             .collect(),
-        Some(TextTransform::Lower) => text.to_lowercase(),
+        Some(TextTransform::Lower) => match tailoring {
+            Some(t) => lang_case::lower(text, t),
+            None => text.to_lowercase(),
+        },
         Some(TextTransform::Capitalize) => {
             // Начало слова — первая БУКВА (css-text-3 §2.1: «first typographic
             // letter unit of each word»): открывающая скобка и прочая
@@ -3141,7 +3151,15 @@ fn transform_case_only(text: &str, style: &Computed) -> String {
             let mut prev: Option<char> = None;
             let mut prev2: Option<char> = None;
             let mid = |c: char| matches!(c, '.' | '\'' | '\u{2019}' | ':' | '\u{b7}');
-            for ch in text.chars() {
+            let chars: Vec<char> = text.chars().collect();
+            let mut skip = 0usize;
+            for (i, &ch) in chars.iter().enumerate() {
+                if skip > 0 {
+                    skip -= 1;
+                    prev2 = prev;
+                    prev = Some(ch);
+                    continue;
+                }
                 let at_start = ch.is_alphabetic()
                     && match prev {
                         None => true,
@@ -3154,9 +3172,15 @@ fn transform_case_only(text: &str, style: &Computed) -> String {
                     // У диграфов и у греческого с приданной йотой это разные
                     // знаки: `ǆ` даёт `ǅ`, а не `Ǆ`; `ᾀ` даёт `ᾈ`, а не пару
                     // `ἈΙ` (`text-transform-capitalize-007` и `-016`).
-                    match titlecase(ch) {
-                        Some(title) => out.push(title),
-                        None => out.extend(ch.to_uppercase()),
+                    if let Some(taken) = tailoring
+                        .and_then(|t| lang_case::title_start(ch, &chars[i + 1..], t, &mut out))
+                    {
+                        skip = taken;
+                    } else {
+                        match titlecase(ch) {
+                            Some(title) => out.push(title),
+                            None => out.extend(ch.to_uppercase()),
+                        }
                     }
                 } else {
                     out.push(ch);
