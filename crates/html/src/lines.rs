@@ -4764,18 +4764,17 @@ impl Paragraph {
         // на дробную базовую без округления (`text_raster_origin`), и знак
         // идёт по тому же правилу, иначе он округлялся отдельно и стоял на
         // точку выше текста строки (`text-overflow-string-*`).
-        // GPUI now adds the paragraph's glyph offset to every glyph
-        // (`Window::paint_glyph`, fix-loss4), not only to pixel-exact ones;
-        // an antialiased marker on such a line keeps the snapped paragraph
-        // origin it had before (fix-clamp `text-overflow-string-004/012`).
+        // An antialiased marker on such a line is an inline run of the
+        // block (css-overflow-4 section 5.3) and is rasterized like the
+        // line's other antialiased runs: `text_raster_origin` rounds its
+        // baseline with the paragraph's glyph offset and opaque fill frame
+        // (`text-overflow-string-004` vs. its plain `123` reference run).
         let origin = if raw
-            && !shaped
+            && shaped
                 .runs
                 .iter()
                 .all(|r| window.text_system().pixel_exact_glyphs(r.font_id))
         {
-            origin - self.glyph_nudge
-        } else if raw {
             origin
         } else {
             self.text_raster_origin(&shaped, origin, window)

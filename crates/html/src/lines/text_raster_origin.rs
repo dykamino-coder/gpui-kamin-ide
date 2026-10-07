@@ -32,10 +32,25 @@ impl Paragraph {
         {
             return origin;
         }
+        let base = (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent;
+        self.raster_origin_for_baseline(origin, base, window)
+    }
+
+    /// Device-pixel origin for antialiased glyphs whose baseline lies `base`
+    /// below `origin` (a line of this paragraph, or an emphasis mark's own
+    /// annotation line).
+    pub(super) fn raster_origin_for_baseline(
+        &self,
+        origin: Point<Pixels>,
+        base: Pixels,
+        window: &Window,
+    ) -> Point<Pixels> {
+        if self.selection_vertical.is_some() || crate::interact::in_rotated_frame() {
+            return origin;
+        }
         // Keep the raster origin coherent with an opaque box's snapped fill
         // (CSS 2.1 section 14.2), without clipping glyph overhang or changing
         // layout. Pixel-exact glyphs retain their own shared edge grid above.
-        let base = (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent;
         // A transparent descendant paints over its ancestor's fill (CSS 2.1
         // section 14.2). Keep its exact relative position within that fill's
         // device frame instead of independently snapping every paragraph.

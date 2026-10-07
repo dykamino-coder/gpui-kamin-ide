@@ -7188,6 +7188,16 @@ pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<A
 /// Разбор списка детей на блоки: инлайн-подряд склеивается в абзац.
 /// Абзац с пробой бюджета строк: если строится внутри clamp-контейнера,
 /// рядом с абзацем едет проба его границ и высоты строки.
+/// Строчное содержимое блочного контейнера рисуется на шаге 7 приложения E
+/// CSS 2.1 — после фонов и рамок ВСЕХ блоков потока своего контекста
+/// наложения (шаг 4) и флоатов (шаг 5), в порядке дерева, но до
+/// позиционированных (шаг 8). Обёртка раскладку не меняет: при открытом
+/// собирателе краски (`gpui::PaintCollect`) абзац уходит в него, иначе
+/// рисуется на месте (`gpui::PaintInline`).
+fn paint_inline_step7(para: AnyElement) -> AnyElement {
+    gpui::PaintInline::new(para).into_any_element()
+}
+
 fn paragraph_probed(taken: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // Знак обрыва АВТО-режима: бюджет строк ИМЕННО ЭТОГО абзаца посчитал
     // `ClampCut` прошлого кадра. Кладём его ДО сборки абзаца — многоточие
@@ -8344,7 +8354,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         }
         if !pending.is_empty() {
             let taken = std::mem::take(&mut pending);
-            out.push(paragraph_probed(&taken, inherited, opts));
+            out.push(paint_inline_step7(paragraph_probed(&taken, inherited, opts)));
         }
         // Позиционированные с `z-index: auto` красятся В ПОРЯДКЕ ДЕРЕВА
         // (CSS 2.1 прил. E, шаг 8; Blink `paint_layer_paint_order_iterator.h`
@@ -9303,6 +9313,24 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             ) && e.style.z_index.unwrap_or(0) == 0
                 && !matches!(e.tag.as_str(), "html" | "body")
                 && paint_last_ok(e, &nodes[idx + 1..]);
+            // Непозиционированный элемент с `opacity` < 1 красится на том же слое, что
+            // позиционированные с `z-index: 0` (css-color-4 §opacity: «painted
+            // on the same layer … as positioned elements with stacking order
+            // 0»; Blink кладёт такой слой в список z-порядка с нулём): после
+            // блоков и строк потока, в порядке разметки (`t32-opacity-zorder-c`).
+            let step8 = step8
+                || (e.style.position.is_none_or(|p| p == crate::computed::Position::Static)
+                    // `z-index` у непозиционированного не действует
+                    // (CSS 2.1 §9.9.1 «Applies to: positioned elements»).
+                    && (e.style.z_index.unwrap_or(0) == 0
+                        || !z_index_applies(&e.style, inherited))
+                    // Только прозрачность: у `contain`/`will-change`/
+                    // `transform` положительный `z-index` потомков держится
+                    // на краске на месте (`contain-paint-stacking-context-*`).
+                    && e.style.opacity.is_some_and(|o| o < 1.0)
+                    && !e.style.z_index.is_some_and(|z| z > 0 && z_index_applies(&e.style, inherited))
+                    && !matches!(e.tag.as_str(), "html" | "body")
+                    && paint_last_ok(e, &nodes[idx + 1..]));
             if step8 {
                 done = gpui::PaintLast::new(done).key(paint_key).into_any_element();
             }
@@ -9310,7 +9338,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         }
     }
     if !pending.is_empty() {
-        out.push(paragraph_probed(&pending, inherited, opts));
+        out.push(paint_inline_step7(paragraph_probed(&pending, inherited, opts)));
     }
     // `text-box-trim` (css-inline-3 §4.2): у блочного контейнера срезается
     // блочно-начальная сторона ПЕРВОЙ отформатированной строки и
@@ -9435,7 +9463,21 @@ fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
     if !ordered {
         return nodes;
     }
+    // css-flexbox-1 §5.4 (и css-grid-2 §9.1 по ссылке): «Absolutely-
+    // positioned children of a flex container are treated as having
+    // order: 0 for the purpose of determining their painting order relative
+    // to flex items» — внепоточный ребёнок `order` не слушает, и сортировка
+    // оставляет его в порядке разметки среди элементов с нулём
+    // (`flexbox-paint-ordering-003`).
     nodes.sort_by_key(|n| match n {
+        Node::Element(e)
+            if matches!(
+                e.style.position,
+                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            ) =>
+        {
+            0
+        }
         Node::Element(e) => e.style.order.unwrap_or(0),
         Node::Text(_) => 0,
     });
