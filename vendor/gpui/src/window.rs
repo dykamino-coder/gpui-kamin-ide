@@ -4150,6 +4150,22 @@ impl Window {
             .set_placed_origin(layout_id, origin, scale_factor);
     }
 
+    /// KaminIDE patch: cap the margin-box inline size of a child of a layout
+    /// node (see `TaffyLayoutEngine::cap_child_outer_width`). The next
+    /// `compute_layout` of that tree uses the new limit.
+    pub fn cap_layout_child_outer_width(
+        &mut self,
+        parent: LayoutId,
+        index: usize,
+        width: Pixels,
+    ) -> bool {
+        let scale_factor = self.scale_factor();
+        self.layout_engine
+            .as_mut()
+            .unwrap()
+            .cap_child_outer_width(parent, index, width, scale_factor)
+    }
+
     /// KaminIDE patch: смещение узла от родителя и его размер без округления
     /// к точке устройства (см. `TaffyLayoutEngine::layout_exact`).
     pub fn layout_exact(&mut self, layout_id: LayoutId) -> (Point<Pixels>, Size<Pixels>) {

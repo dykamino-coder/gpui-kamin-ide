@@ -22,6 +22,7 @@
 
 pub mod tabs;
 
+mod atom_fit;
 mod atom_placement;
 mod content_baselines;
 mod controlled_shape;
@@ -235,6 +236,9 @@ pub struct Paragraph {
     /// Замеры атомов (ширина, высота, базовая линия) — копируются в щуп
     /// замера, сами элементы туда не уходят.
     atom_boxes: Vec<AtomBox>,
+    /// Shrink-to-fit data of atoms whose width depends on the containing
+    /// block (CSS 2.1 §10.3.9), shared with the measure closure.
+    atom_fit: std::rc::Rc<std::cell::RefCell<atom_fit::AtomFit>>,
     /// Метрики струта абзаца (§10.8.1): подъём, спуск и x-высота первого
     /// прогона — от них считается, насколько атом вылезает за строку.
     strut: (f32, f32, f32),
@@ -623,6 +627,7 @@ impl Paragraph {
             rel_spans: Vec::new(),
             atoms: Vec::new(),
             atom_boxes: Vec::new(),
+            atom_fit: Default::default(),
             strut: (0.0, 0.0, 0.0),
             run_metrics: Vec::new(),
             edge_spans: Vec::new(),
@@ -1870,6 +1875,7 @@ impl Paragraph {
                 .map_or(0, char::len_utf8);
             self.letter_spans.insert(0, (slot.at..slot.at + len, px(w)));
         }
+        self.prepare_atom_fit(window, cx);
     }
 
     /// Поставить атомы на места их строк: x — от продвижения до распорки
@@ -3512,6 +3518,7 @@ impl Element for Paragraph {
         let hanging = self.hanging;
         let spacers = self.spacers.clone();
         let flow = self.flow.clone();
+        let atom_fit = self.atom_fit.clone();
         let id = window.request_measured_layout_with_physical_baselines(
             gpui::Style::default(),
             move |known, available, window, _cx| {
@@ -3551,6 +3558,18 @@ impl Element for Paragraph {
                 probe.run_metrics = run_metrics.clone();
                 probe.strut = strut;
                 probe.spacers = spacers.clone();
+                // Ширина атома «по содержимому» — от содержащего блока, то
+                // есть от ширины самого абзаца (CSS 2.1 §10.3.9), см. `atom_fit`.
+                if !vertical && !atom_fit.borrow().is_empty() {
+                    let avail = match (known.width, available.width) {
+                        (Some(w), _) | (None, gpui::AvailableSpace::Definite(w)) => f32::from(w),
+                        (None, gpui::AvailableSpace::MinContent) => 0.0,
+                        (None, gpui::AvailableSpace::MaxContent) => f32::INFINITY,
+                    };
+                    let fitted = atom_fit.borrow_mut().fit(avail, window, _cx);
+                    probe.atom_fit = atom_fit.clone();
+                    probe.apply_atom_fit(&fitted);
+                }
                 // Предел переноса берётся ПО ОСИ СТРОКИ: по горизонтали это
                 // ширина коробки, по вертикали — её высота. Уже решённая
                 // родителем сторона сильнее доступной.
@@ -3741,6 +3760,10 @@ impl Element for Paragraph {
             (f32::from(exact - snapped).abs() <= 1.0 / scale + 1e-4).then_some(exact)
         };
         self.apply_measured_fit();
+        if !self.vertical {
+            let avail = f32::from(window.layout_size_unrounded(*state).width);
+            self.refit_atoms(avail, window, _cx);
+        }
         self.lines = self.split(Some(limit), window);
         self.place_atoms(*state, window, _cx);
         // Куски вне потока встают на своё место в строке: раскладываются
@@ -4103,6 +4126,7 @@ impl Paragraph {
             rel_spans: self.rel_spans.clone(),
             atoms: Vec::new(),
             atom_boxes: self.atom_boxes.clone(),
+            atom_fit: Default::default(),
             strut: self.strut,
             run_metrics: self.run_metrics.clone(),
             edge_spans: self.edge_spans.clone(),

@@ -320,6 +320,20 @@ impl TaffyLayoutEngine {
         )
     }
 
+    /// KaminIDE patch: cap the margin-box inline size of the `index`-th child
+    /// of `parent` (logical pixels). Used by shrink-to-fit sizing of atomic
+    /// inlines (CSS 2.1 §10.3.9): the line knows the containing block width
+    /// only after the atom was measured at max-content.
+    pub fn cap_child_outer_width(
+        &mut self,
+        parent: LayoutId,
+        index: usize,
+        width: Pixels,
+        scale_factor: f32,
+    ) -> bool {
+        cap_child_outer_width(&mut self.taffy, parent.into(), index, width.0 * scale_factor)
+    }
+
     /// KaminIDE patch: абсолютное начало узла БЕЗ округления к физической
     /// точке. Хост полос (`band_flow.rs`) кладёт детей отдельным деревом от
     /// своего начала; от округлённого начала их края округлялись бы второй
@@ -443,6 +457,42 @@ impl From<LayoutId> for NodeId {
     fn from(layout_id: LayoutId) -> NodeId {
         layout_id.0
     }
+}
+
+/// KaminIDE patch: see [`TaffyLayoutEngine::cap_child_outer_width`]. `outer` is
+/// in native (device) units. Only absolute margins, borders and paddings are
+/// subtracted; the caller never caps a box whose edges are percentages.
+pub(crate) fn cap_child_outer_width(
+    tree: &mut TaffyTree<NodeContext>,
+    parent: NodeId,
+    index: usize,
+    outer: f32,
+) -> bool {
+    use taffy::style::{ExpandedLengthPercentage, ExpandedLengthPercentageAuto};
+    let Ok(child) = tree.child_at_index(parent, index) else {
+        return false;
+    };
+    let Ok(style) = tree.style(child) else {
+        return false;
+    };
+    let mut style = style.clone();
+    let lpa = |l: taffy::LengthPercentageAuto| match l.expand() {
+        ExpandedLengthPercentageAuto::Length(v) => v,
+        _ => 0.0,
+    };
+    let lp = |l: taffy::LengthPercentage| match l.expand() {
+        ExpandedLengthPercentage::Length(v) => v,
+        _ => 0.0,
+    };
+    let mut inner = outer - lpa(style.margin.left) - lpa(style.margin.right);
+    if style.box_sizing == taffy::BoxSizing::ContentBox {
+        inner -= lp(style.padding.left)
+            + lp(style.padding.right)
+            + lp(style.border.left)
+            + lp(style.border.right);
+    }
+    style.max_size.width = taffy::LengthPercentageAuto::length(inner.max(0.0));
+    tree.set_style(child, style).is_ok()
 }
 
 trait ToTaffy<Output> {
