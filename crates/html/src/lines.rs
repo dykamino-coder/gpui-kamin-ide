@@ -1318,10 +1318,27 @@ impl Paragraph {
     /// решена. Ноль тут не годится — по нулю строка рвётся на каждом знаке, и
     /// коробка выходит во много раз выше настоящей.
     fn min_content(&self, window: &mut Window) -> Pixels {
+        self.min_content_with(None, window)
+    }
+
+    /// Min-content contribution with `text-indent` (css-text-3 §7.1, CSS 2.1
+    /// §16.1): the content is broken at EVERY soft wrap opportunity, and the
+    /// indent (percentages count as zero) is added to the first piece of each
+    /// indented line — a negative indent makes that piece narrower
+    /// (`text-indent-intrinsic-003/004`, «negative-intrinsic-min»).
+    fn min_content_indented(&self, window: &mut Window) -> Pixels {
+        self.min_content_with(Some(px(self.indent.px)), window)
+    }
+
+    fn min_content_with(&self, indent: Option<Pixels>, window: &mut Window) -> Pixels {
         let segs = self.measure(window);
         let mut best = px(0.);
         let mut start = 0usize;
-        let mut chunk = |from: usize, to: usize, this: &Self| {
+        // Starts a line that carries the indent (`each-line`: also after a
+        // forced break).
+        let mut indented = indent.is_some();
+        let each_line = self.indent.each_line;
+        let mut chunk = |from: usize, to: usize, this: &Self, lead: Pixels| {
             let end = if this.spaces_are_content() {
                 to
             } else {
@@ -1330,7 +1347,7 @@ impl Paragraph {
             // Трекинг ПОСЛЕДНЕГО знака куска на конце строки не действует
             // (css-text-3 §8.2) — `lay_in` его вычитает, а минимум по
             // содержимому считал, и кусок выходил шире на `letter-spacing`.
-            let w = this.span(&segs, from, end) - this.tail_spacing(end);
+            let w = this.span(&segs, from, end) - this.tail_spacing(end) + lead;
             let w = if w < px(0.) { px(0.) } else { w };
             if w > best {
                 best = w;
@@ -1367,14 +1384,16 @@ impl Paragraph {
             stops.dedup_by_key(|s| s.at);
             stops
         };
+        let lead = |on: bool| if on { indent.unwrap_or(px(0.)) } else { px(0.) };
         for stop in stops {
             if stop.at <= start {
                 continue;
             }
-            chunk(start, stop.at, self);
+            chunk(start, stop.at, self, lead(indented));
+            indented = indent.is_some() && each_line && stop.mandatory;
             start = stop.at;
         }
-        chunk(start, self.text.len(), self);
+        chunk(start, self.text.len(), self, lead(indented));
         best
     }
 
@@ -3621,6 +3640,21 @@ impl Element for Paragraph {
                 // атомом 10px даёт 7px (`calc-text-indent-intrinsic-1`). Так
                 // мерил и прежний ряд слов; у текстового абзаца — как было.
                 let atoms_in = !probe.atom_boxes.is_empty();
+                // Under a min-content constraint a NEGATIVE indent of a
+                // paragraph with atoms narrows only the first piece; the lines
+                // split at the min-content width packed more onto the
+                // indented first line (`text-indent-intrinsic-003/004`).
+                let neg_indent = atoms_in
+                    && !vertical
+                    && known_along.is_none()
+                    && probe.indent.px < 0.0
+                    && !probe.indent.hanging;
+                let min_indented = neg_indent
+                    .then(|| match space_along {
+                        gpui::AvailableSpace::MaxContent => None,
+                        _ => Some(probe.min_content_indented(window)),
+                    })
+                    .flatten();
                 let content = lines
                     .iter()
                     .map(|l| {
@@ -3631,6 +3665,15 @@ impl Element for Paragraph {
                         }
                     })
                     .fold(px(0.), |a: Pixels, b| if b > a { b } else { a });
+                // Fit-content is max(min-content, min(max-content, available))
+                // (css-sizing-3 §5.1): with a negative indent the max-content
+                // line can be NARROWER than the widest piece of a later line,
+                // and the min-content then wins (`text-indent-intrinsic-004`).
+                let content = match (min_indented, space_along) {
+                    (Some(min), gpui::AvailableSpace::MinContent) => min,
+                    (Some(min), _) if min > content => min,
+                    _ => content,
+                };
                 let width = known_along.unwrap_or(content);
                 // Шире отведённого коробка не бывает: у абзаца блочного уровня
                 // ширина ограничена содержащим блоком, и без этого предела

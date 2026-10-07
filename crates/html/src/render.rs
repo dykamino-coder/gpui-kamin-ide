@@ -27964,6 +27964,28 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             half,
         ));
     }
+    let shrink_wrap = root_table
+        || (e.style.width.is_none()
+            // Заданная высота или её порог приходят от РАСКЛАДКИ родителя:
+            // обёртка рвёт эту связь (★ ЗАМЕРЕНО: без отсечки
+            // `min-height-table-2` 0.00 -> 19.24).
+            && e.style.height.is_none()
+            && e.style.min_height.is_none()
+            && !inherited.stretched
+            && e.style.flex_basis.is_none()
+            && e.style.align_self.is_none()
+            && e.style.grid_col.is_none()
+            && e.style.grid_row.is_none());
+    let mut outer = outer;
+    // Сжатие по содержимому — `min(max-content, доступное)` (CSS 2.1
+    // §17.5.2.2: «the used width is the greater of W and MIN» при W =
+    // ширине контейнера, если таблица шире): в ряду-обёртке стол обязан
+    // ужиматься. Блоку потока сжатие выключено (`flex_shrink = 0` в
+    // `collapsed`), и стол с длинным текстом вылезал из узкого родителя
+    // на всю max-content ширину. Пол GRIDMIN держит `item_is_table`.
+    if shrink_wrap && caps_top.is_empty() && caps_bot.is_empty() && !split_wrapper {
+        outer.style().flex_shrink = Some(1.0);
+    }
     let outer = outer;
     // Обёртка «заголовок + коробка»: заголовок вне рамки и обрезки.
     let outer = if caps_top.is_empty() && caps_bot.is_empty() {
@@ -28126,18 +28148,6 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // (`html-display-table`, `root-box-002`). Обёртка снимает зависимость от
     // родителя. Элемент гибкого контейнера, сетки и ячейки не заворачивается:
     // там стол — сам элемент раскладки, и обёртка забрала бы его свойства.
-    let shrink_wrap = root_table
-        || (e.style.width.is_none()
-            // Заданная высота или её порог приходят от РАСКЛАДКИ родителя:
-            // обёртка рвёт эту связь (★ ЗАМЕРЕНО: без отсечки
-            // `min-height-table-2` 0.00 -> 19.24).
-            && e.style.height.is_none()
-            && e.style.min_height.is_none()
-            && !inherited.stretched
-            && e.style.flex_basis.is_none()
-            && e.style.align_self.is_none()
-            && e.style.grid_col.is_none()
-            && e.style.grid_row.is_none());
     if shrink_wrap {
         let mut wrap = div().flex().flex_row();
         if root_table {
