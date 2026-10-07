@@ -12,6 +12,9 @@ mod mask_size;
 mod mask_shorthand;
 pub(crate) mod orthogonal;
 mod tab_size;
+mod outline_style;
+use outline_style::parse as outline_style_of;
+pub(crate) use outline_style::DOUBLE as OUTLINE_DOUBLE;
 
 use crate::css::{Decls, Rule};
 use crate::value::{Color, Len};
@@ -431,9 +434,8 @@ pub struct Outline {
     /// сдвиг равен минус толщине. Толщина известна только к отрисовке,
     /// поэтому здесь метка, а не длина.
     pub inset: bool,
-    /// 0 — none/hidden (гасят), 1 — сплошные и прочие (double/groove/…
-    /// рисуются сплошной — приближение), 2 — `auto`, 3 — `dotted`,
-    /// 4 — `dashed`.
+    /// 0 — none/hidden, 1 — solid/groove/…, 2 — auto, 3 — dotted,
+    /// 4 — dashed, 5 — double (two rings with a transparent gap).
     pub style: Option<u8>,
 }
 
@@ -5252,25 +5254,17 @@ impl Computed {
             "position-visibility" => {
                 self.position_visibility = crate::anchor::parse_visibility(v);
             }
-            "top" => {
-                self.inset_inherit[0] = v == "inherit";
-                self.inset.top = Len::parse(v);
-                self.side_seq.inset[0] = self.decl_seq;
-            }
-            "right" => {
-                self.inset_inherit[1] = v == "inherit";
-                self.inset.right = Len::parse(v);
-                self.side_seq.inset[1] = self.decl_seq;
-            }
-            "bottom" => {
-                self.inset_inherit[2] = v == "inherit";
-                self.inset.bottom = Len::parse(v);
-                self.side_seq.inset[2] = self.decl_seq;
-            }
-            "left" => {
-                self.inset_inherit[3] = v == "inherit";
-                self.inset.left = Len::parse(v);
-                self.side_seq.inset[3] = self.decl_seq;
+            "top" | "right" | "bottom" | "left" => {
+                let (side, slot) = match key {
+                    "top" => (0, &mut self.inset.top),
+                    "right" => (1, &mut self.inset.right),
+                    "bottom" => (2, &mut self.inset.bottom),
+                    _ => (3, &mut self.inset.left),
+                };
+                self.inset_inherit[side] = v == "inherit";
+                // Keep anchor arithmetic; preserve mixed percentages until layout (§10.9).
+                *slot = Len::parse(v).or_else(|| Len::parse_mixed(v));
+                self.side_seq.inset[side] = self.decl_seq;
             }
             "inset" => {
                 self.inset = Sides::shorthand(v);
@@ -9918,7 +9912,7 @@ impl Computed {
     pub fn shaped_outline(&self) -> Option<(f32, f32, Color)> {
         let o = self.outline.as_ref()?;
         self.border_shape.as_ref()?;
-        if !matches!(o.style, Some(1) | Some(2)) {
+        if !matches!(o.style, Some(1) | Some(2) | Some(OUTLINE_DOUBLE)) {
             return None;
         }
         let em = match self.font_size {
@@ -12996,21 +12990,6 @@ fn legacy_srgb_color(token: &str) -> bool {
         None => true,
     }
 }
-/// Стиль обводки: 0 — не рисуется (none/hidden), 1 — сплошной (и все, что
-/// рисуются сплошной), 2 — `auto` (цвет от `accent-color`, css-ui-4
-/// §outline-color), 3 — `dotted`, 4 — `dashed`: узор тем же примитивом, что
-/// у рамки (`outline-style-012`: эталон — `border: 4px dotted`).
-fn outline_style_of(v: &str) -> Option<u8> {
-    match v {
-        "none" | "hidden" => Some(0),
-        "auto" => Some(2),
-        "dotted" => Some(3),
-        "dashed" => Some(4),
-        "solid" | "double" | "groove" | "ridge" | "inset" | "outset" => Some(1),
-        _ => None,
-    }
-}
-
 /// Ширина обводки: ключевые слова и любые шрифтовые/абсолютные длины.
 fn outline_width_of(v: &str) -> Option<Len> {
     match v {

@@ -17,6 +17,7 @@ mod contained_intrinsic;
 use contained_intrinsic::empty_contained_size;
 mod grid_flow_axes;
 mod flex_cross_default;
+mod inset_percent;
 
 /// Ширина/высота/отступ: доля родителя или пиксели.
 pub(crate) fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
@@ -1729,11 +1730,7 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
         // of the containing block is not specified explicitly … the value
         // computes to auto»; Blink `relative_utils.cc::ResolveInset` отдаёт
         // `nullopt` при неопределённом размере).
-        if c.position == Some(Position::Relative)
-            && matches!(f, 0 | 2)
-            && matches!(l, Len::Pct(_))
-            && !c.cb_height_def
-        {
+        if inset_percent::is_auto(c, l, f) {
             continue;
         }
         let g = len_to_gpui(l);

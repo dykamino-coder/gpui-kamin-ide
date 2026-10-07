@@ -3150,14 +3150,8 @@ fn walk(
             // `::marker` — НЕ копией стиля хозяина, как первая буква, а
             // ТОЛЬКО своими объявлениями поверх таблицы агента: копия
             // протащила бы в маркер рамку, поля и размеры самого `<li>`.
-            // Основание слоя — таблица агента css-lists-3
-            // §marker-properties (Blink `core/css/marker.css`): у нас есть
-            // поля лишь под два её объявления из четырёх, остальные два
-            // (`font-variant-numeric: tabular-nums`, `white-space: pre`)
-            // свойств в `Computed` не имеют. `text-transform: none` тут
-            // ключевой: без него `li { text-transform: uppercase }`
-            // поднимал маркер в верхний регистр
-            // (`marker-text-transform-default`, снимок — §4 отчёта).
+            // CSS Lists 3 §3.1.1 gives marker text its own transform default,
+            // including when no author ::marker rule matches.
             // Сворачивается ниже, ПОСЛЕ снятия номера пункта:
             // `counter(list-item)` в его `content` обязан видеть своё
             // значение.
@@ -3168,10 +3162,12 @@ fn walk(
                     .filter(|r| matches_ignoring_pseudo(&r.sel, &me, path, sibs))
                     .collect();
                 found.sort_by_key(|r| (r.sel.specificity(), r.order));
-                (!found.is_empty()).then(|| {
+                (!found.is_empty() || tag == "li" || style.display == Some(Display::ListItem)).then(|| {
                     let mut m = Computed::default();
                     m.text_transform = Some(crate::computed::TextTransform::None);
-                    m.bidi_isolate = Some(true);
+                    if !found.is_empty() {
+                        m.bidi_isolate = Some(true);
+                    }
                     for rule in found.iter() {
                         m.apply_decls_with_vars(&rule.decls, vars);
                     }
