@@ -13047,7 +13047,17 @@ fn band_kids(
                     // таблица, замещаемый, список строятся своими ветками
                     // `element`.
                     let el = element(&copy, &inherited, &opts);
-                    if float { el } else { content_wrapper::for_element(el, &copy, &inherited, (None, None)) }
+                    // Эффекты группы (`clip-path`, маска, фильтр, смешивание)
+                    // `element` не накладывает — их кладёт поток (`blocks`:
+                    // `grouped(transformed(animated(..)))`). Вертикальный флоат
+                    // идёт сюда мимо потока, и `clip-path` у него не резал
+                    // ничего (`shape-outside-circle-048-ref`: флоат целым
+                    // прямоугольником при абсолютах с вставками по обеим осям).
+                    if float {
+                        grouped(el, &copy.style)
+                    } else {
+                        content_wrapper::for_element(el, &copy, &inherited, (None, None))
+                    }
                 }
             });
         let clear = if float { None } else { c.style.clear };
