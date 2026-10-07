@@ -4080,9 +4080,9 @@ fn pseudo_box_named(
     if style.display == Some(Display::None) {
         return None;
     }
-    // Псевдоэлемент — настоящий брат содержимого хозяина: у него свой
-    // уровень пути, свои директивы и своя область видимости.
+    // Pseudo counters occupy their own level among the host children.
     counters.enter_pseudo(before);
+    language::pseudo(counters, &style, me, path);
     // У псевдоэлемента-создателя предварительного обхода нет: своей области
     // в дереве коробок он не открывает, и таких пар в наборе не встречается.
     apply_counter_decls(

@@ -21,3 +21,20 @@ pub(super) fn parent<'a>(node: &'a Ancestor, path: &'a [Ancestor]) -> Option<&'a
         own(node)
     }
 }
+
+/// Explicit auto on a pseudo selects its originating element's language.
+pub(super) fn pseudo(
+    counters: &mut crate::counters::Counters,
+    style: &crate::computed::Computed,
+    node: &Ancestor,
+    path: &[Ancestor],
+) {
+    if style
+        .quotes
+        .as_ref()
+        .and_then(Option::as_ref)
+        .is_some_and(Vec::is_empty)
+    {
+        counters.set_quote_language(effective(node, path).unwrap_or(""));
+    }
+}

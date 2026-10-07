@@ -81,9 +81,9 @@ impl Counters {
                 .unwrap_or_default()
         };
         match own.or(self.quotes.last().map(|(_, v)| v)) {
-            Some(Some(list)) => pick(list),
+            Some(Some(list)) if !list.is_empty() => pick(list),
             Some(None) => String::new(),
-            None => {
+            None | Some(Some(_)) => {
                 let language = self
                     .quote_languages
                     .last()

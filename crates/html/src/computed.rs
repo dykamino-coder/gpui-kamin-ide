@@ -12,6 +12,7 @@ mod mask_size;
 mod mask_shorthand;
 pub(crate) mod orthogonal;
 mod tab_size;
+mod quotes;
 mod outline_style;
 use outline_style::parse as outline_style_of;
 pub(crate) use outline_style::DOUBLE as OUTLINE_DOUBLE;
@@ -2871,9 +2872,9 @@ pub struct Computed {
     /// строки, `counter()`, `counters()`, `attr()` в любом порядке.
     pub content: Option<Vec<ContentItem>>,
     /// `quotes` (css-content-3 §4.1): пары кавычек по уровням вложенности.
-    /// `None` — наследуется, `Some(None)` — `none` (кавычек нет, но глубина
-    /// всё равно считается). Наследование ведёт обход дерева
-    /// (`Counters::quote`): кавычки нужны уже на сборке псевдоэлемента.
+    /// `None` inherits; `Some(None)` suppresses marks but keeps nesting depth.
+    /// `Some(Some(empty))` is explicit auto; nonempty pairs are a custom system.
+    /// Tree traversal resolves inheritance before generating pseudo content.
     pub quotes: Option<Option<Vec<(String, String)>>>,
     /// `counter-reset` — обнулить счётчик с этого узла.
     pub counter_reset: Option<String>,
@@ -3919,6 +3920,7 @@ impl Computed {
                     "line-height",
                     "list-style-position",
                     "list-style-type",
+                    "quotes",
                     "text-align",
                     "text-indent",
                     "text-transform",
@@ -7438,45 +7440,7 @@ impl Computed {
             "counter-reset" => self.counter_reset = Some(v.to_string()),
             "counter-increment" => self.counter_increment = Some(v.to_string()),
             "counter-set" => self.counter_set = Some(v.to_string()),
-            "quotes" => {
-                match v {
-                    "none" => self.quotes = Some(None),
-                    // `auto` — кавычки языка; без разбора языка берутся
-                    // английские (`Counters::quote` при пустой записи).
-                    "auto" | "match-parent" => self.quotes = None,
-                    other => {
-                        // Только строки, и чётным числом (§4.1): иначе
-                        // объявление негодно и не применяется.
-                        let mut strs = vec![];
-                        let mut at = 0usize;
-                        let mut ok = true;
-                        while at < other.len() {
-                            let ch = other[at..].chars().next().unwrap_or(' ');
-                            if ch.is_whitespace() {
-                                at += ch.len_utf8();
-                                continue;
-                            }
-                            if ch != '"' && ch != '\'' {
-                                ok = false;
-                                break;
-                            }
-                            let body = at + 1;
-                            let len = crate::css::skip_string(&other[body..], ch);
-                            if !other[body..body + len].ends_with(ch) {
-                                ok = false;
-                                break;
-                            }
-                            strs.push(unescape_content(&other[body..body + len - 1]));
-                            at = body + len;
-                        }
-                        if ok && !strs.is_empty() && strs.len() % 2 == 0 {
-                            self.quotes = Some(Some(
-                                strs.chunks(2).map(|p| (p[0].clone(), p[1].clone())).collect(),
-                            ));
-                        }
-                    }
-                }
-            }
+            "quotes" => quotes::apply(self, v),
             "content" => {
                 match v {
                     // ПУСТАЯ строка — не то же самое, что `none`: коробка
@@ -13701,6 +13665,7 @@ fn initial_value(key: &str) -> Option<&'static str> {
         "line-height" => "normal",
         "list-style-position" => "outside",
         "list-style-type" => "disc",
+        "quotes" => "auto",
         "overflow-wrap" | "word-wrap" => "normal",
         "tab-size" => "8",
         "text-align" => "start",
