@@ -35,7 +35,29 @@ pub(super) fn paint_tile(
             }
             gpui::px(logical)
         };
-        bounds.map_origin(edge)
+        // The far edge snaps the same way, as the edges of a box laid out at
+        // the tile's place: keeping the unsnapped size after the snapped
+        // origin painted a 15px tile at 1.25 over 19 device rows where the
+        // same image as a box covers 18 (background-position-applies-to-*).
+        // GPUI ceils the sprite size: the device span is kept from rounding
+        // up past the chosen integer.
+        let span = |origin: Pixels, size: Pixels| {
+            let from = (f32::from(origin) * scale).round();
+            let to = ((f32::from(origin) + f32::from(size)) * scale).round();
+            let device = (to - from).max(0.0);
+            let mut logical = device / scale;
+            if logical * scale > device {
+                logical = logical.next_down();
+            }
+            gpui::px(logical)
+        };
+        Bounds {
+            origin: bounds.origin.map(edge),
+            size: gpui::size(
+                span(bounds.origin.x, bounds.size.width),
+                span(bounds.origin.y, bounds.size.height),
+            ),
+        }
     } else {
         bounds
     };
