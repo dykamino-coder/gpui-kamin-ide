@@ -10,6 +10,9 @@ mod image_color;
 pub(crate) use image_color::parse as parse_image_color;
 pub(crate) mod orthogonal;
 mod tab_size;
+mod outline_style;
+use outline_style::parse as outline_style_of;
+pub(crate) use outline_style::DOUBLE as OUTLINE_DOUBLE;
 
 use crate::css::{Decls, Rule};
 use crate::value::{Color, Len};
@@ -429,9 +432,8 @@ pub struct Outline {
     /// сдвиг равен минус толщине. Толщина известна только к отрисовке,
     /// поэтому здесь метка, а не длина.
     pub inset: bool,
-    /// 0 — none/hidden (гасят), 1 — сплошные и прочие (double/groove/…
-    /// рисуются сплошной — приближение), 2 — `auto`, 3 — `dotted`,
-    /// 4 — `dashed`.
+    /// 0 — none/hidden, 1 — solid/groove/…, 2 — auto, 3 — dotted,
+    /// 4 — dashed, 5 — double (two rings with a transparent gap).
     pub style: Option<u8>,
 }
 
@@ -9851,7 +9853,7 @@ impl Computed {
     pub fn shaped_outline(&self) -> Option<(f32, f32, Color)> {
         let o = self.outline.as_ref()?;
         self.border_shape.as_ref()?;
-        if !matches!(o.style, Some(1) | Some(2)) {
+        if !matches!(o.style, Some(1) | Some(2) | Some(OUTLINE_DOUBLE)) {
             return None;
         }
         let em = match self.font_size {
@@ -12929,21 +12931,6 @@ fn legacy_srgb_color(token: &str) -> bool {
         None => true,
     }
 }
-/// Стиль обводки: 0 — не рисуется (none/hidden), 1 — сплошной (и все, что
-/// рисуются сплошной), 2 — `auto` (цвет от `accent-color`, css-ui-4
-/// §outline-color), 3 — `dotted`, 4 — `dashed`: узор тем же примитивом, что
-/// у рамки (`outline-style-012`: эталон — `border: 4px dotted`).
-fn outline_style_of(v: &str) -> Option<u8> {
-    match v {
-        "none" | "hidden" => Some(0),
-        "auto" => Some(2),
-        "dotted" => Some(3),
-        "dashed" => Some(4),
-        "solid" | "double" | "groove" | "ridge" | "inset" | "outset" => Some(1),
-        _ => None,
-    }
-}
-
 /// Ширина обводки: ключевые слова и любые шрифтовые/абсолютные длины.
 fn outline_width_of(v: &str) -> Option<Len> {
     match v {
