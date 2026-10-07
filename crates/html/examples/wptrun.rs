@@ -216,6 +216,7 @@ impl Render for Page {
                     canvas: None,
                     outline: (p.outline.0, p.outline.1, p.outline.2.to_hsla()),
                     area: p.area,
+                    turn: p.turn,
                 }
             });
             let stack =
@@ -330,6 +331,8 @@ struct PageBox {
     border: (f32, kamin_html::value::Color),
     /// Контур листа: толщина, сдвиг, цвет (`outline`/`outline-offset`).
     outline: (f32, f32, kamin_html::value::Color),
+    /// `page-orientation`: 0 — upright, 1 — rotate-right, 3 — rotate-left.
+    turn: u8,
 }
 
 fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4], wm: (bool, bool, bool)) -> PageBox {
@@ -480,6 +483,7 @@ fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4], wm: (bool, bool
         }
     }
     let (pw, ph) = (w, h);
+    let mut turn = 0u8;
     let px_of = move |t: &str, axis_h: bool| -> Option<f32> {
         match Len::parse(t)? {
             Len::Px(v) => Some(v),
@@ -591,6 +595,15 @@ fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4], wm: (bool, bool
                     }
                 }
             }
+            // css-page-3 §page-orientation-prop: лист раскладывается как
+            // обычно и ПОКАЗЫВАЕТСЯ повёрнутым на четверть оборота.
+            "page-orientation" => {
+                turn = match v.trim().to_ascii_lowercase().as_str() {
+                    "rotate-right" => 1,
+                    "rotate-left" => 3,
+                    _ => 0,
+                }
+            }
             "outline-width" => outline.0 = px_of(v, false).unwrap_or(outline.0),
             "outline-offset" => outline.1 = px_of(v, false).unwrap_or(outline.1),
             "outline-color" => outline.2 = Color::parse(v.trim()).unwrap_or(outline.2),
@@ -694,6 +707,7 @@ fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4], wm: (bool, bool
         bg,
         border,
         outline,
+        turn,
     }
 }
 
