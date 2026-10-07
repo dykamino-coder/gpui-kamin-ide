@@ -46,6 +46,8 @@ pub(crate) mod absolute_overflow;
 mod absolute_overflow_math;
 mod ruby_hiding;
 mod ruby_transform;
+mod text_shadows;
+use text_shadows::with_text_shadow;
 use fragment_size::shape_full;
 
 use crate::apply::{apply, apply_hover};
@@ -7210,7 +7212,7 @@ fn paragraph_probed(taken: &[Node], inherited: &Computed, opts: &RenderOpts) -> 
     // (вертикальное письмо уходит из `paragraph` раньше): иначе бюджет
     // достался бы СЛЕДУЮЩЕМУ абзацу.
     crate::interact::set_para_budget(None);
-    let para = with_text_shadow(para, inherited, taken);
+    let para = with_text_shadow(para, inherited, taken, opts);
     if let Some((key, skip)) = ctx {
         div()
             .relative()
@@ -16359,38 +16361,6 @@ fn normalize_for_shadow(raw: &str) -> String {
     out
 }
 
-/// Тень текста: та же строка под основной, размытая в своём буфере.
-///
-/// Тень в GPUI есть у коробки, у глифов — нет. Копия строки цветом тени
-/// рисуется ПОД основной и уходит в отдельный буфер, где её размывает тот же
-/// проход, что и `filter: blur`. Прежний обходной путь набирал размытие
-/// четырьмя копиями по кругу: на близком расстоянии копии читались по
-/// отдельности, а широкая тень не получалась вовсе.
-fn text_shadow_layers(text: &str, sh: &crate::computed::Shadow) -> Vec<AnyElement> {
-    let copy = div()
-        .text_color(sh.color.to_hsla())
-        .child(SharedString::from(text.to_string()))
-        .into_any_element();
-    // Смещение живёт на обёртке, а не внутри группы: у буфера группы размер
-    // берётся из коробки ребёнка, и абсолютный ребёнок оставил бы её пустой —
-    // размытая тень оказалась бы срезана маской композита.
-    let placed = |child: AnyElement| {
-        div()
-            .absolute()
-            .left(px(sh.x))
-            .top(px(sh.y))
-            .child(child)
-            .into_any_element()
-    };
-    if sh.blur <= 0.5 {
-        return vec![placed(copy)];
-    }
-    // Радиус тени в CSS — это диаметр размытия, то есть вдвое больше сигмы.
-    let mut group = crate::interact::Grouped::new(copy);
-    group.blur = sh.blur * 0.5;
-    vec![placed(group.into_any_element())]
-}
-
 /// Абзац: одна строка текста с прогонами либо гибкая строка из кусков.
 /// Абзац для тех, кто собирает текст сам — содержимое поля ввода.
 pub fn paragraph_public(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElement {
@@ -18015,36 +17985,6 @@ fn paragraph_pieces_routed(
         &mut render_text,
         inherited.vertical != Some(true) && inherited.rotated_line != Some(true),
     )
-}
-
-/// Обернуть готовый абзац тенью текста, если она задана.
-fn with_text_shadow(el: AnyElement, style: &Computed, nodes: &[Node]) -> AnyElement {
-    let Some(sh) = style.text_shadow else {
-        return el;
-    };
-    let mut plain = String::new();
-    gather_text(nodes, &mut plain);
-    // Тень повторяет ТУ ЖЕ строку, что и абзац: пробелы схлопнуты, регистр
-    // изменён. Иначе тень к `text-transform: uppercase` осталась бы строчной.
-    let plain = crate::inline::transform_case(&normalize_for_shadow(&plain), style);
-    if plain.trim().is_empty() {
-        return el;
-    }
-    // Список теней: «front-to-back: the first shadow is on top»
-    // (css-text-decor-3 Overview.bs:881-882). У gpui поздний ребёнок лежит
-    // выше, поэтому слои идут от ПОСЛЕДНЕЙ тени к первой, и все — под абзацем.
-    let layers: Vec<AnyElement> = style
-        .text_shadow_rest
-        .iter()
-        .rev()
-        .chain(std::iter::once(&sh))
-        .flat_map(|s| text_shadow_layers(plain.trim(), s))
-        .collect();
-    div()
-        .relative()
-        .children(layers)
-        .child(el)
-        .into_any_element()
 }
 
 /// Строчный ли элемент по своему `display`.
