@@ -29,9 +29,17 @@ impl Paragraph {
         // and choose its nearest device pixel only for painting.
         let base = (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent;
         let scale = window.scale_factor();
-        // Window::paint_glyph restores this raw paragraph offset afterwards.
-        // Round the final baseline once, including that fractional offset.
+        // Round the final baseline once, including the paragraph's fractional
+        // offset from its snapped box. `Window::paint_glyph` adds that offset
+        // back only for pixel-exact fonts (handled above), so for an
+        // antialiased font it is part of the returned origin: otherwise the
+        // rounded baseline lost the offset again, and a line of a paragraph
+        // sat one device pixel off the same line in its own block
+        // (`inline-block-width-002a`: `x<br>y<br>z` vs three blocks).
         let y = f32::from(origin.y + self.glyph_nudge.y + base) * scale;
-        point(origin.x, origin.y + px((y.round() - y) / scale))
+        point(
+            origin.x,
+            origin.y + self.glyph_nudge.y + px((y.round() - y) / scale),
+        )
     }
 }
