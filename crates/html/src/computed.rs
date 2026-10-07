@@ -2611,6 +2611,9 @@ pub struct Computed {
     /// внепоточных потомков (§10.1 п.4). Ставится при наследовании: сам
     /// каскад предков не видит.
     pub(crate) cb_ancestor: bool,
+    /// An ancestor is a multi-column container: the box may be fragmented
+    /// across columns (css-break-3 §box-splitting). Set by inheritance.
+    pub(crate) in_multicol: bool,
     /// Есть ли выше по дереву корень подложки (filter-effects-2
     /// §BackdropRoot): прозрачность, фильтр, маска, clip-path, смешивание,
     /// `backdrop-filter`, `will-change` с ними. Ставится при наследовании.
@@ -2945,6 +2948,11 @@ impl Computed {
             || self.animation.is_some()
             || self.inherit_bits & inh::TRANSFORM != 0
             || !self.plain_block_box
+            // A fragmented box is shifted per fragment, but the column
+            // layout places only its first fragment by the relative offset
+            // (css-break-3 §box-splitting; `css-break/transform-000`): keep
+            // the shift in the transform there.
+            || self.in_multicol
         {
             return None;
         }

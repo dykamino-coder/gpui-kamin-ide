@@ -914,6 +914,18 @@ fn backdrop_root(c: &Computed) -> bool {
 pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     let mut c = own.clone();
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
+    c.in_multicol = parent.in_multicol
+        || ((parent.column_count.is_some()
+            || parent.column_width.is_some()
+            || parent.column_height.is_some())
+            && !matches!(
+                parent.display,
+                Some(crate::computed::Display::Grid)
+                    | Some(crate::computed::Display::InlineGrid)
+                    | Some(crate::computed::Display::GridLanes)
+                    | Some(crate::computed::Display::Flex)
+                    | Some(crate::computed::Display::InlineFlex)
+            ));
     c.backdrop_root_above = parent.backdrop_root_above || backdrop_root(parent);
     // filter-effects-2 §3 шаг 4: содержимое B — и его СОБСТВЕННЫЙ фон —
     // рисуется поверх уже отфильтрованной подложки. Фон коробки красит сама
