@@ -165,6 +165,8 @@ pub struct Paragraph {
     vertical_rl: bool,
     /// Dominant baseline in the rotated frame; sideways uses the real alphabetic baseline.
     vertical_central_baseline: bool,
+    /// Line of a rotated vertical paragraph whose dominant baseline is central.
+    rotated_central: bool,
     vertical_ccw: bool,
     selection_vertical: Option<(Bounds<Pixels>, bool)>,
     vertical_layout_origin: Point<Pixels>,
@@ -600,6 +602,7 @@ impl Paragraph {
             vertical: false,
             vertical_rl: false,
             vertical_central_baseline: true,
+            rotated_central: false,
             vertical_ccw: false,
             selection_vertical: None,
             vertical_layout_origin: point(px(0.0), px(0.0)),
@@ -1838,6 +1841,21 @@ impl Paragraph {
             // content edge of the cell box» (`min-height-applies-to-014`).
             let base = if base <= 0.0 && s.height > px(0.) {
                 f32::from(s.height)
+            } else {
+                base
+            };
+            // Vertical mixed/upright lines use the central dominant baseline
+            // (css-inline-3 §dominant-baseline auto; Blink
+            // `ComputedStyle::GetFontBaseline`): the atom's central baseline —
+            // its own content's central baseline, or the middle of its margin
+            // box when it has none — sits on the line's central baseline,
+            // which is (ascent − descent) / 2 above the strut's alphabetic
+            // baseline used by the line model here.
+            let base = if self.rotated_central {
+                let (asc, desc, _) = self.strut;
+                let h = f32::from(s.height);
+                let central = if (base - h).abs() < 0.01 { h / 2.0 } else { base };
+                central + (asc - desc) / 2.0
             } else {
                 base
             };
@@ -3612,6 +3630,16 @@ impl Element for Paragraph {
                         }
                     })
                     .fold(px(0.), |a: Pixels, b| if b > a { b } else { a });
+                // Native vertical lines report their inline extent to the
+                // band host's intrinsic probe, like `VerticalText` does: the
+                // box itself stretches to the window along the line axis.
+                if vertical {
+                    crate::interact::VT_INLINE_MAX.with(|c| {
+                        if let Some(v) = c.get() {
+                            c.set(Some(v.max(f32::from(content))));
+                        }
+                    });
+                }
                 let width = known_along.unwrap_or(content);
                 // Шире отведённого коробка не бывает: у абзаца блочного уровня
                 // ширина ограничена содержащим блоком, и без этого предела
@@ -4124,6 +4152,7 @@ impl Paragraph {
             vertical: self.vertical,
             vertical_rl: self.vertical_rl,
             vertical_central_baseline: self.vertical_central_baseline,
+            rotated_central: self.rotated_central,
             vertical_ccw: self.vertical_ccw,
             selection_vertical: self.selection_vertical,
             vertical_layout_origin: self.vertical_layout_origin,

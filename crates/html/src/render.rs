@@ -17366,6 +17366,11 @@ fn paragraph_pieces_routed(
             .vertical(inherited.para_vertical.is_some(), inherited.para_vertical == Some(true))
             .ortho_limit(inherited.ortho_limit.map(px))
             .vertical_central_baseline(inherited.sideways != Some(true) && inherited.text_sideways != Some(true))
+            .rotated_central(
+                inherited.rotated_line == Some(true)
+                    && inherited.sideways != Some(true)
+                    && inherited.text_sideways != Some(true),
+            )
             .vertical_counter_clockwise(inherited.para_vertical == Some(false) && inherited.sideways == Some(true))
             .vertical_inline_constraint(inherited.orthogonal_inline, native_vertical::keyword(inherited))
             .plaintext(
