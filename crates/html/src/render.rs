@@ -6932,7 +6932,9 @@ fn paragraph_probed(taken: &[Node], inherited: &Computed, opts: &RenderOpts) -> 
         _ => None,
     };
     crate::interact::set_para_budget(budget);
+    crate::interact::set_para_tag(ctx.zip(seq).map(|((key, _), s)| (key, s)));
     let para = paragraph(taken, inherited, opts);
+    crate::interact::set_para_tag(None);
     // Ячейку обязательно опустошить и когда абзац её не забрал
     // (вертикальное письмо уходит из `paragraph` раньше): иначе бюджет
     // достался бы СЛЕДУЮЩЕМУ абзацу.
@@ -16730,6 +16732,7 @@ fn paragraph_pieces_routed(
     // кусков: куски строят вложенные абзацы (`inline-block`, `<svg>`), и
     // чужой бюджет им доставаться не должен.
     let clamp_budget = crate::interact::take_para_budget();
+    let clamp_tag = crate::interact::take_para_tag();
     // ★ ЗАМЕРЕНО И ОТКАЧЕНО: брать поперечное выравнивание ряда с самих
     // кусков, когда абзац своего не задал (`vertical-align: bottom` у
     // картинки). Ни это, ни `align-self` на самой картинке высоту строки не
@@ -17486,6 +17489,7 @@ fn paragraph_pieces_routed(
                 Some(gpui::px(own_size(inherited, opts))),
             )
             .clamp_mark(inherited.clamp_mark.clone())
+            .clamp_tag(clamp_tag)
             .marker_color(Some(
                 inherited
                     .color

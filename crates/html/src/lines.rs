@@ -121,6 +121,9 @@ pub struct Paragraph {
     /// Знак строки обрыва `line-clamp` (`block-ellipsis`): None — U+2026,
     /// пустая строка — `no-ellipsis`.
     clamp_marker: Option<String>,
+    /// (ключ клэмп-контейнера, номер абзаца): отрисовка сообщает строки
+    /// вычислителю среза (`interact::publish_para_rows`).
+    clamp_tag: Option<(u64, u32)>,
     /// Шрифт маркера: стиль БЛОКА-контейнера, не прогона у среза
     /// (css-overflow-4 §5) — иначе «123» набиралось Ahem-квадратами
     /// шрифта обрезанного куска.
@@ -558,6 +561,10 @@ struct Line {
     /// Знак обрыва поставил `line-clamp` (block-ellipsis), а не
     /// `text-overflow`: у него свой знак (см. `line_mark`).
     clamped: bool,
+    /// Усечение `text-overflow` по ВИДИМОМУ порядку (строка со смешанным
+    /// направлением): ширина видимой части от начального края строки.
+    /// Отрезок строки при этом целый — скрытые знаки отсекает маска.
+    vis_cut: Option<Pixels>,
     /// Строка кончилась мягким переносом: за ней рисуется знак переноса.
     hyphen: bool,
     /// Отступ строки (`text-indent`). Отрицательный выводит строку за край.
@@ -643,6 +650,7 @@ impl Paragraph {
             text_overflow: false,
             overflow_marker: None,
             clamp_marker: None,
+            clamp_tag: None,
             marker_font: None,
             marker_size: None,
             marker_color: None,
@@ -1531,6 +1539,7 @@ impl Paragraph {
             width,
             ellipsis: true,
             clamped: true,
+            vis_cut: None,
             hyphen: false,
             indent: last.indent,
         });
@@ -1571,6 +1580,12 @@ impl Paragraph {
         self
     }
 
+    /// Метка абзаца в клэмп-контейнере (см. поле `clamp_tag`).
+    pub fn clamp_tag(mut self, tag: Option<(u64, u32)>) -> Self {
+        self.clamp_tag = tag;
+        self
+    }
+
     /// `block-ellipsis` контейнера: знак строки обрыва `line-clamp`.
     pub fn clamp_mark(mut self, mark: Option<String>) -> Self {
         self.clamp_marker = mark;
@@ -1590,6 +1605,13 @@ impl Paragraph {
         let head = line.range.start;
         let mut end = head + trim_hanging(&self.text[line.range.clone()]);
         let room = limit - ell;
+        if let Some(cut) = self.visual_cut(head, end, room, segs) {
+            line.width = cut + ell;
+            line.range = head..end;
+            line.ellipsis = true;
+            line.vis_cut = Some(cut);
+            return;
+        }
         if self.wrap.rtl {
             // Письмо справа налево: строка прижата вправо, контейнер режет
             // ЛЕВЫЙ край — усечение с ЛОГИЧЕСКОГО НАЧАЛА, многоточие там же.
@@ -1624,12 +1646,73 @@ impl Paragraph {
                     .map(|(i, _)| head + i)
                     .filter(|at| *at > head && self.span(segs, head, *at) <= room)
                     .max()
-                    .unwrap_or(head)
+                    // Первый знак строки обрезается, а не уступает место
+                    // знаку обрыва (css-overflow-3 §text-overflow;
+                    // `text-overflow-string-002`: «T» и усечённое «12»).
+                    .unwrap_or_else(|| {
+                        self.text[head..end]
+                            .chars()
+                            .next()
+                            .map_or(head, |c| head + c.len_utf8())
+                    })
             });
         }
         line.width = self.span(segs, head, end) + ell;
         line.range = head..end;
         line.ellipsis = true;
+    }
+
+    /// Усечение строки со СМЕШАННЫМ направлением: знаки прячутся с конечного
+    /// края строки в ВИДИМОМ порядке (css-overflow-3 §text-overflow:
+    /// «implementations must hide characters … at the end edge of the line
+    /// as necessary to fit the ellipsis»; Blink `line_truncator.cc` режет
+    /// по визуальному порядку фрагментов). Логический срез резал не те
+    /// знаки (`text-overflow-027/028/029`, `text-overflow-string-005…008`).
+    /// Первый знак строки остаётся всегда (обрезается, а не прячется).
+    /// Возвращает ширину видимой части от начального края; None — строка
+    /// одного направления, ей хватает логического среза.
+    fn visual_cut(&self, head: usize, end: usize, room: Pixels, segs: &[Seg]) -> Option<Pixels> {
+        if head >= end || end > self.text.len() || self.plaintext.is_some() {
+            return None;
+        }
+        let base = if self.wrap.rtl {
+            unicode_bidi::Level::rtl()
+        } else {
+            unicode_bidi::Level::ltr()
+        };
+        let info = unicode_bidi::BidiInfo::new(&self.text, Some(base));
+        let para = info
+            .paragraphs
+            .iter()
+            .find(|p| p.range.start <= head && head < p.range.end)?;
+        let (levels, runs) = info.visual_runs(para, head..end);
+        if runs.len() < 2 && runs.first().is_none_or(|r| levels.get(r.start) == Some(&base)) {
+            return None;
+        }
+        let mut order: Vec<usize> = vec![];
+        for run in runs {
+            let mut cs: Vec<usize> = self.text[run.clone()]
+                .char_indices()
+                .map(|(i, _)| run.start + i)
+                .collect();
+            if levels.get(run.start).is_some_and(|l| l.is_rtl()) {
+                cs.reverse();
+            }
+            order.extend(cs);
+        }
+        if self.wrap.rtl {
+            order.reverse();
+        }
+        let mut x = px(0.);
+        for (n, i) in order.into_iter().enumerate() {
+            let len = self.text[i..].chars().next().map_or(1, |c| c.len_utf8());
+            let w = self.span(segs, i, i + len);
+            if n > 0 && x + w > room {
+                break;
+            }
+            x += w;
+        }
+        Some(x)
     }
 
     /// Чем показывать перенос слова.
@@ -2481,6 +2564,7 @@ impl Paragraph {
                     width,
                     ellipsis: false,
                     clamped: false,
+                    vis_cut: None,
                     hyphen: false,
                     indent: ind,
                 });
@@ -2536,6 +2620,7 @@ impl Paragraph {
                     width: self.span(&segs, head, tail) - self.tail_spacing(tail) + extra,
                     ellipsis: false,
                     clamped: false,
+                    vis_cut: None,
                     hyphen,
                     indent: ind,
                 });
@@ -2575,6 +2660,7 @@ impl Paragraph {
                 width: self.conditional_width(segs, head, end, bare, room),
                 ellipsis: false,
                 clamped: false,
+                vis_cut: None,
                 hyphen: false,
                 indent,
             });
@@ -3897,6 +3983,19 @@ impl Element for Paragraph {
         // Надбавка сверху опускает НАБОР строки: поднятый знак занимает её,
         // а базовая линия остаётся на своём месте относительно кегля.
         let above = |i: usize| -> Pixels { px(pads.get(i).copied().unwrap_or((0.0, 0.0)).0) };
+        if let Some(tag) = self.clamp_tag
+            && !self.lines_reversed
+        {
+            let mut y0 = f32::from(bounds.origin.y);
+            let rows = (0..count)
+                .map(|i| {
+                    let r = (y0, y0 + f32::from(step(i)));
+                    y0 = r.1;
+                    r
+                })
+                .collect();
+            crate::interact::publish_para_rows(tag, rows);
+        }
         // Строки снизу вверх: место строки считается ОТ ВЕРХА коробки одним
         // сложением (`origin + px(смещение)`), как у `point_of`. Прежде
         // `origin + total - line_height` в f32 расходился с `point_of` в
@@ -4008,6 +4107,7 @@ impl Element for Paragraph {
                         // `paint_justified` опускает слова (`block-ellipsis-005`:
                         // знак кегля блока за `<span>` 1.5em стоял выше).
                         self.base_of(&range).map(px),
+                        false,
                         window,
                         cx,
                     );
@@ -4066,7 +4166,26 @@ impl Element for Paragraph {
             } else {
                 String::new()
             };
-            self.paint_line(&visible, &runs, at, &mark, window, cx);
+            if let Some(cut) = line.vis_cut.filter(|_| line.ellipsis) {
+                // Строка целиком в видимом порядке, скрытые с конечного края
+                // знаки отсекает маска; знак обрыва — сразу за видимой частью.
+                let full = self.span(&segs, visible.start, visible.end);
+                let (x0, mask_x, mark_x) = if self.wrap.rtl {
+                    (at.x + line.width - full, at.x + line.width - cut, at.x)
+                } else {
+                    (at.x, at.x, at.x + cut)
+                };
+                let mask = Bounds {
+                    origin: point(mask_x, bounds.origin.y - px(1000.)),
+                    size: size(cut, bounds.size.height + px(2000.)),
+                };
+                let (base, exact) = window.with_content_mask(Some(gpui::ContentMask { bounds: mask }), |window| {
+                    self.paint_line(&visible, &runs, point(x0, at.y), "", window, cx)
+                });
+                self.paint_suffix(&mark, line.range.start, point(mark_x, at.y), base, exact, window, cx);
+            } else {
+                self.paint_line(&visible, &runs, at, &mark, window, cx);
+            }
             if self.lines_reversed {
                 rev_off -= f32::from(step(i));
                 y = bounds.origin.y + px(rev_off);
@@ -4198,6 +4317,7 @@ impl Paragraph {
             text_overflow: false,
             overflow_marker: None,
             clamp_marker: None,
+            clamp_tag: None,
             marker_font: None,
             marker_size: None,
             marker_color: None,
@@ -4280,7 +4400,7 @@ impl Paragraph {
         suffix: &str,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> (Option<Pixels>, bool) {
         // Пустой отрезок разбору двунаправленности отдавать нельзя: он берёт
         // уровень по первому знаку и падает на конце текста. Пустая строка
         // бывает у абзаца из одних пробелов и после жёсткого разрыва в конце.
@@ -4293,9 +4413,9 @@ impl Paragraph {
             // (`text-wrap-balance-line-clamp-004`).
             if !suffix.is_empty() && !self.text.is_empty() {
                 let anchor = range.start.min(self.text.len().saturating_sub(1));
-                self.paint_suffix(suffix, anchor, at, None, window, cx);
+                self.paint_suffix(suffix, anchor, at, None, false, window, cx);
             }
-            return;
+            return (None, false);
         }
         let base = if self.wrap.rtl {
             unicode_bidi::Level::rtl()
@@ -4318,7 +4438,7 @@ impl Paragraph {
             .find(|p| p.range.start <= range.start && range.start < p.range.end)
             .or_else(|| info.paragraphs.first())
         else {
-            return;
+            return (None, false);
         };
         let (levels, visual) = info.visual_runs(para, range.clone());
         let mut x = at.x;
@@ -4328,6 +4448,7 @@ impl Paragraph {
         // у строки-замены кегля блока внутри крупного `<span>` своя базовая
         // линия выше на разницу подъёмов (`text-overflow-string-*`).
         let mut line_base: Option<Pixels> = None;
+        let mut line_exact = false;
         for run in visual.into_iter() {
             let rtl = levels.get(run.start).is_some_and(|l| l.is_rtl());
             // Знак обрыва — у обрезанного КРАЯ: обычно это логический
@@ -4357,11 +4478,15 @@ impl Paragraph {
             let width = shaped.width;
             let base = (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent;
             line_base = Some(line_base.map_or(base, |b: Pixels| b.max(base)));
+            line_exact |= shaped
+                .runs
+                .iter()
+                .any(|r| window.text_system().pixel_exact_glyphs(r.font_id));
             if at_start && !tail.is_empty() {
                 // Знак обрыва СЛЕВА от куска: рисуется на своём месте, а
                 // кусок сдвигается на его ширину.
                 let ell = self.suffix_width(tail, run.start, window);
-                self.paint_suffix(tail, run.start, point(x, at.y), Some(base), window, cx);
+                self.paint_suffix(tail, run.start, point(x, at.y), Some(base), line_exact, window, cx);
                 x += ell;
             }
             // Подложка прогона (`background` на `<span>`) рисуется ОТДЕЛЬНЫМ
@@ -4379,8 +4504,9 @@ impl Paragraph {
         // Строка-замена — за текстом строки, своим шрифтом и кеглем.
         if !self.wrap.rtl && !suffix.is_empty() && self.overflow_marker.as_deref() == Some(suffix) {
             let anchor = range.end.saturating_sub(1).max(range.start);
-            self.paint_suffix(suffix, anchor, point(x, at.y), line_base, window, cx);
+            self.paint_suffix(suffix, anchor, point(x, at.y), line_base, line_exact, window, cx);
         }
+        (line_base, line_exact)
     }
 
     /// Знаки акцента прогона (css-text-decor-3 §5.3): «drawn exactly as if
@@ -4477,6 +4603,7 @@ impl Paragraph {
         at: usize,
         origin: Point<Pixels>,
         base: Option<Pixels>,
+        raw: bool,
         window: &mut Window,
         cx: &mut App,
     ) {
@@ -4505,7 +4632,15 @@ impl Paragraph {
             }
             None => origin,
         };
-        let origin = self.text_raster_origin(&shaped, origin, window);
+        // Знак — часть строки: её набор с точным шрифтом (Ahem) GPUI ставит
+        // на дробную базовую без округления (`text_raster_origin`), и знак
+        // идёт по тому же правилу, иначе он округлялся отдельно и стоял на
+        // точку выше текста строки (`text-overflow-string-*`).
+        let origin = if raw {
+            origin
+        } else {
+            self.text_raster_origin(&shaped, origin, window)
+        };
         let _ = shaped.paint(origin, self.line_height, window, cx);
     }
 

@@ -73,6 +73,7 @@ mod tests {
             width: px(20.0),
             ellipsis: false,
             clamped: false,
+            vis_cut: None,
             hyphen: false,
             indent: px(0.0),
         }];
@@ -101,6 +102,7 @@ mod tests {
             width: px(20.0),
             ellipsis: false,
             clamped: false,
+            vis_cut: None,
             hyphen: false,
             indent: px(0.0),
         }];

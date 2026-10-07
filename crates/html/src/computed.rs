@@ -5990,7 +5990,7 @@ impl Computed {
                         // (css-text-3 §4.1.2; Blink `line_truncator.cc`
                         // `SuppressLineBreaks`): ряд принудительных разрывов —
                         // один пробел (`text-overflow-string-009…016`).
-                        marker = Some(collapse_segment_breaks(&unescape_content(text)));
+                        marker = Some(collapse_forced_breaks(&unescape_content(text)));
                     } else if t == "ellipsis" {
                         on = true;
                         marker = None;
@@ -7299,7 +7299,7 @@ impl Computed {
                 self.clamp_mark = if t.eq_ignore_ascii_case("no-ellipsis") {
                     Some(String::new())
                 } else if t.len() >= 2 && (t.starts_with('"') || t.starts_with('\'')) {
-                    Some(collapse_segment_breaks(&unescape_content(&t[1..t.len() - 1])))
+                    Some(collapse_forced_breaks(&unescape_content(&t[1..t.len() - 1])))
                 } else {
                     None
                 };
@@ -10938,6 +10938,37 @@ fn split_ws_top(v: &str) -> Vec<&str> {
 
 /// Разрывы сегмента в строке-маркере: ряд принудительных разрывов — один
 /// пробел (css-text-3 §4.1.2, «Segment Break Transformation Rules»).
+/// Строка знака обрыва (`text-overflow: <string>`, `block-ellipsis`): ряд
+/// ПРИНУДИТЕЛЬНЫХ разрывов — один пробел. Принудительный разрыв по
+/// css-text-3 §forced-line-break — сохранённый перевод строки и любой знак
+/// классов UAX#14 BK/NL: VT, FF, NEL, LS, PS (Blink `line_truncator.cc`
+/// `IsForcedLineBreak`/`SuppressLineBreaks`; `text-overflow-string-018…022`).
+fn collapse_forced_breaks(text: &str) -> String {
+    let forced = |c: char| {
+        matches!(
+            c,
+            '\n' | '\r' | '\u{0B}' | '\u{0C}' | '\u{85}' | '\u{2028}' | '\u{2029}'
+        )
+    };
+    if !text.contains(forced) {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut in_break = false;
+    for ch in text.chars() {
+        if forced(ch) {
+            if !in_break {
+                out.push(' ');
+                in_break = true;
+            }
+        } else {
+            in_break = false;
+            out.push(ch);
+        }
+    }
+    out
+}
+
 fn collapse_segment_breaks(text: &str) -> String {
     if !text.contains(['\n', '\r']) {
         return text.to_string();
