@@ -41,6 +41,22 @@ pub fn svg_markup_to_image(
     height: f32,
     density: f32,
 ) -> Option<Arc<crate::RenderImage>> {
+    svg_markup_to_image_padded(markup, width, height, density, 0.0)
+}
+
+/// KaminIDE patch: the same raster with `pad` extra logical pixels of canvas
+/// on the right and bottom, at the SAME user-space scale as the unpadded
+/// raster. Content past the viewport edge stays available there, so the
+/// caller can clip the drawing at a device-snapped edge instead of a
+/// fractional one (Blink keeps the replaced content transform exact and
+/// pixel-snaps only the clip).
+pub fn svg_markup_to_image_padded(
+    markup: &str,
+    width: f32,
+    height: f32,
+    density: f32,
+    pad: f32,
+) -> Option<Arc<crate::RenderImage>> {
     use image::{Frame, ImageBuffer};
 
     let opts = usvg::Options::default();
@@ -52,7 +68,8 @@ pub fn svg_markup_to_image(
     if pw > 4096 || ph > 4096 {
         return None;
     }
-    let mut pixmap = Pixmap::new(pw, ph)?;
+    let pad_px = (pad.max(0.0) * density).round() as u32;
+    let mut pixmap = Pixmap::new(pw + pad_px, ph + pad_px)?;
     let size = tree.size();
     // Масштаб ПО ОСЯМ РАЗДЕЛЬНО: плитка фона растягивается в обе стороны
     // независимо (`background-size`), а общий минимум вписывал рисунок с
@@ -65,7 +82,21 @@ pub fn svg_markup_to_image(
         &mut pixmap.as_mut(),
     );
 
-    let mut buffer = ImageBuffer::from_raw(pw, ph, pixmap.take())?;
+    // A padded raster is only useful when content reaches past the viewport:
+    // with an empty pad the caller keeps the exact raster unchanged.
+    if pad_px > 0 {
+        let stride = (pw + pad_px) as usize;
+        let data = pixmap.data();
+        let inked = (0..(ph + pad_px) as usize).any(|y| {
+            (0..stride).any(|x| {
+                (x >= pw as usize || y >= ph as usize) && data[(y * stride + x) * 4 + 3] != 0
+            })
+        });
+        if !inked {
+            return None;
+        }
+    }
+    let mut buffer = ImageBuffer::from_raw(pw + pad_px, ph + pad_px, pixmap.take())?;
     for pixel in buffer.chunks_exact_mut(4) {
         crate::swap_rgba_pa_to_bgra(pixel);
     }

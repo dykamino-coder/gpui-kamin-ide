@@ -1069,6 +1069,29 @@ pub fn rasterize(markup: &str, w: f32, h: f32) -> Option<Arc<RenderImage>> {
     image
 }
 
+/// `rasterize` with `pad` logical pixels of extra canvas on the right and
+/// bottom at the same user-space scale (`gpui::svg_markup_to_image_padded`).
+pub(crate) fn rasterize_padded(markup: &str, w: f32, h: f32, pad: f32) -> Option<Arc<RenderImage>> {
+    let mut hasher = DefaultHasher::new();
+    markup.hash(&mut hasher);
+    pad.to_bits().hash(&mut hasher);
+    let key = (hasher.finish(), w.round() as u32, h.round() as u32);
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(map) = cache.lock()
+        && let Some(hit) = map.get(&key)
+    {
+        return hit.clone();
+    }
+    let image = gpui::svg_markup_to_image_padded(markup, w, h, DENSITY, pad);
+    if let Ok(mut map) = cache.lock() {
+        if map.len() >= CACHE_CAP {
+            map.clear();
+        }
+        map.insert(key, image.clone());
+    }
+    image
+}
+
 /// Готовый элемент с рисунком либо `None`, если разобрать не удалось.
 pub fn element(e: &Element) -> Option<AnyElement> {
     let (w, h) = size_of(e);

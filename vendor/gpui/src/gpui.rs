@@ -141,6 +141,7 @@ use svg_renderer::*;
 pub use text_system::FontStretch;
 pub use svg_renderer::{
     bgra_bytes_to_image, crop_image, png_icc_profile, raster_bytes_to_image, svg_markup_to_image,
+    svg_markup_to_image_padded,
 };
 pub(crate) use tab_stop::*;
 pub use taffy::{AvailableSpace, LayoutId, LayoutMeasurement, MeasuredContent};
