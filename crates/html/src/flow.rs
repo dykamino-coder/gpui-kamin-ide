@@ -1626,6 +1626,20 @@ impl ColumnStack {
                         placed = col < not_top;
                         continue;
                     }
+                    // Одно поле ребёнка (ни куска содержимого) уже ушло за край
+                    // пустой колонки: разрыв ложится в поле, и оно на разрыве
+                    // усекается (css-break-3 §5.2: «margins adjoining an
+                    // unforced break are truncated»), а коробка начинает
+                    // следующую колонку с верха (`flex-container-
+                    // fragmentation-006`: поле 200 при колонке 100). Поле —
+                    // не содержимое, правило «хоть что-то в каждом
+                    // фрагментаинере» его не держит.
+                    None if !placed && !paged && from <= 0.01 && cur > target + 0.01 => {
+                        col += 1;
+                        cur = 0.0;
+                        placed = col < not_top;
+                        continue;
+                    }
                     None if !mono && rest > target + 0.01 && room > 0.01 => {
                         out.push(Frag { kid, copy, col, y: cur, from, h: room, head: hd, foot: ft(room) });
                         from += room;
@@ -2861,10 +2875,23 @@ impl Element for ColumnStack {
                 let line_h = self.lines_plan.borrow().get(line).map_or(0.0, |l| l.1);
                 let band = kid.repeat.as_ref().and_then(|r| r.foot).map_or(0.0, |b| b.1);
                 let tail = if f.foot > 0.01 { f.foot - band } else { line_h - f.y - f.h };
-                let w = kid.laid_w.get();
+                // Не шире колонки: разложенная ширина копии несёт дробный
+                // остаток раскладки, и хвост залезал на край соседней колонки
+                // (`multi-line-row-flex-fragmentation-090`: пиксель красного у
+                // левого края третьей колонки).
+                let w = kid.laid_w.get().min(col_w);
                 if tail > 0.01 && w > 0.01 {
+                    // По пикселям устройства, как маска фрагмента: дробная
+                    // ширина копии (`33.333px`) иначе оставляла полупрозрачный
+                    // край рядом с соседом (`multi-line-row-flex-
+                    // fragmentation-090`).
+                    let sf = window.scale_factor();
                     window.paint_quad(gpui::fill(
-                        Bounds { origin: point(x, y + px(f.h)), size: size(px(w), px(tail)) },
+                        fragment_mask::snap(
+                            Bounds { origin: point(x, y + px(f.h)), size: size(px(w), px(tail)) },
+                            sf,
+                        )
+                        .bounds,
                         bg,
                     ));
                 }

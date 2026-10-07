@@ -1828,6 +1828,63 @@ fn plain_block_tree(c: &Element, depth: u8) -> bool {
         _ => true,
     })
 }
+/// Поддерево обычных блоков (`plain_block_tree`), где допустим и flex-ряд с
+/// переносом, каждый элемент которого занимает всю строку (`flex-basis` или
+/// `width` 100%, без роста и боковых полей): строка = элемент, и элементы идут
+/// блочной стопкой (css-flexbox-1 §9.3 шаг 5: следующий элемент в строку не
+/// помещается). Такую стопку мера `shape_full` ведёт так же точно, как блок
+/// (ветка «строка = элемент»), и её переполнение заданной высоты продолжается
+/// в следующем фрагментаинере параллельным потоком (css-break-3 §3).
+fn stacked_flex_tree(c: &Element, depth: u8) -> bool {
+    use crate::computed::FlexDir;
+    if c.style.column_count.is_some() || c.style.column_width.is_some() || c.style.webkit_box == Some(true) {
+        return false;
+    }
+    let s = &c.style;
+    let flex_stack = s.display == Some(Display::Flex)
+        && matches!(s.flex_dir, None | Some(FlexDir::Row))
+        && s.flex_wrap == Some(true)
+        && s.flex_wrap_reverse != Some(true)
+        && s.vertical != Some(true)
+        && s.gap.is_none()
+        && !flex_gap_rules(s);
+    if !flex_stack && !matches!(s.display, None | Some(Display::Block) | Some(Display::ListItem)) {
+        return false;
+    }
+    if depth == 0 {
+        return !flex_stack;
+    }
+    c.children.iter().all(|n| match n {
+        Node::Element(k) if flex_stack => {
+            let ks = &k.style;
+            let full = |l: &Option<Len>| matches!(l, Some(Len::Pct(p)) if (*p - 1.0).abs() < 1e-4);
+            let zero = |l: &Option<Len>| match l {
+                None => true,
+                Some(Len::Px(v)) => v.abs() < 0.01,
+                _ => false,
+            };
+            !k.inline
+                && !out_of_flow(ks)
+                && ks.position.is_none()
+                && ks.flex_grow.is_none_or(|g| g == 0.0)
+                && ks.basis_content != Some(true)
+                && match ks.flex_basis {
+                    None | Some(Len::Auto) => full(&ks.width),
+                    _ => full(&ks.flex_basis),
+                }
+                && zero(&ks.margin.left)
+                && zero(&ks.margin.right)
+                && zero(&ks.padding.left)
+                && zero(&ks.padding.right)
+                && zero(&ks.borders().left)
+                && zero(&ks.borders().right)
+                && stacked_flex_tree(k, depth - 1)
+        }
+        Node::Element(k) => k.inline || stacked_flex_tree(k, depth - 1),
+        _ => true,
+    })
+}
+
 /// Коробка, у которой в потоке НЕТ НИЧЕГО, кроме флоатов — не больше одного
 /// на сторону, пустых, без `clear` и позиционирования, с шириной и высотой в
 /// точках. Вернуть высоту их общего ряда: наша раскладка ставит такую пару
@@ -1878,7 +1935,30 @@ fn float_only_box(c: &Element) -> Option<f32> {
 /// Атомарные строчные (`inline-flex`/`inline-grid`) — монолиты, но внутрь них
 /// спуск всё равно идёт: гейт осторожный.
 fn parallel_items_inside(c: &Element, depth: u8) -> bool {
-    let own = matches!(
+    // Элементы, идущие СТОПКОЙ по блочной оси, рядом не стоят: колонка flex
+    // без переноса (css-flexbox-1 §9.3: одна строка, элементы друг под
+    // другом) и сетка-стопка (`grid_stack`: одна колонка, ряд = элемент).
+    // Монолит такого элемента переполняет колонку, как в блоке (Blink
+    // `FinishFragmentation` растит фрагмент контейнера до конца монолита;
+    // `monolithic-overflow-003/004.tentative` во flex и сетке).
+    let stacked = (c.style.display == Some(Display::Flex)
+        && c.style.webkit_box != Some(true)
+        && c.style.vertical != Some(true)
+        && matches!(
+            c.style.flex_dir,
+            Some(crate::computed::FlexDir::Col) | Some(crate::computed::FlexDir::ColReverse)
+        )
+        && c.style.flex_wrap != Some(true))
+        || (c.style.display == Some(Display::Grid) && grid_stack(c));
+    // `break-inside: avoid` элемента без настоящего монолита — пожелание
+    // (css-break-4 §4.4): с верха колонки такой элемент выше колонки рвётся, а
+    // ветка переполнения (`overflow_top`) держала бы его целым
+    // (`single-line-column-flex-fragmentation-015`: элемент 250 в колонке 100).
+    let stacked = stacked
+        && !c.children.iter().any(
+            |n| matches!(n, Node::Element(k) if k.style.break_inside_avoid && avoid_only_monolith(k)),
+        );
+    let own = !stacked && matches!(
         c.style.display,
         Some(Display::Flex)
             | Some(Display::Grid)
@@ -2827,6 +2907,11 @@ struct LineFrame {
     w: Option<f32>,
     /// Анонимный блок строк хоста (`group_inline_runs`): его срез — срез хоста.
     anon: bool,
+    /// Ширина детей-элементов этой коробки (`items_kind`): 0 — блочный поток,
+    /// 1 — растянутые на всю ширину (колонка flex и сетка-стопка при
+    /// `stretch`), 2 — ширина по раскладке (ряд flex, прочая сетка): известна
+    /// лишь заданная в точках.
+    items: u8,
 }
 
 /// Контекст меры строк для `shape_full`: включается только вокруг меры детей
@@ -2848,7 +2933,7 @@ fn with_lines<T>(base: &Computed, w: Option<f32>, opts: &RenderOpts, f: impl FnO
     let prev = LINE_CX.with(|l| {
         l.borrow_mut().replace(LineCx {
             opts: opts.clone(),
-            frames: vec![LineFrame { inh: base.clone(), w, anon: false }],
+            frames: vec![LineFrame { inh: base.clone(), w, anon: false, items: 0 }],
         })
     });
     let out = f();
@@ -2861,8 +2946,15 @@ fn with_lines<T>(base: &Computed, w: Option<f32>, opts: &RenderOpts, f: impl FnO
 /// Только обычный блок потока — у прочих ширину решает своя раскладка.
 fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
     let s = &c.style;
+    // Блочный flex-контейнер и сетка в потоке занимают ширину как блок
+    // (css-flexbox-1 §9.2 / css-grid-2 §6.1: «block-level … sized as a
+    // block»); ширину ИХ детей решает `items_kind`.
     if c.inline
-        || !matches!(s.display, None | Some(Display::Block) | Some(Display::ListItem))
+        || !matches!(
+            s.display,
+            None | Some(Display::Block) | Some(Display::ListItem) | Some(Display::Flex) | Some(Display::Grid)
+        )
+        || s.webkit_box == Some(true)
         || s.float.unwrap_or(0) != 0
         || !matches!(s.position, None | Some(crate::computed::Position::Relative))
         || table_box(c)
@@ -2890,6 +2982,84 @@ fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
     }
 }
 
+/// Элемент КОЛОНКИ flex без переноса с главным размером по `flex-basis`
+/// (css-flexbox-1 §9.2 шаг 3): `flex-basis: content` — по содержимому, и
+/// `height` при этом не действует. Контейнер `height: auto` свободного места не
+/// даёт, и гибкость базу не меняет (§9.7). `None` — мера по `height`
+/// элемента, как прежде.
+fn basis_sized(c: &Element, k: &Element) -> Option<Element> {
+    use crate::computed::FlexDir;
+    let s = &c.style;
+    if k.inline
+        || s.display != Some(Display::Flex)
+        || s.webkit_box == Some(true)
+        || s.vertical == Some(true)
+        || s.flex_wrap == Some(true)
+        || !matches!(s.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse))
+        || !matches!(s.height, None | Some(Len::Auto))
+    {
+        return None;
+    }
+    let mut kk = k.clone();
+    // База в точках здесь не ставится: при `min-height: auto` элемент не
+    // меньше своего содержимого (§4.5), а этой меры у нас нет.
+    if k.style.basis_content != Some(true) {
+        return None;
+    }
+    kk.style.height = None;
+    Some(kk)
+}
+
+/// Хвост непоследнего фрагмента обычной коробки (`flow::StackChild::slack`):
+/// фрагмент, разорванный внутри коробки, занимает остаток фрагментаинера
+/// (css-break-3 §box-splitting «the box … continues to the end of the
+/// fragmentainer»; Blink `fragmentation_utils.cc` «Consumed block-size … is
+/// always stretched to the fragmentainers»). Художник хвоста красит его одним
+/// цветом по ширине копии — это точно, лишь когда у коробки сплошной фон без
+/// картинки и скруглений, а видимые боковые рамки того же цвета. Иначе `None`.
+fn slack_fill(c: &Element) -> Option<gpui::Hsla> {
+    let s = &c.style;
+    let bg = s.background?;
+    if s.bg_image.is_some()
+        || s.webkit_box == Some(true)
+        || [&s.radius.tl, &s.radius.tr, &s.radius.br, &s.radius.bl]
+            .into_iter()
+            .any(|r| !matches!(r, None | Some(Len::Px(0.0))))
+        || !visible_overflow(s)
+    {
+        return None;
+    }
+    let b = s.borders();
+    for (i, w) in [(1usize, &b.right), (3usize, &b.left)] {
+        let wide = match w {
+            None => false,
+            Some(Len::Px(v)) => *v > 0.0,
+            Some(_) => true,
+        };
+        if wide && s.border_colors[i].or(s.border_color).or(s.color) != Some(bg) {
+            return None;
+        }
+    }
+    Some(bg.to_hsla())
+}
+
+/// Как ширина детей коробки `c` известна мере строк (`LineFrame::items`).
+fn items_kind(c: &Element) -> u8 {
+    use crate::computed::FlexDir;
+    let s = &c.style;
+    match s.display {
+        Some(Display::Flex) => {
+            let col = matches!(s.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse));
+            let stretch = matches!(s.align_items, None | Some(Align::Stretch));
+            if col && stretch && s.vertical != Some(true) { 1 } else { 2 }
+        }
+        Some(Display::Grid) => {
+            if grid_stack(c) && matches!(s.justify_items, None | Some(Align::Stretch)) { 1 } else { 2 }
+        }
+        _ => 0,
+    }
+}
+
 /// Кадр меры строк на время `shape_full(c)`.
 struct LineScope(bool);
 
@@ -2904,8 +3074,17 @@ impl LineScope {
                 return LineScope(false);
             };
             let inh = crate::inline::inherit(&top.inh, &c.style);
-            let w = top.w.and_then(|pw| line_content_w(c, pw));
-            cx.frames.push(LineFrame { inh, w, anon: c.tag == "anon-block" });
+            let w = top.w.and_then(|pw| match top.items {
+                // Элемент flex/сетки шириной по раскладке: известна лишь
+                // заданная в точках.
+                2 if !matches!(c.style.width, Some(Len::Px(_))) => None,
+                // Растянутый элемент (css-flexbox-1 §9.4 шаг 11 / css-grid-2
+                // §11.3 `stretch`): ширина как у блока в потоке, если сам
+                // элемент выравнивание не переопределил.
+                1 if c.style.align_self.is_some() || c.style.justify_self.is_some() => None,
+                _ => line_content_w(c, pw),
+            });
+            cx.frames.push(LineFrame { inh, w, anon: c.tag == "anon-block", items: items_kind(c) });
             LineScope(true)
         })
     }
@@ -3652,6 +3831,13 @@ fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
             c.style.flex_dir,
             None | Some(crate::computed::FlexDir::Row) | Some(crate::computed::FlexDir::RowReverse)
         ) && c.style.flex_wrap != Some(true));
+    let flex_col = flex_items
+        && c.style.vertical != Some(true)
+        && c.style.flex_wrap != Some(true)
+        && matches!(
+            c.style.flex_dir,
+            Some(crate::computed::FlexDir::Col) | Some(crate::computed::FlexDir::ColReverse)
+        );
     let flex_gap = match c.style.gap {
         Some((Some(Len::Px(v)), _)) if flex_items && c.style.vertical != Some(true) => v.max(0.0),
         _ => 0.0,
@@ -3923,6 +4109,13 @@ fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                         && (k.style.float.unwrap_or(0) == 0
                             || block_like_float(&k.style)) =>
                 {
+                    // Главный размер элемента КОЛОНКИ flex — его `flex-basis`
+                    // (css-flexbox-1 §9.2 шаг 3): `content` — по содержимому,
+                    // а `height` при этом не действует; в точках — сама база.
+                    // Контейнер `height: auto` свободного места не даёт, и
+                    // гибкость базу не меняет (§9.7).
+                    let based = if flex_col { basis_sized(c, k) } else { None };
+                    let k = based.as_ref().unwrap_or(k);
                     shape_full(k, depth - 1, cx).map(
                         |(h, mt, mb, cuts, forced, solid)| {
                             // Монолит-потомок — весь диапазон
@@ -4085,10 +4278,16 @@ fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                 // только зазор: край внутри зазора уводит разрез к его началу,
                 // копия продолжается с его конца — тот же приём, что
                 // `grid_row_gaps` ниже (css-gaps-1 §fragmentation).
+                // Диапазон зазора начинается РОВНО на границе: с допуском
+                // вверх (`b - 0.05`) он перекрывал монолит предыдущего
+                // элемента, и `fill_at` шёл по цепочке перекрытий к началу
+                // ЭТОГО монолита — разрыв уходил выше целого элемента
+                // (`single-line-column-flex-fragmentation-061`: строка Ahem
+                // уезжала в следующую колонку вместе с рамкой). Край ровно на
+                // `b` по-прежнему режет здесь (`cuts` с тем же `need`).
                 let b = y + prev_mb;
                 if flex_gap > 0.0 {
-                    cuts.push((b - 0.05, b + flex_gap));
-                    solid.push((b - 0.05, b + flex_gap + 0.05));
+                    solid.push((b, b + flex_gap + 0.05));
                 }
                 cuts.push((b, b + flex_gap));
                 if fb || force_next {
@@ -4617,7 +4816,9 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
                 || k.style.position == Some(crate::computed::Position::Relative))
             && k.style.float.unwrap_or(0) == 0
         {
-            let (h, mt, mb, ..) = shape_full(k, depth - 1, ShapeCx::COLUMNS)?;
+            // Та же база элемента колонки flex, что у `shape_full`.
+            let based = basis_sized(c, k);
+            let (h, mt, mb, ..) = shape_full(based.as_ref().unwrap_or(k), depth - 1, ShapeCx::COLUMNS)?;
             (h, mt, mb)
         } else {
             return None;
@@ -5512,13 +5713,12 @@ fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, El
             || !matches!(ks.position, None | Some(crate::computed::Position::Relative))
             || ks.float.unwrap_or(0) != 0
             || ks.flex_grow.is_some_and(|g| g > 0.0)
-            || ks.flex_basis.is_some()
             || ks.align_self.is_some()
             || ks.align_self_normal
             || ks.min_height.is_some()
             || !zero(&ks.margin.left)
             || !zero(&ks.margin.right)
-            || !matches!(ks.width, Some(Len::Px(_)))
+            || row_item_width(ks, main).is_none()
         {
             return None;
         }
@@ -5531,9 +5731,32 @@ fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, El
     // Строки по внешней ширине элементов (главная ось).
     let mut lines: Vec<Vec<(f32, Element, Shape)>> = Vec::new();
     let mut used = 0.0f32;
+    // Строка из одного элемента и размер в процентах/`flex-basis` — шире
+    // прежнего гейта: такой ряд прежде шёл целым контейнером, и его мера
+    // (`shape_full` контейнера) уже знала рост строки от разрыва внутри
+    // элемента, растяжение соседей на выросшую строку, статическое место
+    // абсолютного потомка и вложенный параллельный поток. Раскрытые элементы
+    // этого не выражают (`grow_pushed` растит лишь сам элемент): замерено
+    // −3 (`multi-line-row-flex-fragmentation-053/060/062`). Такие элементы —
+    // прежним путём.
+    let widened = items.iter().any(|k| !matches!(k.style.width, Some(Len::Px(_))) || k.style.flex_basis.is_some());
+    let mut single = true;
+    let mut risky = false;
+    for k in &items {
+        risky |= carries_abspos(k, 4) || constrained_inside(k, 4);
+    }
     for k in items {
         let kb = k.style.borders();
-        let Some(Len::Px(w)) = k.style.width else { return None };
+        // Гипотетический главный размер (css-flexbox-1 §9.2 шаг 3):
+        // `flex-basis` в точках/процентах, иначе `width`; проценты — от
+        // главного размера контейнера (§9.2 «percentage … against the flex
+        // container's inner main size»). Копия элемента несёт его в точках:
+        // в стопке он рисуется блоком в колонке.
+        let w = row_item_width(&k.style, main)?;
+        let mut k = k.clone();
+        k.style.width = Some(Len::Px(w));
+        k.style.flex_basis = None;
+        let k = &k;
         let w = if k.style.border_box == Some(true) {
             w
         } else {
@@ -5545,6 +5768,7 @@ fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, El
         let sh = shape_full(k, 4, ShapeCx::COLUMNS)?;
         match lines.last_mut() {
             Some(line) if used + col_gap + w <= main + 0.01 => {
+                single = false;
                 line.push((used + col_gap, k.clone(), sh));
                 used += col_gap + w;
             }
@@ -5554,7 +5778,7 @@ fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, El
             }
         }
     }
-    if lines.iter().all(|l| l.len() < 2) {
+    if (single || widened) && (risky || lines.iter().flatten().any(|x| !x.2.4.is_empty())) {
         return None;
     }
     for (li, line) in lines.iter_mut().enumerate() {
@@ -5595,6 +5819,40 @@ fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, El
         }
     }
     Some(lines)
+}
+
+/// В поддереве (до `depth`) — коробка с заданной высотой и содержимым: свой
+/// параллельный поток (css-break-3 §3), которого раскрытый элемент ряда не
+/// выражает (`flex_row_lines_of`).
+fn constrained_inside(c: &Element, depth: u8) -> bool {
+    depth > 0
+        && c.children.iter().any(|n| match n {
+            Node::Element(k) => {
+                (matches!(k.style.height, Some(Len::Px(_)) | Some(Len::Pct(_)))
+                    && k.children.iter().any(|n| !is_blank(n)))
+                    || constrained_inside(k, depth - 1)
+            }
+            _ => false,
+        })
+}
+
+/// Главный размер элемента многострочного ряда для `flex_row_lines_of`:
+/// `flex-basis` (точки/проценты) при `flex-grow: 0`, иначе `width`; проценты —
+/// от главного размера контейнера `main`. `None` — размер по содержимому
+/// (`auto`/`content`), который гейт не выражает.
+fn row_item_width(ks: &Computed, main: f32) -> Option<f32> {
+    let px = |l: &Option<Len>| match l {
+        Some(Len::Px(v)) => Some(*v),
+        Some(Len::Pct(p)) => Some(p * main),
+        _ => None,
+    };
+    if ks.basis_content == Some(true) {
+        return None;
+    }
+    match ks.flex_basis {
+        Some(Len::Auto) | None => px(&ks.width),
+        _ => px(&ks.flex_basis),
+    }
 }
 
 /// «Сдвиг ряда» сетки с рядами в точках (Blink `row_offset_adjustments`,
@@ -22820,6 +23078,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     // fragmentation-006`: сетка 200 с содержимым
                                     // 400 в четырёх колонках.
                                     let plain = plain_block_tree(&copy, 4)
+                                        || stacked_flex_tree(&copy, 4)
                                         || (grid_stack(&copy)
                                             && copy.children.iter().all(|n| match n {
                                                 Node::Element(k) => k.inline || plain_block_tree(k, 3),
@@ -23511,9 +23770,18 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     par: kid_par[ix],
                                     // Хвост непоследнего фрагмента таблицы — её фоном
                                     // (`flow.rs` `StackChild::slack`).
-                                    slack: (table_box(&copy) && !col_vert)
-                                        .then(|| copy.style.background.map(|c| c.to_hsla()))
-                                        .flatten(),
+                                    slack: if col_vert {
+                                        None
+                                    } else if table_box(&copy) {
+                                        copy.style.background.map(|c| c.to_hsla())
+                                    } else if dec.is_none() && over <= h + 0.01 {
+                                        // Продолжение одного лишь параллельного
+                                        // потока (`over`) — не продолжение коробки:
+                                        // она кончилась, хвоста у неё нет.
+                                        slack_fill(&copy)
+                                    } else {
+                                        None
+                                    },
                                     laid_w: Default::default(),
                                     // Повтор шапки/подвала таблицы — полосы своими
                                     // копиями (`flow::Repeat`); та же мера, что у
