@@ -59,6 +59,17 @@ fn copy_subtree(
 }
 
 impl LayoutMeasurement {
+    /// Cap the margin-box inline size of the root's `index`-th child in this
+    /// copy only (see [`TaffyLayoutEngine::cap_child_outer_width`]).
+    pub fn cap_child_outer_width(&mut self, index: usize, width: Pixels) -> bool {
+        super::cap_child_outer_width(
+            &mut self.tree,
+            self.root,
+            index,
+            width.0 * self.scale_factor,
+        )
+    }
+
     /// Measure logical CSS size and content baseline sets without paint rounding.
     /// Callbacks have the same restrictions as ordinary native layout callbacks.
     pub fn measure(

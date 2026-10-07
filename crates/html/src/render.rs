@@ -10050,7 +10050,23 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
         // Куски строчного содержимого копят стиль хозяина: анонимная коробка
         // своего оформления не имеет, а спан внутри неё — имеет.
         let mut piece: Vec<Node> = vec![];
-        let flush = |piece: &mut Vec<Node>, out: &mut Vec<Node>| {
+        // Край строчного со стороны `side` (1 — правый, 3 — левый): рамка,
+        // отбивка или поле ненулевой толщины.
+        let has_edge = |side: usize| {
+            let nz = |l: Option<Len>| matches!(l, Some(Len::Px(v)) if v.abs() > 0.0);
+            let st = &e.style;
+            let (b, p, m) = if side == 1 {
+                (st.borders().right, st.padding.right, st.margin.right)
+            } else {
+                (st.borders().left, st.padding.left, st.margin.left)
+            };
+            nz(b) || nz(p) || nz(m)
+        };
+        // Сторона письма известна только своему стилю: при rtl/вертикали
+        // прежнее поведение (пустой кусок пропадает).
+        let ltr = e.style.rtl != Some(true) && e.style.vertical.is_none();
+        // `first`: кусок до первого блока, `last`: после последнего.
+        let flush = |piece: &mut Vec<Node>, out: &mut Vec<Node>, first: bool, last: bool| {
             // Кусок из одних схлопываемых пробелов коробки не создаёт —
             // иначе он рисовал бы фон и рамку строчного на пустом месте.
             let blank = piece.iter().all(|n| match n {
@@ -10059,6 +10075,37 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
             });
             if piece.is_empty() || blank {
                 piece.clear();
+                // …кроме первого и последнего куска со своим краем: строка с
+                // пустой строчной коробкой, у которой есть рамка, отбивка или
+                // поле по строчной оси, не пуста (CSS 2.1 §9.4.2), а разрыв
+                // §9.2.1.1 оставляет начальный край первому куску, конечный —
+                // последнему (`block-in-inline-whitespace-001a`: синяя черта
+                // `border-left` над первым блоком и `border-right` под вторым).
+                let drop = if first && ltr && has_edge(3) {
+                    Some(1)
+                } else if last && ltr && has_edge(1) {
+                    Some(3)
+                } else {
+                    None
+                };
+                if let Some(drop) = drop {
+                    let mut host = e.clone();
+                    host.children = Vec::new();
+                    host.style.border_visible[drop] = Some(false);
+                    if drop == 1 {
+                        host.style.border_width.right = None;
+                        host.style.padding.right = None;
+                        host.style.margin.right = None;
+                    } else {
+                        host.style.border_width.left = None;
+                        host.style.padding.left = None;
+                        host.style.margin.left = None;
+                    }
+                    out.push(Node::Element(anon_element(
+                        "anon-block",
+                        vec![Node::Element(host)],
+                    )));
+                }
                 return;
             }
             let mut host = e.clone();
@@ -10071,9 +10118,11 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
         // Блок может лежать глубже, внутри вложенных строчных: сперва
         // раскрываем их, и тогда на этом уровне он виден анонимной коробкой.
         let kids = split_block_in_inline(&e.children);
+        let mut first = true;
         for child in &kids {
             if breaks_inline(child) {
-                flush(&mut piece, &mut out);
+                flush(&mut piece, &mut out, first, false);
+                first = false;
                 // Относительный сдвиг строчного хозяина переносится на
                 // вынесенный блок (§9.2.1.1: разрыв не отменяет смещения).
                 let mut block = match child {
@@ -10140,7 +10189,7 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
             }
             piece.push(child.clone());
         }
-        flush(&mut piece, &mut out);
+        flush(&mut piece, &mut out, first, !first);
     }
     // ПРОБОВАЛИ И ОТКАТИЛИ: сливать прогон между разрывами в ОДНУ анонимную
     // коробку (§9.2.1.1 обнимает всю строчную коробку, а не только куски
@@ -25411,13 +25460,26 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // содержимого (`block-size-with-min-or-max-content-table-1a/1b`: эталон
     // держит 150; `support/min-content-max-content.css` — «always treats the
     // 'min-content' and 'max-content' values as the initial value»).
+    //
+    // Предел в точках таблицу ниже содержимого тоже не ужимает: высота
+    // таблицы — большее из заданной (`height`, ограниченной `min/max-height`)
+    // и суммы рядов (css-tables-3 §computing-the-table-height; Blink
+    // `ComputeTableBlockSize` берёт `max(css_block_size, grid_block_size)`).
+    // Предел переходит в саму заданную высоту, а гибкая коробка сетки
+    // больше его не видит (`max-height-table`: `max-height: 0` сплющивал
+    // ряд 5px в ноль).
     let unlimited;
     let inherited = if inherited.vertical != Some(true)
         && matches!(
             inherited.max_height,
-            Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
+            Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent) | Some(Len::Px(_))
         ) {
         let mut c = inherited.clone();
+        if let Some(Len::Px(m)) = c.max_height
+            && let Some(Len::Px(h)) = c.height
+        {
+            c.height = Some(Len::Px(h.min(m)));
+        }
         c.max_height = None;
         unlimited = c;
         &unlimited
@@ -26831,6 +26893,25 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     Some(Align::Center) => d.justify_center(),
                     _ => d.justify_start(),
                 };
+                // `vertical-align: baseline` (CSS 2.1 §17.5.3): первые
+                // базовые ячеек ряда совпадают, ряд растёт на сдвиг, а
+                // коробка ячейки по-прежнему заполняет ряд — сдвигается
+                // только содержимое (taffy `Style::table_cell_baseline`;
+                // Blink `table_layout_utils.cc` `ComputeRowBaseline`).
+                // Значение — СОБСТВЕННОЕ ячейки: `vertical-align` не
+                // наследуется, а слитый `cm` тянет его от любого предка.
+                // Только `td`/`th` берут значение ряда (UA-правило
+                // `td, th { vertical-align: inherit }`).
+                let own_va = cell.style.vertical_align.or(
+                    if matches!(cell.tag.as_str(), "td" | "th") {
+                        row.style.vertical_align
+                    } else {
+                        None
+                    },
+                );
+                if own_va == Some(Align::Baseline) && e.style.vertical != Some(true) {
+                    d.style().table_cell_baseline = Some(true);
+                }
             }
             // Вертикальное письмо таблицы: ряды идут ПОПЕРЁК — охваты
             // меняются осями вместе с сеткой (css-writing-modes-3 §8).
@@ -27275,10 +27356,37 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     ));
                 }
             }
+            // `transform` ячейки, ряда и группы рядов (css-transforms-1
+            // §transformable-element: «table-row-group, table-header-group,
+            // table-footer-group, table-row, table-column-group,
+            // table-column, table-cell»). Своей коробки у ряда и группы в
+            // сетке нет, поэтому их ПЕРЕНОС (не зависящий от точки отсчёта)
+            // переходит на каждую ячейку; поворот/масштаб ряда требует его
+            // коробки и пока не применяется.
+            let mut built = d.children(inside).into_any_element();
+            if cell.style.transform.is_some() {
+                built = transformed(built, &cell.style, &row_style);
+            }
+            let pure_shift = |t: &crate::computed::Transform| {
+                !t.has_3d
+                    && t.lin == [[1.0, 0.0], [0.0, 1.0]]
+                    && t.tr[0][1] == 0.0
+                    && t.tr[0][2] == 0.0
+                    && t.tr[1][1] == 0.0
+                    && t.tr[1][2] == 0.0
+            };
+            if row.style.transform.as_ref().is_some_and(pure_shift) {
+                built = transformed(built, &row.style, inherited);
+            }
+            if let Some(g) = carry.3
+                && g.style.transform.as_ref().is_some_and(pure_shift)
+            {
+                built = transformed(built, &g.style, inherited);
+            }
             if paint_layers && cell_paints_over(&cell.children, 24) {
-                cells_over.push(d.children(inside).into_any_element());
+                cells_over.push(built);
             } else {
-                cells.push(d.children(inside).into_any_element());
+                cells.push(built);
             }
         }
     }
@@ -27901,6 +28009,28 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             half,
         ));
     }
+    let shrink_wrap = root_table
+        || (e.style.width.is_none()
+            // Заданная высота или её порог приходят от РАСКЛАДКИ родителя:
+            // обёртка рвёт эту связь (★ ЗАМЕРЕНО: без отсечки
+            // `min-height-table-2` 0.00 -> 19.24).
+            && e.style.height.is_none()
+            && e.style.min_height.is_none()
+            && !inherited.stretched
+            && e.style.flex_basis.is_none()
+            && e.style.align_self.is_none()
+            && e.style.grid_col.is_none()
+            && e.style.grid_row.is_none());
+    let mut outer = outer;
+    // Сжатие по содержимому — `min(max-content, доступное)` (CSS 2.1
+    // §17.5.2.2: «the used width is the greater of W and MIN» при W =
+    // ширине контейнера, если таблица шире): в ряду-обёртке стол обязан
+    // ужиматься. Блоку потока сжатие выключено (`flex_shrink = 0` в
+    // `collapsed`), и стол с длинным текстом вылезал из узкого родителя
+    // на всю max-content ширину. Пол GRIDMIN держит `item_is_table`.
+    if shrink_wrap && caps_top.is_empty() && caps_bot.is_empty() && !split_wrapper {
+        outer.style().flex_shrink = Some(1.0);
+    }
     let outer = outer;
     // Обёртка «заголовок + коробка»: заголовок вне рамки и обрезки.
     let outer = if caps_top.is_empty() && caps_bot.is_empty() {
@@ -28063,18 +28193,6 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // (`html-display-table`, `root-box-002`). Обёртка снимает зависимость от
     // родителя. Элемент гибкого контейнера, сетки и ячейки не заворачивается:
     // там стол — сам элемент раскладки, и обёртка забрала бы его свойства.
-    let shrink_wrap = root_table
-        || (e.style.width.is_none()
-            // Заданная высота или её порог приходят от РАСКЛАДКИ родителя:
-            // обёртка рвёт эту связь (★ ЗАМЕРЕНО: без отсечки
-            // `min-height-table-2` 0.00 -> 19.24).
-            && e.style.height.is_none()
-            && e.style.min_height.is_none()
-            && !inherited.stretched
-            && e.style.flex_basis.is_none()
-            && e.style.align_self.is_none()
-            && e.style.grid_col.is_none()
-            && e.style.grid_row.is_none());
     if shrink_wrap {
         let mut wrap = div().flex().flex_row();
         if root_table {
@@ -28434,15 +28552,37 @@ fn anon_role(n: &Node) -> Option<bool> {
 /// одной. Починку содержимого (ряд вокруг ячеек, ячейка вокруг прочего)
 /// делает `fixup_table_children` уже внутри собранной таблицы.
 fn wrap_anon_tables(nodes: &[Node]) -> Vec<Node> {
+    wrap_anon_tables_as(nodes, Display::Table)
+}
+
+/// CSS 2.1 §17.2.1 step 3 for INLINE parents: "If the box's parent is an
+/// inline box, then an anonymous inline-table box must be generated" around
+/// each run of consecutive proper table child boxes. Without it every orphan
+/// cell in a line got its own wrapper table, and the white space between
+/// consecutive cells (removed by §17.2.1 step 1) stayed in the line.
+pub(crate) fn inline_anon_tables(nodes: &mut [Node]) {
+    for n in nodes.iter_mut() {
+        let Node::Element(e) = n else { continue };
+        inline_anon_tables(&mut e.children);
+        if e.style.display.is_none()
+            && e.inline
+            && e.children.iter().any(|c| anon_role(c).is_some())
+        {
+            e.children = wrap_anon_tables_as(&e.children, Display::InlineTable);
+        }
+    }
+}
+
+fn wrap_anon_tables_as(nodes: &[Node], display: Display) -> Vec<Node> {
     if !nodes.iter().any(|n| anon_role(n).is_some()) {
         return nodes.to_vec();
     }
-    fn flush(run: &mut Vec<Node>, out: &mut Vec<Node>) {
+    let flush = |run: &mut Vec<Node>, out: &mut Vec<Node>| {
         if run.is_empty() {
             return;
         }
         let mut t = anon_element("table", std::mem::take(run));
-        t.style.display = Some(Display::Table);
+        t.style.display = Some(display);
         // Свой номер узла: по нему таблица просит буферы проб. Нулевой у
         // всех анонимных узлов общий, и две таблицы делили бы один буфер —
         // первая забрала бы его, вторая осталась пустой.
@@ -28451,7 +28591,7 @@ fn wrap_anon_tables(nodes: &[Node]) -> Vec<Node> {
             _ => 0,
         };
         out.push(Node::Element(t));
-    }
+    };
     let mut out: Vec<Node> = vec![];
     let mut run: Vec<Node> = vec![];
     let mut gap: Vec<Node> = vec![];
@@ -28682,6 +28822,37 @@ fn fixup_table_children(children: &[Node]) -> Vec<Node> {
                 }
             }
             Node::Text(t) if !t.trim().is_empty() => stray.push(child.clone()),
+            // CSS 2.1 §17.2.1 step 1.3: white space is dropped only when each
+            // existing immediate sibling is an internal table box or caption.
+            // Next to an inline (`<span>a</span> <span>b</span>`) it belongs
+            // to the anonymous cell's line, where it separates the words.
+            Node::Text(_) => {
+                let ix = children
+                    .iter()
+                    .position(|n| std::ptr::eq(n, child))
+                    .unwrap_or(0);
+                let inline_like = |n: Option<&Node>| match n {
+                    Some(Node::Text(t)) => !t.trim().is_empty(),
+                    Some(Node::Element(el)) => {
+                        el.style.display != Some(Display::Contents)
+                            && col_role(el).is_none()
+                            && !is_cell(el)
+                            && el.tag != "caption"
+                            && el.style.is_caption != Some(true)
+                            && el.tag != "tr"
+                            && !matches!(el.tag.as_str(), "thead" | "tbody" | "tfoot")
+                            && !matches!(
+                                el.style.display,
+                                Some(Display::TableRow) | Some(Display::TableRowGroup)
+                            )
+                    }
+                    _ => false,
+                };
+                let prev = ix.checked_sub(1).and_then(|i| children.get(i));
+                if inline_like(prev) || inline_like(children.get(ix + 1)) {
+                    stray.push(child.clone());
+                }
+            }
             _ => {}
         }
     }

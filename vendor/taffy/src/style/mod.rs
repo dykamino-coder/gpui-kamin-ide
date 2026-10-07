@@ -252,6 +252,12 @@ pub trait CoreStyle {
     fn baseline_x_flags(&self) -> u8 {
         0
     }
+    /// KaminIDE patch: table cell with `vertical-align: baseline` (see
+    /// `Style::table_cell_baseline`).
+    #[inline(always)]
+    fn table_cell_baseline(&self) -> bool {
+        false
+    }
     /// KaminIDE patch: раскладка ЛУНКАМИ (css-grid-3 «grid lanes»): сетка
     /// с дорожками только по ОДНОЙ оси. `None` — обычная сетка.
     #[cfg(feature = "grid")]
@@ -966,6 +972,12 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// contributes no baseline (see `LayoutOutput::inline_block_last_y`).
     #[cfg_attr(feature = "serde", serde(default))]
     pub no_inline_block_baseline: bool,
+    /// KaminIDE patch: a table cell with `vertical-align: baseline` placed in a
+    /// grid row (CSS 2.1 §17.5.3). The grid sizes the row as for
+    /// `align-self: baseline`, but the cell box fills its row and only its
+    /// content moves down by the baseline shim (see `set_content_shift`).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub table_cell_baseline: bool,
     /// KaminIDE patch: собственная базовая линия по оси x у узла без своей
     /// раскладки текста (повёрнутый вертикальный абзац движка): смещение и
     /// флаг «от правого края» — у `vertical-rl` первая строка справа, и
@@ -1135,6 +1147,7 @@ impl<S: CheapCloneStr> Style<S> {
         baseline_from_last: false,
         baseline_unavailable: false,
         no_inline_block_baseline: false,
+        table_cell_baseline: false,
         baseline_x_hint: None,
         baseline_x_flags: 0,
         #[cfg(feature = "grid")]
@@ -1291,6 +1304,10 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
     fn baseline_x_flags(&self) -> u8 {
         self.baseline_x_flags
     }
+    #[inline(always)]
+    fn table_cell_baseline(&self) -> bool {
+        self.table_cell_baseline
+    }
     #[cfg(feature = "grid")]
     #[inline(always)]
     fn subgrid(&self) -> u8 {
@@ -1408,6 +1425,10 @@ impl<T: CoreStyle> CoreStyle for &'_ T {
     fn baseline_x_flags(&self) -> u8 {
         (*self).baseline_x_flags()
     }
+    #[inline(always)]
+    fn table_cell_baseline(&self) -> bool {
+        (*self).table_cell_baseline()
+    }
     #[cfg(feature = "grid")]
     #[inline(always)]
     fn subgrid(&self) -> u8 {
@@ -1492,6 +1513,10 @@ impl<T: BlockItemStyle> BlockItemStyle for &'_ T {
 #[cfg(feature = "flexbox")]
 impl<S: CheapCloneStr> FlexboxContainerStyle for Style<S> {
     #[inline(always)]
+    fn is_table_container(&self) -> bool {
+        self.item_is_table
+    }
+    #[inline(always)]
     fn flex_direction(&self) -> FlexDirection {
         self.flex_direction
     }
@@ -1536,6 +1561,10 @@ impl<S: CheapCloneStr> FlexboxContainerStyle for Style<S> {
 
 #[cfg(feature = "flexbox")]
 impl<T: FlexboxContainerStyle> FlexboxContainerStyle for &'_ T {
+    #[inline(always)]
+    fn is_table_container(&self) -> bool {
+        (*self).is_table_container()
+    }
     #[inline(always)]
     fn flex_direction(&self) -> FlexDirection {
         (*self).flex_direction()
@@ -1939,6 +1968,7 @@ mod tests {
             baseline_from_last: false,
         baseline_unavailable: false,
             no_inline_block_baseline: false,
+            table_cell_baseline: false,
             baseline_x_hint: None,
             baseline_x_flags: 0,
             #[cfg(feature = "grid")]

@@ -22,6 +22,7 @@
 
 pub mod tabs;
 
+mod atom_fit;
 mod atom_placement;
 mod content_baselines;
 mod controlled_shape;
@@ -237,6 +238,9 @@ pub struct Paragraph {
     /// Замеры атомов (ширина, высота, базовая линия) — копируются в щуп
     /// замера, сами элементы туда не уходят.
     atom_boxes: Vec<AtomBox>,
+    /// Shrink-to-fit data of atoms whose width depends on the containing
+    /// block (CSS 2.1 §10.3.9), shared with the measure closure.
+    atom_fit: std::rc::Rc<std::cell::RefCell<atom_fit::AtomFit>>,
     /// Метрики струта абзаца (§10.8.1): подъём, спуск и x-высота первого
     /// прогона — от них считается, насколько атом вылезает за строку.
     strut: (f32, f32, f32),
@@ -656,6 +660,7 @@ impl Paragraph {
             rel_spans: Vec::new(),
             atoms: Vec::new(),
             atom_boxes: Vec::new(),
+            atom_fit: Default::default(),
             strut: (0.0, 0.0, 0.0),
             run_metrics: Vec::new(),
             edge_spans: Vec::new(),
@@ -1354,10 +1359,27 @@ impl Paragraph {
     /// решена. Ноль тут не годится — по нулю строка рвётся на каждом знаке, и
     /// коробка выходит во много раз выше настоящей.
     fn min_content(&self, window: &mut Window) -> Pixels {
+        self.min_content_with(None, window)
+    }
+
+    /// Min-content contribution with `text-indent` (css-text-3 §7.1, CSS 2.1
+    /// §16.1): the content is broken at EVERY soft wrap opportunity, and the
+    /// indent (percentages count as zero) is added to the first piece of each
+    /// indented line — a negative indent makes that piece narrower
+    /// (`text-indent-intrinsic-003/004`, «negative-intrinsic-min»).
+    fn min_content_indented(&self, window: &mut Window) -> Pixels {
+        self.min_content_with(Some(px(self.indent.px)), window)
+    }
+
+    fn min_content_with(&self, indent: Option<Pixels>, window: &mut Window) -> Pixels {
         let segs = self.measure(window);
         let mut best = px(0.);
         let mut start = 0usize;
-        let mut chunk = |from: usize, to: usize, this: &Self| {
+        // Starts a line that carries the indent (`each-line`: also after a
+        // forced break).
+        let mut indented = indent.is_some();
+        let each_line = self.indent.each_line;
+        let mut chunk = |from: usize, to: usize, this: &Self, lead: Pixels| {
             let end = if this.spaces_are_content() {
                 to
             } else {
@@ -1366,7 +1388,7 @@ impl Paragraph {
             // Трекинг ПОСЛЕДНЕГО знака куска на конце строки не действует
             // (css-text-3 §8.2) — `lay_in` его вычитает, а минимум по
             // содержимому считал, и кусок выходил шире на `letter-spacing`.
-            let w = this.span(&segs, from, end) - this.tail_spacing(end);
+            let w = this.span(&segs, from, end) - this.tail_spacing(end) + lead;
             let w = if w < px(0.) { px(0.) } else { w };
             if w > best {
                 best = w;
@@ -1403,14 +1425,16 @@ impl Paragraph {
             stops.dedup_by_key(|s| s.at);
             stops
         };
+        let lead = |on: bool| if on { indent.unwrap_or(px(0.)) } else { px(0.) };
         for stop in stops {
             if stop.at <= start {
                 continue;
             }
-            chunk(start, stop.at, self);
+            chunk(start, stop.at, self, lead(indented));
+            indented = indent.is_some() && each_line && stop.mandatory;
             start = stop.at;
         }
-        chunk(start, self.text.len(), self);
+        chunk(start, self.text.len(), self, lead(indented));
         best
     }
 
@@ -1936,6 +1960,7 @@ impl Paragraph {
                 .map_or(0, char::len_utf8);
             self.letter_spans.insert(0, (slot.at..slot.at + len, px(w)));
         }
+        self.prepare_atom_fit(window, cx);
     }
 
     /// Поставить атомы на места их строк: x — от продвижения до распорки
@@ -3578,6 +3603,7 @@ impl Element for Paragraph {
         let hanging = self.hanging;
         let spacers = self.spacers.clone();
         let flow = self.flow.clone();
+        let atom_fit = self.atom_fit.clone();
         let id = window.request_measured_layout_with_physical_baselines(
             gpui::Style::default(),
             move |known, available, window, _cx| {
@@ -3617,6 +3643,18 @@ impl Element for Paragraph {
                 probe.run_metrics = run_metrics.clone();
                 probe.strut = strut;
                 probe.spacers = spacers.clone();
+                // Ширина атома «по содержимому» — от содержащего блока, то
+                // есть от ширины самого абзаца (CSS 2.1 §10.3.9), см. `atom_fit`.
+                if !vertical && !atom_fit.borrow().is_empty() {
+                    let avail = match (known.width, available.width) {
+                        (Some(w), _) | (None, gpui::AvailableSpace::Definite(w)) => f32::from(w),
+                        (None, gpui::AvailableSpace::MinContent) => 0.0,
+                        (None, gpui::AvailableSpace::MaxContent) => f32::INFINITY,
+                    };
+                    let fitted = atom_fit.borrow_mut().fit(avail, window, _cx);
+                    probe.atom_fit = atom_fit.clone();
+                    probe.apply_atom_fit(&fitted);
+                }
                 // Предел переноса берётся ПО ОСИ СТРОКИ: по горизонтали это
                 // ширина коробки, по вертикали — её высота. Уже решённая
                 // родителем сторона сильнее доступной.
@@ -3668,6 +3706,21 @@ impl Element for Paragraph {
                 // атомом 10px даёт 7px (`calc-text-indent-intrinsic-1`). Так
                 // мерил и прежний ряд слов; у текстового абзаца — как было.
                 let atoms_in = !probe.atom_boxes.is_empty();
+                // Under a min-content constraint a NEGATIVE indent of a
+                // paragraph with atoms narrows only the first piece; the lines
+                // split at the min-content width packed more onto the
+                // indented first line (`text-indent-intrinsic-003/004`).
+                let neg_indent = atoms_in
+                    && !vertical
+                    && known_along.is_none()
+                    && probe.indent.px < 0.0
+                    && !probe.indent.hanging;
+                let min_indented = neg_indent
+                    .then(|| match space_along {
+                        gpui::AvailableSpace::MaxContent => None,
+                        _ => Some(probe.min_content_indented(window)),
+                    })
+                    .flatten();
                 let content = lines
                     .iter()
                     .map(|l| {
@@ -3678,6 +3731,15 @@ impl Element for Paragraph {
                         }
                     })
                     .fold(px(0.), |a: Pixels, b| if b > a { b } else { a });
+                // Fit-content is max(min-content, min(max-content, available))
+                // (css-sizing-3 §5.1): with a negative indent the max-content
+                // line can be NARROWER than the widest piece of a later line,
+                // and the min-content then wins (`text-indent-intrinsic-004`).
+                let content = match (min_indented, space_along) {
+                    (Some(min), gpui::AvailableSpace::MinContent) => min,
+                    (Some(min), _) if min > content => min,
+                    _ => content,
+                };
                 // Native vertical lines report their inline extent to the
                 // band host's intrinsic probe, like `VerticalText` does: the
                 // box itself stretches to the window along the line axis.
@@ -3817,6 +3879,10 @@ impl Element for Paragraph {
             (f32::from(exact - snapped).abs() <= 1.0 / scale + 1e-4).then_some(exact)
         };
         self.apply_measured_fit();
+        if !self.vertical {
+            let avail = f32::from(window.layout_size_unrounded(*state).width);
+            self.refit_atoms(avail, window, _cx);
+        }
         self.lines = self.split(Some(limit), window);
         self.place_atoms(*state, window, _cx);
         // Куски вне потока встают на своё место в строке: раскладываются
@@ -4185,6 +4251,7 @@ impl Paragraph {
             rel_spans: self.rel_spans.clone(),
             atoms: Vec::new(),
             atom_boxes: self.atom_boxes.clone(),
+            atom_fit: Default::default(),
             strut: self.strut,
             run_metrics: self.run_metrics.clone(),
             edge_spans: self.edge_spans.clone(),

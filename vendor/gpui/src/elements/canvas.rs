@@ -102,7 +102,11 @@ impl<T: 'static> Element for Canvas<T> {
                 self.unrounded_paint_bounds = Some(raw);
             }
         }
-        Some(self.prepaint.take().unwrap()(bounds, window, cx))
+        // KaminIDE patch: an unrounded canvas hands the same logical bounds to
+        // its prepaint callback, so geometry recorded there (collapsed table
+        // border probes) can be snapped once, from the exact layout.
+        let prepaint_bounds = self.unrounded_paint_bounds.unwrap_or(bounds);
+        Some(self.prepaint.take().unwrap()(prepaint_bounds, window, cx))
     }
 
     fn paint(

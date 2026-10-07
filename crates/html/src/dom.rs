@@ -213,7 +213,9 @@ fn expand_xhtml_self_closing(html: &str) -> std::borrow::Cow<'_, str> {
     // `<pre>`/`<listing>`/`<textarea>` в XHTML тоже требуют правки (см. ниже),
     // даже если самозакрытых тегов в документе нет.
     let lf_tags = ["<pre", "<listing", "<textarea"].iter().any(|t| html.contains(t));
-    if !xhtml || (!html.contains("/>") && !lf_tags && !html.contains("<!--")) {
+    if !xhtml
+        || (!html.contains("/>") && !lf_tags && !html.contains("<!--") && !html.contains('&'))
+    {
         return std::borrow::Cow::Borrowed(html);
     }
     const VOID: &[&str] = &[
@@ -307,6 +309,71 @@ fn expand_xhtml_self_closing(html: &str) -> std::borrow::Cow<'_, str> {
             // `c548-ln-ht-000` (`pre.control` — 5 строк, у нас было 4),
             // `white-space-pre-001` (эталон ждёт 7 строк).
             let after = &tag[end + 1..];
+            // В XML у `<style>`/`<script>` нет «сырого текста»: ссылки на
+            // символы в нём раскрываются (XML 1.0 §4.4.2, §4.6), и правило
+            // `div#test &gt; span` значит `div#test > span`. HTML-разбор
+            // оставил бы `&gt;` буквами, и селектор пропадал целиком
+            // (`inline-table-zorder-003…005`). Раскрываем до разбора —
+            // кроме разделов CDATA (дословный текст) и комментариев (их
+            // выбрасывает общий проход выше).
+            if foreign == 0 && matches!(name.as_str(), "style" | "script") {
+                let close = format!("</{name}");
+                let body_end = after
+                    .char_indices()
+                    .find(|(i, _)| {
+                        after[*i..]
+                            .get(..close.len())
+                            .is_some_and(|t| t.eq_ignore_ascii_case(&close))
+                    })
+                    .map(|(i, _)| i)
+                    .unwrap_or(after.len());
+                let mut body = &after[..body_end];
+                while !body.is_empty() {
+                    if body.starts_with("<![CDATA[") {
+                        let e = body.find("]]>").map(|e| e + 3).unwrap_or(body.len());
+                        out.push_str(&body[..e]);
+                        body = &body[e..];
+                    } else if body.starts_with("<!--") {
+                        let e = body.find("-->").map(|e| e + 3).unwrap_or(body.len());
+                        body = &body[e..];
+                    } else if body.starts_with('&') {
+                        let semi = body.bytes().take(12).position(|b| b == b';');
+                        let ch = semi.and_then(|e| match &body[1..e] {
+                            "lt" => Some('<'),
+                            "gt" => Some('>'),
+                            "amp" => Some('&'),
+                            "quot" => Some('"'),
+                            "apos" => Some('\''),
+                            r if r.starts_with("#x") || r.starts_with("#X") => {
+                                u32::from_str_radix(&r[2..], 16).ok().and_then(char::from_u32)
+                            }
+                            r if r.starts_with('#') => {
+                                r[1..].parse::<u32>().ok().and_then(char::from_u32)
+                            }
+                            _ => None,
+                        });
+                        match (ch, semi) {
+                            (Some(c), Some(e)) => {
+                                out.push(c);
+                                body = &body[e + 1..];
+                            }
+                            _ => {
+                                out.push('&');
+                                body = &body[1..];
+                            }
+                        }
+                    } else {
+                        let e = body
+                            .find(|c| c == '&' || c == '<')
+                            .map(|e| if e == 0 { 1 } else { e })
+                            .unwrap_or(body.len());
+                        out.push_str(&body[..e]);
+                        body = &body[e..];
+                    }
+                }
+                rest = &after[body_end..];
+                continue;
+            }
             if foreign == 0
                 && matches!(name.as_str(), "pre" | "listing" | "textarea")
                 && (after.starts_with('\n') || after.starts_with("\r\n"))
@@ -446,6 +513,9 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     );
     // ПЕРВЫМ проходом: табличная починка и подъёмы ниже читают `display`.
     resolve_display_inherit(&mut out, (None, None, None, None, None));
+    // Anonymous inline-table around orphan table boxes inside inline boxes
+    // (CSS 2.1 §17.2.1 step 3); block parents are fixed up by `blocks()`.
+    crate::render::inline_anon_tables(&mut out);
     // Лунки, которые умеет taffy, — на путь сетки ДО подъёмов и среза
     // подсетки: дальше они идут тем же кодом, что и сетка.
     lanes_as_grid(&mut out);

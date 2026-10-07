@@ -132,6 +132,9 @@ struct NodeData {
     pub(crate) subgrid_tracks: Option<crate::style::SubgridTracks>,
     /// Parent-height basis used by an anonymous row's percentage-height children.
     pub(crate) pct_parent_h: Option<Option<f32>>,
+    /// KaminIDE patch: y offset of this node's children inside its box (see
+    /// `LayoutGridContainer::set_content_shift`).
+    pub(crate) content_shift: f32,
 }
 
 impl NodeData {
@@ -149,6 +152,7 @@ impl NodeData {
             #[cfg(feature = "grid")]
             subgrid_tracks: None,
             pct_parent_h: None,
+            content_shift: 0.0,
         }
     }
 
@@ -619,6 +623,10 @@ where
         self.taffy.nodes[node_id.into()].subgrid_tracks.clone()
     }
 
+    fn set_content_shift(&mut self, node_id: NodeId, dy: f32) {
+        self.taffy.nodes[node_id.into()].content_shift = dy;
+    }
+
     fn set_subgrid_tracks(&mut self, node_id: NodeId, tracks: Option<crate::style::SubgridTracks>) {
         let node = &mut self.taffy.nodes[node_id.into()];
         if node.subgrid_tracks != tracks {
@@ -1003,6 +1011,14 @@ impl<NodeContext> TaffyTree<NodeContext> {
         } else {
             Ok(&self.nodes[node.into()].unrounded_layout)
         }
+    }
+
+    /// KaminIDE patch: y offset of the node's children inside its box (a
+    /// `vertical-align: baseline` table cell); add it to the node's origin when
+    /// placing its children.
+    #[inline]
+    pub fn content_shift(&self, node: NodeId) -> f32 {
+        self.nodes[node.into()].content_shift
     }
 
     /// Returns this node layout with unrounded values relative to its parent.

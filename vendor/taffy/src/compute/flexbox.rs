@@ -405,6 +405,45 @@ pub fn compute_flexbox_layout(
         }
     }
 
+    debug_log!("FLEX:", dbg:style.flex_direction());
+    let height_is_auto = style.size().height.is_auto();
+    let scroll =
+        style.overflow().x.is_scroll_container() || style.overflow().y.is_scroll_container();
+    let is_table = style.is_table_container();
+    drop(style);
+
+    // KaminIDE patch: a table box is never narrower than its content: the used
+    // width is the greater of the specified width and the table's minimum
+    // content width (CSS 2.1 §17.5.2.2 "the used width is the greater of W and
+    // MIN"; css-tables-3 §computing-the-table-width). Only the node's own
+    // specified width is floored; a width imposed by the parent stays as is.
+    if is_table && inputs.sizing_mode == SizingMode::InherentSize && known_dimensions.width.is_none()
+    {
+        if let Some(width) = styled_based_known_dimensions.width {
+            let min_content = compute_preliminary(
+                tree,
+                node,
+                LayoutInput {
+                    known_dimensions: Size::NONE,
+                    known_dimensions_are_definite: Size { width: true, height: true },
+                    sizing_mode: SizingMode::ContentSize,
+                    run_mode: RunMode::ComputeSize,
+                    axis: RequestedAxis::Horizontal,
+                    available_space: Size {
+                        width: AvailableSpace::MinContent,
+                        height: inputs.available_space.height,
+                    },
+                    ..inputs
+                },
+            )
+            .size
+            .width;
+            if min_content > width {
+                styled_based_known_dimensions.width = Some(min_content);
+            }
+        }
+    }
+
     // Short-circuit layout if the container's size is fully determined by the container's size and the run mode
     // is ComputeSize (and thus the container's size is all that we're interested in)
     if run_mode == RunMode::ComputeSize {
@@ -416,12 +455,6 @@ pub fn compute_flexbox_layout(
             return LayoutOutput::from_outer_size(Size { width, height });
         }
     }
-
-    debug_log!("FLEX:", dbg:style.flex_direction());
-    let height_is_auto = style.size().height.is_auto();
-    let scroll =
-        style.overflow().x.is_scroll_container() || style.overflow().y.is_scroll_container();
-    drop(style);
 
     // Normalize the definiteness flags: they only apply to dimensions which were passed in as known
     // by the parent. Dimensions resolved from the node's own style are always definite.
@@ -547,6 +580,33 @@ fn compute_preliminary(
     // 1. Generate anonymous flex items as described in §4 Flex Items.
     debug_log!("generate_anonymous_flex_items");
     let mut flex_items = generate_anonymous_flex_items(tree, node, &constants);
+
+    // KaminIDE patch: a table item of a COLUMN container takes its width on the
+    // cross axis, and that width is floored by the table's min-content width
+    // (CSS 2.1 §17.5.2.2: "the used width is the greater of W and MIN";
+    // css-tables-3 §computing-the-table-width, GRIDMIN). The main-axis floor
+    // lives in `determine_flex_base_size` (`is_table_item`).
+    if constants.is_column {
+        for item in flex_items.iter_mut() {
+            let Some(width) = item.size.width else { continue };
+            if !tree.get_flexbox_child_style(item.node).is_table_item() {
+                continue;
+            }
+            let min_content = tree.measure_child_size(
+                item.node,
+                Size::NONE,
+                constants.node_inner_size,
+                Size { width: AvailableSpace::MinContent, height: AvailableSpace::MaxContent },
+                SizingMode::ContentSize,
+                crate::geometry::AbsoluteAxis::Horizontal,
+                Line::FALSE,
+            );
+            if min_content > width {
+                item.size.width = Some(min_content);
+                item.max_size.width = item.max_size.width.map(|m| m.max(min_content));
+            }
+        }
+    }
 
     // 9.2. Line Length Determination
 
