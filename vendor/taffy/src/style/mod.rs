@@ -1492,6 +1492,10 @@ impl<T: BlockItemStyle> BlockItemStyle for &'_ T {
 #[cfg(feature = "flexbox")]
 impl<S: CheapCloneStr> FlexboxContainerStyle for Style<S> {
     #[inline(always)]
+    fn is_table_container(&self) -> bool {
+        self.item_is_table
+    }
+    #[inline(always)]
     fn flex_direction(&self) -> FlexDirection {
         self.flex_direction
     }
@@ -1536,6 +1540,10 @@ impl<S: CheapCloneStr> FlexboxContainerStyle for Style<S> {
 
 #[cfg(feature = "flexbox")]
 impl<T: FlexboxContainerStyle> FlexboxContainerStyle for &'_ T {
+    #[inline(always)]
+    fn is_table_container(&self) -> bool {
+        (*self).is_table_container()
+    }
     #[inline(always)]
     fn flex_direction(&self) -> FlexDirection {
         (*self).flex_direction()

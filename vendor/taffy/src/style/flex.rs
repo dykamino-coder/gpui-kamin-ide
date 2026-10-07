@@ -7,6 +7,12 @@ use crate::geometry::Size;
 
 /// The set of styles required for a Flexbox container
 pub trait FlexboxContainerStyle: CoreStyle {
+    /// KaminIDE patch: the container is a table box (its used width is floored
+    /// by its min-content width, CSS 2.1 §17.5.2).
+    #[inline(always)]
+    fn is_table_container(&self) -> bool {
+        false
+    }
     /// Which direction does the main axis flow in?
     #[inline(always)]
     fn flex_direction(&self) -> FlexDirection {
