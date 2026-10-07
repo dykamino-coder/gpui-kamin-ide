@@ -46,6 +46,17 @@ impl Paragraph {
         // Window::paint_glyph adds the exact paragraph offset afterwards;
         // round the final baseline, including that offset, only once.
         let y = f32::from(origin.y + self.glyph_nudge.y + base) * scale;
-        point(origin.x, origin.y + px((y.round() - y) / scale))
+        let target = y.round();
+        let mut paint_y = origin.y + px((target - y) / scale);
+        // ShapedLine adds half-leading first, then Window adds the paragraph
+        // offset. f32 reconstruction can produce N-epsilon for our chosen N;
+        // the backend floors Y, selecting the preceding row. Recover that N
+        // in the actual paint order without moving the layout baseline.
+        let actual = f32::from(paint_y + base + self.glyph_nudge.y) * scale;
+        if actual < target {
+            paint_y += px((target - actual) / scale);
+            paint_y = px(f32::from(paint_y).next_up());
+        }
+        point(origin.x, paint_y)
     }
 }
