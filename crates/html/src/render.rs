@@ -11123,7 +11123,7 @@ fn wrap_floats(
         let hosted = has_lead
             .then(|| band_host(&nodes, i, cb_width, &out[lead_at..]))
             .flatten()
-            .map(|(h, n)| (h, n, Some(lead_at), Vec::new()))
+            .map(|(h, n, l)| (h, n, Some(lead_at), l))
             .or_else(|| {
                 (measured_ok && text_lead)
                     .then(|| band_host_m(&nodes, i, em, &out[text_at..]))
@@ -11131,7 +11131,7 @@ fn wrap_floats(
                     .map(|(h, n, l)| (h, n, Some(text_at), l))
             })
             .or_else(|| {
-                band_host(&nodes, i, cb_width, &[]).map(|(h, n)| (h, n, None, Vec::new()))
+                band_host(&nodes, i, cb_width, &[]).map(|(h, n, l)| (h, n, None, l))
             })
             // Статический гейт не сошёлся из-за НЕИЗВЕСТНЫХ стилю размеров
             // (ширина содержащего блока, shrink-to-fit флоата, коробка
@@ -11520,7 +11520,16 @@ fn wrap_floats(
                     i = j;
                     continue;
                 }
-                lone.style.align_self = Some(if side < 0 { Align::Start } else { Align::End });
+                // `sideways-lr`: line-left — НИЗ (css-writing-modes-4 §6.3),
+                // и `float: left` прижимается к нижнему краю колонки.
+                let line_left_bottom = parent.vertical == Some(true)
+                    && parent.vertical_rl != Some(true)
+                    && parent.sideways == Some(true);
+                lone.style.align_self = Some(if (side < 0) != line_left_bottom {
+                    Align::Start
+                } else {
+                    Align::End
+                });
                 out.push(Node::Element(lone));
             }
             out.extend(rest);
@@ -11589,6 +11598,15 @@ fn wrap_floats(
                 style: Computed {
                     // Ширина содержащего блока — для долей формы и поля.
                     width: cb_width,
+                    // Вертикальное письмо: инлайн-размер содержащего блока —
+                    // его ФИЗИЧЕСКАЯ высота (css-writing-modes-4 §6.1). Строкам
+                    // ряда (`FlowRow::vertical_rl`) нужен её предел: сам
+                    // ряд лежит в автовысотном хосте и иначе получает 0.
+                    height: if parent.vertical == Some(true) {
+                        parent.height
+                    } else {
+                        None
+                    },
                     ..Computed::default()
                 },
                 hover: None,
@@ -12006,7 +12024,7 @@ fn band_host(
     i: usize,
     cb_width: Option<Len>,
     lead: &[Node],
-) -> Option<(Element, usize)> {
+) -> Option<(Element, usize, Vec<Node>)> {
     let cb_w = match cb_width {
         Some(Len::Px(v)) if v > 0.0 => v,
         _ => return None,
@@ -12040,11 +12058,29 @@ fn band_host(
         return None;
     }
     let mut rest: Vec<Node> = vec![];
+    let mut lifted: Vec<Node> = vec![];
     while j < nodes.len() {
         if let Node::Element(next) = &nodes[j]
             && (next.style.float.is_some_and(|f| f != 0) || next.style.clear.is_some())
         {
             break;
+        }
+        // Внепоточный сосед (absolute/fixed не на статической позиции) ни
+        // строк, ни полос не занимает (CSS 2.1 §9.6): он уходит ЗА хост, как
+        // и на пути `wrap_floats`. Прежде он отменял хост целиком, и пробег
+        // правых флоатов падал во флекс-ряд, ставивший их бок о бок даже без
+        // места (`shape-outside-circle-034-ref`: второй флоат 120 рядом с
+        // первым в блоке 200 вместо места под ним, §9.5.1 п.3).
+        if let Node::Element(next) = &nodes[j]
+            && matches!(
+                next.style.position,
+                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            )
+            && !at_static_position(&next.style)
+        {
+            lifted.push(nodes[j].clone());
+            j += 1;
+            continue;
         }
         rest.push(nodes[j].clone());
         j += 1;
@@ -12121,7 +12157,7 @@ fn band_host(
     };
     host.children = floaters.into_iter().map(Node::Element).collect();
     host.children.extend(rest);
-    Some((host, j))
+    Some((host, j, lifted))
 }
 
 /// Поле для измеряемого хоста: точки, доля ширины содержащего блока или
@@ -13327,7 +13363,17 @@ fn band_kids(
                     // таблица, замещаемый, список строятся своими ветками
                     // `element`.
                     let el = element(&copy, &inherited, &opts);
-                    if float { el } else { content_wrapper::for_element(el, &copy, &inherited, (None, None)) }
+                    // Эффекты группы (`clip-path`, маска, фильтр, смешивание)
+                    // `element` не накладывает — их кладёт поток (`blocks`:
+                    // `grouped(transformed(animated(..)))`). Вертикальный флоат
+                    // идёт сюда мимо потока, и `clip-path` у него не резал
+                    // ничего (`shape-outside-circle-048-ref`: флоат целым
+                    // прямоугольником при абсолютах с вставками по обеим осям).
+                    if float {
+                        grouped(el, &copy.style)
+                    } else {
+                        content_wrapper::for_element(el, &copy, &inherited, (None, None))
+                    }
                 }
             });
         let clear = if float { None } else { c.style.clear };
@@ -19985,7 +20031,12 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
     // перевод правого края в отступ от своей стороны (`wall - fx - mw`)
     // остаётся точным до 2^-11 точки, на два порядка точнее допуска полос.
     const NO_WALL: f32 = 8192.0;
-    let wall = if cb_w > 0.0 && inherited.vertical_rl != Some(true) {
+    // `vertical-lr`/`sideways-lr`: та же вертикаль, но блок-старт — ЛЕВЫЙ
+    // край (css-writing-modes-4 §2.1). У `sideways-lr` к тому же line-left —
+    // НИЗ (§6.3): `float: left` прижимается к низу, и вырез меряется от него.
+    let vert_lr = inherited.vertical == Some(true) && inherited.vertical_rl != Some(true);
+    let line_left_bottom = vert_lr && inherited.sideways == Some(true);
+    let wall = if cb_w > 0.0 && inherited.vertical_rl != Some(true) && !vert_lr {
         cb_w
     } else {
         NO_WALL
@@ -20088,7 +20139,17 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         let off = if side < 0 { fx } else { wall - fx - mw };
         let sm = match f.style.shape_margin {
             Some(Len::Px(v)) => v,
-            Some(Len::Pct(p)) => p * cb_w,
+            // Доля — от ИНЛАЙН-размера содержащего блока (css-shapes-1
+            // §shape-margin-property): в вертикальном письме это его высота,
+            // которую несёт хост (`shape-outside-linear-gradient-012`:
+            // `shape-margin: 25%` у блока 100×200 — 25, а не 50).
+            Some(Len::Pct(p)) => {
+                let vertical = inherited.vertical_rl == Some(true) || vert_lr;
+                match e.style.height {
+                    Some(Len::Px(h)) if vertical => p * h,
+                    _ => p * cb_w,
+                }
+            }
             _ => 0.0,
         };
         // Вертикальное письмо (`vertical-rl`, `sideways-rl`): форма обтекания
@@ -20097,7 +20158,7 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         // line-right = низ (css-writing-modes-4 §6.3). Ни `FloatShape::
         // Ellipse`, ни строчный `Profile` этого не выражают, поэтому здесь
         // ВСЕ фигуры идут одним растровым путём и режутся столбцами.
-        let vert_rl = inherited.vertical_rl == Some(true);
+        let vert_rl = inherited.vertical_rl == Some(true) || vert_lr;
         let shape = if !vert_rl
             && let Some(at) = raw.find("circle(").or_else(|| raw.find("ellipse("))
         {
@@ -20203,7 +20264,16 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
             // хоста, а `off` живёт в полосах, чья стенка там заведомо
             // недостижима (`NO_WALL`) и смысла не имеет.
             let profile = if vert_rl {
-                crate::background::shape_profile_block(&raw, &sb, sm.max(0.0), side)
+                // Профиль адресуется от блок-старта: у `vertical-rl` это
+                // правый край (так его и строит `shape_profile_block`), у
+                // `vertical-lr` — левый, то есть тот же профиль задом наперёд.
+                let pside = if line_left_bottom { -side } else { side };
+                crate::background::shape_profile_block(&raw, &sb, sm.max(0.0), pside).map(|mut p| {
+                    if vert_lr {
+                        p.reverse();
+                    }
+                    p
+                })
             } else {
                 crate::background::shape_profile(&raw, &sb, sm.max(0.0), side)
             };
@@ -20279,16 +20349,21 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                 &copy.style,
             )
         };
-        let holder = if inherited.vertical_rl == Some(true) {
+        let holder = if inherited.vertical_rl == Some(true) || vert_lr {
             // Вертикальное письмо: блок-старт — ПРАВЫЙ край, колонки
             // флоатов идут влево; инлайн-старт — верх, а у float:right
             // (line-right) — НИЗ (css-writing-modes §7,
-            // shape-outside-circle-049 и родня).
-            let col = div().absolute().right(px(off + mr));
-            if side < 0 {
+            // shape-outside-circle-049 и родня). У `vertical-lr` блок-старт —
+            // левый край.
+            let col = if vert_lr {
+                div().absolute().left(px(off + ml))
+            } else {
+                div().absolute().right(px(off + mr))
+            };
+            if (side < 0) != line_left_bottom {
                 col.top(px(mt))
             } else {
-                col.bottom(px(mt))
+                col.bottom(px(mb))
             }
         } else if side < 0 {
             div().absolute().left(px(off + ml)).top(px(mt + fy))
@@ -20300,7 +20375,7 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
     let shapes = std::sync::Arc::new((left, right));
     // В вертикальном письме ширина контейнера — блок-прогресс контента
     // (число колонок): полная ширина растягивала бы его на страницу.
-    let mut host = if inherited.vertical_rl == Some(true) {
+    let mut host = if inherited.vertical_rl == Some(true) || vert_lr {
         div().relative()
     } else if bands.bottom(None) > 0.0 {
         // ★ ЗАМЕРЕНО И ОТКАЧЕНО: гейтить охват флоатов признаком «коробка
@@ -20358,6 +20433,7 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
     let band_host = e.attr("bands") == Some("1");
     if band_host
         && inherited.vertical_rl != Some(true)
+        && !vert_lr
         && rest
             .iter()
             .any(|n| matches!(band_piece(n), Some(BandPiece::Bfc) | Some(BandPiece::Strut)))
@@ -20533,9 +20609,21 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         // разворачивает инлайн-ось, и коробки идут от НИЖНЕГО края — эталоны
         // семейства (`shape-outside-inset-023-ref` и родня) меряют свой
         // `inset-inline-start` именно снизу.
-        if inherited.vertical_rl == Some(true) {
+        if inherited.vertical_rl == Some(true) || vert_lr {
+            let mut row = crate::flow::FlowRow::new(atoms, shapes, rtl).vertical_rl();
+            if vert_lr {
+                row = row.block_lr();
+            }
+            // `sideways-lr`: инлайн-ось идёт СНИЗУ вверх (line-left — низ,
+            // css-writing-modes-4 §6.3), строки ряда кладутся от нижнего края.
+            if line_left_bottom {
+                row = row.inline_up();
+            }
+            if let Some(Len::Px(v)) = e.style.height {
+                row = row.inline_limit(v);
+            }
             return host
-                .child(crate::flow::FlowRow::new(atoms, shapes, rtl).vertical_rl())
+                .child(row)
                 .into_any_element();
         }
         return host

@@ -1251,6 +1251,23 @@ pub fn rasterize_shape(raw: &str, w: u32, h: u32, scale: f32) -> Option<Arc<Rend
 /// точках растра; `scale` переводит точечные величины записи (CSS) в них.
 pub fn shape_params(raw: &str, fw: f32, fh: f32, scale: f32) -> Option<(f32, f32, f32, f32)> {
     let (kind, rest) = raw.split_once('(')?;
+    // Хвост после СВОЕЙ закрывающей скобки — опорная коробка
+    // (`circle(50% at left 40px top 40px) border-box`, css-masking-1
+    // §clip-path: `<basic-shape> || <geometry-box>`): форме он не нужен, а
+    // оставленный в строке он превращал четырёхзначный центр в шесть
+    // токенов, и центр падал в середину коробки (`shape-outside-circle-048`).
+    let mut depth = 1i32;
+    let rest = match rest.char_indices().find(|&(_, c)| {
+        match c {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            _ => {}
+        }
+        depth == 0
+    }) {
+        Some((end, _)) => &rest[..=end],
+        None => rest,
+    };
     let circle = kind.trim().eq_ignore_ascii_case("circle");
     // Снимается ОДНА закрывающая скобка — своей функции: `trim_end_matches`
     // съедал и скобку последнего `calc(...)` центра

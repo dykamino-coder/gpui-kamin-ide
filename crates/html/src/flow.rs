@@ -47,6 +47,13 @@ pub struct FlowRow {
     /// колонке — сверху вниз. Раскладка идёт в ТРАНСПОНИРОВАННОМ мире
     /// (инлайн-ось строкой), физика восстанавливается при укладке.
     vertical_rl: bool,
+    /// Известный инлайн-размер содержащего блока (в вертикальном письме —
+    /// его высота): запасной предел строк, когда замер его не даёт.
+    inline_limit: Option<f32>,
+    /// `vertical-lr`: колонки идут СЛЕВА направо (блок-старт — левый край).
+    block_lr: bool,
+    /// `sideways-lr`: инлайн-ось снизу вверх.
+    inline_up: bool,
     /// Позиции детей, вычисленные замером (в точках от угла коробки).
     slots: std::cell::RefCell<Vec<(f32, f32)>>,
 }
@@ -62,12 +69,30 @@ impl FlowRow {
             shapes,
             rtl,
             vertical_rl: false,
+            inline_limit: None,
+            block_lr: false,
+            inline_up: false,
             slots: std::cell::RefCell::new(Vec::new()),
         }
     }
 
     pub fn vertical_rl(mut self) -> Self {
         self.vertical_rl = true;
+        self
+    }
+
+    pub fn inline_up(mut self) -> Self {
+        self.inline_up = true;
+        self
+    }
+
+    pub fn block_lr(mut self) -> Self {
+        self.block_lr = true;
+        self
+    }
+
+    pub fn inline_limit(mut self, v: f32) -> Self {
+        self.inline_limit = Some(v);
         self
     }
 
