@@ -1828,6 +1828,62 @@ fn plain_block_tree(c: &Element, depth: u8) -> bool {
         _ => true,
     })
 }
+/// Поддерево обычных блоков (`plain_block_tree`), где допустим и flex-ряд с
+/// переносом, каждый элемент которого занимает всю строку (`flex-basis` или
+/// `width` 100%, без роста и боковых полей): строка = элемент, и элементы идут
+/// блочной стопкой (css-flexbox-1 §9.3 шаг 5: следующий элемент в строку не
+/// помещается). Такую стопку мера `shape_full` ведёт так же точно, как блок
+/// (ветка «строка = элемент»), и её переполнение заданной высоты продолжается
+/// в следующем фрагментаинере параллельным потоком (css-break-3 §3).
+fn stacked_flex_tree(c: &Element, depth: u8) -> bool {
+    use crate::computed::FlexDir;
+    if c.style.column_count.is_some() || c.style.column_width.is_some() || c.style.webkit_box == Some(true) {
+        return false;
+    }
+    let s = &c.style;
+    let flex_stack = s.display == Some(Display::Flex)
+        && matches!(s.flex_dir, None | Some(FlexDir::Row))
+        && s.flex_wrap == Some(true)
+        && s.flex_wrap_reverse != Some(true)
+        && s.vertical != Some(true)
+        && s.gap.is_none()
+        && !flex_gap_rules(s);
+    if !flex_stack && !matches!(s.display, None | Some(Display::Block) | Some(Display::ListItem)) {
+        return false;
+    }
+    if depth == 0 {
+        return !flex_stack;
+    }
+    c.children.iter().all(|n| match n {
+        Node::Element(k) if flex_stack => {
+            let ks = &k.style;
+            let full = |l: &Option<Len>| matches!(l, Some(Len::Pct(p)) if (*p - 1.0).abs() < 1e-4);
+            let zero = |l: &Option<Len>| match l {
+                None => true,
+                Some(Len::Px(v)) => v.abs() < 0.01,
+                _ => false,
+            };
+            !k.inline
+                && !out_of_flow(ks)
+                && ks.position.is_none()
+                && ks.flex_grow.is_none_or(|g| g == 0.0)
+                && match ks.flex_basis {
+                    None | Some(Len::Auto) => full(&ks.width),
+                    _ => full(&ks.flex_basis),
+                }
+                && zero(&ks.margin.left)
+                && zero(&ks.margin.right)
+                && zero(&ks.padding.left)
+                && zero(&ks.padding.right)
+                && zero(&ks.borders().left)
+                && zero(&ks.borders().right)
+                && stacked_flex_tree(k, depth - 1)
+        }
+        Node::Element(k) => k.inline || stacked_flex_tree(k, depth - 1),
+        _ => true,
+    })
+}
+
 /// Коробка, у которой в потоке НЕТ НИЧЕГО, кроме флоатов — не больше одного
 /// на сторону, пустых, без `clear` и позиционирования, с шириной и высотой в
 /// точках. Вернуть высоту их общего ряда: наша раскладка ставит такую пару
@@ -22793,6 +22849,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     // fragmentation-006`: сетка 200 с содержимым
                                     // 400 в четырёх колонках.
                                     let plain = plain_block_tree(&copy, 4)
+                                        || stacked_flex_tree(&copy, 4)
                                         || (grid_stack(&copy)
                                             && copy.children.iter().all(|n| match n {
                                                 Node::Element(k) => k.inline || plain_block_tree(k, 3),
