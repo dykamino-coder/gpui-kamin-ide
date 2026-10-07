@@ -3454,19 +3454,11 @@ impl Window {
 
         let element_opacity = self.element_opacity();
         let scale_factor = self.scale_factor();
-        // KaminIDE patch: only a pixel-exact font (Ahem) takes the paragraph's
-        // unsnapped offset: its bi-level squares must coincide with boxes of
-        // the same exact geometry. An antialiased font keeps the snapped box
-        // origin, so its edge coverage stays inside the snapped box and does
-        // not bleed into the neighbouring device pixel (a fixed box covering
-        // another at a .5 device edge left that glyph's fringe visible).
+        // Text retains its layout position independently of snapped box edges
+        // (CSS 2.1 section 10.8.1). The offset is scoped by the HTML paragraph;
+        // other GPUI elements keep their default zero offset.
         let pixel_exact = self.text_system().pixel_exact_glyphs(font_id);
-        let offset = if pixel_exact {
-            self.glyph_offset
-        } else {
-            Point::default()
-        };
-        let glyph_origin = (origin + offset).scale(scale_factor);
+        let glyph_origin = (origin + self.glyph_offset).scale(scale_factor);
 
         // KaminIDE patch: a pixel-exact font (Ahem) keeps its sub-pixel
         // position on BOTH axes (Windows/Linux otherwise drop the y fraction),

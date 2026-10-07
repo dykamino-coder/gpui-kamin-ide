@@ -17360,8 +17360,8 @@ fn paragraph_pieces_routed(
                 crate::lines::align_for(inherited),
                 wrap,
             )
-            // Preserve per-span wrapping and per-line plaintext direction;
-            // vertical sideways text uses alphabetic rather than central baselines.
+            // Preserve wrapping, direction and the sideways alphabetic baseline.
+            .opaque_background(inherited)
             .reversed_lines(inherited.lines_reversed == Some(true))
             .vertical(inherited.para_vertical.is_some(), inherited.para_vertical == Some(true))
             .ortho_limit(inherited.ortho_limit.map(px))

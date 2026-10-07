@@ -169,11 +169,9 @@ pub struct Paragraph {
     vertical_ccw: bool,
     selection_vertical: Option<(Bounds<Pixels>, bool)>,
     vertical_layout_origin: Point<Pixels>,
-    /// Exact (unsnapped) layout origin minus the snapped paint origin. Box
-    /// edges are snapped to device pixels, glyphs are not (Chromium paints
-    /// text at its LayoutUnit position): the paragraph hands this to
-    /// `Window::replace_glyph_offset` while painting its lines.
+    /// Exact layout origin minus paint origin, scoped through GPUI while painting.
     glyph_nudge: Point<Pixels>,
+    opaque_text_origin: bool,
     /// Exact (unsnapped) inline size minus the snapped one: alignment
     /// (`text-align: right/center`, rtl start) is measured from the exact
     /// edges, so a right-aligned glyph ends on the box's exact right edge.
@@ -605,6 +603,7 @@ impl Paragraph {
             selection_vertical: None,
             vertical_layout_origin: point(px(0.0), px(0.0)),
             glyph_nudge: point(px(0.0), px(0.0)),
+            opaque_text_origin: false,
             width_nudge: px(0.0),
             indent_basis: None,
             vertical_inline: None,
@@ -4129,6 +4128,7 @@ impl Paragraph {
             selection_vertical: self.selection_vertical,
             vertical_layout_origin: self.vertical_layout_origin,
             glyph_nudge: self.glyph_nudge,
+            opaque_text_origin: self.opaque_text_origin,
             width_nudge: self.width_nudge,
             indent_basis: self.indent_basis,
             vertical_inline: self.vertical_inline,

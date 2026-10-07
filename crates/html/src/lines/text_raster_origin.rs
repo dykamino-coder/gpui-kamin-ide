@@ -3,6 +3,12 @@
 use super::*;
 
 impl Paragraph {
+    pub(crate) fn opaque_background(mut self, c: &crate::computed::Computed) -> Self {
+        self.opaque_text_origin = c.background.is_some_and(|color| color.a == 1.0)
+            && c.bg_clip != Some(crate::computed::BgClip::Text);
+        self
+    }
+
     pub(super) fn text_raster_origin(
         &self,
         shaped: &gpui::ShapedLine,
@@ -19,20 +25,27 @@ impl Paragraph {
         if shaped
             .runs
             .iter()
-            .any(|run| window.text_system().pixel_exact_glyphs(run.font_id))
+            .all(|run| window.text_system().pixel_exact_glyphs(run.font_id))
         {
             return origin;
         }
+        // Keep the raster origin coherent with an opaque box's snapped fill
+        // (CSS 2.1 section 14.2), without clipping glyph overhang or changing
+        // layout. Pixel-exact glyphs retain their own shared edge grid above.
+        let origin = if self.opaque_text_origin {
+            origin - self.glyph_nudge
+        } else {
+            origin
+        };
         // GPUI has no vertical subpixel variants on Windows/Linux; flooring the
         // baseline biases fractional half-leading upward. CSS 2.1 section 10.8.1
         // defines the baseline before rasterization, so preserve it in layout
         // and choose its nearest device pixel only for painting.
         let base = (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent;
         let scale = window.scale_factor();
-        // Window::paint_glyph applies the unsnapped paragraph offset only to
-        // pixel-exact glyphs. Antialiased glyphs use this snapped box origin,
-        // so their raster baseline must be rounded in the same coordinates.
-        let y = f32::from(origin.y + base) * scale;
+        // Window::paint_glyph adds the exact paragraph offset afterwards;
+        // round the final baseline, including that offset, only once.
+        let y = f32::from(origin.y + self.glyph_nudge.y + base) * scale;
         point(origin.x, origin.y + px((y.round() - y) / scale))
     }
 }
