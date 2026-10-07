@@ -3717,6 +3717,8 @@ pub fn forget_clamp_buffers() {
     CLAMP_PARA.with(|m| m.borrow_mut().clear());
     CLAMP_SEQ.with(|m| m.borrow_mut().clear());
     PARA_BUDGET.with(|c| c.set(None));
+    PARA_ROWS.with(|m| m.borrow_mut().clear());
+    PARA_TAG.with(|c| c.set(None));
 }
 
 /// Сторож стека clamp-контекста на время построения поддерева.
@@ -3765,6 +3767,48 @@ impl Drop for ClampGuard {
 /// Текущий clamp-контекст построения: (ключ, внутри вложенного BFC).
 pub fn clamp_context() -> Option<(u64, bool)> {
     CLAMP_STACK.with(|st| st.borrow().last().copied())
+}
+
+thread_local! {
+    /// Настоящие строки абзацев клэмп-контейнера на этом кадре: (ключ,
+    /// номер абзаца) → (верх, низ) строк в координатах окна. Пишет их
+    /// отрисовка абзаца (`lines::Paragraph::paint`), забирает `ClampCut`
+    /// (он рисуется последним ребёнком контейнера). Без них строки
+    /// абзаца делились бы поровну, а строка с крупным кеглем или руби
+    /// выше прочих (css-overflow-4 §5.3: точка среза — между строчными
+    /// коробками, их высоты свои).
+    static PARA_ROWS: std::cell::RefCell<std::collections::HashMap<(u64, u32), Vec<(f32, f32)>>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    /// (ключ, номер) абзаца, который сейчас будет собран.
+    static PARA_TAG: std::cell::Cell<Option<(u64, u32)>> = const { std::cell::Cell::new(None) };
+}
+
+pub fn set_para_tag(v: Option<(u64, u32)>) {
+    PARA_TAG.with(|c| c.set(v));
+}
+
+pub fn take_para_tag() -> Option<(u64, u32)> {
+    PARA_TAG.with(|c| c.take())
+}
+
+/// Отрисовка абзаца сообщает его строки (см. `PARA_ROWS`).
+pub fn publish_para_rows(tag: (u64, u32), rows: Vec<(f32, f32)>) {
+    PARA_ROWS.with(|m| {
+        m.borrow_mut().insert(tag, rows);
+    });
+}
+
+fn take_para_rows(key: u64) -> std::collections::HashMap<u32, Vec<(f32, f32)>> {
+    PARA_ROWS.with(|m| {
+        let mut m = m.borrow_mut();
+        let tags: Vec<(u64, u32)> = m.keys().filter(|k| k.0 == key).copied().collect();
+        tags.into_iter()
+            .filter_map(|t| m.remove(&t).map(|mut v| {
+                v.sort_by(|a, b| a.0.total_cmp(&b.0));
+                (t.1, v)
+            }))
+            .collect()
+    })
 }
 
 thread_local! {
@@ -3900,6 +3944,24 @@ impl Element for ClampCut {
         _cx: &mut App,
     ) {
         let entries = std::mem::take(&mut *self.lines.borrow_mut());
+        let para_rows = take_para_rows(self.key);
+        // Строки текстового вклада: настоящие, если абзац их сообщил и они
+        // лежат в его коробке; иначе — высота пробы поровну на строки.
+        let split = |e: &ClampEntry| -> Vec<(f32, f32)> {
+            let y0 = f32::from(e.bounds.origin.y);
+            let h = f32::from(e.bounds.size.height);
+            if let Some(r) = e.seq.and_then(|s| para_rows.get(&s))
+                && !r.is_empty()
+                && r.iter().all(|(a, b)| *a >= y0 - 0.5 && *b <= y0 + h + 0.5)
+            {
+                return r.clone();
+            }
+            let n = (h / e.line).round().max(1.0) as usize;
+            let step = h / n as f32;
+            (0..n)
+                .map(|i| (y0 + i as f32 * step, y0 + (i + 1) as f32 * step))
+                .collect()
+        };
         let top = f32::from(bounds.origin.y);
         // Строки: у текстового вклада их bounds.height / line штук.
         let mut rows: Vec<(f32, f32, bool)> = vec![]; // (верх, низ, считается)
@@ -3909,14 +3971,8 @@ impl Element for ClampCut {
             let y0 = f32::from(e.bounds.origin.y);
             let h = f32::from(e.bounds.size.height);
             if e.line > 0.0 && h > 0.0 {
-                let n = (h / e.line).round().max(1.0) as usize;
-                let step = h / n as f32;
-                for i in 0..n {
-                    rows.push((
-                        y0 + i as f32 * step,
-                        y0 + (i + 1) as f32 * step,
-                        !e.skip_count,
-                    ));
+                for (a, b) in split(e) {
+                    rows.push((a, b, !e.skip_count));
                 }
             } else if h > 0.0 {
                 blocks.push((y0, y0 + h, e.fixed_height, e.bp_after));
@@ -3943,15 +3999,12 @@ impl Element for ClampCut {
             let mut marks: Vec<(f32, f32, u32, usize)> = vec![];
             for e in entries.iter().filter(|e| e.line > 0.0 && !e.skip_count) {
                 let Some(seq) = e.seq else { continue };
-                let y0 = f32::from(e.bounds.origin.y);
                 let h = f32::from(e.bounds.size.height);
                 if h <= 0.0 {
                     continue;
                 }
-                let n = (h / e.line).round().max(1.0) as usize;
-                let step = h / n as f32;
-                for i in 0..n {
-                    marks.push((y0 + i as f32 * step, y0 + (i + 1) as f32 * step, seq, i + 1));
+                for (i, (a, b)) in split(e).into_iter().enumerate() {
+                    marks.push((a, b, seq, i + 1));
                 }
             }
             marks.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -4141,19 +4194,18 @@ impl Element for ClampCut {
                 .filter(|e| e.line > 0.0 && (e.skip_count || e.seq.is_some()))
                 .filter_map(|e| {
                     let seq = if e.skip_count { None } else { e.seq };
-                    let y0 = f32::from(e.bounds.origin.y);
                     let h = f32::from(e.bounds.size.height);
                     if h <= 0.0 {
                         return None;
                     }
-                    let n = (h / e.line).round().max(1.0) as usize;
-                    let step = h / n as f32;
+                    let rows = split(e);
                     // Точка `c` уже стоит на СРЕЗАННОМ низу последней
                     // строки — полный низ этой строки ниже на `trim_end`.
-                    let k = (1..=n)
-                        .filter(|i| y0 + *i as f32 * step <= c + trim_end + 0.5)
+                    let k = rows
+                        .iter()
+                        .filter(|(_, b)| *b <= c + trim_end + 0.5)
                         .count();
-                    (k >= 1).then_some((y0 + k as f32 * step, seq, k))
+                    (k >= 1).then(|| (rows[k - 1].1, seq, k))
                 })
                 .max_by(|a, b| a.0.total_cmp(&b.0))
                 .and_then(|(_, seq, k)| seq.map(|s| (s, k)))

@@ -1636,6 +1636,8 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     c.no_select = own.no_select.or(parent.no_select);
     c.pointer_events_none = own.pointer_events_none.or(parent.pointer_events_none);
     c.line_clamp = own.line_clamp.or(parent.line_clamp);
+    // `block-ellipsis` наследуется (css-overflow-4 §block-ellipsis).
+    c.clamp_mark = own.clamp_mark.clone().or_else(|| parent.clamp_mark.clone());
     c.clamp_legacy = own.clamp_legacy.or(parent.clamp_legacy);
     // Гейтовые флаги -webkit-box НЕ наследуются: пара display+orient
     // обязана стоять на самом элементе.

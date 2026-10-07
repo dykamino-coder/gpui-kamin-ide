@@ -668,6 +668,27 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
 }
 
 fn apply_layout(mut d: Div, c: &Computed) -> Div {
+    // Вертикальная `-webkit-box` с действующим `continue` (`line-clamp`,
+    // `-webkit-line-clamp`) вычисляется в `flow-root` (css-overflow-4
+    // §line-clamp, «the computed value becomes flow-root and the box
+    // establishes a BFC»): это блочный контейнер, и `align-items` /
+    // `justify-content` гибкой коробки к нему не применяются
+    // (`line-clamp-017/018`, `webkit-line-clamp-045`: анонимная строка
+    // вставала по центру).
+    let legacy_block;
+    let c = if c.webkit_box == Some(true)
+        && c.webkit_box_vertical == Some(true)
+        && (c.line_clamp.is_some() || c.clamp_auto == Some(true))
+        && (c.align_items.is_some() || c.justify_content.is_some())
+    {
+        let mut b = c.clone();
+        b.align_items = None;
+        b.justify_content = None;
+        legacy_block = b;
+        &legacy_block
+    } else {
+        c
+    };
     d.style().block_flow = Some(grid_flow_axes::block(c));
     match c.display {
         // Блок в GPUI — дефолт; отдельного вызова не требует.

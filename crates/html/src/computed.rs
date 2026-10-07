@@ -2036,6 +2036,15 @@ pub struct Computed {
     /// Маркер обрезки `text-overflow: <string>` (css-overflow-4 §5);
     /// None при ellipsis — многоточие по умолчанию.
     pub overflow_marker: Option<String>,
+    /// `text-overflow: inherit` (css-cascade-4 §7.3): свойство не
+    /// наследуемое, значение родителя переносит `doc::settle_explicit_inherit`
+    /// (`text-overflow-004`).
+    pub text_overflow_inherit: bool,
+    /// `block-ellipsis` (css-overflow-4 §block-ellipsis): None — `auto`
+    /// (U+2026), пустая строка — `no-ellipsis`, иначе строка-знак. Отдельно
+    /// от `overflow_marker`: `text-overflow` относится к строчной оси и
+    /// знака на строке обрыва `line-clamp` не задаёт.
+    pub clamp_mark: Option<String>,
     /// `list-style: none` — навигация, свёрстанная на списках, иначе идёт с
     /// точками.
     pub no_marker: Option<bool>,
@@ -3748,6 +3757,7 @@ impl Computed {
             text_transform: self.text_transform,
             ellipsis: self.ellipsis,
             overflow_marker: self.overflow_marker.clone(),
+            clamp_mark: self.clamp_mark.clone(),
             line_clamp: self.line_clamp,
             clamp_legacy: self.clamp_legacy,
             clamp_auto: self.clamp_auto,
@@ -6173,6 +6183,10 @@ impl Computed {
             }
             "letter-spacing" => self.letter_spacing = Len::parse_spacing(v),
             "text-overflow" => {
+                self.text_overflow_inherit = v.trim().eq_ignore_ascii_case("inherit");
+                if self.text_overflow_inherit {
+                    return;
+                }
                 // css-overflow-4 §5: clip | ellipsis | <строка>, до двух
                 // сторон. Наша обрезка — конец строки: берётся последнее
                 // не-clip значение.
@@ -6213,7 +6227,7 @@ impl Computed {
                         // (css-text-3 §4.1.2; Blink `line_truncator.cc`
                         // `SuppressLineBreaks`): ряд принудительных разрывов —
                         // один пробел (`text-overflow-string-009…016`).
-                        marker = Some(collapse_segment_breaks(&unescape_content(text)));
+                        marker = Some(collapse_forced_breaks(&unescape_content(text)));
                     } else if t == "ellipsis" {
                         on = true;
                         marker = None;
@@ -7488,6 +7502,7 @@ impl Computed {
                 self.line_clamp = None;
                 self.clamp_auto = None;
                 self.clamp_legacy = Some(false);
+                self.clamp_mark = None;
                 // Одна строка многоточия без числа — `max-lines: none` при
                 // `continue: collapse` (§5.1: «Sets continue to collapse if
                 // either or both values are specified»), то есть срез по
@@ -7509,7 +7524,10 @@ impl Computed {
                     };
                     rest = tail.trim_start();
                     if word.len() >= 2 && (word.starts_with('"') || word.starts_with('\'')) {
-                        self.overflow_marker = Some(word[1..word.len() - 1].to_string());
+                        self.clamp_mark = Some(word[1..word.len() - 1].to_string());
+                        ellipsis_given = true;
+                    } else if word.eq_ignore_ascii_case("no-ellipsis") {
+                        self.clamp_mark = Some(String::new());
                         ellipsis_given = true;
                     } else if word.eq_ignore_ascii_case("auto") {
                         self.clamp_auto = Some(true);
@@ -7520,6 +7538,17 @@ impl Computed {
                 if ellipsis_given && self.line_clamp.is_none() {
                     self.clamp_auto = Some(true);
                 }
+            }
+            // Лонгхенд `block-ellipsis`: `no-ellipsis | auto | <string>`.
+            "block-ellipsis" => {
+                let t = v.trim();
+                self.clamp_mark = if t.eq_ignore_ascii_case("no-ellipsis") {
+                    Some(String::new())
+                } else if t.len() >= 2 && (t.starts_with('"') || t.starts_with('\'')) {
+                    Some(collapse_forced_breaks(&unescape_content(&t[1..t.len() - 1])))
+                } else {
+                    None
+                };
             }
             "-webkit-line-clamp" => {
                 self.line_clamp = v.trim().parse().ok();
@@ -11155,6 +11184,37 @@ fn split_ws_top(v: &str) -> Vec<&str> {
 
 /// Разрывы сегмента в строке-маркере: ряд принудительных разрывов — один
 /// пробел (css-text-3 §4.1.2, «Segment Break Transformation Rules»).
+/// Строка знака обрыва (`text-overflow: <string>`, `block-ellipsis`): ряд
+/// ПРИНУДИТЕЛЬНЫХ разрывов — один пробел. Принудительный разрыв по
+/// css-text-3 §forced-line-break — сохранённый перевод строки и любой знак
+/// классов UAX#14 BK/NL: VT, FF, NEL, LS, PS (Blink `line_truncator.cc`
+/// `IsForcedLineBreak`/`SuppressLineBreaks`; `text-overflow-string-018…022`).
+fn collapse_forced_breaks(text: &str) -> String {
+    let forced = |c: char| {
+        matches!(
+            c,
+            '\n' | '\r' | '\u{0B}' | '\u{0C}' | '\u{85}' | '\u{2028}' | '\u{2029}'
+        )
+    };
+    if !text.contains(forced) {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut in_break = false;
+    for ch in text.chars() {
+        if forced(ch) {
+            if !in_break {
+                out.push(' ');
+                in_break = true;
+            }
+        } else {
+            in_break = false;
+            out.push(ch);
+        }
+    }
+    out
+}
+
 fn collapse_segment_breaks(text: &str) -> String {
     if !text.contains(['\n', '\r']) {
         return text.to_string();

@@ -296,7 +296,11 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
         if let Some(cut) = crate::interact::clamp_cut(e.node_id).filter(|c| !sized && c.is_finite()) {
             d = d.max_h(px(cut + mbp_y));
         }
-        d = d.overflow_hidden();
+        // Прячется только содержимое ЗА точкой среза — по блочной оси;
+        // оставленные строки по строчной оси переполняют коробку как
+        // обычно (css-overflow-4 §5.3: `overflow` клампом не меняется;
+        // `block-ellipsis-037`: непереносимое слово шире коробки).
+        d.style().overflow.y = Some(gpui::Overflow::Hidden);
     }
     if let Some(n) = e.style.clamp_lines().filter(|_| !multicol) {
         // Без `Styled::line_clamp`: тот попутно включает `overflow_hidden`,
@@ -338,7 +342,16 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
         // абзаца уже снял бюджет строк) — обрезки нет, и «Line 4…» видна под
         // коробкой с `height: 3lh` (`line-clamp-011/035`).
         if cut.is_finite() {
-            d = d.overflow_hidden();
+            d.style().overflow.y = Some(gpui::Overflow::Hidden);
+            // Содержимое ЗА точкой среза не видно и в нижнем паддинге
+            // контейнера (css-overflow-4 §5.3: оно «visually hidden», а не
+            // обрезано краем паддинга; Blink — `is_hidden_for_paint`):
+            // нижний край обрезки — край поля содержимого
+            // (`webkit-line-clamp-050`: «Line4» в паддинге 10px).
+            let pad_bottom = side(c.padding.bottom);
+            if pad_bottom > 0.0 && d.style().overflow_clip_offset.is_none() {
+                d.style().overflow_clip_offset = Some([0.0, 0.0, -pad_bottom, 0.0]);
+            }
         }
     }
     let empty = !e.children.iter().any(|n| !is_blank(n));
@@ -7190,7 +7203,9 @@ fn paragraph_probed(taken: &[Node], inherited: &Computed, opts: &RenderOpts) -> 
         _ => None,
     };
     crate::interact::set_para_budget(budget);
+    crate::interact::set_para_tag(ctx.zip(seq).map(|((key, _), s)| (key, s)));
     let para = paragraph(taken, inherited, opts);
+    crate::interact::set_para_tag(None);
     // Ячейку обязательно опустошить и когда абзац её не забрал
     // (вертикальное письмо уходит из `paragraph` раньше): иначе бюджет
     // достался бы СЛЕДУЮЩЕМУ абзацу.
@@ -15608,6 +15623,15 @@ fn own_context(e: &Element) -> bool {
         // let the preceding paragraph's end margin escape
         // (`visibility-collapse-border-spacing-002`).
         || (e.tag == "table" && e.style.display.is_none())
+        // `continue: collapse` (`line-clamp: <N>`/`auto`, у легаси — пара
+        // `-webkit-box` по вертикали) делает блочный контейнер line-clamp
+        // контейнером — НЕЗАВИСИМЫМ блочным контекстом (css-overflow-4
+        // §continue «must establish an independent formatting context»,
+        // §line-clamp-containers): поле первого ребёнка через его верх не
+        // схлопывается (`line-clamp-auto-027`). Только собственный стиль:
+        // слитый несёт `line_clamp` потомкам для текста.
+        || ((e.style.clamp_lines().is_some() || e.style.clamp_auto == Some(true))
+            && !multicol_container(&e.style))
 }
 
 /// То же по ОДНОМУ СТИЛЮ, без узла: содержащий блок приходит в `blocks()`
@@ -16955,9 +16979,6 @@ fn atom_line_align(
     // `line-clamp-auto-with-ruby-001/003` зеленеют (5.2 → 0.13/0.26), но
     // `-002` (руби за срезом) уходит 0.09 → 5.23 — срез встаёт строкой выше.
     // Возвращать вместе с настоящими низами строк в `ClampEntry`.
-    if ruby && crate::interact::clamp_context().is_some() {
-        return None;
-    }
     // Ортогональный поток внутри атома меряется от ДОСТУПНОГО места (§7.3
     // css-writing-modes-3), а замер «по содержимому» его не даёт: коробка с
     // `writing-mode: vertical-*` и строчной стороной `auto` внутри атома
@@ -17098,6 +17119,7 @@ fn paragraph_pieces_routed(
     // кусков: куски строят вложенные абзацы (`inline-block`, `<svg>`), и
     // чужой бюджет им доставаться не должен.
     let clamp_budget = crate::interact::take_para_budget();
+    let clamp_tag = crate::interact::take_para_tag();
     // ★ ЗАМЕРЕНО И ОТКАЧЕНО: брать поперечное выравнивание ряда с самих
     // кусков, когда абзац своего не задал (`vertical-align: bottom` у
     // картинки). Ни это, ни `align-self` на самой картинке высоту строки не
@@ -17861,6 +17883,8 @@ fn paragraph_pieces_routed(
                 Some(measure_font(inherited, opts)),
                 Some(gpui::px(own_size(inherited, opts))),
             )
+            .clamp_mark(inherited.clamp_mark.clone())
+            .clamp_tag(clamp_tag)
             .marker_color(Some(
                 inherited
                     .color
