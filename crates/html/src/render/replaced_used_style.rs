@@ -5,6 +5,27 @@ use crate::computed::Position;
 use crate::dom::Element;
 use crate::value::Len;
 
+/// CSS Sizing 4 #aspect-ratio: authored ratios transfer the box-sizing box;
+/// natural ratios, including auto <ratio>, always transfer the content box.
+pub(super) fn transfer(
+    style: &crate::computed::Computed,
+    size: f32,
+    ratio: f32,
+    from_width: bool,
+    offsets: [f32; 2],
+) -> f32 {
+    let [x, y] = if style.aspect_ratio.is_some() && style.border_box == Some(true) {
+        offsets
+    } else {
+        [0.0, 0.0]
+    };
+    if from_width {
+        ((size + x) / ratio - y).max(0.0)
+    } else {
+        ((size + y) * ratio - x).max(0.0)
+    }
+}
+
 pub(super) fn normalize(element: &Element, containing_width: Option<f32>) -> Option<Element> {
     let keyword = |length| {
         matches!(

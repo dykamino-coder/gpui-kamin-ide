@@ -12,6 +12,10 @@ mod mask_size;
 mod mask_shorthand;
 pub(crate) mod orthogonal;
 mod tab_size;
+mod quotes;
+mod list_style_string;
+mod content_functions;
+pub(crate) use content_functions::parse_content;
 mod outline_style;
 use outline_style::parse as outline_style_of;
 pub(crate) use outline_style::DOUBLE as OUTLINE_DOUBLE;
@@ -2989,9 +2993,9 @@ pub struct Computed {
     /// строки, `counter()`, `counters()`, `attr()` в любом порядке.
     pub content: Option<Vec<ContentItem>>,
     /// `quotes` (css-content-3 §4.1): пары кавычек по уровням вложенности.
-    /// `None` — наследуется, `Some(None)` — `none` (кавычек нет, но глубина
-    /// всё равно считается). Наследование ведёт обход дерева
-    /// (`Counters::quote`): кавычки нужны уже на сборке псевдоэлемента.
+    /// `None` inherits; `Some(None)` suppresses marks but keeps nesting depth.
+    /// `Some(Some(empty))` is explicit auto; nonempty pairs are a custom system.
+    /// Tree traversal resolves inheritance before generating pseudo content.
     pub quotes: Option<Option<Vec<(String, String)>>>,
     /// `counter-reset` — обнулить счётчик с этого узла.
     pub counter_reset: Option<String>,
@@ -3897,6 +3901,9 @@ impl Computed {
 
     pub fn apply_decls(&mut self, d: &Decls) {
         for (k, v) in d {
+            if k.starts_with(crate::css::CUSTOM_IMPORTANT) {
+                continue;
+            }
             for part in v.split(crate::css::DECL_SEP) {
                 self.apply_one(k, part);
             }
@@ -4063,6 +4070,7 @@ impl Computed {
                     "line-height",
                     "list-style-position",
                     "list-style-type",
+                    "quotes",
                     "text-align",
                     "text-indent",
                     "text-transform",
@@ -4078,7 +4086,8 @@ impl Computed {
         }
         for k in &ordered {
             let Some(v) = d.get(*k) else { continue };
-            if k.starts_with("--") || k.as_str() == crate::css::ORDER_KEY {
+            if k.starts_with("--") || k.as_str() == crate::css::ORDER_KEY
+                || k.starts_with(crate::css::CUSTOM_IMPORTANT) {
                 continue;
             }
             if let Some(at) = all_at
@@ -4113,7 +4122,18 @@ impl Computed {
                 // `var()` (css-values-5 §7.7): после него значение разбирается
                 // как обычное.
                 let resolved = resolve_sibling(resolve_attrs(k.as_str(), &resolve_vars(strip_important(part), vars)));
-                self.apply_one(k, &resolved);
+                // CSS Variables §3: invalid after substitution means unset;
+                // a preceding specified color cannot survive the computed value.
+                if k.as_str() == "color"
+                    && crate::css::variable_values::has_var(strip_important(part))
+                    && Color::parse(&resolved).is_none()
+                    && !matches!(resolved.trim().to_ascii_lowercase().as_str(),
+                        "inherit" | "initial" | "unset" | "revert" | "revert-layer")
+                {
+                    self.apply_one(k, "unset");
+                } else {
+                    self.apply_one(k, &resolved);
+                }
             }
         }
     }
@@ -6254,24 +6274,7 @@ impl Computed {
                     }
                 }
                 self.no_marker = Some(v.contains("none"));
-                // Строковый маркер: значение в кавычках берётся дословно,
-                // счётчик не участвует (list-style-type-string-*).
-                let t = v.trim();
-                if (t.starts_with('"') && t.ends_with('"') && t.len() >= 2)
-                    || (t.starts_with(char::from(39))
-                        && t.ends_with(char::from(39))
-                        && t.len() >= 2)
-                {
-                    // Экранирование снимает ТОКЕНИЗАЦИЯ (css-syntax-3 §4.3.7):
-                    // `\A0` — неразрывный пробел, `\9` — табуляция; до
-                    // свойства должны доезжать сами знаки, а не обратные
-                    // косые. Разрывы сегмента внутри строки сворачиваются в
-                    // пробел (css-text-3 §4.1.2) — ровно как в строке
-                    // `text-overflow` выше по этому же файлу.
-                    self.marker_text = Some(collapse_segment_breaks(&unescape_content(
-                        &t[1..t.len() - 1],
-                    )));
-                    self.no_marker = Some(false);
+                if list_style_string::apply_string(self, key, v) {
                     return;
                 }
                 // Вид маркера — ИМЯ стиля счётчика (css-lists-3 §3): любое,
@@ -7698,45 +7701,7 @@ impl Computed {
             "counter-reset" => self.counter_reset = Some(v.to_string()),
             "counter-increment" => self.counter_increment = Some(v.to_string()),
             "counter-set" => self.counter_set = Some(v.to_string()),
-            "quotes" => {
-                match v {
-                    "none" => self.quotes = Some(None),
-                    // `auto` — кавычки языка; без разбора языка берутся
-                    // английские (`Counters::quote` при пустой записи).
-                    "auto" | "match-parent" => self.quotes = None,
-                    other => {
-                        // Только строки, и чётным числом (§4.1): иначе
-                        // объявление негодно и не применяется.
-                        let mut strs = vec![];
-                        let mut at = 0usize;
-                        let mut ok = true;
-                        while at < other.len() {
-                            let ch = other[at..].chars().next().unwrap_or(' ');
-                            if ch.is_whitespace() {
-                                at += ch.len_utf8();
-                                continue;
-                            }
-                            if ch != '"' && ch != '\'' {
-                                ok = false;
-                                break;
-                            }
-                            let body = at + 1;
-                            let len = crate::css::skip_string(&other[body..], ch);
-                            if !other[body..body + len].ends_with(ch) {
-                                ok = false;
-                                break;
-                            }
-                            strs.push(unescape_content(&other[body..body + len - 1]));
-                            at = body + len;
-                        }
-                        if ok && !strs.is_empty() && strs.len() % 2 == 0 {
-                            self.quotes = Some(Some(
-                                strs.chunks(2).map(|p| (p[0].clone(), p[1].clone())).collect(),
-                            ));
-                        }
-                    }
-                }
-            }
+            "quotes" => quotes::apply(self, v),
             "content" => {
                 match v {
                     // ПУСТАЯ строка — не то же самое, что `none`: коробка
@@ -11039,123 +11004,6 @@ fn font_slash(t: &str) -> Option<(&str, &str)> {
     None
 }
 
-/// Разбор значения `content` в список составляющих (css-content-3 §2).
-///
-/// `None` — запись негодна целиком: неизвестная функция, лишний или
-/// недостающий аргумент, незакрытая кавычка. Такое объявление применять
-/// нельзя, иначе его остатки печатаются литеральным текстом.
-// ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09): `content: url()`/`image-set()` как
-// замещаемый строчный атом (`ContentItem::Image`, картинка через
-// `background::source`; патч `target/scout-content-2026-09.md` §6). Срез 1509
-// пар (lists/pseudo/content/counter-styles/images): 1192 -> 1190, +0/-2 —
-// `cross-fade-natural-size` 0.00 -> 38.95, `disclosure-styles` 0.19 -> 0.62;
-// ни одна из ожидаемых `element-replacement*` не позеленела. Картинка в
-// `content` требует природного размера ДО раскладки строки (`cross-fade` —
-// от двух источников), а атом меряется после.
-pub(crate) fn parse_content(raw: &str) -> Option<Vec<ContentItem>> {
-    let bytes = raw.as_bytes();
-    let mut at = 0usize;
-    let mut out = vec![];
-    while at < bytes.len() {
-        let ch = raw[at..].chars().next()?;
-        if ch.is_whitespace() {
-            at += ch.len_utf8();
-            continue;
-        }
-        if ch == '"' || ch == '\'' {
-            let body = at + ch.len_utf8();
-            let len = crate::css::skip_string(&raw[body..], ch);
-            // Незакрытая строка обрывается переводом строки — значение негодно.
-            if !raw[body..body + len].ends_with(ch) {
-                return None;
-            }
-            out.push(ContentItem::Str(unescape_content(
-                &raw[body..body + len - ch.len_utf8()],
-            )));
-            at = body + len;
-            continue;
-        }
-        // Слова кавычек (css-content-3 §4.2). Прежде они не разбирались, и
-        // весь `content` с ними выбрасывался (`content-159`, `quotes-*`).
-        let rest = &raw[at..];
-        let word_end = rest
-            .find(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == '(')
-            .unwrap_or(rest.len());
-        let quote = match rest[..word_end].to_ascii_lowercase().as_str() {
-            "open-quote" => Some((true, true)),
-            "close-quote" => Some((false, true)),
-            "no-open-quote" => Some((true, false)),
-            "no-close-quote" => Some((false, false)),
-            _ => None,
-        };
-        if let Some((open, emit)) = quote {
-            out.push(ContentItem::Quote { open, emit });
-            at += word_end;
-            continue;
-        }
-        // Дальше только функция: `counter(`, `counters(`, `attr(`.
-        let open = rest.find('(')?;
-        let name = rest[..open].trim().to_ascii_lowercase();
-        let close = at + open + 1 + find_close(&rest[open + 1..])?;
-        let args = crate::css::split_args(&raw[at + open + 1..close]);
-        let arg = |i: usize| -> Option<String> {
-            let a = args.get(i)?.trim();
-            let unq = a
-                .strip_prefix('"')
-                .and_then(|r| r.strip_suffix('"'))
-                .or_else(|| a.strip_prefix('\'').and_then(|r| r.strip_suffix('\'')));
-            Some(unq.map_or_else(|| a.to_string(), unescape_content))
-        };
-        match name.as_str() {
-            "counter" if args.len() == 1 || args.len() == 2 => out.push(ContentItem::Counter(
-                arg(0)?,
-                arg(1).unwrap_or_else(|| "decimal".to_string()),
-            )),
-            "counters" if args.len() == 2 || args.len() == 3 => out.push(ContentItem::Counters(
-                arg(0)?,
-                arg(1)?,
-                arg(2).unwrap_or_else(|| "decimal".to_string()),
-            )),
-            "attr" if args.len() == 1 => out.push(ContentItem::Attr(arg(0)?)),
-            "url" if args.len() <= 1 => out.push(ContentItem::Image(arg(0).unwrap_or_default())),
-            // ПРОБОВАЛИ И ОТКАТИЛИ: принимать `url()` (§12.2 объявляет его
-            // действительным) и класть в псевдоэлемент синтетический `<img>`.
-            // Проба по 195 парам `generated-content`: флипов ноль, потеряна
-            // `before-after-table-whitespace-001` (0.15 -> 0.58) и просела
-            // `before-after-images-001` (0.00 -> 0.41). Обе требуют, чтобы
-            // НЕНАЙДЕННАЯ картинка давала коробку НУЛЕВОГО размера — сперва
-            // это, потом уже `url()`.
-            _ => return None,
-        }
-        at = close + 1;
-    }
-    (!out.is_empty()).then_some(out)
-}
-
-/// Индекс парной закрывающей скобки от места ПОСЛЕ открывающей.
-fn find_close(after_open: &str) -> Option<usize> {
-    let mut depth = 0i32;
-    let mut at = 0usize;
-    while at < after_open.len() {
-        let ch = after_open[at..].chars().next()?;
-        match ch {
-            '"' | '\'' => {
-                at += ch.len_utf8();
-                at += crate::css::skip_string(&after_open[at..], ch);
-                continue;
-            }
-            '(' => depth += 1,
-            ')' if depth == 0 => return Some(at),
-            ')' => depth -= 1,
-            _ => {}
-        }
-        at += ch.len_utf8();
-    }
-    None
-}
-
-/// Экранирование внутри строки содержимого: `\A` — перевод строки, прочие
-/// коды — свои знаки, `\"` — сама кавычка.
 /// Разбить значение по пробелам ВНЕ скобок: `rgba(0, 128, 0, .5)` —
 /// один токен, а `split_whitespace` рассыпал его, и цвет пропадал
 /// (`outline` с функциональным цветом).
@@ -12208,53 +12056,26 @@ fn resolve_attrs(key: &str, value: &str) -> String {
 }
 
 fn resolve_vars(value: &str, vars: &Decls) -> String {
-    let mut out = resolve_vars_once(value, vars);
-    for _ in 1..VAR_DEPTH {
-        if !out.contains("var(") {
-            break;
-        }
-        let next = resolve_vars_once(&out, vars);
+    let mut out = value.to_string();
+    for _ in 0..VAR_DEPTH {
+        let Some(next) = crate::css::variable_values::substitute(
+            &out, &mut |name| vars.get(name).cloned(),
+        ) else {
+            return "unset".into();
+        };
         if next == out {
             break;
         }
         out = next;
-    }
-    out
-}
-
-fn resolve_vars_once(value: &str, vars: &Decls) -> String {
-    if !value.contains("var(") {
-        return value.to_string();
-    }
-    let mut out = String::with_capacity(value.len());
-    let mut rest = value;
-    while let Some(at) = rest.find("var(") {
-        out.push_str(&rest[..at]);
-        let after = &rest[at + 4..];
-        // Конец записи — ПАРНАЯ скобка, а не первая попавшаяся: запасное
-        // значение само бывает записью со скобками. Пока бралась первая,
-        // `var(--c, rgba(0,0,0,.5))` при ЗАДАННОЙ переменной давал `red)` —
-        // лишняя скобка убивала значение. При незаданной выходило случайно
-        // верно, поэтому дефект и жил (CSS Variables §3).
-        let Some(close) = balanced_close(after) else {
-            out.push_str(&rest[at..]);
-            return out;
-        };
-        let inner = &after[..close];
-        // Запятая тоже ищется на верхнем уровне: внутри `rgba(0,0,0,.5)` их
-        // три, и разрез по первой откусил бы запасное значение.
-        let (name, fallback) = match top_level_comma(inner) {
-            Some(i) => (inner[..i].trim(), inner[i + 1..].trim()),
-            None => (inner.trim(), ""),
-        };
-        match vars.get(name) {
-            Some(v) => out.push_str(v),
-            None => out.push_str(fallback),
+        if !crate::css::variable_values::has_var(&out) {
+            break;
         }
-        rest = &after[close + 1..];
     }
-    out.push_str(rest);
-    out
+    if out.trim().is_empty() && crate::css::variable_values::has_var(value) {
+        "unset".into()
+    } else {
+        out
+    }
 }
 
 /// Одна дорожка сетки в терминах CSS.
@@ -14019,6 +13840,7 @@ fn initial_value(key: &str) -> Option<&'static str> {
         "line-height" => "normal",
         "list-style-position" => "outside",
         "list-style-type" => "disc",
+        "quotes" => "auto",
         "overflow-wrap" | "word-wrap" => "normal",
         "tab-size" => "8",
         "text-align" => "start",

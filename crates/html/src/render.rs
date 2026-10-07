@@ -25251,10 +25251,7 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                 })
         };
         let ratio_of = || {
-            // ЗАЯВЛЕННОЕ отношение сильнее природного (css-sizing-4 §4):
-            // `aspect-ratio: 1/1` на картинке 2:1 обязан её переформатировать.
-            // Запись `auto <ratio>` — обратный случай: природное сильнее, а
-            // заявленное служит запасным (§5.1).
+            // CSS Sizing 4 #aspect-ratio: authored ratio overrides the natural ratio.
             if let Some(r) = e.style.aspect_ratio.filter(|r| *r > 0.0) {
                 return Some(r);
             }
@@ -25262,6 +25259,9 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             natural_ratio()
                 .filter(|r| *r > 0.0)
                 .or(e.style.aspect_ratio_auto.filter(|r| *r > 0.0))
+        };
+        let transfer = |size, ratio, from_width| {
+            replaced_used_style::transfer(&e.style, size, ratio, from_width, [sub_w, sub_h])
         };
         if let (Some(Len::Px(w)), Some(Len::Px(h))) = (e.style.width, e.style.height) {
             image = vectorize(image, (w - sub_w).max(1.0), (h - sub_h).max(1.0));
@@ -25283,7 +25283,7 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             // `apply` уже зажал, а картинка шла как написана и вылезала за неё.
             let cw = limit((w - sub_w).max(0.0), clamp(e.style.min_width, sub_w), max_w);
             let ch = match ratio_of() {
-                Some(r) if r > 0.0 => cw / r,
+                Some(r) if r > 0.0 => transfer(cw, r, true),
                 _ => crate::background::source(&crate::background::key(local.unwrap_or(src), &e.style))
                     .and_then(|s| s.intrinsic().h)
                     .unwrap_or(150.0),
@@ -25301,7 +25301,7 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             // 200×50.
             let cw = match ratio_of() {
                 Some(r) if r > 0.0 && (ch - ch_free).abs() > 0.01 => {
-                    let w = limit(ch * r, clamp(e.style.min_width, sub_w), max_w);
+                    let w = limit(transfer(ch, r, false), clamp(e.style.min_width, sub_w), max_w);
                     // Коробка ужимается ТОЛЬКО когда предел и правда изменил
                     // выведенную сторону: иначе высота у неё остаётся `auto`,
                     // и подстановка ломала замещённые без пределов вовсе
@@ -25323,7 +25323,7 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                 max_h,
             );
             let cw = match ratio_of() {
-                Some(r) if r > 0.0 => ch * r,
+                Some(r) if r > 0.0 => transfer(ch, r, false),
                 _ => crate::background::source(&crate::background::key(local.unwrap_or(src), &e.style))
                     .and_then(|s| s.intrinsic().w)
                     .unwrap_or(300.0),
@@ -25333,7 +25333,7 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             // Зеркально §10.4: изменённая ширина тянет за собой высоту.
             let ch = match ratio_of() {
                 Some(r) if r > 0.0 && (cw - cw_free).abs() > 0.01 => {
-                    let h = limit(cw / r, clamp(e.style.min_height, sub_h), max_h);
+                    let h = limit(transfer(cw, r, true), clamp(e.style.min_height, sub_h), max_h);
                     узкая = Some((cw, h));
                     h
                 }

@@ -9,6 +9,11 @@ use std::collections::HashMap;
 
 mod selector_tokens;
 mod stylesheet_tokens;
+mod priority_tokens;
+use priority_tokens::top_level_bang;
+mod variable_tokens;
+pub(crate) mod custom_properties;
+pub(crate) mod variable_values;
 
 /// Пара «свойство: значение». Значение хранится сырым — разбор откладывается
 /// до момента применения, чтобы неизвестные свойства не стоили ничего.
@@ -24,6 +29,9 @@ pub const DECL_SEP: char = char::from_u32(1).unwrap();
 /// давали ОДИН исход. Имя начинается со служебного знака — свойства с
 /// таким именем в разметке не бывает.
 pub const ORDER_KEY: &str = "\u{2}order";
+
+/// Priority is metadata: an escaped `!` inside a custom value is not !important.
+pub(crate) const CUSTOM_IMPORTANT: &str = "\u{2}important:";
 
 /// Одно правило: с чем сопоставлять и что применять.
 #[derive(Clone, Debug)]
@@ -555,38 +563,6 @@ fn is_pseudo_element(name: &str) -> bool {
     )
 }
 
-/// Где в значении стоит восклицательный знак — вне строк, скобок и
-/// экранирования. `content: "!"` пометкой важности не является.
-fn top_level_bang(value: &str) -> Option<usize> {
-    let mut depth = 0i32;
-    let mut at = 0usize;
-    while at < value.len() {
-        let ch = value[at..].chars().next().unwrap_or('\u{0}');
-        match ch {
-            '\\' => {
-                at += ch.len_utf8();
-                at += value[at..].chars().next().map_or(0, char::len_utf8);
-                continue;
-            }
-            '"' | '\'' => {
-                at += ch.len_utf8();
-                at += skip_string(&value[at..], ch);
-                continue;
-            }
-            _ if at_url(&value[at..]) => {
-                at += skip_url(&value[at..]);
-                continue;
-            }
-            '(' | '[' | '{' => depth += 1,
-            ')' | ']' | '}' => depth = (depth - 1).max(0),
-            '!' if depth == 0 => return Some(at),
-            _ => {}
-        }
-        at += ch.len_utf8();
-    }
-    None
-}
-
 /// Разбор `style="a: 1; b: 2"`.
 pub fn parse_decls(raw: &str) -> Decls {
     let mut out = Decls::new();
@@ -616,7 +592,16 @@ pub fn parse_decls(raw: &str) -> Decls {
             continue;
         };
         let (k, v) = (&item[..colon], &item[colon + 1..]);
-        let key = unescape(k.trim()).to_ascii_lowercase();
+        let name = unescape(k.trim());
+        if name.starts_with('\u{2}') {
+            continue;
+        }
+        let custom = name.starts_with("--");
+        if custom && (name == "--" || !selector_tokens::ident(k.trim())) {
+            continue;
+        }
+        // CSS Variables §2: custom-property names are case-sensitive tokens.
+        let key = if custom { name } else { name.to_ascii_lowercase() };
         // После восклицательного знака в объявлении стоит ровно `important` и
         // ничего больше; всё прочее делает объявление недействительным, и
         // отбрасывается оно целиком (CSS 2.1 §4.1.8). Пока пометка просто
@@ -635,19 +620,24 @@ pub fn parse_decls(raw: &str) -> Decls {
         if has_bad_url(val) {
             continue;
         }
-        // Пометка важности ОСТАЁТСЯ в значении: снимет её тот, кто раскладывает
+        let value = top_level_bang(val).map_or(val, |at| val[..at].trim_end());
+        if !variable_tokens::valid(value) {
+            continue;
+        }
+        // У обычных свойств пометка важности ОСТАЁТСЯ в значении: снимет её тот, кто раскладывает
         // каскад (`Computed::resolve_with_vars`), а срезав её здесь, мы теряли
         // важность целиком — объявление конкурировало на общих основаниях.
-        let val = &unescape_value(val);
-        if !key.is_empty() && !val.is_empty() {
+        let important = top_level_bang(val).is_some();
+        let val = &unescape_value(if custom { value } else { val });
+        if !key.is_empty() && (custom || !val.is_empty()) {
             // Повтор того же свойства НЕ затирает прежнее на разборе:
             // действительность значения известна только применению
             // (CSS 2.1 §4.1.7 — недействительное объявление игнорируется,
             // а не гасит предыдущее). Части склеиваются служебным
-            // разделителем и применяются по порядку. Пользовательские
-            // свойства действительны всегда — последнее побеждает.
+            // разделителем и применяются по порядку. У пользовательских
+            // свойств синтаксис уже проверен — последнее побеждает.
             if key.starts_with("--") {
-                out.insert(key, val.to_string());
+                custom_properties::store(&mut out, key, val.to_string(), important);
             } else {
                 // Порядок записи: имя запоминается при ПЕРВОМ появлении —
                 // повтор того же свойства применяется на его месте, внутри

@@ -10,6 +10,11 @@ mod subgrid_axes;
 mod grid_static_position;
 #[path = "dom_containment.rs"]
 mod containment;
+#[path = "dom_language.rs"]
+mod language;
+#[path = "dom_counter_decls.rs"]
+mod counter_decls;
+pub(crate) use counter_decls::{apply_counter_decls, apply_value_hint};
 
 use crate::computed::{Computed, Display, Position};
 use crate::css::{
@@ -2976,54 +2981,13 @@ fn walk(
             // и `.dark{--c:blue}` складывались в него подряд, и последнее
             // объявление красило ВЕСЬ документ — переключение темы классом
             // не работало в принципе.
-            let own_vars = {
-                let mut own = vars.clone();
-                let mut by_cascade: Vec<&&Rule> = matched.iter().collect();
-                by_cascade.sort_by(|a, b| {
-                    (a.origin, &a.layer, a.sel.specificity(), a.order)
-                        .cmp(&(b.origin, &b.layer, b.sel.specificity(), b.order))
-                });
-                for rule in by_cascade {
-                    for (k, v) in &rule.decls {
-                        if k.starts_with("--") {
-                            own.insert(k.clone(), v.clone());
-                        }
-                    }
-                }
-                for (k, v) in &inline_decls {
-                    if k.starts_with("--") {
-                        own.insert(k.clone(), v.clone());
-                    }
-                }
-                // Зарегистрированные `@property` (css-properties-values-api-1
-                // §2.4): значение, не подходящее под синтаксис, недействительно
-                // во время вычисления — свойство берёт унаследованное (если
-                // наследуется) или начальное; ненаследуемое у потомка без своего
-                // объявления — начальное; не заданное нигде — начальное.
-                for (name, reg) in crate::css::property_rules() {
-                    let set_here = matched.iter().any(|r| r.decls.contains_key(&name))
-                        || inline_decls.contains_key(&name);
-                    let parent = vars.get(&name).cloned();
-                    let fallback = if reg.inherits { parent.clone() } else { None }
-                        .or_else(|| reg.initial.clone());
-                    let value = if set_here {
-                        own.get(&name).cloned().filter(|v| syntax_accepts(&reg.syntax, v))
-                    } else if reg.inherits {
-                        parent
-                    } else {
-                        None
-                    };
-                    match value.or(fallback) {
-                        Some(v) => {
-                            own.insert(name, v);
-                        }
-                        None => {
-                            own.remove(&name);
-                        }
-                    }
-                }
-                own
-            };
+            let registered = crate::css::property_rules();
+            let cascaded = crate::css::custom_properties::cascade(
+                &matched, &inline_decls, vars, &registered, syntax_accepts,
+            );
+            let own_vars = crate::css::variable_values::compute(
+                &cascaded, vars, &registered, syntax_accepts,
+            );
             let vars = &own_vars;
             // Используемая схема цвета (css-color-adjust-1 §color-scheme-prop):
             // своё `color-scheme` — последнее по каскаду, иначе родительская
@@ -3316,13 +3280,11 @@ fn walk(
                 return;
             }
 
-            // Счётчики: свои директивы узел применяет ДО детей и до своих
-            // псевдоэлементов (css-lists §5: сброс, увеличение, установка).
-            // Адрес узла — в дереве КОРОБОК: `display: contents` своего
-            // уровня не даёт, поэтому его дети остаются братьями соседей.
+            // Counters apply before children; display:contents has no box level.
             let box_level = style.display != Some(Display::Contents);
             if box_level {
                 counters.enter();
+                counters.set_quote_language(language::parent(&me, path).unwrap_or(""));
                 if let Some(q) = &style.quotes {
                     counters.set_quotes(q.clone());
                 }
@@ -3696,116 +3658,6 @@ fn walk(
         _ => walk_children(
             handle, rules, vars, frames, counter, counters, path, preserve, out,
         ),
-    }
-}
-
-/// Применить `counter-reset`/`counter-increment`/`counter-set` узла.
-///
-/// Порядок именно такой (css-lists-3 §5): сперва создаются счётчики, затем
-/// накапливаются увеличения, затем присваиваются значения. Имена, которые
-/// узел СБРОСИЛ, возвращаются: на выходе из него область надо закрыть.
-pub(crate) fn apply_counter_decls(
-    style: &Computed,
-    counters: &mut crate::counters::Counters,
-    tag: &str,
-    attrs: &[(String, String)],
-    item_flag: &mut bool,
-    reversed_start: &dyn Fn(&str, &mut crate::counters::Counters) -> i32,
-) {
-    let num_attr = |key: &str| -> Option<i32> {
-        attrs
-            .iter()
-            .find(|(k, _)| k == key)
-            .and_then(|(_, v)| v.trim().parse().ok())
-    };
-    // Списочный контейнер заводит счётчик `list-item` для своих пунктов:
-    // у нумерованного отсчёт начинается с `start` (css-lists-3 §ua-stylesheet
-    // задаёт это правилом `ol[start] { counter-reset: list-item calc(attr(start) - 1) }`).
-    // Правило таблицы агента `ol, ul, menu, dir { counter-reset: list-item }`
-    // живёт в общем каскаде: авторский `counter-reset` на том же узле его
-    // ЗАМЕНЯЕТ целиком, а не дополняет.
-    let reversed_list = tag == "ol" && attrs.iter().any(|(k, _)| k == "reversed");
-    if matches!(tag, "ol" | "ul" | "menu" | "dir") && style.counter_reset.is_none() {
-        // У обратного списка отсчёт идёт вниз и начинается на единицу ВЫШЕ
-        // названного, у обычного — на единицу ниже (§ua-stylesheet).
-        let start = match (tag, num_attr("start")) {
-            ("ol", Some(v)) if reversed_list => v + 1,
-            ("ol", Some(v)) => v - 1,
-            // У обратного списка без `start` отсчёт начинается с числа его
-            // пунктов.
-            ("ol", None) if reversed_list => reversed_start("list-item", counters),
-            _ => 0,
-        };
-        counters.reset_flagged("list-item", start, reversed_list);
-    }
-    // Пункт списка увеличивает `list-item` сам, если этого не сказано явно
-    // (css-lists-3 §list-item-counter). Порядок строгий: явное увеличение,
-    // затем неявное, затем присваивание — иначе `<li value>` считался бы
-    // от уже сдвинутого значения.
-    let is_item = tag == "li" || style.display == Some(Display::ListItem);
-    *item_flag = is_item;
-    let explicit_item = style
-        .counter_increment
-        .as_deref()
-        .is_some_and(|t| t.split_whitespace().any(|w| w == "list-item"));
-    for (decl, kind) in [
-        (&style.counter_reset, 0u8),
-        (&style.counter_increment, 1),
-        (&style.counter_set, 2),
-    ] {
-        if kind == 2 && is_item && !explicit_item {
-            // Пункт обратного списка считает ВНИЗ (css-lists-3
-            // §list-item-counter).
-            let step = if counters.is_reversed("list-item") {
-                -1
-            } else {
-                1
-            };
-            counters.update("list-item", step, false);
-        }
-        let Some(text) = decl else { continue };
-        // `reversed( имя )` — одна запись, а не три слова.
-        let text = squeeze_parens(text);
-        let mut it = text.split_whitespace().peekable();
-        while let Some(name) = it.next() {
-            // `none` — ключевое слово «ничего не делать», а не имя счётчика.
-            if name.eq_ignore_ascii_case("none") {
-                continue;
-            }
-            // Обратный счётчик: имя в скобках, значение по умолчанию узнаётся
-            // предварительным обходом области (пока — ноль).
-            let (name, reversed) = match name
-                .strip_prefix("reversed(")
-                .and_then(|r| r.strip_suffix(')'))
-            {
-                Some(inner) if kind == 0 && !inner.is_empty() => (inner, true),
-                Some(_) => continue,
-                None => (name, false),
-            };
-            let value = match it.peek().and_then(|n| n.parse::<i32>().ok()) {
-                Some(v) => {
-                    it.next();
-                    v
-                }
-                None if reversed => reversed_start(name, counters),
-                None => match kind {
-                    0 | 2 => 0,
-                    _ => 1,
-                },
-            };
-            match kind {
-                0 => {
-                    counters.reset_flagged(name, value, reversed);
-                }
-                1 => counters.update(name, value, false),
-                _ => counters.update(name, value, true),
-            }
-        }
-    }
-    // `<li value>` задаёт номер пункта прямо (css-lists-3 §ua-stylesheet:
-    // `li[value] { counter-set: list-item attr(value) }`).
-    if is_item && let Some(v) = num_attr("value") {
-        counters.update("list-item", v, true);
     }
 }
 
@@ -4192,9 +4044,9 @@ fn pseudo_box_named(
     if style.display == Some(Display::None) {
         return None;
     }
-    // Псевдоэлемент — настоящий брат содержимого хозяина: у него свой
-    // уровень пути, свои директивы и своя область видимости.
+    // Pseudo counters occupy their own level among the host children.
     counters.enter_pseudo(before);
+    language::pseudo(counters, &style, me, path);
     // У псевдоэлемента-создателя предварительного обхода нет: своей области
     // в дереве коробок он не открывает, и таких пар в наборе не встречается.
     apply_counter_decls(
@@ -4425,13 +4277,7 @@ fn nth_of_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> O
 /// Совпадение — точное или по префиксу до дефиса, ASCII-регистронезависимо
 /// (селекторы-4 §lang-pseudo; `fi` не совпадает с `fil`).
 fn lang_matches(want: &str, me: &Ancestor, path: &[Ancestor]) -> bool {
-    let lang_of = |a: &Ancestor| {
-        a.attrs
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case("lang") || k.eq_ignore_ascii_case("xml:lang"))
-            .map(|(_, v)| v.clone())
-    };
-    let Some(lang) = lang_of(me).or_else(|| path.iter().rev().find_map(lang_of)) else {
+    let Some(lang) = language::effective(me, path) else {
         return false;
     };
     let want = want

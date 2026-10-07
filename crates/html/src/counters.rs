@@ -49,6 +49,8 @@ pub struct Counters {
     /// Глубина вложенности кавычек (css-content-3 §4.2): одна на документ,
     /// растёт на `open-quote`, падает на `close-quote`.
     quote_depth: usize,
+    /// Content language at each box; automatic quotes use the parent language.
+    quote_languages: Vec<(Vec<u32>, String)>,
     /// Заданные `quotes` по пути: владелец и значение. Наследование —
     /// ближайший предок по пути (запись живёт только в своём поддереве).
     quotes: Vec<(Vec<u32>, Option<Vec<(String, String)>>)>,
