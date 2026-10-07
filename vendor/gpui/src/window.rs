@@ -3449,14 +3449,26 @@ impl Window {
 
         let element_opacity = self.element_opacity();
         let scale_factor = self.scale_factor();
-        let glyph_origin = (origin + self.glyph_offset).scale(scale_factor);
+        // KaminIDE patch: only a pixel-exact font (Ahem) takes the paragraph's
+        // unsnapped offset: its bi-level squares must coincide with boxes of
+        // the same exact geometry. An antialiased font keeps the snapped box
+        // origin, so its edge coverage stays inside the snapped box and does
+        // not bleed into the neighbouring device pixel (a fixed box covering
+        // another at a .5 device edge left that glyph's fringe visible).
+        let pixel_exact = self.text_system().pixel_exact_glyphs(font_id);
+        let offset = if pixel_exact {
+            self.glyph_offset
+        } else {
+            Point::default()
+        };
+        let glyph_origin = (origin + offset).scale(scale_factor);
 
         // KaminIDE patch: a pixel-exact font (Ahem) keeps its sub-pixel
         // position on BOTH axes (Windows/Linux otherwise drop the y fraction),
         // quantized on one grid so that `pixel origin + variant` is the
         // position itself; the 1e-3 guard keeps f32 noise (12.4999 for 12.5)
         // from falling into the previous quarter.
-        let (pixel_origin, subpixel_variant) = if self.text_system().pixel_exact_glyphs(font_id) {
+        let (pixel_origin, subpixel_variant) = if pixel_exact {
             let n = SUBPIXEL_VARIANTS_X as f32;
             let q = glyph_origin.map(|v| (v.0 * n + 1e-3).floor());
             (
