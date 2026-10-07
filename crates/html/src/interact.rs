@@ -19,6 +19,7 @@ use std::rc::Rc;
 mod spot_geometry;
 mod polygon_clip;
 mod rectangular_clip;
+mod mask_geometry;
 mod orthogonal_measure;
 mod vertical_style;
 mod combined_geometry;
@@ -563,7 +564,7 @@ fn rasterize_mask_def(
 
 impl Element for Grouped {
     type RequestLayoutState = LayoutId;
-    type PrepaintState = (Bounds<Pixels>, Option<[f32; 4]>);
+    type PrepaintState = (Bounds<Pixels>, Option<[f32; 4]>, Bounds<Pixels>);
 
     fn id(&self) -> Option<ElementId> {
         None
@@ -596,7 +597,8 @@ impl Element for Grouped {
         self.child.as_mut().unwrap().prepaint(window, cx);
         let clip_bounds = rectangular_clip::reference_box(self, bounds, *_state, window);
         let rectangle = polygon_clip::logical_rectangle(self, *_state, window);
-        (clip_bounds, rectangle)
+        let mask_box = mask_geometry::positioning_box(self.mask.as_deref(), bounds, *_state, window);
+        (clip_bounds, rectangle, mask_box)
     }
 
     fn paint(
@@ -787,6 +789,7 @@ impl Element for Grouped {
                     .collect()
             };
             let src: &str = layers.first().map(String::as_str)?;
+            let bounds = _prepaint.2;
             // Коробка укладки (`mask-origin`): плитка и её свободное место
             // считаются от неё, а не от border-box.
             let [ot, or_, ob, ol] = self.mask_origin_off;
@@ -1124,13 +1127,17 @@ impl Element for Grouped {
             };
             Some((
                 img,
-                Bounds {
-                    origin: gpui::point(
-                        bounds.origin.x + px(ol + ox),
-                        bounds.origin.y + px(ot + oy),
-                    ),
-                    size: gpui::size(px(tw.max(1.0)), px(th.max(1.0))),
-                },
+                mask_geometry::tile(
+                    &source,
+                    Bounds {
+                        origin: gpui::point(
+                            bounds.origin.x + px(ol + ox),
+                            bounds.origin.y + px(ot + oy),
+                        ),
+                        size: gpui::size(px(tw.max(1.0)), px(th.max(1.0))),
+                    },
+                    window,
+                ),
                 ((self.mask_no_repeat.0 as u32)
                     | ((self.mask_no_repeat.1 as u32) << 1)
                     | ((self.mask_luminance as u32) << 2)),
