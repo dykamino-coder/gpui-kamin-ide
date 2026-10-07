@@ -1,5 +1,8 @@
 //! Style containment isolates counter mutations and quote depth in descendants.
 
+#[path = "quote_language.rs"]
+mod quote_language;
+
 use super::{Counters, Entry, covers};
 use std::collections::HashMap;
 
@@ -33,6 +36,14 @@ impl Counters {
         self.quote_depth = scope.quote_depth;
     }
 
+    /// CSS Content 3 §quotes-property resolves auto using the parent's language.
+    pub(crate) fn set_quote_language(&mut self, language: &str) {
+        let cur = self.path.clone();
+        self.quote_languages
+            .retain(|(o, _)| covers(o, &cur) && o != &cur);
+        self.quote_languages.push((cur, language.to_string()));
+    }
+
     /// Узел задал `quotes`: действует на него и его потомков.
     pub fn set_quotes(&mut self, value: Option<Vec<(String, String)>>) {
         let cur = self.path.clone();
@@ -41,7 +52,7 @@ impl Counters {
     }
 
     /// Кавычка для `open-quote`/`close-quote` с учётом глубины; `own` —
-    /// `quotes` самого псевдоэлемента. Начальное `auto` — английские пары.
+    /// `quotes` самого псевдоэлемента. `auto` выбирает пары языка.
     pub fn quote(
         &mut self,
         open: bool,
@@ -50,6 +61,7 @@ impl Counters {
     ) -> String {
         let cur = self.path.clone();
         self.quotes.retain(|(o, _)| covers(o, &cur));
+        self.quote_languages.retain(|(o, _)| covers(o, &cur));
         let depth = if open {
             self.quote_depth += 1;
             self.quote_depth - 1
@@ -72,8 +84,11 @@ impl Counters {
             Some(Some(list)) => pick(list),
             Some(None) => String::new(),
             None => {
-                let (o, c) = [("\u{201c}", "\u{201d}"), ("\u{2018}", "\u{2019}")][depth.min(1)];
-                (if open { o } else { c }).to_string()
+                let language = self
+                    .quote_languages
+                    .last()
+                    .map_or("", |(_, lang)| lang.as_str());
+                quote_language::marks(language, depth, open).to_string()
             }
         }
     }

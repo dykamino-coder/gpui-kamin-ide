@@ -10,6 +10,8 @@ mod subgrid_axes;
 mod grid_static_position;
 #[path = "dom_containment.rs"]
 mod containment;
+#[path = "dom_language.rs"]
+mod language;
 
 use crate::computed::{Computed, Display, Position};
 use crate::css::{
@@ -3205,13 +3207,11 @@ fn walk(
                 return;
             }
 
-            // Счётчики: свои директивы узел применяет ДО детей и до своих
-            // псевдоэлементов (css-lists §5: сброс, увеличение, установка).
-            // Адрес узла — в дереве КОРОБОК: `display: contents` своего
-            // уровня не даёт, поэтому его дети остаются братьями соседей.
+            // Counters apply before children; display:contents has no box level.
             let box_level = style.display != Some(Display::Contents);
             if box_level {
                 counters.enter();
+                counters.set_quote_language(language::parent(&me, path).unwrap_or(""));
                 if let Some(q) = &style.quotes {
                     counters.set_quotes(q.clone());
                 }
@@ -4313,13 +4313,7 @@ fn nth_of_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> O
 /// Совпадение — точное или по префиксу до дефиса, ASCII-регистронезависимо
 /// (селекторы-4 §lang-pseudo; `fi` не совпадает с `fil`).
 fn lang_matches(want: &str, me: &Ancestor, path: &[Ancestor]) -> bool {
-    let lang_of = |a: &Ancestor| {
-        a.attrs
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case("lang") || k.eq_ignore_ascii_case("xml:lang"))
-            .map(|(_, v)| v.clone())
-    };
-    let Some(lang) = lang_of(me).or_else(|| path.iter().rev().find_map(lang_of)) else {
+    let Some(lang) = language::effective(me, path) else {
         return false;
     };
     let want = want
