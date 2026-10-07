@@ -33,6 +33,10 @@ pub(super) fn device_edges(group: &Grouped, rect: [f32; 4]) -> [f32; 4] {
     if !basic_rectangle(group) {
         return rect;
     }
+    snap_edges(rect)
+}
+
+pub(super) fn snap_edges(rect: [f32; 4]) -> [f32; 4] {
     let [x, y, width, height] = rect;
     // Snap once at the final position, like painted rectangular boxes. A
     // snapped reference origin followed by fractional offsets rounds twice.
