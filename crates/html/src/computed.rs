@@ -1640,6 +1640,10 @@ pub struct Decor {
     pub inset: Option<[DecorLen; 2]>,
     pub clone: bool,
     pub font: DecorFont,
+    /// Язык украшающей коробки — японский, корейский или монгольский: в вертикальном
+    /// письме подчёркивание по умолчанию справа (Blink
+    /// `ResolveUnderlinePosition`, css-text-decor-3 §default-stylesheet).
+    pub over_lang: bool,
 }
 
 fn parse_decor_style(t: &str) -> Option<DecorStyle> {

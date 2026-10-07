@@ -14,7 +14,7 @@ impl Paragraph {
     /// Lines are painted by the paragraph itself (not by GPUI's run
     /// underline) for horizontal text with decorated pieces.
     pub(super) fn decor_on(&self) -> bool {
-        !self.decor_spans.is_empty() && self.selection_vertical.is_none()
+        !self.decor_spans.is_empty()
     }
 
     /// Ascent (logical px) of the run that holds byte `at`.
@@ -253,39 +253,67 @@ impl Paragraph {
                 // (top of the line rect, second line of `double`, wave shift,
                 // ink skipping) for each line of this decoration.
                 let mut rows: Vec<(f32, f32, f32, bool)> = Vec::new();
-                if lines & DECOR_UNDER != 0 {
-                    let off = match d.offset {
-                        DecorLen::Px(v) => Some(v * scale),
-                        _ => None,
-                    };
-                    let upos = f32::from(ts.underline_position(id, size)) * scale;
-                    // The offset is from the decorating box, on the shared
-                    // baseline (a shifted descendant keeps its box's line).
-                    let shift = (f32::from(self.group_shift(&item.group) - dy)) * scale;
-                    let base_u = base_f + shift;
-                    let y = if d.position & UPOS_UNDER != 0 {
-                        // Blink `ComputeUnderlineOffsetForUnder`: the bottom of
-                        // the em box, plus one pixel.
-                        let em_desc = if asc_f + desc_f > 0.0 {
-                            size_dev * desc_f / (asc_f + desc_f)
-                        } else {
-                            0.0
-                        };
-                        base_u + em_desc + off.unwrap_or(0.0) + 1.0
-                    } else if d.position & UPOS_FROM_FONT != 0 && upos != 0.0 {
-                        base_u - upos + off.unwrap_or(0.0)
+                let off = match d.offset {
+                    DecorLen::Px(v) => Some(v * scale),
+                    _ => None,
+                };
+                // Em box edges below/above the baseline (Blink
+                // `VerticalPosition(Bottom/TopOfEmHeight)`).
+                let em_desc = if asc_f + desc_f > 0.0 {
+                    size_dev * desc_f / (asc_f + desc_f)
+                } else {
+                    0.0
+                };
+                let em_asc = size_dev - em_desc;
+                // Vertical text (painted in the rotated frame): Blink
+                // `ResolveUnderlinePosition` — no alphabetic baseline; the
+                // underline goes under the em box (line-left), or over it
+                // (line-right) with `right`, swapping with the overline.
+                let vertical =
+                    self.selection_vertical.is_some() && self.vertical_central_baseline;
+                let flip = vertical
+                    && if d.over_lang {
+                        d.position & crate::computed::UPOS_LEFT == 0
                     } else {
-                        // Blink `ComputeUnderlineOffsetAuto`: a gap of half
-                        // the thickness unless the offset is a length.
-                        let gap = if off.is_none() { (t / 2.0).ceil().max(1.0) } else { 0.0 };
-                        base_u + gap + off.unwrap_or(0.0)
+                        d.position & crate::computed::UPOS_RIGHT != 0
                     };
-                    rows.push((y, t + 1.0, t + 1.0, true));
+                // The underline offset is from the decorating box, on the
+                // shared baseline (a shifted descendant keeps its box's line).
+                let shift = (f32::from(self.group_shift(&item.group) - dy)) * scale;
+                let base_u = base_f + shift;
+                // Blink `ComputeUnderlineOffsetForUnder`: under the em box,
+                // plus one pixel; over it, minus one pixel and the thickness.
+                let under_em = |o: f32| base_u + em_desc + o + 1.0;
+                let over_em = |o: f32| base_u - em_asc - o - 1.0 - t.floor();
+                let under_at = |line: bool| -> (f32, f32, f32, bool) {
+                    (under_em(if line { off.unwrap_or(0.0) } else { 0.0 }), t + 1.0, t + 1.0, true)
+                };
+                if lines & DECOR_UNDER != 0 {
+                    if flip {
+                        rows.push((over_em(off.unwrap_or(0.0)), -(t + 1.0), -(t + 1.0), true));
+                    } else if d.position & UPOS_UNDER != 0 || vertical {
+                        rows.push(under_at(true));
+                    } else {
+                        let upos = f32::from(ts.underline_position(id, size)) * scale;
+                        let y = if d.position & UPOS_FROM_FONT != 0 && upos != 0.0 {
+                            base_u - upos + off.unwrap_or(0.0)
+                        } else {
+                            // Blink `ComputeUnderlineOffsetAuto`: a gap of half
+                            // the thickness unless the offset is a length.
+                            let gap = if off.is_none() { (t / 2.0).ceil().max(1.0) } else { 0.0 };
+                            base_u + gap + off.unwrap_or(0.0)
+                        };
+                        rows.push((y, t + 1.0, t + 1.0, true));
+                    }
                 }
                 if lines & DECOR_OVER != 0 {
-                    // Blink `ComputeOverlineLineData`: grows up from the text
-                    // top.
-                    rows.push((text_top - t.floor(), -(t + 1.0), -(t + 1.0), true));
+                    if flip {
+                        rows.push(under_at(false));
+                    } else {
+                        // Blink `ComputeOverlineLineData`: grows up from the
+                        // text top.
+                        rows.push((text_top - t.floor(), -(t + 1.0), -(t + 1.0), true));
+                    }
                 }
                 if lines & DECOR_THROUGH != 0 {
                     // Blink `ComputeLineThroughLineData`: centred at two

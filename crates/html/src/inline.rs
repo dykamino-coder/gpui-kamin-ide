@@ -1845,6 +1845,10 @@ fn decorate(parent: &Computed, own: &Computed, c: &mut Computed, own_px: f32) {
     // Наследуемое смещение — вычисленной длиной (доля остаётся долей).
     c.underline_offset = own.underline_offset.map(resolve).or(parent.underline_offset);
     c.underline_pos = own.underline_pos.or(parent.underline_pos);
+    let over_lang = c.lang.as_deref().is_some_and(|l| {
+        let l = l.to_ascii_lowercase();
+        ["ja", "ko", "mn"].iter().any(|p| l == *p || l.starts_with(&format!("{p}-")))
+    });
     let blocked = matches!(own.position, Some(P::Absolute) | Some(P::Fixed))
         || own.float.is_some_and(|f| f != 0)
         || matches!(
@@ -1873,6 +1877,7 @@ fn decorate(parent: &Computed, own: &Computed, c: &mut Computed, own_px: f32) {
                 size: own_px,
             };
             d.position = c.underline_pos.unwrap_or(0);
+            d.over_lang = over_lang;
         }
     }
     if let Some(lines) = own.td_lines.filter(|l| *l != 0)
@@ -1902,6 +1907,7 @@ fn decorate(parent: &Computed, own: &Computed, c: &mut Computed, own_px: f32) {
             position: c.underline_pos.unwrap_or(0),
             inset,
             clone: own.bdb_clone,
+            over_lang,
             font: DecorFont {
                 family: c.font_family.clone(),
                 monospace: c.monospace,
