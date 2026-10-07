@@ -1815,7 +1815,110 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
         None if own.tab_size.is_some() => None,
         None => parent.tab_size_len,
     };
+    decorate(parent, own, &mut c, own_px);
     c
+}
+
+/// Украшения текста (css-text-decor-3 §2.1): линии не наследуются, а
+/// РАСПРОСТРАНЯЮТСЯ на всех потомков в потоке, кроме атомарных строчных
+/// (`inline-block`, `inline-table`…) и вынесенных из потока (флоаты,
+/// абсолюты); цвет, рисунок, толщина и метрики — от украшающей коробки.
+/// `display: contents` коробки не даёт и своих линий не кладёт.
+fn decorate(parent: &Computed, own: &Computed, c: &mut Computed, own_px: f32) {
+    use crate::computed::{
+        DECOR_THROUGH, DECOR_UNDER, Decor, DecorFont, DecorLen, Display as D, Position as P,
+    };
+    // Семейство для `ch`/`ex` — как у `resolve_em`: родовое `monospace`
+    // имени не даёт, а меряться должно тем шрифтом, которым набран текст.
+    let family = c.font_family.clone().unwrap_or_else(|| {
+        if c.monospace == Some(true) {
+            crate::metrics::mono_family_for(c.lang.as_deref()).to_string()
+        } else {
+            String::new()
+        }
+    });
+    let resolve = |l: DecorLen| match l {
+        DecorLen::Raw(raw) => crate::metrics::fallback_len_px(raw, &family, own_px)
+            .map_or(DecorLen::Auto, DecorLen::Px),
+        other => other,
+    };
+    // Наследуемое смещение — вычисленной длиной (доля остаётся долей).
+    c.underline_offset = own.underline_offset.map(resolve).or(parent.underline_offset);
+    c.underline_pos = own.underline_pos.or(parent.underline_pos);
+    let blocked = matches!(own.position, Some(P::Absolute) | Some(P::Fixed))
+        || own.float.is_some_and(|f| f != 0)
+        || matches!(
+            own.display,
+            Some(D::InlineBlock | D::InlineTable | D::InlineFlex | D::InlineGrid)
+        );
+    c.skip_ink = own.skip_ink.or(parent.skip_ink);
+    c.skip_spaces = own.skip_spaces.or(parent.skip_spaces);
+    c.decors = if blocked { Vec::new() } else { parent.decors.clone() };
+    // Линии, пришедшие в блок, рисуются на его анонимной строчной коробке
+    // (css-text-decor-3 §2.1, пример 1): метрики и положение — от шрифта
+    // этого блока (`text-decoration-subelements-004`).
+    let block = match own.display {
+        None => own.block_tag && own.inline_display != Some(true),
+        Some(D::Contents) => false,
+        Some(_) => true,
+    };
+    if block {
+        for d in c.decors.iter_mut() {
+            d.font = DecorFont {
+                family: c.font_family.clone(),
+                monospace: c.monospace,
+                weight: c.font_weight,
+                italic: c.italic,
+                stretch: c.font_stretch,
+                size: own_px,
+            };
+            d.position = c.underline_pos.unwrap_or(0);
+        }
+    }
+    if let Some(lines) = own.td_lines.filter(|l| *l != 0)
+        && own.display != Some(D::Contents)
+    {
+        let black = Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
+        let thickness = match own.td_thickness.map(resolve).unwrap_or_default() {
+            DecorLen::Pct(k) => DecorLen::Px(k * own_px),
+            t => t,
+        };
+        let offset = match c.underline_offset.unwrap_or_default() {
+            DecorLen::Pct(k) => DecorLen::Px(k * own_px),
+            DecorLen::Px(v) => DecorLen::Px(v),
+            _ => DecorLen::Auto,
+        };
+        let inset = match own.td_inset {
+            Some(None) => None,
+            Some(Some(pair)) => Some(pair.map(resolve)),
+            None => Some([DecorLen::Px(0.0); 2]),
+        };
+        let d = Decor {
+            lines,
+            style: own.td_style.unwrap_or_default(),
+            color: own.td_color.or(c.color).unwrap_or(black),
+            thickness,
+            offset,
+            position: c.underline_pos.unwrap_or(0),
+            inset,
+            clone: own.bdb_clone,
+            font: DecorFont {
+                family: c.font_family.clone(),
+                monospace: c.monospace,
+                weight: c.font_weight,
+                italic: c.italic,
+                stretch: c.font_stretch,
+                size: own_px,
+            },
+        };
+        // Повторное слияние того же стиля (`inherit(merged, own)`) не должно
+        // класть линию второй раз.
+        if c.decors.last() != Some(&d) {
+            c.decors.push(d);
+        }
+    }
+    c.underline = Some(c.decors.iter().any(|d| d.lines & DECOR_UNDER != 0));
+    c.line_through = Some(c.decors.iter().any(|d| d.lines & DECOR_THROUGH != 0));
 }
 
 /// `hyphens: auto` — расставить знаки мягкого переноса по слогоразделу.
@@ -2362,6 +2465,80 @@ pub fn emphasis_spans(
             });
         }
         at = end;
+    }
+    out
+}
+
+/// Куски с украшениями (css-text-decor-3 §2.1) и их украшенные прогоны:
+/// смежные куски с тем же украшением на том же месте списка (Blink
+/// `ContinuesDecoratedRun`); атом прогон рвёт. Скрытый кусок не украшается.
+pub fn decor_spans(pieces: &[Piece], base: &TextStyle) -> Vec<crate::lines::DecorSpan> {
+    use crate::lines::{DecorItem, DecorSpan};
+    let mut out: Vec<DecorSpan> = Vec::new();
+    let mut at = 0usize;
+    let mut broken = true;
+    for p in pieces {
+        match p {
+            Piece::Text { text, style } => {
+                let end = at + text.len();
+                if !style.decors.is_empty() && style.hidden != Some(true) && !text.is_empty() {
+                    let mut items: Vec<DecorItem> = style
+                        .decors
+                        .iter()
+                        .map(|d| {
+                            let probe = Computed {
+                                font_family: d.font.family.clone(),
+                                monospace: d.font.monospace,
+                                font_weight: d.font.weight,
+                                italic: d.font.italic,
+                                font_stretch: d.font.stretch,
+                                ..Computed::default()
+                            };
+                            DecorItem {
+                                decor: d.clone(),
+                                font: run_for("x", &probe, base).font,
+                                group: at..end,
+                            }
+                        })
+                        .collect();
+                    if !broken
+                        && let Some(prev) = out.last()
+                        && prev.range.end == at
+                    {
+                        for (k, item) in items.iter_mut().enumerate() {
+                            if let Some(pi) = prev.items.get(k)
+                                && pi.decor == item.decor
+                            {
+                                item.group.start = pi.group.start;
+                            }
+                        }
+                    }
+                    out.push(DecorSpan {
+                        range: at..end,
+                        items,
+                        skip_ink: style.skip_ink != Some(0),
+                        skip_spaces: style.skip_spaces.unwrap_or(3),
+                    });
+                }
+                if !text.is_empty() {
+                    broken = false;
+                }
+                at = end;
+            }
+            Piece::Atom(_) => broken = true,
+            Piece::Overlay(..) => {}
+        }
+    }
+    for i in (0..out.len().saturating_sub(1)).rev() {
+        let (head, tail) = out.split_at_mut(i + 1);
+        let (cur, next) = (&mut head[i], &tail[0]);
+        for (k, item) in cur.items.iter_mut().enumerate() {
+            if let Some(ni) = next.items.get(k)
+                && ni.group.start == item.group.start
+            {
+                item.group.end = ni.group.end;
+            }
+        }
     }
     out
 }

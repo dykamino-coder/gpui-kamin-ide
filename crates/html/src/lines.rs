@@ -25,6 +25,7 @@ pub mod tabs;
 mod atom_placement;
 mod content_baselines;
 mod controlled_shape;
+mod decor;
 mod selection_geometry;
 mod text_raster_origin;
 mod vertical_content_baselines;
@@ -252,6 +253,11 @@ pub struct Paragraph {
     /// increase the line height»): эталоны семьи `text-emphasis-line-height-*`
     /// строятся именно из руби.
     emph_spans: Vec<EmphSpan>,
+    /// Куски с украшениями (`text-decoration`, css-text-decor-3 §2): линии
+    /// рисует сам абзац (см. `paint_decor`), а не набор GPUI.
+    decor_spans: Vec<DecorSpan>,
+    /// Patterned decoration lines waiting to be merged (`decor::flush_decor`).
+    decor_pending: std::cell::RefCell<Vec<decor::DecorLine>>,
     /// Строчные коробки кусков ПОСТРОЧНО (CSS 2.1 §10.8.1): отрезок байт →
     /// `line-height` куска в точках. Непусто — у абзаца куски разного кегля,
     /// гарнитуры или высоты строки, и `line_height` абзаца — это СТРУТ блока,
@@ -349,6 +355,30 @@ fn emphasized(c: char) -> bool {
         ),
         _ => true,
     }
+}
+
+/// Кусок текста с украшениями (css-text-decor-3 §2.1).
+#[derive(Clone, Debug)]
+pub struct DecorSpan {
+    /// Отрезок байт текста абзаца.
+    pub range: std::ops::Range<usize>,
+    /// Украшения куска от внешнего к внутреннему.
+    pub items: Vec<DecorItem>,
+    /// `text-decoration-skip-ink` не `none` (css-text-decor-4 §4.3).
+    pub skip_ink: bool,
+    /// `text-decoration-skip-spaces`: 1 `start`, 2 `end`, 4 `all`.
+    pub skip_spaces: u8,
+}
+
+/// Одно украшение куска.
+#[derive(Clone, Debug)]
+pub struct DecorItem {
+    pub decor: crate::computed::Decor,
+    /// Шрифт украшающей коробки (метрики линий).
+    pub font: gpui::Font,
+    /// Украшенный прогон (Blink «decorated run»): смежные куски с тем же
+    /// украшением — от них считаются `text-decoration-inset` при `slice`.
+    pub group: std::ops::Range<usize>,
 }
 
 /// Кусок со знаком акцента (`text-emphasis`, css-text-decor-3 §5).
@@ -620,6 +650,8 @@ impl Paragraph {
             edge_spans: Vec::new(),
             ruby_trim: (false, false),
             emph_spans: Vec::new(),
+            decor_spans: Vec::new(),
+            decor_pending: Default::default(),
             box_spans: Vec::new(),
             strut_run: None,
             strut_box: (0.0, 0.0),
@@ -672,6 +704,12 @@ impl Paragraph {
     ) -> Self {
         self.box_spans = spans;
         self.strut_run = strut;
+        self
+    }
+
+    /// Куски с украшениями (см. поле `decor_spans`).
+    pub fn decor_spans(mut self, spans: Vec<DecorSpan>) -> Self {
+        self.decor_spans = spans;
         self
     }
 
@@ -3855,7 +3893,13 @@ impl Element for Paragraph {
                 })
             })
             .unwrap_or((0, 0));
-        let runs = self.runs_with_selection(selection.0, selection.1);
+        let mut runs = self.runs_with_selection(selection.0, selection.1);
+        if self.decor_on() {
+            for r in runs.iter_mut() {
+                r.underline = None;
+                r.strikethrough = None;
+            }
+        }
         for (i, line) in self.lines.clone().into_iter().enumerate() {
             // Перевод строки в набор не отдаём: он уже сработал разрывом.
             let body = self.text[line.range.clone()].trim_end_matches('\n');
@@ -4092,6 +4136,8 @@ impl Paragraph {
             edge_spans: self.edge_spans.clone(),
             ruby_trim: self.ruby_trim,
             emph_spans: self.emph_spans.clone(),
+            decor_spans: Vec::new(),
+            decor_pending: Default::default(),
             box_spans: self.box_spans.clone(),
             strut_run: None,
             strut_box: self.strut_box,
@@ -4289,11 +4335,23 @@ impl Paragraph {
             // `background: green; color: transparent` давал пустую страницу.
             let _ = shaped.paint_background(point(x, at.y), self.line_height, window, cx);
             let origin = self.text_raster_origin(&shaped, point(x, at.y), window);
+            // css-text-decor-3 §2.1 «underlines and overlines … are drawn
+            // below the text, line-throughs above it» (painting order).
+            let decor = self.decor_on();
+            if decor {
+                self.paint_decor_shaped(&run, &shaped, point(x, at.y), px(0.), rtl, range, false, window);
+            }
             let _ = shaped.paint(origin, self.line_height, window, cx);
+            if decor {
+                self.paint_decor_shaped(&run, &shaped, point(x, at.y), px(0.), rtl, range, true, window);
+            }
             if !rtl && !self.emph_spans.is_empty() {
                 self.paint_emphasis(&run, &shaped, point(x, at.y), window, cx);
             }
             x += width;
+        }
+        if self.decor_on() {
+            self.flush_decor(window);
         }
         // Строка-замена — за текстом строки, своим шрифтом и кеглем.
         if !self.wrap.rtl && !suffix.is_empty() && self.overflow_marker.as_deref() == Some(suffix) {
@@ -4727,16 +4785,24 @@ impl Paragraph {
             }
         }
         let line_base = self.base_of(range);
+        let mut decor_prev: Option<(usize, Pixels, Pixels, Pixels)> = None;
         for (wi, word) in words.iter().enumerate() {
             let slice: SharedString = self.text[word.range.clone()].to_string().into();
             // Полоса строчной коробки продолжается сквозь слова (см.
             // `slice_runs_banded`); при rtl слова зеркалятся, и стороны
             // меняются местами — там прежний счёт.
-            let runs = if self.wrap.rtl {
+            let mut runs = if self.wrap.rtl {
                 slice_runs(&self.runs, &word.range)
             } else {
                 slice_runs_banded(&self.runs, &word.range)
             };
+            let decor = self.decor_on();
+            if decor {
+                for r in runs.iter_mut() {
+                    r.underline = None;
+                    r.strikethrough = None;
+                }
+            }
             let shaped = window.text_system().shape_line_spaced(
                 slice,
                 self.font_size,
@@ -4804,7 +4870,30 @@ impl Paragraph {
             // Подложка прогона — отдельным вызовом, см. выше.
             let _ = shaped.paint_background(at, self.line_height, window, cx);
             let origin = self.text_raster_origin(&shaped, at, window);
+            if decor {
+                // Украшения промежутка до слова: от правого края прошлого
+                // слова до левого края этого (растянутый пробел тоже
+                // украшается, css-text-decor-3 §2.1).
+                if let Some((end, right, base, pdy)) = decor_prev
+                    && end < word.range.start
+                    && !self.wrap.rtl
+                {
+                    let left = at.x;
+                    let gap = end..word.range.start;
+                    let x_of = |_: usize, _: usize| (right, left);
+                    self.paint_decor(gap.clone(), &x_of, base, pdy, range, false, window);
+                    self.paint_decor(gap.clone(), &x_of, base, pdy, range, true, window);
+                }
+                self.paint_decor_shaped(&word.range, &shaped, at, dy, false, range, false, window);
+            }
             let _ = shaped.paint(origin, self.line_height, window, cx);
+            if decor {
+                self.paint_decor_shaped(&word.range, &shaped, at, dy, false, range, true, window);
+                let base = at.y
+                    + (self.line_height - shaped.ascent - shaped.descent) / 2.0
+                    + shaped.ascent;
+                decor_prev = Some((word.range.end, at.x + shaped.width, base, dy));
+            }
             // Пробелы между словами тоже принадлежат полосе коробки: без
             // этого фон и рамка `<span>` рвались на каждом пробеле. Промежуток
             // набирается своими прогонами (обе стороны — продолжение полосы) и
@@ -4888,6 +4977,9 @@ impl Paragraph {
                     ));
                 }
             }
+        }
+        if self.decor_on() {
+            self.flush_decor(window);
         }
     }
 

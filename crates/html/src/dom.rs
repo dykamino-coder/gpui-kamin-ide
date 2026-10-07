@@ -3629,6 +3629,7 @@ fn walk(
                 children
             };
             let inline = INLINE_TAGS.contains(&tag.as_str()) || !BLOCK_TAGS.contains(&tag.as_str());
+            style.block_tag = !inline;
             // Замена элемента (css-content-3 §content-property: «a single
             // <image>» на самом элементе): коробка становится замещаемой
             // картинкой, содержимое не рисуется. Уровень коробки остаётся от

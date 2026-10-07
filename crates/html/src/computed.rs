@@ -1575,6 +1575,111 @@ pub struct BorderShape {
     pub inner: Option<(String, u8)>,
 }
 
+/// Линии украшения (css-text-decor-3 §2.1 `text-decoration-line`).
+pub const DECOR_UNDER: u8 = 1;
+pub const DECOR_OVER: u8 = 2;
+pub const DECOR_THROUGH: u8 = 4;
+/// `text-underline-position` (css-text-decor-4 §5.2).
+pub const UPOS_UNDER: u8 = 1;
+pub const UPOS_LEFT: u8 = 2;
+pub const UPOS_RIGHT: u8 = 4;
+pub const UPOS_FROM_FONT: u8 = 8;
+
+/// `text-decoration-style` (css-text-decor-3 §2.3).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum DecorStyle {
+    #[default]
+    Solid,
+    Double,
+    Dotted,
+    Dashed,
+    Wavy,
+}
+
+/// Длина украшения: толщина, смещение подчёркивания, отступ концов.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum DecorLen {
+    #[default]
+    Auto,
+    FromFont,
+    /// Абсолютная длина в точках CSS.
+    Px(f32),
+    /// Доля (1.0 = 100%): у толщины и смещения — от кегля, у отступа — от
+    /// ширины украшаемого прогона.
+    Pct(f32),
+    /// Как задано (единицы шрифта решаются при наследовании).
+    Raw(Len),
+    /// `calc(доля + точки)` отступа концов: доля от ширины прогона.
+    Mix(f32, f32),
+}
+
+/// Шрифт украшающей коробки: от него берутся метрики линий
+/// (css-text-decor-3 §2.1 «decorating box»).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DecorFont {
+    pub family: Option<String>,
+    pub monospace: Option<bool>,
+    pub weight: Option<u16>,
+    pub italic: Option<bool>,
+    pub stretch: Option<f32>,
+    pub size: f32,
+}
+
+/// Украшение, наложенное украшающей коробкой (Blink `AppliedTextDecoration`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Decor {
+    pub lines: u8,
+    pub style: DecorStyle,
+    pub color: Color,
+    /// Толщина: `Auto`, `FromFont` или `Px`.
+    pub thickness: DecorLen,
+    /// `text-underline-offset`: `Auto` или `Px`.
+    pub offset: DecorLen,
+    pub position: u8,
+    /// `None` — `auto`; иначе (начало, конец): `Px` или `Pct`.
+    pub inset: Option<[DecorLen; 2]>,
+    pub clone: bool,
+    pub font: DecorFont,
+}
+
+fn parse_decor_style(t: &str) -> Option<DecorStyle> {
+    Some(match t {
+        "solid" => DecorStyle::Solid,
+        "double" => DecorStyle::Double,
+        "dotted" => DecorStyle::Dotted,
+        "dashed" => DecorStyle::Dashed,
+        "wavy" => DecorStyle::Wavy,
+        _ => return None,
+    })
+}
+
+/// `<length-percentage>` украшения (толщина, смещение, отступ концов).
+fn parse_decor_length(t: &str) -> Option<DecorLen> {
+    if t == "auto" || t == "normal" {
+        return None;
+    }
+    let l = Len::parse_spacing(t)?;
+    Some(match l {
+        Len::Px(v) => DecorLen::Px(v),
+        Len::Pct(k) => DecorLen::Pct(k),
+        Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => return None,
+        other => DecorLen::Raw(other),
+    })
+}
+
+/// `text-decoration-thickness`: `auto | from-font | <length-percentage> |
+/// <line-width>` (css-text-decor-4 §2.4).
+fn parse_decor_thickness(t: &str) -> Option<DecorLen> {
+    Some(match t {
+        "auto" => DecorLen::Auto,
+        "from-font" => DecorLen::FromFont,
+        "thin" => DecorLen::Px(1.0),
+        "medium" => DecorLen::Px(3.0),
+        "thick" => DecorLen::Px(5.0),
+        _ => parse_decor_length(t)?,
+    })
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Computed {
     /// Счётчик объявлений этого узла: порядок каскада между логическими и
@@ -2891,6 +2996,34 @@ pub struct Computed {
     pub emphasis_under: bool,
     /// `text-emphasis-color` (css-text-decor-3 §5.2); пусто — `currentColor`.
     pub emphasis_color: Option<Color>,
+    /// `text-decoration-line` самой коробки (биты `DECOR_*`); пусто — не
+    /// задано (`none`). Не наследуется: потомкам линии достаются через
+    /// `decors` (css-text-decor-3 §2 «propagated»).
+    pub td_lines: Option<u8>,
+    /// `text-decoration-style` (не наследуется).
+    pub td_style: Option<DecorStyle>,
+    /// `text-decoration-color`; пусто — `currentColor` (не наследуется).
+    pub td_color: Option<Color>,
+    /// `text-decoration-thickness` (не наследуется).
+    pub td_thickness: Option<DecorLen>,
+    /// `text-decoration-inset` (css-text-decor-4 §4.1, не наследуется):
+    /// `None` — 0, `Some(None)` — `auto`.
+    pub td_inset: Option<Option<[DecorLen; 2]>>,
+    /// `text-underline-offset` (наследуется).
+    pub underline_offset: Option<DecorLen>,
+    /// `text-underline-position` (наследуется), биты `UPOS_*`.
+    pub underline_pos: Option<u8>,
+    /// Блочный тег (`<p>`, `<div>`…): при пустом `display` коробка блочная
+    /// (`dom.rs`, не наследуется) — украшениям нужна своя строчная коробка.
+    pub block_tag: bool,
+    /// `text-decoration-skip-ink` (наследуется): 0 `none`, 1 `auto`, 2 `all`.
+    pub skip_ink: Option<u8>,
+    /// `text-decoration-skip-spaces` (наследуется): 1 `start`, 2 `end`,
+    /// 4 `all`, 0 `none`; пусто — начальное `start end`.
+    pub skip_spaces: Option<u8>,
+    /// Украшения, наложенные на текст коробки её предками и ею самой
+    /// (css-text-decor-3 §2.1), от внешнего к внутреннему.
+    pub decors: Vec<Decor>,
     /// `ruby-position` (css-ruby-1 §4.1): `Some(true)` — аннотация ПОД базой
     /// (`under`), `Some(false)` — над (`over`/`alternate`/`inter-character`),
     /// `None` — не задано. Наследуется (`inline::inherit`). Прежде делил флаг
@@ -5749,49 +5882,149 @@ impl Computed {
                     })
                     .or_else(|| generic.map(str::to_string));
             }
-            "text-decoration" | "text-decoration-line" => {
+            "text-decoration" | "text-decoration-line" | "-webkit-text-decoration-line" => {
+                // css-text-decor-4 §2: сокращение — `<line> || <style> ||
+                // <color> || <thickness>`, все подсвойства сбрасываются.
                 // Недействительный токен делает объявление НЕВАЛИДНЫМ целиком
-                // (§4.2): прежде свойство искалось подстрокой, и
-                // `text-decoration: diagonal` проезжало как «нет подчёркивания»
-                // вместо того, чтобы оставить прежнее значение
-                // (`c71-fwd-parsing-003`).
-                let line = |t: &str| {
-                    matches!(
-                        t,
-                        "none"
-                            | "underline"
-                            | "overline"
-                            | "line-through"
-                            | "blink"
-                            | "spelling-error"
-                            | "grammar-error"
-                    )
-                };
-                // У сокращения к линиям добавляются рисунок, толщина и цвет.
-                let extra = |t: &str| {
-                    key == "text-decoration"
-                        && (matches!(
-                            t,
-                            "solid"
-                                | "double"
-                                | "dotted"
-                                | "dashed"
-                                | "wavy"
-                                | "auto"
-                                | "from-font"
-                        ) || Len::parse(t).is_some()
-                            || Color::parse(t).is_some())
-                };
-                let lower = v.to_ascii_lowercase();
-                let mut words = lower.split_whitespace().peekable();
-                if words.peek().is_none() {
+                // (§4.2): `text-decoration: diagonal` оставляет прежнее
+                // значение (`c71-fwd-parsing-003`).
+                let lower = v.trim().to_ascii_lowercase();
+                let words = crate::background::split_top(&lower);
+                if words.is_empty() {
                     return;
                 }
-                if !lower.split_whitespace().all(|t| line(t) || extra(t)) {
+                let short = key == "text-decoration";
+                let (mut lines, mut none) = (0u8, false);
+                let (mut style, mut color, mut thick) = (None, None, None);
+                let mut current = false;
+                for t in &words {
+                    let t = *t;
+                    match t {
+                        "none" if lines == 0 && !none => none = true,
+                        "underline" if lines & DECOR_UNDER == 0 && !none => lines |= DECOR_UNDER,
+                        "overline" if lines & DECOR_OVER == 0 && !none => lines |= DECOR_OVER,
+                        "line-through" if lines & DECOR_THROUGH == 0 && !none => {
+                            lines |= DECOR_THROUGH
+                        }
+                        // Мигание и пометки правописания линий не рисуют.
+                        "blink" | "spelling-error" | "grammar-error" if !none => {}
+                        _ if !short => return,
+                        _ if style.is_none() && parse_decor_style(t).is_some() => {
+                            style = parse_decor_style(t)
+                        }
+                        "currentcolor" if color.is_none() && !current => current = true,
+                        _ if color.is_none() && !current && Color::parse(t).is_some() => {
+                            color = Color::parse(t)
+                        }
+                        _ if thick.is_none() && parse_decor_thickness(t).is_some() => {
+                            thick = parse_decor_thickness(t)
+                        }
+                        _ => return,
+                    }
+                }
+                self.td_lines = Some(lines);
+                if short {
+                    self.td_style = style;
+                    self.td_color = color;
+                    self.td_thickness = thick;
+                }
+                self.underline = Some(lines & DECOR_UNDER != 0);
+                self.line_through = Some(lines & DECOR_THROUGH != 0);
+            }
+            "text-decoration-style" | "-webkit-text-decoration-style" => {
+                if let Some(s) = parse_decor_style(&v.trim().to_ascii_lowercase()) {
+                    self.td_style = Some(s);
+                }
+            }
+            "text-decoration-color" | "-webkit-text-decoration-color" => {
+                let t = v.trim();
+                if t.eq_ignore_ascii_case("currentcolor") {
+                    self.td_color = None;
+                } else if let Some(c) = Color::parse(t) {
+                    self.td_color = Some(c);
+                }
+            }
+            "text-decoration-thickness" => {
+                if let Some(t) = parse_decor_thickness(&v.trim().to_ascii_lowercase()) {
+                    self.td_thickness = Some(t);
+                }
+            }
+            "text-underline-offset" => {
+                let t = v.trim().to_ascii_lowercase();
+                if t == "auto" {
+                    self.underline_offset = Some(DecorLen::Auto);
+                } else if let Some(l) = parse_decor_length(&t) {
+                    self.underline_offset = Some(l);
+                }
+            }
+            "text-underline-position" => {
+                let t = v.trim().to_ascii_lowercase();
+                let mut bits = 0u8;
+                let words: Vec<&str> = t.split_whitespace().collect();
+                let ok = match words.as_slice() {
+                    ["auto"] => true,
+                    ["from-font"] => {
+                        bits = UPOS_FROM_FONT;
+                        true
+                    }
+                    ws if !ws.is_empty() && ws.len() <= 2 => ws.iter().all(|w| {
+                        let b = match *w {
+                            "under" => UPOS_UNDER,
+                            "left" => UPOS_LEFT,
+                            "right" => UPOS_RIGHT,
+                            _ => return false,
+                        };
+                        let side = UPOS_LEFT | UPOS_RIGHT;
+                        if bits & b != 0 || (b & side != 0 && bits & side != 0) {
+                            return false;
+                        }
+                        bits |= b;
+                        true
+                    }),
+                    _ => false,
+                };
+                if ok {
+                    self.underline_pos = Some(bits);
+                }
+            }
+            "text-decoration-skip-spaces" => {
+                let t = v.trim().to_ascii_lowercase();
+                let words: Vec<&str> = t.split_whitespace().collect();
+                self.skip_spaces = match words.as_slice() {
+                    ["none"] => Some(0),
+                    ["all"] => Some(4),
+                    ["start"] => Some(1),
+                    ["end"] => Some(2),
+                    ["start", "end"] | ["end", "start"] => Some(3),
+                    _ => return,
+                };
+            }
+            "text-decoration-skip-ink" => {
+                self.skip_ink = match v.trim().to_ascii_lowercase().as_str() {
+                    "none" => Some(0),
+                    "auto" => Some(1),
+                    "all" => Some(2),
+                    _ => return,
+                };
+            }
+            "text-decoration-inset" => {
+                let t = v.trim().to_ascii_lowercase();
+                if t == "auto" {
+                    self.td_inset = Some(None);
                     return;
                 }
-                self.underline = Some(lower.split_whitespace().any(|t| t == "underline"));
-                self.line_through = Some(lower.split_whitespace().any(|t| t == "line-through"));
+                let words = crate::background::split_top(&t);
+                // Смесь доли и точек доживает до отрисовки: доля — от
+                // ширины украшенного прогона (css-text-decor-4 §4.1).
+                let one = |w: &str| match crate::value::calc_pct_px(w) {
+                    Some((k, p)) if k != 0.0 => Some(DecorLen::Mix(k, p)),
+                    _ => parse_decor_length(w),
+                };
+                let lens: Vec<DecorLen> = words.iter().filter_map(|w| one(w)).collect();
+                if lens.len() != words.len() || lens.is_empty() || lens.len() > 2 {
+                    return;
+                }
+                self.td_inset = Some(Some([lens[0], *lens.get(1).unwrap_or(&lens[0])]));
             }
             "line-height" => {
                 // Голое число в line-height — множитель, а не пиксели, и
