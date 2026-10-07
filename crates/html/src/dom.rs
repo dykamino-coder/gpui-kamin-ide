@@ -446,6 +446,9 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     );
     // ПЕРВЫМ проходом: табличная починка и подъёмы ниже читают `display`.
     resolve_display_inherit(&mut out, (None, None, None, None, None));
+    // Anonymous inline-table around orphan table boxes inside inline boxes
+    // (CSS 2.1 §17.2.1 step 3); block parents are fixed up by `blocks()`.
+    crate::render::inline_anon_tables(&mut out);
     // Лунки, которые умеет taffy, — на путь сетки ДО подъёмов и среза
     // подсетки: дальше они идут тем же кодом, что и сетка.
     lanes_as_grid(&mut out);

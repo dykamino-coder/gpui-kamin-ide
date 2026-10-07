@@ -28389,15 +28389,37 @@ fn anon_role(n: &Node) -> Option<bool> {
 /// одной. Починку содержимого (ряд вокруг ячеек, ячейка вокруг прочего)
 /// делает `fixup_table_children` уже внутри собранной таблицы.
 fn wrap_anon_tables(nodes: &[Node]) -> Vec<Node> {
+    wrap_anon_tables_as(nodes, Display::Table)
+}
+
+/// CSS 2.1 §17.2.1 step 3 for INLINE parents: "If the box's parent is an
+/// inline box, then an anonymous inline-table box must be generated" around
+/// each run of consecutive proper table child boxes. Without it every orphan
+/// cell in a line got its own wrapper table, and the white space between
+/// consecutive cells (removed by §17.2.1 step 1) stayed in the line.
+pub(crate) fn inline_anon_tables(nodes: &mut [Node]) {
+    for n in nodes.iter_mut() {
+        let Node::Element(e) = n else { continue };
+        inline_anon_tables(&mut e.children);
+        if e.style.display.is_none()
+            && e.inline
+            && e.children.iter().any(|c| anon_role(c).is_some())
+        {
+            e.children = wrap_anon_tables_as(&e.children, Display::InlineTable);
+        }
+    }
+}
+
+fn wrap_anon_tables_as(nodes: &[Node], display: Display) -> Vec<Node> {
     if !nodes.iter().any(|n| anon_role(n).is_some()) {
         return nodes.to_vec();
     }
-    fn flush(run: &mut Vec<Node>, out: &mut Vec<Node>) {
+    let flush = |run: &mut Vec<Node>, out: &mut Vec<Node>| {
         if run.is_empty() {
             return;
         }
         let mut t = anon_element("table", std::mem::take(run));
-        t.style.display = Some(Display::Table);
+        t.style.display = Some(display);
         // Свой номер узла: по нему таблица просит буферы проб. Нулевой у
         // всех анонимных узлов общий, и две таблицы делили бы один буфер —
         // первая забрала бы его, вторая осталась пустой.
@@ -28406,7 +28428,7 @@ fn wrap_anon_tables(nodes: &[Node]) -> Vec<Node> {
             _ => 0,
         };
         out.push(Node::Element(t));
-    }
+    };
     let mut out: Vec<Node> = vec![];
     let mut run: Vec<Node> = vec![];
     let mut gap: Vec<Node> = vec![];
@@ -28637,6 +28659,37 @@ fn fixup_table_children(children: &[Node]) -> Vec<Node> {
                 }
             }
             Node::Text(t) if !t.trim().is_empty() => stray.push(child.clone()),
+            // CSS 2.1 §17.2.1 step 1.3: white space is dropped only when each
+            // existing immediate sibling is an internal table box or caption.
+            // Next to an inline (`<span>a</span> <span>b</span>`) it belongs
+            // to the anonymous cell's line, where it separates the words.
+            Node::Text(_) => {
+                let ix = children
+                    .iter()
+                    .position(|n| std::ptr::eq(n, child))
+                    .unwrap_or(0);
+                let inline_like = |n: Option<&Node>| match n {
+                    Some(Node::Text(t)) => !t.trim().is_empty(),
+                    Some(Node::Element(el)) => {
+                        el.style.display != Some(Display::Contents)
+                            && col_role(el).is_none()
+                            && !is_cell(el)
+                            && el.tag != "caption"
+                            && el.style.is_caption != Some(true)
+                            && el.tag != "tr"
+                            && !matches!(el.tag.as_str(), "thead" | "tbody" | "tfoot")
+                            && !matches!(
+                                el.style.display,
+                                Some(Display::TableRow) | Some(Display::TableRowGroup)
+                            )
+                    }
+                    _ => false,
+                };
+                let prev = ix.checked_sub(1).and_then(|i| children.get(i));
+                if inline_like(prev) || inline_like(children.get(ix + 1)) {
+                    stray.push(child.clone());
+                }
+            }
             _ => {}
         }
     }
