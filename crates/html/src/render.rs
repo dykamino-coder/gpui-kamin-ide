@@ -10041,7 +10041,23 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
         // Куски строчного содержимого копят стиль хозяина: анонимная коробка
         // своего оформления не имеет, а спан внутри неё — имеет.
         let mut piece: Vec<Node> = vec![];
-        let flush = |piece: &mut Vec<Node>, out: &mut Vec<Node>| {
+        // Край строчного со стороны `side` (1 — правый, 3 — левый): рамка,
+        // отбивка или поле ненулевой толщины.
+        let has_edge = |side: usize| {
+            let nz = |l: Option<Len>| matches!(l, Some(Len::Px(v)) if v.abs() > 0.0);
+            let st = &e.style;
+            let (b, p, m) = if side == 1 {
+                (st.borders().right, st.padding.right, st.margin.right)
+            } else {
+                (st.borders().left, st.padding.left, st.margin.left)
+            };
+            nz(b) || nz(p) || nz(m)
+        };
+        // Сторона письма известна только своему стилю: при rtl/вертикали
+        // прежнее поведение (пустой кусок пропадает).
+        let ltr = e.style.rtl != Some(true) && e.style.vertical.is_none();
+        // `first`: кусок до первого блока, `last`: после последнего.
+        let flush = |piece: &mut Vec<Node>, out: &mut Vec<Node>, first: bool, last: bool| {
             // Кусок из одних схлопываемых пробелов коробки не создаёт —
             // иначе он рисовал бы фон и рамку строчного на пустом месте.
             let blank = piece.iter().all(|n| match n {
@@ -10050,6 +10066,37 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
             });
             if piece.is_empty() || blank {
                 piece.clear();
+                // …кроме первого и последнего куска со своим краем: строка с
+                // пустой строчной коробкой, у которой есть рамка, отбивка или
+                // поле по строчной оси, не пуста (CSS 2.1 §9.4.2), а разрыв
+                // §9.2.1.1 оставляет начальный край первому куску, конечный —
+                // последнему (`block-in-inline-whitespace-001a`: синяя черта
+                // `border-left` над первым блоком и `border-right` под вторым).
+                let drop = if first && ltr && has_edge(3) {
+                    Some(1)
+                } else if last && ltr && has_edge(1) {
+                    Some(3)
+                } else {
+                    None
+                };
+                if let Some(drop) = drop {
+                    let mut host = e.clone();
+                    host.children = Vec::new();
+                    host.style.border_visible[drop] = Some(false);
+                    if drop == 1 {
+                        host.style.border_width.right = None;
+                        host.style.padding.right = None;
+                        host.style.margin.right = None;
+                    } else {
+                        host.style.border_width.left = None;
+                        host.style.padding.left = None;
+                        host.style.margin.left = None;
+                    }
+                    out.push(Node::Element(anon_element(
+                        "anon-block",
+                        vec![Node::Element(host)],
+                    )));
+                }
                 return;
             }
             let mut host = e.clone();
@@ -10062,9 +10109,11 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
         // Блок может лежать глубже, внутри вложенных строчных: сперва
         // раскрываем их, и тогда на этом уровне он виден анонимной коробкой.
         let kids = split_block_in_inline(&e.children);
+        let mut first = true;
         for child in &kids {
             if breaks_inline(child) {
-                flush(&mut piece, &mut out);
+                flush(&mut piece, &mut out, first, false);
+                first = false;
                 // Относительный сдвиг строчного хозяина переносится на
                 // вынесенный блок (§9.2.1.1: разрыв не отменяет смещения).
                 let mut block = match child {
@@ -10131,7 +10180,7 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
             }
             piece.push(child.clone());
         }
-        flush(&mut piece, &mut out);
+        flush(&mut piece, &mut out, first, !first);
     }
     // ПРОБОВАЛИ И ОТКАТИЛИ: сливать прогон между разрывами в ОДНУ анонимную
     // коробку (§9.2.1.1 обнимает всю строчную коробку, а не только куски
