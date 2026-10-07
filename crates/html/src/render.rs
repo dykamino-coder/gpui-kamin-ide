@@ -343,6 +343,15 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
         // коробкой с `height: 3lh` (`line-clamp-011/035`).
         if cut.is_finite() {
             d.style().overflow.y = Some(gpui::Overflow::Hidden);
+            // Содержимое ЗА точкой среза не видно и в нижнем паддинге
+            // контейнера (css-overflow-4 §5.3: оно «visually hidden», а не
+            // обрезано краем паддинга; Blink — `is_hidden_for_paint`):
+            // нижний край обрезки — край поля содержимого
+            // (`webkit-line-clamp-050`: «Line4» в паддинге 10px).
+            let pad_bottom = side(c.padding.bottom);
+            if pad_bottom > 0.0 && d.style().overflow_clip_offset.is_none() {
+                d.style().overflow_clip_offset = Some([0.0, 0.0, -pad_bottom, 0.0]);
+            }
         }
     }
     let empty = !e.children.iter().any(|n| !is_blank(n));

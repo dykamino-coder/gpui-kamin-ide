@@ -124,6 +124,11 @@ pub struct Paragraph {
     /// (ключ клэмп-контейнера, номер абзаца): отрисовка сообщает строки
     /// вычислителю среза (`interact::publish_para_rows`).
     clamp_tag: Option<(u64, u32)>,
+    /// Шаги строк абзаца ДО балансировки (`text-wrap: balance` в
+    /// клэмп-контейнере, пока бюджета нет): точка среза определяется до
+    /// балансировки (css-overflow-4 §line-clamp: «balancing … after
+    /// the effects of continue»; `line-clamp-balance-003/006`).
+    unbalanced_steps: Option<Vec<f32>>,
     /// Шрифт маркера: стиль БЛОКА-контейнера, не прогона у среза
     /// (css-overflow-4 §5) — иначе «123» набиралось Ahem-квадратами
     /// шрифта обрезанного куска.
@@ -651,6 +656,7 @@ impl Paragraph {
             overflow_marker: None,
             clamp_marker: None,
             clamp_tag: None,
+            unbalanced_steps: None,
             marker_font: None,
             marker_size: None,
             marker_color: None,
@@ -3880,6 +3886,18 @@ impl Element for Paragraph {
         };
         self.apply_measured_fit();
         self.lines = self.split(Some(limit), window);
+        self.unbalanced_steps = None;
+        if self.clamp_tag.is_some() && self.wrap.balance && self.clamp.is_none() {
+            if self.run_metrics.len() != self.runs.len() {
+                self.run_metrics = self.measure_runs(window);
+            }
+            let segs = self.measure(window);
+            let unbalanced = self.lay(Some(limit), &segs);
+            let balanced = std::mem::replace(&mut self.lines, unbalanced);
+            let lh = f32::from(self.line_height);
+            self.unbalanced_steps = Some(self.line_padding().iter().map(|(a, b)| lh + a + b).collect());
+            self.lines = balanced;
+        }
         self.place_atoms(*state, window, _cx);
         // Куски вне потока встают на своё место в строке: раскладываются
         // по содержимому и подготавливаются от угла своего знака.
@@ -3990,13 +4008,23 @@ impl Element for Paragraph {
             && !self.lines_reversed
         {
             let mut y0 = f32::from(bounds.origin.y);
-            let rows = (0..count)
-                .map(|i| {
-                    let r = (y0, y0 + f32::from(step(i)));
-                    y0 = r.1;
-                    r
-                })
-                .collect();
+            let rows = match &self.unbalanced_steps {
+                Some(steps) => steps
+                    .iter()
+                    .map(|h| {
+                        let r = (y0, y0 + h);
+                        y0 = r.1;
+                        r
+                    })
+                    .collect(),
+                None => (0..count)
+                    .map(|i| {
+                        let r = (y0, y0 + f32::from(step(i)));
+                        y0 = r.1;
+                        r
+                    })
+                    .collect(),
+            };
             crate::interact::publish_para_rows(tag, rows);
         }
         // Строки снизу вверх: место строки считается ОТ ВЕРХА коробки одним
@@ -4321,6 +4349,7 @@ impl Paragraph {
             overflow_marker: None,
             clamp_marker: None,
             clamp_tag: None,
+            unbalanced_steps: None,
             marker_font: None,
             marker_size: None,
             marker_color: None,
