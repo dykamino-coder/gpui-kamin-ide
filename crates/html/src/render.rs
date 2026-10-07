@@ -16359,7 +16359,10 @@ fn edge_pieces(
 ) -> Vec<(std::ops::Range<usize>, bool, f32)> {
     use crate::computed::Align;
     let mut out: Vec<(std::ops::Range<usize>, bool, f32)> = Vec::new();
-    if inherited.vertical == Some(true) || inherited.rotated_line == Some(true) {
+    // A rotated vertical paragraph is laid out in its pre-rotation frame,
+    // whose top is the line-over side (css-writing-modes-4 §line-relative
+    // directions), so `top`/`bottom` keep their meaning there.
+    if inherited.vertical == Some(true) {
         return out;
     }
     let mut at = 0usize;
