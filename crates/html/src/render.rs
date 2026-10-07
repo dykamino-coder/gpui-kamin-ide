@@ -5512,13 +5512,12 @@ fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, El
             || !matches!(ks.position, None | Some(crate::computed::Position::Relative))
             || ks.float.unwrap_or(0) != 0
             || ks.flex_grow.is_some_and(|g| g > 0.0)
-            || ks.flex_basis.is_some()
             || ks.align_self.is_some()
             || ks.align_self_normal
             || ks.min_height.is_some()
             || !zero(&ks.margin.left)
             || !zero(&ks.margin.right)
-            || !matches!(ks.width, Some(Len::Px(_)))
+            || row_item_width(ks, main).is_none()
         {
             return None;
         }
@@ -5531,9 +5530,32 @@ fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, El
     // Строки по внешней ширине элементов (главная ось).
     let mut lines: Vec<Vec<(f32, Element, Shape)>> = Vec::new();
     let mut used = 0.0f32;
+    // Строка из одного элемента и размер в процентах/`flex-basis` — шире
+    // прежнего гейта: такой ряд прежде шёл целым контейнером, и его мера
+    // (`shape_full` контейнера) уже знала рост строки от разрыва внутри
+    // элемента, растяжение соседей на выросшую строку, статическое место
+    // абсолютного потомка и вложенный параллельный поток. Раскрытые элементы
+    // этого не выражают (`grow_pushed` растит лишь сам элемент): замерено
+    // −3 (`multi-line-row-flex-fragmentation-053/060/062`). Такие элементы —
+    // прежним путём.
+    let widened = items.iter().any(|k| !matches!(k.style.width, Some(Len::Px(_))) || k.style.flex_basis.is_some());
+    let mut single = true;
+    let mut risky = false;
+    for k in &items {
+        risky |= carries_abspos(k, 4) || constrained_inside(k, 4);
+    }
     for k in items {
         let kb = k.style.borders();
-        let Some(Len::Px(w)) = k.style.width else { return None };
+        // Гипотетический главный размер (css-flexbox-1 §9.2 шаг 3):
+        // `flex-basis` в точках/процентах, иначе `width`; проценты — от
+        // главного размера контейнера (§9.2 «percentage … against the flex
+        // container's inner main size»). Копия элемента несёт его в точках:
+        // в стопке он рисуется блоком в колонке.
+        let w = row_item_width(&k.style, main)?;
+        let mut k = k.clone();
+        k.style.width = Some(Len::Px(w));
+        k.style.flex_basis = None;
+        let k = &k;
         let w = if k.style.border_box == Some(true) {
             w
         } else {
@@ -5545,6 +5567,7 @@ fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, El
         let sh = shape_full(k, 4, ShapeCx::COLUMNS)?;
         match lines.last_mut() {
             Some(line) if used + col_gap + w <= main + 0.01 => {
+                single = false;
                 line.push((used + col_gap, k.clone(), sh));
                 used += col_gap + w;
             }
@@ -5554,7 +5577,7 @@ fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, El
             }
         }
     }
-    if lines.iter().all(|l| l.len() < 2) {
+    if (single || widened) && (risky || lines.iter().flatten().any(|x| !x.2.4.is_empty())) {
         return None;
     }
     for (li, line) in lines.iter_mut().enumerate() {
@@ -5595,6 +5618,37 @@ fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, El
         }
     }
     Some(lines)
+}
+
+/// В поддереве (до `depth`) — коробка с заданной высотой и содержимым: свой
+/// параллельный поток (css-break-3 §3), которого раскрытый элемент ряда не
+/// выражает (`flex_row_lines_of`).
+fn constrained_inside(c: &Element, depth: u8) -> bool {
+    depth > 0
+        && c.children.iter().any(|n| match n {
+            Node::Element(k) => {
+                (matches!(k.style.height, Some(Len::Px(_)) | Some(Len::Pct(_)))
+                    && k.children.iter().any(|n| !is_blank(n)))
+                    || constrained_inside(k, depth - 1)
+            }
+            _ => false,
+        })
+}
+
+/// Главный размер элемента многострочного ряда для `flex_row_lines_of`:
+/// `flex-basis` (точки/проценты) при `flex-grow: 0`, иначе `width`; проценты —
+/// от главного размера контейнера `main`. `None` — размер по содержимому
+/// (`auto`/`content`), который гейт не выражает.
+fn row_item_width(ks: &Computed, main: f32) -> Option<f32> {
+    let px = |l: &Option<Len>| match l {
+        Some(Len::Px(v)) => Some(*v),
+        Some(Len::Pct(p)) => Some(p * main),
+        _ => None,
+    };
+    match ks.flex_basis {
+        Some(Len::Auto) | None => px(&ks.width),
+        _ => px(&ks.flex_basis),
+    }
 }
 
 /// «Сдвиг ряда» сетки с рядами в точках (Blink `row_offset_adjustments`,
