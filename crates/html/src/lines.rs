@@ -4764,7 +4764,18 @@ impl Paragraph {
         // на дробную базовую без округления (`text_raster_origin`), и знак
         // идёт по тому же правилу, иначе он округлялся отдельно и стоял на
         // точку выше текста строки (`text-overflow-string-*`).
-        let origin = if raw {
+        // GPUI now adds the paragraph's glyph offset to every glyph
+        // (`Window::paint_glyph`, fix-loss4), not only to pixel-exact ones;
+        // an antialiased marker on such a line keeps the snapped paragraph
+        // origin it had before (fix-clamp `text-overflow-string-004/012`).
+        let origin = if raw
+            && !shaped
+                .runs
+                .iter()
+                .all(|r| window.text_system().pixel_exact_glyphs(r.font_id))
+        {
+            origin - self.glyph_nudge
+        } else if raw {
             origin
         } else {
             self.text_raster_origin(&shaped, origin, window)

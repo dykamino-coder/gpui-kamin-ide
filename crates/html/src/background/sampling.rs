@@ -61,7 +61,33 @@ pub(super) fn paint_tile(
     } else {
         bounds
     };
+    // An interpolated tile snaps both final edges together as well (CSS
+    // Backgrounds 3 section 3.8; Blink background_image_geometry.cc:756),
+    // instead of flooring the origin and independently expanding the size.
+    // Ported from fix-near b6801d1; the Nearest path above stays as is.
+    let sampling = if sampling == ImageSampling::Linear
+        && window.current_transformation().rotation_scale == [[1.0, 0.0], [0.0, 1.0]]
+    {
+        ImageSampling::LinearSnapped
+    } else {
+        sampling
+    };
     let _ = window.paint_image_with_sampling(bounds, corners, image, 0, false, sampling);
+}
+
+pub(super) fn snapped_clip(bounds: Bounds<Pixels>, window: &Window) -> Bounds<Pixels> {
+    if window.current_transformation() != gpui::TransformationMatrix::unit() {
+        return bounds;
+    }
+    // CSS Backgrounds 3 section 3.7 clips to the painted box. Snap the clip
+    // like the box edges: a fractional clip can otherwise discard its last
+    // painted device column (fix-near b6801d1).
+    let scale = window.scale_factor();
+    let edge = |v: Pixels| gpui::px((f32::from(v) * scale).round() / scale);
+    Bounds::from_corners(
+        gpui::point(edge(bounds.left()), edge(bounds.top())),
+        gpui::point(edge(bounds.right()), edge(bounds.bottom())),
+    )
 }
 
 fn sampling_mode(
