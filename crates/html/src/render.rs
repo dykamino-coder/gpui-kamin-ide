@@ -9309,6 +9309,24 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             ) && e.style.z_index.unwrap_or(0) == 0
                 && !matches!(e.tag.as_str(), "html" | "body")
                 && paint_last_ok(e, &nodes[idx + 1..]);
+            // Непозиционированный элемент с `opacity` < 1 красится на том же слое, что
+            // позиционированные с `z-index: 0` (css-color-4 §opacity: «painted
+            // on the same layer … as positioned elements with stacking order
+            // 0»; Blink кладёт такой слой в список z-порядка с нулём): после
+            // блоков и строк потока, в порядке разметки (`t32-opacity-zorder-c`).
+            let step8 = step8
+                || (e.style.position.is_none_or(|p| p == crate::computed::Position::Static)
+                    // `z-index` у непозиционированного не действует
+                    // (CSS 2.1 §9.9.1 «Applies to: positioned elements»).
+                    && (e.style.z_index.unwrap_or(0) == 0
+                        || !z_index_applies(&e.style, inherited))
+                    // Только прозрачность: у `contain`/`will-change`/
+                    // `transform` положительный `z-index` потомков держится
+                    // на краске на месте (`contain-paint-stacking-context-*`).
+                    && e.style.opacity.is_some_and(|o| o < 1.0)
+                    && !e.style.z_index.is_some_and(|z| z > 0 && z_index_applies(&e.style, inherited))
+                    && !matches!(e.tag.as_str(), "html" | "body")
+                    && paint_last_ok(e, &nodes[idx + 1..]));
             if step8 {
                 done = gpui::PaintLast::new(done).key(paint_key).into_any_element();
             }
