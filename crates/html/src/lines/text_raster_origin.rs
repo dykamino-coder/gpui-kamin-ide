@@ -1,4 +1,4 @@
-//! Align horizontal HTML text baselines with the device pixel grid at paint time.
+//! Preserve exact glyph baselines and align platform raster baselines at paint time.
 
 use super::*;
 
@@ -10,6 +10,17 @@ impl Paragraph {
         window: &Window,
     ) -> Point<Pixels> {
         if self.selection_vertical.is_some() || crate::interact::in_rotated_frame() {
+            return origin;
+        }
+        // CSS 2.1 §10.8.1 positions glyphs on the layout baseline. Pixel-exact
+        // faces rasterize their outline at that fractional position on both
+        // axes; snapping the baseline first moves their edges independently
+        // of adjacent boxes and can open seams between consecutive lines.
+        if shaped
+            .runs
+            .iter()
+            .all(|run| window.text_system().pixel_exact_glyphs(run.font_id))
+        {
             return origin;
         }
         // GPUI has no vertical subpixel variants on Windows/Linux; flooring the
