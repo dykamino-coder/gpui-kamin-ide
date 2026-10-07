@@ -91,7 +91,13 @@ fn bottom_chain(
             strut,
             strut_of(margin_or_bail(child.style.margin.bottom, &child.style)?),
         );
-        if let Some(through) = through_strut(child) {
+        // A self-collapsing box that anchors floats keeps its top margin: its
+        // floats sit at the position its top border edge would have with a
+        // non-zero bottom border (CSS 2.1 section 8.3.1), after its top margin
+        // collapsed with the preceding sibling's. Eating that margin raised
+        // the floats by it (`c414-flt-fit-002`); only its end margin joins
+        // the parent's, as for a box that does not collapse through.
+        if let Some(through) = through_strut(child).filter(|_| !anchors_floats(&child.children)) {
             strut = adjoin(strut, through);
             eat.push((path.clone(), true));
             path.pop();
@@ -114,4 +120,15 @@ fn bottom_chain(
         return Some(strut);
     }
     Some(strut)
+}
+
+/// Whether a float is laid out inside these nodes' block formatting context.
+fn anchors_floats(children: &[Node]) -> bool {
+    children.iter().any(|node| match node {
+        Node::Element(ch) => {
+            ch.style.float.is_some_and(|f| f != 0)
+                || (in_flow(&ch.style) && !own_context(ch) && anchors_floats(&ch.children))
+        }
+        Node::Text(_) => false,
+    })
 }
