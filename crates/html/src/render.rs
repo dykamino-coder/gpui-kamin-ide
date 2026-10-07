@@ -25356,10 +25356,10 @@ fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         {
             mark_style.font_family = Some(opts.text.font_family.to_string());
         }
+        let marker = inline::transform_case(&marker, &mark_style);
         // Внешний маркер (css-lists-3 §list-style-position `outside`) висит
         // СНАРУЖИ коробки пункта, концом к началу содержимого, и текст пункта
-        // не двигает. Прежде маркер стоял колонкой в строке пункта (`gap 6`,
-        // `min_w 14`) и отодвигал содержимое на свою ширину.
+        // не двигает. Text transforms apply to its own text (§3.1.1).
         rows.push(
             shrink0(styled_div_with(li, &merged), li, e)
                 .relative()
