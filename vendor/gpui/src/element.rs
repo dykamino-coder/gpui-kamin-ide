@@ -713,6 +713,7 @@ impl AnyElement {
             let through = inner.is::<crate::Div>()
                 || inner.is::<crate::Stateful<crate::Div>>()
                 || inner.is::<crate::PaintLast>()
+                || inner.is::<crate::PaintInline>()
                 || inner.is::<crate::PaintCollect>();
             if !through {
                 crate::elements::paint_last::hoist_boundary(|| self.0.paint(window, cx));

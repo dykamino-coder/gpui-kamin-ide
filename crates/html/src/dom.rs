@@ -3114,6 +3114,29 @@ fn walk(
                     style.will_change |= wc::CB_ABS | wc::CB_FIXED | wc::STACK;
                 }
             }
+            // `transform-style` applies only to transformable elements
+            // (css-transforms-2): a non-atomic inline with `preserve-3d` is no
+            // 3D context, stacking context or containing block
+            // (`preserve-3d-flat-grouping-properties-containing-block-inline`).
+            if style.preserve_3d == Some(true) {
+                let out_of_flow = style.float.is_some_and(|f| f != 0)
+                    || matches!(style.position, Some(Position::Absolute) | Some(Position::Fixed));
+                let inline_tag =
+                    INLINE_TAGS.contains(&tag.as_str()) || !BLOCK_TAGS.contains(&tag.as_str());
+                let replaced = matches!(
+                    tag.as_str(),
+                    "img" | "svg" | "input" | "select" | "textarea" | "button" | "video"
+                        | "canvas" | "iframe" | "object" | "embed" | "meter" | "progress"
+                );
+                if !out_of_flow
+                    && !replaced
+                    && (style.inline_display == Some(true)
+                        || (style.display.is_none() && inline_tag))
+                {
+                    style.preserve_3d = None;
+                    style.frame_3d = None;
+                }
+            }
             inlinify_in_ruby(&mut style, &tag, path.iter().rev());
             // css-ruby-1 §3.3: «Neither the margin, padding, and border
             // properties … apply to base containers or annotation containers»

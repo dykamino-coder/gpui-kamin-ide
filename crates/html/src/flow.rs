@@ -7,6 +7,12 @@
 //! смещениями. Дети приходят с ИЗВЕСТНЫМИ размерами (инлайн-блоки с
 //! заданными сторонами — ровно то, чем WPT рисует картину обтекания).
 
+mod shapes;
+mod rounded_box;
+pub use shapes::FloatShape;
+pub(crate) use shapes::ellipse_cut;
+pub use rounded_box::RoundedBox;
+
 mod fragment_mask;
 mod column_measure;
 mod column_baselines;
@@ -137,6 +143,7 @@ impl FlowRow {
                     top + pts.iter().map(|p| p.1).fold(0.0f32, f32::max)
                 }
                 FloatShape::Profile { top, ref ext } => top + ext.len() as f32,
+                FloatShape::RoundedBox { top, ref shape, .. } => top + shape.bottom(),
             })
             .fold(0.0f32, f32::max)
     }
@@ -199,167 +206,6 @@ impl IntoElement for FlowRow {
     fn into_element(self) -> Self::Element {
         self
     }
-}
-
-/// Форма обтекания плавающего блока — в координатах от НАЧАЛА стороны
-/// обтекания (для правого флоата вызывающий зеркалит X заранее).
-///
-/// `cut(y0, y1)` — насколько занята строка-полоса [y0, y1): максимальный
-/// горизонтальный экстент формы на этой полосе, в точках от края.
-#[derive(Clone, Debug, PartialEq)]
-pub enum FloatShape {
-    /// Прямоугольник: занято `w` на высоте [top, top+h).
-    Band { top: f32, h: f32, w: f32 },
-    /// Круг с центром (cx, cy) от верха полосы флоата.
-    Circle { top: f32, cx: f32, cy: f32, r: f32 },
-    Ellipse {
-        top: f32,
-        cx: f32,
-        cy: f32,
-        rx: f32,
-        ry: f32,
-    },
-    /// Многоугольник: вершины в точках от начала стороны; экстент полосы —
-    /// максимум X рёбер в её диапазоне.
-    Poly {
-        top: f32,
-        pts: std::sync::Arc<Vec<(f32, f32)>>,
-    },
-    /// Профиль из картинки (`shape-outside: url(...)`): экстент на каждую
-    /// точку высоты, от начала стороны.
-    Profile {
-        top: f32,
-        ext: std::sync::Arc<Vec<f32>>,
-    },
-}
-
-impl FloatShape {
-    /// Сдвинуть форму вниз: флоат перенесён на следующую полосу.
-    pub fn shift_top(&mut self, dy: f32) {
-        match self {
-            FloatShape::Band { top, .. }
-            | FloatShape::Circle { top, .. }
-            | FloatShape::Ellipse { top, .. }
-            | FloatShape::Poly { top, .. }
-            | FloatShape::Profile { top, .. } => *top += dy,
-        }
-    }
-
-    pub fn cut(&self, y0: f32, y1: f32) -> f32 {
-        match *self {
-            FloatShape::Band { top, h, w } => {
-                if top + h > y0 && top < y1 {
-                    w
-                } else {
-                    0.0
-                }
-            }
-            FloatShape::Circle { top, cx, cy, r } => ellipse_cut(top + cy, r, r, cx, y0, y1),
-            FloatShape::Ellipse {
-                top,
-                cx,
-                cy,
-                rx,
-                ry,
-            } => ellipse_cut(top + cy, rx, ry, cx, y0, y1),
-            FloatShape::Profile { top, ref ext } => {
-                let a = (y0 - top).max(0.0) as usize;
-                let b = ((y1 - top).ceil()).max(0.0) as usize;
-                return ext
-                    .get(a..b.min(ext.len()))
-                    .map(|s| s.iter().fold(0.0f32, |m, &v| m.max(v)))
-                    .unwrap_or(0.0);
-            }
-            FloatShape::Poly { top, ref pts } => {
-                // Верхняя кромка полосы ОТКРЫТА (как строки растра у
-                // blink RasterShape): вершина/срез ровно на y0 принадлежит
-                // предыдущей полосе — вогнутая «лесенка» иначе залипала
-                // на ступени (shape-outside-polygon-007..011).
-                let (y0, y1) = (y0 - top + 1e-3, y1 - top);
-                let mut m = 0.0f32;
-                let n = pts.len();
-                for i in 0..n {
-                    let (x1, py1) = pts[i];
-                    let (x2, py2) = pts[(i + 1) % n];
-                    // Вершина в полосе — как есть.
-                    if py1 > y0 && py1 < y1 {
-                        m = m.max(x1);
-                    }
-                    // Ребро пересекает границы полосы — X в точках среза.
-                    let (lo, hi) = if py1 <= py2 { (py1, py2) } else { (py2, py1) };
-                    if hi <= y0 || lo >= y1 || (hi - lo) < 1e-6 {
-                        continue;
-                    }
-                    for yb in [y0.max(lo), y1.min(hi)] {
-                        let t = (yb - py1) / (py2 - py1);
-                        if (0.0..=1.0).contains(&t) {
-                            m = m.max(x1 + (x2 - x1) * t);
-                        }
-                    }
-                }
-                m
-            }
-        }
-    }
-
-    /// Грубый ключ для кэша замера абзаца.
-    pub fn hash_bits(&self) -> u64 {
-        let q = |v: f32| (v * 8.0) as i64 as u64;
-        match *self {
-            FloatShape::Band { top, h, w } => {
-                1 ^ q(top).rotate_left(8) ^ q(h).rotate_left(24) ^ q(w).rotate_left(40)
-            }
-            FloatShape::Circle { top, cx, cy, r } => {
-                2 ^ q(top).rotate_left(6)
-                    ^ q(cx).rotate_left(18)
-                    ^ q(cy).rotate_left(30)
-                    ^ q(r).rotate_left(44)
-            }
-            FloatShape::Ellipse {
-                top,
-                cx,
-                cy,
-                rx,
-                ry,
-            } => {
-                3 ^ q(top).rotate_left(5)
-                    ^ q(cx).rotate_left(15)
-                    ^ q(cy).rotate_left(27)
-                    ^ q(rx).rotate_left(39)
-                    ^ q(ry).rotate_left(51)
-            }
-            FloatShape::Profile { top, ref ext } => ext
-                .iter()
-                .fold(5u64 ^ q(top), |acc, &v| acc.rotate_left(9) ^ q(v)),
-            FloatShape::Poly { top, ref pts } => pts.iter().fold(4u64 ^ q(top), |acc, &(x, y)| {
-                acc.rotate_left(7) ^ q(x) ^ q(y).rotate_left(3)
-            }),
-        }
-    }
-}
-
-/// Экстент эллипса (центр по y — `cy_abs`, радиусы rx/ry, центр по x — cx)
-/// на полосе [y0, y1): максимум `cx + rx·√(1−(dy/ry)²)` по dy в полосе.
-pub(crate) fn ellipse_cut(cy_abs: f32, rx: f32, ry: f32, cx: f32, y0: f32, y1: f32) -> f32 {
-    if ry <= 0.0 || rx <= 0.0 {
-        return 0.0;
-    }
-    if y1 <= cy_abs - ry || y0 >= cy_abs + ry {
-        return 0.0;
-    }
-    // Ближайшая к центру точка полосы даёт самый широкий срез.
-    let dy = if (y0..y1).contains(&cy_abs) {
-        0.0
-    } else if y1 <= cy_abs {
-        cy_abs - y1
-    } else {
-        y0 - cy_abs
-    };
-    let k = 1.0 - (dy / ry) * (dy / ry);
-    if k <= 0.0 {
-        return 0.0;
-    }
-    cx + rx * k.sqrt()
 }
 
 /// Ребёнок колонок: элемент, высота коробки и вертикальные поля
@@ -2969,9 +2815,22 @@ pub struct PageGeom {
     /// Канвас документа — фон `html`/`body`; кроет border box листа (слой 2).
     pub canvas: Option<gpui::Hsla>,
     pub area: (f32, f32),
+    /// `page-orientation` (css-page-3 §page-orientation-prop): лист
+    /// раскладывается как обычно и показывается повёрнутым — 1 на четверть
+    /// оборота вправо (`rotate-right`), 3 — влево (`rotate-left`), 0 — нет.
+    pub turn: u8,
 }
 
 impl PageGeom {
+    /// Размер листа, каким его видно (после `page-orientation`).
+    fn shown(&self) -> (f32, f32) {
+        if self.turn % 2 == 1 {
+            (self.size.1, self.size.0)
+        } else {
+            self.size
+        }
+    }
+
     /// Левый верх page area внутри листа.
     fn area_origin(&self) -> (f32, f32) {
         (
@@ -3070,6 +2929,9 @@ pub struct PageStack {
     pages: std::cell::Cell<usize>,
     /// Листов в ряду и масштаб стопки.
     grid: std::cell::Cell<(usize, f32)>,
+    /// Показываемые листы (с нуля, по возрастанию), `None` — все. Печатный
+    /// reftest WPT сравнивает только страницы из `<meta name=reftest-pages>`.
+    select: Option<Vec<usize>>,
 }
 
 impl PageStack {
@@ -3094,11 +2956,29 @@ impl PageStack {
             plan: std::cell::RefCell::new(Vec::new()),
             pages: std::cell::Cell::new(1),
             grid: std::cell::Cell::new((1, 1.0)),
+            select: None,
+        }
+    }
+
+    /// Показать только листы `select` (номера с нуля).
+    pub fn with_select(mut self, select: Option<Vec<usize>>) -> Self {
+        self.select = select;
+        self
+    }
+
+    /// Место листа `i` в сетке показываемых; `None` — лист не показывается.
+    fn slot(&self, i: usize) -> Option<usize> {
+        match &self.select {
+            None => Some(i),
+            Some(sel) => sel.iter().position(|&p| p == i),
         }
     }
 
     /// Левый верх листа `i` в НЕмасштабированных точках стопки.
     fn sheet_origin(&self, i: usize) -> (f32, f32) {
+        let Some(i) = self.slot(i) else {
+            return (-1.0e6, -1.0e6);
+        };
         let per_row = self.grid.get().0.max(1);
         let (cw, ch) = self.cell.get();
         ((i % per_row) as f32 * cw, (i / per_row) as f32 * ch)
@@ -3327,13 +3207,16 @@ impl Element for PageStack {
             f32::from(bounds.size.height).max(1.0),
         );
         // Ячейка сетки — наибольший лист (у одинаковых — сам лист).
-        let (pw, ph) = geoms.iter().fold((1.0f32, 1.0f32), |(w, h), g| {
-            (w.max(g.size.0), h.max(g.size.1))
-        });
+        let (pw, ph) = geoms
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| self.slot(*i).is_some())
+            .fold((1.0f32, 1.0f32), |(w, h), (_, g)| (w.max(g.shown().0), h.max(g.shown().1)));
         self.cell.set((pw, ph));
+        let shown = (0..pages).filter(|&i| self.slot(i).is_some()).count().max(1);
         let mut best = (1usize, 0.0f32);
-        for per_row in 1..=pages {
-            let rows = pages.div_ceil(per_row);
+        for per_row in 1..=shown {
+            let rows = shown.div_ceil(per_row);
             let s = (ww / (per_row as f32 * pw))
                 .min(wh / (rows as f32 * ph))
                 .min(1.0);
@@ -3514,6 +3397,9 @@ impl Element for PageStack {
             // Порядок краски css-page-3 §painting: фон листа → канвас
             // документа (border box листа) → рамки → содержимое.
             for i in 0..pages {
+                if self.slot(i).is_none() || self.geom(i).turn % 2 == 1 {
+                    continue;
+                }
                 let (sx, sy) = self.sheet_origin(i);
                 let g = self.geom(i);
                 window.paint_quad(gpui::fill(rect(sx, sy, g.size.0, g.size.1), g.bg));
@@ -3563,7 +3449,10 @@ impl Element for PageStack {
             // `slice`, css-break-4 §4; ровно как у `ColumnStack`). Маска по
             // целой page area оставляла на странице хвост следующего
             // фрагмента до края листа (`block-page-break-inside-avoid-7`).
-            for f in plan {
+            for f in plan.iter().copied() {
+                if self.geom(f.col).turn % 2 == 1 {
+                    continue;
+                }
                 let Some(page) = masks.get(f.col).cloned() else { continue };
                 let (sx, sy) = self.sheet_origin(f.col);
                 let g = self.geom(f.col);
@@ -3595,6 +3484,9 @@ impl Element for PageStack {
                 });
             }
             for p in 0..pages.min(self.icb.len()) {
+                if self.geom(p).turn % 2 == 1 {
+                    continue;
+                }
                 let Some(mask) = masks.get(p).cloned() else { continue };
                 for el in &mut self.icb[p] {
                     window.with_content_mask(Some(mask.clone()), |window| {
@@ -3603,6 +3495,9 @@ impl Element for PageStack {
                 }
             }
             for p in 0..pages.min(self.fixed.len()) {
+                if self.geom(p).turn % 2 == 1 {
+                    continue;
+                }
                 let Some(mask) = masks.get(p).cloned() else { continue };
                 for el in &mut self.fixed[p] {
                     window.with_content_mask(Some(mask.clone()), |window| {
@@ -3623,6 +3518,9 @@ impl Element for PageStack {
                 })
                 .collect();
             for (p, el) in &mut self.margin_els {
+                if self.geoms.borrow().get(*p).is_some_and(|g| g.turn % 2 == 1) {
+                    continue;
+                }
                 let Some(sheet) = sheets.get(*p).copied() else { continue };
                 let mask = gpui::ContentMask { bounds: sheet };
                 window.with_content_mask(Some(mask), |window| {
@@ -3630,6 +3528,101 @@ impl Element for PageStack {
                 });
             }
         });
+        // Повёрнутые листы (`page-orientation`): тот же порядок слоёв, но под
+        // СВОЕЙ матрицей — поворот на четверть оборота вокруг листа, затем
+        // масштаб стопки. Лист разложен в ячейке как неповёрнутый (левый верх
+        // `O`); маски детей и фрагментов заданы в его непреобразованных
+        // точках и едут вместе с ним (`with_transformation_masked`: поворот на
+        // четверть оборота оси сохраняет).
+        for i in 0..pages {
+            let g = self.geom(i);
+            if self.slot(i).is_none() || g.turn % 2 == 0 {
+                continue;
+            }
+            let (sx, sy) = self.sheet_origin(i);
+            let (bx0, by0) = (f32::from(bounds.origin.x) * k, f32::from(bounds.origin.y) * k);
+            let (ox, oy) = (bx0 + sx * k, by0 + sy * k);
+            let (w, h) = (g.size.0 * k, g.size.1 * k);
+            // p -> O + R(p - O) + сдвиг, затем q -> B + s(q - B).
+            let (rs, t) = if g.turn == 1 {
+                // rotate-right: (x, y) -> (O.x + H - (y - O.y), O.y + (x - O.x)).
+                (
+                    [[0.0, -s], [s, 0.0]],
+                    [bx0 * (1.0 - s) + s * (ox + h + oy), by0 * (1.0 - s) + s * (oy - ox)],
+                )
+            } else {
+                // rotate-left: (x, y) -> (O.x + (y - O.y), O.y + W - (x - O.x)).
+                (
+                    [[0.0, s], [-s, 0.0]],
+                    [bx0 * (1.0 - s) + s * (ox - oy), by0 * (1.0 - s) + s * (oy + w + ox)],
+                )
+            };
+            let m = gpui::TransformationMatrix { rotation_scale: rs, translation: t };
+            let plan_i: Vec<Frag> = plan.iter().copied().filter(|f| f.col == i).collect();
+            window.with_transformation_masked(m, |window| {
+                window.paint_quad(gpui::fill(rect(sx, sy, g.size.0, g.size.1), g.bg));
+                let bx = sx + g.margin[3];
+                let by = sy + g.margin[0];
+                let bw = (g.size.0 - g.margin[1] - g.margin[3]).max(0.0);
+                let bh = (g.size.1 - g.margin[0] - g.margin[2]).max(0.0);
+                if let Some(c) = g.canvas {
+                    let (cx0, cy0) = (bx.max(sx), by.max(sy));
+                    let cw = ((bx + bw).min(sx + g.size.0) - cx0).max(0.0);
+                    let ch = ((by + bh).min(sy + g.size.1) - cy0).max(0.0);
+                    window.paint_quad(gpui::fill(rect(cx0, cy0, cw, ch), c));
+                }
+                let (bt, bc) = g.border;
+                if bt > 0.0 {
+                    for r in [
+                        (bx, by, bw, bt),
+                        (bx, by + bh - bt, bw, bt),
+                        (bx, by, bt, bh),
+                        (bx + bw - bt, by, bt, bh),
+                    ] {
+                        window.paint_quad(gpui::fill(rect(r.0, r.1, r.2, r.3), bc));
+                    }
+                }
+                let (ax, ay) = g.area_origin();
+                let area = rect(sx + ax, sy + ay, g.area.0, g.area.1);
+                for f in plan_i {
+                    let mask = gpui::ContentMask {
+                        bounds: rect(sx + ax, sy + ay + f.y, g.area.0, f.h).intersect(&area),
+                    };
+                    let kid = &mut self.kids[f.kid];
+                    let el = if f.copy == 0 {
+                        &mut kid.el
+                    } else {
+                        match kid.frags.get_mut(f.copy - 1) {
+                            Some(e) => e,
+                            None => continue,
+                        }
+                    };
+                    window.with_content_mask(Some(mask), |window| el.paint(window, cx));
+                }
+                if let Some(layer) = self.icb.get_mut(i) {
+                    for el in layer {
+                        window.with_content_mask(Some(gpui::ContentMask { bounds: area }), |window| {
+                            el.paint(window, cx)
+                        });
+                    }
+                }
+                if let Some(layer) = self.fixed.get_mut(i) {
+                    for el in layer {
+                        window.with_content_mask(Some(gpui::ContentMask { bounds: area }), |window| {
+                            el.paint(window, cx)
+                        });
+                    }
+                }
+                let sheet = rect(sx, sy, g.size.0, g.size.1);
+                for (p, el) in &mut self.margin_els {
+                    if *p == i {
+                        window.with_content_mask(Some(gpui::ContentMask { bounds: sheet }), |window| {
+                            el.paint(window, cx)
+                        });
+                    }
+                }
+            });
+        }
     }
 }
 

@@ -352,10 +352,51 @@ fn collect_with_empty_metrics(
                     Some(Len::Px(v)) => v,
                     _ => 16.0,
                 };
+                let own_bg = merged
+                    .background
+                    .filter(|_| merged.bg_clip != Some(crate::computed::BgClip::Text))
+                    .is_some();
+                let mut own_border = true;
                 if let Some((color, width)) = uniform_border(&e.style, font_px) {
                     merged.inline_border = Some((color, [width; 4]));
                 } else if let Some(sided) = sided_border(&e.style, font_px) {
                     merged.inline_border = Some((sided.0, physical_sides::project(inherited, sided.1)));
+                } else {
+                    own_border = false;
+                }
+                // CSS 2.1 §8.6 / css-break-3 §5.4: an inline box with a border
+                // and no background still paints its border (and its padding
+                // area) on each fragment. The text run band is the painter, and
+                // `vendor/gpui` starts a band only from a background colour, so
+                // such a box gets a fully transparent band colour that is unique
+                // per box: bands of adjacent boxes stay separate, runs of its
+                // descendants (which inherit it) continue the same band.
+                let mut painted_bg = merged.inline_bg.is_some();
+                if own_border && !own_bg && !painted_bg {
+                    let id = BORDER_BAND.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    merged.inline_bg = Some(Color {
+                        r: (id % 251) as f32 / 251.0,
+                        g: ((id / 251) % 251) as f32 / 251.0,
+                        b: 0.5,
+                        a: 0.0,
+                    });
+                    let family = merged.font_family.clone().unwrap_or_default();
+                    let px_of = |l: Option<crate::value::Len>| match l {
+                        Some(
+                            crate::value::Len::Px(_)
+                            | crate::value::Len::Em(_)
+                            | crate::value::Len::Ch(_)
+                            | crate::value::Len::Ex(_),
+                        ) => crate::metrics::spacing_px(l, &family, font_px),
+                        _ => 0.0,
+                    };
+                    merged.inline_pad = Some(physical_sides::project(inherited, [
+                        px_of(e.style.padding.top),
+                        px_of(e.style.padding.right),
+                        px_of(e.style.padding.bottom),
+                        px_of(e.style.padding.left),
+                    ]));
+                    merged.inline_radius = Some(px_of(e.style.radius.tl));
                 }
                 // Контур строчного куска рисует тот же прогон: коробки у
                 // куска нет, а место контур и не занимает. Рисуется только
@@ -395,6 +436,7 @@ fn collect_with_empty_metrics(
                             b: 0.0,
                             a: 0.0,
                         });
+                        painted_bg = true;
                     }
                 }
                 // Атомарная строчная коробка — ГРАНИЦА переноса, даже когда
@@ -478,7 +520,7 @@ fn collect_with_empty_metrics(
                 let blank = only_text
                     && (inner_text.is_empty()
                         || (merged.keep_spaces != Some(true)
-                            && merged.inline_bg.is_none()
+                            && !painted_bg
                             && inner_text.chars().all(|c| matches!(c, ' ' | '\t' | '\n' | '\r'))));
                 if blank && (lead != 0.0 || trail != 0.0) {
                     let px_of = |l: Option<Len>| match l {
@@ -894,6 +936,8 @@ pub(crate) fn establishes_cb(c: &Computed) -> bool {
             | Some(crate::computed::Position::Fixed)
             | Some(crate::computed::Position::Sticky)
     ) || c.transform.is_some()
+        // css-transforms-2: `preserve-3d` is a containing block for all descendants.
+        || c.preserve_3d == Some(true)
         || c.filter.is_some()
         || c.contain_paint == Some(true)
         || c.contain_layout == Some(true)
@@ -988,6 +1032,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     // `contain-paint-containing-block-fixed-001`).
     c.transform_ancestor = parent.transform_ancestor
         || parent.transform.is_some()
+        || parent.preserve_3d == Some(true)
         || parent.contain_layout == Some(true)
         || parent.contain_paint == Some(true)
         // css-will-change-1 §2.1: блок для `fixed` — и от обещанного свойства
@@ -1625,6 +1670,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     // css-ruby-1 §4.1/§4.3: оба свойства наследуемые.
     c.ruby_under = own.ruby_under.or(parent.ruby_under);
     c.ruby_align = own.ruby_align.or(parent.ruby_align);
+    c.ruby_overhang = own.ruby_overhang.or(parent.ruby_overhang);
     c.ruby_merge = own.ruby_merge.or(parent.ruby_merge);
     // `image-orientation` наследуется (css-images-3 §5.4, «Inherited: yes»):
     // в наборе его ставят на `body`, а действует он на каждой картинке.
@@ -3597,6 +3643,10 @@ pub const ZWSP: &str = "\u{200b}";
 /// Box ids of inline edge spacers (`Computed::spacer_edge`); 0 means none.
 static SPACER_BOX: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 
+/// Ids for the transparent band colour of inline boxes with a border and no
+/// background (see `collect_with_empty_metrics`).
+static BORDER_BAND: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+
 /// Edge spacers with their box: (byte offset, box id, physical left edge,
 /// parent rtl), in logical order.
 pub fn spacer_edges(pieces: &[Piece]) -> Vec<(usize, u32, bool, bool)> {
@@ -3732,7 +3782,21 @@ fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun {
         font,
         font_size,
         color,
-        background_color: style.inline_bg.map(Color::to_hsla),
+        // A fully transparent band colour only identifies its inline box (see
+        // `BORDER_BAND`): it is kept black (lightness 0) so nothing of it can
+        // blend into the border edge, with the id in hue and saturation.
+        background_color: style.inline_bg.map(|c| {
+            if c.a == 0.0 {
+                gpui::Hsla {
+                    h: c.r,
+                    s: c.g,
+                    l: 0.0,
+                    a: 0.0,
+                }
+            } else {
+                c.to_hsla()
+            }
+        }),
         background_border: style
             .inline_border
             .map(|(c, w)| (c.to_hsla(), w.map(gpui::px))),

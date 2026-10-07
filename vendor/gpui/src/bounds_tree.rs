@@ -33,11 +33,18 @@ where
     }
 
     pub fn insert(&mut self, new_bounds: Bounds<U>) -> u32 {
+        self.insert_at_least(new_bounds, 1)
+    }
+
+    /// KaminIDE patch: вставка с порядком не ниже `min_order` — после
+    /// переписанного порядка объёмного контекста (`Scene::pop_depth_context`).
+    pub fn insert_at_least(&mut self, new_bounds: Bounds<U>, min_order: u32) -> u32 {
         // If the tree is empty, make the root the new leaf.
         if self.root.is_none() {
-            let new_node = self.push_leaf(new_bounds, 1);
+            let ordering = min_order.max(1);
+            let new_node = self.push_leaf(new_bounds, ordering);
             self.root = Some(new_node);
-            return 1;
+            return ordering;
         }
 
         // Search for the best place to add the new leaf based on heuristics.
@@ -91,7 +98,7 @@ where
             max_intersecting_ordering = cmp::max(max_intersecting_ordering, *sibling_ordering);
         }
 
-        let ordering = max_intersecting_ordering + 1;
+        let ordering = (max_intersecting_ordering + 1).max(min_order);
         let new_node = self.push_leaf(new_bounds, ordering);
         let new_parent = self.push_internal(sibling, new_node);
 

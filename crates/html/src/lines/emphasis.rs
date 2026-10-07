@@ -30,7 +30,6 @@ impl Paragraph {
         if self.run_metrics.len() != self.runs.len() {
             return;
         }
-        let scale = window.scale_factor();
         let baseline =
             at.y + (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent;
         for span in &self.emph_spans {
@@ -74,10 +73,21 @@ impl Paragraph {
                 None,
             );
             // Та же привязка базовой линии к точке устройства, что у строки
-            // (`text_raster_origin`), но от высоты строки знака.
+            // (`text_raster_origin`), но от высоты строки знака: like an
+            // `<rt>` paragraph's glyphs, the mark keeps the opaque ancestor
+            // fill's device frame and the paragraph's sub-pixel glyph offset
+            // that `Window::paint_glyph` adds afterwards.
+            let exact = mark
+                .runs
+                .iter()
+                .all(|r| window.text_system().pixel_exact_glyphs(r.font_id));
             let base = (mark_lh - mark.ascent - mark.descent) / 2.0 + mark.ascent;
-            let y = f32::from(top + base) * scale;
-            let y = top + px((y.round() - y) / scale);
+            let raster = if exact {
+                point(at.x, top)
+            } else {
+                self.raster_origin_for_baseline(point(at.x, top), base, window)
+            };
+            let (dx, y) = (raster.x - at.x, raster.y);
             for (i, c) in self.text[s..e].char_indices() {
                 if !emphasized(c) {
                     continue;
@@ -88,7 +98,7 @@ impl Paragraph {
                 // CSS Text Decoration 3 section 5.3 centers the annotation
                 // on its character, not on the extra inter-character spacing.
                 let spacing = self.tail_spacing(s + i + c.len_utf8());
-                let x = at.x + x0 + (x1 - x0 - spacing - mark.width) / 2.0;
+                let x = at.x + dx + x0 + (x1 - x0 - spacing - mark.width) / 2.0;
                 let _ = mark.paint(point(x, y), mark_lh, window, cx);
             }
         }
