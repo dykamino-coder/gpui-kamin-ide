@@ -150,6 +150,10 @@ pub(in super::super) struct GridItem {
     /// АВТО-размещённой подсетки вкладываются во все дорожки (css-grid-3
     /// Overview.bs:686-694).
     pub subgrid_root: Option<NodeId>,
+    /// KaminIDE patch: a `vertical-align: baseline` table cell (CSS 2.1
+    /// §17.5.3). Sized as an `align-self: baseline` item (its shim grows the
+    /// row), placed as `stretch`; the shim moves only its content.
+    pub table_cell_baseline: bool,
 }
 
 impl GridItem {
@@ -178,7 +182,12 @@ impl GridItem {
             padding: style.padding(),
             border: style.border(),
             margin: style.margin(),
-            align_self: style.align_self().unwrap_or(parent_align_items),
+            align_self: if style.table_cell_baseline() {
+                AlignItems::BASELINE
+            } else {
+                style.align_self().unwrap_or(parent_align_items)
+            },
+            table_cell_baseline: style.table_cell_baseline(),
             // Parallel items do not inherit the parent's first x-baseline group.
             // An explicit self value always wins; preserve its safety modifier.
             justify_self: match style.justify_self() {

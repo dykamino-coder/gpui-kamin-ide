@@ -382,10 +382,14 @@ impl TaffyLayoutEngine {
         let (parent_x, parent_y) = match self.taffy.parent(id.0) {
             Some(parent_id) => {
                 let _ = self.layout_bounds(parent_id.into(), scale_factor);
-                self.absolute_unrounded
+                let (px, py) = self
+                    .absolute_unrounded
                     .get(&parent_id.into())
                     .copied()
-                    .unwrap_or((0.0, 0.0))
+                    .unwrap_or((0.0, 0.0));
+                // KaminIDE patch: content of a `vertical-align: baseline`
+                // table cell sits lower than its box (taffy `content_shift`).
+                (px, py + self.taffy.content_shift(parent_id))
             }
             // KaminIDE patch: корень с заданным местом (`set_root_origin`).
             None => self.root_origins.get(&id).copied().unwrap_or((0.0, 0.0)),
@@ -648,6 +652,7 @@ impl ToTaffy<taffy::style::Style> for Style {
             baseline_from_last: self.baseline_from_last,
             baseline_unavailable: self.baseline_unavailable,
             no_inline_block_baseline: self.no_inline_block_baseline,
+            table_cell_baseline: self.table_cell_baseline,
             // KaminIDE patch: базовая по оси x (вертикальное письмо).
             baseline_x_hint: self
                 .baseline_x_hint

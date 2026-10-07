@@ -291,6 +291,13 @@ pub trait LayoutGridContainer: LayoutPartialTree {
     ) {
     }
 
+    /// KaminIDE patch: offset of a grid item's CONTENT along y inside its own
+    /// border box (a `vertical-align: baseline` table cell, CSS 2.1 §17.5.3:
+    /// the cell box fills its row, its content moves down to the row
+    /// baseline). The grid rewrites it on every final placement, so a cached
+    /// child layout never accumulates it. Default implementation stores nothing.
+    fn set_content_shift(&mut self, _node_id: NodeId, _dy: f32) {}
+
     /// Set the node's detailed grid information
     ///
     /// Implementing this method is optional. Doing so allows you to access details about the the grid such as

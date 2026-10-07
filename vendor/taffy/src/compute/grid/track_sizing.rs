@@ -630,7 +630,13 @@ fn resolve_item_baseline_groups(
                 item.align_self.keyword == wanted && item.participates_in_baseline_alignment()
             })
             .count();
-        if row_baseline_item_count <= 1 {
+        // KaminIDE patch: a lone baseline table cell still needs its own
+        // baseline — it becomes the row baseline that the table exports
+        // (css-tables-3 §table-baseline; CSS 2.1 §17.5.3 synthesis).
+        if row_baseline_item_count == 0
+            || (row_baseline_item_count == 1
+                && !row_items.iter().any(|item| item.table_cell_baseline))
+        {
             continue;
         }
 
@@ -691,6 +697,19 @@ fn resolve_item_baseline_groups(
                 continue;
             }
 
+            // KaminIDE patch: a table cell without a line box takes the
+            // bottom of its CONTENT box as baseline (CSS 2.1 §17.5.3: «If
+            // there is no such line box or table-row, the baseline is the
+            // bottom of content edge of the cell box»).
+            let baseline = match baseline {
+                None if item.table_cell_baseline => {
+                    let basis = Some(column_width);
+                    let pad = item.padding.bottom.resolve_or_zero(basis, |v, b| tree.calc(v, b));
+                    let bord = item.border.bottom.resolve_or_zero(basis, |v, b| tree.calc(v, b));
+                    Some(height - pad - bord)
+                }
+                own => own,
+            };
             item.baseline = Some(
                 baseline_coordinate(baseline, height, item.overflow.y.is_scroll_container())
                     + item

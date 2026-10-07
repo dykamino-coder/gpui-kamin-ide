@@ -913,7 +913,10 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
                 grid_area,
                 item_alignment_styles,
                 Rect {
-                    top: item.baseline_shim,
+                    // KaminIDE patch: a baseline table cell is placed as
+                    // `stretch` (its box fills the row); the shim moves its
+                    // content instead (CSS 2.1 §17.5.3).
+                    top: if item.table_cell_baseline { 0.0 } else { item.baseline_shim },
                     bottom: item.baseline_shim_end,
                     left: item.baseline_shim_x,
                     right: item.baseline_shim_x_end,
@@ -930,6 +933,21 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         item.height = height;
         item.first_baseline = first_baseline;
         item.last_baseline = last_baseline;
+        if item.table_cell_baseline {
+            let shim = if item.participates_in_baseline_alignment() {
+                item.baseline_shim
+            } else {
+                0.0
+            };
+            tree.set_content_shift(item.node, shim);
+            // Every baseline cell of the row sits on the row baseline: its
+            // measured (or content-box synthesized) baseline plus its shim.
+            item.first_baseline = match item.baseline {
+                Some(b) if item.participates_in_baseline_alignment() => Some(b + shim),
+                _ => item.first_baseline.map(|b| b + shim),
+            };
+            item.last_baseline = item.last_baseline.map(|b| b + shim);
+        }
 
         #[cfg(feature = "content_size")]
         {

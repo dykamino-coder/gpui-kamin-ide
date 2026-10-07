@@ -26786,6 +26786,25 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     Some(Align::Center) => d.justify_center(),
                     _ => d.justify_start(),
                 };
+                // `vertical-align: baseline` (CSS 2.1 §17.5.3): первые
+                // базовые ячеек ряда совпадают, ряд растёт на сдвиг, а
+                // коробка ячейки по-прежнему заполняет ряд — сдвигается
+                // только содержимое (taffy `Style::table_cell_baseline`;
+                // Blink `table_layout_utils.cc` `ComputeRowBaseline`).
+                // Значение — СОБСТВЕННОЕ ячейки: `vertical-align` не
+                // наследуется, а слитый `cm` тянет его от любого предка.
+                // Только `td`/`th` берут значение ряда (UA-правило
+                // `td, th { vertical-align: inherit }`).
+                let own_va = cell.style.vertical_align.or(
+                    if matches!(cell.tag.as_str(), "td" | "th") {
+                        row.style.vertical_align
+                    } else {
+                        None
+                    },
+                );
+                if own_va == Some(Align::Baseline) && e.style.vertical != Some(true) {
+                    d.style().table_cell_baseline = Some(true);
+                }
             }
             // Вертикальное письмо таблицы: ряды идут ПОПЕРЁК — охваты
             // меняются осями вместе с сеткой (css-writing-modes-3 §8).
