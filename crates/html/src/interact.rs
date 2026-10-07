@@ -1197,6 +1197,8 @@ pub struct Transformed {
     /// отрисовке округляет края от него (`layout_origin_unrounded` доступен
     /// только до отрисовки).
     exact_origin: Option<gpui::Point<Pixels>>,
+    /// Unrounded box size from prepaint (see `exact_origin`).
+    exact_size: Option<gpui::Size<Pixels>>,
 }
 
 /// Сплющивание плоскости z=0 в аффинную матрицу экрана
@@ -1256,6 +1258,39 @@ fn flatten_plane(f: &[[f32; 4]; 4], center: (f32, f32)) -> Option<gpui::Transfor
     })
 }
 
+/// Snap an axis-aligned positive scale + translation: the box is PAINTED on
+/// its rounded rect `painted` (device px, origin and size) but its ideal
+/// geometry is the unrounded `exact` rect; the result maps the painted rect
+/// onto the device-pixel-rounded image of the exact rect (Blink transforms
+/// unsnapped geometry and snaps the final layer bounds).
+/// Anything with rotation/skew/mirroring is returned unchanged.
+fn snap_axis_aligned(
+    m: gpui::TransformationMatrix,
+    painted: ((f32, f32), (f32, f32)),
+    exact: ((f32, f32), (f32, f32)),
+) -> gpui::TransformationMatrix {
+    let [[a, b], [c, d]] = m.rotation_scale;
+    let ((po, ps), (eo, es)) = (painted, exact);
+    if b.abs() > 1e-6 || c.abs() > 1e-6 || a <= 1e-6 || d <= 1e-6 || ps.0 <= 0.0 || ps.1 <= 0.0 {
+        return m;
+    }
+    let axis = |s: f32, t: f32, p0: f32, plen: f32, e0: f32, elen: f32| {
+        let lo = (s * e0 + t).round();
+        let hi = (s * (e0 + elen) + t).round();
+        let s2 = (hi - lo) / plen;
+        (s2, lo - s2 * p0)
+    };
+    let (a2, tx) = axis(a, m.translation[0], po.0, ps.0, eo.0, es.0);
+    let (d2, ty) = axis(d, m.translation[1], po.1, ps.1, eo.1, es.1);
+    if a2 <= 0.0 || d2 <= 0.0 {
+        return m;
+    }
+    gpui::TransformationMatrix {
+        rotation_scale: [[a2, 0.0], [0.0, d2]],
+        translation: [tx, ty],
+    }
+}
+
 /// Обратная аффинная `[[a, b, tx], [c, d, ty]]`.
 ///
 /// Нужна ровно затем, чтобы снять долю родителя: gpui складывает вложенные
@@ -1302,6 +1337,7 @@ impl Transformed {
             under_3d: None,
             placed: false,
             exact_origin: None,
+            exact_size: None,
         }
     }
 
@@ -1369,6 +1405,7 @@ impl Element for Transformed {
         // тот же механизм у `LatePlace`), края округляются на конечном месте.
         self.placed = false;
         self.exact_origin = Some(window.layout_origin_unrounded(*layout_id));
+        self.exact_size = Some(window.layout_size_unrounded(*layout_id));
         if flat && self.perspective.is_none() {
             let size = window.layout_size_unrounded(*layout_id);
             if let Some((sx, sy)) =
@@ -1633,6 +1670,40 @@ impl Element for Transformed {
             });
             frame.set(Some((full, share)));
         }
+        // Plane depth in the 3D rendering context (css-transforms-2
+        // §3d-transform-rendering: planes of one context render by z, not
+        // document order) — z/w of the box centre under the accumulated
+        // matrix; the context root opens the sorting scope.
+        let depth = {
+            let v = [center.0, center.1, 0.0, 1.0];
+            let row = |i: usize| (0..4).map(|k| full[i][k] * v[k]).sum::<f32>();
+            let (z, wv) = (row(2), row(3));
+            if wv.abs() > 1e-6 { z / wv } else { z }
+        };
+        let root_3d = self.frame_3d.is_some() && under.is_none();
+        let in_context = root_3d || under.is_some();
+        let paint_child = |child: &mut AnyElement, m: Option<gpui::TransformationMatrix>, masked: bool, window: &mut Window, cx: &mut App| {
+            if in_context {
+                let mut body = |window: &mut Window| {
+                    window.paint_depth_plane(depth, |window| match m {
+                        Some(m) if masked => window.with_transformation_masked(m, |window| child.paint(window, cx)),
+                        Some(m) => window.with_transformation(m, |window| child.paint(window, cx)),
+                        None => child.paint(window, cx),
+                    })
+                };
+                if root_3d {
+                    window.paint_depth_context(body)
+                } else {
+                    body(window)
+                }
+            } else {
+                match m {
+                    Some(m) if masked => window.with_transformation_masked(m, |window| child.paint(window, cx)),
+                    Some(m) => window.with_transformation(m, |window| child.paint(window, cx)),
+                    None => child.paint(window, cx),
+                }
+            }
+        };
         // Ребро (`rotateX(90deg)`) — не рисуется, как и прежняя нулевая
         // высота. Но в объёмном контексте ПОТОМКИ ребром не становятся
         // (transform3d-preserve3d-011: `rotateX(90)` над `rotateX(90)` =
@@ -1641,11 +1712,32 @@ impl Element for Transformed {
         let Some(flat) = flat else {
             if self.frame_3d.is_some() {
                 let child = self.child.as_mut().unwrap();
-                window.with_transformation(gpui::TransformationMatrix::unit(), |window| {
-                    child.paint(window, cx)
-                });
+                paint_child(child, Some(gpui::TransformationMatrix::unit()), false, window, cx);
             }
             return;
+        };
+        // A flattened 3D transform that is only an axis-aligned scale and
+        // translation (`translateZ` under `perspective`, `scale3d`…) maps the
+        // box to another box: snap its edges to device pixels like a laid-out
+        // box (Blink paints such composited layers with pixel-snapped
+        // bounds), otherwise its fractional edges antialias against snapped
+        // neighbours (perspective-origin-*, perspective-translateZ-*).
+        let flat = if under.is_none() {
+            let eo = self.exact_origin.unwrap_or(bounds.origin);
+            let es = self.exact_size.unwrap_or(bounds.size);
+            snap_axis_aligned(
+                flat,
+                (
+                    (f32::from(bounds.origin.x) * sf, f32::from(bounds.origin.y) * sf),
+                    (f32::from(bounds.size.width) * sf, f32::from(bounds.size.height) * sf),
+                ),
+                (
+                    (f32::from(eo.x) * sf, f32::from(eo.y) * sf),
+                    (f32::from(es.width) * sf, f32::from(es.height) * sf),
+                ),
+            )
+        } else {
+            flat
         };
         // Своя доля для gpui: родитель УЖЕ втолкнул `F_P`, а вложения
         // складываются как `inner∘outer` (`window.rs:2789`, порядок замерен и
@@ -1657,7 +1749,7 @@ impl Element for Transformed {
         let child = self.child.as_mut().unwrap();
         // Маски детей едут за сплющенной матрицей (как на плоском пути,
         // `Window::with_transformation_masked`); косая — прежнее поведение.
-        window.with_transformation_masked(flat, |window| child.paint(window, cx));
+        paint_child(child, Some(flat), true, window, cx);
     }
 }
 

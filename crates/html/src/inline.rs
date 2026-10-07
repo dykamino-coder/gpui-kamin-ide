@@ -936,6 +936,8 @@ pub(crate) fn establishes_cb(c: &Computed) -> bool {
             | Some(crate::computed::Position::Fixed)
             | Some(crate::computed::Position::Sticky)
     ) || c.transform.is_some()
+        // css-transforms-2: `preserve-3d` is a containing block for all descendants.
+        || c.preserve_3d == Some(true)
         || c.filter.is_some()
         || c.contain_paint == Some(true)
         || c.contain_layout == Some(true)
@@ -1030,6 +1032,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     // `contain-paint-containing-block-fixed-001`).
     c.transform_ancestor = parent.transform_ancestor
         || parent.transform.is_some()
+        || parent.preserve_3d == Some(true)
         || parent.contain_layout == Some(true)
         || parent.contain_paint == Some(true)
         // css-will-change-1 §2.1: блок для `fixed` — и от обещанного свойства
@@ -1667,6 +1670,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     // css-ruby-1 §4.1/§4.3: оба свойства наследуемые.
     c.ruby_under = own.ruby_under.or(parent.ruby_under);
     c.ruby_align = own.ruby_align.or(parent.ruby_align);
+    c.ruby_overhang = own.ruby_overhang.or(parent.ruby_overhang);
     c.ruby_merge = own.ruby_merge.or(parent.ruby_merge);
     // `image-orientation` наследуется (css-images-3 §5.4, «Inherited: yes»):
     // в наборе его ставят на `body`, а действует он на каждой картинке.
