@@ -8,6 +8,23 @@ impl ColumnStack {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, LayoutId) {
+        for c in self.children.iter_mut() {
+            if let Some(w) = c.measure {
+                let h = f32::from(
+                    c.el.layout_as_root_unrounded(
+                        gpui::size(
+                            gpui::AvailableSpace::Definite(gpui::px(w)),
+                            gpui::AvailableSpace::MaxContent,
+                        ),
+                        window,
+                        cx,
+                    )
+                    .height,
+                );
+                c.h = h;
+                c.over = h;
+            }
+        }
         let heights: Vec<Kid> = self
             .children
             .iter()

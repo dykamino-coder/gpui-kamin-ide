@@ -2691,6 +2691,22 @@ fn size_monolith(k: &Element) -> bool {
 /// context». `break-inside: avoid` сюда НЕ входит: там принудительный разрыв
 /// сильнее запрета (§forced-breaks). Ряд и группа рядов `overflow` не берут
 /// (css-overflow-3, «Applies to»), ячейка — берёт.
+/// Есть ли в поддереве принудительный разрыв (`break-before/after` любого
+/// потомка, кроме уходящих внутрь монолита, `forced_opaque`).
+fn forced_inside(e: &Element, depth: u8) -> bool {
+    if depth == 0 {
+        return false;
+    }
+    e.children.iter().any(|n| match n {
+        Node::Element(k) => {
+            k.style.break_before_force
+                || k.style.break_after_force
+                || (!forced_opaque(k) && forced_inside(k, depth - 1))
+        }
+        _ => false,
+    })
+}
+
 fn forced_opaque(k: &Element) -> bool {
     let scrolls = |o: Option<crate::computed::Overflow>| {
         matches!(o, Some(crate::computed::Overflow::Scroll))
@@ -22794,6 +22810,13 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         .map(|n| n as *const Node);
                     // Чью меру дала `nested_rows_shape` — только их копии рядами.
                     let nested_auto: std::cell::RefCell<Vec<u64>> = Default::default();
+                    // Дети, чью высоту меряет раскладка копии (`StackChild::measure`).
+                    let measured_kids: std::cell::RefCell<Vec<(u64, f32)>> = Default::default();
+                    let measure_ok = e.style.column_fill_auto == Some(true)
+                        && rows.is_none()
+                        && nest_rows.is_none()
+                        && !col_vert
+                        && (col_h.is_some() || matches!(e.style.height, Some(Len::Px(_))));
                     let last_flow = ge
                         .children
                         .iter()
@@ -22866,7 +22889,40 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     let t = transpose_tree(c, col_rl)?;
                                     shape_full(&t, 4, ShapeCx::COLUMNS).map(|h| ((*c).clone(), h))
                                 } else {
-                                    shape_full(c, 4, ShapeCx::COLUMNS).map(|h| ((*c).clone(), h))
+                                    shape_full(c, 4, ShapeCx::COLUMNS)
+                                        .map(|h| ((*c).clone(), h))
+                                        .or_else(|| {
+                                            // Мера `shape_full` не выразила ребёнка (флоаты,
+                                            // внепоточные потомки, таблица со сросшимися
+                                            // рамками …). Прежде отказ ОДНОГО ребёнка
+                                            // отправлял весь многоколоночник в сетку без
+                                            // фрагментации — содержимое вовсе не переходило
+                                            // в следующую колонку. css-break-3 §4: любая
+                                            // блочная коробка фрагментируема; её высоту даёт
+                                            // сама раскладка копии в колонку (`StackChild::
+                                            // measure`, Blink меряет ребёнка тем же
+                                            // алгоритмом, что и кладёт), а разрез — по краю
+                                            // колонки (`slice`, без точек класса A).
+                                            // Только колонки с заданной высотой
+                                            // (`column-fill: auto`): у баланса высота
+                                            // коробки сама зависит от меры, а раскладка
+                                            // копии флоаты в высоту не берёт (а коробка
+                                            // многоколоночника — корень контекста — берёт).
+                                            // Принудительного разрыва внутри мера без
+                                            // точек тоже не видит.
+                                            if !measure_ok || forced_inside(c, 6) {
+                                                return None;
+                                            }
+                                            let w = line_col_w?;
+                                            let m = |l: &Option<Len>| match l {
+                                                Some(Len::Px(v)) => Some(*v),
+                                                None | Some(Len::Auto) => Some(0.0),
+                                                _ => None,
+                                            };
+                                            let (mt, mb) = (m(&c.style.margin.top)?, m(&c.style.margin.bottom)?);
+                                            measured_kids.borrow_mut().push((c.node_id, w));
+                                            Some(((*c).clone(), (0.0, mt, mb, Vec::new(), Vec::new(), Vec::new())))
+                                        })
                                 }
                             }
                             _ => None,
@@ -23804,6 +23860,24 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                         // Строки измерены (`line_run_shape`) — режется
                                         // между строк, не монолит.
                                         && cuts.is_empty()));
+                                // Высоту меряет раскладка копии (`StackChild::measure`):
+                                // точек разреза мера не дала, и строчный набор без них
+                                // не монолит — режется краем колонки. Монолит — только
+                                // по собственным причинам коробки (css-break-3 §4.1).
+                                let measure = measured_kids
+                                    .borrow()
+                                    .iter()
+                                    .find(|(id, _)| *id == copy.node_id)
+                                    .map(|(_, w)| *w);
+                                let monolith = if measure.is_some() {
+                                    nest_row.is_none()
+                                        && (size_monolith(&copy)
+                                            || copy.style.break_inside_avoid
+                                            || scrolls(copy.style.overflow_x)
+                                            || scrolls(copy.style.overflow_y))
+                                } else {
+                                    monolith
+                                };
                                 // Пока строятся копии — «внутри стопки»: вложенный
                                 // многоколоночник со спаннером остаётся на
                                 // сегментном пути (см. `unified` выше).
@@ -23842,9 +23916,15 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                             .min(16)
                                             .max(copies)
                                     }
+                                    // Высота неизвестна до раскладки: копий — на
+                                    // переполняющие колонки (css-multicol-1 §8.2).
+                                    Some(per) if measure.is_some() && rows.is_none() && !span && per > 0.0 => {
+                                        copies.max(8).min(16)
+                                    }
                                     _ => copies,
                                 };
                                 crate::flow::StackChild {
+                                    measure,
                                     el: side_margin_wrap(build(true, 0), &copy, col_vert),
                                     frags: if span {
                                         Vec::new()
@@ -23958,6 +24038,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 ..Default::default()
                             });
                             let probe = crate::flow::StackChild {
+                                measure: None,
                                 el: crate::interact::spot_probe(oof_spots[i].clone(), true),
                                 frags: Vec::new(),
                                 monolith: false,
