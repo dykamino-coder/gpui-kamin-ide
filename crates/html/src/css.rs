@@ -9,6 +9,8 @@ use std::collections::HashMap;
 
 mod selector_tokens;
 mod stylesheet_tokens;
+mod component_tokens;
+pub(crate) use component_tokens::skip_string;
 mod priority_tokens;
 use priority_tokens::top_level_bang;
 mod variable_tokens;
@@ -565,9 +567,10 @@ fn is_pseudo_element(name: &str) -> bool {
 
 /// Разбор `style="a: 1; b: 2"`.
 pub fn parse_decls(raw: &str) -> Decls {
+    let raw = component_tokens::complete(raw);
     let mut out = Decls::new();
     let mut order: Vec<String> = Vec::new();
-    for item in split_top_level(raw, ';') {
+    for item in split_top_level(&raw, ';') {
         // Двоеточие ищется НЕэкранированное: `bac\\kground` — это имя
         // `background`, а `background\\:` — имя с двоеточием внутри, то есть
         // объявление без двоеточия вовсе, и его надо отбросить
@@ -2466,31 +2469,6 @@ pub(crate) fn skip_url(text: &str) -> usize {
             }
             ')' => return at + ch.len_utf8(),
             _ => at += ch.len_utf8(),
-        }
-    }
-    text.len()
-}
-
-/// Где кончается строка в кавычках, начавшаяся на `quote`.
-///
-/// Внутри неё не значат ничего ни скобки, ни точка с запятой, ни начало
-/// комментария (CSS Syntax §4.3.5): `content: "}"` не закрывает правило, а
-/// `content: "a;b"` — одно объявление. Обратный слэш снимает особость
-/// следующего знака, в том числе самой кавычки.
-pub(crate) fn skip_string(text: &str, quote: char) -> usize {
-    let mut it = text.char_indices();
-    while let Some((i, ch)) = it.next() {
-        if ch == '\\' {
-            it.next();
-            continue;
-        }
-        if ch == quote {
-            return i + ch.len_utf8();
-        }
-        // Незакрытая строка обрывается на переводе строки (§4.3.4): дальше
-        // идёт обычный текст, а не бесконечная строка до конца таблицы.
-        if ch == '\n' {
-            return i;
         }
     }
     text.len()
