@@ -5225,25 +5225,17 @@ impl Computed {
             "position-visibility" => {
                 self.position_visibility = crate::anchor::parse_visibility(v);
             }
-            "top" => {
-                self.inset_inherit[0] = v == "inherit";
-                self.inset.top = Len::parse(v);
-                self.side_seq.inset[0] = self.decl_seq;
-            }
-            "right" => {
-                self.inset_inherit[1] = v == "inherit";
-                self.inset.right = Len::parse(v);
-                self.side_seq.inset[1] = self.decl_seq;
-            }
-            "bottom" => {
-                self.inset_inherit[2] = v == "inherit";
-                self.inset.bottom = Len::parse(v);
-                self.side_seq.inset[2] = self.decl_seq;
-            }
-            "left" => {
-                self.inset_inherit[3] = v == "inherit";
-                self.inset.left = Len::parse(v);
-                self.side_seq.inset[3] = self.decl_seq;
+            "top" | "right" | "bottom" | "left" => {
+                let (side, slot) = match key {
+                    "top" => (0, &mut self.inset.top),
+                    "right" => (1, &mut self.inset.right),
+                    "bottom" => (2, &mut self.inset.bottom),
+                    _ => (3, &mut self.inset.left),
+                };
+                self.inset_inherit[side] = v == "inherit";
+                // Keep anchor arithmetic; preserve mixed percentages until layout (§10.9).
+                *slot = Len::parse(v).or_else(|| Len::parse_mixed(v));
+                self.side_seq.inset[side] = self.decl_seq;
             }
             "inset" => {
                 self.inset = Sides::shorthand(v);
