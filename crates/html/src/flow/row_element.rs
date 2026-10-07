@@ -59,6 +59,7 @@ impl Element for FlowRow {
                     vertical_rl,
                     inline_limit,
                     block_lr: false,
+                    inline_up: false,
                     slots: std::cell::RefCell::new(Vec::new()),
                 };
                 let (h, _) = probe.layout(limit);
@@ -96,12 +97,15 @@ impl Element for FlowRow {
         let bw = f32::from(bounds.size.width);
         let vertical_rl = self.vertical_rl;
         let block_lr = self.block_lr;
+        let inline_up = self.inline_up;
         let (_, slots) = self.layout(limit);
         let slots: Vec<(f32, f32)> = self
             .children
             .iter()
             .zip(slots)
             .map(|(c, (sx, sy))| {
+                // `sideways-lr`: инлайн-позиция отсчитывается от НИЗА.
+                let sx = if vertical_rl && inline_up { limit - sx - c.h } else { sx };
                 if vertical_rl && block_lr {
                     // `vertical-lr`: колонка sy идёт от ЛЕВОГО края.
                     (sy, sx)

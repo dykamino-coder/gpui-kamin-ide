@@ -11204,7 +11204,16 @@ fn wrap_floats(
                     i = j;
                     continue;
                 }
-                lone.style.align_self = Some(if side < 0 { Align::Start } else { Align::End });
+                // `sideways-lr`: line-left — НИЗ (css-writing-modes-4 §6.3),
+                // и `float: left` прижимается к нижнему краю колонки.
+                let line_left_bottom = parent.vertical == Some(true)
+                    && parent.vertical_rl != Some(true)
+                    && parent.sideways == Some(true);
+                lone.style.align_self = Some(if (side < 0) != line_left_bottom {
+                    Align::Start
+                } else {
+                    Align::End
+                });
                 out.push(Node::Element(lone));
             }
             out.extend(rest);
@@ -20255,6 +20264,11 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
             let mut row = crate::flow::FlowRow::new(atoms, shapes, rtl).vertical_rl();
             if vert_lr {
                 row = row.block_lr();
+            }
+            // `sideways-lr`: инлайн-ось идёт СНИЗУ вверх (line-left — низ,
+            // css-writing-modes-4 §6.3), строки ряда кладутся от нижнего края.
+            if line_left_bottom {
+                row = row.inline_up();
             }
             if let Some(Len::Px(v)) = e.style.height {
                 row = row.inline_limit(v);
