@@ -29,7 +29,9 @@ impl Paragraph {
         // and choose its nearest device pixel only for painting.
         let base = (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent;
         let scale = window.scale_factor();
-        let y = f32::from(origin.y + base) * scale;
+        // Window::paint_glyph restores this raw paragraph offset afterwards.
+        // Round the final baseline once, including that fractional offset.
+        let y = f32::from(origin.y + self.glyph_nudge.y + base) * scale;
         point(origin.x, origin.y + px((y.round() - y) / scale))
     }
 }
