@@ -4,7 +4,10 @@ use gpui::{Bounds, LayoutId, Pixels, Window};
 
 fn basic_rectangle(group: &Grouped) -> bool {
     group.mask_clip_off.is_none()
-        && (group.clip_inset.is_some() || group.clip_edges.is_some() || group.clip_xywh.is_some())
+        && (group.clip_inset.is_some()
+            || group.clip_edges.is_some()
+            || group.clip_xywh.is_some()
+            || group.clip_rect.is_some())
 }
 
 pub(super) fn reference_box(
@@ -16,6 +19,7 @@ pub(super) fn reference_box(
     if basic_rectangle(group) {
         // CSS Shapes §3.1: percentages use the reference box, not its raster
         // bounds. Blink clip_path_clipper.cc:383 likewise retains layout geometry.
+        // Legacy clip: rect() also uses the logical border box (CSS 2 §11.1.2).
         Bounds {
             origin: window.layout_origin_unrounded(id),
             size: window.layout_size_unrounded(id),
@@ -127,7 +131,10 @@ pub(super) fn resolve(
             // `clip: rect(t r b l)` — координаты краёв видимой области
             // от углов коробки; auto — её край (clip-rect-auto-*).
             group.clip_rect.map(|[t, r, b, l]| {
-                let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+                let (bw, bh) = (
+                    f32::from(clip_bounds.size.width),
+                    f32::from(clip_bounds.size.height),
+                );
                 let (t, l) = (t.unwrap_or(0.0), l.unwrap_or(0.0));
                 let (r, b) = (r.unwrap_or(bw), b.unwrap_or(bh));
                 if r <= l || b <= t {
