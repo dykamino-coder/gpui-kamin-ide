@@ -25379,13 +25379,26 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // содержимого (`block-size-with-min-or-max-content-table-1a/1b`: эталон
     // держит 150; `support/min-content-max-content.css` — «always treats the
     // 'min-content' and 'max-content' values as the initial value»).
+    //
+    // Предел в точках таблицу ниже содержимого тоже не ужимает: высота
+    // таблицы — большее из заданной (`height`, ограниченной `min/max-height`)
+    // и суммы рядов (css-tables-3 §computing-the-table-height; Blink
+    // `ComputeTableBlockSize` берёт `max(css_block_size, grid_block_size)`).
+    // Предел переходит в саму заданную высоту, а гибкая коробка сетки
+    // больше его не видит (`max-height-table`: `max-height: 0` сплющивал
+    // ряд 5px в ноль).
     let unlimited;
     let inherited = if inherited.vertical != Some(true)
         && matches!(
             inherited.max_height,
-            Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
+            Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent) | Some(Len::Px(_))
         ) {
         let mut c = inherited.clone();
+        if let Some(Len::Px(m)) = c.max_height
+            && let Some(Len::Px(h)) = c.height
+        {
+            c.height = Some(Len::Px(h.min(m)));
+        }
         c.max_height = None;
         unlimited = c;
         &unlimited
