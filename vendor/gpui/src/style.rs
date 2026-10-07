@@ -1,4 +1,4 @@
-mod border_snap;
+pub(crate) mod border_snap;
 mod sizing_keyword;
 pub use sizing_keyword::CssSizingKeyword;
 

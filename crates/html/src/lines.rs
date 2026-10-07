@@ -4651,6 +4651,7 @@ impl Paragraph {
         // линия выше на разницу подъёмов (`text-overflow-string-*`).
         let mut line_base: Option<Pixels> = None;
         let mut line_exact = false;
+        let pieces = visual.clone();
         for run in visual.into_iter() {
             let rtl = levels.get(run.start).is_some_and(|l| l.is_rtl());
             // Знак обрыва — у обрезанного КРАЯ: обычно это логический
@@ -4673,6 +4674,24 @@ impl Paragraph {
                 ("", false)
             } else {
                 (if run.end == range.end { suffix } else { "" }, false)
+            };
+            // Band sides at this piece's visual edges (see `cut_piece_sides`).
+            let piece_runs;
+            let runs: &[TextRun] = if self.runs.iter().any(|r| r.background_color.is_some()) {
+                let vis = self.visual_chars(pieces.iter().map(|r| {
+                    (r.start, r.end, levels.get(r.start).is_some_and(|l| l.is_rtl()))
+                }));
+                let (left, right) = visual_neighbours(&self.text, &vis, &run);
+                let mut mid = slice_runs(runs, &run);
+                self.cut_piece_sides(&mut mid, &run, rtl, left, right);
+                let total: usize = runs.iter().map(|r| r.len).sum();
+                let mut all = slice_runs(runs, &(0..run.start));
+                all.extend(mid);
+                all.extend(slice_runs(runs, &(run.end..total)));
+                piece_runs = all;
+                &piece_runs
+            } else {
+                runs
             };
             let Some(shaped) = self.shape_with_mark(&run, runs, rtl, tail, at_start, window) else {
                 continue;
@@ -5297,10 +5316,13 @@ impl Paragraph {
             // Полоса строчной коробки продолжается сквозь слова (см.
             // `slice_runs_banded`); при rtl слова зеркалятся, и стороны
             // меняются местами — там прежний счёт.
-            let mut runs = if self.wrap.rtl {
-                slice_runs(&self.runs, &word.range)
-            } else {
-                slice_runs_banded(&self.runs, &word.range)
+            let mut runs = match ltr_place
+                .iter()
+                .position(|p| p.0 <= word.range.start && word.range.start < p.1)
+            {
+                Some(k) => self.visual_band_runs(&ltr_place, k, &word.range),
+                None if self.wrap.rtl => self.mirrored_band_runs(&word.range),
+                None => slice_runs_banded(&self.runs, &word.range),
             };
             let decor = self.decor_on();
             if decor {
@@ -5560,6 +5582,160 @@ impl Paragraph {
         self.runs[a].background_color
     }
 
+    /// Band identity (colour and border) of the run holding byte `at`.
+    fn band_at(&self, at: usize) -> Option<(Option<Hsla>, Option<(Hsla, [Pixels; 4])>)> {
+        let mut start = 0usize;
+        for run in self.runs.iter() {
+            if at < start + run.len {
+                return Some((run.background_color, run.background_border));
+            }
+            start += run.len;
+        }
+        None
+    }
+
+    /// Runs of a word of a mirrored right-to-left line (no reordered
+    /// pieces): the word stands as one unit, its logical successor on its
+    /// left and its predecessor on its right. The inline box band goes on
+    /// across a side whose neighbour belongs to the same band, and that side
+    /// gets no padding or border (css-break-3 §5.4 `box-decoration-break:
+    /// slice`; mirror of `slice_runs_banded`).
+    fn mirrored_band_runs(&self, word: &std::ops::Range<usize>) -> Vec<TextRun> {
+        let left = self.band_at(word.end);
+        let right = word.start.checked_sub(1).and_then(|a| self.band_at(a));
+        let mut out = slice_runs(&self.runs, word);
+        for run in out.iter_mut() {
+            if run.background_color.is_none() {
+                continue;
+            }
+            let own = Some((run.background_color, run.background_border));
+            cut_band_sides(run, left == own, right == own);
+        }
+        out
+    }
+
+    /// Runs of a word placed by visual pieces (`ltr_place`, piece `k`): an
+    /// inline box draws a side (padding and border) only where its own edge
+    /// spacer is the VISUAL neighbour. A box split by bidi reordering keeps
+    /// its left edge on its leftmost fragment and its right edge on the
+    /// rightmost one, where the line painter put its spacers; a fragment
+    /// continued from or onto another line has no side there (CSS 2.1 §8.6,
+    /// css-break-3 §5.4; Blink `NGInlineBoxFragmentPainter` paints sides
+    /// per `NGPhysicalBoxFragment::SidesToInclude`).
+    fn visual_band_runs(
+        &self,
+        place: &[(usize, usize, bool, Pixels)],
+        k: usize,
+        word: &std::ops::Range<usize>,
+    ) -> Vec<TextRun> {
+        let rtl = place[k].2;
+        let vis = self.visual_chars(place.iter().map(|p| (p.0, p.1, p.2)));
+        let (left, right) = visual_neighbours(&self.text, &vis, word);
+        let mut out = slice_runs(&self.runs, word);
+        self.cut_piece_sides(&mut out, word, rtl, left, right);
+        out
+    }
+
+    /// Byte offsets of the characters of a line in visual order, from its
+    /// pieces `(start, end, rtl)` in visual order.
+    fn visual_chars(&self, pieces: impl Iterator<Item = (usize, usize, bool)>) -> Vec<usize> {
+        let mut out = Vec::new();
+        for (s, e, rtl) in pieces {
+            let Some(text) = self.text.get(s..e) else {
+                continue;
+            };
+            let at = out.len();
+            out.extend(text.char_indices().map(|(i, _)| s + i));
+            if rtl {
+                out[at..].reverse();
+            }
+        }
+        out
+    }
+
+    /// Cut the band sides at the visual edges of a piece `range` (its runs
+    /// `out`, in logical order; `rtl` when its glyphs run right to left)
+    /// whose visual neighbours are the bytes `left` and `right`.
+    ///
+    /// A box with edge spacers (`box_extents`) draws a side only next to its
+    /// own spacer: the spacer is where its padding and border sit, so any
+    /// other neighbour — another fragment of a box split by bidi reordering,
+    /// a segment separator, the start or end of a continued line — means the
+    /// box goes on (CSS 2.1 §8.6, css-break-3 §5.4 `box-decoration-break:
+    /// slice`). A band without spacers (an outline) goes on only into the
+    /// same band, as in `slice_runs_banded`.
+    fn cut_piece_sides(
+        &self,
+        out: &mut [TextRun],
+        range: &std::ops::Range<usize>,
+        rtl: bool,
+        left: Option<usize>,
+        right: Option<usize>,
+    ) {
+        let n = out.len();
+        if n == 0 {
+            return;
+        }
+        // Byte offsets of the runs in `out`.
+        let mut starts = Vec::with_capacity(n);
+        let mut at = range.start;
+        for r in out.iter() {
+            starts.push(at);
+            at += r.len;
+        }
+        let (li, ri) = if rtl { (n - 1, 0) } else { (0, n - 1) };
+        // A piece of zero-width bidi controls only (the marks of `direction`
+        // and `unicode-bidi`) has no extent of its own to frame.
+        let ghost = self
+            .text
+            .get(range.clone())
+            .is_some_and(|t| t.chars().all(bidi_control));
+        let mut cuts: Vec<(usize, bool)> = Vec::new();
+        for (idx, nb, is_left) in [(li, left, true), (ri, right, false)] {
+            let edge = &out[idx];
+            if edge.background_color.is_none() {
+                continue;
+            }
+            let own = (edge.background_color, edge.background_border);
+            let pos = starts[idx];
+            let holders: Vec<u32> = self
+                .box_extents
+                .iter()
+                .filter(|b| b.1 <= pos && pos < b.2)
+                .map(|b| b.0)
+                .collect();
+            let cut = if ghost {
+                true
+            } else if holders.is_empty() {
+                nb.is_some_and(|a| self.band_at(a) == Some(own))
+            } else {
+                !nb.is_some_and(|a| {
+                    self.spacer_edges.iter().any(|&(p, id, _, _)| {
+                        p <= a && a < p + crate::inline::SPACER.len() && holders.contains(&id)
+                    })
+                })
+            };
+            if !cut {
+                continue;
+            }
+            // The whole band segment touching that edge: `vendor/gpui`
+            // draws a band with the sides of its first run.
+            let step: isize = if idx == 0 { 1 } else { -1 };
+            let mut i = idx as isize;
+            while i >= 0 && (i as usize) < n {
+                let r = &out[i as usize];
+                if (r.background_color, r.background_border) != own {
+                    break;
+                }
+                cuts.push((i as usize, is_left));
+                i += step;
+            }
+        }
+        for (i, is_left) in cuts {
+            cut_band_sides(&mut out[i], is_left, !is_left);
+        }
+    }
+
     /// Слова строки — куски между пробелами, каждое со счётом пробелов слева.
     /// Visual level runs `(start, end, rtl)` of a line (UAX #9 L1–L2), or none
     /// when the plain path suffices: a left-to-right line without a
@@ -5687,6 +5863,43 @@ impl Paragraph {
 /// порядке, и полоса на каждый видимый прогон рисует боковые грани дважды.
 /// Возвращаться вместе с двунаправленной раскладкой полос (box-decoration по
 /// видимым фрагментам, css-break-3 §5.4).
+/// Zero-width bidi formatting characters (UAX #9 explicit formatting and
+/// implicit marks).
+fn bidi_control(c: char) -> bool {
+    matches!(c, '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+}
+
+/// Visual neighbours (byte offsets) of the characters `range` in the line's
+/// visual character order `vis`, skipping zero-width bidi controls.
+fn visual_neighbours(
+    text: &str,
+    vis: &[usize],
+    range: &std::ops::Range<usize>,
+) -> (Option<usize>, Option<usize>) {
+    let mut own = vis.iter().enumerate().filter(|(_, p)| range.contains(p)).map(|(i, _)| i);
+    let Some(first) = own.next() else {
+        return (None, None);
+    };
+    let (lo, hi) = own.fold((first, first), |(a, b), i| (a.min(i), b.max(i)));
+    let visible = |p: &&usize| !text[**p..].chars().next().is_some_and(bidi_control);
+    let left = vis[..lo].iter().rev().find(visible).copied();
+    let right = vis[hi + 1..].iter().find(visible).copied();
+    (left, right)
+}
+
+/// Drop the physical left and/or right side (padding and border) of a run's
+/// inline box band.
+fn cut_band_sides(run: &mut TextRun, left: bool, right: bool) {
+    for (cut, side) in [(left, 3), (right, 1)] {
+        if cut {
+            run.background_pad[side] = px(0.);
+            if let Some(b) = run.background_border.as_mut() {
+                b.1[side] = px(0.);
+            }
+        }
+    }
+}
+
 fn slice_runs_banded(runs: &[TextRun], range: &std::ops::Range<usize>) -> Vec<TextRun> {
     let mut out = slice_runs(runs, range);
     let band_at = |at: usize| -> Option<(Option<Hsla>, Option<(Hsla, [Pixels; 4])>)> {
@@ -5699,24 +5912,32 @@ fn slice_runs_banded(runs: &[TextRun], range: &std::ops::Range<usize>) -> Vec<Te
         }
         None
     };
-    if range.start > 0
-        && let Some(first) = out.first_mut()
-        && first.background_color.is_some()
-        && band_at(range.start - 1) == Some((first.background_color, first.background_border))
-    {
-        first.background_pad[3] = px(0.);
-        if let Some(b) = first.background_border.as_mut() {
-            b.1[3] = px(0.);
-        }
+    // Both ends are judged on the runs as sliced: cutting the left side of a
+    // one-run slice first made its right side differ from the neighbour, and
+    // a band continued on both sides kept its right side (a bar after every
+    // tab-separated word of a bordered `<span>`, `tab-bidi-001`). The cut
+    // covers the whole band segment at that end: `vendor/gpui` draws a band
+    // with the sides of its first run.
+    let band = |r: &TextRun| (r.background_color, r.background_border);
+    let n = out.len();
+    let cut_left = range.start > 0
+        && out
+            .first()
+            .is_some_and(|f| f.background_color.is_some() && band_at(range.start - 1) == Some(band(f)));
+    let cut_right = out
+        .last()
+        .is_some_and(|l| l.background_color.is_some() && band_at(range.end) == Some(band(l)));
+    let mut cuts: Vec<(usize, bool)> = Vec::new();
+    if cut_left {
+        let own = band(&out[0]);
+        cuts.extend((0..n).take_while(|&i| band(&out[i]) == own).map(|i| (i, true)));
     }
-    if let Some(last) = out.last_mut()
-        && last.background_color.is_some()
-        && band_at(range.end) == Some((last.background_color, last.background_border))
-    {
-        last.background_pad[1] = px(0.);
-        if let Some(b) = last.background_border.as_mut() {
-            b.1[1] = px(0.);
-        }
+    if cut_right {
+        let own = band(&out[n - 1]);
+        cuts.extend((0..n).rev().take_while(|&i| band(&out[i]) == own).map(|i| (i, false)));
+    }
+    for (i, left) in cuts {
+        cut_band_sides(&mut out[i], left, !left);
     }
     out
 }

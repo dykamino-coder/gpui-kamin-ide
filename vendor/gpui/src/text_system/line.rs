@@ -620,7 +620,7 @@ fn paint_line_background(
                 .find(|r| r.background_color.is_some())
             && let Some(bg) = style_run.background_color
         {
-            window.paint_quad(run_background_quad(
+            window.paint_quad(snap_band(run_background_quad(
                 glyph_origin,
                 layout.width,
                 line_height,
@@ -631,7 +631,7 @@ fn paint_line_background(
                 true,
                 true,
                 style_run.background_border,
-            ));
+            ), window));
         }
         for (run_ix, run) in layout.runs.iter().enumerate() {
             max_glyph_size = text_system.bounding_box(run.font_id, run.font_size).size;
@@ -660,7 +660,7 @@ fn paint_line_background(
                         if glyph_origin.x == background_origin.x {
                             background_origin.x -= max_glyph_size.width.half()
                         }
-                        window.paint_quad(run_background_quad(
+                        window.paint_quad(snap_band(run_background_quad(
                             *background_origin,
                             glyph_origin.x - background_origin.x,
                             line_height,
@@ -671,7 +671,7 @@ fn paint_line_background(
                             background_color.3,
                             false,
                             background_color.4,
-                        ));
+                        ), window));
                         background_color.3 = false;
                         background_origin.x = origin.x;
                         background_origin.y += line_height;
@@ -737,7 +737,7 @@ fn paint_line_background(
                     if background_origin.x == glyph_origin.x {
                         background_origin.x -= max_glyph_size.width.half();
                     };
-                    window.paint_quad(run_background_quad(
+                    window.paint_quad(snap_band(run_background_quad(
                         background_origin,
                         width,
                         line_height,
@@ -748,7 +748,7 @@ fn paint_line_background(
                         background_color.3,
                         true,
                         background_color.4,
-                    ));
+                    ), window));
                 }
             }
         }
@@ -764,7 +764,7 @@ fn paint_line_background(
             if last_line_end_x == background_origin.x {
                 background_origin.x -= max_glyph_size.width.half()
             };
-            window.paint_quad(run_background_quad(
+            window.paint_quad(snap_band(run_background_quad(
                 background_origin,
                 last_line_end_x - background_origin.x,
                 line_height,
@@ -775,11 +775,36 @@ fn paint_line_background(
                 background_color.3,
                 true,
                 background_color.4,
-            ));
+            ), window));
         }
 
         Ok(())
     })
+}
+
+/// KaminIDE patch: the band of an inline box with a border is pixel-snapped
+/// like a box border (`style::border_snap`, Blink box_border_painter.cc): the
+/// outer and inner edges round to device pixels separately, so a fractional
+/// border width rasterizes as whole pixels, as it does on block boxes and
+/// column rules (`multicol-rule-*-000`).
+fn snap_band(quad: crate::PaintQuad, window: &Window) -> crate::PaintQuad {
+    let w = quad.border_widths;
+    if (w.top == px(0.) && w.right == px(0.) && w.bottom == px(0.) && w.left == px(0.))
+        || quad.corner_radii.top_left != px(0.)
+        || quad.corner_radii.top_right != px(0.)
+        || quad.corner_radii.bottom_left != px(0.)
+        || quad.corner_radii.bottom_right != px(0.)
+        || window.current_transformation() != crate::TransformationMatrix::unit()
+    {
+        return quad;
+    }
+    let (bounds, border_widths) =
+        crate::style::border_snap::snap(quad.bounds, None, w, window.scale_factor());
+    crate::PaintQuad {
+        bounds,
+        border_widths,
+        ..quad
+    }
 }
 
 /// KaminIDE patch: прямоугольник фона прогона (`<span>` с фоном внутри строки).
