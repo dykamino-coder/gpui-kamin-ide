@@ -25,6 +25,8 @@ mod polygon_clip;
 mod orthogonal_measure;
 mod vertical_style;
 mod combined_geometry;
+mod gap_segments;
+use gap_segments::segments;
 
 /// По каким осям разрешено тянуть.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -2541,64 +2543,6 @@ fn occupied(items: &[GapItem], g0: f32, g1: f32, lo: f32, hi: f32, visibility: u
     } else {
         before && after
     }
-}
-
-/// Втяжка конца в точках: положительная укорачивает, отрицательная тянет
-/// наружу. Доля — от ширины пересекающего зазора (0 у cap). `overlap-join`
-/// (§inset) — до дальнего края поперечной линейки: половина зазора и половина
-/// её ширины; у главных промежутков строк — только половина зазора (Blink,
-/// `ComputeOverlapJoinInset`).
-fn inset_px(
-    inset: crate::computed::GapInset,
-    cw: f32,
-    joins: bool,
-    cross_w: f32,
-    main_like: bool,
-) -> f32 {
-    use crate::computed::GapInset;
-    use crate::value::Len;
-    match inset {
-        GapInset::Len(Len::Px(v)) => v,
-        GapInset::Len(Len::Pct(k)) => k * cw,
-        GapInset::Len(_) => 0.0,
-        GapInset::OverlapJoin if joins => -(cw / 2.0) - if main_like { 0.0 } else { cross_w / 2.0 },
-        GapInset::OverlapJoin => 0.0,
-    }
-}
-
-/// Отрезки линейки по протяжённости: вычесть скрытые участки и (кроме `none`)
-/// перекрытые спанами; при `intersection` — ещё пересекающие зазоры с видимым
-/// пересечением. Концы, попавшие в зазор, отступают к его границе, затем
-/// прикладывается втяжка; отрезки без длины выпадают (`flex-055`).
-fn segments(run: &GapRun, rule: &GapAxisRule, main_like: bool, flip: bool) -> Vec<(f32, f32)> {
-    let mut parts = vec![(run.r0, run.r1)];
-    for &c in &run.hidden {
-        parts = subtract(parts, c);
-    }
-    if rule.brk != 0 {
-        for &c in &run.blocked {
-            parts = subtract(parts, c);
-        }
-    }
-    if rule.brk == 2 {
-        for c in run.crossings.iter().filter(|c| c.breaks) {
-            parts = subtract(parts, (c.lo, c.hi));
-        }
-    }
-    // `flip` — линейка вдоль строчной оси при `direction: rtl`: левый конец
-    // отрезка — это END-сторона, правый — START (§insets-start-end).
-    let (lo_cap, lo_join, hi_cap, hi_join) = if flip { (1, 3, 0, 2) } else { (0, 2, 1, 3) };
-    let mut out = vec![];
-    for (s, e) in parts {
-        let (s, s_cw, s_join, s_dw) = run.edge(s, true);
-        let (e, e_cw, e_join, e_dw) = run.edge(e, false);
-        let s2 = s + inset_px(rule.inset[if s_join { lo_join } else { lo_cap }], s_cw, s_join, s_dw, main_like);
-        let e2 = e - inset_px(rule.inset[if e_join { hi_join } else { hi_cap }], e_cw, e_join, e_dw, main_like);
-        if e2 - s2 > 0.05 {
-            out.push((s2, e2));
-        }
-    }
-    out
 }
 
 /// Решётка: линейки промежутков оси `a`. Пересекающие зазоры — промежутки
