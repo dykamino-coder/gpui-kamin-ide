@@ -19673,12 +19673,11 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
     // перевод правого края в отступ от своей стороны (`wall - fx - mw`)
     // остаётся точным до 2^-11 точки, на два порядка точнее допуска полос.
     const NO_WALL: f32 = 8192.0;
-    // `vertical-lr`: та же вертикаль, но блок-старт — ЛЕВЫЙ край
-    // (css-writing-modes-4 §2.1). `sideways-lr` сюда не входит: у него
-    // line-left — НИЗ (§6.3), и стороны флоатов меняются местами.
-    let vert_lr = inherited.vertical == Some(true)
-        && inherited.vertical_rl != Some(true)
-        && inherited.sideways != Some(true);
+    // `vertical-lr`/`sideways-lr`: та же вертикаль, но блок-старт — ЛЕВЫЙ
+    // край (css-writing-modes-4 §2.1). У `sideways-lr` к тому же line-left —
+    // НИЗ (§6.3): `float: left` прижимается к низу, и вырез меряется от него.
+    let vert_lr = inherited.vertical == Some(true) && inherited.vertical_rl != Some(true);
+    let line_left_bottom = vert_lr && inherited.sideways == Some(true);
     let wall = if cb_w > 0.0 && inherited.vertical_rl != Some(true) && !vert_lr {
         cb_w
     } else {
@@ -19782,7 +19781,17 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         let off = if side < 0 { fx } else { wall - fx - mw };
         let sm = match f.style.shape_margin {
             Some(Len::Px(v)) => v,
-            Some(Len::Pct(p)) => p * cb_w,
+            // Доля — от ИНЛАЙН-размера содержащего блока (css-shapes-1
+            // §shape-margin-property): в вертикальном письме это его высота,
+            // которую несёт хост (`shape-outside-linear-gradient-012`:
+            // `shape-margin: 25%` у блока 100×200 — 25, а не 50).
+            Some(Len::Pct(p)) => {
+                let vertical = inherited.vertical_rl == Some(true) || vert_lr;
+                match e.style.height {
+                    Some(Len::Px(h)) if vertical => p * h,
+                    _ => p * cb_w,
+                }
+            }
             _ => 0.0,
         };
         // Вертикальное письмо (`vertical-rl`, `sideways-rl`): форма обтекания
@@ -19900,7 +19909,8 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                 // Профиль адресуется от блок-старта: у `vertical-rl` это
                 // правый край (так его и строит `shape_profile_block`), у
                 // `vertical-lr` — левый, то есть тот же профиль задом наперёд.
-                crate::background::shape_profile_block(&raw, &sb, sm.max(0.0), side).map(|mut p| {
+                let pside = if line_left_bottom { -side } else { side };
+                crate::background::shape_profile_block(&raw, &sb, sm.max(0.0), pside).map(|mut p| {
                     if vert_lr {
                         p.reverse();
                     }
@@ -19992,10 +20002,10 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
             } else {
                 div().absolute().right(px(off + mr))
             };
-            if side < 0 {
+            if (side < 0) != line_left_bottom {
                 col.top(px(mt))
             } else {
-                col.bottom(px(mt))
+                col.bottom(px(mb))
             }
         } else if side < 0 {
             div().absolute().left(px(off + ml)).top(px(mt + fy))
