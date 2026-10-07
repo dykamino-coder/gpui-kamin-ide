@@ -430,21 +430,25 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
             _ => 0.0,
         };
         let (bt, br, bb, bl) = (side(bw.top), side(bw.right), side(bw.bottom), side(bw.left));
-        out.push(
-            div()
-                .absolute()
-                .top(px(sh.y - spread - bt))
-                .left(px(sh.x - spread - bl))
-                .right(px(-sh.x - spread - br))
-                .bottom(px(-sh.y - spread - bb))
-                .rounded(px(radius))
-                .border_t(px(widths[0]))
-                .border_r(px(widths[1]))
-                .border_b(px(widths[2]))
-                .border_l(px(widths[3]))
-                .border_color(colour.to_hsla())
-                .into_any_element(),
-        );
+        let mut ring = div()
+            .absolute()
+            .top(px(sh.y - spread - bt))
+            .left(px(sh.x - spread - bl))
+            .right(px(-sh.x - spread - br))
+            .bottom(px(-sh.y - spread - bb))
+            .rounded(px(radius))
+            .border_t(px(widths[0]))
+            .border_r(px(widths[1]))
+            .border_b(px(widths[2]))
+            .border_l(px(widths[3]))
+            .border_color(colour.to_hsla());
+        // The ring's edges are the shadow's edges: Blink paints a box shadow
+        // from the pixel-snapped border geometry, so they snap to device
+        // pixels like the box's own border edges (`apply::apply_paint`;
+        // `box-shadow-outset-without-border-radius-001` draws its reference
+        // with borders).
+        ring.style().css_border_snap = Some(true);
+        out.push(ring.into_any_element());
     }
 
     // `filter: url(#id)` на HTML-элементе (filter-effects-1 §filter
@@ -544,6 +548,8 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
             .border_b(px(widths[2]))
             .border_l(px(widths[3]))
             .border_color(colour.to_hsla());
+        // Snapped like the box's border edges (see the outer shadow ring).
+        ring.style().css_border_snap = Some(true);
         // Внешний край кольца — padding-box: скругление «радиус − рамка»
         // (§5.4, как у `clip_layer`).
         if !c.radius_masked() && c.border_shape.is_none() {
