@@ -894,6 +894,8 @@ pub(crate) fn establishes_cb(c: &Computed) -> bool {
             | Some(crate::computed::Position::Fixed)
             | Some(crate::computed::Position::Sticky)
     ) || c.transform.is_some()
+        // css-transforms-2: `preserve-3d` is a containing block for all descendants.
+        || c.preserve_3d == Some(true)
         || c.filter.is_some()
         || c.contain_paint == Some(true)
         || c.contain_layout == Some(true)
@@ -988,6 +990,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     // `contain-paint-containing-block-fixed-001`).
     c.transform_ancestor = parent.transform_ancestor
         || parent.transform.is_some()
+        || parent.preserve_3d == Some(true)
         || parent.contain_layout == Some(true)
         || parent.contain_paint == Some(true)
         // css-will-change-1 §2.1: блок для `fixed` — и от обещанного свойства

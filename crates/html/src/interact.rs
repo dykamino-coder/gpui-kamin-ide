@@ -1668,6 +1668,40 @@ impl Element for Transformed {
             });
             frame.set(Some((full, share)));
         }
+        // Plane depth in the 3D rendering context (css-transforms-2
+        // §3d-transform-rendering: planes of one context render by z, not
+        // document order) — z/w of the box centre under the accumulated
+        // matrix; the context root opens the sorting scope.
+        let depth = {
+            let v = [center.0, center.1, 0.0, 1.0];
+            let row = |i: usize| (0..4).map(|k| full[i][k] * v[k]).sum::<f32>();
+            let (z, wv) = (row(2), row(3));
+            if wv.abs() > 1e-6 { z / wv } else { z }
+        };
+        let root_3d = self.frame_3d.is_some() && under.is_none();
+        let in_context = root_3d || under.is_some();
+        let paint_child = |child: &mut AnyElement, m: Option<gpui::TransformationMatrix>, masked: bool, window: &mut Window, cx: &mut App| {
+            if in_context {
+                let mut body = |window: &mut Window| {
+                    window.paint_depth_plane(depth, |window| match m {
+                        Some(m) if masked => window.with_transformation_masked(m, |window| child.paint(window, cx)),
+                        Some(m) => window.with_transformation(m, |window| child.paint(window, cx)),
+                        None => child.paint(window, cx),
+                    })
+                };
+                if root_3d {
+                    window.paint_depth_context(body)
+                } else {
+                    body(window)
+                }
+            } else {
+                match m {
+                    Some(m) if masked => window.with_transformation_masked(m, |window| child.paint(window, cx)),
+                    Some(m) => window.with_transformation(m, |window| child.paint(window, cx)),
+                    None => child.paint(window, cx),
+                }
+            }
+        };
         // Ребро (`rotateX(90deg)`) — не рисуется, как и прежняя нулевая
         // высота. Но в объёмном контексте ПОТОМКИ ребром не становятся
         // (transform3d-preserve3d-011: `rotateX(90)` над `rotateX(90)` =
@@ -1676,9 +1710,7 @@ impl Element for Transformed {
         let Some(flat) = flat else {
             if self.frame_3d.is_some() {
                 let child = self.child.as_mut().unwrap();
-                window.with_transformation(gpui::TransformationMatrix::unit(), |window| {
-                    child.paint(window, cx)
-                });
+                paint_child(child, Some(gpui::TransformationMatrix::unit()), false, window, cx);
             }
             return;
         };
@@ -1715,7 +1747,7 @@ impl Element for Transformed {
         let child = self.child.as_mut().unwrap();
         // Маски детей едут за сплющенной матрицей (как на плоском пути,
         // `Window::with_transformation_masked`); косая — прежнее поведение.
-        window.with_transformation_masked(flat, |window| child.paint(window, cx));
+        paint_child(child, Some(flat), true, window, cx);
     }
 }
 

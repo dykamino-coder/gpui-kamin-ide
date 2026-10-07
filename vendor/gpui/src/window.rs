@@ -3265,6 +3265,33 @@ impl Window {
         result
     }
 
+    /// KaminIDE patch: объёмный контекст (`transform-style: preserve-3d`).
+    /// Плоскости, открытые внутри `f` (`paint_depth_plane`), на выходе
+    /// упорядочиваются по глубине, а не по документу.
+    ///
+    /// This method should only be called as part of the paint phase of element drawing.
+    pub fn paint_depth_context<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
+        self.invalidator.debug_assert_paint();
+        self.next_frame.scene.push_depth_context();
+        let result = f(self);
+        self.next_frame.scene.pop_depth_context();
+        result
+    }
+
+    /// KaminIDE patch: плоскость объёмного контекста на глубине `z` (точки
+    /// устройства, больше — ближе к зрителю); вне контекста — просто `f`.
+    ///
+    /// This method should only be called as part of the paint phase of element drawing.
+    pub fn paint_depth_plane<R>(&mut self, z: f32, f: impl FnOnce(&mut Self) -> R) -> R {
+        self.invalidator.debug_assert_paint();
+        let pushed = self.next_frame.scene.push_depth_plane(z);
+        let result = f(self);
+        if pushed {
+            self.next_frame.scene.pop_depth_plane();
+        }
+        result
+    }
+
     /// Paint one or more drop shadows into the scene for the next frame at the current z-index.
     ///
     /// This method should only be called as part of the paint phase of element drawing.

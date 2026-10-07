@@ -9983,6 +9983,9 @@ fn stacking_context(c: &Computed) -> bool {
         || c.contain_layout == Some(true)
         || c.contain_paint == Some(true)
         || c.transform.is_some()
+        // css-transforms-2 §transform-style-property: `preserve-3d` establishes
+        // a stacking context (`transform-style-stacking-context`).
+        || c.preserve_3d == Some(true)
         || c.translate.is_some()
         || c.opacity.is_some_and(|o| o < 1.0)
         || c.isolate == Some(true)
