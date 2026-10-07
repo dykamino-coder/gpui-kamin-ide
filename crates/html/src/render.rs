@@ -27249,10 +27249,37 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     ));
                 }
             }
+            // `transform` ячейки, ряда и группы рядов (css-transforms-1
+            // §transformable-element: «table-row-group, table-header-group,
+            // table-footer-group, table-row, table-column-group,
+            // table-column, table-cell»). Своей коробки у ряда и группы в
+            // сетке нет, поэтому их ПЕРЕНОС (не зависящий от точки отсчёта)
+            // переходит на каждую ячейку; поворот/масштаб ряда требует его
+            // коробки и пока не применяется.
+            let mut built = d.children(inside).into_any_element();
+            if cell.style.transform.is_some() {
+                built = transformed(built, &cell.style, &row_style);
+            }
+            let pure_shift = |t: &crate::computed::Transform| {
+                !t.has_3d
+                    && t.lin == [[1.0, 0.0], [0.0, 1.0]]
+                    && t.tr[0][1] == 0.0
+                    && t.tr[0][2] == 0.0
+                    && t.tr[1][1] == 0.0
+                    && t.tr[1][2] == 0.0
+            };
+            if row.style.transform.as_ref().is_some_and(pure_shift) {
+                built = transformed(built, &row.style, inherited);
+            }
+            if let Some(g) = carry.3
+                && g.style.transform.as_ref().is_some_and(pure_shift)
+            {
+                built = transformed(built, &g.style, inherited);
+            }
             if paint_layers && cell_paints_over(&cell.children, 24) {
-                cells_over.push(d.children(inside).into_any_element());
+                cells_over.push(built);
             } else {
-                cells.push(d.children(inside).into_any_element());
+                cells.push(built);
             }
         }
     }
