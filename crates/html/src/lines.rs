@@ -2337,6 +2337,128 @@ impl Paragraph {
         )
     }
 
+    /// Содержащий блок из фрагментов строчной коробки с содержимым
+    /// `start..end` (CSS 2.1 §10.1 п.4.1; Blink `out_of_flow_layout_part.cc`
+    /// `ComputeInlineContainingBlocks`): левый верхний угол — начало первого
+    /// фрагмента, правый нижний — конец последнего непустого, размер не
+    /// меньше нуля. Края — по отбивке (`pad`). Только горизонтальный ltr-абзац
+    /// с прямым порядком строк; иначе `None`.
+    fn inline_cb_rect(
+        &self,
+        segs: &[Seg],
+        start: usize,
+        end: usize,
+        pad: [f32; 4],
+        bounds: Bounds<Pixels>,
+    ) -> Option<Bounds<Pixels>> {
+        if self.lines_reversed || self.lines.is_empty() {
+            return None;
+        }
+        let bytes = self.text.as_bytes();
+        let blank = |b: u8| matches!(b, b' ' | b'\n' | b'\t');
+        let end = end.min(self.text.len());
+        let mut start = start.min(end);
+        let mut end = end;
+        // Схлопнутые пробелы у края строки фрагмента не дают (css-text-3
+        // §4.1.2: пробел в конце строки снимается, в начале — тоже).
+        while end > start && blank(bytes[end - 1]) {
+            end -= 1;
+        }
+        while start < end && blank(bytes[start]) {
+            start += 1;
+        }
+        let row_of = |at: usize| {
+            self.lines
+                .iter()
+                .position(|l| at < l.range.end)
+                .unwrap_or(self.lines.len() - 1)
+        };
+        let row_s = row_of(start);
+        let row_e = if end > start { row_of(end - 1) } else { row_s };
+        let x_in = |row: usize, at: usize| -> Pixels {
+            let line = &self.lines[row];
+            let from = self.x_at(segs, line.range.start, Edge::Start);
+            let x = self.x_at(segs, at.clamp(line.range.start, line.range.end), Edge::Start) - from;
+            let hang = self.hang_first(line.range.start);
+            let shift = self.span(segs, line.range.start, line.range.start + hang);
+            bounds.origin.x + line.indent - shift + px(self.flow_cut(row).0) + x
+        };
+        let (left, right) = if self.wrap.rtl {
+            // Письмо справа налево: начало фрагмента — его ПРАВЫЙ край,
+            // конец — левый; прямоугольник фрагмента строки — крайние
+            // визуальные места его краёв (`visual_x_rtl`, разбор UAX#9 как у
+            // отрисовки), строка прижата по `line_offset`.
+            let frag = |row: usize, a: usize, b: usize| -> (Pixels, Pixels) {
+                let line = &self.lines[row];
+                let free = bounds.size.width - line.width - line.indent - px(self.flow_cut(row).1);
+                let hang = self.hang_first(line.range.start);
+                let shift = self.span(segs, line.range.start, line.range.start + hang);
+                let l = bounds.origin.x + line_offset(self.line_align(row, line), true, free) - shift
+                    + px(self.flow_cut(row).0);
+                let (lo, hi) = self.visual_extent_rtl(segs, a, b, line);
+                (l + lo, l + hi)
+            };
+            let first_end = if row_s == row_e { end } else { self.lines[row_s].range.end };
+            let last_start = if row_s == row_e { start } else { self.lines[row_e].range.start };
+            let right = frag(row_s, start, first_end).1 + px(pad[1]);
+            let left = (frag(row_e, last_start, end).0 - px(pad[3])).min(right);
+            (left, right)
+        } else {
+            let left = x_in(row_s, start) - px(pad[3]);
+            (left, (x_in(row_e, end) + px(pad[1])).max(left))
+        };
+        let top = bounds.origin.y + self.line_height * row_s as f32 - px(pad[0]);
+        let bottom = (bounds.origin.y + self.line_height * (row_e + 1) as f32 + px(pad[2])).max(top);
+        Some(Bounds {
+            origin: point(left, top),
+            size: gpui::size(right - left, bottom - top),
+        })
+    }
+
+    /// Визуальный отрезок знаков `a..b` строки rtl-абзаца от её ЛЕВОГО края:
+    /// прогоны UAX#9 в визуальном порядке (L2), как у `visual_x_rtl`, внутри
+    /// rtl-прогона знаки идут справа налево. Пустой отрезок — точка `a`.
+    fn visual_extent_rtl(&self, segs: &[Seg], a: usize, b: usize, line: &Line) -> (Pixels, Pixels) {
+        let start = line.range.start;
+        let end = start + trim_hanging(&self.text[line.range.clone()]);
+        let a = a.clamp(start, end);
+        let b = b.clamp(a, end);
+        let info = unicode_bidi::BidiInfo::new(&self.text, Some(unicode_bidi::Level::rtl()));
+        let Some(para) = info
+            .paragraphs
+            .iter()
+            .find(|p| p.range.start <= start && start < p.range.end)
+            .or_else(|| info.paragraphs.first())
+        else {
+            return (px(0.), px(0.));
+        };
+        if a == b {
+            let x = self.visual_x_rtl(segs, a, line);
+            return (x, x);
+        }
+        let (levels, runs) = info.visual_runs(para, start..end);
+        let mut x = px(0.);
+        let mut lo: Option<Pixels> = None;
+        let mut hi: Option<Pixels> = None;
+        for run in runs {
+            let w = self.span(segs, run.start, run.end);
+            let (s, e) = (a.max(run.start), b.min(run.end));
+            if s < e {
+                let rtl = levels.get(run.start).is_some_and(|l| l.is_rtl());
+                let off = if rtl {
+                    self.span(segs, e, run.end)
+                } else {
+                    self.span(segs, run.start, s)
+                };
+                let part = self.span(segs, s, e);
+                lo = Some(lo.map_or(x + off, |v: Pixels| v.min(x + off)));
+                hi = Some(hi.map_or(x + off + part, |v: Pixels| v.max(x + off + part)));
+            }
+            x += w;
+        }
+        (lo.unwrap_or(px(0.)), hi.unwrap_or(px(0.)))
+    }
+
     /// Визуальное продвижение места `at` от ЛЕВОГО края rtl-строки.
     ///
     /// На место куска ставится нейтральный U+FFFC (так UAX#9 видит
@@ -4182,6 +4304,33 @@ impl Element for Paragraph {
             let rotated = crate::interact::in_rotated_frame();
             let scale = window.scale_factor().max(0.01);
             for (at, el, how) in placed.iter_mut() {
+                // Абсолют от строчного содержащего блока: края считает
+                // раскладка от коробки размером в этот блок (`inline_cb_rect`).
+                if let Some(cb) = how.cb.filter(|_| !rotated) {
+                    let s = (*at as isize + cb.start).max(0) as usize;
+                    let e = (*at as isize + cb.end).max(0) as usize;
+                    if let Some(r) = self.inline_cb_rect(&segs, s, e, cb.pad, bounds) {
+                        use gpui::{ParentElement, Styled};
+                        let inner = std::mem::replace(el, gpui::Empty.into_any_element());
+                        *el = gpui::div()
+                            .relative()
+                            .w(r.size.width)
+                            .h(r.size.height)
+                            .child(inner)
+                            .into_any_element();
+                        el.layout_as_root(
+                            gpui::size(
+                                gpui::AvailableSpace::Definite(r.size.width),
+                                gpui::AvailableSpace::Definite(r.size.height),
+                            ),
+                            window,
+                            _cx,
+                        );
+                        let o = point(r.origin.x + px(cb.shift.0), r.origin.y + px(cb.shift.1));
+                        el.prepaint_at(o, window, _cx);
+                        continue;
+                    }
+                }
                 let next = &how.next_line;
                 let origin = if *next {
                     self.next_line_point(*at, bounds)

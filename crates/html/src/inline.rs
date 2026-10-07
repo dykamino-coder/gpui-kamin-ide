@@ -91,6 +91,115 @@ pub struct OverlayAt {
     /// ширину правее точки (CSS 2.1 §10.3.7 «set 'right' to the static
     /// position»: статическая позиция — край гипотетической коробки).
     pub bidi_hang: bool,
+    /// Абсолют с краями по ОБЕИМ осям, чей содержащий блок — позиционированный
+    /// строчный предок в этом же абзаце (`render.rs: atom_element_raw`).
+    pub edges: bool,
+    /// Содержащий блок такого абсолюта — строчная коробка (`mark_inline_cb`).
+    pub cb: Option<InlineCb>,
+    /// Пустой кусок-метка края содержимого такой коробки `(id, начало?)`:
+    /// байтовые края считаются по ГОТОВЫМ кускам (`overlays`) — схлопывание
+    /// пробелов на границах кусков идёт уже после сбора.
+    pub cb_marker: Option<(u32, bool)>,
+}
+
+/// Содержащий блок из фрагментов строчной коробки (CSS 2.1 §10.1 п.4.1;
+/// Blink `out_of_flow_layout_part.cc` `ComputeInlineContainingBlocks`:
+/// начало — верхний строчно-начальный угол первого фрагмента, конец —
+/// нижний строчно-конечный угол последнего, отрицательный размер — ноль).
+/// Байтовые края СОДЕРЖИМОГО коробки — относительно места самого куска.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct InlineCb {
+    /// Метка коробки (`OverlayAt::cb_marker`).
+    pub id: u32,
+    pub start: isize,
+    pub end: isize,
+    /// Отбивка коробки `[top, right, bottom, left]`: содержащий блок — край
+    /// отбивки (§10.1 п.4: «padding edges»).
+    pub pad: [f32; 4],
+    /// Относительный сдвиг коробки и её строчных предков (§9.4.3).
+    pub shift: (f32, f32),
+}
+
+thread_local! {
+    /// Глубина позиционированных строчных предков текущего сбора кусков.
+    static INLINE_CB_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    /// Атом, который строится прямо сейчас, лежит внутри такого предка.
+    static ATOM_CB: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// Атом ушёл абсолютом с краями от строчного содержащего блока.
+    static ABS_CB_TAKEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Строящийся атом — внутри позиционированного строчного (одноразово).
+pub(crate) fn take_atom_cb() -> bool {
+    ATOM_CB.with(|c| c.replace(false))
+}
+
+/// Вернуть признак `take_atom_cb` перед постройкой атома.
+pub(crate) fn set_atom_cb(v: bool) {
+    ATOM_CB.with(|c| c.set(v));
+}
+
+/// Отметить, что атом построен для строчного содержащего блока.
+pub(crate) fn note_abs_cb() {
+    ABS_CB_TAKEN.with(|c| c.set(true));
+}
+
+/// Забрать отметку `note_abs_cb`.
+pub(crate) fn take_abs_cb() -> bool {
+    ABS_CB_TAKEN.with(|c| c.replace(false))
+}
+
+/// Отметить куски-абсолюты с краями (`OverlayAt::edges`) содержимого
+/// строчной коробки `e`, у которых содержащего блока ещё нет: ближайший
+/// позиционированный предок — она.
+fn mark_inline_cb(pieces: Vec<Piece>, e: &Element) -> Vec<Piece> {
+    if !pieces
+        .iter()
+        .any(|p| matches!(p, Piece::Overlay(_, how) if how.edges && how.cb.is_none()))
+    {
+        return pieces;
+    }
+    static CB_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+    let id = CB_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let px_of = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => v,
+        _ => 0.0,
+    };
+    let pad = [
+        px_of(e.style.padding.top),
+        px_of(e.style.padding.right),
+        px_of(e.style.padding.bottom),
+        px_of(e.style.padding.left),
+    ];
+    let marker = |start: bool| {
+        Piece::Overlay(
+            gpui::Empty.into_any_element(),
+            OverlayAt {
+                cb_marker: Some((id, start)),
+                ..Default::default()
+            },
+        )
+    };
+    let mut out = Vec::with_capacity(pieces.len() + 2);
+    out.push(marker(true));
+    out.extend(pieces.into_iter().map(|p| match p {
+        Piece::Overlay(el, how) if how.edges && how.cb.is_none() => Piece::Overlay(
+            el,
+            OverlayAt {
+                cb: Some(InlineCb {
+                    id,
+                    start: 0,
+                    end: 0,
+                    pad,
+                    shift: (0.0, 0.0),
+                }),
+                ..how
+            },
+        ),
+        other => other,
+    }));
+    out.push(marker(false));
+    out
 }
 
 /// Схлопывание пробелов ЧЕРЕЗ границу кусков (CSS 2.1 §16.6.1,
@@ -276,7 +385,14 @@ fn collect_with_empty_metrics(
                     ));
                     continue;
                 }
-                if let Some(piece) = atom(e) {
+                // Атому сообщают, лежит ли он в позиционированном строчном
+                // (`take_atom_cb`); его собственное содержимое — уже вне его.
+                let depth = INLINE_CB_DEPTH.with(|d| d.replace(0));
+                ATOM_CB.with(|c| c.set(depth > 0));
+                let built = atom(e);
+                ATOM_CB.with(|c| c.set(false));
+                INLINE_CB_DEPTH.with(|d| d.set(depth));
+                if let Some(piece) = built {
                     out.push(piece);
                     // Строчный `<span>`, ушедший в свою коробку (узорный фон,
                     // `has_own_box`), атомом в CSS не является: зазор между его
@@ -628,8 +744,19 @@ fn collect_with_empty_metrics(
                 // Относительный сдвиг строчного куска несёт и его потомков вне
                 // потока: абсолютный элемент внутри `position: relative`
                 // спана стоит от СДВИНУТОГО места (`static-position/htb-*`).
+                let cb_here = establishes_cb(&e.style);
+                if cb_here {
+                    INLINE_CB_DEPTH.with(|d| d.set(d.get() + 1));
+                }
+                let kids = collect_with_empty_metrics(&e.children, &merged, atom, has_text);
+                let kids = if cb_here {
+                    INLINE_CB_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+                    mark_inline_cb(kids, e)
+                } else {
+                    kids
+                };
                 out.extend(shift_overlays(
-                    collect_with_empty_metrics(&e.children, &merged, atom, has_text),
+                    kids,
                     &e.style,
                     merged.rotated_line == Some(true),
                 ));
@@ -805,6 +932,18 @@ fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool) -> Vec<Pi
     pieces
         .into_iter()
         .map(|p| match p {
+            // Абсолют от строчного содержащего блока: сдвигается сам блок, и
+            // обёртка-отбивка встала бы его родителем (`lines.rs`).
+            Piece::Overlay(el, at) if at.cb.is_some() => Piece::Overlay(
+                el,
+                OverlayAt {
+                    cb: at.cb.map(|c| InlineCb {
+                        shift: (c.shift.0 + dx, c.shift.1 + dy),
+                        ..c
+                    }),
+                    ..at
+                },
+            ),
             Piece::Overlay(el, at) if rotated => Piece::Overlay(
                 el,
                 OverlayAt {
@@ -3712,11 +3851,32 @@ pub fn spacers(pieces: &[Piece]) -> Vec<usize> {
 pub fn overlays(pieces: Vec<Piece>) -> Vec<(usize, AnyElement, OverlayAt)> {
     let mut at = 0usize;
     let mut out = Vec::new();
+    // Метки краёв строчных содержащих блоков: `id -> (начало, конец)`.
+    let mut marks: Vec<(u32, usize, usize)> = Vec::new();
     for p in pieces {
         match p {
             Piece::Text { text, .. } => at += text.len(),
+            Piece::Overlay(_, OverlayAt { cb_marker: Some((id, true)), .. }) => {
+                marks.push((id, at, at));
+            }
+            Piece::Overlay(_, OverlayAt { cb_marker: Some((id, false)), .. }) => {
+                if let Some(m) = marks.iter_mut().find(|m| m.0 == id) {
+                    m.2 = at;
+                }
+            }
             Piece::Overlay(el, how) => out.push((at, el, how)),
             Piece::Atom(_) => {}
+        }
+    }
+    for (at, _, how) in out.iter_mut() {
+        if let Some(cb) = how.cb.as_mut() {
+            match marks.iter().find(|m| m.0 == cb.id) {
+                Some(&(_, s, e)) => {
+                    cb.start = s as isize - *at as isize;
+                    cb.end = e as isize - *at as isize;
+                }
+                None => how.cb = None,
+            }
         }
     }
     out
@@ -3995,6 +4155,7 @@ pub fn as_wrapped_row(
             for p in group {
                 glued = match p {
                     Piece::Atom(el) => glued.child(el),
+                    Piece::Overlay(_, how) if how.cb_marker.is_some() => glued,
                     Piece::Overlay(el, _) => glued.child(overlay_in_row(el)),
                     Piece::Text { text, style } => glued.child(render_text(text, &style)),
                 };
@@ -4008,6 +4169,7 @@ pub fn as_wrapped_row(
                     line_empty = false;
                     row.child(el)
                 }
+                Piece::Overlay(_, how) if how.cb_marker.is_some() => row,
                 Piece::Overlay(el, _) => row.child(overlay_in_row(el)),
                 Piece::Text { text, style } => {
                     // Пробел остаётся при слове: без него слова слиплись бы.

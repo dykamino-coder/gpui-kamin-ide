@@ -17367,6 +17367,7 @@ fn paragraph_pieces_routed(
     // НЕТ, все шесть 0.00) — гейт оставляет её на прежнем пути.
     let flow_text = has_flow_text(nodes);
     let mut atom = |e: &Element| -> Option<inline::Piece> {
+        let in_inline_cb = crate::inline::take_atom_cb();
         // Абсолютный элемент на статической позиции ВНУТРИ строки — кусок вне
         // потока: место в строке он не занимает, поэтому абзац остаётся
         // текстовым и не теряет пробелы (`line-breaking-018`).
@@ -17563,7 +17564,11 @@ fn paragraph_pieces_routed(
         } else {
             e
         };
-        atom_element(e, inherited, opts).map(|el| {
+        crate::inline::set_atom_cb(in_inline_cb);
+        let built = atom_element(e, inherited, opts);
+        crate::inline::set_atom_cb(false);
+        let abs_cb = crate::inline::take_abs_cb();
+        built.map(|el| {
             // `mix-blend-mode` на ЗАМЕЩАЕМОМ атоме строки: блочный путь,
             // атом с коробкой и флоат смешивают через `grouped`, а `<svg>`,
             // `<iframe>`, `<img>` в строке шли мимо, и режим пропадал
@@ -17657,7 +17662,13 @@ fn paragraph_pieces_routed(
                     "svg" | "img" | "canvas" | "video" | "embed" | "object" | "iframe"
                 )
             {
-                return inline::Piece::Overlay(el, inline::OverlayAt::default());
+                return inline::Piece::Overlay(
+                    el,
+                    inline::OverlayAt {
+                        edges: abs_cb,
+                        ..Default::default()
+                    },
+                );
             }
             inline::Piece::Atom(el)
         })
@@ -18724,6 +18735,17 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
         Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
     ) {
         let merged = inline::inherit(inherited, &e.style);
+        // Содержащий блок — позиционированный СТРОЧНЫЙ предок в этом абзаце
+        // (CSS 2.1 §10.1 п.4): края по обеим осям считает `lines.rs` от
+        // прямоугольника его фрагментов, коробка идёт без пустышки и слоёв.
+        let inline_cb = crate::inline::take_atom_cb()
+            && e.style.position == Some(crate::computed::Position::Absolute)
+            && (edge_set(e.style.inset.left) || edge_set(e.style.inset.right))
+            && (edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom))
+            && e.style.z_index.unwrap_or(0) >= 0;
+        if inline_cb {
+            crate::inline::note_abs_cb();
+        }
         // ПРОБОВАЛИ И ОТКАТИЛИ: отдавать элемент без пустышки, чтобы `inset: 0`
         // считался от позиционированного ПРЕДКА. В раскладке под нами
         // содержащим блоком служит ЛЮБОЙ родитель, поэтому вынос ничего не
@@ -18737,7 +18759,8 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
         // ПРОБОВАЛИ И ОТКАТИЛИ: считать «растянутым» и элемент с ДОЛЕЙ
         // размера, чтобы доля не бралась от нулевой пустышки. Замерено по
         // семьям *replaced*, positioning/*, normal-flow/*, *float*: 0 и 0.
-        let stretched = (edge_set(e.style.inset.left) && edge_set(e.style.inset.right))
+        let stretched = inline_cb
+            || (edge_set(e.style.inset.left) && edge_set(e.style.inset.right))
             || (edge_set(e.style.inset.top) && edge_set(e.style.inset.bottom))
             || matches!(e.style.width, Some(Len::Pct(_)));
         // Замещаемый элемент строит своя ветка: дети `<svg>` — не блоки,
@@ -18817,6 +18840,7 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
             }
             if x_set
                 && y_set
+                && !inline_cb
                 && e.style.z_index.unwrap_or(0) >= 0
                 && !(inherited.cb_ancestor || crate::inline::establishes_cb(inherited))
             {
