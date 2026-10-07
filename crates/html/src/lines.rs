@@ -210,6 +210,11 @@ pub struct Paragraph {
     /// Места знаков-распорок (`inline::SPACER`) — байтовые смещения по
     /// возрастанию. Точки переноса считаются по тексту без них.
     spacers: Vec<usize>,
+    /// Edge spacers of inline boxes: (offset, box id, physical left, parent
+    /// rtl) — see `inline::spacer_edges`.
+    spacer_edges: Vec<(usize, u32, bool, bool)>,
+    /// Content extents `(box id, start, end)` of those boxes.
+    box_extents: Vec<(u32, usize, usize)>,
     /// Вырезы обтекания (`shape-outside`): формы слева и справа, в
     /// координатах от верха абзаца. Сужают СВОИ строки по их высоте.
     flow: std::sync::Arc<(Vec<crate::flow::FloatShape>, Vec<crate::flow::FloatShape>)>,
@@ -666,6 +671,8 @@ impl Paragraph {
             hanging: crate::computed::Hanging::default(),
             indent: Indent::default(),
             spacers: Vec::new(),
+            spacer_edges: Vec::new(),
+            box_extents: Vec::new(),
             flow: std::sync::Arc::new((Vec::new(), Vec::new())),
             id: None,
             highlight: Hsla::default(),
@@ -852,6 +859,18 @@ impl Paragraph {
     /// Места знаков-распорок строчных коробок.
     pub fn spacers(mut self, spacers: Vec<usize>) -> Self {
         self.spacers = spacers;
+        self
+    }
+
+    /// Edge spacers with their inline boxes.
+    pub fn spacer_edges(mut self, edges: Vec<(usize, u32, bool, bool)>) -> Self {
+        self.spacer_edges = edges;
+        self
+    }
+
+    /// Content extents of inline boxes with edge spacers.
+    pub fn box_extents(mut self, extents: Vec<(u32, usize, usize)>) -> Self {
+        self.box_extents = extents;
         self
     }
 
@@ -3738,6 +3757,8 @@ impl Element for Paragraph {
         let indent = self.indent;
         let hanging = self.hanging;
         let spacers = self.spacers.clone();
+        let spacer_edges = self.spacer_edges.clone();
+        let box_extents = self.box_extents.clone();
         let flow = self.flow.clone();
         let atom_fit = self.atom_fit.clone();
         let id = window.request_measured_layout_with_physical_baselines(
@@ -3779,6 +3800,8 @@ impl Element for Paragraph {
                 probe.run_metrics = run_metrics.clone();
                 probe.strut = strut;
                 probe.spacers = spacers.clone();
+                probe.spacer_edges = spacer_edges.clone();
+                probe.box_extents = box_extents.clone();
                 // Ширина атома «по содержимому» — от содержащего блока, то
                 // есть от ширины самого абзаца (CSS 2.1 §10.3.9), см. `atom_fit`.
                 if !vertical && !atom_fit.borrow().is_empty() {
@@ -4482,6 +4505,8 @@ impl Paragraph {
             hanging: self.hanging,
             indent: self.indent,
             spacers: self.spacers.clone(),
+            spacer_edges: self.spacer_edges.clone(),
+            box_extents: self.box_extents.clone(),
             id: None,
             highlight: self.highlight,
             wrap: self.wrap,
@@ -4964,6 +4989,43 @@ impl Paragraph {
             }
             words = split;
         }
+        // UAX #9 L2 in a left-to-right line: the word path shapes and places
+        // pieces one by one, so right-to-left level runs (explicit controls,
+        // `unicode-bidi`, strong R/AL text) must be reordered here; without it
+        // they were painted in logical order (CSS 2.1 §9.10, `bidi-text/*`).
+        // Runs come in visual order; a word crossing a run edge is cut there.
+        let ltr_runs = self.line_visual_runs(range);
+        if !ltr_runs.is_empty() {
+            let mut split: Vec<Word> = Vec::with_capacity(words.len());
+            for w in words {
+                let mut at = w.range.start;
+                let mut edges: Vec<usize> = ltr_runs
+                    .iter()
+                    .flat_map(|r| [r.0, r.1])
+                    .chain(
+                        self.spacers
+                            .iter()
+                            .flat_map(|p| [*p, *p + crate::inline::SPACER.len()]),
+                    )
+                    .chain(self.box_extents.iter().flat_map(|b| [b.1, b.2]))
+                    .filter(|s| *s > at && *s < w.range.end)
+                    .collect();
+                edges.sort_unstable();
+                edges.dedup();
+                for c in edges {
+                    split.push(Word {
+                        range: at..c,
+                        spaces_before: w.spaces_before,
+                    });
+                    at = c;
+                }
+                split.push(Word {
+                    range: at..w.range.end,
+                    spaces_before: w.spaces_before,
+                });
+            }
+            words = split;
+        }
         // Растягивается КАЖДЫЙ пробел, а не промежуток между словами: там, где
         // подряд стоят два сохранённых пробела, добавка идёт дважды.
         //
@@ -5029,8 +5091,140 @@ impl Paragraph {
         // 779 -> 779, `bidi-011` 1.05 -> 2.26 (распорки полей `<span>` с RLO
         // остаются на логическом месте). Возвращать вместе с распорками,
         // переставляемыми по прогонам (патч: `target/perword-bidi-2026-10-04.patch`).
+        // Logical offset of a byte from the line start, with the justification
+        // added by the separators before it (same count as `words`).
+        let logical_at = |pos: usize| -> Pixels {
+            let seps = if self.ruby_justify {
+                0
+            } else {
+                self.text[range.start..pos.clamp(range.start, range.end)]
+                    .chars()
+                    .filter(|c| word_separator(*c))
+                    .count()
+                    .saturating_sub(absorbed)
+            };
+            (self.x_at(segs, pos, Edge::Start) - from) + step * seps as f32
+        };
+        // Visual pieces of the line, left to right: each level run in visual
+        // order (UAX #9 L2), cut at box edge spacers, with its logical extent.
+        let mut ltr_place: Vec<(usize, usize, bool, Pixels)> = Vec::new();
+        if !ltr_runs.is_empty() {
+            let mut units: Vec<(usize, usize, bool)> = Vec::new();
+            for &(s, e, rtl) in ltr_runs.iter() {
+                let mut pts = vec![s, e];
+                for &p in self.spacers.iter().filter(|p| **p >= s && **p < e) {
+                    pts.push(p);
+                    pts.push((p + crate::inline::SPACER.len()).min(e));
+                }
+                // Box content edges: a fragment of a box starts a piece.
+                for b in &self.box_extents {
+                    pts.extend([b.1, b.2].into_iter().filter(|p| *p > s && *p < e));
+                }
+                pts.sort_unstable();
+                pts.dedup();
+                let mut run: Vec<(usize, usize, bool)> =
+                    pts.windows(2).map(|w| (w[0], w[1], rtl)).collect();
+                if rtl {
+                    run.reverse();
+                }
+                units.extend(run);
+            }
+            // CSS 2.1 §8.6 / Blink `UpdateFragmentEdges`: a box split by
+            // reordering keeps its left edge on its leftmost fragment and its
+            // right edge on the rightmost one. Inner boxes first.
+            let mut boxes: Vec<(u32, usize, usize)> = Vec::new();
+            for &(p, id, _, _) in &self.spacer_edges {
+                match boxes.iter_mut().find(|b| b.0 == id) {
+                    Some(b) => {
+                        b.1 = b.1.min(p);
+                        b.2 = b.2.max(p);
+                    }
+                    None => boxes.push((id, p, p)),
+                }
+            }
+            for b in boxes.iter_mut() {
+                if let Some(x) = self.box_extents.iter().find(|x| x.0 == b.0) {
+                    b.1 = b.1.min(x.1);
+                    b.2 = b.2.max(x.2);
+                }
+            }
+            boxes.sort_by_key(|b| b.2 - b.1);
+            for &(id, lo, hi) in &boxes {
+                let own = |a: usize| {
+                    self.spacer_edges
+                        .iter()
+                        .find(|e| e.0 == a && e.1 == id)
+                        .map(|e| (e.2, e.3))
+                };
+                if !units.iter().any(|u| own(u.0).is_some()) {
+                    continue;
+                }
+                let rest: Vec<(usize, usize, bool)> =
+                    units.iter().copied().filter(|u| own(u.0).is_none()).collect();
+                // Content of the box: between its markers when known, else
+                // strictly between its own edge spacers.
+                let (from_at, to_at) = self
+                    .box_extents
+                    .iter()
+                    .find(|b| b.0 == id)
+                    .map_or((lo + 1, hi), |b| (b.1, b.2));
+                let inside: Vec<usize> = rest
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, u)| u.0 >= from_at && u.0 < to_at && u.0 < u.1)
+                    .map(|(i, _)| i)
+                    .collect();
+                let (Some(&first), Some(&last)) = (inside.first(), inside.last()) else {
+                    continue;
+                };
+                // Outermost spacer (the margin) goes furthest out: logical
+                // order already is visual for an ltr parent, reversed for rtl.
+                let mut lefts: Vec<(usize, usize, bool)> = Vec::new();
+                let mut rights: Vec<(usize, usize, bool)> = Vec::new();
+                let mut parent_rtl = false;
+                for &(a, b, rtl) in units.iter() {
+                    if let Some((left, prtl)) = own(a) {
+                        parent_rtl = prtl;
+                        if left {
+                            lefts.push((a, b, rtl));
+                        } else {
+                            rights.push((a, b, rtl));
+                        }
+                    }
+                }
+                lefts.sort_by_key(|u| u.0);
+                rights.sort_by_key(|u| u.0);
+                if parent_rtl {
+                    lefts.reverse();
+                    rights.reverse();
+                }
+                let mut next = rest;
+                next.splice(last + 1..last + 1, rights);
+                next.splice(first..first, lefts);
+                units = next;
+            }
+            let mut cursor = px(0.);
+            for (a, b, rtl) in units {
+                ltr_place.push((a, b, rtl, cursor));
+                cursor += logical_at(b) - logical_at(a);
+            }
+        }
+        // Visual offset (from the line start) of the logical piece `a..b`: a
+        // right-to-left piece mirrors its contents within its own extent.
+        let placed = |a: usize, b: usize| -> Option<(Pixels, bool)> {
+            let &(s, e, rtl, start) = ltr_place.iter().find(|p| p.0 <= a && a < p.1)?;
+            Some(if rtl {
+                (start + (logical_at(e) - logical_at(b.min(e))), true)
+            } else {
+                (start + (logical_at(a) - logical_at(s)), false)
+            })
+        };
         let mut logical_run: Vec<(usize, Pixels)> = vec![];
-        if self.wrap.rtl && range.start < range.end && range.end <= self.text.len() {
+        if self.wrap.rtl
+            && ltr_place.is_empty()
+            && range.start < range.end
+            && range.end <= self.text.len()
+        {
             let info = unicode_bidi::BidiInfo::new(&self.text, Some(unicode_bidi::Level::rtl()));
             if let Some(para) = info
                 .paragraphs
@@ -5105,17 +5299,26 @@ impl Paragraph {
                     r.strikethrough = None;
                 }
             }
-            let shaped = window.text_system().shape_line_spaced(
-                slice,
-                self.font_size,
-                &runs,
-                None,
-                self.letter_spans
-                    .iter()
-                    .find(|(r, _)| r.contains(&word.range.start))
-                    .map(|(_, v)| *v)
-                    .unwrap_or(self.letter_spacing),
-            );
+            let spacing = self
+                .letter_spans
+                .iter()
+                .find(|(r, _)| r.contains(&word.range.start))
+                .map(|(_, v)| *v)
+                .unwrap_or(self.letter_spacing);
+            let visual = placed(word.range.start, word.range.end);
+            let shaped = if visual.is_some_and(|v| v.1) {
+                // A right-to-left level piece: glyphs in visual order (UAX #9
+                // L2/L4), shaped once under an RLO like `shape`.
+                let mut runs = runs;
+                let body = controlled_shape::text(&slice, &mut runs, true);
+                window
+                    .text_system()
+                    .shape_line_rtl(body, self.font_size, &runs, spacing)
+            } else {
+                window
+                    .text_system()
+                    .shape_line_spaced(slice, self.font_size, &runs, None, spacing)
+            };
             let logical = (self.x_at(segs, word.range.start, Edge::Start) - from)
                 + step * word.spaces_before as f32;
             // При письме справа налево строка раздаётся от ПРАВОГО края:
@@ -5123,6 +5326,16 @@ impl Paragraph {
             // направо переворачивала порядок слов на выключенной строке.
             let x = match logical_run.iter().find(|(i, _)| *i == wi) {
                 Some((_, fixed)) => *fixed,
+                // A right-to-left line starts at its mirror axis: its
+                // logical extent ends at the visual left.
+                None if visual.is_some() => {
+                    let left = if self.wrap.rtl {
+                        mirror - logical_at(range.end)
+                    } else {
+                        bounds.origin.x + dx
+                    };
+                    left + visual.map_or(px(0.), |v| v.0)
+                }
                 None if self.wrap.rtl => mirror - logical - shaped.width,
                 None => bounds.origin.x + dx + logical,
             };
@@ -5240,8 +5453,12 @@ impl Paragraph {
                             spacing + (want - gap_shaped.width) / n,
                         );
                     }
-                    let gap_x =
-                        bounds.origin.x + dx + (self.x_at(segs, gap.start, Edge::Start) - from);
+                    let gap_x = bounds.origin.x
+                        + dx
+                        + placed(gap.start, gap.end).map_or(
+                            self.x_at(segs, gap.start, Edge::Start) - from,
+                            |v| v.0,
+                        );
                     let gap_y = match (line_base, self.base_of(&gap)) {
                         (Some(l), Some(w)) => y + px(l - w),
                         _ => y,
@@ -5261,6 +5478,7 @@ impl Paragraph {
             // 691 при покраске каждого промежутка).
             if step > px(0.)
                 && !self.wrap.rtl
+                && ltr_place.is_empty()
                 && let Some(next) = words.get(wi + 1)
                 && next.range.start > word.range.end
                 && let Some(bg) = self.gap_background(word, next)
@@ -5333,6 +5551,67 @@ impl Paragraph {
     }
 
     /// Слова строки — куски между пробелами, каждое со счётом пробелов слева.
+    /// Visual level runs `(start, end, rtl)` of a line (UAX #9 L1–L2), or none
+    /// when the plain path suffices: a left-to-right line without a
+    /// right-to-left run, a right-to-left line of one right-to-left run and no
+    /// inline box edges (the mirror below places it).
+    ///
+    /// Box spacers (`inline::SPACER`, U+FEFF) are analysed as neutrals
+    /// (U+FFFC, same UTF-8 length): as boundary neutrals X9 would give a
+    /// trailing spacer the level of the embedding it follows, while the edges
+    /// belong to the parent's level (CSS Writing Modes 4 §2.4).
+    fn line_visual_runs(&self, range: &std::ops::Range<usize>) -> Vec<(usize, usize, bool)> {
+        if range.start >= range.end || range.end > self.text.len() {
+            return Vec::new();
+        }
+        let rtl = self.wrap.rtl;
+        let edges = rtl && self.spacer_edges.iter().any(|e| range.contains(&e.0));
+        let needs = edges
+            || self.text[range.clone()].chars().any(|c| {
+                matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+                    || match unicode_bidi::bidi_class(c) {
+                        unicode_bidi::BidiClass::R | unicode_bidi::BidiClass::AL => !rtl,
+                        unicode_bidi::BidiClass::AN => true,
+                        unicode_bidi::BidiClass::L | unicode_bidi::BidiClass::EN => rtl,
+                        _ => false,
+                    }
+            });
+        if !needs {
+            return Vec::new();
+        }
+        let mut text: String = self.text.to_string();
+        for &at in &self.spacers {
+            if text.get(at..at + 3) == Some("\u{feff}") {
+                text.replace_range(at..at + 3, "\u{fffc}");
+            }
+        }
+        let forced = if self.plaintext.is_some() && !rtl {
+            None
+        } else if rtl {
+            Some(unicode_bidi::Level::rtl())
+        } else {
+            Some(unicode_bidi::Level::ltr())
+        };
+        let info = unicode_bidi::BidiInfo::new(&text, forced);
+        let Some(para) = info
+            .paragraphs
+            .iter()
+            .find(|p| p.range.start <= range.start && range.start < p.range.end)
+        else {
+            return Vec::new();
+        };
+        if para.level.is_rtl() != rtl {
+            return Vec::new();
+        }
+        let (levels, visual) = info.visual_runs(para, range.clone());
+        let runs: Vec<(usize, usize, bool)> = visual
+            .into_iter()
+            .map(|r| (r.start, r.end, levels.get(r.start).is_some_and(|l| l.is_rtl())))
+            .collect();
+        let mixed = if rtl { runs.iter().any(|r| !r.2) } else { runs.iter().any(|r| r.2) };
+        if mixed || edges { runs } else { Vec::new() }
+    }
+
     fn words(&self, range: &std::ops::Range<usize>) -> Vec<Word> {
         let mut out: Vec<Word> = Vec::new();
         let mut start = None;

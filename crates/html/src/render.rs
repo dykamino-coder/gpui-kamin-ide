@@ -17862,6 +17862,8 @@ fn paragraph_pieces_routed(
             .hanging(inherited.hanging)
             .indent(indent)
             .spacers(inline::spacers(&pieces))
+            .spacer_edges(inline::spacer_edges(&pieces))
+            .box_extents(inline::box_extents(&pieces))
             .flow_shapes(
                 inherited
                     .flow_shapes

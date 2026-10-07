@@ -440,10 +440,22 @@ fn collect_with_empty_metrics(
                     std::mem::swap(&mut lead, &mut trail);
                     std::mem::swap(&mut mlead, &mut mtrail);
                 }
+                // Box identity of the edge spacers: the line painter moves them
+                // to the outermost visual fragments after bidi reordering.
+                let parent_rtl = inherited.rtl == Some(true);
+                let box_id = if mlead != 0.0 || lead != 0.0 || trail != 0.0 || mtrail != 0.0 {
+                    SPACER_BOX.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                } else {
+                    0
+                };
+                let edge = |mut style: Computed, leading: bool| {
+                    style.spacer_edge = Some((box_id, leading != parent_rtl, parent_rtl));
+                    style
+                };
                 if mlead != 0.0 {
                     out.push(Piece::Text {
                         text: SPACER.into(),
-                        style: margin_spacer_style(&merged, inherited, mlead),
+                        style: edge(margin_spacer_style(&merged, inherited, mlead), true),
                     });
                 }
                 // ПУСТАЯ строчная коробка: прогона текста у неё нет, а
@@ -532,7 +544,7 @@ fn collect_with_empty_metrics(
                 if lead != 0.0 {
                     out.push(Piece::Text {
                         text: SPACER.into(),
-                        style: spacer_style(&merged, lead),
+                        style: edge(spacer_style(&merged, lead), true),
                     });
                 }
                 if blank
@@ -553,6 +565,18 @@ fn collect_with_empty_metrics(
                 // Юникоду: разбор двунаправленности их и ждёт, а рисовать их
                 // не надо, ширины у них нет.
                 let (open, close) = bidi_marks(&e.style, &merged);
+                // Zero-length markers bound the box content between its edge
+                // spacers (`box_extents`); they add no text.
+                let box_marker = |start: bool| Piece::Text {
+                    text: String::new(),
+                    style: Computed {
+                        spacer_edge: Some((box_id, start, parent_rtl)),
+                        ..merged.clone()
+                    },
+                };
+                if box_id != 0 {
+                    out.push(box_marker(true));
+                }
                 if let Some(mark) = open {
                     out.push(Piece::Text {
                         text: mark.to_string(),
@@ -573,16 +597,19 @@ fn collect_with_empty_metrics(
                         style: merged.clone(),
                     });
                 }
+                if box_id != 0 {
+                    out.push(box_marker(false));
+                }
                 if trail != 0.0 {
                     out.push(Piece::Text {
                         text: SPACER.into(),
-                        style: spacer_style(&merged, trail),
+                        style: edge(spacer_style(&merged, trail), false),
                     });
                 }
                 if mtrail != 0.0 {
                     out.push(Piece::Text {
                         text: SPACER.into(),
-                        style: margin_spacer_style(&merged, inherited, mtrail),
+                        style: edge(margin_spacer_style(&merged, inherited, mtrail), false),
                     });
                 }
                 if atomic {
@@ -3567,6 +3594,52 @@ pub const ZWSP: &str = "\u{200b}";
 /// Считаются по тем же правилам, что и `text_and_runs`. Распорка — всегда
 /// СВОЙ кусок ровно из одного знака: так она и отличается от того же знака,
 /// пришедшего из документа.
+/// Box ids of inline edge spacers (`Computed::spacer_edge`); 0 means none.
+static SPACER_BOX: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+
+/// Edge spacers with their box: (byte offset, box id, physical left edge,
+/// parent rtl), in logical order.
+pub fn spacer_edges(pieces: &[Piece]) -> Vec<(usize, u32, bool, bool)> {
+    let mut at = 0usize;
+    let mut out = Vec::new();
+    for p in pieces {
+        let Piece::Text { text, style } = p else {
+            continue;
+        };
+        if text == SPACER
+            && let Some((id, left, parent_rtl)) = style.spacer_edge
+        {
+            out.push((at, id, left, parent_rtl));
+        }
+        at += text.len();
+    }
+    out
+}
+
+/// Content extents `(box id, start, end)` of inline boxes with edge spacers,
+/// from the zero-length markers around their content.
+pub fn box_extents(pieces: &[Piece]) -> Vec<(u32, usize, usize)> {
+    let mut at = 0usize;
+    let mut out: Vec<(u32, usize, usize)> = Vec::new();
+    for p in pieces {
+        let Piece::Text { text, style } = p else {
+            continue;
+        };
+        if text.is_empty()
+            && let Some((id, start, _)) = style.spacer_edge
+        {
+            if start {
+                out.push((id, at, usize::MAX));
+            } else if let Some(b) = out.iter_mut().rev().find(|b| b.0 == id) {
+                b.2 = at;
+            }
+        }
+        at += text.len();
+    }
+    out.retain(|b| b.2 != usize::MAX);
+    out
+}
+
 pub fn spacers(pieces: &[Piece]) -> Vec<usize> {
     let mut at = 0usize;
     let mut out = Vec::new();
@@ -3929,7 +4002,7 @@ fn atom_glue(ch: char) -> bool {
 /// (`line-breaking-atomic-012/013`) приезжает внутри текста вместе с буквой и
 /// служебным не считается.
 fn glue_marker(p: &Piece) -> bool {
-    matches!(p, Piece::Text { text, .. } if text == "\u{200b}" || text == SPACER)
+    matches!(p, Piece::Text { text, .. } if text == "\u{200b}" || text == SPACER || text.is_empty())
 }
 
 /// Куски ряда, сгруппированные по правилу склейки с атомом (css-text-3 §5.1).
