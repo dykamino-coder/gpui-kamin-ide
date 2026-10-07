@@ -42,7 +42,7 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
     // готовая строка, а не стиль.
     let src = crate::background::key_exif(&image.src, c);
     Some(
-        gpui::canvas(
+        gpui::canvas_with_unrounded_bounds(
             |_, _, _| {},
             move |bounds: Bounds<Pixels>, _, window, _| {
                 let Some(found) = crate::background::source(&src) else {

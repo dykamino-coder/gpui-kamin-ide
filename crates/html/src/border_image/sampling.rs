@@ -24,7 +24,11 @@ pub(super) fn paint_slice(
     dest: (f32, f32, f32, f32),
 ) {
     let (sx, sy, sw, sh) = src;
-    let (dx, dy, dw, dh) = dest;
+    let (_, _, dw, dh) = dest;
+    let cell = destination_bounds(window, dest);
+    if cell.size.width <= px(0.0) || cell.size.height <= px(0.0) {
+        return;
+    }
     // Источник задан в точках CSS-картинки, а вырезка — в точках РАСТРА:
     // у рисунка, растрированного плотнее, они различаются.
     let s = raster.size(0);
@@ -45,9 +49,14 @@ pub(super) fn paint_slice(
         && [sx, sy, sw, sh].iter().all(|v| v.fract() == 0.0)
         && window.current_transformation().rotation_scale == [[1.0, 0.0], [0.0, 1.0]];
     let scale = if unscaled { 1.0 } else { window.scale_factor() };
+    let (target_w, target_h) = if unscaled {
+        (dw, dh)
+    } else {
+        (f32::from(cell.size.width), f32::from(cell.size.height))
+    };
     let (out_w, out_h) = (
-        ((dw * scale).round() as u32).max(1),
-        ((dh * scale).round() as u32).max(1),
+        ((target_w * scale).round() as u32).max(1),
+        ((target_h * scale).round() as u32).max(1),
     );
     let key: SliceKey = (
         std::sync::Arc::as_ptr(raster) as usize,
@@ -78,15 +87,39 @@ pub(super) fn paint_slice(
             }
         }
     };
-    let cell = Bounds {
-        origin: gpui::point(px(dx), px(dy)),
-        size: gpui::size(px(dw), px(dh)),
-    };
-    let sampling = if unscaled {
-        gpui::ImageSampling::Nearest
-    } else {
-        gpui::ImageSampling::Linear
+    // Preserve the shared grid through the final CSS-to-device conversion:
+    // subtracting CSS edges can otherwise make an integer size slightly
+    // larger, and the native ceil policy would add another device pixel.
+    let snapped = window.current_transformation() == gpui::TransformationMatrix::unit();
+    let sampling = match (unscaled, snapped) {
+        (true, true) => gpui::ImageSampling::NearestSnapped,
+        (false, true) => gpui::ImageSampling::LinearSnapped,
+        (true, false) => gpui::ImageSampling::Nearest,
+        (false, false) => gpui::ImageSampling::Linear,
     };
     let _ =
         window.paint_image_with_sampling(cell, gpui::Corners::default(), piece, 0, false, sampling);
+}
+
+fn destination_bounds(
+    window: &gpui::Window,
+    (x, y, width, height): (f32, f32, f32, f32),
+) -> Bounds<gpui::Pixels> {
+    let bounds = Bounds {
+        origin: gpui::point(px(x), px(y)),
+        size: gpui::size(px(width), px(height)),
+    };
+    if window.current_transformation() != gpui::TransformationMatrix::unit() {
+        return bounds;
+    }
+    // CSS Backgrounds 3 §6.6: neighbouring border-image regions share edges.
+    // Snap their absolute edges once, rather than flooring origins and
+    // ceiling sizes independently in the native image painter. Blink uses a
+    // snapped nine-piece grid (nine_piece_image_painter.cc:113).
+    let scale = window.scale_factor();
+    let edge = |v: gpui::Pixels| px((f32::from(v) * scale).round() / scale);
+    Bounds::from_corners(
+        gpui::point(edge(bounds.left()), edge(bounds.top())),
+        gpui::point(edge(bounds.right()), edge(bounds.bottom())),
+    )
 }

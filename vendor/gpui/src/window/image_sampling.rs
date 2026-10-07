@@ -11,6 +11,10 @@ pub enum ImageSampling {
     LinearSubpixel,
     /// Preserve source pixel boundaries without interpolation.
     Nearest,
+    /// Interpolate with untransformed destination edges snapped to device pixels.
+    LinearSnapped,
+    /// Preserve source pixels with untransformed edges snapped to device pixels.
+    NearestSnapped,
 }
 
 impl Window {
@@ -51,14 +55,22 @@ impl Window {
         self.next_frame.scene.insert_primitive(PolychromeSprite {
             transformation,
             order: 0,
-            pad: u32::from(sampling == ImageSampling::Nearest),
+            pad: u32::from(matches!(
+                sampling,
+                ImageSampling::Nearest | ImageSampling::NearestSnapped
+            )),
             grayscale,
-            bounds: if sampling == ImageSampling::LinearSubpixel {
-                bounds
-            } else {
-                bounds
+            bounds: match sampling {
+                ImageSampling::LinearSubpixel => bounds,
+                ImageSampling::LinearSnapped | ImageSampling::NearestSnapped => {
+                    Bounds::from_corners(
+                        point(bounds.left().round(), bounds.top().round()),
+                        point(bounds.right().round(), bounds.bottom().round()),
+                    )
+                }
+                _ => bounds
                     .map_origin(|origin| origin.floor())
-                    .map_size(|size| size.ceil())
+                    .map_size(|size| size.ceil()),
             },
             content_mask,
             corner_radii,
