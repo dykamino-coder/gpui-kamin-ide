@@ -35,6 +35,49 @@ use std::time::Duration;
 
 struct Page {
     doc: Rc<Document>,
+    /// Сравниваемые листы печатного теста (с нуля), `None` — все.
+    select: Option<Vec<usize>>,
+}
+
+/// Листы из `<meta name="reftest-pages" content="1,3-4">` (протокол печатных
+/// reftest WPT, docs/writing-tests/print-reftests.md: сравниваются только
+/// перечисленные страницы, номера с единицы, диапазоны `a-b`, `-b`, `a-`).
+fn reftest_pages(html: &str) -> Option<Vec<usize>> {
+    let lower = html.to_ascii_lowercase();
+    let at = lower.find("reftest-pages")?;
+    let tag_start = lower[..at].rfind('<')?;
+    let tag_end = at + lower[at..].find('>')?;
+    let tag = &lower[tag_start..tag_end];
+    if !tag.starts_with("<meta") {
+        return None;
+    }
+    let c = tag.find("content")?;
+    let rest = tag[c + 7..].trim_start().strip_prefix('=')?.trim_start();
+    let (q, rest) = match rest.chars().next()? {
+        q @ ('"' | '\'') => (q, &rest[1..]),
+        _ => (' ', rest),
+    };
+    let value = &rest[..rest.find(q).unwrap_or(rest.len())];
+    let mut pages = Vec::new();
+    for part in value.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+        let (a, b) = match part.split_once('-') {
+            Some((a, b)) => (
+                a.trim().parse::<usize>().unwrap_or(1),
+                b.trim().parse::<usize>().unwrap_or(1000),
+            ),
+            None => {
+                let n = part.parse::<usize>().ok()?;
+                (n, n)
+            }
+        };
+        for n in a.max(1)..=b.min(1000) {
+            if !pages.contains(&(n - 1)) {
+                pages.push(n - 1);
+            }
+        }
+    }
+    pages.sort_unstable();
+    Some(pages)
 }
 
 impl Render for Page {
@@ -176,7 +219,13 @@ impl Render for Page {
                 }
             });
             let stack =
-                kamin_html::render::render_paged(self.doc.nodes(), &opts, geom_for, Some(margins));
+                kamin_html::render::render_paged_select(
+                    self.doc.nodes(),
+                    &opts,
+                    geom_for,
+                    Some(margins),
+                    self.select.clone(),
+                );
             return div()
                 .w(px(f32::from(window.viewport_size().width)))
                 .h(px(f32::from(window.viewport_size().height)))
@@ -1387,7 +1436,7 @@ fn main() {
                     is_minimizable: false,
                     ..Default::default()
                 },
-                |_, cx| -> Entity<Page> { cx.new(|_| Page { doc: empty }) },
+                |_, cx| -> Entity<Page> { cx.new(|_| Page { doc: empty, select: None }) },
             )
             .unwrap();
         // Фокус НЕ забираем: стенд идёт десятками минут, и всё это время его
@@ -1431,6 +1480,7 @@ fn main() {
                     if let Ok(page) = view.downcast::<Page>() {
                         page.update(cx, |page, cx| {
                             page.doc = Rc::new(Document::new(&html, BROWSER_CSS));
+                            page.select = reftest_pages(&html);
                             cx.notify();
                         });
                     }

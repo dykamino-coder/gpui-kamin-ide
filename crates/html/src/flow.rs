@@ -3070,6 +3070,9 @@ pub struct PageStack {
     pages: std::cell::Cell<usize>,
     /// Листов в ряду и масштаб стопки.
     grid: std::cell::Cell<(usize, f32)>,
+    /// Показываемые листы (с нуля, по возрастанию), `None` — все. Печатный
+    /// reftest WPT сравнивает только страницы из `<meta name=reftest-pages>`.
+    select: Option<Vec<usize>>,
 }
 
 impl PageStack {
@@ -3094,11 +3097,29 @@ impl PageStack {
             plan: std::cell::RefCell::new(Vec::new()),
             pages: std::cell::Cell::new(1),
             grid: std::cell::Cell::new((1, 1.0)),
+            select: None,
+        }
+    }
+
+    /// Показать только листы `select` (номера с нуля).
+    pub fn with_select(mut self, select: Option<Vec<usize>>) -> Self {
+        self.select = select;
+        self
+    }
+
+    /// Место листа `i` в сетке показываемых; `None` — лист не показывается.
+    fn slot(&self, i: usize) -> Option<usize> {
+        match &self.select {
+            None => Some(i),
+            Some(sel) => sel.iter().position(|&p| p == i),
         }
     }
 
     /// Левый верх листа `i` в НЕмасштабированных точках стопки.
     fn sheet_origin(&self, i: usize) -> (f32, f32) {
+        let Some(i) = self.slot(i) else {
+            return (-1.0e6, -1.0e6);
+        };
         let per_row = self.grid.get().0.max(1);
         let (cw, ch) = self.cell.get();
         ((i % per_row) as f32 * cw, (i / per_row) as f32 * ch)
@@ -3327,13 +3348,16 @@ impl Element for PageStack {
             f32::from(bounds.size.height).max(1.0),
         );
         // Ячейка сетки — наибольший лист (у одинаковых — сам лист).
-        let (pw, ph) = geoms.iter().fold((1.0f32, 1.0f32), |(w, h), g| {
-            (w.max(g.size.0), h.max(g.size.1))
-        });
+        let (pw, ph) = geoms
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| self.slot(*i).is_some())
+            .fold((1.0f32, 1.0f32), |(w, h), (_, g)| (w.max(g.size.0), h.max(g.size.1)));
         self.cell.set((pw, ph));
+        let shown = (0..pages).filter(|&i| self.slot(i).is_some()).count().max(1);
         let mut best = (1usize, 0.0f32);
-        for per_row in 1..=pages {
-            let rows = pages.div_ceil(per_row);
+        for per_row in 1..=shown {
+            let rows = shown.div_ceil(per_row);
             let s = (ww / (per_row as f32 * pw))
                 .min(wh / (rows as f32 * ph))
                 .min(1.0);
@@ -3514,6 +3538,9 @@ impl Element for PageStack {
             // Порядок краски css-page-3 §painting: фон листа → канвас
             // документа (border box листа) → рамки → содержимое.
             for i in 0..pages {
+                if self.slot(i).is_none() {
+                    continue;
+                }
                 let (sx, sy) = self.sheet_origin(i);
                 let g = self.geom(i);
                 window.paint_quad(gpui::fill(rect(sx, sy, g.size.0, g.size.1), g.bg));

@@ -1349,6 +1349,17 @@ pub fn render_paged(
     geom_for: crate::flow::PageGeomFn,
     margin_decls: Option<PageMarginDeclsFn>,
 ) -> AnyElement {
+    render_paged_select(nodes, opts, geom_for, margin_decls, None)
+}
+
+/// `render_paged`, показывающий только листы `select` (номера с нуля).
+pub fn render_paged_select(
+    nodes: &[Node],
+    opts: &RenderOpts,
+    geom_for: crate::flow::PageGeomFn,
+    margin_decls: Option<PageMarginDeclsFn>,
+    select: Option<Vec<usize>>,
+) -> AnyElement {
     // Снятые обёртки и корень без коробки правят КАЖДЫЙ лист одинаково:
     // `none` — пустой лист без свойств `@page`, `canvas` — фон `html`/`body`.
     let mut none = false;
@@ -1738,6 +1749,7 @@ pub fn render_paged(
         page_boxes::builder(f, root.clone(), opts.clone(), document_counters)
     });
     crate::flow::PageStack::new(kids, geom_for, icb_copies, icb_reach, fixed_copies, margin_for)
+        .with_select(select)
         .into_any_element()
 }
 
