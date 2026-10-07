@@ -421,19 +421,11 @@ fn collect_with_empty_metrics(
                 // невидимый знак-распорка. Соединитель слов (U+FEFF) выбран
                 // не случайно: точкой переноса он не является, а нулевой
                 // пробел ею был бы — строка рвалась бы по краю `<span>`.
-                // Физические стороны НЕ переставляются направлением
-                // (CSS 2.1 §9.10): распорка левых полей выпускается в
-                // логическом НАЧАЛЕ при ltr и в логическом КОНЦЕ при rtl —
-                // иначе перестановка UAX#9 уводила `margin-left` вправо
-                // (bidi-box-model-013 и вся семья).
-                //
-                // ПРОБОВАЛИ И ОТКАТИЛИ: выбирать сторону по РАЗРЕШЁННОМУ
-                // уровню двунаправленности куска (UAX#9) вместо
-                // унаследованного `direction`. Замерено: CSS2 4765 -> 4765,
-                // приобретено 0 / потеряно 0. Уровень куска здесь ещё не
-                // посчитан, и подмена сводилась к тому же `direction`.
+                // CSS Writing Modes 4 §2.4, bidi-fragment-boxes: physical edges
+                // follow the parent's direction, not the inline's own embedding.
+                // Spacers sit outside the inline's bidi controls, in that parent.
                 let ((mut mlead, mut mtrail), (mut lead, mut trail)) = inline_spacing::inline_sides(e, &merged, inherited);
-                if merged.rtl == Some(true) {
+                if inherited.rtl == Some(true) {
                     std::mem::swap(&mut lead, &mut trail);
                     std::mem::swap(&mut mlead, &mut mtrail);
                 }
