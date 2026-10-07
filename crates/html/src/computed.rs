@@ -8634,7 +8634,19 @@ impl Computed {
                         _ => {}
                     }
                 }
-                if !invalid {
+                // `none` is no transform at all (css-transforms-1 §transform
+                // property): it neither establishes a stacking context nor a
+                // containing block (`transform-stacking-002`); a value with no
+                // transform function at all is invalid and is ignored
+                // (`transform-stacking-003`: `transform: quasit`).
+                if !v.contains('(') {
+                    if matches!(
+                        v.trim().to_ascii_lowercase().as_str(),
+                        "none" | "initial" | "unset"
+                    ) {
+                        self.transform = None;
+                    }
+                } else if !invalid {
                     self.transform = Some(t);
                 }
             }
