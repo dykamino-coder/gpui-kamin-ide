@@ -15324,7 +15324,13 @@ thread_local! {
 /// Заводит ли коробка СВОЙ блочный контекст форматирования: через её край
 /// поля не схлопываются ни с детьми, ни насквозь (CSS 2.1 §8.3.1).
 fn own_context(e: &Element) -> bool {
+    // A table caption is a block container that is not a block box: it
+    // establishes a new block formatting context (CSS 2.2 section 9.4.1), so
+    // its children's margins stay inside it
+    // (`margin-collapsing-in-table-caption-002`).
     own_context_style(&e.style)
+        || (e.tag == "caption" && e.style.display.is_none())
+        || e.style.is_caption == Some(true)
 }
 
 /// То же по ОДНОМУ СТИЛЮ, без узла: содержащий блок приходит в `blocks()`
