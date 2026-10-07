@@ -12,6 +12,11 @@ fn sequence(raw: &str, fallback: bool, depth: usize) -> bool {
     }
     let mut at = 0;
     while at < raw.len() {
+        // CDO is a token, not the top-level ! delimiter forbidden in a fallback.
+        if raw[at..].starts_with("<!--") {
+            at += 4;
+            continue;
+        }
         let c = raw[at..].chars().next().unwrap();
         if raw[at..].starts_with("/*") {
             at += raw[at + 2..].find("*/").map_or(raw.len() - at, |n| n + 4);
@@ -164,6 +169,7 @@ mod tests {
     fn fallback_tokens_inside_blocks_and_strings_remain_valid() {
         for value in [
             "var(--a,)",
+            "var(--a, <!--)",
             "var(--a, rgb(0, 0, 0))",
             "var(--a, [!;])",
             "var(--a, \"!;var(1px)\")",
@@ -174,6 +180,7 @@ mod tests {
             assert!(super::valid(value), "{value}");
         }
         assert!(!super::valid("var(--a, var(--b, !))"));
+        assert!(!super::valid("var(--a, <! --)"));
         assert!(!super::valid("red)"));
     }
 

@@ -9,6 +9,8 @@ use std::collections::HashMap;
 
 mod selector_tokens;
 mod stylesheet_tokens;
+mod priority_tokens;
+use priority_tokens::top_level_bang;
 mod variable_tokens;
 pub(crate) mod custom_properties;
 pub(crate) mod variable_values;
@@ -559,38 +561,6 @@ fn is_pseudo_element(name: &str) -> bool {
             | "scroll-marker-group"
             | "scroll-button"
     )
-}
-
-/// Где в значении стоит восклицательный знак — вне строк, скобок и
-/// экранирования. `content: "!"` пометкой важности не является.
-fn top_level_bang(value: &str) -> Option<usize> {
-    let mut depth = 0i32;
-    let mut at = 0usize;
-    while at < value.len() {
-        let ch = value[at..].chars().next().unwrap_or('\u{0}');
-        match ch {
-            '\\' => {
-                at += ch.len_utf8();
-                at += value[at..].chars().next().map_or(0, char::len_utf8);
-                continue;
-            }
-            '"' | '\'' => {
-                at += ch.len_utf8();
-                at += skip_string(&value[at..], ch);
-                continue;
-            }
-            _ if at_url(&value[at..]) => {
-                at += skip_url(&value[at..]);
-                continue;
-            }
-            '(' | '[' | '{' => depth += 1,
-            ')' | ']' | '}' => depth = (depth - 1).max(0),
-            '!' if depth == 0 => return Some(at),
-            _ => {}
-        }
-        at += ch.len_utf8();
-    }
-    None
 }
 
 /// Разбор `style="a: 1; b: 2"`.
