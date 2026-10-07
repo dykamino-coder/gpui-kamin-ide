@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 mod selector_tokens;
 mod stylesheet_tokens;
+mod variable_tokens;
 
 /// Пара «свойство: значение». Значение хранится сырым — разбор откладывается
 /// до момента применения, чтобы неизвестные свойства не стоили ничего.
@@ -616,7 +617,13 @@ pub fn parse_decls(raw: &str) -> Decls {
             continue;
         };
         let (k, v) = (&item[..colon], &item[colon + 1..]);
-        let key = unescape(k.trim()).to_ascii_lowercase();
+        let name = unescape(k.trim());
+        let custom = name.starts_with("--");
+        if custom && (name == "--" || !selector_tokens::ident(k.trim())) {
+            continue;
+        }
+        // CSS Variables §2: custom-property names are case-sensitive tokens.
+        let key = if custom { name } else { name.to_ascii_lowercase() };
         // После восклицательного знака в объявлении стоит ровно `important` и
         // ничего больше; всё прочее делает объявление недействительным, и
         // отбрасывается оно целиком (CSS 2.1 §4.1.8). Пока пометка просто
@@ -635,17 +642,21 @@ pub fn parse_decls(raw: &str) -> Decls {
         if has_bad_url(val) {
             continue;
         }
+        let value = top_level_bang(val).map_or(val, |at| val[..at].trim_end());
+        if !variable_tokens::valid(value) {
+            continue;
+        }
         // Пометка важности ОСТАЁТСЯ в значении: снимет её тот, кто раскладывает
         // каскад (`Computed::resolve_with_vars`), а срезав её здесь, мы теряли
         // важность целиком — объявление конкурировало на общих основаниях.
         let val = &unescape_value(val);
-        if !key.is_empty() && !val.is_empty() {
+        if !key.is_empty() && (custom || !val.is_empty()) {
             // Повтор того же свойства НЕ затирает прежнее на разборе:
             // действительность значения известна только применению
             // (CSS 2.1 §4.1.7 — недействительное объявление игнорируется,
             // а не гасит предыдущее). Части склеиваются служебным
-            // разделителем и применяются по порядку. Пользовательские
-            // свойства действительны всегда — последнее побеждает.
+            // разделителем и применяются по порядку. У пользовательских
+            // свойств синтаксис уже проверен — последнее побеждает.
             if key.starts_with("--") {
                 out.insert(key, val.to_string());
             } else {
