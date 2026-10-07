@@ -25,6 +25,8 @@ pub fn tab_stops(pieces: &[Piece], block: &Computed, base: &gpui::TextStyle) -> 
         _ => style.tab_size.unwrap_or(8.0).max(0.0) * space,
     };
     let mut stops = TabStops::uniform(step(block));
+    // §4.2: позиция ближе `0.5ch` пропускается — следующая.
+    stops.min_gap = 0.5 * metrics::ch_ex_px(family, size).0;
     let mut byte = 0;
     for piece in pieces {
         if let Piece::Text { text, style } = piece {

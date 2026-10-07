@@ -7321,11 +7321,20 @@ impl Computed {
                 // css-text-4 §word-space-transform) сравнением целиком не
                 // ловилось и падало в `none`. Ключевое слово ищем среди
                 // разделённых пробелом кусков.
-                self.word_space_char = v.split_whitespace().find_map(|w| match w {
-                    "space" => Some(' '),
-                    "ideographic-space" => Some('\u{3000}'),
-                    _ => None,
-                });
+                // Явное `none` хранится нулевым знаком, а не `None`: свойство
+                // наследуемое, и `wbr { word-space-transform: none }` внутри
+                // `space` обязано отменить замену у своей точки переноса
+                // (`word-space-transform-004`), а `None` значит «как у
+                // родителя».
+                self.word_space_char = Some(
+                    v.split_whitespace()
+                        .find_map(|w| match w {
+                            "space" => Some(' '),
+                            "ideographic-space" => Some('\u{3000}'),
+                            _ => None,
+                        })
+                        .unwrap_or('\0'),
+                );
             }
             "overflow-wrap" | "word-wrap" => {
                 self.break_word = Some(matches!(v, "break-word" | "anywhere"));

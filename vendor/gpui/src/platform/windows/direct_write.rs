@@ -357,7 +357,13 @@ impl DirectWriteState {
         unsafe {
             let builder = self.components.factory.CreateFontFallbackBuilder()?;
             let font_set = &self.system_font_collection.GetFontSet()?;
-            for family_name in fallbacks.fallback_list() {
+            for entry in fallbacks.fallback_list() {
+                // KaminIDE patch: запись `Семейство@3000-30FF,31F0-31FF`
+                // ограничивает подстановку семейства этими диапазонами
+                // (`FontFallbacks::restricted`) — документ просит шрифт
+                // только под свою письменность, остальное по-прежнему идёт
+                // системной подстановкой. Запись без `@` — как раньше.
+                let (family_name, only) = FontFallbacks::split_restricted(entry);
                 let Some(fonts) = font_set
                     .GetMatchingFonts(
                         &HSTRING::from(family_name),
@@ -386,6 +392,22 @@ impl DirectWriteState {
                 else {
                     continue;
                 };
+                unicode_ranges.truncate(count as usize);
+                if let Some(only) = only {
+                    unicode_ranges = unicode_ranges
+                        .iter()
+                        .flat_map(|r| {
+                            only.iter().filter_map(move |&(lo, hi)| {
+                                let first = r.first.max(lo);
+                                let last = r.last.min(hi);
+                                (first <= last).then_some(DWRITE_UNICODE_RANGE { first, last })
+                            })
+                        })
+                        .collect();
+                    if unicode_ranges.is_empty() {
+                        continue;
+                    }
+                }
                 let target_family_name = HSTRING::from(family_name);
                 builder.AddMapping(
                     &unicode_ranges,
