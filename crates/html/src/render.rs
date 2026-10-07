@@ -26181,6 +26181,15 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 cell.clone()
             };
             let mut cm = inline::inherit(&row_style, &cell.style);
+            // `vertical-align` is not inherited (CSS 2.1 §10.8.1): only `td`/
+            // `th` take their row's value, through the UA rule
+            // `vertical-align: inherit` (HTML §15.3.9). A generic
+            // `display: table-cell` box keeps its own value or the initial
+            // `baseline` (`vertical-align-applies-to-*`: a row group's
+            // `bottom` must not move the cell's content).
+            if cell.style.vertical_align.is_none() && !matches!(cell.tag.as_str(), "td" | "th") {
+                cm.vertical_align = None;
+            }
             // Потолок вертикальной ячейки режет доступное место её
             // ортогонального потока — как у блока (см. ortho_limit в
             // element): стопка глифов переносится на следующую колонку по
