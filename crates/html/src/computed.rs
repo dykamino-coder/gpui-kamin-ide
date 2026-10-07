@@ -13,6 +13,7 @@ mod mask_shorthand;
 pub(crate) mod orthogonal;
 mod tab_size;
 mod quotes;
+mod list_style_string;
 mod outline_style;
 use outline_style::parse as outline_style_of;
 pub(crate) use outline_style::DOUBLE as OUTLINE_DOUBLE;
@@ -6020,24 +6021,7 @@ impl Computed {
                     }
                 }
                 self.no_marker = Some(v.contains("none"));
-                // Строковый маркер: значение в кавычках берётся дословно,
-                // счётчик не участвует (list-style-type-string-*).
-                let t = v.trim();
-                if (t.starts_with('"') && t.ends_with('"') && t.len() >= 2)
-                    || (t.starts_with(char::from(39))
-                        && t.ends_with(char::from(39))
-                        && t.len() >= 2)
-                {
-                    // Экранирование снимает ТОКЕНИЗАЦИЯ (css-syntax-3 §4.3.7):
-                    // `\A0` — неразрывный пробел, `\9` — табуляция; до
-                    // свойства должны доезжать сами знаки, а не обратные
-                    // косые. Разрывы сегмента внутри строки сворачиваются в
-                    // пробел (css-text-3 §4.1.2) — ровно как в строке
-                    // `text-overflow` выше по этому же файлу.
-                    self.marker_text = Some(collapse_segment_breaks(&unescape_content(
-                        &t[1..t.len() - 1],
-                    )));
-                    self.no_marker = Some(false);
+                if list_style_string::apply_string(self, key, v) {
                     return;
                 }
                 // Вид маркера — ИМЯ стиля счётчика (css-lists-3 §3): любое,
