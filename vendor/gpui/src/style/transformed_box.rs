@@ -43,8 +43,14 @@ pub(super) fn bounds(style: &Style, bounds: Bounds<Pixels>, window: &Window) -> 
     let pdet = pa * pd - pb * pc;
     let edge = |x: Pixels, y: Pixels| {
         let (x, y) = (f32::from(x) * sf, f32::from(y) * sf);
-        let dx = (a * x + b * y + m.translation[0]).round() - paint.translation[0];
-        let dy = (c * x + d * y + m.translation[1]).round() - paint.translation[1];
+        // Round half up on a 1/64 grid first: f32 noise of a long transform
+        // chain (offset-path ray) put an exact half pixel at 197.4999 and
+        // rounded it down while the equivalent plain `rotate()` rounded up
+        // (`offset-path-ray-007/020/021`); the quarter-turn path in
+        // `crates/html` snaps the same way.
+        let snap = |v: f32| ((v * 64.0).round() / 64.0 + 0.5).floor();
+        let dx = snap(a * x + b * y + m.translation[0]) - paint.translation[0];
+        let dy = snap(c * x + d * y + m.translation[1]) - paint.translation[1];
         point(
             px((pd * dx - pb * dy) / (pdet * sf)),
             px((-pc * dx + pa * dy) / (pdet * sf)),
