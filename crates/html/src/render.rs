@@ -2760,6 +2760,78 @@ fn forced_opaque(k: &Element) -> bool {
             && !matches!(k.tag.as_str(), "tr" | "thead" | "tbody" | "tfoot"))
 }
 
+/// Гибкий контейнер или сетка БЕЗ своей коробки (ни рамок, ни отбивок, ни фона,
+/// ни заданной высоты, ни позиционирования) с единственным элементом, у которого
+/// `box-decoration-break: clone`. По блочной оси элемент такой обёртки стоит
+/// там же и той же высоты, что блок-ребёнок: строка flex одна, её высота —
+/// высота элемента; сетка без своих дорожек — один ряд `auto`; поперёк элемент
+/// растянут (колонка flex, сетка) или имеет свою ширину (ряд flex). Вернуть
+/// элемент, поднятый на место обёртки (с её полями), — тогда клонированное
+/// украшение (css-break-4 §break-decoration) фрагментирует сам элемент
+/// (`box-decoration-break-clone-018/019/028/029`). Иначе `None`.
+fn clone_wrapper_item(w: &Element) -> Option<Element> {
+    use crate::computed::FlexDir;
+    let s = &w.style;
+    let zero = |l: &Option<Len>| match l {
+        None => true,
+        Some(Len::Px(v)) => v.abs() < 0.01,
+        _ => false,
+    };
+    let b = s.borders();
+    let row = match s.display {
+        Some(Display::Flex) => matches!(s.flex_dir, None | Some(FlexDir::Row)),
+        Some(Display::Grid) => false,
+        _ => return None,
+    };
+    if w.inline
+        || s.webkit_box == Some(true)
+        || s.vertical == Some(true)
+        || s.position.is_some()
+        || s.float.is_some_and(|f| f != 0)
+        || s.background.is_some()
+        || s.bg_image.is_some()
+        || s.transform.is_some()
+        || s.filter.is_some()
+        || s.opacity.is_some()
+        || s.flex_wrap == Some(true)
+        || s.grid_tracks.is_some()
+        || s.grid_cols.is_some()
+        || s.grid_areas.is_some()
+        || s.align_items.is_some()
+        || s.justify_content.is_some()
+        || !matches!(s.height, None | Some(Len::Auto))
+        || s.min_height.is_some()
+        || s.max_height.is_some()
+        || ![&s.padding.top, &s.padding.bottom, &s.padding.left, &s.padding.right, &b.top, &b.bottom, &b.left, &b.right]
+            .into_iter()
+            .all(zero)
+        || multicol_container(s)
+    {
+        return None;
+    }
+    let mut kids = w.children.iter().filter(|n| !is_blank(n));
+    let Some(Node::Element(item)) = kids.next() else {
+        return None;
+    };
+    if kids.next().is_some()
+        || item.inline
+        || out_of_flow(&item.style)
+        || clone_dec(item).is_none()
+        || item.style.align_self.is_some()
+        || item.style.order.is_some()
+        || !zero(&item.style.margin.top)
+        || !zero(&item.style.margin.bottom)
+        || (row && !matches!(item.style.width, Some(Len::Px(_)) | Some(Len::Pct(_))))
+    {
+        return None;
+    }
+    let mut item = item.clone();
+    item.style.display = Some(Display::Block);
+    item.style.margin.top = s.margin.top;
+    item.style.margin.bottom = s.margin.bottom;
+    Some(item)
+}
+
 /// Монолит по css-break-4 §4.1 (Blink `IsMonolithic`): замещаемый,
 /// атомарный строчный, прокручиваемый, `break-inside: avoid`,
 /// строчное содержимое (строк укладка не видит) — пустая
@@ -23083,6 +23155,26 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         g
                     });
                     let ge: &Element = floats_blocked.as_ref().unwrap_or(ge);
+                    // Обёртка flex/сетки с ЕДИНСТВЕННЫМ элементом-`clone`
+                    // (`clone_wrapper_item`): по блочной оси такая обёртка
+                    // раскладывается ровно как блок с этим ребёнком, и фрагменты
+                    // клонированного украшения строятся у самого элемента.
+                    let unwrapped = ge
+                        .children
+                        .iter()
+                        .any(|n| matches!(n, Node::Element(c) if clone_wrapper_item(c).is_some()))
+                        .then(|| {
+                            let mut g = ge.clone();
+                            for n in g.children.iter_mut() {
+                                if let Node::Element(c) = n
+                                    && let Some(item) = clone_wrapper_item(c)
+                                {
+                                    *c = item;
+                                }
+                            }
+                            g
+                        });
+                    let ge: &Element = unwrapped.as_ref().unwrap_or(ge);
                     // Плавающие прямые дети — как прежде: не в стопку,
                     // рисуются её соседями.
                     let direct_oof: Vec<Element> = ge
