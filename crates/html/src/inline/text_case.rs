@@ -5,6 +5,28 @@
 use super::lang_case;
 use crate::computed::{Computed, TextTransform};
 
+/// CSS Text 3 §2.1: inline boundaries do not delimit words, even when
+/// the adjoining text has a different text-transform value.
+#[derive(Default)]
+pub(super) struct Context {
+    prev: Option<char>,
+    prev2: Option<char>,
+}
+
+impl Context {
+    pub(super) fn boundary(&mut self) {
+        self.prev = None;
+        self.prev2 = None;
+    }
+
+    fn observe(&mut self, text: &str) {
+        for ch in text.chars() {
+            self.prev2 = self.prev;
+            self.prev = Some(ch);
+        }
+    }
+}
+
 /// Титульный регистр знака — там, где он ОТЛИЧАЕТСЯ от прописного.
 ///
 /// Таких мест в Юникоде немного: составные буквы, у которых прописной вариант
@@ -28,7 +50,9 @@ fn titlecase(ch: char) -> Option<char> {
     char::from_u32(title)
 }
 
-pub(super) fn apply(text: &str, style: &Computed) -> String {
+fn apply(text: &str, style: &Computed, context: &mut Context) -> String {
+    let (previous, previous2) = (context.prev, context.prev2);
+    context.observe(text);
     // Языковые поправки регистра (css-text-3 §2.1.1, SpecialCasing.txt):
     // `lang="tr"` даёт `i` → `İ`, `lang="el"` снимает ударения и т. д.
     let tailoring = lang_case::tailoring(style.lang.as_deref());
@@ -59,8 +83,8 @@ pub(super) fn apply(text: &str, style: &Computed) -> String {
             // `x.x.` → `X.x.`), прочая пунктуация рвёт (`foo-bar` → `Foo-Bar`).
             // Прежде началом считался только знак после пробела.
             let mut out = String::with_capacity(text.len());
-            let mut prev: Option<char> = None;
-            let mut prev2: Option<char> = None;
+            let mut prev = previous;
+            let mut prev2 = previous2;
             let mid = |c: char| matches!(c, '.' | '\'' | '\u{2019}' | ':' | '\u{b7}');
             let chars: Vec<char> = text.chars().collect();
             let mut skip = 0usize;
@@ -103,4 +127,35 @@ pub(super) fn apply(text: &str, style: &Computed) -> String {
         }
         _ => text.to_string(),
     }
+}
+
+pub(super) fn transform(text: &str, style: &Computed, context: &mut Context) -> String {
+    let flags = style.text_transform_flags;
+    let cased = apply(text, style, context);
+    if flags == 0 {
+        return cased;
+    }
+    // Порядок css-text-3 §2.1: регистр, затем `full-width`, затем
+    // `full-size-kana`. `math-auto` — только у текста из ОДНОГО знака
+    // (MathML Core §2.1.5 «If the text consists of a single character»).
+    let single = {
+        let mut it = cased.trim().chars();
+        it.next().is_some() && it.next().is_none()
+    };
+    cased
+        .chars()
+        .map(|ch| {
+            let mut ch = ch;
+            if flags & crate::computed::TT_FULL_WIDTH != 0 {
+                ch = super::full_width(ch);
+            }
+            if flags & crate::computed::TT_KANA != 0 {
+                ch = super::full_size_kana(ch);
+            }
+            if flags & crate::computed::TT_MATH != 0 && single {
+                ch = super::math_italic(ch);
+            }
+            ch
+        })
+        .collect()
 }
