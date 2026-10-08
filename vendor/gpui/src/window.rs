@@ -56,6 +56,7 @@ use uuid::Uuid;
 
 mod prompts;
 mod image_sampling;
+mod absolute_transformation;
 mod line_baselines;
 mod css_text_background;
 mod css_fill_transform;

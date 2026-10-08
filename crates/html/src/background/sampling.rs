@@ -10,6 +10,9 @@ pub(super) fn paint_tile(
     image: Arc<RenderImage>,
     source_kind: &super::Source,
 ) {
+    if super::oriented_vector::paint(window, bounds, corners, source_kind) {
+        return;
+    }
     let source = image.size(0);
     let sampling = sampling_mode(
         (source.width.0 as f32, source.height.0 as f32),
