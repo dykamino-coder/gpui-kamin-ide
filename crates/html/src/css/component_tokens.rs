@@ -80,25 +80,44 @@ fn backslashes(raw: &str) -> usize {
 /// Byte length of a string body, including its closing quote if present.
 /// Escapes hide delimiters; a bad string ends before its unescaped newline.
 pub(crate) fn skip_string(text: &str, quote: char) -> usize {
-    let mut it = text.char_indices();
-    while let Some((i, ch)) = it.next() {
+    let mut at = 0;
+    while at < text.len() {
+        let ch = text[at..].chars().next().unwrap();
         if ch == '\\' {
-            it.next();
+            // A hexadecimal escape consumes its terminating CSS whitespace,
+            // including a newline; that newline cannot end a bad-string token.
+            at = super::variable_tokens::escape_end(text, at);
             continue;
         }
         if ch == quote {
-            return i + ch.len_utf8();
+            return at + ch.len_utf8();
         }
-        if ch == '\n' {
-            return i;
+        if matches!(ch, '\n' | '\r' | '\u{c}') {
+            return at;
         }
+        at += ch.len_utf8();
     }
     text.len()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::complete;
+    use super::{complete, skip_string};
+
+    #[test]
+    fn escape_terminators_are_consumed_before_bad_string_detection() {
+        for text in [
+            "a\\00000a\nb\"",
+            "a\\a\r\nb\"",
+            "a\\\r\nb\"",
+            "a\\c\u{c}b\"",
+        ] {
+            assert_eq!(skip_string(text, '"'), text.len());
+        }
+        for text in ["a\nb\"", "a\rb\"", "a\u{c}b\""] {
+            assert_eq!(skip_string(text, '"'), 1);
+        }
+    }
 
     #[test]
     fn unfinished_component_values_keep_their_implicit_ends() {
