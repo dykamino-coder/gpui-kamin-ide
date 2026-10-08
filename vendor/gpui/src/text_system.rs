@@ -194,6 +194,14 @@ impl TextSystem {
         }))
     }
 
+    /// Whether the font maps `ch` to a real glyph. DirectWrite reports a
+    /// missing character as glyph 0 (.notdef) rather than `None`.
+    pub fn has_glyph(&self, font_id: FontId, ch: char) -> bool {
+        self.platform_text_system
+            .glyph_for_char(font_id, ch)
+            .is_some_and(|g| g.0 != 0)
+    }
+
     /// Get the advance width for the given character, in the given font and size.
     pub fn advance(&self, font_id: FontId, font_size: Pixels, ch: char) -> Result<Size<Pixels>> {
         let glyph_id = self
