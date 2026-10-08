@@ -27,6 +27,7 @@ mod atom_placement;
 mod ruby_overhang;
 mod content_baselines;
 mod controlled_shape;
+mod hyphen_shape;
 mod decor;
 mod ruby_justification;
 mod selection_geometry;
@@ -167,7 +168,7 @@ pub struct Paragraph {
     /// Чем показывать перенос слова (`hyphenate-character`).
     hyphen: SharedString,
     /// Ширина этого знака — считается при раскладке, где есть окно.
-    hyphen_w: std::cell::Cell<Pixels>,
+    hyphen_w: std::cell::RefCell<Vec<(usize, Pixels)>>,
     /// Куски ВНЕ потока: байтовое место в тексте → элемент. Рисуются поверх
     /// строк, места в них не занимают.
     /// Третье поле — блочный уровень: коробка встаёт в начало СЛЕДУЮЩЕЙ
@@ -795,7 +796,7 @@ impl Paragraph {
             fit_line_height_fixed: false,
             tab_stop: tabs::TabStops::uniform(64.0),
             hyphen: SharedString::from("\u{2010}"),
-            hyphen_w: std::cell::Cell::new(px(0.)),
+            hyphen_w: std::cell::RefCell::new(Vec::new()),
             overlays: Vec::new(),
         }
     }
@@ -1577,16 +1578,7 @@ impl Paragraph {
     /// дорогое место резчика. Ключ обязан покрывать ВСЁ, что читает
     /// `split_uncached`, иначе устаревшие переносы сдвинут пиксели.
     fn split(&self, limit: Option<Pixels>, window: &mut Window) -> Vec<Line> {
-        // Ширина знака переноса взводится ДО обращения в память: при
-        // попадании она нужна отрисовке, а считалась только внутри разреза —
-        // свежий экземпляр абзаца оставался с нулём.
-        if self.hyphen_w.get() == px(0.)
-            && !self.hyphen.is_empty()
-            && self.text.contains('\u{00ad}')
-        {
-            let mark = self.hyphen.clone();
-            self.hyphen_w.set(self.suffix_width(&mark, 0, window));
-        }
+        self.prepare_hyphen_widths(window);
         // Подбор кегля мутирует абзац между вызовами — ключ это видит
         // (font_size в ключе замера).
         let key = self.split_key(limit);
@@ -2954,7 +2946,7 @@ impl Paragraph {
                 - self.tail_spacing(measured - tail_hang);
             // Строка, кончающаяся мягким переносом, несёт ещё и знак переноса.
             if self.text[..measured].ends_with('\u{00ad}') {
-                width += self.hyphen_w.get();
+                width += self.hyphen_width(measured);
             }
             // Допуск в сотую точки: ширина строки складывается из замеров
             // кусков и знака переноса, и на ТОЧНОМ совпадении с коробкой
@@ -3044,7 +3036,7 @@ impl Paragraph {
                 // Разрыв по мягкому переносу: на строке остаётся знак
                 // переноса, и он же входит в её ширину.
                 let hyphen = self.text[..cut].ends_with('\u{00ad}');
-                let extra = if hyphen { self.hyphen_w.get() } else { px(0.) };
+                let extra = if hyphen { self.hyphen_width(cut) } else { px(0.) };
                 out.push(Line {
                     range: start..self.drop_collapsible_tail(start, cut),
                     width: self.span(&segs, head, tail) - self.tail_spacing(tail) + extra,
@@ -4924,7 +4916,7 @@ impl Paragraph {
             fit: self.fit,
             tab_stop: self.tab_stop.clone(),
             hyphen: self.hyphen.clone(),
-            hyphen_w: std::cell::Cell::new(self.hyphen_w.get()),
+            hyphen_w: std::cell::RefCell::new(self.hyphen_w.borrow().clone()),
             overlays: Vec::new(),
         };
         let segs = segs.to_vec();
@@ -5258,72 +5250,6 @@ impl Paragraph {
         // Префикс: знак дорисовывается отдельным вызовом слева, а сам кусок
         // набирается без него (вплетение в шейп меняло бы кернинг начала).
         self.shape(range, runs, rtl, "", window)
-    }
-
-    /// Набрать кусок текста; правый прогон — со знаком стороны письма.
-    fn shape(
-        &self,
-        range: &std::ops::Range<usize>,
-        runs: &[TextRun],
-        rtl: bool,
-        suffix: &str,
-        window: &mut Window,
-    ) -> Option<gpui::ShapedLine> {
-        let mut piece = slice_runs(runs, range);
-        if piece.is_empty() {
-            return None;
-        }
-        // Управляющие знаки не рисуются: своей ширины у них нет, но подмена
-        // шрифта может подставить вместо них пустой квадрат и раздвинуть
-        // строку. Разрывы по ним УЖЕ решены — здесь остаётся только показ.
-        //
-        // ПРОБОВАЛИ И ОТКАТИЛИ: не выбрасывать их, чтобы замер и показ считали
-        // один и тот же текст (замер берёт его целиком). Счёт не изменился,
-        // а `trim_runs` и `invisible` становились мёртвым кодом.
-        let body: String = self.text[range.clone()]
-            .chars()
-            .filter(|c| !invisible(*c))
-            .collect();
-        if body.len() != range.len() {
-            piece = trim_runs(&piece, &self.text[range.clone()]);
-        }
-        // Знак переноса набирается ВМЕСТЕ со строкой, а не отдельным вызовом:
-        // отдельный набор садится на свою базовую линию и сдвигает строку
-        // (`hyphens-manual-011`: текст уезжал на три точки вниз).
-        let body = if suffix.is_empty() {
-            body
-        } else {
-            // Знак обрыва — свой прогон в стиле блока; знак переноса —
-            // часть слова и идёт стилем своего куска.
-            if self.is_block_mark(suffix) && self.marker_font.is_some() {
-                if let Some(last) = piece.last() {
-                    let mut run = last.clone();
-                    run.len = suffix.len();
-                    self.style_marker_run(suffix, &mut run);
-                    piece.push(run);
-                }
-            } else if let Some(last) = piece.last_mut() {
-                last.len += suffix.len();
-            }
-            format!("{body}{suffix}")
-        };
-        let body = body.as_str();
-        let body = controlled_shape::text(body, &mut piece, rtl);
-        if !rtl {
-            return Some(window.text_system().shape_line_spaced(
-                body,
-                self.font_size,
-                &piece,
-                None,
-                self.letter_spacing,
-            ));
-        }
-        Some(window.text_system().shape_line_rtl(
-            body,
-            self.font_size,
-            &piece,
-            self.letter_spacing,
-        ))
     }
 
     /// Выключка по ширине: остаток строки раздаётся её пробелам.
