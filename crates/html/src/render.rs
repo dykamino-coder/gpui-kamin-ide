@@ -1191,7 +1191,61 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
 /// рисуйте по блокам (`render_block`): раскладка в GPUI считается заново
 /// каждый кадр, поэтому стоимость кадра обязана зависеть от видимой части, а
 /// не от размера документа.
+/// Есть ли в поддереве хоть одна коробка, которую `clear` может очищать:
+/// флоат (свой, у `::first-letter` или под `:hover`) либо буквица
+/// (`initial-letter`).
+fn has_clearable(nodes: &[Node]) -> bool {
+    let floats = |c: &Computed| c.float.is_some_and(|f| f != 0) || c.initial_letter.is_some();
+    nodes.iter().any(|n| match n {
+        Node::Element(e) => {
+            floats(&e.style)
+                || e.first_letter.as_ref().is_some_and(floats)
+                || e.hover.as_ref().is_some_and(floats)
+                || has_clearable(&e.children)
+        }
+        Node::Text(_) => false,
+    })
+}
+
+fn has_clear(nodes: &[Node]) -> bool {
+    nodes.iter().any(|n| match n {
+        Node::Element(e) => e.style.clear.is_some() || has_clear(&e.children),
+        Node::Text(_) => false,
+    })
+}
+
+fn strip_clear(nodes: &mut [Node]) {
+    for n in nodes {
+        if let Node::Element(e) = n {
+            e.style.clear = None;
+            e.style.clear_inherit = false;
+            if let Some(h) = e.hover.as_mut() {
+                h.clear = None;
+            }
+            strip_clear(&mut e.children);
+        }
+    }
+}
+
+/// CSS 2.1 §9.5.2: clearance вводится только ради флоатов выше по потоку
+/// того же контекста. В документе без единого флоата `clear` ничего не
+/// значит — и, в частности, не отделяет поля (§8.3.1 говорит о коробке «with
+/// clearance», а не о коробке с `clear`). Наши цепи схлопывания судят по
+/// самому свойству, поэтому в таком документе оно снимается целиком
+/// (`margin-collapse-135`: девять `clear: both` без флоатов — поля обязаны
+/// схлопнуться в ноль). Флоаты есть — дерево не трогается.
+fn without_inert_clear(nodes: &[Node]) -> Option<Vec<Node>> {
+    if has_clearable(nodes) || !has_clear(nodes) {
+        return None;
+    }
+    let mut copy = nodes.to_vec();
+    strip_clear(&mut copy);
+    Some(copy)
+}
+
 pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
+    let stripped = without_inert_clear(nodes);
+    let nodes: &[Node] = stripped.as_deref().unwrap_or(nodes);
     crate::metrics::set_doc_family(&opts.text.font_family);
     let root = opts.root_style();
     crate::interact::frame_sanitize();
@@ -9317,9 +9371,36 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // раскладка такой коробке её не даёт и ставит в начало содержимого
             // родителя. Нулевая распорка держит место в потоке, и коробка
             // висит от её угла — там, где написана.
+            // Исключение — коробка блочного уровня, у которой задана БЛОЧНАЯ ось
+            // (`top`/`bottom`), а свободна строчная, в горизонтальном письме
+            // слева направо, и содержащий блок — сам родитель. Статическая
+            // позиция по строчной оси здесь — левый край содержимого
+            // родителя (§10.3.7), её раскладка на месте даёт и так, а
+            // заданную ось §10.6.4 считает от СОДЕРЖАЩЕГО БЛОКА. На распорке
+            // `top: 1px` отсчитывался от статической позиции — коробка
+            // съезжала под весь поток (`margin-collapse-clear-012..016`:
+            // красная подложка `z-index: -1` под жёлтым блоком).
+            let below_cb_axis = e.style.position == Some(crate::computed::Position::Absolute)
+                && e.style.z_index.is_some_and(|z| z < 0)
+                && y_set
+                && !x_set
+                && !e.inline
+                && inherited.rtl != Some(true)
+                && inherited.vertical != Some(true)
+                && e.style.vertical != Some(true)
+                && matches!(
+                    inherited.position,
+                    Some(crate::computed::Position::Relative)
+                        | Some(crate::computed::Position::Absolute)
+                )
+                && crate::inline::establishes_cb(inherited)
+                && !inherited.cb_ancestor
+                && !stacking_context(inherited)
+                && !ordered_context;
             let below_free_axis = e.style.position == Some(crate::computed::Position::Absolute)
                 && e.style.z_index.is_some_and(|z| z < 0)
-                && !(x_set && y_set);
+                && !(x_set && y_set)
+                && !below_cb_axis;
             // ЗАМЕРЕНО И ОТКАЧЕНО: уводить в верхний слой ВСЯКУЮ абсолютную
             // коробку с одной свободной осью (§9.9 шаг 8) — по симметрии с
             // `below_free_axis`. Полный свод CSS2: приобретено 3, ПОТЕРЯНО
@@ -9544,6 +9625,12 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 && e.tag != "body"
                 && !stacking_context(inherited)
             {
+                done = crate::interact::Underlay::new(done).into_any_element();
+            }
+            // Абсолют с `z-index < 0`, оставленный на месте (`below_cb_axis`):
+            // краска — шаг 3 корневого контекста, под потоком родителя, как и
+            // у держателя на распорке выше.
+            if below_cb_axis {
                 done = crate::interact::Underlay::new(done).into_any_element();
             }
             // Позиционированный блок с `z-index: auto | 0` рисуется на шаге 8
@@ -11844,7 +11931,15 @@ fn wrap_floats(
                     .iter()
                     .rposition(|n| !is_blank(n) && !inline_run_like(n))
                     .map_or(0, |p| p + 1);
-                if side < 0 && !lead_atoms && run_at < out.len() {
+                // Прогон из одних пробелов строки не образует (§16.6.1: они
+                // схлопываются), и флоату сужать нечего — он остаётся
+                // одиночным блоком со своей стороной ниже. Иначе ряд держал
+                // `float: left` у верха колонки `sideways-lr`, где line-left —
+                // низ (`shape-outside-*-026-ref`: пробелы вокруг флоата).
+                if side < 0
+                    && !lead_atoms
+                    && out[run_at..].iter().any(|n| !is_blank(n))
+                {
                     let row: Vec<Node> = out.split_off(run_at);
                     let mut children = vec![Node::Element(lone)];
                     children.extend(row);
