@@ -8,6 +8,7 @@
 mod gradient_paint;
 mod font_kerning;
 mod text_indent;
+mod bidi_properties;
 mod image_color;
 mod radius_mask;
 mod radius_parse;
@@ -8384,21 +8385,7 @@ impl Computed {
             }
 
             // --- Письмо и цветовые фильтры -------------------------------------
-            "direction" => self.rtl = Some(v == "rtl"),
-            // `unicode-bidi` решает, разбирать ли встроенность или задавать её
-            // силой. Отмена (`bidi-override`) ставит знаки в заданную сторону
-            // как есть, изоляция (`isolate`) прячет кусок от соседей.
-            "unicode-bidi" => {
-                self.bidi_override = Some(matches!(v, "bidi-override" | "isolate-override"));
-                // `plaintext` — НЕ разновидность `isolate`: он не обкладывает
-                // текст знаками встраивания, а выбирает сторону письма для
-                // каждого абзаца между жёсткими разрывами по первому сильному
-                // знаку. Пока он считался изоляцией, содержимое обкладывалось
-                // LRI/PDI, и в узкой коробке строка не рисовалась вовсе.
-                self.bidi_isolate = Some(matches!(v, "isolate" | "isolate-override"));
-                self.bidi_plaintext = Some(v == "plaintext");
-                self.bidi_embed = Some(v == "embed");
-            }
+            "direction" | "unicode-bidi" => bidi_properties::apply(self, key, v),
             "resize" => {
                 self.resize = match v {
                     "both" => Some((true, true)),
