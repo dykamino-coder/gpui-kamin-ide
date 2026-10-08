@@ -11793,7 +11793,15 @@ fn wrap_floats(
                     .iter()
                     .rposition(|n| !is_blank(n) && !inline_run_like(n))
                     .map_or(0, |p| p + 1);
-                if side < 0 && !lead_atoms && run_at < out.len() {
+                // Прогон из одних пробелов строки не образует (§16.6.1: они
+                // схлопываются), и флоату сужать нечего — он остаётся
+                // одиночным блоком со своей стороной ниже. Иначе ряд держал
+                // `float: left` у верха колонки `sideways-lr`, где line-left —
+                // низ (`shape-outside-*-026-ref`: пробелы вокруг флоата).
+                if side < 0
+                    && !lead_atoms
+                    && out[run_at..].iter().any(|n| !is_blank(n))
+                {
                     let row: Vec<Node> = out.split_off(run_at);
                     let mut children = vec![Node::Element(lone)];
                     children.extend(row);
