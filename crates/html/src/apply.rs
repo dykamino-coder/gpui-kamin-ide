@@ -186,6 +186,44 @@ fn grid_line_names(c: &Computed) -> Option<gpui::GridLineNames> {
         };
         put(cols, cols_sub, !flip);
         put(rows, rows_sub, flip);
+        // Области шаблона неявно называют линии `имя-start`/`имя-end`
+        // (css-grid-2 §7.3.2 «implicitly-assigned line names»): без них
+        // `A-start -1` при `[A-start]` и области `A` видел лишь явную линию,
+        // а `B -1`/`span B` уходили за явную сетку. Прямоугольник области —
+        // по её ячейкам (шаблон уже проверен на прямоугольность разбором).
+        if let Some(areas) = c.grid_areas.as_ref() {
+            let mut rects: Vec<(String, u16, u16, u16, u16)> = vec![];
+            for (r, cells) in areas.iter().enumerate() {
+                for (k, cell) in cells.iter().enumerate() {
+                    if cell.chars().all(|ch| ch == '.') {
+                        continue;
+                    }
+                    let (r, k) = (r as u16 + 1, k as u16 + 1);
+                    match rects.iter_mut().find(|a| a.0 == *cell) {
+                        Some(a) => {
+                            a.1 = a.1.min(r);
+                            a.2 = a.2.max(r + 1);
+                            a.3 = a.3.min(k);
+                            a.4 = a.4.max(k + 1);
+                        }
+                        None => rects.push((cell.clone(), r, r + 1, k, k + 1)),
+                    }
+                }
+            }
+            let size = (
+                areas.len() as u16,
+                areas.iter().map(|r| r.len()).max().unwrap_or(0) as u16,
+            );
+            if flip {
+                for a in &mut rects {
+                    *a = (std::mem::take(&mut a.0), a.3, a.4, a.1, a.2);
+                }
+                out.area_size = (size.1, size.0);
+            } else {
+                out.area_size = size;
+            }
+            out.areas = rects;
+        }
     }
     if placement_flip(c) {
         out.column = c.grid_row_named.clone();
@@ -198,6 +236,7 @@ fn grid_line_names(c: &Computed) -> Option<gpui::GridLineNames> {
         && out.rows.is_none()
         && out.subgrid_columns.is_none()
         && out.subgrid_rows.is_none()
+        && out.areas.is_empty()
         && out.column.iter().all(Option::is_none)
         && out.row.iter().all(Option::is_none);
     (!empty).then_some(out)

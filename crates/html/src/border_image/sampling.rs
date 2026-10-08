@@ -8,7 +8,7 @@ use gpui::{Bounds, px};
 /// знак, растянутый на всю сторону рамки, размывается фильтрацией с соседями
 /// по атласу — зелёная кромка тонула в красной середине (`border-image-002`).
 /// Вырезка на каждый кадр непозволительна, поэтому куски запоминаются.
-type SliceKey = (usize, u32, u32, u32, u32, u32, u32);
+type SliceKey = (usize, u32, u32, u32, u32, u32, u32, bool);
 type SliceCache =
     std::sync::Mutex<std::collections::HashMap<SliceKey, std::sync::Arc<gpui::RenderImage>>>;
 static SLICES: std::sync::OnceLock<SliceCache> = std::sync::OnceLock::new();
@@ -58,6 +58,8 @@ pub(super) fn paint_slice(
         ((target_w * scale).round() as u32).max(1),
         ((target_h * scale).round() as u32).max(1),
     );
+    let filtered_mode =
+        !unscaled && window.current_transformation() == gpui::TransformationMatrix::unit();
     let key: SliceKey = (
         std::sync::Arc::as_ptr(raster) as usize,
         (sx * kx).round() as u32,
@@ -66,6 +68,7 @@ pub(super) fn paint_slice(
         (sh * ky).round().max(1.0) as u32,
         out_w,
         out_h,
+        filtered_mode,
     );
     let cache = SLICES.get_or_init(Default::default);
     let piece = {
@@ -73,7 +76,17 @@ pub(super) fn paint_slice(
         match hit {
             Some(found) => found,
             None => {
-                let Some(cut) = gpui::crop_image(raster, key.1, key.2, key.3, key.4, out_w, out_h)
+                // CSS Color 4 §12.3: interpolate transparent slice colors
+                // in premultiplied alpha, before converting to upload BGRA.
+                // Keep the native crop until that one device-grid sample.
+                let filtered = filtered_mode
+                    .then(|| gpui::crop_image(raster, key.1, key.2, key.3, key.4, key.3, key.4))
+                    .flatten()
+                    .and_then(|cut| {
+                        crate::background::alpha_sampling::resample(&cut, out_w, out_h)
+                    });
+                let Some(cut) = filtered
+                    .or_else(|| gpui::crop_image(raster, key.1, key.2, key.3, key.4, out_w, out_h))
                 else {
                     return;
                 };

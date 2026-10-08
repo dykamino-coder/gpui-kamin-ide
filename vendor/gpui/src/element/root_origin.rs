@@ -30,6 +30,22 @@ impl AnyElement {
         window.layout_size_unrounded(root)
     }
 
+    /// Like [`Self::layout_as_root_unrounded`], plus the extent of the
+    /// root's visible content overflow (taffy `content_size`).
+    pub fn layout_as_root_with_content(
+        &mut self,
+        available_space: Size<AvailableSpace>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (Size<Pixels>, Size<Pixels>) {
+        self.layout_as_root(available_space, window, cx);
+        let root = self.0.root_layout_id().expect("layout root was computed");
+        (
+            window.layout_size_unrounded(root),
+            window.layout_content_size_unrounded(root),
+        )
+    }
+
     /// Lay out a separate tree with its actual absolute origin. Its descendants
     /// then round shared device-pixel edges consistently with the surrounding
     /// tree. Prepaint at zero: the resulting layout bounds are absolute.
