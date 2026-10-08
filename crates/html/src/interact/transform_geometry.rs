@@ -4,6 +4,24 @@ use super::Transformed;
 use gpui::{Pixels, Point};
 
 impl Transformed {
+    pub(super) fn exact_fill_matrix(
+        &self,
+        mut matrix: gpui::TransformationMatrix,
+        snapped: Point<Pixels>,
+        exact: Point<Pixels>,
+        sf: f32,
+    ) -> gpui::TransformationMatrix {
+        // CSS Transforms 1 §3 resolves origins before device snapping.
+        // Glyphs and images retain the existing quarter-turn correction,
+        // while box fills snap both edges from this original CSS map.
+        let [[a, b], [c, d]] = matrix.rotation_scale;
+        let dx = f32::from(exact.x - snapped.x) * sf;
+        let dy = f32::from(exact.y - snapped.y) * sf;
+        matrix.translation[0] += (1.0 - a) * dx - b * dy;
+        matrix.translation[1] += -c * dx + (1.0 - d) * dy;
+        matrix
+    }
+
     pub(super) fn scaled_origin(&self, origin: Point<Pixels>) -> Point<Pixels> {
         let [[a, b], [c, d]] = self.lin;
         let eps = 1e-5;

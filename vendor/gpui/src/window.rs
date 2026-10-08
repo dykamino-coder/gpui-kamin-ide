@@ -58,6 +58,7 @@ mod prompts;
 mod image_sampling;
 mod line_baselines;
 mod css_text_background;
+mod css_fill_transform;
 pub use image_sampling::ImageSampling;
 
 use crate::util::atomic_incr_if_not_zero;
@@ -851,6 +852,7 @@ pub struct Window {
     /// is being painted, for device-pixel snapping of its CSS border edges
     /// from the exact geometry (`style::border_snap`).
     pub(crate) css_exact_bounds: Option<(Bounds<Pixels>, Bounds<Pixels>)>,
+    pub(crate) css_fill_transform: Option<(TransformationMatrix, TransformationMatrix)>,
     /// KaminIDE patch: стек преобразований (`transform` в CSS).
     ///
     /// Матрица действует на всё, что рисуется внутри: на подложку, рамку,
@@ -1282,6 +1284,7 @@ impl Window {
             glyph_offset: Point::default(),
             css_text_backgrounds: Vec::new(),
             css_exact_bounds: None,
+            css_fill_transform: None,
             transformation_stack: Vec::new(),
             mask_scale: None,
             mask_map: None,
