@@ -24856,7 +24856,24 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 }),
                             )
                             .with_axis(col_axis)
-                            .with_row_phase(if nest_rows.is_some() { nest_phase } else { 0.0 }),
+                            .with_row_phase(if nest_rows.is_some() { nest_phase } else { 0.0 })
+                            // Линейки последней линии — до низа содержимого коробки
+                            // заданной высоты (Blink `PaintColumnRules`), без
+                            // спаннеров и рядов (`multicol-rule-nested-balancing-001`).
+                            .with_rule_stretch(
+                                match merged.height {
+                                    Some(Len::Px(h))
+                                        if h > 0.0
+                                            && !col_vert
+                                            && nest_rows.is_none()
+                                            && e.style.border_box != Some(true)
+                                            && !e.children.iter().any(|n| matches!(n, Node::Element(c) if spanner_box(c))) =>
+                                    {
+                                        Some(h)
+                                    }
+                                    _ => None,
+                                },
+                            ),
                         );
                         // Флоаты — прежним ходом, соседями стопки.
                         for oof in &direct_oof {
