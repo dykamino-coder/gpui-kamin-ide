@@ -9,6 +9,9 @@
 mod subgrid_axes;
 mod grid_static_position;
 mod replaced_display;
+#[path = "dom_display_inheritance.rs"]
+mod display_inheritance;
+use display_inheritance::resolve_display_inherit;
 #[path = "dom_initial_pseudos.rs"]
 mod initial_pseudos;
 #[path = "dom_containment.rs"]
@@ -573,46 +576,6 @@ fn quirks_percent_heights(nodes: &mut [Node], base: Option<f32>) {
             _ => None,
         };
         quirks_percent_heights(&mut e.children, child_base);
-    }
-}
-
-/// `display` родителя вместе с метками ролей: то, что переносит `inherit`.
-type DisplayOf = (
-    Option<Display>,
-    Option<bool>,
-    Option<u8>,
-    Option<u8>,
-    Option<bool>,
-);
-
-/// `display: inherit` — вычисленное значение ДОМ-родителя (CSS 2.1 §6.2.1).
-///
-/// Прежде бит `inh::DISPLAY` решался при сборке (`inline::inherit`) от
-/// РЕНДЕР-родителя, а табличная починка (`fixup_row_children`,
-/// `wrap_anon_tables`) смотрит `e.style.display` раньше и видела `None`:
-/// `#test {display: inherit}` в `.tr {display: table-row}` становился блоком
-/// с красным фоном и рамкой внутри анонимной ячейки, а не рядом без ячеек
-/// (`empty-cells-applies-to-017`). Где рендер-родитель совпадает с
-/// ДОМ-родителем, результат прежний побайтно: значение то же, бит снят.
-fn resolve_display_inherit(nodes: &mut [Node], parent: DisplayOf) {
-    for node in nodes.iter_mut() {
-        let Node::Element(el) = node else { continue };
-        if el.style.inherit_bits & crate::computed::inh::DISPLAY != 0 {
-            el.style.display = parent.0;
-            el.style.inline_display = parent.1;
-            el.style.row_group_kind = parent.2;
-            el.style.col_role = parent.3;
-            el.style.is_caption = parent.4;
-            el.style.inherit_bits &= !crate::computed::inh::DISPLAY;
-        }
-        let own: DisplayOf = (
-            el.style.display,
-            el.style.inline_display,
-            el.style.row_group_kind,
-            el.style.col_role,
-            el.style.is_caption,
-        );
-        resolve_display_inherit(&mut el.children, own);
     }
 }
 
