@@ -17,9 +17,10 @@ pub(super) fn bounds(style: &Style, bounds: Bounds<Pixels>, window: &Window) -> 
     let [[a, b], [c, d]] = m.rotation_scale;
     let diagonal = b.abs() <= 1e-5
         && c.abs() <= 1e-5
-        && a > 1e-5
-        && d > 1e-5
+        && a.abs() > 1e-5
+        && d.abs() > 1e-5
         && ((a - 1.0).abs() >= 1e-5 || (d - 1.0).abs() >= 1e-5);
+    // Diagonal reflections, including flattened 3D planes, preserve axes.
     // Signed axis permutations also preserve rectangles. They must snap both
     // transformed edges, rather than move an already-rounded local box.
     if !diagonal && exact_transform.is_none() {

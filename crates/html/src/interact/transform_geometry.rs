@@ -27,12 +27,14 @@ impl Transformed {
         let eps = 1e-5;
         // The translation path already carries unrounded placement, and the
         // quarter-turn path has its own final edge snapping. Only diagonal
-        // scaling needs this origin before the quad is snapped on the device.
+        // scaling (including reflections) needs this origin before the quad
+        // is snapped on the device.
         let scaled = b.abs() < eps
             && c.abs() < eps
-            && a > eps
-            && d > eps
-            && ((a - 1.0).abs() > eps || (d - 1.0).abs() > eps);
+            && a.abs() > eps
+            && d.abs() > eps
+            && ((a - 1.0).abs() > eps || (d - 1.0).abs() > eps)
+            && quarter_turn(self.lin).is_none();
         if scaled {
             self.exact_origin.unwrap_or(origin)
         } else {
