@@ -4,6 +4,42 @@
 use super::squeeze_parens;
 use crate::computed::{Computed, Display};
 
+/// CSS 2 sections 6.2.1 and 12.4: explicit inheritance copies the parent's
+/// computed declaration list; counter values and counter scopes are separate.
+pub(crate) fn inherit_counter_decls(style: &mut Computed, parent: Option<&[Option<String>; 3]>) {
+    for (i, value) in [
+        &mut style.counter_reset,
+        &mut style.counter_increment,
+        &mut style.counter_set,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let Some(text) = value.as_deref() else {
+            continue;
+        };
+        match text.trim().to_ascii_lowercase().as_str() {
+            "inherit" => {
+                *value = Some(
+                    parent
+                        .and_then(|p| p[i].clone())
+                        .unwrap_or_else(|| "none".into()),
+                )
+            }
+            "initial" | "unset" => *value = Some("none".into()),
+            _ => {}
+        }
+    }
+}
+
+pub(crate) fn counter_snapshot(style: &Computed) -> [Option<String>; 3] {
+    [
+        style.counter_reset.clone(),
+        style.counter_increment.clone(),
+        style.counter_set.clone(),
+    ]
+}
+
 pub(crate) fn list_value_hint(
     style: &Computed,
     tag: &str,

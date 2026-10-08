@@ -15,7 +15,9 @@ mod containment;
 mod language;
 #[path = "dom_counter_decls.rs"]
 mod counter_decls;
-pub(crate) use counter_decls::{apply_counter_decls, apply_value_hint};
+pub(crate) use counter_decls::{
+    apply_counter_decls, apply_value_hint, counter_snapshot, inherit_counter_decls,
+};
 
 use crate::computed::{Computed, Display, Position};
 use crate::css::{
@@ -1646,6 +1648,8 @@ fn collect_style_tags(handle: &Handle, out: &mut Vec<String>) {
 /// Цепочка предков для сопоставления `.card .title`: тег + классы + id.
 #[derive(Clone)]
 pub(crate) struct Ancestor {
+    /// Computed counter directives follow DOM inheritance, even without a box.
+    pub(crate) counter_style: [Option<String>; 3],
     tag: String,
     id: Option<String>,
     classes: Vec<String>,
@@ -2581,6 +2585,7 @@ pub(crate) fn ancestor_of(child: &Handle, spot: Spot) -> Option<Ancestor> {
             .map(|a| a.value.to_string())
     };
     Some(Ancestor {
+        counter_style: Default::default(),
         tag: local_name(&name.local),
         id: find("id"),
         classes: find("class")
@@ -2949,7 +2954,8 @@ fn walk(
                 .find(|(k, _)| k == "class")
                 .map(|(_, v)| v.split_whitespace().map(str::to_string).collect())
                 .unwrap_or_default();
-            let me = Ancestor {
+            let mut me = Ancestor {
+                counter_style: Default::default(),
                 tag: tag.clone(),
                 id: id.clone(),
                 classes: classes.clone(),
@@ -3051,6 +3057,9 @@ fn walk(
             crate::computed::set_current_attrs(&attrs);
             crate::computed::set_current_sibling((spot.index > 0).then_some((spot.index, spot.total)));
             let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
+            inherit_counter_decls(&mut style, path.last().map(|p| &p.counter_style));
+            apply_value_hint(&mut style, &me);
+            me.counter_style = counter_snapshot(&style);
             crate::computed::clear_current_attrs();
             crate::computed::set_current_sibling(None);
             // Корневые метрики для `rem`/`rlh` (css-values-4 §6.1.4).
@@ -3372,7 +3381,8 @@ fn walk(
             // именно на этом месте: без них `::marker { counter-increment: c;
             // content: counters(c, ":") }` читал бы нетронутый счётчик и
             // ставил ноль во все пункты (`marker-counter`).
-            if let Some(m) = marker_layer {
+            if let Some(mut m) = marker_layer {
+                inherit_counter_decls(&mut m, Some(&me.counter_style));
                 counters.enter_marker();
                 apply_counter_decls(&m, counters, "", &[], &mut false, &|_, _| 0);
                 if let Some(items) = m.content.as_ref() {
@@ -4077,6 +4087,7 @@ fn pseudo_box_named(
         return None;
     }
     let mut style = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars);
+    inherit_counter_decls(&mut style, Some(&me.counter_style));
     // Псевдоэлемент — ребёнок хозяина: блочный `::before` внутри руби
     // инлайнизируется так же, как элемент (css-ruby-1 §2.2 п.1,
     // `ruby-inlinize-blocks-005`). Ближайший предок — сам хозяин.
