@@ -16,6 +16,7 @@ mod text_indent;
 mod bidi_properties;
 mod image_color;
 mod radius_mask;
+mod border_color;
 mod radius_parse;
 pub(crate) use image_color::parse as parse_image_color;
 mod mask_size;
@@ -1391,16 +1392,17 @@ impl Filter {
                 [0.349, 0.686, 0.168],
                 [0.272, 0.534, 0.131],
             ];
-            m = then(&toward(t, self.sepia), &m);
+            m = then(&toward(t, self.sepia.min(1.0)), &m);
         }
         if self.grayscale > 0.0 || self.saturate != 1.0 {
             let l = [0.2126f32, 0.7152, 0.0722];
-            m = then(&toward([l, l, l], self.grayscale), &m);
+            m = then(&toward([l, l, l], self.grayscale.min(1.0)), &m);
             // lum + (c − lum)·s = I + (L − I)·(1 − s)
             m = then(&toward([l, l, l], 1.0 - self.saturate), &m);
         }
         if self.invert > 0.0 {
-            m = then(&diag(1.0 - 2.0 * self.invert, self.invert), &m);
+            let k = self.invert.min(1.0);
+            m = then(&diag(1.0 - 2.0 * k, k), &m);
         }
         if self.contrast != 1.0 {
             m = then(&diag(self.contrast, 0.5 - 0.5 * self.contrast), &m);
@@ -1430,25 +1432,27 @@ impl Filter {
         if self.brightness != 1.0 {
             m = then(&diag(self.brightness, 0.0), &m);
         }
-        if m == ID && self.opacity == 1.0 {
+        if m == ID && self.opacity >= 1.0 {
             return None;
         }
         Some([
             m[0][0], m[0][1], m[0][2], 0.0, m[0][3], //
             m[1][0], m[1][1], m[1][2], 0.0, m[1][3], //
             m[2][0], m[2][1], m[2][2], 0.0, m[2][3], //
-            0.0, 0.0, 0.0, self.opacity, 0.0,
+            0.0, 0.0, 0.0, self.opacity.min(1.0), 0.0,
         ])
     }
 
     /// Применить к цвету.
     pub fn apply(&self, c: Color) -> Color {
+        // Filter Effects 1 §6.1 caps conversion amounts at one when used.
+        // Keep the specified value intact for animation interpolation.
         let (mut r, mut g, mut b) = (c.r, c.g, c.b);
         // Порядок как в CSS: функции применяются слева направо, а записаны
         // они у нас в фиксированном порядке — для набора без повторов это то
         // же самое.
         if self.sepia > 0.0 {
-            let k = self.sepia;
+            let k = self.sepia.min(1.0);
             let (sr, sg, sb) = (
                 0.393 * r + 0.769 * g + 0.189 * b,
                 0.349 * r + 0.686 * g + 0.168 * b,
@@ -1461,7 +1465,7 @@ impl Filter {
         if self.grayscale > 0.0 || self.saturate != 1.0 {
             let lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
             // Обесцвечивание тянет к яркости, насыщение — от неё.
-            let k = self.grayscale;
+            let k = self.grayscale.min(1.0);
             r += (lum - r) * k;
             g += (lum - g) * k;
             b += (lum - b) * k;
@@ -1471,7 +1475,7 @@ impl Filter {
             b = lum + (b - lum) * sat;
         }
         if self.invert > 0.0 {
-            let k = self.invert;
+            let k = self.invert.min(1.0);
             r += (1.0 - r - r) * k;
             g += (1.0 - g - g) * k;
             b += (1.0 - b - b) * k;
@@ -1508,7 +1512,7 @@ impl Filter {
             r: r.clamp(0.0, 1.0),
             g: g.clamp(0.0, 1.0),
             b: b.clamp(0.0, 1.0),
-            a: (c.a * self.opacity).clamp(0.0, 1.0),
+            a: (c.a * self.opacity.min(1.0)).clamp(0.0, 1.0),
         }
     }
 }
@@ -2758,6 +2762,11 @@ pub struct Computed {
     /// `display: inline` дословно (не inline-block): §9.7/§10.2 дорешиваются
     /// после каскада — см. `dom::finish_inline_display`.
     pub inline_display: Option<bool>,
+    /// Абсолют/фиксированный, чей `display` до блокификации (§9.7) был
+    /// строчного уровня (`inline-block`, `inline-flex`, …): статическая
+    /// позиция считается для гипотетической коробки «если бы position был
+    /// static» (CSS 2.1 §10.3.7, §10.6.4), то есть В СТРОКЕ. Ставит `dom`.
+    pub abs_inline_level: bool,
     /// `display: run-in` — вбегание решает `dom::fold_run_ins`.
     pub run_in: Option<bool>,
     /// Есть ли выше по дереву коробка, устанавливающая содержащий блок для
@@ -5120,16 +5129,7 @@ impl Computed {
                     return;
                 }
                 if list.len() == 1 {
-                    if v.eq_ignore_ascii_case("currentcolor") {
-                        self.border_color_is_current = true;
-                    } else {
-                        self.border_color = Color::parse(v);
-                    }
-                    // Общий цвет, записанный ПОЗЖЕ бокового сокращения,
-                    // перебивает его `currentColor` на всех сторонах.
-                    if self.border_color_is_current || self.border_color.is_some() {
-                        self.border_side_current = [false; 4];
-                    }
+                    self.apply_single_border_color(v);
                     return;
                 }
                 let colors: Vec<Option<Color>> =

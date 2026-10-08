@@ -1,3 +1,5 @@
+//! Quantize color-matrix results without a systematic downward color bias.
+
 // Copyright 2020 the Resvg Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
@@ -106,5 +108,8 @@ fn to_normalized_components(pixel: RGBA8) -> (f32, f32, f32, f32) {
 
 #[inline]
 fn from_normalized(c: f32) -> u8 {
-    (f32_bound(0.0, c, 1.0) * 255.0) as u8
+    // CSS Color 4 section 5.1: reducing calculated RGB precision rounds to
+    // the nearest integer, with ties toward positive infinity. The filter
+    // matrix is evaluated before this conversion (Filter Effects 1 section 9.6).
+    (f32_bound(0.0, c, 1.0) * 255.0).round() as u8
 }

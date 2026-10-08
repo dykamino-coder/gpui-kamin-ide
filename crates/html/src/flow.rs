@@ -14,6 +14,7 @@ pub(crate) use shapes::ellipse_cut;
 pub use rounded_box::RoundedBox;
 
 mod fragment_mask;
+pub(crate) mod gap_fragment;
 mod column_measure;
 mod column_baselines;
 mod intrinsic_measure;
@@ -2341,14 +2342,23 @@ impl ColumnStack {
         let guess = Self::runs_guess(kids, self.count);
         // Разрезаемая коробка потолка колонке не задаёт: её высоту держит
         // только сумма. Потолок нужен монолитам — они остаются целыми.
-        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09, v103, `scout-break-2026-09d.md` F2):
-        // баланс не короче самого длинного `solid`-диапазона внутри (Blink
-        // `ConstrainColumnBlockSize`). Срез css-break+CSS2+multicol 2874: +0/−1
-        // (`multicol-overflow-clip` 0.00 → 5.22).
+        // Баланс не короче самого длинного неразрывного куска: монолита-ребёнка
+        // и монолитного диапазона (`solid`) внутри разрезаемого ребёнка (Blink
+        // `column_layout_algorithm.cc` — `tallest_unbreakable_block_size` в
+        // `CalculateBalancedColumnBlockSize`). Без этого монолит-потомок выше
+        // оценки резался краем колонки (`single-line-row-flex-fragmentation-
+        // 037`: `contain: size` 100 при оценке 75). Прежний замер (06.09, v103)
+        // терял `multicol-overflow-clip`; на integration-7 она цела.
         let tallest = kids
             .iter()
-            .filter(|k| k.monolith)
-            .fold(0.0f32, |m, k| m.max(k.h));
+            .map(|k| {
+                if k.monolith {
+                    k.h
+                } else {
+                    k.solid.iter().fold(0.0f32, |m, &(a, b)| m.max(b - a))
+                }
+            })
+            .fold(0.0f32, f32::max);
         let clamp = |t: f32| cap.map_or(t, |c| t.min(c));
         let mut target = clamp(guess.max(tallest).max(1.0));
         for _ in 0..6 {
@@ -2618,9 +2628,8 @@ impl Element for ColumnStack {
                 cx,
             );
             el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
-            if kid.slack.is_some() {
-                kid.laid_w.set(kid.laid_w.get().max(f32::from(laid.width)));
-            }
+            // Retain the actual root width for fragment decoration bounds.
+            kid.laid_w.set(kid.laid_w.get().max(f32::from(laid.width)));
         }
         // Спаннер — во всю ширину коробки, первой копией (запасных у него
         // нет: между колонками он не режется).
@@ -2859,7 +2868,25 @@ impl Element for ColumnStack {
             // Маска и режет: копия нарисована во всю свою высоту, видна
             // только полоса своей колонки (css-break-3 §4, вид `slice`).
             if split {
-                window.with_content_mask(Some(mask), |window| el.paint(window, cx));
+                let line = if matches!(self.rows, Some(r) if r.wrap) { f.col / self.count } else { 0 };
+                let line_h = self.lines_plan.borrow().get(line).map_or(0.0, |l| l.1);
+                let continued = plan_all.iter().any(|g| g.kid == f.kid && g.copy == f.copy + 1);
+                let parent = window.content_mask();
+                let root = Bounds {
+                    origin: point(x, y - px(f.from)),
+                    size: size(px(kid.laid_w.get()), px(kid.h)),
+                };
+                window.with_content_mask(Some(mask), |window| {
+                    let scope = (continued && f.foot <= 0.01 && line_h - f.y - f.h > 0.01)
+                        .then(|| gap_fragment::Scope {
+                            root,
+                            parent,
+                            mask: window.content_mask(),
+                            cut: f32::from(y) + f.h,
+                            end: f32::from(y) + line_h - f.y,
+                        });
+                    gap_fragment::with(scope, || el.paint(window, cx));
+                });
             } else {
                 el.paint(window, cx);
             }

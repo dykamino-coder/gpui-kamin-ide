@@ -79,3 +79,33 @@ pub(super) fn offscreen() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| std::env::var("WPT_OFFSCREEN").is_ok_and(|v| v == "1"))
 }
+
+/// Park the runner window off-screen (`WPT_OFFSCREEN`) and drop its taskbar
+/// button: tool-window ex-style, applied while hidden so the taskbar notices,
+/// then shown again without activation at an off-screen origin. The window
+/// keeps its normal kind and size (a PopUp kind changed the viewport).
+pub(super) fn park_offscreen(hwnd: isize) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GWL_EXSTYLE, GetWindowLongPtrW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_FRAMECHANGED,
+        SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+        WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+    };
+    let hwnd = HWND(hwnd as *mut _);
+    unsafe {
+        let _ = ShowWindow(hwnd, SW_HIDE);
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let ex = (ex | WS_EX_TOOLWINDOW.0 as isize) & !(WS_EX_APPWINDOW.0 as isize);
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex);
+        let _ = SetWindowPos(
+            hwnd,
+            None,
+            -4000,
+            60,
+            0,
+            0,
+            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+        );
+        let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+    }
+}

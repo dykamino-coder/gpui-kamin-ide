@@ -1194,7 +1194,61 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
 /// рисуйте по блокам (`render_block`): раскладка в GPUI считается заново
 /// каждый кадр, поэтому стоимость кадра обязана зависеть от видимой части, а
 /// не от размера документа.
+/// Есть ли в поддереве хоть одна коробка, которую `clear` может очищать:
+/// флоат (свой, у `::first-letter` или под `:hover`) либо буквица
+/// (`initial-letter`).
+fn has_clearable(nodes: &[Node]) -> bool {
+    let floats = |c: &Computed| c.float.is_some_and(|f| f != 0) || c.initial_letter.is_some();
+    nodes.iter().any(|n| match n {
+        Node::Element(e) => {
+            floats(&e.style)
+                || e.first_letter.as_ref().is_some_and(floats)
+                || e.hover.as_ref().is_some_and(floats)
+                || has_clearable(&e.children)
+        }
+        Node::Text(_) => false,
+    })
+}
+
+fn has_clear(nodes: &[Node]) -> bool {
+    nodes.iter().any(|n| match n {
+        Node::Element(e) => e.style.clear.is_some() || has_clear(&e.children),
+        Node::Text(_) => false,
+    })
+}
+
+fn strip_clear(nodes: &mut [Node]) {
+    for n in nodes {
+        if let Node::Element(e) = n {
+            e.style.clear = None;
+            e.style.clear_inherit = false;
+            if let Some(h) = e.hover.as_mut() {
+                h.clear = None;
+            }
+            strip_clear(&mut e.children);
+        }
+    }
+}
+
+/// CSS 2.1 §9.5.2: clearance вводится только ради флоатов выше по потоку
+/// того же контекста. В документе без единого флоата `clear` ничего не
+/// значит — и, в частности, не отделяет поля (§8.3.1 говорит о коробке «with
+/// clearance», а не о коробке с `clear`). Наши цепи схлопывания судят по
+/// самому свойству, поэтому в таком документе оно снимается целиком
+/// (`margin-collapse-135`: девять `clear: both` без флоатов — поля обязаны
+/// схлопнуться в ноль). Флоаты есть — дерево не трогается.
+fn without_inert_clear(nodes: &[Node]) -> Option<Vec<Node>> {
+    if has_clearable(nodes) || !has_clear(nodes) {
+        return None;
+    }
+    let mut copy = nodes.to_vec();
+    strip_clear(&mut copy);
+    Some(copy)
+}
+
 pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
+    let stripped = without_inert_clear(nodes);
+    let nodes: &[Node] = stripped.as_deref().unwrap_or(nodes);
     crate::metrics::set_doc_family(&opts.text.font_family);
     let root = opts.root_style();
     crate::interact::frame_sanitize();
@@ -1323,6 +1377,26 @@ fn paint_last_ok(e: &Element, rest: &[Node]) -> bool {
     match known {
         Some(ok) => ok,
         None => !positioned_later(rest),
+    }
+}
+
+/// Строчный абсолют с `z-index: auto | 0` в позднем слое (`late_push`): шаг 8
+/// приложения E CSS 2.1 — позиционированные рисуются ПОСЛЕ строчного
+/// содержимого (шаг 7) своего контекста наложения. Строки абзаца уходят в
+/// собиратель (`PaintInline`) и рисуются в его конце, а поздний слой — прямой
+/// ребёнок контейнера и красился раньше них: текст ложился поверх абсолюта
+/// (`ch-unit-001`, `ic-unit-001`). `PaintLast` ставит коробку в собиратель по
+/// ключу в порядке разметки. Узел вне обхода (порождённый сборщиком) остаётся
+/// на прежнем пути.
+fn inline_abs_paint_last(e: &Element, el: AnyElement) -> AnyElement {
+    let known = UNKEYED.with(|u| {
+        let u = u.borrow();
+        u.0.get(&e.node_id).map(|&end| u.1.is_none_or(|last| last < end))
+    });
+    if e.style.z_index.unwrap_or(0) == 0 && known == Some(true) {
+        gpui::PaintLast::new(el).key(next_paint_key()).into_any_element()
+    } else {
+        el
     }
 }
 
@@ -2761,6 +2835,78 @@ fn forced_opaque(k: &Element) -> bool {
                 Some(Display::TableRow) | Some(Display::TableRowGroup)
             )
             && !matches!(k.tag.as_str(), "tr" | "thead" | "tbody" | "tfoot"))
+}
+
+/// Гибкий контейнер или сетка БЕЗ своей коробки (ни рамок, ни отбивок, ни фона,
+/// ни заданной высоты, ни позиционирования) с единственным элементом, у которого
+/// `box-decoration-break: clone`. По блочной оси элемент такой обёртки стоит
+/// там же и той же высоты, что блок-ребёнок: строка flex одна, её высота —
+/// высота элемента; сетка без своих дорожек — один ряд `auto`; поперёк элемент
+/// растянут (колонка flex, сетка) или имеет свою ширину (ряд flex). Вернуть
+/// элемент, поднятый на место обёртки (с её полями), — тогда клонированное
+/// украшение (css-break-4 §break-decoration) фрагментирует сам элемент
+/// (`box-decoration-break-clone-018/019/028/029`). Иначе `None`.
+fn clone_wrapper_item(w: &Element) -> Option<Element> {
+    use crate::computed::FlexDir;
+    let s = &w.style;
+    let zero = |l: &Option<Len>| match l {
+        None => true,
+        Some(Len::Px(v)) => v.abs() < 0.01,
+        _ => false,
+    };
+    let b = s.borders();
+    let row = match s.display {
+        Some(Display::Flex) => matches!(s.flex_dir, None | Some(FlexDir::Row)),
+        Some(Display::Grid) => false,
+        _ => return None,
+    };
+    if w.inline
+        || s.webkit_box == Some(true)
+        || s.vertical == Some(true)
+        || s.position.is_some()
+        || s.float.is_some_and(|f| f != 0)
+        || s.background.is_some()
+        || s.bg_image.is_some()
+        || s.transform.is_some()
+        || s.filter.is_some()
+        || s.opacity.is_some()
+        || s.flex_wrap == Some(true)
+        || s.grid_tracks.is_some()
+        || s.grid_cols.is_some()
+        || s.grid_areas.is_some()
+        || s.align_items.is_some()
+        || s.justify_content.is_some()
+        || !matches!(s.height, None | Some(Len::Auto))
+        || s.min_height.is_some()
+        || s.max_height.is_some()
+        || ![&s.padding.top, &s.padding.bottom, &s.padding.left, &s.padding.right, &b.top, &b.bottom, &b.left, &b.right]
+            .into_iter()
+            .all(zero)
+        || multicol_container(s)
+    {
+        return None;
+    }
+    let mut kids = w.children.iter().filter(|n| !is_blank(n));
+    let Some(Node::Element(item)) = kids.next() else {
+        return None;
+    };
+    if kids.next().is_some()
+        || item.inline
+        || out_of_flow(&item.style)
+        || clone_dec(item).is_none()
+        || item.style.align_self.is_some()
+        || item.style.order.is_some()
+        || !zero(&item.style.margin.top)
+        || !zero(&item.style.margin.bottom)
+        || (row && !matches!(item.style.width, Some(Len::Px(_)) | Some(Len::Pct(_))))
+    {
+        return None;
+    }
+    let mut item = item.clone();
+    item.style.display = Some(Display::Block);
+    item.style.margin.top = s.margin.top;
+    item.style.margin.bottom = s.margin.bottom;
+    Some(item)
 }
 
 /// Монолит по css-break-4 §4.1 (Blink `IsMonolithic`): замещаемый,
@@ -4651,12 +4797,14 @@ fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     // зазоре не рисуется (`grid-gap-decorations-fragmentation-001…010`).
     // В стопке колонок это точка класса A с усечением: край внутри
     // `solid`-диапазона зазора уводит разрез к его началу (`fill`, `at(a)`),
-    // а `cuts` с тем же `need` продолжает копию с КОНЦА зазора. Допуск 0.05
-    // ловит край ровно на границе зазора — Blink подавляет и его
-    // (`last_gap_end_offset >= fragmentainer_space`).
+    // а `cuts` с тем же `need` продолжает копию с КОНЦА зазора.
+    // Keep the cut at the actual gutter start: fill_at's at(edge) handles
+    // an exact start boundary. Moving it by a tolerance shortens the painted
+    // fragment and can discard a device row. Only extend the end interval
+    // for Blink's inclusive last_gap_end_offset >= fragmentainer_space check.
     for (a, b) in grid_row_gaps(&c.style, h - top - bot) {
-        cuts.push((top + a - 0.05, top + b));
-        solid.push((top + a - 0.05, top + b + 0.05));
+        cuts.push((top + a, top + b));
+        solid.push((top + a, top + b + 0.05));
     }
     // Принудительный разрыв элемента сетки — на границу его РЯДА
     // (css-grid-2 §Fragmenting Grid Layout; Blink `grid_layout_algorithm.cc`
@@ -8447,6 +8595,37 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             {
                 false
             }
+            // Абсолют строчного уровня (до блокификации — `inline-block` и
+            // родня) с РОВНО ОДНОЙ заданной осью: свободная ось берётся от
+            // гипотетической коробки при `position: static` (CSS 2.1 §10.3.7,
+            // §10.6.4), а та стоит в строке, не под ней. Блокифицированный, он
+            // уходил блочным ребёнком ниже абзаца, и `left: 0; top: auto`
+            // вставал на следующую строку (`border-left-width-thin`: белая
+            // заплатка под красным вместо поверх). Щуп строки ведёт такую
+            // коробку в `atom_element` (`x_set != y_set`). Без строчного
+            // содержимого ДО коробки строка пуста, и гипотетическая коробка
+            // стоит в её начале — там же, где блочная статическая позиция;
+            // такой абсолют остаётся прежним блочным путём
+            // (`left-applies-to-012/014`: абсолют — единственный ребёнок).
+            Node::Element(e)
+                if e.style.abs_inline_level
+                    && !ordered_context
+                    && pending.iter().any(|p| match p {
+                        Node::Text(t) => !t.trim().is_empty(),
+                        Node::Element(x) => !matches!(
+                            x.style.position,
+                            Some(crate::computed::Position::Absolute)
+                                | Some(crate::computed::Position::Fixed)
+                        ),
+                    })
+                    && {
+                        let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
+                        (edge(e.style.inset.left) || edge(e.style.inset.right))
+                            != (edge(e.style.inset.top) || edge(e.style.inset.bottom))
+                    } =>
+            {
+                true
+            }
             Node::Element(e) => match e.style.display {
                 // Явно заявленная инлайновая коробка остаётся в строке даже у
                 // блочного по природе тега — но НЕ внутри гибкого контейнера
@@ -9269,9 +9448,36 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // раскладка такой коробке её не даёт и ставит в начало содержимого
             // родителя. Нулевая распорка держит место в потоке, и коробка
             // висит от её угла — там, где написана.
+            // Исключение — коробка блочного уровня, у которой задана БЛОЧНАЯ ось
+            // (`top`/`bottom`), а свободна строчная, в горизонтальном письме
+            // слева направо, и содержащий блок — сам родитель. Статическая
+            // позиция по строчной оси здесь — левый край содержимого
+            // родителя (§10.3.7), её раскладка на месте даёт и так, а
+            // заданную ось §10.6.4 считает от СОДЕРЖАЩЕГО БЛОКА. На распорке
+            // `top: 1px` отсчитывался от статической позиции — коробка
+            // съезжала под весь поток (`margin-collapse-clear-012..016`:
+            // красная подложка `z-index: -1` под жёлтым блоком).
+            let below_cb_axis = e.style.position == Some(crate::computed::Position::Absolute)
+                && e.style.z_index.is_some_and(|z| z < 0)
+                && y_set
+                && !x_set
+                && !e.inline
+                && inherited.rtl != Some(true)
+                && inherited.vertical != Some(true)
+                && e.style.vertical != Some(true)
+                && matches!(
+                    inherited.position,
+                    Some(crate::computed::Position::Relative)
+                        | Some(crate::computed::Position::Absolute)
+                )
+                && crate::inline::establishes_cb(inherited)
+                && !inherited.cb_ancestor
+                && !stacking_context(inherited)
+                && !ordered_context;
             let below_free_axis = e.style.position == Some(crate::computed::Position::Absolute)
                 && e.style.z_index.is_some_and(|z| z < 0)
-                && !(x_set && y_set);
+                && !(x_set && y_set)
+                && !below_cb_axis;
             // ЗАМЕРЕНО И ОТКАЧЕНО: уводить в верхний слой ВСЯКУЮ абсолютную
             // коробку с одной свободной осью (§9.9 шаг 8) — по симметрии с
             // `below_free_axis`. Полный свод CSS2: приобретено 3, ПОТЕРЯНО
@@ -9496,6 +9702,12 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 && e.tag != "body"
                 && !stacking_context(inherited)
             {
+                done = crate::interact::Underlay::new(done).into_any_element();
+            }
+            // Абсолют с `z-index < 0`, оставленный на месте (`below_cb_axis`):
+            // краска — шаг 3 корневого контекста, под потоком родителя, как и
+            // у держателя на распорке выше.
+            if below_cb_axis {
                 done = crate::interact::Underlay::new(done).into_any_element();
             }
             // Позиционированный блок с `z-index: auto | 0` рисуется на шаге 8
@@ -11786,7 +11998,15 @@ fn wrap_floats(
                     .iter()
                     .rposition(|n| !is_blank(n) && !inline_run_like(n))
                     .map_or(0, |p| p + 1);
-                if side < 0 && !lead_atoms && run_at < out.len() {
+                // Прогон из одних пробелов строки не образует (§16.6.1: они
+                // схлопываются), и флоату сужать нечего — он остаётся
+                // одиночным блоком со своей стороной ниже. Иначе ряд держал
+                // `float: left` у верха колонки `sideways-lr`, где line-left —
+                // низ (`shape-outside-*-026-ref`: пробелы вокруг флоата).
+                if side < 0
+                    && !lead_atoms
+                    && out[run_at..].iter().any(|n| !is_blank(n))
+                {
                     let row: Vec<Node> = out.split_off(run_at);
                     let mut children = vec![Node::Element(lone)];
                     children.extend(row);
@@ -18860,7 +19080,7 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                     ..Default::default()
                 });
                 let probe = crate::interact::spot_probe(spot.clone(), false);
-                return match crate::interact::late_push(spot, holder.into_any_element()) {
+                return match crate::interact::late_push(spot, inline_abs_paint_last(e, holder.into_any_element())) {
                     None => Some(probe),
                     Some(kept) => {
                         let mut hole = div().relative().w_0().h_0().flex_shrink_0();
@@ -18947,7 +19167,7 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                 ..Default::default()
             });
             let probe = crate::interact::spot_probe(spot.clone(), false);
-            return match crate::interact::late_push(spot, inner.into_any_element()) {
+            return match crate::interact::late_push(spot, inline_abs_paint_last(e, inner.into_any_element())) {
                 None => Some(probe),
                 Some(kept) => {
                     let mut hole = div().relative().w_0().h_0().flex_shrink_0();
@@ -23030,6 +23250,26 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         g
                     });
                     let ge: &Element = floats_blocked.as_ref().unwrap_or(ge);
+                    // Обёртка flex/сетки с ЕДИНСТВЕННЫМ элементом-`clone`
+                    // (`clone_wrapper_item`): по блочной оси такая обёртка
+                    // раскладывается ровно как блок с этим ребёнком, и фрагменты
+                    // клонированного украшения строятся у самого элемента.
+                    let unwrapped = ge
+                        .children
+                        .iter()
+                        .any(|n| matches!(n, Node::Element(c) if clone_wrapper_item(c).is_some()))
+                        .then(|| {
+                            let mut g = ge.clone();
+                            for n in g.children.iter_mut() {
+                                if let Node::Element(c) = n
+                                    && let Some(item) = clone_wrapper_item(c)
+                                {
+                                    *c = item;
+                                }
+                            }
+                            g
+                        });
+                    let ge: &Element = unwrapped.as_ref().unwrap_or(ge);
                     // Плавающие прямые дети — как прежде: не в стопку,
                     // рисуются её соседями.
                     let direct_oof: Vec<Element> = ge
@@ -24405,10 +24645,47 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         // `abspos-after-spanner`, где под зеленью поточная
                         // красная коробка), а встаёт туда, где щуп стоял в
                         // колонке.
+                        // Процентная высота абсолюта — от высоты отбивки
+                        // содержащего блока (CSS 2.1 §10.5, §10.1 п. 4), а здесь им
+                        // служит САМ многоколоночник. Заместитель же кладёт коробку
+                        // в нулевую обёртку (`spot_place`), и раскладка под нами
+                        // считала проценты от неё — коробка схлопывалась в ноль
+                        // (`single-line-row-flex-fragmentation-019/020`: `height:
+                        // 50%` без `top`). Пересчитываем в точки заранее, когда
+                        // высота многоколоночника известна в точках.
+                        let cb_h: Option<f32> = (e.style.position.is_some()
+                            && e.style.position != Some(crate::computed::Position::Static)
+                            && !col_vert)
+                            .then(|| {
+                                let px = |l: Option<Len>| match l {
+                                    None => Some(0.0),
+                                    Some(Len::Px(v)) => Some(v),
+                                    _ => None,
+                                };
+                                let b = e.style.borders();
+                                let pad = px(e.style.padding.top)? + px(e.style.padding.bottom)?;
+                                let bor = px(b.top)? + px(b.bottom)?;
+                                match e.style.height {
+                                    Some(Len::Px(h)) if e.style.border_box == Some(true) => Some((h - bor).max(pad)),
+                                    Some(Len::Px(h)) => Some(h.max(0.0) + pad),
+                                    _ => None,
+                                }
+                            })
+                            .flatten();
                         for (i, (_, oof)) in oof_static.iter().enumerate() {
+                            let mut oof = oof.clone();
+                            if let Some(ch) = cb_h
+                                && oof.style.position == Some(crate::computed::Position::Absolute)
+                            {
+                                for l in [&mut oof.style.height, &mut oof.style.min_height, &mut oof.style.max_height] {
+                                    if let Some(Len::Pct(k)) = *l {
+                                        *l = Some(Len::Px(k * ch));
+                                    }
+                                }
+                            }
                             d = d.child(crate::interact::spot_place(
                                 oof_spots[i].clone(),
-                                element(oof, &merged, opts),
+                                element(&oof, &merged, opts),
                             ));
                         }
                         if let (Some(buf), Some(spec)) = (gap_items, gap_spec) {

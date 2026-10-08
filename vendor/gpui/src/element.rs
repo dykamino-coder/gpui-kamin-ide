@@ -714,7 +714,10 @@ impl AnyElement {
                 || inner.is::<crate::Stateful<crate::Div>>()
                 || inner.is::<crate::PaintLast>()
                 || inner.is::<crate::PaintInline>()
-                || inner.is::<crate::PaintCollect>();
+                || inner.is::<crate::PaintCollect>()
+                // A nested `AnyElement` is a plain holder: its own `paint`
+                // repeats this check for the element inside.
+                || inner.is::<AnyElement>();
             if !through {
                 crate::elements::paint_last::hoist_boundary(|| self.0.paint(window, cx));
                 return;

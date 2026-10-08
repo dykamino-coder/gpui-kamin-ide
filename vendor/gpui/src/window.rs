@@ -56,8 +56,10 @@ use uuid::Uuid;
 
 mod prompts;
 mod image_sampling;
+mod absolute_transformation;
 mod line_baselines;
 mod css_text_background;
+mod css_fill_transform;
 pub use image_sampling::ImageSampling;
 
 use crate::util::atomic_incr_if_not_zero;
@@ -851,6 +853,7 @@ pub struct Window {
     /// is being painted, for device-pixel snapping of its CSS border edges
     /// from the exact geometry (`style::border_snap`).
     pub(crate) css_exact_bounds: Option<(Bounds<Pixels>, Bounds<Pixels>)>,
+    pub(crate) css_fill_transform: Option<(TransformationMatrix, TransformationMatrix)>,
     /// KaminIDE patch: стек преобразований (`transform` в CSS).
     ///
     /// Матрица действует на всё, что рисуется внутри: на подложку, рамку,
@@ -1291,6 +1294,7 @@ impl Window {
             glyph_offset: Point::default(),
             css_text_backgrounds: Vec::new(),
             css_exact_bounds: None,
+            css_fill_transform: None,
             transformation_stack: Vec::new(),
             mask_scale: None,
             mask_map: None,
@@ -3610,6 +3614,20 @@ impl Window {
         glyph_id: GlyphId,
         font_size: Pixels,
     ) -> Result<()> {
+        self.paint_emoji_alpha(origin, font_id, glyph_id, font_size, 1.0)
+    }
+
+    /// KaminIDE patch: [`Window::paint_emoji`] with the text color's alpha
+    /// multiplied into the sprite opacity (a color glyph is painted with the
+    /// paint's alpha, like Skia's color-font path).
+    pub fn paint_emoji_alpha(
+        &mut self,
+        origin: Point<Pixels>,
+        font_id: FontId,
+        glyph_id: GlyphId,
+        font_size: Pixels,
+        alpha: f32,
+    ) -> Result<()> {
         self.invalidator.debug_assert_paint();
 
         let scale_factor = self.scale_factor();
@@ -3639,7 +3657,7 @@ impl Window {
                 size: tile.bounds.size.map(Into::into),
             };
             let content_mask = self.content_mask().scale(scale_factor);
-            let opacity = self.element_opacity();
+            let opacity = self.element_opacity() * alpha;
 
             let transformation = self.current_transformation();
             self.next_frame.scene.insert_primitive(PolychromeSprite {
