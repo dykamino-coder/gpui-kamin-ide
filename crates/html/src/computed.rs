@@ -2618,6 +2618,8 @@ pub struct Computed {
     /// Живёт в стиле, а не в элементе, потому что абзац собирается из кусков
     /// уже без узла-родителя: до кусков доезжает только вычисленный стиль.
     pub first_letter: Option<Box<Computed>>,
+    /// Own declarations remain separate for fictitious inheritance in descendants.
+    pub first_letter_own: Option<Box<Computed>>,
     /// Стиль первой строки абзаца (`::first-line`).
     pub first_line: Option<Box<Computed>>,
     /// `initial-letter` (css-inline-3 §initial-letter): размер буквицы в

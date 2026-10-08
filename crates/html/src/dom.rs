@@ -9,6 +9,8 @@
 mod subgrid_axes;
 mod grid_static_position;
 mod replaced_display;
+#[path = "dom_initial_pseudos.rs"]
+mod initial_pseudos;
 #[path = "dom_containment.rs"]
 mod containment;
 #[path = "dom_language.rs"]
@@ -3215,23 +3217,10 @@ fn walk(
             });
             // Псевдоэлементы первой буквы и первой строки — тем же слоем
             // поверх базового стиля: они меняют начертание куска, а не блок.
-            let layer = |name: &str| {
-                let mut found: Vec<&Rule> = rules
-                    .iter()
-                    .filter(|r| r.sel.pseudo.as_deref() == Some(name))
-                    .filter(|r| matches_ignoring_pseudo(&r.sel, &me, path, sibs))
-                    .collect();
-                found.sort_by_key(|r| (r.sel.specificity(), r.order));
-                (!found.is_empty()).then(|| {
-                    let mut merged = style.clone();
-                    for rule in found.iter() {
-                        merged.apply_decls_with_vars(&rule.decls, vars);
-                    }
-                    merged
-                })
-            };
-            let first_letter = layer("first-letter");
-            let first_line = layer("first-line");
+            let layer = |name, base| initial_pseudos::resolve(name, rules, vars, &me, path, sibs, base);
+            let first_letter = layer("first-letter", Some(&style));
+            let first_line = layer("first-line", Some(&style));
+            style.first_letter_own = layer("first-letter", None).map(Box::new);
             // `::marker` — НЕ копией стиля хозяина, как первая буква, а
             // ТОЛЬКО своими объявлениями поверх таблицы агента: копия
             // протащила бы в маркер рамку, поля и размеры самого `<li>`.

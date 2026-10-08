@@ -27,6 +27,7 @@ mod margin_edges;
 mod margin_height;
 mod float_clear_scope;
 mod inline_floats;
+mod first_letter_descendants;
 mod native_paragraph_route;
 mod scroll_box;
 mod orthogonal_fixed_child;
@@ -8212,7 +8213,11 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     let collapsed = if ordered_context {
         collapsed
     } else {
-        initial_letter_float(collapsed, inherited, opts)
+        initial_letter_float(
+            first_letter_descendants::route(collapsed, inherited),
+            inherited,
+            opts,
+        )
     };
     // §8.3.1: поле первого ребёнка примыкает к верхнему полю содержащего
     // блока, только если того не отделяют ни рамка, ни отбивка и он не
