@@ -1471,6 +1471,21 @@ fn main() {
         // достаточно, чтобы окно не было СВЁРНУТО.
 
         cx.spawn(async move |cx| {
+            // Off-screen capture: park the window before its first frame.
+            if capture::offscreen() {
+                let early = cx
+                    .update_window(window.into(), |_, window, _| {
+                        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+                        match window.window_handle().map(|h| h.as_raw()) {
+                            Ok(RawWindowHandle::Win32(handle)) => handle.hwnd.get() as isize,
+                            _ => 0,
+                        }
+                    })
+                    .unwrap_or(0);
+                if early != 0 {
+                    capture::park_offscreen(early);
+                }
+            }
             // Первый кадр окна: до него снимок пустой.
             Timer::after(Duration::from_millis(900)).await;
             // Указатель окна нужен снимку: рисует его система, а не мы.

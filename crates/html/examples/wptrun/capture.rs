@@ -79,3 +79,24 @@ pub(super) fn offscreen() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| std::env::var("WPT_OFFSCREEN").is_ok_and(|v| v == "1"))
 }
+
+/// Park the runner window off-screen (`WPT_OFFSCREEN`): GPUI places PopUp windows
+/// itself and ignores an off-screen origin, and `run_sharded.py` doesn't find tool
+/// windows to pin them.
+pub(super) fn park_offscreen(hwnd: isize) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, SetWindowPos,
+    };
+    unsafe {
+        let _ = SetWindowPos(
+            HWND(hwnd as *mut _),
+            None,
+            -4000,
+            60,
+            0,
+            0,
+            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+        );
+    }
+}
