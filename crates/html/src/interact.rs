@@ -26,6 +26,7 @@ mod orthogonal_measure;
 mod vertical_style;
 mod combined_geometry;
 mod gap_segments;
+mod gap_fragment_tail;
 mod transform_geometry;
 use gap_segments::segments;
 use transform_geometry::quarter_turn;
@@ -1506,6 +1507,9 @@ impl Element for Transformed {
                     translation: [shift(self.tr[0]), shift(self.tr[1])],
                 })
                 .translate(back);
+            let fill_matrix = quarter.map(|_| {
+                self.exact_fill_matrix(matrix, bounds.origin, raw_origin, scale_factor)
+            });
             if quarter.is_some() {
                 // Поворот на кратное четверти (и отражение) оставляет коробку
                 // осевой: её края обязаны округляться к точке устройства так
@@ -1541,7 +1545,13 @@ impl Element for Transformed {
                 matrix.translation[1] += snap(exact.1) - cur.1;
             }
             let child = self.child.as_mut().unwrap();
-            window.with_transformation_masked(matrix, |window| child.paint(window, cx));
+            window.with_transformation_masked(matrix, |window| {
+                if let Some(exact) = fill_matrix {
+                    window.with_css_fill_transform(exact, |window| child.paint(window, cx));
+                } else {
+                    child.paint(window, cx);
+                }
+            });
             return;
         }
         // --- Объёмный путь: одна 4×4 ОДНОГО элемента, сплющенная на экран ---
@@ -3128,6 +3138,9 @@ impl Element for GapRulePainter {
                 return;
             };
             let c = (run.g0 + run.g1) / 2.0;
+            if spec.kind == GapLayout::Grid && !spec.vertical && gap_on_x {
+                gap_fragment_tail::paint(window, bounds, run, rule, colour.to_hsla());
+            }
             // Отрезок вдоль строчной оси (горизонтальный в горизонтальном
             // письме) при `rtl` считает start/end от правого края.
             let flip = spec.rtl && !spec.vertical && !gap_on_x;

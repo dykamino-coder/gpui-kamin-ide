@@ -689,7 +689,7 @@ fn unwrap_document(nodes: Vec<Node>) -> (Vec<Node>, crate::computed::Computed) {
         let Some(Node::Element(e)) = nodes.pop() else {
             return (nodes, root);
         };
-        root = crate::inline::inherit(&root, &e.style);
+        root = crate::inline::inherit_unpainted(&root, &e.style);
         // Обёртка снимается ради виртуализации: единица прокрутки — блок
         // верхнего уровня, а не документ целиком. Но её ТЕКСТОВЫЙ стиль
         // принадлежит содержимому: `body { font: 13px system-ui }` — самый
@@ -700,7 +700,7 @@ fn unwrap_document(nodes: Vec<Node>) -> (Vec<Node>, crate::computed::Computed) {
             .into_iter()
             .map(|n| match n {
                 Node::Element(mut child) => {
-                    child.style = crate::inline::inherit(&e.style, &child.style);
+                    child.style = crate::inline::inherit_unpainted(&e.style, &child.style);
                     Node::Element(child)
                 }
                 other => other,

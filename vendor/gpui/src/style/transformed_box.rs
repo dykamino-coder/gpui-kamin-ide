@@ -9,18 +9,25 @@ pub(super) fn bounds(style: &Style, bounds: Bounds<Pixels>, window: &Window) -> 
     {
         return bounds;
     }
-    let m = window.current_transformation();
+    let paint = window.current_transformation();
+    let exact_transform = window
+        .css_fill_transform
+        .filter(|(current, _)| *current == paint);
+    let m = exact_transform.map_or(paint, |(_, exact)| exact);
     let [[a, b], [c, d]] = m.rotation_scale;
-    // Only diagonal scaling is handled here. Rotated quads keep their existing
-    // raster path, and ordinary GPUI widgets do not opt into CSS box snapping.
-    if b.abs() > 1e-5
-        || c.abs() > 1e-5
-        || a <= 1e-5
-        || d <= 1e-5
-        || (a - 1.0).abs() < 1e-5 && (d - 1.0).abs() < 1e-5
-        || !a.is_finite()
-        || !d.is_finite()
-    {
+    let diagonal = b.abs() <= 1e-5
+        && c.abs() <= 1e-5
+        && a.abs() > 1e-5
+        && d.abs() > 1e-5
+        && ((a - 1.0).abs() >= 1e-5 || (d - 1.0).abs() >= 1e-5);
+    // Diagonal reflections, including flattened 3D planes, preserve axes.
+    // Signed axis permutations also preserve rectangles. They must snap both
+    // transformed edges, rather than move an already-rounded local box.
+    if !diagonal && exact_transform.is_none() {
+        return bounds;
+    }
+    let det = a * d - b * c;
+    if !det.is_finite() || det.abs() <= 1e-5 {
         return bounds;
     }
     let Some((_, exact)) = window
@@ -29,22 +36,22 @@ pub(super) fn bounds(style: &Style, bounds: Bounds<Pixels>, window: &Window) -> 
     else {
         return bounds;
     };
-    // CSS Transforms 1 §3 applies the matrix to the CSS reference box. Snapping
-    // 50px * 1.25 to 63 before scale(2) turns a 125-device-pixel box into 126.
-    // Resolve the transformed edge first, then bring it back to local coordinates
-    // for the renderer to apply this same matrix once.
+    // CSS Transforms 1 section 3 maps the CSS reference box before rasterization.
+    // Undo the actual renderer map after snapping the desired device edges.
     let sf = window.scale_factor();
-    let edge = |v: Pixels, scale: f32, shift: f32| {
-        px(((f32::from(v) * sf * scale + shift).round() - shift) / (sf * scale))
+    let [[pa, pb], [pc, pd]] = paint.rotation_scale;
+    let pdet = pa * pd - pb * pc;
+    let edge = |x: Pixels, y: Pixels| {
+        let (x, y) = (f32::from(x) * sf, f32::from(y) * sf);
+        let dx = (a * x + b * y + m.translation[0]).round() - paint.translation[0];
+        let dy = (c * x + d * y + m.translation[1]).round() - paint.translation[1];
+        point(
+            px((pd * dx - pb * dy) / (pdet * sf)),
+            px((-pc * dx + pa * dy) / (pdet * sf)),
+        )
     };
     Bounds::from_corners(
-        point(
-            edge(exact.left(), a, m.translation[0]),
-            edge(exact.top(), d, m.translation[1]),
-        ),
-        point(
-            edge(exact.right(), a, m.translation[0]),
-            edge(exact.bottom(), d, m.translation[1]),
-        ),
+        edge(exact.left(), exact.top()),
+        edge(exact.right(), exact.bottom()),
     )
 }

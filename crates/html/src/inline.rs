@@ -1125,6 +1125,16 @@ fn backdrop_root(c: &Computed) -> bool {
 // задело общий путь длин. Возвращаться только через отдельный проход после
 // каскада, а не через самую горячую функцию крейта.
 pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
+    inherit_stage(parent, own, true)
+}
+
+/// Document preparation propagates style; Filter Effects 1 §5 applies colors
+/// only when the renderer builds the element, never while removing wrappers.
+pub(crate) fn inherit_unpainted(parent: &Computed, own: &Computed) -> Computed {
+    inherit_stage(parent, own, false)
+}
+
+fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Computed {
     let mut c = own.clone();
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
     c.in_multicol = parent.in_multicol
@@ -1893,7 +1903,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     // ЕДИНСТВЕННАЯ точка окраски фильтром (каскад цвета не трогает).
     // Красится только ВОЗНИКШЕЕ на этом узле: унаследованный цвет уже
     // покрашен предком — повторная окраска давала f^N по поколениям.
-    if let Some(f) = c.filter {
+    if paint_filter && let Some(f) = c.filter {
         if own.background.is_some() {
             c.background = c.background.map(|col| f.apply(col));
         }

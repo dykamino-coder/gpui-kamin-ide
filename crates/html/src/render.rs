@@ -4794,12 +4794,14 @@ fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     // зазоре не рисуется (`grid-gap-decorations-fragmentation-001…010`).
     // В стопке колонок это точка класса A с усечением: край внутри
     // `solid`-диапазона зазора уводит разрез к его началу (`fill`, `at(a)`),
-    // а `cuts` с тем же `need` продолжает копию с КОНЦА зазора. Допуск 0.05
-    // ловит край ровно на границе зазора — Blink подавляет и его
-    // (`last_gap_end_offset >= fragmentainer_space`).
+    // а `cuts` с тем же `need` продолжает копию с КОНЦА зазора.
+    // Keep the cut at the actual gutter start: fill_at's at(edge) handles
+    // an exact start boundary. Moving it by a tolerance shortens the painted
+    // fragment and can discard a device row. Only extend the end interval
+    // for Blink's inclusive last_gap_end_offset >= fragmentainer_space check.
     for (a, b) in grid_row_gaps(&c.style, h - top - bot) {
-        cuts.push((top + a - 0.05, top + b));
-        solid.push((top + a - 0.05, top + b + 0.05));
+        cuts.push((top + a, top + b));
+        solid.push((top + a, top + b + 0.05));
     }
     // Принудительный разрыв элемента сетки — на границу его РЯДА
     // (css-grid-2 §Fragmenting Grid Layout; Blink `grid_layout_algorithm.cc`
