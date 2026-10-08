@@ -9180,10 +9180,19 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // одноосной коробке. Возвращать вместе с проверкой щупа на
             // `table-anonymous-objects-011` (три абсолюта, у одного задан
             // лишь `top`).
-            let far_abs = abs_like
+            // `fixed` под трансформом: содержащий блок — ближайший предок,
+            // содержащий `fixed` (css-transforms-1 §transform-rendering,
+            // css-contain-2 §3.2), а позиционированные между ними — нет
+            // (`out-of-flow-in-multicolumn-029`: `fixed` внутри абсолюта
+            // внутри трансформа). Родитель-трансформ держит его на месте.
+            let tf_fixed = e.style.position == Some(crate::computed::Position::Fixed) && under_tf;
+            let far_fixed = tf_fixed && !fixed_cb_layer_box(inherited) && (x_set || y_set);
+            let far_abs = !tf_fixed
+                && abs_like
                 && inherited.cb_ancestor
                 && !crate::inline::establishes_cb(inherited)
                 && (x_set || y_set);
+            let far_abs = far_abs || far_fixed;
             let to_icb = !ordered_context
                 && geometry_layer_ok
                 && (fixed || orphan_abs)
@@ -9252,6 +9261,8 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     };
                     if to_icb {
                         crate::interact::icb_push(spot.clone(), built)
+                    } else if far_fixed {
+                        crate::interact::cb_push_fixed(spot.clone(), built)
                     } else {
                         crate::interact::cb_push(spot.clone(), built)
                     }
@@ -10304,6 +10315,16 @@ fn z_index_applies(c: &Computed, parent: &Computed) -> bool {
             | Some(Display::Grid)
             | Some(Display::InlineGrid)
     )
+}
+
+/// Коробка — содержащий блок и для `position: fixed`: тот же список, что
+/// барьер `under_tf` (`inline::inherit`, `transform_ancestor`).
+fn fixed_cb_layer_box(c: &Computed) -> bool {
+    c.transform.is_some()
+        || c.preserve_3d == Some(true)
+        || c.contain_layout == Some(true)
+        || c.contain_paint == Some(true)
+        || c.will_change & crate::computed::wc::CB_FIXED != 0
 }
 
 /// Будет ли элемент с таким стилем отложен.
@@ -23972,7 +23993,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     };
                                     let frag_cb_layer = crate::inline::establishes_cb(&inner);
                                     if frag_cb_layer {
-                                        crate::interact::cb_open();
+                                        crate::interact::cb_open_with(fixed_cb_layer_box(&inner));
                                     }
                                     let mut body = blocks(&kids, src_inner, opts);
                                     if frag_cb_layer {
@@ -24744,7 +24765,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // содержащим блоком не является, переезжает сюда.
             let cb_layer = crate::inline::establishes_cb(&merged);
             if cb_layer {
-                crate::interact::cb_open();
+                crate::interact::cb_open_with(fixed_cb_layer_box(&merged));
             }
             // Линейки промежутков (css-gaps-1). Слой заводится ТОЛЬКО когда
             // задан стиль хотя бы одной линейки: начальное `none` означает,
