@@ -10393,6 +10393,17 @@ fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) -> AnyElement
     if matches!(e.tag.as_str(), "body" | "html") {
         return el;
     }
+    // An absolutely positioned box is out of flow and is placed against the
+    // padding box of its containing block (CSS 2.1 §10.1, css-position-3
+    // §4). The in-flow hug row sits at the parent's CONTENT edge and became
+    // the box's layout parent, so `top: 0; left: 0` landed inside the padding
+    // (`available-size-001`: the vertical-rl `#red` 1ch below the green 0).
+    if matches!(
+        e.style.position,
+        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+    ) {
+        return el;
+    }
     // Элемент СЕТКИ и ГИБКИЙ элемент размер по блочной оси не подбирают: его
     // задаёт выравнивание, и решается оно письмом КОНТЕЙНЕРА (§7.3,
     // «positioning phase … according to the writing mode of the containing

@@ -5517,7 +5517,7 @@ impl Computed {
                                 "repeat-y" => self.bg_repeat = Some(BgRepeat::RepeatY),
                                 "repeat" => self.bg_repeat = Some(BgRepeat::Repeat),
                                 "left" | "right" | "top" | "bottom" | "center" => pos.push(token.clone()),
-                                t if Len::parse(t).is_some() => pos.push(token.clone()),
+                                t if Len::parse_mixed(t).is_some() => pos.push(token.clone()),
                                 _ => {}
                             }
                         }
@@ -5625,7 +5625,7 @@ impl Computed {
                         t if t.starts_with("url(") => {}
                         // Ключевые слова осей и длины — это положение.
                         "left" | "right" | "top" | "bottom" | "center" => pos.push(token.clone()),
-                        t if Len::parse(t).is_some() => pos.push(token.clone()),
+                        t if Len::parse_mixed(t).is_some() => pos.push(token.clone()),
                         t => {
                             if let Some(c) = Color::parse(t) {
                                 self.background = Some(c);
