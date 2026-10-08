@@ -2998,7 +2998,11 @@ impl Element for GapRulePainter {
         let bounds = prepaint.0;
         let grid_tracks = prepaint.1.take();
         let items = std::mem::take(&mut *self.items.borrow_mut());
-        if items.is_empty() {
+        // A grid's gaps come from its track collection, not from its items
+        // (css-gaps-1 §gap-grid; Blink `BuildGridTrackGapData`): an empty
+        // grid or subgrid still has gaps to decorate
+        // (`subgrid-gap-decorations-012/015/016/017`).
+        if items.is_empty() && !(self.spec.kind == GapLayout::Grid && grid_tracks.is_some()) {
             return;
         }
         let spec = &self.spec;
