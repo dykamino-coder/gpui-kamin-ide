@@ -178,7 +178,7 @@ fn paint_rect_minus(
 /// вместо него всю коробку — заметно хуже, чем не красить (тесты на него
 /// прямо пишут «no red» про залитый прямоугольник).
 fn clip_layer(c: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
-    let clip = c.bg_clip?;
+    let clip = c.color_clip()?;
     if c.gradient.is_none() && c.background.is_none() {
         return None;
     }

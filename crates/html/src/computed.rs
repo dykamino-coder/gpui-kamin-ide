@@ -11430,6 +11430,30 @@ impl Computed {
     /// слоёв, повторяются по кругу). Градиент слоя уходит в растровую плитку
     /// (`bg_image` с сырой записью), чтобы все слои шли одним путём и в
     /// своём порядке. `None` — слой один.
+    /// `background-clip` of the background COLOR: css-backgrounds-3 §3.2,
+    /// «the background color is clipped according to the background-clip
+    /// value associated with the bottom-most background image layer». The
+    /// number of layers comes from `background-image` (§2.1); a shorter
+    /// `background-clip` list repeats, a longer one is truncated
+    /// (`background-color-clip`: two `none` layers, clip list
+    /// `border-box, content-box, border-box` → `content-box`).
+    pub(crate) fn color_clip(&self) -> Option<BgClip> {
+        let Some((_, clips)) = self.bg_lists.iter().find(|(k, _)| k == "background-clip") else {
+            return self.bg_clip;
+        };
+        let Some((_, images)) = self.bg_lists.iter().find(|(k, _)| k == "background-image") else {
+            return self.bg_clip;
+        };
+        let n = background_layers(images).len();
+        let clips = background_layers(clips);
+        if n < 2 || clips.is_empty() {
+            return self.bg_clip;
+        }
+        let mut probe = Computed::default();
+        probe.apply_one("background-clip", clips[(n - 1) % clips.len()]);
+        probe.bg_clip
+    }
+
     pub(crate) fn bg_layers(&self) -> Option<Vec<Computed>> {
         let short = self.bg_lists.iter().find(|(k, _)| k == "background").map(|(_, v)| v.clone());
         let image = self.bg_lists.iter().find(|(k, _)| k == "background-image").map(|(_, v)| v.clone());
