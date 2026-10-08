@@ -9118,10 +9118,19 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 && inherited.cb_ancestor
                 && !crate::inline::establishes_cb(inherited)
                 && (x_set || y_set);
+            // A negative `z-index` box whose containing block is the ICB goes
+            // to the ICB layer too, painted in the bottom layer (`Underlay`,
+            // CSS 2.1 §9.9 step 3): in place it was positioned from its
+            // parent's box, e.g. a `body` lowered by a collapsed margin
+            // (spec-examples `shape-outside-001`: `#failure-container`).
+            let below_icb = orphan_abs
+                && !fixed
+                && e.style.z_index.is_some_and(|z| z < 0)
+                && !stacking_context(inherited);
             let to_icb = !ordered_context
                 && geometry_layer_ok
                 && (fixed || orphan_abs)
-                && e.style.z_index.unwrap_or(0) >= 0
+                && (e.style.z_index.unwrap_or(0) >= 0 || below_icb)
                 && !stays_positioned(&nodes[idx + 1..]);
             // В гибком контейнере и сетке слой содержащего блока закрыт: там
             // нет щупа статической позиции. Но при ОБЕИХ заданных осях щуп и не
@@ -9181,6 +9190,11 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     // ключом +4/−0.
                     let built = if paint_last_ok(e, &nodes[idx + 1..]) {
                         gpui::PaintLast::new(built).key(paint_key).into_any_element()
+                    } else {
+                        built
+                    };
+                    let built = if to_icb && below_icb {
+                        crate::interact::Underlay::new(built).into_any_element()
                     } else {
                         built
                     };
@@ -11841,10 +11855,23 @@ fn wrap_floats(
         // 259 пар семей *shape*: 0 и 0 — тройка `spec-examples/shape-outside-
         // 001…003` как была «красное видно», так и осталась, её держит не
         // односторонность пробега.
-        if sides.iter().all(|s| *s == side)
-            && floaters.iter().any(|f| f.style.shape_outside.is_some())
-            && floaters.iter().all(|f| sized(f).is_some() || img_float(f))
-        {
+        let shaped_run = floaters.iter().any(|f| f.style.shape_outside.is_some())
+            && floaters.iter().all(|f| sized(f).is_some() || img_float(f));
+        if shaped_run && sides.iter().any(|s| *s != side) {
+            // A run of floats on BOTH sides: `shape_flow` reads each float's
+            // side from the float itself (css-shapes-1 §1 — every float's
+            // shape narrows its own side of the line boxes).
+            for (f, s) in floaters.iter_mut().zip(sides.iter()) {
+                f.style.float = Some(*s);
+            }
+        }
+        if shaped_run {
+            // Whitespace between the run and a preceding block start
+            // collapses away (CSS 2.1 §16.6.1); left here it became its own
+            // line above the shaped floats (`shape-outside-001`: +16px).
+            if out.iter().all(|n| matches!(n, Node::Text(t) if blank_text(t))) {
+                out.clear();
+            }
             let mut host = Element {
                 list_item: None,
                 node_id: 0,
@@ -20014,6 +20041,16 @@ fn stays_positioned(rest: &[Node]) -> bool {
                     || edge_set(e.style.inset.right)
                     || edge_set(e.style.inset.top)
                     || edge_set(e.style.inset.bottom));
+            // A negative `z-index` paints in the bottom layer (CSS 2.1 §9.9,
+            // step 3) whatever its document position: hoisting an earlier
+            // sibling cannot reorder against it (spec-examples
+            // `shape-outside-001`: `#failure-container` kept `#test` in
+            // place, positioned from the collapsed `body` top, 16px low).
+            let below = e.style.z_index.is_some_and(|z| z < 0);
+            if positioned && below {
+                // …together with its whole subtree.
+                return false;
+            }
             if positioned && !hoisted {
                 return true;
             }
