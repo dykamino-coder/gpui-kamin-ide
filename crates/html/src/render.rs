@@ -18836,11 +18836,20 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                     }
                 };
             }
+            // A negative `z-index` joins the ICB layer too, painted in the
+            // bottom layer (CSS 2.1 §9.9 step 3) — in place it painted over
+            // its later negative-z siblings (`shape-image-009`).
+            let below_icb = e.style.z_index.is_some_and(|z| z < 0) && !stacking_context(inherited);
             if x_set
                 && y_set
-                && e.style.z_index.unwrap_or(0) >= 0
+                && (e.style.z_index.unwrap_or(0) >= 0 || below_icb)
                 && !(inherited.cb_ancestor || crate::inline::establishes_cb(inherited))
             {
+                let holder: AnyElement = if below_icb {
+                    crate::interact::Underlay::new(holder.into_any_element()).into_any_element()
+                } else {
+                    holder.into_any_element()
+                };
                 let spot: crate::interact::SpotCell = Default::default();
                 spot.set(crate::interact::Spot {
                     fixed_axes: (true, true),
