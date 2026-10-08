@@ -20626,13 +20626,23 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                 ch: chh,
                 // Elliptical corners (`60px 40px`, css-backgrounds-3 §5.1) keep
                 // both radii (`shape-outside-border-box-border-radius-007`).
+                // Each axis resolves a percentage against its own box side.
                 radius: {
                     let ell = f.style.radius_ell.unwrap_or([None; 4]);
+                    let axis = |l: crate::value::Len, base: f32| match l {
+                        crate::value::Len::Px(v) => v,
+                        crate::value::Len::Pct(k) => k * base,
+                        _ => 0.0,
+                    };
+                    let pair = |i: usize, c: &Option<crate::value::Len>| match ell[i] {
+                        Some((x, y)) => (axis(x, bw), axis(y, bh)),
+                        None => radius_of(c),
+                    };
                     [
-                        ell[0].unwrap_or_else(|| radius_of(&f.style.radius.tl)),
-                        ell[1].unwrap_or_else(|| radius_of(&f.style.radius.tr)),
-                        ell[2].unwrap_or_else(|| radius_of(&f.style.radius.br)),
-                        ell[3].unwrap_or_else(|| radius_of(&f.style.radius.bl)),
+                        pair(0, &f.style.radius.tl),
+                        pair(1, &f.style.radius.tr),
+                        pair(2, &f.style.radius.br),
+                        pair(3, &f.style.radius.bl),
                     ]
                 },
                 threshold: f.style.shape_threshold.unwrap_or(0.0),
