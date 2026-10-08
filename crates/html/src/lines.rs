@@ -1706,7 +1706,22 @@ impl Paragraph {
         let segs = self.measure(window);
         let ell = self.suffix_width(self.clamp_str(), last.range.start, window);
         let head = last.range.start;
-        let mut end = head + trim_hanging(&self.text[last.range.clone()]);
+        // Висящий хвост перед знаком отбрасывается (фаза 2 css-text-3 §4.1.2),
+        // но СОХРАНЁННЫЕ пробелы (`white-space: pre` куска) — содержимое:
+        // знак встаёт после них (`block-ellipsis-031`).
+        let trim = |at: usize| {
+            let mut e = at;
+            for (i, ch) in self.text[head..at].char_indices().rev() {
+                let kept = matches!(ch, ' ' | '\t') && self.wrap_at(head + i).keep_spaces;
+                if !kept && ch != '\u{feff}' && (hangs(ch) || zero_width(ch)) {
+                    e = head + i;
+                } else {
+                    break;
+                }
+            }
+            e
+        };
+        let mut end = trim(last.range.end.min(self.text.len()));
         // Место под многоточие отбирается ЦЕЛЫМИ кусками: строка обрывается по
         // точке переноса, а не посреди слова. Слово, которое с многоточием уже
         // не влезает, уходит со строки целиком — как в браузере.
@@ -1725,7 +1740,7 @@ impl Paragraph {
                     .iter()
                     .map(|s| s.at)
                     .filter(|at| *at > head && *at <= end)
-                    .map(|at| head + trim_hanging(&self.text[head..at]))
+                    .map(trim)
                     .filter(|at| self.span(&segs, head, *at) + shy_w(*at) <= room)
                     .max()
                     .unwrap_or(head);
