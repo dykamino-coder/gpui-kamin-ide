@@ -608,8 +608,14 @@ impl Element for Grouped {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
-        self.child.as_mut().unwrap().prepaint(window, cx);
+        // The clip reference box is read BEFORE the child's prepaint: a pure
+        // translation of the element is placed into its layout origin there
+        // (`Transformed::prepaint`), while `clip_shift` already moves the clip
+        // with the transform (CSS Masking §5: clip lives in the element's
+        // pre-transform space). Read afterwards, the shift applied twice
+        // (clip-transform-order: the clip landed 110px right of the box).
         let clip_bounds = rectangular_clip::reference_box(self, bounds, *_state, window);
+        self.child.as_mut().unwrap().prepaint(window, cx);
         // Mask positioning box before device snapping (css-masking-1 §7.7).
         let mask_box = mask_geometry::positioning_box(self.mask.as_deref(), bounds, *_state, window);
         (clip_bounds, mask_box)
