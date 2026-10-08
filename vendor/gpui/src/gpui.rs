@@ -79,6 +79,8 @@ mod styled;
 mod subscription;
 mod svg_renderer;
 mod tab_stop;
+/// KaminIDE patch: GPU readback of drawn frames (WPT runner).
+pub mod frame_capture;
 mod taffy;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test;
