@@ -36,6 +36,12 @@ pub(crate) fn apply_counter_decls(
     item_flag: &mut bool,
     reversed_start: &dyn Fn(&str, &mut crate::counters::Counters) -> i32,
 ) {
+    // CSS Lists 3 §4.5: display:contents has no box, so its directives
+    // do not apply, while the flattened descendants still participate.
+    if style.display == Some(Display::Contents) {
+        *item_flag = false;
+        return;
+    }
     let num_attr = |key: &str| -> Option<i32> {
         attrs
             .iter()
