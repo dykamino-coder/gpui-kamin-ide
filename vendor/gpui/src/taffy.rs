@@ -889,6 +889,23 @@ fn apply_grid_line_names(out: &mut taffy::style::Style, names: &crate::GridLineN
     if let Some(axis) = &names.rows {
         out.grid_template_row_names = template(&mut out.grid_template_rows, axis);
     }
+    if !names.areas.is_empty() {
+        out.grid_template_areas = Some(taffy::style::GridTemplateAreas {
+            areas: names
+                .areas
+                .iter()
+                .map(|(name, r0, r1, c0, c1)| taffy::style::GridTemplateArea {
+                    name: name.clone(),
+                    row_start: *r0,
+                    row_end: *r1,
+                    column_start: *c0,
+                    column_end: *c1,
+                })
+                .collect(),
+            row_count: names.area_size.0,
+            column_count: names.area_size.1,
+        });
+    }
     out.subgrid_column_names = names.subgrid_columns.as_ref().map(subgrid);
     out.subgrid_row_names = names.subgrid_rows.as_ref().map(subgrid);
     // Числовая грань сильнее имени: имя пишется только на месте `auto`.
