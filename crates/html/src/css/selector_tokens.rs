@@ -4,7 +4,7 @@ use super::{AttrSel, unescape};
 
 /// CSS Syntax §4.3.9: digits may continue an identifier, but cannot start it.
 /// Escapes count as name-start characters regardless of the decoded character.
-pub(super) fn ident(raw: &str) -> bool {
+pub(crate) fn ident(raw: &str) -> bool {
     let mut chars = raw.chars().peekable();
     if chars.peek() == Some(&'-') {
         chars.next();

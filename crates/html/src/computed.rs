@@ -24,6 +24,7 @@ mod mask_shorthand;
 pub(crate) mod orthogonal;
 mod tab_size;
 mod quotes;
+mod counters;
 mod list_style_string;
 mod content_functions;
 pub(crate) use content_functions::parse_content;
@@ -7417,9 +7418,7 @@ impl Computed {
             }
 
             // --- Псевдоэлементы и шрифт ---------------------------------------
-            "counter-reset" => self.counter_reset = Some(v.to_string()),
-            "counter-increment" => self.counter_increment = Some(v.to_string()),
-            "counter-set" => self.counter_set = Some(v.to_string()),
+            "counter-reset" | "counter-increment" | "counter-set" => counters::apply(self, key, v),
             "quotes" => quotes::apply(self, v),
             "content" => {
                 match v {
