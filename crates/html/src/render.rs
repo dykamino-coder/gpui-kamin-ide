@@ -9563,6 +9563,15 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 } else {
                     built
                 };
+                // A positive `z-index` orders the box above the auto/0
+                // positioned boxes (CSS 2.1 §9.9 steps 8–9), as on the
+                // CB-layer path above: `scalex` — a static-position abspos
+                // with `z-index: 11` painted under its `z-index: 10` sibling.
+                let built = if !below && e.style.z_index.is_some_and(|z| z > 0) {
+                    layered(built, &e.style, inherited, layer_ok, under_tf)
+                } else {
+                    built
+                };
                 // Абсолют на статической позиции — тоже шаг 8: в собирателе
                 // он встаёт среди позиционированных по ключу, а не поверх
                 // всех соседей контейнера.
