@@ -8,6 +8,7 @@
 
 mod subgrid_axes;
 mod grid_static_position;
+mod replaced_display;
 #[path = "dom_containment.rs"]
 mod containment;
 #[path = "dom_language.rs"]
@@ -2202,19 +2203,9 @@ fn inlinify_in_ruby<'a>(
     };
 }
 
-fn finish_inline_display(style: &mut Computed, tag: &str) {
+fn finish_inline_display(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
     use crate::computed::Display;
-    // Замещаемый элемент колонкой таблицы не становится: его коробка —
-    // строчная (`outline-applies-to-016/017`: `<img>` с
-    // `display: table-column(-group)` в браузере рисуется картинкой в
-    // строке, а у нас пропадал вместе с колонкой).
-    if style.col_role.is_some()
-        && style.display == Some(Display::None)
-        && matches!(tag, "img" | "video" | "canvas" | "iframe" | "embed" | "object" | "input")
-    {
-        style.col_role = None;
-        style.display = None;
-    }
+    replaced_display::normalize(style, tag, attrs);
     let out_of_flow = style.float.is_some()
         || matches!(
             style.position,
@@ -3094,7 +3085,7 @@ fn walk(
             apply_presentational_size(&mut style, &tag, &attrs);
             promote_auto_ratio(&mut style, &tag);
             apply_presentational_colors(&mut style, &tag, &attrs);
-            finish_inline_display(&mut style, &tag);
+            finish_inline_display(&mut style, &tag, &attrs);
             style.plain_block_box = {
                 use crate::computed::Display;
                 let special = matches!(

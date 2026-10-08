@@ -275,6 +275,7 @@ pub fn collect(
         inherited,
         atom,
         empty_inline::has_text(children),
+        &mut text_case::Context::default(),
     )
 }
 
@@ -283,6 +284,7 @@ fn collect_with_empty_metrics(
     inherited: &Computed,
     atom: &mut dyn FnMut(&Element) -> Option<Piece>,
     has_text: bool,
+    case: &mut text_case::Context,
 ) -> Vec<Piece> {
     let mut out = vec![];
     // Место последней распорки зазора за коробкой (см. ниже).
@@ -328,7 +330,7 @@ fn collect_with_empty_metrics(
                 // абзаца (`space_transform_pieces`): соседи точки переноса
                 // сплошь и рядом лежат в других кусках, и проход по одному
                 // узлу их не видит.
-                let mut text = breakable(&transform_case(&raw, inherited), inherited);
+                let mut text = breakable(&text_case::transform(&raw, inherited, case), inherited);
                 // То же правило нулевого пробела СКВОЗЬ границу строчной
                 // коробки (css-text-4 §4.1.3; границ коробок для него нет —
                 // `seg-break-transformation-018`): перевод строки в начале
@@ -349,6 +351,7 @@ fn collect_with_empty_metrics(
             }
             Node::Element(e) => {
                 if e.tag == "br" {
+                    case.boundary();
                     out.push(Piece::Text {
                         text: "\n".into(),
                         style: inherited.clone(),
@@ -381,7 +384,7 @@ fn collect_with_empty_metrics(
                 if e.style.display == Some(crate::computed::Display::Contents) {
                     let merged = inherit(inherited, &e.style);
                     out.extend(collect_with_empty_metrics(
-                        &e.children, &merged, atom, has_text,
+                        &e.children, &merged, atom, has_text, case,
                     ));
                     continue;
                 }
@@ -393,6 +396,9 @@ fn collect_with_empty_metrics(
                 ATOM_CB.with(|c| c.set(false));
                 INLINE_CB_DEPTH.with(|d| d.set(depth));
                 if let Some(piece) = built {
+                    if matches!(piece, Piece::Atom(_)) {
+                        case.boundary();
+                    }
                     out.push(piece);
                     // Строчный `<span>`, ушедший в свою коробку (узорный фон,
                     // `has_own_box`), атомом в CSS не является: зазор между его
@@ -748,7 +754,7 @@ fn collect_with_empty_metrics(
                 if cb_here {
                     INLINE_CB_DEPTH.with(|d| d.set(d.get() + 1));
                 }
-                let kids = collect_with_empty_metrics(&e.children, &merged, atom, has_text);
+                let kids = collect_with_empty_metrics(&e.children, &merged, atom, has_text, case);
                 let kids = if cb_here {
                     INLINE_CB_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
                     mark_inline_cb(kids, e)
@@ -1136,6 +1142,7 @@ pub(crate) fn inherit_unpainted(parent: &Computed, own: &Computed) -> Computed {
 
 fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Computed {
     let mut c = own.clone();
+    bidi_controls::resolve(parent, &mut c);
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
     c.in_multicol = parent.in_multicol
         || ((parent.column_count.is_some()
@@ -1644,7 +1651,7 @@ fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Compu
             c.font_size = Some(Len::Px(0.01));
         }
     }
-    c.font_weight = own.font_weight.or(parent.font_weight);
+    crate::computed::font_weight::inherit(&mut c, parent, own);
     c.italic = own.italic.or(parent.italic);
     c.oblique = own.oblique.or(parent.oblique);
     c.underline = own.underline.or(parent.underline);
@@ -3299,34 +3306,7 @@ pub fn space_transform_pieces(pieces: &mut [Piece]) {
 
 /// `text-transform`: регистр меняется до шейпинга — шрифт про него не знает.
 pub fn transform_case(text: &str, style: &Computed) -> String {
-    let flags = style.text_transform_flags;
-    let cased = text_case::apply(text, style);
-    if flags == 0 {
-        return cased;
-    }
-    // Порядок css-text-3 §2.1: регистр, затем `full-width`, затем
-    // `full-size-kana`. `math-auto` — только у текста из ОДНОГО знака
-    // (MathML Core §2.1.5 «If the text consists of a single character»).
-    let single = {
-        let mut it = cased.trim().chars();
-        it.next().is_some() && it.next().is_none()
-    };
-    cased
-        .chars()
-        .map(|ch| {
-            let mut ch = ch;
-            if flags & crate::computed::TT_FULL_WIDTH != 0 {
-                ch = full_width(ch);
-            }
-            if flags & crate::computed::TT_KANA != 0 {
-                ch = full_size_kana(ch);
-            }
-            if flags & crate::computed::TT_MATH != 0 && single {
-                ch = math_italic(ch);
-            }
-            ch
-        })
-        .collect()
+    text_case::transform(text, style, &mut text_case::Context::default())
 }
 
 /// Полноширинный двойник знака (css-text-3 §2.1 `full-width`: знаки,

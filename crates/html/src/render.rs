@@ -24,6 +24,8 @@ mod combined_text;
 mod physical_atomic;
 mod vertical_flow_margins;
 mod margin_edges;
+mod margin_height;
+mod float_clear_scope;
 mod native_paragraph_route;
 mod scroll_box;
 mod orthogonal_fixed_child;
@@ -39,6 +41,7 @@ mod animation_live;
 use animation_live::animated;
 mod table_roles;
 mod table_border_widths;
+mod table_spanning_size;
 mod replaced_used_style;
 mod replaced_holder_ratio;
 mod replaced_content;
@@ -11522,21 +11525,11 @@ fn wrap_floats(
     parent_bfc: bool,
 ) -> Vec<Node> {
     let cb_width = parent.width;
-    let parent_clear = parent.clear;
     // `clear: inherit` — сторона родителя (`clear-005`: `clear: left` на
     // контейнере и `inherit` на ребёнке). Разрешается здесь: своего
     // наследования у ненаследуемого свойства нет, а родительский стиль есть
     // только у вызывающего.
-    let nodes: Vec<Node> = nodes
-        .into_iter()
-        .map(|n| match n {
-            Node::Element(mut e) if e.style.clear_inherit => {
-                e.style.clear = parent_clear;
-                Node::Element(e)
-            }
-            other => other,
-        })
-        .collect();
+    let nodes = float_clear_scope::used(nodes, parent);
     // Флоат, записанный ВНУТРИ строчной коробки, принадлежит не ей, а
     // ближайшему блочному предку (§10.1, §9.5.1 п.1). Строчная обёртка, в
     // которой кроме флоата ничего нет, снимается ЗДЕСЬ — ДО проверки
@@ -15821,50 +15814,7 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
         // детей в потоке; неизвестная высота хотя бы у одного оставляет
         // прежний запрет. Замерено: CSS2 5074 -> 5077, oldfront 2353 -> 2352
         // (`css-flexbox-height-animation-stretch` 0.47 -> 1.00).
-        let raises = match margin_px(e.style.min_height, &e.style) {
-            None => !zero(e.style.min_height),
-            Some(mh) if mh <= 0.0 => false,
-            Some(mh) => {
-                let mut sum = 0.0f32;
-                let mut known = true;
-                for c in &e.children {
-                    match c {
-                        Node::Text(t) if blank_text(t) => {}
-                        Node::Text(_) => known = false,
-                        Node::Element(ch) if !in_flow(&ch.style) => {}
-                        Node::Element(ch) if ch.inline && inline_level_box(ch) => known = false,
-                        Node::Element(ch) => {
-                            let b = ch.style.borders();
-                            let side = |l: Option<Len>| match l {
-                                None => Some(0.0),
-                                Some(Len::Px(v)) => Some(v),
-                                _ => None,
-                            };
-                            let own = match (
-                                margin_px(ch.style.height, &ch.style),
-                                side(ch.style.padding.top),
-                                side(ch.style.padding.bottom),
-                                side(b.top),
-                                side(b.bottom),
-                            ) {
-                                (Some(h), Some(pt), Some(pb), Some(bt), Some(bb)) => {
-                                    Some(h + pt + pb + bt + bb)
-                                }
-                                _ => None,
-                            };
-                            match own {
-                                Some(v) => sum += v,
-                                None => known = false,
-                            }
-                        }
-                    }
-                    if !known {
-                        break;
-                    }
-                }
-                !known || mh > sum + 0.01
-            }
-        };
+        let raises = margin_height::raises(e);
         // Край закрыт СВОИМИ свойствами: поле ребёнка остаётся внутри и
         // трогать его нечем.
         // Высота, которая «behaves as auto» (css-sizing-3: прозу CSS2
@@ -15883,6 +15833,7 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
         if !zero(e.style.padding.bottom)
             || !zero(e.style.borders().bottom)
             || !behaves_auto
+            || margin_height::separate(e)
             || own_context
         {
             continue;
@@ -17402,7 +17353,7 @@ fn line_box_spans(
     let strut = match inherited.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * own,
-        None => own * normal_fraction(inherited, opts),
+        None | Some(Len::Auto) => own * normal_fraction(inherited, opts),
         _ => return None,
     };
     let mut out: Vec<(std::ops::Range<usize>, f32)> = Vec::new();
@@ -17426,7 +17377,7 @@ fn line_box_spans(
         let lh = match style.line_height {
             Some(Len::Px(v)) => v,
             Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-            None => size * normal_fraction(style, opts),
+            None | Some(Len::Auto) => size * normal_fraction(style, opts),
             _ => return None,
         };
         if (size - own).abs() > 0.01
@@ -27460,10 +27411,10 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             {
                 cell.style.hidden = Some(true);
             }
-            // Ширину ячейки несёт КОЛОНКА (см. col_widths): на коробке она
-            // резала бы ячейку уже содержимого (`width: 0` прятал текст).
-            // Снимается с ЛЮБОЙ ячейки: у объединённой (colspan) ширина на
-            // коробке резала её до одной колонки, хотя место ей — весь охват.
+            table_spanning_size::preserve(
+                &mut cell.style, &cm, span_cols, e.style.table_fixed == Some(true),
+                table_is_vertical, spans_collapsed,
+            );
             if matches!(cell.style.width, Some(Len::Px(_)) | Some(Len::Pct(_))) {
                 cell.style.width = None;
             }
@@ -29648,19 +29599,13 @@ fn fixup_row_children(row: &Element) -> Vec<Node> {
                     let _ = el;
                 }
                 Node::Element(el) if is_cell(el) => {
-                    if !run.is_empty() {
-                        cells.push(Node::Element(anon_element("td", std::mem::take(run))));
-                    }
+                    table_roles::flush_inline(cells, run);
                     cells.push(child.clone());
                 }
-                Node::Text(t) if !t.trim().is_empty() => run.push(child.clone()),
-                // §17.2.1 шаг 1 п.4 гасит пробел только МЕЖДУ внутренними
-                // табличными коробками. Внутри прогона строчных братьев он
-                // часть анонимной ячейки: без него соседние слова слипались,
-                // и строка выходила короче.
-                Node::Text(_) if !run.is_empty() => run.push(child.clone()),
+                // Whitespace is classified after collecting the anonymous
+                // inline box, not before its non-whitespace content is seen.
+                Node::Text(_) => run.push(child.clone()),
                 Node::Element(_) => run.push(child.clone()),
-                _ => {}
             }
         }
         let _ = donor;
@@ -29683,9 +29628,7 @@ fn fixup_row_children(row: &Element) -> Vec<Node> {
     }
     let (mut cells, mut run, mut extra) = (vec![], vec![], vec![]);
     walk(&row.children, None, &mut cells, &mut run, &mut extra);
-    if !run.is_empty() {
-        cells.push(Node::Element(anon_element("td", run)));
-    }
+    table_roles::flush_inline(&mut cells, &mut run);
     let mut fixed = row.clone();
     fixed.children = cells;
     let mut out = vec![Node::Element(fixed)];

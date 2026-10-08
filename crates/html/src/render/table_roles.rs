@@ -1,6 +1,16 @@
 //! Authored display overrides the default table-cell role of td and th.
+//! Inline runs become anonymous cells before their whitespace is discarded.
 use crate::computed::Display;
-use crate::dom::Element;
+use crate::dom::{Element, Node};
+
+/// CSS 2 section 17.2.1 removes only a whitespace-only anonymous inline
+/// box. Leading spaces next to inline content belong to that same box.
+pub(super) fn flush_inline(cells: &mut Vec<Node>, run: &mut Vec<Node>) {
+    let inline = std::mem::take(run);
+    if inline.iter().any(|node| !super::is_blank(node)) {
+        cells.push(Node::Element(super::anon_element("td", inline)));
+    }
+}
 
 pub(super) fn is_cell(element: &Element) -> bool {
     match element.style.display {
@@ -13,7 +23,6 @@ pub(super) fn is_cell(element: &Element) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dom::Node;
 
     #[test]
     fn authored_display_controls_cell_role_before_anonymous_fixup() {
@@ -25,6 +34,42 @@ mod tests {
         assert!(super::super::is_cell(&cell));
         cell.tag = "div".into();
         assert!(super::super::is_cell(&cell));
+    }
+
+    #[test]
+    fn whitespace_around_inline_content_stays_in_its_anonymous_cell() {
+        let node = |tag, text: &str| {
+            Node::Element(super::super::anon_element(
+                tag,
+                vec![Node::Text(text.into())],
+            ))
+        };
+        let row = super::super::anon_element(
+            "tr",
+            vec![
+                node("td", "a"),
+                Node::Text(" ".into()),
+                node("span", "bc"),
+                Node::Text(" ".into()),
+                node("td", "d"),
+            ],
+        );
+        let fixed = super::super::fixup_row_children(&row);
+        let Node::Element(row) = &fixed[0] else {
+            panic!("row")
+        };
+        assert_eq!(row.children.len(), 3);
+        let Node::Element(cell) = &row.children[1] else {
+            panic!("cell")
+        };
+        let [Node::Text(before), Node::Element(content), Node::Text(after)] = &cell.children[..]
+        else {
+            panic!("anonymous inline contents")
+        };
+        assert_eq!(
+            (before.as_str(), content.tag.as_str(), after.as_str()),
+            (" ", "span", " ")
+        );
     }
 
     #[test]

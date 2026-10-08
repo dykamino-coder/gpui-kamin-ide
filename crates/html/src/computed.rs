@@ -7,6 +7,12 @@
 
 mod gradient_paint;
 mod font_kerning;
+mod font_members;
+mod white_space;
+mod font_shorthand;
+pub(crate) mod font_weight;
+mod text_indent;
+mod bidi_properties;
 mod image_color;
 mod radius_mask;
 mod border_color;
@@ -1970,6 +1976,7 @@ pub struct Computed {
     pub color: Option<Color>,
     pub font_size: Option<Len>,
     pub font_weight: Option<u16>,
+    pub(crate) font_weight_step: i8,
     pub italic: Option<bool>,
     /// `font-style: oblique` отдельно от `italic`: набору наклон один
     /// (`italic` держит оба), а подбору лица это РАЗНЫЕ запросы (css-fonts-4
@@ -2296,6 +2303,8 @@ pub struct Computed {
     /// `unicode-bidi: bidi-override` (и тег `<bdo>`) — порядок знаков задан
     /// силой, разбор двунаправленности внутри куска не работает.
     pub bidi_override: Option<bool>,
+    /// Explicit inheritance of the otherwise non-inherited unicode-bidi property.
+    pub(crate) bidi_inherit: bool,
     /// `unicode-bidi: isolate` — кусок не влияет на порядок соседей.
     pub bidi_isolate: Option<bool>,
     /// `unicode-bidi: embed` — свой уровень встраивания (RLE/LRE … PDF). Без
@@ -3730,6 +3739,7 @@ impl Computed {
             // картинка или иной атом.
             font_family: self.font_family.clone(),
             font_weight: self.font_weight,
+            font_weight_step: self.font_weight_step,
             italic: self.italic,
             oblique: self.oblique,
             underline: self.underline,
@@ -3961,9 +3971,7 @@ impl Computed {
         // этих парах не решает — держат их другие корни.
         const SHORTHANDS: &[&str] = &["background"];
         let семья = |k: &'a str| -> &'a str {
-            // Kerning is a reset-only member of `font`; their source order
-            // must survive the shorthand-first ordering used below.
-            if k == "font-kerning" && d.contains_key("font") {
+            if font_members::contains(k) && d.contains_key("font") {
                 return "font";
             }
             for root in SHORTHANDS {
@@ -4037,6 +4045,7 @@ impl Computed {
                 self.bidi_isolate,
                 self.bidi_plaintext,
                 self.bidi_embed,
+                self.bidi_inherit,
                 self.decl_seq,
             );
             *self = Computed::default();
@@ -4046,6 +4055,7 @@ impl Computed {
                 self.bidi_isolate,
                 self.bidi_plaintext,
                 self.bidi_embed,
+                self.bidi_inherit,
                 self.decl_seq,
             ) = keep;
             self.apply_one("display", "inline");
@@ -5722,13 +5732,7 @@ impl Computed {
                     }
                 };
             }
-            "font-weight" => {
-                self.font_weight = match v {
-                    "bold" | "bolder" => Some(700),
-                    "normal" => Some(400),
-                    n => n.parse().ok(),
-                }
-            }
+            "font-weight" => font_weight::apply(self, v),
             "font-style" => {
                 self.italic = Some(v == "italic" || v == "oblique");
                 // `oblique <angle>` — тоже наклон, а не курсив (css-fonts-4
@@ -6269,19 +6273,7 @@ impl Computed {
                 }
                 _ => {}
             },
-            "white-space" => {
-                // `pre` не переносит строки — так же, как `nowrap`; переносят
-                // только `pre-wrap` и `pre-line`.
-                self.nowrap = Some(matches!(v, "nowrap" | "pre"));
-                // `pre-line` — единственный, кто хранит переводы строк, но
-                // схлопывает пробелы; остальные `pre*` хранят и пробелы.
-                self.keep_spaces = Some(matches!(v, "pre" | "pre-wrap" | "break-spaces"));
-                self.preserve_newlines = Some(matches!(
-                    v,
-                    "pre" | "pre-wrap" | "pre-line" | "break-spaces"
-                ));
-                self.break_after_spaces = Some(v == "break-spaces");
-            }
+            "white-space" => white_space::apply(self, v),
 
             // --- Логические свойства ---------------------------------------
             // Письмо у нас только слева направо и сверху вниз, поэтому
@@ -6970,135 +6962,7 @@ impl Computed {
 
             // --- Текст -------------------------------------------------------
             // `font: [начертание] [вес] размер[/интерлиньяж] семейство`.
-            "font" => {
-                // Все части сокращения наследуемые: `inherit` для них — это
-                // «своего значения нет», то есть ОЧИСТКА слота. Подстановка
-                // родительского значения тут не работает: ниже по разбору
-                // `own.font_size.or(parent.font_size)` вернул бы свой прежний
-                // (`font: 0 Ahem; font: inherit` оставлял нулевой кегль).
-                if v == "inherit" {
-                    self.font_size = None;
-                    self.font_kerning = None;
-                    self.font_alternates = None;
-                    self.font_family = None;
-                    self.font_weight = None;
-                    self.italic = None;
-                    self.oblique = None;
-                    self.line_height = None;
-                    return;
-                }
-                // `font: 50px / 1 Ahem` — вокруг косой черты разрешены пробелы,
-                // а кегль с высотой строки обязаны разбираться одним куском:
-                // иначе «/ 1 Ahem» уезжало в семейство шрифта целиком.
-                let value = join_slash(v);
-                let (head, family) = split_font(&value);
-                // Неизвестное слово в голове сокращения тоже валит его целиком
-                // (§4.2): `font: bold highlighted 100% serif` не задаёт ни
-                // начертания, ни кегля (`c71-fwd-parsing-003`). Слова головы —
-                // это начертание, наклон, вариант, растяжение и системные
-                // ключевые слова; всё прочее начинается с цифры или точки.
-                let head_word = |t: &str| {
-                    matches!(
-                        t,
-                        "normal"
-                            | "italic"
-                            | "oblique"
-                            | "small-caps"
-                            | "bold"
-                            | "bolder"
-                            | "lighter"
-                            | "ultra-condensed"
-                            | "extra-condensed"
-                            | "condensed"
-                            | "semi-condensed"
-                            | "semi-expanded"
-                            | "expanded"
-                            | "extra-expanded"
-                            | "ultra-expanded"
-                            | "xx-small"
-                            | "x-small"
-                            | "small"
-                            | "medium"
-                            | "large"
-                            | "x-large"
-                            | "xx-large"
-                            | "larger"
-                            | "smaller"
-                            | "caption"
-                            | "icon"
-                            | "menu"
-                            | "message-box"
-                            | "small-caption"
-                            | "status-bar"
-                    ) || t.starts_with(|c: char| c.is_ascii_digit() || c == '.')
-                };
-                if split_outside_parens(head)
-                    .iter()
-                    .any(|t| !head_word(&t.to_ascii_lowercase()) && !font_size_token(t))
-                {
-                    return;
-                }
-                // Недействительная часть валит СОКРАЩЕНИЕ целиком (§4.2):
-                // `font: 4em/-2em serif` не задаёт ни кегля, ни семейства
-                // (`font-146`). Проверка идёт до записи любого куска.
-                if head.split_whitespace().any(|t| {
-                    t.split_once('/').is_some_and(|(_, lh)| {
-                        let neg = |l: &Len| {
-                            matches!(
-                                l,
-                                Len::Px(v) | Len::Em(v) | Len::Pct(v) | Len::Ex(v) | Len::Ch(v)
-                                    if *v < 0.0
-                            )
-                        };
-                        lh.parse::<f32>().is_ok_and(|m| m < 0.0)
-                            || Len::parse(lh).as_ref().is_some_and(neg)
-                    })
-                }) {
-                    return;
-                }
-                // Сокращение сперва сбрасывает ВСЕ свои части к начальным
-                // значениям (CSS 2.1 §15.8), и только потом пишет названные.
-                // Пустой слот у нас — «наследовать», поэтому сброс явный:
-                // `normal` у веса, наклона и высоты строки (`Len::Auto` —
-                // метка `normal`, см. `"line-height"`). Без него
-                // `p { font: 16px serif }` под `html { font: 20px/1 Ahem }`
-                // наследовал `line-height: 1` (`numbers-units-018`), а
-                // `em { font: 1em/1 Ahem }` — курсив UA-листа (`c42-ibx-ht-000`).
-                self.italic = Some(false);
-                self.oblique = Some(false);
-                self.font_weight = Some(400);
-                self.font_kerning = Some(2);
-                self.font_alternates = Some(crate::fonts::alternates::normal());
-                self.line_height = Some(Len::Auto);
-                for token in split_outside_parens(head) {
-                    let t = token.as_str();
-                    match t.to_ascii_lowercase().as_str() {
-                        "italic" => self.italic = Some(true),
-                        "oblique" => {
-                            self.italic = Some(true);
-                            self.oblique = Some(true);
-                        }
-                        "bold" | "bolder" => self.font_weight = Some(700),
-                        // Кегль — и `0` (`font: 0 Ahem`: вес 0 зацикливал
-                        // подбор шрифта, vars-font-shorthand-001).
-                        _ if font_size_token(t) => match font_slash(t) {
-                            Some((size, lh)) => {
-                                self.apply_one("font-size", size);
-                                self.apply_one("line-height", lh);
-                            }
-                            None => self.apply_one("font-size", t),
-                        },
-                        _ if t.starts_with(|c: char| c.is_ascii_digit()) => {
-                            self.font_weight =
-                                t.parse().ok().filter(|w| (1..=1000).contains(w));
-                        }
-                        _ => {}
-                    }
-                }
-                if !family.is_empty() {
-                    self.apply_one("font-family", family);
-                }
-            }
+            "font" => font_shorthand::apply(self, v),
             "word-spacing" => self.word_spacing = Len::parse_spacing(v),
             "text-transform" => {
                 // Свойство наследуемое: `inherit` очищает свой слот, иначе
@@ -7138,23 +7002,7 @@ impl Computed {
             // после КАЖДОГО жёсткого разрыва, `hanging` переворачивает выбор —
             // отступ получают все строки, КРОМЕ той, что получила бы его.
             // Порядок слов свободный, поэтому значение разбирается по словам.
-            "text-indent" => {
-                let (mut each, mut hang) = (false, false);
-                // Резка ВНЕ скобок: `calc(50% - 3px)` — одно слово, а не три
-                // (по пробелам объявление роняли целиком). Процентная смесь
-                // доживает до раскладки строк: `Indent { px, pct }` складывает
-                // обе части сам (css-text-3 §2.1: доля — от ширины
-                // содержащего блока, она известна только на строке).
-                for word in split_outside_parens(v) {
-                    match word.to_ascii_lowercase().as_str() {
-                        "each-line" => each = true,
-                        "hanging" => hang = true,
-                        len => self.text_indent = Len::parse_mixed(len).or(self.text_indent),
-                    }
-                }
-                self.text_indent_each_line = each.then_some(true);
-                self.text_indent_hanging = hang.then_some(true);
-            }
+            "text-indent" => text_indent::apply(self, v),
             // `text-box-trim` (css-inline-3 §4.2): у блочного контейнера
             // срезается ПОЛУЛИДИНГ первой и/или последней строки, чтобы край
             // содержимого сел на метрику текста. Свойство НЕ наследуется.
@@ -8399,21 +8247,7 @@ impl Computed {
             }
 
             // --- Письмо и цветовые фильтры -------------------------------------
-            "direction" => self.rtl = Some(v == "rtl"),
-            // `unicode-bidi` решает, разбирать ли встроенность или задавать её
-            // силой. Отмена (`bidi-override`) ставит знаки в заданную сторону
-            // как есть, изоляция (`isolate`) прячет кусок от соседей.
-            "unicode-bidi" => {
-                self.bidi_override = Some(matches!(v, "bidi-override" | "isolate-override"));
-                // `plaintext` — НЕ разновидность `isolate`: он не обкладывает
-                // текст знаками встраивания, а выбирает сторону письма для
-                // каждого абзаца между жёсткими разрывами по первому сильному
-                // знаку. Пока он считался изоляцией, содержимое обкладывалось
-                // LRI/PDI, и в узкой коробке строка не рисовалась вовсе.
-                self.bidi_isolate = Some(matches!(v, "isolate" | "isolate-override"));
-                self.bidi_plaintext = Some(v == "plaintext");
-                self.bidi_embed = Some(v == "embed");
-            }
+            "direction" | "unicode-bidi" => bidi_properties::apply(self, key, v),
             "resize" => {
                 self.resize = match v {
                     "both" => Some((true, true)),
