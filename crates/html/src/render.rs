@@ -9188,6 +9188,16 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     // пары +4/−2 (`static-fixed-inside-abspos`,
                     // `position-fixed-001`: 0.00 -> «красное видно»); с
                     // ключом +4/−0.
+                    // A positive `z-index` orders the box above the layer's
+                    // auto/0 boxes (CSS 2.1 §9.9 steps 8–9): the deferral the
+                    // in-place path gets from `layered` below
+                    // (`shape-image-009`: `#test` z-index 2 under a z-index 1
+                    // failure box, both hoisted).
+                    let built = if !fixed && e.style.z_index.is_some_and(|z| z > 0) {
+                        layered(built, &e.style, inherited, layer_ok, under_tf)
+                    } else {
+                        built
+                    };
                     let built = if paint_last_ok(e, &nodes[idx + 1..]) {
                         gpui::PaintLast::new(built).key(paint_key).into_any_element()
                     } else {
