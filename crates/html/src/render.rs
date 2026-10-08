@@ -9186,7 +9186,11 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // (`out-of-flow-in-multicolumn-029`: `fixed` внутри абсолюта
             // внутри трансформа). Родитель-трансформ держит его на месте.
             let tf_fixed = e.style.position == Some(crate::computed::Position::Fixed) && under_tf;
-            let far_fixed = tf_fixed && !fixed_cb_layer_box(inherited) && (x_set || y_set);
+            // Без заданных сторон — тоже: на месте раскладка разрешила бы
+            // проценты размеров от РОДИТЕЛЯ (`width: 100%` у абсолютного
+            // родителя нулевой ширины, `out-of-flow-in-multicolumn-044`), а
+            // статическую позицию по обеим осям даёт щуп.
+            let far_fixed = tf_fixed && !fixed_cb_layer_box(inherited);
             let far_abs = !tf_fixed
                 && abs_like
                 && inherited.cb_ancestor
@@ -10320,7 +10324,10 @@ fn z_index_applies(c: &Computed, parent: &Computed) -> bool {
 /// Коробка — содержащий блок и для `position: fixed`: тот же список, что
 /// барьер `under_tf` (`inline::inherit`, `transform_ancestor`).
 fn fixed_cb_layer_box(c: &Computed) -> bool {
-    c.transform.is_some()
+    // css-transforms-2 §backface-visibility: `hidden` у участника 3D-контекста
+    // — содержащий блок для всех потомков (`backface-visibility-hidden-004`).
+    (c.backface_hidden == Some(true) && c.transform_ancestor)
+        || c.transform.is_some()
         || c.preserve_3d == Some(true)
         || c.contain_layout == Some(true)
         || c.contain_paint == Some(true)
