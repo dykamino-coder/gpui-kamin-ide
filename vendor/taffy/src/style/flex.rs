@@ -116,6 +116,12 @@ pub trait FlexboxItemStyle: CoreStyle {
     fn is_table_item(&self) -> bool {
         false
     }
+    /// KaminIDE patch: `max-width`/`max-height: min-content | max-content`
+    /// (css-sizing-3 §3.2), measured by the flex container.
+    #[inline(always)]
+    fn max_size_keywords(&self) -> crate::geometry::Size<Option<crate::style::AvailableSpace>> {
+        crate::geometry::Size { width: None, height: None }
+    }
 }
 
 use crate::geometry::AbsoluteAxis;

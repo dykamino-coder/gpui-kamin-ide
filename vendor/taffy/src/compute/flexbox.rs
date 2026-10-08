@@ -608,6 +608,69 @@ fn compute_preliminary(
         }
     }
 
+    // KaminIDE patch: `max-width`/`max-height: min-content | max-content` on a
+    // flex item (css-sizing-3 §3.2: as a maximum size the keyword is the box's
+    // min-/max-content size in that axis). `maybe_resolve` treats a keyword as
+    // `none`, so the limit was lost (`flex-item-max-height-min-content`,
+    // `flex-item-max-width-min-content`). The block axis has a single content
+    // size at the item's width: a known width, or the stretched line width of a
+    // column container.
+    for item in flex_items.iter_mut() {
+        let keywords = tree.get_flexbox_child_style(item.node).max_size_keywords();
+        let (kw_w, kw_h) = (keywords.width, keywords.height);
+        if kw_w.is_none() && kw_h.is_none() {
+            continue;
+        }
+        let stretched_width = (constants.is_column
+            && item.align_self.keyword == AlignItemsKeyword::Stretch
+            && !item.margin_is_auto.left
+            && !item.margin_is_auto.right)
+            .then(|| constants.node_inner_size.width.maybe_sub(item.margin.horizontal_axis_sum()))
+            .flatten();
+        if let Some(space) = kw_w {
+            let width = tree.measure_child_size(
+                item.node,
+                Size { width: None, height: item.size.height },
+                constants.node_inner_size,
+                Size {
+                    width: space,
+                    height: constants
+                        .node_inner_size
+                        .height
+                        .map(AvailableSpace::Definite)
+                        .unwrap_or(AvailableSpace::MaxContent),
+                },
+                SizingMode::ContentSize,
+                crate::geometry::AbsoluteAxis::Horizontal,
+                Line::FALSE,
+            );
+            item.max_size.width = Some(width);
+        }
+        if kw_h.is_some() {
+            let known_width = item
+                .size
+                .width
+                .or(stretched_width)
+                .map(|w| w.maybe_min(item.max_size.width).maybe_max(item.min_size.width));
+            let height = tree.measure_child_size(
+                item.node,
+                Size { width: known_width, height: None },
+                constants.node_inner_size,
+                Size {
+                    width: known_width
+                        .or(constants.node_inner_size.width)
+                        .map(AvailableSpace::Definite)
+                        .unwrap_or(AvailableSpace::MaxContent),
+                    height: AvailableSpace::MaxContent,
+                },
+                SizingMode::ContentSize,
+                crate::geometry::AbsoluteAxis::Vertical,
+                Line::FALSE,
+            );
+            item.max_size.height = Some(height);
+        }
+    }
+
     // 9.2. Line Length Determination
 
     // 2. Determine the available main and cross space for the flex items
@@ -995,11 +1058,28 @@ fn compute_constants(
             .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
             .maybe_apply_aspect_ratio(aspect_ratio)
             .maybe_add(box_sizing_adjustment),
-        max_size: style
-            .max_size()
-            .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
-            .maybe_apply_aspect_ratio(aspect_ratio)
-            .maybe_add(box_sizing_adjustment),
+        max_size: {
+            let max_size = style
+                .max_size()
+                .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
+                .maybe_apply_aspect_ratio(aspect_ratio)
+                .maybe_add(box_sizing_adjustment);
+            // KaminIDE patch: a table box is never narrower than its grid
+            // (css-tables-3 §3.9 "the used min-width of a table is the greater
+            // of the resolved min-width, CAPMIN, and GRIDMIN"; the GRIDMIN floor
+            // beats `max-width`). Its known size already carries that floor
+            // (the flex parent's `is_table_item` floor or the own-width floor in
+            // `compute_flexbox_layout`), so the container clamp below must not
+            // pull it back to `max-width` (`table-as-item-auto-min-width`).
+            if style.is_table_container() {
+                Size {
+                    width: max_size.width.map(|m| known_dimensions.width.map_or(m, |k| m.max(k))),
+                    height: max_size.height.map(|m| known_dimensions.height.map_or(m, |k| m.max(k))),
+                }
+            } else {
+                max_size
+            }
+        },
         margin,
         border,
         gap,

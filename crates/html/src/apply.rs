@@ -1251,6 +1251,29 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     if matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed)) {
         d.style().sizing_keywords = Some(intrinsic_size::keywords(c));
     }
+    // `max-width`/`max-height: min-content | max-content` у ГИБКОГО ЭЛЕМЕНТА
+    // (css-sizing-3 §3.2: the keyword «as a maximum size» — the box's
+    // min-/max-content size in that axis). Длиной ключевое слово не
+    // выражается, и цикл ниже его пропускал: предел терялся вовсе
+    // (`flex-item-max-height-min-content`, `flex-item-max-width-min-content`).
+    // Раскладка гибкого контейнера меряет его сама (taffy `flexbox.rs`).
+    // Только когда предпочтительный размер оси не в точках: такую пару уже
+    // переставили (`content_limit_swapped`) или сделали пределом ниже.
+    if c.flex_item {
+        let kw = |l: Option<Len>| match l {
+            Some(Len::MinContent) => Some(gpui::CssSizingKeyword::MinContent),
+            Some(Len::MaxContent) => Some(gpui::CssSizingKeyword::MaxContent),
+            _ => None,
+        };
+        let px_size = |l: Option<Len>| matches!(l, Some(Len::Px(_)));
+        let keys = [
+            kw(c.max_width).filter(|_| !px_size(c.width)),
+            kw(c.max_height).filter(|_| !px_size(c.height)),
+        ];
+        if keys.iter().any(Option::is_some) {
+            d.style().max_sizing_keywords = Some(keys);
+        }
+    }
     for (val, f) in [
         (natural_fit.map(|f| Len::Px(f.0)).or(c.width), 0u8),
         (natural_fit.map(|f| Len::Px(f.1)).or(c.height), 1),

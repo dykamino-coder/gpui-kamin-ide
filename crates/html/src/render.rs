@@ -8506,14 +8506,34 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     // соседями. Здесь его достаточно переставить в конец: место он берёт не
     // из потока (в раскладку сетки такой ребёнок не входит), поэтому
     // перестановка меняет только краску.
+    // Вынесенный абсолют всё же РВЁТ прогон текста: каждая непрерывная
+    // последовательность текстовых детей — свой анонимный элемент
+    // (css-flexbox-1 §4, css-grid-2 §6.1), а абсолютный ребёнок в неё не
+    // входит. После перестановки куски «Two » и «lines» оказывались соседями
+    // и склеивались в один абзац (`anonymous-flex-item-004`,
+    // `anonymous-grid-item-001`). `run_breaks` — индексы в новом списке, перед
+    // которыми накопленный абзац закрывается.
+    let mut run_breaks: Vec<usize> = vec![];
     let collapsed: Vec<Node> = if ordered_context {
-        let (flow, over): (Vec<Node>, Vec<Node>) = collapsed.into_iter().partition(|n| match n {
+        let in_flow = |n: &Node| match n {
             Node::Element(e) => {
                 e.style.position != Some(crate::computed::Position::Absolute)
                     || e.style.z_index.is_some_and(|z| z < 0)
             }
             Node::Text(_) => true,
-        });
+        };
+        let mut flow: Vec<Node> = vec![];
+        let mut over: Vec<Node> = vec![];
+        for n in collapsed {
+            if in_flow(&n) {
+                flow.push(n);
+            } else {
+                if run_breaks.last() != Some(&flow.len()) {
+                    run_breaks.push(flow.len());
+                }
+                over.push(n);
+            }
+        }
         flow.into_iter().chain(over).collect()
     } else {
         collapsed
@@ -8545,6 +8565,10 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     crate::interact::late_open();
     let nodes = collapsed.as_slice();
     for (idx, n) in nodes.iter().enumerate() {
+        if run_breaks.contains(&idx) && !pending.is_empty() {
+            let taken = std::mem::take(&mut pending);
+            out.push(paint_inline_step7(paragraph_probed(&taken, inherited, opts)));
+        }
         let is_inline = match n {
             // Пробельный узел между инлайн-соседями — часть строки, а не
             // разрыв: `<button>A</button> <button>B</button>` в разметке с
@@ -9886,6 +9910,50 @@ fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
     });
     if !ordered {
         return nodes;
+    }
+    // Анонимный элемент — непрерывный прогон текста В ПОРЯДКЕ РАЗМЕТКИ
+    // (css-flexbox-1 §4), и `order` переставляет уже готовые элементы. После
+    // сортировки прогоны «a a» и «b b» по обе стороны от `order: 1`
+    // становились соседями и склеивались в один абзац
+    // (`flexbox-anonymous-items-001`). Поэтому при двух и более непустых
+    // прогонах каждый заворачивается в свой анонимный блок заранее.
+    let blank = |t: &str| blank_text(t);
+    let mut runs: Vec<Vec<Node>> = vec![];
+    let mut cur: Vec<Node> = vec![];
+    let mut rest: Vec<(usize, Node)> = vec![];
+    for n in nodes.drain(..) {
+        match n {
+            Node::Text(_) => cur.push(n),
+            other => {
+                if !cur.is_empty() {
+                    runs.push(std::mem::take(&mut cur));
+                    rest.push((usize::MAX, Node::Text(String::new())));
+                }
+                rest.push((0, other));
+            }
+        }
+    }
+    if !cur.is_empty() {
+        runs.push(cur);
+        rest.push((usize::MAX, Node::Text(String::new())));
+    }
+    let solid = runs
+        .iter()
+        .filter(|r| r.iter().any(|n| matches!(n, Node::Text(t) if !blank(t))))
+        .count();
+    let mut run_iter = runs.into_iter();
+    for (tag, n) in rest {
+        if tag != usize::MAX {
+            nodes.push(n);
+            continue;
+        }
+        let run = run_iter.next().unwrap_or_default();
+        let has_text = run.iter().any(|n| matches!(n, Node::Text(t) if !blank(t)));
+        if solid >= 2 && has_text {
+            nodes.push(Node::Element(anon_element("div", run)));
+        } else {
+            nodes.extend(run);
+        }
     }
     // css-flexbox-1 §5.4 (и css-grid-2 §9.1 по ссылке): «Absolutely-
     // positioned children of a flex container are treated as having
