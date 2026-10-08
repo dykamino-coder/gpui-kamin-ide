@@ -12186,7 +12186,9 @@ fn band_piece(n: &Node) -> Option<BandPiece> {
     if matches!(
         c.style.display,
         Some(Display::InlineBlock) | Some(Display::InlineFlex)
-    ) {
+    ) || (c.tag == "img" && inline_level(c)) {
+        // CSS 2 section 9.5: a replaced inline participates in the shortened
+        // line and moves below floats when its entire box cannot fit.
         return sized.then_some(BandPiece::Atom);
     }
     if own_context(c) {
@@ -12852,9 +12854,16 @@ fn band_atom(c: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<cra
     let merged = inline::inherit(inherited, &c.style);
     let mut inner = c.clone();
     inner.style.margin = crate::computed::Sides::default();
-    let built = styled_div_with(&inner, &merged)
-        .children(blocks(&inner.children, &merged, opts))
-        .into_any_element();
+    let built = if inner.tag == "img" {
+        image_with(
+            &with_inherited_font(&inner, inherited),
+            Some(atom_base_font(inherited, opts)),
+        )
+    } else {
+        styled_div_with(&inner, &merged)
+            .children(blocks(&inner.children, &merged, opts))
+            .into_any_element()
+    };
     let el = if px_margin_box(&inner.style) == Some((w, h)) {
         built
     } else {
@@ -20722,16 +20731,12 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                 let inline_box = matches!(
                     c.style.display,
                     Some(Display::InlineBlock) | Some(Display::InlineFlex)
-                );
+                ) || (c.tag == "img" && inline_level(c));
                 // Размер атома — MARGIN-box: эталон
                 // `floats-wrap-top-below-003l-ref` держится на
                 // `margin-top: 25px; margin-right: 250px` у второй коробки, а
                 // без полей она встаёт вплотную и уезжает на 25 точек вверх.
                 let dims = px_margin_box(&c.style);
-                let (ml, mt) = (
-                    px_margin(&c.style.margin.left).unwrap_or(0.0),
-                    px_margin(&c.style.margin.top).unwrap_or(0.0),
-                );
                 // Пустая коробка без размеров — разделитель разметки
                 // (незакрытый div в хвосте) — просто пропускается.
                 let empty = !inline_box
@@ -20745,31 +20750,7 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                 }
                 match (inline_box, dims) {
                     (true, Some((w, h))) if w > 0.0 && h > 0.0 => {
-                        let merged = inline::inherit(inherited, &c.style);
-                        let mut inner = c.clone();
-                        // Поля кладёт СЛОТ, а не сама коробка: `FlowRow`
-                        // раскладывает ребёнка `layout_as_root` с
-                        // ОПРЕДЕЛЁННЫМ размером (`flow.rs:256-263`), и поле,
-                        // оставленное на элементе, вынесло бы его за слот —
-                        // margin-box уехал бы дважды.
-                        inner.style.margin = crate::computed::Sides::default();
-                        let built = styled_div_with(&inner, &merged)
-                            .children(blocks(&inner.children, &merged, opts))
-                            .into_any_element();
-                        // Полей нет — слот совпадает с коробкой, лишнего узла
-                        // в дереве не появляется (71 зелёная пара css-shapes
-                        // идёт прежним деревом).
-                        let el = if px_margin_box(&inner.style) == Some((w, h)) {
-                            built
-                        } else {
-                            div()
-                                .relative()
-                                .w(px(w))
-                                .h(px(h))
-                                .child(div().absolute().left(px(ml)).top(px(mt)).child(built))
-                                .into_any_element()
-                        };
-                        atoms.push(crate::flow::FlowChild { el, w, h });
+                        atoms.push(band_atom(c, inherited, opts).unwrap());
                     }
                     _ => {
                         atoms_ok = false;
