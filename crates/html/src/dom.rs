@@ -1631,8 +1631,8 @@ fn collect_style_tags(handle: &Handle, out: &mut Vec<String>) {
                     .strip_prefix("<![CDATA[")
                     .and_then(|rest| rest.strip_suffix("]]>"))
                     .unwrap_or(&text);
+                // Preserve child text content: an invented LF makes EOF strings invalid.
                 sheet.push_str(body);
-                sheet.push('\n');
             }
         }
         out.push(sheet);

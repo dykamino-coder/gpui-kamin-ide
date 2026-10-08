@@ -42,6 +42,8 @@ mod table_border_widths;
 mod replaced_used_style;
 mod replaced_holder_ratio;
 mod replaced_content;
+mod svg_percentage_size;
+mod available_width;
 use replaced_content::svg_replaced;
 mod ratio_basis;
 pub(crate) mod absolute_overflow;
@@ -7500,59 +7502,6 @@ impl Drop for AvailWGuard {
     }
 }
 
-/// Внутренняя (content-box) ширина `st` для его блочных детей; `outer` — ширина,
-/// доступная самому `st` как блочному ребёнку своего родителя.
-fn avail_inner(st: &Computed, outer: Option<f32>) -> Option<f32> {
-    // Доли полей и отступов — от ширины содержащего блока (CSS 2.1 §8.3,
-    // §8.4), то есть от `outer`. Прежде доля роняла всю цепочку в `None`, и
-    // у детей процентные отступы считались от случайной базы
-    // (`padding-percentage-inherit-001`: 6 точек вместо 30).
-    let side = |l: Option<Len>| match l {
-        None | Some(Len::Auto) => Some(0.0),
-        Some(Len::Px(v)) => Some(v),
-        Some(Len::Pct(k)) => outer.map(|o| k * o),
-        _ => None,
-    };
-    match st.display {
-        // Коробки нет — дети живут в потоке родителя.
-        Some(Display::Contents) => return outer,
-        None | Some(Display::Block) | Some(Display::ListItem) => {}
-        _ => return None,
-    }
-    if st.vertical == Some(true) || st.column_count.is_some() || st.column_width.is_some() {
-        return None;
-    }
-    let b = st.borders();
-    let pb = side(st.padding.left)? + side(st.padding.right)? + side(b.left)? + side(b.right)?;
-    let bb = st.border_box == Some(true);
-    let w = match st.width {
-        Some(Len::Px(w)) => {
-            if bb {
-                w - pb
-            } else {
-                w
-            }
-        }
-        None | Some(Len::Auto) => {
-            if st.float.is_some_and(|f| f != 0)
-                || matches!(
-                    st.position,
-                    Some(crate::computed::Position::Absolute)
-                        | Some(crate::computed::Position::Fixed)
-                )
-            {
-                return None;
-            }
-            let w = outer? - side(st.margin.left)? - side(st.margin.right)? - pb;
-            match st.max_width {
-                Some(Len::Px(m)) => w.min(if bb { m - pb } else { m }),
-                _ => w,
-            }
-        }
-        _ => return None,
-    };
-    (w > 0.0).then_some(w)
-}
 
 // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): разворачивать `text-emphasis` в поштучные
 // руби (по знаку-аннотации над каждой буквой базы, кроме пробелов и
@@ -7573,7 +7522,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     let _cb_guard = scopeguard_cb(cb_prev);
     // Доступная ширина блочных детей этого уровня (см. `AVAIL_W`).
     let avail_prev = AVAIL_W.get();
-    AVAIL_W.set(avail_inner(inherited, avail_prev));
+    AVAIL_W.set(available_width::inner(inherited, avail_prev));
     let _avail_guard = AvailWGuard(avail_prev);
     // `content-visibility: hidden`: содержимое пропускается целиком
     // (css-contain-2 §4) — коробка остаётся, детей нет.
@@ -8167,6 +8116,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             _ => 0,
         })
     }));
+    let collapsed = replaced_used_style::inline_nodes(collapsed, AVAIL_W.get());
     let collapsed = by_layer(
         wrap_floats(
             collapsed,
@@ -12367,7 +12317,9 @@ fn band_piece(n: &Node) -> Option<BandPiece> {
     if matches!(
         c.style.display,
         Some(Display::InlineBlock) | Some(Display::InlineFlex)
-    ) {
+    ) || (c.tag == "img" && inline_level(c)) {
+        // CSS 2 section 9.5: a replaced inline participates in the shortened
+        // line and moves below floats when its entire box cannot fit.
         return sized.then_some(BandPiece::Atom);
     }
     if own_context(c) {
@@ -13033,9 +12985,16 @@ fn band_atom(c: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<cra
     let merged = inline::inherit(inherited, &c.style);
     let mut inner = c.clone();
     inner.style.margin = crate::computed::Sides::default();
-    let built = styled_div_with(&inner, &merged)
-        .children(blocks(&inner.children, &merged, opts))
-        .into_any_element();
+    let built = if inner.tag == "img" {
+        image_with(
+            &with_inherited_font(&inner, inherited),
+            Some(atom_base_font(inherited, opts)),
+        )
+    } else {
+        styled_div_with(&inner, &merged)
+            .children(blocks(&inner.children, &merged, opts))
+            .into_any_element()
+    };
     let el = if px_margin_box(&inner.style) == Some((w, h)) {
         built
     } else {
@@ -17489,6 +17448,8 @@ fn paragraph_pieces_routed(
     let flow_text = has_flow_text(nodes);
     let mut atom = |e: &Element| -> Option<inline::Piece> {
         let in_inline_cb = crate::inline::take_atom_cb();
+        let svg_sized = svg_percentage_size::resolve(e, inherited);
+        let e = svg_sized.as_ref().unwrap_or(e);
         // Абсолютный элемент на статической позиции ВНУТРИ строки — кусок вне
         // потока: место в строке он не занимает, поэтому абзац остаётся
         // текстовым и не теряет пробелы (`line-breaking-018`).
@@ -18719,6 +18680,8 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
 }
 
 fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
+    let svg_sized = svg_percentage_size::resolve(e, inherited);
+    let e = svg_sized.as_ref().unwrap_or(e);
     // Строчный атом — независимый контекст форматирования: строки внутри
     // `inline-block` в бюджет `line-clamp` не входят (css-overflow-4 §5.3),
     // иначе строка атома считалась ВТОРОЙ поверх строки абзаца
@@ -19125,6 +19088,7 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
     match e.tag.as_str() {
         "img" => {
             let mut copy = with_inherited_font(&pct_height_to_px(e, inherited), inherited);
+            replaced_used_style::inline_percentage_width(&mut copy.style, AVAIL_W.get());
             // Держатель картинки строится из СЫРОГО стиля (`image_with` →
             // `styled_div`), а признак определённого блока (CSS 2.1 §10.5)
             // ставит только `inline::inherit`: без переноса `apply` выбрасывал
@@ -20952,16 +20916,12 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                 let inline_box = matches!(
                     c.style.display,
                     Some(Display::InlineBlock) | Some(Display::InlineFlex)
-                );
+                ) || (c.tag == "img" && inline_level(c));
                 // Размер атома — MARGIN-box: эталон
                 // `floats-wrap-top-below-003l-ref` держится на
                 // `margin-top: 25px; margin-right: 250px` у второй коробки, а
                 // без полей она встаёт вплотную и уезжает на 25 точек вверх.
                 let dims = px_margin_box(&c.style);
-                let (ml, mt) = (
-                    px_margin(&c.style.margin.left).unwrap_or(0.0),
-                    px_margin(&c.style.margin.top).unwrap_or(0.0),
-                );
                 // Пустая коробка без размеров — разделитель разметки
                 // (незакрытый div в хвосте) — просто пропускается.
                 let empty = !inline_box
@@ -20975,31 +20935,7 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                 }
                 match (inline_box, dims) {
                     (true, Some((w, h))) if w > 0.0 && h > 0.0 => {
-                        let merged = inline::inherit(inherited, &c.style);
-                        let mut inner = c.clone();
-                        // Поля кладёт СЛОТ, а не сама коробка: `FlowRow`
-                        // раскладывает ребёнка `layout_as_root` с
-                        // ОПРЕДЕЛЁННЫМ размером (`flow.rs:256-263`), и поле,
-                        // оставленное на элементе, вынесло бы его за слот —
-                        // margin-box уехал бы дважды.
-                        inner.style.margin = crate::computed::Sides::default();
-                        let built = styled_div_with(&inner, &merged)
-                            .children(blocks(&inner.children, &merged, opts))
-                            .into_any_element();
-                        // Полей нет — слот совпадает с коробкой, лишнего узла
-                        // в дереве не появляется (71 зелёная пара css-shapes
-                        // идёт прежним деревом).
-                        let el = if px_margin_box(&inner.style) == Some((w, h)) {
-                            built
-                        } else {
-                            div()
-                                .relative()
-                                .w(px(w))
-                                .h(px(h))
-                                .child(div().absolute().left(px(ml)).top(px(mt)).child(built))
-                                .into_any_element()
-                        };
-                        atoms.push(crate::flow::FlowChild { el, w, h });
+                        atoms.push(band_atom(c, inherited, opts).unwrap());
                     }
                     _ => {
                         atoms_ok = false;
@@ -22120,6 +22056,8 @@ fn bake_frozen(e: &Element, transforms: bool) -> Option<Element> {
 
 /// Блочный элемент.
 fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+    let svg_sized = svg_percentage_size::resolve(e, inherited);
+    let e = svg_sized.as_ref().unwrap_or(e);
     // Высота ряда от внешней колонки — только ЭТОМУ элементу (`flow::OUTER_ROW`).
     let outer_row = crate::flow::take_outer_row();
     let mut merged = inline::inherit(inherited, &e.style);
@@ -22339,6 +22277,9 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // (`c43-rpl-bbx-002`). CSS 2.1 §4.3.2: `em` — вычисленный кегль
             // САМОГО элемента, его и даёт `resolve_em` от кегля родителя.
             let mut copy = with_inherited_font(&pct_height_to_px(e, inherited), inherited);
+            if inline_level(e) {
+                replaced_used_style::inline_percentage_width(&mut copy.style, AVAIL_W.get());
+            }
             copy.style.image_orient_none = merged.image_orient_none;
             // Признак определённого блока (§10.5) — от слитого стиля: держатель
             // строится из сырого, и `apply` иначе выбрасывал `height: %`
