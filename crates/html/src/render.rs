@@ -21724,6 +21724,17 @@ fn flattens_3d(c: &Computed) -> bool {
 }
 
 fn transformed(el: AnyElement, c: &Computed, parent: &Computed) -> AnyElement {
+    transformed_with(el, c, parent, None)
+}
+
+/// `transformed` with a shared reference box (`interact::Transformed::ref_box`):
+/// a table row or row group transform spread over its cells.
+fn transformed_with(
+    el: AnyElement,
+    c: &Computed,
+    parent: &Computed,
+    ref_box: Option<crate::interact::RefBox>,
+) -> AnyElement {
     // `transform: inherit` / `transform-origin: inherit` (css-cascade-4
     // §inherit: «the property's specified and computed values are the
     // inherited value»). Разбор ставит только бит (computed.rs:6535), а
@@ -21768,6 +21779,7 @@ fn transformed(el: AnyElement, c: &Computed, parent: &Computed) -> AnyElement {
         return el;
     }
     let mut wrapper = crate::interact::Transformed::new(el);
+    wrapper.ref_box = ref_box;
     wrapper.under_3d = under_3d;
     wrapper.frame_3d = if keeps_3d { c.frame_3d.clone() } else { None };
     // Перспектива РОДИТЕЛЯ читается объёмным путём (css-transforms-2
@@ -27163,8 +27175,12 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // Алгоритм тот же, что у авторазмещения сетки: занятые клетки
     // пропускаются.
     let mut occupied: Vec<u16> = vec![0; cols as usize];
+    let mut group_refs: std::collections::HashMap<u64, crate::interact::RefBox> =
+        std::collections::HashMap::new();
+    let tbl_style: &Computed = inherited;
     for (row, carry) in rows {
         row_ix += 1;
+        let row_ref: crate::interact::RefBox = Default::default();
         for slot in occupied.iter_mut() {
             *slot = slot.saturating_sub(1);
         }
@@ -28416,9 +28432,9 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // переходит на каждую ячейку; поворот/масштаб ряда требует его
             // коробки и пока не применяется.
             let mut built = d.children(inside).into_any_element();
-            if cell.style.transform.is_some() {
-                built = transformed(built, &cell.style, &row_style);
-            }
+            // Also without own transform: a `preserve-3d` cell or one under a
+            // 3D row needs its wrapper for the context chain.
+            built = transformed(built, &cell.style, &row_style);
             let pure_shift = |t: &crate::computed::Transform| {
                 !t.has_3d
                     && t.lin == [[1.0, 0.0], [0.0, 1.0]]
@@ -28427,13 +28443,30 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     && t.tr[1][1] == 0.0
                     && t.tr[1][2] == 0.0
             };
-            if row.style.transform.as_ref().is_some_and(pure_shift) {
-                built = transformed(built, &row.style, inherited);
-            }
-            if let Some(g) = carry.3
-                && g.style.transform.as_ref().is_some_and(pure_shift)
-            {
-                built = transformed(built, &g.style, inherited);
+            // Any other row/group transform resolves its origin and
+            // percentages against the row/group box: the union of its cells'
+            // boxes, shared by their wrappers (`interact::Transformed::ref_box`;
+            // `transform-transformed-tr-contains-fixed-position`: `rotate(45deg)`
+            // with `transform-origin: left` on the `<tr>`).
+            // The wrappers also carry a `preserve-3d` chain through the
+            // row and group (css-transforms-2 §3d-rendering-context:
+            // `transform-table-009/011`); without transform, perspective or
+            // 3D context `transformed_with` returns the cell unchanged.
+            let rb = row
+                .style
+                .transform
+                .as_ref()
+                .is_some_and(|t| !pure_shift(t))
+                .then(|| row_ref.clone());
+            built = transformed_with(built, &row.style, inherited, rb);
+            if let Some(g) = carry.3 {
+                let rb = g
+                    .style
+                    .transform
+                    .as_ref()
+                    .is_some_and(|t| !pure_shift(t))
+                    .then(|| group_refs.entry(g.node_id).or_default().clone());
+                built = transformed_with(built, &g.style, tbl_style, rb);
             }
             if paint_layers && cell_paints_over(&cell.children, 24) {
                 cells_over.push(built);
@@ -28477,6 +28510,10 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 .flex_col()
                 .children(blocks(&cap.children, &cm, opts))
                 .into_any_element();
+            // A caption is a transformable block box (css-transforms-1
+            // §transformable-element); its `transform` was dropped
+            // (`transform-transformed-caption-contains-fixed-position`).
+            let built = transformed(built, &cap.style, inherited);
             // ВСЕ подписи, а не первая. Прежний `break` ронял вторую целиком:
             // у таблицы с верхней И нижней подписью рисовалась только верхняя
             // (`table-border-002/003/004`, снимок `table-border-004`: зелёное

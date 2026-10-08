@@ -1205,7 +1205,15 @@ pub struct Transformed {
     /// отрисовке округляет края от него (`layout_origin_unrounded` доступен
     /// только до отрисовки).
     exact_origin: Option<gpui::Point<Pixels>>,
+    /// Reference box shared by the cells of a transformed table row or row
+    /// group (css-transforms-1 §transformable-element: the row has no box
+    /// of its own in our grid): every cell unions its unrounded box into it
+    /// on prepaint, and paint resolves origin/percentages against it.
+    pub ref_box: Option<RefBox>,
 }
+
+/// Union of unrounded boxes, filled on prepaint (see `Transformed::ref_box`).
+pub type RefBox = std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<Pixels>>>>;
 
 /// Сплющивание плоскости z=0 в аффинную матрицу экрана
 /// (css-transforms-2 §3d-transform-rendering).
@@ -1294,6 +1302,7 @@ impl Transformed {
             under_3d: None,
             placed: false,
             exact_origin: None,
+            ref_box: None,
         }
     }
 
@@ -1361,6 +1370,13 @@ impl Element for Transformed {
         // тот же механизм у `LatePlace`), края округляются на конечном месте.
         self.placed = false;
         self.exact_origin = Some(window.layout_origin_unrounded(*layout_id));
+        if let Some(r) = self.ref_box.as_ref() {
+            let own = gpui::Bounds {
+                origin: window.layout_origin_unrounded(*layout_id),
+                size: window.layout_size_unrounded(*layout_id),
+            };
+            r.set(Some(r.get().map_or(own, |u| u.union(&own))));
+        }
         if flat && self.perspective.is_none() {
             let size = window.layout_size_unrounded(*layout_id);
             if let Some((sx, sy)) =
@@ -1428,8 +1444,20 @@ impl Element for Transformed {
         // 0.4px от `translateY(50px)` (`transform-percent-*`).
         let exact = window.layout_size_unrounded(*layout_id);
         let (w, h) = (f32::from(exact.width), f32::from(exact.height));
-        let ox = w * self.origin.0 + self.origin_px.0.unwrap_or(0.0);
-        let oy = h * self.origin.1 + self.origin_px.1.unwrap_or(0.0);
+        // Reference box of a table row/row group spread over its cells
+        // (`ref_box`): origin and percentages resolve against it, offset
+        // from this cell's own box.
+        let (rw, rh, rdx, rdy) = match self.ref_box.as_ref().and_then(|r| r.get()) {
+            Some(r) => (
+                f32::from(r.size.width),
+                f32::from(r.size.height),
+                f32::from(r.origin.x - raw_origin.x),
+                f32::from(r.origin.y - raw_origin.y),
+            ),
+            None => (w, h, 0.0, 0.0),
+        };
+        let ox = rdx + rw * self.origin.0 + self.origin_px.0.unwrap_or(0.0);
+        let oy = rdy + rh * self.origin.1 + self.origin_px.1.unwrap_or(0.0);
         let origin = gpui::point(
             dev(f32::from(scaled_origin.x) + ox),
             dev(f32::from(scaled_origin.y) + oy),
@@ -1442,7 +1470,7 @@ impl Element for Transformed {
         // §transform-rendering), вокруг точки отсчёта: она уводится в ноль и
         // возвращается. Проценты сдвига считаются от собственного размера —
         // он известен только здесь, на отрисовке.
-        let shift = |row: [f32; 3]| (row[0] + w * row[1] + h * row[2]) * scale_factor;
+        let shift = |row: [f32; 3]| (row[0] + rw * row[1] + rh * row[2]) * scale_factor;
         // Изнанка (css-transforms-2 §backface-visibility): элемент разложен и
         // держит место, но не рисуется. m33 — из полной 4×4 самого элемента;
         // у плоских функций он равен 1, так что 2D-путь сюда не попадает.
@@ -1569,7 +1597,7 @@ impl Element for Transformed {
         // каждый объёмный элемент сжимался в 1/sf; scout-3d-2026-09b.md §1.)
         let mut own = self.m4;
         for i in 0..3 {
-            own[i][3] = (own[i][3] + w * self.m4_pct[i][0] + h * self.m4_pct[i][1]) * sf;
+            own[i][3] = (own[i][3] + rw * self.m4_pct[i][0] + rh * self.m4_pct[i][1]) * sf;
         }
         for j in 0..3 {
             own[3][j] /= sf;
