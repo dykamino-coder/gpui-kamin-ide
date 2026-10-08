@@ -39,6 +39,9 @@ fn tag_of(h: &Handle) -> String {
 
 /// Whether this node establishes a separate scope for this counter.
 fn instantiates(style: &Computed, h: &Handle, name: &str) -> bool {
+    if style.display == Some(Display::Contents) {
+        return false;
+    }
     if decl_has(&style.counter_reset, name) {
         return true;
     }
@@ -102,6 +105,9 @@ impl Scan<'_> {
     /// Шаг алгоритма для одного узла: сумма отрицаний увеличений, последний
     /// ненулевой шаг и обрыв на `counter-set`.
     fn step(&mut self, style: &Computed, is_item: bool) {
+        if style.display == Some(Display::Contents) {
+            return;
+        }
         let neg = match decl_value(&style.counter_increment, self.name, 1) {
             Some(v) => -v,
             // Неявный шаг пункта у обратного счётчика равен −1, значит его
@@ -133,7 +139,7 @@ impl Scan<'_> {
         };
         // Узел без коробки счётчиков не трогает (css-lists-3
         // §counters-without-boxes).
-        if style.display == Some(Display::None) {
+        if style.display == Some(Display::None) && style.col_role.is_none() {
             return;
         }
         if !root && instantiates(&style, h, self.name) {

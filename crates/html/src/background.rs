@@ -31,6 +31,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 mod exact_layer;
+mod tile_positions;
+#[cfg(test)]
+use tile_positions::tiling;
 
 type Cache = Mutex<HashMap<String, Option<Source>>>;
 static CACHE: OnceLock<Cache> = OnceLock::new();
@@ -2940,50 +2943,13 @@ pub fn paint_tiles(
     let clip = sampling::snapped_clip(canvas.unwrap_or(paint_box), window);
     let start = origin(pos, box_size, tile);
     let shift = (
-        f32::from(bounds.origin.x - clip.origin.x),
-        f32::from(bounds.origin.y - clip.origin.y),
+        f64::from(f32::from(bounds.origin.x)) - f64::from(f32::from(clip.origin.x)),
+        f64::from(f32::from(bounds.origin.y)) - f64::from(f32::from(clip.origin.y)),
     );
     let span = (f32::from(clip.size.width), f32::from(clip.size.height));
     // `space` раздаёт зазоры внутри ОБЛАСТИ ПОЗИЦИОНИРОВАНИЯ, а не по холсту
     // (css-backgrounds-3 §3.4), поэтому длина ему нужна своя.
-    let lay = |mode: Tiling, from: f32, tile: f32, shift: f32, own: f32, all: f32| {
-        if mode == Tiling::Space {
-            let base: Vec<f32> = tiling(mode, from, tile, own);
-            // За областью позиционирования плитки продолжаются с тем же
-            // шагом по всей области покраски (css-backgrounds-3 §3.4:
-            // «…continue to be repeated at the same spacing»), иначе под
-            // рамкой пусто (`background-repeat-space-8`).
-            let step = match base.as_slice() {
-                [a, b, ..] => b - a,
-                _ => tile,
-            };
-            let mut out: Vec<f32> = Vec::new();
-            if step > 0.0 {
-                let (first, last) = (base[0], base[base.len() - 1]);
-                let mut v = first - step;
-                let mut n = 0;
-                while v + tile > -shift && n < MAX_TILES as usize {
-                    out.push(v);
-                    v -= step;
-                    n += 1;
-                }
-                out.reverse();
-                out.extend(base.iter().copied());
-                let mut v = last + step;
-                let mut n = 0;
-                while v < all - shift && n < MAX_TILES as usize {
-                    out.push(v);
-                    v += step;
-                    n += 1;
-                }
-            } else {
-                out = base;
-            }
-            out.into_iter().map(|v| v + shift).collect()
-        } else {
-            tiling(mode, from + shift, tile, all)
-        }
-    };
+    let lay = tile_positions::axis;
     let mut xs = lay(
         repeat.axis(true),
         start.0,
@@ -3057,7 +3023,11 @@ pub fn paint_tiles(
     window.with_content_mask(Some(gpui::ContentMask { bounds: clip }), |window| {
         for y in &ys {
             for x in &xs {
-                let at = gpui::point(clip.origin.x + px(*x), clip.origin.y + px(*y));
+                // Reduce to Pixels only after cancelling the clip offset.
+                let at = gpui::point(
+                    px((f64::from(f32::from(clip.origin.x)) + x) as f32),
+                    px((f64::from(f32::from(clip.origin.y)) + y) as f32),
+                );
                 let cell = Bounds {
                     origin: at,
                     size: gpui::size(px(tile.0), px(tile.1)),
@@ -3082,39 +3052,6 @@ fn rounded(mode: Tiling, tile: f32, box_len: f32) -> f32 {
     box_len / count
 }
 
-/// Координаты плиток вдоль оси — по одной на каждую копию.
-///
-/// Возврат списком, а не парой «сколько и откуда»: при `space` плитки стоят
-/// НЕ через равные шаги в размер плитки, а через зазор, и одной формулой
-/// смещения их уже не описать.
-fn tiling(mode: Tiling, start: f32, tile: f32, box_len: f32) -> Vec<f32> {
-    let max = MAX_TILES;
-    match mode {
-        Tiling::None => vec![start],
-        // Зазоры раздаются между ЦЕЛЫМИ плитками, крайние прижаты к краям, а
-        // `background-position` вдоль этой оси не действует. Если целиком
-        // влезает меньше двух — плитка одна и смещение своё (§3.4).
-        Tiling::Space => {
-            let fit = (box_len / tile).floor();
-            if fit < 2.0 {
-                return vec![start];
-            }
-            let count = fit.min(max);
-            let gap = (box_len - count * tile) / (count - 1.0);
-            (0..count as u32).map(|i| i as f32 * (tile + gap)).collect()
-        }
-        // `round` уже подогнал размер плитки — дальше это обычная кладка.
-        Tiling::Repeat | Tiling::Round => {
-            // Начало сдвигается назад на целое число плиток, иначе смещение
-            // съедало бы первый ряд.
-            let back = (start / tile).ceil();
-            let first = start - back * tile;
-            let count = ((box_len - first) / tile).ceil().max(1.0).min(max);
-            (0..count as u32).map(|i| first + i as f32 * tile).collect()
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3127,7 +3064,7 @@ mod tests {
         let first = xs[0];
         assert!(first <= 0.0, "первая плитка начинается не правее коробки");
         assert!(
-            first + xs.len() as f32 * 20.0 >= 100.0,
+            first + xs.len() as f64 * 20.0 >= 100.0,
             "плитки обязаны закрыть коробку целиком"
         );
     }

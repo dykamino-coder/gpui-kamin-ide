@@ -48,6 +48,7 @@ pub fn compose_mask_layers(layers: &[MaskLayer], w: u32, h: u32) -> Option<Arc<R
         (h as f32 * density).round().max(1.0) as u32,
     );
     let (sx, sy) = (rw as f32 / w.max(1) as f32, rh as f32 / h.max(1) as f32);
+    let (target_w, target_h) = (w, h);
     let (w, h) = (rw, rh);
     let mut acc = vec![0.0f32; (w * h) as usize];
     let mut first = true;
@@ -107,5 +108,9 @@ pub fn compose_mask_layers(layers: &[MaskLayer], w: u32, h: u32) -> Option<Arc<R
         let v = (a * 255.0) as u8;
         bytes.extend_from_slice(&[v, v, v, v]);
     }
-    gpui::bgra_bytes_to_image(w, h, bytes)
+    let image = gpui::bgra_bytes_to_image(w, h, bytes)?;
+    // CSS Masking 1 §7.10.2: retain source resolution through all operators,
+    // then sample the complete mask once on the device grid, like a directly
+    // painted SVG with the same geometry. Round device coverage after sampling.
+    Some(super::alpha_sampling::resample(&image, target_w, target_h).unwrap_or(image))
 }
