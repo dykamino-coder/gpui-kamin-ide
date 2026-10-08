@@ -9,6 +9,7 @@ mod gradient_paint;
 mod font_kerning;
 mod image_color;
 mod radius_mask;
+mod border_color;
 mod radius_parse;
 pub(crate) use image_color::parse as parse_image_color;
 mod mask_size;
@@ -5107,16 +5108,7 @@ impl Computed {
                     return;
                 }
                 if list.len() == 1 {
-                    if v.eq_ignore_ascii_case("currentcolor") {
-                        self.border_color_is_current = true;
-                    } else {
-                        self.border_color = Color::parse(v);
-                    }
-                    // Общий цвет, записанный ПОЗЖЕ бокового сокращения,
-                    // перебивает его `currentColor` на всех сторонах.
-                    if self.border_color_is_current || self.border_color.is_some() {
-                        self.border_side_current = [false; 4];
-                    }
+                    self.apply_single_border_color(v);
                     return;
                 }
                 let colors: Vec<Option<Color>> =
