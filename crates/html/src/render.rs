@@ -301,7 +301,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     };
     let bw = c.borders();
     let mbp_y = side(bw.top) + side(bw.bottom) + side(c.padding.top) + side(c.padding.bottom);
-    if !multicol && e.style.clamp_auto == Some(true) && c.max_height.is_some() {
+    if !multicol && e.style.clamp_auto == Some(true) && auto_clamp_limit(c).is_some() {
         if let Some(cut) = crate::interact::clamp_cut(e.node_id).filter(|c| !sized && c.is_finite()) {
             d = d.max_h(px(cut + mbp_y));
         }
@@ -18576,12 +18576,19 @@ fn paragraph_pieces_routed(
             )
             .clamp_mark(inherited.clamp_mark.clone())
             .clamp_tag(clamp_tag)
-            .marker_color(Some(
+            // Знак обрыва — анонимный строчный ребёнок блока: и
+            // `visibility` у него блочная (css-overflow-3 §text-overflow,
+            // css-overflow-4 §block-ellipsis): у скрытого блока знака не
+            // видно, даже если кусок у среза `visible`
+            // (`text-overflow-ellipsis-002`, `webkit-line-clamp-035`).
+            .marker_color(Some(if inherited.hidden == Some(true) {
+                gpui::transparent_black()
+            } else {
                 inherited
                     .color
                     .map(crate::value::Color::to_hsla)
-                    .unwrap_or_else(gpui::black),
-            ))
+                    .unwrap_or_else(gpui::black)
+            }))
             .text_fit(inherited.text_fit)
             .fit_parts(
                 // Масштабируемы только интервалы в ДОЛЯХ кегля; `px` и `em`
@@ -25099,7 +25106,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // `auto`, §5.2; `styled_div_with` срез не ставит): без этого гейта
             // бюджет абзаца счётного режима поставил бы «…» (`line-clamp-039`).
             let is_clamp = (e.style.clamp_lines().is_some()
-                || (e.style.clamp_auto == Some(true) && merged.max_height.is_some()))
+                || (e.style.clamp_auto == Some(true) && auto_clamp_limit(&merged).is_some()))
                 && !multicol_container(&e.style);
             let _clamp_guard = is_clamp.then(|| crate::interact::ClampGuard::enter(e.node_id));
             let makes_bfc = matches!(
@@ -25204,6 +25211,20 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         None,
                         None,
                     ));
+                } else if !is_clamp
+                    && !skip
+                    && e.children.iter().all(is_blank)
+                    && !merged.float.is_some_and(|f| f != 0)
+                    && !matches!(
+                        merged.position,
+                        Some(crate::computed::Position::Absolute)
+                            | Some(crate::computed::Position::Fixed)
+                    )
+                    && matches!(merged.display, None | Some(Display::Block))
+                {
+                    kids.push(crate::interact::clamp_empty_probe(
+                        crate::interact::clamp_lines_for(key),
+                    ));
                 }
             }
             // Абсолютный потомок ищет ближайшего позиционированного предка
@@ -25260,10 +25281,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // `line-clamp: 4` и `-webkit-line-clamp` режут ТОЛЬКО по числу
                 // строк, а не влезшее в `max-height` переполняет коробку
                 // (`line-clamp-035`, `webkit-line-clamp-with-max-height`).
-                let max_h = match merged.max_height {
-                    Some(Len::Px(v)) if e.style.clamp_auto == Some(true) => {
-                        Some((v - bb_y).max(0.0))
-                    }
+                let max_h = match auto_clamp_limit(&merged) {
+                    Some(v) if e.style.clamp_auto == Some(true) => Some((v - bb_y).max(0.0)),
                     _ => None,
                 };
                 // `text-box-trim: trim-end` клампа: последняя строка перед
@@ -25294,6 +25313,25 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             crate::anchor::place(child, &merged, inherited)
         }
     }
+}
+
+/// Потолок блочного размера для `line-clamp: auto` (css-overflow-4
+/// §line-clamp, «auto clamp point»): размер, который коробка получила бы при
+/// БЕСКОНЕЧНОМ автоматическом размере — заданная `height`, ограниченная
+/// `max-height`, а без `height` — сам `max-height`; `min-height` поднимает
+/// результат (`line-clamp-auto-005`: `height: 4.5lh`; `-014`: максимум из
+/// `min-height` и `max-height`). Бесконечный размер — точки нет.
+fn auto_clamp_limit(m: &Computed) -> Option<f32> {
+    let px = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => Some(v),
+        _ => None,
+    };
+    let max_h = px(m.max_height);
+    let base = match px(m.height) {
+        Some(h) => Some(max_h.map_or(h, |mx| h.min(mx))),
+        None => max_h,
+    }?;
+    Some(px(m.min_height).map_or(base, |mn| base.max(mn)))
 }
 
 /// Картинка: `src` с `data:`-URI или путь. Внешние URL не грузим — документ
