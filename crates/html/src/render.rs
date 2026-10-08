@@ -42,6 +42,7 @@ mod table_border_widths;
 mod replaced_used_style;
 mod replaced_holder_ratio;
 mod replaced_content;
+mod svg_percentage_size;
 use replaced_content::svg_replaced;
 mod ratio_basis;
 pub(crate) mod absolute_overflow;
@@ -17351,6 +17352,8 @@ fn paragraph_pieces_routed(
     // НЕТ, все шесть 0.00) — гейт оставляет её на прежнем пути.
     let flow_text = has_flow_text(nodes);
     let mut atom = |e: &Element| -> Option<inline::Piece> {
+        let svg_sized = svg_percentage_size::resolve(e, inherited);
+        let e = svg_sized.as_ref().unwrap_or(e);
         // Абсолютный элемент на статической позиции ВНУТРИ строки — кусок вне
         // потока: место в строке он не занимает, поэтому абзац остаётся
         // текстовым и не теряет пробелы (`line-breaking-018`).
@@ -18571,6 +18574,8 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
 }
 
 fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
+    let svg_sized = svg_percentage_size::resolve(e, inherited);
+    let e = svg_sized.as_ref().unwrap_or(e);
     // Строчный атом — независимый контекст форматирования: строки внутри
     // `inline-block` в бюджет `line-clamp` не входят (css-overflow-4 §5.3),
     // иначе строка атома считалась ВТОРОЙ поверх строки абзаца
@@ -21942,6 +21947,8 @@ fn bake_frozen(e: &Element, transforms: bool) -> Option<Element> {
 
 /// Блочный элемент.
 fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+    let svg_sized = svg_percentage_size::resolve(e, inherited);
+    let e = svg_sized.as_ref().unwrap_or(e);
     // Высота ряда от внешней колонки — только ЭТОМУ элементу (`flow::OUTER_ROW`).
     let outer_row = crate::flow::take_outer_row();
     let mut merged = inline::inherit(inherited, &e.style);
