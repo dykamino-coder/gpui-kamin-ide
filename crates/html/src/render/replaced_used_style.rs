@@ -72,6 +72,63 @@ pub(super) fn normalize(element: &Element, containing_width: Option<f32>) -> Opt
     Some(normalized)
 }
 
+/// CSS 2 sections 10.2 and 10.3.2 resolve an inline replaced width against
+/// its containing block, before the synthetic line flex row is constructed.
+pub(super) fn inline_percentage_width(style: &mut crate::computed::Computed, basis: Option<f32>) {
+    let Some(Len::Pct(fraction)) = style.width else {
+        return;
+    };
+    let Some(basis) = basis.filter(|value| value.is_finite() && *value >= 0.0) else {
+        return;
+    };
+    if matches!(style.position, Some(Position::Absolute | Position::Fixed))
+        || style.float.is_some_and(|value| value != 0)
+    {
+        return;
+    }
+    style.width = Some(Len::Px(basis * fraction));
+    // CSS 2 section 10.3.2: auto horizontal margins on inline replaced
+    // boxes have a used value of zero, rather than centering a flex item.
+    for margin in [&mut style.margin.left, &mut style.margin.right] {
+        if *margin == Some(Len::Auto) {
+            *margin = Some(Len::Px(0.0));
+        }
+    }
+    // Margin and padding percentages retain the same CSS containing block
+    // after the percentage width becomes a definite size (CSS 2 sections 8.3-8.4).
+    for side in [
+        &mut style.padding.top,
+        &mut style.padding.right,
+        &mut style.padding.bottom,
+        &mut style.padding.left,
+        &mut style.margin.top,
+        &mut style.margin.right,
+        &mut style.margin.bottom,
+        &mut style.margin.left,
+    ] {
+        if let Some(Len::Pct(fraction)) = *side {
+            *side = Some(Len::Px(basis * fraction));
+        }
+    }
+}
+
+/// Freeze the CSS containing block before float adapters create flex wrappers.
+/// Their width is the remaining line window, not the percentage sizing basis.
+pub(super) fn inline_nodes(
+    mut nodes: Vec<crate::dom::Node>,
+    basis: Option<f32>,
+) -> Vec<crate::dom::Node> {
+    for node in &mut nodes {
+        if let crate::dom::Node::Element(element) = node
+            && element.tag == "img"
+            && super::inline_level(element)
+        {
+            inline_percentage_width(&mut element.style, basis);
+        }
+    }
+    nodes
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

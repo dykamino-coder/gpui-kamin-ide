@@ -11,6 +11,7 @@ use crate::value::Len;
 pub(super) fn resolve(element: &Element, parent: &Computed) -> Option<Element> {
     if element.tag != "svg"
         || element.style.position == Some(Position::Fixed)
+        || parent.inline_display == Some(true)
         || !matches!(
             parent.display,
             None | Some(Display::Block | Display::InlineBlock)
