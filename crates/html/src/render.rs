@@ -14227,7 +14227,31 @@ fn column_flow(
     count: Option<usize>,
     col_w: Option<f32>,
 ) -> Option<AnyElement> {
-    column_flow_in(e, inherited, opts, count, col_w, false)
+    // Линейки последней (единственной) линии колонок тянутся до низа
+    // содержимого коробки заданной высоты (Blink `PaintColumnRules`: «Paint
+    // column rules as tall as the entire multicol container, but only when at
+    // the last row»; `multicol-rule-004`: две строки в коробке 5em — линейка
+    // на все 5em). Высота содержимого — заданная `height` в точках.
+    let px = |l: &Option<Len>| match l {
+        None => Some(0.0),
+        Some(Len::Px(v)) => Some(*v),
+        _ => None,
+    };
+    let stretch = match inherited.height.or(e.style.height) {
+        Some(Len::Px(h)) if h > 0.0 => {
+            if e.style.border_box == Some(true) {
+                let b = e.style.borders();
+                (|| {
+                    Some(h - px(&e.style.padding.top)? - px(&e.style.padding.bottom)? - px(&b.top)? - px(&b.bottom)?)
+                })()
+            } else {
+                Some(h)
+            }
+        }
+        _ => None,
+    }
+    .filter(|h| *h > 0.0);
+    column_flow_in(e, inherited, opts, count, col_w, false, stretch)
 }
 
 /// `whole` — текст пришёл рекурсией из единственного ребёнка-МОНОЛИТА
@@ -14242,6 +14266,7 @@ fn column_flow_in(
     count: Option<usize>,
     col_w: Option<f32>,
     whole: bool,
+    stretch: Option<f32>,
 ) -> Option<AnyElement> {
     let all_inline = e.children.iter().all(|n| match n {
         Node::Text(_) => true,
@@ -14266,7 +14291,7 @@ fn column_flow_in(
             return None;
         }
         let inside = inline::inherit(inherited, &only.style);
-        return column_flow_in(only, &inside, opts, count, col_w, whole || size_monolith(only));
+        return column_flow_in(only, &inside, opts, count, col_w, whole || size_monolith(only), stretch);
     }
     // `<br>` — жёсткий разрыв: в собранном тексте он помечается U+2028,
     // замер режет по нему принудительно. В сырых узлах <br> текста не несёт,
@@ -14426,8 +14451,12 @@ fn column_flow_in(
             let n_cols = used.max(cuts.len() + 1);
             // §3.4 (11): `max(0, …)` — при промежутках шире коробки колонка нулевой
             // ширины, а не отрицательной (`multicol-gap-large-001`: 4 × 80 в 220).
+            // Переполняющие колонки (`column-fill: auto`, разрезов больше, чем
+            // колонок) ширину не делят: они той же ширины за краем коробки
+            // (css-multicol-1 §8.2).
+            let w_cols = if used > 0 { used } else { n_cols };
             let inner =
-                ((f32::from(width) - gap * (n_cols - 1) as f32) / n_cols as f32).max(0.0);
+                ((f32::from(width) - gap * (w_cols - 1) as f32) / w_cols as f32).max(0.0);
             // Линейка между колонками (`column-rule`, css-multicol §4):
             // абсолютный держатель по центру промежутка на всю высоту ряда —
             // линейка шире промежутка накрывает соседние колонки (rule-001),
@@ -14436,6 +14465,9 @@ fn column_flow_in(
             let rule = rule_owned.filter(|(w, _)| *w > 0.0);
             let mut row = div().flex().flex_row().w(width).gap_x(px(gap)).relative();
             if let Some((rw, color)) = rule {
+                if let Some(h) = stretch {
+                    row = row.min_h(px(h));
+                }
                 // css-multicol-1 §column-gaps-and-rules: «Column rules are only
                 // drawn between two columns that both have content» (Blink
                 // `PaintColumnRules` рисует между соседними column box, а их заводит
@@ -14462,7 +14494,7 @@ fn column_flow_in(
                 }
             }
             for part in parts.into_iter() {
-                row = row.child(div().w(px(inner)).flex().flex_col().children(blocks(
+                row = row.child(div().w(px(inner)).flex_shrink_0().flex().flex_col().children(blocks(
                     &part,
                     &inherited_owned,
                     &opts_owned,
@@ -14482,7 +14514,7 @@ fn column_flow_in(
             line,
             // `column-fill: auto` с заданной высотой: колонки заполняются
             // подряд до неё (css-multicol-1 §3.3).
-            match (e.style.column_fill_auto, e.style.height, inherited.max_height) {
+            match (e.style.column_fill_auto, inherited.height.or(e.style.height), inherited.max_height) {
                 (Some(true), Some(Len::Px(h)), _) if h > 0.0 => Some(h),
                 // Высота авто, но задан `max-height`: колонки заполняются подряд до
                 // него (css-multicol-1 §column-fill `auto`: «fill columns
