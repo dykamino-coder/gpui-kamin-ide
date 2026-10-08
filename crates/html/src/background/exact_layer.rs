@@ -20,7 +20,7 @@ thread_local! {
 
 /// The positioning box for `bounds`: the unrounded box when `bounds` is the
 /// snapped box of the layer being painted, otherwise `bounds` unchanged.
-pub(super) fn positioning(bounds: Bounds<Pixels>) -> Bounds<Pixels> {
+pub(crate) fn positioning(bounds: Bounds<Pixels>) -> Bounds<Pixels> {
     match EXACT.with(Cell::get) {
         Some((snapped, exact)) if snapped == bounds => exact,
         _ => bounds,
@@ -29,7 +29,7 @@ pub(super) fn positioning(bounds: Bounds<Pixels>) -> Bounds<Pixels> {
 
 type PaintFn = Box<dyn FnMut(Bounds<Pixels>, &mut Window)>;
 
-pub(super) struct ExactLayer {
+pub(crate) struct ExactLayer {
     child: Option<AnyElement>,
     paint: PaintFn,
     exact: Option<Bounds<Pixels>>,
@@ -44,6 +44,30 @@ impl ExactLayer {
                     .top_0()
                     .left_0()
                     .size_full()
+                    .into_any_element(),
+            ),
+            paint: Box::new(paint),
+            exact: None,
+        }
+    }
+}
+
+impl ExactLayer {
+    /// A layer laid out with the given `[top, right, bottom, left]` insets
+    /// from the parent's padding box (negative = outward), painting with the
+    /// unrounded box available through [`positioning`].
+    pub(crate) fn inset(
+        [t, r, b, l]: [f32; 4],
+        paint: impl FnMut(Bounds<Pixels>, &mut Window) + 'static,
+    ) -> Self {
+        Self {
+            child: Some(
+                gpui::div()
+                    .absolute()
+                    .top(px(t))
+                    .right(px(r))
+                    .bottom(px(b))
+                    .left(px(l))
                     .into_any_element(),
             ),
             paint: Box::new(paint),

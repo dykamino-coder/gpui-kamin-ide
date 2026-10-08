@@ -30,7 +30,7 @@ use gpui::{AnyElement, Bounds, IntoElement, Pixels, RenderImage, Styled, px};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
-mod exact_layer;
+pub(crate) mod exact_layer;
 mod tile_positions;
 #[cfg(test)]
 use tile_positions::tiling;

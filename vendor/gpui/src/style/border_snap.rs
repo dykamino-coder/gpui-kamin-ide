@@ -81,20 +81,30 @@ pub(super) fn paint(
         let max_border_width = border_widths.max();
         let max_corner_radius = corner_radii.max();
 
+        // KaminIDE patch: the four strips must not overlap. When a border
+        // (or radius) is at least half the box, the top and bottom strips
+        // (and the left and right ones) covered the same pixels, and a
+        // translucent ring was blended twice (a sharp `box-shadow` ring with
+        // `rgb(0 0 255 / 50%)` came out 75% blue; css-backgrounds-3 §7.1
+        // `box-shadow-multiple-001`). Clamping each strip at the box middle
+        // keeps the union equal to the box.
+        let band = max_border_width.max(max_corner_radius);
+        let mid_y = bounds.origin.y + bounds.size.height / 2.0;
+        let mid_x = bounds.origin.x + bounds.size.width / 2.0;
         let top_bounds = Bounds::from_corners(
             bounds.origin,
-            bounds.top_right() + point(Pixels::ZERO, max_border_width.max(max_corner_radius)),
+            point(bounds.right(), (bounds.origin.y + band).min(mid_y)),
         );
         let bottom_bounds = Bounds::from_corners(
-            bounds.bottom_left() - point(Pixels::ZERO, max_border_width.max(max_corner_radius)),
+            point(bounds.left(), (bounds.bottom() - band).max(top_bounds.bottom())),
             bounds.bottom_right(),
         );
         let left_bounds = Bounds::from_corners(
             top_bounds.bottom_left(),
-            bottom_bounds.origin + point(max_border_width, Pixels::ZERO),
+            point((bounds.left() + max_border_width).min(mid_x), bottom_bounds.top()),
         );
         let right_bounds = Bounds::from_corners(
-            top_bounds.bottom_right() - point(max_border_width, Pixels::ZERO),
+            point((bounds.right() - max_border_width).max(left_bounds.right()), top_bounds.bottom()),
             bottom_bounds.top_right(),
         );
 

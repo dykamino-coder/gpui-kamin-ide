@@ -2262,6 +2262,9 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
         d.style().inset_box_shadow = Some(
             c.inset_shadows
                 .iter()
+                // css-backgrounds-3 §7.1: «The first shadow is on top»; the
+                // list is painted bottom-up, so the last one goes first.
+                .rev()
                 // Резкую внутреннюю рисует слой-кольцо в декорациях: примитив
                 // с нулевым размытием вырождается в шейдере (как у внешней).
                 .filter(|s| s.blur > 0.0)
@@ -2285,6 +2288,8 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
         d = d.shadow(
             c.shadows
                 .iter()
+                // css-backgrounds-3 §7.1: the first shadow is on top.
+                .rev()
                 // Резкую тень (без размытия) рисует слой-квад в декорациях:
                 // примитив с нулевым размытием вырождается в шейдере.
                 .filter(|s| s.blur > 0.0)
