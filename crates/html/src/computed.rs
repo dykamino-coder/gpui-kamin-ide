@@ -5673,7 +5673,38 @@ impl Computed {
                 // и то же. Разбор тот же, что у отдельного свойства, иначе
                 // тест и эталон разойдутся механикой, а не раскладкой.
                 let mut pos: Vec<String> = vec![];
+                // `<bg-position> [ / <bg-size> ]?` (css-backgrounds-3 §3.10):
+                // the words after the slash are the SIZE. They used to fall
+                // into the position (`top left / 100% auto` positioned at
+                // `top left 100%`, size stayed auto — `background-334`).
+                let mut tokens: Vec<String> = vec![];
                 for token in split_outside_parens(v) {
+                    if token.contains('(') || !token.contains('/') {
+                        tokens.push(token);
+                        continue;
+                    }
+                    let (a, b) = token.split_once('/').unwrap_or((token.as_str(), ""));
+                    if !a.is_empty() {
+                        tokens.push(a.to_string());
+                    }
+                    tokens.push("/".to_string());
+                    if !b.is_empty() {
+                        tokens.push(b.to_string());
+                    }
+                }
+                let mut size_words: Option<Vec<String>> = None;
+                for token in tokens {
+                    if token == "/" {
+                        size_words = Some(vec![]);
+                        continue;
+                    }
+                    if let Some(words) = size_words.as_mut()
+                        && words.len() < 2
+                        && (token == "auto" || token == "cover" || token == "contain" || Len::parse_mixed(&token).is_some())
+                    {
+                        words.push(token);
+                        continue;
+                    }
                     match token.as_str() {
                         "no-repeat" => self.bg_repeat = Some(BgRepeat::NoRepeat),
                         "repeat-x" => self.bg_repeat = Some(BgRepeat::RepeatX),
@@ -5701,6 +5732,9 @@ impl Computed {
                 // положения уехал бы в середину коробки.
                 if !pos.is_empty() {
                     self.bg_pos = parse_pos_words(&pos.join(" "));
+                }
+                if let Some(words) = size_words.filter(|w| !w.is_empty()) {
+                    self.apply_one("background-size", &words.join(" "));
                 }
                 // Цвет живёт в НИЖНЕМ слое списка — верхний его не допускает.
                 if layers.len() > 1 {
