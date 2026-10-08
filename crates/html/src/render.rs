@@ -8461,6 +8461,16 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 // `display: inline-grid`, и без этой строки девять сеток
                 // вставали столбиком вместо ряда.
                 Some(Display::GridLanes) if e.style.lanes_inline => !ordered_context,
+                // `display: contents` without block-level descendants: its
+                // children are inline-level boxes and text runs of THIS
+                // container (css-display-3 §2.5 «as if they replaced the
+                // element»), so they join the surrounding inline run — the
+                // inline collector dissolves the element (`inline.rs`,
+                // `Display::Contents`). Flushing the run here split one line
+                // `<div contents>abc</div><br>` into an anonymous block plus a
+                // run starting with `<br>` — an extra empty line
+                // (`text-autospace-elements-002`).
+                Some(Display::Contents) => !ordered_context && !contains_block(&e.children),
                 // Прежний откат этой строки СНЯТ (03.09). Он мерился, когда
                 // строчный атом строил лунки голым `blocks()` и терял их
                 // целиком — оттого вся восьмёрка `flow-tolerance-*` и уходила
@@ -17879,6 +17889,25 @@ fn paragraph_pieces_routed(
         let mut first = first.clone();
         if first.background == inherited.background {
             first.background = None;
+        }
+        // Inherited values of the letter come from the element that holds
+        // the letter, not from the block (Blink `FirstLetterPseudoElement::
+        // StyleForFirstLetter`: parent style = the first letter text's
+        // parent; css-pseudo-4 §first-letter-styling, the fictional tag sequence
+        // sits inside the innermost element). Values the layer only copied
+        // from the block must not override a nested element's own
+        // (`display-contents-first-letter-002`: `<span>` color green).
+        if first.color == inherited.color {
+            first.color = None;
+        }
+        if first.font_family == inherited.font_family {
+            first.font_family = None;
+        }
+        if first.font_weight == inherited.font_weight {
+            first.font_weight = None;
+        }
+        if first.italic == inherited.italic {
+            first.italic = None;
         }
         pieces = inline::split_first_letter(pieces, &first);
     }

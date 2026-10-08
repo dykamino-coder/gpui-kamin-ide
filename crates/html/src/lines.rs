@@ -1297,6 +1297,11 @@ impl Paragraph {
             w.keep_spaces,
         ]
         .hash(&mut h);
+        // Per-piece wrap rules (`white-space`/`word-break` of a nested inline
+        // or of a `display: contents` element) change the breaks too: without
+        // them a `nowrap` run reused the cached lines of an identical text
+        // laid out under `normal` (`white-space-applies-to-text-001`).
+        format!("{:?}{:?}", self.wrap, self.spans).hash(&mut h);
         self.indent.px.to_bits().hash(&mut h);
         for f in self.flow.0.iter().chain(self.flow.1.iter()) {
             f.hash_bits().hash(&mut h);

@@ -348,6 +348,15 @@ fn collect_with_empty_metrics(
                 }
             }
             Node::Element(e) => {
+                // `display: contents` on `<br>`/`<wbr>` behaves as
+                // `display: none` (css-display-3 §B «Unusual Elements»): no
+                // line break, no break opportunity
+                // (`display-contents-sharing-001`).
+                if matches!(e.tag.as_str(), "br" | "wbr")
+                    && e.style.display == Some(crate::computed::Display::Contents)
+                {
+                    continue;
+                }
                 if e.tag == "br" {
                     out.push(Piece::Text {
                         text: "\n".into(),
