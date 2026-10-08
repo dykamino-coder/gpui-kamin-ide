@@ -2073,6 +2073,22 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
     {
         d.style().paint_atomic = Some(true);
     }
+    // An integer `z-index` on a positioned box (or a flex/grid item, css-flexbox-1
+    // §5.4) makes it a stacking context (CSS 2.1 §9.9.1): its line content stays
+    // inside it — a `z-index: -1` box's text no longer paints above later flow
+    // backgrounds (`line-breaking-ic-001`).
+    if c.z_index.is_some()
+        && (c.parent_flex_grid
+            || matches!(
+                c.position,
+                Some(Position::Relative)
+                    | Some(Position::Absolute)
+                    | Some(Position::Fixed)
+                    | Some(Position::Sticky)
+            ))
+    {
+        d.style().paint_stacking = Some(true);
+    }
     // Смешивание больше не живёт на заливке: раньше блендер знал четыре
     // формулы и красил только фон узла, а CSS смешивает ВСЁ поддерево целиком.
     // Теперь оно считается при сборке буфера группы (см. `render::grouped`).

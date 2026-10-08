@@ -325,6 +325,11 @@ pub struct Style {
     /// its own inline content is not deferred past later sibling
     /// backgrounds of the outer stacking context (`paint_last::hoist_atomic`).
     pub paint_atomic: bool,
+    /// KaminIDE patch: the box establishes a stacking context through an
+    /// integer `z-index` (CSS 2.1 §9.9.1): its whole subtree, including the
+    /// deferred inline content and positioned descendants, paints inside it
+    /// (`paint_last::hoist_collect`), like a box with opacity < 1.
+    pub paint_stacking: bool,
     /// Sets the initial main axis size of the item
     pub flex_basis: Length,
     /// The relative rate at which this item grows when it is expanding to fill space, 0.0 is the default value, and this value must be positive.
@@ -999,6 +1004,7 @@ impl Default for Style {
             flex_shrink: 1.0,
             item_is_table: false,
             paint_atomic: false,
+            paint_stacking: false,
             flex_basis: Length::Auto,
             background: None,
             border_color: None,
