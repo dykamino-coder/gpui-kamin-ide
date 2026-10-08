@@ -1323,6 +1323,26 @@ fn paint_last_ok(e: &Element, rest: &[Node]) -> bool {
     }
 }
 
+/// Строчный абсолют с `z-index: auto | 0` в позднем слое (`late_push`): шаг 8
+/// приложения E CSS 2.1 — позиционированные рисуются ПОСЛЕ строчного
+/// содержимого (шаг 7) своего контекста наложения. Строки абзаца уходят в
+/// собиратель (`PaintInline`) и рисуются в его конце, а поздний слой — прямой
+/// ребёнок контейнера и красился раньше них: текст ложился поверх абсолюта
+/// (`ch-unit-001`, `ic-unit-001`). `PaintLast` ставит коробку в собиратель по
+/// ключу в порядке разметки. Узел вне обхода (порождённый сборщиком) остаётся
+/// на прежнем пути.
+fn inline_abs_paint_last(e: &Element, el: AnyElement) -> AnyElement {
+    let known = UNKEYED.with(|u| {
+        let u = u.borrow();
+        u.0.get(&e.node_id).map(|&end| u.1.is_none_or(|last| last < end))
+    });
+    if e.style.z_index.unwrap_or(0) == 0 && known == Some(true) {
+        gpui::PaintLast::new(el).key(next_paint_key()).into_any_element()
+    } else {
+        el
+    }
+}
+
 /// Копий ребёнка в стопке страниц — потолок числа страниц, на которые может
 /// растянуться один блок верхнего уровня (в `css-page` не больше шести).
 const PAGE_COPIES: usize = 12;
@@ -8443,6 +8463,37 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     ) || cb_padding_shifts_replaced(e, inherited)) =>
             {
                 false
+            }
+            // Абсолют строчного уровня (до блокификации — `inline-block` и
+            // родня) с РОВНО ОДНОЙ заданной осью: свободная ось берётся от
+            // гипотетической коробки при `position: static` (CSS 2.1 §10.3.7,
+            // §10.6.4), а та стоит в строке, не под ней. Блокифицированный, он
+            // уходил блочным ребёнком ниже абзаца, и `left: 0; top: auto`
+            // вставал на следующую строку (`border-left-width-thin`: белая
+            // заплатка под красным вместо поверх). Щуп строки ведёт такую
+            // коробку в `atom_element` (`x_set != y_set`). Без строчного
+            // содержимого ДО коробки строка пуста, и гипотетическая коробка
+            // стоит в её начале — там же, где блочная статическая позиция;
+            // такой абсолют остаётся прежним блочным путём
+            // (`left-applies-to-012/014`: абсолют — единственный ребёнок).
+            Node::Element(e)
+                if e.style.abs_inline_level
+                    && !ordered_context
+                    && pending.iter().any(|p| match p {
+                        Node::Text(t) => !t.trim().is_empty(),
+                        Node::Element(x) => !matches!(
+                            x.style.position,
+                            Some(crate::computed::Position::Absolute)
+                                | Some(crate::computed::Position::Fixed)
+                        ),
+                    })
+                    && {
+                        let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
+                        (edge(e.style.inset.left) || edge(e.style.inset.right))
+                            != (edge(e.style.inset.top) || edge(e.style.inset.bottom))
+                    } =>
+            {
+                true
             }
             Node::Element(e) => match e.style.display {
                 // Явно заявленная инлайновая коробка остаётся в строке даже у
@@ -18913,7 +18964,7 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                     ..Default::default()
                 });
                 let probe = crate::interact::spot_probe(spot.clone(), false);
-                return match crate::interact::late_push(spot, holder.into_any_element()) {
+                return match crate::interact::late_push(spot, inline_abs_paint_last(e, holder.into_any_element())) {
                     None => Some(probe),
                     Some(kept) => {
                         let mut hole = div().relative().w_0().h_0().flex_shrink_0();
@@ -19000,7 +19051,7 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                 ..Default::default()
             });
             let probe = crate::interact::spot_probe(spot.clone(), false);
-            return match crate::interact::late_push(spot, inner.into_any_element()) {
+            return match crate::interact::late_push(spot, inline_abs_paint_last(e, inner.into_any_element())) {
                 None => Some(probe),
                 Some(kept) => {
                     let mut hole = div().relative().w_0().h_0().flex_shrink_0();
