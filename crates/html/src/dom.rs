@@ -409,6 +409,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     let _ = crate::css::take_page_decls();
     let _ = crate::css::take_try_rules();
     let _ = crate::css::take_property_rules();
+    crate::counter_style_rules::reset();
     crate::css::reset_layers();
     crate::value::set_dark_scheme(false);
     // Корневые метрики (`rem`, `rlh`) — тоже от прошлого документа: у рамки
