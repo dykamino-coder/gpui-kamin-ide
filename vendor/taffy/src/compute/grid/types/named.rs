@@ -584,6 +584,9 @@ impl<S: CheapCloneStr> NamedLineResolver<S> {
         // линии и в подсеточной оси (css-grid-2 §7.3.2): замена списка имён
         // их не отменяет (`subgrid/line-names-007/008`: `a-end -1` при
         // `grid-template-areas: '. a a a a'` у самой подсетки).
+        // Подсетка неявных дорожек не имеет (§9 (f)): линии области за её
+        // краем прижимаются к последней линии подсетки.
+        let last_line = u32::try_from(lines.len()).unwrap_or(u32::MAX).max(1);
         for area in self.areas.values() {
             let (start, end) = if columns {
                 (area.column_start, area.column_end)
@@ -591,8 +594,8 @@ impl<S: CheapCloneStr> NamedLineResolver<S> {
                 (area.row_start, area.row_end)
             };
             let name = area.name.as_ref();
-            upsert_line_name_map(map, S::from(format!("{name}-start")), start as u32);
-            upsert_line_name_map(map, S::from(format!("{name}-end")), end as u32);
+            upsert_line_name_map(map, S::from(format!("{name}-start")), (start as u32).min(last_line));
+            upsert_line_name_map(map, S::from(format!("{name}-end")), (end as u32).min(last_line));
         }
         for positions in map.values_mut() {
             positions.sort_unstable();
