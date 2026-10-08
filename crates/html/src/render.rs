@@ -26,6 +26,7 @@ mod vertical_flow_margins;
 mod margin_edges;
 mod margin_height;
 mod float_clear_scope;
+mod inline_floats;
 mod native_paragraph_route;
 mod scroll_box;
 mod orthogonal_fixed_child;
@@ -11529,7 +11530,7 @@ fn wrap_floats(
     // контейнере и `inherit` на ребёнке). Разрешается здесь: своего
     // наследования у ненаследуемого свойства нет, а родительский стиль есть
     // только у вызывающего.
-    let nodes = float_clear_scope::used(nodes, parent);
+    let nodes = inline_floats::lift(float_clear_scope::used(nodes, parent), parent);
     // Флоат, записанный ВНУТРИ строчной коробки, принадлежит не ей, а
     // ближайшему блочному предку (§10.1, §9.5.1 п.1). Строчная обёртка, в
     // которой кроме флоата ничего нет, снимается ЗДЕСЬ — ДО проверки
