@@ -52,27 +52,13 @@ pub(super) fn element(markup: String, w: f32, h: f32) -> Option<Div> {
                             window.with_content_mask(
                                 Some(gpui::ContentMask { bounds: clip }),
                                 |window| {
-                                    let _ = window.paint_image_with_sampling(
-                                        bounds,
-                                        gpui::Corners::default(),
-                                        padded,
-                                        0,
-                                        false,
-                                        gpui::ImageSampling::LinearSubpixel,
-                                    );
+                                    paint(window, bounds, padded);
                                 },
                             );
                         }
                         None => {
                             bounds.size = gpui::size(px(w), px(h));
-                            let _ = window.paint_image_with_sampling(
-                                bounds,
-                                gpui::Corners::default(),
-                                image.clone(),
-                                0,
-                                false,
-                                gpui::ImageSampling::LinearSubpixel,
-                            );
+                            paint(window, bounds, image.clone());
                         }
                     }
                 },
@@ -81,4 +67,46 @@ pub(super) fn element(markup: String, w: f32, h: f32) -> Option<Div> {
             .size_full(),
         ),
     )
+}
+
+fn paint(
+    window: &mut gpui::Window,
+    bounds: gpui::Bounds<gpui::Pixels>,
+    image: std::sync::Arc<gpui::RenderImage>,
+) {
+    let sf = window.scale_factor();
+    let integral = |v: gpui::Pixels| {
+        let d = f32::from(v) * sf;
+        (d - d.round()).abs() < 1e-4
+    };
+    // SVG 2 section 8.1 retains the viewport mapping. At an integral device
+    // destination, filter the source in premultiplied alpha before uploading
+    // straight BGRA: interpolating straight colors darkens transparent edges.
+    // Fractional destinations and transforms still require subpixel sampling.
+    let filtered = (window.current_transformation() == gpui::TransformationMatrix::unit()
+        && integral(bounds.origin.x)
+        && integral(bounds.origin.y)
+        && integral(bounds.size.width)
+        && integral(bounds.size.height))
+    .then(|| {
+        crate::background::alpha_sampling::resample(
+            &image,
+            (f32::from(bounds.size.width) * sf).round() as u32,
+            (f32::from(bounds.size.height) * sf).round() as u32,
+        )
+    })
+    .flatten();
+    let sampling = if filtered.is_some() {
+        gpui::ImageSampling::Nearest
+    } else {
+        gpui::ImageSampling::LinearSubpixel
+    };
+    let _ = window.paint_image_with_sampling(
+        bounds,
+        gpui::Corners::default(),
+        filtered.unwrap_or(image),
+        0,
+        false,
+        sampling,
+    );
 }

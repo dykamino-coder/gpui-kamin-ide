@@ -1,4 +1,5 @@
 pub(crate) mod border_snap;
+mod transformed_box;
 mod sizing_keyword;
 pub use sizing_keyword::CssSizingKeyword;
 
@@ -873,7 +874,7 @@ impl Style {
             };
             border_color.a = 0.;
             window.paint_quad(quad(
-                bounds,
+                transformed_box::bounds(self, bounds, window),
                 corner_radii,
                 background_color.unwrap_or_default(),
                 Edges::default(),

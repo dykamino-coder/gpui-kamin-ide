@@ -5,6 +5,8 @@
 //! thickness is rounded there, the line is snapped vertically to the device
 //! grid, and the run ends land on whole device pixels.
 
+mod skip_spaces;
+
 use super::*;
 use crate::computed::{
     DECOR_OVER, DECOR_THROUGH, DECOR_UNDER, DecorLen, DecorStyle, UPOS_FROM_FONT, UPOS_UNDER,
@@ -173,7 +175,7 @@ impl Paragraph {
                 continue;
             }
             for (s, e) in self.skip_parts(span.skip_spaces, s, e, line) {
-            let (xa, xb) = x_of(s, e);
+            let (xa, xb) = self.skip_tracking(span.skip_spaces, e, line, x_of(s, e));
             let (xa, xb) = (f32::from(xa) * scale, f32::from(xb) * scale);
             let (fx0, fx1) = (xa.min(xb), xa.max(xb));
             if fx1 <= fx0 {
@@ -375,63 +377,6 @@ impl Paragraph {
             }
             }
         }
-    }
-
-    /// `text-decoration-skip-spaces` (css-text-decor-4 §4.2): the parts of
-    /// `s..e` that are decorated. Spacers are Zs characters except U+202F;
-    /// `start`/`end` skip them at the start/end of the line, `all`
-    /// everywhere (word separators too).
-    fn skip_parts(
-        &self,
-        skip: u8,
-        s: usize,
-        e: usize,
-        line: &std::ops::Range<usize>,
-    ) -> Vec<(usize, usize)> {
-        use unicode_properties::{GeneralCategory, UnicodeGeneralCategory};
-        let spacer = |c: char| {
-            c != '\u{202f}' && c.general_category() == GeneralCategory::SpaceSeparator
-        };
-        if skip & 4 != 0 {
-            let mut out = Vec::new();
-            let mut cur: Option<usize> = None;
-            for (i, c) in self.text[s..e].char_indices() {
-                if spacer(c) {
-                    if let Some(st) = cur.take() {
-                        out.push((st, s + i));
-                    }
-                } else if cur.is_none() {
-                    cur = Some(s + i);
-                }
-            }
-            if let Some(st) = cur {
-                out.push((st, e));
-            }
-            return out;
-        }
-        let (mut a, mut b) = (s, e);
-        if skip & 1 != 0 {
-            // Spacers from the line start up to `a` must all be spacers.
-            let head = &self.text[line.start.min(a)..a];
-            if head.chars().all(spacer) {
-                let lead: usize =
-                    self.text[a..b].chars().take_while(|c| spacer(*c)).map(char::len_utf8).sum();
-                a += lead;
-            }
-        }
-        if skip & 2 != 0 && a < b {
-            let tail = &self.text[b..line.end.max(b)];
-            if tail.chars().all(|c| spacer(c) || c == '\n') {
-                let trail: usize = self.text[a..b]
-                    .chars()
-                    .rev()
-                    .take_while(|c| spacer(*c))
-                    .map(char::len_utf8)
-                    .sum();
-                b -= trail;
-            }
-        }
-        if a < b { vec![(a, b)] } else { Vec::new() }
     }
 
     /// Inline size of the decorated text `a..b` over all lines (logical px):

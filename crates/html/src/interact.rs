@@ -26,7 +26,9 @@ mod orthogonal_measure;
 mod vertical_style;
 mod combined_geometry;
 mod gap_segments;
+mod transform_geometry;
 use gap_segments::segments;
+use transform_geometry::quarter_turn;
 
 /// По каким осям разрешено тянуть.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1211,22 +1213,6 @@ pub struct Transformed {
 /// рисует) берём касательную аффинную карту в центре коробки:
 /// детерминированно и одинаково для теста и эталона с той же гомографией
 /// (transform3d-matrix3d-003/-004). `None` — плоскость за глазом или ребром.
-/// Линейная часть — поворот на кратное 90° или отражение (знаковая
-/// перестановка) с точностью до ошибки `f32`, но НЕ единичная: точная
-/// матрица из 0/±1.
-fn quarter_turn(lin: [[f32; 2]; 2]) -> Option<[[f32; 2]; 2]> {
-    let unit = |v: f32| {
-        [-1.0f32, 0.0, 1.0]
-            .into_iter()
-            .find(|u| (v - u).abs() < 1e-5)
-    };
-    let m = [
-        [unit(lin[0][0])?, unit(lin[0][1])?],
-        [unit(lin[1][0])?, unit(lin[1][1])?],
-    ];
-    let det = m[0][0] * m[1][1] - m[0][1] * m[1][0];
-    (det.abs() == 1.0 && m != [[1.0, 0.0], [0.0, 1.0]]).then_some(m)
-}
 
 fn flatten_plane(f: &[[f32; 4]; 4], center: (f32, f32)) -> Option<gpui::TransformationMatrix> {
     const EPS: f32 = 1e-5;
@@ -1426,8 +1412,9 @@ impl Element for Transformed {
                 let exact = window.layout_size_unrounded(*layout_id);
                 (f32::from(exact.width), f32::from(exact.height))
             };
-            let ox = f32::from(bounds.origin.x) + w * self.origin.0 + self.origin_px.0.unwrap_or(0.0);
-            let oy = f32::from(bounds.origin.y) + h * self.origin.1 + self.origin_px.1.unwrap_or(0.0);
+            let origin = self.scaled_origin(bounds.origin);
+            let ox = f32::from(origin.x) + w * self.origin.0 + self.origin_px.0.unwrap_or(0.0);
+            let oy = f32::from(origin.y) + h * self.origin.1 + self.origin_px.1.unwrap_or(0.0);
             let sx = self.tr[0][0] + w * self.tr[0][1] + h * self.tr[0][2];
             let sy = self.tr[1][0] + w * self.tr[1][1] + h * self.tr[1][2];
             let [[a, b], [c, d]] = self.lin;
@@ -1457,7 +1444,9 @@ impl Element for Transformed {
             return;
         }
         let scale_factor = window.scale_factor();
-        // Матрица живёт в физических точках устройства.
+        // CSS transform origins precede device-pixel snapping (Transforms 1 §3).
+        let raw_origin = self.exact_origin.unwrap_or(bounds.origin);
+        let scaled_origin = self.scaled_origin(bounds.origin);
         let dev = |v: f32| px(v).scale(scale_factor);
         // Точка отсчёта — в устройстве, от неё и разворачиваем. Записанная
         // длиной, она сильнее доли: `transform-origin: 0 0` — левый верх, а
@@ -1473,12 +1462,12 @@ impl Element for Transformed {
         let ox = w * self.origin.0 + self.origin_px.0.unwrap_or(0.0);
         let oy = h * self.origin.1 + self.origin_px.1.unwrap_or(0.0);
         let origin = gpui::point(
-            dev(f32::from(bounds.origin.x) + ox),
-            dev(f32::from(bounds.origin.y) + oy),
+            dev(f32::from(scaled_origin.x) + ox),
+            dev(f32::from(scaled_origin.y) + oy),
         );
         let back = gpui::point(
-            dev(-(f32::from(bounds.origin.x) + ox)),
-            dev(-(f32::from(bounds.origin.y) + oy)),
+            dev(-(f32::from(scaled_origin.x) + ox)),
+            dev(-(f32::from(scaled_origin.y) + oy)),
         );
         // Матрица функций в порядке записи (css-transforms-1
         // §transform-rendering), вокруг точки отсчёта: она уводится в ноль и
@@ -1521,8 +1510,8 @@ impl Element for Transformed {
                 .1
                 .unwrap_or(h * self.perspective_origin.1);
             let (px_d, py_d) = (
-                (f32::from(bounds.origin.x) + px) * scale_factor,
-                (f32::from(bounds.origin.y) + py) * scale_factor,
+                (f32::from(raw_origin.x) + px) * scale_factor,
+                (f32::from(raw_origin.y) + py) * scale_factor,
             );
             let p = mul4(
                 mul4(
@@ -1612,8 +1601,8 @@ impl Element for Transformed {
         // в gpui, поэтому `origin.x.0` отсюда не читается.
         let oz = self.origin_z.unwrap_or(0.0) * sf;
         let (ox_d, oy_d) = (
-            (f32::from(bounds.origin.x) + ox) * sf,
-            (f32::from(bounds.origin.y) + oy) * sf,
+            (f32::from(raw_origin.x) + ox) * sf,
+            (f32::from(raw_origin.y) + oy) * sf,
         );
         let own = mul4(
             mul4(Transform::translate4(ox_d, oy_d, oz), own),
@@ -1646,8 +1635,8 @@ impl Element for Transformed {
             None => own,
         };
         let center = (
-            (f32::from(bounds.origin.x) + w * 0.5) * sf,
-            (f32::from(bounds.origin.y) + h * 0.5) * sf,
+            (f32::from(raw_origin.x) + w * 0.5) * sf,
+            (f32::from(raw_origin.y) + h * 0.5) * sf,
         );
         let flat = flatten_plane(&full, center);
         // Ячейка для СВОИХ детей — накопленная и своя аффинная доля;
