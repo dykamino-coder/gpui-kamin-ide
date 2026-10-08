@@ -294,6 +294,10 @@ pub struct StackChild {
     pub repeat: Option<Repeat>,
     /// Параллельный поток строки flex (`Par`).
     pub par: Par,
+    /// Позиционированный ребёнок (или контекст наложения с `z-index: auto`):
+    /// красится ПОСЛЕ всех непозиционированных фрагментов стопки (CSS 2.1
+    /// Appendix E, шаг 8 после шагов 4–7).
+    pub positioned: bool,
     /// Фон таблицы для «хвоста» непоследнего фрагмента: секции и ряды до низа
     /// фрагментаинера не тянутся, а коробка таблицы — тянется (css-break-3
     /// §box-splitting; Blink `table_layout_algorithm.cc` — фрагмент таблицы
@@ -2742,6 +2746,15 @@ impl Element for ColumnStack {
             parts[f.kid] += 1;
         }
         let plan_all = plan.clone();
+        // CSS 2.1 Appendix E: блочные потомки потока (шаг 4) раньше
+        // позиционированных (шаг 8) — фрагменты позиционированных детей
+        // красятся вторым проходом, в порядке разметки.
+        let plan: Vec<Frag> = plan
+            .iter()
+            .filter(|f| !self.children[f.kid].positioned)
+            .chain(plan.iter().filter(|f| self.children[f.kid].positioned))
+            .copied()
+            .collect();
         for f in plan {
             let (c, ry) = self.place(f.col);
             // Срез едет вместе со сдвинутым фрагментом (css-break-3 §5.5):

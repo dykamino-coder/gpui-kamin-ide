@@ -24265,6 +24265,13 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     // (`flow.rs` `StackChild::nested_cols`).
                                     nested_cols: multicol_inside(&copy, 4),
                                     par: kid_par[ix],
+                                    positioned: !span
+                                        && (matches!(
+                                            copy.style.position,
+                                            Some(crate::computed::Position::Relative)
+                                                | Some(crate::computed::Position::Sticky)
+                                        ) || copy.style.transform.is_some())
+                                        && copy.style.z_index.unwrap_or(0) == 0,
                                     // Хвост непоследнего фрагмента таблицы — её фоном
                                     // (`flow.rs` `StackChild::slack`).
                                     slack: if col_vert {
@@ -24365,6 +24372,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 par: crate::flow::Par::default(),
                                 slack: None,
                                 laid_w: Default::default(),
+                                positioned: false,
                             };
                             // Номер — среди ДЕТЕЙ ДО раскрытия строк flex (`split_flex_lines`).
                             let at = kid_starts.get(*at).copied().unwrap_or(children.len()).min(children.len());
