@@ -350,6 +350,15 @@ fn collect_with_empty_metrics(
                 }
             }
             Node::Element(e) => {
+                // `display: contents` on `<br>`/`<wbr>` behaves as
+                // `display: none` (css-display-3 §B «Unusual Elements»): no
+                // line break, no break opportunity
+                // (`display-contents-sharing-001`).
+                if matches!(e.tag.as_str(), "br" | "wbr")
+                    && e.style.display == Some(crate::computed::Display::Contents)
+                {
+                    continue;
+                }
                 if e.tag == "br" {
                     case.boundary();
                     out.push(Piece::Text {
@@ -997,7 +1006,7 @@ pub fn style_first_line(pieces: Vec<Piece>, at: usize, style: &Computed) -> Vec<
                         .font_alternates
                         .clone()
                         .or_else(|| base.font_alternates.clone());
-                    c.font_family = style.font_family.clone().or(base.font_family.clone());
+                    crate::computed::font_family::inherit(&mut c, style, base);
                     c.font_settings = style
                         .font_settings
                         .clone()
@@ -1481,6 +1490,40 @@ fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Compu
     if own.padding_inherit {
         c.padding = parent.padding;
     }
+    // `inherit` у ненаследуемых выравниваний (css-cascade-4 §7.3.1): значение
+    // родителя целиком, с его `safe`/`last` (`place-items: inherit` во
+    // вложенной сетке — `grid-self-alignment-baseline-with-grid-001`).
+    if own.align_inherit != 0 {
+        use crate::computed::ainh;
+        let on = |b: u8| own.align_inherit & b != 0;
+        if on(ainh::ALIGN_ITEMS) {
+            c.align_items = parent.align_items;
+            c.align_items_safe = parent.align_items_safe;
+            c.align_items_last = parent.align_items_last;
+        }
+        if on(ainh::JUSTIFY_ITEMS) {
+            c.justify_items = parent.justify_items;
+            c.justify_items_safe = parent.justify_items_safe;
+            c.justify_items_last = parent.justify_items_last;
+        }
+        if on(ainh::ALIGN_CONTENT) {
+            c.align_content = parent.align_content;
+            c.align_content_safe = parent.align_content_safe;
+            c.align_content_block = parent.align_content_block;
+        }
+        if on(ainh::JUSTIFY_CONTENT) {
+            c.justify_content = parent.justify_content;
+            c.justify_content_safe = parent.justify_content_safe;
+        }
+        if on(ainh::JUSTIFY_SELF) {
+            c.justify_self = parent.justify_self;
+            c.justify_self_safe = parent.justify_self_safe;
+            c.justify_self_last = parent.justify_self_last;
+            c.justify_self_physical = parent.justify_self_physical;
+            c.justify_self_normal = parent.justify_self_normal;
+            c.justify_self_own_axis = parent.justify_self_own_axis;
+        }
+    }
     // Ненаследуемые свойства со словом `inherit`: значение родителя берётся
     // целиком (§6.2.1). Разбор их слотов слово не выражает — там оно давало
     // умолчание или роняло объявление.
@@ -1668,11 +1711,12 @@ fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Compu
     c.text_align = own.text_align.or(parent.text_align);
     c.no_justify = own.no_justify.or(parent.no_justify);
     c.ruby_justify = own.ruby_justify.or(parent.ruby_justify);
+    c.justify_chars = own.justify_chars.or(parent.justify_chars);
     c.ruby_unit = own.ruby_unit || parent.ruby_unit;
     c.text_align_last = own.text_align_last.or(parent.text_align_last);
     c.hanging = own.hanging.or(parent.hanging);
     c.monospace = own.monospace.or(parent.monospace);
-    c.font_family = own.font_family.clone().or(parent.font_family.clone());
+    crate::computed::font_family::inherit(&mut c, own, parent);
     c.nowrap = own.nowrap.or(parent.nowrap);
     c.orphans = own.orphans.or(parent.orphans);
     c.widows = own.widows.or(parent.widows);
@@ -3879,9 +3923,7 @@ pub fn strut_font(style: &Computed, base: &TextStyle) -> gpui::Font {
 
 fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun {
     let mut font = base.font();
-    if font.fallbacks.is_none() {
-        font.fallbacks = crate::fonts::document_fallbacks();
-    }
+    font.fallbacks = crate::computed::font_family::fallbacks(style, font.fallbacks);
     // Названное семейство сильнее родового: подстановкой занимается система.
     // Пустое имя — «шрифт документа» (разбор `font-family`): база как есть.
     if let Some(family) = style.font_family.as_ref().filter(|f| !f.is_empty()) {

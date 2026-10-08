@@ -8,6 +8,7 @@
 mod gradient_paint;
 mod font_kerning;
 mod font_members;
+pub(crate) mod font_family;
 mod white_space;
 mod font_shorthand;
 pub(crate) mod font_weight;
@@ -94,6 +95,14 @@ pub struct Corners {
 
 /// Разряды `inherit_bits`: ненаследуемые свойства, у которых слово `inherit`
 /// обязано скопировать вычисленное значение родителя (§6.2.1).
+pub(crate) mod ainh {
+    pub(crate) const ALIGN_ITEMS: u8 = 1 << 0;
+    pub(crate) const JUSTIFY_ITEMS: u8 = 1 << 1;
+    pub(crate) const ALIGN_CONTENT: u8 = 1 << 2;
+    pub(crate) const JUSTIFY_CONTENT: u8 = 1 << 3;
+    pub(crate) const JUSTIFY_SELF: u8 = 1 << 4;
+}
+
 pub(crate) mod inh {
     pub(crate) const BG_REPEAT: u16 = 1 << 0;
     pub(crate) const Z_INDEX: u16 = 1 << 1;
@@ -2000,6 +2009,11 @@ pub struct Computed {
     pub no_justify: Option<bool>,
     /// CSS Text 4: ruby annotation justification excludes word spaces.
     pub ruby_justify: Option<bool>,
+    /// `text-justify` expansion opportunities (css-text-3 §7.3): `Some(0)`
+    /// `inter-word` (word separators only), `Some(2)` `inter-character` /
+    /// `distribute` (between typographic character units), `None`/`Some(1)`
+    /// `auto` (word separators plus CJK ideographs, as Blink).
+    pub justify_chars: Option<u8>,
     /// Internal ruby unit promoted to a technical block for layout.
     pub ruby_unit: bool,
     /// `hanging-punctuation` — какая пунктуация выходит за край строки.
@@ -2022,8 +2036,9 @@ pub struct Computed {
     /// без отдельного поля он схлопывал и то и другое.
     pub keep_spaces: Option<bool>,
     pub monospace: Option<bool>,
-    /// Первое конкретное имя из `font-family`.
+    /// First available family supplies font-relative metrics.
     pub font_family: Option<String>,
+    pub(crate) font_families: Option<Vec<String>>,
     /// Есть ли у рамки ВИДИМЫЙ рисунок. Толщина без рисунка не считается:
     /// начальное значение `border-style` — `none`, и по CSS такая рамка
     /// вычисляется в ноль (`descendant-static-position-001`: коробка выходила
@@ -2189,6 +2204,11 @@ pub struct Computed {
     /// `align-self: inherit` — значение берёт `inline::inherit` у родителя
     /// (свойство ненаследуемое, слово копирует вычисленное значение).
     pub(crate) align_self_inherit: bool,
+    /// `inherit` у `align-items`/`justify-items`/`align-content`/
+    /// `justify-content`/`justify-self` (разряды `ainh::*`): свойства
+    /// ненаследуемые, слово копирует вычисленное значение родителя
+    /// (css-cascade-4 §7.3.1) — его берёт `inline::inherit`.
+    pub(crate) align_inherit: u8,
     pub justify_self_last: bool,
     /// `align-items: last baseline` — то же для умолчания детей: раскладка
     /// получает `LastBaseline` (css-align-3 §4.2), а не первую базовую.
@@ -2954,6 +2974,10 @@ pub struct Computed {
     /// `currentcolor`.
     pub column_rule_widths: Option<GapList<Len>>,
     pub column_rule_styles: Option<GapList<bool>>,
+    /// Single `double` rule style (css-gaps-1 §color-style-width: line styles
+    /// as for borders) — painted as two lines; other styles stay solid.
+    pub column_rule_double: bool,
+    pub row_rule_double: bool,
     pub column_rule_colors: Option<GapList<Option<Color>>>,
     pub row_rule_widths: Option<GapList<Len>>,
     pub row_rule_styles: Option<GapList<bool>>,
@@ -3738,6 +3762,7 @@ impl Computed {
             // числе Ahem у стенда) не доезжал никуда, где рядом стоит
             // картинка или иной атом.
             font_family: self.font_family.clone(),
+            font_families: self.font_families.clone(),
             font_weight: self.font_weight,
             font_weight_step: self.font_weight_step,
             italic: self.italic,
@@ -3973,6 +3998,29 @@ impl Computed {
         let семья = |k: &'a str| -> &'a str {
             if font_members::contains(k) && d.contains_key("font") {
                 return "font";
+            }
+            // A side shorthand (`border-right: 12px solid`) resets that
+            // side's color to `currentColor`; a later `border-color: pink`
+            // must win over it (css-cascade-4 §6.4: order of appearance).
+            // Sorted by name the pair always ran `border-color` first, and
+            // the side stayed black (css-gaps `grid-gap-decorations-*-ref`
+            // `.col-rule`). Only side shorthands and the three all-side
+            // shorthands share the order — `border-width`/`border-style`
+            // among themselves keep the old order (see the note above).
+            const EDGE: &[&str] = &[
+                "border-top",
+                "border-right",
+                "border-bottom",
+                "border-left",
+                "border-color",
+                "border-style",
+                "border-width",
+            ];
+            if EDGE.contains(&k)
+                && EDGE[..4].iter().any(|s| d.contains_key(*s))
+                && EDGE[4..].iter().any(|s| d.contains_key(*s))
+            {
+                return "border-edge";
             }
             for root in SHORTHANDS {
                 if k.len() > root.len()
@@ -4557,6 +4605,18 @@ impl Computed {
             "align-self" if v.trim() == "inherit" => {
                 self.align_self_inherit = true;
             }
+            "align-items" | "justify-items" | "align-content" | "justify-content"
+            | "justify-self"
+                if v.trim() == "inherit" =>
+            {
+                self.align_inherit |= match key {
+                    "align-items" => ainh::ALIGN_ITEMS,
+                    "justify-items" => ainh::JUSTIFY_ITEMS,
+                    "align-content" => ainh::ALIGN_CONTENT,
+                    "justify-content" => ainh::JUSTIFY_CONTENT,
+                    _ => ainh::JUSTIFY_SELF,
+                };
+            }
             "align-self" => {
                 // `left`/`right` у `align-self` недействительны: это
                 // `<self-position>` без них, физические стороны есть только у
@@ -4578,6 +4638,7 @@ impl Computed {
                 }
             }
             "align-items" => {
+                self.align_inherit &= !ainh::ALIGN_ITEMS;
                 if let Ok(a) = align_keyword(v) {
                     self.align_items = a;
                     self.align_items_safe = is_safe(v);
@@ -4588,6 +4649,7 @@ impl Computed {
             // промежутков — сведение их в одно значение расходилось с
             // браузером на 27 точек (поймано сравнением).
             "justify-content" => {
+                self.align_inherit &= !ainh::JUSTIFY_CONTENT;
                 self.justify_content = parse_justify(v);
                 self.justify_content_safe = is_safe(v);
             }
@@ -5512,7 +5574,7 @@ impl Computed {
                                 "repeat-y" => self.bg_repeat = Some(BgRepeat::RepeatY),
                                 "repeat" => self.bg_repeat = Some(BgRepeat::Repeat),
                                 "left" | "right" | "top" | "bottom" | "center" => pos.push(token.clone()),
-                                t if Len::parse(t).is_some() => pos.push(token.clone()),
+                                t if Len::parse_mixed(t).is_some() => pos.push(token.clone()),
                                 _ => {}
                             }
                         }
@@ -5620,7 +5682,7 @@ impl Computed {
                         t if t.starts_with("url(") => {}
                         // Ключевые слова осей и длины — это положение.
                         "left" | "right" | "top" | "bottom" | "center" => pos.push(token.clone()),
-                        t if Len::parse(t).is_some() => pos.push(token.clone()),
+                        t if Len::parse_mixed(t).is_some() => pos.push(token.clone()),
                         t => {
                             if let Some(c) = Color::parse(t) {
                                 self.background = Some(c);
@@ -5739,140 +5801,7 @@ impl Computed {
                 // §font-style-prop): подбор лица различает их.
                 self.oblique = Some(v.starts_with("oblique"));
             }
-            "font-family" => {
-                // Имя семейства — либо строка в кавычках, либо ряд
-                // ИДЕНТИФИКАТОРОВ (§15.3). Неверное имя делает объявление
-                // недействительным целиком (§4.2): прежде разбор просто
-                // пропускал негодное имя и брал следующее из списка, из-за
-                // чего `font-family: 1Ahem, Ahem` набиралось шрифтом Ahem.
-                if !v.split(',').all(|part| family_name_ok(part.trim())) {
-                    return;
-                }
-                let lower = v.to_ascii_lowercase();
-                // Моноширинный запрос несёт смысл (код) и решает выбор
-                // встроенного шрифта, если названного в системе нет.
-                self.monospace = Some(lower.contains("mono") || lower.contains("courier"));
-                // Родовое имя — не пустое место: браузер подставляет за него
-                // конкретный системный шрифт, и без подстановки разметка
-                // набиралась умолчанием движка, шире браузерного. Берётся то
-                // же семейство, что подставляет Chrome на этой системе.
-                // Родовое имя — только БЕЗ кавычек (css-fonts-4 §4.1.1: names
-                // that happen to be the same as a keyword value «must be quoted
-                // to prevent confusion with the keywords»): `"fantasy", serif` —
-                // семейство «fantasy», затем родовое `serif`
-                // (`quoted-generic-ignored`).
-                let quoted = |f: &str| f.starts_with('"') || f.starts_with('\'');
-                let first_generic = v
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|f| !quoted(f))
-                    .map(str::to_ascii_lowercase)
-                    .find(|f| is_generic(f));
-                let generic = v
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|f| !quoted(f))
-                    .map(str::to_ascii_lowercase)
-                    .find_map(|f| generic_family(&f));
-                // Первое НЕ родовое имя списка уходит в шрифт как есть:
-                // подстановкой недостающего занимается сама система шрифтов.
-                // Имя нормализуется до сравнения: неквотированное имя из
-                // нескольких слов — это один пробел между ними (§15.3).
-                let norm = |f: &str| {
-                    let un = crate::css::unescape(f);
-                    un.split_whitespace().collect::<Vec<_>>().join(" ")
-                };
-                // Годно ли имя списка как ИМЯ СЕМЕЙСТВА: в кавычках — всегда
-                // (даже `"serif"`), без кавычек — если это не родовое слово.
-                let usable = |raw: &str| {
-                    let f = raw.trim_matches(is_quote);
-                    let lower = f.to_ascii_lowercase();
-                    !f.is_empty()
-                        && (quoted(raw)
-                            || (!is_generic(&lower)
-                                && !matches!(lower.as_str(), "inherit" | "initial")))
-                };
-                // Первое ДОСТУПНОЕ имя списка: браузер идёт по списку, пока
-                // не найдёт шрифт (§15.3). Прежде бралось первое подходящее по
-                // виду, и `font-family: Courier New, Ahem` при отсутствующем
-                // `Courier New` набиралось подменой вместо `Ahem`.
-                //
-                // Доступность даёт не только система. Список установленных —
-                // это снимок `all_font_names()`, снятый ОДИН РАЗ на старте
-                // (`metrics::use_text_system`), и шрифт, принесённый самой
-                // страницей через `@font-face`, в него не попадает никогда.
-                // Без учёта подмен список семейств не доходил до второго
-                // имени: `font-family: "WOFF Test", "WOFF Test CFF Fallback"`
-                // при НЕГОДНОМ `woff2` обязан взять второе имя, а вместо
-                // этого отдавал системе первое, которого нет, — и весь набор
-                // WOFF2 держался на случайном совпадении подмен.
-                // Мало ИМЕТЬ шрифт: «первым доступным» (css-fonts-4
-                // §first-available-font) семейство становится, только если в
-                // нём есть знак U+0020 — от первого доступного считаются
-                // метрики строки, `line-height: normal`, `ch` и `ex`.
-                // Правило `@font-face` с `unicode-range` без пробела обязано
-                // быть ПРОПУЩЕНО: `font-family: 'A-no-space', 'B'` меряется
-                // по `B`, а не по первому имени списка. Прежде подмена от
-                // такого правила проходила как доступная, и после `7dbbfd2`
-                // (замер по настоящему имени) доли кегля брались с ЧУЖОГО
-                // файла — `first-available-font-002/007`, `ex-unit-004`.
-                let available = |f: &str| {
-                    (crate::metrics::font_installed(f) || crate::fonts::alias(f).is_some())
-                        && crate::fonts::covers_space(f)
-                };
-                let installed = v
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|raw| usable(raw))
-                    .map(|raw| norm(raw.trim_matches(is_quote)))
-                    .find(|f| available(f));
-                if let Some(found) = installed {
-                    self.font_family = Some(found);
-                    return;
-                }
-                // Ни одно имя не доступно. Первое родовое имя списка — его
-                // подстановка; `monospace` своего имени не даёт (семейство под
-                // него берёт `metrics::mono_family` по признаку). Родового нет —
-                // шрифт ДОКУМЕНТА (CSS 2.1 §15.3, «the user agent's default
-                // font»), а не неизвестное имя: DirectWrite заменял его
-                // системным UI-шрифтом (`select_font`, Segoe UI), тогда как
-                // эталон без `font-family` набирается базой документа
-                // (`font-family-name-017/018/022`, `standard-font-family`).
-                // Метка «шрифт документа» — ПУСТОЕ имя: оно задано (родителя
-                // не наследует, `-017`), а меряется и набирается как `None`.
-                // Пока список установленных не снят (`fonts_known`), о
-                // доступности судить нечем — ниже прежняя ветка.
-                if crate::metrics::fonts_known() && lower.trim() != "inherit" {
-                    self.font_family = match first_generic.as_deref() {
-                        Some("monospace" | "ui-monospace") => None,
-                        Some(_) => generic.map(str::to_string),
-                        None => {
-                            self.monospace = Some(false);
-                            Some(String::new())
-                        }
-                    };
-                    return;
-                }
-                self.font_family = v
-                    .split(',')
-                    .map(|f| f.trim().trim_matches(is_quote))
-                    .find(|f| {
-                        let lower = f.to_ascii_lowercase();
-                        !f.is_empty()
-                            && !is_generic(&lower)
-                            && !matches!(lower.as_str(), "inherit" | "initial")
-                    })
-                    // Неквотированное имя из нескольких слов НОРМАЛИЗУЕТСЯ:
-                    // последовательность пробельных знаков (включая переводы
-                    // строк) — это один пробел (`Courier   New` == `Courier
-                    // New`, CSS2 §15.3; font-family-013 и родня). Экранирование
-                    // раскрывается как в любом идентификаторе.
-                    .map(|f| {
-                        let un = crate::css::unescape(f);
-                        un.split_whitespace().collect::<Vec<_>>().join(" ")
-                    })
-                    .or_else(|| generic.map(str::to_string));
-            }
+            "font-family" => font_family::apply(self, v),
             "text-decoration" | "text-decoration-line" | "-webkit-text-decoration-line" => {
                 // css-text-decor-4 §2: сокращение — `<line> || <style> ||
                 // <color> || <thickness>`, все подсвойства сбрасываются.
@@ -6072,6 +6001,11 @@ impl Computed {
                     "none" | "auto" | "inter-word" | "inter-character" | "distribute" | "ruby"
                 ) {
                     self.ruby_justify = Some(v == "ruby");
+                    self.justify_chars = match v {
+                        "inter-word" => Some(0),
+                        "inter-character" | "distribute" => Some(2),
+                        _ => Some(1),
+                    };
                 }
                 self.no_justify = match v {
                     "none" => Some(true),
@@ -6383,6 +6317,7 @@ impl Computed {
                 }
             }
             "align-content" => {
+                self.align_inherit &= !ainh::ALIGN_CONTENT;
                 self.align_content = parse_justify(v);
                 self.align_content_safe = is_safe(v);
                 // css-align-3 §align-block: ЛЮБОЕ не-`normal` значение делает
@@ -6398,6 +6333,7 @@ impl Computed {
                     self.align_content.is_some() || matches!(word, "baseline" | "first" | "last");
             }
             "justify-items" => {
+                self.align_inherit &= !ainh::JUSTIFY_ITEMS;
                 self.justify_items = parse_align(v);
                 self.justify_items_safe = is_safe(v);
                 self.justify_items_last = v.split_whitespace().any(|w| w == "last");
@@ -6426,6 +6362,7 @@ impl Computed {
                 self.lanes_track_reverse = v.split_whitespace().any(|w| w == "track-reverse");
             }
             "justify-self" => {
+                self.align_inherit &= !ainh::JUSTIFY_SELF;
                 self.justify_self = parse_align(v);
                 self.justify_self_physical = match v.split_whitespace().last() {
                     Some("left") => Some(false),
@@ -7934,11 +7871,14 @@ impl Computed {
             }
             "column-rule-style" | "row-rule-style" | "rule-style" => {
                 if let Some(l) = gap_list(v, gap_style) {
+                    let double = v.trim().eq_ignore_ascii_case("double");
                     if key != "row-rule-style" {
                         self.set_gap_styles(true, &l);
+                        self.column_rule_double = double;
                     }
                     if key != "column-rule-style" {
                         self.set_gap_styles(false, &l);
+                        self.row_rule_double = double;
                     }
                 }
             }
@@ -11420,9 +11360,16 @@ impl Computed {
         let widths = list.map(|r| r.0.unwrap_or(Len::Px(3.0)));
         let styles = list.map(|r| r.1.unwrap_or(false));
         let colors = list.map(|r| r.2.flatten());
+        let double = !v.contains(',')
+            && split_outside_parens(v).iter().any(|t| t.trim().eq_ignore_ascii_case("double"));
         for column in [true, false] {
             if (column && key == "row-rule") || (!column && key == "column-rule") {
                 continue;
+            }
+            if column {
+                self.column_rule_double = double;
+            } else {
+                self.row_rule_double = double;
             }
             self.set_gap_widths(column, &widths);
             self.set_gap_styles(column, &styles);
