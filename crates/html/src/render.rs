@@ -9266,9 +9266,36 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // раскладка такой коробке её не даёт и ставит в начало содержимого
             // родителя. Нулевая распорка держит место в потоке, и коробка
             // висит от её угла — там, где написана.
+            // Исключение — коробка блочного уровня, у которой задана БЛОЧНАЯ ось
+            // (`top`/`bottom`), а свободна строчная, в горизонтальном письме
+            // слева направо, и содержащий блок — сам родитель. Статическая
+            // позиция по строчной оси здесь — левый край содержимого
+            // родителя (§10.3.7), её раскладка на месте даёт и так, а
+            // заданную ось §10.6.4 считает от СОДЕРЖАЩЕГО БЛОКА. На распорке
+            // `top: 1px` отсчитывался от статической позиции — коробка
+            // съезжала под весь поток (`margin-collapse-clear-012..016`:
+            // красная подложка `z-index: -1` под жёлтым блоком).
+            let below_cb_axis = e.style.position == Some(crate::computed::Position::Absolute)
+                && e.style.z_index.is_some_and(|z| z < 0)
+                && y_set
+                && !x_set
+                && !e.inline
+                && inherited.rtl != Some(true)
+                && inherited.vertical != Some(true)
+                && e.style.vertical != Some(true)
+                && matches!(
+                    inherited.position,
+                    Some(crate::computed::Position::Relative)
+                        | Some(crate::computed::Position::Absolute)
+                )
+                && crate::inline::establishes_cb(inherited)
+                && !inherited.cb_ancestor
+                && !stacking_context(inherited)
+                && !ordered_context;
             let below_free_axis = e.style.position == Some(crate::computed::Position::Absolute)
                 && e.style.z_index.is_some_and(|z| z < 0)
-                && !(x_set && y_set);
+                && !(x_set && y_set)
+                && !below_cb_axis;
             // ЗАМЕРЕНО И ОТКАЧЕНО: уводить в верхний слой ВСЯКУЮ абсолютную
             // коробку с одной свободной осью (§9.9 шаг 8) — по симметрии с
             // `below_free_axis`. Полный свод CSS2: приобретено 3, ПОТЕРЯНО
@@ -9493,6 +9520,12 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 && e.tag != "body"
                 && !stacking_context(inherited)
             {
+                done = crate::interact::Underlay::new(done).into_any_element();
+            }
+            // Абсолют с `z-index < 0`, оставленный на месте (`below_cb_axis`):
+            // краска — шаг 3 корневого контекста, под потоком родителя, как и
+            // у держателя на распорке выше.
+            if below_cb_axis {
                 done = crate::interact::Underlay::new(done).into_any_element();
             }
             // Позиционированный блок с `z-index: auto | 0` рисуется на шаге 8
