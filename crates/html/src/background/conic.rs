@@ -88,6 +88,11 @@ pub(super) fn rasterize(raw: &str, size: (f32, f32), density: f32) -> Option<Arc
         colors.join(", ")
     ))?;
     let stops = place_stops(raw_stops);
+    let hard_stops: Vec<f32> = stops
+        .windows(2)
+        .filter(|pair| pair[0].1 == pair[1].1)
+        .map(|pair| pair[0].1)
+        .collect();
     let (w, h) = (
         (size.0 * density).ceil().clamp(1.0, 4096.0) as u32,
         (size.1 * density).ceil().clamp(1.0, 4096.0) as u32,
@@ -98,7 +103,18 @@ pub(super) fn rasterize(raw: &str, size: (f32, f32), density: f32) -> Option<Arc
             let dx = (x as f32 + 0.5) * size.0 / w as f32 - center.0;
             let dy = (y as f32 + 0.5) * size.1 / h as f32 - center.1;
             let t = (dx.atan2(-dy) / std::f32::consts::TAU - from).rem_euclid(1.0);
-            let t = if repeating { wrap_repeat(t, &stops) } else { t };
+            let mut t = if repeating { wrap_repeat(t, &stops) } else { t };
+            if !repeating {
+                // CSS Images 4 sections 3.3 and 3.5.2: the finite sweep ends
+                // on the starting ray, and coincident stops jump clockwise.
+                // Choose the closed endpoint and the following side of a jump.
+                if t == 0.0 {
+                    t = 1.0;
+                }
+                if hard_stops.contains(&t) {
+                    t = t.next_up();
+                }
+            }
             let color = colour_at(&stops, t, method.space, method.hue);
             bytes.extend_from_slice(&[
                 (color.b * 255.0).round() as u8,
