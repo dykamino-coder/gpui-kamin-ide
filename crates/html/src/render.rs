@@ -24,6 +24,7 @@ mod combined_text;
 mod physical_atomic;
 mod vertical_flow_margins;
 mod margin_edges;
+mod float_clear_scope;
 mod native_paragraph_route;
 mod scroll_box;
 mod orthogonal_fixed_child;
@@ -11311,21 +11312,11 @@ fn wrap_floats(
     parent_bfc: bool,
 ) -> Vec<Node> {
     let cb_width = parent.width;
-    let parent_clear = parent.clear;
     // `clear: inherit` — сторона родителя (`clear-005`: `clear: left` на
     // контейнере и `inherit` на ребёнке). Разрешается здесь: своего
     // наследования у ненаследуемого свойства нет, а родительский стиль есть
     // только у вызывающего.
-    let nodes: Vec<Node> = nodes
-        .into_iter()
-        .map(|n| match n {
-            Node::Element(mut e) if e.style.clear_inherit => {
-                e.style.clear = parent_clear;
-                Node::Element(e)
-            }
-            other => other,
-        })
-        .collect();
+    let nodes = float_clear_scope::used(nodes, parent);
     // Флоат, записанный ВНУТРИ строчной коробки, принадлежит не ей, а
     // ближайшему блочному предку (§10.1, §9.5.1 п.1). Строчная обёртка, в
     // которой кроме флоата ничего нет, снимается ЗДЕСЬ — ДО проверки
