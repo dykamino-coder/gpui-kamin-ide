@@ -1321,6 +1321,26 @@ fn paint_last_ok(e: &Element, rest: &[Node]) -> bool {
     }
 }
 
+/// Строчный абсолют с `z-index: auto | 0` в позднем слое (`late_push`): шаг 8
+/// приложения E CSS 2.1 — позиционированные рисуются ПОСЛЕ строчного
+/// содержимого (шаг 7) своего контекста наложения. Строки абзаца уходят в
+/// собиратель (`PaintInline`) и рисуются в его конце, а поздний слой — прямой
+/// ребёнок контейнера и красился раньше них: текст ложился поверх абсолюта
+/// (`ch-unit-001`, `ic-unit-001`). `PaintLast` ставит коробку в собиратель по
+/// ключу в порядке разметки. Узел вне обхода (порождённый сборщиком) остаётся
+/// на прежнем пути.
+fn inline_abs_paint_last(e: &Element, el: AnyElement) -> AnyElement {
+    let known = UNKEYED.with(|u| {
+        let u = u.borrow();
+        u.0.get(&e.node_id).map(|&end| u.1.is_none_or(|last| last < end))
+    });
+    if e.style.z_index.unwrap_or(0) == 0 && known == Some(true) {
+        gpui::PaintLast::new(el).key(next_paint_key()).into_any_element()
+    } else {
+        el
+    }
+}
+
 /// Копий ребёнка в стопке страниц — потолок числа страниц, на которые может
 /// растянуться один блок верхнего уровня (в `css-page` не больше шести).
 const PAGE_COPIES: usize = 12;
@@ -18790,7 +18810,7 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                     ..Default::default()
                 });
                 let probe = crate::interact::spot_probe(spot.clone(), false);
-                return match crate::interact::late_push(spot, holder.into_any_element()) {
+                return match crate::interact::late_push(spot, inline_abs_paint_last(e, holder.into_any_element())) {
                     None => Some(probe),
                     Some(kept) => {
                         let mut hole = div().relative().w_0().h_0().flex_shrink_0();
@@ -18867,7 +18887,7 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                 ..Default::default()
             });
             let probe = crate::interact::spot_probe(spot.clone(), false);
-            return match crate::interact::late_push(spot, inner.into_any_element()) {
+            return match crate::interact::late_push(spot, inline_abs_paint_last(e, inner.into_any_element())) {
                 None => Some(probe),
                 Some(kept) => {
                     let mut hole = div().relative().w_0().h_0().flex_shrink_0();
