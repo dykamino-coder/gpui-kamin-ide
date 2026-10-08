@@ -997,7 +997,7 @@ pub fn style_first_line(pieces: Vec<Piece>, at: usize, style: &Computed) -> Vec<
                         .font_alternates
                         .clone()
                         .or_else(|| base.font_alternates.clone());
-                    c.font_family = style.font_family.clone().or(base.font_family.clone());
+                    crate::computed::font_family::inherit(&mut c, style, base);
                     c.font_settings = style
                         .font_settings
                         .clone()
@@ -1662,7 +1662,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     c.text_align_last = own.text_align_last.or(parent.text_align_last);
     c.hanging = own.hanging.or(parent.hanging);
     c.monospace = own.monospace.or(parent.monospace);
-    c.font_family = own.font_family.clone().or(parent.font_family.clone());
+    crate::computed::font_family::inherit(&mut c, own, parent);
     c.nowrap = own.nowrap.or(parent.nowrap);
     c.orphans = own.orphans.or(parent.orphans);
     c.widows = own.widows.or(parent.widows);
@@ -3869,9 +3869,7 @@ pub fn strut_font(style: &Computed, base: &TextStyle) -> gpui::Font {
 
 fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun {
     let mut font = base.font();
-    if font.fallbacks.is_none() {
-        font.fallbacks = crate::fonts::document_fallbacks();
-    }
+    font.fallbacks = crate::computed::font_family::fallbacks(style, font.fallbacks);
     // Названное семейство сильнее родового: подстановкой занимается система.
     // Пустое имя — «шрифт документа» (разбор `font-family`): база как есть.
     if let Some(family) = style.font_family.as_ref().filter(|f| !f.is_empty()) {
