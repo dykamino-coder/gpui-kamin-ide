@@ -18271,11 +18271,25 @@ fn paragraph_pieces_routed(
             )
             .rel_spans(inline::rel_spans(&pieces))
             .ruby_justify(inherited.ruby_justify == Some(true), inherited.ruby_unit)
+            .justify_chars(inherited.justify_chars.unwrap_or(1))
             .align_last(
                 inherited
                     .text_align_last
                     .map(|a| a.physical(inherited.rtl == Some(true)))
-                    .map(crate::lines::align_of_value),
+                    .map(crate::lines::align_of_value)
+                    // `text-justify: none` forbids justification of the last
+                    // line too: it aligns as `start` (css-text-3 §7.3,
+                    // `text-justify-none-001` with `text-align-last: justify`).
+                    .map(|a| match a {
+                        crate::lines::Align::Justify if inherited.no_justify == Some(true) => {
+                            if inherited.rtl == Some(true) {
+                                crate::lines::Align::Right
+                            } else {
+                                crate::lines::Align::Left
+                            }
+                        }
+                        other => other,
+                    }),
             )
             .letter_spacing(gpui::px(crate::metrics::spacing_px(
                 inherited.letter_spacing,
