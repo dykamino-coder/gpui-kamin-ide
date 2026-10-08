@@ -590,7 +590,13 @@ fn measure_columns(
     let plain: Vec<usize> = (1..count).map(|i| i * per_col).take_while(|&k| k < lines).collect();
     let mut ks: Vec<usize> = Vec::with_capacity(plain.len());
     let mut s = 0usize;
-    for _ in 1..count {
+    // `column-fill: auto` с высотой: строки сверх `count` колонок не копятся в
+    // последней, а идут ПЕРЕПОЛНЯЮЩИМИ колонками вбок (css-multicol-1 §8.2
+    // «additional column boxes are created in the inline direction»; Blink
+    // заводит column box на каждый фрагментаинер; `multicol-height-001`: 24
+    // строки по 8 — третья колонка за коробкой, и линейка перед ней).
+    let max_cols = if fill_height.is_some() { lines.max(count) } else { count };
+    for _ in 1..max_cols {
         let mut e = s + per_col;
         if e >= lines {
             break;

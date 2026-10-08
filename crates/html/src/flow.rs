@@ -695,6 +695,7 @@ pub struct ColumnStack {
     fixed_height: Option<f32>,
     /// Линейка между колонками: ширина и цвет.
     rule: Option<(f32, gpui::Hsla)>,
+    rule_to: Option<f32>,
     /// Ряды колонок; `None` — одна линия, как в css-multicol-1.
     rows: Option<Rows>,
     /// Сколько копий у ребёнка (= сколько колонок он может занять).
@@ -753,6 +754,7 @@ impl ColumnStack {
             gap,
             fixed_height,
             rule,
+            rule_to: None,
             rows,
             axis: StackAxis::Horizontal,
             row_phase: 0.0,
@@ -792,6 +794,15 @@ impl ColumnStack {
     }
 
     /// Смещение начала рядов (`row_phase`).
+    /// Блочный размер содержимого коробки заданной высоты: линейки
+    /// единственной линии колонок тянутся до него (Blink `PaintColumnRules`:
+    /// «Paint column rules as tall as the entire multicol container, but only
+    /// when at the last row»).
+    pub fn with_rule_stretch(mut self, h: Option<f32>) -> Self {
+        self.rule_to = h;
+        self
+    }
+
     pub fn with_row_phase(mut self, phase: f32) -> Self {
         self.row_phase = phase.max(0.0);
         self
@@ -2125,6 +2136,7 @@ impl ColumnStack {
             row_phase: 0.0,
             fixed_height,
             rule: None,
+            rule_to: None,
             rows,
             copies: copies.max(1),
             gap_items: None,
@@ -2221,6 +2233,7 @@ impl ColumnStack {
             row_phase: 0.0,
             fixed_height,
             rule: None,
+            rule_to: None,
             rows,
             copies: copies.max(1),
             gap_items: None,
@@ -2349,11 +2362,17 @@ impl ColumnStack {
         // оценки резался краем колонки (`single-line-row-flex-fragmentation-
         // 037`: `contain: size` 100 при оценке 75). Прежний замер (06.09, v103)
         // терял `multicol-overflow-clip`; на integration-7 она цела.
+        // Верхнее поле ПЕРВОГО ребёнка не примыкает к разрыву (начало контекста
+        // фрагментации, css-break-3 §5.2 усекает поля только у разрыва) — монолит
+        // под ним целиком в первой колонке, и Blink растит баланс на недолаз
+        // (`PropagateSpaceShortage` у монолита, не влезшего в колонку): три
+        // монолита 60 с `margin-top: 20px` у первого — колонки 80, а не 60.
         let tallest = kids
             .iter()
-            .map(|k| {
+            .enumerate()
+            .map(|(i, k)| {
                 if k.monolith {
-                    k.h
+                    k.h + if i == 0 && k.par.group == 0 { k.mt.max(0.0) } else { 0.0 }
                 } else {
                     k.solid.iter().fold(0.0f32, |m, &(a, b)| m.max(b - a))
                 }
@@ -2724,7 +2743,12 @@ impl Element for ColumnStack {
                     })
                     .collect()
             };
+            let last = rows.len().saturating_sub(1);
             for (l, &(ry, rh)) in rows.iter().enumerate() {
+                let rh = match self.rule_to {
+                    Some(to) if l == last && self.rows.is_none_or(|r| r.cap) => rh.max(to - ry),
+                    _ => rh,
+                };
                 for i in 1..used.get(l).copied().unwrap_or(0).min(self.count) {
                     let cx_ = i as f32 * (col_w + self.gap) - self.gap * 0.5;
                     window.paint_quad(gpui::fill(

@@ -519,6 +519,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     );
     // ПЕРВЫМ проходом: табличная починка и подъёмы ниже читают `display`.
     resolve_display_inherit(&mut out, (None, None, None, None, None));
+    resolve_rule_color_inherit(&mut out, &RuleColors::default());
     // Anonymous inline-table around orphan table boxes inside inline boxes
     // (CSS 2.1 §17.2.1 step 3); block parents are fixed up by `blocks()`.
     crate::render::inline_anon_tables(&mut out);
@@ -609,6 +610,44 @@ fn resolve_display_inherit(nodes: &mut [Node], parent: DisplayOf) {
             el.style.is_caption,
         );
         resolve_display_inherit(&mut el.children, own);
+    }
+}
+
+type RuleColors = (
+    Option<crate::value::Color>,
+    Option<crate::computed::GapList<Option<crate::value::Color>>>,
+    Option<crate::value::Color>,
+    Option<crate::computed::GapList<Option<crate::value::Color>>>,
+);
+
+/// `column-rule-color: inherit` / `row-rule-color: inherit` — ненаследуемое
+/// свойство берёт ВЫЧИСЛЕННОЕ значение ДОМ-родителя (css-cascade-4 §7.2).
+/// Отрисовка линеек читает собственный стиль коробки, поэтому слово решается
+/// здесь, в дереве, как `display: inherit` выше (`multicol-rule-color-inherit-001`:
+/// родитель `column-rule-color: green` при `column-rule-style: none`, ребёнок
+/// `inherit` — зелёные линейки, а не `currentcolor` красного текста).
+fn resolve_rule_color_inherit(nodes: &mut [Node], parent: &RuleColors) {
+    use crate::computed::inh;
+    for node in nodes.iter_mut() {
+        let Node::Element(el) = node else { continue };
+        let s = &mut el.style;
+        if s.inherit_bits & inh::COLUMN_RULE_C != 0 {
+            s.column_rule_color = parent.0;
+            s.column_rule_colors = parent.1.clone();
+            s.inherit_bits &= !inh::COLUMN_RULE_C;
+        }
+        if s.inherit_bits & inh::ROW_RULE_C != 0 {
+            s.row_rule_color = parent.2;
+            s.row_rule_colors = parent.3.clone();
+            s.inherit_bits &= !inh::ROW_RULE_C;
+        }
+        let own: RuleColors = (
+            s.column_rule_color,
+            s.column_rule_colors.clone(),
+            s.row_rule_color,
+            s.row_rule_colors.clone(),
+        );
+        resolve_rule_color_inherit(&mut el.children, &own);
     }
 }
 

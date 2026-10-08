@@ -1529,7 +1529,7 @@ fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Compu
     // умолчание или роняло объявление.
     if own.inherit_bits != 0 {
         use crate::computed::inh;
-        let on = |b: u16| own.inherit_bits & b != 0;
+        let on = |b: u32| own.inherit_bits & b != 0;
         if on(inh::BG_REPEAT) {
             c.bg_repeat = parent.bg_repeat;
         }
