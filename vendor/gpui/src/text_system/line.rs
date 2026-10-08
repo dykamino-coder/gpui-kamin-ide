@@ -460,7 +460,7 @@ fn paint_line(
                 // строки у низа листа отбрасывались целиком (печать:
                 // `fixedpos-004-print-ref`, абсолюты `bottom: 0` при трёх листах).
                 let glyph_view = window
-                    .scaled_mask(crate::ContentMask {
+                    .visible_mask(crate::ContentMask {
                         bounds: max_glyph_bounds,
                     })
                     .bounds;
