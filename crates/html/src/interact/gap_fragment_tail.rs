@@ -25,7 +25,7 @@ pub(super) fn paint(
     let Some(crossing) = run
         .crossings
         .iter()
-        .find(|c| (c.lo - scope.cut - 0.05).abs() < 0.01 && scope.end <= c.hi + 0.01)
+        .find(|c| (c.lo - scope.cut).abs() < 0.01 && scope.end <= c.hi + 0.01)
     else {
         return;
     };
