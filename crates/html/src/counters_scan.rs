@@ -168,6 +168,7 @@ impl Scan<'_> {
                     all: &all,
                     pos,
                     is_elem: true,
+                    rc: None,
                 };
                 self.node(child, &all[pos], &inner_path, kid, false);
                 pos += 1;

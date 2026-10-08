@@ -1666,6 +1666,11 @@ pub(crate) struct Ancestor {
     featureless: Option<Rc<Vec<Ancestor>>>,
     /// Слот дерева теней: его распределение (см. `SLOTS`).
     slot: Option<Rc<SlotInfo>>,
+    /// Братья-элементы узла и его место среди них — у предка в цепочке
+    /// `path`: нужны компаунду предка с соседним комбинатором (`div + div
+    /// span`, Selectors-4 §16.3). У переписи братьев (`census_of`) пусто —
+    /// там соседи приходят через `Sibs`.
+    peers: Option<(Rc<Vec<Ancestor>>, usize)>,
 }
 
 /// Отметки `:has()` текущего документа: адрес узла - хеши аргументов.
@@ -2526,6 +2531,9 @@ pub(crate) struct Sibs<'a> {
     pub(crate) pos: usize,
     /// Узел — элемент и присутствует в `all[pos]`.
     pub(crate) is_elem: bool,
+    /// Тот же список под `Rc`, если он есть: его забирает паспорт узла в
+    /// цепочку предков (`Ancestor::peers`).
+    pub(crate) rc: Option<&'a Rc<Vec<Ancestor>>>,
 }
 
 impl<'a> Sibs<'a> {
@@ -2533,6 +2541,7 @@ impl<'a> Sibs<'a> {
         all: &[],
         pos: 0,
         is_elem: false,
+        rc: None,
     };
 
     /// Предыдущие соседи-элементы — для `+` и `~`.
@@ -2551,6 +2560,7 @@ impl<'a> Sibs<'a> {
             all: self.all,
             pos: i,
             is_elem: true,
+            rc: self.rc,
         }
     }
 }
@@ -2587,6 +2597,7 @@ pub(crate) fn ancestor_of(child: &Handle, spot: Spot) -> Option<Ancestor> {
         has_marks: has_marks_of(child),
         featureless: None,
         slot: slot_of(child),
+        peers: None,
     })
 }
 
@@ -2751,6 +2762,7 @@ fn has_in_subtree(handle: &Handle, sel: &Selector, path: &mut Vec<Ancestor>) -> 
             all: &all,
             pos,
             is_elem: true,
+            rc: None,
         };
         if matches(sel, &all[pos], path, sibs) {
             return true;
@@ -2789,6 +2801,7 @@ fn mark_has(handle: &Handle, args: &[HasArg], path: &mut Vec<Ancestor>) {
                             all: &peers,
                             pos: i,
                             is_elem: true,
+                            rc: None,
                         };
                         matches(sel, &peers[i], path, sibs)
                     })
@@ -2832,6 +2845,7 @@ fn walk_children(
     // и на последующих, поэтому паспорта всех детей-элементов собираются
     // заранее, а каждый узел получает свою позицию в общем списке.
     let (spots, all) = census_of(&children);
+    let all = Rc::new(all);
     let mut pos = 0usize;
     for (idx, (child, spot)) in children.iter().zip(&spots).enumerate() {
         let is_elem = spot.index != 0;
@@ -2839,6 +2853,7 @@ fn walk_children(
             all: &all,
             pos,
             is_elem,
+            rc: Some(&all),
         };
         walk(
             child, rules, vars, frames, counter, counters, path, *spot, preserve, sibs, &children,
@@ -2951,6 +2966,7 @@ fn walk(
                 has_marks: has_marks_of(handle),
                 featureless: None,
                 slot: slot_of(handle),
+                peers: sibs.is_elem.then_some(sibs.rc).flatten().map(|r| (r.clone(), sibs.pos)),
             };
 
             let inline_decls: Decls = attrs
@@ -3414,6 +3430,7 @@ fn walk(
                         all: &slot.light_all[..],
                         pos: s.elem_pos,
                         is_elem: s.anc.is_some(),
+                        rc: Some(&slot.light_all),
                     };
                     walk(
                         &s.node,
@@ -4416,6 +4433,7 @@ fn has_slotted_holds(pseudo: &str, me: &Ancestor) -> bool {
             all: &c.all[..],
             pos: c.pos,
             is_elem: true,
+            rc: None,
         };
         list.iter().any(|s| matches(s, &c.anc, &c.path[..], sibs))
     })
@@ -4547,19 +4565,40 @@ pub(crate) fn matches_ignoring_pseudo(
         return true;
     };
     let (parent_sel, direct) = (&anc.0, anc.1);
-    // Сосед ПРЕДКА: его соседей здесь уже не восстановить — такое правило
-    // честно не совпадает, чем совпадать наугад.
-    if parent_sel.prev.is_some() {
+    if direct {
+        return !path.is_empty() && ancestor_holds(parent_sel, path, path.len() - 1);
+    }
+    (0..path.len()).rev().any(|i| ancestor_holds(parent_sel, path, i))
+}
+
+/// Предок `path[at]` — предмет компаунда `sel` вместе с его соседним
+/// комбинатором и цепочкой выше.
+///
+/// Сосед ПРЕДКА (`div + div span`, Selectors-4 §16.3/§16.4) проверяется по
+/// братьям предка, сохранённым в его паспорте (`Ancestor::peers`): у соседа
+/// те же предки — `path[..at]`. Прежде такое правило не совпадало никогда
+/// (`ch-unit-001`: ширина `div + div span` терялась). Без сохранённых братьев
+/// (обход вне `walk`) — честно не совпадает, как раньше.
+fn ancestor_holds(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
+    if !matches_ancestor_compound(sel, &path[at]) {
         return false;
     }
-    if direct {
-        return path.last().is_some_and(|p| {
-            matches_ancestor_compound(parent_sel, p) && matches_chain(parent_sel, path, path.len() - 1)
-        });
+    if sel.prev.is_some() {
+        let Some((all, pos)) = &path[at].peers else {
+            return false;
+        };
+        // Предок сопоставляется ПОЛНОСТЬЮ, как предмет: псевдоклассы его
+        // компаунда (`* ~ :root div` — у корня братьев нет), соседи и цепочка
+        // выше; братья предка делят с ним предков `path[..at]`.
+        let sibs = Sibs {
+            all: &all[..],
+            pos: *pos,
+            is_elem: true,
+            rc: Some(all),
+        };
+        return matches(sel, &path[at], &path[..at], sibs);
     }
-    (0..path.len())
-        .rev()
-        .any(|i| matches_ancestor_compound(parent_sel, &path[i]) && matches_chain(parent_sel, path, i))
+    matches_chain(sel, path, at)
 }
 
 /// Продолжение цепочки вверх для `.a .b .c`.
@@ -4568,17 +4607,10 @@ fn matches_chain(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
         return true;
     };
     let (parent_sel, direct) = (&anc.0, anc.1);
-    if parent_sel.prev.is_some() {
-        return false;
-    }
     if direct {
-        return at > 0
-            && matches_ancestor_compound(parent_sel, &path[at - 1])
-            && matches_chain(parent_sel, path, at - 1);
+        return at > 0 && ancestor_holds(parent_sel, path, at - 1);
     }
-    (0..at)
-        .rev()
-        .any(|i| matches_ancestor_compound(parent_sel, &path[i]) && matches_chain(parent_sel, path, i))
+    (0..at).rev().any(|i| ancestor_holds(parent_sel, path, i))
 }
 
 /// Компаунд ПРЕДКА: как `matches_compound`, но псевдоклассы действия
