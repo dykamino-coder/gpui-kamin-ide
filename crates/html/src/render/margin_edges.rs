@@ -109,6 +109,7 @@ fn bottom_chain(
             && zero_len(child.style.borders().bottom)
             && zero_len(child.style.min_height)
             && matches!(child.style.height, None | Some(Len::Auto))
+            && !margin_height::lowers(child)
             && child.style.margin_trim & 2 == 0
         {
             strut = adjoin(

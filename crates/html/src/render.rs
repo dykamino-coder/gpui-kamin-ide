@@ -24,6 +24,7 @@ mod combined_text;
 mod physical_atomic;
 mod vertical_flow_margins;
 mod margin_edges;
+mod margin_height;
 mod float_clear_scope;
 mod native_paragraph_route;
 mod scroll_box;
@@ -15593,50 +15594,7 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
         // детей в потоке; неизвестная высота хотя бы у одного оставляет
         // прежний запрет. Замерено: CSS2 5074 -> 5077, oldfront 2353 -> 2352
         // (`css-flexbox-height-animation-stretch` 0.47 -> 1.00).
-        let raises = match margin_px(e.style.min_height, &e.style) {
-            None => !zero(e.style.min_height),
-            Some(mh) if mh <= 0.0 => false,
-            Some(mh) => {
-                let mut sum = 0.0f32;
-                let mut known = true;
-                for c in &e.children {
-                    match c {
-                        Node::Text(t) if blank_text(t) => {}
-                        Node::Text(_) => known = false,
-                        Node::Element(ch) if !in_flow(&ch.style) => {}
-                        Node::Element(ch) if ch.inline && inline_level_box(ch) => known = false,
-                        Node::Element(ch) => {
-                            let b = ch.style.borders();
-                            let side = |l: Option<Len>| match l {
-                                None => Some(0.0),
-                                Some(Len::Px(v)) => Some(v),
-                                _ => None,
-                            };
-                            let own = match (
-                                margin_px(ch.style.height, &ch.style),
-                                side(ch.style.padding.top),
-                                side(ch.style.padding.bottom),
-                                side(b.top),
-                                side(b.bottom),
-                            ) {
-                                (Some(h), Some(pt), Some(pb), Some(bt), Some(bb)) => {
-                                    Some(h + pt + pb + bt + bb)
-                                }
-                                _ => None,
-                            };
-                            match own {
-                                Some(v) => sum += v,
-                                None => known = false,
-                            }
-                        }
-                    }
-                    if !known {
-                        break;
-                    }
-                }
-                !known || mh > sum + 0.01
-            }
-        };
+        let raises = margin_height::raises(e);
         // Край закрыт СВОИМИ свойствами: поле ребёнка остаётся внутри и
         // трогать его нечем.
         // Высота, которая «behaves as auto» (css-sizing-3: прозу CSS2
@@ -15655,6 +15613,7 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
         if !zero(e.style.padding.bottom)
             || !zero(e.style.borders().bottom)
             || !behaves_auto
+            || margin_height::separate(e)
             || own_context
         {
             continue;
