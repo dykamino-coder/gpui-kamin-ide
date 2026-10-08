@@ -26,6 +26,7 @@ mod orthogonal_measure;
 mod vertical_style;
 mod combined_geometry;
 mod gap_segments;
+mod gap_fragment_tail;
 mod transform_geometry;
 use gap_segments::segments;
 use transform_geometry::quarter_turn;
@@ -3137,6 +3138,9 @@ impl Element for GapRulePainter {
                 return;
             };
             let c = (run.g0 + run.g1) / 2.0;
+            if spec.kind == GapLayout::Grid && !spec.vertical && gap_on_x {
+                gap_fragment_tail::paint(window, bounds, run, rule, colour.to_hsla());
+            }
             // Отрезок вдоль строчной оси (горизонтальный в горизонтальном
             // письме) при `rtl` считает start/end от правого края.
             let flip = spec.rtl && !spec.vertical && !gap_on_x;
