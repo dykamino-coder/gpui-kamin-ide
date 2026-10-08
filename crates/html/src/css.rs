@@ -9,6 +9,8 @@ use std::collections::HashMap;
 
 mod selector_tokens;
 mod stylesheet_tokens;
+pub(crate) use stylesheet_tokens::next_piece;
+use stylesheet_tokens::find_matching;
 mod component_tokens;
 pub(crate) use component_tokens::skip_string;
 mod priority_tokens;
@@ -2307,71 +2309,6 @@ pub(crate) enum Piece<'a> {
     Statement { head: &'a str },
 }
 
-/// Отрезать от таблицы одну запись, вернув её и остаток.
-///
-/// Скобки ВСЕХ ВИДОВ считаются вместе (§5.4.1): преамбула правила поглощает
-/// уравновешенные `[]`, `()` и `{}`, а кончается на точке с запятой или на
-/// теле в фигурных скобках — смотря что встретится раньше НА ВЕРХНЕМ УРОВНЕ.
-/// Пока искалась просто первая `{`, неизвестное at-правило с мусором в
-/// преамбуле (`@foo ] } ) … ;`) уводило разбор внутрь своего мусора, и вся
-/// таблица за ним разъезжалась (`matching-brackets-001`, `core-syntax-001`).
-pub(crate) fn next_piece(text: &str) -> Option<(Piece<'_>, &str)> {
-    let mut square = 0i32;
-    let mut round = 0i32;
-    let mut at = 0usize;
-    while at < text.len() {
-        let ch = text[at..].chars().next().unwrap_or('\u{0}');
-        match ch {
-            '\\' => {
-                at += ch.len_utf8();
-                at += text[at..].chars().next().map_or(0, char::len_utf8);
-                continue;
-            }
-            '"' | '\'' => {
-                at += ch.len_utf8();
-                at += skip_string(&text[at..], ch);
-                continue;
-            }
-            _ if at_url(&text[at..]) => {
-                at += skip_url(&text[at..]);
-                continue;
-            }
-            // Глубина не уходит в минус: лишняя `]` или `)` — просто знак
-            // (§5.4.1), а не закрытие несуществующей скобки. Пока уходила,
-            // преамбула `@foo ] } ) …` делала следующую настоящую `[`
-            // нулевым уровнем, и точка с запятой ВНУТРИ скобок обрывала
-            // at-правило раньше времени (`matching-brackets-001`).
-            '[' => square += 1,
-            ']' => square = (square - 1).max(0),
-            '(' => round += 1,
-            ')' => round = (round - 1).max(0),
-            // Точка с запятой кончает только AT-правило-предложение. У
-            // обычного правила она — часть преамбулы до `{` (css-syntax-3
-            // §5.4.3 «consume a qualified rule»): `test; @charset "x";
-            // .a, #b { color: red }` — ОДНО правило с негодным селектором, и
-            // отбрасывается оно целиком (`at-charset-039`). Прежде `test;`
-            // обрывалось на месте, и красное правило оживало.
-            ';' if square == 0 && round == 0 && stylesheet_tokens::statement_head(text) => {
-                let head = &text[..at];
-                return Some((Piece::Statement { head }, &text[at + 1..]));
-            }
-            '{' if square == 0 && round == 0 => {
-                let head = &text[..at];
-                let rest = &text[at..];
-                let (body, tail) = match find_matching(rest) {
-                    Some(close) => (&rest[1..close], &rest[close + 1..]),
-                    // Незакрытый блок в КОНЦЕ таблицы закрывается неявно
-                    // (§5.4.1): правило всё равно действует.
-                    None => (&rest[1..], ""),
-                };
-                return Some((Piece::Block { head, body }, tail));
-            }
-            _ => {}
-        }
-        at += ch.len_utf8();
-    }
-    None
-}
 
 /// Есть ли в значении незакавыченная запись `url(…)` с негодным содержимым.
 fn has_bad_url(value: &str) -> bool {
@@ -2474,48 +2411,6 @@ pub(crate) fn skip_url(text: &str) -> usize {
     text.len()
 }
 
-/// Индекс `}` , парный первой `{`.
-fn find_matching(from_brace: &str) -> Option<usize> {
-    let mut depth = 0i32;
-    let mut square = 0i32;
-    let mut round = 0i32;
-    let bytes = from_brace.as_bytes();
-    let mut at = 0usize;
-    while at < bytes.len() {
-        let ch = from_brace[at..].chars().next().unwrap_or('\0');
-        match ch {
-            '\\' => {
-                at += ch.len_utf8();
-                at += from_brace[at..].chars().next().map_or(0, char::len_utf8);
-                continue;
-            }
-            '"' | '\'' => {
-                at += ch.len_utf8();
-                at += skip_string(&from_brace[at..], ch);
-                continue;
-            }
-            _ if at_url(&from_brace[at..]) => {
-                at += skip_url(&from_brace[at..]);
-                continue;
-            }
-            // Внутри `[` и `(` фигурная скобка ничего не закрывает.
-            '[' => square += 1,
-            ']' => square = (square - 1).max(0),
-            '(' => round += 1,
-            ')' => round = (round - 1).max(0),
-            '{' if square == 0 && round == 0 => depth += 1,
-            '}' if square == 0 && round == 0 => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(at);
-                }
-            }
-            _ => {}
-        }
-        at += ch.len_utf8();
-    }
-    None
-}
 
 pub(crate) fn strip_comments(css: &str) -> String {
     let mut out = String::with_capacity(css.len());
