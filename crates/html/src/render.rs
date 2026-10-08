@@ -17133,7 +17133,7 @@ fn line_box_spans(
     let strut = match inherited.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * own,
-        None => own * normal_fraction(inherited, opts),
+        None | Some(Len::Auto) => own * normal_fraction(inherited, opts),
         _ => return None,
     };
     let mut out: Vec<(std::ops::Range<usize>, f32)> = Vec::new();
@@ -17157,7 +17157,7 @@ fn line_box_spans(
         let lh = match style.line_height {
             Some(Len::Px(v)) => v,
             Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-            None => size * normal_fraction(style, opts),
+            None | Some(Len::Auto) => size * normal_fraction(style, opts),
             _ => return None,
         };
         if (size - own).abs() > 0.01
