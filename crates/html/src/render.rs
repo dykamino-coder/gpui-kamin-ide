@@ -1815,6 +1815,13 @@ fn visible_overflow(c: &Computed) -> bool {
 /// `out-of-flow-in-multicolumn-107`, `overflow: clip` над абсолютом
 /// 100000px), и внутрь вложенного многоколоночника (у его абсолютов свои
 /// колонки). Глубина — та же, что у меры стопки (`shape_full(c, 4, ..)`).
+thread_local! {
+    /// Коробки, чью меру фрагментации дотянули внепоточные потомки
+    /// (`shape_full`): `node_id -> (свой размер, мера с дотягом)`.
+    static OOF_OWN: std::cell::RefCell<std::collections::HashMap<u64, (f32, f32)>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
 fn carries_abspos(c: &Element, depth: u8) -> bool {
     depth > 0
         && c.children.iter().any(|n| match n {
@@ -2720,6 +2727,15 @@ fn forced_inside(e: &Element, depth: u8) -> bool {
         return false;
     }
     e.children.iter().any(|n| match n {
+        // Вне потока — свой поток (`edge_break`).
+        Node::Element(k)
+            if matches!(
+                k.style.position,
+                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            ) =>
+        {
+            false
+        }
         Node::Element(k) => {
             k.style.break_before_force
                 || k.style.break_after_force
@@ -4600,12 +4616,28 @@ fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     // именно ради этого). Если коробка содержащим блоком
     // НЕ является, дотяг принадлежит кому-то выше и здесь
     // не учитывается — он всплывёт там.
+    let own_h = h;
     let h = if crate::inline::establishes_cb(&c.style) {
         h.max(oof_reach + bot)
     } else {
         h
     };
     let h = fragment_size::constrain(h, &c.style, top + bot, cx.viewport, unclamp);
+    // Дотяг меняет меру фрагментации, но не размер коробки: сосед в потоке
+    // встаёт под КОНЦОМ коробки, а абсолют продолжается параллельным потоком
+    // (css-position-3 §abspos-breaking; Blink ведёт OOF во фрагментаинере
+    // отдельно от потока). Стопка берёт собственный размер из `OOF_OWN`.
+    {
+        let own = fragment_size::constrain(own_h, &c.style, top + bot, cx.viewport, unclamp);
+        OOF_OWN.with(|m| {
+            let mut m = m.borrow_mut();
+            if own < h - 0.01 {
+                m.insert(c.node_id, (own, h));
+            } else {
+                m.remove(&c.node_id);
+            }
+        });
+    }
     // css-gaps-1 §fragmentation / css-align-3 §column-row-gap: «the gap
     // disappears when it coincides with a fragmentation break»; Blink
     // `GridLayoutAlgorithm` `MaybeSuppressLastGap`: зазор рядов, в который
@@ -6818,6 +6850,18 @@ fn edge_avoid(e: &Element, last: bool) -> bool {
 /// `BoxFragmentBuilder::SetInitialBreakBefore`). Текст или строчный на краю
 /// — анонимная коробка без разрыва, пропагация останавливается.
 fn edge_break(e: &Element, last: bool) -> bool {
+    // Абсолютная коробка вне потока: `break-*` применяется к блочным коробкам
+    // ПОТОКА (css-break-3 §3.1 «Applies to: block-level boxes …»), а внутри
+    // своего потока абсолют фрагментируется отдельно (Blink: OOF ложится во
+    // фрагментаинер после потока, `out_of_flow_layout_part.cc`) — разрыв его
+    // и его потомков потоку родителя не передаётся
+    // (`out-of-flow-in-multicolumn-005`).
+    if matches!(
+        e.style.position,
+        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+    ) {
+        return false;
+    }
     let own = if last {
         e.style.break_after_force
     } else {
@@ -23512,6 +23556,22 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 {
                                     Some(s) => (s.0, s.3, s.4, s.5),
                                     None => (h, cuts, forced, solid),
+                                };
+                                // Мера с дотягом внепоточных — поток, а не
+                                // коробка (`OOF_OWN`): сосед встаёт под концом
+                                // коробки, абсолют продолжается в колонках.
+                                let (h, over) = match OOF_OWN.with(|m| m.borrow().get(&copy.node_id).copied()) {
+                                    // Только когда за коробкой в стопке есть
+                                    // сосед: последней коробке её дотяг —
+                                    // мера колонок многоколоночника.
+                                    Some((own, full))
+                                        if (full - h).abs() < 0.01
+                                            && !solid_box(&copy)
+                                            && ix + 1 < kid_par.len() =>
+                                    {
+                                        (own, over.max(full))
+                                    }
+                                    _ => (h, over),
                                 };
                                 // Относительный сдвиг — не коробке, а фрагменту
                                 // (css-break-3 §5.5): его кладёт `ColumnStack`
