@@ -212,6 +212,12 @@ impl IntoElement for FlowRow {
 /// (схлопываются между соседями по правилам потока).
 pub struct StackChild {
     pub el: AnyElement,
+    /// Высоту и параллельный поток даёт РАСКЛАДКА копии шириной в колонку
+    /// (`Some(ширина колонки)`), а не мера `render::shape_full`: та ребёнка не
+    /// выразила (флоаты, внепоточные потомки …). Ставится в
+    /// `request_column_layout` до укладки; точек разреза у такого ребёнка нет —
+    /// он режется краем колонки.
+    pub measure: Option<f32>,
     /// Запасные копии ТОГО ЖЕ ребёнка. Разрез между колонками рисует по
     /// копии на фрагмент: элемент GPUI рисуется ровно один раз, и показать
     /// одну коробку в двух колонках иначе нечем. Копий столько же, сколько
@@ -288,6 +294,10 @@ pub struct StackChild {
     pub repeat: Option<Repeat>,
     /// Параллельный поток строки flex (`Par`).
     pub par: Par,
+    /// Позиционированный ребёнок (или контекст наложения с `z-index: auto`):
+    /// красится ПОСЛЕ всех непозиционированных фрагментов стопки (CSS 2.1
+    /// Appendix E, шаг 8 после шагов 4–7).
+    pub positioned: bool,
     /// Фон таблицы для «хвоста» непоследнего фрагмента: секции и ряды до низа
     /// фрагментаинера не тянутся, а коробка таблицы — тянется (css-break-3
     /// §box-splitting; Blink `table_layout_algorithm.cc` — фрагмент таблицы
@@ -427,6 +437,18 @@ pub struct Par {
     /// привлекательность разрыва; `multi-line-column-flex-fragmentation-017`:
     /// элементы 250/200 при колонке 100). Не с верха — переносится целиком.
     pub avoid_only: bool,
+    /// Плавающая коробка во всю ширину колонки, поставленная в стопку блоком
+    /// (`render.rs`, `full_float`). Перенесённая в следующую колонку, она не
+    /// уводит за собой поток: следующие коробки продолжают остаток текущей
+    /// колонки, а в колонке флоата встают под ним (css-break-3 §4: флоат —
+    /// своя фрагментируемая коробка; Blink кладёт флоат в следующий
+    /// фрагментаинер, а соседа-BFC — в возможность размещения под ним;
+    /// `css-break/float-005…008`).
+    pub float: bool,
+    /// Коробка с `clear`: встаёт под перенесённым флоатом, а не в остаток
+    /// колонки перед ним (CSS 2.1 §9.5.2). Следующий флоат — тоже: его верх
+    /// не выше верха предыдущего (§9.5.1 п.5).
+    pub clears: bool,
 }
 
 /// Кусок ребёнка в колонке: чей он, какая по счёту копия, в какой колонке
@@ -1081,6 +1103,21 @@ impl ColumnStack {
     /// То же с высотой ПО КОЛОНКАМ: `target_at(col)`. Нужно рядам —
     /// полные ряды стоят в `column-height`, хвост балансируется ниже
     /// (`balance_tail`).
+    /// Поток дошёл до колонок перенесённого флоата (`float_hold`): встать
+    /// под его концом.
+    fn skip_float(hold: &mut Option<(usize, usize, f32)>, col: &mut usize, cur: &mut f32, placed: &mut bool) {
+        if let Some((fc, lc, ly)) = *hold
+            && *col >= fc
+        {
+            if *col <= lc {
+                *col = lc;
+                *cur = cur.max(ly);
+                *placed = true;
+            }
+            *hold = None;
+        }
+    }
+
     fn fill_at(
         kids: &[Kid],
         target_at: &dyn Fn(usize) -> f32,
@@ -1099,6 +1136,9 @@ impl ColumnStack {
         // Группа параллельных строк (`Par`): место начала `(col, y, placed)` и
         // самый дальний конец строки `(col, y)`.
         let mut group: Option<((usize, f32, bool), (usize, f32))> = None;
+        // Перенесённый флоат (`Par::float`): его колонки `первая..=последняя`
+        // и конец в последней — поток, дошедший туда, встаёт под ним.
+        let mut float_hold: Option<(usize, usize, f32)> = None;
         for (kid, k) in kids.iter().enumerate() {
             if k.par.group != 0
                 && k.par.line_start
@@ -1128,6 +1168,7 @@ impl ColumnStack {
                 col += 1;
                 y = 0.0;
                 placed = col < not_top;
+                Self::skip_float(&mut float_hold, &mut col, &mut y, &mut placed);
                 prev_mb = 0.0;
                 first = true;
             }
@@ -1153,6 +1194,16 @@ impl ColumnStack {
             // Элементы строки flex — без схлопывания (css-flexbox-1 §4.2: «The
             // margins of adjacent flex items do not collapse»); первый — от начала
             // группы со своим полем.
+            if (k.par.float || k.par.clears)
+                && let Some((_, lc, ly)) = float_hold.take()
+            {
+                col = lc;
+                y = ly;
+                placed = true;
+                first = false;
+                prev_mb = 0.0;
+            }
+            let snap = (col, y, placed, prev_mb, first);
             let lead = if k.par.group != 0 {
                 if k.par.line_start { k.mt } else { prev_mb + k.mt }
             } else if first {
@@ -1225,6 +1276,7 @@ impl ColumnStack {
                         col += 1;
                         cur = 0.0;
                         placed = col < not_top;
+                        Self::skip_float(&mut float_hold, &mut col, &mut cur, &mut placed);
                         continue;
                     }
                     // Пустая колонка, где украшению не хватило места, всё равно
@@ -1272,6 +1324,7 @@ impl ColumnStack {
                     col += 1;
                     cur = 0.0;
                     placed = col < not_top;
+                    Self::skip_float(&mut float_hold, &mut col, &mut cur, &mut placed);
                     continue;
                 }
                 let rest = flow - from;
@@ -1317,6 +1370,7 @@ impl ColumnStack {
                     col += 1;
                     cur = rg.head_at(from);
                     placed = col < not_top;
+                    Self::skip_float(&mut float_hold, &mut col, &mut cur, &mut placed);
                     continue;
                 }
                 if rest <= room_all + 0.01 {
@@ -1495,6 +1549,7 @@ impl ColumnStack {
                         col += 1;
                         cur = 0.0;
                         placed = col < not_top;
+                        Self::skip_float(&mut float_hold, &mut col, &mut cur, &mut placed);
                         continue;
                     }
                     // Одно поле ребёнка (ни куска содержимого) уже ушло за край
@@ -1509,6 +1564,7 @@ impl ColumnStack {
                         col += 1;
                         cur = 0.0;
                         placed = col < not_top;
+                        Self::skip_float(&mut float_hold, &mut col, &mut cur, &mut placed);
                         continue;
                     }
                     None if !mono && rest > target + 0.01 && room > 0.01 => {
@@ -1534,6 +1590,22 @@ impl ColumnStack {
                 col += 1;
                 cur = rg.head_at(from);
                 placed = col < not_top;
+                Self::skip_float(&mut float_hold, &mut col, &mut cur, &mut placed);
+            }
+            // Флоат ушёл целиком в следующую колонку, а в текущей осталось
+            // место: следующие коробки продолжают её (`Par::float`).
+            if k.par.float && k.par.group == 0 && float_hold.is_none() {
+                let mut mine = out.iter().filter(|f| f.kid == kid);
+                let f0 = mine.next().copied();
+                let fl = mine.last().copied().or(f0);
+                if let (Some(f0), Some(fl)) = (f0, fl)
+                    && f0.col > snap.0
+                    && snap.1 < target_at(snap.0) - 0.01
+                {
+                    float_hold = Some((f0.col, fl.col, fl.y + fl.h));
+                    (col, y, placed, prev_mb, first) = snap;
+                    continue;
+                }
             }
             // Откат курсора на конец КОРОБКИ: параллельный поток уехал
             // дальше, но сосед по css-break-3 §3 продолжается там, где
@@ -2674,6 +2746,15 @@ impl Element for ColumnStack {
             parts[f.kid] += 1;
         }
         let plan_all = plan.clone();
+        // CSS 2.1 Appendix E: блочные потомки потока (шаг 4) раньше
+        // позиционированных (шаг 8) — фрагменты позиционированных детей
+        // красятся вторым проходом, в порядке разметки.
+        let plan: Vec<Frag> = plan
+            .iter()
+            .filter(|f| !self.children[f.kid].positioned)
+            .chain(plan.iter().filter(|f| self.children[f.kid].positioned))
+            .copied()
+            .collect();
         for f in plan {
             let (c, ry) = self.place(f.col);
             // Срез едет вместе со сдвинутым фрагментом (css-break-3 §5.5):

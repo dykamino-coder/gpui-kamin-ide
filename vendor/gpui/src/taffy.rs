@@ -302,6 +302,18 @@ impl TaffyLayoutEngine {
         )
     }
 
+    /// KaminIDE patch: протяжённость СОДЕРЖИМОГО узла (taffy `scrollable_overflow_rect`,
+    /// видимое переполнение потомков) без округления к физической точке.
+    pub fn layout_content_size_unrounded(&self, id: LayoutId, scale_factor: f32) -> Size<Pixels> {
+        let layout = self.taffy.layout(id.into()).expect(EXPECT_MESSAGE);
+        // От края РАМКИ: прямоугольник taffy считается от угла отбивки.
+        let r = layout.scrollable_overflow_rect;
+        size(
+            Pixels((layout.border.left + r.right) / scale_factor),
+            Pixels((layout.border.top + r.bottom) / scale_factor),
+        )
+    }
+
     /// KaminIDE patch: размер узла и его смещение от родителя БЕЗ округления
     /// к точке устройства. Строке нужны точные размеры атомов: округлённые
     /// края дают +0.4px на атом при масштабе 1.25, и ряд атомов ровно в

@@ -4809,6 +4809,7 @@ pub fn frame_sanitize() {
     // свои внепоточные элементы в чужой слой.
     ICB.with(|s| s.borrow_mut().clear());
     CB.with(|s| s.borrow_mut().clear());
+    CB_FIXED.with(|s| s.borrow_mut().clear());
     // Реестр якорей — расходник кадра того же рода: пишется на подготовке,
     // читается там же, к следующей сборке дерева обязан быть пуст.
     crate::anchor::reset();
@@ -5391,15 +5392,45 @@ thread_local! {
     /// на своём месте, а детём становится этому предку.
     static CB: std::cell::RefCell<Vec<Vec<(SpotCell, AnyElement)>>> =
         const { std::cell::RefCell::new(Vec::new()) };
+    /// Параллельно `CB`: содержит ли коробку слоя и `position: fixed`.
+    static CB_FIXED: std::cell::RefCell<Vec<bool>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// Открыть слой содержащего блока вокруг детей позиционированной коробки.
 pub fn cb_open() {
+    cb_open_with(false);
+}
+
+/// Открыть слой содержащего блока; `fixed_cb` — коробка содержит и
+/// `position: fixed` (трансформ, `contain: layout|paint`, css-transforms-1
+/// §transform-rendering: «establishes a containing block for all
+/// descendants»). Такой слой забирает фиксированных потомков в обход
+/// промежуточных позиционированных предков (`cb_push_fixed`).
+pub fn cb_open_with(fixed_cb: bool) {
     CB.with(|s| s.borrow_mut().push(Vec::new()));
+    CB_FIXED.with(|s| s.borrow_mut().push(fixed_cb));
+}
+
+/// Отдать `position: fixed` слою ближайшего предка, содержащего `fixed`
+/// (не ближайшего позиционированного, CSS 2.1 §10.1 п.3 + css-transforms-1).
+/// Слоя нет — элемент возвращается, рисовать на месте.
+pub fn cb_push_fixed(spot: SpotCell, el: AnyElement) -> Option<AnyElement> {
+    let at = CB_FIXED.with(|f| f.borrow().iter().rposition(|x| *x));
+    match at {
+        Some(i) => CB.with(|s| match s.borrow_mut().get_mut(i) {
+            Some(layer) => {
+                layer.push((spot, el));
+                None
+            }
+            None => Some(el),
+        }),
+        None => Some(el),
+    }
 }
 
 /// Забрать накопленное верхним слоем содержащего блока и закрыть его.
 pub fn cb_close() -> Vec<AnyElement> {
+    CB_FIXED.with(|s| s.borrow_mut().pop());
     CB.with(|s| s.borrow_mut().pop())
         .unwrap_or_default()
         .into_iter()
