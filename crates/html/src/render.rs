@@ -1191,7 +1191,61 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
 /// рисуйте по блокам (`render_block`): раскладка в GPUI считается заново
 /// каждый кадр, поэтому стоимость кадра обязана зависеть от видимой части, а
 /// не от размера документа.
+/// Есть ли в поддереве хоть одна коробка, которую `clear` может очищать:
+/// флоат (свой, у `::first-letter` или под `:hover`) либо буквица
+/// (`initial-letter`).
+fn has_clearable(nodes: &[Node]) -> bool {
+    let floats = |c: &Computed| c.float.is_some_and(|f| f != 0) || c.initial_letter.is_some();
+    nodes.iter().any(|n| match n {
+        Node::Element(e) => {
+            floats(&e.style)
+                || e.first_letter.as_ref().is_some_and(floats)
+                || e.hover.as_ref().is_some_and(floats)
+                || has_clearable(&e.children)
+        }
+        Node::Text(_) => false,
+    })
+}
+
+fn has_clear(nodes: &[Node]) -> bool {
+    nodes.iter().any(|n| match n {
+        Node::Element(e) => e.style.clear.is_some() || has_clear(&e.children),
+        Node::Text(_) => false,
+    })
+}
+
+fn strip_clear(nodes: &mut [Node]) {
+    for n in nodes {
+        if let Node::Element(e) = n {
+            e.style.clear = None;
+            e.style.clear_inherit = false;
+            if let Some(h) = e.hover.as_mut() {
+                h.clear = None;
+            }
+            strip_clear(&mut e.children);
+        }
+    }
+}
+
+/// CSS 2.1 §9.5.2: clearance вводится только ради флоатов выше по потоку
+/// того же контекста. В документе без единого флоата `clear` ничего не
+/// значит — и, в частности, не отделяет поля (§8.3.1 говорит о коробке «with
+/// clearance», а не о коробке с `clear`). Наши цепи схлопывания судят по
+/// самому свойству, поэтому в таком документе оно снимается целиком
+/// (`margin-collapse-135`: девять `clear: both` без флоатов — поля обязаны
+/// схлопнуться в ноль). Флоаты есть — дерево не трогается.
+fn without_inert_clear(nodes: &[Node]) -> Option<Vec<Node>> {
+    if has_clearable(nodes) || !has_clear(nodes) {
+        return None;
+    }
+    let mut copy = nodes.to_vec();
+    strip_clear(&mut copy);
+    Some(copy)
+}
+
 pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
+    let stripped = without_inert_clear(nodes);
+    let nodes: &[Node] = stripped.as_deref().unwrap_or(nodes);
     crate::metrics::set_doc_family(&opts.text.font_family);
     let root = opts.root_style();
     crate::interact::frame_sanitize();
