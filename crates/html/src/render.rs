@@ -14074,8 +14074,11 @@ fn band_seq(nodes: Vec<Node>, em: f32) -> Option<Vec<Node>> {
                 Node::Text(_) => true,
                 Node::Element(e) => !block_level_in_flow(e) && !out_of_flow(&e.style),
             });
+        // CSS 2.1 section 9.5: floats in nested flow blocks participate in
+        // the same BFC. Match the measured host's orthogonal-float gate;
+        // a text-free vertical float does not need inline text measurement.
         if open_run
-            || f.style.vertical == Some(true)
+            || (f.style.vertical == Some(true) && band_float_m(f, em).is_none())
             || f.style.shape_outside.is_some()
             || band_margins(&f.style, em).is_none()
         {
