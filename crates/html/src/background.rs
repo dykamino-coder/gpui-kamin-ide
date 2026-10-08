@@ -1128,7 +1128,7 @@ fn rasterize_rrect(args: &str, w: u32, h: u32, scale: f32) -> Option<Arc<RenderI
     for y in 0..h {
         for x in 0..w {
             let a = contour_coverage(x as f32 + 0.5, y as f32 + 0.5, fw, fh, &r);
-            let v = (a * 255.0) as u8;
+            let v = (a * 255.0).round() as u8;
             bytes.extend_from_slice(&[v, v, v, v]);
         }
     }

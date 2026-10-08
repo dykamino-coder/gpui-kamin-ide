@@ -215,6 +215,8 @@ struct ImgState {
 pub struct ImgLayoutState {
     frame_index: usize,
     replacement: Option<AnyElement>,
+    natural_layout: Option<LayoutId>,
+    natural_bounds: Option<Bounds<Pixels>>,
 }
 
 impl Element for Img {
@@ -239,6 +241,8 @@ impl Element for Img {
         let mut layout_state = ImgLayoutState {
             frame_index: 0,
             replacement: None,
+            natural_layout: None,
+            natural_bounds: None,
         };
 
         window.with_optional_element_state(global_id, |state, window| {
@@ -383,6 +387,7 @@ impl Element for Img {
             );
 
             layout_state.frame_index = frame_index;
+            layout_state.natural_layout = self.style.preserve_natural_pixels.then_some(layout_id);
 
             ((layout_id, layout_state), state)
         })
@@ -397,6 +402,9 @@ impl Element for Img {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
+        request_layout.natural_bounds = request_layout
+            .natural_layout
+            .and_then(|id| sampling::unrounded_bounds(window, id, bounds));
         self.interactivity.prepaint(
             global_id,
             inspector_id,
@@ -450,8 +458,26 @@ impl Element for Img {
                     if std::env::var("IMG_DBG").is_ok() {
                         eprintln!("IMG bounds={:?} natural={:?}", bounds, data.size(layout_state.frame_index));
                     }
-                    sampling::paint(window, new_bounds, style, data,
-                        layout_state.frame_index, &self.style).log_err();
+                    let exact_bounds = layout_state.natural_bounds.map(|exact| {
+                        image_style::position(
+                            self.style
+                                .object_fit
+                                .get_bounds(exact, data.size(layout_state.frame_index)),
+                            exact,
+                            self.style.object_position,
+                            window.rem_size(),
+                        )
+                    });
+                    sampling::paint(
+                        window,
+                        new_bounds,
+                        exact_bounds,
+                        style,
+                        data,
+                        layout_state.frame_index,
+                        &self.style,
+                    )
+                    .log_err();
                 } else if let Some(replacement) = &mut layout_state.replacement {
                     replacement.paint(window, cx);
                 }

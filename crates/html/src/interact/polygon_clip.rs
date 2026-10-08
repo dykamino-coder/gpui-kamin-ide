@@ -75,16 +75,49 @@ pub(super) fn rectangle(points: &[Point<Pixels>], scale: f32) -> Option<[f32; 4]
     ]))
 }
 
+pub(super) fn rectilinear(points: &[Point<Pixels>]) -> bool {
+    let mut edges = 0;
+    for (a, b) in points.iter().zip(points.iter().cycle().skip(1)) {
+        if !f32::from(a.x).is_finite() || !f32::from(a.y).is_finite() {
+            return false;
+        }
+        if a.x != b.x && a.y != b.y {
+            return false;
+        }
+        edges += usize::from(a != b);
+    }
+    edges >= 4
+}
+
 pub(super) fn geometry(
     group: &Grouped,
     bounds: Bounds<Pixels>,
     reference: Bounds<Pixels>,
     scale: f32,
+    snap_rectilinear: bool,
 ) -> (Vec<Point<Pixels>>, Option<[f32; 4]>) {
     if let Some(rect) = rectangle(&points(group, reference), scale) {
         (Vec::new(), Some(rect))
     } else {
-        (points(group, bounds), None)
+        let exact = points(group, reference);
+        if snap_rectilinear && rectilinear(&exact) {
+            // CSS Shapes 1 §3.1 connects polygon vertices with straight
+            // segments. Axis-aligned contours have the same edge grid as
+            // rectangular clips, including concave contours. Resolve the
+            // reference box first and snap final absolute device coordinates.
+            let snapped = exact
+                .into_iter()
+                .map(|p| {
+                    point(
+                        px((f32::from(p.x) * scale).round() / scale),
+                        px((f32::from(p.y) * scale).round() / scale),
+                    )
+                })
+                .collect();
+            (snapped, None)
+        } else {
+            (points(group, bounds), None)
+        }
     }
 }
 

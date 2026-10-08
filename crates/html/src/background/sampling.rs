@@ -23,50 +23,12 @@ pub(super) fn paint_tile(
         window.current_transformation().rotation_scale,
         matches!(source_kind, super::Source::Raster(_)),
     );
-    let bounds = if sampling == ImageSampling::Nearest
+    if sampling == ImageSampling::Nearest
         && window.current_transformation() == gpui::TransformationMatrix::unit()
     {
-        // CSS 2.1 section 14.2 defines the positioning area before painting.
-        // Blink background_image_geometry.cc:114-122 snaps the destination
-        // origin while retaining the tile size and source-image mapping.
-        // GPUI floors sprite origins, biasing fractional background offsets
-        // toward the preceding device pixel even beside snapped CSS borders.
-        let scale = window.scale_factor();
-        let edge = |value: Pixels| {
-            let physical = (f32::from(value) * scale).round();
-            let mut logical = physical / scale;
-            // Preserve the chosen integer through GPUI's later multiply/floor.
-            if logical * scale < physical {
-                logical = logical.next_up();
-            }
-            gpui::px(logical)
-        };
-        // The far edge snaps the same way, as the edges of a box laid out at
-        // the tile's place: keeping the unsnapped size after the snapped
-        // origin painted a 15px tile at 1.25 over 19 device rows where the
-        // same image as a box covers 18 (background-position-applies-to-*).
-        // GPUI ceils the sprite size: the device span is kept from rounding
-        // up past the chosen integer.
-        let span = |origin: Pixels, size: Pixels| {
-            let from = (f32::from(origin) * scale).round();
-            let to = ((f32::from(origin) + f32::from(size)) * scale).round();
-            let device = (to - from).max(0.0);
-            let mut logical = device / scale;
-            if logical * scale > device {
-                logical = logical.next_down();
-            }
-            gpui::px(logical)
-        };
-        Bounds {
-            origin: bounds.origin.map(edge),
-            size: gpui::size(
-                span(bounds.origin.x, bounds.size.width),
-                span(bounds.origin.y, bounds.size.height),
-            ),
-        }
-    } else {
-        bounds
-    };
+        let _ = window.paint_natural_image(bounds, corners, image, 0, false);
+        return;
+    }
     // An interpolated tile snaps both final edges together as well (CSS
     // Backgrounds 3 section 3.8; Blink background_image_geometry.cc:756),
     // instead of flooring the origin and independently expanding the size.

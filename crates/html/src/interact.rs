@@ -729,8 +729,13 @@ impl Element for Grouped {
         // Вершины считаются от ОПОРНОЙ коробки формы (bounds ± края:
         // margin-box шире, content-box уже); проценты — доли её сторон,
         // точки — как есть (clip-path-polygon-008).
-        let (polygon, polygon_clip) =
-            polygon_clip::geometry(self, bounds, _prepaint.0, window.scale_factor());
+        let (polygon, polygon_clip) = polygon_clip::geometry(
+            self,
+            bounds,
+            _prepaint.0,
+            window.scale_factor(),
+            window.current_transformation() == gpui::TransformationMatrix::unit(),
+        );
         // Плитка маски: у растра — его точки как CSS-точки (density 1), у
         // рисунка без размера и градиента — сама коробка (mask-size auto,
         // css-masking §7.4); `mask-size` подменяет размер, `mask-position`
