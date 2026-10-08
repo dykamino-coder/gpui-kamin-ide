@@ -20,6 +20,15 @@ pub(crate) type PathVertex_ScaledPixels = PathVertex<ScaledPixels>;
 
 pub(crate) type DrawOrder = u32;
 
+/// KaminIDE patch: overlap orders from the bounds tree are spaced by this
+/// step, leaving room below each level for per-primitive bottom-layer orders
+/// (`push_bottom_layer`): equal orders are batched by primitive kind (quads
+/// before sprites), which reversed document order between negative-z boxes
+/// (shape-image-009: a z-index:-2 image drew over a z-index:-1 quad).
+const ORDER_STEP: DrawOrder = 1024;
+/// Sentinel on `layer_stack` for the bottom layer.
+const BOTTOM_LAYER: DrawOrder = 0;
+
 /// KaminIDE patch: поддерево, нарисованное в отдельный буфер.
 ///
 /// Нужно там, где картинка сначала должна сложиться целиком и только потом
@@ -66,6 +75,8 @@ pub(crate) struct Scene {
     pub(crate) groups: Vec<PaintGroup>,
     primitive_bounds: BoundsTree<ScaledPixels>,
     layer_stack: Vec<DrawOrder>,
+    /// KaminIDE patch: bottom-layer primitives painted so far this frame.
+    bottom_seq: DrawOrder,
     pub(crate) shadows: Vec<Shadow>,
     pub(crate) quads: Vec<Quad>,
     pub(crate) paths: Vec<Path<ScaledPixels>>,
@@ -208,7 +219,7 @@ impl Scene {
             // выше переписанных номеров.
             if next > hi {
                 if let Some(u) = ctx.union {
-                    self.primitive_bounds.insert_at_least(u, next);
+                    self.primitive_bounds.insert_at_least(u, next / ORDER_STEP + 1);
                 }
             }
         }
@@ -256,6 +267,7 @@ impl Scene {
         self.groups.clear();
         self.primitive_bounds.clear();
         self.layer_stack.clear();
+        self.bottom_seq = 0;
         self.paths.clear();
         self.shadows.clear();
         self.quads.clear();
@@ -272,7 +284,7 @@ impl Scene {
     }
 
     pub fn push_layer(&mut self, bounds: Bounds<ScaledPixels>) {
-        let order = self.primitive_bounds.insert(bounds);
+        let order = self.primitive_bounds.insert(bounds) * ORDER_STEP;
         if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("ORD_DBG").is_ok()); *ON } {
             eprintln!(
                 "ORD layer o={} x=({}, {}) y=({}, {})",
@@ -291,14 +303,16 @@ impl Scene {
 
     /// KaminIDE patch: слой ПОД содержимым кадра, но НАД фоном страницы.
     ///
-    /// Порядок примитива берётся из дерева границ: первый вставленный (фон
-    /// корня во весь кадр) получает 1, а всё, что его перекрывает, — от 2 и
-    /// выше. Слой с порядком 1 при устойчивой сортировке ложится ПОСЛЕ фона
-    /// (вставлен позже), но ДО перекрывающего содержимого — ровно место
-    /// отрицательного `z-index` из CSS 2.1 §9.9 (шаг 3: над фоном корневого
-    /// контекста, под потоком).
+    /// Порядок примитива берётся из дерева границ с шагом `ORDER_STEP`:
+    /// первый вставленный (фон корня во весь кадр) получает `ORDER_STEP`, а
+    /// всё, что его перекрывает, — от `2 * ORDER_STEP` и выше. Примитивы слоя
+    /// получают порядки `ORDER_STEP + 1, + 2, …` в порядке краски: ПОСЛЕ фона,
+    /// но ДО перекрывающего содержимого — ровно место отрицательного
+    /// `z-index` из CSS 2.1 §9.9 (шаг 3: над фоном корневого контекста, под
+    /// потоком), и порядок документа между ними держится для любых видов
+    /// примитивов.
     pub fn push_bottom_layer(&mut self) {
-        self.layer_stack.push(1);
+        self.layer_stack.push(BOTTOM_LAYER);
         self.paint_operations.push(PaintOperation::StartBottomLayer);
     }
 
@@ -392,11 +406,16 @@ impl Scene {
             return;
         }
 
-        let order = self
-            .layer_stack
-            .last()
-            .copied()
-            .unwrap_or_else(|| self.primitive_bounds.insert(clipped_bounds));
+        let order = match self.layer_stack.last().copied() {
+            // Above the root background (tree order 1), below everything that
+            // overlaps it, in paint order.
+            Some(BOTTOM_LAYER) => {
+                self.bottom_seq = (self.bottom_seq + 1).min(ORDER_STEP - 1);
+                ORDER_STEP + self.bottom_seq
+            }
+            Some(o) => o,
+            None => self.primitive_bounds.insert(clipped_bounds) * ORDER_STEP,
+        };
         match &mut primitive {
             Primitive::Shadow(shadow) => {
                 shadow.order = order;

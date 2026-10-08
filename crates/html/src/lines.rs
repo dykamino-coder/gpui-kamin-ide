@@ -2915,6 +2915,26 @@ impl Paragraph {
                 i += 1;
                 continue;
             }
+            // CSS 2.1 §9.5: a line box shortened by floats (here their
+            // `shape-outside` cut) too small for any content moves down until
+            // some content fits or the floats end (spec-examples
+            // `shape-outside-001`: the last word skips the V's tip line).
+            if over
+                && last_fit.filter(|c| *c > start).is_none()
+                && (fl > 0.0 || fr > 0.0)
+                && out.len() < 4096
+            {
+                out.push(Line {
+                    range: start..start,
+                    width: px(0.),
+                    ellipsis: false,
+                    clamped: false,
+                    vis_cut: None,
+                    hyphen: false,
+                    indent: ind,
+                });
+                continue;
+            }
             if over {
                 // Переносим по последней подошедшей точке; если её нет —
                 // рвём по знакам, но только когда это разрешено.
@@ -2986,7 +3006,27 @@ impl Paragraph {
             };
             let head = start + self.hang_first(start);
             let tail = tail - self.hang_last(tail, true, true);
-            let (fl, fr) = self.flow_cut(out.len());
+            let (mut fl, mut fr) = self.flow_cut(out.len());
+            // The same §9.5 shift for the last line (see the loop above).
+            if let Some(w) = limit {
+                let bare = self.span(&segs, head, tail) - self.tail_spacing(tail);
+                let ind0 = self.indent_of(head_of_part, first_part, limit);
+                while (fl > 0.0 || fr > 0.0)
+                    && out.len() < 4096
+                    && f32::from(bare) > f32::from(w - ind0 - px(fl) - px(fr)) + 0.01
+                {
+                    out.push(Line {
+                        range: start..start,
+                        width: px(0.),
+                        ellipsis: false,
+                        clamped: false,
+                        vis_cut: None,
+                        hyphen: false,
+                        indent: ind0 + px(fl),
+                    });
+                    (fl, fr) = self.flow_cut(out.len());
+                }
+            }
             let indent = self.indent_of(head_of_part, first_part, limit) + px(fl);
             // Конец блока — тоже принудительный разрыв: хвост `pre-wrap`
             // последней строки висит условно (`pre-wrap-019`, `#test2`:
