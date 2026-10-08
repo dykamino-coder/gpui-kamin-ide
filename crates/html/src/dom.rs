@@ -20,6 +20,7 @@ mod containment;
 mod language;
 #[path = "dom_counter_decls.rs"]
 mod counter_decls;
+mod presentational_hints;
 pub(crate) use counter_decls::{
     apply_counter_decls, apply_value_hint, counter_snapshot, inherit_counter_decls,
 };
@@ -2086,43 +2087,6 @@ fn apply_direction(style: &mut Computed, tag: &str, attrs: &[(String, String)]) 
     }
 }
 
-/// Размер, заданный АТРИБУТОМ: `<img width="100" height="36">`.
-///
-/// В HTML это «представленческая подсказка» — стиль самого слабого веса, и
-/// без него картинка в разметке без CSS выходит по своему пикселю, а не по
-/// заявленному размеру. Атрибут проигрывает любому правилу CSS, поэтому
-/// применяется, только если размера ещё нет.
-/// Дорешать `display: inline` после каскада (CSS 2.1).
-///
-/// §9.7: плавающий или абсолютный элемент блокифицируется. §10.2: на
-/// незамещаемом строчном width/height/min/max не применяются — раньше
-/// `div { display: inline; width: 1in }` рисовался коробкой (наш строчный
-/// уровень выражается через inline-block, который размеры принимает).
-/// Презентационные цвета разметки: `bgcolor` и `text` — хинты ниже
-/// авторского CSS (каскад уже слит, поэтому «ниже» выражается как
-/// «только если стиль цвета не задал»).
-fn apply_presentational_colors(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
-    let color_of = |name: &str| {
-        attrs
-            .iter()
-            .find(|(k, _)| k == name)
-            .and_then(|(_, v)| crate::value::Color::parse(v.trim()))
-    };
-    if matches!(tag, "body" | "table" | "tr" | "td" | "th")
-        && style.background.is_none()
-        && style.gradient.is_none()
-        && let Some(c) = color_of("bgcolor")
-    {
-        style.background = Some(c);
-    }
-    if tag == "body"
-        && style.color.is_none()
-        && let Some(c) = color_of("text")
-    {
-        style.color = Some(c);
-    }
-}
-
 /// css-ruby-1 §2.2 п.1 «Inlinify block-level boxes».
 ///
 /// Коробка блочного УРОВНЯ в потоке, лежащая внутри руби-коробки (контейнер,
@@ -3021,6 +2985,10 @@ fn walk(
             // (css-values-5 §7.7): слот ставится только на время его каскада.
             crate::computed::set_current_attrs(&attrs);
             crate::computed::set_current_sibling((spot.index > 0).then_some((spot.index, spot.total)));
+            let nowrap_hint = presentational_hints::nowrap(&tag, &attrs);
+            if let Some(rule) = &nowrap_hint {
+                matched.push(rule);
+            }
             let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
             inherit_counter_decls(&mut style, path.last().map(|p| &p.counter_style));
             apply_value_hint(&mut style, &me);
@@ -3058,7 +3026,7 @@ fn walk(
             }
             apply_presentational_size(&mut style, &tag, &attrs);
             promote_auto_ratio(&mut style, &tag);
-            apply_presentational_colors(&mut style, &tag, &attrs);
+            presentational_hints::colors(&mut style, &tag, &attrs);
             finish_inline_display(&mut style, &tag, &attrs);
             style.plain_block_box = {
                 use crate::computed::Display;
