@@ -9901,6 +9901,50 @@ fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
     if !ordered {
         return nodes;
     }
+    // Анонимный элемент — непрерывный прогон текста В ПОРЯДКЕ РАЗМЕТКИ
+    // (css-flexbox-1 §4), и `order` переставляет уже готовые элементы. После
+    // сортировки прогоны «a a» и «b b» по обе стороны от `order: 1`
+    // становились соседями и склеивались в один абзац
+    // (`flexbox-anonymous-items-001`). Поэтому при двух и более непустых
+    // прогонах каждый заворачивается в свой анонимный блок заранее.
+    let blank = |t: &str| blank_text(t);
+    let mut runs: Vec<Vec<Node>> = vec![];
+    let mut cur: Vec<Node> = vec![];
+    let mut rest: Vec<(usize, Node)> = vec![];
+    for n in nodes.drain(..) {
+        match n {
+            Node::Text(_) => cur.push(n),
+            other => {
+                if !cur.is_empty() {
+                    runs.push(std::mem::take(&mut cur));
+                    rest.push((usize::MAX, Node::Text(String::new())));
+                }
+                rest.push((0, other));
+            }
+        }
+    }
+    if !cur.is_empty() {
+        runs.push(cur);
+        rest.push((usize::MAX, Node::Text(String::new())));
+    }
+    let solid = runs
+        .iter()
+        .filter(|r| r.iter().any(|n| matches!(n, Node::Text(t) if !blank(t))))
+        .count();
+    let mut run_iter = runs.into_iter();
+    for (tag, n) in rest {
+        if tag != usize::MAX {
+            nodes.push(n);
+            continue;
+        }
+        let run = run_iter.next().unwrap_or_default();
+        let has_text = run.iter().any(|n| matches!(n, Node::Text(t) if !blank(t)));
+        if solid >= 2 && has_text {
+            nodes.push(Node::Element(anon_element("div", run)));
+        } else {
+            nodes.extend(run);
+        }
+    }
     // css-flexbox-1 §5.4 (и css-grid-2 §9.1 по ссылке): «Absolutely-
     // positioned children of a flex container are treated as having
     // order: 0 for the purpose of determining their painting order relative
