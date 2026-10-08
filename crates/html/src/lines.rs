@@ -1713,6 +1713,11 @@ impl Paragraph {
         // `block-ellipsis: no-ellipsis` — знака нет, и место под него
         // отбирать не у чего: строка остаётся как есть, даже если её
         // непереносимое слово шире коробки (`block-ellipsis-023/024/037`).
+        // Мягкий перенос — тоже точка переноса для знака (css-overflow-4
+        // §block-ellipsis «as if wrapping»): разрыв на нём показывает знак
+        // переноса перед многоточием (`block-ellipsis-028`: «isti‐…»).
+        let shy_at = |at: usize| at > head && self.text[..at].ends_with('\u{ad}');
+        let shy_w = |at: usize| if shy_at(at) { self.hyphen_w.get() } else { px(0.) };
         if let Some(room) = limit.map(|w| w - ell).filter(|_| !self.clamp_str().is_empty()) {
             if self.span(&segs, head, end) > room {
                 end = self
@@ -1721,19 +1726,22 @@ impl Paragraph {
                     .map(|s| s.at)
                     .filter(|at| *at > head && *at <= end)
                     .map(|at| head + trim_hanging(&self.text[head..at]))
-                    .filter(|at| self.span(&segs, head, *at) <= room)
+                    .filter(|at| self.span(&segs, head, *at) + shy_w(*at) <= room)
                     .max()
                     .unwrap_or(head);
             }
         }
-        let width = self.span(&segs, head, end) + ell;
+        let hyphen = !self.hyphen.is_empty() && shy_at(end);
+        let width = self.span(&segs, head, end)
+            + ell
+            + if hyphen { self.hyphen_w.get() } else { px(0.) };
         lines.push(Line {
             range: head..end,
             width,
             ellipsis: true,
             clamped: true,
             vis_cut: None,
-            hyphen: false,
+            hyphen,
             indent: last.indent,
         });
         lines
@@ -4761,7 +4769,10 @@ impl Element for Paragraph {
                 range.clone()
             };
             // Знак обрыва и знак переноса набираются вместе со строкой.
-            let mark = if line.ellipsis {
+            let mark = if line.ellipsis && line.clamped && line.hyphen {
+                // Обрыв на мягком переносе: знак переноса, затем многоточие.
+                format!("{}{}", self.hyphen, self.line_mark(&line))
+            } else if line.ellipsis {
                 self.line_mark(&line).to_string()
             } else if line.hyphen {
                 self.hyphen.to_string()
