@@ -1433,6 +1433,9 @@ fn main() {
             })
         });
         let empty = Rc::new(Document::new("", BROWSER_CSS));
+        if capture::offscreen() {
+            gpui::frame_capture::enable();
+        }
         let window = cx
             .open_window(
                 WindowOptions {

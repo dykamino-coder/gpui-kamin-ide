@@ -617,7 +617,10 @@ impl DirectXRenderer {
         // ещё кодирует прошлый кадр) — НЕ рисовать и НЕ блокироваться:
         // пропускаем кадр и просим низкоприоритетный WM_PAINT — он придёт
         // ПОСЛЕ обработки очереди ввода, содержимое догонит без лага букв.
-        if let Some(gate) = self.resources.frame_gate.as_ref() {
+        // KaminIDE patch: under frame capture (WPT runner) never skip a frame
+        // on the compositor's latency gate — an occluded window's frames are
+        // consumed rarely and the page would never be drawn.
+        if let Some(gate) = self.resources.frame_gate.as_ref().filter(|_| !crate::frame_capture::enabled()) {
             use windows::Win32::Foundation::WAIT_TIMEOUT;
             use windows::Win32::System::Threading::WaitForSingleObject;
             let wait = unsafe { WaitForSingleObject(gate.0, 0) };
@@ -639,7 +642,50 @@ impl DirectXRenderer {
             log::warn!("paint group failed: {e}");
         }
         self.draw_scene(scene)?;
+        if crate::frame_capture::enabled() {
+            if let Err(e) = self.capture_frame() {
+                log::warn!("frame capture failed: {e}");
+            }
+        }
         self.present()
+    }
+
+    /// KaminIDE patch: copy the drawn back buffer to memory (`frame_capture`).
+    fn capture_frame(&mut self) -> Result<()> {
+        let (w, h) = (self.resources.width, self.resources.height);
+        let desc = D3D11_TEXTURE2D_DESC {
+            Width: w,
+            Height: h,
+            MipLevels: 1,
+            ArraySize: 1,
+            Format: RENDER_TARGET_FORMAT,
+            SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
+            Usage: D3D11_USAGE_STAGING,
+            BindFlags: 0,
+            CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
+            MiscFlags: 0,
+        };
+        let mut staging: Option<ID3D11Texture2D> = None;
+        unsafe { self.devices.device.CreateTexture2D(&desc, None, Some(&mut staging))? };
+        let staging = staging.context("staging texture")?;
+        let ctx = &self.devices.device_context;
+        unsafe { ctx.CopyResource(&staging, &*self.resources.render_target) };
+        let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+        unsafe { ctx.Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))? };
+        let row = (w * 4) as usize;
+        let mut bgra = vec![0u8; row * h as usize];
+        for y in 0..h as usize {
+            let src = unsafe {
+                std::slice::from_raw_parts(
+                    (mapped.pData as *const u8).add(y * mapped.RowPitch as usize),
+                    row,
+                )
+            };
+            bgra[y * row..(y + 1) * row].copy_from_slice(src);
+        }
+        unsafe { ctx.Unmap(&staging, 0) };
+        crate::frame_capture::store(w, h, bgra);
+        Ok(())
     }
 
     /// KaminIDE patch: примитивы одной сцены — кадра или группы.

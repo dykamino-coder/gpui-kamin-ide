@@ -2,6 +2,12 @@
 
 /// Снимок клиентской области окна: массив байт BGRA и его размеры.
 pub(super) fn capture(hwnd: isize) -> Option<(u32, u32, Vec<u8>)> {
+    // `WPT_OFFSCREEN=1`: the frame GPUI itself drew, read back from the GPU
+    // (`gpui::frame_capture`) — independent of window position and occlusion.
+    if offscreen() {
+        let f = gpui::frame_capture::latest()?;
+        return Some((f.width, f.height, f.bgra));
+    }
     use windows::Win32::Foundation::HWND;
     use windows::Win32::Graphics::Gdi::{
         BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleBitmap, CreateCompatibleDC,
@@ -66,4 +72,10 @@ pub(super) fn capture(hwnd: isize) -> Option<(u32, u32, Vec<u8>)> {
         ReleaseDC(None, screen);
         (ok && lines > 0).then_some((w, h, pixels))
     }
+}
+
+/// GPU readback capture instead of `PrintWindow` (`WPT_OFFSCREEN=1`).
+pub(super) fn offscreen() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("WPT_OFFSCREEN").is_ok_and(|v| v == "1"))
 }
