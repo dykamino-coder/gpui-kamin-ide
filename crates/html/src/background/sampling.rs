@@ -1,4 +1,4 @@
-//! Preserve pixel boundaries for an unscaled CSS background raster.
+//! Preserve tile pixel boundaries and paint supported gradients analytically.
 
 use gpui::{Bounds, Corners, ImageSampling, Pixels, RenderImage, Window};
 use std::sync::Arc;
@@ -10,6 +10,9 @@ pub(super) fn paint_tile(
     image: Arc<RenderImage>,
     source_kind: &super::Source,
 ) {
+    if paint_gradient(window, bounds, corners, source_kind) {
+        return;
+    }
     if super::oriented_vector::paint(window, bounds, corners, source_kind) {
         return;
     }
@@ -95,6 +98,52 @@ pub(super) fn paint_tile(
         image
     };
     let _ = window.paint_image_with_sampling(bounds, corners, image, 0, false, sampling);
+}
+
+fn paint_gradient(
+    window: &mut Window,
+    bounds: Bounds<Pixels>,
+    corners: Corners<Pixels>,
+    source: &super::Source,
+) -> bool {
+    let super::Source::Gradient { raw } = source else {
+        return false;
+    };
+    if !raw.starts_with("linear-gradient(") {
+        return false;
+    }
+    let Some(gradient) = crate::computed::parse_gradient(raw) else {
+        return false;
+    };
+    if gradient.stops.len() > 4
+        || gradient.stops_raw.iter().any(|(_, _, px)| px.is_some())
+        || !matches!(
+            gradient.space,
+            crate::computed::GradSpace::Srgb | crate::computed::GradSpace::Oklab
+        )
+        || gradient
+            .stops
+            .iter()
+            .any(|s| crate::color_space::out_of_gamut(s.0))
+    {
+        return false;
+    }
+    // CSS Images 3 §3.1 and §3.4.2 define a continuous image over its
+    // concrete size. Use the box-gradient shader for supported tiles too:
+    // quantizing a CSS-resolution bitmap and then filtering it at device
+    // resolution changes the colors relative to an identical box fill.
+    // Box fills use Taffy's snapped device edges. Keep that destination
+    // convention here as well, including before an ancestor transform.
+    let scale = window.scale_factor();
+    let edge = |value: Pixels| gpui::px((f32::from(value) * scale).round() / scale);
+    let bounds = Bounds::from_corners(
+        gpui::point(edge(bounds.left()), edge(bounds.top())),
+        gpui::point(edge(bounds.right()), edge(bounds.bottom())),
+    );
+    let mut quad = gpui::fill(bounds, crate::apply::fill(&gradient));
+    quad.corner_radii = corners;
+    window.paint_quad(quad);
+    true
 }
 
 pub(super) fn snapped_clip(bounds: Bounds<Pixels>, window: &Window) -> Bounds<Pixels> {
