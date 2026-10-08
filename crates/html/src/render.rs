@@ -39,6 +39,7 @@ mod animation_live;
 use animation_live::animated;
 mod table_roles;
 mod table_border_widths;
+mod table_spanning_size;
 mod replaced_used_style;
 mod replaced_holder_ratio;
 mod replaced_content;
@@ -27183,10 +27184,10 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             {
                 cell.style.hidden = Some(true);
             }
-            // Ширину ячейки несёт КОЛОНКА (см. col_widths): на коробке она
-            // резала бы ячейку уже содержимого (`width: 0` прятал текст).
-            // Снимается с ЛЮБОЙ ячейки: у объединённой (colspan) ширина на
-            // коробке резала её до одной колонки, хотя место ей — весь охват.
+            table_spanning_size::preserve(
+                &mut cell.style, &cm, span_cols, e.style.table_fixed == Some(true),
+                table_is_vertical, spans_collapsed,
+            );
             if matches!(cell.style.width, Some(Len::Px(_)) | Some(Len::Pct(_))) {
                 cell.style.width = None;
             }
