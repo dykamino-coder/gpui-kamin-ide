@@ -14193,9 +14193,7 @@ fn band_seq(nodes: Vec<Node>, em: f32) -> Option<Vec<Node>> {
 
 fn measure_font(c: &Computed, opts: &RenderOpts) -> gpui::Font {
     let mut font = opts.text.font();
-    if font.fallbacks.is_none() {
-        font.fallbacks = crate::fonts::document_fallbacks();
-    }
+    font.fallbacks = crate::computed::font_family::fallbacks(c, font.fallbacks);
     if let Some(family) = c.font_family.as_ref().filter(|f| !f.is_empty()) {
         font.family = crate::fonts::alias_stretch(family, c.font_stretch)
             .unwrap_or_else(|| family.clone())
@@ -17258,9 +17256,7 @@ fn paragraph_routed(
             // жирная первая строка занимает больше места, и разрез по
             // обычному шрифту не помещался бы в неё целиком.
             let mut font = opts.text.font();
-            if font.fallbacks.is_none() {
-                font.fallbacks = crate::fonts::document_fallbacks();
-            }
+            font.fallbacks = crate::computed::font_family::fallbacks(&first, font.fallbacks);
             if let Some(w) = first.font_weight {
                 font.weight = gpui::FontWeight(w as f32);
             }

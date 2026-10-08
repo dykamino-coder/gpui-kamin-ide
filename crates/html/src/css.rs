@@ -12,6 +12,7 @@ mod stylesheet_tokens;
 pub(crate) use stylesheet_tokens::next_piece;
 use stylesheet_tokens::find_matching;
 mod component_tokens;
+mod font_family_values;
 pub(crate) use component_tokens::skip_string;
 mod priority_tokens;
 use priority_tokens::top_level_bang;
@@ -633,7 +634,7 @@ pub fn parse_decls(raw: &str) -> Decls {
         // каскад (`Computed::resolve_with_vars`), а срезав её здесь, мы теряли
         // важность целиком — объявление конкурировало на общих основаниях.
         let important = top_level_bang(val).is_some();
-        let val = &unescape_value(if custom { value } else { val });
+        let val = &font_family_values::normalize(&key, if custom { value } else { val });
         if !key.is_empty() && (custom || !val.is_empty()) {
             // Повтор того же свойства НЕ затирает прежнее на разборе:
             // действительность значения известна только применению

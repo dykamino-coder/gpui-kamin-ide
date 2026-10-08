@@ -8,6 +8,7 @@
 mod gradient_paint;
 mod font_kerning;
 mod font_members;
+pub(crate) mod font_family;
 mod white_space;
 mod font_shorthand;
 pub(crate) mod font_weight;
@@ -2035,8 +2036,9 @@ pub struct Computed {
     /// без отдельного поля он схлопывал и то и другое.
     pub keep_spaces: Option<bool>,
     pub monospace: Option<bool>,
-    /// Первое конкретное имя из `font-family`.
+    /// First available family supplies font-relative metrics.
     pub font_family: Option<String>,
+    pub(crate) font_families: Option<Vec<String>>,
     /// Есть ли у рамки ВИДИМЫЙ рисунок. Толщина без рисунка не считается:
     /// начальное значение `border-style` — `none`, и по CSS такая рамка
     /// вычисляется в ноль (`descendant-static-position-001`: коробка выходила
@@ -3760,6 +3762,7 @@ impl Computed {
             // числе Ahem у стенда) не доезжал никуда, где рядом стоит
             // картинка или иной атом.
             font_family: self.font_family.clone(),
+            font_families: self.font_families.clone(),
             font_weight: self.font_weight,
             font_weight_step: self.font_weight_step,
             italic: self.italic,
@@ -5798,140 +5801,7 @@ impl Computed {
                 // §font-style-prop): подбор лица различает их.
                 self.oblique = Some(v.starts_with("oblique"));
             }
-            "font-family" => {
-                // Имя семейства — либо строка в кавычках, либо ряд
-                // ИДЕНТИФИКАТОРОВ (§15.3). Неверное имя делает объявление
-                // недействительным целиком (§4.2): прежде разбор просто
-                // пропускал негодное имя и брал следующее из списка, из-за
-                // чего `font-family: 1Ahem, Ahem` набиралось шрифтом Ahem.
-                if !v.split(',').all(|part| family_name_ok(part.trim())) {
-                    return;
-                }
-                let lower = v.to_ascii_lowercase();
-                // Моноширинный запрос несёт смысл (код) и решает выбор
-                // встроенного шрифта, если названного в системе нет.
-                self.monospace = Some(lower.contains("mono") || lower.contains("courier"));
-                // Родовое имя — не пустое место: браузер подставляет за него
-                // конкретный системный шрифт, и без подстановки разметка
-                // набиралась умолчанием движка, шире браузерного. Берётся то
-                // же семейство, что подставляет Chrome на этой системе.
-                // Родовое имя — только БЕЗ кавычек (css-fonts-4 §4.1.1: names
-                // that happen to be the same as a keyword value «must be quoted
-                // to prevent confusion with the keywords»): `"fantasy", serif` —
-                // семейство «fantasy», затем родовое `serif`
-                // (`quoted-generic-ignored`).
-                let quoted = |f: &str| f.starts_with('"') || f.starts_with('\'');
-                let first_generic = v
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|f| !quoted(f))
-                    .map(str::to_ascii_lowercase)
-                    .find(|f| is_generic(f));
-                let generic = v
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|f| !quoted(f))
-                    .map(str::to_ascii_lowercase)
-                    .find_map(|f| generic_family(&f));
-                // Первое НЕ родовое имя списка уходит в шрифт как есть:
-                // подстановкой недостающего занимается сама система шрифтов.
-                // Имя нормализуется до сравнения: неквотированное имя из
-                // нескольких слов — это один пробел между ними (§15.3).
-                let norm = |f: &str| {
-                    let un = crate::css::unescape(f);
-                    un.split_whitespace().collect::<Vec<_>>().join(" ")
-                };
-                // Годно ли имя списка как ИМЯ СЕМЕЙСТВА: в кавычках — всегда
-                // (даже `"serif"`), без кавычек — если это не родовое слово.
-                let usable = |raw: &str| {
-                    let f = raw.trim_matches(is_quote);
-                    let lower = f.to_ascii_lowercase();
-                    !f.is_empty()
-                        && (quoted(raw)
-                            || (!is_generic(&lower)
-                                && !matches!(lower.as_str(), "inherit" | "initial")))
-                };
-                // Первое ДОСТУПНОЕ имя списка: браузер идёт по списку, пока
-                // не найдёт шрифт (§15.3). Прежде бралось первое подходящее по
-                // виду, и `font-family: Courier New, Ahem` при отсутствующем
-                // `Courier New` набиралось подменой вместо `Ahem`.
-                //
-                // Доступность даёт не только система. Список установленных —
-                // это снимок `all_font_names()`, снятый ОДИН РАЗ на старте
-                // (`metrics::use_text_system`), и шрифт, принесённый самой
-                // страницей через `@font-face`, в него не попадает никогда.
-                // Без учёта подмен список семейств не доходил до второго
-                // имени: `font-family: "WOFF Test", "WOFF Test CFF Fallback"`
-                // при НЕГОДНОМ `woff2` обязан взять второе имя, а вместо
-                // этого отдавал системе первое, которого нет, — и весь набор
-                // WOFF2 держался на случайном совпадении подмен.
-                // Мало ИМЕТЬ шрифт: «первым доступным» (css-fonts-4
-                // §first-available-font) семейство становится, только если в
-                // нём есть знак U+0020 — от первого доступного считаются
-                // метрики строки, `line-height: normal`, `ch` и `ex`.
-                // Правило `@font-face` с `unicode-range` без пробела обязано
-                // быть ПРОПУЩЕНО: `font-family: 'A-no-space', 'B'` меряется
-                // по `B`, а не по первому имени списка. Прежде подмена от
-                // такого правила проходила как доступная, и после `7dbbfd2`
-                // (замер по настоящему имени) доли кегля брались с ЧУЖОГО
-                // файла — `first-available-font-002/007`, `ex-unit-004`.
-                let available = |f: &str| {
-                    (crate::metrics::font_installed(f) || crate::fonts::alias(f).is_some())
-                        && crate::fonts::covers_space(f)
-                };
-                let installed = v
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|raw| usable(raw))
-                    .map(|raw| norm(raw.trim_matches(is_quote)))
-                    .find(|f| available(f));
-                if let Some(found) = installed {
-                    self.font_family = Some(found);
-                    return;
-                }
-                // Ни одно имя не доступно. Первое родовое имя списка — его
-                // подстановка; `monospace` своего имени не даёт (семейство под
-                // него берёт `metrics::mono_family` по признаку). Родового нет —
-                // шрифт ДОКУМЕНТА (CSS 2.1 §15.3, «the user agent's default
-                // font»), а не неизвестное имя: DirectWrite заменял его
-                // системным UI-шрифтом (`select_font`, Segoe UI), тогда как
-                // эталон без `font-family` набирается базой документа
-                // (`font-family-name-017/018/022`, `standard-font-family`).
-                // Метка «шрифт документа» — ПУСТОЕ имя: оно задано (родителя
-                // не наследует, `-017`), а меряется и набирается как `None`.
-                // Пока список установленных не снят (`fonts_known`), о
-                // доступности судить нечем — ниже прежняя ветка.
-                if crate::metrics::fonts_known() && lower.trim() != "inherit" {
-                    self.font_family = match first_generic.as_deref() {
-                        Some("monospace" | "ui-monospace") => None,
-                        Some(_) => generic.map(str::to_string),
-                        None => {
-                            self.monospace = Some(false);
-                            Some(String::new())
-                        }
-                    };
-                    return;
-                }
-                self.font_family = v
-                    .split(',')
-                    .map(|f| f.trim().trim_matches(is_quote))
-                    .find(|f| {
-                        let lower = f.to_ascii_lowercase();
-                        !f.is_empty()
-                            && !is_generic(&lower)
-                            && !matches!(lower.as_str(), "inherit" | "initial")
-                    })
-                    // Неквотированное имя из нескольких слов НОРМАЛИЗУЕТСЯ:
-                    // последовательность пробельных знаков (включая переводы
-                    // строк) — это один пробел (`Courier   New` == `Courier
-                    // New`, CSS2 §15.3; font-family-013 и родня). Экранирование
-                    // раскрывается как в любом идентификаторе.
-                    .map(|f| {
-                        let un = crate::css::unescape(f);
-                        un.split_whitespace().collect::<Vec<_>>().join(" ")
-                    })
-                    .or_else(|| generic.map(str::to_string));
-            }
+            "font-family" => font_family::apply(self, v),
             "text-decoration" | "text-decoration-line" | "-webkit-text-decoration-line" => {
                 // css-text-decor-4 §2: сокращение — `<line> || <style> ||
                 // <color> || <thickness>`, все подсвойства сбрасываются.

@@ -14,6 +14,7 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
         style.font_kerning = None;
         style.font_alternates = None;
         style.font_family = None;
+        style.font_families = None;
         style.font_weight = None;
         style.font_weight_step = 0;
         style.italic = None;
