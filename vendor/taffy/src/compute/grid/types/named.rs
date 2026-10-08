@@ -218,7 +218,12 @@ impl<S: CheapCloneStr> NamedLineResolverAxis<'_, S> {
                     lines[lines.len() - abs_idx] as i64
                 }
             } else {
-                let remaining_lines = (abs_idx - lines.len()) as i64 * idx.signum() as i64;
+                // KaminIDE patch: число недостающих линий — без знака; знак
+                // даёт ветка ниже. Со знаком отрицательный индекс отсчитывал
+                // неявные линии ВНУТРЬ явной сетки (`A -3` при двух линиях
+                // `A` давал линию -3 вместо -5, css-grid-2 §8.3: «all implicit
+                // grid lines are assumed to have that name»).
+                let remaining_lines = (abs_idx - lines.len()) as i64;
                 if idx > 0 {
                     explicit_track_count as i64 + 1 + remaining_lines
                 } else {
@@ -242,11 +247,12 @@ impl<S: CheapCloneStr> NamedLineResolverAxis<'_, S> {
         if let Some(lines) = self.lines.get(name) {
             return GridLine::from(get_line(filter_lines(lines), explicit_track_count, idx));
         }
-        if !bare {
-            if let Some(lines) = self.lines.get(&*implicit_name) {
-                return GridLine::from(get_line(filter_lines(lines), explicit_track_count, idx));
-            }
-        }
+        // KaminIDE patch: `имя N` считает ТОЛЬКО линии с этим именем, а
+        // при нехватке — неявные (css-grid-2 §8.3 «If a name is given as a
+        // <custom-ident>, only lines with that name are counted»); к линии
+        // `имя-start`/`имя-end` обращается лишь голое имя. Прежде `B -1` при
+        // области `B` давал линию `B-start`, а не неявную перед сеткой
+        // (`grid-lanes-grid-placement-named-lines-001`).
 
         // The CSS Grid specification has a weird quirk where it matches non-existent line names
         // to the first (positive) implicit line in the grid
@@ -255,10 +261,12 @@ impl<S: CheapCloneStr> NamedLineResolverAxis<'_, S> {
         // grid line than it has tracks. And the fallback line is the line *after* that.
         //
         // See: <https://github.com/w3c/csswg-drafts/issues/966#issuecomment-277042153>
+        // KaminIDE patch: при отрицательном индексе — |idx|-я неявная линия
+        // ПЕРЕД явной сеткой (`-(n + 1)` — первая явная линия).
         let line = if idx > 0 {
             explicit_track_count as i64 + 1 + idx as i64
         } else {
-            -(explicit_track_count as i64 + 1 + idx as i64)
+            -(explicit_track_count as i64 + 1 + (idx as i64).abs())
         };
         GridLine::from(line.clamp(i16::MIN as i64, i16::MAX as i64) as i16)
     }
@@ -571,6 +579,23 @@ impl<S: CheapCloneStr> NamedLineResolver<S> {
                 #[cfg(feature = "detailed_layout_info")]
                 pairs.push((line, name.clone()));
             }
+        }
+        // Свои `grid-template-areas` подсетки по-прежнему неявно называют
+        // линии и в подсеточной оси (css-grid-2 §7.3.2): замена списка имён
+        // их не отменяет (`subgrid/line-names-007/008`: `a-end -1` при
+        // `grid-template-areas: '. a a a a'` у самой подсетки).
+        // Подсетка неявных дорожек не имеет (§9 (f)): линии области за её
+        // краем прижимаются к последней линии подсетки.
+        let last_line = u32::try_from(lines.len()).unwrap_or(u32::MAX).max(1);
+        for area in self.areas.values() {
+            let (start, end) = if columns {
+                (area.column_start, area.column_end)
+            } else {
+                (area.row_start, area.row_end)
+            };
+            let name = area.name.as_ref();
+            upsert_line_name_map(map, S::from(format!("{name}-start")), (start as u32).min(last_line));
+            upsert_line_name_map(map, S::from(format!("{name}-end")), (end as u32).min(last_line));
         }
         for positions in map.values_mut() {
             positions.sort_unstable();

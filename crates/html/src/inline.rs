@@ -91,6 +91,115 @@ pub struct OverlayAt {
     /// ширину правее точки (CSS 2.1 §10.3.7 «set 'right' to the static
     /// position»: статическая позиция — край гипотетической коробки).
     pub bidi_hang: bool,
+    /// Абсолют с краями по ОБЕИМ осям, чей содержащий блок — позиционированный
+    /// строчный предок в этом же абзаце (`render.rs: atom_element_raw`).
+    pub edges: bool,
+    /// Содержащий блок такого абсолюта — строчная коробка (`mark_inline_cb`).
+    pub cb: Option<InlineCb>,
+    /// Пустой кусок-метка края содержимого такой коробки `(id, начало?)`:
+    /// байтовые края считаются по ГОТОВЫМ кускам (`overlays`) — схлопывание
+    /// пробелов на границах кусков идёт уже после сбора.
+    pub cb_marker: Option<(u32, bool)>,
+}
+
+/// Содержащий блок из фрагментов строчной коробки (CSS 2.1 §10.1 п.4.1;
+/// Blink `out_of_flow_layout_part.cc` `ComputeInlineContainingBlocks`:
+/// начало — верхний строчно-начальный угол первого фрагмента, конец —
+/// нижний строчно-конечный угол последнего, отрицательный размер — ноль).
+/// Байтовые края СОДЕРЖИМОГО коробки — относительно места самого куска.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct InlineCb {
+    /// Метка коробки (`OverlayAt::cb_marker`).
+    pub id: u32,
+    pub start: isize,
+    pub end: isize,
+    /// Отбивка коробки `[top, right, bottom, left]`: содержащий блок — край
+    /// отбивки (§10.1 п.4: «padding edges»).
+    pub pad: [f32; 4],
+    /// Относительный сдвиг коробки и её строчных предков (§9.4.3).
+    pub shift: (f32, f32),
+}
+
+thread_local! {
+    /// Глубина позиционированных строчных предков текущего сбора кусков.
+    static INLINE_CB_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    /// Атом, который строится прямо сейчас, лежит внутри такого предка.
+    static ATOM_CB: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// Атом ушёл абсолютом с краями от строчного содержащего блока.
+    static ABS_CB_TAKEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Строящийся атом — внутри позиционированного строчного (одноразово).
+pub(crate) fn take_atom_cb() -> bool {
+    ATOM_CB.with(|c| c.replace(false))
+}
+
+/// Вернуть признак `take_atom_cb` перед постройкой атома.
+pub(crate) fn set_atom_cb(v: bool) {
+    ATOM_CB.with(|c| c.set(v));
+}
+
+/// Отметить, что атом построен для строчного содержащего блока.
+pub(crate) fn note_abs_cb() {
+    ABS_CB_TAKEN.with(|c| c.set(true));
+}
+
+/// Забрать отметку `note_abs_cb`.
+pub(crate) fn take_abs_cb() -> bool {
+    ABS_CB_TAKEN.with(|c| c.replace(false))
+}
+
+/// Отметить куски-абсолюты с краями (`OverlayAt::edges`) содержимого
+/// строчной коробки `e`, у которых содержащего блока ещё нет: ближайший
+/// позиционированный предок — она.
+fn mark_inline_cb(pieces: Vec<Piece>, e: &Element) -> Vec<Piece> {
+    if !pieces
+        .iter()
+        .any(|p| matches!(p, Piece::Overlay(_, how) if how.edges && how.cb.is_none()))
+    {
+        return pieces;
+    }
+    static CB_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+    let id = CB_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let px_of = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => v,
+        _ => 0.0,
+    };
+    let pad = [
+        px_of(e.style.padding.top),
+        px_of(e.style.padding.right),
+        px_of(e.style.padding.bottom),
+        px_of(e.style.padding.left),
+    ];
+    let marker = |start: bool| {
+        Piece::Overlay(
+            gpui::Empty.into_any_element(),
+            OverlayAt {
+                cb_marker: Some((id, start)),
+                ..Default::default()
+            },
+        )
+    };
+    let mut out = Vec::with_capacity(pieces.len() + 2);
+    out.push(marker(true));
+    out.extend(pieces.into_iter().map(|p| match p {
+        Piece::Overlay(el, how) if how.edges && how.cb.is_none() => Piece::Overlay(
+            el,
+            OverlayAt {
+                cb: Some(InlineCb {
+                    id,
+                    start: 0,
+                    end: 0,
+                    pad,
+                    shift: (0.0, 0.0),
+                }),
+                ..how
+            },
+        ),
+        other => other,
+    }));
+    out.push(marker(false));
+    out
 }
 
 /// Схлопывание пробелов ЧЕРЕЗ границу кусков (CSS 2.1 §16.6.1,
@@ -276,7 +385,14 @@ fn collect_with_empty_metrics(
                     ));
                     continue;
                 }
-                if let Some(piece) = atom(e) {
+                // Атому сообщают, лежит ли он в позиционированном строчном
+                // (`take_atom_cb`); его собственное содержимое — уже вне его.
+                let depth = INLINE_CB_DEPTH.with(|d| d.replace(0));
+                ATOM_CB.with(|c| c.set(depth > 0));
+                let built = atom(e);
+                ATOM_CB.with(|c| c.set(false));
+                INLINE_CB_DEPTH.with(|d| d.set(depth));
+                if let Some(piece) = built {
                     out.push(piece);
                     // Строчный `<span>`, ушедший в свою коробку (узорный фон,
                     // `has_own_box`), атомом в CSS не является: зазор между его
@@ -352,10 +468,51 @@ fn collect_with_empty_metrics(
                     Some(Len::Px(v)) => v,
                     _ => 16.0,
                 };
+                let own_bg = merged
+                    .background
+                    .filter(|_| merged.bg_clip != Some(crate::computed::BgClip::Text))
+                    .is_some();
+                let mut own_border = true;
                 if let Some((color, width)) = uniform_border(&e.style, font_px) {
                     merged.inline_border = Some((color, [width; 4]));
                 } else if let Some(sided) = sided_border(&e.style, font_px) {
                     merged.inline_border = Some((sided.0, physical_sides::project(inherited, sided.1)));
+                } else {
+                    own_border = false;
+                }
+                // CSS 2.1 §8.6 / css-break-3 §5.4: an inline box with a border
+                // and no background still paints its border (and its padding
+                // area) on each fragment. The text run band is the painter, and
+                // `vendor/gpui` starts a band only from a background colour, so
+                // such a box gets a fully transparent band colour that is unique
+                // per box: bands of adjacent boxes stay separate, runs of its
+                // descendants (which inherit it) continue the same band.
+                let mut painted_bg = merged.inline_bg.is_some();
+                if own_border && !own_bg && !painted_bg {
+                    let id = BORDER_BAND.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    merged.inline_bg = Some(Color {
+                        r: (id % 251) as f32 / 251.0,
+                        g: ((id / 251) % 251) as f32 / 251.0,
+                        b: 0.5,
+                        a: 0.0,
+                    });
+                    let family = merged.font_family.clone().unwrap_or_default();
+                    let px_of = |l: Option<crate::value::Len>| match l {
+                        Some(
+                            crate::value::Len::Px(_)
+                            | crate::value::Len::Em(_)
+                            | crate::value::Len::Ch(_)
+                            | crate::value::Len::Ex(_),
+                        ) => crate::metrics::spacing_px(l, &family, font_px),
+                        _ => 0.0,
+                    };
+                    merged.inline_pad = Some(physical_sides::project(inherited, [
+                        px_of(e.style.padding.top),
+                        px_of(e.style.padding.right),
+                        px_of(e.style.padding.bottom),
+                        px_of(e.style.padding.left),
+                    ]));
+                    merged.inline_radius = Some(px_of(e.style.radius.tl));
                 }
                 // Контур строчного куска рисует тот же прогон: коробки у
                 // куска нет, а место контур и не занимает. Рисуется только
@@ -395,6 +552,7 @@ fn collect_with_empty_metrics(
                             b: 0.0,
                             a: 0.0,
                         });
+                        painted_bg = true;
                     }
                 }
                 // Атомарная строчная коробка — ГРАНИЦА переноса, даже когда
@@ -478,7 +636,7 @@ fn collect_with_empty_metrics(
                 let blank = only_text
                     && (inner_text.is_empty()
                         || (merged.keep_spaces != Some(true)
-                            && merged.inline_bg.is_none()
+                            && !painted_bg
                             && inner_text.chars().all(|c| matches!(c, ' ' | '\t' | '\n' | '\r'))));
                 if blank && (lead != 0.0 || trail != 0.0) {
                     let px_of = |l: Option<Len>| match l {
@@ -586,8 +744,19 @@ fn collect_with_empty_metrics(
                 // Относительный сдвиг строчного куска несёт и его потомков вне
                 // потока: абсолютный элемент внутри `position: relative`
                 // спана стоит от СДВИНУТОГО места (`static-position/htb-*`).
+                let cb_here = establishes_cb(&e.style);
+                if cb_here {
+                    INLINE_CB_DEPTH.with(|d| d.set(d.get() + 1));
+                }
+                let kids = collect_with_empty_metrics(&e.children, &merged, atom, has_text);
+                let kids = if cb_here {
+                    INLINE_CB_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+                    mark_inline_cb(kids, e)
+                } else {
+                    kids
+                };
                 out.extend(shift_overlays(
-                    collect_with_empty_metrics(&e.children, &merged, atom, has_text),
+                    kids,
                     &e.style,
                     merged.rotated_line == Some(true),
                 ));
@@ -763,6 +932,18 @@ fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool) -> Vec<Pi
     pieces
         .into_iter()
         .map(|p| match p {
+            // Абсолют от строчного содержащего блока: сдвигается сам блок, и
+            // обёртка-отбивка встала бы его родителем (`lines.rs`).
+            Piece::Overlay(el, at) if at.cb.is_some() => Piece::Overlay(
+                el,
+                OverlayAt {
+                    cb: at.cb.map(|c| InlineCb {
+                        shift: (c.shift.0 + dx, c.shift.1 + dy),
+                        ..c
+                    }),
+                    ..at
+                },
+            ),
             Piece::Overlay(el, at) if rotated => Piece::Overlay(
                 el,
                 OverlayAt {
@@ -894,6 +1075,8 @@ pub(crate) fn establishes_cb(c: &Computed) -> bool {
             | Some(crate::computed::Position::Fixed)
             | Some(crate::computed::Position::Sticky)
     ) || c.transform.is_some()
+        // css-transforms-2: `preserve-3d` is a containing block for all descendants.
+        || c.preserve_3d == Some(true)
         || c.filter.is_some()
         || c.contain_paint == Some(true)
         || c.contain_layout == Some(true)
@@ -988,6 +1171,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     // `contain-paint-containing-block-fixed-001`).
     c.transform_ancestor = parent.transform_ancestor
         || parent.transform.is_some()
+        || parent.preserve_3d == Some(true)
         || parent.contain_layout == Some(true)
         || parent.contain_paint == Some(true)
         // css-will-change-1 §2.1: блок для `fixed` — и от обещанного свойства
@@ -1625,6 +1809,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     // css-ruby-1 §4.1/§4.3: оба свойства наследуемые.
     c.ruby_under = own.ruby_under.or(parent.ruby_under);
     c.ruby_align = own.ruby_align.or(parent.ruby_align);
+    c.ruby_overhang = own.ruby_overhang.or(parent.ruby_overhang);
     c.ruby_merge = own.ruby_merge.or(parent.ruby_merge);
     // `image-orientation` наследуется (css-images-3 §5.4, «Inherited: yes»):
     // в наборе его ставят на `body`, а действует он на каждой картинке.
@@ -3597,6 +3782,10 @@ pub const ZWSP: &str = "\u{200b}";
 /// Box ids of inline edge spacers (`Computed::spacer_edge`); 0 means none.
 static SPACER_BOX: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 
+/// Ids for the transparent band colour of inline boxes with a border and no
+/// background (see `collect_with_empty_metrics`).
+static BORDER_BAND: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+
 /// Edge spacers with their box: (byte offset, box id, physical left edge,
 /// parent rtl), in logical order.
 pub fn spacer_edges(pieces: &[Piece]) -> Vec<(usize, u32, bool, bool)> {
@@ -3662,11 +3851,32 @@ pub fn spacers(pieces: &[Piece]) -> Vec<usize> {
 pub fn overlays(pieces: Vec<Piece>) -> Vec<(usize, AnyElement, OverlayAt)> {
     let mut at = 0usize;
     let mut out = Vec::new();
+    // Метки краёв строчных содержащих блоков: `id -> (начало, конец)`.
+    let mut marks: Vec<(u32, usize, usize)> = Vec::new();
     for p in pieces {
         match p {
             Piece::Text { text, .. } => at += text.len(),
+            Piece::Overlay(_, OverlayAt { cb_marker: Some((id, true)), .. }) => {
+                marks.push((id, at, at));
+            }
+            Piece::Overlay(_, OverlayAt { cb_marker: Some((id, false)), .. }) => {
+                if let Some(m) = marks.iter_mut().find(|m| m.0 == id) {
+                    m.2 = at;
+                }
+            }
             Piece::Overlay(el, how) => out.push((at, el, how)),
             Piece::Atom(_) => {}
+        }
+    }
+    for (at, _, how) in out.iter_mut() {
+        if let Some(cb) = how.cb.as_mut() {
+            match marks.iter().find(|m| m.0 == cb.id) {
+                Some(&(_, s, e)) => {
+                    cb.start = s as isize - *at as isize;
+                    cb.end = e as isize - *at as isize;
+                }
+                None => how.cb = None,
+            }
         }
     }
     out
@@ -3732,7 +3942,21 @@ fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun {
         font,
         font_size,
         color,
-        background_color: style.inline_bg.map(Color::to_hsla),
+        // A fully transparent band colour only identifies its inline box (see
+        // `BORDER_BAND`): it is kept black (lightness 0) so nothing of it can
+        // blend into the border edge, with the id in hue and saturation.
+        background_color: style.inline_bg.map(|c| {
+            if c.a == 0.0 {
+                gpui::Hsla {
+                    h: c.r,
+                    s: c.g,
+                    l: 0.0,
+                    a: 0.0,
+                }
+            } else {
+                c.to_hsla()
+            }
+        }),
         background_border: style
             .inline_border
             .map(|(c, w)| (c.to_hsla(), w.map(gpui::px))),
@@ -3931,6 +4155,7 @@ pub fn as_wrapped_row(
             for p in group {
                 glued = match p {
                     Piece::Atom(el) => glued.child(el),
+                    Piece::Overlay(_, how) if how.cb_marker.is_some() => glued,
                     Piece::Overlay(el, _) => glued.child(overlay_in_row(el)),
                     Piece::Text { text, style } => glued.child(render_text(text, &style)),
                 };
@@ -3944,6 +4169,7 @@ pub fn as_wrapped_row(
                     line_empty = false;
                     row.child(el)
                 }
+                Piece::Overlay(_, how) if how.cb_marker.is_some() => row,
                 Piece::Overlay(el, _) => row.child(overlay_in_row(el)),
                 Piece::Text { text, style } => {
                     // Пробел остаётся при слове: без него слова слиплись бы.

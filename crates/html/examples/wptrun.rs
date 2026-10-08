@@ -35,6 +35,49 @@ use std::time::Duration;
 
 struct Page {
     doc: Rc<Document>,
+    /// Сравниваемые листы печатного теста (с нуля), `None` — все.
+    select: Option<Vec<usize>>,
+}
+
+/// Листы из `<meta name="reftest-pages" content="1,3-4">` (протокол печатных
+/// reftest WPT, docs/writing-tests/print-reftests.md: сравниваются только
+/// перечисленные страницы, номера с единицы, диапазоны `a-b`, `-b`, `a-`).
+fn reftest_pages(html: &str) -> Option<Vec<usize>> {
+    let lower = html.to_ascii_lowercase();
+    let at = lower.find("reftest-pages")?;
+    let tag_start = lower[..at].rfind('<')?;
+    let tag_end = at + lower[at..].find('>')?;
+    let tag = &lower[tag_start..tag_end];
+    if !tag.starts_with("<meta") {
+        return None;
+    }
+    let c = tag.find("content")?;
+    let rest = tag[c + 7..].trim_start().strip_prefix('=')?.trim_start();
+    let (q, rest) = match rest.chars().next()? {
+        q @ ('"' | '\'') => (q, &rest[1..]),
+        _ => (' ', rest),
+    };
+    let value = &rest[..rest.find(q).unwrap_or(rest.len())];
+    let mut pages = Vec::new();
+    for part in value.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+        let (a, b) = match part.split_once('-') {
+            Some((a, b)) => (
+                a.trim().parse::<usize>().unwrap_or(1),
+                b.trim().parse::<usize>().unwrap_or(1000),
+            ),
+            None => {
+                let n = part.parse::<usize>().ok()?;
+                (n, n)
+            }
+        };
+        for n in a.max(1)..=b.min(1000) {
+            if !pages.contains(&(n - 1)) {
+                pages.push(n - 1);
+            }
+        }
+    }
+    pages.sort_unstable();
+    Some(pages)
 }
 
 impl Render for Page {
@@ -173,10 +216,17 @@ impl Render for Page {
                     canvas: None,
                     outline: (p.outline.0, p.outline.1, p.outline.2.to_hsla()),
                     area: p.area,
+                    turn: p.turn,
                 }
             });
             let stack =
-                kamin_html::render::render_paged(self.doc.nodes(), &opts, geom_for, Some(margins));
+                kamin_html::render::render_paged_select(
+                    self.doc.nodes(),
+                    &opts,
+                    geom_for,
+                    Some(margins),
+                    self.select.clone(),
+                );
             return div()
                 .w(px(f32::from(window.viewport_size().width)))
                 .h(px(f32::from(window.viewport_size().height)))
@@ -281,6 +331,8 @@ struct PageBox {
     border: (f32, kamin_html::value::Color),
     /// Контур листа: толщина, сдвиг, цвет (`outline`/`outline-offset`).
     outline: (f32, f32, kamin_html::value::Color),
+    /// `page-orientation`: 0 — upright, 1 — rotate-right, 3 — rotate-left.
+    turn: u8,
 }
 
 fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4], wm: (bool, bool, bool)) -> PageBox {
@@ -431,6 +483,7 @@ fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4], wm: (bool, bool
         }
     }
     let (pw, ph) = (w, h);
+    let mut turn = 0u8;
     let px_of = move |t: &str, axis_h: bool| -> Option<f32> {
         match Len::parse(t)? {
             Len::Px(v) => Some(v),
@@ -542,6 +595,15 @@ fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4], wm: (bool, bool
                     }
                 }
             }
+            // css-page-3 §page-orientation-prop: лист раскладывается как
+            // обычно и ПОКАЗЫВАЕТСЯ повёрнутым на четверть оборота.
+            "page-orientation" => {
+                turn = match v.trim().to_ascii_lowercase().as_str() {
+                    "rotate-right" => 1,
+                    "rotate-left" => 3,
+                    _ => 0,
+                }
+            }
             "outline-width" => outline.0 = px_of(v, false).unwrap_or(outline.0),
             "outline-offset" => outline.1 = px_of(v, false).unwrap_or(outline.1),
             "outline-color" => outline.2 = Color::parse(v.trim()).unwrap_or(outline.2),
@@ -645,6 +707,7 @@ fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4], wm: (bool, bool
         bg,
         border,
         outline,
+        turn,
     }
 }
 
@@ -1387,7 +1450,7 @@ fn main() {
                     is_minimizable: false,
                     ..Default::default()
                 },
-                |_, cx| -> Entity<Page> { cx.new(|_| Page { doc: empty }) },
+                |_, cx| -> Entity<Page> { cx.new(|_| Page { doc: empty, select: None }) },
             )
             .unwrap();
         // Фокус НЕ забираем: стенд идёт десятками минут, и всё это время его
@@ -1431,6 +1494,7 @@ fn main() {
                     if let Ok(page) = view.downcast::<Page>() {
                         page.update(cx, |page, cx| {
                             page.doc = Rc::new(Document::new(&html, BROWSER_CSS));
+                            page.select = reftest_pages(&html);
                             cx.notify();
                         });
                     }

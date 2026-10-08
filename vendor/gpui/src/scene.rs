@@ -20,6 +20,15 @@ pub(crate) type PathVertex_ScaledPixels = PathVertex<ScaledPixels>;
 
 pub(crate) type DrawOrder = u32;
 
+/// KaminIDE patch: overlap orders from the bounds tree are spaced by this
+/// step, leaving room below each level for per-primitive bottom-layer orders
+/// (`push_bottom_layer`): equal orders are batched by primitive kind (quads
+/// before sprites), which reversed document order between negative-z boxes
+/// (shape-image-009: a z-index:-2 image drew over a z-index:-1 quad).
+const ORDER_STEP: DrawOrder = 1024;
+/// Sentinel on `layer_stack` for the bottom layer.
+const BOTTOM_LAYER: DrawOrder = 0;
+
 /// KaminIDE patch: поддерево, нарисованное в отдельный буфер.
 ///
 /// Нужно там, где картинка сначала должна сложиться целиком и только потом
@@ -66,6 +75,8 @@ pub(crate) struct Scene {
     pub(crate) groups: Vec<PaintGroup>,
     primitive_bounds: BoundsTree<ScaledPixels>,
     layer_stack: Vec<DrawOrder>,
+    /// KaminIDE patch: bottom-layer primitives painted so far this frame.
+    bottom_seq: DrawOrder,
     pub(crate) shadows: Vec<Shadow>,
     pub(crate) quads: Vec<Quad>,
     pub(crate) paths: Vec<Path<ScaledPixels>>,
@@ -80,9 +91,157 @@ pub(crate) struct Scene {
     /// (filter-effects-2 §3 шаг 1 — «Backdrop Root Image» лежит ПОД
     /// элементом). Кладутся в кадр перед меткой группы.
     pub(crate) hoisted_backdrops: Vec<PaintSurface>,
+    /// KaminIDE patch: объёмные контексты (`transform-style: preserve-3d`),
+    /// плоскости и метки примитивов — см. `push_depth_context`.
+    depth: DepthSort,
+}
+
+/// KaminIDE patch: сортировка плоскостей объёмного контекста по глубине
+/// (css-transforms-2 §3d-transform-rendering: элементы одного контекста
+/// рисуются в порядке z, а не в порядке документа).
+///
+/// Порядок примитива назначается при вставке деревом границ, и ребёнок,
+/// нарисованный после фона родителя, иначе под него не ляжет. Каждый
+/// примитив контекста помечается плоскостью, а на выходе из корня контекста
+/// номера порядка переписываются: плоскости от дальней к ближней (ничья —
+/// по документу), внутри плоскости — прежний порядок.
+#[derive(Default)]
+struct DepthSort {
+    contexts: Vec<DepthContext>,
+    /// Глубина каждой плоскости кадра (больше — ближе к зрителю).
+    planes: Vec<f32>,
+    plane_stack: Vec<u32>,
+    /// (вид примитива, индекс в его списке, плоскость).
+    tags: Vec<(u8, u32, u32)>,
+}
+
+struct DepthContext {
+    tags_start: usize,
+    planes_start: usize,
+    /// Плоскость объемлющего контекста, в которую контекст сплющивается.
+    outer_plane: Option<u32>,
+    plane_depth: usize,
+    union: Option<Bounds<ScaledPixels>>,
 }
 
 impl Scene {
+    /// KaminIDE patch: начать объёмный контекст.
+    pub fn push_depth_context(&mut self) {
+        let d = &mut self.depth;
+        d.contexts.push(DepthContext {
+            tags_start: d.tags.len(),
+            planes_start: d.planes.len(),
+            outer_plane: d.plane_stack.last().copied(),
+            plane_depth: d.plane_stack.len(),
+            union: None,
+        });
+    }
+
+    /// KaminIDE patch: плоскость текущего контекста на глубине `z`; вне
+    /// контекста — `false`, и снимать её не нужно.
+    pub fn push_depth_plane(&mut self, z: f32) -> bool {
+        let d = &mut self.depth;
+        if d.contexts.is_empty() {
+            return false;
+        }
+        d.plane_stack.push(d.planes.len() as u32);
+        d.planes.push(if z.is_finite() { z } else { 0.0 });
+        true
+    }
+
+    pub fn pop_depth_plane(&mut self) {
+        self.depth.plane_stack.pop();
+    }
+
+    fn primitive_order_mut(&mut self, kind: u8, index: u32) -> Option<&mut DrawOrder> {
+        let i = index as usize;
+        match kind {
+            0 => self.shadows.get_mut(i).map(|p| &mut p.order),
+            1 => self.quads.get_mut(i).map(|p| &mut p.order),
+            2 => self.paths.get_mut(i).map(|p| &mut p.order),
+            3 => self.underlines.get_mut(i).map(|p| &mut p.order),
+            4 => self.monochrome_sprites.get_mut(i).map(|p| &mut p.order),
+            5 => self.polychrome_sprites.get_mut(i).map(|p| &mut p.order),
+            _ => self.surfaces.get_mut(i).map(|p| &mut p.order),
+        }
+    }
+
+    /// KaminIDE patch: закончить объёмный контекст — переписать порядок его
+    /// примитивов по глубине плоскостей.
+    pub fn pop_depth_context(&mut self) {
+        let Some(ctx) = self.depth.contexts.pop() else {
+            return;
+        };
+        self.depth.plane_stack.truncate(ctx.plane_depth);
+        let tags: Vec<(u8, u32, u32)> = self.depth.tags[ctx.tags_start..].to_vec();
+        if !tags.is_empty() {
+            // Ранг плоскости: от дальней к ближней, ничья — по документу.
+            let planes = &self.depth.planes;
+            let mut ids: Vec<u32> = (ctx.planes_start as u32..planes.len() as u32).collect();
+            ids.sort_by(|a, b| {
+                let (za, zb) = (planes[*a as usize], planes[*b as usize]);
+                za.partial_cmp(&zb)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then(a.cmp(b))
+            });
+            let mut rank = vec![0u32; planes.len()];
+            for (r, id) in ids.iter().enumerate() {
+                rank[*id as usize] = r as u32;
+            }
+            let mut keyed: Vec<(u32, DrawOrder, usize)> = Vec::with_capacity(tags.len());
+            for (i, (kind, index, plane)) in tags.iter().enumerate() {
+                let old = self.primitive_order_mut(*kind, *index).map_or(0, |o| *o);
+                let r = if (*plane as usize) < ctx.planes_start {
+                    0
+                } else {
+                    rank[*plane as usize]
+                };
+                keyed.push((r, old, i));
+            }
+            let lo = keyed.iter().map(|k| k.1).min().unwrap_or(1);
+            let hi = keyed.iter().map(|k| k.1).max().unwrap_or(1);
+            keyed.sort_by_key(|k| (k.0, k.1, k.2));
+            let mut next = lo;
+            let mut prev: Option<(u32, DrawOrder)> = None;
+            for (r, old, i) in &keyed {
+                if let Some(p) = prev {
+                    if p != (*r, *old) {
+                        next += 1;
+                    }
+                }
+                prev = Some((*r, *old));
+                let (kind, index, _) = tags[*i];
+                if let Some(o) = self.primitive_order_mut(kind, index) {
+                    *o = next;
+                }
+            }
+            // Всё, что ляжет поверх контекста позже, обязано получить порядок
+            // выше переписанных номеров.
+            if next > hi {
+                if let Some(u) = ctx.union {
+                    self.primitive_bounds.insert_at_least(u, next / ORDER_STEP + 1);
+                }
+            }
+        }
+        match ctx.outer_plane {
+            // Вложенный контекст сплющен в плоскость объемлющего.
+            Some(outer) => {
+                for t in &mut self.depth.tags[ctx.tags_start..] {
+                    t.2 = outer;
+                }
+                if let (Some(u), Some(parent)) = (ctx.union, self.depth.contexts.last_mut()) {
+                    parent.union = Some(parent.union.map_or(u, |p| p.union(&u)));
+                }
+            }
+            None => {
+                self.depth.tags.truncate(ctx.tags_start);
+                if self.depth.contexts.is_empty() {
+                    self.depth.planes.clear();
+                }
+            }
+        }
+    }
+
     /// KaminIDE patch: сдвинуть номера групп у меток этой сцены.
     ///
     /// Нужно при переносе вложенных групп в общий список кадра: их номера
@@ -108,6 +267,7 @@ impl Scene {
         self.groups.clear();
         self.primitive_bounds.clear();
         self.layer_stack.clear();
+        self.bottom_seq = 0;
         self.paths.clear();
         self.shadows.clear();
         self.quads.clear();
@@ -116,6 +276,7 @@ impl Scene {
         self.polychrome_sprites.clear();
         self.surfaces.clear();
         self.hoisted_backdrops.clear();
+        self.depth = DepthSort::default();
     }
 
     pub fn len(&self) -> usize {
@@ -123,7 +284,7 @@ impl Scene {
     }
 
     pub fn push_layer(&mut self, bounds: Bounds<ScaledPixels>) {
-        let order = self.primitive_bounds.insert(bounds);
+        let order = self.primitive_bounds.insert(bounds) * ORDER_STEP;
         if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("ORD_DBG").is_ok()); *ON } {
             eprintln!(
                 "ORD layer o={} x=({}, {}) y=({}, {})",
@@ -142,14 +303,16 @@ impl Scene {
 
     /// KaminIDE patch: слой ПОД содержимым кадра, но НАД фоном страницы.
     ///
-    /// Порядок примитива берётся из дерева границ: первый вставленный (фон
-    /// корня во весь кадр) получает 1, а всё, что его перекрывает, — от 2 и
-    /// выше. Слой с порядком 1 при устойчивой сортировке ложится ПОСЛЕ фона
-    /// (вставлен позже), но ДО перекрывающего содержимого — ровно место
-    /// отрицательного `z-index` из CSS 2.1 §9.9 (шаг 3: над фоном корневого
-    /// контекста, под потоком).
+    /// Порядок примитива берётся из дерева границ с шагом `ORDER_STEP`:
+    /// первый вставленный (фон корня во весь кадр) получает `ORDER_STEP`, а
+    /// всё, что его перекрывает, — от `2 * ORDER_STEP` и выше. Примитивы слоя
+    /// получают порядки `ORDER_STEP + 1, + 2, …` в порядке краски: ПОСЛЕ фона,
+    /// но ДО перекрывающего содержимого — ровно место отрицательного
+    /// `z-index` из CSS 2.1 §9.9 (шаг 3: над фоном корневого контекста, под
+    /// потоком), и порядок документа между ними держится для любых видов
+    /// примитивов.
     pub fn push_bottom_layer(&mut self) {
-        self.layer_stack.push(1);
+        self.layer_stack.push(BOTTOM_LAYER);
         self.paint_operations.push(PaintOperation::StartBottomLayer);
     }
 
@@ -243,11 +406,16 @@ impl Scene {
             return;
         }
 
-        let order = self
-            .layer_stack
-            .last()
-            .copied()
-            .unwrap_or_else(|| self.primitive_bounds.insert(clipped_bounds));
+        let order = match self.layer_stack.last().copied() {
+            // Above the root background (tree order 1), below everything that
+            // overlaps it, in paint order.
+            Some(BOTTOM_LAYER) => {
+                self.bottom_seq = (self.bottom_seq + 1).min(ORDER_STEP - 1);
+                ORDER_STEP + self.bottom_seq
+            }
+            Some(o) => o,
+            None => self.primitive_bounds.insert(clipped_bounds) * ORDER_STEP,
+        };
         match &mut primitive {
             Primitive::Shadow(shadow) => {
                 shadow.order = order;
@@ -294,6 +462,21 @@ impl Scene {
             Primitive::Surface(surface) => {
                 surface.order = order;
                 self.surfaces.push(surface.clone());
+            }
+        }
+        if let Some(&plane) = self.depth.plane_stack.last() {
+            let (kind, index) = match &primitive {
+                Primitive::Shadow(_) => (0, self.shadows.len() - 1),
+                Primitive::Quad(_) => (1, self.quads.len() - 1),
+                Primitive::Path(_) => (2, self.paths.len() - 1),
+                Primitive::Underline(_) => (3, self.underlines.len() - 1),
+                Primitive::MonochromeSprite(_) => (4, self.monochrome_sprites.len() - 1),
+                Primitive::PolychromeSprite(_) => (5, self.polychrome_sprites.len() - 1),
+                Primitive::Surface(_) => (6, self.surfaces.len() - 1),
+            };
+            self.depth.tags.push((kind, index as u32, plane));
+            if let Some(ctx) = self.depth.contexts.last_mut() {
+                ctx.union = Some(ctx.union.map_or(clipped_bounds, |u| u.union(&clipped_bounds)));
             }
         }
         self.paint_operations

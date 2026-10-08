@@ -1449,6 +1449,43 @@ pub fn shape_profile(raw: &str, b: &ShapeBox, sm: f32, side: i32) -> Option<Vec<
 pub fn shape_profile_block(raw: &str, b: &ShapeBox, sm: f32, side: i32) -> Option<Vec<f32>> {
     let rows = b.mh.ceil().max(1.0) as usize;
     let cols = b.mw.ceil().max(1.0) as usize;
+    // Circle/ellipse without shape-margin: exact extent per one-pixel column,
+    // i.e. the chord at the column edge nearest the centre — a line band
+    // takes the shape's maximum over its whole block range (css-shapes-1
+    // §2), and pixel-centre sampling fell half a pixel short
+    // (`shape-outside-circle-048..053`: a box one device row high).
+    if sm <= 0.0 && (raw.contains("circle(") || raw.contains("ellipse(")) {
+        let raw = raw.trim();
+        let at = raw.find("circle(").or_else(|| raw.find("ellipse("))?;
+        let head = &raw[at..];
+        let head = match head.find(')') {
+            Some(end) => &head[..=end],
+            None => head,
+        };
+        let (cx, cy, rx, ry) = shape_params(head, b.rw, b.rh, 1.0)?;
+        let (cx, cy) = (cx + b.rx, cy + b.ry);
+        return Some(
+            (0..cols)
+                .rev()
+                .map(|x| {
+                    if rx <= 0.0 || ry <= 0.0 {
+                        return 0.0;
+                    }
+                    let (x0, x1) = (x as f32, x as f32 + 1.0);
+                    let dx = if cx < x0 { x0 - cx } else if cx > x1 { cx - x1 } else { 0.0 };
+                    if dx >= rx {
+                        return 0.0;
+                    }
+                    let h = ry * (1.0 - (dx / rx) * (dx / rx)).sqrt();
+                    if side < 0 {
+                        (cy + h).clamp(0.0, b.mh)
+                    } else {
+                        b.mh - (cy - h).clamp(0.0, b.mh)
+                    }
+                })
+                .collect(),
+        );
+    }
     let mask = shape_mask(raw, b, cols, rows)?;
     let t = (b.threshold.clamp(0.0, 1.0) * 255.0) as u8;
     let mut iv: Vec<Option<(i32, i32)>> = (0..cols)

@@ -975,6 +975,15 @@ pub(crate) struct PaintCtx {
     image_cache_stack: Vec<AnyImageCache>,
 }
 
+/// KaminIDE patch: `PaintCtx` плюс растровая привязка текста (см.
+/// `Window::text_paint_ctx`).
+pub(crate) struct TextPaintCtx {
+    base: PaintCtx,
+    glyph_offset: Point<Pixels>,
+    css_text_backgrounds: Vec<(Bounds<Pixels>, Point<Pixels>, TransformationMatrix)>,
+    css_exact_bounds: Option<(Bounds<Pixels>, Bounds<Pixels>)>,
+}
+
 impl Window {
     pub(crate) fn new(
         handle: AnyWindowHandle,
@@ -2666,6 +2675,42 @@ impl Window {
         r
     }
 
+    /// KaminIDE patch: снимок контекста краски ВМЕСТЕ с растровой привязкой
+    /// текста (сдвиг глифов, рамки непрозрачных подложек, точные границы
+    /// коробки) — для строчного содержимого, которое рисуется позже своего
+    /// места в дереве (CSS 2.1 прил. E, шаг 7), но обязано растрироваться
+    /// так же, как на месте.
+    pub(crate) fn text_paint_ctx(&self) -> TextPaintCtx {
+        TextPaintCtx {
+            base: self.paint_ctx(),
+            glyph_offset: self.glyph_offset,
+            css_text_backgrounds: self.css_text_backgrounds.clone(),
+            css_exact_bounds: self.css_exact_bounds,
+        }
+    }
+
+    /// KaminIDE patch: выполнить `f` в снятом `text_paint_ctx` окружении.
+    pub(crate) fn with_text_paint_ctx<R>(
+        &mut self,
+        ctx: TextPaintCtx,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let TextPaintCtx {
+            base,
+            glyph_offset,
+            mut css_text_backgrounds,
+            css_exact_bounds,
+        } = ctx;
+        let glyph = std::mem::replace(&mut self.glyph_offset, glyph_offset);
+        std::mem::swap(&mut self.css_text_backgrounds, &mut css_text_backgrounds);
+        let exact = std::mem::replace(&mut self.css_exact_bounds, css_exact_bounds);
+        let r = self.with_paint_ctx(base, f);
+        self.glyph_offset = glyph;
+        self.css_text_backgrounds = css_text_backgrounds;
+        self.css_exact_bounds = exact;
+        r
+    }
+
     /// KaminIDE patch: подменить маску содержимого БЕЗ пересечения с
     /// текущей. Нужно собственному фону коробки с `overflow: hidden`: маска
     /// коробки — её padding-box, а фон по `background-clip` красится до
@@ -3265,6 +3310,33 @@ impl Window {
         self.next_frame.scene.push_bottom_layer();
         let result = f(self);
         self.next_frame.scene.pop_layer();
+        result
+    }
+
+    /// KaminIDE patch: объёмный контекст (`transform-style: preserve-3d`).
+    /// Плоскости, открытые внутри `f` (`paint_depth_plane`), на выходе
+    /// упорядочиваются по глубине, а не по документу.
+    ///
+    /// This method should only be called as part of the paint phase of element drawing.
+    pub fn paint_depth_context<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
+        self.invalidator.debug_assert_paint();
+        self.next_frame.scene.push_depth_context();
+        let result = f(self);
+        self.next_frame.scene.pop_depth_context();
+        result
+    }
+
+    /// KaminIDE patch: плоскость объёмного контекста на глубине `z` (точки
+    /// устройства, больше — ближе к зрителю); вне контекста — просто `f`.
+    ///
+    /// This method should only be called as part of the paint phase of element drawing.
+    pub fn paint_depth_plane<R>(&mut self, z: f32, f: impl FnOnce(&mut Self) -> R) -> R {
+        self.invalidator.debug_assert_paint();
+        let pushed = self.next_frame.scene.push_depth_plane(z);
+        let result = f(self);
+        if pushed {
+            self.next_frame.scene.pop_depth_plane();
+        }
         result
     }
 
@@ -4080,6 +4152,16 @@ impl Window {
             .as_ref()
             .unwrap()
             .layout_size_unrounded(layout_id, scale_factor)
+    }
+
+    /// KaminIDE patch: протяжённость содержимого узла без округления (см.
+    /// `TaffyLayoutEngine::layout_content_size_unrounded`).
+    pub fn layout_content_size_unrounded(&mut self, layout_id: LayoutId) -> Size<Pixels> {
+        let scale_factor = self.scale_factor();
+        self.layout_engine
+            .as_ref()
+            .unwrap()
+            .layout_content_size_unrounded(layout_id, scale_factor)
     }
 
     /// KaminIDE patch: начало узла в окне без округления к физической точке

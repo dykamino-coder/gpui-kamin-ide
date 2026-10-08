@@ -8,6 +8,23 @@ impl ColumnStack {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, LayoutId) {
+        for c in self.children.iter_mut() {
+            if let Some(w) = c.measure {
+                let (sz, content) = c.el.layout_as_root_with_content(
+                    gpui::size(
+                        gpui::AvailableSpace::Definite(gpui::px(w)),
+                        gpui::AvailableSpace::MaxContent,
+                    ),
+                    window,
+                    cx,
+                );
+                let h = f32::from(sz.height);
+                c.h = h;
+                // Видимое переполнение потомков — параллельный поток
+                // (css-break-3 §3): продолжается в следующих колонках само.
+                c.over = h.max(f32::from(content.height));
+            }
+        }
         let heights: Vec<Kid> = self
             .children
             .iter()

@@ -24,6 +24,7 @@ pub mod tabs;
 
 mod atom_fit;
 mod atom_placement;
+mod ruby_overhang;
 mod content_baselines;
 mod controlled_shape;
 mod decor;
@@ -101,6 +102,9 @@ pub struct Paragraph {
     align_last: Option<Align>,
     ruby_justify: bool,
     ruby_unit: bool,
+    /// Ruby base paragraph: where to report its content width for the ruby
+    /// overhang computation (`ruby_base_with_overhang`).
+    ruby_base_sink: Option<std::rc::Rc<std::cell::Cell<Option<f32>>>>,
     /// `unicode-bidi: plaintext` — сторона письма выбирается для КАЖДОГО
     /// абзаца между жёсткими разрывами по его первому сильному знаку. В
     /// преформате такой абзац — это строка, поэтому и `start`/`end` у каждой
@@ -337,7 +341,77 @@ struct AtomSlot {
 /// Узлы стопок аннотаций одного руби: (под базой?, полулидинг базы, узел).
 /// Полулидинг вычитается: стопка стоит на краю коробки строки базы, а
 /// аннотация в браузере — на краю её СОДЕРЖИМОГО.
-pub type RubyExtents = Vec<(bool, f32, std::rc::Rc<std::cell::Cell<Option<LayoutId>>>)>;
+#[derive(Default)]
+pub struct RubyExtents {
+    pub levels: Vec<(bool, f32, std::rc::Rc<std::cell::Cell<Option<LayoutId>>>)>,
+    /// What the line needs to let the annotation overhang its neighbours
+    /// (`ruby_overhang_probe`, css-ruby-1 §4.4); `None` for non-ruby atoms.
+    pub overhang: Option<RubyOverhangInfo>,
+}
+
+impl RubyExtents {
+    pub fn is_empty(&self) -> bool {
+        self.levels.is_empty()
+    }
+}
+
+/// Inputs of the ruby overhang computation (Blink `ruby_utils.cc`
+/// `GetOverhang`): the overhang mode, half the annotation font size (the
+/// `auto` limit), whether `ruby-align: start` (overhang only at the end), the
+/// base content width reported by the base paragraph during layout, and the
+/// base's font size (no end overhang over larger following text).
+#[derive(Clone)]
+pub struct RubyOverhangInfo {
+    pub mode: crate::computed::RubyOverhang,
+    pub half_annotation_font: f32,
+    pub align_start: bool,
+    pub base_font: f32,
+    pub base_width: std::rc::Rc<std::cell::Cell<Option<f32>>>,
+}
+
+thread_local! {
+    /// Sink of the base paragraph that is being built for a ruby column
+    /// (`ruby_base_width_sink`): the paragraph records its max-content width
+    /// there when it is measured.
+    static RUBY_BASE_SINK: std::cell::RefCell<Option<std::rc::Rc<std::cell::Cell<Option<f32>>>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Build the ruby BASE unit while a width sink is active: the paragraph
+/// created inside takes the sink (`Paragraph::new`) and reports its content
+/// width into it. Also registers the overhang info for the atom being
+/// collected (`collect_ruby_extents`).
+pub fn ruby_base_with_overhang<T>(
+    mode: crate::computed::RubyOverhang,
+    half_annotation_font: f32,
+    align_start: bool,
+    base_font: f32,
+    build: impl FnOnce() -> T,
+) -> T {
+    let sink = std::rc::Rc::new(std::cell::Cell::new(None));
+    let saved = RUBY_BASE_SINK.with(|s| s.replace(Some(sink.clone())));
+    let out = build();
+    RUBY_BASE_SINK.with(|s| s.replace(saved));
+    RUBY_EXTENTS.with(|r| {
+        if let Some(v) = r.borrow_mut().as_mut()
+            && v.overhang.is_none()
+        {
+            v.overhang = Some(RubyOverhangInfo {
+                mode,
+                half_annotation_font,
+                align_start,
+                base_font,
+                base_width: sink,
+            });
+        }
+    });
+    out
+}
+
+/// Take the active base-width sink (for the first paragraph built under it).
+pub(crate) fn take_ruby_base_sink() -> Option<std::rc::Rc<std::cell::Cell<Option<f32>>>> {
+    RUBY_BASE_SINK.with(|s| s.borrow_mut().take())
+}
 
 thread_local! {
     /// Сбор узлов аннотаций для атома, который сейчас строится
@@ -351,7 +425,7 @@ thread_local! {
 /// Вложенный сбор (атом внутри атома) своё забирает сам: прежний список
 /// восстанавливается после вызова.
 pub fn collect_ruby_extents<T>(build: impl FnOnce() -> T) -> (T, RubyExtents) {
-    let saved = RUBY_EXTENTS.with(|r| r.replace(Some(Vec::new())));
+    let saved = RUBY_EXTENTS.with(|r| r.replace(Some(RubyExtents::default())));
     let out = build();
     let mine = RUBY_EXTENTS.with(|r| r.replace(saved)).unwrap_or_default();
     (out, mine)
@@ -436,7 +510,7 @@ pub fn ruby_extent(el: AnyElement, under: bool, inset: f32) -> AnyElement {
     let collecting = RUBY_EXTENTS.with(|r| {
         r.borrow_mut()
             .as_mut()
-            .map(|v| v.push((under, inset, slot.clone())))
+            .map(|v| v.levels.push((under, inset, slot.clone())))
             .is_some()
     });
     if !collecting {
@@ -457,6 +531,9 @@ struct AtomBox {
     /// Аннотации руби над и под коробкой (`ruby_extent`).
     over: f32,
     under: f32,
+    /// Ruby annotation overhang onto the preceding content (css-ruby-1 §4.4):
+    /// the atom is placed this far left of its spacer.
+    shift: f32,
 }
 
 /// Щуп базовой линии атома: пустой лист с базовой линией на своём верху.
@@ -643,6 +720,7 @@ impl Paragraph {
         wrap: Wrap,
     ) -> Self {
         Paragraph {
+            ruby_base_sink: take_ruby_base_sink(),
             text,
             runs,
             font_size,
@@ -2002,6 +2080,9 @@ impl Paragraph {
         }
         self.run_metrics = self.measure_runs(window);
         self.atom_boxes.clear();
+        // Ruby atoms whose annotation may overhang neighbours: resolved after
+        // the loop (the computation needs the whole paragraph).
+        let mut overhangs: Vec<(usize, usize, usize, f32, f32, f32, RubyOverhangInfo)> = Vec::new();
         for slot in self.atoms.iter_mut() {
             let rounded = slot.el.layout_as_root(
                 size(
@@ -2053,7 +2134,7 @@ impl Paragraph {
             // Уровни одной стороны стоят стопкой в каждой колонке; выход за
             // коробку — по самой высокой стопке.
             let (mut over, mut under) = (0.0f32, 0.0f32);
-            for (below, inset, id) in &slot.extents {
+            for (below, inset, id) in &slot.extents.levels {
                 let Some(id) = id.get() else { continue };
                 let h = f32::from(window.layout_exact(id).1.height) - inset;
                 if *below {
@@ -2062,6 +2143,21 @@ impl Paragraph {
                     over = over.max(h);
                 }
             }
+            let len = self.text[slot.at..]
+                .chars()
+                .next()
+                .map_or(0, char::len_utf8);
+            if let Some(info) = &slot.extents.overhang {
+                let ann_w = slot
+                    .extents
+                    .levels
+                    .iter()
+                    .filter_map(|(_, _, id)| id.get())
+                    .map(|id| f32::from(window.layout_exact(id).1.width))
+                    .fold(0.0f32, f32::max);
+                let base_w = info.base_width.get().unwrap_or(w);
+                overhangs.push((self.atom_boxes.len(), slot.at, len, w, base_w, ann_w, info.clone()));
+            }
             self.atom_boxes.push(AtomBox {
                 at: slot.at,
                 h: f32::from(s.height),
@@ -2069,14 +2165,23 @@ impl Paragraph {
                 align: slot.align,
                 over,
                 under,
+                shift: 0.0,
             });
             // Продвижение распорки — ширина атома. Идёт ПЕРВЫМ: поиск
             // диапазона берёт первое попадание.
-            let len = self.text[slot.at..]
-                .chars()
-                .next()
-                .map_or(0, char::len_utf8);
             self.letter_spans.insert(0, (slot.at..slot.at + len, px(w)));
+        }
+        // Свес аннотации руби над соседями (css-ruby-1 §4.4): распорка
+        // уже на свес, атом сдвинут влево на начальный свес.
+        for (k, at, len, w, base_w, ann_w, info) in overhangs {
+            let (start_oh, end_oh) = self.ruby_overhang(&info, at, len, w, base_w, ann_w, window);
+            if start_oh + end_oh <= 0.0 {
+                continue;
+            }
+            self.atom_boxes[k].shift = start_oh;
+            if let Some(span) = self.letter_spans.iter_mut().find(|(r, _)| *r == (at..at + len)) {
+                span.1 = px((w - start_oh - end_oh).max(0.0));
+            }
         }
         self.prepare_atom_fit(window, cx);
     }
@@ -2230,6 +2335,128 @@ impl Paragraph {
             bounds.origin.x + lead + x,
             bounds.origin.y + self.line_height * visual as f32,
         )
+    }
+
+    /// Содержащий блок из фрагментов строчной коробки с содержимым
+    /// `start..end` (CSS 2.1 §10.1 п.4.1; Blink `out_of_flow_layout_part.cc`
+    /// `ComputeInlineContainingBlocks`): левый верхний угол — начало первого
+    /// фрагмента, правый нижний — конец последнего непустого, размер не
+    /// меньше нуля. Края — по отбивке (`pad`). Только горизонтальный ltr-абзац
+    /// с прямым порядком строк; иначе `None`.
+    fn inline_cb_rect(
+        &self,
+        segs: &[Seg],
+        start: usize,
+        end: usize,
+        pad: [f32; 4],
+        bounds: Bounds<Pixels>,
+    ) -> Option<Bounds<Pixels>> {
+        if self.lines_reversed || self.lines.is_empty() {
+            return None;
+        }
+        let bytes = self.text.as_bytes();
+        let blank = |b: u8| matches!(b, b' ' | b'\n' | b'\t');
+        let end = end.min(self.text.len());
+        let mut start = start.min(end);
+        let mut end = end;
+        // Схлопнутые пробелы у края строки фрагмента не дают (css-text-3
+        // §4.1.2: пробел в конце строки снимается, в начале — тоже).
+        while end > start && blank(bytes[end - 1]) {
+            end -= 1;
+        }
+        while start < end && blank(bytes[start]) {
+            start += 1;
+        }
+        let row_of = |at: usize| {
+            self.lines
+                .iter()
+                .position(|l| at < l.range.end)
+                .unwrap_or(self.lines.len() - 1)
+        };
+        let row_s = row_of(start);
+        let row_e = if end > start { row_of(end - 1) } else { row_s };
+        let x_in = |row: usize, at: usize| -> Pixels {
+            let line = &self.lines[row];
+            let from = self.x_at(segs, line.range.start, Edge::Start);
+            let x = self.x_at(segs, at.clamp(line.range.start, line.range.end), Edge::Start) - from;
+            let hang = self.hang_first(line.range.start);
+            let shift = self.span(segs, line.range.start, line.range.start + hang);
+            bounds.origin.x + line.indent - shift + px(self.flow_cut(row).0) + x
+        };
+        let (left, right) = if self.wrap.rtl {
+            // Письмо справа налево: начало фрагмента — его ПРАВЫЙ край,
+            // конец — левый; прямоугольник фрагмента строки — крайние
+            // визуальные места его краёв (`visual_x_rtl`, разбор UAX#9 как у
+            // отрисовки), строка прижата по `line_offset`.
+            let frag = |row: usize, a: usize, b: usize| -> (Pixels, Pixels) {
+                let line = &self.lines[row];
+                let free = bounds.size.width - line.width - line.indent - px(self.flow_cut(row).1);
+                let hang = self.hang_first(line.range.start);
+                let shift = self.span(segs, line.range.start, line.range.start + hang);
+                let l = bounds.origin.x + line_offset(self.line_align(row, line), true, free) - shift
+                    + px(self.flow_cut(row).0);
+                let (lo, hi) = self.visual_extent_rtl(segs, a, b, line);
+                (l + lo, l + hi)
+            };
+            let first_end = if row_s == row_e { end } else { self.lines[row_s].range.end };
+            let last_start = if row_s == row_e { start } else { self.lines[row_e].range.start };
+            let right = frag(row_s, start, first_end).1 + px(pad[1]);
+            let left = (frag(row_e, last_start, end).0 - px(pad[3])).min(right);
+            (left, right)
+        } else {
+            let left = x_in(row_s, start) - px(pad[3]);
+            (left, (x_in(row_e, end) + px(pad[1])).max(left))
+        };
+        let top = bounds.origin.y + self.line_height * row_s as f32 - px(pad[0]);
+        let bottom = (bounds.origin.y + self.line_height * (row_e + 1) as f32 + px(pad[2])).max(top);
+        Some(Bounds {
+            origin: point(left, top),
+            size: gpui::size(right - left, bottom - top),
+        })
+    }
+
+    /// Визуальный отрезок знаков `a..b` строки rtl-абзаца от её ЛЕВОГО края:
+    /// прогоны UAX#9 в визуальном порядке (L2), как у `visual_x_rtl`, внутри
+    /// rtl-прогона знаки идут справа налево. Пустой отрезок — точка `a`.
+    fn visual_extent_rtl(&self, segs: &[Seg], a: usize, b: usize, line: &Line) -> (Pixels, Pixels) {
+        let start = line.range.start;
+        let end = start + trim_hanging(&self.text[line.range.clone()]);
+        let a = a.clamp(start, end);
+        let b = b.clamp(a, end);
+        let info = unicode_bidi::BidiInfo::new(&self.text, Some(unicode_bidi::Level::rtl()));
+        let Some(para) = info
+            .paragraphs
+            .iter()
+            .find(|p| p.range.start <= start && start < p.range.end)
+            .or_else(|| info.paragraphs.first())
+        else {
+            return (px(0.), px(0.));
+        };
+        if a == b {
+            let x = self.visual_x_rtl(segs, a, line);
+            return (x, x);
+        }
+        let (levels, runs) = info.visual_runs(para, start..end);
+        let mut x = px(0.);
+        let mut lo: Option<Pixels> = None;
+        let mut hi: Option<Pixels> = None;
+        for run in runs {
+            let w = self.span(segs, run.start, run.end);
+            let (s, e) = (a.max(run.start), b.min(run.end));
+            if s < e {
+                let rtl = levels.get(run.start).is_some_and(|l| l.is_rtl());
+                let off = if rtl {
+                    self.span(segs, e, run.end)
+                } else {
+                    self.span(segs, run.start, s)
+                };
+                let part = self.span(segs, s, e);
+                lo = Some(lo.map_or(x + off, |v: Pixels| v.min(x + off)));
+                hi = Some(hi.map_or(x + off + part, |v: Pixels| v.max(x + off + part)));
+            }
+            x += w;
+        }
+        (lo.unwrap_or(px(0.)), hi.unwrap_or(px(0.)))
     }
 
     /// Визуальное продвижение места `at` от ЛЕВОГО края rtl-строки.
@@ -2688,6 +2915,26 @@ impl Paragraph {
                 i += 1;
                 continue;
             }
+            // CSS 2.1 §9.5: a line box shortened by floats (here their
+            // `shape-outside` cut) too small for any content moves down until
+            // some content fits or the floats end (spec-examples
+            // `shape-outside-001`: the last word skips the V's tip line).
+            if over
+                && last_fit.filter(|c| *c > start).is_none()
+                && (fl > 0.0 || fr > 0.0)
+                && out.len() < 4096
+            {
+                out.push(Line {
+                    range: start..start,
+                    width: px(0.),
+                    ellipsis: false,
+                    clamped: false,
+                    vis_cut: None,
+                    hyphen: false,
+                    indent: ind,
+                });
+                continue;
+            }
             if over {
                 // Переносим по последней подошедшей точке; если её нет —
                 // рвём по знакам, но только когда это разрешено.
@@ -2759,7 +3006,27 @@ impl Paragraph {
             };
             let head = start + self.hang_first(start);
             let tail = tail - self.hang_last(tail, true, true);
-            let (fl, fr) = self.flow_cut(out.len());
+            let (mut fl, mut fr) = self.flow_cut(out.len());
+            // The same §9.5 shift for the last line (see the loop above).
+            if let Some(w) = limit {
+                let bare = self.span(&segs, head, tail) - self.tail_spacing(tail);
+                let ind0 = self.indent_of(head_of_part, first_part, limit);
+                while (fl > 0.0 || fr > 0.0)
+                    && out.len() < 4096
+                    && f32::from(bare) > f32::from(w - ind0 - px(fl) - px(fr)) + 0.01
+                {
+                    out.push(Line {
+                        range: start..start,
+                        width: px(0.),
+                        ellipsis: false,
+                        clamped: false,
+                        vis_cut: None,
+                        hyphen: false,
+                        indent: ind0 + px(fl),
+                    });
+                    (fl, fr) = self.flow_cut(out.len());
+                }
+            }
             let indent = self.indent_of(head_of_part, first_part, limit) + px(fl);
             // Конец блока — тоже принудительный разрыв: хвост `pre-wrap`
             // последней строки висит условно (`pre-wrap-019`, `#test2`:
@@ -2926,6 +3193,13 @@ impl Paragraph {
     /// смотрит правило абзаца и вложенного куска не видит. Без таких кусков
     /// результат совпадает с `trim_hanging`.
     fn hang_tail(&self, start: usize, end: usize) -> usize {
+        // A ruby base/annotation unit is laid out by its own sub-line breaker
+        // (Blink line_breaker.cc: ruby columns), whose trailing spaces do not
+        // hang: `<ruby>　　あ　　<rt>…</ruby>` keeps its 5em base
+        // (`ruby-overhang-spaces-*-ref`).
+        if self.ruby_unit {
+            return end;
+        }
         let mut at = end;
         for (i, ch) in self.text[start..end].char_indices().rev() {
             if ch == '\u{feff}' || !(hangs(ch) || zero_width(ch)) {
@@ -3761,6 +4035,7 @@ impl Element for Paragraph {
         let box_extents = self.box_extents.clone();
         let flow = self.flow.clone();
         let atom_fit = self.atom_fit.clone();
+        let ruby_base_sink = self.ruby_base_sink.clone();
         let id = window.request_measured_layout_with_physical_baselines(
             gpui::Style::default(),
             move |known, available, window, _cx| {
@@ -3890,6 +4165,11 @@ impl Element for Paragraph {
                         }
                     })
                     .fold(px(0.), |a: Pixels, b| if b > a { b } else { a });
+                // A ruby base unit (nowrap) reports its content width for the
+                // annotation overhang (`lay_atoms`).
+                if let Some(sink) = &ruby_base_sink {
+                    sink.set(Some(f32::from(content)));
+                }
                 // Fit-content is max(min-content, min(max-content, available))
                 // (css-sizing-3 §5.1): with a negative indent the max-content
                 // line can be NARROWER than the widest piece of a later line,
@@ -4064,6 +4344,33 @@ impl Element for Paragraph {
             let rotated = crate::interact::in_rotated_frame();
             let scale = window.scale_factor().max(0.01);
             for (at, el, how) in placed.iter_mut() {
+                // Абсолют от строчного содержащего блока: края считает
+                // раскладка от коробки размером в этот блок (`inline_cb_rect`).
+                if let Some(cb) = how.cb.filter(|_| !rotated) {
+                    let s = (*at as isize + cb.start).max(0) as usize;
+                    let e = (*at as isize + cb.end).max(0) as usize;
+                    if let Some(r) = self.inline_cb_rect(&segs, s, e, cb.pad, bounds) {
+                        use gpui::{ParentElement, Styled};
+                        let inner = std::mem::replace(el, gpui::Empty.into_any_element());
+                        *el = gpui::div()
+                            .relative()
+                            .w(r.size.width)
+                            .h(r.size.height)
+                            .child(inner)
+                            .into_any_element();
+                        el.layout_as_root(
+                            gpui::size(
+                                gpui::AvailableSpace::Definite(r.size.width),
+                                gpui::AvailableSpace::Definite(r.size.height),
+                            ),
+                            window,
+                            _cx,
+                        );
+                        let o = point(r.origin.x + px(cb.shift.0), r.origin.y + px(cb.shift.1));
+                        el.prepaint_at(o, window, _cx);
+                        continue;
+                    }
+                }
                 let next = &how.next_line;
                 let origin = if *next {
                     self.next_line_point(*at, bounds)
@@ -4488,6 +4795,7 @@ impl Paragraph {
             align_last: self.align_last,
             ruby_justify: self.ruby_justify,
             ruby_unit: self.ruby_unit,
+            ruby_base_sink: None,
             letter_spacing: self.letter_spacing,
             word_spacing: self.word_spacing,
             vertical: self.vertical,
@@ -4651,6 +4959,7 @@ impl Paragraph {
         // линия выше на разницу подъёмов (`text-overflow-string-*`).
         let mut line_base: Option<Pixels> = None;
         let mut line_exact = false;
+        let pieces = visual.clone();
         for run in visual.into_iter() {
             let rtl = levels.get(run.start).is_some_and(|l| l.is_rtl());
             // Знак обрыва — у обрезанного КРАЯ: обычно это логический
@@ -4673,6 +4982,24 @@ impl Paragraph {
                 ("", false)
             } else {
                 (if run.end == range.end { suffix } else { "" }, false)
+            };
+            // Band sides at this piece's visual edges (see `cut_piece_sides`).
+            let piece_runs;
+            let runs: &[TextRun] = if self.runs.iter().any(|r| r.background_color.is_some()) {
+                let vis = self.visual_chars(pieces.iter().map(|r| {
+                    (r.start, r.end, levels.get(r.start).is_some_and(|l| l.is_rtl()))
+                }));
+                let (left, right) = visual_neighbours(&self.text, &vis, &run);
+                let mut mid = slice_runs(runs, &run);
+                self.cut_piece_sides(&mut mid, &run, rtl, left, right);
+                let total: usize = runs.iter().map(|r| r.len).sum();
+                let mut all = slice_runs(runs, &(0..run.start));
+                all.extend(mid);
+                all.extend(slice_runs(runs, &(run.end..total)));
+                piece_runs = all;
+                &piece_runs
+            } else {
+                runs
             };
             let Some(shaped) = self.shape_with_mark(&run, runs, rtl, tail, at_start, window) else {
                 continue;
@@ -4764,18 +5091,17 @@ impl Paragraph {
         // на дробную базовую без округления (`text_raster_origin`), и знак
         // идёт по тому же правилу, иначе он округлялся отдельно и стоял на
         // точку выше текста строки (`text-overflow-string-*`).
-        // GPUI now adds the paragraph's glyph offset to every glyph
-        // (`Window::paint_glyph`, fix-loss4), not only to pixel-exact ones;
-        // an antialiased marker on such a line keeps the snapped paragraph
-        // origin it had before (fix-clamp `text-overflow-string-004/012`).
+        // An antialiased marker on such a line is an inline run of the
+        // block (css-overflow-4 section 5.3) and is rasterized like the
+        // line's other antialiased runs: `text_raster_origin` rounds its
+        // baseline with the paragraph's glyph offset and opaque fill frame
+        // (`text-overflow-string-004` vs. its plain `123` reference run).
         let origin = if raw
-            && !shaped
+            && shaped
                 .runs
                 .iter()
                 .all(|r| window.text_system().pixel_exact_glyphs(r.font_id))
         {
-            origin - self.glyph_nudge
-        } else if raw {
             origin
         } else {
             self.text_raster_origin(&shaped, origin, window)
@@ -5298,10 +5624,13 @@ impl Paragraph {
             // Полоса строчной коробки продолжается сквозь слова (см.
             // `slice_runs_banded`); при rtl слова зеркалятся, и стороны
             // меняются местами — там прежний счёт.
-            let mut runs = if self.wrap.rtl {
-                slice_runs(&self.runs, &word.range)
-            } else {
-                slice_runs_banded(&self.runs, &word.range)
+            let mut runs = match ltr_place
+                .iter()
+                .position(|p| p.0 <= word.range.start && word.range.start < p.1)
+            {
+                Some(k) => self.visual_band_runs(&ltr_place, k, &word.range),
+                None if self.wrap.rtl => self.mirrored_band_runs(&word.range),
+                None => slice_runs_banded(&self.runs, &word.range),
             };
             let decor = self.decor_on();
             if decor {
@@ -5561,6 +5890,160 @@ impl Paragraph {
         self.runs[a].background_color
     }
 
+    /// Band identity (colour and border) of the run holding byte `at`.
+    fn band_at(&self, at: usize) -> Option<(Option<Hsla>, Option<(Hsla, [Pixels; 4])>)> {
+        let mut start = 0usize;
+        for run in self.runs.iter() {
+            if at < start + run.len {
+                return Some((run.background_color, run.background_border));
+            }
+            start += run.len;
+        }
+        None
+    }
+
+    /// Runs of a word of a mirrored right-to-left line (no reordered
+    /// pieces): the word stands as one unit, its logical successor on its
+    /// left and its predecessor on its right. The inline box band goes on
+    /// across a side whose neighbour belongs to the same band, and that side
+    /// gets no padding or border (css-break-3 §5.4 `box-decoration-break:
+    /// slice`; mirror of `slice_runs_banded`).
+    fn mirrored_band_runs(&self, word: &std::ops::Range<usize>) -> Vec<TextRun> {
+        let left = self.band_at(word.end);
+        let right = word.start.checked_sub(1).and_then(|a| self.band_at(a));
+        let mut out = slice_runs(&self.runs, word);
+        for run in out.iter_mut() {
+            if run.background_color.is_none() {
+                continue;
+            }
+            let own = Some((run.background_color, run.background_border));
+            cut_band_sides(run, left == own, right == own);
+        }
+        out
+    }
+
+    /// Runs of a word placed by visual pieces (`ltr_place`, piece `k`): an
+    /// inline box draws a side (padding and border) only where its own edge
+    /// spacer is the VISUAL neighbour. A box split by bidi reordering keeps
+    /// its left edge on its leftmost fragment and its right edge on the
+    /// rightmost one, where the line painter put its spacers; a fragment
+    /// continued from or onto another line has no side there (CSS 2.1 §8.6,
+    /// css-break-3 §5.4; Blink `NGInlineBoxFragmentPainter` paints sides
+    /// per `NGPhysicalBoxFragment::SidesToInclude`).
+    fn visual_band_runs(
+        &self,
+        place: &[(usize, usize, bool, Pixels)],
+        k: usize,
+        word: &std::ops::Range<usize>,
+    ) -> Vec<TextRun> {
+        let rtl = place[k].2;
+        let vis = self.visual_chars(place.iter().map(|p| (p.0, p.1, p.2)));
+        let (left, right) = visual_neighbours(&self.text, &vis, word);
+        let mut out = slice_runs(&self.runs, word);
+        self.cut_piece_sides(&mut out, word, rtl, left, right);
+        out
+    }
+
+    /// Byte offsets of the characters of a line in visual order, from its
+    /// pieces `(start, end, rtl)` in visual order.
+    fn visual_chars(&self, pieces: impl Iterator<Item = (usize, usize, bool)>) -> Vec<usize> {
+        let mut out = Vec::new();
+        for (s, e, rtl) in pieces {
+            let Some(text) = self.text.get(s..e) else {
+                continue;
+            };
+            let at = out.len();
+            out.extend(text.char_indices().map(|(i, _)| s + i));
+            if rtl {
+                out[at..].reverse();
+            }
+        }
+        out
+    }
+
+    /// Cut the band sides at the visual edges of a piece `range` (its runs
+    /// `out`, in logical order; `rtl` when its glyphs run right to left)
+    /// whose visual neighbours are the bytes `left` and `right`.
+    ///
+    /// A box with edge spacers (`box_extents`) draws a side only next to its
+    /// own spacer: the spacer is where its padding and border sit, so any
+    /// other neighbour — another fragment of a box split by bidi reordering,
+    /// a segment separator, the start or end of a continued line — means the
+    /// box goes on (CSS 2.1 §8.6, css-break-3 §5.4 `box-decoration-break:
+    /// slice`). A band without spacers (an outline) goes on only into the
+    /// same band, as in `slice_runs_banded`.
+    fn cut_piece_sides(
+        &self,
+        out: &mut [TextRun],
+        range: &std::ops::Range<usize>,
+        rtl: bool,
+        left: Option<usize>,
+        right: Option<usize>,
+    ) {
+        let n = out.len();
+        if n == 0 {
+            return;
+        }
+        // Byte offsets of the runs in `out`.
+        let mut starts = Vec::with_capacity(n);
+        let mut at = range.start;
+        for r in out.iter() {
+            starts.push(at);
+            at += r.len;
+        }
+        let (li, ri) = if rtl { (n - 1, 0) } else { (0, n - 1) };
+        // A piece of zero-width bidi controls only (the marks of `direction`
+        // and `unicode-bidi`) has no extent of its own to frame.
+        let ghost = self
+            .text
+            .get(range.clone())
+            .is_some_and(|t| t.chars().all(bidi_control));
+        let mut cuts: Vec<(usize, bool)> = Vec::new();
+        for (idx, nb, is_left) in [(li, left, true), (ri, right, false)] {
+            let edge = &out[idx];
+            if edge.background_color.is_none() {
+                continue;
+            }
+            let own = (edge.background_color, edge.background_border);
+            let pos = starts[idx];
+            let holders: Vec<u32> = self
+                .box_extents
+                .iter()
+                .filter(|b| b.1 <= pos && pos < b.2)
+                .map(|b| b.0)
+                .collect();
+            let cut = if ghost {
+                true
+            } else if holders.is_empty() {
+                nb.is_some_and(|a| self.band_at(a) == Some(own))
+            } else {
+                !nb.is_some_and(|a| {
+                    self.spacer_edges.iter().any(|&(p, id, _, _)| {
+                        p <= a && a < p + crate::inline::SPACER.len() && holders.contains(&id)
+                    })
+                })
+            };
+            if !cut {
+                continue;
+            }
+            // The whole band segment touching that edge: `vendor/gpui`
+            // draws a band with the sides of its first run.
+            let step: isize = if idx == 0 { 1 } else { -1 };
+            let mut i = idx as isize;
+            while i >= 0 && (i as usize) < n {
+                let r = &out[i as usize];
+                if (r.background_color, r.background_border) != own {
+                    break;
+                }
+                cuts.push((i as usize, is_left));
+                i += step;
+            }
+        }
+        for (i, is_left) in cuts {
+            cut_band_sides(&mut out[i], is_left, !is_left);
+        }
+    }
+
     /// Слова строки — куски между пробелами, каждое со счётом пробелов слева.
     /// Visual level runs `(start, end, rtl)` of a line (UAX #9 L1–L2), or none
     /// when the plain path suffices: a left-to-right line without a
@@ -5688,6 +6171,43 @@ impl Paragraph {
 /// порядке, и полоса на каждый видимый прогон рисует боковые грани дважды.
 /// Возвращаться вместе с двунаправленной раскладкой полос (box-decoration по
 /// видимым фрагментам, css-break-3 §5.4).
+/// Zero-width bidi formatting characters (UAX #9 explicit formatting and
+/// implicit marks).
+fn bidi_control(c: char) -> bool {
+    matches!(c, '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+}
+
+/// Visual neighbours (byte offsets) of the characters `range` in the line's
+/// visual character order `vis`, skipping zero-width bidi controls.
+fn visual_neighbours(
+    text: &str,
+    vis: &[usize],
+    range: &std::ops::Range<usize>,
+) -> (Option<usize>, Option<usize>) {
+    let mut own = vis.iter().enumerate().filter(|(_, p)| range.contains(p)).map(|(i, _)| i);
+    let Some(first) = own.next() else {
+        return (None, None);
+    };
+    let (lo, hi) = own.fold((first, first), |(a, b), i| (a.min(i), b.max(i)));
+    let visible = |p: &&usize| !text[**p..].chars().next().is_some_and(bidi_control);
+    let left = vis[..lo].iter().rev().find(visible).copied();
+    let right = vis[hi + 1..].iter().find(visible).copied();
+    (left, right)
+}
+
+/// Drop the physical left and/or right side (padding and border) of a run's
+/// inline box band.
+fn cut_band_sides(run: &mut TextRun, left: bool, right: bool) {
+    for (cut, side) in [(left, 3), (right, 1)] {
+        if cut {
+            run.background_pad[side] = px(0.);
+            if let Some(b) = run.background_border.as_mut() {
+                b.1[side] = px(0.);
+            }
+        }
+    }
+}
+
 fn slice_runs_banded(runs: &[TextRun], range: &std::ops::Range<usize>) -> Vec<TextRun> {
     let mut out = slice_runs(runs, range);
     let band_at = |at: usize| -> Option<(Option<Hsla>, Option<(Hsla, [Pixels; 4])>)> {
@@ -5700,24 +6220,32 @@ fn slice_runs_banded(runs: &[TextRun], range: &std::ops::Range<usize>) -> Vec<Te
         }
         None
     };
-    if range.start > 0
-        && let Some(first) = out.first_mut()
-        && first.background_color.is_some()
-        && band_at(range.start - 1) == Some((first.background_color, first.background_border))
-    {
-        first.background_pad[3] = px(0.);
-        if let Some(b) = first.background_border.as_mut() {
-            b.1[3] = px(0.);
-        }
+    // Both ends are judged on the runs as sliced: cutting the left side of a
+    // one-run slice first made its right side differ from the neighbour, and
+    // a band continued on both sides kept its right side (a bar after every
+    // tab-separated word of a bordered `<span>`, `tab-bidi-001`). The cut
+    // covers the whole band segment at that end: `vendor/gpui` draws a band
+    // with the sides of its first run.
+    let band = |r: &TextRun| (r.background_color, r.background_border);
+    let n = out.len();
+    let cut_left = range.start > 0
+        && out
+            .first()
+            .is_some_and(|f| f.background_color.is_some() && band_at(range.start - 1) == Some(band(f)));
+    let cut_right = out
+        .last()
+        .is_some_and(|l| l.background_color.is_some() && band_at(range.end) == Some(band(l)));
+    let mut cuts: Vec<(usize, bool)> = Vec::new();
+    if cut_left {
+        let own = band(&out[0]);
+        cuts.extend((0..n).take_while(|&i| band(&out[i]) == own).map(|i| (i, true)));
     }
-    if let Some(last) = out.last_mut()
-        && last.background_color.is_some()
-        && band_at(range.end) == Some((last.background_color, last.background_border))
-    {
-        last.background_pad[1] = px(0.);
-        if let Some(b) = last.background_border.as_mut() {
-            b.1[1] = px(0.);
-        }
+    if cut_right {
+        let own = band(&out[n - 1]);
+        cuts.extend((0..n).rev().take_while(|&i| band(&out[i]) == own).map(|i| (i, false)));
+    }
+    for (i, left) in cuts {
+        cut_band_sides(&mut out[i], left, !left);
     }
     out
 }

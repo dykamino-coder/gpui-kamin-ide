@@ -302,6 +302,18 @@ impl TaffyLayoutEngine {
         )
     }
 
+    /// KaminIDE patch: протяжённость СОДЕРЖИМОГО узла (taffy `scrollable_overflow_rect`,
+    /// видимое переполнение потомков) без округления к физической точке.
+    pub fn layout_content_size_unrounded(&self, id: LayoutId, scale_factor: f32) -> Size<Pixels> {
+        let layout = self.taffy.layout(id.into()).expect(EXPECT_MESSAGE);
+        // От края РАМКИ: прямоугольник taffy считается от угла отбивки.
+        let r = layout.scrollable_overflow_rect;
+        size(
+            Pixels((layout.border.left + r.right) / scale_factor),
+            Pixels((layout.border.top + r.bottom) / scale_factor),
+        )
+    }
+
     /// KaminIDE patch: размер узла и его смещение от родителя БЕЗ округления
     /// к точке устройства. Строке нужны точные размеры атомов: округлённые
     /// края дают +0.4px на атом при масштабе 1.25, и ряд атомов ровно в
@@ -888,6 +900,23 @@ fn apply_grid_line_names(out: &mut taffy::style::Style, names: &crate::GridLineN
     }
     if let Some(axis) = &names.rows {
         out.grid_template_row_names = template(&mut out.grid_template_rows, axis);
+    }
+    if !names.areas.is_empty() {
+        out.grid_template_areas = Some(taffy::style::GridTemplateAreas {
+            areas: names
+                .areas
+                .iter()
+                .map(|(name, r0, r1, c0, c1)| taffy::style::GridTemplateArea {
+                    name: name.clone(),
+                    row_start: *r0,
+                    row_end: *r1,
+                    column_start: *c0,
+                    column_end: *c1,
+                })
+                .collect(),
+            row_count: names.area_size.0,
+            column_count: names.area_size.1,
+        });
     }
     out.subgrid_column_names = names.subgrid_columns.as_ref().map(subgrid);
     out.subgrid_row_names = names.subgrid_rows.as_ref().map(subgrid);

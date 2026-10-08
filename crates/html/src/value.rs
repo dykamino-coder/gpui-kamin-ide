@@ -4,6 +4,8 @@
 //! `style=""`, правило в `<style>` и значение по умолчанию тега, — и разбирать
 //! его надо одинаково.
 
+mod color_channels;
+
 /// Длина в терминах, которые понимает GPUI.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Len {
@@ -473,7 +475,7 @@ impl Color {
     }
 
     fn parse_hex(hex: &str) -> Option<Self> {
-        let h = hex.trim();
+        let h = hex;
         // Срезы ниже — байтовые: не-ASCII знак (`#aфa`) резал бы UTF-8
         // посреди кода и РОНЯЛ процесс на произвольной странице.
         if !h.is_ascii() {
@@ -573,42 +575,7 @@ impl Color {
     }
 
     fn parse_rgb(inner: &str) -> Option<Self> {
-        // Принимаем и запятые, и пробельный синтаксис `rgb(1 2 3 / 50%)`.
-        // `none` — отсутствующий компонент, при отрисовке он ноль (CSS Color 4
-        // §4.4); без этого стоп `rgb(0% 0% none)` выпадал из градиента целиком.
-        let cleaned = inner.replace('/', " ").replace("none", "0");
-        let parts: Vec<&str> = cleaned
-            .split([',', ' '])
-            .map(str::trim)
-            .filter(|p| !p.is_empty())
-            .collect();
-        if parts.len() < 3 {
-            return None;
-        }
-        let chan = |p: &str| -> Option<f32> {
-            if let Some(pct) = p.strip_suffix('%') {
-                pct.parse::<f32>().ok().map(|v| v / 100.0)
-            } else {
-                p.parse::<f32>().ok().map(|v| v / 255.0)
-            }
-        };
-        let alpha = parts.get(3).map_or(Some(1.0), |p| {
-            if let Some(pct) = p.strip_suffix('%') {
-                pct.parse::<f32>().ok().map(|v| v / 100.0)
-            } else {
-                p.parse::<f32>().ok()
-            }
-        })?;
-        // Каналы и альфа зажимаются в допустимый диапазон (css-color-4
-        // §5.1: «Values outside these ranges are not invalid, but are clamped
-        // … at parsed-value time»). Незажатая альфа 30 красила текст в 30
-        // слоёв (`t422-rgba-clamping-a1.0-b`: строки 4–6 жирнее).
-        Some(Color {
-            r: chan(parts[0])?.clamp(0.0, 1.0),
-            g: chan(parts[1])?.clamp(0.0, 1.0),
-            b: chan(parts[2])?.clamp(0.0, 1.0),
-            a: alpha.clamp(0.0, 1.0),
-        })
+        color_channels::rgb(inner)
     }
 }
 

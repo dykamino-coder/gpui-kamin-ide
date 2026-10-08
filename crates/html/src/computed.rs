@@ -505,6 +505,17 @@ pub enum RubyAlign {
     SpaceAround,
 }
 
+/// `ruby-overhang` (css-ruby-1 §4.4): may an annotation wider than its base
+/// overhang the adjacent content? `Auto` (initial): over adjacent text by at
+/// most half the annotation's font size; `Spaces`: only over adjacent space
+/// separators; `None`: never.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RubyOverhang {
+    Auto,
+    None,
+    Spaces,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TextAlign {
     Left,
@@ -3069,6 +3080,8 @@ pub struct Computed {
     pub ruby_under: Option<bool>,
     /// `ruby-align` (css-ruby-1 §4.3); `None` — начальное `space-around`.
     pub ruby_align: Option<RubyAlign>,
+    /// `ruby-overhang` (css-ruby-1 §4.4); `None` — начальное `auto`. Наследуется.
+    pub ruby_overhang: Option<RubyOverhang>,
     /// CSS Ruby §ruby-merge: 0 separate, 1 merge, 2 auto.
     pub ruby_merge: Option<u8>,
     /// Роль руби-коробки из `display: ruby*` (css-ruby-1 §2.1). Не
@@ -7761,6 +7774,14 @@ impl Computed {
                     "space-between" => Some(RubyAlign::SpaceBetween),
                     "space-around" => Some(RubyAlign::SpaceAround),
                     _ => self.ruby_align,
+                };
+            }
+            "ruby-overhang" => {
+                self.ruby_overhang = match v.trim() {
+                    "auto" => Some(RubyOverhang::Auto),
+                    "none" => Some(RubyOverhang::None),
+                    "spaces" => Some(RubyOverhang::Spaces),
+                    _ => self.ruby_overhang,
                 };
             }
             "ruby-merge" => {
