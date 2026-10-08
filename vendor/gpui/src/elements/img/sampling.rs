@@ -2,14 +2,34 @@
 use crate::{Bounds, DevicePixels, ImageSampling, Pixels, RenderImage, Size, Style, Window};
 use std::sync::Arc;
 
+pub(super) fn unrounded_bounds(
+    window: &mut Window,
+    id: crate::LayoutId,
+    bounds: Bounds<Pixels>,
+) -> Option<Bounds<Pixels>> {
+    // A separately placed image (`prepaint_at`) can have a different
+    // coordinate frame. Only recover layout phase for its actual layout box.
+    if window.layout_bounds(id) != bounds {
+        return None;
+    }
+    let exact = Bounds {
+        origin: window.layout_origin_unrounded(id),
+        size: window.layout_size_unrounded(id),
+    };
+    Some(exact)
+}
+
 pub(super) fn paint(
     window: &mut Window,
     bounds: Bounds<Pixels>,
+    exact: Option<Bounds<Pixels>>,
     style: &Style,
     image: Arc<RenderImage>,
     frame: usize,
     image_style: &super::ImageStyle,
 ) -> anyhow::Result<()> {
+    let exact =
+        exact.filter(|_| window.current_transformation() == crate::TransformationMatrix::unit());
     let corners = style
         .corner_radii
         .to_pixels(window.rem_size())
@@ -17,9 +37,18 @@ pub(super) fn paint(
     let sampling = mode(
         image_style.preserve_natural_pixels,
         image.size(frame),
-        bounds.size,
+        exact.unwrap_or(bounds).size,
         window.current_transformation().rotation_scale,
     );
+    if sampling == ImageSampling::Nearest {
+        return window.paint_natural_image(
+            exact.unwrap_or(bounds),
+            corners,
+            image,
+            frame,
+            image_style.grayscale,
+        );
+    }
     window.paint_image_with_sampling(
         bounds,
         corners,

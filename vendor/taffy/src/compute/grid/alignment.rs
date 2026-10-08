@@ -593,6 +593,20 @@ pub(super) fn align_and_position_item(
     // Baseline x groups are physical: writing-mode projection supplies x_end.
     // Ordinary positional keywords still use native inline Direction.
     let x_alignment = justify_self.unwrap_or(alignment_styles.horizontal);
+    // An absolutely-positioned box takes no part in baseline alignment: its
+    // baseline values align it to the containing block's start/end edge like
+    // the positional keywords (Blink `absolute_utils.cc` GetAlignmentInsetBias:
+    // kBaseline -> InlineStart, kLastBaseline -> InlineEnd).
+    let abspos_baseline = |a: AlignItems| match a.keyword {
+        AlignItemsKeyword::Baseline if position == Position::Absolute => {
+            AlignItems { keyword: AlignItemsKeyword::Start, ..a }
+        }
+        AlignItemsKeyword::LastBaseline if position == Position::Absolute => {
+            AlignItems { keyword: AlignItemsKeyword::End, ..a }
+        }
+        _ => a,
+    };
+    let x_alignment = abspos_baseline(x_alignment);
     let x_alignment = super::baseline_orientation::projected_x_alignment(x_alignment, x_end, direction);
     let (x, x_margin) = align_item_within_area(
         Line {
@@ -613,7 +627,7 @@ pub(super) fn align_and_position_item(
             start: grid_area.top,
             end: grid_area.bottom,
         },
-        align_self.unwrap_or(alignment_styles.vertical),
+        abspos_baseline(align_self.unwrap_or(alignment_styles.vertical)),
         height,
         position,
         inset_vertical,

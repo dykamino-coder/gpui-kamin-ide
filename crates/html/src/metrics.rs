@@ -357,9 +357,17 @@ pub fn use_text_system(text_system: std::sync::Arc<gpui::TextSystem>) {
             f32::from(text_system.ascent(id, size)) - f32::from(text_system.descent(id, size));
         // `ic` — продвижение знака `水`. Шрифт без него отдаёт запасной глиф,
         // и такой замер отбрасывается в пользу целого кегля.
+        // A font without `水` must not answer with its .notdef advance
+        // (DirectWrite maps a missing character to glyph 0; Times New Roman
+        // gave 0.78em and `4ic` came out a quarter short,
+        // `white-space-intrinsic-size-022`): the measure then falls back to
+        // 1em (css-values-4 `ic`; Blink `SimpleFontData::
+        // IdeographicInlineSize` returns nothing without the glyph).
         let ic = text_system
             .advance(id, size, '水')
             .map(|a| f32::from(a.width))
+            .ok()
+            .filter(|_| text_system.has_glyph(id, '水'))
             .unwrap_or(0.0);
         (ch, f32::from(text_system.x_height(id, size)), line, ic)
     });

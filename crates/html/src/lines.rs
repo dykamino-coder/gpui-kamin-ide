@@ -101,6 +101,10 @@ pub struct Paragraph {
     /// Выключка последней строки (`text-align-last`), если задана.
     align_last: Option<Align>,
     ruby_justify: bool,
+    /// `text-justify` opportunities besides word separators: 0 none
+    /// (`inter-word`), 1 CJK ideographs (`auto`), 2 every typographic
+    /// character unit (`inter-character`), see `justify_boundary`.
+    justify_chars: u8,
     ruby_unit: bool,
     /// Ruby base paragraph: where to report its content width for the ruby
     /// overhang computation (`ruby_base_with_overhang`).
@@ -728,6 +732,7 @@ impl Paragraph {
             align,
             align_last: None,
             ruby_justify: false,
+            justify_chars: 1,
             ruby_unit: false,
             plaintext: None,
             lines_reversed: false,
@@ -1297,6 +1302,11 @@ impl Paragraph {
             w.keep_spaces,
         ]
         .hash(&mut h);
+        // Per-piece wrap rules (`white-space`/`word-break` of a nested inline
+        // or of a `display: contents` element) change the breaks too: without
+        // them a `nowrap` run reused the cached lines of an identical text
+        // laid out under `normal` (`white-space-applies-to-text-001`).
+        format!("{:?}{:?}", self.wrap, self.spans).hash(&mut h);
         self.indent.px.to_bits().hash(&mut h);
         for f in self.flow.0.iter().chain(self.flow.1.iter()) {
             f.hash_bits().hash(&mut h);
@@ -1715,6 +1725,68 @@ impl Paragraph {
             indent: last.indent,
         });
         lines
+    }
+
+    /// `text-justify` mode (see `justify_chars`).
+    pub fn justify_chars(mut self, mode: u8) -> Self {
+        self.justify_chars = mode;
+        self
+    }
+
+    /// Justification opportunity BETWEEN two characters (not at a word
+    /// separator, which counts on its own): css-text-3 §7.3 — `auto` expands
+    /// between CJK ideographs as well (Blink `ShapeResultSpacing`, text-justify
+    /// auto), `inter-character`/`distribute` between every typographic
+    /// character unit except inside cursive scripts.
+    ///
+    /// Invisible format controls (bidi isolates, ZWSP, …) are looked
+    /// through, never past `line_start`: `東&#x2066;京` keeps the opportunity
+    /// before `京` (`text-align-justify-bidi-control`).
+    fn justify_boundary(&self, line_start: usize, at: usize) -> bool {
+        if self.justify_chars == 0 || self.ruby_justify || self.ruby_unit {
+            return false;
+        }
+        if at <= line_start || at >= self.text.len() || !self.text.is_char_boundary(at) {
+            return false;
+        }
+        let Some(b) = self.text[at..].chars().next() else {
+            return false;
+        };
+        let Some(a) = self.text[line_start..at].chars().rev().find(|c| !invisible(*c)) else {
+            return false;
+        };
+        let plain = |c: char| {
+            !word_separator(c) && !invisible(c) && !matches!(c, '\t' | '\n' | '\u{3000}')
+        };
+        if !plain(a) || !plain(b) || !cluster_edge(&self.text, at) {
+            return false;
+        }
+        if self.justify_chars == 1 {
+            justify_ideograph(a) || justify_ideograph(b)
+        } else {
+            !(cursive_script(a) && cursive_script(b))
+        }
+    }
+
+    /// Justification opportunities of the line `range` before `pos`: word
+    /// separators left of it plus character boundaries up to and including
+    /// `pos` (a piece starting at a boundary takes its expansion).
+    fn justify_opps(&self, range: &std::ops::Range<usize>, pos: usize) -> usize {
+        let pos = pos.clamp(range.start, range.end);
+        let mut n = 0;
+        for (i, ch) in self.text[range.start..pos].char_indices() {
+            let at = range.start + i;
+            if word_separator(ch) && !self.ruby_justify {
+                n += 1;
+            }
+            if self.justify_boundary(range.start, at) {
+                n += 1;
+            }
+        }
+        if pos < range.end && self.justify_boundary(range.start, pos) {
+            n += 1;
+        }
+        n
     }
 
     /// `line-clamp`: сколько строк оставить.
@@ -3896,6 +3968,23 @@ fn hangs(ch: char) -> bool {
 /// Обычным пробелом набор не исчерпывается: пока неразрывный в него не
 /// входил, `word-spacing` на строке из `&nbsp;` не действовал вовсе
 /// (`word-spacing-001`).
+/// CJK ideographs, kana and CJK symbols: `text-justify: auto` expands
+/// around them (Blink `Character::IsCJKIdeographOrSymbol`).
+fn justify_ideograph(c: char) -> bool {
+    matches!(c as u32,
+        0x2E80..=0x2FDF | 0x3001..=0x303F | 0x3040..=0x30FF | 0x31C0..=0x31FF
+        | 0x3200..=0x33FF | 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF
+        | 0xFE30..=0xFE4F | 0xFF00..=0xFF60 | 0x20000..=0x3FFFF)
+}
+
+/// Cursive (joining) scripts: no inter-character expansion inside them
+/// (css-text-3 §7.3 `inter-character`, §7.3.1 cursive scripts).
+fn cursive_script(c: char) -> bool {
+    matches!(c as u32,
+        0x0600..=0x08FF | 0x07C0..=0x07FF | 0x1800..=0x18AF
+        | 0xFB50..=0xFDFF | 0xFE70..=0xFEFF | 0x10D00..=0x10D3F)
+}
+
 fn word_separator(ch: char) -> bool {
     // Идеографический пробел U+3000 — ФИКСИРОВАННОЙ ширины и разделителем
     // слов НЕ считается (css-text-3 §word-separator; word-spacing-
@@ -4794,6 +4883,7 @@ impl Paragraph {
             align: self.align,
             align_last: self.align_last,
             ruby_justify: self.ruby_justify,
+            justify_chars: self.justify_chars,
             ruby_unit: self.ruby_unit,
             ruby_base_sink: None,
             letter_spacing: self.letter_spacing,
@@ -5374,12 +5464,9 @@ impl Paragraph {
         // (`text-align-justify-tabs-001`, обе коробки обязаны совпасть), а
         // остаток достаётся только пробелам правее (`-002`: их ровно два, и
         // каждый вырастает на пробел).
-        let absorbed = self.text[range.clone()].rfind('\u{9}').map_or(0, |at| {
-            self.text[range.start..range.start + at]
-                .chars()
-                .filter(|c| word_separator(*c))
-                .count()
-        });
+        let absorbed = self.text[range.clone()]
+            .rfind('\u{9}')
+            .map_or(0, |at| self.justify_opps(range, range.start + at));
         if absorbed > 0 {
             for w in words.iter_mut() {
                 w.spaces_before = w.spaces_before.saturating_sub(absorbed);
@@ -5431,15 +5518,7 @@ impl Paragraph {
         // Logical offset of a byte from the line start, with the justification
         // added by the separators before it (same count as `words`).
         let logical_at = |pos: usize| -> Pixels {
-            let seps = if self.ruby_justify {
-                0
-            } else {
-                self.text[range.start..pos.clamp(range.start, range.end)]
-                    .chars()
-                    .filter(|c| word_separator(*c))
-                    .count()
-                    .saturating_sub(absorbed)
-            };
+            let seps = self.justify_opps(range, pos).saturating_sub(absorbed);
             (self.x_at(segs, pos, Edge::Start) - from) + step * seps as f32
         };
         // Visual pieces of the line, left to right: each level run in visual
@@ -6112,6 +6191,19 @@ impl Paragraph {
         let mut spaces = 0usize;
         for (i, ch) in self.text[range.clone()].char_indices() {
             let at = range.start + i;
+            // A character-level opportunity (`justify_boundary`) also ends a
+            // word: the next unit is placed with one more expansion.
+            if let Some(s) = start
+                && at > s
+                && self.justify_boundary(range.start, at)
+            {
+                out.push(Word {
+                    range: s..at,
+                    spaces_before: spaces,
+                });
+                spaces += 1;
+                start = Some(at);
+            }
             // Разделитель слов для выключки — не любой пробел. По css-text-3
             // это пробел, неразрывный и идеографический; ТАБУЛЯЦИЯ в него не
             // входит: она доводит строку до своей позиции, и растягивать её

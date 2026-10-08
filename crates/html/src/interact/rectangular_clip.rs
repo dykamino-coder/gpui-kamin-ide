@@ -16,15 +16,21 @@ pub(super) fn reference_box(
     id: LayoutId,
     window: &mut Window,
 ) -> Bounds<Pixels> {
-    if rectangular(group) || group.polygon.len() == 4 {
+    let snap_rectilinear = window.current_transformation() == gpui::TransformationMatrix::unit();
+    if rectangular(group)
+        || group.polygon.len() == 4
+        || (snap_rectilinear && group.polygon.len() >= 4)
+    {
         // CSS Shapes §3.1: percentages use the reference box, not its raster
         // bounds. Blink clip_path_clipper.cc:383 likewise retains layout geometry.
         let reference = Bounds {
             origin: window.layout_origin_unrounded(id),
             size: window.layout_size_unrounded(id),
         };
+        let points = polygon_clip::points(group, reference);
         if rectangular(group)
-            || polygon_clip::rectangle(&polygon_clip::points(group, reference), 1.0).is_some()
+            || polygon_clip::rectangle(&points, 1.0).is_some()
+            || (snap_rectilinear && polygon_clip::rectilinear(&points))
         {
             reference
         } else {

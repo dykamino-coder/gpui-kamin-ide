@@ -8649,6 +8649,16 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 // `display: inline-grid`, и без этой строки девять сеток
                 // вставали столбиком вместо ряда.
                 Some(Display::GridLanes) if e.style.lanes_inline => !ordered_context,
+                // `display: contents` without block-level descendants: its
+                // children are inline-level boxes and text runs of THIS
+                // container (css-display-3 §2.5 «as if they replaced the
+                // element»), so they join the surrounding inline run — the
+                // inline collector dissolves the element (`inline.rs`,
+                // `Display::Contents`). Flushing the run here split one line
+                // `<div contents>abc</div><br>` into an anonymous block plus a
+                // run starting with `<br>` — an extra empty line
+                // (`text-autospace-elements-002`).
+                Some(Display::Contents) => !ordered_context && !contains_block(&e.children),
                 // Прежний откат этой строки СНЯТ (03.09). Он мерился, когда
                 // строчный атом строил лунки голым `blocks()` и терял их
                 // целиком — оттого вся восьмёрка `flow-tolerance-*` и уходила
@@ -10389,6 +10399,17 @@ fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) -> AnyElement
     if matches!(e.tag.as_str(), "body" | "html") {
         return el;
     }
+    // An absolutely positioned box is out of flow and is placed against the
+    // padding box of its containing block (CSS 2.1 §10.1, css-position-3
+    // §4). The in-flow hug row sits at the parent's CONTENT edge and became
+    // the box's layout parent, so `top: 0; left: 0` landed inside the padding
+    // (`available-size-001`: the vertical-rl `#red` 1ch below the green 0).
+    if matches!(
+        e.style.position,
+        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+    ) {
+        return el;
+    }
     // Элемент СЕТКИ и ГИБКИЙ элемент размер по блочной оси не подбирают: его
     // задаёт выравнивание, и решается оно письмом КОНТЕЙНЕРА (§7.3,
     // «positioning phase … according to the writing mode of the containing
@@ -11300,6 +11321,71 @@ fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts: &RenderOpt
 /// `:hover`/`::first-letter`/`::first-line`, а внутри неё — только пустой
 /// текст и РОВНО ОДИН элемент: флоат либо такая же обёртка
 /// (`float-in-inline-002`: `<span><span><span style="float:left">`).
+/// Leading float of an inline wrapper (see `wrap_floats`): the wrapper (or a
+/// chain of such wrappers) must be a genuine, non-positioned inline that
+/// forms no group (opacity, filter, transform, … act on the float through
+/// it), and the float must be its first in-flow content — only blank text
+/// before it. Returns the float and the wrapper without it.
+fn split_leading_float(e: &Element) -> Option<(Element, Element)> {
+    let genuine_inline =
+        (e.inline && e.style.display.is_none()) || e.style.inline_display == Some(true);
+    // Ruby boxes are not plain inline wrappers: their content is paired into
+    // bases and annotations (css-ruby-1 §2.2) and laid out by the ruby path.
+    if !genuine_inline
+        || matches!(e.tag.as_str(), "br" | "ruby" | "rb" | "rt" | "rtc" | "rp")
+        || e.style.float.is_some_and(|f| f != 0)
+        || e.style.position.is_some()
+        || e.hover.is_some()
+        || e.style.opacity.is_some()
+        || e.style.filter.is_some()
+        || e.style.transform.is_some()
+        || e.style.blend.is_some()
+        || e.style.clip_polygon.is_some()
+        || e.style.mask_image.is_some()
+    {
+        return None;
+    }
+    for (i, n) in e.children.iter().enumerate() {
+        match n {
+            Node::Text(t) if blank_text(t) => continue,
+            Node::Text(_) => return None,
+            Node::Element(c) => {
+                if c.style.float.is_some_and(|f| f != 0)
+                    && c.style.position.is_none()
+                    && c.style.display != Some(Display::None)
+                {
+                    let mut rest = e.clone();
+                    rest.children.remove(i);
+                    // The float leaves its wrapper but keeps what it
+                    // inherited through it (`run-in-contains-inline-007`:
+                    // bold of the run-in).
+                    let mut float = c.clone();
+                    carry_inherited(&e.style, &mut float.style);
+                    return Some((float, rest));
+                }
+                let (mut float, inner) = split_leading_float(c)?;
+                carry_inherited(&e.style, &mut float.style);
+                let mut rest = e.clone();
+                rest.children[i] = Node::Element(inner);
+                return Some((float, rest));
+            }
+        }
+    }
+    None
+}
+
+/// Inherited values a hoisted float takes from the inline wrapper it left
+/// (only those the wrapper sets itself; `inline::inherit` would also resolve
+/// font-relative units against the bare wrapper style).
+fn carry_inherited(wrapper: &Computed, own: &mut Computed) {
+    own.color = own.color.or(wrapper.color);
+    own.font_weight = own.font_weight.or(wrapper.font_weight);
+    own.italic = own.italic.or(wrapper.italic);
+    if own.font_family.is_none() {
+        own.font_family = wrapper.font_family.clone();
+    }
+}
+
 fn inline_float_host(e: &Element) -> Option<Element> {
     // `display: inline` после каскада — это `InlineBlock` с пометкой
     // `inline_display` (`computed.rs`), поэтому одного взгляда на `display`
@@ -11549,6 +11635,23 @@ fn wrap_floats(
                 Node::Text(_) => None,
             };
             hoisted.map_or(n, Node::Element)
+        })
+        .collect();
+    // A float at the very START of an inline wrapper that also holds other
+    // content (only collapsible white space before it): it is placed before
+    // anything of the first line (CSS 2.1 §9.5.1 rule 1 — its top is the
+    // top of the line it occurs on, and nothing of that line precedes it),
+    // so it is laid out exactly like a float written just before the
+    // wrapper. `below-float`: `<span> <div float 100%> x</span>` must push
+    // `x` (and its text-indent) below the float; the float was lost.
+    let nodes: Vec<Node> = nodes
+        .into_iter()
+        .flat_map(|n| match &n {
+            Node::Element(e) => match split_leading_float(e) {
+                Some((float, rest)) => vec![Node::Element(float), Node::Element(rest)],
+                None => vec![n],
+            },
+            Node::Text(_) => vec![n],
         })
         .collect();
     // Примыкающие флоаты во ВЛОЖЕННОЙ обёртке (Blink
@@ -14742,6 +14845,7 @@ fn gap_rule_spec(
             brk: brk.unwrap_or(1),
             inset,
             visibility: visibility.unwrap_or(0),
+            double: if column { s.column_rule_double } else { s.row_rule_double },
         })
     };
     let col = axis(true);
@@ -18053,6 +18157,25 @@ fn paragraph_pieces_routed(
         if first.background == inherited.background {
             first.background = None;
         }
+        // Inherited values of the letter come from the element that holds
+        // the letter, not from the block (Blink `FirstLetterPseudoElement::
+        // StyleForFirstLetter`: parent style = the first letter text's
+        // parent; css-pseudo-4 §first-letter-styling, the fictional tag sequence
+        // sits inside the innermost element). Values the layer only copied
+        // from the block must not override a nested element's own
+        // (`display-contents-first-letter-002`: `<span>` color green).
+        if first.color == inherited.color {
+            first.color = None;
+        }
+        if first.font_family == inherited.font_family {
+            first.font_family = None;
+        }
+        if first.font_weight == inherited.font_weight {
+            first.font_weight = None;
+        }
+        if first.italic == inherited.italic {
+            first.italic = None;
+        }
         pieces = inline::split_first_letter(pieces, &first);
     }
     if first_line_at > 0 {
@@ -18333,11 +18456,25 @@ fn paragraph_pieces_routed(
             )
             .rel_spans(inline::rel_spans(&pieces))
             .ruby_justify(inherited.ruby_justify == Some(true), inherited.ruby_unit)
+            .justify_chars(inherited.justify_chars.unwrap_or(1))
             .align_last(
                 inherited
                     .text_align_last
                     .map(|a| a.physical(inherited.rtl == Some(true)))
-                    .map(crate::lines::align_of_value),
+                    .map(crate::lines::align_of_value)
+                    // `text-justify: none` forbids justification of the last
+                    // line too: it aligns as `start` (css-text-3 §7.3,
+                    // `text-justify-none-001` with `text-align-last: justify`).
+                    .map(|a| match a {
+                        crate::lines::Align::Justify if inherited.no_justify == Some(true) => {
+                            if inherited.rtl == Some(true) {
+                                crate::lines::Align::Right
+                            } else {
+                                crate::lines::Align::Left
+                            }
+                        }
+                        other => other,
+                    }),
             )
             .letter_spacing(gpui::px(crate::metrics::spacing_px(
                 inherited.letter_spacing,

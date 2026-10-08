@@ -56,6 +56,7 @@ use uuid::Uuid;
 
 mod prompts;
 mod image_sampling;
+mod natural_image;
 mod absolute_transformation;
 mod line_baselines;
 mod css_text_background;
@@ -2748,6 +2749,43 @@ impl Window {
                     width: Pixels(b.size.width.0 * s),
                     height: Pixels(b.size.height.0 * s),
                 },
+            },
+        }
+    }
+
+    /// KaminIDE patch: экранный образ прямоугольника ребёнка под текущей
+    /// матрицей (`with_transformation`): обход четырёх углов, как у
+    /// `Scene::insert_primitive`. Нужен отсечению глифов по маске окна:
+    /// повёрнутая строка вертикального письма лежит ДО матрицы вдоль оси x,
+    /// и её хвост за правым краем окна выбрасывался, хотя матрица
+    /// возвращала его в окно (`block-flow-direction-vrl-002`). Без матрицы —
+    /// прежний `scaled_mask`.
+    pub(crate) fn visible_mask(&self, mask: ContentMask<Pixels>) -> ContentMask<Pixels> {
+        let m = self.current_transformation();
+        if m == TransformationMatrix::unit() {
+            return self.scaled_mask(mask);
+        }
+        let s = self.scale_factor();
+        let b = mask.bounds;
+        let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+        for (x, y) in [
+            (b.origin.x.0, b.origin.y.0),
+            (b.origin.x.0 + b.size.width.0, b.origin.y.0),
+            (b.origin.x.0, b.origin.y.0 + b.size.height.0),
+            (b.origin.x.0 + b.size.width.0, b.origin.y.0 + b.size.height.0),
+        ] {
+            let (x, y) = (x * s, y * s);
+            let tx = (m.translation[0] + m.rotation_scale[0][0] * x + m.rotation_scale[0][1] * y) / s;
+            let ty = (m.translation[1] + m.rotation_scale[1][0] * x + m.rotation_scale[1][1] * y) / s;
+            x0 = x0.min(tx);
+            y0 = y0.min(ty);
+            x1 = x1.max(tx);
+            y1 = y1.max(ty);
+        }
+        ContentMask {
+            bounds: Bounds {
+                origin: Point::new(Pixels(x0), Pixels(y0)),
+                size: Size { width: Pixels(x1 - x0), height: Pixels(y1 - y0) },
             },
         }
     }
