@@ -1,5 +1,6 @@
 use crate::{AssetSource, DevicePixels, IsZero, Result, SharedString, Size};
 use resvg::tiny_skia::Pixmap;
+mod markup_pixels;
 use std::{
     hash::Hash,
     sync::{Arc, LazyLock},
@@ -98,7 +99,7 @@ pub fn svg_markup_to_image_padded(
     }
     let mut buffer = ImageBuffer::from_raw(pw + pad_px, ph + pad_px, pixmap.take())?;
     for pixel in buffer.chunks_exact_mut(4) {
-        crate::swap_rgba_pa_to_bgra(pixel);
+        markup_pixels::swap_and_unpremultiply(pixel);
     }
     let mut image = crate::RenderImage::new(smallvec::SmallVec::from_elem(Frame::new(buffer), 1));
     image.scale_factor = density;
