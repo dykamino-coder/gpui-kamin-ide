@@ -27,7 +27,7 @@ use capture::capture;
 use gpui::{
     AppContext as _, Application, Bounds, Context, Entity, IntoElement, ParentElement, Render,
     Styled, Timer, TitlebarOptions, Window, WindowBackgroundAppearance, WindowBounds,
-    WindowDecorations, WindowOptions, div, point, px, rgb, size,
+    WindowDecorations, WindowKind, WindowOptions, div, point, px, rgb, size,
 };
 use kamin_html::{BROWSER_CSS, Document, RenderOpts, render};
 use std::rc::Rc;
@@ -1439,10 +1439,19 @@ fn main() {
         let window = cx
             .open_window(
                 WindowOptions {
+                    // Off-screen capture: born off-screen as a tool window (no
+                    // taskbar button, no focus) — the runner windows flashed on the
+                    // taskbar and on screen at every launch.
                     window_bounds: Some(WindowBounds::Windowed(Bounds {
-                        origin: point(px(40.), px(40.)),
+                        origin: if capture::offscreen() {
+                            point(px(-2600.), px(60.))
+                        } else {
+                            point(px(40.), px(40.))
+                        },
                         size: size(px(w), px(h)),
                     })),
+                    kind: if capture::offscreen() { WindowKind::PopUp } else { WindowKind::Normal },
+                    focus: !capture::offscreen(),
                     titlebar: Some(TitlebarOptions {
                         appears_transparent: true,
                         ..Default::default()
