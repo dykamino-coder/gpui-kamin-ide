@@ -995,11 +995,28 @@ fn compute_constants(
             .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
             .maybe_apply_aspect_ratio(aspect_ratio)
             .maybe_add(box_sizing_adjustment),
-        max_size: style
-            .max_size()
-            .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
-            .maybe_apply_aspect_ratio(aspect_ratio)
-            .maybe_add(box_sizing_adjustment),
+        max_size: {
+            let max_size = style
+                .max_size()
+                .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
+                .maybe_apply_aspect_ratio(aspect_ratio)
+                .maybe_add(box_sizing_adjustment);
+            // KaminIDE patch: a table box is never narrower than its grid
+            // (css-tables-3 §3.9 "the used min-width of a table is the greater
+            // of the resolved min-width, CAPMIN, and GRIDMIN"; the GRIDMIN floor
+            // beats `max-width`). Its known size already carries that floor
+            // (the flex parent's `is_table_item` floor or the own-width floor in
+            // `compute_flexbox_layout`), so the container clamp below must not
+            // pull it back to `max-width` (`table-as-item-auto-min-width`).
+            if style.is_table_container() {
+                Size {
+                    width: max_size.width.map(|m| known_dimensions.width.map_or(m, |k| m.max(k))),
+                    height: max_size.height.map(|m| known_dimensions.height.map_or(m, |k| m.max(k))),
+                }
+            } else {
+                max_size
+            }
+        },
         margin,
         border,
         gap,
