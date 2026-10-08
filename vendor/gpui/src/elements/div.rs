@@ -1505,7 +1505,13 @@ impl Element for Div {
                         // контекст наложения и сама собирает поддерево.
                         if super::paint_last::hoist_open() {
                             let children = &mut self.children;
-                            if style.opacity.is_some_and(|o| o < 1.0) {
+                            if style.paint_atomic && !style.opacity.is_some_and(|o| o < 1.0) {
+                                super::paint_last::hoist_atomic(window, cx, |window, cx| {
+                                    for child in children.iter_mut() {
+                                        child.paint(window, cx);
+                                    }
+                                });
+                            } else if style.opacity.is_some_and(|o| o < 1.0) {
                                 super::paint_last::hoist_collect(window, cx, |window, cx| {
                                     for child in children.iter_mut() {
                                         child.paint(window, cx);

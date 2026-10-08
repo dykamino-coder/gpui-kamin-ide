@@ -2059,6 +2059,20 @@ pub(crate) fn border_layer(c: &Computed) -> Option<(crate::value::Color, [f32; 4
 
 fn apply_paint(mut d: Div, c: &Computed) -> Div {
     d.style().css_border_snap = Some(true);
+    // Atomic paint (CSS 2.1 Appendix E step 7.2.1.4 for inline-blocks, step 5
+    // for floats; css-flexbox-1 §5.4 and css-grid-1 §9: flex and grid items
+    // "paint exactly the same as inline blocks"): the box's own line content
+    // is painted with it, not after later siblings' backgrounds
+    // (`grid-lanes` items with overlapping negative margins).
+    if c.parent_flex_grid
+        || c.float.is_some_and(|f| f != 0)
+        || matches!(
+            c.display,
+            Some(Display::InlineBlock) | Some(Display::InlineFlex) | Some(Display::InlineGrid)
+        )
+    {
+        d.style().paint_atomic = Some(true);
+    }
     // Смешивание больше не живёт на заливке: раньше блендер знал четыре
     // формулы и красил только фон узла, а CSS смешивает ВСЁ поддерево целиком.
     // Теперь оно считается при сборке буфера группы (см. `render::grouped`).
