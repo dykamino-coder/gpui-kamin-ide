@@ -25143,6 +25143,20 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         None,
                         None,
                     ));
+                } else if !is_clamp
+                    && !skip
+                    && e.children.iter().all(is_blank)
+                    && !merged.float.is_some_and(|f| f != 0)
+                    && !matches!(
+                        merged.position,
+                        Some(crate::computed::Position::Absolute)
+                            | Some(crate::computed::Position::Fixed)
+                    )
+                    && matches!(merged.display, None | Some(Display::Block))
+                {
+                    kids.push(crate::interact::clamp_empty_probe(
+                        crate::interact::clamp_lines_for(key),
+                    ));
                 }
             }
             // Абсолютный потомок ищет ближайшего позиционированного предка

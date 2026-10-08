@@ -3728,6 +3728,7 @@ impl IntoElement for EdgePainter {
 /// считаются; блок, пересекающий точку среза, прячется целиком — срез
 /// поднимается к его верху. Точка меряется пробами построенного кадра и
 /// применяется потолком высоты на СЛЕДУЮЩЕМ (перестройка каждый кадр).
+#[derive(Clone)]
 pub struct ClampEntry {
     pub bounds: Bounds<Pixels>,
     /// Высота строки в точках; 0 — блок без собственного текста.
@@ -3754,6 +3755,9 @@ pub struct ClampEntry {
     /// кадр запросил бы себя заново (css-overflow-4 §5.3: вставка знака
     /// «must not cause a reevaluation of the effects of `continue`»).
     pub clamped: Option<usize>,
+    /// Пустая поточная блочная коробка (без содержимого): сама по себе —
+    /// возможная точка среза МЕЖДУ блоками (css-overflow-4 §5.3).
+    pub empty: bool,
 }
 
 pub type ClampLines = std::rc::Rc<std::cell::RefCell<Vec<ClampEntry>>>;
@@ -3945,6 +3949,34 @@ pub fn clamp_probe(
                 bp_after,
                 seq,
                 clamped,
+                empty: false,
+            });
+        },
+        |_, _, _, _| {},
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .size_full()
+    .into_any_element()
+}
+
+/// Проба пустой поточной блочной коробки клэмп-контейнера: только её
+/// положение. Точка среза после неё (§5.3 «a point between two in-flow
+/// block-level sibling boxes») отделяет предыдущую строку от точки, и знака
+/// обрыва на той строке нет (`line-clamp-auto-039/032`).
+pub fn clamp_empty_probe(lines: ClampLines) -> AnyElement {
+    gpui::canvas(
+        move |bounds: Bounds<Pixels>, _, _| {
+            lines.borrow_mut().push(ClampEntry {
+                bounds,
+                line: 0.0,
+                skip_count: false,
+                fixed_height: false,
+                bp_after: 0.0,
+                seq: None,
+                clamped: None,
+                empty: true,
             });
         },
         |_, _, _, _| {},
@@ -4039,7 +4071,11 @@ impl Element for ClampCut {
         window: &mut Window,
         _cx: &mut App,
     ) {
-        let entries = std::mem::take(&mut *self.lines.borrow_mut());
+        let all_entries = std::mem::take(&mut *self.lines.borrow_mut());
+        // Пустые коробки — только для выбора знака обрыва (ниже); в строки,
+        // блоки и признак «за точкой есть содержимое» они не входят.
+        let empties: Vec<ClampEntry> = all_entries.iter().filter(|e| e.empty).cloned().collect();
+        let entries: Vec<ClampEntry> = all_entries.into_iter().filter(|e| !e.empty).collect();
         let para_rows = take_para_rows(self.key);
         // Строки текстового вклада: настоящие, если абзац их сообщил и они
         // лежат в его коробке; иначе — высота пробы поровну на строки.
@@ -4304,6 +4340,18 @@ impl Element for ClampCut {
                     (k >= 1).then(|| (rows[k - 1].1, seq, k))
                 })
                 .max_by(|a, b| a.0.total_cmp(&b.0))
+                // Пустая блочная коробка между последней строкой и точкой
+                // среза: точка — после неё (последняя возможная), и строка
+                // точке уже не предшествует — знака нет (§5.3).
+                .filter(|(bottom, _, _)| {
+                    !empties.iter().any(|e| {
+                        let y0 = f32::from(e.bounds.origin.y);
+                        e.empty
+                            && f32::from(e.bounds.size.height) <= 0.5
+                            && y0 >= *bottom - 0.5
+                            && y0 <= c + 0.5
+                    })
+                })
                 .and_then(|(_, seq, k)| seq.map(|s| (s, k)))
         });
         // Бюджет одного и того же абзаца только УЖИМАЕТСЯ: рост числа
