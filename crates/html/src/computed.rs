@@ -2745,6 +2745,11 @@ pub struct Computed {
     /// `display: inline` дословно (не inline-block): §9.7/§10.2 дорешиваются
     /// после каскада — см. `dom::finish_inline_display`.
     pub inline_display: Option<bool>,
+    /// Абсолют/фиксированный, чей `display` до блокификации (§9.7) был
+    /// строчного уровня (`inline-block`, `inline-flex`, …): статическая
+    /// позиция считается для гипотетической коробки «если бы position был
+    /// static» (CSS 2.1 §10.3.7, §10.6.4), то есть В СТРОКЕ. Ставит `dom`.
+    pub abs_inline_level: bool,
     /// `display: run-in` — вбегание решает `dom::fold_run_ins`.
     pub run_in: Option<bool>,
     /// Есть ли выше по дереву коробка, устанавливающая содержащий блок для

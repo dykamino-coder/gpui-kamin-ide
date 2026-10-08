@@ -8448,6 +8448,37 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             {
                 false
             }
+            // Абсолют строчного уровня (до блокификации — `inline-block` и
+            // родня) с РОВНО ОДНОЙ заданной осью: свободная ось берётся от
+            // гипотетической коробки при `position: static` (CSS 2.1 §10.3.7,
+            // §10.6.4), а та стоит в строке, не под ней. Блокифицированный, он
+            // уходил блочным ребёнком ниже абзаца, и `left: 0; top: auto`
+            // вставал на следующую строку (`border-left-width-thin`: белая
+            // заплатка под красным вместо поверх). Щуп строки ведёт такую
+            // коробку в `atom_element` (`x_set != y_set`). Без строчного
+            // содержимого ДО коробки строка пуста, и гипотетическая коробка
+            // стоит в её начале — там же, где блочная статическая позиция;
+            // такой абсолют остаётся прежним блочным путём
+            // (`left-applies-to-012/014`: абсолют — единственный ребёнок).
+            Node::Element(e)
+                if e.style.abs_inline_level
+                    && !ordered_context
+                    && pending.iter().any(|p| match p {
+                        Node::Text(t) => !t.trim().is_empty(),
+                        Node::Element(x) => !matches!(
+                            x.style.position,
+                            Some(crate::computed::Position::Absolute)
+                                | Some(crate::computed::Position::Fixed)
+                        ),
+                    })
+                    && {
+                        let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
+                        (edge(e.style.inset.left) || edge(e.style.inset.right))
+                            != (edge(e.style.inset.top) || edge(e.style.inset.bottom))
+                    } =>
+            {
+                true
+            }
             Node::Element(e) => match e.style.display {
                 // Явно заявленная инлайновая коробка остаётся в строке даже у
                 // блочного по природе тега — но НЕ внутри гибкого контейнера

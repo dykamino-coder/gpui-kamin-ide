@@ -2238,6 +2238,18 @@ fn finish_inline_display(style: &mut Computed, tag: &str) {
         style.apply_one("vertical-align", "baseline");
     }
     if out_of_flow {
+        if matches!(
+            style.position,
+            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        ) && matches!(
+            style.display,
+            Some(Display::InlineFlex)
+                | Some(Display::InlineGrid)
+                | Some(Display::InlineTable)
+                | Some(Display::InlineBlock)
+        ) {
+            style.abs_inline_level = true;
+        }
         match style.display {
             Some(Display::InlineFlex) => style.display = Some(Display::Flex),
             Some(Display::InlineGrid) => style.display = Some(Display::Grid),
