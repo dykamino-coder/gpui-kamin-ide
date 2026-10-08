@@ -5424,6 +5424,8 @@ fn split_flex_lines(
                     group_end: false,
                     dx: 0.0,
                     avoid_only: false,
+                    float: false,
+                    clears: false,
                 });
                 parent.push(None);
                 let n_lines = lines.len();
@@ -5447,6 +5449,8 @@ fn split_flex_lines(
                             group_end: false,
                             dx,
                             avoid_only,
+                            float: false,
+                    clears: false,
                         });
                         parent.push(Some(pm.clone()));
                     }
@@ -5477,6 +5481,8 @@ fn split_flex_lines(
                                 group_end: ii + 1 == m,
                                 dx,
                                 avoid_only,
+                                float: false,
+                    clears: false,
                             });
                             parent.push(Some(pm.clone()));
                         }
@@ -22988,6 +22994,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                             {
                                 c.style.float = None;
                                 c.style.clear = None;
+                                c.attrs.push(("kamin-float-block".into(), "1".into()));
                             }
                         }
                         g
@@ -23233,6 +23240,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         for (p, (c, _)) in kid_par.iter_mut().zip(kids.iter()) {
                             if p.group == 0 {
                                 p.avoid_only = c.style.break_inside_avoid && avoid_only_monolith(c);
+                                p.float = c.attr("kamin-float-block").is_some();
+                                p.clears = c.style.clear.is_some();
                             }
                         }
                         let kids = if col_vert {
