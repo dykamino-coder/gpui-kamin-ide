@@ -74,7 +74,15 @@ pub(crate) fn parse_content(raw: &str) -> Option<Vec<ContentItem>> {
         if matches!(name.as_str(), "counter" | "counters") {
             let is_string = |a: &str| a.trim().starts_with(|c| c == '"' || c == '\'');
             let style_at = if name == "counter" { 1 } else { 2 };
-            if args.first().is_some_and(|a| is_string(a))
+            // CSS Lists 3 §4.1 and CSS Values 4 §4.2 exclude none, default
+            // and CSS-wide keywords from <counter-name>. Compare decoded
+            // identifiers case-insensitively, then invalidate the declaration
+            // so an earlier valid content value survives the cascade.
+            let counter_name = crate::css::unescape(args.first()?.trim()).to_ascii_lowercase();
+            if matches!(
+                counter_name.as_str(),
+                "none" | "default" | "initial" | "inherit" | "unset" | "revert" | "revert-layer"
+            ) || args.first().is_some_and(|a| is_string(a))
                 || args.get(style_at).is_some_and(|a| is_string(a))
                 || (name == "counters" && args.get(1).is_some_and(|a| !is_string(a)))
             {
