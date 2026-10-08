@@ -9,6 +9,7 @@ mod gradient_paint;
 mod font_kerning;
 mod image_color;
 mod radius_mask;
+mod radius_parse;
 pub(crate) use image_color::parse as parse_image_color;
 mod mask_size;
 mod mask_shorthand;
@@ -2959,7 +2960,7 @@ pub struct Computed {
     /// Эллиптические радиусы углов (`border-radius: H / V`), tl/tr/br/bl:
     /// растеризатор круглит только окружностью — такой угол уходит
     /// альфа-маской буфера группы (`shape:rrect(...)`).
-    pub radius_ell: Option<[Option<(f32, f32)>; 4]>,
+    pub radius_ell: Option<[Option<(Len, Len)>; 4]>,
     /// Форма углов `corner-shape` (css-borders-4 §corner-shaping): параметр
     /// суперэллипса K по углам tl/tr/br/bl — `round`=1, `squircle`=2,
     /// `square`=+∞, `bevel`=0, `scoop`=−1, `notch`=−∞, `superellipse(K)`.
@@ -3419,6 +3420,7 @@ impl Computed {
         // `monolithic-overflow-021`): без перевода рамка выходила нулевой.
         sides(&mut self.border_width);
         sides(&mut self.inset);
+        self.resolve_radius_lengths(fix);
         if let Some((row, col)) = self.gap.as_mut() {
             fix(row);
             fix(col);
@@ -3640,14 +3642,7 @@ impl Computed {
         sides(&mut self.margin);
         sides(&mut self.border_width);
         sides(&mut self.inset);
-        for corner in [
-            &mut self.radius.tl,
-            &mut self.radius.tr,
-            &mut self.radius.br,
-            &mut self.radius.bl,
-        ] {
-            fix(corner);
-        }
+        self.resolve_radius_lengths(fix);
         if let Some((row, col)) = self.gap.as_mut() {
             fix(row);
             fix(col);
@@ -5270,61 +5265,11 @@ impl Computed {
                 self.apply_one(LONG[a], first);
                 self.apply_one(LONG[b], second);
             }
-            "border-radius" => {
-                // Эллиптические радиусы: `H / V` (css-backgrounds-3 §5.1) —
-                // углы с rx≠ry не выразить круглым скруглением растеризатора,
-                // форма уходит альфа-маской буфера группы.
-                if let Some((hs, vs)) = v.split_once('/') {
-                    let h = radius_shorthand(hs.trim());
-                    let vv = radius_shorthand(vs.trim());
-                    self.radius = h;
-                    let p = |a: Option<Len>, b: Option<Len>| match (a, b) {
-                        (Some(Len::Px(x)), Some(Len::Px(y))) if (x - y).abs() > 0.01 => {
-                            Some((x, y))
-                        }
-                        _ => None,
-                    };
-                    let ell = [
-                        p(h.tl, vv.tl),
-                        p(h.tr, vv.tr),
-                        p(h.br, vv.br),
-                        p(h.bl, vv.bl),
-                    ];
-                    if ell.iter().any(|c| c.is_some()) {
-                        self.radius_ell = Some(ell);
-                    }
-                } else {
-                    self.radius = radius_shorthand(v);
-                }
-            }
+            "border-radius" => self.apply_radius_shorthand(v),
             "border-top-left-radius"
             | "border-top-right-radius"
             | "border-bottom-right-radius"
-            | "border-bottom-left-radius" => {
-                // Двухзначный лонгхенд — эллиптический угол `rx ry`.
-                let mut it = v.split_whitespace();
-                let x = it.next().and_then(Len::parse);
-                let y = it.next().and_then(Len::parse);
-                let slot = match key {
-                    "border-top-left-radius" => 0,
-                    "border-top-right-radius" => 1,
-                    "border-bottom-right-radius" => 2,
-                    _ => 3,
-                };
-                match slot {
-                    0 => self.radius.tl = x,
-                    1 => self.radius.tr = x,
-                    2 => self.radius.br = x,
-                    _ => self.radius.bl = x,
-                }
-                if let (Some(Len::Px(rx)), Some(Len::Px(ry))) = (x, y)
-                    && (rx - ry).abs() > 0.01
-                {
-                    let mut ell = self.radius_ell.unwrap_or([None; 4]);
-                    ell[slot] = Some((rx, ry));
-                    self.radius_ell = Some(ell);
-                }
-            }
+            | "border-bottom-left-radius" => self.apply_radius_corner(key, v),
 
             "position" => {
                 self.position = match v {

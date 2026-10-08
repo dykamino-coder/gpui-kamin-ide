@@ -20669,14 +20669,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     // вычисленного стиля (`paint_property_tree_builder.cc:3127-3143`).
     let rrect = c.radius_masked().then(|| {
         let mut own = c.clone();
-        for r in [
-            &mut own.radius.tl,
-            &mut own.radius.tr,
-            &mut own.radius.br,
-            &mut own.radius.bl,
-        ] {
-            *r = r.map(poly_unit);
-        }
+        own.resolve_radius_lengths(|r| *r = r.map(poly_unit));
         format!("shape:{}", crate::background::rrect_spec(&own, None))
     });
     // `border-shape` (css-borders-4): фон и содержимое режутся ВНЕШНИМ

@@ -937,7 +937,7 @@ pub fn rrect_spec(c: &Computed, ring: Option<[f32; 4]>) -> String {
     let mut out = String::from("rrect(");
     for (i, r) in radii.iter().enumerate() {
         match ell[i] {
-            Some((rx, ry)) => out.push_str(&format!("{rx} {ry} ")),
+            Some((rx, ry)) => out.push_str(&format!("{} {} ", tok(Some(rx)), tok(Some(ry)))),
             None => out.push_str(&format!("{} {} ", tok(*r), tok(*r))),
         }
     }
