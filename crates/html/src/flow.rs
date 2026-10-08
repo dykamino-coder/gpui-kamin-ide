@@ -2341,14 +2341,23 @@ impl ColumnStack {
         let guess = Self::runs_guess(kids, self.count);
         // Разрезаемая коробка потолка колонке не задаёт: её высоту держит
         // только сумма. Потолок нужен монолитам — они остаются целыми.
-        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09, v103, `scout-break-2026-09d.md` F2):
-        // баланс не короче самого длинного `solid`-диапазона внутри (Blink
-        // `ConstrainColumnBlockSize`). Срез css-break+CSS2+multicol 2874: +0/−1
-        // (`multicol-overflow-clip` 0.00 → 5.22).
+        // Баланс не короче самого длинного неразрывного куска: монолита-ребёнка
+        // и монолитного диапазона (`solid`) внутри разрезаемого ребёнка (Blink
+        // `column_layout_algorithm.cc` — `tallest_unbreakable_block_size` в
+        // `CalculateBalancedColumnBlockSize`). Без этого монолит-потомок выше
+        // оценки резался краем колонки (`single-line-row-flex-fragmentation-
+        // 037`: `contain: size` 100 при оценке 75). Прежний замер (06.09, v103)
+        // терял `multicol-overflow-clip`; на integration-7 она цела.
         let tallest = kids
             .iter()
-            .filter(|k| k.monolith)
-            .fold(0.0f32, |m, k| m.max(k.h));
+            .map(|k| {
+                if k.monolith {
+                    k.h
+                } else {
+                    k.solid.iter().fold(0.0f32, |m, &(a, b)| m.max(b - a))
+                }
+            })
+            .fold(0.0f32, f32::max);
         let clamp = |t: f32| cap.map_or(t, |c| t.min(c));
         let mut target = clamp(guess.max(tallest).max(1.0));
         for _ in 0..6 {
