@@ -9751,7 +9751,14 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     // Только прозрачность: у `contain`/`will-change`/
                     // `transform` положительный `z-index` потомков держится
                     // на краске на месте (`contain-paint-stacking-context-*`).
-                    && e.style.opacity.is_some_and(|o| o < 1.0)
+                    && (e.style.opacity.is_some_and(|o| o < 1.0)
+                        // css-transforms-1 §transform-rendering: a transformed
+                        // box establishes a stacking context and is painted
+                        // as a positioned `z-index: 0` layer (Blink puts it in
+                        // the z-order list with 0): `perspective-zero` — a
+                        // static transformed box after a `relative` one.
+                        || e.style.transform.is_some()
+                        || e.style.translate.is_some())
                     && !e.style.z_index.is_some_and(|z| z > 0 && z_index_applies(&e.style, inherited))
                     && !matches!(e.tag.as_str(), "html" | "body")
                     && paint_last_ok(e, &nodes[idx + 1..]));
