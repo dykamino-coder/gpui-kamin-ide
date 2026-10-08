@@ -42,6 +42,7 @@ use animation_live::animated;
 mod table_roles;
 mod table_border_widths;
 mod table_spanning_size;
+mod table_clipped_content;
 mod replaced_used_style;
 mod replaced_holder_ratio;
 mod replaced_content;
@@ -28033,13 +28034,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         .into_any_element(),
                 ]
             } else if clipped {
-                vec![
-                    div()
-                        .overflow_hidden()
-                        .size_full()
-                        .children(inside)
-                        .into_any_element(),
-                ]
+                vec![table_clipped_content::wrap(&mut d, inside)]
             } else {
                 inside
             };
