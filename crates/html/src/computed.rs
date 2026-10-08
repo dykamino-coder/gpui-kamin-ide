@@ -9451,12 +9451,32 @@ impl Computed {
                     // §3.1): `polygon(evenodd, …)`. Вершин любое число —
                     // больше восьми (предел шейдера) и `evenodd` уходят
                     // растровой маской-путём при отрисовке.
+                    // css-shapes-2 §basic-shape-polygon: `<fill-rule>? [round
+                    // <length>]?` may lead the list; the radius rounds every
+                    // vertex (a rectangle becomes a rounded rectangle).
+                    let mut round = None;
                     let (rule, rest) = match rest.trim_start().split_once(',') {
-                        Some((r, tail)) if matches!(r.trim(), "nonzero" | "evenodd") => {
-                            (r.trim(), tail)
+                        Some((head, tail))
+                            if head.split_whitespace().next().is_some_and(|w| {
+                                matches!(w, "nonzero" | "evenodd" | "round")
+                            }) =>
+                        {
+                            let mut words = head.split_whitespace().peekable();
+                            let rule = match words.peek() {
+                                Some(&w @ ("nonzero" | "evenodd")) => {
+                                    words.next();
+                                    w
+                                }
+                                _ => "nonzero",
+                            };
+                            if words.next() == Some("round") {
+                                round = words.next().and_then(Len::parse);
+                            }
+                            (rule, tail)
                         }
                         _ => ("nonzero", rest),
                     };
+                    self.clip_round_len = round.filter(|l| matches!(l, Len::Px(_)));
                     let points: Vec<(Len, Len)> = rest
                         .split(',')
                         .filter_map(|pair| {

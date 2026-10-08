@@ -21220,7 +21220,10 @@ fn px_of2(l: &Option<Len>) -> Option<f32> {
 /// percentages resolve against the reference box at paint time.
 pub(crate) fn rounded_rect_clip(c: &Computed) -> bool {
     matches!(c.clip_round_len, Some(Len::Px(v) | Len::Pct(v)) if v > 0.0)
-        && (c.clip_inset.is_some() || c.clip_edges.is_some() || c.clip_xywh.is_some())
+        && (c.clip_inset.is_some()
+            || c.clip_edges.is_some()
+            || c.clip_xywh.is_some()
+            || c.clip_polygon.is_some())
 }
 
 /// Отрисовать поддерево в отдельный буфер, когда эффекту нужна готовая
