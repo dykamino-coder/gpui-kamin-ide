@@ -3367,16 +3367,15 @@ fn walk(
             // содержимое сворачивается в эти поля, а прочие свойства слоя
             // (цвет, шрифт, разрядка) едут в `marker_layer`.
             //
-            // Маркер — ПЕРВЫЙ ребёнок пункта, до `::before` (§marker-pseudo),
-            // и `counter-*`, объявленные на `::marker`, обязаны сработать
-            // именно на этом месте: без них `::marker { counter-increment: c;
-            // content: counters(c, ":") }` читал бы нетронутый счётчик и
-            // ставил ноль во все пункты (`marker-counter`).
+            // CSS Lists 3 §marker-pseudo: marker counters apply before
+            // ::before and before evaluating the marker's own content.
             if let Some(m) = marker_layer {
                 counters.enter_marker();
+                language::pseudo(counters, &m, &me, path);
                 apply_counter_decls(&m, counters, "", &[], &mut false, &|_, _| 0);
                 if let Some(items) = m.content.as_ref() {
-                    style.marker_text = Some(content_text(items, counters, &attrs, None));
+                    let quotes = m.quotes.as_ref();
+                    style.marker_text = Some(content_text(items, counters, &attrs, quotes));
                     style.no_marker = Some(false);
                 } else if m.content_none == Some(true) {
                     style.no_marker = Some(true);
