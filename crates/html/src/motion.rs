@@ -38,6 +38,8 @@ use crate::computed::{Computed, Position};
 use crate::dom::Node;
 use crate::value::Len;
 
+mod ellipse_path;
+
 /// Ломаная контура: точки в системе координат коробки и признак замыкания.
 struct Poly {
     pts: Vec<(f32, f32)>,
@@ -340,16 +342,21 @@ fn offset_transform_css(c: &Computed, cb: Option<&Cb>) -> Option<String> {
     // живёт в опорной коробке содержащего блока, без неё строить нечего.
     let g = cb?;
     let rb = g.boxes[kind];
+    let shift = (rb.0 - g.self_off.0, rb.1 - g.self_off.1);
+    let shape = shape_start(&func, c, g, rb);
+    if shape.starts_with("circle(") || shape.starts_with("ellipse(") {
+        return ellipse_path::css(c, &shape, rb.2, rb.3, shift);
+    }
     let d = if func.is_empty() {
         // Голый `<coord-box>` = `inset(0 round X)` (§offset-path); слово
         // передаём любое — `rrect_of` берёт из него только размер и радиусы.
         crate::background::motion_shape_d("border-box", rb.2, rb.3, g.radius)?
     } else {
-        equivalent_path(&shape_start(&func, c, g, rb), rb.2, rb.3, g.radius)?
+        crate::background::motion_shape_d(&shape, rb.2, rb.3, g.radius)?
     };
     // Путь строится в системе ОПОРНОЙ коробки, а `transform` живёт в системе
     // самой коробки: сдвигаем на разницу их начал.
-    path_css(c, &d, (rb.0 - g.self_off.0, rb.1 - g.self_off.1))
+    path_css(c, &d, shift)
 }
 
 /// Разделить `<offset-path> || <coord-box>` (§offset-path «Value: none |
@@ -417,32 +424,6 @@ fn shape_start(func: &str, c: &Computed, g: &Cb, rb: (f32, f32, f32, f32)) -> St
     } else {
         format!("{head}{body} at {x}px {y}px)")
     }
-}
-
-fn equivalent_path(raw: &str, w: f32, h: f32, radius: [(f32, f32); 4]) -> Option<String> {
-    if raw.starts_with("circle(") || raw.starts_with("ellipse(") {
-        let (cx, cy, rx, ry) = crate::background::shape_params(raw, w, h, 1.0)?;
-        // Нулевой радиус — путь из одной точки, центра (Blink строит эллипс
-        // нулевого радиуса), а не отказ от трансформа: `closest-side` из
-        // угла коробки даёт ровно ноль (`offset-path-shape-circle-002`).
-        if rx <= 0.0 || ry <= 0.0 {
-            return Some(format!("M{cx} {cy}"));
-        }
-        return Some(format!(
-            "M{} {} A{rx} {ry} 0 0 1 {} {} A{rx} {ry} 0 0 1 {} {} A{rx} {ry} 0 0 1 {} {} A{rx} {ry} 0 0 1 {} {} Z",
-            cx + rx,
-            cy,
-            cx,
-            cy + ry,
-            cx - rx,
-            cy,
-            cx,
-            cy - ry,
-            cx + rx,
-            cy
-        ));
-    }
-    crate::background::motion_shape_d(raw, w, h, radius)
 }
 
 /// Точка на разложенном пути и готовая строка `transform`. `shift` — перенос
