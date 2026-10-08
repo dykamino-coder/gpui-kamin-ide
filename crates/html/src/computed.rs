@@ -7,6 +7,7 @@
 
 mod gradient_paint;
 mod font_kerning;
+mod font_members;
 pub(crate) mod font_weight;
 mod text_indent;
 mod bidi_properties;
@@ -3959,9 +3960,7 @@ impl Computed {
         // этих парах не решает — держат их другие корни.
         const SHORTHANDS: &[&str] = &["background"];
         let семья = |k: &'a str| -> &'a str {
-            // Kerning is a reset-only member of `font`; their source order
-            // must survive the shorthand-first ordering used below.
-            if k == "font-kerning" && d.contains_key("font") {
+            if font_members::contains(k) && d.contains_key("font") {
                 return "font";
             }
             for root in SHORTHANDS {
