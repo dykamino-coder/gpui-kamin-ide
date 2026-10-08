@@ -24458,10 +24458,47 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         // `abspos-after-spanner`, где под зеленью поточная
                         // красная коробка), а встаёт туда, где щуп стоял в
                         // колонке.
+                        // Процентная высота абсолюта — от высоты отбивки
+                        // содержащего блока (CSS 2.1 §10.5, §10.1 п. 4), а здесь им
+                        // служит САМ многоколоночник. Заместитель же кладёт коробку
+                        // в нулевую обёртку (`spot_place`), и раскладка под нами
+                        // считала проценты от неё — коробка схлопывалась в ноль
+                        // (`single-line-row-flex-fragmentation-019/020`: `height:
+                        // 50%` без `top`). Пересчитываем в точки заранее, когда
+                        // высота многоколоночника известна в точках.
+                        let cb_h: Option<f32> = (e.style.position.is_some()
+                            && e.style.position != Some(crate::computed::Position::Static)
+                            && !col_vert)
+                            .then(|| {
+                                let px = |l: Option<Len>| match l {
+                                    None => Some(0.0),
+                                    Some(Len::Px(v)) => Some(v),
+                                    _ => None,
+                                };
+                                let b = e.style.borders();
+                                let pad = px(e.style.padding.top)? + px(e.style.padding.bottom)?;
+                                let bor = px(b.top)? + px(b.bottom)?;
+                                match e.style.height {
+                                    Some(Len::Px(h)) if e.style.border_box == Some(true) => Some((h - bor).max(pad)),
+                                    Some(Len::Px(h)) => Some(h.max(0.0) + pad),
+                                    _ => None,
+                                }
+                            })
+                            .flatten();
                         for (i, (_, oof)) in oof_static.iter().enumerate() {
+                            let mut oof = oof.clone();
+                            if let Some(ch) = cb_h
+                                && oof.style.position == Some(crate::computed::Position::Absolute)
+                            {
+                                for l in [&mut oof.style.height, &mut oof.style.min_height, &mut oof.style.max_height] {
+                                    if let Some(Len::Pct(k)) = *l {
+                                        *l = Some(Len::Px(k * ch));
+                                    }
+                                }
+                            }
                             d = d.child(crate::interact::spot_place(
                                 oof_spots[i].clone(),
-                                element(oof, &merged, opts),
+                                element(&oof, &merged, opts),
                             ));
                         }
                         if let (Some(buf), Some(spec)) = (gap_items, gap_spec) {
