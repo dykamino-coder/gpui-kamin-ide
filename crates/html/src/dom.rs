@@ -3251,18 +3251,22 @@ fn walk(
                 })
             };
 
+            // Обратный счётчик без числа: начальное значение — итог
+            // предварительного обхода области (css-lists-3
+            // §instantiating-counters). Считается ЗДЕСЬ, до применения
+            // директив: запись создаётся уже готовым числом.
+            let reversed_start = |nm: &str, counters: &mut crate::counters::Counters| {
+                crate::counters_scan::reversed_initial(
+                    rules, vars, nm, handle, &me, path, sibs, level, spots, level_pos,
+                )
+            };
+
             if style.display == Some(Display::None) {
-                // Колонка — единственный `display: none`, который таблице
-                // НУЖЕН живым: из неё берутся ширина дорожки, слой краски и
-                // рамка для разбора сросшихся кромок. Собирается отдельной
-                // веткой: счётчики, псевдоэлементы, `dir="auto"` и кадры
-                // анимации у безкоробочного узла не действуют, а общий путь
-                // ниже применил бы их все.
-                // Фон КОРНЯ красит канвас, даже когда коробок документ не
-                // даёт вовсе (§14.2: «the canvas background is the root
-                // element's background»). Узел остаётся пустышкой с одним
-                // стилем: коробку `display: none` ему всё равно не соберут, а
-                // пометка канваса без него не ставится.
+                // Table columns use an internal non-flow display, but still
+                // generate boxes (CSS 2.1 §17.2). Their counter directives
+                // apply; actual display:none nodes have no counters (§12.4.3).
+                // CSS 2.1 §14.2: the root background paints the canvas even
+                // without a root box. Keep its style for canvas propagation.
                 if me.tag == "html" {
                     out.push(Node::Element(Element {
                         tag: "html".to_string(),
@@ -3282,6 +3286,10 @@ fn walk(
                 let Some(role) = style.col_role else {
                     return;
                 };
+                counters.enter();
+                apply_counter_decls(
+                    &style, counters, &tag, &attrs, &mut false, &reversed_start,
+                );
                 // §17.2.1: у колонки детей нет вовсе, у группы колонок
                 // остаются только колонки.
                 let mut kids: Vec<Node> = vec![];
@@ -3305,6 +3313,7 @@ fn walk(
                         .filter(|n| matches!(n, Node::Element(c) if c.style.col_role == Some(0)))
                         .collect();
                 }
+                counters.leave();
                 *counter += 1;
                 out.push(Node::Element(Element {
                     list_item: None,
@@ -3331,15 +3340,6 @@ fn walk(
                     counters.set_quotes(q.clone());
                 }
             }
-            // Обратный счётчик без числа: начальное значение — итог
-            // предварительного обхода области (css-lists-3
-            // §instantiating-counters). Считается ЗДЕСЬ, до применения
-            // директив: запись создаётся уже готовым числом.
-            let reversed_start = |nm: &str, counters: &mut crate::counters::Counters| {
-                crate::counters_scan::reversed_initial(
-                    rules, vars, nm, handle, &me, path, sibs, level, spots, level_pos,
-                )
-            };
             let mut is_list_item = false;
             apply_counter_decls(
                 &style,

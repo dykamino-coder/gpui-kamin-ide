@@ -133,7 +133,7 @@ impl Scan<'_> {
         };
         // Узел без коробки счётчиков не трогает (css-lists-3
         // §counters-without-boxes).
-        if style.display == Some(Display::None) {
+        if style.display == Some(Display::None) && style.col_role.is_none() {
             return;
         }
         if !root && instantiates(&style, h, self.name) {
