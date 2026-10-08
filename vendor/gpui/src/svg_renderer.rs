@@ -62,6 +62,7 @@ pub fn svg_markup_to_image_padded(
 
     let opts = usvg::Options::default();
     let tree = usvg::Tree::from_str(markup, &opts).ok()?;
+    let solid_color = markup_pixels::solid_color(&tree);
     let pw = (width * density).round().max(1.0) as u32;
     let ph = (height * density).round().max(1.0) as u32;
     // Потолок: рисунок в чате не бывает больше половины экрана, а промах в
@@ -100,6 +101,9 @@ pub fn svg_markup_to_image_padded(
     let mut buffer = ImageBuffer::from_raw(pw + pad_px, ph + pad_px, pixmap.take())?;
     for pixel in buffer.chunks_exact_mut(4) {
         markup_pixels::swap_and_unpremultiply(pixel);
+        if let Some(color) = solid_color {
+            pixel[..3].copy_from_slice(&[color.blue, color.green, color.red]);
+        }
     }
     let mut image = crate::RenderImage::new(smallvec::SmallVec::from_elem(Frame::new(buffer), 1));
     image.scale_factor = density;
