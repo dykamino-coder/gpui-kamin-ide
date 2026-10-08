@@ -2000,6 +2000,11 @@ pub struct Computed {
     pub no_justify: Option<bool>,
     /// CSS Text 4: ruby annotation justification excludes word spaces.
     pub ruby_justify: Option<bool>,
+    /// `text-justify` expansion opportunities (css-text-3 §7.3): `Some(0)`
+    /// `inter-word` (word separators only), `Some(2)` `inter-character` /
+    /// `distribute` (between typographic character units), `None`/`Some(1)`
+    /// `auto` (word separators plus CJK ideographs, as Blink).
+    pub justify_chars: Option<u8>,
     /// Internal ruby unit promoted to a technical block for layout.
     pub ruby_unit: bool,
     /// `hanging-punctuation` — какая пунктуация выходит за край строки.
@@ -6072,6 +6077,11 @@ impl Computed {
                     "none" | "auto" | "inter-word" | "inter-character" | "distribute" | "ruby"
                 ) {
                     self.ruby_justify = Some(v == "ruby");
+                    self.justify_chars = match v {
+                        "inter-word" => Some(0),
+                        "inter-character" | "distribute" => Some(2),
+                        _ => Some(1),
+                    };
                 }
                 self.no_justify = match v {
                     "none" => Some(true),

@@ -350,6 +350,15 @@ fn collect_with_empty_metrics(
                 }
             }
             Node::Element(e) => {
+                // `display: contents` on `<br>`/`<wbr>` behaves as
+                // `display: none` (css-display-3 §B «Unusual Elements»): no
+                // line break, no break opportunity
+                // (`display-contents-sharing-001`).
+                if matches!(e.tag.as_str(), "br" | "wbr")
+                    && e.style.display == Some(crate::computed::Display::Contents)
+                {
+                    continue;
+                }
                 if e.tag == "br" {
                     case.boundary();
                     out.push(Piece::Text {
@@ -1668,6 +1677,7 @@ fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Compu
     c.text_align = own.text_align.or(parent.text_align);
     c.no_justify = own.no_justify.or(parent.no_justify);
     c.ruby_justify = own.ruby_justify.or(parent.ruby_justify);
+    c.justify_chars = own.justify_chars.or(parent.justify_chars);
     c.ruby_unit = own.ruby_unit || parent.ruby_unit;
     c.text_align_last = own.text_align_last.or(parent.text_align_last);
     c.hanging = own.hanging.or(parent.hanging);
