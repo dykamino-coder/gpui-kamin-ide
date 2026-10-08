@@ -2644,6 +2644,9 @@ pub struct Computed {
     pub first_letter_own: Option<Box<Computed>>,
     /// Стиль первой строки абзаца (`::first-line`).
     pub first_line: Option<Box<Computed>>,
+    /// Только объявления `::first-line` самого узла — их получает первый
+    /// блок-потомок, несущий первую строку (`render/first_line_descendants`).
+    pub first_line_own: Option<Box<Computed>>,
     /// `initial-letter` (css-inline-3 §initial-letter): размер буквицы в
     /// строках и её осадка (sink) — на базовой какой строки она стоит.
     /// `None` — `normal`, обычная буква. Живёт в слое `::first-letter`.

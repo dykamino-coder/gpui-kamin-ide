@@ -3191,7 +3191,9 @@ fn walk(
             let layer = |name, base| initial_pseudos::resolve(name, rules, vars, &me, path, sibs, base);
             let first_letter = layer("first-letter", Some(&style));
             let first_line = layer("first-line", Some(&style));
+            let first_line_own = layer("first-line", None).map(Box::new);
             style.first_letter_own = layer("first-letter", None).map(Box::new);
+            style.first_line_own = first_line_own;
             // `::marker` — НЕ копией стиля хозяина, как первая буква, а
             // ТОЛЬКО своими объявлениями поверх таблицы агента: копия
             // протащила бы в маркер рамку, поля и размеры самого `<li>`.
