@@ -829,6 +829,15 @@ impl ToTaffy<taffy::style::Style> for Style {
         if let Some(keyword) = self.sizing_keywords[1] {
             out.size.height = keyword.to_native(scale_factor);
         }
+        let max_keyword = |keyword: Option<crate::CssSizingKeyword>| match keyword {
+            Some(crate::CssSizingKeyword::MinContent) => Some(taffy::AvailableSpace::MinContent),
+            Some(crate::CssSizingKeyword::MaxContent) => Some(taffy::AvailableSpace::MaxContent),
+            _ => None,
+        };
+        out.item_max_size_keywords = taffy::Size {
+            width: max_keyword(self.max_sizing_keywords[0]),
+            height: max_keyword(self.max_sizing_keywords[1]),
+        };
         if let Some(names) = self.grid_line_names.as_deref() {
             apply_grid_line_names(&mut out, names);
         }

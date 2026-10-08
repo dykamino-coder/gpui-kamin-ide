@@ -219,6 +219,9 @@ pub struct Style {
     pub aspect_ratio_preferred_size: [Option<f32>; 2],
     /// Intrinsic width and height passed directly to the native layout.
     pub sizing_keywords: [Option<CssSizingKeyword>; 2],
+    /// KaminIDE patch: intrinsic `max-width`/`max-height` keywords (`min-content`,
+    /// `max-content`) passed to the native layout; `None` keeps `max_size`.
+    pub max_sizing_keywords: [Option<CssSizingKeyword>; 2],
     /// Content-box intrinsic sizes for contained physical axes, in logical pixels.
     pub contained_intrinsic_size: [Option<f32>; 2],
 
@@ -964,6 +967,7 @@ impl Default for Style {
             aspect_ratio: None,
             aspect_ratio_preferred_size: [None; 2],
             sizing_keywords: [None; 2],
+            max_sizing_keywords: [None; 2],
             contained_intrinsic_size: [None; 2],
             gap: Size::default(),
             // Alignment
