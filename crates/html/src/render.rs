@@ -29086,19 +29086,13 @@ fn fixup_row_children(row: &Element) -> Vec<Node> {
                     let _ = el;
                 }
                 Node::Element(el) if is_cell(el) => {
-                    if !run.is_empty() {
-                        cells.push(Node::Element(anon_element("td", std::mem::take(run))));
-                    }
+                    table_roles::flush_inline(cells, run);
                     cells.push(child.clone());
                 }
-                Node::Text(t) if !t.trim().is_empty() => run.push(child.clone()),
-                // §17.2.1 шаг 1 п.4 гасит пробел только МЕЖДУ внутренними
-                // табличными коробками. Внутри прогона строчных братьев он
-                // часть анонимной ячейки: без него соседние слова слипались,
-                // и строка выходила короче.
-                Node::Text(_) if !run.is_empty() => run.push(child.clone()),
+                // Whitespace is classified after collecting the anonymous
+                // inline box, not before its non-whitespace content is seen.
+                Node::Text(_) => run.push(child.clone()),
                 Node::Element(_) => run.push(child.clone()),
-                _ => {}
             }
         }
         let _ = donor;
@@ -29121,9 +29115,7 @@ fn fixup_row_children(row: &Element) -> Vec<Node> {
     }
     let (mut cells, mut run, mut extra) = (vec![], vec![], vec![]);
     walk(&row.children, None, &mut cells, &mut run, &mut extra);
-    if !run.is_empty() {
-        cells.push(Node::Element(anon_element("td", run)));
-    }
+    table_roles::flush_inline(&mut cells, &mut run);
     let mut fixed = row.clone();
     fixed.children = cells;
     let mut out = vec![Node::Element(fixed)];
