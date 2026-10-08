@@ -11089,6 +11089,71 @@ fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts: &RenderOpt
 /// `:hover`/`::first-letter`/`::first-line`, а внутри неё — только пустой
 /// текст и РОВНО ОДИН элемент: флоат либо такая же обёртка
 /// (`float-in-inline-002`: `<span><span><span style="float:left">`).
+/// Leading float of an inline wrapper (see `wrap_floats`): the wrapper (or a
+/// chain of such wrappers) must be a genuine, non-positioned inline that
+/// forms no group (opacity, filter, transform, … act on the float through
+/// it), and the float must be its first in-flow content — only blank text
+/// before it. Returns the float and the wrapper without it.
+fn split_leading_float(e: &Element) -> Option<(Element, Element)> {
+    let genuine_inline =
+        (e.inline && e.style.display.is_none()) || e.style.inline_display == Some(true);
+    // Ruby boxes are not plain inline wrappers: their content is paired into
+    // bases and annotations (css-ruby-1 §2.2) and laid out by the ruby path.
+    if !genuine_inline
+        || matches!(e.tag.as_str(), "br" | "ruby" | "rb" | "rt" | "rtc" | "rp")
+        || e.style.float.is_some_and(|f| f != 0)
+        || e.style.position.is_some()
+        || e.hover.is_some()
+        || e.style.opacity.is_some()
+        || e.style.filter.is_some()
+        || e.style.transform.is_some()
+        || e.style.blend.is_some()
+        || e.style.clip_polygon.is_some()
+        || e.style.mask_image.is_some()
+    {
+        return None;
+    }
+    for (i, n) in e.children.iter().enumerate() {
+        match n {
+            Node::Text(t) if blank_text(t) => continue,
+            Node::Text(_) => return None,
+            Node::Element(c) => {
+                if c.style.float.is_some_and(|f| f != 0)
+                    && c.style.position.is_none()
+                    && c.style.display != Some(Display::None)
+                {
+                    let mut rest = e.clone();
+                    rest.children.remove(i);
+                    // The float leaves its wrapper but keeps what it
+                    // inherited through it (`run-in-contains-inline-007`:
+                    // bold of the run-in).
+                    let mut float = c.clone();
+                    carry_inherited(&e.style, &mut float.style);
+                    return Some((float, rest));
+                }
+                let (mut float, inner) = split_leading_float(c)?;
+                carry_inherited(&e.style, &mut float.style);
+                let mut rest = e.clone();
+                rest.children[i] = Node::Element(inner);
+                return Some((float, rest));
+            }
+        }
+    }
+    None
+}
+
+/// Inherited values a hoisted float takes from the inline wrapper it left
+/// (only those the wrapper sets itself; `inline::inherit` would also resolve
+/// font-relative units against the bare wrapper style).
+fn carry_inherited(wrapper: &Computed, own: &mut Computed) {
+    own.color = own.color.or(wrapper.color);
+    own.font_weight = own.font_weight.or(wrapper.font_weight);
+    own.italic = own.italic.or(wrapper.italic);
+    if own.font_family.is_none() {
+        own.font_family = wrapper.font_family.clone();
+    }
+}
+
 fn inline_float_host(e: &Element) -> Option<Element> {
     // `display: inline` после каскада — это `InlineBlock` с пометкой
     // `inline_display` (`computed.rs`), поэтому одного взгляда на `display`
@@ -11348,6 +11413,23 @@ fn wrap_floats(
                 Node::Text(_) => None,
             };
             hoisted.map_or(n, Node::Element)
+        })
+        .collect();
+    // A float at the very START of an inline wrapper that also holds other
+    // content (only collapsible white space before it): it is placed before
+    // anything of the first line (CSS 2.1 §9.5.1 rule 1 — its top is the
+    // top of the line it occurs on, and nothing of that line precedes it),
+    // so it is laid out exactly like a float written just before the
+    // wrapper. `below-float`: `<span> <div float 100%> x</span>` must push
+    // `x` (and its text-indent) below the float; the float was lost.
+    let nodes: Vec<Node> = nodes
+        .into_iter()
+        .flat_map(|n| match &n {
+            Node::Element(e) => match split_leading_float(e) {
+                Some((float, rest)) => vec![Node::Element(float), Node::Element(rest)],
+                None => vec![n],
+            },
+            Node::Text(_) => vec![n],
         })
         .collect();
     // Примыкающие флоаты во ВЛОЖЕННОЙ обёртке (Blink
