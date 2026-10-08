@@ -14738,6 +14738,7 @@ fn gap_rule_spec(
             brk: brk.unwrap_or(1),
             inset,
             visibility: visibility.unwrap_or(0),
+            double: if column { s.column_rule_double } else { s.row_rule_double },
         })
     };
     let col = axis(true);

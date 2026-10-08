@@ -2967,6 +2967,10 @@ pub struct Computed {
     /// `currentcolor`.
     pub column_rule_widths: Option<GapList<Len>>,
     pub column_rule_styles: Option<GapList<bool>>,
+    /// Single `double` rule style (css-gaps-1 §color-style-width: line styles
+    /// as for borders) — painted as two lines; other styles stay solid.
+    pub column_rule_double: bool,
+    pub row_rule_double: bool,
     pub column_rule_colors: Option<GapList<Option<Color>>>,
     pub row_rule_widths: Option<GapList<Len>>,
     pub row_rule_styles: Option<GapList<bool>>,
@@ -3986,6 +3990,29 @@ impl Computed {
         let семья = |k: &'a str| -> &'a str {
             if font_members::contains(k) && d.contains_key("font") {
                 return "font";
+            }
+            // A side shorthand (`border-right: 12px solid`) resets that
+            // side's color to `currentColor`; a later `border-color: pink`
+            // must win over it (css-cascade-4 §6.4: order of appearance).
+            // Sorted by name the pair always ran `border-color` first, and
+            // the side stayed black (css-gaps `grid-gap-decorations-*-ref`
+            // `.col-rule`). Only side shorthands and the three all-side
+            // shorthands share the order — `border-width`/`border-style`
+            // among themselves keep the old order (see the note above).
+            const EDGE: &[&str] = &[
+                "border-top",
+                "border-right",
+                "border-bottom",
+                "border-left",
+                "border-color",
+                "border-style",
+                "border-width",
+            ];
+            if EDGE.contains(&k)
+                && EDGE[..4].iter().any(|s| d.contains_key(*s))
+                && EDGE[4..].iter().any(|s| d.contains_key(*s))
+            {
+                return "border-edge";
             }
             for root in SHORTHANDS {
                 if k.len() > root.len()
@@ -7964,11 +7991,14 @@ impl Computed {
             }
             "column-rule-style" | "row-rule-style" | "rule-style" => {
                 if let Some(l) = gap_list(v, gap_style) {
+                    let double = v.trim().eq_ignore_ascii_case("double");
                     if key != "row-rule-style" {
                         self.set_gap_styles(true, &l);
+                        self.column_rule_double = double;
                     }
                     if key != "column-rule-style" {
                         self.set_gap_styles(false, &l);
+                        self.row_rule_double = double;
                     }
                 }
             }
@@ -11450,9 +11480,16 @@ impl Computed {
         let widths = list.map(|r| r.0.unwrap_or(Len::Px(3.0)));
         let styles = list.map(|r| r.1.unwrap_or(false));
         let colors = list.map(|r| r.2.flatten());
+        let double = !v.contains(',')
+            && split_outside_parens(v).iter().any(|t| t.trim().eq_ignore_ascii_case("double"));
         for column in [true, false] {
             if (column && key == "row-rule") || (!column && key == "column-rule") {
                 continue;
+            }
+            if column {
+                self.column_rule_double = double;
+            } else {
+                self.row_rule_double = double;
             }
             self.set_gap_widths(column, &widths);
             self.set_gap_styles(column, &styles);
