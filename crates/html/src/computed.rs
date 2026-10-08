@@ -8,6 +8,7 @@
 mod gradient_paint;
 mod font_kerning;
 mod font_members;
+mod white_space;
 mod font_shorthand;
 pub(crate) mod font_weight;
 mod text_indent;
@@ -6272,19 +6273,7 @@ impl Computed {
                 }
                 _ => {}
             },
-            "white-space" => {
-                // `pre` не переносит строки — так же, как `nowrap`; переносят
-                // только `pre-wrap` и `pre-line`.
-                self.nowrap = Some(matches!(v, "nowrap" | "pre"));
-                // `pre-line` — единственный, кто хранит переводы строк, но
-                // схлопывает пробелы; остальные `pre*` хранят и пробелы.
-                self.keep_spaces = Some(matches!(v, "pre" | "pre-wrap" | "break-spaces"));
-                self.preserve_newlines = Some(matches!(
-                    v,
-                    "pre" | "pre-wrap" | "pre-line" | "break-spaces"
-                ));
-                self.break_after_spaces = Some(v == "break-spaces");
-            }
+            "white-space" => white_space::apply(self, v),
 
             // --- Логические свойства ---------------------------------------
             // Письмо у нас только слева направо и сверху вниз, поэтому
