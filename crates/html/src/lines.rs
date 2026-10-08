@@ -1614,7 +1614,19 @@ impl Paragraph {
         if self.text_overflow
             && let Some(limit) = limit
         {
-            for line in lines.iter_mut() {
+            // Строка, на которую сядет знак обрыва `line-clamp`, усекается
+            // им самим (css-overflow-4 §block-ellipsis: место отбирается «as
+            // if wrapping» до точки переноса, а не посимвольно): непереносимое
+            // слово уходит целиком, и остаётся одно «…»
+            // (`webkit-line-clamp-036`, `line-clamp-auto-009`).
+            let clamp_line = self
+                .clamp
+                .filter(|n| *n > 0 && (lines.len() > *n || self.clamp_force))
+                .map(|n| n.min(lines.len()).saturating_sub(1));
+            for (i, line) in lines.iter_mut().enumerate() {
+                if Some(i) == clamp_line {
+                    continue;
+                }
                 if line.width > limit + px(0.5) && !line.ellipsis {
                     self.ellipsize(line, limit, &segs, window);
                 }
