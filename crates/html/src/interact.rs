@@ -2234,6 +2234,9 @@ pub struct GapAxisRule {
     pub inset: [crate::computed::GapInset; 4],
     /// §visibility-items: 0 `normal`, 1 `all`, 2 `around`, 3 `between`.
     pub visibility: u8,
+    /// `double` style: two lines of a third of the width each, the rest a
+    /// gap (as the `double` border, Blink `GetDoubleBorderStripeWidths`).
+    pub double: bool,
 }
 
 /// Устройство контейнера для геометрии промежутков.
@@ -2998,7 +3001,11 @@ impl Element for GapRulePainter {
         let bounds = prepaint.0;
         let grid_tracks = prepaint.1.take();
         let items = std::mem::take(&mut *self.items.borrow_mut());
-        if items.is_empty() {
+        // A grid's gaps come from its track collection, not from its items
+        // (css-gaps-1 §gap-grid; Blink `BuildGridTrackGapData`): an empty
+        // grid or subgrid still has gaps to decorate
+        // (`subgrid-gap-decorations-012/015/016/017`).
+        if items.is_empty() && !(self.spec.kind == GapLayout::Grid && grid_tracks.is_some()) {
             return;
         }
         let spec = &self.spec;
@@ -3171,6 +3178,22 @@ impl Element for GapRulePainter {
                     origin: gpui::point(l, t),
                     size: gpui::size(r - l, b - t),
                 };
+                let third = (w / 3.0).round();
+                if rule.double && third >= 1.0 {
+                    // Two lines across the rule's width, each a third of it
+                    // (rounded like the `double` border in `render.rs`).
+                    let (a0, a1) = (c - w / 2.0, c + w / 2.0);
+                    for (p0, p1) in [(a0, a0 + third), (a1 - third, a1)] {
+                        let (q0, q1) = (edge(gpui::px(p0)), edge(gpui::px(p1)));
+                        let band = if gap_on_x {
+                            Bounds { origin: gpui::point(q0, t), size: gpui::size(q1 - q0, b - t) }
+                        } else {
+                            Bounds { origin: gpui::point(l, q0), size: gpui::size(r - l, q1 - q0) }
+                        };
+                        window.paint_quad(gpui::fill(band, colour.to_hsla()));
+                    }
+                    continue;
+                }
                 window.paint_quad(gpui::fill(rect, colour.to_hsla()));
             }
         };

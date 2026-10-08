@@ -94,6 +94,14 @@ pub struct Corners {
 
 /// Разряды `inherit_bits`: ненаследуемые свойства, у которых слово `inherit`
 /// обязано скопировать вычисленное значение родителя (§6.2.1).
+pub(crate) mod ainh {
+    pub(crate) const ALIGN_ITEMS: u8 = 1 << 0;
+    pub(crate) const JUSTIFY_ITEMS: u8 = 1 << 1;
+    pub(crate) const ALIGN_CONTENT: u8 = 1 << 2;
+    pub(crate) const JUSTIFY_CONTENT: u8 = 1 << 3;
+    pub(crate) const JUSTIFY_SELF: u8 = 1 << 4;
+}
+
 pub(crate) mod inh {
     pub(crate) const BG_REPEAT: u16 = 1 << 0;
     pub(crate) const Z_INDEX: u16 = 1 << 1;
@@ -2194,6 +2202,11 @@ pub struct Computed {
     /// `align-self: inherit` — значение берёт `inline::inherit` у родителя
     /// (свойство ненаследуемое, слово копирует вычисленное значение).
     pub(crate) align_self_inherit: bool,
+    /// `inherit` у `align-items`/`justify-items`/`align-content`/
+    /// `justify-content`/`justify-self` (разряды `ainh::*`): свойства
+    /// ненаследуемые, слово копирует вычисленное значение родителя
+    /// (css-cascade-4 §7.3.1) — его берёт `inline::inherit`.
+    pub(crate) align_inherit: u8,
     pub justify_self_last: bool,
     /// `align-items: last baseline` — то же для умолчания детей: раскладка
     /// получает `LastBaseline` (css-align-3 §4.2), а не первую базовую.
@@ -2959,6 +2972,10 @@ pub struct Computed {
     /// `currentcolor`.
     pub column_rule_widths: Option<GapList<Len>>,
     pub column_rule_styles: Option<GapList<bool>>,
+    /// Single `double` rule style (css-gaps-1 §color-style-width: line styles
+    /// as for borders) — painted as two lines; other styles stay solid.
+    pub column_rule_double: bool,
+    pub row_rule_double: bool,
     pub column_rule_colors: Option<GapList<Option<Color>>>,
     pub row_rule_widths: Option<GapList<Len>>,
     pub row_rule_styles: Option<GapList<bool>>,
@@ -3979,6 +3996,29 @@ impl Computed {
             if font_members::contains(k) && d.contains_key("font") {
                 return "font";
             }
+            // A side shorthand (`border-right: 12px solid`) resets that
+            // side's color to `currentColor`; a later `border-color: pink`
+            // must win over it (css-cascade-4 §6.4: order of appearance).
+            // Sorted by name the pair always ran `border-color` first, and
+            // the side stayed black (css-gaps `grid-gap-decorations-*-ref`
+            // `.col-rule`). Only side shorthands and the three all-side
+            // shorthands share the order — `border-width`/`border-style`
+            // among themselves keep the old order (see the note above).
+            const EDGE: &[&str] = &[
+                "border-top",
+                "border-right",
+                "border-bottom",
+                "border-left",
+                "border-color",
+                "border-style",
+                "border-width",
+            ];
+            if EDGE.contains(&k)
+                && EDGE[..4].iter().any(|s| d.contains_key(*s))
+                && EDGE[4..].iter().any(|s| d.contains_key(*s))
+            {
+                return "border-edge";
+            }
             for root in SHORTHANDS {
                 if k.len() > root.len()
                     && k.starts_with(root)
@@ -4562,6 +4602,18 @@ impl Computed {
             "align-self" if v.trim() == "inherit" => {
                 self.align_self_inherit = true;
             }
+            "align-items" | "justify-items" | "align-content" | "justify-content"
+            | "justify-self"
+                if v.trim() == "inherit" =>
+            {
+                self.align_inherit |= match key {
+                    "align-items" => ainh::ALIGN_ITEMS,
+                    "justify-items" => ainh::JUSTIFY_ITEMS,
+                    "align-content" => ainh::ALIGN_CONTENT,
+                    "justify-content" => ainh::JUSTIFY_CONTENT,
+                    _ => ainh::JUSTIFY_SELF,
+                };
+            }
             "align-self" => {
                 // `left`/`right` у `align-self` недействительны: это
                 // `<self-position>` без них, физические стороны есть только у
@@ -4583,6 +4635,7 @@ impl Computed {
                 }
             }
             "align-items" => {
+                self.align_inherit &= !ainh::ALIGN_ITEMS;
                 if let Ok(a) = align_keyword(v) {
                     self.align_items = a;
                     self.align_items_safe = is_safe(v);
@@ -4593,6 +4646,7 @@ impl Computed {
             // промежутков — сведение их в одно значение расходилось с
             // браузером на 27 точек (поймано сравнением).
             "justify-content" => {
+                self.align_inherit &= !ainh::JUSTIFY_CONTENT;
                 self.justify_content = parse_justify(v);
                 self.justify_content_safe = is_safe(v);
             }
@@ -6393,6 +6447,7 @@ impl Computed {
                 }
             }
             "align-content" => {
+                self.align_inherit &= !ainh::ALIGN_CONTENT;
                 self.align_content = parse_justify(v);
                 self.align_content_safe = is_safe(v);
                 // css-align-3 §align-block: ЛЮБОЕ не-`normal` значение делает
@@ -6408,6 +6463,7 @@ impl Computed {
                     self.align_content.is_some() || matches!(word, "baseline" | "first" | "last");
             }
             "justify-items" => {
+                self.align_inherit &= !ainh::JUSTIFY_ITEMS;
                 self.justify_items = parse_align(v);
                 self.justify_items_safe = is_safe(v);
                 self.justify_items_last = v.split_whitespace().any(|w| w == "last");
@@ -6436,6 +6492,7 @@ impl Computed {
                 self.lanes_track_reverse = v.split_whitespace().any(|w| w == "track-reverse");
             }
             "justify-self" => {
+                self.align_inherit &= !ainh::JUSTIFY_SELF;
                 self.justify_self = parse_align(v);
                 self.justify_self_physical = match v.split_whitespace().last() {
                     Some("left") => Some(false),
@@ -7944,11 +8001,14 @@ impl Computed {
             }
             "column-rule-style" | "row-rule-style" | "rule-style" => {
                 if let Some(l) = gap_list(v, gap_style) {
+                    let double = v.trim().eq_ignore_ascii_case("double");
                     if key != "row-rule-style" {
                         self.set_gap_styles(true, &l);
+                        self.column_rule_double = double;
                     }
                     if key != "column-rule-style" {
                         self.set_gap_styles(false, &l);
+                        self.row_rule_double = double;
                     }
                 }
             }
@@ -11430,9 +11490,16 @@ impl Computed {
         let widths = list.map(|r| r.0.unwrap_or(Len::Px(3.0)));
         let styles = list.map(|r| r.1.unwrap_or(false));
         let colors = list.map(|r| r.2.flatten());
+        let double = !v.contains(',')
+            && split_outside_parens(v).iter().any(|t| t.trim().eq_ignore_ascii_case("double"));
         for column in [true, false] {
             if (column && key == "row-rule") || (!column && key == "column-rule") {
                 continue;
+            }
+            if column {
+                self.column_rule_double = double;
+            } else {
+                self.row_rule_double = double;
             }
             self.set_gap_widths(column, &widths);
             self.set_gap_styles(column, &styles);
