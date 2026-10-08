@@ -7,6 +7,7 @@
 
 mod gradient_paint;
 mod font_kerning;
+mod text_indent;
 mod image_color;
 mod radius_mask;
 mod radius_parse;
@@ -7138,23 +7139,7 @@ impl Computed {
             // после КАЖДОГО жёсткого разрыва, `hanging` переворачивает выбор —
             // отступ получают все строки, КРОМЕ той, что получила бы его.
             // Порядок слов свободный, поэтому значение разбирается по словам.
-            "text-indent" => {
-                let (mut each, mut hang) = (false, false);
-                // Резка ВНЕ скобок: `calc(50% - 3px)` — одно слово, а не три
-                // (по пробелам объявление роняли целиком). Процентная смесь
-                // доживает до раскладки строк: `Indent { px, pct }` складывает
-                // обе части сам (css-text-3 §2.1: доля — от ширины
-                // содержащего блока, она известна только на строке).
-                for word in split_outside_parens(v) {
-                    match word.to_ascii_lowercase().as_str() {
-                        "each-line" => each = true,
-                        "hanging" => hang = true,
-                        len => self.text_indent = Len::parse_mixed(len).or(self.text_indent),
-                    }
-                }
-                self.text_indent_each_line = each.then_some(true);
-                self.text_indent_hanging = hang.then_some(true);
-            }
+            "text-indent" => text_indent::apply(self, v),
             // `text-box-trim` (css-inline-3 §4.2): у блочного контейнера
             // срезается ПОЛУЛИДИНГ первой и/или последней строки, чтобы край
             // содержимого сел на метрику текста. Свойство НЕ наследуется.
