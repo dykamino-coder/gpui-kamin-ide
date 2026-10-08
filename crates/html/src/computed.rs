@@ -7,6 +7,7 @@
 
 mod gradient_paint;
 mod font_kerning;
+pub(crate) mod font_weight;
 mod text_indent;
 mod bidi_properties;
 mod image_color;
@@ -1968,6 +1969,7 @@ pub struct Computed {
     pub color: Option<Color>,
     pub font_size: Option<Len>,
     pub font_weight: Option<u16>,
+    pub(crate) font_weight_step: i8,
     pub italic: Option<bool>,
     /// `font-style: oblique` отдельно от `italic`: набору наклон один
     /// (`italic` держит оба), а подбору лица это РАЗНЫЕ запросы (css-fonts-4
@@ -3725,6 +3727,7 @@ impl Computed {
             // картинка или иной атом.
             font_family: self.font_family.clone(),
             font_weight: self.font_weight,
+            font_weight_step: self.font_weight_step,
             italic: self.italic,
             oblique: self.oblique,
             underline: self.underline,
@@ -5728,13 +5731,7 @@ impl Computed {
                     }
                 };
             }
-            "font-weight" => {
-                self.font_weight = match v {
-                    "bold" | "bolder" => Some(700),
-                    "normal" => Some(400),
-                    n => n.parse().ok(),
-                }
-            }
+            "font-weight" => font_weight::apply(self, v),
             "font-style" => {
                 self.italic = Some(v == "italic" || v == "oblique");
                 // `oblique <angle>` — тоже наклон, а не курсив (css-fonts-4
@@ -6988,6 +6985,7 @@ impl Computed {
                     self.font_alternates = None;
                     self.font_family = None;
                     self.font_weight = None;
+                    self.font_weight_step = 0;
                     self.italic = None;
                     self.oblique = None;
                     self.line_height = None;
@@ -7073,6 +7071,7 @@ impl Computed {
                 self.italic = Some(false);
                 self.oblique = Some(false);
                 self.font_weight = Some(400);
+                self.font_weight_step = 0;
                 self.font_kerning = Some(2);
                 self.font_alternates = Some(crate::fonts::alternates::normal());
                 self.line_height = Some(Len::Auto);
@@ -7084,7 +7083,7 @@ impl Computed {
                             self.italic = Some(true);
                             self.oblique = Some(true);
                         }
-                        "bold" | "bolder" => self.font_weight = Some(700),
+                        "bold" | "bolder" | "lighter" => self.apply_one("font-weight", t),
                         // Кегль — и `0` (`font: 0 Ahem`: вес 0 зацикливал
                         // подбор шрифта, vars-font-shorthand-001).
                         _ if font_size_token(t) => match font_slash(t) {

@@ -1641,7 +1641,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
             c.font_size = Some(Len::Px(0.01));
         }
     }
-    c.font_weight = own.font_weight.or(parent.font_weight);
+    crate::computed::font_weight::inherit(&mut c, parent, own);
     c.italic = own.italic.or(parent.italic);
     c.oblique = own.oblique.or(parent.oblique);
     c.underline = own.underline.or(parent.underline);
