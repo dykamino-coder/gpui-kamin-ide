@@ -3615,6 +3615,20 @@ impl Window {
         glyph_id: GlyphId,
         font_size: Pixels,
     ) -> Result<()> {
+        self.paint_emoji_alpha(origin, font_id, glyph_id, font_size, 1.0)
+    }
+
+    /// KaminIDE patch: [`Window::paint_emoji`] with the text color's alpha
+    /// multiplied into the sprite opacity (a color glyph is painted with the
+    /// paint's alpha, like Skia's color-font path).
+    pub fn paint_emoji_alpha(
+        &mut self,
+        origin: Point<Pixels>,
+        font_id: FontId,
+        glyph_id: GlyphId,
+        font_size: Pixels,
+        alpha: f32,
+    ) -> Result<()> {
         self.invalidator.debug_assert_paint();
 
         let scale_factor = self.scale_factor();
@@ -3644,7 +3658,7 @@ impl Window {
                 size: tile.bounds.size.map(Into::into),
             };
             let content_mask = self.content_mask().scale(scale_factor);
-            let opacity = self.element_opacity();
+            let opacity = self.element_opacity() * alpha;
 
             let transformation = self.current_transformation();
             self.next_frame.scene.insert_primitive(PolychromeSprite {

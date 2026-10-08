@@ -6,6 +6,7 @@ pub fn bidi_marks(
     own: &Computed,
     merged: &Computed,
 ) -> (Option<&'static str>, Option<&'static str>) {
+    let own = if own.bidi_inherit { merged } else { own };
     let rtl = merged.rtl == Some(true);
     if own.bidi_plaintext == Some(true) {
         return (Some("\u{2068}"), Some("\u{2069}"));
@@ -32,4 +33,14 @@ pub fn bidi_marks(
         return (Some(open), Some("\u{202c}"));
     }
     (None, None)
+}
+
+/// CSS Writing Modes 4 section 2.2: only explicit inheritance copies the mode.
+pub(super) fn resolve(parent: &Computed, child: &mut Computed) {
+    if child.bidi_inherit {
+        child.bidi_override = parent.bidi_override;
+        child.bidi_isolate = parent.bidi_isolate;
+        child.bidi_embed = parent.bidi_embed;
+        child.bidi_plaintext = parent.bidi_plaintext;
+    }
 }

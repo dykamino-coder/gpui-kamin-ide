@@ -466,12 +466,20 @@ fn paint_line(
                     .bounds;
                 if glyph_view.intersects(&content_mask.bounds) {
                     if glyph.is_emoji {
-                        window.paint_emoji(
-                            glyph_origin + baseline_offset,
-                            run.font_id,
-                            glyph.id,
-                            run.font_size,
-                        )?;
+                        // KaminIDE patch: a color glyph is drawn with the text
+                        // color's alpha (css-color-4 §4.1: `color` with alpha
+                        // applies to the whole glyph; Skia/Blink modulate color
+                        // fonts by the paint alpha), so `color: transparent`
+                        // text paints no emoji (`line-breaking-013`).
+                        if color.a > 0.0 {
+                            window.paint_emoji_alpha(
+                                glyph_origin + baseline_offset,
+                                run.font_id,
+                                glyph.id,
+                                run.font_size,
+                                color.a,
+                            )?;
+                        }
                     } else {
                         window.paint_glyph(
                             glyph_origin + baseline_offset,

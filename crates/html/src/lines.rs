@@ -4654,8 +4654,8 @@ impl Element for Paragraph {
                 // всему `hangs` (U+3000, U+2000..200A и пр.), здесь — только сам
                 // отрезок набора, только U+0020/U+0009 и только при схлопывающем
                 // `white-space`; прочие Zs-разделители висят как прежде.
-                let body = &self.text[range.clone()];
-                range.start..range.start + body.trim_end_matches([' ', '\t']).len()
+                // CSS Text §4.1.3 preserves each inline span's non-collapsible tail.
+                range.start..self.drop_collapsible_tail(range.start, range.end)
             } else {
                 range.clone()
             };

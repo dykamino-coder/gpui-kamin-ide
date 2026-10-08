@@ -1440,9 +1440,13 @@ fn main() {
             .open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(Bounds {
+                        // An off-screen origin here made GPUI fall back to a
+                        // display-sized window (1920x1080 shots): create on screen,
+                        // `capture::park_offscreen` moves it away before the first frame.
                         origin: point(px(40.), px(40.)),
                         size: size(px(w), px(h)),
                     })),
+
                     titlebar: Some(TitlebarOptions {
                         appears_transparent: true,
                         ..Default::default()
@@ -1462,6 +1466,21 @@ fn main() {
         // достаточно, чтобы окно не было СВЁРНУТО.
 
         cx.spawn(async move |cx| {
+            // Off-screen capture: park the window before its first frame.
+            if capture::offscreen() {
+                let early = cx
+                    .update_window(window.into(), |_, window, _| {
+                        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+                        match window.window_handle().map(|h| h.as_raw()) {
+                            Ok(RawWindowHandle::Win32(handle)) => handle.hwnd.get() as isize,
+                            _ => 0,
+                        }
+                    })
+                    .unwrap_or(0);
+                if early != 0 {
+                    capture::park_offscreen(early);
+                }
+            }
             // Первый кадр окна: до него снимок пустой.
             Timer::after(Duration::from_millis(900)).await;
             // Указатель окна нужен снимку: рисует его система, а не мы.

@@ -137,6 +137,46 @@ fn close_frame(depth: usize, prev: bool, window: &mut Window, cx: &mut App) {
     OPEN.with(|o| o.set(prev));
 }
 
+/// Paint `f` as an atomic box (inline-block, float, flex/grid item): the
+/// inline content deferred inside it (step 7) is painted at its end, while
+/// positioned descendants (step 8) still belong to the enclosing stacking
+/// context and move to the outer collector (CSS 2.1 Appendix E: "positioned
+/// descendants … should be considered part of the parent stacking context").
+pub(crate) fn hoist_atomic(
+    window: &mut Window,
+    cx: &mut App,
+    f: impl FnOnce(&mut Window, &mut App),
+) {
+    let (depth, prev) = open_frame();
+    f(window, cx);
+    loop {
+        let next = FRAMES.with(|f| f.borrow_mut().get_mut(depth)?.inline.pop_front());
+        let Some(HoistedInline { mut el, ctx }) = next else {
+            break;
+        };
+        window.with_text_paint_ctx(ctx, |window| el.paint(window, cx));
+    }
+    let moved = FRAMES.with(|f| {
+        let mut f = f.borrow_mut();
+        let positioned = f
+            .get_mut(depth)
+            .map(|frame| std::mem::take(&mut frame.positioned))
+            .unwrap_or_default();
+        f.truncate(depth);
+        match f.last_mut() {
+            Some(outer) => {
+                outer.positioned.extend(positioned);
+                Vec::new()
+            }
+            None => positioned,
+        }
+    });
+    OPEN.with(|o| o.set(prev));
+    for Hoisted { mut el, ctx, .. } in moved {
+        window.with_paint_ctx(ctx, |window| el.paint(window, cx));
+    }
+}
+
 /// Нарисовать `f` собирателем: перенесённое внутри дорисовывается в конце.
 pub(crate) fn hoist_collect(
     window: &mut Window,
