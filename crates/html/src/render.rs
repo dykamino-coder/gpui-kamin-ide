@@ -14554,6 +14554,12 @@ fn gap_rule_spec(
     Some(crate::interact::GapRuleSpec {
         pad,
         lines_extent,
+        lanes_content_aligned: lanes
+            && if crate::dom::lanes_row_dir(merged) {
+                merged.justify_content.is_some()
+            } else {
+                merged.align_content.is_some()
+            },
         rev_x,
         rev_y,
         col,

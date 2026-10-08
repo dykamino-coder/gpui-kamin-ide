@@ -1483,6 +1483,34 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
         order += 1;
     }
 
+    // KaminIDE patch: дорожки оси решётки — художнику промежутков (ленты
+    // промежутков строятся по дорожкам, как у Blink `GridLanesGapAccumulator::
+    // BuildMainGaps`). По оси укладки дорожек нет.
+    #[cfg(feature = "detailed_layout_info")]
+    {
+        let lane_info = super::DetailedGridTracksInfo::from_grid_tracks_and_track_count(
+            counts,
+            grid_tracks.iter().cloned().collect(),
+            Default::default(),
+        );
+        let stack_info = super::DetailedGridTracksInfo::from_grid_tracks_and_track_count(
+            TrackCounts::from_raw(0, 0, 0),
+            Vec::new(),
+            Default::default(),
+        );
+        let (rows_info, columns_info) =
+            if rows { (lane_info, stack_info) } else { (stack_info, lane_info) };
+        tree.set_detailed_grid_info(
+            node,
+            super::DetailedGridInfo {
+                axis_reversed: flow,
+                rows: rows_info,
+                columns: columns_info,
+                items: Vec::new(),
+            },
+        );
+    }
+
     LayoutOutput::from_sizes_and_baselines(
         container_border_box,
         item_content_size_contribution,

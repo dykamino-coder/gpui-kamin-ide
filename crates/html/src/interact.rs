@@ -2354,6 +2354,14 @@ pub struct GapRuleSpec {
     /// укладки («MainGaps span the final container content box (or the content
     /// when it overflows)», `grid_lanes_layout_algorithm.cc`).
     pub lines_extent: u8,
+    /// Ленты с явным выравниванием содержимого по оси укладки
+    /// (`align-content` у колоночных лент, `justify-content` у строчных —
+    /// не `normal`): главные промежутки идут лишь по выровненному
+    /// содержимому, без свободного места (Blink
+    /// `grid_lanes_layout_algorithm.cc`: «Explicit content alignment limits
+    /// gap decoration rule bounds to the aligned content instead of including
+    /// free space», `explicit_content_bounds`).
+    pub lanes_content_aligned: bool,
 }
 
 /// Допуск сравнения координат раскладки.
@@ -2791,13 +2799,25 @@ fn line_runs(
     cross: Option<&GapAxisRule>,
     rev_cross: bool,
     extent: Option<(u8, f32, f32)>,
+    content_aligned: bool,
+    lanes: Option<(Vec<(f32, f32)>, f32)>,
 ) -> (Vec<GapRun>, Vec<GapRun>) {
     // Гибкие строки: строка — объединение поперечных протяжённостей её
     // элементов (Blink: `line_cross_start/end` строки, а не начало каждого
     // элемента), иначе при `align-items: flex-end` элементы разной высоты
     // разбегались по разным «строкам» (`flex-gap-decorations-007`).
     let flex = matches!(extent, Some((1, _, _)));
-    let lines = if flex { line_groups(items) } else { tracks_a(items, gap_a) };
+    // Ленты: полосы — дорожки оси решётки из раскладки; элемент входит в
+    // каждую ленту, которую покрывает (элемент во несколько лент — запись в
+    // каждой, Blink `GridLanesGapAccumulator::BuildCrossGaps`), а поперечный
+    // промежуток стоит сразу перед началом следующей записи ленты: центр —
+    // `ForwardStackingStart() - stacking_gap / 2` (`FinalGutterCenter`).
+    let lane_gap = lanes.as_ref().map(|(_, g)| *g);
+    let lines = match &lanes {
+        Some((t, _)) => t.clone(),
+        None if flex => line_groups(items),
+        None => tracks_a(items, gap_a),
+    };
     let mut r0 = items.iter().map(|i| i.b0).fold(f32::INFINITY, f32::min);
     let mut r1 = items.iter().map(|i| i.b1).fold(f32::NEG_INFINITY, f32::max);
     let inner: Vec<Vec<(f32, f32)>> = lines
@@ -2806,7 +2826,9 @@ fn line_runs(
             let mut row: Vec<&GapItem> = items
                 .iter()
                 .filter(|i| {
-                    if flex {
+                    if lane_gap.is_some() {
+                        i.a0 < e - GAP_EPS && i.a1 > s + GAP_EPS
+                    } else if flex {
                         i.a0 >= s - GAP_EPS && i.a0 <= e + GAP_EPS
                     } else {
                         (i.a0 - s).abs() <= GAP_EPS
@@ -2814,6 +2836,9 @@ fn line_runs(
                 })
                 .collect();
             row.sort_by(|x, y| x.b0.partial_cmp(&y.b0).unwrap_or(std::cmp::Ordering::Equal));
+            if let Some(g) = lane_gap {
+                return row.windows(2).map(|w| (w[1].b0 - g, w[1].b0)).collect();
+            }
             row.windows(2)
                 .filter(|w| w[1].b0 - w[0].b1 >= -GAP_EPS)
                 .map(|w| (w[0].b1.min(w[1].b0), w[1].b0))
@@ -2829,6 +2854,7 @@ fn line_runs(
             r0 = r0.min(c0);
             r1 = last_cross.map_or(c1, |x| x.max(c1));
         }
+        Some((2, _, _)) if content_aligned => {}
         Some((2, c0, c1)) => {
             r0 = c0;
             r1 = r1.max(c1);
@@ -2903,6 +2929,45 @@ fn line_runs(
             });
         }
         ix += n;
+    }
+    // Ленты: поперечный промежуток, к которому примыкает элемент во обе
+    // соседние ленты, идёт сквозь главный промежуток между ними — тот у
+    // этого пересечения перекрыт (Blink `MarkBlockedMainGapSegments`: отрезок
+    // главного промежутка, по обе стороны которого одна и та же запись,
+    // заблокирован). Такие поперечные прогоны соседних лент сливаются в один.
+    if lane_gap.is_some() && lines.len() > 1 {
+        let mut k = 0;
+        while k < crosses.len() {
+            let a = &crosses[k];
+            let lane = lines.iter().position(|&(_, e)| (e - a.r1).abs() <= GAP_EPS);
+            let joined = lane.filter(|&l| l + 1 < lines.len()).and_then(|l| {
+                let (g0, g1) = (lines[l].1, lines[l + 1].0);
+                let spanned = items.iter().any(|i| {
+                    i.spans_a(g0, g1)
+                        && ((i.b1 - a.g0).abs() <= GAP_EPS || (i.b0 - a.g1).abs() <= GAP_EPS)
+                });
+                if !spanned {
+                    return None;
+                }
+                crosses.iter().position(|b| {
+                    (b.r0 - lines[l + 1].0).abs() <= GAP_EPS
+                        && (b.g0 - a.g0).abs() <= GAP_EPS
+                        && (b.g1 - a.g1).abs() <= GAP_EPS
+                })
+            });
+            if let Some(j) = joined {
+                let b = crosses.remove(j);
+                let a = &mut crosses[if j < k { k - 1 } else { k }];
+                a.r1 = b.r1;
+                a.end_edge = b.end_edge;
+                // Слитый прогон может слиться и со следующей лентой.
+                if j < k {
+                    k -= 1;
+                }
+                continue;
+            }
+            k += 1;
+        }
     }
     (mains, crosses)
 }
@@ -3021,7 +3086,9 @@ impl Element for GapRulePainter {
                 let spans = it
                     .iter()
                     .any(|i| starts.iter().any(|&s| s > i.a0 + GAP_EPS && s < i.a1 - GAP_EPS));
-                if spans { GapLayout::Grid } else { spec.kind }
+                // С дорожками раскладки ленты строятся по ним, и элемент во
+                // несколько лент представим (запись в каждой ленте).
+                if spans && grid_tracks.is_none() { GapLayout::Grid } else { spec.kind }
             }
             k => k,
         };
@@ -3061,6 +3128,15 @@ impl Element for GapRulePainter {
                     .map(|b| GapItem::from_bounds(b, !stacked_vertically))
                     .collect();
                 let (main, cross) = if stacked_vertically { (on_y, on_x) } else { (on_x, on_y) };
+                let gap_b = if stacked_vertically { spec.gap_x } else { spec.gap_y };
+                let lane_tracks = (spec.lines_extent == 2)
+                    .then(|| grid_tracks.as_ref())
+                    .flatten()
+                    .map(|(c, r)| {
+                        let t = if stacked_vertically { r.clone() } else { c.clone() };
+                        (t, gap_b.unwrap_or(0.0))
+                    })
+                    .filter(|(t, _)| !t.is_empty());
                 let gap_a = if stacked_vertically { spec.gap_y } else { spec.gap_x };
                 // Главные промежутки лежат по оси укладки строк, поперечные —
                 // по оси элементов строки; каждая нумеруется от своего
@@ -3083,7 +3159,16 @@ impl Element for GapRulePainter {
                         (spec.lines_extent, y0 + pt, y1 - pb)
                     }
                 });
-                let (mains, crosses) = line_runs(&it, gap_a, main, cross, rev_cross, extent);
+                let (mains, crosses) = line_runs(
+                    &it,
+                    gap_a,
+                    main,
+                    cross,
+                    rev_cross,
+                    extent,
+                    spec.lanes_content_aligned,
+                    lane_tracks,
+                );
                 if let Some(r) = main {
                     for mut run in mains {
                         if rev_main {
