@@ -1565,7 +1565,7 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
     // `clip-path: circle()` — обрезка содержимого по кругу. Прямоугольная
     // обрезка со скруглением — единственная в конвейере, но для круга и
     // эллипса она точна.
-    if let Some(round) = c.clip_round {
+    if let Some(round) = c.clip_round.filter(|_| !crate::render::rounded_rect_clip(c)) {
         let base = match (c.width, c.height) {
             (Some(Len::Px(w)), Some(Len::Px(h))) => w.min(h),
             (Some(Len::Px(w)), _) => w,

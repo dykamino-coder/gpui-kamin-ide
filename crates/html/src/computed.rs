@@ -2840,6 +2840,9 @@ pub struct Computed {
     /// `clip-path`/`mask`: обрезка по кругу или скруглённому прямоугольнику.
     /// Хранится долей радиуса от меньшей стороны либо радиусом в точках.
     pub clip_round: Option<f32>,
+    /// The uniform `round` radius of `inset()`/`rect()`/`xywh()` as written
+    /// (points or a percentage of the reference box).
+    pub clip_round_len: Option<Len>,
     /// `clip-path: circle(...)|ellipse(...)` с параметрами: сырые аргументы
     /// формы (`shape:circle(...)`). Радиусы и центр зависят от размера
     /// коробки — он известен только отрисовке, поэтому форма растрируется
@@ -2853,6 +2856,10 @@ pub struct Computed {
     /// `no-repeat, repeat` задаёт свою укладку каждому слою. Список короче
     /// набора слоёв повторяется (css-backgrounds-3 §2.2).
     pub mask_repeat_list: Option<Vec<(bool, bool)>>,
+    /// Per-layer `space`/`round` axes (css-masking-1 §7.6 →
+    /// css-backgrounds-3 §3.4): 2 space, 3 round, anything else as
+    /// `mask_repeat_list` says.
+    pub mask_repeat_modes: Option<Vec<(u8, u8)>>,
     /// `mask-size: contain|cover` (1|2): вписывание по интринзику.
     pub mask_fit: Option<u8>,
     /// `mask-mode: luminance` — маскирует светимость, а не альфа.
@@ -9267,6 +9274,24 @@ impl Computed {
                     crate::css::split_args(v).iter().map(|l| one(l)).collect();
                 self.mask_no_repeat = Some(list.first().copied().unwrap_or((false, false)));
                 self.mask_repeat_list = (!list.is_empty()).then_some(list);
+                let mode = |w: &str| match w {
+                    "space" => 2u8,
+                    "round" => 3,
+                    _ => 0,
+                };
+                let modes: Vec<(u8, u8)> = crate::css::split_args(v)
+                    .iter()
+                    .map(|l| {
+                        let t: Vec<&str> = l.split_whitespace().collect();
+                        match t.as_slice() {
+                            [a] => (mode(a), mode(a)),
+                            [a, b] => (mode(a), mode(b)),
+                            _ => (0, 0),
+                        }
+                    })
+                    .collect();
+                self.mask_repeat_modes =
+                    modes.iter().any(|&(x, y)| x > 0 || y > 0).then_some(modes);
             }
             "mask-position" | "-webkit-mask-position" => {
                 let word = |t: &str| match t {
@@ -9471,10 +9496,11 @@ impl Computed {
                         .collect();
                     if vals.len() == 4 {
                         self.clip_edges = Some([vals[0], vals[1], vals[2], vals[3]]);
+                        self.clip_round_len = inner.split("round").nth(1).and_then(uniform_round);
                         self.clip_round = inner
                             .split("round")
                             .nth(1)
-                            .and_then(|r| Len::parse(r.trim()))
+                            .and_then(uniform_round)
                             .and_then(|l| match l {
                                 Len::Px(v) => Some(v),
                                 _ => None,
@@ -9490,10 +9516,11 @@ impl Computed {
                         .collect();
                     if vals.len() == 4 {
                         self.clip_xywh = Some([vals[0], vals[1], vals[2], vals[3]]);
+                        self.clip_round_len = inner.split("round").nth(1).and_then(uniform_round);
                         self.clip_round = inner
                             .split("round")
                             .nth(1)
-                            .and_then(|r| Len::parse(r.trim()))
+                            .and_then(uniform_round)
                             .and_then(|l| match l {
                                 Len::Px(v) => Some(v),
                                 _ => None,
@@ -9526,10 +9553,11 @@ impl Computed {
                         self.clip_inset = Some([pick(0), pick(1), pick(2), pick(3)]);
                     }
                     let inner = rest.trim_end_matches(')');
+                    self.clip_round_len = inner.split("round").nth(1).and_then(uniform_round);
                     let radius = inner
                         .split("round")
                         .nth(1)
-                        .and_then(|r| Len::parse(r.trim()))
+                        .and_then(uniform_round)
                         .and_then(|l| match l {
                             Len::Px(v) => Some(v),
                             Len::Pct(p) => Some(p),
@@ -12939,6 +12967,16 @@ fn calc_size_arg(v: &str) -> Option<CalcSize> {
 }
 
 /// `object-view-box: none | <basic-shape-rect>` — `inset()`, `rect()`,
+/// `round <'border-radius'>` of `inset()`/`rect()`/`xywh()` (css-shapes-1
+/// §basic-shape-rect): one radius for all corners and both axes — every
+/// listed value, before and after `/`, equal. `20px / 20px` is that radius;
+/// unequal corners are not representable here and stay unrounded.
+fn uniform_round(r: &str) -> Option<Len> {
+    let mut it = r.split(|c: char| c == '/' || c.is_whitespace()).filter(|t| !t.is_empty());
+    let first = Len::parse(it.next()?)?;
+    it.all(|t| Len::parse(t) == Some(first)).then_some(first)
+}
+
 /// `xywh()` (css-images-4 §object-view-box; css-shapes-1 §basic-shape-rect).
 /// Длины — точки или доли; `inset` с 1-3 значениями раскрывается как поля.
 fn parse_view_box(v: &str) -> Option<(u8, [Len; 4])> {

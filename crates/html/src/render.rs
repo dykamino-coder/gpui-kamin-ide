@@ -21215,6 +21215,14 @@ fn px_of2(l: &Option<Len>) -> Option<f32> {
     }
 }
 
+/// `inset()`/`rect()`/`xywh()` with a `round` radius in points: the group
+/// buffer rounds the clip rectangle (css-shapes-1 §basic-shape-rect);
+/// percentages resolve against the reference box at paint time.
+pub(crate) fn rounded_rect_clip(c: &Computed) -> bool {
+    matches!(c.clip_round_len, Some(Len::Px(v) | Len::Pct(v)) if v > 0.0)
+        && (c.clip_inset.is_some() || c.clip_edges.is_some() || c.clip_xywh.is_some())
+}
+
 /// Отрисовать поддерево в отдельный буфер, когда эффекту нужна готовая
 /// картинка целиком.
 ///
@@ -21515,6 +21523,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     wrapper.mask_fit = c.mask_fit.unwrap_or(0);
     wrapper.mask_no_repeat = c.mask_no_repeat.unwrap_or((false, false));
     wrapper.mask_repeat_list = c.mask_repeat_list.clone().unwrap_or_default();
+    wrapper.mask_repeat_modes = c.mask_repeat_modes.clone().unwrap_or_default();
     wrapper.mask_luminance = c.mask_luminance == Some(true);
     wrapper.mask_alpha_mode = c.mask_alpha_mode == Some(true);
     wrapper.mask_pos = c.mask_pos;
@@ -21528,6 +21537,9 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     wrapper.clip_inset = clip_inset;
     wrapper.clip_edges = c.clip_edges;
     wrapper.clip_xywh = c.clip_xywh;
+    if rounded_rect_clip(c) {
+        wrapper.clip_round = c.clip_round_len;
+    }
     // `clip`/`mask-clip` живут в системе координат элемента ДО трансформа, а
     // трансформ рисуется ВНУТРИ буфера группы — коробка клипа обязана ехать
     // вместе (clip-transform-order: сдвинутый рисунок резался по старому

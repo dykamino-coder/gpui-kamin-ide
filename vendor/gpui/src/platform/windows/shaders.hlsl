@@ -1554,7 +1554,14 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
     if (q.blur_pass > 2.5) {
         float4 src = t_sprite.Sample(s_sprite, input.uv);
         float distance = quad_sdf(input.position.xy, q.bounds, q.corner_radii);
-        float mask = saturate(0.5 - distance) * q.pad;
+        float corner = saturate(0.5 - distance);
+        // KaminIDE patch: rounded composite (clip-path `round`) — the same
+        // 8-bit coverage a rounded quad reaches the blend stage with.
+        if (any(float4(q.corner_radii.top_left, q.corner_radii.top_right,
+                       q.corner_radii.bottom_right, q.corner_radii.bottom_left) > 0.0)) {
+            corner = round(corner * 255.0) / 255.0;
+        }
+        float mask = corner * q.pad;
         if (q.poly_count >= 3u) {
             mask *= saturate(0.5 - poly_sdf(q.poly, q.poly_count, input.position.xy));
         }
