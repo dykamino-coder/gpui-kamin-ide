@@ -20536,12 +20536,17 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                 cy: mt + bt + pt,
                 cw,
                 ch: chh,
-                radius: [
-                    radius_of(&f.style.radius.tl),
-                    radius_of(&f.style.radius.tr),
-                    radius_of(&f.style.radius.br),
-                    radius_of(&f.style.radius.bl),
-                ],
+                // Elliptical corners (`60px 40px`, css-backgrounds-3 §5.1) keep
+                // both radii (`shape-outside-border-box-border-radius-007`).
+                radius: {
+                    let ell = f.style.radius_ell.unwrap_or([None; 4]);
+                    [
+                        ell[0].unwrap_or_else(|| radius_of(&f.style.radius.tl)),
+                        ell[1].unwrap_or_else(|| radius_of(&f.style.radius.tr)),
+                        ell[2].unwrap_or_else(|| radius_of(&f.style.radius.br)),
+                        ell[3].unwrap_or_else(|| radius_of(&f.style.radius.bl)),
+                    ]
+                },
                 threshold: f.style.shape_threshold.unwrap_or(0.0),
             };
             if let Some(shape) = (!vert_rl && sm <= 0.0)
