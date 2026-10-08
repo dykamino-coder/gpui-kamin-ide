@@ -14317,11 +14317,18 @@ fn column_flow_in(
         }
         (out, map)
     };
-    let plain = normalized.trim().to_string();
+    // Схлопываемые пробелы — только пробел, таб и переводы строк (css-text-3
+    // §4.1.1 «document white space characters»); `str::trim` снимал и U+00A0:
+    // поток из одних `&nbsp;` целиком считался пустым и шёл мимо колонок
+    // (`multicol-rule-color-inherit-001`).
+    fn css_ws(c: char) -> bool {
+        matches!(c, ' ' | '\t' | '\n' | '\r' | '\u{c}')
+    }
+    let plain = normalized.trim_matches(css_ws).to_string();
     if plain.trim_matches('\n').is_empty() {
         return None;
     }
-    let lead = normalized.len() - normalized.trim_start().len();
+    let lead = normalized.len() - normalized.trim_start_matches(css_ws).len();
     let raw_len = raw_plain
         .chars()
         .filter(|c| *c != '\u{2028}')
@@ -14407,7 +14414,7 @@ fn column_flow_in(
                         Node::Element(e) if e.tag == "br" => {
                             part.remove(0);
                         }
-                        Node::Text(t) if t.trim().is_empty() => {
+                        Node::Text(t) if t.trim_matches(css_ws).is_empty() => {
                             part.remove(0);
                         }
                         _ => break,
@@ -23458,6 +23465,18 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         .map(|n| n as *const Node);
                     // Чью меру дала `nested_rows_shape` — только их копии рядами.
                     let nested_auto: std::cell::RefCell<Vec<u64>> = Default::default();
+                    // Вложенный многоколоночник `height: auto` под БАЛАНСОМ внешнего
+                    // (`nested_whole`): одна сбалансированная строка колонок целиком.
+                    // css-multicol-1 §2: вложенный многоколоночник — сам мультиколонный
+                    // контейнер, его колонки и линейки рисуются внутри внешней колонки
+                    // (Blink `ColumnLayoutAlgorithm` для внутреннего — та же раскладка).
+                    // Копия стопки шла узкой веткой `styled_div_with` и рисовала его
+                    // плоско — без колонок и линеек (`multicol-rule-color-inherit-001`).
+                    let nested_whole: std::cell::RefCell<Vec<u64>> = Default::default();
+                    let whole_ok = e.style.column_fill_auto != Some(true)
+                        && rows.is_none_or(|r| r.cap)
+                        && nest_rows.is_none()
+                        && !col_vert;
                     // Дети, чью высоту меряет раскладка копии (`StackChild::measure`).
                     let measured_kids: std::cell::RefCell<Vec<(u64, f32)>> = Default::default();
                     let measure_ok = e.style.column_fill_auto == Some(true)
@@ -23498,6 +23517,27 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     }
                                     None => shape_full(c, 4, ShapeCx::COLUMNS).map(|h| ((*c).clone(), h)),
                                 }
+                            }
+                            Node::Element(c)
+                                if whole_ok
+                                    && matches!(c.style.height, None | Some(Len::Auto))
+                                    && line_col_w.is_some()
+                                    && nested_rows_box(c) =>
+                            {
+                                // Высоту даёт раскладка самой копии (`StackChild::measure`):
+                                // внутренний многоколоночник балансирует себя сам, и мера
+                                // `shape_full` его колонок не видит (сумма детей).
+                                let c = resolved_lengths(c, &merged);
+                                let w = line_col_w?;
+                                let m = |l: &Option<Len>| match l {
+                                    Some(Len::Px(v)) => Some(*v),
+                                    None | Some(Len::Auto) => Some(0.0),
+                                    _ => None,
+                                };
+                                let (mt, mb) = (m(&c.style.margin.top)?, m(&c.style.margin.bottom)?);
+                                nested_whole.borrow_mut().push(c.node_id);
+                                measured_kids.borrow_mut().push((c.node_id, w));
+                                Some((c, (0.0, mt, mb, Vec::new(), Vec::new(), Vec::new())))
                             }
                             // `position: relative` укладке не мешает — сдвиг
                             // накладывается на месте (корень A1).
@@ -24107,6 +24147,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 // `with_content_mask`) режет их вместе с
                                 // содержимым — вид `slice` css-break-3 §4.
                                 let copy_ix = std::cell::Cell::new(0usize);
+                                let whole = nest_row.is_none()
+                                    && nested_whole.borrow().contains(&copy.node_id);
                                 let build = |first: bool, part: usize| {
                                     // `box-decoration-break: clone`: копия — САМ
                                     // фрагмент (`clone_fragment`), и корень, и
@@ -24259,6 +24301,17 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                         let el = element(&mc, &merged, opts);
                                         crate::flow::set_outer_row(None);
                                         return el;
+                                    }
+                                    if whole {
+                                        let mut mc = copy.clone();
+                                        mc.children = kids;
+                                        if matches!(mc.style.width, None | Some(Len::Auto))
+                                            && let Some(w) = line_col_w.and_then(|cw| nested_box_w(&mc, cw))
+                                        {
+                                            mc.style.width = Some(Len::Px(w));
+                                        }
+                                        drop(frag_gap_guard);
+                                        return element(&mc, &merged, opts);
                                     }
                                     if table_box(&copy) {
                                         let mut tc = copy.clone();
@@ -24535,7 +24588,9 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     .iter()
                                     .find(|(id, _)| *id == copy.node_id)
                                     .map(|(_, w)| *w);
-                                let monolith = if measure.is_some() {
+                                let monolith = if whole {
+                                    true
+                                } else if measure.is_some() {
                                     nest_row.is_none()
                                         && (size_monolith(&copy)
                                             || copy.style.break_inside_avoid

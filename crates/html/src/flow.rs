@@ -2349,11 +2349,17 @@ impl ColumnStack {
         // оценки резался краем колонки (`single-line-row-flex-fragmentation-
         // 037`: `contain: size` 100 при оценке 75). Прежний замер (06.09, v103)
         // терял `multicol-overflow-clip`; на integration-7 она цела.
+        // Верхнее поле ПЕРВОГО ребёнка не примыкает к разрыву (начало контекста
+        // фрагментации, css-break-3 §5.2 усекает поля только у разрыва) — монолит
+        // под ним целиком в первой колонке, и Blink растит баланс на недолаз
+        // (`PropagateSpaceShortage` у монолита, не влезшего в колонку): три
+        // монолита 60 с `margin-top: 20px` у первого — колонки 80, а не 60.
         let tallest = kids
             .iter()
-            .map(|k| {
+            .enumerate()
+            .map(|(i, k)| {
                 if k.monolith {
-                    k.h
+                    k.h + if i == 0 && k.par.group == 0 { k.mt.max(0.0) } else { 0.0 }
                 } else {
                     k.solid.iter().fold(0.0f32, |m, &(a, b)| m.max(b - a))
                 }
