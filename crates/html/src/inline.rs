@@ -1126,6 +1126,7 @@ fn backdrop_root(c: &Computed) -> bool {
 // каскада, а не через самую горячую функцию крейта.
 pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     let mut c = own.clone();
+    bidi_controls::resolve(parent, &mut c);
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
     c.in_multicol = parent.in_multicol
         || ((parent.column_count.is_some()

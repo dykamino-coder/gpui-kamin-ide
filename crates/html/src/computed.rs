@@ -2294,6 +2294,8 @@ pub struct Computed {
     /// `unicode-bidi: bidi-override` (и тег `<bdo>`) — порядок знаков задан
     /// силой, разбор двунаправленности внутри куска не работает.
     pub bidi_override: Option<bool>,
+    /// Explicit inheritance of the otherwise non-inherited unicode-bidi property.
+    pub(crate) bidi_inherit: bool,
     /// `unicode-bidi: isolate` — кусок не влияет на порядок соседей.
     pub bidi_isolate: Option<bool>,
     /// `unicode-bidi: embed` — свой уровень встраивания (RLE/LRE … PDF). Без
@@ -4030,6 +4032,7 @@ impl Computed {
                 self.bidi_isolate,
                 self.bidi_plaintext,
                 self.bidi_embed,
+                self.bidi_inherit,
                 self.decl_seq,
             );
             *self = Computed::default();
@@ -4039,6 +4042,7 @@ impl Computed {
                 self.bidi_isolate,
                 self.bidi_plaintext,
                 self.bidi_embed,
+                self.bidi_inherit,
                 self.decl_seq,
             ) = keep;
             self.apply_one("display", "inline");
