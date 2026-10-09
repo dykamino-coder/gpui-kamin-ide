@@ -7208,6 +7208,40 @@ fn renames_inside(e: &Element) -> bool {
         || kids.iter().any(|k| renames_inside(k))
 }
 
+/// Есть ли внутри коробки принудительный разрыв МЕЖДУ соседями класса A
+/// (css-break-4 §3.1 `break-before`/`break-after` не у крайнего ребёнка;
+/// крайний передаёт разрыв самой коробке, `edge_break`) — на любой глубине
+/// блочного потока. Мера коробки с текстом неизвестна (`shape_full` —
+/// `None`), и разрыв внутри такого ребёнка стопки иначе терялся
+/// (`page-name-propagated-002-print-ref`: `break-before: page` у второго
+/// ребёнка обёртки).
+fn breaks_inside(e: &Element) -> bool {
+    // Только блочный поток: внутри таблицы разрыв режет ряды и группы
+    // (`rowgroup-page-break-inside-avoid-5-print-ref`: `thead { break-after }`
+    // — таблица не обёртка, снимать её нельзя).
+    let table_part = matches!(
+        e.tag.as_str(),
+        "table" | "thead" | "tbody" | "tfoot" | "tr" | "td" | "th" | "caption" | "colgroup"
+    );
+    if table_part || table_box(e) || item_container(e) || forced_opaque(e) {
+        return false;
+    }
+    let kids: Vec<&Element> = e
+        .children
+        .iter()
+        .filter_map(|n| match n {
+            Node::Element(k) if class_a_box(k) => Some(k),
+            _ => None,
+        })
+        .collect();
+    let n = kids.len();
+    kids.iter().enumerate().any(|(i, k)| {
+        (i > 0 && k.style.break_before_force)
+            || (i + 1 < n && k.style.break_after_force)
+            || breaks_inside(k)
+    })
+}
+
 /// Обёртка без собственной коробки на листе: блок без полей, рамок,
 /// отбивок, фона, размеров, разрывов и прочего, что видно или влияет на
 /// раскладку детей. Снятие такой обёртки раскладку не меняет.
@@ -7259,7 +7293,7 @@ fn hoist_named_wrappers(nodes: &mut Vec<Node>) {
         let mut out = Vec::with_capacity(nodes.len());
         for n in std::mem::take(nodes) {
             match n {
-                Node::Element(e) if plain_wrapper(&e) && renames_inside(&e) => {
+                Node::Element(e) if plain_wrapper(&e) && (renames_inside(&e) || breaks_inside(&e)) => {
                     changed = true;
                     out.extend(e.children);
                 }
