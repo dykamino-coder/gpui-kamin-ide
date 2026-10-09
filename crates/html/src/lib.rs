@@ -51,7 +51,7 @@ pub mod fonts;
 pub mod forms;
 pub use text::inline;
 pub mod interact;
-pub mod lines;
+pub use text::paragraph as lines;
 pub mod metrics;
 pub mod page_margin;
 mod motion;
