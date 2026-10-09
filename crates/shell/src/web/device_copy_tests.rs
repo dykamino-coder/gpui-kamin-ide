@@ -56,7 +56,7 @@ fn texture(device: &ID3D11Device, keyed: bool) -> gpu_texture::GpuTexture {
 fn rejects_old_source_or_foreign_context_and_replaces_equal_size_own_texture() {
     let (old, old_context) = device();
     let (new, new_context) = device();
-    let old_source = texture(&old, false);
+    let old_source = texture(&old, true);
     let old_in_flight = old_source.clone();
     let first = copy_frame::copy_into_own(
         "generation-test",
@@ -84,7 +84,7 @@ fn rejects_old_source_or_foreign_context_and_replaces_equal_size_own_texture() {
         )
         .is_none()
     );
-    let new_source = texture(&new, false);
+    let new_source = texture(&new, true);
     let second = copy_frame::copy_into_own(
         "generation-test",
         new.as_raw(),
