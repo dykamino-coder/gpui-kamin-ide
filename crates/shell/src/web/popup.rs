@@ -60,6 +60,7 @@ pub(crate) fn put(id: &str, handle: isize, width: i32, height: i32) {
     if desc.Width as i32 != width || desc.Height as i32 != height {
         return; // Chromium уже пересоздал буфер под другой размер.
     }
+    super::copy_frame::frame_arrived(&copy_key(id));
     if let Ok(mut map) = INCOMING.lock() {
         map.insert(id.to_string(), shared);
     }

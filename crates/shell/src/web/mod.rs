@@ -20,6 +20,8 @@ mod frames;
 mod gpu_mode;
 mod gpu_texture;
 mod input;
+mod keyed_access;
+mod keyed_mutex;
 mod open_shared;
 mod outbox;
 mod popup;
@@ -278,7 +280,6 @@ pub fn flush_retired(cx: &mut gpui::App) {
     }
 }
 
-/// Открыть вью с адресом. Идемпотентно: второй раз ничего не делает.
 /// Живы ли браузеры CEF. Флага больше нет: CEF — единственный путь.
 pub fn enabled() -> bool {
     process::is_live()
@@ -339,7 +340,6 @@ fn html_changed(id: &str) -> bool {
     true
 }
 
-/// Показать в вью нашу страницу (HTML моста).
 /// Отдать странице пачку сообщений расширения.
 ///
 /// В скрипт кладём только НОМЕР пачки: тело страница забирает запросом
