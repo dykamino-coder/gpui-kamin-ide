@@ -25540,13 +25540,45 @@ fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     };
     let attr_len = |k: &str| e.attr(k).and_then(|v| v.parse::<f32>().ok());
     // Размер: CSS сильнее атрибутов; умолчание — 300×150 (CSS 2.2 §замещаемые).
-    let w = match e.style.width {
-        Some(Len::Px(v)) => v,
-        _ => attr_len("width").unwrap_or(300.0),
+    // Рамка и отбивка лежат СНАРУЖИ размера содержимого (CSS 2.1 §10.3.2,
+    // `box-sizing: content-box`), а раскладка меряет `w`/`h` как border-box:
+    // без поправки `border: 1px` съедал 300×150 изнутри
+    // (`responsive-iframe-unsized-ref`: 302×152).
+    let st = &e.style;
+    let px_sum = |sides: &[Option<Len>]| -> f32 {
+        sides
+            .iter()
+            .filter_map(|s| match s {
+                Some(Len::Px(v)) => Some(*v),
+                _ => None,
+            })
+            .sum()
     };
-    let h = match e.style.height {
-        Some(Len::Px(v)) => v,
-        _ => attr_len("height").unwrap_or(150.0),
+    let bw = st.borders();
+    let (ex, ey) = if crate::apply::intrinsic_size::native_content_box(st) {
+        (0.0, 0.0)
+    } else {
+        (
+            px_sum(&[st.padding.left, st.padding.right, bw.left, bw.right]),
+            px_sum(&[st.padding.top, st.padding.bottom, bw.top, bw.bottom]),
+        )
+    };
+    let border_box = st.border_box == Some(true);
+    let (w, outer_w) = match st.width {
+        Some(Len::Px(v)) if border_box => ((v - ex).max(0.0), v),
+        Some(Len::Px(v)) => (v, v + ex),
+        _ => {
+            let v = attr_len("width").unwrap_or(300.0);
+            (v, v + ex)
+        }
+    };
+    let (h, outer_h) = match st.height {
+        Some(Len::Px(v)) if border_box => ((v - ey).max(0.0), v),
+        Some(Len::Px(v)) => (v, v + ey),
+        _ => {
+            let v = attr_len("height").unwrap_or(150.0);
+            (v, v + ey)
+        }
     };
     // Рамка меряет свои `@media` своей коробкой (`doc::parse_embedded`).
     // Режим quirks у вложенного документа свой: разбор его перепишет, а
@@ -25573,8 +25605,8 @@ fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     crate::dom::QUIRKS.with(|q| q.set(outer_quirks));
     Some(
         styled_div(e)
-            .w(px(w))
-            .h(px(h))
+            .w(px(outer_w))
+            .h(px(outer_h))
             .overflow_hidden()
             .relative()
             .flex_shrink_0()
