@@ -13,8 +13,19 @@ edition = "2024"
 gpui = { package = "gpui-pre", version = "=0.3.8", features = ["stacker"] }
 # Платформа (Windows-бэкенд) вынесена из ядра: `gpui_platform::application()`.
 gpui-platform = { package = "gpui-pre-platform", version = "=0.3.8" }
-# `tree-sitter`: ядро + JSON, как было без фич в 0.5.1.
-gpui-component = { version = "=0.7.1", features = ["tree-sitter"] }
+# Грамматики ровно тех языков, что выдаёт `file_names::editor_lang`. В 0.5.1
+# без фич была только JSON, и ею же (случайно) раскрашивался код остальных
+# языков; 0.7.1 для неизвестной грамматики не красит вовсе.
+gpui-component = { version = "=0.7.1", features = [
+  "tree-sitter",
+  "tree-sitter-rust",
+  "tree-sitter-typescript",
+  "tree-sitter-javascript",
+  "tree-sitter-markdown",
+  "tree-sitter-go",
+  "tree-sitter-html",
+  "tree-sitter-zig",
+] }
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

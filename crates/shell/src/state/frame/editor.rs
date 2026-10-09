@@ -62,8 +62,11 @@ impl RootView {
             lsp.open(&text);
             let mirror_src = text.clone();
             let input = cx.new(|cx| {
+                // 0.7.1 сворачивает блоки по умолчанию; у нас сворачивания не
+                // было, а его шевроны ложатся поверх нашего глиф-бара.
                 let mut st = CodeEditorState::new(window, cx)
                     .language(lang)
+                    .folding(false)
                     .soft_wrap(false);
                 st.lsp_mut().hover_provider = Some(lsp.clone());
                 st.lsp_mut().definition_provider = Some(lsp.clone());
@@ -84,6 +87,7 @@ impl RootView {
                 // текущую строку/выделение — это чистый силуэт текста.
                 let mut st = CodeEditorState::new(window, cx)
                     .language(lang)
+                    .folding(false)
                     .line_number(false)
                     // Zed `EditorMode::Minimap`: read-only, без подписок и
                     // каретки. У нас этот флаг ещё и снимает жёсткий
