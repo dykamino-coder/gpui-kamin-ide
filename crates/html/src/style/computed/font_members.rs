@@ -1,6 +1,6 @@
 //! Identify font shorthand members whose declarations share source order.
 
-pub(super) fn contains(property: &str) -> bool {
+pub(crate) fn contains(property: &str) -> bool {
     // CSS Fonts 4 #font-prop: longhands and reset-only subproperties
     // participate in the shorthand; independently cascaded font-* do not.
     matches!(
