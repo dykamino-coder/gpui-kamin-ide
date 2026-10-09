@@ -20,6 +20,9 @@ pub(super) fn transparent(e: &Element) -> bool {
         .iter()
         .all(|s| [s.top, s.right, s.bottom, s.left].into_iter().all(zero));
     ((e.inline && s.display.is_none()) || s.inline_display == Some(true))
+        // css-ruby-1 §2: ruby boxes pair bases with annotations; splitting
+        // them around a float would break that pairing.
+        && !matches!(e.tag.as_str(), "ruby" | "rb" | "rbc" | "rt" | "rtc" | "rp")
         && !s.float.is_some_and(|f| f != 0)
         && s.clear.is_none()
         && s.position.is_none()
@@ -127,8 +130,12 @@ fn split(node: Node, parent: &Computed) -> Vec<Node> {
     output
 }
 
+/// Orthogonal floats stay in their inline: the inline-float host measures
+/// their intrinsic size inside shrink-to-fit containers
+/// (`orthogonal-writing-mode-float-in-inline`).
 fn floated(node: &Node) -> bool {
-    matches!(node, Node::Element(e) if e.style.float.is_some_and(|f| f != 0))
+    matches!(node, Node::Element(e) if e.style.float.is_some_and(|f| f != 0)
+        && e.style.vertical != Some(true))
 }
 
 fn contains_float(node: &Node) -> bool {
