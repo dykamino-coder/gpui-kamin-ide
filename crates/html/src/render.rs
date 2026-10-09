@@ -53,6 +53,7 @@ mod table_border_widths;
 mod table_spanning_size;
 mod table_clipped_content;
 mod replaced_used_style;
+mod inline_replaced_position;
 mod replaced_holder_ratio;
 mod replaced_content;
 mod svg_percentage_size;
@@ -19284,15 +19285,9 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
             // вовсе. Тот же приём, что у блочного пути (`to_icb`).
             let x_set = edge_set(e.style.inset.left) || edge_set(e.style.inset.right);
             let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
-            // РОВНО ОДНА заданная ось: по ней коробку ставит край, по
-            // свободной — статическая позиция в строке (§10.3.7 п.1/§10.6.4
-            // п.1, оси независимы). Прежде такая коробка сидела в нулевом
-            // держателе, стоявшем в статической точке по ОБЕИМ осям, и край
-            // ПРИБАВЛЯЛСЯ к статической координате вместо того, чтобы её
-            // заменить (`probe/svpf.html`: `left: 80` после «34» давало 240,
-            // а не 80). Щуп в строке отдаёт дырку, `LatePlace` обнуляет сдвиг
-            // по заданной оси и ставит свободную в дырку — ровно как у коробки
-            // без краёв, только с `fixed_axes`.
+            // CSS 2.1 §§10.1, 10.3.7, 10.6.4: explicit insets use the
+            // containing block; the auto axis keeps its inline static spot.
+            // Route to that block's layer, rather than the paragraph wrapper.
             if x_set != y_set && e.style.z_index.unwrap_or(0) >= 0 {
                 let spot: crate::interact::SpotCell = Default::default();
                 spot.set(crate::interact::Spot {
@@ -19311,7 +19306,12 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                     ..Default::default()
                 });
                 let probe = crate::interact::spot_probe(spot.clone(), false);
-                return match crate::interact::late_push(spot, inline_abs_paint_last(e, holder.into_any_element())) {
+                return match inline_replaced_position::push(
+                    spot,
+                    inline_abs_paint_last(e, holder.into_any_element()),
+                    &e.style,
+                    inherited,
+                ) {
                     None => Some(probe),
                     Some(kept) => {
                         let mut hole = div().relative().w_0().h_0().flex_shrink_0();
