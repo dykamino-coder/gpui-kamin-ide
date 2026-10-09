@@ -431,7 +431,7 @@ pub fn broken_promises() -> Vec<&'static str> {
 /// разрешённого стиля было прочитано хотя бы в одном из них.
 const CONSUMERS: &[&str] = &[
     include_str!("apply.rs"),
-    include_str!("render.rs"),
+    include_str!("render/mod.rs"),
     include_str!("inline.rs"),
     include_str!("forms.rs"),
     include_str!("background.rs"),
@@ -441,7 +441,7 @@ const CONSUMERS: &[&str] = &[
     include_str!("doc.rs"),
     include_str!("dom.rs"),
     include_str!("transition.rs"),
-    include_str!("interact.rs"),
+    include_str!("interact/mod.rs"),
     include_str!("anchor.rs"),
     include_str!("motion.rs"),
     include_str!("zoom.rs"),
