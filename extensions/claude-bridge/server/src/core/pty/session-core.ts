@@ -53,6 +53,7 @@ import {
 } from './session-mcp-call'
 import { startNativeMitm } from '../proxy/native-mitm'
 import { getStreamingSettings } from '../proxy/streaming-settings'
+import { SessionAdmission } from './session-admission'
 import { withSyncSnapshotLock } from '../sync/lock'
 
 // Re-export the per-session MCP-call helpers so callers that historically
@@ -69,12 +70,14 @@ export { sendToClient }
 
 export const sessions = new Map<string, PtySession>()
 
-// Global backstop across ALL users. The per-user cap (10, enforced in
-// session-ws) bounds one token, but nothing bounded the TOTAL — N users could
+// Global backstop across ALL users. Core admission also enforces the per-token
+// cap across cold create and resume. N users could otherwise
 // multiply PTY processes + proxy ports + fs watchers + undici pools until the
 // box ran out of PIDs / file descriptors. Generous so it only trips under
 // genuine overload, never in normal single-user desktop use. Overridable.
 const GLOBAL_MAX_SESSIONS = Number(process.env.BRIDGE_MAX_SESSIONS) || 200
+let nodePtyModule: Promise<typeof import('node-pty')> | undefined
+const admission = new SessionAdmission(() => sessions.size, countUserSessions, GLOBAL_MAX_SESSIONS)
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -89,12 +92,39 @@ export async function createSession(
   userName: string,
   tokenId: string,
   config: SessionConfig = {},
+  signal?: AbortSignal,
 ): Promise<PtySession> {
-  // Global backstop — reject BEFORE spawning anything. Reattach (resume of a
-  // live PTY) never reaches here, so a reconnecting client is unaffected.
-  if (sessions.size >= GLOBAL_MAX_SESSIONS) {
-    throw new Error(`Server session limit reached (${GLOBAL_MAX_SESSIONS}); try again later`)
+  const release = admission.reserve(tokenId)
+  let registered: PtySession | undefined
+  try {
+    signal?.throwIfAborted()
+    return await createAdmittedSession(
+      ws,
+      userName,
+      tokenId,
+      config,
+      (session) => {
+        registered = session
+        release()
+      },
+      signal,
+    )
+  } catch (error) {
+    if (registered) destroySession(registered.id)
+    throw error
+  } finally {
+    release()
   }
+}
+
+async function createAdmittedSession(
+  ws: WS,
+  userName: string,
+  tokenId: string,
+  config: SessionConfig,
+  registered: (session: PtySession) => void,
+  signal?: AbortSignal,
+): Promise<PtySession> {
   const sessionId = randomUUID()
   const mcpToken = randomUUID() // per-session secret for MCP endpoint auth
 
@@ -198,14 +228,17 @@ export async function createSession(
   // Apply per-token synced data (skills, agents, CLAUDE.md, project files)
   if (config.bearerHash) {
     await withSyncSnapshotLock(config.bearerHash, () => {
+      signal?.throwIfAborted()
       applySyncData(settingsDir, config.bearerHash!, userCwd)
     })
   }
 
+  signal?.throwIfAborted()
   debugLog('Creating PTY session', { sessionId, userName, cwd: config.cwd })
 
   // Dynamic import — node-pty is a native module
-  const nodePty = await import('node-pty')
+  const nodePty = await (nodePtyModule ??= import('node-pty'))
+  signal?.throwIfAborted()
 
   const env = buildEnv(sessionId, userName, config.effort)
   // Hook relay credential travels in the process environment, never in the
@@ -369,6 +402,11 @@ export async function createSession(
     warnLog('[streaming] proxy failed to start (CLI continues without live capture)', { sessionId, error: String(err) })
   }
 
+  if (signal?.aborted) {
+    if (streamingProxy) await streamingProxy.stop().catch(() => {})
+    signal.throwIfAborted()
+  }
+
   // ALWAYS use settingsDir as cwd on the server.
   // User's real path (config.cwd) is written to CLAUDE.md for context only.
   // Actual file operations go through MCP → Electron → user's machine.
@@ -445,6 +483,7 @@ export async function createSession(
   }
 
   sessions.set(sessionId, session)
+  registered(session)
 
   // Auto-answer interactive startup prompts:
   // 1. "Yes, I trust this folder" (Enter to confirm — option 1 is default)
