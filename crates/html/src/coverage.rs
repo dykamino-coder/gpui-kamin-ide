@@ -441,7 +441,7 @@ const CONSUMERS: &[&str] = &[
     include_str!("doc.rs"),
     include_str!("dom.rs"),
     include_str!("transition.rs"),
-    include_str!("interact/mod.rs"),
+    include_str!("interact.rs"),
     include_str!("anchor.rs"),
     include_str!("motion.rs"),
     include_str!("zoom.rs"),

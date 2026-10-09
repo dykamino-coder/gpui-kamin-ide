@@ -1,2 +1,0 @@
-//! `border-shape`.
-// owner: A

@@ -3,16 +3,13 @@
 
 use crate::render::*;
 
-pub mod border_shape;
-pub mod gradient_layer;
-pub mod shadows;
+pub(crate) mod outline;
+pub(crate) mod text_shadows;
 
 /// Слои, которые в GPUI выражаются только отдельным элементом.
 ///
 /// Все — абсолютные и вне потока, поэтому на раскладку не влияют и могут
 /// идти первыми детьми.
-pub(crate) mod outline;
-pub(crate) mod text_shadows;
 pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     let mut out: Vec<AnyElement> = vec![];
 
