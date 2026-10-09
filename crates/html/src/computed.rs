@@ -26,6 +26,7 @@ mod tab_size;
 mod quotes;
 mod counters;
 mod list_style_string;
+mod list_style;
 mod content_functions;
 pub(crate) use content_functions::parse_content;
 mod outline_style;
@@ -6132,48 +6133,7 @@ impl Computed {
             "list-style-position" => {
                 self.list_style_inside = Some(v.trim() == "inside");
             }
-            "list-style" | "list-style-type" => {
-                // Сокращение задаёт ВСЕ составляющие: не названное в нём
-                // размещение возвращается к начальному `outside`
-                // (css-lists-3 §4). Долгая форма чужого значения не трогает.
-                if key == "list-style" {
-                    self.list_style_inside = Some(false);
-                    for token in v.split_whitespace() {
-                        match token {
-                            "inside" => self.list_style_inside = Some(true),
-                            "outside" => self.list_style_inside = Some(false),
-                            _ => {}
-                        }
-                    }
-                }
-                self.no_marker = Some(v.contains("none"));
-                if list_style_string::apply_string(self, key, v) {
-                    return;
-                }
-                // Вид маркера — ИМЯ стиля счётчика (css-lists-3 §3): любое,
-                // а не восемь избранных. Ключевые слова размещения и `url()`
-                // именем не являются.
-                for token in v.split_whitespace() {
-                    // Размещение, картинка и глобальные ключевые слова именем
-                    // стиля не являются: последние решает каскад, а до него
-                    // они означали бы «стиль по имени initial».
-                    if matches!(
-                        token,
-                        "inside"
-                            | "outside"
-                            | "none"
-                            | "inherit"
-                            | "initial"
-                            | "unset"
-                            | "revert"
-                            | "revert-layer"
-                    ) || token.starts_with("url(")
-                    {
-                        continue;
-                    }
-                    self.list_style_type = Some(token.to_string());
-                }
-            }
+            "list-style" | "list-style-type" => list_style::apply(self, key, v),
             "object-fit" => self.object_fit = Some(v.to_string()),
             // `image-orientation` (css-images-3 §5.4): `from-image | none |
             // [<angle> || flip]`. Угол со `flip` спека сама помечает

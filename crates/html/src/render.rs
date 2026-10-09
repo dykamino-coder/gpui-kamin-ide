@@ -47,6 +47,7 @@ mod replaced_used_style;
 mod replaced_holder_ratio;
 mod replaced_content;
 mod svg_percentage_size;
+mod list_item;
 mod available_width;
 use replaced_content::svg_replaced;
 mod ratio_basis;
@@ -22379,6 +22380,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // Высота ряда от внешней колонки — только ЭТОМУ элементу (`flow::OUTER_ROW`).
     let outer_row = crate::flow::take_outer_row();
     let mut merged = inline::inherit(inherited, &e.style);
+    list_item::inherited_style(e, inherited, &mut merged);
     // Якорный шаг: ключи реестров кадра (свой `node_id` для содержащего
     // блока детей, порядок сборки, ключ клетки) и размеры от якоря —
     // `anchor-size()`, растяжка в клетке `position-area` — из реестра
@@ -22583,6 +22585,17 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         None
     };
     match e.tag.as_str() {
+        // CSS Lists 3 §2: a block list item generates its own marker even
+        // when its parent is an ordinary block rather than a list container.
+        _ if (e.style.display == Some(Display::ListItem)
+            || (e.tag == "li" && e.style.display.is_none()))
+            && !matches!(
+                e.tag.as_str(),
+                "img" | "svg" | "embed" | "object" | "video" | "canvas" | "iframe"
+            ) =>
+        {
+            list_item::render_with_style(e, inherited, &merged, opts)
+        }
         // `image-orientation` НАСЛЕДУЕТСЯ (css-images-3 §5.4): слитый стиль
         // его уже несёт, а копия для замещаемой коробки — нет. Без переноса
         // блочная картинка под `body { image-orientation: none }` всё равно
@@ -26329,227 +26342,16 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
     .into_any_element()
 }
 
-/// Список: маркер рисуем сами — `list-style` в GPUI нет.
-
-/// Пункт списка не сжимается, как и любой блок потока.
-///
-/// `blocks()` ставит `flex-shrink: 0` каждому ребёнку потока (умолчание GPUI —
-/// 1.0), а строки списка строятся мимо него, напрямую. В колонке нулевой
-/// высоты обе строки сжимались до автоминимума: пункт высотой 100 выходил
-/// двадцатью точками (`flex-box-wrap-ref`).
-///
-/// Список со СВОИМ гибким или сеточным видом — исключение: его пункты
-/// настоящие элементы контейнера, и по css-flexbox-1 §7.2 умолчание
-/// `flex-shrink` у них 1.
-fn shrink0(d: gpui::Div, li: &Element, list: &Element) -> gpui::Div {
-    let flex_parent = matches!(
-        list.style.display,
-        Some(Display::Flex) | Some(Display::InlineFlex) | Some(Display::Grid) | Some(Display::InlineGrid)
-    );
-    if li.style.flex_shrink.is_none() && !flex_parent {
-        d.flex_shrink_0()
-    } else {
-        d
-    }
-}
-// ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09): пункт с `display: list-item` вне `<ul>/<ol>`
-// заводить в `list()` через анонимный `<ul>` (как анонимная таблица для
-// ячейки), а `pseudo_box` — не выбрасывать флаг пункта. Срез 1055 пар
-// (lists/pseudo/content/counter-styles): 848 -> 837, **+0/-11**
-// (`list-style-position-applies-to-008/009/015/016/017`,
-// `change-list-style-position-002/003`, `list-style-020` и др.). Анонимный
-// `<ul>` тащит UA-отступы и `list-style-position` списка поверх собственных у
-// пункта. Патч — `target/scout-markers-2026-09.md` П2; маркер надо выносить
-// из `list()` в общий путь блока, а не заворачивать блок в список.
+/// List containers use the same item painter as ordinary block parents.
 fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    let ordered = e.tag == "ol";
-    let mut rows = vec![];
+    let mut rows = Vec::new();
     for child in &e.children {
         let Node::Element(li) = child else { continue };
-        if li.tag != "li" {
-            // Не-`li` ребёнок списка — обычный блок потока (html §4.4.5:
-            // пунктом становится только `<li>`, остальное `<ol>` просто
-            // содержит). Эталоны семьи Ishida в css-counter-styles (~150 пар
-            // `css3-counter-styles-NNN-ref`) — это `<ol><div><bdi>x. </bdi>x
-            // </div></ol>`, и с голым `continue` они рендерились ПУСТОЙ
-            // страницей: правильные римские `-020` были красными, а пустые
-            // таблицы знаков — «зелёными» (`target/scout-counterstyles-2026-09.md`).
-            // Псевдоэлементы (`ol::before`) по-прежнему мимо: прошлый замер
-            // терял именно на них `foo-counter-reversed-007a/b` (0.38 -> 0.53).
-            if !li.tag.starts_with("::") {
-                rows.extend(blocks(std::slice::from_ref(child), inherited, opts));
-            }
-            continue;
+        if li.tag == "li" {
+            rows.push(list_item::render(li, inherited, opts));
+        } else if !li.tag.starts_with("::") || li.style.display == Some(Display::ListItem) {
+            rows.extend(blocks(std::slice::from_ref(child), inherited, opts));
         }
-        // Номер пункта считает ОБЩИЙ счётчик `list-item` (css-lists-3
-        // §list-item-counter): он один знает и `<ol start>`, и `<li value>`,
-        // и вложенные списки. Своей нумерации у отрисовки больше нет.
-        let idx = li.list_item.unwrap_or(0);
-        // Вид маркера задаёт документ; без указания — умолчание тега.
-        // Строковый маркер берётся дословно и без суффикса-точки.
-        let text_marker = li
-            .style
-            .marker_text
-            .clone()
-            .or_else(|| e.style.marker_text.clone());
-        let kind = li
-            .style
-            .list_style_type
-            .clone()
-            .or_else(|| e.style.list_style_type.clone());
-        let marker = if let Some(t) = text_marker {
-            t
-        } else {
-            // Умолчание тега: у нумерованного перечня десятичный счёт, у
-            // списка возможностей — точка.
-            let name = kind.unwrap_or_else(|| if ordered { "decimal" } else { "disc" }.to_string());
-            crate::counter_style::marker_repr(idx, &name)
-        };
-        // `list-style: none` — на списках верстают навигацию и наборы чипов,
-        // и точки там лишние. Своё слово пункта старше слова списка:
-        // `list-style-type` наследуемое, и `<ul style="list-style-type:
-        // none">` не гасит `li::marker { content }` (`marker-content-012`).
-        //
-        // Чужой `display` на пункте снимает с него признак пункта, а с ним и
-        // маркер (css-display-3: `list-item` есть только у `display:
-        // list-item`; css-pseudo-4 §marker-pseudo: «the computed value of
-        // 'display' on ::marker always loses any list-item aspect» — обратное
-        // верно тем более). Без этого эталон `marker-content-019-ref`
-        // (`li { display: block }`) рисовал у нас полный набор `1. 2. 3. 4.`,
-        // и свёртка `content: none` в тесте разводила стороны ЕЩЁ дальше.
-        let no_marker = li.style.no_marker.or(e.style.no_marker) == Some(true)
-            || !matches!(li.style.display, None | Some(Display::ListItem));
-        let merged = inline::inherit(inherited, &li.style);
-        // Слой `::marker` поверх стиля пункта — им набирается сам маркер
-        // (css-lists-3 §marker-properties: «All properties can be set on a
-        // ::marker … and will have a computed value which will then inherit
-        // to its text content»). Коробочные свойства слоя (`padding`,
-        // `width`, `background`) на маркер не идут — `apply_text` их не
-        // читает, и это ровно то, чего требует «only the following CSS
-        // properties actually apply to a marker box».
-        let marker_style = li
-            .style
-            .marker_layer
-            .as_deref()
-            .map(|m| inline::inherit(&merged, m));
-        // `inside`: маркер — ПЕРВЫЙ инлайновый кусок содержимого пункта
-        // (css-lists-3 §4), поэтому он просто дописывается текстом в начало.
-        // Своей колонки при этом нет, и текст пункта начинается там же, где
-        // у обычного абзаца.
-        let inside = merged.list_style_inside == Some(true);
-        if inside {
-            let mut kids: Vec<Node> = Vec::with_capacity(li.children.len() + 1);
-            if !no_marker {
-                // Со слоем `::marker` знаки идут анонимным строчным куском
-                // со стилем слоя: голым текстом они брали бы у пункта и
-                // регистр, и разрядку, и цвет. Внутри маркер — именно
-                // строчная коробка перед содержимым (css-lists-3
-                // §list-style-position, `inside`), и эталон
-                // `marker-unicode-bidi-default-ref` собран буквально так —
-                // `<span class="marker">` перед текстом пункта.
-                // Без слоя — голым текстом, как прежде.
-                kids.push(match &marker_style {
-                    Some(ms) => {
-                        let mut span = anon_element("::marker", vec![Node::Text(marker)]);
-                        span.inline = true;
-                        span.style = ms.clone();
-                        // Содержимое уже свёрнуто в текст: сам кусок — не
-                        // носитель `content`, иначе `pseudo_box` собрал бы
-                        // его второй раз.
-                        span.style.content = None;
-                        span.style.marker_layer = None;
-                        Node::Element(span)
-                    }
-                    None => Node::Text(marker),
-                });
-            }
-            kids.extend(li.children.iter().cloned());
-            rows.push(
-                shrink0(styled_div_with(li, &merged), li, e)
-                    .flex()
-                    .flex_col()
-                    .children(blocks(&kids, &merged, opts))
-                    .into_any_element(),
-            );
-            continue;
-        }
-        // Знаки маркера без своего семейства — шрифтом ДОКУМЕНТА: голый
-        // `apply_text` без семейства брал шрифт интерфейса (Segoe UI), и
-        // строковый маркер выходил чужой гарнитурой рядом с Times пункта
-        // (`list-style-type-string-*`).
-        let mut mark_style = marker_style.clone().unwrap_or_else(|| merged.clone());
-        if mark_style.font_family.as_deref().is_none_or(str::is_empty)
-            && mark_style.monospace != Some(true)
-        {
-            mark_style.font_family = Some(opts.text.font_family.to_string());
-        }
-        let marker = inline::transform_case(&marker, &mark_style);
-        // Внешний маркер (css-lists-3 §list-style-position `outside`) висит
-        // СНАРУЖИ коробки пункта, концом к началу содержимого, и текст пункта
-        // не двигает. Text transforms apply to its own text (§3.1.1).
-        rows.push(
-            shrink0(styled_div_with(li, &merged), li, e)
-                .relative()
-                .flex()
-                .flex_col()
-                .children((!no_marker).then(|| {
-                    // Знаки маркера набираются шрифтом и цветом ПУНКТА:
-                    // отдельной коробке текстовые свойства не достаются сами,
-                    // и маркер выходил чужой гарнитурой и кеглем. Выключка
-                    // текста на него НЕ переносится: маркер стоит у своего
-                    // края колонки, куда бы ни равнялся текст пункта
-                    // (`list-style-position-018`). Со слоем `::marker` —
-                    // стилем слоя: разрядка, межсловный пробел, шрифт и цвет
-                    // маркера объявлены на нём (css-lists-3
-                    // §marker-properties).
-                    // Сторона начала строки пункта: при `direction: rtl`
-                    // маркер висит СПРАВА от коробки и равняется к ней своим
-                    // левым краем (`list-style-type-string-003`: строка
-                    // маркера уходила за левый край окна).
-                    {
-                        let m = crate::apply::apply_text(div(), &mark_style)
-                            .absolute()
-                            .top_0();
-                        if merged.rtl == Some(true) {
-                            m.left(gpui::relative(1.)).text_left()
-                        } else {
-                            // Строки многострочного маркера равняются по
-                            // КОНЦУ, к началу содержимого пункта
-                            // (`marker-text-align-001`: `"[m] longtext"` при
-                            // `white-space: pre`).
-                            m.right(gpui::relative(1.)).text_right()
-                        }
-                    }
-                    .whitespace_nowrap()
-                        // Хвост срезается только у СОБСТВЕННЫХ отбивок движка
-                        // (обычный пробел после номера пункта). Авторская
-                        // строка `list-style-type: "..."` идёт дословно:
-                        // `trim_end` в Rust считает пробелом и U+00A0, а
-                        // неразрывный пробел в такой строке — ЗНАЧАЩИЙ.
-                        // Замер нейтрален (срез 2268 пар, +0/-0: у
-                        // `list-style-type-string-005a/b/-006` остаток не
-                        // здесь), но срезать значащий знак всё равно нельзя.
-                        // Отбивка после номера (`1. `) — часть маркера: она и
-                        // даёт зазор до содержимого. Пробел в конце строки
-                        // свернулся бы, поэтому он неразрывный.
-                        .child(SharedString::from(match marker.strip_suffix(' ') {
-                            Some(head) => format!("{head}\u{a0}"),
-                            None => marker.clone(),
-                        }))
-                }))
-                // Содержимое — своей колонкой, как прежде: выключка пункта
-                // (`text-align: end` у `<li>`) иначе становится выравниванием
-                // его детей, и блок с `text-align: initial` уезжал к концу
-                // (`marker-text-align-001-ref`).
-                .child(
-                    div()
-                        .w_full()
-                        .flex()
-                        .flex_col()
-                        .children(blocks(&li.children, &merged, opts)),
-                )
-                .into_any_element(),
-        );
     }
     styled_div_with(e, inherited)
         .flex()

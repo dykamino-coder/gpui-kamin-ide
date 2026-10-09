@@ -84,6 +84,8 @@ pub const BROWSER_CSS: &str = r#"
     h5 { font-size: 0.83em; margin-block: 1.67em; margin-inline: 0 }
     h6 { font-size: 0.67em; margin-block: 2.33em; margin-inline: 0 }
     ul, ol { margin-block: 1em; margin-inline: 0; padding-inline-start: 40px }
+    ol { list-style-type: decimal }
+    ul, menu, dir { list-style-type: disc }
     li { margin: 0 }
     dl { margin-block: 1em; margin-inline: 0 }
     dd { margin-left: 40px }

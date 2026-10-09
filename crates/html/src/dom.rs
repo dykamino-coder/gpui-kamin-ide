@@ -4061,8 +4061,6 @@ fn pseudo_box_named(
         &mut false,
         &|_, _| 0,
     );
-    // Составляющие склеиваются по порядку (css-content-3 §2): строки как
-    // есть, счётчики — знаками своего стиля, `attr()` — значением атрибута.
     // Составляющие идут по порядку: подряд идущие текстовые склеиваются в
     // один текстовый узел, `url()` становится строчным `<img>` между ними.
     // Ненайденная картинка коробки НЕ даёт вовсе — как в Servo
@@ -4112,9 +4110,11 @@ fn pseudo_box_named(
     if children.is_empty() {
         children.push(Node::Text(String::new()));
     }
+    let list_item =
+        (style.display == Some(Display::ListItem)).then(|| counters.value_of("list-item"));
     counters.leave();
     Some(Element {
-        list_item: None,
+        list_item,
         // Псевдоэлемент своей анимации не несёт: правило `::before` задаёт
         // содержимое, а не движение.
         node_id: 0,
