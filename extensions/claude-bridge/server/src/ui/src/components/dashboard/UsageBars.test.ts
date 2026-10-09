@@ -4,6 +4,11 @@ vi.mock('preact/jsx-runtime', () => ({
   jsxs: (type: unknown, props: unknown) => ({ type, props }),
   jsxDEV: (type: unknown, props: unknown) => ({ type, props }),
 }))
+vi.mock('preact/jsx-dev-runtime', () => ({
+  jsx: (type: unknown, props: unknown) => ({ type, props }),
+  jsxs: (type: unknown, props: unknown) => ({ type, props }),
+  jsxDEV: (type: unknown, props: unknown) => ({ type, props }),
+}))
 import { UsageBars } from './UsageBars'
 import { combinePlanUsage, emptyPlanUsage, parseUsageScreen } from '../../../../core/server/utils/plan-usage'
 
