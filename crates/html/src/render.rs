@@ -295,7 +295,8 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     } else {
         c
     };
-    let mut d = apply(div(), paint);
+    let auto_height = margin_height::used_style(e, paint);
+    let mut d = apply(div(), auto_height.as_ref().unwrap_or(paint));
     if native_intrinsic::eligible(e) {
         d.style().sizing_keywords = Some(crate::apply::intrinsic_size::keywords(c));
     }
@@ -8051,13 +8052,14 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         // только от родителя, а сырой стиль ребёнка признака ещё не несёт.
         let cb_h_def = inline::inherit(inherited, &Computed::default()).cb_height_def;
         let prev_h = COLLAPSE_CB_HEIGHT_DEF.with(|c| c.replace(cb_h_def));
-        let out = collapse_margins(
+        let mut out = collapse_margins(
             nodes,
             matches!(
                 inherited.position,
                 Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
             ),
         );
+        margin_height::zero_float_blocks(&mut out, inherited);
         COLLAPSE_FONT_PX.with(|c| c.set(prev));
         COLLAPSE_CB_WIDTH_PX.with(|c| c.set(prev_w));
         COLLAPSE_CB_HEIGHT_DEF.with(|c| c.set(prev_h));
@@ -8493,7 +8495,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 _ => opts.base_size(),
             },
             measured_ok,
-            own_context_style(inherited),
+            own_context_style(inherited) || inherited.flex_item,
         ),
         flex_ctx,
     );
@@ -11849,8 +11851,8 @@ fn wrap_floats(
             });
         if let Some((mut host, next, took_lead, lifted)) = hosted {
             // CSS 2.1 §10.6.3: ordinary blocks count in-flow boxes, not floats.
-            // A complete static suffix has no later sibling needing its bands.
-            if !parent_bfc && next == nodes.len() && host.attr("bands") == Some("1") {
+            // A complete unfragmented suffix needs no later float bands.
+            if !parent_bfc && !parent.in_multicol && next == nodes.len() {
                 host.attrs.push(("inflow-height".into(), "1".into()));
             }
             if let Some(at) = took_lead {
@@ -13719,7 +13721,7 @@ fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEl
     let kids = band_kids(
         &e.children, count, inherited, opts, em, e.attr("adjoining-start") == Some("1"),
     );
-    let flow = crate::band_flow::BandFlow::new(kids);
+    let flow = crate::band_flow::BandFlow::new(kids, e.attr("inflow-height") != Some("1"));
     if inherited.vertical == Some(true) {
         flow.vertical(inherited.vertical_rl == Some(true))
             .into_any_element()
@@ -15878,24 +15880,11 @@ fn by_layer(mut nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
 fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
     let mut out: Vec<Node> = nodes.to_vec();
     margin_inline_boxes::prepare(&mut out);
-    // §10.6.3: в высоту `auto` входят только дети В ПОТОКЕ — «floating boxes
-    // are ignored». Блок, у которого в потоке нет ничего, кроме плавающих
-    // детей, высотой НОЛЬ и схлопывается насквозь. Наша раскладка ставит
-    // плавающий блок обычным ребёнком, и родитель набирал его высоту.
-    //
-    // Гейт — `through_strut_no_clear`: clearance меняет позицию, не высоту
-    // (§10.6.3). Он требует нулевых рамок, отступов и
-    // `min-height`, высоты `auto`, отсутствия строчной коробки и своего
-    // контекста форматирования. Коробка со СВОИМ контекстом плавающего ребёнка
-    // содержит и высоту от него получает по праву — её ветка не трогает.
-    //
-    // Замерено: CSS2 5078 -> 5082 (+5, потеряна одна —
-    // `block-formatting-context-height-002`: там нулевая коробка лежит внутри
-    // АБСОЛЮТНОГО контейнера, и по §10.6.7 высоту флоата обязан взять он, а
-    // наша раскладка её оттуда уже не получает). oldfront 2352 -> 2349:
-    // `flexbox_item-float`, `flexbox_item-top-float`, `flex-box-wrap` —
-    // там контейнер приходит сюда БЕЗ своего `display`, то есть гибким его
-    // никто не сделал, и прежняя зелень держалась на этой же ошибке.
+    // CSS 2.1 §10.6.3: floats do not contribute to ordinary auto height.
+    // Margin collapse proves zero in-flow height for an open empty block;
+    // The contextual proof also handles borders, padding and white-space.
+    // Formatting contexts retain floats (§10.6.7). Keep the absolute-parent
+    // guard: its float containment currently depends on the child's height.
     for node in out.iter_mut().filter(|_| !abs_parent) {
         let Node::Element(e) = node else { continue };
         let has_float = e
