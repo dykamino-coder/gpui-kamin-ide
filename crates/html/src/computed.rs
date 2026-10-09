@@ -2748,6 +2748,11 @@ pub struct Computed {
     /// Довод `fit-content(<length-percentage>)` у `width`, `min-width`,
     /// `max-width` (по порядку); само значение остаётся `Len::FitContent`.
     pub(crate) fit_arg: [Option<Len>; 3],
+    /// The size slot came from `stretch` (stored as `Len::Pct(1.0)`), in the
+    /// order width, height, min-width, max-width, min-height, max-height.
+    /// css-sizing-4 §4.1 fills the containing block with the margin box, so
+    /// it is not a percentage for the content-box contract.
+    pub(crate) stretch_size: [bool; 6],
     /// Intrinsic min/max constraints rewritten as a preferred keyword retain their sizing wrapper.
     pub(crate) intrinsic_wrapper_required: bool,
     pub clip_margin: Option<f32>,
@@ -4944,12 +4949,14 @@ impl Computed {
             }
             "width" => {
                 self.width_inherit = v == "inherit";
+                self.stretch_size[0] = stretch_keyword(v);
                 self.fit_arg[0] = fit_content_arg(v);
                 self.calc_size[0] = None;
                 assign_size(&mut self.width, v);
             }
             "height" => {
                 self.height_inherit = v == "inherit";
+                self.stretch_size[1] = stretch_keyword(v);
                 self.calc_size[1] = None;
                 assign_size(&mut self.height, v);
             }
@@ -4958,22 +4965,26 @@ impl Computed {
             // `None`, и `max-height: inherit` снимал предел вовсе.
             "min-width" => {
                 self.minmax_inherit[0] = v == "inherit";
+                self.stretch_size[2] = stretch_keyword(v);
                 self.fit_arg[1] = fit_content_arg(v);
                 self.calc_size[2] = None;
                 assign_size(&mut self.min_width, v);
             }
             "min-height" => {
                 self.minmax_inherit[1] = v == "inherit";
+                self.stretch_size[4] = stretch_keyword(v);
                 self.calc_size[3] = None;
                 assign_size(&mut self.min_height, v);
             }
             "max-width" => {
                 self.minmax_inherit[2] = v == "inherit";
+                self.stretch_size[3] = stretch_keyword(v);
                 self.fit_arg[2] = fit_content_arg(v);
                 assign_size(&mut self.max_width, v);
             }
             "max-height" => {
                 self.minmax_inherit[3] = v == "inherit";
+                self.stretch_size[5] = stretch_keyword(v);
                 assign_size(&mut self.max_height, v);
             }
 
@@ -13625,4 +13636,12 @@ fn flex_factor(v: &str) -> Option<f32> {
         return None;
     }
     Some(g.min(1.0e18))
+}
+
+/// `stretch` and its prefixed spellings (css-sizing-4 §4.1).
+fn stretch_keyword(v: &str) -> bool {
+    let v = v.trim();
+    v.eq_ignore_ascii_case("stretch")
+        || v.eq_ignore_ascii_case("-webkit-fill-available")
+        || v.eq_ignore_ascii_case("-moz-available")
 }

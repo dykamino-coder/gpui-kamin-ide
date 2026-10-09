@@ -16,6 +16,11 @@ pub(crate) fn native_content_box(style: &Computed) -> bool {
                 style.max_width,
                 style.min_height,
                 style.max_height,
+            ]
+            .into_iter()
+            .zip(style.stretch_size)
+            .any(|(size, stretch)| !stretch && matches!(size, Some(Len::Pct(_))))
+            || [
                 style.padding.left,
                 style.padding.right,
                 style.padding.top,
