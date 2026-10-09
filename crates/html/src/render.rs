@@ -12613,13 +12613,13 @@ fn band_edge(l: &Option<Len>, em: f32) -> Option<crate::band_flow::Edge> {
     }
 }
 
-/// Кегль коробки в точках для `em` её полей: свой, если задан точками,
-/// иначе кегль содержащего блока.
+/// Кегль коробки для `em` её полей; относительный `font-size` берёт
+/// кегль родителя, в том числе проценты (CSS 2.1 §15.7).
 fn band_em(c: &Computed, em: f32) -> Option<f32> {
     match c.font_size {
         None => Some(em),
         Some(Len::Px(v)) => Some(v),
-        Some(Len::Em(k)) => Some(k * em),
+        Some(Len::Em(k)) | Some(Len::Pct(k)) => Some(k * em),
         _ => None,
     }
 }
