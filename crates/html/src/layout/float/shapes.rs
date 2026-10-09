@@ -28,7 +28,7 @@ pub enum FloatShape {
     RoundedBox {
         top: f32,
         off: f32,
-        shape: std::sync::Arc<super::RoundedBox>,
+        shape: std::sync::Arc<crate::flow::RoundedBox>,
     },
     /// Профиль из картинки (`shape-outside: url(...)`): экстент на каждую
     /// точку высоты, от начала стороны.

@@ -7,20 +7,18 @@
 //! смещениями. Дети приходят с ИЗВЕСТНЫМИ размерами (инлайн-блоки с
 //! заданными сторонами — ровно то, чем WPT рисует картину обтекания).
 
-pub(crate) mod shapes;
-pub(crate) mod rounded_box;
+pub(crate) use crate::layout::float::shapes;
+pub(crate) use crate::layout::float::rounded_box;
 pub use shapes::FloatShape;
 pub(crate) use shapes::ellipse_cut;
 pub use rounded_box::RoundedBox;
 
-pub(crate) mod fragment_mask;
-pub(crate) mod gap_fragment;
-pub(crate) mod column_measure;
-pub(crate) mod column_baselines;
-pub(crate) mod intrinsic_measure;
-pub(crate) mod row_element;
-pub(crate) mod margin_boxes;
-pub(crate) mod margin_box_size;
+pub(crate) use crate::layout::fragment::fragment_mask;
+pub(crate) use crate::layout::fragment::gap_fragment;
+pub(crate) use crate::layout::multicol::column_baselines;
+pub(crate) use crate::layout::fragment::intrinsic_measure;
+pub(crate) use crate::layout::page::margin_boxes;
+pub(crate) use crate::layout::page::margin_box_size;
 pub(crate) use margin_boxes::layout_margin_boxes;
 
 pub(crate) use gpui::{

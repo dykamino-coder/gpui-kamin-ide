@@ -1,6 +1,6 @@
 //! Native atomic subtrees prepare in screen coordinates while surrounding text stays flat.
 //! Cancelling the text frame preserves enclosing CSS transforms and native hitboxes.
-use super::{VT_CCW, VT_FRAME};
+use crate::interact::{VT_CCW, VT_FRAME};
 use gpui::{Bounds, Pixels, TransformationMatrix, point, px, size};
 
 pub(crate) fn map(flat: Bounds<Pixels>, scale: f32) -> (Bounds<Pixels>, TransformationMatrix) {

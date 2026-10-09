@@ -1,5 +1,5 @@
 //! Resolve basic rectangular clips before snapping their absolute device edges.
-use super::{Grouped, legacy_clip, polygon_clip};
+use crate::interact::{Grouped, legacy_clip, polygon_clip};
 use gpui::{Bounds, LayoutId, Pixels, Window};
 
 fn rectangular(group: &Grouped) -> bool {

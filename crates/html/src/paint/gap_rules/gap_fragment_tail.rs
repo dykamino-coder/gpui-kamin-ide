@@ -1,6 +1,6 @@
 //! Continue column gap decorations to the edge of a fragment's suppressed gutter.
 
-use super::{GapAxisRule, GapRun, segments};
+use crate::interact::{GapAxisRule, GapRun, segments};
 use gpui::{Bounds, ContentMask, Hsla, Pixels, TransformationMatrix, Window, point, px, size};
 
 pub(crate) fn paint(

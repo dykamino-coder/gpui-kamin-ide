@@ -1,6 +1,6 @@
 //! Native column measurement and intrinsic contributions before painting.
 
-use super::*;
+use crate::flow::*;
 
 impl ColumnStack {
     pub(crate) fn request_column_layout(
@@ -120,7 +120,7 @@ impl ColumnStack {
                 (mn.max(span_min), mx.max(span_max))
             });
         let mut baselines = (!axis.is_vertical())
-            .then(|| super::column_baselines::Measurements::new(&mut self.children, window, cx));
+            .then(|| crate::flow::column_baselines::Measurements::new(&mut self.children, window, cx));
         let id = window.request_measured_layout_with_baselines(
             gpui::Style::default(),
             move |known, available, window, cx| {

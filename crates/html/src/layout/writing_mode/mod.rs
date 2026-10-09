@@ -33,6 +33,8 @@ pub(crate) mod vertical_hug;
 pub(crate) mod native_intrinsic;
 pub(crate) mod physical_atomic;
 pub(crate) mod rotated_atom;
+pub(crate) mod physical_atomic_frame;
+pub(crate) mod orthogonal_measure;
 pub(crate) fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) -> AnyElement {
     let starts_here = e.style.vertical == Some(true) && inherited.vertical != Some(true);
     if !starts_here || e.style.width.is_some() {

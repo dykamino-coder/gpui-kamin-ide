@@ -1,6 +1,6 @@
 //! Intrinsic page margin dimensions remain distinct from auto stretch sizing.
 
-use super::*;
+use crate::flow::*;
 use crate::value::Len;
 use gpui::AvailableSpace;
 

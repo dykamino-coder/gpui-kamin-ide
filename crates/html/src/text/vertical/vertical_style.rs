@@ -1,5 +1,5 @@
 //! Configuration for rotated text sizing and writing-mode projection.
-use super::VerticalText;
+use crate::interact::VerticalText;
 use gpui::{AnyElement, Pixels};
 
 impl VerticalText {

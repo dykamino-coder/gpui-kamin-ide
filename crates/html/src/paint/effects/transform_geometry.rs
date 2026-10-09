@@ -1,6 +1,6 @@
 //! Exact CSS matrix origins and the existing quarter-turn classification.
 
-use super::Transformed;
+use crate::interact::Transformed;
 use gpui::{Pixels, Point};
 
 impl Transformed {

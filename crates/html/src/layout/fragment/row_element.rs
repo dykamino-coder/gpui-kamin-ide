@@ -1,6 +1,6 @@
 //! Flow children retain absolute fractional origins until device rounding.
 
-use super::*;
+use crate::flow::*;
 
 impl Element for FlowRow {
     type RequestLayoutState = LayoutId;

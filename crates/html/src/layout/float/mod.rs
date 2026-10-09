@@ -17,6 +17,8 @@ pub(crate) mod band_dimensions;
 pub(crate) mod float_atom;
 pub(crate) mod float_clear_scope;
 pub(crate) mod inline_floats;
+pub(crate) mod shapes;
+pub(crate) mod rounded_box;
 
 pub(crate) fn block_like_float(c: &Computed) -> bool {
     c.float.unwrap_or(0) != 0 && matches!(c.width, Some(Len::Pct(p)) if p >= 0.9999)

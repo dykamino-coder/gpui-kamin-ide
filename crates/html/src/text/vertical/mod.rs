@@ -17,6 +17,9 @@ use crate::interact::*;
 /// СВОЕГО ЦЕНТРА (квадрат кегля переходит в себя) и ужимается по строчной
 /// оси в один кегль (css-writing-modes-3 §9.1).
 pub(crate) mod combined_text;
+pub(crate) mod vertical_line_baseline;
+pub(crate) mod vertical_style;
+pub(crate) mod combined_geometry;
 pub struct CombinedUpright {
     pub(crate) child: Option<AnyElement>,
     /// Кегль — сторона квадрата, который кусок занимает в строке.

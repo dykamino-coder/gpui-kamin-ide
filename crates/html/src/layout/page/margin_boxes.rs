@@ -1,6 +1,6 @@
 //! Resolve page margin box geometry before constructing its painted element.
 
-use super::*;
+use crate::flow::*;
 
 /// Раскладка марджин-боксов одного листа (css-page-3 §margin-dimension; Blink
 /// `PageContainerLayoutAlgorithm::LayoutAllMarginBoxes`): прямоугольник border

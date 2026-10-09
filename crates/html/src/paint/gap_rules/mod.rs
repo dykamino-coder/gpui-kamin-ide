@@ -9,6 +9,8 @@ pub mod painter;
 /// Прямоугольники элементов сетки/гибкого контейнера: их собирают пробы
 /// детей, а по ним слой-художник считает середины промежутков
 /// (css-gaps-1 §geometry: линейка идёт по ЦЕНТРАЛЬНОЙ ЛИНИИ промежутка).
+pub(crate) mod gap_segments;
+pub(crate) mod gap_fragment_tail;
 pub type GapItems = std::rc::Rc<std::cell::RefCell<Vec<Bounds<Pixels>>>>;
 
 thread_local! {

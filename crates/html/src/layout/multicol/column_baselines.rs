@@ -1,6 +1,6 @@
 //! Export content baselines from the same child trees and fragment positions used for paint.
 
-use super::*;
+use crate::flow::*;
 use gpui::{AvailableSpace, LayoutMeasurement};
 use std::collections::BTreeMap;
 

@@ -1,5 +1,5 @@
 //! Resolve polygon coordinates and route axis-aligned rectangles through a device clip.
-use super::{Grouped, legacy_clip};
+use crate::interact::{Grouped, legacy_clip};
 use crate::value::Len;
 use gpui::{Bounds, Pixels, Point, point, px, size};
 

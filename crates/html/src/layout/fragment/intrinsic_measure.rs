@@ -2,7 +2,7 @@
 
 use gpui::{AnyElement, App, AvailableSpace, Window, size};
 
-pub(super) fn width(
+pub(crate) fn width(
     element: &mut AnyElement,
     available: AvailableSpace,
     window: &mut Window,

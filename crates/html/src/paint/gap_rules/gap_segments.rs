@@ -1,6 +1,6 @@
 //! Form ordered CSS gap decoration segments before extending their endpoints.
 
-use super::{GapAxisRule, GapRun, subtract};
+use crate::interact::{GapAxisRule, GapRun, subtract};
 
 // CSS Gaps 1 §3.3: overlap-join reaches the far edge of the crossing
 // decoration; main-direction junctions use half the crossing gap only.
