@@ -104,23 +104,27 @@ pub(crate) mod ainh {
 }
 
 pub(crate) mod inh {
-    pub(crate) const BG_REPEAT: u16 = 1 << 0;
-    pub(crate) const Z_INDEX: u16 = 1 << 1;
-    pub(crate) const OUTLINE_W: u16 = 1 << 2;
-    pub(crate) const DISPLAY: u16 = 1 << 3;
-    pub(crate) const BG_IMAGE: u16 = 1 << 4;
-    pub(crate) const BG_POS: u16 = 1 << 5;
-    pub(crate) const CLIP: u16 = 1 << 6;
-    pub(crate) const BG_ORIGIN: u16 = 1 << 7;
-    pub(crate) const BG_CLIP: u16 = 1 << 8;
-    pub(crate) const BG_SIZE: u16 = 1 << 9;
-    pub(crate) const TRANSFORM: u16 = 1 << 10;
-    pub(crate) const TRANSFORM_ORIGIN: u16 = 1 << 11;
-    pub(crate) const OUTLINE_C: u16 = 1 << 12;
-    pub(crate) const OUTLINE_S: u16 = 1 << 13;
-    pub(crate) const OUTLINE_O: u16 = 1 << 14;
+    pub(crate) const BG_REPEAT: u32 = 1 << 0;
+    pub(crate) const Z_INDEX: u32 = 1 << 1;
+    pub(crate) const OUTLINE_W: u32 = 1 << 2;
+    pub(crate) const DISPLAY: u32 = 1 << 3;
+    pub(crate) const BG_IMAGE: u32 = 1 << 4;
+    pub(crate) const BG_POS: u32 = 1 << 5;
+    pub(crate) const CLIP: u32 = 1 << 6;
+    pub(crate) const BG_ORIGIN: u32 = 1 << 7;
+    pub(crate) const BG_CLIP: u32 = 1 << 8;
+    pub(crate) const BG_SIZE: u32 = 1 << 9;
+    pub(crate) const TRANSFORM: u32 = 1 << 10;
+    pub(crate) const TRANSFORM_ORIGIN: u32 = 1 << 11;
+    pub(crate) const OUTLINE_C: u32 = 1 << 12;
+    pub(crate) const OUTLINE_S: u32 = 1 << 13;
+    pub(crate) const OUTLINE_O: u32 = 1 << 14;
     /// `overflow-clip-margin: inherit` — коробка отсчёта и поле родителя.
-    pub(crate) const CLIP_MARGIN: u16 = 1 << 15;
+    pub(crate) const CLIP_MARGIN: u32 = 1 << 15;
+    /// `column-rule-color: inherit` — скалярный цвет и список линеек родителя.
+    pub(crate) const COLUMN_RULE_C: u32 = 1 << 16;
+    /// `row-rule-color: inherit`.
+    pub(crate) const ROW_RULE_C: u32 = 1 << 17;
 }
 
 /// Разряды `will_change` (css-will-change-1 §2.1): чего ждать от коробки,
@@ -1943,7 +1947,7 @@ pub struct Computed {
     /// вид (`display`), плитка и её место (`background-image`,
     /// `background-position`), обрезка (`clip`), сокращение шрифта,
     /// преобразование регистра.
-    pub(crate) inherit_bits: u16,
+    pub(crate) inherit_bits: u32,
     pub(crate) padding_inherit_side: [bool; 4],
     /// `box-shadow: inherit`.
     pub(crate) shadow_inherit: bool,
@@ -7885,6 +7889,18 @@ impl Computed {
                 }
             }
             "column-rule-color" | "row-rule-color" | "rule-color" => {
+                // Ненаследуемое свойство со словом `inherit` (css-cascade-4 §7.2):
+                // цвет линейки родителя целиком, а не `currentcolor` своего текста
+                // (`multicol-rule-color-inherit-001/002`).
+                if v == "inherit" {
+                    if key != "row-rule-color" {
+                        self.inherit_bits |= inh::COLUMN_RULE_C;
+                    }
+                    if key != "column-rule-color" {
+                        self.inherit_bits |= inh::ROW_RULE_C;
+                    }
+                    return;
+                }
                 if let Some(l) = gap_list(v, gap_color) {
                     if key != "row-rule-color" {
                         self.set_gap_colors(true, &l);

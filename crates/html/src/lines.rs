@@ -1614,7 +1614,19 @@ impl Paragraph {
         if self.text_overflow
             && let Some(limit) = limit
         {
-            for line in lines.iter_mut() {
+            // Строка, на которую сядет знак обрыва `line-clamp`, усекается
+            // им самим (css-overflow-4 §block-ellipsis: место отбирается «as
+            // if wrapping» до точки переноса, а не посимвольно): непереносимое
+            // слово уходит целиком, и остаётся одно «…»
+            // (`webkit-line-clamp-036`, `line-clamp-auto-009`).
+            let clamp_line = self
+                .clamp
+                .filter(|n| *n > 0 && (lines.len() > *n || self.clamp_force))
+                .map(|n| n.min(lines.len()).saturating_sub(1));
+            for (i, line) in lines.iter_mut().enumerate() {
+                if Some(i) == clamp_line {
+                    continue;
+                }
                 if line.width > limit + px(0.5) && !line.ellipsis {
                     self.ellipsize(line, limit, &segs, window);
                 }
@@ -1694,13 +1706,33 @@ impl Paragraph {
         let segs = self.measure(window);
         let ell = self.suffix_width(self.clamp_str(), last.range.start, window);
         let head = last.range.start;
-        let mut end = head + trim_hanging(&self.text[last.range.clone()]);
+        // Висящий хвост перед знаком отбрасывается (фаза 2 css-text-3 §4.1.2),
+        // но СОХРАНЁННЫЕ пробелы (`white-space: pre` куска) — содержимое:
+        // знак встаёт после них (`block-ellipsis-031`).
+        let trim = |at: usize| {
+            let mut e = at;
+            for (i, ch) in self.text[head..at].char_indices().rev() {
+                let kept = matches!(ch, ' ' | '\t') && self.wrap_at(head + i).keep_spaces;
+                if !kept && ch != '\u{feff}' && (hangs(ch) || zero_width(ch)) {
+                    e = head + i;
+                } else {
+                    break;
+                }
+            }
+            e
+        };
+        let mut end = trim(last.range.end.min(self.text.len()));
         // Место под многоточие отбирается ЦЕЛЫМИ кусками: строка обрывается по
         // точке переноса, а не посреди слова. Слово, которое с многоточием уже
         // не влезает, уходит со строки целиком — как в браузере.
         // `block-ellipsis: no-ellipsis` — знака нет, и место под него
         // отбирать не у чего: строка остаётся как есть, даже если её
         // непереносимое слово шире коробки (`block-ellipsis-023/024/037`).
+        // Мягкий перенос — тоже точка переноса для знака (css-overflow-4
+        // §block-ellipsis «as if wrapping»): разрыв на нём показывает знак
+        // переноса перед многоточием (`block-ellipsis-028`: «isti‐…»).
+        let shy_at = |at: usize| at > head && self.text[..at].ends_with('\u{ad}');
+        let shy_w = |at: usize| if shy_at(at) { self.hyphen_w.get() } else { px(0.) };
         if let Some(room) = limit.map(|w| w - ell).filter(|_| !self.clamp_str().is_empty()) {
             if self.span(&segs, head, end) > room {
                 end = self
@@ -1708,20 +1740,23 @@ impl Paragraph {
                     .iter()
                     .map(|s| s.at)
                     .filter(|at| *at > head && *at <= end)
-                    .map(|at| head + trim_hanging(&self.text[head..at]))
-                    .filter(|at| self.span(&segs, head, *at) <= room)
+                    .map(trim)
+                    .filter(|at| self.span(&segs, head, *at) + shy_w(*at) <= room)
                     .max()
                     .unwrap_or(head);
             }
         }
-        let width = self.span(&segs, head, end) + ell;
+        let hyphen = !self.hyphen.is_empty() && shy_at(end);
+        let width = self.span(&segs, head, end)
+            + ell
+            + if hyphen { self.hyphen_w.get() } else { px(0.) };
         lines.push(Line {
             range: head..end,
             width,
             ellipsis: true,
             clamped: true,
             vis_cut: None,
-            hyphen: false,
+            hyphen,
             indent: last.indent,
         });
         lines
@@ -4749,7 +4784,10 @@ impl Element for Paragraph {
                 range.clone()
             };
             // Знак обрыва и знак переноса набираются вместе со строкой.
-            let mark = if line.ellipsis {
+            let mark = if line.ellipsis && line.clamped && line.hyphen {
+                // Обрыв на мягком переносе: знак переноса, затем многоточие.
+                format!("{}{}", self.hyphen, self.line_mark(&line))
+            } else if line.ellipsis {
                 self.line_mark(&line).to_string()
             } else if line.hyphen {
                 self.hyphen.to_string()

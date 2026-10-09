@@ -20,13 +20,13 @@ fn walk(nodes: &mut [Node], containing_grid: bool) {
                 containing_grid
             },
         );
-        if !matches!(
-            el.style.display,
-            Some(Display::Grid)
-                | Some(Display::InlineGrid)
-                | Some(Display::Flex)
-                | Some(Display::InlineFlex)
-        ) {
+        // Гибкий контейнер сюда не входит: taffy (`flexbox.rs`,
+        // `perform_absolute_layout_on_absolute_children`) сам отсчитывает
+        // статическую позицию от `content_box_inset` (css-flexbox-1 §4.1), и
+        // добавочное поле удваивало отбивку контейнера
+        // (`flex-abspos-staticpos-margin-001`: коробка на отбивку правее и
+        // ниже). Правка ec58c6f потерялась при переносе прохода в модуль.
+        if !grid {
             continue;
         }
         let static_grid = grid && !establishes_cb && !containing_grid;

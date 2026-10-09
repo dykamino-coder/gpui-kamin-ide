@@ -35,7 +35,10 @@ pub(crate) fn apply_alignment_fallback(
     //    https://www.w3.org/TR/css-align-3/#distribution-values
     if num_items <= 1 || free_space <= 0.0 {
         (keyword, is_safe) = match keyword {
-            AlignContentKeyword::Stretch | AlignContentKeyword::SpaceBetween => (AlignContentKeyword::FlexStart, true),
+            // css-align-3 §4.3: `stretch` falls back to (unsafe) `flex-start`, `space-between` to
+            // `safe flex-start` (csswg-drafts#11641).
+            AlignContentKeyword::Stretch => (AlignContentKeyword::FlexStart, is_safe),
+            AlignContentKeyword::SpaceBetween => (AlignContentKeyword::FlexStart, true),
             AlignContentKeyword::SpaceAround | AlignContentKeyword::SpaceEvenly => (AlignContentKeyword::Center, true),
             other => (other, is_safe),
         };

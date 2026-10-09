@@ -307,7 +307,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     };
     let bw = c.borders();
     let mbp_y = side(bw.top) + side(bw.bottom) + side(c.padding.top) + side(c.padding.bottom);
-    if !multicol && e.style.clamp_auto == Some(true) && c.max_height.is_some() {
+    if !multicol && e.style.clamp_auto == Some(true) && auto_clamp_limit(c).is_some() {
         if let Some(cut) = crate::interact::clamp_cut(e.node_id).filter(|c| !sized && c.is_finite()) {
             d = d.max_h(px(cut + mbp_y));
         }
@@ -8516,14 +8516,34 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     // соседями. Здесь его достаточно переставить в конец: место он берёт не
     // из потока (в раскладку сетки такой ребёнок не входит), поэтому
     // перестановка меняет только краску.
+    // Вынесенный абсолют всё же РВЁТ прогон текста: каждая непрерывная
+    // последовательность текстовых детей — свой анонимный элемент
+    // (css-flexbox-1 §4, css-grid-2 §6.1), а абсолютный ребёнок в неё не
+    // входит. После перестановки куски «Two » и «lines» оказывались соседями
+    // и склеивались в один абзац (`anonymous-flex-item-004`,
+    // `anonymous-grid-item-001`). `run_breaks` — индексы в новом списке, перед
+    // которыми накопленный абзац закрывается.
+    let mut run_breaks: Vec<usize> = vec![];
     let collapsed: Vec<Node> = if ordered_context {
-        let (flow, over): (Vec<Node>, Vec<Node>) = collapsed.into_iter().partition(|n| match n {
+        let in_flow = |n: &Node| match n {
             Node::Element(e) => {
                 e.style.position != Some(crate::computed::Position::Absolute)
                     || e.style.z_index.is_some_and(|z| z < 0)
             }
             Node::Text(_) => true,
-        });
+        };
+        let mut flow: Vec<Node> = vec![];
+        let mut over: Vec<Node> = vec![];
+        for n in collapsed {
+            if in_flow(&n) {
+                flow.push(n);
+            } else {
+                if run_breaks.last() != Some(&flow.len()) {
+                    run_breaks.push(flow.len());
+                }
+                over.push(n);
+            }
+        }
         flow.into_iter().chain(over).collect()
     } else {
         collapsed
@@ -8555,6 +8575,10 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     crate::interact::late_open();
     let nodes = collapsed.as_slice();
     for (idx, n) in nodes.iter().enumerate() {
+        if run_breaks.contains(&idx) && !pending.is_empty() {
+            let taken = std::mem::take(&mut pending);
+            out.push(paint_inline_step7(paragraph_probed(&taken, inherited, opts)));
+        }
         let is_inline = match n {
             // Пробельный узел между инлайн-соседями — часть строки, а не
             // разрыв: `<button>A</button> <button>B</button>` в разметке с
@@ -9896,6 +9920,50 @@ fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
     });
     if !ordered {
         return nodes;
+    }
+    // Анонимный элемент — непрерывный прогон текста В ПОРЯДКЕ РАЗМЕТКИ
+    // (css-flexbox-1 §4), и `order` переставляет уже готовые элементы. После
+    // сортировки прогоны «a a» и «b b» по обе стороны от `order: 1`
+    // становились соседями и склеивались в один абзац
+    // (`flexbox-anonymous-items-001`). Поэтому при двух и более непустых
+    // прогонах каждый заворачивается в свой анонимный блок заранее.
+    let blank = |t: &str| blank_text(t);
+    let mut runs: Vec<Vec<Node>> = vec![];
+    let mut cur: Vec<Node> = vec![];
+    let mut rest: Vec<(usize, Node)> = vec![];
+    for n in nodes.drain(..) {
+        match n {
+            Node::Text(_) => cur.push(n),
+            other => {
+                if !cur.is_empty() {
+                    runs.push(std::mem::take(&mut cur));
+                    rest.push((usize::MAX, Node::Text(String::new())));
+                }
+                rest.push((0, other));
+            }
+        }
+    }
+    if !cur.is_empty() {
+        runs.push(cur);
+        rest.push((usize::MAX, Node::Text(String::new())));
+    }
+    let solid = runs
+        .iter()
+        .filter(|r| r.iter().any(|n| matches!(n, Node::Text(t) if !blank(t))))
+        .count();
+    let mut run_iter = runs.into_iter();
+    for (tag, n) in rest {
+        if tag != usize::MAX {
+            nodes.push(n);
+            continue;
+        }
+        let run = run_iter.next().unwrap_or_default();
+        let has_text = run.iter().any(|n| matches!(n, Node::Text(t) if !blank(t)));
+        if solid >= 2 && has_text {
+            nodes.push(Node::Element(anon_element("div", run)));
+        } else {
+            nodes.extend(run);
+        }
     }
     // css-flexbox-1 §5.4 (и css-grid-2 §9.1 по ссылке): «Absolutely-
     // positioned children of a flex container are treated as having
@@ -13959,8 +14027,11 @@ fn band_seq(nodes: Vec<Node>, em: f32) -> Option<Vec<Node>> {
                 Node::Text(_) => true,
                 Node::Element(e) => !block_level_in_flow(e) && !out_of_flow(&e.style),
             });
+        // CSS 2.1 section 9.5: floats in nested flow blocks participate in
+        // the same BFC. Match the measured host's orthogonal-float gate;
+        // a text-free vertical float does not need inline text measurement.
         if open_run
-            || f.style.vertical == Some(true)
+            || (f.style.vertical == Some(true) && band_float_m(f, em).is_none())
             || f.style.shape_outside.is_some()
             || band_margins(&f.style, em).is_none()
         {
@@ -14009,7 +14080,31 @@ fn column_flow(
     count: Option<usize>,
     col_w: Option<f32>,
 ) -> Option<AnyElement> {
-    column_flow_in(e, inherited, opts, count, col_w, false)
+    // Линейки последней (единственной) линии колонок тянутся до низа
+    // содержимого коробки заданной высоты (Blink `PaintColumnRules`: «Paint
+    // column rules as tall as the entire multicol container, but only when at
+    // the last row»; `multicol-rule-004`: две строки в коробке 5em — линейка
+    // на все 5em). Высота содержимого — заданная `height` в точках.
+    let px = |l: &Option<Len>| match l {
+        None => Some(0.0),
+        Some(Len::Px(v)) => Some(*v),
+        _ => None,
+    };
+    let stretch = match inherited.height.or(e.style.height) {
+        Some(Len::Px(h)) if h > 0.0 => {
+            if e.style.border_box == Some(true) {
+                let b = e.style.borders();
+                (|| {
+                    Some(h - px(&e.style.padding.top)? - px(&e.style.padding.bottom)? - px(&b.top)? - px(&b.bottom)?)
+                })()
+            } else {
+                Some(h)
+            }
+        }
+        _ => None,
+    }
+    .filter(|h| *h > 0.0);
+    column_flow_in(e, inherited, opts, count, col_w, false, stretch)
 }
 
 /// `whole` — текст пришёл рекурсией из единственного ребёнка-МОНОЛИТА
@@ -14024,6 +14119,7 @@ fn column_flow_in(
     count: Option<usize>,
     col_w: Option<f32>,
     whole: bool,
+    stretch: Option<f32>,
 ) -> Option<AnyElement> {
     let all_inline = e.children.iter().all(|n| match n {
         Node::Text(_) => true,
@@ -14048,7 +14144,7 @@ fn column_flow_in(
             return None;
         }
         let inside = inline::inherit(inherited, &only.style);
-        return column_flow_in(only, &inside, opts, count, col_w, whole || size_monolith(only));
+        return column_flow_in(only, &inside, opts, count, col_w, whole || size_monolith(only), stretch);
     }
     // `<br>` — жёсткий разрыв: в собранном тексте он помечается U+2028,
     // замер режет по нему принудительно. В сырых узлах <br> текста не несёт,
@@ -14099,11 +14195,18 @@ fn column_flow_in(
         }
         (out, map)
     };
-    let plain = normalized.trim().to_string();
+    // Схлопываемые пробелы — только пробел, таб и переводы строк (css-text-3
+    // §4.1.1 «document white space characters»); `str::trim` снимал и U+00A0:
+    // поток из одних `&nbsp;` целиком считался пустым и шёл мимо колонок
+    // (`multicol-rule-color-inherit-001`).
+    fn css_ws(c: char) -> bool {
+        matches!(c, ' ' | '\t' | '\n' | '\r' | '\u{c}')
+    }
+    let plain = normalized.trim_matches(css_ws).to_string();
     if plain.trim_matches('\n').is_empty() {
         return None;
     }
-    let lead = normalized.len() - normalized.trim_start().len();
+    let lead = normalized.len() - normalized.trim_start_matches(css_ws).len();
     let raw_len = raw_plain
         .chars()
         .filter(|c| *c != '\u{2028}')
@@ -14189,7 +14292,7 @@ fn column_flow_in(
                         Node::Element(e) if e.tag == "br" => {
                             part.remove(0);
                         }
-                        Node::Text(t) if t.trim().is_empty() => {
+                        Node::Text(t) if t.trim_matches(css_ws).is_empty() => {
                             part.remove(0);
                         }
                         _ => break,
@@ -14201,8 +14304,12 @@ fn column_flow_in(
             let n_cols = used.max(cuts.len() + 1);
             // §3.4 (11): `max(0, …)` — при промежутках шире коробки колонка нулевой
             // ширины, а не отрицательной (`multicol-gap-large-001`: 4 × 80 в 220).
+            // Переполняющие колонки (`column-fill: auto`, разрезов больше, чем
+            // колонок) ширину не делят: они той же ширины за краем коробки
+            // (css-multicol-1 §8.2).
+            let w_cols = if used > 0 { used } else { n_cols };
             let inner =
-                ((f32::from(width) - gap * (n_cols - 1) as f32) / n_cols as f32).max(0.0);
+                ((f32::from(width) - gap * (w_cols - 1) as f32) / w_cols as f32).max(0.0);
             // Линейка между колонками (`column-rule`, css-multicol §4):
             // абсолютный держатель по центру промежутка на всю высоту ряда —
             // линейка шире промежутка накрывает соседние колонки (rule-001),
@@ -14211,6 +14318,9 @@ fn column_flow_in(
             let rule = rule_owned.filter(|(w, _)| *w > 0.0);
             let mut row = div().flex().flex_row().w(width).gap_x(px(gap)).relative();
             if let Some((rw, color)) = rule {
+                if let Some(h) = stretch {
+                    row = row.min_h(px(h));
+                }
                 // css-multicol-1 §column-gaps-and-rules: «Column rules are only
                 // drawn between two columns that both have content» (Blink
                 // `PaintColumnRules` рисует между соседними column box, а их заводит
@@ -14237,7 +14347,7 @@ fn column_flow_in(
                 }
             }
             for part in parts.into_iter() {
-                row = row.child(div().w(px(inner)).flex().flex_col().children(blocks(
+                row = row.child(div().w(px(inner)).flex_shrink_0().flex().flex_col().children(blocks(
                     &part,
                     &inherited_owned,
                     &opts_owned,
@@ -14257,7 +14367,7 @@ fn column_flow_in(
             line,
             // `column-fill: auto` с заданной высотой: колонки заполняются
             // подряд до неё (css-multicol-1 §3.3).
-            match (e.style.column_fill_auto, e.style.height, inherited.max_height) {
+            match (e.style.column_fill_auto, inherited.height.or(e.style.height), inherited.max_height) {
                 (Some(true), Some(Len::Px(h)), _) if h > 0.0 => Some(h),
                 // Высота авто, но задан `max-height`: колонки заполняются подряд до
                 // него (css-multicol-1 §column-fill `auto`: «fill columns
@@ -18292,12 +18402,19 @@ fn paragraph_pieces_routed(
             )
             .clamp_mark(inherited.clamp_mark.clone())
             .clamp_tag(clamp_tag)
-            .marker_color(Some(
+            // Знак обрыва — анонимный строчный ребёнок блока: и
+            // `visibility` у него блочная (css-overflow-3 §text-overflow,
+            // css-overflow-4 §block-ellipsis): у скрытого блока знака не
+            // видно, даже если кусок у среза `visible`
+            // (`text-overflow-ellipsis-002`, `webkit-line-clamp-035`).
+            .marker_color(Some(if inherited.hidden == Some(true) {
+                gpui::transparent_black()
+            } else {
                 inherited
                     .color
                     .map(crate::value::Color::to_hsla)
-                    .unwrap_or_else(gpui::black),
-            ))
+                    .unwrap_or_else(gpui::black)
+            }))
             .text_fit(inherited.text_fit)
             .fit_parts(
                 // Масштабируемы только интервалы в ДОЛЯХ кегля; `px` и `em`
@@ -23242,6 +23359,18 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         .map(|n| n as *const Node);
                     // Чью меру дала `nested_rows_shape` — только их копии рядами.
                     let nested_auto: std::cell::RefCell<Vec<u64>> = Default::default();
+                    // Вложенный многоколоночник `height: auto` под БАЛАНСОМ внешнего
+                    // (`nested_whole`): одна сбалансированная строка колонок целиком.
+                    // css-multicol-1 §2: вложенный многоколоночник — сам мультиколонный
+                    // контейнер, его колонки и линейки рисуются внутри внешней колонки
+                    // (Blink `ColumnLayoutAlgorithm` для внутреннего — та же раскладка).
+                    // Копия стопки шла узкой веткой `styled_div_with` и рисовала его
+                    // плоско — без колонок и линеек (`multicol-rule-color-inherit-001`).
+                    let nested_whole: std::cell::RefCell<Vec<u64>> = Default::default();
+                    let whole_ok = e.style.column_fill_auto != Some(true)
+                        && rows.is_none_or(|r| r.cap)
+                        && nest_rows.is_none()
+                        && !col_vert;
                     // Дети, чью высоту меряет раскладка копии (`StackChild::measure`).
                     let measured_kids: std::cell::RefCell<Vec<(u64, f32)>> = Default::default();
                     let measure_ok = e.style.column_fill_auto == Some(true)
@@ -23282,6 +23411,27 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     }
                                     None => shape_full(c, 4, ShapeCx::COLUMNS).map(|h| ((*c).clone(), h)),
                                 }
+                            }
+                            Node::Element(c)
+                                if whole_ok
+                                    && matches!(c.style.height, None | Some(Len::Auto))
+                                    && line_col_w.is_some()
+                                    && nested_rows_box(c) =>
+                            {
+                                // Высоту даёт раскладка самой копии (`StackChild::measure`):
+                                // внутренний многоколоночник балансирует себя сам, и мера
+                                // `shape_full` его колонок не видит (сумма детей).
+                                let c = resolved_lengths(c, &merged);
+                                let w = line_col_w?;
+                                let m = |l: &Option<Len>| match l {
+                                    Some(Len::Px(v)) => Some(*v),
+                                    None | Some(Len::Auto) => Some(0.0),
+                                    _ => None,
+                                };
+                                let (mt, mb) = (m(&c.style.margin.top)?, m(&c.style.margin.bottom)?);
+                                nested_whole.borrow_mut().push(c.node_id);
+                                measured_kids.borrow_mut().push((c.node_id, w));
+                                Some((c, (0.0, mt, mb, Vec::new(), Vec::new(), Vec::new())))
                             }
                             // `position: relative` укладке не мешает — сдвиг
                             // накладывается на месте (корень A1).
@@ -23891,6 +24041,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 // `with_content_mask`) режет их вместе с
                                 // содержимым — вид `slice` css-break-3 §4.
                                 let copy_ix = std::cell::Cell::new(0usize);
+                                let whole = nest_row.is_none()
+                                    && nested_whole.borrow().contains(&copy.node_id);
                                 let build = |first: bool, part: usize| {
                                     // `box-decoration-break: clone`: копия — САМ
                                     // фрагмент (`clone_fragment`), и корень, и
@@ -24043,6 +24195,17 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                         let el = element(&mc, &merged, opts);
                                         crate::flow::set_outer_row(None);
                                         return el;
+                                    }
+                                    if whole {
+                                        let mut mc = copy.clone();
+                                        mc.children = kids;
+                                        if matches!(mc.style.width, None | Some(Len::Auto))
+                                            && let Some(w) = line_col_w.and_then(|cw| nested_box_w(&mc, cw))
+                                        {
+                                            mc.style.width = Some(Len::Px(w));
+                                        }
+                                        drop(frag_gap_guard);
+                                        return element(&mc, &merged, opts);
                                     }
                                     if table_box(&copy) {
                                         let mut tc = copy.clone();
@@ -24319,7 +24482,9 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     .iter()
                                     .find(|(id, _)| *id == copy.node_id)
                                     .map(|(_, w)| *w);
-                                let monolith = if measure.is_some() {
+                                let monolith = if whole {
+                                    true
+                                } else if measure.is_some() {
                                     nest_row.is_none()
                                         && (size_monolith(&copy)
                                             || copy.style.break_inside_avoid
@@ -24553,7 +24718,24 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 }),
                             )
                             .with_axis(col_axis)
-                            .with_row_phase(if nest_rows.is_some() { nest_phase } else { 0.0 }),
+                            .with_row_phase(if nest_rows.is_some() { nest_phase } else { 0.0 })
+                            // Линейки последней линии — до низа содержимого коробки
+                            // заданной высоты (Blink `PaintColumnRules`), без
+                            // спаннеров и рядов (`multicol-rule-nested-balancing-001`).
+                            .with_rule_stretch(
+                                match merged.height {
+                                    Some(Len::Px(h))
+                                        if h > 0.0
+                                            && !col_vert
+                                            && nest_rows.is_none()
+                                            && e.style.border_box != Some(true)
+                                            && !e.children.iter().any(|n| matches!(n, Node::Element(c) if spanner_box(c))) =>
+                                    {
+                                        Some(h)
+                                    }
+                                    _ => None,
+                                },
+                            ),
                         );
                         // Флоаты — прежним ходом, соседями стопки.
                         for oof in &direct_oof {
@@ -24815,7 +24997,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // `auto`, §5.2; `styled_div_with` срез не ставит): без этого гейта
             // бюджет абзаца счётного режима поставил бы «…» (`line-clamp-039`).
             let is_clamp = (e.style.clamp_lines().is_some()
-                || (e.style.clamp_auto == Some(true) && merged.max_height.is_some()))
+                || (e.style.clamp_auto == Some(true) && auto_clamp_limit(&merged).is_some()))
                 && !multicol_container(&e.style);
             let _clamp_guard = is_clamp.then(|| crate::interact::ClampGuard::enter(e.node_id));
             let makes_bfc = matches!(
@@ -24920,6 +25102,20 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         None,
                         None,
                     ));
+                } else if !is_clamp
+                    && !skip
+                    && e.children.iter().all(is_blank)
+                    && !merged.float.is_some_and(|f| f != 0)
+                    && !matches!(
+                        merged.position,
+                        Some(crate::computed::Position::Absolute)
+                            | Some(crate::computed::Position::Fixed)
+                    )
+                    && matches!(merged.display, None | Some(Display::Block))
+                {
+                    kids.push(crate::interact::clamp_empty_probe(
+                        crate::interact::clamp_lines_for(key),
+                    ));
                 }
             }
             // Абсолютный потомок ищет ближайшего позиционированного предка
@@ -24976,10 +25172,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // `line-clamp: 4` и `-webkit-line-clamp` режут ТОЛЬКО по числу
                 // строк, а не влезшее в `max-height` переполняет коробку
                 // (`line-clamp-035`, `webkit-line-clamp-with-max-height`).
-                let max_h = match merged.max_height {
-                    Some(Len::Px(v)) if e.style.clamp_auto == Some(true) => {
-                        Some((v - bb_y).max(0.0))
-                    }
+                let max_h = match auto_clamp_limit(&merged) {
+                    Some(v) if e.style.clamp_auto == Some(true) => Some((v - bb_y).max(0.0)),
                     _ => None,
                 };
                 // `text-box-trim: trim-end` клампа: последняя строка перед
@@ -25010,6 +25204,25 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             crate::anchor::place(child, &merged, inherited)
         }
     }
+}
+
+/// Потолок блочного размера для `line-clamp: auto` (css-overflow-4
+/// §line-clamp, «auto clamp point»): размер, который коробка получила бы при
+/// БЕСКОНЕЧНОМ автоматическом размере — заданная `height`, ограниченная
+/// `max-height`, а без `height` — сам `max-height`; `min-height` поднимает
+/// результат (`line-clamp-auto-005`: `height: 4.5lh`; `-014`: максимум из
+/// `min-height` и `max-height`). Бесконечный размер — точки нет.
+fn auto_clamp_limit(m: &Computed) -> Option<f32> {
+    let px = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => Some(v),
+        _ => None,
+    };
+    let max_h = px(m.max_height);
+    let base = match px(m.height) {
+        Some(h) => Some(max_h.map_or(h, |mx| h.min(mx))),
+        None => max_h,
+    }?;
+    Some(px(m.min_height).map_or(base, |mn| base.max(mn)))
 }
 
 /// Картинка: `src` с `data:`-URI или путь. Внешние URL не грузим — документ
