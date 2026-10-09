@@ -437,7 +437,7 @@ const CONSUMERS: &[&str] = &[
     include_str!("style/apply/paint.rs"),
     include_str!("style/apply/text.rs"),
     include_str!("render/mod.rs"),
-    include_str!("inline.rs"),
+    include_str!("text/inline/mod.rs"),
     include_str!("forms.rs"),
     include_str!("paint/background/mod.rs"),
     include_str!("paint/background/shape_path.rs"),

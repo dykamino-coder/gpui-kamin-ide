@@ -49,7 +49,7 @@ pub mod float;
 pub mod flow;
 pub mod fonts;
 pub mod forms;
-pub mod inline;
+pub use text::inline;
 pub mod interact;
 pub mod lines;
 pub mod metrics;
