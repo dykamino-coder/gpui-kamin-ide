@@ -14058,7 +14058,11 @@ fn band_kids(
                 // пустого ребёнка выходил нулём, и флоат с детьми не
                 // рисовался вовсе (эталон `css-break/background-image-001`:
                 // колонка-флоат с `<div style="block-size:100%; background">`).
-                if float && !table && !replaced && !vertical {
+                // CSS Lists 3 §2: a floated list item (a `::before`/`::after`
+                // with `display: list-item` too) keeps its marker, which only
+                // `element`'s list-item painter draws.
+                let list_item = copy.style.display == Some(Display::ListItem);
+                if float && !table && !replaced && !vertical && !list_item {
                     // Флоат — блочная коробка (§9.7) каким бы ни был тег: тем
                     // же путём, что у статического хоста (`shape_flow`).
                     // Таблица — своей веткой `element` ниже: каркас блока её
@@ -21183,6 +21187,9 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         // и внепоточных (`:7718`, `:7722`).
         let built = if copy.tag == "img" {
             grouped(image(&copy), &copy.style)
+        } else if copy.style.display == Some(Display::ListItem) {
+            // CSS Lists 3 §2: a floated list item keeps its marker.
+            grouped(list_item::render_with_style(&copy, inherited, &merged, opts), &copy.style)
         } else {
             grouped(
                 styled_div_with(&copy, &merged)
