@@ -1361,7 +1361,9 @@ pending/generation/cancellation/reconciliation guarantees остаются не�
 acceptance общего транспорта; из неё НЕ следует, что подтверждённый путь
 доставки объясняет каждый случай зависшего ответа (см. ниже). **Acceptance будущего fix:** automated transport/lifecycle tests +
 Windows CEF runtime gate.
-**Windows runtime merge gate:** required for a later functional fix; diagnostics alone do not assert a fix.
+**Windows runtime merge gate:** not required for the current bounded diagnostic phase; diagnostics alone do not assert a fix.
+**Later functional fix gate:** required Windows CEF runtime merge gate. Before any behavioral implementation, restore the declaration above to `required` and provide exact-candidate runtime evidence; pending, teardown and reconciliation guarantees remain unaccepted.
+**Diagnostic acceptance:** automated boundary/privacy/retention tests before merge; post-merge production observation by the deployment owner, correlated with native BR-31 pump evidence. Observation does not close BR-24 or satisfy the later functional gate.
 
 Windows acceptance PR #13 воспроизвёл 3 раза из 5: mutating call
 `hooks:set-plugin-approval` завершился host-side, approval store был записан и
