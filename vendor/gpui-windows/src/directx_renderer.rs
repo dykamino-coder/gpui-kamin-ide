@@ -1,3 +1,5 @@
+//! DirectX rendering, device recovery and device-bound effect caches.
+
 use std::{
     collections::HashMap,
     slice,
@@ -45,6 +47,7 @@ pub(crate) struct DirectXRenderer {
     globals: DirectXGlobalElements,
     pipelines: DirectXRenderPipelines,
     direct_composition: Option<DirectComposition>,
+    disable_direct_composition: bool,
     font_info: &'static FontInfo,
     /// KaminIDE patch: скретч backdrop blur (см. draw_surfaces).
     blur: BlurScratch,
@@ -267,7 +270,10 @@ fn blur_down_pass(
     update_buffer(
         dc,
         globals[0].as_ref().unwrap(),
-        &[global_params(font_info, [dest.width as f32, dest.height as f32])],
+        &[global_params(
+            font_info,
+            [dest.width as f32, dest.height as f32],
+        )],
     )?;
     let quad = BlurQuad {
         bounds: [0.0, 0.0, dest.width as f32, dest.height as f32],
@@ -452,6 +458,7 @@ impl DirectXRenderer {
             globals,
             pipelines,
             direct_composition,
+            disable_direct_composition,
             font_info: Self::get_font_info(),
             blur: BlurScratch::default(),
             group_target: None,
@@ -466,17 +473,17 @@ impl DirectXRenderer {
 
     /// KaminIDE patch: raw ID3D11Device окна (AddRef) — по нему открывается
     /// общий handle текстуры от CEF.
-    pub fn d3d_device_raw(&self) -> *mut std::ffi::c_void {
+    pub fn d3d_device_raw(&self) -> Option<*mut std::ffi::c_void> {
         use windows::core::Interface;
-        self.dev().device.clone().into_raw()
+        Some(self.devices.as_ref()?.device.clone().into_raw())
     }
 
     /// KaminIDE patch: raw ID3D11DeviceContext окна (AddRef). Нужен, чтобы
     /// скопировать кадр CEF в свою текстуру на ТОМ ЖЕ потоке, где идёт
     /// отрисовка: контекст D3D11 не потокобезопасен.
-    pub fn d3d_context_raw(&self) -> *mut std::ffi::c_void {
+    pub fn d3d_context_raw(&self) -> Option<*mut std::ffi::c_void> {
         use windows::core::Interface;
-        self.dev().device_context.clone().into_raw()
+        Some(self.devices.as_ref()?.device_context.clone().into_raw())
     }
 
     /// KaminIDE patch: положить чужую текстуру D3D11 в атлас (кадр CEF).
@@ -568,80 +575,6 @@ impl DirectXRenderer {
         })
     }
 
-    fn handle_device_lost_impl(&mut self, directx_devices: &DirectXDevices) -> Result<()> {
-        let disable_direct_composition = self.direct_composition.is_none();
-
-        unsafe {
-            #[cfg(debug_assertions)]
-            if let Some(devices) = &self.devices {
-                report_live_objects(&devices.device)
-                    .context("Failed to report live objects after device lost")
-                    .log_err();
-            }
-
-            self.resources.take();
-            if let Some(devices) = &self.devices {
-                devices.device_context.OMSetRenderTargets(None, None);
-                devices.device_context.ClearState();
-                devices.device_context.Flush();
-                #[cfg(debug_assertions)]
-                report_live_objects(&devices.device)
-                    .context("Failed to report live objects after device lost")
-                    .log_err();
-            }
-
-            self.direct_composition.take();
-            self.devices.take();
-        }
-
-        let devices = DirectXRendererDevices::new(directx_devices, disable_direct_composition)
-            .context("Recreating DirectX devices")?;
-        let resources = DirectXResources::new(
-            &devices,
-            self.width,
-            self.height,
-            self.hwnd,
-            disable_direct_composition,
-        )
-        .context("Creating DirectX resources")?;
-        let globals = DirectXGlobalElements::new(&devices.device)
-            .context("Creating DirectXGlobalElements")?;
-        let pipelines = DirectXRenderPipelines::new(&devices.device)
-            .context("Creating DirectXRenderPipelines")?;
-
-        let direct_composition = if disable_direct_composition {
-            None
-        } else {
-            let composition =
-                DirectComposition::new(devices.dxgi_device.as_ref().unwrap(), self.hwnd)?;
-            composition.set_swap_chain(&resources.swap_chain)?;
-            Some(composition)
-        };
-
-        self.atlas
-            .handle_device_lost(&devices.device, &devices.device_context);
-
-        unsafe {
-            devices
-                .device_context
-                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
-        }
-        self.devices = Some(devices);
-        self.resources = Some(resources);
-        self.globals = globals;
-        self.pipelines = pipelines;
-        self.direct_composition = direct_composition;
-        // KaminIDE patch: текстуры размытия/групп и блендеры принадлежали
-        // потерянному устройству — создаются заново по требованию.
-        self.blur = BlurScratch::default();
-        self.group_target = None;
-        self.group_target_tex = None;
-        self.blend_premultiplied = None;
-        self.blend_replace = None;
-        self.skip_draws = true;
-        Ok(())
-    }
-
     /// KaminIDE patch: устройства окна (upstream держит их в `Option` на
     /// время пересоздания после device lost).
     fn dev(&self) -> &DirectXRendererDevices {
@@ -687,6 +620,7 @@ impl DirectXRenderer {
             // and so likely do not have the textures anymore that are required for drawing
             return Ok(());
         }
+        self.ensure_drawable_resources()?;
         // KaminIDE patch (#76): буфер свапчейна занят компоузером (DWM/RDP
         // ещё кодирует прошлый кадр) — НЕ рисовать и НЕ блокироваться:
         // пропускаем кадр и просим низкоприоритетный WM_PAINT — он придёт
@@ -705,11 +639,8 @@ impl DirectXRenderer {
             let wait = unsafe { WaitForSingleObject(gate.0, 0) };
             if wait == WAIT_TIMEOUT {
                 unsafe {
-                    let _ = windows::Win32::Graphics::Gdi::InvalidateRect(
-                        Some(self.hwnd),
-                        None,
-                        false,
-                    );
+                    let _ =
+                        windows::Win32::Graphics::Gdi::InvalidateRect(Some(self.hwnd), None, false);
                 }
                 return Ok(());
             }
@@ -732,7 +663,10 @@ impl DirectXRenderer {
             MipLevels: 1,
             ArraySize: 1,
             Format: RENDER_TARGET_FORMAT,
-            SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
             Usage: D3D11_USAGE_STAGING,
             BindFlags: 0,
             CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
@@ -745,7 +679,11 @@ impl DirectXRenderer {
             .as_ref()
             .context("render target missing")?;
         let mut staging: Option<ID3D11Texture2D> = None;
-        unsafe { devices.device.CreateTexture2D(&desc, None, Some(&mut staging))? };
+        unsafe {
+            devices
+                .device
+                .CreateTexture2D(&desc, None, Some(&mut staging))?
+        };
         let staging = staging.context("staging texture")?;
         let ctx = &devices.device_context;
         unsafe { ctx.CopyResource(&staging, render_target) };
@@ -777,6 +715,7 @@ impl DirectXRenderer {
         scene: &Scene,
         background_appearance: WindowBackgroundAppearance,
     ) -> Result<()> {
+        self.ensure_drawable_resources()?;
         self.pre_draw(&match background_appearance {
             WindowBackgroundAppearance::Opaque => [1.0f32; 4],
             _ => [0.0f32; 4],
@@ -1021,8 +960,8 @@ impl DirectXRenderer {
             poly_count: 0,
             pad2: [0.0; 2],
             poly: [[0.0; 4]; 4],
-        mask_rect: [0.0; 4],
-        mask_clip: [0.0; 4],
+            mask_rect: [0.0; 4],
+            mask_clip: [0.0; 4],
         };
         self.pipelines
             .blur_pipeline
@@ -1080,7 +1019,9 @@ impl DirectXRenderer {
         {
             self.blur.down.clear();
             for (w, h) in sizes {
-                self.blur.down.push(create_blur_texture(&device, w, h, true)?);
+                self.blur
+                    .down
+                    .push(create_blur_texture(&device, w, h, true)?);
             }
         }
         self.ensure_blur_globals(&device)?;
@@ -1164,7 +1105,10 @@ impl DirectXRenderer {
         update_buffer(
             device_context,
             self.globals.global_params_buffer.as_ref().unwrap(),
-            &[global_params(self.font_info, [viewport.Width, viewport.Height])],
+            &[global_params(
+                self.font_info,
+                [viewport.Width, viewport.Height],
+            )],
         )?;
         unsafe {
             device_context.RSSetViewports(Some(slice::from_ref(&viewport)));
@@ -1259,38 +1203,40 @@ impl DirectXRenderer {
     pub(crate) fn resize(&mut self, new_size: Size<DevicePixels>) -> Result<()> {
         let width = new_size.width.0.max(1) as u32;
         let height = new_size.height.0.max(1) as u32;
-        if self.width == width && self.height == height {
+        if self.width == width && self.height == height && self.ensure_drawable_resources().is_ok()
+        {
             return Ok(());
         }
         self.width = width;
         self.height = height;
 
-        // Clear the render target before resizing
+        self.resize_with(|resources, devices| {
+            unsafe {
+                resources
+                    .swap_chain
+                    .ResizeBuffers(
+                        BUFFER_COUNT as u32,
+                        width,
+                        height,
+                        RENDER_TARGET_FORMAT,
+                        DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT,
+                    )
+                    .context("Failed to resize swap chain")?;
+            }
+            resources.recreate_resources(devices, width, height)
+        })
+    }
+
+    fn resize_with(
+        &mut self,
+        recreate: impl FnOnce(&mut DirectXResources, &DirectXRendererDevices) -> Result<()>,
+    ) -> Result<()> {
         let devices = self.devices.as_ref().context("devices missing")?;
         unsafe { devices.device_context.OMSetRenderTargets(None, None) };
         let resources = self.resources.as_mut().context("resources missing")?;
         resources.render_target.take();
         resources.render_target_view.take();
-
-        // Resizing the swap chain requires a call to the underlying DXGI adapter, which can return the device removed error.
-        // The app might have moved to a monitor that's attached to a different graphics device.
-        // When a graphics device is removed or reset, the desktop resolution often changes, resulting in a window size change.
-        // But here we just return the error, because we are handling device lost scenarios elsewhere.
-        unsafe {
-            resources
-                .swap_chain
-                .ResizeBuffers(
-                    BUFFER_COUNT as u32,
-                    width,
-                    height,
-                    RENDER_TARGET_FORMAT,
-                    // KaminIDE patch (#76): флаги обязаны совпадать с create.
-                    DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT,
-                )
-                .context("Failed to resize swap chain")?;
-        }
-
-        resources.recreate_resources(devices, width, height)?;
+        recreate(resources, devices)?;
 
         unsafe {
             devices
@@ -1661,7 +1607,13 @@ impl DirectXRenderer {
         let copy_srv = {
             let copy = self.blur.copy.as_ref().unwrap();
             unsafe {
-                dc.CopyResource(&copy.texture, self.res().render_target.as_ref().context("render target missing")?);
+                dc.CopyResource(
+                    &copy.texture,
+                    self.res()
+                        .render_target
+                        .as_ref()
+                        .context("render target missing")?,
+                );
             }
             copy.srv.clone()
         };
@@ -1767,7 +1719,13 @@ impl DirectXRenderer {
         let copy_srv = {
             let copy = self.blur.copy.as_ref().unwrap();
             unsafe {
-                dc.CopyResource(&copy.texture, self.res().render_target.as_ref().context("render target missing")?);
+                dc.CopyResource(
+                    &copy.texture,
+                    self.res()
+                        .render_target
+                        .as_ref()
+                        .context("render target missing")?,
+                );
             }
             copy.srv.clone()
         };
@@ -1895,7 +1853,13 @@ impl DirectXRenderer {
             unsafe {
                 match self.group_target_tex.as_ref() {
                     Some(tex) => dc.CopyResource(&copy.texture, tex),
-                    None => dc.CopyResource(&copy.texture, self.res().render_target.as_ref().context("render target missing")?),
+                    None => dc.CopyResource(
+                        &copy.texture,
+                        self.res()
+                            .render_target
+                            .as_ref()
+                            .context("render target missing")?,
+                    ),
                 }
                 dc.PSSetShaderResources(2, Some(&copy.srv));
             }
@@ -2046,14 +2010,11 @@ impl DirectXResources {
         //低-приоритетным WM_PAINT ПОСЛЕ обработки ввода.
         let frame_gate = unsafe {
             use windows::core::Interface;
-            swap_chain
-                .cast::<IDXGISwapChain2>()
-                .ok()
-                .and_then(|sc2| {
-                    sc2.SetMaximumFrameLatency(1).ok()?;
-                    let h = sc2.GetFrameLatencyWaitableObject();
-                    (!h.is_invalid()).then_some(FrameLatencyGate(h))
-                })
+            swap_chain.cast::<IDXGISwapChain2>().ok().and_then(|sc2| {
+                sc2.SetMaximumFrameLatency(1).ok()?;
+                let h = sc2.GetFrameLatencyWaitableObject();
+                (!h.is_invalid()).then_some(FrameLatencyGate(h))
+            })
         };
 
         let (
@@ -2214,7 +2175,6 @@ impl DirectComposition {
         }
         Ok(())
     }
-
 }
 
 impl DirectXGlobalElements {
@@ -3351,3 +3311,8 @@ mod dxgi {
         ))
     }
 }
+
+mod recovery;
+
+#[cfg(test)]
+mod recovery_tests;
