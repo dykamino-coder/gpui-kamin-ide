@@ -1,22 +1,80 @@
-# Правка resvg для KaminIDE: feDisplacementMap
+# Правки resvg для KaminIDE
 #
-# Зачем. Два дефекта примитива `feDisplacementMap`, из-за которых он всегда
-# давал пустой выход (вся семья `tainting-*` в WPT):
+# База: upstream linebender/resvg main 77b12f4951a7b75d759c42e8c9497cff7c839c3c
+# (версия крейтов 0.48.1 + исправления после тега v0.48.1: регионы цепочки
+# фильтров #1144, plus-lighter/lighter #1142, корневой transform после viewBox
+# #1085, наследование gradientTransform/patternTransform через href #1135,
+# dominant-baseline в tspan #1086, bbox нарезанного <image> #1077, ядро
+# feMorphology #1120, RTL/dx/dy #1145 и др.). Вендорены оба крейта:
+# vendor/resvg (с правками ниже) и vendor/usvg (без правок, ровно upstream) —
+# resvg из main требует новых вариантов перечислений usvg (BlendMode::PlusLighter,
+# CompositeOperator::Lighter), поэтому крейты двигаются вместе. Раскладка —
+# как у пакета crates.io (нормализованный Cargo.toml, Cargo.toml.orig):
+# манифесты upstream после v0.48.1 не менялись, менялся только src/.
 #
-# 1. Карта смещения приходит ПРЕМУЛЬТИПЛИЦИРОВАННОЙ, а `displacement_map::apply`
-#    по своему контракту ждёт unpremultiplied — как и соседние примитивы,
-#    которые демультиплексируют вход сами.
-# 2. `scale_coordinates(fe.scale(), fe.scale(), ts)` домножает на масштаб
-#    дважды: `displacement_map::apply` умножает на `fe.scale()` сам. Смещение
-#    улетало за пределы региона, и примитив возвращал пустой холст.
+# Правки (все — наши; upstream main ни одну из них не исправил, feDisplacementMap
+# открыт как linebender/resvg#1019):
 #
-# Как накатывать при обновлении вендора:
+# 1. feDisplacementMap (src/filter/mod.rs, apply_displacement_map): карта
+#    смещения приходит ПРЕМУЛЬТИПЛИЦИРОВАННОЙ, а displacement_map::apply ждёт
+#    unpremultiplied — демультиплицируем, как соседние примитивы; и
+#    scale_coordinates(fe.scale(), ...) домножал масштаб второй раз
+#    (displacement_map::apply умножает на fe.scale() сам) — смещение улетало
+#    за регион, выход был пустым (вся семья WPT `tainting-*`).
+# 2. feConvolveMatrix (src/filter/convolve_matrix.rs): bias умножается на
+#    ОГРАНИЧЕННУЮ альфу результата (Filter Effects 1 §feConvolveMatrix).
+# 3. feColorMatrix (src/filter/color_matrix.rs): результат округляется до
+#    ближайшего байта вместо усечения (CSS Color 4 §5.1).
+# 4. <pattern> (src/path.rs, pattern_quality): при отображении плитки на
+#    устройство 1:1 сэмплирование Nearest вместо Bicubic — без размытия границ
+#    ячеек (WPT css-transforms `svg-matrix-*`).
+#
+# Как накатывать при обновлении вендора: 3-way merge (база — дерево
+# предыдущей upstream-ревизии, ours — vendor/, theirs — новая ревизия), либо
 #   cd vendor/resvg && patch -p1 -l < ../resvg-kaminide.patch
-# Проверено на 0.45.1 и 0.48.1 — место правки в обеих версиях одинаковое.
+# Ниже — полный diff vendor/resvg относительно upstream 77b12f49.
 
+diff --git a/src/filter/color_matrix.rs b/src/filter/color_matrix.rs
+index 3e00148..0583fa8 100644
+--- a/src/filter/color_matrix.rs
++++ b/src/filter/color_matrix.rs
+@@ -1,3 +1,5 @@
++//! Quantize color-matrix results without a systematic downward color bias.
++
+ // Copyright 2020 the Resvg Authors
+ // SPDX-License-Identifier: Apache-2.0 OR MIT
+ 
+@@ -106,5 +108,8 @@ fn to_normalized_components(pixel: RGBA8) -> (f32, f32, f32, f32) {
+ 
+ #[inline]
+ fn from_normalized(c: f32) -> u8 {
+-    (f32_bound(0.0, c, 1.0) * 255.0) as u8
++    // CSS Color 4 section 5.1: reducing calculated RGB precision rounds to
++    // the nearest integer, with ties toward positive infinity. The filter
++    // matrix is evaluated before this conversion (Filter Effects 1 section 9.6).
++    (f32_bound(0.0, c, 1.0) * 255.0).round() as u8
+ }
+diff --git a/src/filter/convolve_matrix.rs b/src/filter/convolve_matrix.rs
+index bd14dfe..f7b7997 100644
+--- a/src/filter/convolve_matrix.rs
++++ b/src/filter/convolve_matrix.rs
+@@ -82,7 +82,10 @@ pub fn apply(matrix: &ConvolveMatrix, src: ImageRefMut) {
+         let bounded_new_a = f32_bound(0.0, new_a, 1.0);
+ 
+         let calc = |x| {
+-            let x = x / matrix.divisor().get() + matrix.bias() * new_a;
++            // KaminIDE patch: bias умножается на ОГРАНИЧЕННУЮ альфу
++            // результата (SVG Filter Effects §feConvolveMatrix:
++            // «… / divisor + bias * ALPHA»), не на сырую сумму.
++            let x = x / matrix.divisor().get() + matrix.bias() * bounded_new_a;
+ 
+             let x = if matrix.preserve_alpha() {
+                 f32_bound(0.0, x, 1.0) * bounded_new_a
+diff --git a/src/filter/mod.rs b/src/filter/mod.rs
+index 28f92f9..1c87e8a 100644
 --- a/src/filter/mod.rs
 +++ b/src/filter/mod.rs
-@@ -957,11 +957,18 @@
+@@ -976,11 +976,18 @@ fn apply_displacement_map(
      input2: Image,
  ) -> Result<Image, Error> {
      let pixmap1 = input1.into_color_space(cs)?.take()?;
@@ -37,11 +95,8 @@
          Some(v) => v,
          None => return Ok(Image::from_image(pixmap1, cs)),
      };
-
-# Правка 2: узор (`<pattern>`) при отображении плитки на устройство 1:1
-# сэмплируется Nearest вместо Bicubic — без размытия границ ячеек
-# (WPT css-transforms `svg-matrix-*`; см. `pattern_quality` в src/path.rs).
-
+diff --git a/src/path.rs b/src/path.rs
+index c11349a..16b55ea 100644
 --- a/src/path.rs
 +++ b/src/path.rs
 @@ -61,7 +61,7 @@ pub fn fill_path(
