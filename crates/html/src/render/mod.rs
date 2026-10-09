@@ -78,6 +78,10 @@ pub(crate) use gpui::{
 };
 pub(crate) use crate::paint::stacking::*;
 pub(crate) use crate::paint::decorations::*;
+pub(crate) use crate::paint::decorations::gradient_stripes::*;
+pub(crate) use crate::paint::decorations::backdrop::*;
+pub(crate) use crate::paint::decorations::border_shape::*;
+pub(crate) use crate::paint::decorations::shadows::*;
 pub(crate) mod box_div;
 pub(crate) use crate::render::box_div::*;
 pub(crate) mod classify;
