@@ -3,8 +3,6 @@
 use crate::dom::Node;
 use crate::render::*;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
-use gpui::{Styled, px};
 
 pub(crate) fn measure_font(c: &Computed, opts: &RenderOpts) -> gpui::Font {
     let mut font = opts.text.font();
@@ -90,26 +88,6 @@ pub(super) fn text_id(text: &str) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     text.hash(&mut h);
     h.finish()
-}
-
-/// Внешний отступ на обёртке: то же, что делает `apply`, но только поля.
-fn apply_margin(d: gpui::Div, c: &Computed) -> gpui::Div {
-    let mut d = d;
-    for (val, side) in [
-        (c.margin.top, 0u8),
-        (c.margin.right, 1),
-        (c.margin.bottom, 2),
-        (c.margin.left, 3),
-    ] {
-        let Some(Len::Px(v)) = val else { continue };
-        d = match side {
-            0 => d.mt(px(v)),
-            1 => d.mr(px(v)),
-            2 => d.mb(px(v)),
-            _ => d.ml(px(v)),
-        };
-    }
-    d
 }
 
 /// Схлопывание пробелов для тени — той же формы, что и в абзаце.

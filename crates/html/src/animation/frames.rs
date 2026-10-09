@@ -33,7 +33,7 @@ pub(crate) fn transitioned(e: &Element, inherited: &Computed, opts: &RenderOpts)
     });
     Some(
         crate::transition::Transition::new(
-            gpui::ElementId::Integer(e.node_id as u64),
+            gpui::ElementId::Integer(e.node_id),
             seconds,
             build,
         )

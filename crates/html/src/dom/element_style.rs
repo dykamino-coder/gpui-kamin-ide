@@ -39,11 +39,10 @@ pub(super) fn apply_direction(style: &mut Computed, tag: &str, attrs: &[(String,
                 style.rtl = Some(true)
             }
         }
-        "ltr" => {
-            if style.rtl.is_none() {
+        "ltr"
+            if style.rtl.is_none() => {
                 style.rtl = Some(false)
             }
-        }
         // `dir="auto"` — сторону выбирает первый сильный знак текста; это
         // делает разбор двунаправленности сам, поэтому здесь ничего не ставим.
         _ => {}

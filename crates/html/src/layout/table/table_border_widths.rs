@@ -18,7 +18,7 @@ pub(super) fn resolve(
 ) -> (HashMap<u64, [f32; 4]>, [f32; 4]) {
     let collapse_cells_pre = e.style.border_collapse == Some(true)
         || (e.style.border_collapse.is_none() && e.attr("rules").is_some());
-    let px_of_pre = |l: Option<Len>| crate::text::metrics::spacing_px(l, &table_family, table_font);
+    let px_of_pre = |l: Option<Len>| crate::text::metrics::spacing_px(l, table_family, table_font);
     let tb = e.style.borders();
     let bw_pre = [
         px_of_pre(tb.top),

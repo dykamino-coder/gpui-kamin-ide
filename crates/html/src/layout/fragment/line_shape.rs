@@ -161,7 +161,7 @@ fn line_text(nodes: &[Node]) -> Option<String> {
                     let b = s.borders();
                     if !e.inline
                         || s.display.is_some()
-                        || out_of_flow(&s)
+                        || out_of_flow(s)
                         // Относительный сдвиг куска строку не меняет (CSS 2.1
                         // §9.4.3: «after laying out … shifted»), рисует его копия
                         // (`text-box-trim-multicol-002-ref`: `<span
@@ -227,8 +227,8 @@ fn line_text(nodes: &[Node]) -> Option<String> {
 /// Мера блока со СТРОЧНЫМ содержимым по строкам (css-break-3 §4.3: разрыв
 /// «between line boxes» — законная точка класса B; §4.4 `orphans`/`widows`).
 /// Высота — строки × высота строки; точки разреза — границы строк, кроме
-/// первых `orphans` и последних `widows`. Blink: `inline_layout_algorithm.cc`
-/// + `BreakBeforeChildIfNeeded` для строк (`block_layout_algorithm.cc`
+/// первых `orphans` и последних `widows`. Blink: `inline_layout_algorithm.cc` +
+/// `BreakBeforeChildIfNeeded` для строк (`block_layout_algorithm.cc`
 /// `HandleInflow` → `IsBreakInside` по строкам). Только при включённом
 /// контексте (`with_lines`) и известной ширине колонки; иначе `None`, и мера
 /// идёт прежним путём (сплошной строчный набор — монолит).

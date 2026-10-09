@@ -46,11 +46,10 @@ impl Computed {
         {
             return None;
         }
-        if let Some((x, y)) = self.translate {
-            if !matches!((x, y), (Len::Px(_), Len::Px(_))) {
+        if let Some((x, y)) = self.translate
+            && !matches!((x, y), (Len::Px(_), Len::Px(_))) {
                 return None;
             }
-        }
         self.transform
             .as_ref()?
             .pure_px_shift()

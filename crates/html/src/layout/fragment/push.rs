@@ -17,14 +17,14 @@ use crate::render::{is_blank, out_of_flow};
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 
-/// Самая внешняя коробка, начинающаяся ровно в `a` от верха `c`, — перед
-/// ней встаёт распорка роста (`grow_pushed`). Смещения детей — той же
-/// арифметикой, что в `shape_full`: `lead` = схлопнутое поле, у первого
-/// без отбивки поле уходит сквозь верх, внепоточный — нулевая запись, ряд
-/// flex без переноса — все дети с верха. Сетка, таблица, ряды — без
-/// спуска, как там; таблица по тегу — рядами `table_shape`
-/// (`pushed_cell_at`). Текст или строчный среди детей — у `shape_full`
-/// отказ от спуска, и здесь тоже.
+// Самая внешняя коробка, начинающаяся ровно в `a` от верха `c`, — перед
+// ней встаёт распорка роста (`grow_pushed`). Смещения детей — той же
+// арифметикой, что в `shape_full`: `lead` = схлопнутое поле, у первого
+// без отбивки поле уходит сквозь верх, внепоточный — нулевая запись, ряд
+// flex без переноса — все дети с верха. Сетка, таблица, ряды — без
+// спуска, как там; таблица по тегу — рядами `table_shape`
+// (`pushed_cell_at`). Текст или строчный среди детей — у `shape_full`
+// отказ от спуска, и здесь тоже.
 thread_local! {
     /// Щуп `pushed_box_at` ищет коробку под ПРИНУДИТЕЛЬНЫЙ разрыв (`grow_pushed`).
     static PUSH_FORCED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
@@ -82,11 +82,10 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
                 continue;
             };
             let start = top + r0 + kmt;
-            if a > start - 0.01 && a < start + s.0 - 0.01 {
-                if let Some(id) = pushed_box_at(k, a - start, depth - 1) {
+            if a > start - 0.01 && a < start + s.0 - 0.01
+                && let Some(id) = pushed_box_at(k, a - start, depth - 1) {
                     return Some(id);
                 }
-            }
         }
         return None;
     }
@@ -168,11 +167,10 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
         if row_nowrap {
             // Элементы ряда стоят бок о бок с верха; точка внутри одного
             // из них — его собственная (объединение точек, `shape_full`).
-            if !oof && a > top + 0.01 && a < top + h - 0.01 {
-                if let Some(id) = pushed_box_at(k, a - top, depth - 1) {
+            if !oof && a > top + 0.01 && a < top + h - 0.01
+                && let Some(id) = pushed_box_at(k, a - top, depth - 1) {
                     return Some(id);
                 }
-            }
             continue;
         }
         // Та же арифметика, что в `shape_full`: у сетки поля не
@@ -401,14 +399,13 @@ fn spacer_before(c: &mut Element, id: u64, grow: f32) -> bool {
         // `margin-bottom: 50px`, обе зелёные).
         let pi = c.children[..i].iter().rposition(|n| !is_blank(n));
         let prev_mb = match pi.map(|j| &c.children[j]) {
-            Some(Node::Element(k)) => k.style.margin.bottom.clone(),
+            Some(Node::Element(k)) => k.style.margin.bottom,
             _ => None,
         };
-        if prev_mb.is_some() {
-            if let Some(Node::Element(k)) = pi.map(|j| &mut c.children[j]) {
+        if prev_mb.is_some()
+            && let Some(Node::Element(k)) = pi.map(|j| &mut c.children[j]) {
                 k.style.margin.bottom = None;
             }
-        }
         let mut style = crate::style::computed::Computed::default();
         style.height = Some(Len::Px(grow));
         style.margin.bottom = prev_mb;
@@ -455,11 +452,10 @@ fn spacer_before(c: &mut Element, id: u64, grow: f32) -> bool {
         return true;
     }
     for n in c.children.iter_mut() {
-        if let Node::Element(k) = n {
-            if spacer_before(k, id, grow) {
+        if let Node::Element(k) = n
+            && spacer_before(k, id, grow) {
                 return true;
             }
-        }
     }
     false
 }

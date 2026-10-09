@@ -945,8 +945,8 @@ pub(super) fn table_rows(
                 if let (Some(rects), Some(el)) = (
                     col_rects.get(i).and_then(|r| r.clone()),
                     col_els.get(i).copied().flatten(),
-                ) {
-                    if !probed.contains(&el.node_id) {
+                )
+                    && !probed.contains(&el.node_id) {
                         probed.push(el.node_id);
                         d = d.child(crate::layout::table::paint::cell_rect_probe(
                             rects,
@@ -955,7 +955,6 @@ pub(super) fn table_rows(
                             cell_border,
                         ));
                     }
-                }
             }
             // Та же проба для слоя ГРУППЫ: её коробка идёт «from the left
             // edge of its leftmost column to the right edge of its rightmost
@@ -966,8 +965,8 @@ pub(super) fn table_rows(
                 if let (Some(rects), Some(el)) = (
                     grp_rects.get(i).and_then(|r| r.clone()),
                     grp_els.get(i).copied().flatten(),
-                ) {
-                    if !probed_group.contains(&el.node_id) {
+                )
+                    && !probed_group.contains(&el.node_id) {
                         probed_group.push(el.node_id);
                         d = d.child(crate::layout::table::paint::cell_rect_probe(
                             rects,
@@ -976,7 +975,6 @@ pub(super) fn table_rows(
                             cell_border,
                         ));
                     }
-                }
             }
             // Кромки РЯДА (border на <tr>) — участник разбора сросшихся
             // конфликтов (CSS 2.1 §17.6.2.1: ячейка > ряд > группа >

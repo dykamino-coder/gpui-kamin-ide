@@ -94,7 +94,7 @@ pub fn space_transform_pieces(pieces: &mut [Piece]) {
     }
     // С конца: обычный пробел короче нулевого (1 байт против 3), и правка
     // впереди сдвигала бы смещения следующих правок того же куска.
-    edits.sort_by(|a, b| (b.0, b.1).cmp(&(a.0, a.1)));
+    edits.sort_by_key(|e| std::cmp::Reverse((e.0, e.1)));
     for (piece, at, sep) in edits {
         if let Piece::Text { text, style } = &mut pieces[piece] {
             let Some(old) = text[at..].chars().next() else {

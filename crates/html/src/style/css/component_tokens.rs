@@ -25,11 +25,11 @@ pub(super) fn complete(raw: &str) -> Cow<'_, str> {
                 return Cow::Borrowed(raw);
             };
             let closed =
-                end > at + 1 && raw[..end].ends_with(ch) && backslashes(&raw[..end - 1]) % 2 == 0;
+                end > at + 1 && raw[..end].ends_with(ch) && backslashes(&raw[..end - 1]).is_multiple_of(2);
             if !closed {
                 quote = Some(ch);
                 // A terminal backslash in a string contributes no character.
-                if backslashes(raw) % 2 != 0 {
+                if !backslashes(raw).is_multiple_of(2) {
                     content_end -= 1;
                 }
                 break;
@@ -43,7 +43,7 @@ pub(super) fn complete(raw: &str) -> Cow<'_, str> {
         }
         if super::at_url(&raw[at..]) && !raw[at + 4..].trim_start().starts_with(['\'', '"']) {
             let end = at + super::skip_url(&raw[at..]);
-            if !raw[..end].ends_with(')') || backslashes(&raw[..end - 1]) % 2 != 0 {
+            if !raw[..end].ends_with(')') || !backslashes(&raw[..end - 1]).is_multiple_of(2) {
                 stack.push(')');
             }
             at = end;
@@ -53,11 +53,10 @@ pub(super) fn complete(raw: &str) -> Cow<'_, str> {
             '(' => stack.push(')'),
             '[' => stack.push(']'),
             '{' => stack.push('}'),
-            ')' | ']' | '}' => {
-                if stack.pop() != Some(ch) {
+            ')' | ']' | '}'
+                if stack.pop() != Some(ch) => {
                     return Cow::Borrowed(raw);
                 }
-            }
             _ => {}
         }
         at += ch.len_utf8();

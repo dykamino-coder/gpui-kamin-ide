@@ -164,7 +164,7 @@ pub(crate) fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts:
     let lead = &text[..pos];
     let lead_w = if !vert
         && inherited.keep_spaces == Some(true)
-        && !lead.contains(|c: char| c == '\n' || c == '\r')
+        && !lead.contains(['\n', '\r'])
     {
         let space = crate::text::metrics::ch_ex_px(&family, font_px).0;
         let stop = match inherited.tab_size_len {

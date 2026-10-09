@@ -162,7 +162,7 @@ impl Render for Page {
                 .unwrap_or((false, false, false));
             let rtl = root_wm.2;
             let first = kamin_html::render::first_page_name(self.doc.nodes());
-            let boxes: std::rc::Rc<dyn Fn(usize, &str) -> PageBox> =
+            let boxes: PageBoxFn =
                 std::rc::Rc::new(move |i, name: &str| {
                     page_box(
                         kamin_html::css::page_decls_in(&rules, i, name, rtl),
@@ -303,20 +303,8 @@ fn read_stylesheet(file: &std::path::Path) -> String {
     enc.decode(&bytes).0.into_owned()
 }
 
-/// Обрезать снимок окна до логического прямоугольника (учёт плотности).
-fn crop_shot(shot: (u32, u32, Vec<u8>), win: (f32, f32), area: (f32, f32)) -> (u32, u32, Vec<u8>) {
-    let (w, h, bytes) = shot;
-    let sx = w as f32 / win.0.max(1.0);
-    let sy = h as f32 / win.1.max(1.0);
-    let cw = ((area.0 * sx).round() as u32).clamp(1, w);
-    let ch = ((area.1 * sy).round() as u32).clamp(1, h);
-    let mut out = Vec::with_capacity((cw * ch * 4) as usize);
-    for y in 0..ch {
-        let start = ((y * w) * 4) as usize;
-        out.extend_from_slice(&bytes[start..start + (cw * 4) as usize]);
-    }
-    (cw, ch, out)
-}
+/// Лист по номеру и имени страницы.
+type PageBoxFn = std::rc::Rc<dyn Fn(usize, &str) -> PageBox>;
 
 /// Вычисленная коробка страницы печатной пары.
 struct PageBox {
@@ -1477,7 +1465,7 @@ fn main() {
                     .update_window(window.into(), |_, window, _| {
                         use raw_window_handle::{HasWindowHandle, RawWindowHandle};
                         match window.window_handle().map(|h| h.as_raw()) {
-                            Ok(RawWindowHandle::Win32(handle)) => handle.hwnd.get() as isize,
+                            Ok(RawWindowHandle::Win32(handle)) => handle.hwnd.get(),
                             _ => 0,
                         }
                     })
@@ -1493,7 +1481,7 @@ fn main() {
                 .update_window(window.into(), |_, window, _| {
                     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
                     match window.window_handle().map(|h| h.as_raw()) {
-                        Ok(RawWindowHandle::Win32(handle)) => handle.hwnd.get() as isize,
+                        Ok(RawWindowHandle::Win32(handle)) => handle.hwnd.get(),
                         _ => 0,
                     }
                 })
@@ -1960,7 +1948,7 @@ fn main() {
                 let _ = std::fs::write("target/wpt-timing.txt", &timing);
             }
             let _ = std::fs::write(report_path.as_str(), report);
-            slow.sort_by(|a, b| b.0.cmp(&a.0));
+            slow.sort_by_key(|s| std::cmp::Reverse(s.0));
             let mut lines = String::new();
             for (ms, test) in &slow {
                 lines.push_str(&format!("{ms}|{test}\n"));

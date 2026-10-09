@@ -217,12 +217,12 @@ pub(crate) fn atom_piece(
     // следующий кусок наезжал на предыдущий ровно на его поле
     // (эталоны `fixed-table-layout-021..023`: `img{vertical-align:top}`
     // плюс `margin-left`).
-    let wrapped = match e.style.vertical_align {
+    let wrapped = matches!(
+        e.style.vertical_align,
         Some(crate::style::computed::Align::Start)
-        | Some(crate::style::computed::Align::End)
-        | Some(crate::style::computed::Align::Center) => true,
-        _ => false,
-    };
+            | Some(crate::style::computed::Align::End)
+            | Some(crate::style::computed::Align::Center)
+    );
     let original_margin = rotated_atom::margin(&e.style, inherited);
     let bare;
     let e = if wrapped {

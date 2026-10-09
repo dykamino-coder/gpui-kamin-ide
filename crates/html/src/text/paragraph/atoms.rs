@@ -297,7 +297,7 @@ impl Paragraph {
         // Знак-распорка несёт ПОЛЕ строчной коробки, а не трекинг: вычитать
         // его на конце строки нельзя — иначе коробка теряет своё правое поле
         // и выходит уже на целый em (`word-space-transform-010`).
-        if self.text[..end].chars().next_back() == Some('\u{feff}') {
+        if self.text[..end].ends_with('\u{feff}') {
             return px(0.);
         }
         let at = self.text[..end]

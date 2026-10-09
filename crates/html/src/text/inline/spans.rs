@@ -108,7 +108,7 @@ pub fn shift_spans(
                 Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
             );
         let dy = (!out_of_flow)
-            .then(|| style.vertical_shift_px)
+            .then_some(style.vertical_shift_px)
             .flatten()
             .or_else(|| {
                 // Единица шрифта разрешается ЗДЕСЬ: кегль и гарнитура куска

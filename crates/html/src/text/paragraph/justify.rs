@@ -986,7 +986,7 @@ pub(super) fn justify_ideograph(c: char) -> bool {
 /// (css-text-3 §7.3 `inter-character`, §7.3.1 cursive scripts).
 pub(super) fn cursive_script(c: char) -> bool {
     matches!(c as u32,
-        0x0600..=0x08FF | 0x07C0..=0x07FF | 0x1800..=0x18AF
+        0x0600..=0x08FF | 0x1800..=0x18AF
         | 0xFB50..=0xFDFF | 0xFE70..=0xFEFF | 0x10D00..=0x10D3F)
 }
 
@@ -1022,6 +1022,7 @@ pub(super) fn zero_width(ch: char) -> bool {
 /// * без U+3000 и с пропуском строк, где пробелы СОХРАНЯЮТСЯ (`pre`,
 ///   `pre-wrap`), — 1582, ровно baseline: +`line-break-anywhere-and-white-
 ///   space-004`, −`word-spacing-characters-002`.
+///
 /// То есть висение U+3000 требуют одни пары и запрещают другие: развилка не
 /// в знаке, а в том, чем кончается строка. Возвращать вместе с настоящим
 /// правилом Phase II (обрезка хвоста в САМОМ разборе строки, а не в подложке).

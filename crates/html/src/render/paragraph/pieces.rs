@@ -46,7 +46,7 @@ pub(crate) fn paragraph_pieces_routed(
     // level-context-007..012` (rtl, абсолют `display: inline`, текста в абзаце
     // НЕТ, все шесть 0.00) — гейт оставляет её на прежнем пути.
     let flow_text = has_flow_text(nodes);
-    let mut atom = |e: &Element| -> Option<inline::Piece> {
+    let atom = |e: &Element| -> Option<inline::Piece> {
         atom_piece(e, inherited, opts, flow_text)
     };
     // Каждому атому — признак, можно ли поставить его В СТРОКУ абзаца
@@ -97,7 +97,6 @@ pub(crate) fn paragraph_pieces_routed(
     // считает по готовому тексту байтовые смещения.
     inline::hyphenate_pieces(&mut pieces);
     inline::space_transform_pieces(&mut pieces);
-    let mut pieces = pieces;
     // Пойдут ли атомы В СТРОКУ (решение то же, что ниже у распорок атомов):
     // тогда атом — содержимое строки, и край для среза пробелов он обрывает.
     let atoms_in_line = {
@@ -209,10 +208,6 @@ pub(crate) fn paragraph_pieces_routed(
     // Межсловный интервал и отступ первой строки требуют строки из слов, а
     // единый текстовый блок их не умеет — поэтому решение принимается ДО
     // сборки блока, иначе оба свойства молча пропадали.
-    let word = match inherited.word_spacing {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
     // Отступ первой строки. Абсолютную часть разбор уже свёл к точкам, доля
     // же берётся от ширины содержащего блока и здесь ещё неизвестна — её
     // считает раскладка строк, когда ширина решена.
@@ -581,8 +576,6 @@ pub(crate) fn paragraph_pieces_routed(
     // спуск шрифта, а короб строки растёт до 1.2em вместо `line-height`
     // (§10.8). Замерено зондом `target/probe/atom-probe2.html`: при
     // `font: 100px/1 Ahem` короб 120, атом на +20.
-    let has_atom = pieces.iter().any(|p| matches!(p, inline::Piece::Atom(_)));
-    let em_base = opts.base_size();
     let mut render_text = |t: String, style: &Computed| -> AnyElement {
         // Стоячие знаки в вертикальном письме (`text-orientation: mixed`,
         // CJK): набор идёт вертикальными формами шрифта — возможность `vert`

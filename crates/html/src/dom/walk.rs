@@ -431,7 +431,7 @@ fn walk(
             // предварительного обхода области (css-lists-3
             // §instantiating-counters). Считается ЗДЕСЬ, до применения
             // директив: запись создаётся уже готовым числом.
-            let reversed_start = |nm: &str, counters: &mut crate::style::generated::counters::Counters| {
+            let reversed_start = |nm: &str, _counters: &mut crate::style::generated::counters::Counters| {
                 crate::style::generated::counters_scan::reversed_initial(
                     rules, vars, nm, handle, &me, path, sibs, level, spots, level_pos,
                 )

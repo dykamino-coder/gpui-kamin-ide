@@ -42,7 +42,7 @@ pub(super) fn css(
         0.0
     } else if rx == ry {
         local / rx
-    } else if quadrant % 2 == 0 {
+    } else if quadrant.is_multiple_of(2) {
         angle_at(rx, ry, local, quarter)
     } else {
         FRAC_PI_2 - angle_at(rx, ry, quarter - local, quarter)

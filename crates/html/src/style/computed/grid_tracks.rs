@@ -369,7 +369,7 @@ pub(super) fn auto_fill_max(v: &str) -> (bool, Option<f32>) {
     let Some(inner) = rest.find(')').map(|i| &rest[..i]) else {
         return (false, None);
     };
-    let hi = inner.splitn(2, ',').nth(1).unwrap_or("").trim();
+    let hi = inner.split_once(',').map(|x| x.1).unwrap_or("").trim();
     if hi == "auto" {
         return (true, None);
     }
@@ -555,7 +555,7 @@ pub(super) fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
         let t = t.trim();
         // Именованная линия перед дорожкой: `[side] 240px`. Имя не несёт
         // размера, поэтому просто отбрасывается — но НЕ вместе с дорожкой.
-        let t = t.trim_start_matches(|c| c == '[');
+        let t = t.trim_start_matches('[');
         let t = match t.find(']') {
             Some(at) => t[at + 1..].trim(),
             None => t,

@@ -72,7 +72,7 @@ pub(crate) fn parse_content(raw: &str) -> Option<Vec<ContentItem>> {
         // CSS Lists 3 §4.7: counter names and styles cannot be strings;
         // only counters()'s separator is a string argument.
         if matches!(name.as_str(), "counter" | "counters") {
-            let is_string = |a: &str| a.trim().starts_with(|c| c == '"' || c == '\'');
+            let is_string = |a: &str| a.trim().starts_with(['"', '\'']);
             let style_at = if name == "counter" { 1 } else { 2 };
             // CSS Lists 3 §4.1 and CSS Values 4 §4.2 exclude none, default
             // and CSS-wide keywords from <counter-name>. Compare decoded

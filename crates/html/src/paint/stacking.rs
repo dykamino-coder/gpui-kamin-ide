@@ -173,7 +173,7 @@ pub(crate) fn layered(
 /// auto создаёт контекст наложения и без `position` (css-flexbox-1 §4.3:
 /// «z-index values other than auto create a stacking context even if
 /// position is static»; `flex-item-z-ordering-001/002`).
-pub(crate) fn by_layer(mut nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
+pub(crate) fn by_layer(nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
     // Элемент на статической позиции переставлять НЕЛЬЗЯ: место в потоке и
     // есть его координата. `z-index` меняет только порядок отрисовки, а
     // перестановка меняла и раскладку — абсолютный блок с `z-index: -1`

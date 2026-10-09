@@ -513,8 +513,9 @@ pub enum BgClip {
 }
 
 /// `background-size`.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum BgSize {
+    #[default]
     Auto,
     Cover,
     Contain,
@@ -874,8 +875,3 @@ pub(super) fn parse_decor_thickness(t: &str) -> Option<DecorLen> {
     })
 }
 
-impl Default for BgSize {
-    fn default() -> Self {
-        BgSize::Auto
-    }
-}

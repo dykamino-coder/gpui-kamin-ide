@@ -680,7 +680,7 @@ impl Element for PageStack {
                 }
                 let Some(mask) = masks.get(p).cloned() else { continue };
                 for el in &mut self.icb[p] {
-                    window.with_content_mask(Some(mask.clone()), |window| {
+                    window.with_content_mask(Some(mask), |window| {
                         window.with_mask_scale(bounds.origin, s, |window| el.paint(window, cx))
                     });
                 }
@@ -691,7 +691,7 @@ impl Element for PageStack {
                 }
                 let Some(mask) = masks.get(p).cloned() else { continue };
                 for el in &mut self.fixed[p] {
-                    window.with_content_mask(Some(mask.clone()), |window| {
+                    window.with_content_mask(Some(mask), |window| {
                         window.with_mask_scale(bounds.origin, s, |window| el.paint(window, cx))
                     });
                 }
@@ -727,7 +727,7 @@ impl Element for PageStack {
         // четверть оборота оси сохраняет).
         for i in 0..pages {
             let g = self.geom(i);
-            if self.slot(i).is_none() || g.turn % 2 == 0 {
+            if self.slot(i).is_none() || g.turn.is_multiple_of(2) {
                 continue;
             }
             let (sx, sy) = self.sheet_origin(i);

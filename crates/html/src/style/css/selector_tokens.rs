@@ -52,11 +52,9 @@ fn escape(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> bool {
         if chars
             .peek()
             .is_some_and(|c| matches!(c, ' ' | '\t' | '\n' | '\r' | '\u{c}'))
-        {
-            if chars.next() == Some('\r') && chars.peek() == Some(&'\n') {
+            && chars.next() == Some('\r') && chars.peek() == Some(&'\n') {
                 chars.next();
             }
-        }
     }
     true
 }

@@ -621,7 +621,7 @@ impl Computed {
             // Слова укладки вынимаются из хвостовых частей, остаток — ширина
             // и вылет.
             let mut tail_repeat: Vec<String> = vec![];
-            let mut strip = |part: &str, reps: &mut Vec<String>| -> String {
+            let strip = |part: &str, reps: &mut Vec<String>| -> String {
                 let (found, rest): (Vec<&str>, Vec<&str>) = part
                     .split_whitespace()
                     .partition(|w| matches!(*w, "stretch" | "repeat" | "round" | "space"));
@@ -630,7 +630,6 @@ impl Computed {
             };
             let width = parts.get(1).map(|p| strip(p, &mut tail_repeat));
             let outset = parts.get(2).map(|p| strip(p, &mut tail_repeat));
-            drop(strip);
             if let Some(width) = width.filter(|w| !w.is_empty()) {
                 set("border-image-width", &width);
             }
@@ -643,7 +642,6 @@ impl Computed {
         } else {
             set(name, v);
         }
-        drop(set);
         // Запись хранится и БЕЗ источника: лонгхенды приходят в любом порядке,
         // и `border-image-slice` до `border-image-source` иначе выбрасывался —
         // источник, пришедший следом, получал срезы по умолчанию (вся

@@ -168,7 +168,7 @@ impl Element for GapRulePainter {
                 let (main, cross) = if stacked_vertically { (on_y, on_x) } else { (on_x, on_y) };
                 let gap_b = if stacked_vertically { spec.gap_x } else { spec.gap_y };
                 let lane_tracks = (spec.lines_extent == 2)
-                    .then(|| grid_tracks.as_ref())
+                    .then_some(grid_tracks.as_ref())
                     .flatten()
                     .map(|(c, r)| {
                         let t = if stacked_vertically { r.clone() } else { c.clone() };

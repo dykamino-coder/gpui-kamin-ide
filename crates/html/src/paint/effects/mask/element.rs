@@ -116,7 +116,7 @@ impl Element for MaskUse {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let mask = self.cell.borrow().clone();
+        let mask = *self.cell.borrow();
         window.with_content_mask(mask, |window| self.child.prepaint(window, cx));
     }
 
@@ -130,7 +130,7 @@ impl Element for MaskUse {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let mask = self.cell.borrow().clone();
+        let mask = *self.cell.borrow();
         window.with_content_mask(mask, |window| self.child.paint(window, cx));
     }
 }

@@ -14,14 +14,10 @@ impl Paragraph {
         let widths = self
             .text
             .char_indices()
-            .filter_map(|(at, ch)| {
-                (ch == SOFT_HYPHEN).then(|| {
-                    (
+            .filter(|&(_, ch)| ch == SOFT_HYPHEN).map(|(at, ch)| (
                         at + ch.len_utf8(),
                         self.suffix_width(&self.hyphen, at, window),
-                    )
-                })
-            })
+                    ))
             .collect();
         *self.hyphen_w.borrow_mut() = widths;
     }

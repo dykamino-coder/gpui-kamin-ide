@@ -118,7 +118,7 @@ impl Element for PhysicalAtomic {
         &mut self,
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
+        _bounds: Bounds<Pixels>,
         _state: &mut (),
         _prepaint: &mut (),
         window: &mut Window,

@@ -159,11 +159,8 @@ pub(super) fn resolve_attrs(key: &str, value: &str) -> String {
     }
     let mut out = String::with_capacity(value.len());
     let mut rest = value;
-    loop {
-        // ASCII-опускание не сдвигает байтов: индекс годен и для `rest`.
-        let Some(at) = rest.to_ascii_lowercase().find("attr(") else {
-            break;
-        };
+    // ASCII-опускание не сдвигает байтов: индекс годен и для `rest`.
+    while let Some(at) = rest.to_ascii_lowercase().find("attr(") {
         let after = &rest[at + 5..];
         let Some(close) = balanced_close(after) else {
             break;

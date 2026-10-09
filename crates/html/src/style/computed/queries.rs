@@ -214,7 +214,7 @@ impl Computed {
                 } else {
                     sh.color
                 };
-                (sh.clone(), colour)
+                (*sh, colour)
             })
             .collect()
     }

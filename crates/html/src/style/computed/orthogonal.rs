@@ -20,6 +20,8 @@ impl AxisSizes {
     }
 }
 
+// The variants are the CSS keywords `min-content`/`max-content`/`fit-content`.
+#[allow(clippy::enum_variant_names)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum InlineKeyword {
     MinContent,

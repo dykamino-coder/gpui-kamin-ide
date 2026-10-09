@@ -141,7 +141,7 @@ fn orient_image(
     let (w, h) = (s.width.0 as u32, s.height.0 as u32);
     let bytes = image.as_bytes(0)?;
     // 5..8 меняют оси местами — у развёрнутой картинки другой природный размер.
-    let swap = matches!(tag, 5 | 6 | 7 | 8);
+    let swap = matches!(tag, 5..=8);
     let (ow, oh) = if swap { (h, w) } else { (w, h) };
     let mut out = Vec::with_capacity((ow * oh * 4) as usize);
     for oy in 0..oh {
@@ -269,8 +269,8 @@ pub(super) fn svg_size(markup: &str) -> Intrinsic {
     }
 }
 
-/// Подставить корню SVG `viewBox` его `<view id="…">` (SVG 2 §8.2). Не SVG
-/// или вида нет — байты как есть.
+// Подставить корню SVG `viewBox` его `<view id="…">` (SVG 2 §8.2). Не SVG
+// или вида нет — байты как есть.
 
 pub(super) fn read_bytes(src: &str) -> Option<Vec<u8>> {
     if let Some(rest) = src.strip_prefix("data:") {

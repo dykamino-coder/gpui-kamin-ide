@@ -1,7 +1,7 @@
 //! Native atomic subtrees prepare in screen coordinates while surrounding text stays flat.
 //! Cancelling the text frame preserves enclosing CSS transforms and native hitboxes.
 use crate::text::vertical::{VT_CCW, VT_FRAME};
-use gpui::{Bounds, Pixels, TransformationMatrix, point, px, size};
+use gpui::{Bounds, Pixels, TransformationMatrix, point, size};
 
 pub(super) fn map(flat: Bounds<Pixels>, scale: f32) -> (Bounds<Pixels>, TransformationMatrix) {
     let Some(frame) = VT_FRAME.with(|frame| frame.get()) else {
@@ -55,6 +55,7 @@ pub(super) fn without_frame<R>(f: impl FnOnce() -> R) -> R {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::px;
 
     #[test]
     fn physical_nonsquare_box_matches_turned_flat_corners_at_fractional_origins() {

@@ -172,7 +172,7 @@ fn lang_matches(want: &str, me: &Ancestor, path: &[Ancestor]) -> bool {
         if range.is_empty() || range == "*" {
             return !lang.is_empty();
         }
-        extended_lang_filter(range, &lang)
+        extended_lang_filter(range, lang)
     })
 }
 

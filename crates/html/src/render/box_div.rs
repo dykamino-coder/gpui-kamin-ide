@@ -202,11 +202,10 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     }
     // `pointer-events: none` — элемент не реагирует на курсор, значит и слой
     // наведения к нему не применяется.
-    if c.pointer_events_none != Some(true) {
-        if let Some(h) = &e.hover {
+    if c.pointer_events_none != Some(true)
+        && let Some(h) = &e.hover {
             d = apply_hover(d, h);
         }
-    }
     // Обрезка контейнера (css-overflow-3/4): точная точка среза приходит
     // из бюджета строк ПРОШЛОГО кадра (interact::ClampCut) — низ N-й
     // считаемой строки, поднятый к верху пересечённого блока. Пока точки

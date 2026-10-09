@@ -2,9 +2,7 @@
 // owner: A
 
 use crate::dom::{Element, Node};
-use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::flex_lines::flex_gap_rules;
-use crate::layout::fragment::fragment_size::shape_full;
 use crate::render::out_of_flow;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
@@ -98,17 +96,6 @@ pub(crate) fn stacked_flex_tree(c: &Element, depth: u8) -> bool {
         Node::Element(k) => k.inline || stacked_flex_tree(k, depth - 1),
         _ => true,
     })
-}
-
-/// Мера блочного ребёнка для укладки колонок: высота с
-/// отбивками и рамками, поля и точки ЗАКОННОГО разреза
-/// (css-break-3 §4.3, класс A) — границы вложенных
-/// блочных детей, рекурсивно. Высота `auto` складывается
-/// из тех же детей со схлопыванием полей (CSS 2.1
-/// §8.3.1); строчное содержимое высоты не даёт — такой
-/// ребёнок мерить нечем, и весь стек идёт другим путём.
-fn shape(c: &Element, depth: u8) -> Option<(f32, f32, f32, Vec<(f32, f32)>)> {
-    shape_full(c, depth, ShapeCx::COLUMNS).map(|s| (s.0, s.1, s.2, s.3))
 }
 
 /// `contain: size` — монолит везде, где есть фрагментация (Blink

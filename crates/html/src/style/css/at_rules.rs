@@ -149,7 +149,7 @@ pub fn page_margins_in(
 
 /// Номера совпавших с листом правил по возрастанию (специфичность, порядок).
 fn matching_rules(rules: &[PageRule], index: usize, name: &str, rtl: bool) -> Vec<usize> {
-    let right = (index % 2 == 0) != rtl;
+    let right = index.is_multiple_of(2) != rtl;
     let mut hits: Vec<((u8, u8, u8), usize)> = Vec::new();
     for (order, r) in rules.iter().enumerate() {
         let spec = r

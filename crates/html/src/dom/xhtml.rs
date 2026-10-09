@@ -165,7 +165,7 @@ pub(super) fn expand_xhtml_self_closing(html: &str) -> std::borrow::Cow<'_, str>
                         }
                     } else {
                         let e = body
-                            .find(|c| c == '&' || c == '<')
+                            .find(['&', '<'])
                             .map(|e| if e == 0 { 1 } else { e })
                             .unwrap_or(body.len());
                         out.push_str(&body[..e]);

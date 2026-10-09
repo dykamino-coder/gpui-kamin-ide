@@ -201,8 +201,8 @@ pub(crate) fn canvas_layer(
         let mut clip = Computed::default();
         clip.clip_polygon = e.style.clip_polygon.clone();
         clip.clip_shape = e.style.clip_shape.clone();
-        clip.clip_inset = e.style.clip_inset.clone();
-        clip.clip_xywh = e.style.clip_xywh.clone();
+        clip.clip_inset = e.style.clip_inset;
+        clip.clip_xywh = e.style.clip_xywh;
         layer = grouped(
             div()
                 .absolute()

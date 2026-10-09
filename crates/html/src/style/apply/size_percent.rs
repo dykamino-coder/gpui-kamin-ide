@@ -19,7 +19,7 @@ pub(super) fn resolve(style: &Computed, value: Len, field: u8) -> Option<Len> {
     if matches!(field, 2 | 3) && percentage == 0.0 && length != 0.0 {
         return Some(Len::Px(length.max(0.0)));
     }
-    if field % 2 == 0
+    if field.is_multiple_of(2)
         || style.cb_height_def
         || style.root_box
         || matches!(style.position, Some(Position::Absolute | Position::Fixed))

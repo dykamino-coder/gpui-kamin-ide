@@ -175,7 +175,7 @@ fn purge_scroll_markers(nodes: &mut Vec<Node>) {
 /// внутри скроллера (`abs_ok`/`fixed_ok`): иначе его коробка раскладки
 /// лежит снаружи (`scroll-marker-005/006`), и его поддерево гасится.
 fn collect_scroll_markers(
-    nodes: &mut Vec<Node>,
+    nodes: &mut [Node],
     abs_ok: bool,
     fixed_ok: bool,
     out: &mut Vec<Element>,

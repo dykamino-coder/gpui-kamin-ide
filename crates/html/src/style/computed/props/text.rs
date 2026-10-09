@@ -416,11 +416,10 @@ impl Computed {
                                 f.all = true;
                             }
                             other => {
-                                if let Some(pct) = other.strip_suffix('%') {
-                                    if let Ok(n) = pct.parse::<f32>() {
+                                if let Some(pct) = other.strip_suffix('%')
+                                    && let Ok(n) = pct.parse::<f32>() {
                                         f.target = Some(n / 100.0);
                                     }
-                                }
                             }
                         }
                     }

@@ -406,7 +406,7 @@ pub(crate) fn multicol_column_stack(
             rule,
             rows,
             gap_items.clone(),
-            intrinsic_inline_size(&e.style, inherited).then(|| {
+            intrinsic_inline_size(&e.style, inherited).then_some({
                 crate::layout::fragment::types::Intrinsic(match column_width {
                     Some(Len::Px(w)) if w > 0.0 => Some(w),
                     _ => None,
@@ -516,14 +516,13 @@ pub(crate) fn multicol_spanner_segments(
     // эталон — `fieldset > legend + div.inner` с колонками).
     // Отрисованная — первая `legend` в потоке.
     let mut kids = e.children.clone();
-    if e.tag == "fieldset" {
-        if let Some(i) = kids.iter().position(|n| {
+    if e.tag == "fieldset"
+        && let Some(i) = kids.iter().position(|n| {
             matches!(n, Node::Element(c) if c.tag == "legend" && !out_of_flow(&c.style))
         }) {
             let legend = kids.remove(i);
             d = d.children(blocks(&[legend], &merged, opts));
         }
-    }
     for chunk in kids.split_inclusive(&is_span) {
         let (body, span) = match chunk.split_last() {
             Some((last, head)) if is_span(last) => (head, Some(last)),
@@ -613,11 +612,9 @@ pub(crate) fn multicol_spanner_segments(
                                 if !k.inline
                                     && shape_full(k, 4, ShapeCx::COLUMNS).is_some())
                     })
-                {
-                    if let Some(rest) = rest_h {
+                    && let Some(rest) = rest_h {
                         sub.style.height = Some(Len::Px(rest));
                     }
-                }
                 d = d.child(div().children(blocks(
                     &[Node::Element(sub)],
                     &merged,

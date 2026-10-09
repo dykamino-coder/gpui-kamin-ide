@@ -10,7 +10,7 @@ pub(super) fn decorations(c: &Computed) -> Vec<AnyElement> {
     // абсолютный слой с отрицательным отступом ровно на её толщину.
     // У `border-shape` сплошной контур повторяет фигуру слоем НАД группой
     // (`grouped` → `Grouped::over`, `Computed::shaped_outline`).
-    if let Some(o) = c.outline.clone().filter(|_| c.shaped_outline().is_none()) {
+    if let Some(o) = c.outline.filter(|_| c.shaped_outline().is_none()) {
         // Шрифтовые единицы ширины и сдвига решаются своим кеглем.
         let em = match c.font_size {
             Some(Len::Px(v)) => v,

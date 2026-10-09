@@ -585,7 +585,7 @@ impl Element for EdgePainter {
                 y0 + f32::from(bnd.size.height),
             );
             let is_table = c.source == 0;
-            let mut side = |list: &mut Vec<Cand>, line: f32, a: f32, b: f32, i: usize, out: i8| {
+            let side = |list: &mut Vec<Cand>, line: f32, a: f32, b: f32, i: usize, out: i8| {
                 if c.widths[i] > 0.0 || c.styles[i] == 1 {
                     list.push(Cand {
                         line,

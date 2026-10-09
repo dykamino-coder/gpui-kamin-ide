@@ -70,7 +70,6 @@ pub(super) fn own_box_atom(
     // колонками справа налево (`vertical-rl`) или слева направо
     // (`block-flow-direction-vrl-011`). Путь атома минует общий гейт в
     // `element()`, поэтому ось ставится здесь.
-    let mut merged = merged;
     if e.style.display == Some(Display::InlineBlock)
         && merged.vertical == Some(true)
         && e.children.iter().any(|n| {

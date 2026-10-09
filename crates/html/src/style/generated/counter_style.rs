@@ -325,7 +325,7 @@ fn ethiopic(mut n: usize) -> String {
         }
         let bare = group == 0 || (group == 1 && (n == 0 || odd));
         if !bare {
-            if group % 10 != 0 {
+            if !group.is_multiple_of(10) {
                 rev.push(ETHIOPIC_UNITS[group % 10 - 1]);
             }
             if group / 10 != 0 {

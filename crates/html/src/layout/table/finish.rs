@@ -134,11 +134,11 @@ pub(super) fn table_finish(
                             + if e.style.border_collapse == Some(true) {
                                 // Половина ПОБЕДИВШЕЙ линии — та же, что
                                 // легла в паддинг ячейки (§17.6.2.1).
-                                let w = win_edges
+                                
+                                win_edges
                                     .get(&cell.node_id)
                                     .map(|w| (w[1] + w[3]) / 2.0)
-                                    .unwrap_or(border / 2.0);
-                                w
+                                    .unwrap_or(border / 2.0)
                             } else {
                                 border
                             }

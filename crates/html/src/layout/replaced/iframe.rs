@@ -58,7 +58,7 @@ pub(crate) fn object_is_document(e: &Element) -> bool {
     }
     let url = e.attr("data").unwrap_or_default();
     let path = url
-        .split(|c| c == '?' || c == '#')
+        .split(['?', '#'])
         .next()
         .unwrap_or(url)
         .to_ascii_lowercase();

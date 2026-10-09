@@ -238,10 +238,8 @@ pub(crate) fn anon_element(tag: &str, children: Vec<Node>) -> Element {
 pub(super) fn fixup_row_children(row: &Element) -> Vec<Node> {
     fn walk(
         nodes: &[Node],
-        donor: Option<&Computed>,
         cells: &mut Vec<Node>,
         run: &mut Vec<Node>,
-        extra: &mut Vec<Node>,
     ) {
         for child in nodes {
             match child {
@@ -271,7 +269,7 @@ pub(super) fn fixup_row_children(row: &Element) -> Vec<Node> {
                             other => other,
                         })
                         .collect();
-                    walk(&merged, donor, cells, run, extra);
+                    walk(&merged, cells, run);
                 }
                 // §17.2.1 шаг 2: ребёнок ряда, который не ячейка, уходит в
                 // АНОНИМНУЮ ЯЧЕЙКУ этого же ряда — ряд внутри ряда тоже.
@@ -297,7 +295,6 @@ pub(super) fn fixup_row_children(row: &Element) -> Vec<Node> {
                 Node::Element(_) => run.push(child.clone()),
             }
         }
-        let _ = donor;
     }
     let needs_fix = row.children.iter().any(|c| match c {
         Node::Element(el) => {
@@ -310,19 +307,16 @@ pub(super) fn fixup_row_children(row: &Element) -> Vec<Node> {
                 || !is_cell(el)
         }
         Node::Text(t) => !t.trim().is_empty(),
-        _ => false,
     });
     if !needs_fix {
         return vec![Node::Element(row.clone())];
     }
-    let (mut cells, mut run, mut extra) = (vec![], vec![], vec![]);
-    walk(&row.children, None, &mut cells, &mut run, &mut extra);
+    let (mut cells, mut run) = (vec![], vec![]);
+    walk(&row.children, &mut cells, &mut run);
     table_roles::flush_inline(&mut cells, &mut run);
     let mut fixed = row.clone();
     fixed.children = cells;
-    let mut out = vec![Node::Element(fixed)];
-    out.extend(extra);
-    out
+    vec![Node::Element(fixed)]
 }
 
 pub(crate) fn fixup_table_children(children: &[Node]) -> Vec<Node> {
@@ -371,8 +365,6 @@ pub(crate) fn fixup_table_children(children: &[Node]) -> Vec<Node> {
                             if row {
                                 flush(&mut stray, &mut out);
                                 out.push(Node::Element(ge));
-                            } else if is_cell(&ge) {
-                                stray.push(Node::Element(ge));
                             } else {
                                 stray.push(Node::Element(ge));
                             }
@@ -442,7 +434,6 @@ pub(crate) fn fixup_table_children(children: &[Node]) -> Vec<Node> {
                     stray.push(child.clone());
                 }
             }
-            _ => {}
         }
     }
     flush(&mut stray, &mut out);

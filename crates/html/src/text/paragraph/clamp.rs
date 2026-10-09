@@ -58,8 +58,8 @@ impl Paragraph {
         // переноса перед многоточием (`block-ellipsis-028`: «isti‐…»).
         let shy_at = |at: usize| at > head && self.text[..at].ends_with('\u{ad}');
         let shy_w = |at: usize| if shy_at(at) { self.hyphen_width(at) } else { px(0.) };
-        if let Some(room) = limit.map(|w| w - ell).filter(|_| !self.clamp_str().is_empty()) {
-            if self.span(&segs, head, end) > room {
+        if let Some(room) = limit.map(|w| w - ell).filter(|_| !self.clamp_str().is_empty())
+            && self.span(&segs, head, end) > room {
                 end = self
                     .opportunities()
                     .iter()
@@ -70,7 +70,6 @@ impl Paragraph {
                     .max()
                     .unwrap_or(head);
             }
-        }
         let hyphen = !self.hyphen.is_empty() && shy_at(end);
         let width = self.span(&segs, head, end)
             + ell

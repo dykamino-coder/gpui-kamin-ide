@@ -20,7 +20,7 @@ thread_local! {
     /// Стек контейнеров с линейками промежутков при ПОСТРОЕНИИ дерева.
     /// Ровно как `CLAMP_STACK`: проба ставится только НЕПОСРЕДСТВЕННЫМ
     /// детям, поэтому сторож кладёт ключ на время сборки детей.
-    static GAP_STACK: std::cell::RefCell<Vec<u64>> = std::cell::RefCell::new(Vec::new());
+    static GAP_STACK: std::cell::RefCell<Vec<u64>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 pub fn gap_items_for(key: u64) -> GapItems {

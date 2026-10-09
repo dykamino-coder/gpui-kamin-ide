@@ -58,8 +58,8 @@ pub(crate) fn inner(st: &Computed, outer: Option<f32>) -> Option<f32> {
             {
                 return None;
             }
-            let w = outer? - side(st.margin.left)? - side(st.margin.right)? - pb;
-            w
+            
+            outer? - side(st.margin.left)? - side(st.margin.right)? - pb
         }
         _ => return None,
     };

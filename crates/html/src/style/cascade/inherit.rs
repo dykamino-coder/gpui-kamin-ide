@@ -566,11 +566,10 @@ fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Compu
     // Кегль НОЛЬ вешает набор намертво (DirectWrite-цикл: `font: 0 Ahem` из
     // vars-font-shorthand-001 замораживал страницу навсегда) — клэмп к
     // микроскопическому: визуально то же «ничего», формулы живы.
-    if let Some(Len::Px(v)) = c.font_size {
-        if v <= 0.0 {
+    if let Some(Len::Px(v)) = c.font_size
+        && v <= 0.0 {
             c.font_size = Some(Len::Px(0.01));
         }
-    }
     crate::style::computed::font_weight::inherit(&mut c, parent, own);
     c.italic = own.italic.or(parent.italic);
     c.oblique = own.oblique.or(parent.oblique);

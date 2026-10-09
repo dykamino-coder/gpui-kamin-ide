@@ -218,8 +218,8 @@ pub(super) fn colgroup_elements(children: &[Node]) -> Vec<Option<&Element>> {
 ///
 /// Одно тело на слой групп и слой колонок: различаются они только набором
 /// элементов и порядком вызова (§17.5.1 — группы ПОД колонками).
-pub(super) fn push_col_bands<'a>(
-    els: &[Option<&'a Element>],
+pub(super) fn push_col_bands(
+    els: &[Option<&Element>],
     salt: u64,
     have_rows: bool,
     rects_by_col: &mut [Option<crate::layout::table::paint::RowRects>],

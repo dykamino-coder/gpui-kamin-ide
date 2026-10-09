@@ -523,7 +523,7 @@ impl ColumnStack {
             if k.par.float && k.par.group == 0 && float_hold.is_none() {
                 let mut mine = out.iter().filter(|f| f.kid == kid);
                 let f0 = mine.next().copied();
-                let fl = mine.last().copied().or(f0);
+                let fl = mine.next_back().copied().or(f0);
                 if let (Some(f0), Some(fl)) = (f0, fl)
                     && f0.col > snap.0
                     && snap.1 < target_at(snap.0) - 0.01
@@ -538,8 +538,8 @@ impl ColumnStack {
             // кончилась коробка. Ищем кусок ЭТОГО ЖЕ ребёнка, внутрь
             // которого попал `k.h`; если поток оборвался раньше (кончились
             // копии), курсор остаётся где был.
-            if flow > k.h + 0.01 {
-                if let Some(f) = out
+            if flow > k.h + 0.01
+                && let Some(f) = out
                     .iter()
                     .rev()
                     .take_while(|f| f.kid == kid)
@@ -549,7 +549,6 @@ impl ColumnStack {
                     y = f.y + (k.h - f.from);
                     placed = true;
                 }
-            }
             prev_mb = k.mb;
             first = false;
             // Конец группы строк: дальше поток идёт с самого дальнего конца

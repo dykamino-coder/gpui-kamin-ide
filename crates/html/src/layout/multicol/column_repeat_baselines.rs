@@ -44,8 +44,8 @@ impl RepeatedMeasurements {
         let mut head = Baselines::default();
         let mut foot = Baselines::default();
         // Match the copy indices, mask and origin in ColumnStack::prepaint/paint.
-        if fragment.head > 0.01 && fragment.copy > 0 {
-            if let (Some(source), Some(measure)) =
+        if fragment.head > 0.01 && fragment.copy > 0
+            && let (Some(source), Some(measure)) =
                 (self.head, self.heads.get_mut(fragment.copy - 1))
             {
                 let (_, first, last) =
@@ -58,9 +58,8 @@ impl RepeatedMeasurements {
                     y - fragment.head,
                 );
             }
-        }
-        if fragment.foot > 0.01 {
-            if let (Some((source, height)), Some(measure)) =
+        if fragment.foot > 0.01
+            && let (Some((source, height)), Some(measure)) =
                 (self.foot, self.feet.get_mut(fragment.copy))
             {
                 let (_, first, last) =
@@ -73,7 +72,6 @@ impl RepeatedMeasurements {
                     y + fragment.h + fragment.foot - height,
                 );
             }
-        }
         (head, foot)
     }
 }

@@ -20,7 +20,7 @@ pub(crate) fn probe(style: &Computed) -> Option<AnyElement> {
         return None;
     }
     let id = style.self_node;
-    let padding = style.padding.clone();
+    let padding = style.padding;
     Some(
         gpui::canvas(
             move |bounds: Bounds<Pixels>, window, _: &mut App| {

@@ -17,6 +17,7 @@
 //! * позиционированная коробка, идущая позже, читает реестр в СВОЁМ
 //!   `prepaint` и сдвигается через `with_element_offset` — тем же приёмом,
 //!   что `interact::LatePlace`.
+//!
 //! Якорь, которого в реестре ещё нет (он ниже по дереву или позже в том же
 //! слое), по спеке и не acceptable («laid out strictly before»): функция
 //! падает на запасное значение.
@@ -88,7 +89,7 @@ thread_local! {
     /// Те же именованные пробы кадра С ПОРЯДКОМ СБОРКИ (`Computed::anchor_seq`):
     /// на следующем кадре станут `LAST_NAMED`, и размер по `anchor-size()`
     /// возьмёт «последний якорь с этим именем раньше меня по дереву».
-    static NAMED_SEQ: RefCell<Vec<(String, u32, AnchorRec)>> = RefCell::new(Vec::new());
+    static NAMED_SEQ: RefCell<Vec<(String, u32, AnchorRec)>> = const { RefCell::new(Vec::new()) };
     /// Реестры ПРОШЛОГО кадра — для величин, которые нужны ДО раскладки
     /// (`anchor-size()`, растяжка в клетке `position-area`): размер решает
     /// taffy, а рамки известны только на подготовке; стенд ждёт устоявшихся
@@ -96,7 +97,7 @@ thread_local! {
     /// Полная запись (не только рамка): прошлый кадр подменяет текущий и там,
     /// где якорь ещё не подготовлен (`AnchorPlan::rec`), — нужны `id`/`cb`
     /// для приемлемости.
-    static LAST_NAMED: RefCell<Vec<(String, u32, AnchorRec)>> = RefCell::new(Vec::new());
+    static LAST_NAMED: RefCell<Vec<(String, u32, AnchorRec)>> = const { RefCell::new(Vec::new()) };
     static LAST_IMPLICIT: RefCell<HashMap<u64, AnchorRec>> = RefCell::new(HashMap::new());
     /// Рамки СОДЕРЖАЩИХ БЛОКОВ кадра (padding box): `node_id` элемента с
     /// `establishes_cb` → рамка. Нужны сетке `position-area`.
@@ -359,7 +360,7 @@ pub fn probe_for(e: &crate::dom::Element, c: &Computed, hidden: bool) -> Option<
                             v.borrow().iter().any(|(k, s, r)| k == n && *s == seq && same(r))
                         })
                     }) || (implicit
-                        && !LAST_IMPLICIT.with(|m| m.borrow().get(&id).is_some_and(|r| same(r))));
+                        && !LAST_IMPLICIT.with(|m| m.borrow().get(&id).is_some_and(same)));
                     if stale {
                         reframe_if_stale(window);
                     }
@@ -796,8 +797,6 @@ pub struct AnchorPlan {
     /// Содержащий блок: `node_id` в реестре `CB`; 0 или `fixed` — окно.
     cb_node: u64,
     fixed: bool,
-    /// Ключ в `AREA_NOW` (размер клетки для растяжки на следующем кадре).
-    key: u64,
     /// Порядок сборки коробки (`Computed::anchor_seq`): якорь из реестра
     /// прошлого кадра годен, только если собран РАНЬШЕ неё (`last_named`).
     seq: u32,
@@ -895,7 +894,6 @@ impl AnchorPlan {
                     || inherited.contain_layout == Some(true)
                     || inherited.contain_paint == Some(true)
                     || inherited.will_change & crate::style::computed::wc::CB_FIXED != 0),
-            key: own.anchor_key,
             seq: own.anchor_seq,
             refs_default,
         })
@@ -1057,7 +1055,7 @@ impl AnchorPlan {
     /// вставке.
     fn shift(&self, k: usize, own: Bounds<Pixels>) -> f32 {
         let Some(sp) = &self.sides[k] else { return 0.0 };
-        let y_axis = k % 2 == 0;
+        let y_axis = k.is_multiple_of(2);
         let end_side = k == 1 || k == 2;
         // Край ПОЛЕЙ коробки по этой стороне.
         let own_edge = match k {
@@ -1085,7 +1083,7 @@ impl AnchorPlan {
     /// сдвинутый авторской вставкой (`auto` → 0; доля — от клетки, она и
     /// есть содержащий блок; `anchor()` — к краю якоря, §position-area).
     fn imcb_edge(&self, k: usize, cell_edge: f32, cell_len: f32) -> f32 {
-        let y_axis = k % 2 == 0;
+        let y_axis = k.is_multiple_of(2);
         let end_side = k == 1 || k == 2;
         let sign = if end_side { -1.0 } else { 1.0 };
         match self.inset[k] {
@@ -1384,6 +1382,8 @@ impl AnchorPlan {
 }
 
 /// Куда просится край по `anchor()`.
+// `FromEdge` names the anchor-relative inset, not a nested `Edge`.
+#[allow(clippy::enum_variant_names)]
 enum Edge {
     Abs(f32),
     FromEdge(f32),
@@ -1691,6 +1691,7 @@ fn last_named(n: &str, seq: u32) -> Option<AnchorRec> {
 ///   `auto` («invalid at computed-value time»);
 /// * `place-self: stretch` в клетке `position-area` — размер IMCB прошлого
 ///   кадра за вычетом полей, рамки и отбивок (`width` у нас — содержимое).
+///
 /// Первый кадр отдаёт запасные значения, второй — верные; стенд ждёт
 /// устоявшихся кадров.
 pub fn resolve_sizes(c: &mut Computed, inherited: &Computed) {
@@ -1708,7 +1709,7 @@ pub fn resolve_sizes(c: &mut Computed, inherited: &Computed) {
         for _ in 0..4 {
             let Some(cur) = f.take() else { break };
             // `anchor()` в размере негодна (§anchor-fn: только вставки).
-            let Some(kind) = cur.size else { return None };
+            let kind = cur.size?;
             let hit = last_lookup(cur.name.as_deref(), &default_anchor, seq).map(|r| {
                 // Размер решается ДО раскладки, стека трансформов коробки ещё
                 // нет: под трансформированным предком считаем цепочку общей

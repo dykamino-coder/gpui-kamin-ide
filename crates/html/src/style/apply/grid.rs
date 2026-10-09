@@ -413,8 +413,8 @@ pub(super) fn grid_style(mut d: Div, c: &Computed) -> Div {
     // разметке эталонов (subgrid-alignment-in-subgridded-axis: серый фон до
     // края страницы вместо 100px). gpui-размер — border-box: паддинги и
     // рамки сверху.
-    if c.display == Some(Display::InlineGrid) && c.width.is_none() {
-        if let Some(tracks) = &c.grid_tracks {
+    if c.display == Some(Display::InlineGrid) && c.width.is_none()
+        && let Some(tracks) = &c.grid_tracks {
             let all_px: Option<f32> = tracks.iter().try_fold(0.0f32, |acc, t| match t {
                 crate::style::computed::TrackSize::Single(crate::style::computed::Track::Px(w)) => Some(acc + w),
                 _ => None,
@@ -433,7 +433,6 @@ pub(super) fn grid_style(mut d: Div, c: &Computed) -> Div {
                 d = d.w(px(total));
             }
         }
-    }
     if let Some(rows) = &c.grid_rows {
         // Ряды областей сверх шаблона — тоже явные (см. `with_areas` выше).
         let tracks = with_areas(rows, area_rows, &c.grid_auto_rows, &c.grid_auto_rows_list);

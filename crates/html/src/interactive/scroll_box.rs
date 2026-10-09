@@ -152,7 +152,7 @@ pub(crate) fn scrollable(e: &Element, inherited: &Computed, opts: &RenderOpts) -
             if native_box { return built; }
             use gpui::{InteractiveElement, StatefulInteractiveElement};
             let mut d = crate::style::apply::margins(div(), &outer_margin)
-                .id(gpui::ElementId::Integer(node.node_id as u64 + 1))
+                .id(gpui::ElementId::Integer(node.node_id + 1))
                 .track_scroll(handle)
                 .child(built);
             // Элемент потока родителя — ЭТА обёртка, а не внутренний узел: ей и
@@ -223,7 +223,7 @@ pub(crate) fn scrollable(e: &Element, inherited: &Computed, opts: &RenderOpts) -
     );
     Some(
         crate::interactive::scroll_area::ScrollArea::new(
-            gpui::ElementId::Integer(e.node_id as u64),
+            gpui::ElementId::Integer(e.node_id),
             horizontal,
             vertical,
             build,
@@ -262,7 +262,7 @@ pub(crate) fn resizable(e: &Element, inherited: &Computed, opts: &RenderOpts) ->
         element(&mixed, &inherited, &opts)
     });
     Some(
-        crate::interactive::resizable::Resizable::new(gpui::ElementId::Integer(e.node_id as u64), axis, build)
+        crate::interactive::resizable::Resizable::new(gpui::ElementId::Integer(e.node_id), axis, build)
             .into_any_element(),
     )
 }

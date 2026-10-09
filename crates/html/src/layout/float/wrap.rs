@@ -207,7 +207,6 @@ pub(crate) fn wrap_floats(
         }
         return nodes;
     }
-    let mut nodes = nodes;
     let mut out: Vec<Node> = vec![];
     let mut i = 0usize;
     while i < nodes.len() {
@@ -524,11 +523,10 @@ pub(crate) fn wrap_floats(
                 }));
                 clearance_strut = true;
             }
-            if adjoining || clearance_strut {
-                if let Some(Node::Element(next)) = nodes.get_mut(j) {
+            if (adjoining || clearance_strut)
+                && let Some(Node::Element(next)) = nodes.get_mut(j) {
                     next.style.margin.top = Some(Len::Px(0.0));
                 }
-            }
         }
         // Плавающий блок, рядом с которым НЕЧЕМУ обтекать, рядом не нуждается:
         // он остаётся обычным блоком потока. Ряд в этом случае только вредил —

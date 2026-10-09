@@ -250,7 +250,6 @@ pub(super) fn svg_path_of(raw: &str, b: &ShapeBox) -> Option<(String, &'static s
             .rsplit_once(')')
             .map(|(a, _)| a)
             .unwrap_or(&raw[at + 8..]);
-        let inner = inner;
         {
             let mut rule = "nonzero";
             let mut pts_src = inner;

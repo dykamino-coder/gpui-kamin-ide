@@ -120,7 +120,6 @@ impl Computed {
             .get(crate::style::css::ORDER_KEY)
             .map(|s| s.split(crate::style::css::DECL_SEP).collect())
             .unwrap_or_default();
-        let mut keys: Vec<&String> = d.keys().collect();
         // Внутри СЕМЬИ (сокращение и его длинные свойства) порядок — по
         // записи; сами семьи идут прежним порядком «сперва общее».
         // Семья — только НАСТОЯЩЕЕ сокращение со своими длинными свойствами.
@@ -199,8 +198,7 @@ impl Computed {
             .get("all")
             .and_then(|v| {
                 v.split(crate::style::css::DECL_SEP)
-                    .filter(|part| is_important(part) == important)
-                    .last()
+                    .rfind(|part| is_important(part) == important)
             })
             .filter(|part| {
                 matches!(
@@ -222,8 +220,7 @@ impl Computed {
             d.get("all")
                 .and_then(|v| {
                     v.split(crate::style::css::DECL_SEP)
-                        .filter(|part| is_important(part) == important)
-                        .last()
+                        .rfind(|part| is_important(part) == important)
                 })
                 .is_some_and(|part| matches!(strip_important(part).trim(), "initial" | "unset"))
         });
@@ -465,7 +462,7 @@ fn revert_layers(matched: &[&crate::style::css::Rule]) -> Option<Vec<crate::styl
         let mut best: Option<(&crate::style::css::Rule, String)> = None;
         for r in rules {
             let Some(v) = r.decls.get(key) else { continue };
-            let Some(part) = v.split(DECL_SEP).filter(|p| is_important(p) == imp).last() else {
+            let Some(part) = v.split(DECL_SEP).rfind(|p| is_important(p) == imp) else {
                 continue;
             };
             let better = match &best {
@@ -489,7 +486,7 @@ fn revert_layers(matched: &[&crate::style::css::Rule]) -> Option<Vec<crate::styl
         .filter(|r| {
             r.decls
                 .get("all")
-                .is_some_and(|v| v.split(DECL_SEP).filter(|p| !is_important(p)).last().is_some_and(is_rl))
+                .is_some_and(|v| v.split(DECL_SEP).rfind(|p| !is_important(p)).is_some_and(is_rl))
         })
         .map(|r| (r.layer.clone(), normal_key(r)))
         .collect();
@@ -529,13 +526,12 @@ fn revert_layers(matched: &[&crate::style::css::Rule]) -> Option<Vec<crate::styl
                 }
                 break;
             }
-            if let Some((layer, v)) = winner(&rules, &key, false) {
-                if is_rl(&v) {
+            if let Some((layer, v)) = winner(&rules, &key, false)
+                && is_rl(&v) {
                     let l = layer.clone();
                     strip(&mut rules, &key, false, &|r| r.layer != l);
                     continue;
                 }
-            }
             break;
         }
     }

@@ -186,7 +186,6 @@ pub(crate) fn inset_holder_box(
     opts: &RenderOpts,
     kw_len: &impl Fn(Option<Len>) -> bool,
 ) -> AnyElement {
-    let auto = |l: Option<Len>| l == Some(Len::Auto);
     let mut holder = Computed::default();
     holder.position = e.style.position;
     holder.inset = e.style.inset;

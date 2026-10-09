@@ -8,16 +8,16 @@ use crate::render::block_level_in_flow;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 
-/// Несёт ли поддерево АБСОЛЮТНОГО потомка, чей низ `shape_full` сворачивает
-/// в меру коробки (дотяг `oof_reach`). Только такому ребёнку стопки колонок
-/// переполняющие колонки нужны ради внепоточного (css-position-3
-/// §abspos-breaking: «The box may subsequently be broken over several
-/// fragmentation containers»; Blink рождает их от внепоточного —
-/// `column_layout_algorithm.cc` `num_new_columns`). Спуск не идёт внутрь
-/// коробки, обрезающей переполнение (абсолют за ней в колонках не виден:
-/// `out-of-flow-in-multicolumn-107`, `overflow: clip` над абсолютом
-/// 100000px), и внутрь вложенного многоколоночника (у его абсолютов свои
-/// колонки). Глубина — та же, что у меры стопки (`shape_full(c, 4, ..)`).
+// Несёт ли поддерево АБСОЛЮТНОГО потомка, чей низ `shape_full` сворачивает
+// в меру коробки (дотяг `oof_reach`). Только такому ребёнку стопки колонок
+// переполняющие колонки нужны ради внепоточного (css-position-3
+// §abspos-breaking: «The box may subsequently be broken over several
+// fragmentation containers»; Blink рождает их от внепоточного —
+// `column_layout_algorithm.cc` `num_new_columns`). Спуск не идёт внутрь
+// коробки, обрезающей переполнение (абсолют за ней в колонках не виден:
+// `out-of-flow-in-multicolumn-107`, `overflow: clip` над абсолютом
+// 100000px), и внутрь вложенного многоколоночника (у его абсолютов свои
+// колонки). Глубина — та же, что у меры стопки (`shape_full(c, 4, ..)`).
 thread_local! {
     /// Коробки, чью меру фрагментации дотянули внепоточные потомки
     /// (`shape_full`): `node_id -> (свой размер, мера с дотягом)`.

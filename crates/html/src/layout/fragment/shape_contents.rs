@@ -754,7 +754,7 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
         // ребёнка у колонок в `h` не входит (выше, `cx.paged`), при нём зазор есть
         // — тогда не клеим.
         let end_edge = h - bot;
-        let gapless = stacked.map_or(true, |s| s.2.abs() < 0.01);
+        let gapless = stacked.is_none_or(|s| s.2.abs() < 0.01);
         let glue = if gapless {
             solid
                 .iter()

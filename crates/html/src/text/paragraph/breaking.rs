@@ -240,10 +240,10 @@ impl Paragraph {
             let head = start + self.hang_first(start);
             // Свисает ли знак — зависит от того, влезает ли строка БЕЗ него;
             // поэтому ширина считается дважды: сначала без свисания.
-            let bare = self.span(&segs, head, measured);
+            let bare = self.span(segs, head, measured);
             let tight = limit.is_some_and(|w| bare > w);
             let tail_hang = self.hang_last(measured, at >= part.end, tight);
-            let mut width = self.span(&segs, head, measured - tail_hang)
+            let mut width = self.span(segs, head, measured - tail_hang)
                 - self.tail_spacing(measured - tail_hang);
             // Строка, кончающаяся мягким переносом, несёт ещё и знак переноса.
             if self.text[..measured].ends_with('\u{00ad}') {
@@ -340,7 +340,7 @@ impl Paragraph {
                 let extra = if hyphen { self.hyphen_width(cut) } else { px(0.) };
                 out.push(Line {
                     range: start..self.drop_collapsible_tail(start, cut),
-                    width: self.span(&segs, head, tail) - self.tail_spacing(tail) + extra,
+                    width: self.span(segs, head, tail) - self.tail_spacing(tail) + extra,
                     ellipsis: false,
                     clamped: false,
                     vis_cut: None,
@@ -374,7 +374,7 @@ impl Paragraph {
             let (mut fl, mut fr) = self.flow_cut(out.len());
             // The same §9.5 shift for the last line (see the loop above).
             if let Some(w) = limit {
-                let bare = self.span(&segs, head, tail) - self.tail_spacing(tail);
+                let bare = self.span(segs, head, tail) - self.tail_spacing(tail);
                 let ind0 = self.indent_of(head_of_part, first_part, limit);
                 while (fl > 0.0 || fr > 0.0)
                     && out.len() < 4096
@@ -397,7 +397,7 @@ impl Paragraph {
             // последней строки висит условно (`pre-wrap-019`, `#test2`:
             // `"0 "` занимает 2ch, а не 1ch).
             let room = limit.map(|w| w - indent - px(fr));
-            let bare = self.span(&segs, head, tail) - self.tail_spacing(tail);
+            let bare = self.span(segs, head, tail) - self.tail_spacing(tail);
             out.push(Line {
                 range: start..end,
                 width: self.conditional_width(segs, head, end, bare, room),

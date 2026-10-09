@@ -444,7 +444,6 @@ pub(crate) fn parse_url(v: &str) -> Option<String> {
 /// `rgba(0, 0, 0, .5)` — это один токен, а не четыре: обычное деление по
 /// пробелам разрывало функции с пробелами после запятых, и значение молча
 /// пропадало.
-
 pub(crate) fn split_outside_parens(v: &str) -> Vec<String> {
     let mut out = vec![];
     let mut depth = 0usize;
@@ -952,7 +951,7 @@ pub(super) fn parse_shadows(v: &str) -> Vec<Shadow> {
         let inner = s.contains("inset");
         let mut lens = vec![];
         let mut color = None;
-        for token in tokenize_shadow(&s) {
+        for token in tokenize_shadow(s) {
             match Len::parse(&token) {
                 Some(Len::Px(px)) => lens.push(Some(px)),
                 // calc() из абсолютных единиц уже свёрнут в px; примесь

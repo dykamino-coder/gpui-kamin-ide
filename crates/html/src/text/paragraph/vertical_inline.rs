@@ -59,7 +59,7 @@ fn resolve_inline(
     if let gpui::AvailableSpace::Definite(value) = available {
         constraint.available = constraint.available.min(f32::from(value));
     }
-    let keyword = keyword.or_else(|| match available {
+    let keyword = keyword.or(match available {
         gpui::AvailableSpace::MinContent => Some(InlineKeyword::MinContent),
         _ => None,
     });

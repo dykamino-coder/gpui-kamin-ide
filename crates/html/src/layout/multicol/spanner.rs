@@ -299,7 +299,7 @@ fn spanner_height_share(c: &Element, bodies: &[Vec<Node>]) -> Option<Vec<Option<
         return None;
     }
     let empty = |b: &Vec<Node>| b.iter().all(is_blank);
-    let pre_empty = bodies[..n - 1].iter().all(|b| empty(b));
+    let pre_empty = bodies[..n - 1].iter().all(&empty);
     let seen = bodies
         .iter()
         .enumerate()

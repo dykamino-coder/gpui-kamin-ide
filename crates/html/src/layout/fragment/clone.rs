@@ -198,6 +198,7 @@ pub(crate) fn clone_dec(c: &Element) -> Option<(f32, f32)> {
 ///   поднятая на `from` СДВИГОМ (`position: relative`), а не полем: у обёртки
 ///   без рамки поле тела схлопнулось бы сквозь неё и увезло обрезку
 ///   (taffy `block.rs:186`, `Clip` — не скролл-контейнер).
+///
 /// Blink устроен так же: фрагмент — свой `PhysicalBoxFragment` со всеми
 /// сторонами, краска общим путём (`box_fragment_painter.cc:2322` разводит
 /// только `slice`).

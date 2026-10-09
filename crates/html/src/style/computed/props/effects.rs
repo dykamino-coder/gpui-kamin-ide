@@ -189,7 +189,7 @@ impl Computed {
                 });
                 // В сокращении второе время — задержка (css-animations §5).
                 let mut times = 0usize;
-                let mut set_time = |a: &mut AnimSpec, sec: f32, times: &mut usize| match key {
+                let set_time = |a: &mut AnimSpec, sec: f32, times: &mut usize| match key {
                     "animation-delay" => a.delay = sec,
                     "animation-duration" => a.seconds = sec,
                     _ => {

@@ -24,8 +24,8 @@ pub(super) fn resolve(bytes: Vec<u8>, id: &str) -> Vec<u8> {
     let mut edits = Vec::new();
     let root = doc.root_element();
     // SVG 2 section 16.3.2: a <view> fragment supplies the initial viewBox.
-    if target.has_tag_name("view") {
-        if let Some(value) = target.attribute("viewBox") {
+    if target.has_tag_name("view")
+        && let Some(value) = target.attribute("viewBox") {
             let value = xml_text(value);
             if let Some(attr) = root.attributes().find(|a| a.name() == "viewBox") {
                 edits.push((attr.range_value(), value));
@@ -33,7 +33,6 @@ pub(super) fn resolve(bytes: Vec<u8>, id: &str) -> Vec<u8> {
                 edits.push((end..end, format!(" viewBox=\"{value}\"")));
             }
         }
-    }
     // Selectors 4 section 8.3: the fragment's first matching element is :target.
     // usvg has no document URL. An unused attribute marks just that element;
     // an attribute selector has the same specificity as this pseudo-class.
@@ -68,8 +67,8 @@ pub(super) fn resolve(bytes: Vec<u8>, id: &str) -> Vec<u8> {
             changed = true;
         }
     }
-    if changed {
-        if let Some(end) = opening_end(text, target.range().start) {
+    if changed
+        && let Some(end) = opening_end(text, target.range().start) {
             let at = if text.as_bytes()[end - 1] == b'/' {
                 end - 1
             } else {
@@ -77,7 +76,6 @@ pub(super) fn resolve(bytes: Vec<u8>, id: &str) -> Vec<u8> {
             };
             edits.push((at..at, format!(" {marker}=\"\"")));
         }
-    }
     if edits.is_empty() {
         return bytes;
     }
@@ -153,7 +151,7 @@ fn target_selectors(css: &str, selector: &str) -> String {
             b']' => brackets = brackets.saturating_sub(1),
             b'{' if brackets == 0 => {
                 let prelude = crate::style::css::strip_comments(&css[head..i]);
-                let name = prelude.trim().split_whitespace().next().unwrap_or("");
+                let name = prelude.split_whitespace().next().unwrap_or("");
                 let group = [
                     "@media",
                     "@supports",
