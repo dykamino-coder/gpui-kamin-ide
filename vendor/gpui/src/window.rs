@@ -4914,7 +4914,12 @@ impl Window {
             // Внутри повёрнутого текста границы слоя до-трансформные — дерево
             // границ видело его в чужой клетке, и фон соседа получал порядок
             // ПОВЕРХ глифов (table-cell-align-005).
-            let mut scaled = self.cover_bounds(clipped_bounds);
+            // KaminIDE patch: exact layer bounds, not upstream's floor/ceil
+            // cover: a layer grown to the next device pixel intersects the
+            // neighbour run's glyphs and is ordered above them (a run's
+            // background then covered the previous glyph's AA column,
+            // `inline-formatting-context-002`).
+            let mut scaled = clipped_bounds.scale(self.scale_factor());
             let m = self.current_transformation();
             if m != TransformationMatrix::unit() {
                 let b = scaled;
@@ -5312,7 +5317,7 @@ impl Window {
         // position on BOTH axes, quantized on one grid so that `pixel origin +
         // variant` is the position itself; the 1e-3 guard keeps f32 noise
         // (12.4999 for 12.5) from falling into the previous quarter. Other
-        // fonts use upstream's round-half-toward-zero quantization.
+        // fonts keep the floor quantization below.
         let (integer_origin, subpixel_variant) = if pixel_exact {
             let n = SUBPIXEL_VARIANTS_X as f32;
             let q = glyph_origin.map(|v| (v.0 * n + 1e-3).floor());
@@ -5321,18 +5326,16 @@ impl Window {
                 q.map(|v| v.rem_euclid(n) as u8),
             )
         } else {
-            let quantized_origin = Point::new(
-                round_half_toward_zero(glyph_origin.x.0 * SUBPIXEL_VARIANTS_X as f32)
-                    / SUBPIXEL_VARIANTS_X as f32,
-                round_half_toward_zero(glyph_origin.y.0 * SUBPIXEL_VARIANTS_Y as f32)
-                    / SUBPIXEL_VARIANTS_Y as f32,
-            );
+            // KaminIDE patch: floor quantization as before gpui-pre 0.3.8
+            // (upstream rounds half toward zero now). Rounding moved glyphs a
+            // device pixel against boxes painted at the same fractional
+            // baseline (`inline-formatting-context-002` lost exact RGB).
             (
-                quantized_origin.map(|c| ScaledPixels(c.trunc())),
-                Point::new(
-                    (quantized_origin.x.fract() * SUBPIXEL_VARIANTS_X as f32) as u8,
-                    (quantized_origin.y.fract() * SUBPIXEL_VARIANTS_Y as f32) as u8,
-                ),
+                glyph_origin.map(|px| px.floor()),
+                Point {
+                    x: (glyph_origin.x.0.fract() * SUBPIXEL_VARIANTS_X as f32).floor() as u8,
+                    y: (glyph_origin.y.0.fract() * SUBPIXEL_VARIANTS_Y as f32).floor() as u8,
+                },
             )
         };
         let subpixel_rendering = self.should_use_subpixel_rendering(font_id, font_size);
@@ -5445,7 +5448,8 @@ impl Window {
 
         let scale_factor = self.scale_factor();
         let glyph_origin = origin.scale(scale_factor);
-        let integer_origin = glyph_origin.map(|c| ScaledPixels(round_half_toward_zero(c.0)));
+        // KaminIDE patch: floor, as for monochrome glyphs (see `paint_glyph`).
+        let integer_origin = glyph_origin.map(|px| px.floor());
         let params = RenderGlyphParams {
             font_id,
             glyph_id,
