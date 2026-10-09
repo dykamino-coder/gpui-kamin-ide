@@ -36,8 +36,6 @@ pub(crate) use outline_style::DOUBLE as OUTLINE_DOUBLE;
 pub(super) mod props;
 mod resolve;
 mod queries;
-#[cfg(test)]
-pub(crate) mod snapshot_tests;
 
 use crate::style::values::value::Len;
 mod fields;
