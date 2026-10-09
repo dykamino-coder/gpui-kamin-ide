@@ -17727,6 +17727,15 @@ fn paragraph_pieces_routed(
         let in_inline_cb = crate::inline::take_atom_cb();
         let svg_sized = svg_percentage_size::resolve(e, inherited);
         let e = svg_sized.as_ref().unwrap_or(e);
+        // CSS 2.1 sections 10.3.8/10.6.5 use the replaced default size
+        // before solving absolute insets; an empty frame is still replaced.
+        let iframe_sized = (replaced_content::default_iframe(e)
+            && matches!(
+                e.style.position,
+                Some(crate::computed::Position::Absolute | crate::computed::Position::Fixed)
+            ))
+            .then(|| replaced_content::empty_iframe_size(e, inherited, opts.viewport));
+        let e = iframe_sized.as_ref().unwrap_or(e);
         // Абсолютный элемент на статической позиции ВНУТРИ строки — кусок вне
         // потока: место в строке он не занимает, поэтому абзац остаётся
         // текстовым и не теряет пробелы (`line-breaking-018`).
@@ -19186,6 +19195,9 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
             }
             let built = if e.tag == "svg" {
                 crate::svg::element(&copy).unwrap_or_else(|| image(&copy))
+            } else if replaced_content::default_iframe(e) {
+                // The holder owns the CSS box; empty content paints no second border.
+                div().w_0().h_0().flex_shrink_0().into_any_element()
             } else {
                 image(&copy)
             };
@@ -19458,21 +19470,9 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                 Some(atom_base_font(inherited, opts)),
             ))
         }
-        // ЗАМЕРЕНО И ОТКАЧЕНО (04.09): кадру без пригодного `src` давать
-        // замещаемую коробку 300×150 (CSS 2.2 §10.3.2) или по атрибутам.
-        // Срез из 116 пар с `<iframe>`: 83 -> 73, приобретено 2
-        // (`flexbox-basic-iframe-horiz-001`, `stretch-anonymous-block-001`),
-        // потеряно 12 — `inline-block-replaced-height-004/005/007`,
-        // `inline-replaced-height-004/005/007` уходят в «красное видно»,
-        // `contain-size-replaced-003a..d` 0.26 -> 1.42. Пустая коробка кадра
-        // ломает высоту строки у соседей: замещаемому нужен ещё и правильный
-        // вклад в строку, а не только размер.
-        "iframe" => {
-            if let Some(el) = iframe(e, opts) {
-                return Some(el);
-            }
-            None
-        }
+        "iframe" => Some(iframe(e, opts).unwrap_or_else(|| {
+            replaced_content::empty_iframe(e, inherited, opts.viewport)
+        })),
         "svg" => {
             // Рисунок без собственного размера — stretch-fit от содержащего
             // блока (`svg::stretch_fit`): ширина родителя, когда она в
@@ -25278,16 +25278,6 @@ thread_local! {
     static IFRAME_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
-/// ПРОБОВАЛИ И ОТКАТИЛИ: считать `<iframe>` БЕЗ адреса замещаемой коробкой
-/// 300×150 (§10.3.2, §10.6.2). Замерено по семьям *replaced*, positioning/*,
-/// normal-flow/*, *float*: приобретено 0, ПОТЕРЯНО 13 — все тринадцать ушли
-/// в «красное видно». Пустая коробка умолчания встаёт поверх зелёной и
-/// открывает красную подложку; этим семьям нужен не размер пустого кадра, а
-/// доля от содержащего блока.
-///
-/// `<iframe>`: вложенный документ со своими стилями и областью просмотра
-/// размером с коробку. Содержимое читается с диска (стенд переписывает
-/// `src` в `file:///...`); без файла остаётся запасной текст тега.
 /// `<object>`, чей `data` — ДОКУМЕНТ, а не картинка (HTML §4.8.7: сначала
 /// атрибут `type`, иначе по расширению адреса). Гейт нарочно узкий: `.svg`,
 /// `image/*` и растры остаются на пути картинки (css-images
