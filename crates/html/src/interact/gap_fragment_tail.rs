@@ -3,7 +3,7 @@
 use super::{GapAxisRule, GapRun, segments};
 use gpui::{Bounds, ContentMask, Hsla, Pixels, TransformationMatrix, Window, point, px, size};
 
-pub(super) fn paint(
+pub(crate) fn paint(
     window: &mut Window,
     bounds: Bounds<Pixels>,
     run: &GapRun,

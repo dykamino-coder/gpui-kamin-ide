@@ -3,7 +3,7 @@
 use crate::computed::orthogonal::{InlineConstraint, InlineKeyword};
 use gpui::{AnyElement, App, AvailableSpace, Pixels, Size, Window, px, size};
 
-pub(super) fn measure(
+pub(crate) fn measure(
     child: &mut AnyElement,
     constraint: InlineConstraint,
     keyword: Option<InlineKeyword>,

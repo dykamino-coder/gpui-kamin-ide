@@ -12,7 +12,7 @@ fn project(height: Pixels, baseline: Pixels, ccw: bool, lr: bool) -> (f32, bool)
     }
 }
 
-pub(super) fn apply(
+pub(crate) fn apply(
     style: &mut Style,
     child: &mut AnyElement,
     natural: Size<Pixels>,
