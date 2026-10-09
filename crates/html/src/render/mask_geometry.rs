@@ -2,14 +2,14 @@
 
 use crate::{computed::Computed, value::Len};
 
-pub(super) fn unclipped(c: &Computed) -> bool {
+pub(crate) fn unclipped(c: &Computed) -> bool {
     // CSS Masking section 7.5: no-clip includes paint outside the element box.
     // Blink css_mask_painter.cc:71-87 includes self-painting descendants;
     // GPUI group buffers already cover the viewport, so retain that extent.
     c.mask_image.is_some() && c.mask_clip == Some(255)
 }
 
-pub(super) fn offsets(c: &Computed, kind: Option<u8>) -> [f32; 4] {
+pub(crate) fn offsets(c: &Computed, kind: Option<u8>) -> [f32; 4] {
     let side = |l: Option<Len>| match l {
         Some(Len::Px(v)) => v,
         _ => 0.0,
