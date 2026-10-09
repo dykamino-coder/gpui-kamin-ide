@@ -8,6 +8,7 @@ mod outline;
 mod fragment_size;
 mod first_line_text;
 mod band_clearance;
+mod band_dimensions;
 use band_clearance::supported as band_clear_supported;
 mod mask_geometry;
 mod content_wrapper;
@@ -13870,7 +13871,8 @@ fn band_nest_block(c: &Element, em: f32) -> bool {
         && c.style.opacity.is_none()
         && c.style.filter.is_none()
         && (matches!(c.style.width, None | Some(Len::Auto))
-            || (matches!(c.style.width, Some(Len::Px(_))) && c.style.border_box != Some(true)))
+            || (band_dimensions::content_width(&c.style, em).is_some()
+                && c.style.border_box != Some(true)))
         && matches!(c.style.height, None | Some(Len::Auto) | Some(Len::Px(_)))
         && c.style.min_height.is_none()
         && c.style.max_height.is_none()
@@ -13926,10 +13928,7 @@ fn band_nest(
             Some(Len::Px(v)) => Some(v),
             _ => None,
         },
-        width: match c.style.width {
-            Some(Len::Px(v)) => Some(v),
-            _ => None,
-        },
+        width: band_dimensions::content_width(&c.style, em),
     })
 }
 
@@ -15580,7 +15579,8 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
     // детей, высотой НОЛЬ и схлопывается насквозь. Наша раскладка ставит
     // плавающий блок обычным ребёнком, и родитель набирал его высоту.
     //
-    // Гейт — сам `through_strut`: он уже требует нулевых рамок, отступов и
+    // Гейт — `through_strut_no_clear`: clearance меняет позицию, не высоту
+    // (§10.6.3). Он требует нулевых рамок, отступов и
     // `min-height`, высоты `auto`, отсутствия строчной коробки и своего
     // контекста форматирования. Коробка со СВОИМ контекстом плавающего ребёнка
     // содержит и высоту от него получает по праву — её ветка не трогает.
@@ -15598,7 +15598,7 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
             .children
             .iter()
             .any(|n| matches!(n, Node::Element(c) if c.style.float.is_some_and(|f| f != 0)));
-        if has_float && through_strut(e).is_some() {
+        if has_float && through_strut_no_clear(e).is_some() {
             e.style.height = Some(Len::Px(0.0));
         }
     }
