@@ -14,6 +14,7 @@ zstd = "0.14"
 tar = "0.4"
 # Брендированное окно с полосой прогресса (обычный запуск и /update).
 gpui.workspace = true
+gpui-platform.workspace = true
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"

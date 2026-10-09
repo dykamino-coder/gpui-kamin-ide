@@ -27,7 +27,7 @@ pub fn scroll_area(
     content: impl IntoIterator<Item = AnyElement>,
 ) -> Div {
     let offset = -handle.offset().y;
-    let max = handle.max_offset().height;
+    let max = handle.max_offset().y;
     let view = handle.bounds().size.height;
 
     div()

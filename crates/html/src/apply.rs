@@ -129,14 +129,14 @@ pub fn apply_hover(d: Div, hover: &Computed) -> Div {
             s.opacity = Some(o);
         }
         if let Some(col) = h.color {
-            s.text.get_or_insert_with(Default::default).color = Some(col.to_hsla());
+            s.text.color = Some(col.to_hsla());
         }
         if let Some(w) = h.font_weight {
-            s.text.get_or_insert_with(Default::default).font_weight =
+            s.text.font_weight =
                 Some(gpui::FontWeight(w as f32));
         }
         if h.italic == Some(true) {
-            s.text.get_or_insert_with(Default::default).font_style = Some(gpui::FontStyle::Italic);
+            s.text.font_style = Some(gpui::FontStyle::Italic);
         }
         s
     })
@@ -2250,6 +2250,7 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
                     // (`text_shadow_layers`), которая σ уже делит.
                     blur_radius: px(s.blur * 0.5),
                     spread_radius: px(s.spread),
+                    inset: true,
                 })
                 .collect(),
         );
@@ -2275,6 +2276,7 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
                     // (`text_shadow_layers`), которая σ уже делит.
                     blur_radius: px(s.blur * 0.5),
                     spread_radius: px(s.spread),
+                    inset: false,
                 })
                 .collect::<Vec<_>>(),
         );
@@ -2293,7 +2295,6 @@ pub fn apply_text(mut d: Div, c: &Computed) -> Div {
     if c.underline == Some(true) {
         d.style()
             .text
-            .get_or_insert_with(Default::default)
             .underline = Some(gpui::UnderlineStyle {
             thickness: px(1.),
             color: c.color.map(|col| col.to_hsla()),
@@ -2303,7 +2304,6 @@ pub fn apply_text(mut d: Div, c: &Computed) -> Div {
     if c.line_through == Some(true) {
         d.style()
             .text
-            .get_or_insert_with(Default::default)
             .strikethrough = Some(gpui::StrikethroughStyle {
             thickness: px(1.),
             color: c.color.map(|col| col.to_hsla()),
@@ -2324,14 +2324,12 @@ pub fn apply_text(mut d: Div, c: &Computed) -> Div {
     if let Some(pct) = c.font_stretch {
         d.style()
             .text
-            .get_or_insert_with(Default::default)
             .font_stretch = Some(gpui::FontStretch::from_percent(pct));
     }
     let features = c.used_features();
     if !features.is_empty() {
         d.style()
             .text
-            .get_or_insert_with(Default::default)
             .font_features = Some(gpui::FontFeatures(std::sync::Arc::new(features)));
     }
     if let Some(col) = c.color {

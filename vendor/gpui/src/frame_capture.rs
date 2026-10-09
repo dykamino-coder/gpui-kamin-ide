@@ -33,7 +33,8 @@ pub fn enable() {
     ENABLED.store(true, Ordering::Release);
 }
 
-pub(crate) fn enabled() -> bool {
+#[doc(hidden)]
+pub fn enabled() -> bool {
     ENABLED.load(Ordering::Acquire)
 }
 
@@ -42,8 +43,8 @@ pub fn latest() -> Option<CapturedFrame> {
     LAST.lock().ok()?.clone()
 }
 
-#[allow(dead_code)]
-pub(crate) fn store(width: u32, height: u32, bgra: Vec<u8>) {
+#[doc(hidden)]
+pub fn store(width: u32, height: u32, bgra: Vec<u8>) {
     let seq = SEQ.fetch_add(1, Ordering::AcqRel) + 1;
     if let Ok(mut last) = LAST.lock() {
         *last = Some(CapturedFrame { width, height, bgra, seq });

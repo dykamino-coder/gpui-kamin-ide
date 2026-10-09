@@ -24,6 +24,7 @@ usvg = { version = "0.48.0", default-features = false }
 lsp-types = { version = "0.97.0", features = ["proposed"] }
 gpui.workspace = true
 gpui-component.workspace = true
+gpui-platform.workspace = true
 anyhow.workspace = true
 serde_json.workspace = true
 mimalloc.workspace = true

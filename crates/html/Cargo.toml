@@ -52,6 +52,8 @@ windows = { version = "0.62", features = [
 ] }
 encoding_rs = "0.8"
 serde_json.workspace = true
+# Платформа gpui (окно, рендерер) — отдельный крейт с 0.3.8.
+gpui-platform.workspace = true
 # Выгрузка снимков разошедшихся пар (`WPT_DUMP=1`): без картинки причину
 # расхождения приходится угадывать по одному числу.
 png = "0.18.1"

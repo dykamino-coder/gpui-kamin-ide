@@ -16,9 +16,25 @@ use std::{
 };
 
 #[allow(non_camel_case_types, unused)]
-pub(crate) type PathVertex_ScaledPixels = PathVertex<ScaledPixels>;
+#[expect(missing_docs)]
+pub type PathVertex_ScaledPixels = PathVertex<ScaledPixels>;
 
-pub(crate) type DrawOrder = u32;
+#[expect(missing_docs)]
+pub type DrawOrder = u32;
+
+/// A boolean stored as a `u32` so that GPU-facing structs contain no
+/// compiler-inserted padding bytes, which would be undefined behavior to
+/// reinterpret as `&[u8]` when writing instance buffers. Guaranteed to be
+/// `0` or `1` by construction; shaders read it as a `u32`/`uint`.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct PaddedBool32(u32);
+
+impl From<bool> for PaddedBool32 {
+    fn from(value: bool) -> Self {
+        PaddedBool32(value as u32)
+    }
+}
 
 /// KaminIDE patch: overlap orders from the bounds tree are spaced by this
 /// step, leaving room below each level for per-primitive bottom-layer orders
@@ -36,54 +52,61 @@ const BOTTOM_LAYER: DrawOrder = 0;
 /// прозрачность группы (`opacity` без просвечивания детей друг через друга),
 /// изоляция смешивания (`isolation: isolate`). Внутри — обычная сцена, её
 /// рисуют теми же конвейерами, только в свою текстуру.
+/// KaminIDE patch: `pub` + `doc(hidden)` — буферы групп рисует рендерер из
+/// отдельного крейта `gpui_windows`, которому доступен лишь публичный API.
 #[derive(Default)]
-pub(crate) struct PaintGroup {
-    pub(crate) scene: Scene,
-    pub(crate) bounds: Bounds<ScaledPixels>,
+#[doc(hidden)]
+#[allow(missing_docs)]
+pub struct PaintGroup {
+    pub scene: Scene,
+    pub bounds: Bounds<ScaledPixels>,
     /// Радиус размытия готовой картинки группы; 0 — не размывать.
-    pub(crate) blur_radius: f32,
+    pub blur_radius: f32,
     /// Режим смешивания группы с кадром (`mix-blend-mode`), 0 — обычный.
     ///
     /// Смешивать умеет и блендер, но лишь четырьмя формулами и только
     /// заливку одного узла. Готовый буфер группы даёт цвет источника
     /// целиком, а копия кадра — цвет назначения: обе стороны формулы CSS
     /// оказываются в шейдере, и режимы считаются все.
-    pub(crate) blend: u32,
+    pub blend: u32,
     /// Обрезка многоугольником (`clip-path: polygon(…)`), до восьми вершин.
     ///
     /// Прямоугольной маской многоугольник не выразить, а буфер группы даёт
     /// готовую картинку, которую можно погасить по любой форме.
-    pub(crate) polygon: Vec<Point<ScaledPixels>>,
+    pub polygon: Vec<Point<ScaledPixels>>,
     /// Маска-изображение (`mask-image`): альфа гасит буфер при композите.
-    pub(crate) mask: Option<std::sync::Arc<crate::RenderImage>>,
+    pub mask: Option<std::sync::Arc<crate::RenderImage>>,
     /// Плитка маски: угол коробки + размер плитки; повторяется по обеим осям.
-    pub(crate) mask_bounds: Bounds<ScaledPixels>,
+    pub mask_bounds: Bounds<ScaledPixels>,
     /// Пооосный запрет мощения маски: бит 0 — по x, бит 1 — по y.
-    pub(crate) mask_once: u32,
+    pub mask_once: u32,
     /// Коробка окраски маски (`mask-clip`) в device px; вне её маска пуста.
-    pub(crate) mask_clip: Option<[f32; 4]>,
+    pub mask_clip: Option<[f32; 4]>,
 }
 
 #[derive(Default)]
-pub(crate) struct Scene {
+#[expect(missing_docs)]
+pub struct Scene {
     pub(crate) paint_operations: Vec<PaintOperation>,
     /// KaminIDE patch: группы, нарисованные в отдельные буферы.
     ///
     /// Список плоский и упорядочен по зависимости: вложенная группа стоит
     /// раньше объемлющей, поэтому её буфер к моменту сборки объемлющей уже
     /// готов (см. `Window::paint_group`).
-    pub(crate) groups: Vec<PaintGroup>,
+    #[doc(hidden)]
+    pub groups: Vec<PaintGroup>,
     primitive_bounds: BoundsTree<ScaledPixels>,
     layer_stack: Vec<DrawOrder>,
     /// KaminIDE patch: bottom-layer primitives painted so far this frame.
     bottom_seq: DrawOrder,
-    pub(crate) shadows: Vec<Shadow>,
-    pub(crate) quads: Vec<Quad>,
-    pub(crate) paths: Vec<Path<ScaledPixels>>,
-    pub(crate) underlines: Vec<Underline>,
-    pub(crate) monochrome_sprites: Vec<MonochromeSprite>,
-    pub(crate) polychrome_sprites: Vec<PolychromeSprite>,
-    pub(crate) surfaces: Vec<PaintSurface>,
+    pub shadows: Vec<Shadow>,
+    pub quads: Vec<Quad>,
+    pub paths: Vec<Path<ScaledPixels>>,
+    pub underlines: Vec<Underline>,
+    pub monochrome_sprites: Vec<MonochromeSprite>,
+    pub subpixel_sprites: Vec<SubpixelSprite>,
+    pub polychrome_sprites: Vec<PolychromeSprite>,
+    pub surfaces: Vec<PaintSurface>,
     /// KaminIDE patch: сцена — буфер группы (`Window::paint_group`), а не кадр.
     pub(crate) in_group: bool,
     /// KaminIDE patch: подложки `backdrop-filter`, поднятые из группы: буфер
@@ -124,6 +147,7 @@ struct DepthContext {
     union: Option<Bounds<ScaledPixels>>,
 }
 
+#[expect(missing_docs)]
 impl Scene {
     /// KaminIDE patch: начать объёмный контекст.
     pub fn push_depth_context(&mut self) {
@@ -162,6 +186,7 @@ impl Scene {
             3 => self.underlines.get_mut(i).map(|p| &mut p.order),
             4 => self.monochrome_sprites.get_mut(i).map(|p| &mut p.order),
             5 => self.polychrome_sprites.get_mut(i).map(|p| &mut p.order),
+            7 => self.subpixel_sprites.get_mut(i).map(|p| &mut p.order),
             _ => self.surfaces.get_mut(i).map(|p| &mut p.order),
         }
     }
@@ -273,6 +298,7 @@ impl Scene {
         self.quads.clear();
         self.underlines.clear();
         self.monochrome_sprites.clear();
+        self.subpixel_sprites.clear();
         self.polychrome_sprites.clear();
         self.surfaces.clear();
         self.hoisted_backdrops.clear();
@@ -367,6 +393,11 @@ impl Scene {
             {
                 placed_by(s.bounds, &s.transformation)
             }
+            // Субпиксельный (ClearType) спрайт upstream — тот же глиф, что и
+            // монохромный: границы тоже по месту на экране.
+            Primitive::SubpixelSprite(s) if s.transformation != TransformationMatrix::unit() => {
+                placed_by(s.bounds, &s.transformation)
+            }
             Primitive::MonochromeSprite(s) if s.transformation != TransformationMatrix::unit() => {
                 let b = s.bounds;
                 let corners = [
@@ -419,7 +450,7 @@ impl Scene {
         match &mut primitive {
             Primitive::Shadow(shadow) => {
                 shadow.order = order;
-                self.shadows.push(shadow.clone());
+                self.shadows.push(*shadow);
             }
             Primitive::Quad(quad) => {
                 quad.order = order;
@@ -432,7 +463,7 @@ impl Scene {
                         quad.background.tag != gpui::BackgroundTag::Solid
                     );
                 }
-                self.quads.push(quad.clone());
+                self.quads.push(*quad);
             }
             Primitive::Path(path) => {
                 path.order = order;
@@ -441,7 +472,7 @@ impl Scene {
             }
             Primitive::Underline(underline) => {
                 underline.order = order;
-                self.underlines.push(underline.clone());
+                self.underlines.push(*underline);
             }
             Primitive::MonochromeSprite(sprite) => {
                 sprite.order = order;
@@ -453,11 +484,15 @@ impl Scene {
                         (sprite.bounds.origin.y.0, sprite.bounds.size.height.0)
                     );
                 }
-                self.monochrome_sprites.push(sprite.clone());
+                self.monochrome_sprites.push(*sprite);
+            }
+            Primitive::SubpixelSprite(sprite) => {
+                sprite.order = order;
+                self.subpixel_sprites.push(*sprite);
             }
             Primitive::PolychromeSprite(sprite) => {
                 sprite.order = order;
-                self.polychrome_sprites.push(sprite.clone());
+                self.polychrome_sprites.push(*sprite);
             }
             Primitive::Surface(surface) => {
                 surface.order = order;
@@ -473,6 +508,7 @@ impl Scene {
                 Primitive::MonochromeSprite(_) => (4, self.monochrome_sprites.len() - 1),
                 Primitive::PolychromeSprite(_) => (5, self.polychrome_sprites.len() - 1),
                 Primitive::Surface(_) => (6, self.surfaces.len() - 1),
+                Primitive::SubpixelSprite(_) => (7, self.subpixel_sprites.len() - 1),
             };
             self.depth.tags.push((kind, index as u32, plane));
             if let Some(ctx) = self.depth.contexts.last_mut() {
@@ -501,6 +537,8 @@ impl Scene {
         self.underlines.sort_by_key(|underline| underline.order);
         self.monochrome_sprites
             .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
+        self.subpixel_sprites
+            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
         self.polychrome_sprites
             .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
         self.surfaces.sort_by_key(|surface| surface.order);
@@ -513,27 +551,22 @@ impl Scene {
         ),
         allow(dead_code)
     )]
-    pub(crate) fn batches(&self) -> impl Iterator<Item = PrimitiveBatch<'_>> {
+    pub fn batches(&self) -> impl Iterator<Item = PrimitiveBatch> + '_ {
         BatchIterator {
-            shadows: &self.shadows,
             shadows_start: 0,
             shadows_iter: self.shadows.iter().peekable(),
-            quads: &self.quads,
             quads_start: 0,
             quads_iter: self.quads.iter().peekable(),
-            paths: &self.paths,
             paths_start: 0,
             paths_iter: self.paths.iter().peekable(),
-            underlines: &self.underlines,
             underlines_start: 0,
             underlines_iter: self.underlines.iter().peekable(),
-            monochrome_sprites: &self.monochrome_sprites,
             monochrome_sprites_start: 0,
             monochrome_sprites_iter: self.monochrome_sprites.iter().peekable(),
-            polychrome_sprites: &self.polychrome_sprites,
+            subpixel_sprites_start: 0,
+            subpixel_sprites_iter: self.subpixel_sprites.iter().peekable(),
             polychrome_sprites_start: 0,
             polychrome_sprites_iter: self.polychrome_sprites.iter().peekable(),
-            surfaces: &self.surfaces,
             surfaces_start: 0,
             surfaces_iter: self.surfaces.iter().peekable(),
         }
@@ -555,6 +588,7 @@ pub(crate) enum PrimitiveKind {
     Path,
     Underline,
     MonochromeSprite,
+    SubpixelSprite,
     PolychromeSprite,
     Surface,
 }
@@ -568,16 +602,19 @@ pub(crate) enum PaintOperation {
 }
 
 #[derive(Clone)]
-pub(crate) enum Primitive {
+#[expect(missing_docs)]
+pub enum Primitive {
     Shadow(Shadow),
     Quad(Quad),
     Path(Path<ScaledPixels>),
     Underline(Underline),
     MonochromeSprite(MonochromeSprite),
+    SubpixelSprite(SubpixelSprite),
     PolychromeSprite(PolychromeSprite),
     Surface(PaintSurface),
 }
 
+#[expect(missing_docs)]
 impl Primitive {
     pub fn bounds(&self) -> &Bounds<ScaledPixels> {
         match self {
@@ -586,6 +623,7 @@ impl Primitive {
             Primitive::Path(path) => &path.bounds,
             Primitive::Underline(underline) => &underline.bounds,
             Primitive::MonochromeSprite(sprite) => &sprite.bounds,
+            Primitive::SubpixelSprite(sprite) => &sprite.bounds,
             Primitive::PolychromeSprite(sprite) => &sprite.bounds,
             Primitive::Surface(surface) => &surface.bounds,
         }
@@ -598,6 +636,7 @@ impl Primitive {
             Primitive::Path(path) => &path.content_mask,
             Primitive::Underline(underline) => &underline.content_mask,
             Primitive::MonochromeSprite(sprite) => &sprite.content_mask,
+            Primitive::SubpixelSprite(sprite) => &sprite.content_mask,
             Primitive::PolychromeSprite(sprite) => &sprite.content_mask,
             Primitive::Surface(surface) => &surface.content_mask,
         }
@@ -612,31 +651,26 @@ impl Primitive {
     allow(dead_code)
 )]
 struct BatchIterator<'a> {
-    shadows: &'a [Shadow],
     shadows_start: usize,
     shadows_iter: Peekable<slice::Iter<'a, Shadow>>,
-    quads: &'a [Quad],
     quads_start: usize,
     quads_iter: Peekable<slice::Iter<'a, Quad>>,
-    paths: &'a [Path<ScaledPixels>],
     paths_start: usize,
     paths_iter: Peekable<slice::Iter<'a, Path<ScaledPixels>>>,
-    underlines: &'a [Underline],
     underlines_start: usize,
     underlines_iter: Peekable<slice::Iter<'a, Underline>>,
-    monochrome_sprites: &'a [MonochromeSprite],
     monochrome_sprites_start: usize,
     monochrome_sprites_iter: Peekable<slice::Iter<'a, MonochromeSprite>>,
-    polychrome_sprites: &'a [PolychromeSprite],
+    subpixel_sprites_start: usize,
+    subpixel_sprites_iter: Peekable<slice::Iter<'a, SubpixelSprite>>,
     polychrome_sprites_start: usize,
     polychrome_sprites_iter: Peekable<slice::Iter<'a, PolychromeSprite>>,
-    surfaces: &'a [PaintSurface],
     surfaces_start: usize,
     surfaces_iter: Peekable<slice::Iter<'a, PaintSurface>>,
 }
 
 impl<'a> Iterator for BatchIterator<'a> {
-    type Item = PrimitiveBatch<'a>;
+    type Item = PrimitiveBatch;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut orders_and_kinds = [
@@ -653,6 +687,10 @@ impl<'a> Iterator for BatchIterator<'a> {
             (
                 self.monochrome_sprites_iter.peek().map(|s| s.order),
                 PrimitiveKind::MonochromeSprite,
+            ),
+            (
+                self.subpixel_sprites_iter.peek().map(|s| s.order),
+                PrimitiveKind::SubpixelSprite,
             ),
             (
                 self.polychrome_sprites_iter.peek().map(|s| s.order),
@@ -686,9 +724,7 @@ impl<'a> Iterator for BatchIterator<'a> {
                     shadows_end += 1;
                 }
                 self.shadows_start = shadows_end;
-                Some(PrimitiveBatch::Shadows(
-                    &self.shadows[shadows_start..shadows_end],
-                ))
+                Some(PrimitiveBatch::Shadows(shadows_start..shadows_end))
             }
             PrimitiveKind::Quad => {
                 let quads_start = self.quads_start;
@@ -702,7 +738,7 @@ impl<'a> Iterator for BatchIterator<'a> {
                     quads_end += 1;
                 }
                 self.quads_start = quads_end;
-                Some(PrimitiveBatch::Quads(&self.quads[quads_start..quads_end]))
+                Some(PrimitiveBatch::Quads(quads_start..quads_end))
             }
             PrimitiveKind::Path => {
                 let paths_start = self.paths_start;
@@ -716,7 +752,7 @@ impl<'a> Iterator for BatchIterator<'a> {
                     paths_end += 1;
                 }
                 self.paths_start = paths_end;
-                Some(PrimitiveBatch::Paths(&self.paths[paths_start..paths_end]))
+                Some(PrimitiveBatch::Paths(paths_start..paths_end))
             }
             PrimitiveKind::Underline => {
                 let underlines_start = self.underlines_start;
@@ -730,9 +766,7 @@ impl<'a> Iterator for BatchIterator<'a> {
                     underlines_end += 1;
                 }
                 self.underlines_start = underlines_end;
-                Some(PrimitiveBatch::Underlines(
-                    &self.underlines[underlines_start..underlines_end],
-                ))
+                Some(PrimitiveBatch::Underlines(underlines_start..underlines_end))
             }
             PrimitiveKind::MonochromeSprite => {
                 let texture_id = self.monochrome_sprites_iter.peek().unwrap().tile.texture_id;
@@ -752,13 +786,34 @@ impl<'a> Iterator for BatchIterator<'a> {
                 self.monochrome_sprites_start = sprites_end;
                 Some(PrimitiveBatch::MonochromeSprites {
                     texture_id,
-                    sprites: &self.monochrome_sprites[sprites_start..sprites_end],
+                    range: sprites_start..sprites_end,
+                })
+            }
+            PrimitiveKind::SubpixelSprite => {
+                let texture_id = self.subpixel_sprites_iter.peek().unwrap().tile.texture_id;
+                let sprites_start = self.subpixel_sprites_start;
+                let mut sprites_end = sprites_start + 1;
+                self.subpixel_sprites_iter.next();
+                while self
+                    .subpixel_sprites_iter
+                    .next_if(|sprite| {
+                        (sprite.order, batch_kind) < max_order_and_kind
+                            && sprite.tile.texture_id == texture_id
+                    })
+                    .is_some()
+                {
+                    sprites_end += 1;
+                }
+                self.subpixel_sprites_start = sprites_end;
+                Some(PrimitiveBatch::SubpixelSprites {
+                    texture_id,
+                    range: sprites_start..sprites_end,
                 })
             }
             PrimitiveKind::PolychromeSprite => {
                 let texture_id = self.polychrome_sprites_iter.peek().unwrap().tile.texture_id;
                 let sprites_start = self.polychrome_sprites_start;
-                let mut sprites_end = self.polychrome_sprites_start + 1;
+                let mut sprites_end = sprites_start + 1;
                 self.polychrome_sprites_iter.next();
                 while self
                     .polychrome_sprites_iter
@@ -773,7 +828,7 @@ impl<'a> Iterator for BatchIterator<'a> {
                 self.polychrome_sprites_start = sprites_end;
                 Some(PrimitiveBatch::PolychromeSprites {
                     texture_id,
-                    sprites: &self.polychrome_sprites[sprites_start..sprites_end],
+                    range: sprites_start..sprites_end,
                 })
             }
             PrimitiveKind::Surface => {
@@ -788,9 +843,7 @@ impl<'a> Iterator for BatchIterator<'a> {
                     surfaces_end += 1;
                 }
                 self.surfaces_start = surfaces_end;
-                Some(PrimitiveBatch::Surfaces(
-                    &self.surfaces[surfaces_start..surfaces_end],
-                ))
+                Some(PrimitiveBatch::Surfaces(surfaces_start..surfaces_end))
             }
         }
     }
@@ -804,25 +857,66 @@ impl<'a> Iterator for BatchIterator<'a> {
     ),
     allow(dead_code)
 )]
-pub(crate) enum PrimitiveBatch<'a> {
-    Shadows(&'a [Shadow]),
-    Quads(&'a [Quad]),
-    Paths(&'a [Path<ScaledPixels>]),
-    Underlines(&'a [Underline]),
+#[allow(missing_docs)]
+pub enum PrimitiveBatch {
+    Shadows(Range<usize>),
+    Quads(Range<usize>),
+    Paths(Range<usize>),
+    Underlines(Range<usize>),
     MonochromeSprites {
         texture_id: AtlasTextureId,
-        sprites: &'a [MonochromeSprite],
+        range: Range<usize>,
+    },
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
+    SubpixelSprites {
+        texture_id: AtlasTextureId,
+        range: Range<usize>,
     },
     PolychromeSprites {
         texture_id: AtlasTextureId,
-        sprites: &'a [PolychromeSprite],
+        range: Range<usize>,
     },
-    Surfaces(&'a [PaintSurface]),
+    Surfaces(Range<usize>),
 }
 
-#[derive(Default, Debug, Clone)]
+impl PrimitiveBatch {
+    #[expect(missing_docs)]
+    pub fn label(&self) -> String {
+        match self {
+            Self::Shadows(range) => format!("shadows ({})", range.len()),
+            Self::Quads(range) => format!("quads ({})", range.len()),
+            Self::Paths(range) => format!("paths ({})", range.len()),
+            Self::Underlines(range) => format!("underlines ({})", range.len()),
+            Self::MonochromeSprites { texture_id, range } => {
+                format!(
+                    "monochrome sprites ({}) on atlas {}",
+                    range.len(),
+                    texture_id.index
+                )
+            }
+            Self::SubpixelSprites { texture_id, range } => {
+                format!(
+                    "subpixel sprites ({}) on atlas {}",
+                    range.len(),
+                    texture_id.index
+                )
+            }
+            Self::PolychromeSprites { texture_id, range } => {
+                format!(
+                    "polychrome sprites ({}) on atlas {}",
+                    range.len(),
+                    texture_id.index
+                )
+            }
+            Self::Surfaces(range) => format!("surfaces ({})", range.len()),
+        }
+    }
+}
+
+#[derive(Default, Debug, Copy, Clone)]
 #[repr(C)]
-pub(crate) struct Quad {
+#[expect(missing_docs)]
+pub struct Quad {
     pub order: DrawOrder,
     pub border_style: BorderStyle,
     pub bounds: Bounds<ScaledPixels>,
@@ -849,16 +943,17 @@ impl From<Quad> for Primitive {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 #[repr(C)]
-pub(crate) struct Underline {
+#[expect(missing_docs)]
+pub struct Underline {
     pub order: DrawOrder,
     pub pad: u32, // align to 8 bytes
     pub bounds: Bounds<ScaledPixels>,
     pub content_mask: ContentMask<ScaledPixels>,
     pub color: Hsla,
     pub thickness: ScaledPixels,
-    pub wavy: u32,
+    pub wavy: PaddedBool32,
 }
 
 impl From<Underline> for Primitive {
@@ -867,29 +962,26 @@ impl From<Underline> for Primitive {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 #[repr(C)]
-pub(crate) struct Shadow {
+#[expect(missing_docs)]
+pub struct Shadow {
     pub order: DrawOrder,
     pub blur_radius: ScaledPixels,
     pub bounds: Bounds<ScaledPixels>,
     pub corner_radii: Corners<ScaledPixels>,
     pub content_mask: ContentMask<ScaledPixels>,
     pub color: Hsla,
-    /// KaminIDE patch: внутренняя тень (`box-shadow: inset`).
-    ///
-    /// Раньше примитив умел только внешнюю, и `inset` не рисовался вовсе.
-    /// Отличие одно: плотность считается ВНУТРИ фигуры, а не снаружи —
-    /// поэтому это флаг, а не новый примитив. Поле идёт последним и обязано
-    /// совпадать с концом `struct Shadow` в шейдере.
+    /// KaminIDE patch (теперь и upstream): коробка самого элемента. Кроме
+    /// внутренней тени upstream, ею же вырезается наружная тень — она не
+    /// рисуется ПОД коробкой (css-backgrounds-3 §box-shadow: «the shadow is
+    /// not painted inside the border box»; Blink `ClipToBorderEdge`). Наш
+    /// прежний `box_bounds` слит в это поле.
+    pub element_bounds: Bounds<ScaledPixels>,
+    pub element_corner_radii: Corners<ScaledPixels>,
+    /// 0 = drop shadow (rendered outside the element), 1 = inset shadow (rendered inside).
     pub inset: u32,
-    /// KaminIDE patch: коробка самого элемента (без смещения и разлёта).
-    /// Наружная тень не рисуется ПОД коробкой (css-backgrounds-3
-    /// §box-shadow: «the shadow is not painted inside the border box»;
-    /// Blink `ClipToBorderEdge`) — прежде она просвечивала сквозь
-    /// прозрачный фон сплошным пятном. Поле идёт за `inset`, раскладка
-    /// обязана совпадать с шейдером.
-    pub box_bounds: Bounds<ScaledPixels>,
+    pub pad: u32, // align to 8 bytes
 }
 
 impl From<Shadow> for Primitive {
@@ -1029,11 +1121,12 @@ impl Default for TransformationMatrix {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 #[repr(C)]
-pub(crate) struct MonochromeSprite {
+#[expect(missing_docs)]
+pub struct MonochromeSprite {
     pub order: DrawOrder,
-    pub pad: u32, // align to 8 bytes
+    pub pad: u32,
     pub bounds: Bounds<ScaledPixels>,
     pub content_mask: ContentMask<ScaledPixels>,
     pub color: Hsla,
@@ -1047,12 +1140,32 @@ impl From<MonochromeSprite> for Primitive {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 #[repr(C)]
-pub(crate) struct PolychromeSprite {
+#[expect(missing_docs)]
+pub struct SubpixelSprite {
     pub order: DrawOrder,
-    pub pad: u32, // ABI-aligned sampling flags: bit 0 selects nearest texel
-    pub grayscale: bool,
+    pub pad: u32, // align to 8 bytes
+    pub bounds: Bounds<ScaledPixels>,
+    pub content_mask: ContentMask<ScaledPixels>,
+    pub color: Hsla,
+    pub tile: AtlasTile,
+    pub transformation: TransformationMatrix,
+}
+
+impl From<SubpixelSprite> for Primitive {
+    fn from(sprite: SubpixelSprite) -> Self {
+        Primitive::SubpixelSprite(sprite)
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+#[repr(C)]
+#[expect(missing_docs)]
+pub struct PolychromeSprite {
+    pub order: DrawOrder,
+    pub pad: u32, // KaminIDE patch: ABI-aligned sampling flags: bit 0 selects nearest texel
+    pub grayscale: PaddedBool32,
     pub opacity: f32,
     pub bounds: Bounds<ScaledPixels>,
     pub content_mask: ContentMask<ScaledPixels>,
@@ -1121,11 +1234,12 @@ impl From<PolychromeSprite> for Primitive {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct PaintSurface {
+#[allow(missing_docs)]
+pub struct PaintSurface {
     pub order: DrawOrder,
     pub bounds: Bounds<ScaledPixels>,
     pub content_mask: ContentMask<ScaledPixels>,
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     pub image_buffer: core_video::pixel_buffer::CVPixelBuffer,
     /// KaminIDE patch: на Windows Surface-примитив переиспользован под
     /// backdrop blur — скругление маски композита.
@@ -1155,17 +1269,19 @@ impl From<PaintSurface> for Primitive {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct PathId(pub(crate) usize);
+#[expect(missing_docs)]
+pub struct PathId(pub usize);
 
 /// A line made up of a series of vertices and control points.
 #[derive(Clone, Debug)]
+#[expect(missing_docs)]
 pub struct Path<P: Clone + Debug + Default + PartialEq> {
-    pub(crate) id: PathId,
-    pub(crate) order: DrawOrder,
-    pub(crate) bounds: Bounds<P>,
-    pub(crate) content_mask: ContentMask<P>,
-    pub(crate) vertices: Vec<PathVertex<P>>,
-    pub(crate) color: Background,
+    pub id: PathId,
+    pub order: DrawOrder,
+    pub bounds: Bounds<P>,
+    pub content_mask: ContentMask<P>,
+    pub vertices: Vec<PathVertex<P>>,
+    pub color: Background,
     start: Point<P>,
     current: Point<P>,
     contour_count: usize,
@@ -1289,7 +1405,8 @@ where
     T: Clone + Debug + Default + PartialEq + PartialOrd + Add<T, Output = T> + Sub<Output = T>,
 {
     #[allow(unused)]
-    pub(crate) fn clipped_bounds(&self) -> Bounds<T> {
+    #[expect(missing_docs)]
+    pub fn clipped_bounds(&self) -> Bounds<T> {
         self.bounds.intersect(&self.content_mask.bounds)
     }
 }
@@ -1302,12 +1419,14 @@ impl From<Path<ScaledPixels>> for Primitive {
 
 #[derive(Clone, Debug)]
 #[repr(C)]
-pub(crate) struct PathVertex<P: Clone + Debug + Default + PartialEq> {
-    pub(crate) xy_position: Point<P>,
-    pub(crate) st_position: Point<f32>,
-    pub(crate) content_mask: ContentMask<P>,
+#[expect(missing_docs)]
+pub struct PathVertex<P: Clone + Debug + Default + PartialEq> {
+    pub xy_position: Point<P>,
+    pub st_position: Point<f32>,
+    pub content_mask: ContentMask<P>,
 }
 
+#[expect(missing_docs)]
 impl PathVertex<Pixels> {
     pub fn scale(&self, factor: f32) -> PathVertex<ScaledPixels> {
         PathVertex {
