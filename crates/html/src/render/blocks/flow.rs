@@ -346,209 +346,11 @@ pub(crate) fn blocks_flow(
                 && !matches!(inherited.width, Some(Len::Px(_)));
             let canvas_stripped;
             let e = if canvas_paint {
-                // Фон холста — часть ГРУППЫ КОРНЯ (css-compositing-1
-                // §pagebackdrop): фильтр корня красит и его. Слой лежит
-                // СОСЕДОМ коробки корня, поэтому единственная точка окраски
-                // фильтром (`inline::inherit`) до него не доходит — красим
-                // здесь, от СОБСТВЕННОГО фильтра корня.
-                let root_filter = e.style.filter;
-                let mut layer = div().absolute().top_0().left_0().right_0().bottom_0();
-                // Слоёв несколько — их рисуют плитки (`bg_layers` ниже), а
-                // заливка всего холста верхним градиентом их закрыла бы
-                // (`background-position-right-in-body`: 97.92).
-                let canvas_layers = e.style.bg_layers();
-                if let Some(g) = e.style.gradient.as_ref().filter(|_| canvas_layers.is_none()) {
-                    let mut g = g.clone();
-                    if let Some(f) = root_filter {
-                        g.from = f.apply(g.from);
-                        g.to = f.apply(g.to);
-                        for stop in g.stops.iter_mut() {
-                            stop.0 = f.apply(stop.0);
-                        }
-                        for stop in g.stops_px.iter_mut() {
-                            stop.0 = f.apply(stop.0);
-                        }
-                        for stop in g.stops_raw.iter_mut() {
-                            stop.0 = f.apply(stop.0);
-                        }
-                    }
-                    layer = layer.bg(crate::apply::fill(&g));
-                } else if let Some(bg) = e.style.background {
-                    let bg = root_filter.map_or(bg, |f| f.apply(bg));
-                    layer = layer.bg(bg.to_hsla());
-                }
-                // Фон-КАРТИНКА канваса красит всю область просмотра тем же
-                // слоем (CSS 2.2 §14.2: painting area корневого фона —
-                // канвас): на коробке корня она начиналась с его сдвинутого
-                // схлопкой верха, и над краской проступала полоса
-                // (background-size-document-root-vrl-*).
-                let mut layer = layer.into_any_element();
-                // Донор — САМ корень: область ОТСЧЁТА плитки это его коробка
-                // (§14.2 «sized and positioned relative to the root element's
-                // box»), а красит она весь холст. Донор-тело сюда не входит:
-                // его слой лежит в детях корня, и отсчёт от padding-box корня
-                // получается сам (см. записи о двух откатах ниже).
-                if e.tag == "html"
-                    && (e.style.bg_image.is_some() || canvas_layers.is_some())
-                    && let Some(tiles) = {
-                        // Единицы шрифта тоже длина: `html { margin-top: 1em }`
-                        // роняло отсчёт в ноль, и плитка начиналась с края
-                        // холста (`margin-collapse-020`).
-                        let em = match e.style.font_size {
-                            Some(Len::Px(v)) => v,
-                            _ => opts.base_size(),
-                        };
-                        let fam = e.style.font_family.clone().unwrap_or_default();
-                        let side = |l: Option<Len>| match l {
-                            Some(Len::Px(v)) => v,
-                            Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_))) => {
-                                crate::metrics::spacing_px(Some(l), &fam, em)
-                            }
-                            _ => 0.0,
-                        };
-                        let b = e.style.borders();
-                        let area = crate::background::RootArea {
-                            left: side(e.style.margin.left) + side(b.left),
-                            top: side(e.style.margin.top) + side(b.top),
-                            right: side(e.style.margin.right) + side(b.right),
-                            bottom: side(e.style.margin.bottom) + side(b.bottom),
-                            width: match e.style.width {
-                                Some(Len::Px(w)) => Some(
-                                    w + side(e.style.padding.left) + side(e.style.padding.right),
-                                ),
-                                _ => None,
-                            },
-                            height: match e.style.height {
-                                Some(Len::Px(h)) => Some(
-                                    h + side(e.style.padding.top) + side(e.style.padding.bottom),
-                                ),
-                                _ => None,
-                            },
-                            from_right: e.style.vertical_rl == Some(true),
-                            // Корень `vertical-rl` без заданной ширины — по
-                            // содержимому у правого края (css-writing-modes-4
-                            // §7, auto block-size): левый край его коробки
-                            // пишет обёртка тела ниже при подготовке.
-                            left_key: (e.style.vertical_rl == Some(true)).then_some(opts.doc_salt),
-                        };
-                        match &canvas_layers {
-                            // Снизу вверх, каждый слой — своей плиткой от
-                            // коробки корня (§14.2).
-                            Some(layers) => {
-                                let mut stack = div().absolute().top_0().left_0().right_0().bottom_0();
-                                for l in layers.iter().rev() {
-                                    if let Some(t) = crate::background::canvas_layer(l, area) {
-                                        stack = stack.child(t);
-                                    }
-                                }
-                                Some(stack.into_any_element())
-                            }
-                            None => crate::background::canvas_layer(&e.style, area),
-                        }
-                    }
-                {
-                    layer = div()
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .right_0()
-                        .bottom_0()
-                        .child(layer)
-                        .child(tiles)
-                        .into_any_element();
-                } else if e.style.bg_image.is_some()
-                    && let Some(tiles) = crate::background::layer(&e.style)
-                {
-                    // Область ПОЗИЦИОНИРОВАНИЯ краски — PADDING-BOX корня:
-                    // ширина + горизонтальные отступы; полоса прижата по
-                    // письму с учётом поля и рамки с той стороны.
-                    //
-                    // ЗАМЕРЕНО ВТОРОЙ РАЗ (перенос фона тела на корень по §14.2
-                    // ВМЕСТЕ с `RootArea` + `canvas_layer`): приобретено 1,
-                    // потеряно 2 — `background-position-001` 0.36 -> 2.39 и
-                    // `background-root-024` 0.17 -> 5.74. Перенос сам по себе
-                    // даёт 0 и −2. Значит дело не в кегле тела: расходится
-                    // геометрия коробки корня, и её надо чинить первой.
-                    //
-                    // ЗАМЕРЕНО: считать область от коробки корня целиком
-                    // (`RootArea` + `canvas_layer`, плитка красит весь холст)
-                    // — CSS2 +2 в `background-root-001/002`, но -3 в
-                    // `margin-collapse-020/021` и `block-formatting-contexts-003`:
-                    // слой на весь холст перекрывает то, что рисуется выше по
-                    // потоку. Возвращаться вместе с переносом фона тела на
-                    // корень, когда кегль тела будет разрешаться до переноса.
-                    let side = |l: Option<Len>| match l {
-                        Some(Len::Px(v)) => v,
-                        _ => 0.0,
-                    };
-                    let b = e.style.borders();
-                    let mut band = div().absolute().top_0().bottom_0();
-                    band = match e.style.width {
-                        Some(Len::Px(w)) => {
-                            let pad_w =
-                                w + side(e.style.padding.left) + side(e.style.padding.right);
-                            let band = band.w(px(pad_w));
-                            if e.style.vertical_rl == Some(true) {
-                                band.right(px(side(e.style.margin.right) + side(b.right)))
-                            } else {
-                                band.left(px(side(e.style.margin.left) + side(b.left)))
-                            }
-                        }
-                        _ => band.left_0().right_0(),
-                    };
-                    layer = div()
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .right_0()
-                        .bottom_0()
-                        .child(layer)
-                        .child(band.child(tiles))
-                        .into_any_element();
-                }
-                // Прозрачность корня — на ГОТОВЫЙ слой холста целиком, вместе
-                // с плиткой фона-картинки: погаси их порознь, и цвет с плиткой
-                // сложились бы с двойной альфой. Коробка корня свою
-                // прозрачность получает отдельно (`apply::style`), но краска с
-                // неё уже снята, так что перекрытия групп нет.
-                if let Some(o) = e.style.opacity.filter(|o| *o < 1.0) {
-                    layer = div()
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .right_0()
-                        .bottom_0()
-                        .opacity(o)
-                        .child(layer)
-                        .into_any_element();
-                }
-                // `clip-path` корня режет и холст (css-masking-1 §the-clip-path +
-                // compositing-1 §rootgroup: фон корня — часть корневой группы):
-                // слой холста получает ту же обрезку, что и коробка корня.
-                // Начало координат у них общее — левый верхний угол окна.
-                if e.style.clip_polygon.is_some()
-                    || e.style.clip_shape.is_some()
-                    || e.style.clip_inset.is_some()
-                    || e.style.clip_xywh.is_some()
-                {
-                    let mut clip = Computed::default();
-                    clip.clip_polygon = e.style.clip_polygon.clone();
-                    clip.clip_shape = e.style.clip_shape.clone();
-                    clip.clip_inset = e.style.clip_inset.clone();
-                    clip.clip_xywh = e.style.clip_xywh.clone();
-                    layer = grouped(
-                        div()
-                            .absolute()
-                            .top_0()
-                            .left_0()
-                            .right_0()
-                            .bottom_0()
-                            .child(layer)
-                            .into_any_element(),
-                        &clip,
-                    );
-                }
-                out.push(layer);
+                canvas_layer(
+                    e,
+                    opts,
+                    &mut out,
+                );
                 let mut copy = e.clone();
                 copy.style.background = None;
                 copy.style.gradient = None;
@@ -610,73 +412,13 @@ pub(crate) fn blocks_flow(
                 None
             };
             let built = if let Some(block_axis) = holder_axis {
-                let auto = |l: Option<Len>| l == Some(Len::Auto);
-                let mut holder = Computed::default();
-                holder.position = e.style.position;
-                holder.inset = e.style.inset;
-                holder.z_index = e.style.z_index;
-                holder.display = Some(Display::Flex);
-                holder.flex_dir = Some(if block_axis {
-                    crate::computed::FlexDir::Col
-                } else {
-                    crate::computed::FlexDir::Row
-                });
-                // Поля вдоль оси остаются у ВНУТРЕННЕЙ коробки: auto-поля
-                // элемента гибкого контейнера забирают остаток, а при нехватке
-                // места обнуляются (css-flexbox-1 §8.1) — ровно как auto-поля
-                // абсолюта (§3.8; `fit-content-block-size-abspos` с
-                // переполнением). Поперечные не-auto поля — у держателя.
-                // Поперечные поля — у держателя целиком, включая auto: с
-                // заданным размером и краями с обеих сторон они центрируют
-                // сам абсолют (css-position-3 §3.8; `inline-size: 100px;
-                // margin: auto; inset: 0`).
-                if block_axis {
-                    holder.margin.left = e.style.margin.left;
-                    holder.margin.right = e.style.margin.right;
-                } else {
-                    holder.margin.top = e.style.margin.top;
-                    holder.margin.bottom = e.style.margin.bottom;
-                }
-                // Поперечный размер держателя — border-box внутренней коробки:
-                // её рамка и отбивка прибавляются (у держателя своих нет).
-                let px_of = |l: Option<Len>| match l {
-                    Some(Len::Px(v)) => v,
-                    _ => 0.0,
-                };
-                let bd = e.style.borders();
-                if block_axis {
-                    let extra = px_of(e.style.padding.left)
-                        + px_of(e.style.padding.right)
-                        + px_of(bd.left)
-                        + px_of(bd.right);
-                    holder.width = match e.style.width {
-                        Some(Len::Px(w)) => Some(Len::Px(w + extra)),
-                        other => other.filter(|l| !kw_len(Some(*l))),
-                    };
-                } else {
-                    let extra = px_of(e.style.padding.top)
-                        + px_of(e.style.padding.bottom)
-                        + px_of(bd.top)
-                        + px_of(bd.bottom);
-                    holder.height = match e.style.height {
-                        Some(Len::Px(h)) => Some(Len::Px(h + extra)),
-                        other => other.filter(|l| !kw_len(Some(*l))),
-                    };
-                }
-                let mut inner = e.clone();
-                inner.style.position = None;
-                inner.style.inset = Default::default();
-                if block_axis {
-                    inner.style.margin.left = None;
-                    inner.style.margin.right = None;
-                } else {
-                    inner.style.margin.top = None;
-                    inner.style.margin.bottom = None;
-                }
-                inner.style.z_index = None;
-                crate::apply::apply(div(), &holder)
-                    .child(element(&inner, inherited, opts))
-                    .into_any_element()
+                inset_holder_box(
+                    e,
+                    block_axis,
+                    inherited,
+                    opts,
+                    &kw_len,
+                )
             } else if stacking_context(&e.style)
                 && e.style.isolate != Some(true)
                 && blends_inside(&e.children, 0)
@@ -975,157 +717,20 @@ pub(crate) fn blocks_flow(
             // в абзаце она рвёт строку. Возвращаться только с настоящей
             // статической позицией внутри строки.
             if !ordered_context && (at_static_position(&e.style) || below_free_axis) {
-                // Позиционированный элемент рисуется ПОВЕРХ обычного
-                // содержимого (CSS 2.1 §9.9, шаг 8) и без заданного `z-index`:
-                // без верхнего слоя следующий за ним сосед закрашивал его
-                // собой — блок стоял на месте, но был не виден (проба:
-                // абсолютный кусок между «AA» и «BB» пропадал целиком, хотя
-                // один в блоке рисовался верно).
-                //
-                // Позиционированный элемент рисуется ПОВЕРХ обычного
-                // содержимого (CSS 2.1 §9.9, шаг 8), а порядок отрисовки у нас
-                // — порядок детей. Отложенная отрисовка тут не работает ни в
-                // каком виде (пробовали трижды: css-position 31 → 0, css-text
-                // 966 → 810, падение процесса), поэтому содержимое уходит
-                // ПОСЛЕДНИМ ребёнком родителя, а на своём месте остаётся
-                // нулевая распорка с холстом-щупом. Разницу их положений
-                // элемент забирает отрицательным полем — так он оказывается
-                // там же, где был, но рисуется последним.
-                // Отрицательный `z-index` рисуется ПОД содержимым потока
-                // (CSS 2.1 §9.9, шаг 3), поэтому в верхний слой он не идёт:
-                // там его место — поверх всего.
-                let below = e.style.z_index.is_some_and(|z| z < 0);
-                let spot: crate::interact::SpotCell = Default::default();
-                spot.set(crate::interact::Spot {
-                    rtl: inherited.rtl == Some(true),
-                    vertical: inherited.vertical == Some(true),
-                    vertical_rl: inherited.vertical_rl == Some(true),
-                    own_vertical: e.style.vertical == Some(true),
-                    replaced: matches!(
-                        e.tag.as_str(),
-                        "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"
-                    ),
-                    line_align: static_line_align(e, inherited),
-                    self_align: static_self_align(e, inherited),
-                    ..Default::default()
-                });
-                let probe = crate::interact::spot_probe(spot.clone(), true);
-                // Поля сдвигают абсолютный элемент ОТ статической позиции
-                // (CSS 2.1 §10.3.7: auto-края = static + margin). Раскладка
-                // под нами поля у absolute без краёв не считает — сдвиг
-                // даёт absolute-обёртка (clip-path-rectangle-ref и родня:
-                // эталонный зелёный стоял без своих margin: 50px).
-                let ml = margin_px(e.style.margin.left, &e.style).unwrap_or(0.0);
-                let mt = margin_px(e.style.margin.top, &e.style).unwrap_or(0.0);
-                // Под потоком (`below`) коробка остаётся абсолютной на месте
-                // распорки, и поле от статической позиции ей уже даёт сама
-                // раскладка (taffy: `static_position + margin`); обёртка
-                // прибавляла его второй раз (`tab-size-inheritance-001`:
-                // красная подложка на 50 точек правее).
-                // Обёртка — содержащий блок коробки для раскладки, и её ширина
-                // — доступная ширина shrink-to-fit (CSS 2.1 §10.3.7: ширина
-                // содержащего блока минус статическое смещение и поля;
-                // Blink `absolute_utils.cc` ComputeAbsoluteInlineSize берёт
-                // `available_size` от края до края содержащего блока). Без
-                // правого края обёртка была нулевой ширины, и `<h1>` с
-                // полями по умолчанию ломался после каждого слова
-                // (min-content). Правый край — только при ltr в
-                // горизонтальном письме: rtl ставит коробку от правого края
-                // обёртки, вертикальный заместитель нулевой и так.
-                let mr = margin_px(e.style.margin.right, &e.style).unwrap_or(0.0);
-                let stretch = inherited.rtl != Some(true) && inherited.vertical != Some(true);
-                let built = if (ml != 0.0 || mt != 0.0) && !below {
-                    let wrap = div().absolute().left(px(ml)).top(px(mt));
-                    let wrap = if stretch { wrap.right(px(mr)) } else { wrap };
-                    wrap.child(built).into_any_element()
-                } else {
-                    built
-                };
-                // A positive `z-index` orders the box above the auto/0
-                // positioned boxes (CSS 2.1 §9.9 steps 8–9), as on the
-                // CB-layer path above: `scalex` — a static-position abspos
-                // with `z-index: 11` painted under its `z-index: 10` sibling.
-                let built = if !below && e.style.z_index.is_some_and(|z| z > 0) {
-                    layered(built, &e.style, inherited, layer_ok, under_tf)
-                } else {
-                    built
-                };
-                // Абсолют на статической позиции — тоже шаг 8: в собирателе
-                // он встаёт среди позиционированных по ключу, а не поверх
-                // всех соседей контейнера.
-                let taken = if below {
-                    Some(built)
-                } else if paint_last_ok(e, &nodes[idx + 1..]) {
-                    crate::interact::late_push(
-                        spot,
-                        gpui::PaintLast::new(built).key(paint_key).into_any_element(),
-                    )
-                } else {
-                    crate::interact::late_push(spot, built)
-                };
-                match taken {
-                    None => out.push(probe),
-                    Some(kept) => {
-                        // ЗАМЕРЕНО И ОТКАЧЕНО: заворачивать `kept` в
-                        // `Underlay`, чтобы коробка с отрицательным `z-index`
-                        // легла ПОД поток (§9.9 шаг 3) — срез из 259 пар семей
-                        // *shape*: 0 и 0, НИ ОДНО число не сдвинулось.
-                        // Подложка порядок не меняет: нижним слоям сцена даёт
-                        // общий номер, а сортировка устойчива. Тройку
-                        // `spec-examples/shape-outside-004…006` сломал коммит
-                        // `05b7a4f` (28.08, гейт `x_set && y_set` в `movable`),
-                        // и возвращать её надо порядком краски, а не слоем.
-                        // Отрицательный `z-index` принадлежит БЛИЖАЙШЕМУ контексту
-                        // наложения (CSS 2.1 прил. E, шаг 3), а позиционированный
-                        // родитель с `z-index: auto` его не образует: ребёнок
-                        // обязан лечь ПОД его фон (шаг 8 родителя выше шага 3
-                        // корня). Держатель на месте красил ребёнка после фона
-                        // родителя — красный поверх зелёного
-                        // (`z-index-abspos-001`). Подложка — тот же приём, что у
-                        // относительного с `z<0` ниже по функции. Прежний замер
-                        // обёртки (запись выше, 259 пар *shape*: 0/0) шёл без
-                        // гейта по родителю; `!cb_ancestor` держит правку там,
-                        // где контекст наверняка корневой (у `fixed-pos-stacking-001`
-                        // выше стоит `fixed` — он контекст, туда не заходим).
-                        let kept = if below
-                            && matches!(
-                                inherited.position,
-                                Some(crate::computed::Position::Relative)
-                                    | Some(crate::computed::Position::Absolute)
-                            )
-                            && !inherited.cb_ancestor
-                            && !stacking_context(inherited)
-                        {
-                            crate::interact::Underlay::new(kept).into_any_element()
-                        } else {
-                            kept
-                        };
-                        let contiguous = below && out.len() == below_run_end;
-                        out.push(
-                            div()
-                                .relative()
-                                .w_full()
-                                .h_0()
-                                .flex_shrink_0()
-                                .child(kept)
-                                .into_any_element(),
-                        );
-                        if below {
-                            if !contiguous {
-                                below_run_start = out.len() - 1;
-                                below_zs.clear();
-                            }
-                            below_zs.push(e.style.z_index.unwrap_or(0));
-                            let mut at = below_zs.len() - 1;
-                            while at > 0 && below_zs[at - 1] > below_zs[at] {
-                                below_zs.swap(at - 1, at);
-                                out.swap(below_run_start + at - 1, below_run_start + at);
-                                at -= 1;
-                            }
-                            below_run_end = out.len();
-                        }
-                    }
-                }
+                (below_run_start, below_run_end) = static_position_layer(
+                    e,
+                    inherited,
+                    built,
+                    layer_ok,
+                    under_tf,
+                    nodes,
+                    idx,
+                    paint_key,
+                    &mut out,
+                    &mut below_zs,
+                    below_run_start,
+                    below_run_end,
+                );
                 continue;
             }
             let _ = hoist_margins;
