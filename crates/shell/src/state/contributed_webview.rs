@@ -19,6 +19,7 @@ impl RootView {
         &mut self,
         d: &crate::activity::DynView,
         p: &'static Palette,
+        visible: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         // Оригинал снимает скелет, как только пришёл html
@@ -110,7 +111,7 @@ impl RootView {
                     at.elapsed().as_millis() < COVER_FADE_MS as u128
                 })
             });
-        if pending {
+        if visible && pending {
             self.schedule_loader_tick(cx);
         }
         div()
