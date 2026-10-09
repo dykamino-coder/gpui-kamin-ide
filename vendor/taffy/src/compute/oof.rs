@@ -345,7 +345,18 @@ impl OofAxis {
             (None, None) => {
                 let sp = self.static_position;
                 let margin_box_size = size + margin.start + margin.end;
+                // KaminIDE: a non-degenerate static-position area (a grid area) is the
+                // alignment container `safe` is checked against, falling back within that area
+                // (WPT grid-abspos-staticpos-align-self-safe-001); upstream #1267 checks only
+                // the IMCB, which an end-aligned box never overflows. Degenerate areas (block
+                // static positions) keep upstream's IMCB rule.
+                let area_size = sp.area.end - sp.area.start;
                 let offset = if sp.align.safety == AlignmentSafety::Safe
+                    && area_size > 0.0
+                    && margin_box_size > area_size
+                {
+                    align_in_line(sp.area, margin_box_size, sp.align.fallback)
+                } else if sp.align.safety == AlignmentSafety::Safe
                     && margin_box_size > imcb.end - imcb.start
                 {
                     align_in_line(imcb, margin_box_size, self.start_edge())

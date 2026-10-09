@@ -19,7 +19,9 @@ impl<S: CheapCloneStr> DetailedGridInfo<S> {
             GridAreaAxis::Column,
             padding_box.left,
             padding_box.right,
-            direction.is_rtl(),
+            // KaminIDE: the HTML adapter projects RTL/writing modes into `grid_axis_reversed`
+            // (folded into `axis_reversed`), so the caller's `direction` may stay Ltr.
+            direction.is_rtl() || self.axis_reversed.width,
         );
         let rows = self.rows.resolve_absolute_grid_axis(
             grid_row,

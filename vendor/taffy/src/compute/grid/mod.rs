@@ -1188,13 +1188,14 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
                         },
                         direction.is_rtl(),
                     ),
+                    // KaminIDE: writing modes may reverse the physical row axis too.
                     y: AxisStaticPosition::from_alignment(
                         align_self,
                         Line {
                             start: area.top,
                             end: area.bottom,
                         },
-                        false,
+                        flow.height,
                     ),
                 },
             });
