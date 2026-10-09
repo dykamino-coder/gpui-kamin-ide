@@ -8,26 +8,26 @@
 //! разрешил CSS.
 
 pub(crate) mod physical_atomic_frame;
-mod vertical_line_baseline;
-use gpui::{
+pub(crate) mod vertical_line_baseline;
+pub(crate) use gpui::{
     AnyElement, App, Bounds, Div, Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior,
     InspectorElementId, IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent,
     MouseUpEvent, ParentElement, Pixels, Styled, Window, px,
 };
-use std::rc::Rc;
+pub(crate) use std::rc::Rc;
 
-mod spot_geometry;
-mod rectangular_clip;
-mod mask_geometry;
-mod legacy_clip;
-mod mask_size;
-mod polygon_clip;
-mod orthogonal_measure;
-mod vertical_style;
-mod combined_geometry;
-mod gap_segments;
-mod gap_fragment_tail;
-mod transform_geometry;
+pub(crate) mod spot_geometry;
+pub(crate) mod rectangular_clip;
+pub(crate) mod mask_geometry;
+pub(crate) mod legacy_clip;
+pub(crate) mod mask_size;
+pub(crate) mod polygon_clip;
+pub(crate) mod orthogonal_measure;
+pub(crate) mod vertical_style;
+pub(crate) mod combined_geometry;
+pub(crate) mod gap_segments;
+pub(crate) mod gap_fragment_tail;
+pub(crate) mod transform_geometry;
 use gap_segments::segments;
 use transform_geometry::quarter_turn;
 
@@ -41,22 +41,22 @@ pub enum ResizeAxis {
 
 /// Память между кадрами: заданный пользователем размер и состояние перетаскивания.
 #[derive(Default, Clone, Copy)]
-struct State {
-    width: Option<f32>,
-    height: Option<f32>,
-    dragging: bool,
+pub(crate) struct State {
+    pub(crate) width: Option<f32>,
+    pub(crate) height: Option<f32>,
+    pub(crate) dragging: bool,
     /// Размер на момент нажатия — от него считается сдвиг.
-    from: (f32, f32),
-    at: (f32, f32),
+    pub(crate) from: (f32, f32),
+    pub(crate) at: (f32, f32),
 }
 
 /// Сторона квадратной ручки в углу.
-const GRIP: f32 = 12.0;
+pub(crate) const GRIP: f32 = 12.0;
 
 pub struct Resizable {
-    id: ElementId,
-    axis: ResizeAxis,
-    build: Rc<dyn Fn(Option<f32>, Option<f32>) -> AnyElement>,
+    pub(crate) id: ElementId,
+    pub(crate) axis: ResizeAxis,
+    pub(crate) build: Rc<dyn Fn(Option<f32>, Option<f32>) -> AnyElement>,
 }
 
 impl Resizable {
@@ -242,7 +242,7 @@ pub type StickyCell = std::rc::Rc<std::cell::Cell<StickyFrame>>;
 /// отложенный проход: иначе содержимое, идущее ниже по разметке, закрашивало
 /// бы прилипший заголовок.
 pub struct Sticky {
-    child: Option<AnyElement>,
+    pub(crate) child: Option<AnyElement>,
     /// Пороги прилипания в точках; `None` — сторона не задана.
     pub top: Option<f32>,
     pub bottom: Option<f32>,
@@ -264,7 +264,7 @@ impl Sticky {
     }
 
     /// Насколько сдвинуть элемент, чтобы он остался у края видимой части.
-    fn shift(&self, bounds: Bounds<Pixels>) -> gpui::Point<Pixels> {
+    pub(crate) fn shift(&self, bounds: Bounds<Pixels>) -> gpui::Point<Pixels> {
         let frame = self.frame.get();
         let Some(view) = frame.viewport else {
             return gpui::point(px(0.0), px(0.0));
@@ -386,7 +386,7 @@ impl IntoElement for Sticky {
 /// смешаться до размытия. Патч gpui рисует детей в свой буфер и кладёт его в
 /// кадр уже размытым.
 pub struct Grouped {
-    child: Option<AnyElement>,
+    pub(crate) child: Option<AnyElement>,
     /// Радиус размытия в точках; 0 — только сборка в буфер.
     pub blur: f32,
     /// Прозрачность группы целиком.
@@ -506,7 +506,7 @@ impl Grouped {
 }
 
 /// Голый источник слоя маски: содержимое `url(...)` либо запись градиента.
-fn mask_layer_source(layer: &str) -> Option<String> {
+pub(crate) fn mask_layer_source(layer: &str) -> Option<String> {
     let t = layer.trim();
     if t.contains("-gradient(") {
         return Some(t.to_string());
@@ -528,7 +528,7 @@ fn mask_layer_source(layer: &str) -> Option<String> {
 /// Содержимое `<mask id>`/`<clipPath id>` из ВНЕШНЕГО файла рисунка
 /// (`mask-image: url(file.svg#id)`): грубый текстовый вырез — дерево
 /// документа рисунка нам нигде больше не нужно.
-fn svg_fragment(path: &str, id: &str) -> Option<String> {
+pub(crate) fn svg_fragment(path: &str, id: &str) -> Option<String> {
     let markup = std::fs::read_to_string(path).ok()?;
     for tag in ["mask", "clipPath"] {
         let mut rest = markup.as_str();
@@ -551,7 +551,7 @@ fn svg_fragment(path: &str, id: &str) -> Option<String> {
 /// Содержимое сериализовано при сборе (`render::mask_def`); маска берёт
 /// светимость своих красок, обрезка — покрытие (заливка принудительно
 /// белая), поэтому обе идут люминанс-растром.
-fn rasterize_mask_def(
+pub(crate) fn rasterize_mask_def(
     key: &str,
     w: f32,
     h: f32,
@@ -1222,7 +1222,7 @@ impl IntoElement for Grouped {
 }
 
 pub struct Transformed {
-    child: Option<AnyElement>,
+    pub(crate) child: Option<AnyElement>,
     /// Поворот в радианах, масштаб по осям, сдвиг в точках.
     pub rotate: f32,
     /// Скос по осям в радианах (`transform: skew`).
@@ -1268,11 +1268,11 @@ pub struct Transformed {
     /// Чистый плоский сдвиг уже перенесён в место раскладки на подготовке
     /// (`prepaint`, `Window::set_layout_placed_origin`): `paint` рисует без
     /// матрицы.
-    placed: bool,
+    pub(crate) placed: bool,
     /// Неокруглённое место коробки из подготовки: осевой поворот на
     /// отрисовке округляет края от него (`layout_origin_unrounded` доступен
     /// только до отрисовки).
-    exact_origin: Option<gpui::Point<Pixels>>,
+    pub(crate) exact_origin: Option<gpui::Point<Pixels>>,
     /// Reference box shared by the cells of a transformed table row or row
     /// group (css-transforms-1 §transformable-element: the row has no box
     /// of its own in our grid): every cell unions its unrounded box into it
@@ -1294,7 +1294,7 @@ pub type RefBox = std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<Pixels>>>>;
 /// детерминированно и одинаково для теста и эталона с той же гомографией
 /// (transform3d-matrix3d-003/-004). `None` — плоскость за глазом или ребром.
 
-fn flatten_plane(f: &[[f32; 4]; 4], center: (f32, f32)) -> Option<gpui::TransformationMatrix> {
+pub(crate) fn flatten_plane(f: &[[f32; 4]; 4], center: (f32, f32)) -> Option<gpui::TransformationMatrix> {
     const EPS: f32 = 1e-5;
     if crate::computed::det3_plane(f).abs() < EPS {
         return None;
@@ -1330,7 +1330,7 @@ fn flatten_plane(f: &[[f32; 4]; 4], center: (f32, f32)) -> Option<gpui::Transfor
 /// `with_transformation` как `inner∘outer` (`window.rs:2789`; обратный
 /// порядок замерен и откачен), поэтому ребёнок объёмного контекста, желая
 /// оказаться на абсолютной `G`, обязан втолкнуть `G ∘ F_родителя⁻¹`.
-fn invert_affine(m: [[f32; 3]; 2]) -> Option<gpui::TransformationMatrix> {
+pub(crate) fn invert_affine(m: [[f32; 3]; 2]) -> Option<gpui::TransformationMatrix> {
     let (a, b, tx) = (m[0][0], m[0][1], m[0][2]);
     let (c, d, ty) = (m[1][0], m[1][1], m[1][2]);
     let det = a * d - b * c;
@@ -1377,7 +1377,7 @@ impl Transformed {
     /// Плоская матрица — чистый сдвиг (линейная часть единичная с точностью
     /// до ошибки `f32`: `rotate(360deg)` даёт sin ≈ 1e-7): сдвиг в css-точках
     /// для коробки `w × h`.
-    fn pure_shift(&self, w: f32, h: f32) -> Option<(f32, f32)> {
+    pub(crate) fn pure_shift(&self, w: f32, h: f32) -> Option<(f32, f32)> {
         let [[a, b], [c, d]] = self.lin;
         let eps = 1e-5;
         let id = (a - 1.0).abs() < eps && b.abs() < eps && c.abs() < eps && (d - 1.0).abs() < eps;
@@ -1808,7 +1808,7 @@ impl IntoElement for Transformed {
 /// содержимого, нарисованного до него. Порядок отрисовки у нас — порядок
 /// детей, и позднему ребёнку иначе никак не лечь под раннего.
 pub struct Underlay {
-    child: Option<AnyElement>,
+    pub(crate) child: Option<AnyElement>,
 }
 
 impl Underlay {
@@ -1894,7 +1894,7 @@ thread_local! {
     /// Буферы прямоугольников ПО РЯДАМ, переживающие перестройку дерева:
     /// каждый кадр стенд строит элементы заново, и Rc из прошлого кадра
     /// иначе терялся вместе с записями проб.
-    static ROW_RECTS: std::cell::RefCell<std::collections::HashMap<u64, RowRects>> =
+    pub(crate) static ROW_RECTS: std::cell::RefCell<std::collections::HashMap<u64, RowRects>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
@@ -1923,16 +1923,16 @@ thread_local! {
     /// Полоса без единой ячейки (`<col>` без рядов, `<col>` за краем сетки)
     /// не дождётся их никогда, а запрос кадра без счётчика вертел бы окно
     /// вечно: документ не успокаивается, и стенд снимает его на таймауте.
-    static BAND_RETRIES: std::cell::RefCell<std::collections::HashMap<usize, u8>> =
+    pub(crate) static BAND_RETRIES: std::cell::RefCell<std::collections::HashMap<usize, u8>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
 /// Сколько кадров ждать пробы, прежде чем счесть полосу пустой.
-const BAND_WAIT_FRAMES: u8 = 2;
+pub(crate) const BAND_WAIT_FRAMES: u8 = 2;
 
 pub struct CellsClipped {
-    style: crate::computed::Computed,
-    rects: RowRects,
+    pub(crate) style: crate::computed::Computed,
+    pub(crate) rects: RowRects,
 }
 
 impl CellsClipped {
@@ -2181,12 +2181,12 @@ pub type CellEdges = std::rc::Rc<std::cell::RefCell<Vec<EdgeCell>>>;
 pub type GapItems = std::rc::Rc<std::cell::RefCell<Vec<Bounds<Pixels>>>>;
 
 thread_local! {
-    static GAP_ITEMS: std::cell::RefCell<std::collections::HashMap<u64, GapItems>> =
+    pub(crate) static GAP_ITEMS: std::cell::RefCell<std::collections::HashMap<u64, GapItems>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
     /// Стек контейнеров с линейками промежутков при ПОСТРОЕНИИ дерева.
     /// Ровно как `CLAMP_STACK`: проба ставится только НЕПОСРЕДСТВЕННЫМ
     /// детям, поэтому сторож кладёт ключ на время сборки детей.
-    static GAP_STACK: std::cell::RefCell<Vec<u64>> = std::cell::RefCell::new(Vec::new());
+    pub(crate) static GAP_STACK: std::cell::RefCell<Vec<u64>> = std::cell::RefCell::new(Vec::new());
 }
 
 pub fn gap_items_for(key: u64) -> GapItems {
@@ -2199,7 +2199,7 @@ pub fn forget_gap_buffers() {
 }
 
 /// Сторож стека линеек на время сборки ДЕТЕЙ контейнера.
-pub struct GapGuard(bool);
+pub struct GapGuard(pub(crate) bool);
 
 impl GapGuard {
     pub fn enter(key: u64) -> Self {
@@ -2243,9 +2243,9 @@ pub fn gap_item_probe(items: GapItems, border: [f32; 4]) -> AnyElement {
 /// от округлённых краёв элементов середина уезжает на долю точки, и при
 /// масштабе 1.25 край линейки округлялся на строку ниже
 /// (`flex-gap-decorations-048`: строка y=86 лишняя).
-struct GapItemProbe {
-    items: GapItems,
-    border: [f32; 4],
+pub(crate) struct GapItemProbe {
+    pub(crate) items: GapItems,
+    pub(crate) border: [f32; 4],
 }
 
 impl Element for GapItemProbe {
@@ -2402,19 +2402,19 @@ pub struct GapRuleSpec {
 }
 
 /// Допуск сравнения координат раскладки.
-const GAP_EPS: f32 = 0.35;
+pub(crate) const GAP_EPS: f32 = 0.35;
 
 /// Элемент в осях `a` — поперёк промежутка, `b` — вдоль линейки.
 #[derive(Clone, Copy, Debug)]
-struct GapItem {
-    a0: f32,
-    a1: f32,
-    b0: f32,
-    b1: f32,
+pub(crate) struct GapItem {
+    pub(crate) a0: f32,
+    pub(crate) a1: f32,
+    pub(crate) b0: f32,
+    pub(crate) b1: f32,
 }
 
 impl GapItem {
-    fn from_bounds(b: &Bounds<Pixels>, gap_on_x: bool) -> Self {
+    pub(crate) fn from_bounds(b: &Bounds<Pixels>, gap_on_x: bool) -> Self {
         let x0 = f32::from(b.origin.x);
         let y0 = f32::from(b.origin.y);
         let x1 = x0 + f32::from(b.size.width);
@@ -2426,17 +2426,17 @@ impl GapItem {
         }
     }
 
-    fn flipped(&self) -> Self {
+    pub(crate) fn flipped(&self) -> Self {
         GapItem { a0: self.b0, a1: self.b1, b0: self.a0, b1: self.a1 }
     }
 
     /// Заходит ли элемент в участок `[lo, hi]` вдоль линейки.
-    fn covers_b(&self, lo: f32, hi: f32) -> bool {
+    pub(crate) fn covers_b(&self, lo: f32, hi: f32) -> bool {
         self.b0 < hi - GAP_EPS && self.b1 > lo + GAP_EPS
     }
 
     /// Перекрывает ли элемент промежуток `[g0, g1]` (спан через него).
-    fn spans_a(&self, g0: f32, g1: f32) -> bool {
+    pub(crate) fn spans_a(&self, g0: f32, g1: f32) -> bool {
         self.a0 <= g0 + GAP_EPS && self.a1 >= g1 - GAP_EPS
     }
 }
@@ -2445,12 +2445,12 @@ impl GapItem {
 /// линейку при `intersection` (видимое пересечение); есть ли в нём поперечная
 /// линейка (стык, а не cap) и её ширина.
 #[derive(Clone, Copy, Debug)]
-struct Crossing {
-    lo: f32,
-    hi: f32,
-    breaks: bool,
-    joins: bool,
-    cross_w: f32,
+pub(crate) struct Crossing {
+    pub(crate) lo: f32,
+    pub(crate) hi: f32,
+    pub(crate) breaks: bool,
+    pub(crate) joins: bool,
+    pub(crate) cross_w: f32,
 }
 
 /// Линейка одного промежутка: интервал промежутка `[g0, g1]`, протяжённость
@@ -2458,18 +2458,18 @@ struct Crossing {
 /// и характер концов протяжённости — стык (ширина зазора, есть ли линейка,
 /// её ширина) или край контейнера (`None`).
 #[derive(Clone, Debug)]
-struct GapRun {
-    g0: f32,
-    g1: f32,
-    r0: f32,
-    r1: f32,
-    crossings: Vec<Crossing>,
-    blocked: Vec<(f32, f32)>,
-    hidden: Vec<(f32, f32)>,
-    start_edge: Option<(f32, bool, f32)>,
-    end_edge: Option<(f32, bool, f32)>,
-    index: usize,
-    count: usize,
+pub(crate) struct GapRun {
+    pub(crate) g0: f32,
+    pub(crate) g1: f32,
+    pub(crate) r0: f32,
+    pub(crate) r1: f32,
+    pub(crate) crossings: Vec<Crossing>,
+    pub(crate) blocked: Vec<(f32, f32)>,
+    pub(crate) hidden: Vec<(f32, f32)>,
+    pub(crate) start_edge: Option<(f32, bool, f32)>,
+    pub(crate) end_edge: Option<(f32, bool, f32)>,
+    pub(crate) index: usize,
+    pub(crate) count: usize,
 }
 
 impl GapRun {
@@ -2477,7 +2477,7 @@ impl GapRun {
     /// границе, ширина зазора (0 у края и у «висячего» конца без поперечной
     /// линейки — так считает Blink `GetMaxInsetWidth`), есть ли стык и ширина
     /// поперечной линейки.
-    fn edge(&self, pos: f32, is_start: bool) -> (f32, f32, bool, f32) {
+    pub(crate) fn edge(&self, pos: f32, is_start: bool) -> (f32, f32, bool, f32) {
         if is_start && (pos - self.r0).abs() <= GAP_EPS {
             return match self.start_edge {
                 Some((cw, joins, dw)) => (self.r0, if joins { cw } else { 0.0 }, joins, dw),
@@ -2502,7 +2502,7 @@ impl GapRun {
     }
 }
 
-fn uniq_sorted(mut v: Vec<f32>) -> Vec<f32> {
+pub(crate) fn uniq_sorted(mut v: Vec<f32>) -> Vec<f32> {
     v.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
     v.dedup_by(|x, y| (*x - *y).abs() <= GAP_EPS);
     v
@@ -2511,7 +2511,7 @@ fn uniq_sorted(mut v: Vec<f32>) -> Vec<f32> {
 /// Дорожки по оси `a`: начало — уникальные ближние края элементов, конец —
 /// дальний край элемента, начатого в дорожке и не заходящего в следующую;
 /// когда такого нет (все — спаны), начало следующей минус зазор.
-fn tracks_a(items: &[GapItem], gap: Option<f32>) -> Vec<(f32, f32)> {
+pub(crate) fn tracks_a(items: &[GapItem], gap: Option<f32>) -> Vec<(f32, f32)> {
     let st = uniq_sorted(items.iter().map(|i| i.a0).collect());
     (0..st.len())
         .map(|k| {
@@ -2558,7 +2558,7 @@ fn tracks_a(items: &[GapItem], gap: Option<f32>) -> Vec<(f32, f32)> {
 /// Ограничение: сетка, у которой пуста ВСЯ первая дорожка оси, привяжется со
 /// сдвигом на дорожку — перебор идёт от нулевого смещения. В своде такой пары
 /// нет (у всех 44 разрежённых первая строка и первая колонка заняты).
-fn template_tracks(
+pub(crate) fn template_tracks(
     sizes: &[f32],
     gap: Option<f32>,
     items: &[GapItem],
@@ -2595,14 +2595,14 @@ fn template_tracks(
 }
 
 /// Дорожки сетки по x и по y в координатах окна.
-type GridTracks = (Vec<(f32, f32)>, Vec<(f32, f32)>);
+pub(crate) type GridTracks = (Vec<(f32, f32)>, Vec<(f32, f32)>);
 
 /// Дорожки без схлопнутых: схлопнутая (`auto-fit` без элементов, css-grid-1
 /// §7.2.3.2 «collapsed grid track… the gutters on either side of it…
 /// collapse») приходит из раскладки дорожкой нулевого размера, прижатой к
 /// соседу без зазора. При ненулевом `gap` такая дорожка — не дорожка и
 /// промежутков не даёт (Blink `CollapsedTrackIndexes`).
-fn uncollapsed(mut tracks: Vec<(f32, f32)>, gap: f32) -> Vec<(f32, f32)> {
+pub(crate) fn uncollapsed(mut tracks: Vec<(f32, f32)>, gap: f32) -> Vec<(f32, f32)> {
     // При `rtl` и обратных осях раскладка отдаёт дорожки в логическом
     // порядке — здесь нужен физический.
     tracks.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -2624,7 +2624,7 @@ fn uncollapsed(mut tracks: Vec<(f32, f32)>, gap: f32) -> Vec<(f32, f32)> {
 
 /// Промежутки между соседними дорожками; нулевой зазор — тоже промежуток
 /// (`flex-gap-decorations-033`).
-fn gaps_of(tracks: &[(f32, f32)]) -> Vec<(f32, f32)> {
+pub(crate) fn gaps_of(tracks: &[(f32, f32)]) -> Vec<(f32, f32)> {
     tracks
         .windows(2)
         .filter(|w| w[1].0 - w[0].1 >= -GAP_EPS)
@@ -2632,7 +2632,7 @@ fn gaps_of(tracks: &[(f32, f32)]) -> Vec<(f32, f32)> {
         .collect()
 }
 
-fn merge(mut v: Vec<(f32, f32)>) -> Vec<(f32, f32)> {
+pub(crate) fn merge(mut v: Vec<(f32, f32)>) -> Vec<(f32, f32)> {
     v.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal));
     let mut out: Vec<(f32, f32)> = vec![];
     for (lo, hi) in v {
@@ -2644,7 +2644,7 @@ fn merge(mut v: Vec<(f32, f32)>) -> Vec<(f32, f32)> {
     out
 }
 
-fn subtract(parts: Vec<(f32, f32)>, (lo, hi): (f32, f32)) -> Vec<(f32, f32)> {
+pub(crate) fn subtract(parts: Vec<(f32, f32)>, (lo, hi): (f32, f32)) -> Vec<(f32, f32)> {
     let mut out = vec![];
     for (s, e) in parts {
         if hi <= s + GAP_EPS || lo >= e - GAP_EPS {
@@ -2664,7 +2664,7 @@ fn subtract(parts: Vec<(f32, f32)>, (lo, hi): (f32, f32)) -> Vec<(f32, f32)> {
 /// §visibility-items: заняты ли области по сторонам промежутка `[g0, g1]` в
 /// пределах участка `[lo, hi]` вдоль линейки. Спан через промежуток занимает
 /// обе стороны.
-fn occupied(items: &[GapItem], g0: f32, g1: f32, lo: f32, hi: f32, visibility: u8) -> bool {
+pub(crate) fn occupied(items: &[GapItem], g0: f32, g1: f32, lo: f32, hi: f32, visibility: u8) -> bool {
     if visibility < 2 {
         return true;
     }
@@ -2687,7 +2687,7 @@ fn occupied(items: &[GapItem], g0: f32, g1: f32, lo: f32, hi: f32, visibility: u
 /// поперечный зазор не перекрыт спаном (Blink: `kIntersection` идёт дальше
 /// только при blocked-before И blocked-after); стык (`joins`) — если там есть
 /// видимая поперечная линейка.
-fn grid_runs(
+pub(crate) fn grid_runs(
     items: &[GapItem],
     gap_a: Option<f32>,
     gap_b: Option<f32>,
@@ -2730,7 +2730,7 @@ fn grid_runs(
     grid_runs_on(items, &flipped, ta, tb, rule, cross)
 }
 
-fn grid_runs_on(
+pub(crate) fn grid_runs_on(
     items: &[GapItem],
     flipped: &[GapItem],
     ta: Vec<(f32, f32)>,
@@ -2803,7 +2803,7 @@ fn grid_runs_on(
 
 /// Строки гибкого контейнера по оси `a`: пересекающиеся протяжённости
 /// элементов сливаются в одну строку.
-fn line_groups(items: &[GapItem]) -> Vec<(f32, f32)> {
+pub(crate) fn line_groups(items: &[GapItem]) -> Vec<(f32, f32)> {
     let mut v: Vec<(f32, f32)> = items.iter().map(|i| (i.a0, i.a1)).collect();
     v.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal));
     let mut out: Vec<(f32, f32)> = vec![];
@@ -2829,7 +2829,7 @@ fn line_groups(items: &[GapItem]) -> Vec<(f32, f32)> {
 /// `flex-gap-decorations-001/019` 99.00, `-025/031/032/035/065…067`,
 /// `column-gap-decorations-001/003/014/016/019`, `row-gap-decorations-003/010`.
 /// Ряды многоколонника обходятся без него (v99: +11/−0).
-fn line_runs(
+pub(crate) fn line_runs(
     items: &[GapItem],
     gap_a: Option<f32>,
     main: Option<&GapAxisRule>,
@@ -3014,8 +3014,8 @@ fn line_runs(
 /// геометрию промежутков по границам элементов и красит отрезки линеек
 /// (css-gaps-1 §geometry, §break, §inset, §visibility-items, §lists).
 pub struct GapRulePainter {
-    items: GapItems,
-    spec: GapRuleSpec,
+    pub(crate) items: GapItems,
+    pub(crate) spec: GapRuleSpec,
 }
 
 impl GapRulePainter {
@@ -3311,7 +3311,7 @@ impl IntoElement for GapRulePainter {
 }
 
 thread_local! {
-    static CELL_EDGES: std::cell::RefCell<std::collections::HashMap<u64, CellEdges>> =
+    pub(crate) static CELL_EDGES: std::cell::RefCell<std::collections::HashMap<u64, CellEdges>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
@@ -3347,7 +3347,7 @@ pub fn cell_bg_probe(bgs: CellBgs, colour: gpui::Hsla) -> AnyElement {
 
 /// Слой фонов ячеек сросшейся таблицы (см. `CellBgs`).
 pub struct CellBgPainter {
-    bgs: CellBgs,
+    pub(crate) bgs: CellBgs,
 }
 
 impl CellBgPainter {
@@ -3490,7 +3490,7 @@ pub fn edge_probe(
 /// друга; побеждает нарисованная позже — порядок по ширине даёт правило
 /// «шире побеждает».
 pub struct EdgePainter {
-    edges: CellEdges,
+    pub(crate) edges: CellEdges,
 }
 
 // ★ ЗАМЕРЕНО И ОТКАЧЕНО (11.09, `scout-collapsedborders-2026-09.md`,
@@ -3853,23 +3853,23 @@ pub struct ClampEntry {
 pub type ClampLines = std::rc::Rc<std::cell::RefCell<Vec<ClampEntry>>>;
 
 thread_local! {
-    static CLAMP_LINES: std::cell::RefCell<std::collections::HashMap<u64, ClampLines>> =
+    pub(crate) static CLAMP_LINES: std::cell::RefCell<std::collections::HashMap<u64, ClampLines>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
     /// Вычисленные точки среза (высота от верха контейнера) прошлого кадра.
-    static CLAMP_CUTS: std::cell::RefCell<std::collections::HashMap<u64, f32>> =
+    pub(crate) static CLAMP_CUTS: std::cell::RefCell<std::collections::HashMap<u64, f32>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
     /// Стек активных clamp-контейнеров при ПОСТРОЕНИИ дерева:
     /// (ключ, граница BFC уже пройдена).
-    static CLAMP_STACK: std::cell::RefCell<Vec<(u64, bool)>> =
+    pub(crate) static CLAMP_STACK: std::cell::RefCell<Vec<(u64, bool)>> =
         std::cell::RefCell::new(Vec::new());
     /// Знак обрыва АВТО-режима, посчитанный на прошлом кадре:
     /// ключ контейнера → (номер абзаца, сколько его строк остаётся).
     /// Абзац в контейнере ровно один — тот, на чьей последней строке
     /// перед точкой среза стоит знак (css-overflow-4 §5.3).
-    static CLAMP_PARA: std::cell::RefCell<std::collections::HashMap<u64, (u32, usize)>> =
+    pub(crate) static CLAMP_PARA: std::cell::RefCell<std::collections::HashMap<u64, (u32, usize)>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
     /// Счётчик абзацев контейнера при ПОСТРОЕНИИ поддерева.
-    static CLAMP_SEQ: std::cell::RefCell<std::collections::HashMap<u64, u32>> =
+    pub(crate) static CLAMP_SEQ: std::cell::RefCell<std::collections::HashMap<u64, u32>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
@@ -3912,7 +3912,7 @@ pub fn forget_clamp_buffers() {
 }
 
 /// Сторож стека clamp-контекста на время построения поддерева.
-pub struct ClampGuard(bool);
+pub struct ClampGuard(pub(crate) bool);
 
 impl ClampGuard {
     /// Вход в сам clamp-контейнер.
@@ -3967,10 +3967,10 @@ thread_local! {
     /// абзаца делились бы поровну, а строка с крупным кеглем или руби
     /// выше прочих (css-overflow-4 §5.3: точка среза — между строчными
     /// коробками, их высоты свои).
-    static PARA_ROWS: std::cell::RefCell<std::collections::HashMap<(u64, u32), Vec<(f32, f32)>>> =
+    pub(crate) static PARA_ROWS: std::cell::RefCell<std::collections::HashMap<(u64, u32), Vec<(f32, f32)>>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
     /// (ключ, номер) абзаца, который сейчас будет собран.
-    static PARA_TAG: std::cell::Cell<Option<(u64, u32)>> = const { std::cell::Cell::new(None) };
+    pub(crate) static PARA_TAG: std::cell::Cell<Option<(u64, u32)>> = const { std::cell::Cell::new(None) };
 }
 
 pub fn set_para_tag(v: Option<(u64, u32)>) {
@@ -3988,7 +3988,7 @@ pub fn publish_para_rows(tag: (u64, u32), rows: Vec<(f32, f32)>) {
     });
 }
 
-fn take_para_rows(key: u64) -> std::collections::HashMap<u32, Vec<(f32, f32)>> {
+pub(crate) fn take_para_rows(key: u64) -> std::collections::HashMap<u32, Vec<(f32, f32)>> {
     PARA_ROWS.with(|m| {
         let mut m = m.borrow_mut();
         let tags: Vec<(u64, u32)> = m.keys().filter(|k| k.0 == key).copied().collect();
@@ -4003,7 +4003,7 @@ fn take_para_rows(key: u64) -> std::collections::HashMap<u32, Vec<(f32, f32)>> {
 
 thread_local! {
     /// Бюджет строк ТЕКУЩЕГО собираемого абзаца (только авто-режим).
-    static PARA_BUDGET: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+    pub(crate) static PARA_BUDGET: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
 }
 
 /// Положить бюджет строк для абзаца, который сейчас будет собран.
@@ -4083,17 +4083,17 @@ pub fn clamp_empty_probe(lines: ClampLines) -> AnyElement {
 /// поднимает срез к верху пересечённого блока и просит новый кадр, когда
 /// точка изменилась.
 pub struct ClampCut {
-    key: u64,
-    lines: ClampLines,
+    pub(crate) key: u64,
+    pub(crate) lines: ClampLines,
     /// Число считаемых строк; None — `line-clamp: auto` (срез только по
     /// потолку высоты, но пересечённый блок всё равно прячется целиком).
-    limit: Option<u32>,
+    pub(crate) limit: Option<u32>,
     /// Потолок высоты контейнера в точках (max-height), если задан.
-    max_h: Option<f32>,
+    pub(crate) max_h: Option<f32>,
     /// `text-box-trim: trim-end` контейнера в точках: последняя строка
     /// ПЕРЕД точкой обрыва — последняя отформатированная, и её конец
     /// срезается (`text-box-trim-line-clamp-*`). Ноль — среза нет.
-    trim_end: f32,
+    pub(crate) trim_end: f32,
 }
 
 impl ClampCut {
@@ -4537,16 +4537,16 @@ pub fn cell_rect_probe(
 /// Поле подкладки ячейки округляется от её внутреннего края рамки: 25px
 /// рамки при 1.25 сдвигали его на 0.2px, и плитка `top right` у tbody
 /// вставала на точку правее эталона (`background-position-applies-to-001a`).
-struct CellProbe {
-    child: Option<AnyElement>,
-    rects: RowRects,
-    exact: bool,
-    shift: (f32, f32),
-    border: [f32; 4],
+pub(crate) struct CellProbe {
+    pub(crate) child: Option<AnyElement>,
+    pub(crate) rects: RowRects,
+    pub(crate) exact: bool,
+    pub(crate) shift: (f32, f32),
+    pub(crate) border: [f32; 4],
 }
 
 impl CellProbe {
-    fn outer(&self, bounds: Bounds<Pixels>) -> Bounds<Pixels> {
+    pub(crate) fn outer(&self, bounds: Bounds<Pixels>) -> Bounds<Pixels> {
         let (shift, border) = (self.shift, self.border);
         // Сдвиг краски относительно коробки ячейки: в сросшейся модели
         // фоновая сетка начинается от середины рамки таблицы.
@@ -4656,14 +4656,14 @@ impl IntoElement for CellProbe {
 /// СВОЕГО ЦЕНТРА (квадрат кегля переходит в себя) и ужимается по строчной
 /// оси в один кегль (css-writing-modes-3 §9.1).
 pub struct CombinedUpright {
-    child: Option<AnyElement>,
+    pub(crate) child: Option<AnyElement>,
     /// Кегль — сторона квадрата, который кусок занимает в строке.
-    em: f32,
+    pub(crate) em: f32,
     /// Сжимать ли содержимое в кегль: у `text-combine-upright` — да, у
     /// стоячего `inline-block` с горизонтальным письмом — нет, он просто
     /// переполняет свой квадрат.
-    compress: bool,
-    natural: gpui::Size<Pixels>,
+    pub(crate) compress: bool,
+    pub(crate) natural: gpui::Size<Pixels>,
 }
 
 impl CombinedUpright {
@@ -4772,13 +4772,13 @@ thread_local! {
     /// высота содержимого при РЕШЁННОЙ длине строки (см. `prepaint`).
     /// Первый кадр заявляет ширину по свободному замеру, второй — по факту;
     /// стенд и так ждёт устоявшийся кадр (как пробы ячеек).
-    static VT_MEASURED: std::cell::RefCell<std::collections::HashMap<u64, Pixels>> =
+    pub(crate) static VT_MEASURED: std::cell::RefCell<std::collections::HashMap<u64, Pixels>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
     /// Счётчик ВХОЖДЕНИЙ базового ключа за кадр: два вертикальных абзаца с
     /// одинаковым текстом и числом узлов (повторяющиеся ячейки) делили один
     /// ключ, и замер одного применялся к другому. Порядок обхода кадра
     /// детерминирован — порядковый номер вхождения стабилен между кадрами.
-    static VT_SEQ: std::cell::RefCell<std::collections::HashMap<u64, u64>> =
+    pub(crate) static VT_SEQ: std::cell::RefCell<std::collections::HashMap<u64, u64>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
     /// Замер ЛЕВОГО края коробки корня (ключ — соль документа): фон холста
     /// позиционируется от коробки корня (CSS 2.2 §14.2), а она при
@@ -4786,7 +4786,7 @@ thread_local! {
     /// известен только после раскладки. Пишет подготовка тела, читает
     /// отрисовка холста того же кадра (подготовка всего дерева идёт раньше
     /// отрисовки); прошлое значение — запасное.
-    static ROOT_LEFT: std::cell::RefCell<std::collections::HashMap<u64, f32>> =
+    pub(crate) static ROOT_LEFT: std::cell::RefCell<std::collections::HashMap<u64, f32>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
@@ -4799,9 +4799,9 @@ pub fn root_left_prev(key: u64) -> Option<f32> {
 /// `offset` (поля тела и рамка/отбивка корня) в `ROOT_LEFT` — раскладку не
 /// меняет: узел раскладки — сам ребёнок.
 pub struct RecordRootLeft {
-    child: AnyElement,
-    key: u64,
-    offset: f32,
+    pub(crate) child: AnyElement,
+    pub(crate) key: u64,
+    pub(crate) offset: f32,
 }
 
 pub fn record_root_left(child: AnyElement, key: u64, offset: f32) -> AnyElement {
@@ -4919,38 +4919,38 @@ thread_local! {
 }
 
 pub struct VerticalText {
-    child: Option<AnyElement>,
+    pub(crate) child: Option<AnyElement>,
     /// Естественный размер содержимого до поворота.
-    natural: gpui::Size<Pixels>,
+    pub(crate) natural: gpui::Size<Pixels>,
     /// Потолок заявляемой высоты (см. `claiming_height`).
-    claim_cap: Option<Pixels>,
+    pub(crate) claim_cap: Option<Pixels>,
     /// Ключ двухкадрового замера (текст абзаца + соль документа).
-    key: Option<u64>,
+    pub(crate) key: Option<u64>,
     /// Предел строки от родителя: если строка УЖЕ помещается, высота
     /// заявляется честно — иначе гибкая ячейка считает коробку нулевой и
     /// `justify-content` уводит рисунок из виду (table-cell-align-005).
-    fit_limit: Option<Pixels>,
-    inline_constraint: Option<crate::computed::orthogonal::InlineConstraint>,
-    inline_keyword: Option<crate::computed::orthogonal::InlineKeyword>,
+    pub(crate) fit_limit: Option<Pixels>,
+    pub(crate) inline_constraint: Option<crate::computed::orthogonal::InlineConstraint>,
+    pub(crate) inline_keyword: Option<crate::computed::orthogonal::InlineKeyword>,
     /// `writing-mode: sideways-lr` — поворот ПРОТИВ часовой стрелки.
     /// css-writing-modes-4, таблица Abstract-Physical Mapping: у `sideways-lr`
     /// line-left = НИЗ, line-right = ВЕРХ, over = ЛЕВО (у всех остальных
     /// вертикальных письмён line-left = верх, over = право). Blink различает
     /// эти два случая ровно так же — `paint/line_relative_rect.cc:69-75`:
     /// `AffineTransform(0, 1, -1, 0, …)` против `AffineTransform(0, -1, 1, 0, …)`.
-    ccw: bool,
+    pub(crate) ccw: bool,
     /// Ячейка вертикальной таблицы: мерить содержимое по МИНИМАЛЬНОМУ
     /// вдоль строки, а не по максимальному. Тогда заявленная высота
     /// повёрнутой коробки — вклад ячейки в меру её КОЛОНКИ (css-tables-3
     /// §computing-column-measures), и дорожку считает решётка, а не
     /// инлайн-размер всего стола. Ставится из `render.rs` (`col_min`).
-    col_min: bool,
+    pub(crate) col_min: bool,
     /// `vertical-lr` при повороте по часовой: строки поданы снизу вверх, и
     /// первая строка — ЛЕВАЯ колонка (у `vertical-rl` — правая).
-    lr: bool,
+    pub(crate) lr: bool,
     /// Первая строка для базовой по оси x: шрифт, кегль, высота строки
     /// (`None` — `normal`) и центральная ли доминантная базовая.
-    first_line: Option<(gpui::Font, Pixels, Option<Pixels>, bool)>,
+    pub(crate) first_line: Option<(gpui::Font, Pixels, Option<Pixels>, bool)>,
 }
 
 
@@ -5208,10 +5208,10 @@ impl IntoElement for VerticalText {
 /// кадрами, — а память есть только у своего элемента. Сама лента и колесо мыши
 /// уже реализованы в `div`, поэтому здесь только ручка и её хранение.
 pub struct ScrollArea {
-    id: ElementId,
-    horizontal: bool,
-    vertical: bool,
-    build: Rc<dyn Fn(&gpui::ScrollHandle, bool, bool) -> AnyElement>,
+    pub(crate) id: ElementId,
+    pub(crate) horizontal: bool,
+    pub(crate) vertical: bool,
+    pub(crate) build: Rc<dyn Fn(&gpui::ScrollHandle, bool, bool) -> AnyElement>,
 }
 
 impl ScrollArea {
@@ -5313,10 +5313,10 @@ thread_local! {
     /// поворота живёт только в `paint`. Щуп статической позиции пишет дырку
     /// именно в подготовке, поэтому без этой рамки `LatePlace` читает
     /// до-поворотную точку как экранную, и коробка уезжает на колонку.
-    static VT_FRAME: std::cell::Cell<Option<Bounds<Pixels>>> =
+    pub(crate) static VT_FRAME: std::cell::Cell<Option<Bounds<Pixels>>> =
         const { std::cell::Cell::new(None) };
     /// Сторона поворота этой рамки: `sideways-lr` вертится против часовой.
-    static VT_CCW: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    pub(crate) static VT_CCW: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// Экранная точка для до-поворотной, если мы внутри повёрнутого абзаца.
@@ -5326,7 +5326,7 @@ pub fn in_rotated_frame() -> bool {
     VT_FRAME.with(|c| c.get()).is_some()
 }
 
-fn vt_map(hole: Bounds<Pixels>, thickness: Pixels) -> Bounds<Pixels> {
+pub(crate) fn vt_map(hole: Bounds<Pixels>, thickness: Pixels) -> Bounds<Pixels> {
     let Some(vt) = VT_FRAME.with(|c| c.get()) else {
         return hole;
     };
@@ -5438,7 +5438,7 @@ thread_local! {
     /// Слои верхней отрисовки: по одному на каждый блок-контейнер в работе.
     /// Позиционированный элемент кладёт себя в верхний слой, а контейнер
     /// забирает слой целиком и дописывает его последними детьми.
-    static LATE: std::cell::RefCell<Vec<Vec<(SpotCell, AnyElement)>>> =
+    pub(crate) static LATE: std::cell::RefCell<Vec<Vec<(SpotCell, AnyElement)>>> =
         const { std::cell::RefCell::new(Vec::new()) };
 }
 
@@ -5450,7 +5450,7 @@ thread_local! {
     /// последними детьми документа.
     /// Пара `(SpotCell, AnyElement)`: по ПУСТОЙ оси элемент стоит на
     /// статической позиции, и её сообщает щуп с его места в потоке.
-    static ICB: std::cell::RefCell<Vec<Vec<(SpotCell, AnyElement)>>> =
+    pub(crate) static ICB: std::cell::RefCell<Vec<Vec<(SpotCell, AnyElement)>>> =
         const { std::cell::RefCell::new(Vec::new()) };
 }
 
@@ -5462,10 +5462,10 @@ thread_local! {
     /// родителя — понятия «позиционированный предок» у неё нет. §10.1 требует
     /// ближайшего предка с `position` не `static`, поэтому коробка собирается
     /// на своём месте, а детём становится этому предку.
-    static CB: std::cell::RefCell<Vec<Vec<(SpotCell, AnyElement)>>> =
+    pub(crate) static CB: std::cell::RefCell<Vec<Vec<(SpotCell, AnyElement)>>> =
         const { std::cell::RefCell::new(Vec::new()) };
     /// Параллельно `CB`: содержит ли коробку слоя и `position: fixed`.
-    static CB_FIXED: std::cell::RefCell<Vec<bool>> = const { std::cell::RefCell::new(Vec::new()) };
+    pub(crate) static CB_FIXED: std::cell::RefCell<Vec<bool>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// Открыть слой содержащего блока вокруг детей позиционированной коробки.
@@ -5543,7 +5543,7 @@ pub fn icb_close() -> Vec<AnyElement> {
 /// считались бы от неё, а не от области просмотра — то есть ровно то, ради
 /// чего затеян вынос. `LatePlace` своей коробки не заводит: он отдаёт
 /// `layout_id` ребёнка.
-fn icb_place(spot: SpotCell, child: AnyElement) -> AnyElement {
+pub(crate) fn icb_place(spot: SpotCell, child: AnyElement) -> AnyElement {
     LatePlace {
         child: Some(child),
         spot,
@@ -5720,8 +5720,8 @@ pub fn spot_place(spot: SpotCell, child: AnyElement) -> AnyElement {
 }
 
 pub struct LatePlace {
-    child: Option<AnyElement>,
-    spot: SpotCell,
+    pub(crate) child: Option<AnyElement>,
+    pub(crate) spot: SpotCell,
 }
 
 impl Element for LatePlace {
@@ -5973,7 +5973,7 @@ impl IntoElement for LatePlace {
 /// РАМОЧНОЙ коробки, а не отбивочной. Обе стороны считаются одинаково, и
 /// разница проявилась бы только у абсолюта с ненулевым боковым полем.
 pub struct InlineStartHang {
-    child: Option<AnyElement>,
+    pub(crate) child: Option<AnyElement>,
 }
 
 impl InlineStartHang {
@@ -6194,7 +6194,7 @@ impl IntoElement for FilterLayer {
 
 thread_local! {
     /// Растры слоёв фильтра по (разметка, размер): кадр за кадром одно и то же.
-    static FILTER_RASTERS: std::cell::RefCell<
+    pub(crate) static FILTER_RASTERS: std::cell::RefCell<
         std::collections::HashMap<(String, u32, u32), std::sync::Arc<gpui::RenderImage>>,
     > = std::cell::RefCell::new(std::collections::HashMap::new());
 }
@@ -6204,7 +6204,7 @@ thread_local! {
 /// client rect … viewport … width and height of the bounding client rect»);
 /// проценты — от размера коробки. Для `objectBoundingBox` — None: такая
 /// область и так внутри холста −50 %…150 %.
-fn user_space_region(def: &str, w: f32, h: f32) -> Option<[f32; 4]> {
+pub(crate) fn user_space_region(def: &str, w: f32, h: f32) -> Option<[f32; 4]> {
     let open = &def[def.find("<filter")?..];
     let open = &open[..open.find('>')?];
     if !open.contains("userSpaceOnUse") {

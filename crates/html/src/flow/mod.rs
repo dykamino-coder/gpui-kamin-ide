@@ -7,23 +7,23 @@
 //! смещениями. Дети приходят с ИЗВЕСТНЫМИ размерами (инлайн-блоки с
 //! заданными сторонами — ровно то, чем WPT рисует картину обтекания).
 
-mod shapes;
-mod rounded_box;
+pub(crate) mod shapes;
+pub(crate) mod rounded_box;
 pub use shapes::FloatShape;
 pub(crate) use shapes::ellipse_cut;
 pub use rounded_box::RoundedBox;
 
-mod fragment_mask;
+pub(crate) mod fragment_mask;
 pub(crate) mod gap_fragment;
-mod column_measure;
-mod column_baselines;
-mod intrinsic_measure;
-mod row_element;
-mod margin_boxes;
-mod margin_box_size;
+pub(crate) mod column_measure;
+pub(crate) mod column_baselines;
+pub(crate) mod intrinsic_measure;
+pub(crate) mod row_element;
+pub(crate) mod margin_boxes;
+pub(crate) mod margin_box_size;
 use margin_boxes::layout_margin_boxes;
 
-use gpui::{
+pub(crate) use gpui::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
     LayoutId, Pixels, Size, Window, point, px, size,
 };
@@ -46,23 +46,23 @@ pub struct FlowChild {
 }
 
 pub struct FlowRow {
-    children: Vec<FlowChild>,
-    shapes: std::sync::Arc<(Vec<FloatShape>, Vec<FloatShape>)>,
+    pub(crate) children: Vec<FlowChild>,
+    pub(crate) shapes: std::sync::Arc<(Vec<FloatShape>, Vec<FloatShape>)>,
     /// Направление письма: rtl кладёт коробки от правого края.
-    rtl: bool,
+    pub(crate) rtl: bool,
     /// `writing-mode: vertical-rl`: строки — колонки справа налево, поток в
     /// колонке — сверху вниз. Раскладка идёт в ТРАНСПОНИРОВАННОМ мире
     /// (инлайн-ось строкой), физика восстанавливается при укладке.
-    vertical_rl: bool,
+    pub(crate) vertical_rl: bool,
     /// Известный инлайн-размер содержащего блока (в вертикальном письме —
     /// его высота): запасной предел строк, когда замер его не даёт.
-    inline_limit: Option<f32>,
+    pub(crate) inline_limit: Option<f32>,
     /// `vertical-lr`: колонки идут СЛЕВА направо (блок-старт — левый край).
-    block_lr: bool,
+    pub(crate) block_lr: bool,
     /// `sideways-lr`: инлайн-ось снизу вверх.
-    inline_up: bool,
+    pub(crate) inline_up: bool,
     /// Позиции детей, вычисленные замером (в точках от угла коробки).
-    slots: std::cell::RefCell<Vec<(f32, f32)>>,
+    pub(crate) slots: std::cell::RefCell<Vec<(f32, f32)>>,
 }
 
 impl FlowRow {
@@ -105,7 +105,7 @@ impl FlowRow {
 
     /// Размер ребёнка в осях раскладки: в вертикальном письме инлайн-ось —
     /// физическая высота.
-    fn tdims(&self, c: &FlowChild) -> (f32, f32) {
+    pub(crate) fn tdims(&self, c: &FlowChild) -> (f32, f32) {
         if self.vertical_rl {
             (c.h, c.w)
         } else {
@@ -114,7 +114,7 @@ impl FlowRow {
     }
 
     /// Вырез на полосе [y, y+h): точный экстент форм с обеих сторон.
-    fn cut(&self, y: f32, h: f32) -> (f32, f32) {
+    pub(crate) fn cut(&self, y: f32, h: f32) -> (f32, f32) {
         let l = self
             .shapes
             .0
@@ -131,7 +131,7 @@ impl FlowRow {
     }
 
     /// Нижний край всех форм: ниже него вырезов нет.
-    fn shapes_bottom(&self) -> f32 {
+    pub(crate) fn shapes_bottom(&self) -> f32 {
         self.shapes
             .0
             .iter()
@@ -150,7 +150,7 @@ impl FlowRow {
     }
 
     /// Разложить детей в ширину `limit`; вернуть высоту и позиции.
-    fn layout(&self, limit: f32) -> (f32, Vec<(f32, f32)>) {
+    pub(crate) fn layout(&self, limit: f32) -> (f32, Vec<(f32, f32)>) {
         let mut slots = Vec::with_capacity(self.children.len());
         let mut y = 0.0f32;
         let mut x = 0.0f32;
@@ -359,7 +359,7 @@ pub struct RepeatGeom {
 
 impl RepeatGeom {
     /// Полоса шапки у фрагмента-продолжения, начатого с `from`.
-    fn head_at(&self, from: f32) -> f32 {
+    pub(crate) fn head_at(&self, from: f32) -> f32 {
         if self.head > 0.0 && from >= self.head_end - 0.01 && from < self.box_end - 0.01 {
             self.head
         } else {
@@ -368,7 +368,7 @@ impl RepeatGeom {
     }
 
     /// Место под подвал у фрагмента с `from`, которому доступно `room`.
-    fn foot_for(&self, from: f32, room: f32) -> f32 {
+    pub(crate) fn foot_for(&self, from: f32, room: f32) -> f32 {
         if self.foot > 0.0
             && from < self.foot_at - 0.01
             && from + room > self.box_top + 0.01
@@ -456,17 +456,17 @@ pub struct Par {
 /// стоит, на сколько отступает от её верха, какая часть содержимого видна
 /// (`from` — от собственного верха ребёнка) и какой она высоты.
 #[derive(Clone, Copy)]
-struct Frag {
-    kid: usize,
-    copy: usize,
-    col: usize,
-    y: f32,
-    from: f32,
-    h: f32,
+pub(crate) struct Frag {
+    pub(crate) kid: usize,
+    pub(crate) copy: usize,
+    pub(crate) col: usize,
+    pub(crate) y: f32,
+    pub(crate) from: f32,
+    pub(crate) h: f32,
     /// Полосы повтора таблицы (`Repeat`): шапка над `y` и подвал под `y + h`;
     /// `y`/`h` — по-прежнему само содержимое среза.
-    head: f32,
-    foot: f32,
+    pub(crate) head: f32,
+    pub(crate) foot: f32,
 }
 
 /// Колонки многоколоночного потока для БЛОЧНЫХ детей с известными
@@ -552,7 +552,7 @@ pub struct Rows {
 
 thread_local! {
     /// Глубина построения копий детей стопки (`render.rs`, `StackChild`).
-    static STACK_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    pub(crate) static STACK_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// Сторож «строится копия ребёнка стопки». Многоколоночник со спаннером
@@ -578,13 +578,13 @@ impl Drop for StackScope {
 thread_local! {
     /// Высота ряда вложенного многоколоночника, заданная ВНЕШНЕЙ колонкой
     /// (`set_outer_row` → `take_outer_row` первой строкой `render::element`).
-    static OUTER_ROW: std::cell::Cell<Option<(f32, f32)>> = const { std::cell::Cell::new(None) };
+    pub(crate) static OUTER_ROW: std::cell::Cell<Option<(f32, f32)>> = const { std::cell::Cell::new(None) };
     /// Сколько первых колонок укладки стоят НЕ с верха фрагментаинера (первый
     /// ряд вложенного многоколоночника, начатого ниже верха внешней колонки):
     /// не влезший с верха такой колонки монолит уходит дальше, а не
     /// переполняет её (Blink: `is_at_fragmentainer_start` ложно —
     /// `BreakBeforeChildIfNeeded`, css-break-3 §4.1 «may be pushed»).
-    static NOT_TOP: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    pub(crate) static NOT_TOP: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// Передать следующему `element()` высоту внешнего фрагментаинера: копия
@@ -593,9 +593,9 @@ thread_local! {
 /// of columns on the next page»; Blink `column_layout_algorithm.cc:1741-1748`
 /// `ConstrainColumnBlockSize` → `min(size, available_outer_space)`).
 /// Сторож `NOT_TOP` на время укладки.
-struct NotTop(usize);
+pub(crate) struct NotTop(pub(crate) usize);
 impl NotTop {
-    fn set(n: usize) -> Self {
+    pub(crate) fn set(n: usize) -> Self {
         NotTop(NOT_TOP.with(|c| c.replace(n)))
     }
 }
@@ -679,43 +679,43 @@ pub fn axis_box(
 }
 
 pub struct ColumnStack {
-    children: Vec<StackChild>,
-    count: usize,
-    gap: f32,
+    pub(crate) children: Vec<StackChild>,
+    pub(crate) count: usize,
+    pub(crate) gap: f32,
     /// Ось прогрессии колонок (`StackAxis`); при вертикальном письме —
     /// вертикальная. Ставится `with_axis`.
-    axis: StackAxis,
+    pub(crate) axis: StackAxis,
     /// Смещение начала рядов: вложенный многоколоночник начат на `row_phase`
     /// ниже верха внешней колонки, и его ПЕРВЫЙ ряд — остаток `h − row_phase`
     /// (Blink `column_layout_algorithm.cc:818-828` `available_outer_space =
     /// FragmentainerSpaceLeftForChildren() − line_offset`). Ставится
     /// `with_row_phase`; ноль — ряды от верха.
-    row_phase: f32,
+    pub(crate) row_phase: f32,
     /// `column-fill: auto` + заданная высота: заполнение без баланса.
-    fixed_height: Option<f32>,
+    pub(crate) fixed_height: Option<f32>,
     /// Линейка между колонками: ширина и цвет.
-    rule: Option<(f32, gpui::Hsla)>,
-    rule_to: Option<f32>,
+    pub(crate) rule: Option<(f32, gpui::Hsla)>,
+    pub(crate) rule_to: Option<f32>,
     /// Ряды колонок; `None` — одна линия, как в css-multicol-1.
-    rows: Option<Rows>,
+    pub(crate) rows: Option<Rows>,
     /// Сколько копий у ребёнка (= сколько колонок он может занять).
-    copies: usize,
+    pub(crate) copies: usize,
     /// Внутренние размеры контейнера, если его ширину решает СОДЕРЖИМОЕ.
     /// `None` — ширину даёт родитель, и мерить детей незачем: лишний проход
     /// раскладки стоит дороже, чем всё остальное в этом элементе.
-    intrinsic: Option<Intrinsic>,
+    pub(crate) intrinsic: Option<Intrinsic>,
     /// Буфер границ колонок и спаннеров для `GapRulePainter` (css-gaps-1
     /// §gap-multicol): колонки линии — элементы строки, спаннер — элемент во
     /// всю ширину. Заполняется в `prepaint`, художник забирает в `paint`.
-    gap_items: Option<crate::interact::GapItems>,
-    plan: std::cell::RefCell<Vec<Frag>>,
-    col_w: std::cell::Cell<f32>,
+    pub(crate) gap_items: Option<crate::interact::GapItems>,
+    pub(crate) plan: std::cell::RefCell<Vec<Frag>>,
+    pub(crate) col_w: std::cell::Cell<f32>,
     /// Линии колонок после укладки: `(y, высота)` каждой — линейкам и
     /// смещениям. Колонка `col` стоит в линии `col / count`. Без спаннеров
     /// линия = ряд; спаннер режет ряд на линии (Blink `LayoutLine`).
-    lines_plan: std::cell::RefCell<Vec<(f32, f32)>>,
+    pub(crate) lines_plan: std::cell::RefCell<Vec<(f32, f32)>>,
     /// Спаннеры после укладки: `(ребёнок, y)`.
-    spans_plan: std::cell::RefCell<Vec<(usize, f32)>>,
+    pub(crate) spans_plan: std::cell::RefCell<Vec<(usize, f32)>>,
 }
 
 impl ColumnStack {
@@ -816,7 +816,7 @@ impl ColumnStack {
 
     /// Геометрия детей для укладки (то же, что строят `request_layout` и
     /// `prepaint` горизонтальной стопки).
-    fn kid_geoms(&self) -> Vec<Kid> {
+    pub(crate) fn kid_geoms(&self) -> Vec<Kid> {
         self.children
             .iter()
             .map(|c| Kid {
@@ -842,7 +842,7 @@ impl ColumnStack {
     }
 
     /// Строчный и блочный размеры коробки стопки по её оси.
-    fn axis_sizes(&self, bounds: Bounds<Pixels>) -> (f32, f32) {
+    pub(crate) fn axis_sizes(&self, bounds: Bounds<Pixels>) -> (f32, f32) {
         if self.axis.is_vertical() {
             (f32::from(bounds.size.height), f32::from(bounds.size.width))
         } else {
@@ -855,7 +855,7 @@ impl ColumnStack {
     /// `prepaint` байт в байт. Повтор шапок таблицы, строки flex (`Par`),
     /// `clone` и хвост `slack` сюда не приходят: `render.rs` их в вертикали
     /// не взводит.
-    fn prepaint_axis(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    pub(crate) fn prepaint_axis(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let axis = self.axis;
         let (inline_avail, block_avail) = self.axis_sizes(bounds);
         let col_w =
@@ -976,7 +976,7 @@ impl ColumnStack {
     }
 
     /// Отрисовка вертикальной стопки (пара к `prepaint_axis`).
-    fn paint_axis(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    pub(crate) fn paint_axis(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let axis = self.axis;
         let (_, block_avail) = self.axis_sizes(bounds);
         let col_w = self.col_w.get();
@@ -1067,7 +1067,7 @@ impl ColumnStack {
 
     /// Где стоит колонка `col`: номер в линии и смещение линии. Без рядов и
     /// при `nowrap` колонки идут вбок сплошь (переполняющие — за край).
-    fn place(&self, col: usize) -> (usize, f32) {
+    pub(crate) fn place(&self, col: usize) -> (usize, f32) {
         match self.rows {
             Some(r) if r.wrap => {
                 let lines = self.lines_plan.borrow();
@@ -1103,7 +1103,7 @@ impl ColumnStack {
     /// (`balance_tail`).
     /// Поток дошёл до колонок перенесённого флоата (`float_hold`): встать
     /// под его концом.
-    fn skip_float(hold: &mut Option<(usize, usize, f32)>, col: &mut usize, cur: &mut f32, placed: &mut bool) {
+    pub(crate) fn skip_float(hold: &mut Option<(usize, usize, f32)>, col: &mut usize, cur: &mut f32, placed: &mut bool) {
         if let Some((fc, lc, ly)) = *hold
             && *col >= fc
         {
@@ -1116,7 +1116,7 @@ impl ColumnStack {
         }
     }
 
-    fn fill_at(
+    pub(crate) fn fill_at(
         kids: &[Kid],
         target_at: &dyn Fn(usize) -> f32,
         limit: usize,
@@ -1661,12 +1661,12 @@ impl ColumnStack {
     /// `grid-item-fragmentation-032/044`, где рядом с `avoid` написан
     /// `break-*: column`. Пропускается и разрезанная предыдущая коробка:
     /// разрыв всё равно внутри неё.
-    fn first_avoid_violation(kids: &[Kid], plan: &[Frag]) -> Option<usize> {
+    pub(crate) fn first_avoid_violation(kids: &[Kid], plan: &[Frag]) -> Option<usize> {
         Self::avoid_violation_where(kids, plan, &|_| false)
     }
 
     /// `first_avoid_violation`, пропуская границы, для которых `skip` истинно.
-    fn avoid_violation_where(kids: &[Kid], plan: &[Frag], skip: &dyn Fn(usize) -> bool) -> Option<usize> {
+    pub(crate) fn avoid_violation_where(kids: &[Kid], plan: &[Frag], skip: &dyn Fn(usize) -> bool) -> Option<usize> {
         for i in 1..kids.len() {
             if !(kids[i].avoid_before || kids[i - 1].avoid_after) || skip(i) {
                 continue;
@@ -1725,7 +1725,7 @@ impl ColumnStack {
     /// `fragmentation_utils.cc:266-270`), это взводит `has_violating_break`
     /// (`column_layout_algorithm.cc:994`), и колонки растут на
     /// `minimal_space_shortage` (`:1168-1170`). `None` — растить не на что.
-    fn avoid_shortage(kids: &[Kid], plan: &[Frag], bad: usize, target: f32) -> Option<f32> {
+    pub(crate) fn avoid_shortage(kids: &[Kid], plan: &[Frag], bad: usize, target: f32) -> Option<f32> {
         let prev_col = plan.iter().filter(|f| f.kid == bad - 1).map(|f| f.col).max()?;
         let end = plan
             .iter()
@@ -1753,7 +1753,7 @@ impl ColumnStack {
     /// проверке Blink `column_layout_algorithm.cc:1152`: при `used_column_count_
     /// <= forced_break_count + 1` мягких точек разрыва нет, и растяжение ради
     /// `avoid` ничего не даст (css-multicol-1 §7 «honoring forced breaks»).
-    fn forced_breaks(kids: &[Kid]) -> usize {
+    pub(crate) fn forced_breaks(kids: &[Kid]) -> usize {
         let between = (1..kids.len())
             .filter(|&i| kids[i].force_before || kids[i - 1].force_after)
             .count();
@@ -1778,7 +1778,7 @@ impl ColumnStack {
     /// границ подряд, а не одной, берёт `break-between-avoid-014`: там
     /// граница перед третьей коробкой тоже запрещена, и разрыв обязан
     /// уехать сразу на вторую.
-    fn retreat_to(kids: &[Kid], bad: usize) -> Option<usize> {
+    pub(crate) fn retreat_to(kids: &[Kid], bad: usize) -> Option<usize> {
         // В строке flex (`Par`) отступать можно только внутри своей строки и не
         // на её начало: начало строки — начало группы, перенос всей группы в
         // следующую колонку уводил бы и соседние строки (параллельные потоки),
@@ -1816,7 +1816,7 @@ impl ColumnStack {
     /// Быстрый выход: если запретов нет ни у кого — ровно прежний `fill_at`,
     /// без единой лишней копии `Kid`. Запреты написаны в 101 паре свода из
     /// 23108, у остальных арифметика тождественна прежней.
-    fn fill_avoiding(
+    pub(crate) fn fill_avoiding(
         kids: &[Kid],
         target_at: &dyn Fn(usize) -> f32,
         limit: usize,
@@ -1933,7 +1933,7 @@ impl ColumnStack {
     /// содержимое по числу записей, а внепоточная в них не участвует.
     /// Возвращать только вместе с разделением «переполнение» и
     /// «балансировка» в самой `balance`.
-    fn balance(&self, kids: &[Kid]) -> (f32, Vec<(f32, f32)>, Vec<Frag>, Vec<(usize, f32)>) {
+    pub(crate) fn balance(&self, kids: &[Kid]) -> (f32, Vec<(f32, f32)>, Vec<Frag>, Vec<(usize, f32)>) {
         let count = self.count;
         // Потолок баланса без рядов (`Rows::cap`): баланс как прежде, но не
         // выше высоты коробки; копий — сколько построил `render.rs`, лишние
@@ -2256,7 +2256,7 @@ impl ColumnStack {
     /// (`fill_at`: «Копий больше нет — остаток за кадром»): `multicol-fill-
     /// balance-041` (20 | 40 | 100 в двух колонках) брал 80 вместо 100,
     /// `multicol-fill-auto-004` (10|10|10|10|100 в пяти) — 28 вместо 100.
-    fn runs_guess(kids: &[Kid], count: usize) -> f32 {
+    pub(crate) fn runs_guess(kids: &[Kid], count: usize) -> f32 {
         let mut runs: Vec<f32> = Vec::new();
         let mut cur = 0.0f32;
         let mut started = false;
@@ -2301,7 +2301,7 @@ impl ColumnStack {
     /// Одна линия колонок: высота заданная (fill:auto) либо баланс «оценка +
     /// добавка на минимальный недолаз» (blink `ResolveColumnAutoBlockSize`);
     /// `cap` — потолок баланса (`ConstrainColumnBlockSize`).
-    fn balance_line(&self, kids: &[Kid], limit: usize, cap: Option<f32>) -> (f32, Vec<Frag>) {
+    pub(crate) fn balance_line(&self, kids: &[Kid], limit: usize, cap: Option<f32>) -> (f32, Vec<Frag>) {
         if let Some(h) = self.fixed_height {
             // Правило 1 css-break-4 §4.3 применяется ТОЛЬКО здесь —
             // `column-fill: auto` с заданной высотой колонки. Балансировку
@@ -2444,7 +2444,7 @@ impl ColumnStack {
     /// `LayoutRow` той же `block_layout_algorithm` с `early_break_`,
     /// `fragmentation_utils.cc:1250`). `flex-container-fragmentation-003/004`:
     /// 50 + 50 + 300 при `break-before: avoid` у третьей — разрыв после первой.
-    fn avoid_at_cap(kids: &[Kid], target: f32, limit: usize, slots: Vec<Frag>) -> Vec<Frag> {
+    pub(crate) fn avoid_at_cap(kids: &[Kid], target: f32, limit: usize, slots: Vec<Frag>) -> Vec<Frag> {
         if Self::first_avoid_violation(kids, &slots).is_none() {
             return slots;
         }
@@ -2458,7 +2458,7 @@ impl ColumnStack {
     /// а последняя — по содержимому: `column-height-003` — 80px остатка в
     /// двух колонках по 40, а не 50 + 30). Возвращает число линий, план
     /// (колонки от нуля, дети от нуля) и высоту последней линии.
-    fn balance_run(
+    pub(crate) fn balance_run(
         &self,
         kids: &[Kid],
         first: f32,
@@ -2941,7 +2941,7 @@ pub struct PageGeom {
 
 impl PageGeom {
     /// Размер листа, каким его видно (после `page-orientation`).
-    fn shown(&self) -> (f32, f32) {
+    pub(crate) fn shown(&self) -> (f32, f32) {
         if self.turn % 2 == 1 {
             (self.size.1, self.size.0)
         } else {
@@ -2950,7 +2950,7 @@ impl PageGeom {
     }
 
     /// Левый верх page area внутри листа.
-    fn area_origin(&self) -> (f32, f32) {
+    pub(crate) fn area_origin(&self) -> (f32, f32) {
         (
             self.margin[3] + self.border.0 + self.padding[3],
             self.margin[0] + self.border.0 + self.padding[0],
@@ -3015,17 +3015,17 @@ pub type MarginFn = std::rc::Rc<dyn Fn(usize, &str, usize, &PageGeom) -> Vec<Mar
 /// сравнивает кадр целиком, а печатный эталон WPT тоже многостраничен, и
 /// сравнивать надо все страницы обеих сторон.
 pub struct PageStack {
-    kids: Vec<PageKid>,
+    pub(crate) kids: Vec<PageKid>,
     /// Лист `i` с именем страницы — его геометрия (css-page-3 §cascading).
-    geom_for: PageGeomFn,
+    pub(crate) geom_for: PageGeomFn,
     /// Геометрия КАЖДОГО листа, итог `prepaint` (листы бывают разные:
     /// `@page :first { size }`, именные страницы).
-    geoms: std::cell::RefCell<Vec<PageGeom>>,
+    pub(crate) geoms: std::cell::RefCell<Vec<PageGeom>>,
     /// Ячейка сетки листов — наибольший лист.
-    cell: std::cell::Cell<(f32, f32)>,
+    pub(crate) cell: std::cell::Cell<(f32, f32)>,
     /// Марджин-боксы: построитель и итог раскладки `(лист, элемент)`.
-    margin_for: Option<MarginFn>,
-    margin_els: Vec<(usize, AnyElement)>,
+    pub(crate) margin_for: Option<MarginFn>,
+    pub(crate) margin_els: Vec<(usize, AnyElement)>,
     /// Слой начального содержащего блока (внепоточные без позиционированного
     /// предка) — по КОПИИ на страницу: `icb[p]` рисуется на листе `p` со
     /// сдвигом на `p` page area вверх, то есть абсолют раскладывается «как
@@ -3033,23 +3033,23 @@ pub struct PageStack {
     /// §abspos-breaking; `monolithic-overflow-013`: текст после монолита
     /// 350vh — в середине четвёртой страницы). Повтор `position: fixed` на
     /// каждой странице без сдвига — шаг 3.
-    icb: Vec<Vec<AnyElement>>,
+    pub(crate) icb: Vec<Vec<AnyElement>>,
     /// Досягаемость абсолютов корня — низ самого дальнего (с переполнением
     /// монолитов, как Blink `ReserveSpaceForMonolithicOverflow`): листов не
     /// меньше, чем нужно, чтобы её показать.
-    icb_reach: f32,
+    pub(crate) icb_reach: f32,
     /// Слой `position: fixed` — по копии на страницу БЕЗ сдвига: содержащий
     /// блок фиксированного — page area каждого листа (Blink `IsMonolithic`:
     /// «IsFixedPositioned() && GetDocument().Printing()» — монолит, повторяемый
     /// на каждой странице; `fixedpos-007..009`).
-    fixed: Vec<Vec<AnyElement>>,
-    plan: std::cell::RefCell<Vec<Frag>>,
-    pages: std::cell::Cell<usize>,
+    pub(crate) fixed: Vec<Vec<AnyElement>>,
+    pub(crate) plan: std::cell::RefCell<Vec<Frag>>,
+    pub(crate) pages: std::cell::Cell<usize>,
     /// Листов в ряду и масштаб стопки.
-    grid: std::cell::Cell<(usize, f32)>,
+    pub(crate) grid: std::cell::Cell<(usize, f32)>,
     /// Показываемые листы (с нуля, по возрастанию), `None` — все. Печатный
     /// reftest WPT сравнивает только страницы из `<meta name=reftest-pages>`.
-    select: Option<Vec<usize>>,
+    pub(crate) select: Option<Vec<usize>>,
 }
 
 impl PageStack {
@@ -3085,7 +3085,7 @@ impl PageStack {
     }
 
     /// Место листа `i` в сетке показываемых; `None` — лист не показывается.
-    fn slot(&self, i: usize) -> Option<usize> {
+    pub(crate) fn slot(&self, i: usize) -> Option<usize> {
         match &self.select {
             None => Some(i),
             Some(sel) => sel.iter().position(|&p| p == i),
@@ -3093,7 +3093,7 @@ impl PageStack {
     }
 
     /// Левый верх листа `i` в НЕмасштабированных точках стопки.
-    fn sheet_origin(&self, i: usize) -> (f32, f32) {
+    pub(crate) fn sheet_origin(&self, i: usize) -> (f32, f32) {
         let Some(i) = self.slot(i) else {
             return (-1.0e6, -1.0e6);
         };
@@ -3103,7 +3103,7 @@ impl PageStack {
     }
 
     /// Геометрия листа `i` (итог `prepaint`; за краем — последний лист).
-    fn geom(&self, i: usize) -> PageGeom {
+    pub(crate) fn geom(&self, i: usize) -> PageGeom {
         let gs = self.geoms.borrow();
         gs.get(i)
             .or(gs.last())
@@ -3114,7 +3114,7 @@ impl PageStack {
     /// Прямоугольник page area листа `i` в ИТОГОВЫХ координатах окна (с
     /// масштабом): шейдер режет по маске после преобразования
     /// (`shaders.hlsl` `distance_from_clip_rect_transformed`).
-    fn area_mask(&self, bounds: Bounds<Pixels>, i: usize) -> gpui::ContentMask<Pixels> {
+    pub(crate) fn area_mask(&self, bounds: Bounds<Pixels>, i: usize) -> gpui::ContentMask<Pixels> {
         let s = self.grid.get().1;
         let (sx, sy) = self.sheet_origin(i);
         let g = self.geom(i);

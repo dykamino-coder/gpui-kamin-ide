@@ -4,80 +4,80 @@
 //! собираются в один абзац (`inline.rs`). Списки, таблицы и картинки имеют
 //! свои правила — они и описаны в доке отдельными разделами.
 
-mod outline;
-mod fragment_size;
-mod first_line_text;
-mod band_clearance;
-mod band_dimensions;
-mod margin_inline_boxes;
+pub(crate) mod outline;
+pub(crate) mod fragment_size;
+pub(crate) mod first_line_text;
+pub(crate) mod band_clearance;
+pub(crate) mod band_dimensions;
+pub(crate) mod margin_inline_boxes;
 use band_clearance::supported as band_clear_supported;
-mod mask_geometry;
-mod content_wrapper;
+pub(crate) mod mask_geometry;
+pub(crate) mod content_wrapper;
 use content_wrapper::{content_sized, content_sized_wraps};
-mod orthogonal_inline;
-mod native_vertical;
-mod containment_paint;
-mod paint_scope;
+pub(crate) mod orthogonal_inline;
+pub(crate) mod native_vertical;
+pub(crate) mod containment_paint;
+pub(crate) mod paint_scope;
 use paint_scope::{DepthScope, snapshot as defer_depth, inside as inside_deferred};
-mod page_boxes;
-mod page_counters;
-mod rotated_atom;
-mod combined_text;
-mod physical_atomic;
-mod vertical_flow_margins;
-mod margin_edges;
-mod margin_height;
-mod float_clear_scope;
-mod inline_floats;
-mod float_atom;
+pub(crate) mod page_boxes;
+pub(crate) mod page_counters;
+pub(crate) mod rotated_atom;
+pub(crate) mod combined_text;
+pub(crate) mod physical_atomic;
+pub(crate) mod vertical_flow_margins;
+pub(crate) mod margin_edges;
+pub(crate) mod margin_height;
+pub(crate) mod float_clear_scope;
+pub(crate) mod inline_floats;
+pub(crate) mod float_atom;
 use float_atom::band_atom;
-mod first_letter_descendants;
-mod first_letter_scope;
-mod pseudo_line_layers;
-mod first_line_descendants;
-mod inline_splits;
+pub(crate) mod first_letter_descendants;
+pub(crate) mod first_letter_scope;
+pub(crate) mod pseudo_line_layers;
+pub(crate) mod first_line_descendants;
+pub(crate) mod inline_splits;
 use inline_splits::split_block_in_inline;
-mod native_paragraph_route;
-mod scroll_box;
-mod orthogonal_fixed_child;
-mod orthogonal_children;
-mod orthogonal_horizontal;
+pub(crate) mod native_paragraph_route;
+pub(crate) mod scroll_box;
+pub(crate) mod orthogonal_fixed_child;
+pub(crate) mod orthogonal_children;
+pub(crate) mod orthogonal_horizontal;
 use orthogonal_children::orthogonal_children;
-mod orthogonal_absolute;
-mod vertical_intrinsic;
-mod vertical_hug;
-mod native_intrinsic;
-mod animation_frame;
-mod animation_live;
+pub(crate) mod orthogonal_absolute;
+pub(crate) mod vertical_intrinsic;
+pub(crate) mod vertical_hug;
+pub(crate) mod native_intrinsic;
+pub(crate) mod animation_frame;
+pub(crate) mod animation_live;
 use animation_live::animated;
-mod table_roles;
-mod table_border_widths;
-mod table_spanning_size;
-mod table_clipped_content;
-mod replaced_used_style;
-mod inline_replaced_position;
-mod replaced_holder_ratio;
-mod replaced_content;
-mod svg_percentage_size;
-mod list_item;
-mod list_container;
-mod available_width;
+pub(crate) mod table_roles;
+pub(crate) mod table_border_widths;
+pub(crate) mod table_spanning_size;
+pub(crate) mod table_clipped_content;
+pub(crate) mod replaced_used_style;
+pub(crate) mod inline_replaced_position;
+pub(crate) mod replaced_holder_ratio;
+pub(crate) mod replaced_content;
+pub(crate) mod svg_percentage_size;
+pub(crate) mod list_item;
+pub(crate) mod list_container;
+pub(crate) mod available_width;
 use replaced_content::svg_replaced;
-mod ratio_basis;
+pub(crate) mod ratio_basis;
 pub(crate) mod absolute_overflow;
-mod absolute_overflow_math;
-mod ruby_hiding;
-mod ruby_transform;
-mod text_shadows;
+pub(crate) mod absolute_overflow_math;
+pub(crate) mod ruby_hiding;
+pub(crate) mod ruby_transform;
+pub(crate) mod text_shadows;
 use text_shadows::with_text_shadow;
 use fragment_size::shape_full;
 
-use crate::apply::{apply, apply_hover};
-use crate::computed::{Align, Computed, Display, FlexDir};
-use crate::dom::{Element, Node};
-use crate::inline::{self};
-use crate::value::Len;
-use gpui::{
+pub(crate) use crate::apply::{apply, apply_hover};
+pub(crate) use crate::computed::{Align, Computed, Display, FlexDir};
+pub(crate) use crate::dom::{Element, Node};
+pub(crate) use crate::inline::{self};
+pub(crate) use crate::value::Len;
+pub(crate) use gpui::{
     AnyElement, IntoElement, ParentElement, SharedString, Styled, StyledImage, TextStyle, div, px,
 };
 
@@ -110,13 +110,13 @@ impl RenderOpts {
     /// Отдельного поля в настройках нет, чтобы не ломать вызывающих: берём
     /// цвет текста и делаем из него полупрозрачную подложку — она читается
     /// и на светлой, и на тёмной теме.
-    fn selection_color(&self) -> gpui::Hsla {
+    pub(crate) fn selection_color(&self) -> gpui::Hsla {
         let mut c = self.text.color;
         c.a = 0.25;
         c
     }
 
-    fn base_size(&self) -> f32 {
+    pub(crate) fn base_size(&self) -> f32 {
         f32::from(self.text.font_size.to_pixels(px(16.)))
     }
 
@@ -127,14 +127,14 @@ impl RenderOpts {
     /// навязывал постоянную долю, она наследовалась ВСЕМ, и замер шрифта не
     /// работал ни разу: коробка с `line-height: normal` выходила выше коробки
     /// с `line-height: 1em` при одном и том же шрифте.
-    fn root_style(&self) -> Computed {
+    pub(crate) fn root_style(&self) -> Computed {
         Computed::default()
     }
 }
 
 /// Базовый стиль элемента плюс слой наведения и дорисовка того, чего в
 /// `gpui::Style` нет: обводки, размытия подложки, разноцветных сторон рамки.
-fn styled_div(e: &Element) -> gpui::Div {
+pub(crate) fn styled_div(e: &Element) -> gpui::Div {
     styled_div_with(e, &e.style)
 }
 
@@ -142,7 +142,7 @@ fn styled_div(e: &Element) -> gpui::Div {
 /// points) with up to four rectangles whose edges snap to the device grid —
 /// the shape of a sharp, square box shadow (css-backgrounds-3 §7.1). An empty
 /// or disjoint hole leaves `outer` whole.
-fn paint_rect_minus(
+pub(crate) fn paint_rect_minus(
     window: &mut gpui::Window,
     (ol, ot, or, ob): (f32, f32, f32, f32),
     (hl, ht, hr, hb): (f32, f32, f32, f32),
@@ -188,7 +188,7 @@ fn paint_rect_minus(
 /// `text` слоя не даёт вовсе: фон по форме глифов мы не рисуем, и закрасить
 /// вместо него всю коробку — заметно хуже, чем не красить (тесты на него
 /// прямо пишут «no red» про залитый прямоугольник).
-fn clip_layer(c: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
+pub(crate) fn clip_layer(c: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
     let clip = c.color_clip()?;
     if c.gradient.is_none() && c.background.is_none() {
         return None;
@@ -247,7 +247,7 @@ fn clip_layer(c: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
 /// По §11.2 потомок скрытого элемента виден, если объявил видимость сам.
 /// Читается собственное значение узла, до слияния: `Some(false)` приходит
 /// только из авторского CSS — прочие места ставят лишь `Some(true)`.
-fn shows_inside(nodes: &[Node]) -> bool {
+pub(crate) fn shows_inside(nodes: &[Node]) -> bool {
     nodes.iter().any(|n| match n {
         Node::Text(_) => false,
         Node::Element(e) => e.style.hidden == Some(false) || shows_inside(&e.children),
@@ -429,7 +429,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
 ///
 /// Все — абсолютные и вне потока, поэтому на раскладку не влияют и могут
 /// идти первыми детьми.
-fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
+pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     let mut out: Vec<AnyElement> = vec![];
 
     // РЕЗКАЯ тень (без размытия): примитив тени с нулевым размытием
@@ -1306,7 +1306,7 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
 /// Есть ли в поддереве хоть одна коробка, которую `clear` может очищать:
 /// флоат (свой, у `::first-letter` или под `:hover`) либо буквица
 /// (`initial-letter`).
-fn has_clearable(nodes: &[Node]) -> bool {
+pub(crate) fn has_clearable(nodes: &[Node]) -> bool {
     let floats = |c: &Computed| c.float.is_some_and(|f| f != 0) || c.initial_letter.is_some();
     nodes.iter().any(|n| match n {
         Node::Element(e) => {
@@ -1319,14 +1319,14 @@ fn has_clearable(nodes: &[Node]) -> bool {
     })
 }
 
-fn has_clear(nodes: &[Node]) -> bool {
+pub(crate) fn has_clear(nodes: &[Node]) -> bool {
     nodes.iter().any(|n| match n {
         Node::Element(e) => e.style.clear.is_some() || has_clear(&e.children),
         Node::Text(_) => false,
     })
 }
 
-fn strip_clear(nodes: &mut [Node]) {
+pub(crate) fn strip_clear(nodes: &mut [Node]) {
     for n in nodes {
         if let Node::Element(e) = n {
             e.style.clear = None;
@@ -1346,7 +1346,7 @@ fn strip_clear(nodes: &mut [Node]) {
 /// самому свойству, поэтому в таком документе оно снимается целиком
 /// (`margin-collapse-135`: девять `clear: both` без флоатов — поля обязаны
 /// схлопнуться в ноль). Флоаты есть — дерево не трогается.
-fn without_inert_clear(nodes: &[Node]) -> Option<Vec<Node>> {
+pub(crate) fn without_inert_clear(nodes: &[Node]) -> Option<Vec<Node>> {
     if has_clearable(nodes) || !has_clear(nodes) {
         return None;
     }
@@ -1398,19 +1398,19 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
 
 thread_local! {
     /// Глубина вложенных `render` (документ в рамке собирается внутри).
-    static RENDER_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    pub(crate) static RENDER_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
     /// Номер элемента в порядке сборки — ключ краски шага 8 (`PaintLast`).
-    static PAINT_KEY: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    pub(crate) static PAINT_KEY: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
     /// Позиции узлов в прямом обходе документа и позиция ПОСЛЕДНЕГО
     /// позиционированного, который ключа краски не получает (см.
     /// `unkeyed_positions`).
-    static UNKEYED: std::cell::RefCell<(std::collections::HashMap<u64, usize>, Option<usize>)> =
+    pub(crate) static UNKEYED: std::cell::RefCell<(std::collections::HashMap<u64, usize>, Option<usize>)> =
         std::cell::RefCell::new((std::collections::HashMap::new(), None));
 }
 
 /// Следующий ключ краски: зовётся при входе в элемент, до сборки детей, —
 /// предок получает ключ меньше потомков (прямой обход).
-fn next_paint_key() -> u64 {
+pub(crate) fn next_paint_key() -> u64 {
     PAINT_KEY.with(|k| {
         let v = k.get().wrapping_add(1);
         k.set(v);
@@ -1422,7 +1422,7 @@ fn next_paint_key() -> u64 {
 /// в `PaintLast`: части таблицы (их строит табличный сборщик),
 /// `relative`/`sticky` строчного уровня и строчный абсолют — те идут в
 /// абзац. Такие красятся первым проходом там, где стоят.
-fn unkeyed_positioned(e: &Element) -> bool {
+pub(crate) fn unkeyed_positioned(e: &Element) -> bool {
     if e.style.z_index.unwrap_or(0) != 0 {
         return false;
     }
@@ -1448,7 +1448,7 @@ fn unkeyed_positioned(e: &Element) -> bool {
 /// Прямой обход документа: конец поддерева каждого узла (позиция за его
 /// последним потомком) и позиция последнего позиционированного без ключа
 /// краски.
-fn unkeyed_positions(nodes: &[Node]) -> (std::collections::HashMap<u64, usize>, Option<usize>) {
+pub(crate) fn unkeyed_positions(nodes: &[Node]) -> (std::collections::HashMap<u64, usize>, Option<usize>) {
     fn walk(
         nodes: &[Node],
         at: &mut usize,
@@ -1478,7 +1478,7 @@ fn unkeyed_positions(nodes: &[Node]) -> (std::collections::HashMap<u64, usize>, 
 /// порядок разметки перевернётся — `position-relative-table-*`: ячейка
 /// `relative` после абсолютного красного индикатора). Узел вне обхода
 /// (порождённый сборщиком) — по братьям, как прежде.
-fn paint_last_ok(e: &Element, rest: &[Node]) -> bool {
+pub(crate) fn paint_last_ok(e: &Element, rest: &[Node]) -> bool {
     let known = UNKEYED.with(|u| {
         let u = u.borrow();
         u.0.get(&e.node_id).map(|&end| u.1.is_none_or(|last| last < end))
@@ -1497,7 +1497,7 @@ fn paint_last_ok(e: &Element, rest: &[Node]) -> bool {
 /// (`ch-unit-001`, `ic-unit-001`). `PaintLast` ставит коробку в собиратель по
 /// ключу в порядке разметки. Узел вне обхода (порождённый сборщиком) остаётся
 /// на прежнем пути.
-fn inline_abs_paint_last(e: &Element, el: AnyElement) -> AnyElement {
+pub(crate) fn inline_abs_paint_last(e: &Element, el: AnyElement) -> AnyElement {
     let known = UNKEYED.with(|u| {
         let u = u.borrow();
         u.0.get(&e.node_id).map(|&end| u.1.is_none_or(|last| last < end))
@@ -1511,19 +1511,19 @@ fn inline_abs_paint_last(e: &Element, el: AnyElement) -> AnyElement {
 
 /// Копий ребёнка в стопке страниц — потолок числа страниц, на которые может
 /// растянуться один блок верхнего уровня (в `css-page` не больше шести).
-const PAGE_COPIES: usize = 12;
+pub(crate) const PAGE_COPIES: usize = 12;
 
 thread_local! {
     /// Строится стопка страниц. Абсолют корня БЕЗ заданных сторон тоже уходит
     /// в слой ICB: на месте он остаётся внутри обёртки кида и режется маской
     /// её фрагмента (`monolithic-overflow-013`: четыре пустых листа). Экрану
     /// это не нужно — там статическая позиция и есть место в потоке.
-    static PAGED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    pub(crate) static PAGED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     /// Слой `position: fixed` текущей сборки кида — по копии на лист без
     /// сдвига (`flow::PageStack::fixed`). В слой ICB ему нельзя: тот
     /// поднимается на `p` page area и показывает фиксированный только на
     /// первом листе (`fixedpos-007..009`).
-    static FIXED_LAYER: std::cell::RefCell<Vec<AnyElement>> =
+    pub(crate) static FIXED_LAYER: std::cell::RefCell<Vec<AnyElement>> =
         const { std::cell::RefCell::new(Vec::new()) };
 }
 
@@ -1985,7 +1985,7 @@ pub fn render_paged_select(
 /// монолит). У всех девяти приобретений корня `overflow` не задан, так что
 /// ворота им ничего не стоят, а зелёные с обрезкой (`overflow-clip-*`)
 /// закрывают.
-fn visible_overflow(c: &Computed) -> bool {
+pub(crate) fn visible_overflow(c: &Computed) -> bool {
     use crate::computed::Overflow;
     // Параллельный поток живёт по БЛОЧНОЙ оси: решает `overflow-y`. Строчная ось
     // мешает, только если делает коробку прокручиваемой — css-overflow-3
@@ -2014,11 +2014,11 @@ fn visible_overflow(c: &Computed) -> bool {
 thread_local! {
     /// Коробки, чью меру фрагментации дотянули внепоточные потомки
     /// (`shape_full`): `node_id -> (свой размер, мера с дотягом)`.
-    static OOF_OWN: std::cell::RefCell<std::collections::HashMap<u64, (f32, f32)>> =
+    pub(crate) static OOF_OWN: std::cell::RefCell<std::collections::HashMap<u64, (f32, f32)>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
-fn carries_abspos(c: &Element, depth: u8) -> bool {
+pub(crate) fn carries_abspos(c: &Element, depth: u8) -> bool {
     depth > 0
         && c.children.iter().any(|n| match n {
             Node::Element(k) => {
@@ -2030,7 +2030,7 @@ fn carries_abspos(c: &Element, depth: u8) -> bool {
             _ => false,
         })
 }
-fn block_like_float(c: &Computed) -> bool {
+pub(crate) fn block_like_float(c: &Computed) -> bool {
     c.float.unwrap_or(0) != 0 && matches!(c.width, Some(Len::Pct(p)) if p >= 0.9999)
 }
 /// Коробка и всё её поддерево — ОБЫЧНЫЕ блоки: ни гибкого контейнера, ни
@@ -2045,7 +2045,7 @@ fn block_like_float(c: &Computed) -> bool {
 /// `single-line-column-flex-fragmentation-043/058` разъехались бы
 /// (`target/scout-fragparallel-2026-09.md` §5). `display: flow-root` сюда
 /// входит: он сводится к `Block` (`computed.rs:3057`).
-fn plain_block_tree(c: &Element, depth: u8) -> bool {
+pub(crate) fn plain_block_tree(c: &Element, depth: u8) -> bool {
     if c.style.column_count.is_some() || c.style.column_width.is_some() {
         return false;
     }
@@ -2073,7 +2073,7 @@ fn plain_block_tree(c: &Element, depth: u8) -> bool {
 /// помещается). Такую стопку мера `shape_full` ведёт так же точно, как блок
 /// (ветка «строка = элемент»), и её переполнение заданной высоты продолжается
 /// в следующем фрагментаинере параллельным потоком (css-break-3 §3).
-fn stacked_flex_tree(c: &Element, depth: u8) -> bool {
+pub(crate) fn stacked_flex_tree(c: &Element, depth: u8) -> bool {
     use crate::computed::FlexDir;
     if c.style.column_count.is_some() || c.style.column_width.is_some() || c.style.webkit_box == Some(true) {
         return false;
@@ -2131,7 +2131,7 @@ fn stacked_flex_tree(c: &Element, depth: u8) -> bool {
 /// обязан пройти (§9.5.2). Укладке колонок (`shape_full`) этого хватает,
 /// чтобы резать коробку по колонкам вместо отказа от всей стопки
 /// (`floats-clear-multicol-*`: флоаты 250 в колонках по 100).
-fn float_only_box(c: &Element) -> Option<f32> {
+pub(crate) fn float_only_box(c: &Element) -> Option<f32> {
     if c.inline || !matches!(c.style.display, None | Some(Display::Block)) {
         return None;
     }
@@ -2172,7 +2172,7 @@ fn float_only_box(c: &Element) -> Option<f32> {
 /// в переполнение и соседей по ряду, поэтому `Kid::overflow_top` им не дают.
 /// Атомарные строчные (`inline-flex`/`inline-grid`) — монолиты, но внутрь них
 /// спуск всё равно идёт: гейт осторожный.
-fn parallel_items_inside(c: &Element, depth: u8) -> bool {
+pub(crate) fn parallel_items_inside(c: &Element, depth: u8) -> bool {
     // Элементы, идущие СТОПКОЙ по блочной оси, рядом не стоят: колонка flex
     // без переноса (css-flexbox-1 §9.3: одна строка, элементы друг под
     // другом) и сетка-стопка (`grid_stack`: одна колонка, ряд = элемент).
@@ -2220,7 +2220,7 @@ fn parallel_items_inside(c: &Element, depth: u8) -> bool {
 /// Есть ли в поддереве (вместе с самой коробкой) многоколоночник. Свою
 /// балансировку он ведёт сам, внешними колонками не фрагментируется, и копия
 /// стопки рисует его плоско (`flow.rs` `StackChild::nested_cols`).
-fn multicol_inside(c: &Element, depth: u8) -> bool {
+pub(crate) fn multicol_inside(c: &Element, depth: u8) -> bool {
     multicol_container(&c.style)
         || (depth > 0
             && c.children.iter().any(
@@ -2228,7 +2228,7 @@ fn multicol_inside(c: &Element, depth: u8) -> bool {
             ))
 }
 
-fn has_float(n: &Element, depth: u8) -> bool {
+pub(crate) fn has_float(n: &Element, depth: u8) -> bool {
     if depth == 0 {
         return false;
     }
@@ -2247,13 +2247,13 @@ fn has_float(n: &Element, depth: u8) -> bool {
 /// из тех же детей со схлопыванием полей (CSS 2.1
 /// §8.3.1); строчное содержимое высоты не даёт — такой
 /// ребёнок мерить нечем, и весь стек идёт другим путём.
-fn shape(c: &Element, depth: u8) -> Option<(f32, f32, f32, Vec<(f32, f32)>)> {
+pub(crate) fn shape(c: &Element, depth: u8) -> Option<(f32, f32, f32, Vec<(f32, f32)>)> {
     shape_full(c, depth, ShapeCx::COLUMNS).map(|s| (s.0, s.1, s.2, s.3))
 }
 /// Высота сетки по ЯВНЫМ дорожкам рядов: все дорожки в
 /// точках, плюс зазоры между ними. `None` — дорожки
 /// неизвестны или не все в точках.
-fn grid_rows_px(c: &Computed) -> Option<f32> {
+pub(crate) fn grid_rows_px(c: &Computed) -> Option<f32> {
     use crate::computed::{Track, TrackSize};
     if !matches!(
         c.display,
@@ -2283,7 +2283,7 @@ fn grid_rows_px(c: &Computed) -> Option<f32> {
 /// Ряды — в точках либо доли `fr` при заданной в точках высоте коробки
 /// (остаток после точечных рядов и зазоров делится по долям, css-grid-1
 /// §12.7). Иначе — пусто: дорожек не знаем, точек не даём.
-fn grid_row_gaps(c: &Computed, inner_h: f32) -> Vec<(f32, f32)> {
+pub(crate) fn grid_row_gaps(c: &Computed, inner_h: f32) -> Vec<(f32, f32)> {
     use crate::computed::{Track, TrackSize};
     if !matches!(
         c.display,
@@ -2342,7 +2342,7 @@ fn grid_row_gaps(c: &Computed, inner_h: f32) -> Vec<(f32, f32)> {
 /// нет, они не все в точках или зазор задан не в точках: границ мы не знаем
 /// и точек не даём. Строже, чем `grid_rows_px` (тот считает незнакомый
 /// зазор нулём) — неверная граница ряда хуже отсутствующей.
-fn grid_px_row_bands(c: &Computed) -> Option<Vec<(f32, f32)>> {
+pub(crate) fn grid_px_row_bands(c: &Computed) -> Option<Vec<(f32, f32)>> {
     use crate::computed::{Track, TrackSize};
     if !matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid)) {
         return None;
@@ -2402,7 +2402,7 @@ fn grid_px_row_bands(c: &Computed) -> Option<Vec<(f32, f32)>> {
 /// на каждой границе ряда увела бы разрез у зелёных
 /// `grid-item-oof-002/003` (ряды `50px 150px`, край колонки на 100 внутри
 /// второго ряда) с края на 50 и потеряла бы половину колонки.
-fn grid_auto_row_bands(
+pub(crate) fn grid_auto_row_bands(
     c: &Element,
     depth: u8,
     cx: ShapeCx,
@@ -2630,11 +2630,11 @@ fn grid_auto_row_bands(
 
 /// Элемент сетки для `grid_auto_row_bands`: номер среди `c.children`, ряд,
 /// верхнее поле, мера `shape_full`, годны ли его внутренние точки сетке.
-type GridSpot = (usize, usize, f32, Shape, bool);
+pub(crate) type GridSpot = (usize, usize, f32, Shape, bool);
 
 /// Сетка, которую мерит `grid_auto_row_bands`, — та же цепочка, что в
 /// `shape_full`: не стопка, высота `auto`, ряды не все в точках.
-fn grid_items_spotted(c: &Element) -> bool {
+pub(crate) fn grid_items_spotted(c: &Element) -> bool {
     matches!(c.style.display, Some(Display::Grid) | Some(Display::InlineGrid))
         && !grid_stack(c)
         && c.style.height.is_none()
@@ -2661,7 +2661,7 @@ fn grid_items_spotted(c: &Element) -> bool {
 /// по колонкам, `grid-column: N / span M` занимает M колонок и при
 /// необходимости пинает курсор вперёд; не влезающий в остаток ряда элемент
 /// начинает новый ряд. Любая непонятная форма — пустой список, а не догадка.
-fn grid_row_forced(c: &Element) -> (Vec<f32>, Vec<(f32, f32)>) {
+pub(crate) fn grid_row_forced(c: &Element) -> (Vec<f32>, Vec<(f32, f32)>) {
     use crate::computed::{AutoFlow, Placement};
     let s = &c.style;
     if matches!(
@@ -2811,7 +2811,7 @@ fn grid_row_forced(c: &Element) -> (Vec<f32>, Vec<(f32, f32)>) {
 /// заданной высоты), зазор не в точках, явное размещение у любого ребёнка
 /// (`grid-row`/`grid-column`/`grid-area`). `display: grid-lanes` не
 /// проходит никогда — у полос своя укладка.
-fn grid_stack(c: &Element) -> bool {
+pub(crate) fn grid_stack(c: &Element) -> bool {
     use crate::computed::{AutoFlow, Track, TrackSize};
     let s = &c.style;
     if !matches!(s.display, Some(Display::Grid) | Some(Display::InlineGrid)) {
@@ -2897,7 +2897,7 @@ fn grid_stack(c: &Element) -> bool {
 /// таблица, группа, ряд и ячейка не годны — `layout_table*.h`
 /// `IsEligibleForSizeContainment() … return false`). `content-visibility:
 /// hidden` ставит тот же `contain_size`.
-fn size_monolith(k: &Element) -> bool {
+pub(crate) fn size_monolith(k: &Element) -> bool {
     k.style.contains_block_size()
         && !matches!(
             k.style.display,
@@ -2918,7 +2918,7 @@ fn size_monolith(k: &Element) -> bool {
 /// (css-overflow-3, «Applies to»), ячейка — берёт.
 /// Есть ли в поддереве принудительный разрыв (`break-before/after` любого
 /// потомка, кроме уходящих внутрь монолита, `forced_opaque`).
-fn forced_inside(e: &Element, depth: u8) -> bool {
+pub(crate) fn forced_inside(e: &Element, depth: u8) -> bool {
     if depth == 0 {
         return false;
     }
@@ -2941,7 +2941,7 @@ fn forced_inside(e: &Element, depth: u8) -> bool {
     })
 }
 
-fn forced_opaque(k: &Element) -> bool {
+pub(crate) fn forced_opaque(k: &Element) -> bool {
     let scrolls = |o: Option<crate::computed::Overflow>| {
         matches!(o, Some(crate::computed::Overflow::Scroll))
     };
@@ -2963,7 +2963,7 @@ fn forced_opaque(k: &Element) -> bool {
 /// элемент, поднятый на место обёртки (с её полями), — тогда клонированное
 /// украшение (css-break-4 §break-decoration) фрагментирует сам элемент
 /// (`box-decoration-break-clone-018/019/028/029`). Иначе `None`.
-fn clone_wrapper_item(w: &Element) -> Option<Element> {
+pub(crate) fn clone_wrapper_item(w: &Element) -> Option<Element> {
     use crate::computed::FlexDir;
     let s = &w.style;
     let zero = |l: &Option<Len>| match l {
@@ -3030,7 +3030,7 @@ fn clone_wrapper_item(w: &Element) -> Option<Element> {
 /// атомарный строчный, прокручиваемый, `break-inside: avoid`,
 /// строчное содержимое (строк укладка не видит) — пустая
 /// коробка монолитом НЕ является.
-fn solid_box(k: &Element) -> bool {
+pub(crate) fn solid_box(k: &Element) -> bool {
     let scrolls = |o: Option<crate::computed::Overflow>| {
         matches!(o, Some(crate::computed::Overflow::Scroll))
     };
@@ -3081,7 +3081,7 @@ fn solid_box(k: &Element) -> bool {
 /// вложенный клон, эффект лёг бы дважды), позиционированная коробка и
 /// внепоточный потомок (`clone-005.tentative`: содержащим блоком стало бы
 /// поднятое тело без отбивки).
-fn clone_dec(c: &Element) -> Option<(f32, f32)> {
+pub(crate) fn clone_dec(c: &Element) -> Option<(f32, f32)> {
     use crate::computed::Position;
     if !c.style.bdb_clone {
         return None;
@@ -3145,7 +3145,7 @@ fn clone_dec(c: &Element) -> Option<(f32, f32)> {
 /// Blink устроен так же: фрагмент — свой `PhysicalBoxFragment` со всеми
 /// сторонами, краска общим путём (`box_fragment_painter.cc:2322` разводит
 /// только `slice`).
-fn clone_fragment(c: &Element, dt: f32, db: f32, from: f32, fh: f32, clip: f32) -> Element {
+pub(crate) fn clone_fragment(c: &Element, dt: f32, db: f32, from: f32, fh: f32, clip: f32) -> Element {
     use crate::computed::{Overflow, Position, Sides};
     let mut body = c.clone();
     body.style = c.style.paint_off();
@@ -3197,20 +3197,20 @@ fn clone_fragment(c: &Element, dt: f32, db: f32, from: f32, fh: f32, clip: f32) 
 
 /// То же плюс смещения принудительных разрывов и диапазоны
 /// монолитов внутри.
-type Shape = (f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>);
+pub(crate) type Shape = (f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>);
 
 /// Условия меры: `paged` — стопка страниц (монолитом считается и
 /// `contain: size`, см. `solid_box`); `viewport` — размер области просмотра
 /// для `vh`/`vw`: у страниц это page area, у колонок единицы окна остаются
 /// неразрешёнными (`None` → отказ от меры, прежнее поведение).
 #[derive(Clone, Copy)]
-struct ShapeCx {
-    paged: bool,
-    viewport: Option<(f32, f32)>,
+pub(crate) struct ShapeCx {
+    pub(crate) paged: bool,
+    pub(crate) viewport: Option<(f32, f32)>,
     /// Презентационный `cellpadding` таблицы — отступ ЭТОЙ ячейки поверх
     /// умолчания `td { padding: 1px }` (как в `table()`); потомкам не
     /// передаётся.
-    cell_pad: Option<f32>,
+    pub(crate) cell_pad: Option<f32>,
     /// Мера ПОТОКА, а не коробки: заданная высота не обрезает ни высоту, ни
     /// точки разреза, ни монолитные диапазоны. Переполнение коробки с
     /// заданной высотой — параллельный поток (css-break-3 §3), и укладке
@@ -3223,11 +3223,11 @@ struct ShapeCx {
     /// насквозь: там своей ограниченности нет
     /// (`overflowed-block-with-room-after-003` — обёртка `auto` над
     /// коробкой 70).
-    unclamped: bool,
+    pub(crate) unclamped: bool,
 }
 
 impl ShapeCx {
-    const COLUMNS: ShapeCx = ShapeCx {
+    pub(crate) const COLUMNS: ShapeCx = ShapeCx {
         paged: false,
         viewport: None,
         cell_pad: None,
@@ -3237,34 +3237,34 @@ impl ShapeCx {
 
 /// Кадр меры строк: наследованный стиль коробки и ширина её содержимого
 /// (`None` — неизвестна, строки не меряются).
-struct LineFrame {
-    inh: Computed,
-    w: Option<f32>,
+pub(crate) struct LineFrame {
+    pub(crate) inh: Computed,
+    pub(crate) w: Option<f32>,
     /// Анонимный блок строк хоста (`group_inline_runs`): его срез — срез хоста.
-    anon: bool,
+    pub(crate) anon: bool,
     /// Ширина детей-элементов этой коробки (`items_kind`): 0 — блочный поток,
     /// 1 — растянутые на всю ширину (колонка flex и сетка-стопка при
     /// `stretch`), 2 — ширина по раскладке (ряд flex, прочая сетка): известна
     /// лишь заданная в точках.
-    items: u8,
+    pub(crate) items: u8,
 }
 
 /// Контекст меры строк для `shape_full`: включается только вокруг меры детей
 /// стопки колонок (`with_lines`), где ширина колонки известна. `shape_full` о
 /// наследовании и ширине ничего не знает (ей дают голый элемент), поэтому
 /// кадры ведёт `LineScope` на входе в неё.
-struct LineCx {
-    opts: RenderOpts,
-    frames: Vec<LineFrame>,
+pub(crate) struct LineCx {
+    pub(crate) opts: RenderOpts,
+    pub(crate) frames: Vec<LineFrame>,
 }
 
 thread_local! {
-    static LINE_CX: std::cell::RefCell<Option<LineCx>> = const { std::cell::RefCell::new(None) };
+    pub(crate) static LINE_CX: std::cell::RefCell<Option<LineCx>> = const { std::cell::RefCell::new(None) };
 }
 
 /// Выполнить `f` с контекстом меры строк: `base` — стиль многоколоночника,
 /// `w` — строчный размер колонки.
-fn with_lines<T>(base: &Computed, w: Option<f32>, opts: &RenderOpts, f: impl FnOnce() -> T) -> T {
+pub(crate) fn with_lines<T>(base: &Computed, w: Option<f32>, opts: &RenderOpts, f: impl FnOnce() -> T) -> T {
     let prev = LINE_CX.with(|l| {
         l.borrow_mut().replace(LineCx {
             opts: opts.clone(),
@@ -3279,7 +3279,7 @@ fn with_lines<T>(base: &Computed, w: Option<f32>, opts: &RenderOpts, f: impl FnO
 /// Ширина содержимого блока в потоке родителя шириной `pw` (CSS 2.1 §10.3.3:
 /// `margin-left + border + padding + width + … = containing block width`).
 /// Только обычный блок потока — у прочих ширину решает своя раскладка.
-fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
+pub(crate) fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
     let s = &c.style;
     // Блочный flex-контейнер и сетка в потоке занимают ширину как блок
     // (css-flexbox-1 §9.2 / css-grid-2 §6.1: «block-level … sized as a
@@ -3322,7 +3322,7 @@ fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
 /// `height` при этом не действует. Контейнер `height: auto` свободного места не
 /// даёт, и гибкость базу не меняет (§9.7). `None` — мера по `height`
 /// элемента, как прежде.
-fn basis_sized(c: &Element, k: &Element) -> Option<Element> {
+pub(crate) fn basis_sized(c: &Element, k: &Element) -> Option<Element> {
     use crate::computed::FlexDir;
     let s = &c.style;
     if k.inline
@@ -3352,7 +3352,7 @@ fn basis_sized(c: &Element, k: &Element) -> Option<Element> {
 /// always stretched to the fragmentainers»). Художник хвоста красит его одним
 /// цветом по ширине копии — это точно, лишь когда у коробки сплошной фон без
 /// картинки и скруглений, а видимые боковые рамки того же цвета. Иначе `None`.
-fn slack_fill(c: &Element) -> Option<gpui::Hsla> {
+pub(crate) fn slack_fill(c: &Element) -> Option<gpui::Hsla> {
     let s = &c.style;
     let bg = s.background?;
     if s.bg_image.is_some()
@@ -3379,7 +3379,7 @@ fn slack_fill(c: &Element) -> Option<gpui::Hsla> {
 }
 
 /// Как ширина детей коробки `c` известна мере строк (`LineFrame::items`).
-fn items_kind(c: &Element) -> u8 {
+pub(crate) fn items_kind(c: &Element) -> u8 {
     use crate::computed::FlexDir;
     let s = &c.style;
     match s.display {
@@ -3396,10 +3396,10 @@ fn items_kind(c: &Element) -> u8 {
 }
 
 /// Кадр меры строк на время `shape_full(c)`.
-struct LineScope(bool);
+pub(crate) struct LineScope(pub(crate) bool);
 
 impl LineScope {
-    fn enter(c: &Element) -> Self {
+    pub(crate) fn enter(c: &Element) -> Self {
         LINE_CX.with(|l| {
             let mut g = l.borrow_mut();
             let Some(cx) = g.as_mut() else {
@@ -3440,7 +3440,7 @@ impl Drop for LineScope {
 /// Текст строчного содержимого для меры строк: `<br>` — `\n`, пробелы
 /// схлопнуты (css-text-3 §4.1.1). `None` — среди детей есть то, что строку
 /// меняет сверх голого текста (атом, свой шрифт, отбивка, внепоточный).
-fn line_text(nodes: &[Node]) -> Option<String> {
+pub(crate) fn line_text(nodes: &[Node]) -> Option<String> {
     fn gather(nodes: &[Node], out: &mut String) -> bool {
         for n in nodes {
             match n {
@@ -3531,7 +3531,7 @@ fn line_text(nodes: &[Node]) -> Option<String> {
 /// `HandleInflow` → `IsBreakInside` по строкам). Только при включённом
 /// контексте (`with_lines`) и известной ширине колонки; иначе `None`, и мера
 /// идёт прежним путём (сплошной строчный набор — монолит).
-fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) -> Option<Shape> {
+pub(crate) fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) -> Option<Shape> {
     // Высота в точках — коробка своей высоты, строки внутри неё режутся так
     // же (css-break-3 §4.3); строки ниже её низа — переполнение, точек там нет.
     let fixed_h = match c.style.height {
@@ -3663,7 +3663,7 @@ fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) -> Option<S
 /// строки, и срез многоколоночника под ней не действует
 /// (`text-box-trim-multicol-004`: блок `trim-start` под `trim-both` — низ
 /// первой колонки срезан, верх второй нет; `-005` — наоборот).
-fn brk_trim(frames: &[LineFrame], side: impl Fn(&Computed) -> bool) -> bool {
+pub(crate) fn brk_trim(frames: &[LineFrame], side: impl Fn(&Computed) -> bool) -> bool {
     // Анонимный блок строк — строки самого хоста, его флаг — копия хостового.
     match frames.iter().rposition(|f| side(&f.inh) && !f.anon) {
         Some(0) => true,
@@ -3675,7 +3675,7 @@ fn brk_trim(frames: &[LineFrame], side: impl Fn(&Computed) -> bool) -> bool {
 /// Срез `text-box-trim` с одной стороны строки (css-inline-3 §4.2): полулидинг
 /// плюс расстояние от подъёма/спуска до метрики края — та же арифметика, что у
 /// `blocks()` (`trim_for`).
-fn trim_amount(s: &Computed, size: f32, lh: f32, start: bool) -> f32 {
+pub(crate) fn trim_amount(s: &Computed, size: f32, lh: f32, start: bool) -> f32 {
     let family = s.font_family.clone().unwrap_or_default();
     let (ascent, descent, cap) = crate::metrics::vmetrics_px(&family, size);
     let half = (lh - (ascent + descent)) / 2.0;
@@ -3698,7 +3698,7 @@ fn trim_amount(s: &Computed, size: f32, lh: f32, start: bool) -> f32 {
 
 /// Сплошной строчный набор (без блочных детей) — монолит в стопке, ПОКА его
 /// строки не измерены (`line_run_shape` дала точки разреза).
-fn inline_content(k: &Element) -> bool {
+pub(crate) fn inline_content(k: &Element) -> bool {
     let block_kid = |n: &Node| {
         matches!(n, Node::Element(x)
             if !x.inline || x.style.display == Some(Display::Block))
@@ -3713,7 +3713,7 @@ fn inline_content(k: &Element) -> bool {
 /// нулём (нестрогий `px_or`), а `height: 4em` — отказом всей стопки, хотя
 /// рисунок кладёт их в точках. Наследуемые (`font-size`, `line-height`) не
 /// трогаются: число в `line-height` наследуется множителем.
-fn resolved_lengths(c: &Element, parent: &Computed) -> Element {
+pub(crate) fn resolved_lengths(c: &Element, parent: &Computed) -> Element {
     let m = crate::inline::inherit(parent, &c.style);
     let mut t = c.clone();
     // Подменяются ТОЛЬКО шрифтовые единицы, разрешённые в точки: прочее
@@ -3757,7 +3757,7 @@ fn resolved_lengths(c: &Element, parent: &Computed) -> Element {
 /// Вложенный многоколоночник, который внешняя стопка ведёт РЯДАМИ (`nest_row`):
 /// обычный блок с колонками, высотой в точках, без своих рядов, спаннеров,
 /// внепоточных и вертикального письма.
-fn nested_rows_box(c: &Element) -> bool {
+pub(crate) fn nested_rows_box(c: &Element) -> bool {
     let s = &c.style;
     multicol_container(s)
         && (s.column_count.is_some_and(|n| n > 1) || s.column_width.is_some())
@@ -3793,7 +3793,7 @@ fn nested_rows_box(c: &Element) -> bool {
         && !oof_descendant(c)
 }
 
-fn oof_descendant(e: &Element) -> bool {
+pub(crate) fn oof_descendant(e: &Element) -> bool {
     e.children
         .iter()
         .any(|n| matches!(n, Node::Element(k) if out_of_flow(&k.style) || oof_descendant(k)))
@@ -3807,7 +3807,7 @@ fn oof_descendant(e: &Element) -> bool {
 /// Та же укладка (`ColumnStack::measure_rows`) и те же меры детей
 /// (`resolved_lengths` + `with_lines`), что у копии через `element()`.
 /// Точек разреза нет: внешняя стопка режет коробку краем колонки — по рядам.
-fn nested_rows_shape(c: &Element, parent: &Computed, hh: f32, cw: f32, opts: &RenderOpts) -> Option<Shape> {
+pub(crate) fn nested_rows_shape(c: &Element, parent: &Computed, hh: f32, cw: f32, opts: &RenderOpts) -> Option<Shape> {
     let m = inline::inherit(parent, &c.style);
     let w = nested_box_w(c, cw)?;
     let n = match m.column_count {
@@ -3895,7 +3895,7 @@ fn nested_rows_shape(c: &Element, parent: &Computed, hh: f32, cw: f32, opts: &Re
 }
 
 /// Ширина коробки (`width` по её `box-sizing`) ребёнка в колонке `cw`.
-fn nested_box_w(c: &Element, cw: f32) -> Option<f32> {
+pub(crate) fn nested_box_w(c: &Element, cw: f32) -> Option<f32> {
     let s = &c.style;
     let px = |l: &Option<Len>| match l {
         None | Some(Len::Auto) => Some(0.0),
@@ -3914,7 +3914,7 @@ fn nested_box_w(c: &Element, cw: f32) -> Option<f32> {
 /// колонка делает копию обычным ребёнком: её поля и растяжение решает
 /// раскладка (CSS 2.1 §10.3.3). Только горизонтальная стопка и только при
 /// ненулевых полях в точках — иначе копия прежняя.
-fn side_margin_wrap(el: AnyElement, copy: &Element, vertical: bool) -> AnyElement {
+pub(crate) fn side_margin_wrap(el: AnyElement, copy: &Element, vertical: bool) -> AnyElement {
     let nz = |l: &Option<Len>| matches!(l, Some(Len::Px(v)) if v.abs() > 0.001);
     if vertical || !(nz(&copy.style.margin.left) || nz(&copy.style.margin.right)) {
         return el;
@@ -3927,7 +3927,7 @@ fn side_margin_wrap(el: AnyElement, copy: &Element, vertical: bool) -> AnyElemen
 /// it, then we force it to have only block-level boxes inside it» — строчное
 /// содержимое оборачивается анонимной блочной коробкой). Тогда стопка колонок
 /// видит их обычными детьми и режет по строкам. `None` — заворачивать нечего.
-fn group_inline_runs(e: &Element) -> Option<Element> {
+pub(crate) fn group_inline_runs(e: &Element) -> Option<Element> {
     let inline_level = |n: &Node| match n {
         Node::Text(_) => true,
         Node::Element(k) => k.inline && !out_of_flow(&k.style) && k.style.display.is_none(),
@@ -4005,7 +4005,7 @@ fn group_inline_runs(e: &Element) -> Option<Element> {
 /// css-writing-modes-4 §7.3, или обратная блочная ось) либо `direction: rtl`:
 /// поворотом его мера не выражается, и многоколоночник остаётся на прежнем
 /// пути.
-fn transpose_tree(c: &Element, rl: bool) -> Option<Element> {
+pub(crate) fn transpose_tree(c: &Element, rl: bool) -> Option<Element> {
     if c.style.vertical == Some(false)
         || c.style.vertical_rl.is_some_and(|v| v != rl)
         || c.style.rtl == Some(true)
@@ -4063,7 +4063,7 @@ fn transpose_tree(c: &Element, rl: bool) -> Option<Element> {
 /// Строки собираются, но контейнер с переносом теряет высоту фрагмента: пары,
 /// которые держались стопкой детей, разваливаются. Половинить нельзя (это и
 /// есть откат 04.09); брать заново только с мерой по строкам (FRAG-LINES).
-fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
+pub(crate) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     // Кадр меры строк (наследование и ширина) — только при `with_lines`.
     let _line_frame = LineScope::enter(c);
     let px_or = |l: &Option<Len>, strict: bool| match l {
@@ -5018,7 +5018,7 @@ fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
 /// высота `auto`. Сетка, гибкий контейнер, таблица, вложенный многоколоночник
 /// идут в мере иначе (`grid_rows_stack`, `row_nowrap`, `table_shape`) — не
 /// трогаем. Внепоточный первым — у меры нулевая запись, `through` не рождается.
-fn strip_through_top(c: &mut Element, depth: u8) {
+pub(crate) fn strip_through_top(c: &mut Element, depth: u8) {
     if depth == 0
         || c.style.height.is_some()
         || table_box(c)
@@ -5065,10 +5065,10 @@ fn strip_through_top(c: &mut Element, depth: u8) {
 /// отказ от спуска, и здесь тоже.
 thread_local! {
     /// Щуп `pushed_box_at` ищет коробку под ПРИНУДИТЕЛЬНЫЙ разрыв (`grow_pushed`).
-    static PUSH_FORCED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    pub(crate) static PUSH_FORCED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
+pub(crate) fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
     if depth == 0 {
         return None;
     }
@@ -5260,7 +5260,7 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
 /// `shape_full(cell)` распорка ложится в `lead`). Что `table_shape` не
 /// меряет (`rowspan`, подпись, сросшиеся рамки, заданная высота), здесь
 /// тоже `None` — распорки нет, поведение прежнее.
-fn pushed_cell_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
+pub(crate) fn pushed_cell_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
     if depth == 0
         || c.style.vertical == Some(true)
         || c.style.border_collapse == Some(true)
@@ -5368,7 +5368,7 @@ fn pushed_cell_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
 /// `lead` меры (`shape_full`) и в раскладку копии одинаково; недобор от
 /// схлопывания с большим нижним полем соседа добирает следующий заход
 /// `grow_pushed`.
-fn grow_before(c: &mut Element, id: u64, grow: f32) -> bool {
+pub(crate) fn grow_before(c: &mut Element, id: u64, grow: f32) -> bool {
     for n in c.children.iter_mut() {
         let Node::Element(k) = n else {
             continue;
@@ -5393,7 +5393,7 @@ fn grow_before(c: &mut Element, id: u64, grow: f32) -> bool {
 /// схлопнутым полем (`shape_full`: `cuts.push((y, y + lead))`, потом
 /// `forced.push(y)`), поэтому `margin-top` её не сдвигает — сдвигает только
 /// новый поточный сосед.
-fn spacer_before(c: &mut Element, id: u64, grow: f32) -> bool {
+pub(crate) fn spacer_before(c: &mut Element, id: u64, grow: f32) -> bool {
     // Сетка-стопка: между рядами стоит `row-gap` (`shape_full`:
     // `lead = prev_mb + row_gap + kmt`), и вставка ряда добавляет ЛИШНИЙ
     // зазор. Ряд flex без переноса: высота ряда — `tallest` по детям, а
@@ -5519,7 +5519,7 @@ fn spacer_before(c: &mut Element, id: u64, grow: f32) -> bool {
 /// сборки копий, до неподвижной точки (≤ 6 заходов; обычно один). Проба
 /// устройства руками — `target/probe-9d/*.html`: SLC-007/009/010/011 и
 /// `table-cell-expansion-001` 0.00 (`scout-break-2026-09d.md` §3.3).
-fn grow_pushed(
+pub(crate) fn grow_pushed(
     mut kids: Vec<(Element, Shape)>,
     count: usize,
     fixed: Option<f32>,
@@ -5618,7 +5618,7 @@ fn grow_pushed(
 /// `contain: size`, ни прокрутки, ни замещаемого, ни атомарной строчной, ни
 /// сплошного строчного набора (тот же список, что у `monolith` в сборке
 /// стопки, без `break_inside_avoid`).
-fn avoid_only_monolith(c: &Element) -> bool {
+pub(crate) fn avoid_only_monolith(c: &Element) -> bool {
     let scrolls = |o: Option<crate::computed::Overflow>| matches!(o, Some(crate::computed::Overflow::Scroll));
     let block_kid = |n: &Node| matches!(n, Node::Element(k) if !k.inline || k.style.display == Some(Display::Block));
     !(size_monolith(c)
@@ -5637,7 +5637,7 @@ fn avoid_only_monolith(c: &Element) -> bool {
 
 /// Перемера после распорки — с прежними полями у элемента строки flex
 /// (`split_flex_lines` кладёт в поле ещё и `row-gap`).
-fn keep_par_margins(s: Shape, old: &Shape, par: Option<&crate::flow::Par>) -> Shape {
+pub(crate) fn keep_par_margins(s: Shape, old: &Shape, par: Option<&crate::flow::Par>) -> Shape {
     if par.is_some_and(|p| p.group != 0) {
         (s.0, old.1, old.2, s.3, s.4, s.5)
     } else {
@@ -5671,7 +5671,7 @@ fn keep_par_margins(s: Shape, old: &Shape, par: Option<&crate::flow::Par>) -> Sh
 /// дети — блочные элементы в потоке без `flex-grow`, `flex-basis`,
 /// `align-self`, боковых полей и отбивок, ширина в точках либо пустой
 /// `auto`. Иначе контейнер идёт прежним путём.
-fn split_flex_lines(
+pub(crate) fn split_flex_lines(
     kids: Vec<(Element, Shape)>,
     col_w: Option<f32>,
     merged: &Computed,
@@ -5807,7 +5807,7 @@ fn split_flex_lines(
 /// Строки контейнера для `split_flex_lines`: `(сдвиг строки по x, элементы с
 /// мерой)`. `None` — контейнер вне гейта.
 #[allow(clippy::type_complexity)]
-fn flex_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<(f32, Vec<(Element, Shape)>)>> {
+pub(crate) fn flex_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<(f32, Vec<(Element, Shape)>)>> {
     use crate::computed::FlexDir;
     if flex_gap_rules(&c.style) {
         return None;
@@ -5995,7 +5995,7 @@ fn flex_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<(f32, Vec<(Eleme
 /// линейки пропадали целиком (`flex-gap-decorations-fragmentation-025/028/029/
 /// 030`, v225 0.04…0.28 → v226 0.82…2.07). Такой контейнер идёт прежним путём —
 /// одной копией со своими линейками.
-fn flex_gap_rules(s: &Computed) -> bool {
+pub(crate) fn flex_gap_rules(s: &Computed) -> bool {
     s.column_rule_visible == Some(true)
         || s.row_rule_visible == Some(true)
         || s.column_rule_styles.as_ref().is_some_and(|l| l.any(|v| *v))
@@ -6014,7 +6014,7 @@ fn flex_gap_rules(s: &Computed) -> bool {
 /// как у колонки, плюс высота контейнера `auto` и хотя бы одна строка из
 /// нескольких элементов: ряд «элемент на строку» прежний путь уже знает.
 #[allow(clippy::type_complexity)]
-fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, Element, Shape)>>> {
+pub(crate) fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, Element, Shape)>>> {
     use crate::computed::FlexDir;
     if flex_gap_rules(&c.style) {
         return None;
@@ -6210,7 +6210,7 @@ fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, El
 /// В поддереве (до `depth`) — коробка с заданной высотой и содержимым: свой
 /// параллельный поток (css-break-3 §3), которого раскрытый элемент ряда не
 /// выражает (`flex_row_lines_of`).
-fn constrained_inside(c: &Element, depth: u8) -> bool {
+pub(crate) fn constrained_inside(c: &Element, depth: u8) -> bool {
     depth > 0
         && c.children.iter().any(|n| match n {
             Node::Element(k) => {
@@ -6226,7 +6226,7 @@ fn constrained_inside(c: &Element, depth: u8) -> bool {
 /// `flex-basis` (точки/проценты) при `flex-grow: 0`, иначе `width`; проценты —
 /// от главного размера контейнера `main`. `None` — размер по содержимому
 /// (`auto`/`content`), который гейт не выражает.
-fn row_item_width(ks: &Computed, main: f32) -> Option<f32> {
+pub(crate) fn row_item_width(ks: &Computed, main: f32) -> Option<f32> {
     let px = |l: &Option<Len>| match l {
         Some(Len::Px(v)) => Some(*v),
         Some(Len::Pct(p)) => Some(p * main),
@@ -6251,7 +6251,7 @@ fn row_item_width(ks: &Computed, main: f32) -> Option<f32> {
 /// Только без `row-gap`: при зазоре эталоны css-gaps держат ряд прежней
 /// высоты (`grid-gap-decorations-fragmentation-011`). Прямой ребёнок стопки;
 /// вложенная сетка — как прежде, без роста.
-fn grow_grid_track(c: &mut Element, at: f32, grow: f32) -> bool {
+pub(crate) fn grow_grid_track(c: &mut Element, at: f32, grow: f32) -> bool {
     use crate::computed::{Track, TrackSize};
     if grid_stack(c) || !matches!(c.style.display, Some(Display::Grid) | Some(Display::InlineGrid)) {
         return false;
@@ -6292,7 +6292,7 @@ fn grow_grid_track(c: &mut Element, at: f32, grow: f32) -> bool {
 /// (`dom.rs` `INLINE_TAGS`), поэтому `<img style="display: block; page: b">`
 /// блочным тут признаётся по `display` (`page-name-img-004`: иначе картинка
 /// шла анонимным блоком с именем корня и рвала страницу).
-fn class_a_box(e: &Element) -> bool {
+pub(crate) fn class_a_box(e: &Element) -> bool {
     let blocky = (!e.inline && !inline_display(e))
         || matches!(
             e.style.display,
@@ -6318,7 +6318,7 @@ fn class_a_box(e: &Element) -> bool {
 /// разрыва между элементами не ставит (`page-name-flex-001/002-print`:
 /// эталон без разрывов). Внутри элемента — обычный блочный поток
 /// (`page-name-flex-004-print`).
-fn item_container(e: &Element) -> bool {
+pub(crate) fn item_container(e: &Element) -> bool {
     matches!(
         e.style.display,
         Some(Display::Flex)
@@ -6332,7 +6332,7 @@ fn item_container(e: &Element) -> bool {
 /// style="display: inline-block">` стоит в строке и точки класса A не даёт
 /// (css-display-3 §inner-outer; `page-name-inline-block-003-print`: два
 /// таких `div` с разными `page` — одна строка, без разрыва).
-fn inline_display(e: &Element) -> bool {
+pub(crate) fn inline_display(e: &Element) -> bool {
     // `display: inline` у блочного тега хранится как `InlineBlock` с меткой
     // `inline_display`: блоки внутри такого строчного разрывают его
     // (block-in-inline), и их разрывы — точки класса A
@@ -6348,7 +6348,7 @@ fn inline_display(e: &Element) -> bool {
 }
 
 /// Табличная коробка — по тегу или по `display`.
-fn table_box(c: &Element) -> bool {
+pub(crate) fn table_box(c: &Element) -> bool {
     c.tag == "table"
         || matches!(
             c.style.display,
@@ -6371,7 +6371,7 @@ fn table_box(c: &Element) -> bool {
 /// сросшиеся рамки, вертикальное письмо, монолит внутри при заданной высоте
 /// и неизмеримая ячейка — `None`: таблица идёт цельным куском измеренной
 /// высоты без точек, как прежде.
-fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
+pub(crate) fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     table_shape_bands(c, depth, cx, &mut TableBands::default())
 }
 
@@ -6380,19 +6380,19 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
 /// вертикальный `border-spacing`. Нужны повтору секций во фрагментах
 /// (`repeat_bands`).
 #[derive(Default, Clone, Copy)]
-struct TableBands {
-    head: Option<(f32, f32)>,
-    foot: Option<(f32, f32)>,
-    head_avoid: bool,
-    foot_avoid: bool,
-    spacing: f32,
+pub(crate) struct TableBands {
+    pub(crate) head: Option<(f32, f32)>,
+    pub(crate) foot: Option<(f32, f32)>,
+    pub(crate) head_avoid: bool,
+    pub(crate) foot_avoid: bool,
+    pub(crate) spacing: f32,
     /// Коробка рядов `[верх, низ)` — без подписей обёртки.
-    box_top: f32,
-    box_end: f32,
+    pub(crate) box_top: f32,
+    pub(crate) box_end: f32,
 }
 
 /// Повтор секций для стопки: полосы `flow::Repeat` и геометрия укладки.
-type RepeatSpec = (Option<(f32, f32)>, Option<(f32, f32)>, crate::flow::RepeatGeom);
+pub(crate) type RepeatSpec = (Option<(f32, f32)>, Option<(f32, f32)>, crate::flow::RepeatGeom);
 
 /// Повтор шапки/подвала таблицы-ребёнка стопки колонок (css-tables-3
 /// §repeated-headers; Blink `table_layout_algorithm.cc:1082-1150`): секция
@@ -6403,7 +6403,7 @@ type RepeatSpec = (Option<(f32, f32)>, Option<(f32, f32)>, crate::flow::RepeatGe
 /// здесь — только `column-fill: auto` с заданной высотой и без рядов. Ответ —
 /// полосы для `flow::Repeat`: шапка `(верх секции, секция + зазор под ней)`,
 /// подвал `(верх секции − зазор, зазор + секция)`.
-fn repeat_bands(
+pub(crate) fn repeat_bands(
     c: &Element,
     fixed: Option<f32>,
     rows: Option<crate::flow::Rows>,
@@ -6437,7 +6437,7 @@ fn repeat_bands(
 
 /// `RepeatGeom` для щупов укладки (`grow_pushed`, план `clone`): та же мера,
 /// что у `StackChild` в сборке стопки.
-fn repeat_leads(
+pub(crate) fn repeat_leads(
     c: &Element,
     fixed: Option<f32>,
     rows: Option<crate::flow::Rows>,
@@ -6445,7 +6445,7 @@ fn repeat_leads(
     repeat_bands(c, fixed, rows).map_or_else(Default::default, |r| r.2)
 }
 
-fn table_shape_bands(c: &Element, depth: u8, cx: ShapeCx, bands: &mut TableBands) -> Option<Shape> {
+pub(crate) fn table_shape_bands(c: &Element, depth: u8, cx: ShapeCx, bands: &mut TableBands) -> Option<Shape> {
     let px_of = |l: &Option<Len>| match l {
         None => Some(0.0),
         Some(Len::Px(v)) => Some(*v),
@@ -7016,7 +7016,7 @@ fn table_shape_bands(c: &Element, depth: u8, cx: ShapeCx, bands: &mut TableBands
 /// добавляет страницы, пока оно не кончится, crbug 1402540;
 /// `monolithic-overflow-027`: абсолют `contain:size` 4in с ребёнком 8in —
 /// «four green pages»). Обрезка `overflow-y` переполнение гасит (`-028`).
-fn oof_reach(e: &Element, cx: ShapeCx) -> f32 {
+pub(crate) fn oof_reach(e: &Element, cx: ShapeCx) -> f32 {
     // `vh`/`vw` — от page area; `bottom: -200vh` тянет низ коробки на две
     // area ниже листа (эталоны `fixedpos-001..009`: копии `bottom: -N00vh` и
     // `top: N00vh` — досягаемость была нулевой, лист один).
@@ -7081,7 +7081,7 @@ fn oof_reach(e: &Element, cx: ShapeCx) -> f32 {
 /// замещаемый, прокручиваемый, `break-inside: avoid`, `contain: size`,
 /// атомарный строчный. Сплошной строчный набор монолитом НЕ считается:
 /// страница режет его по краю, а обе стороны пары режутся одинаково.
-fn page_monolith(e: &Element) -> bool {
+pub(crate) fn page_monolith(e: &Element) -> bool {
     let scrolls = |o: Option<crate::computed::Overflow>| {
         matches!(o, Some(crate::computed::Overflow::Scroll))
     };
@@ -7114,7 +7114,7 @@ fn page_monolith(e: &Element) -> bool {
 /// колоночного флекса. Через крайнего ребёнка ни тот, ни другой не проходит,
 /// и обе пары остаются нетронутыми. Перенос «бок о бок» для запретов —
 /// отдельный шаг с отдельным замером.
-fn edge_avoid(e: &Element, last: bool) -> bool {
+pub(crate) fn edge_avoid(e: &Element, last: bool) -> bool {
     let own = if last {
         e.style.break_after_avoid
     } else {
@@ -7157,7 +7157,7 @@ fn edge_avoid(e: &Element, last: bool) -> bool {
 /// 'break-after' value on a last in-flow child box»; Blink
 /// `BoxFragmentBuilder::SetInitialBreakBefore`). Текст или строчный на краю
 /// — анонимная коробка без разрыва, пропагация останавливается.
-fn edge_break(e: &Element, last: bool) -> bool {
+pub(crate) fn edge_break(e: &Element, last: bool) -> bool {
     // Абсолютная коробка вне потока: `break-*` применяется к блочным коробкам
     // ПОТОКА (css-break-3 §3.1 «Applies to: block-level boxes …»), а внутри
     // своего потока абсолют фрагментируется отдельно (Blink: OOF ложится во
@@ -7278,7 +7278,7 @@ fn edge_break(e: &Element, last: bool) -> bool {
 /// передаёт значение только коробка, к которой свойство применяется
 /// (класс A); текст, строчный, флоат, абсолют — не передают, и тогда
 /// берётся используемое значение самой коробки.
-fn page_names(e: &Element, inherited: &str) -> (String, String) {
+pub(crate) fn page_names(e: &Element, inherited: &str) -> (String, String) {
     let used = e.style.page.clone().unwrap_or_else(|| inherited.to_string());
     // Крайняя дочерняя коробка — крайняя ПОТОЧНАЯ: абсолют и флоат в
     // точках класса A не участвуют (Blink берёт имя первого уложенного
@@ -7310,7 +7310,7 @@ pub type PageMarginDeclsFn = std::rc::Rc<dyn Fn(usize, &str) -> PageMarginDecls>
 /// Используемое значение 'page' (css-page-3 §using-named-pages: `auto` —
 /// значение ближайшего предка с не-`auto`) — в `style.page` каждого
 /// элемента, чтобы мера фрагментации сравнивала имена на любой глубине.
-fn fill_used_page(nodes: &mut [Node], inherited: &str) {
+pub(crate) fn fill_used_page(nodes: &mut [Node], inherited: &str) {
     for n in nodes.iter_mut() {
         if let Node::Element(e) = n {
             if e.style.page.is_none() && !inherited.is_empty() {
@@ -7324,7 +7324,7 @@ fn fill_used_page(nodes: &mut [Node], inherited: &str) {
 
 /// Есть ли внутри коробки смена имени страницы между соседями класса A
 /// (css-page-3 §using-named-pages п. 4) — на любой глубине.
-fn renames_inside(e: &Element) -> bool {
+pub(crate) fn renames_inside(e: &Element) -> bool {
     let kids: Vec<&Element> = e
         .children
         .iter()
@@ -7347,7 +7347,7 @@ fn renames_inside(e: &Element) -> bool {
 /// `None`), и разрыв внутри такого ребёнка стопки иначе терялся
 /// (`page-name-propagated-002-print-ref`: `break-before: page` у второго
 /// ребёнка обёртки).
-fn breaks_inside(e: &Element) -> bool {
+pub(crate) fn breaks_inside(e: &Element) -> bool {
     // Только блочный поток: внутри таблицы разрыв режет ряды и группы
     // (`rowgroup-page-break-inside-avoid-5-print-ref`: `thead { break-after }`
     // — таблица не обёртка, снимать её нельзя).
@@ -7377,7 +7377,7 @@ fn breaks_inside(e: &Element) -> bool {
 /// Обёртка без собственной коробки на листе: блок без полей, рамок,
 /// отбивок, фона, размеров, разрывов и прочего, что видно или влияет на
 /// раскладку детей. Снятие такой обёртки раскладку не меняет.
-fn plain_wrapper(e: &Element) -> bool {
+pub(crate) fn plain_wrapper(e: &Element) -> bool {
     let zero = |l: &Option<Len>| matches!(l, None | Some(Len::Px(0.0)));
     let st = &e.style;
     let b = st.borders();
@@ -7419,7 +7419,7 @@ fn plain_wrapper(e: &Element) -> bool {
 /// §using-named-pages п. 4) ставится между ними, как между детьми корня.
 /// Мера фрагментации (`shape_full`) у коробок с текстом неизвестна, и
 /// разрыв внутри такого ребёнка стопки иначе не ставится вовсе.
-fn hoist_named_wrappers(nodes: &mut Vec<Node>) {
+pub(crate) fn hoist_named_wrappers(nodes: &mut Vec<Node>) {
     loop {
         let mut changed = false;
         let mut out = Vec::with_capacity(nodes.len());
@@ -7441,7 +7441,7 @@ fn hoist_named_wrappers(nodes: &mut Vec<Node>) {
 
 /// Имя ПЕРВОЙ страницы (css-page-3 §using-named-pages, п. 3): start value
 /// первой поточной коробки класса A детей корня, иначе имя самого корня.
-fn first_kid_page_name(nodes: &[Node], root_page: &str) -> String {
+pub(crate) fn first_kid_page_name(nodes: &[Node], root_page: &str) -> String {
     for n in nodes.iter().filter(|n| !is_blank(n)) {
         match n {
             Node::Element(e) if matches!(e.style.display, Some(Display::None)) => continue,
@@ -7476,15 +7476,15 @@ thread_local! {
     /// Определения `<mask id>` / `<clipPath id>` документа: id — разметка
     /// содержимого. Ссылки `url(#id)` из `mask-image`/`clip-path` резолвятся
     /// при отрисовке (см. `interact::Grouped`).
-    static MASK_DEFS: std::cell::RefCell<std::collections::HashMap<String, String>> =
+    pub(crate) static MASK_DEFS: std::cell::RefCell<std::collections::HashMap<String, String>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
     /// Чей документ собран: адрес среза узлов. Виртуализация рисует ПО
     /// БЛОКАМ (`render_block`) — сбор на каждый блок каждого кадра был бы
     /// расточительным, а документ между кадрами один и тот же.
-    static MASK_DEFS_FOR: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    pub(crate) static MASK_DEFS_FOR: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     /// Определения `<mask>` с `mask-type: alpha`: их снимок помечается, и
     /// `match-source` маскирует альфой, а не светимостью.
-    static MASK_ALPHA_IDS: std::cell::RefCell<std::collections::HashSet<String>> =
+    pub(crate) static MASK_ALPHA_IDS: std::cell::RefCell<std::collections::HashSet<String>> =
         std::cell::RefCell::new(std::collections::HashSet::new());
 }
 
@@ -7493,7 +7493,7 @@ thread_local! {
     /// `RenderOpts` не доходит (`grouped`: вершины `polygon()`). Ставится в
     /// `element()` рядом с `resolve_viewport` — тем же значением, каким
     /// разрешаются `width: 50vw` эталонов.
-    static PAINT_VIEWPORT: std::cell::Cell<(f32, f32)> =
+    pub(crate) static PAINT_VIEWPORT: std::cell::Cell<(f32, f32)> =
         const { std::cell::Cell::new((0.0, 0.0)) };
 }
 
@@ -7511,7 +7511,7 @@ pub(crate) fn mask_def(id: &str) -> Option<String> {
 /// Overview.bs:1197). И только при `color-interpolation-filters="sRGB"`:
 /// начальное `linearRGB` (Overview.bs:614) делает формулу нелинейной в sRGB
 /// кадра. Остальное — None: подложка не рисуется, как прежде.
-fn svg_filter_matrix(def: &str) -> Option<[f32; 20]> {
+pub(crate) fn svg_filter_matrix(def: &str) -> Option<[f32; 20]> {
     fn attr(tag: &str, name: &str) -> Option<String> {
         let head = &tag[..tag.find('>')?];
         let key = format!(" {name}=\"");
@@ -7596,13 +7596,13 @@ thread_local! {
     /// документов в кадре может быть два (тест и эталон стенда) — реестр
     /// определений к моменту отрисовки уже перезаписан другим документом.
     /// Снимки копятся под уникальными ключами и не чистятся.
-    static MASK_SNAPS: std::cell::RefCell<std::collections::HashMap<String, String>> =
+    pub(crate) static MASK_SNAPS: std::cell::RefCell<std::collections::HashMap<String, String>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
-    static MASK_SNAP_N: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    pub(crate) static MASK_SNAP_N: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 /// Снять снимок определения; ключ живёт до конца кадра и дольше.
-fn snapshot_mask_def(id: &str) -> Option<String> {
+pub(crate) fn snapshot_mask_def(id: &str) -> Option<String> {
     let markup = mask_def(id)?;
     let alpha = MASK_ALPHA_IDS.with(|s| s.borrow().contains(id));
     let key = MASK_SNAP_N.with(|c| {
@@ -7629,7 +7629,7 @@ pub(crate) fn mask_snapshot(key: &str) -> Option<String> {
 
 /// Заменить ссылки `url(#id)` / `clipref:id` в строке маски снимками
 /// определений: к отрисовке реестр может смениться другим документом.
-fn resolve_mask_refs(raw: &str) -> String {
+pub(crate) fn resolve_mask_refs(raw: &str) -> String {
     if let Some(id) = raw.strip_prefix("clipref:") {
         return match snapshot_mask_def(id) {
             Some(key) => format!("clipsnap:{key}"),
@@ -7661,7 +7661,7 @@ fn resolve_mask_refs(raw: &str) -> String {
 
 /// Собрать определения масок ДО отрисовки: ссылка может стоять раньше
 /// определения по тексту.
-fn collect_mask_defs(nodes: &[Node]) {
+pub(crate) fn collect_mask_defs(nodes: &[Node]) {
     let key = nodes.as_ptr() as usize;
     if MASK_DEFS_FOR.with(|c| c.get()) == key {
         return;
@@ -7750,11 +7750,11 @@ pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<A
 /// позиционированных (шаг 8). Обёртка раскладку не меняет: при открытом
 /// собирателе краски (`gpui::PaintCollect`) абзац уходит в него, иначе
 /// рисуется на месте (`gpui::PaintInline`).
-fn paint_inline_step7(para: AnyElement) -> AnyElement {
+pub(crate) fn paint_inline_step7(para: AnyElement) -> AnyElement {
     gpui::PaintInline::new(para).into_any_element()
 }
 
-fn paragraph_probed(taken: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(crate) fn paragraph_probed(taken: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // Знак обрыва АВТО-режима: бюджет строк ИМЕННО ЭТОГО абзаца посчитал
     // `ClampCut` прошлого кадра. Кладём его ДО сборки абзаца — многоточие
     // нарисует строчный слой (`lines::clamp_lines` → `paint_line`), тот
@@ -7806,17 +7806,17 @@ thread_local! {
     /// §10.3.2 (последний пункт) берёт его ширину из уравнения для блочных
     /// коробок, то есть из содержащего блока, а резерв 300×150 применяется
     /// только когда ширину взять неоткуда.
-    static CB_WIDTH: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
+    pub(crate) static CB_WIDTH: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
 }
 
 /// Вернуть прежнюю ширину содержащего блока по выходе из `blocks()`.
-struct CbWidthGuard(Option<f32>);
+pub(crate) struct CbWidthGuard(pub(crate) Option<f32>);
 impl Drop for CbWidthGuard {
     fn drop(&mut self) {
         CB_WIDTH.set(self.0);
     }
 }
-fn scopeguard_cb(prev: Option<f32>) -> CbWidthGuard {
+pub(crate) fn scopeguard_cb(prev: Option<f32>) -> CbWidthGuard {
     CbWidthGuard(prev)
 }
 
@@ -7829,7 +7829,7 @@ thread_local! {
     /// повтор не разворачивался вовсе (`column-auto-repeat-016`: три лунки вместо
     /// семи по 100 в 784). `None` — ширину честно взять неоткуда (флекс, сетка,
     /// таблица, строчный блок, флоат, абсолют, многоколоночник, вертикальное письмо).
-    static AVAIL_W: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
+    pub(crate) static AVAIL_W: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
 }
 
 /// Доступная ширина текущего уровня `blocks()` (см. `AVAIL_W`) — для долей
@@ -7839,7 +7839,7 @@ pub(crate) fn avail_width() -> Option<f32> {
 }
 
 /// Вернуть прежнюю доступную ширину по выходе из `blocks()`.
-struct AvailWGuard(Option<f32>);
+pub(crate) struct AvailWGuard(pub(crate) Option<f32>);
 impl Drop for AvailWGuard {
     fn drop(&mut self) {
         AVAIL_W.set(self.0);
@@ -7856,7 +7856,7 @@ impl Drop for AvailWGuard {
 // 0.00 -> 6.31/3.12: поштучный атом меняет разбивку строки и подъём базовой
 // линии, а эталоны семьи считают её по-своему. Возвращать вместе с
 // настоящей надстрочной аннотацией (сдвиг базовой линии без атома).
-fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyElement> {
+pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyElement> {
     // Only the cell's own content list is the BFC root's (see `CELL_BFC`).
     let cell_bfc = CELL_BFC.with(|c| c.replace(false));
     let cb_prev = CB_WIDTH.get();
@@ -10122,7 +10122,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
 /// Раскладка под нами это свойство не знает, поэтому детей переставляем сами.
 /// Сортировка устойчивая — элементы с равным `order` сохраняют порядок
 /// разметки, как того требует CSS.
-fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
+pub(crate) fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
     let ordered = nodes.iter().any(|n| match n {
         Node::Element(e) => e.style.order.is_some(),
         Node::Text(_) => false,
@@ -10226,7 +10226,7 @@ fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
 /// сверху/снизу нулём), база — ширина. Сетка исключена: там содержащий блок —
 /// область сетки, а не контейнер (css-grid-2, Overview.bs:718: «A grid item’s
 /// grid area forms the containing block into which it is laid out»).
-fn resolve_inline_pct(mut children: Vec<Node>, container: &Computed, vertical: bool) -> Vec<Node> {
+pub(crate) fn resolve_inline_pct(mut children: Vec<Node>, container: &Computed, vertical: bool) -> Vec<Node> {
     if matches!(
         container.display,
         Some(Display::Grid) | Some(Display::InlineGrid)
@@ -10291,7 +10291,7 @@ fn resolve_inline_pct(mut children: Vec<Node>, container: &Computed, vertical: b
 /// высотой контейнера за вычетом вертикальных полей (css-writing-modes-3
 /// §7.3). Доля полей здесь обычная — от ширины контейнера, её решает
 /// раскладка сама.
-fn orthogonal_vertical_children(children: Vec<Node>, container: &Computed) -> Vec<Node> {
+pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Computed) -> Vec<Node> {
     let has_vertical = children.iter().any(|n| match n {
         Node::Element(ch) => !ch.inline && ch.style.vertical == Some(true),
         _ => false,
@@ -10407,7 +10407,7 @@ fn orthogonal_vertical_children(children: Vec<Node>, container: &Computed) -> Ve
 /// takes part in margin collapsing in place of margin-bottom»).
 /// `None` — сторона запечатана либо контейнер — корень (§8.3.1: поля корня
 /// не схлопываются).
-fn collapse_flow_margins(children: Vec<Node>, reverse: bool, lead: Option<f32>) -> Vec<Node> {
+pub(crate) fn collapse_flow_margins(children: Vec<Node>, reverse: bool, lead: Option<f32>) -> Vec<Node> {
     // Поле контейнера схлопывается С КРАЙНИМ flow-ребёнком через пустую
     // границу (CSS 2.1 §8.3.1): у `<body>` без рамки и паддинга хвостовое
     // поле — max(своё, block-end последнего ребёнка), рекурсивно. Без этого
@@ -10669,7 +10669,7 @@ fn collapse_flow_margins(children: Vec<Node>, reverse: bool, lead: Option<f32>) 
 /// its containing block». А §7.3.3 включает подбор по содержимому только «when
 /// the available inline space is infinite» — у элемента сетки и гибкого
 /// элемента место определённое, и подбирать нечего.
-fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) -> AnyElement {
+pub(crate) fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) -> AnyElement {
     let starts_here = e.style.vertical == Some(true) && inherited.vertical != Some(true);
     if !starts_here || e.style.width.is_some() {
         return el;
@@ -10745,7 +10745,7 @@ fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) -> AnyElement
 }
 
 /// Stacking contexts isolate descendant paint order (CSS2 Appendix E).
-fn stacking_context(c: &Computed) -> bool {
+pub(crate) fn stacking_context(c: &Computed) -> bool {
     // CSS Will Change §2.1; CSS Containment 2 §§3.2/3.3 also create contexts.
     c.will_change & crate::computed::wc::STACK != 0
         || c.contain_layout == Some(true)
@@ -10775,7 +10775,7 @@ fn stacking_context(c: &Computed) -> bool {
 /// ассоциативен), а вложенный контекст со смешиванием внутри изолируется тем
 /// же правилом сам. Глубина ограничена ради страниц с тысячами вложенных
 /// трансформов: обход идёт у каждого контекста наложения.
-fn blends_inside(nodes: &[Node], depth: usize) -> bool {
+pub(crate) fn blends_inside(nodes: &[Node], depth: usize) -> bool {
     depth < 32
         && nodes.iter().any(|n| match n {
             Node::Element(c) => {
@@ -10802,7 +10802,7 @@ fn blends_inside(nodes: &[Node], depth: usize) -> bool {
 ///
 /// Соседний `stacking_context()` этот гейт по `position` держал и раньше —
 /// правка убирает расхождение двух мест одного файла.
-fn z_index_applies(c: &Computed, parent: &Computed) -> bool {
+pub(crate) fn z_index_applies(c: &Computed, parent: &Computed) -> bool {
     matches!(
         c.position,
         Some(crate::computed::Position::Relative)
@@ -10820,7 +10820,7 @@ fn z_index_applies(c: &Computed, parent: &Computed) -> bool {
 
 /// Коробка — содержащий блок и для `position: fixed`: тот же список, что
 /// барьер `under_tf` (`inline::inherit`, `transform_ancestor`).
-fn fixed_cb_layer_box(c: &Computed) -> bool {
+pub(crate) fn fixed_cb_layer_box(c: &Computed) -> bool {
     // css-transforms-2 §backface-visibility: `hidden` у участника 3D-контекста
     // — содержащий блок для всех потомков (`backface-visibility-hidden-004`).
     (c.backface_hidden == Some(true) && c.transform_ancestor)
@@ -10832,7 +10832,7 @@ fn fixed_cb_layer_box(c: &Computed) -> bool {
 }
 
 /// Будет ли элемент с таким стилем отложен.
-fn defers(c: &Computed, parent: &Computed, under_tf: bool) -> bool {
+pub(crate) fn defers(c: &Computed, parent: &Computed, under_tf: bool) -> bool {
     // `fixed` под трансформированным предком — абсолют в его блоке, а не
     // слой окна (css-transforms-1 §transform-rendering).
     (c.position == Some(crate::computed::Position::Fixed) && !under_tf)
@@ -10847,7 +10847,7 @@ fn defers(c: &Computed, parent: &Computed, under_tf: bool) -> bool {
 /// выражается, поэтому применяем только положительный.
 ///
 /// `allowed` — снаружи ли мы отложенного поддерева: внутри откладывать нельзя.
-fn layered(
+pub(crate) fn layered(
     el: AnyElement,
     c: &Computed,
     parent: &Computed,
@@ -10910,7 +10910,7 @@ fn layered(
 /// блок, когда тот кончился. `clear` закрывает ряд и начинает новый.
 /// Уходит ли элемент из потока: плавающие и внепоточные строчного не рвут
 /// (Blink `layout_inline.cc`: разрыв вызывают только блоки В ПОТОКЕ).
-fn out_of_flow(c: &Computed) -> bool {
+pub(crate) fn out_of_flow(c: &Computed) -> bool {
     c.float.is_some_and(|f| f != 0)
         || matches!(
             c.position,
@@ -10923,7 +10923,7 @@ fn out_of_flow(c: &Computed) -> bool {
 /// `display: inline` хранится как строчная коробка с пометкой — по одному
 /// лишь тегу судить нельзя: `<div style="display:inline">` строчный, а
 /// `<span style="display:block">` блочный.
-fn real_inline(e: &Element) -> bool {
+pub(crate) fn real_inline(e: &Element) -> bool {
     // Атомарные строчные — кнопка, поле, список выбора и замещаемые — стоят
     // в строке целиком, и содержимое их не разрывает: рвутся только
     // НЕзамещаемые строчные коробки (CSS 2.1 §9.2.1.1).
@@ -10944,7 +10944,7 @@ fn real_inline(e: &Element) -> bool {
 }
 
 /// Блочный ли это узел с точки зрения разрыва строчного.
-fn breaks_inline(n: &Node) -> bool {
+pub(crate) fn breaks_inline(n: &Node) -> bool {
     let Node::Element(e) = n else { return false };
     block_level_in_flow(e)
 }
@@ -10953,7 +10953,7 @@ fn breaks_inline(n: &Node) -> bool {
 /// абсолют, не настоящая строчная, и вид — блочный (`display`, а при пустом
 /// `display` — блочный тег). Ею же решается, кто спаннер (`spanner_box`:
 /// css-multicol-1 §column-span «Applies to: in-flow block-level elements»).
-fn block_level_in_flow(e: &Element) -> bool {
+pub(crate) fn block_level_in_flow(e: &Element) -> bool {
     if out_of_flow(&e.style) || real_inline(e) {
         return false;
     }
@@ -10977,7 +10977,7 @@ fn block_level_in_flow(e: &Element) -> bool {
 ///
 /// `display: contents` своей коробки не даёт — блок из-под него виден
 /// строчному хозяину как свой (css-display-3 §box-generation).
-fn contains_block(children: &[Node]) -> bool {
+pub(crate) fn contains_block(children: &[Node]) -> bool {
     children.iter().any(|n| match n {
         Node::Element(e) if real_inline(e) || e.style.display == Some(Display::Contents) => {
             !out_of_flow(&e.style) && contains_block(&e.children)
@@ -10998,7 +10998,7 @@ fn contains_block(children: &[Node]) -> bool {
 /// потоке ему не нужно. Порядок отрисовки тот же: позиционированные красятся
 /// в порядке дерева (прил. E, шаг 8), а вынесенный встаёт сразу за своим
 /// строчным.
-fn hoist_inset_abs(nodes: &[Node]) -> Vec<Node> {
+pub(crate) fn hoist_inset_abs(nodes: &[Node]) -> Vec<Node> {
     fn movable(e: &Element) -> bool {
         let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
         matches!(
@@ -11104,7 +11104,7 @@ fn hoist_inset_abs(nodes: &[Node]) -> Vec<Node> {
 /// первый текстовый узел блока (перед ним допустимы только флоаты и пустой
 /// текст), ширина коробки — продвижение нуля семейства (у Ahem равно
 /// кеглю; текстовым шрифтам нужен щуп продвижения знака — шаг 2).
-fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts: &RenderOpts) -> Vec<Node> {
+pub(crate) fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts: &RenderOpts) -> Vec<Node> {
     let Some(first) = inherited.first_letter.as_deref() else {
         return nodes;
     };
@@ -11381,7 +11381,7 @@ fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts: &RenderOpt
 /// forms no group (opacity, filter, transform, … act on the float through
 /// it), and the float must be its first in-flow content — only blank text
 /// before it. Returns the float and the wrapper without it.
-fn split_leading_float(e: &Element) -> Option<(Element, Element)> {
+pub(crate) fn split_leading_float(e: &Element) -> Option<(Element, Element)> {
     let genuine_inline =
         (e.inline && e.style.display.is_none()) || e.style.inline_display == Some(true);
     // Ruby boxes are not plain inline wrappers: their content is paired into
@@ -11432,7 +11432,7 @@ fn split_leading_float(e: &Element) -> Option<(Element, Element)> {
 /// Inherited values a hoisted float takes from the inline wrapper it left
 /// (only those the wrapper sets itself; `inline::inherit` would also resolve
 /// font-relative units against the bare wrapper style).
-fn carry_inherited(wrapper: &Computed, own: &mut Computed) {
+pub(crate) fn carry_inherited(wrapper: &Computed, own: &mut Computed) {
     own.color = own.color.or(wrapper.color);
     own.font_weight = own.font_weight.or(wrapper.font_weight);
     own.italic = own.italic.or(wrapper.italic);
@@ -11441,7 +11441,7 @@ fn carry_inherited(wrapper: &Computed, own: &mut Computed) {
     }
 }
 
-fn inline_float_host(e: &Element) -> Option<Element> {
+pub(crate) fn inline_float_host(e: &Element) -> Option<Element> {
     // `display: inline` после каскада — это `InlineBlock` с пометкой
     // `inline_display` (`computed.rs`), поэтому одного взгляда на `display`
     // мало; тег без своего `display` даёт строчность через `e.inline`.
@@ -11494,7 +11494,7 @@ fn inline_float_host(e: &Element) -> Option<Element> {
 /// Ширина margin-box по строчной оси в точках (`auto`-поле — ноль, как в
 /// `px_margin`). Нижняя оценка для флоата без своей ширины: shrink-to-fit не
 /// меньше нуля.
-fn px_margin_w(c: &Computed) -> Option<f32> {
+pub(crate) fn px_margin_w(c: &Computed) -> Option<f32> {
     let b = c.borders();
     Some(
         px_of2(&c.width)?
@@ -11514,7 +11514,7 @@ fn px_margin_w(c: &Computed) -> Option<f32> {
 /// `cb − float_min_w`. Содержащий блок — `CB_WIDTH`, ближайший предок с
 /// шириной в точках: это верхняя оценка настоящей ширины, поэтому «не
 /// влезает» при ней не влезает и в настоящую.
-fn bfc_no_fit(n: &Element, float_min_w: f32) -> bool {
+pub(crate) fn bfc_no_fit(n: &Element, float_min_w: f32) -> bool {
     let Some(cb) = CB_WIDTH.get() else {
         return false;
     };
@@ -11552,7 +11552,7 @@ fn bfc_no_fit(n: &Element, float_min_w: f32) -> bool {
 /// сдвигает — а ряд обтекания иначе увозит её в колонку сбоку от флоата
 /// (`second-float-inside-empty-cleared-block`: второй флоат на x = 100, y = 1
 /// вместо x = 0, y = 50).
-fn leading_clear(e: &Element) -> Option<i8> {
+pub(crate) fn leading_clear(e: &Element) -> Option<i8> {
     if (e.inline && !inline_marked_block(e))
         || !in_flow(&e.style)
         || !matches!(e.style.display, None | Some(Display::Block))
@@ -11604,7 +11604,7 @@ fn leading_clear(e: &Element) -> Option<i8> {
 /// для `clear-004`, `block-formatting-contexts-016`, `floats-135` и
 /// `floats-008` сведены с НАСТОЯЩИМИ эталонами корпуса и дали 0.00 все
 /// четыре; обратный порядок (сосед поверх флоата) даёт «красное видно».
-fn covered_flow_tail(
+pub(crate) fn covered_flow_tail(
     floater: &Element,
     tail: &Element,
     em: f32,
@@ -11653,7 +11653,7 @@ fn covered_flow_tail(
     (tw <= fw && th <= fh).then_some(((fw, fh), (tw, th)))
 }
 
-fn wrap_floats(
+pub(crate) fn wrap_floats(
     nodes: Vec<Node>,
     parent: &Computed,
     // Открыт ли ВЕРХНИЙ край содержащего блока для схлопывания с полем
@@ -12541,7 +12541,7 @@ fn wrap_floats(
 /// другое.
 /// Роль соседа плавающих блоков в бандовом хосте.
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum BandPiece {
+pub(crate) enum BandPiece {
     /// Инлайн-блок с известным margin-box — строчный поток атомов
     /// (`FlowRow`): такие коробки стоят В СТРОКУ и делят её.
     Atom,
@@ -12597,7 +12597,7 @@ enum BandPiece {
 // (§10.3.3); занятость от него не меняется. Без этого гейт бандового хоста
 /// не сработал бы вовсе: `floats-wrap-top-below-bfc-001l` — `margin-right:
 /// auto`, `-001r` — `margin-left: auto`.
-fn px_margin(l: &Option<Len>) -> Option<f32> {
+pub(crate) fn px_margin(l: &Option<Len>) -> Option<f32> {
     match l {
         Some(Len::Auto) => Some(0.0),
         other => px_of2(other),
@@ -12608,7 +12608,7 @@ fn px_margin(l: &Option<Len>) -> Option<f32> {
 ///
 /// Полосы занятости меряют только числа (`bands.rs`), и брать их можно лишь
 /// у коробки, чей размер известен из стиля целиком.
-fn px_margin_box(c: &Computed) -> Option<(f32, f32)> {
+pub(crate) fn px_margin_box(c: &Computed) -> Option<(f32, f32)> {
     let b = c.borders();
     Some((
         px_of2(&c.width)?
@@ -12632,7 +12632,7 @@ fn px_margin_box(c: &Computed) -> Option<(f32, f32)> {
 /// точками, иначе по кеглю содержащего блока `em`. Нужен гейту наложения
 /// (`covered_flow_tail`): `floats-135` пишет флоат и соседа в `5em`, и
 /// арифметика наложения известна так же точно, как в точках.
-fn px_margin_box_em(c: &Computed, em: f32) -> Option<(f32, f32)> {
+pub(crate) fn px_margin_box_em(c: &Computed, em: f32) -> Option<(f32, f32)> {
     let own = match c.font_size {
         None => em,
         Some(Len::Px(v)) => v,
@@ -12669,7 +12669,7 @@ fn px_margin_box_em(c: &Computed, em: f32) -> Option<(f32, f32)> {
 /// Порядок проверок важен: `own_context` истинен и для `inline-block`
 /// (`:3087`), а строчную коробку блочной веткой ставить нельзя — она встанет
 /// на свою строку вместо общей.
-fn band_piece(n: &Node) -> Option<BandPiece> {
+pub(crate) fn band_piece(n: &Node) -> Option<BandPiece> {
     let Node::Element(c) = n else {
         // Непустой текст рядом с флоатом бандовый хост не набирает: это
         // работа наборщика строк, а он про полосы ещё не знает.
@@ -12737,7 +12737,7 @@ fn band_piece(n: &Node) -> Option<BandPiece> {
 ///
 /// Последнее условие и держит радиус поражения: любой абзац, любой блок без
 /// размеров, любой текст рядом с флоатом уводит на сегодняшний флекс-ряд.
-fn band_host(
+pub(crate) fn band_host(
     nodes: &[Node],
     i: usize,
     cb_width: Option<Len>,
@@ -12882,7 +12882,7 @@ fn band_host(
 /// `em` по кеглю `em`; `auto` — ноль (у флоата так велит §10.3.5, у куска
 /// хвоста — как `px_margin` статического хоста). Прочее (`calc`, `vw`…) —
 /// `None`, хост отменяется.
-fn band_edge(l: &Option<Len>, em: f32) -> Option<crate::band_flow::Edge> {
+pub(crate) fn band_edge(l: &Option<Len>, em: f32) -> Option<crate::band_flow::Edge> {
     use crate::band_flow::Edge;
     match l {
         None | Some(Len::Auto) => Some(Edge::Px(0.0)),
@@ -12895,7 +12895,7 @@ fn band_edge(l: &Option<Len>, em: f32) -> Option<crate::band_flow::Edge> {
 
 /// Кегль коробки для `em` её полей; относительный `font-size` берёт
 /// кегль родителя, в том числе проценты (CSS 2.1 §15.7).
-fn band_em(c: &Computed, em: f32) -> Option<f32> {
+pub(crate) fn band_em(c: &Computed, em: f32) -> Option<f32> {
     match c.font_size {
         None => Some(em),
         Some(Len::Px(v)) => Some(v),
@@ -12905,7 +12905,7 @@ fn band_em(c: &Computed, em: f32) -> Option<f32> {
 }
 
 /// Все четыре поля коробки разрешимы для измеряемого хоста.
-fn band_margins(c: &Computed, em: f32) -> Option<[crate::band_flow::Edge; 4]> {
+pub(crate) fn band_margins(c: &Computed, em: f32) -> Option<[crate::band_flow::Edge; 4]> {
     let em = band_em(c, em)?;
     Some([
         band_edge(&c.margin.top, em)?,
@@ -12923,7 +12923,7 @@ fn band_margins(c: &Computed, em: f32) -> Option<[crate::band_flow::Edge; 4]> {
 /// нужны: ширину окна и высоту из содержимого даёт пробная раскладка
 /// (`band_flow::plan`). Атомы строки сюда НЕ пускаются: они делят строку, а
 /// здесь каждый кусок берёт своё окно.
-fn band_piece_m(n: &Node, em: f32) -> Option<bool> {
+pub(crate) fn band_piece_m(n: &Node, em: f32) -> Option<bool> {
     match band_piece(n) {
         Some(BandPiece::Strut) => return Some(false),
         Some(BandPiece::Atom) => return None,
@@ -12974,7 +12974,7 @@ fn band_piece_m(n: &Node, em: f32) -> Option<bool> {
 /// * одинокий флоат с пустым хвостом полосам не нужен (как у `band_host`).
 ///
 /// Ширина содержащего блока не требуется вовсе: её отдаёт замер.
-fn band_host_m(
+pub(crate) fn band_host_m(
     nodes: &[Node],
     i: usize,
     em: f32,
@@ -13055,7 +13055,7 @@ fn band_host_m(
 }
 
 /// Годится ли флоат в измеряемый хост: `None` — хост отменяется.
-fn band_float_m(next: &Element, em: f32) -> Option<()> {
+pub(crate) fn band_float_m(next: &Element, em: f32) -> Option<()> {
     {
         // Ортогональный флоат (своё письмо вертикально в горизонтальном
         // контейнере) С ТЕКСТОМ: строчный размер его строк (§7.3.1, от
@@ -13082,7 +13082,7 @@ fn band_float_m(next: &Element, em: f32) -> Option<()> {
 
 /// Хвост `band_host_m`: хост из собранных флоатов, хвоста и щупов.
 #[allow(clippy::too_many_arguments)]
-fn band_host_m_tail(
+pub(crate) fn band_host_m_tail(
     nodes: &[Node],
     i: usize,
     j: usize,
@@ -13220,7 +13220,7 @@ fn band_host_m_tail(
 
 /// Есть ли у блока флоат среди потомков обычного потока (сквозь блоки, не
 /// заводящие своего контекста).
-fn has_flow_float(c: &Element) -> bool {
+pub(crate) fn has_flow_float(c: &Element) -> bool {
     c.children.iter().any(|n| match n {
         Node::Text(_) => false,
         Node::Element(k) => {
@@ -13234,7 +13234,7 @@ fn has_flow_float(c: &Element) -> bool {
 /// блок — `Kind::Nest`, за ним — хвост как у `band_host_m` до флоата или
 /// `clear`. Без братьев за блоком хост не нужен: флоаты внутри влияют
 /// только на его собственное содержимое, и его раскладывает он сам.
-fn band_host_nested(
+pub(crate) fn band_host_nested(
     nodes: &[Node],
     i: usize,
     em: f32,
@@ -13299,7 +13299,7 @@ fn band_host_nested(
 
 /// Блок с флоатами или коробками своего контекста внутри годится в
 /// `Kind::Nest` целиком — со всеми потомками (шаг F7).
-fn band_nest_ok(c: &Element, em: f32) -> bool {
+pub(crate) fn band_nest_ok(c: &Element, em: f32) -> bool {
     if !band_nest_block(c, em) {
         return false;
     }
@@ -13322,7 +13322,7 @@ fn band_nest_ok(c: &Element, em: f32) -> bool {
 }
 
 /// Есть ли в поддереве руби (`<ruby>`, `<rt>`).
-fn has_ruby(n: &Node) -> bool {
+pub(crate) fn has_ruby(n: &Node) -> bool {
     match n {
         Node::Text(_) => false,
         Node::Element(e) => {
@@ -13333,7 +13333,7 @@ fn has_ruby(n: &Node) -> bool {
 
 /// Есть ли среди флоатов пробега (`run` — узлы от первого флоата до конца
 /// хвоста) флоат с `shape-outside`.
-fn host_floats_shaped(run: &[Node]) -> bool {
+pub(crate) fn host_floats_shaped(run: &[Node]) -> bool {
     run.iter().any(|n| {
         matches!(n, Node::Element(c)
             if c.style.float.is_some_and(|f| f != 0) && c.style.shape_outside.is_some())
@@ -13344,13 +13344,13 @@ thread_local! {
     /// Письмо содержащего блока, для которого `wrap_floats` собирает хост:
     /// 0 — горизонтальное, 1 — `vertical-rl`, 2 — `vertical-lr`. Им гейты
     /// измеряемого хоста отличают ортогональный поток от своего.
-    static BAND_WM: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
+    pub(crate) static BAND_WM: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
 }
 
 thread_local! {
     /// Высота содержащего блока хоста в точках, если задана: от неё доли
     /// высоты детей (§10.5). Хост несёт её атрибутом `cbh`.
-    static BAND_CBH: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
+    pub(crate) static BAND_CBH: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
 }
 
 thread_local! {
@@ -13358,11 +13358,11 @@ thread_local! {
     /// `blocks()`): измеряемый хост — синтетический узел, своего слоя у него
     /// нет, и `element` отдал бы детям `None`. Хост, с которого начинается
     /// содержимое блока, несёт слой узлом (`wrap_floats`).
-    static BAND_FL: std::cell::RefCell<Option<Computed>> = const { std::cell::RefCell::new(None) };
+    pub(crate) static BAND_FL: std::cell::RefCell<Option<Computed>> = const { std::cell::RefCell::new(None) };
 }
 
 /// Вернуть прежний слой первой строки по выходе из `blocks()`.
-struct BandFlGuard(Option<Computed>);
+pub(crate) struct BandFlGuard(pub(crate) Option<Computed>);
 impl Drop for BandFlGuard {
     fn drop(&mut self) {
         BAND_FL.with(|f| *f.borrow_mut() = self.0.take());
@@ -13374,11 +13374,11 @@ thread_local! {
     /// письме это его БЛОЧНЫЙ размер: от неё доли `block-size` флоатов
     /// (`width` после перевода логических свойств, §10.5 по блочной оси).
     /// Хост несёт её атрибутом `cbw`.
-    static BAND_CBW: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
+    pub(crate) static BAND_CBW: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
 }
 
 /// Вернуть прежнюю ширину содержащего блока хоста по выходе из `blocks()`.
-struct BandCbwGuard(Option<f32>);
+pub(crate) struct BandCbwGuard(pub(crate) Option<f32>);
 impl Drop for BandCbwGuard {
     fn drop(&mut self) {
         BAND_CBW.with(|w| w.set(self.0));
@@ -13386,7 +13386,7 @@ impl Drop for BandCbwGuard {
 }
 
 /// Вернуть прежнюю высоту содержащего блока хоста по выходе из `blocks()`.
-struct BandCbhGuard(Option<f32>);
+pub(crate) struct BandCbhGuard(pub(crate) Option<f32>);
 impl Drop for BandCbhGuard {
     fn drop(&mut self) {
         BAND_CBH.with(|h| h.set(self.0));
@@ -13394,7 +13394,7 @@ impl Drop for BandCbhGuard {
 }
 
 /// Вернуть прежнее письмо хоста по выходе из `blocks()`.
-struct BandWmGuard(u8);
+pub(crate) struct BandWmGuard(pub(crate) u8);
 impl Drop for BandWmGuard {
     fn drop(&mut self) {
         BAND_WM.with(|w| w.set(self.0));
@@ -13404,7 +13404,7 @@ impl Drop for BandWmGuard {
 /// Письмо коробки отличается от письма содержащего блока хоста —
 /// ортогональный поток (css-writing-modes-4 §7.3): shrink-to-fit и место по
 /// чужой оси каркас пробы не считает.
-fn band_orthogonal(c: &Computed) -> bool {
+pub(crate) fn band_orthogonal(c: &Computed) -> bool {
     // Письмо наследуется: незаданное у коробки — письмо содержащего блока,
     // ортогональна только коробка, ЗАДАВШАЯ другое.
     let wm = BAND_WM.with(std::cell::Cell::get);
@@ -13413,7 +13413,7 @@ fn band_orthogonal(c: &Computed) -> bool {
 }
 
 /// Есть ли в поддереве непустой текст.
-fn subtree_has_text(e: &Element) -> bool {
+pub(crate) fn subtree_has_text(e: &Element) -> bool {
     e.children.iter().any(|n| match n {
         Node::Text(t) => !t.trim().is_empty(),
         Node::Element(c) => subtree_has_text(c),
@@ -13422,7 +13422,7 @@ fn subtree_has_text(e: &Element) -> bool {
 
 /// Блок обычного потока для измеряемого хоста (шаг F4): блочного уровня,
 /// в потоке, своего контекста не заводит, поля разрешимы.
-fn band_flow_block(c: &Element, em: f32) -> bool {
+pub(crate) fn band_flow_block(c: &Element, em: f32) -> bool {
     block_level_in_flow(c)
         && !own_context(c)
         && !replaced_tag(c)
@@ -13446,7 +13446,7 @@ fn band_flow_block(c: &Element, em: f32) -> bool {
 /// коробка своего контекста внешних флоатов не увидели бы вовсе — им нужен
 /// один `FloatBands` на весь БФК (шаг F7: `floats-rule7-outside-left-001`,
 /// `floats-wrap-bfc-with-margin-008`, `second-float-inside-empty-cleared-block`).
-fn flow_interior_plain(c: &Element) -> bool {
+pub(crate) fn flow_interior_plain(c: &Element) -> bool {
     c.children.iter().all(|n| match n {
         Node::Text(_) => true,
         Node::Element(k) => {
@@ -13490,7 +13490,7 @@ fn flow_interior_plain(c: &Element) -> bool {
 /// строчные элементы, атомы) собирается в АНОНИМНЫЙ блок (CSS 2.1 §9.2.1.1)
 /// — у него своя строка и свои вырезы. Внепоточный сосед хост отменяет
 /// (как у `band_piece`).
-fn band_flow_rest(rest: Vec<Node>, em: f32) -> Option<Vec<Node>> {
+pub(crate) fn band_flow_rest(rest: Vec<Node>, em: f32) -> Option<Vec<Node>> {
     band_flow_rest_lift(rest, em, None)
 }
 
@@ -13498,7 +13498,7 @@ fn band_flow_rest(rest: Vec<Node>, em: f32) -> Option<Vec<Node>> {
 /// статической позиции не зависит (CSS 2.1 §10.3.7/§10.6.4 — `auto` нет ни
 /// у `left`/`right`, ни у `top`/`bottom` разом), и её можно вынести из
 /// хоста в поток содержащего блока, ничего не сдвинув.
-fn abs_pinned(c: &Computed) -> bool {
+pub(crate) fn abs_pinned(c: &Computed) -> bool {
     let set = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
     matches!(
         c.position,
@@ -13512,7 +13512,7 @@ fn abs_pinned(c: &Computed) -> bool {
 /// Свой содержащий блок они находят снаружи хоста: внутри его отдельного
 /// дерева абсолют встал бы от держателя (`floats-placement-001`: зелёная
 /// заплатка `left: 50px` у `position: relative` контейнера).
-fn band_flow_rest_lift(
+pub(crate) fn band_flow_rest_lift(
     rest: Vec<Node>,
     em: f32,
     mut lift: Option<&mut Vec<Node>>,
@@ -13641,7 +13641,7 @@ fn band_flow_rest_lift(
 
 /// Сборка измеряемого хоста: каждому ребёнку — построитель, который
 /// `band_flow` зовёт на каждую пробу и на `prepaint`.
-fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(crate) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let count: usize = e.attr("count").and_then(|c| c.parse().ok()).unwrap_or(0);
     let em: f32 = e
         .attr("em")
@@ -13672,7 +13672,7 @@ fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEl
 /// Дети одного содержащего блока измеряемого хоста. `count` первых
 /// элементов — флоаты пробега; дальше флоатом считается всякий элемент с
 /// `float` (дети `Kind::Nest`, шаг F7).
-fn band_kids(
+pub(crate) fn band_kids(
     nodes: &[Node],
     count: usize,
     inherited: &Computed,
@@ -14049,7 +14049,7 @@ fn band_kids(
 /// (css-text-3 §8.1), кроме `each-line` (сдвигает и строку после
 /// принудительного разрыва) и `hanging` (сдвигает все, кроме первой) — там
 /// отступ остаётся унаследованным.
-fn cont_indent(e: &mut Element, inherited: &Computed) {
+pub(crate) fn cont_indent(e: &mut Element, inherited: &Computed) {
     if e.attr("cont") == Some("1")
         && inherited.text_indent_each_line != Some(true)
         && inherited.text_indent_hanging != Some(true)
@@ -14062,7 +14062,7 @@ fn cont_indent(e: &mut Element, inherited: &Computed) {
 /// гейт, что у блока потока (`band_flow_block`), кроме чистоты содержимого,
 /// плюс то, что коробка рисуется отдельно от детей — значит ни сдвига, ни
 /// эффектов группы, ни ограничителей высоты; рамка и отступ разрешимы.
-fn band_nest_block(c: &Element, em: f32) -> bool {
+pub(crate) fn band_nest_block(c: &Element, em: f32) -> bool {
     // Рамка, поля и высота коробки `Kind::Nest` — физические.
     BAND_WM.with(std::cell::Cell::get) == 0
         && block_level_in_flow(c)
@@ -14087,7 +14087,7 @@ fn band_nest_block(c: &Element, em: f32) -> bool {
 }
 
 /// Рамка плюс отступ коробки (верх, право, низ, лево) для `Kind::Nest`.
-fn band_inset(c: &Element, em: f32) -> Option<[crate::band_flow::Edge; 4]> {
+pub(crate) fn band_inset(c: &Element, em: f32) -> Option<[crate::band_flow::Edge; 4]> {
     use crate::band_flow::Edge;
     let em = band_em(&c.style, em)?;
     let b = c.style.borders();
@@ -14114,7 +14114,7 @@ fn band_inset(c: &Element, em: f32) -> Option<[crate::band_flow::Edge; 4]> {
 
 /// Содержимое `Kind::Nest`: дети блока, разложенные тем же разбором, что
 /// хвост хоста (`band_seq`), со своим наследованием и кеглем.
-fn band_nest(
+pub(crate) fn band_nest(
     c: &Element,
     inherited: &Computed,
     opts: &RenderOpts,
@@ -14142,7 +14142,7 @@ fn band_nest(
 /// между блоками на своём месте (правило 5/6 §9.5.1 — потолок от низа
 /// предыдущего блока). Флоат посреди строчного прогона (правило 6 со
 /// «верхом текущей строки») — не наш случай, отказ.
-fn band_seq(nodes: Vec<Node>, em: f32) -> Option<Vec<Node>> {
+pub(crate) fn band_seq(nodes: Vec<Node>, em: f32) -> Option<Vec<Node>> {
     let mut out: Vec<Node> = vec![];
     let mut chunk: Vec<Node> = vec![];
     for n in nodes {
@@ -14181,7 +14181,7 @@ fn band_seq(nodes: Vec<Node>, em: f32) -> Option<Vec<Node>> {
     Some(out)
 }
 
-fn measure_font(c: &Computed, opts: &RenderOpts) -> gpui::Font {
+pub(crate) fn measure_font(c: &Computed, opts: &RenderOpts) -> gpui::Font {
     let mut font = opts.text.font();
     font.fallbacks = crate::computed::font_family::fallbacks(c, font.fallbacks);
     if let Some(family) = c.font_family.as_ref().filter(|f| !f.is_empty()) {
@@ -14210,7 +14210,7 @@ fn measure_font(c: &Computed, opts: &RenderOpts) -> gpui::Font {
 // он стоит +7/−4 при чистых +6/−1 у одного B. Возвращать только с
 // разбором того, почему перенос зазора ломает внепоточные и
 // отрицательный зазор.
-fn column_flow(
+pub(crate) fn column_flow(
     e: &Element,
     inherited: &Computed,
     opts: &RenderOpts,
@@ -14249,7 +14249,7 @@ fn column_flow(
 /// are monolithic», Blink `layout_box.cc:3564-3575` `IsMonolithic`). Строки
 /// монолита между колонками не расходятся; в узкой колонке `measure_columns`
 /// держит для него прежний сторож «без разрезов» (`contain-size-breaks-001`).
-fn column_flow_in(
+pub(crate) fn column_flow_in(
     e: &Element,
     inherited: &Computed,
     opts: &RenderOpts,
@@ -14535,7 +14535,7 @@ fn column_flow_in(
 /// замере, а без неё непонятно, сколько текста влезает сбоку. Если размеры
 /// плавающего блока не заданы явно, резать нечем — тогда ряд остаётся прежним:
 /// две колонки до конца абзаца.
-fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // Ряд без разреза — прежнее поведение: две колонки до конца абзаца.
     // Стиль берётся СЛИТЫЙ: у ряда своя раскладка, и без неё дети встают
     // друг под другом вместо колонок.
@@ -14695,7 +14695,7 @@ fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElem
 ///
 /// Смещение считается по тому же тексту, что уходит в переносчик, поэтому
 /// элементы режутся вместе с ним: `<b>` на границе разреза становится двумя.
-fn split_nodes(nodes: &[Node], at: usize) -> (Vec<Node>, Vec<Node>) {
+pub(crate) fn split_nodes(nodes: &[Node], at: usize) -> (Vec<Node>, Vec<Node>) {
     let mut before = vec![];
     let mut after = vec![];
     let mut seen = 0usize;
@@ -14751,7 +14751,7 @@ fn split_nodes(nodes: &[Node], at: usize) -> (Vec<Node>, Vec<Node>) {
 /// Абзац не элемент документа, своего номера у него нет; берём отпечаток его
 /// текста — от кадра к кадру он не меняется, а разные абзацы почти всегда
 /// различаются.
-fn text_id(text: &str) -> u64 {
+pub(crate) fn text_id(text: &str) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     text.hash(&mut h);
@@ -14759,7 +14759,7 @@ fn text_id(text: &str) -> u64 {
 }
 
 /// Внешний отступ на обёртке: то же, что делает `apply`, но только поля.
-fn apply_margin(d: gpui::Div, c: &Computed) -> gpui::Div {
+pub(crate) fn apply_margin(d: gpui::Div, c: &Computed) -> gpui::Div {
     let mut d = d;
     for (val, side) in [
         (c.margin.top, 0u8),
@@ -14782,7 +14782,7 @@ fn apply_margin(d: gpui::Div, c: &Computed) -> gpui::Div {
 /// Правила линеек промежутков (css-gaps-1) контейнера — `None`, когда ни
 /// одна линейка не задана. Длины (`em`) сводятся в точки здесь: слой знает
 /// только геометрию. Цвет по умолчанию — `currentcolor`, ширина — `medium`.
-fn gap_rule_spec(
+pub(crate) fn gap_rule_spec(
     e: &Element,
     merged: &Computed,
     opts: &RenderOpts,
@@ -15021,7 +15021,7 @@ fn gap_rule_spec(
 /// `column-rule-break: normal` у multicol = `intersection`, `row-rule-break:
 /// normal` = `none` (§break) — колонки рвутся в зазоре ряда, ряды идут
 /// сквозь (эталоны `multicol-gap-decorations-001/024`).
-fn multicol_gap_rule_spec(
+pub(crate) fn multicol_gap_rule_spec(
     e: &Element,
     merged: &Computed,
     opts: &RenderOpts,
@@ -15057,7 +15057,7 @@ fn multicol_gap_rule_spec(
 /// column break and is taken out of flow to span across all columns of the
 /// nearest multicol ancestor», то есть режет содержимое предка на «до»,
 /// «спаннер» и «после».
-enum SpanPart {
+pub(crate) enum SpanPart {
     Body(Vec<Node>),
     Span(Node),
 }
@@ -15072,7 +15072,7 @@ enum SpanPart {
 /// коробки, 200×50 вместо 100×100), `<span style="display: block">` —
 /// бывает; флоат и абсолют — не в потоке. Тот же признак — у `is_span`
 /// сегментного пути в `element()`.
-fn spanner_box(c: &Element) -> bool {
+pub(crate) fn spanner_box(c: &Element) -> bool {
     c.style.column_span == Some(true) && block_level_in_flow(c)
 }
 
@@ -15091,7 +15091,7 @@ fn spanner_box(c: &Element) -> bool {
 /// (`CreatesNewFormattingContext`) и не быть содержащим блоком для
 /// фиксированных потомков (`CanContainFixedPositionObjects`); спаннер
 /// внутри спаннера тоже запрещён.
-fn passes_spanner(c: &Element) -> bool {
+pub(crate) fn passes_spanner(c: &Element) -> bool {
     // «No spanners inside spanners in the same multicol context».
     if spanner_box(c) {
         return false;
@@ -15166,7 +15166,7 @@ fn passes_spanner(c: &Element) -> bool {
 }
 
 /// Есть ли в поддереве спаннер, достижимый через проходимых предков.
-fn has_deep_spanner(c: &Element) -> bool {
+pub(crate) fn has_deep_spanner(c: &Element) -> bool {
     c.children.iter().any(|n| match n {
         Node::Element(k) if spanner_box(k) => true,
         Node::Element(k) if passes_spanner(k) || splits_for_spanner(k) => has_deep_spanner(k),
@@ -15181,13 +15181,13 @@ fn has_deep_spanner(c: &Element) -> bool {
 /// его пропускает; `multicol-span-float-003`, `parallel-flow-after-spanner-
 /// 001`). Атомарные строчные (`inline-block`, кнопка, замещаемые) — барьер:
 /// их `real_inline` не пускает.
-fn splits_for_spanner(k: &Element) -> bool {
+pub(crate) fn splits_for_spanner(k: &Element) -> bool {
     real_inline(k) && !out_of_flow(&k.style)
 }
 
 /// Кромка коробки на стороне разреза: есть ли что показывать ПУСТОМУ
 /// фрагменту. `Len::Px(0)` кромкой не считается.
-fn spanner_edge(l: &Option<Len>) -> bool {
+pub(crate) fn spanner_edge(l: &Option<Len>) -> bool {
     !matches!(l, None | Some(Len::Px(0.0)))
 }
 
@@ -15197,7 +15197,7 @@ fn spanner_edge(l: &Option<Len>) -> bool {
 /// before the spanner is empty, nothing special happens; the top
 /// margin/border/padding is above the spanning element, as an empty
 /// fragment».
-fn spanner_frag_visible(c: &Element, kids: &[Node], first: bool, last: bool) -> bool {
+pub(crate) fn spanner_frag_visible(c: &Element, kids: &[Node], first: bool, last: bool) -> bool {
     if kids.iter().any(|n| !is_blank(n)) {
         return true;
     }
@@ -15225,7 +15225,7 @@ fn spanner_frag_visible(c: &Element, kids: &[Node], first: bool, last: bool) -> 
 /// один. Разошёлся на несколько — каждый меряется по содержимому, а не
 /// повторяет `height` предка целиком (иначе `height: 200px` удвоилась бы:
 /// `non-adjacent-spanners-001`).
-fn spanner_fragment(
+pub(crate) fn spanner_fragment(
     c: &Element,
     kids: Vec<Node>,
     first: bool,
@@ -15266,7 +15266,7 @@ fn spanner_fragment(
 /// `None` — правило не берётся (высота не в точках, фрагмент один, виден
 /// один и не после пустых, мера не вышла), и действует прежний `keep_size`.
 /// В векторе: `Some(v)` — высота фрагмента, `None` — своя, по содержимому.
-fn spanner_height_share(c: &Element, bodies: &[Vec<Node>]) -> Option<Vec<Option<f32>>> {
+pub(crate) fn spanner_height_share(c: &Element, bodies: &[Vec<Node>]) -> Option<Vec<Option<f32>>> {
     let Some(Len::Px(total)) = c.style.height else {
         return None;
     };
@@ -15314,7 +15314,7 @@ fn spanner_height_share(c: &Element, bodies: &[Vec<Node>]) -> Option<Vec<Option<
 /// Разложить содержимое предка на чередование «кусок обычного потока» —
 /// «спаннер», рекурсивно вынимая спаннеров из проходимых потомков. Список
 /// всегда начинается и кончается куском потока (возможно пустым).
-fn spanner_parts(kids: &[Node]) -> Vec<SpanPart> {
+pub(crate) fn spanner_parts(kids: &[Node]) -> Vec<SpanPart> {
     // Спаннер под строчным предком: сперва разорвать строчные на анонимные
     // блоки (§9.2.1.1) — тогда спаннер виден на этом уровне и режет поток,
     // как прямой (`splits_for_spanner`).
@@ -15446,7 +15446,7 @@ fn spanner_parts(kids: &[Node]) -> Vec<SpanPart> {
 /// нас раскладка колонок принимает спаннера ТОЛЬКО прямым ребёнком
 /// (`render.rs` `is_span`, `StackChild::span`), поэтому тот же разрез
 /// делается в дереве до неё.
-fn hoist_spanners(kids: &[Node]) -> Option<Vec<Node>> {
+pub(crate) fn hoist_spanners(kids: &[Node]) -> Option<Vec<Node>> {
     if !kids.iter().any(|n| {
         matches!(n, Node::Element(c)
             if (passes_spanner(c) || splits_for_spanner(c)) && has_deep_spanner(c))
@@ -15475,7 +15475,7 @@ fn hoist_spanners(kids: &[Node]) -> Option<Vec<Node>> {
 /// же перечень, что у предиката `shrink_to_fit` в `apply.rs:940`. Элемент
 /// гибкого контейнера и сетки тоже меряется содержимым: его основа —
 /// `max-content` (css-flexbox-1 §9.2 п.3.A).
-fn intrinsic_inline_size(c: &Computed, parent: &Computed) -> bool {
+pub(crate) fn intrinsic_inline_size(c: &Computed, parent: &Computed) -> bool {
     if matches!(
         c.width,
         Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
@@ -15507,7 +15507,7 @@ fn intrinsic_inline_size(c: &Computed, parent: &Computed) -> bool {
         )
 }
 
-fn multicol_container(c: &Computed) -> bool {
+pub(crate) fn multicol_container(c: &Computed) -> bool {
     // Заданный `column-height` тоже делает коробку многоколоночной
     // (css-multicol-2 §multi-column-model: «whose column-width, column-count,
     // or column-height property is not auto»; `column-height-012`).
@@ -15522,7 +15522,7 @@ fn multicol_container(c: &Computed) -> bool {
         )
 }
 
-fn is_blank(n: &Node) -> bool {
+pub(crate) fn is_blank(n: &Node) -> bool {
     matches!(n, Node::Text(t) if blank_text(t))
 }
 
@@ -15539,7 +15539,7 @@ fn is_blank(n: &Node) -> bool {
 /// обрывают поиск; отступ и рамка ПОТОМКА на срезаемой стороне — тоже
 /// (`-004/-005`). Строчный элемент с блоком внутри (блок-в-строчном)
 /// прозрачен: строка — в его блоке (`block-in-inline-*`).
-fn text_box_line_style(nodes: &[Node], inherited: &Computed, start: bool) -> Option<Computed> {
+pub(crate) fn text_box_line_style(nodes: &[Node], inherited: &Computed, start: bool) -> Option<Computed> {
     let has_block = nodes.iter().any(breaks_inline);
     let order: Vec<&Node> = if start {
         nodes.iter().collect()
@@ -15627,7 +15627,7 @@ fn text_box_line_style(nodes: &[Node], inherited: &Computed, start: bool) -> Opt
 /// §4.3): полулидинг корневой строчной коробки плюс расстояние от подъёма
 /// (спуска) до метрики края. Та же формула, что `trim_for` в хвосте
 /// `blocks()`; нужна и вне его — точке обрыва `line-clamp`.
-fn text_box_trim_px(line_style: &Computed, start: bool, opts: &RenderOpts) -> f32 {
+pub(crate) fn text_box_trim_px(line_style: &Computed, start: bool, opts: &RenderOpts) -> f32 {
     let size = match line_style.font_size {
         Some(Len::Px(v)) => v,
         _ => opts.base_size(),
@@ -15665,7 +15665,7 @@ fn text_box_trim_px(line_style: &Computed, start: bool, opts: &RenderOpts) -> f3
 /// auto создаёт контекст наложения и без `position` (css-flexbox-1 §4.3:
 /// «z-index values other than auto create a stacking context even if
 /// position is static»; `flex-item-z-ordering-001/002`).
-fn by_layer(mut nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
+pub(crate) fn by_layer(mut nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
     // Элемент на статической позиции переставлять НЕЛЬЗЯ: место в потоке и
     // есть его координата. `z-index` меняет только порядок отрисовки, а
     // перестановка меняла и раскладку — абсолютный блок с `z-index: -1`
@@ -15820,7 +15820,7 @@ fn by_layer(mut nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
 /// `abs_parent` — родитель абсолютно позиционирован: по §10.6.7 его
 /// автовысота ВКЛЮЧАЕТ плавающих детей, и правило «блок из одних флоатов
 /// высотой ноль» (§10.6.3) к его детям не применяется.
-fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
+pub(crate) fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
     let mut out: Vec<Node> = nodes.to_vec();
     margin_inline_boxes::prepare(&mut out);
     // CSS 2.1 §10.6.3: floats do not contribute to ordinary auto height.
@@ -16109,7 +16109,7 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
 /// Первый (по направлению итератора) IN-FLOW блочный ребёнок: плавающие,
 /// абсолютные и пустые строчные пропускаются, непробельный текст и строчный
 /// элемент с содержимым (строчная коробка!) обрывают поиск.
-fn first_in_flow<'a>(
+pub(crate) fn first_in_flow<'a>(
     it: impl Iterator<Item = (usize, &'a Node)>,
 ) -> Option<(usize, &'a crate::dom::Element)> {
     for (i, c) in it {
@@ -16199,7 +16199,7 @@ fn first_in_flow<'a>(
 /// стоят как написаны. Без этой проверки поле плавающего ребёнка «протекало»
 /// наружу и поднимало родителя, а ряд строчных коробок терял поля у всех,
 /// кроме первой.
-fn in_flow(c: &Computed) -> bool {
+pub(crate) fn in_flow(c: &Computed) -> bool {
     c.float.is_none()
         && !matches!(
             c.position,
@@ -16217,16 +16217,16 @@ thread_local! {
     /// унаследован — наследование живёт ниже по пути (`inline::inherit`).
     /// Значение ставит `blocks()` вокруг вызова `collapse_margins` и
     /// возвращает на место после него.
-    static COLLAPSE_FONT_PX: std::cell::Cell<f32> = const { std::cell::Cell::new(16.0) };
+    pub(crate) static COLLAPSE_FONT_PX: std::cell::Cell<f32> = const { std::cell::Cell::new(16.0) };
     /// Ширина содержащего блока уровня схлопывания (для процентных полей).
-    static COLLAPSE_CB_WIDTH_PX: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
+    pub(crate) static COLLAPSE_CB_WIDTH_PX: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
     /// Определена ли высота содержащего блока уровня схлопывания (§10.5):
     /// доля высоты ребёнка при неопределённой ведёт себя как `auto`.
-    static COLLAPSE_CB_HEIGHT_DEF: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    pub(crate) static COLLAPSE_CB_HEIGHT_DEF: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     /// The next `blocks` call lays out a table cell's or caption's content:
     /// both are block formatting context roots (CSS 2.1 §9.4.1) and contain
     /// their floats (§10.6.7), even as a `td`/`caption` without `display`.
-    static CELL_BFC: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    pub(crate) static CELL_BFC: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// ★ ЗАМЕРЕНО И ОТКАЧЕНО (09.09, v168, `scout-clamp-2026-09g.md` CLAMP-BFC,
@@ -16240,7 +16240,7 @@ thread_local! {
 /// FRAG-OOF (внепоточные при фрагментации).
 /// Заводит ли коробка СВОЙ блочный контекст форматирования: через её край
 /// поля не схлопываются ни с детьми, ни насквозь (CSS 2.1 §8.3.1).
-fn own_context(e: &Element) -> bool {
+pub(crate) fn own_context(e: &Element) -> bool {
     // A table caption is a block container that is not a block box: it
     // establishes a new block formatting context (CSS 2.2 section 9.4.1), so
     // its children's margins stay inside it
@@ -16308,13 +16308,13 @@ pub(crate) fn own_context_style(c: &Computed) -> bool {
 
 /// Ноль по ЗНАЧЕНИЮ, а не по «свойство написано»: `padding: 0` и `border: 0`
 /// схлопыванию не мешают (CSS 2.1 §8.3.1).
-fn zero_len(l: Option<Len>) -> bool {
+pub(crate) fn zero_len(l: Option<Len>) -> bool {
     matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)))
 }
 
 /// Открыт ли ВЕРХНИЙ край коробки для примыкания к полю первого ребёнка: нет
 /// ни рамки, ни поля сверху, и коробка не заводит своего контекста (§8.3.1).
-fn top_edge_open(e: &Element) -> bool {
+pub(crate) fn top_edge_open(e: &Element) -> bool {
     // Доля отступа при содержащем блоке НУЛЕВОЙ ширины вычисляется в ноль
     // (§8.4: проценты — от ширины содержащего блока), и край открыт
     // (§8.3.1 «no top padding»): `margin-collapse-028` — `padding: 50%` внутри
@@ -16331,7 +16331,7 @@ fn top_edge_open(e: &Element) -> bool {
 /// Ширина СОДЕРЖИМОГО коробки в точках — содержащий блок её детей (CSS 2.1
 /// §10.1 п.2) — для процентных полей внуков в цепочках схлопывания. `cb` —
 /// содержащий блок самой коробки; `None` — в точках не выводится.
-fn inner_width_px(c: &Computed, cb: Option<f32>) -> Option<f32> {
+pub(crate) fn inner_width_px(c: &Computed, cb: Option<f32>) -> Option<f32> {
     let side = |l: Option<Len>| match l {
         None | Some(Len::Auto) => Some(0.0),
         Some(Len::Px(v)) => Some(v),
@@ -16358,7 +16358,7 @@ fn inner_width_px(c: &Computed, cb: Option<f32>) -> Option<f32> {
 /// `width: auto` его нет, и `15%` у `#parent` внутри `#grand-parent {width:
 /// 400px}` роняло цепочку целиком — поля абзаца и `#parent` складывались
 /// (16 + 60 вместо 60, `margin-percentage-inherit-001`).
-fn with_inner_cb<T>(c: &Computed, f: impl FnOnce() -> T) -> T {
+pub(crate) fn with_inner_cb<T>(c: &Computed, f: impl FnOnce() -> T) -> T {
     let level = COLLAPSE_CB_WIDTH_PX.with(std::cell::Cell::get);
     let prev = COLLAPSE_CB_WIDTH_PX.with(|w| w.replace(inner_width_px(c, level)));
     // Кегль уровня — тоже от спуска: поля детей в `em` без своего кегля (и
@@ -16381,18 +16381,18 @@ fn with_inner_cb<T>(c: &Computed, f: impl FnOnce() -> T) -> T {
 /// Струна примыкающих полей (CSS 2.1 §8.3.1): больший положительный и самый
 /// отрицательный. Свёртка ассоциативна, поэтому все три случая спеки — сосед,
 /// родитель с ребёнком и схлопывание насквозь — считаются одним кодом.
-type Strut = (f32, f32);
+pub(crate) type Strut = (f32, f32);
 
-fn strut_of(v: f32) -> Strut {
+pub(crate) fn strut_of(v: f32) -> Strut {
     (v.max(0.0), v.min(0.0))
 }
 
-fn adjoin(a: Strut, b: Strut) -> Strut {
+pub(crate) fn adjoin(a: Strut, b: Strut) -> Strut {
     (a.0.max(b.0), a.1.min(b.1))
 }
 
 /// Итог струны: максимум положительных минус максимум модулей отрицательных.
-fn solve(s: Strut) -> f32 {
+pub(crate) fn solve(s: Strut) -> f32 {
     s.0 + s.1
 }
 
@@ -16406,7 +16406,7 @@ fn solve(s: Strut) -> f32 {
 
 /// Замещаемый строчный атом: своих детей не имеет, но КОРОБКУ рождает —
 /// значит, рождает и строчную коробку. Пустой `<span>` — не рождает.
-fn replaced_inline(tag: &str) -> bool {
+pub(crate) fn replaced_inline(tag: &str) -> bool {
     matches!(
         tag,
         "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe" | "input" | "br"
@@ -16417,7 +16417,7 @@ fn replaced_inline(tag: &str) -> bool {
 /// коробку, в отличие от плавающего и абсолютного, которых в потоке нет.
 /// Разбор держит `display: inline` как `InlineBlock` с пометкой
 /// `inline_display`, поэтому одного взгляда на `display` мало.
-fn atomic_inline(c: &Computed) -> bool {
+pub(crate) fn atomic_inline(c: &Computed) -> bool {
     c.float.is_none()
         && !matches!(
             c.position,
@@ -16439,7 +16439,7 @@ fn atomic_inline(c: &Computed) -> bool {
 /// блоком, а цепочки схлопывания полей пропускали её как строчную — и
 /// `::after { display: flow-root; margin-top: 200px }` оставлял поле внутри
 /// родителя вместо примыкания к его верху (`phantom-line-boxes-001…006`).
-fn inline_marked_block(e: &Element) -> bool {
+pub(crate) fn inline_marked_block(e: &Element) -> bool {
     e.inline
         && e.style.inline_display != Some(true)
         && matches!(
@@ -16459,7 +16459,7 @@ fn inline_marked_block(e: &Element) -> bool {
 /// не идёт, а отрицательное поле — тоже ненулевое (`phantom-line-boxes-004`).
 /// Оси физические: в вертикальном письме строчная ось — `top`/`bottom`, там
 /// правило пока не различает (тестов нет).
-fn inline_axis_edges(c: &Computed) -> bool {
+pub(crate) fn inline_axis_edges(c: &Computed) -> bool {
     let nonzero = |l: Option<Len>| matches!(l, Some(Len::Px(v) | Len::Pct(v) | Len::Em(v)) if v != 0.0);
     let b = c.borders();
     nonzero(c.margin.left)
@@ -16477,7 +16477,7 @@ fn inline_axis_edges(c: &Computed) -> bool {
 /// непробельный рождает строку; ПУСТОЙ строчный элемент прозрачен, а
 /// замещаемый атом (`img` и родня) — нет; вне потока строки не рождает никто;
 /// `display: contents` своей коробки не даёт — смотреть надо в его детей.
-fn holds_line_box(children: &[Node]) -> bool {
+pub(crate) fn holds_line_box(children: &[Node]) -> bool {
     children.iter().any(|n| match n {
         Node::Text(t) => !blank_text(t),
         Node::Element(ch) => {
@@ -16532,7 +16532,7 @@ fn holds_line_box(children: &[Node]) -> bool {
 /// `calc`). Ноль подставлять НЕЛЬЗЯ: ветка насквозь значение ЗАПИСЫВАЕТ
 /// обратно, и написанное пропадёт навсегда (`margin-bottom-103`: `50%`
 /// превращалось в `0`).
-fn margin_or_bail(l: Option<Len>, style: &Computed) -> Option<f32> {
+pub(crate) fn margin_or_bail(l: Option<Len>, style: &Computed) -> Option<f32> {
     match l {
         None => Some(0.0),
         Some(_) => margin_px(l, style),
@@ -16546,17 +16546,17 @@ fn margin_or_bail(l: Option<Len>, style: &Computed) -> Option<f32> {
 /// НЕ СОДЕРЖИТ СТРОЧНОЙ КОРОБКИ, и поля всех её детей в потоке тоже
 /// схлопываются. Возвращаются слитые поля — свои плюс поля всех
 /// насквозь-потомков: это и есть транзитивность примыкания.
-fn through_strut(e: &Element) -> Option<Strut> {
+pub(crate) fn through_strut(e: &Element) -> Option<Strut> {
     through_strut_inner(e, false)
 }
 
 /// То же, но без вето по `clear`: нужно, чтобы отличить «не схлопывается
 /// вовсе» от «схлопнулась бы, если бы не клиренс».
-fn through_strut_no_clear(e: &Element) -> Option<Strut> {
+pub(crate) fn through_strut_no_clear(e: &Element) -> Option<Strut> {
     through_strut_inner(e, true)
 }
 
-fn through_strut_inner(e: &Element, ignore_clear: bool) -> Option<Strut> {
+pub(crate) fn through_strut_inner(e: &Element, ignore_clear: bool) -> Option<Strut> {
     // Строчная пометка у блочной коробки (псевдоэлемент) — не строчный.
     if (e.inline && !inline_marked_block(e)) || !in_flow(&e.style) || own_context(e) {
         return None;
@@ -16657,7 +16657,7 @@ fn through_strut_inner(e: &Element, ignore_clear: bool) -> Option<Strut> {
 /// Пустой строчный элемент без краёв по строчной оси — фантом
 /// (css-inline-3 §invisible-line-boxes): строки не рождает, примыкания не
 /// рвёт. Тот же признак, что у `leading_chain`.
-fn phantom_inline(n: &Node) -> bool {
+pub(crate) fn phantom_inline(n: &Node) -> bool {
     matches!(n, Node::Element(s) if s.inline
         && !inline_marked_block(s)
         && s.children.is_empty()
@@ -16675,7 +16675,7 @@ fn phantom_inline(n: &Node) -> bool {
 /// Такая коробка схлопывается насквозь, и её флоаты ПРИМЫКАЮТ к полю
 /// следующего брата: без разделения поле брата увезло бы их вниз
 /// (`new-fc-separates-from-float`, `adjoining-float-before-clearance`).
-fn float_only_wrapper(w: &Element) -> Option<(bool, bool, f32)> {
+pub(crate) fn float_only_wrapper(w: &Element) -> Option<(bool, bool, f32)> {
     let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)));
     let b = w.style.borders();
     if (w.inline && !inline_marked_block(w))
@@ -16718,7 +16718,7 @@ fn float_only_wrapper(w: &Element) -> Option<(bool, bool, f32)> {
     any.then_some((left, right, min_w))
 }
 
-fn leading_chain(
+pub(crate) fn leading_chain(
     children: &[Node],
     path: &mut Vec<usize>,
     eat: &mut Vec<(Vec<usize>, bool)>,
@@ -16819,7 +16819,7 @@ fn leading_chain(
 /// вглубь подъём уходил мимо ещё неизвестной высоты родителя. Для
 /// `margin-trim: block-end` этой опасности нет: наружу ничего не поднимается,
 /// поля только гасятся, и цепочка ограничена последним ребёнком в потоке.
-fn trailing_chain(
+pub(crate) fn trailing_chain(
     children: &[Node],
     path: &mut Vec<usize>,
     eat: &mut Vec<(Vec<usize>, bool)>,
@@ -16872,7 +16872,7 @@ fn trailing_chain(
 /// Обнулить поле по пути: наружу оно ушло одним полем родителя, и раскладка
 /// сложила бы его второй раз. `deep` — коробка схлопнулась насквозь: чистится
 /// она сама с обеих сторон.
-fn zero_at(children: &mut [Node], path: &[usize], top: bool, deep: bool) {
+pub(crate) fn zero_at(children: &mut [Node], path: &[usize], top: bool, deep: bool) {
     let Some((&i, rest)) = path.split_first() else {
         return;
     };
@@ -16906,7 +16906,7 @@ fn zero_at(children: &mut [Node], path: &[usize], top: bool, deep: bool) {
 /// единицы — в точки по кеглю РОДИТЕЛЯ (наследуется вычисленная длина, «not
 /// 80px 120px 40px 160px»), доля остаётся долей и решается от своего
 /// содержащего блока (`margin-percentage-inherit-001`: 15% от 200, а не 60).
-fn pin_inherited_margins(e: &mut Element, top: bool, bottom: bool) {
+pub(crate) fn pin_inherited_margins(e: &mut Element, top: bool, bottom: bool) {
     let own = e.style.margin;
     for n in e.children.iter_mut() {
         let Node::Element(ch) = n else { continue };
@@ -16938,7 +16938,7 @@ fn pin_inherited_margins(e: &mut Element, top: bool, bottom: bool) {
 /// элемент его задал, иначе базовый — унаследованного здесь ещё нет.
 /// Проценты не переводятся: они считаются от ширины родителя, а её тут никто
 /// не знает, и выдуманное число было бы хуже пропуска.
-fn margin_px(l: Option<Len>, style: &Computed) -> Option<f32> {
+pub(crate) fn margin_px(l: Option<Len>, style: &Computed) -> Option<f32> {
     // Кегль элемента: свой, если задан, иначе унаследованный от уровня
     // (см. `COLLAPSE_FONT_PX`). Прежде вместо унаследованного брались
     // постоянные 16 точек, и `table{font-size:50px} div{margin:1em 0}`
@@ -16971,7 +16971,7 @@ fn margin_px(l: Option<Len>, style: &Computed) -> Option<f32> {
 }
 
 /// Схлопывание пробелов для тени — той же формы, что и в абзаце.
-fn normalize_for_shadow(raw: &str) -> String {
+pub(crate) fn normalize_for_shadow(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     let mut prev_space = false;
     for ch in raw.chars() {
@@ -16999,7 +16999,7 @@ pub fn paragraph_public(nodes: &[Node], inherited: &Computed, opts: &RenderOpts)
 /// Знак стоит прямо в вертикальном письме с `text-orientation: mixed`
 /// (UTR#50, vo=U, упрощённо): иероглифика, кана, CJK-знаки препинания и
 /// полноширинные формы. Остальное — лежит боком.
-fn upright_in_mixed(c: char) -> bool {
+pub(crate) fn upright_in_mixed(c: char) -> bool {
     matches!(c as u32,
         0x3000..=0x303F   // CJK-знаки и пунктуация (「」、。 …)
         | 0x3040..=0x30FF // хирагана и катакана
@@ -17015,11 +17015,11 @@ fn upright_in_mixed(c: char) -> bool {
     )
 }
 
-fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(crate) fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     paragraph_routed(nodes, inherited, opts, None)
 }
 
-fn paragraph_routed(
+pub(crate) fn paragraph_routed(
     nodes: &[Node], inherited: &Computed, opts: &RenderOpts,
     native_request: Option<&native_paragraph_route::Request<'_>>,
 ) -> AnyElement {
@@ -17312,7 +17312,7 @@ fn paragraph_routed(
 /// Отсчёт идёт от СВОЕГО кегля, а не от базового кегля документа: у коробки с
 /// `font-size: 10px` строка обязана быть в 10 точек, а базовый (16) держал её
 /// вдвое выше.
-fn own_size(inherited: &Computed, opts: &RenderOpts) -> f32 {
+pub(crate) fn own_size(inherited: &Computed, opts: &RenderOpts) -> f32 {
     match inherited.font_size {
         Some(Len::Px(v)) => v,
         Some(Len::Em(k)) | Some(Len::Pct(k)) => k * opts.base_size(),
@@ -17328,7 +17328,7 @@ fn own_size(inherited: &Computed, opts: &RenderOpts) -> f32 {
 /// путь закрыт (`inline.rs:2543`). Внепоточный — и абсолют на статической
 /// позиции, и абсолют с краями: оба уходят `Piece::Overlay`, оба своего
 /// текста в строку не отдают.
-fn has_flow_text(nodes: &[Node]) -> bool {
+pub(crate) fn has_flow_text(nodes: &[Node]) -> bool {
     nodes.iter().any(|n| match n {
         Node::Text(t) => !t.trim().is_empty(),
         Node::Element(e) => {
@@ -17348,7 +17348,7 @@ fn has_flow_text(nodes: &[Node]) -> bool {
 /// `vertical-align` у нас наследуется (ради ячеек таблицы), поэтому краевым
 /// считается только кусок, чьё значение ОТЛИЧАЕТСЯ от значения абзаца: иначе
 /// каждый абзац ячейки с `vertical-align: top` прижимался бы весь.
-fn edge_pieces(
+pub(crate) fn edge_pieces(
     pieces: &[inline::Piece],
     inherited: &Computed,
     opts: &RenderOpts,
@@ -17408,7 +17408,7 @@ fn edge_pieces(
 }
 
 /// Лежит ли отрезок внутри краевого куска.
-fn in_edge(edges: &[(std::ops::Range<usize>, bool, f32)], r: &std::ops::Range<usize>) -> bool {
+pub(crate) fn in_edge(edges: &[(std::ops::Range<usize>, bool, f32)], r: &std::ops::Range<usize>) -> bool {
     edges
         .iter()
         .any(|(e, _, _)| e.start < r.end.max(r.start + 1) && r.start < e.end)
@@ -17416,7 +17416,7 @@ fn in_edge(edges: &[(std::ops::Range<usize>, bool, f32)], r: &std::ops::Range<us
 
 /// Самый крупный кегль и наибольшая `line-height` кусков ВНЕ краевых: струт
 /// строки и её базовая линия от прижатых к краю не зависят (§10.8.1).
-fn flow_metrics(
+pub(crate) fn flow_metrics(
     pieces: &[inline::Piece],
     edges: &[(std::ops::Range<usize>, bool, f32)],
     inherited: &Computed,
@@ -17460,7 +17460,7 @@ fn flow_metrics(
 /// Прежде высота строки на ВЕСЬ абзац бралась по самому крупному куску
 /// (`max_line_height`, `k × biggest`): одна крупная буква растила все строки,
 /// а базовая линия мелкого текста в строке с крупным стояла посередине.
-fn line_box_spans(
+pub(crate) fn line_box_spans(
     pieces: &[inline::Piece],
     edges: &[(std::ops::Range<usize>, bool, f32)],
     inherited: &Computed,
@@ -17522,7 +17522,7 @@ fn line_box_spans(
 /// Абзац с руби идёт в строку и при `rtl`: иначе он остаётся в
 /// ряду, где строка под аннотацию не растёт, а такой же абзац слева направо
 /// растёт (`ruby-bidi-002`: эталон из ltr-абзаца с `text-align: right`).
-fn atoms_fit_line(inherited: &Computed, ruby: bool) -> bool {
+pub(crate) fn atoms_fit_line(inherited: &Computed, ruby: bool) -> bool {
     inherited.vertical != Some(true)
         // A rotated paragraph of atoms only is a row whose end edge sits on
         // the end of the paragraph box (`paragraph_routed`, pure-atom
@@ -17545,7 +17545,7 @@ fn atoms_fit_line(inherited: &Computed, ruby: bool) -> bool {
 /// (`Paragraph::lay_atoms`), поэтому в строку идут только атомы, чей размер от
 /// ширины строки не зависит: без долей в размерах, полях и отступах. Абсолюты
 /// (их место — щуп статической позиции), поля форм и руби остаются в ряду.
-fn atom_line_align(
+pub(crate) fn atom_line_align(
     e: &Element,
     inherited: &Computed,
     opts: &RenderOpts,
@@ -17695,7 +17695,7 @@ fn atom_line_align(
 }
 
 /// Абзац с готовым разрезом первой строки: `at` — сколько байт в неё вошло.
-fn paragraph_pieces(
+pub(crate) fn paragraph_pieces(
     nodes: &[Node],
     inherited: &Computed,
     opts: &RenderOpts,
@@ -17705,7 +17705,7 @@ fn paragraph_pieces(
     paragraph_pieces_routed(nodes, inherited, opts, first_line_at, first_line, None)
 }
 
-fn paragraph_pieces_routed(
+pub(crate) fn paragraph_pieces_routed(
     nodes: &[Node],
     inherited: &Computed,
     opts: &RenderOpts,
@@ -18669,7 +18669,7 @@ fn paragraph_pieces_routed(
 }
 
 /// Строчный ли элемент по своему `display`.
-fn inline_level(e: &Element) -> bool {
+pub(crate) fn inline_level(e: &Element) -> bool {
     match e.style.display {
         Some(Display::InlineBlock) | Some(Display::InlineFlex) | Some(Display::InlineGrid) => true,
         // Строчный контейнер лунок — атом в строке, как inline-grid
@@ -18682,30 +18682,30 @@ fn inline_level(e: &Element) -> bool {
 
 /// Единица руби (css-ruby-1 §2.3.2): содержимое одной базы или одной
 /// аннотации. Пустой вектор — анонимная пустая единица, добавленная спариванием.
-type RubyUnit = Vec<Node>;
+pub(crate) type RubyUnit = Vec<Node>;
 
 /// Уровень аннотаций сегмента: `<rtc>` или ряд `<rt>` прямо в контейнере
 /// (анонимный контейнер аннотаций, css-ruby-1 §2.2 п.8).
-struct RubyLevel {
-    units: Vec<RubyUnit>,
+pub(crate) struct RubyLevel {
+    pub(crate) units: Vec<RubyUnit>,
     /// `<rtc>` без `<rt>` внутри — одна анонимная аннотация, накрывающая ВСЕ
     /// базы сегмента (§2.3.2 «spanning annotation»).
-    spanning: bool,
+    pub(crate) spanning: bool,
     /// Стиль самого `<rtc>`: его аннотации наследуют от него (в том числе
     /// половинный кегль из листа агента).
-    container: Option<Computed>,
+    pub(crate) container: Option<Computed>,
 }
 
 /// Сегмент руби (css-ruby-1 §2.3.1): ряд баз и уровни аннотаций к нему.
-struct RubySegment {
-    bases: Vec<RubyUnit>,
-    levels: Vec<RubyLevel>,
+pub(crate) struct RubySegment {
+    pub(crate) bases: Vec<RubyUnit>,
+    pub(crate) levels: Vec<RubyLevel>,
 }
 
 /// Пуста ли единица: только схлопываемые пробелы и руби-теги без содержимого.
 /// Любой другой элемент — содержимое, даже пустой `<div>` с шириной
 /// (`ruby-align-001`: `rt > div { width: 160px }`).
-fn ruby_unit_blank(unit: &[Node]) -> bool {
+pub(crate) fn ruby_unit_blank(unit: &[Node]) -> bool {
     unit.iter().all(|n| match n {
         Node::Text(t) => blank_text(t),
         Node::Element(k) if ruby_role(k).is_some_and(|r| r != crate::computed::RubyRole::Container) => {
@@ -18720,7 +18720,7 @@ fn ruby_unit_blank(unit: &[Node]) -> bool {
 /// СНИМАЕТ (`display: block` на `<rt>` — обычный блок, как в Blink, где
 /// `IsInlineRubyText` смотрит на `Display()`, а не на тег): роль по тегу
 /// действует только без своего `display`.
-fn ruby_role(e: &Element) -> Option<crate::computed::RubyRole> {
+pub(crate) fn ruby_role(e: &Element) -> Option<crate::computed::RubyRole> {
     use crate::computed::RubyRole;
     if let Some(role) = e.style.ruby_role {
         return Some(role);
@@ -18757,7 +18757,7 @@ fn ruby_role(e: &Element) -> Option<crate::computed::RubyRole> {
 /// `ruby-overhang-none`, `ruby-tab-in-base-002`; обещанных плюсов срез
 /// не показал. Поле на атоме растит короб строки, но и сдвигает базу
 /// относительно соседей — нужен настоящий лидинг строки, а не поле.
-fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
+pub(crate) fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
     #[derive(Clone, Copy, PartialEq)]
     enum Kind {
         Text,
@@ -18989,7 +18989,7 @@ fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
 /// `width: min-content` раскладывался по max-content: доли `1fr 2fr 1fr 1fr`
 /// при базах по 2ch раздавались, вторая дорожка выходила 4ch
 /// (`grid-lanes-intrinsic-sizing-cols-002-fr`; css-sizing-3 §5.1).
-fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
+pub(crate) fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
     if let Some(physical) = rotated_atom::physical(e, inherited, opts) {
         return Some(physical);
     }
@@ -19013,7 +19013,7 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
     Some(if wraps { content_sized(el, &e.style, &inline::inherit(inherited, &e.style), (None, None)) } else { el })
 }
 
-fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
+pub(crate) fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
     // Строчный атом — независимый контекст форматирования: строки внутри
@@ -20086,7 +20086,7 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
 /// боковые поля ДО сборки — обёртка их не пропускает.
 /// Замещаемый элемент (css-display-3 §2.4): размер даёт содержимое, а не
 /// раскладка детей.
-fn replaced_tag(e: &Element) -> bool {
+pub(crate) fn replaced_tag(e: &Element) -> bool {
     matches!(
         e.tag.as_str(),
         "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe" | "input"
@@ -20108,7 +20108,7 @@ fn replaced_tag(e: &Element) -> bool {
 /// Второй предел обязан быть пуст: с ним порядок зажима (минимум сильнее
 /// максимума) одной перестановкой не выражается. Таблица считает пределы
 /// сама (`min_fix`), замещаемый — в `image_with`; их не трогаем.
-fn content_limit_swapped(e: &Element) -> Option<Element> {
+pub(crate) fn content_limit_swapped(e: &Element) -> Option<Element> {
     let kw = |l: Option<Len>| {
         matches!(
             l,
@@ -20155,7 +20155,7 @@ fn content_limit_swapped(e: &Element) -> Option<Element> {
 /// Доли коробки по содержимому, решённые от содержащего блока (см. вызов в
 /// `blocks`). `None` — решать нечего или блок не блочный: у гибкого и
 /// сеточного родителя размеры приходят от раскладки.
-fn pct_resolved_for_wrapper(e: &Element, inherited: &Computed) -> Option<Element> {
+pub(crate) fn pct_resolved_for_wrapper(e: &Element, inherited: &Computed) -> Option<Element> {
     if !content_sized_wraps(e) {
         return None;
     }
@@ -20166,7 +20166,7 @@ fn pct_resolved_for_wrapper(e: &Element, inherited: &Computed) -> Option<Element
 /// известными сторонами. Нужны там, где между коробкой и её содержащим
 /// блоком стоит наша служебная обёртка (сетка `content_sized`, строка
 /// абзаца у `inline-block`), и раскладка решала бы долю от неё.
-fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> Option<Element> {
+pub(crate) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> Option<Element> {
     if replaced_tag(e) || e.style.vertical == Some(true) {
         return None;
     }
@@ -20257,7 +20257,7 @@ fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> Option<Eleme
 /// метку «настоящий строчный» ставит каскад (`computed.rs`), и блокификация
 /// под `position: absolute` (§9.7, `dom::finish_inline_display`) её НЕ снимает.
 /// `None` при выключке по началу строки — прежний ход без изменений.
-fn static_line_align(e: &Element, inherited: &Computed) -> Option<f32> {
+pub(crate) fn static_line_align(e: &Element, inherited: &Computed) -> Option<f32> {
     if e.style.inline_display != Some(true) {
         return None;
     }
@@ -20291,7 +20291,7 @@ fn static_line_align(e: &Element, inherited: &Computed) -> Option<f32> {
 /// `last baseline` — как `end` (css-align-3 §9.3); `anchor-center` без
 /// якоря — как `center` (css-anchor-position-1 §anchor-center), с якорем его
 /// ведёт `anchor::AnchorPlace`, и сюда он не берётся.
-fn static_self_align(e: &Element, inherited: &Computed) -> Option<(f32, f32)> {
+pub(crate) fn static_self_align(e: &Element, inherited: &Computed) -> Option<(f32, f32)> {
     if inherited.vertical == Some(true) || e.style.inline_display == Some(true) {
         return None;
     }
@@ -20351,7 +20351,7 @@ fn static_self_align(e: &Element, inherited: &Computed) -> Option<(f32, f32)> {
 /// внутренний край рамки, и вывод куска из строки ничего бы не изменил, зато
 /// разрезал бы строчный пробег. Отбивка в шрифтовых единицах сюда не входит —
 /// на этом месте она ещё не сведена к точкам, и признак остаётся ложным.
-fn cb_padding_shifts_replaced(e: &Element, inherited: &Computed) -> bool {
+pub(crate) fn cb_padding_shifts_replaced(e: &Element, inherited: &Computed) -> bool {
     if !matches!(e.tag.as_str(), "img" | "svg" | "canvas") {
         return false;
     }
@@ -20368,7 +20368,7 @@ fn cb_padding_shifts_replaced(e: &Element, inherited: &Computed) -> bool {
         || side(inherited.padding.left)
 }
 
-fn at_static_position(c: &Computed) -> bool {
+pub(crate) fn at_static_position(c: &Computed) -> bool {
     // Доля считается от СОДЕРЖАЩЕГО БЛОКА, а пустышка нулевая: элемент с
     // `height: 100%` внутри неё схлопнулся бы в ноль. Такому оставляем прежнее
     // размещение — размер важнее точки отсчёта, его видно всегда.
@@ -20400,7 +20400,7 @@ fn at_static_position(c: &Computed) -> bool {
 ///
 /// `clear: left` правый флоат не трогает и наоборот (CSS 2.1 §9.5.2);
 /// прежде `clear` был двузначным, и любая сторона обрывала любой ряд.
-fn clears_side(clear: Option<i8>, side: i8) -> bool {
+pub(crate) fn clears_side(clear: Option<i8>, side: i8) -> bool {
     matches!(clear, Some(c) if c == 0 || c == side)
 }
 
@@ -20419,7 +20419,7 @@ fn clears_side(clear: Option<i8>, side: i8) -> bool {
 /// ★ ЗАМЕРЕНО И ОТКАЧЕНО: `PaintLast` без этого гейта — на срезе 890 пар
 /// +2/−20 (все `position-relative-table-*` и `font-029` в «красное видно»);
 /// с гейтом срез 3483 пары: 2757 → 2764, +7/−0.
-fn positioned_later(rest: &[Node]) -> bool {
+pub(crate) fn positioned_later(rest: &[Node]) -> bool {
     fn positioned(e: &Element) -> bool {
         matches!(
             e.style.position,
@@ -20459,7 +20459,7 @@ fn positioned_later(rest: &[Node]) -> bool {
 ///
 /// Сосед, который сам уйдёт в слой, порядок НЕ ломает: слой копится в порядке
 /// сборки. `fixed` не считается: он и так рисуется отложенно, поверх всего.
-fn stays_positioned(rest: &[Node]) -> bool {
+pub(crate) fn stays_positioned(rest: &[Node]) -> bool {
     fn walk(nodes: &[Node], under_cb: bool) -> bool {
         nodes.iter().any(|n| {
             let Node::Element(e) = n else { return false };
@@ -20516,7 +20516,7 @@ fn stays_positioned(rest: &[Node]) -> bool {
 /// читала явный `auto` как заданный край, и элемент терял статическую
 /// позицию: `abspos-*-applies-to-*` вставали в угол содержащего блока
 /// вместо своего места в потоке.
-fn edge_set(l: Option<Len>) -> bool {
+pub(crate) fn edge_set(l: Option<Len>) -> bool {
     !matches!(l, None | Some(Len::Auto))
 }
 
@@ -20660,7 +20660,7 @@ pub(super) fn has_own_box(c: &Computed, font_px: f32) -> bool {
 ///
 /// Абсолютная и во весь родитель: так её собственный прямоугольник и есть
 /// коробка родителя, а обрезка на замере — это видимая часть прокрутки.
-fn sticky_probe(frame: crate::interact::StickyCell) -> AnyElement {
+pub(crate) fn sticky_probe(frame: crate::interact::StickyCell) -> AnyElement {
     gpui::canvas(
         move |bounds, window, _| {
             frame.set(crate::interact::StickyFrame {
@@ -20682,7 +20682,7 @@ fn sticky_probe(frame: crate::interact::StickyCell) -> AnyElement {
 /// Отложенный проход нужен из-за порядка: прилипший заголовок рисуется до
 /// содержимого, которое под ним проезжает, и без переноса в конец кадра это
 /// содержимое его закрашивало бы.
-fn sticky_wrap(
+pub(crate) fn sticky_wrap(
     el: AnyElement,
     c: &Computed,
     frame: &crate::interact::StickyCell,
@@ -20731,7 +20731,7 @@ fn sticky_wrap(
 /// верха потока; каждая строка абзаца сужается по своей высоте. Формула
 /// формы считается от выбранной опорной коробки (по умолчанию margin-box),
 /// затем переводится в координаты margin-box (позиция флоата).
-fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     if e.attr("bands") == Some("m") {
         return band_flow_host(e, inherited, opts);
     }
@@ -21347,7 +21347,7 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
 }
 
 /// Точки стороны коробки: только явный `px` (None непроходной).
-fn px_of2(l: &Option<Len>) -> Option<f32> {
+pub(crate) fn px_of2(l: &Option<Len>) -> Option<f32> {
     match l {
         None => Some(0.0),
         Some(Len::Px(v)) => Some(*v),
@@ -21779,7 +21779,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
 /// `mix-blend-mode-with-transform-and-preserve-3D` (blend),
 /// `clip-not-absolute-positioned-003`, `corner-shape-bevel-overflow-composite`
 /// и `view-transition-name-is-grouping` уходят в красное.
-fn flattens_3d(c: &Computed) -> bool {
+pub(crate) fn flattens_3d(c: &Computed) -> bool {
     use crate::computed::Overflow;
     let clipped = |o: Option<Overflow>| matches!(o, Some(o) if o != Overflow::Visible);
     c.opacity.is_some_and(|o| o < 1.0)
@@ -21796,13 +21796,13 @@ fn flattens_3d(c: &Computed) -> bool {
         || c.contain_layout == Some(true)
 }
 
-fn transformed(el: AnyElement, c: &Computed, parent: &Computed) -> AnyElement {
+pub(crate) fn transformed(el: AnyElement, c: &Computed, parent: &Computed) -> AnyElement {
     transformed_with(el, c, parent, None)
 }
 
 /// `transformed` with a shared reference box (`interact::Transformed::ref_box`):
 /// a table row or row group transform spread over its cells.
-fn transformed_with(
+pub(crate) fn transformed_with(
     el: AnyElement,
     c: &Computed,
     parent: &Computed,
@@ -21933,7 +21933,7 @@ fn transformed_with(
 /// `grid-template-areas` — способ разложить макет именами вместо цифр. Ни
 /// GPUI, ни taffy имён не знают, но знают номера: имя ищется в раскладке
 /// контейнера, и ребёнок получает готовый прямоугольник линий.
-fn place_named_areas(areas: &[Vec<String>], children: Vec<Node>) -> Vec<Node> {
+pub(crate) fn place_named_areas(areas: &[Vec<String>], children: Vec<Node>) -> Vec<Node> {
     use crate::computed::Placement;
     children
         .into_iter()
@@ -21991,7 +21991,7 @@ fn place_named_areas(areas: &[Vec<String>], children: Vec<Node>) -> Vec<Node> {
 /// Условия — те же, что у `to_icb`, плюс два ужесточения: только
 /// НЕПОСРЕДСТВЕННЫЕ дети ленты и только при ОБЕИХ заданных осях (по свободной
 /// оси место сообщает щуп, а он остался бы в замыкании).
-fn hoist_from_scroll(e: &mut Element, inherited: &Computed, opts: &RenderOpts) {
+pub(crate) fn hoist_from_scroll(e: &mut Element, inherited: &Computed, opts: &RenderOpts) {
     use crate::computed::Position;
     if !crate::interact::icb_active() || inside_deferred() {
         return;
@@ -22050,7 +22050,7 @@ fn hoist_from_scroll(e: &mut Element, inherited: &Computed, opts: &RenderOpts) {
     e.children = keep;
 }
 
-fn scrollable(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
+pub(crate) fn scrollable(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
     use crate::computed::Overflow;
     let horizontal = e.style.overflow_x == Some(Overflow::Scroll);
     let vertical = e.style.overflow_y == Some(Overflow::Scroll);
@@ -22195,7 +22195,7 @@ fn scrollable(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<An
 }
 
 /// Обернуть элемент ручкой изменения размера, если `resize` разрешает.
-fn resizable(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
+pub(crate) fn resizable(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
     if e.style.pointer_events_none == Some(true) {
         return None;
     }
@@ -22233,7 +22233,7 @@ fn resizable(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<Any
 ///
 /// Поддерево пересобирается по доле перехода — иначе смешанный стиль некуда
 /// применить: у собранного элемента стиль уже зафиксирован.
-fn transitioned(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
+pub(crate) fn transitioned(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
     let seconds = e.style.transition?;
     let hover = e.hover.clone()?;
     let node = e.clone();
@@ -22459,7 +22459,7 @@ pub(crate) fn frame_at(frames: &[(f32, Computed)], t: f32) -> Computed {
 /// их не берёт: `!important` у нас кадры не перекрывает, а обязан
 /// (css-cascade-5 §cascade-origin) — `translation-animation-on-important-
 /// property` с `transform: none !important` уехала бы на середину пути.
-fn bake_frozen(e: &Element, transforms: bool) -> Option<Element> {
+pub(crate) fn bake_frozen(e: &Element, transforms: bool) -> Option<Element> {
     let (Some(frames), Some(spec)) = (e.anim.as_ref(), e.style.animation.as_ref()) else {
         return None;
     };
@@ -22470,7 +22470,7 @@ fn bake_frozen(e: &Element, transforms: bool) -> Option<Element> {
 }
 
 /// Блочный элемент.
-fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
     // Высота ряда от внешней колонки — только ЭТОМУ элементу (`flow::OUTER_ROW`).
@@ -25403,7 +25403,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
 /// `max-height`, а без `height` — сам `max-height`; `min-height` поднимает
 /// результат (`line-clamp-auto-005`: `height: 4.5lh`; `-014`: максимум из
 /// `min-height` и `max-height`). Бесконечный размер — точки нет.
-fn auto_clamp_limit(m: &Computed) -> Option<f32> {
+pub(crate) fn auto_clamp_limit(m: &Computed) -> Option<f32> {
     let px = |l: Option<Len>| match l {
         Some(Len::Px(v)) => Some(v),
         _ => None,
@@ -25419,7 +25419,7 @@ fn auto_clamp_limit(m: &Computed) -> Option<f32> {
 /// Картинка: `src` с `data:`-URI или путь. Внешние URL не грузим — документ
 /// рисуется в чате, где сеть запрещена по тем же причинам, что и в вебвью.
 /// Приклеить базовую папку к относительным `url(...)` вложенного документа.
-fn resolve_embedded_urls(html: &str, dir: &std::path::Path) -> String {
+pub(crate) fn resolve_embedded_urls(html: &str, dir: &std::path::Path) -> String {
     let mut out = String::with_capacity(html.len());
     let mut rest = html;
     while let Some(at) = rest.find("url(") {
@@ -25445,7 +25445,7 @@ fn resolve_embedded_urls(html: &str, dir: &std::path::Path) -> String {
 
 thread_local! {
     /// Глубина вложенных документов — от циклических iframe.
-    static IFRAME_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    pub(crate) static IFRAME_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
 /// `<object>`, чей `data` — ДОКУМЕНТ, а не картинка (HTML §4.8.7: сначала
@@ -25453,7 +25453,7 @@ thread_local! {
 /// `image/*` и растры остаются на пути картинки (css-images
 /// `object-fit-*-svg-*o` — 32 зелёных пары, `object-fit-*-png-*o` — 12).
 /// Запрос и якорь адреса отрезаются до проверки расширения.
-fn object_is_document(e: &Element) -> bool {
+pub(crate) fn object_is_document(e: &Element) -> bool {
     if let Some(t) = e.attr("type") {
         let t = t.trim().to_ascii_lowercase();
         if t.starts_with("text/html") || t.starts_with("application/xhtml+xml") {
@@ -25474,7 +25474,7 @@ fn object_is_document(e: &Element) -> bool {
         .any(|ext| path.ends_with(ext))
 }
 
-fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
+pub(crate) fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     let src = e.attr("src")?;
     let path = src
         .strip_prefix("file:///")
@@ -25577,7 +25577,7 @@ fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
 /// §iframe-frame-sizing): истина, если `<meta name=responsive-embedded-sizing>`
 /// встретился при разборе РАНЬШЕ, чем открылся `<body>` (явно или неявно —
 /// любым тегом тела или непробельным текстом).
-fn responsive_embedded_sizing(html: &str) -> bool {
+pub(crate) fn responsive_embedded_sizing(html: &str) -> bool {
     let lower = html.to_ascii_lowercase();
     let b = lower.as_bytes();
     let mut i = 0;
@@ -25638,7 +25638,7 @@ fn responsive_embedded_sizing(html: &str) -> bool {
 /// роста строчной), и `height: 0.25ex` при `font: 250px/1 Ahem` давало 31
 /// точку вместо 50 (`units-003`: оранжевый квадрат не совпадал с навесными
 /// прямоугольниками).
-fn with_inherited_font(e: &Element, inherited: &Computed) -> Element {
+pub(crate) fn with_inherited_font(e: &Element, inherited: &Computed) -> Element {
     let mut copy = e.clone();
     if copy.style.font_family.is_none() {
         copy.style.font_family = inherited.font_family.clone();
@@ -25667,7 +25667,7 @@ fn with_inherited_font(e: &Element, inherited: &Computed) -> Element {
     copy
 }
 
-fn atom_base_font(inherited: &Computed, opts: &RenderOpts) -> f32 {
+pub(crate) fn atom_base_font(inherited: &Computed, opts: &RenderOpts) -> f32 {
     match inherited.font_size {
         Some(Len::Px(v)) => v,
         _ => opts.base_size(),
@@ -25682,7 +25682,7 @@ fn atom_base_font(inherited: &Computed, opts: &RenderOpts) -> f32 {
 /// Прежний общий множитель «сперва потолки, затем полы» держал соотношение
 /// всегда и расходился с таблицей ровно в этих строках
 /// (`box-sizing-replaced-001..003`). `max` берётся как max(min, max).
-fn css2_replaced_limits(
+pub(crate) fn css2_replaced_limits(
     w: f32,
     h: f32,
     min_w: Option<f32>,
@@ -25721,7 +25721,7 @@ fn css2_replaced_limits(
 /// 100%), и `width: 1000px; height: 100px; max-width: min-content` у холста
 /// 10×10 давал ширину во всю строку, а не 100
 /// (`replaced-max-width-min-content`, `replaced-min-width-min-content`).
-fn canvas_limit_keywords(e: &Element) -> Element {
+pub(crate) fn canvas_limit_keywords(e: &Element) -> Element {
     let kw = |l: Option<Len>| {
         matches!(
             l,
@@ -25760,7 +25760,7 @@ fn canvas_limit_keywords(e: &Element) -> Element {
     copy
 }
 
-fn image(e: &Element) -> AnyElement {
+pub(crate) fn image(e: &Element) -> AnyElement {
     image_with(e, None)
 }
 
@@ -25775,7 +25775,7 @@ fn image(e: &Element) -> AnyElement {
 ///
 /// Только обычный блочный контейнер: у гибкого, сеточного и лунок высота
 /// приходит от раскладки, и подстановка ломает `row-auto-repeat-auto-023`.
-fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
+pub(crate) fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
     let e = &pct_limits_to_px(e, inherited);
     let (Some(Len::Pct(k)), Some(Len::Px(h))) = (e.style.height, inherited.height) else {
         return e.clone();
@@ -25831,7 +25831,7 @@ fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
 /// высота — от его высоты и только у обычного блочного контейнера: у гибкого
 /// и сеточного высота приходит от раскладки (та же оговорка, что у
 /// `pct_height_to_px`).
-fn pct_limits_to_px(e: &Element, inherited: &Computed) -> Element {
+pub(crate) fn pct_limits_to_px(e: &Element, inherited: &Computed) -> Element {
     let of = |l: Option<Len>, base: Option<Len>| match (l, base) {
         (Some(Len::Pct(k)), Some(Len::Px(b))) if b > 0.0 => Some(Len::Px(k * b)),
         _ => l,
@@ -25873,7 +25873,7 @@ fn pct_limits_to_px(e: &Element, inherited: &Computed) -> Element {
 /// Коробка: размер из обособления (`contain-intrinsic-size`) или заданный,
 /// иначе из выреза — с соотношением выреза для одной заданной стороны.
 /// Только растр (`background::Source::Raster`); иначе — прежний путь.
-fn view_boxed(e: &Element, vb: (u8, [Len; 4])) -> Option<AnyElement> {
+pub(crate) fn view_boxed(e: &Element, vb: (u8, [Len; 4])) -> Option<AnyElement> {
     let src = e.attr("src")?;
     let local = src
         .strip_prefix("file:///")
@@ -25937,7 +25937,7 @@ fn view_boxed(e: &Element, vb: (u8, [Len; 4])) -> Option<AnyElement> {
     Some(styled_div(&boxed).flex_shrink_0().child(window).into_any_element())
 }
 
-fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
+pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
     // Ключевое слово содержимого в оси замещаемого — его природный (или
     // перенесённый через соотношение) размер, то есть `auto` (css-sizing-3
     // §5.1: «When the box has a preferred aspect ratio, size constraints in
@@ -26597,7 +26597,7 @@ pub fn gather_text_public(nodes: &[Node], out: &mut String) {
 /// `<span style="display:block">` доезжал сюда «строчным», и поля соседей
 /// через него не примыкали — эталоны `flex-direction-column*` разводило на
 /// лишние 16 точек (в них разметка именно такая).
-fn inline_level_box(e: &Element) -> bool {
+pub(crate) fn inline_level_box(e: &Element) -> bool {
     match e.style.display {
         // Строчными считаются только НАСТОЯЩИЕ строчные виды. Первый заход
         // писал `Some(_) => true`, и в строчные попадали лунки сетки: CSS2
@@ -26613,7 +26613,7 @@ fn inline_level_box(e: &Element) -> bool {
     }
 }
 
-fn gather_text(nodes: &[Node], out: &mut String) {
+pub(crate) fn gather_text(nodes: &[Node], out: &mut String) {
     for n in nodes {
         match n {
             Node::Text(t) => out.push_str(t),
@@ -26631,7 +26631,7 @@ fn gather_text(nodes: &[Node], out: &mut String) {
 /// Это стало возможно только вместе с патчем произвольных дорожек в GPUI —
 /// короткая форма умела ровно «N равных колонок», и таблица из даты и длинного
 /// текста разъезжалась пополам.
-fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // Ключевое слово содержимого в `max-height` таблицы горизонтального
     // письма (блочная ось) ведёт себя как начальное `none`: высота таблицы и
     // так не меньше содержимого (css-tables-3 §computing-the-table-height),
@@ -29306,7 +29306,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
 /// переносов, сохранённых пробелов и вложенных коробок; снят по замеру:
 /// css-text +1, flexbox +1, css-grid +1, поломок нет.
 /// `min-content` снизу не даёт колонке сжаться в ноль на узкой панели.
-fn track_list_collapsed(
+pub(crate) fn track_list_collapsed(
     cols: u16,
     fixed: bool,
     first_row: &[Option<f32>],
@@ -29324,7 +29324,7 @@ fn track_list_collapsed(
     tracks
 }
 
-fn track_list(
+pub(crate) fn track_list(
     cols: u16,
     fixed: bool,
     first_row: &[Option<f32>],
@@ -29439,7 +29439,7 @@ fn track_list(
 /// an unspecified size makes them `auto` (CSS 2.1 §9.3.2, §10.5; Blink resolves
 /// against the parent's percentage-resolution size, crbug.com/1227884,
 /// `position-relative-011/012`).
-fn relative_shift(e: &Element, parent: Option<&Element>) -> (f32, f32) {
+pub(crate) fn relative_shift(e: &Element, parent: Option<&Element>) -> (f32, f32) {
     if e.style.position != Some(crate::computed::Position::Relative) {
         return (0.0, 0.0);
     }
@@ -29478,7 +29478,7 @@ fn relative_shift(e: &Element, parent: Option<&Element>) -> (f32, f32) {
 /// Спускаемся ПОКА у коробки ровно один непустой ребёнок: только тогда сдвиг
 /// заведомо общий для всего, что фрагмент рисует. Складываются лишь точечные
 /// края (`Len::Px`) — процентный край остаётся коробке, иначе он пропал бы.
-fn hoist_relative(e: &mut Element) -> (f32, f32) {
+pub(crate) fn hoist_relative(e: &mut Element) -> (f32, f32) {
     let (mut dx, mut dy) = (0.0f32, 0.0f32);
     let mut cur = e;
     loop {
@@ -29530,9 +29530,9 @@ fn hoist_relative(e: &mut Element) -> (f32, f32) {
 /// ряды и ячейки, хотя своей коробки у группы нет (ch-units-vrl-006).
 /// Сдвиг, фон и САМА ГРУППА рядов: от неё нужны и наследуемый стиль, и
 /// `node_id` с рамками — кромки группы строит ряд.
-type RowCarry<'a> = (f32, f32, Option<crate::value::Color>, Option<&'a Element>);
+pub(crate) type RowCarry<'a> = (f32, f32, Option<crate::value::Color>, Option<&'a Element>);
 
-fn collect_rows<'a>(
+pub(crate) fn collect_rows<'a>(
     nodes: &'a [Node],
     parent: Option<&'a Element>,
     carry: RowCarry<'a>,
@@ -29595,7 +29595,7 @@ fn collect_rows<'a>(
 /// Безымянный элемент починки таблицы: пустой стиль, только тег и дети.
 /// Красится ли коробка (фон или рамка) — такой блок в бюджете строк
 /// прячется целиком, если точка среза попала внутрь него.
-fn has_box_style_probe(c: &Computed) -> bool {
+pub(crate) fn has_box_style_probe(c: &Computed) -> bool {
     c.background.is_some()
         || c.bg_image.is_some()
         || c.gradient_raw.is_some()
@@ -29613,7 +29613,7 @@ fn has_box_style_probe(c: &Computed) -> bool {
 /// Плавающее и абсолютное по §9.7 блокифицируются и табличной ролью быть
 /// перестают. Блокификации у нас пока нет, поэтому такие узлы проход не
 /// трогает — их судьбу решает прежний путь.
-fn anon_role(n: &Node) -> Option<bool> {
+pub(crate) fn anon_role(n: &Node) -> Option<bool> {
     let Node::Element(e) = n else { return None };
     if e.style.float.is_some_and(|f| f != 0)
         || matches!(
@@ -29650,7 +29650,7 @@ fn anon_role(n: &Node) -> Option<bool> {
 /// СВОЮ таблицу — ряды вставали друг под друга отдельными таблицами вместо
 /// одной. Починку содержимого (ряд вокруг ячеек, ячейка вокруг прочего)
 /// делает `fixup_table_children` уже внутри собранной таблицы.
-fn wrap_anon_tables(nodes: &[Node]) -> Vec<Node> {
+pub(crate) fn wrap_anon_tables(nodes: &[Node]) -> Vec<Node> {
     wrap_anon_tables_as(nodes, Display::Table)
 }
 
@@ -29672,7 +29672,7 @@ pub(crate) fn inline_anon_tables(nodes: &mut [Node]) {
     }
 }
 
-fn wrap_anon_tables_as(nodes: &[Node], display: Display) -> Vec<Node> {
+pub(crate) fn wrap_anon_tables_as(nodes: &[Node], display: Display) -> Vec<Node> {
     if !nodes.iter().any(|n| anon_role(n).is_some()) {
         return nodes.to_vec();
     }
@@ -29715,15 +29715,15 @@ fn wrap_anon_tables_as(nodes: &[Node], display: Display) -> Vec<Node> {
     out
 }
 
-const ANON_CELL: &str = "anonymous-cell";
+pub(crate) const ANON_CELL: &str = "anonymous-cell";
 
 /// An HTML `td`/`th` element, whose UA style inherits the row's
 /// `vertical-align` (HTML §15.3.9); anonymous cells keep the initial value.
-fn html_cell(cell: &Element) -> bool {
+pub(crate) fn html_cell(cell: &Element) -> bool {
     matches!(cell.tag.as_str(), "td" | "th") && cell.attr(ANON_CELL).is_none()
 }
 
-fn anon_element(tag: &str, children: Vec<Node>) -> Element {
+pub(crate) fn anon_element(tag: &str, children: Vec<Node>) -> Element {
     // CSS 2.1 §17.2.1: an anonymous cell is not an HTML `td`; the UA rule
     // `td { vertical-align: inherit }` (HTML §15.3.9) does not reach it.
     let attrs = if tag == "td" {
@@ -29752,7 +29752,7 @@ fn anon_element(tag: &str, children: Vec<Node>) -> Element {
 /// растворяется с наследованием, последовательные не-ячейки сливаются в
 /// одну анонимную ячейку, а вложенный ряд выталкивается ОТДЕЛЬНЫМ рядом
 /// после текущего.
-fn fixup_row_children(row: &Element) -> Vec<Node> {
+pub(crate) fn fixup_row_children(row: &Element) -> Vec<Node> {
     fn walk(
         nodes: &[Node],
         donor: Option<&Computed>,
@@ -29842,7 +29842,7 @@ fn fixup_row_children(row: &Element) -> Vec<Node> {
     out
 }
 
-fn fixup_table_children(children: &[Node]) -> Vec<Node> {
+pub(crate) fn fixup_table_children(children: &[Node]) -> Vec<Node> {
     let mut out: Vec<Node> = vec![];
     let mut stray: Vec<Node> = vec![];
     fn flush(stray: &mut Vec<Node>, out: &mut Vec<Node>) {
@@ -29973,7 +29973,7 @@ fn fixup_table_children(children: &[Node]) -> Vec<Node> {
 /// рисуется в её ячейках (css-tables-3 §drawing-backgrounds).
 /// Колоночная роль элемента: тег ИЛИ `display` (§17.2.1). `Some(false)` —
 /// колонка, `Some(true)` — группа колонок.
-fn col_role(el: &Element) -> Option<bool> {
+pub(crate) fn col_role(el: &Element) -> Option<bool> {
     match el.tag.as_str() {
         "col" => Some(false),
         "colgroup" => Some(true),
@@ -29987,14 +29987,14 @@ fn col_role(el: &Element) -> Option<bool> {
 
 /// Пролёт колонки: атрибут `span` — только HTML-ный, у элемента с колоночным
 /// `display` его нет, и пролёт всегда единичный.
-fn col_span(el: &Element) -> usize {
+pub(crate) fn col_span(el: &Element) -> usize {
     el.attr("span")
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(1)
         .max(1)
 }
 
-fn col_elements(children: &[Node]) -> Vec<Option<&Element>> {
+pub(crate) fn col_elements(children: &[Node]) -> Vec<Option<&Element>> {
     let mut out: Vec<Option<&Element>> = vec![];
     for child in children {
         let Node::Element(el) = child else { continue };
@@ -30026,7 +30026,7 @@ fn col_elements(children: &[Node]) -> Vec<Option<&Element>> {
 /// второй раз её сюда не берём: буфер проб выдаётся по `node_id`, и обе
 /// полосы делили бы один набор прямоугольников. Первая забрала бы его себе,
 /// вторая осталась бы пустой.
-fn colgroup_elements(children: &[Node]) -> Vec<Option<&Element>> {
+pub(crate) fn colgroup_elements(children: &[Node]) -> Vec<Option<&Element>> {
     let mut out: Vec<Option<&Element>> = vec![];
     for child in children {
         let Node::Element(el) = child else { continue };
@@ -30050,7 +30050,7 @@ fn colgroup_elements(children: &[Node]) -> Vec<Option<&Element>> {
 ///
 /// Одно тело на слой групп и слой колонок: различаются они только набором
 /// элементов и порядком вызова (§17.5.1 — группы ПОД колонками).
-fn push_col_bands<'a>(
+pub(crate) fn push_col_bands<'a>(
     els: &[Option<&'a Element>],
     salt: u64,
     have_rows: bool,
@@ -30087,7 +30087,7 @@ fn push_col_bands<'a>(
     }
 }
 
-fn col_element_widths(
+pub(crate) fn col_element_widths(
     children: &[Node],
     base_font: f32,
     family: &str,
@@ -30202,7 +30202,7 @@ fn col_element_widths(
     (widths, collapsed, pcts)
 }
 
-fn is_cell(e: &Element) -> bool {
+pub(crate) fn is_cell(e: &Element) -> bool {
     table_roles::is_cell(e)
 }
 
@@ -30214,7 +30214,7 @@ fn is_cell(e: &Element) -> bool {
 /// фонов поточных блочных потомков). Блочный поточный потомок без этих
 /// признаков остаётся под кромками — его в расчёт не берём, спускаясь в его
 /// детей. Глубина ограничена: обход идёт у каждой ячейки.
-fn cell_paints_over(nodes: &[Node], depth: u8) -> bool {
+pub(crate) fn cell_paints_over(nodes: &[Node], depth: u8) -> bool {
     depth > 0
         && nodes.iter().any(|n| match n {
             Node::Element(k) => {
@@ -30238,7 +30238,7 @@ fn cell_paints_over(nodes: &[Node], depth: u8) -> bool {
 /// ряда ячейки до конца группы (включая его). HTML table model: охват за
 /// конец группы урезается, `rowspan=0` тянется до конца группы; мусор и
 /// отсутствие атрибута — один ряд.
-fn row_span_in_group(cell: &Element, left: usize) -> usize {
+pub(crate) fn row_span_in_group(cell: &Element, left: usize) -> usize {
     let left = left.max(1);
     match cell
         .attr("rowspan")
@@ -30424,7 +30424,7 @@ mod tests {
 }
 
 /// Высота строки в точках — для статической позиции блочного элемента.
-fn line_height_px(style: &Computed, opts: &RenderOpts) -> f32 {
+pub(crate) fn line_height_px(style: &Computed, opts: &RenderOpts) -> f32 {
     let size = match style.font_size {
         Some(Len::Px(v)) => v,
         Some(Len::Em(k)) => k * opts.base_size(),
@@ -30439,7 +30439,7 @@ fn line_height_px(style: &Computed, opts: &RenderOpts) -> f32 {
 }
 
 /// Есть ли в поддереве непустой текст — по нему считается высота строки.
-fn has_text(nodes: &[Node]) -> bool {
+pub(crate) fn has_text(nodes: &[Node]) -> bool {
     nodes.iter().any(|n| match n {
         Node::Text(t) => !blank_text(t),
         Node::Element(e) => has_text(&e.children),
@@ -30451,7 +30451,7 @@ fn has_text(nodes: &[Node]) -> bool {
 /// Постоянная доля неверна: у Ahem `normal` ровно кегль, у текстовых шрифтов
 /// около 1.15–1.3. Из-за постоянной 1.31 коробка с `line-height: 1em` и
 /// соседняя без него расходились по высоте строк (`pre-wrap-008`).
-fn normal_fraction(style: &Computed, opts: &RenderOpts) -> f32 {
+pub(crate) fn normal_fraction(style: &Computed, opts: &RenderOpts) -> f32 {
     // Без своего семейства текст набирается шрифтом ДОКУМЕНТА
     // (`opts.text.font_family`, у стенда — Times New Roman), а щуп метрик
     // пустое имя меряет как `GENERIC_SANS` (Segoe UI, `metrics.rs`
@@ -30483,6 +30483,6 @@ fn normal_fraction(style: &Computed, opts: &RenderOpts) -> f32 {
 /// юникодный пробел, и узел из идеографических U+3000 (или неразрывных
 /// U+00A0) считался пустым: строка из них пропадала целиком, а абзац рвался
 /// там, где рваться не должен (`trailing-ideographic-space-017`).
-fn blank_text(t: &str) -> bool {
+pub(crate) fn blank_text(t: &str) -> bool {
     t.chars().all(|c| matches!(c, ' ' | '\t' | '\r' | '\n'))
 }

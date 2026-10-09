@@ -2,7 +2,7 @@
 use crate::{computed::Computed, inline::Piece};
 use std::cell::Cell;
 
-pub(super) struct Request<'a> {
+pub(crate) struct Request<'a> {
     pub style: &'a Computed,
     pub built: &'a Cell<bool>,
 }
