@@ -1407,7 +1407,8 @@ mod migration_tests {
                     height: None
                 }
             ),
-            40.0
+            // Upstream #1282: the definite preferred size (40) is clamped by min-width 80% = 64.
+            64.0
         );
     }
 

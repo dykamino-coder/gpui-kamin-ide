@@ -1447,6 +1447,12 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
         .into_origin_zero(explicit)
         .resolve_absolutely_positioned_grid_tracks()
         .map(|line| line.and_then(|line: OriginZeroLine| line.try_into_track_vec_index(counts)));
+        // With both insets `auto` in the stacking axis the box takes its static position, which
+        // (as for an ordinary grid, css-grid-1 §9.2 and upstream oof.rs) is the content edge.
+        let inset = child_style.inset();
+        // Only the vertical stacking axis: the horizontal one is mirrored inside
+        // `align_and_position_item` for reversed flows (see decisions log, "Watch").
+        let stack_static = !rows && inset.top.is_auto() && inset.bottom.is_auto();
         drop(child_style);
         let (grid_lo, grid_hi) = if rows {
             (
@@ -1466,19 +1472,24 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             grid_hi,
             if rows { flow.height } else { flow.width },
         );
+        let stack_edges = if stack_static { content_box_inset } else { border };
         let grid_area = if rows {
             Rect {
                 top: lo,
                 bottom: hi,
-                left: border.left,
-                right: container_border_box.width - border.right - scrollbar_gutter.x,
+                left: stack_edges.left,
+                right: container_border_box.width
+                    - stack_edges.right
+                    - if stack_static { 0.0 } else { scrollbar_gutter.x },
             }
         } else {
             Rect {
                 left: lo,
                 right: hi,
-                top: border.top,
-                bottom: container_border_box.height - border.bottom - scrollbar_gutter.y,
+                top: stack_edges.top,
+                bottom: container_border_box.height
+                    - stack_edges.bottom
+                    - if stack_static { 0.0 } else { scrollbar_gutter.y },
             }
         };
         #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]

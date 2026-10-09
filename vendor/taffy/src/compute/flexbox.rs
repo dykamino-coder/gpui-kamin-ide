@@ -2007,8 +2007,11 @@ fn collect_flex_lines<'a>(
             // A column container's automatic main size is content-based, so definite available space
             // handed down by an ancestor does not constrain where its lines wrap. Automatic widths
             // resolve against available space, so rows do wrap against it.
+            // KaminIDE: a ratio-transferred preferred main size (`aspect_ratio_preferred_size`)
+            // is the container's own constraint, not ancestor-derived space, so it still wraps.
             None if !constants.dir.is_row()
                 && !constants.has_definite_main_size
+                && constants.ratio_preferred_inner_size.main(constants.dir).is_none()
                 && available_space.main(constants.dir).is_definite() =>
             {
                 AvailableSpace::MaxContent
@@ -2242,8 +2245,11 @@ fn collect_balanced_flex_lines<'a>(
             // A column container's automatic main size is content-based, so definite available space
             // handed down by an ancestor does not constrain where its lines wrap. Automatic widths
             // resolve against available space, so rows do wrap against it.
+            // KaminIDE: a ratio-transferred preferred main size (`aspect_ratio_preferred_size`)
+            // is the container's own constraint, not ancestor-derived space, so it still wraps.
             None if !constants.dir.is_row()
                 && !constants.has_definite_main_size
+                && constants.ratio_preferred_inner_size.main(constants.dir).is_none()
                 && available_space.main(constants.dir).is_definite() =>
             {
                 AvailableSpace::MaxContent

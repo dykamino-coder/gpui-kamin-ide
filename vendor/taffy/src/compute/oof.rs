@@ -800,6 +800,32 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
         }
     }
 
+    // KaminIDE patch (grid_abspos_fit_tests): an automatic, non-stretched width is the
+    // fit-content width min(max-content, max(min-content, available)) (CSS 2.1 §10.3.7,
+    // css-position-3 §5.1), resolved from independent min-/max-content probes. Measuring at
+    // the definite available width instead lets a wrapped paragraph report its longest line,
+    // which is narrower than the available width.
+    if known_dimensions.width.is_none() {
+        if let AvailableSpace::Definite(available_width) = available_space.width {
+            let mut probe = |width| {
+                tree.measure_child_size(
+                    candidate.node,
+                    known_dimensions,
+                    area_size.map(Some),
+                    Size { width, height: available_space.height },
+                    SizingMode::ContentSize,
+                    crate::geometry::AbsoluteAxis::Horizontal,
+                    Line::FALSE,
+                )
+            };
+            let min_content = probe(AvailableSpace::MinContent);
+            let max_content = probe(AvailableSpace::MaxContent);
+            let fit = max_content.min(min_content.min(max_content).max(available_width));
+            known_dimensions.width = Some(fit);
+            known_dimensions = known_dimensions.maybe_apply_aspect_ratio(aspect_ratio).maybe_clamp(min_size, max_size);
+        }
+    }
+
     let final_size = match (known_dimensions.width, known_dimensions.height) {
         (Some(width), Some(height)) => Size { width, height },
         _ => {

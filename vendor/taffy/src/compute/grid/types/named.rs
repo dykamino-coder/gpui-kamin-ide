@@ -1232,10 +1232,19 @@ mod tests {
             });
         }
         let names = resolver.names_in_span(true, 2, 3);
-        assert_eq!(names[0], vec![String::from("overlap-start")]);
+        // Upstream #1264 keeps area edges out of the line map, so the edges of areas that only
+        // touch the span (`before-end` at line 2, `after-start` at line 5) are now added
+        // explicitly: they are parent line names on the subgrid's edge lines (css-grid-2 §9).
+        assert_eq!(
+            names[0],
+            vec![String::from("before-end"), String::from("overlap-start")]
+        );
         assert!(names[1].is_empty());
         assert!(names[2].is_empty());
-        assert_eq!(names[3], vec![String::from("overlap-end")]);
+        assert_eq!(
+            names[3],
+            vec![String::from("after-start"), String::from("overlap-end")]
+        );
     }
 
     #[test]

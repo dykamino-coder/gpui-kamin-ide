@@ -17,6 +17,7 @@ fn flex_x_baselines_use_normal_flow_origin_for_both_directions_and_axes() {
             let child = tree
                 .new_leaf(Style {
                     baseline_x_flags: 4,
+                    position: Position::Relative,
                     size: Size {
                         width: length(20.0),
                         height: length(20.0),
