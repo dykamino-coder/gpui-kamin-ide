@@ -767,6 +767,25 @@ persisted privacy-safe logs, retention и lifecycle evidence ещё не реа�
 **Acceptance:** automated filesystem tests + isolated Linux Docker/Podman
 runtime gate; Windows UI acceptance не требуется.
 
+**Prepared implementation [PR #203](https://github.com/dykamino-coder/gpui-kamin-ide/pull/203) (not merged, task remains open):** отдельный
+allowlisted journal сохраняет boot/sequence, псевдоним сессии, фиксированную
+причину teardown, age/idle/grace и exit code. Explicit end, dashboard kill,
+detach grace, reaper reasons и live resume reuse различимы на default level.
+Compose сохраняет **только** `/app/logs/lifecycle` в отдельном named volume:
+mount всего `/app/logs` сохранил бы существующие произвольные error/debug/prompt
+payloads и нарушил privacy boundary. Raw logging остаётся вне этого volume.
+Retention: `lifecycle.jsonl` + четыре поколения, каждый не более 1 MiB;
+разделяемый несколькими server processes volume не поддерживается.
+Реальная причина исторического termination не установлена этим изменением.
+Локально: два actual teardown regression-теста FAIL на базе, восемь новых
+filesystem/lifecycle cases PASS; полный server suite 216 PASS / 3 opt-in SKIP,
+typecheck/lint PASS. Disposable Linux Podman gate подтвердил non-root запись,
+retention после recreation, 30 000 synthetic writes с пятью bounded JSONL
+файлами без fake secrets и запись после rotation. Это operational validation,
+не атрибуция старого инцидента; CI/review и merge ещё требуются.
+Merge/status closure/release в этом поручении запрещены.
+Runbook: [безопасный lifecycle journal](server/DEPLOYMENT.md#lifecycle-journal-br-17).
+
 Server logger пишет относительно `process.cwd()` в `logs/`; в production image
 с `WORKDIR /app` это `/app/logs`. Текущий compose не монтирует этот путь, поэтому
 логи остаются в writable layer контейнера и исчезают при его recreation.
