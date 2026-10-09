@@ -16290,9 +16290,9 @@ thread_local! {
     /// Определена ли высота содержащего блока уровня схлопывания (§10.5):
     /// доля высоты ребёнка при неопределённой ведёт себя как `auto`.
     static COLLAPSE_CB_HEIGHT_DEF: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    /// The next `blocks` call lays out a table cell's content: the cell is a
-    /// block formatting context root (CSS 2.1 §9.4.1) and contains its
-    /// floats (§10.6.7), even as a `td` without a `display` value.
+    /// The next `blocks` call lays out a table cell's or caption's content:
+    /// both are block formatting context roots (CSS 2.1 §9.4.1) and contain
+    /// their floats (§10.6.7), even as a `td`/`caption` without `display`.
     static CELL_BFC: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
@@ -28612,10 +28612,16 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // (наследование caption-side).
             let cap_side_bottom =
                 cap.style.caption_bottom.or(e.style.caption_bottom) == Some(true);
+            // CSS 2.1 §9.4.1: a table caption is a block container that
+            // establishes a block formatting context, so its auto height
+            // contains its floats (§10.6.7), like a cell (`CELL_BFC`).
+            CELL_BFC.with(|c| c.set(true));
+            let inside = blocks(&cap.children, &cm, opts);
+            CELL_BFC.with(|c| c.set(false));
             let built = styled_div_with(cap, &cm)
                 .flex()
                 .flex_col()
-                .children(blocks(&cap.children, &cm, opts))
+                .children(inside)
                 .into_any_element();
             // A caption is a transformable block box (css-transforms-1
             // §transformable-element); its `transform` was dropped
