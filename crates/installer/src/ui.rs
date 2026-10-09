@@ -3,8 +3,8 @@
 //! /S — полностью тихо (окно не создаётся).
 
 use gpui::{
-    App, AppContext as _, Application, Bounds, Context, Hsla, IntoElement, ParentElement, Render,
-    Styled, Window, WindowBounds, WindowOptions, black, div, hsla, point, px, rgb, size,
+    App, AppContext as _, Bounds, Context, Hsla, IntoElement, ParentElement, Render, Styled,
+    Window, WindowBounds, WindowOptions, black, div, hsla, point, px, rgb, size,
 };
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
@@ -176,7 +176,7 @@ pub fn run_window(version: String) {
                     cx.background_executor()
                         .timer(std::time::Duration::from_millis(700))
                         .await;
-                    let _ = cx.update(|cx| {
+                    cx.update(|cx| {
                         let _ = handle.update(cx, |_, w, _| w.remove_window());
                         cx.quit();
                     });
