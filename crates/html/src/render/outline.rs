@@ -4,7 +4,7 @@ use crate::computed::{Computed, OUTLINE_DOUBLE};
 use crate::value::Len;
 use gpui::{AnyElement, IntoElement, Styled, div, px};
 
-pub(super) fn decorations(c: &Computed) -> Vec<AnyElement> {
+pub(crate) fn decorations(c: &Computed) -> Vec<AnyElement> {
     let mut out = Vec::new();
     // `outline`: рамка ВНЕ коробки и без влияния на раскладку — отдельный
     // абсолютный слой с отрицательным отступом ровно на её толщину.

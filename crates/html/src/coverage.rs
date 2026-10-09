@@ -445,6 +445,11 @@ const CONSUMERS: &[&str] = &[
     include_str!("anchor.rs"),
     include_str!("motion.rs"),
     include_str!("zoom.rs"),
+    include_str!("paint/stacking.rs"),
+    include_str!("paint/decorations/mod.rs"),
+    include_str!("render/box_div.rs"),
+    include_str!("render/classify.rs"),
+    include_str!("render/util.rs"),
 ];
 
 /// Читается ли поле в исходнике.
