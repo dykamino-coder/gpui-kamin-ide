@@ -26,6 +26,7 @@
 
 use crate::bands::FloatBands;
 mod clearance;
+mod piece;
 mod kid;
 pub use kid::{Kid, Kind, Nest};
 use crate::flow::FloatShape;
@@ -221,14 +222,13 @@ fn intrinsic_of(build: &Build, window: &mut Window, cx: &mut App) -> (f32, f32) 
 }
 
 /// План раскладки при ширине контекста `cb`: позиции всех детей и высота.
-fn plan(kids: &[Kid], cb: f32, window: &mut Window, cx: &mut App) -> Plan {
+fn plan(kids: &[Kid], cb: f32, contain_floats: bool, window: &mut Window, cx: &mut App) -> Plan {
     let mut bands = FloatBands::new(cb);
     let (slots, y) = place_seq(kids, 0.0, cb, 0.0, true, (0.0, cb), &mut bands, window, cx);
     Plan {
         width: cb,
-        // §10.6.7: хост охватывает флоаты — они абсолютные и высоту сами не
-        // растят (как `min_h` статического хоста).
-        height: bands.bottom(None).max(y),
+        // §§10.6.3, 10.6.7: only a formatting-context root contains floats.
+        height: if contain_floats { bands.bottom(None).max(y) } else { y },
         slots,
     }
 }
@@ -341,7 +341,7 @@ fn place_seq(
             Kind::Strut(h) => {
                 y += h;
             }
-            Kind::Piece { table } => {
+            Kind::Piece { table, rtl } => {
                 // Пол ширины таблицы: каркас пробы жмёт её до окна, а
                 // переполнение содержимым ширины коробки не растит.
                 let floor = if table {
@@ -364,23 +364,6 @@ fn place_seq(
                 // содержащего блока, сужает (`floats-wrap-bfc-with-margin-008`:
                 // правый флоат 50 в блоке 100, содержащий блок коробки —
                 // `margin-right: 50px`).
-                let edge = |l: f32, r: f32| {
-                    let (has_l, has_r) = (l > root.0 + EPS, r < root.1 - EPS);
-                    let (ll, rr) = if !has_l && !has_r {
-                        (l + ml, r - mr)
-                    } else {
-                        (l.max(x0 + ml.max(0.0)), r.min(x1 - mr.max(0.0)))
-                    };
-                    (ll, (rr - ll).max(0.0), has_l, has_r)
-                };
-                // Влезает ли border-box `bw` с левым краем `x` в окно `[l, r)`
-                // (`:2259-2274`: не наезжать на флоаты слева и справа, а в
-                // суженное окно — целиком).
-                let fits = |l: f32, r: f32, x: f32, bw: f32, has_l: bool, has_r: bool| {
-                    !(has_l && x < l - EPS)
-                        && !(has_r && x + bw > r + EPS)
-                        && !((has_l || has_r) && bw > r - l + EPS)
-                };
                 // Проба коробки с верхом `top`: место (левый край, доступная
                 // ширина), если она влезает в окно на всю свою высоту. Окно на
                 // верхней полосе → проба → проверка окна на всю высоту пробы
@@ -389,18 +372,22 @@ fn place_seq(
                 // `try_to_expand_for_auto_block_size`, `flow/float.rs:260`).
                 let try_at = |top: f32, window: &mut Window, cx: &mut App| -> Option<(f32, f32)> {
                     let (l, r) = bands.available(top, 0.0);
-                    let (x, avail, has_l, has_r) = edge(l, r);
+                    let edge = piece::Edges::new(l, r, root, (x0, x1), (ml, mr));
+                    let avail = edge.available();
                     let (bw, bh) = probe(kid, cbw, avail, None, window, cx);
                     let bw = bw.max(floor);
+                    let x = edge.origin(bw, rtl);
                     let (l2, r2) = bands.available(top, bh);
                     if (l2 - l).abs() < EPS && (r2 - r).abs() < EPS {
-                        return fits(l, r, x, bw, has_l, has_r).then_some((x, avail));
+                        return edge.fits(l, r, x, bw).then_some((x, avail));
                     }
-                    let (x2, avail2, h_l, h_r) = edge(l2, r2);
+                    let edge2 = piece::Edges::new(l2, r2, root, (x0, x1), (ml, mr));
+                    let avail2 = edge2.available();
                     let (bw2, bh2) = probe(kid, cbw, avail2, None, window, cx);
                     let bw2 = bw2.max(floor);
+                    let x2 = edge2.origin(bw2, rtl);
                     let (l3, r3) = bands.available(top, bh2);
-                    (l3 <= l2 + EPS && r3 >= r2 - EPS && fits(l2, r2, x2, bw2, h_l, h_r))
+                    (l3 <= l2 + EPS && r3 >= r2 - EPS && edge2.fits(l2, r2, x2, bw2))
                         .then_some((x2, avail2))
                 };
                 // Примыкающие флоаты (Blink `block_layout_algorithm.cc`
@@ -657,15 +644,17 @@ pub struct BandFlow {
     built: Vec<AnyElement>,
     /// Письмо хоста (см. `VERT`).
     vert: Option<bool>,
+    contain_floats: bool,
 }
 
 impl BandFlow {
-    pub fn new(kids: Vec<Kid>) -> Self {
+    pub fn new(kids: Vec<Kid>, contain_floats: bool) -> Self {
         BandFlow {
             kids: Rc::new(kids),
             plan: Rc::new(RefCell::new(None)),
             built: Vec::new(),
             vert: None,
+            contain_floats,
         }
     }
 
@@ -698,16 +687,15 @@ impl Element for BandFlow {
         let kids = self.kids.clone();
         let cache = self.plan.clone();
         let mut style = gpui::Style::default();
-        // Ширина `auto`, без сжатия: в колонке потока хост растягивается на
-        // всю ширину (известную раскладке — `known.width`), а там, где
-        // ширину решает содержимое (плавающий контейнер, строчный блок,
-        // ячейка), — shrink-to-fit §10.3.5 от внутренних размеров детей.
-        // Прежний `width: 100%` занимал всё доступное место и в пробе
-        // флоата: плавающий `.contain` из одних плавающих абзацев выходил во
-        // всю страницу вместо ширины самого широкого абзаца
-        // (`letter-spacing-206-ref`).
+        // Auto inline size stretches when layout supplies known.width; float,
+        // inline-block and cell hosts use their children's shrink-to-fit sizes
+        // (CSS 2.1 §10.3.5). A percentage width would instead fill all available
+        // space even during intrinsic measurement: the floating .contain in
+        // letter-spacing-206-ref must fit its widest floated paragraph.
+        // Height follows the owner's float-containment policy independently
+        // of this inline-size calculation (§§10.6.3, 10.6.7).
         style.flex_shrink = 0.0;
-        let vert = self.vert;
+        let (vert, contain_floats) = (self.vert, self.contain_floats);
         let id = window.request_measured_layout(style, move |known, available, window, cx| {
             with_vert(vert, || {
                 // Строчная ось — ширина в горизонтальном письме, высота в
@@ -746,7 +734,7 @@ impl Element for BandFlow {
                 {
                     return phys(cb, p.height);
                 }
-                let p = window.with_nested_layout(|window| plan(&kids, cb, window, cx));
+                let p = window.with_nested_layout(|window| plan(&kids, cb, contain_floats, window, cx));
                 let h = p.height;
                 *cache.borrow_mut() = Some(p);
                 phys(cb, h)
@@ -768,7 +756,7 @@ impl Element for BandFlow {
         // Отдельное дерево сохраняет точное начало хоста. Коробки и текст
         // округляются от общего абсолютного места, без переноса дробной
         // части начала в padding или позиции детей.
-        let vert = self.vert;
+        let (vert, contain_floats) = (self.vert, self.contain_floats);
         let unr = window.layout_size_unrounded(*state);
         let cb = f32::from(if vert.is_some() {
             unr.height
@@ -787,7 +775,7 @@ impl Element for BandFlow {
             None => {
                 let kids = self.kids.clone();
                 with_vert(vert, || {
-                    window.with_nested_layout(|window| plan(&kids, cb, window, cx))
+                    window.with_nested_layout(|window| plan(&kids, cb, contain_floats, window, cx))
                 })
             }
         };

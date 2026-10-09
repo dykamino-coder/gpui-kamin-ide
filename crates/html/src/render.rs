@@ -53,6 +53,7 @@ mod table_border_widths;
 mod table_spanning_size;
 mod table_clipped_content;
 mod replaced_used_style;
+mod inline_replaced_position;
 mod replaced_holder_ratio;
 mod replaced_content;
 mod svg_percentage_size;
@@ -295,7 +296,8 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     } else {
         c
     };
-    let mut d = apply(div(), paint);
+    let auto_height = margin_height::used_style(e, paint);
+    let mut d = apply(div(), auto_height.as_ref().unwrap_or(paint));
     if native_intrinsic::eligible(e) {
         d.style().sizing_keywords = Some(crate::apply::intrinsic_size::keywords(c));
     }
@@ -8050,13 +8052,14 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         // только от родителя, а сырой стиль ребёнка признака ещё не несёт.
         let cb_h_def = inline::inherit(inherited, &Computed::default()).cb_height_def;
         let prev_h = COLLAPSE_CB_HEIGHT_DEF.with(|c| c.replace(cb_h_def));
-        let out = collapse_margins(
+        let mut out = collapse_margins(
             nodes,
             matches!(
                 inherited.position,
                 Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
             ),
         );
+        margin_height::zero_float_blocks(&mut out, inherited);
         COLLAPSE_FONT_PX.with(|c| c.set(prev));
         COLLAPSE_CB_WIDTH_PX.with(|c| c.set(prev_w));
         COLLAPSE_CB_HEIGHT_DEF.with(|c| c.set(prev_h));
@@ -8435,13 +8438,12 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         && zero_len(inherited.padding.top)
         && zero_len(inherited.borders().top);
     // Измеряемый бандовый хост (`band_flow.rs`) — только в БЛОЧНОМ контейнере
-    // горизонтального письма слева направо: в гибком и сетке `float` не
-    // действует (css-flexbox-1 §3, css-grid-1 §6.1), а полосы считают обе
-    // стенки от ЛЕВОГО края физически (логических осей у них нет, шаг F10).
+    // горизонтального письма: в гибком и сетке `float` не
+    // действует (css-flexbox-1 §3, css-grid-1 §6.1).
     // С шагом F10 (`BF_F10=1`) хост работает и в вертикальном письме: план в
     // логических осях, перевод в физику при сборке (`band_flow::VERT`).
-    // `sideways-*` и `direction: rtl` по-прежнему вне хоста — у них line-left
-    // не верх (css-writing-modes-4 :1877-1888).
+    // Horizontal float sides are physical (CSS 2.1 §9.5.1); paragraphs
+    // handle RTL within those bands. Vertical RTL still needs axis conversion.
     let vert_host = inherited.vertical == Some(true)
         && band_f10()
         && inherited.sideways != Some(true);
@@ -8461,7 +8463,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         )
         && (inherited.vertical != Some(true) || vert_host)
         && (inherited.vertical_rl != Some(true) || vert_host)
-        && inherited.rtl != Some(true);
+        && (inherited.rtl != Some(true) || inherited.vertical != Some(true));
     let _fl_guard = BandFlGuard(BAND_FL.with(|f| f.replace(inherited.first_line.as_deref().cloned())));
     let _cbh_guard = BandCbhGuard(BAND_CBH.with(|h| {
         h.replace(match inherited.height {
@@ -8493,7 +8495,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 _ => opts.base_size(),
             },
             measured_ok,
-            own_context_style(inherited),
+            own_context_style(inherited) || inherited.flex_item,
         ),
         flex_ctx,
     );
@@ -11849,8 +11851,8 @@ fn wrap_floats(
             });
         if let Some((mut host, next, took_lead, lifted)) = hosted {
             // CSS 2.1 §10.6.3: ordinary blocks count in-flow boxes, not floats.
-            // A complete static suffix has no later sibling needing its bands.
-            if !parent_bfc && next == nodes.len() && host.attr("bands") == Some("1") {
+            // A complete unfragmented suffix needs no later float bands.
+            if !parent_bfc && !parent.in_multicol && next == nodes.len() {
                 host.attrs.push(("inflow-height".into(), "1".into()));
             }
             if let Some(at) = took_lead {
@@ -13719,7 +13721,7 @@ fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEl
     let kids = band_kids(
         &e.children, count, inherited, opts, em, e.attr("adjoining-start") == Some("1"),
     );
-    let flow = crate::band_flow::BandFlow::new(kids);
+    let flow = crate::band_flow::BandFlow::new(kids, e.attr("inflow-height") != Some("1"));
     if inherited.vertical == Some(true) {
         flow.vertical(inherited.vertical_rl == Some(true))
             .into_any_element()
@@ -13870,6 +13872,7 @@ fn band_kids(
         } else {
             match band_piece_m(n, em) {
                 Some(true) => Kind::Piece {
+                    rtl: inherited.rtl == Some(true),
                     table: c.tag == "table" || matches!(c.style.display, Some(Display::Table)),
                 },
                 Some(false) => Kind::Strut(px_margin_box(&c.style).map_or(0.0, |(_, h)| h)),
@@ -14030,7 +14033,7 @@ fn band_kids(
                         .flow_shapes
                         .clone()
                         .unwrap_or_else(|| std::sync::Arc::new((Vec::new(), Vec::new())));
-                    return crate::flow::FlowRow::new(atoms, shapes, false).into_any_element();
+                    return crate::flow::FlowRow::new(atoms, shapes, inherited.rtl == Some(true)).into_any_element();
                 }
                 // Замещаемый флоат, кроме `<img>` (`embed`, `object`,
                 // `video`…), — своей веткой `element` ниже: каркас блока со
@@ -15877,24 +15880,11 @@ fn by_layer(mut nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
 fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
     let mut out: Vec<Node> = nodes.to_vec();
     margin_inline_boxes::prepare(&mut out);
-    // §10.6.3: в высоту `auto` входят только дети В ПОТОКЕ — «floating boxes
-    // are ignored». Блок, у которого в потоке нет ничего, кроме плавающих
-    // детей, высотой НОЛЬ и схлопывается насквозь. Наша раскладка ставит
-    // плавающий блок обычным ребёнком, и родитель набирал его высоту.
-    //
-    // Гейт — `through_strut_no_clear`: clearance меняет позицию, не высоту
-    // (§10.6.3). Он требует нулевых рамок, отступов и
-    // `min-height`, высоты `auto`, отсутствия строчной коробки и своего
-    // контекста форматирования. Коробка со СВОИМ контекстом плавающего ребёнка
-    // содержит и высоту от него получает по праву — её ветка не трогает.
-    //
-    // Замерено: CSS2 5078 -> 5082 (+5, потеряна одна —
-    // `block-formatting-context-height-002`: там нулевая коробка лежит внутри
-    // АБСОЛЮТНОГО контейнера, и по §10.6.7 высоту флоата обязан взять он, а
-    // наша раскладка её оттуда уже не получает). oldfront 2352 -> 2349:
-    // `flexbox_item-float`, `flexbox_item-top-float`, `flex-box-wrap` —
-    // там контейнер приходит сюда БЕЗ своего `display`, то есть гибким его
-    // никто не сделал, и прежняя зелень держалась на этой же ошибке.
+    // CSS 2.1 §10.6.3: floats do not contribute to ordinary auto height.
+    // Margin collapse proves zero in-flow height for an open empty block;
+    // The contextual proof also handles borders, padding and white-space.
+    // Formatting contexts retain floats (§10.6.7). Keep the absolute-parent
+    // guard: its float containment currently depends on the child's height.
     for node in out.iter_mut().filter(|_| !abs_parent) {
         let Node::Element(e) = node else { continue };
         let has_float = e
@@ -19319,15 +19309,9 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
             // вовсе. Тот же приём, что у блочного пути (`to_icb`).
             let x_set = edge_set(e.style.inset.left) || edge_set(e.style.inset.right);
             let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
-            // РОВНО ОДНА заданная ось: по ней коробку ставит край, по
-            // свободной — статическая позиция в строке (§10.3.7 п.1/§10.6.4
-            // п.1, оси независимы). Прежде такая коробка сидела в нулевом
-            // держателе, стоявшем в статической точке по ОБЕИМ осям, и край
-            // ПРИБАВЛЯЛСЯ к статической координате вместо того, чтобы её
-            // заменить (`probe/svpf.html`: `left: 80` после «34» давало 240,
-            // а не 80). Щуп в строке отдаёт дырку, `LatePlace` обнуляет сдвиг
-            // по заданной оси и ставит свободную в дырку — ровно как у коробки
-            // без краёв, только с `fixed_axes`.
+            // CSS 2.1 §§10.1, 10.3.7, 10.6.4: explicit insets use the
+            // containing block; the auto axis keeps its inline static spot.
+            // Route to that block's layer, rather than the paragraph wrapper.
             if x_set != y_set && e.style.z_index.unwrap_or(0) >= 0 {
                 let spot: crate::interact::SpotCell = Default::default();
                 spot.set(crate::interact::Spot {
@@ -19346,7 +19330,12 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                     ..Default::default()
                 });
                 let probe = crate::interact::spot_probe(spot.clone(), false);
-                return match crate::interact::late_push(spot, inline_abs_paint_last(e, holder.into_any_element())) {
+                return match inline_replaced_position::push(
+                    spot,
+                    inline_abs_paint_last(e, holder.into_any_element()),
+                    &e.style,
+                    inherited,
+                ) {
                     None => Some(probe),
                     Some(kept) => {
                         let mut hole = div().relative().w_0().h_0().flex_shrink_0();

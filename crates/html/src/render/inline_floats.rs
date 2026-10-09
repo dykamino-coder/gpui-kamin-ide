@@ -63,6 +63,32 @@ fn split(node: Node, parent: &Computed) -> Vec<Node> {
     if !children.iter().any(floated) {
         return vec![node];
     }
+    // CSS 2.1 §9.5 and CSS Text §5.1: an out-of-flow float does not
+    // split a nowrap text sequence. Keep text in one inline fragment so
+    // float placement can defer it past the whole unbreakable sequence.
+    // Leading floats and preserved hard breaks remain on their own path.
+    let nowrap_text = (parent.nowrap != Some(true)
+        && style.nowrap == Some(true)
+        && style.preserve_newlines != Some(true)
+        && children
+            .iter()
+            .all(|n| matches!(n, Node::Text(_)) || floated(n))
+        && matches!(
+            children.iter().find(|n| match n {
+                Node::Text(t) => !super::blank_text(t),
+                _ => true,
+            }),
+            Some(Node::Text(_))
+        ))
+    .then(|| {
+        children
+            .iter()
+            .filter_map(|n| match n {
+                Node::Text(text) => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<String>()
+    });
     let fragment = |children: Vec<Node>| {
         let mut fragment = e.clone();
         fragment.children = children;
@@ -91,6 +117,12 @@ fn split(node: Node, parent: &Computed) -> Vec<Node> {
     }
     if !pending.is_empty() {
         output.push(fragment(pending));
+    }
+    if let Some(text) = nowrap_text {
+        let floats = output.into_iter().filter(floated);
+        return std::iter::once(fragment(vec![Node::Text(text)]))
+            .chain(floats)
+            .collect();
     }
     output
 }

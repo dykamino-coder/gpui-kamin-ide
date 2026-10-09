@@ -1,4 +1,4 @@
-//! Determine whether height constraints separate a block from its end margins.
+//! Resolve proven block heights and height-constrained margin separation.
 
 use super::*;
 
@@ -131,4 +131,99 @@ pub(super) fn raises(e: &Element) -> bool {
             !known || mh > sum + 0.01
         }
     }
+}
+
+/// CSS 2.1 §10.6.3 ignores floats in ordinary blocks' auto content height.
+/// Borders and padding stop margin collapse but do not make floats in-flow.
+/// Prove only zero-height block content; unknown line boxes stay on layout.
+fn zero_inflow(e: &Element, inherited: &Computed) -> bool {
+    if !in_flow(&e.style)
+        || own_context(e)
+        || inline_level_box(e)
+        || replaced_inline(&e.tag)
+        || !matches!(e.style.display, None | Some(Display::Block))
+        || e.list_item.is_some()
+        || matches!(e.tag.as_str(), "html" | "body")
+        || !matches!(e.style.height, None | Some(Len::Auto))
+        || !zero_len(e.style.min_height)
+        || e.style.keep_spaces == Some(true)
+        || e.style.preserve_newlines == Some(true)
+    {
+        return false;
+    }
+    let merged = inline::inherit(inherited, &e.style);
+    merged.vertical != Some(true) && e.children.iter().all(|node| zero_child(node, &merged))
+}
+
+fn zero_child(node: &Node, inherited: &Computed) -> bool {
+    let e = match node {
+        Node::Text(text) => {
+            return blank_text(text)
+                && inherited.keep_spaces != Some(true)
+                && inherited.preserve_newlines != Some(true);
+        }
+        Node::Element(e) if !in_flow(&e.style) => return true,
+        Node::Element(e) => e,
+    };
+    if e.style.display == Some(Display::None) {
+        return true;
+    }
+    let b = e.style.borders();
+    let merged = inline::inherit(inherited, &e.style);
+    merged.vertical != Some(true)
+        && !inline_level_box(e)
+        && matches!(e.style.display, None | Some(Display::Block))
+        && e.list_item.is_none()
+        && !own_context(e)
+        && !replaced_inline(&e.tag)
+        && e.style.clear.is_none()
+        && matches!(e.style.height, None | Some(Len::Auto) | Some(Len::Px(0.0)))
+        && zero_len(e.style.min_height)
+        && [
+            e.style.margin.top,
+            e.style.margin.bottom,
+            e.style.padding.top,
+            e.style.padding.bottom,
+            b.top,
+            b.bottom,
+        ]
+        .into_iter()
+        .all(zero_len)
+        && e.style.keep_spaces != Some(true)
+        && e.style.preserve_newlines != Some(true)
+        && e.children.iter().all(|node| zero_child(node, &merged))
+}
+
+/// Apply the zero-content proof with the real parent's inherited white-space.
+pub(super) fn zero_float_blocks(nodes: &mut [Node], inherited: &Computed) {
+    if matches!(
+        inherited.position,
+        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+    ) {
+        return;
+    }
+    for node in nodes {
+        let Node::Element(e) = node else { continue };
+        let has_float = e.children.iter().any(|node| {
+            matches!(node,
+            Node::Element(child) if child.style.float.is_some_and(|side| side != 0))
+        });
+        if has_float && zero_inflow(e, inherited) {
+            e.attrs.push(("auto-zero-height".into(), "1".into()));
+        }
+    }
+}
+
+/// Keep the computed height auto: percentages still need an indefinite basis
+/// (CSS 2.1 §10.5). Only the native box receives the proven used height.
+pub(super) fn used_style(e: &Element, style: &Computed) -> Option<Computed> {
+    if e.attr("auto-zero-height") != Some("1")
+        || style.vertical == Some(true)
+        || !matches!(style.height, None | Some(Len::Auto))
+    {
+        return None;
+    }
+    let mut used = style.clone();
+    used.height = Some(Len::Px(0.0));
+    Some(used)
 }
