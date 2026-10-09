@@ -142,6 +142,7 @@ pub(crate) mod blocks;
 pub(crate) use crate::render::blocks::*;
 pub(crate) mod element;
 pub(crate) use crate::render::element::*;
+pub(crate) use crate::layout::multicol::container::*;
 
 /// Настройки отрисовки: то, что задаёт приложение, а не документ.
 #[derive(Clone)]

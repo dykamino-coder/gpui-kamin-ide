@@ -445,6 +445,7 @@ const CONSUMERS: &[&str] = &[
     include_str!("anchor.rs"),
     include_str!("motion.rs"),
     include_str!("zoom.rs"),
+    include_str!("layout/multicol/container.rs"),
     include_str!("layout/table/paint.rs"),
     include_str!("paint/gap_rules/mod.rs"),
     include_str!("paint/gap_rules/geometry.rs"),
