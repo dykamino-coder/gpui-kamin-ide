@@ -417,7 +417,7 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
     // (замерено на background-size-document-root-vrl-*).
     if taken.1 == Some(true)
         && html.style.align_self.is_none()
-        && std::env::var("ANCH_BG").map_or(html.style.bg_image.is_none(), |_| true)
+        && html.style.bg_image.is_none()
     {
         html.style.align_self = Some(crate::computed::Align::End);
     }
@@ -509,27 +509,6 @@ fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
             e.style.vertical_rl = own.1;
             e.style.rtl = own.2;
             e.style.sideways = own.3;
-            if {
-                static ON: std::sync::LazyLock<bool> =
-                    std::sync::LazyLock::new(|| std::env::var("LOG_DBG").is_ok());
-                *ON
-            } && e
-                .style
-                .logical
-                .as_ref()
-                .is_some_and(|l| l.border.iter().any(|b| b.is_some()))
-            {
-                eprintln!(
-                    "LOG tag={} cls={:?} v={:?} rl={:?} rtl={:?} sw={:?} border={:?}",
-                    e.tag,
-                    e.attr("class"),
-                    e.style.vertical,
-                    e.style.vertical_rl,
-                    e.style.rtl,
-                    e.style.sideways,
-                    e.style.logical.as_ref().map(|l| l.border.clone())
-                );
-            }
             // Табличность ячейки на этом шаге держится ТЕГОМ:
             // `Display::TableCell` приходит только из авторского CSS
             // (замеренный откат в шапке `resolve_logical`), поэтому

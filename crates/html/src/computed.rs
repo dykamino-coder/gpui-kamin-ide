@@ -12562,24 +12562,6 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
         }
         None => (parts[0].trim(), None),
     };
-    // (в hsl, метод longer?) — интерполяция нужна ЛЮБОМУ `in hsl`:
-    // shorter (дефолт) идёт короткой дугой тона, longer — длинной; эталоны
-    // пишут ref через `in hsl` без метода (gradient-longer-hue-hsl-002-ref).
-    // Метод дуги тона (css-color-4 §hue-interpolation): shorter (дефолт),
-    // longer, increasing, decreasing.
-    let hsl_interp: Option<u8> = interp
-        .filter(|i| matches!(i.split_whitespace().next(), Some("hsl") | Some("hwb")))
-        .map(|i| {
-            if i.contains("longer") {
-                1
-            } else if i.contains("increasing") {
-                2
-            } else if i.contains("decreasing") {
-                3
-            } else {
-                0
-            }
-        });
     // Дуга тона нужна ЛЮБОМУ полярному пространству, не только `hsl`
     // (css-color-4 §12.4); умолчание — shorter.
     let hue_arc: u8 = interp.map_or(0, |i| {
@@ -12752,65 +12734,10 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
     // без позиции — поровну между соседями С позициями (а не по номеру в
     // списке). Тот же расклад, что у растра.
     let last = raw.len() - 1;
-    let mut stops: Vec<(Color, f32)> = crate::background::place_stops(raw.clone());
-    // `in hsl longer hue`: тон идёт ДЛИННОЙ дугой (css-images-4 §3.4.1.1).
-    // Растр интерполирует линейно в sRGB, поэтому дуга выкладывается
-    // СИНТЕТИЧЕСКИМИ промежуточными стопами (gradient-longer-hue-hsl-001).
-    // ЗАМЕРЕНО В МИНУС без флага (−13/+2: дуга даёт 0.6–0.8% против
-    // эталонов — точность растеризации полос; single-stop 18.25) —
-    // остаётся за HSL_ARC до точной математики.
-    if let (Some(method), true) = (
-        hsl_interp.filter(|_| std::env::var("HSL_ARC").is_ok()),
-        stops.len() >= 2,
-    ) {
-        let mut dense: Vec<(Color, f32)> = vec![];
-        for w in stops.windows(2) {
-            let ((c1, p1), (c2, p2)) = (w[0], w[1]);
-            dense.push((c1, p1));
-            let (h1, s1, l1) = crate::color_space::rgb_to_hsl(c1);
-            let (h2, s2, l2) = crate::color_space::rgb_to_hsl(c2);
-            // shorter: дуга в (-180,180]; longer — противоположная ей.
-            let mut d = (h2 - h1).rem_euclid(360.0);
-            match method {
-                // shorter: дуга в (-180, 180].
-                0 => {
-                    if d > 180.0 {
-                        d -= 360.0;
-                    }
-                }
-                // longer: противоположная короткой.
-                1 => {
-                    if d > 180.0 {
-                        d -= 360.0;
-                    }
-                    if d > 0.0 {
-                        d -= 360.0;
-                    } else {
-                        d += 360.0;
-                    }
-                }
-                // increasing: тон только растёт (0..360).
-                2 => {}
-                // decreasing: тон только убывает.
-                _ => {
-                    if d > 0.0 {
-                        d -= 360.0;
-                    }
-                }
-            }
-            const K: usize = 48;
-            for i in 1..K {
-                let t = i as f32 / K as f32;
-                let h = (h1 + d * t).rem_euclid(360.0);
-                let (r, g, b) =
-                    crate::color_space::hsl_to_rgb(h, s1 + (s2 - s1) * t, l1 + (l2 - l1) * t);
-                let a = c1.a + (c2.a - c1.a) * t;
-                dense.push((Color { r, g, b, a }, p1 + (p2 - p1) * t));
-            }
-        }
-        dense.push(*stops.last().unwrap());
-        stops = dense;
-    }
+    let stops: Vec<(Color, f32)> = crate::background::place_stops(raw.clone());
+    // TODO(gradient): `in hsl longer hue` — дуга тона синтетическими стопами
+    // (css-images-4 §3.4.1.1) была за отладочным флагом HSL_ARC, замерена в
+    // минус (−13/+2) и удалена; вернуться с точной математикой полос.
     // Точечные стопы пригодны к отрисовке, только когда позиции есть у ВСЕХ:
     // смешение точек с долями требует длины оси уже при разборе.
     let stops_px: Vec<(Color, f32)> = if !any_pct && raw_px.iter().all(|(_, p)| p.is_some()) {

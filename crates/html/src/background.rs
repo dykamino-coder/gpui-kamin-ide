@@ -3010,19 +3010,6 @@ pub fn paint_tiles(
         ys = ys.into_iter().step_by(k).collect();
         tile = (tile.0 * k as f32, tile.1 * k as f32);
     }
-    if std::env::var("HTML_BG").is_ok() {
-        eprintln!(
-            "BG box=({:.0},{:.0}) tile=({:.0},{:.0}) start=({:.0},{:.0}) xs={} ys={}",
-            box_size.0,
-            box_size.1,
-            tile.0,
-            tile.1,
-            start.0,
-            start.1,
-            xs.len(),
-            ys.len()
-        );
-    }
     let Some(image) = conic::tile(&found, tile, window.scale_factor()) else {
         return;
     };

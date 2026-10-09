@@ -1163,17 +1163,6 @@ impl Paragraph {
             .iter()
             .map(|f| f.cut(y0, y1))
             .fold(0.0f32, f32::max);
-        // След вырезов строк: FLOW_DBG=1.
-        if {
-            static ON: std::sync::LazyLock<bool> =
-                std::sync::LazyLock::new(|| std::env::var("FLOW_DBG").is_ok());
-            *ON
-        } {
-            eprintln!(
-                "FLOWCUT #{line_no} y={y0}..{y1} l={l} r={r} {:?}",
-                self.flow
-            );
-        }
         (l, r)
     }
 
@@ -3125,27 +3114,6 @@ impl Paragraph {
                 indent,
             });
         }
-        // Печать разреза строк: `HTML_LINES=1`. Себя окупила — ею нашлось,
-        // что узел из идеографических пробелов не доезжает до раскладки
-        // ВООБЩЕ (отбрасывался разбором). Когда след ведёт «строка пропала»,
-        // смотреть надо сюда, а не в саму раскладку.
-        if {
-            static ON: std::sync::LazyLock<bool> =
-                std::sync::LazyLock::new(|| std::env::var("HTML_LINES").is_ok());
-            *ON
-        } {
-            eprintln!(
-                "LINES fonts={:?} {:?} -> {:?}",
-                self.runs
-                    .iter()
-                    .map(|r| r.font.family.to_string())
-                    .collect::<Vec<_>>(),
-                self.text,
-                out.iter()
-                    .map(|l| (l.range.clone(), f32::from(l.width)))
-                    .collect::<Vec<_>>()
-            );
-        }
         out
     }
 
@@ -4209,22 +4177,6 @@ impl Element for Paragraph {
                     probe.run_metrics = probe.measure_runs(window);
                 }
                 let lines = probe.split(limit, window);
-                if {
-                    static ON: std::sync::LazyLock<bool> =
-                        std::sync::LazyLock::new(|| std::env::var("HTML_MEASURE").is_ok());
-                    *ON
-                } {
-                    eprintln!(
-                        "MEASURE {:?} known={:?}x{:?} avail={:?}x{:?} limit={:?} lines={:?}",
-                        probe.text,
-                        known.width,
-                        known.height,
-                        available.width,
-                        available.height,
-                        limit,
-                        lines.iter().map(|l| f32::from(l.width)).collect::<Vec<_>>()
-                    );
-                }
                 // Ширина — по самой длинной строке. Вся отведённая ширина
                 // берётся только под выключку по ширине: там остаток строки
                 // раздаётся пробелам, и без полной колонки раздавать нечего.
@@ -4721,20 +4673,6 @@ impl Element for Paragraph {
                 continue;
             }
             let dx = line_offset(align, self.wrap.rtl, free_raw) + lead;
-            if {
-                static ON: std::sync::LazyLock<bool> =
-                    std::sync::LazyLock::new(|| std::env::var("TCA_DBG").is_ok());
-                *ON
-            } {
-                eprintln!(
-                    "TCA para {:?} align={:?} bw={:?} lw={:?} free={:?}",
-                    &self.text[..self.text.len().min(6)],
-                    align,
-                    bounds.size.width,
-                    line.width,
-                    free
-                );
-            }
             let at = point(bounds.origin.x + dx, y + above(i));
             // Висящие пробелы конца строки при письме справа налево уходят по
             // правилу L1 на ЛЕВЫЙ край и отодвигали бы текст от края коробки.
@@ -6331,13 +6269,6 @@ pub fn align_of(a: Option<crate::computed::TextAlign>) -> Align {
 /// Выключка абзаца с разворотом логических краёв по стороне письма.
 pub fn align_for(c: &crate::computed::Computed) -> Align {
     let rtl = c.rtl == Some(true);
-    if {
-        static ON: std::sync::LazyLock<bool> =
-            std::sync::LazyLock::new(|| std::env::var("TA_DBG").is_ok());
-        *ON
-    } {
-        eprintln!("TA align_for rtl={rtl} ta={:?}", c.text_align);
-    }
     let value = c
         .text_align
         .unwrap_or(crate::computed::TextAlign::Start)

@@ -12,6 +12,9 @@
 //! тысячи. Документ подменяется в той же сущности, кадр снимается прямо
 //! отсюда (`PrintWindow`), и следующая пара идёт без перезапуска.
 
+// The runner is configured through WPT_* environment variables (see clippy.toml).
+#![allow(clippy::disallowed_methods)]
+
 #[path = "wptrun/pixel_compare.rs"]
 mod pixel_compare;
 #[path = "wptrun/reference_result.rs"]

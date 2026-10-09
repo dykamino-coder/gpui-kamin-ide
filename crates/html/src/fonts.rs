@@ -248,13 +248,6 @@ fn load_faces_into(css: &str) {
                 loaded
             }
         };
-        if {
-            static ON: std::sync::LazyLock<bool> =
-                std::sync::LazyLock::new(|| std::env::var("FONT_DBG").is_ok());
-            *ON
-        } {
-            eprintln!("FONT_DBG face family={family:?} src={src:?} real={real:?}");
-        }
         if let Some(real) = real {
             let name = family.trim_matches(is_quote).to_ascii_lowercase();
             if let Some(Some(v)) = ROMN_BY_SRC.with(|m| m.borrow().get(&src).copied()) {

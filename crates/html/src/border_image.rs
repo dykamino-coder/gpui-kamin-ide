@@ -170,12 +170,6 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                             unit,
                             (col == 1, row == 1),
                         );
-                        if std::env::var("HTML_BI").is_ok() {
-                            eprintln!(
-                                "BI r{row} c{col} src=({sx},{sy},{sw},{sh}) dest=({dx:.3},{dy:.3},{dw:.3},{dh:.3}) cells={}",
-                                cells.len()
-                            );
-                        }
                         for (cell, (fx, fy)) in cells {
                             // Источник обрезанной копии — та же доля куска.
                             let part = (

@@ -421,9 +421,6 @@ fn color_fn(body: &str) -> Option<(f32, f32, f32, f32)> {
         // Своё пространство из `@color-profile --имя { src: url(…) }`.
         custom if custom.starts_with("--") => {
             let profile = PROFILES.with(|p| p.borrow().get(custom).cloned());
-            if std::env::var("HTML_ICC").is_ok() {
-                eprintln!("ICC lookup '{custom}': {}", profile.is_some());
-            }
             let profile = profile?;
             let (r, g, b) = icc_to_srgb(&profile, c)?;
             return Some((r, g, b, a));
@@ -942,12 +939,6 @@ pub fn load_profiles(css: &str) {
         };
         let clean = path.strip_prefix("file:///").unwrap_or(&path);
         let read = std::fs::read(clean);
-        if std::env::var("HTML_ICC").is_ok() {
-            eprintln!(
-                "ICC profile '{name}' <- {clean}: {:?}",
-                read.as_ref().map(|b| b.len())
-            );
-        }
         if let Ok(bytes) = read
             && name.starts_with("--")
         {

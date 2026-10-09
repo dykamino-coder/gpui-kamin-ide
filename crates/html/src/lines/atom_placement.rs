@@ -14,31 +14,6 @@ impl Paragraph {
         let segs = self.measure(window);
         let pads = self.line_padding();
         let lh = f32::from(self.line_height);
-        // След мест атомов: ATOM_DBG=1.
-        if {
-            static ON: std::sync::LazyLock<bool> =
-                std::sync::LazyLock::new(|| std::env::var("ATOM_DBG").is_ok());
-            *ON
-        } {
-            eprintln!(
-                "ATOMS lh={lh} fs={:?} strut={:?} runs={:?} boxes={:?} pads={pads:?} bounds={bounds:?} fonts={:?} text={:?} lines={:?} emph={:?} trim={:?}",
-                self.font_size,
-                self.strut,
-                self.run_metrics,
-                self.atom_boxes,
-                self.runs
-                    .iter()
-                    .map(|r| (r.font.family.clone(), r.font_size))
-                    .collect::<Vec<_>>(),
-                self.text,
-                self.lines
-                    .iter()
-                    .map(|l| l.range.clone())
-                    .collect::<Vec<_>>(),
-                self.emph_spans,
-                self.ruby_trim
-            );
-        }
         let mut tops = Vec::with_capacity(self.lines.len());
         let mut y = 0.0f32;
         for (i, _) in self.lines.iter().enumerate() {
