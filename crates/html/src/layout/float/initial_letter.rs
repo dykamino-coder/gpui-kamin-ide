@@ -310,7 +310,7 @@ pub(crate) fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts:
 /// forms no group (opacity, filter, transform, … act on the float through
 /// it), and the float must be its first in-flow content — only blank text
 /// before it. Returns the float and the wrapper without it.
-pub(crate) fn split_leading_float(e: &Element) -> Option<(Element, Element)> {
+pub(super) fn split_leading_float(e: &Element) -> Option<(Element, Element)> {
     let genuine_inline =
         (e.inline && e.style.display.is_none()) || e.style.inline_display == Some(true);
     // Ruby boxes are not plain inline wrappers: their content is paired into
@@ -361,7 +361,7 @@ pub(crate) fn split_leading_float(e: &Element) -> Option<(Element, Element)> {
 /// Inherited values a hoisted float takes from the inline wrapper it left
 /// (only those the wrapper sets itself; `inline::inherit` would also resolve
 /// font-relative units against the bare wrapper style).
-pub(crate) fn carry_inherited(wrapper: &Computed, own: &mut Computed) {
+fn carry_inherited(wrapper: &Computed, own: &mut Computed) {
     own.color = own.color.or(wrapper.color);
     own.font_weight = own.font_weight.or(wrapper.font_weight);
     own.italic = own.italic.or(wrapper.italic);
@@ -370,7 +370,7 @@ pub(crate) fn carry_inherited(wrapper: &Computed, own: &mut Computed) {
     }
 }
 
-pub(crate) fn inline_float_host(e: &Element) -> Option<Element> {
+pub(super) fn inline_float_host(e: &Element) -> Option<Element> {
     // `display: inline` после каскада — это `InlineBlock` с пометкой
     // `inline_display` (`computed.rs`), поэтому одного взгляда на `display`
     // мало; тег без своего `display` даёт строчность через `e.inline`.

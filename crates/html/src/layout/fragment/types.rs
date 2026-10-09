@@ -527,7 +527,7 @@ pub struct Rows {
 
 thread_local! {
     /// Глубина построения копий детей стопки (`render.rs`, `StackChild`).
-    pub(crate) static STACK_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static STACK_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// Сторож «строится копия ребёнка стопки». Многоколоночник со спаннером
@@ -553,7 +553,7 @@ impl Drop for StackScope {
 thread_local! {
     /// Высота ряда вложенного многоколоночника, заданная ВНЕШНЕЙ колонкой
     /// (`set_outer_row` → `take_outer_row` первой строкой `render::element`).
-    pub(crate) static OUTER_ROW: std::cell::Cell<Option<(f32, f32)>> = const { std::cell::Cell::new(None) };
+    static OUTER_ROW: std::cell::Cell<Option<(f32, f32)>> = const { std::cell::Cell::new(None) };
     /// Сколько первых колонок укладки стоят НЕ с верха фрагментаинера (первый
     /// ряд вложенного многоколоночника, начатого ниже верха внешней колонки):
     /// не влезший с верха такой колонки монолит уходит дальше, а не

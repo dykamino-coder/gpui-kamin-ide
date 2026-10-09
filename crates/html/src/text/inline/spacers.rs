@@ -20,7 +20,7 @@ use gpui::AnyElement;
 /// background (CSS 2.1 sections 8.4 and 14.2), with no duplicate band extension.
 /// Empty inline boxes still use their explicit overlay for the vertical sides.
 ///
-pub(crate) fn spacer_style(merged: &Computed, advance: f32) -> Computed {
+pub(super) fn spacer_style(merged: &Computed, advance: f32) -> Computed {
     let mut style = merged.clone();
     style.letter_spacing = Some(Len::Px(advance));
     style.word_spacing = None;
@@ -30,7 +30,7 @@ pub(crate) fn spacer_style(merged: &Computed, advance: f32) -> Computed {
     style
 }
 
-pub(crate) fn padding_spacer_style(merged: &Computed, advance: f32, painted: bool) -> Computed {
+pub(super) fn padding_spacer_style(merged: &Computed, advance: f32, painted: bool) -> Computed {
     let mut style = spacer_style(merged, advance);
     if painted {
         style.inline_bg = merged.inline_bg;
@@ -42,7 +42,7 @@ pub(crate) fn padding_spacer_style(merged: &Computed, advance: f32, painted: boo
 /// виден фон предка (§8.3 «margin properties … are always transparent»).
 /// Рамку распорке поля не даём: полосу с рамкой уже мерили дважды, обе потери
 /// в `bidi-*` (см. запись у `uniform_border`).
-pub(crate) fn margin_spacer_style(merged: &Computed, inherited: &Computed, advance: f32) -> Computed {
+pub(super) fn margin_spacer_style(merged: &Computed, inherited: &Computed, advance: f32) -> Computed {
     let mut style = spacer_style(merged, advance);
     style.inline_bg = inherited.inline_bg;
     style
@@ -65,7 +65,7 @@ pub(crate) fn margin_spacer_style(merged: &Computed, inherited: &Computed, advan
 /// она садится в строку атомом и растит строку на спуск шрифта. По
 /// css-backgrounds-3 §4.1 `<line-width>` — это `<length [0,∞]>` любых единиц,
 /// сужения до точек спека не даёт.
-pub(crate) fn border_px(l: Option<Len>, c: &Computed, font_px: f32) -> Option<f32> {
+fn border_px(l: Option<Len>, c: &Computed, font_px: f32) -> Option<f32> {
     match l {
         None => Some(0.0),
         Some(Len::Px(v)) => Some(v),
@@ -186,11 +186,11 @@ pub const ZWSP: &str = "\u{200b}";
 /// СВОЙ кусок ровно из одного знака: так она и отличается от того же знака,
 /// пришедшего из документа.
 /// Box ids of inline edge spacers (`Computed::spacer_edge`); 0 means none.
-pub(crate) static SPACER_BOX: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+pub(super) static SPACER_BOX: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 
 /// Ids for the transparent band colour of inline boxes with a border and no
 /// background (see `collect_with_empty_metrics`).
-pub(crate) static BORDER_BAND: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+pub(super) static BORDER_BAND: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 
 /// Edge spacers with their box: (byte offset, box id, physical left edge,
 /// parent rtl), in logical order.

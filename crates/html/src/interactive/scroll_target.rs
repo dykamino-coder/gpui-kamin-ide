@@ -15,7 +15,7 @@ impl Drop for Restore {
     fn drop(&mut self) { TARGET.with(|slot| *slot.borrow_mut() = self.0.take()); }
 }
 
-pub(crate) fn build<R>(node: u64, handle: &ScrollHandle, horizontal: bool, vertical: bool,
+pub(super) fn build<R>(node: u64, handle: &ScrollHandle, horizontal: bool, vertical: bool,
     margin: Sides, f: impl FnOnce() -> R) -> (R, bool) {
     let prior = TARGET.with(|slot| slot.replace(Some(Target {
         node, handle: handle.clone(), horizontal, vertical, margin, applied: false,

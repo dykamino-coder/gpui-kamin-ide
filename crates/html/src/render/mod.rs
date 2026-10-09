@@ -14,22 +14,22 @@ use crate::paint::effects::mask::collect_mask_defs;
 use crate::style::computed::{Computed, Display};
 use crate::text::text_box::line_height_px;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, TextStyle, div, px};
-pub(crate) mod first_line_text;
-pub(crate) mod content_wrapper;
+mod first_line_text;
+pub(super) mod content_wrapper;
 pub(crate) use content_wrapper::{content_sized, content_sized_wraps};
-pub(crate) mod first_letter_descendants;
-pub(crate) mod first_letter_scope;
-pub(crate) mod pseudo_line_layers;
-pub(crate) mod first_line_descendants;
-pub(crate) mod inline_splits;
+mod first_letter_descendants;
+mod first_letter_scope;
+pub(super) mod pseudo_line_layers;
+mod first_line_descendants;
+mod inline_splits;
 pub(crate) use inline_splits::split_block_in_inline;
-pub(crate) mod native_paragraph_route;
+pub(super) mod native_paragraph_route;
 
-pub(crate) mod box_div;
+pub(super) mod box_div;
 pub(crate) use crate::render::box_div::*;
-pub(crate) mod classify;
+pub(super) mod classify;
 pub(crate) use crate::render::classify::*;
-pub(crate) mod util;
+pub(super) mod util;
 pub(crate) use crate::render::util::*;
 pub use crate::layout::page::names::{PageMarginDecls, PageMarginDeclsFn, first_page_name};
 pub use crate::layout::page::paged::{render_paged, render_paged_select};
@@ -39,10 +39,10 @@ pub(crate) use crate::render::paragraph::pieces::*;
 pub(crate) use crate::render::paragraph::atom_piece::*;
 pub(crate) mod blocks;
 pub(crate) use crate::render::blocks::*;
-pub(crate) mod element;
-pub(crate) mod generic_box;
+pub(super) mod element;
+pub(super) mod generic_box;
 pub(crate) use crate::render::element::*;
-pub(crate) use crate::render::generic_box::*;
+use crate::render::generic_box::*;
 
 /// Настройки отрисовки: то, что задаёт приложение, а не документ.
 #[derive(Clone)]
@@ -138,19 +138,19 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
 
 thread_local! {
     /// Глубина вложенных `render` (документ в рамке собирается внутри).
-    pub(crate) static RENDER_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static RENDER_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
     /// Номер элемента в порядке сборки — ключ краски шага 8 (`PaintLast`).
-    pub(crate) static PAINT_KEY: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static PAINT_KEY: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
     /// Позиции узлов в прямом обходе документа и позиция ПОСЛЕДНЕГО
     /// позиционированного, который ключа краски не получает (см.
     /// `unkeyed_positions`).
-    pub(crate) static UNKEYED: std::cell::RefCell<(std::collections::HashMap<u64, usize>, Option<usize>)> =
+    static UNKEYED: std::cell::RefCell<(std::collections::HashMap<u64, usize>, Option<usize>)> =
         std::cell::RefCell::new((std::collections::HashMap::new(), None));
 }
 
 /// Следующий ключ краски: зовётся при входе в элемент, до сборки детей, —
 /// предок получает ключ меньше потомков (прямой обход).
-pub(crate) fn next_paint_key() -> u64 {
+fn next_paint_key() -> u64 {
     PAINT_KEY.with(|k| {
         let v = k.get().wrapping_add(1);
         k.set(v);
@@ -162,7 +162,7 @@ pub(crate) fn next_paint_key() -> u64 {
 /// в `PaintLast`: части таблицы (их строит табличный сборщик),
 /// `relative`/`sticky` строчного уровня и строчный абсолют — те идут в
 /// абзац. Такие красятся первым проходом там, где стоят.
-pub(crate) fn unkeyed_positioned(e: &Element) -> bool {
+fn unkeyed_positioned(e: &Element) -> bool {
     if e.style.z_index.unwrap_or(0) != 0 {
         return false;
     }
@@ -188,7 +188,7 @@ pub(crate) fn unkeyed_positioned(e: &Element) -> bool {
 /// Прямой обход документа: конец поддерева каждого узла (позиция за его
 /// последним потомком) и позиция последнего позиционированного без ключа
 /// краски.
-pub(crate) fn unkeyed_positions(nodes: &[Node]) -> (std::collections::HashMap<u64, usize>, Option<usize>) {
+fn unkeyed_positions(nodes: &[Node]) -> (std::collections::HashMap<u64, usize>, Option<usize>) {
     fn walk(
         nodes: &[Node],
         at: &mut usize,
@@ -218,7 +218,7 @@ pub(crate) fn unkeyed_positions(nodes: &[Node]) -> (std::collections::HashMap<u6
 /// порядок разметки перевернётся — `position-relative-table-*`: ячейка
 /// `relative` после абсолютного красного индикатора). Узел вне обхода
 /// (порождённый сборщиком) — по братьям, как прежде.
-pub(crate) fn paint_last_ok(e: &Element, rest: &[Node]) -> bool {
+fn paint_last_ok(e: &Element, rest: &[Node]) -> bool {
     let known = UNKEYED.with(|u| {
         let u = u.borrow();
         u.0.get(&e.node_id).map(|&end| u.1.is_none_or(|last| last < end))
@@ -237,7 +237,7 @@ pub(crate) fn paint_last_ok(e: &Element, rest: &[Node]) -> bool {
 /// (`ch-unit-001`, `ic-unit-001`). `PaintLast` ставит коробку в собиратель по
 /// ключу в порядке разметки. Узел вне обхода (порождённый сборщиком) остаётся
 /// на прежнем пути.
-pub(crate) fn inline_abs_paint_last(e: &Element, el: AnyElement) -> AnyElement {
+pub(super) fn inline_abs_paint_last(e: &Element, el: AnyElement) -> AnyElement {
     let known = UNKEYED.with(|u| {
         let u = u.borrow();
         u.0.get(&e.node_id).map(|&end| u.1.is_none_or(|last| last < end))
@@ -293,11 +293,11 @@ pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<A
 /// позиционированных (шаг 8). Обёртка раскладку не меняет: при открытом
 /// собирателе краски (`gpui::PaintCollect`) абзац уходит в него, иначе
 /// рисуется на месте (`gpui::PaintInline`).
-pub(crate) fn paint_inline_step7(para: AnyElement) -> AnyElement {
+fn paint_inline_step7(para: AnyElement) -> AnyElement {
     gpui::PaintInline::new(para).into_any_element()
 }
 
-pub(crate) fn paragraph_probed(taken: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+fn paragraph_probed(taken: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // Знак обрыва АВТО-режима: бюджет строк ИМЕННО ЭТОГО абзаца посчитал
     // `ClampCut` прошлого кадра. Кладём его ДО сборки абзаца — многоточие
     // нарисует строчный слой (`lines::clamp_lines` → `paint_line`), тот

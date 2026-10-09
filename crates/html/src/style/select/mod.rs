@@ -120,7 +120,7 @@ impl<'a> Sibs<'a> {
 }
 
 /// Паспорт элемента для сопоставления селекторов.
-pub(crate) fn ancestor_of(child: &Handle, spot: Spot) -> Option<Ancestor> {
+pub(super) fn ancestor_of(child: &Handle, spot: Spot) -> Option<Ancestor> {
     let NodeData::Element { name, attrs, .. } = &child.data else {
         return None;
     };

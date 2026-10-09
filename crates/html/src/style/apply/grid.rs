@@ -8,7 +8,7 @@ use gpui::{Div, Styled, px};
 /// Дорожка сетки в терминах GPUI. Нижняя грань всегда `min-content`: без неё
 /// колонка на узкой панели схлопывается в ноль и содержимое обрезается.
 /// Одна грань дорожки.
-pub(crate) fn bound(t: &Track) -> gpui::GridTrack {
+fn bound(t: &Track) -> gpui::GridTrack {
     match t {
         Track::Px(v) => gpui::GridTrack::Pixels(px(*v)),
         Track::Auto => gpui::GridTrack::Auto,
@@ -31,7 +31,7 @@ pub(crate) fn bound(t: &Track) -> gpui::GridTrack {
 /// с Chrome: колонка 120px выходила 200). Исключение — доля свободного места:
 /// `1fr` в CSS и есть `minmax(auto, 1fr)`, иначе она схлопывается под
 /// содержимым.
-pub(crate) fn track(t: &TrackSize) -> gpui::GridTrack {
+fn track(t: &TrackSize) -> gpui::GridTrack {
     match t {
         TrackSize::MinMax(lo, hi) => gpui::GridTrack::MinMax(Box::new((bound(lo), bound(hi)))),
         TrackSize::Single(Track::Fr(f)) => gpui::GridTrack::MinMax(Box::new((
@@ -47,7 +47,7 @@ pub(crate) fn track(t: &TrackSize) -> gpui::GridTrack {
 }
 
 /// `justify-content`/`align-content` → распределение GPUI.
-pub(crate) fn to_content(j: Justify) -> gpui::AlignContent {
+pub(super) fn to_content(j: Justify) -> gpui::AlignContent {
     match j {
         Justify::Center => gpui::AlignContent::Center,
         Justify::Start => gpui::AlignContent::FlexStart,
@@ -71,7 +71,7 @@ pub(crate) fn to_content(j: Justify) -> gpui::AlignContent {
 /// ЛОГИЧЕСКИЕ и переставляются при вертикальном письме, как его дорожки
 /// (`grid_style`); у подсеточной оси список — `<line-name-list>`. Грани
 /// элемента идут той же осью, что и его числовые (`grid_location`).
-pub(crate) fn grid_line_names(c: &Computed) -> Option<gpui::GridLineNames> {
+pub(super) fn grid_line_names(c: &Computed) -> Option<gpui::GridLineNames> {
     let mut out = gpui::GridLineNames::default();
     let grid = matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid));
     if grid {
@@ -175,11 +175,11 @@ pub(crate) fn grid_item_placement(c: &Computed) -> (Option<gpui::GridLocation>, 
 
 /// Элемент вертикальной сетки (и лунок на её пути): его логические грани
 /// ложатся на переставленные физические оси (см. `grid_style`, `flip`).
-pub(crate) fn placement_flip(c: &Computed) -> bool {
+pub(super) fn placement_flip(c: &Computed) -> bool {
     c.parent_grid >= 2
 }
 
-pub(crate) fn to_placement(p: Placement) -> gpui::GridPlacement {
+pub(super) fn to_placement(p: Placement) -> gpui::GridPlacement {
     match p {
         Placement::Auto => gpui::GridPlacement::Auto,
         Placement::Line(n) => gpui::GridPlacement::Line(n),
@@ -188,7 +188,7 @@ pub(crate) fn to_placement(p: Placement) -> gpui::GridPlacement {
 }
 
 /// Стиль контейнера-сетки: дорожки, неявные дорожки, направление.
-pub(crate) fn grid_style(mut d: Div, c: &Computed) -> Div {
+pub(super) fn grid_style(mut d: Div, c: &Computed) -> Div {
     d = d.grid();
     d.style().grid_axis_reversed = Some(grid_flow_axes::reversed(c));
     // Контейнер лунок на пути сетки (`dom::lanes_as_grid`): раскладку лунками

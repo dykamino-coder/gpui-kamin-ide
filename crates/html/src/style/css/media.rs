@@ -76,7 +76,7 @@ impl MqCmp {
 /// Первая уравновешенная скобочная группа: тело БЕЗ внешних скобок и хвост.
 /// Вложенные скобки (`(not (color))`, `calc(...)`) считаются, а не режутся
 /// жадным `strip_suffix(')')`.
-pub(crate) fn take_parens(s: &str) -> Option<(&str, &str)> {
+fn take_parens(s: &str) -> Option<(&str, &str)> {
     let b = s.as_bytes();
     if b.first() != Some(&b'(') {
         return None;
@@ -105,7 +105,7 @@ pub(crate) fn take_parens(s: &str) -> Option<(&str, &str)> {
 /// вырожденном `0/0` деление даёт NaN, и Blink считает крест, см.
 /// `media_query_evaluator.cc::CompareAspectRatioValue`). Так `0/0`
 /// сравнивается как `0 >= 0`, то есть истинно (`aspect-ratio-003`).
-pub(crate) fn mq_operand(raw: &str) -> Option<(f32, f32)> {
+fn mq_operand(raw: &str) -> Option<(f32, f32)> {
     let s = raw.trim();
     // `calc(a / b)` — отношение внутри calc (`mq-calc-008`).
     let body = s
@@ -129,7 +129,7 @@ pub(crate) fn mq_operand(raw: &str) -> Option<(f32, f32)> {
 }
 
 /// Скаляр: длина в точках, разрешение в dppx или голое число.
-pub(crate) fn mq_scalar(raw: &str) -> Option<f32> {
+fn mq_scalar(raw: &str) -> Option<f32> {
     let s = raw.trim();
     // Разрешение: `dppx` и его короткая запись `x`. Проверять надо ИМЕННО
     // через разбор остатка: `0px` тоже кончается на `x`, и жадное отрезание
@@ -482,7 +482,7 @@ impl Media {
 }
 
 /// Закрытый список значений перечислимой фичи (mediaqueries-5 §4-§11).
-pub(crate) fn mq_keywords(name: &str) -> Option<&'static [&'static str]> {
+fn mq_keywords(name: &str) -> Option<&'static [&'static str]> {
     Some(match name {
         "orientation" => &["portrait", "landscape"],
         "scan" => &["interlace", "progressive"],
@@ -504,18 +504,18 @@ pub(crate) fn mq_keywords(name: &str) -> Option<&'static [&'static str]> {
 }
 
 /// Имя фичи без приставки диапазона — для проверки «фича это или предел».
-pub(crate) fn mq_base(s: &str) -> &str {
+fn mq_base(s: &str) -> &str {
     let s = s.trim();
     s.strip_prefix("min-").or_else(|| s.strip_prefix("max-")).unwrap_or(s)
 }
 
-pub(crate) fn mq_tri(v: bool) -> SupTri {
+fn mq_tri(v: bool) -> SupTri {
     if v { SupTri::True } else { SupTri::False }
 }
 
 /// Трёхзначные `and`/`or` (mediaqueries-5 §3.1): «неизвестно» побеждает
 /// всё, кроме определяющего исхода.
-pub(crate) fn mq_and(a: SupTri, b: SupTri) -> SupTri {
+fn mq_and(a: SupTri, b: SupTri) -> SupTri {
     match (a, b) {
         (SupTri::False, _) | (_, SupTri::False) => SupTri::False,
         (SupTri::True, SupTri::True) => SupTri::True,
@@ -523,7 +523,7 @@ pub(crate) fn mq_and(a: SupTri, b: SupTri) -> SupTri {
     }
 }
 
-pub(crate) fn mq_or(a: SupTri, b: SupTri) -> SupTri {
+fn mq_or(a: SupTri, b: SupTri) -> SupTri {
     match (a, b) {
         (SupTri::True, _) | (_, SupTri::True) => SupTri::True,
         (SupTri::False, SupTri::False) => SupTri::False,

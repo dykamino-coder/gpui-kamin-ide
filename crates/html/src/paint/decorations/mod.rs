@@ -10,12 +10,12 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, Styled, div, px};
 
-pub(crate) mod outline;
+mod outline;
 pub(crate) mod text_shadows;
-pub(crate) mod shadows;
-pub(crate) mod border_shape;
-pub(crate) mod backdrop;
-pub(crate) mod gradient_stripes;
+mod shadows;
+mod border_shape;
+mod backdrop;
+mod gradient_stripes;
 
 /// Слои, которые в GPUI выражаются только отдельным элементом.
 ///

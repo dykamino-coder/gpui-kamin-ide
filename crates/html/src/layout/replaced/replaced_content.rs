@@ -89,7 +89,7 @@ pub(crate) fn default_iframe(e: &Element) -> bool {
         && e.style.contain_size != Some(true)
 }
 
-pub(crate) fn position(mut image: gpui::Img, style: &Computed) -> gpui::Img {
+pub(super) fn position(mut image: gpui::Img, style: &Computed) -> gpui::Img {
     if let Some(position) = style.object_position {
         image = image.object_position(gpui::point(
             crate::style::apply::len_to_gpui(position.x.unwrap_or(Len::Pct(0.5))),

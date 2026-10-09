@@ -27,10 +27,10 @@ use crate::style::values::value::Len;
 /// отказ от спуска, и здесь тоже.
 thread_local! {
     /// Щуп `pushed_box_at` ищет коробку под ПРИНУДИТЕЛЬНЫЙ разрыв (`grow_pushed`).
-    pub(crate) static PUSH_FORCED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static PUSH_FORCED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-pub(crate) fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
+fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
     if depth == 0 {
         return None;
     }
@@ -222,7 +222,7 @@ pub(crate) fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
 /// `shape_full(cell)` распорка ложится в `lead`). Что `table_shape` не
 /// меряет (`rowspan`, подпись, сросшиеся рамки, заданная высота), здесь
 /// тоже `None` — распорки нет, поведение прежнее.
-pub(crate) fn pushed_cell_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
+fn pushed_cell_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
     if depth == 0
         || c.style.vertical == Some(true)
         || c.style.border_collapse == Some(true)
@@ -330,7 +330,7 @@ pub(crate) fn pushed_cell_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
 /// `lead` меры (`shape_full`) и в раскладку копии одинаково; недобор от
 /// схлопывания с большим нижним полем соседа добирает следующий заход
 /// `grow_pushed`.
-pub(crate) fn grow_before(c: &mut Element, id: u64, grow: f32) -> bool {
+fn grow_before(c: &mut Element, id: u64, grow: f32) -> bool {
     for n in c.children.iter_mut() {
         let Node::Element(k) = n else {
             continue;
@@ -355,7 +355,7 @@ pub(crate) fn grow_before(c: &mut Element, id: u64, grow: f32) -> bool {
 /// схлопнутым полем (`shape_full`: `cuts.push((y, y + lead))`, потом
 /// `forced.push(y)`), поэтому `margin-top` её не сдвигает — сдвигает только
 /// новый поточный сосед.
-pub(crate) fn spacer_before(c: &mut Element, id: u64, grow: f32) -> bool {
+fn spacer_before(c: &mut Element, id: u64, grow: f32) -> bool {
     // Сетка-стопка: между рядами стоит `row-gap` (`shape_full`:
     // `lead = prev_mb + row_gap + kmt`), и вставка ряда добавляет ЛИШНИЙ
     // зазор. Ряд flex без переноса: высота ряда — `tallest` по детям, а
@@ -599,7 +599,7 @@ pub(crate) fn avoid_only_monolith(c: &Element) -> bool {
 
 /// Перемера после распорки — с прежними полями у элемента строки flex
 /// (`split_flex_lines` кладёт в поле ещё и `row-gap`).
-pub(crate) fn keep_par_margins(s: Shape, old: &Shape, par: Option<&crate::layout::fragment::types::Par>) -> Shape {
+fn keep_par_margins(s: Shape, old: &Shape, par: Option<&crate::layout::fragment::types::Par>) -> Shape {
     if par.is_some_and(|p| p.group != 0) {
         (s.0, old.1, old.2, s.3, s.4, s.5)
     } else {

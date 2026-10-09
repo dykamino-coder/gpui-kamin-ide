@@ -4,7 +4,7 @@ use crate::dom::{Element, Node};
 use crate::layout::block::struts::{Strut, solve};
 use crate::render::{is_blank, out_of_flow};
 
-pub(crate) fn mark_start(host: &mut Element, top_open: bool, preceding: &[Node]) {
+pub(super) fn mark_start(host: &mut Element, top_open: bool, preceding: &[Node]) {
     if top_open
         && preceding
             .iter()
@@ -14,7 +14,7 @@ pub(crate) fn mark_start(host: &mut Element, top_open: bool, preceding: &[Node])
     }
 }
 
-pub(crate) fn supported(e: &Element) -> bool {
+pub(super) fn supported(e: &Element) -> bool {
     // Positioned boxes need their original containing-block adapter; the
     // independently measured host cannot preserve that coordinate system.
     e.style.position.is_none()

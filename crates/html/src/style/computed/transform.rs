@@ -428,4 +428,4 @@ impl Transform {
     }
 }
 
-pub(crate) const NO_SHIFT: [[f32; 3]; 2] = [[0.0; 3]; 2];
+pub(super) const NO_SHIFT: [[f32; 3]; 2] = [[0.0; 3]; 2];

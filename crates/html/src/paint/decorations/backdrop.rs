@@ -6,7 +6,7 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{IntoElement, Styled, px};
 
-pub(crate) fn backdrop_matrix(
+pub(super) fn backdrop_matrix(
     c: &Computed,
     out: &mut Vec<gpui::AnyElement>,
 ) {

@@ -122,7 +122,7 @@ pub(crate) fn border_layer(c: &Computed) -> Option<(crate::style::values::value:
     Some((crate::paint::background::border_paint(c, colour), widths))
 }
 
-pub(crate) fn apply_paint(mut d: Div, c: &Computed) -> Div {
+pub(super) fn apply_paint(mut d: Div, c: &Computed) -> Div {
     d.style().css_border_snap = Some(true);
     // Atomic paint (CSS 2.1 Appendix E step 7.2.1.4 for inline-blocks, step 5
     // for floats; css-flexbox-1 §5.4 and css-grid-1 §9: flex and grid items

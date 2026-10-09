@@ -4,8 +4,8 @@
 pub mod column_flow;
 pub mod column_stack;
 pub mod container;
-pub(crate) mod stack_child;
+mod stack_child;
 pub mod gap_rules;
 pub mod spanner;
-pub(crate) mod column_measure;
-pub(crate) mod column_baselines;
+mod column_measure;
+mod column_baselines;

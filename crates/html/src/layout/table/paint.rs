@@ -24,7 +24,7 @@ thread_local! {
     /// Буферы прямоугольников ПО РЯДАМ, переживающие перестройку дерева:
     /// каждый кадр стенд строит элементы заново, и Rc из прошлого кадра
     /// иначе терялся вместе с записями проб.
-    pub(crate) static ROW_RECTS: std::cell::RefCell<std::collections::HashMap<u64, RowRects>> =
+    static ROW_RECTS: std::cell::RefCell<std::collections::HashMap<u64, RowRects>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
@@ -53,12 +53,12 @@ thread_local! {
     /// Полоса без единой ячейки (`<col>` без рядов, `<col>` за краем сетки)
     /// не дождётся их никогда, а запрос кадра без счётчика вертел бы окно
     /// вечно: документ не успокаивается, и стенд снимает его на таймауте.
-    pub(crate) static BAND_RETRIES: std::cell::RefCell<std::collections::HashMap<usize, u8>> =
+    static BAND_RETRIES: std::cell::RefCell<std::collections::HashMap<usize, u8>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
 /// Сколько кадров ждать пробы, прежде чем счесть полосу пустой.
-pub(crate) const BAND_WAIT_FRAMES: u8 = 2;
+const BAND_WAIT_FRAMES: u8 = 2;
 
 pub struct CellsClipped {
     pub(crate) style: crate::style::computed::Computed,
@@ -306,7 +306,7 @@ pub struct EdgeCell {
 pub type CellEdges = std::rc::Rc<std::cell::RefCell<Vec<EdgeCell>>>;
 
 thread_local! {
-    pub(crate) static CELL_EDGES: std::cell::RefCell<std::collections::HashMap<u64, CellEdges>> =
+    static CELL_EDGES: std::cell::RefCell<std::collections::HashMap<u64, CellEdges>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
@@ -842,7 +842,7 @@ pub fn cell_rect_probe(
 /// Поле подкладки ячейки округляется от её внутреннего края рамки: 25px
 /// рамки при 1.25 сдвигали его на 0.2px, и плитка `top right` у tbody
 /// вставала на точку правее эталона (`background-position-applies-to-001a`).
-pub(crate) struct CellProbe {
+struct CellProbe {
     pub(crate) child: Option<AnyElement>,
     pub(crate) rects: RowRects,
     pub(crate) exact: bool,

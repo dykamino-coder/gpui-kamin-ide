@@ -5,55 +5,55 @@
 //! Во-вторых, ровно она задаёт границу охвата: поле есть — свойство
 //! поддержано, поля нет — свойство игнорируется осознанно, а не потеряно.
 
-pub(crate) mod gradient_paint;
-pub(crate) mod font_kerning;
-pub(crate) mod font_members;
+mod gradient_paint;
+mod font_kerning;
+pub(super) mod font_members;
 pub(crate) mod font_family;
-pub(crate) mod white_space;
-pub(crate) mod font_shorthand;
-pub(crate) mod font_weight;
-pub(crate) mod text_indent;
-pub(crate) mod bidi_properties;
-pub(crate) mod image_color;
-pub(crate) mod radius_mask;
-pub(crate) mod border_color;
-pub(crate) mod radius_parse;
+mod white_space;
+mod font_shorthand;
+pub(super) mod font_weight;
+mod text_indent;
+mod bidi_properties;
+mod image_color;
+mod radius_mask;
+mod border_color;
+mod radius_parse;
 pub(crate) use image_color::parse as parse_image_color;
-pub(crate) mod mask_size;
-pub(crate) mod mask_shorthand;
+mod mask_size;
+mod mask_shorthand;
 pub(crate) mod orthogonal;
-pub(crate) mod tab_size;
-pub(crate) mod quotes;
-pub(crate) mod counters;
-pub(crate) mod list_style_string;
-pub(crate) mod list_style;
-pub(crate) mod size_range;
-pub(crate) mod content_functions;
+mod tab_size;
+mod quotes;
+mod counters;
+mod list_style_string;
+mod list_style;
+mod size_range;
+mod content_functions;
 pub(crate) use content_functions::parse_content;
-pub(crate) mod outline_style;
+mod outline_style;
 use crate::style::computed::outline_style::parse as outline_style_of;
 pub(crate) use outline_style::DOUBLE as OUTLINE_DOUBLE;
-pub(crate) mod props;
-pub(crate) mod resolve;
-pub(crate) mod queries;
+pub(super) mod props;
+mod resolve;
+mod queries;
 #[cfg(test)]
 pub(crate) mod snapshot_tests;
 
 use crate::style::values::value::Len;
-pub(crate) mod fields;
+mod fields;
 pub use crate::style::computed::fields::*;
-pub(crate) mod transform;
+pub(super) mod transform;
 pub use crate::style::computed::transform::*;
-pub(crate) mod filter;
+mod filter;
 pub use crate::style::computed::filter::*;
-pub(crate) mod gradient;
+pub(super) mod gradient;
 pub(crate) use crate::style::computed::gradient::*;
-pub(crate) mod grid_tracks;
+pub(super) mod grid_tracks;
 pub use crate::style::computed::grid_tracks::*;
 pub(crate) use crate::style::computed::props::border::*;
-pub(crate) mod types;
+pub(super) mod types;
 pub use crate::style::computed::types::*;
-pub(crate) mod parse_util;
+pub(super) mod parse_util;
 pub use crate::style::computed::parse_util::*;
 
 /// Четыре стороны: `top right bottom left`, как в CSS.
@@ -117,7 +117,7 @@ pub struct Corners {
 
 /// Разряды `inherit_bits`: ненаследуемые свойства, у которых слово `inherit`
 /// обязано скопировать вычисленное значение родителя (§6.2.1).
-pub(crate) mod ainh {
+pub(super) mod ainh {
     pub(crate) const ALIGN_ITEMS: u8 = 1 << 0;
     pub(crate) const JUSTIFY_ITEMS: u8 = 1 << 1;
     pub(crate) const ALIGN_CONTENT: u8 = 1 << 2;

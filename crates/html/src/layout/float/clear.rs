@@ -18,7 +18,7 @@ use crate::style::values::value::Len;
 /// Есть ли в поддереве хоть одна коробка, которую `clear` может очищать:
 /// флоат (свой, у `::first-letter` или под `:hover`) либо буквица
 /// (`initial-letter`).
-pub(crate) fn has_clearable(nodes: &[Node]) -> bool {
+fn has_clearable(nodes: &[Node]) -> bool {
     let floats = |c: &Computed| c.float.is_some_and(|f| f != 0) || c.initial_letter.is_some();
     nodes.iter().any(|n| match n {
         Node::Element(e) => {
@@ -31,14 +31,14 @@ pub(crate) fn has_clearable(nodes: &[Node]) -> bool {
     })
 }
 
-pub(crate) fn has_clear(nodes: &[Node]) -> bool {
+fn has_clear(nodes: &[Node]) -> bool {
     nodes.iter().any(|n| match n {
         Node::Element(e) => e.style.clear.is_some() || has_clear(&e.children),
         Node::Text(_) => false,
     })
 }
 
-pub(crate) fn strip_clear(nodes: &mut [Node]) {
+fn strip_clear(nodes: &mut [Node]) {
     for n in nodes {
         if let Node::Element(e) = n {
             e.style.clear = None;
@@ -112,7 +112,7 @@ pub(crate) fn bfc_no_fit(n: &Element, float_min_w: f32) -> bool {
 /// сдвигает — а ряд обтекания иначе увозит её в колонку сбоку от флоата
 /// (`second-float-inside-empty-cleared-block`: второй флоат на x = 100, y = 1
 /// вместо x = 0, y = 50).
-pub(crate) fn leading_clear(e: &Element) -> Option<i8> {
+pub(super) fn leading_clear(e: &Element) -> Option<i8> {
     if (e.inline && !inline_marked_block(e))
         || !in_flow(&e.style)
         || !matches!(e.style.display, None | Some(Display::Block))
@@ -141,6 +141,6 @@ pub(crate) fn leading_clear(e: &Element) -> Option<i8> {
 ///
 /// `clear: left` правый флоат не трогает и наоборот (CSS 2.1 §9.5.2);
 /// прежде `clear` был двузначным, и любая сторона обрывала любой ряд.
-pub(crate) fn clears_side(clear: Option<i8>, side: i8) -> bool {
+pub(super) fn clears_side(clear: Option<i8>, side: i8) -> bool {
     matches!(clear, Some(c) if c == 0 || c == side)
 }

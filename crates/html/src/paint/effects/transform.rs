@@ -12,7 +12,7 @@ use gpui::{AnyElement, IntoElement};
 /// `mix-blend-mode-with-transform-and-preserve-3D` (blend),
 /// `clip-not-absolute-positioned-003`, `corner-shape-bevel-overflow-composite`
 /// и `view-transition-name-is-grouping` уходят в красное.
-pub(crate) fn flattens_3d(c: &Computed) -> bool {
+fn flattens_3d(c: &Computed) -> bool {
     use crate::style::computed::Overflow;
     let clipped = |o: Option<Overflow>| matches!(o, Some(o) if o != Overflow::Visible);
     c.opacity.is_some_and(|o| o < 1.0)

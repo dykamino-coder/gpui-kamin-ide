@@ -29,7 +29,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 /// Условия — те же, что у `to_icb`, плюс два ужесточения: только
 /// НЕПОСРЕДСТВЕННЫЕ дети ленты и только при ОБЕИХ заданных осях (по свободной
 /// оси место сообщает щуп, а он остался бы в замыкании).
-pub(crate) fn hoist_from_scroll(e: &mut Element, inherited: &Computed, opts: &RenderOpts) {
+fn hoist_from_scroll(e: &mut Element, inherited: &Computed, opts: &RenderOpts) {
     use crate::style::computed::Position;
     if !crate::layout::positioned::containing_block::icb_active() || inside_deferred() {
         return;

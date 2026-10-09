@@ -560,16 +560,16 @@ pub fn forget_measures() {
 
 thread_local! {
     /// Память разрезов: ключ разреза → готовые строки.
-    pub(crate) static SPLITS: std::cell::RefCell<
+    pub(super) static SPLITS: std::cell::RefCell<
         std::collections::HashMap<u64, std::rc::Rc<Vec<Line>>>,
     > = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
 /// Сколько замеров абзацев помнить между кадрами.
-pub(crate) const MEASURE_CACHE: usize = 64;
+const MEASURE_CACHE: usize = 64;
 
 /// Память подбора кегля: ключ абзаца → найденный множитель.
-pub(crate) fn remember_fit(key: u64, k: f32) {
+pub(super) fn remember_fit(key: u64, k: f32) {
     FITTED.with(|c| {
         let mut cache = c.borrow_mut();
         if let Some(hit) = cache.iter_mut().find(|(hit, _)| *hit == key) {
@@ -585,9 +585,9 @@ pub(crate) fn remember_fit(key: u64, k: f32) {
 
 thread_local! {
     /// Найденные множители `text-fit`: ключ абзаца → во сколько раз крупнее.
-    pub(crate) static FITTED: std::cell::RefCell<Vec<(u64, f32)>> =
+    pub(super) static FITTED: std::cell::RefCell<Vec<(u64, f32)>> =
         const { std::cell::RefCell::new(Vec::new()) };
     /// Память замеров: ключ стиля и текста → положения знаков по кускам.
-    pub(crate) static MEASURED: std::cell::RefCell<Vec<(u64, Vec<Seg>)>> =
+    static MEASURED: std::cell::RefCell<Vec<(u64, Vec<Seg>)>> =
         const { std::cell::RefCell::new(Vec::new()) };
 }

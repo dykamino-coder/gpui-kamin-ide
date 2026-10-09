@@ -7,7 +7,7 @@ use crate::style::values::value::{Color, Len};
 use crate::text::inline::*;
 use gpui::{AnyElement, ParentElement, Styled};
 
-pub(crate) fn collect_with_empty_metrics(
+pub(super) fn collect_with_empty_metrics(
     children: &[Node],
     inherited: &Computed,
     atom: &mut dyn FnMut(&Element) -> Option<Piece>,
@@ -559,7 +559,7 @@ pub(crate) fn collect_with_empty_metrics(
 }
 
 /// Начинается ли текст узла пробельным рядом с переводом строки.
-pub(crate) fn leading_segment_break(raw: &str) -> bool {
+fn leading_segment_break(raw: &str) -> bool {
     raw.chars()
         .take_while(|c| is_collapsible(*c))
         .any(|c| matches!(c, '\n' | '\r'))
@@ -568,7 +568,7 @@ pub(crate) fn leading_segment_break(raw: &str) -> bool {
 /// Последний ЗНАЧАЩИЙ знак собранных кусков — нулевой пробел. Распорки полей
 /// и рамок, метки направления и куски вне потока — это границы коробок, а
 /// для преобразования перевода строки их нет.
-pub(crate) fn ends_with_zwsp(out: &[Piece]) -> bool {
+fn ends_with_zwsp(out: &[Piece]) -> bool {
     for p in out.iter().rev() {
         match p {
             Piece::Overlay(..) => continue,
@@ -588,7 +588,7 @@ pub(crate) fn ends_with_zwsp(out: &[Piece]) -> bool {
 /// Только НЕатомарный строчный элемент без замещения: у атома и картинки
 /// межбуквенного интервала по краям Blink не ставит (интервал живёт в наборе
 /// текста, `shape_result.cc` `ApplySpacing`).
-pub(crate) fn boundary_gap_after_box(e: &Element, inherited: &Computed) -> Option<f32> {
+fn boundary_gap_after_box(e: &Element, inherited: &Computed) -> Option<f32> {
     let inline_level = e.style.display.is_none() || e.style.inline_display == Some(true);
     let replaced = matches!(
         e.tag.as_str(),
@@ -614,7 +614,7 @@ pub(crate) fn boundary_gap_after_box(e: &Element, inherited: &Computed) -> Optio
 ///
 /// Распорка строчной коробки пропускается: в её трекинге лежит поле коробки, а
 /// не межбуквенный интервал, и перебивать его нельзя.
-pub(crate) fn set_boundary_spacing(pieces: &mut [Piece], spacing: Option<Len>) {
+fn set_boundary_spacing(pieces: &mut [Piece], spacing: Option<Len>) {
     let last = pieces.iter_mut().rev().find_map(|p| match p {
         Piece::Text { text, style } if !text.is_empty() && text != SPACER => Some(style),
         _ => None,
@@ -627,7 +627,7 @@ pub(crate) fn set_boundary_spacing(pieces: &mut [Piece], spacing: Option<Len>) {
 /// Кусок вне потока в РЯДУ: сам абзац его разместить не может (ряд собирает
 /// раскладка), поэтому работает прежний обход — нулевая распорка на месте
 /// куска и сам элемент в позднем слое, который рисуется от её угла.
-pub(crate) fn overlay_in_row(el: AnyElement) -> AnyElement {
+pub(super) fn overlay_in_row(el: AnyElement) -> AnyElement {
     let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
     let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false);
     match crate::layout::positioned::containing_block::late_push(spot, el) {
@@ -642,7 +642,7 @@ pub(crate) fn overlay_in_row(el: AnyElement) -> AnyElement {
 
 /// Относительный сдвиг коробки в точках: `left - right`, `top - bottom`
 /// (CSS 2.1 §9.4.3). Нулевой, если элемент не относительный.
-pub(crate) fn relative_inset(style: &Computed) -> (f32, f32) {
+fn relative_inset(style: &Computed) -> (f32, f32) {
     if style.position != Some(crate::style::computed::Position::Relative) {
         return (0.0, 0.0);
     }
@@ -667,7 +667,7 @@ pub(crate) fn relative_inset(style: &Computed) -> (f32, f32) {
 /// `css-position/static-position/v{lr,rl}-*`. Поэтому сдвиг по y не идёт
 /// отбивкой, а копится в `OverlayAt::rot_dy` и прикладывается `lines.rs`
 /// одним округлением вместе с местом в строке.
-pub(crate) fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool) -> Vec<Piece> {
+fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool) -> Vec<Piece> {
     if style.position != Some(crate::style::computed::Position::Relative) {
         return pieces;
     }

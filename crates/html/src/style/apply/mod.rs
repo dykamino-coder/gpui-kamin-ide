@@ -10,21 +10,21 @@ use crate::style::computed::{Align, Computed, Gradient};
 use crate::style::values::value::Len;
 use gpui::{Div, InteractiveElement, px, relative};
 pub(crate) mod intrinsic_size;
-pub(crate) mod contained_intrinsic;
+mod contained_intrinsic;
 use crate::style::apply::contained_intrinsic::empty_contained_size;
-pub(crate) mod grid_flow_axes;
-pub(crate) mod flex_cross_default;
-pub(crate) mod inset_percent;
-pub(crate) mod size_percent;
-pub(crate) mod grid;
+mod grid_flow_axes;
+mod flex_cross_default;
+mod inset_percent;
+mod size_percent;
+pub(super) mod grid;
 pub(crate) use crate::style::apply::grid::*;
-pub(crate) mod layout;
-pub(crate) use crate::style::apply::layout::*;
-pub(crate) mod box_model;
+pub(super) mod layout;
+use crate::style::apply::layout::*;
+pub(super) mod box_model;
 pub use crate::style::apply::box_model::*;
-pub(crate) mod paint;
+pub(super) mod paint;
 pub(crate) use crate::style::apply::paint::*;
-pub(crate) mod text;
+mod text;
 pub use crate::style::apply::text::*;
 
 /// Ширина/высота/отступ: доля родителя или пиксели.
@@ -164,7 +164,7 @@ pub fn self_align(a: Align, last: bool) -> gpui::AlignItems {
 }
 
 #[path = "alignment_axes.rs"]
-pub(crate) mod alignment_axes;
+mod alignment_axes;
 pub(crate) mod item_metadata;
 
 pub fn apply(d: Div, c: &Computed) -> Div {

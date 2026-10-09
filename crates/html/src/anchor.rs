@@ -187,7 +187,7 @@ pub fn next_seq() -> u32 {
 }
 
 /// Read the actual padding box of an absolute containing block in this frame.
-pub(crate) fn containing_bounds(node: u64) -> Option<Bounds<Pixels>> {
+pub(super) fn containing_bounds(node: u64) -> Option<Bounds<Pixels>> {
     CB.with(|map| map.borrow().get(&node).copied())
 }
 

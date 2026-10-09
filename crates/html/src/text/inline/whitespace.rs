@@ -36,7 +36,7 @@ pub fn trim_edge_spaces_solid_atoms(pieces: &mut [Piece]) {
 }
 
 /// Один край строки: куски идут от него внутрь, коробки пропускаются.
-pub(crate) fn trim_edge<'a>(pieces: impl Iterator<Item = &'a mut Piece>, leading: bool, solid_atoms: bool) {
+fn trim_edge<'a>(pieces: impl Iterator<Item = &'a mut Piece>, leading: bool, solid_atoms: bool) {
     for piece in pieces {
     // ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v155, `scout-emphasis-2026-09.md`):
     // отрисовка `text-emphasis` (11 хунков) вместе с правкой `trim_edge`
@@ -98,7 +98,7 @@ pub(crate) fn trim_edge<'a>(pieces: impl Iterator<Item = &'a mut Piece>, leading
 /// значим и остаётся.
 /// Открывающий знак, после которого перенос запрещён (UAX #14, класс OP;
 /// CJK-набор). Такой знак клеится к СЛЕДУЮЩЕМУ содержимому.
-pub(crate) fn opening_punct(c: char) -> bool {
+fn opening_punct(c: char) -> bool {
     matches!(
         c,
         '「' | '『'
@@ -125,7 +125,7 @@ pub(crate) fn opening_punct(c: char) -> bool {
 /// перенос строк, но границу куска он не видит — скобка застревала
 /// последней строкой текста, а атом падал на следующую
 /// (text-combine-upright-line-breaking-rules-001).
-pub(crate) fn split_glued_tail(pieces: Vec<Piece>) -> Vec<Piece> {
+pub(super) fn split_glued_tail(pieces: Vec<Piece>) -> Vec<Piece> {
     let mut out: Vec<Piece> = Vec::with_capacity(pieces.len());
     let mut it = pieces.into_iter().peekable();
     while let Some(p) = it.next() {
@@ -150,7 +150,7 @@ pub(crate) fn split_glued_tail(pieces: Vec<Piece>) -> Vec<Piece> {
     out
 }
 
-pub(crate) fn drop_hanging_tail(mut pieces: Vec<Piece>) -> Vec<Piece> {
+pub(super) fn drop_hanging_tail(mut pieces: Vec<Piece>) -> Vec<Piece> {
     while let Some(Piece::Text { text, style }) = pieces.last() {
         // Схлопываемый пробел по CSS — только `space`, `tab`, `CR`, `LF`.
         // Идеографический U+3000 и неразрывный U+00A0 значимы: `trim()` их
@@ -175,7 +175,7 @@ pub(crate) fn drop_hanging_tail(mut pieces: Vec<Piece>) -> Vec<Piece> {
 /// текста и без разрыва), её высоту даёт strut — `line-height` блока
 /// (§10.8.1). Распорка `h_0` роняла строку `отступ + <br>` в ноль, и квадрат
 /// вставал наверх вместо низа (`text-indent-on-blank-line-rtl-left-align`).
-pub(crate) fn blank_line_break(style: &Computed) -> AnyElement {
+pub(super) fn blank_line_break(style: &Computed) -> AnyElement {
     let size = match style.font_size {
         Some(Len::Px(v)) => v,
         _ => 16.0,
@@ -188,12 +188,12 @@ pub(crate) fn blank_line_break(style: &Computed) -> AnyElement {
     gpui::div().w_full().h(gpui::px(lh)).flex_shrink_0().into_any_element()
 }
 
-pub(crate) fn line_break() -> AnyElement {
+pub(super) fn line_break() -> AnyElement {
     gpui::div().w_full().h_0().into_any_element()
 }
 
 /// Схлопывание пробелов, как в HTML: переводы строк и повторы — один пробел.
-pub(crate) fn normalize_spaces(raw: &str) -> String {
+pub(super) fn normalize_spaces(raw: &str) -> String {
     let chars: Vec<char> = raw.chars().collect();
     let mut out = String::with_capacity(raw.len());
     let mut at = 0usize;
@@ -247,7 +247,7 @@ pub(crate) fn normalize_spaces(raw: &str) -> String {
 ///
 /// Хангыль сюда НЕ входит: по спецификации он пишется через пробелы, и
 /// перевод между слогами обязан стать пробелом.
-pub(crate) fn wide_cjk(ch: char) -> bool {
+fn wide_cjk(ch: char) -> bool {
     let c = ch as u32;
     let hangul = (0x1100..=0x11FF).contains(&c)
         || (0x3130..=0x318F).contains(&c)
@@ -271,7 +271,7 @@ pub(crate) fn wide_cjk(ch: char) -> bool {
 }
 
 /// Широкий (F/W/H) знак препинания письма CJK.
-pub(crate) fn wide_punct(ch: char) -> bool {
+fn wide_punct(ch: char) -> bool {
     let c = ch as u32;
     (0x3000..=0x303F).contains(&c)
         || c == 0x30A0
@@ -299,10 +299,10 @@ pub(crate) fn wide_punct(ch: char) -> bool {
 /// (UAX #9: LRE/RLE/PDF/LRO/RLO, LRI/RLI/FSI/PDI). Для обработки пробелов
 /// его нет вовсе: css-text-3 §4.1 — «ignoring bidi formatting characters as
 /// if they were not there» (`white-space-collapsing-bidi-001/002`).
-pub(crate) fn bidi_format(ch: char) -> bool {
+pub(super) fn bidi_format(ch: char) -> bool {
     matches!(ch as u32, 0x202A..=0x202E | 0x2066..=0x2069)
 }
 
-pub(crate) fn is_collapsible(ch: char) -> bool {
+pub(super) fn is_collapsible(ch: char) -> bool {
     matches!(ch, ' ' | '\t' | '\n' | '\r')
 }

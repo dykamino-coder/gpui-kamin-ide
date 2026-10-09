@@ -373,7 +373,7 @@ fn synth_clip(e: &Element, out: &mut String) -> Option<String> {
     Some(id)
 }
 
-pub(crate) fn write_element(e: &Element, out: &mut String) {
+pub(super) fn write_element(e: &Element, out: &mut String) {
     // Синтезированный `<clipPath>` пишется ПЕРЕД элементом (см. `synth_clip`).
     let clip_id = synth_clip(e, out);
     out.push('<');
@@ -1071,7 +1071,7 @@ pub fn rasterize(markup: &str, w: f32, h: f32) -> Option<Arc<RenderImage>> {
 
 /// `rasterize` with `pad` logical pixels of extra canvas on the right and
 /// bottom at the same user-space scale (`gpui::svg_markup_to_image_padded`).
-pub(crate) fn rasterize_padded(markup: &str, w: f32, h: f32, pad: f32) -> Option<Arc<RenderImage>> {
+fn rasterize_padded(markup: &str, w: f32, h: f32, pad: f32) -> Option<Arc<RenderImage>> {
     let mut hasher = DefaultHasher::new();
     markup.hash(&mut hasher);
     pad.to_bits().hash(&mut hasher);

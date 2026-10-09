@@ -175,7 +175,7 @@ pub(crate) fn split_flex_lines(
 /// Строки контейнера для `split_flex_lines`: `(сдвиг строки по x, элементы с
 /// мерой)`. `None` — контейнер вне гейта.
 #[allow(clippy::type_complexity)]
-pub(crate) fn flex_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<(f32, Vec<(Element, Shape)>)>> {
+fn flex_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<(f32, Vec<(Element, Shape)>)>> {
     use crate::style::computed::FlexDir;
     if flex_gap_rules(&c.style) {
         return None;
@@ -363,7 +363,7 @@ pub(crate) fn flex_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<(f32,
 /// линейки пропадали целиком (`flex-gap-decorations-fragmentation-025/028/029/
 /// 030`, v225 0.04…0.28 → v226 0.82…2.07). Такой контейнер идёт прежним путём —
 /// одной копией со своими линейками.
-pub(crate) fn flex_gap_rules(s: &Computed) -> bool {
+pub(super) fn flex_gap_rules(s: &Computed) -> bool {
     s.column_rule_visible == Some(true)
         || s.row_rule_visible == Some(true)
         || s.column_rule_styles.as_ref().is_some_and(|l| l.any(|v| *v))
@@ -382,7 +382,7 @@ pub(crate) fn flex_gap_rules(s: &Computed) -> bool {
 /// как у колонки, плюс высота контейнера `auto` и хотя бы одна строка из
 /// нескольких элементов: ряд «элемент на строку» прежний путь уже знает.
 #[allow(clippy::type_complexity)]
-pub(crate) fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, Element, Shape)>>> {
+fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, Element, Shape)>>> {
     use crate::style::computed::FlexDir;
     if flex_gap_rules(&c.style) {
         return None;
@@ -578,7 +578,7 @@ pub(crate) fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<V
 /// В поддереве (до `depth`) — коробка с заданной высотой и содержимым: свой
 /// параллельный поток (css-break-3 §3), которого раскрытый элемент ряда не
 /// выражает (`flex_row_lines_of`).
-pub(crate) fn constrained_inside(c: &Element, depth: u8) -> bool {
+fn constrained_inside(c: &Element, depth: u8) -> bool {
     depth > 0
         && c.children.iter().any(|n| match n {
             Node::Element(k) => {
@@ -594,7 +594,7 @@ pub(crate) fn constrained_inside(c: &Element, depth: u8) -> bool {
 /// `flex-basis` (точки/проценты) при `flex-grow: 0`, иначе `width`; проценты —
 /// от главного размера контейнера `main`. `None` — размер по содержимому
 /// (`auto`/`content`), который гейт не выражает.
-pub(crate) fn row_item_width(ks: &Computed, main: f32) -> Option<f32> {
+fn row_item_width(ks: &Computed, main: f32) -> Option<f32> {
     let px = |l: &Option<Len>| match l {
         Some(Len::Px(v)) => Some(*v),
         Some(Len::Pct(p)) => Some(p * main),

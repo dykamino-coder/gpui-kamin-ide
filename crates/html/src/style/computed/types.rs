@@ -836,7 +836,7 @@ pub struct Decor {
     pub over_lang: bool,
 }
 
-pub(crate) fn parse_decor_style(t: &str) -> Option<DecorStyle> {
+pub(super) fn parse_decor_style(t: &str) -> Option<DecorStyle> {
     Some(match t {
         "solid" => DecorStyle::Solid,
         "double" => DecorStyle::Double,
@@ -848,7 +848,7 @@ pub(crate) fn parse_decor_style(t: &str) -> Option<DecorStyle> {
 }
 
 /// `<length-percentage>` украшения (толщина, смещение, отступ концов).
-pub(crate) fn parse_decor_length(t: &str) -> Option<DecorLen> {
+pub(super) fn parse_decor_length(t: &str) -> Option<DecorLen> {
     if t == "auto" || t == "normal" {
         return None;
     }
@@ -863,7 +863,7 @@ pub(crate) fn parse_decor_length(t: &str) -> Option<DecorLen> {
 
 /// `text-decoration-thickness`: `auto | from-font | <length-percentage> |
 /// <line-width>` (css-text-decor-4 §2.4).
-pub(crate) fn parse_decor_thickness(t: &str) -> Option<DecorLen> {
+pub(super) fn parse_decor_thickness(t: &str) -> Option<DecorLen> {
     Some(match t {
         "auto" => DecorLen::Auto,
         "from-font" => DecorLen::FromFont,

@@ -8,16 +8,16 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 pub(crate) mod orthogonal_inline;
 pub(crate) mod native_vertical;
-pub(crate) mod orthogonal_fixed_child;
+pub(super) mod orthogonal_fixed_child;
 pub(crate) mod orthogonal_children;
-pub(crate) mod orthogonal_horizontal;
-pub(crate) mod orthogonal_absolute;
-pub(crate) mod vertical_intrinsic;
+mod orthogonal_horizontal;
+mod orthogonal_absolute;
+mod vertical_intrinsic;
 pub(crate) mod vertical_hug;
 pub(crate) mod native_intrinsic;
-pub(crate) mod physical_atomic;
+mod physical_atomic;
 pub(crate) mod rotated_atom;
-pub(crate) mod physical_atomic_frame;
+mod physical_atomic_frame;
 pub(crate) mod orthogonal_measure;
 
 /// Блок вертикального письма занимает по горизонтали столько, сколько просит

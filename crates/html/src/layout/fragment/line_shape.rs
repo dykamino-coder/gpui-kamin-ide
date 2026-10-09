@@ -22,7 +22,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 /// Ширина содержимого блока в потоке родителя шириной `pw` (CSS 2.1 §10.3.3:
 /// `margin-left + border + padding + width + … = containing block width`).
 /// Только обычный блок потока — у прочих ширину решает своя раскладка.
-pub(crate) fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
+pub(super) fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
     let s = &c.style;
     // Блочный flex-контейнер и сетка в потоке занимают ширину как блок
     // (css-flexbox-1 §9.2 / css-grid-2 §6.1: «block-level … sized as a
@@ -65,7 +65,7 @@ pub(crate) fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
 /// `height` при этом не действует. Контейнер `height: auto` свободного места не
 /// даёт, и гибкость базу не меняет (§9.7). `None` — мера по `height`
 /// элемента, как прежде.
-pub(crate) fn basis_sized(c: &Element, k: &Element) -> Option<Element> {
+pub(super) fn basis_sized(c: &Element, k: &Element) -> Option<Element> {
     use crate::style::computed::FlexDir;
     let s = &c.style;
     if k.inline
@@ -122,7 +122,7 @@ pub(crate) fn slack_fill(c: &Element) -> Option<gpui::Hsla> {
 }
 
 /// Как ширина детей коробки `c` известна мере строк (`LineFrame::items`).
-pub(crate) fn items_kind(c: &Element) -> u8 {
+pub(super) fn items_kind(c: &Element) -> u8 {
     use crate::style::computed::FlexDir;
     let s = &c.style;
     match s.display {
@@ -141,7 +141,7 @@ pub(crate) fn items_kind(c: &Element) -> u8 {
 /// Текст строчного содержимого для меры строк: `<br>` — `\n`, пробелы
 /// схлопнуты (css-text-3 §4.1.1). `None` — среди детей есть то, что строку
 /// меняет сверх голого текста (атом, свой шрифт, отбивка, внепоточный).
-pub(crate) fn line_text(nodes: &[Node]) -> Option<String> {
+fn line_text(nodes: &[Node]) -> Option<String> {
     fn gather(nodes: &[Node], out: &mut String) -> bool {
         for n in nodes {
             match n {
@@ -232,7 +232,7 @@ pub(crate) fn line_text(nodes: &[Node]) -> Option<String> {
 /// `HandleInflow` → `IsBreakInside` по строкам). Только при включённом
 /// контексте (`with_lines`) и известной ширине колонки; иначе `None`, и мера
 /// идёт прежним путём (сплошной строчный набор — монолит).
-pub(crate) fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) -> Option<Shape> {
+pub(super) fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) -> Option<Shape> {
     // Высота в точках — коробка своей высоты, строки внутри неё режутся так
     // же (css-break-3 §4.3); строки ниже её низа — переполнение, точек там нет.
     let fixed_h = match c.style.height {
@@ -364,7 +364,7 @@ pub(crate) fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) 
 /// строки, и срез многоколоночника под ней не действует
 /// (`text-box-trim-multicol-004`: блок `trim-start` под `trim-both` — низ
 /// первой колонки срезан, верх второй нет; `-005` — наоборот).
-pub(crate) fn brk_trim(frames: &[LineFrame], side: impl Fn(&Computed) -> bool) -> bool {
+fn brk_trim(frames: &[LineFrame], side: impl Fn(&Computed) -> bool) -> bool {
     // Анонимный блок строк — строки самого хоста, его флаг — копия хостового.
     match frames.iter().rposition(|f| side(&f.inh) && !f.anon) {
         Some(0) => true,
@@ -376,7 +376,7 @@ pub(crate) fn brk_trim(frames: &[LineFrame], side: impl Fn(&Computed) -> bool) -
 /// Срез `text-box-trim` с одной стороны строки (css-inline-3 §4.2): полулидинг
 /// плюс расстояние от подъёма/спуска до метрики края — та же арифметика, что у
 /// `blocks()` (`trim_for`).
-pub(crate) fn trim_amount(s: &Computed, size: f32, lh: f32, start: bool) -> f32 {
+fn trim_amount(s: &Computed, size: f32, lh: f32, start: bool) -> f32 {
     let family = s.font_family.clone().unwrap_or_default();
     let (ascent, descent, cap) = crate::text::metrics::vmetrics_px(&family, size);
     let half = (lh - (ascent + descent)) / 2.0;
@@ -494,7 +494,7 @@ pub(crate) fn nested_rows_box(c: &Element) -> bool {
         && !oof_descendant(c)
 }
 
-pub(crate) fn oof_descendant(e: &Element) -> bool {
+fn oof_descendant(e: &Element) -> bool {
     e.children
         .iter()
         .any(|n| matches!(n, Node::Element(k) if out_of_flow(&k.style) || oof_descendant(k)))

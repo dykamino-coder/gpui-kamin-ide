@@ -17,11 +17,11 @@ pub mod float_flow;
 pub mod initial_letter;
 pub mod shape_flow;
 pub mod wrap;
-pub(crate) mod band_clearance;
-pub(crate) mod band_dimensions;
-pub(crate) mod float_atom;
-pub(crate) mod float_clear_scope;
-pub(crate) mod inline_floats;
+pub(super) mod band_clearance;
+mod band_dimensions;
+mod float_atom;
+mod float_clear_scope;
+pub(super) mod inline_floats;
 pub(crate) mod shapes;
 pub(crate) mod rounded_box;
 
@@ -37,7 +37,7 @@ pub(crate) fn block_like_float(c: &Computed) -> bool {
 /// обязан пройти (§9.5.2). Укладке колонок (`shape_full`) этого хватает,
 /// чтобы резать коробку по колонкам вместо отказа от всей стопки
 /// (`floats-clear-multicol-*`: флоаты 250 в колонках по 100).
-pub(crate) fn float_only_box(c: &Element) -> Option<f32> {
+pub(super) fn float_only_box(c: &Element) -> Option<f32> {
     if c.inline || !matches!(c.style.display, None | Some(Display::Block)) {
         return None;
     }
@@ -70,7 +70,7 @@ pub(crate) fn float_only_box(c: &Element) -> Option<f32> {
     (left + right > 0 && left <= 1 && right <= 1).then_some(tall)
 }
 
-pub(crate) fn has_float(n: &Element, depth: u8) -> bool {
+pub(super) fn has_float(n: &Element, depth: u8) -> bool {
     if depth == 0 {
         return false;
     }

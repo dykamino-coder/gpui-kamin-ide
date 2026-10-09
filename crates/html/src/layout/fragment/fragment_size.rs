@@ -53,7 +53,7 @@ pub(crate) fn shape_full(element: &Element, depth: u8, cx: ShapeCx) -> Option<Sh
     Some(shape)
 }
 
-pub(crate) fn border_size(value: f32, style: &Computed, decoration: f32) -> f32 {
+pub(super) fn border_size(value: f32, style: &Computed, decoration: f32) -> f32 {
     if style.border_box == Some(true) {
         value.max(decoration)
     } else {
@@ -61,7 +61,7 @@ pub(crate) fn border_size(value: f32, style: &Computed, decoration: f32) -> f32 
     }
 }
 
-pub(crate) fn constrain(
+pub(super) fn constrain(
     natural_border_size: f32,
     style: &Computed,
     decoration: f32,

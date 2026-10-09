@@ -16,16 +16,16 @@ pub mod anon;
 pub mod columns;
 pub mod paint;
 
-pub(crate) mod table_roles;
-pub(crate) mod table_border_widths;
-pub(crate) mod table_spanning_size;
-pub(crate) mod table_clipped_content;
-pub(crate) mod finish;
-pub(crate) use crate::layout::table::finish::*;
-pub(crate) mod rows;
-pub(crate) use crate::layout::table::rows::*;
-pub(crate) mod cell_borders;
-pub(crate) use crate::layout::table::cell_borders::*;
+mod table_roles;
+mod table_border_widths;
+mod table_spanning_size;
+mod table_clipped_content;
+mod finish;
+use crate::layout::table::finish::*;
+pub(super) mod rows;
+use crate::layout::table::rows::*;
+mod cell_borders;
+use crate::layout::table::cell_borders::*;
 
 /// Таблица.
 ///
@@ -617,7 +617,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     )
 }
 
-pub(crate) fn is_cell(e: &Element) -> bool {
+pub(super) fn is_cell(e: &Element) -> bool {
     table_roles::is_cell(e)
 }
 
@@ -629,7 +629,7 @@ pub(crate) fn is_cell(e: &Element) -> bool {
 /// фонов поточных блочных потомков). Блочный поточный потомок без этих
 /// признаков остаётся под кромками — его в расчёт не берём, спускаясь в его
 /// детей. Глубина ограничена: обход идёт у каждой ячейки.
-pub(crate) fn cell_paints_over(nodes: &[Node], depth: u8) -> bool {
+fn cell_paints_over(nodes: &[Node], depth: u8) -> bool {
     depth > 0
         && nodes.iter().any(|n| match n {
             Node::Element(k) => {
@@ -653,7 +653,7 @@ pub(crate) fn cell_paints_over(nodes: &[Node], depth: u8) -> bool {
 /// ряда ячейки до конца группы (включая его). HTML table model: охват за
 /// конец группы урезается, `rowspan=0` тянется до конца группы; мусор и
 /// отсутствие атрибута — один ряд.
-pub(crate) fn row_span_in_group(cell: &Element, left: usize) -> usize {
+fn row_span_in_group(cell: &Element, left: usize) -> usize {
     let left = left.max(1);
     match cell
         .attr("rowspan")

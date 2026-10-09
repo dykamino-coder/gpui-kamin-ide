@@ -5,7 +5,7 @@ use crate::paint::gap_rules::gap_segments::segments;
 use crate::paint::gap_rules::geometry::GapRun;
 use gpui::{Bounds, ContentMask, Hsla, Pixels, TransformationMatrix, Window, point, px, size};
 
-pub(crate) fn paint(
+pub(super) fn paint(
     window: &mut Window,
     bounds: Bounds<Pixels>,
     run: &GapRun,

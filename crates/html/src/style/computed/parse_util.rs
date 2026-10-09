@@ -4,7 +4,7 @@ use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
 
 /// Функция картинки в начале слоя и хвост за её закрывающей скобкой.
-pub(crate) fn split_image_func(v: &str) -> (&str, &str) {
+pub(super) fn split_image_func(v: &str) -> (&str, &str) {
     let mut depth = 0i32;
     for (i, ch) in v.char_indices() {
         match ch {
@@ -22,7 +22,7 @@ pub(crate) fn split_image_func(v: &str) -> (&str, &str) {
 }
 
 /// Есть ли в записи длины в единицах шрифта (`em`, `rem`, `ex`, `ch`).
-pub(crate) fn has_font_units(v: &str) -> bool {
+pub(super) fn has_font_units(v: &str) -> bool {
     v.split(|c: char| !(c.is_ascii_alphanumeric() || c == '.' || c == '-'))
         .any(|t| {
             let unit = t.trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == '-');
@@ -68,12 +68,12 @@ pub(crate) fn font_lengths_to_px(v: &str, em: f32, rem: f32, ex: f32, ch: f32) -
     out
 }
 
-pub(crate) fn parse_align(v: &str) -> Option<Align> {
+pub(super) fn parse_align(v: &str) -> Option<Align> {
     align_keyword(v).unwrap_or(None)
 }
 
 /// Несёт ли значение выравнивания модификатор `safe` (css-align §5.3).
-pub(crate) fn is_safe(v: &str) -> bool {
+pub(super) fn is_safe(v: &str) -> bool {
     v.split_whitespace().next() == Some("safe")
 }
 
@@ -85,7 +85,7 @@ pub(crate) fn is_safe(v: &str) -> bool {
 /// и прежнее значение остаётся. Раньше эти три случая делились на два
 /// по-разному у разных свойств: у `align-items` негодное значение сохраняло
 /// прежнее, у `justify-items` — стирало его.
-pub(crate) fn align_keyword(v: &str) -> Result<Option<Align>, ()> {
+pub(super) fn align_keyword(v: &str) -> Result<Option<Align>, ()> {
     let mut it = v.split_whitespace();
     let mut word = it.next().ok_or(())?;
     // `safe`/`unsafe` — что делать при переполнении области; сама позиция от
@@ -123,7 +123,7 @@ pub(crate) fn align_keyword(v: &str) -> Result<Option<Align>, ()> {
     })
 }
 
-pub(crate) fn parse_justify(v: &str) -> Option<Justify> {
+pub(super) fn parse_justify(v: &str) -> Option<Justify> {
     // `safe`/`unsafe` говорят, что делать при переполнении области; позиция
     // от этого не меняется, поэтому приставка снимается.
     let v = v
@@ -163,7 +163,7 @@ pub(crate) fn parse_justify(v: &str) -> Option<Justify> {
 /// другом обязаны оставить фон зелёным. Разбор ниже намеренно снисходителен —
 /// он берёт из записи всё, что узнал, — поэтому годность проверяется
 /// отдельно, и только ею решается сброс (`escapes-002/014`, `keywords-000`).
-pub(crate) fn background_shorthand_valid(v: &str) -> bool {
+pub(super) fn background_shorthand_valid(v: &str) -> bool {
     if v.contains("gradient(") || v.contains("url(") {
         return true;
     }
@@ -214,7 +214,7 @@ pub(crate) fn background_shorthand_valid(v: &str) -> bool {
 
 /// Голова сокращения `font` и семейство: семейство — хвост после размера.
 /// Убрать пробелы вокруг косой черты: `50px / 1` → `50px/1`.
-pub(crate) fn join_slash(v: &str) -> String {
+pub(super) fn join_slash(v: &str) -> String {
     let mut out = String::with_capacity(v.len());
     for part in v.split('/') {
         if !out.is_empty() {
@@ -227,7 +227,7 @@ pub(crate) fn join_slash(v: &str) -> String {
     out
 }
 
-pub(crate) fn split_font(v: &str) -> (&str, &str) {
+pub(super) fn split_font(v: &str) -> (&str, &str) {
     let mut end = 0;
     for token in split_outside_parens(v) {
         let at = v[end..].find(token.as_str()).map(|i| end + i).unwrap_or(end);
@@ -245,7 +245,7 @@ pub(crate) fn split_font(v: &str) -> (&str, &str) {
 /// весу, а `2em Ahem` — семейству, после чего гибло всё
 /// (`font-family-011`). Ключевые кегли и математические функции — тоже
 /// кегль (§15.8; `font: calc(10 * 10px) sans-serif`, `font-148`).
-pub(crate) fn font_size_token(token: &str) -> bool {
+pub(super) fn font_size_token(token: &str) -> bool {
     let size = font_slash(token).map_or(token, |(s, _)| s);
     let lower = size.to_ascii_lowercase();
     if matches!(
@@ -263,7 +263,7 @@ pub(crate) fn font_size_token(token: &str) -> bool {
 }
 
 /// Косая черта ВНЕ скобок: `20px/1.5` делится, `calc(100px/2)` — нет.
-pub(crate) fn font_slash(t: &str) -> Option<(&str, &str)> {
+pub(super) fn font_slash(t: &str) -> Option<(&str, &str)> {
     let mut depth = 0i32;
     for (i, ch) in t.char_indices() {
         match ch {
@@ -279,7 +279,7 @@ pub(crate) fn font_slash(t: &str) -> Option<(&str, &str)> {
 /// Разбить значение по пробелам ВНЕ скобок: `rgba(0, 128, 0, .5)` —
 /// один токен, а `split_whitespace` рассыпал его, и цвет пропадал
 /// (`outline` с функциональным цветом).
-pub(crate) fn split_ws_top(v: &str) -> Vec<&str> {
+pub(super) fn split_ws_top(v: &str) -> Vec<&str> {
     let mut out = Vec::new();
     let (mut depth, mut start) = (0i32, None::<usize>);
     for (i, ch) in v.char_indices() {
@@ -309,7 +309,7 @@ pub(crate) fn split_ws_top(v: &str) -> Vec<&str> {
 /// css-text-3 §forced-line-break — сохранённый перевод строки и любой знак
 /// классов UAX#14 BK/NL: VT, FF, NEL, LS, PS (Blink `line_truncator.cc`
 /// `IsForcedLineBreak`/`SuppressLineBreaks`; `text-overflow-string-018…022`).
-pub(crate) fn collapse_forced_breaks(text: &str) -> String {
+pub(super) fn collapse_forced_breaks(text: &str) -> String {
     let forced = |c: char| {
         matches!(
             c,
@@ -335,7 +335,7 @@ pub(crate) fn collapse_forced_breaks(text: &str) -> String {
     out
 }
 
-pub(crate) fn collapse_segment_breaks(text: &str) -> String {
+pub(super) fn collapse_segment_breaks(text: &str) -> String {
     if !text.contains(['\n', '\r']) {
         return text.to_string();
     }
@@ -355,7 +355,7 @@ pub(crate) fn collapse_segment_breaks(text: &str) -> String {
     out
 }
 
-pub(crate) fn unescape_content(text: &str) -> String {
+pub(super) fn unescape_content(text: &str) -> String {
     if !text.contains('\\') {
         return text.to_string();
     }
@@ -477,7 +477,7 @@ pub(crate) fn split_outside_parens(v: &str) -> Vec<String> {
 /// которые доли решают САМИ при отрисовке, зная размер коробки
 /// (css-values-4 §10.9). Любая другая природа в сумме (`ch`, `vw`, `em`…) —
 /// `None`: её здесь сложить не с чем, и запись, как прежде, не применяется.
-pub(crate) fn pct_px_pair(t: &str) -> Option<(f32, f32)> {
+pub(super) fn pct_px_pair(t: &str) -> Option<(f32, f32)> {
     match Len::parse_mixed(t)? {
         Len::Calc(i) => crate::style::values::value::calc_get(i).pct_px(),
         _ => None,
@@ -485,7 +485,7 @@ pub(crate) fn pct_px_pair(t: &str) -> Option<(f32, f32)> {
 }
 
 /// Кавычка вокруг имени шрифта: `font-family: "Segoe UI", sans-serif`.
-pub(crate) fn is_quote(c: char) -> bool {
+pub(super) fn is_quote(c: char) -> bool {
     c == '"' || c == '\''
 }
 
@@ -517,7 +517,7 @@ pub(crate) fn is_generic(lower: &str) -> bool {
 /// Семейство за родовое `sans-serif`; оно же — умолчание документа.
 pub const GENERIC_SANS: &str = "Segoe UI";
 
-pub(crate) fn parse_overflow(v: &str) -> Option<Overflow> {
+pub(super) fn parse_overflow(v: &str) -> Option<Overflow> {
     match v {
         "hidden" => Some(Overflow::Hidden),
         "clip" => Some(Overflow::Clip),
@@ -533,7 +533,7 @@ pub(crate) fn parse_overflow(v: &str) -> Option<Overflow> {
 /// `half-border-box` css-borders-4): 0 border, 1 margin, 2 padding,
 /// 3 content, 4 half-border. У элемента с CSS-коробкой `fill-box` =
 /// content-box, `stroke-box`/`view-box` = border-box.
-pub(crate) fn geometry_box_kind(word: &str) -> Option<u8> {
+fn geometry_box_kind(word: &str) -> Option<u8> {
     Some(match word.trim().to_ascii_lowercase().as_str() {
         "border-box" | "stroke-box" | "view-box" => 0,
         "margin-box" => 1,
@@ -548,7 +548,7 @@ pub(crate) fn geometry_box_kind(word: &str) -> Option<u8> {
 /// со скобками, режется по ПАРНОЙ закрывающей (внутри `polygon(...)`
 /// запятые, внутри `path('...')` — что угодно); слово коробки — следом за
 /// ней. Хвост, не разобранный в две фигуры, делает значение недействительным.
-pub(crate) fn parse_border_shape(v: &str) -> Option<BorderShape> {
+pub(super) fn parse_border_shape(v: &str) -> Option<BorderShape> {
     let mut items: Vec<(String, Option<u8>)> = Vec::new();
     let mut rest = v.trim();
     while !rest.is_empty() && items.len() < 2 {
@@ -613,7 +613,7 @@ pub(crate) fn parse_border_shape(v: &str) -> Option<BorderShape> {
 /// (css-borders-4 §corner-shaping): ключевые слова — их числовые
 /// эквиваленты по спеке, `superellipse(<number> | infinity | -infinity)` —
 /// само число. `None` — не форма угла (запись отбрасывается).
-pub(crate) fn corner_shape_param(tok: &str) -> Option<f32> {
+pub(super) fn corner_shape_param(tok: &str) -> Option<f32> {
     let t = tok.trim().to_ascii_lowercase();
     Some(match t.as_str() {
         "round" => 1.0,
@@ -636,7 +636,7 @@ pub(crate) fn corner_shape_param(tok: &str) -> Option<f32> {
 /// `corner-shape: a [b [c [d]]]` → K по углам tl/tr/br/bl — раскладка та же,
 /// что у `border-radius` (§corner-shaping-shorthand). Функции со скобками
 /// внутри пробелов не содержат, поэтому режем по пробелам.
-pub(crate) fn corner_shape_shorthand(raw: &str) -> Option<[f32; 4]> {
+pub(super) fn corner_shape_shorthand(raw: &str) -> Option<[f32; 4]> {
     let v: Vec<f32> = raw
         .split_whitespace()
         .map(corner_shape_param)
@@ -653,7 +653,7 @@ pub(crate) fn corner_shape_shorthand(raw: &str) -> Option<[f32; 4]> {
 /// Смещение первой запятой ВНЕ вложенных скобок.
 /// Раскрытие записи в четыре стороны: 1 значение — все, 2 — верт/гориз,
 /// 3 — верх/гориз/низ, 4 — по часовой. `None`, если разобрать не удалось.
-pub(crate) fn four<T: Copy>(words: &[&str], one: impl Fn(&str) -> Option<T>) -> Option<[T; 4]> {
+pub(super) fn four<T: Copy>(words: &[&str], one: impl Fn(&str) -> Option<T>) -> Option<[T; 4]> {
     let v: Vec<T> = words.iter().filter_map(|w| one(w)).collect();
     match v.len() {
         1 => Some([v[0]; 4]),
@@ -705,7 +705,7 @@ pub(crate) fn top_level_comma(inner: &str) -> Option<usize> {
 }
 
 /// Ширина обводки: ключевые слова и любые шрифтовые/абсолютные длины.
-pub(crate) fn outline_width_of(v: &str) -> Option<Len> {
+pub(super) fn outline_width_of(v: &str) -> Option<Len> {
     match v {
         "thin" => Some(Len::Px(1.0)),
         "medium" => Some(Len::Px(3.0)),
@@ -786,7 +786,7 @@ pub(crate) fn family_name_ok(part: &str) -> bool {
 /// Довод `fit-content(<length-percentage>)` (css-sizing-3 §4.1): только
 /// точки или доля, неотрицательные. Прочее (`em`, `calc`) — `None`, и
 /// значение ведёт себя, как прежде, голым `fit-content`.
-pub(crate) fn fit_content_arg(v: &str) -> Option<Len> {
+pub(super) fn fit_content_arg(v: &str) -> Option<Len> {
     let lower = v.trim().to_ascii_lowercase();
     let arg = lower.strip_prefix("fit-content(")?.strip_suffix(')')?;
     match Len::parse(arg) {
@@ -796,7 +796,7 @@ pub(crate) fn fit_content_arg(v: &str) -> Option<Len> {
 }
 
 /// Разобранный `calc-size()`.
-pub(crate) enum CalcSize {
+pub(super) enum CalcSize {
     /// Основа — длина: значение известно сразу.
     Fixed(f32),
     /// Основа — ключевое слово размера: `(mul, add, max, min)` над ним.
@@ -809,7 +809,7 @@ pub(crate) enum CalcSize {
 /// суммы) и `min(size, L)` / `max(size, L)`; длины — в точках. Основа —
 /// `auto`, `fit-content`, `min-content`, `max-content`, `content` или длина;
 /// вложенный `calc-size()` и проценты не понимаются — объявление роняется.
-pub(crate) fn calc_size_arg(v: &str) -> Option<CalcSize> {
+pub(super) fn calc_size_arg(v: &str) -> Option<CalcSize> {
     let inner = v.trim().strip_prefix("calc-size(")?.strip_suffix(')')?;
     let (basis, expr) = inner.split_once(',')?;
     let basis = basis.trim();
@@ -864,7 +864,7 @@ pub(crate) fn calc_size_arg(v: &str) -> Option<CalcSize> {
 /// §basic-shape-rect): one radius for all corners and both axes — every
 /// listed value, before and after `/`, equal. `20px / 20px` is that radius;
 /// unequal corners are not representable here and stay unrounded.
-pub(crate) fn uniform_round(r: &str) -> Option<Len> {
+pub(super) fn uniform_round(r: &str) -> Option<Len> {
     let mut it = r.split(|c: char| c == '/' || c.is_whitespace()).filter(|t| !t.is_empty());
     let first = Len::parse(it.next()?)?;
     it.all(|t| Len::parse(t) == Some(first)).then_some(first)
@@ -872,7 +872,7 @@ pub(crate) fn uniform_round(r: &str) -> Option<Len> {
 
 /// `xywh()` (css-images-4 §object-view-box; css-shapes-1 §basic-shape-rect).
 /// Длины — точки или доли; `inset` с 1-3 значениями раскрывается как поля.
-pub(crate) fn parse_view_box(v: &str) -> Option<(u8, [Len; 4])> {
+pub(super) fn parse_view_box(v: &str) -> Option<(u8, [Len; 4])> {
     let v = v.trim();
     let (kind, inner) = if let Some(r) = v.strip_prefix("inset(") {
         (0u8, r)
@@ -901,7 +901,7 @@ pub(crate) fn parse_view_box(v: &str) -> Option<(u8, [Len; 4])> {
     Some((kind, four))
 }
 
-pub(crate) fn assign_size(slot: &mut Option<Len>, v: &str) {
+pub(super) fn assign_size(slot: &mut Option<Len>, v: &str) {
     // Смесь «доля ± точки» доживает индексом (`parse_mixed`): раскладка
     // складывает её сама (`DefiniteLength::Calc`, css-values-4 §10.9).
     // Прежде `calc(50% - 3px)` роняло объявление (`calc-width-block-1`).
@@ -921,7 +921,7 @@ pub(crate) fn assign_size(slot: &mut Option<Len>, v: &str) {
 /// Годна ли запись `box-shadow` ЦЕЛИКОМ (css-backgrounds-3 §7.1:
 /// `none | <shadow>#`; тень — 2-4 длины, не больше одного цвета и одного
 /// `inset`). `none` внутри списка делает декларацию негодной.
-pub(crate) fn box_shadow_valid(v: &str) -> bool {
+pub(super) fn box_shadow_valid(v: &str) -> bool {
     if v.trim().eq_ignore_ascii_case("none") {
         return true;
     }
@@ -944,7 +944,7 @@ pub(crate) fn box_shadow_valid(v: &str) -> bool {
     })
 }
 
-pub(crate) fn parse_shadows(v: &str) -> Vec<Shadow> {
+pub(super) fn parse_shadows(v: &str) -> Vec<Shadow> {
     let mut out = vec![];
     for s in crate::style::css::split_args(v) {
         // Внутренние тени не рисуются — но синтаксис их проверяется: одна
@@ -1014,7 +1014,7 @@ pub(crate) fn parse_shadows(v: &str) -> Vec<Shadow> {
 }
 
 /// Разбиение тени на токены: `rgba(0, 0, 0, .4)` — один токен, а не четыре.
-pub(crate) fn tokenize_shadow(s: &str) -> Vec<String> {
+fn tokenize_shadow(s: &str) -> Vec<String> {
     let mut out = vec![];
     let mut cur = String::new();
     let mut depth = 0i32;
@@ -1047,7 +1047,7 @@ pub(crate) fn tokenize_shadow(s: &str) -> Vec<String> {
 /// наибольшее представимое: здесь — конечное большое, чтобы сумма
 /// множителей и доли свободного места не уходили в бесконечность и `NaN`
 /// (`flex-grow-009`: `flex: calc(infinity) 0 0px` забирает всё место).
-pub(crate) fn flex_factor(v: &str) -> Option<f32> {
+pub(super) fn flex_factor(v: &str) -> Option<f32> {
     let g = crate::style::values::value::number(v)?;
     if g.is_nan() || g < 0.0 {
         return None;
@@ -1056,7 +1056,7 @@ pub(crate) fn flex_factor(v: &str) -> Option<f32> {
 }
 
 /// `stretch` and its prefixed spellings (css-sizing-4 §4.1).
-pub(crate) fn stretch_keyword(v: &str) -> bool {
+pub(super) fn stretch_keyword(v: &str) -> bool {
     let v = v.trim();
     v.eq_ignore_ascii_case("stretch")
         || v.eq_ignore_ascii_case("-webkit-fill-available")

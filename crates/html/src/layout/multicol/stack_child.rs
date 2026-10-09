@@ -29,7 +29,7 @@ use crate::style::values::value::Len;
 use gpui::{IntoElement, ParentElement, Styled, px};
 
 #[allow(clippy::too_many_arguments, clippy::needless_borrow)]
-pub(crate) fn multicol_stack_child(
+pub(super) fn multicol_stack_child(
     ix: usize,
     c: Element,
     h: f32,

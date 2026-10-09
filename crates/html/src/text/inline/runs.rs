@@ -108,7 +108,7 @@ pub fn strut_font(style: &Computed, base: &TextStyle) -> gpui::Font {
     run_for("x", style, base).font
 }
 
-pub(crate) fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun {
+pub(super) fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun {
     let mut font = base.font();
     font.fallbacks = crate::style::computed::font_family::fallbacks(style, font.fallbacks);
     // Названное семейство сильнее родового: подстановкой занимается система.
@@ -429,7 +429,7 @@ pub fn as_wrapped_row(
 /// ZWJ line breaking classes». Неразрывный пробел из правила ИСКЛЮЧЁН: рядом
 /// с атомом он точку переноса, наоборот, ДАЁТ — `line-breaking-atomic-001`
 /// и `-002` на этом и построены.
-pub(crate) fn atom_glue(ch: char) -> bool {
+fn atom_glue(ch: char) -> bool {
     use unicode_linebreak::BreakClass::*;
     ch != '\u{00A0}'
         && matches!(
@@ -446,7 +446,7 @@ pub(crate) fn atom_glue(ch: char) -> bool {
 /// Сравнение идёт с куском ЦЕЛИКОМ: `U+FEFF` как знак документа
 /// (`line-breaking-atomic-012/013`) приезжает внутри текста вместе с буквой и
 /// служебным не считается.
-pub(crate) fn glue_marker(p: &Piece) -> bool {
+fn glue_marker(p: &Piece) -> bool {
     matches!(p, Piece::Text { text, .. } if text == "\u{200b}" || text == SPACER || text.is_empty())
 }
 
@@ -456,7 +456,7 @@ pub(crate) fn glue_marker(p: &Piece) -> bool {
 /// обязана остаться, иначе весь кусок текста стал бы неразрывным.
 /// Две соседние коробки БЕЗ знака-склейки не склеиваются: между ними точка
 /// переноса есть (`line-breaking-atomic-007`).
-pub(crate) fn glue_atoms(pieces: Vec<Piece>) -> Vec<Vec<Piece>> {
+fn glue_atoms(pieces: Vec<Piece>) -> Vec<Vec<Piece>> {
     // Шаг 1: у каких текстовых кусков сосед — атом (сквозь служебные метки).
     let mut before_atom = vec![false; pieces.len()];
     let mut after_atom = vec![false; pieces.len()];

@@ -20,7 +20,7 @@ pub(crate) struct Scope {
 /// возвращает false) и по HTML §13.2.6.4.4 шаг 8.1.1 оставляет обычный
 /// `<template>` ребёнком хоста, а разметку тени — в его `template_contents`.
 /// Здесь это и есть корень тени.
-pub(crate) struct Shadow {
+pub(super) struct Shadow {
     pub(crate) root: Handle,
     /// Таблицы тени: лист агента + `<style>` тени. Правила документа сюда
     /// не попадают, правила тени — наружу (css-shadow-1 §3.2).
@@ -71,18 +71,18 @@ pub(crate) struct SlotInfo {
 
 thread_local! {
     /// Тени документа: адрес хоста → тень.
-    pub(crate) static SHADOWS: std::cell::RefCell<HashMap<usize, Rc<Shadow>>> =
+    pub(super) static SHADOWS: std::cell::RefCell<HashMap<usize, Rc<Shadow>>> =
         std::cell::RefCell::new(HashMap::new());
     /// Слоты теней документа: адрес слота → распределение.
-    pub(crate) static SLOTS: std::cell::RefCell<HashMap<usize, Rc<SlotInfo>>> =
+    pub(super) static SLOTS: std::cell::RefCell<HashMap<usize, Rc<SlotInfo>>> =
         std::cell::RefCell::new(HashMap::new());
 }
 
-pub(crate) fn node_key(handle: &Handle) -> usize {
+fn node_key(handle: &Handle) -> usize {
     Rc::as_ptr(handle) as usize
 }
 
-pub(crate) fn shadow_of(handle: &Handle) -> Option<Rc<Shadow>> {
+pub(super) fn shadow_of(handle: &Handle) -> Option<Rc<Shadow>> {
     SHADOWS.with(|m| m.borrow().get(&node_key(handle)).cloned())
 }
 
@@ -90,11 +90,11 @@ pub(crate) fn slot_of(handle: &Handle) -> Option<Rc<SlotInfo>> {
     SLOTS.with(|m| m.borrow().get(&node_key(handle)).cloned())
 }
 
-pub(crate) fn is_slot(handle: &Handle) -> bool {
+fn is_slot(handle: &Handle) -> bool {
     matches!(&handle.data, NodeData::Element { name, .. } if local_name(&name.local) == "slot")
 }
 
-pub(crate) fn attr_of(handle: &Handle, key: &str) -> Option<String> {
+fn attr_of(handle: &Handle, key: &str) -> Option<String> {
     let NodeData::Element { attrs, .. } = &handle.data else {
         return None;
     };
@@ -109,7 +109,7 @@ pub(crate) fn attr_of(handle: &Handle, key: &str) -> Option<String> {
 /// shadowrootmode="open|closed">` (HTML §13.2.6.4.4: второй такой шаблон к
 /// хосту не крепится и остаётся обычным `<template>`). Возвращает сам
 /// шаблон (его надо вычесть из светлых детей) и содержимое — корень тени.
-pub(crate) fn declarative_shadow(host: &Handle) -> Option<(Handle, Handle)> {
+fn declarative_shadow(host: &Handle) -> Option<(Handle, Handle)> {
     host.children.borrow().iter().find_map(|child| {
         let NodeData::Element {
             name,
@@ -134,7 +134,7 @@ pub(crate) fn declarative_shadow(host: &Handle) -> Option<(Handle, Handle)> {
 /// Таблицы тени: копия листа агента + каждый `<style>` тени отдельной
 /// таблицей происхождения документа. Возвращает область и аргументы её
 /// `:has()` — отметки для них ставятся по дереву тени.
-pub(crate) fn shadow_scope(root: &Handle, agent: &Scope, media: Media) -> (Rc<Scope>, Vec<HasArg>) {
+fn shadow_scope(root: &Handle, agent: &Scope, media: Media) -> (Rc<Scope>, Vec<HasArg>) {
     let mut rules = agent.rules.clone();
     let mut frames = agent.frames.clone();
     let mut sheets: Vec<String> = vec![];
@@ -159,7 +159,7 @@ pub(crate) fn shadow_scope(root: &Handle, agent: &Scope, media: Media) -> (Rc<Sc
 /// Все `<slot>` дерева тени в порядке дерева. Вложенные тени лежат в
 /// `template_contents`, а не в `children`, поэтому сюда не попадают; светлые
 /// дети вложенных хостов — попадают, они в этом же дереве.
-pub(crate) fn collect_slots(handle: &Handle, out: &mut Vec<Handle>) {
+fn collect_slots(handle: &Handle, out: &mut Vec<Handle>) {
     for child in handle.children.borrow().iter() {
         if is_slot(child) {
             out.push(child.clone());
@@ -172,7 +172,7 @@ pub(crate) fn collect_slots(handle: &Handle, out: &mut Vec<Handle>) {
 /// ребёнок хоста — элемент или ТЕКСТ — уходит в первый слот тени с его
 /// именем (`slot=""` элемента; у текста и без атрибута — пустое). Ребёнок без
 /// подходящего слота не рисуется вовсе.
-pub(crate) fn assign_slots(
+fn assign_slots(
     root: &Handle,
     light: &[Handle],
     outer: &Rc<Scope>,
@@ -240,7 +240,7 @@ pub(crate) fn assign_slots(
 /// из одного безликого хоста (css-shadow-1 §3.1: «the selector match list is
 /// initially the shadow host, followed by all children of the shadow root»)
 /// и в светлых детей — в текущей области.
-pub(crate) fn scan_shadows(
+pub(super) fn scan_shadows(
     children: &[Handle],
     path: &mut Vec<Ancestor>,
     scope: &Rc<Scope>,
@@ -307,7 +307,7 @@ pub(crate) fn scan_shadows(
 /// распределённые, иначе fallback-дети; слот среди них раскрывается
 /// рекурсивно. Глубина ограничена: цикла распределений в дереве быть не
 /// может, но стража дешевле доказательства.
-pub(crate) fn flatten_slot(
+fn flatten_slot(
     key: usize,
     drafts: &HashMap<usize, SlotInfo>,
     depth: usize,
@@ -358,7 +358,7 @@ pub(crate) fn flatten_slot(
 }
 
 /// Досчитать плоские списки и выложить слоты на склад.
-pub(crate) fn finish_slots(mut drafts: HashMap<usize, SlotInfo>) {
+pub(super) fn finish_slots(mut drafts: HashMap<usize, SlotInfo>) {
     let keys: Vec<usize> = drafts.keys().copied().collect();
     let mut flats: HashMap<usize, Vec<Option<FlatCtx>>> = HashMap::new();
     for key in &keys {

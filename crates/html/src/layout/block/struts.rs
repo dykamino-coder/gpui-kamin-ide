@@ -14,7 +14,7 @@ use crate::text::text_box::blank_text;
 /// Первый (по направлению итератора) IN-FLOW блочный ребёнок: плавающие,
 /// абсолютные и пустые строчные пропускаются, непробельный текст и строчный
 /// элемент с содержимым (строчная коробка!) обрывают поиск.
-pub(crate) fn first_in_flow<'a>(
+pub(super) fn first_in_flow<'a>(
     it: impl Iterator<Item = (usize, &'a Node)>,
 ) -> Option<(usize, &'a crate::dom::Element)> {
     for (i, c) in it {
@@ -124,11 +124,11 @@ pub(crate) fn top_edge_open(e: &Element) -> bool {
 /// родитель с ребёнком и схлопывание насквозь — считаются одним кодом.
 pub(crate) type Strut = (f32, f32);
 
-pub(crate) fn strut_of(v: f32) -> Strut {
+pub(super) fn strut_of(v: f32) -> Strut {
     (v.max(0.0), v.min(0.0))
 }
 
-pub(crate) fn adjoin(a: Strut, b: Strut) -> Strut {
+pub(super) fn adjoin(a: Strut, b: Strut) -> Strut {
     (a.0.max(b.0), a.1.min(b.1))
 }
 
@@ -159,7 +159,7 @@ pub(crate) fn inline_axis_edges(c: &Computed) -> bool {
 /// `calc`). Ноль подставлять НЕЛЬЗЯ: ветка насквозь значение ЗАПИСЫВАЕТ
 /// обратно, и написанное пропадёт навсегда (`margin-bottom-103`: `50%`
 /// превращалось в `0`).
-pub(crate) fn margin_or_bail(l: Option<Len>, style: &Computed) -> Option<f32> {
+pub(super) fn margin_or_bail(l: Option<Len>, style: &Computed) -> Option<f32> {
     match l {
         None => Some(0.0),
         Some(_) => margin_px(l, style),
@@ -179,11 +179,11 @@ pub(crate) fn through_strut(e: &Element) -> Option<Strut> {
 
 /// То же, но без вето по `clear`: нужно, чтобы отличить «не схлопывается
 /// вовсе» от «схлопнулась бы, если бы не клиренс».
-pub(crate) fn through_strut_no_clear(e: &Element) -> Option<Strut> {
+pub(super) fn through_strut_no_clear(e: &Element) -> Option<Strut> {
     through_strut_inner(e, true)
 }
 
-pub(crate) fn through_strut_inner(e: &Element, ignore_clear: bool) -> Option<Strut> {
+fn through_strut_inner(e: &Element, ignore_clear: bool) -> Option<Strut> {
     // Строчная пометка у блочной коробки (псевдоэлемент) — не строчный.
     if (e.inline && !inline_marked_block(e)) || !in_flow(&e.style) || own_context(e) {
         return None;
@@ -324,7 +324,7 @@ pub(crate) fn float_only_wrapper(w: &Element) -> Option<(bool, bool, f32)> {
     any.then_some((left, right, min_w))
 }
 
-pub(crate) fn leading_chain(
+pub(super) fn leading_chain(
     children: &[Node],
     path: &mut Vec<usize>,
     eat: &mut Vec<(Vec<usize>, bool)>,
@@ -425,7 +425,7 @@ pub(crate) fn leading_chain(
 /// вглубь подъём уходил мимо ещё неизвестной высоты родителя. Для
 /// `margin-trim: block-end` этой опасности нет: наружу ничего не поднимается,
 /// поля только гасятся, и цепочка ограничена последним ребёнком в потоке.
-pub(crate) fn trailing_chain(
+pub(super) fn trailing_chain(
     children: &[Node],
     path: &mut Vec<usize>,
     eat: &mut Vec<(Vec<usize>, bool)>,
@@ -478,7 +478,7 @@ pub(crate) fn trailing_chain(
 /// Обнулить поле по пути: наружу оно ушло одним полем родителя, и раскладка
 /// сложила бы его второй раз. `deep` — коробка схлопнулась насквозь: чистится
 /// она сама с обеих сторон.
-pub(crate) fn zero_at(children: &mut [Node], path: &[usize], top: bool, deep: bool) {
+pub(super) fn zero_at(children: &mut [Node], path: &[usize], top: bool, deep: bool) {
     let Some((&i, rest)) = path.split_first() else {
         return;
     };
@@ -512,7 +512,7 @@ pub(crate) fn zero_at(children: &mut [Node], path: &[usize], top: bool, deep: bo
 /// единицы — в точки по кеглю РОДИТЕЛЯ (наследуется вычисленная длина, «not
 /// 80px 120px 40px 160px»), доля остаётся долей и решается от своего
 /// содержащего блока (`margin-percentage-inherit-001`: 15% от 200, а не 60).
-pub(crate) fn pin_inherited_margins(e: &mut Element, top: bool, bottom: bool) {
+pub(super) fn pin_inherited_margins(e: &mut Element, top: bool, bottom: bool) {
     let own = e.style.margin;
     for n in e.children.iter_mut() {
         let Node::Element(ch) = n else { continue };

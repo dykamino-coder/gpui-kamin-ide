@@ -11,7 +11,7 @@ use crate::style::values::value::{Color, Len};
 /// * `Some(Some(src))` — СЫРАЯ запись выбранного `<image>` (`url(...)`,
 ///   градиент); строка-адрес оборачивается в `url(...)` (§2.5: «Each
 ///   `<string>` inside image-set() represents a `<url>`»).
-pub(crate) fn image_set_pick(inner: &str) -> Option<Option<String>> {
+pub(super) fn image_set_pick(inner: &str) -> Option<Option<String>> {
     let mut options: Vec<(String, f32)> = vec![];
     for cand in crate::style::css::split_args(inner) {
         let mut image: Option<String> = None;
@@ -82,7 +82,7 @@ pub(crate) fn image_set_pick(inner: &str) -> Option<Option<String>> {
 /// Единицы разрешения переписываются точками (`1x` → `1px`, `96dpi` → `1px`),
 /// арифметику считает готовый разборщик длин. `None` — в записи нет ни одного
 /// разрешения либо она не сводится к числу.
-pub(crate) fn image_resolution(token: &str) -> Option<f32> {
+fn image_resolution(token: &str) -> Option<f32> {
     if !token.is_ascii() {
         return None;
     }
@@ -209,7 +209,7 @@ pub(crate) fn filter_gradient_text(raw: &str, f: &Filter) -> String {
 /// — законный угол, `Some(None)` — число с НЕЗНАКОМОЙ единицей (`90degree`,
 /// `0.25turns`): вся запись негодна; `None` — не размерность вовсе (цвет,
 /// `to right`), решают прочие ветки.
-pub(crate) fn gradient_angle(a: &str) -> Option<Option<f32>> {
+fn gradient_angle(a: &str) -> Option<Option<f32>> {
     let a = a.trim();
     let cut = a.find(|c: char| c.is_ascii_alphabetic())?;
     let (num, unit) = a.split_at(cut);
@@ -468,7 +468,7 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
 /// Записан ли цвет УСТАРЕВШЕЙ формой sRGB: имя, `#hex`, `rgb()`, `rgba()`,
 /// `hsl()`, `hsla()`, `hwb()` и их формы с прозрачностью (css-color-4 §12.2).
 /// От ответа зависит пространство интерполяции по умолчанию.
-pub(crate) fn legacy_srgb_color(token: &str) -> bool {
+fn legacy_srgb_color(token: &str) -> bool {
     let t = token.trim().to_ascii_lowercase();
     if t.starts_with('#') {
         return true;

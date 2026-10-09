@@ -19,42 +19,42 @@
 //! Первая ветка покрывает подавляющее большинство: жирный, курсив, ссылка,
 //! цвет. Вторая включается там, где без неё пришлось бы врать про размер.
 
-pub(crate) mod emphasis;
+mod emphasis;
 pub use emphasis::emphasis_spans;
 
-pub(crate) mod first_letter;
-pub(crate) mod first_line_background;
-pub(crate) mod empty_inline;
+mod first_letter;
+mod first_line_background;
+mod empty_inline;
 pub use first_letter::split_first_letter;
 
-pub(crate) mod tabs;
-pub(crate) mod lang_case;
+mod tabs;
+mod lang_case;
 pub(crate) mod physical_sides;
-pub(crate) mod physical_projection;
-pub(crate) mod inline_spacing;
+mod physical_projection;
+mod inline_spacing;
 pub(crate) mod bidi_controls;
 pub use bidi_controls::bidi_marks;
 pub use tabs::tab_stops;
 
-pub(crate) mod text_case;
+mod text_case;
 
 use crate::dom::{Element, Node};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement};
-pub(crate) mod collect;
-pub(crate) use crate::text::inline::collect::*;
-pub(crate) mod hyphenate;
+pub(super) mod collect;
+use crate::text::inline::collect::*;
+pub(super) mod hyphenate;
 pub use crate::text::inline::hyphenate::*;
-pub(crate) mod spans;
+pub(super) mod spans;
 pub use crate::text::inline::spans::*;
-pub(crate) mod spacers;
+pub(super) mod spacers;
 pub use crate::text::inline::spacers::*;
-pub(crate) mod whitespace;
+pub(super) mod whitespace;
 pub use crate::text::inline::whitespace::*;
-pub(crate) mod case;
+pub(super) mod case;
 pub use crate::text::inline::case::*;
-pub(crate) mod runs;
+pub(super) mod runs;
 pub use crate::text::inline::runs::*;
 
 /// Кусок инлайн-содержимого: либо текст со своим стилем, либо готовый элемент
@@ -133,11 +133,11 @@ pub struct InlineCb {
 
 thread_local! {
     /// Глубина позиционированных строчных предков текущего сбора кусков.
-    pub(crate) static INLINE_CB_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static INLINE_CB_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     /// Атом, который строится прямо сейчас, лежит внутри такого предка.
-    pub(crate) static ATOM_CB: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static ATOM_CB: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     /// Атом ушёл абсолютом с краями от строчного содержащего блока.
-    pub(crate) static ABS_CB_TAKEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static ABS_CB_TAKEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// Строящийся атом — внутри позиционированного строчного (одноразово).
@@ -163,7 +163,7 @@ pub(crate) fn take_abs_cb() -> bool {
 /// Отметить куски-абсолюты с краями (`OverlayAt::edges`) содержимого
 /// строчной коробки `e`, у которых содержащего блока ещё нет: ближайший
 /// позиционированный предок — она.
-pub(crate) fn mark_inline_cb(pieces: Vec<Piece>, e: &Element) -> Vec<Piece> {
+fn mark_inline_cb(pieces: Vec<Piece>, e: &Element) -> Vec<Piece> {
     if !pieces
         .iter()
         .any(|p| matches!(p, Piece::Overlay(_, how) if how.edges && how.cb.is_none()))

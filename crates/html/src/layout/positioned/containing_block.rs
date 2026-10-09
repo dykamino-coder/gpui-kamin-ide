@@ -193,7 +193,7 @@ pub fn icb_close() -> Vec<AnyElement> {
 /// считались бы от неё, а не от области просмотра — то есть ровно то, ради
 /// чего затеян вынос. `LatePlace` своей коробки не заводит: он отдаёт
 /// `layout_id` ребёнка.
-pub(crate) fn icb_place(spot: SpotCell, child: AnyElement) -> AnyElement {
+fn icb_place(spot: SpotCell, child: AnyElement) -> AnyElement {
     LatePlace {
         child: Some(child),
         spot,

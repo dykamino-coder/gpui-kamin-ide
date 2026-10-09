@@ -951,7 +951,7 @@ pub(crate) struct Seg {
 /// Длина куска без хвостовых пробелов — они висят за краем строки.
 /// Сколько байт схлопываемых пробелов в НАЧАЛЕ строки: по CSS они удаляются
 /// вместе с переносом, иначе следующая строка начинается с отступа в пробел.
-pub(crate) fn skip_leading(chunk: &str) -> usize {
+pub(super) fn skip_leading(chunk: &str) -> usize {
     chunk.len() - chunk.trim_start_matches([' ', '\t']).len()
 }
 
@@ -960,7 +960,7 @@ pub(crate) fn skip_leading(chunk: &str) -> usize {
 /// U+3000 и прочие Zs-разделители ВИСЯТ (`trailing-ideographic-space-002`,
 /// `trailing-other-space-separators-001..004`) — сужение набора до
 /// 0x20/09/0A теряло 9 зелёных пар, а целевые break-spaces тесты не чинило.
-pub(crate) fn hangs(ch: char) -> bool {
+pub(super) fn hangs(ch: char) -> bool {
     matches!(
         ch as u32,
         0x20 | 0x09 | 0x0A | 0x1680 | 0x2000..=0x200A | 0x202F | 0x205F | 0x3000
@@ -975,7 +975,7 @@ pub(crate) fn hangs(ch: char) -> bool {
 /// (`word-spacing-001`).
 /// CJK ideographs, kana and CJK symbols: `text-justify: auto` expands
 /// around them (Blink `Character::IsCJKIdeographOrSymbol`).
-pub(crate) fn justify_ideograph(c: char) -> bool {
+pub(super) fn justify_ideograph(c: char) -> bool {
     matches!(c as u32,
         0x2E80..=0x2FDF | 0x3001..=0x303F | 0x3040..=0x30FF | 0x31C0..=0x31FF
         | 0x3200..=0x33FF | 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF
@@ -984,13 +984,13 @@ pub(crate) fn justify_ideograph(c: char) -> bool {
 
 /// Cursive (joining) scripts: no inter-character expansion inside them
 /// (css-text-3 §7.3 `inter-character`, §7.3.1 cursive scripts).
-pub(crate) fn cursive_script(c: char) -> bool {
+pub(super) fn cursive_script(c: char) -> bool {
     matches!(c as u32,
         0x0600..=0x08FF | 0x07C0..=0x07FF | 0x1800..=0x18AF
         | 0xFB50..=0xFDFF | 0xFE70..=0xFEFF | 0x10D00..=0x10D3F)
 }
 
-pub(crate) fn word_separator(ch: char) -> bool {
+pub(super) fn word_separator(ch: char) -> bool {
     // Идеографический пробел U+3000 — ФИКСИРОВАННОЙ ширины и разделителем
     // слов НЕ считается (css-text-3 §word-separator; word-spacing-
     // characters-001): `word-spacing` его не трогает.
@@ -1002,7 +1002,7 @@ pub(crate) fn word_separator(ch: char) -> bool {
 
 /// Знак управления нулевой ширины: сам не висит, но обрезка хвоста смотрит
 /// сквозь него — иначе пробел перед ним перестаёт висеть.
-pub(crate) fn zero_width(ch: char) -> bool {
+pub(super) fn zero_width(ch: char) -> bool {
     matches!(ch as u32, 0x200B | 0x2060 | 0xFEFF | 0x202A..=0x202E | 0x2066..=0x2069)
 }
 
@@ -1025,7 +1025,7 @@ pub(crate) fn zero_width(ch: char) -> bool {
 /// То есть висение U+3000 требуют одни пары и запрещают другие: развилка не
 /// в знаке, а в том, чем кончается строка. Возвращать вместе с настоящим
 /// правилом Phase II (обрезка хвоста в САМОМ разборе строки, а не в подложке).
-pub(crate) fn trim_hanging(chunk: &str) -> usize {
+pub(super) fn trim_hanging(chunk: &str) -> usize {
     // Идеографический пробел тоже не тянет за собой перенос: место он
     // занимает и рисуется, но строку из-за него не рвут — иначе он один
     // уезжал бы на следующую строку.

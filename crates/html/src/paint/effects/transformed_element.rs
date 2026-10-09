@@ -77,7 +77,7 @@ pub type RefBox = std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<Pixels>>>>;
 /// детерминированно и одинаково для теста и эталона с той же гомографией
 /// (transform3d-matrix3d-003/-004). `None` — плоскость за глазом или ребром.
 
-pub(crate) fn flatten_plane(f: &[[f32; 4]; 4], center: (f32, f32)) -> Option<gpui::TransformationMatrix> {
+fn flatten_plane(f: &[[f32; 4]; 4], center: (f32, f32)) -> Option<gpui::TransformationMatrix> {
     const EPS: f32 = 1e-5;
     if crate::style::computed::det3_plane(f).abs() < EPS {
         return None;
@@ -113,7 +113,7 @@ pub(crate) fn flatten_plane(f: &[[f32; 4]; 4], center: (f32, f32)) -> Option<gpu
 /// `with_transformation` как `inner∘outer` (`window.rs:2789`; обратный
 /// порядок замерен и откачен), поэтому ребёнок объёмного контекста, желая
 /// оказаться на абсолютной `G`, обязан втолкнуть `G ∘ F_родителя⁻¹`.
-pub(crate) fn invert_affine(m: [[f32; 3]; 2]) -> Option<gpui::TransformationMatrix> {
+fn invert_affine(m: [[f32; 3]; 2]) -> Option<gpui::TransformationMatrix> {
     let (a, b, tx) = (m[0][0], m[0][1], m[0][2]);
     let (c, d, ty) = (m[1][0], m[1][1], m[1][2]);
     let det = a * d - b * c;

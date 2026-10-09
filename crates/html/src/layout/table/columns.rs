@@ -13,7 +13,7 @@ use gpui::{AnyElement, IntoElement, px};
 /// переносов, сохранённых пробелов и вложенных коробок; снят по замеру:
 /// css-text +1, flexbox +1, css-grid +1, поломок нет.
 /// `min-content` снизу не даёт колонке сжаться в ноль на узкой панели.
-pub(crate) fn track_list_collapsed(
+pub(super) fn track_list_collapsed(
     cols: u16,
     fixed: bool,
     first_row: &[Option<f32>],
@@ -31,7 +31,7 @@ pub(crate) fn track_list_collapsed(
     tracks
 }
 
-pub(crate) fn track_list(
+fn track_list(
     cols: u16,
     fixed: bool,
     first_row: &[Option<f32>],
@@ -141,7 +141,7 @@ pub(crate) fn track_list(
 /// рисуется в её ячейках (css-tables-3 §drawing-backgrounds).
 /// Колоночная роль элемента: тег ИЛИ `display` (§17.2.1). `Some(false)` —
 /// колонка, `Some(true)` — группа колонок.
-pub(crate) fn col_role(el: &Element) -> Option<bool> {
+pub(super) fn col_role(el: &Element) -> Option<bool> {
     match el.tag.as_str() {
         "col" => Some(false),
         "colgroup" => Some(true),
@@ -155,14 +155,14 @@ pub(crate) fn col_role(el: &Element) -> Option<bool> {
 
 /// Пролёт колонки: атрибут `span` — только HTML-ный, у элемента с колоночным
 /// `display` его нет, и пролёт всегда единичный.
-pub(crate) fn col_span(el: &Element) -> usize {
+fn col_span(el: &Element) -> usize {
     el.attr("span")
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(1)
         .max(1)
 }
 
-pub(crate) fn col_elements(children: &[Node]) -> Vec<Option<&Element>> {
+pub(super) fn col_elements(children: &[Node]) -> Vec<Option<&Element>> {
     let mut out: Vec<Option<&Element>> = vec![];
     for child in children {
         let Node::Element(el) = child else { continue };
@@ -194,7 +194,7 @@ pub(crate) fn col_elements(children: &[Node]) -> Vec<Option<&Element>> {
 /// второй раз её сюда не берём: буфер проб выдаётся по `node_id`, и обе
 /// полосы делили бы один набор прямоугольников. Первая забрала бы его себе,
 /// вторая осталась бы пустой.
-pub(crate) fn colgroup_elements(children: &[Node]) -> Vec<Option<&Element>> {
+pub(super) fn colgroup_elements(children: &[Node]) -> Vec<Option<&Element>> {
     let mut out: Vec<Option<&Element>> = vec![];
     for child in children {
         let Node::Element(el) = child else { continue };
@@ -218,7 +218,7 @@ pub(crate) fn colgroup_elements(children: &[Node]) -> Vec<Option<&Element>> {
 ///
 /// Одно тело на слой групп и слой колонок: различаются они только набором
 /// элементов и порядком вызова (§17.5.1 — группы ПОД колонками).
-pub(crate) fn push_col_bands<'a>(
+pub(super) fn push_col_bands<'a>(
     els: &[Option<&'a Element>],
     salt: u64,
     have_rows: bool,
@@ -255,7 +255,7 @@ pub(crate) fn push_col_bands<'a>(
     }
 }
 
-pub(crate) fn col_element_widths(
+pub(super) fn col_element_widths(
     children: &[Node],
     base_font: f32,
     family: &str,

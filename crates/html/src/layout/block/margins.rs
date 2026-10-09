@@ -22,7 +22,7 @@ use crate::text::text_box::blank_text;
 /// takes part in margin collapsing in place of margin-bottom»).
 /// `None` — сторона запечатана либо контейнер — корень (§8.3.1: поля корня
 /// не схлопываются).
-pub(crate) fn collapse_flow_margins(children: Vec<Node>, reverse: bool, lead: Option<f32>) -> Vec<Node> {
+pub(super) fn collapse_flow_margins(children: Vec<Node>, reverse: bool, lead: Option<f32>) -> Vec<Node> {
     // Поле контейнера схлопывается С КРАЙНИМ flow-ребёнком через пустую
     // границу (CSS 2.1 §8.3.1): у `<body>` без рамки и паддинга хвостовое
     // поле — max(своё, block-end последнего ребёнка), рекурсивно. Без этого

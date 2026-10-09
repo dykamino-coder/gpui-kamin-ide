@@ -6,8 +6,8 @@ use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, Inspect
 pub mod geometry;
 pub mod painter;
 
-pub(crate) mod gap_segments;
-pub(crate) mod gap_fragment_tail;
+mod gap_segments;
+mod gap_fragment_tail;
 
 /// Прямоугольники элементов сетки/гибкого контейнера: их собирают пробы
 /// детей, а по ним слой-художник считает середины промежутков
@@ -15,12 +15,12 @@ pub(crate) mod gap_fragment_tail;
 pub type GapItems = std::rc::Rc<std::cell::RefCell<Vec<Bounds<Pixels>>>>;
 
 thread_local! {
-    pub(crate) static GAP_ITEMS: std::cell::RefCell<std::collections::HashMap<u64, GapItems>> =
+    static GAP_ITEMS: std::cell::RefCell<std::collections::HashMap<u64, GapItems>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
     /// Стек контейнеров с линейками промежутков при ПОСТРОЕНИИ дерева.
     /// Ровно как `CLAMP_STACK`: проба ставится только НЕПОСРЕДСТВЕННЫМ
     /// детям, поэтому сторож кладёт ключ на время сборки детей.
-    pub(crate) static GAP_STACK: std::cell::RefCell<Vec<u64>> = std::cell::RefCell::new(Vec::new());
+    static GAP_STACK: std::cell::RefCell<Vec<u64>> = std::cell::RefCell::new(Vec::new());
 }
 
 pub fn gap_items_for(key: u64) -> GapItems {
@@ -77,7 +77,7 @@ pub fn gap_item_probe(items: GapItems, border: [f32; 4]) -> AnyElement {
 /// от округлённых краёв элементов середина уезжает на долю точки, и при
 /// масштабе 1.25 край линейки округлялся на строку ниже
 /// (`flex-gap-decorations-048`: строка y=86 лишняя).
-pub(crate) struct GapItemProbe {
+struct GapItemProbe {
     pub(crate) items: GapItems,
     pub(crate) border: [f32; 4],
 }

@@ -8,7 +8,7 @@ use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use crate::text::text_box::blank_text;
 
-pub(crate) fn separate(e: &mut Element) -> bool {
+pub(super) fn separate(e: &mut Element) -> bool {
     if !lowers(e) {
         return false;
     }
@@ -91,7 +91,7 @@ pub(super) fn lowers(e: &Element) -> bool {
     bottom.is_some_and(|bottom| bottom > cap)
 }
 
-pub(crate) fn raises(e: &Element) -> bool {
+pub(super) fn raises(e: &Element) -> bool {
     let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
     match margin_px(e.style.min_height, &e.style) {
         None => !zero(e.style.min_height),

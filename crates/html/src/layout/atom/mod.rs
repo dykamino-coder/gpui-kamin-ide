@@ -24,8 +24,8 @@ use crate::text::ruby::container::ruby_container_atom;
 use crate::text::ruby::ruby_role;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
-pub(crate) mod own_box;
-pub(crate) mod positioned;
+mod own_box;
+mod positioned;
 
 /// Не-текстовые инлайн-элементы, которые в поток встроить нельзя.
 /// Строчный атом с размером по ключевому слову (`width: min-content` и
@@ -59,7 +59,7 @@ pub(crate) fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts)
     Some(if wraps { content_sized(el, &e.style, &inherit(inherited, &e.style), (None, None)) } else { el })
 }
 
-pub(crate) fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
+fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
     // Строчный атом — независимый контекст форматирования: строки внутри
@@ -407,7 +407,7 @@ pub(crate) fn pct_resolved_for_wrapper(e: &Element, inherited: &Computed) -> Opt
 /// известными сторонами. Нужны там, где между коробкой и её содержащим
 /// блоком стоит наша служебная обёртка (сетка `content_sized`, строка
 /// абзаца у `inline-block`), и раскладка решала бы долю от неё.
-pub(crate) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> Option<Element> {
+pub(super) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> Option<Element> {
     if replaced_tag(e) || e.style.vertical == Some(true) {
         return None;
     }

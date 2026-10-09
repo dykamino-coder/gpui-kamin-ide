@@ -5,7 +5,7 @@ use crate::style::computed::{Computed, Display, Overflow, Position, Sides};
 use crate::style::values::value::Len;
 use gpui::{Div, Styled, px};
 
-pub(crate) fn apply_box(mut d: Div, c: &Computed) -> Div {
+pub(super) fn apply_box(mut d: Div, c: &Computed) -> Div {
     contained_intrinsic::apply(&mut d, c);
     // `contain: size`: коробка меряется как пустая — рост от содержимого
     // подменяется `contain-intrinsic-size` (или нулём). Подмена касается
@@ -394,13 +394,13 @@ pub fn margins(d: Div, s: &Sides) -> Div {
     apply_sides(d, s, SideKind::Margin)
 }
 
-pub(crate) enum SideKind {
+enum SideKind {
     Padding,
     Margin,
     Border,
 }
 
-pub(crate) fn apply_sides(mut d: Div, s: &Sides, kind: SideKind) -> Div {
+fn apply_sides(mut d: Div, s: &Sides, kind: SideKind) -> Div {
     for (val, side) in [(s.top, 0u8), (s.right, 1), (s.bottom, 2), (s.left, 3)] {
         let Some(l) = val else { continue };
         // `margin: auto` — это центрирование блока, а не «нет значения».
@@ -475,7 +475,7 @@ pub(crate) fn radius_px(c: &Computed, l: Option<Len>) -> Option<f32> {
     }
 }
 
-pub(crate) fn apply_radius(mut d: Div, c: &Computed) -> Div {
+fn apply_radius(mut d: Div, c: &Computed) -> Div {
     // Эллиптические углы и большой неоднородный радиус режет альфа-маска
     // буфера группы; круглое скругление сверху обрезало бы форму вторым
     // лезвием (см. `Computed::radius_masked`).

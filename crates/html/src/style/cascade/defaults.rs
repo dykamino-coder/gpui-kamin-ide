@@ -7,7 +7,7 @@
 /// и так «поле не задано», сюда не входят — им сброс не нужен.
 /// Наследуется ли свойство по умолчанию (столбец «Inherited» таблиц
 /// свойств CSS). Нужен `unset`: у наследуемого он значит `inherit`.
-pub(crate) fn inherited_property(key: &str) -> bool {
+pub(super) fn inherited_property(key: &str) -> bool {
     matches!(
         key,
         "color"
@@ -48,7 +48,7 @@ pub(crate) fn inherited_property(key: &str) -> bool {
     )
 }
 
-pub(crate) fn initial_value(key: &str) -> Option<&'static str> {
+pub(super) fn initial_value(key: &str) -> Option<&'static str> {
     Some(match key {
         "border" => "0 none",
         "border-radius" => "0",

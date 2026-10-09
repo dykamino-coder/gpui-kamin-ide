@@ -5,7 +5,7 @@ use crate::style::computed::{Align, Computed, Display, FlexDir, Justify, Overflo
 use crate::style::values::value::Len;
 use gpui::{Div, Styled, px};
 
-pub(crate) fn apply_layout(mut d: Div, c: &Computed) -> Div {
+pub(super) fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // Вертикальная `-webkit-box` с действующим `continue` (`line-clamp`,
     // `-webkit-line-clamp`) вычисляется в `flow-root` (css-overflow-4
     // §line-clamp, «the computed value becomes flow-root and the box
@@ -691,11 +691,11 @@ pub(crate) fn apply_layout(mut d: Div, c: &Computed) -> Div {
 /// Идёт ли `aspect-ratio` автоминимумом (css-sizing-4 §5.2): незамещаемая
 /// коробка без прокрутки, ровно одна ось задана в точках, а минимум
 /// ratio-зависимой оси не задан явно.
-pub(crate) fn set_len(l: Option<Len>) -> bool {
+fn set_len(l: Option<Len>) -> bool {
     matches!(l, Some(x) if x != Len::Auto)
 }
 
-pub(crate) fn ratio_as_auto_min(c: &Computed) -> bool {
+fn ratio_as_auto_min(c: &Computed) -> bool {
     let visible = |o: Option<Overflow>| matches!(o, None | Some(Overflow::Visible));
     let px_w = matches!(c.width, Some(Len::Px(_)));
     let px_h = matches!(c.height, Some(Len::Px(_)));

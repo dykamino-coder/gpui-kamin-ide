@@ -5,14 +5,14 @@ use crate::dom::{Element, Node};
 
 /// CSS 2 section 17.2.1 removes only a whitespace-only anonymous inline
 /// box. Leading spaces next to inline content belong to that same box.
-pub(crate) fn flush_inline(cells: &mut Vec<Node>, run: &mut Vec<Node>) {
+pub(super) fn flush_inline(cells: &mut Vec<Node>, run: &mut Vec<Node>) {
     let inline = std::mem::take(run);
     if inline.iter().any(|node| !crate::render::is_blank(node)) {
         cells.push(Node::Element(crate::layout::table::anon::anon_element("td", inline)));
     }
 }
 
-pub(crate) fn is_cell(element: &Element) -> bool {
+pub(super) fn is_cell(element: &Element) -> bool {
     match element.style.display {
         Some(Display::TableCell) => true,
         None => matches!(element.tag.as_str(), "td" | "th"),

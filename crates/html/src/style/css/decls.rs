@@ -110,7 +110,7 @@ pub fn parse_decls(raw: &str) -> Decls {
 
 /// Объявления блока В ПОРЯДКЕ ЗАПИСИ, повтор свойства — отдельной парой
 /// (`Decls` порядок помнит только в служебном `ORDER_KEY`).
-pub(crate) fn ordered_decls(decls: &Decls) -> Vec<(String, String)> {
+pub(super) fn ordered_decls(decls: &Decls) -> Vec<(String, String)> {
     let order = decls.get(ORDER_KEY).cloned().unwrap_or_default();
     order
         .split(DECL_SEP)
@@ -123,7 +123,7 @@ pub(crate) fn ordered_decls(decls: &Decls) -> Vec<(String, String)> {
 }
 
 /// Вложенные at-блоки тела `@page`: `(имя без @ в нижнем регистре, тело)`.
-pub(crate) fn nested_blocks(body: &str) -> Vec<(String, String)> {
+pub(super) fn nested_blocks(body: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let b = body.as_bytes();
     let mut i = 0usize;
@@ -165,7 +165,7 @@ pub(crate) fn nested_blocks(body: &str) -> Vec<(String, String)> {
 }
 
 /// Срезать вложенные at-блоки из тела `@page`: остаются только объявления.
-pub(crate) fn strip_nested_blocks(body: &str) -> String {
+pub(super) fn strip_nested_blocks(body: &str) -> String {
     let mut out = String::with_capacity(body.len());
     let mut depth = 0usize;
     for ch in body.chars() {
@@ -204,7 +204,7 @@ pub fn split_args(raw: &str) -> Vec<&str> {
 /// хотя обязан искать тег с точкой в имени, то есть не совпадать ни с чем.
 /// Кончается ли накопленный кусок НЕЗАВЕРШЁННЫМ hex-экранированием:
 /// обратная косая, за ней от одной до шести шестнадцатеричных цифр.
-pub(crate) fn ends_with_open_escape(cur: &str) -> bool {
+pub(super) fn ends_with_open_escape(cur: &str) -> bool {
     let hex_len = cur
         .chars()
         .rev()
@@ -270,7 +270,7 @@ pub fn unescape(name: &str) -> String {
 /// Обрезать результат НЕЛЬЗЯ: `\\0020yellow` раскрывается в имя с пробелом
 /// внутри, а такое значение недействительно; обрезка сделала бы из него
 /// `yellow` и применила то, что применять нечего (`escapes-014`).
-pub(crate) fn unescape_value(value: &str) -> String {
+pub(super) fn unescape_value(value: &str) -> String {
     if !value.contains('\\') {
         return value.to_string();
     }
@@ -311,7 +311,7 @@ pub(crate) fn unescape_value(value: &str) -> String {
 
 /// Сколько байт после обратного слэша съедает одно экранирование: до шести
 /// шестнадцатеричных цифр и один пробел за ними, либо ровно один знак.
-pub(crate) fn first_escape(tail: &str) -> &str {
+fn first_escape(tail: &str) -> &str {
     let mut end = 0usize;
     let mut digits = 0usize;
     for (i, ch) in tail.char_indices() {
@@ -342,7 +342,7 @@ pub(crate) enum Piece<'a> {
 }
 
 /// Есть ли в значении незакавыченная запись `url(…)` с негодным содержимым.
-pub(crate) fn has_bad_url(value: &str) -> bool {
+fn has_bad_url(value: &str) -> bool {
     let mut at = 0usize;
     while at < value.len() {
         let ch = value[at..].chars().next().unwrap_or('\0');
@@ -376,7 +376,7 @@ pub(crate) fn has_bad_url(value: &str) -> bool {
 /// управления и непробельный знак после пробела в середине; закавыченная
 /// форма — функция со строкой, к токену не относится. Обрыв на конце файла
 /// токен НЕ портит.
-pub(crate) fn url_is_bad(text: &str) -> bool {
+fn url_is_bad(text: &str) -> bool {
     let mut at = 4; // `url(`
     let bytes = text.as_bytes();
     while at < bytes.len() && bytes[at].is_ascii_whitespace() {
@@ -497,7 +497,7 @@ pub(crate) fn strip_comments(css: &str) -> String {
 
 /// Разрезание по разделителю, не заходя внутрь скобок: `rgba(0, 0, 0, .5)`
 /// содержит запятые, а `grid-template: repeat(2, 1fr)` — и запятые, и скобки.
-pub(crate) fn split_top_level(raw: &str, sep: char) -> Vec<&str> {
+pub(super) fn split_top_level(raw: &str, sep: char) -> Vec<&str> {
     let mut out = vec![];
     let mut depth = 0i32;
     let mut start = 0usize;

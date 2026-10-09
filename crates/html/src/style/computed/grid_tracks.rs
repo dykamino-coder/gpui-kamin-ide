@@ -4,7 +4,7 @@ use crate::style::computed::*;
 use crate::style::values::value::Len;
 
 /// Токены записи шаблона для имён линий: `[имена]`, `функция(…)`, слова.
-pub(crate) fn line_name_tokens(v: &str) -> Vec<String> {
+fn line_name_tokens(v: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut cur = String::new();
     let (mut paren, mut bracket) = (0i32, 0i32);
@@ -48,14 +48,14 @@ pub(crate) fn line_name_tokens(v: &str) -> Vec<String> {
 }
 
 /// `[a b]` → `["a", "b"]`.
-pub(crate) fn bracket_names(t: &str) -> Option<Vec<String>> {
+fn bracket_names(t: &str) -> Option<Vec<String>> {
     let inner = t.strip_prefix('[')?.strip_suffix(']')?;
     Some(inner.split_whitespace().map(str::to_string).collect())
 }
 
 /// Имена линий тела `repeat(…)`: у шаблона — по линиям вокруг дорожек тела
 /// (дорожек + 1), у `<line-name-list>` подсетки — по записи на линию.
-pub(crate) fn repeat_body_names(rest: &str, subgrid: bool) -> Vec<Vec<String>> {
+fn repeat_body_names(rest: &str, subgrid: bool) -> Vec<Vec<String>> {
     let mut lines: Vec<Vec<String>> = if subgrid { Vec::new() } else { vec![Vec::new()] };
     for t in line_name_tokens(rest) {
         match bracket_names(&t) {
@@ -77,7 +77,7 @@ pub(crate) fn repeat_body_names(rest: &str, subgrid: bool) -> Vec<Vec<String>> {
 /// КОМПОНЕНТАМИ шаблона — `repeat(N, …)` раскрыт на месте, как в
 /// `parse_tracks`, а `repeat(auto-fill|auto-fit, …)` остаётся одним
 /// компонентом со своими именами (`repeat`). `None` — имён нет.
-pub(crate) fn parse_line_names(v: &str) -> Option<gpui::GridAxisLineNames> {
+pub(super) fn parse_line_names(v: &str) -> Option<gpui::GridAxisLineNames> {
     let tokens = line_name_tokens(v);
     let subgrid = tokens.first().is_some_and(|t| t.eq_ignore_ascii_case("subgrid"));
     let mut out = gpui::GridAxisLineNames::default();
@@ -140,7 +140,7 @@ pub(crate) fn parse_line_names(v: &str) -> Option<gpui::GridAxisLineNames> {
 /// Грань размещения по имени линии (css-grid-2 §8.3): `a`, `a 2`, `-1 a`,
 /// `span a`, `span 2 a`. Без имени — `None` (числовую грань разбирает
 /// `parse_placement`).
-pub(crate) fn parse_named_placement(v: &str) -> Option<gpui::GridNamedLine> {
+pub(super) fn parse_named_placement(v: &str) -> Option<gpui::GridNamedLine> {
     let (mut span, mut num, mut name) = (false, None::<i16>, None::<String>);
     for t in v.split_whitespace() {
         if t.eq_ignore_ascii_case("span") {
@@ -164,7 +164,7 @@ pub(crate) fn parse_named_placement(v: &str) -> Option<gpui::GridNamedLine> {
 /// Обе грани `grid-column`/`grid-row`: при одном значении-имени конец — то
 /// же имя («if the first value is a <custom-ident>, the grid-row-end/
 /// grid-column-end longhand is also set to that <custom-ident>», §8.4).
-pub(crate) fn parse_named_pair(v: &str) -> [Option<gpui::GridNamedLine>; 2] {
+pub(super) fn parse_named_pair(v: &str) -> [Option<gpui::GridNamedLine>; 2] {
     match v.split_once('/') {
         Some((a, b)) => [parse_named_placement(a), parse_named_placement(b)],
         None => {
@@ -178,7 +178,7 @@ pub(crate) fn parse_named_pair(v: &str) -> [Option<gpui::GridNamedLine>; 2] {
     }
 }
 
-pub(crate) fn parse_placement(v: &str) -> Placement {
+pub(super) fn parse_placement(v: &str) -> Placement {
     let v = v.trim();
     if let Some(n) = v.strip_prefix("span") {
         return n
@@ -191,7 +191,7 @@ pub(crate) fn parse_placement(v: &str) -> Placement {
 }
 
 /// `grid-column: 1 / 3` либо `span 2`.
-pub(crate) fn parse_span(v: &str) -> Option<(Placement, Placement)> {
+pub(super) fn parse_span(v: &str) -> Option<(Placement, Placement)> {
     match v.split_once('/') {
         Some((a, b)) => Some((parse_placement(a), parse_placement(b))),
         None => Some((parse_placement(v), Placement::Auto)),
@@ -267,7 +267,7 @@ pub enum TrackSize {
 ///
 /// `grid: repeat(4, auto) / 1fr` — черта внутри `repeat()` не разделитель, и
 /// резать по первой попавшейся нельзя.
-pub(crate) fn split_slash(v: &str) -> (&str, &str) {
+pub(super) fn split_slash(v: &str) -> (&str, &str) {
     let mut depth = 0i32;
     for (i, ch) in v.char_indices() {
         match ch {
@@ -281,7 +281,7 @@ pub(crate) fn split_slash(v: &str) -> (&str, &str) {
 }
 
 /// Убрать слово `auto-flow` (и `dense`) из стороны короткой записи сетки.
-pub(crate) fn strip_auto_flow(v: &str) -> &str {
+pub(super) fn strip_auto_flow(v: &str) -> &str {
     v.trim()
         .trim_start_matches("auto-flow")
         .trim()
@@ -338,7 +338,7 @@ pub struct AutoRepeat {
 /// её собственной функции (css-grid-3 §7.2.1). `parse_tracks` уже знает и
 /// `minmax()`, и `fit-content(N)` (последний как `MinMax(Auto, hi)`), поэтому
 /// своего разбора здесь нет.
-pub(crate) fn auto_fill_body_tracks(v: &str) -> Option<Vec<TrackSize>> {
+pub(super) fn auto_fill_body_tracks(v: &str) -> Option<Vec<TrackSize>> {
     parse_tracks(v).as_deref().and_then(|l| {
         l.iter().find_map(|t| match t {
             TrackSize::AutoRepeat { tracks, .. } => Some(tracks.clone()),
@@ -348,7 +348,7 @@ pub(crate) fn auto_fill_body_tracks(v: &str) -> Option<Vec<TrackSize>> {
 }
 
 /// Длина тела авто-повтора в дорожках (1, если тело не разобралось).
-pub(crate) fn auto_fill_body(v: &str) -> usize {
+pub(super) fn auto_fill_body(v: &str) -> usize {
     parse_tracks(v)
         .as_deref()
         .and_then(|l| {
@@ -362,7 +362,7 @@ pub(crate) fn auto_fill_body(v: &str) -> usize {
 }
 
 /// Максимум `minmax(lo, hi)` в авто-повторе: `auto` или доля `fr`.
-pub(crate) fn auto_fill_max(v: &str) -> (bool, Option<f32>) {
+pub(super) fn auto_fill_max(v: &str) -> (bool, Option<f32>) {
     let Some(rest) = v.split("minmax(").nth(1) else {
         return (false, None);
     };
@@ -393,7 +393,7 @@ pub(crate) fn auto_fill_max(v: &str) -> (bool, Option<f32>) {
 ///
 /// Пусто, если тело из одной дорожки или хоть один кусок не разобрался: такой
 /// случай ведёт прежняя ветка по `auto_fill_min`.
-pub(crate) fn auto_fill_tracks(v: &str) -> Vec<f32> {
+pub(super) fn auto_fill_tracks(v: &str) -> Vec<f32> {
     if v.contains("minmax(") || v.contains("fit-content(") {
         return Vec::new();
     }
@@ -431,7 +431,7 @@ pub(crate) fn auto_fill_tracks(v: &str) -> Vec<f32> {
     out
 }
 
-pub(crate) fn auto_fill_min(v: &str) -> Option<f32> {
+pub(super) fn auto_fill_min(v: &str) -> Option<f32> {
     let px_of = |t: &str| match Len::parse(t.trim()) {
         Some(Len::Px(px)) => Some(px),
         _ => None,
@@ -459,7 +459,7 @@ pub(crate) fn auto_fill_min(v: &str) -> Option<f32> {
 }
 
 /// Потолок `fit-content(N)` в авто-повторе: дорожка не шире N.
-pub(crate) fn auto_fill_fit_px(v: &str) -> Option<f32> {
+pub(super) fn auto_fill_fit_px(v: &str) -> Option<f32> {
     let rest = v.split("fit-content(").nth(1)?;
     let inner = &rest[..rest.find(')')?];
     match Len::parse(inner.trim()) {
@@ -479,7 +479,7 @@ pub(crate) fn auto_fill_fit_px(v: &str) -> Option<f32> {
 /// `grid-lanes/invalidation/grid-lanes-change-intrinsic-size-with-auto-repeat-tracks-001`
 /// (`repeat(auto-fill, 20px) minmax(min-content, 40px)`).
 /// Имена линий в скобках размера не несут и негодности не создают.
-pub(crate) fn auto_repeat_outside_intrinsic(v: &str) -> bool {
+pub(super) fn auto_repeat_outside_intrinsic(v: &str) -> bool {
     let toks = tokenize_tracks(v);
     if !toks
         .iter()
@@ -498,7 +498,7 @@ pub(crate) fn auto_repeat_outside_intrinsic(v: &str) -> bool {
 
 /// Дорожка повтора задана ПО СОДЕРЖИМОМУ: `repeat(auto-fill, max-content)`
 /// и родня. Точечного размера у неё нет — повторы считают сами элементы.
-pub(crate) fn auto_fill_intrinsic(v: &str) -> bool {
+pub(super) fn auto_fill_intrinsic(v: &str) -> bool {
     let Some(rest) = v.split("repeat(").nth(1) else {
         return false;
     };
@@ -519,7 +519,7 @@ pub(crate) fn auto_fill_intrinsic(v: &str) -> bool {
 ///
 /// Считается там же, где и точечный размер, но остаётся долей: в точки её
 /// переводит раскладка, когда ширина контейнера уже решена.
-pub(crate) fn auto_fill_pct(v: &str) -> Option<f32> {
+pub(super) fn auto_fill_pct(v: &str) -> Option<f32> {
     let pct_of = |t: &str| match Len::parse(t.trim()) {
         Some(Len::Pct(k)) => Some(k),
         _ => None,
@@ -550,7 +550,7 @@ pub(crate) fn auto_fill_pct(v: &str) -> Option<f32> {
 /// Новый вариант перечисления в вендорном `GridTrack` меняет раскладку далеко
 /// за пределами сетки: под него идут ВСЕ дорожечные размеры gpui. Возвращать
 /// только вместе с полным перебором потребителей `GridTrack` и своим сводом.
-pub(crate) fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
+pub(super) fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
     fn single(t: &str) -> Option<Track> {
         let t = t.trim();
         // Именованная линия перед дорожкой: `[side] 240px`. Имя не несёт
@@ -666,12 +666,12 @@ pub(crate) fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
 /// CSS Grid 2 §7.2.2: a bracketed line-name group is one component, even
 /// with multiple names or without whitespace before the adjacent track.
 /// Use the same boundaries for sizes and names so their positions agree.
-pub(crate) fn tokenize_tracks(v: &str) -> Vec<String> {
+fn tokenize_tracks(v: &str) -> Vec<String> {
     line_name_tokens(v)
 }
 
 /// Число колонок в `grid-template-columns`: и `repeat(3, 1fr)`, и `1fr 1fr`.
-pub(crate) fn count_tracks(v: &str) -> Option<u16> {
+pub(super) fn count_tracks(v: &str) -> Option<u16> {
     if let Some(inner) = v.strip_prefix("repeat(").and_then(|s| s.strip_suffix(')')) {
         return inner.split(',').next()?.trim().parse().ok();
     }

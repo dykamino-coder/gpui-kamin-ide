@@ -59,7 +59,7 @@ pub fn page_rules_snapshot() -> Vec<PageRule> {
 /// Голова `@page` → список селекторов; `None` — голова неверна, и правило
 /// отбрасывается целиком (css-page-3 §syntax-page-selector, как у обычного
 /// списка селекторов). Имя регистрозависимо, псевдоклассы — нет.
-pub(crate) fn parse_page_selectors(head: &str) -> Option<Vec<PageSel>> {
+pub(super) fn parse_page_selectors(head: &str) -> Option<Vec<PageSel>> {
     let head = head.trim();
     if head.is_empty() {
         return Some(vec![PageSel::default()]);
@@ -148,7 +148,7 @@ pub fn page_margins_in(
 }
 
 /// Номера совпавших с листом правил по возрастанию (специфичность, порядок).
-pub(crate) fn matching_rules(rules: &[PageRule], index: usize, name: &str, rtl: bool) -> Vec<usize> {
+fn matching_rules(rules: &[PageRule], index: usize, name: &str, rtl: bool) -> Vec<usize> {
     let right = (index % 2 == 0) != rtl;
     let mut hits: Vec<((u8, u8, u8), usize)> = Vec::new();
     for (order, r) in rules.iter().enumerate() {

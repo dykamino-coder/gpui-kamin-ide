@@ -249,7 +249,7 @@ pub(crate) fn gap_rule_spec(
 /// `column-rule-break: normal` у multicol = `intersection`, `row-rule-break:
 /// normal` = `none` (§break) — колонки рвутся в зазоре ряда, ряды идут
 /// сквозь (эталоны `multicol-gap-decorations-001/024`).
-pub(crate) fn multicol_gap_rule_spec(
+pub(super) fn multicol_gap_rule_spec(
     e: &Element,
     merged: &Computed,
     opts: &RenderOpts,

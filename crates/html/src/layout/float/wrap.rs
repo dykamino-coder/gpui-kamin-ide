@@ -43,7 +43,7 @@ use crate::text::text_box::blank_text;
 /// для `clear-004`, `block-formatting-contexts-016`, `floats-135` и
 /// `floats-008` сведены с НАСТОЯЩИМИ эталонами корпуса и дали 0.00 все
 /// четыре; обратный порядок (сосед поверх флоата) даёт «красное видно».
-pub(crate) fn covered_flow_tail(
+fn covered_flow_tail(
     floater: &Element,
     tail: &Element,
     em: f32,

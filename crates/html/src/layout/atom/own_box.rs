@@ -10,7 +10,7 @@ use crate::style::values::value::Len;
 use crate::text::text_box::{has_text, line_height_px};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
-pub(crate) fn own_box_atom(
+pub(super) fn own_box_atom(
     inherited: &Computed,
     e: &Element,
     opts: &RenderOpts,

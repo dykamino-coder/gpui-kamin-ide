@@ -229,14 +229,14 @@ pub fn shape_is_linear(raw: &str) -> bool {
 
 /// Предел митры обводки `border-shape`: у прямолинейного контура 1000 (эталоны
 /// WPT ставят ровно столько; Blink — 1e10), у кривых — 4 по умолчанию SVG.
-pub(crate) fn miter_limit(raw: &str) -> f32 {
+fn miter_limit(raw: &str) -> f32 {
     if shape_is_linear(raw) { 1000.0 } else { 4.0 }
 }
 
 /// Скруглённый прямоугольник → контур `d` дугами; радиусы жмутся одним
 /// множителем (css-backgrounds-3 §5.5), как в `rrect_mask`. Вырожденный
 /// прямоугольник — пустой контур.
-pub(crate) fn rrect_d((x0, y0, w, h): (f32, f32, f32, f32), radii: [(f32, f32); 4]) -> String {
+fn rrect_d((x0, y0, w, h): (f32, f32, f32, f32), radii: [(f32, f32); 4]) -> String {
     if w <= 0.0 || h <= 0.0 {
         return String::new();
     }

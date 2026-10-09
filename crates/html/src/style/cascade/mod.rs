@@ -427,7 +427,7 @@ impl Computed {
 /// важные в L и в слоях после него (у важных они слабее) и обычные в L и
 /// после него. `all: revert-layer` откатывает каждое свойство, чьё
 /// объявление в том же слое стоит до него. `None` — откатывать нечего.
-pub(crate) fn revert_layers(matched: &[&crate::style::css::Rule]) -> Option<Vec<crate::style::css::Rule>> {
+fn revert_layers(matched: &[&crate::style::css::Rule]) -> Option<Vec<crate::style::css::Rule>> {
     use crate::style::css::DECL_SEP;
     let is_rl = |part: &str| strip_important(part).trim().eq_ignore_ascii_case("revert-layer");
     if !matched
@@ -542,14 +542,14 @@ pub(crate) fn revert_layers(matched: &[&crate::style::css::Rule]) -> Option<Vec<
     Some(rules)
 }
 
-pub(crate) fn is_important(v: &str) -> bool {
+fn is_important(v: &str) -> bool {
     v.to_ascii_lowercase()
         .replace(' ', "")
         .ends_with("!important")
 }
 
 /// Значение без пометки важности; пробел перед `!` тоже допустим.
-pub(crate) fn strip_important(v: &str) -> &str {
+fn strip_important(v: &str) -> &str {
     match v.to_ascii_lowercase().rfind('!') {
         Some(at) if v[at..].to_ascii_lowercase().replace(' ', "") == "!important" => v[..at].trim(),
         _ => v,

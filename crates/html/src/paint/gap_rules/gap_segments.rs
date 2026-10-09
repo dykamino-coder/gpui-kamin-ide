@@ -23,7 +23,7 @@ fn inset_px(
     }
 }
 
-pub(crate) fn segments(
+pub(super) fn segments(
     run: &GapRun,
     rule: &GapAxisRule,
     main_like: bool,

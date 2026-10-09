@@ -6,15 +6,15 @@ use std::collections::HashMap;
 thread_local! {
     /// Реестр слоёв документа: полное имя → путь индексов (порядок —
     /// по ПЕРВОМУ объявлению, css-cascade-5 §6.4.3).
-    pub(crate) static LAYERS: std::cell::RefCell<HashMap<String, Vec<u32>>> =
+    static LAYERS: std::cell::RefCell<HashMap<String, Vec<u32>>> =
         std::cell::RefCell::new(HashMap::new());
     /// Следующий индекс ребёнка у каждого родителя (ключ — полное имя).
-    pub(crate) static LAYER_NEXT: std::cell::RefCell<HashMap<String, u32>> =
+    static LAYER_NEXT: std::cell::RefCell<HashMap<String, u32>> =
         std::cell::RefCell::new(HashMap::new());
     /// Текущий слой разбора: полное имя и путь.
-    pub(crate) static LAYER_NOW: std::cell::RefCell<(String, Vec<u32>)> =
+    static LAYER_NOW: std::cell::RefCell<(String, Vec<u32>)> =
         const { std::cell::RefCell::new((String::new(), Vec::new())) };
-    pub(crate) static LAYER_ANON: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static LAYER_ANON: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
 /// Сбросить реестр слоёв — на входе разбора документа.
@@ -28,7 +28,7 @@ pub fn reset_layers() {
 
 /// Путь слоя по имени (возможно с точками) внутри текущего; регистрирует
 /// незнакомые звенья. Пустое имя — анонимный слой, всегда новый.
-pub(crate) fn layer_enter_path(name: &str) -> (String, Vec<u32>) {
+fn layer_enter_path(name: &str) -> (String, Vec<u32>) {
     let (mut full, mut path) = LAYER_NOW.with(|l| l.borrow().clone());
     let segs: Vec<String> = if name.trim().is_empty() {
         let n = LAYER_ANON.with(|c| {
@@ -65,7 +65,7 @@ pub(crate) fn layer_enter_path(name: &str) -> (String, Vec<u32>) {
 }
 
 /// Путь для правил ТЕКУЩЕГО места разбора (с хвостом «собственные»).
-pub(crate) fn layer_of_rules() -> Vec<u32> {
+fn layer_of_rules() -> Vec<u32> {
     let mut p = LAYER_NOW.with(|l| l.borrow().1.clone());
     p.push(u32::MAX);
     p
@@ -78,12 +78,12 @@ pub fn parse_stylesheet(css: &str) -> Vec<Rule> {
 thread_local! {
     /// Префиксы `@namespace` разбираемой таблицы; `None` — разбор идёт не из
     /// таблицы, и префиксы не проверяются (прежнее поведение).
-    pub(crate) static NS_PREFIXES: std::cell::RefCell<Option<std::collections::HashSet<String>>> =
+    static NS_PREFIXES: std::cell::RefCell<Option<std::collections::HashSet<String>>> =
         const { std::cell::RefCell::new(None) };
 }
 
 /// Снимает префиксы, когда верхний вызов разбора таблицы кончился (и при панике).
-pub(crate) struct NsScope(bool);
+struct NsScope(bool);
 
 impl Drop for NsScope {
     fn drop(&mut self) {
@@ -94,7 +94,7 @@ impl Drop for NsScope {
 }
 
 /// Объявлен ли префикс. Пустой (`|div`) и `*` объявлены всегда.
-pub(crate) fn ns_declared(ns: &str) -> bool {
+pub(super) fn ns_declared(ns: &str) -> bool {
     ns.is_empty()
         || ns == "*"
         || NS_PREFIXES.with(|n| n.borrow().as_ref().is_none_or(|s| s.contains(ns)))
@@ -105,7 +105,7 @@ pub(crate) fn ns_declared(ns: &str) -> bool {
 /// and style rules … Otherwise the @namespace rule is invalid». Даже пустой
 /// `@media {}` или `@supports (…) {}` закрывает пролог (`at-media-003`,
 /// `at-supports-045`).
-pub(crate) fn declared_prefixes(css: &str) -> std::collections::HashSet<String> {
+fn declared_prefixes(css: &str) -> std::collections::HashSet<String> {
     let mut set = std::collections::HashSet::new();
     let cleaned = strip_comments(css);
     let mut rest = cleaned.as_str();
@@ -133,7 +133,7 @@ pub(crate) fn declared_prefixes(css: &str) -> std::collections::HashSet<String> 
 
 /// `attr(ns|name)` с необъявленным префиксом делает объявление негодным —
 /// для оракула `@supports` (`at-supports-namespace-001`: `attr(y|href)`).
-pub(crate) fn attr_prefixes_declared(v: &str) -> bool {
+pub(super) fn attr_prefixes_declared(v: &str) -> bool {
     let low = v.to_ascii_lowercase();
     let mut from = 0usize;
     while let Some(at) = low[from..].find("attr(") {
@@ -167,7 +167,7 @@ pub fn parse_stylesheet_media(css: &str, media: Media) -> Vec<Rule> {
     sheet_rules(css, media, top)
 }
 
-pub(crate) fn sheet_rules(css: &str, media: Media, top: bool) -> Vec<Rule> {
+fn sheet_rules(css: &str, media: Media, top: bool) -> Vec<Rule> {
     let mut out = vec![];
     let cleaned = strip_comments(css);
     let mut rest = cleaned.as_str();

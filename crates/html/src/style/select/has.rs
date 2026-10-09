@@ -13,7 +13,7 @@ thread_local! {
 }
 
 /// Хеш одного аргумента `:has(...)` - ключ отметки.
-pub(crate) fn has_id(arg: &str) -> u64 {
+pub(super) fn has_id(arg: &str) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     arg.hash(&mut h);
@@ -34,10 +34,10 @@ pub(crate) struct HasArg {
 }
 
 /// Имя атрибута-стража: NUL из html5ever не приходит, коллизий нет.
-pub(crate) const HAS_SENTINEL: &str = "\u{0}scope";
+const HAS_SENTINEL: &str = "\u{0}scope";
 
 /// Пришить якорь-стража к самому левому компаунду цепочки.
-pub(crate) fn attach_anchor(sel: &mut Selector, lead: char) {
+fn attach_anchor(sel: &mut Selector, lead: char) {
     if let Some(p) = sel.prev.as_mut() {
         return attach_anchor(&mut p.0, lead);
     }
@@ -131,14 +131,14 @@ pub(crate) fn collect_has_args(sel: &Selector, out: &mut Vec<String>) -> bool {
 }
 
 /// Паспорт якоря с пришитым атрибутом-стражем.
-pub(crate) fn with_sentinel(a: &Ancestor) -> Ancestor {
+fn with_sentinel(a: &Ancestor) -> Ancestor {
     let mut out = a.clone();
     out.attrs.push((HAS_SENTINEL.to_string(), String::new()));
     out
 }
 
 /// Есть ли в СТРОГОМ поддереве узла предмет селектора с якорем в `path`.
-pub(crate) fn has_in_subtree(handle: &Handle, sel: &Selector, path: &mut Vec<Ancestor>) -> bool {
+fn has_in_subtree(handle: &Handle, sel: &Selector, path: &mut Vec<Ancestor>) -> bool {
     let children = handle.children.borrow();
     let (spots, all) = census_of(&children);
     let mut pos = 0usize;

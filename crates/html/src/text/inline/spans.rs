@@ -283,7 +283,7 @@ pub fn letter_spans(
 
 /// Знак нулевой ширины, управляющий набором, а не письмом: единицей письма он
 /// не считается, и межбуквенный интервал вокруг него не ставится.
-pub(crate) fn zero_width_format(ch: char) -> bool {
+fn zero_width_format(ch: char) -> bool {
     matches!(
         ch as u32,
         // Нулевой пробел и соединители, знаки направления письма, встраивание
@@ -479,7 +479,7 @@ pub fn autospace_spans(
 }
 
 /// Нужен ли зазор между двумя соседними знаками.
-pub(crate) fn autospace_between(left: char, right: char, style: &Computed) -> bool {
+fn autospace_between(left: char, right: char, style: &Computed) -> bool {
     let alpha = style.autospace_alpha.unwrap_or(false);
     let numeric = style.autospace_numeric.unwrap_or(false);
     let pair = |ideo: char, other: char| {
@@ -492,7 +492,7 @@ pub(crate) fn autospace_between(left: char, right: char, style: &Computed) -> bo
 
 /// Соединительный ли знак: своей ширины нет, письменность задаёт базовая
 /// буква перед ним.
-pub(crate) fn combining(ch: char) -> bool {
+fn combining(ch: char) -> bool {
     matches!(
         unicode_linebreak::break_property(ch as u32),
         unicode_linebreak::BreakClass::CombiningMark
@@ -500,7 +500,7 @@ pub(crate) fn combining(ch: char) -> bool {
 }
 
 /// Иероглиф ли знак — по классу переноса строк.
-pub(crate) fn ideographic(ch: char) -> bool {
+pub(super) fn ideographic(ch: char) -> bool {
     use unicode_linebreak::BreakClass::*;
     matches!(
         unicode_linebreak::break_property(ch as u32),

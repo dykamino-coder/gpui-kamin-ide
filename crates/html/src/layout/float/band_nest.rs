@@ -19,7 +19,7 @@ use crate::style::values::value::Len;
 /// (css-text-3 §8.1), кроме `each-line` (сдвигает и строку после
 /// принудительного разрыва) и `hanging` (сдвигает все, кроме первой) — там
 /// отступ остаётся унаследованным.
-pub(crate) fn cont_indent(e: &mut Element, inherited: &Computed) {
+pub(super) fn cont_indent(e: &mut Element, inherited: &Computed) {
     if e.attr("cont") == Some("1")
         && inherited.text_indent_each_line != Some(true)
         && inherited.text_indent_hanging != Some(true)
@@ -32,7 +32,7 @@ pub(crate) fn cont_indent(e: &mut Element, inherited: &Computed) {
 /// гейт, что у блока потока (`band_flow_block`), кроме чистоты содержимого,
 /// плюс то, что коробка рисуется отдельно от детей — значит ни сдвига, ни
 /// эффектов группы, ни ограничителей высоты; рамка и отступ разрешимы.
-pub(crate) fn band_nest_block(c: &Element, em: f32) -> bool {
+pub(super) fn band_nest_block(c: &Element, em: f32) -> bool {
     // Рамка, поля и высота коробки `Kind::Nest` — физические.
     BAND_WM.with(std::cell::Cell::get) == 0
         && block_level_in_flow(c)
@@ -57,7 +57,7 @@ pub(crate) fn band_nest_block(c: &Element, em: f32) -> bool {
 }
 
 /// Рамка плюс отступ коробки (верх, право, низ, лево) для `Kind::Nest`.
-pub(crate) fn band_inset(c: &Element, em: f32) -> Option<[crate::band_flow::Edge; 4]> {
+fn band_inset(c: &Element, em: f32) -> Option<[crate::band_flow::Edge; 4]> {
     use crate::band_flow::Edge;
     let em = band_em(&c.style, em)?;
     let b = c.style.borders();
@@ -84,7 +84,7 @@ pub(crate) fn band_inset(c: &Element, em: f32) -> Option<[crate::band_flow::Edge
 
 /// Содержимое `Kind::Nest`: дети блока, разложенные тем же разбором, что
 /// хвост хоста (`band_seq`), со своим наследованием и кеглем.
-pub(crate) fn band_nest(
+pub(super) fn band_nest(
     c: &Element,
     inherited: &Computed,
     opts: &RenderOpts,
@@ -112,7 +112,7 @@ pub(crate) fn band_nest(
 /// между блоками на своём месте (правило 5/6 §9.5.1 — потолок от низа
 /// предыдущего блока). Флоат посреди строчного прогона (правило 6 со
 /// «верхом текущей строки») — не наш случай, отказ.
-pub(crate) fn band_seq(nodes: Vec<Node>, em: f32) -> Option<Vec<Node>> {
+pub(super) fn band_seq(nodes: Vec<Node>, em: f32) -> Option<Vec<Node>> {
     let mut out: Vec<Node> = vec![];
     let mut chunk: Vec<Node> = vec![];
     for n in nodes {

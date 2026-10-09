@@ -4,7 +4,7 @@
 use crate::layout::fragment::ShapeCx;
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn stack_kids(
+pub(super) fn stack_kids(
     kids: Vec<(f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>, bool, bool, f32)>,
     row_nowrap: bool,
     top: f32,

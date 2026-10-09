@@ -44,23 +44,23 @@ pub struct ClampEntry {
 pub type ClampLines = std::rc::Rc<std::cell::RefCell<Vec<ClampEntry>>>;
 
 thread_local! {
-    pub(crate) static CLAMP_LINES: std::cell::RefCell<std::collections::HashMap<u64, ClampLines>> =
+    static CLAMP_LINES: std::cell::RefCell<std::collections::HashMap<u64, ClampLines>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
     /// Вычисленные точки среза (высота от верха контейнера) прошлого кадра.
-    pub(crate) static CLAMP_CUTS: std::cell::RefCell<std::collections::HashMap<u64, f32>> =
+    static CLAMP_CUTS: std::cell::RefCell<std::collections::HashMap<u64, f32>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
     /// Стек активных clamp-контейнеров при ПОСТРОЕНИИ дерева:
     /// (ключ, граница BFC уже пройдена).
-    pub(crate) static CLAMP_STACK: std::cell::RefCell<Vec<(u64, bool)>> =
+    static CLAMP_STACK: std::cell::RefCell<Vec<(u64, bool)>> =
         std::cell::RefCell::new(Vec::new());
     /// Знак обрыва АВТО-режима, посчитанный на прошлом кадре:
     /// ключ контейнера → (номер абзаца, сколько его строк остаётся).
     /// Абзац в контейнере ровно один — тот, на чьей последней строке
     /// перед точкой среза стоит знак (css-overflow-4 §5.3).
-    pub(crate) static CLAMP_PARA: std::cell::RefCell<std::collections::HashMap<u64, (u32, usize)>> =
+    static CLAMP_PARA: std::cell::RefCell<std::collections::HashMap<u64, (u32, usize)>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
     /// Счётчик абзацев контейнера при ПОСТРОЕНИИ поддерева.
-    pub(crate) static CLAMP_SEQ: std::cell::RefCell<std::collections::HashMap<u64, u32>> =
+    static CLAMP_SEQ: std::cell::RefCell<std::collections::HashMap<u64, u32>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
@@ -158,10 +158,10 @@ thread_local! {
     /// абзаца делились бы поровну, а строка с крупным кеглем или руби
     /// выше прочих (css-overflow-4 §5.3: точка среза — между строчными
     /// коробками, их высоты свои).
-    pub(crate) static PARA_ROWS: std::cell::RefCell<std::collections::HashMap<(u64, u32), Vec<(f32, f32)>>> =
+    static PARA_ROWS: std::cell::RefCell<std::collections::HashMap<(u64, u32), Vec<(f32, f32)>>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
     /// (ключ, номер) абзаца, который сейчас будет собран.
-    pub(crate) static PARA_TAG: std::cell::Cell<Option<(u64, u32)>> = const { std::cell::Cell::new(None) };
+    static PARA_TAG: std::cell::Cell<Option<(u64, u32)>> = const { std::cell::Cell::new(None) };
 }
 
 pub fn set_para_tag(v: Option<(u64, u32)>) {
@@ -179,7 +179,7 @@ pub fn publish_para_rows(tag: (u64, u32), rows: Vec<(f32, f32)>) {
     });
 }
 
-pub(crate) fn take_para_rows(key: u64) -> std::collections::HashMap<u32, Vec<(f32, f32)>> {
+fn take_para_rows(key: u64) -> std::collections::HashMap<u32, Vec<(f32, f32)>> {
     PARA_ROWS.with(|m| {
         let mut m = m.borrow_mut();
         let tags: Vec<(u64, u32)> = m.keys().filter(|k| k.0 == key).copied().collect();
@@ -194,7 +194,7 @@ pub(crate) fn take_para_rows(key: u64) -> std::collections::HashMap<u32, Vec<(f3
 
 thread_local! {
     /// Бюджет строк ТЕКУЩЕГО собираемого абзаца (только авто-режим).
-    pub(crate) static PARA_BUDGET: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+    static PARA_BUDGET: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
 }
 
 /// Положить бюджет строк для абзаца, который сейчас будет собран.

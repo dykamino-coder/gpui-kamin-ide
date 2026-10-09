@@ -10,7 +10,7 @@ use crate::style::values::value::Len;
 /// В разметке направление задают именно атрибутом, а не стилем: он и есть
 /// обычный способ написать страницу справа налево. Тег `<bdo>` вдобавок
 /// ОТМЕНЯЕТ разбор двунаправленности — знаки идут ровно в заданную сторону.
-pub(crate) fn apply_direction(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
+pub(super) fn apply_direction(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
     let Some((_, value)) = attrs.iter().find(|(k, _)| k == "dir") else {
         if tag == "bdo" {
             style.bidi_override = Some(true);
@@ -67,7 +67,7 @@ pub(crate) fn apply_direction(style: &mut Computed, tag: &str, attrs: &[(String,
 ///
 /// `ancestors` — цепочка предков от БЛИЖАЙШЕГО. Руби узнаётся по имени тега:
 /// `display: ruby*` пока не разбирается, а разметка набора пишется тегами.
-pub(crate) fn inlinify_in_ruby<'a>(
+pub(super) fn inlinify_in_ruby<'a>(
     style: &mut Computed,
     tag: &str,
     ancestors: impl Iterator<Item = &'a Ancestor>,
@@ -102,7 +102,7 @@ pub(crate) fn inlinify_in_ruby<'a>(
     };
 }
 
-pub(crate) fn finish_inline_display(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
+pub(super) fn finish_inline_display(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
     use crate::style::computed::Display;
     replaced_display::normalize(style, tag, attrs);
     let out_of_flow = style.float.is_some()
@@ -268,7 +268,7 @@ pub(crate) fn finish_inline_display(style: &mut Computed, tag: &str, attrs: &[(S
 /// border-box при `box-sizing: border-box`, поэтому соотношение контента
 /// переводится в соотношение border-box по оси, заданной в точках
 /// (`block-aspect-ratio-004/006`, `flex-aspect-ratio-025/026`).
-pub(crate) fn promote_auto_ratio(style: &mut Computed, tag: &str) {
+pub(super) fn promote_auto_ratio(style: &mut Computed, tag: &str) {
     if matches!(
         tag,
         "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe" | "input" | "select"
@@ -325,7 +325,7 @@ pub(crate) fn promote_auto_ratio(style: &mut Computed, tag: &str) {
     style.aspect_ratio = Some(border_ratio.unwrap_or(r));
 }
 
-pub(crate) fn apply_presentational_size(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
+pub(super) fn apply_presentational_size(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
     if !matches!(
         tag,
         "img" | "canvas" | "embed" | "iframe" | "video" | "object" | "table"

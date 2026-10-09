@@ -11,7 +11,7 @@ use crate::style::computed::Display;
 /// generated block boxes, including blocks hoisted out of inline ancestors.
 /// Preparing descendants first lets the parent's leading/trailing chains
 /// see those boxes instead of an inline node that prematurely stops them.
-pub(crate) fn prepare(nodes: &mut [Node]) {
+pub(super) fn prepare(nodes: &mut [Node]) {
     for node in nodes {
         let Node::Element(element) = node else {
             continue;

@@ -70,7 +70,7 @@ pub(crate) fn paint_rect_minus(
 /// `text` слоя не даёт вовсе: фон по форме глифов мы не рисуем, и закрасить
 /// вместо него всю коробку — заметно хуже, чем не красить (тесты на него
 /// прямо пишут «no red» про залитый прямоугольник).
-pub(crate) fn clip_layer(c: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
+pub(super) fn clip_layer(c: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
     let clip = c.color_clip()?;
     if c.gradient.is_none() && c.background.is_none() {
         return None;
@@ -129,7 +129,7 @@ pub(crate) fn clip_layer(c: &Computed, opts: &RenderOpts) -> Option<AnyElement> 
 /// По §11.2 потомок скрытого элемента виден, если объявил видимость сам.
 /// Читается собственное значение узла, до слияния: `Some(false)` приходит
 /// только из авторского CSS — прочие места ставят лишь `Some(true)`.
-pub(crate) fn shows_inside(nodes: &[Node]) -> bool {
+fn shows_inside(nodes: &[Node]) -> bool {
     nodes.iter().any(|n| match n {
         Node::Text(_) => false,
         Node::Element(e) => e.style.hidden == Some(false) || shows_inside(&e.children),

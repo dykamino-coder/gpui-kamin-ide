@@ -391,7 +391,7 @@ pub fn rules(c: &crate::style::computed::Computed) -> Option<Wrap> {
 ///
 /// `Justify` сюда не заходит: раздача остатка идёт своим путём и берёт
 /// остаток УЖЕ обрезанным — растягивать переполненную строку нечем.
-pub(crate) fn line_offset(align: Align, rtl: bool, free: Pixels) -> Pixels {
+pub(super) fn line_offset(align: Align, rtl: bool, free: Pixels) -> Pixels {
     let zero = px(0.);
     match align {
         Align::Right if rtl => free,

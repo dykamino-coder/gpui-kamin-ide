@@ -42,7 +42,7 @@ pub(crate) fn tile_size(i: Intrinsic, box_size: (f32, f32), size: BgSize) -> (f3
     }
 }
 
-pub(crate) fn len_px(l: Option<Len>, base: f32) -> Option<f32> {
+pub(super) fn len_px(l: Option<Len>, base: f32) -> Option<f32> {
     match l? {
         Len::Px(v) => Some(v),
         Len::Pct(v) => Some(base * v),
@@ -64,7 +64,7 @@ pub(crate) fn len_px(l: Option<Len>, base: f32) -> Option<f32> {
 }
 
 /// Смещение первой плитки: проценты считаются от свободного места, как в CSS.
-pub(crate) fn origin(pos: BgPos, box_size: (f32, f32), tile: (f32, f32)) -> (f32, f32) {
+fn origin(pos: BgPos, box_size: (f32, f32), tile: (f32, f32)) -> (f32, f32) {
     let axis = |l: Option<Len>, box_len: f32, tile_len: f32| -> f32 {
         match l {
             Some(Len::Px(v)) => v,
@@ -386,7 +386,7 @@ pub fn paint_tiles(
 /// css-backgrounds-3 §3.4: плитка растягивается или сжимается так, чтобы вдоль
 /// оси уложилось целое их число без зазоров. Одна плитка — минимум: меньше
 /// целой копии не бывает.
-pub(crate) fn rounded(mode: Tiling, tile: f32, box_len: f32) -> f32 {
+pub(super) fn rounded(mode: Tiling, tile: f32, box_len: f32) -> f32 {
     if mode != Tiling::Round || tile <= 0.0 || box_len <= 0.0 {
         return tile;
     }

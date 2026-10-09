@@ -48,7 +48,7 @@ pub type PageMarginDeclsFn = std::rc::Rc<dyn Fn(usize, &str) -> PageMarginDecls>
 /// Используемое значение 'page' (css-page-3 §using-named-pages: `auto` —
 /// значение ближайшего предка с не-`auto`) — в `style.page` каждого
 /// элемента, чтобы мера фрагментации сравнивала имена на любой глубине.
-pub(crate) fn fill_used_page(nodes: &mut [Node], inherited: &str) {
+pub(super) fn fill_used_page(nodes: &mut [Node], inherited: &str) {
     for n in nodes.iter_mut() {
         if let Node::Element(e) = n {
             if e.style.page.is_none() && !inherited.is_empty() {
@@ -62,7 +62,7 @@ pub(crate) fn fill_used_page(nodes: &mut [Node], inherited: &str) {
 
 /// Есть ли внутри коробки смена имени страницы между соседями класса A
 /// (css-page-3 §using-named-pages п. 4) — на любой глубине.
-pub(crate) fn renames_inside(e: &Element) -> bool {
+fn renames_inside(e: &Element) -> bool {
     let kids: Vec<&Element> = e
         .children
         .iter()
@@ -85,7 +85,7 @@ pub(crate) fn renames_inside(e: &Element) -> bool {
 /// `None`), и разрыв внутри такого ребёнка стопки иначе терялся
 /// (`page-name-propagated-002-print-ref`: `break-before: page` у второго
 /// ребёнка обёртки).
-pub(crate) fn breaks_inside(e: &Element) -> bool {
+fn breaks_inside(e: &Element) -> bool {
     // Только блочный поток: внутри таблицы разрыв режет ряды и группы
     // (`rowgroup-page-break-inside-avoid-5-print-ref`: `thead { break-after }`
     // — таблица не обёртка, снимать её нельзя).
@@ -115,7 +115,7 @@ pub(crate) fn breaks_inside(e: &Element) -> bool {
 /// Обёртка без собственной коробки на листе: блок без полей, рамок,
 /// отбивок, фона, размеров, разрывов и прочего, что видно или влияет на
 /// раскладку детей. Снятие такой обёртки раскладку не меняет.
-pub(crate) fn plain_wrapper(e: &Element) -> bool {
+fn plain_wrapper(e: &Element) -> bool {
     let zero = |l: &Option<Len>| matches!(l, None | Some(Len::Px(0.0)));
     let st = &e.style;
     let b = st.borders();
@@ -157,7 +157,7 @@ pub(crate) fn plain_wrapper(e: &Element) -> bool {
 /// §using-named-pages п. 4) ставится между ними, как между детьми корня.
 /// Мера фрагментации (`shape_full`) у коробок с текстом неизвестна, и
 /// разрыв внутри такого ребёнка стопки иначе не ставится вовсе.
-pub(crate) fn hoist_named_wrappers(nodes: &mut Vec<Node>) {
+pub(super) fn hoist_named_wrappers(nodes: &mut Vec<Node>) {
     loop {
         let mut changed = false;
         let mut out = Vec::with_capacity(nodes.len());
@@ -179,7 +179,7 @@ pub(crate) fn hoist_named_wrappers(nodes: &mut Vec<Node>) {
 
 /// Имя ПЕРВОЙ страницы (css-page-3 §using-named-pages, п. 3): start value
 /// первой поточной коробки класса A детей корня, иначе имя самого корня.
-pub(crate) fn first_kid_page_name(nodes: &[Node], root_page: &str) -> String {
+pub(super) fn first_kid_page_name(nodes: &[Node], root_page: &str) -> String {
     for n in nodes.iter().filter(|n| !is_blank(n)) {
         match n {
             Node::Element(e) if matches!(e.style.display, Some(Display::None)) => continue,

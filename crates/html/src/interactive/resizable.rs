@@ -14,7 +14,7 @@ pub enum ResizeAxis {
 
 /// Память между кадрами: заданный пользователем размер и состояние перетаскивания.
 #[derive(Default, Clone, Copy)]
-pub(crate) struct State {
+struct State {
     pub(crate) width: Option<f32>,
     pub(crate) height: Option<f32>,
     pub(crate) dragging: bool,
@@ -24,7 +24,7 @@ pub(crate) struct State {
 }
 
 /// Сторона квадратной ручки в углу.
-pub(crate) const GRIP: f32 = 12.0;
+const GRIP: f32 = 12.0;
 
 pub struct Resizable {
     pub(crate) id: ElementId,

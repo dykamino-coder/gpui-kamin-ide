@@ -20,10 +20,10 @@ use crate::paint::stacking::by_layer;
 use crate::style::computed::{Align, Computed, Display, FlexDir};
 use crate::style::values::value::Len;
 use gpui::AnyElement;
-pub(crate) mod flow;
-pub(crate) mod positioned;
-pub(crate) mod canvas;
-pub(crate) use crate::render::blocks::flow::*;
+pub(super) mod flow;
+pub(super) mod positioned;
+pub(super) mod canvas;
+use crate::render::blocks::flow::*;
 pub(crate) use crate::render::blocks::positioned::*;
 pub(crate) use crate::render::blocks::canvas::*;
 

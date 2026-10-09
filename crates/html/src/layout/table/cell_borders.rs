@@ -6,7 +6,7 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::ParentElement;
 
-pub(crate) fn collapsed_cell_edge(
+pub(super) fn collapsed_cell_edge(
     cell: &mut Element,
     cm: &Computed,
     win_edges: &std::collections::HashMap<u64, [f32; 4]>,
@@ -99,7 +99,7 @@ pub(crate) fn collapsed_cell_edge(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn collapsed_row_edges(
+pub(super) fn collapsed_row_edges(
     row: &Element,
     col_ix: usize,
     span_cols: u16,
@@ -161,7 +161,7 @@ pub(crate) fn collapsed_row_edges(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn collapsed_group_edges(
+pub(super) fn collapsed_group_edges(
     g: &Element,
     rules_groups: bool,
     col_ix: usize,
@@ -241,7 +241,7 @@ pub(crate) fn collapsed_group_edges(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn collapsed_col_edges(
+pub(super) fn collapsed_col_edges(
     cell_cols: &std::ops::Range<usize>,
     col_els: &[Option<&crate::dom::Element>],
     row_ix: i16,
@@ -322,7 +322,7 @@ pub(crate) fn collapsed_col_edges(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn collapsed_colgroup_edges(
+pub(super) fn collapsed_colgroup_edges(
     cell_cols: std::ops::Range<usize>,
     grp_els: &[Option<&Element>],
     row_ix: i16,

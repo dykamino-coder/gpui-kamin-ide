@@ -4,7 +4,7 @@
 use crate::style::computed::Computed;
 use crate::dom::Node;
 
-pub(crate) fn text(nodes: &[Node]) -> String {
+pub(super) fn text(nodes: &[Node]) -> String {
     let mut out = String::new();
     for node in nodes {
         match node {
@@ -15,7 +15,7 @@ pub(crate) fn text(nodes: &[Node]) -> String {
     out
 }
 
-pub(crate) fn hidden(annotation: &[Node], base: &str, container: &Computed) -> bool {
+pub(super) fn hidden(annotation: &[Node], base: &str, container: &Computed) -> bool {
     // The renderer uses separate pairing for auto; explicit merge disables
     // hiding. Visibility on the annotation inherits from its container.
     if container.ruby_merge == Some(1) {

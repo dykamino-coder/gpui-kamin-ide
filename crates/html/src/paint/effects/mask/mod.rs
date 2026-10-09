@@ -4,21 +4,21 @@
 use crate::dom::Node;
 
 pub mod element;
-pub(crate) mod mask_geometry;
+pub(super) mod mask_geometry;
 
 thread_local! {
     /// Определения `<mask id>` / `<clipPath id>` документа: id — разметка
     /// содержимого. Ссылки `url(#id)` из `mask-image`/`clip-path` резолвятся
     /// при отрисовке (см. `interact::Grouped`).
-    pub(crate) static MASK_DEFS: std::cell::RefCell<std::collections::HashMap<String, String>> =
+    static MASK_DEFS: std::cell::RefCell<std::collections::HashMap<String, String>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
     /// Чей документ собран: адрес среза узлов. Виртуализация рисует ПО
     /// БЛОКАМ (`render_block`) — сбор на каждый блок каждого кадра был бы
     /// расточительным, а документ между кадрами один и тот же.
-    pub(crate) static MASK_DEFS_FOR: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static MASK_DEFS_FOR: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     /// Определения `<mask>` с `mask-type: alpha`: их снимок помечается, и
     /// `match-source` маскирует альфой, а не светимостью.
-    pub(crate) static MASK_ALPHA_IDS: std::cell::RefCell<std::collections::HashSet<String>> =
+    static MASK_ALPHA_IDS: std::cell::RefCell<std::collections::HashSet<String>> =
         std::cell::RefCell::new(std::collections::HashSet::new());
 }
 
@@ -130,13 +130,13 @@ thread_local! {
     /// документов в кадре может быть два (тест и эталон стенда) — реестр
     /// определений к моменту отрисовки уже перезаписан другим документом.
     /// Снимки копятся под уникальными ключами и не чистятся.
-    pub(crate) static MASK_SNAPS: std::cell::RefCell<std::collections::HashMap<String, String>> =
+    static MASK_SNAPS: std::cell::RefCell<std::collections::HashMap<String, String>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
-    pub(crate) static MASK_SNAP_N: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static MASK_SNAP_N: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 /// Снять снимок определения; ключ живёт до конца кадра и дольше.
-pub(crate) fn snapshot_mask_def(id: &str) -> Option<String> {
+fn snapshot_mask_def(id: &str) -> Option<String> {
     let markup = mask_def(id)?;
     let alpha = MASK_ALPHA_IDS.with(|s| s.borrow().contains(id));
     let key = MASK_SNAP_N.with(|c| {
@@ -157,13 +157,13 @@ pub(crate) fn snapshot_mask_def(id: &str) -> Option<String> {
 }
 
 /// Разметка по ключу снимка (для отрисовки).
-pub(crate) fn mask_snapshot(key: &str) -> Option<String> {
+pub(super) fn mask_snapshot(key: &str) -> Option<String> {
     MASK_SNAPS.with(|m| m.borrow().get(key).cloned())
 }
 
 /// Заменить ссылки `url(#id)` / `clipref:id` в строке маски снимками
 /// определений: к отрисовке реестр может смениться другим документом.
-pub(crate) fn resolve_mask_refs(raw: &str) -> String {
+pub(super) fn resolve_mask_refs(raw: &str) -> String {
     if let Some(id) = raw.strip_prefix("clipref:") {
         return match snapshot_mask_def(id) {
             Some(key) => format!("clipsnap:{key}"),

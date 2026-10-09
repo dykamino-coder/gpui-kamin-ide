@@ -24,7 +24,7 @@ pub(crate) fn inherit_unpainted(parent: &Computed, own: &Computed) -> Computed {
     inherit_stage(parent, own, false)
 }
 
-pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Computed {
+fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Computed {
     let mut c = own.clone();
     c.first_letter_excluded = own.first_letter_excluded || parent.first_letter_excluded;
     bidi_controls::resolve(parent, &mut c);
@@ -1054,7 +1054,7 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
 /// (`inline-block`, `inline-table`…) и вынесенных из потока (флоаты,
 /// абсолюты); цвет, рисунок, толщина и метрики — от украшающей коробки.
 /// `display: contents` коробки не даёт и своих линий не кладёт.
-pub(crate) fn decorate(parent: &Computed, own: &Computed, c: &mut Computed, own_px: f32) {
+fn decorate(parent: &Computed, own: &Computed, c: &mut Computed, own_px: f32) {
     use crate::style::computed::Display as D;
     use crate::style::computed::Position as P;
     use crate::style::computed::{DECOR_THROUGH, DECOR_UNDER, Decor, DecorFont, DecorLen};

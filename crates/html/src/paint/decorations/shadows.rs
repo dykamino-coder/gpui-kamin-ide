@@ -6,7 +6,7 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{IntoElement, Styled, div, px};
 
-pub(crate) fn outer_shadows(
+pub(super) fn outer_shadows(
     c: &Computed,
     out: &mut Vec<gpui::AnyElement>,
 ) {
@@ -131,7 +131,7 @@ pub(crate) fn outer_shadows(
     }
 }
 
-pub(crate) fn inset_shadows(
+pub(super) fn inset_shadows(
     c: &Computed,
     out: &mut Vec<gpui::AnyElement>,
 ) {

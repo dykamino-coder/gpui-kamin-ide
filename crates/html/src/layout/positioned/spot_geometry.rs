@@ -7,7 +7,7 @@ use gpui::{
     LayoutId, Pixels, Window, px,
 };
 
-pub(crate) fn probe(spot: SpotCell, full: bool, child: AnyElement) -> AnyElement {
+pub(super) fn probe(spot: SpotCell, full: bool, child: AnyElement) -> AnyElement {
     Probe { spot, full, child }.into_any_element()
 }
 

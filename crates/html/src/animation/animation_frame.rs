@@ -2,7 +2,7 @@
 use crate::style::computed::Computed;
 use crate::dom::Element;
 
-pub(crate) fn sample(e: &Element, frame: &Computed, transforms: bool) -> Element {
+pub(super) fn sample(e: &Element, frame: &Computed, transforms: bool) -> Element {
     let mut inner = e.clone();
     let style = &mut inner.style;
     if frame.opacity.is_some() {

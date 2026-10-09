@@ -20,7 +20,7 @@ use crate::style::values::value::Len;
 /// другое.
 /// Роль соседа плавающих блоков в бандовом хосте.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum BandPiece {
+pub(super) enum BandPiece {
     /// Инлайн-блок с известным margin-box — строчный поток атомов
     /// (`FlowRow`): такие коробки стоят В СТРОКУ и делят её.
     Atom,
@@ -76,7 +76,7 @@ pub(crate) enum BandPiece {
 // (§10.3.3); занятость от него не меняется. Без этого гейт бандового хоста
 /// не сработал бы вовсе: `floats-wrap-top-below-bfc-001l` — `margin-right:
 /// auto`, `-001r` — `margin-left: auto`.
-pub(crate) fn px_margin(l: &Option<Len>) -> Option<f32> {
+pub(super) fn px_margin(l: &Option<Len>) -> Option<f32> {
     match l {
         Some(Len::Auto) => Some(0.0),
         other => px_of2(other),
@@ -87,7 +87,7 @@ pub(crate) fn px_margin(l: &Option<Len>) -> Option<f32> {
 ///
 /// Полосы занятости меряют только числа (`bands.rs`), и брать их можно лишь
 /// у коробки, чей размер известен из стиля целиком.
-pub(crate) fn px_margin_box(c: &Computed) -> Option<(f32, f32)> {
+pub(super) fn px_margin_box(c: &Computed) -> Option<(f32, f32)> {
     let b = c.borders();
     Some((
         px_of2(&c.width)?
@@ -111,7 +111,7 @@ pub(crate) fn px_margin_box(c: &Computed) -> Option<(f32, f32)> {
 /// точками, иначе по кеглю содержащего блока `em`. Нужен гейту наложения
 /// (`covered_flow_tail`): `floats-135` пишет флоат и соседа в `5em`, и
 /// арифметика наложения известна так же точно, как в точках.
-pub(crate) fn px_margin_box_em(c: &Computed, em: f32) -> Option<(f32, f32)> {
+pub(super) fn px_margin_box_em(c: &Computed, em: f32) -> Option<(f32, f32)> {
     let own = match c.font_size {
         None => em,
         Some(Len::Px(v)) => v,
@@ -148,7 +148,7 @@ pub(crate) fn px_margin_box_em(c: &Computed, em: f32) -> Option<(f32, f32)> {
 /// Порядок проверок важен: `own_context` истинен и для `inline-block`
 /// (`:3087`), а строчную коробку блочной веткой ставить нельзя — она встанет
 /// на свою строку вместо общей.
-pub(crate) fn band_piece(n: &Node) -> Option<BandPiece> {
+pub(super) fn band_piece(n: &Node) -> Option<BandPiece> {
     let Node::Element(c) = n else {
         // Непустой текст рядом с флоатом бандовый хост не набирает: это
         // работа наборщика строк, а он про полосы ещё не знает.
@@ -216,7 +216,7 @@ pub(crate) fn band_piece(n: &Node) -> Option<BandPiece> {
 ///
 /// Последнее условие и держит радиус поражения: любой абзац, любой блок без
 /// размеров, любой текст рядом с флоатом уводит на сегодняшний флекс-ряд.
-pub(crate) fn band_host(
+pub(super) fn band_host(
     nodes: &[Node],
     i: usize,
     cb_width: Option<Len>,
@@ -361,7 +361,7 @@ pub(crate) fn band_host(
 /// `em` по кеглю `em`; `auto` — ноль (у флоата так велит §10.3.5, у куска
 /// хвоста — как `px_margin` статического хоста). Прочее (`calc`, `vw`…) —
 /// `None`, хост отменяется.
-pub(crate) fn band_edge(l: &Option<Len>, em: f32) -> Option<crate::band_flow::Edge> {
+pub(super) fn band_edge(l: &Option<Len>, em: f32) -> Option<crate::band_flow::Edge> {
     use crate::band_flow::Edge;
     match l {
         None | Some(Len::Auto) => Some(Edge::Px(0.0)),
@@ -374,7 +374,7 @@ pub(crate) fn band_edge(l: &Option<Len>, em: f32) -> Option<crate::band_flow::Ed
 
 /// Кегль коробки для `em` её полей; относительный `font-size` берёт
 /// кегль родителя, в том числе проценты (CSS 2.1 §15.7).
-pub(crate) fn band_em(c: &Computed, em: f32) -> Option<f32> {
+pub(super) fn band_em(c: &Computed, em: f32) -> Option<f32> {
     match c.font_size {
         None => Some(em),
         Some(Len::Px(v)) => Some(v),
@@ -384,7 +384,7 @@ pub(crate) fn band_em(c: &Computed, em: f32) -> Option<f32> {
 }
 
 /// Все четыре поля коробки разрешимы для измеряемого хоста.
-pub(crate) fn band_margins(c: &Computed, em: f32) -> Option<[crate::band_flow::Edge; 4]> {
+pub(super) fn band_margins(c: &Computed, em: f32) -> Option<[crate::band_flow::Edge; 4]> {
     let em = band_em(c, em)?;
     Some([
         band_edge(&c.margin.top, em)?,

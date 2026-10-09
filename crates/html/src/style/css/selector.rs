@@ -361,7 +361,7 @@ impl Selector {
 /// Перечень закрытый: по Selectors §3.1 неизвестное имя роняет весь список
 /// селекторов, поэтому сюда входит и то, что мы разбираем, но не исполняем —
 /// иначе правило с ним пропало бы целиком.
-pub(crate) fn known_pseudo(name: &str) -> bool {
+fn known_pseudo(name: &str) -> bool {
     let head = name.split_once('(').map_or(name, |(h, _)| h);
     is_pseudo_element(head)
         || matches!(
@@ -427,7 +427,7 @@ pub(crate) fn known_pseudo(name: &str) -> bool {
 
 /// ПсевдоЭЛЕМЕНТ (а не псевдокласс): после него составная часть кончается.
 /// Имя может нести аргумент (`scroll-button(block-end)`) — сравнивается голова.
-pub(crate) fn is_pseudo_element(name: &str) -> bool {
+fn is_pseudo_element(name: &str) -> bool {
     let head = name.split_once('(').map_or(name, |(h, _)| h);
     matches!(
         head,
@@ -456,7 +456,7 @@ pub(crate) fn split_selector_list(raw: &str) -> Vec<&str> {
 /// `:nth-child`/`:nth-last-child` добавляет покомпонентный вес самого
 /// специфичного селектора списка (селекторы-4 §specificity). `:has()` -
 /// max по списку аргументов БЕЗ собственного веса псевдокласса.
-pub(crate) fn pseudo_specificity(pseudo: &str) -> (u32, u32, u32) {
+fn pseudo_specificity(pseudo: &str) -> (u32, u32, u32) {
     if let Some(arg) = pseudo
         .strip_prefix("has(")
         .and_then(|r| r.strip_suffix(')'))

@@ -4,7 +4,7 @@ use crate::text::inline::*;
 use crate::style::computed::Computed;
 
 /// Пробелы куска набираются U+3000 (`text-transform: full-width`).
-pub(crate) fn full_width_spaces(style: &Computed) -> bool {
+fn full_width_spaces(style: &Computed) -> bool {
     style.text_transform_flags & crate::style::computed::TT_FULL_WIDTH != 0
 }
 
@@ -120,7 +120,7 @@ pub fn transform_case(text: &str, style: &Computed) -> String {
 /// Полноширинный двойник знака (css-text-3 §2.1 `full-width`: знаки,
 /// у которых есть «fullwidth» форма по UAX #11, и полуширинные формы,
 /// раскрытые обратно — как ICU `Halfwidth-Fullwidth`).
-pub(crate) fn full_width(ch: char) -> char {
+pub(super) fn full_width(ch: char) -> char {
     let c = ch as u32;
     let m = match c {
         0x20 => 0x3000,
@@ -152,7 +152,7 @@ pub(crate) fn full_width(ch: char) -> char {
 
 /// Полуширинная катакана U+FF61..U+FF9F → полноширинная (UnicodeData,
 /// разложение `<narrow>`).
-pub(crate) const HALF_KATAKANA: [u16; 63] = [
+const HALF_KATAKANA: [u16; 63] = [
     0x3002, 0x300C, 0x300D, 0x3001, 0x30FB, 0x30F2, 0x30A1, 0x30A3, 0x30A5, 0x30A7, 0x30A9,
     0x30E3, 0x30E5, 0x30E7, 0x30C3, 0x30FC, 0x30A2, 0x30A4, 0x30A6, 0x30A8, 0x30AA, 0x30AB,
     0x30AD, 0x30AF, 0x30B1, 0x30B3, 0x30B5, 0x30B7, 0x30B9, 0x30BB, 0x30BD, 0x30BF, 0x30C1,
@@ -163,7 +163,7 @@ pub(crate) const HALF_KATAKANA: [u16; 63] = [
 
 /// Малая кана → полноразмерная (css-text-3 §2.1 `full-size-kana`, таблица
 /// «Full-Size Kana Mappings» приложения G).
-pub(crate) fn full_size_kana(ch: char) -> char {
+pub(super) fn full_size_kana(ch: char) -> char {
     match ch {
         'ぁ' => 'あ',
         'ぃ' => 'い',
@@ -219,7 +219,7 @@ pub(crate) fn full_size_kana(ch: char) -> char {
 }
 
 /// Курсивный математический двойник (MathML Core §2.1.5, «italic mappings»).
-pub(crate) fn math_italic(ch: char) -> char {
+pub(super) fn math_italic(ch: char) -> char {
     let c = ch as u32;
     let m = match c {
         0x68 => 0x210E,

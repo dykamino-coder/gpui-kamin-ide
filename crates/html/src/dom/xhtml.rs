@@ -9,7 +9,7 @@ use crate::dom::*;
 /// `<div/>`-распорками). Такие теги разворачиваются в пару `<tag …></tag>`
 /// до разбора; void-элементы и содержимое `svg`/`math` (там парсер
 /// самозакрытие понимает) не трогаются.
-pub(crate) fn expand_xhtml_self_closing(html: &str) -> std::borrow::Cow<'_, str> {
+pub(super) fn expand_xhtml_self_closing(html: &str) -> std::borrow::Cow<'_, str> {
     let xhtml = content::is_xhtml(html);
     // `<pre>`/`<listing>`/`<textarea>` в XHTML тоже требуют правки (см. ниже),
     // даже если самозакрытых тегов в документе нет.

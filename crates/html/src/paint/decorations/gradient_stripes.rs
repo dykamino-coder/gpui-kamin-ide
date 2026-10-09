@@ -5,7 +5,7 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
-pub(crate) fn gradient_stripes(
+pub(super) fn gradient_stripes(
     c: &Computed,
     out: &mut Vec<gpui::AnyElement>,
 ) {

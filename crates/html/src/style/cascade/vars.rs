@@ -11,10 +11,10 @@ use crate::style::values::value::{Color, Len};
 /// Тема обычно ссылается на тему: `--btn: var(--accent)`. Один проход такую
 /// цепочку не раскрывал, и объявление уходило в разбор строкой `var(--accent)`.
 /// Потолок нужен от кольцевых ссылок.
-pub(crate) const VAR_DEPTH: usize = 8;
+const VAR_DEPTH: usize = 8;
 
 /// Смещение скобки, парной той, что открыла запись.
-pub(crate) fn balanced_close(after_open: &str) -> Option<usize> {
+fn balanced_close(after_open: &str) -> Option<usize> {
     let mut depth = 0i32;
     for (i, ch) in after_open.char_indices() {
         match ch {
@@ -33,7 +33,7 @@ thread_local! {
     /// время `resolve_with_vars` и сразу снимает: у стилей вне этого окна
     /// (наведение, кадры анимации, псевдоэлементы) хозяина нет, и там берётся
     /// запасное значение.
-    pub(crate) static CURRENT_ATTRS: std::cell::RefCell<Vec<(String, String)>> =
+    static CURRENT_ATTRS: std::cell::RefCell<Vec<(String, String)>> =
         const { std::cell::RefCell::new(Vec::new()) };
 }
 
@@ -41,7 +41,7 @@ thread_local! {
     /// Номер элемента среди братьев и их число — для `sibling-index()` и
     /// `sibling-count()` (css-values-5 §tree-counting). Ставит `dom::walk`
     /// на время каскада элемента, как и атрибуты.
-    pub(crate) static CURRENT_SIBLING: std::cell::Cell<Option<(usize, usize)>> = const { std::cell::Cell::new(None) };
+    static CURRENT_SIBLING: std::cell::Cell<Option<(usize, usize)>> = const { std::cell::Cell::new(None) };
 }
 
 pub fn set_current_sibling(at: Option<(usize, usize)>) {
@@ -52,7 +52,7 @@ pub fn set_current_sibling(at: Option<(usize, usize)>) {
 /// §tree-counting: «sibling-index() … returns an <integer> … the index of the
 /// element among its inclusive siblings, starting at 1»). Без хозяина
 /// (вне каскада элемента) запись остаётся как есть и роняет объявление.
-pub(crate) fn resolve_sibling(value: String) -> String {
+pub(super) fn resolve_sibling(value: String) -> String {
     if !value.contains("sibling-") {
         return value;
     }
@@ -81,7 +81,7 @@ pub fn clear_current_attrs() {
 /// ASCII-регистронезависимое: HTML-парсер опускает в нижний регистр только
 /// ASCII, и запрос опускается так же, а не-ASCII знаки сравниваются как есть
 /// (`html-attr-case-insensitivity`).
-pub(crate) fn attr_value(name: &str) -> Option<String> {
+fn attr_value(name: &str) -> Option<String> {
     let local = match name.split_once('|') {
         Some(("", local)) => local,
         Some(_) => return None,
@@ -96,7 +96,7 @@ pub(crate) fn attr_value(name: &str) -> Option<String> {
 }
 
 /// Значение атрибута под типом `attr()`; `None` — не разбирается этим типом.
-pub(crate) fn attr_cast(value: &str, ty: &str) -> Option<String> {
+fn attr_cast(value: &str, ty: &str) -> Option<String> {
     let v = value.trim();
     let ty: String = ty
         .chars()
@@ -148,7 +148,7 @@ pub(crate) fn attr_cast(value: &str, ty: &str) -> Option<String> {
 /// (`attr(x)` — строка) остаётся как есть: её разбирают `content` и счётчики.
 /// Негодный атрибут без запаса делает объявление недействительным на
 /// вычислении — значение становится `unset`.
-pub(crate) fn resolve_attrs(key: &str, value: &str) -> String {
+pub(super) fn resolve_attrs(key: &str, value: &str) -> String {
     if key == "content"
         || !value
             .as_bytes()
@@ -201,7 +201,7 @@ pub(crate) fn resolve_attrs(key: &str, value: &str) -> String {
     out
 }
 
-pub(crate) fn resolve_vars(value: &str, vars: &Decls) -> String {
+pub(super) fn resolve_vars(value: &str, vars: &Decls) -> String {
     let mut out = value.to_string();
     for _ in 0..VAR_DEPTH {
         let Some(next) = crate::style::css::variable_values::substitute(

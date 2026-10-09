@@ -18,7 +18,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 /// Копий ребёнка в стопке страниц — потолок числа страниц, на которые может
 /// растянуться один блок верхнего уровня (в `css-page` не больше шести).
-pub(crate) const PAGE_COPIES: usize = 12;
+const PAGE_COPIES: usize = 12;
 
 thread_local! {
     /// Строится стопка страниц. Абсолют корня БЕЗ заданных сторон тоже уходит

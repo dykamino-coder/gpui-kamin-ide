@@ -107,7 +107,7 @@ pub(crate) fn stacked_flex_tree(c: &Element, depth: u8) -> bool {
 /// из тех же детей со схлопыванием полей (CSS 2.1
 /// §8.3.1); строчное содержимое высоты не даёт — такой
 /// ребёнок мерить нечем, и весь стек идёт другим путём.
-pub(crate) fn shape(c: &Element, depth: u8) -> Option<(f32, f32, f32, Vec<(f32, f32)>)> {
+fn shape(c: &Element, depth: u8) -> Option<(f32, f32, f32, Vec<(f32, f32)>)> {
     shape_full(c, depth, ShapeCx::COLUMNS).map(|s| (s.0, s.1, s.2, s.3))
 }
 

@@ -12,7 +12,7 @@ use std::sync::Arc;
 /// с долевым размером корня не имеет для него размера вовсе — выходил пустой
 /// растр, а с ним и пустая страница (вся папка `background-size/vector`).
 /// Поэтому свои `width`/`height` корня заменяются размером плитки.
-pub(crate) fn with_viewport(markup: &str, tile: (f32, f32)) -> String {
+pub(super) fn with_viewport(markup: &str, tile: (f32, f32)) -> String {
     let Some(open) = markup.find("<svg") else {
         return markup.to_string();
     };
@@ -68,7 +68,7 @@ pub(crate) fn with_viewport(markup: &str, tile: (f32, f32)) -> String {
 /// меньше — результат частично прозрачен. Слагаемое — цвет (или
 /// `image(<color>)`), градиент или `url()`; растр приводится к размеру плитки
 /// ближайшей точкой.
-pub(crate) fn rasterize_cross_fade(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
+pub(super) fn rasterize_cross_fade(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
     let inner = src.strip_prefix("cross-fade(")?;
     let inner = &inner[..inner.rfind(')')?];
     let n = (w * h) as usize;
@@ -155,7 +155,7 @@ pub(crate) fn rasterize_cross_fade(src: &str, w: u32, h: u32) -> Option<Arc<Rend
     gpui::bgra_bytes_to_image(w, h, out)
 }
 
-pub(crate) fn rasterize_gradient(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
+pub(super) fn rasterize_gradient(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
     if crate::style::computed::parse_image_color(src).is_some() {
         return sources::raster_color(src, w, h);
     }
@@ -169,7 +169,7 @@ pub(crate) fn rasterize_gradient(src: &str, w: u32, h: u32) -> Option<Arc<Render
 }
 
 /// Угол позиции стопа в долях оборота: `90deg`, `25%`, `0.25turn`, голый `0`.
-pub(crate) fn angle_fraction(token: &str) -> Option<f32> {
+pub(super) fn angle_fraction(token: &str) -> Option<f32> {
     let token = token.trim();
     if let Some(n) = token.strip_suffix('%') {
         return n.parse::<f32>().ok().map(|v| v / 100.0);
@@ -231,7 +231,7 @@ pub(crate) fn place_stops(
 /// повторяется бесконечно в обе стороны со сдвигом на разность позиций
 /// последнего и первого стопа. Нулевая разность повторять нечем — спека
 /// объявляет такой градиент вырожденным, и точка остаётся как есть.
-pub(crate) fn wrap_repeat(t: f32, stops: &[(crate::style::values::value::Color, f32)]) -> f32 {
+pub(super) fn wrap_repeat(t: f32, stops: &[(crate::style::values::value::Color, f32)]) -> f32 {
     let (Some(first), Some(last)) = (stops.first(), stops.last()) else {
         return t;
     };

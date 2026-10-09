@@ -7,7 +7,7 @@ use crate::style::values::value::Len;
 
 /// CSS Sizing 4 #aspect-ratio: authored ratios transfer the box-sizing box;
 /// natural ratios, including auto <ratio>, always transfer the content box.
-pub(crate) fn transfer(
+pub(super) fn transfer(
     style: &crate::style::computed::Computed,
     size: f32,
     ratio: f32,
@@ -26,7 +26,7 @@ pub(crate) fn transfer(
     }
 }
 
-pub(crate) fn normalize(element: &Element, containing_width: Option<f32>) -> Option<Element> {
+pub(super) fn normalize(element: &Element, containing_width: Option<f32>) -> Option<Element> {
     let keyword = |length| {
         matches!(
             length,

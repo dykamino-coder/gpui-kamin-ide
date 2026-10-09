@@ -6,18 +6,18 @@ use std::sync::Arc;
 
 /// Порог Blink (`core/style/superellipse.h`, `kHighCurvatureThreshold`):
 /// K ≥ 16 — прямой угол (радиус как нулевой), K ≤ −16 — полная выемка.
-pub(crate) const CORNER_K_FLAT: f32 = 16.0;
+const CORNER_K_FLAT: f32 = 16.0;
 
 /// Разобранная запись `rrect(...)`: радиусы в физических точках, ужатые
 /// одним множителем (§5.5); K по углам; `ring` — толщины рамки t/r/b/l в
 /// физических точках (кольцо = контур минус его сжатие на толщину).
-pub(crate) struct Rrect {
+struct Rrect {
     pub(crate) corners: [(f32, f32); 4],
     pub(crate) k: [f32; 4],
     pub(crate) ring: Option<[f32; 4]>,
 }
 
-pub(crate) fn parse_rrect(args: &str, fw: f32, fh: f32, scale: f32) -> Option<Rrect> {
+fn parse_rrect(args: &str, fw: f32, fh: f32, scale: f32) -> Option<Rrect> {
     let (main, ring) = match args.split_once('/') {
         Some((a, b)) => (a, Some(b)),
         None => (args, None),
@@ -85,7 +85,7 @@ pub(crate) fn parse_rrect(args: &str, fw: f32, fh: f32, scale: f32) -> Option<Rr
 /// |K| с центром во внешней вершине (зеркало через диагональ). Расстояние —
 /// первого порядка `f/|∇f|`; для K=1 сохранена прежняя формула (точная у
 /// окружности), чтобы не сдвинуть ни одного пикселя старых масок.
-pub(crate) fn contour_dist(px_: f32, py: f32, fw: f32, fh: f32, r: &Rrect) -> (f32, f32) {
+fn contour_dist(px_: f32, py: f32, fw: f32, fh: f32, r: &Rrect) -> (f32, f32) {
     let ring = r.ring.unwrap_or([0.0; 4]);
     // Внешняя вершина угла, направление внутрь, индексы сторон t/r/b/l по x и y.
     let corners = [
@@ -158,7 +158,7 @@ pub(crate) fn contour_dist(px_: f32, py: f32, fw: f32, fh: f32, r: &Rrect) -> (f
 
 /// Покрытие точки контуром: заливка либо кольцо (внешний контур минус его
 /// сжатие на толщину рамки), 0..1.
-pub(crate) fn contour_coverage(px_: f32, py: f32, fw: f32, fh: f32, r: &Rrect) -> f32 {
+fn contour_coverage(px_: f32, py: f32, fw: f32, fh: f32, r: &Rrect) -> f32 {
     let (dist, erode) = contour_dist(px_, py, fw, fh, r);
     let outer = (0.5 - dist).clamp(0.0, 1.0);
     if r.ring.is_none() {
@@ -171,7 +171,7 @@ pub(crate) fn contour_coverage(px_: f32, py: f32, fw: f32, fh: f32, r: &Rrect) -
 /// `rrect(tlx tly trx try brx bry blx bly [k k k k] [/ t r b l])` — см.
 /// `rrect_spec`. Растеризатор круглит только окружностью — эллиптический
 /// `border-radius: H / V` и `corner-shape` уходят альфа-маской.
-pub(crate) fn rasterize_rrect(args: &str, w: u32, h: u32, scale: f32) -> Option<Arc<RenderImage>> {
+fn rasterize_rrect(args: &str, w: u32, h: u32, scale: f32) -> Option<Arc<RenderImage>> {
     let (fw, fh) = (w as f32, h as f32);
     let r = parse_rrect(args, fw, fh, scale)?;
     let mut bytes = Vec::with_capacity((w * h * 4) as usize);

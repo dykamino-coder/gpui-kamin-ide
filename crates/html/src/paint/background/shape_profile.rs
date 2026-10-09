@@ -141,7 +141,7 @@ pub fn shape_profile_block(raw: &str, b: &ShapeBox, sm: f32, side: i32) -> Optio
 }
 
 /// Альфа-маска формы в холсте margin-box.
-pub(crate) fn shape_mask(raw: &str, b: &ShapeBox, cols: usize, rows: usize) -> Option<Vec<u8>> {
+fn shape_mask(raw: &str, b: &ShapeBox, cols: usize, rows: usize) -> Option<Vec<u8>> {
     let raw = raw.trim();
     // Круг и эллипс: вписанный эллипс опорной коробки (css-shapes-1 §3.1.1).
     // Горизонтальный путь сюда с ними не приходит — там они уходят в
@@ -242,7 +242,7 @@ pub(crate) fn shape_mask(raw: &str, b: &ShapeBox, cols: usize, rows: usize) -> O
 }
 
 /// Контур для SVG-растеризатора: polygon / path / shape.
-pub(crate) fn svg_path_of(raw: &str, b: &ShapeBox) -> Option<(String, &'static str)> {
+pub(super) fn svg_path_of(raw: &str, b: &ShapeBox) -> Option<(String, &'static str)> {
     let raw = raw.trim();
     // Функция может идти ПОСЛЕ слова-коробки: `padding-box polygon(...)`.
     if let Some(at) = raw.find("polygon(") {
@@ -329,7 +329,7 @@ pub(crate) fn svg_path_of(raw: &str, b: &ShapeBox) -> Option<(String, &'static s
 
 /// Скруглённый прямоугольник в маску: SDF по угловым эллипсам (та же
 /// математика, что `rasterize_rrect`, но с началом и размером).
-pub(crate) fn rrect_mask(
+fn rrect_mask(
     rect: (f32, f32, f32, f32),
     radii: [(f32, f32); 4],
     cols: usize,
@@ -373,7 +373,7 @@ pub(crate) fn rrect_mask(
     out
 }
 
-pub(crate) fn corner_ok(fx: f32, fy: f32, x0: f32, y0: f32, x1: f32, y1: f32, r: &[(f32, f32)]) -> bool {
+fn corner_ok(fx: f32, fy: f32, x0: f32, y0: f32, x1: f32, y1: f32, r: &[(f32, f32)]) -> bool {
     let check = |cx: f32, cy: f32, rx: f32, ry: f32| -> bool {
         if rx <= 0.0 || ry <= 0.0 {
             return true;
@@ -402,7 +402,7 @@ pub(crate) fn corner_ok(fx: f32, fy: f32, x0: f32, y0: f32, x1: f32, y1: f32, r:
 
 /// Интервалы строк: от первого до последнего пикселя с альфой ВЫШЕ порога
 /// (строго; дыры внутри строки заполняются — как blink).
-pub(crate) fn mask_intervals(mask: &[u8], cols: usize, rows: usize, thr: f32) -> Vec<Option<(i32, i32)>> {
+fn mask_intervals(mask: &[u8], cols: usize, rows: usize, thr: f32) -> Vec<Option<(i32, i32)>> {
     let t = (thr.clamp(0.0, 1.0) * 255.0) as u8;
     (0..rows)
         .map(|y| {
@@ -417,7 +417,7 @@ pub(crate) fn mask_intervals(mask: &[u8], cols: usize, rows: usize, thr: f32) ->
 /// Дилатация Минковского диском `sm` (blink ComputeShapeMarginIntervals):
 /// каждый интервал раздаётся соседним строкам с сужением по дуге; ранний
 /// выход, когда сосед и так шире. Вертикаль жёстко в [0, rows).
-pub(crate) fn dilate(iv: &mut [Option<(i32, i32)>], sm: f32, cols: usize, rows: usize) {
+fn dilate(iv: &mut [Option<(i32, i32)>], sm: f32, cols: usize, rows: usize) {
     if sm <= 0.0 {
         return;
     }

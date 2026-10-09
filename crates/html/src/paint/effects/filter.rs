@@ -23,7 +23,7 @@ impl IntoElement for FilterLayer {
 
 thread_local! {
     /// Растры слоёв фильтра по (разметка, размер): кадр за кадром одно и то же.
-    pub(crate) static FILTER_RASTERS: std::cell::RefCell<
+    static FILTER_RASTERS: std::cell::RefCell<
         std::collections::HashMap<(String, u32, u32), std::sync::Arc<gpui::RenderImage>>,
     > = std::cell::RefCell::new(std::collections::HashMap::new());
 }
@@ -33,7 +33,7 @@ thread_local! {
 /// client rect … viewport … width and height of the bounding client rect»);
 /// проценты — от размера коробки. Для `objectBoundingBox` — None: такая
 /// область и так внутри холста −50 %…150 %.
-pub(crate) fn user_space_region(def: &str, w: f32, h: f32) -> Option<[f32; 4]> {
+fn user_space_region(def: &str, w: f32, h: f32) -> Option<[f32; 4]> {
     let open = &def[def.find("<filter")?..];
     let open = &open[..open.find('>')?];
     if !open.contains("userSpaceOnUse") {

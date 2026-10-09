@@ -3,7 +3,7 @@
 use crate::text::vertical::{VT_CCW, VT_FRAME};
 use gpui::{Bounds, Pixels, TransformationMatrix, point, px, size};
 
-pub(crate) fn map(flat: Bounds<Pixels>, scale: f32) -> (Bounds<Pixels>, TransformationMatrix) {
+pub(super) fn map(flat: Bounds<Pixels>, scale: f32) -> (Bounds<Pixels>, TransformationMatrix) {
     let Some(frame) = VT_FRAME.with(|frame| frame.get()) else {
         return (flat, TransformationMatrix::unit());
     };
@@ -41,7 +41,7 @@ fn project(
     (physical, inverse)
 }
 
-pub(crate) fn without_frame<R>(f: impl FnOnce() -> R) -> R {
+pub(super) fn without_frame<R>(f: impl FnOnce() -> R) -> R {
     struct Restore(Option<Bounds<Pixels>>);
     impl Drop for Restore {
         fn drop(&mut self) {

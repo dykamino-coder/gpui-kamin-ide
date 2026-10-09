@@ -36,7 +36,7 @@ pub(crate) fn table_box(c: &Element) -> bool {
 /// сросшиеся рамки, вертикальное письмо, монолит внутри при заданной высоте
 /// и неизмеримая ячейка — `None`: таблица идёт цельным куском измеренной
 /// высоты без точек, как прежде.
-pub(crate) fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
+pub(super) fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     table_shape_bands(c, depth, cx, &mut TableBands::default())
 }
 
@@ -45,7 +45,7 @@ pub(crate) fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> 
 /// вертикальный `border-spacing`. Нужны повтору секций во фрагментах
 /// (`repeat_bands`).
 #[derive(Default, Clone, Copy)]
-pub(crate) struct TableBands {
+struct TableBands {
     pub(crate) head: Option<(f32, f32)>,
     pub(crate) foot: Option<(f32, f32)>,
     pub(crate) head_avoid: bool,
@@ -57,7 +57,7 @@ pub(crate) struct TableBands {
 }
 
 /// Повтор секций для стопки: полосы `flow::Repeat` и геометрия укладки.
-pub(crate) type RepeatSpec = (Option<(f32, f32)>, Option<(f32, f32)>, crate::layout::fragment::types::RepeatGeom);
+type RepeatSpec = (Option<(f32, f32)>, Option<(f32, f32)>, crate::layout::fragment::types::RepeatGeom);
 
 /// Повтор шапки/подвала таблицы-ребёнка стопки колонок (css-tables-3
 /// §repeated-headers; Blink `table_layout_algorithm.cc:1082-1150`): секция
@@ -110,7 +110,7 @@ pub(crate) fn repeat_leads(
     repeat_bands(c, fixed, rows).map_or_else(Default::default, |r| r.2)
 }
 
-pub(crate) fn table_shape_bands(c: &Element, depth: u8, cx: ShapeCx, bands: &mut TableBands) -> Option<Shape> {
+fn table_shape_bands(c: &Element, depth: u8, cx: ShapeCx, bands: &mut TableBands) -> Option<Shape> {
     let px_of = |l: &Option<Len>| match l {
         None => Some(0.0),
         Some(Len::Px(v)) => Some(*v),

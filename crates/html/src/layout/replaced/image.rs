@@ -81,7 +81,7 @@ pub(crate) fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
 /// высота — от его высоты и только у обычного блочного контейнера: у гибкого
 /// и сеточного высота приходит от раскладки (та же оговорка, что у
 /// `pct_height_to_px`).
-pub(crate) fn pct_limits_to_px(e: &Element, inherited: &Computed) -> Element {
+fn pct_limits_to_px(e: &Element, inherited: &Computed) -> Element {
     let of = |l: Option<Len>, base: Option<Len>| match (l, base) {
         (Some(Len::Pct(k)), Some(Len::Px(b))) if b > 0.0 => Some(Len::Px(k * b)),
         _ => l,
@@ -123,7 +123,7 @@ pub(crate) fn pct_limits_to_px(e: &Element, inherited: &Computed) -> Element {
 /// Коробка: размер из обособления (`contain-intrinsic-size`) или заданный,
 /// иначе из выреза — с соотношением выреза для одной заданной стороны.
 /// Только растр (`background::Source::Raster`); иначе — прежний путь.
-pub(crate) fn view_boxed(e: &Element, vb: (u8, [Len; 4])) -> Option<AnyElement> {
+fn view_boxed(e: &Element, vb: (u8, [Len; 4])) -> Option<AnyElement> {
     let src = e.attr("src")?;
     let local = src
         .strip_prefix("file:///")

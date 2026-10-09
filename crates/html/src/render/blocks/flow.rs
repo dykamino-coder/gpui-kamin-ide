@@ -26,7 +26,7 @@ use crate::text::text_box::{blank_text, text_box_line_style};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn blocks_flow(
+pub(super) fn blocks_flow(
     nodes: &[Node],
     run_breaks: Vec<usize>,
     mut pending: Vec<Node>,

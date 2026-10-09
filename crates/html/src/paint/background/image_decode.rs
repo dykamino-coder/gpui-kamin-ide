@@ -7,7 +7,7 @@ use std::sync::Arc;
 /// Цвет градиента в точке `t` (0..1) по расставленным стопам.
 /// Растр или рисунок — по содержимому файла, а не по расширению: у `data:`-URI
 /// расширения нет вовсе.
-pub(crate) fn decode(bytes: &[u8], orient: bool) -> Option<Source> {
+pub(super) fn decode(bytes: &[u8], orient: bool) -> Option<Source> {
     // Ищем корневой тег, а не начало файла: перед ним стоят и объявление XML,
     // и комментарий с лицензией — с них начинается добрая половина рисунков
     // набора (`background-size/vector/support/*`). Окно широкое: комментарий
@@ -57,7 +57,7 @@ pub(crate) fn decode(bytes: &[u8], orient: bool) -> Option<Source> {
 ///
 /// Значения 1..8 по TIFF 6.0; всё прочее (в том числе «9» из набора) — как
 /// `none`, потому что §5.4 велит невнятную метку считать отсутствующей.
-pub(crate) fn exif_orientation(bytes: &[u8]) -> Option<u16> {
+fn exif_orientation(bytes: &[u8]) -> Option<u16> {
     // Найти блок TIFF: у JPEG он лежит за «Exif\0\0» в сегменте APP1, у PNG —
     // телом куска `eXIf`.
     let tiff = if bytes.starts_with(&[0xFF, 0xD8]) {
@@ -133,7 +133,7 @@ pub(crate) fn exif_orientation(bytes: &[u8]) -> Option<u16> {
 ///
 /// Точки переставляются целыми четвёрками — порядок каналов (BGRA,
 /// премультиплицированный) при этом не важен, как и в `crop_image`.
-pub(crate) fn orient_image(
+fn orient_image(
     image: &Arc<RenderImage>,
     tag: u16,
 ) -> Option<Arc<RenderImage>> {
@@ -168,7 +168,7 @@ pub(crate) fn orient_image(
 /// Разбирается по тексту, а не деревом: дерево документа рисунка нам не нужно
 /// нигде больше, а растеризатору всё равно идёт исходная разметка.
 /// Нулевая ось `viewBox`: соотношение вырождено, рисовать нечего.
-pub(crate) fn degenerate_viewbox(markup: &str) -> bool {
+fn degenerate_viewbox(markup: &str) -> bool {
     let head = match markup.find("<svg") {
         Some(at) => {
             &markup[at..markup[at..]
@@ -221,7 +221,7 @@ pub(crate) fn svg_root_background(markup: &str) -> Option<crate::style::values::
     crate::style::values::value::Color::parse(v.split_whitespace().next()?)
 }
 
-pub(crate) fn svg_size(markup: &str) -> Intrinsic {
+pub(super) fn svg_size(markup: &str) -> Intrinsic {
     let head = match markup.find("<svg") {
         Some(at) => {
             &markup[at..markup[at..]
@@ -272,7 +272,7 @@ pub(crate) fn svg_size(markup: &str) -> Intrinsic {
 /// Подставить корню SVG `viewBox` его `<view id="…">` (SVG 2 §8.2). Не SVG
 /// или вида нет — байты как есть.
 
-pub(crate) fn read_bytes(src: &str) -> Option<Vec<u8>> {
+pub(super) fn read_bytes(src: &str) -> Option<Vec<u8>> {
     if let Some(rest) = src.strip_prefix("data:") {
         let (head, payload) = rest.split_once(',')?;
         // RFC 2397: без пометки `base64` содержимое лежит прямо в адресе,
@@ -287,7 +287,7 @@ pub(crate) fn read_bytes(src: &str) -> Option<Vec<u8>> {
 }
 
 /// Процентное кодирование адресов: `%3C` → `<`. Остальные знаки как есть.
-pub(crate) fn percent_decode(text: &str) -> Vec<u8> {
+pub(super) fn percent_decode(text: &str) -> Vec<u8> {
     let bytes = text.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -308,7 +308,7 @@ pub(crate) fn percent_decode(text: &str) -> Vec<u8> {
 }
 
 /// Base64 без зависимости: нужен ровно один раз и только на чтение.
-pub(crate) fn base64_decode(text: &str) -> Option<Vec<u8>> {
+pub(super) fn base64_decode(text: &str) -> Option<Vec<u8>> {
     let mut out = Vec::with_capacity(text.len() * 3 / 4);
     let mut acc: u32 = 0;
     let mut bits = 0u32;
@@ -356,7 +356,7 @@ pub struct Intrinsic {
 /// под фон. На этом стоит вся папка `background-size/vector`: рисунок с
 /// долевым размером своих сторон не имеет вовсе и обязан занять место под
 /// фон целиком.
-pub(crate) fn default_size(i: Intrinsic, area: (f32, f32)) -> (f32, f32) {
+pub(super) fn default_size(i: Intrinsic, area: (f32, f32)) -> (f32, f32) {
     match (i.w, i.h, i.ratio) {
         (Some(w), Some(h), _) => (w, h),
         (Some(w), None, Some(r)) if r > 0.0 => (w, w / r),

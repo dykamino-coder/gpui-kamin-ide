@@ -15,7 +15,7 @@ use crate::text::text_box::line_height_px;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 #[allow(clippy::needless_return)]
-pub(crate) fn static_position_atom(
+pub(super) fn static_position_atom(
     inherited: &Computed,
     e: &Element,
     opts: &RenderOpts,
@@ -111,7 +111,7 @@ pub(crate) fn static_position_atom(
 }
 
 #[allow(clippy::needless_return)]
-pub(crate) fn absolute_atom(
+pub(super) fn absolute_atom(
     inherited: &Computed,
     e: &Element,
     opts: &RenderOpts,

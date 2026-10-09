@@ -9,7 +9,7 @@ use crate::style::css::*;
 /// невалидное равнозначны лжи. Поддержка декларации проверяется ОРАКУЛОМ:
 /// разобранное объявление применяется к чистому стилю — изменился, значит
 /// свойство и значение наши (той же механикой живёт реестр покрытия).
-pub(crate) fn supports(condition: &str) -> bool {
+pub(super) fn supports(condition: &str) -> bool {
     matches!(supports_condition(condition.trim()), Some(SupTri::True))
 }
 
@@ -20,7 +20,7 @@ pub(crate) enum SupTri {
     Unknown,
 }
 
-pub(crate) fn sup_not(t: SupTri) -> SupTri {
+pub(super) fn sup_not(t: SupTri) -> SupTri {
     match t {
         SupTri::True => SupTri::False,
         SupTri::False => SupTri::True,
@@ -30,7 +30,7 @@ pub(crate) fn sup_not(t: SupTri) -> SupTri {
 
 /// `not <терм>` | `<терм> (and <терм>)*` | `<терм> (or <терм>)*` — уровни
 /// не смешиваются: `a and b or c` недействительно целиком.
-pub(crate) fn supports_condition(s: &str) -> Option<SupTri> {
+fn supports_condition(s: &str) -> Option<SupTri> {
     let s = s.trim();
     // `not` — слово: слитное `not(` лексится функцией и уходит в терм.
     if let Some(rest) = s.strip_prefix("not")
@@ -89,7 +89,7 @@ pub(crate) fn supports_condition(s: &str) -> Option<SupTri> {
 
 /// Один терм: скобочная группа либо функция `имя(...)`; возврат — тело
 /// терма (со скобками функции внутри среза) и хвост после него.
-pub(crate) fn supports_take_term(s: &str) -> Option<(&str, &str)> {
+fn supports_take_term(s: &str) -> Option<(&str, &str)> {
     let bytes = s.as_bytes();
     // Функция: идентификатор вплотную к скобке.
     let mut name_end = 0;
@@ -129,7 +129,7 @@ pub(crate) fn supports_take_term(s: &str) -> Option<(&str, &str)> {
 /// (`::details-content`, `::picker(select)`, `::picker-icon`,
 /// `::-webkit-slider-thumb`), для ПРОВЕРКИ снимаются; в `known_pseudo` их не
 /// вносим — иначе правила с ними начали бы применяться к самой коробке.
-pub(crate) fn supports_selector(args: &str) -> bool {
+fn supports_selector(args: &str) -> bool {
     let s = args.trim();
     if split_top_level(s, ',').len() > 1 {
         return false;
@@ -156,7 +156,7 @@ pub(crate) fn supports_selector(args: &str) -> bool {
 }
 
 /// Селектор годен, и годна КАЖДАЯ часть списков внутри `:is()` и родни.
-pub(crate) fn selector_strict(s: &str) -> bool {
+fn selector_strict(s: &str) -> bool {
     if Selector::parse(s).is_none() {
         return false;
     }
@@ -196,7 +196,7 @@ pub(crate) fn selector_strict(s: &str) -> bool {
     true
 }
 
-pub(crate) fn supports_eval_term(term: &str) -> SupTri {
+fn supports_eval_term(term: &str) -> SupTri {
     let term = term.trim();
     // Функция `имя(...)`.
     if !term.starts_with('(') {

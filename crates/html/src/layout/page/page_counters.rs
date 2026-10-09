@@ -7,7 +7,7 @@ use std::collections::HashMap;
 type Values = HashMap<String, i32>;
 
 #[derive(Default)]
-pub(crate) struct PageCounters {
+pub(super) struct PageCounters {
     document: Counters,
     values: Values,
     current: Values,

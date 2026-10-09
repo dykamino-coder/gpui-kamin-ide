@@ -68,7 +68,7 @@ pub(crate) fn parallel_items_inside(c: &Element, depth: u8) -> bool {
 /// Есть ли в поддереве (вместе с самой коробкой) многоколоночник. Свою
 /// балансировку он ведёт сам, внешними колонками не фрагментируется, и копия
 /// стопки рисует его плоско (`flow.rs` `StackChild::nested_cols`).
-pub(crate) fn multicol_inside(c: &Element, depth: u8) -> bool {
+pub(super) fn multicol_inside(c: &Element, depth: u8) -> bool {
     multicol_container(&c.style)
         || (depth > 0
             && c.children.iter().any(
@@ -81,7 +81,7 @@ pub(crate) fn multicol_inside(c: &Element, depth: u8) -> bool {
 /// column break and is taken out of flow to span across all columns of the
 /// nearest multicol ancestor», то есть режет содержимое предка на «до»,
 /// «спаннер» и «после».
-pub(crate) enum SpanPart {
+enum SpanPart {
     Body(Vec<Node>),
     Span(Node),
 }
@@ -115,7 +115,7 @@ pub(crate) fn spanner_box(c: &Element) -> bool {
 /// (`CreatesNewFormattingContext`) и не быть содержащим блоком для
 /// фиксированных потомков (`CanContainFixedPositionObjects`); спаннер
 /// внутри спаннера тоже запрещён.
-pub(crate) fn passes_spanner(c: &Element) -> bool {
+fn passes_spanner(c: &Element) -> bool {
     // «No spanners inside spanners in the same multicol context».
     if spanner_box(c) {
         return false;
@@ -205,13 +205,13 @@ pub(crate) fn has_deep_spanner(c: &Element) -> bool {
 /// его пропускает; `multicol-span-float-003`, `parallel-flow-after-spanner-
 /// 001`). Атомарные строчные (`inline-block`, кнопка, замещаемые) — барьер:
 /// их `real_inline` не пускает.
-pub(crate) fn splits_for_spanner(k: &Element) -> bool {
+fn splits_for_spanner(k: &Element) -> bool {
     real_inline(k) && !out_of_flow(&k.style)
 }
 
 /// Кромка коробки на стороне разреза: есть ли что показывать ПУСТОМУ
 /// фрагменту. `Len::Px(0)` кромкой не считается.
-pub(crate) fn spanner_edge(l: &Option<Len>) -> bool {
+fn spanner_edge(l: &Option<Len>) -> bool {
     !matches!(l, None | Some(Len::Px(0.0)))
 }
 
@@ -221,7 +221,7 @@ pub(crate) fn spanner_edge(l: &Option<Len>) -> bool {
 /// before the spanner is empty, nothing special happens; the top
 /// margin/border/padding is above the spanning element, as an empty
 /// fragment».
-pub(crate) fn spanner_frag_visible(c: &Element, kids: &[Node], first: bool, last: bool) -> bool {
+fn spanner_frag_visible(c: &Element, kids: &[Node], first: bool, last: bool) -> bool {
     if kids.iter().any(|n| !is_blank(n)) {
         return true;
     }
@@ -249,7 +249,7 @@ pub(crate) fn spanner_frag_visible(c: &Element, kids: &[Node], first: bool, last
 /// один. Разошёлся на несколько — каждый меряется по содержимому, а не
 /// повторяет `height` предка целиком (иначе `height: 200px` удвоилась бы:
 /// `non-adjacent-spanners-001`).
-pub(crate) fn spanner_fragment(
+fn spanner_fragment(
     c: &Element,
     kids: Vec<Node>,
     first: bool,
@@ -290,7 +290,7 @@ pub(crate) fn spanner_fragment(
 /// `None` — правило не берётся (высота не в точках, фрагмент один, виден
 /// один и не после пустых, мера не вышла), и действует прежний `keep_size`.
 /// В векторе: `Some(v)` — высота фрагмента, `None` — своя, по содержимому.
-pub(crate) fn spanner_height_share(c: &Element, bodies: &[Vec<Node>]) -> Option<Vec<Option<f32>>> {
+fn spanner_height_share(c: &Element, bodies: &[Vec<Node>]) -> Option<Vec<Option<f32>>> {
     let Some(Len::Px(total)) = c.style.height else {
         return None;
     };
@@ -338,7 +338,7 @@ pub(crate) fn spanner_height_share(c: &Element, bodies: &[Vec<Node>]) -> Option<
 /// Разложить содержимое предка на чередование «кусок обычного потока» —
 /// «спаннер», рекурсивно вынимая спаннеров из проходимых потомков. Список
 /// всегда начинается и кончается куском потока (возможно пустым).
-pub(crate) fn spanner_parts(kids: &[Node]) -> Vec<SpanPart> {
+fn spanner_parts(kids: &[Node]) -> Vec<SpanPart> {
     // Спаннер под строчным предком: сперва разорвать строчные на анонимные
     // блоки (§9.2.1.1) — тогда спаннер виден на этом уровне и режет поток,
     // как прямой (`splits_for_spanner`).
@@ -499,7 +499,7 @@ pub(crate) fn hoist_spanners(kids: &[Node]) -> Option<Vec<Node>> {
 /// же перечень, что у предиката `shrink_to_fit` в `apply.rs:940`. Элемент
 /// гибкого контейнера и сетки тоже меряется содержимым: его основа —
 /// `max-content` (css-flexbox-1 §9.2 п.3.A).
-pub(crate) fn intrinsic_inline_size(c: &Computed, parent: &Computed) -> bool {
+pub(super) fn intrinsic_inline_size(c: &Computed, parent: &Computed) -> bool {
     if matches!(
         c.width,
         Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)

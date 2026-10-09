@@ -8,7 +8,7 @@ use crate::style::select::{Ancestor, Sibs};
 
 /// Псевдокоробки скроллера ВНЕ его коробки (css-overflow-5): группа маркеров
 /// и кнопки прокрутки. Порядок в дереве — Blink `kBoxTreeOrder`.
-pub(crate) struct ScrollPseudos {
+pub(super) struct ScrollPseudos {
     pub(crate) group_before: Option<Element>,
     pub(crate) group_after: Option<Element>,
     /// block-start, inline-start, inline-end, block-end — те, у кого есть
@@ -27,7 +27,7 @@ pub(crate) struct ScrollPseudos {
 /// получает `contain: layout` (+ `size` в потоке) поверх авторского
 /// (`style_adjuster.cc` 827, 1219–1230; `scroll-marker-007/008`).
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn scroll_marker_pass(
+pub(super) fn scroll_marker_pass(
     rules: &[Rule],
     vars: &Decls,
     counters: &mut crate::style::generated::counters::Counters,
@@ -155,7 +155,7 @@ pub(crate) fn scroll_marker_pass(
 
 /// Убрать все `::scroll-marker` поддерева (их скроллер без группы), не
 /// заходя в уже собранные группы.
-pub(crate) fn purge_scroll_markers(nodes: &mut Vec<Node>) {
+fn purge_scroll_markers(nodes: &mut Vec<Node>) {
     nodes.retain(|n| !matches!(n, Node::Element(e) if e.tag == "::scroll-marker"));
     for n in nodes.iter_mut() {
         if let Node::Element(e) = n
@@ -174,7 +174,7 @@ pub(crate) fn purge_scroll_markers(nodes: &mut Vec<Node>) {
 /// `position: absolute|fixed` считается, только если его содержащий блок
 /// внутри скроллера (`abs_ok`/`fixed_ok`): иначе его коробка раскладки
 /// лежит снаружи (`scroll-marker-005/006`), и его поддерево гасится.
-pub(crate) fn collect_scroll_markers(
+fn collect_scroll_markers(
     nodes: &mut Vec<Node>,
     abs_ok: bool,
     fixed_ok: bool,

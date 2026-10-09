@@ -9,7 +9,7 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, div};
 
-pub(crate) fn builder(
+pub(super) fn builder(
     declarations: PageMarginDeclsFn,
     root: Computed,
     opts: RenderOpts,

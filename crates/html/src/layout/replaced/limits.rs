@@ -88,7 +88,7 @@ pub(crate) fn auto_clamp_limit(m: &Computed) -> Option<f32> {
 /// §iframe-frame-sizing): истина, если `<meta name=responsive-embedded-sizing>`
 /// встретился при разборе РАНЬШЕ, чем открылся `<body>` (явно или неявно —
 /// любым тегом тела или непробельным текстом).
-pub(crate) fn responsive_embedded_sizing(html: &str) -> bool {
+pub(super) fn responsive_embedded_sizing(html: &str) -> bool {
     let lower = html.to_ascii_lowercase();
     let b = lower.as_bytes();
     let mut i = 0;
@@ -193,7 +193,7 @@ pub(crate) fn atom_base_font(inherited: &Computed, opts: &RenderOpts) -> f32 {
 /// Прежний общий множитель «сперва потолки, затем полы» держал соотношение
 /// всегда и расходился с таблицей ровно в этих строках
 /// (`box-sizing-replaced-001..003`). `max` берётся как max(min, max).
-pub(crate) fn css2_replaced_limits(
+pub(super) fn css2_replaced_limits(
     w: f32,
     h: f32,
     min_w: Option<f32>,

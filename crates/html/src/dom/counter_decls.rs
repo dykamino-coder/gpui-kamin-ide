@@ -40,7 +40,7 @@ pub(crate) fn counter_snapshot(style: &Computed) -> [Option<String>; 3] {
     ]
 }
 
-pub(crate) fn list_value_hint(
+fn list_value_hint(
     style: &Computed,
     tag: &str,
     attrs: &[(String, String)],

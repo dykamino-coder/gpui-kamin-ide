@@ -17,7 +17,7 @@ use crate::style::values::value::Len;
 ///
 /// Только явные формы: у подсетки без размещения среза нет, и трогать её
 /// нельзя — авто-размещение считает уже раскладка.
-pub(crate) fn subgrid_slot(
+fn subgrid_slot(
     place: &Option<(crate::style::computed::Placement, crate::style::computed::Placement)>,
     count: usize,
 ) -> Option<(usize, usize)> {
@@ -60,7 +60,7 @@ pub(crate) fn subgrid_slot(
 /// авто-размещение, а сколько дорожек она занимает — видно сразу
 /// (css-grid-2 §subgrid-size-contribution: число дорожек авто-размещённой
 /// подсетки берётся из её пролёта).
-pub(crate) fn subgrid_span(place: &Option<(crate::style::computed::Placement, crate::style::computed::Placement)>) -> usize {
+fn subgrid_span(place: &Option<(crate::style::computed::Placement, crate::style::computed::Placement)>) -> usize {
     use crate::style::computed::Placement;
     match place {
         Some((Placement::Span(k), Placement::Auto)) | Some((Placement::Auto, Placement::Span(k))) => {
@@ -76,7 +76,7 @@ pub(crate) fn subgrid_span(place: &Option<(crate::style::computed::Placement, cr
 /// зазоров с каждой стороны, обращённой к ВНУТРЕННЕМУ стыку среза: три
 /// эталона WPT выписывают результат числами (`grid-gap-larger-001-ref`
 /// `70px 130px 70px` при родительских 100/190/100).
-pub(crate) fn subgrid_gap_slice(
+fn subgrid_gap_slice(
     slice: &mut [crate::style::computed::TrackSize],
     parent: Option<Len>,
     own: Option<Len>,
@@ -152,7 +152,7 @@ pub(crate) fn subgrid_inhibited(style: &Computed) -> bool {
         || matches!(style.position, Some(Position::Absolute) | Some(Position::Fixed))
 }
 
-pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
+pub(super) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
         if matches!(
@@ -452,7 +452,7 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
 /// единицы. Гейт: размер оси и зазор — точки (или зазор не задан), все
 /// дорожки — точки или доли, хотя бы одна доля; иначе `None`. Рост доли под
 /// содержимое (`minmax(auto, 1fr)`) здесь не виден — у пар семьи элементы пустые.
-pub(crate) fn fr_tracks_to_px(
+fn fr_tracks_to_px(
     style: &Computed,
     tracks: &[crate::style::computed::TrackSize],
     row_dir: bool,
@@ -541,7 +541,7 @@ pub(crate) fn lanes_row_dir(s: &Computed) -> bool {
 /// детей идут тем же путём: срез им режет `subgrid_takes_parent_tracks`
 /// ровно как у сетки-эталона; интрин-дорожки в `repeat(auto-*)` считает
 /// taffy (css-grid-3 §7.2.1).
-pub(crate) fn lanes_as_grid(nodes: &mut [Node]) {
+pub(super) fn lanes_as_grid(nodes: &mut [Node]) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
         lanes_as_grid(&mut el.children);
@@ -562,7 +562,7 @@ pub(crate) fn lanes_to_grid(style: &mut Computed) {
     style.lanes_taffy = true;
 }
 
-pub(crate) fn hoist_grid_abspos(nodes: &mut [Node]) {
+pub(super) fn hoist_grid_abspos(nodes: &mut [Node]) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
         hoist_grid_abspos(&mut el.children);
@@ -584,7 +584,7 @@ pub(crate) fn hoist_grid_abspos(nodes: &mut [Node]) {
 }
 
 /// Забрать из поддерева абсолютные элементы с заданными линиями сетки.
-pub(crate) fn steal_placed(children: &mut Vec<Node>, out: &mut Vec<Node>) {
+fn steal_placed(children: &mut Vec<Node>, out: &mut Vec<Node>) {
     let mut kept = Vec::with_capacity(children.len());
     for mut node in children.drain(..) {
         if let Node::Element(el) = &mut node {
@@ -610,6 +610,6 @@ pub(crate) fn steal_placed(children: &mut Vec<Node>, out: &mut Vec<Node>) {
 
 /// Контейнер сетки — это и `inline-grid`: разница только в том, как коробка
 /// встаёт в поток снаружи.
-pub(crate) fn is_grid(c: &Computed) -> bool {
+fn is_grid(c: &Computed) -> bool {
     matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid))
 }

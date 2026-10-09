@@ -62,7 +62,7 @@ pub(crate) fn column_flow(
 /// are monolithic», Blink `layout_box.cc:3564-3575` `IsMonolithic`). Строки
 /// монолита между колонками не расходятся; в узкой колонке `measure_columns`
 /// держит для него прежний сторож «без разрезов» (`contain-size-breaks-001`).
-pub(crate) fn column_flow_in(
+fn column_flow_in(
     e: &Element,
     inherited: &Computed,
     opts: &RenderOpts,

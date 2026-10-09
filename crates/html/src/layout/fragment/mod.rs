@@ -15,19 +15,19 @@ pub mod line_shape;
 pub mod probe;
 pub mod push;
 pub mod shape_contents;
-pub(crate) mod shape_kids;
+mod shape_kids;
 pub mod table_bands;
 pub mod types;
 
 pub(crate) mod fragment_size;
-pub(crate) mod fragment_mask;
+pub(super) mod fragment_mask;
 pub(crate) mod gap_fragment;
-pub(crate) mod intrinsic_measure;
-pub(crate) mod row_element;
+pub(super) mod intrinsic_measure;
+mod row_element;
 
 /// Элемент сетки для `grid_auto_row_bands`: номер среди `c.children`, ряд,
 /// верхнее поле, мера `shape_full`, годны ли его внутренние точки сетке.
-pub(crate) type GridSpot = (usize, usize, f32, Shape, bool);
+type GridSpot = (usize, usize, f32, Shape, bool);
 
 /// То же плюс смещения принудительных разрывов и диапазоны
 /// монолитов внутри.
@@ -71,7 +71,7 @@ impl ShapeCx {
 
 /// Кадр меры строк: наследованный стиль коробки и ширина её содержимого
 /// (`None` — неизвестна, строки не меряются).
-pub(crate) struct LineFrame {
+struct LineFrame {
     pub(crate) inh: Computed,
     pub(crate) w: Option<f32>,
     /// Анонимный блок строк хоста (`group_inline_runs`): его срез — срез хоста.
@@ -87,13 +87,13 @@ pub(crate) struct LineFrame {
 /// стопки колонок (`with_lines`), где ширина колонки известна. `shape_full` о
 /// наследовании и ширине ничего не знает (ей дают голый элемент), поэтому
 /// кадры ведёт `LineScope` на входе в неё.
-pub(crate) struct LineCx {
+struct LineCx {
     pub(crate) opts: RenderOpts,
     pub(crate) frames: Vec<LineFrame>,
 }
 
 thread_local! {
-    pub(crate) static LINE_CX: std::cell::RefCell<Option<LineCx>> = const { std::cell::RefCell::new(None) };
+    static LINE_CX: std::cell::RefCell<Option<LineCx>> = const { std::cell::RefCell::new(None) };
 }
 
 /// Выполнить `f` с контекстом меры строк: `base` — стиль многоколоночника,
@@ -111,7 +111,7 @@ pub(crate) fn with_lines<T>(base: &Computed, w: Option<f32>, opts: &RenderOpts, 
 }
 
 /// Кадр меры строк на время `shape_full(c)`.
-pub(crate) struct LineScope(pub(crate) bool);
+struct LineScope(pub(crate) bool);
 
 impl LineScope {
     pub(crate) fn enter(c: &Element) -> Self {

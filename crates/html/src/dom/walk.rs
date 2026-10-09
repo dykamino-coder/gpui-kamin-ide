@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 /// Обойти детей узла, посчитав каждому его место среди соседей.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn walk_children(
+pub(super) fn walk_children(
     handle: &Handle,
     rules: &[Rule],
     vars: &Decls,
@@ -47,7 +47,7 @@ pub(crate) fn walk_children(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn walk(
+fn walk(
     handle: &Handle,
     rules: &[Rule],
     vars: &Decls,

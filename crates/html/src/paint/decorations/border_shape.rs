@@ -5,7 +5,7 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{IntoElement, Styled, px};
 
-pub(crate) fn border_shape_layer(
+pub(super) fn border_shape_layer(
     c: &Computed,
     out: &mut Vec<gpui::AnyElement>,
 ) {

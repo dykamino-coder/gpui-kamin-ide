@@ -12,7 +12,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 /// Картинка: `src` с `data:`-URI или путь. Внешние URL не грузим — документ
 /// рисуется в чате, где сеть запрещена по тем же причинам, что и в вебвью.
 /// Приклеить базовую папку к относительным `url(...)` вложенного документа.
-pub(crate) fn resolve_embedded_urls(html: &str, dir: &std::path::Path) -> String {
+fn resolve_embedded_urls(html: &str, dir: &std::path::Path) -> String {
     let mut out = String::with_capacity(html.len());
     let mut rest = html;
     while let Some(at) = rest.find("url(") {

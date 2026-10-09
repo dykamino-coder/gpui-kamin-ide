@@ -19,7 +19,7 @@ use crate::style::computed::{Computed, Display};
 /// нужны: ширину окна и высоту из содержимого даёт пробная раскладка
 /// (`band_flow::plan`). Атомы строки сюда НЕ пускаются: они делят строку, а
 /// здесь каждый кусок берёт своё окно.
-pub(crate) fn band_piece_m(n: &Node, em: f32) -> Option<bool> {
+pub(super) fn band_piece_m(n: &Node, em: f32) -> Option<bool> {
     match band_piece(n) {
         Some(BandPiece::Strut) => return Some(false),
         Some(BandPiece::Atom) => return None,
@@ -70,7 +70,7 @@ pub(crate) fn band_piece_m(n: &Node, em: f32) -> Option<bool> {
 /// * одинокий флоат с пустым хвостом полосам не нужен (как у `band_host`).
 ///
 /// Ширина содержащего блока не требуется вовсе: её отдаёт замер.
-pub(crate) fn band_host_m(
+pub(super) fn band_host_m(
     nodes: &[Node],
     i: usize,
     em: f32,
@@ -151,7 +151,7 @@ pub(crate) fn band_host_m(
 }
 
 /// Годится ли флоат в измеряемый хост: `None` — хост отменяется.
-pub(crate) fn band_float_m(next: &Element, em: f32) -> Option<()> {
+pub(super) fn band_float_m(next: &Element, em: f32) -> Option<()> {
     {
         // Ортогональный флоат (своё письмо вертикально в горизонтальном
         // контейнере) С ТЕКСТОМ: строчный размер его строк (§7.3.1, от
@@ -178,7 +178,7 @@ pub(crate) fn band_float_m(next: &Element, em: f32) -> Option<()> {
 
 /// Хвост `band_host_m`: хост из собранных флоатов, хвоста и щупов.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn band_host_m_tail(
+fn band_host_m_tail(
     nodes: &[Node],
     i: usize,
     j: usize,
@@ -316,7 +316,7 @@ pub(crate) fn band_host_m_tail(
 
 /// Есть ли у блока флоат среди потомков обычного потока (сквозь блоки, не
 /// заводящие своего контекста).
-pub(crate) fn has_flow_float(c: &Element) -> bool {
+fn has_flow_float(c: &Element) -> bool {
     c.children.iter().any(|n| match n {
         Node::Text(_) => false,
         Node::Element(k) => {
@@ -330,7 +330,7 @@ pub(crate) fn has_flow_float(c: &Element) -> bool {
 /// блок — `Kind::Nest`, за ним — хвост как у `band_host_m` до флоата или
 /// `clear`. Без братьев за блоком хост не нужен: флоаты внутри влияют
 /// только на его собственное содержимое, и его раскладывает он сам.
-pub(crate) fn band_host_nested(
+pub(super) fn band_host_nested(
     nodes: &[Node],
     i: usize,
     em: f32,
@@ -395,7 +395,7 @@ pub(crate) fn band_host_nested(
 
 /// Блок с флоатами или коробками своего контекста внутри годится в
 /// `Kind::Nest` целиком — со всеми потомками (шаг F7).
-pub(crate) fn band_nest_ok(c: &Element, em: f32) -> bool {
+pub(super) fn band_nest_ok(c: &Element, em: f32) -> bool {
     if !band_nest_block(c, em) {
         return false;
     }
@@ -418,7 +418,7 @@ pub(crate) fn band_nest_ok(c: &Element, em: f32) -> bool {
 }
 
 /// Есть ли в поддереве руби (`<ruby>`, `<rt>`).
-pub(crate) fn has_ruby(n: &Node) -> bool {
+pub(super) fn has_ruby(n: &Node) -> bool {
     match n {
         Node::Text(_) => false,
         Node::Element(e) => {
@@ -429,7 +429,7 @@ pub(crate) fn has_ruby(n: &Node) -> bool {
 
 /// Есть ли среди флоатов пробега (`run` — узлы от первого флоата до конца
 /// хвоста) флоат с `shape-outside`.
-pub(crate) fn host_floats_shaped(run: &[Node]) -> bool {
+fn host_floats_shaped(run: &[Node]) -> bool {
     run.iter().any(|n| {
         matches!(n, Node::Element(c)
             if c.style.float.is_some_and(|f| f != 0) && c.style.shape_outside.is_some())

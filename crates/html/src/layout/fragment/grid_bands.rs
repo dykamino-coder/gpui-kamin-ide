@@ -44,7 +44,7 @@ pub(crate) fn grid_rows_px(c: &Computed) -> Option<f32> {
 /// Ряды — в точках либо доли `fr` при заданной в точках высоте коробки
 /// (остаток после точечных рядов и зазоров делится по долям, css-grid-1
 /// §12.7). Иначе — пусто: дорожек не знаем, точек не даём.
-pub(crate) fn grid_row_gaps(c: &Computed, inner_h: f32) -> Vec<(f32, f32)> {
+pub(super) fn grid_row_gaps(c: &Computed, inner_h: f32) -> Vec<(f32, f32)> {
     use crate::style::computed::{Track, TrackSize};
     if !matches!(
         c.display,
@@ -103,7 +103,7 @@ pub(crate) fn grid_row_gaps(c: &Computed, inner_h: f32) -> Vec<(f32, f32)> {
 /// нет, они не все в точках или зазор задан не в точках: границ мы не знаем
 /// и точек не даём. Строже, чем `grid_rows_px` (тот считает незнакомый
 /// зазор нулём) — неверная граница ряда хуже отсутствующей.
-pub(crate) fn grid_px_row_bands(c: &Computed) -> Option<Vec<(f32, f32)>> {
+fn grid_px_row_bands(c: &Computed) -> Option<Vec<(f32, f32)>> {
     use crate::style::computed::{Track, TrackSize};
     if !matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid)) {
         return None;
@@ -163,7 +163,7 @@ pub(crate) fn grid_px_row_bands(c: &Computed) -> Option<Vec<(f32, f32)>> {
 /// на каждой границе ряда увела бы разрез у зелёных
 /// `grid-item-oof-002/003` (ряды `50px 150px`, край колонки на 100 внутри
 /// второго ряда) с края на 50 и потеряла бы половину колонки.
-pub(crate) fn grid_auto_row_bands(
+pub(super) fn grid_auto_row_bands(
     c: &Element,
     depth: u8,
     cx: ShapeCx,
@@ -391,7 +391,7 @@ pub(crate) fn grid_auto_row_bands(
 
 /// Сетка, которую мерит `grid_auto_row_bands`, — та же цепочка, что в
 /// `shape_full`: не стопка, высота `auto`, ряды не все в точках.
-pub(crate) fn grid_items_spotted(c: &Element) -> bool {
+pub(super) fn grid_items_spotted(c: &Element) -> bool {
     matches!(c.style.display, Some(Display::Grid) | Some(Display::InlineGrid))
         && !grid_stack(c)
         && c.style.height.is_none()
@@ -418,7 +418,7 @@ pub(crate) fn grid_items_spotted(c: &Element) -> bool {
 /// по колонкам, `grid-column: N / span M` занимает M колонок и при
 /// необходимости пинает курсор вперёд; не влезающий в остаток ряда элемент
 /// начинает новый ряд. Любая непонятная форма — пустой список, а не догадка.
-pub(crate) fn grid_row_forced(c: &Element) -> (Vec<f32>, Vec<(f32, f32)>) {
+pub(super) fn grid_row_forced(c: &Element) -> (Vec<f32>, Vec<(f32, f32)>) {
     use crate::style::computed::{AutoFlow, Placement};
     let s = &c.style;
     if matches!(
@@ -657,7 +657,7 @@ pub(crate) fn grid_stack(c: &Element) -> bool {
 /// Только без `row-gap`: при зазоре эталоны css-gaps держат ряд прежней
 /// высоты (`grid-gap-decorations-fragmentation-011`). Прямой ребёнок стопки;
 /// вложенная сетка — как прежде, без роста.
-pub(crate) fn grow_grid_track(c: &mut Element, at: f32, grow: f32) -> bool {
+pub(super) fn grow_grid_track(c: &mut Element, at: f32, grow: f32) -> bool {
     use crate::style::computed::{Track, TrackSize};
     if grid_stack(c) || !matches!(c.style.display, Some(Display::Grid) | Some(Display::InlineGrid)) {
         return false;

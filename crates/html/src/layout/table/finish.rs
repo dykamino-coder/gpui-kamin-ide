@@ -14,7 +14,7 @@ use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 #[allow(clippy::too_many_arguments, clippy::ptr_arg)]
-pub(crate) fn table_finish(
+pub(super) fn table_finish(
     under: Vec<AnyElement>,
     paint_layers: bool,
     cell_bgs: std::rc::Rc<std::cell::RefCell<Vec<(gpui::Bounds<gpui::Pixels>, gpui::Hsla)>>>,

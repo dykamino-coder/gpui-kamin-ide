@@ -58,7 +58,7 @@ impl Drop for AvailWGuard {
 /// Ширина СОДЕРЖИМОГО коробки в точках — содержащий блок её детей (CSS 2.1
 /// §10.1 п.2) — для процентных полей внуков в цепочках схлопывания. `cb` —
 /// содержащий блок самой коробки; `None` — в точках не выводится.
-pub(crate) fn inner_width_px(c: &Computed, cb: Option<f32>) -> Option<f32> {
+fn inner_width_px(c: &Computed, cb: Option<f32>) -> Option<f32> {
     let side = |l: Option<Len>| match l {
         None | Some(Len::Auto) => Some(0.0),
         Some(Len::Px(v)) => Some(v),
@@ -85,7 +85,7 @@ pub(crate) fn inner_width_px(c: &Computed, cb: Option<f32>) -> Option<f32> {
 /// `width: auto` его нет, и `15%` у `#parent` внутри `#grand-parent {width:
 /// 400px}` роняло цепочку целиком — поля абзаца и `#parent` складывались
 /// (16 + 60 вместо 60, `margin-percentage-inherit-001`).
-pub(crate) fn with_inner_cb<T>(c: &Computed, f: impl FnOnce() -> T) -> T {
+pub(super) fn with_inner_cb<T>(c: &Computed, f: impl FnOnce() -> T) -> T {
     let level = COLLAPSE_CB_WIDTH_PX.with(std::cell::Cell::get);
     let prev = COLLAPSE_CB_WIDTH_PX.with(|w| w.replace(inner_width_px(c, level)));
     // Кегль уровня — тоже от спуска: поля детей в `em` без своего кегля (и

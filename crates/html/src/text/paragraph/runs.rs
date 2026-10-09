@@ -4,7 +4,7 @@ use gpui::{Hsla, Pixels, TextRun, px};
 
 /// Сторона письма по ПЕРВОМУ СИЛЬНОМУ знаку куска: `Some(true)` — справа
 /// налево, `None` — сильных знаков нет вовсе.
-pub(crate) fn first_strong_rtl(text: &str) -> Option<bool> {
+pub(super) fn first_strong_rtl(text: &str) -> Option<bool> {
     for ch in text.chars() {
         match unicode_bidi::bidi_class(ch) {
             unicode_bidi::BidiClass::L => return Some(false),
@@ -18,13 +18,13 @@ pub(crate) fn first_strong_rtl(text: &str) -> Option<bool> {
 /// Знак-указание, у которого нет своего изображения: словосоединитель,
 /// нулевой пробел, метка порядка байтов, мягкий перенос, знаки управления
 /// встроенностью.
-pub(crate) fn invisible(ch: char) -> bool {
+pub(super) fn invisible(ch: char) -> bool {
     matches!(ch as u32,
         0x00AD | 0x200B | 0x2060 | 0xFEFF | 0x202A..=0x202E | 0x2066..=0x2069)
 }
 
 /// Прогоны без невидимых знаков: длины считаются по оставшимся байтам.
-pub(crate) fn trim_runs(runs: &[TextRun], text: &str) -> Vec<TextRun> {
+pub(super) fn trim_runs(runs: &[TextRun], text: &str) -> Vec<TextRun> {
     let mut out = Vec::with_capacity(runs.len());
     let mut at = 0usize;
     for run in runs {
@@ -70,13 +70,13 @@ pub(crate) fn trim_runs(runs: &[TextRun], text: &str) -> Vec<TextRun> {
 /// видимым фрагментам, css-break-3 §5.4).
 /// Zero-width bidi formatting characters (UAX #9 explicit formatting and
 /// implicit marks).
-pub(crate) fn bidi_control(c: char) -> bool {
+pub(super) fn bidi_control(c: char) -> bool {
     matches!(c, '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
 }
 
 /// Visual neighbours (byte offsets) of the characters `range` in the line's
 /// visual character order `vis`, skipping zero-width bidi controls.
-pub(crate) fn visual_neighbours(
+pub(super) fn visual_neighbours(
     text: &str,
     vis: &[usize],
     range: &std::ops::Range<usize>,
@@ -94,7 +94,7 @@ pub(crate) fn visual_neighbours(
 
 /// Drop the physical left and/or right side (padding and border) of a run's
 /// inline box band.
-pub(crate) fn cut_band_sides(run: &mut TextRun, left: bool, right: bool) {
+pub(super) fn cut_band_sides(run: &mut TextRun, left: bool, right: bool) {
     for (cut, side) in [(left, 3), (right, 1)] {
         if cut {
             run.background_pad[side] = px(0.);
@@ -105,7 +105,7 @@ pub(crate) fn cut_band_sides(run: &mut TextRun, left: bool, right: bool) {
     }
 }
 
-pub(crate) fn slice_runs_banded(runs: &[TextRun], range: &std::ops::Range<usize>) -> Vec<TextRun> {
+pub(super) fn slice_runs_banded(runs: &[TextRun], range: &std::ops::Range<usize>) -> Vec<TextRun> {
     let mut out = slice_runs(runs, range);
     let band_at = |at: usize| -> Option<(Option<Hsla>, Option<(Hsla, [Pixels; 4])>)> {
         let mut start = 0usize;
@@ -147,7 +147,7 @@ pub(crate) fn slice_runs_banded(runs: &[TextRun], range: &std::ops::Range<usize>
     out
 }
 
-pub(crate) fn slice_runs(runs: &[TextRun], range: &std::ops::Range<usize>) -> Vec<TextRun> {
+pub(super) fn slice_runs(runs: &[TextRun], range: &std::ops::Range<usize>) -> Vec<TextRun> {
     let mut out = Vec::new();
     let mut at = 0usize;
     for run in runs {

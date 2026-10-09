@@ -14,7 +14,7 @@ use crate::text::ruby::ruby_role;
 use crate::text::text_box::normal_fraction;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
 
-pub(crate) mod pieces;
+pub(super) mod pieces;
 pub(crate) mod atom_piece;
 
 /// Абзац: одна строка текста с прогонами либо гибкая строка из кусков.
@@ -27,7 +27,7 @@ pub(crate) fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts)
     paragraph_routed(nodes, inherited, opts, None)
 }
 
-pub(crate) fn paragraph_routed(
+fn paragraph_routed(
     nodes: &[Node], inherited: &Computed, opts: &RenderOpts,
     native_request: Option<&native_paragraph_route::Request<'_>>,
 ) -> AnyElement {
@@ -320,7 +320,7 @@ pub(crate) fn paragraph_routed(
 /// Отсчёт идёт от СВОЕГО кегля, а не от базового кегля документа: у коробки с
 /// `font-size: 10px` строка обязана быть в 10 точек, а базовый (16) держал её
 /// вдвое выше.
-pub(crate) fn own_size(inherited: &Computed, opts: &RenderOpts) -> f32 {
+pub(super) fn own_size(inherited: &Computed, opts: &RenderOpts) -> f32 {
     match inherited.font_size {
         Some(Len::Px(v)) => v,
         Some(Len::Em(k)) | Some(Len::Pct(k)) => k * opts.base_size(),
@@ -336,7 +336,7 @@ pub(crate) fn own_size(inherited: &Computed, opts: &RenderOpts) -> f32 {
 /// путь закрыт (`inline.rs:2543`). Внепоточный — и абсолют на статической
 /// позиции, и абсолют с краями: оба уходят `Piece::Overlay`, оба своего
 /// текста в строку не отдают.
-pub(crate) fn has_flow_text(nodes: &[Node]) -> bool {
+pub(super) fn has_flow_text(nodes: &[Node]) -> bool {
     nodes.iter().any(|n| match n {
         Node::Text(t) => !t.trim().is_empty(),
         Node::Element(e) => {
@@ -356,7 +356,7 @@ pub(crate) fn has_flow_text(nodes: &[Node]) -> bool {
 /// `vertical-align` у нас наследуется (ради ячеек таблицы), поэтому краевым
 /// считается только кусок, чьё значение ОТЛИЧАЕТСЯ от значения абзаца: иначе
 /// каждый абзац ячейки с `vertical-align: top` прижимался бы весь.
-pub(crate) fn edge_pieces(
+pub(super) fn edge_pieces(
     pieces: &[inline::Piece],
     inherited: &Computed,
     opts: &RenderOpts,
@@ -416,7 +416,7 @@ pub(crate) fn edge_pieces(
 }
 
 /// Лежит ли отрезок внутри краевого куска.
-pub(crate) fn in_edge(edges: &[(std::ops::Range<usize>, bool, f32)], r: &std::ops::Range<usize>) -> bool {
+pub(super) fn in_edge(edges: &[(std::ops::Range<usize>, bool, f32)], r: &std::ops::Range<usize>) -> bool {
     edges
         .iter()
         .any(|(e, _, _)| e.start < r.end.max(r.start + 1) && r.start < e.end)
@@ -424,7 +424,7 @@ pub(crate) fn in_edge(edges: &[(std::ops::Range<usize>, bool, f32)], r: &std::op
 
 /// Самый крупный кегль и наибольшая `line-height` кусков ВНЕ краевых: струт
 /// строки и её базовая линия от прижатых к краю не зависят (§10.8.1).
-pub(crate) fn flow_metrics(
+pub(super) fn flow_metrics(
     pieces: &[inline::Piece],
     edges: &[(std::ops::Range<usize>, bool, f32)],
     inherited: &Computed,
@@ -468,7 +468,7 @@ pub(crate) fn flow_metrics(
 /// Прежде высота строки на ВЕСЬ абзац бралась по самому крупному куску
 /// (`max_line_height`, `k × biggest`): одна крупная буква растила все строки,
 /// а базовая линия мелкого текста в строке с крупным стояла посередине.
-pub(crate) fn line_box_spans(
+pub(super) fn line_box_spans(
     pieces: &[inline::Piece],
     edges: &[(std::ops::Range<usize>, bool, f32)],
     inherited: &Computed,
@@ -530,7 +530,7 @@ pub(crate) fn line_box_spans(
 /// Абзац с руби идёт в строку и при `rtl`: иначе он остаётся в
 /// ряду, где строка под аннотацию не растёт, а такой же абзац слева направо
 /// растёт (`ruby-bidi-002`: эталон из ltr-абзаца с `text-align: right`).
-pub(crate) fn atoms_fit_line(inherited: &Computed, ruby: bool) -> bool {
+pub(super) fn atoms_fit_line(inherited: &Computed, ruby: bool) -> bool {
     inherited.vertical != Some(true)
         // A rotated paragraph of atoms only is a row whose end edge sits on
         // the end of the paragraph box (`paragraph_routed`, pure-atom
@@ -553,7 +553,7 @@ pub(crate) fn atoms_fit_line(inherited: &Computed, ruby: bool) -> bool {
 /// (`Paragraph::lay_atoms`), поэтому в строку идут только атомы, чей размер от
 /// ширины строки не зависит: без долей в размерах, полях и отступах. Абсолюты
 /// (их место — щуп статической позиции), поля форм и руби остаются в ряду.
-pub(crate) fn atom_line_align(
+pub(super) fn atom_line_align(
     e: &Element,
     inherited: &Computed,
     opts: &RenderOpts,
@@ -703,7 +703,7 @@ pub(crate) fn atom_line_align(
 }
 
 /// Абзац с готовым разрезом первой строки: `at` — сколько байт в неё вошло.
-pub(crate) fn paragraph_pieces(
+fn paragraph_pieces(
     nodes: &[Node],
     inherited: &Computed,
     opts: &RenderOpts,

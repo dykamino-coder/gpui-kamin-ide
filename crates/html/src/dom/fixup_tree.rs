@@ -12,7 +12,7 @@ use crate::style::values::value::Len;
 /// доходил (`float-percentage-resolution-quirks-mode`,
 /// `intrinsic-percent-replaced-003`). `base` — высота содержимого опоры для
 /// детей; гибкий/сеточный/табличный предок с `auto` и абсолют цепочку рвут.
-pub(crate) fn quirks_percent_heights(nodes: &mut [Node], base: Option<f32>) {
+pub(super) fn quirks_percent_heights(nodes: &mut [Node], base: Option<f32>) {
     for n in nodes.iter_mut() {
         let Node::Element(e) = n else { continue };
         let st = &mut e.style;
@@ -37,7 +37,7 @@ pub(crate) fn quirks_percent_heights(nodes: &mut [Node], base: Option<f32>) {
     }
 }
 
-pub(crate) type RuleColors = (
+pub(super) type RuleColors = (
     Option<crate::style::values::value::Color>,
     Option<crate::style::computed::GapList<Option<crate::style::values::value::Color>>>,
     Option<crate::style::values::value::Color>,
@@ -50,7 +50,7 @@ pub(crate) type RuleColors = (
 /// здесь, в дереве, как `display: inherit` выше (`multicol-rule-color-inherit-001`:
 /// родитель `column-rule-color: green` при `column-rule-style: none`, ребёнок
 /// `inherit` — зелёные линейки, а не `currentcolor` красного текста).
-pub(crate) fn resolve_rule_color_inherit(nodes: &mut [Node], parent: &RuleColors) {
+pub(super) fn resolve_rule_color_inherit(nodes: &mut [Node], parent: &RuleColors) {
     use crate::style::computed::inh;
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
@@ -80,7 +80,7 @@ pub(crate) fn resolve_rule_color_inherit(nodes: &mut [Node], parent: &RuleColors
 /// Решается здесь, пока дерево целое — при сборке абсолютные дети уже
 /// вынесены в свои слои, и родитель выглядит пустым
 /// (`filter-region-transformed-composited-child-001`).
-pub(crate) fn filter_ref_only_empty(nodes: &mut [Node]) {
+pub(super) fn filter_ref_only_empty(nodes: &mut [Node]) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
         if el.style.filter_ref.is_some()
@@ -99,7 +99,7 @@ pub(crate) fn filter_ref_only_empty(nodes: &mut [Node]) {
 /// содержимого, за которым (сквозь пробельный текст) идёт обычная блочная
 /// коробка, становится её ПЕРВЫМ СТРОЧНЫМ ребёнком; во всех остальных
 /// случаях он ведёт себя как блок (это уже так — разбор дал Block).
-pub(crate) fn fold_run_ins(nodes: &mut Vec<Node>, parent: Option<&Computed>) {
+pub(super) fn fold_run_ins(nodes: &mut Vec<Node>, parent: Option<&Computed>) {
     // Пробельный текст прозрачен для вбегания, только если он СХЛОПНЕТСЯ:
     // при `white-space: pre*` контейнера пробел — настоящий строчный кусок
     // (анонимная строка), и за run-in идёт уже не блок (css-display-3 §4.1:
@@ -206,7 +206,7 @@ pub(crate) fn fold_run_ins(nodes: &mut Vec<Node>, parent: Option<&Computed>) {
     }
 }
 
-pub(crate) fn flex_items_lose_float(nodes: &mut [Node]) {
+pub(super) fn flex_items_lose_float(nodes: &mut [Node]) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
         flex_items_lose_float(&mut el.children);
@@ -255,7 +255,7 @@ pub(crate) fn flex_items_lose_float(nodes: &mut [Node]) {
 ///    `inline::inherit` без признака авторства, −50 в своде v19) — этот
 ///    путь гасит только авторское. Родитель `display: contents` — настоящий
 ///    контейнер выше, такие дети не трогаются; корневой уровень тоже.
-pub(crate) fn align_self_from_dom_parent(nodes: &mut [Node], parent: Option<&ParentAlign>) {
+pub(super) fn align_self_from_dom_parent(nodes: &mut [Node], parent: Option<&ParentAlign>) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
         let s = &mut el.style;
@@ -307,7 +307,7 @@ pub(crate) fn align_self_from_dom_parent(nodes: &mut [Node], parent: Option<&Par
 }
 
 /// Что дети берут у родителя в `align_self_from_dom_parent`.
-pub(crate) struct ParentAlign {
+pub(super) struct ParentAlign {
     pub(crate) value: Option<crate::style::computed::Align>,
     /// safe, normal, own_axis, flex_kw, last.
     pub(crate) flags: (bool, bool, bool, bool, bool),
@@ -331,7 +331,7 @@ pub(crate) struct ParentAlign {
 /// потоковый ребёнок (внепоточный элементом сетки не является,
 /// css-grid-1 §9), только когда контейнер не задал своего `align-items`
 /// и автор не задал `align-self` — чужое выравнивание не перебиваем.
-pub(crate) fn grid_table_items_keep_stretch(nodes: &mut [Node]) {
+pub(super) fn grid_table_items_keep_stretch(nodes: &mut [Node]) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
         grid_table_items_keep_stretch(&mut el.children);
@@ -371,7 +371,7 @@ pub(crate) fn grid_table_items_keep_stretch(nodes: &mut [Node]) {
 /// не с чем — контейнера в этот момент нет.
 /// Руби-роль коробки (css-ruby-1 §2.1): своё `display: ruby*`, иначе тег
 /// без авторского `display` (A.1). Зеркало `render::ruby_role`.
-pub(crate) fn ruby_box_role(tag: &str, style: &Computed) -> Option<crate::style::computed::RubyRole> {
+pub(super) fn ruby_box_role(tag: &str, style: &Computed) -> Option<crate::style::computed::RubyRole> {
     use crate::style::computed::RubyRole;
     if let Some(role) = style.ruby_role {
         return Some(role);
@@ -395,7 +395,7 @@ pub(crate) fn ruby_box_role(tag: &str, style: &Computed) -> Option<crate::style:
 /// строчным текстом в ряду (`ruby-box-generation-*`, вторая строка: эталон
 /// пишет те же коробки внутри `<ruby>`). Краевые пробелы серии остаются
 /// снаружи, строчное содержимое серию обрывает.
-pub(crate) fn wrap_misparented_ruby(children: Vec<Node>) -> Vec<Node> {
+pub(super) fn wrap_misparented_ruby(children: Vec<Node>) -> Vec<Node> {
     use crate::style::computed::RubyRole;
     let internal = |n: &Node| {
         matches!(n, Node::Element(e)
@@ -445,7 +445,7 @@ pub(crate) fn wrap_misparented_ruby(children: Vec<Node>) -> Vec<Node> {
 }
 
 /// Задаёт ли элемент отсчёт для абсолютных потомков.
-pub(crate) fn own_containing_block(c: &Computed) -> bool {
+pub(super) fn own_containing_block(c: &Computed) -> bool {
     matches!(
         c.position,
         Some(Position::Relative)

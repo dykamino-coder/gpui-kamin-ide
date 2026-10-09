@@ -5,17 +5,17 @@ use crate::dom::{Element, Node};
 use crate::style::computed::Computed;
 use crate::text::text_box::blank_text;
 
-pub(crate) mod ruby_hiding;
+mod ruby_hiding;
 pub(crate) mod ruby_transform;
 pub(crate) mod container;
 
 /// Единица руби (css-ruby-1 §2.3.2): содержимое одной базы или одной
 /// аннотации. Пустой вектор — анонимная пустая единица, добавленная спариванием.
-pub(crate) type RubyUnit = Vec<Node>;
+type RubyUnit = Vec<Node>;
 
 /// Уровень аннотаций сегмента: `<rtc>` или ряд `<rt>` прямо в контейнере
 /// (анонимный контейнер аннотаций, css-ruby-1 §2.2 п.8).
-pub(crate) struct RubyLevel {
+struct RubyLevel {
     pub(crate) units: Vec<RubyUnit>,
     /// `<rtc>` без `<rt>` внутри — одна анонимная аннотация, накрывающая ВСЕ
     /// базы сегмента (§2.3.2 «spanning annotation»).
@@ -26,7 +26,7 @@ pub(crate) struct RubyLevel {
 }
 
 /// Сегмент руби (css-ruby-1 §2.3.1): ряд баз и уровни аннотаций к нему.
-pub(crate) struct RubySegment {
+struct RubySegment {
     pub(crate) bases: Vec<RubyUnit>,
     pub(crate) levels: Vec<RubyLevel>,
 }
@@ -34,7 +34,7 @@ pub(crate) struct RubySegment {
 /// Пуста ли единица: только схлопываемые пробелы и руби-теги без содержимого.
 /// Любой другой элемент — содержимое, даже пустой `<div>` с шириной
 /// (`ruby-align-001`: `rt > div { width: 160px }`).
-pub(crate) fn ruby_unit_blank(unit: &[Node]) -> bool {
+fn ruby_unit_blank(unit: &[Node]) -> bool {
     unit.iter().all(|n| match n {
         Node::Text(t) => blank_text(t),
         Node::Element(k) if ruby_role(k).is_some_and(|r| r != crate::style::computed::RubyRole::Container) => {
@@ -86,7 +86,7 @@ pub(crate) fn ruby_role(e: &Element) -> Option<crate::style::computed::RubyRole>
 /// `ruby-overhang-none`, `ruby-tab-in-base-002`; обещанных плюсов срез
 /// не показал. Поле на атоме растит короб строки, но и сдвигает базу
 /// относительно соседей — нужен настоящий лидинг строки, а не поле.
-pub(crate) fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
+fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
     #[derive(Clone, Copy, PartialEq)]
     enum Kind {
         Text,

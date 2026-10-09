@@ -15,7 +15,7 @@ pub(crate) fn used(e: &Element) -> Option<Element> {
     Some(e)
 }
 
-pub(crate) fn clear(style: &mut Computed) {
+pub(super) fn clear(style: &mut Computed) {
     style.transform = None;
     style.transform_raw = None;
     style.translate = None;

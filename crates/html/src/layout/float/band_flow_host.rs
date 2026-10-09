@@ -87,7 +87,7 @@ impl Drop for BandWmGuard {
 /// Письмо коробки отличается от письма содержащего блока хоста —
 /// ортогональный поток (css-writing-modes-4 §7.3): shrink-to-fit и место по
 /// чужой оси каркас пробы не считает.
-pub(crate) fn band_orthogonal(c: &Computed) -> bool {
+pub(super) fn band_orthogonal(c: &Computed) -> bool {
     // Письмо наследуется: незаданное у коробки — письмо содержащего блока,
     // ортогональна только коробка, ЗАДАВШАЯ другое.
     let wm = BAND_WM.with(std::cell::Cell::get);
@@ -96,7 +96,7 @@ pub(crate) fn band_orthogonal(c: &Computed) -> bool {
 }
 
 /// Есть ли в поддереве непустой текст.
-pub(crate) fn subtree_has_text(e: &Element) -> bool {
+pub(super) fn subtree_has_text(e: &Element) -> bool {
     e.children.iter().any(|n| match n {
         Node::Text(t) => !t.trim().is_empty(),
         Node::Element(c) => subtree_has_text(c),
@@ -105,7 +105,7 @@ pub(crate) fn subtree_has_text(e: &Element) -> bool {
 
 /// Блок обычного потока для измеряемого хоста (шаг F4): блочного уровня,
 /// в потоке, своего контекста не заводит, поля разрешимы.
-pub(crate) fn band_flow_block(c: &Element, em: f32) -> bool {
+pub(super) fn band_flow_block(c: &Element, em: f32) -> bool {
     block_level_in_flow(c)
         && !own_context(c)
         && !replaced_tag(c)
@@ -129,7 +129,7 @@ pub(crate) fn band_flow_block(c: &Element, em: f32) -> bool {
 /// коробка своего контекста внешних флоатов не увидели бы вовсе — им нужен
 /// один `FloatBands` на весь БФК (шаг F7: `floats-rule7-outside-left-001`,
 /// `floats-wrap-bfc-with-margin-008`, `second-float-inside-empty-cleared-block`).
-pub(crate) fn flow_interior_plain(c: &Element) -> bool {
+fn flow_interior_plain(c: &Element) -> bool {
     c.children.iter().all(|n| match n {
         Node::Text(_) => true,
         Node::Element(k) => {
@@ -173,7 +173,7 @@ pub(crate) fn flow_interior_plain(c: &Element) -> bool {
 /// строчные элементы, атомы) собирается в АНОНИМНЫЙ блок (CSS 2.1 §9.2.1.1)
 /// — у него своя строка и свои вырезы. Внепоточный сосед хост отменяет
 /// (как у `band_piece`).
-pub(crate) fn band_flow_rest(rest: Vec<Node>, em: f32) -> Option<Vec<Node>> {
+pub(super) fn band_flow_rest(rest: Vec<Node>, em: f32) -> Option<Vec<Node>> {
     band_flow_rest_lift(rest, em, None)
 }
 
@@ -181,7 +181,7 @@ pub(crate) fn band_flow_rest(rest: Vec<Node>, em: f32) -> Option<Vec<Node>> {
 /// статической позиции не зависит (CSS 2.1 §10.3.7/§10.6.4 — `auto` нет ни
 /// у `left`/`right`, ни у `top`/`bottom` разом), и её можно вынести из
 /// хоста в поток содержащего блока, ничего не сдвинув.
-pub(crate) fn abs_pinned(c: &Computed) -> bool {
+fn abs_pinned(c: &Computed) -> bool {
     let set = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
     matches!(
         c.position,
@@ -195,7 +195,7 @@ pub(crate) fn abs_pinned(c: &Computed) -> bool {
 /// Свой содержащий блок они находят снаружи хоста: внутри его отдельного
 /// дерева абсолют встал бы от держателя (`floats-placement-001`: зелёная
 /// заплатка `left: 50px` у `position: relative` контейнера).
-pub(crate) fn band_flow_rest_lift(
+pub(super) fn band_flow_rest_lift(
     rest: Vec<Node>,
     em: f32,
     mut lift: Option<&mut Vec<Node>>,
@@ -324,7 +324,7 @@ pub(crate) fn band_flow_rest_lift(
 
 /// Сборка измеряемого хоста: каждому ребёнку — построитель, который
 /// `band_flow` зовёт на каждую пробу и на `prepaint`.
-pub(crate) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(super) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let count: usize = e.attr("count").and_then(|c| c.parse().ok()).unwrap_or(0);
     let em: f32 = e
         .attr("em")
@@ -355,7 +355,7 @@ pub(crate) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpt
 /// Дети одного содержащего блока измеряемого хоста. `count` первых
 /// элементов — флоаты пробега; дальше флоатом считается всякий элемент с
 /// `float` (дети `Kind::Nest`, шаг F7).
-pub(crate) fn band_kids(
+pub(super) fn band_kids(
     nodes: &[Node],
     count: usize,
     inherited: &Computed,

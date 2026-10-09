@@ -5,11 +5,11 @@ use crate::paint::gap_rules::GapAxisRule;
 use gpui::{Bounds, Pixels};
 
 /// Допуск сравнения координат раскладки.
-pub(crate) const GAP_EPS: f32 = 0.35;
+pub(super) const GAP_EPS: f32 = 0.35;
 
 /// Элемент в осях `a` — поперёк промежутка, `b` — вдоль линейки.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct GapItem {
+pub(super) struct GapItem {
     pub(crate) a0: f32,
     pub(crate) a1: f32,
     pub(crate) b0: f32,
@@ -48,7 +48,7 @@ impl GapItem {
 /// линейку при `intersection` (видимое пересечение); есть ли в нём поперечная
 /// линейка (стык, а не cap) и её ширина.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Crossing {
+pub(super) struct Crossing {
     pub(crate) lo: f32,
     pub(crate) hi: f32,
     pub(crate) breaks: bool,
@@ -61,7 +61,7 @@ pub(crate) struct Crossing {
 /// и характер концов протяжённости — стык (ширина зазора, есть ли линейка,
 /// её ширина) или край контейнера (`None`).
 #[derive(Clone, Debug)]
-pub(crate) struct GapRun {
+pub(super) struct GapRun {
     pub(crate) g0: f32,
     pub(crate) g1: f32,
     pub(crate) r0: f32,
@@ -105,7 +105,7 @@ impl GapRun {
     }
 }
 
-pub(crate) fn uniq_sorted(mut v: Vec<f32>) -> Vec<f32> {
+pub(super) fn uniq_sorted(mut v: Vec<f32>) -> Vec<f32> {
     v.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
     v.dedup_by(|x, y| (*x - *y).abs() <= GAP_EPS);
     v
@@ -114,7 +114,7 @@ pub(crate) fn uniq_sorted(mut v: Vec<f32>) -> Vec<f32> {
 /// Дорожки по оси `a`: начало — уникальные ближние края элементов, конец —
 /// дальний край элемента, начатого в дорожке и не заходящего в следующую;
 /// когда такого нет (все — спаны), начало следующей минус зазор.
-pub(crate) fn tracks_a(items: &[GapItem], gap: Option<f32>) -> Vec<(f32, f32)> {
+fn tracks_a(items: &[GapItem], gap: Option<f32>) -> Vec<(f32, f32)> {
     let st = uniq_sorted(items.iter().map(|i| i.a0).collect());
     (0..st.len())
         .map(|k| {
@@ -161,7 +161,7 @@ pub(crate) fn tracks_a(items: &[GapItem], gap: Option<f32>) -> Vec<(f32, f32)> {
 /// Ограничение: сетка, у которой пуста ВСЯ первая дорожка оси, привяжется со
 /// сдвигом на дорожку — перебор идёт от нулевого смещения. В своде такой пары
 /// нет (у всех 44 разрежённых первая строка и первая колонка заняты).
-pub(crate) fn template_tracks(
+fn template_tracks(
     sizes: &[f32],
     gap: Option<f32>,
     items: &[GapItem],
@@ -198,14 +198,14 @@ pub(crate) fn template_tracks(
 }
 
 /// Дорожки сетки по x и по y в координатах окна.
-pub(crate) type GridTracks = (Vec<(f32, f32)>, Vec<(f32, f32)>);
+pub(super) type GridTracks = (Vec<(f32, f32)>, Vec<(f32, f32)>);
 
 /// Дорожки без схлопнутых: схлопнутая (`auto-fit` без элементов, css-grid-1
 /// §7.2.3.2 «collapsed grid track… the gutters on either side of it…
 /// collapse») приходит из раскладки дорожкой нулевого размера, прижатой к
 /// соседу без зазора. При ненулевом `gap` такая дорожка — не дорожка и
 /// промежутков не даёт (Blink `CollapsedTrackIndexes`).
-pub(crate) fn uncollapsed(mut tracks: Vec<(f32, f32)>, gap: f32) -> Vec<(f32, f32)> {
+pub(super) fn uncollapsed(mut tracks: Vec<(f32, f32)>, gap: f32) -> Vec<(f32, f32)> {
     // При `rtl` и обратных осях раскладка отдаёт дорожки в логическом
     // порядке — здесь нужен физический.
     tracks.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -227,7 +227,7 @@ pub(crate) fn uncollapsed(mut tracks: Vec<(f32, f32)>, gap: f32) -> Vec<(f32, f3
 
 /// Промежутки между соседними дорожками; нулевой зазор — тоже промежуток
 /// (`flex-gap-decorations-033`).
-pub(crate) fn gaps_of(tracks: &[(f32, f32)]) -> Vec<(f32, f32)> {
+fn gaps_of(tracks: &[(f32, f32)]) -> Vec<(f32, f32)> {
     tracks
         .windows(2)
         .filter(|w| w[1].0 - w[0].1 >= -GAP_EPS)
@@ -235,7 +235,7 @@ pub(crate) fn gaps_of(tracks: &[(f32, f32)]) -> Vec<(f32, f32)> {
         .collect()
 }
 
-pub(crate) fn merge(mut v: Vec<(f32, f32)>) -> Vec<(f32, f32)> {
+fn merge(mut v: Vec<(f32, f32)>) -> Vec<(f32, f32)> {
     v.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal));
     let mut out: Vec<(f32, f32)> = vec![];
     for (lo, hi) in v {
@@ -247,7 +247,7 @@ pub(crate) fn merge(mut v: Vec<(f32, f32)>) -> Vec<(f32, f32)> {
     out
 }
 
-pub(crate) fn subtract(parts: Vec<(f32, f32)>, (lo, hi): (f32, f32)) -> Vec<(f32, f32)> {
+pub(super) fn subtract(parts: Vec<(f32, f32)>, (lo, hi): (f32, f32)) -> Vec<(f32, f32)> {
     let mut out = vec![];
     for (s, e) in parts {
         if hi <= s + GAP_EPS || lo >= e - GAP_EPS {
@@ -267,7 +267,7 @@ pub(crate) fn subtract(parts: Vec<(f32, f32)>, (lo, hi): (f32, f32)) -> Vec<(f32
 /// §visibility-items: заняты ли области по сторонам промежутка `[g0, g1]` в
 /// пределах участка `[lo, hi]` вдоль линейки. Спан через промежуток занимает
 /// обе стороны.
-pub(crate) fn occupied(items: &[GapItem], g0: f32, g1: f32, lo: f32, hi: f32, visibility: u8) -> bool {
+fn occupied(items: &[GapItem], g0: f32, g1: f32, lo: f32, hi: f32, visibility: u8) -> bool {
     if visibility < 2 {
         return true;
     }
@@ -290,7 +290,7 @@ pub(crate) fn occupied(items: &[GapItem], g0: f32, g1: f32, lo: f32, hi: f32, vi
 /// поперечный зазор не перекрыт спаном (Blink: `kIntersection` идёт дальше
 /// только при blocked-before И blocked-after); стык (`joins`) — если там есть
 /// видимая поперечная линейка.
-pub(crate) fn grid_runs(
+pub(super) fn grid_runs(
     items: &[GapItem],
     gap_a: Option<f32>,
     gap_b: Option<f32>,
@@ -333,7 +333,7 @@ pub(crate) fn grid_runs(
     grid_runs_on(items, &flipped, ta, tb, rule, cross)
 }
 
-pub(crate) fn grid_runs_on(
+fn grid_runs_on(
     items: &[GapItem],
     flipped: &[GapItem],
     ta: Vec<(f32, f32)>,
@@ -406,7 +406,7 @@ pub(crate) fn grid_runs_on(
 
 /// Строки гибкого контейнера по оси `a`: пересекающиеся протяжённости
 /// элементов сливаются в одну строку.
-pub(crate) fn line_groups(items: &[GapItem]) -> Vec<(f32, f32)> {
+fn line_groups(items: &[GapItem]) -> Vec<(f32, f32)> {
     let mut v: Vec<(f32, f32)> = items.iter().map(|i| (i.a0, i.a1)).collect();
     v.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal));
     let mut out: Vec<(f32, f32)> = vec![];
@@ -432,7 +432,7 @@ pub(crate) fn line_groups(items: &[GapItem]) -> Vec<(f32, f32)> {
 /// `flex-gap-decorations-001/019` 99.00, `-025/031/032/035/065…067`,
 /// `column-gap-decorations-001/003/014/016/019`, `row-gap-decorations-003/010`.
 /// Ряды многоколонника обходятся без него (v99: +11/−0).
-pub(crate) fn line_runs(
+pub(super) fn line_runs(
     items: &[GapItem],
     gap_a: Option<f32>,
     main: Option<&GapAxisRule>,

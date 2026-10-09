@@ -552,7 +552,7 @@ fn cjk_repr(value: i32, t: &Cjk) -> String {
 
 /// Описание предопределённого стиля как набора дескрипторов `@counter-style`
 /// (css-counter-styles-3 §6–§7): его наследует `system: extends <имя>`.
-pub(crate) struct Builtin {
+pub(super) struct Builtin {
     pub negative: (String, String),
     pub suffix: String,
     /// Явный `range` стиля; `None` — по системе (здесь — неограниченный).
@@ -567,7 +567,7 @@ pub(crate) struct Builtin {
 /// Имена предопределённых стилей. Регистр у них снимается при разборе
 /// (§counter-style-name: «the names defined in this specification are ASCII
 /// lowercased on parse»), у прочих имён он значим.
-pub(crate) fn is_predefined(name: &str) -> bool {
+fn is_predefined(name: &str) -> bool {
     matches!(
         name,
         "decimal" | "decimal-leading-zero" | "disc" | "circle" | "square"
@@ -581,7 +581,7 @@ pub(crate) fn is_predefined(name: &str) -> bool {
 }
 
 /// Имя стиля, как его видит каскад: предопределённое — строчными.
-pub(crate) fn normalize_name(name: &str) -> std::borrow::Cow<'_, str> {
+pub(super) fn normalize_name(name: &str) -> std::borrow::Cow<'_, str> {
     if name.bytes().any(|b| b.is_ascii_uppercase()) {
         let low = name.to_ascii_lowercase();
         if is_predefined(&low) {
@@ -591,7 +591,7 @@ pub(crate) fn normalize_name(name: &str) -> std::borrow::Cow<'_, str> {
     std::borrow::Cow::Borrowed(name)
 }
 
-pub(crate) fn builtin(name: &str) -> Option<Builtin> {
+pub(super) fn builtin(name: &str) -> Option<Builtin> {
     if !is_predefined(name) {
         return None;
     }
@@ -636,7 +636,7 @@ pub(crate) fn builtin(name: &str) -> Option<Builtin> {
 /// без дополнения и без проверки диапазона (их решает общий алгоритм
 /// §counter-style-generate в `counter_style_rules`). `None` — система стиля
 /// значение не представляет (аддитивный ноль, фиксированный вне набора).
-pub(crate) fn builtin_initial(name: &str, n: u64) -> Option<String> {
+pub(super) fn builtin_initial(name: &str, n: u64) -> Option<String> {
     let v = i32::try_from(n).ok()?;
     let positive = usize::try_from(n).ok().filter(|n| *n > 0);
     Some(match name {
@@ -711,7 +711,7 @@ pub fn repr(value: i32, style: &str) -> String {
 
 /// Предопределённый стиль (или десятичный для незнакомого имени) без учёта
 /// правил `@counter-style` документа.
-pub(crate) fn builtin_repr(value: i32, style: &str) -> String {
+pub(super) fn builtin_repr(value: i32, style: &str) -> String {
     let positive = usize::try_from(value).ok().filter(|n| *n > 0);
     match style {
         "none" => String::new(),

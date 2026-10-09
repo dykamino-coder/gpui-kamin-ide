@@ -29,7 +29,7 @@ use crate::style::values::value::Len;
 use crate::text::text_box::text_box_trim_px;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
-pub(crate) fn generic_box(
+pub(super) fn generic_box(
     e: &Element,
     merged: Computed,
     inherited: &Computed,

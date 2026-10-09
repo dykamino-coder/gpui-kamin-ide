@@ -2,7 +2,7 @@
 //! Window composes inner·outer; final offsets therefore use physical glyph axes.
 use gpui::{Bounds, Pixels, Radians, Size, TransformationMatrix, point, px, size};
 
-pub(crate) fn transform(
+pub(super) fn transform(
     bounds: Bounds<Pixels>,
     natural: Size<Pixels>,
     em: f32,

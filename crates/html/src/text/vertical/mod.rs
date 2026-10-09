@@ -5,9 +5,9 @@ use crate::layout::writing_mode::orthogonal_measure;
 use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window, px};
 
 pub(crate) mod combined_text;
-pub(crate) mod vertical_line_baseline;
-pub(crate) mod vertical_style;
-pub(crate) mod combined_geometry;
+mod vertical_line_baseline;
+mod vertical_style;
+mod combined_geometry;
 
 /// Строка вертикального письма: `writing-mode: vertical-rl` и `vertical-lr`.
 ///
@@ -139,7 +139,7 @@ thread_local! {
     /// высота содержимого при РЕШЁННОЙ длине строки (см. `prepaint`).
     /// Первый кадр заявляет ширину по свободному замеру, второй — по факту;
     /// стенд и так ждёт устоявшийся кадр (как пробы ячеек).
-    pub(crate) static VT_MEASURED: std::cell::RefCell<std::collections::HashMap<u64, Pixels>> =
+    static VT_MEASURED: std::cell::RefCell<std::collections::HashMap<u64, Pixels>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
     /// Счётчик ВХОЖДЕНИЙ базового ключа за кадр: два вертикальных абзаца с
     /// одинаковым текстом и числом узлов (повторяющиеся ячейки) делили один
@@ -153,7 +153,7 @@ thread_local! {
     /// известен только после раскладки. Пишет подготовка тела, читает
     /// отрисовка холста того же кадра (подготовка всего дерева идёт раньше
     /// отрисовки); прошлое значение — запасное.
-    pub(crate) static ROOT_LEFT: std::cell::RefCell<std::collections::HashMap<u64, f32>> =
+    static ROOT_LEFT: std::cell::RefCell<std::collections::HashMap<u64, f32>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 

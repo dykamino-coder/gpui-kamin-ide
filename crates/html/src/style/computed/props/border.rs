@@ -811,7 +811,7 @@ impl Computed {
 /// Рисунок рамки, при котором она ВИДНА. `none` и `hidden` сюда не входят:
 /// они рамку убирают.
 /// Ранг стиля кромки для разбора конфликтов (см. `border_side_styles`).
-pub(crate) fn border_style_rank(v: &str) -> Option<u8> {
+fn border_style_rank(v: &str) -> Option<u8> {
     Some(match v.to_ascii_lowercase().as_str() {
         "none" => 0,
         "hidden" => 1,
@@ -827,7 +827,7 @@ pub(crate) fn border_style_rank(v: &str) -> Option<u8> {
     })
 }
 
-pub(crate) fn border_style(v: &str) -> bool {
+fn border_style(v: &str) -> bool {
     // Значения CSS нечувствительны к регистру: `border: 1px SOLID red` — та же
     // рамка. К нижнему регистру приводится только ИМЯ свойства.
     matches!(
@@ -838,7 +838,7 @@ pub(crate) fn border_style(v: &str) -> bool {
 
 /// Толщина рамки словом: `thin`, `medium`, `thick` (css-backgrounds-3 §4.1).
 /// Сторона по имени свойства: верх, право, низ, лево.
-pub(crate) fn side_index(key: &str) -> usize {
+fn side_index(key: &str) -> usize {
     match key.split('-').nth(1) {
         Some("right") => 1,
         Some("bottom") => 2,
@@ -847,7 +847,7 @@ pub(crate) fn side_index(key: &str) -> usize {
     }
 }
 
-pub(crate) fn line_width(v: &str) -> Option<Len> {
+fn line_width(v: &str) -> Option<Len> {
     // Отрицательная толщина недействительна (§8.5.1) и делает объявление
     // НЕВАЛИДНЫМ целиком (§4.2): `border-width: -1px` доживало до отрисовки
     // вместо отката к прежнему значению.
@@ -875,7 +875,7 @@ pub(crate) fn axis_pair(v: &str) -> (Option<Len>, Option<Len>) {
 }
 
 /// Цвет стороны рамки; `currentColor` даёт цвет текста этого же узла.
-pub(crate) fn side_color(v: &str, current: Option<Color>) -> Option<Color> {
+fn side_color(v: &str, current: Option<Color>) -> Option<Color> {
     if v.eq_ignore_ascii_case("currentcolor") {
         return current;
     }

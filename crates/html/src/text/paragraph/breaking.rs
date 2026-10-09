@@ -998,7 +998,7 @@ impl Paragraph {
 }
 
 /// Открывающий знак — скобка или кавычка.
-pub(crate) fn is_opening(ch: char) -> bool {
+pub(super) fn is_opening(ch: char) -> bool {
     use unicode_linebreak::BreakClass::*;
     matches!(
         unicode_linebreak::break_property(ch as u32),
@@ -1007,7 +1007,7 @@ pub(crate) fn is_opening(ch: char) -> bool {
 }
 
 /// Закрывающий знак — скобка или кавычка.
-pub(crate) fn is_closing(ch: char) -> bool {
+pub(super) fn is_closing(ch: char) -> bool {
     use unicode_linebreak::BreakClass::*;
     matches!(
         unicode_linebreak::break_property(ch as u32),
@@ -1016,7 +1016,7 @@ pub(crate) fn is_closing(ch: char) -> bool {
 }
 
 /// Точка или запятая — то, что свисает по `force-end`/`allow-end`.
-pub(crate) fn is_stop(ch: char) -> bool {
+pub(super) fn is_stop(ch: char) -> bool {
     matches!(
         ch,
         '.' | ','
@@ -1040,7 +1040,7 @@ pub(crate) fn is_stop(ch: char) -> bool {
 /// Пробел единицей письма не является НИКАКОЙ, даже идеографический: по
 /// классу переноса он иероглиф (ID), и запрет заодно снимал перенос по нему
 /// (`word-space-transform-013`: коробка шла одной строкой за край).
-pub(crate) fn letter_unit(ch: char) -> bool {
+fn letter_unit(ch: char) -> bool {
     if ch.is_whitespace() {
         return false;
     }
@@ -1065,7 +1065,7 @@ pub(crate) fn letter_unit(ch: char) -> bool {
 
 /// Знак, перед которым рвать нельзя: закрывающая скобка, знак препинания,
 /// разделитель разрядов, неразрывный пробел (классы UAX-14).
-pub(crate) fn no_break_before(ch: char) -> bool {
+fn no_break_before(ch: char) -> bool {
     use unicode_linebreak::BreakClass::*;
     matches!(
         unicode_linebreak::break_property(ch as u32),
@@ -1087,7 +1087,7 @@ pub(crate) fn no_break_before(ch: char) -> bool {
 /// Соединитель нулевой ширины держит составные знаки вместе — на нём собраны
 /// целые эмодзи (человек + компьютер = «программист»). Разрыв по нему
 /// рассыпал бы один знак на составные части.
-pub(crate) fn no_break_after(ch: char) -> bool {
+fn no_break_after(ch: char) -> bool {
     use unicode_linebreak::BreakClass::*;
     matches!(
         unicode_linebreak::break_property(ch as u32),
@@ -1118,7 +1118,7 @@ pub fn wrap_of(c: &crate::style::computed::Computed) -> Wrap {
 
 /// Центрированная пунктуация (css-text-3 §5.2, `loose` в ja/zh): U+30FB,
 /// U+FF1A, U+FF1B, U+FF65, U+203C, U+2047-2049, U+FF01, U+FF1F.
-pub(crate) fn centered_punctuation(ch: char) -> bool {
+fn centered_punctuation(ch: char) -> bool {
     matches!(
         ch,
         '\u{30FB}' | '\u{FF1A}' | '\u{FF1B}' | '\u{FF65}' | '\u{203C}' | '\u{2047}'
@@ -1128,7 +1128,7 @@ pub(crate) fn centered_punctuation(ch: char) -> bool {
 
 /// Постфиксы класса PO с восточноазиатской шириной A/F/W (§5.2, `loose` в
 /// ja/zh): °, ‰, ℃, ％ и полноширинные знаки процента/цента.
-pub(crate) fn wide_postfix(ch: char) -> bool {
+fn wide_postfix(ch: char) -> bool {
     matches!(
         ch,
         '\u{00B0}'
@@ -1145,7 +1145,7 @@ pub(crate) fn wide_postfix(ch: char) -> bool {
 
 /// Префиксы класса PR с шириной A/F/W (§5.2, `loose` в ja/zh): €, №, ￥, ￡,
 /// ＄, ₩, §, ¶.
-pub(crate) fn wide_prefix(ch: char) -> bool {
+fn wide_prefix(ch: char) -> bool {
     matches!(
         ch,
         '\u{20AC}'
@@ -1165,7 +1165,7 @@ pub(crate) fn wide_prefix(ch: char) -> bool {
 /// разрыва нет; `line-break: normal`/`loose` его возвращают (css-text-3 §5.2:
 /// «breaks before Japanese small kana or the Katakana-Hiragana prolonged
 /// sound mark, i.e. characters from the Unicode line breaking class CJ»).
-pub(crate) fn conditional_japanese_starter(ch: char) -> bool {
+fn conditional_japanese_starter(ch: char) -> bool {
     matches!(
         ch,
         '\u{3041}' | '\u{3043}' | '\u{3045}' | '\u{3047}' | '\u{3049}' | '\u{3063}'
@@ -1180,7 +1180,7 @@ pub(crate) fn conditional_japanese_starter(ch: char) -> bool {
 
 /// Знаки повтора (css-text-3 §5.2, только `loose`): U+3005, U+303B, U+309D,
 /// U+309E, U+30FD, U+30FE.
-pub(crate) fn iteration_mark(ch: char) -> bool {
+fn iteration_mark(ch: char) -> bool {
     matches!(
         ch,
         '\u{3005}' | '\u{303B}' | '\u{309D}' | '\u{309E}' | '\u{30FD}' | '\u{30FE}'
@@ -1193,7 +1193,7 @@ pub(crate) fn iteration_mark(ch: char) -> bool {
 /// (огласовка, модификатор, знак-тег), а знак слева не должен быть
 /// соединителем — после нулевого соединителя гроздь продолжается следующим
 /// знаком (`line-breaking-014`: радужный флаг рвался по соединителю).
-pub(crate) fn cluster_edge(text: &str, at: usize) -> bool {
+pub(super) fn cluster_edge(text: &str, at: usize) -> bool {
     if at >= text.len() {
         return true;
     }
@@ -1216,7 +1216,7 @@ pub(crate) fn cluster_edge(text: &str, at: usize) -> bool {
 /// соединителем можно. Саму гроздь он не разбирает: огласовка, знак вариации,
 /// модификатор тона и знак-тег остаются при своём знаке, иначе эмодзи-цепочка
 /// рассыпается по строкам (`line-breaking-014`).
-pub(crate) fn cluster_edge_at(text: &str, at: usize, anywhere: bool) -> bool {
+fn cluster_edge_at(text: &str, at: usize, anywhere: bool) -> bool {
     if !anywhere {
         return cluster_edge(text, at);
     }
@@ -1235,7 +1235,7 @@ pub(crate) fn cluster_edge_at(text: &str, at: usize, anywhere: bool) -> bool {
 ///
 /// Знаки-продолжения грозди: соединительная огласовка (класс CM по UAX-14),
 /// нулевой соединитель и знаки вариации.
-pub(crate) fn cluster_start(rest: &str) -> bool {
+fn cluster_start(rest: &str) -> bool {
     let Some(ch) = rest.chars().next() else {
         return true;
     };

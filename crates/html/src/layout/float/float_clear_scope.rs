@@ -4,7 +4,7 @@ use crate::dom::Node;
 use crate::render::{inline_level_box, out_of_flow};
 use crate::style::computed::Computed;
 
-pub(crate) fn used(nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
+pub(super) fn used(nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
     nodes
         .into_iter()
         .map(|node| match node {

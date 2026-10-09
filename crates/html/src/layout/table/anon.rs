@@ -13,9 +13,9 @@ use crate::style::computed::{Computed, Display};
 /// ряды и ячейки, хотя своей коробки у группы нет (ch-units-vrl-006).
 /// Сдвиг, фон и САМА ГРУППА рядов: от неё нужны и наследуемый стиль, и
 /// `node_id` с рамками — кромки группы строит ряд.
-pub(crate) type RowCarry<'a> = (f32, f32, Option<crate::style::values::value::Color>, Option<&'a Element>);
+pub(super) type RowCarry<'a> = (f32, f32, Option<crate::style::values::value::Color>, Option<&'a Element>);
 
-pub(crate) fn collect_rows<'a>(
+pub(super) fn collect_rows<'a>(
     nodes: &'a [Node],
     parent: Option<&'a Element>,
     carry: RowCarry<'a>,
@@ -96,7 +96,7 @@ pub(crate) fn has_box_style_probe(c: &Computed) -> bool {
 /// Плавающее и абсолютное по §9.7 блокифицируются и табличной ролью быть
 /// перестают. Блокификации у нас пока нет, поэтому такие узлы проход не
 /// трогает — их судьбу решает прежний путь.
-pub(crate) fn anon_role(n: &Node) -> Option<bool> {
+fn anon_role(n: &Node) -> Option<bool> {
     let Node::Element(e) = n else { return None };
     if e.style.float.is_some_and(|f| f != 0)
         || matches!(
@@ -155,7 +155,7 @@ pub(crate) fn inline_anon_tables(nodes: &mut [Node]) {
     }
 }
 
-pub(crate) fn wrap_anon_tables_as(nodes: &[Node], display: Display) -> Vec<Node> {
+fn wrap_anon_tables_as(nodes: &[Node], display: Display) -> Vec<Node> {
     if !nodes.iter().any(|n| anon_role(n).is_some()) {
         return nodes.to_vec();
     }
@@ -198,11 +198,11 @@ pub(crate) fn wrap_anon_tables_as(nodes: &[Node], display: Display) -> Vec<Node>
     out
 }
 
-pub(crate) const ANON_CELL: &str = "anonymous-cell";
+const ANON_CELL: &str = "anonymous-cell";
 
 /// An HTML `td`/`th` element, whose UA style inherits the row's
 /// `vertical-align` (HTML §15.3.9); anonymous cells keep the initial value.
-pub(crate) fn html_cell(cell: &Element) -> bool {
+pub(super) fn html_cell(cell: &Element) -> bool {
     matches!(cell.tag.as_str(), "td" | "th") && cell.attr(ANON_CELL).is_none()
 }
 
@@ -235,7 +235,7 @@ pub(crate) fn anon_element(tag: &str, children: Vec<Node>) -> Element {
 /// растворяется с наследованием, последовательные не-ячейки сливаются в
 /// одну анонимную ячейку, а вложенный ряд выталкивается ОТДЕЛЬНЫМ рядом
 /// после текущего.
-pub(crate) fn fixup_row_children(row: &Element) -> Vec<Node> {
+pub(super) fn fixup_row_children(row: &Element) -> Vec<Node> {
     fn walk(
         nodes: &[Node],
         donor: Option<&Computed>,

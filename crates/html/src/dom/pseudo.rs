@@ -9,7 +9,7 @@ use crate::style::select::{Ancestor, Sibs};
 /// Подходит ли значение под синтаксис `@property` (css-properties-values-api-1
 /// §5). Проверяются однозначные типы; значение с `var()` решается позже и
 /// принимается; незнакомый синтаксис — тоже (лучше принять, чем потерять).
-pub(crate) fn syntax_accepts(syntax: &str, value: &str) -> bool {
+pub(super) fn syntax_accepts(syntax: &str, value: &str) -> bool {
     let v = value.trim();
     if v.contains("var(") || syntax.trim() == "*" {
         return true;
@@ -64,7 +64,7 @@ pub(crate) fn content_image_src(src: &str) -> Option<String> {
 // исполнение `counter-*` слоя в собственном сегменте маркера и снятие
 // маркера у пункта с чужим `display`. Разбор — `target/scout-markers-
 // 2026-09b.md` §1.
-pub(crate) fn pseudo_box(
+pub(super) fn pseudo_box(
     rules: &[Rule],
     vars: &Decls,
     counters: &mut crate::style::generated::counters::Counters,
@@ -94,7 +94,7 @@ pub(crate) fn pseudo_box(
 /// `scroll-buttons-003`). `tag` — имя коробки (`::{tag}`), `before` — вести
 /// счётчики как у `::before`.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn pseudo_box_named(
+pub(super) fn pseudo_box_named(
     rules: &[Rule],
     vars: &Decls,
     counters: &mut crate::style::generated::counters::Counters,

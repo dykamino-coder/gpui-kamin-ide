@@ -7,21 +7,21 @@
 //! ничего не рисуют.
 
 pub mod encoding;
-pub(crate) mod subgrid_axes;
-pub(crate) mod grid_static_position;
-pub(crate) mod replaced_display;
-pub(crate) mod display_inheritance;
+mod subgrid_axes;
+mod grid_static_position;
+mod replaced_display;
+mod display_inheritance;
 use crate::dom::display_inheritance::resolve_display_inherit;
-pub(crate) mod initial_pseudos;
-pub(crate) mod containment;
-pub(crate) mod language;
-pub(crate) mod counter_decls;
-pub(crate) mod presentational_hints;
-pub(crate) mod float_tail;
+mod initial_pseudos;
+mod containment;
+pub(super) mod language;
+mod counter_decls;
+mod presentational_hints;
+mod float_tail;
 pub(crate) use counter_decls::{
     apply_counter_decls, apply_value_hint, counter_snapshot, inherit_counter_decls,
 };
-pub(crate) mod content;
+pub(super) mod content;
 pub(crate) use content::{content_text, host_content, resolve_content_attributes};
 
 use crate::style::computed::Computed;
@@ -32,21 +32,21 @@ use markup5ever_rcdom::{Handle, NodeData, RcDom};
 use std::collections::HashMap;
 use std::rc::Rc;
 use html5ever::tendril::TendrilSink;
-pub(crate) mod xhtml;
-pub(crate) use crate::dom::xhtml::*;
-pub(crate) mod fixup_tree;
-pub(crate) use crate::dom::fixup_tree::*;
-pub(crate) mod fixup_grid;
+pub(super) mod xhtml;
+use crate::dom::xhtml::*;
+pub(super) mod fixup_tree;
+use crate::dom::fixup_tree::*;
+pub(super) mod fixup_grid;
 pub(crate) use crate::dom::fixup_grid::*;
 pub(crate) mod shadow;
 pub(crate) use crate::dom::shadow::*;
-pub(crate) mod element_style;
-pub(crate) use crate::dom::element_style::*;
-pub(crate) mod walk;
-pub(crate) use crate::dom::walk::*;
-pub(crate) mod scroll_markers;
-pub(crate) use crate::dom::scroll_markers::*;
-pub(crate) mod pseudo;
+pub(super) mod element_style;
+use crate::dom::element_style::*;
+pub(super) mod walk;
+use crate::dom::walk::*;
+pub(super) mod scroll_markers;
+use crate::dom::scroll_markers::*;
+pub(super) mod pseudo;
 pub(crate) use crate::dom::pseudo::*;
 
 /// Узел документа: либо текст, либо элемент со своими детьми.
@@ -96,7 +96,7 @@ impl Element {
 }
 
 /// Теги, которые в HTML участвуют в строке текста, а не разрывают её.
-pub(crate) const INLINE_TAGS: &[&str] = &[
+pub(super) const INLINE_TAGS: &[&str] = &[
     "a", "abbr", "b", "bdi", "bdo", "br", "cite", "code", "data", "dfn", "em", "i", "kbd", "mark",
     // Все руби-теги — строчные (css-ruby-1 §2.1.1: контейнер и внутренние
     // коробки руби неатомарны и строчного уровня).
@@ -115,7 +115,7 @@ pub(crate) const INLINE_TAGS: &[&str] = &[
 /// него нет, а начальное значение `display` — `inline`. Прежде блочным
 /// становилось всё, чего нет в `INLINE_TAGS`, и `<foo>` внутри абзаца рвал
 /// строку (`line-breaking-font-size-zero-001`).
-pub(crate) const BLOCK_TAGS: &[&str] = &[
+const BLOCK_TAGS: &[&str] = &[
     "html", "body", "address", "blockquote", "center", "div", "figure", "figcaption", "footer",
     "form", "header", "hr", "legend", "listing", "main", "p", "plaintext", "pre", "xmp", "article",
     "aside", "h1", "h2", "h3", "h4", "h5", "h6", "hgroup", "nav", "section", "search", "dir", "dd",
@@ -130,7 +130,7 @@ pub(crate) const BLOCK_TAGS: &[&str] = &[
 /// `head`/`title`/`meta`/`link` сюда не входят: их прячет таблица агента
 /// `display: none`, и авторское `head { display: block }` её перебивает
 /// (CSS2/generated-content content-067 и родня).
-pub(crate) const DROP_TAGS: &[&str] = &["script", "style", "noscript"];
+pub(super) const DROP_TAGS: &[&str] = &["script", "style", "noscript"];
 
 /// Имя тега без пространственного префикса.
 ///
@@ -138,7 +138,7 @@ pub(crate) const DROP_TAGS: &[&str] = &["script", "style", "noscript"];
 /// xmlns:svg="…">`), а разборщик HTML держит двоеточие частью имени. Движок
 /// сверяет теги по коротким именам, поэтому `svg:svg` не опознавался как
 /// рисунок вовсе — вся семья замещаемых тестов CSS2 рисовала пустоту.
-pub(crate) fn local_name(name: &str) -> String {
+pub(super) fn local_name(name: &str) -> String {
     match name.split_once(':') {
         Some((_, local)) if !local.is_empty() => local.to_string(),
         _ => name.to_string(),
@@ -154,7 +154,7 @@ pub(crate) fn local_name(name: &str) -> String {
 /// 71 пара семей `white-space-pre-*`, `text-indent-intrinsic-*`,
 /// `border-style-applies-to-*`, `table-visual-layout-*` — ни одного сдвига.
 /// Красное в этих семьях держит что-то другое.
-pub(crate) fn user_agent_css() -> &'static str {
+fn user_agent_css() -> &'static str {
     r#"
 head, title, meta, link, template { display: none }
     slot { display: contents }
@@ -385,7 +385,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
 /// `-003` 0.00 -> 0.68), а `content-177` 0.42 -> «красное видно»: раскрытая
 /// `&quot;` закрывает строку CSS раньше времени. Возвращаться сюда после
 /// разбора этих трёх корней.
-pub(crate) fn collect_style_tags(handle: &Handle, out: &mut Vec<String>) {
+fn collect_style_tags(handle: &Handle, out: &mut Vec<String>) {
     if let NodeData::Element { name, .. } = &handle.data
         && &*name.local == "style"
     {
@@ -846,7 +846,7 @@ mod white_space_tests {
 
 /// Первый СИЛЬНЫЙ знак содержимого: `true` — справа налево, `None` — сильных
 /// знаков нет вовсе и сторона остаётся унаследованной.
-pub(crate) fn first_strong(nodes: &[Node]) -> Option<bool> {
+fn first_strong(nodes: &[Node]) -> Option<bool> {
     use unicode_bidi::BidiClass::*;
     for node in nodes {
         match node {
@@ -876,7 +876,7 @@ pub(crate) fn first_strong(nodes: &[Node]) -> Option<bool> {
 
 /// Сжать пробелы внутри скобок: `reversed( x )` — одна запись значения,
 /// а разбор идёт по словам.
-pub(crate) fn squeeze_parens(text: &str) -> String {
+fn squeeze_parens(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut depth = 0i32;
     for ch in text.chars() {

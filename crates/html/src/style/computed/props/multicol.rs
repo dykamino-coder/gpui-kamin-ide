@@ -425,7 +425,7 @@ impl Computed {
 
 /// Ширина линейки промежутка: ключевые слова css-gaps-1 §width те же, что у
 /// рамок; отрицательная недействительна.
-pub(crate) fn gap_width(t: &str) -> Option<Len> {
+fn gap_width(t: &str) -> Option<Len> {
     match t.trim() {
         "thin" => Some(Len::Px(1.0)),
         "medium" => Some(Len::Px(3.0)),
@@ -438,7 +438,7 @@ pub(crate) fn gap_width(t: &str) -> Option<Len> {
 
 /// Стиль линейки: `none`/`hidden` — не рисовать, прочие — рисовать (все
 /// стили пока красятся сплошной полосой).
-pub(crate) fn gap_style(t: &str) -> Option<bool> {
+fn gap_style(t: &str) -> Option<bool> {
     match t.trim() {
         "none" | "hidden" => Some(false),
         "solid" | "dashed" | "dotted" | "double" | "groove" | "ridge" | "inset" | "outset" => {
@@ -449,7 +449,7 @@ pub(crate) fn gap_style(t: &str) -> Option<bool> {
 }
 
 /// Цвет линейки; `currentcolor` — `None` (цвет текста контейнера).
-pub(crate) fn gap_color(t: &str) -> Option<Option<Color>> {
+fn gap_color(t: &str) -> Option<Option<Color>> {
     let t = t.trim();
     if t.eq_ignore_ascii_case("currentcolor") {
         return Some(None);
@@ -458,7 +458,7 @@ pub(crate) fn gap_color(t: &str) -> Option<Option<Color>> {
 }
 
 /// Втяжка конца (css-gaps-1 §inset): длина/доля или `overlap-join`.
-pub(crate) fn gap_inset(t: &str) -> Option<GapInset> {
+fn gap_inset(t: &str) -> Option<GapInset> {
     let t = t.trim();
     if t == "overlap-join" {
         return Some(GapInset::OverlapJoin);
@@ -473,7 +473,7 @@ pub(crate) fn gap_inset(t: &str) -> Option<GapInset> {
 
 /// `<gap-rule> = <line-width> || <line-style> || <color>`: любой порядок,
 /// каждая часть не более одного раза; лишний токен — недействительно.
-pub(crate) fn gap_rule(entry: &str) -> Option<(Option<Len>, Option<bool>, Option<Option<Color>>)> {
+fn gap_rule(entry: &str) -> Option<(Option<Len>, Option<bool>, Option<Option<Color>>)> {
     let (mut w, mut s, mut c) = (None, None, None);
     for token in split_outside_parens(entry) {
         if s.is_none() && let Some(v) = gap_style(&token) {
@@ -493,7 +493,7 @@ pub(crate) fn gap_rule(entry: &str) -> Option<(Option<Len>, Option<bool>, Option
 /// раскрывается на месте, `repeat(auto, …)` допустим один раз и делит список
 /// на ведущие и хвостовые. Любой неразобранный элемент — весь список
 /// недействителен.
-pub(crate) fn gap_list<T: Copy>(v: &str, one: impl Fn(&str) -> Option<T>) -> Option<GapList<T>> {
+fn gap_list<T: Copy>(v: &str, one: impl Fn(&str) -> Option<T>) -> Option<GapList<T>> {
     let mut out = GapList { lead: vec![], auto: vec![], tail: vec![] };
     let mut seen_auto = false;
     for entry in crate::style::css::split_args(v) {

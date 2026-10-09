@@ -15,7 +15,7 @@ fn grid_mode(c: &Computed) -> u8 {
     }
 }
 
-pub(crate) fn baseline_x_flags(c: &Computed) -> Option<u8> {
+pub(super) fn baseline_x_flags(c: &Computed) -> Option<u8> {
     let parent = grid_mode(c);
     if parent == 0 {
         if !c.parent_flex_grid {

@@ -416,7 +416,7 @@ impl Paragraph {
 
 /// Память выделения между кадрами: границы в байтах текста абзаца.
 #[derive(Default, Clone, Copy)]
-pub(crate) struct Selection {
+pub(super) struct Selection {
     pub(crate) anchor: usize,
     pub(crate) head: usize,
     pub(crate) dragging: bool,

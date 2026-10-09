@@ -8,7 +8,7 @@ use crate::render::{in_flow, inline_level_box, own_context, phantom_inline};
 use crate::style::values::value::Len;
 use crate::text::text_box::blank_text;
 
-pub(crate) fn collapse_top(e: &mut Element) {
+pub(super) fn collapse_top(e: &mut Element) {
     // CSS 2.1 section 8.3.1: a top border/padding prevents only top
     // parent-child collapse; bottom collapse has its own edge conditions.
     if !top_edge_open(e) {
@@ -40,7 +40,7 @@ pub(crate) fn collapse_top(e: &mut Element) {
     }
 }
 
-pub(crate) fn collapse_bottom(e: &mut Element) {
+pub(super) fn collapse_bottom(e: &mut Element) {
     let mut path = Vec::new();
     let mut eat = Vec::new();
     let chain = with_inner_cb(&e.style, || bottom_chain(&e.children, &mut path, &mut eat));

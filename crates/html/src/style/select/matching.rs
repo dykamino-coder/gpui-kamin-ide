@@ -117,7 +117,7 @@ pub(crate) fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Si
 }
 
 /// Псевдокласс — of-форма `:nth-child(… of S)`?
-pub(crate) fn nth_of_form(pseudo: &str) -> bool {
+fn nth_of_form(pseudo: &str) -> bool {
     let Some((name, arg)) = pseudo.split_once('(') else {
         return false;
     };
@@ -130,7 +130,7 @@ pub(crate) fn nth_of_form(pseudo: &str) -> bool {
 /// `:nth-child(An+B of S)` / `:nth-last-child(An+B of S)` (селекторы-4):
 /// узел обязан сам совпасть с S, а номер считается только среди совпавших
 /// братьев — с начала либо с конца. `None` — псевдокласс не of-формы.
-pub(crate) fn nth_of_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> Option<bool> {
+fn nth_of_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> Option<bool> {
     let (name, arg) = pseudo.split_once('(')?;
     let backwards = match name {
         "nth-child" => false,
@@ -159,7 +159,7 @@ pub(crate) fn nth_of_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs:
 /// `:lang(x)` — язык узла: свой атрибут `lang`, иначе ближайшего предка.
 /// Совпадение — точное или по префиксу до дефиса, ASCII-регистронезависимо
 /// (селекторы-4 §lang-pseudo; `fi` не совпадает с `fil`).
-pub(crate) fn lang_matches(want: &str, me: &Ancestor, path: &[Ancestor]) -> bool {
+fn lang_matches(want: &str, me: &Ancestor, path: &[Ancestor]) -> bool {
     let Some(lang) = language::effective(me, path) else {
         return false;
     };
@@ -181,7 +181,7 @@ pub(crate) fn lang_matches(want: &str, me: &Ancestor, path: &[Ancestor]) -> bool
 /// диапазона ищется в теге по порядку, пропуская несовпавшие подтеги тега,
 /// но не перескакивая через одиночный (`x`, `u`…). `*` в середине
 /// диапазона пропускается. `*-FR` совпадает с `fr-Latn-FR`, `fr-FR` — тоже.
-pub(crate) fn extended_lang_filter(range: &str, tag: &str) -> bool {
+fn extended_lang_filter(range: &str, tag: &str) -> bool {
     let mut r = range.split('-');
     let mut t = tag.split('-');
     let (Some(r0), Some(t0)) = (r.next(), t.next()) else {
@@ -214,7 +214,7 @@ pub(crate) fn extended_lang_filter(range: &str, tag: &str) -> bool {
 /// псевдоклассов компаунда (основной решает `matches`, слои — отбор
 /// по имени). Неизвестный или слойный (`:hover`) здесь считается
 /// НЕвыполненным: базовый каскад такое правило не применяет.
-pub(crate) fn pseudo_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> bool {
+fn pseudo_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> bool {
     if let Some(inner) = pseudo
         .strip_prefix("not(")
         .and_then(|r| r.strip_suffix(')'))
@@ -260,7 +260,7 @@ pub(crate) fn pseudo_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs:
     structural(pseudo, me.spot).unwrap_or(false)
 }
 
-pub(crate) fn is_host_pseudo(pseudo: &str) -> bool {
+fn is_host_pseudo(pseudo: &str) -> bool {
     pseudo == "host" || pseudo.starts_with("host(")
 }
 
@@ -269,7 +269,7 @@ pub(crate) fn is_host_pseudo(pseudo: &str) -> bool {
 /// (css-shadow-1 §3.1 «in its normal context»; Blink `CheckPseudoHost`
 /// сопоставляет в `element->GetTreeScope()`). Светлых братьев здесь нет:
 /// `:first-child` в аргументе решается по `spot`, of-форма и `+`/`~` — нет.
-pub(crate) fn host_holds(pseudo: &str, node: &Ancestor) -> bool {
+fn host_holds(pseudo: &str, node: &Ancestor) -> bool {
     if pseudo == "host" {
         return true;
     }
@@ -294,7 +294,7 @@ pub(crate) fn host_holds(pseudo: &str, node: &Ancestor) -> bool {
 /// среди них есть ЭЛЕМЕНТ, совпадающий с S в своём светлом контексте
 /// (`functional-007`: `div + div` смотрит на светлых братьев). Не слот или
 /// слот вне тени — не совпадает.
-pub(crate) fn has_slotted_holds(pseudo: &str, me: &Ancestor) -> bool {
+fn has_slotted_holds(pseudo: &str, me: &Ancestor) -> bool {
     let Some(slot) = &me.slot else { return false };
     let Some(arg) = pseudo
         .strip_prefix("has-slotted(")
@@ -320,7 +320,7 @@ pub(crate) fn has_slotted_holds(pseudo: &str, me: &Ancestor) -> bool {
 /// Структурные псевдоклассы: место узла среди соседей.
 ///
 /// `None` — псевдокласс не структурный, решение принимает вызывающий.
-pub(crate) fn structural(pseudo: &str, spot: Spot) -> Option<bool> {
+fn structural(pseudo: &str, spot: Spot) -> Option<bool> {
     let (name, arg) = match pseudo.split_once('(') {
         Some((n, rest)) => (n, rest.trim_end_matches(')').trim()),
         None => (pseudo, ""),
@@ -349,7 +349,7 @@ pub(crate) fn structural(pseudo: &str, spot: Spot) -> Option<bool> {
 }
 
 /// Запись `an+b` из `:nth-child()`: подходит ли номер.
-pub(crate) fn nth_matches(arg: &str, index: usize) -> bool {
+fn nth_matches(arg: &str, index: usize) -> bool {
     let arg = arg.trim().to_ascii_lowercase();
     let (a, b) = match arg.as_str() {
         "odd" => (2i64, 1i64),
@@ -457,7 +457,7 @@ pub(crate) fn matches_ignoring_pseudo(
 /// те же предки — `path[..at]`. Прежде такое правило не совпадало никогда
 /// (`ch-unit-001`: ширина `div + div span` терялась). Без сохранённых братьев
 /// (обход вне `walk`) — честно не совпадает, как раньше.
-pub(crate) fn ancestor_holds(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
+fn ancestor_holds(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
     if !matches_ancestor_compound(sel, &path[at]) {
         return false;
     }
@@ -480,7 +480,7 @@ pub(crate) fn ancestor_holds(sel: &Selector, path: &[Ancestor], at: usize) -> bo
 }
 
 /// Продолжение цепочки вверх для `.a .b .c`.
-pub(crate) fn matches_chain(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
+fn matches_chain(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
     let Some(anc) = &sel.ancestor else {
         return true;
     };
@@ -493,7 +493,7 @@ pub(crate) fn matches_chain(sel: &Selector, path: &[Ancestor], at: usize) -> boo
 
 /// Компаунд ПРЕДКА: как `matches_compound`, но псевдоклассы действия
 /// пользователя на нём не выполняются.
-pub(crate) fn matches_ancestor_compound(sel: &Selector, node: &Ancestor) -> bool {
+fn matches_ancestor_compound(sel: &Selector, node: &Ancestor) -> bool {
     // Псевдоклассы действия пользователя у НЕ-предметного компаунда
     // (`grid:hover item[style]`): в неподвижном кадре ни наведения, ни
     // нажатия нет (selectors-4 §user-action: «matches while the user
@@ -507,7 +507,7 @@ pub(crate) fn matches_ancestor_compound(sel: &Selector, node: &Ancestor) -> bool
     matches_compound(sel, node)
 }
 
-pub(crate) fn matches_compound(sel: &Selector, node: &Ancestor) -> bool {
+fn matches_compound(sel: &Selector, node: &Ancestor) -> bool {
     // Безликий хост: ни тег, ни `*`, ни класс, ни атрибут его не берут —
     // только `:host`/`:host(S)`, и все псевдоклассы компаунда обязаны быть
     // такими (`:host:host` — да, `div:host`, `:host.host` — нет;

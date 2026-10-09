@@ -656,7 +656,7 @@ pub(crate) fn resolve_relative(
 /// переводятся обратно; полярные пространства ведут тон по выбранной дуге
 /// (§12.4). Прозрачность сюда не входит — она линейна всегда и считается
 /// вызывающим.
-pub(crate) fn mix_in(
+fn mix_in(
     space: crate::style::computed::GradSpace,
     hue: u8,
     a: crate::style::values::value::Color,
@@ -787,7 +787,7 @@ fn gamut_map_tuple(v: (f32, f32, f32)) -> (f32, f32, f32) {
 }
 
 /// sRGB → HSL: тон в градусах, насыщенность и светлота в долях.
-pub(crate) fn rgb_to_hsl(c: crate::style::values::value::Color) -> (f32, f32, f32) {
+fn rgb_to_hsl(c: crate::style::values::value::Color) -> (f32, f32, f32) {
     let (max, min) = (c.r.max(c.g).max(c.b), c.r.min(c.g).min(c.b));
     let l = (max + min) / 2.0;
     if (max - min).abs() < 1e-6 {
@@ -810,7 +810,7 @@ pub(crate) fn rgb_to_hsl(c: crate::style::values::value::Color) -> (f32, f32, f3
 }
 
 /// HSL → sRGB.
-pub(crate) fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (f32, f32, f32) {
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (f32, f32, f32) {
     let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
     let hp = h.rem_euclid(360.0) / 60.0;
     let x = c * (1.0 - (hp % 2.0 - 1.0).abs());

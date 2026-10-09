@@ -159,7 +159,7 @@ impl FloatShape {
 
 /// Экстент эллипса (центр по y — `cy_abs`, радиусы rx/ry, центр по x — cx)
 /// на полосе [y0, y1): максимум `cx + rx·√(1−(dy/ry)²)` по dy в полосе.
-pub(crate) fn ellipse_cut(cy_abs: f32, rx: f32, ry: f32, cx: f32, y0: f32, y1: f32) -> f32 {
+pub(super) fn ellipse_cut(cy_abs: f32, rx: f32, ry: f32, cx: f32, y0: f32, y1: f32) -> f32 {
     if ry <= 0.0 || rx <= 0.0 {
         return 0.0;
     }

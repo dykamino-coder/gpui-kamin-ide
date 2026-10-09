@@ -133,7 +133,7 @@ impl Grouped {
 }
 
 /// Голый источник слоя маски: содержимое `url(...)` либо запись градиента.
-pub(crate) fn mask_layer_source(layer: &str) -> Option<String> {
+fn mask_layer_source(layer: &str) -> Option<String> {
     let t = layer.trim();
     if t.contains("-gradient(") {
         return Some(t.to_string());
@@ -155,7 +155,7 @@ pub(crate) fn mask_layer_source(layer: &str) -> Option<String> {
 /// Содержимое `<mask id>`/`<clipPath id>` из ВНЕШНЕГО файла рисунка
 /// (`mask-image: url(file.svg#id)`): грубый текстовый вырез — дерево
 /// документа рисунка нам нигде больше не нужно.
-pub(crate) fn svg_fragment(path: &str, id: &str) -> Option<String> {
+fn svg_fragment(path: &str, id: &str) -> Option<String> {
     let markup = std::fs::read_to_string(path).ok()?;
     for tag in ["mask", "clipPath"] {
         let mut rest = markup.as_str();
@@ -178,7 +178,7 @@ pub(crate) fn svg_fragment(path: &str, id: &str) -> Option<String> {
 /// Содержимое сериализовано при сборе (`render::mask_def`); маска берёт
 /// светимость своих красок, обрезка — покрытие (заливка принудительно
 /// белая), поэтому обе идут люминанс-растром.
-pub(crate) fn rasterize_mask_def(
+fn rasterize_mask_def(
     key: &str,
     w: f32,
     h: f32,

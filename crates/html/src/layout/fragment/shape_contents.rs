@@ -31,7 +31,7 @@ use crate::style::values::value::Len;
 /// Строки собираются, но контейнер с переносом теряет высоту фрагмента: пары,
 /// которые держались стопкой детей, разваливаются. Половинить нельзя (это и
 /// есть откат 04.09); брать заново только с мерой по строкам (FRAG-LINES).
-pub(crate) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
+pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     // Кадр меры строк (наследование и ширина) — только при `with_lines`.
     let _line_frame = LineScope::enter(c);
     let px_or = |l: &Option<Len>, strict: bool| match l {

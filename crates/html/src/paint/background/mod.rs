@@ -14,47 +14,47 @@ use crate::style::computed::{BgRepeat, Computed, Tiling};
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, RenderImage, Styled, px};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
-pub(crate) mod sampling;
-pub(crate) mod oriented_vector;
+mod sampling;
+mod oriented_vector;
 pub(crate) mod alpha_sampling;
-pub(crate) mod float_geometry;
+mod float_geometry;
 use crate::paint::background::float_geometry::rrect_of;
 pub use float_geometry::rounded_float;
-pub(crate) mod mask_composite;
+mod mask_composite;
 pub use mask_composite::{MaskLayer, compose_mask_layers};
-pub(crate) mod conic;
-pub(crate) mod sources;
+mod conic;
+mod sources;
 pub use sources::{key, key_exif, source};
-pub(crate) mod gradient_raster;
-pub(crate) mod svg_fragment;
+mod gradient_raster;
+mod svg_fragment;
 
-pub(crate) mod exact_layer;
-pub(crate) mod tile_positions;
-pub(crate) mod radius_lengths;
+pub(super) mod exact_layer;
+mod tile_positions;
+mod radius_lengths;
 #[cfg(test)]
 use crate::paint::background::tile_positions::tiling;
-pub(crate) mod shape_path;
+mod shape_path;
 pub use crate::paint::background::shape_path::*;
-pub(crate) mod shape_raster;
+mod shape_raster;
 pub use crate::paint::background::shape_raster::*;
-pub(crate) mod shape_profile;
+pub(super) mod shape_profile;
 pub use crate::paint::background::shape_profile::*;
-pub(crate) mod raster;
+pub(super) mod raster;
 pub(crate) use crate::paint::background::raster::*;
-pub(crate) mod image_decode;
+pub(super) mod image_decode;
 pub use crate::paint::background::image_decode::*;
-pub(crate) mod tiles;
+pub(super) mod tiles;
 pub use crate::paint::background::tiles::*;
 
-pub(crate) type Cache = Mutex<HashMap<String, Option<Source>>>;
-pub(crate) static CACHE: OnceLock<Cache> = OnceLock::new();
+type Cache = Mutex<HashMap<String, Option<Source>>>;
+static CACHE: OnceLock<Cache> = OnceLock::new();
 
 /// Сколько разных картинок держим декодированными.
-pub(crate) const CACHE_CAP: usize = 32;
+const CACHE_CAP: usize = 32;
 
 /// Потолок на число плиток вдоль оси: битый `background-size` иначе просит
 /// миллионы копий.
-pub(crate) const MAX_TILES: f32 = 2048.0;
+const MAX_TILES: f32 = 2048.0;
 
 /// Декодировать по ссылке из `url(...)`: `data:`-URI или путь на диске.
 ///
@@ -299,7 +299,7 @@ pub fn canvas_layer(c: &Computed, area: RootArea) -> Option<AnyElement> {
 /// the area painted by the border» — одноцветный фон тогда просто лежит ПОД
 /// краской рамки. Рисуют его те же примитивы, что и рамку (квад, слой рамки,
 /// кольца `corner-shape` и `border-shape`), с той же геометрией стиля.
-pub(crate) fn border_area_fill(c: &Computed) -> Option<crate::style::values::value::Color> {
+fn border_area_fill(c: &Computed) -> Option<crate::style::values::value::Color> {
     if c.bg_clip != Some(crate::style::computed::BgClip::BorderArea) {
         return None;
     }
@@ -367,7 +367,7 @@ pub(crate) fn over(top: crate::style::values::value::Color, base: crate::style::
 }
 
 /// Единственный цвет растра, если все его точки одинаковы и непрозрачны.
-pub(crate) fn flat_colour(src: &str) -> Option<crate::style::values::value::Color> {
+fn flat_colour(src: &str) -> Option<crate::style::values::value::Color> {
     let Source::Raster(image) = source(src)? else {
         return None;
     };
@@ -388,7 +388,7 @@ pub(crate) fn flat_colour(src: &str) -> Option<crate::style::values::value::Colo
 /// Весь фон коробки одним цветом, если он таков: цвет фона, поверх него
 /// одноцветный градиент или одноцветный растр, мощённый без зазоров.
 /// `None` — фон узорный (или его нет вовсе).
-pub(crate) fn flat_fill(c: &Computed) -> Option<crate::style::values::value::Color> {
+fn flat_fill(c: &Computed) -> Option<crate::style::values::value::Color> {
     if c.gradient.is_some() && c.bg_image.is_some() {
         return None;
     }

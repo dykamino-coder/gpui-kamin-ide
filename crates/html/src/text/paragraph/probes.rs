@@ -21,7 +21,7 @@ pub enum AtomAlign {
 }
 
 /// Атом в строке: элемент-обёртка со щупом базовой линии.
-pub(crate) struct AtomSlot {
+pub(super) struct AtomSlot {
     pub(crate) at: usize,
     pub(crate) el: AnyElement,
     pub(crate) align: AtomAlign,
@@ -70,7 +70,7 @@ thread_local! {
     /// Sink of the base paragraph that is being built for a ruby column
     /// (`ruby_base_width_sink`): the paragraph records its max-content width
     /// there when it is measured.
-    pub(crate) static RUBY_BASE_SINK: std::cell::RefCell<Option<std::rc::Rc<std::cell::Cell<Option<f32>>>>> =
+    static RUBY_BASE_SINK: std::cell::RefCell<Option<std::rc::Rc<std::cell::Cell<Option<f32>>>>> =
         const { std::cell::RefCell::new(None) };
 }
 
@@ -106,7 +106,7 @@ pub fn ruby_base_with_overhang<T>(
 }
 
 /// Take the active base-width sink (for the first paragraph built under it).
-pub(crate) fn take_ruby_base_sink() -> Option<std::rc::Rc<std::cell::Cell<Option<f32>>>> {
+pub(super) fn take_ruby_base_sink() -> Option<std::rc::Rc<std::cell::Cell<Option<f32>>>> {
     RUBY_BASE_SINK.with(|s| s.borrow_mut().take())
 }
 
@@ -114,7 +114,7 @@ thread_local! {
     /// Сбор узлов аннотаций для атома, который сейчас строится
     /// (`collect_ruby_extents`). `None` — сбора нет: руби вне строки абзаца
     /// своих аннотаций никому не отдаёт.
-    pub(crate) static RUBY_EXTENTS: std::cell::RefCell<Option<RubyExtents>> =
+    static RUBY_EXTENTS: std::cell::RefCell<Option<RubyExtents>> =
         const { std::cell::RefCell::new(None) };
 }
 
@@ -133,7 +133,7 @@ pub fn collect_ruby_extents<T>(build: impl FnOnce() -> T) -> (T, RubyExtents) {
 /// пунктуации (P*), кроме знаков, что по NFKD сводятся к `#`, `%`, `‰`, `‱`,
 /// `٪`, `؉`, `؊`, `&`, `⁊`, `@`, `§`, `¶`, `⁋`, `⁓`, `〽` (здесь — сами они и
 /// их полноширинные и малые формы).
-pub(crate) fn emphasized(c: char) -> bool {
+pub(super) fn emphasized(c: char) -> bool {
     use unicode_properties::{GeneralCategory as G, GeneralCategoryGroup, UnicodeGeneralCategory};
     if c.is_whitespace() {
         return false;
@@ -238,7 +238,7 @@ pub(crate) struct AtomBox {
 /// базовую линию атома, и раскладка отдаёт её положением щупа. Для атома без
 /// базовой линии taffy берёт нижний край полей (`flexbox.rs`) — у замещаемого
 /// это и есть его базовая по §10.8.1.
-pub(crate) struct BaselineProbe {
+pub(super) struct BaselineProbe {
     pub(crate) slot: std::rc::Rc<std::cell::Cell<Option<LayoutId>>>,
 }
 
@@ -305,7 +305,7 @@ impl IntoElement for BaselineProbe {
 /// ТОЧНЫЙ размер атома (`Window::layout_exact`) — округлённый к точке
 /// устройства прибавлял до 0.4px на атом, и ряд атомов ровно в ширину строки
 /// в неё уже не влезал (`c542-letter-sp-001-ref`, `c5505-mrgn-000`).
-pub(crate) struct LayoutTap {
+pub(super) struct LayoutTap {
     pub(crate) child: AnyElement,
     pub(crate) slot: std::rc::Rc<std::cell::Cell<Option<LayoutId>>>,
 }

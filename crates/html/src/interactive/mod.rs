@@ -5,5 +5,5 @@ pub mod frame;
 pub mod resizable;
 pub mod scroll_area;
 pub mod scroll_box;
-pub(crate) mod scroll_target;
+pub(super) mod scroll_target;
 pub mod sticky;

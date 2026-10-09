@@ -5,7 +5,7 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{Div, Styled};
 
-pub(crate) fn apply(holder: &mut Div, style: &Computed, ratio: Option<f32>, fixed: bool) -> bool {
+pub(super) fn apply(holder: &mut Div, style: &Computed, ratio: Option<f32>, fixed: bool) -> bool {
     let Some(ratio) = ratio.filter(|r| r.is_finite() && *r > 0.0) else {
         return false;
     };

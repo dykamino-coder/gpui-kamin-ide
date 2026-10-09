@@ -7,31 +7,31 @@
 
 use std::collections::HashMap;
 
-pub(crate) mod selector_tokens;
-pub(crate) mod stylesheet_tokens;
+pub(super) mod selector_tokens;
+mod stylesheet_tokens;
 pub(crate) use stylesheet_tokens::next_piece;
 use crate::style::css::stylesheet_tokens::find_matching;
-pub(crate) mod component_tokens;
-pub(crate) mod font_family_values;
+mod component_tokens;
+mod font_family_values;
 pub(crate) use component_tokens::skip_string;
-pub(crate) mod priority_tokens;
+mod priority_tokens;
 use crate::style::css::priority_tokens::top_level_bang;
-pub(crate) mod variable_tokens;
+mod variable_tokens;
 pub(crate) mod custom_properties;
 pub(crate) mod variable_values;
-pub(crate) mod selector;
+pub(super) mod selector;
 pub use crate::style::css::selector::*;
-pub(crate) mod decls;
+pub(super) mod decls;
 pub use crate::style::css::decls::*;
-pub(crate) mod sheet;
+pub(super) mod sheet;
 pub use crate::style::css::sheet::*;
-pub(crate) mod media;
+mod media;
 pub use crate::style::css::media::*;
 pub(crate) mod supports;
 pub(crate) use crate::style::css::supports::*;
-pub(crate) mod at_rules;
+pub(super) mod at_rules;
 pub use crate::style::css::at_rules::*;
-pub(crate) mod keyframes;
+pub(super) mod keyframes;
 pub use crate::style::css::keyframes::*;
 
 /// Пара «свойство: значение». Значение хранится сырым — разбор откладывается
@@ -50,7 +50,7 @@ pub const DECL_SEP: char = char::from_u32(1).unwrap();
 pub const ORDER_KEY: &str = "\u{2}order";
 
 /// Priority is metadata: an escaped `!` inside a custom value is not !important.
-pub(crate) const CUSTOM_IMPORTANT: &str = "\u{2}important:";
+pub(super) const CUSTOM_IMPORTANT: &str = "\u{2}important:";
 
 /// Одно правило: с чем сопоставлять и что применять.
 #[derive(Clone, Debug)]

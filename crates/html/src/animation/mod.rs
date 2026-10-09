@@ -2,5 +2,5 @@
 // owner: coordinator
 
 pub mod frames;
-pub(crate) mod animation_frame;
-pub(crate) mod animation_live;
+mod animation_frame;
+pub(super) mod animation_live;

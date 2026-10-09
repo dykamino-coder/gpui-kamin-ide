@@ -22,41 +22,41 @@
 
 pub mod tabs;
 
-pub(crate) mod atom_fit;
-pub(crate) mod atom_placement;
-pub(crate) mod ruby_overhang;
-pub(crate) mod content_baselines;
-pub(crate) mod controlled_shape;
-pub(crate) mod overflow_marker;
-pub(crate) mod hyphen_shape;
-pub(crate) mod decor;
-pub(crate) mod ruby_justification;
-pub(crate) mod selection_geometry;
-pub(crate) mod text_raster_origin;
-pub(crate) mod emphasis;
-pub(crate) mod vertical_content_baselines;
-pub(crate) mod vertical_geometry;
-pub(crate) mod vertical_inline;
+mod atom_fit;
+mod atom_placement;
+mod ruby_overhang;
+mod content_baselines;
+mod controlled_shape;
+mod overflow_marker;
+mod hyphen_shape;
+mod decor;
+mod ruby_justification;
+mod selection_geometry;
+mod text_raster_origin;
+mod emphasis;
+mod vertical_content_baselines;
+mod vertical_geometry;
+mod vertical_inline;
 
 use gpui::{AnyElement, Bounds, ElementId, Hsla, Pixels, Point, SharedString, TextRun, point, px};
-pub(crate) mod element;
+mod element;
 pub(crate) mod probes;
 pub use crate::text::paragraph::probes::*;
-pub(crate) mod measure;
+pub(super) mod measure;
 pub use crate::text::paragraph::measure::*;
-pub(crate) mod breaking;
+pub(super) mod breaking;
 pub use crate::text::paragraph::breaking::*;
 pub(crate) mod justify;
 pub(crate) use crate::text::paragraph::justify::*;
-pub(crate) mod runs;
-pub(crate) use crate::text::paragraph::runs::*;
-pub(crate) mod geometry;
+pub(super) mod runs;
+use crate::text::paragraph::runs::*;
+pub(super) mod geometry;
 pub use crate::text::paragraph::geometry::*;
-pub(crate) mod paint;
-pub(crate) mod clamp;
-pub(crate) mod atoms;
-pub(crate) mod fit;
-pub(crate) use crate::text::paragraph::paint::*;
+pub(super) mod paint;
+mod clamp;
+mod atoms;
+mod fit;
+use crate::text::paragraph::paint::*;
 
 /// Правила переноса, собранные из CSS.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -102,10 +102,10 @@ pub enum Align {
 }
 
 /// Мягкий перенос: разрешение разорвать слово, своей ширины он не имеет.
-pub(crate) const SOFT_HYPHEN: char = '\u{00ad}';
+const SOFT_HYPHEN: char = '\u{00ad}';
 
 /// Знак обрыва строки по `line-clamp`.
-pub(crate) const ELLIPSIS: &str = "…";
+const ELLIPSIS: &str = "…";
 
 /// Абзац со своей раскладкой строк.
 pub struct Paragraph {
