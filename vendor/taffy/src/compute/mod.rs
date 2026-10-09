@@ -63,9 +63,8 @@ pub use self::float::{BfcSlot, ContentSlot, FloatContext, FloatIntrinsicWidthCal
 use crate::geometry::{Line, Point, Size};
 use crate::style::{AvailableSpace, ContainingBlockClaims, CoreStyle, Overflow};
 use crate::tree::{
-    Layout, LayoutInput, LayoutOutput,
-    LayoutPartialTree, LayoutPartialTreeExt, NodeId, OofCandidates, RequestedAxis,
-    RoundTree, RunMode, SizingMode,
+    Layout, LayoutInput, LayoutOutput, LayoutPartialTree, LayoutPartialTreeExt, NodeId,
+    OofCandidates, RequestedAxis, RoundTree, RunMode, SizingMode,
 };
 use crate::util::debug::{debug_log, debug_log_node, debug_pop_node, debug_push_node};
 use crate::util::sys::{round, Vec};

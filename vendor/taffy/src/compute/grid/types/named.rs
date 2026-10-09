@@ -701,10 +701,7 @@ impl<S: CheapCloneStr> NamedLineResolver<S> {
             } else {
                 (area.row_start, area.row_end)
             };
-            let edges = self
-                .areas
-                .entry(StrHasher(area.name.clone()))
-                .or_default();
+            let edges = self.areas.entry(StrHasher(area.name.clone())).or_default();
             *edges.line_mut(axis, GridAreaEnd::Start) = (start as u32).min(last_line);
             *edges.line_mut(axis, GridAreaEnd::End) = (end as u32).min(last_line);
         }
@@ -1110,7 +1107,9 @@ mod tests {
             &mut resolver.column_lines,
             &mut resolver.areas,
             GridAreaAxis::Column,
-            DefaultCheapStr::from("hero"), 2);
+            DefaultCheapStr::from("hero"),
+            2,
+        );
         upsert_line_name_map(
             &mut resolver.column_lines,
             &mut resolver.areas,
@@ -1154,7 +1153,9 @@ mod tests {
             &mut resolver.column_lines,
             &mut resolver.areas,
             GridAreaAxis::Column,
-            DefaultCheapStr::from("hero"), 3);
+            DefaultCheapStr::from("hero"),
+            3,
+        );
         assert_eq!(
             resolved_start_line(
                 &resolver,
@@ -1192,12 +1193,16 @@ mod tests {
             &mut resolver.column_lines,
             &mut resolver.areas,
             GridAreaAxis::Column,
-            DefaultCheapStr::from("old"), 1);
+            DefaultCheapStr::from("old"),
+            1,
+        );
         upsert_line_name_map(
             &mut resolver.row_lines,
             &mut resolver.areas,
             GridAreaAxis::Row,
-            DefaultCheapStr::from("row"), 2);
+            DefaultCheapStr::from("row"),
+            2,
+        );
         resolver.set_subgrid_line_names(
             true,
             &[

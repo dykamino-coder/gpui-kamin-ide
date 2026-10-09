@@ -2011,7 +2011,10 @@ fn collect_flex_lines<'a>(
             // is the container's own constraint, not ancestor-derived space, so it still wraps.
             None if !constants.dir.is_row()
                 && !constants.has_definite_main_size
-                && constants.ratio_preferred_inner_size.main(constants.dir).is_none()
+                && constants
+                    .ratio_preferred_inner_size
+                    .main(constants.dir)
+                    .is_none()
                 && available_space.main(constants.dir).is_definite() =>
             {
                 AvailableSpace::MaxContent
@@ -2249,7 +2252,10 @@ fn collect_balanced_flex_lines<'a>(
             // is the container's own constraint, not ancestor-derived space, so it still wraps.
             None if !constants.dir.is_row()
                 && !constants.has_definite_main_size
-                && constants.ratio_preferred_inner_size.main(constants.dir).is_none()
+                && constants
+                    .ratio_preferred_inner_size
+                    .main(constants.dir)
+                    .is_none()
                 && available_space.main(constants.dir).is_definite() =>
             {
                 AvailableSpace::MaxContent

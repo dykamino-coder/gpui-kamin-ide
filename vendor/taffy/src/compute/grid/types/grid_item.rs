@@ -1024,7 +1024,8 @@ impl GridItem {
             };
             let adjustment = box_sizing_adjustment.get(axis);
             let min_size = min_size.maybe_resolve(basis, |val, basis| tree.calc(val, basis));
-            let max_size = max_size.maybe_resolve(max_size_basis, |val, basis| tree.calc(val, basis));
+            let max_size =
+                max_size.maybe_resolve(max_size_basis, |val, basis| tree.calc(val, basis));
             size.maybe_clamp(
                 min_size.maybe_add(adjustment),
                 max_size.maybe_add(adjustment),

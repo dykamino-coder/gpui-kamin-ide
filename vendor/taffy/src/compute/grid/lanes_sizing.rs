@@ -4,7 +4,8 @@ use crate::compute::common::sizing_keyword::{resolve_sizing_keyword, SizingKeywo
 use crate::geometry::{Line, Size};
 use crate::style::{AvailableSpace, Dimension};
 use crate::tree::{
-    LayoutInput, LayoutPartialTree, LayoutPartialTreeExt, NodeId, RequestedAxis, RunMode, SizingMode,
+    LayoutInput, LayoutPartialTree, LayoutPartialTreeExt, NodeId, RequestedAxis, RunMode,
+    SizingMode,
 };
 
 pub(super) fn resolve_lane_sizing_keywords(

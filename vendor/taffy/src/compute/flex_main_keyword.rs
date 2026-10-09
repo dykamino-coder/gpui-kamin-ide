@@ -33,8 +33,10 @@ pub(super) fn resolve(
     } else {
         // An unresolvable percentage flex basis behaves as `content`, not as the main size
         // property (upstream #1286).
-        if let Some(size) =
-            numeric_basis.or(child.size.main(constants.dir).filter(|_| basis_style.is_auto()))
+        if let Some(size) = numeric_basis.or(child
+            .size
+            .main(constants.dir)
+            .filter(|_| basis_style.is_auto()))
         {
             return Basis::Size(size, true);
         }
@@ -47,13 +49,12 @@ pub(super) fn resolve(
     let stretch = basis
         .maybe_sub(child.margin.main_axis_sum(constants.dir))
         .maybe_max(0.0);
-    let available = match resolve_sizing_keyword(style, stretch, basis, |val, basis| {
-        tree.calc(val, basis)
-    }) {
-        Some(SizingKeywordResolution::Exact(size)) => return Basis::Size(size, true),
-        Some(SizingKeywordResolution::Measure(space)) => space,
-        None => return Basis::Space(None),
-    };
+    let available =
+        match resolve_sizing_keyword(style, stretch, basis, |val, basis| tree.calc(val, basis)) {
+            Some(SizingKeywordResolution::Exact(size)) => return Basis::Size(size, true),
+            Some(SizingKeywordResolution::Measure(space)) => space,
+            None => return Basis::Space(None),
+        };
     let fit = matches!(
         style.tag(),
         CompactLength::FIT_CONTENT_PX_TAG

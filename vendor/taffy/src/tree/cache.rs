@@ -243,7 +243,9 @@ impl Default for Cache {
 impl Cache {
     /// The most recent full layout output, never an intrinsic size-only result.
     pub(crate) fn performed_layout_output(&self) -> Option<LayoutOutput> {
-        self.final_layout_entry.as_ref().map(|entry| entry.content.clone())
+        self.final_layout_entry
+            .as_ref()
+            .map(|entry| entry.content.clone())
     }
 
     /// Create a new empty cache

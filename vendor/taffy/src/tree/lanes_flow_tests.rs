@@ -95,8 +95,16 @@ fn positions(rows: bool, reverse: bool, fill: bool, center: bool) -> (f32, f32) 
                 },
                 grid_template_columns: if rows { vec![] } else { vec![length(80.0)] },
                 grid_template_rows: if rows { vec![length(80.0)] } else { vec![] },
-                align_items: if rows { AlignItems::START } else { AlignItems::NORMAL },
-                justify_items: if rows { AlignItems::NORMAL } else { AlignItems::START },
+                align_items: if rows {
+                    AlignItems::START
+                } else {
+                    AlignItems::NORMAL
+                },
+                justify_items: if rows {
+                    AlignItems::NORMAL
+                } else {
+                    AlignItems::START
+                },
                 align_content: if !rows && center {
                     AlignContent::CENTER
                 } else {

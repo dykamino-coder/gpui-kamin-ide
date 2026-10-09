@@ -1472,7 +1472,11 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             grid_hi,
             if rows { flow.height } else { flow.width },
         );
-        let stack_edges = if stack_static { content_box_inset } else { border };
+        let stack_edges = if stack_static {
+            content_box_inset
+        } else {
+            border
+        };
         let grid_area = if rows {
             Rect {
                 top: lo,
@@ -1480,7 +1484,11 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
                 left: stack_edges.left,
                 right: container_border_box.width
                     - stack_edges.right
-                    - if stack_static { 0.0 } else { scrollbar_gutter.x },
+                    - if stack_static {
+                        0.0
+                    } else {
+                        scrollbar_gutter.x
+                    },
             }
         } else {
             Rect {
@@ -1489,7 +1497,11 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
                 top: stack_edges.top,
                 bottom: container_border_box.height
                     - stack_edges.bottom
-                    - if stack_static { 0.0 } else { scrollbar_gutter.y },
+                    - if stack_static {
+                        0.0
+                    } else {
+                        scrollbar_gutter.y
+                    },
             }
         };
         #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]

@@ -823,7 +823,10 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
                     candidate.node,
                     known_dimensions,
                     area_size.map(Some),
-                    Size { width, height: available_space.height },
+                    Size {
+                        width,
+                        height: available_space.height,
+                    },
                     SizingMode::ContentSize,
                     crate::geometry::AbsoluteAxis::Horizontal,
                     Line::FALSE,
@@ -833,7 +836,9 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
             let max_content = probe(AvailableSpace::MaxContent);
             let fit = max_content.min(min_content.min(max_content).max(available_width));
             known_dimensions.width = Some(fit);
-            known_dimensions = known_dimensions.maybe_apply_aspect_ratio(aspect_ratio).maybe_clamp(min_size, max_size);
+            known_dimensions = known_dimensions
+                .maybe_apply_aspect_ratio(aspect_ratio)
+                .maybe_clamp(min_size, max_size);
         }
     }
 

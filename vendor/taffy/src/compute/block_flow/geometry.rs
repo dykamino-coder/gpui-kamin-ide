@@ -1,8 +1,7 @@
 //! Reversible physical/logical conversion for native block constraints and results.
 use crate::tree::{AxisStaticEdge, AxisStaticPosition, OofCandidates, OofPositioningArea};
 use crate::{
-    Baselines, BlockFlow, Layout, LayoutInput, LayoutOutput, Line, Point, Rect, RequestedAxis,
-    Size,
+    Baselines, BlockFlow, Layout, LayoutInput, LayoutOutput, Line, Point, Rect, RequestedAxis, Size,
 };
 
 impl BlockFlow {

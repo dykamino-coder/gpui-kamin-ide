@@ -1430,13 +1430,9 @@ fn resolve_static_position_grid_area<S: CheapCloneStr>(
     // then assigned like RTL columns.
     Rect {
         top: if rows_reversed {
-            maybe_row_indexes
-                .end
-                .map(|i| rtl_line_as_end_edge(rows, i))
+            maybe_row_indexes.end.map(|i| rtl_line_as_end_edge(rows, i))
         } else {
-            maybe_row_indexes
-                .start
-                .map(|i| line_as_start_edge(rows, i))
+            maybe_row_indexes.start.map(|i| line_as_start_edge(rows, i))
         }
         .unwrap_or(border.top),
         bottom: if rows_reversed {
