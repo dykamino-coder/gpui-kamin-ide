@@ -1108,16 +1108,6 @@ impl Element for Grouped {
                     (img, tw, th)
                 }
             };
-            if std::env::var("MASK_DBG").is_ok() {
-                eprintln!(
-                    "MASK bounds=({:?},{:?} {:?}x{:?}) tile={tw}x{th} sf={}",
-                    bounds.origin.x,
-                    bounds.origin.y,
-                    bounds.size.width,
-                    bounds.size.height,
-                    window.scale_factor()
-                );
-            }
             let (ox, oy) = match self.mask_pos {
                 Some((x, y)) => {
                     // Доля — от свободного места; `right/bottom` зеркалит
@@ -2001,13 +1991,6 @@ impl Element for CellsClipped {
         // отрисовки — здесь забираются прямоугольники ЭТОГО ЖЕ кадра.
         // Пустота возможна только на самом первом кадре документа.
         let rects = std::mem::take(&mut *self.rects.borrow_mut());
-        if {
-            static ON: std::sync::LazyLock<bool> =
-                std::sync::LazyLock::new(|| std::env::var("HTML_ROWBG").is_ok());
-            *ON
-        } {
-            eprintln!("ROWBG paint: rects={} {:?}", rects.len(), rects);
-        }
         if rects.is_empty() {
             // Пробы ячеек ещё не писали (первый кадр) — без нового кадра
             // окно не перерисуется, и фон не появится никогда. Но ждать
@@ -4487,21 +4470,6 @@ impl Element for ClampCut {
             window.request_animation_frame();
         }
         let rel = cut.map(|c| (c - top).max(0.0));
-        if {
-            static ON: std::sync::LazyLock<bool> =
-                std::sync::LazyLock::new(|| std::env::var("HTML_CLAMP_DBG").is_ok());
-            *ON
-        } {
-            eprintln!(
-                "CLAMPCUT key={} rows={} blocks={} limit={:?} max_h={:?} rel={:?}",
-                self.key,
-                rows.len(),
-                blocks.len(),
-                self.limit,
-                self.max_h,
-                rel
-            );
-        }
         // Гистерезис: мелкие колебания точки (обрезка двигает схлопнутые
         // поля, точка плывёт на доли строки) не перезаписывают её — иначе
         // пары мигали между прогонами. Крупный сдвиг — честный пересчёт.
@@ -4747,13 +4715,6 @@ impl Element for CombinedUpright {
             .as_mut()
             .unwrap()
             .layout_as_root(space, window, cx);
-        if {
-            static ON: std::sync::LazyLock<bool> =
-                std::sync::LazyLock::new(|| std::env::var("VT_DBG").is_ok());
-            *ON
-        } {
-            eprintln!("VT natural={:?}", self.natural);
-        }
         let mut style = gpui::Style::default();
         let side = gpui::Length::Definite(gpui::DefiniteLength::Absolute(
             gpui::AbsoluteLength::Pixels(px(self.em)),
@@ -5060,13 +5021,6 @@ impl Element for VerticalText {
         let mut style = gpui::Style::default();
         // Ordinary orthogonal blocks claim the independently measured inline size;
         // other contexts let their existing parent-sizing contract decide height.
-        if {
-            static ON: std::sync::LazyLock<bool> =
-                std::sync::LazyLock::new(|| std::env::var("VT_DBG").is_ok());
-            *ON
-        } {
-            eprintln!("VT2 natural={:?} cap={:?}", self.natural, self.claim_cap);
-        }
         // Факт прошлого кадра сильнее свободного замера: перенос строк при
         // решённой длине меняет число колонок, а свободный замер его не
         // видит (text-combine-upright-line-breaking-rules-001).
@@ -5076,13 +5030,6 @@ impl Element for VerticalText {
             .key
             .and_then(|k| VT_MEASURED.with(|c| c.borrow().get(&k).copied()))
             .unwrap_or(self.natural.height) };
-        if {
-            static ON: std::sync::LazyLock<bool> =
-                std::sync::LazyLock::new(|| std::env::var("VT_DBG").is_ok());
-            *ON
-        } {
-            eprintln!("VT3 key={:?} claim={:?}", self.key, claim);
-        }
         style.size.width = gpui::Length::Definite(gpui::DefiniteLength::Absolute(
             gpui::AbsoluteLength::Pixels(claim),
         ));

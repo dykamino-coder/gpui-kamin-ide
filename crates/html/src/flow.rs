@@ -862,20 +862,6 @@ impl ColumnStack {
             ((inline_avail - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0);
         let heights = self.kid_geoms();
         let (_, lines, plan, spans) = self.balance(&heights);
-        if std::env::var_os("KAMIN_FRAG_DEBUG").is_some() {
-            for (i, k) in heights.iter().enumerate() {
-                eprintln!(
-                    "axis {:?} kid {i}: h {} mt {} mb {} mono {} cuts {:?} solid {:?}",
-                    axis, k.h, k.mt, k.mb, k.monolith, k.cuts, k.solid
-                );
-            }
-            for f in &plan {
-                eprintln!(
-                    "frag kid {} copy {} col {} y {} from {} h {}",
-                    f.kid, f.copy, f.col, f.y, f.from, f.h
-                );
-            }
-        }
         self.col_w.set(col_w);
         *self.lines_plan.borrow_mut() = lines;
         let step = col_w + self.gap;
@@ -2582,21 +2568,6 @@ impl Element for ColumnStack {
             })
             .collect();
         let (_, lines, plan, spans) = self.balance(&heights);
-        // Отладка укладки: `KAMIN_FRAG_DEBUG=1` печатает меры и план в stderr.
-        if std::env::var_os("KAMIN_FRAG_DEBUG").is_some() {
-            for (i, k) in heights.iter().enumerate() {
-                eprintln!(
-                    "kid {i}: h {} mt {} mb {} mono {} cuts {:?} solid {:?} forced {:?} fb {} fa {} par {:?}",
-                    k.h, k.mt, k.mb, k.monolith, k.cuts, k.solid, k.forced, k.force_before, k.force_after, k.par
-                );
-            }
-            for f in &plan {
-                eprintln!(
-                    "frag kid {} copy {} col {} y {} from {} h {}",
-                    f.kid, f.copy, f.col, f.y, f.from, f.h
-                );
-            }
-        }
         self.col_w.set(col_w);
         *self.lines_plan.borrow_mut() = lines;
         let step = col_w + self.gap;
@@ -3373,23 +3344,6 @@ impl Element for PageStack {
         }
         self.grid.set(best);
         self.pages.set(pages);
-        if std::env::var("HTML_VIEWPORT").is_ok() {
-            eprintln!(
-                "PAGESTACK bounds={:?} kids={} heights={:?} cuts={:?} shape/mono={:?} forced={:?} area={:?} size={:?} pages={} grid={:?} plan={} icb_reach={}",
-                bounds,
-                kids.len(),
-                kids.iter().map(|k| k.h).collect::<Vec<_>>(),
-                kids.iter().map(|k| k.cuts.len()).collect::<Vec<_>>(),
-                self.kids.iter().map(|k| (k.shape.is_some(), k.monolith)).collect::<Vec<_>>(),
-                kids.iter().map(|k| k.forced.len()).collect::<Vec<_>>(),
-                g.area,
-                g.size,
-                pages,
-                best,
-                plan.len(),
-                self.icb_reach
-            );
-        }
         // 3. Копии раскладываются ЦЕЛИКОМ и поднимаются на срез — ровно как
         //    в `ColumnStack::prepaint`; видимую часть делает маска. Ширина —
         //    page area СВОЕГО листа (`page-size-004`: `width: 50%` на листе

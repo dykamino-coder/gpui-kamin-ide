@@ -383,13 +383,6 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
             _ => 1.2 * font,
         };
         let cut = crate::interact::clamp_cut(e.node_id).unwrap_or(n as f32 * line);
-        if {
-            static ON: std::sync::LazyLock<bool> =
-                std::sync::LazyLock::new(|| std::env::var("HTML_CLAMP_DBG").is_ok());
-            *ON
-        } {
-            eprintln!("CLAMP branch node={} n={} cut={}", e.node_id, n, cut);
-        }
         if !sized && cut.is_finite() {
             d = d.max_h(px(cut + mbp_y));
         }
@@ -1866,18 +1859,6 @@ pub fn render_paged_select(
         // Флоат: не влезший MARGIN box уходит на следующую страницу целиком
         // (`float-with-large-margin-bottom-cross-page-002`: эталон —
         // `break-before: page`), нижнее поле — часть его меры.
-        if std::env::var("HTML_VIEWPORT").is_ok()
-            && let Node::Element(e) = n
-        {
-            eprintln!(
-                "PAGEKID tag={} inline={} float={:?} oof={} shape={:?}",
-                e.tag,
-                e.inline,
-                e.style.float,
-                out_of_flow(&e.style),
-                shape_full(e, 4, shape_cx).map(|s| (s.0, s.3.len(), s.5.len()))
-            );
-        }
         // Флоат корня — ребёнок стопки СО СВОЕЙ мерой: css-break-4 §3.1
         // «User agents should also apply these properties to floated boxes
         // whose containing block is in the normal flow of the root fragmented
@@ -8445,12 +8426,11 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     // Измеряемый бандовый хост (`band_flow.rs`) — только в БЛОЧНОМ контейнере
     // горизонтального письма: в гибком и сетке `float` не
     // действует (css-flexbox-1 §3, css-grid-1 §6.1).
-    // С шагом F10 (`BF_F10=1`) хост работает и в вертикальном письме: план в
+    // Хост работает и в вертикальном письме (шаг F10): план в
     // логических осях, перевод в физику при сборке (`band_flow::VERT`).
     // Horizontal float sides are physical (CSS 2.1 §9.5.1); paragraphs
     // handle RTL within those bands. Vertical RTL still needs axis conversion.
     let vert_host = inherited.vertical == Some(true)
-        && band_f10()
         && inherited.sideways != Some(true);
     // Вне хоста и там, где у раскладки свой счёт строк и разрывов: под
     // `line-clamp` (точка среза считает строки и флоаты за ней —
@@ -10350,7 +10330,7 @@ fn orthogonal_vertical_children(children: Vec<Node>, container: &Computed) -> Ve
         if matches!(ch.tag.as_str(), "html" | "body")
             && ch.style.vertical_rl == Some(true)
             && ch.style.align_self.is_none()
-            && std::env::var("ANCH_BG").map_or(ch.style.bg_image.is_none(), |_| true)
+            && ch.style.bg_image.is_none()
         {
             ch.style.align_self = Some(crate::computed::Align::End);
         }
@@ -11959,19 +11939,6 @@ fn wrap_floats(
             sides.push(next_side);
             j += 1;
         }
-        if {
-            static ON: std::sync::LazyLock<bool> =
-                std::sync::LazyLock::new(|| std::env::var("FL_DBG").is_ok());
-            *ON
-        } {
-            eprintln!(
-                "FL floaters={} i={} j={} total={}",
-                floaters.len(),
-                i,
-                j,
-                nodes.len()
-            );
-        }
         // Соседи до ближайшего `clear` — они и обтекают. Внепоточный
         // (absolute/fixed) сосед НЕ обтекает: в колонке ряда он получил бы
         // её своим содержащим блоком, и `right: 96px` считался от узкой
@@ -13104,10 +13071,8 @@ fn band_float_m(next: &Element, em: f32) -> Option<()> {
         // Флоат с трансформацией — на прежнем пути: трансформацию даёт
         // сборка узла `element`, а каркас флоата хоста её не несёт
         // (`transform-scale-test`). Буквица — своим исключением строки
-        // (шаг F11, `Kind::Float { letter }`), прежний путь — по `BF_F11=0`.
-        if (next.attr("initial-letter") == Some("1") && !band_f11())
-            || next.style.transform.is_some()
-        {
+        // (шаг F11, `Kind::Float { letter }`).
+        if next.style.transform.is_some() {
             return None;
         }
         band_margins(&next.style, em)?;
@@ -13127,26 +13092,6 @@ fn band_host_m_tail(
     rest: Vec<Node>,
     probes: Vec<(usize, usize, Vec<Node>)>,
 ) -> Option<(Element, usize, Vec<Node>)> {
-    if {
-        static ON: std::sync::LazyLock<bool> =
-            std::sync::LazyLock::new(|| std::env::var("BF_DBG").is_ok());
-        *ON
-    } {
-        eprintln!(
-            "BFM floaters={} rest={:?}",
-            floaters.len(),
-            rest.iter()
-                .map(|n| match n {
-                    Node::Element(c) => format!(
-                        "{}:{:?}",
-                        c.tag,
-                        band_piece_m(n, em)
-                    ),
-                    Node::Text(t) => format!("txt{}", t.trim().len()),
-                })
-                .collect::<Vec<_>>()
-        );
-    }
     // Одинокий флоат без хвоста полосам не нужен — если перед ним в строке
     // ничего нет: флоат ПОСЛЕ текста («Inner<float>») встаёт на его строку
     // только в хосте.
@@ -13467,35 +13412,12 @@ fn band_orthogonal(c: &Computed) -> bool {
         || (c.vertical == Some(true) && c.vertical_rl.is_some_and(|r| r != (wm == 1)))
 }
 
-/// Включён ли шаг F10 — флоаты в вертикальном письме. По умолчанию включён
-/// (замер 02.10, `wptrun-br5`: writing-modes из quick 168 → 170, +3/−1 —
-/// `float-contiguous-vlr-005/-009`, `-vrl-004` в плюс, `-vrl-008` в минус;
-/// пары slice4 с `writing-mode` 48 → 50, +2/−0 — `css-break/background-image-001/-002`).
-/// `BF_F10=0` — прежний путь, для замера.
-fn band_f10() -> bool {
-    static ON: std::sync::LazyLock<bool> =
-        std::sync::LazyLock::new(|| std::env::var("BF_F10").map_or(true, |v| v != "0"));
-    *ON
-}
-
 /// Есть ли в поддереве непустой текст.
 fn subtree_has_text(e: &Element) -> bool {
     e.children.iter().any(|n| match n {
         Node::Text(t) => !t.trim().is_empty(),
         Node::Element(c) => subtree_has_text(c),
     })
-}
-
-/// Включён ли шаг F11 — буквица в измеряемом хосте. По умолчанию включён
-/// (замер 02.10 на 486 парах initial-letter/first-letter всего корпуса,
-/// база main 2ca1099: 421 → 432, +11/−0 — `initial-letter-drop-initial`
-/// (-vlr/-vrl), `-float-001` (-vlr/-vrl), `-indentation`,
-/// `-raised-sunken-caps-raise/-sunken`, `-with-first-line`,
-/// `text-box-trim-initial-letter-end-001`). `BF_F11=0` — прежний путь.
-fn band_f11() -> bool {
-    static ON: std::sync::LazyLock<bool> =
-        std::sync::LazyLock::new(|| std::env::var("BF_F11").map_or(true, |v| v != "0"));
-    *ON
 }
 
 /// Блок обычного потока для измеряемого хоста (шаг F4): блочного уровня,
@@ -18490,14 +18412,6 @@ fn paragraph_pieces_routed(
                 Some((_, strut)) => gpui::px(*strut),
                 None => line,
             };
-            if {
-                static ON: std::sync::LazyLock<bool> =
-                    std::sync::LazyLock::new(|| std::env::var("PLAIN_DBG").is_ok());
-                *ON
-            } && inherited.preserve_newlines == Some(true)
-            {
-                eprintln!("PLAIN pre text={:?}", text);
-            }
             let id = gpui::ElementId::Integer(text_id(&text));
             let family = inherited.font_family.clone().unwrap_or_default();
             let para = crate::lines::Paragraph::new(
@@ -18703,19 +18617,6 @@ fn paragraph_pieces_routed(
     let has_atom = pieces.iter().any(|p| matches!(p, inline::Piece::Atom(_)));
     let em_base = opts.base_size();
     let mut render_text = |t: String, style: &Computed| -> AnyElement {
-        if {
-            static ON: std::sync::LazyLock<bool> =
-                std::sync::LazyLock::new(|| std::env::var("RT_DBG").is_ok());
-            *ON
-        } {
-            eprintln!(
-                "RT t={:?} rot={:?} lh={:?} fs={:?}",
-                t.chars().take(3).collect::<String>(),
-                style.rotated_line,
-                style.line_height,
-                style.font_size
-            );
-        }
         // Стоячие знаки в вертикальном письме (`text-orientation: mixed`,
         // CJK): набор идёт вертикальными формами шрифта — возможность `vert`
         // подставляет глиф, а продвижение берётся из его вертикальных метрик
@@ -18740,26 +18641,6 @@ fn paragraph_pieces_routed(
         let d = apply(div(), &style.text_only())
             .max_w_full()
             .child(SharedString::from(t.clone()));
-        if {
-            static ON: std::sync::LazyLock<bool> =
-                std::sync::LazyLock::new(|| std::env::var("RT_DBG").is_ok());
-            *ON
-        } {
-            let tag = t.chars().take(3).collect::<String>();
-            return d
-                .relative()
-                .child(
-                    gpui::canvas(
-                        |_, _, _| {},
-                        move |b: gpui::Bounds<gpui::Pixels>, _, _, _| {
-                            eprintln!("RTB {:?} bounds={:?}", tag, b);
-                        },
-                    )
-                    .absolute()
-                    .size_full(),
-                )
-                .into_any_element();
-        }
         d.into_any_element()
     };
     // Начальное значение `text-align` — `start`, а он при письме справа налево
@@ -27198,13 +27079,6 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             ix += span;
         }
     }
-    if {
-        static ON: std::sync::LazyLock<bool> =
-            std::sync::LazyLock::new(|| std::env::var("TCA_DBG").is_ok());
-        *ON
-    } {
-        eprintln!("TCA cols={col_widths:?}");
-    }
     // Слой ГРУПП КОЛОНОК и слой КОЛОНОК — две полосы, снизу вверх (§17.5.1:
     // «the next layer contains the column groups… on top of the column groups
     // are the areas representing the column boxes»). У каждой свой буфер
@@ -28786,16 +28660,6 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 .or_else(|| first_row_widths.get(i).copied().flatten())
         })
         .collect();
-    if {
-        static ON: std::sync::LazyLock<bool> =
-            std::sync::LazyLock::new(|| std::env::var("HTML_ROWBG").is_ok());
-        *ON
-    } {
-        eprintln!(
-            "TABLE cols={} col_widths={:?} first_row={:?}",
-            cols, col_widths, first_row_widths
-        );
-    }
     let tracks = track_list_collapsed(
         cols,
         e.style.table_fixed == Some(true),
@@ -28831,13 +28695,6 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             _ => None,
         },
     );
-    if {
-        static ON: std::sync::LazyLock<bool> =
-            std::sync::LazyLock::new(|| std::env::var("HTML_ROWBG").is_ok());
-        *ON
-    } {
-        eprintln!("TABLE tracks={:?}", tracks);
-    }
     // Таблица ЗАДАННОЙ высоты раздаёт лишнее место рядам БЕЗ своей высоты
     // (CSS 2.1 §17.5.3): ряд с высотой (своей или ячеек) держит её, остальные
     // делят остаток. Без этого средний ряд решётки 64/auto/64 в таблице 224px
