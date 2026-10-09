@@ -65,12 +65,15 @@ pub(crate) fn copy_into_own(
     let src_desc = shared.desc();
 
     unsafe {
-        // Указатели устройства и контекста нам одолжены окном: оборачиваем на
-        // время вызова и возвращаем как было.
-        let device: ID3D11Device = Interface::from_raw(device_raw);
-        let context: ID3D11DeviceContext = Interface::from_raw(context_raw);
+        // Borrowed pointers: owning snapshots живут у caller до конца копии.
+        let device = ID3D11Device::from_raw_borrowed(&device_raw)?;
+        let context = ID3D11DeviceContext::from_raw_borrowed(&context_raw)?;
 
-        let own = (|| {
+        let owner = context.GetDevice().ok()?;
+        if owner.as_raw() != device_raw || !shared.belongs_to(device_raw) {
+            return None;
+        }
+        (|| {
             // Прежняя своя текстура годится, только если описание сходится.
             // Ищем среди запомненных размеров — при осцилляции ресайза нужный
             // почти всегда уже создан.
@@ -79,7 +82,8 @@ pub(crate) fn copy_into_own(
                     pool.iter()
                         .find(|texture| {
                             let desc = texture.desc();
-                            desc.Width == src_desc.Width
+                            texture.belongs_to(device_raw)
+                                && desc.Width == src_desc.Width
                                 && desc.Height == src_desc.Height
                                 && desc.Format == src_desc.Format
                         })
@@ -129,11 +133,7 @@ pub(crate) fn copy_into_own(
                 let _ = m.ReleaseSync(0);
             }
             Some(own)
-        })();
-
-        let _ = Interface::into_raw(device);
-        let _ = Interface::into_raw(context);
-        own
+        })()
     }
 }
 
@@ -146,3 +146,7 @@ pub(crate) fn copy_into_own(
 ) -> Option<GpuTexture> {
     None
 }
+
+#[cfg(all(test, windows))]
+#[path = "device_copy_tests.rs"]
+mod device_tests;
