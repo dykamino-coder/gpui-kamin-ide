@@ -1054,11 +1054,10 @@ detached copies. PTY output is capped at 1 MiB, windows at 16, probe stdin at
 128 KiB and retained probe JSON at 4 KiB; no raw TUI/error payload is exposed.
 
 Fix PR [#202](https://github.com/dykamino-coder/gpui-kamin-ide/pull/202).
-Status remains ready/prepared, not done. Synthetic fixtures and
+Task-specific status: implementation prepared; blocked on mandatory authenticated Linux runtime acceptance, not done. Synthetic fixtures and
 the actual Account component Chrome comparison do not replace the required
 authenticated isolated Linux CLI/browser quota comparison within ten seconds.
-That gate remains for a maintainer with an authorized disposable account/runtime;
-no deployment credentials were sought. Statusline rate limits may be absent
+Remaining merge blocker (owner: maintainer with an authorized disposable Linux account/runtime): on the exact PR candidate, record the actual Claude Code version and authenticate the disposable account; compare native `/usage`, dashboard JSON and the actual Account card for that same account/reset window within ten seconds. Verify matching percentages and reset timestamps for every available common/model window, graceful absence of optional windows, and partial/stale treatment when authoritative reset epochs are absent. Confirm the statusline field contract against that actual CLI version. Record candidate SHA, timestamps and sanitized task-specific evidence; never retain OAuth credentials or raw account output. This authenticated comparison and version-specific contract verification are NOT RUN. Green required CI, the synthetic Linux PTY gate and component screenshots satisfy neither. No deployment credentials were sought. Statusline rate limits may be absent
 before a model response, so compatibility capture stays explicitly partial when
 authoritative reset epochs or version metadata are unavailable.
 
