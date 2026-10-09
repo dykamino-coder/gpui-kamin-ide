@@ -13,7 +13,7 @@ pub(super) fn lift(nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
         .collect()
 }
 
-fn transparent(e: &Element) -> bool {
+pub(super) fn transparent(e: &Element) -> bool {
     let s = &e.style;
     let zero = |v| matches!(v, None | Some(crate::value::Len::Px(0.0)));
     let undecorated = [s.margin, s.padding, s.borders()]
