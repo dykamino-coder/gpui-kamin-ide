@@ -6,6 +6,7 @@
 //! Наша часть — превратить его дерево в своё: с каскадом и без узлов, которые
 //! ничего не рисуют.
 
+pub mod encoding;
 pub(crate) mod subgrid_axes;
 pub(crate) mod grid_static_position;
 pub(crate) mod replaced_display;

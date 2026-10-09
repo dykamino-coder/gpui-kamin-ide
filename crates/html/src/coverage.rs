@@ -457,7 +457,7 @@ const CONSUMERS: &[&str] = &[
     include_str!("paint/border_image/mod.rs"),
     include_str!("svg.rs"),
     include_str!("scroll.rs"),
-    include_str!("doc.rs"),
+    include_str!("document/mod.rs"),
     include_str!("dom/mod.rs"),
     include_str!("dom/walk.rs"),
     include_str!("dom/element_style.rs"),

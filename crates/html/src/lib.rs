@@ -42,9 +42,9 @@ pub use style::generated::counters;
 pub use style::generated::counters_scan;
 pub mod coverage;
 pub use style::css;
-pub mod doc;
+pub use document as doc;
 pub mod dom;
-pub mod encoding;
+pub use dom::encoding;
 pub mod float;
 pub mod flow;
 pub use text::fonts;
@@ -66,6 +66,8 @@ pub mod zoom;
 // Доменные модули (рефакторинг монолитов: перенос по доменам).
 #[doc(hidden)]
 pub mod animation;
+#[doc(hidden)]
+pub mod document;
 #[doc(hidden)]
 pub mod interactive;
 #[doc(hidden)]
