@@ -15,6 +15,8 @@ pub(crate) mod finish;
 pub(crate) use crate::layout::table::finish::*;
 pub(crate) mod rows;
 pub(crate) use crate::layout::table::rows::*;
+pub(crate) mod cell_borders;
+pub(crate) use crate::layout::table::cell_borders::*;
 
 /// Таблица.
 ///
