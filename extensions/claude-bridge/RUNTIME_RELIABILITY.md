@@ -1423,7 +1423,7 @@ records. No native pump code changes, timeout, automatic retry, cancellation or
 reconciliation are introduced. Existing unresolved pending and other-document
 settlement behavior is deliberately not claimed fixed by diagnostics.
 
-Fix PR pending for this diagnostic phase. Status remains confirmed incident;
+Fix PR [#201](https://github.com/dykamino-coder/gpui-kamin-ide/pull/201) for this diagnostic phase. Status remains confirmed incident;
 maintainer must correlate these records with the native BR-31 pump boundary and
 repeat the original disposable Windows scenario before deciding the complete
 bounded invoke/reconciliation policy. A later behavioral implementation retains
