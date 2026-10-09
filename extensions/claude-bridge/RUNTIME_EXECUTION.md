@@ -185,7 +185,7 @@ production-run требует repository secrets и отдельный след�
 | [BR-05](RUNTIME_RELIABILITY.md#br-05--rehydrate-authoritative-connection-state) | ready | verify | connection | код PR #14 merged | Остаток live gate: send/close-tab/server errors на exact-main server |
 | [BR-06](RUNTIME_RELIABILITY.md#br-06--webview-update-stalls-until-pointer-activity) | ready | verify | rendering/connection | BR-31 implementation PR #147 merged; его R6 ещё открыт | Повторить оба исходных Chat no-pointer сценария и Plugins; сверить duplicate/остаток |
 | [BR-07](RUNTIME_RELIABILITY.md#br-07--surface-native-claude-attention-in-chat) | waiting | change | native attention | BR-11 | Минимальный tab-scoped Console banner |
-| [BR-08](RUNTIME_RELIABILITY.md#br-08--explain-unexpected-automatic-reload-skills) | ready | change | skills sync | none | Prepared bounded owner-scoped revision/reason telemetry; PR review, then deployment-owner observation; no reload behavior change |
+| [BR-08](RUNTIME_RELIABILITY.md#br-08--explain-unexpected-automatic-reload-skills) | ready | change | skills sync | none | Bounded revision/reason telemetry PR + observation |
 | [BR-09](RUNTIME_RELIABILITY.md#br-09--make-agent-teams-report-delivery-explicit) | ready | verify | Agent Teams | код PR #15 merged | 3/3 reports и один bounded recovery на authenticated Windows/Linux gate |
 | [BR-10](RUNTIME_RELIABILITY.md#br-10--show-the-effective-hook-in-approval-ui) | ready | verify | hooks | код PR #13 merged | Настоящие focus/Tab/Shift+Tab/approve/reject на Windows |
 | [BR-11](RUNTIME_RELIABILITY.md#br-11--inventory-native-cli-only-blocking-states) | ready | research | native attention | none | Versioned blocker inventory |
