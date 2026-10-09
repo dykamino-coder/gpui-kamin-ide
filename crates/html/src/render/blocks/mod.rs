@@ -2,7 +2,11 @@
 
 use crate::render::*;
 pub(crate) mod flow;
+pub(crate) mod positioned;
+pub(crate) mod canvas;
 pub(crate) use crate::render::blocks::flow::*;
+pub(crate) use crate::render::blocks::positioned::*;
+pub(crate) use crate::render::blocks::canvas::*;
 
 // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): разворачивать `text-emphasis` в поштучные
 // руби (по знаку-аннотации над каждой буквой базы, кроме пробелов и

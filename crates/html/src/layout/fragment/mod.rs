@@ -11,6 +11,7 @@ pub mod line_shape;
 pub mod probe;
 pub mod push;
 pub mod shape_contents;
+pub(crate) mod shape_kids;
 pub mod table_bands;
 pub mod types;
 

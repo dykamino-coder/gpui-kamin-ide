@@ -139,7 +139,7 @@ pub(crate) fn scrollable(e: &Element, inherited: &Computed, opts: &RenderOpts) -
             // содержимое было видно ниже края панели.
             let outer_margin = inner.style.margin;
             inner.style.margin = Default::default();
-            let (built, native_box) = scroll_box::build(node.node_id, handle, h, v, outer_margin,
+            let (built, native_box) = crate::interactive::scroll_target::build(node.node_id, handle, h, v, outer_margin,
                 || element(&inner, &inherited, &opts));
             if native_box { return built; }
             use gpui::{InteractiveElement, StatefulInteractiveElement};
