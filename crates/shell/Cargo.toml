@@ -84,6 +84,10 @@ windows = { version = "0.62", features = [
 # VisualTestContext/TestAppContext доступны только с test-support
 gpui = { workspace = true, features = ["test-support"] }
 
+[target.'cfg(windows)'.dev-dependencies]
+# WARP fixtures create real D3D11 devices; production interop borrows GPUI's.
+windows = { version = "0.62", features = ["Win32_Graphics_Direct3D"] }
+
 [build-dependencies]
 # Иконка и VERSIONINFO в exe — иначе диспетчер задач показывает пустой квадрат.
 winres = "0.1"
