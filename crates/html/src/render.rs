@@ -18215,7 +18215,15 @@ fn paragraph_pieces_routed(
     // строки шли в исходном порядке вместо перевёрнутого).
     // Только ОТМЕНА и ИЗОЛЯЦИЯ: своё направление письма абзац и так знает —
     // оно уходит в основной уровень разбора двунаправленности.
-    let own_bidi = inherited.bidi_override == Some(true) || inherited.bidi_isolate == Some(true);
+    // Абзац без текста, из одних атомов (U+FFFC — нейтральные, UAX #9 N1/N2), от знаков
+    // изоляции порядка не меняет, а знаки — текстовые куски — уводили её с
+    // пути атомов: inline-block'и `dir=rtl`-блока (HTML `[dir] { unicode-bidi:
+    // isolate }`) шли слева направо (`anchor-position-005`).
+    let own_bidi = inherited.bidi_override == Some(true)
+        || (inherited.bidi_isolate == Some(true)
+            && pieces.iter().any(|p| {
+                matches!(p, inline::Piece::Text { text, .. } if !text.trim().is_empty())
+            }));
     let marks = if own_bidi {
         inline::bidi_marks(inherited, inherited)
     } else {
