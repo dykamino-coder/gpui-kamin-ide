@@ -4,7 +4,7 @@ use crate::computed::{Computed, Position};
 use crate::interact::{SpotCell, cb_push, icb_push, late_push};
 use gpui::AnyElement;
 
-pub(super) fn push(
+pub(crate) fn push(
     spot: SpotCell,
     element: AnyElement,
     own: &Computed,

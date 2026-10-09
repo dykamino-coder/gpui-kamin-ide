@@ -3,7 +3,7 @@
 use std::cell::Cell;
 
 #[derive(Clone, Copy, Default)]
-pub(super) struct Depth {
+pub(crate) struct Depth {
     paint: usize,
     deferred: usize,
 }
@@ -12,11 +12,11 @@ thread_local! {
     static DEPTH: Cell<Depth> = const { Cell::new(Depth { paint: 0, deferred: 0 }) };
 }
 
-pub(super) fn snapshot() -> Depth {
+pub(crate) fn snapshot() -> Depth {
     DEPTH.with(Cell::get)
 }
 
-pub(super) fn inside() -> bool {
+pub(crate) fn inside() -> bool {
     snapshot().paint > 0
 }
 
@@ -62,10 +62,10 @@ impl Drop for Guard {
 
 // Lazy subtrees must restore both boundaries, rather than treating every
 // captured paint context as deferred GPUI drawing.
-pub(super) struct DepthScope(Depth);
+pub(crate) struct DepthScope(Depth);
 
 impl DepthScope {
-    pub(super) fn enter(depth: Depth) -> Self {
+    pub(crate) fn enter(depth: Depth) -> Self {
         Self(DEPTH.with(|current| current.replace(depth)))
     }
 }

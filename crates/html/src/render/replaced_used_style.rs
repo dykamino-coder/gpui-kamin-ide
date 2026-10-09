@@ -7,7 +7,7 @@ use crate::value::Len;
 
 /// CSS Sizing 4 #aspect-ratio: authored ratios transfer the box-sizing box;
 /// natural ratios, including auto <ratio>, always transfer the content box.
-pub(super) fn transfer(
+pub(crate) fn transfer(
     style: &crate::computed::Computed,
     size: f32,
     ratio: f32,
@@ -26,7 +26,7 @@ pub(super) fn transfer(
     }
 }
 
-pub(super) fn normalize(element: &Element, containing_width: Option<f32>) -> Option<Element> {
+pub(crate) fn normalize(element: &Element, containing_width: Option<f32>) -> Option<Element> {
     let keyword = |length| {
         matches!(
             length,
@@ -74,7 +74,7 @@ pub(super) fn normalize(element: &Element, containing_width: Option<f32>) -> Opt
 
 /// CSS 2 sections 10.2 and 10.3.2 resolve an inline replaced width against
 /// its containing block, before the synthetic line flex row is constructed.
-pub(super) fn inline_percentage_width(style: &mut crate::computed::Computed, basis: Option<f32>) {
+pub(crate) fn inline_percentage_width(style: &mut crate::computed::Computed, basis: Option<f32>) {
     let Some(Len::Pct(fraction)) = style.width else {
         return;
     };

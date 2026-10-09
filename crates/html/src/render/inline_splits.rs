@@ -10,7 +10,7 @@ use crate::value::Len;
 /// блок | блок | анонимный блок»: строчное содержимое до и после блока
 /// остаётся в своих анонимных коробках, сам блок встаёт между ними. Подряд
 /// идущие блоки в отдельные анонимные коробки не заворачиваются.
-pub(super) fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
+pub(crate) fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
     let need = nodes.iter().any(|n| match n {
         Node::Element(e) => real_inline(e) && !out_of_flow(&e.style) && contains_block(&e.children),
         Node::Text(_) => false,

@@ -12,7 +12,7 @@ pub(super) fn mark_start(host: &mut Element, top_open: bool, preceding: &[Node])
     }
 }
 
-pub(super) fn supported(e: &Element) -> bool {
+pub(crate) fn supported(e: &Element) -> bool {
     // Positioned boxes need their original containing-block adapter; the
     // independently measured host cannot preserve that coordinate system.
     e.style.position.is_none()

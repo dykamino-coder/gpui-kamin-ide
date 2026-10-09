@@ -7,7 +7,7 @@ use super::*;
 /// box каждой коробки в точках листа и её элемент. Мера — по содержимому
 /// (`probe`): главная ось стороны верха/низа — min/max-content ширина, боковых
 /// — высота при уже решённой ширине (Blink `EdgeMarginNodePreferredSize`).
-pub(super) fn layout_margin_boxes(
+pub(crate) fn layout_margin_boxes(
     boxes: Vec<MarginBox>,
     g: &PageGeom,
     window: &mut Window,

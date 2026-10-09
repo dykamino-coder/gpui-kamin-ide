@@ -21,7 +21,7 @@ pub(crate) mod intrinsic_measure;
 pub(crate) mod row_element;
 pub(crate) mod margin_boxes;
 pub(crate) mod margin_box_size;
-use margin_boxes::layout_margin_boxes;
+pub(crate) use margin_boxes::layout_margin_boxes;
 
 pub(crate) use gpui::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,

@@ -74,7 +74,7 @@ pub(super) fn empty_iframe_size(
     copy
 }
 
-pub(super) fn empty_iframe(e: &Element, inherited: &Computed, viewport: (f32, f32)) -> AnyElement {
+pub(crate) fn empty_iframe(e: &Element, inherited: &Computed, viewport: (f32, f32)) -> AnyElement {
     let mut copy = empty_iframe_size(e, inherited, viewport);
     if copy.style.contain_size == Some(true) {
         copy.attrs.retain(|(name, _)| name != "src");
@@ -83,13 +83,13 @@ pub(super) fn empty_iframe(e: &Element, inherited: &Computed, viewport: (f32, f3
     super::styled_div(&copy).flex_shrink_0().into_any_element()
 }
 
-pub(super) fn default_iframe(e: &Element) -> bool {
+pub(crate) fn default_iframe(e: &Element) -> bool {
     e.tag == "iframe"
         && e.attr("src").is_none_or(|src| src.trim().is_empty())
         && e.style.contain_size != Some(true)
 }
 
-pub(super) fn position(mut image: gpui::Img, style: &Computed) -> gpui::Img {
+pub(crate) fn position(mut image: gpui::Img, style: &Computed) -> gpui::Img {
     if let Some(position) = style.object_position {
         image = image.object_position(gpui::point(
             crate::apply::len_to_gpui(position.x.unwrap_or(Len::Pct(0.5))),
@@ -106,7 +106,7 @@ pub(super) fn position(mut image: gpui::Img, style: &Computed) -> gpui::Img {
 /// mask-image-svg-child-will-change: маска ложится на коробку 200×200 с
 /// рамкой 50). Без рамки и отбивки — голый растр, путь прежний.
 /// `None` — рисунок не разобрался.
-pub(super) fn svg_replaced(e: &Element, sized: &Element, merged: &Computed) -> Option<AnyElement> {
+pub(crate) fn svg_replaced(e: &Element, sized: &Element, merged: &Computed) -> Option<AnyElement> {
     let boxed = svg_has_box(merged);
     let inner;
     let sized = if boxed {

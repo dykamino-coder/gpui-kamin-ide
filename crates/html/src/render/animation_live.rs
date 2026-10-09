@@ -25,7 +25,7 @@ fn animation(spec: &AnimSpec) -> gpui::Animation {
     animation
 }
 
-pub(super) fn animated(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(crate) fn animated(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let (Some(frames), Some(spec)) = (e.anim.clone(), e.style.animation.clone()) else {
         return element(e, inherited, opts);
     };

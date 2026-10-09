@@ -26,7 +26,7 @@ pub(super) fn text_turn() -> bool {
     HAS_TEXT_TURN.with(|cell| cell.get())
 }
 
-pub(super) fn physical(
+pub(crate) fn physical(
     e: &Element,
     flow: &Computed,
     opts: &super::RenderOpts,
@@ -71,7 +71,7 @@ pub(super) fn physical(
     )
 }
 
-pub(super) fn resolved(e: &Element, flow: &Computed) -> Option<Element> {
+pub(crate) fn resolved(e: &Element, flow: &Computed) -> Option<Element> {
     (e.style.display == Some(Display::InlineBlock) && e.style.inline_display != Some(true))
         .then(|| super::pct_resolved_against_block(e, flow))
         .flatten()

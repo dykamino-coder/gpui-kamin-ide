@@ -48,7 +48,7 @@ fn shadow_layer(
     placed.child(copy).into_any_element()
 }
 
-pub(super) fn with_text_shadow(
+pub(crate) fn with_text_shadow(
     el: AnyElement,
     style: &Computed,
     nodes: &[Node],

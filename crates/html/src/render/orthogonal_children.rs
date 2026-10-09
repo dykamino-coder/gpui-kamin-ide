@@ -4,7 +4,7 @@ use crate::computed::{Align, Computed, Display};
 use crate::dom::Node;
 use crate::value::Len;
 
-pub(super) fn orthogonal_children(
+pub(crate) fn orthogonal_children(
     children: Vec<Node>,
     container: &Computed,
     icb_w: f32,

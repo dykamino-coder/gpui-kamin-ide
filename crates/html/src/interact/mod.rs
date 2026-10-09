@@ -28,8 +28,8 @@ pub(crate) mod combined_geometry;
 pub(crate) mod gap_segments;
 pub(crate) mod gap_fragment_tail;
 pub(crate) mod transform_geometry;
-use gap_segments::segments;
-use transform_geometry::quarter_turn;
+pub(crate) use gap_segments::segments;
+pub(crate) use transform_geometry::quarter_turn;
 
 /// По каким осям разрешено тянуть.
 #[derive(Clone, Copy, Debug, PartialEq)]

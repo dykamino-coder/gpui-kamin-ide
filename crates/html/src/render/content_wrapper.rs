@@ -20,7 +20,7 @@ fn wrapper_width_keyword(style: &Computed) -> Option<CssSizingKeyword> {
     }
 }
 
-pub(super) fn content_sized_wraps(element: &Element) -> bool {
+pub(crate) fn content_sized_wraps(element: &Element) -> bool {
     if native_intrinsic::eligible(element) { return false; }
     let c = &element.style;
     let keyword = |l: Option<Len>| {
@@ -55,7 +55,7 @@ pub(super) fn for_element(el: AnyElement, element: &Element, parent: &Computed,
     }
 }
 
-pub(super) fn content_sized(
+pub(crate) fn content_sized(
     el: AnyElement,
     c: &Computed,
     item_style: &Computed,

@@ -8,7 +8,7 @@ use crate::value::Len;
 /// than supplying a natural pixel size (SVG 2 §8.12; CSS 2 §10.5). Blink's
 /// SVGSVGElement::CollectStyleForPresentationAttribute likewise collects them
 /// only for the outermost SVG. An authored CSS dimension takes precedence.
-pub(super) fn resolve(element: &Element, parent: &Computed) -> Option<Element> {
+pub(crate) fn resolve(element: &Element, parent: &Computed) -> Option<Element> {
     if element.tag != "svg"
         || element.style.position == Some(Position::Fixed)
         || parent.inline_display == Some(true)

@@ -11,7 +11,7 @@ use crate::{
     value::Len,
 };
 
-pub(super) fn shape_full(element: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
+pub(crate) fn shape_full(element: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     let mut shape = shape_contents(element, depth, cx)?;
     // Table height is a minimum of the row grid (CSS Tables 3), and its
     // specialised measurement already owns that sizing/distribution pass.
