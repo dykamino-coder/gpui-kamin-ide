@@ -41,7 +41,7 @@ pub mod counter_style_rules;
 pub mod counters;
 pub mod counters_scan;
 pub mod coverage;
-pub mod css;
+pub use style::css;
 pub mod doc;
 pub mod dom;
 pub mod encoding;
