@@ -5144,7 +5144,7 @@ impl Paragraph {
             // вызовом: `paint` кладёт только глифы. Пока его не звали, фон
             // строчного элемента не появлялся вовсе — проверено пробой, где
             // `background: green; color: transparent` давал пустую страницу.
-            let _ = shaped.paint_background(point(x, at.y), self.line_height, gpui::TextAlign::Left, None, window, cx);
+            self.paint_run_background(&shaped, point(x, at.y), window, cx);
             let origin = self.text_raster_origin(&shaped, point(x, at.y), window);
             // css-text-decor-3 §2.1 «underlines and overlines … are drawn
             // below the text, line-throughs above it» (painting order).
@@ -5709,7 +5709,7 @@ impl Paragraph {
             };
             let at = point(x + px(rx), y + dy + px(ry) + fix);
             // Подложка прогона — отдельным вызовом, см. выше.
-            let _ = shaped.paint_background(at, self.line_height, gpui::TextAlign::Left, None, window, cx);
+            self.paint_run_background(&shaped, at, window, cx);
             let origin = self.text_raster_origin(&shaped, at, window);
             if decor {
                 // Украшения промежутка до слова: от правого края прошлого
@@ -5789,14 +5789,7 @@ impl Paragraph {
                         (Some(l), Some(w)) => y + px(l - w),
                         _ => y,
                     };
-                    let _ = gap_shaped.paint_background(
-                        point(gap_x, gap_y),
-                        self.line_height,
-                        gpui::TextAlign::Left,
-                        None,
-                        window,
-                        cx,
-                    );
+                    self.paint_run_background(&gap_shaped, point(gap_x, gap_y), window, cx);
                 }
             }
             // Растянутый выключкой пробел тоже принадлежит прогону, и его

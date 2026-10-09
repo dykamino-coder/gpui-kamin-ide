@@ -15,11 +15,19 @@ pub fn split_first_letter(pieces: Vec<Piece>, style: &Computed) -> Vec<Piece> {
                 blocked = true;
                 None
             }
-            Piece::Text { text: part, .. }
-                if !blocked && part != SPACER && part != ZWSP && !part.chars().all(bidi_format) =>
+            Piece::Text { text: part, style: own }
+                if !own.first_letter_excluded
+                    && !blocked
+                    && part != SPACER
+                    && part != ZWSP
+                    && !part.chars().all(bidi_format) =>
             {
                 let start = text.len();
-                text.push_str(part);
+                // CSS 2.2 section 5.12.2: a letter after a hard break is
+                // not on the first formatted line, even when that line is empty.
+                let end = part.find('\n').unwrap_or(part.len());
+                text.push_str(&part[..end]);
+                blocked = end < part.len();
                 Some(start..text.len())
             }
             _ => None,

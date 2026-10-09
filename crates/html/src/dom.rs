@@ -3376,7 +3376,7 @@ fn walk(
                 counters,
                 &me,
                 path,
-                Sibs::EMPTY,
+                sibs,
                 "before",
                 &attrs,
             ) {
@@ -3440,7 +3440,7 @@ fn walk(
                 counters,
                 &me,
                 path,
-                Sibs::EMPTY,
+                sibs,
                 "after",
                 &attrs,
             ) {

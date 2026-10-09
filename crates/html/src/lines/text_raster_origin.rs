@@ -1,4 +1,4 @@
-//! Preserve exact glyph baselines and align platform raster baselines at paint time.
+//! Preserve inline background geometry and align glyph raster baselines at paint time.
 
 use super::*;
 
@@ -10,6 +10,30 @@ impl Paragraph {
             && !empty(c.width)
             && !empty(c.height);
         self
+    }
+
+    pub(super) fn paint_run_background(
+        &self,
+        shaped: &gpui::ShapedLine,
+        origin: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        // CSS 2.1 section 10.6.1: an inline content box is independent of
+        // line-height. Restore its layout origin before GPUI adds half-leading;
+        // snapping the paragraph first shifts equivalent baseline-aligned boxes.
+        // Glyph painting restores this same offset through Window separately.
+        let mut exact = origin + self.glyph_nudge;
+        if self.selection_vertical.is_none() && !crate::interact::in_rotated_frame() {
+            let base = (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent;
+            // CSS 2.1 section 14.2: transparent descendants paint in their
+            // containing opaque fill's device frame, as glyphs do below.
+            let offset = window
+                .css_text_background_offset(exact + point(px(0.0), base))
+                .or(self.opaque_text_origin.then_some(self.glyph_nudge));
+            exact -= offset.unwrap_or_default();
+        }
+        let _ = shaped.paint_background(exact, self.line_height, gpui::TextAlign::Left, None, window, cx);
     }
 
     pub(super) fn text_raster_origin(

@@ -17,7 +17,9 @@ pub(super) fn reference_box(
     window: &mut Window,
 ) -> Bounds<Pixels> {
     let snap_rectilinear = window.current_transformation() == gpui::TransformationMatrix::unit();
-    if rectangular(group)
+    let mask_clip = group.mask_clip_off.is_some() && snap_rectilinear;
+    if mask_clip
+        || rectangular(group)
         || group.polygon.len() == 4
         || (snap_rectilinear && group.polygon.len() >= 4)
     {
@@ -28,7 +30,8 @@ pub(super) fn reference_box(
             size: window.layout_size_unrounded(id),
         };
         let points = polygon_clip::points(group, reference);
-        if rectangular(group)
+        if mask_clip
+            || rectangular(group)
             || polygon_clip::rectangle(&points, 1.0).is_some()
             || (snap_rectilinear && polygon_clip::rectilinear(&points))
         {
@@ -42,33 +45,24 @@ pub(super) fn reference_box(
 }
 
 pub(super) fn device_edges(group: &Grouped, rect: [f32; 4]) -> [f32; 4] {
-    if !rectangular(group) {
+    if !rectangular(group) && group.mask_clip_off.is_none() {
         return rect;
     }
+    // CSS Masking 1 section 7.5 uses the same painting boxes as
+    // background-clip. Snap their final device edges like background paint,
+    // rather than excluding the last pixel at a half-device-pixel endpoint.
     legacy_clip::snap(rect)
 }
 
-pub(super) fn resolve(
-    group: &Grouped,
-    bounds: Bounds<Pixels>,
-    clip_bounds: Bounds<Pixels>,
-    sf: f32,
-) -> Option<[f32; 4]> {
-    // The polygon's reference box must not move the separate mask painting
-    // area, which follows the painted border-box rather than polygon geometry.
-    let clip_bounds = if group.mask_clip_off.is_some() {
-        bounds
-    } else {
-        clip_bounds
-    };
+pub(super) fn resolve(group: &Grouped, clip_bounds: Bounds<Pixels>, sf: f32) -> Option<[f32; 4]> {
     group
         .mask_clip_off
         .map(|[ct, cr, cb, cl]| {
             [
                 cl,
                 ct,
-                (f32::from(bounds.size.width) - cl - cr).max(0.0),
-                (f32::from(bounds.size.height) - ct - cb).max(0.0),
+                (f32::from(clip_bounds.size.width) - cl - cr).max(0.0),
+                (f32::from(clip_bounds.size.height) - ct - cb).max(0.0),
             ]
         })
         .or_else(|| {
