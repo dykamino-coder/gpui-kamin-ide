@@ -6,16 +6,24 @@ class DashboardWSClient {
   private ws: WebSocket | null = null
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private url = ''
+  private generation = 0
+  private stopped = true
   onReconnect: (() => void) | null = null
 
   connect(url: string) {
+    this.disconnect()
     this.url = url
-    this.doConnect()
+    this.stopped = false
+    this.doConnect(this.generation)
   }
 
   disconnect() {
+    this.stopped = true
+    this.generation++
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null }
-    if (this.ws) { this.ws.close(); this.ws = null }
+    const socket = this.ws
+    this.ws = null
+    socket?.close()
     isConnected.value = false
   }
 
@@ -23,21 +31,31 @@ class DashboardWSClient {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg))
   }
 
-  private doConnect() {
+  private doConnect(generation: number) {
+    if (this.stopped || generation !== this.generation) return
     try {
-      this.ws = new WebSocket(this.url)
-      this.ws.onopen = () => { isConnected.value = true }
-      this.ws.onclose = () => { isConnected.value = false; this.scheduleReconnect() }
-      this.ws.onerror = () => { isConnected.value = false }
-      this.ws.onmessage = (e: MessageEvent) => {
+      const socket = new WebSocket(this.url)
+      this.ws = socket
+      // Logout/login and retry replacement invalidate every old socket callback.
+      const current = () => !this.stopped && generation === this.generation && this.ws === socket
+      socket.onopen = () => { if (current()) isConnected.value = true }
+      socket.onclose = () => {
+        if (!current()) return
+        this.ws = null
+        isConnected.value = false
+        this.scheduleReconnect(generation)
+      }
+      socket.onerror = () => { if (current()) isConnected.value = false }
+      socket.onmessage = (e: MessageEvent) => {
+        if (!current()) return
         try { this.handleMessage(JSON.parse(e.data)) } catch {}
       }
-    } catch { this.scheduleReconnect() }
+    } catch { this.scheduleReconnect(generation) }
   }
 
-  private scheduleReconnect() {
-    if (this.reconnectTimer) return
-    this.reconnectTimer = setTimeout(() => { this.reconnectTimer = null; this.doConnect() }, 3000)
+  private scheduleReconnect(generation: number) {
+    if (this.stopped || generation !== this.generation || this.reconnectTimer) return
+    this.reconnectTimer = setTimeout(() => { this.reconnectTimer = null; this.doConnect(generation) }, 3000)
   }
 
   private handleMessage(msg: BridgeEvent) {
