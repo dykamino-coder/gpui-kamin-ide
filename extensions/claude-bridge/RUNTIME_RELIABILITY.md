@@ -414,6 +414,17 @@ reload, changed skills sync планирует, а pending maintenance може�
 после reattach. Нужно добавить revision/reason telemetry и сопоставить её с
 полевым transcript. До этого автоматический reload не удаляется.
 
+**Prepared implementation 2026-10-09:** owner-scoped, no-store diagnostic GET
+retains a process-local window of 256 fixed metadata records. Boot-local HMAC
+pseudonyms correlate changed/no-op user/project snapshots with queue revision,
+coalescing, blocker, overlay refresh and actual PTY Enter scheduling reason.
+No skill content, paths, raw IDs, bearer or error text is emitted. Six initial
+actual route/coordinator regressions failed before implementation; eight final
+new cases and all 186 server tests passed. See `SKILLS_SYNC.md` for retrieval,
+eviction and interpretation. Fix PR pending. Status remains investigation;
+post-merge production observation belongs to deployment owner. PTY write is
+not a CLI acknowledgement, and no behavioral reload defect is claimed fixed.
+
 ### BR-09 — Make Agent Teams report delivery explicit
 
 **Close-out audit 2026-09-06:** В [PR
