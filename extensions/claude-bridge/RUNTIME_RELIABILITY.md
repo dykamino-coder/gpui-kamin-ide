@@ -1035,6 +1035,35 @@ Account card within ten seconds and compares percentages plus reset timestamps;
 it also proves graceful rendering when an optional window is absent. Secrets
 and raw OAuth credentials are never stored in evidence.
 
+**Prepared implementation 2026-10-09:** Three actual capture regressions proved
+missing dynamic windows, first-frame ANSI redraw parsing and stale-cache return
+during overlapping forced refreshes. The prepared contract uses typed windows
+with per-window source/observedAt/reset metadata/freshness and capture-level
+version, partial/unavailable reason and bounded missing-field diagnostics.
+Documented common statusline windows take precedence when the scoped capture
+reports them. The capture-only statusLine setting does not modify global or
+live-session settings and stores only allowlisted usage/version fields.
+
+The final headless terminal screen supplies compatibility common/model windows,
+including Fable and unknown future labels, without concatenated-frame regexes.
+Human reset labels are preserved with an explicit missing epoch reason, never
+guessed into timestamps. Previously supported missing rows remain labelled
+stale. The Account component renders dynamic rows and explicit partial/error
+state; concurrent forced refreshes share one capture and cache responses are
+detached copies. PTY output is capped at 1 MiB, windows at 16, probe stdin at
+128 KiB and retained probe JSON at 4 KiB; no raw TUI/error payload is exposed.
+
+Fix PR pending. Status remains ready/prepared, not done. Synthetic fixtures and
+the actual Account component Chrome comparison do not replace the required
+authenticated isolated Linux CLI/browser quota comparison within ten seconds.
+That gate remains for a maintainer with an authorized disposable account/runtime;
+no deployment credentials were sought. Statusline rate limits may be absent
+before a model response, so compatibility capture stays explicitly partial when
+authoritative reset epochs or version metadata are unavailable.
+
+Primary contract references: [Claude Code statusline](https://code.claude.com/docs/en/statusline)
+and [capture-scoped settings flag](https://code.claude.com/docs/en/cli-reference).
+
 ### BR-21 — Define and reconcile dashboard analytics semantics
 
 **Close-out audit 2026-09-06:** Утверждённого metric-contract decision artifact нет.
