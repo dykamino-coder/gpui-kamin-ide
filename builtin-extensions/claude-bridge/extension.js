@@ -46921,7 +46921,10 @@ async function pullSubClone(baseDir, pluginName) {
   try {
     const { stdout } = await runGit(["pull", "--ff-only"], { cwd: pluginDir, timeoutMs: 6e4 });
     const changed = !/Already up to date\.?/i.test(stdout);
-    return { pluginName, ok: true, changed };
+    const revisionResult = await runGit(["rev-parse", "HEAD"], { cwd: pluginDir, timeoutMs: 1e4 });
+    const revision = revisionResult.stdout.trim();
+    if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(revision)) return { pluginName, ok: false, error: "Cannot identify plugin source revision" };
+    return { pluginName, ok: true, changed, revision };
   } catch (err) {
     const stderrRaw = typeof err?.stderr === "string" ? err.stderr : "";
     return { pluginName, ok: false, error: redactUrl(stderrRaw).slice(0, 500) || (err instanceof Error ? err.message : String(err)) };
@@ -46942,7 +46945,7 @@ async function pullAllSubClones(baseDir) {
   }
   return results;
 }
-function syncPluginCacheFromSubClone(pluginName, marketplace, baseDir) {
+function syncPluginCacheFromSubClone(pluginName, marketplace, baseDir, sourceRevision) {
   const pluginSourcePath = import_path23.default.join(baseDir, "plugins", pluginName);
   if (!import_fs22.default.existsSync(pluginSourcePath)) {
     return { ok: false, error: "plugin source not found" };
@@ -46973,10 +46976,14 @@ function syncPluginCacheFromSubClone(pluginName, marketplace, baseDir) {
   }
   const key = `${pluginName}@${marketplace}`;
   if (!data.plugins?.[key]) {
-    return { ok: true, version };
+    return { ok: true, version, changed: false };
   }
   const pluginCacheParent = import_path23.default.join(import_os18.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName);
   const cacheDir = import_path23.default.join(pluginCacheParent, version);
+  const existingEntry = data.plugins[key]?.[0];
+  if (sourceRevision && existingEntry?.sourceRevision === sourceRevision && existingEntry?.version === version && existingEntry?.installPath === cacheDir && import_fs22.default.existsSync(cacheDir)) {
+    return { ok: true, version, changed: false };
+  }
   try {
     let copyDir2 = function(src, dest) {
       import_fs22.default.mkdirSync(dest, { recursive: true });
@@ -47005,14 +47012,15 @@ function syncPluginCacheFromSubClone(pluginName, marketplace, baseDir) {
     installPath: cacheDir,
     version,
     installedAt: existing?.installedAt || now,
-    lastUpdated: now
+    lastUpdated: now,
+    ...sourceRevision ? { sourceRevision } : {}
   }];
   try {
     import_fs22.default.writeFileSync(installedFile, JSON.stringify(data, null, 2), "utf-8");
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
-  return { ok: true, version };
+  return { ok: true, version, changed: true };
 }
 
 // src/main/ipc/plugins/handlers-source.ts
@@ -47374,26 +47382,29 @@ async function refreshMarketplaceOnce(name) {
   assertAbsolutePath(loc, "installLocation");
   try {
     const { stdout: out } = await runGit(["pull", "--ff-only"], { cwd: loc, timeoutMs: 6e4 });
-    const changed = !/Already up to date\.?/i.test(out);
+    let changed = !/Already up to date\.?/i.test(out);
     entry.lastUpdated = (/* @__PURE__ */ new Date()).toISOString();
     writeKnownMarketplaces(known);
+    const sourceErrors = [];
     try {
       const subResults = await pullAllSubClones(loc);
       for (const r of subResults) {
         if (!r.ok) {
-          console.warn(`[marketplaces] ${name}: sub-clone pull failed for "${r.pluginName}" \u2014 ${r.error}`);
+          sourceErrors.push(`${r.pluginName}: source update failed: ${r.error ?? "unknown error"}`);
           continue;
         }
-        if (r.changed) {
-          const sync = syncPluginCacheFromSubClone(r.pluginName, name, loc);
+        if (!r.skipped) {
+          const sync = syncPluginCacheFromSubClone(r.pluginName, name, loc, r.revision);
+          changed = changed || !!r.changed || !!sync.changed;
           if (!sync.ok) {
-            console.warn(`[marketplaces] ${name}: cache sync failed for "${r.pluginName}" \u2014 ${sync.error}`);
+            sourceErrors.push(`${r.pluginName}: cache sync failed: ${sync.error ?? "unknown error"}`);
           }
         }
       }
     } catch (err) {
-      console.warn(`[marketplaces] ${name}: sub-clone sweep threw \u2014`, err instanceof Error ? err.message : err);
+      sourceErrors.push(`Source/cache sweep failed: ${err instanceof Error ? err.message : String(err)}`);
     }
+    if (sourceErrors.length) return { ok: false, changed, lastUpdated: entry.lastUpdated, error: redactUrlsInText(sourceErrors.join("\n")).slice(0, 2e3) };
     return { ok: true, lastUpdated: entry.lastUpdated, changed };
   } catch (err) {
     const stderrRaw = typeof err?.stderr === "string" ? err.stderr : err?.stderr?.toString() || "";
