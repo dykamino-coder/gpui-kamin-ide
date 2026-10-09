@@ -4129,7 +4129,9 @@ fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     let page_kid: Vec<Option<(String, String)>> = kids
         .iter()
         .map(|n| match n {
-            Node::Element(k) if cx.paged && class_a_box(k) => Some(page_names(k, "")),
+            Node::Element(k) if cx.paged && !item_container(c) && class_a_box(k) => {
+                Some(page_names(k, ""))
+            }
             _ => None,
         })
         .collect();
@@ -6196,6 +6198,23 @@ fn class_a_box(e: &Element) -> bool {
         )
 }
 
+/// Флекс- и грид-контейнер: его дети — элементы раскладки, не блоки потока.
+/// 'page' применяется только к коробкам с точками разрыва класса A
+/// (css-page-3 §page-prop «Applies to: boxes that create class A break
+/// points»), и имя элемента флекса/грида контейнеру не передаётся и
+/// разрыва между элементами не ставит (`page-name-flex-001/002-print`:
+/// эталон без разрывов). Внутри элемента — обычный блочный поток
+/// (`page-name-flex-004-print`).
+fn item_container(e: &Element) -> bool {
+    matches!(
+        e.style.display,
+        Some(Display::Flex)
+            | Some(Display::InlineFlex)
+            | Some(Display::Grid)
+            | Some(Display::InlineGrid)
+    )
+}
+
 /// Табличная коробка — по тегу или по `display`.
 fn table_box(c: &Element) -> bool {
     c.tag == "table"
@@ -7141,7 +7160,9 @@ fn page_names(e: &Element, inherited: &str) -> (String, String) {
             || out_of_flow(&k.style) || k.style.float.unwrap_or(0) != 0))
         .collect();
     let via = |n: Option<&&Node>| match n {
-        Some(Node::Element(k)) if class_a_box(k) => Some(page_names(k, &used)),
+        Some(Node::Element(k)) if !item_container(e) && class_a_box(k) => {
+            Some(page_names(k, &used))
+        }
         _ => None,
     };
     let start = via(boxes.first()).map(|p| p.0).unwrap_or_else(|| used.clone());
@@ -7180,8 +7201,10 @@ fn renames_inside(e: &Element) -> bool {
             _ => None,
         })
         .collect();
-    kids.windows(2)
-        .any(|w| page_names(w[0], "").1 != page_names(w[1], "").0)
+    (!item_container(e)
+        && kids
+            .windows(2)
+            .any(|w| page_names(w[0], "").1 != page_names(w[1], "").0))
         || kids.iter().any(|k| renames_inside(k))
 }
 
