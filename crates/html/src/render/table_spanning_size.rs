@@ -3,7 +3,7 @@
 use crate::computed::Computed;
 use crate::value::Len;
 
-pub(super) fn preserve(
+pub(crate) fn preserve(
     cell: &mut Computed,
     merged: &Computed,
     span: u16,

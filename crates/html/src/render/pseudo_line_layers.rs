@@ -5,7 +5,7 @@ use super::{Computed, Element, Len};
 /// CSS 2 sections 5.12.1-5.12.2 apply to block containers, including
 /// inline-blocks and table cells. These specialized render paths must seed
 /// their contents with the same layers as the ordinary block path.
-pub(super) fn install(element: &Element, merged: &mut Computed) {
+pub(crate) fn install(element: &Element, merged: &mut Computed) {
     install_first_letter(element, merged);
     merged.first_line = element
         .first_line

@@ -2,7 +2,7 @@
 
 use gpui::{AnyElement, Div, div, prelude::*};
 
-pub(super) fn wrap(cell: &mut Div, contents: Vec<AnyElement>) -> AnyElement {
+pub(crate) fn wrap(cell: &mut Div, contents: Vec<AnyElement>) -> AnyElement {
     // CSS 2.1 §17.5.3 aligns the cell's contents in the row area. Our full-size
     // clipping wrapper occupies that whole area, so aligning it alone leaves
     // the actual contents at the top (especially in spanning cells). Keep the

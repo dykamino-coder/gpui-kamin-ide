@@ -6,7 +6,7 @@ use crate::value::Len;
 mod structural;
 use std::collections::HashMap;
 
-pub(super) fn resolve(
+pub(crate) fn resolve(
     e: &Element,
     row_elements: &[&Element],
     groups: &[Option<&Element>],
