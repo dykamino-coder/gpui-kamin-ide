@@ -17106,6 +17106,7 @@ fn paragraph_routed(
         if upright && inherited.sideways != Some(true) {
             let mut stack = inherited.clone();
             stack.vertical = None;
+            stack.upright_stack = true;
             stack.break_word = Some(true);
             let em = match stack.font_size {
                 Some(Len::Px(v)) => v,
@@ -18008,6 +18009,30 @@ fn paragraph_pieces_routed(
             copy.style.margin = Default::default();
             bare = copy;
             &bare
+        } else {
+            e
+        };
+        // An absolutely positioned box inside a rotated vertical paragraph is
+        // blockified (CSS 2.1 §9.7) and inherits the vertical writing mode
+        // (css-writing-modes-4 §2.1): it is its own vertical block, not a
+        // piece of the horizontal pre-rotation paragraph, whose clone has
+        // `vertical` cleared. Carry the writing mode on the box itself.
+        let vertical_abs;
+        let e = if (inherited.rotated_line == Some(true) || inherited.upright_stack)
+            && e.style.vertical.is_none()
+            && matches!(
+                e.style.position,
+                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            )
+            && !at_static_position(&e.style)
+            && !replaced_tag(e)
+        {
+            let mut copy = e.clone();
+            copy.style.vertical = Some(true);
+            copy.style.vertical_rl = Some(inherited.vertical_rl == Some(true));
+            copy.style.sideways = Some(inherited.sideways == Some(true));
+            vertical_abs = copy;
+            &vertical_abs
         } else {
             e
         };

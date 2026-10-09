@@ -1740,7 +1740,17 @@ fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Compu
     c.rotated_line = own.rotated_line.or(parent.rotated_line);
     c.ortho_limit = own.ortho_limit.or(parent.ortho_limit);
     c.orthogonal_scrollport = parent.orthogonal_scrollport;
-    c.orthogonal_inline = parent.orthogonal_inline;
+    // An absolutely positioned box sizes its inline axis against its own
+    // containing block (CSS 2.1 §10.3.7 / §10.6.4 shrink-to-fit), never with
+    // the in-flow inline measure of the paragraph it was written in.
+    c.orthogonal_inline = if matches!(
+        own.position,
+        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+    ) {
+        None
+    } else {
+        parent.orthogonal_inline
+    };
     c.wrap_anywhere = own.wrap_anywhere.or(parent.wrap_anywhere);
     c.word_space_char = own.word_space_char.or(parent.word_space_char);
     c.autospace_alpha = own.autospace_alpha.or(parent.autospace_alpha);
