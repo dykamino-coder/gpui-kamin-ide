@@ -9,23 +9,17 @@
 mod subgrid_axes;
 mod grid_static_position;
 mod replaced_display;
-#[path = "dom_display_inheritance.rs"]
 mod display_inheritance;
 use display_inheritance::resolve_display_inherit;
-#[path = "dom_initial_pseudos.rs"]
 mod initial_pseudos;
-#[path = "dom_containment.rs"]
 mod containment;
-#[path = "dom_language.rs"]
 mod language;
-#[path = "dom_counter_decls.rs"]
 mod counter_decls;
 mod presentational_hints;
 mod float_tail;
 pub(crate) use counter_decls::{
     apply_counter_decls, apply_value_hint, counter_snapshot, inherit_counter_decls,
 };
-#[path = "dom_content.rs"]
 mod content;
 pub(crate) use content::{content_text, host_content, resolve_content_attributes};
 
