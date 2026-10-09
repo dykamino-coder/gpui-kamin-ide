@@ -431,6 +431,11 @@ pub fn broken_promises() -> Vec<&'static str> {
 /// разрешённого стиля было прочитано хотя бы в одном из них.
 const CONSUMERS: &[&str] = &[
     include_str!("style/apply/mod.rs"),
+    include_str!("style/apply/grid.rs"),
+    include_str!("style/apply/layout.rs"),
+    include_str!("style/apply/box_model.rs"),
+    include_str!("style/apply/paint.rs"),
+    include_str!("style/apply/text.rs"),
     include_str!("render/mod.rs"),
     include_str!("inline.rs"),
     include_str!("forms.rs"),
