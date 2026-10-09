@@ -289,6 +289,14 @@ fn blur_down_pass(
     };
     pipeline.update_buffer(device, dc, &[quad])?;
     unsafe {
+        // KaminIDE patch: при смешивании (буфер группы с премультиплицированной
+        // альфой) проход ДОРИСОВЫВАЕТ поверх цели, а цели каскада общие на все
+        // группы кадра одного размера: без очистки каждая следующая размытая
+        // группа несла в себе предыдущие (тени `text-shadow` строк темнели
+        // от строки к строке).
+        if blend.is_some() {
+            dc.ClearRenderTargetView(dest.rtv[0].as_ref().unwrap(), &[0.0; 4]);
+        }
         dc.OMSetRenderTargets(Some(&dest.rtv), None);
     }
     pipeline.draw_with_texture_blended(dc, src, &viewport, globals, sampler, 1, blend)

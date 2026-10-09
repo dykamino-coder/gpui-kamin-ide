@@ -2425,6 +2425,9 @@ pub struct Computed {
     /// lengths», css-text-decor-3 Overview.bs:868-869), и разбирается в
     /// `resolve_em`.
     pub text_shadow_raw: Option<String>,
+    /// `text-shadow: none`, записанное самим элементом: гасит унаследованный
+    /// список (без флага пустой разбор читался как «не задано»).
+    pub text_shadow_none: bool,
     /// `animation` — ссылка на набор кадров.
     pub animation: Option<AnimSpec>,
     /// `transition` — длительность перехода в секундах.
@@ -2641,6 +2644,10 @@ pub struct Computed {
     pub hyphenate: Option<bool>,
     /// `user-select: none` — текст не выделяется.
     pub no_select: Option<bool>,
+    /// `frame-sizing: content-height` (css-sizing-4
+    /// §frame-sizing): высота `<iframe>` — по содержимому вложенного
+    /// документа, если он сам согласился (`<meta name=responsive-embedded-sizing>`).
+    pub frame_sizing_height: bool,
     /// Стиль первой буквы абзаца (`::first-letter`).
     ///
     /// Живёт в стиле, а не в элементе, потому что абзац собирается из кусков
@@ -8127,6 +8134,7 @@ impl Computed {
             "text-shadow" if has_font_units(v) => self.text_shadow_raw = Some(v.to_string()),
             "text-shadow" => {
                 self.text_shadow_raw = None;
+                self.text_shadow_none = v.trim().eq_ignore_ascii_case("none");
                 let mut list = parse_shadows(v).into_iter();
                 self.text_shadow = list.next();
                 self.text_shadow_rest = list.collect();
@@ -9361,6 +9369,12 @@ impl Computed {
                 self.mask_pos_list = (!list.is_empty()).then_some(list);
             }
             "user-select" | "-webkit-user-select" => self.no_select = Some(matches!(v, "none")),
+            "frame-sizing" => {
+                self.frame_sizing_height = matches!(
+                    v.trim().to_ascii_lowercase().as_str(),
+                    "content-height"
+                );
+            }
             "clip-path" | "mask" | "mask-image" => {
                 if key == "mask" && mask_shorthand::apply(self, v) {
                     return;

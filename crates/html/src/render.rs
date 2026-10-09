@@ -20616,7 +20616,7 @@ fn edge_set(l: Option<Len>) -> bool {
 /// боковая рамка, тень, прозрачность и три угла из четырёх у `<span>` молча
 /// пропадали. У настоящего `display: inline` размеры не проверяются: CSS их
 /// такому элементу и не даёт.
-fn has_own_box(c: &Computed, font_px: f32) -> bool {
+pub(super) fn has_own_box(c: &Computed, font_px: f32) -> bool {
     // Нулевая величина коробки не создаёт: `padding: 0` и `border: 0` пишут
     // в стиль ноль, и по одному лишь «задано» кусок вынимался из строки —
     // а вынутый кусок рвёт соединение букв и общий перенос по словам.
@@ -21623,6 +21623,39 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     } else {
         None
     };
+    // Голая коробка режет ВМЕСТЕ со скруглением углов (css-masking-1
+    // §5.1 «<geometry-box>… including any corner shaping (e.g.
+    // border-radius)»): радиус коробки — радиус рамки, сдвинутый на ту же
+    // толщину (css-backgrounds-3 §5.2 inner/outer curves). Пока — только
+    // равные круглые углы и равные стороны сдвига.
+    let bare_round = bare_inset.and_then(|inset| {
+        if c.radius_ell.is_some() {
+            return None;
+        }
+        let r = match (c.radius.tl, c.radius.tr, c.radius.br, c.radius.bl) {
+            (Some(Len::Px(a)), Some(Len::Px(b)), Some(Len::Px(d)), Some(Len::Px(e)))
+                if a == b && b == d && d == e && a > 0.0 =>
+            {
+                a
+            }
+            _ => return None,
+        };
+        let d = match inset {
+            [Len::Px(t), Len::Px(rr), Len::Px(bo), Len::Px(l)]
+                if t == rr && rr == bo && bo == l =>
+            {
+                t
+            }
+            _ => return None,
+        };
+        // margin-box наружу: радиус растёт на поле, когда он не меньше поля
+        // (css-shapes-1 §6.1 — при r < m нужна поправка, её здесь нет).
+        if d < 0.0 && r < -d {
+            return None;
+        }
+        let r = (r - d).max(0.0);
+        (r > 0.0).then_some(Len::Px(r))
+    });
     let clip_inset = c.clip_inset.or(bare_inset);
     if blur <= 0.0
         && blend == 0
@@ -21768,6 +21801,8 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     wrapper.clip_xywh = c.clip_xywh;
     if rounded_rect_clip(c) {
         wrapper.clip_round = c.clip_round_len;
+    } else if bare_round.is_some() {
+        wrapper.clip_round = bare_round;
     }
     // `clip`/`mask-clip` живут в системе координат элемента ДО трансформа, а
     // трансформ рисуется ВНУТРИ буфера группы — коробка клипа обязана ехать
@@ -25542,13 +25577,45 @@ fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     };
     let attr_len = |k: &str| e.attr(k).and_then(|v| v.parse::<f32>().ok());
     // Размер: CSS сильнее атрибутов; умолчание — 300×150 (CSS 2.2 §замещаемые).
-    let w = match e.style.width {
-        Some(Len::Px(v)) => v,
-        _ => attr_len("width").unwrap_or(300.0),
+    // Рамка и отбивка лежат СНАРУЖИ размера содержимого (CSS 2.1 §10.3.2,
+    // `box-sizing: content-box`), а раскладка меряет `w`/`h` как border-box:
+    // без поправки `border: 1px` съедал 300×150 изнутри
+    // (`responsive-iframe-unsized-ref`: 302×152).
+    let st = &e.style;
+    let px_sum = |sides: &[Option<Len>]| -> f32 {
+        sides
+            .iter()
+            .filter_map(|s| match s {
+                Some(Len::Px(v)) => Some(*v),
+                _ => None,
+            })
+            .sum()
     };
-    let h = match e.style.height {
-        Some(Len::Px(v)) => v,
-        _ => attr_len("height").unwrap_or(150.0),
+    let bw = st.borders();
+    let (ex, ey) = if crate::apply::intrinsic_size::native_content_box(st) {
+        (0.0, 0.0)
+    } else {
+        (
+            px_sum(&[st.padding.left, st.padding.right, bw.left, bw.right]),
+            px_sum(&[st.padding.top, st.padding.bottom, bw.top, bw.bottom]),
+        )
+    };
+    let border_box = st.border_box == Some(true);
+    let (w, outer_w) = match st.width {
+        Some(Len::Px(v)) if border_box => ((v - ex).max(0.0), v),
+        Some(Len::Px(v)) => (v, v + ex),
+        _ => {
+            let v = attr_len("width").unwrap_or(300.0);
+            (v, v + ex)
+        }
+    };
+    let (h, outer_h) = match st.height {
+        Some(Len::Px(v)) if border_box => ((v - ey).max(0.0), v),
+        Some(Len::Px(v)) => (v, v + ey),
+        _ => {
+            let v = attr_len("height").unwrap_or(150.0);
+            (v, v + ey)
+        }
     };
     // Рамка меряет свои `@media` своей коробкой (`doc::parse_embedded`).
     // Режим quirks у вложенного документа свой: разбор его перепишет, а
@@ -25574,15 +25641,78 @@ fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     IFRAME_DEPTH.with(|d| d.set(d.get() - 1));
     crate::dom::QUIRKS.with(|q| q.set(outer_quirks));
     Some(
-        styled_div(e)
-            .w(px(w))
-            .h(px(h))
-            .overflow_hidden()
-            .relative()
-            .flex_shrink_0()
-            .children(kids)
-            .into_any_element(),
+        {
+            let frame = styled_div(e).w(px(outer_w));
+            // css-sizing-4 §frame-sizing: высота по содержимому, когда
+            // вложенный документ согласился и автор высоту не задал.
+            let responsive = st.frame_sizing_height
+                && matches!(st.height, None | Some(Len::Auto))
+                && e.attr("height").is_none()
+                && responsive_embedded_sizing(&html);
+            if responsive { frame } else { frame.h(px(outer_h)) }
+        }
+        .overflow_hidden()
+        .relative()
+        .flex_shrink_0()
+        .children(kids)
+        .into_any_element(),
     )
+}
+
+/// Флаг «responsive embedded sizing» документа (css-sizing-4
+/// §iframe-frame-sizing): истина, если `<meta name=responsive-embedded-sizing>`
+/// встретился при разборе РАНЬШЕ, чем открылся `<body>` (явно или неявно —
+/// любым тегом тела или непробельным текстом).
+fn responsive_embedded_sizing(html: &str) -> bool {
+    let lower = html.to_ascii_lowercase();
+    let b = lower.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if lower[i..].starts_with("<!--") {
+            match lower[i + 4..].find("-->") {
+                Some(k) => i += 4 + k + 3,
+                None => return false,
+            }
+            continue;
+        }
+        if b[i] != b'<' {
+            if !b[i].is_ascii_whitespace() && b[i] != 0xef && b[i] != 0xbb && b[i] != 0xbf {
+                return false;
+            }
+            i += 1;
+            continue;
+        }
+        let Some(end) = lower[i..].find('>').map(|k| i + k) else {
+            return false;
+        };
+        let tag = &lower[i + 1..end];
+        i = end + 1;
+        if tag.starts_with('!') || tag.starts_with('?') || tag.starts_with('/') {
+            continue;
+        }
+        let name: String = tag
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '-')
+            .collect();
+        match name.as_str() {
+            "html" | "head" | "link" | "base" | "basefont" | "bgsound" => {}
+            "meta" => {
+                let compact: String = tag.chars().filter(|c| *c != '"' && *c != '\'').collect();
+                if compact.contains("name=responsive-embedded-sizing") {
+                    return true;
+                }
+            }
+            "style" | "script" | "title" | "noscript" | "template" => {
+                let close = format!("</{name}");
+                match lower[i..].find(&close) {
+                    Some(k) => i += k,
+                    None => return false,
+                }
+            }
+            _ => return false,
+        }
+    }
+    false
 }
 
 /// Кегль для разрешения долей на атоме: свой размер шрифта уже разрешён в

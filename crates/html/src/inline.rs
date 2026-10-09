@@ -1953,11 +1953,17 @@ fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Compu
         .font_settings
         .clone()
         .or_else(|| parent.font_settings.clone());
-    c.text_shadow = own.text_shadow.or(parent.text_shadow);
+    c.text_shadow = if own.text_shadow_none {
+        None
+    } else {
+        own.text_shadow.or(parent.text_shadow)
+    };
     // Хвост списка идёт вместе с первой тенью: своя запись — свой хвост,
     // унаследованная — хвост родителя (css-text-decor-3: `text-shadow`
     // наследуется списком целиком).
-    if own.text_shadow.is_none() {
+    if own.text_shadow_none {
+        c.text_shadow_rest.clear();
+    } else if own.text_shadow.is_none() {
         c.text_shadow_rest = parent.text_shadow_rest.clone();
     }
     c.rtl = own.rtl.or(parent.rtl);
