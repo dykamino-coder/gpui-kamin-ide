@@ -44,3 +44,6 @@ pub mod splitters;
 pub mod term_grid;
 pub mod terminal_body;
 pub mod tools;
+
+mod sync_web_visibility;
+mod webview_visibility;
