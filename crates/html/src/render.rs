@@ -21600,6 +21600,39 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     } else {
         None
     };
+    // Голая коробка режет ВМЕСТЕ со скруглением углов (css-masking-1
+    // §5.1 «<geometry-box>… including any corner shaping (e.g.
+    // border-radius)»): радиус коробки — радиус рамки, сдвинутый на ту же
+    // толщину (css-backgrounds-3 §5.2 inner/outer curves). Пока — только
+    // равные круглые углы и равные стороны сдвига.
+    let bare_round = bare_inset.and_then(|inset| {
+        if c.radius_ell.is_some() {
+            return None;
+        }
+        let r = match (c.radius.tl, c.radius.tr, c.radius.br, c.radius.bl) {
+            (Some(Len::Px(a)), Some(Len::Px(b)), Some(Len::Px(d)), Some(Len::Px(e)))
+                if a == b && b == d && d == e && a > 0.0 =>
+            {
+                a
+            }
+            _ => return None,
+        };
+        let d = match inset {
+            [Len::Px(t), Len::Px(rr), Len::Px(bo), Len::Px(l)]
+                if t == rr && rr == bo && bo == l =>
+            {
+                t
+            }
+            _ => return None,
+        };
+        // margin-box наружу: радиус растёт на поле, когда он не меньше поля
+        // (css-shapes-1 §6.1 — при r < m нужна поправка, её здесь нет).
+        if d < 0.0 && r < -d {
+            return None;
+        }
+        let r = (r - d).max(0.0);
+        (r > 0.0).then_some(Len::Px(r))
+    });
     let clip_inset = c.clip_inset.or(bare_inset);
     if blur <= 0.0
         && blend == 0
@@ -21745,6 +21778,8 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     wrapper.clip_xywh = c.clip_xywh;
     if rounded_rect_clip(c) {
         wrapper.clip_round = c.clip_round_len;
+    } else if bare_round.is_some() {
+        wrapper.clip_round = bare_round;
     }
     // `clip`/`mask-clip` живут в системе координат элемента ДО трансформа, а
     // трансформ рисуется ВНУТРИ буфера группы — коробка клипа обязана ехать
