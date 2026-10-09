@@ -588,9 +588,7 @@ pub fn repr(value: i32, style: &str) -> String {
             positive.map_or_else(|| value.to_string(), |n| alphabetic(n, b'A'))
         }
         "lower-greek" => positive.map_or_else(|| value.to_string(), lower_greek),
-        // Простые числовые: цифры своего набора, основание десять. Ноль и
-        // отрицательные пишутся так же, как десятичным (§numeric), поэтому
-        // фильтра диапазона здесь нет.
+        // CJK decimal alone has range 0..infinite (CSS Counter Styles 3 section 6.1).
         name if NUMERIC_ZERO.iter().any(|(k, _)| *k == name) => {
             let zero = NUMERIC_ZERO
                 .iter()
@@ -599,7 +597,7 @@ pub fn repr(value: i32, style: &str) -> String {
             let digits: Vec<char> = (0..10).filter_map(|d| char::from_u32(zero + d)).collect();
             numeric(value, &digits)
         }
-        "cjk-decimal" => numeric(value, &CJK_DIGITS),
+        "cjk-decimal" if value >= 0 => numeric(value, &CJK_DIGITS),
         // Кана: алфавитные системы, за концом набора запись удлиняется.
         "hiragana" | "hiragana-iroha" | "katakana" | "katakana-iroha" => {
             let letters: Vec<char> = match style {
@@ -622,9 +620,10 @@ pub fn repr(value: i32, style: &str) -> String {
             }
             .chars()
             .collect();
-            positive
-                .filter(|n| *n <= letters.len())
-                .map_or_else(|| numeric(value, &CJK_DIGITS), |n| letters[n - 1].to_string())
+            positive.filter(|n| *n <= letters.len()).map_or_else(
+                || repr(value, "cjk-decimal"),
+                |n| letters[n - 1].to_string(),
+            )
         }
         // Строчная армянская — тот же аддитивный набор в нижнем регистре.
         "lower-armenian" => positive
