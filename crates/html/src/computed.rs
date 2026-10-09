@@ -2742,6 +2742,9 @@ pub struct Computed {
     /// таблице: у неё гибким элементом становится обёртка с подписями
     /// (css-flexbox-1 §4).
     pub(crate) flex_item: bool,
+    /// Floats of this ordinary block reach nothing after it (`dom::float_tail`):
+    /// its float host may use in-flow auto height (CSS 2.1 §10.6.3).
+    pub(crate) float_tail: bool,
     /// Довод `fit-content(<length-percentage>)` у `width`, `min-width`,
     /// `max-width` (по порядку); само значение остаётся `Len::FitContent`.
     pub(crate) fit_arg: [Option<Len>; 3],

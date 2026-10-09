@@ -21,6 +21,7 @@ mod language;
 #[path = "dom_counter_decls.rs"]
 mod counter_decls;
 mod presentational_hints;
+mod float_tail;
 pub(crate) use counter_decls::{
     apply_counter_decls, apply_value_hint, counter_snapshot, inherit_counter_decls,
 };
@@ -539,6 +540,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     subgrid_takes_parent_tracks(&mut out);
     filter_ref_only_empty(&mut out);
     fold_run_ins(&mut out, None);
+    float_tail::mark(&mut out);
     if quirks() {
         quirks_percent_heights(&mut out, None);
     }

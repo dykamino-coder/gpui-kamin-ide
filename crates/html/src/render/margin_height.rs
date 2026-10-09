@@ -208,7 +208,9 @@ pub(super) fn zero_float_blocks(nodes: &mut [Node], inherited: &Computed) {
             matches!(node,
             Node::Element(child) if child.style.float.is_some_and(|side| side != 0))
         });
-        if has_float && zero_inflow(e, inherited) {
+        // Our float host carries floats to later boxes and to the formatting
+        // root only through this block's height (see `dom::float_tail`).
+        if has_float && e.style.float_tail && zero_inflow(e, inherited) {
             e.attrs.push(("auto-zero-height".into(), "1".into()));
         }
     }

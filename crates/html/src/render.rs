@@ -11861,8 +11861,13 @@ fn wrap_floats(
             });
         if let Some((mut host, next, took_lead, lifted)) = hosted {
             // CSS 2.1 §10.6.3: ordinary blocks count in-flow boxes, not floats.
-            // A complete unfragmented suffix needs no later float bands.
-            if !parent_bfc && !cell_bfc && !parent.in_multicol && next == nodes.len() {
+            // A complete unfragmented suffix needs no later float bands, and
+            // no later box of the enclosing context may see them (`float_tail`).
+            if !parent_bfc
+                && !cell_bfc
+                && next == nodes.len()
+                && (parent.float_tail && !parent.in_multicol || host.attr("bands") == Some("1"))
+            {
                 host.attrs.push(("inflow-height".into(), "1".into()));
             }
             if let Some(at) = took_lead {
@@ -16334,7 +16339,7 @@ fn own_context(e: &Element) -> bool {
 
 /// То же по ОДНОМУ СТИЛЮ, без узла: содержащий блок приходит в `blocks()`
 /// только своим `Computed`, а знать про его край надо и там.
-fn own_context_style(c: &Computed) -> bool {
+pub(crate) fn own_context_style(c: &Computed) -> bool {
     !matches!(
         c.overflow_y,
         None | Some(crate::computed::Overflow::Visible)
