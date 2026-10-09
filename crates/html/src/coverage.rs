@@ -602,7 +602,7 @@ const ACCESSORS: &[(&str, &str)] = &[
 
 /// Поля разрешённого стиля, которые никто не читает.
 pub fn dead_fields() -> Vec<String> {
-    let source = include_str!("computed.rs");
+    let source = include_str!("style/computed/mod.rs");
     let start = match source.find("pub struct Computed {") {
         Some(i) => i,
         None => return vec![],

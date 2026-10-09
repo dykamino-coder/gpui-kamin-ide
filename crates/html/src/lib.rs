@@ -35,7 +35,7 @@ pub mod band_flow;
 pub mod bands;
 pub mod border_image;
 pub mod color_space;
-pub mod computed;
+pub use style::computed;
 pub mod counter_style;
 pub mod counter_style_rules;
 pub mod counters;

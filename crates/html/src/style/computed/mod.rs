@@ -13148,14 +13148,14 @@ mod tests {
             &super::super::css::parse_decls("color: var(--c, rgba(0,0,0,.5))"),
             &vars,
         );
-        assert_eq!(c.color, super::super::value::Color::parse("red"));
+        assert_eq!(c.color, crate::value::Color::parse("red"));
         // Незаданная переменная берёт запасное значение ЦЕЛИКОМ.
         let mut c = super::Computed::default();
         c.apply_decls_with_vars(
             &super::super::css::parse_decls("color: var(--none, rgba(0,0,0,1))"),
             &super::super::css::Decls::new(),
         );
-        assert_eq!(c.color, super::super::value::Color::parse("rgba(0,0,0,1)"));
+        assert_eq!(c.color, crate::value::Color::parse("rgba(0,0,0,1)"));
     }
 
     #[test]
@@ -13180,7 +13180,7 @@ mod tests {
         };
         let mut matched = vec![&early, &late];
         let c = super::Computed::resolve(&mut matched, &super::super::css::Decls::new());
-        assert_eq!(c.color, super::super::value::Color::parse("red"));
+        assert_eq!(c.color, crate::value::Color::parse("red"));
     }
 
     #[test]
