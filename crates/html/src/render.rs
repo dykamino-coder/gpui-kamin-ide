@@ -48,6 +48,7 @@ mod replaced_holder_ratio;
 mod replaced_content;
 mod svg_percentage_size;
 mod list_item;
+mod list_container;
 mod available_width;
 use replaced_content::svg_replaced;
 mod ratio_basis;
@@ -22764,7 +22765,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         }
         // Список с заданной раскладкой — это уже не список, а контейнер:
         // на `ul` верстают навигацию и наборы чипов.
-        "ul" | "ol" if e.style.display.is_none() => list(e, &merged, opts),
+        "ul" | "ol" if e.style.display.is_none() => list_container::render(e, &merged, opts),
         // `white-space: pre*` значим не меньше тега: переводы строк сохраняет
         // именно он, и на `<div style="white-space: pre">` разметка обязана
         // вести себя так же, как на `<pre>`.
@@ -26340,24 +26341,6 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             .unwrap_or_else(|| "[изображение]".into()),
     ))
     .into_any_element()
-}
-
-/// List containers use the same item painter as ordinary block parents.
-fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    let mut rows = Vec::new();
-    for child in &e.children {
-        let Node::Element(li) = child else { continue };
-        if li.tag == "li" {
-            rows.push(list_item::render(li, inherited, opts));
-        } else if !li.tag.starts_with("::") || li.style.display == Some(Display::ListItem) {
-            rows.extend(blocks(std::slice::from_ref(child), inherited, opts));
-        }
-    }
-    styled_div_with(e, inherited)
-        .flex()
-        .flex_col()
-        .children(rows)
-        .into_any_element()
 }
 
 /// Текст поддерева — нужен формам (`<textarea>`, `<option>`).
