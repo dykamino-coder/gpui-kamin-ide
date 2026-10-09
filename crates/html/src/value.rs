@@ -831,28 +831,9 @@ mod tests {
     }
 }
 
-/// Сумма длины по единицам: `calc()` считается покомпонентно, а свернуть её
-/// в одну длину получается только когда живой остаётся одна природа.
-///
-/// Модель раскладки хранит длину как ОДНУ величину: либо доля, либо точки,
-/// либо `em`. Поэтому `calc(100% - 24px)` честно отбрасывается — приблизительная
-/// длина в сравнении с браузером не видна, а неверная видна.
-#[derive(Clone, Copy, Default, PartialEq, Debug)]
-pub struct Sum {
-    pub lh: f32,
-    pub px: f32,
-    pub pct: f32,
-    pub em: f32,
-    pub ch: f32,
-    pub ex: f32,
-    pub ic: f32,
-    /// Высота прописной — единица `cap`. Своего варианта `Len` у неё нет:
-    /// природа живёт только в сумме и сворачивается в точки там же, где
-    /// `em`/`ch`/`ex`/`ic` (`Computed::resolve_em`).
-    pub cap: f32,
-    pub vh: f32,
-    pub vw: f32,
-}
+#[path = "value/calc_sum.rs"]
+mod calc_sum;
+pub use calc_sum::Sum;
 
 /// Арена смешанных сумм `calc()`: `Len` несёт индекс, не тело. Арена
 /// append-only и копеечная (смеси редки); чистится вместе с документом
@@ -1096,172 +1077,6 @@ enum Val {
     Len(Sum),
 }
 
-impl Sum {
-    fn from_len(len: Len) -> Option<Self> {
-        let mut s = Sum::default();
-        match len {
-            Len::Px(v) => s.px = v,
-            Len::Pct(v) => s.pct = v,
-            Len::Em(v) => s.em = v,
-            Len::Ch(v) => s.ch = v,
-            Len::Ic(v) => s.ic = v,
-            Len::Ex(v) => s.ex = v,
-            Len::Lh(v) => s.lh = v,
-            Len::LhPx(l, p) => {
-                s.lh = l;
-                s.px = p;
-            }
-            Len::EmPx(e, p) => {
-                s.em = e;
-                s.px = p;
-            }
-            Len::Vh(v) => s.vh = v,
-            Len::Vw(v) => s.vw = v,
-            Len::Calc(i) => s = calc_get(i),
-            // Якорная вставка в арифметику не входит: её довесок уже внутри
-            // `AnchorFn::add`, а сама она решается на подготовке кадра.
-            Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent | Len::Anchor(_) => {
-                return None;
-            }
-        }
-        Some(s)
-    }
-
-    fn scaled(self, k: f32) -> Self {
-        Sum {
-            lh: self.lh * k,
-            px: self.px * k,
-            pct: self.pct * k,
-            em: self.em * k,
-            ch: self.ch * k,
-            ic: self.ic * k,
-            ex: self.ex * k,
-            cap: self.cap * k,
-            vh: self.vh * k,
-            vw: self.vw * k,
-        }
-    }
-
-    fn add(self, other: Self, sign: f32) -> Self {
-        Sum {
-            lh: self.lh + sign * other.lh,
-            px: self.px + sign * other.px,
-            pct: self.pct + sign * other.pct,
-            em: self.em + sign * other.em,
-            ch: self.ch + sign * other.ch,
-            ic: self.ic + sign * other.ic,
-            ex: self.ex + sign * other.ex,
-            cap: self.cap + sign * other.cap,
-            vh: self.vh + sign * other.vh,
-            vw: self.vw + sign * other.vw,
-        }
-    }
-
-    /// Единственная живая природа суммы: номер поля и величина. Пустая сумма —
-    /// ноль в точках. Две и больше природ — `None`: такие доводы `min()`/`max()`
-    /// сравнимы только на раскладке.
-    fn nature(self) -> Option<(u8, f32)> {
-        let f = [
-            self.px, self.pct, self.em, self.ch, self.ex, self.ic, self.cap, self.lh, self.vh,
-            self.vw,
-        ];
-        let mut alive = f.iter().enumerate().filter(|(_, v)| **v != 0.0);
-        match (alive.next(), alive.next()) {
-            (None, _) => Some((0, 0.0)),
-            (Some((i, v)), None) => Some((i as u8, *v)),
-            _ => None,
-        }
-    }
-
-    /// Свёртка в длину: сокращение слагаемых учтено, поэтому
-    /// `calc(100% + 6em + 50%*4 - 12em/2)` даёт чистые 300 % — `em` в нём
-    /// взаимно уничтожаются.
-    pub fn collapse(self) -> Option<Len> {
-        // Живая `cap` своего варианта `Len` не имеет — сумма доживает
-        // индексом и сворачивается в `resolve_em`, где известны семейство и
-        // кегль. Ранний возврат, а НЕ правка веток ниже: те ветки замерены
-        // (★ `gap-003-ltr` 0.00 → 4.12), и трогать их из-за новой природы
-        // нельзя.
-        if self.cap != 0.0 && self.pct == 0.0 {
-            return Some(Len::Calc(calc_store(self)));
-        }
-        let rel = [
-            (self.pct, Len::Pct as fn(f32) -> Len),
-            (self.em, Len::Em as fn(f32) -> Len),
-            (self.ch, Len::Ch as fn(f32) -> Len),
-            (self.ic, Len::Ic as fn(f32) -> Len),
-            (self.ex, Len::Ex as fn(f32) -> Len),
-            (self.vh, Len::Vh as fn(f32) -> Len),
-            (self.vw, Len::Vw as fn(f32) -> Len),
-        ];
-        let mut alive = rel.iter().filter(|(v, _)| *v != 0.0);
-        match (alive.next(), alive.next(), self.lh != 0.0) {
-            (None, _, false) => Some(Len::Px(self.px)),
-            (Some((v, unit)), None, false) if self.px == 0.0 => Some(unit(*v)),
-            // Кегльная доля с довеском в точках: разрешится вместе с `em`
-            // (text-shadow-orientation-upright-001: `calc(1em + 8px)`).
-            (Some((v, unit)), None, false) if matches!(unit(*v), Len::Em(_)) => {
-                Some(Len::EmPx(*v, self.px))
-            }
-            // Кратное строки с довеском в точках: разрешится при слиянии.
-            (None, _, true) => Some(if self.px == 0.0 {
-                Len::Lh(self.lh)
-            } else {
-                Len::LhPx(self.lh, self.px)
-            }),
-            // Смесь природ живёт дальше НЕсвёрнутой: шрифтовые единицы
-            // сложит каскад (`resolve_em`), окно — сборщик дерева, а
-            // проценты с точками — раскладка (css-values-4 §10.9:
-            // «резолвится всё, что уже резолвится»).
-            // Смесь природ живёт дальше НЕсвёрнутой: шрифтовые единицы
-            // сложит каскад (`resolve_em`), окно — сборщик дерева, а
-            // проценты с точками — раскладка (css-values-4 §10.9).
-            // Процентная смесь для РАСКЛАДКИ по-прежнему отбрасывается:
-            // taffy через gpui её отдать нечем (gpui знает «px ИЛИ доля»), а
-            // замена на одну из половин ЗАМЕРЕНА в минус (gap-003-ltr 0.00 ->
-            // 4.12 на width: calc(50% - 10px)) — честный путь ждёт таффи-calc.
-            // Отрисовка движка (стопы, фон, text-indent) просит смесь явно —
-            // `collapse_mixed` через `Len::parse_mixed`.
-            _ if self.pct == 0.0 => Some(Len::Calc(calc_store(self))),
-            _ => None,
-        }
-    }
-
-    /// Свёртка, при которой процентная смесь ДОЖИВАЕТ индексом в арене —
-    /// для потребителей с известным размером коробки (`Len::parse_mixed`).
-    /// `collapse` отдаёт `None` ровно в одном случае — доля вместе с другой
-    /// природой, — и только он сюда и попадает.
-    pub fn collapse_mixed(self) -> Option<Len> {
-        self.collapse().or_else(|| Some(Len::Calc(calc_store(self))))
-    }
-
-    /// Смесь ТОЛЬКО долей и точек — парой `(доля, точки)`. Любая другая живая
-    /// природа (`ch`, `vw`, `em`…) даёт `None`: складывать её на отрисовке
-    /// не с чем, и запись, как прежде, не применяется. Чистые точки и чистая
-    /// доля до `Calc` не доживают (их сворачивает `collapse`), поэтому
-    /// `pct != 0` здесь — признак смеси, а не пустой суммы.
-    pub fn pct_px(self) -> Option<(f32, f32)> {
-        let rest = Sum {
-            px: 0.0,
-            pct: 0.0,
-            ..self
-        };
-        (self.pct != 0.0 && rest == Sum::default()).then_some((self.pct, self.px))
-    }
-
-    /// Свёртка для межбуквенного и межсловного интервала: там и доля, и `em`
-    /// считаются от кегля, поэтому смешанное `calc(400% + 1em)` складывается
-    /// вместо того чтобы пропасть.
-    fn collapse_spacing(self) -> Option<Len> {
-        Sum {
-            pct: 0.0,
-            em: self.em + self.pct,
-            ..self
-        }
-        .collapse()
-    }
-}
-
 /// `expr := term (('+'|'-') term)*`, `term := factor (('*'|'/') factor)*`.
 struct Calc<'a> {
     rest: &'a str,
@@ -1463,6 +1278,7 @@ pub fn calc_pct_px(raw: &str) -> Option<(f32, f32)> {
     let rest = Sum {
         px: 0.0,
         pct: 0.0,
+        has_percentage: false,
         ..s
     };
     (rest == Sum::default()).then_some((s.pct, s.px))
