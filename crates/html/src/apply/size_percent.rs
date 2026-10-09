@@ -11,6 +11,7 @@ pub(super) fn resolve(style: &Computed, value: Len, field: u8) -> Option<Len> {
             Some(terms) => terms,
             None => return Some(value),
         },
+        Len::Px(length) => return Some(Len::Px(length.max(0.0))),
         _ => return Some(value),
     };
     // A zero percentage cannot contribute to a minimum, even when its basis

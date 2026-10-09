@@ -27,6 +27,7 @@ mod quotes;
 mod counters;
 mod list_style_string;
 mod list_style;
+mod size_range;
 mod content_functions;
 pub(crate) use content_functions::parse_content;
 mod outline_style;
@@ -12915,29 +12916,7 @@ fn assign_size(slot: &mut Option<Len>, v: &str) {
     // Смесь «доля ± точки» доживает индексом (`parse_mixed`): раскладка
     // складывает её сама (`DefiniteLength::Calc`, css-values-4 §10.9).
     // Прежде `calc(50% - 3px)` роняло объявление (`calc-width-block-1`).
-    let parsed = Len::parse_mixed(v);
-    // Отрицательный размер невалиден в ЛЮБОЙ единице (CSS 2.1 §10.4:
-    // `min-width`/`min-height` — «Value: <length> | <percentage> | inherit»,
-    // отрицательные значения не допускаются). Прежде отбраковывались только
-    // px, проценты и em, а `min-height: -1ex` доживал до раскладки.
-    let negative = match parsed {
-        Some(
-            Len::Px(n)
-            | Len::Pct(n)
-            | Len::Em(n)
-            | Len::Vh(n)
-            | Len::Vw(n)
-            | Len::Ch(n)
-            | Len::Ex(n)
-            | Len::Ic(n)
-            | Len::Lh(n),
-        ) => n < 0.0,
-        Some(Len::EmPx(a, b) | Len::LhPx(a, b)) => a < 0.0 || b < 0.0,
-        _ => false,
-    };
-    if negative {
-        return;
-    }
+    let parsed = size_range::parse(v);
     // `none` снимает предел (§10.4) — слот гаснет по праву. Прочая
     // неразборная запись объявление роняет: слот сохраняет прежнее значение,
     // а не гаснет (§4.2).
