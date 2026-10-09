@@ -20598,6 +20598,14 @@ fn has_own_box(c: &Computed, font_px: f32) -> bool {
     // `div` с рамкой уходил в коробку — с вертикальными полями и рамкой
     // ВНУТРИ строки (`margin-top-applies-to-008`, §10.6.1: вертикальные
     // поля строчной коробки на строку не действуют).
+    // Graphical effects of the inline box (css-masking-1 §1: `clip-path` and
+    // `mask` apply to all elements; css-color-4 §opacity) act on everything
+    // the box paints, its border and background included. A text run applies
+    // none of them, so the box is needed even when the run could paint the
+    // border itself (`clip-path-inline-006`: the red border stayed unclipped).
+    if c.opacity.is_some() || c.mask_image.is_some() {
+        return true;
+    }
     let inline_level = c.display.is_none() || c.inline_display == Some(true);
     if inline_level
         && (crate::inline::uniform_border(c, font_px).is_some()
@@ -21336,6 +21344,17 @@ fn px_of2(l: &Option<Len>) -> Option<f32> {
     }
 }
 
+/// `inset()`/`rect()`/`xywh()` with a `round` radius in points: the group
+/// buffer rounds the clip rectangle (css-shapes-1 §basic-shape-rect);
+/// percentages resolve against the reference box at paint time.
+pub(crate) fn rounded_rect_clip(c: &Computed) -> bool {
+    matches!(c.clip_round_len, Some(Len::Px(v) | Len::Pct(v)) if v > 0.0)
+        && (c.clip_inset.is_some()
+            || c.clip_edges.is_some()
+            || c.clip_xywh.is_some()
+            || c.clip_polygon.is_some())
+}
+
 /// Отрисовать поддерево в отдельный буфер, когда эффекту нужна готовая
 /// картинка целиком.
 ///
@@ -21636,6 +21655,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     wrapper.mask_fit = c.mask_fit.unwrap_or(0);
     wrapper.mask_no_repeat = c.mask_no_repeat.unwrap_or((false, false));
     wrapper.mask_repeat_list = c.mask_repeat_list.clone().unwrap_or_default();
+    wrapper.mask_repeat_modes = c.mask_repeat_modes.clone().unwrap_or_default();
     wrapper.mask_luminance = c.mask_luminance == Some(true);
     wrapper.mask_alpha_mode = c.mask_alpha_mode == Some(true);
     wrapper.mask_pos = c.mask_pos;
@@ -21649,6 +21669,9 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     wrapper.clip_inset = clip_inset;
     wrapper.clip_edges = c.clip_edges;
     wrapper.clip_xywh = c.clip_xywh;
+    if rounded_rect_clip(c) {
+        wrapper.clip_round = c.clip_round_len;
+    }
     // `clip`/`mask-clip` живут в системе координат элемента ДО трансформа, а
     // трансформ рисуется ВНУТРИ буфера группы — коробка клипа обязана ехать
     // вместе (clip-transform-order: сдвинутый рисунок резался по старому

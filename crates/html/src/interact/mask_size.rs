@@ -41,3 +41,42 @@ pub(super) fn tile(
     // CSS Masking §7.8 defines mask-size through CSS Backgrounds §3.9.
     tile_size(intrinsic, area, size)
 }
+
+/// `round` (css-backgrounds-3 §3.4, via css-masking-1 §7.6): the tile is
+/// rescaled so a whole number of copies fills the positioning area,
+/// `max(1, round(area / tile))`. When only one axis rounds and the other
+/// `mask-size` component is `auto`, that axis keeps the aspect ratio.
+pub(super) fn round_tile(
+    (tw, th): (f32, f32),
+    (bw, bh): (f32, f32),
+    (rx, ry): (bool, bool),
+    size: Option<(Len, Len)>,
+) -> (f32, f32) {
+    let fit = |t: f32, area: f32| {
+        if t <= 0.0 || area <= 0.0 {
+            return t;
+        }
+        area / (area / t).round().max(1.0)
+    };
+    let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
+    let (nw, nh) = (if rx { fit(tw, bw) } else { tw }, if ry { fit(th, bh) } else { th });
+    match (rx, ry) {
+        (true, false) if auto(size.map(|s| s.1)) && tw > 0.0 => (nw, th * nw / tw),
+        (false, true) if auto(size.map(|s| s.0)) && th > 0.0 => (tw * nh / th, nh),
+        _ => (nw, nh),
+    }
+}
+
+/// `space` along one axis: `(start, gap, single)`. With at least two whole
+/// tiles the first touches the start edge and the rest share the leftover
+/// equally; otherwise one tile stays at its `mask-position` offset.
+pub(super) fn space_axis(space: bool, pos: f32, tile: f32, area: f32) -> (f32, f32, bool) {
+    if !space || tile <= 0.0 {
+        return (pos, 0.0, false);
+    }
+    let n = (area / tile).floor();
+    if n < 2.0 {
+        return (pos, 0.0, true);
+    }
+    (0.0, (area - n * tile) / (n - 1.0), false)
+}
