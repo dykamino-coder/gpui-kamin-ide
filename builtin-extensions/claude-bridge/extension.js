@@ -42220,7 +42220,7 @@ var ConnectionManager = class _ConnectionManager {
     void this.deliverMcpResult({ type: "mcp:denied", requestId, reason });
   }
   reportMcpDeliveryFailure() {
-    void vscode4.window.showWarningMessage("Bridge did not acknowledge a tool result. The session may still be waiting; reconnect to recover. Do not repeat a side-effecting tool without checking its outcome.");
+    void vscode4.window.showWarningMessage("Bridge did not acknowledge a tool result. Delivery stopped; the session may still be waiting. Check the session and tool outcome before continuing.");
   }
   async deliverMcpResult(outcome) {
     if (!this.pendingMcpCalls.has(outcome.requestId) || !this.mcpSessionId) return;

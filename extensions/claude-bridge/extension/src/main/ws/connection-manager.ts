@@ -669,7 +669,7 @@ export class ConnectionManager {
   }
 
   private reportMcpDeliveryFailure(): void {
-    void vscode.window.showWarningMessage('Bridge did not acknowledge a tool result. The session may still be waiting; reconnect to recover. Do not repeat a side-effecting tool without checking its outcome.')
+    void vscode.window.showWarningMessage('Bridge did not acknowledge a tool result. Delivery stopped; the session may still be waiting. Check the session and tool outcome before continuing.')
   }
 
   private async deliverMcpResult(outcome: Extract<ClientMessage, { type: 'mcp:response' | 'mcp:denied' }>): Promise<void> {
