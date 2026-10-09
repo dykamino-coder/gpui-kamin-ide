@@ -4,7 +4,7 @@
 //! overflowing descendants remain a parallel flow, rather than increasing the
 //! distance to the following sibling. Min-height wins when min exceeds max.
 
-use super::{Shape, ShapeCx, shape_contents, table_box};
+use crate::render::{Shape, ShapeCx, shape_contents, table_box};
 use crate::{
     computed::{Computed, Overflow},
     dom::Element,

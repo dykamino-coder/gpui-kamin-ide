@@ -1,5 +1,5 @@
 //! Orthogonal auto inline sizes use intrinsic floors, not artificial CSS max-width.
-use super::{native_intrinsic, orthogonal_inline};
+use crate::render::{native_intrinsic, orthogonal_inline};
 use crate::computed::{Computed, Display, orthogonal::available};
 use crate::dom::Element;
 use crate::value::Len;
@@ -50,7 +50,7 @@ mod tests {
             ..Computed::default()
         };
         for authored in [None, Some(Len::Auto)] {
-            let mut child = super::super::anon_element("div", vec![]);
+            let mut child = crate::render::anon_element("div", vec![]);
             child.style.width = authored;
             child.style.border_width.left = Some(Len::Px(3.0));
             child.style.border_width.right = Some(Len::Px(3.0));
@@ -75,7 +75,7 @@ mod tests {
             },
             Default::default(),
         ]);
-        let mut child = super::super::anon_element("div", vec![]);
+        let mut child = crate::render::anon_element("div", vec![]);
         child.style.margin.left = Some(Len::Px(10.0));
         child.style.padding.left = Some(Len::Px(20.0));
         child.style.border_box = Some(true);
@@ -86,7 +86,7 @@ mod tests {
     #[test]
     fn independent_layout_roles_and_authored_width_keep_their_own_contract() {
         let container = Computed::default();
-        let mut child = super::super::anon_element("div", vec![]);
+        let mut child = crate::render::anon_element("div", vec![]);
         for display in [
             Display::Flex,
             Display::Grid,

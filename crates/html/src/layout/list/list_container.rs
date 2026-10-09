@@ -1,12 +1,12 @@
 //! Anonymous inline runs inside list containers participate in normal block flow.
 //! CSS 2.1 §9.2.1.1 groups consecutive inline content between block children.
 
-use super::{
+use crate::render::{
     AnyElement, Computed, Display, Element, IntoElement, Node, ParentElement, RenderOpts, Styled,
     blocks, list_item, styled_div_with,
 };
 
-pub(super) fn render(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(crate) fn render(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let mut rows = Vec::new();
     let mut pending = Vec::new();
     for child in &e.children {

@@ -57,7 +57,7 @@ impl PageCounters {
     pub(crate) fn from_document(mut nodes: &[crate::dom::Node]) -> Self {
         let mut state = Self::default();
         loop {
-            let mut live = nodes.iter().filter(|node| !super::is_blank(node));
+            let mut live = nodes.iter().filter(|node| !crate::render::is_blank(node));
             let Some(crate::dom::Node::Element(element)) = live.next() else {
                 break;
             };

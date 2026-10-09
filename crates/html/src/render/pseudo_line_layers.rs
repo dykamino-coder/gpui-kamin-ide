@@ -13,7 +13,7 @@ pub(crate) fn install(element: &Element, merged: &mut Computed) {
         .map(|l| resolve(l, merged.font_size));
 }
 
-pub(super) fn install_first_letter(element: &Element, merged: &mut Computed) {
+pub(crate) fn install_first_letter(element: &Element, merged: &mut Computed) {
     merged.first_letter = element
         .first_letter
         .as_ref()

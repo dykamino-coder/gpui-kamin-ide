@@ -4,6 +4,7 @@
 use crate::render::*;
 
 pub mod element;
+pub(crate) mod mask_geometry;
 
 thread_local! {
     /// Определения `<mask id>` / `<clipPath id>` документа: id — разметка

@@ -11,6 +11,8 @@ pub mod shadows;
 ///
 /// Все — абсолютные и вне потока, поэтому на раскладку не влияют и могут
 /// идти первыми детьми.
+pub(crate) mod outline;
+pub(crate) mod text_shadows;
 pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     let mut out: Vec<AnyElement> = vec![];
 

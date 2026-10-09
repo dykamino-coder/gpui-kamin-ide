@@ -1,6 +1,6 @@
 //! Page margin boxes use generated content inside their resolved border boxes.
 
-use super::*;
+use crate::render::*;
 
 pub(crate) fn builder(
     declarations: PageMarginDeclsFn,
@@ -230,7 +230,7 @@ fn content_nodes(
         if let ContentItem::Image(src) = item {
             flush(&mut run, &mut children, counters);
             if let Some(src) = crate::dom::content_image_src(src) {
-                let mut image = super::anon_element("img", vec![]);
+                let mut image = crate::render::anon_element("img", vec![]);
                 image.inline = true;
                 image.attrs.push(("src".into(), src));
                 children.push(Node::Element(image));

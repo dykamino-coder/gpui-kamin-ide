@@ -17,7 +17,7 @@ pub(super) fn constraint(
         Some(Len::FitContent) => InlineKeyword::FitContent,
         _ => return None,
     };
-    let axis = super::orthogonal_inline::axis(style, true);
+    let axis = crate::render::orthogonal_inline::axis(style, true);
     Some((
         keyword,
         InlineConstraint {

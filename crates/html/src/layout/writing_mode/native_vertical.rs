@@ -19,7 +19,7 @@ pub(crate) fn claim_float_inline_size(
     // Only the rotated inline paragraph needs an explicit outer size claim.
     if children.iter().any(|node| {
         matches!(node, crate::dom::Node::Element(child)
-        if !super::inline_level(child) && super::in_flow(&child.style))
+        if !crate::render::inline_level(child) && crate::render::in_flow(&child.style))
     }) {
         return;
     }
@@ -35,11 +35,11 @@ pub(crate) fn claim_float_inline_size(
     }
 }
 
-pub(super) fn constraint(style: &Computed, fallback: f32) -> Option<InlineConstraint> {
-    super::vertical_intrinsic::constraint(style, fallback)
+pub(crate) fn constraint(style: &Computed, fallback: f32) -> Option<InlineConstraint> {
+    crate::render::vertical_intrinsic::constraint(style, fallback)
         .map(|(_, value)| value)
         .or_else(|| {
-            let own = super::orthogonal_inline::axis(style, true);
+            let own = crate::render::orthogonal_inline::axis(style, true);
             own.size.map(|size| InlineConstraint {
                 available: fallback,
                 fixed: Some(size),
@@ -47,13 +47,13 @@ pub(super) fn constraint(style: &Computed, fallback: f32) -> Option<InlineConstr
                 max: own.max,
             })
         })
-        .or(super::orthogonal_inline::flow_constraint(style))
-        .or_else(|| super::orthogonal_absolute::constraint(style, fallback))
+        .or(crate::render::orthogonal_inline::flow_constraint(style))
+        .or_else(|| crate::render::orthogonal_absolute::constraint(style, fallback))
         .or_else(|| {
             if !style.hug_inline {
                 return None;
             }
-            let own = super::orthogonal_inline::axis(style, true);
+            let own = crate::render::orthogonal_inline::axis(style, true);
             Some(InlineConstraint {
                 available: fallback,
                 fixed: own.size,
@@ -67,7 +67,7 @@ pub(super) fn constraint(style: &Computed, fallback: f32) -> Option<InlineConstr
             if !style.ortho_col || style.ortho_limit.is_none() {
                 return None;
             }
-            let own = super::orthogonal_inline::axis(style, true);
+            let own = crate::render::orthogonal_inline::axis(style, true);
             Some(InlineConstraint {
                 available: fallback,
                 fixed: own.size,
@@ -77,7 +77,7 @@ pub(super) fn constraint(style: &Computed, fallback: f32) -> Option<InlineConstr
         })
 }
 
-pub(super) fn keyword(style: &Computed) -> Option<InlineKeyword> {
+pub(crate) fn keyword(style: &Computed) -> Option<InlineKeyword> {
     match style.height {
         Some(Len::MinContent) => Some(InlineKeyword::MinContent),
         Some(Len::MaxContent) => Some(InlineKeyword::MaxContent),

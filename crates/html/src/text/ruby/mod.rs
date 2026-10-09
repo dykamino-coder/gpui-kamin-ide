@@ -5,6 +5,8 @@ use crate::render::*;
 
 /// Единица руби (css-ruby-1 §2.3.2): содержимое одной базы или одной
 /// аннотации. Пустой вектор — анонимная пустая единица, добавленная спариванием.
+pub(crate) mod ruby_hiding;
+pub(crate) mod ruby_transform;
 pub(crate) type RubyUnit = Vec<Node>;
 
 /// Уровень аннотаций сегмента: `<rtc>` или ряд `<rt>` прямо в контейнере

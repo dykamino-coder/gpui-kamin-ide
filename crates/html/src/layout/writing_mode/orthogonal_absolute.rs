@@ -11,7 +11,7 @@ pub(super) fn constraint(style: &Computed, available: f32) -> Option<InlineConst
     if !positioned || style.vertical != Some(true) || style.ortho_col || style.parent_flex_grid {
         return None;
     }
-    let own = super::orthogonal_inline::axis(style, true);
+    let own = crate::render::orthogonal_inline::axis(style, true);
     // The inline atomic path can retain a containing-block wrapping fallback.
     // A definite physical height replaces it before RTL text alignment.
     if own.size.is_none()

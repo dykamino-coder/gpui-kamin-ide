@@ -10,7 +10,7 @@ fn keyword(value: Option<Len>) -> bool {
     )
 }
 
-pub(super) fn eligible(element: &Element) -> bool {
+pub(crate) fn eligible(element: &Element) -> bool {
     let style = &element.style;
     let grid = matches!(
         style.display,
@@ -26,7 +26,7 @@ pub(super) fn eligible(element: &Element) -> bool {
         && (keyword(style.width) || keyword(style.height))
         && ![style.min_width, style.max_width, style.min_height, style.max_height]
             .into_iter().any(keyword)
-        && !super::replaced_tag(element)
+        && !crate::render::replaced_tag(element)
         // These tags use independent form/table/list formatting builders.
         && !matches!(element.tag.as_str(),
             "table" | "caption" | "colgroup" | "col" | "thead" | "tbody" | "tfoot" |
@@ -40,7 +40,7 @@ mod tests {
     use super::*;
     #[test]
     fn ordinary_keyword_items_keep_margins_placement_and_numeric_limits() {
-        let mut element = super::super::anon_element("div", vec![]);
+        let mut element = crate::render::anon_element("div", vec![]);
         element.style.width = Some(Len::MinContent);
         element.style.height = Some(Len::MaxContent);
         element.style.margin.left = Some(Len::Px(-10.0));
@@ -49,15 +49,15 @@ mod tests {
         element.style.max_width = Some(Len::Px(100.0));
         element.style.vertical = Some(true);
         assert!(eligible(&element));
-        assert!(!super::super::content_sized_wraps(&element));
+        assert!(!crate::render::content_sized_wraps(&element));
         element.style.intrinsic_wrapper_required = true;
         assert!(!eligible(&element));
-        assert!(super::super::content_sized_wraps(&element));
+        assert!(crate::render::content_sized_wraps(&element));
     }
 
     #[test]
     fn intrinsic_grid_containers_keep_keywords_on_their_actual_node() {
-        let mut element = super::super::anon_element("div", vec![]);
+        let mut element = crate::render::anon_element("div", vec![]);
         element.style.height = Some(Len::MaxContent);
         element.style.inline_display = Some(true);
         element.style.grid_row = Some((
@@ -68,7 +68,7 @@ mod tests {
         for display in [Display::Grid, Display::InlineGrid, Display::GridLanes] {
             element.style.display = Some(display);
             assert!(eligible(&element));
-            assert!(!super::super::content_sized_wraps(&element));
+            assert!(!crate::render::content_sized_wraps(&element));
         }
         element.style.max_height = Some(Len::MinContent);
         assert!(!eligible(&element));
@@ -76,7 +76,7 @@ mod tests {
 
     #[test]
     fn specialized_roles_and_intrinsic_constraints_keep_their_existing_contracts() {
-        let mut element = super::super::anon_element("div", vec![]);
+        let mut element = crate::render::anon_element("div", vec![]);
         element.style.width = Some(Len::FitContent);
         element.style.display = Some(Display::Block);
         for tag in ["table", "td", "img", "input", "canvas", "li"] {

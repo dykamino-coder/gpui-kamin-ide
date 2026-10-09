@@ -56,7 +56,7 @@ mod tests {
 
     #[test]
     fn sampled_height_keeps_identity_placement_edges_and_unanimated_width() {
-        let mut element = super::super::anon_element("div", vec![]);
+        let mut element = crate::render::anon_element("div", vec![]);
         element.node_id = 17;
         element.style.width = Some(Len::Px(200.0));
         element.style.height = Some(Len::Px(100.0));
@@ -79,7 +79,7 @@ mod tests {
 
     #[test]
     fn sampled_percent_and_color_replace_actual_node_declarations() {
-        let mut element = super::super::anon_element("div", vec![]);
+        let mut element = crate::render::anon_element("div", vec![]);
         element.style.width = Some(Len::Px(200.0));
         element.style.height = Some(Len::Px(100.0));
         element.style.color = Some(Color {

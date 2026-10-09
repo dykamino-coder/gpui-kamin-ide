@@ -1,6 +1,6 @@
 //! Paint text shadows with the same paragraph geometry and decoration mask.
 
-use super::{RenderOpts, gather_text, normalize_for_shadow, paragraph};
+use crate::render::{RenderOpts, gather_text, normalize_for_shadow, paragraph};
 use crate::computed::{Computed, Shadow};
 use crate::dom::Node;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
@@ -139,7 +139,7 @@ fn atomic(e: &crate::dom::Element) -> bool {
         _ => 16.0,
     };
     !e.inline
-        || super::has_own_box(&e.style, font)
+        || crate::render::has_own_box(&e.style, font)
         || matches!(
             e.tag.as_str(),
             "img"

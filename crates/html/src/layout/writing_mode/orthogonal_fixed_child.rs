@@ -1,5 +1,5 @@
 //! A definite vertical containing block passes its content inline size to children.
-use super::orthogonal_inline::{axis, edges};
+use crate::render::orthogonal_inline::{axis, edges};
 use crate::computed::orthogonal::{AxisSizes, InlineConstraint};
 use crate::computed::{Computed, Display};
 use crate::value::Len;
@@ -170,7 +170,7 @@ mod tests {
 
     #[test]
     fn parallel_block_retains_inline_block_height_during_intrinsic_measurement() {
-        use super::super::{native_vertical, orthogonal_inline::resolve};
+        use crate::render::{native_vertical, orthogonal_inline::resolve};
         let mut container = Computed {
             vertical: Some(true),
             display: Some(Display::InlineBlock),
@@ -198,7 +198,7 @@ mod tests {
 
     #[test]
     fn parallel_cell_children_fill_the_cells_authored_inline_size() {
-        use super::super::{native_vertical, orthogonal_inline::resolve};
+        use crate::render::{native_vertical, orthogonal_inline::resolve};
         let mut cell = Computed {
             vertical: Some(true),
             display: Some(Display::TableCell),

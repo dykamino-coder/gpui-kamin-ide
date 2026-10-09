@@ -1,6 +1,6 @@
 //! List item boxes paint their markers independently of the parent element tag.
 
-use super::{
+use crate::render::{
     AnyElement, Computed, Display, Element, IntoElement, Node, ParentElement, RenderOpts,
     SharedString, Styled, anon_element, blocks, div, inline, styled_div_with,
 };
@@ -47,7 +47,7 @@ pub(super) fn render(li: &Element, inherited: &Computed, opts: &RenderOpts) -> A
     )
         || (li.style.display == Some(Display::InlineBlock) && li.style.inline_display != Some(true))
     {
-        super::pseudo_line_layers::install_first_letter(li, &mut merged);
+        crate::render::pseudo_line_layers::install_first_letter(li, &mut merged);
     }
     render_with_style(li, inherited, &merged, opts)
 }
@@ -163,7 +163,7 @@ pub(crate) fn render_with_style(
     // the item's content height is at least the marker's (csswg-drafts#2417,
     // #2418; Blink `UnpositionedListMarker::AddToBoxWithoutLineBoxes`). An
     // item with no content gets a hidden zero-width copy of the marker line.
-    let empty = li.children.iter().all(super::is_blank);
+    let empty = li.children.iter().all(crate::render::is_blank);
     let strut = (!no_marker && empty).then(|| {
         let mut d = crate::apply::apply_text(div(), &mark_style)
             .w_0()
@@ -255,7 +255,7 @@ pub(crate) fn render_with_style(
 
 /// String list-style-type values inherit through ordinary block wrappers;
 /// generated marker content belongs only to the originating item.
-pub(super) fn inherited_style(e: &Element, parent: &Computed, merged: &mut Computed) {
+pub(crate) fn inherited_style(e: &Element, parent: &Computed, merged: &mut Computed) {
     if e.style.marker_text.is_none()
         && e.style.list_style_type.is_none()
         && e.style.no_marker.is_none()

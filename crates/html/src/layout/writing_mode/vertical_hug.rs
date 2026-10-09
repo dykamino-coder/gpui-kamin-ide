@@ -19,7 +19,7 @@ use crate::{
 /// контейнера, `inline::inherit` начинает с `own.clone()`): их строчный
 /// размер — тот же shrink-to-fit. Вертикальный флоат (случай 4) сюда не
 /// доходит: его строит хост полос, и `float` до сборщика детей не доезжает.
-pub(super) fn children(children: Vec<Node>, own: &Computed, merged: &Computed) -> Vec<Node> {
+pub(crate) fn children(children: Vec<Node>, own: &Computed, merged: &Computed) -> Vec<Node> {
     let auto_inline = |c: &Computed| matches!(c.height, None | Some(Len::Auto));
     let grid = matches!(own.display, Some(Display::Grid) | Some(Display::InlineGrid));
     let shrink = merged.hug_claim && auto_inline(own) && !grid;
@@ -33,7 +33,7 @@ pub(super) fn children(children: Vec<Node>, own: &Computed, merged: &Computed) -
         // его строчная ось горизонтальна.
         if ch.inline
             || ch.style.vertical == Some(false)
-            || !super::in_flow(&ch.style)
+            || !crate::render::in_flow(&ch.style)
             || !auto_inline(&ch.style)
         {
             continue;
@@ -72,7 +72,7 @@ mod tests {
             vertical: Some(true),
             ..Computed::default()
         };
-        let child = super::super::anon_element("div", vec![]);
+        let child = crate::render::anon_element("div", vec![]);
         let claimed = |child, parent: &Computed| {
             let out = children(vec![Node::Element(child)], parent, parent);
             let Node::Element(child) = &out[0] else {

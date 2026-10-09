@@ -2,7 +2,7 @@
 use crate::computed::Computed;
 use gpui::{AnyElement, IntoElement, PaintCollect};
 
-pub(super) fn collect(mut children: Vec<AnyElement>, style: &Computed) -> Vec<AnyElement> {
+pub(crate) fn collect(mut children: Vec<AnyElement>, style: &Computed) -> Vec<AnyElement> {
     // CSS Containment 2 §§3.2/3.3 and CSS2 Appendix E: a containment
     // stacking context paints atomically. Flushing under the owner's clip
     // prevents PaintLast descendants from escaping to the document collector.

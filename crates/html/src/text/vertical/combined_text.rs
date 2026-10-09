@@ -1,6 +1,6 @@
 //! Horizontal compositions apply only in vertical writing modes, with no letter spacing.
 //! CSS Writing Modes 4 §9.1 and §9.1.2 preserve font settings inside the composition.
-use super::{Element, RenderOpts, gather_text, inline, paragraph};
+use crate::render::{Element, RenderOpts, gather_text, inline, paragraph};
 use crate::{
     computed::{Computed, TextTransform},
     dom::Node,
@@ -9,7 +9,7 @@ use crate::{
 use gpui::IntoElement;
 use unicode_segmentation::UnicodeSegmentation;
 
-pub(super) fn piece(
+pub(crate) fn piece(
     element: &Element,
     inherited: &Computed,
     opts: &RenderOpts,

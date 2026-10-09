@@ -20,17 +20,17 @@ pub(crate) fn inside() -> bool {
     snapshot().paint > 0
 }
 
-pub(super) fn deferred() -> bool {
+pub(crate) fn deferred() -> bool {
     snapshot().deferred > 0
 }
 
-pub(super) struct Guard {
+pub(crate) struct Guard {
     paint: bool,
     deferred: bool,
 }
 
 impl Guard {
-    pub(super) fn enter(deferred: bool, stacking: bool) -> Self {
+    pub(crate) fn enter(deferred: bool, stacking: bool) -> Self {
         // CSS2 §10.1 and CSS Containment 2 §3.2: a positioned descendant
         // still uses its containing ancestor across intervening static boxes.
         // A stacking context only limits paint ordering (CSS2 Appendix E);

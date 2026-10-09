@@ -16,6 +16,7 @@ use crate::interact::*;
 /// сжатый кусок обязан остаться стоячим — он контр-поворачивается вокруг
 /// СВОЕГО ЦЕНТРА (квадрат кегля переходит в себя) и ужимается по строчной
 /// оси в один кегль (css-writing-modes-3 §9.1).
+pub(crate) mod combined_text;
 pub struct CombinedUpright {
     pub(crate) child: Option<AnyElement>,
     /// Кегль — сторона квадрата, который кусок занимает в строке.

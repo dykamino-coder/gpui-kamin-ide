@@ -16,6 +16,7 @@ pub mod types;
 
 /// Элемент сетки для `grid_auto_row_bands`: номер среди `c.children`, ряд,
 /// верхнее поле, мера `shape_full`, годны ли его внутренние точки сетке.
+pub(crate) mod fragment_size;
 pub(crate) type GridSpot = (usize, usize, f32, Shape, bool);
 
 /// То же плюс смещения принудительных разрывов и диапазоны
