@@ -145,6 +145,7 @@ pub(crate) use crate::layout::grid::*;
 pub(crate) mod paragraph;
 pub(crate) use crate::render::paragraph::*;
 pub(crate) use crate::render::paragraph::pieces::*;
+pub(crate) use crate::render::paragraph::atom_piece::*;
 pub(crate) mod blocks;
 pub(crate) use crate::render::blocks::*;
 pub(crate) mod element;

@@ -471,6 +471,7 @@ const CONSUMERS: &[&str] = &[
     include_str!("interactive/frame.rs"),
     include_str!("render/paragraph/mod.rs"),
     include_str!("render/paragraph/pieces.rs"),
+    include_str!("render/paragraph/atom_piece.rs"),
     include_str!("render/blocks/mod.rs"),
     include_str!("render/element.rs"),
     include_str!("render/generic_box.rs"),
