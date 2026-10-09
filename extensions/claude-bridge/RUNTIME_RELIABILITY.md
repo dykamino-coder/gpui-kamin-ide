@@ -1064,6 +1064,14 @@ authoritative reset epochs or version metadata are unavailable.
 Primary contract references: [Claude Code statusline](https://code.claude.com/docs/en/statusline)
 and [capture-scoped settings flag](https://code.claude.com/docs/en/cli-reference).
 
+Synthetic component-only Chrome 154 QA (no authentication/account data):
+[baseline](runtime-issues/evidence/BR-20/synthetic-before.png),
+[dynamic rows](runtime-issues/evidence/BR-20/synthetic-after.png),
+[partial refresh](runtime-issues/evidence/BR-20/synthetic-partial.png).
+These show the actual old/new Account component with synthetic inputs, not the
+full dashboard or authenticated quota runtime gate. Adjacent control focus,
+unavailable refresh and last-known row retention passed in the same harness.
+
 ### BR-21 — Define and reconcile dashboard analytics semantics
 
 **Close-out audit 2026-09-06:** Утверждённого metric-contract decision artifact нет.
