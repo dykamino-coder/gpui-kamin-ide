@@ -27,6 +27,7 @@ mod atom_placement;
 mod ruby_overhang;
 mod content_baselines;
 mod controlled_shape;
+mod overflow_marker;
 mod hyphen_shape;
 mod decor;
 mod ruby_justification;
@@ -2783,27 +2784,9 @@ impl Paragraph {
     }
 
     fn suffix_width(&self, mark: &str, at: usize, window: &mut Window) -> Pixels {
-        // `block-ellipsis: no-ellipsis` — знака нет, места под него тоже.
-        if mark.is_empty() {
-            return px(0.);
-        }
-        let mut runs = slice_runs(&self.runs, &(at..at + 1));
-        let Some(run) = runs.first_mut() else {
-            return px(0.);
-        };
-        run.len = mark.len();
-        self.style_marker_run(mark, run);
-        let piece = vec![run.clone()];
-        window
-            .text_system()
-            .shape_line_spaced(
-                SharedString::from(mark.to_string()),
-                self.font_size,
-                &piece,
-                None,
-                self.letter_spacing,
-            )
-            .width
+        self.shaped_suffix(mark, at, window)
+            .into_iter()
+            .fold(px(0.), |width, shaped| width + shaped.width)
     }
 
     /// `text-wrap: balance` — те же строки, но одной длины.
@@ -5039,7 +5022,15 @@ impl Paragraph {
         // маркер — строчный ребёнок блока на линии строки), а не на свою —
         // у строки-замены кегля блока внутри крупного `<span>` своя базовая
         // линия выше на разницу подъёмов (`text-overflow-string-*`).
-        let mut line_base: Option<Pixels> = None;
+        // CSS 2.1 §10.8.1: splitting a line into bidi runs must not give
+        // smaller-font runs independent baselines. The complete line supplies
+        // the ascent/descent used to align every shaped visual piece.
+        let common_base = if visual.len() > 1 {
+            self.base_of(range).map(px)
+        } else {
+            None
+        };
+        let mut line_base: Option<Pixels> = common_base;
         let mut line_exact = false;
         let pieces = visual.clone();
         for run in visual.into_iter() {
@@ -5088,7 +5079,9 @@ impl Paragraph {
             };
             let width = shaped.width;
             let base = (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent;
-            line_base = Some(line_base.map_or(base, |b: Pixels| b.max(base)));
+            if common_base.is_none() {
+                line_base = Some(line_base.map_or(base, |b: Pixels| b.max(base)));
+            }
             line_exact |= shaped
                 .runs
                 .iter()
@@ -5097,9 +5090,18 @@ impl Paragraph {
                 // Знак обрыва СЛЕВА от куска: рисуется на своём месте, а
                 // кусок сдвигается на его ширину.
                 let ell = self.suffix_width(tail, run.start, window);
-                self.paint_suffix(tail, run.start, point(x, at.y), Some(base), line_exact, window, cx);
+                self.paint_suffix(
+                    tail,
+                    run.start,
+                    point(x, at.y),
+                    Some(common_base.unwrap_or(base)),
+                    line_exact,
+                    window,
+                    cx,
+                );
                 x += ell;
             }
+            let at = point(at.x, at.y + common_base.map_or(px(0.), |line| line - base));
             // Подложка прогона (`background` на `<span>`) рисуется ОТДЕЛЬНЫМ
             // вызовом: `paint` кладёт только глифы. Пока его не звали, фон
             // строчного элемента не появлялся вовсе — проверено пробой, где
@@ -5130,65 +5132,6 @@ impl Paragraph {
             self.paint_suffix(suffix, anchor, point(x, at.y), line_base, line_exact, window, cx);
         }
         (line_base, line_exact)
-    }
-
-    /// Многоточие обрыва: набирается стилем того куска, на котором строка
-    /// оборвана, и рисуется сразу за её текстом.
-    fn paint_suffix(
-        &self,
-        mark: &str,
-        at: usize,
-        origin: Point<Pixels>,
-        base: Option<Pixels>,
-        raw: bool,
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        if mark.is_empty() {
-            return;
-        }
-        let mut runs = slice_runs(&self.runs, &(at..at + 1));
-        let Some(run) = runs.first_mut() else {
-            return;
-        };
-        run.len = mark.len();
-        self.style_marker_run(mark, run);
-        let piece = vec![run.clone()];
-        let shaped = window.text_system().shape_line_spaced(
-            SharedString::from(mark.to_string()),
-            self.font_size,
-            &piece,
-            None,
-            self.letter_spacing,
-        );
-        // Своя базовая линия набора — на базовую линию текста строки.
-        let origin = match base {
-            Some(b) => {
-                let own = (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent;
-                point(origin.x, origin.y + b - own)
-            }
-            None => origin,
-        };
-        // Знак — часть строки: её набор с точным шрифтом (Ahem) GPUI ставит
-        // на дробную базовую без округления (`text_raster_origin`), и знак
-        // идёт по тому же правилу, иначе он округлялся отдельно и стоял на
-        // точку выше текста строки (`text-overflow-string-*`).
-        // An antialiased marker on such a line is an inline run of the
-        // block (css-overflow-4 section 5.3) and is rasterized like the
-        // line's other antialiased runs: `text_raster_origin` rounds its
-        // baseline with the paragraph's glyph offset and opaque fill frame
-        // (`text-overflow-string-004` vs. its plain `123` reference run).
-        let origin = if raw
-            && shaped
-                .runs
-                .iter()
-                .all(|r| window.text_system().pixel_exact_glyphs(r.font_id))
-        {
-            origin
-        } else {
-            self.text_raster_origin(&shaped, origin, window)
-        };
-        let _ = shaped.paint(origin, self.line_height, window, cx);
     }
 
     /// Строковый маркер несёт шрифт контейнера; многоточие и знак переноса
