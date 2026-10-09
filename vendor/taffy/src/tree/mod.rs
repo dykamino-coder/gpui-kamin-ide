@@ -187,3 +187,6 @@ mod ratio_constraint_probe_tests;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "grid", feature = "flexbox"))]
 mod grid_flex_fraction_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
+mod grid_track_sum_tests;

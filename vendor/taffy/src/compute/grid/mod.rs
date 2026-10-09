@@ -59,6 +59,7 @@ mod subgrid_tracks;
 // KaminIDE patch: подсетка (css-grid-2 §9) — дерево размеров на общем пути.
 mod subgrid;
 mod track_sizing;
+mod track_sum;
 mod types;
 mod util;
 /// The grid container's resolved box, size constraints, alignment styles and available space,
@@ -611,7 +612,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         // только группы по оси x (`resolve_item_baselines_x`).
         has_justify_baseline_item,
     );
-    let initial_column_sum = columns.iter().map(|track| track.base_size).sum::<f32>();
+    let initial_column_sum = track_sum::base_size_sum(&columns);
     inner_node_size.width = inner_node_size.width.or_else(|| initial_column_sum.into());
 
     // If only the container's width has been requested then we can skip sizing the rows entirely (which avoids
@@ -663,7 +664,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         |track: &GridTrack, _, _| Some(track.base_size),
         has_baseline_aligned_item,
     );
-    let initial_row_sum = rows.iter().map(|track| track.base_size).sum::<f32>();
+    let initial_row_sum = track_sum::base_size_sum(&rows);
 
     debug_log!("initial_column_sum", dbg:initial_column_sum);
     debug_log!(dbg: columns.iter().map(|track| track.base_size).collect::<Vec<_>>());
@@ -889,8 +890,8 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     if (intrinsic_column_contribution_changed && !has_percentage_column)
         || (intrinsic_row_contribution_changed && !has_percentage_row)
     {
-        let final_column_sum = columns.iter().map(|track| track.base_size).sum::<f32>();
-        let final_row_sum = rows.iter().map(|track| track.base_size).sum::<f32>();
+        let final_column_sum = track_sum::base_size_sum(&columns);
+        let final_row_sum = track_sum::base_size_sum(&rows);
 
         if intrinsic_column_contribution_changed && !has_percentage_column {
             container_border_box.width = resolved_style_size
