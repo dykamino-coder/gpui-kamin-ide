@@ -1,10 +1,10 @@
 //! Build undecorated inline continuations before collapsing ancestor block margins.
 
-use super::{
+use crate::render::{
     Display, Node, contains_block, inline_floats, multicol_container, out_of_flow, real_inline,
     replaced_tag,
 };
-use super::{split_block_in_inline, wrap_anon_tables};
+use crate::render::{split_block_in_inline, wrap_anon_tables};
 
 /// CSS 2.1 sections 9.2.1.1 and 8.3.1: adjoining margins belong to the
 /// generated block boxes, including blocks hoisted out of inline ancestors.

@@ -1,7 +1,7 @@
 //! Structural table borders participate in the same grid-edge width as cells.
 //! CSS 2.1 §17.6.2–17.6.2.1 includes rows, row groups, columns and column groups.
 
-use super::super::{Element, col_elements, col_role, colgroup_elements};
+use crate::render::{Element, col_elements, col_role, colgroup_elements};
 
 pub(super) struct Edges<'a> {
     rows: &'a [&'a Element],

@@ -16,6 +16,10 @@ pub mod paint;
 /// Это стало возможно только вместе с патчем произвольных дорожек в GPUI —
 /// короткая форма умела ровно «N равных колонок», и таблица из даты и длинного
 /// текста разъезжалась пополам.
+pub(crate) mod table_roles;
+pub(crate) mod table_border_widths;
+pub(crate) mod table_spanning_size;
+pub(crate) mod table_clipped_content;
 pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // Ключевое слово содержимого в `max-height` таблицы горизонтального
     // письма (блочная ось) ведёт себя как начальное `none`: высота таблицы и

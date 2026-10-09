@@ -114,14 +114,14 @@ pub(crate) fn inline_percentage_width(style: &mut crate::computed::Computed, bas
 
 /// Freeze the CSS containing block before float adapters create flex wrappers.
 /// Their width is the remaining line window, not the percentage sizing basis.
-pub(super) fn inline_nodes(
+pub(crate) fn inline_nodes(
     mut nodes: Vec<crate::dom::Node>,
     basis: Option<f32>,
 ) -> Vec<crate::dom::Node> {
     for node in &mut nodes {
         if let crate::dom::Node::Element(element) = node
             && element.tag == "img"
-            && super::inline_level(element)
+            && crate::render::inline_level(element)
         {
             inline_percentage_width(&mut element.style, basis);
         }
@@ -135,21 +135,21 @@ mod tests {
 
     #[test]
     fn indefinite_percentage_height_transfers_max_width_through_intrinsic_ratio() {
-        let mut image = super::super::anon_element("img", vec![]);
+        let mut image = crate::render::anon_element("img", vec![]);
         image.style.height = Some(Len::Pct(1.0));
         image.style.max_width = Some(Len::Pct(1.0));
         let normalized = normalize(&image, Some(100.0)).unwrap();
         assert_eq!(normalized.style.height, None);
         assert_eq!(normalized.style.max_width, Some(Len::Px(100.0)));
         assert_eq!(
-            super::super::css2_replaced_limits(200.0, 200.0, None, Some(100.0), None, None,),
+            crate::render::css2_replaced_limits(200.0, 200.0, None, Some(100.0), None, None,),
             (100.0, 100.0)
         );
     }
 
     #[test]
     fn definite_and_positioned_percentage_heights_keep_their_basis() {
-        let mut image = super::super::anon_element("img", vec![]);
+        let mut image = crate::render::anon_element("img", vec![]);
         image.style.height = Some(Len::Pct(0.5));
         image.style.cb_height_def = true;
         assert!(normalize(&image, None).is_none());
@@ -162,7 +162,7 @@ mod tests {
 
     #[test]
     fn unresolved_width_constraints_keep_percentage_identity() {
-        let mut image = super::super::anon_element("img", vec![]);
+        let mut image = crate::render::anon_element("img", vec![]);
         image.style.max_width = Some(Len::Pct(0.5));
         assert!(normalize(&image, None).is_none());
     }

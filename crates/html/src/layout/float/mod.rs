@@ -12,6 +12,11 @@ pub mod float_flow;
 pub mod initial_letter;
 pub mod shape_flow;
 pub mod wrap;
+pub(crate) mod band_clearance;
+pub(crate) mod band_dimensions;
+pub(crate) mod float_atom;
+pub(crate) mod float_clear_scope;
+pub(crate) mod inline_floats;
 
 pub(crate) fn block_like_float(c: &Computed) -> bool {
     c.float.unwrap_or(0) != 0 && matches!(c.width, Some(Len::Pct(p)) if p >= 0.9999)

@@ -1,7 +1,7 @@
 //! Resolve collapsed border widths before measuring table cells and tracks.
 //! CSS 2.1 §17.6.2 centers each winning edge on a grid line.
 
-use super::{Element, Node, is_cell, row_span_in_group};
+use crate::render::{Element, Node, is_cell, row_span_in_group};
 use crate::value::Len;
 mod structural;
 use std::collections::HashMap;

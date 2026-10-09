@@ -1,6 +1,6 @@
 //! Collapse the block-start edge independently of the block-end edge.
 
-use super::*;
+use crate::render::*;
 
 pub(crate) fn collapse_top(e: &mut Element) {
     // CSS 2.1 section 8.3.1: a top border/padding prevents only top

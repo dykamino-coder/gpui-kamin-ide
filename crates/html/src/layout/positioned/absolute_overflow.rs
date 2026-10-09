@@ -1,5 +1,5 @@
 //! Preserve abspos self alignment until actual static and original CB bounds exist.
-use super::absolute_overflow_math::{Span, place};
+use crate::render::absolute_overflow_math::{Span, place};
 use crate::computed::{Align, Computed, Display, FlexDir, Position};
 use crate::value::Len;
 use gpui::{
@@ -15,7 +15,7 @@ pub(crate) fn reset() {
     FLEX.with(|map| map.borrow_mut().clear());
 }
 
-pub(super) fn probe(style: &Computed) -> Option<AnyElement> {
+pub(crate) fn probe(style: &Computed) -> Option<AnyElement> {
     if !matches!(style.display, Some(Display::Flex | Display::InlineFlex)) || style.self_node == 0 {
         return None;
     }
@@ -49,7 +49,7 @@ pub(super) fn probe(style: &Computed) -> Option<AnyElement> {
     )
 }
 
-pub(super) struct Plan {
+pub(crate) struct Plan {
     flex: u64,
     cb: u64,
     horizontal: bool,
@@ -58,7 +58,7 @@ pub(super) struct Plan {
     margin: [Option<Len>; 2],
 }
 impl Plan {
-    pub(super) fn new(own: &Computed, parent: &Computed) -> Option<Self> {
+    pub(crate) fn new(own: &Computed, parent: &Computed) -> Option<Self> {
         if own.position != Some(Position::Absolute)
             || !matches!(parent.display, Some(Display::Flex | Display::InlineFlex))
             || parent.self_node == 0
@@ -126,14 +126,14 @@ impl Plan {
             margin,
         })
     }
-    pub(super) fn prepare(&self, style: &mut gpui::StyleRefinement) {
+    pub(crate) fn prepare(&self, style: &mut gpui::StyleRefinement) {
         // Native layout supplies the requested static-position alignment; safety
         // is applied once both geometries are available during prepaint.
         style.align_self = Some(crate::apply::self_align(self.align, false));
         let (items, _, content, justify) = style.safe_alignment.unwrap_or_default();
         style.safe_alignment = Some((items, false, content, justify));
     }
-    pub(super) fn wrap(self, child: AnyElement) -> AnyElement {
+    pub(crate) fn wrap(self, child: AnyElement) -> AnyElement {
         SafePlace { child, plan: self }.into_any_element()
     }
     fn shift(&self, bounds: Bounds<Pixels>, window: &Window) -> gpui::Point<Pixels> {

@@ -4,7 +4,7 @@
 use crate::computed::{Computed, Display};
 use crate::value::Len;
 
-pub(super) fn inner(st: &Computed, outer: Option<f32>) -> Option<f32> {
+pub(crate) fn inner(st: &Computed, outer: Option<f32>) -> Option<f32> {
     // Доли полей и отступов — от ширины содержащего блока (CSS 2.1 §8.3,
     // §8.4), то есть от `outer`. Прежде доля роняла всю цепочку в `None`, и
     // у детей процентные отступы считались от случайной базы

@@ -9,7 +9,7 @@ use crate::value::Len;
 pub(crate) fn content_width(style: &Computed, inherited_em: f32) -> Option<f32> {
     match style.width {
         Some(Len::Px(width)) => Some(width),
-        Some(Len::Em(factor)) => Some(factor * super::band_em(style, inherited_em)?),
+        Some(Len::Em(factor)) => Some(factor * crate::render::band_em(style, inherited_em)?),
         _ => None,
     }
 }

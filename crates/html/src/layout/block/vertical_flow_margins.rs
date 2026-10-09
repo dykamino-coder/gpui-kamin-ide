@@ -5,7 +5,7 @@ use crate::{
     dom::Node,
 };
 
-pub(super) fn children(
+pub(crate) fn children(
     children: Vec<Node>,
     parent: &Computed,
     reverse: bool,
@@ -23,7 +23,7 @@ pub(super) fn children(
     ) {
         children
     } else {
-        super::collapse_flow_margins(children, reverse, lead)
+        crate::render::collapse_flow_margins(children, reverse, lead)
     }
 }
 
@@ -35,7 +35,7 @@ mod tests {
     fn items() -> Vec<Node> {
         (0..3)
             .map(|_| {
-                let mut element = super::super::anon_element("div", vec![Node::Text("É".into())]);
+                let mut element = crate::render::anon_element("div", vec![Node::Text("É".into())]);
                 element.style.margin.left = Some(Len::Px(12.0));
                 element.style.margin.right = Some(Len::Px(6.0));
                 Node::Element(element)

@@ -1,6 +1,6 @@
 //! Resolve proven block heights and height-constrained margin separation.
 
-use super::*;
+use crate::render::*;
 
 pub(crate) fn separate(e: &mut Element) -> bool {
     if !lowers(e) {
@@ -199,7 +199,7 @@ fn zero_child(node: &Node, inherited: &Computed) -> bool {
 }
 
 /// Apply the zero-content proof with the real parent's inherited white-space.
-pub(super) fn zero_float_blocks(nodes: &mut [Node], inherited: &Computed) {
+pub(crate) fn zero_float_blocks(nodes: &mut [Node], inherited: &Computed) {
     if matches!(
         inherited.position,
         Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
@@ -222,7 +222,7 @@ pub(super) fn zero_float_blocks(nodes: &mut [Node], inherited: &Computed) {
 
 /// Keep the computed height auto: percentages still need an indefinite basis
 /// (CSS 2.1 §10.5). Only the native box receives the proven used height.
-pub(super) fn used_style(e: &Element, style: &Computed) -> Option<Computed> {
+pub(crate) fn used_style(e: &Element, style: &Computed) -> Option<Computed> {
     if e.attr("auto-zero-height") != Some("1")
         || style.vertical == Some(true)
         || !matches!(style.height, None | Some(Len::Auto))

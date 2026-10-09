@@ -1,6 +1,6 @@
 //! Resolve clearance only for boxes to which CSS 2.1 section 9.5.2 applies.
 
-use super::*;
+use crate::render::*;
 
 pub(crate) fn used(nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
     nodes

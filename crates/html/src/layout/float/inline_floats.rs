@@ -1,7 +1,7 @@
 //! Lift floats from undecorated inline containers into their block's float layout.
 //! Text fragments retain the inline's inherited style on both sides of each float.
 
-use super::{Computed, Element, Node, inline};
+use crate::render::{Computed, Element, Node, inline};
 
 pub(crate) fn lift(nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
     if parent.vertical == Some(true) {
@@ -13,7 +13,7 @@ pub(crate) fn lift(nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
         .collect()
 }
 
-pub(super) fn transparent(e: &Element) -> bool {
+pub(crate) fn transparent(e: &Element) -> bool {
     let s = &e.style;
     let zero = |v| matches!(v, None | Some(crate::value::Len::Px(0.0)));
     let undecorated = [s.margin, s.padding, s.borders()]
@@ -78,7 +78,7 @@ fn split(node: Node, parent: &Computed) -> Vec<Node> {
             .all(|n| matches!(n, Node::Text(_)) || floated(n))
         && matches!(
             children.iter().find(|n| match n {
-                Node::Text(t) => !super::blank_text(t),
+                Node::Text(t) => !crate::render::blank_text(t),
                 _ => true,
             }),
             Some(Node::Text(_))

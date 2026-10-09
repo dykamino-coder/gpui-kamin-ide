@@ -1,7 +1,7 @@
 //! Build atomic inline margin boxes for measured and static float wrapping.
 
-use super::{Computed, Element, RenderOpts, atom_base_font, blocks, image_with};
-use super::{inline, px_margin, px_margin_box, styled_div_with, with_inherited_font};
+use crate::render::{Computed, Element, RenderOpts, atom_base_font, blocks, image_with};
+use crate::render::{inline, px_margin, px_margin_box, styled_div_with, with_inherited_font};
 use gpui::{IntoElement, ParentElement, Styled, div, px};
 
 /// Атом строчного потока для `FlowRow`: инлайн-блок с margin-box в

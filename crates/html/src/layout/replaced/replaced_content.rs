@@ -1,5 +1,5 @@
 //! Replaced content can be empty without erasing its surrounding CSS box.
-use super::styled_div_with;
+use crate::render::styled_div_with;
 use crate::computed::Computed;
 use crate::dom::Element;
 use crate::value::Len;
@@ -7,15 +7,15 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, StyledImage, px};
 
 /// CSS 2.1 sections 10.3.2 and 10.6.2: an empty browsing context is still
 /// replaced content; its auto dimensions use the default object size.
-pub(super) fn empty_iframe_size(
+pub(crate) fn empty_iframe_size(
     e: &Element,
     inherited: &Computed,
     viewport: (f32, f32),
 ) -> Element {
-    let mut copy = super::pct_height_to_px(e, inherited);
+    let mut copy = crate::render::pct_height_to_px(e, inherited);
     // Quirks percentage heights can skip auto-height ancestors (Quirks section 3.5).
     // Resolve that inherited basis before treating an indefinite percentage as auto.
-    let merged = super::inline::inherit(inherited, &copy.style);
+    let merged = crate::render::inline::inherit(inherited, &copy.style);
     copy.style.height = merged.height;
     copy.style.cb_height_def = merged.cb_height_def;
     copy.style.resolve_viewport(viewport);
@@ -78,9 +78,9 @@ pub(crate) fn empty_iframe(e: &Element, inherited: &Computed, viewport: (f32, f3
     let mut copy = empty_iframe_size(e, inherited, viewport);
     if copy.style.contain_size == Some(true) {
         copy.attrs.retain(|(name, _)| name != "src");
-        return super::image(&copy);
+        return crate::render::image(&copy);
     }
-    super::styled_div(&copy).flex_shrink_0().into_any_element()
+    crate::render::styled_div(&copy).flex_shrink_0().into_any_element()
 }
 
 pub(crate) fn default_iframe(e: &Element) -> bool {

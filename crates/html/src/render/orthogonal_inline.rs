@@ -11,7 +11,7 @@ fn px(value: Option<Len>) -> Option<f32> {
     }
 }
 
-pub(super) fn edges(style: &Computed, vertical: bool) -> f32 {
+pub(crate) fn edges(style: &Computed, vertical: bool) -> f32 {
     let b = style.borders();
     let sides = if vertical {
         [b.top, b.bottom, style.padding.top, style.padding.bottom]
@@ -21,7 +21,7 @@ pub(super) fn edges(style: &Computed, vertical: bool) -> f32 {
     sides.into_iter().filter_map(px).sum()
 }
 
-pub(super) fn axis(style: &Computed, vertical: bool) -> AxisSizes {
+pub(crate) fn axis(style: &Computed, vertical: bool) -> AxisSizes {
     let (size, min, max) = if vertical {
         (style.height, style.min_height, style.max_height)
     } else {
@@ -53,7 +53,7 @@ pub(super) fn flow_constraint(style: &Computed) -> Option<InlineConstraint> {
     (!style.ortho_col).then_some(style.orthogonal_inline).flatten()
 }
 
-pub(super) fn resolve(
+pub(crate) fn resolve(
     style: &mut Computed,
     parent: &Computed,
     viewport: (f32, f32),
