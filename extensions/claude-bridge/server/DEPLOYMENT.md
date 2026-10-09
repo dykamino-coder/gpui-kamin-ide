@@ -22,7 +22,7 @@ port в командах ниже служат примерами; сверяй�
 | `/app/data`                 | DuckDB (`proxy.duckdb`), настройки, токены и новые sync snapshots (`bridge-sync/`)                   | Сохранять существующий named volume и делать согласованный backup при остановленном Bridge.                                                                                                                |
 | `/home/bridge/.claude`      | Claude credentials/config, JSONL истории в `projects/`, настройки Bridge-сессий в `bridge-sessions/` | Сохранять существующий named volume; считать его и backup секретными.                                                                                                                                      |
 | `/home/bridge/.claude.json` | Claude onboarding/account metadata                                                                   | **Не входит** в два volume выше. Entrypoint создаёт базовый файл заново; перед заменой сохраните его отдельно и проверьте auth после запуска. Полную сохранность этого файла текущая схема не гарантирует. |
-| `/app/logs/lifecycle` | Allowlisted lifecycle journal, максимум 5 MiB | Отдельный named volume; не монтировать весь `/app/logs`, содержащий raw payloads. |
+| `/app/logs/lifecycle`       | Allowlisted lifecycle journal, максимум 5 MiB                                                        | Отдельный named volume; не монтировать весь `/app/logs`, содержащий raw payloads.                                                                                                                          |
 | `/home/bridge/bridge-sync`  | Возможные legacy snapshots                                                                           | Если путь смонтирован в действующем контейнере, сохранять mount и backup до подтверждённой миграции по [BR-13](../RUNTIME_RELIABILITY.md).                                                                 |
 
 Содержимое `/app/installer` поставляется с versioned image. Не подменяйте его
@@ -193,7 +193,6 @@ rollback image после удаления старого контейнера; 
 Основа процедур backup/restart/prune: [Docker volumes](https://docs.docker.com/engine/storage/volumes/),
 [restart policy](https://docs.docker.com/engine/containers/start-containers-automatically/),
 [image prune](https://docs.docker.com/engine/manage-resources/pruning/).
-
 
 <a id="lifecycle-journal-br-17"></a>
 
