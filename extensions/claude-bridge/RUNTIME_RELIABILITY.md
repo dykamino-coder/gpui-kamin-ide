@@ -1053,7 +1053,8 @@ state; concurrent forced refreshes share one capture and cache responses are
 detached copies. PTY output is capped at 1 MiB, windows at 16, probe stdin at
 128 KiB and retained probe JSON at 4 KiB; no raw TUI/error payload is exposed.
 
-Fix PR pending. Status remains ready/prepared, not done. Synthetic fixtures and
+Fix PR [#202](https://github.com/dykamino-coder/gpui-kamin-ide/pull/202).
+Status remains ready/prepared, not done. Synthetic fixtures and
 the actual Account component Chrome comparison do not replace the required
 authenticated isolated Linux CLI/browser quota comparison within ten seconds.
 That gate remains for a maintainer with an authorized disposable account/runtime;
