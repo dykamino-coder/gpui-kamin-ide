@@ -1166,7 +1166,7 @@ impl Element for Grouped {
             && let Some(markup) = under(bw, bh, sl, st, aw, ah)
             && let Some(img) = crate::svg::rasterize(&markup, aw, ah)
         {
-            let _ = window.paint_image(layer_at, gpui::Corners::default(), img, 0, false);
+            let _ = window.paint_image_with_sampling(layer_at, gpui::Corners::default(), img, 0, false, gpui::ImageSampling::Linear);
         }
         // css-shapes-1 §basic-shape-rect: `round` rounds the corners of the
         // clip rectangle itself; the composite quad carries those radii.
@@ -1217,7 +1217,7 @@ impl Element for Grouped {
             if let Some(markup) = over(bw, bh, sl, st, aw, ah)
                 && let Some(img) = crate::svg::rasterize(&markup, aw, ah)
             {
-                let _ = window.paint_image(layer_at, gpui::Corners::default(), img, 0, false);
+                let _ = window.paint_image_with_sampling(layer_at, gpui::Corners::default(), img, 0, false, gpui::ImageSampling::Linear);
             }
         }
     }
@@ -2080,7 +2080,7 @@ impl Element for CellsClipped {
                 // Коробка — сам охват, смещение — в тени: примитив вырезает
                 // тень под СВОЕЙ коробкой (патч gpui `Shadow::box_bounds`),
                 // и сдвинутый охват вырезал бы не то место.
-                window.paint_shadows(
+                window.paint_drop_shadows(
                     area,
                     gpui::Corners::default(),
                     &[gpui::BoxShadow {
@@ -2089,6 +2089,7 @@ impl Element for CellsClipped {
                         // σ = половина радиуса CSS (как в `apply::apply_paint`).
                         blur_radius: gpui::px(sh.blur * 0.5),
                         spread_radius: gpui::px(sh.spread),
+                        inset: false,
                     }],
                 );
             } else {
@@ -6385,6 +6386,6 @@ impl Element for FilterLayer {
             origin: gpui::point(bounds.origin.x + px(x0), bounds.origin.y + px(y0)),
             size: gpui::size(px(cw), px(ch)),
         };
-        let _ = window.paint_image(area, gpui::Corners::default(), image, 0, false);
+        let _ = window.paint_image_with_sampling(area, gpui::Corners::default(), image, 0, false, gpui::ImageSampling::Linear);
     }
 }

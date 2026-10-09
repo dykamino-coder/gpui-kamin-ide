@@ -12,7 +12,7 @@
 
 use gpui::ScrollHandle;
 use gpui::{
-    AppContext as _, Application, Bounds, Context, Entity, IntoElement, ParentElement, Render,
+    AppContext as _, Bounds, Context, Entity, IntoElement, ParentElement, Render,
     Styled, Window, WindowBounds, WindowOptions, div, px, rgb, size,
 };
 use kamin_html::{Document, RenderOpts, render_block, scroll::scroll_area};
@@ -245,7 +245,9 @@ impl Render for Demo {
 }
 
 fn main() {
-    Application::new().run(|cx| {
+    gpui_platform::application().run(|cx| {
+        // Серые (не ClearType) глифы: как до gpui-pre 0.3.8, точный RGB стенда.
+        cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
         let bounds = Bounds::centered(None, size(px(760.), px(900.)), cx);
         cx.open_window(
             WindowOptions {

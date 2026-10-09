@@ -361,7 +361,6 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
         // Без `Styled::line_clamp`: тот попутно включает `overflow_hidden`,
         // а что прятать, решает срез ниже.
         d.text_style()
-            .get_or_insert_with(Default::default)
             .line_clamp = Some(n as usize);
         let font = match c.font_size {
             Some(Len::Px(v)) => v,
@@ -849,7 +848,7 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
                         if let Some(img) =
                             crate::background::rasterize_ring(args, pw, ph, sf, colour)
                         {
-                            let _ = window.paint_image(bounds, gpui::Corners::default(), img, 0, false);
+                            let _ = window.paint_image_with_sampling(bounds, gpui::Corners::default(), img, 0, false, gpui::ImageSampling::Linear);
                         }
                     },
                 )
@@ -917,7 +916,7 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
                         if let Some(markup) = markup
                             && let Some(img) = crate::svg::rasterize(&markup, cw, ch)
                         {
-                            let _ = window.paint_image(bounds, gpui::Corners::default(), img, 0, false);
+                            let _ = window.paint_image_with_sampling(bounds, gpui::Corners::default(), img, 0, false, gpui::ImageSampling::Linear);
                         }
                     },
                 )
@@ -953,7 +952,7 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
                         if let Some(markup) = markup
                             && let Some(img) = crate::svg::rasterize(&markup, cw, ch)
                         {
-                            let _ = window.paint_image(bounds, gpui::Corners::default(), img, 0, false);
+                            let _ = window.paint_image_with_sampling(bounds, gpui::Corners::default(), img, 0, false, gpui::ImageSampling::Linear);
                         }
                     },
                 )
@@ -28732,20 +28731,20 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         if let Some(rt) = row_tracks {
             // Сетка обязана занять ВСЮ высоту таблицы: доли рядов считаются
             // от её остатка, а auto-высота ребёнка гибкой колонки — ноль.
-            g = g.grid_template_rows(rt).flex_grow();
+            g = g.grid_template_rows(rt).flex_grow_1();
         } else if let Some(rt) = row_floors {
             // Полы рядов (см. `row_floors`); растяжение элемента гибкого
             // контейнера — как в ветке ниже.
             g = g.grid_template_rows(rt);
             if inherited.flex_item {
-                g = g.flex_grow();
+                g = g.flex_grow_1();
             }
         } else if inherited.flex_item {
             // Стол — элемент гибкого контейнера: высоту, данную ему ростом
             // или растяжением, делят ряды (CSS 2.1 §17.5.3; у сетки
             // `align-content: normal` = stretch тянет auto-ряды), иначе ячейки
             // оставались по содержимому (`table-as-item-stretch-cross-size-2`).
-            g = g.flex_grow();
+            g = g.flex_grow_1();
         }
         g
     };

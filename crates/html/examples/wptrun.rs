@@ -25,8 +25,8 @@ mod capture_dump;
 use capture::capture;
 
 use gpui::{
-    AppContext as _, Application, Bounds, Context, Entity, IntoElement, ParentElement, Render,
-    Styled, Timer, TitlebarOptions, Window, WindowBackgroundAppearance, WindowBounds,
+    AppContext as _, Bounds, Context, Entity, IntoElement, ParentElement, Render,
+    Styled, TitlebarOptions, Window, WindowBackgroundAppearance, WindowBounds,
     WindowDecorations, WindowOptions, div, point, px, rgb, size,
 };
 use kamin_html::{BROWSER_CSS, Document, RenderOpts, render};
@@ -1395,7 +1395,9 @@ fn main() {
         std::process::exit(1);
     }
 
-    Application::new().run(move |cx| {
+    gpui_platform::application().run(move |cx| {
+        // Серые (не ClearType) глифы: как до gpui-pre 0.3.8, точный RGB стенда.
+        cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
         if let Some(elapsed) = animation_elapsed {
             eprintln!("WPT animation elapsed override: {} ms", elapsed.as_millis());
             cx.set_global(gpui::AnimationElapsedTime(elapsed));
@@ -1482,7 +1484,7 @@ fn main() {
                 }
             }
             // Первый кадр окна: до него снимок пустой.
-            Timer::after(Duration::from_millis(900)).await;
+            cx.background_executor().timer(Duration::from_millis(900)).await;
             // Указатель окна нужен снимку: рисует его система, а не мы.
             let hwnd = cx
                 .update_window(window.into(), |_, window, _| {
@@ -1540,7 +1542,7 @@ fn main() {
                 // такие страницы обрезали, и одна и та же пара скакала между
                 // прогонами на 15% расхождения.
                 for step in 0..400u32 {
-                    Timer::after(Duration::from_millis(16)).await;
+                    cx.background_executor().timer(Duration::from_millis(16)).await;
                     // Окно ИНОГДА не перерисовывается после подмены документа:
                     // экран продолжает показывать разделитель, и страница
                     // числится пустой (`column-auto-repeat-auto-001`: эталон
@@ -1962,7 +1964,7 @@ fn main() {
             }
             let _ = std::fs::write("target/wpt-slow.txt", lines);
             eprintln!("медленных пар: {}", slow.len());
-            cx.update(|cx| cx.quit()).ok();
+            cx.update(|cx| cx.quit());
         })
         .detach();
     });

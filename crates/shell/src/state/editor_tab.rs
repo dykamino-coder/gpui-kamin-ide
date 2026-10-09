@@ -3,12 +3,12 @@
 //! Вынесено без изменения поведения (`plan/100-refactor-250.md`).
 
 use gpui::Entity;
-use gpui_component::input::InputState;
+use gpui_component::input::EditorState as CodeEditorState;
 
 /// Таб редактора: файл + его code_editor-буфер.
 pub struct EditorTab {
     pub path: String,
-    pub input: Entity<InputState>,
+    pub input: Entity<CodeEditorState>,
     pub dirty: bool,
     /// EOL файла на момент открытия ("LF"|"CRLF") — статус-бар.
     pub eol: &'static str,

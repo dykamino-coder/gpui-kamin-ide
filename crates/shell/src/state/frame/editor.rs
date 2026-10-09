@@ -8,7 +8,7 @@ use crate::state::editor_tab::EditorTab;
 use crate::state::model::RootView;
 use gpui::prelude::*;
 use gpui::{Context, Focusable, Window};
-use gpui_component::input::{InputEvent, InputState};
+use gpui_component::input::{EditorState as CodeEditorState, InputEvent};
 
 impl RootView {
     pub(crate) fn frame_editor_reload(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -29,7 +29,12 @@ impl RootView {
                 let tab_path = self.ed.editor_tabs[idx].path.clone();
                 let input = self.ed.editor_tabs[idx].input.clone();
                 self.ed.reload_suppress.insert(tab_path);
-                input.update(cx, |st, cx| st.set_value(text, window, cx));
+                // 0.7.1: `set_value` больше не шлёт `InputEvent::Change`; подписчики
+                // (dirty/фильтр) ждут его — шлём сами, как было в 0.5.1.
+                input.update(cx, |st, cx| {
+                    st.set_value(text, window, cx);
+                    cx.emit(InputEvent::Change);
+                });
             }
         }
     }
@@ -57,11 +62,11 @@ impl RootView {
             lsp.open(&text);
             let mirror_src = text.clone();
             let input = cx.new(|cx| {
-                let mut st = InputState::new(window, cx)
-                    .code_editor(lang)
+                let mut st = CodeEditorState::new(window, cx)
+                    .language(lang)
                     .soft_wrap(false);
-                st.lsp.hover_provider = Some(lsp.clone());
-                st.lsp.definition_provider = Some(lsp.clone());
+                st.lsp_mut().hover_provider = Some(lsp.clone());
+                st.lsp_mut().definition_provider = Some(lsp.clone());
                 st.set_value(text, window, cx);
                 st
             });
@@ -77,8 +82,8 @@ impl RootView {
             self.ed.minimap_input = Some(cx.new(|cx| {
                 // Zed-минимапа не рисует номера строк и не подсвечивает
                 // текущую строку/выделение — это чистый силуэт текста.
-                let mut st = InputState::new(window, cx)
-                    .code_editor(lang)
+                let mut st = CodeEditorState::new(window, cx)
+                    .language(lang)
                     .line_number(false)
                     // Zed `EditorMode::Minimap`: read-only, без подписок и
                     // каретки. У нас этот флаг ещё и снимает жёсткий
@@ -103,7 +108,7 @@ impl RootView {
                     }
                 }
             });
-            window.focus(&input.read(cx).focus_handle(cx));
+            window.focus(&input.read(cx).focus_handle(cx), cx);
             // LRU-лимит: 13-й таб вытесняет самый давний ЧИСТЫЙ (dirty не трогаем)
             if self.ed.editor_tabs.len() >= MAX_EDITOR_TABS
                 && let Some(evict) = self

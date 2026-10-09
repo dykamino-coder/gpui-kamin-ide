@@ -101,7 +101,7 @@ pub(crate) fn channel_body(
         // (зазор ≤ 6 px), прирост буфера тянет вьюпорт вниз
         const SCROLL_BOTTOM_SLACK_PX: f32 = 6.0;
         let off = f32::from(scroll.offset().y);
-        let max = f32::from(scroll.max_offset().height);
+        let max = f32::from(scroll.max_offset().y);
         if max - (-off) <= SCROLL_BOTTOM_SLACK_PX {
             scroll.scroll_to_bottom();
         }

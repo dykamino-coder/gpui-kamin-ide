@@ -115,8 +115,11 @@ impl Render for Setup {
 /// Открыть окно и крутить цикл, пока установка не завершится. Возвращается
 /// после закрытия окна (DONE выставляет фоновый поток → закрываем сами).
 pub fn run_window(version: String) {
-    let app = Application::new();
+    let app = gpui_platform::application();
     app.run(move |cx: &mut App| {
+        // Серые глифы, как до gpui-pre 0.3.8 (ClearType меняет вид всего текста
+        // и не пишет альфу — в прозрачных слоях текст бы пропадал).
+        cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
         let win = size(px(460.0), px(240.0));
         // По центру основного дисплея.
         let bounds = cx
