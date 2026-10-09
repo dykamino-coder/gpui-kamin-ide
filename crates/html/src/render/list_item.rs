@@ -138,6 +138,19 @@ pub(super) fn render_with_style(
         mark_style.font_family = Some(opts.text.font_family.to_string());
     }
     let marker = inline::transform_case(&marker, &mark_style);
+    // Without line boxes the outside marker is top-aligned to the item, and
+    // the item's content height is at least the marker's (csswg-drafts#2417,
+    // #2418; Blink `UnpositionedListMarker::AddToBoxWithoutLineBoxes`). An
+    // item with no content gets a hidden zero-width copy of the marker line.
+    let empty = li.children.iter().all(super::is_blank);
+    let strut = (!no_marker && empty).then(|| {
+        let mut d = crate::apply::apply_text(div(), &mark_style)
+            .w_0()
+            .whitespace_nowrap()
+            .child(SharedString::from(marker.clone()));
+        d.style().visibility = Some(gpui::Visibility::Hidden);
+        d
+    });
     // Внешний маркер (css-lists-3 §list-style-position `outside`) висит
     // СНАРУЖИ коробки пункта, концом к началу содержимого, и текст пункта
     // не двигает. Text transforms apply to its own text (§3.1.1).
@@ -199,7 +212,8 @@ pub(super) fn render_with_style(
                 .w_full()
                 .flex()
                 .flex_col()
-                .children(blocks(&li.children, merged, opts)),
+                .children(blocks(&li.children, merged, opts))
+                .children(strut),
         )
         .into_any_element()
 }
