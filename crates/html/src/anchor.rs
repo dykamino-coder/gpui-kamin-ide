@@ -1599,7 +1599,7 @@ impl Element for AnchorPlace {
             hidden = true;
         }
         let child = self.child.as_mut().unwrap();
-        window.with_element_offset(gpui::point(px(p.dx), px(p.dy)), |window| {
+        window.with_exact_element_offset(gpui::point(px(p.dx), px(p.dy)), |window| {
             child.prepaint(window, cx)
         });
         hidden

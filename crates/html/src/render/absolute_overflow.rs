@@ -218,7 +218,7 @@ impl Element for SafePlace {
         cx: &mut App,
     ) {
         let shift = self.plan.shift(bounds, window);
-        window.with_element_offset(shift, |window| self.child.prepaint(window, cx));
+        window.with_exact_element_offset(shift, |window| self.child.prepaint(window, cx));
     }
     fn paint(
         &mut self,

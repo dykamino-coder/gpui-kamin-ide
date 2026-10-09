@@ -1194,6 +1194,9 @@ pub struct Window {
     pub(crate) text_style_stack: Vec<TextStyleRefinement>,
     pub(crate) rendered_entity_stack: Vec<EntityId>,
     pub(crate) element_offset_stack: Vec<Point<Pixels>>,
+    /// KaminIDE patch: nesting depth of [`Window::with_exact_element_offset`];
+    /// while non-zero, `layout_bounds` adds the element offset unsnapped.
+    pub(crate) exact_element_offset_depth: u32,
     /// KaminIDE patch: sub-pixel offset added to glyph origins (see
     /// `Window::replace_glyph_offset`).
     pub(crate) glyph_offset: Point<Pixels>,
@@ -1561,6 +1564,7 @@ pub(crate) struct PaintCtx {
     text_style_stack: Vec<TextStyleRefinement>,
     rendered_entity_stack: Vec<EntityId>,
     element_offset_stack: Vec<Point<Pixels>>,
+    exact_element_offset_depth: u32,
     transformation_stack: Vec<TransformationMatrix>,
     mask_scale: Option<(Point<Pixels>, f32)>,
     mask_map: Option<TransformationMatrix>,
@@ -2153,6 +2157,7 @@ impl Window {
             text_style_stack: Vec::new(),
             rendered_entity_stack: Vec::new(),
             element_offset_stack: Vec::new(),
+            exact_element_offset_depth: 0,
             glyph_offset: Point::default(),
             css_text_backgrounds: Vec::new(),
             css_exact_bounds: None,
@@ -4287,6 +4292,7 @@ impl Window {
             text_style_stack: self.text_style_stack.clone(),
             rendered_entity_stack: self.rendered_entity_stack.clone(),
             element_offset_stack: self.element_offset_stack.clone(),
+            exact_element_offset_depth: self.exact_element_offset_depth,
             transformation_stack: self.transformation_stack.clone(),
             mask_scale: self.mask_scale,
             mask_map: self.mask_map,
@@ -4308,6 +4314,10 @@ impl Window {
             std::mem::swap(&mut w.text_style_stack, &mut c.text_style_stack);
             std::mem::swap(&mut w.rendered_entity_stack, &mut c.rendered_entity_stack);
             std::mem::swap(&mut w.element_offset_stack, &mut c.element_offset_stack);
+            std::mem::swap(
+                &mut w.exact_element_offset_depth,
+                &mut c.exact_element_offset_depth,
+            );
             std::mem::swap(&mut w.transformation_stack, &mut c.transformation_stack);
             std::mem::swap(&mut w.mask_scale, &mut c.mask_scale);
             std::mem::swap(&mut w.mask_map, &mut c.mask_map);
@@ -4492,6 +4502,25 @@ impl Window {
 
         let abs_offset = self.element_offset() + offset;
         self.with_absolute_element_offset(abs_offset, f)
+    }
+
+    /// KaminIDE patch: like [`Self::with_element_offset`], but descendants'
+    /// `layout_bounds` keep the exact (unsnapped) accumulated offset, as GPUI
+    /// did before it began snapping element offsets to device pixels. An HTML
+    /// box shifted by a fractional CSS amount (anchor positioning, relative
+    /// shifts) must snap its *edges* like every other box, not its offset and
+    /// size separately.
+    pub fn with_exact_element_offset<R>(
+        &mut self,
+        offset: Point<Pixels>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        self.invalidator.debug_assert_prepaint();
+        self.exact_element_offset_depth += 1;
+        let abs_offset = self.element_offset() + offset;
+        let result = self.with_absolute_element_offset(abs_offset, f);
+        self.exact_element_offset_depth -= 1;
+        result
     }
 
     /// Updates the global element offset based on the given offset. This is used to implement
@@ -6212,8 +6241,12 @@ impl Window {
             .unwrap()
             .layout_bounds(layout_id, scale_factor)
             .map(Into::into);
-        let snapped_offset = self.pixel_snap_point(self.element_offset());
-        bounds.origin += snapped_offset;
+        let offset = if self.exact_element_offset_depth > 0 {
+            self.element_offset()
+        } else {
+            self.pixel_snap_point(self.element_offset())
+        };
+        bounds.origin += offset;
         bounds
     }
 

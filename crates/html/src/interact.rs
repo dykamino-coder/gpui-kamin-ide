@@ -343,7 +343,7 @@ impl Element for Sticky {
     ) {
         let shift = self.shift(bounds);
         let child = self.child.as_mut().unwrap();
-        window.with_element_offset(shift, |window| child.prepaint(window, cx));
+        window.with_exact_element_offset(shift, |window| child.prepaint(window, cx));
     }
 
     fn paint(
@@ -6069,7 +6069,7 @@ impl Element for InlineStartHang {
     ) {
         let child = self.child.as_mut().unwrap();
         let shift = gpui::point(px(0.0) - bounds.size.width, px(0.0));
-        window.with_element_offset(shift, |window| child.prepaint(window, cx));
+        window.with_exact_element_offset(shift, |window| child.prepaint(window, cx));
     }
 
     fn paint(
