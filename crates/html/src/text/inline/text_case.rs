@@ -8,7 +8,7 @@ use crate::computed::{Computed, TextTransform};
 /// CSS Text 3 §2.1: inline boundaries do not delimit words, even when
 /// the adjoining text has a different text-transform value.
 #[derive(Default)]
-pub(super) struct Context {
+pub(crate) struct Context {
     prev: Option<char>,
     prev2: Option<char>,
 }

@@ -36,7 +36,7 @@ pub fn bidi_marks(
 }
 
 /// CSS Writing Modes 4 section 2.2: only explicit inheritance copies the mode.
-pub(super) fn resolve(parent: &Computed, child: &mut Computed) {
+pub(crate) fn resolve(parent: &Computed, child: &mut Computed) {
     if child.bidi_inherit {
         child.bidi_override = parent.bidi_override;
         child.bidi_isolate = parent.bidi_isolate;
