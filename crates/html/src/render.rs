@@ -26278,32 +26278,15 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                 }
             }
         }
-        // CSS-умолчание для замещаемого содержимого — заполнить коробку, но
-        // держится оно на СОБСТВЕННОМ соотношении сторон картинки: заданная
-        // одна сторона задаёт вторую. Соотношения мы до загрузки не знаем,
-        // поэтому вторая сторона остаётся своей, и заполнение растягивало бы
-        // рисунок в чужой прямоугольник (замерено: `flexbox-min-width-auto`
-        // ушёл в минус шестью парами). Вписывание в этих условиях ближе.
+        // CSS Images 3 §4.5: object-fit initially fills the content box.
+        // Intrinsic sizing above already preserves the natural ratio. Applying
+        // contain again to the snapped box introduces unintended letterboxing.
         image = match e.style.object_fit.as_deref() {
             Some("cover") => image.object_fit(gpui::ObjectFit::Cover),
             Some("contain") => image.object_fit(gpui::ObjectFit::Contain),
-            Some("fill") => image.object_fit(gpui::ObjectFit::Fill),
             Some("scale-down") => image.object_fit(gpui::ObjectFit::ScaleDown),
             Some("none") => image.object_fit(gpui::ObjectFit::None),
-            // Обе стороны заданы — умолчание CSS: ЗАПОЛНИТЬ коробку, даже с
-            // искажением (`object-fit: fill`). Вписывание оставлено случаю с
-            // одной стороной: там вторая держится на собственном соотношении
-            // рисунка (см. замер выше).
-            _ if e.style.width.is_some() && e.style.height.is_some() => {
-                image.object_fit(gpui::ObjectFit::Fill)
-            }
-            // Заявленное `aspect-ratio` — preferred aspect ratio КОРОБКИ
-            // (css-sizing-4 §5.1): вторая сторона уже посчитана из него, и
-            // рисунок заполняет коробку (`object-fit: fill` по умолчанию,
-            // css-images-3 §5.2), а не вписывается по своему соотношению
-            // (`replaced-element-0*`, `flex-aspect-ratio-0*`).
-            _ if e.style.aspect_ratio.is_some() => image.object_fit(gpui::ObjectFit::Fill),
-            _ => image.object_fit(gpui::ObjectFit::Contain),
+            _ => image.object_fit(gpui::ObjectFit::Fill),
         };
         let mut d = match узкая {
             Some((w, h)) => d.w(px(w + sub_w)).h(px(h + sub_h)),
