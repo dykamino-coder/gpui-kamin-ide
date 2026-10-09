@@ -261,8 +261,7 @@ fn toast_card(
         if !t.sticky && !closing {
             let tm_bar = tm.clone();
             // Трек с боковыми инсетами = RADIUS_MD: полоса живёт в прямом
-            // участке нижней кромки и не вылезает за скругление углов
-            // (content mask gpui прямоугольный, радиусы не режет).
+            // участке нижней кромки (content mask не режет скругления).
             card = card.child(
                 div()
                     .absolute()
@@ -279,6 +278,7 @@ fn toast_card(
                                 SharedString::from(format!("toast-bar-{}", t.id)),
                                 Animation::new(Duration::from_secs(1)).repeat(),
                                 move |d, _| {
+                                    crate::web::diag_why::tick("animation/toast-bar");
                                     let active = tm_bar.active_ms().min(TOAST_MS) as f32;
                                     d.w(relative(1.0 - active / TOAST_MS as f32))
                                 },

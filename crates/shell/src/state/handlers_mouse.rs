@@ -16,6 +16,7 @@ impl RootView {
         E: gpui::InteractiveElement,
     {
         root.on_mouse_move(cx.listener(move |this, e: &MouseMoveEvent, window, cx| {
+            crate::web::diag_why::tick("input/move");
             this.last_mouse = (f32::from(e.position.x), f32::from(e.position.y));
             if this.drag.is_some() {
                 let vw = f32::from(window.viewport_size().width);
@@ -173,6 +174,7 @@ impl RootView {
         .on_mouse_down(
             gpui::MouseButton::Left,
             cx.listener(|this, _: &gpui::MouseDownEvent, _, cx| {
+                crate::web::diag_why::tick("input/down");
                 if let Some(qp) = this.quick_pick.take_if(|q| !q.ignore_focus_out) {
                     this.qp_input = None;
                     let _ = this

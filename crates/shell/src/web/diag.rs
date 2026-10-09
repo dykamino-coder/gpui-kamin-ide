@@ -202,7 +202,7 @@ pub(crate) fn report() {
 /// GUI-сборка без консоли иначе теряет телеметрию, а именно с прод-машины
 /// юзера нужны цифры (#76: «задержка неприятная», слабый RDP-комп). Ротация:
 /// перерос лимит — начали файл заново.
-fn emit_line(line: String) {
+pub(super) fn emit_line(line: String) {
     println!("{line}");
     use std::io::Write as _;
     const ROTATE_BYTES: u64 = 5 * 1024 * 1024;

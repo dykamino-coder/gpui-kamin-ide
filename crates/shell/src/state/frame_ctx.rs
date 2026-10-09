@@ -38,6 +38,11 @@ impl RootView {
         self.frame_focus(window, cx);
         self.frame_overlay(window, cx);
         self.frame_webviews(window, cx);
+        crate::web::diag_views::sample_ui(
+            &self.webviews_alive,
+            &self.view_resolve_tries,
+            &self.view_resolve_start,
+        );
         // Редактор: создать таб (InputState::code_editor) для ждущего файла
         // Scroll-to-line: ПЕРЕД pending_editor — для нового файла goto
         // остаётся на следующий кадр (инпут должен пройти layout, иначе
