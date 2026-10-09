@@ -3,16 +3,16 @@
   Пакет диагностики «KaminIDE грузит CPU/GPU и всё висит» (INC-2026-0001).
 
 .DESCRIPTION
-  Снимает с ЖИВОГО приложения, кто и почему постоянно рисует кадры:
+  Снимает с ЖИВОГО приложения счётчики и признаки источников кадров:
 
     * окружение: адаптеры, RDP, системный «эффекты анимации» (из него Chromium
-      берёт prefers-reduced-motion), KAMIN_* переменные, версия;
+      берёт prefers-reduced-motion), разрешённые render/motion flags, версия;
     * CPU всех процессов и CPU потоков главного процесса за окно простоя, с
-      привязкой потока к модулю (d3d10warp.dll = программная растеризация);
+      привязкой потока к модулю (d3d10warp.dll — признак загруженного WARP);
     * загрузку 3D-движка GPU по процессам (на машинах с видеокартой);
     * строки diag.log, записанные именно за окно простоя: кадры Chromium против
-      кадров окна gpui. Кадры окна при нуле кадров Chromium = анимация самого
-      нативного интерфейса (лоадер, спиннер, каретка, пульс статуса);
+      кадров окна gpui. Кадры окна при нуле кадров Chromium могут происходить
+      от нативной анимации или других request/repaint sources; причина неизвестна;
     * зонд внутри каждой страницы CEF: какие CSS/JS-анимации живут, видимы ли
       их элементы, prefers-reduced-motion, сработало ли наше глушение;
     * скриншот окна и хвосты логов.
@@ -77,6 +77,41 @@ function Save([string]$Name, $Content) {
 }
 function Section([string]$Title) { "`r`n=== $Title ===`r`n" }
 
+# Only these source-defined flags are needed for the CPU/render comparison.
+# Reject arbitrary overrides before restart and never echo an untrusted Spec.
+function Get-DiagnosticEnvNames { 'KAMIN_REDUCE_MOTION', 'KAMIN_FORCE_SW_RENDER', 'KAMIN_CEF_FORCE_SW' }
+
+function Format-DiagnosticEnvValue([string]$Name, [string]$Value) {
+    if ($Name -match '(?i)token|key|secret|password|credential' -or
+        $Name -notin @(Get-DiagnosticEnvNames) -or $Value -notmatch '^[01]$') { return '[REDACTED]' }
+    return $Value
+}
+
+function ConvertTo-DiagnosticOverrides([string]$Spec) {
+    $overrides = [ordered]@{}
+    foreach ($pair in ($Spec -split ';')) {
+        $kv = $pair.Split('=', 2)
+        if ($kv.Count -ne 2) { throw 'RestartWith requires allow-listed diagnostic flags with values 0 or 1.' }
+        $name = $kv[0].Trim().ToUpperInvariant()
+        $value = $kv[1].Trim()
+        if ($name -notin @(Get-DiagnosticEnvNames) -or $value -notmatch '^[01]$') {
+            throw 'RestartWith requires allow-listed diagnostic flags with values 0 or 1.'
+        }
+        $overrides[$name] = $value
+    }
+    return $overrides
+}
+
+function Get-RendererObservation($Modules, [bool]$ReadSucceeded) {
+    if (-not $ReadSucceeded -or -not $Modules -or $Modules.Count -eq 0) {
+        return 'unknown: список модулей недоступен или пуст; активный renderer не установлен'
+    }
+    if ($Modules | Where-Object { $_.ModuleName -ieq 'd3d10warp.dll' }) {
+        return 'd3d10warp.dll загружен (WARP); активный renderer отдельно не установлен'
+    }
+    return 'd3d10warp.dll не найден в прочитанных модулях; аппаратная растеризация этим не доказана'
+}
+
 Add-Type -Namespace KDiag -Name Native -MemberDefinition @'
 [DllImport("user32.dll")] public static extern int GetSystemMetrics(int n);
 [DllImport("user32.dll")] public static extern bool SystemParametersInfo(uint action, uint param, ref bool value, uint ini);
@@ -138,12 +173,14 @@ function Get-ProcRole($cim) {
 # --- перезапуск с переменными окружения -------------------------------------
 
 function Restart-Kamin([string]$Spec) {
+    $overrides = ConvertTo-DiagnosticOverrides $Spec
     $main = Get-MainProc
     $exe = if ($main -and $main.ExecutablePath) { $main.ExecutablePath } else { $DefaultExe }
     if (-not (Test-Path $exe)) { Say "!! Не найден exe приложения: $exe"; return $false }
 
     Write-Host ''
-    Write-Host "Приложение будет ПЕРЕЗАПУЩЕНО с: $Spec" -ForegroundColor Yellow
+    $safeSpec = ($overrides.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ';'
+    Write-Host "Приложение будет ПЕРЕЗАПУЩЕНО с: $safeSpec" -ForegroundColor Yellow
     Write-Host 'Сохраните несохранённые файлы в редакторе. Enter — продолжить, Ctrl+C — отмена.'
     [void](Read-Host)
 
@@ -162,11 +199,8 @@ function Restart-Kamin([string]$Spec) {
         }
     }
 
-    foreach ($pair in ($Spec -split ';')) {
-        $kv = $pair.Split('=', 2)
-        if ($kv.Count -eq 2 -and $kv[0].Trim()) {
-            Set-Item -Path ("Env:" + $kv[0].Trim()) -Value $kv[1].Trim()
-        }
+    foreach ($entry in $overrides.GetEnumerator()) {
+        Set-Item -Path ("Env:" + $entry.Key) -Value $entry.Value
     }
     Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) | Out-Null
 
@@ -202,13 +236,11 @@ function Get-EnvReport {
     } catch {}
     try { $lines.Add(((& qwinsta 2>$null) -join "`r`n")) } catch {}
 
-    $lines.Add((Section 'Переменные KAMIN_* (этого окна PowerShell и пользователя)'))
-    Get-ChildItem Env: | Where-Object { $_.Name -like 'KAMIN_*' -and $_.Name -ne 'KAMIN_PROBE_TOKEN' } |
-        ForEach-Object { $lines.Add("$($_.Name)=$($_.Value)") }
-    foreach ($scope in 'User', 'Machine') {
-        foreach ($n in 'KAMIN_REDUCE_MOTION', 'KAMIN_FORCE_SW_RENDER', 'KAMIN_CEF_FORCE_SW') {
+    $lines.Add((Section 'Диагностические flags (allow-list; остальные значения не экспортируются)'))
+    foreach ($scope in 'Process', 'User', 'Machine') {
+        foreach ($n in (Get-DiagnosticEnvNames)) {
             $v = [Environment]::GetEnvironmentVariable($n, $scope)
-            if ($v) { $lines.Add("[$scope] $n=$v") }
+            if ($null -ne $v) { $lines.Add("[$scope] $n=$(Format-DiagnosticEnvValue $n $v)") }
         }
     }
 
@@ -414,10 +446,10 @@ Save 'env.txt' (Get-EnvReport)
 
 # Модули: какой D3D реально загружен в главный процесс.
 $modules = @()
-try { $modules = (Get-Process -Id $mainId).Modules } catch { Say "!! Модули главного процесса не прочитаны: $($_.Exception.Message) (нужен 64-битный PowerShell)" }
+$modulesRead = $false
+try { $modules = @((Get-Process -Id $mainId -ErrorAction Stop).Modules); $modulesRead = $true } catch { Say '!! Модули главного процесса не прочитаны (нужен 64-битный PowerShell); renderer unknown.' }
 $gfxModules = $modules | Where-Object { $_.ModuleName -match 'd3d|dxgi|warp|nvwgf|nvd3d|atidxx|amdxx|igd|igc|libcef|vulkan|opengl' }
 Save 'modules.txt' ($gfxModules | ForEach-Object { "{0,-28} {1}" -f $_.ModuleName, $_.FileName })
-$warp = [bool]($modules | Where-Object { $_.ModuleName -ieq 'd3d10warp.dll' })
 
 $procs = Get-KaminProcs
 $procLines = $procs | ForEach-Object { "PID {0,-6} {1,-18} WS {2,6} MB  {3}" -f $_.ProcessId, (Get-ProcRole $_), [Math]::Round($_.WorkingSetSize / 1MB), $_.CommandLine }
@@ -496,7 +528,7 @@ Save 'gpu.txt' (@("GPU 3D, средний % за окно ($steps выборок
 # diag.log за окно простоя.
 Save 'diag-window.txt' $diagWindow
 Copy-Tail $diagPath 'cache-diag.log'
-$stats = Get-DiagStats $diagWindow
+$stats = @(Get-DiagStats $diagWindow)
 
 # Зонд страниц — ПОСЛЕ окна: его rAF-счётчик сам порождает кадры.
 Write-Host 'Опрашиваю страницы CEF...'
@@ -524,7 +556,7 @@ if (Test-Path $DataDir) {
 
 Say ''
 Say "=== Сводка ($Label) ==="
-Say "Растеризация окна: $(if ($warp) { 'ПРОГРАММНАЯ (d3d10warp.dll загружен)' } else { 'аппаратная (WARP не загружен)' })"
+Say "Модули рендера: $(Get-RendererObservation $modules $modulesRead)"
 Say "CPU: KaminIDE всего $kaminCores ядер из $cores; главный процесс $mainCores"
 $warpCores = ($byModule | Where-Object { $_.Module -ieq 'd3d10warp.dll' } | Select-Object -First 1).Cores
 if ($warpCores) { Say "  из них потоки WARP (программный D3D): $warpCores ядер" }
@@ -536,10 +568,10 @@ if ($stats.Count -gt 0) {
     $aCef = Avg $stats 'Cef' $sec; $aDraw = Avg $stats 'WinDraws' $sec; $aGf = Avg $stats 'GpuiFrames' $sec
     Say "diag.log ($($stats.Count) с с активностью из $SampleSeconds): кадров Chromium $aCef/с, перерисовок окна $aDraw/с, кадров gpui $aGf/с, сцена $(Avg $stats 'SceneMs' $sec) мс/с, презент $(Avg $stats 'PresentMs' $sec) мс/с"
     if ($aDraw -ge 10 -and $aCef -lt 2) {
-        Say '  => Окно перерисовывается без кадров Chromium: кадры заказывает НАТИВНАЯ анимация gpui'
-        Say '     (брендовый лоадер, спиннер, мигающая каретка терминала, пульс статуса сессии, прогресс тоста).'
+        Say '  => Окно перерисовывается без соответствующего потока кадров Chromium; причина не установлена.'
+        Say '     Возможна нативная анимация gpui или другой источник request/repaint; нужна дополнительная telemetry.'
     } elseif ($aCef -ge 10) {
-        Say '  => Кадры гонит страница CEF — смотрите таблицу анимаций ниже и anim.txt.'
+        Say '  => Наблюдается поток кадров CEF; его причина не установлена — смотрите anim.txt и дополнительную telemetry.'
     } elseif ($aDraw -lt 2) {
         Say '  => Окно в простое почти не перерисовывается.'
     }
@@ -575,4 +607,4 @@ if (-not $NoZip) {
 } else {
     Write-Host "Готово: $Out" -ForegroundColor Green
 }
-Write-Host 'В логах и на скриншоте может быть содержимое чатов и пути — пакет только в private evidence repo.'
+Write-Host 'В логах и на скриншоте может быть содержимое чатов и пути. Перед private evidence upload проверьте пакет на credentials; секреты запрещены и в private repo.'
