@@ -44094,13 +44094,32 @@ description: ${JSON.stringify(description)}
 
 ${content.trimStart()}`;
 }
+function refuseLinkedAncestors(directory) {
+  let current = import_path13.default.resolve(directory);
+  for (; ; ) {
+    try {
+      if (import_fs12.default.lstatSync(current).isSymbolicLink()) throw new Error("Linked skill ancestors are not writable");
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    const parent = import_path13.default.dirname(current);
+    if (parent === current) return;
+    current = parent;
+  }
+}
 function createSkillFile(roots, name, content) {
   const slug = skillSlug(name);
   if (!slug) throw new Error("Skill name must contain letters or digits");
   const skillsDir = import_path13.default.join(roots.projectClaudeDir ?? roots.userClaudeDir, "skills");
   const skillDir = import_path13.default.join(skillsDir, slug);
-  if (import_fs12.default.existsSync(skillDir)) throw new Error(`Skill "${slug}" already exists`);
-  import_fs12.default.mkdirSync(skillDir, { recursive: true });
+  refuseLinkedAncestors(skillsDir);
+  import_fs12.default.mkdirSync(skillsDir, { recursive: true });
+  try {
+    import_fs12.default.mkdirSync(skillDir);
+  } catch (error) {
+    if (error.code === "EEXIST") throw new Error(`Skill "${slug}" already exists`);
+    throw error;
+  }
   const filePath = import_path13.default.join(skillDir, "SKILL.md");
   import_fs12.default.writeFileSync(filePath, withSkillFrontmatter(slug, content), "utf-8");
   return { name: slug, fileName: slug, path: filePath };
@@ -44110,10 +44129,16 @@ function deleteSkillFile(roots, skillPath) {
   const parent = import_path13.default.dirname(target);
   const skillsRoots = [roots.projectClaudeDir, roots.userClaudeDir].filter((dir) => dir !== null).map((dir) => import_path13.default.resolve(dir, "skills"));
   if (import_path13.default.basename(target).toLowerCase() === "skill.md" && skillsRoots.includes(import_path13.default.dirname(parent))) {
+    refuseLinkedAncestors(import_path13.default.dirname(parent));
+    if (import_fs12.default.lstatSync(parent).isSymbolicLink()) {
+      import_fs12.default.unlinkSync(parent);
+      return;
+    }
     import_fs12.default.rmSync(parent, { recursive: true, force: true });
     return;
   }
   if (roots.projectClaudeDir && target.endsWith(".md") && parent === import_path13.default.resolve(roots.projectClaudeDir, "commands")) {
+    refuseLinkedAncestors(parent);
     import_fs12.default.rmSync(target, { force: true });
     return;
   }

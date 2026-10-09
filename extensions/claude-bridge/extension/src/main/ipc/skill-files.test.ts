@@ -52,4 +52,53 @@ describe('skill files', () => {
     expect(() => deleteSkillFile(roots, path.join(roots.projectClaudeDir!, 'settings.json'))).toThrow()
     expect(fs.existsSync(pluginSkill)).toBe(true)
   })
+
+  it.each(['project', 'user'] as const)('refuses create/delete through a %s skills root junction', scope => {
+    const claudeDir = scope === 'project' ? roots.projectClaudeDir! : roots.userClaudeDir
+    const pluginSkills = path.join(root, 'plugins', 'p', 'skills')
+    const victim = path.join(pluginSkills, 'victim')
+    fs.mkdirSync(victim, { recursive: true })
+    fs.writeFileSync(path.join(victim, 'SKILL.md'), 'plugin')
+    fs.writeFileSync(path.join(victim, 'helper.txt'), 'keep')
+    fs.mkdirSync(claudeDir, { recursive: true })
+    fs.symlinkSync(pluginSkills, path.join(claudeDir, 'skills'), 'junction')
+    const effectiveRoots = scope === 'user' ? { ...roots, projectClaudeDir: null } : roots
+    expect(() => deleteSkillFile(effectiveRoots, path.join(claudeDir, 'skills', 'victim', 'SKILL.md'))).toThrow('Linked')
+    expect(() => createSkillFile(effectiveRoots, 'new', 'x')).toThrow('Linked')
+    expect(fs.readFileSync(path.join(victim, 'helper.txt'), 'utf8')).toBe('keep')
+    expect(fs.readFileSync(path.join(victim, 'SKILL.md'), 'utf8')).toBe('plugin')
+    expect(fs.existsSync(path.join(pluginSkills, 'new'))).toBe(false)
+  })
+
+  it('unlinks a skill junction and preserves its external target', () => {
+    const external = path.join(root, 'external')
+    fs.mkdirSync(external)
+    fs.writeFileSync(path.join(external, 'SKILL.md'), 'keep')
+    const skills = path.join(roots.projectClaudeDir!, 'skills')
+    fs.mkdirSync(skills, { recursive: true })
+    fs.symlinkSync(external, path.join(skills, 'linked'), 'junction')
+    deleteSkillFile(roots, path.join(skills, 'linked', 'SKILL.md'))
+    expect(fs.existsSync(path.join(skills, 'linked'))).toBe(false)
+    expect(fs.readFileSync(path.join(external, 'SKILL.md'), 'utf8')).toBe('keep')
+  })
+
+  it('preserves plugin content linked inside our own skill directory', () => {
+    const { path: skillMd } = createSkillFile(roots, 'own', 'x')
+    const plugin = path.join(root, 'plugin')
+    fs.mkdirSync(plugin)
+    fs.writeFileSync(path.join(plugin, 'helper.txt'), 'keep')
+    fs.symlinkSync(plugin, path.join(path.dirname(skillMd), 'helpers'), 'junction')
+    deleteSkillFile(roots, skillMd)
+    expect(fs.readFileSync(path.join(plugin, 'helper.txt'), 'utf8')).toBe('keep')
+  })
+
+  it('refuses legacy command deletion through a junction', () => {
+    const plugin = path.join(root, 'plugin')
+    fs.mkdirSync(plugin)
+    fs.writeFileSync(path.join(plugin, 'legacy.md'), 'keep')
+    fs.mkdirSync(roots.projectClaudeDir!, { recursive: true })
+    fs.symlinkSync(plugin, path.join(roots.projectClaudeDir!, 'commands'), 'junction')
+    expect(() => deleteSkillFile(roots, path.join(roots.projectClaudeDir!, 'commands', 'legacy.md'))).toThrow('Linked')
+    expect(fs.readFileSync(path.join(plugin, 'legacy.md'), 'utf8')).toBe('keep')
+  })
 })
