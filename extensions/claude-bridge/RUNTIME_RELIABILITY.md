@@ -767,7 +767,7 @@ persisted privacy-safe logs, retention и lifecycle evidence ещё не реа�
 **Acceptance:** automated filesystem tests + isolated Linux Docker/Podman
 runtime gate; Windows UI acceptance не требуется.
 
-**Prepared implementation (not merged, task remains open):** отдельный
+**Prepared implementation [PR #203](https://github.com/dykamino-coder/gpui-kamin-ide/pull/203) (not merged, task remains open):** отдельный
 allowlisted journal сохраняет boot/sequence, псевдоним сессии, фиксированную
 причину teardown, age/idle/grace и exit code. Explicit end, dashboard kill,
 detach grace, reaper reasons и live resume reuse различимы на default level.
