@@ -34,17 +34,26 @@ impl Log {
             rename_if_present(&self.backup(1), &self.backup(2))?;
             rename_if_present(&self.path, &self.backup(1))?;
         }
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.path)?;
-        let before = file.metadata()?.len();
+        let (mut file, before) = self.open_append()?;
         if let Err(error) = file.write_all(record.as_bytes()) {
             // Не позволяем следующей успешной строке приклеиться к torn record.
             file.set_len(before)?;
             return Err(error);
         }
         Ok(())
+    }
+
+    fn open_append(&self) -> io::Result<(File, u64)> {
+        // Append-only Windows handle не разрешает set_len для rollback.
+        // Sink mutex сериализует один shell writer; seek + write сохраняет
+        // append contract и FILE_WRITE_DATA для усечения torn record.
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(&self.path)?;
+        let before = file.seek(SeekFrom::End(0))?;
+        Ok((file, before))
     }
 
     fn backup(&self, generation: u8) -> PathBuf {

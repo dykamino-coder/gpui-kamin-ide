@@ -112,6 +112,19 @@ fn failed_open_is_retryable() {
 }
 
 #[test]
+fn production_handle_can_roll_back_a_partially_written_record() {
+    let fixture = Fixture::new();
+    let log = fixture.log(32);
+    log.append("complete").unwrap();
+    let (mut file, before) = log.open_append().unwrap();
+    file.write_all("torn кад".as_bytes()).unwrap();
+    file.set_len(before).unwrap();
+    drop(file);
+    log.append("retry").unwrap();
+    assert_eq!(fs::read_to_string(&log.path).unwrap(), "complete\nretry\n");
+}
+
+#[test]
 fn production_limit_is_enforced_without_recreating_writer() {
     let fixture = Fixture::new();
     let limit = 5 * 1024 * 1024;
