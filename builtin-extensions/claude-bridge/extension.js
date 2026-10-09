@@ -46910,6 +46910,7 @@ var import_os19 = __toESM(require("os"), 1);
 var import_fs22 = __toESM(require("fs"), 1);
 var import_path23 = __toESM(require("path"), 1);
 var import_os18 = __toESM(require("os"), 1);
+var import_crypto9 = require("crypto");
 async function pullSubClone(baseDir, pluginName) {
   const pluginDir = import_path23.default.join(baseDir, "plugins", pluginName);
   if (!import_fs22.default.existsSync(pluginDir)) {
@@ -46979,11 +46980,16 @@ function syncPluginCacheFromSubClone(pluginName, marketplace, baseDir, sourceRev
     return { ok: true, version, changed: false };
   }
   const pluginCacheParent = import_path23.default.join(import_os18.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName);
-  const cacheDir = import_path23.default.join(pluginCacheParent, version);
   const existingEntry = data.plugins[key]?.[0];
-  if (sourceRevision && existingEntry?.sourceRevision === sourceRevision && existingEntry?.version === version && existingEntry?.installPath === cacheDir && import_fs22.default.existsSync(cacheDir)) {
+  const installedPath = existingEntry?.installPath;
+  if (sourceRevision && existingEntry?.sourceRevision === sourceRevision && existingEntry?.version === version && typeof installedPath === "string" && import_path23.default.dirname(installedPath) === pluginCacheParent && import_fs22.default.existsSync(installedPath)) {
     return { ok: true, version, changed: false };
   }
+  const generation = (0, import_crypto9.randomUUID)();
+  const cacheDir = import_path23.default.join(pluginCacheParent, `cache-${generation}`);
+  const metadataTemp = `${installedFile}.${generation}.tmp`;
+  let staging = "";
+  let published = false;
   try {
     let copyDir2 = function(src, dest) {
       import_fs22.default.mkdirSync(dest, { recursive: true });
@@ -46996,29 +47002,34 @@ function syncPluginCacheFromSubClone(pluginName, marketplace, baseDir, sourceRev
       }
     };
     var copyDir = copyDir2;
-    if (import_fs22.default.existsSync(pluginCacheParent)) {
-      import_fs22.default.rmSync(pluginCacheParent, { recursive: true, force: true });
-    }
-    import_fs22.default.mkdirSync(cacheDir, { recursive: true });
+    import_fs22.default.mkdirSync(pluginCacheParent, { recursive: true });
+    staging = import_fs22.default.mkdtempSync(import_path23.default.join(pluginCacheParent, ".staging-"));
     const skipDirs = /* @__PURE__ */ new Set(["node_modules", ".git", "__pycache__", ".venv"]);
-    copyDir2(pluginSourcePath, cacheDir);
+    copyDir2(pluginSourcePath, staging);
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    data.plugins[key] = [{
+      scope: existingEntry?.scope || "user",
+      installPath: cacheDir,
+      version,
+      installedAt: existingEntry?.installedAt || now,
+      lastUpdated: now,
+      ...sourceRevision ? { sourceRevision } : {}
+    }];
+    import_fs22.default.writeFileSync(metadataTemp, JSON.stringify(data, null, 2), { encoding: "utf-8", flag: "wx" });
+    import_fs22.default.renameSync(staging, cacheDir);
+    staging = "";
+    import_fs22.default.renameSync(metadataTemp, installedFile);
+    published = true;
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  const existing = data.plugins[key]?.[0];
-  data.plugins[key] = [{
-    scope: existing?.scope || "user",
-    installPath: cacheDir,
-    version,
-    installedAt: existing?.installedAt || now,
-    lastUpdated: now,
-    ...sourceRevision ? { sourceRevision } : {}
-  }];
-  try {
-    import_fs22.default.writeFileSync(installedFile, JSON.stringify(data, null, 2), "utf-8");
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  } finally {
+    for (const candidate of [staging, metadataTemp, published ? "" : cacheDir]) {
+      if (!candidate) continue;
+      try {
+        import_fs22.default.rmSync(candidate, { recursive: true, force: true });
+      } catch {
+      }
+    }
   }
   return { ok: true, version, changed: true };
 }
@@ -47621,7 +47632,7 @@ init_ui_tools();
 init_toast_window();
 
 // src/main/mcp/manager.ts
-var import_crypto12 = require("crypto");
+var import_crypto13 = require("crypto");
 var import_path33 = __toESM(require("path"), 1);
 var import_os26 = __toESM(require("os"), 1);
 
@@ -47710,7 +47721,7 @@ function saveToolSchemaCache(cache2) {
 var import_fs32 = __toESM(require("fs"), 1);
 var import_path31 = __toESM(require("path"), 1);
 var import_os24 = __toESM(require("os"), 1);
-var import_crypto9 = __toESM(require("crypto"), 1);
+var import_crypto10 = __toESM(require("crypto"), 1);
 init_host_compat();
 var CREDS_PATH = import_path31.default.join(import_os24.default.homedir(), ".claude", ".credentials.json");
 function readCreds() {
@@ -47731,7 +47742,7 @@ function writeCreds(data) {
   }
 }
 function hashUrl(url) {
-  return import_crypto9.default.createHash("sha256").update(url).digest("hex").slice(0, 16);
+  return import_crypto10.default.createHash("sha256").update(url).digest("hex").slice(0, 16);
 }
 function normalizeUrl(url) {
   return url.replace(/\/$/, "");
@@ -47937,7 +47948,7 @@ async function doRefreshTokens(state) {
 }
 
 // src/main/mcp/discovery.ts
-var import_crypto10 = require("crypto");
+var import_crypto11 = require("crypto");
 var import_path32 = __toESM(require("path"), 1);
 var import_fs33 = __toESM(require("fs"), 1);
 var import_os25 = __toESM(require("os"), 1);
@@ -47994,7 +48005,7 @@ function parseMcpJson(parsed, sourcePath, pluginId) {
     const serverType = entry.type === "sse" ? "sse" : entry.type === "http" ? "http" : entry.type === "ws" ? "ws" : "stdio";
     if (entry.disabled === true) continue;
     const config = {
-      id: (0, import_crypto10.randomUUID)(),
+      id: (0, import_crypto11.randomUUID)(),
       name,
       type: serverType,
       enabled: true,
@@ -48172,7 +48183,7 @@ async function discoverFromClaudeJsonAsync(claudeDir) {
       const e = entry;
       const serverType = e.type === "sse" ? "sse" : e.type === "http" ? "http" : e.type === "ws" ? "ws" : "stdio";
       const config = {
-        id: (0, import_crypto10.randomUUID)(),
+        id: (0, import_crypto11.randomUUID)(),
         name,
         type: serverType,
         enabled: true,
@@ -49003,7 +49014,7 @@ async function dispatchRpcRequest(ctx, id, method, params) {
 }
 
 // src/main/mcp/server-message-handlers.ts
-var import_crypto11 = require("crypto");
+var import_crypto12 = require("crypto");
 function handleServerMessage2(ctx, serverId, msg, sendResponse) {
   const state = ctx.servers.get(serverId);
   if (!state) return;
@@ -49032,7 +49043,7 @@ async function handleServerRequest(ctx, serverId, msg) {
   const method = msg.method;
   const state = ctx.servers.get(serverId);
   if (method === "elicitation/create") {
-    const requestId = (0, import_crypto11.randomUUID)();
+    const requestId = (0, import_crypto12.randomUUID)();
     const params = msg.params ?? {};
     const { ipcMain: ipcMain2 } = await Promise.resolve().then(() => (init_host_compat(), host_compat_exports));
     return await new Promise((resolve) => {
@@ -49634,7 +49645,7 @@ var McpServerManager = class _McpServerManager {
   }
   /** Add a new external MCP server */
   addServer(config) {
-    const id = (0, import_crypto12.randomUUID)();
+    const id = (0, import_crypto13.randomUUID)();
     const claudeJsonPath = import_path33.default.join(import_os26.default.homedir(), ".claude.json");
     const fullConfig = {
       ...config,

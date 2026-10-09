@@ -8,6 +8,7 @@
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import { randomUUID } from 'crypto'
 import { redactUrl } from '../marketplace/url-auth'
 import { runGit } from '../lib/git-async'
 
@@ -104,17 +105,24 @@ export function syncPluginCacheFromSubClone(pluginName: string, marketplace: str
   }
 
   const pluginCacheParent = path.join(os.homedir(), '.claude', 'plugins', 'cache', marketplace, pluginName)
-  const cacheDir = path.join(pluginCacheParent, version)
   const existingEntry = data.plugins[key]?.[0]
+  const installedPath = existingEntry?.installPath
   if (sourceRevision && existingEntry?.sourceRevision === sourceRevision && existingEntry?.version === version
-      && existingEntry?.installPath === cacheDir && fs.existsSync(cacheDir)) {
+      && typeof installedPath === 'string' && path.dirname(installedPath) === pluginCacheParent
+      && fs.existsSync(installedPath)) {
     return { ok: true, version, changed: false }
   }
+  // Publish immutable generations: the metadata rename is the commit point.
+  // In particular, a same-version repair never renames/deletes a working tree
+  // (which may also be locked by a running Windows session).
+  const generation = randomUUID()
+  const cacheDir = path.join(pluginCacheParent, `cache-${generation}`)
+  const metadataTemp = `${installedFile}.${generation}.tmp`
+  let staging = ''
+  let published = false
   try {
-    if (fs.existsSync(pluginCacheParent)) {
-      fs.rmSync(pluginCacheParent, { recursive: true, force: true })
-    }
-    fs.mkdirSync(cacheDir, { recursive: true })
+    fs.mkdirSync(pluginCacheParent, { recursive: true })
+    staging = fs.mkdtempSync(path.join(pluginCacheParent, '.staging-'))
     const skipDirs = new Set(['node_modules', '.git', '__pycache__', '.venv'])
     function copyDir(src: string, dest: string): void {
       fs.mkdirSync(dest, { recursive: true })
@@ -126,22 +134,32 @@ export function syncPluginCacheFromSubClone(pluginName: string, marketplace: str
         else fs.copyFileSync(srcPath, destPath)
       }
     }
-    copyDir(pluginSourcePath, cacheDir)
+    copyDir(pluginSourcePath, staging)
+    const now = new Date().toISOString()
+    data.plugins[key] = [{
+      scope: existingEntry?.scope || 'user',
+      installPath: cacheDir,
+      version,
+      installedAt: existingEntry?.installedAt || now,
+      lastUpdated: now,
+      ...(sourceRevision ? { sourceRevision } : {}),
+    }]
+    // A short/failed write affects only the new file. A locked destination
+    // makes rename fail with the previous metadata and payload still intact.
+    fs.writeFileSync(metadataTemp, JSON.stringify(data, null, 2), { encoding: 'utf-8', flag: 'wx' })
+    fs.renameSync(staging, cacheDir)
+    staging = ''
+    fs.renameSync(metadataTemp, installedFile)
+    published = true
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  } finally {
+    // Remove only unpublished files owned by this attempt. Keep prior installed
+    // generations for running consumers; cache retirement is a separate policy.
+    for (const candidate of [staging, metadataTemp, published ? '' : cacheDir]) {
+      if (!candidate) continue
+      try { fs.rmSync(candidate, { recursive: true, force: true }) } catch { /* Windows lock: leave for later cleanup */ }
+    }
   }
-
-  const now = new Date().toISOString()
-  const existing = data.plugins[key]?.[0]
-  data.plugins[key] = [{
-    scope: existing?.scope || 'user',
-    installPath: cacheDir,
-    version,
-    installedAt: existing?.installedAt || now,
-    lastUpdated: now,
-    ...(sourceRevision ? { sourceRevision } : {}),
-  }]
-  try { fs.writeFileSync(installedFile, JSON.stringify(data, null, 2), 'utf-8') }
-  catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) } }
   return { ok: true, version, changed: true }
 }

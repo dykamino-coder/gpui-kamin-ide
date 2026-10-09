@@ -37,8 +37,10 @@ describe('startup source/cache convergence (INC-2026-0044)', () => {
   expect(sweep.results[0]?.changed).toBe(true)
  })
  it('reports cache-copy failure and repairs it on the next unchanged launch', async () => {
-  setup(); const copy=vi.spyOn(fs,'copyFileSync').mockImplementationOnce(() => {throw new Error('Synthetic cache copy failure')})
+  setup(); const before=fs.readFileSync(installed,'utf8'); const oldCache=readInstalled().plugins['synthetic@fixture'][0].installPath; const copy=vi.spyOn(fs,'copyFileSync').mockImplementationOnce(() => {throw new Error('Synthetic cache copy failure')})
   const failed=await refreshAllMarketplaces(); expect(failed.ok).toBe(false); expect(failed.results[0]?.error).toContain('cache')
+  expect(fs.readFileSync(installed,'utf8')).toBe(before)
+  expect(fs.readFileSync(path.join(oldCache,'payload.txt'),'utf8')).toBe('old installed bytes')
   copy.mockRestore(); expect((await refreshAllMarketplaces()).ok).toBe(true)
   const entry=readInstalled().plugins['synthetic@fixture'][0]; expect(entry.version).toBe('2.0.0');expect(fs.readFileSync(path.join(entry.installPath,'payload.txt'),'utf8')).toBe('new source bytes')
  })
