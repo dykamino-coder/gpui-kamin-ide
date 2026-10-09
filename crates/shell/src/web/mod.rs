@@ -157,11 +157,7 @@ pub fn set_wake(tx: smol::channel::Sender<()>) {
     let _ = WAKE.set(tx);
 }
 
-// Просить перерисовку через `InvalidateRect` НЕЛЬЗЯ: gpui рисует через
-// DirectComposition и не подтверждает область перерисовки, поэтому Windows
-// шлёт `WM_PAINT` без конца — процесс съедал целое ядро на простое (замер:
-// 5.03 с CPU за 5 с, без CEF — 0). Перерисовку заказывает задача-насос
-// в `main.rs` через `cx.refresh()`.
+// Перерисовку заказывает pump через notify; InvalidateRect вызывает WM_PAINT loop.
 
 /// Забрать и сбросить признак «есть новый кадр» (поток UI).
 pub fn take_repaint_request() -> bool {
