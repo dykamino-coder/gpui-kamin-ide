@@ -88,4 +88,32 @@ fn missing_mutex_never_copies_or_publishes_a_frame() {
     assert!(
         copy_frame::copy_into_own("no-key", device.as_raw(), context.as_raw(), &shared).is_none()
     );
+    copy_frame::forget_view("no-key");
+}
+
+#[test]
+fn repeated_missing_mutex_spends_recovery_budget_until_a_successful_copy() {
+    let (device, context) = device();
+    let broken = texture(&device, false);
+    for _ in 0..10 {
+        assert!(
+            copy_frame::copy_into_own("bad-producer", device.as_raw(), context.as_raw(), &broken)
+                .is_none()
+        );
+    }
+    assert!(
+        !super::RECOVERY
+            .lock()
+            .unwrap()
+            .get_mut("bad-producer")
+            .unwrap()
+            .take()
+    );
+    let healthy = texture(&device, true);
+    assert!(
+        copy_frame::copy_into_own("bad-producer", device.as_raw(), context.as_raw(), &healthy)
+            .is_some()
+    );
+    assert!(!super::RECOVERY.lock().unwrap().contains_key("bad-producer"));
+    copy_frame::forget_view("bad-producer");
 }

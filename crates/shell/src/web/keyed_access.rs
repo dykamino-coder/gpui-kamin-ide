@@ -24,7 +24,7 @@ pub(super) fn with_access(
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(super) struct RetryBudget(u8);
 impl RetryBudget {
     pub(super) fn take(&mut self) -> bool {

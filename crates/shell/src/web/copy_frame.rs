@@ -27,6 +27,8 @@ static OWN: LazyLock<Mutex<HashMap<String, Vec<GpuTexture>>>> =
 const OWN_KEEP: usize = 3;
 static RETRIES: LazyLock<Mutex<HashMap<String, super::keyed_access::RetryBudget>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+static RECOVERY: LazyLock<Mutex<HashMap<String, super::keyed_access::RetryBudget>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub(crate) fn frame_arrived(id: &str) {
     if let Ok(mut retries) = RETRIES.lock() {
@@ -37,6 +39,9 @@ pub(crate) fn frame_arrived(id: &str) {
 /// Забыть свою текстуру одного вью (закрытие браузера).
 pub(crate) fn forget_view(id: &str) {
     frame_arrived(id);
+    if let Ok(mut recovery) = RECOVERY.lock() {
+        recovery.remove(id);
+    }
     if let Ok(mut map) = OWN.lock() {
         map.remove(id);
     }
@@ -44,6 +49,9 @@ pub(crate) fn forget_view(id: &str) {
 
 /// Забыть свои текстуры: после пересоздания устройства D3D11 они мертвы.
 pub(crate) fn forget_all() {
+    if let Ok(mut recovery) = RECOVERY.lock() {
+        recovery.clear();
+    }
     if let Ok(mut retries) = RETRIES.lock() {
         retries.clear();
     }
@@ -143,17 +151,25 @@ pub(crate) fn copy_into_own(
                     return fitting;
                 }
                 super::keyed_access::Access::Recreate => {
-                    forget_view(id);
                     let view = id.strip_suffix("::popup").unwrap_or(id);
+                    let mut budget = RECOVERY.lock().ok()?.get(view).cloned().unwrap_or_default();
+                    let retry = budget.take();
+                    forget_view(view);
                     super::shared_texture::forget_view(view);
                     super::popup::forget_view(view);
+                    RECOVERY.lock().ok()?.insert(view.to_string(), budget);
                     // Поверхность принадлежит producer: простое повторное
                     // открытие abandoned handle её не восстанавливает.
-                    super::browsers::close(view);
-                    super::repaint_requested();
+                    if retry {
+                        super::browsers::close(view);
+                        super::repaint_requested();
+                    }
                     return None;
                 }
                 super::keyed_access::Access::Copied => {
+                    if let Ok(mut recovery) = RECOVERY.lock() {
+                        recovery.remove(id.strip_suffix("::popup").unwrap_or(id));
+                    }
                     frame_arrived(id);
                 }
             }
