@@ -34,7 +34,7 @@ pub use paint::background;
 pub mod band_flow;
 pub mod bands;
 pub mod border_image;
-pub mod color_space;
+pub use style::values::color_space;
 pub use style::computed;
 pub mod counter_style;
 pub mod counter_style_rules;
@@ -60,7 +60,7 @@ pub mod scroll;
 pub mod select;
 pub mod svg;
 pub mod transition;
-pub mod value;
+pub use style::values::value;
 pub mod zoom;
 
 // Доменные модули (рефакторинг монолитов: перенос по доменам).

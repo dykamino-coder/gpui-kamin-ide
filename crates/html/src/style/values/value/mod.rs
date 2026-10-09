@@ -831,7 +831,7 @@ mod tests {
     }
 }
 
-#[path = "value/calc_sum.rs"]
+#[path = "calc_sum.rs"]
 mod calc_sum;
 pub use calc_sum::Sum;
 
