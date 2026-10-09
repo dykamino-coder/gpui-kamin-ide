@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(super) fn builder(
+pub(crate) fn builder(
     declarations: PageMarginDeclsFn,
     root: Computed,
     opts: RenderOpts,

@@ -445,6 +445,8 @@ const CONSUMERS: &[&str] = &[
     include_str!("anchor.rs"),
     include_str!("motion.rs"),
     include_str!("zoom.rs"),
+    include_str!("layout/page/paged.rs"),
+    include_str!("layout/page/names.rs"),
     include_str!("layout/fragment/mod.rs"),
     include_str!("layout/fragment/probe.rs"),
     include_str!("layout/fragment/grid_bands.rs"),

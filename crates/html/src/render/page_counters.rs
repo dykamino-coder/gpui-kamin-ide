@@ -7,7 +7,7 @@ use std::collections::HashMap;
 type Values = HashMap<String, i32>;
 
 #[derive(Default)]
-pub(super) struct PageCounters {
+pub(crate) struct PageCounters {
     document: Counters,
     values: Values,
     current: Values,
@@ -54,7 +54,7 @@ fn apply(values: &mut Values, style: &Computed, document: &mut Counters) {
 }
 
 impl PageCounters {
-    pub(super) fn from_document(mut nodes: &[crate::dom::Node]) -> Self {
+    pub(crate) fn from_document(mut nodes: &[crate::dom::Node]) -> Self {
         let mut state = Self::default();
         loop {
             let mut live = nodes.iter().filter(|node| !super::is_blank(node));
