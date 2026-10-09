@@ -9,6 +9,7 @@ mod fragment_size;
 mod first_line_text;
 mod band_clearance;
 mod band_dimensions;
+mod margin_inline_boxes;
 use band_clearance::supported as band_clear_supported;
 mod mask_geometry;
 mod content_wrapper;
@@ -15574,6 +15575,7 @@ fn by_layer(mut nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
 /// высотой ноль» (§10.6.3) к его детям не применяется.
 fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
     let mut out: Vec<Node> = nodes.to_vec();
+    margin_inline_boxes::prepare(&mut out);
     // §10.6.3: в высоту `auto` входят только дети В ПОТОКЕ — «floating boxes
     // are ignored». Блок, у которого в потоке нет ничего, кроме плавающих
     // детей, высотой НОЛЬ и схлопывается насквозь. Наша раскладка ставит
