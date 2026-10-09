@@ -68,7 +68,9 @@ pub(crate) fn sample_ui(
 }
 pub(super) fn report(now: Instant) {
     let visible = super::visibility::visible_set();
+    let live = super::browsers::ids();
     let Ok(mut state) = STATE.lock() else { return };
+    state.views.retain(|id, _| live.contains(id));
     let status = state
         .views
         .iter()
