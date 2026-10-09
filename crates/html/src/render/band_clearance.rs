@@ -2,7 +2,7 @@
 
 use super::{Element, Node, Strut, is_blank, out_of_flow, solve};
 
-pub(super) fn mark_start(host: &mut Element, top_open: bool, preceding: &[Node]) {
+pub(crate) fn mark_start(host: &mut Element, top_open: bool, preceding: &[Node]) {
     if top_open
         && preceding
             .iter()

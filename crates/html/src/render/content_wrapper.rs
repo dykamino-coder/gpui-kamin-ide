@@ -46,7 +46,7 @@ pub(crate) fn content_sized_wraps(element: &Element) -> bool {
 
 /// Every builder must preserve preferred sizing, including the float-band
 /// builder, which constructs its children without passing through `blocks`.
-pub(super) fn for_element(el: AnyElement, element: &Element, parent: &Computed,
+pub(crate) fn for_element(el: AnyElement, element: &Element, parent: &Computed,
     placement: (Option<gpui::GridLocation>, Option<gpui::GridLineNames>)) -> AnyElement {
     if super::replaced_tag(element) || native_intrinsic::eligible(element) {
         el

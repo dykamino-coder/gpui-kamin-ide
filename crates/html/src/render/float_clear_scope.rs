@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(super) fn used(nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
+pub(crate) fn used(nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
     nodes
         .into_iter()
         .map(|node| match node {

@@ -52,7 +52,7 @@ pub(super) fn render(li: &Element, inherited: &Computed, opts: &RenderOpts) -> A
     render_with_style(li, inherited, &merged, opts)
 }
 
-pub(super) fn render_with_style(
+pub(crate) fn render_with_style(
     li: &Element,
     inherited: &Computed,
     merged: &Computed,

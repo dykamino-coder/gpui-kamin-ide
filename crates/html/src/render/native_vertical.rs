@@ -5,7 +5,7 @@ use crate::computed::orthogonal::{InlineConstraint, InlineKeyword};
 use crate::value::Len;
 
 /// Float placement removes the CSS float flag; preserve its intrinsic sizing contract.
-pub(super) fn claim_float_inline_size(
+pub(crate) fn claim_float_inline_size(
     style: &mut Computed,
     parent: &Computed,
     children: &[crate::dom::Node],

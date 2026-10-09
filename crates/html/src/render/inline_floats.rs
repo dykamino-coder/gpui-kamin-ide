@@ -3,7 +3,7 @@
 
 use super::{Computed, Element, Node, inline};
 
-pub(super) fn lift(nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
+pub(crate) fn lift(nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
     if parent.vertical == Some(true) {
         return nodes;
     }
