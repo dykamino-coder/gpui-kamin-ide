@@ -11,6 +11,7 @@ import type { PtySession, SessionConfig } from './types'
 import { DEFAULT_SESSION_MODEL } from '../config'
 import { eventBus } from '../events/bus'
 import { debugLog, warnLog, infoLog } from '../logging'
+import { lifecycleLog, type DestroyReason } from '../logging/lifecycle'
 import { JsonlWatcher } from './jsonl-watcher'
 import { leanEntries } from './jsonl-projection'
 import {
@@ -110,7 +111,7 @@ export async function createSession(
       signal,
     )
   } catch (error) {
-    if (registered) destroySession(registered.id)
+    if (registered) destroySession(registered.id, 'startup_failed')
     throw error
   } finally {
     release()
@@ -576,9 +577,11 @@ async function createAdmittedSession(
   pty.onExit(({ exitCode }: { exitCode: number }) => {
     // Skip exit handling during effort-change restart
     if (session.isRestarting) {
+      lifecycleLog('pty_exit', { sessionId, exitCode, suppressed: true })
       debugLog('PTY exited during restart (suppressed)', { sessionId, exitCode })
       return
     }
+    lifecycleLog('pty_exit', { sessionId, exitCode, suppressed: false })
     debugLog('PTY exited', { sessionId, exitCode })
     session.state = 'exited'
     sendToClient(session.ws, { type: 'session:exit', code: exitCode, sessionId })
@@ -598,6 +601,7 @@ async function createAdmittedSession(
     mcpCallCount: 0,
     inputCount: 0,
   })
+  lifecycleLog('session_create', { sessionId, isSubAgent: Boolean(session.isSubAgent) })
   debugLog('PTY session created', { sessionId, pid: pty.pid })
 
   return session
@@ -664,16 +668,17 @@ export function detachSession(sessionId: string): void {
   const session = sessions.get(sessionId)
   if (!session) return
   if (session.state !== 'running') {
-    destroySession(sessionId)
+    destroySession(sessionId, 'detach_not_running')
     return
   }
   if (session.detachGraceTimer) return // already detached
 
+  lifecycleLog('session_detach', { sessionId, graceMs: DETACH_GRACE_MS })
   session.detachedAt = new Date()
   notifySessionAttachmentChanged(session)
   session.detachGraceTimer = setTimeout(() => {
     debugLog('Detach grace expired — destroying session', { sessionId })
-    destroySession(sessionId)
+    destroySession(sessionId, 'detach_grace')
   }, DETACH_GRACE_MS)
   debugLog('Session detached (client WS closed), awaiting reattach', {
     sessionId,
@@ -688,6 +693,7 @@ export function detachSession(sessionId: string): void {
  * and the CLI gets a resize nudge so its TUI repaints for the new client.
  */
 export function reattachSession(session: PtySession, ws: WS): void {
+  lifecycleLog('session_reattach', { sessionId: session.id })
   if (session.detachGraceTimer) {
     clearTimeout(session.detachGraceTimer)
     session.detachGraceTimer = null
@@ -805,11 +811,17 @@ export function followCompactLinks(conversationId: string): string {
 /**
  * Destroy a session: kill PTY, clean up temp files.
  */
-export function destroySession(sessionId: string): void {
+export function destroySession(sessionId: string, reason: DestroyReason = 'unspecified'): void {
   const session = sessions.get(sessionId)
   if (!session) return
   if (session.teardown) return
 
+  lifecycleLog('session_destroy', {
+    sessionId,
+    reason,
+    ageMs: Date.now() - session.createdAt.getTime(),
+    idleMs: Date.now() - session.lastActivityAt.getTime(),
+  })
   debugLog('Destroying session', { sessionId })
   if (session.detachGraceTimer) {
     clearTimeout(session.detachGraceTimer)
@@ -902,6 +914,12 @@ function finalizeTeardownFor(
     }
     debugLog('Session teardown finalized', { sessionId, reason, waitedMs: Date.now() - teardown.startedAt })
   }
+  lifecycleLog('session_finalize', {
+    sessionId,
+    reason,
+    exitCode,
+    waitedMs: teardown ? Date.now() - teardown.startedAt : 0,
+  })
   // Снимок расшифровки на выходе: беседу, которую больше не открывали, путь
   // резюма не скопировал бы никогда, и уборка CLI унесла бы её вместе с
   // возможностью резюма (INC-2026-0054).
@@ -1070,6 +1088,7 @@ export function countUserSessions(tokenId: string): number {
 export function shutdownAll(): void {
   debugLog('Shutting down all PTY sessions', { count: sessions.size })
   for (const [id, session] of sessions) {
+    lifecycleLog('session_destroy', { sessionId: id, reason: 'shutdown' })
     try {
       session.pty.kill()
     } catch {}

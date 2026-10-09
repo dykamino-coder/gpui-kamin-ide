@@ -24,6 +24,8 @@ services:
     ports:
       - "${BRIDGE_PORT:-3456}:3456"
     volumes:
+      # Persist only allowlisted lifecycle metadata, never legacy raw logs.
+      - bridge-lifecycle-logs:/app/logs/lifecycle
       - bridge-data:/app/data
       - claude-auth:/home/bridge/.claude
       # Legacy sync volume retained for one-time migration into
@@ -54,6 +56,8 @@ services:
     restart: unless-stopped
 
 volumes:
+  bridge-lifecycle-logs:
+    driver: local
   bridge-data:
     driver: local
   claude-auth:
