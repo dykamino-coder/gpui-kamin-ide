@@ -11862,11 +11862,13 @@ fn wrap_floats(
         if let Some((mut host, next, took_lead, lifted)) = hosted {
             // CSS 2.1 §10.6.3: ordinary blocks count in-flow boxes, not floats.
             // A complete unfragmented suffix needs no later float bands, and
-            // no later box of the enclosing context may see them (`float_tail`).
+            // no later box of the enclosing context may see them (`float_tail`;
+            // also excludes float boxes whose own style lost `float` here).
             if !parent_bfc
                 && !cell_bfc
                 && next == nodes.len()
-                && (parent.float_tail && !parent.in_multicol || host.attr("bands") == Some("1"))
+                && parent.float_tail
+                && (!parent.in_multicol || host.attr("bands") == Some("1"))
             {
                 host.attrs.push(("inflow-height".into(), "1".into()));
             }
