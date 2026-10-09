@@ -61,7 +61,7 @@ pub mod select;
 pub mod svg;
 pub mod transition;
 pub use style::values::value;
-pub mod zoom;
+pub use style::zoom;
 
 // Доменные модули (рефакторинг монолитов: перенос по доменам).
 #[doc(hidden)]

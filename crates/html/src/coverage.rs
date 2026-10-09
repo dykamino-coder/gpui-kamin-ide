@@ -474,7 +474,7 @@ const CONSUMERS: &[&str] = &[
     include_str!("interact.rs"),
     include_str!("anchor.rs"),
     include_str!("motion.rs"),
-    include_str!("zoom.rs"),
+    include_str!("style/zoom.rs"),
     include_str!("render/blocks/flow.rs"),
     include_str!("render/blocks/positioned.rs"),
     include_str!("render/blocks/canvas.rs"),

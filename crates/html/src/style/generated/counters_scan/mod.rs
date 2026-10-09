@@ -9,7 +9,6 @@
 //! Вложенная область исключается из подсчёта; сброс на последующем брате
 //! завершает область создателя (css-lists-3 §4.3, §4.4.2).
 
-#[path = "counters_scan_values.rs"]
 mod values;
 use values::{decl_has, decl_value};
 

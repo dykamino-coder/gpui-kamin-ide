@@ -1,6 +1,5 @@
 //! Style containment isolates counter mutations and quote depth in descendants.
 
-#[path = "quote_language.rs"]
 mod quote_language;
 
 use super::{Counters, Entry, covers};

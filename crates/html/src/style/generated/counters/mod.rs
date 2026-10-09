@@ -15,7 +15,6 @@
 
 use std::collections::HashMap;
 
-#[path = "counters_scope.rs"]
 mod scope;
 
 /// Сегмент пути для `::marker`: маркер — ПЕРВЫЙ ребёнок пункта, до
