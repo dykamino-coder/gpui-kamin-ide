@@ -4,16 +4,15 @@ import styles from './SkillActions.module.css'
 
 interface Props {
   path: string
-  fileName: string
   canDelete: boolean
   onDeleted: () => void
 }
 
-export function SkillActions({ path, fileName, canDelete, onDeleted }: Props): JSX.Element {
+export function SkillActions({ path, canDelete, onDeleted }: Props): JSX.Element {
   const bridge = useBridge()
 
   async function handleDelete(): Promise<void> {
-    await bridge.deleteSkill(fileName)
+    await bridge.deleteSkill(path)
     onDeleted()
   }
 
