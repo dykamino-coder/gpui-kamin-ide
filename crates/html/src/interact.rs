@@ -1104,7 +1104,7 @@ impl Element for Grouped {
         // Коробка окраски (`mask-clip`): вне её маска не красится — элемент
         // там скрыт (mask-size-contain-clip-padding).
         let mask_clip = polygon_clip::intersect(
-            rectangular_clip::resolve(self, bounds, _prepaint.0, window.scale_factor()),
+            rectangular_clip::resolve(self, _prepaint.0, window.scale_factor()),
             polygon_clip,
         );
         // Подложка (наружные тени `border-shape`) — в текущий контекст ДО
