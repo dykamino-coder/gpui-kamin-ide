@@ -10,7 +10,7 @@ fn rectangular(group: &Grouped) -> bool {
             || group.clip_rect.is_some())
 }
 
-pub(super) fn reference_box(
+pub(crate) fn reference_box(
     group: &Grouped,
     fallback: Bounds<Pixels>,
     id: LayoutId,
@@ -54,7 +54,7 @@ pub(super) fn device_edges(group: &Grouped, rect: [f32; 4]) -> [f32; 4] {
     legacy_clip::snap(rect)
 }
 
-pub(super) fn resolve(group: &Grouped, clip_bounds: Bounds<Pixels>, sf: f32) -> Option<[f32; 4]> {
+pub(crate) fn resolve(group: &Grouped, clip_bounds: Bounds<Pixels>, sf: f32) -> Option<[f32; 4]> {
     group
         .mask_clip_off
         .map(|[ct, cr, cb, cl]| {

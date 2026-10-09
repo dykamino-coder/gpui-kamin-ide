@@ -3,6 +3,8 @@
 
 use crate::render::*;
 
+pub mod element;
+
 thread_local! {
     /// Определения `<mask id>` / `<clipPath id>` документа: id — разметка
     /// содержимого. Ссылки `url(#id)` из `mask-image`/`clip-path` резолвятся

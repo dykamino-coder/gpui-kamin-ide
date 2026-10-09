@@ -4,7 +4,7 @@ use super::Transformed;
 use gpui::{Pixels, Point};
 
 impl Transformed {
-    pub(super) fn exact_fill_matrix(
+    pub(crate) fn exact_fill_matrix(
         &self,
         mut matrix: gpui::TransformationMatrix,
         snapped: Point<Pixels>,
@@ -22,7 +22,7 @@ impl Transformed {
         matrix
     }
 
-    pub(super) fn scaled_origin(&self, origin: Point<Pixels>) -> Point<Pixels> {
+    pub(crate) fn scaled_origin(&self, origin: Point<Pixels>) -> Point<Pixels> {
         let [[a, b], [c, d]] = self.lin;
         let eps = 1e-5;
         // The translation path already carries unrounded placement, and the

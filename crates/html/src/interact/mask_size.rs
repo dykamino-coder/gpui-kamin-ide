@@ -6,7 +6,7 @@ use crate::{
 };
 use gpui::{Bounds, Pixels, Point, point, px, size};
 
-pub(super) fn snap_tile(at: Point<Pixels>, tile: (f32, f32), scale: f32) -> Bounds<Pixels> {
+pub(crate) fn snap_tile(at: Point<Pixels>, tile: (f32, f32), scale: f32) -> Bounds<Pixels> {
     // CSS Masking §7.7-7.8 uses background image geometry. Snap both
     // destination edges, as Blink background_image_geometry.cc:115-122 does,
     // so a fractional device size keeps the same coverage as a painted image.
@@ -21,7 +21,7 @@ pub(super) fn snap_tile(at: Point<Pixels>, tile: (f32, f32), scale: f32) -> Boun
     }
 }
 
-pub(super) fn tile(
+pub(crate) fn tile(
     intrinsic: Intrinsic,
     scale: f32,
     area: (f32, f32),
@@ -46,7 +46,7 @@ pub(super) fn tile(
 /// rescaled so a whole number of copies fills the positioning area,
 /// `max(1, round(area / tile))`. When only one axis rounds and the other
 /// `mask-size` component is `auto`, that axis keeps the aspect ratio.
-pub(super) fn round_tile(
+pub(crate) fn round_tile(
     (tw, th): (f32, f32),
     (bw, bh): (f32, f32),
     (rx, ry): (bool, bool),
@@ -70,7 +70,7 @@ pub(super) fn round_tile(
 /// `space` along one axis: `(start, gap, single)`. With at least two whole
 /// tiles the first touches the start edge and the rest share the leftover
 /// equally; otherwise one tile stays at its `mask-position` offset.
-pub(super) fn space_axis(space: bool, pos: f32, tile: f32, area: f32) -> (f32, f32, bool) {
+pub(crate) fn space_axis(space: bool, pos: f32, tile: f32, area: f32) -> (f32, f32, bool) {
     if !space || tile <= 0.0 {
         return (pos, 0.0, false);
     }

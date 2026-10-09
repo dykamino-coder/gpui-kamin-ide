@@ -3,7 +3,7 @@
 
 use gpui::{Bounds, LayoutId, Pixels, Window};
 
-pub(super) fn positioning_box(
+pub(crate) fn positioning_box(
     src: Option<&str>,
     fallback: Bounds<Pixels>,
     id: LayoutId,

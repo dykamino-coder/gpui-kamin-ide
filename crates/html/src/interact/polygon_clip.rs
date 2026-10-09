@@ -89,7 +89,7 @@ pub(super) fn rectilinear(points: &[Point<Pixels>]) -> bool {
     edges >= 4
 }
 
-pub(super) fn geometry(
+pub(crate) fn geometry(
     group: &Grouped,
     bounds: Bounds<Pixels>,
     reference: Bounds<Pixels>,
@@ -121,7 +121,7 @@ pub(super) fn geometry(
     }
 }
 
-pub(super) fn intersect(a: Option<[f32; 4]>, b: Option<[f32; 4]>) -> Option<[f32; 4]> {
+pub(crate) fn intersect(a: Option<[f32; 4]>, b: Option<[f32; 4]>) -> Option<[f32; 4]> {
     let (Some([ax, ay, aw, ah]), Some([bx, by, bw, bh])) = (a, b) else {
         return a.or(b);
     };
