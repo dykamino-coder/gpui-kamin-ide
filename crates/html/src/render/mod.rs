@@ -141,7 +141,9 @@ pub(crate) use crate::render::paragraph::pieces::*;
 pub(crate) mod blocks;
 pub(crate) use crate::render::blocks::*;
 pub(crate) mod element;
+pub(crate) mod generic_box;
 pub(crate) use crate::render::element::*;
+pub(crate) use crate::render::generic_box::*;
 pub(crate) use crate::layout::multicol::container::*;
 pub(crate) use crate::layout::multicol::stack_child::*;
 

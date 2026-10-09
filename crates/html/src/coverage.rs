@@ -470,6 +470,7 @@ const CONSUMERS: &[&str] = &[
     include_str!("render/paragraph/pieces.rs"),
     include_str!("render/blocks/mod.rs"),
     include_str!("render/element.rs"),
+    include_str!("render/generic_box.rs"),
     include_str!("text/ruby/mod.rs"),
     include_str!("text/text_box.rs"),
     include_str!("animation/frames.rs"),
