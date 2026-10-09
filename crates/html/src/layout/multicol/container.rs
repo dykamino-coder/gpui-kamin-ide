@@ -3,7 +3,7 @@
 
 use crate::render::*;
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::needless_return)]
 pub(crate) fn multicol_column_stack(
     d: gpui::Div,
     e: &Element,
@@ -1315,7 +1315,7 @@ pub(crate) fn multicol_column_stack(
     return d.into_any_element();
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::needless_return)]
 pub(crate) fn multicol_spanner_segments(
     mut d: gpui::Div,
     e: &Element,

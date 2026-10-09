@@ -2,7 +2,7 @@
 
 use crate::render::*;
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::ptr_arg)]
 pub(crate) fn table_finish(
     under: Vec<AnyElement>,
     paint_layers: bool,

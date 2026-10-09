@@ -2,7 +2,7 @@
 
 use crate::render::*;
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::unnecessary_cast)]
 pub(crate) fn table_rows(
     rows: Vec<(&Element, (f32, f32, Option<crate::value::Color>, Option<&Element>))>,
     mut row_ix: i16,
