@@ -1,4 +1,15 @@
-import { serverHealth, healthCheckedAt, serverStats, isConnected, terminalSessions, ptySessions, cachedAccount, accountCheckedAt, cachedUsage, type PtySessionInfo } from '../signals/server'
+import {
+  serverHealth,
+  healthCheckedAt,
+  serverStats,
+  isConnected,
+  terminalSessions,
+  ptySessions,
+  cachedAccount,
+  accountCheckedAt,
+  cachedUsage,
+  type PtySessionInfo,
+} from '../signals/server'
 import { addRequest, updateRequest, addError, seedErrors } from '../signals/requests'
 import type { BridgeEvent, InitData, ExtendedStats, HealthCheck, RequestLogEntry } from '../types'
 
@@ -20,7 +31,10 @@ class DashboardWSClient {
   disconnect() {
     this.stopped = true
     this.generation++
-    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null }
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
     const socket = this.ws
     this.ws = null
     socket?.close()
@@ -38,46 +52,85 @@ class DashboardWSClient {
       this.ws = socket
       // Logout/login and retry replacement invalidate every old socket callback.
       const current = () => !this.stopped && generation === this.generation && this.ws === socket
-      socket.onopen = () => { if (current()) isConnected.value = true }
+      socket.onopen = () => {
+        if (current()) isConnected.value = true
+      }
       socket.onclose = () => {
         if (!current()) return
         this.ws = null
         isConnected.value = false
         this.scheduleReconnect(generation)
       }
-      socket.onerror = () => { if (current()) isConnected.value = false }
+      socket.onerror = () => {
+        if (current()) isConnected.value = false
+      }
       socket.onmessage = (e: MessageEvent) => {
         if (!current()) return
-        try { this.handleMessage(JSON.parse(e.data)) } catch {}
+        try {
+          this.handleMessage(JSON.parse(e.data))
+        } catch {}
       }
-    } catch { this.scheduleReconnect(generation) }
+    } catch {
+      this.scheduleReconnect(generation)
+    }
   }
 
   private scheduleReconnect(generation: number) {
     if (this.stopped || generation !== this.generation || this.reconnectTimer) return
-    this.reconnectTimer = setTimeout(() => { this.reconnectTimer = null; this.doConnect(generation) }, 3000)
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
+      this.doConnect(generation)
+    }, 3000)
   }
 
   private handleMessage(msg: BridgeEvent) {
     switch (msg.type) {
       case 'init': {
-        const d = msg.data as InitData & { terminalSessions?: number; ptySessions?: PtySessionInfo[]; account?: unknown; healthCheckedAt?: number; accountCheckedAt?: number; usage?: unknown }
+        const d = msg.data as InitData & {
+          terminalSessions?: number
+          ptySessions?: PtySessionInfo[]
+          account?: unknown
+          healthCheckedAt?: number
+          accountCheckedAt?: number
+          usage?: unknown
+        }
         serverStats.value = d.stats
-        if (d.health) { serverHealth.value = d.health; healthCheckedAt.value = d.healthCheckedAt ? new Date(d.healthCheckedAt) : new Date() }
-        if (d.account) { cachedAccount.value = d.account as any }
-        if (d.accountCheckedAt) { accountCheckedAt.value = new Date(d.accountCheckedAt) }
-        if (d.usage) { cachedUsage.value = d.usage }
+        if (d.health) {
+          serverHealth.value = d.health
+          healthCheckedAt.value = d.healthCheckedAt ? new Date(d.healthCheckedAt) : new Date()
+        }
+        if (d.account) {
+          cachedAccount.value = d.account as any
+        }
+        if (d.accountCheckedAt) {
+          accountCheckedAt.value = new Date(d.accountCheckedAt)
+        }
+        if (d.usage) {
+          cachedUsage.value = d.usage
+        }
         if (d.stats?.requestLog) seedErrors(d.stats.requestLog)
         if (typeof d.terminalSessions === 'number') terminalSessions.value = d.terminalSessions
         if (d.ptySessions) ptySessions.value = d.ptySessions
         this.onReconnect?.()
         break
       }
-      case 'stats:updated': serverStats.value = msg.data as ExtendedStats; break
-      case 'health:updated': serverHealth.value = msg.data as HealthCheck; healthCheckedAt.value = new Date(); break
-      case 'account:updated': cachedAccount.value = msg.data as any; accountCheckedAt.value = new Date(); break
-      case 'usage:updated': cachedUsage.value = msg.data; break
-      case 'request:start': addRequest(msg.data as RequestLogEntry); break
+      case 'stats:updated':
+        serverStats.value = msg.data as ExtendedStats
+        break
+      case 'health:updated':
+        serverHealth.value = msg.data as HealthCheck
+        healthCheckedAt.value = new Date()
+        break
+      case 'account:updated':
+        cachedAccount.value = msg.data as any
+        accountCheckedAt.value = new Date()
+        break
+      case 'usage:updated':
+        cachedUsage.value = msg.data
+        break
+      case 'request:start':
+        addRequest(msg.data as RequestLogEntry)
+        break
       case 'request:complete': {
         const e = msg.data as RequestLogEntry
         updateRequest(e.id, e)
@@ -90,22 +143,41 @@ class DashboardWSClient {
         break
       }
       case 'session:created': {
-        const s = msg.data as { sessionId: string; userName: string; cwd: string; state: string; createdAt: string; lastActivityAt: string; mcpCallCount: number; inputCount: number }
-        ptySessions.value = [...ptySessions.value, {
-          id: s.sessionId,
-          userName: s.userName,
-          cwd: s.cwd || '',
-          state: s.state || 'running',
-          createdAt: s.createdAt,
-          lastActivityAt: s.lastActivityAt,
-          mcpCallCount: s.mcpCallCount || 0,
-          inputCount: s.inputCount || 0,
-        }]
+        const s = msg.data as {
+          sessionId: string
+          userName: string
+          cwd: string
+          state: string
+          createdAt: string
+          lastActivityAt: string
+          mcpCallCount: number
+          inputCount: number
+        }
+        ptySessions.value = [
+          ...ptySessions.value,
+          {
+            id: s.sessionId,
+            userName: s.userName,
+            cwd: s.cwd || '',
+            state: s.state || 'running',
+            createdAt: s.createdAt,
+            lastActivityAt: s.lastActivityAt,
+            mcpCallCount: s.mcpCallCount || 0,
+            inputCount: s.inputCount || 0,
+          },
+        ]
         break
       }
       case 'session:updated': {
-        const u = msg.data as { sessionId: string; mcpCallCount?: number; inputCount?: number; mcpInitialized?: boolean; mcpLastError?: string | null; lastActivityAt?: string }
-        ptySessions.value = ptySessions.value.map(p => {
+        const u = msg.data as {
+          sessionId: string
+          mcpCallCount?: number
+          inputCount?: number
+          mcpInitialized?: boolean
+          mcpLastError?: string | null
+          lastActivityAt?: string
+        }
+        ptySessions.value = ptySessions.value.map((p) => {
           if (p.id !== u.sessionId) return p
           const patch: Partial<PtySessionInfo> = {}
           if (u.mcpCallCount !== undefined) patch.mcpCallCount = u.mcpCallCount
@@ -119,7 +191,7 @@ class DashboardWSClient {
       }
       case 'session:destroyed': {
         const s = msg.data as { sessionId: string }
-        ptySessions.value = ptySessions.value.filter(p => p.id !== s.sessionId)
+        ptySessions.value = ptySessions.value.filter((p) => p.id !== s.sessionId)
         break
       }
     }
