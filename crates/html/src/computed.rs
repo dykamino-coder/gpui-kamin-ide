@@ -2638,6 +2638,10 @@ pub struct Computed {
     pub hyphenate: Option<bool>,
     /// `user-select: none` — текст не выделяется.
     pub no_select: Option<bool>,
+    /// `frame-sizing: content-height` (css-sizing-4
+    /// §frame-sizing): высота `<iframe>` — по содержимому вложенного
+    /// документа, если он сам согласился (`<meta name=responsive-embedded-sizing>`).
+    pub frame_sizing_height: bool,
     /// Стиль первой буквы абзаца (`::first-letter`).
     ///
     /// Живёт в стиле, а не в элементе, потому что абзац собирается из кусков
@@ -9356,6 +9360,12 @@ impl Computed {
                 self.mask_pos_list = (!list.is_empty()).then_some(list);
             }
             "user-select" | "-webkit-user-select" => self.no_select = Some(matches!(v, "none")),
+            "frame-sizing" => {
+                self.frame_sizing_height = matches!(
+                    v.trim().to_ascii_lowercase().as_str(),
+                    "content-height"
+                );
+            }
             "clip-path" | "mask" | "mask-image" => {
                 if key == "mask" && mask_shorthand::apply(self, v) {
                     return;

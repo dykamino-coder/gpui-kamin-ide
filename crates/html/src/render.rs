@@ -25639,15 +25639,78 @@ fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     IFRAME_DEPTH.with(|d| d.set(d.get() - 1));
     crate::dom::QUIRKS.with(|q| q.set(outer_quirks));
     Some(
-        styled_div(e)
-            .w(px(outer_w))
-            .h(px(outer_h))
-            .overflow_hidden()
-            .relative()
-            .flex_shrink_0()
-            .children(kids)
-            .into_any_element(),
+        {
+            let frame = styled_div(e).w(px(outer_w));
+            // css-sizing-4 §frame-sizing: высота по содержимому, когда
+            // вложенный документ согласился и автор высоту не задал.
+            let responsive = st.frame_sizing_height
+                && matches!(st.height, None | Some(Len::Auto))
+                && e.attr("height").is_none()
+                && responsive_embedded_sizing(&html);
+            if responsive { frame } else { frame.h(px(outer_h)) }
+        }
+        .overflow_hidden()
+        .relative()
+        .flex_shrink_0()
+        .children(kids)
+        .into_any_element(),
     )
+}
+
+/// Флаг «responsive embedded sizing» документа (css-sizing-4
+/// §iframe-frame-sizing): истина, если `<meta name=responsive-embedded-sizing>`
+/// встретился при разборе РАНЬШЕ, чем открылся `<body>` (явно или неявно —
+/// любым тегом тела или непробельным текстом).
+fn responsive_embedded_sizing(html: &str) -> bool {
+    let lower = html.to_ascii_lowercase();
+    let b = lower.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if lower[i..].starts_with("<!--") {
+            match lower[i + 4..].find("-->") {
+                Some(k) => i += 4 + k + 3,
+                None => return false,
+            }
+            continue;
+        }
+        if b[i] != b'<' {
+            if !b[i].is_ascii_whitespace() && b[i] != 0xef && b[i] != 0xbb && b[i] != 0xbf {
+                return false;
+            }
+            i += 1;
+            continue;
+        }
+        let Some(end) = lower[i..].find('>').map(|k| i + k) else {
+            return false;
+        };
+        let tag = &lower[i + 1..end];
+        i = end + 1;
+        if tag.starts_with('!') || tag.starts_with('?') || tag.starts_with('/') {
+            continue;
+        }
+        let name: String = tag
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '-')
+            .collect();
+        match name.as_str() {
+            "html" | "head" | "link" | "base" | "basefont" | "bgsound" => {}
+            "meta" => {
+                let compact: String = tag.chars().filter(|c| *c != '"' && *c != '\'').collect();
+                if compact.contains("name=responsive-embedded-sizing") {
+                    return true;
+                }
+            }
+            "style" | "script" | "title" | "noscript" | "template" => {
+                let close = format!("</{name}");
+                match lower[i..].find(&close) {
+                    Some(k) => i += k,
+                    None => return false,
+                }
+            }
+            _ => return false,
+        }
+    }
+    false
 }
 
 /// Кегль для разрешения долей на атоме: свой размер шрифта уже разрешён в
