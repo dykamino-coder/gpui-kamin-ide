@@ -5673,7 +5673,38 @@ impl Computed {
                 // и то же. Разбор тот же, что у отдельного свойства, иначе
                 // тест и эталон разойдутся механикой, а не раскладкой.
                 let mut pos: Vec<String> = vec![];
+                // `<bg-position> [ / <bg-size> ]?` (css-backgrounds-3 §3.10):
+                // the words after the slash are the SIZE. They used to fall
+                // into the position (`top left / 100% auto` positioned at
+                // `top left 100%`, size stayed auto — `background-334`).
+                let mut tokens: Vec<String> = vec![];
                 for token in split_outside_parens(v) {
+                    if token.contains('(') || !token.contains('/') {
+                        tokens.push(token);
+                        continue;
+                    }
+                    let (a, b) = token.split_once('/').unwrap_or((token.as_str(), ""));
+                    if !a.is_empty() {
+                        tokens.push(a.to_string());
+                    }
+                    tokens.push("/".to_string());
+                    if !b.is_empty() {
+                        tokens.push(b.to_string());
+                    }
+                }
+                let mut size_words: Option<Vec<String>> = None;
+                for token in tokens {
+                    if token == "/" {
+                        size_words = Some(vec![]);
+                        continue;
+                    }
+                    if let Some(words) = size_words.as_mut()
+                        && words.len() < 2
+                        && (token == "auto" || token == "cover" || token == "contain" || Len::parse_mixed(&token).is_some())
+                    {
+                        words.push(token);
+                        continue;
+                    }
                     match token.as_str() {
                         "no-repeat" => self.bg_repeat = Some(BgRepeat::NoRepeat),
                         "repeat-x" => self.bg_repeat = Some(BgRepeat::RepeatX),
@@ -5701,6 +5732,9 @@ impl Computed {
                 // положения уехал бы в середину коробки.
                 if !pos.is_empty() {
                     self.bg_pos = parse_pos_words(&pos.join(" "));
+                }
+                if let Some(words) = size_words.filter(|w| !w.is_empty()) {
+                    self.apply_one("background-size", &words.join(" "));
                 }
                 // Цвет живёт в НИЖНЕМ слое списка — верхний его не допускает.
                 if layers.len() > 1 {
@@ -11442,6 +11476,30 @@ impl Computed {
     /// слоёв, повторяются по кругу). Градиент слоя уходит в растровую плитку
     /// (`bg_image` с сырой записью), чтобы все слои шли одним путём и в
     /// своём порядке. `None` — слой один.
+    /// `background-clip` of the background COLOR: css-backgrounds-3 §3.2,
+    /// «the background color is clipped according to the background-clip
+    /// value associated with the bottom-most background image layer». The
+    /// number of layers comes from `background-image` (§2.1); a shorter
+    /// `background-clip` list repeats, a longer one is truncated
+    /// (`background-color-clip`: two `none` layers, clip list
+    /// `border-box, content-box, border-box` → `content-box`).
+    pub(crate) fn color_clip(&self) -> Option<BgClip> {
+        let Some((_, clips)) = self.bg_lists.iter().find(|(k, _)| k == "background-clip") else {
+            return self.bg_clip;
+        };
+        let Some((_, images)) = self.bg_lists.iter().find(|(k, _)| k == "background-image") else {
+            return self.bg_clip;
+        };
+        let n = background_layers(images).len();
+        let clips = background_layers(clips);
+        if n < 2 || clips.is_empty() {
+            return self.bg_clip;
+        }
+        let mut probe = Computed::default();
+        probe.apply_one("background-clip", clips[(n - 1) % clips.len()]);
+        probe.bg_clip
+    }
+
     pub(crate) fn bg_layers(&self) -> Option<Vec<Computed>> {
         let short = self.bg_lists.iter().find(|(k, _)| k == "background").map(|(_, v)| v.clone());
         let image = self.bg_lists.iter().find(|(k, _)| k == "background-image").map(|(_, v)| v.clone());
