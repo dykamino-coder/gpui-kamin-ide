@@ -1,7 +1,7 @@
 //! Select the containing block for a replaced inline box with one explicit inset axis.
 
-use crate::style::computed::{Computed, Position};
 use crate::layout::positioned::containing_block::{SpotCell, cb_push, icb_push, late_push};
+use crate::style::computed::{Computed, Position};
 use gpui::AnyElement;
 
 pub(crate) fn push(

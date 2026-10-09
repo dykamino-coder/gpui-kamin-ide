@@ -40,7 +40,10 @@ pub(crate) fn inner(st: &Computed, outer: Option<f32>) -> Option<f32> {
             // Preserve deferred layout for out-of-flow and intrinsic limits.
             if matches!(
                 st.position,
-                Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
+                Some(
+                    crate::style::computed::Position::Absolute
+                        | crate::style::computed::Position::Fixed
+                )
             ) {
                 return None;
             }
@@ -58,7 +61,7 @@ pub(crate) fn inner(st: &Computed, outer: Option<f32>) -> Option<f32> {
             {
                 return None;
             }
-            
+
             outer? - side(st.margin.left)? - side(st.margin.right)? - pb
         }
         _ => return None,

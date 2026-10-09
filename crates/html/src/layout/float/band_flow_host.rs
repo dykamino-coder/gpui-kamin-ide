@@ -13,7 +13,10 @@ use crate::layout::writing_mode::native_vertical;
 use crate::paint::effects::grouped::grouped;
 use crate::paint::effects::paint_scope::DepthScope;
 use crate::paint::effects::paint_scope::snapshot as defer_depth;
-use crate::render::{RenderOpts, block_level_in_flow, blocks, content_wrapper, element, inline_level, is_blank, out_of_flow, own_context, replaced_tag, styled_div_with};
+use crate::render::{
+    RenderOpts, block_level_in_flow, blocks, content_wrapper, element, inline_level, is_blank,
+    out_of_flow, own_context, replaced_tag, styled_div_with,
+};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
@@ -185,7 +188,8 @@ fn abs_pinned(c: &Computed) -> bool {
     let set = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
     matches!(
         c.position,
-        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute)
+            | Some(crate::style::computed::Position::Fixed)
     ) && (set(c.inset.top) || set(c.inset.bottom))
         && (set(c.inset.left) || set(c.inset.right))
 }
@@ -227,8 +231,8 @@ pub(super) fn band_flow_rest_lift(
                         && subtree_has_text(c)
                 }
             }) || run
-                    .iter()
-                    .all(|n| is_blank(n) || matches!(n, Node::Element(e) if e.tag == "br"));
+                .iter()
+                .all(|n| is_blank(n) || matches!(n, Node::Element(e) if e.tag == "br"));
             let atoms = !text
                 && run
                     .iter()
@@ -307,10 +311,7 @@ pub(super) fn band_flow_rest_lift(
                 }
                 flush(&mut run, &mut out, cont);
                 cont = false;
-                if band_piece_m(&n, em).is_some()
-                    || band_flow_block(c, em)
-                    || band_nest_ok(c, em)
-                {
+                if band_piece_m(&n, em).is_some() || band_flow_block(c, em) || band_nest_ok(c, em) {
                     out.push(n);
                 } else {
                     return None;
@@ -341,7 +342,12 @@ pub(super) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpt
     }
     let inherited = &inherited;
     let kids = band_kids(
-        &e.children, count, inherited, opts, em, e.attr("adjoining-start") == Some("1"),
+        &e.children,
+        count,
+        inherited,
+        opts,
+        em,
+        e.attr("adjoining-start") == Some("1"),
     );
     let flow = crate::band_flow::BandFlow::new(kids, e.attr("inflow-height") != Some("1"));
     if inherited.vertical == Some(true) {
@@ -465,10 +471,8 @@ pub(super) fn band_kids(
         // у самого узла), и первая строка хоста теряла свой кегль
         // (`below-float3`: `::first-line { font-size: 50px }` у `x` под
         // флоатом). Первый прогон получает слой хоста.
-        let first_line = !float
-            && !seen_inflow
-            && c.attr("anon") == Some("1")
-            && c.attr("cont").is_none();
+        let first_line =
+            !float && !seen_inflow && c.attr("anon") == Some("1") && c.attr("cont").is_none();
         if !float && band_piece_m(n, em) != Some(false) {
             seen_inflow = true;
         }
@@ -581,7 +585,11 @@ pub(super) fn band_kids(
                 // `letter-spacing-206`).
                 if float {
                     copy.style.flow_root = Some(true);
-                    native_vertical::claim_float_inline_size(&mut copy.style, &inherited, &copy.children);
+                    native_vertical::claim_float_inline_size(
+                        &mut copy.style,
+                        &inherited,
+                        &copy.children,
+                    );
                 }
                 if is_nest {
                     // Коробка `Kind::Nest` — без детей (их кладут полосы) и
@@ -655,7 +663,12 @@ pub(super) fn band_kids(
                         .flow_shapes
                         .clone()
                         .unwrap_or_else(|| std::sync::Arc::new((Vec::new(), Vec::new())));
-                    return crate::layout::fragment::types::FlowRow::new(atoms, shapes, inherited.rtl == Some(true)).into_any_element();
+                    return crate::layout::fragment::types::FlowRow::new(
+                        atoms,
+                        shapes,
+                        inherited.rtl == Some(true),
+                    )
+                    .into_any_element();
                 }
                 // Замещаемый флоат, кроме `<img>` (`embed`, `object`,
                 // `video`…), — своей веткой `element` ниже: каркас блока со

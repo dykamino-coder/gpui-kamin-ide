@@ -76,7 +76,9 @@ impl Computed {
             // --- Текст -------------------------------------------------------
             // `font: [начертание] [вес] размер[/интерлиньяж] семейство`.
             "font" => font_shorthand::apply(self, v),
-            "font-synthesis" | "font-synthesis-weight" | "font-synthesis-style"
+            "font-synthesis"
+            | "font-synthesis-weight"
+            | "font-synthesis-style"
             | "font-synthesis-small-caps" => {
                 // css-fonts-4 §6.5: `auto` разрешает подмену, `none`
                 // запрещает; у сокращения перечислены разрешённые части.

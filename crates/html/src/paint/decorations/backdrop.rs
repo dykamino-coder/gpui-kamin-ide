@@ -6,10 +6,7 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{IntoElement, Styled, px};
 
-pub(super) fn backdrop_matrix(
-    c: &Computed,
-    out: &mut Vec<gpui::AnyElement>,
-) {
+pub(super) fn backdrop_matrix(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
     // `backdrop-filter` с цветовыми функциями (filter-effects-2
     // §BackdropFilterProperty: `<filter-value-list>` как у `filter`) — матрица
     // 4×5 тем же проходом подложки. Область — border-box со скруглением

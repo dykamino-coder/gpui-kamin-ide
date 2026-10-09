@@ -24,13 +24,21 @@ impl ColumnStack {
     /// содержимое по числу записей, а внепоточная в них не участвует.
     /// Возвращать только вместе с разделением «переполнение» и
     /// «балансировка» в самой `balance`.
-    pub(crate) fn balance(&self, kids: &[Kid]) -> (f32, Vec<(f32, f32)>, Vec<Frag>, Vec<(usize, f32)>) {
+    pub(crate) fn balance(
+        &self,
+        kids: &[Kid],
+    ) -> (f32, Vec<(f32, f32)>, Vec<Frag>, Vec<(usize, f32)>) {
         let count = self.count;
         // Потолок баланса без рядов (`Rows::cap`): баланс как прежде, но не
         // выше высоты коробки; копий — сколько построил `render.rs`, лишние
         // колонки переполняют вбок (`place`: `(col, 0.0)`). Линия — высотой
         // в баланс, не в потолок: по ней `growths` меряет рост.
-        if let Some(Rows { h: Some(lim), cap: true, .. }) = self.rows {
+        if let Some(Rows {
+            h: Some(lim),
+            cap: true,
+            ..
+        }) = self.rows
+        {
             let (h, plan) = self.balance_line(kids, self.copies, Some(lim.max(1.0)));
             return (h, vec![(0.0, h)], plan, Vec::new());
         }
@@ -98,12 +106,20 @@ impl ColumnStack {
         // зазор (так у Blink; на практике сюда не попадаем).
         let next_row = |y: f32| {
             let p = phase(y);
-            if p > 0.01 { y - p + stride } else { y + rows.gap }
+            if p > 0.01 {
+                y - p + stride
+            } else {
+                y + rows.gap
+            }
         };
         // Начало рядов со сдвигом `row_phase`: курсор встаёт на фазу внутри
         // первого ряда, и его остаток — первая линия (`balance_run(first)`);
         // в конце координаты возвращаются к верху коробки.
-        let phase0 = if h > 0.0 { self.row_phase.min(h - 0.01).max(0.0) } else { 0.0 };
+        let phase0 = if h > 0.0 {
+            self.row_phase.min(h - 0.01).max(0.0)
+        } else {
+            0.0
+        };
         let _not_top = NotTop::set(if phase0 > 0.01 { count } else { 0 });
         let mut y = phase0;
         let mut lines: Vec<(f32, f32)> = Vec::new();
@@ -130,7 +146,10 @@ impl ColumnStack {
                 i += 1;
                 continue;
             }
-            let j = kids[i..].iter().position(|k| k.span).map_or(kids.len(), |p| i + p);
+            let j = kids[i..]
+                .iter()
+                .position(|k| k.span)
+                .map_or(kids.len(), |p| i + p);
             // Первая линия пробега — в остаток текущего ряда; остатка нет
             // (курсор в зазоре после спаннера) — со следующего ряда
             // (`LayoutFragmentationContext`: «if there's no room in the
@@ -151,11 +170,25 @@ impl ColumnStack {
             let base = lines.len() * count;
             let (n, frags, tail) = self.balance_run(&kids[i..j], first, cap, balance_last);
             for f in frags {
-                plan.push(Frag { kid: f.kid + i, col: f.col + base, ..f });
+                plan.push(Frag {
+                    kid: f.kid + i,
+                    col: f.col + base,
+                    ..f
+                });
             }
             for l in 0..n {
-                let ly = if l == 0 { y } else { row_start + l as f32 * stride };
-                let lh = if l + 1 == n { tail } else if l == 0 { first } else { cap };
+                let ly = if l == 0 {
+                    y
+                } else {
+                    row_start + l as f32 * stride
+                };
+                let lh = if l + 1 == n {
+                    tail
+                } else if l == 0 {
+                    first
+                } else {
+                    cap
+                };
                 lines.push((ly, lh));
             }
             // Курсор — за последней линией: сбалансированная короче ряда, и
@@ -245,8 +278,7 @@ impl ColumnStack {
             // вызов при принудительном разрыве `:3212`). Без этого фон обёртки во
             // второй колонке `multicol-fill-balance-041` обрывался на 40 из 100.
             let has_next = plan.iter().any(|g| g.kid == f.kid && g.copy == f.copy + 1);
-            let cut_short =
-                end < k.h - 0.01 && k.forced.iter().any(|&x| (x - end).abs() < 0.01);
+            let cut_short = end < k.h - 0.01 && k.forced.iter().any(|&x| (x - end).abs() < 0.01);
             if !has_next && !cut_short {
                 continue;
             }
@@ -392,7 +424,12 @@ impl ColumnStack {
     /// Одна линия колонок: высота заданная (fill:auto) либо баланс «оценка +
     /// добавка на минимальный недолаз» (blink `ResolveColumnAutoBlockSize`);
     /// `cap` — потолок баланса (`ConstrainColumnBlockSize`).
-    pub(crate) fn balance_line(&self, kids: &[Kid], limit: usize, cap: Option<f32>) -> (f32, Vec<Frag>) {
+    pub(crate) fn balance_line(
+        &self,
+        kids: &[Kid],
+        limit: usize,
+        cap: Option<f32>,
+    ) -> (f32, Vec<Frag>) {
         if let Some(h) = self.fixed_height {
             // Правило 1 css-break-4 §4.3 применяется ТОЛЬКО здесь —
             // `column-fill: auto` с заданной высотой колонки. Балансировку
@@ -449,7 +486,11 @@ impl ColumnStack {
             .enumerate()
             .map(|(i, k)| {
                 if k.monolith {
-                    k.h + if i == 0 && k.par.group == 0 { k.mt.max(0.0) } else { 0.0 }
+                    k.h + if i == 0 && k.par.group == 0 {
+                        k.mt.max(0.0)
+                    } else {
+                        0.0
+                    }
                 } else {
                     k.solid.iter().fold(0.0f32, |m, &(a, b)| m.max(b - a))
                 }
@@ -535,7 +576,12 @@ impl ColumnStack {
     /// `LayoutRow` той же `block_layout_algorithm` с `early_break_`,
     /// `fragmentation_utils.cc:1250`). `flex-container-fragmentation-003/004`:
     /// 50 + 50 + 300 при `break-before: avoid` у третьей — разрыв после первой.
-    pub(crate) fn avoid_at_cap(kids: &[Kid], target: f32, limit: usize, slots: Vec<Frag>) -> Vec<Frag> {
+    pub(crate) fn avoid_at_cap(
+        kids: &[Kid],
+        target: f32,
+        limit: usize,
+        slots: Vec<Frag>,
+    ) -> Vec<Frag> {
         if Self::first_avoid_violation(kids, &slots).is_none() {
             return slots;
         }

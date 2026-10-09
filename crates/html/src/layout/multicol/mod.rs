@@ -1,11 +1,11 @@
 //! Многоколоночная раскладка.
 // owner: A
 
+mod column_baselines;
 pub mod column_flow;
+mod column_measure;
 pub mod column_stack;
 pub mod container;
-mod stack_child;
 pub mod gap_rules;
 pub mod spanner;
-mod column_measure;
-mod column_baselines;
+mod stack_child;

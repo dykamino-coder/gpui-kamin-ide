@@ -148,7 +148,9 @@ impl Selector {
         let head_end = delim(rest);
         if head_end > 0 {
             let raw_name = rest[..head_end].trim();
-            let local = raw_name.rsplit_once('|').map_or(raw_name, |(_, local)| local);
+            let local = raw_name
+                .rsplit_once('|')
+                .map_or(raw_name, |(_, local)| local);
             if local != "*" && !selector_tokens::ident(local) {
                 return None;
             }

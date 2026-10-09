@@ -1,7 +1,7 @@
 //! Replaced content can be empty without erasing its surrounding CSS box.
+use crate::dom::Element;
 use crate::render::styled_div_with;
 use crate::style::computed::Computed;
-use crate::dom::Element;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, StyledImage, px};
 
@@ -22,7 +22,10 @@ pub(crate) fn empty_iframe_size(
     if crate::style::select::quirks()
         && !matches!(
             copy.style.position,
-            Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
+            Some(
+                crate::style::computed::Position::Absolute
+                    | crate::style::computed::Position::Fixed
+            )
         )
         && let Some(Len::Pct(k)) = copy.style.height
     {
@@ -43,7 +46,10 @@ pub(crate) fn empty_iframe_size(
             && !inherited.cb_height_def
             && !matches!(
                 copy.style.position,
-                Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
+                Some(
+                    crate::style::computed::Position::Absolute
+                        | crate::style::computed::Position::Fixed
+                )
             ));
     if auto_width && (!ratio || auto_height) {
         let width = if copy.style.contains_width() {
@@ -80,7 +86,9 @@ pub(crate) fn empty_iframe(e: &Element, inherited: &Computed, viewport: (f32, f3
         copy.attrs.retain(|(name, _)| name != "src");
         return crate::layout::replaced::image::image(&copy);
     }
-    crate::render::styled_div(&copy).flex_shrink_0().into_any_element()
+    crate::render::styled_div(&copy)
+        .flex_shrink_0()
+        .into_any_element()
 }
 
 pub(crate) fn default_iframe(e: &Element) -> bool {

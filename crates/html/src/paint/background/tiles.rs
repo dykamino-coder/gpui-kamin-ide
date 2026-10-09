@@ -118,9 +118,9 @@ pub fn paint_tiles(
         // ЗАМЕРЕНО: сплошной перевод дал CSS2 4614 -> 4610, вся потеря в
         // семье `border-*-width-applies-to-00*`.
         let to_px = |l: Option<Len>| match l {
-            Some(u @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_) | Len::Ic(_) | Len::Lh(_))) => {
-                Some(Len::Px(crate::text::metrics::spacing_px(Some(u), &family, font)))
-            }
+            Some(u @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_) | Len::Ic(_) | Len::Lh(_))) => Some(
+                Len::Px(crate::text::metrics::spacing_px(Some(u), &family, font)),
+            ),
             other => other,
         };
         crate::style::computed::BgPos {
@@ -175,17 +175,24 @@ pub fn paint_tiles(
     // own box (`canvas`): the clip area is measured from that box, exactly as
     // for a scrolling layer (css-backgrounds-3 §3.7 still applies; the
     // transparent dotted border of `background-origin-006` shows the tile).
-    let paint_base = if fixed_area { canvas.unwrap_or(bounds) } else { bounds };
+    let paint_base = if fixed_area {
+        canvas.unwrap_or(bounds)
+    } else {
+        bounds
+    };
     let paint_box = match c.bg_clip {
-        Some(crate::style::computed::BgClip::PaddingBox) | Some(crate::style::computed::BgClip::Text) => paint_base,
+        Some(crate::style::computed::BgClip::PaddingBox)
+        | Some(crate::style::computed::BgClip::Text) => paint_base,
         Some(crate::style::computed::BgClip::ContentBox) => Bounds {
             origin: gpui::point(
                 paint_base.origin.x + px(px_of(c.padding.left)),
                 paint_base.origin.y + px(px_of(c.padding.top)),
             ),
             size: gpui::size(
-                (paint_base.size.width - px(px_of(c.padding.left) + px_of(c.padding.right))).max(px(0.0)),
-                (paint_base.size.height - px(px_of(c.padding.top) + px_of(c.padding.bottom))).max(px(0.0)),
+                (paint_base.size.width - px(px_of(c.padding.left) + px_of(c.padding.right)))
+                    .max(px(0.0)),
+                (paint_base.size.height - px(px_of(c.padding.top) + px_of(c.padding.bottom)))
+                    .max(px(0.0)),
             ),
         },
         _ => {
@@ -212,7 +219,10 @@ pub fn paint_tiles(
             );
             Bounds {
                 origin: gpui::point(paint_base.origin.x - px(l), paint_base.origin.y - px(t)),
-                size: gpui::size(paint_base.size.width + px(l + r), paint_base.size.height + px(t + b)),
+                size: gpui::size(
+                    paint_base.size.width + px(l + r),
+                    paint_base.size.height + px(t + b),
+                ),
             }
         }
     };
@@ -274,7 +284,13 @@ pub fn paint_tiles(
     // repeat → 60×60, not 60×52).
     let auto_axis = |horizontal: bool| match size {
         BgSize::Auto => true,
-        BgSize::Fixed(w, h) => if horizontal { w.is_none() } else { h.is_none() },
+        BgSize::Fixed(w, h) => {
+            if horizontal {
+                w.is_none()
+            } else {
+                h.is_none()
+            }
+        }
         _ => false,
     };
     let (round_x, round_y) = (
@@ -293,7 +309,11 @@ pub fn paint_tiles(
     // корня (`background-root-016`: «extending … to the left and right edges
     // of the page»).
     let clip = sampling::snapped_clip(
-        if fixed_area { paint_box } else { canvas.unwrap_or(paint_box) },
+        if fixed_area {
+            paint_box
+        } else {
+            canvas.unwrap_or(paint_box)
+        },
         window,
     );
     let start = origin(pos, box_size, tile);
@@ -362,22 +382,22 @@ pub fn paint_tiles(
         window.content_mask().bounds
     };
     window.with_content_mask_replaced(gpui::ContentMask { bounds: outer }, |window| {
-    window.with_content_mask(Some(gpui::ContentMask { bounds: clip }), |window| {
-        for y in &ys {
-            for x in &xs {
-                // Reduce to Pixels only after cancelling the clip offset.
-                let at = gpui::point(
-                    px((f64::from(f32::from(clip.origin.x)) + x) as f32),
-                    px((f64::from(f32::from(clip.origin.y)) + y) as f32),
-                );
-                let cell = Bounds {
-                    origin: at,
-                    size: gpui::size(px(tile.0), px(tile.1)),
-                };
-                sampling::paint_tile(window, cell, corners, image.clone(), &found);
+        window.with_content_mask(Some(gpui::ContentMask { bounds: clip }), |window| {
+            for y in &ys {
+                for x in &xs {
+                    // Reduce to Pixels only after cancelling the clip offset.
+                    let at = gpui::point(
+                        px((f64::from(f32::from(clip.origin.x)) + x) as f32),
+                        px((f64::from(f32::from(clip.origin.y)) + y) as f32),
+                    );
+                    let cell = Bounds {
+                        origin: at,
+                        size: gpui::size(px(tile.0), px(tile.1)),
+                    };
+                    sampling::paint_tile(window, cell, corners, image.clone(), &found);
+                }
             }
-        }
-    });
+        });
     });
 }
 

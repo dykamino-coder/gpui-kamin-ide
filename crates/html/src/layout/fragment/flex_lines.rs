@@ -1,7 +1,6 @@
 //! Флекс-строки при фрагментации.
 // owner: A
 
-use crate::style::cascade::inherit::inherit;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::fragment_size::shape_full;
@@ -10,6 +9,7 @@ use crate::layout::fragment::{Shape, ShapeCx};
 use crate::layout::page::paged::visible_overflow;
 use crate::layout::positioned::predicates::carries_abspos;
 use crate::render::{is_blank, out_of_flow};
+use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 
@@ -43,7 +43,12 @@ pub(crate) fn split_flex_lines(
     kids: Vec<(Element, Shape)>,
     col_w: Option<f32>,
     merged: &Computed,
-) -> (Vec<(Element, Shape)>, Vec<crate::layout::fragment::types::Par>, Vec<Option<Computed>>, Vec<usize>) {
+) -> (
+    Vec<(Element, Shape)>,
+    Vec<crate::layout::fragment::types::Par>,
+    Vec<Option<Computed>>,
+    Vec<usize>,
+) {
     let mut out: Vec<(Element, Shape)> = Vec::with_capacity(kids.len());
     let mut par: Vec<crate::layout::fragment::types::Par> = Vec::with_capacity(kids.len());
     let mut parent: Vec<Option<Computed>> = Vec::with_capacity(kids.len());
@@ -67,8 +72,14 @@ pub(crate) fn split_flex_lines(
                 // `flex_layout_algorithm.cc:1907-1918`: колонки строк —
                 // «ряд», значения сливаются и уходят контейнеру; «avoid» +
                 // принудительный = принудительный, `JoinFragmentainerBreakValues`).
-                let heads: Vec<&Element> = lines.iter().filter_map(|l| l.1.first().map(|x| &x.0)).collect();
-                let tails: Vec<&Element> = lines.iter().filter_map(|l| l.1.last().map(|x| &x.0)).collect();
+                let heads: Vec<&Element> = lines
+                    .iter()
+                    .filter_map(|l| l.1.first().map(|x| &x.0))
+                    .collect();
+                let tails: Vec<&Element> = lines
+                    .iter()
+                    .filter_map(|l| l.1.last().map(|x| &x.0))
+                    .collect();
                 let (bf, ba) = (
                     heads.iter().any(|e| edge_break(e, false)),
                     heads.iter().any(|e| edge_avoid(e, false)),
@@ -122,7 +133,7 @@ pub(crate) fn split_flex_lines(
                             dx,
                             avoid_only,
                             float: false,
-                    clears: false,
+                            clears: false,
                         });
                         parent.push(Some(pm.clone()));
                     }
@@ -154,7 +165,7 @@ pub(crate) fn split_flex_lines(
                                 dx,
                                 avoid_only,
                                 float: false,
-                    clears: false,
+                                clears: false,
                             });
                             parent.push(Some(pm.clone()));
                         }
@@ -253,7 +264,10 @@ fn flex_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<(f32, Vec<(Eleme
         let ks = &k.style;
         if k.inline
             || out_of_flow(ks)
-            || !matches!(ks.position, None | Some(crate::style::computed::Position::Relative))
+            || !matches!(
+                ks.position,
+                None | Some(crate::style::computed::Position::Relative)
+            )
             || ks.float.unwrap_or(0) != 0
             || ks.flex_grow.is_some_and(|g| g > 0.0)
             || ks.flex_basis.is_some()
@@ -464,7 +478,10 @@ fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, El
         let ks = &k.style;
         if k.inline
             || out_of_flow(ks)
-            || !matches!(ks.position, None | Some(crate::style::computed::Position::Relative))
+            || !matches!(
+                ks.position,
+                None | Some(crate::style::computed::Position::Relative)
+            )
             || ks.float.unwrap_or(0) != 0
             || ks.flex_grow.is_some_and(|g| g > 0.0)
             || ks.align_self.is_some()
@@ -493,7 +510,9 @@ fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, El
     // этого не выражают (`grow_pushed` растит лишь сам элемент): замерено
     // −3 (`multi-line-row-flex-fragmentation-053/060/062`). Такие элементы —
     // прежним путём.
-    let widened = items.iter().any(|k| !matches!(k.style.width, Some(Len::Px(_))) || k.style.flex_basis.is_some());
+    let widened = items
+        .iter()
+        .any(|k| !matches!(k.style.width, Some(Len::Px(_))) || k.style.flex_basis.is_some());
     let mut single = true;
     let mut risky = false;
     for k in &items {
@@ -536,7 +555,10 @@ fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, El
         return None;
     }
     for (li, line) in lines.iter_mut().enumerate() {
-        let cross = line.iter().map(|x| x.2.0 + x.2.1 + x.2.2).fold(0.0f32, f32::max);
+        let cross = line
+            .iter()
+            .map(|x| x.2.0 + x.2.1 + x.2.2)
+            .fold(0.0f32, f32::max);
         let (bf, ba) = (
             line.iter().any(|x| edge_break(&x.1, false)),
             line.iter().any(|x| edge_avoid(&x.1, false)),
@@ -548,7 +570,8 @@ fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, El
         let m = line.len();
         for (ii, (_, e, sh)) in line.iter_mut().enumerate() {
             // `height: auto` тянется на строку — полом.
-            if matches!(e.style.height, None | Some(Len::Auto)) && sh.0 + sh.1 + sh.2 < cross - 0.01 {
+            if matches!(e.style.height, None | Some(Len::Auto)) && sh.0 + sh.1 + sh.2 < cross - 0.01
+            {
                 let eb = e.style.borders();
                 let edges = side(&e.style.padding.top).unwrap_or(0.0)
                     + side(&e.style.padding.bottom).unwrap_or(0.0)
@@ -661,10 +684,10 @@ pub(crate) fn inline_display(e: &Element) -> bool {
     // (`css-break/block-in-inline-015-print`). Его не трогаем.
     e.style.inline_display != Some(true)
         && matches!(
-        e.style.display,
-        Some(Display::InlineBlock)
-            | Some(Display::InlineFlex)
-            | Some(Display::InlineGrid)
-            | Some(Display::InlineTable)
-    )
+            e.style.display,
+            Some(Display::InlineBlock)
+                | Some(Display::InlineFlex)
+                | Some(Display::InlineGrid)
+                | Some(Display::InlineTable)
+        )
 }

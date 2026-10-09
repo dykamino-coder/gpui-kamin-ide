@@ -156,7 +156,11 @@ pub(crate) fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
                 && matches!(st.height, None | Some(Len::Auto))
                 && e.attr("height").is_none()
                 && responsive_embedded_sizing(&html);
-            if responsive { frame } else { frame.h(px(outer_h)) }
+            if responsive {
+                frame
+            } else {
+                frame.h(px(outer_h))
+            }
         }
         .overflow_hidden()
         .relative()

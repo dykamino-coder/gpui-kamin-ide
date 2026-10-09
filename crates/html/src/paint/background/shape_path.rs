@@ -501,7 +501,10 @@ pub fn border_shape_shadow_svg(
     outer: (&str, [f32; 4]),
     inner: Option<(&str, [f32; 4])>,
     stroke: f32,
-    shadows: &[(crate::style::computed::Shadow, crate::style::values::value::Color)],
+    shadows: &[(
+        crate::style::computed::Shadow,
+        crate::style::values::value::Color,
+    )],
     inset: bool,
     bw: f32,
     bh: f32,
@@ -549,7 +552,10 @@ pub fn border_shape_shadow_svg(
             defs.push_str(&format!(
                 r##"<filter id="bsf{i}" filterUnits="userSpaceOnUse" x="0" y="0" width="{cw}" height="{ch}"><feGaussianBlur stdDeviation="{sigma}"/></filter>"##
             ));
-            (format!(r##"<g filter="url(#bsf{i})">"##), "</g>".to_string())
+            (
+                format!(r##"<g filter="url(#bsf{i})">"##),
+                "</g>".to_string(),
+            )
         } else {
             (String::new(), String::new())
         };

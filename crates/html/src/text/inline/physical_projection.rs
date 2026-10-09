@@ -22,7 +22,10 @@ mod tests {
             let projected = project(true, counter_clockwise, physical);
             for (flat_index, (x, y)) in normals.into_iter().enumerate() {
                 let painted = if counter_clockwise { (y, -x) } else { (-y, x) };
-                let physical_index = normals.iter().position(|normal| *normal == painted).unwrap();
+                let physical_index = normals
+                    .iter()
+                    .position(|normal| *normal == painted)
+                    .unwrap();
                 assert_eq!(projected[flat_index], physical[physical_index]);
             }
         }

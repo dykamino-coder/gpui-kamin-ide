@@ -7,7 +7,9 @@ use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::solid_box;
 use crate::layout::fragment::flex_lines::{class_a_box, item_container};
 use crate::layout::fragment::fragment_size::shape_full;
-use crate::layout::fragment::grid_bands::{grid_auto_row_bands, grid_row_forced, grid_row_gaps, grid_rows_px, grid_stack};
+use crate::layout::fragment::grid_bands::{
+    grid_auto_row_bands, grid_row_forced, grid_row_gaps, grid_rows_px, grid_stack,
+};
 use crate::layout::fragment::line_shape::{basis_sized, inline_content, line_run_shape};
 use crate::layout::fragment::probe::forced_opaque;
 use crate::layout::fragment::shape_kids::stack_kids;
@@ -54,7 +56,11 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
         let bot = px_or(&c.style.padding.bottom, false)? + px_or(&b.bottom, false)?;
         let mt = px_or(&c.style.margin.top, false)?;
         let mb = px_or(&c.style.margin.bottom, false)?;
-        let solid = if top > 0.0 { vec![(0.0, top)] } else { Vec::new() };
+        let solid = if top > 0.0 {
+            vec![(0.0, top)]
+        } else {
+            Vec::new()
+        };
         return Some((top + tall + bot, mt, mb, Vec::new(), Vec::new(), solid));
     }
     if has_float(c, 3) {
@@ -113,7 +119,10 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
     // Строчное содержимое — по строкам, если ширина колонки известна.
     if !cx.paged
         && inline_content(c)
-        && matches!(c.style.display, None | Some(Display::Block) | Some(Display::ListItem))
+        && matches!(
+            c.style.display,
+            None | Some(Display::Block) | Some(Display::ListItem)
+        )
         && let Some(s) = line_run_shape(c, top, bot, mt, mb)
     {
         return Some(s);
@@ -132,14 +141,16 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
     ) && c.style.webkit_box != Some(true)
         && !(matches!(
             c.style.flex_dir,
-            None | Some(crate::style::computed::FlexDir::Row) | Some(crate::style::computed::FlexDir::RowReverse)
+            None | Some(crate::style::computed::FlexDir::Row)
+                | Some(crate::style::computed::FlexDir::RowReverse)
         ) && c.style.flex_wrap != Some(true));
     let flex_col = flex_items
         && c.style.vertical != Some(true)
         && c.style.flex_wrap != Some(true)
         && matches!(
             c.style.flex_dir,
-            Some(crate::style::computed::FlexDir::Col) | Some(crate::style::computed::FlexDir::ColReverse)
+            Some(crate::style::computed::FlexDir::Col)
+                | Some(crate::style::computed::FlexDir::ColReverse)
         );
     let flex_gap = match c.style.gap {
         Some((Some(Len::Px(v)), _)) if flex_items && c.style.vertical != Some(true) => v.max(0.0),
@@ -184,7 +195,8 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
         && c.style.vertical != Some(true)
         && matches!(
             c.style.flex_dir,
-            None | Some(crate::style::computed::FlexDir::Row) | Some(crate::style::computed::FlexDir::RowReverse)
+            None | Some(crate::style::computed::FlexDir::Row)
+                | Some(crate::style::computed::FlexDir::RowReverse)
         )
         && c.style.flex_wrap == Some(true)
         && c.style.flex_wrap_reverse != Some(true);
@@ -275,8 +287,8 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
                 let w = pct_of(k);
                 let forced = line_fa || edge_break(k, false);
                 line_fa = edge_break(k, true);
-                let inner = !forced
-                    && matches!((line_acc, w), (Some(s), Some(p)) if s + p <= 1.0 + 1e-3);
+                let inner =
+                    !forced && matches!((line_acc, w), (Some(s), Some(p)) if s + p <= 1.0 + 1e-3);
                 line_acc = match w {
                     Some(p) if inner => line_acc.map(|s| s + p),
                     w => w,
@@ -305,8 +317,7 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
     let row_nowrap = is_flex
         && matches!(
             c.style.flex_dir,
-            None
-                | Some(crate::style::computed::FlexDir::Row)
+            None | Some(crate::style::computed::FlexDir::Row)
                 | Some(crate::style::computed::FlexDir::RowReverse)
         )
         && c.style.flex_wrap != Some(true)
@@ -402,8 +413,7 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
                         // цепочка `abs > abs` складывается
                         // сама (`out-of-flow-in-multicolumn-
                         // 022/025`).
-                        let own =
-                            shape_full(k, depth - 1, cx).map(|s| s.0).unwrap_or(0.0);
+                        let own = shape_full(k, depth - 1, cx).map(|s| s.0).unwrap_or(0.0);
                         (top + own).max(0.0)
                     } else {
                         0.0
@@ -425,8 +435,7 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
                         && (k.style.position.is_none()
                             || k.style.position
                                 == Some(crate::style::computed::Position::Relative))
-                        && (k.style.float.unwrap_or(0) == 0
-                            || block_like_float(&k.style)) =>
+                        && (k.style.float.unwrap_or(0) == 0 || block_like_float(&k.style)) =>
                 {
                     // Главный размер элемента КОЛОНКИ flex — его `flex-basis`
                     // (css-flexbox-1 §9.2 шаг 3): `content` — по содержимому,
@@ -435,47 +444,43 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
                     // гибкость базу не меняет (§9.7).
                     let based = if flex_col { basis_sized(c, k) } else { None };
                     let k = based.as_ref().unwrap_or(k);
-                    shape_full(k, depth - 1, cx).map(
-                        |(h, mt, mb, cuts, forced, solid)| {
-                            // Монолит-потомок — весь диапазон
-                            // его высоты; иначе — его собственные
-                            // монолиты.
-                            let solid = if solid_box(k)
-                                && !(inline_content(k) && !cuts.is_empty())
-                            {
-                                vec![(0.0, h)]
-                            } else {
-                                solid
-                            };
-                            (
-                                h,
-                                mt,
-                                mb,
-                                cuts,
-                                forced,
-                                solid,
-                                // Разрыв ПЕРВОГО/ПОСЛЕДНЕГО поточного ребёнка
-                                // передаётся коробке (css-break-4
-                                // §break-propagation) — у страниц; колонки
-                                // не трогаются (отдельный замер).
-                                // Разрыв ПЕРВОГО/ПОСЛЕДНЕГО поточного ребёнка
-                                // передаётся коробке (css-break-3 §5.1
-                                // break-propagation; Blink `InitialBreakBefore`)
-                                // одинаково у страниц и у колонок: правило не
-                                // про вид фрагментаинера. Гейт `cx.paged` был
-                                // «пока не замерено» — `single-line-row-flex-
-                                // fragmentation-016` с разрывом на внуке стоит
-                                // красной ровно из-за него (проба
-                                // `target/probe-9g/p-…-016.html` = 0.00).
-                                edge_break(k, false),
-                                edge_break(k, true),
-                                // Дотяг внепоточных ЭТОГО потомка в
-                                // поток родителя не переходит: у
-                                // него свой содержащий блок.
-                                0.0,
-                            )
-                        },
-                    )
+                    shape_full(k, depth - 1, cx).map(|(h, mt, mb, cuts, forced, solid)| {
+                        // Монолит-потомок — весь диапазон
+                        // его высоты; иначе — его собственные
+                        // монолиты.
+                        let solid = if solid_box(k) && !(inline_content(k) && !cuts.is_empty()) {
+                            vec![(0.0, h)]
+                        } else {
+                            solid
+                        };
+                        (
+                            h,
+                            mt,
+                            mb,
+                            cuts,
+                            forced,
+                            solid,
+                            // Разрыв ПЕРВОГО/ПОСЛЕДНЕГО поточного ребёнка
+                            // передаётся коробке (css-break-4
+                            // §break-propagation) — у страниц; колонки
+                            // не трогаются (отдельный замер).
+                            // Разрыв ПЕРВОГО/ПОСЛЕДНЕГО поточного ребёнка
+                            // передаётся коробке (css-break-3 §5.1
+                            // break-propagation; Blink `InitialBreakBefore`)
+                            // одинаково у страниц и у колонок: правило не
+                            // про вид фрагментаинера. Гейт `cx.paged` был
+                            // «пока не замерено» — `single-line-row-flex-
+                            // fragmentation-016` с разрывом на внуке стоит
+                            // красной ровно из-за него (проба
+                            // `target/probe-9g/p-…-016.html` = 0.00).
+                            edge_break(k, false),
+                            edge_break(k, true),
+                            // Дотяг внепоточных ЭТОГО потомка в
+                            // поток родителя не переходит: у
+                            // него свой содержащий блок.
+                            0.0,
+                        )
+                    })
                 }
                 _ => None,
             })
@@ -520,7 +525,12 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
         );
     }
     // Заданная высота — в точках или (для страниц) в единицах окна.
-    let (h, mt, mb) = match c.style.height.as_ref().map(|_| px_or(&c.style.height, true)) {
+    let (h, mt, mb) = match c
+        .style
+        .height
+        .as_ref()
+        .map(|_| px_or(&c.style.height, true))
+    {
         // Мера потока (`unclamp`) заданной высотой не обрезается:
         // css-break-3 §3 «parallel flows» — переполнение продолжается в
         // следующем фрагментаинере само по себе, и его протяжённость нужна

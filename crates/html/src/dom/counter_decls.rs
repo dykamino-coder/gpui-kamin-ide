@@ -40,11 +40,7 @@ pub(crate) fn counter_snapshot(style: &Computed) -> [Option<String>; 3] {
     ]
 }
 
-fn list_value_hint(
-    style: &Computed,
-    tag: &str,
-    attrs: &[(String, String)],
-) -> Option<i32> {
+fn list_value_hint(style: &Computed, tag: &str, attrs: &[(String, String)]) -> Option<i32> {
     if tag != "li" || style.counter_set.is_some() {
         return None;
     }
@@ -111,8 +107,8 @@ pub(crate) fn apply_counter_decls(
     // CSS Lists 3 §4.6: only a box with `display: list-item` increments
     // `list-item`; an `li` keeps that role only while no author display
     // replaces the UA `list-item` (`li { display: block }`).
-    let is_item = (tag == "li" && style.display.is_none())
-        || style.display == Some(Display::ListItem);
+    let is_item =
+        (tag == "li" && style.display.is_none()) || style.display == Some(Display::ListItem);
     *item_flag = is_item;
     let explicit_item = style
         .counter_increment

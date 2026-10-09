@@ -7,7 +7,6 @@ impl Computed {
     #[allow(unused_variables)]
     pub(crate) fn apply_border(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
         match key {
-
             "border" => {
                 // `border: inherit` — рамка родителя целиком: слово копирует
                 // вычисленное значение, самим разбором его не выразить.
@@ -180,7 +179,11 @@ impl Computed {
                 const NAMES: [&str; 4] = ["top-left", "top-right", "bottom-right", "bottom-left"];
                 for (slot, &i) in pick.iter().enumerate() {
                     let (lens, shape) = &corners[i];
-                    let radius = if lens.is_empty() { "0".to_string() } else { lens.join(" ") };
+                    let radius = if lens.is_empty() {
+                        "0".to_string()
+                    } else {
+                        lens.join(" ")
+                    };
                     self.apply_one(&format!("border-{}-radius", NAMES[slot]), &radius);
                     self.apply_one(
                         &format!("corner-{}-shape", NAMES[slot]),
@@ -195,8 +198,14 @@ impl Computed {
             }
             // Боковые шортхенды (§corner-shaping-side-shorthands): 1–2 значения
             // на два угла стороны.
-            "corner-top-shape" | "corner-bottom-shape" | "corner-left-shape" | "corner-right-shape" => {
-                let vals: Vec<f32> = v.split_whitespace().filter_map(corner_shape_param).collect();
+            "corner-top-shape"
+            | "corner-bottom-shape"
+            | "corner-left-shape"
+            | "corner-right-shape" => {
+                let vals: Vec<f32> = v
+                    .split_whitespace()
+                    .filter_map(corner_shape_param)
+                    .collect();
                 if let Some(first) = vals.first().copied() {
                     let second = vals.get(1).copied().unwrap_or(first);
                     let mut k = self.corner_shape.unwrap_or([1.0; 4]);

@@ -8,22 +8,22 @@ use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use crate::text::text_box::blank_text;
 
+pub(super) mod band_clearance;
+mod band_dimensions;
 pub mod band_flow_host;
 pub mod band_host;
 pub mod band_measured;
 pub mod band_nest;
 pub mod clear;
-pub mod float_flow;
-pub mod initial_letter;
-pub mod shape_flow;
-pub mod wrap;
-pub(super) mod band_clearance;
-mod band_dimensions;
 mod float_atom;
 mod float_clear_scope;
+pub mod float_flow;
+pub mod initial_letter;
 pub(super) mod inline_floats;
-pub(crate) mod shapes;
 pub(crate) mod rounded_box;
+pub mod shape_flow;
+pub(crate) mod shapes;
+pub mod wrap;
 
 pub(crate) fn block_like_float(c: &Computed) -> bool {
     c.float.unwrap_or(0) != 0 && matches!(c.width, Some(Len::Pct(p)) if p >= 0.9999)

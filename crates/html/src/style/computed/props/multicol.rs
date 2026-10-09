@@ -71,8 +71,8 @@ impl Computed {
             // хранится отсутствием значения.
             "page" => {
                 let t = v.trim();
-                self.page = (!t.is_empty() && !t.eq_ignore_ascii_case("auto"))
-                    .then(|| t.to_string());
+                self.page =
+                    (!t.is_empty() && !t.eq_ignore_ascii_case("auto")).then(|| t.to_string());
             }
             // `column-fill`: балансировать ли колонки (дефолт balance).
             "column-fill" => self.column_fill_auto = Some(v.trim() == "auto"),
@@ -94,14 +94,14 @@ impl Computed {
             // запрещают разрыв ВНУТРИ коробки; `auto` разрешает.
             // `page-break-inside` — устаревшее написание того же (css-break-3
             // §6.4 требует считать их одним свойством).
-    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v153, `scout-boxdeco-2026-09.md`):
-    // `box-decoration-break: clone` — украшение на каждом фрагменте
-    // (21 хунк: разбор, `Kid::clone_dec`, ветка в `fill_at`, `frags_of`,
-    // `clone_fragment`). Срез `L-brk` 2874: +2/−2 при ожидании +6…+19 —
-    // `clone-004`, `-012` взяты, но `clone-005.tentative` 0.00 → 99.00 и
-    // `clone-007` 0.00 → 2.08. Ветка `clone` в `fill_at` ломает уже
-    // работавший `slice` у вложенных случаев; нужен отдельный проход
-    // планирования фрагментов, а не правка общей укладки.
+            // ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v153, `scout-boxdeco-2026-09.md`):
+            // `box-decoration-break: clone` — украшение на каждом фрагменте
+            // (21 хунк: разбор, `Kid::clone_dec`, ветка в `fill_at`, `frags_of`,
+            // `clone_fragment`). Срез `L-brk` 2874: +2/−2 при ожидании +6…+19 —
+            // `clone-004`, `-012` взяты, но `clone-005.tentative` 0.00 → 99.00 и
+            // `clone-007` 0.00 → 2.08. Ветка `clone` в `fill_at` ломает уже
+            // работавший `slice` у вложенных случаев; нужен отдельный проход
+            // планирования фрагментов, а не правка общей укладки.
             "break-inside" | "page-break-inside" => {
                 self.break_inside_avoid = v.trim().starts_with("avoid")
             }
@@ -207,7 +207,9 @@ impl Computed {
                 if let (Some(vs), Some(ve)) = (vs, ve) {
                     let slots = [cap && start, cap && end, junction && start, junction && end];
                     for column in [true, false] {
-                        if (column && k.starts_with("row-")) || (!column && k.starts_with("column-")) {
+                        if (column && k.starts_with("row-"))
+                            || (!column && k.starts_with("column-"))
+                        {
                             continue;
                         }
                         let arr = if column {
@@ -226,7 +228,9 @@ impl Computed {
                 }
             }
             // §visibility-items: 0 normal, 1 all, 2 around, 3 between.
-            "rule-visibility-items" | "column-rule-visibility-items" | "row-rule-visibility-items" => {
+            "rule-visibility-items"
+            | "column-rule-visibility-items"
+            | "row-rule-visibility-items" => {
                 let code = match v.trim() {
                     "normal" => Some(0u8),
                     "all" => Some(1),
@@ -401,12 +405,16 @@ impl Computed {
     /// часть сокращения ставит СВОЙ список; неназванные части сбрасываются в
     /// начальные (`medium`, `none`, `currentcolor`), как у любого сокращения.
     pub(crate) fn gap_rule_shorthand(&mut self, key: &str, v: &str) {
-        let Some(list) = gap_list(v, gap_rule) else { return };
+        let Some(list) = gap_list(v, gap_rule) else {
+            return;
+        };
         let widths = list.map(|r| r.0.unwrap_or(Len::Px(3.0)));
         let styles = list.map(|r| r.1.unwrap_or(false));
         let colors = list.map(|r| r.2.flatten());
         let double = !v.contains(',')
-            && split_outside_parens(v).iter().any(|t| t.trim().eq_ignore_ascii_case("double"));
+            && split_outside_parens(v)
+                .iter()
+                .any(|t| t.trim().eq_ignore_ascii_case("double"));
         for column in [true, false] {
             if (column && key == "row-rule") || (!column && key == "column-rule") {
                 continue;
@@ -476,11 +484,17 @@ fn gap_inset(t: &str) -> Option<GapInset> {
 fn gap_rule(entry: &str) -> Option<(Option<Len>, Option<bool>, Option<Option<Color>>)> {
     let (mut w, mut s, mut c) = (None, None, None);
     for token in split_outside_parens(entry) {
-        if s.is_none() && let Some(v) = gap_style(&token) {
+        if s.is_none()
+            && let Some(v) = gap_style(&token)
+        {
             s = Some(v);
-        } else if w.is_none() && let Some(v) = gap_width(&token) {
+        } else if w.is_none()
+            && let Some(v) = gap_width(&token)
+        {
             w = Some(v);
-        } else if c.is_none() && let Some(v) = gap_color(&token) {
+        } else if c.is_none()
+            && let Some(v) = gap_color(&token)
+        {
             c = Some(v);
         } else {
             return None;
@@ -494,7 +508,11 @@ fn gap_rule(entry: &str) -> Option<(Option<Len>, Option<bool>, Option<Option<Col
 /// на ведущие и хвостовые. Любой неразобранный элемент — весь список
 /// недействителен.
 fn gap_list<T: Copy>(v: &str, one: impl Fn(&str) -> Option<T>) -> Option<GapList<T>> {
-    let mut out = GapList { lead: vec![], auto: vec![], tail: vec![] };
+    let mut out = GapList {
+        lead: vec![],
+        auto: vec![],
+        tail: vec![],
+    };
     let mut seen_auto = false;
     for entry in crate::style::css::split_args(v) {
         let entry = entry.trim();
@@ -512,7 +530,10 @@ fn gap_list<T: Copy>(v: &str, one: impl Fn(&str) -> Option<T>) -> Option<GapList
         };
         let args = crate::style::css::split_args(inner);
         let (count, vals) = args.split_first()?;
-        let vals: Vec<T> = vals.iter().map(|s| one(s.trim())).collect::<Option<Vec<T>>>()?;
+        let vals: Vec<T> = vals
+            .iter()
+            .map(|s| one(s.trim()))
+            .collect::<Option<Vec<T>>>()?;
         if vals.is_empty() {
             return None;
         }
@@ -524,7 +545,11 @@ fn gap_list<T: Copy>(v: &str, one: impl Fn(&str) -> Option<T>) -> Option<GapList
             out.auto = vals;
         } else {
             let n: usize = count.trim().parse().ok().filter(|n| *n >= 1)?;
-            let dst = if seen_auto { &mut out.tail } else { &mut out.lead };
+            let dst = if seen_auto {
+                &mut out.tail
+            } else {
+                &mut out.lead
+            };
             for _ in 0..n {
                 dst.extend_from_slice(&vals);
             }

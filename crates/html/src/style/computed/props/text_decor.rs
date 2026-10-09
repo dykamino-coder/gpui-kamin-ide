@@ -151,7 +151,9 @@ impl Computed {
                 }
                 self.td_inset = Some(Some([lens[0], *lens.get(1).unwrap_or(&lens[0])]));
             }
-            "text-emphasis" | "text-emphasis-style" | "text-emphasis-color"
+            "text-emphasis"
+            | "text-emphasis-style"
+            | "text-emphasis-color"
             | "text-emphasis-position" => {
                 // css-text-decor-3 §5: знак задаётся словом (форма +
                 // заливка) или строкой; `none` его снимает. Цвет знака —
@@ -172,23 +174,33 @@ impl Computed {
                 let v = v.trim();
                 // Сокращение `text-emphasis` несёт и цвет (§5.3): слово,
                 // которое разбирается как цвет, в стиль знака не идёт.
-                let style_words: Vec<&str> = if key == "text-emphasis" && !v.starts_with(['"', '\'']) {
-                    let mut kept = Vec::new();
-                    for w in v.split_whitespace() {
-                        if w.eq_ignore_ascii_case("currentcolor") {
-                            self.emphasis_color = None;
-                        } else if !matches!(w, "none" | "open" | "filled" | "dot" | "circle" | "double-circle" | "triangle" | "sesame")
-                            && let Some(c) = Color::parse(w)
-                        {
-                            self.emphasis_color = Some(c);
-                        } else {
-                            kept.push(w);
+                let style_words: Vec<&str> =
+                    if key == "text-emphasis" && !v.starts_with(['"', '\'']) {
+                        let mut kept = Vec::new();
+                        for w in v.split_whitespace() {
+                            if w.eq_ignore_ascii_case("currentcolor") {
+                                self.emphasis_color = None;
+                            } else if !matches!(
+                                w,
+                                "none"
+                                    | "open"
+                                    | "filled"
+                                    | "dot"
+                                    | "circle"
+                                    | "double-circle"
+                                    | "triangle"
+                                    | "sesame"
+                            ) && let Some(c) = Color::parse(w)
+                            {
+                                self.emphasis_color = Some(c);
+                            } else {
+                                kept.push(w);
+                            }
                         }
-                    }
-                    kept
-                } else {
-                    v.split_whitespace().collect()
-                };
+                        kept
+                    } else {
+                        v.split_whitespace().collect()
+                    };
                 let joined = style_words.join(" ");
                 let v = joined.as_str();
                 if v == "none" || v.is_empty() {
@@ -206,7 +218,10 @@ impl Computed {
                 let shape = v
                     .split_whitespace()
                     .find(|w| {
-                        matches!(*w, "dot" | "circle" | "double-circle" | "triangle" | "sesame")
+                        matches!(
+                            *w,
+                            "dot" | "circle" | "double-circle" | "triangle" | "sesame"
+                        )
                     })
                     .unwrap_or("circle");
                 let mark = match (shape, open) {

@@ -7,7 +7,6 @@ impl Computed {
     #[allow(unused_variables)]
     pub(crate) fn apply_background(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
         match key {
-
             // Сокращение несёт всё сразу: `background: #fff url(a.png) no-repeat`
             // — и цвет, и картинку, и режим повтора. Раньше побеждало что-то
             // одно, и картинка терялась при заданном цвете.
@@ -87,7 +86,9 @@ impl Computed {
                                 "repeat-x" => self.bg_repeat = Some(BgRepeat::RepeatX),
                                 "repeat-y" => self.bg_repeat = Some(BgRepeat::RepeatY),
                                 "repeat" => self.bg_repeat = Some(BgRepeat::Repeat),
-                                "left" | "right" | "top" | "bottom" | "center" => pos.push(token.clone()),
+                                "left" | "right" | "top" | "bottom" | "center" => {
+                                    pos.push(token.clone())
+                                }
                                 t if Len::parse_mixed(t).is_some() => pos.push(token.clone()),
                                 _ => {}
                             }
@@ -208,7 +209,10 @@ impl Computed {
                     }
                     if let Some(words) = size_words.as_mut()
                         && words.len() < 2
-                        && (token == "auto" || token == "cover" || token == "contain" || Len::parse_mixed(&token).is_some())
+                        && (token == "auto"
+                            || token == "cover"
+                            || token == "contain"
+                            || Len::parse_mixed(&token).is_some())
                     {
                         words.push(token);
                         continue;

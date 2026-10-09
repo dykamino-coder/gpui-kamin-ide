@@ -4,8 +4,12 @@ use super::*;
 use gpui::{Pixels, Window, px};
 
 impl Paragraph {
-
-    pub(super) fn measured_first_baseline(&self, line_height: Pixels, first_above: Pixels, window: &mut Window) -> Option<Pixels> {
+    pub(super) fn measured_first_baseline(
+        &self,
+        line_height: Pixels,
+        first_above: Pixels,
+        window: &mut Window,
+    ) -> Option<Pixels> {
         // Use actual post-fit font metrics; descent has a negative native sign.
         let baseline = self.runs.first().map(|run| {
             let font = run.font.clone();

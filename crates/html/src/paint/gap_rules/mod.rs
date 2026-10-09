@@ -1,13 +1,16 @@
 //! Покраска правил промежутков.
 // owner: A
 
-use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window, px};
+use gpui::{
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
+    LayoutId, Pixels, Window, px,
+};
 
 pub mod geometry;
 pub mod painter;
 
-mod gap_segments;
 mod gap_fragment_tail;
+mod gap_segments;
 
 /// Прямоугольники элементов сетки/гибкого контейнера: их собирают пробы
 /// детей, а по ним слой-художник считает середины промежутков

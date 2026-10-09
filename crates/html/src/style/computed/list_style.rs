@@ -23,7 +23,8 @@ pub(super) fn apply(style: &mut Computed, key: &str, value: &str) {
                 return;
             }
             image = true;
-        } else if crate::style::css::selector_tokens::ident(word) || keyword.starts_with("symbols(") {
+        } else if crate::style::css::selector_tokens::ident(word) || keyword.starts_with("symbols(")
+        {
             // css-counter-styles-3 §symbols-function: an invalid anonymous
             // style invalidates the whole declaration.
             if keyword.starts_with("symbols(")

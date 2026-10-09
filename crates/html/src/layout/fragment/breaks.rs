@@ -35,7 +35,11 @@ pub(crate) fn oof_reach(e: &Element, cx: ShapeCx) -> f32 {
     // чтобы лист под самой строкой родился (`fixedpos-005-print`: `top:
     // 300vh` внутри `top: 100vh` — текст ровно на краю четвёртого листа).
     let own = shape_full(e, 4, cx).map(|s| s.0).unwrap_or_else(|| {
-        if e.children.iter().all(is_blank) { 0.0 } else { 1.0 }
+        if e.children.iter().all(is_blank) {
+            0.0
+        } else {
+            1.0
+        }
     });
     let clipped = matches!(
         e.style.overflow_y,
@@ -124,11 +128,9 @@ pub(crate) fn edge_avoid(e: &Element, last: bool) -> bool {
     if own {
         return true;
     }
-    let mut live = e
-        .children
-        .iter()
-        .filter(|n| !is_blank(n))
-        .filter(|n| !matches!(n, Node::Element(k) if matches!(k.style.display, Some(Display::None))));
+    let mut live = e.children.iter().filter(|n| !is_blank(n)).filter(
+        |n| !matches!(n, Node::Element(k) if matches!(k.style.display, Some(Display::None))),
+    );
     let edge = if last { live.next_back() } else { live.next() };
     // Ряд `flex` без переноса — одна строка: `break-before/after` ЛЮБОГО
     // элемента переносится на строку (css-flexbox-1 §12: «In a row flex
@@ -136,17 +138,22 @@ pub(crate) fn edge_avoid(e: &Element, last: bool) -> bool {
     // propagated to the flex line»), а единственная строка — первая и
     // последняя, значит значение уходит на контейнер. Сетка и колонка сюда
     // не попадают: там «бок о бок» неверен (см. выше).
-    let row_line = matches!(e.style.display, Some(Display::Flex) | Some(Display::InlineFlex))
-        && e.style.webkit_box != Some(true)
+    let row_line = matches!(
+        e.style.display,
+        Some(Display::Flex) | Some(Display::InlineFlex)
+    ) && e.style.webkit_box != Some(true)
         && matches!(
             e.style.flex_dir,
-            None | Some(crate::style::computed::FlexDir::Row) | Some(crate::style::computed::FlexDir::RowReverse)
+            None | Some(crate::style::computed::FlexDir::Row)
+                | Some(crate::style::computed::FlexDir::RowReverse)
         )
         && e.style.flex_wrap != Some(true);
     if row_line {
-        return e.children.iter().filter(|n| !is_blank(n)).any(|n| {
-            matches!(n, Node::Element(k) if class_a_box(k) && edge_avoid(k, last))
-        });
+        return e
+            .children
+            .iter()
+            .filter(|n| !is_blank(n))
+            .any(|n| matches!(n, Node::Element(k) if class_a_box(k) && edge_avoid(k, last)));
     }
     matches!(edge, Some(Node::Element(k)) if class_a_box(k) && edge_avoid(k, last))
 }
@@ -167,7 +174,8 @@ pub(crate) fn edge_break(e: &Element, last: bool) -> bool {
     // (`out-of-flow-in-multicolumn-005`).
     if matches!(
         e.style.position,
-        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute)
+            | Some(crate::style::computed::Position::Fixed)
     ) {
         return false;
     }
@@ -187,11 +195,9 @@ pub(crate) fn edge_break(e: &Element, last: bool) -> bool {
     if forced_opaque(e) {
         return false;
     }
-    let mut live = e
-        .children
-        .iter()
-        .filter(|n| !is_blank(n))
-        .filter(|n| !matches!(n, Node::Element(k) if matches!(k.style.display, Some(Display::None))));
+    let mut live = e.children.iter().filter(|n| !is_blank(n)).filter(
+        |n| !matches!(n, Node::Element(k) if matches!(k.style.display, Some(Display::None))),
+    );
     // Ряд flex БЕЗ переноса: элементы стоят бок о бок и НАЧИНАЮТСЯ с верха
     // ряда — в блочном направлении «первый» и «последний» это каждый из них
     // (css-flexbox-1 §pagination: принудительный разрыв элемента поднимается
@@ -208,7 +214,8 @@ pub(crate) fn edge_break(e: &Element, last: bool) -> bool {
     ) || e.style.webkit_box == Some(true))
         && matches!(
             e.style.flex_dir,
-            None | Some(crate::style::computed::FlexDir::Row) | Some(crate::style::computed::FlexDir::RowReverse)
+            None | Some(crate::style::computed::FlexDir::Row)
+                | Some(crate::style::computed::FlexDir::RowReverse)
         )
         && e.style.flex_wrap != Some(true)
         && e.style.webkit_box_vertical != Some(true);
@@ -247,10 +254,13 @@ pub(crate) fn edge_break(e: &Element, last: bool) -> bool {
         && e.style.grid_areas.is_none()
         && !matches!(
             e.style.grid_auto_flow,
-            Some(crate::style::computed::AutoFlow::Col) | Some(crate::style::computed::AutoFlow::ColDense)
+            Some(crate::style::computed::AutoFlow::Col)
+                | Some(crate::style::computed::AutoFlow::ColDense)
         )
-        && !e.children.iter().any(|n| matches!(n, Node::Element(k)
-            if k.style.grid_row.is_some() || k.style.grid_area_name.is_some()))
+        && !e.children.iter().any(|n| {
+            matches!(n, Node::Element(k)
+            if k.style.grid_row.is_some() || k.style.grid_area_name.is_some())
+        })
         && e.style
             .grid_cols
             .map(|n| n as usize)
@@ -260,14 +270,17 @@ pub(crate) fn edge_break(e: &Element, last: bool) -> bool {
                     && e.children
                         .iter()
                         .filter(|n| !is_blank(n))
-                        .filter(|n| matches!(n, Node::Element(k)
+                        .filter(|n| {
+                            matches!(n, Node::Element(k)
                             if !out_of_flow(&k.style)
-                                && !matches!(k.style.display, Some(Display::None))))
+                                && !matches!(k.style.display, Some(Display::None)))
+                        })
                         .count()
                         <= cols
             });
     if row_nowrap || cells_abreast || grid_one_row {
-        return live.any(|n| matches!(n, Node::Element(k) if class_a_box(k) && edge_break(k, last)));
+        return live
+            .any(|n| matches!(n, Node::Element(k) if class_a_box(k) && edge_break(k, last)));
     }
     let edge = if last { live.next_back() } else { live.next() };
     matches!(edge, Some(Node::Element(k)) if class_a_box(k) && edge_break(k, last))

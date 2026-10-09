@@ -31,7 +31,12 @@ impl ColumnStack {
     /// (`balance_tail`).
     /// Поток дошёл до колонок перенесённого флоата (`float_hold`): встать
     /// под его концом.
-    pub(crate) fn skip_float(hold: &mut Option<(usize, usize, f32)>, col: &mut usize, cur: &mut f32, placed: &mut bool) {
+    pub(crate) fn skip_float(
+        hold: &mut Option<(usize, usize, f32)>,
+        col: &mut usize,
+        cur: &mut f32,
+        placed: &mut bool,
+    ) {
         if let Some((fc, lc, ly)) = *hold
             && *col >= fc
         {
@@ -131,7 +136,11 @@ impl ColumnStack {
             }
             let snap = (col, y, placed, prev_mb, first);
             let lead = if k.par.group != 0 {
-                if k.par.line_start { k.mt } else { prev_mb + k.mt }
+                if k.par.line_start {
+                    k.mt
+                } else {
+                    prev_mb + k.mt
+                }
             } else if first {
                 k.mt
             } else {
@@ -192,7 +201,16 @@ impl ColumnStack {
                         .map(|&f| f - dt)
                         .find(|&f| f > from + 0.01 && f < content - 0.01 && f <= edge + 0.01);
                     if forced.is_none() && rest <= croom + 0.01 {
-                        out.push(Frag { kid, copy, col, y: cur, from, h: rest + dec, head: 0.0, foot: 0.0 });
+                        out.push(Frag {
+                            kid,
+                            copy,
+                            col,
+                            y: cur,
+                            from,
+                            h: rest + dec,
+                            head: 0.0,
+                            foot: 0.0,
+                        });
                         y = cur + rest + dec;
                         placed = true;
                         break;
@@ -233,13 +251,31 @@ impl ColumnStack {
                         None => before.or(whole).map_or(croom, |p| p - from),
                     };
                     if take >= rest - 0.01 {
-                        out.push(Frag { kid, copy, col, y: cur, from, h: rest + dec, head: 0.0, foot: 0.0 });
+                        out.push(Frag {
+                            kid,
+                            copy,
+                            col,
+                            y: cur,
+                            from,
+                            h: rest + dec,
+                            head: 0.0,
+                            foot: 0.0,
+                        });
                         y = cur + rest + dec;
                         placed = true;
                         break;
                     }
                     let fh = if croom <= 0.01 { take + dec } else { room };
-                    out.push(Frag { kid, copy, col, y: cur, from, h: fh, head: 0.0, foot: 0.0 });
+                    out.push(Frag {
+                        kid,
+                        copy,
+                        col,
+                        y: cur,
+                        from,
+                        h: fh,
+                        head: 0.0,
+                        foot: 0.0,
+                    });
                     from += take;
                     if copy + 1 >= limit {
                         y = target;
@@ -270,7 +306,13 @@ impl ColumnStack {
                 // box extends to fill any remaining fragmentainer extent»), и
                 // подвал встаёт на самый низ — `forced-break-before-repeated-
                 // footer-001`: ряд 50 с `break-after: column`, подвал на 80..100.
-                let ft = |h: f32| if rf > 0.0 { (room_all - h).max(rf) } else { 0.0 };
+                let ft = |h: f32| {
+                    if rf > 0.0 {
+                        (room_all - h).max(rf)
+                    } else {
+                        0.0
+                    }
+                };
                 // Принудительный разрыв ВНУТРИ коробки раньше её конца и раньше
                 // края колонки — режем ровно там.
                 let forced = k
@@ -285,7 +327,16 @@ impl ColumnStack {
                         .find(|&&(need, _)| (need - f).abs() < 0.01)
                         .map(|&(_, nf)| nf)
                         .unwrap_or(f);
-                    out.push(Frag { kid, copy, col, y: cur, from, h: f - from, head: hd, foot: ft(f - from) });
+                    out.push(Frag {
+                        kid,
+                        copy,
+                        col,
+                        y: cur,
+                        from,
+                        h: f - from,
+                        head: hd,
+                        foot: ft(f - from),
+                    });
                     from = nf;
                     if copy + 1 >= limit {
                         y = target;
@@ -300,7 +351,16 @@ impl ColumnStack {
                     continue;
                 }
                 if rest <= room_all + 0.01 {
-                    out.push(Frag { kid, copy, col, y: cur, from, h: rest, head: hd, foot: 0.0 });
+                    out.push(Frag {
+                        kid,
+                        copy,
+                        col,
+                        y: cur,
+                        from,
+                        h: rest,
+                        head: hd,
+                        foot: 0.0,
+                    });
                     y = cur + rest;
                     placed = true;
                     break;
@@ -366,69 +426,77 @@ impl ColumnStack {
                 // Монолит дотянулся до конца ребёнка — ребёнок кончается в этой
                 // колонке, переполнив её (как монолит-ребёнок в ветке `None =>`).
                 if overflow_to.is_some_and(|b| b >= flow - 0.01) {
-                    out.push(Frag { kid, copy, col, y: cur, from, h: rest, head: hd, foot: 0.0 });
+                    out.push(Frag {
+                        kid,
+                        copy,
+                        col,
+                        y: cur,
+                        from,
+                        h: rest,
+                        head: hd,
+                        foot: 0.0,
+                    });
                     y = cur + rest;
                     placed = true;
                     break;
                 }
-                let cut = if let Some(b) = overflow_to {
-                    Some(at(b))
-                } else if mono || room <= 0.01 {
-                    None
-                } else if paged && k.solid.iter().any(|&(a, b)| holds(a, b)) {
-                    // Страницы: край внутри монолитных диапазонов, а они бывают
-                    // ВЛОЖЕНЫ (`avoid` ряда/группы объемлет монолиты ячеек,
-                    // `table_shape`). Беречь — самый внешний из тех, что
-                    // начинаются ниже `from`. Если и внешний уже начат
-                    // (`a <= from`), его не сберечь: с непустой страницы —
-                    // перенос целиком (`None if placed`), с верха пустой —
-                    // ближайшая внутренняя точка, а не срез по краю (Blink
-                    // `FinishFragmentation`: срез = `kBreakAppealLastResort`,
-                    // `HasEarlyBreak` → `kNeedsEarlierBreak`; css-break-4
-                    // §unforced-breaks: «the UA may use the avoids … to weigh
-                    // the appropriateness of the new breakpoints»;
-                    // `row-page-break-inside-avoid-1`: «3» на третьем листе в
-                    // обеих сторонах пары).
-                    let outer = k
-                        .solid
-                        .iter()
-                        .filter(|&&(a, b)| holds(a, b))
-                        .map(|&(a, _)| a)
-                        .fold(f32::MAX, f32::min);
-                    if outer > from + 0.01 {
-                        Some(at(outer))
-                    } else if placed {
+                let cut =
+                    if let Some(b) = overflow_to {
+                        Some(at(b))
+                    } else if mono || room <= 0.01 {
                         None
-                    } else {
-                        k.solid
-                            .iter()
-                            .filter(|&&(a, b)| holds(a, b) && a > from + 0.01)
-                            .map(|&(a, _)| a)
-                            .fold(None::<f32>, |m, a| Some(m.map_or(a, |x| x.min(a))))
-                            .map(at)
-                    }
-                } else if let Some(&(a, _)) = k.solid.iter().find(|&&(a, b)| holds(a, b)) {
-                    // Колонки — как прежде: первый содержащий диапазон. Его
-                    // начало само может лежать ВНУТРИ другого диапазона —
-                    // закрытой запретом границы (`shape_full`, `blk_avoid`):
-                    // тогда разрыв уходит к началу и того (`break-between-
-                    // avoid-007`: край в монолите c, перед c граница с `break-
-                    // before: avoid` — разрыв между a и b, а не перед c).
-                    let mut a = a;
-                    for _ in 0..4 {
-                        match k
+                    } else if paged && k.solid.iter().any(|&(a, b)| holds(a, b)) {
+                        // Страницы: край внутри монолитных диапазонов, а они бывают
+                        // ВЛОЖЕНЫ (`avoid` ряда/группы объемлет монолиты ячеек,
+                        // `table_shape`). Беречь — самый внешний из тех, что
+                        // начинаются ниже `from`. Если и внешний уже начат
+                        // (`a <= from`), его не сберечь: с непустой страницы —
+                        // перенос целиком (`None if placed`), с верха пустой —
+                        // ближайшая внутренняя точка, а не срез по краю (Blink
+                        // `FinishFragmentation`: срез = `kBreakAppealLastResort`,
+                        // `HasEarlyBreak` → `kNeedsEarlierBreak`; css-break-4
+                        // §unforced-breaks: «the UA may use the avoids … to weigh
+                        // the appropriateness of the new breakpoints»;
+                        // `row-page-break-inside-avoid-1`: «3» на третьем листе в
+                        // обеих сторонах пары).
+                        let outer = k
                             .solid
                             .iter()
-                            .find(|&&(s0, s1)| s0 < a - 0.01 && a < s1 - 0.01 && s0 > from + 0.01)
-                        {
-                            Some(&(s0, _)) => a = s0,
-                            None => break,
+                            .filter(|&&(a, b)| holds(a, b))
+                            .map(|&(a, _)| a)
+                            .fold(f32::MAX, f32::min);
+                        if outer > from + 0.01 {
+                            Some(at(outer))
+                        } else if placed {
+                            None
+                        } else {
+                            k.solid
+                                .iter()
+                                .filter(|&&(a, b)| holds(a, b) && a > from + 0.01)
+                                .map(|&(a, _)| a)
+                                .fold(None::<f32>, |m, a| Some(m.map_or(a, |x| x.min(a))))
+                                .map(at)
                         }
-                    }
-                    if a > from + 0.01 { Some(at(a)) } else { None }
-                } else {
-                    Some(at(edge))
-                };
+                    } else if let Some(&(a, _)) = k.solid.iter().find(|&&(a, b)| holds(a, b)) {
+                        // Колонки — как прежде: первый содержащий диапазон. Его
+                        // начало само может лежать ВНУТРИ другого диапазона —
+                        // закрытой запретом границы (`shape_full`, `blk_avoid`):
+                        // тогда разрыв уходит к началу и того (`break-between-
+                        // avoid-007`: край в монолите c, перед c граница с `break-
+                        // before: avoid` — разрыв между a и b, а не перед c).
+                        let mut a = a;
+                        for _ in 0..4 {
+                            match k.solid.iter().find(|&&(s0, s1)| {
+                                s0 < a - 0.01 && a < s1 - 0.01 && s0 > from + 0.01
+                            }) {
+                                Some(&(s0, _)) => a = s0,
+                                None => break,
+                            }
+                        }
+                        if a > from + 0.01 { Some(at(a)) } else { None }
+                    } else {
+                        Some(at(edge))
+                    };
                 // Недолаз: на сколько не хватило колонки до ближайшего
                 // разреза (или до конца ребёнка).
                 let next = k
@@ -440,13 +508,31 @@ impl ColumnStack {
                 shortage = shortage.min(next - room);
                 match cut {
                     Some((need, nf)) => {
-                        out.push(Frag { kid, copy, col, y: cur, from, h: (need - from).max(0.0), head: hd, foot: ft((need - from).max(0.0)) });
+                        out.push(Frag {
+                            kid,
+                            copy,
+                            col,
+                            y: cur,
+                            from,
+                            h: (need - from).max(0.0),
+                            head: hd,
+                            foot: ft((need - from).max(0.0)),
+                        });
                         from = nf;
                     }
                     None if !mono && k.cuts.is_empty() && rest > target + 0.01 && room > 0.01 => {
                         // Коробка без точек разреза выше колонки — вид
                         // `slice` по краю (css-break-3 §4).
-                        out.push(Frag { kid, copy, col, y: cur, from, h: room, head: hd, foot: ft(room) });
+                        out.push(Frag {
+                            kid,
+                            copy,
+                            col,
+                            y: cur,
+                            from,
+                            h: room,
+                            head: hd,
+                            foot: ft(room),
+                        });
                         from += room;
                     }
                     None if paged && placed && cur > target + 0.01 => {
@@ -494,13 +580,31 @@ impl ColumnStack {
                         continue;
                     }
                     None if !mono && rest > target + 0.01 && room > 0.01 => {
-                        out.push(Frag { kid, copy, col, y: cur, from, h: room, head: hd, foot: ft(room) });
+                        out.push(Frag {
+                            kid,
+                            copy,
+                            col,
+                            y: cur,
+                            from,
+                            h: room,
+                            head: hd,
+                            foot: ft(room),
+                        });
                         from += room;
                     }
                     None => {
                         // Монолит с верха пустой колонки: остаётся и
                         // переполняет.
-                        out.push(Frag { kid, copy, col, y: cur, from, h: rest, head: hd, foot: 0.0 });
+                        out.push(Frag {
+                            kid,
+                            copy,
+                            col,
+                            y: cur,
+                            from,
+                            h: rest,
+                            head: hd,
+                            foot: 0.0,
+                        });
                         y = cur + rest;
                         placed = true;
                         break;
@@ -544,11 +648,11 @@ impl ColumnStack {
                     .rev()
                     .take_while(|f| f.kid == kid)
                     .find(|f| f.from <= k.h + 0.01 && k.h <= f.from + f.h + 0.01)
-                {
-                    col = f.col;
-                    y = f.y + (k.h - f.from);
-                    placed = true;
-                }
+            {
+                col = f.col;
+                y = f.y + (k.h - f.from);
+                placed = true;
+            }
             prev_mb = k.mb;
             first = false;
             // Конец группы строк: дальше поток идёт с самого дальнего конца

@@ -4,7 +4,10 @@
 use crate::layout::fragment::types::{Frag, Kid, Par, RepeatGeom};
 use crate::layout::multicol::column_stack::ColumnStack;
 use crate::layout::page::margin_boxes::layout_margin_boxes;
-use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window, point, px, size};
+use gpui::{
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
+    LayoutId, Pixels, Window, point, px, size,
+};
 
 /// Лист страницы (css-page-3 §page-model): полный размер, поля, рамка и
 /// отступы (верх/право/низ/лево), фон листа, канвас документа и page area —
@@ -274,7 +277,11 @@ impl Element for PageStack {
         // Первый лист — по имени первой коробки (css-page-3 §using-named-pages,
         // п. 3: «the first page … is given the start page value of the root»):
         // его page area — начальный содержащий блок и ширина меры.
-        let first_name = self.kids.first().map(|k| k.page.clone()).unwrap_or_default();
+        let first_name = self
+            .kids
+            .first()
+            .map(|k| k.page.clone())
+            .unwrap_or_default();
         let g = (self.geom_for)(0, &first_name);
         let (aw, ah) = (g.area.0.max(1.0), g.area.1.max(1.0));
         // 1. Мера: ширина — page area, высота — по содержимому. Поля детей
@@ -419,9 +426,14 @@ impl Element for PageStack {
             .iter()
             .enumerate()
             .filter(|(i, _)| self.slot(*i).is_some())
-            .fold((1.0f32, 1.0f32), |(w, h), (_, g)| (w.max(g.shown().0), h.max(g.shown().1)));
+            .fold((1.0f32, 1.0f32), |(w, h), (_, g)| {
+                (w.max(g.shown().0), h.max(g.shown().1))
+            });
         self.cell.set((pw, ph));
-        let shown = (0..pages).filter(|&i| self.slot(i).is_some()).count().max(1);
+        let shown = (0..pages)
+            .filter(|&i| self.slot(i).is_some())
+            .count()
+            .max(1);
         let mut best = (1usize, 0.0f32);
         for per_row in 1..=shown {
             let rows = shown.div_ceil(per_row);
@@ -525,7 +537,12 @@ impl Element for PageStack {
         self.margin_els.clear();
         if let Some(mf) = self.margin_for.clone() {
             for (p, pg) in geoms.iter().enumerate() {
-                let boxes = mf(p, &names.get(p).cloned().unwrap_or_else(|| tail.clone()), pages, pg);
+                let boxes = mf(
+                    p,
+                    &names.get(p).cloned().unwrap_or_else(|| tail.clone()),
+                    pages,
+                    pg,
+                );
                 let (sx, sy) = self.sheet_origin(p);
                 for (rect, mut el) in layout_margin_boxes(boxes, pg, window, cx) {
                     el.layout_as_root(
@@ -568,8 +585,14 @@ impl Element for PageStack {
         // как у `interact::Transformed` (interact.rs:1152-1188).
         let k = window.scale_factor();
         let dev = |v: f32| px(v).scale(k);
-        let origin = point(dev(f32::from(bounds.origin.x)), dev(f32::from(bounds.origin.y)));
-        let back = point(dev(-f32::from(bounds.origin.x)), dev(-f32::from(bounds.origin.y)));
+        let origin = point(
+            dev(f32::from(bounds.origin.x)),
+            dev(f32::from(bounds.origin.y)),
+        );
+        let back = point(
+            dev(-f32::from(bounds.origin.x)),
+            dev(-f32::from(bounds.origin.y)),
+        );
         let matrix = gpui::TransformationMatrix::unit()
             .translate(origin)
             .compose(gpui::TransformationMatrix {
@@ -644,7 +667,9 @@ impl Element for PageStack {
                 if self.geom(f.col).turn % 2 == 1 {
                     continue;
                 }
-                let Some(page) = masks.get(f.col).cloned() else { continue };
+                let Some(page) = masks.get(f.col).cloned() else {
+                    continue;
+                };
                 let (sx, sy) = self.sheet_origin(f.col);
                 let g = self.geom(f.col);
                 let (ax, ay) = g.area_origin();
@@ -678,7 +703,9 @@ impl Element for PageStack {
                 if self.geom(p).turn % 2 == 1 {
                     continue;
                 }
-                let Some(mask) = masks.get(p).cloned() else { continue };
+                let Some(mask) = masks.get(p).cloned() else {
+                    continue;
+                };
                 for el in &mut self.icb[p] {
                     window.with_content_mask(Some(mask), |window| {
                         window.with_mask_scale(bounds.origin, s, |window| el.paint(window, cx))
@@ -689,7 +716,9 @@ impl Element for PageStack {
                 if self.geom(p).turn % 2 == 1 {
                     continue;
                 }
-                let Some(mask) = masks.get(p).cloned() else { continue };
+                let Some(mask) = masks.get(p).cloned() else {
+                    continue;
+                };
                 for el in &mut self.fixed[p] {
                     window.with_content_mask(Some(mask), |window| {
                         window.with_mask_scale(bounds.origin, s, |window| el.paint(window, cx))
@@ -712,7 +741,9 @@ impl Element for PageStack {
                 if self.geoms.borrow().get(*p).is_some_and(|g| g.turn % 2 == 1) {
                     continue;
                 }
-                let Some(sheet) = sheets.get(*p).copied() else { continue };
+                let Some(sheet) = sheets.get(*p).copied() else {
+                    continue;
+                };
                 let mask = gpui::ContentMask { bounds: sheet };
                 window.with_content_mask(Some(mask), |window| {
                     window.with_mask_scale(bounds.origin, s, |window| el.paint(window, cx))
@@ -731,7 +762,10 @@ impl Element for PageStack {
                 continue;
             }
             let (sx, sy) = self.sheet_origin(i);
-            let (bx0, by0) = (f32::from(bounds.origin.x) * k, f32::from(bounds.origin.y) * k);
+            let (bx0, by0) = (
+                f32::from(bounds.origin.x) * k,
+                f32::from(bounds.origin.y) * k,
+            );
             let (ox, oy) = (bx0 + sx * k, by0 + sy * k);
             let (w, h) = (g.size.0 * k, g.size.1 * k);
             // p -> O + R(p - O) + сдвиг, затем q -> B + s(q - B).
@@ -739,16 +773,25 @@ impl Element for PageStack {
                 // rotate-right: (x, y) -> (O.x + H - (y - O.y), O.y + (x - O.x)).
                 (
                     [[0.0, -s], [s, 0.0]],
-                    [bx0 * (1.0 - s) + s * (ox + h + oy), by0 * (1.0 - s) + s * (oy - ox)],
+                    [
+                        bx0 * (1.0 - s) + s * (ox + h + oy),
+                        by0 * (1.0 - s) + s * (oy - ox),
+                    ],
                 )
             } else {
                 // rotate-left: (x, y) -> (O.x + (y - O.y), O.y + W - (x - O.x)).
                 (
                     [[0.0, s], [-s, 0.0]],
-                    [bx0 * (1.0 - s) + s * (ox - oy), by0 * (1.0 - s) + s * (oy + w + ox)],
+                    [
+                        bx0 * (1.0 - s) + s * (ox - oy),
+                        by0 * (1.0 - s) + s * (oy + w + ox),
+                    ],
                 )
             };
-            let m = gpui::TransformationMatrix { rotation_scale: rs, translation: t };
+            let m = gpui::TransformationMatrix {
+                rotation_scale: rs,
+                translation: t,
+            };
             let plan_i: Vec<Frag> = plan.iter().copied().filter(|f| f.col == i).collect();
             window.with_transformation_masked(m, |window| {
                 window.paint_quad(gpui::fill(rect(sx, sy, g.size.0, g.size.1), g.bg));
@@ -792,24 +835,27 @@ impl Element for PageStack {
                 }
                 if let Some(layer) = self.icb.get_mut(i) {
                     for el in layer {
-                        window.with_content_mask(Some(gpui::ContentMask { bounds: area }), |window| {
-                            el.paint(window, cx)
-                        });
+                        window.with_content_mask(
+                            Some(gpui::ContentMask { bounds: area }),
+                            |window| el.paint(window, cx),
+                        );
                     }
                 }
                 if let Some(layer) = self.fixed.get_mut(i) {
                     for el in layer {
-                        window.with_content_mask(Some(gpui::ContentMask { bounds: area }), |window| {
-                            el.paint(window, cx)
-                        });
+                        window.with_content_mask(
+                            Some(gpui::ContentMask { bounds: area }),
+                            |window| el.paint(window, cx),
+                        );
                     }
                 }
                 let sheet = rect(sx, sy, g.size.0, g.size.1);
                 for (p, el) in &mut self.margin_els {
                     if *p == i {
-                        window.with_content_mask(Some(gpui::ContentMask { bounds: sheet }), |window| {
-                            el.paint(window, cx)
-                        });
+                        window.with_content_mask(
+                            Some(gpui::ContentMask { bounds: sheet }),
+                            |window| el.paint(window, cx),
+                        );
                     }
                 }
             });

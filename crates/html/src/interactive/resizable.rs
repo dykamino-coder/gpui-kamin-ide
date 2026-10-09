@@ -1,7 +1,11 @@
 //! Элемент `Resizable`.
 // owner: A
 
-use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Window, px};
+use gpui::{
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior,
+    InspectorElementId, IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, Pixels, Window, px,
+};
 use std::rc::Rc;
 
 /// По каким осям разрешено тянуть.

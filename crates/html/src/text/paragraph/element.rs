@@ -1,7 +1,10 @@
 //! impl Element/IntoElement for Paragraph: раскладка, prepaint, отрисовка.
 
 use crate::text::paragraph::*;
-use gpui::{App, Bounds, Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, IntoElement, LayoutId, Pixels, Window, point, px, size};
+use gpui::{
+    App, Bounds, Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId,
+    IntoElement, LayoutId, Pixels, Window, point, px, size,
+};
 
 impl Element for Paragraph {
     type RequestLayoutState = LayoutId;
@@ -156,7 +159,8 @@ impl Element for Paragraph {
                 } else {
                     (known.width, available.width)
                 };
-                let limit = probe.measured_inline_limit(known_along, space_along, ortho_limit, window);
+                let limit =
+                    probe.measured_inline_limit(known_along, space_along, ortho_limit, window);
                 // Кегль подбирается ДО замера: коробка считается уже по
                 // подобранному, иначе её высота не сойдётся с отрисовкой.
                 // Подбирать есть смысл только под ЗАДАННЫЙ размер строки:
@@ -286,12 +290,22 @@ impl Element for Paragraph {
                         last_shift = line_height * (pads.len() - 1) as f32 + px(before + own);
                     }
                     let extra: f32 = pads.iter().map(|(a, b)| a + b).sum();
-                    (if vertical { probe.line_height } else { line_height }) * lines.len() as f32 + px(extra)
+                    (if vertical {
+                        probe.line_height
+                    } else {
+                        line_height
+                    }) * lines.len() as f32
+                        + px(extra)
                 };
                 if vertical {
-                    let width = if vertical_inline.is_some() { limit.unwrap_or(width) } else { width };
+                    let width = if vertical_inline.is_some() {
+                        limit.unwrap_or(width)
+                    } else {
+                        width
+                    };
                     return probe.vertical_content_baselines(size(
-                        known.width.unwrap_or(across), known.height.unwrap_or(width),
+                        known.width.unwrap_or(across),
+                        known.height.unwrap_or(width),
                     ));
                 }
                 let baseline = probe.measured_first_baseline(line_height, first_above, window);
@@ -300,7 +314,10 @@ impl Element for Paragraph {
                     first_y: baseline,
                     last_y: last_baseline,
                     lines_y: Some(probe.content_line_baselines(baseline)),
-                    ..gpui::MeasuredContent::new(size(known.width.unwrap_or(width), known.height.unwrap_or(across)))
+                    ..gpui::MeasuredContent::new(size(
+                        known.width.unwrap_or(width),
+                        known.height.unwrap_or(across),
+                    ))
                 }
             },
         );
@@ -317,7 +334,8 @@ impl Element for Paragraph {
         _cx: &mut App,
     ) -> Option<Hitbox> {
         // Предел переноса — длина строки по её физической оси.
-        self.vertical_layout_origin = window.layout_origin_unrounded(*state) - window.element_offset();
+        self.vertical_layout_origin =
+            window.layout_origin_unrounded(*state) - window.element_offset();
         self.width_nudge = {
             let dw = window.layout_size_unrounded(*state).width - bounds.size.width;
             let one = 1.0 / window.scale_factor().max(0.01) + 1e-4;
@@ -352,7 +370,11 @@ impl Element for Paragraph {
         let limit = limit + px(1.0 / scale);
         self.indent_basis = {
             let exact = window.layout_size_unrounded(*state);
-            let exact = if self.vertical { exact.height } else { exact.width };
+            let exact = if self.vertical {
+                exact.height
+            } else {
+                exact.width
+            };
             let snapped = if self.vertical {
                 bounds.size.height
             } else {
@@ -375,7 +397,12 @@ impl Element for Paragraph {
             let unbalanced = self.lay(Some(limit), &segs);
             let balanced = std::mem::replace(&mut self.lines, unbalanced);
             let lh = f32::from(self.line_height);
-            self.unbalanced_steps = Some(self.line_padding().iter().map(|(a, b)| lh + a + b).collect());
+            self.unbalanced_steps = Some(
+                self.line_padding()
+                    .iter()
+                    .map(|(a, b)| lh + a + b)
+                    .collect(),
+            );
             self.lines = balanced;
         }
         self.place_atoms(*state, window, _cx);
@@ -473,7 +500,11 @@ impl Element for Paragraph {
     ) {
         // Поворачивается текст внутри уже рассчитанной по физическим осям коробки.
         if self.vertical {
-            let bounds = self.vertical_paint_bounds(bounds, self.vertical_layout_origin, window.scale_factor());
+            let bounds = self.vertical_paint_bounds(
+                bounds,
+                self.vertical_layout_origin,
+                window.scale_factor(),
+            );
             let matrix = self.vertical_transform(bounds, window.scale_factor());
             // Flat inline/block axes match the painted physical extent.
             let flat = Bounds {
@@ -482,7 +513,9 @@ impl Element for Paragraph {
             };
             let mut inner = std::mem::replace(self, Paragraph::empty());
             inner.vertical = false;
-            let selection = inner.selection_vertical.replace((bounds, inner.vertical_ccw));
+            let selection = inner
+                .selection_vertical
+                .replace((bounds, inner.vertical_ccw));
             window.with_transformation(matrix, |window| {
                 inner.paint(id, _inspector_id, flat, _state, hitbox, window, cx);
             });
@@ -712,10 +745,19 @@ impl Element for Paragraph {
                     origin: point(mask_x, bounds.origin.y - px(1000.)),
                     size: size(cut, bounds.size.height + px(2000.)),
                 };
-                let (base, exact) = window.with_content_mask(Some(gpui::ContentMask { bounds: mask }), |window| {
-                    self.paint_line(&visible, &runs, point(x0, at.y), "", window, cx)
-                });
-                self.paint_suffix(&mark, line.range.start, point(mark_x, at.y), base, exact, window, cx);
+                let (base, exact) = window
+                    .with_content_mask(Some(gpui::ContentMask { bounds: mask }), |window| {
+                        self.paint_line(&visible, &runs, point(x0, at.y), "", window, cx)
+                    });
+                self.paint_suffix(
+                    &mark,
+                    line.range.start,
+                    point(mark_x, at.y),
+                    base,
+                    exact,
+                    window,
+                    cx,
+                );
             } else {
                 self.paint_line(&visible, &runs, at, &mark, window, cx);
             }

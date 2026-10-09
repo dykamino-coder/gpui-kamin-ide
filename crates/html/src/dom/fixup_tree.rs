@@ -16,16 +16,29 @@ pub(super) fn quirks_percent_heights(nodes: &mut [Node], base: Option<f32>) {
     for n in nodes.iter_mut() {
         let Node::Element(e) = n else { continue };
         let st = &mut e.style;
-        let out_of_flow = matches!(st.position, Some(Position::Absolute) | Some(Position::Fixed));
-        let blockish = matches!(st.display, None | Some(Display::Block) | Some(Display::InlineBlock) | Some(Display::ListItem));
-        if let (Some(Len::Pct(k)), Some(b), false, true) = (st.height, base, out_of_flow, blockish) {
+        let out_of_flow = matches!(
+            st.position,
+            Some(Position::Absolute) | Some(Position::Fixed)
+        );
+        let blockish = matches!(
+            st.display,
+            None | Some(Display::Block) | Some(Display::InlineBlock) | Some(Display::ListItem)
+        );
+        if let (Some(Len::Pct(k)), Some(b), false, true) = (st.height, base, out_of_flow, blockish)
+        {
             st.height = Some(Len::Px(k * b));
         }
         // Табличные коробки квирка не дают: доля внука ячейки с заданной
         // высотой остаётся `auto` (`percentages-grandchildren-quirks-mode-001`).
         let tabular = matches!(
             st.display,
-            Some(Display::Table | Display::InlineTable | Display::TableCell | Display::TableRow | Display::TableRowGroup)
+            Some(
+                Display::Table
+                    | Display::InlineTable
+                    | Display::TableCell
+                    | Display::TableRow
+                    | Display::TableRowGroup
+            )
         );
         let child_base = match st.height {
             _ if tabular => None,
@@ -106,9 +119,8 @@ pub(super) fn fold_run_ins(nodes: &mut Vec<Node>, parent: Option<&Computed>) {
     // «intervening white space» — схлопываемый). `run-in-basic-014`: эталон —
     // run-in блоком, строка сохранённого пробела, затем блок.
     let keep = parent.is_some_and(|p| p.keep_spaces == Some(true));
-    let is_blank = |n: &Node| {
-        matches!(n, Node::Text(t) if t.is_empty() || (!keep && t.trim().is_empty()))
-    };
+    let is_blank =
+        |n: &Node| matches!(n, Node::Text(t) if t.is_empty() || (!keep && t.trim().is_empty()));
     let mut i = 0;
     while i < nodes.len() {
         // Сначала вглубь: вложенные run-in решаются в своём контейнере.
@@ -220,7 +232,9 @@ pub(super) fn flex_items_lose_float(nodes: &mut [Node]) {
             continue;
         }
         for child in el.children.iter_mut() {
-            let Node::Element(child) = child else { continue };
+            let Node::Element(child) = child else {
+                continue;
+            };
             if matches!(
                 child.style.position,
                 Some(Position::Absolute) | Some(Position::Fixed)
@@ -348,7 +362,9 @@ pub(super) fn grid_table_items_keep_stretch(nodes: &mut [Node]) {
             continue;
         }
         for child in el.children.iter_mut() {
-            let Node::Element(child) = child else { continue };
+            let Node::Element(child) = child else {
+                continue;
+            };
             if matches!(
                 child.style.position,
                 Some(Position::Absolute) | Some(Position::Fixed)
@@ -371,7 +387,10 @@ pub(super) fn grid_table_items_keep_stretch(nodes: &mut [Node]) {
 /// не с чем — контейнера в этот момент нет.
 /// Руби-роль коробки (css-ruby-1 §2.1): своё `display: ruby*`, иначе тег
 /// без авторского `display` (A.1). Зеркало `render::ruby_role`.
-pub(super) fn ruby_box_role(tag: &str, style: &Computed) -> Option<crate::style::computed::RubyRole> {
+pub(super) fn ruby_box_role(
+    tag: &str,
+    style: &Computed,
+) -> Option<crate::style::computed::RubyRole> {
     use crate::style::computed::RubyRole;
     if let Some(role) = style.ruby_role {
         return Some(role);

@@ -18,7 +18,10 @@ use crate::style::values::value::Len;
 /// Только явные формы: у подсетки без размещения среза нет, и трогать её
 /// нельзя — авто-размещение считает уже раскладка.
 fn subgrid_slot(
-    place: &Option<(crate::style::computed::Placement, crate::style::computed::Placement)>,
+    place: &Option<(
+        crate::style::computed::Placement,
+        crate::style::computed::Placement,
+    )>,
     count: usize,
 ) -> Option<(usize, usize)> {
     use crate::style::computed::Placement;
@@ -60,12 +63,16 @@ fn subgrid_slot(
 /// авто-размещение, а сколько дорожек она занимает — видно сразу
 /// (css-grid-2 §subgrid-size-contribution: число дорожек авто-размещённой
 /// подсетки берётся из её пролёта).
-fn subgrid_span(place: &Option<(crate::style::computed::Placement, crate::style::computed::Placement)>) -> usize {
+fn subgrid_span(
+    place: &Option<(
+        crate::style::computed::Placement,
+        crate::style::computed::Placement,
+    )>,
+) -> usize {
     use crate::style::computed::Placement;
     match place {
-        Some((Placement::Span(k), Placement::Auto)) | Some((Placement::Auto, Placement::Span(k))) => {
-            (*k as usize).max(1)
-        }
+        Some((Placement::Span(k), Placement::Auto))
+        | Some((Placement::Auto, Placement::Span(k))) => (*k as usize).max(1),
         _ => 1,
     }
 }
@@ -149,7 +156,10 @@ pub(crate) fn subgrid_inhibited(style: &Computed) -> bool {
     style.contain_layout == Some(true)
         || style.contain_paint == Some(true)
         || style.container_size_query
-        || matches!(style.position, Some(Position::Absolute) | Some(Position::Fixed))
+        || matches!(
+            style.position,
+            Some(Position::Absolute) | Some(Position::Fixed)
+        )
 }
 
 pub(super) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
@@ -188,7 +198,9 @@ pub(super) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                     || !tracks.iter().all(|t| {
                         matches!(
                             t,
-                            crate::style::computed::TrackSize::Single(crate::style::computed::Track::Px(_))
+                            crate::style::computed::TrackSize::Single(
+                                crate::style::computed::Track::Px(_)
+                            )
                         )
                     })
                 {
@@ -201,7 +213,9 @@ pub(super) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                 // каждый.
                 let mut cur = 0usize;
                 for child in el.children.iter_mut() {
-                    let Node::Element(child) = child else { continue };
+                    let Node::Element(child) = child else {
+                        continue;
+                    };
                     let place = if row_dir {
                         &child.style.grid_row
                     } else {
@@ -243,8 +257,8 @@ pub(super) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                     // написано `subgrid`: своя ось подсетки остаётся своей
                     // (`subgrid-gap-decorations-003`: ряды `subgrid`, колонки
                     // `repeat(2, 1fr)` — прежний откат с сырой долей давал 99.00).
-                    let parallel = child.style.vertical.unwrap_or(false)
-                        == el.style.vertical.unwrap_or(false);
+                    let parallel =
+                        child.style.vertical.unwrap_or(false) == el.style.vertical.unwrap_or(false);
                     if !subgrid_axes::linked(&el.style, &child.style, row_dir)
                         || (from_fr && !parallel)
                     {
@@ -275,22 +289,24 @@ pub(super) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                         )
                     } else {
                         (
-                            px(child.style.margin.left) + px(bs.left) + px(child.style.padding.left),
+                            px(child.style.margin.left)
+                                + px(bs.left)
+                                + px(child.style.padding.left),
                             px(child.style.margin.right)
                                 + px(bs.right)
                                 + px(child.style.padding.right),
                         )
                     };
                     let mut slice = slice;
-                    if let Some(crate::style::computed::TrackSize::Single(crate::style::computed::Track::Px(
-                        w,
-                    ))) = slice.first_mut()
+                    if let Some(crate::style::computed::TrackSize::Single(
+                        crate::style::computed::Track::Px(w),
+                    )) = slice.first_mut()
                     {
                         *w = (*w - lead).max(0.0);
                     }
-                    if let Some(crate::style::computed::TrackSize::Single(crate::style::computed::Track::Px(
-                        w,
-                    ))) = slice.last_mut()
+                    if let Some(crate::style::computed::TrackSize::Single(
+                        crate::style::computed::Track::Px(w),
+                    )) = slice.last_mut()
                     {
                         *w = (*w - trail).max(0.0);
                     }
@@ -322,11 +338,7 @@ pub(super) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                     let unset = own.is_none();
                     let own = own.or(par);
                     if own != Some(Len::Px(0.0)) && unset {
-                        child.style.gap = Some(if row_dir {
-                            (par, ccol)
-                        } else {
-                            (crow, par)
-                        });
+                        child.style.gap = Some(if row_dir { (par, ccol) } else { (crow, par) });
                         if !row_dir {
                             child.style.column_gap = par;
                         }
@@ -517,8 +529,10 @@ fn fr_tracks_to_px(
 /// Без явного `grid-lanes-direction` направление выдаёт ТА ОСЬ, по которой
 /// объявлены дорожки — то же правило, что у `render::lanes`.
 pub(crate) fn lanes_row_dir(s: &Computed) -> bool {
-    let row_tracks = s.grid_rows.is_some() || s.auto_repeat_rows.is_some() || s.grid_auto_fill_row.is_some();
-    let col_tracks = s.grid_tracks.is_some() || s.auto_repeat_cols.is_some() || s.grid_auto_fill_min.is_some();
+    let row_tracks =
+        s.grid_rows.is_some() || s.auto_repeat_rows.is_some() || s.grid_auto_fill_row.is_some();
+    let col_tracks =
+        s.grid_tracks.is_some() || s.auto_repeat_cols.is_some() || s.grid_auto_fill_min.is_some();
     s.lanes_row.unwrap_or(row_tracks && !col_tracks)
 }
 

@@ -6,7 +6,9 @@ use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::{edge_break, oof_reach, page_monolith};
 use crate::layout::fragment::flex_lines::{class_a_box, inline_display};
 use crate::layout::fragment::fragment_size::shape_full;
-use crate::layout::page::names::{PageMarginDeclsFn, fill_used_page, first_kid_page_name, hoist_named_wrappers, page_names};
+use crate::layout::page::names::{
+    PageMarginDeclsFn, fill_used_page, first_kid_page_name, hoist_named_wrappers, page_names,
+};
 use crate::layout::page::{page_boxes, page_counters};
 use crate::layout::replaced::iframe::IFRAME_DEPTH;
 use crate::paint::effects::mask::collect_mask_defs;
@@ -73,7 +75,9 @@ pub fn render_paged_select(
     let mut root_page = String::new();
     loop {
         let live: Vec<&Node> = nodes.iter().filter(|n| !is_blank(n)).collect();
-        let [Node::Element(e)] = live.as_slice() else { break };
+        let [Node::Element(e)] = live.as_slice() else {
+            break;
+        };
         if !matches!(e.tag.as_str(), "html" | "body") {
             break;
         }
@@ -133,17 +137,18 @@ pub fn render_paged_select(
     if root.vertical != Some(true) {
         hoist_named_wrappers(&mut nodes);
     }
-    let geom_for: crate::layout::page::page_stack::PageGeomFn = std::rc::Rc::new(move |i, name: &str| {
-        let mut g = geom_for(i, name);
-        if none {
-            g.bg = gpui::white();
-            g.border.0 = 0.0;
-            g.canvas = None;
-        } else if canvas.is_some() {
-            g.canvas = canvas;
-        }
-        g
-    });
+    let geom_for: crate::layout::page::page_stack::PageGeomFn =
+        std::rc::Rc::new(move |i, name: &str| {
+            let mut g = geom_for(i, name);
+            if none {
+                g.bg = gpui::white();
+                g.border.0 = 0.0;
+                g.canvas = None;
+            } else if canvas.is_some() {
+                g.canvas = canvas;
+            }
+            g
+        });
     let geom = geom_for(0, &first_kid_page_name(&nodes, &root_page));
     // Мера для страниц: `contain: size` — монолит (как в `page_monolith`),
     // `vh`/`vw` — от page area (в сыром `e.style` они ещё не разрешены:
@@ -157,8 +162,7 @@ pub fn render_paged_select(
     // Слой ICB — по КОПИИ на страницу: каждая сборка ребёнка рождает свои
     // `LatePlace` абсолютов, копия `c` уходит на лист `c` (`PageStack.icb`).
     let mut icb_copies: Vec<Vec<AnyElement>> = (0..PAGE_COPIES).map(|_| Vec::new()).collect();
-    let mut fixed_copies: Vec<Vec<AnyElement>> =
-        (0..PAGE_COPIES).map(|_| Vec::new()).collect();
+    let mut fixed_copies: Vec<Vec<AnyElement>> = (0..PAGE_COPIES).map(|_| Vec::new()).collect();
     let mut icb_reach = 0.0f32;
     let mut kids: Vec<crate::layout::page::page_stack::PageKid> = Vec::new();
     let mut prev_end: Option<String> = None;
@@ -222,7 +226,8 @@ pub fn render_paged_select(
             e.style.float.is_some_and(|f| f != 0)
                 && !matches!(
                     e.style.position,
-                    Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+                    Some(crate::style::computed::Position::Absolute)
+                        | Some(crate::style::computed::Position::Fixed)
                 )
                 && !matches!(e.style.display, Some(Display::None))
         }
@@ -233,7 +238,9 @@ pub fn render_paged_select(
     for n in nodes.iter() {
         if is_blank(n) {
             // Пробел внутри строчного пробега — его часть, вне — пропуск.
-            if run != Run::None && let Some(g) = groups.last_mut() {
+            if run != Run::None
+                && let Some(g) = groups.last_mut()
+            {
                 g.push(n.clone());
             }
             continue;
@@ -288,7 +295,9 @@ pub fn render_paged_select(
                 wrap = wrap.h(px(ah));
             }
             let el = wrap.children(blocks(group, &root, opts)).into_any_element();
-            slot.extend(layer(crate::layout::positioned::containing_block::icb_close()));
+            slot.extend(layer(
+                crate::layout::positioned::containing_block::icb_close(),
+            ));
             fixed_slot.extend(layer(
                 FIXED_LAYER.with(|f| std::mem::take(&mut *f.borrow_mut())),
             ));
@@ -320,7 +329,12 @@ pub fn render_paged_select(
                 edge_break(e, true),
                 None,
             ),
-            _ => (false, false, false, Some((root_page.clone(), root_page.clone()))),
+            _ => (
+                false,
+                false,
+                false,
+                Some((root_page.clone(), root_page.clone())),
+            ),
         };
         // Группа флоата: сам флоат имени не передаёт (§named pages п. 2), но
         // поточные коробки класса A в группе — передают конец — у последней (`page-name-000-print`: флоат, `clear`-блок
@@ -377,7 +391,8 @@ pub fn render_paged_select(
         let positioned = |e: &Element| {
             matches!(
                 e.style.position,
-                Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute)
+                    | Some(crate::style::computed::Position::Fixed)
             )
         };
         // Поля ребёнка: мера `shape_full` — border box, а обёртка рисует его
@@ -458,12 +473,18 @@ pub fn render_paged_select(
     PAGED.with(|p| p.set(false));
     // Марджин-боксы: наследуют от контекста страницы, а тот — от корня
     // (css-page-3 §page-properties; Blink `StyleForPage` от documentElement).
-    let margin_for = margin_decls.map(|f| {
-        page_boxes::builder(f, root.clone(), opts.clone(), document_counters)
-    });
-    crate::layout::page::page_stack::PageStack::new(kids, geom_for, icb_copies, icb_reach, fixed_copies, margin_for)
-        .with_select(select)
-        .into_any_element()
+    let margin_for =
+        margin_decls.map(|f| page_boxes::builder(f, root.clone(), opts.clone(), document_counters));
+    crate::layout::page::page_stack::PageStack::new(
+        kids,
+        geom_for,
+        icb_copies,
+        icb_reach,
+        fixed_copies,
+        margin_for,
+    )
+    .with_select(select)
+    .into_any_element()
 }
 
 // Мера блочного поддерева для укладки по фрагментаинерам — колонкам и

@@ -1,6 +1,6 @@
 //! Apply sampled declarations to the real node, preserving its formatting identity.
-use crate::style::computed::Computed;
 use crate::dom::Element;
+use crate::style::computed::Computed;
 
 pub(super) fn sample(e: &Element, frame: &Computed, transforms: bool) -> Element {
     let mut inner = e.clone();

@@ -18,8 +18,12 @@ pub(super) fn apply_box(mut d: Div, c: &Computed) -> Div {
     // ставилась голая величина, и taffy подпирал её суммой отступов —
     // выходило max(ci, pad) вместо ci + pad (`cis-007`, `cis-008`).
     // CSS Containment 2 §3.1: intrinsic keywords also size the box as empty.
-    if c.contains_height() && matches!(c.height,
-        None | Some(Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent)) {
+    if c.contains_height()
+        && matches!(
+            c.height,
+            None | Some(Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent)
+        )
+    {
         let side = |l: Option<Len>| match l {
             Some(Len::Px(v)) => v,
             _ => 0.0,
@@ -37,7 +41,11 @@ pub(super) fn apply_box(mut d: Div, c: &Computed) -> Div {
         // Явная высота глушила растяжку (`contain-intrinsic-size-010/016`:
         // 13 точек вместо 100); нижней гранью подмена держит строку
         // авто-высоты от схлопывания в ноль.
-        d = if c.cross_stretched { d.min_h(ci) } else { d.h(ci) };
+        d = if c.cross_stretched {
+            d.min_h(ci)
+        } else {
+            d.h(ci)
+        };
     }
     // По строчной оси то же самое, но только когда ширина ЯВНО названа
     // размером по содержимому: обычная блочная ширина и так берётся от
@@ -55,7 +63,8 @@ pub(super) fn apply_box(mut d: Div, c: &Computed) -> Div {
     ) || c.float.is_some()
         || matches!(
             c.position,
-            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute)
+                | Some(crate::style::computed::Position::Fixed)
         );
     if c.contains_width()
         && (matches!(
@@ -100,7 +109,10 @@ pub(super) fn apply_box(mut d: Div, c: &Computed) -> Div {
     // `clip-path: circle()` — обрезка содержимого по кругу. Прямоугольная
     // обрезка со скруглением — единственная в конвейере, но для круга и
     // эллипса она точна.
-    if let Some(round) = c.clip_round.filter(|_| !crate::paint::effects::grouped::rounded_rect_clip(c)) {
+    if let Some(round) = c
+        .clip_round
+        .filter(|_| !crate::paint::effects::grouped::rounded_rect_clip(c))
+    {
         let base = match (c.width, c.height) {
             (Some(Len::Px(w)), Some(Len::Px(h))) => w.min(h),
             (Some(Len::Px(w)), _) => w,
@@ -195,10 +207,12 @@ pub(super) fn apply_box(mut d: Div, c: &Computed) -> Div {
     // кольцо рамки (абсолютный слой с выносом), и углы фигуры шире него
     // (border-shape-overflow-child-clip, -replaced-img/-iframe).
     let shaped = c.border_shape.is_some();
-    if !shaped && (c.overflow_x == Some(Overflow::Hidden) || c.overflow_x == Some(Overflow::Scroll)) {
+    if !shaped && (c.overflow_x == Some(Overflow::Hidden) || c.overflow_x == Some(Overflow::Scroll))
+    {
         d = d.overflow_x_hidden();
     }
-    if !shaped && (c.overflow_y == Some(Overflow::Hidden) || c.overflow_y == Some(Overflow::Scroll)) {
+    if !shaped && (c.overflow_y == Some(Overflow::Hidden) || c.overflow_y == Some(Overflow::Scroll))
+    {
         d = d.overflow_y_hidden();
     }
     // `clip` режет краску, но НЕ создаёт скролл-контейнер: авто-минимум
@@ -219,8 +233,13 @@ pub(super) fn apply_box(mut d: Div, c: &Computed) -> Div {
     // `overflow-clip-margin-021/022`: «border-box is ignored on a scroller,
     // including the offset»): край остаётся на padding-box. `content-box` и
     // отрицательный сдвиг у скроллера действуют — `-018/-019/-020` зелёные.
-    let scroller = matches!(c.overflow_x, Some(Overflow::Hidden) | Some(Overflow::Scroll))
-        || matches!(c.overflow_y, Some(Overflow::Hidden) | Some(Overflow::Scroll));
+    let scroller = matches!(
+        c.overflow_x,
+        Some(Overflow::Hidden) | Some(Overflow::Scroll)
+    ) || matches!(
+        c.overflow_y,
+        Some(Overflow::Hidden) | Some(Overflow::Scroll)
+    );
     if let Some(m) = c
         .clip_margin
         .filter(|_| !(scroller && c.clip_margin_box == Some(2)))
@@ -267,7 +286,9 @@ pub(super) fn apply_box(mut d: Div, c: &Computed) -> Div {
                 Len::Px(v) => v,
                 _ => 0.0,
             };
-            let (mut dx, mut dy) = c.translate.map_or((0.0, 0.0), |(x, y)| (px_of(x), px_of(y)));
+            let (mut dx, mut dy) = c
+                .translate
+                .map_or((0.0, 0.0), |(x, y)| (px_of(x), px_of(y)));
             if let Some((fx, fy)) = folded {
                 dx += fx;
                 dy += fy;
@@ -458,8 +479,10 @@ pub(crate) fn radius_px(c: &Computed, l: Option<Len>) -> Option<f32> {
         _ => 0.0,
     };
     let b = c.borders();
-    let extra_w = px_len(c.padding.left) + px_len(c.padding.right) + px_len(b.left) + px_len(b.right);
-    let extra_h = px_len(c.padding.top) + px_len(c.padding.bottom) + px_len(b.top) + px_len(b.bottom);
+    let extra_w =
+        px_len(c.padding.left) + px_len(c.padding.right) + px_len(b.left) + px_len(b.right);
+    let extra_h =
+        px_len(c.padding.top) + px_len(c.padding.bottom) + px_len(b.top) + px_len(b.bottom);
     let base = match (c.width, c.height) {
         (Some(Len::Px(w)), Some(Len::Px(h))) => (w + extra_w).min(h + extra_h),
         (Some(Len::Px(w)), _) => w + extra_w,

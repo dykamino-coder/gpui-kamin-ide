@@ -221,7 +221,11 @@ impl Paragraph {
             let base = if self.rotated_central {
                 let (asc, desc, _) = self.strut;
                 let h = f32::from(s.height);
-                let central = if (base - h).abs() < 0.01 { h / 2.0 } else { base };
+                let central = if (base - h).abs() < 0.01 {
+                    h / 2.0
+                } else {
+                    base
+                };
                 central + (asc - desc) / 2.0
             } else {
                 base
@@ -252,7 +256,15 @@ impl Paragraph {
                     .map(|id| f32::from(window.layout_exact(id).1.width))
                     .fold(0.0f32, f32::max);
                 let base_w = info.base_width.get().unwrap_or(w);
-                overhangs.push((self.atom_boxes.len(), slot.at, len, w, base_w, ann_w, info.clone()));
+                overhangs.push((
+                    self.atom_boxes.len(),
+                    slot.at,
+                    len,
+                    w,
+                    base_w,
+                    ann_w,
+                    info.clone(),
+                ));
             }
             self.atom_boxes.push(AtomBox {
                 at: slot.at,
@@ -275,7 +287,11 @@ impl Paragraph {
                 continue;
             }
             self.atom_boxes[k].shift = start_oh;
-            if let Some(span) = self.letter_spans.iter_mut().find(|(r, _)| *r == (at..at + len)) {
+            if let Some(span) = self
+                .letter_spans
+                .iter_mut()
+                .find(|(r, _)| *r == (at..at + len))
+            {
                 span.1 = px((w - start_oh - end_oh).max(0.0));
             }
         }

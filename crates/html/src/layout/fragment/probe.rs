@@ -50,7 +50,10 @@ pub(crate) fn plain_block_tree(c: &Element, depth: u8) -> bool {
 /// в следующем фрагментаинере параллельным потоком (css-break-3 §3).
 pub(crate) fn stacked_flex_tree(c: &Element, depth: u8) -> bool {
     use crate::style::computed::FlexDir;
-    if c.style.column_count.is_some() || c.style.column_width.is_some() || c.style.webkit_box == Some(true) {
+    if c.style.column_count.is_some()
+        || c.style.column_width.is_some()
+        || c.style.webkit_box == Some(true)
+    {
         return false;
     }
     let s = &c.style;
@@ -61,7 +64,12 @@ pub(crate) fn stacked_flex_tree(c: &Element, depth: u8) -> bool {
         && s.vertical != Some(true)
         && s.gap.is_none()
         && !flex_gap_rules(s);
-    if !flex_stack && !matches!(s.display, None | Some(Display::Block) | Some(Display::ListItem)) {
+    if !flex_stack
+        && !matches!(
+            s.display,
+            None | Some(Display::Block) | Some(Display::ListItem)
+        )
+    {
         return false;
     }
     if depth == 0 {
@@ -135,7 +143,8 @@ pub(crate) fn forced_inside(e: &Element, depth: u8) -> bool {
         Node::Element(k)
             if matches!(
                 k.style.position,
-                Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute)
+                    | Some(crate::style::computed::Position::Fixed)
             ) =>
         {
             false

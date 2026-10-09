@@ -7,7 +7,6 @@ impl Computed {
     #[allow(unused_variables)]
     pub(crate) fn apply_transform(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
         match key {
-
             // --- Сдвиг и тень текста ------------------------------------------
             "translate" => {
                 let mut it = v.split_whitespace();
@@ -141,7 +140,9 @@ impl Computed {
                             // (m14/m24 = nums[3]/nums[7] — перспективная
                             // строка, transform3d-matrix3d-003/-004; m44 =
                             // nums[15] ≠ 1 — деление на w, -005).
-                            let flat2d = [2usize, 3, 6, 7, 8, 9, 11, 14].iter().all(|&i| nums[i] == 0.0)
+                            let flat2d = [2usize, 3, 6, 7, 8, 9, 11, 14]
+                                .iter()
+                                .all(|&i| nums[i] == 0.0)
                                 && nums[10] == 1.0
                                 && nums[15] == 1.0;
                             if flat2d {
@@ -300,7 +301,8 @@ impl Computed {
                                 .enumerate()
                             {
                                 if let Some(raw) = parts.get(i) {
-                                    let d = raw.trim_end_matches("px").parse::<f32>().unwrap_or(0.0);
+                                    let d =
+                                        raw.trim_end_matches("px").parse::<f32>().unwrap_or(0.0);
                                     *dest += d;
                                     v[i][0] = d;
                                 }

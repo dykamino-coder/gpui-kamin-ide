@@ -4,10 +4,10 @@
 //! overflowing descendants remain a parallel flow, rather than increasing the
 //! distance to the following sibling. Min-height wins when min exceeds max.
 
+use crate::dom::Element;
 use crate::layout::fragment::shape_contents::shape_contents;
 use crate::layout::fragment::table_bands::table_box;
 use crate::layout::fragment::{Shape, ShapeCx};
-use crate::dom::Element;
 use crate::style::computed::{Computed, Overflow};
 use crate::style::values::value::Len;
 

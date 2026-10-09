@@ -3,7 +3,10 @@
 use crate::dom::{Element, Node};
 use crate::layout::block::containing::{CB_WIDTH, with_inner_cb};
 use crate::layout::block::margin_height;
-use crate::layout::block::struts::{Strut, adjoin, float_only_wrapper, leading_chain, margin_or_bail, pin_inherited_margins, solve, strut_of, through_strut, through_strut_no_clear, top_edge_open, zero_at, zero_len};
+use crate::layout::block::struts::{
+    Strut, adjoin, float_only_wrapper, leading_chain, margin_or_bail, pin_inherited_margins, solve,
+    strut_of, through_strut, through_strut_no_clear, top_edge_open, zero_at, zero_len,
+};
 use crate::render::{in_flow, inline_level_box, own_context, phantom_inline};
 use crate::style::values::value::Len;
 use crate::text::text_box::blank_text;

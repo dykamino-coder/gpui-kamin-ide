@@ -34,8 +34,8 @@
 //! отрисовка), проход отдаёт `None`, и работают ровно те ветки, что работали
 //! раньше: `path()` и `ray()` с пиксельным `offset-distance`.
 
-use crate::style::computed::{Computed, Position};
 use crate::dom::Node;
+use crate::style::computed::{Computed, Position};
 use crate::style::values::value::Len;
 
 mod ellipse_path;
@@ -128,7 +128,12 @@ fn shape_d(e: &crate::dom::Element) -> Option<String> {
             .collect();
         let mut d = String::new();
         for (i, p) in nums.chunks_exact(2).enumerate() {
-            d.push_str(&format!("{}{} {} ", if i == 0 { 'M' } else { 'L' }, p[0], p[1]));
+            d.push_str(&format!(
+                "{}{} {} ",
+                if i == 0 { 'M' } else { 'L' },
+                p[0],
+                p[1]
+            ));
         }
         if closed && !d.is_empty() {
             d.push('Z');
@@ -407,7 +412,11 @@ fn split_coord_box(raw: &str) -> (String, usize) {
 /// Начало даёт `start_of` в системе содержащего блока — в запись оно уходит
 /// в системе опорной коробки (`offset-path-shape-circle-002`, `-ellipse-002`).
 fn shape_start(func: &str, c: &Computed, g: &Cb, rb: (f32, f32, f32, f32)) -> String {
-    let pos = c.offset_position.as_deref().map(str::trim).unwrap_or("normal");
+    let pos = c
+        .offset_position
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or("normal");
     let round = func.starts_with("circle(") || func.starts_with("ellipse(");
     let Some(open) = func.find('(') else {
         return func.to_string();
@@ -661,10 +670,7 @@ fn ray_css(
         _ => 0.0,
     };
     let own = cb.map_or((0.0, 0.0), |g| g.self_off);
-    let p = (
-        start.0 + dir.0 * len - own.0,
-        start.1 + dir.1 * len - own.1,
-    );
+    let p = (start.0 + dir.0 * len - own.0, start.1 + dir.1 * len - own.1);
     // Касательная луча относительно оси X — это компасный угол минус
     // четверть оборота; `reverse`/прибавку читает `rotation`.
     Some(origin_shift(

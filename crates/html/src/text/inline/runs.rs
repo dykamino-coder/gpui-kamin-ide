@@ -3,7 +3,10 @@
 use crate::style::computed::Computed;
 use crate::style::values::value::{Color, Len};
 use crate::text::inline::*;
-use gpui::{AnyElement, FontStyle, FontWeight, HighlightStyle, ParentElement, Styled, TextRun, TextStyle, UnderlineStyle};
+use gpui::{
+    AnyElement, FontStyle, FontWeight, HighlightStyle, ParentElement, Styled, TextRun, TextStyle,
+    UnderlineStyle,
+};
 
 /// Можно ли собрать всё в один текстовый блок: одинаковый размер шрифта и ни
 /// одного не-текстового куска.
@@ -281,9 +284,7 @@ pub fn as_wrapped_row(
         && pieces.iter().all(|p| match p {
             Piece::Atom(_) => true,
             Piece::Overlay(..) => false,
-            Piece::Text { text, .. } => text
-                .chars()
-                .all(|c| c.is_whitespace() || c == '\u{200b}'),
+            Piece::Text { text, .. } => text.chars().all(|c| c.is_whitespace() || c == '\u{200b}'),
         });
     let mut row = gpui::div().flex().max_w_full();
     // Ряд строки — не коробка CSS: доли высоты атомов считаются от блока,

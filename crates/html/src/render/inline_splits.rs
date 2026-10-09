@@ -1,8 +1,8 @@
 //! Keep nested inline continuations in the same anonymous block around a real block.
 
-use crate::layout::table::anon::anon_element;
 use super::{breaks_inline, contains_block, out_of_flow, real_inline};
 use crate::dom::Node;
+use crate::layout::table::anon::anon_element;
 use crate::style::values::value::Len;
 
 /// Разорвать строчные, внутри которых лежит блок (CSS 2.1 §9.2.1.1).
@@ -136,7 +136,8 @@ pub(crate) fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
                 // каждый слой решает свою долю от того же содержащего блока
                 // (`position-relative-001/002`), а `fixed` едет вместе со
                 // своей статической позицией (`-003`).
-                let host_shift = e.style.position == Some(crate::style::computed::Position::Relative)
+                let host_shift = e.style.position
+                    == Some(crate::style::computed::Position::Relative)
                     && (e.style.inset.left.is_some() || e.style.inset.top.is_some());
                 let wrap_shift = host_shift
                     && matches!(

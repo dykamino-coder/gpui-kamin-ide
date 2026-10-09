@@ -8,7 +8,9 @@ use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::{clone_dec, clone_fragment, solid_box};
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::grid_bands::{grid_rows_px, grid_stack};
-use crate::layout::fragment::line_shape::{nested_box_w, nested_rows_box, side_margin_wrap, slack_fill, transpose_tree};
+use crate::layout::fragment::line_shape::{
+    nested_box_w, nested_rows_box, side_margin_wrap, slack_fill, transpose_tree,
+};
 use crate::layout::fragment::probe::{plain_block_tree, size_monolith, stacked_flex_tree};
 use crate::layout::fragment::shape_contents::strip_through_top;
 use crate::layout::fragment::table_bands::{repeat_bands, table_box};
@@ -62,8 +64,7 @@ pub(super) fn multicol_stack_child(
     // `slice`: вид тот же, а её переполнение остаётся
     // параллельным потоком (`clone-003`: ребёнок 185
     // в коробке 70 продолжается во второй колонке).
-    let frag_geom: Vec<(f32, f32)> =
-        clone_plan.get(ix).cloned().unwrap_or_default();
+    let frag_geom: Vec<(f32, f32)> = clone_plan.get(ix).cloned().unwrap_or_default();
     let dec = clone_dec(&c).filter(|_| frag_geom.len() > 1 && !col_vert);
     // Элемент строки flex (`split_flex_lines`) наследует от
     // СВОЕГО контейнера, а не от многоколоночника.
@@ -122,15 +123,21 @@ pub(super) fn multicol_stack_child(
     // перепривязка `cx` в `shape_full`). Без него
     // разъезжался ЭТАЛОН четырёх пар
     // `flex-item-content-overflow-*`.
-    let copy_m = if col_vert { transpose_tree(&copy, col_rl) } else { None };
-    let (over, cuts, forced, solid) = match with_lines(&merged, line_col_w, opts, || shape_full(
-        copy_m.as_ref().unwrap_or(&copy),
-        4,
-        ShapeCx {
-            unclamped: true,
-            ..ShapeCx::COLUMNS
-        },
-    ))
+    let copy_m = if col_vert {
+        transpose_tree(&copy, col_rl)
+    } else {
+        None
+    };
+    let (over, cuts, forced, solid) = match with_lines(&merged, line_col_w, opts, || {
+        shape_full(
+            copy_m.as_ref().unwrap_or(&copy),
+            4,
+            ShapeCx {
+                unclamped: true,
+                ..ShapeCx::COLUMNS
+            },
+        )
+    })
     .filter(|_| {
         // Сетка-стопка с обычными блочными элементами
         // меряется так же точно, как блок (`grid_stack`:
@@ -171,9 +178,7 @@ pub(super) fn multicol_stack_child(
         // сосед: последней коробке её дотяг —
         // мера колонок многоколоночника.
         Some((own, full))
-            if (full - h).abs() < 0.01
-                && !solid_box(&copy)
-                && ix + 1 < kid_par.len() =>
+            if (full - h).abs() < 0.01 && !solid_box(&copy) && ix + 1 < kid_par.len() =>
         {
             (own, over.max(full))
         }
@@ -319,8 +324,7 @@ pub(super) fn multicol_stack_child(
         match n {
             Node::Element(k)
                 if !fixed_cb
-                    && k.style.position
-                        == Some(crate::style::computed::Position::Fixed) =>
+                    && k.style.position == Some(crate::style::computed::Position::Fixed) =>
             {
                 None
             }
@@ -350,8 +354,7 @@ pub(super) fn multicol_stack_child(
     // `with_content_mask`) режет их вместе с
     // содержимым — вид `slice` css-break-3 §4.
     let copy_ix = std::cell::Cell::new(0usize);
-    let whole = nest_row.is_none()
-        && nested_whole.borrow().contains(&copy.node_id);
+    let whole = nest_row.is_none() && nested_whole.borrow().contains(&copy.node_id);
     let build = |first: bool, part: usize| {
         // `box-decoration-break: clone`: копия — САМ
         // фрагмент (`clone_fragment`), и корень, и
@@ -368,16 +371,14 @@ pub(super) fn multicol_stack_child(
         // исходной коробкой.
         let frag = match (dec, frag_geom.get(part)) {
             (Some((dt, db)), Some(&(from, fh))) => {
-                let clip = frag_geom.get(part + 1).map_or(
-                    (over - dt - db - from).max(fh - dt - db),
-                    |n| n.0 - from,
-                );
+                let clip = frag_geom
+                    .get(part + 1)
+                    .map_or((over - dt - db - from).max(fh - dt - db), |n| n.0 - from);
                 Some(clone_fragment(&copy, dt, db, from, fh, clip))
             }
             _ => None,
         };
-        let frag_inner =
-            frag.as_ref().map(|f| inherit(&merged, &f.style));
+        let frag_inner = frag.as_ref().map(|f| inherit(&merged, &f.style));
         let src: &Element = frag.as_ref().unwrap_or(&copy);
         let src_inner: &Computed = frag_inner.as_ref().unwrap_or(&inner);
         let kids: Vec<Node> = if first {
@@ -398,8 +399,7 @@ pub(super) fn multicol_stack_child(
             // `transform`/`contain` остаются на
             // месте — проверка по `copy.style`
             // законна.
-            let fixed_cb_root =
-                fixed_cb_box(&e.style) || fixed_cb_box(&copy.style);
+            let fixed_cb_root = fixed_cb_box(&e.style) || fixed_cb_box(&copy.style);
             src.children
                 .iter()
                 .filter_map(|n| drop_viewport_fixed(n, fixed_cb_root))
@@ -409,11 +409,9 @@ pub(super) fn multicol_stack_child(
         let frag_gap_key = frag_gap_rules.as_ref().map(|_| {
             let ix = copy_ix.get();
             copy_ix.set(ix + 1);
-            (copy.node_id ^ opts.doc_salt)
-                ^ (ix as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+            (copy.node_id ^ opts.doc_salt) ^ (ix as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
         });
-        let frag_gap_guard =
-            frag_gap_key.map(crate::paint::gap_rules::GapGuard::enter);
+        let frag_gap_guard = frag_gap_key.map(crate::paint::gap_rules::GapGuard::enter);
         // css-break-3 §5.5: «Fragmentation … occurs
         // before relative positioning, transforms,
         // and any other graphical effects. Such
@@ -520,11 +518,7 @@ pub(super) fn multicol_stack_child(
             let mut tc = copy.clone();
             tc.children = kids;
             drop(frag_gap_guard);
-            return transformed(
-                table(&tc, &inner, opts),
-                &inner,
-                &merged,
-            );
+            return transformed(table(&tc, &inner, opts), &inner, &merged);
         }
         // Абсолютный потомок ищет ближайшего
         // позиционированного предка (CSS 2.1
@@ -605,7 +599,11 @@ pub(super) fn multicol_stack_child(
         // обратный. Гибкому и сеточному ось ставит `apply`.
         if col_vert && matches!(src.style.display, None | Some(Display::Block)) {
             d = d.flex();
-            d = if col_rl { d.flex_row_reverse() } else { d.flex_row() };
+            d = if col_rl {
+                d.flex_row_reverse()
+            } else {
+                d.flex_row()
+            };
         }
         // Голый `styled_div_with` — БЛОК taffy (`apply.rs`
         // `apply_layout`: блоку вызова нет, gpui `Display::Block`
@@ -664,9 +662,7 @@ pub(super) fn multicol_stack_child(
         if matches!(copy.style.width, None | Some(Len::Auto))
             && matches!(
                 copy.style.display,
-                Some(Display::Grid)
-                    | Some(Display::InlineGrid)
-                    | Some(Display::Flex)
+                Some(Display::Grid) | Some(Display::InlineGrid) | Some(Display::Flex)
             )
         {
             d = d.w_full();
@@ -714,11 +710,7 @@ pub(super) fn multicol_stack_child(
                 .into_any_element(),
             );
         }
-        transformed(
-            d.children(body).into_any_element(),
-            &inner,
-            &merged,
-        )
+        transformed(d.children(body).into_any_element(), &inner, &merged)
     };
     // Монолиты (css-break-3 §4.1) — их разрыв
     // запрещён, и в следующую колонку они уходят
@@ -749,7 +741,8 @@ pub(super) fn multicol_stack_child(
     // Рост лёг `705fd58`; `contain: size` — `size_monolith`,
     // тот же предикат, что у `solid_box` в мере и пробе
     // `grow_pushed` (`scout-break-2026-09e.md`).
-    let monolith = nest_row.is_none() && (size_monolith(&copy)
+    let monolith = nest_row.is_none()
+        && (size_monolith(&copy)
         || copy.style.break_inside_avoid
         || scrolls(copy.style.overflow_x)
         || scrolls(copy.style.overflow_y)
@@ -879,9 +872,7 @@ pub(super) fn multicol_stack_child(
         // (`flow.rs` `fill_at`, `overflow_to`) —
         // только при `column-fill: auto` без рядов
         // и без элементов ряда в поддереве.
-        overflow_top: fixed.is_some()
-            && rows.is_none()
-            && !parallel_items_inside(&copy, 4),
+        overflow_top: fixed.is_some() && rows.is_none() && !parallel_items_inside(&copy, 4),
         // Вложенный многоколоночник — маска режет вбок
         // (`flow.rs` `StackChild::nested_cols`).
         nested_cols: multicol_inside(&copy, 4),
@@ -913,18 +904,20 @@ pub(super) fn multicol_stack_child(
         // щупов (`repeat_leads`).
         repeat: repeat_bands(&copy, fixed, rows)
             .filter(|_| !span && !col_vert)
-            .map(|(head, foot, geom)| crate::layout::fragment::types::Repeat {
-                head,
-                foot,
-                geom,
-                head_els: match head {
-                    Some(_) => (1..kid_copies).map(|i| build(false, i)).collect(),
-                    None => Vec::new(),
+            .map(
+                |(head, foot, geom)| crate::layout::fragment::types::Repeat {
+                    head,
+                    foot,
+                    geom,
+                    head_els: match head {
+                        Some(_) => (1..kid_copies).map(|i| build(false, i)).collect(),
+                        None => Vec::new(),
+                    },
+                    foot_els: match foot {
+                        Some(_) => (0..kid_copies).map(|i| build(false, i)).collect(),
+                        None => Vec::new(),
+                    },
                 },
-                foot_els: match foot {
-                    Some(_) => (0..kid_copies).map(|i| build(false, i)).collect(),
-                    None => Vec::new(),
-                },
-            }),
+            ),
     }
 }

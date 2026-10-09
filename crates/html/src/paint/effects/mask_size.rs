@@ -57,7 +57,10 @@ pub(super) fn round_tile(
         area / (area / t).round().max(1.0)
     };
     let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
-    let (nw, nh) = (if rx { fit(tw, bw) } else { tw }, if ry { fit(th, bh) } else { th });
+    let (nw, nh) = (
+        if rx { fit(tw, bw) } else { tw },
+        if ry { fit(th, bh) } else { th },
+    );
     match (rx, ry) {
         (true, false) if auto(size.map(|s| s.1)) && tw > 0.0 => (nw, th * nw / tw),
         (false, true) if auto(size.map(|s| s.0)) && th > 0.0 => (tw * nh / th, nh),

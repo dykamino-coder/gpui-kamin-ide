@@ -163,7 +163,9 @@ impl Counters {
     /// а не `99 100 101`).
     fn drop_shadowed_reset(&mut self, name: &str) {
         let cur = self.path.clone();
-        let Some(st) = self.stack.get_mut(name) else { return };
+        let Some(st) = self.stack.get_mut(name) else {
+            return;
+        };
         if st.len() < 2 || st.last().is_none_or(|e| e.owner != cur) {
             return;
         }

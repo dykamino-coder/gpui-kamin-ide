@@ -11,7 +11,9 @@ use gpui::{Div, Styled, px};
 /// получают. `Some((цвет, толщины))`, когда КАЖДАЯ видимая сторона `double`
 /// толщиной от 3 px (тоньше линии не разойтись — Blink рисует сплошной) и
 /// цвет у сторон один (иначе поверх легли бы полосы сторон).
-pub(crate) fn double_border(c: &Computed) -> Option<(crate::style::values::value::Color, [f32; 4])> {
+pub(crate) fn double_border(
+    c: &Computed,
+) -> Option<(crate::style::values::value::Color, [f32; 4])> {
     if c.border_image.as_ref().is_some_and(|bi| !bi.src.is_empty())
         || c.corner_shaped()
         || c.border_shape.is_some()
@@ -23,7 +25,12 @@ pub(crate) fn double_border(c: &Computed) -> Option<(crate::style::values::value
         Some(Len::Px(v)) => v,
         _ => 0.0,
     };
-    let widths = [side_px(w.top), side_px(w.right), side_px(w.bottom), side_px(w.left)];
+    let widths = [
+        side_px(w.top),
+        side_px(w.right),
+        side_px(w.bottom),
+        side_px(w.left),
+    ];
     let mut any = false;
     for (i, width) in widths.iter().enumerate() {
         if *width <= 0.0 {
@@ -88,9 +95,13 @@ pub(crate) fn border_layer(c: &Computed) -> Option<(crate::style::values::value:
     // Обрезка содержимого срезала бы и слой: он лежит В коробке, на
     // отрицательных отступах (`css3-background-size-contain`: пунктирная
     // рамка исчезала при `overflow: hidden`). Такие коробки красит квад.
-    if !matches!(c.overflow_x, None | Some(crate::style::computed::Overflow::Visible))
-        || !matches!(c.overflow_y, None | Some(crate::style::computed::Overflow::Visible))
-    {
+    if !matches!(
+        c.overflow_x,
+        None | Some(crate::style::computed::Overflow::Visible)
+    ) || !matches!(
+        c.overflow_y,
+        None | Some(crate::style::computed::Overflow::Visible)
+    ) {
         return None;
     }
     let sides: Vec<_> = c.border_colors.iter().flatten().collect();
@@ -103,7 +114,12 @@ pub(crate) fn border_layer(c: &Computed) -> Option<(crate::style::values::value:
         Some(Len::Px(v)) => v,
         _ => 0.0,
     };
-    let widths = [side_px(w.top), side_px(w.right), side_px(w.bottom), side_px(w.left)];
+    let widths = [
+        side_px(w.top),
+        side_px(w.right),
+        side_px(w.bottom),
+        side_px(w.left),
+    ];
     if !widths.iter().any(|v| *v > 0.0) {
         return None;
     }
@@ -221,7 +237,8 @@ pub(super) fn apply_paint(mut d: Div, c: &Computed) -> Div {
     // полупрозрачная сторона ложилась дважды, полосой поверх квада (эталоны
     // `grid-gap-decorations-*` с `border-right: 6px solid rgba(…/.5)` темнели
     // до двух слоёв). Полосы красят и стороны без своего цвета — см. там же.
-    let strips = !sides.is_empty() && !(sides.len() == 4 && uniform.is_some()) && c.border_shape.is_none();
+    let strips =
+        !sides.is_empty() && !(sides.len() == 4 && uniform.is_some()) && c.border_shape.is_none();
     if !border_image_on
         && !mixed
         && !strips

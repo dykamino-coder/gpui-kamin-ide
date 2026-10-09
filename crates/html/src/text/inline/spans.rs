@@ -1,8 +1,8 @@
 //! Прогоны по кускам: перенос, сдвиги, высота строки, интервалы, оформление, слова, автопробелы.
 
-use crate::text::inline::*;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
+use crate::text::inline::*;
 use gpui::TextStyle;
 
 /// `word-space-transform: ideographic-space`.
@@ -105,7 +105,8 @@ pub fn shift_spans(
         let out_of_flow = style.float.is_some_and(|f| f != 0)
             || matches!(
                 style.position,
-                Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute)
+                    | Some(crate::style::computed::Position::Fixed)
             );
         let dy = (!out_of_flow)
             .then_some(style.vertical_shift_px)

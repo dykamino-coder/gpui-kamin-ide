@@ -11,7 +11,12 @@ pub(super) fn collapsed_cell_edge(
     cm: &Computed,
     win_edges: &std::collections::HashMap<u64, [f32; 4]>,
     px_of: &impl Fn(Option<Len>) -> f32,
-) -> Option<([f32; 4], [crate::style::values::value::Color; 4], [u8; 4], u32)> {
+) -> Option<(
+    [f32; 4],
+    [crate::style::values::value::Color; 4],
+    [u8; 4],
+    u32,
+)> {
     // Толщина в кегельных единицах — из СЛИТОГО стиля, где `em`
     // уже разрешён кеглем ячейки (то же правило, что у `box_style`
     // ниже): сырой `Em` давал нулевую кромку, и ячейка с `border:
@@ -54,9 +59,8 @@ pub(super) fn collapsed_cell_edge(
         side_colour(2),
         side_colour(3),
     ];
-    let side_style = |i: usize| {
-        cell.style.border_side_styles[i].unwrap_or(if widths[i] > 0.0 { 9 } else { 0 })
-    };
+    let side_style =
+        |i: usize| cell.style.border_side_styles[i].unwrap_or(if widths[i] > 0.0 { 9 } else { 0 });
     let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
     // Половина кромки лежит ВНУТРИ ячейки и место занимает
     // (§17.6.2). Кладётся паддингом поверх авторского: проба
@@ -140,11 +144,7 @@ pub(super) fn collapsed_row_edges(
             side_colour(3),
         ];
         let side_style = |k: usize| {
-            row.style.border_side_styles[k].unwrap_or(if widths[k] > 0.0 {
-                9
-            } else {
-                0
-            })
+            row.style.border_side_styles[k].unwrap_or(if widths[k] > 0.0 { 9 } else { 0 })
         };
         let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
         d = d.child(crate::layout::table::paint::edge_probe(
@@ -176,8 +176,7 @@ pub(super) fn collapsed_group_edges(
 ) -> gpui::Div {
     let b = g.style.borders();
     let default_w = if rules_groups { 1.0 } else { 0.0 };
-    let explicit_top =
-        g.style.border_width.top.is_some() || g.style.border_visible[0].is_some();
+    let explicit_top = g.style.border_width.top.is_some() || g.style.border_visible[0].is_some();
     let explicit_bottom =
         g.style.border_width.bottom.is_some() || g.style.border_visible[2].is_some();
     let top_w = if explicit_top {
@@ -223,9 +222,8 @@ pub(super) fn collapsed_group_edges(
             side_colour(2),
             side_colour(3),
         ];
-        let side_style = |k: usize| {
-            g.style.border_side_styles[k].unwrap_or(if widths[k] > 0.0 { 9 } else { 0 })
-        };
+        let side_style =
+            |k: usize| g.style.border_side_styles[k].unwrap_or(if widths[k] > 0.0 { 9 } else { 0 });
         let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
         d = d.child(crate::layout::table::paint::edge_probe(
             table_edges.clone(),
@@ -301,11 +299,7 @@ pub(super) fn collapsed_col_edges(
             side_colour(3),
         ];
         let side_style = |k: usize| {
-            el.style.border_side_styles[k].unwrap_or(if widths[k] > 0.0 {
-                9
-            } else {
-                0
-            })
+            el.style.border_side_styles[k].unwrap_or(if widths[k] > 0.0 { 9 } else { 0 })
         };
         let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
         d = d.child(crate::layout::table::paint::edge_probe(
@@ -382,11 +376,7 @@ pub(super) fn collapsed_colgroup_edges(
             side_colour(3),
         ];
         let side_style = |k: usize| {
-            el.style.border_side_styles[k].unwrap_or(if widths[k] > 0.0 {
-                9
-            } else {
-                0
-            })
+            el.style.border_side_styles[k].unwrap_or(if widths[k] > 0.0 { 9 } else { 0 })
         };
         let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
         d = d.child(crate::layout::table::paint::edge_probe(

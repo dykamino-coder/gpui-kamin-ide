@@ -158,7 +158,8 @@ pub(super) fn band_piece(n: &Node) -> Option<BandPiece> {
     // требует зазора, которого шаг B1 не считает.
     if matches!(
         c.style.position,
-        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute)
+            | Some(crate::style::computed::Position::Fixed)
     ) || c.style.float.is_some_and(|f| f != 0)
         || c.style.clear.is_some()
     {
@@ -176,7 +177,8 @@ pub(super) fn band_piece(n: &Node) -> Option<BandPiece> {
     if matches!(
         c.style.display,
         Some(Display::InlineBlock) | Some(Display::InlineFlex)
-    ) || (c.tag == "img" && inline_level(c)) {
+    ) || (c.tag == "img" && inline_level(c))
+    {
         // CSS 2 section 9.5: a replaced inline participates in the shortened
         // line and moves below floats when its entire box cannot fit.
         return sized.then_some(BandPiece::Atom);
@@ -271,7 +273,8 @@ pub(super) fn band_host(
         if let Node::Element(next) = &nodes[j]
             && matches!(
                 next.style.position,
-                Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute)
+                    | Some(crate::style::computed::Position::Fixed)
             )
             && !at_static_position(&next.style)
         {

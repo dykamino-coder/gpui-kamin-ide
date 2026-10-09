@@ -1,9 +1,11 @@
 //! `text-box`, высота строки, пустой текст.
 // owner: A
 
-use crate::style::cascade::inherit::inherit;
 use crate::dom::Node;
-use crate::render::{RenderOpts, breaks_inline, contains_block, holds_line_box, out_of_flow, real_inline};
+use crate::render::{
+    RenderOpts, breaks_inline, contains_block, holds_line_box, out_of_flow, real_inline,
+};
+use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 
@@ -20,7 +22,11 @@ use crate::style::values::value::Len;
 /// обрывают поиск; отступ и рамка ПОТОМКА на срезаемой стороне — тоже
 /// (`-004/-005`). Строчный элемент с блоком внутри (блок-в-строчном)
 /// прозрачен: строка — в его блоке (`block-in-inline-*`).
-pub(crate) fn text_box_line_style(nodes: &[Node], inherited: &Computed, start: bool) -> Option<Computed> {
+pub(crate) fn text_box_line_style(
+    nodes: &[Node],
+    inherited: &Computed,
+    start: bool,
+) -> Option<Computed> {
     let has_block = nodes.iter().any(breaks_inline);
     let order: Vec<&Node> = if start {
         nodes.iter().collect()
@@ -124,7 +130,9 @@ pub(crate) fn text_box_trim_px(line_style: &Computed, start: bool, opts: &Render
     if start {
         half + match line_style.text_box_over {
             crate::style::computed::TextEdge::Cap => ascent - cap,
-            crate::style::computed::TextEdge::Ex => ascent - crate::text::metrics::ch_ex_px(&family, size).1,
+            crate::style::computed::TextEdge::Ex => {
+                ascent - crate::text::metrics::ch_ex_px(&family, size).1
+            }
             _ => 0.0,
         }
     } else {

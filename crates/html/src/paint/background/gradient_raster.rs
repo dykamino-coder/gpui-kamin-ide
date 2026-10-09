@@ -1,7 +1,7 @@
 //! Gradient rasterization retains CSS stop lengths at the mask device resolution.
 
-use crate::style::values::color_space::gradient_colour_at as colour_at;
 use super::{angle_fraction, place_stops, rasterize_cross_fade, wrap_repeat};
+use crate::style::values::color_space::gradient_colour_at as colour_at;
 use gpui::RenderImage;
 use std::sync::Arc;
 

@@ -24,8 +24,9 @@ pub(super) fn complete(raw: &str) -> Cow<'_, str> {
                 // A newline is a bad-string token, not implicit EOF termination.
                 return Cow::Borrowed(raw);
             };
-            let closed =
-                end > at + 1 && raw[..end].ends_with(ch) && backslashes(&raw[..end - 1]).is_multiple_of(2);
+            let closed = end > at + 1
+                && raw[..end].ends_with(ch)
+                && backslashes(&raw[..end - 1]).is_multiple_of(2);
             if !closed {
                 quote = Some(ch);
                 // A terminal backslash in a string contributes no character.
@@ -53,10 +54,9 @@ pub(super) fn complete(raw: &str) -> Cow<'_, str> {
             '(' => stack.push(')'),
             '[' => stack.push(']'),
             '{' => stack.push('}'),
-            ')' | ']' | '}'
-                if stack.pop() != Some(ch) => {
-                    return Cow::Borrowed(raw);
-                }
+            ')' | ']' | '}' if stack.pop() != Some(ch) => {
+                return Cow::Borrowed(raw);
+            }
             _ => {}
         }
         at += ch.len_utf8();

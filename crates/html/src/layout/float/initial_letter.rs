@@ -33,7 +33,11 @@ use crate::text::text_box::{blank_text, normal_fraction};
 /// первый текстовый узел блока (перед ним допустимы только флоаты и пустой
 /// текст), ширина коробки — продвижение нуля семейства (у Ahem равно
 /// кеглю; текстовым шрифтам нужен щуп продвижения знака — шаг 2).
-pub(crate) fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts: &RenderOpts) -> Vec<Node> {
+pub(crate) fn initial_letter_float(
+    nodes: Vec<Node>,
+    inherited: &Computed,
+    opts: &RenderOpts,
+) -> Vec<Node> {
     let Some(first) = inherited.first_letter.as_deref() else {
         return nodes;
     };
@@ -162,10 +166,7 @@ pub(crate) fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts:
     // (`tab-size` × ширина `0`, css-text-3 §tab-size); пробел меряется той же
     // шириной — точной ширины пробела здесь нет, у Ahem они равны.
     let lead = &text[..pos];
-    let lead_w = if !vert
-        && inherited.keep_spaces == Some(true)
-        && !lead.contains(['\n', '\r'])
-    {
+    let lead_w = if !vert && inherited.keep_spaces == Some(true) && !lead.contains(['\n', '\r']) {
         let space = crate::text::metrics::ch_ex_px(&family, font_px).0;
         let stop = match inherited.tab_size_len {
             Some(Len::Px(v)) if v > 0.0 => v,
@@ -258,7 +259,12 @@ pub(crate) fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts:
     };
     let mut out: Vec<Node> = Vec::with_capacity(nodes.len() + 2 + shift as usize);
     out.extend(nodes[..at].iter().cloned());
-    let mut letter = synthetic("div", style, vec![Node::Text(text[pos..end].to_string())], false);
+    let mut letter = synthetic(
+        "div",
+        style,
+        vec![Node::Text(text[pos..end].to_string())],
+        false,
+    );
     // Метка буквицы: её место — исключение строки (css-inline-3
     // §initial-letter, Blink `initial_letter_utils.cc`), а не флоат полос:
     // измеряемый хост ставит её `FloatBands::add_initial_letter` (шаг F11);

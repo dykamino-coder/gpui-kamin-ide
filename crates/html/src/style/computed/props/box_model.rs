@@ -85,9 +85,7 @@ impl Computed {
                     return;
                 }
                 let parsed = Sides::shorthand(v);
-                let neg = |l: &Option<Len>| {
-                    matches!(l, Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if *n < 0.0)
-                };
+                let neg = |l: &Option<Len>| matches!(l, Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if *n < 0.0);
                 if neg(&parsed.top)
                     || neg(&parsed.right)
                     || neg(&parsed.bottom)
@@ -134,7 +132,8 @@ impl Computed {
                 ) {
                     return;
                 }
-                self.padding.right = crate::style::values::value::fold_zero_percentage(Len::parse(v));
+                self.padding.right =
+                    crate::style::values::value::fold_zero_percentage(Len::parse(v));
                 self.side_seq.padding[1] = self.decl_seq;
             }
             "padding-bottom" => {
@@ -153,7 +152,8 @@ impl Computed {
                 ) {
                     return;
                 }
-                self.padding.bottom = crate::style::values::value::fold_zero_percentage(Len::parse(v));
+                self.padding.bottom =
+                    crate::style::values::value::fold_zero_percentage(Len::parse(v));
                 self.side_seq.padding[2] = self.decl_seq;
             }
             "padding-left" => {
@@ -172,7 +172,8 @@ impl Computed {
                 ) {
                     return;
                 }
-                self.padding.left = crate::style::values::value::fold_zero_percentage(Len::parse(v));
+                self.padding.left =
+                    crate::style::values::value::fold_zero_percentage(Len::parse(v));
                 self.side_seq.padding[3] = self.decl_seq;
             }
             // Физическая запись ГАСИТ логический слот той же стороны: разбор
@@ -206,7 +207,8 @@ impl Computed {
                 // её сама (css-values-4 §10.9), а вклад решает долю от нуля
                 // (css-sizing-3 §5.2.1, `calc-margins-*`). Вертикальные поля
                 // — по-прежнему `parse`: смесь там закрыла бы схлопывание.
-                self.margin.right = crate::style::values::value::fold_zero_percentage(Len::parse_mixed(v));
+                self.margin.right =
+                    crate::style::values::value::fold_zero_percentage(Len::parse_mixed(v));
                 self.side_seq.margin[1] = self.decl_seq;
             }
             "margin-bottom" => {
@@ -223,7 +225,8 @@ impl Computed {
                     return;
                 }
                 // Смесь «доля ± точки» доживает (см. `margin-right`).
-                self.margin.left = crate::style::values::value::fold_zero_percentage(Len::parse_mixed(v));
+                self.margin.left =
+                    crate::style::values::value::fold_zero_percentage(Len::parse_mixed(v));
                 self.side_seq.margin[3] = self.decl_seq;
             }
 
@@ -260,10 +263,18 @@ impl Computed {
                     target.seq[1] = seq;
                 }
             }
-            "padding-inline-start" | "padding-inline-end" | "padding-block-start"
-            | "padding-block-end" | "margin-inline-start" | "margin-inline-end"
-            | "margin-block-start" | "margin-block-end" | "inset-inline-start"
-            | "inset-inline-end" | "inset-block-start" | "inset-block-end" => {
+            "padding-inline-start"
+            | "padding-inline-end"
+            | "padding-block-start"
+            | "padding-block-end"
+            | "margin-inline-start"
+            | "margin-inline-end"
+            | "margin-block-start"
+            | "margin-block-end"
+            | "inset-inline-start"
+            | "inset-inline-end"
+            | "inset-block-start"
+            | "inset-block-end" => {
                 let seq = self.decl_seq;
                 let parsed = Len::parse(v);
                 let logical = self.logical();
@@ -324,10 +335,8 @@ impl Computed {
                 }
             }
             "frame-sizing" => {
-                self.frame_sizing_height = matches!(
-                    v.trim().to_ascii_lowercase().as_str(),
-                    "content-height"
-                );
+                self.frame_sizing_height =
+                    matches!(v.trim().to_ascii_lowercase().as_str(), "content-height");
             }
             _ => *hit = false,
         }

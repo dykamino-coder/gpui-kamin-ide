@@ -1,15 +1,15 @@
 //! `Computed::apply_one` по группам свойств: у каждого ключа ровно одна группа.
 
-mod display_flex;
-mod grid;
-mod box_model;
-pub(super) mod border;
-mod position;
 mod background;
-mod mask_clip;
+pub(super) mod border;
+mod box_model;
+mod display_flex;
+mod effects;
 mod font;
+mod grid;
+mod mask_clip;
+mod multicol;
+mod position;
 mod text;
 mod text_decor;
-mod multicol;
 mod transform;
-mod effects;

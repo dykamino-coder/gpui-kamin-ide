@@ -47,9 +47,10 @@ impl Computed {
             return None;
         }
         if let Some((x, y)) = self.translate
-            && !matches!((x, y), (Len::Px(_), Len::Px(_))) {
-                return None;
-            }
+            && !matches!((x, y), (Len::Px(_), Len::Px(_)))
+        {
+            return None;
+        }
         self.transform
             .as_ref()?
             .pure_px_shift()
@@ -144,8 +145,7 @@ impl Computed {
         // перевод здесь сложился бы с ним в поворот на месте
         // (`table-cell-align-005`, `table-cell-valign-003` — замеренный
         // откат в шапке функции).
-        let vertical =
-            self.vertical == Some(true) && (parent_vertical == Some(true) || !is_cell);
+        let vertical = self.vertical == Some(true) && (parent_vertical == Some(true) || !is_cell);
         let rtl = self.rtl == Some(true);
         // Стороны (поля/отступы/края) переставляются ПО-НАСТОЯЩЕМУ: блочный
         // поток вертикального письма собирается транспонированным рядом
@@ -472,7 +472,9 @@ impl Computed {
                 self.font_size = Some(Len::Px(k * ex));
             }
             Some(Len::Ic(k)) => {
-                self.font_size = Some(Len::Px(k * crate::text::metrics::ic_px(&family, parent_font_px)));
+                self.font_size = Some(Len::Px(
+                    k * crate::text::metrics::ic_px(&family, parent_font_px),
+                ));
             }
             _ => {}
         }

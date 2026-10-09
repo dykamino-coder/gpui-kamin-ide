@@ -7,7 +7,6 @@ impl Computed {
     #[allow(unused_variables)]
     pub(crate) fn apply_position(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
         match key {
-
             "position" => {
                 self.position = match v {
                     "absolute" => Some(Position::Absolute),
@@ -164,13 +163,18 @@ impl Computed {
                     // rounded to the nearest integer, halves toward +∞
                     // (`calc-positive-fraction-001`: `calc(3 / 2)` → 2).
                     .or_else(|| {
-                        (!v.trim_start().starts_with(|c: char| c.is_ascii_digit() || c == '-' || c == '+'))
-                            .then(|| crate::style::values::value::number(v))
-                            .flatten()
-                            .map(|x| {
-                                let r = if x.is_nan() { 0.0 } else { (x as f64 + 0.5).floor() };
-                                r.clamp(i32::MIN as f64, i32::MAX as f64) as i32
-                            })
+                        (!v.trim_start()
+                            .starts_with(|c: char| c.is_ascii_digit() || c == '-' || c == '+'))
+                        .then(|| crate::style::values::value::number(v))
+                        .flatten()
+                        .map(|x| {
+                            let r = if x.is_nan() {
+                                0.0
+                            } else {
+                                (x as f64 + 0.5).floor()
+                            };
+                            r.clamp(i32::MIN as f64, i32::MAX as f64) as i32
+                        })
                     });
             }
             "float" => {

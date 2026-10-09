@@ -13,9 +13,10 @@ pub(super) fn expand_xhtml_self_closing(html: &str) -> std::borrow::Cow<'_, str>
     let xhtml = content::is_xhtml(html);
     // `<pre>`/`<listing>`/`<textarea>` в XHTML тоже требуют правки (см. ниже),
     // даже если самозакрытых тегов в документе нет.
-    let lf_tags = ["<pre", "<listing", "<textarea"].iter().any(|t| html.contains(t));
-    if !xhtml
-        || (!html.contains("/>") && !lf_tags && !html.contains("<!--") && !html.contains('&'))
+    let lf_tags = ["<pre", "<listing", "<textarea"]
+        .iter()
+        .any(|t| html.contains(t));
+    if !xhtml || (!html.contains("/>") && !lf_tags && !html.contains("<!--") && !html.contains('&'))
     {
         return std::borrow::Cow::Borrowed(html);
     }
@@ -146,7 +147,9 @@ pub(super) fn expand_xhtml_self_closing(html: &str) -> std::borrow::Cow<'_, str>
                             "quot" => Some('"'),
                             "apos" => Some('\''),
                             r if r.starts_with("#x") || r.starts_with("#X") => {
-                                u32::from_str_radix(&r[2..], 16).ok().and_then(char::from_u32)
+                                u32::from_str_radix(&r[2..], 16)
+                                    .ok()
+                                    .and_then(char::from_u32)
                             }
                             r if r.starts_with('#') => {
                                 r[1..].parse::<u32>().ok().and_then(char::from_u32)

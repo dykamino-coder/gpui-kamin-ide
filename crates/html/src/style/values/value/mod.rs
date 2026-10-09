@@ -170,7 +170,6 @@ pub fn root_line_px() -> f32 {
 }
 
 impl Len {
-
     pub fn parse(raw: &str) -> Option<Self> {
         let s = raw.trim();
         if s.eq_ignore_ascii_case("auto") {
@@ -250,7 +249,9 @@ impl Len {
         {
             return parse_anchor_minmax(s, lower.starts_with("max("));
         }
-        if lower.starts_with("calc(") && (lower.contains("anchor(") || lower.contains("anchor-size(")) {
+        if lower.starts_with("calc(")
+            && (lower.contains("anchor(") || lower.contains("anchor-size("))
+        {
             return parse_anchor_calc(s);
         }
         // `min()`/`max()`/`clamp()` на верхнем уровне (css-values-4 §10.2):
@@ -426,7 +427,10 @@ impl Color {
         // `light-dark(светлый, тёмный)` (css-color-5 §light-dark): вариант по
         // используемой схеме узла. Прежде функция не разбиралась, и
         // объявление пропадало целиком.
-        if s.get(..11).is_some_and(|h| h.eq_ignore_ascii_case("light-dark(")) && s.ends_with(')') {
+        if s.get(..11)
+            .is_some_and(|h| h.eq_ignore_ascii_case("light-dark("))
+            && s.ends_with(')')
+        {
             let args = crate::style::css::split_args(&s[11..s.len() - 1]);
             if args.len() == 2 {
                 return Self::parse(args[usize::from(dark_scheme())]);
@@ -1404,7 +1408,11 @@ fn fold_simple_calc(s: &str) -> String {
         let folded = ['*', '/', '+', '-'].iter().find_map(|op| {
             let (a, b) = expr.split_once(&format!(" {op} "))?;
             let ((x, ux), (y, uy)) = (split(a)?, split(b)?);
-            let unit = if ux.is_empty() { uy.clone() } else { ux.clone() };
+            let unit = if ux.is_empty() {
+                uy.clone()
+            } else {
+                ux.clone()
+            };
             if !ux.is_empty() && !uy.is_empty() && matches!(op, '*' | '/') {
                 return None;
             }

@@ -2,12 +2,15 @@
 // owner: A
 
 use crate::layout::writing_mode::orthogonal_measure;
-use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window, px};
+use gpui::{
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
+    LayoutId, Pixels, Window, px,
+};
 
+mod combined_geometry;
 pub(crate) mod combined_text;
 mod vertical_line_baseline;
 mod vertical_style;
-mod combined_geometry;
 
 /// Строка вертикального письма: `writing-mode: vertical-rl` и `vertical-lr`.
 ///
@@ -351,9 +354,18 @@ impl Element for VerticalText {
             gpui::AvailableSpace::MaxContent,
         );
         self.natural = if let Some(constraint) = self.inline_constraint {
-            orthogonal_measure::measure(self.child.as_mut().unwrap(), constraint, self.inline_keyword, window, cx)
+            orthogonal_measure::measure(
+                self.child.as_mut().unwrap(),
+                constraint,
+                self.inline_keyword,
+                window,
+                cx,
+            )
         } else {
-            self.child.as_mut().unwrap().layout_as_root_unrounded(space, window, cx)
+            self.child
+                .as_mut()
+                .unwrap()
+                .layout_as_root_unrounded(space, window, cx)
         };
         // Внутренний строчный размер повёрнутого текста — длина его самой
         // длинной строки (`natural.width` горизонтального абзаца до
@@ -373,10 +385,11 @@ impl Element for VerticalText {
         // видит (text-combine-upright-line-breaking-rules-001).
         let claim = if self.inline_keyword.is_some() {
             self.natural.height
-        } else { self
-            .key
-            .and_then(|k| VT_MEASURED.with(|c| c.borrow().get(&k).copied()))
-            .unwrap_or(self.natural.height) };
+        } else {
+            self.key
+                .and_then(|k| VT_MEASURED.with(|c| c.borrow().get(&k).copied()))
+                .unwrap_or(self.natural.height)
+        };
         style.size.width = gpui::Length::Definite(gpui::DefiniteLength::Absolute(
             gpui::AbsoluteLength::Pixels(claim),
         ));

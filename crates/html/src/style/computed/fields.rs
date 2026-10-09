@@ -1309,8 +1309,12 @@ pub struct Computed {
     pub shape_threshold: Option<f32>,
     /// Вырезы обтекания для абзацев ПОД этим элементом: формы слева и
     /// справа от верха первого абзаца (заполняет сборка shape-flow).
-    pub flow_shapes:
-        Option<std::sync::Arc<(Vec<crate::layout::float::shapes::FloatShape>, Vec<crate::layout::float::shapes::FloatShape>)>>,
+    pub flow_shapes: Option<
+        std::sync::Arc<(
+            Vec<crate::layout::float::shapes::FloatShape>,
+            Vec<crate::layout::float::shapes::FloatShape>,
+        )>,
+    >,
     /// `mask-position`: смещение плитки; доля — от свободного места
     /// (коробка минус плитка), как у `background-position`.
     pub mask_pos: Option<(Len, Len)>,

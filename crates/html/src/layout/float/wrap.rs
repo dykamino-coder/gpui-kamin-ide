@@ -11,7 +11,10 @@ use crate::layout::float::initial_letter::{inline_float_host, px_margin_w, split
 use crate::layout::float::{band_clearance, float_clear_scope, inline_floats};
 use crate::layout::positioned::static_position::at_static_position;
 use crate::layout::writing_mode::native_vertical;
-use crate::render::{inline_level, inline_level_box, is_blank, out_of_flow, own_context, phantom_inline, replaced_inline};
+use crate::render::{
+    inline_level, inline_level_box, is_blank, out_of_flow, own_context, phantom_inline,
+    replaced_inline,
+};
 use crate::style::computed::{Align, Computed, Display, FlexDir};
 use crate::style::values::value::Len;
 use crate::text::text_box::blank_text;
@@ -264,9 +267,7 @@ pub(crate) fn wrap_floats(
                     .flatten()
                     .map(|(h, n, l)| (h, n, Some(text_at), l))
             })
-            .or_else(|| {
-                band_host(&nodes, i, cb_width, &[]).map(|(h, n, l)| (h, n, None, l))
-            })
+            .or_else(|| band_host(&nodes, i, cb_width, &[]).map(|(h, n, l)| (h, n, None, l)))
             // Статический гейт не сошёлся из-за НЕИЗВЕСТНЫХ стилю размеров
             // (ширина содержащего блока, shrink-to-fit флоата, коробка
             // своего контекста без размеров) — их меряет раскладка
@@ -299,9 +300,9 @@ pub(crate) fn wrap_floats(
             // Внепоточные соседи (абсолюты, флоаты) строк не образуют
             // (`below-float3`: абсолют перед флоатом).
             if host.attr("bands") == Some("m")
-                && out.iter().all(|n| {
-                    is_blank(n) || matches!(n, Node::Element(c) if out_of_flow(&c.style))
-                })
+                && out
+                    .iter()
+                    .all(|n| is_blank(n) || matches!(n, Node::Element(c) if out_of_flow(&c.style)))
             {
                 host.first_line = BAND_FL.with(|f| f.borrow().clone());
             }
@@ -501,8 +502,7 @@ pub(crate) fn wrap_floats(
             // рядом, каким бы большим поле ни было
             // (`negative-clearance-after-adjoining-float`: поле 200 при
             // флоате 50 — коробка обязана стоять на 50, а не на 200).
-            let adjoining =
-                cb_top_open && out.iter().all(is_blank) && rest.iter().all(is_blank);
+            let adjoining = cb_top_open && out.iter().all(is_blank) && rest.iter().all(is_blank);
             if !adjoining && laid_out {
                 rest.push(Node::Element(Element {
                     list_item: None,
@@ -524,9 +524,10 @@ pub(crate) fn wrap_floats(
                 clearance_strut = true;
             }
             if (adjoining || clearance_strut)
-                && let Some(Node::Element(next)) = nodes.get_mut(j) {
-                    next.style.margin.top = Some(Len::Px(0.0));
-                }
+                && let Some(Node::Element(next)) = nodes.get_mut(j)
+            {
+                next.style.margin.top = Some(Len::Px(0.0));
+            }
         }
         // Плавающий блок, рядом с которым НЕЧЕМУ обтекать, рядом не нуждается:
         // он остаётся обычным блоком потока. Ряд в этом случае только вредил —
@@ -607,10 +608,7 @@ pub(crate) fn wrap_floats(
                 // одиночным блоком со своей стороной ниже. Иначе ряд держал
                 // `float: left` у верха колонки `sideways-lr`, где line-left —
                 // низ (`shape-outside-*-026-ref`: пробелы вокруг флоата).
-                if side < 0
-                    && !lead_atoms
-                    && out[run_at..].iter().any(|n| !is_blank(n))
-                {
+                if side < 0 && !lead_atoms && out[run_at..].iter().any(|n| !is_blank(n)) {
                     let row: Vec<Node> = out.split_off(run_at);
                     let mut children = vec![Node::Element(lone)];
                     children.extend(row);
@@ -740,7 +738,10 @@ pub(crate) fn wrap_floats(
             // Whitespace between the run and a preceding block start
             // collapses away (CSS 2.1 §16.6.1); left here it became its own
             // line above the shaped floats (`shape-outside-001`: +16px).
-            if out.iter().all(|n| matches!(n, Node::Text(t) if blank_text(t))) {
+            if out
+                .iter()
+                .all(|n| matches!(n, Node::Text(t) if blank_text(t)))
+            {
                 out.clear();
             }
             let mut host = Element {
@@ -815,10 +816,14 @@ pub(crate) fn wrap_floats(
                     _ => single = false,
                 }
             }
-            let run_before = out.iter().rev().find(|n| !is_blank(n)).is_some_and(|n| match n {
-                Node::Element(e) => inline_level_box(e),
-                Node::Text(_) => true,
-            });
+            let run_before = out
+                .iter()
+                .rev()
+                .find(|n| !is_blank(n))
+                .is_some_and(|n| match n {
+                    Node::Element(e) => inline_level_box(e),
+                    Node::Text(_) => true,
+                });
             match (single && !run_before, only, floaters.first()) {
                 (true, Some(tail), Some(f)) => covered_flow_tail(f, tail, em),
                 _ => None,

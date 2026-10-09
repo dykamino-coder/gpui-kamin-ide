@@ -57,7 +57,11 @@ struct TableBands {
 }
 
 /// Повтор секций для стопки: полосы `flow::Repeat` и геометрия укладки.
-type RepeatSpec = (Option<(f32, f32)>, Option<(f32, f32)>, crate::layout::fragment::types::RepeatGeom);
+type RepeatSpec = (
+    Option<(f32, f32)>,
+    Option<(f32, f32)>,
+    crate::layout::fragment::types::RepeatGeom,
+);
 
 /// Повтор шапки/подвала таблицы-ребёнка стопки колонок (css-tables-3
 /// §repeated-headers; Blink `table_layout_algorithm.cc:1082-1150`): секция
@@ -116,10 +120,7 @@ fn table_shape_bands(c: &Element, depth: u8, cx: ShapeCx, bands: &mut TableBands
         Some(Len::Px(v)) => Some(*v),
         _ => None,
     };
-    if depth == 0
-        || c.style.vertical == Some(true)
-        || c.style.border_collapse == Some(true)
-    {
+    if depth == 0 || c.style.vertical == Some(true) || c.style.border_collapse == Some(true) {
         return None;
     }
     // Заданная высота таблицы БОЛЬШЕ не повод отказаться от меры: она просто
@@ -253,19 +254,24 @@ fn table_shape_bands(c: &Element, depth: u8, cx: ShapeCx, bands: &mut TableBands
     // `InitialBreakBefore`/`FinalBreakAfter`; остаётся объединение по всем ячейкам.
     fn row_avoid(row: &Element, last: bool) -> bool {
         edge_avoid(row, last)
-            || row.children.iter().filter(|n| !is_blank(n)).any(|n| {
-                matches!(n, Node::Element(cell) if is_cell(cell) && edge_avoid(cell, last))
-            })
+            || row.children.iter().filter(|n| !is_blank(n)).any(
+                |n| matches!(n, Node::Element(cell) if is_cell(cell) && edge_avoid(cell, last)),
+            )
     }
     // Принудительные `break-before`/`break-after` ячеек — тем же слиянием на
     // ряд (Blink `table_row_layout_algorithm.cc:169-177`,
     // `JoinFragmentainerBreakValues`): `break-before-expansion-001` — ячейка
     // второго ряда с `break-before: column`.
     fn row_force(row: &Element, last: bool) -> bool {
-        (if last { row.style.break_after_force } else { row.style.break_before_force })
-            || row.children.iter().filter(|n| !is_blank(n)).any(|n| {
-                matches!(n, Node::Element(cell) if is_cell(cell) && edge_break(cell, last))
-            })
+        (if last {
+            row.style.break_after_force
+        } else {
+            row.style.break_before_force
+        }) || row
+            .children
+            .iter()
+            .filter(|n| !is_blank(n))
+            .any(|n| matches!(n, Node::Element(cell) if is_cell(cell) && edge_break(cell, last)))
     }
     // Плоский список рядов: ряд, № группы, avoid группы, разрывы (свои и
     // группы — на первом/последнем её ряду), запреты разрыва на КРАЯХ ряда
@@ -623,7 +629,11 @@ fn table_shape_bands(c: &Element, depth: u8, cx: ShapeCx, bands: &mut TableBands
                 // прокрутка, замещаемая) — сплошной диапазон во всю высоту,
                 // как у любого ребёнка блочной стопки (`shape_full`, ветка
                 // `solid_box`).
-                let csolid = if solid_box(cap) { vec![(0.0, ch)] } else { csolid };
+                let csolid = if solid_box(cap) {
+                    vec![(0.0, ch)]
+                } else {
+                    csolid
+                };
                 (
                     ch,
                     cmt,
@@ -661,7 +671,11 @@ fn table_shape_bands(c: &Element, depth: u8, cx: ShapeCx, bands: &mut TableBands
             bands.box_top += start;
             bands.box_end += start;
         }
-        wcuts.extend(icuts.into_iter().map(|(need, nf)| (start + need, start + nf)));
+        wcuts.extend(
+            icuts
+                .into_iter()
+                .map(|(need, nf)| (start + need, start + nf)),
+        );
         wforced.extend(iforced.into_iter().map(|f| start + f));
         wsolid.extend(isolid.into_iter().map(|(a, b)| (start + a, start + b)));
         wy = start + ih;

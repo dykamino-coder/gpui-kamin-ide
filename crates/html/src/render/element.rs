@@ -242,7 +242,10 @@ pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> A
             // строится из сырого, и `apply` иначе выбрасывал `height: %`
             // (см. строчный рукав `"img"` в `atom_element`; ячейка и лунки —
             // свои пути).
-            if !matches!(inherited.display, Some(Display::TableCell) | Some(Display::GridLanes)) {
+            if !matches!(
+                inherited.display,
+                Some(Display::TableCell) | Some(Display::GridLanes)
+            ) {
                 copy.style.cb_height_def = merged.cb_height_def;
             }
             // Единицы окна — в точки, как у строчной картинки.
@@ -404,8 +407,6 @@ pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> A
         // переносится, хотя абзац — нет. Отдельный рисователь преформата
         // правил куска не знает, поэтому такой случай уходит в обычную
         // строчную раскладку (`white-space-pre-031`).
-        _ => {
-            generic_box(e, merged, inherited, opts, outer_row)
-        }
+        _ => generic_box(e, merged, inherited, opts, outer_row),
     }
 }

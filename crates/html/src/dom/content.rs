@@ -116,7 +116,9 @@ pub(crate) fn content_text(
             crate::style::computed::ContentItem::Image(_) => {}
             crate::style::computed::ContentItem::Counter(name, style_name) => {
                 let value = counters.value_of(name);
-                text.push_str(&crate::style::generated::counter_style::repr(value, style_name));
+                text.push_str(&crate::style::generated::counter_style::repr(
+                    value, style_name,
+                ));
             }
             crate::style::computed::ContentItem::Counters(name, sep, style_name) => {
                 // Вся цепочка области — от внешнего счётчика к внутреннему,
@@ -128,7 +130,9 @@ pub(crate) fn content_text(
                     .collect();
                 text.push_str(&chain.join(sep));
             }
-            crate::style::computed::ContentItem::Attr(..) => unreachable!("attributes were substituted"),
+            crate::style::computed::ContentItem::Attr(..) => {
+                unreachable!("attributes were substituted")
+            }
         }
     }
     text

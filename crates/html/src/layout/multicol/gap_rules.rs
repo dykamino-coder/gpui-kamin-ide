@@ -15,8 +15,8 @@ pub(crate) fn gap_rule_spec(
     merged: &Computed,
     opts: &RenderOpts,
 ) -> Option<crate::paint::gap_rules::GapRuleSpec> {
-    use crate::style::computed::{FlexDir, GapInset, GapList};
     use crate::paint::gap_rules::{GapAxisRule, GapLayout};
+    use crate::style::computed::{FlexDir, GapInset, GapList};
     if !matches!(
         merged.display,
         Some(Display::Flex)
@@ -96,7 +96,11 @@ pub(crate) fn gap_rule_spec(
             brk: brk.unwrap_or(1),
             inset,
             visibility: visibility.unwrap_or(0),
-            double: if column { s.column_rule_double } else { s.row_rule_double },
+            double: if column {
+                s.column_rule_double
+            } else {
+                s.row_rule_double
+            },
         })
     };
     let col = axis(true);
@@ -188,8 +192,7 @@ pub(crate) fn gap_rule_spec(
     // `*-rl`, колонки (y) — снизу вверх при `sideways-lr`, и `rtl` это
     // переворачивает (эталоны `grid-gap-decorations-multi-value-writing-mode`).
     let rtl = merged.rtl == Some(true);
-    let sideways_lr =
-        vertical && merged.sideways == Some(true) && merged.vertical_rl != Some(true);
+    let sideways_lr = vertical && merged.sideways == Some(true) && merged.vertical_rl != Some(true);
     let (rev_x, rev_y) = if vertical {
         (merged.vertical_rl == Some(true), sideways_lr != rtl)
     } else {

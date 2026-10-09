@@ -1,19 +1,24 @@
 //! Анонимные объекты таблицы.
 // owner: A
 
-use crate::style::cascade::inherit::inherit;
 use crate::dom::{Element, Node};
 use crate::layout::positioned::relative::relative_shift;
 use crate::layout::table::columns::col_role;
 use crate::layout::table::{is_cell, table_roles};
 use crate::render::is_blank;
+use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 
 /// Сдвиг, фон и СТИЛЬ ГРУППЫ строк: письмо/шрифт с `<tbody>` наследуются в
 /// ряды и ячейки, хотя своей коробки у группы нет (ch-units-vrl-006).
 /// Сдвиг, фон и САМА ГРУППА рядов: от неё нужны и наследуемый стиль, и
 /// `node_id` с рамками — кромки группы строит ряд.
-pub(super) type RowCarry<'a> = (f32, f32, Option<crate::style::values::value::Color>, Option<&'a Element>);
+pub(super) type RowCarry<'a> = (
+    f32,
+    f32,
+    Option<crate::style::values::value::Color>,
+    Option<&'a Element>,
+);
 
 pub(super) fn collect_rows<'a>(
     nodes: &'a [Node],
@@ -101,7 +106,8 @@ fn anon_role(n: &Node) -> Option<bool> {
     if e.style.float.is_some_and(|f| f != 0)
         || matches!(
             e.style.position,
-            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute)
+                | Some(crate::style::computed::Position::Fixed)
         )
     {
         return None;
@@ -236,11 +242,7 @@ pub(crate) fn anon_element(tag: &str, children: Vec<Node>) -> Element {
 /// одну анонимную ячейку, а вложенный ряд выталкивается ОТДЕЛЬНЫМ рядом
 /// после текущего.
 pub(super) fn fixup_row_children(row: &Element) -> Vec<Node> {
-    fn walk(
-        nodes: &[Node],
-        cells: &mut Vec<Node>,
-        run: &mut Vec<Node>,
-    ) {
+    fn walk(nodes: &[Node], cells: &mut Vec<Node>, run: &mut Vec<Node>) {
         for child in nodes {
             match child {
                 Node::Element(el) if el.style.display == Some(Display::Contents) => {

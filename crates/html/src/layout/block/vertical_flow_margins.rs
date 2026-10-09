@@ -33,7 +33,8 @@ mod tests {
     fn items() -> Vec<Node> {
         (0..3)
             .map(|_| {
-                let mut element = crate::layout::table::anon::anon_element("div", vec![Node::Text("É".into())]);
+                let mut element =
+                    crate::layout::table::anon::anon_element("div", vec![Node::Text("É".into())]);
                 element.style.margin.left = Some(Len::Px(12.0));
                 element.style.margin.right = Some(Len::Px(6.0));
                 Node::Element(element)

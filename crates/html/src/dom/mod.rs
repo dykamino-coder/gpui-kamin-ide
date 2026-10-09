@@ -6,18 +6,18 @@
 //! Наша часть — превратить его дерево в своё: с каскадом и без узлов, которые
 //! ничего не рисуют.
 
+mod display_inheritance;
 pub mod encoding;
-mod subgrid_axes;
 mod grid_static_position;
 mod replaced_display;
-mod display_inheritance;
+mod subgrid_axes;
 use crate::dom::display_inheritance::resolve_display_inherit;
-mod initial_pseudos;
 mod containment;
-pub(super) mod language;
 mod counter_decls;
-mod presentational_hints;
 mod float_tail;
+mod initial_pseudos;
+pub(super) mod language;
+mod presentational_hints;
 pub(crate) use counter_decls::{
     apply_counter_decls, apply_value_hint, counter_snapshot, inherit_counter_decls,
 };
@@ -28,10 +28,10 @@ use crate::style::computed::Computed;
 use crate::style::css::{Decls, Media, Rule, parse_keyframes, parse_stylesheet_media};
 use crate::style::select::has::{HAS_MARKS, HasArg, collect_has_args, mark_has, parse_has_arg};
 use crate::style::select::{QUIRKS, quirks};
+use html5ever::tendril::TendrilSink;
 use markup5ever_rcdom::{Handle, NodeData, RcDom};
 use std::collections::HashMap;
 use std::rc::Rc;
-use html5ever::tendril::TendrilSink;
 pub(super) mod xhtml;
 use crate::dom::xhtml::*;
 pub(super) mod fixup_tree;
@@ -116,13 +116,79 @@ pub(super) const INLINE_TAGS: &[&str] = &[
 /// становилось всё, чего нет в `INLINE_TAGS`, и `<foo>` внутри абзаца рвал
 /// строку (`line-breaking-font-size-zero-001`).
 const BLOCK_TAGS: &[&str] = &[
-    "html", "body", "address", "blockquote", "center", "div", "figure", "figcaption", "footer",
-    "form", "header", "hr", "legend", "listing", "main", "p", "plaintext", "pre", "xmp", "article",
-    "aside", "h1", "h2", "h3", "h4", "h5", "h6", "hgroup", "nav", "section", "search", "dir", "dd",
-    "dl", "dt", "ol", "ul", "menu", "li", "table", "caption", "colgroup", "col", "thead", "tbody",
-    "tfoot", "tr", "td", "th", "fieldset", "details", "summary", "dialog", "optgroup", "option",
-    "frameset", "frame", "noframes", "head", "title", "meta", "link", "base", "script", "style",
-    "noscript", "template", "slot", "map", "area", "source", "track", "param",
+    "html",
+    "body",
+    "address",
+    "blockquote",
+    "center",
+    "div",
+    "figure",
+    "figcaption",
+    "footer",
+    "form",
+    "header",
+    "hr",
+    "legend",
+    "listing",
+    "main",
+    "p",
+    "plaintext",
+    "pre",
+    "xmp",
+    "article",
+    "aside",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "hgroup",
+    "nav",
+    "section",
+    "search",
+    "dir",
+    "dd",
+    "dl",
+    "dt",
+    "ol",
+    "ul",
+    "menu",
+    "li",
+    "table",
+    "caption",
+    "colgroup",
+    "col",
+    "thead",
+    "tbody",
+    "tfoot",
+    "tr",
+    "td",
+    "th",
+    "fieldset",
+    "details",
+    "summary",
+    "dialog",
+    "optgroup",
+    "option",
+    "frameset",
+    "frame",
+    "noframes",
+    "head",
+    "title",
+    "meta",
+    "link",
+    "base",
+    "script",
+    "style",
+    "noscript",
+    "template",
+    "slot",
+    "map",
+    "area",
+    "source",
+    "track",
+    "param",
 ];
 
 /// Теги, содержимое которых не рисуется НИКОГДА (код и стили).

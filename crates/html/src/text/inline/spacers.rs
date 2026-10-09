@@ -1,8 +1,8 @@
 //! Спейсеры инлайн-коробок: стили, рамки, края, наложения.
 
-use crate::text::inline::*;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Color, Len};
+use crate::text::inline::*;
 use gpui::AnyElement;
 
 /// Слой знака-распорки: ширину ему даёт трекинг на своём куске, а всё
@@ -42,7 +42,11 @@ pub(super) fn padding_spacer_style(merged: &Computed, advance: f32, painted: boo
 /// виден фон предка (§8.3 «margin properties … are always transparent»).
 /// Рамку распорке поля не даём: полосу с рамкой уже мерили дважды, обе потери
 /// в `bidi-*` (см. запись у `uniform_border`).
-pub(super) fn margin_spacer_style(merged: &Computed, inherited: &Computed, advance: f32) -> Computed {
+pub(super) fn margin_spacer_style(
+    merged: &Computed,
+    inherited: &Computed,
+    advance: f32,
+) -> Computed {
     let mut style = spacer_style(merged, advance);
     style.inline_bg = inherited.inline_bg;
     style
@@ -262,10 +266,22 @@ pub fn overlays(pieces: Vec<Piece>) -> Vec<(usize, AnyElement, OverlayAt)> {
     for p in pieces {
         match p {
             Piece::Text { text, .. } => at += text.len(),
-            Piece::Overlay(_, OverlayAt { cb_marker: Some((id, true)), .. }) => {
+            Piece::Overlay(
+                _,
+                OverlayAt {
+                    cb_marker: Some((id, true)),
+                    ..
+                },
+            ) => {
                 marks.push((id, at, at));
             }
-            Piece::Overlay(_, OverlayAt { cb_marker: Some((id, false)), .. }) => {
+            Piece::Overlay(
+                _,
+                OverlayAt {
+                    cb_marker: Some((id, false)),
+                    ..
+                },
+            ) => {
                 if let Some(m) = marks.iter_mut().find(|m| m.0 == id) {
                     m.2 = at;
                 }

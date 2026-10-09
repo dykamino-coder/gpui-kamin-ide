@@ -16,10 +16,7 @@ use crate::style::values::value::Len;
 /// неизвестны или не все в точках.
 pub(crate) fn grid_rows_px(c: &Computed) -> Option<f32> {
     use crate::style::computed::{Track, TrackSize};
-    if !matches!(
-        c.display,
-        Some(Display::Grid) | Some(Display::InlineGrid)
-    ) {
+    if !matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid)) {
         return None;
     }
     let rows = c.grid_rows.as_ref()?;
@@ -46,10 +43,7 @@ pub(crate) fn grid_rows_px(c: &Computed) -> Option<f32> {
 /// §12.7). Иначе — пусто: дорожек не знаем, точек не даём.
 pub(super) fn grid_row_gaps(c: &Computed, inner_h: f32) -> Vec<(f32, f32)> {
     use crate::style::computed::{Track, TrackSize};
-    if !matches!(
-        c.display,
-        Some(Display::Grid) | Some(Display::InlineGrid)
-    ) {
+    if !matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid)) {
         return Vec::new();
     }
     let Some(rows) = c.grid_rows.as_ref() else {
@@ -180,7 +174,10 @@ pub(super) fn grid_auto_row_bands(
             s.grid_auto_flow,
             Some(AutoFlow::Col) | Some(AutoFlow::ColDense) | Some(AutoFlow::RowDense)
         )
-        || !matches!(s.grid_auto_rows, None | Some(TrackSize::Single(Track::Auto)))
+        || !matches!(
+            s.grid_auto_rows,
+            None | Some(TrackSize::Single(Track::Auto))
+        )
         || !s.grid_auto_rows_list.is_empty()
     {
         return None;
@@ -292,7 +289,8 @@ pub(super) fn grid_auto_row_bands(
             let ks = shape_full(k, depth - 1, cx)?;
             let h = ks.0 + ks.1 + ks.2;
             let busy = |used: &Vec<Vec<bool>>, r: usize, c0: usize| {
-                used.get(r).is_some_and(|v| v[c0..c0 + cspan].iter().any(|x| *x))
+                used.get(r)
+                    .is_some_and(|v| v[c0..c0 + cspan].iter().any(|x| *x))
             };
             let (row, col) = match (line, cline) {
                 // Ряд и колонка заданы (область): ячейки как есть — §8.5
@@ -392,8 +390,10 @@ pub(super) fn grid_auto_row_bands(
 /// Сетка, которую мерит `grid_auto_row_bands`, — та же цепочка, что в
 /// `shape_full`: не стопка, высота `auto`, ряды не все в точках.
 pub(super) fn grid_items_spotted(c: &Element) -> bool {
-    matches!(c.style.display, Some(Display::Grid) | Some(Display::InlineGrid))
-        && !grid_stack(c)
+    matches!(
+        c.style.display,
+        Some(Display::Grid) | Some(Display::InlineGrid)
+    ) && !grid_stack(c)
         && c.style.height.is_none()
         && grid_rows_px(&c.style).is_none()
 }
@@ -610,7 +610,10 @@ pub(crate) fn grid_stack(c: &Element) -> bool {
         let flexible = rows
             .iter()
             .filter(|t| {
-                matches!(t, TrackSize::Single(Track::Fr(_)) | TrackSize::MinMax(_, Track::Fr(_)))
+                matches!(
+                    t,
+                    TrackSize::Single(Track::Fr(_)) | TrackSize::MinMax(_, Track::Fr(_))
+                )
             })
             .count();
         if !all_auto
@@ -659,7 +662,12 @@ pub(crate) fn grid_stack(c: &Element) -> bool {
 /// вложенная сетка — как прежде, без роста.
 pub(super) fn grow_grid_track(c: &mut Element, at: f32, grow: f32) -> bool {
     use crate::style::computed::{Track, TrackSize};
-    if grid_stack(c) || !matches!(c.style.display, Some(Display::Grid) | Some(Display::InlineGrid)) {
+    if grid_stack(c)
+        || !matches!(
+            c.style.display,
+            Some(Display::Grid) | Some(Display::InlineGrid)
+        )
+    {
         return false;
     }
     let gap0 = match c.style.gap {

@@ -88,7 +88,11 @@ fn hoist_from_scroll(e: &mut Element, inherited: &Computed, opts: &RenderOpts) {
     e.children = keep;
 }
 
-pub(crate) fn scrollable(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
+pub(crate) fn scrollable(
+    e: &Element,
+    inherited: &Computed,
+    opts: &RenderOpts,
+) -> Option<AnyElement> {
     use crate::style::computed::Overflow;
     let horizontal = e.style.overflow_x == Some(Overflow::Scroll);
     let vertical = e.style.overflow_y == Some(Overflow::Scroll);
@@ -147,9 +151,17 @@ pub(crate) fn scrollable(e: &Element, inherited: &Computed, opts: &RenderOpts) -
             // содержимое было видно ниже края панели.
             let outer_margin = inner.style.margin;
             inner.style.margin = Default::default();
-            let (built, native_box) = crate::interactive::scroll_target::build(node.node_id, handle, h, v, outer_margin,
-                || element(&inner, &inherited, &opts));
-            if native_box { return built; }
+            let (built, native_box) = crate::interactive::scroll_target::build(
+                node.node_id,
+                handle,
+                h,
+                v,
+                outer_margin,
+                || element(&inner, &inherited, &opts),
+            );
+            if native_box {
+                return built;
+            }
             use gpui::{InteractiveElement, StatefulInteractiveElement};
             let mut d = crate::style::apply::margins(div(), &outer_margin)
                 .id(gpui::ElementId::Integer(node.node_id + 1))
@@ -233,7 +245,11 @@ pub(crate) fn scrollable(e: &Element, inherited: &Computed, opts: &RenderOpts) -
 }
 
 /// Обернуть элемент ручкой изменения размера, если `resize` разрешает.
-pub(crate) fn resizable(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
+pub(crate) fn resizable(
+    e: &Element,
+    inherited: &Computed,
+    opts: &RenderOpts,
+) -> Option<AnyElement> {
     if e.style.pointer_events_none == Some(true) {
         return None;
     }
@@ -262,7 +278,11 @@ pub(crate) fn resizable(e: &Element, inherited: &Computed, opts: &RenderOpts) ->
         element(&mixed, &inherited, &opts)
     });
     Some(
-        crate::interactive::resizable::Resizable::new(gpui::ElementId::Integer(e.node_id), axis, build)
-            .into_any_element(),
+        crate::interactive::resizable::Resizable::new(
+            gpui::ElementId::Integer(e.node_id),
+            axis,
+            build,
+        )
+        .into_any_element(),
     )
 }

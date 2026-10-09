@@ -99,7 +99,13 @@ pub fn shape_profile_block(raw: &str, b: &ShapeBox, sm: f32, side: i32) -> Optio
                         return 0.0;
                     }
                     let (x0, x1) = (x as f32, x as f32 + 1.0);
-                    let dx = if cx < x0 { x0 - cx } else if cx > x1 { cx - x1 } else { 0.0 };
+                    let dx = if cx < x0 {
+                        x0 - cx
+                    } else if cx > x1 {
+                        cx - x1
+                    } else {
+                        0.0
+                    };
                     if dx >= rx {
                         return 0.0;
                     }
@@ -207,10 +213,10 @@ fn shape_mask(raw: &str, b: &ShapeBox, cols: usize, rows: usize) -> Option<Vec<u
             // Начало записи ищется от её ИМЕНИ: у `repeating-linear-gradient`
             // перед `-gradient(` дефис, а не пробел, и обрезка по пробелу
             // отдавала растеризатору всю строку целиком.
-            let head = raw[..at].rfind(|c: char| c.is_whitespace()).map_or(0, |s| s + 1);
-            let start = raw[head..at]
-                .rfind("repeating-")
-                .map_or(head, |s| head + s);
+            let head = raw[..at]
+                .rfind(|c: char| c.is_whitespace())
+                .map_or(0, |s| s + 1);
+            let start = raw[head..at].rfind("repeating-").map_or(head, |s| head + s);
             crate::paint::background::source(raw[start..].trim().trim_end_matches(|c| c != ')'))
                 .and_then(|s| s.raster((b.cw.max(1.0), b.ch.max(1.0))))
         } else {

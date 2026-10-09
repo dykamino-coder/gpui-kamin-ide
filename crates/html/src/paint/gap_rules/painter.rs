@@ -2,9 +2,14 @@
 // owner: A
 
 use crate::paint::gap_rules::gap_segments::segments;
-use crate::paint::gap_rules::geometry::{GAP_EPS, GapItem, GapRun, GridTracks, grid_runs, line_runs, uncollapsed, uniq_sorted};
+use crate::paint::gap_rules::geometry::{
+    GAP_EPS, GapItem, GapRun, GridTracks, grid_runs, line_runs, uncollapsed, uniq_sorted,
+};
 use crate::paint::gap_rules::{GapAxisRule, GapItems, GapLayout, GapRuleSpec, gap_fragment_tail};
-use gpui::{App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window, px};
+use gpui::{
+    App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
+    Pixels, Window, px,
+};
 
 /// Слой линеек промежутков. Забирает буфер проб в `paint` (к этому моменту
 /// prepaint всех детей уже прошёл — так же работает `EdgePainter`), строит
@@ -121,27 +126,43 @@ impl Element for GapRulePainter {
                     .map(|b| GapItem::from_bounds(b, !stacked_vertically))
                     .collect();
                 let starts = uniq_sorted(it.iter().map(|i| i.a0).collect());
-                let spans = it
-                    .iter()
-                    .any(|i| starts.iter().any(|&s| s > i.a0 + GAP_EPS && s < i.a1 - GAP_EPS));
+                let spans = it.iter().any(|i| {
+                    starts
+                        .iter()
+                        .any(|&s| s > i.a0 + GAP_EPS && s < i.a1 - GAP_EPS)
+                });
                 // С дорожками раскладки ленты строятся по ним, и элемент во
                 // несколько лент представим (запись в каждой ленте).
-                if spans && grid_tracks.is_none() { GapLayout::Grid } else { spec.kind }
+                if spans && grid_tracks.is_none() {
+                    GapLayout::Grid
+                } else {
+                    spec.kind
+                }
             }
             k => k,
         };
         match kind {
             GapLayout::Grid => {
-                let ix: Vec<GapItem> = items.iter().map(|b| GapItem::from_bounds(b, true)).collect();
-                let iy: Vec<GapItem> = items.iter().map(|b| GapItem::from_bounds(b, false)).collect();
+                let ix: Vec<GapItem> = items
+                    .iter()
+                    .map(|b| GapItem::from_bounds(b, true))
+                    .collect();
+                let iy: Vec<GapItem> = items
+                    .iter()
+                    .map(|b| GapItem::from_bounds(b, false))
+                    .collect();
                 // Ось `a` прогона — та, ПОПЕРЁК которой лежит промежуток: у
                 // линеек, стоящих в промежутках по x, дорожки `a` идут по x, а
                 // поперечные `b` — по y; у линеек по y — наоборот.
                 let (tx, ty) = (spec.tracks_x.as_deref(), spec.tracks_y.as_deref());
                 // Дорожки раскладки: в вертикальном письме сетка уже
                 // повёрнута в `apply.rs`, и колонки gpui — физические x.
-                let abs_x = grid_tracks.as_ref().map(|(c, r)| (c.as_slice(), r.as_slice()));
-                let abs_y = grid_tracks.as_ref().map(|(c, r)| (r.as_slice(), c.as_slice()));
+                let abs_x = grid_tracks
+                    .as_ref()
+                    .map(|(c, r)| (c.as_slice(), r.as_slice()));
+                let abs_y = grid_tracks
+                    .as_ref()
+                    .map(|(c, r)| (r.as_slice(), c.as_slice()));
                 if let Some(r) = on_x {
                     for mut run in grid_runs(&ix, spec.gap_x, spec.gap_y, r, on_y, tx, ty, abs_x) {
                         if spec.rev_x {
@@ -165,17 +186,33 @@ impl Element for GapRulePainter {
                     .iter()
                     .map(|b| GapItem::from_bounds(b, !stacked_vertically))
                     .collect();
-                let (main, cross) = if stacked_vertically { (on_y, on_x) } else { (on_x, on_y) };
-                let gap_b = if stacked_vertically { spec.gap_x } else { spec.gap_y };
+                let (main, cross) = if stacked_vertically {
+                    (on_y, on_x)
+                } else {
+                    (on_x, on_y)
+                };
+                let gap_b = if stacked_vertically {
+                    spec.gap_x
+                } else {
+                    spec.gap_y
+                };
                 let lane_tracks = (spec.lines_extent == 2)
                     .then_some(grid_tracks.as_ref())
                     .flatten()
                     .map(|(c, r)| {
-                        let t = if stacked_vertically { r.clone() } else { c.clone() };
+                        let t = if stacked_vertically {
+                            r.clone()
+                        } else {
+                            c.clone()
+                        };
                         (t, gap_b.unwrap_or(0.0))
                     })
                     .filter(|(t, _)| !t.is_empty());
-                let gap_a = if stacked_vertically { spec.gap_y } else { spec.gap_x };
+                let gap_a = if stacked_vertically {
+                    spec.gap_y
+                } else {
+                    spec.gap_x
+                };
                 // Главные промежутки лежат по оси укладки строк, поперечные —
                 // по оси элементов строки; каждая нумеруется от своего
                 // логического начала.
@@ -224,8 +261,16 @@ impl Element for GapRulePainter {
         }
         // §overlap: по умолчанию ряды поверх колонок — колонки красятся первыми.
         let col_on_x = !spec.vertical;
-        let first_on_x = if spec.column_over_row { !col_on_x } else { col_on_x };
-        let draw = |window: &mut Window, gap_on_x: bool, run: &GapRun, rule: &GapAxisRule, main_like: bool| {
+        let first_on_x = if spec.column_over_row {
+            !col_on_x
+        } else {
+            col_on_x
+        };
+        let draw = |window: &mut Window,
+                    gap_on_x: bool,
+                    run: &GapRun,
+                    rule: &GapAxisRule,
+                    main_like: bool| {
             if !rule.styles.at(run.index, run.count).unwrap_or(false) {
                 return;
             }
@@ -278,9 +323,15 @@ impl Element for GapRulePainter {
                     for (p0, p1) in [(a0, a0 + third), (a1 - third, a1)] {
                         let (q0, q1) = (edge(gpui::px(p0)), edge(gpui::px(p1)));
                         let band = if gap_on_x {
-                            Bounds { origin: gpui::point(q0, t), size: gpui::size(q1 - q0, b - t) }
+                            Bounds {
+                                origin: gpui::point(q0, t),
+                                size: gpui::size(q1 - q0, b - t),
+                            }
                         } else {
-                            Bounds { origin: gpui::point(l, q0), size: gpui::size(r - l, q1 - q0) }
+                            Bounds {
+                                origin: gpui::point(l, q0),
+                                size: gpui::size(r - l, q1 - q0),
+                            }
                         };
                         window.paint_quad(gpui::fill(band, colour.to_hsla()));
                     }

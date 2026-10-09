@@ -1,7 +1,7 @@
 //! Переносы: hyphenate_pieces и места разрыва.
 
-use crate::text::inline::*;
 use crate::style::computed::Computed;
+use crate::text::inline::*;
 
 /// `hyphens: auto` — расставить знаки мягкого переноса по слогоразделу.
 ///

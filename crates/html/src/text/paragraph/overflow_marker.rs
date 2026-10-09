@@ -118,7 +118,14 @@ impl Paragraph {
             } else {
                 self.text_raster_origin(&shaped, aligned, window)
             };
-            let _ = shaped.paint(paint_origin, self.line_height, gpui::TextAlign::Left, None, window, cx);
+            let _ = shaped.paint(
+                paint_origin,
+                self.line_height,
+                gpui::TextAlign::Left,
+                None,
+                window,
+                cx,
+            );
             origin.x += shaped.width;
         }
     }

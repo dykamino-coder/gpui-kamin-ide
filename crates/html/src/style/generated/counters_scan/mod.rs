@@ -160,8 +160,8 @@ impl Scan<'_> {
         // CSS Lists 3 §4.6: only a box with `display: list-item` increments
         // `list-item`; an `li` keeps that role only while no author display
         // replaces the UA `list-item` (`li { display: block }`).
-        let is_item = (tag == "li" && style.display.is_none())
-            || style.display == Some(Display::ListItem);
+        let is_item =
+            (tag == "li" && style.display.is_none()) || style.display == Some(Display::ListItem);
         self.step(&style, is_item);
         // CSS Containment 2 §3.4: descendant increments create local counters;
         // they cannot contribute to an outer reversed counter's initial value.

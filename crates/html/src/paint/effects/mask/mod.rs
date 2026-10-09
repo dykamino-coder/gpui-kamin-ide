@@ -143,7 +143,11 @@ fn snapshot_mask_def(id: &str) -> Option<String> {
         let n = c.get() + 1;
         c.set(n);
         // Хвост `A` — `mask-type: alpha` определения (см. `interact`).
-        if alpha { format!("k{n}A") } else { format!("k{n}") }
+        if alpha {
+            format!("k{n}A")
+        } else {
+            format!("k{n}")
+        }
     });
     MASK_SNAPS.with(|m| {
         let mut map = m.borrow_mut();
@@ -224,7 +228,9 @@ pub(crate) fn collect_mask_defs(nodes: &[Node]) {
             }
             // `<filter id>` — целиком, с атрибутами области (x/y/width/height,
             // filterUnits): ключ с префиксом, чтобы не спутать с маской.
-            if tag == "filter" && let Some(id) = e.attr("id") {
+            if tag == "filter"
+                && let Some(id) = e.attr("id")
+            {
                 let mut markup = String::new();
                 crate::svg::write_element(e, &mut markup);
                 out.insert(format!("filter:{id}"), markup);

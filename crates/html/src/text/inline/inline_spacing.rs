@@ -1,6 +1,6 @@
 //! Inline spacing uses physical sides projected into the paragraph shaping plane.
-use crate::style::computed::Computed;
 use crate::dom::Element;
+use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
 /// Боковые поля, рамки и отступы строчной коробки в точках.

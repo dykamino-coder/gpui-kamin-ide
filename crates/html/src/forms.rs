@@ -9,9 +9,9 @@
 //! фильтры, макеты интерфейса от модели. Пустое место вместо поля выглядит
 //! поломкой; нарисованное поле честно показывает задуманный вид.
 
+use crate::dom::Element;
 use crate::style::apply::apply;
 use crate::style::computed::Computed;
-use crate::dom::Element;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px, rgb};
 
 /// Цвета «по умолчанию» для элементов формы: документ обычно их не задаёт, а
@@ -22,7 +22,11 @@ const ACCENT: u32 = 0x3b5bdb;
 const MUTED: u32 = 0x8a90a4;
 
 /// Отрисовать элемент формы. `None` — тег не относится к формам.
-pub fn element(e: &Element, style: &Computed, opts: &crate::render::RenderOpts) -> Option<AnyElement> {
+pub fn element(
+    e: &Element,
+    style: &Computed,
+    opts: &crate::render::RenderOpts,
+) -> Option<AnyElement> {
     match e.tag.as_str() {
         "input" => Some(input(e, style)),
         "textarea" => Some(textarea(e, style, opts)),

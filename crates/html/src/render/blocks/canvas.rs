@@ -8,11 +8,7 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{ParentElement, Styled, div, px};
 
-pub(crate) fn canvas_layer(
-    e: &Element,
-    opts: &RenderOpts,
-    out: &mut Vec<gpui::AnyElement>,
-) {
+pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::AnyElement>) {
     // Фон холста — часть ГРУППЫ КОРНЯ (css-compositing-1
     // §pagebackdrop): фильтр корня красит и его. Слой лежит
     // СОСЕДОМ коробки корня, поэтому единственная точка окраски
@@ -24,7 +20,12 @@ pub(crate) fn canvas_layer(
     // заливка всего холста верхним градиентом их закрыла бы
     // (`background-position-right-in-body`: 97.92).
     let canvas_layers = e.style.bg_layers();
-    if let Some(g) = e.style.gradient.as_ref().filter(|_| canvas_layers.is_none()) {
+    if let Some(g) = e
+        .style
+        .gradient
+        .as_ref()
+        .filter(|_| canvas_layers.is_none())
+    {
         let mut g = g.clone();
         if let Some(f) = root_filter {
             g.from = f.apply(g.from);
@@ -80,15 +81,15 @@ pub(crate) fn canvas_layer(
                 right: side(e.style.margin.right) + side(b.right),
                 bottom: side(e.style.margin.bottom) + side(b.bottom),
                 width: match e.style.width {
-                    Some(Len::Px(w)) => Some(
-                        w + side(e.style.padding.left) + side(e.style.padding.right),
-                    ),
+                    Some(Len::Px(w)) => {
+                        Some(w + side(e.style.padding.left) + side(e.style.padding.right))
+                    }
                     _ => None,
                 },
                 height: match e.style.height {
-                    Some(Len::Px(h)) => Some(
-                        h + side(e.style.padding.top) + side(e.style.padding.bottom),
-                    ),
+                    Some(Len::Px(h)) => {
+                        Some(h + side(e.style.padding.top) + side(e.style.padding.bottom))
+                    }
                     _ => None,
                 },
                 from_right: e.style.vertical_rl == Some(true),
@@ -152,8 +153,7 @@ pub(crate) fn canvas_layer(
         let mut band = div().absolute().top_0().bottom_0();
         band = match e.style.width {
             Some(Len::Px(w)) => {
-                let pad_w =
-                    w + side(e.style.padding.left) + side(e.style.padding.right);
+                let pad_w = w + side(e.style.padding.left) + side(e.style.padding.right);
                 let band = band.w(px(pad_w));
                 if e.style.vertical_rl == Some(true) {
                     band.right(px(side(e.style.margin.right) + side(b.right)))

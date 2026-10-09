@@ -8,7 +8,8 @@ pub(super) fn nowrap(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
     if !matches!(tag, "td" | "th") || !attrs.iter().any(|(k, _)| k == "nowrap") {
         return None;
     }
-    let normal = crate::style::select::quirks() && attrs.iter().any(|(k, v)| k == "width" && nonzero_length(v));
+    let normal = crate::style::select::quirks()
+        && attrs.iter().any(|(k, v)| k == "width" && nonzero_length(v));
     hint(if normal {
         "white-space: normal"
     } else {

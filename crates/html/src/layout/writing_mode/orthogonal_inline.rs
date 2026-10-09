@@ -50,7 +50,9 @@ fn ordinary(style: &Computed) -> bool {
 pub(super) fn flow_constraint(style: &Computed) -> Option<InlineConstraint> {
     // Parallel table cells receive their inline measure from the column track.
     // A containing-block fallback must not override that intrinsic probe.
-    (!style.ortho_col).then_some(style.orthogonal_inline).flatten()
+    (!style.ortho_col)
+        .then_some(style.orthogonal_inline)
+        .flatten()
 }
 
 pub(crate) fn resolve(
@@ -70,8 +72,11 @@ pub(crate) fn resolve(
     let vertical = style.vertical == Some(true);
     let parent_vertical = parent.vertical == Some(true);
     style.orthogonal_inline = if vertical == parent_vertical && ordinary(style) {
-        crate::layout::writing_mode::orthogonal_fixed_child::containing_inline(parent)
-            .map(|constraint| crate::layout::writing_mode::orthogonal_fixed_child::inherit(style, constraint))
+        crate::layout::writing_mode::orthogonal_fixed_child::containing_inline(parent).map(
+            |constraint| {
+                crate::layout::writing_mode::orthogonal_fixed_child::inherit(style, constraint)
+            },
+        )
     } else {
         None
     };
@@ -125,7 +130,10 @@ mod tests {
         let mut style = Computed {
             ortho_col: true,
             orthogonal_inline: Some(InlineConstraint {
-                available: 600.0, fixed: None, min: None, max: None,
+                available: 600.0,
+                fixed: None,
+                min: None,
+                max: None,
             }),
             ..Computed::default()
         };

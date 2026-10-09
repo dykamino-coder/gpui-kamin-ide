@@ -4,7 +4,10 @@
 use crate::layout::fragment::types::{Frag, Kid, RepeatGeom};
 use crate::layout::fragment::{fragment_mask, gap_fragment};
 use crate::layout::multicol::column_stack::ColumnStack;
-use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, LayoutId, Pixels, Window, point, px, size};
+use gpui::{
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, LayoutId,
+    Pixels, Window, point, px, size,
+};
 
 impl Element for ColumnStack {
     type RequestLayoutState = LayoutId;
@@ -171,7 +174,10 @@ impl Element for ColumnStack {
             for (l, &(ly, lh)) in lines.iter().enumerate() {
                 for c in 0..used[l].max(1) {
                     items.push(Bounds {
-                        origin: point(bounds.origin.x + px(c as f32 * step), bounds.origin.y + px(ly)),
+                        origin: point(
+                            bounds.origin.x + px(c as f32 * step),
+                            bounds.origin.y + px(ly),
+                        ),
                         size: size(px(col_w), px(lh)),
                     });
                 }
@@ -250,7 +256,8 @@ impl Element for ColumnStack {
                                 size: size(px(rw), px(rh)),
                             },
                             window.scale_factor(),
-                        ).bounds,
+                        )
+                        .bounds,
                         color,
                     ));
                 }
@@ -312,18 +319,26 @@ impl Element for ColumnStack {
             } else {
                 bounds.size.width
             };
-            let mask = fragment_mask::snap(Bounds {
+            let mask = fragment_mask::snap(
+                Bounds {
                     origin: point(x - spill, y),
                     size: size(px(col_w) + spill + spill, px(f.h)),
-                }, window.scale_factor());
+                },
+                window.scale_factor(),
+            );
             let kid = &mut self.children[f.kid];
             // Полосы повтора таблицы — каждая своей маской по своей полосе.
             if let Some(r) = kid.repeat.as_mut() {
                 let mask_scale = window.scale_factor();
-                let band_mask = |top: f32, h: f32| fragment_mask::snap(Bounds {
-                        origin: point(x - spill, y + px(top)),
-                        size: size(px(col_w) + spill + spill, px(h)),
-                    }, mask_scale);
+                let band_mask = |top: f32, h: f32| {
+                    fragment_mask::snap(
+                        Bounds {
+                            origin: point(x - spill, y + px(top)),
+                            size: size(px(col_w) + spill + spill, px(h)),
+                        },
+                        mask_scale,
+                    )
+                };
                 if f.head > 0.01
                     && f.copy > 0
                     && let Some(el) = r.head_els.get_mut(f.copy - 1)
@@ -343,12 +358,26 @@ impl Element for ColumnStack {
             }
             // Хвост непоследнего фрагмента таблицы — фоном таблицы (`slack`).
             if let Some(bg) = kid.slack
-                && plan_all.iter().any(|g| g.kid == f.kid && g.copy == f.copy + 1)
+                && plan_all
+                    .iter()
+                    .any(|g| g.kid == f.kid && g.copy == f.copy + 1)
             {
-                let line = if matches!(self.rows, Some(r) if r.wrap) { f.col / self.count } else { 0 };
+                let line = if matches!(self.rows, Some(r) if r.wrap) {
+                    f.col / self.count
+                } else {
+                    0
+                };
                 let line_h = self.lines_plan.borrow().get(line).map_or(0.0, |l| l.1);
-                let band = kid.repeat.as_ref().and_then(|r| r.foot).map_or(0.0, |b| b.1);
-                let tail = if f.foot > 0.01 { f.foot - band } else { line_h - f.y - f.h };
+                let band = kid
+                    .repeat
+                    .as_ref()
+                    .and_then(|r| r.foot)
+                    .map_or(0.0, |b| b.1);
+                let tail = if f.foot > 0.01 {
+                    f.foot - band
+                } else {
+                    line_h - f.y - f.h
+                };
                 // Не шире колонки: разложенная ширина копии несёт дробный
                 // остаток раскладки, и хвост залезал на край соседней колонки
                 // (`multi-line-row-flex-fragmentation-090`: пиксель красного у
@@ -362,7 +391,10 @@ impl Element for ColumnStack {
                     let sf = window.scale_factor();
                     window.paint_quad(gpui::fill(
                         fragment_mask::snap(
-                            Bounds { origin: point(x, y + px(f.h)), size: size(px(w), px(tail)) },
+                            Bounds {
+                                origin: point(x, y + px(f.h)),
+                                size: size(px(w), px(tail)),
+                            },
                             sf,
                         )
                         .bounds,
@@ -381,22 +413,30 @@ impl Element for ColumnStack {
             // Маска и режет: копия нарисована во всю свою высоту, видна
             // только полоса своей колонки (css-break-3 §4, вид `slice`).
             if split {
-                let line = if matches!(self.rows, Some(r) if r.wrap) { f.col / self.count } else { 0 };
+                let line = if matches!(self.rows, Some(r) if r.wrap) {
+                    f.col / self.count
+                } else {
+                    0
+                };
                 let line_h = self.lines_plan.borrow().get(line).map_or(0.0, |l| l.1);
-                let continued = plan_all.iter().any(|g| g.kid == f.kid && g.copy == f.copy + 1);
+                let continued = plan_all
+                    .iter()
+                    .any(|g| g.kid == f.kid && g.copy == f.copy + 1);
                 let parent = window.content_mask();
                 let root = Bounds {
                     origin: point(x, y - px(f.from)),
                     size: size(px(kid.laid_w.get()), px(kid.h)),
                 };
                 window.with_content_mask(Some(mask), |window| {
-                    let scope = (continued && f.foot <= 0.01 && line_h - f.y - f.h > 0.01)
-                        .then(|| gap_fragment::Scope {
-                            root,
-                            parent,
-                            mask: window.content_mask(),
-                            cut: f32::from(y) + f.h,
-                            end: f32::from(y) + line_h - f.y,
+                    let scope =
+                        (continued && f.foot <= 0.01 && line_h - f.y - f.h > 0.01).then(|| {
+                            gap_fragment::Scope {
+                                root,
+                                parent,
+                                mask: window.content_mask(),
+                                cut: f32::from(y) + f.h,
+                                end: f32::from(y) + line_h - f.y,
+                            }
                         });
                     gap_fragment::with(scope, || el.paint(window, cx));
                 });

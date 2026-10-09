@@ -187,9 +187,12 @@ pub(crate) fn fallbacks(
     let mut list: Vec<String> = families
         .iter()
         .filter(|name| Some(name.as_str()) != style.font_family.as_deref())
-        .filter(|name| crate::text::metrics::font_installed(name) || crate::text::fonts::alias(name).is_some())
+        .filter(|name| {
+            crate::text::metrics::font_installed(name) || crate::text::fonts::alias(name).is_some()
+        })
         .map(|name| {
-            crate::text::fonts::alias_stretch(name, style.font_stretch).unwrap_or_else(|| name.clone())
+            crate::text::fonts::alias_stretch(name, style.font_stretch)
+                .unwrap_or_else(|| name.clone())
         })
         .collect();
     if let Some(document) = crate::text::fonts::document_fallbacks() {

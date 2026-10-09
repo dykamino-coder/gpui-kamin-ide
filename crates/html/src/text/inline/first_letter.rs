@@ -1,7 +1,7 @@
 //! Select first-letter text across inline text fragments before styling it.
 
-use crate::style::computed::Computed;
 use super::{Piece, SPACER, ZWSP, bidi_format};
+use crate::style::computed::Computed;
 
 /// CSS 2.1 §5.12.2 and CSS Pseudo §first-letter-tree permit a first letter
 /// spanning multiple elements, including generated punctuation. Select the
@@ -16,12 +16,14 @@ pub fn split_first_letter(pieces: Vec<Piece>, style: &Computed) -> Vec<Piece> {
                 blocked = true;
                 None
             }
-            Piece::Text { text: part, style: own }
-                if !own.first_letter_excluded
-                    && !blocked
-                    && part != SPACER
-                    && part != ZWSP
-                    && !part.chars().all(bidi_format) =>
+            Piece::Text {
+                text: part,
+                style: own,
+            } if !own.first_letter_excluded
+                && !blocked
+                && part != SPACER
+                && part != ZWSP
+                && !part.chars().all(bidi_format) =>
             {
                 let start = text.len();
                 // CSS 2.2 section 5.12.2: a letter after a hard break is

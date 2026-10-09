@@ -19,8 +19,8 @@ mod shape_kids;
 pub mod table_bands;
 pub mod types;
 
-pub(crate) mod fragment_size;
 pub(super) mod fragment_mask;
+pub(crate) mod fragment_size;
 pub(crate) mod gap_fragment;
 pub(super) mod intrinsic_measure;
 mod row_element;
@@ -98,11 +98,21 @@ thread_local! {
 
 /// Выполнить `f` с контекстом меры строк: `base` — стиль многоколоночника,
 /// `w` — строчный размер колонки.
-pub(crate) fn with_lines<T>(base: &Computed, w: Option<f32>, opts: &RenderOpts, f: impl FnOnce() -> T) -> T {
+pub(crate) fn with_lines<T>(
+    base: &Computed,
+    w: Option<f32>,
+    opts: &RenderOpts,
+    f: impl FnOnce() -> T,
+) -> T {
     let prev = LINE_CX.with(|l| {
         l.borrow_mut().replace(LineCx {
             opts: opts.clone(),
-            frames: vec![LineFrame { inh: base.clone(), w, anon: false, items: 0 }],
+            frames: vec![LineFrame {
+                inh: base.clone(),
+                w,
+                anon: false,
+                items: 0,
+            }],
         })
     });
     let out = f();
@@ -134,7 +144,12 @@ impl LineScope {
                 1 if c.style.align_self.is_some() || c.style.justify_self.is_some() => None,
                 _ => line_content_w(c, pw),
             });
-            cx.frames.push(LineFrame { inh, w, anon: c.tag == "anon-block", items: items_kind(c) });
+            cx.frames.push(LineFrame {
+                inh,
+                w,
+                anon: c.tag == "anon-block",
+                items: items_kind(c),
+            });
             LineScope(true)
         })
     }

@@ -36,7 +36,10 @@ pub(crate) fn paint_rect_minus(
         let (x0, y0, x1, y1) = (snap(x0), snap(y0), snap(x1), snap(y1));
         if x1 > x0 && y1 > y0 {
             window.paint_quad(gpui::fill(
-                gpui::Bounds::from_corners(gpui::point(px(x0), px(y0)), gpui::point(px(x1), px(y1))),
+                gpui::Bounds::from_corners(
+                    gpui::point(px(x0), px(y0)),
+                    gpui::point(px(x1), px(y1)),
+                ),
                 fill,
             ));
         }
@@ -166,8 +169,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     let paint = if c.background.is_some()
         && !c.transform_ancestor
         && c.transform.is_none()
-        && c
-            .filter_ref
+        && c.filter_ref
             .as_deref()
             .is_some_and(|id| mask_def(&format!("filter:{id}")).is_some())
         && !e.children.iter().any(|n| !is_blank(n))
@@ -203,9 +205,10 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     // `pointer-events: none` — элемент не реагирует на курсор, значит и слой
     // наведения к нему не применяется.
     if c.pointer_events_none != Some(true)
-        && let Some(h) = &e.hover {
-            d = apply_hover(d, h);
-        }
+        && let Some(h) = &e.hover
+    {
+        d = apply_hover(d, h);
+    }
     // Обрезка контейнера (css-overflow-3/4): точная точка среза приходит
     // из бюджета строк ПРОШЛОГО кадра (interact::ClampCut) — низ N-й
     // считаемой строки, поднятый к верху пересечённого блока. Пока точки
@@ -233,7 +236,9 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     let bw = c.borders();
     let mbp_y = side(bw.top) + side(bw.bottom) + side(c.padding.top) + side(c.padding.bottom);
     if !multicol && e.style.clamp_auto == Some(true) && auto_clamp_limit(c).is_some() {
-        if let Some(cut) = crate::text::clamp::clamp_cut(e.node_id).filter(|c| !sized && c.is_finite()) {
+        if let Some(cut) =
+            crate::text::clamp::clamp_cut(e.node_id).filter(|c| !sized && c.is_finite())
+        {
             d = d.max_h(px(cut + mbp_y));
         }
         // Прячется только содержимое ЗА точкой среза — по блочной оси;
@@ -245,8 +250,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     if let Some(n) = e.style.clamp_lines().filter(|_| !multicol) {
         // Без `Styled::line_clamp`: тот попутно включает `overflow_hidden`,
         // а что прятать, решает срез ниже.
-        d.text_style()
-            .line_clamp = Some(n as usize);
+        d.text_style().line_clamp = Some(n as usize);
         let font = match c.font_size {
             Some(Len::Px(v)) => v,
             _ => 16.0,

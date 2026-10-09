@@ -80,7 +80,11 @@ pub(crate) fn transformed_with(
     // §3d-rendering-context; `3d-rendering-context-and-inline`:
     // `rotateX(-90deg)` внутри `display: inline` под `preserve-3d; rotateX(90deg)`
     // не раскручивается обратно; `perspective-children-only-inline`).
-    let under_3d = if c.hoisted_block { None } else { parent.frame_3d.clone() };
+    let under_3d = if c.hoisted_block {
+        None
+    } else {
+        parent.frame_3d.clone()
+    };
     if c.transform.is_none() && c.perspective.is_none() && !keeps_3d && under_3d.is_none() {
         return el;
     }

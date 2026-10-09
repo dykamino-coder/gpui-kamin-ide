@@ -5,10 +5,7 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
-pub(super) fn gradient_stripes(
-    c: &Computed,
-    out: &mut Vec<gpui::AnyElement>,
-) {
+pub(super) fn gradient_stripes(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
     // Градиент из пяти и более стопов: заливка несёт четыре (патч GPUI), а
     // дальше осевой градиент по-прежнему рисуется полосами — по слою на пару
     // соседних стопов. Наклонный полосами не выразить.

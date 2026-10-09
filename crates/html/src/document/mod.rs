@@ -214,7 +214,8 @@ fn mark_canvas_background(mut nodes: Vec<Node>) -> Vec<Node> {
         let boxed = |e: &crate::dom::Element| {
             !matches!(
                 e.style.display,
-                Some(crate::style::computed::Display::None) | Some(crate::style::computed::Display::Contents)
+                Some(crate::style::computed::Display::None)
+                    | Some(crate::style::computed::Display::Contents)
             )
         };
         if html.tag != "html" {
@@ -277,9 +278,9 @@ fn mark_canvas_background(mut nodes: Vec<Node>) -> Vec<Node> {
                         crate::style::values::value::Len::Em(_)
                         | crate::style::values::value::Len::Ex(_)
                         | crate::style::values::value::Len::Ch(_),
-                    ) => Some(crate::style::values::value::Len::Px(crate::text::metrics::spacing_px(
-                        l, &fam, em,
-                    ))),
+                    ) => Some(crate::style::values::value::Len::Px(
+                        crate::text::metrics::spacing_px(l, &fam, em),
+                    )),
                     other => other,
                 };
                 let mut pos = std::mem::take(&mut s.bg_pos);
@@ -414,10 +415,7 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
     // Корень vertical-rl прижат к ПРАВОМУ краю окна (§8.2): якорь самим
     // стилем; корню с фоном-картинкой не ставится — гасил canvas-слой
     // (замерено на background-size-document-root-vrl-*).
-    if taken.1 == Some(true)
-        && html.style.align_self.is_none()
-        && html.style.bg_image.is_none()
-    {
+    if taken.1 == Some(true) && html.style.align_self.is_none() && html.style.bg_image.is_none() {
         html.style.align_self = Some(crate::style::computed::Align::End);
     }
     // Вертикальный корень с ФОНОМ-КАРТИНКОЙ: без минимума высоты его
@@ -478,10 +476,7 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
 /// Проход идёт после каскада и после распространения письма с `<body>` —
 /// то есть в единственной точке, где письмо узла уже окончательно.
 fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
-    fn walk(
-        nodes: &mut [Node],
-        mode: (Option<bool>, Option<bool>, Option<bool>, Option<bool>),
-    ) {
+    fn walk(nodes: &mut [Node], mode: (Option<bool>, Option<bool>, Option<bool>, Option<bool>)) {
         for n in nodes.iter_mut() {
             let Node::Element(e) = n else { continue };
             // Письмо и направление наследуются; свои значения сильнее.
@@ -678,7 +673,8 @@ fn unwrap_document(nodes: Vec<Node>) -> (Vec<Node>, crate::style::computed::Comp
             .into_iter()
             .map(|n| match n {
                 Node::Element(mut child) => {
-                    child.style = crate::style::cascade::inherit::inherit_unpainted(&e.style, &child.style);
+                    child.style =
+                        crate::style::cascade::inherit::inherit_unpainted(&e.style, &child.style);
                     Node::Element(child)
                 }
                 other => other,

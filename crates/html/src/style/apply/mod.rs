@@ -9,14 +9,14 @@
 use crate::style::computed::{Align, Computed, Gradient};
 use crate::style::values::value::Len;
 use gpui::{Div, InteractiveElement, px, relative};
-pub(crate) mod intrinsic_size;
 mod contained_intrinsic;
+pub(crate) mod intrinsic_size;
 use crate::style::apply::contained_intrinsic::empty_contained_size;
-mod grid_flow_axes;
 mod flex_cross_default;
+pub(super) mod grid;
+mod grid_flow_axes;
 mod inset_percent;
 mod size_percent;
-pub(super) mod grid;
 pub(crate) use crate::style::apply::grid::*;
 pub(super) mod layout;
 use crate::style::apply::layout::*;
@@ -40,7 +40,9 @@ pub(crate) fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
         | Len::Ic(_)
         | Len::Ex(_)
         | Len::Lh(_)
-        | Len::LhPx(..)) => px(crate::text::metrics::fallback_len_px(l, "", 16.0).unwrap_or(0.0)).into(),
+        | Len::LhPx(..)) => {
+            px(crate::text::metrics::fallback_len_px(l, "", 16.0).unwrap_or(0.0)).into()
+        }
         // Единицы окна разрешает сборщик дерева; сюда они доходят только у
         // узлов вне его — доля родителя ближе всего по смыслу.
         Len::Vw(k) | Len::Vh(k) => relative(k),
@@ -98,8 +100,7 @@ pub fn apply_hover(d: Div, hover: &Computed) -> Div {
             s.text.color = Some(col.to_hsla());
         }
         if let Some(w) = h.font_weight {
-            s.text.font_weight =
-                Some(gpui::FontWeight(w as f32));
+            s.text.font_weight = Some(gpui::FontWeight(w as f32));
         }
         if h.italic == Some(true) {
             s.text.font_style = Some(gpui::FontStyle::Italic);

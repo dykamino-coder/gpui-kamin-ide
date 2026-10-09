@@ -33,9 +33,12 @@ pub(crate) fn atom_piece(
     let iframe_sized = (replaced_content::default_iframe(e)
         && matches!(
             e.style.position,
-            Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
+            Some(
+                crate::style::computed::Position::Absolute
+                    | crate::style::computed::Position::Fixed
+            )
         ))
-        .then(|| replaced_content::empty_iframe_size(e, inherited, opts.viewport));
+    .then(|| replaced_content::empty_iframe_size(e, inherited, opts.viewport));
     let e = iframe_sized.as_ref().unwrap_or(e);
     // Абсолютный элемент на статической позиции ВНУТРИ строки — кусок вне
     // потока: место в строке он не занимает, поэтому абзац остаётся
@@ -126,7 +129,8 @@ pub(crate) fn atom_piece(
         // письмо коробки (css-writing-modes-4 §7.1, строки 1926-1931).
         let rotated_rtl = inherited.rtl == Some(true) && inherited.rotated_line == Some(true);
         let inner = if inherited.rtl == Some(true) && !rot_block && !rotated_rtl {
-            crate::layout::positioned::containing_block::InlineStartHang::new(inner).into_any_element()
+            crate::layout::positioned::containing_block::InlineStartHang::new(inner)
+                .into_any_element()
         } else {
             inner
         };
@@ -138,7 +142,12 @@ pub(crate) fn atom_piece(
         // полоса на 328 вместо 168 закрывала PASS).
         let nz = |l: Option<Len>| matches!(l, Some(Len::Px(v)) if v.abs() > 0.001);
         let inner = if nz(merged.margin.left) || nz(merged.margin.top) {
-            div().flex().flex_row().items_start().child(inner).into_any_element()
+            div()
+                .flex()
+                .flex_row()
+                .items_start()
+                .child(inner)
+                .into_any_element()
         } else {
             inner
         };
@@ -243,7 +252,8 @@ pub(crate) fn atom_piece(
         && e.style.vertical.is_none()
         && matches!(
             e.style.position,
-            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute)
+                | Some(crate::style::computed::Position::Fixed)
         )
         && !at_static_position(&e.style)
         && !replaced_tag(e)
@@ -288,7 +298,8 @@ pub(crate) fn atom_piece(
             "input" | "textarea" | "select" | "progress" | "meter"
         ) || matches!(
             e.style.position,
-            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute)
+                | Some(crate::style::computed::Position::Fixed)
         ) {
             el
         } else {
@@ -348,7 +359,8 @@ pub(crate) fn atom_piece(
         // предка. `Overlay` абзац с текстового пути не уводит.
         if matches!(
             e.style.position,
-            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute)
+                | Some(crate::style::computed::Position::Fixed)
         ) && !at_static_position(&e.style)
             && !matches!(
                 e.tag.as_str(),

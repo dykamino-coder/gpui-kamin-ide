@@ -5,7 +5,9 @@ use crate::dom::{Element, Node};
 use crate::layout::block::containing::CB_WIDTH;
 use crate::layout::replaced::limits::atom_base_font;
 use crate::layout::table::anon::{RowCarry, collect_rows, fixup_table_children};
-use crate::layout::table::columns::{col_element_widths, col_elements, colgroup_elements, push_col_bands};
+use crate::layout::table::columns::{
+    col_element_widths, col_elements, colgroup_elements, push_col_bands,
+};
 use crate::paint::stacking::stacking_context;
 use crate::render::{RenderOpts, inline_level_box};
 use crate::style::computed::Computed;
@@ -16,11 +18,11 @@ pub mod anon;
 pub mod columns;
 pub mod paint;
 
-mod table_roles;
-mod table_border_widths;
-mod table_spanning_size;
-mod table_clipped_content;
 mod finish;
+mod table_border_widths;
+mod table_clipped_content;
+mod table_roles;
+mod table_spanning_size;
 use crate::layout::table::finish::*;
 pub(super) mod rows;
 use crate::layout::table::rows::*;
@@ -57,7 +59,10 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     let inherited = if inherited.vertical != Some(true)
         && matches!(
             inherited.max_height,
-            Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent) | Some(Len::Px(_))
+            Some(Len::MinContent)
+                | Some(Len::MaxContent)
+                | Some(Len::FitContent)
+                | Some(Len::Px(_))
         ) {
         let mut c = inherited.clone();
         if let Some(Len::Px(m)) = c.max_height
@@ -343,8 +348,13 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     };
     let mut busy: Vec<u16> = vec![0; cols as usize];
     let (win_edges, outer_win) = table_border_widths::resolve(
-        e, &row_elements, &rows.iter().map(|(_, carry)| carry.3).collect::<Vec<_>>(),
-        &rows_left, cols, table_font, &table_family,
+        e,
+        &row_elements,
+        &rows.iter().map(|(_, carry)| carry.3).collect::<Vec<_>>(),
+        &rows_left,
+        cols,
+        table_font,
+        &table_family,
     );
     // Вертикальность САМОЙ таблицы: `inherited` внутри цикла рядов
     // перекрыт слоем группы строк (`<tbody>` с письмом травил гейты,
@@ -492,8 +502,10 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // (css-tables-3 §layers).
     let grp_els = colgroup_elements(&e.children);
     let col_els = col_elements(&e.children);
-    let mut grp_rects: Vec<Option<crate::layout::table::paint::RowRects>> = vec![None; cols as usize];
-    let mut col_rects: Vec<Option<crate::layout::table::paint::RowRects>> = vec![None; cols as usize];
+    let mut grp_rects: Vec<Option<crate::layout::table::paint::RowRects>> =
+        vec![None; cols as usize];
+    let mut col_rects: Vec<Option<crate::layout::table::paint::RowRects>> =
+        vec![None; cols as usize];
     let have_rows = !row_elements.is_empty();
     push_col_bands(
         &grp_els,
@@ -572,8 +584,10 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // Алгоритм тот же, что у авторазмещения сетки: занятые клетки
     // пропускаются.
     let occupied: Vec<u16> = vec![0; cols as usize];
-    let group_refs: std::collections::HashMap<u64, crate::paint::effects::transformed_element::RefBox> =
-        std::collections::HashMap::new();
+    let group_refs: std::collections::HashMap<
+        u64,
+        crate::paint::effects::transformed_element::RefBox,
+    > = std::collections::HashMap::new();
     let tbl_style: &Computed = inherited;
     table_rows(
         rows,

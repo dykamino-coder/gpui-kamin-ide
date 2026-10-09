@@ -14,8 +14,8 @@ use crate::text::ruby::ruby_role;
 use crate::text::text_box::normal_fraction;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
 
-pub(super) mod pieces;
 pub(crate) mod atom_piece;
+pub(super) mod pieces;
 
 /// Абзац: одна строка текста с прогонами либо гибкая строка из кусков.
 /// Абзац для тех, кто собирает текст сам — содержимое поля ввода.
@@ -28,7 +28,9 @@ pub(crate) fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts)
 }
 
 fn paragraph_routed(
-    nodes: &[Node], inherited: &Computed, opts: &RenderOpts,
+    nodes: &[Node],
+    inherited: &Computed,
+    opts: &RenderOpts,
     native_request: Option<&native_paragraph_route::Request<'_>>,
 ) -> AnyElement {
     // Vertical paragraphs choose the physical text route after inline collection.
@@ -148,7 +150,10 @@ fn paragraph_routed(
         flow.ortho_limit = Some(fallback);
         flow.orthogonal_inline = native_vertical::constraint(inherited, fallback);
         let built = std::cell::Cell::new(false);
-        let request = native_paragraph_route::Request { style: &flow, built: &built };
+        let request = native_paragraph_route::Request {
+            style: &flow,
+            built: &built,
+        };
         // Build atoms with legacy style; apply native flow only to a text Paragraph.
         let inner = paragraph_routed(nodes, &horizontal, opts, Some(&request));
         if built.get() {
@@ -172,7 +177,8 @@ fn paragraph_routed(
         // снято ради отсчёта, и без пометки `abs_static` гейт её не узнавал.
         let free_inline = (matches!(
             inherited.position,
-            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute)
+                | Some(crate::style::computed::Position::Fixed)
         ) || inherited.abs_static
             || inherited.hug_inline)
             && !matches!(inherited.height, Some(Len::Px(_)) | Some(Len::Pct(_)))
@@ -194,7 +200,10 @@ fn paragraph_routed(
             // A definite CSS inline size is also the percentage basis for anonymous
             // rows (including <br>); available space alone does not establish it.
             if constraint.fixed.is_some() {
-                div().w(px(constraint.used(0.0, 0.0))).child(inner).into_any_element()
+                div()
+                    .w(px(constraint.used(0.0, 0.0)))
+                    .child(inner)
+                    .into_any_element()
             } else {
                 inner
             }
@@ -312,7 +321,14 @@ fn paragraph_routed(
             .into_any_element();
         }
     }
-    paragraph_pieces_routed(nodes, inherited, opts, 0, &Computed::default(), native_request)
+    paragraph_pieces_routed(
+        nodes,
+        inherited,
+        opts,
+        0,
+        &Computed::default(),
+        native_request,
+    )
 }
 
 /// Свой кегль абзаца в точках — точка отсчёта для строки-опоры и для долей.
@@ -383,7 +399,8 @@ pub(super) fn edge_pieces(
         let out_of_flow = style.float.is_some_and(|f| f != 0)
             || matches!(
                 style.position,
-                Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute)
+                    | Some(crate::style::computed::Position::Fixed)
             );
         if let Some(top) = top
             && style.vertical_align != inherited.vertical_align
@@ -416,7 +433,10 @@ pub(super) fn edge_pieces(
 }
 
 /// Лежит ли отрезок внутри краевого куска.
-pub(super) fn in_edge(edges: &[(std::ops::Range<usize>, bool, f32)], r: &std::ops::Range<usize>) -> bool {
+pub(super) fn in_edge(
+    edges: &[(std::ops::Range<usize>, bool, f32)],
+    r: &std::ops::Range<usize>,
+) -> bool {
     edges
         .iter()
         .any(|(e, _, _)| e.start < r.end.max(r.start + 1) && r.start < e.end)
@@ -638,7 +658,8 @@ pub(super) fn atom_line_align(
     // (`background-bg-pos-204-ref`).
     if matches!(
         st.position,
-        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute)
+            | Some(crate::style::computed::Position::Fixed)
     ) {
         if replaced && !at_static_position(st) {
             return Some(AtomAlign::Shift(0.0));

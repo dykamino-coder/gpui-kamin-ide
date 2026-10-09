@@ -27,7 +27,10 @@ pub(super) fn has_font_units(v: &str) -> bool {
         .any(|t| {
             let unit = t.trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == '-');
             unit.len() < t.len()
-                && matches!(unit.to_ascii_lowercase().as_str(), "em" | "rem" | "ex" | "ch")
+                && matches!(
+                    unit.to_ascii_lowercase().as_str(),
+                    "em" | "rem" | "ex" | "ch"
+                )
         })
 }
 
@@ -230,7 +233,10 @@ pub(super) fn join_slash(v: &str) -> String {
 pub(super) fn split_font(v: &str) -> (&str, &str) {
     let mut end = 0;
     for token in split_outside_parens(v) {
-        let at = v[end..].find(token.as_str()).map(|i| end + i).unwrap_or(end);
+        let at = v[end..]
+            .find(token.as_str())
+            .map(|i| end + i)
+            .unwrap_or(end);
         end = at + token.len();
         if font_size_token(&token) {
             return (&v[..end], v[end..].trim());
@@ -250,9 +256,19 @@ pub(super) fn font_size_token(token: &str) -> bool {
     let lower = size.to_ascii_lowercase();
     if matches!(
         lower.as_str(),
-        "xx-small" | "x-small" | "small" | "medium" | "large" | "x-large" | "xx-large"
-            | "xxx-large" | "larger" | "smaller"
-    ) || ["calc(", "min(", "max(", "clamp("].iter().any(|f| lower.starts_with(f))
+        "xx-small"
+            | "x-small"
+            | "small"
+            | "medium"
+            | "large"
+            | "x-large"
+            | "xx-large"
+            | "xxx-large"
+            | "larger"
+            | "smaller"
+    ) || ["calc(", "min(", "max(", "clamp("]
+        .iter()
+        .any(|f| lower.starts_with(f))
     {
         return true;
     }
@@ -817,9 +833,15 @@ pub(super) fn calc_size_arg(v: &str) -> Option<CalcSize> {
         expr = e.to_string();
     }
     let px = |t: &str| t.strip_suffix("px").and_then(|n| n.parse::<f32>().ok());
-    let f = if let Some(a) = expr.strip_prefix("min(size,").and_then(|e| e.strip_suffix(')')) {
+    let f = if let Some(a) = expr
+        .strip_prefix("min(size,")
+        .and_then(|e| e.strip_suffix(')'))
+    {
         (1.0, 0.0, px(a)?, f32::MIN)
-    } else if let Some(a) = expr.strip_prefix("max(size,").and_then(|e| e.strip_suffix(')')) {
+    } else if let Some(a) = expr
+        .strip_prefix("max(size,")
+        .and_then(|e| e.strip_suffix(')'))
+    {
         (1.0, 0.0, f32::MAX, px(a)?)
     } else {
         // Сумма членов: `size`, `size*k`, `k*size`, `size/k`, `L`.
@@ -835,7 +857,10 @@ pub(super) fn calc_size_arg(v: &str) -> Option<CalcSize> {
             let term = &rest[..end];
             if term == "size" {
                 mul += sign;
-            } else if let Some(k) = term.strip_prefix("size*").or_else(|| term.strip_suffix("*size")) {
+            } else if let Some(k) = term
+                .strip_prefix("size*")
+                .or_else(|| term.strip_suffix("*size"))
+            {
                 mul += sign * k.parse::<f32>().ok()?;
             } else if let Some(k) = term.strip_prefix("size/") {
                 mul += sign / k.parse::<f32>().ok()?;
@@ -845,7 +870,11 @@ pub(super) fn calc_size_arg(v: &str) -> Option<CalcSize> {
             if end == rest.len() {
                 break;
             }
-            sign = if rest.as_bytes()[end] == b'-' { -1.0 } else { 1.0 };
+            sign = if rest.as_bytes()[end] == b'-' {
+                -1.0
+            } else {
+                1.0
+            };
             rest = &rest[end + 1..];
         }
         (mul, add, f32::MAX, f32::MIN)
@@ -854,8 +883,11 @@ pub(super) fn calc_size_arg(v: &str) -> Option<CalcSize> {
         let (mul, add, max, min) = f;
         return Some(CalcSize::Fixed((b * mul + add).min(max).max(min).max(0.0)));
     }
-    matches!(basis, "auto" | "fit-content" | "min-content" | "max-content" | "content")
-        .then_some(CalcSize::Over(f))
+    matches!(
+        basis,
+        "auto" | "fit-content" | "min-content" | "max-content" | "content"
+    )
+    .then_some(CalcSize::Over(f))
 }
 
 /// `object-view-box: none | <basic-shape-rect>` — `inset()`, `rect()`,
@@ -864,7 +896,9 @@ pub(super) fn calc_size_arg(v: &str) -> Option<CalcSize> {
 /// listed value, before and after `/`, equal. `20px / 20px` is that radius;
 /// unequal corners are not representable here and stay unrounded.
 pub(super) fn uniform_round(r: &str) -> Option<Len> {
-    let mut it = r.split(|c: char| c == '/' || c.is_whitespace()).filter(|t| !t.is_empty());
+    let mut it = r
+        .split(|c: char| c == '/' || c.is_whitespace())
+        .filter(|t| !t.is_empty());
     let first = Len::parse(it.next()?)?;
     it.all(|t| Len::parse(t) == Some(first)).then_some(first)
 }
@@ -968,7 +1002,9 @@ pub(super) fn parse_shadows(v: &str) -> Vec<Shadow> {
                         pct: 0.0,
                         ..sum
                     };
-                    lens.push((bare == crate::style::values::value::Sum::default()).then_some(sum.px));
+                    lens.push(
+                        (bare == crate::style::values::value::Sum::default()).then_some(sum.px),
+                    );
                 }
                 Some(Len::Pct(_)) => return vec![],
                 // em/vh и прочее — валидно, но контекста тут нет.

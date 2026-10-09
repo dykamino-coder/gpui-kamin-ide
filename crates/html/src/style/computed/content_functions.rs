@@ -78,7 +78,8 @@ pub(crate) fn parse_content(raw: &str) -> Option<Vec<ContentItem>> {
             // and CSS-wide keywords from <counter-name>. Compare decoded
             // identifiers case-insensitively, then invalidate the declaration
             // so an earlier valid content value survives the cascade.
-            let counter_name = crate::style::css::unescape(args.first()?.trim()).to_ascii_lowercase();
+            let counter_name =
+                crate::style::css::unescape(args.first()?.trim()).to_ascii_lowercase();
             if matches!(
                 counter_name.as_str(),
                 "none" | "default" | "initial" | "inherit" | "unset" | "revert" | "revert-layer"

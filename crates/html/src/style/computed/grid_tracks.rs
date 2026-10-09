@@ -56,7 +56,11 @@ fn bracket_names(t: &str) -> Option<Vec<String>> {
 /// Имена линий тела `repeat(…)`: у шаблона — по линиям вокруг дорожек тела
 /// (дорожек + 1), у `<line-name-list>` подсетки — по записи на линию.
 fn repeat_body_names(rest: &str, subgrid: bool) -> Vec<Vec<String>> {
-    let mut lines: Vec<Vec<String>> = if subgrid { Vec::new() } else { vec![Vec::new()] };
+    let mut lines: Vec<Vec<String>> = if subgrid {
+        Vec::new()
+    } else {
+        vec![Vec::new()]
+    };
     for t in line_name_tokens(rest) {
         match bracket_names(&t) {
             Some(names) if subgrid => lines.push(names),
@@ -79,9 +83,15 @@ fn repeat_body_names(rest: &str, subgrid: bool) -> Vec<Vec<String>> {
 /// компонентом со своими именами (`repeat`). `None` — имён нет.
 pub(super) fn parse_line_names(v: &str) -> Option<gpui::GridAxisLineNames> {
     let tokens = line_name_tokens(v);
-    let subgrid = tokens.first().is_some_and(|t| t.eq_ignore_ascii_case("subgrid"));
+    let subgrid = tokens
+        .first()
+        .is_some_and(|t| t.eq_ignore_ascii_case("subgrid"));
     let mut out = gpui::GridAxisLineNames::default();
-    let mut lines: Vec<Vec<String>> = if subgrid { Vec::new() } else { vec![Vec::new()] };
+    let mut lines: Vec<Vec<String>> = if subgrid {
+        Vec::new()
+    } else {
+        vec![Vec::new()]
+    };
     let mut any = false;
     let mut after = false;
     for t in tokens.iter().skip(usize::from(subgrid)) {
@@ -105,7 +115,11 @@ pub(super) fn parse_line_names(v: &str) -> Option<gpui::GridAxisLineNames> {
                 }
                 out.before = std::mem::take(&mut lines);
                 out.repeat = Some(body);
-                lines = if subgrid { Vec::new() } else { vec![Vec::new()] };
+                lines = if subgrid {
+                    Vec::new()
+                } else {
+                    vec![Vec::new()]
+                };
                 after = true;
             } else {
                 let n: usize = count.parse().ok()?;
@@ -170,7 +184,9 @@ pub(super) fn parse_named_pair(v: &str) -> [Option<gpui::GridNamedLine>; 2] {
         None => {
             let start = parse_named_placement(v);
             let end = match &start {
-                Some(gpui::GridNamedLine::Line(name, 0)) => Some(gpui::GridNamedLine::Line(name.clone(), 0)),
+                Some(gpui::GridNamedLine::Line(name, 0)) => {
+                    Some(gpui::GridNamedLine::Line(name.clone(), 0))
+                }
                 _ => None,
             };
             [start, end]

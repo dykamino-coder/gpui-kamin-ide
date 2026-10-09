@@ -62,12 +62,48 @@ pub(super) fn scroll_marker_pass(
             let physical = match (logical, vertical) {
                 ("block-start", false) => "up",
                 ("block-end", false) => "down",
-                ("inline-start", false) => if rtl { "right" } else { "left" },
-                ("inline-end", false) => if rtl { "left" } else { "right" },
-                ("block-start", true) => if rl { "right" } else { "left" },
-                ("block-end", true) => if rl { "left" } else { "right" },
-                ("inline-start", true) => if rtl { "down" } else { "up" },
-                _ => if rtl { "up" } else { "down" },
+                ("inline-start", false) => {
+                    if rtl {
+                        "right"
+                    } else {
+                        "left"
+                    }
+                }
+                ("inline-end", false) => {
+                    if rtl {
+                        "left"
+                    } else {
+                        "right"
+                    }
+                }
+                ("block-start", true) => {
+                    if rl {
+                        "right"
+                    } else {
+                        "left"
+                    }
+                }
+                ("block-end", true) => {
+                    if rl {
+                        "left"
+                    } else {
+                        "right"
+                    }
+                }
+                ("inline-start", true) => {
+                    if rtl {
+                        "down"
+                    } else {
+                        "up"
+                    }
+                }
+                _ => {
+                    if rtl {
+                        "up"
+                    } else {
+                        "down"
+                    }
+                }
             };
             let l = format!("scroll-button({logical})");
             let p = format!("scroll-button({physical})");
@@ -87,9 +123,8 @@ pub(super) fn scroll_marker_pass(
             }
         }
     }
-    let scrolls = |o: Option<Overflow>| {
-        matches!(o, Some(Overflow::Scroll) | Some(Overflow::Hidden))
-    };
+    let scrolls =
+        |o: Option<Overflow>| matches!(o, Some(Overflow::Scroll) | Some(Overflow::Hidden));
     let scroller = tag == "html" || scrolls(style.overflow_x) || scrolls(style.overflow_y);
     let Some(before) = style.scroll_marker_group else {
         if scroller {
@@ -129,7 +164,10 @@ pub(super) fn scroll_marker_pass(
         other => other,
     };
     gstyle.contain_layout = Some(true);
-    if !matches!(gstyle.position, Some(Position::Absolute) | Some(Position::Fixed)) {
+    if !matches!(
+        gstyle.position,
+        Some(Position::Absolute) | Some(Position::Fixed)
+    ) {
         gstyle.contain_size = Some(true);
     }
     let group = Element {

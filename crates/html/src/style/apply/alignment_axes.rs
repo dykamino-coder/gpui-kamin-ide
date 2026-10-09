@@ -2,7 +2,10 @@
 //! A vertical container exchanges items/content; a vertical parent exchanges
 //! the child's self alignment independently of the child's own writing mode.
 
-pub(super) fn abspos_normal(style: &mut gpui::StyleRefinement, c: &crate::style::computed::Computed) {
+pub(super) fn abspos_normal(
+    style: &mut gpui::StyleRefinement,
+    c: &crate::style::computed::Computed,
+) {
     use crate::style::computed::Position;
     if !matches!(c.position, Some(Position::Absolute | Position::Fixed)) {
         return;

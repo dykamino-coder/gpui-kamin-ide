@@ -570,12 +570,34 @@ pub(super) struct Builtin {
 fn is_predefined(name: &str) -> bool {
     matches!(
         name,
-        "decimal" | "decimal-leading-zero" | "disc" | "circle" | "square"
-            | "disclosure-open" | "disclosure-closed" | "lower-roman" | "upper-roman"
-            | "lower-alpha" | "lower-latin" | "upper-alpha" | "upper-latin" | "lower-greek"
-            | "cjk-decimal" | "hiragana" | "hiragana-iroha" | "katakana" | "katakana-iroha"
-            | "cjk-earthly-branch" | "cjk-heavenly-stem" | "lower-armenian" | "armenian"
-            | "upper-armenian" | "georgian" | "hebrew" | "ethiopic-numeric" | "cjk-ideographic"
+        "decimal"
+            | "decimal-leading-zero"
+            | "disc"
+            | "circle"
+            | "square"
+            | "disclosure-open"
+            | "disclosure-closed"
+            | "lower-roman"
+            | "upper-roman"
+            | "lower-alpha"
+            | "lower-latin"
+            | "upper-alpha"
+            | "upper-latin"
+            | "lower-greek"
+            | "cjk-decimal"
+            | "hiragana"
+            | "hiragana-iroha"
+            | "katakana"
+            | "katakana-iroha"
+            | "cjk-earthly-branch"
+            | "cjk-heavenly-stem"
+            | "lower-armenian"
+            | "armenian"
+            | "upper-armenian"
+            | "georgian"
+            | "hebrew"
+            | "ethiopic-numeric"
+            | "cjk-ideographic"
     ) || NUMERIC_ZERO.iter().any(|(k, _)| *k == name)
         || CJK_STYLES.iter().any(|(k, _)| *k == name)
 }
@@ -619,8 +641,13 @@ pub(super) fn builtin(name: &str) -> Option<Builtin> {
     };
     let uses_negative = !matches!(
         name,
-        "disc" | "circle" | "square" | "disclosure-open" | "disclosure-closed"
-            | "cjk-earthly-branch" | "cjk-heavenly-stem"
+        "disc"
+            | "circle"
+            | "square"
+            | "disclosure-open"
+            | "disclosure-closed"
+            | "cjk-earthly-branch"
+            | "cjk-heavenly-stem"
     );
     Some(Builtin {
         negative: (negative, String::new()),
@@ -678,8 +705,9 @@ pub(super) fn builtin_initial(name: &str, n: u64) -> Option<String> {
         "ethiopic-numeric" => ethiopic(positive?),
         name => {
             if let Some((_, zero)) = NUMERIC_ZERO.iter().find(|(k, _)| *k == name) {
-                let digits: Vec<char> =
-                    (0..10).filter_map(|d| char::from_u32(*zero as u32 + d)).collect();
+                let digits: Vec<char> = (0..10)
+                    .filter_map(|d| char::from_u32(*zero as u32 + d))
+                    .collect();
                 numeric(v, &digits)
             } else {
                 let t = if name == "cjk-ideographic" {
@@ -703,7 +731,8 @@ pub(super) fn builtin_initial(name: &str, n: u64) -> Option<String> {
 /// (римский, алфавитные) вне его тоже падают на десятичный.
 pub fn repr(value: i32, style: &str) -> String {
     let style = &*normalize_name(style);
-    if let Some(s) = crate::style::generated::counter_style_rules::custom_repr(value as i64, style) {
+    if let Some(s) = crate::style::generated::counter_style_rules::custom_repr(value as i64, style)
+    {
         return s;
     }
     builtin_repr(value, style)
@@ -782,9 +811,10 @@ pub(super) fn builtin_repr(value: i32, style: &str) -> String {
             )
         }
         // Строчная армянская — тот же аддитивный набор в нижнем регистре.
-        "lower-armenian" => positive
-            .filter(|n| *n <= 9999)
-            .map_or_else(|| value.to_string(), |n| additive(n, ARMENIAN).to_lowercase()),
+        "lower-armenian" => positive.filter(|n| *n <= 9999).map_or_else(
+            || value.to_string(),
+            |n| additive(n, ARMENIAN).to_lowercase(),
+        ),
         // Диапазон стиля — часть его определения: вне его берётся
         // десятичный резерв (css-counter-styles-3 §counter-style-range).
         "armenian" | "upper-armenian" => positive
@@ -822,10 +852,19 @@ pub fn suffix(style: &str) -> &'static str {
         // Восточноазиатские стили ставят идеографическую запятую и БЕЗ
         // пробела (css-counter-styles-3 §6.2/§6.3; сверено с тестами
         // `css3-counter-styles-005/032/035/038/041/203/206`).
-        "cjk-decimal" | "hiragana" | "hiragana-iroha" | "katakana" | "katakana-iroha"
-        | "cjk-earthly-branch" | "cjk-heavenly-stem" | "japanese-formal"
-        | "japanese-informal" | "simp-chinese-formal" | "simp-chinese-informal"
-        | "trad-chinese-formal" | "trad-chinese-informal" => "、",
+        "cjk-decimal"
+        | "hiragana"
+        | "hiragana-iroha"
+        | "katakana"
+        | "katakana-iroha"
+        | "cjk-earthly-branch"
+        | "cjk-heavenly-stem"
+        | "japanese-formal"
+        | "japanese-informal"
+        | "simp-chinese-formal"
+        | "simp-chinese-informal"
+        | "trad-chinese-formal"
+        | "trad-chinese-informal" => "、",
         // Корейские — запятая с пробелом (css-counter-styles-3 §6.3
         // `suffix: ', '`; Blink `ua_counter_style_map.cc`, эталон
         // `counter-suffix-ref`: «일, »).
@@ -847,7 +886,9 @@ pub fn marker_repr(value: i32, style: &str) -> String {
         return String::new();
     }
     let style = &*normalize_name(style);
-    if let Some(s) = crate::style::generated::counter_style_rules::custom_marker(value as i64, style) {
+    if let Some(s) =
+        crate::style::generated::counter_style_rules::custom_marker(value as i64, style)
+    {
         return s;
     }
     let body = repr(value, style);

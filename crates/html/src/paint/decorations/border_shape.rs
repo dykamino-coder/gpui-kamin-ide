@@ -5,10 +5,7 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{IntoElement, Styled, px};
 
-pub(super) fn border_shape_layer(
-    c: &Computed,
-    out: &mut Vec<gpui::AnyElement>,
-) {
+pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
     // Рамка `border-shape` (css-borders-4 §border-shape): одна фигура — SVG-
     // обводка толщиной «relevant side» по центру контура, две — заливка между
     // внешней и внутренней. Квад цвета не получает (`apply::apply_paint`),
@@ -19,17 +16,19 @@ pub(super) fn border_shape_layer(
         let (stroke, colour) = c.border_shape_stroke();
         let colour = crate::paint::background::border_paint(c, colour);
         let outer_out = c.geometry_outsets(bs.outer_box);
-        let inner = bs
-            .inner
-            .clone()
-            .map(|(s, k)| (s, c.geometry_outsets(k)));
+        let inner = bs.inner.clone().map(|(s, k)| (s, c.geometry_outsets(k)));
         let ext = c.border_shape_ext();
         let side_px = |l: Option<Len>| match l {
             Some(Len::Px(v)) => v,
             _ => 0.0,
         };
         let w = c.borders();
-        let [t, r, b, l] = [side_px(w.top), side_px(w.right), side_px(w.bottom), side_px(w.left)];
+        let [t, r, b, l] = [
+            side_px(w.top),
+            side_px(w.right),
+            side_px(w.bottom),
+            side_px(w.left),
+        ];
         // Внутренняя тень по внутреннему контуру фигуры (css-borders-4
         // §border-shape-shadow-interaction: «cast as if everything outside
         // the shape defined by the inner path were opaque»; Blink
@@ -43,7 +42,8 @@ pub(super) fn border_shape_layer(
                 gpui::canvas(
                     |_, _, _| {},
                     move |bounds, _, window, _| {
-                        let (cw, ch) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+                        let (cw, ch) =
+                            (f32::from(bounds.size.width), f32::from(bounds.size.height));
                         let (bw, bh) = (cw - ext[3] - ext[1], ch - ext[0] - ext[2]);
                         let markup = crate::paint::background::border_shape_shadow_svg(
                             (bs.outer.as_str(), outer_out),
@@ -61,7 +61,14 @@ pub(super) fn border_shape_layer(
                         if let Some(markup) = markup
                             && let Some(img) = crate::svg::rasterize(&markup, cw, ch)
                         {
-                            let _ = window.paint_image_with_sampling(bounds, gpui::Corners::default(), img, 0, false, gpui::ImageSampling::Linear);
+                            let _ = window.paint_image_with_sampling(
+                                bounds,
+                                gpui::Corners::default(),
+                                img,
+                                0,
+                                false,
+                                gpui::ImageSampling::Linear,
+                            );
                         }
                     },
                 )
@@ -80,7 +87,8 @@ pub(super) fn border_shape_layer(
                 gpui::canvas(
                     |_, _, _| {},
                     move |bounds, _, window, _| {
-                        let (cw, ch) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+                        let (cw, ch) =
+                            (f32::from(bounds.size.width), f32::from(bounds.size.height));
                         let (bw, bh) = (cw - ext[3] - ext[1], ch - ext[0] - ext[2]);
                         let markup = crate::paint::background::border_shape_ring_svg(
                             (bs.outer.as_str(), outer_out),
@@ -97,7 +105,14 @@ pub(super) fn border_shape_layer(
                         if let Some(markup) = markup
                             && let Some(img) = crate::svg::rasterize(&markup, cw, ch)
                         {
-                            let _ = window.paint_image_with_sampling(bounds, gpui::Corners::default(), img, 0, false, gpui::ImageSampling::Linear);
+                            let _ = window.paint_image_with_sampling(
+                                bounds,
+                                gpui::Corners::default(),
+                                img,
+                                0,
+                                false,
+                                gpui::ImageSampling::Linear,
+                            );
                         }
                     },
                 )

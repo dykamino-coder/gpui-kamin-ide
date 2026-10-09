@@ -14,10 +14,10 @@ use crate::style::computed::{BgRepeat, Computed, Tiling};
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, RenderImage, Styled, px};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
-mod sampling;
-mod oriented_vector;
 pub(crate) mod alpha_sampling;
 mod float_geometry;
+mod oriented_vector;
+mod sampling;
 use crate::paint::background::float_geometry::rrect_of;
 pub use float_geometry::rounded_float;
 mod mask_composite;
@@ -29,8 +29,8 @@ mod gradient_raster;
 mod svg_fragment;
 
 pub(super) mod exact_layer;
-mod tile_positions;
 mod radius_lengths;
+mod tile_positions;
 #[cfg(test)]
 use crate::paint::background::tile_positions::tiling;
 mod shape_path;
@@ -219,8 +219,6 @@ pub(crate) fn split_top(s: &str) -> Vec<&str> {
     out
 }
 
-
-
 /// Слой фоновой картинки: канвас, рисующий плитки внутри своих границ.
 /// Коробка ПОЗИЦИОНИРОВАНИЯ корня — отступы её краёв от краёв холста.
 ///
@@ -308,7 +306,10 @@ fn border_area_fill(c: &Computed) -> Option<crate::style::values::value::Color> 
 
 /// Цвет, которым красится рамка: свой `border-color` поверх заливки
 /// `border-area` («ignoring any transparency introduced by border-color»).
-pub(crate) fn border_paint(c: &Computed, colour: crate::style::values::value::Color) -> crate::style::values::value::Color {
+pub(crate) fn border_paint(
+    c: &Computed,
+    colour: crate::style::values::value::Color,
+) -> crate::style::values::value::Color {
     match border_area_fill(c) {
         Some(fill) => over(colour, fill),
         None => colour,
@@ -324,22 +325,20 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
     }
     let style = c.clone();
     Some(
-        exact_layer::ExactLayer::new(
-            move |bounds: Bounds<Pixels>, window: &mut gpui::Window| {
-                if style.bg_fixed == Some(true) {
-                    // Плитка меряется и отсчитывается от ОБЛАСТИ ПРОСМОТРА,
-                    // а красится только внутри своей коробки: сдвиг между
-                    // ними держит сам `paint_tiles`.
-                    let view = Bounds {
-                        origin: gpui::point(px(0.0), px(0.0)),
-                        size: window.viewport_size(),
-                    };
-                    paint_tiles(&style, view, Some(bounds), window);
-                } else {
-                    paint_area(&style, bounds, window);
-                }
-            },
-        )
+        exact_layer::ExactLayer::new(move |bounds: Bounds<Pixels>, window: &mut gpui::Window| {
+            if style.bg_fixed == Some(true) {
+                // Плитка меряется и отсчитывается от ОБЛАСТИ ПРОСМОТРА,
+                // а красится только внутри своей коробки: сдвиг между
+                // ними держит сам `paint_tiles`.
+                let view = Bounds {
+                    origin: gpui::point(px(0.0), px(0.0)),
+                    size: window.viewport_size(),
+                };
+                paint_tiles(&style, view, Some(bounds), window);
+            } else {
+                paint_area(&style, bounds, window);
+            }
+        })
         .into_any_element(),
     )
 }
@@ -352,7 +351,10 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
 // краски хватает цвета глифа или рамки.
 
 /// Краска `top` поверх `base` (source-over), цвета без премультипликации.
-pub(crate) fn over(top: crate::style::values::value::Color, base: crate::style::values::value::Color) -> crate::style::values::value::Color {
+pub(crate) fn over(
+    top: crate::style::values::value::Color,
+    base: crate::style::values::value::Color,
+) -> crate::style::values::value::Color {
     let a = top.a + base.a * (1.0 - top.a);
     if a <= 0.0 {
         return crate::style::values::value::Color::default();

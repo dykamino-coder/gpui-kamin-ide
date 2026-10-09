@@ -181,7 +181,12 @@ impl Transform {
         f[1][1] = l[1][1];
         f[0][3] = v[0][0];
         f[1][3] = v[1][0];
-        let pct = [[v[0][1], v[0][2]], [v[1][1], v[1][2]], [0.0, 0.0], [0.0, 0.0]];
+        let pct = [
+            [v[0][1], v[0][2]],
+            [v[1][1], v[1][2]],
+            [0.0, 0.0],
+            [0.0, 0.0],
+        ];
         self.push4(f, pct);
     }
 
@@ -214,8 +219,8 @@ impl Transform {
         let mut p = [[0.0f32; 2]; 4];
         for i in 0..4 {
             for a in 0..2 {
-                p[i][a] = self.m4_pct[i][a] * f[3][3]
-                    + (0..3).map(|k| m[i][k] * pct[k][a]).sum::<f32>();
+                p[i][a] =
+                    self.m4_pct[i][a] * f[3][3] + (0..3).map(|k| m[i][k] * pct[k][a]).sum::<f32>();
             }
         }
         self.m4 = mul4(m, f);
@@ -402,10 +407,19 @@ impl Transform {
         let r = Self::rot(angle);
         // K·R — остаток столбцами (m11, m12) и (m21, m22), как в псевдокоде.
         let kr = [
-            [m[0] * r[0][0] + m[2] * r[1][0], m[0] * r[0][1] + m[2] * r[1][1]],
-            [m[1] * r[0][0] + m[3] * r[1][0], m[1] * r[0][1] + m[3] * r[1][1]],
+            [
+                m[0] * r[0][0] + m[2] * r[1][0],
+                m[0] * r[0][1] + m[2] * r[1][1],
+            ],
+            [
+                m[1] * r[0][0] + m[3] * r[1][0],
+                m[1] * r[0][1] + m[3] * r[1][1],
+            ],
         ];
-        let lin = [[kr[0][0] * sx, kr[0][1] * sy], [kr[1][0] * sx, kr[1][1] * sy]];
+        let lin = [
+            [kr[0][0] * sx, kr[0][1] * sy],
+            [kr[1][0] * sx, kr[1][1] * sy],
+        ];
         let tr: [[f32; 3]; 2] =
             std::array::from_fn(|i| std::array::from_fn(|j| mix(self.tr[i][j], other.tr[i][j])));
         let mut out = Transform::default();

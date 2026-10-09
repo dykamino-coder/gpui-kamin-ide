@@ -108,7 +108,9 @@ pub(crate) fn static_position_layer(
     } else if paint_last_ok(e, &nodes[idx + 1..]) {
         crate::layout::positioned::containing_block::late_push(
             spot,
-            gpui::PaintLast::new(built).key(paint_key).into_any_element(),
+            gpui::PaintLast::new(built)
+                .key(paint_key)
+                .into_any_element(),
         )
     } else {
         crate::layout::positioned::containing_block::late_push(spot, built)

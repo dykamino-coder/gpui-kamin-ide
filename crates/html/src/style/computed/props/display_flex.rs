@@ -109,7 +109,11 @@ impl Computed {
                     // внутри него синтезирует `dom::walk`. Blink знает только
                     // `ruby`, `block ruby` и `ruby-text` (`css_value_keywords`),
                     // остальные роли — по спеке и A.1.
-                    "ruby" | "inline ruby" | "ruby-base" | "ruby-text" | "ruby-base-container"
+                    "ruby"
+                    | "inline ruby"
+                    | "ruby-base"
+                    | "ruby-text"
+                    | "ruby-base-container"
                     | "ruby-text-container" => {
                         self.ruby_role = Some(match v {
                             "ruby-base" => RubyRole::Base,
@@ -222,7 +226,8 @@ impl Computed {
                     }
                 }
                 wrap |= modes > 0 || balance > 0;
-                if valid && modes <= 1 && balance <= 1 && (!nowrap || (modes == 0 && balance == 0)) {
+                if valid && modes <= 1 && balance <= 1 && (!nowrap || (modes == 0 && balance == 0))
+                {
                     self.flex_wrap = Some(wrap);
                     // Обратный перенос кладёт строки с другого края: одна строка
                     // в контейнере уезжает вниз, а не остаётся вверху.
@@ -374,7 +379,8 @@ impl Computed {
                     self.align_self_inherit = false;
                     self.align_self_safe = is_safe(v);
                     self.align_self_normal = v.trim() == "normal";
-                    self.align_self_own_axis = matches!(last, Some("self-start") | Some("self-end"));
+                    self.align_self_own_axis =
+                        matches!(last, Some("self-start") | Some("self-end"));
                     self.align_self_flex_kw = matches!(last, Some("flex-start") | Some("flex-end"));
                     self.align_self_last = v.split_whitespace().any(|w| w == "last");
                 }

@@ -38,16 +38,37 @@ impl Side {
 pub fn place(name: &str) -> Option<Place> {
     use Side::*;
     Some(match name {
-        "top-left-corner" => Place::Corner { top: true, left: true },
-        "top-right-corner" => Place::Corner { top: true, left: false },
-        "bottom-right-corner" => Place::Corner { top: false, left: false },
-        "bottom-left-corner" => Place::Corner { top: false, left: true },
+        "top-left-corner" => Place::Corner {
+            top: true,
+            left: true,
+        },
+        "top-right-corner" => Place::Corner {
+            top: true,
+            left: false,
+        },
+        "bottom-right-corner" => Place::Corner {
+            top: false,
+            left: false,
+        },
+        "bottom-left-corner" => Place::Corner {
+            top: false,
+            left: true,
+        },
         "top-left" => Place::Edge { side: Top, at: 0 },
         "top-center" => Place::Edge { side: Top, at: 1 },
         "top-right" => Place::Edge { side: Top, at: 2 },
-        "bottom-left" => Place::Edge { side: Bottom, at: 0 },
-        "bottom-center" => Place::Edge { side: Bottom, at: 1 },
-        "bottom-right" => Place::Edge { side: Bottom, at: 2 },
+        "bottom-left" => Place::Edge {
+            side: Bottom,
+            at: 0,
+        },
+        "bottom-center" => Place::Edge {
+            side: Bottom,
+            at: 1,
+        },
+        "bottom-right" => Place::Edge {
+            side: Bottom,
+            at: 2,
+        },
         "left-top" => Place::Edge { side: Left, at: 0 },
         "left-middle" => Place::Edge { side: Left, at: 1 },
         "left-bottom" => Place::Edge { side: Left, at: 2 },
@@ -84,14 +105,34 @@ pub fn containing_block(p: Place, size: (f32, f32), m: [f32; 4]) -> Rect {
     let right_edge = w - m[1];
     let bottom_edge = h - m[2];
     match p {
-        Place::Corner { top: true, left: true } => (0.0, 0.0, left, top),
-        Place::Corner { top: true, left: false } => (right_edge, 0.0, right, top),
-        Place::Corner { top: false, left: false } => (right_edge, bottom_edge, right, bottom),
-        Place::Corner { top: false, left: true } => (0.0, bottom_edge, left, bottom),
-        Place::Edge { side: Side::Top, .. } => (m[3], 0.0, w - m[1] - m[3], top),
-        Place::Edge { side: Side::Bottom, .. } => (m[3], bottom_edge, w - m[1] - m[3], bottom),
-        Place::Edge { side: Side::Right, .. } => (right_edge, m[0], right, h - m[0] - m[2]),
-        Place::Edge { side: Side::Left, .. } => (0.0, m[0], left, h - m[0] - m[2]),
+        Place::Corner {
+            top: true,
+            left: true,
+        } => (0.0, 0.0, left, top),
+        Place::Corner {
+            top: true,
+            left: false,
+        } => (right_edge, 0.0, right, top),
+        Place::Corner {
+            top: false,
+            left: false,
+        } => (right_edge, bottom_edge, right, bottom),
+        Place::Corner {
+            top: false,
+            left: true,
+        } => (0.0, bottom_edge, left, bottom),
+        Place::Edge {
+            side: Side::Top, ..
+        } => (m[3], 0.0, w - m[1] - m[3], top),
+        Place::Edge {
+            side: Side::Bottom, ..
+        } => (m[3], bottom_edge, w - m[1] - m[3], bottom),
+        Place::Edge {
+            side: Side::Right, ..
+        } => (right_edge, m[0], right, h - m[0] - m[2]),
+        Place::Edge {
+            side: Side::Left, ..
+        } => (0.0, m[0], left, h - m[0] - m[2]),
     }
 }
 
@@ -294,7 +335,10 @@ mod tests {
     #[test]
     fn overconstrained_moves_away_from_center() {
         // Верхняя коробка 50 при поле 100: остаток уходит в верхнее поле.
-        assert_eq!(edge_margins(Some(0.0), Some(0.0), 50.0, 100.0, true), (50.0, 0.0));
+        assert_eq!(
+            edge_margins(Some(0.0), Some(0.0), 50.0, 100.0, true),
+            (50.0, 0.0)
+        );
         assert_eq!(edge_margins(None, None, 50.0, 100.0, true), (25.0, 25.0));
     }
 }

@@ -34,7 +34,14 @@ impl Paragraph {
                 .or(self.opaque_text_origin.then_some(self.glyph_nudge));
             exact -= offset.unwrap_or_default();
         }
-        let _ = shaped.paint_background(exact, self.line_height, gpui::TextAlign::Left, None, window, cx);
+        let _ = shaped.paint_background(
+            exact,
+            self.line_height,
+            gpui::TextAlign::Left,
+            None,
+            window,
+            cx,
+        );
     }
 
     pub(super) fn text_raster_origin(

@@ -73,12 +73,8 @@ impl Computed {
                             "auto" => None,
                             _ => Len::parse(t),
                         };
-                        self.clip_len = Some([
-                            raw(parts[0]),
-                            raw(parts[1]),
-                            raw(parts[2]),
-                            raw(parts[3]),
-                        ]);
+                        self.clip_len =
+                            Some([raw(parts[0]), raw(parts[1]), raw(parts[2]), raw(parts[3])]);
                     }
                 }
             }
@@ -146,8 +142,10 @@ impl Computed {
                         _ => (false, false),
                     }
                 };
-                let list: Vec<(bool, bool)> =
-                    crate::style::css::split_args(v).iter().map(|l| one(l)).collect();
+                let list: Vec<(bool, bool)> = crate::style::css::split_args(v)
+                    .iter()
+                    .map(|l| one(l))
+                    .collect();
                 self.mask_no_repeat = Some(list.first().copied().unwrap_or((false, false)));
                 self.mask_repeat_list = (!list.is_empty()).then_some(list);
                 let mode = |w: &str| match w {
@@ -205,9 +203,7 @@ impl Computed {
                     // против эталона корпуса даёт 1.71 против 0.03 у `center top`.
                     let (x, y) = match (toks.len(), toks.get(1).and_then(|t| word(t))) {
                         (_, Some(second)) => (first, second),
-                        (1, None) if matches!(toks[0], "top" | "bottom") => {
-                            (Len::Pct(0.5), first)
-                        }
+                        (1, None) if matches!(toks[0], "top" | "bottom") => (Len::Pct(0.5), first),
                         (_, None) => (first, Len::Pct(0.5)),
                     };
                     Some((x, y, false, false))
@@ -332,9 +328,10 @@ impl Computed {
                     let mut round = None;
                     let (rule, rest) = match rest.trim_start().split_once(',') {
                         Some((head, tail))
-                            if head.split_whitespace().next().is_some_and(|w| {
-                                matches!(w, "nonzero" | "evenodd" | "round")
-                            }) =>
+                            if head
+                                .split_whitespace()
+                                .next()
+                                .is_some_and(|w| matches!(w, "nonzero" | "evenodd" | "round")) =>
                         {
                             let mut words = head.split_whitespace().peekable();
                             let rule = match words.peek() {

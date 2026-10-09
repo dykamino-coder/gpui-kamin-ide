@@ -6,19 +6,19 @@ use crate::render::in_flow;
 use crate::style::computed::{Computed, Display};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
-pub(crate) mod orthogonal_inline;
-pub(crate) mod native_vertical;
-pub(super) mod orthogonal_fixed_child;
-pub(crate) mod orthogonal_children;
-mod orthogonal_horizontal;
-mod orthogonal_absolute;
-mod vertical_intrinsic;
-pub(crate) mod vertical_hug;
 pub(crate) mod native_intrinsic;
-mod physical_atomic;
-pub(crate) mod rotated_atom;
-mod physical_atomic_frame;
+pub(crate) mod native_vertical;
+mod orthogonal_absolute;
+pub(crate) mod orthogonal_children;
+pub(super) mod orthogonal_fixed_child;
+mod orthogonal_horizontal;
+pub(crate) mod orthogonal_inline;
 pub(crate) mod orthogonal_measure;
+mod physical_atomic;
+mod physical_atomic_frame;
+pub(crate) mod rotated_atom;
+pub(crate) mod vertical_hug;
+mod vertical_intrinsic;
 
 /// Блок вертикального письма занимает по горизонтали столько, сколько просит
 /// содержимое, а не всю строку родителя.
@@ -57,7 +57,8 @@ pub(crate) fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) ->
     // (`available-size-001`: the vertical-rl `#red` 1ch below the green 0).
     if matches!(
         e.style.position,
-        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute)
+            | Some(crate::style::computed::Position::Fixed)
     ) {
         return el;
     }
@@ -111,7 +112,12 @@ pub(crate) fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) ->
     // The row is an adapter for normal block flow, not a CSS flex item.
     // Its own shrink default must not compress the child's used inline size:
     // sizing-orthog-vlr-in-htb-007 measured 306px instead of 394px content.
-    div().flex().flex_row().flex_shrink_0().child(el).into_any_element()
+    div()
+        .flex()
+        .flex_row()
+        .flex_shrink_0()
+        .child(el)
+        .into_any_element()
 }
 
 /// Знак стоит прямо в вертикальном письме с `text-orientation: mixed`

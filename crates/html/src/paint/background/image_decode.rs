@@ -133,10 +133,7 @@ fn exif_orientation(bytes: &[u8]) -> Option<u16> {
 ///
 /// Точки переставляются целыми четвёрками — порядок каналов (BGRA,
 /// премультиплицированный) при этом не важен, как и в `crop_image`.
-fn orient_image(
-    image: &Arc<RenderImage>,
-    tag: u16,
-) -> Option<Arc<RenderImage>> {
+fn orient_image(image: &Arc<RenderImage>, tag: u16) -> Option<Arc<RenderImage>> {
     let s = image.size(0);
     let (w, h) = (s.width.0 as u32, s.height.0 as u32);
     let bytes = image.as_bytes(0)?;

@@ -166,7 +166,9 @@ pub fn compose_mask_layers(layers: &[MaskLayer], w: u32, h: u32) -> Option<Arc<R
 
 fn sample(bytes: &[u8], at4: usize, luminance: bool) -> f32 {
     if luminance {
-        (bytes[at4] as f32 * 0.0722 + bytes[at4 + 1] as f32 * 0.7152 + bytes[at4 + 2] as f32 * 0.2126)
+        (bytes[at4] as f32 * 0.0722
+            + bytes[at4 + 1] as f32 * 0.7152
+            + bytes[at4 + 2] as f32 * 0.2126)
             * bytes[at4 + 3] as f32
             / (255.0 * 255.0)
     } else {
@@ -191,7 +193,11 @@ fn snapped_axis(p: f32, start: f32, tile: f32, gap: f32, once: bool) -> Option<f
         return None;
     }
     let period = tile + gap;
-    let k0 = if once { 0.0 } else { ((p - start) / period).floor() };
+    let k0 = if once {
+        0.0
+    } else {
+        ((p - start) / period).floor()
+    };
     for k in [k0 - 1.0, k0, k0 + 1.0] {
         if once && k != 0.0 {
             continue;

@@ -51,9 +51,18 @@ pub(crate) fn clone_wrapper_item(w: &Element) -> Option<Element> {
         || !matches!(s.height, None | Some(Len::Auto))
         || s.min_height.is_some()
         || s.max_height.is_some()
-        || ![&s.padding.top, &s.padding.bottom, &s.padding.left, &s.padding.right, &b.top, &b.bottom, &b.left, &b.right]
-            .into_iter()
-            .all(zero)
+        || ![
+            &s.padding.top,
+            &s.padding.bottom,
+            &s.padding.left,
+            &s.padding.right,
+            &b.top,
+            &b.bottom,
+            &b.left,
+            &b.right,
+        ]
+        .into_iter()
+        .all(zero)
         || multicol_container(s)
     {
         return None;
@@ -202,7 +211,14 @@ pub(crate) fn clone_dec(c: &Element) -> Option<(f32, f32)> {
 /// Blink устроен так же: фрагмент — свой `PhysicalBoxFragment` со всеми
 /// сторонами, краска общим путём (`box_fragment_painter.cc:2322` разводит
 /// только `slice`).
-pub(crate) fn clone_fragment(c: &Element, dt: f32, db: f32, from: f32, fh: f32, clip: f32) -> Element {
+pub(crate) fn clone_fragment(
+    c: &Element,
+    dt: f32,
+    db: f32,
+    from: f32,
+    fh: f32,
+    clip: f32,
+) -> Element {
     use crate::style::computed::{Overflow, Position, Sides};
     let mut body = c.clone();
     body.style = c.style.paint_off();

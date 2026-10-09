@@ -44,7 +44,10 @@ pub(crate) fn physical(
         )
         || matches!(
             e.style.position,
-            Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
+            Some(
+                crate::style::computed::Position::Absolute
+                    | crate::style::computed::Position::Fixed
+            )
         )
     {
         return None;
@@ -54,7 +57,8 @@ pub(crate) fn physical(
     context.rotated_line = None;
     context.lines_reversed = None;
     context.para_vertical = None;
-    let mut child = crate::layout::atom::pct_resolved_against_block(e, flow).unwrap_or_else(|| e.clone());
+    let mut child =
+        crate::layout::atom::pct_resolved_against_block(e, flow).unwrap_or_else(|| e.clone());
     let margins = margin(&child.style, flow);
     child.style.margin = Sides::default();
     let central = flow.sideways != Some(true) && flow.text_sideways != Some(true);
@@ -62,9 +66,11 @@ pub(crate) fn physical(
     let physical = crate::render::element(&child, &context, opts);
     Some(
         crate::style::apply::margins(gpui::div().flex().flex_col().flex_shrink_0(), &margins)
-            .child(crate::layout::writing_mode::physical_atomic::PhysicalAtomic::new(
-                physical, ccw, central,
-            ))
+            .child(
+                crate::layout::writing_mode::physical_atomic::PhysicalAtomic::new(
+                    physical, ccw, central,
+                ),
+            )
             .into_any_element(),
     )
 }

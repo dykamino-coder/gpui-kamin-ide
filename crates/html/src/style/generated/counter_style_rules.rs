@@ -11,7 +11,9 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crate::style::generated::counter_style::{builtin, builtin_initial, builtin_repr, normalize_name};
+use crate::style::generated::counter_style::{
+    builtin, builtin_initial, builtin_repr, normalize_name,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 enum System {
@@ -131,7 +133,9 @@ fn tokenize(v: &str) -> Vec<Tok> {
         let starts_ident = is_name_start(c)
             || valid_escape(&chars, i)
             || (c == '-'
-                && chars.get(i + 1).is_some_and(|n| is_name_start(*n) || *n == '-')
+                && chars
+                    .get(i + 1)
+                    .is_some_and(|n| is_name_start(*n) || *n == '-')
                 || (c == '-' && valid_escape(&chars, i + 1)));
         if starts_ident {
             // Математическая функция — до парной скобки.
@@ -154,7 +158,10 @@ fn tokenize(v: &str) -> Vec<Tok> {
                     i += 1;
                 }
                 let text: String = chars[start..i].iter().collect();
-                let mut m = Math { s: text.as_bytes(), i: 0 };
+                let mut m = Math {
+                    s: text.as_bytes(),
+                    i: 0,
+                };
                 let v = m.func().filter(|v| !v.2).filter(|_| m.done());
                 out.push(v.map_or(Tok::Other, |v| Tok::Calc(v.0.round() as i64)));
                 continue;
@@ -173,7 +180,9 @@ fn tokenize(v: &str) -> Vec<Tok> {
             out.push(Tok::Ident(s));
             continue;
         }
-        if c.is_ascii_digit() || ((c == '-' || c == '+') && chars.get(i + 1).is_some_and(|d| d.is_ascii_digit())) {
+        if c.is_ascii_digit()
+            || ((c == '-' || c == '+') && chars.get(i + 1).is_some_and(|d| d.is_ascii_digit()))
+        {
             let start = i;
             i += 1;
             while i < chars.len() && chars[i].is_ascii_digit() {
@@ -238,7 +247,9 @@ impl Math<'_> {
         let mut a = self.term()?;
         loop {
             self.ws();
-            let Some(&op) = self.s.get(self.i) else { return Some(a) };
+            let Some(&op) = self.s.get(self.i) else {
+                return Some(a);
+            };
             if op != b'+' && op != b'-' {
                 return Some(a);
             }
@@ -290,15 +301,24 @@ impl Math<'_> {
         if matches!(self.s.get(self.i), Some(b'+' | b'-')) {
             self.i += 1;
         }
-        while self.s.get(self.i).is_some_and(|c| c.is_ascii_digit() || *c == b'.') {
+        while self
+            .s
+            .get(self.i)
+            .is_some_and(|c| c.is_ascii_digit() || *c == b'.')
+        {
             self.i += 1;
         }
-        let n: f64 = std::str::from_utf8(&self.s[start..self.i]).ok()?.parse().ok()?;
+        let n: f64 = std::str::from_utf8(&self.s[start..self.i])
+            .ok()?
+            .parse()
+            .ok()?;
         let us = self.i;
         while self.s.get(self.i).is_some_and(u8::is_ascii_alphabetic) {
             self.i += 1;
         }
-        let unit = std::str::from_utf8(&self.s[us..self.i]).ok()?.to_ascii_lowercase();
+        let unit = std::str::from_utf8(&self.s[us..self.i])
+            .ok()?
+            .to_ascii_lowercase();
         let px = match unit.as_str() {
             "" => return Some((n, 0.0, false)),
             "px" => 1.0,
@@ -319,7 +339,9 @@ impl Math<'_> {
         while self.s.get(self.i).is_some_and(u8::is_ascii_alphabetic) {
             self.i += 1;
         }
-        let name = std::str::from_utf8(&self.s[start..self.i]).ok()?.to_ascii_lowercase();
+        let name = std::str::from_utf8(&self.s[start..self.i])
+            .ok()?
+            .to_ascii_lowercase();
         if !self.eat(b'(') {
             return None;
         }
@@ -337,18 +359,28 @@ impl Math<'_> {
             ("calc", [a]) => Some(*a),
             ("sign", [a]) => {
                 let x = val(a);
-                Some((if x > 0.0 { 1.0 } else if x < 0.0 { -1.0 } else { 0.0 }, 0.0, false))
+                Some((
+                    if x > 0.0 {
+                        1.0
+                    } else if x < 0.0 {
+                        -1.0
+                    } else {
+                        0.0
+                    },
+                    0.0,
+                    false,
+                ))
             }
             ("abs", [a]) => Some(mk(val(a).abs(), a.2)),
-            ("min", _) if same => {
-                Some(mk(args.iter().map(val).fold(f64::INFINITY, f64::min), args[0].2))
-            }
-            ("max", _) if same => {
-                Some(mk(args.iter().map(val).fold(f64::NEG_INFINITY, f64::max), args[0].2))
-            }
-            ("clamp", [lo, v, hi]) if same => {
-                Some(mk(val(v).min(val(hi)).max(val(lo)), lo.2))
-            }
+            ("min", _) if same => Some(mk(
+                args.iter().map(val).fold(f64::INFINITY, f64::min),
+                args[0].2,
+            )),
+            ("max", _) if same => Some(mk(
+                args.iter().map(val).fold(f64::NEG_INFINITY, f64::max),
+                args[0].2,
+            )),
+            ("clamp", [lo, v, hi]) if same => Some(mk(val(v).min(val(hi)).max(val(lo)), lo.2)),
             _ => None,
         }
     }
@@ -372,7 +404,9 @@ fn is_wide_keyword(s: &str) -> bool {
 }
 
 fn parse_system(t: &[Tok]) -> Option<System> {
-    let Some(Tok::Ident(k)) = t.first() else { return None };
+    let Some(Tok::Ident(k)) = t.first() else {
+        return None;
+    };
     let k = k.to_ascii_lowercase();
     let sys = match (k.as_str(), &t[1..]) {
         ("cyclic", []) => System::Cyclic,
@@ -382,7 +416,9 @@ fn parse_system(t: &[Tok]) -> Option<System> {
         ("additive", []) => System::Additive,
         ("fixed", []) => System::Fixed(1),
         ("fixed", [Tok::Int(n) | Tok::Calc(n)]) => System::Fixed(*n),
-        ("extends", [Tok::Ident(name)]) if !name.eq_ignore_ascii_case("none") && !is_wide_keyword(name) => {
+        ("extends", [Tok::Ident(name)])
+            if !name.eq_ignore_ascii_case("none") && !is_wide_keyword(name) =>
+        {
             System::Extends(normalize_name(name).into_owned())
         }
         _ => return None,
@@ -459,7 +495,9 @@ fn last_valid<T>(values: &[String], parse: impl Fn(&[Tok]) -> Option<T>) -> Opti
 /// значения в порядке записи».
 pub fn register(name: &str, descs: &[(String, Vec<String>)]) {
     let toks = tokenize(name.trim());
-    let [Tok::Ident(name)] = toks.as_slice() else { return };
+    let [Tok::Ident(name)] = toks.as_slice() else {
+        return;
+    };
     // §counter-style-name: `none` и непереопределяемые имена правило не
     // задают; предопределённые имена — строчными.
     let name = normalize_name(name).into_owned();
@@ -472,7 +510,13 @@ pub fn register(name: &str, descs: &[(String, Vec<String>)]) {
     {
         return;
     }
-    let get = |k: &str| descs.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_slice()).unwrap_or(&[]);
+    let get = |k: &str| {
+        descs
+            .iter()
+            .find(|(n, _)| n == k)
+            .map(|(_, v)| v.as_slice())
+            .unwrap_or(&[])
+    };
     let raw = Raw {
         system: last_valid(get("system"), parse_system),
         symbols: last_valid(get("symbols"), parse_symbols),
@@ -511,7 +555,11 @@ pub fn register(name: &str, descs: &[(String, Vec<String>)]) {
     if !valid {
         return;
     }
-    RULES.lock().unwrap().get_or_insert_with(HashMap::new).insert(name, raw);
+    RULES
+        .lock()
+        .unwrap()
+        .get_or_insert_with(HashMap::new)
+        .insert(name, raw);
 }
 
 #[derive(Clone, Debug)]
@@ -532,8 +580,14 @@ struct Resolved {
 }
 
 fn builtin_resolved(name: &str) -> Resolved {
-    let b = builtin(name).or_else(|| builtin("decimal")).expect("decimal");
-    let name = if builtin(name).is_some() { name } else { "decimal" };
+    let b = builtin(name)
+        .or_else(|| builtin("decimal"))
+        .expect("decimal");
+    let name = if builtin(name).is_some() {
+        name
+    } else {
+        "decimal"
+    };
     Resolved {
         algo: Algo::Builtin(name.to_string()),
         negative: b.negative,
@@ -725,7 +779,11 @@ fn graphemes(s: &str) -> usize {
 fn generate(rules: &HashMap<String, Raw>, v: i64, name: &str, depth: usize) -> String {
     let Some(r) = (depth < 16).then(|| resolve(rules, name, 0)).flatten() else {
         let v = v.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
-        return if depth < 16 { builtin_repr(v, name) } else { v.to_string() };
+        return if depth < 16 {
+            builtin_repr(v, name)
+        } else {
+            v.to_string()
+        };
     };
     let fallback = |rules: &HashMap<String, Raw>| {
         let fb = r.fallback.clone();
@@ -797,7 +855,11 @@ fn anonymous(name: &str) -> Option<Raw> {
             _ => None,
         })
         .collect::<Option<_>>()?;
-    let need = if matches!(system, System::Alphabetic | System::Numeric) { 2 } else { 1 };
+    let need = if matches!(system, System::Alphabetic | System::Numeric) {
+        2
+    } else {
+        1
+    };
     if symbols.len() < need {
         return None;
     }
@@ -833,8 +895,10 @@ mod tests {
     fn with(css: &[(&str, &[(&str, &str)])], f: impl FnOnce()) {
         reset();
         for (name, descs) in css {
-            let d: Vec<(String, Vec<String>)> =
-                descs.iter().map(|(k, v)| (k.to_string(), vec![v.to_string()])).collect();
+            let d: Vec<(String, Vec<String>)> = descs
+                .iter()
+                .map(|(k, v)| (k.to_string(), vec![v.to_string()]))
+                .collect();
             register(name, &d);
         }
         f();
@@ -846,8 +910,21 @@ mod tests {
         with(
             &[
                 ("a", &[("system", "cyclic"), ("symbols", "\\2020  \\2021")]),
-                ("b", &[("system", "extends upper-roman"), ("range", "infinite 5"), ("pad", "3 '*'")]),
-                ("c", &[("system", "additive"), ("additive-symbols", "3 \"a\", 2 \"b\"")]),
+                (
+                    "b",
+                    &[
+                        ("system", "extends upper-roman"),
+                        ("range", "infinite 5"),
+                        ("pad", "3 '*'"),
+                    ],
+                ),
+                (
+                    "c",
+                    &[
+                        ("system", "additive"),
+                        ("additive-symbols", "3 \"a\", 2 \"b\""),
+                    ],
+                ),
                 ("d", &[("system", "numeric"), ("symbols", "'0' '1' '2'")]),
             ],
             || {

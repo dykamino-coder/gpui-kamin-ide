@@ -207,7 +207,8 @@ pub(super) fn absolute_atom(
                 ),
                 ..Default::default()
             });
-            let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false);
+            let probe =
+                crate::layout::positioned::containing_block::spot_probe(spot.clone(), false);
             return match inline_replaced_position::push(
                 spot,
                 inline_abs_paint_last(e, holder.into_any_element()),
@@ -233,7 +234,8 @@ pub(super) fn absolute_atom(
             && !(inherited.cb_ancestor || crate::text::inline::establishes_cb(inherited))
         {
             let holder: AnyElement = if below_icb {
-                crate::paint::effects::underlay::Underlay::new(holder.into_any_element()).into_any_element()
+                crate::paint::effects::underlay::Underlay::new(holder.into_any_element())
+                    .into_any_element()
             } else {
                 holder.into_any_element()
             };
@@ -252,7 +254,10 @@ pub(super) fn absolute_atom(
             });
             // Слоя нет — элемент возвращается назад, и рисуем его на
             // месте прежним путём.
-            match crate::layout::positioned::containing_block::icb_push(spot, holder.into_any_element()) {
+            match crate::layout::positioned::containing_block::icb_push(
+                spot,
+                holder.into_any_element(),
+            ) {
                 None => {
                     return Some(div().w_0().h_0().flex_shrink_0().into_any_element());
                 }
@@ -300,7 +305,10 @@ pub(super) fn absolute_atom(
             ..Default::default()
         });
         let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false);
-        return match crate::layout::positioned::containing_block::late_push(spot, inline_abs_paint_last(e, inner.into_any_element())) {
+        return match crate::layout::positioned::containing_block::late_push(
+            spot,
+            inline_abs_paint_last(e, inner.into_any_element()),
+        ) {
             None => Some(probe),
             Some(kept) => {
                 let mut hole = div().relative().w_0().h_0().flex_shrink_0();

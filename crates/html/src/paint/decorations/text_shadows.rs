@@ -1,8 +1,8 @@
 //! Paint text shadows with the same paragraph geometry and decoration mask.
 
+use crate::dom::Node;
 use crate::render::{RenderOpts, gather_text, normalize_for_shadow, paragraph};
 use crate::style::computed::{Computed, Shadow};
-use crate::dom::Node;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
 
 fn shadow_layer(

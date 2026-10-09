@@ -1,6 +1,9 @@
 //! Элементы MaskKeep и MaskUse: снимок и применение маски.
 
-use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window};
+use gpui::{
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
+    LayoutId, Pixels, Window,
+};
 
 /// Маска обрезающего предка для ОТЛОЖЕННОГО слоя (`z-index > 0`).
 ///

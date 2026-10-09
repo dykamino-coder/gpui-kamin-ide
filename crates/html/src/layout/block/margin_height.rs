@@ -1,9 +1,9 @@
 //! Resolve proven block heights and height-constrained margin separation.
 
-use crate::style::cascade::inherit::inherit;
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::{margin_or_bail, margin_px, pin_inherited_margins, zero_len};
 use crate::render::{in_flow, inline_level_box, out_of_flow, own_context, replaced_inline};
+use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use crate::text::text_box::blank_text;
@@ -208,7 +208,8 @@ fn zero_child(node: &Node, inherited: &Computed) -> bool {
 pub(crate) fn zero_float_blocks(nodes: &mut [Node], inherited: &Computed) {
     if matches!(
         inherited.position,
-        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute)
+            | Some(crate::style::computed::Position::Fixed)
     ) {
         return;
     }

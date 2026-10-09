@@ -24,16 +24,16 @@ pub mod tabs;
 
 mod atom_fit;
 mod atom_placement;
-mod ruby_overhang;
 mod content_baselines;
 mod controlled_shape;
-mod overflow_marker;
-mod hyphen_shape;
 mod decor;
+mod emphasis;
+mod hyphen_shape;
+mod overflow_marker;
 mod ruby_justification;
+mod ruby_overhang;
 mod selection_geometry;
 mod text_raster_origin;
-mod emphasis;
 mod vertical_content_baselines;
 mod vertical_geometry;
 mod vertical_inline;
@@ -52,10 +52,10 @@ pub(super) mod runs;
 use crate::text::paragraph::runs::*;
 pub(super) mod geometry;
 pub use crate::text::paragraph::geometry::*;
-pub(super) mod paint;
-mod clamp;
 mod atoms;
+mod clamp;
 mod fit;
+pub(super) mod paint;
 use crate::text::paragraph::paint::*;
 
 /// Правила переноса, собранные из CSS.
@@ -221,7 +221,10 @@ pub struct Paragraph {
     /// snapped size plus one device pixel of slack, so a 50% indent landed
     /// half a device pixel off (`text-indent-103`).
     indent_basis: Option<Pixels>,
-    vertical_inline: Option<(crate::style::computed::orthogonal::InlineConstraint, Option<crate::style::computed::orthogonal::InlineKeyword>)>,
+    vertical_inline: Option<(
+        crate::style::computed::orthogonal::InlineConstraint,
+        Option<crate::style::computed::orthogonal::InlineKeyword>,
+    )>,
     /// Предел строки для ОРТОГОНАЛЬНОГО потока: ось строки абзаца совпала с
     /// осью потока родителя, а та не ограничена. По CSS Writing Modes §7.3
     /// предел берётся от ближайшего предка-контейнера прокрутки, а при его
@@ -241,7 +244,10 @@ pub struct Paragraph {
     box_extents: Vec<(u32, usize, usize)>,
     /// Вырезы обтекания (`shape-outside`): формы слева и справа, в
     /// координатах от верха абзаца. Сужают СВОИ строки по их высоте.
-    flow: std::sync::Arc<(Vec<crate::layout::float::shapes::FloatShape>, Vec<crate::layout::float::shapes::FloatShape>)>,
+    flow: std::sync::Arc<(
+        Vec<crate::layout::float::shapes::FloatShape>,
+        Vec<crate::layout::float::shapes::FloatShape>,
+    )>,
     /// Опознание абзаца для памяти выделения. Без него абзац не выделяется:
     /// состояние между кадрами хранит раскладка по этому ключу.
     id: Option<ElementId>,
@@ -610,7 +616,10 @@ impl Paragraph {
     /// Вырезы обтекания (`shape-outside`).
     pub fn flow_shapes(
         mut self,
-        flow: std::sync::Arc<(Vec<crate::layout::float::shapes::FloatShape>, Vec<crate::layout::float::shapes::FloatShape>)>,
+        flow: std::sync::Arc<(
+            Vec<crate::layout::float::shapes::FloatShape>,
+            Vec<crate::layout::float::shapes::FloatShape>,
+        )>,
     ) -> Self {
         self.flow = flow;
         self
@@ -734,7 +743,10 @@ impl Paragraph {
     }
 
     /// Куски вне потока: место в тексте → элемент.
-    pub fn overlays(mut self, overlays: Vec<(usize, AnyElement, crate::text::inline::OverlayAt)>) -> Self {
+    pub fn overlays(
+        mut self,
+        overlays: Vec<(usize, AnyElement, crate::text::inline::OverlayAt)>,
+    ) -> Self {
         self.overlays = overlays;
         self
     }
@@ -751,7 +763,6 @@ impl Paragraph {
         self.fit_line_height_fixed = line_height_fixed;
         self
     }
-
 }
 
 #[cfg(test)]

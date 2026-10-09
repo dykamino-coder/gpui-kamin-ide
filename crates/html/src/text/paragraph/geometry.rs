@@ -60,7 +60,12 @@ impl Paragraph {
     }
 
     /// Где в коробке стоит байт текста: левый верхний угол его знака.
-    pub(crate) fn point_of(&self, segs: &[Seg], at: usize, bounds: Bounds<Pixels>) -> Point<Pixels> {
+    pub(crate) fn point_of(
+        &self,
+        segs: &[Seg],
+        at: usize,
+        bounds: Bounds<Pixels>,
+    ) -> Point<Pixels> {
         let row = self
             .lines
             .iter()
@@ -85,10 +90,8 @@ impl Paragraph {
         // коробки и переставлена разбором UAX#9, а логическое продвижение от
         // левого края верно только для одного rtl-прогона.
         if self.wrap.rtl && crate::text::vertical::in_rotated_frame() {
-            let free_raw =
-                bounds.size.width - line.width - line.indent - px(self.flow_cut(row).1);
-            let left = bounds.origin.x
-                + line_offset(self.line_align(row, line), true, free_raw)
+            let free_raw = bounds.size.width - line.width - line.indent - px(self.flow_cut(row).1);
+            let left = bounds.origin.x + line_offset(self.line_align(row, line), true, free_raw)
                 - shift
                 + px(self.flow_cut(row).0);
             let visual = if self.lines_reversed {
@@ -166,7 +169,11 @@ impl Paragraph {
         let x_in = |row: usize, at: usize| -> Pixels {
             let line = &self.lines[row];
             let from = self.x_at(segs, line.range.start, Edge::Start);
-            let x = self.x_at(segs, at.clamp(line.range.start, line.range.end), Edge::Start) - from;
+            let x = self.x_at(
+                segs,
+                at.clamp(line.range.start, line.range.end),
+                Edge::Start,
+            ) - from;
             let hang = self.hang_first(line.range.start);
             let shift = self.span(segs, line.range.start, line.range.start + hang);
             bounds.origin.x + line.indent - shift + px(self.flow_cut(row).0) + x
@@ -181,13 +188,22 @@ impl Paragraph {
                 let free = bounds.size.width - line.width - line.indent - px(self.flow_cut(row).1);
                 let hang = self.hang_first(line.range.start);
                 let shift = self.span(segs, line.range.start, line.range.start + hang);
-                let l = bounds.origin.x + line_offset(self.line_align(row, line), true, free) - shift
+                let l = bounds.origin.x + line_offset(self.line_align(row, line), true, free)
+                    - shift
                     + px(self.flow_cut(row).0);
                 let (lo, hi) = self.visual_extent_rtl(segs, a, b, line);
                 (l + lo, l + hi)
             };
-            let first_end = if row_s == row_e { end } else { self.lines[row_s].range.end };
-            let last_start = if row_s == row_e { start } else { self.lines[row_e].range.start };
+            let first_end = if row_s == row_e {
+                end
+            } else {
+                self.lines[row_s].range.end
+            };
+            let last_start = if row_s == row_e {
+                start
+            } else {
+                self.lines[row_e].range.start
+            };
             let right = frag(row_s, start, first_end).1 + px(pad[1]);
             let left = (frag(row_e, last_start, end).0 - px(pad[3])).min(right);
             (left, right)
@@ -196,7 +212,8 @@ impl Paragraph {
             (left, (x_in(row_e, end) + px(pad[1])).max(left))
         };
         let top = bounds.origin.y + self.line_height * row_s as f32 - px(pad[0]);
-        let bottom = (bounds.origin.y + self.line_height * (row_e + 1) as f32 + px(pad[2])).max(top);
+        let bottom =
+            (bounds.origin.y + self.line_height * (row_e + 1) as f32 + px(pad[2])).max(top);
         Some(Bounds {
             origin: point(left, top),
             size: gpui::size(right - left, bottom - top),
@@ -206,7 +223,13 @@ impl Paragraph {
     /// Визуальный отрезок знаков `a..b` строки rtl-абзаца от её ЛЕВОГО края:
     /// прогоны UAX#9 в визуальном порядке (L2), как у `visual_x_rtl`, внутри
     /// rtl-прогона знаки идут справа налево. Пустой отрезок — точка `a`.
-    pub(crate) fn visual_extent_rtl(&self, segs: &[Seg], a: usize, b: usize, line: &Line) -> (Pixels, Pixels) {
+    pub(crate) fn visual_extent_rtl(
+        &self,
+        segs: &[Seg],
+        a: usize,
+        b: usize,
+        line: &Line,
+    ) -> (Pixels, Pixels) {
         let start = line.range.start;
         let end = start + trim_hanging(&self.text[line.range.clone()]);
         let a = a.clamp(start, end);
@@ -312,7 +335,11 @@ impl Paragraph {
         } else {
             unicode_bidi::Level::ltr()
         };
-        let forced = if self.plaintext.is_some() { None } else { Some(base) };
+        let forced = if self.plaintext.is_some() {
+            None
+        } else {
+            Some(base)
+        };
         let info = unicode_bidi::BidiInfo::new(&probe, forced);
         info.levels.get(at).map_or(self.wrap.rtl, |l| l.is_rtl())
     }
@@ -351,7 +378,10 @@ impl Paragraph {
             (true, false) => 1.0,
             (true, true) => -1.0,
         };
-        point(bounds.origin.x, bounds.origin.y + self.line_height * (visual + step))
+        point(
+            bounds.origin.x,
+            bounds.origin.y + self.line_height * (visual + step),
+        )
     }
 }
 

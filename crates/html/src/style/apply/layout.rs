@@ -1,7 +1,9 @@
 //! Раскладка: display/flex/позиционирование/размеры (apply_layout).
 
 use crate::style::apply::*;
-use crate::style::computed::{Align, Computed, Display, FlexDir, Justify, Overflow, Placement, Position};
+use crate::style::computed::{
+    Align, Computed, Display, FlexDir, Justify, Overflow, Placement, Position,
+};
 use crate::style::values::value::Len;
 use gpui::{Div, Styled, px};
 
@@ -47,10 +49,7 @@ pub(super) fn apply_layout(mut d: Div, c: &Computed) -> Div {
             // 0.24 → 1.25 / 0.25 → 0.60).
             // Keep the inline-block boundary flag for non-visible overflow too:
             // native output adaptation then suppresses its content baseline.
-            if !c.parent_flex_grid
-                && c.ruby_role.is_none()
-                && c.inline_display != Some(true)
-            {
+            if !c.parent_flex_grid && c.ruby_role.is_none() && c.inline_display != Some(true) {
                 d.style().baseline_from_last = Some(true);
             }
         }
@@ -291,7 +290,9 @@ pub(super) fn apply_layout(mut d: Div, c: &Computed) -> Div {
         // Не у лунок: их дорожки — гибкие ряды движка, и прижим к концу уводил
         // лунки целиком (★ ЗАМЕРЕНО: `row-grid-lanes-item-baseline-001/003`
         // 0.00 → 8.02/7.56, `column-fill-reverse-justify-items-002` 0.00 → 3.87).
-        Some(Align::Baseline) if c.align_items_last && c.display != Some(Display::GridLanes) && !c.parent_lanes => {
+        Some(Align::Baseline)
+            if c.align_items_last && c.display != Some(Display::GridLanes) && !c.parent_lanes =>
+        {
             d.style().align_items = Some(gpui::AlignItems::LastBaseline);
         }
         Some(Align::Baseline) => d = d.items_baseline(),
@@ -306,8 +307,12 @@ pub(super) fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // переполнена) — второй заход в раскладке им мешает (★ ЗАМЕРЕНО:
     // `grid-lanes-justify-content-001` 0.00 -> 1.37).
     if c.display != Some(Display::GridLanes)
-        && (c.align_items_safe || c.align_self_safe || c.align_content_safe || c.justify_content_safe
-            || c.justify_items_safe || c.justify_self_safe)
+        && (c.align_items_safe
+            || c.align_self_safe
+            || c.align_content_safe
+            || c.justify_content_safe
+            || c.justify_items_safe
+            || c.justify_self_safe)
     {
         d.style().safe_alignment = Some((
             c.align_items_safe,
@@ -335,8 +340,8 @@ pub(super) fn apply_layout(mut d: Div, c: &Computed) -> Div {
         // Только горизонтальное письмо: в вертикальном оси уже переставлены
         // поворотом, и `left/right` там держит прежний путь (★ ЗАМЕРЕНО:
         // без этой отсечки `flexbox-justify-content-wmvert-001` 0.00 -> 1.12).
-        let main_vertical = c.vertical.is_none()
-            && matches!(dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse));
+        let main_vertical =
+            c.vertical.is_none() && matches!(dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse));
         let j = match j {
             // Не вдоль строчной оси — `start` ПИСЬМА, а не `flex-start`: у
             // `column-reverse` они смотрят в разные стороны, а спека требует
@@ -391,7 +396,11 @@ pub(super) fn apply_layout(mut d: Div, c: &Computed) -> Div {
     }
     alignment_axes::abspos_normal(d.style(), c);
     alignment_axes::grid_self(d.style(), c);
-    alignment_axes::project(d.style(), real_grid && c.vertical == Some(true), c.parent_grid >= 2);
+    alignment_axes::project(
+        d.style(),
+        real_grid && c.vertical == Some(true),
+        c.parent_grid >= 2,
+    );
     // Биты базовой по оси x для элемента сетки (css-align-3 §9.1; Blink
     // baseline_utils.h `DetermineBaselineWritingMode`/`DetermineBaselineGroup`):
     // письмо базовой — своё у вертикального элемента, у горизонтального —
@@ -434,8 +443,14 @@ pub(super) fn apply_layout(mut d: Div, c: &Computed) -> Div {
             Some(Len::Px(v)) => Some(v),
             _ => None,
         };
-        let basis_y = content(c.height, [c.padding.top, c.padding.bottom, edges.top, edges.bottom]);
-        let basis_x = content(c.width, [c.padding.left, c.padding.right, edges.left, edges.right]);
+        let basis_y = content(
+            c.height,
+            [c.padding.top, c.padding.bottom, edges.top, edges.bottom],
+        );
+        let basis_x = content(
+            c.width,
+            [c.padding.left, c.padding.right, edges.left, edges.right],
+        );
         let gap_len = |l: Len, basis: Option<f32>| -> Option<gpui::DefiniteLength> {
             // CSS Gaps 1 gap-percent: grid intrinsic sizing uses a zero
             // percentage basis, then layout resolves against the content box.
@@ -592,7 +607,9 @@ pub(super) fn apply_layout(mut d: Div, c: &Computed) -> Div {
         ) {
             continue;
         }
-        let Some(l) = size_percent::resolve(c, l, f) else { continue };
+        let Some(l) = size_percent::resolve(c, l, f) else {
+            continue;
+        };
         // Доли считаются от родителя и компенсации не требуют.
         let l = match l {
             Len::Px(v) if f % 2 == 0 => Len::Px(v + pad_x),
@@ -611,7 +628,9 @@ pub(super) fn apply_layout(mut d: Div, c: &Computed) -> Div {
                 Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
             )
         };
-        if f == 1 && let Len::Px(h) = l {
+        if f == 1
+            && let Len::Px(h) = l
+        {
             if kw(c.min_height) {
                 d = d.min_h(px(h));
                 continue;

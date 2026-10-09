@@ -12,6 +12,9 @@ impl Request<'_> {
     pub fn accepts(&self, pieces: &[Piece], has_line_atoms: bool) -> bool {
         // Inline atoms converted to text spacers still need their physical placement.
         // Out-of-flow overlays likewise retain the existing coordinate contract.
-        !has_line_atoms && pieces.iter().all(|piece| matches!(piece, Piece::Text { .. }))
+        !has_line_atoms
+            && pieces
+                .iter()
+                .all(|piece| matches!(piece, Piece::Text { .. }))
     }
 }

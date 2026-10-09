@@ -160,7 +160,11 @@ pub fn ic_px(family: &str, size_px: f32) -> f32 {
 ///
 /// Единая точка: прежде этот match был дословно повторён в пяти местах
 /// (apply/background/computed), и правка запасных значений расходилась.
-pub fn fallback_len_px(l: crate::style::values::value::Len, family: &str, font_px: f32) -> Option<f32> {
+pub fn fallback_len_px(
+    l: crate::style::values::value::Len,
+    family: &str,
+    font_px: f32,
+) -> Option<f32> {
     use crate::style::values::value::Len;
     Some(match l {
         Len::Px(v) => v,
@@ -320,18 +324,20 @@ pub fn use_text_system(text_system: std::sync::Arc<gpui::TextSystem>) {
     let text_system2 = text_system.clone();
     let text_system3 = text_system.clone();
     WRAP.with(|w| {
-        *w.borrow_mut() = Some(Box::new(move |font: &gpui::Font, size: f32, text: &str, width: f32| {
-            let mut wrapper = text_system3.line_wrapper(font.clone(), gpui::px(size));
-            let mut lines = 0usize;
-            for seg in text.split('\n') {
-                lines += 1;
-                lines += wrapper
-                    .wrap_line_css(&[gpui::LineFragment::text(seg)], gpui::px(width.max(0.0)))
-                    .filter(|b| seg.as_bytes().get(b.ix.wrapping_sub(1)) == Some(&b' '))
-                    .count();
-            }
-            lines
-        }));
+        *w.borrow_mut() = Some(Box::new(
+            move |font: &gpui::Font, size: f32, text: &str, width: f32| {
+                let mut wrapper = text_system3.line_wrapper(font.clone(), gpui::px(size));
+                let mut lines = 0usize;
+                for seg in text.split('\n') {
+                    lines += 1;
+                    lines += wrapper
+                        .wrap_line_css(&[gpui::LineFragment::text(seg)], gpui::px(width.max(0.0)))
+                        .filter(|b| seg.as_bytes().get(b.ix.wrapping_sub(1)) == Some(&b' '))
+                        .count();
+                }
+                lines
+            },
+        ));
     });
     install_probe(move |family, size| {
         // Родовое имя системе шрифтов отдавать нельзя: `sans-serif` — это не

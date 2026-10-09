@@ -1,8 +1,8 @@
 //! Spacer exclusion and adjacent tracking for decoration intervals.
 
 use super::*;
-use unicode_properties::{GeneralCategory, UnicodeGeneralCategory};
 use gpui::{Pixels, px};
+use unicode_properties::{GeneralCategory, UnicodeGeneralCategory};
 
 fn spacer(c: char) -> bool {
     c != '\u{202f}' && c.general_category() == GeneralCategory::SpaceSeparator

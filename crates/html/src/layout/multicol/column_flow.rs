@@ -45,7 +45,12 @@ pub(crate) fn column_flow(
             if e.style.border_box == Some(true) {
                 let b = e.style.borders();
                 (|| {
-                    Some(h - px(&e.style.padding.top)? - px(&e.style.padding.bottom)? - px(&b.top)? - px(&b.bottom)?)
+                    Some(
+                        h - px(&e.style.padding.top)?
+                            - px(&e.style.padding.bottom)?
+                            - px(&b.top)?
+                            - px(&b.bottom)?,
+                    )
                 })()
             } else {
                 Some(h)
@@ -94,7 +99,15 @@ fn column_flow_in(
             return None;
         }
         let inside = inherit(inherited, &only.style);
-        return column_flow_in(only, &inside, opts, count, col_w, whole || size_monolith(only), stretch);
+        return column_flow_in(
+            only,
+            &inside,
+            opts,
+            count,
+            col_w,
+            whole || size_monolith(only),
+            stretch,
+        );
     }
     // `<br>` — жёсткий разрыв: в собранном тексте он помечается U+2028,
     // замер режет по нему принудительно. В сырых узлах <br> текста не несёт,
@@ -197,15 +210,14 @@ fn column_flow_in(
         if e.style.column_rule_visible == Some(true) {
             Some((
                 rule_px(&e.style.column_rule_width, size),
-                e.style
-                    .column_rule_color
-                    .or(inherited.color)
-                    .unwrap_or(crate::style::values::value::Color {
+                e.style.column_rule_color.or(inherited.color).unwrap_or(
+                    crate::style::values::value::Color {
                         r: 0.0,
                         g: 0.0,
                         b: 0.0,
                         a: 1.0,
-                    }),
+                    },
+                ),
             ))
         } else {
             None
@@ -258,8 +270,7 @@ fn column_flow_in(
             // колонок) ширину не делят: они той же ширины за краем коробки
             // (css-multicol-1 §8.2).
             let w_cols = if used > 0 { used } else { n_cols };
-            let inner =
-                ((f32::from(width) - gap * (w_cols - 1) as f32) / w_cols as f32).max(0.0);
+            let inner = ((f32::from(width) - gap * (w_cols - 1) as f32) / w_cols as f32).max(0.0);
             // Линейка между колонками (`column-rule`, css-multicol §4):
             // абсолютный держатель по центру промежутка на всю высоту ряда —
             // линейка шире промежутка накрывает соседние колонки (rule-001),
@@ -297,11 +308,14 @@ fn column_flow_in(
                 }
             }
             for part in parts.into_iter() {
-                row = row.child(div().w(px(inner)).flex_shrink_0().flex().flex_col().children(blocks(
-                    &part,
-                    &inherited_owned,
-                    &opts_owned,
-                )));
+                row = row.child(
+                    div()
+                        .w(px(inner))
+                        .flex_shrink_0()
+                        .flex()
+                        .flex_col()
+                        .children(blocks(&part, &inherited_owned, &opts_owned)),
+                );
             }
             row.into_any_element()
         });
@@ -317,7 +331,11 @@ fn column_flow_in(
             line,
             // `column-fill: auto` с заданной высотой: колонки заполняются
             // подряд до неё (css-multicol-1 §3.3).
-            match (e.style.column_fill_auto, inherited.height.or(e.style.height), inherited.max_height) {
+            match (
+                e.style.column_fill_auto,
+                inherited.height.or(e.style.height),
+                inherited.max_height,
+            ) {
                 (Some(true), Some(Len::Px(h)), _) if h > 0.0 => Some(h),
                 // Высота авто, но задан `max-height`: колонки заполняются подряд до
                 // него (css-multicol-1 §column-fill `auto`: «fill columns

@@ -18,9 +18,7 @@ pub(super) fn own_box_atom(
     let mut merged = inherit(inherited, &e.style);
     // CSS 2 sections 5.12.1-5.12.2 include inline-block containers,
     // but not ordinary inline boxes, in the pseudo-line scope.
-    if e.style.display == Some(Display::InlineBlock)
-        && e.style.inline_display != Some(true)
-    {
+    if e.style.display == Some(Display::InlineBlock) && e.style.inline_display != Some(true) {
         pseudo_line_layers::install(e, &mut merged);
     }
     let mut box_ = styled_div_with(e, &merged);

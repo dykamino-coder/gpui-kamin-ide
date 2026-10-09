@@ -23,12 +23,15 @@ impl Paragraph {
         let Some(b) = self.text[at..].chars().next() else {
             return false;
         };
-        let Some(a) = self.text[line_start..at].chars().rev().find(|c| !invisible(*c)) else {
+        let Some(a) = self.text[line_start..at]
+            .chars()
+            .rev()
+            .find(|c| !invisible(*c))
+        else {
             return false;
         };
-        let plain = |c: char| {
-            !word_separator(c) && !invisible(c) && !matches!(c, '\t' | '\n' | '\u{3000}')
-        };
+        let plain =
+            |c: char| !word_separator(c) && !invisible(c) && !matches!(c, '\t' | '\n' | '\u{3000}');
         if !plain(a) || !plain(b) || !cluster_edge(&self.text, at) {
             return false;
         }

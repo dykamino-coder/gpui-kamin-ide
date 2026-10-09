@@ -2,7 +2,10 @@
 // owner: A
 
 use crate::layout::positioned::spot_geometry;
-use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, ParentElement, Pixels, Styled, Window, px};
+use gpui::{
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
+    LayoutId, ParentElement, Pixels, Styled, Window, px,
+};
 
 #[derive(Clone, Copy, Default)]
 pub struct Spot {
@@ -299,10 +302,7 @@ pub fn spot_place(spot: SpotCell, child: AnyElement) -> AnyElement {
     // §10.6.2, а не §10.6.4. Признак содержащего блока (`ortho_limit`) в
     // роли различителя ЗАМЕРЕН И ОТКАЧЕН: он истинен в обоих случаях,
     // срез 480 пар дал +0/−28. Разводит именно замещаемость.
-    if now.fixed_axes != (false, false)
-        && !now.vertical
-        && (now.own_vertical || !now.replaced)
-    {
+    if now.fixed_axes != (false, false) && !now.vertical && (now.own_vertical || !now.replaced) {
         return LatePlace {
             child: Some(child),
             spot,
@@ -552,8 +552,7 @@ impl Element for LatePlace {
             // Строка выровнена не по началу: статическая точка едет вдоль неё
             // на долю `line_align` (ltr вешает на неё ЛЕВЫЙ край коробки).
             (Some(hole), None) => gpui::point(
-                hole.origin.x + hole.size.width * now.line_align.unwrap_or(0.0)
-                    - bounds.origin.x,
+                hole.origin.x + hole.size.width * now.line_align.unwrap_or(0.0) - bounds.origin.x,
                 hole.origin.y - bounds.origin.y,
             ),
             (None, _) => gpui::point(px(0.0), px(0.0)),

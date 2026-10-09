@@ -175,7 +175,11 @@ impl Computed {
         let off = if o.inset { -w } else { px_of(o.offset) };
         let colour = o
             .color
-            .or(if o.style == Some(2) { self.accent_color } else { None })
+            .or(if o.style == Some(2) {
+                self.accent_color
+            } else {
+                None
+            })
             .or(self.color)
             .unwrap_or(Color {
                 r: 0.0,
@@ -193,15 +197,24 @@ impl Computed {
     /// (`Grouped::over`). `scroll`/`auto` идут лентой прокрутки мимо группы.
     pub fn border_shape_clips(&self) -> bool {
         self.border_shape.is_some()
-            && (matches!(self.overflow_x, Some(Overflow::Hidden) | Some(Overflow::Clip))
-                || matches!(self.overflow_y, Some(Overflow::Hidden) | Some(Overflow::Clip)))
+            && (matches!(
+                self.overflow_x,
+                Some(Overflow::Hidden) | Some(Overflow::Clip)
+            ) || matches!(
+                self.overflow_y,
+                Some(Overflow::Hidden) | Some(Overflow::Clip)
+            ))
     }
 
     /// Тени `box-shadow` с решённым цветом: без своего цвета — цвет текста
     /// (css-backgrounds-3 §box-shadow, `currentColor`; метка — отрицательная
     /// альфа, как у `apply::shadow_colour`). `inset` — внутренние.
     pub fn resolved_shadows(&self, inset: bool) -> Vec<(Shadow, Color)> {
-        let list = if inset { &self.inset_shadows } else { &self.shadows };
+        let list = if inset {
+            &self.inset_shadows
+        } else {
+            &self.shadows
+        };
         list.iter()
             .map(|sh| {
                 let colour = if sh.color.a < 0.0 {
@@ -227,7 +240,12 @@ impl Computed {
         let Some(k) = self.corner_shape else {
             return false;
         };
-        let radii = [self.radius.tl, self.radius.tr, self.radius.br, self.radius.bl];
+        let radii = [
+            self.radius.tl,
+            self.radius.tr,
+            self.radius.br,
+            self.radius.bl,
+        ];
         k.iter().zip(radii).any(|(k, r)| {
             let shaped = (*k - 1.0).abs() > 1e-3;
             let has_radius = match r {
@@ -330,10 +348,21 @@ impl Computed {
     }
 
     pub(crate) fn bg_layers(&self) -> Option<Vec<Computed>> {
-        let short = self.bg_lists.iter().find(|(k, _)| k == "background").map(|(_, v)| v.clone());
-        let image = self.bg_lists.iter().find(|(k, _)| k == "background-image").map(|(_, v)| v.clone());
+        let short = self
+            .bg_lists
+            .iter()
+            .find(|(k, _)| k == "background")
+            .map(|(_, v)| v.clone());
+        let image = self
+            .bg_lists
+            .iter()
+            .find(|(k, _)| k == "background-image")
+            .map(|(_, v)| v.clone());
         let images: Vec<String> = match (&image, &short) {
-            (Some(v), _) | (None, Some(v)) => background_layers(v).into_iter().map(str::to_string).collect(),
+            (Some(v), _) | (None, Some(v)) => background_layers(v)
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
             _ => return None,
         };
         if images.len() < 2 {
@@ -392,7 +421,9 @@ impl Computed {
                 && let Some(r) = images.get(i)
                 && let Some(at) = r.find("gradient(")
             {
-                let start = r[..at].rfind(|ch: char| ch.is_whitespace() || ch == ',').map_or(0, |p| p + 1);
+                let start = r[..at]
+                    .rfind(|ch: char| ch.is_whitespace() || ch == ',')
+                    .map_or(0, |p| p + 1);
                 let mut depth = 0i32;
                 let mut end = r.len();
                 for (j, ch) in r[at..].char_indices() {

@@ -23,7 +23,8 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node]) -> Vec<Node> {
         let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
         matches!(
             e.style.position,
-            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute)
+                | Some(crate::style::computed::Position::Fixed)
         ) && !at_static_position(&e.style)
             && (edge(e.style.inset.left) || edge(e.style.inset.right))
             && (edge(e.style.inset.top) || edge(e.style.inset.bottom))
@@ -81,7 +82,10 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node]) -> Vec<Node> {
             _ => false,
         })
     }
-    if !nodes.iter().any(|n| matches!(n, Node::Element(e) if passable(e) && has(e))) {
+    if !nodes
+        .iter()
+        .any(|n| matches!(n, Node::Element(e) if passable(e) && has(e)))
+    {
         return nodes.to_vec();
     }
     let mut out = Vec::with_capacity(nodes.len() + 1);
@@ -120,18 +124,21 @@ pub(crate) fn relative_shift(e: &Element, parent: Option<&Element>) -> (f32, f32
         Some(Len::Px(v)) => Some(v),
         _ => None,
     };
-    let (bw, bh) = parent.map_or((None, None), |p| (basis(p.style.width), basis(p.style.height)));
+    let (bw, bh) = parent.map_or((None, None), |p| {
+        (basis(p.style.width), basis(p.style.height))
+    });
     let len = |l: Option<Len>, base: Option<f32>| match l {
         Some(Len::Px(v)) => Some(v),
         Some(Len::Pct(p)) => base.map(|b| p * b),
         _ => None,
     };
-    let side = |a: Option<Len>, b: Option<Len>, base: Option<f32>| match (len(a, base), len(b, base)) {
-        (Some(v), _) => v,
-        // Задан только противоположный край — сдвиг в обратную сторону.
-        (_, Some(v)) => -v,
-        _ => 0.0,
-    };
+    let side =
+        |a: Option<Len>, b: Option<Len>, base: Option<f32>| match (len(a, base), len(b, base)) {
+            (Some(v), _) => v,
+            // Задан только противоположный край — сдвиг в обратную сторону.
+            (_, Some(v)) => -v,
+            _ => 0.0,
+        };
     (
         side(e.style.inset.left, e.style.inset.right, bw),
         side(e.style.inset.top, e.style.inset.bottom, bh),
@@ -174,7 +181,11 @@ pub(crate) fn hoist_relative(e: &mut Element) -> (f32, f32) {
                 cur.style.inset.bottom = None;
             }
         }
-        let mut live = cur.children.iter().enumerate().filter(|(_, n)| !is_blank(n));
+        let mut live = cur
+            .children
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| !is_blank(n));
         let i = match (live.next(), live.next()) {
             // Строчная коробка-обёртка (не атомарная) — тоже: её сдвиг
             // относится и к блокам внутри неё (block-in-inline, CSS 2.1

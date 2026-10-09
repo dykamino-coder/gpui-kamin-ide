@@ -41,7 +41,11 @@ pub fn parse_decls(raw: &str) -> Decls {
             continue;
         }
         // CSS Variables §2: custom-property names are case-sensitive tokens.
-        let key = if custom { name } else { name.to_ascii_lowercase() };
+        let key = if custom {
+            name
+        } else {
+            name.to_ascii_lowercase()
+        };
         // После восклицательного знака в объявлении стоит ровно `important` и
         // ничего больше; всё прочее делает объявление недействительным, и
         // отбрасывается оно целиком (CSS 2.1 §4.1.8). Пока пометка просто

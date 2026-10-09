@@ -76,7 +76,8 @@ pub(crate) fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
         Node::Element(e)
             if matches!(
                 e.style.position,
-                Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute)
+                    | Some(crate::style::computed::Position::Fixed)
             ) =>
         {
             0
@@ -92,15 +93,15 @@ pub(crate) fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
 /// Между двумя блоками остаётся больший из смежных отступов, а не их сумма.
 /// Раскладка их складывает, поэтому у второго и следующих соседей ведущий
 /// отступ уменьшается на уже занятый предыдущим.
-    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v145, `scout-wm-2026-09e.md` E1):
-    // предел §7.3.2 для ортогонального ребёнка с ЯВНЫМ `width: auto`
-    // (гейт `width.is_none()` не видел `Len::Auto`) плюс потолок вместо
-    // жёсткой ширины. Срез css-writing-modes+css-masking+css-shapes+
-    // filter-effects+css-borders+css-text+CSS2 9052: +1 при −2 —
-    // `three-levels-of-orthogonal-flows` 0.00 → 16.96,
-    // `two-levels-of-orthogonal-flows-fixed` 0.09 → 2.91. Вложенные
-    // ортогональные потоки считают предел от НЕПРАВИЛЬНОГО предка —
-    // сначала нужен настоящий поиск ближайшего параллельного контейнера.
+// ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v145, `scout-wm-2026-09e.md` E1):
+// предел §7.3.2 для ортогонального ребёнка с ЯВНЫМ `width: auto`
+// (гейт `width.is_none()` не видел `Len::Auto`) плюс потолок вместо
+// жёсткой ширины. Срез css-writing-modes+css-masking+css-shapes+
+// filter-effects+css-borders+css-text+CSS2 9052: +1 при −2 —
+// `three-levels-of-orthogonal-flows` 0.00 → 16.96,
+// `two-levels-of-orthogonal-flows-fixed` 0.09 → 2.91. Вложенные
+// ортогональные потоки считают предел от НЕПРАВИЛЬНОГО предка —
+// сначала нужен настоящий поиск ближайшего параллельного контейнера.
 /// Доли полей и отступов блочных детей — от СТРОЧНОГО размера содержащего
 /// блока (css-writing-modes-4 §7.2, Overview.bs:2018-2021: «percentages on
 /// the margin and padding properties … are calculated with respect to the
@@ -118,7 +119,11 @@ pub(crate) fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
 /// сверху/снизу нулём), база — ширина. Сетка исключена: там содержащий блок —
 /// область сетки, а не контейнер (css-grid-2, Overview.bs:718: «A grid item’s
 /// grid area forms the containing block into which it is laid out»).
-pub(crate) fn resolve_inline_pct(mut children: Vec<Node>, container: &Computed, vertical: bool) -> Vec<Node> {
+pub(crate) fn resolve_inline_pct(
+    mut children: Vec<Node>,
+    container: &Computed,
+    vertical: bool,
+) -> Vec<Node> {
     if matches!(
         container.display,
         Some(Display::Grid) | Some(Display::InlineGrid)
@@ -133,12 +138,22 @@ pub(crate) fn resolve_inline_pct(mut children: Vec<Node>, container: &Computed, 
     let (size, edges) = if vertical {
         (
             container.height,
-            [b.top, b.bottom, container.padding.top, container.padding.bottom],
+            [
+                b.top,
+                b.bottom,
+                container.padding.top,
+                container.padding.bottom,
+            ],
         )
     } else {
         (
             container.width,
-            [b.left, b.right, container.padding.left, container.padding.right],
+            [
+                b.left,
+                b.right,
+                container.padding.left,
+                container.padding.right,
+            ],
         )
     };
     let Some(mut base) = px(size) else {

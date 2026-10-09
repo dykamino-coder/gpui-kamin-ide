@@ -1,7 +1,10 @@
 //! Обрезка строк `line-clamp`.
 // owner: A
 
-use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Styled, Window};
+use gpui::{
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
+    LayoutId, Pixels, Styled, Window,
+};
 
 /// Бюджет строк обрезки (`line-clamp`, css-overflow-3/4): точка среза —
 /// низ N-й СЧИТАЕМОЙ строки. Строки потомков в собственном контексте
@@ -184,10 +187,12 @@ fn take_para_rows(key: u64) -> std::collections::HashMap<u32, Vec<(f32, f32)>> {
         let mut m = m.borrow_mut();
         let tags: Vec<(u64, u32)> = m.keys().filter(|k| k.0 == key).copied().collect();
         tags.into_iter()
-            .filter_map(|t| m.remove(&t).map(|mut v| {
-                v.sort_by(|a, b| a.0.total_cmp(&b.0));
-                (t.1, v)
-            }))
+            .filter_map(|t| {
+                m.remove(&t).map(|mut v| {
+                    v.sort_by(|a, b| a.0.total_cmp(&b.0));
+                    (t.1, v)
+                })
+            })
             .collect()
     })
 }

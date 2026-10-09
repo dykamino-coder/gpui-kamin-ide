@@ -12,8 +12,8 @@
 
 use gpui::ScrollHandle;
 use gpui::{
-    AppContext as _, Bounds, Context, Entity, IntoElement, ParentElement, Render,
-    Styled, Window, WindowBounds, WindowOptions, div, px, rgb, size,
+    AppContext as _, Bounds, Context, Entity, IntoElement, ParentElement, Render, Styled, Window,
+    WindowBounds, WindowOptions, div, px, rgb, size,
 };
 use kamin_html::{Document, RenderOpts, render_block, scroll::scroll_area};
 use std::rc::Rc;

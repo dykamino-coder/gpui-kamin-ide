@@ -102,8 +102,8 @@ fn image_resolution(token: &str) -> Option<f32> {
             expr.push_str(&token[s..i]);
             continue;
         }
-        let number = c.is_ascii_digit()
-            || (c == b'.' && b.get(i + 1).is_some_and(|n| n.is_ascii_digit()));
+        let number =
+            c.is_ascii_digit() || (c == b'.' && b.get(i + 1).is_some_and(|n| n.is_ascii_digit()));
         if !number {
             expr.push(c as char);
             i += 1;
@@ -276,10 +276,14 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
             .and_then(|i| i.split_whitespace().next())
             .and_then(|s| match s {
                 "srgb" => Some(GradSpace::Srgb),
-                "srgb-linear" | "xyz" | "xyz-d50" | "xyz-d65" | "display-p3-linear"
-                | "rec2020-linear" | "a98-rgb-linear" | "prophoto-rgb-linear" => {
-                    Some(GradSpace::Linear)
-                }
+                "srgb-linear"
+                | "xyz"
+                | "xyz-d50"
+                | "xyz-d65"
+                | "display-p3-linear"
+                | "rec2020-linear"
+                | "a98-rgb-linear"
+                | "prophoto-rgb-linear" => Some(GradSpace::Linear),
                 "oklab" => Some(GradSpace::Oklab),
                 "oklch" => Some(GradSpace::Oklch),
                 "lab" => Some(GradSpace::Lab),
@@ -367,7 +371,10 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
     let mut all_legacy = true;
     for p in &parts[idx..] {
         let words = split_outside_parens(p);
-        let Some(colour) = words.first().and_then(|w| crate::style::values::color_space::interpolation_color(w)) else {
+        let Some(colour) = words
+            .first()
+            .and_then(|w| crate::style::values::color_space::interpolation_color(w))
+        else {
             continue;
         };
         all_legacy &= legacy_srgb_color(words[0].as_str());

@@ -1,8 +1,8 @@
 //! Orthogonal auto inline sizes use intrinsic floors, not artificial CSS max-width.
+use crate::dom::Element;
 use crate::layout::writing_mode::{native_intrinsic, orthogonal_inline};
 use crate::style::computed::orthogonal::available;
 use crate::style::computed::{Computed, Display};
-use crate::dom::Element;
 use crate::style::values::value::Len;
 
 pub(super) fn size_auto(child: &mut Element, container: &Computed, icb_width: f32) -> bool {

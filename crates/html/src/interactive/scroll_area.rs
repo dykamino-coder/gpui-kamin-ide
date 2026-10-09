@@ -1,7 +1,10 @@
 //! Элемент `ScrollArea`.
 // owner: A
 
-use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window};
+use gpui::{
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
+    LayoutId, Pixels, Window,
+};
 use std::rc::Rc;
 
 /// Прокрутка содержимого — `overflow: auto` и `scroll`.

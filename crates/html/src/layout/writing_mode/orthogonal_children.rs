@@ -1,7 +1,7 @@
 //! Orthogonal horizontal children keep percentages and native intrinsic sizing.
+use crate::dom::Node;
 use crate::render::in_flow;
 use crate::style::computed::{Align, Computed, Display};
-use crate::dom::Node;
 use crate::style::values::value::Len;
 
 pub(crate) fn orthogonal_children(

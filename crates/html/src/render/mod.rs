@@ -14,14 +14,14 @@ use crate::paint::effects::mask::collect_mask_defs;
 use crate::style::computed::{Computed, Display};
 use crate::text::text_box::line_height_px;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, TextStyle, div, px};
-mod first_line_text;
 pub(super) mod content_wrapper;
+mod first_line_text;
 pub(crate) use content_wrapper::{content_sized, content_sized_wraps};
 mod first_letter_descendants;
 mod first_letter_scope;
-pub(super) mod pseudo_line_layers;
 mod first_line_descendants;
 mod inline_splits;
+pub(super) mod pseudo_line_layers;
 pub(crate) use inline_splits::split_block_in_inline;
 pub(super) mod native_paragraph_route;
 
@@ -30,13 +30,13 @@ pub(crate) use crate::render::box_div::*;
 pub(super) mod classify;
 pub(crate) use crate::render::classify::*;
 pub(super) mod util;
-pub(crate) use crate::render::util::*;
 pub use crate::layout::page::names::{PageMarginDecls, PageMarginDeclsFn, first_page_name};
 pub use crate::layout::page::paged::{render_paged, render_paged_select};
+pub(crate) use crate::render::util::*;
 pub(crate) mod paragraph;
-pub(crate) use crate::render::paragraph::*;
-pub(crate) use crate::render::paragraph::pieces::*;
 pub(crate) use crate::render::paragraph::atom_piece::*;
+pub(crate) use crate::render::paragraph::pieces::*;
+pub(crate) use crate::render::paragraph::*;
 pub(crate) mod blocks;
 pub(crate) use crate::render::blocks::*;
 pub(super) mod element;
@@ -175,9 +175,8 @@ fn unkeyed_positioned(e: &Element) -> bool {
             "tr" | "td" | "th" | "tbody" | "thead" | "tfoot" | "caption" | "col" | "colgroup"
         ));
     match e.style.position {
-        Some(crate::style::computed::Position::Relative) | Some(crate::style::computed::Position::Sticky) => {
-            table_part || !block_level_in_flow(e)
-        }
+        Some(crate::style::computed::Position::Relative)
+        | Some(crate::style::computed::Position::Sticky) => table_part || !block_level_in_flow(e),
         Some(crate::style::computed::Position::Absolute) => {
             table_part || (e.style.display.is_none() && e.inline)
         }
@@ -221,7 +220,8 @@ fn unkeyed_positions(nodes: &[Node]) -> (std::collections::HashMap<u64, usize>, 
 fn paint_last_ok(e: &Element, rest: &[Node]) -> bool {
     let known = UNKEYED.with(|u| {
         let u = u.borrow();
-        u.0.get(&e.node_id).map(|&end| u.1.is_none_or(|last| last < end))
+        u.0.get(&e.node_id)
+            .map(|&end| u.1.is_none_or(|last| last < end))
     });
     match known {
         Some(ok) => ok,
@@ -240,10 +240,13 @@ fn paint_last_ok(e: &Element, rest: &[Node]) -> bool {
 pub(super) fn inline_abs_paint_last(e: &Element, el: AnyElement) -> AnyElement {
     let known = UNKEYED.with(|u| {
         let u = u.borrow();
-        u.0.get(&e.node_id).map(|&end| u.1.is_none_or(|last| last < end))
+        u.0.get(&e.node_id)
+            .map(|&end| u.1.is_none_or(|last| last < end))
     });
     if e.style.z_index.unwrap_or(0) == 0 && known == Some(true) {
-        gpui::PaintLast::new(el).key(next_paint_key()).into_any_element()
+        gpui::PaintLast::new(el)
+            .key(next_paint_key())
+            .into_any_element()
     } else {
         el
     }
@@ -343,16 +346,12 @@ fn paragraph_probed(taken: &[Node], inherited: &Computed, opts: &RenderOpts) -> 
     }
 }
 
-
-
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dom::parse;
     use crate::layout::block::margins::collapse_margins;
     use crate::style::values::value::Len;
-    use crate::dom::parse;
 
     fn find_class<'a>(nodes: &'a [Node], class: &str) -> Option<&'a Element> {
         for n in nodes {

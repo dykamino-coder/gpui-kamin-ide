@@ -125,8 +125,9 @@ fn attr_cast(value: &str, ty: &str) -> Option<String> {
     };
     match ty.as_str() {
         // Любые токены; `url()` из атрибута запрещён (attr-tainted).
-        "type(*)" => (!v.is_empty() && !v.to_ascii_lowercase().contains("url("))
-            .then(|| v.to_string()),
+        "type(*)" => {
+            (!v.is_empty() && !v.to_ascii_lowercase().contains("url(")).then(|| v.to_string())
+        }
         "type(<length>)" => length(v),
         "type(<percentage>)" => percentage(v),
         "type(<length-percentage>)" => length(v).or_else(|| percentage(v)),
@@ -201,9 +202,9 @@ pub(super) fn resolve_attrs(key: &str, value: &str) -> String {
 pub(super) fn resolve_vars(value: &str, vars: &Decls) -> String {
     let mut out = value.to_string();
     for _ in 0..VAR_DEPTH {
-        let Some(next) = crate::style::css::variable_values::substitute(
-            &out, &mut |name| vars.get(name).cloned(),
-        ) else {
+        let Some(next) = crate::style::css::variable_values::substitute(&out, &mut |name| {
+            vars.get(name).cloned()
+        }) else {
             return "unset".into();
         };
         if next == out {

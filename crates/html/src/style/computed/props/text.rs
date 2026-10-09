@@ -7,7 +7,6 @@ impl Computed {
     #[allow(unused_variables)]
     pub(crate) fn apply_text(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
         match key {
-
             // Неразборный цвет делает объявление недействительным (§4.2):
             // прежнее значение живёт, а не сменяется умолчанием. Пустой слот
             // у нас и означает «взять у родителя», поэтому `inherit` его
@@ -82,7 +81,9 @@ impl Computed {
                 }
                 self.no_justify = match v {
                     "none" => Some(true),
-                    "auto" | "inter-word" | "inter-character" | "distribute" | "ruby" => Some(false),
+                    "auto" | "inter-word" | "inter-character" | "distribute" | "ruby" => {
+                        Some(false)
+                    }
                     _ => self.no_justify,
                 };
             }
@@ -417,9 +418,10 @@ impl Computed {
                             }
                             other => {
                                 if let Some(pct) = other.strip_suffix('%')
-                                    && let Ok(n) = pct.parse::<f32>() {
-                                        f.target = Some(n / 100.0);
-                                    }
+                                    && let Ok(n) = pct.parse::<f32>()
+                                {
+                                    f.target = Some(n / 100.0);
+                                }
                             }
                         }
                     }
@@ -544,7 +546,9 @@ impl Computed {
                 self.clamp_mark = if t.eq_ignore_ascii_case("no-ellipsis") {
                     Some(String::new())
                 } else if t.len() >= 2 && (t.starts_with('"') || t.starts_with('\'')) {
-                    Some(collapse_forced_breaks(&unescape_content(&t[1..t.len() - 1])))
+                    Some(collapse_forced_breaks(&unescape_content(
+                        &t[1..t.len() - 1],
+                    )))
                 } else {
                     None
                 };

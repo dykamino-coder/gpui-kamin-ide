@@ -64,15 +64,15 @@ impl Computed {
                 // иначе теряются целиком. Разворот самого повтора при
                 // непустом списке делает раскладка лунок — это и есть
                 // условие возврата из прежнего отката.
-            // ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v143, `scout-lanes-2026-09e.md`
-            // патч II): писать одинокий `AutoRepeat` с телом > 1 дорожки
-            // списком. Срез css-viewport+css-transforms+css-grid+css-position+
-            // CSS2 8273: +3 при −6 — `column/row-auto-repeat-auto-011` (0.00 →
-            // 7.78), `column-auto-repeat-fit-content-004` (→ 34.01),
-            // `-max-content-004` (→ 33.54), `column/row-auto-repeat-minmax-005`
-            // (→ 7.78). Синтаксической границы между целями и заложниками нет
-            // (`auto 50px` красен в колонках и зелен в рядах) — нужен разбор
-            // по контексту, а не по форме тела.
+                // ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v143, `scout-lanes-2026-09e.md`
+                // патч II): писать одинокий `AutoRepeat` с телом > 1 дорожки
+                // списком. Срез css-viewport+css-transforms+css-grid+css-position+
+                // CSS2 8273: +3 при −6 — `column/row-auto-repeat-auto-011` (0.00 →
+                // 7.78), `column-auto-repeat-fit-content-004` (→ 34.01),
+                // `-max-content-004` (→ 33.54), `column/row-auto-repeat-minmax-005`
+                // (→ 7.78). Синтаксической границы между целями и заложниками нет
+                // (`auto 50px` красен в колонках и зелен в рядах) — нужен разбор
+                // по контексту, а не по форме тела.
                 if let Some(list) = parse_tracks(v).filter(|l| l.len() > 1) {
                     self.grid_cols = count_tracks(v);
                     self.grid_tracks = Some(list);
@@ -236,12 +236,20 @@ impl Computed {
                 // получала ширину первой (`grid-support-grid-auto-columns-
                 // rows-002`, `grid-floats-no-intrude-002`).
                 let all = parse_tracks(v).unwrap_or_default();
-                self.grid_auto_cols_list = if all.len() > 1 { all.clone() } else { Vec::new() };
+                self.grid_auto_cols_list = if all.len() > 1 {
+                    all.clone()
+                } else {
+                    Vec::new()
+                };
                 self.grid_auto_cols = all.into_iter().next();
             }
             "grid-auto-rows" => {
                 let all = parse_tracks(v).unwrap_or_default();
-                self.grid_auto_rows_list = if all.len() > 1 { all.clone() } else { Vec::new() };
+                self.grid_auto_rows_list = if all.len() > 1 {
+                    all.clone()
+                } else {
+                    Vec::new()
+                };
                 self.grid_auto_rows = all.into_iter().next();
             }
             "grid-auto-flow" => {
@@ -314,13 +322,27 @@ impl Computed {
                 // (`grid-area: a` — все четыре грани `a`).
                 let named = |i: usize| parts.get(i).and_then(|p| parse_named_placement(p));
                 let ident = |n: &Option<gpui::GridNamedLine>| match n {
-                    Some(gpui::GridNamedLine::Line(name, 0)) => Some(gpui::GridNamedLine::Line(name.clone(), 0)),
+                    Some(gpui::GridNamedLine::Line(name, 0)) => {
+                        Some(gpui::GridNamedLine::Line(name.clone(), 0))
+                    }
                     _ => None,
                 };
                 let row_start = named(0);
-                let col_start = if parts.len() > 1 { named(1) } else { ident(&row_start) };
-                let row_end = if parts.len() > 2 { named(2) } else { ident(&row_start) };
-                let col_end = if parts.len() > 3 { named(3) } else { ident(&col_start) };
+                let col_start = if parts.len() > 1 {
+                    named(1)
+                } else {
+                    ident(&row_start)
+                };
+                let row_end = if parts.len() > 2 {
+                    named(2)
+                } else {
+                    ident(&row_start)
+                };
+                let col_end = if parts.len() > 3 {
+                    named(3)
+                } else {
+                    ident(&col_start)
+                };
                 self.grid_row_named = [row_start, row_end];
                 self.grid_col_named = [col_start, col_end];
                 if parts.len() >= 2 {

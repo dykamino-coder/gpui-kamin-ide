@@ -15,22 +15,22 @@
 // The runner is configured through WPT_* environment variables (see clippy.toml).
 #![allow(clippy::disallowed_methods)]
 
+#[path = "wptrun/capture.rs"]
+mod capture;
+#[path = "wptrun/capture_dump.rs"]
+mod capture_dump;
+#[path = "wptrun/capture_name.rs"]
+mod capture_name;
 #[path = "wptrun/pixel_compare.rs"]
 mod pixel_compare;
 #[path = "wptrun/reference_result.rs"]
 mod reference_result;
-#[path = "wptrun/capture.rs"]
-mod capture;
-#[path = "wptrun/capture_name.rs"]
-mod capture_name;
-#[path = "wptrun/capture_dump.rs"]
-mod capture_dump;
 use capture::capture;
 
 use gpui::{
-    AppContext as _, Bounds, Context, Entity, IntoElement, ParentElement, Render,
-    Styled, TitlebarOptions, Window, WindowBackgroundAppearance, WindowBounds,
-    WindowDecorations, WindowOptions, div, point, px, rgb, size,
+    AppContext as _, Bounds, Context, Entity, IntoElement, ParentElement, Render, Styled,
+    TitlebarOptions, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
+    WindowOptions, div, point, px, rgb, size,
 };
 use kamin_html::{BROWSER_CSS, Document, RenderOpts, render};
 use std::rc::Rc;
@@ -162,14 +162,13 @@ impl Render for Page {
                 .unwrap_or((false, false, false));
             let rtl = root_wm.2;
             let first = kamin_html::render::first_page_name(self.doc.nodes());
-            let boxes: PageBoxFn =
-                std::rc::Rc::new(move |i, name: &str| {
-                    page_box(
-                        kamin_html::css::page_decls_in(&rules, i, name, rtl),
-                        root_margin,
-                        root_wm,
-                    )
-                });
+            let boxes: PageBoxFn = std::rc::Rc::new(move |i, name: &str| {
+                page_box(
+                    kamin_html::css::page_decls_in(&rules, i, name, rtl),
+                    root_margin,
+                    root_wm,
+                )
+            });
             let margins: kamin_html::render::PageMarginDeclsFn = {
                 let rules = kamin_html::css::page_rules_snapshot();
                 std::rc::Rc::new(move |i, name: &str| {
@@ -222,14 +221,13 @@ impl Render for Page {
                     turn: p.turn,
                 }
             });
-            let stack =
-                kamin_html::render::render_paged_select(
-                    self.doc.nodes(),
-                    &opts,
-                    geom_for,
-                    Some(margins),
-                    self.select.clone(),
-                );
+            let stack = kamin_html::render::render_paged_select(
+                self.doc.nodes(),
+                &opts,
+                geom_for,
+                Some(margins),
+                self.select.clone(),
+            );
             return div()
                 .w(px(f32::from(window.viewport_size().width)))
                 .h(px(f32::from(window.viewport_size().height)))
@@ -326,7 +324,11 @@ struct PageBox {
     turn: u8,
 }
 
-fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4], wm: (bool, bool, bool)) -> PageBox {
+fn page_box(
+    decls: Vec<(String, String)>,
+    root_margin: [f32; 4],
+    wm: (bool, bool, bool),
+) -> PageBox {
     use kamin_html::value::{Color, Len};
     let (mut w, mut h) = (480.0f32, 288.0f32);
     // Поля листа по умолчанию — ЗАМЕР отдельным прогоном: WPT их не
@@ -423,7 +425,11 @@ fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4], wm: (bool, bool
                 // Нулевой лист — начальное значение (csswg#8335;
                 // `printing/zero-size-001-print`: «The used page size is the
                 // initial value instead of the authored width and height of zero»).
-                let nums: Vec<f32> = if nums.iter().any(|v| *v <= 0.0) { Vec::new() } else { nums };
+                let nums: Vec<f32> = if nums.iter().any(|v| *v <= 0.0) {
+                    Vec::new()
+                } else {
+                    nums
+                };
                 match nums.len() {
                     2 => {
                         w = nums[0];
@@ -542,9 +548,10 @@ fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4], wm: (bool, bool
                     3 => (side(0), side(1), side(2), side(1)),
                     _ => (side(0), side(1), side(2), side(3)),
                 };
-                for (slot, (t, vert)) in padding
-                    .iter_mut()
-                    .zip([(a, true), (b, false), (c, true), (d, false)])
+                for (slot, (t, vert)) in
+                    padding
+                        .iter_mut()
+                        .zip([(a, true), (b, false), (c, true), (d, false)])
                 {
                     if let Some(px) = px_of(t, vert) {
                         *slot = px;
@@ -753,7 +760,6 @@ const INK_MIN: usize = 40;
 /// не белый: окно стенда висит на экране десятками минут, и белизна неотличима
 /// от зависшего стенда — на неё уже дважды жаловались.
 const SEPARATOR: &str = "<body style=\"background:#cfd8e8;margin:0\"></body>";
-
 
 fn diff(a: &[u8], b: &[u8]) -> f32 {
     if a.len() != b.len() || a.is_empty() {
@@ -1066,7 +1072,9 @@ fn expand_style_imports(html: &str, dir: &std::path::Path) -> String {
         let mut rest = head;
         while let Some(a) = rest.find("/*") {
             text.push_str(&rest[..a]);
-            rest = rest[a + 2..].find("*/").map_or("", |b| &rest[a + 2 + b + 2..]);
+            rest = rest[a + 2..]
+                .find("*/")
+                .map_or("", |b| &rest[a + 2 + b + 2..]);
         }
         text.push_str(rest);
         let text = text
@@ -1105,7 +1113,10 @@ fn expand_style_imports(html: &str, dir: &std::path::Path) -> String {
             let low = rule.to_ascii_lowercase();
             let (name, cond) = if low.starts_with("url(") {
                 let Some(b) = rule.find(')') else { continue };
-                (rule[4..b].trim().trim_matches(|c| c == '\'' || c == '"'), &rule[b + 1..])
+                (
+                    rule[4..b].trim().trim_matches(|c| c == '\'' || c == '"'),
+                    &rule[b + 1..],
+                )
             } else if let Some(q) = rule.chars().next().filter(|c| *c == '"' || *c == '\'') {
                 let Some(b) = rule[1..].find(q) else { continue };
                 (&rule[1..1 + b], &rule[b + 2..])
@@ -1187,7 +1198,9 @@ fn expand_style_imports(html: &str, dir: &std::path::Path) -> String {
     let mut out = String::with_capacity(html.len());
     let mut rest = html;
     while let Some(at) = rest.to_ascii_lowercase().find("<style") {
-        let Some(open) = rest[at..].find('>') else { break };
+        let Some(open) = rest[at..].find('>') else {
+            break;
+        };
         let body = at + open + 1;
         out.push_str(&rest[..body]);
         let Some(close) = rest[body..].to_ascii_lowercase().find("</style") else {
@@ -1450,7 +1463,12 @@ fn main() {
                     is_minimizable: false,
                     ..Default::default()
                 },
-                |_, cx| -> Entity<Page> { cx.new(|_| Page { doc: empty, select: None }) },
+                |_, cx| -> Entity<Page> {
+                    cx.new(|_| Page {
+                        doc: empty,
+                        select: None,
+                    })
+                },
             )
             .unwrap();
         // Фокус НЕ забираем: стенд идёт десятками минут, и всё это время его
@@ -1475,7 +1493,9 @@ fn main() {
                 }
             }
             // Первый кадр окна: до него снимок пустой.
-            cx.background_executor().timer(Duration::from_millis(900)).await;
+            cx.background_executor()
+                .timer(Duration::from_millis(900))
+                .await;
             // Указатель окна нужен снимку: рисует его система, а не мы.
             let hwnd = cx
                 .update_window(window.into(), |_, window, _| {
@@ -1533,7 +1553,9 @@ fn main() {
                 // такие страницы обрезали, и одна и та же пара скакала между
                 // прогонами на 15% расхождения.
                 for step in 0..400u32 {
-                    cx.background_executor().timer(Duration::from_millis(16)).await;
+                    cx.background_executor()
+                        .timer(Duration::from_millis(16))
+                        .await;
                     // Окно ИНОГДА не перерисовывается после подмены документа:
                     // экран продолжает показывать разделитель, и страница
                     // числится пустой (`column-auto-repeat-auto-001`: эталон
@@ -1771,12 +1793,16 @@ fn main() {
                         if !mismatches.contains(&full) {
                             mismatches.push(full);
                         }
-                    } else if !reference_result::same_file(&full, reference) && !alternates.contains(&full) {
+                    } else if !reference_result::same_file(&full, reference)
+                        && !alternates.contains(&full)
+                    {
                         alternates.push(full);
                     }
                 }
                 let negative_primary = !has_match
-                    && mismatches.iter().any(|path| reference_result::same_file(path, reference));
+                    && mismatches
+                        .iter()
+                        .any(|path| reference_result::same_file(path, reference));
                 let primary_relation = if negative_primary {
                     reference_result::Relation::Mismatch
                 } else {
@@ -1784,7 +1810,9 @@ fn main() {
                 };
                 let verdict = match (&shots[0], &shots[1]) {
                     _ if red_seen => "красное видно".into(),
-                    _ if negative_primary && !exact => "negative references require exact comparison".into(),
+                    _ if negative_primary && !exact => {
+                        "negative references require exact comparison".into()
+                    }
                     // Пустая страница совпадает с разделителем, и такая пара
                     // дала бы ложный ноль. Это не «сошлось», это «нечего
                     // сравнивать»: страница не нарисовалась вовсе.
@@ -1810,7 +1838,9 @@ fn main() {
                             ink(b, blank.as_ref())
                         )
                     }
-                    (Some(a), Some(b)) if exact => reference_result::verdict(a, b, primary_relation),
+                    (Some(a), Some(b)) if exact => {
+                        reference_result::verdict(a, b, primary_relation)
+                    }
                     (Some((_, _, a)), Some((_, _, b))) => {
                         let d = diff(a, b);
                         // Тест сам объявил допуск (`meta name=fuzzy`) — часть
@@ -1844,7 +1874,8 @@ fn main() {
                         // Разделитель — не печатная страница: флаг печати снимается, иначе
                         // он рисуется стопкой листов, `flat()` его не узнаёт и `show`
                         // выжидает все 400 шагов (по 6 с на каждый показ разделителя).
-                        kamin_html::css::PRINT_MEDIA.store(false, std::sync::atomic::Ordering::Relaxed);
+                        kamin_html::css::PRINT_MEDIA
+                            .store(false, std::sync::atomic::Ordering::Relaxed);
                         blank = show(SEPARATOR.into(), None, true).await.map(|s| s.2);
                         let Some(shot) = show(html, blank.clone(), false).await else {
                             continue;
@@ -1883,7 +1914,9 @@ fn main() {
                 // Проверяется всегда, даже когда пара уже зелёная: именно
                 // зелёная пара и подозрительна — обе стороны могли сломаться
                 // одинаково.
-                if verdict.parse::<f32>().is_ok() || (exact && verdict.starts_with("pixel mismatch")) {
+                if verdict.parse::<f32>().is_ok()
+                    || (exact && verdict.starts_with("pixel mismatch"))
+                {
                     for other in &mismatches {
                         if negative_primary && reference_result::same_file(other, reference) {
                             continue;
@@ -1895,7 +1928,8 @@ fn main() {
                         // Разделитель — не печатная страница: флаг печати снимается, иначе
                         // он рисуется стопкой листов, `flat()` его не узнаёт и `show`
                         // выжидает все 400 шагов (по 6 с на каждый показ разделителя).
-                        kamin_html::css::PRINT_MEDIA.store(false, std::sync::atomic::Ordering::Relaxed);
+                        kamin_html::css::PRINT_MEDIA
+                            .store(false, std::sync::atomic::Ordering::Relaxed);
                         blank = show(SEPARATOR.into(), None, true).await.map(|s| s.2);
                         let html = resolve_links(
                             &std::fs::read_to_string(other).unwrap_or_default(),
@@ -1912,7 +1946,9 @@ fn main() {
                         }
                         let identical = if exact {
                             passed(&pixel_compare::verdict(test_shot, &shot))
-                        } else { diff(&test_shot.2, &shot.2) <= 0.5 };
+                        } else {
+                            diff(&test_shot.2, &shot.2) <= 0.5
+                        };
                         if identical {
                             verdict = "совпал с анти-эталоном".into();
                             break;

@@ -100,7 +100,14 @@ impl Paragraph {
                 // on its character, not on the extra inter-character spacing.
                 let spacing = self.tail_spacing(s + i + c.len_utf8());
                 let x = at.x + dx + x0 + (x1 - x0 - spacing - mark.width) / 2.0;
-                let _ = mark.paint(point(x, y), mark_lh, gpui::TextAlign::Left, None, window, cx);
+                let _ = mark.paint(
+                    point(x, y),
+                    mark_lh,
+                    gpui::TextAlign::Left,
+                    None,
+                    window,
+                    cx,
+                );
             }
         }
     }

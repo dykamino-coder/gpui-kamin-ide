@@ -47,9 +47,7 @@ impl Computed {
                 tmp.apply_one("filter", v);
                 let f = tmp.filter.unwrap_or_else(Filter::neutral);
                 self.backdrop_blur = (f.blur > 0.0).then_some(f.blur);
-                self.backdrop_color = f
-                    .color_matrix()
-                    .map(|_| Filter { blur: 0.0, ..f });
+                self.backdrop_color = f.color_matrix().map(|_| Filter { blur: 0.0, ..f });
                 // Корень подложки — любое значение, кроме `none`
                 // (filter-effects-2 Overview.bs:119; Blink
                 // paint_property_tree_builder.cc:1846): тождественная
@@ -100,18 +98,30 @@ impl Computed {
                             | "view-transition-name"
                     );
                     bits |= match name.as_str() {
-                        "transform" | "translate" | "rotate" | "scale" | "perspective"
-                        | "-webkit-perspective" | "transform-style" | "offset-path"
+                        "transform"
+                        | "translate"
+                        | "rotate"
+                        | "scale"
+                        | "perspective"
+                        | "-webkit-perspective"
+                        | "transform-style"
+                        | "offset-path"
                         | "contain" => wc::BOX,
                         "filter" | "backdrop-filter" | "-webkit-backdrop-filter" => {
                             wc::CB_ABS | wc::CB_FIXED | wc::STACK
                         }
                         "position" => wc::CB_ABS | wc::STACK,
-                        "opacity" | "isolation" | "mix-blend-mode" | "clip-path"
-                        | "-webkit-clip-path" | "mask" | "mask-image" | "-webkit-mask"
-                        | "-webkit-mask-image" | "mask-border" | "view-transition-name" => {
-                            wc::STACK
-                        }
+                        "opacity"
+                        | "isolation"
+                        | "mix-blend-mode"
+                        | "clip-path"
+                        | "-webkit-clip-path"
+                        | "mask"
+                        | "mask-image"
+                        | "-webkit-mask"
+                        | "-webkit-mask-image"
+                        | "mask-border"
+                        | "view-transition-name" => wc::STACK,
                         "z-index" => wc::STACK_Z,
                         _ => 0,
                     };
@@ -292,12 +302,10 @@ impl Computed {
                         }
                         None
                     })?;
-                    parse_shadows(&rest[..end])
-                        .first()
-                        .map(|sh| Shadow {
-                            blur: sh.blur * 2.0,
-                            ..*sh
-                        })
+                    parse_shadows(&rest[..end]).first().map(|sh| Shadow {
+                        blur: sh.blur * 2.0,
+                        ..*sh
+                    })
                 });
                 let mut f = self.filter.unwrap_or_else(Filter::neutral);
                 for call in v.split(')') {

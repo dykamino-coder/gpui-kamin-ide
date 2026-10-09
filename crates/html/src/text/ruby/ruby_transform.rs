@@ -1,8 +1,8 @@
 //! CSS Transforms 1 §transformable-element excludes non-replaced inline boxes.
 //! Ruby units use block wrappers internally; that must not make them transformable.
 
-use crate::style::computed::{Computed, Display, inh};
 use crate::dom::Element;
+use crate::style::computed::{Computed, Display, inh};
 
 pub(crate) fn used(e: &Element) -> Option<Element> {
     // A block ruby principal box remains transformable. Author display changes

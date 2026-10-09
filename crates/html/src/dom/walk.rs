@@ -90,16 +90,18 @@ fn walk(
                     .iter()
                     .find(|h| !matches!(h.data, NodeData::Comment { .. }))
                     .is_some_and(|h| match &h.data {
-                        NodeData::Text { contents } => {
-                            !contents.borrow().chars().all(collapsible)
-                        }
+                        NodeData::Text { contents } => !contents.borrow().chars().all(collapsible),
                         NodeData::Element { name, .. } => {
                             let tag = local_name(&name.local);
                             tag != "br" && INLINE_TAGS.contains(&tag.as_str())
                         }
                         _ => false,
                     });
-            let text = if between_inline { " ".to_string() } else { text };
+            let text = if between_inline {
+                " ".to_string()
+            } else {
+                text
+            };
             if preserve || !text.chars().all(collapsible) || text.contains(' ') {
                 // Комментарий разрезает пробельный кусок надвое, а схлопывание
                 // работает по одному узлу — выходило два пробела подряд.
@@ -151,7 +153,11 @@ fn walk(
                 has_marks: has_marks_of(handle),
                 featureless: None,
                 slot: slot_of(handle),
-                peers: sibs.is_elem.then_some(sibs.rc).flatten().map(|r| (r.clone(), sibs.pos)),
+                peers: sibs
+                    .is_elem
+                    .then_some(sibs.rc)
+                    .flatten()
+                    .map(|r| (r.clone(), sibs.pos)),
             };
 
             let inline_decls: Decls = attrs
@@ -184,10 +190,17 @@ fn walk(
             // не работало в принципе.
             let registered = crate::style::css::property_rules();
             let cascaded = crate::style::css::custom_properties::cascade(
-                &matched, &inline_decls, vars, &registered, syntax_accepts,
+                &matched,
+                &inline_decls,
+                vars,
+                &registered,
+                syntax_accepts,
             );
             let own_vars = crate::style::css::variable_values::compute(
-                &cascaded, vars, &registered, syntax_accepts,
+                &cascaded,
+                vars,
+                &registered,
+                syntax_accepts,
             );
             let vars = &own_vars;
             // Используемая схема цвета (css-color-adjust-1 §color-scheme-prop):
@@ -198,8 +211,12 @@ fn walk(
             let scheme = {
                 let mut by_cascade: Vec<&&Rule> = matched.iter().collect();
                 by_cascade.sort_by(|a, b| {
-                    (a.origin, &a.layer, a.sel.specificity(), a.order)
-                        .cmp(&(b.origin, &b.layer, b.sel.specificity(), b.order))
+                    (a.origin, &a.layer, a.sel.specificity(), a.order).cmp(&(
+                        b.origin,
+                        &b.layer,
+                        b.sel.specificity(),
+                        b.order,
+                    ))
                 });
                 let mut last: Option<String> = None;
                 for rule in by_cascade {
@@ -231,7 +248,9 @@ fn walk(
             // Типизированный `attr()` читает атрибуты ЭТОГО элемента
             // (css-values-5 §7.7): слот ставится только на время его каскада.
             crate::style::cascade::vars::set_current_attrs(&attrs);
-            crate::style::cascade::vars::set_current_sibling((spot.index > 0).then_some((spot.index, spot.total)));
+            crate::style::cascade::vars::set_current_sibling(
+                (spot.index > 0).then_some((spot.index, spot.total)),
+            );
             let hints = presentational_hints::rules(&tag, &attrs);
             matched.extend(hints.iter());
             let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
@@ -250,13 +269,15 @@ fn walk(
             if tag == "html" {
                 let font = match style.font_size {
                     Some(crate::style::values::value::Len::Px(v)) => v,
-                    Some(crate::style::values::value::Len::Em(k)) | Some(crate::style::values::value::Len::Pct(k)) => k * 16.0,
+                    Some(crate::style::values::value::Len::Em(k))
+                    | Some(crate::style::values::value::Len::Pct(k)) => k * 16.0,
                     _ => 16.0,
                 };
                 let family = style.font_family.clone().unwrap_or_default();
                 let line = match style.line_height {
                     Some(crate::style::values::value::Len::Px(v)) => v,
-                    Some(crate::style::values::value::Len::Em(k)) | Some(crate::style::values::value::Len::Pct(k)) => k * font,
+                    Some(crate::style::values::value::Len::Em(k))
+                    | Some(crate::style::values::value::Len::Pct(k)) => k * font,
                     _ => {
                         let f = crate::text::metrics::normal_line(&family);
                         if f > 0.0 { f * font } else { 1.2 * font }
@@ -277,11 +298,38 @@ fn walk(
                 use crate::style::computed::Display;
                 let special = matches!(
                     tag.as_str(),
-                    "table" | "caption" | "colgroup" | "col" | "thead" | "tbody" | "tfoot"
-                        | "tr" | "td" | "th" | "hr" | "fieldset" | "legend" | "details"
-                        | "summary" | "dialog" | "option" | "optgroup" | "html" | "body"
-                        | "input" | "textarea" | "select" | "button" | "img" | "video"
-                        | "canvas" | "iframe" | "embed" | "object" | "svg" | "meter"
+                    "table"
+                        | "caption"
+                        | "colgroup"
+                        | "col"
+                        | "thead"
+                        | "tbody"
+                        | "tfoot"
+                        | "tr"
+                        | "td"
+                        | "th"
+                        | "hr"
+                        | "fieldset"
+                        | "legend"
+                        | "details"
+                        | "summary"
+                        | "dialog"
+                        | "option"
+                        | "optgroup"
+                        | "html"
+                        | "body"
+                        | "input"
+                        | "textarea"
+                        | "select"
+                        | "button"
+                        | "img"
+                        | "video"
+                        | "canvas"
+                        | "iframe"
+                        | "embed"
+                        | "object"
+                        | "svg"
+                        | "meter"
                         | "progress"
                 );
                 let block = match style.display {
@@ -290,7 +338,9 @@ fn walk(
                     | Some(Display::ListItem)
                     | Some(Display::Flex)
                     | Some(Display::Grid) => true,
-                    None => style.inline_display != Some(true) && BLOCK_TAGS.contains(&tag.as_str()),
+                    None => {
+                        style.inline_display != Some(true) && BLOCK_TAGS.contains(&tag.as_str())
+                    }
                     _ => false,
                 };
                 block && !special && style.float.is_none_or(|f| f == 0)
@@ -303,11 +353,25 @@ fn walk(
             // известен только здесь, после `finish_inline_display`.
             if style.will_change & crate::style::computed::wc::BOX != 0 {
                 let out_of_flow = style.float.is_some_and(|f| f != 0)
-                    || matches!(style.position, Some(Position::Absolute) | Some(Position::Fixed));
+                    || matches!(
+                        style.position,
+                        Some(Position::Absolute) | Some(Position::Fixed)
+                    );
                 let replaced = matches!(
                     tag.as_str(),
-                    "img" | "svg" | "input" | "select" | "textarea" | "button" | "video"
-                        | "canvas" | "iframe" | "object" | "embed" | "meter" | "progress"
+                    "img"
+                        | "svg"
+                        | "input"
+                        | "select"
+                        | "textarea"
+                        | "button"
+                        | "video"
+                        | "canvas"
+                        | "iframe"
+                        | "object"
+                        | "embed"
+                        | "meter"
+                        | "progress"
                 );
                 let inline_tag =
                     INLINE_TAGS.contains(&tag.as_str()) || !BLOCK_TAGS.contains(&tag.as_str());
@@ -326,13 +390,27 @@ fn walk(
             // (`preserve-3d-flat-grouping-properties-containing-block-inline`).
             if style.preserve_3d == Some(true) {
                 let out_of_flow = style.float.is_some_and(|f| f != 0)
-                    || matches!(style.position, Some(Position::Absolute) | Some(Position::Fixed));
+                    || matches!(
+                        style.position,
+                        Some(Position::Absolute) | Some(Position::Fixed)
+                    );
                 let inline_tag =
                     INLINE_TAGS.contains(&tag.as_str()) || !BLOCK_TAGS.contains(&tag.as_str());
                 let replaced = matches!(
                     tag.as_str(),
-                    "img" | "svg" | "input" | "select" | "textarea" | "button" | "video"
-                        | "canvas" | "iframe" | "object" | "embed" | "meter" | "progress"
+                    "img"
+                        | "svg"
+                        | "input"
+                        | "select"
+                        | "textarea"
+                        | "button"
+                        | "video"
+                        | "canvas"
+                        | "iframe"
+                        | "object"
+                        | "embed"
+                        | "meter"
+                        | "progress"
                 );
                 if !out_of_flow
                     && !replaced
@@ -393,7 +471,8 @@ fn walk(
             });
             // Псевдоэлементы первой буквы и первой строки — тем же слоем
             // поверх базового стиля: они меняют начертание куска, а не блок.
-            let layer = |name, base| initial_pseudos::resolve(name, rules, vars, &me, path, sibs, base);
+            let layer =
+                |name, base| initial_pseudos::resolve(name, rules, vars, &me, path, sibs, base);
             let first_letter = layer("first-letter", Some(&style));
             let first_line = layer("first-line", Some(&style));
             let first_line_own = layer("first-line", None).map(Box::new);
@@ -414,28 +493,31 @@ fn walk(
                     .filter(|r| matches_ignoring_pseudo(&r.sel, &me, path, sibs))
                     .collect();
                 found.sort_by_key(|r| (r.sel.specificity(), r.order));
-                (!found.is_empty() || tag == "li" || style.display == Some(Display::ListItem)).then(|| {
-                    let mut m = Computed::default();
-                    m.text_transform = Some(crate::style::computed::TextTransform::None);
-                    if !found.is_empty() {
-                        m.bidi_isolate = Some(true);
-                    }
-                    for rule in found.iter() {
-                        m.apply_decls_with_vars(&rule.decls, vars);
-                    }
-                    m
-                })
+                (!found.is_empty() || tag == "li" || style.display == Some(Display::ListItem)).then(
+                    || {
+                        let mut m = Computed::default();
+                        m.text_transform = Some(crate::style::computed::TextTransform::None);
+                        if !found.is_empty() {
+                            m.bidi_isolate = Some(true);
+                        }
+                        for rule in found.iter() {
+                            m.apply_decls_with_vars(&rule.decls, vars);
+                        }
+                        m
+                    },
+                )
             };
 
             // Обратный счётчик без числа: начальное значение — итог
             // предварительного обхода области (css-lists-3
             // §instantiating-counters). Считается ЗДЕСЬ, до применения
             // директив: запись создаётся уже готовым числом.
-            let reversed_start = |nm: &str, _counters: &mut crate::style::generated::counters::Counters| {
-                crate::style::generated::counters_scan::reversed_initial(
-                    rules, vars, nm, handle, &me, path, sibs, level, spots, level_pos,
-                )
-            };
+            let reversed_start =
+                |nm: &str, _counters: &mut crate::style::generated::counters::Counters| {
+                    crate::style::generated::counters_scan::reversed_initial(
+                        rules, vars, nm, handle, &me, path, sibs, level, spots, level_pos,
+                    )
+                };
 
             if style.display == Some(Display::None) {
                 // Table columns use an internal non-flow display, but still
@@ -463,9 +545,7 @@ fn walk(
                     return;
                 };
                 counters.enter();
-                apply_counter_decls(
-                    &style, counters, &tag, &attrs, &mut false, &reversed_start,
-                );
+                apply_counter_decls(&style, counters, &tag, &attrs, &mut false, &reversed_start);
                 // §17.2.1: у колонки детей нет вовсе, у группы колонок
                 // остаются только колонки.
                 let mut kids: Vec<Node> = vec![];
@@ -577,16 +657,7 @@ fn walk(
             // занимаются именно они, и без них разметка теряет часть смысла.
             // `::before` строится ДО детей, `::after` — после: счётчики они
             // видят в том же порядке, что и браузер (css-lists §counters).
-            if let Some(el) = pseudo_box(
-                rules,
-                vars,
-                counters,
-                &me,
-                path,
-                sibs,
-                "before",
-                &attrs,
-            ) {
+            if let Some(el) = pseudo_box(rules, vars, counters, &me, path, sibs, "before", &attrs) {
                 children.push(Node::Element(el));
             }
             let keep = style.preserve_newlines.unwrap_or(preserve);
@@ -638,19 +709,18 @@ fn walk(
                 }
             } else {
                 walk_children(
-                    handle, rules, vars, frames, counter, counters, &path2, keep, &mut children,
+                    handle,
+                    rules,
+                    vars,
+                    frames,
+                    counter,
+                    counters,
+                    &path2,
+                    keep,
+                    &mut children,
                 );
             }
-            if let Some(el) = pseudo_box(
-                rules,
-                vars,
-                counters,
-                &me,
-                path,
-                sibs,
-                "after",
-                &attrs,
-            ) {
+            if let Some(el) = pseudo_box(rules, vars, counters, &me, path, sibs, "after", &attrs) {
                 children.push(Node::Element(el));
             }
             // css-overflow-5: скроллер со `scroll-marker-group` собирает
@@ -857,8 +927,10 @@ fn walk(
                 Some([crate::style::computed::ContentItem::Image(src)])
                     if tag != "html" && content_image_src(src).is_some() =>
                 {
-                    let mut attrs: Vec<(String, String)> =
-                        attrs.into_iter().filter(|(k, _)| k != "src" && k != "srcset").collect();
+                    let mut attrs: Vec<(String, String)> = attrs
+                        .into_iter()
+                        .filter(|(k, _)| k != "src" && k != "srcset")
+                        .collect();
                     attrs.push(("src".into(), content_image_src(src).unwrap_or_default()));
                     ("img".to_string(), vec![], attrs)
                 }

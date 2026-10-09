@@ -33,15 +33,15 @@
 mod geometry;
 
 use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId,
-    IntoElement, LayoutId, Pixels, Styled, Window, px,
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
+    LayoutId, Pixels, Styled, Window, px,
 };
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use crate::style::computed::{Align, Computed, Position, PositionAnchor};
 use crate::dom::Node;
+use crate::style::computed::{Align, Computed, Position, PositionAnchor};
 use crate::style::values::value::{AnchorFn, AnchorSide, AnchorSize, Len, anchor_get};
 
 /// Запись якоря в реестре кадра: рамка (border box), маска обрезки в точке
@@ -357,7 +357,9 @@ pub fn probe_for(e: &crate::dom::Element, c: &Computed, hidden: bool) -> Option<
                     let same = |r: &AnchorRec| r.rect == rec.rect && r.rect_tf == rec.rect_tf;
                     let stale = names.iter().any(|n| {
                         !LAST_NAMED.with(|v| {
-                            v.borrow().iter().any(|(k, s, r)| k == n && *s == seq && same(r))
+                            v.borrow()
+                                .iter()
+                                .any(|(k, s, r)| k == n && *s == seq && same(r))
                         })
                     }) || (implicit
                         && !LAST_IMPLICIT.with(|m| m.borrow().get(&id).is_some_and(same)));
@@ -428,13 +430,17 @@ pub fn settle_static(nodes: &mut [Node]) {
 fn settle_len(l: Option<Len>, has_default: bool, known: &HashSet<String>) -> Option<Len> {
     let mut cur = l;
     for _ in 0..4 {
-        let Some(Len::Anchor(i)) = cur else { return cur };
+        let Some(Len::Anchor(i)) = cur else {
+            return cur;
+        };
         let f = anchor_get(i)?;
         // У `min()`/`max()` разрешимы должны быть ВСЕ доводы.
-        let resolvable = std::iter::once(&f).chain(f.alts.iter()).all(|g| match &g.name {
-            Some(n) => known.contains(n),
-            None => has_default,
-        });
+        let resolvable = std::iter::once(&f)
+            .chain(f.alts.iter())
+            .all(|g| match &g.name {
+                Some(n) => known.contains(n),
+                None => has_default,
+            });
         if resolvable {
             return cur;
         }
@@ -810,7 +816,11 @@ pub struct AnchorPlan {
 fn flipped(c: &Computed) -> (bool, bool) {
     let vertical = c.vertical == Some(true);
     let rtl = c.rtl == Some(true);
-    let x = if vertical { c.vertical_rl == Some(true) } else { rtl };
+    let x = if vertical {
+        c.vertical_rl == Some(true)
+    } else {
+        rtl
+    };
     (x, vertical && rtl)
 }
 
@@ -820,7 +830,10 @@ impl AnchorPlan {
     /// списком `position-try-fallbacks` либо с `position-visibility`
     /// (проверка переполнения нужна и без якоря — `no-overflow`).
     fn of(own: &Computed, inherited: &Computed) -> Option<AnchorPlan> {
-        if !matches!(own.position, Some(Position::Absolute) | Some(Position::Fixed)) {
+        if !matches!(
+            own.position,
+            Some(Position::Absolute) | Some(Position::Fixed)
+        ) {
             return None;
         }
         let m = |l: Option<Len>| match l {
@@ -842,7 +855,12 @@ impl AnchorPlan {
             }
             Some(SidePlan { f, margin })
         };
-        let inset = [own.inset.top, own.inset.right, own.inset.bottom, own.inset.left];
+        let inset = [
+            own.inset.top,
+            own.inset.right,
+            own.inset.bottom,
+            own.inset.left,
+        ];
         let sides = [
             side(inset[0], margin[0]),
             side(inset[1], margin[1]),
@@ -963,16 +981,29 @@ impl AnchorPlan {
     /// positioned element's containing block»). Частично общая цепочка —
     /// приближение: берётся отображённая.
     fn lookup(&self, name: Option<&str>) -> Option<Bounds<Pixels>> {
-        self.rec(name)
-            .map(|r| if r.tf_top == 0 || tf_under(r.tf_top) { r.rect } else { r.rect_tf })
+        self.rec(name).map(|r| {
+            if r.tf_top == 0 || tf_under(r.tf_top) {
+                r.rect
+            } else {
+                r.rect_tf
+            }
+        })
     }
 
     /// Доля [0;1] вдоль физической оси от её начала, куда указывает
     /// `<anchor-side>`; `None` — сторона другой оси (функция неразрешима).
     /// Таблица — как `ResolveAnchorValue` у Blink.
     fn fraction(&self, side: AnchorSide, y_axis: bool, end_side: bool) -> Option<f32> {
-        let cb = if y_axis { self.cb_flipped.1 } else { self.cb_flipped.0 };
-        let own = if y_axis { self.own_flipped.1 } else { self.own_flipped.0 };
+        let cb = if y_axis {
+            self.cb_flipped.1
+        } else {
+            self.cb_flipped.0
+        };
+        let own = if y_axis {
+            self.own_flipped.1
+        } else {
+            self.own_flipped.0
+        };
         let flip = |f: bool, t: f32| if f { 1.0 - t } else { t };
         Some(match side {
             AnchorSide::Top if y_axis => 0.0,
@@ -1198,7 +1229,11 @@ impl AnchorPlan {
             Al::Center => (is + ie - mbox) / 2.0,
             Al::AnchorCenter => (as_ + ae - mbox) / 2.0,
         };
-        let start_bias = !if x { self.cb_flipped.0 } else { self.cb_flipped.1 };
+        let start_bias = !if x {
+            self.cb_flipped.0
+        } else {
+            self.cb_flipped.1
+        };
         let pos = settle_axis(
             pos,
             mbox,
@@ -1226,7 +1261,12 @@ impl AnchorPlan {
     /// «растёт к краю»); `anchor-center` центрирует по якорю и зажимает
     /// (`settle_axis`), иначе коробка стоит там, куда её довезли
     /// `anchor()`-вставки (`shift`). Без рамки содержащего блока — только сдвиг.
-    fn free_axis(&self, x: bool, cb: Option<Bounds<Pixels>>, own: Bounds<Pixels>) -> (f32, f32, bool) {
+    fn free_axis(
+        &self,
+        x: bool,
+        cb: Option<Bounds<Pixels>>,
+        own: Bounds<Pixels>,
+    ) -> (f32, f32, bool) {
         let f = f32::from;
         let (k_start, k_end) = if x { (3usize, 1usize) } else { (0, 2) };
         let (os, olen) = if x {
@@ -1270,12 +1310,31 @@ impl AnchorPlan {
                 } else {
                     (f(a.origin.y), f(a.origin.y) + f(a.size.height))
                 };
-                let start_bias = !if x { self.cb_flipped.0 } else { self.cb_flipped.1 };
-                settle_axis((as_ + ae - mbox) / 2.0, mbox, is, ie, cs, ce, true, start_bias, safe, true)
+                let start_bias = !if x {
+                    self.cb_flipped.0
+                } else {
+                    self.cb_flipped.1
+                };
+                settle_axis(
+                    (as_ + ae - mbox) / 2.0,
+                    mbox,
+                    is,
+                    ie,
+                    cs,
+                    ce,
+                    true,
+                    start_bias,
+                    safe,
+                    true,
+                )
             }
             None => os - m_s + plain,
         };
-        (pos + m_s - os, (ie - is).max(0.0), overflows(pos, mbox, is, ie))
+        (
+            pos + m_s - os,
+            (ie - is).max(0.0),
+            overflows(pos, mbox, is, ie),
+        )
     }
 
     /// Размещение коробки по плану: клетка `position-area`, а без области
@@ -1413,7 +1472,11 @@ fn settle_axis(
 ) -> f32 {
     if safe {
         let over = if anchor_center {
-            if start_bias { pos < is } else { pos + mbox > ie }
+            if start_bias {
+                pos < is
+            } else {
+                pos + mbox > ie
+            }
         } else {
             mbox > ie - is
         };
@@ -1433,7 +1496,11 @@ fn settle_axis(
     } else {
         (is.min(cs), ie.max(ce) - mbox)
     };
-    if start_bias { pos.min(hi).max(lo) } else { pos.max(lo).min(hi) }
+    if start_bias {
+        pos.min(hi).max(lo)
+    } else {
+        pos.max(lo).min(hi)
+    }
 }
 
 /// Переполняет ли коробка полей `[pos, pos+mbox]` IMCB `[is, ie]` (Blink
@@ -1642,7 +1709,9 @@ pub fn apply_chosen(c: &mut Computed) {
         return;
     }
     let base = Rc::new(c.clone());
-    let chosen = CHOSEN.with(|m| m.borrow().get(&c.anchor_key).copied()).unwrap_or(0);
+    let chosen = CHOSEN
+        .with(|m| m.borrow().get(&c.anchor_key).copied())
+        .unwrap_or(0);
     if chosen > 0
         && let Some(fb) = base.position_try_fallbacks.get(chosen - 1)
     {
@@ -1667,7 +1736,9 @@ fn last_lookup(name: Option<&str>, default: &Option<DefaultAnchor>, seq: u32) ->
         Some(n) => last_named(n, seq),
         None => match default {
             Some(DefaultAnchor::Named(n)) => last_named(n, seq),
-            Some(DefaultAnchor::Implicit(id)) => LAST_IMPLICIT.with(|m| m.borrow().get(id).copied()),
+            Some(DefaultAnchor::Implicit(id)) => {
+                LAST_IMPLICIT.with(|m| m.borrow().get(id).copied())
+            }
             None => None,
         },
     }
@@ -1804,13 +1875,21 @@ pub fn resolve_sizes(c: &mut Computed, inherited: &Computed) {
     };
     let b = c.borders();
     if x_stretch {
-        let extra = pxv(c.margin.left) + pxv(c.margin.right) + pxv(b.left) + pxv(b.right)
-            + pxv(c.padding.left) + pxv(c.padding.right);
+        let extra = pxv(c.margin.left)
+            + pxv(c.margin.right)
+            + pxv(b.left)
+            + pxv(b.right)
+            + pxv(c.padding.left)
+            + pxv(c.padding.right);
         c.width = Some(Len::Px((w - extra).max(0.0)));
     }
     if y_stretch {
-        let extra = pxv(c.margin.top) + pxv(c.margin.bottom) + pxv(b.top) + pxv(b.bottom)
-            + pxv(c.padding.top) + pxv(c.padding.bottom);
+        let extra = pxv(c.margin.top)
+            + pxv(c.margin.bottom)
+            + pxv(b.top)
+            + pxv(b.bottom)
+            + pxv(c.padding.top)
+            + pxv(c.padding.bottom);
         c.height = Some(Len::Px((h - extra).max(0.0)));
     }
 }

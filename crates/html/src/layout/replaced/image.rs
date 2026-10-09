@@ -129,7 +129,10 @@ fn view_boxed(e: &Element, vb: (u8, [Len; 4])) -> Option<AnyElement> {
         .strip_prefix("file:///")
         .or_else(|| src.strip_prefix("file://"))
         .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
-    let source = crate::paint::background::source(&crate::paint::background::key(local.unwrap_or(src), &e.style))?;
+    let source = crate::paint::background::source(&crate::paint::background::key(
+        local.unwrap_or(src),
+        &e.style,
+    ))?;
     let nat = source.intrinsic();
     let (w0, h0) = (nat.w?, nat.h?);
     let crate::paint::background::Source::Raster(ready) = source else {
@@ -143,9 +146,19 @@ fn view_boxed(e: &Element, vb: (u8, [Len; 4])) -> Option<AnyElement> {
     let [a, b, c, d] = vb.1;
     let (vx, vy, vw, vh) = match vb.0 {
         // inset(top right bottom left)
-        0 => (at(d, w0), at(a, h0), w0 - at(d, w0) - at(b, w0), h0 - at(a, h0) - at(c, h0)),
+        0 => (
+            at(d, w0),
+            at(a, h0),
+            w0 - at(d, w0) - at(b, w0),
+            h0 - at(a, h0) - at(c, h0),
+        ),
         // rect(top right bottom left)
-        1 => (at(d, w0), at(a, h0), at(b, w0) - at(d, w0), at(c, h0) - at(a, h0)),
+        1 => (
+            at(d, w0),
+            at(a, h0),
+            at(b, w0) - at(d, w0),
+            at(c, h0) - at(a, h0),
+        ),
         // xywh(x y w h)
         _ => (at(a, w0), at(b, h0), at(c, w0), at(d, h0)),
     };
@@ -158,8 +171,12 @@ fn view_boxed(e: &Element, vb: (u8, [Len; 4])) -> Option<AnyElement> {
     };
     let (bw, bh) = if e.style.contains_width() || e.style.contains_height() {
         (
-            px_of(e.style.width).or(e.style.contain_intrinsic.0).unwrap_or(0.0),
-            px_of(e.style.height).or(e.style.contain_intrinsic.1).unwrap_or(0.0),
+            px_of(e.style.width)
+                .or(e.style.contain_intrinsic.0)
+                .unwrap_or(0.0),
+            px_of(e.style.height)
+                .or(e.style.contain_intrinsic.1)
+                .unwrap_or(0.0),
         )
     } else {
         match (px_of(e.style.width), px_of(e.style.height)) {
@@ -176,15 +193,25 @@ fn view_boxed(e: &Element, vb: (u8, [Len; 4])) -> Option<AnyElement> {
     boxed.style.contain_size = Some(false);
     boxed.style.contain_inline_size = Some(false);
     let (sx, sy) = (bw / vw, bh / vh);
-    let picture = gpui::img(ready).preserve_natural_pixels(true)
+    let picture = gpui::img(ready)
+        .preserve_natural_pixels(true)
         .absolute()
         .left(px(-vx * sx))
         .top(px(-vy * sy))
         .w(px(w0 * sx))
         .h(px(h0 * sy))
         .object_fit(gpui::ObjectFit::Fill);
-    let window = div().size_full().relative().overflow_hidden().child(picture);
-    Some(styled_div(&boxed).flex_shrink_0().child(window).into_any_element())
+    let window = div()
+        .size_full()
+        .relative()
+        .overflow_hidden()
+        .child(picture);
+    Some(
+        styled_div(&boxed)
+            .flex_shrink_0()
+            .child(window)
+            .into_any_element(),
+    )
 }
 
 pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
@@ -295,14 +322,21 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             .strip_prefix("file:///")
             .or_else(|| src.strip_prefix("file://"))
             .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
-        let mut image = match crate::paint::background::source(&crate::paint::background::key(local.unwrap_or(src), &e.style)) {
-            Some(crate::paint::background::Source::Vector { markup, .. }) if cw > 0.0 && ch > 0.0 => {
+        let mut image = match crate::paint::background::source(&crate::paint::background::key(
+            local.unwrap_or(src),
+            &e.style,
+        )) {
+            Some(crate::paint::background::Source::Vector { markup, .. })
+                if cw > 0.0 && ch > 0.0 =>
+            {
                 match crate::svg::rasterize(&markup, cw, ch) {
                     Some(r) => gpui::img(r),
                     None => gpui::img(SharedString::from(src.to_string())),
                 }
             }
-            Some(crate::paint::background::Source::Raster(ready)) => gpui::img(ready).preserve_natural_pixels(true),
+            Some(crate::paint::background::Source::Raster(ready)) => {
+                gpui::img(ready).preserve_natural_pixels(true)
+            }
             _ => match local {
                 Some(path) => gpui::img(std::path::PathBuf::from(path)),
                 None => gpui::img(SharedString::from(src.to_string())),
@@ -373,10 +407,13 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         if let (true, Some(Len::Px(w)), Some(Len::Px(h))) =
             (wants_pipe, e.style.width, e.style.height)
         {
-            let pos = e.style.object_position.unwrap_or(crate::style::computed::BgPos {
-                x: Some(Len::Pct(0.5)),
-                y: Some(Len::Pct(0.5)),
-            });
+            let pos = e
+                .style
+                .object_position
+                .unwrap_or(crate::style::computed::BgPos {
+                    x: Some(Len::Pct(0.5)),
+                    y: Some(Len::Pct(0.5)),
+                });
             use crate::style::computed::BgSize;
             let mut bgc = crate::style::computed::Computed::default();
             bgc.bg_image = Some(local.unwrap_or(src).to_string());
@@ -393,11 +430,14 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                 Some("scale-down") => {
                     // Меньшее из `none` и `contain`: влезает — своим
                     // размером, нет — вписать.
-                    let fits = crate::paint::background::source(&crate::paint::background::key(local.unwrap_or(src), &e.style))
-                        .map(|s| s.intrinsic())
-                        .is_some_and(|i| {
-                            i.w.is_some_and(|iw| iw <= w) && i.h.is_some_and(|ih| ih <= h)
-                        });
+                    let fits = crate::paint::background::source(&crate::paint::background::key(
+                        local.unwrap_or(src),
+                        &e.style,
+                    ))
+                    .map(|s| s.intrinsic())
+                    .is_some_and(|i| {
+                        i.w.is_some_and(|iw| iw <= w) && i.h.is_some_and(|ih| ih <= h)
+                    });
                     if fits { BgSize::Auto } else { BgSize::Contain }
                 }
                 _ => BgSize::Fixed(Some(Len::Pct(1.0)), Some(Len::Pct(1.0))),
@@ -475,11 +515,13 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         // Векторный источник штатный загрузчик не рисует вовсе — растрируем
         // сами в конечный размер; фон канвы (`style="background:…"` корня) —
         // CSS-слой, не SVG-контент, растеризатор его тоже не рисует.
-        let vector: Option<String> =
-            crate::paint::background::source(&crate::paint::background::key(local.unwrap_or(src), &e.style)).and_then(|s| match s {
-                crate::paint::background::Source::Vector { markup, .. } => Some(markup),
-                _ => None,
-            });
+        let vector: Option<String> = crate::paint::background::source(
+            &crate::paint::background::key(local.unwrap_or(src), &e.style),
+        )
+        .and_then(|s| match s {
+            crate::paint::background::Source::Vector { markup, .. } => Some(markup),
+            _ => None,
+        });
         let vectorize = |old: gpui::Img, w: f32, h: f32| -> gpui::Img {
             let Some(m) = &vector else { return old };
             let mut out = match crate::svg::rasterize(m, w, h) {
@@ -558,14 +600,17 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         // изменили, коробка обязана ужаться вместе с рисунком.
         let mut узкая: Option<(f32, f32)> = None;
         let natural_ratio = || {
-            crate::paint::background::source(&crate::paint::background::key(local.unwrap_or(src), &e.style))
-                .map(|s| s.intrinsic())
-                .and_then(|i| {
-                    i.ratio.or(match (i.w, i.h) {
-                        (Some(w), Some(h)) if h > 0.0 => Some(w / h),
-                        _ => None,
-                    })
+            crate::paint::background::source(&crate::paint::background::key(
+                local.unwrap_or(src),
+                &e.style,
+            ))
+            .map(|s| s.intrinsic())
+            .and_then(|i| {
+                i.ratio.or(match (i.w, i.h) {
+                    (Some(w), Some(h)) if h > 0.0 => Some(w / h),
+                    _ => None,
                 })
+            })
         };
         let ratio_of = || {
             // CSS Sizing 4 #aspect-ratio: authored ratio overrides the natural ratio.
@@ -601,9 +646,12 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             let cw = limit((w - sub_w).max(0.0), clamp(e.style.min_width, sub_w), max_w);
             let ch = match ratio_of() {
                 Some(r) if r > 0.0 => transfer(cw, r, true),
-                _ => crate::paint::background::source(&crate::paint::background::key(local.unwrap_or(src), &e.style))
-                    .and_then(|s| s.intrinsic().h)
-                    .unwrap_or(150.0),
+                _ => crate::paint::background::source(&crate::paint::background::key(
+                    local.unwrap_or(src),
+                    &e.style,
+                ))
+                .and_then(|s| s.intrinsic().h)
+                .unwrap_or(150.0),
             };
             // §10.4: пределы держат ВЫВЕДЕННУЮ сторону тоже — заданная
             // остаётся как написана, а высота из соотношения обязана влезть
@@ -618,7 +666,11 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             // 200×50.
             let cw = match ratio_of() {
                 Some(r) if r > 0.0 && (ch - ch_free).abs() > 0.01 => {
-                    let w = limit(transfer(ch, r, false), clamp(e.style.min_width, sub_w), max_w);
+                    let w = limit(
+                        transfer(ch, r, false),
+                        clamp(e.style.min_width, sub_w),
+                        max_w,
+                    );
                     // Коробка ужимается ТОЛЬКО когда предел и правда изменил
                     // выведенную сторону: иначе высота у неё остаётся `auto`,
                     // и подстановка ломала замещённые без пределов вовсе
@@ -641,16 +693,23 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             );
             let cw = match ratio_of() {
                 Some(r) if r > 0.0 => transfer(ch, r, false),
-                _ => crate::paint::background::source(&crate::paint::background::key(local.unwrap_or(src), &e.style))
-                    .and_then(|s| s.intrinsic().w)
-                    .unwrap_or(300.0),
+                _ => crate::paint::background::source(&crate::paint::background::key(
+                    local.unwrap_or(src),
+                    &e.style,
+                ))
+                .and_then(|s| s.intrinsic().w)
+                .unwrap_or(300.0),
             };
             let cw_free = cw;
             let cw = limit(cw, clamp(e.style.min_width, sub_w), max_w);
             // Зеркально §10.4: изменённая ширина тянет за собой высоту.
             let ch = match ratio_of() {
                 Some(r) if r > 0.0 && (cw - cw_free).abs() > 0.01 => {
-                    let h = limit(transfer(cw, r, true), clamp(e.style.min_height, sub_h), max_h);
+                    let h = limit(
+                        transfer(cw, r, true),
+                        clamp(e.style.min_height, sub_h),
+                        max_h,
+                    );
                     узкая = Some((cw, h));
                     h
                 }
@@ -699,7 +758,11 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         {
             let both_auto = matches!(e.style.width, None | Some(Len::Auto))
                 && matches!(e.style.height, None | Some(Len::Auto));
-            if both_auto && let Some(ready) = crate::paint::background::source(&crate::paint::background::key(local.unwrap_or(src), &e.style)) {
+            if both_auto
+                && let Some(ready) = crate::paint::background::source(
+                    &crate::paint::background::key(local.unwrap_or(src), &e.style),
+                )
+            {
                 // Авто-размер замещаемого считается ЗДЕСЬ, а не отдаётся
                 // загрузчику картинок: тот работает асинхронно, и в первом
                 // кадре коробка выходила нулевой высоты (box-sizing-007 —
@@ -754,13 +817,10 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                     // `max-height: 20px` выходила у́же в пятнадцать раз
                     // (`replaced-elements-max-height-20`, снимки `no-ratio` и
                     // `height-25-no-ratio`).
-                    let без_соотношения = side.ratio.is_none()
-                        && !(side.w.is_some() && side.h.is_some());
+                    let без_соотношения =
+                        side.ratio.is_none() && !(side.w.is_some() && side.h.is_some());
                     let (rw, rh) = if без_соотношения {
-                        (
-                            limit(w0, min_w, max_w),
-                            limit(h0, min_h, max_h),
-                        )
+                        (limit(w0, min_w, max_w), limit(h0, min_h, max_h))
                     } else {
                         css2_replaced_limits(w0, h0, min_w, max_w, min_h, max_h)
                     };
@@ -770,7 +830,9 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                         .object_fit(gpui::ObjectFit::Fill);
                 }
             } else if (max_w.is_some() || max_h.is_some())
-                && let Some(ready) = crate::paint::background::source(&crate::paint::background::key(local.unwrap_or(src), &e.style))
+                && let Some(ready) = crate::paint::background::source(
+                    &crate::paint::background::key(local.unwrap_or(src), &e.style),
+                )
             {
                 let side = ready.intrinsic();
                 if let (Some(w0), Some(h0)) = (side.w, side.h)
@@ -810,7 +872,9 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         if replaced_holder_ratio::apply(&mut d, &e.style, ratio_of(), узкая.is_some()) {
             image = image.size_full().object_fit(gpui::ObjectFit::Fill);
         }
-        return d.child(replaced_content::position(image, &e.style)).into_any_element();
+        return d
+            .child(replaced_content::position(image, &e.style))
+            .into_any_element();
     }
     // Картинки БЕЗ АДРЕСА вовсе (`<img>` без `src`) не существует: коробки
     // она не порождает и в замер по содержимому не входит (HTML §4.8.4.4 —

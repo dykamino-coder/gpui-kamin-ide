@@ -72,7 +72,8 @@ pub(crate) fn positioned_later(rest: &[Node]) -> bool {
         let Node::Element(e) = n else { return false };
         let late_sibling = matches!(
             e.style.position,
-            Some(crate::style::computed::Position::Relative) | Some(crate::style::computed::Position::Sticky)
+            Some(crate::style::computed::Position::Relative)
+                | Some(crate::style::computed::Position::Sticky)
         ) && e.style.z_index.unwrap_or(0) == 0
             && block_level_in_flow(e);
         if late_sibling {
@@ -166,8 +167,9 @@ pub(crate) fn has_own_box(c: &Computed, font_px: f32) -> bool {
     // в стиль ноль, и по одному лишь «задано» кусок вынимался из строки —
     // а вынутый кусок рвёт соединение букв и общий перенос по словам.
     let set = |l: &Option<Len>| !matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
-    let any =
-        |s: &crate::style::computed::Sides| set(&s.top) || set(&s.right) || set(&s.bottom) || set(&s.left);
+    let any = |s: &crate::style::computed::Sides| {
+        set(&s.top) || set(&s.right) || set(&s.bottom) || set(&s.left)
+    };
     // Вертикальные поля признаком коробки НЕ служат: строку они не двигают
     // (замерено на `flexbox_inline`, где `margin-top: -20em` обязан пройти
     // впустую), и по ним коробка заводилась бы только затем, чтобы уехать за
@@ -206,7 +208,8 @@ pub(crate) fn has_own_box(c: &Computed, font_px: f32) -> bool {
     // Возвращать вместе с настоящей коробкой строчного фрагмента.
     let positioned = matches!(
         c.position,
-        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute)
+            | Some(crate::style::computed::Position::Fixed)
     );
     if atomic || positioned {
         return true;

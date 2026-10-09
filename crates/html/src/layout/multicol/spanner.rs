@@ -7,7 +7,9 @@ use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::grid_bands::grid_stack;
 use crate::layout::fragment::push::avoid_only_monolith;
 use crate::layout::fragment::table_bands::table_box;
-use crate::render::{block_level_in_flow, is_blank, out_of_flow, real_inline, split_block_in_inline};
+use crate::render::{
+    block_level_in_flow, is_blank, out_of_flow, real_inline, split_block_in_inline,
+};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 
@@ -32,7 +34,8 @@ pub(crate) fn parallel_items_inside(c: &Element, depth: u8) -> bool {
         && c.style.vertical != Some(true)
         && matches!(
             c.style.flex_dir,
-            Some(crate::style::computed::FlexDir::Col) | Some(crate::style::computed::FlexDir::ColReverse)
+            Some(crate::style::computed::FlexDir::Col)
+                | Some(crate::style::computed::FlexDir::ColReverse)
         )
         && c.style.flex_wrap != Some(true))
         || (c.style.display == Some(Display::Grid) && grid_stack(c));
@@ -44,25 +47,27 @@ pub(crate) fn parallel_items_inside(c: &Element, depth: u8) -> bool {
         && !c.children.iter().any(
             |n| matches!(n, Node::Element(k) if k.style.break_inside_avoid && avoid_only_monolith(k)),
         );
-    let own = !stacked && matches!(
-        c.style.display,
-        Some(Display::Flex)
-            | Some(Display::Grid)
-            | Some(Display::GridLanes)
-            | Some(Display::Table)
-            | Some(Display::TableRow)
-            | Some(Display::TableRowGroup)
-            | Some(Display::TableCell)
-    ) || c.style.webkit_box == Some(true)
+    let own = !stacked
+        && matches!(
+            c.style.display,
+            Some(Display::Flex)
+                | Some(Display::Grid)
+                | Some(Display::GridLanes)
+                | Some(Display::Table)
+                | Some(Display::TableRow)
+                | Some(Display::TableRowGroup)
+                | Some(Display::TableCell)
+        )
+        || c.style.webkit_box == Some(true)
         || multicol_container(&c.style)
         || matches!(
             c.tag.as_str(),
             "table" | "tr" | "td" | "th" | "thead" | "tbody" | "tfoot"
         );
     own || (depth > 0
-        && c.children.iter().any(
-            |n| matches!(n, Node::Element(k) if parallel_items_inside(k, depth - 1)),
-        ))
+        && c.children
+            .iter()
+            .any(|n| matches!(n, Node::Element(k) if parallel_items_inside(k, depth - 1))))
 }
 
 /// Есть ли в поддереве (вместе с самой коробкой) многоколоночник. Свою
@@ -71,9 +76,9 @@ pub(crate) fn parallel_items_inside(c: &Element, depth: u8) -> bool {
 pub(super) fn multicol_inside(c: &Element, depth: u8) -> bool {
     multicol_container(&c.style)
         || (depth > 0
-            && c.children.iter().any(
-                |n| matches!(n, Node::Element(k) if multicol_inside(k, depth - 1)),
-            ))
+            && c.children
+                .iter()
+                .any(|n| matches!(n, Node::Element(k) if multicol_inside(k, depth - 1))))
 }
 
 /// Кусок содержимого предка спаннера: обычный поток или сам спаннер.
@@ -343,9 +348,10 @@ fn spanner_parts(kids: &[Node]) -> Vec<SpanPart> {
     // блоки (§9.2.1.1) — тогда спаннер виден на этом уровне и режет поток,
     // как прямой (`splits_for_spanner`).
     let split;
-    let kids: &[Node] = if kids.iter().any(
-        |n| matches!(n, Node::Element(k) if splits_for_spanner(k) && has_deep_spanner(k)),
-    ) {
+    let kids: &[Node] = if kids
+        .iter()
+        .any(|n| matches!(n, Node::Element(k) if splits_for_spanner(k) && has_deep_spanner(k)))
+    {
         split = split_block_in_inline(kids);
         &split
     } else {
@@ -418,8 +424,7 @@ fn spanner_parts(kids: &[Node]) -> Vec<SpanPart> {
                             let s = match (c.style.opacity, &s) {
                                 (Some(o), Node::Element(sp)) if o < 1.0 => {
                                     let mut sp = sp.clone();
-                                    sp.style.opacity =
-                                        Some(sp.style.opacity.unwrap_or(1.0) * o);
+                                    sp.style.opacity = Some(sp.style.opacity.unwrap_or(1.0) * o);
                                     Node::Element(sp)
                                 }
                                 _ => s,
@@ -436,8 +441,10 @@ fn spanner_parts(kids: &[Node]) -> Vec<SpanPart> {
                             // путь в `element()`.
                             let s = match s {
                                 Node::Element(mut sp) if sp.attr("kamin-span-parent").is_none() => {
-                                    sp.attrs
-                                        .push(("kamin-span-parent".to_string(), c.node_id.to_string()));
+                                    sp.attrs.push((
+                                        "kamin-span-parent".to_string(),
+                                        c.node_id.to_string(),
+                                    ));
                                     Node::Element(sp)
                                 }
                                 other => other,
@@ -512,7 +519,8 @@ pub(super) fn intrinsic_inline_size(c: &Computed, parent: &Computed) -> bool {
     c.float.unwrap_or(0) != 0
         || matches!(
             c.position,
-            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute)
+                | Some(crate::style::computed::Position::Fixed)
         )
         || matches!(
             c.display,

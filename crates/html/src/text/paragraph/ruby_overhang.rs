@@ -21,14 +21,18 @@ use gpui::Window;
 fn is_space_separator(c: char) -> bool {
     matches!(
         c,
-        ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{202f}' | '\u{205f}' | '\u{3000}'
+        ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200a}' | '\u{202f}' | '\u{205f}' | '\u{3000}'
     )
 }
 
 /// A character that belongs to text content (not an atom spacer or a line
 /// break), i.e. something an annotation could overhang.
 fn is_text_char(c: char) -> bool {
-    !matches!(c, '\u{feff}' | '\u{fffc}' | '\n' | '\r' | '\u{2028}' | '\u{2029}')
+    !matches!(
+        c,
+        '\u{feff}' | '\u{fffc}' | '\n' | '\r' | '\u{2028}' | '\u{2029}'
+    )
 }
 
 impl Paragraph {

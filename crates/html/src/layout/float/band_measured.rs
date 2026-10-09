@@ -5,7 +5,10 @@ use crate::dom::{Element, Node};
 use crate::layout::block::margins::collapse_margins;
 use crate::layout::block::struts::zero_len;
 use crate::layout::float::band_clearance::supported as band_clear_supported;
-use crate::layout::float::band_flow_host::{BAND_CBH, BAND_CBW, band_flow_block, band_flow_rest, band_flow_rest_lift, band_orthogonal, subtree_has_text};
+use crate::layout::float::band_flow_host::{
+    BAND_CBH, BAND_CBW, band_flow_block, band_flow_rest, band_flow_rest_lift, band_orthogonal,
+    subtree_has_text,
+};
 use crate::layout::float::band_host::{BandPiece, band_em, band_margins, band_piece};
 use crate::layout::float::band_nest::{band_nest_block, band_seq};
 use crate::render::{block_level_in_flow, is_blank, out_of_flow, own_context, replaced_tag};
@@ -422,7 +425,8 @@ pub(super) fn has_ruby(n: &Node) -> bool {
     match n {
         Node::Text(_) => false,
         Node::Element(e) => {
-            matches!(e.tag.as_str(), "ruby" | "rt" | "rtc" | "rb") || e.children.iter().any(has_ruby)
+            matches!(e.tag.as_str(), "ruby" | "rt" | "rtc" | "rb")
+                || e.children.iter().any(has_ruby)
         }
     }
 }

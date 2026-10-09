@@ -9,17 +9,17 @@ use std::collections::HashMap;
 
 pub(super) mod selector_tokens;
 mod stylesheet_tokens;
-pub(crate) use stylesheet_tokens::next_piece;
 use crate::style::css::stylesheet_tokens::find_matching;
+pub(crate) use stylesheet_tokens::next_piece;
 mod component_tokens;
 mod font_family_values;
 pub(crate) use component_tokens::skip_string;
 mod priority_tokens;
 use crate::style::css::priority_tokens::top_level_bang;
-mod variable_tokens;
 pub(crate) mod custom_properties;
-pub(crate) mod variable_values;
 pub(super) mod selector;
+mod variable_tokens;
+pub(crate) mod variable_values;
 pub use crate::style::css::selector::*;
 pub(super) mod decls;
 pub use crate::style::css::decls::*;
@@ -74,8 +74,6 @@ pub struct Rule {
     /// важные — по убыванию.
     pub layer: Vec<u32>,
 }
-
-
 
 #[cfg(test)]
 mod tests {

@@ -253,8 +253,11 @@ impl Paragraph {
                 if !units.iter().any(|u| own(u.0).is_some()) {
                     continue;
                 }
-                let rest: Vec<(usize, usize, bool)> =
-                    units.iter().copied().filter(|u| own(u.0).is_none()).collect();
+                let rest: Vec<(usize, usize, bool)> = units
+                    .iter()
+                    .copied()
+                    .filter(|u| own(u.0).is_none())
+                    .collect();
                 // Content of the box: between its markers when known, else
                 // strictly between its own edge spacers.
                 let (from_at, to_at) = self
@@ -498,7 +501,14 @@ impl Paragraph {
                 }
                 self.paint_decor_shaped(&word.range, &shaped, at, dy, false, range, false, window);
             }
-            let _ = shaped.paint(origin, self.line_height, gpui::TextAlign::Left, None, window, cx);
+            let _ = shaped.paint(
+                origin,
+                self.line_height,
+                gpui::TextAlign::Left,
+                None,
+                window,
+                cx,
+            );
             if decor {
                 self.paint_decor_shaped(&word.range, &shaped, at, dy, false, range, true, window);
                 let base = at.y
@@ -552,10 +562,8 @@ impl Paragraph {
                     }
                     let gap_x = bounds.origin.x
                         + dx
-                        + placed(gap.start, gap.end).map_or(
-                            self.x_at(segs, gap.start, Edge::Start) - from,
-                            |v| v.0,
-                        );
+                        + placed(gap.start, gap.end)
+                            .map_or(self.x_at(segs, gap.start, Edge::Start) - from, |v| v.0);
                     let gap_y = match (line_base, self.base_of(&gap)) {
                         (Some(l), Some(w)) => y + px(l - w),
                         _ => y,
@@ -698,7 +706,10 @@ impl Paragraph {
 
     /// Byte offsets of the characters of a line in visual order, from its
     /// pieces `(start, end, rtl)` in visual order.
-    pub(crate) fn visual_chars(&self, pieces: impl Iterator<Item = (usize, usize, bool)>) -> Vec<usize> {
+    pub(crate) fn visual_chars(
+        &self,
+        pieces: impl Iterator<Item = (usize, usize, bool)>,
+    ) -> Vec<usize> {
         let mut out = Vec::new();
         for (s, e, rtl) in pieces {
             let Some(text) = self.text.get(s..e) else {
@@ -806,7 +817,10 @@ impl Paragraph {
     /// (U+FFFC, same UTF-8 length): as boundary neutrals X9 would give a
     /// trailing spacer the level of the embedding it follows, while the edges
     /// belong to the parent's level (CSS Writing Modes 4 §2.4).
-    pub(crate) fn line_visual_runs(&self, range: &std::ops::Range<usize>) -> Vec<(usize, usize, bool)> {
+    pub(crate) fn line_visual_runs(
+        &self,
+        range: &std::ops::Range<usize>,
+    ) -> Vec<(usize, usize, bool)> {
         if range.start >= range.end || range.end > self.text.len() {
             return Vec::new();
         }
@@ -852,9 +866,19 @@ impl Paragraph {
         let (levels, visual) = info.visual_runs(para, range.clone());
         let runs: Vec<(usize, usize, bool)> = visual
             .into_iter()
-            .map(|r| (r.start, r.end, levels.get(r.start).is_some_and(|l| l.is_rtl())))
+            .map(|r| {
+                (
+                    r.start,
+                    r.end,
+                    levels.get(r.start).is_some_and(|l| l.is_rtl()),
+                )
+            })
             .collect();
-        let mixed = if rtl { runs.iter().any(|r| !r.2) } else { runs.iter().any(|r| r.2) };
+        let mixed = if rtl {
+            runs.iter().any(|r| !r.2)
+        } else {
+            runs.iter().any(|r| r.2)
+        };
         if mixed || edges { runs } else { Vec::new() }
     }
 

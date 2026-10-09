@@ -121,7 +121,11 @@ fn contour_dist(px_: f32, py: f32, fw: f32, fh: f32, r: &Rrect) -> (f32, f32) {
         }
         let (d, gx, gy) = if notch {
             let (dx, dy) = ((1.0 - ex) * rx, (1.0 - ey) * ry);
-            if dx < dy { (dx, 1.0, 0.0) } else { (dy, 0.0, 1.0) }
+            if dx < dy {
+                (dx, 1.0, 0.0)
+            } else {
+                (dy, 0.0, 1.0)
+            }
         } else if k >= 0.0 {
             let (dx, dy) = (1.0 - ex, 1.0 - ey);
             if (k - 1.0).abs() < 1e-3 {

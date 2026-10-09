@@ -57,23 +57,36 @@ impl Paragraph {
         // §block-ellipsis «as if wrapping»): разрыв на нём показывает знак
         // переноса перед многоточием (`block-ellipsis-028`: «isti‐…»).
         let shy_at = |at: usize| at > head && self.text[..at].ends_with('\u{ad}');
-        let shy_w = |at: usize| if shy_at(at) { self.hyphen_width(at) } else { px(0.) };
-        if let Some(room) = limit.map(|w| w - ell).filter(|_| !self.clamp_str().is_empty())
-            && self.span(&segs, head, end) > room {
-                end = self
-                    .opportunities()
-                    .iter()
-                    .map(|s| s.at)
-                    .filter(|at| *at > head && *at <= end)
-                    .map(trim)
-                    .filter(|at| self.span(&segs, head, *at) + shy_w(*at) <= room)
-                    .max()
-                    .unwrap_or(head);
+        let shy_w = |at: usize| {
+            if shy_at(at) {
+                self.hyphen_width(at)
+            } else {
+                px(0.)
             }
+        };
+        if let Some(room) = limit
+            .map(|w| w - ell)
+            .filter(|_| !self.clamp_str().is_empty())
+            && self.span(&segs, head, end) > room
+        {
+            end = self
+                .opportunities()
+                .iter()
+                .map(|s| s.at)
+                .filter(|at| *at > head && *at <= end)
+                .map(trim)
+                .filter(|at| self.span(&segs, head, *at) + shy_w(*at) <= room)
+                .max()
+                .unwrap_or(head);
+        }
         let hyphen = !self.hyphen.is_empty() && shy_at(end);
         let width = self.span(&segs, head, end)
             + ell
-            + if hyphen { self.hyphen_width(end) } else { px(0.) };
+            + if hyphen {
+                self.hyphen_width(end)
+            } else {
+                px(0.)
+            };
         lines.push(Line {
             range: head..end,
             width,
@@ -88,7 +101,13 @@ impl Paragraph {
 
     /// Усечь строку под многоточие: место отбирается целыми кусками по
     /// точкам переноса — как у `line-clamp` (общая механика).
-    pub(crate) fn ellipsize(&self, line: &mut Line, limit: Pixels, segs: &[Seg], window: &mut Window) {
+    pub(crate) fn ellipsize(
+        &self,
+        line: &mut Line,
+        limit: Pixels,
+        segs: &[Seg],
+        window: &mut Window,
+    ) {
         let ell = self.suffix_width(self.marker_str(), line.range.start, window);
         let head = line.range.start;
         let mut end = head + trim_hanging(&self.text[line.range.clone()]);
@@ -161,7 +180,13 @@ impl Paragraph {
     /// Первый знак строки остаётся всегда (обрезается, а не прячется).
     /// Возвращает ширину видимой части от начального края; None — строка
     /// одного направления, ей хватает логического среза.
-    pub(crate) fn visual_cut(&self, head: usize, end: usize, room: Pixels, segs: &[Seg]) -> Option<Pixels> {
+    pub(crate) fn visual_cut(
+        &self,
+        head: usize,
+        end: usize,
+        room: Pixels,
+        segs: &[Seg],
+    ) -> Option<Pixels> {
         if head >= end || end > self.text.len() || self.plaintext.is_some() {
             return None;
         }
@@ -176,7 +201,11 @@ impl Paragraph {
             .iter()
             .find(|p| p.range.start <= head && head < p.range.end)?;
         let (levels, runs) = info.visual_runs(para, head..end);
-        if runs.len() < 2 && runs.first().is_none_or(|r| levels.get(r.start) == Some(&base)) {
+        if runs.len() < 2
+            && runs
+                .first()
+                .is_none_or(|r| levels.get(r.start) == Some(&base))
+        {
             return None;
         }
         let mut order: Vec<usize> = vec![];

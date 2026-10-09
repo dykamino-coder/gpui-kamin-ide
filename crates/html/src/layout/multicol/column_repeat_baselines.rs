@@ -44,34 +44,35 @@ impl RepeatedMeasurements {
         let mut head = Baselines::default();
         let mut foot = Baselines::default();
         // Match the copy indices, mask and origin in ColumnStack::prepaint/paint.
-        if fragment.head > 0.01 && fragment.copy > 0
+        if fragment.head > 0.01
+            && fragment.copy > 0
             && let (Some(source), Some(measure)) =
                 (self.head, self.heads.get_mut(fragment.copy - 1))
-            {
-                let (_, first, last) =
-                    measure.measure_slice(available, px(source), px(fragment.head), window, cx);
-                head.include(
-                    first.map(f32::from),
-                    last.map(f32::from),
-                    source,
-                    fragment.head,
-                    y - fragment.head,
-                );
-            }
+        {
+            let (_, first, last) =
+                measure.measure_slice(available, px(source), px(fragment.head), window, cx);
+            head.include(
+                first.map(f32::from),
+                last.map(f32::from),
+                source,
+                fragment.head,
+                y - fragment.head,
+            );
+        }
         if fragment.foot > 0.01
             && let (Some((source, height)), Some(measure)) =
                 (self.foot, self.feet.get_mut(fragment.copy))
-            {
-                let (_, first, last) =
-                    measure.measure_slice(available, px(source), px(height), window, cx);
-                foot.include(
-                    first.map(f32::from),
-                    last.map(f32::from),
-                    source,
-                    height,
-                    y + fragment.h + fragment.foot - height,
-                );
-            }
+        {
+            let (_, first, last) =
+                measure.measure_slice(available, px(source), px(height), window, cx);
+            foot.include(
+                first.map(f32::from),
+                last.map(f32::from),
+                source,
+                height,
+                y + fragment.h + fragment.foot - height,
+            );
+        }
         (head, foot)
     }
 }

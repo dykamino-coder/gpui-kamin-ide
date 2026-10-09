@@ -1,7 +1,10 @@
 //! Отрисовка строк: выделение, строка, маркеры.
 
 use crate::text::paragraph::*;
-use gpui::{App, Bounds, GlobalElementId, Hitbox, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, TextRun, Window, point, px};
+use gpui::{
+    App, Bounds, GlobalElementId, Hitbox, MouseButton, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, Pixels, Point, TextRun, Window, point, px,
+};
 
 impl Paragraph {
     /// Прогоны с подложкой на выделенном куске: прогон нельзя раскрасить
@@ -278,7 +281,11 @@ impl Paragraph {
             let piece_runs;
             let runs: &[TextRun] = if self.runs.iter().any(|r| r.background_color.is_some()) {
                 let vis = self.visual_chars(pieces.iter().map(|r| {
-                    (r.start, r.end, levels.get(r.start).is_some_and(|l| l.is_rtl()))
+                    (
+                        r.start,
+                        r.end,
+                        levels.get(r.start).is_some_and(|l| l.is_rtl()),
+                    )
                 }));
                 let (left, right) = visual_neighbours(&self.text, &vis, &run);
                 let mut mid = slice_runs(runs, &run);
@@ -330,11 +337,36 @@ impl Paragraph {
             // below the text, line-throughs above it» (painting order).
             let decor = self.decor_on();
             if decor {
-                self.paint_decor_shaped(&run, &shaped, point(x, at.y), px(0.), rtl, range, false, window);
+                self.paint_decor_shaped(
+                    &run,
+                    &shaped,
+                    point(x, at.y),
+                    px(0.),
+                    rtl,
+                    range,
+                    false,
+                    window,
+                );
             }
-            let _ = shaped.paint(origin, self.line_height, gpui::TextAlign::Left, None, window, cx);
+            let _ = shaped.paint(
+                origin,
+                self.line_height,
+                gpui::TextAlign::Left,
+                None,
+                window,
+                cx,
+            );
             if decor {
-                self.paint_decor_shaped(&run, &shaped, point(x, at.y), px(0.), rtl, range, true, window);
+                self.paint_decor_shaped(
+                    &run,
+                    &shaped,
+                    point(x, at.y),
+                    px(0.),
+                    rtl,
+                    range,
+                    true,
+                    window,
+                );
             }
             if !rtl && !self.emph_spans.is_empty() {
                 self.paint_emphasis(&run, &shaped, point(x, at.y), window, cx);
@@ -347,7 +379,15 @@ impl Paragraph {
         // Строка-замена — за текстом строки, своим шрифтом и кеглем.
         if !self.wrap.rtl && !suffix.is_empty() && self.overflow_marker.as_deref() == Some(suffix) {
             let anchor = range.end.saturating_sub(1).max(range.start);
-            self.paint_suffix(suffix, anchor, point(x, at.y), line_base, line_exact, window, cx);
+            self.paint_suffix(
+                suffix,
+                anchor,
+                point(x, at.y),
+                line_base,
+                line_exact,
+                window,
+                cx,
+            );
         }
         (line_base, line_exact)
     }

@@ -1,10 +1,10 @@
 //! Keep first-letter selection within the container's first formatted line.
 
+use super::{RenderOpts, block_level_in_flow, out_of_flow, paragraph_probed};
 use crate::dom::Node;
 use crate::style::computed::{Computed, Display};
 use crate::text::text_box::blank_text;
 use gpui::AnyElement;
-use super::{RenderOpts, block_level_in_flow, out_of_flow, paragraph_probed};
 
 pub(crate) struct Scope {
     first: bool,

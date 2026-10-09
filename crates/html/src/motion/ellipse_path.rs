@@ -1,8 +1,8 @@
 //! Continuous circle/ellipse motion paths, including their true tangents.
 
+use super::{origin_shift, rotation};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
-use super::{origin_shift, rotation};
 use std::f64::consts::FRAC_PI_2;
 
 pub(super) fn css(

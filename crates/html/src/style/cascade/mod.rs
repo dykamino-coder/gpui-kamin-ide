@@ -7,7 +7,9 @@ pub mod vars;
 
 use crate::style::cascade::defaults::{inherited_property, initial_value};
 use crate::style::cascade::vars::{resolve_attrs, resolve_sibling, resolve_vars};
-use crate::style::computed::{BG_LIST_KEYS, Computed, background_layers, font_members, top_level_comma};
+use crate::style::computed::{
+    BG_LIST_KEYS, Computed, background_layers, font_members, top_level_comma,
+};
 use crate::style::css::{Decls, Rule};
 use crate::style::values::value::Color;
 
@@ -22,8 +24,12 @@ impl Computed {
         // Слой старше специфичности (css-cascade-5 §6.4): у обычных
         // объявлений поздний слой сильнее, у важных — ранний.
         matched.sort_by(|a, b| {
-            (a.origin, &a.layer, a.sel.specificity(), a.order)
-                .cmp(&(b.origin, &b.layer, b.sel.specificity(), b.order))
+            (a.origin, &a.layer, a.sel.specificity(), a.order).cmp(&(
+                b.origin,
+                &b.layer,
+                b.sel.specificity(),
+                b.order,
+            ))
         });
         // `revert-layer` (css-cascade-5 §revert-layer) решается ДО прохода:
         // объявления откатываемого слоя (а у важного — и всё между его
@@ -49,8 +55,18 @@ impl Computed {
         // старше важного авторского (§6.4.4), поэтому применяется последним.
         let mut important: Vec<&&Rule> = matched.iter().collect();
         important.sort_by(|a, b| {
-            (std::cmp::Reverse(a.origin), std::cmp::Reverse(&a.layer), a.sel.specificity(), a.order)
-                .cmp(&(std::cmp::Reverse(b.origin), std::cmp::Reverse(&b.layer), b.sel.specificity(), b.order))
+            (
+                std::cmp::Reverse(a.origin),
+                std::cmp::Reverse(&a.layer),
+                a.sel.specificity(),
+                a.order,
+            )
+                .cmp(&(
+                    std::cmp::Reverse(b.origin),
+                    std::cmp::Reverse(&b.layer),
+                    b.sel.specificity(),
+                    b.order,
+                ))
         });
         for rule in important {
             c.apply_pass(&rule.decls, vars, true);
@@ -276,8 +292,10 @@ impl Computed {
         }
         for k in &ordered {
             let Some(v) = d.get(*k) else { continue };
-            if k.starts_with("--") || k.as_str() == crate::style::css::ORDER_KEY
-                || k.starts_with(crate::style::css::CUSTOM_IMPORTANT) {
+            if k.starts_with("--")
+                || k.as_str() == crate::style::css::ORDER_KEY
+                || k.starts_with(crate::style::css::CUSTOM_IMPORTANT)
+            {
                 continue;
             }
             if let Some(at) = all_at
@@ -303,22 +321,25 @@ impl Computed {
             // трогать это поведение здесь незачем.
             let from = parts
                 .iter()
-                .rposition(|part| {
-                    matches!(strip_important(part).trim(), "revert" | "revert-layer")
-                })
+                .rposition(|part| matches!(strip_important(part).trim(), "revert" | "revert-layer"))
                 .unwrap_or(0);
             for part in parts[from..].iter().copied() {
                 // Типизированный `attr()` подставляется тем же шагом, что и
                 // `var()` (css-values-5 §7.7): после него значение разбирается
                 // как обычное.
-                let resolved = resolve_sibling(resolve_attrs(k.as_str(), &resolve_vars(strip_important(part), vars)));
+                let resolved = resolve_sibling(resolve_attrs(
+                    k.as_str(),
+                    &resolve_vars(strip_important(part), vars),
+                ));
                 // CSS Variables §3: invalid after substitution means unset;
                 // a preceding specified color cannot survive the computed value.
                 if k.as_str() == "color"
                     && crate::style::css::variable_values::has_var(strip_important(part))
                     && Color::parse(&resolved).is_none()
-                    && !matches!(resolved.trim().to_ascii_lowercase().as_str(),
-                        "inherit" | "initial" | "unset" | "revert" | "revert-layer")
+                    && !matches!(
+                        resolved.trim().to_ascii_lowercase().as_str(),
+                        "inherit" | "initial" | "unset" | "revert" | "revert-layer"
+                    )
                 {
                     self.apply_one(k, "unset");
                 } else {
@@ -426,7 +447,11 @@ impl Computed {
 /// объявление в том же слое стоит до него. `None` — откатывать нечего.
 fn revert_layers(matched: &[&crate::style::css::Rule]) -> Option<Vec<crate::style::css::Rule>> {
     use crate::style::css::DECL_SEP;
-    let is_rl = |part: &str| strip_important(part).trim().eq_ignore_ascii_case("revert-layer");
+    let is_rl = |part: &str| {
+        strip_important(part)
+            .trim()
+            .eq_ignore_ascii_case("revert-layer")
+    };
     if !matched
         .iter()
         .any(|r| r.decls.values().any(|v| v.split(DECL_SEP).any(is_rl)))
@@ -435,7 +460,8 @@ fn revert_layers(matched: &[&crate::style::css::Rule]) -> Option<Vec<crate::styl
     }
     let mut rules: Vec<crate::style::css::Rule> = matched.iter().map(|r| (*r).clone()).collect();
     // Порядки каскада: обычный — по возрастанию, важный — слой по убыванию.
-    let normal_key = |r: &crate::style::css::Rule| (r.origin, r.layer.clone(), r.sel.specificity(), r.order);
+    let normal_key =
+        |r: &crate::style::css::Rule| (r.origin, r.layer.clone(), r.sel.specificity(), r.order);
     let mut keys: Vec<String> = rules
         .iter()
         .flat_map(|r| r.decls.keys().cloned())
@@ -444,10 +470,16 @@ fn revert_layers(matched: &[&crate::style::css::Rule]) -> Option<Vec<crate::styl
     keys.sort();
     keys.dedup();
     // Снять части свойства `key` важности `imp` у правил, прошедших фильтр.
-    let strip = |rules: &mut Vec<crate::style::css::Rule>, key: &str, imp: bool, keep: &dyn Fn(&crate::style::css::Rule) -> bool| {
+    let strip = |rules: &mut Vec<crate::style::css::Rule>,
+                 key: &str,
+                 imp: bool,
+                 keep: &dyn Fn(&crate::style::css::Rule) -> bool| {
         for r in rules.iter_mut().filter(|r| !keep(r)) {
             if let Some(v) = r.decls.get(key) {
-                let rest: Vec<&str> = v.split(DECL_SEP).filter(|p| is_important(p) != imp).collect();
+                let rest: Vec<&str> = v
+                    .split(DECL_SEP)
+                    .filter(|p| is_important(p) != imp)
+                    .collect();
                 if rest.is_empty() {
                     r.decls.remove(key);
                 } else {
@@ -458,7 +490,10 @@ fn revert_layers(matched: &[&crate::style::css::Rule]) -> Option<Vec<crate::styl
         }
     };
     // Победитель свойства: (индекс правила, слой, значение) по порядку каскада.
-    let winner = |rules: &Vec<crate::style::css::Rule>, key: &str, imp: bool| -> Option<(Vec<u32>, String)> {
+    let winner = |rules: &Vec<crate::style::css::Rule>,
+                  key: &str,
+                  imp: bool|
+     -> Option<(Vec<u32>, String)> {
         let mut best: Option<(&crate::style::css::Rule, String)> = None;
         for r in rules {
             let Some(v) = r.decls.get(key) else { continue };
@@ -468,8 +503,17 @@ fn revert_layers(matched: &[&crate::style::css::Rule]) -> Option<Vec<crate::styl
             let better = match &best {
                 None => true,
                 Some((b, _)) if imp => {
-                    (std::cmp::Reverse(r.origin), std::cmp::Reverse(&r.layer), r.sel.specificity(), r.order)
-                        >= (std::cmp::Reverse(b.origin), std::cmp::Reverse(&b.layer), b.sel.specificity(), b.order)
+                    (
+                        std::cmp::Reverse(r.origin),
+                        std::cmp::Reverse(&r.layer),
+                        r.sel.specificity(),
+                        r.order,
+                    ) >= (
+                        std::cmp::Reverse(b.origin),
+                        std::cmp::Reverse(&b.layer),
+                        b.sel.specificity(),
+                        b.order,
+                    )
                 }
                 Some((b, _)) => normal_key(r) >= normal_key(b),
             };
@@ -484,18 +528,28 @@ fn revert_layers(matched: &[&crate::style::css::Rule]) -> Option<Vec<crate::styl
     let alls: Vec<(Vec<u32>, (u8, Vec<u32>, (u32, u32, u32), usize))> = rules
         .iter()
         .filter(|r| {
-            r.decls
-                .get("all")
-                .is_some_and(|v| v.split(DECL_SEP).rfind(|p| !is_important(p)).is_some_and(is_rl))
+            r.decls.get("all").is_some_and(|v| {
+                v.split(DECL_SEP)
+                    .rfind(|p| !is_important(p))
+                    .is_some_and(is_rl)
+            })
         })
         .map(|r| (r.layer.clone(), normal_key(r)))
         .collect();
     for (layer, at) in alls {
-        for r in rules.iter_mut().filter(|r| r.layer == layer && normal_key(r) <= at) {
+        for r in rules
+            .iter_mut()
+            .filter(|r| r.layer == layer && normal_key(r) <= at)
+        {
             let props: Vec<String> = r
                 .decls
                 .keys()
-                .filter(|k| !k.starts_with("--") && *k != crate::style::css::ORDER_KEY && *k != "direction" && *k != "unicode-bidi")
+                .filter(|k| {
+                    !k.starts_with("--")
+                        && *k != crate::style::css::ORDER_KEY
+                        && *k != "direction"
+                        && *k != "unicode-bidi"
+                })
                 .cloned()
                 .collect();
             for k in props {
@@ -527,11 +581,12 @@ fn revert_layers(matched: &[&crate::style::css::Rule]) -> Option<Vec<crate::styl
                 break;
             }
             if let Some((layer, v)) = winner(&rules, &key, false)
-                && is_rl(&v) {
-                    let l = layer.clone();
-                    strip(&mut rules, &key, false, &|r| r.layer != l);
-                    continue;
-                }
+                && is_rl(&v)
+            {
+                let l = layer.clone();
+                strip(&mut rules, &key, false, &|r| r.layer != l);
+                continue;
+            }
             break;
         }
     }

@@ -1,8 +1,8 @@
 //! Resolve replaced content's sizing behavior before constructing its inner image.
 //! CSS Sizing 3's “behaves as auto” also applies to intrinsic ratio transfer.
 
-use crate::style::computed::Position;
 use crate::dom::Element;
+use crate::style::computed::Position;
 use crate::style::values::value::Len;
 
 /// CSS Sizing 4 #aspect-ratio: authored ratios transfer the box-sizing box;
@@ -74,7 +74,10 @@ pub(super) fn normalize(element: &Element, containing_width: Option<f32>) -> Opt
 
 /// CSS 2 sections 10.2 and 10.3.2 resolve an inline replaced width against
 /// its containing block, before the synthetic line flex row is constructed.
-pub(crate) fn inline_percentage_width(style: &mut crate::style::computed::Computed, basis: Option<f32>) {
+pub(crate) fn inline_percentage_width(
+    style: &mut crate::style::computed::Computed,
+    basis: Option<f32>,
+) {
     let Some(Len::Pct(fraction)) = style.width else {
         return;
     };
@@ -142,7 +145,14 @@ mod tests {
         assert_eq!(normalized.style.height, None);
         assert_eq!(normalized.style.max_width, Some(Len::Px(100.0)));
         assert_eq!(
-            crate::layout::replaced::limits::css2_replaced_limits(200.0, 200.0, None, Some(100.0), None, None,),
+            crate::layout::replaced::limits::css2_replaced_limits(
+                200.0,
+                200.0,
+                None,
+                Some(100.0),
+                None,
+                None,
+            ),
             (100.0, 100.0)
         );
     }

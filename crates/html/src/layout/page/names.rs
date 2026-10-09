@@ -16,7 +16,11 @@ use crate::style::values::value::Len;
 /// (класс A); текст, строчный, флоат, абсолют — не передают, и тогда
 /// берётся используемое значение самой коробки.
 pub(crate) fn page_names(e: &Element, inherited: &str) -> (String, String) {
-    let used = e.style.page.clone().unwrap_or_else(|| inherited.to_string());
+    let used = e
+        .style
+        .page
+        .clone()
+        .unwrap_or_else(|| inherited.to_string());
     // Крайняя дочерняя коробка — крайняя ПОТОЧНАЯ: абсолют и флоат в
     // точках класса A не участвуют (Blink берёт имя первого уложенного
     // поточного ребёнка, `SetPageNameIfNeeded`; `page-name-propagated-005`:
@@ -25,8 +29,10 @@ pub(crate) fn page_names(e: &Element, inherited: &str) -> (String, String) {
         .children
         .iter()
         .filter(|n| !is_blank(n))
-        .filter(|n| !matches!(n, Node::Element(k) if matches!(k.style.display, Some(Display::None))
-            || out_of_flow(&k.style) || k.style.float.unwrap_or(0) != 0))
+        .filter(|n| {
+            !matches!(n, Node::Element(k) if matches!(k.style.display, Some(Display::None))
+            || out_of_flow(&k.style) || k.style.float.unwrap_or(0) != 0)
+        })
         .collect();
     let via = |n: Option<&&Node>| match n {
         Some(Node::Element(k)) if !item_container(e) && class_a_box(k) => {
@@ -34,8 +40,12 @@ pub(crate) fn page_names(e: &Element, inherited: &str) -> (String, String) {
         }
         _ => None,
     };
-    let start = via(boxes.first()).map(|p| p.0).unwrap_or_else(|| used.clone());
-    let end = via(boxes.last()).map(|p| p.1).unwrap_or_else(|| used.clone());
+    let start = via(boxes.first())
+        .map(|p| p.0)
+        .unwrap_or_else(|| used.clone());
+    let end = via(boxes.last())
+        .map(|p| p.1)
+        .unwrap_or_else(|| used.clone());
     (start, end)
 }
 
@@ -123,13 +133,25 @@ fn plain_wrapper(e: &Element) -> bool {
         && matches!(st.display, None | Some(Display::Block))
         && st.position.is_none()
         && st.float.unwrap_or(0) == 0
-        && [&st.margin.top, &st.margin.right, &st.margin.bottom, &st.margin.left]
+        && [
+            &st.margin.top,
+            &st.margin.right,
+            &st.margin.bottom,
+            &st.margin.left,
+        ]
+        .iter()
+        .all(|l| zero(l))
+        && [
+            &st.padding.top,
+            &st.padding.right,
+            &st.padding.bottom,
+            &st.padding.left,
+        ]
+        .iter()
+        .all(|l| zero(l))
+        && [&b.top, &b.right, &b.bottom, &b.left]
             .iter()
             .all(|l| zero(l))
-        && [&st.padding.top, &st.padding.right, &st.padding.bottom, &st.padding.left]
-            .iter()
-            .all(|l| zero(l))
-        && [&b.top, &b.right, &b.bottom, &b.left].iter().all(|l| zero(l))
         && st.background.is_none_or(|c| c.a == 0.0)
         && st.bg_image.is_none()
         && st.width.is_none()
@@ -149,7 +171,10 @@ fn plain_wrapper(e: &Element) -> bool {
         && st.vertical != Some(true)
         && !st.break_before_force
         && !st.break_after_force
-        && e.children.iter().filter(|n| !is_blank(n)).all(|n| matches!(n, Node::Element(_)))
+        && e.children
+            .iter()
+            .filter(|n| !is_blank(n))
+            .all(|n| matches!(n, Node::Element(_)))
 }
 
 /// Снимает простые обёртки, внутри которых меняется имя страницы: их дети
@@ -163,7 +188,9 @@ pub(super) fn hoist_named_wrappers(nodes: &mut Vec<Node>) {
         let mut out = Vec::with_capacity(nodes.len());
         for n in std::mem::take(nodes) {
             match n {
-                Node::Element(e) if plain_wrapper(&e) && (renames_inside(&e) || breaks_inside(&e)) => {
+                Node::Element(e)
+                    if plain_wrapper(&e) && (renames_inside(&e) || breaks_inside(&e)) =>
+                {
                     changed = true;
                     out.extend(e.children);
                 }
@@ -198,7 +225,9 @@ pub fn first_page_name(nodes: &[Node]) -> String {
     let mut root_page = String::new();
     loop {
         let live: Vec<&Node> = nodes.iter().filter(|n| !is_blank(n)).collect();
-        let [Node::Element(e)] = live.as_slice() else { break };
+        let [Node::Element(e)] = live.as_slice() else {
+            break;
+        };
         if !matches!(e.tag.as_str(), "html" | "body") {
             break;
         }

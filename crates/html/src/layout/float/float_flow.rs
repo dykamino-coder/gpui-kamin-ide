@@ -4,7 +4,9 @@
 use crate::dom::{Element, Node};
 use crate::paint::effects::paint_scope::DepthScope;
 use crate::paint::effects::paint_scope::snapshot as defer_depth;
-use crate::render::{RenderOpts, blocks, gather_text, is_blank, measure_font, split_nodes, styled_div_with};
+use crate::render::{
+    RenderOpts, blocks, gather_text, is_blank, measure_font, split_nodes, styled_div_with,
+};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;

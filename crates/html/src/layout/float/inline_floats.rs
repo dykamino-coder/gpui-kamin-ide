@@ -1,8 +1,8 @@
 //! Lift floats from undecorated inline containers into their block's float layout.
 //! Text fragments retain the inline's inherited style on both sides of each float.
 
-use crate::style::cascade::inherit::inherit;
 use crate::dom::{Element, Node};
+use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 
 pub(super) fn lift(nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {

@@ -43,8 +43,8 @@ pub mod flow {
 pub use text::fonts;
 pub mod forms;
 pub use text::metrics;
-pub mod page_margin;
 mod motion;
+pub mod page_margin;
 pub mod render;
 pub mod scroll;
 pub mod select;

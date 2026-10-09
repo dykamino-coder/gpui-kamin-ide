@@ -1,8 +1,8 @@
 //! Conic gradient rays in CSS coordinates, sampled at device pixel centers.
 
-use crate::style::values::color_space::gradient_colour_at as colour_at;
 use super::{Source, angle_fraction, len_px, place_stops, split_top, wrap_repeat};
 use crate::style::computed::parse_pos_words;
+use crate::style::values::color_space::gradient_colour_at as colour_at;
 use gpui::RenderImage;
 use std::sync::Arc;
 

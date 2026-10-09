@@ -274,7 +274,9 @@ fn host_holds(pseudo: &str, node: &Ancestor) -> bool {
         return true;
     }
     let (Some(arg), Some(light)) = (
-        pseudo.strip_prefix("host(").and_then(|r| r.strip_suffix(')')),
+        pseudo
+            .strip_prefix("host(")
+            .and_then(|r| r.strip_suffix(')')),
         &node.featureless,
     ) else {
         return false;
@@ -446,7 +448,9 @@ pub(crate) fn matches_ignoring_pseudo(
     if direct {
         return !path.is_empty() && ancestor_holds(parent_sel, path, path.len() - 1);
     }
-    (0..path.len()).rev().any(|i| ancestor_holds(parent_sel, path, i))
+    (0..path.len())
+        .rev()
+        .any(|i| ancestor_holds(parent_sel, path, i))
 }
 
 /// Предок `path[at]` — предмет компаунда `sel` вместе с его соседним

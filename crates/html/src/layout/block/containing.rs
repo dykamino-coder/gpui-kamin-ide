@@ -66,7 +66,8 @@ fn inner_width_px(c: &Computed, cb: Option<f32>) -> Option<f32> {
         _ => None,
     };
     let b = c.borders();
-    let edges = || Some(side(c.padding.left)? + side(c.padding.right)? + side(b.left)? + side(b.right)?);
+    let edges =
+        || Some(side(c.padding.left)? + side(c.padding.right)? + side(b.left)? + side(b.right)?);
     match c.width {
         Some(Len::Px(w)) if c.border_box == Some(true) => Some((w - edges()?).max(0.0)),
         Some(Len::Px(w)) => Some(w),

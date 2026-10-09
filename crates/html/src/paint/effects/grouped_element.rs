@@ -2,7 +2,10 @@
 // owner: A
 
 use crate::paint::effects::{mask_geometry, mask_size, polygon_clip, rectangular_clip};
-use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window, px};
+use gpui::{
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
+    LayoutId, Pixels, Window, px,
+};
 
 /// Сетка таблицы, у которой ширины колонок считаются по содержимому.
 ///
@@ -25,7 +28,10 @@ pub struct Grouped {
     /// режет — вылезшие за неё потомки остаются видимыми.
     pub spill: bool,
     /// Обрезка многоугольником: вершины в долях коробки (`clip-path`).
-    pub polygon: Vec<(crate::style::values::value::Len, crate::style::values::value::Len)>,
+    pub polygon: Vec<(
+        crate::style::values::value::Len,
+        crate::style::values::value::Len,
+    )>,
     /// Правило намотки полигона: `evenodd` шейдер не умеет.
     pub polygon_evenodd: bool,
     /// Сдвиг опорной коробки формы от bounds наружу: верх/право/низ/лево
@@ -37,7 +43,10 @@ pub struct Grouped {
     /// css-masking §7.4), а он известен только здесь.
     pub mask: Option<String>,
     /// `mask-size`: размер плитки; None — auto (интринзик картинки).
-    pub mask_size: Option<(crate::style::values::value::Len, crate::style::values::value::Len)>,
+    pub mask_size: Option<(
+        crate::style::values::value::Len,
+        crate::style::values::value::Len,
+    )>,
     /// `mask-size: contain|cover` (1|2) — вписывание по интринзику.
     pub mask_fit: u8,
     /// `mask-repeat`: пооосный запрет мощения (no-x, no-y) — первого слоя.
@@ -51,12 +60,20 @@ pub struct Grouped {
     /// `mask-mode: alpha`: ссылка на `<mask>` маскирует альфой.
     pub mask_alpha_mode: bool,
     /// `mask-position`: смещение плитки; доля — от свободного места.
-    pub mask_pos: Option<(crate::style::values::value::Len, crate::style::values::value::Len)>,
+    pub mask_pos: Option<(
+        crate::style::values::value::Len,
+        crate::style::values::value::Len,
+    )>,
     /// Смещение от правого/нижнего края (`right 30px bottom 25px`).
     pub mask_pos_far: (bool, bool),
     /// `mask-position` ПО СЛОЯМ (css-masking-1 §7.7): `(x, y, справа, снизу)`;
     /// пусто — берётся скаляр.
-    pub mask_pos_list: Vec<(crate::style::values::value::Len, crate::style::values::value::Len, bool, bool)>,
+    pub mask_pos_list: Vec<(
+        crate::style::values::value::Len,
+        crate::style::values::value::Len,
+        bool,
+        bool,
+    )>,
     /// Края коробки укладки (`mask-origin`) от border-box внутрь: t/r/b/l.
     pub mask_origin_off: [f32; 4],
     /// Края коробки окраски (`mask-clip`); None — border-box/no-clip.
@@ -244,7 +261,8 @@ impl Element for Grouped {
         let clip_bounds = rectangular_clip::reference_box(self, bounds, *_state, window);
         self.child.as_mut().unwrap().prepaint(window, cx);
         // Mask positioning box before device snapping (css-masking-1 §7.7).
-        let mask_box = mask_geometry::positioning_box(self.mask.as_deref(), bounds, *_state, window);
+        let mask_box =
+            mask_geometry::positioning_box(self.mask.as_deref(), bounds, *_state, window);
         (clip_bounds, mask_box)
     }
 
@@ -286,7 +304,9 @@ impl Element for Grouped {
                     && !l.contains('?')
             };
             if !layers.is_empty()
-                && layers.iter().all(|l| plain(l) && crate::paint::background::source(l).is_none())
+                && layers
+                    .iter()
+                    .all(|l| plain(l) && crate::paint::background::source(l).is_none())
             {
                 return;
             }
@@ -338,7 +358,12 @@ impl Element for Grouped {
                     crate::style::values::value::Len::Px(p) if p < 0.0 => -p,
                     _ => 0.0,
                 };
-                (sl.max(neg(l)), st.max(neg(t)), sr.max(neg(r)), sb.max(neg(b)))
+                (
+                    sl.max(neg(l)),
+                    st.max(neg(t)),
+                    sr.max(neg(r)),
+                    sb.max(neg(b)),
+                )
             }
             None => (sl, st, sr, sb),
         };
@@ -397,12 +422,20 @@ impl Element for Grouped {
                     )
                 })
                 .collect();
-            let rule = if self.polygon_evenodd { "evenodd" } else { "nonzero" };
+            let rule = if self.polygon_evenodd {
+                "evenodd"
+            } else {
+                "nonzero"
+            };
             Some(format!("pathdef:{rule}:{} Z", d.join(" ")))
         } else {
             None
         };
-        let polygon = if poly_mask.is_some() { Vec::new() } else { polygon };
+        let polygon = if poly_mask.is_some() {
+            Vec::new()
+        } else {
+            polygon
+        };
         let mask = self.mask.as_deref().or(poly_mask.as_deref()).and_then(|src| {
             // `border-shape` (css-borders-4): маска — внешний контур рамки,
             // SVG-растр на РАСШИРЕННУЮ область (обводка выходит за
@@ -783,7 +816,14 @@ impl Element for Grouped {
             && let Some(markup) = under(bw, bh, sl, st, aw, ah)
             && let Some(img) = crate::svg::rasterize(&markup, aw, ah)
         {
-            let _ = window.paint_image_with_sampling(layer_at, gpui::Corners::default(), img, 0, false, gpui::ImageSampling::Linear);
+            let _ = window.paint_image_with_sampling(
+                layer_at,
+                gpui::Corners::default(),
+                img,
+                0,
+                false,
+                gpui::ImageSampling::Linear,
+            );
         }
         // css-shapes-1 §basic-shape-rect: `round` rounds the corners of the
         // clip rectangle itself; the composite quad carries those radii.
@@ -798,11 +838,7 @@ impl Element for Grouped {
         };
         let (area, corners) = match mask_clip {
             Some([x, y, w, h])
-                if round > 0.0
-                    && mask.is_none()
-                    && polygon.is_empty()
-                    && w > 0.0
-                    && h > 0.0 =>
+                if round > 0.0 && mask.is_none() && polygon.is_empty() && w > 0.0 && h > 0.0 =>
             {
                 let sf = window.scale_factor();
                 let (w, h) = (w / sf, h / sf);
@@ -834,7 +870,14 @@ impl Element for Grouped {
             if let Some(markup) = over(bw, bh, sl, st, aw, ah)
                 && let Some(img) = crate::svg::rasterize(&markup, aw, ah)
             {
-                let _ = window.paint_image_with_sampling(layer_at, gpui::Corners::default(), img, 0, false, gpui::ImageSampling::Linear);
+                let _ = window.paint_image_with_sampling(
+                    layer_at,
+                    gpui::Corners::default(),
+                    img,
+                    0,
+                    false,
+                    gpui::ImageSampling::Linear,
+                );
             }
         }
     }

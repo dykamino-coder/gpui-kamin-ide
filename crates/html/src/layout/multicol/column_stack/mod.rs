@@ -2,7 +2,9 @@
 // owner: A
 
 use crate::layout::fragment::fragment_mask;
-use crate::layout::fragment::types::{Frag, Intrinsic, Kid, RepeatGeom, Rows, StackAxis, StackChild, axis_box};
+use crate::layout::fragment::types::{
+    Frag, Intrinsic, Kid, RepeatGeom, Rows, StackAxis, StackChild, axis_box,
+};
 use gpui::{App, Bounds, IntoElement, Pixels, Window, point, px, size};
 
 pub mod avoid;
@@ -65,7 +67,11 @@ impl ColumnStack {
         // рядами — сколько построил `render.rs`: ребёнок может занять
         // больше колонок, чем `column-count`.
         let copies = match rows {
-            Some(_) => children.iter().map(|c| c.frags.len() + 1).max().unwrap_or(1),
+            Some(_) => children
+                .iter()
+                .map(|c| c.frags.len() + 1)
+                .max()
+                .unwrap_or(1),
             // Переполняющие колонки (css-multicol-1 §8.2) при `column-fill: auto`
             // с заданной высотой: копий столько, сколько построил `render.rs`
             // (лишние он строит только ребёнку с абсолютным потомком). Без
@@ -110,19 +116,29 @@ impl ColumnStack {
         fixed: Option<f32>,
         rows: Rows,
     ) -> f32 {
-        let mut probe = ColumnStack::new(Vec::new(), count, gap, fixed, None, Some(rows), None, None);
+        let mut probe =
+            ColumnStack::new(Vec::new(), count, gap, fixed, None, Some(rows), None, None);
         probe.row_phase = 0.0;
         // Копий — как у `render.rs` для стопки с рядами: сколько колонок
         // ребёнок может занять, с запасом на поля и срезы.
         let per = rows.h.unwrap_or(f32::MAX).max(1.0);
-        let span = kids.iter().map(|k| (k.h / per).ceil() as usize).max().unwrap_or(0);
+        let span = kids
+            .iter()
+            .map(|k| (k.h / per).ceil() as usize)
+            .max()
+            .unwrap_or(0);
         probe.copies = (span + 2).max(count).min(48);
         // Блочный размер — низ ПОСЛЕДНЕЙ линии, а не полный ряд: последний
         // фрагмент сбалансирован и короче ряда (Blink `LayoutRow`:
         // `intrinsic_block_size_` растёт на высоту строки колонок;
         // `multicol-breaking-006`: ряд 100 + хвост 80 + рамка 20).
         let (h, lines, _, _) = probe.balance(kids);
-        lines.iter().map(|l| l.0 + l.1).fold(0.0f32, f32::max).min(h).max(0.0)
+        lines
+            .iter()
+            .map(|l| l.0 + l.1)
+            .fold(0.0f32, f32::max)
+            .min(h)
+            .max(0.0)
     }
 
     /// Смещение начала рядов (`row_phase`).
@@ -187,7 +203,12 @@ impl ColumnStack {
     /// `prepaint` байт в байт. Повтор шапок таблицы, строки flex (`Par`),
     /// `clone` и хвост `slack` сюда не приходят: `render.rs` их в вертикали
     /// не взводит.
-    pub(crate) fn prepaint_axis(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    pub(crate) fn prepaint_axis(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         let axis = self.axis;
         let (inline_avail, block_avail) = self.axis_sizes(bounds);
         let col_w =
@@ -233,7 +254,11 @@ impl ColumnStack {
                 use gpui::{ParentElement as _, Styled as _};
                 let inner = std::mem::replace(el, gpui::Empty.into_any_element());
                 let w = gpui::div().flex().w(b.size.width).h(b.size.height);
-                let w = if rl { w.flex_row_reverse() } else { w.flex_row() };
+                let w = if rl {
+                    w.flex_row_reverse()
+                } else {
+                    w.flex_row()
+                };
                 *el = w.child(inner).into_any_element();
             }
             // Копия раскладывается ОТ своего абсолютного начала, как у
@@ -372,10 +397,13 @@ impl ColumnStack {
                 ry + f.y,
                 f.h,
             );
-            let mask = fragment_mask::snap(Bounds {
+            let mask = fragment_mask::snap(
+                Bounds {
                     origin: point(b.origin.x + px(rel.0), b.origin.y + px(rel.1)),
                     size: b.size,
-                }, window.scale_factor());
+                },
+                window.scale_factor(),
+            );
             let kid = &mut self.children[f.kid];
             let el = if f.copy == 0 {
                 &mut kid.el
@@ -403,12 +431,14 @@ impl ColumnStack {
         match self.rows {
             Some(r) if r.wrap => {
                 let lines = self.lines_plan.borrow();
-                (col % self.count, lines.get(col / self.count).map_or(0.0, |l| l.0))
+                (
+                    col % self.count,
+                    lines.get(col / self.count).map_or(0.0, |l| l.0),
+                )
             }
             _ => (col, 0.0),
         }
     }
-
 }
 
 impl IntoElement for ColumnStack {

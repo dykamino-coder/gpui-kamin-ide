@@ -30,11 +30,17 @@ pub(super) fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
     if c.inline
         || !matches!(
             s.display,
-            None | Some(Display::Block) | Some(Display::ListItem) | Some(Display::Flex) | Some(Display::Grid)
+            None | Some(Display::Block)
+                | Some(Display::ListItem)
+                | Some(Display::Flex)
+                | Some(Display::Grid)
         )
         || s.webkit_box == Some(true)
         || s.float.unwrap_or(0) != 0
-        || !matches!(s.position, None | Some(crate::style::computed::Position::Relative))
+        || !matches!(
+            s.position,
+            None | Some(crate::style::computed::Position::Relative)
+        )
         || table_box(c)
         || multicol_container(s)
     {
@@ -52,7 +58,11 @@ pub(super) fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
     let b = s.borders();
     let edges = px(&s.padding.left)? + px(&s.padding.right)? + px(&b.left)? + px(&b.right)?;
     match s.width {
-        Some(Len::Px(w)) => Some(if s.border_box == Some(true) { (w - edges).max(0.0) } else { w }),
+        Some(Len::Px(w)) => Some(if s.border_box == Some(true) {
+            (w - edges).max(0.0)
+        } else {
+            w
+        }),
         None | Some(Len::Auto) => {
             Some((pw - px(&s.margin.left)? - px(&s.margin.right)? - edges).max(0.0))
         }
@@ -129,10 +139,18 @@ pub(super) fn items_kind(c: &Element) -> u8 {
         Some(Display::Flex) => {
             let col = matches!(s.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse));
             let stretch = matches!(s.align_items, None | Some(Align::Stretch));
-            if col && stretch && s.vertical != Some(true) { 1 } else { 2 }
+            if col && stretch && s.vertical != Some(true) {
+                1
+            } else {
+                2
+            }
         }
         Some(Display::Grid) => {
-            if grid_stack(c) && matches!(s.justify_items, None | Some(Align::Stretch)) { 1 } else { 2 }
+            if grid_stack(c) && matches!(s.justify_items, None | Some(Align::Stretch)) {
+                1
+            } else {
+                2
+            }
         }
         _ => 0,
     }
@@ -153,7 +171,8 @@ fn line_text(nodes: &[Node]) -> Option<String> {
                 Node::Element(e)
                     if matches!(
                         e.style.position,
-                        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+                        Some(crate::style::computed::Position::Absolute)
+                            | Some(crate::style::computed::Position::Fixed)
                     ) => {}
                 Node::Element(e) => {
                     let s = &e.style;
@@ -383,7 +402,9 @@ fn trim_amount(s: &Computed, size: f32, lh: f32, start: bool) -> f32 {
     let edge = if start {
         match s.text_box_over {
             crate::style::computed::TextEdge::Cap => ascent - cap,
-            crate::style::computed::TextEdge::Ex => ascent - crate::text::metrics::ch_ex_px(&family, size).1,
+            crate::style::computed::TextEdge::Ex => {
+                ascent - crate::text::metrics::ch_ex_px(&family, size).1
+            }
             _ => 0.0,
         }
     } else {
@@ -508,7 +529,13 @@ fn oof_descendant(e: &Element) -> bool {
 /// Та же укладка (`ColumnStack::measure_rows`) и те же меры детей
 /// (`resolved_lengths` + `with_lines`), что у копии через `element()`.
 /// Точек разреза нет: внешняя стопка режет коробку краем колонки — по рядам.
-pub(crate) fn nested_rows_shape(c: &Element, parent: &Computed, hh: f32, cw: f32, opts: &RenderOpts) -> Option<Shape> {
+pub(crate) fn nested_rows_shape(
+    c: &Element,
+    parent: &Computed,
+    hh: f32,
+    cw: f32,
+    opts: &RenderOpts,
+) -> Option<Shape> {
     let m = inherit(parent, &c.style);
     let w = nested_box_w(c, cw)?;
     let n = match m.column_count {
@@ -543,7 +570,10 @@ pub(crate) fn nested_rows_shape(c: &Element, parent: &Computed, hh: f32, cw: f32
                     if !k.inline
                         && inline_content(k)
                         && !out_of_flow(&k.style)
-                        && matches!(k.style.position, None | Some(crate::style::computed::Position::Relative))
+                        && matches!(
+                            k.style.position,
+                            None | Some(crate::style::computed::Position::Relative)
+                        )
                         && k.style.float.unwrap_or(0) == 0 =>
                 {
                     let k = resolved_lengths(k, &m);
@@ -582,7 +612,9 @@ pub(crate) fn nested_rows_shape(c: &Element, parent: &Computed, hh: f32, cw: f32
         wrap: true,
         cap: false,
     };
-    let content = crate::layout::multicol::column_stack::ColumnStack::measure_rows(&kids, n, gap, fixed, rows);
+    let content = crate::layout::multicol::column_stack::ColumnStack::measure_rows(
+        &kids, n, gap, fixed, rows,
+    );
     let px = |l: &Option<Len>| match l {
         None => Some(0.0),
         Some(Len::Px(v)) => Some(*v),
@@ -591,8 +623,19 @@ pub(crate) fn nested_rows_shape(c: &Element, parent: &Computed, hh: f32, cw: f32
     let b = c.style.borders();
     let bot = px(&c.style.padding.bottom)? + px(&b.bottom)?;
     let h = content + bot;
-    let solid = if bot > 0.0 { vec![(content, h)] } else { Vec::new() };
-    Some((h, 0.0, px(&c.style.margin.bottom)?, Vec::new(), Vec::new(), solid))
+    let solid = if bot > 0.0 {
+        vec![(content, h)]
+    } else {
+        Vec::new()
+    };
+    Some((
+        h,
+        0.0,
+        px(&c.style.margin.bottom)?,
+        Vec::new(),
+        Vec::new(),
+        solid,
+    ))
 }
 
 /// Ширина коробки (`width` по её `box-sizing`) ребёнка в колонке `cw`.
@@ -606,7 +649,14 @@ pub(crate) fn nested_box_w(c: &Element, cw: f32) -> Option<f32> {
     let b = s.borders();
     let outer = cw - px(&s.margin.left)? - px(&s.margin.right)?;
     let edges = px(&s.padding.left)? + px(&s.padding.right)? + px(&b.left)? + px(&b.right)?;
-    Some(if s.border_box == Some(true) { outer } else { outer - edges }.max(0.0))
+    Some(
+        if s.border_box == Some(true) {
+            outer
+        } else {
+            outer - edges
+        }
+        .max(0.0),
+    )
 }
 
 /// Копия ребёнка стопки встаёт КОРНЕМ (`flow.rs` `layout_as_root` во всю
@@ -620,7 +670,12 @@ pub(crate) fn side_margin_wrap(el: AnyElement, copy: &Element, vertical: bool) -
     if vertical || !(nz(&copy.style.margin.left) || nz(&copy.style.margin.right)) {
         return el;
     }
-    div().flex().flex_col().w_full().child(el).into_any_element()
+    div()
+        .flex()
+        .flex_col()
+        .w_full()
+        .child(el)
+        .into_any_element()
 }
 
 /// Строчные прогоны среди блочных детей многоколоночника — в анонимные блоки
@@ -642,7 +697,10 @@ pub(crate) fn group_inline_runs(e: &Element) -> Option<Element> {
         if run.iter().all(is_blank) {
             out.append(run);
         } else {
-            out.push(Node::Element(anon_element("anon-block", std::mem::take(run))));
+            out.push(Node::Element(anon_element(
+                "anon-block",
+                std::mem::take(run),
+            )));
         }
     };
     for n in &e.children {

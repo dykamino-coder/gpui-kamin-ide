@@ -39,10 +39,7 @@ pub(super) fn apply_direction(style: &mut Computed, tag: &str, attrs: &[(String,
                 style.rtl = Some(true)
             }
         }
-        "ltr"
-            if style.rtl.is_none() => {
-                style.rtl = Some(false)
-            }
+        "ltr" if style.rtl.is_none() => style.rtl = Some(false),
         // `dir="auto"` — сторону выбирает первый сильный знак текста; это
         // делает разбор двунаправленности сам, поэтому здесь ничего не ставим.
         _ => {}
@@ -73,7 +70,10 @@ pub(super) fn inlinify_in_ruby<'a>(
 ) {
     // Вне потока коробка блокифицируется (§9.7) и инлайнизации не подлежит.
     if style.float.is_some_and(|f| f != 0)
-        || matches!(style.position, Some(Position::Absolute) | Some(Position::Fixed))
+        || matches!(
+            style.position,
+            Some(Position::Absolute) | Some(Position::Fixed)
+        )
     {
         return;
     }
@@ -107,7 +107,8 @@ pub(super) fn finish_inline_display(style: &mut Computed, tag: &str, attrs: &[(S
     let out_of_flow = style.float.is_some()
         || matches!(
             style.position,
-            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute)
+                | Some(crate::style::computed::Position::Fixed)
         );
     // Блокификация СТРОЧНЫХ вариантов под float/abspos (§9.7): каждый
     // получает свой блочный аналог, а не только `inline`.
@@ -116,7 +117,8 @@ pub(super) fn finish_inline_display(style: &mut Computed, tag: &str, attrs: &[(S
     // ряд обтекания и до выноса в слой окна не доходил (`position-fixed-007`).
     if matches!(
         style.position,
-        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute)
+            | Some(crate::style::computed::Position::Fixed)
     ) {
         style.float = None;
         // Блокифицированная коробка строчного выравнивания не имеет
@@ -129,7 +131,8 @@ pub(super) fn finish_inline_display(style: &mut Computed, tag: &str, attrs: &[(S
     if out_of_flow {
         if matches!(
             style.position,
-            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute)
+                | Some(crate::style::computed::Position::Fixed)
         ) && matches!(
             style.display,
             Some(Display::InlineFlex)
@@ -270,13 +273,25 @@ pub(super) fn finish_inline_display(style: &mut Computed, tag: &str, attrs: &[(S
 pub(super) fn promote_auto_ratio(style: &mut Computed, tag: &str) {
     if matches!(
         tag,
-        "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe" | "input" | "select"
-            | "textarea" | "button"
+        "img"
+            | "svg"
+            | "canvas"
+            | "video"
+            | "embed"
+            | "object"
+            | "iframe"
+            | "input"
+            | "select"
+            | "textarea"
+            | "button"
     ) || style.aspect_ratio.is_some()
     {
         return;
     }
-    let Some(r) = style.aspect_ratio_auto.filter(|r| r.is_finite() && *r > 0.0) else {
+    let Some(r) = style
+        .aspect_ratio_auto
+        .filter(|r| r.is_finite() && *r > 0.0)
+    else {
         return;
     };
     if style.border_box != Some(true) {
@@ -324,7 +339,11 @@ pub(super) fn promote_auto_ratio(style: &mut Computed, tag: &str) {
     style.aspect_ratio = Some(border_ratio.unwrap_or(r));
 }
 
-pub(super) fn apply_presentational_size(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
+pub(super) fn apply_presentational_size(
+    style: &mut Computed,
+    tag: &str,
+    attrs: &[(String, String)],
+) {
     if !matches!(
         tag,
         "img" | "canvas" | "embed" | "iframe" | "video" | "object" | "table"
@@ -363,8 +382,7 @@ pub(super) fn apply_presentational_size(style: &mut Computed, tag: &str, attrs: 
     // на заданной атрибутом стороне стоит `flex-basis: content`
     // (`flexbox-flex-basis-content-001a`: `<canvas width="20"
     // style="height: 8px">`).
-    let natural_pair =
-        tag == "canvas" && style.attr_width.is_some() && style.attr_height.is_some();
+    let natural_pair = tag == "canvas" && style.attr_width.is_some() && style.attr_height.is_some();
     if tag == "canvas" {
         style.attr_width = style.attr_width.or(Some(Len::Px(300.0)));
         style.attr_height = style.attr_height.or(Some(Len::Px(150.0)));

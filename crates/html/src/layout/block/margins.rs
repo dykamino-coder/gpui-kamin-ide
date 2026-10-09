@@ -3,11 +3,16 @@
 
 use crate::dom::{Element, Node};
 use crate::layout::block::containing::with_inner_cb;
-use crate::layout::block::struts::{Strut, adjoin, first_in_flow, leading_chain, margin_px, pin_inherited_margins, solve, strut_of, through_strut, through_strut_no_clear, trailing_chain, zero_at};
+use crate::layout::block::struts::{
+    Strut, adjoin, first_in_flow, leading_chain, margin_px, pin_inherited_margins, solve, strut_of,
+    through_strut, through_strut_no_clear, trailing_chain, zero_at,
+};
 use crate::layout::block::{margin_edges, margin_height, margin_inline_boxes};
 use crate::layout::float::band_clearance;
 use crate::layout::table::anon::wrap_anon_tables;
-use crate::render::{in_flow, inline_level, inline_level_box, is_blank, own_context, split_block_in_inline};
+use crate::render::{
+    in_flow, inline_level, inline_level_box, is_blank, own_context, split_block_in_inline,
+};
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 use crate::text::text_box::blank_text;
@@ -22,7 +27,11 @@ use crate::text::text_box::blank_text;
 /// takes part in margin collapsing in place of margin-bottom»).
 /// `None` — сторона запечатана либо контейнер — корень (§8.3.1: поля корня
 /// не схлопываются).
-pub(super) fn collapse_flow_margins(children: Vec<Node>, reverse: bool, lead: Option<f32>) -> Vec<Node> {
+pub(super) fn collapse_flow_margins(
+    children: Vec<Node>,
+    reverse: bool,
+    lead: Option<f32>,
+) -> Vec<Node> {
     // Поле контейнера схлопывается С КРАЙНИМ flow-ребёнком через пустую
     // границу (CSS 2.1 §8.3.1): у `<body>` без рамки и паддинга хвостовое
     // поле — max(своё, block-end последнего ребёнка), рекурсивно. Без этого
@@ -168,7 +177,13 @@ pub(super) fn collapse_flow_margins(children: Vec<Node>, reverse: bool, lead: Op
         };
         // Out-of-flow boxes neither collapse nor interrupt adjacent block margins.
         if child.style.float.is_some_and(|f| f != 0)
-            || matches!(child.style.position, Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed))
+            || matches!(
+                child.style.position,
+                Some(
+                    crate::style::computed::Position::Absolute
+                        | crate::style::computed::Position::Fixed
+                )
+            )
         {
             continue;
         }
@@ -428,8 +443,7 @@ pub(crate) fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
                     ))
             }))
             .and_then(|(i, ch)| {
-                with_inner_cb(&e.style, || margin_px(ch.style.margin.bottom, &ch.style))
-                    .map(|_| i)
+                with_inner_cb(&e.style, || margin_px(ch.style.margin.bottom, &ch.style)).map(|_| i)
             });
         // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): запрет поглощения, когда в хвосте
         // есть коробка с клиренсом (CSS 2.1 §8.3.1, «does not collapse with a top
@@ -518,10 +532,7 @@ pub(crate) fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
         // does not collapse with the bottom margin of the parent block».
         // Верхнее поле уже выложено рядом обтекания, поэтому наружу идёт
         // только остаток.
-        if through.is_none()
-            && e.style.clear.is_some()
-            && through_strut_no_clear(e).is_some()
-        {
+        if through.is_none() && e.style.clear.is_some() && through_strut_no_clear(e).is_some() {
             emitted = top;
             pin_inherited_margins(e, false, true);
             e.style.margin.bottom = Some(Len::Px(0.0));

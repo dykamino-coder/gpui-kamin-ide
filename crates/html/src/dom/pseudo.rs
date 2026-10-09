@@ -23,7 +23,8 @@ pub(super) fn syntax_accepts(syntax: &str, value: &str) -> bool {
             }
             "<length>" => {
                 !v.ends_with('%')
-                    && (v == "0" || matches!(crate::style::values::value::Len::parse_mixed(v), Some(l) if !matches!(l, crate::style::values::value::Len::Pct(_) | crate::style::values::value::Len::Auto)))
+                    && (v == "0"
+                        || matches!(crate::style::values::value::Len::parse_mixed(v), Some(l) if !matches!(l, crate::style::values::value::Len::Pct(_) | crate::style::values::value::Len::Auto)))
             }
             "<length-percentage>" => crate::style::values::value::Len::parse_mixed(v)
                 .is_some_and(|l| l != crate::style::values::value::Len::Auto),
@@ -131,14 +132,7 @@ pub(super) fn pseudo_box_named(
     language::pseudo(counters, &style, me, path);
     // У псевдоэлемента-создателя предварительного обхода нет: своей области
     // в дереве коробок он не открывает, и таких пар в наборе не встречается.
-    apply_counter_decls(
-        &style,
-        counters,
-        "",
-        &[],
-        &mut false,
-        &|_, _| 0,
-    );
+    apply_counter_decls(&style, counters, "", &[], &mut false, &|_, _| 0);
     // Составляющие идут по порядку: подряд идущие текстовые склеиваются в
     // один текстовый узел, `url()` становится строчным `<img>` между ними.
     // Ненайденная картинка коробки НЕ даёт вовсе — как в Servo
@@ -151,13 +145,7 @@ pub(super) fn pseudo_box_named(
                  children: &mut Vec<Node>,
                  counters: &mut crate::style::generated::counters::Counters| {
         if !run.is_empty() {
-            let t = content_text(
-                run,
-                counters,
-                attrs,
-                style.quotes.as_ref(),
-                me.html_attrs,
-            );
+            let t = content_text(run, counters, attrs, style.quotes.as_ref(), me.html_attrs);
             children.push(Node::Text(t));
             run.clear();
         }
@@ -199,7 +187,8 @@ pub(super) fn pseudo_box_named(
         anim: None,
         inline: !matches!(
             style.position,
-            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute)
+                | Some(crate::style::computed::Position::Fixed)
         ),
         tag: format!("::{tag}"),
         style,

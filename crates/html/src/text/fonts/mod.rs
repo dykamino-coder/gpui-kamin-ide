@@ -134,7 +134,11 @@ pub fn alias_stretch(family: &str, want: Option<f32>) -> Option<String> {
             let (lo, hi) = face.0;
             let v = want.clamp(lo, hi);
             if want <= 100.0 {
-                if v <= want { (0, want - v) } else { (1, v - want) }
+                if v <= want {
+                    (0, want - v)
+                } else {
+                    (1, v - want)
+                }
             } else if v >= want {
                 (0, v - want)
             } else {
@@ -270,11 +274,12 @@ fn load_faces_into(css: &str) {
                 .map_or(1.0, |p| p / 100.0);
             // Наклон лица — дескриптор `font-style` (css-fonts-4
             // §font-prop-desc): `italic`, `oblique [<angle>{1,2}]`, иначе normal.
-            let slope = match declaration(&block, "font-style").map(|v| v.trim().to_ascii_lowercase()) {
-                Some(v) if v.starts_with("italic") => 1u8,
-                Some(v) if v.starts_with("oblique") => 2,
-                _ => 0,
-            };
+            let slope =
+                match declaration(&block, "font-style").map(|v| v.trim().to_ascii_lowercase()) {
+                    Some(v) if v.starts_with("italic") => 1u8,
+                    Some(v) if v.starts_with("oblique") => 2,
+                    _ => 0,
+                };
             SIZE_ADJUST.with(|s| {
                 s.borrow_mut()
                     .entry(name.clone())
@@ -435,10 +440,14 @@ fn faces(css: &str) -> Vec<String> {
         // `at-supports-content-002`: `local('Arial')` вместо Ahem). Сюда
         // приходит вся разметка — стек скобок считается от начала своего
         // `<style>`.
-        let base = lower[..start]
-            .rfind("<style")
-            .map_or(0, |s| lower[s..start].find('>').map_or(start, |g| s + g + 1));
-        if crate::style::css::in_false_group(&css[base..], start - base, crate::style::css::Media::default()) {
+        let base = lower[..start].rfind("<style").map_or(0, |s| {
+            lower[s..start].find('>').map_or(start, |g| s + g + 1)
+        });
+        if crate::style::css::in_false_group(
+            &css[base..],
+            start - base,
+            crate::style::css::Media::default(),
+        ) {
             continue;
         }
         out.push(body);
@@ -701,7 +710,6 @@ pub fn sfnt_family(bytes: &[u8]) -> Option<String> {
     }
     best.map(|(_, t)| t)
 }
-
 
 /// Подстановка шрифта под японскую кану в тексте документа.
 ///

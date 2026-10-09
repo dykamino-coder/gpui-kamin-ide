@@ -25,19 +25,19 @@ pub(super) fn baseline_x_flags(c: &Computed) -> Option<u8> {
         if c.vertical == Some(true) {
             return Some(4 | u8::from(c.vertical_rl == Some(true)) | if central { 2 } else { 0 });
         }
-        return c.cb_vertical.then(|| {
-            u8::from(c.cb_vertical_rl)
-                | if central {
-                    2
-                } else {
-                    0
-                }
-        });
+        return c
+            .cb_vertical
+            .then(|| u8::from(c.cb_vertical_rl) | if central { 2 } else { 0 });
     }
     let vertical = c.vertical == Some(true);
     let rl = if c.parent_grid != 0
-        && matches!(c.position, Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed))
-    {
+        && matches!(
+            c.position,
+            Some(
+                crate::style::computed::Position::Absolute
+                    | crate::style::computed::Position::Fixed
+            )
+        ) {
         // No baseline-sharing context: fallback is the item's own self-start.
         super::grid_flow_axes::reversed(c)[0]
     } else if vertical {
@@ -84,11 +84,17 @@ mod tests {
 
     #[test]
     fn own_vertical_flex_items_keep_the_parent_central_synthesis_policy() {
-        for (rl, sideways, flags) in [(false, false, 6), (true, false, 7),
-            (false, true, 4), (true, true, 5)] {
+        for (rl, sideways, flags) in [
+            (false, false, 6),
+            (true, false, 7),
+            (false, true, 4),
+            (true, true, 5),
+        ] {
             let parent = Computed {
-                display: Some(Display::Flex), vertical: Some(true),
-                vertical_rl: Some(rl), sideways: Some(sideways),
+                display: Some(Display::Flex),
+                vertical: Some(true),
+                vertical_rl: Some(rl),
+                sideways: Some(sideways),
                 ..Computed::default()
             };
             let effective = crate::style::cascade::inherit::inherit(&parent, &Computed::default());
@@ -148,7 +154,10 @@ mod tests {
             assert_eq!(wrapper.align_self, Some(gpui::AlignItems::End));
         }
         assert_eq!(
-            baseline_x_flags(&crate::style::cascade::inherit::inherit(&parent, &Computed::default())),
+            baseline_x_flags(&crate::style::cascade::inherit::inherit(
+                &parent,
+                &Computed::default()
+            )),
             None
         );
     }

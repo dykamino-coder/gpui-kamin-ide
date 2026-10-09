@@ -22,17 +22,17 @@
 mod emphasis;
 pub use emphasis::emphasis_spans;
 
+mod empty_inline;
 mod first_letter;
 mod first_line_background;
-mod empty_inline;
 pub use first_letter::split_first_letter;
 
-mod tabs;
-mod lang_case;
-pub(crate) mod physical_sides;
-mod physical_projection;
-mod inline_spacing;
 pub(crate) mod bidi_controls;
+mod inline_spacing;
+mod lang_case;
+mod physical_projection;
+pub(crate) mod physical_sides;
+mod tabs;
 pub use bidi_controls::bidi_marks;
 pub use tabs::tab_stops;
 
@@ -389,7 +389,8 @@ pub(crate) fn establishes_cb(c: &Computed) -> bool {
     // (css-display-3 §3.2).
     if matches!(
         c.display,
-        Some(crate::style::computed::Display::Contents) | Some(crate::style::computed::Display::None)
+        Some(crate::style::computed::Display::Contents)
+            | Some(crate::style::computed::Display::None)
     ) {
         return false;
     }
@@ -471,18 +472,33 @@ mod tests {
         let parent = Computed::default();
         let ltr = inherit(&parent, &styled("text-align: start"));
         assert_eq!(ltr.text_align, Some(TextAlign::Start));
-        assert_eq!(crate::text::paragraph::align_for(&ltr), crate::text::paragraph::Align::Left);
+        assert_eq!(
+            crate::text::paragraph::align_for(&ltr),
+            crate::text::paragraph::Align::Left
+        );
         let rtl = inherit(&parent, &styled("text-align: start; direction: rtl"));
-        assert_eq!(crate::text::paragraph::align_for(&rtl), crate::text::paragraph::Align::Right);
+        assert_eq!(
+            crate::text::paragraph::align_for(&rtl),
+            crate::text::paragraph::Align::Right
+        );
         let rtl_end = inherit(&parent, &styled("text-align: end; direction: rtl"));
-        assert_eq!(crate::text::paragraph::align_for(&rtl_end), crate::text::paragraph::Align::Left);
+        assert_eq!(
+            crate::text::paragraph::align_for(&rtl_end),
+            crate::text::paragraph::Align::Left
+        );
         // Умолчание CSS — `start`: без выключки текст справа налево прижат
         // вправо, а не влево.
         let bare = inherit(&parent, &styled("direction: rtl"));
-        assert_eq!(crate::text::paragraph::align_for(&bare), crate::text::paragraph::Align::Right);
+        assert_eq!(
+            crate::text::paragraph::align_for(&bare),
+            crate::text::paragraph::Align::Right
+        );
         // Наследник блока справа налево берёт сторону письма у него.
         let child = inherit(&bare, &Computed::default());
-        assert_eq!(crate::text::paragraph::align_for(&child), crate::text::paragraph::Align::Right);
+        assert_eq!(
+            crate::text::paragraph::align_for(&child),
+            crate::text::paragraph::Align::Right
+        );
     }
 
     #[test]

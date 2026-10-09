@@ -1,6 +1,9 @@
 //! Пробы и записи раскладки: места атомов, экстенты руби, оформление, базовые линии, LayoutTap.
 
-use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window, px, size};
+use gpui::{
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
+    LayoutId, Pixels, Window, px, size,
+};
 
 /// Как атом встаёт в строке по вертикали (`vertical-align`, CSS 2.1 §10.8.1).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -140,16 +143,33 @@ pub(super) fn emphasized(c: char) -> bool {
     }
     match c.general_category_group() {
         GeneralCategoryGroup::Separator => false,
-        GeneralCategoryGroup::Other => !matches!(
-            c.general_category(),
-            G::Control | G::Format | G::Unassigned
-        ),
+        GeneralCategoryGroup::Other => {
+            !matches!(c.general_category(), G::Control | G::Format | G::Unassigned)
+        }
         GeneralCategoryGroup::Punctuation => matches!(
             c,
-            '#' | '%' | '\u{2030}' | '\u{2031}' | '\u{066A}' | '\u{0609}' | '\u{060A}' | '&'
-                | '\u{204A}' | '@' | '\u{00A7}' | '\u{00B6}' | '\u{204B}' | '\u{2053}'
-                | '\u{303D}' | '\u{FF03}' | '\u{FF05}' | '\u{FF06}' | '\u{FF20}' | '\u{FE5F}'
-                | '\u{FE6A}' | '\u{FE60}' | '\u{FE6B}'
+            '#' | '%'
+                | '\u{2030}'
+                | '\u{2031}'
+                | '\u{066A}'
+                | '\u{0609}'
+                | '\u{060A}'
+                | '&'
+                | '\u{204A}'
+                | '@'
+                | '\u{00A7}'
+                | '\u{00B6}'
+                | '\u{204B}'
+                | '\u{2053}'
+                | '\u{303D}'
+                | '\u{FF03}'
+                | '\u{FF05}'
+                | '\u{FF06}'
+                | '\u{FF20}'
+                | '\u{FE5F}'
+                | '\u{FE6A}'
+                | '\u{FE60}'
+                | '\u{FE6B}'
         ),
         _ => true,
     }

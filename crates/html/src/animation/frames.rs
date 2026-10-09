@@ -14,7 +14,11 @@ use gpui::{AnyElement, IntoElement};
 ///
 /// Поддерево пересобирается по доле перехода — иначе смешанный стиль некуда
 /// применить: у собранного элемента стиль уже зафиксирован.
-pub(crate) fn transitioned(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
+pub(crate) fn transitioned(
+    e: &Element,
+    inherited: &Computed,
+    opts: &RenderOpts,
+) -> Option<AnyElement> {
     let seconds = e.style.transition?;
     let hover = e.hover.clone()?;
     let node = e.clone();
@@ -32,12 +36,8 @@ pub(crate) fn transitioned(e: &Element, inherited: &Computed, opts: &RenderOpts)
         element(&mixed, &inherited, &opts)
     });
     Some(
-        crate::transition::Transition::new(
-            gpui::ElementId::Integer(e.node_id),
-            seconds,
-            build,
-        )
-        .into_any_element(),
+        crate::transition::Transition::new(gpui::ElementId::Integer(e.node_id), seconds, build)
+            .into_any_element(),
     )
 }
 
@@ -65,11 +65,13 @@ pub(crate) fn frame_at(frames: &[(f32, Computed)], t: f32) -> Computed {
     if let (Some(a), Some(b)) = (prev.1.opacity, next.1.opacity) {
         out.opacity = Some(lerp(a, b));
     }
-    let mix = |a: crate::style::values::value::Color, b: crate::style::values::value::Color| crate::style::values::value::Color {
-        r: lerp(a.r, b.r),
-        g: lerp(a.g, b.g),
-        b: lerp(a.b, b.b),
-        a: lerp(a.a, b.a),
+    let mix = |a: crate::style::values::value::Color, b: crate::style::values::value::Color| {
+        crate::style::values::value::Color {
+            r: lerp(a.r, b.r),
+            g: lerp(a.g, b.g),
+            b: lerp(a.b, b.b),
+            a: lerp(a.a, b.a),
+        }
     };
     if let (Some(a), Some(b)) = (prev.1.background, next.1.background) {
         out.background = Some(mix(a, b));
@@ -247,5 +249,9 @@ pub(crate) fn bake_frozen(e: &Element, transforms: bool) -> Option<Element> {
     if !spec.frozen() {
         return None;
     }
-    Some(animation_frame::sample(e, &frame_at(frames, spec.frozen_t()), transforms))
+    Some(animation_frame::sample(
+        e,
+        &frame_at(frames, spec.frozen_t()),
+        transforms,
+    ))
 }

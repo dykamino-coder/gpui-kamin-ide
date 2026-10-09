@@ -6,10 +6,7 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{IntoElement, Styled, div, px};
 
-pub(super) fn outer_shadows(
-    c: &Computed,
-    out: &mut Vec<gpui::AnyElement>,
-) {
+pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
     // РЕЗКАЯ тень (без размытия): примитив тени с нулевым размытием
     // вырождается в шейдере, поэтому она рисуется слоем-квадом, раздутым на
     // разлёт. Радиус фигуры — по спеке (css-backgrounds-3 §7.1): нулевой
@@ -131,10 +128,7 @@ pub(super) fn outer_shadows(
     }
 }
 
-pub(super) fn inset_shadows(
-    c: &Computed,
-    out: &mut Vec<gpui::AnyElement>,
-) {
+pub(super) fn inset_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
     // РЕЗКАЯ ВНУТРЕННЯЯ тень (без размытия). §7.1: «An inner box-shadow casts
     // a shadow as if everything outside the padding edge were opaque» — тень =
     // padding-box МИНУС фигура, сжатая на разлёт и сдвинутая на смещение.
@@ -221,7 +215,8 @@ pub(super) fn inset_shadows(
                 _ => 0.0,
             };
             let pad = |r: Option<Len>, a: Option<Len>, b: Option<Len>| {
-                (crate::style::apply::radius_px(c, r).unwrap_or(0.0) - side(a).max(side(b))).max(0.0)
+                (crate::style::apply::radius_px(c, r).unwrap_or(0.0) - side(a).max(side(b)))
+                    .max(0.0)
             };
             ring = ring
                 .rounded_tl(px(pad(c.radius.tl, bw.top, bw.left)))

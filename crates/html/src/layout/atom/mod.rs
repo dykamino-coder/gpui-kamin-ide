@@ -16,7 +16,9 @@ use crate::layout::replaced::{replaced_content, replaced_used_style, svg_percent
 use crate::layout::table::table;
 use crate::layout::writing_mode::rotated_atom;
 use crate::paint::effects::transform::transformed;
-use crate::render::{RenderOpts, content_sized, content_sized_wraps, element, replaced_tag, styled_div_with};
+use crate::render::{
+    RenderOpts, content_sized, content_sized_wraps, element, replaced_tag, styled_div_with,
+};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Align, Computed, Display};
 use crate::style::values::value::Len;
@@ -35,7 +37,11 @@ mod positioned;
 /// `width: min-content` раскладывался по max-content: доли `1fr 2fr 1fr 1fr`
 /// при базах по 2ch раздавались, вторая дорожка выходила 4ch
 /// (`grid-lanes-intrinsic-sizing-cols-002-fr`; css-sizing-3 §5.1).
-pub(crate) fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
+pub(crate) fn atom_element(
+    e: &Element,
+    inherited: &Computed,
+    opts: &RenderOpts,
+) -> Option<AnyElement> {
     if let Some(physical) = rotated_atom::physical(e, inherited, opts) {
         return Some(physical);
     }
@@ -43,7 +49,12 @@ pub(crate) fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts)
     let e = resolved.as_ref().unwrap_or(e);
     let el = atom_element_raw(e, inherited, opts)?;
     // CSS Sizing 3 §5.1: intrinsic keywords in the block axis behave as auto.
-    let keyword = |l: Option<Len>| matches!(l, Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent));
+    let keyword = |l: Option<Len>| {
+        matches!(
+            l,
+            Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
+        )
+    };
     // Повёрнутый абзац вертикального письма (`rotated_line`) набирается
     // горизонтально, но ось строки там вертикальна.
     let inline_axis_only = inherited.vertical != Some(true)
@@ -56,7 +67,11 @@ pub(crate) fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts)
         && !replaced_tag(e)
         && !at_static_position(&e.style)
         && !matches!(e.tag.as_str(), "input" | "select" | "textarea" | "button");
-    Some(if wraps { content_sized(el, &e.style, &inherit(inherited, &e.style), (None, None)) } else { el })
+    Some(if wraps {
+        content_sized(el, &e.style, &inherit(inherited, &e.style), (None, None))
+    } else {
+        el
+    })
 }
 
 fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
@@ -109,7 +124,8 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
     // Пока он был обычной коробкой куска, строка росла под его высоту.
     if matches!(
         e.style.position,
-        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute)
+            | Some(crate::style::computed::Position::Fixed)
     ) {
         return absolute_atom(inherited, e, opts);
     }
@@ -190,7 +206,10 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
             // Ячейка исключена: её высоту считает табличная раскладка движка;
             // лунки — тоже свой путь (`row-auto-repeat-auto-023/024`: 0.32 →
             // 4.93 с переносом признака).
-            if !matches!(inherited.display, Some(Display::TableCell) | Some(Display::GridLanes)) {
+            if !matches!(
+                inherited.display,
+                Some(Display::TableCell) | Some(Display::GridLanes)
+            ) {
                 copy.style.cb_height_def = inherit(inherited, &e.style).cb_height_def;
             }
             // Единицы окна (`vw`/`vh`, в том числе внутри `calc`) — в точки: держатель
@@ -240,9 +259,10 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                 Some(atom_base_font(inherited, opts)),
             ))
         }
-        "iframe" => Some(iframe(e, opts).unwrap_or_else(|| {
-            replaced_content::empty_iframe(e, inherited, opts.viewport)
-        })),
+        "iframe" => Some(
+            iframe(e, opts)
+                .unwrap_or_else(|| replaced_content::empty_iframe(e, inherited, opts.viewport)),
+        ),
         "svg" => {
             // Рисунок без собственного размера — stretch-fit от содержащего
             // блока (`svg::stretch_fit`): ширина родителя, когда она в
@@ -360,10 +380,9 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
             // Под обособлением размера холст меряется как пустой
             // (css-contain-2 §size containment) — там наполнителя быть не
             // должно, иначе он вернул бы размер, который обособление сняло.
-            let ratio = e
-                .style
-                .aspect_ratio
-                .filter(|r| r.is_finite() && *r > 0.0 && !e.style.contains_width() && !e.style.contains_height());
+            let ratio = e.style.aspect_ratio.filter(|r| {
+                r.is_finite() && *r > 0.0 && !e.style.contains_width() && !e.style.contains_height()
+            });
             let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
             let named = |l: Option<Len>| matches!(l, Some(Len::Px(_)) | Some(Len::Pct(_)));
             // Доля ШИРИНЫ во вкладе в размер контейнера цикличная и считается

@@ -39,12 +39,13 @@ pub(super) fn with_viewport(markup: &str, tile: (f32, f32)) -> String {
     // полосами (mask-repeat-1, mask-size-cover). Свои размеры рута становятся
     // рамкой просмотра — содержимое масштабируется, как в браузере.
     if !head.contains("viewBox")
-        && let (Some(w), Some(h)) = (&own[0], &own[1]) {
-            let plain = |v: &str| v.trim().trim_end_matches("px").parse::<f32>().ok();
-            if let (Some(w), Some(h)) = (plain(w), plain(h)) {
-                head.push_str(&format!(" viewBox=\"0 0 {w} {h}\""));
-            }
+        && let (Some(w), Some(h)) = (&own[0], &own[1])
+    {
+        let plain = |v: &str| v.trim().trim_end_matches("px").parse::<f32>().ok();
+        if let (Some(w), Some(h)) = (plain(w), plain(h)) {
+            head.push_str(&format!(" viewBox=\"0 0 {w} {h}\""));
         }
+    }
     format!(
         "{}<svg width=\"{}\" height=\"{}\"{head}>{}",
         &markup[..open],
@@ -83,7 +84,9 @@ pub(super) fn rasterize_cross_fade(src: &str, w: u32, h: u32) -> Option<Arc<Rend
         }
         let img = img?;
         let colour = crate::style::values::value::Color::parse(
-            img.strip_prefix("image(").and_then(|t| t.strip_suffix(')')).unwrap_or(img),
+            img.strip_prefix("image(")
+                .and_then(|t| t.strip_suffix(')'))
+                .unwrap_or(img),
         );
         let buf = if let Some(c) = colour {
             let px = [
@@ -147,7 +150,11 @@ pub(super) fn rasterize_cross_fade(src: &str, w: u32, h: u32) -> Option<Arc<Rend
             alpha += a;
         }
         for ch in 0..3 {
-            out[p * 4 + ch] = if alpha > 0.0 { (acc[ch] / alpha).round().clamp(0.0, 255.0) as u8 } else { 0 };
+            out[p * 4 + ch] = if alpha > 0.0 {
+                (acc[ch] / alpha).round().clamp(0.0, 255.0) as u8
+            } else {
+                0
+            };
         }
         out[p * 4 + 3] = (alpha * 255.0).round().clamp(0.0, 255.0) as u8;
     }

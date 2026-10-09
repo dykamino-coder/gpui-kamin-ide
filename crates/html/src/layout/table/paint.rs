@@ -2,7 +2,10 @@
 // owner: A
 
 use crate::text::clamp::forget_clamp_buffers;
-use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Styled, Window, px};
+use gpui::{
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
+    LayoutId, Pixels, Styled, Window, px,
+};
 
 /// Отрисовка ребёнка только в ПРЯМОУГОЛЬНИКАХ, снятых пробами прошлого кадра.
 ///
@@ -173,12 +176,14 @@ impl Element for CellsClipped {
         // обход вырождения шейдера, что у обычных коробок.
         for sh in &self.style.shadows {
             let colour = if sh.color.a < 0.0 {
-                self.style.color.unwrap_or(crate::style::values::value::Color {
-                    r: 0.0,
-                    g: 0.0,
-                    b: 0.0,
-                    a: 1.0,
-                })
+                self.style
+                    .color
+                    .unwrap_or(crate::style::values::value::Color {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 1.0,
+                    })
             } else {
                 sh.color
             };
@@ -246,7 +251,10 @@ impl Element for CellsClipped {
                 (o.style != Some(0), w > 0.0, o.color.or(self.style.color))
             {
                 let ring = Bounds {
-                    origin: gpui::point(area.origin.x - gpui::px(out), area.origin.y - gpui::px(out)),
+                    origin: gpui::point(
+                        area.origin.x - gpui::px(out),
+                        area.origin.y - gpui::px(out),
+                    ),
                     size: gpui::size(
                         area.size.width + gpui::px(2.0 * out),
                         area.size.height + gpui::px(2.0 * out),
@@ -660,7 +668,12 @@ impl Element for EdgePainter {
         // против жёлтой горизонтали второй — в эталоне угол синий).
         // При равном ключе вертикаль идёт первой — прежний порядок.
         type SegKey = (f32, u8, u8, u32);
-        let mut segs: Vec<(SegKey, bool, Bounds<Pixels>, crate::style::values::value::Color)> = Vec::new();
+        let mut segs: Vec<(
+            SegKey,
+            bool,
+            Bounds<Pixels>,
+            crate::style::values::value::Color,
+        )> = Vec::new();
         let mut draw = |cands: &mut Vec<Cand>, vertical: bool, grid_lo: Option<f32>| {
             cands.sort_by(|p, q| {
                 p.line

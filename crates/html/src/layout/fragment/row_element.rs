@@ -1,7 +1,10 @@
 //! Flow children retain absolute fractional origins until device rounding.
 
 use crate::layout::fragment::types::{FlowChild, FlowRow};
-use gpui::{App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window, point, px, size};
+use gpui::{
+    App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
+    Pixels, Window, point, px, size,
+};
 
 impl Element for FlowRow {
     type RequestLayoutState = LayoutId;
@@ -106,7 +109,11 @@ impl Element for FlowRow {
             .zip(slots)
             .map(|(c, (sx, sy))| {
                 // `sideways-lr`: инлайн-позиция отсчитывается от НИЗА.
-                let sx = if vertical_rl && inline_up { limit - sx - c.h } else { sx };
+                let sx = if vertical_rl && inline_up {
+                    limit - sx - c.h
+                } else {
+                    sx
+                };
                 if vertical_rl && block_lr {
                     // `vertical-lr`: колонка sy идёт от ЛЕВОГО края.
                     (sy, sx)

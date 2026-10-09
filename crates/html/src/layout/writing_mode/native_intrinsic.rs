@@ -1,6 +1,6 @@
 //! Intrinsic block and grid boxes retain their actual node and containing block.
-use crate::style::computed::{Display, Position};
 use crate::dom::Element;
+use crate::style::computed::{Display, Position};
 use crate::style::values::value::Len;
 
 fn keyword(value: Option<Len>) -> bool {

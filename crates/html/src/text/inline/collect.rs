@@ -121,7 +121,11 @@ pub(super) fn collect_with_empty_metrics(
                 if e.style.display == Some(crate::style::computed::Display::Contents) {
                     let merged = inherit(inherited, &e.style);
                     out.extend(collect_with_empty_metrics(
-                        &e.children, &merged, atom, has_text, case,
+                        &e.children,
+                        &merged,
+                        atom,
+                        has_text,
+                        case,
                     ));
                     continue;
                 }
@@ -196,12 +200,15 @@ pub(super) fn collect_with_empty_metrics(
                         ) => crate::text::metrics::spacing_px(l, &family, size),
                         _ => 0.0,
                     };
-                    merged.inline_pad = Some(physical_sides::project(inherited, [
-                        px_of(e.style.padding.top),
-                        px_of(e.style.padding.right),
-                        px_of(e.style.padding.bottom),
-                        px_of(e.style.padding.left),
-                    ]));
+                    merged.inline_pad = Some(physical_sides::project(
+                        inherited,
+                        [
+                            px_of(e.style.padding.top),
+                            px_of(e.style.padding.right),
+                            px_of(e.style.padding.bottom),
+                            px_of(e.style.padding.left),
+                        ],
+                    ));
                     merged.inline_radius = Some(px_of(e.style.radius.tl));
                 }
                 // Рамка строчной коробки рисуется прогоном: и ровная, и
@@ -219,7 +226,8 @@ pub(super) fn collect_with_empty_metrics(
                 if let Some((color, width)) = uniform_border(&e.style, font_px) {
                     merged.inline_border = Some((color, [width; 4]));
                 } else if let Some(sided) = sided_border(&e.style, font_px) {
-                    merged.inline_border = Some((sided.0, physical_sides::project(inherited, sided.1)));
+                    merged.inline_border =
+                        Some((sided.0, physical_sides::project(inherited, sided.1)));
                 } else {
                     own_border = false;
                 }
@@ -249,12 +257,15 @@ pub(super) fn collect_with_empty_metrics(
                         ) => crate::text::metrics::spacing_px(l, &family, font_px),
                         _ => 0.0,
                     };
-                    merged.inline_pad = Some(physical_sides::project(inherited, [
-                        px_of(e.style.padding.top),
-                        px_of(e.style.padding.right),
-                        px_of(e.style.padding.bottom),
-                        px_of(e.style.padding.left),
-                    ]));
+                    merged.inline_pad = Some(physical_sides::project(
+                        inherited,
+                        [
+                            px_of(e.style.padding.top),
+                            px_of(e.style.padding.right),
+                            px_of(e.style.padding.bottom),
+                            px_of(e.style.padding.left),
+                        ],
+                    ));
                     merged.inline_radius = Some(px_of(e.style.radius.tl));
                 }
                 // Контур строчного куска рисует тот же прогон: коробки у
@@ -336,7 +347,8 @@ pub(super) fn collect_with_empty_metrics(
                 // CSS Writing Modes 4 §2.4, bidi-fragment-boxes: physical edges
                 // follow the parent's direction, not the inline's own embedding.
                 // Spacers sit outside the inline's bidi controls, in that parent.
-                let ((mut mlead, mut mtrail), (mut lead, mut trail)) = inline_spacing::inline_sides(e, &merged, inherited);
+                let ((mut mlead, mut mtrail), (mut lead, mut trail)) =
+                    inline_spacing::inline_sides(e, &merged, inherited);
                 if inherited.rtl == Some(true) {
                     std::mem::swap(&mut lead, &mut trail);
                     std::mem::swap(&mut mlead, &mut mtrail);
@@ -345,8 +357,7 @@ pub(super) fn collect_with_empty_metrics(
                 // inline, even when a descendant supplies a different background.
                 // Its advance is already carried by the edge spacers; paint those
                 // advances instead of extending a descendant's text band into them.
-                let painted_padding =
-                    merged.inline_bg.is_some() && merged.inline_border.is_none();
+                let painted_padding = merged.inline_bg.is_some() && merged.inline_border.is_none();
                 if painted_padding && let Some(pad) = &mut merged.inline_pad {
                     pad[1] = 0.0;
                     pad[3] = 0.0;
@@ -390,7 +401,9 @@ pub(super) fn collect_with_empty_metrics(
                     && (inner_text.is_empty()
                         || (merged.keep_spaces != Some(true)
                             && !painted_bg
-                            && inner_text.chars().all(|c| matches!(c, ' ' | '\t' | '\n' | '\r'))));
+                            && inner_text
+                                .chars()
+                                .all(|c| matches!(c, ' ' | '\t' | '\n' | '\r'))));
                 if blank && (lead != 0.0 || trail != 0.0) {
                     let px_of = |l: Option<Len>| match l {
                         Some(Len::Px(v)) => v,
@@ -402,12 +415,15 @@ pub(super) fn collect_with_empty_metrics(
                     };
                     let bs = e.style.borders();
                     let padding = e.style.padding;
-                    let flat = physical_sides::project(inherited, [
-                        px_of(padding.top) + px_of(bs.top),
-                        px_of(padding.right) + px_of(bs.right),
-                        px_of(padding.bottom) + px_of(bs.bottom),
-                        px_of(padding.left) + px_of(bs.left),
-                    ]);
+                    let flat = physical_sides::project(
+                        inherited,
+                        [
+                            px_of(padding.top) + px_of(bs.top),
+                            px_of(padding.right) + px_of(bs.right),
+                            px_of(padding.bottom) + px_of(bs.bottom),
+                            px_of(padding.left) + px_of(bs.left),
+                        ],
+                    );
                     let top = flat[0];
                     // Высота области содержимого — подъём плюс спуск шрифта, как
                     // у полосы непустого куска (`run_background_quad`); кегль
@@ -415,7 +431,8 @@ pub(super) fn collect_with_empty_metrics(
                     // рядом с полосой соседа (`word-spacing-characters-001`).
                     let family = merged.font_family.clone().unwrap_or_else(|| {
                         if merged.monospace == Some(true) {
-                            crate::text::metrics::mono_family_for(merged.lang.as_deref()).to_string()
+                            crate::text::metrics::mono_family_for(merged.lang.as_deref())
+                                .to_string()
                         } else {
                             String::new()
                         }
@@ -450,7 +467,10 @@ pub(super) fn collect_with_empty_metrics(
                     let boxel = crate::render::styled_div_with(&copy, &sized)
                         .absolute()
                         .top(gpui::px(dy));
-                    out.push(Piece::Overlay(boxel.into_any_element(), OverlayAt::default()));
+                    out.push(Piece::Overlay(
+                        boxel.into_any_element(),
+                        OverlayAt::default(),
+                    ));
                 }
                 if lead != 0.0 {
                     out.push(Piece::Text {
@@ -592,8 +612,17 @@ fn boundary_gap_after_box(e: &Element, inherited: &Computed) -> Option<f32> {
     let inline_level = e.style.display.is_none() || e.style.inline_display == Some(true);
     let replaced = matches!(
         e.tag.as_str(),
-        "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe" | "input" | "button"
-            | "select" | "textarea"
+        "img"
+            | "svg"
+            | "canvas"
+            | "video"
+            | "embed"
+            | "object"
+            | "iframe"
+            | "input"
+            | "button"
+            | "select"
+            | "textarea"
     );
     if !inline_level || replaced || e.style.ruby_role.is_some() {
         return None;

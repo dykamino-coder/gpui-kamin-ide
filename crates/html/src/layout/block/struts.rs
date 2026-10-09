@@ -6,7 +6,10 @@ use crate::layout::block::containing::{CB_WIDTH, with_inner_cb};
 use crate::layout::block::margins::{COLLAPSE_CB_WIDTH_PX, COLLAPSE_FONT_PX};
 use crate::layout::float::clear::bfc_no_fit;
 use crate::layout::float::initial_letter::px_margin_w;
-use crate::render::{atomic_inline, holds_line_box, in_flow, inline_level_box, inline_marked_block, own_context, replaced_inline};
+use crate::render::{
+    atomic_inline, holds_line_box, in_flow, inline_level_box, inline_marked_block, own_context,
+    replaced_inline,
+};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use crate::text::text_box::blank_text;
@@ -145,7 +148,8 @@ pub(crate) fn solve(s: Strut) -> f32 {
 /// Оси физические: в вертикальном письме строчная ось — `top`/`bottom`, там
 /// правило пока не различает (тестов нет).
 pub(crate) fn inline_axis_edges(c: &Computed) -> bool {
-    let nonzero = |l: Option<Len>| matches!(l, Some(Len::Px(v) | Len::Pct(v) | Len::Em(v)) if v != 0.0);
+    let nonzero =
+        |l: Option<Len>| matches!(l, Some(Len::Px(v) | Len::Pct(v) | Len::Em(v)) if v != 0.0);
     let b = c.borders();
     nonzero(c.margin.left)
         || nonzero(c.margin.right)
@@ -346,9 +350,7 @@ pub(super) fn leading_chain(
             // Пустой `<span>` прозрачен, замещаемый атом рождает строку;
             // пустой строчный с полем/отступом/рамкой по строчной оси — не
             // фантом, строка есть (css-inline-3 §invisible-line-boxes).
-            if ch.children.is_empty()
-                && !replaced_inline(&ch.tag)
-                && !inline_axis_edges(&ch.style)
+            if ch.children.is_empty() && !replaced_inline(&ch.tag) && !inline_axis_edges(&ch.style)
             {
                 continue;
             }
@@ -438,9 +440,7 @@ pub(super) fn trailing_chain(
             Node::Element(ch) => ch,
         };
         if ch.inline && !inline_marked_block(ch) {
-            if ch.children.is_empty()
-                && !replaced_inline(&ch.tag)
-                && !inline_axis_edges(&ch.style)
+            if ch.children.is_empty() && !replaced_inline(&ch.tag) && !inline_axis_edges(&ch.style)
             {
                 continue;
             }
@@ -571,7 +571,9 @@ pub(crate) fn margin_px(l: Option<Len>, style: &Computed) -> Option<f32> {
         )),
         // Процент — от ширины содержащего блока, когда она известна в точках
         // (`margin-top-103`, `margin-bottom-113`); иначе поле пропускается.
-        Len::Pct(k) => COLLAPSE_CB_WIDTH_PX.with(std::cell::Cell::get).map(|w| k * w),
+        Len::Pct(k) => COLLAPSE_CB_WIDTH_PX
+            .with(std::cell::Cell::get)
+            .map(|w| k * w),
         _ => None,
     }
 }

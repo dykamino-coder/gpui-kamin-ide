@@ -112,7 +112,12 @@ pub fn page_decls_for(index: usize, name: &str, rtl: bool) -> Vec<(String, Strin
 }
 
 /// То же по снимку правил (`page_rules_snapshot`).
-pub fn page_decls_in(rules: &[PageRule], index: usize, name: &str, rtl: bool) -> Vec<(String, String)> {
+pub fn page_decls_in(
+    rules: &[PageRule],
+    index: usize,
+    name: &str,
+    rtl: bool,
+) -> Vec<(String, String)> {
     matching_rules(rules, index, name, rtl)
         .into_iter()
         .flat_map(|i| rules[i].decls.clone())
@@ -162,13 +167,7 @@ fn matching_rules(rules: &[PageRule], index: usize, name: &str, rtl: bool) -> Ve
                     && (s.left == 0 || !right)
                     && (s.right == 0 || right)
             })
-            .map(|s| {
-                (
-                    s.name.is_some() as u8,
-                    s.first + s.blank,
-                    s.left + s.right,
-                )
-            })
+            .map(|s| (s.name.is_some() as u8, s.first + s.blank, s.left + s.right))
             .max();
         if let Some(sp) = spec {
             hits.push((sp, order));

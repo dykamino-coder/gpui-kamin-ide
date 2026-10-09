@@ -148,11 +148,18 @@ pub(crate) fn layered(
         // elements» (плюс элементы flex/grid по css-flexbox-1 §5.4).
         Some(z) if z > 0 && z_index_applies(c, parent) => {
             let cell: crate::paint::effects::mask::element::MaskCell = Default::default();
-            let inner = crate::paint::effects::mask::element::MaskUse { cell: cell.clone(), child: el };
+            let inner = crate::paint::effects::mask::element::MaskUse {
+                cell: cell.clone(),
+                child: el,
+            };
             let deferred = gpui::deferred(inner)
                 .with_priority(z as usize)
                 .into_any_element();
-            crate::paint::effects::mask::element::MaskKeep { cell, child: deferred }.into_any_element()
+            crate::paint::effects::mask::element::MaskKeep {
+                cell,
+                child: deferred,
+            }
+            .into_any_element()
         }
         // ПРОБОВАЛИ И ОТКАТИЛИ: откладывать ЛЮБОЙ абсолютный элемент, чтобы
         // он рисовался поверх соседей (CSS 2.1 §9.9, шаг 8). На пробе помогло
@@ -235,7 +242,8 @@ pub(crate) fn by_layer(nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
             && e.style.vertical != Some(true);
         (matches!(
             e.style.position,
-            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute)
+                | Some(crate::style::computed::Position::Fixed)
         ) && (x_set || free_inline)
             && y_set
             && !e.style.z_index.is_some_and(|z| z < 0))

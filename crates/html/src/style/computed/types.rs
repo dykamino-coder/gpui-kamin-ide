@@ -50,7 +50,11 @@ pub struct GapList<T> {
 
 impl<T: Copy> GapList<T> {
     pub fn single(v: T) -> Self {
-        GapList { lead: vec![v], auto: vec![], tail: vec![] }
+        GapList {
+            lead: vec![v],
+            auto: vec![],
+            tail: vec![],
+        }
     }
 
     /// Первое значение — им живёт многоколонник, знающий одну линейку.
@@ -547,7 +551,10 @@ pub fn parse_pos_words(v: &str) -> BgPos {
     let is_kw = |t: &str| matches!(t, "left" | "right" | "top" | "bottom" | "center");
     // Список слоёв (`a, b`): здесь — позиция ПЕРВОГО слоя, как и картинка,
     // которую берёт разбор фона.
-    let first = crate::style::css::split_args(v).into_iter().next().unwrap_or_default();
+    let first = crate::style::css::split_args(v)
+        .into_iter()
+        .next()
+        .unwrap_or_default();
     let tokens = split_outside_parens(first.trim());
     // Форма из трёх-четырёх значений (css-backgrounds-3 §3.6): ключевое слово
     // края с СМЕЩЕНИЕМ от него — `right 10px top 20%`. Прежде смещение
@@ -559,9 +566,15 @@ pub fn parse_pos_words(v: &str) -> BgPos {
         while i < tokens.len() {
             let t = tokens[i].as_str();
             if !is_kw(t) {
-                return BgPos { x: Some(Len::Pct(0.5)), y: Some(Len::Pct(0.5)) };
+                return BgPos {
+                    x: Some(Len::Pct(0.5)),
+                    y: Some(Len::Pct(0.5)),
+                };
             }
-            let off = tokens.get(i + 1).filter(|n| !is_kw(n.as_str())).and_then(|n| length(n));
+            let off = tokens
+                .get(i + 1)
+                .filter(|n| !is_kw(n.as_str()))
+                .and_then(|n| length(n));
             i += if off.is_some() { 2 } else { 1 };
             pairs.push((t.to_string(), off));
         }
@@ -874,4 +887,3 @@ pub(super) fn parse_decor_thickness(t: &str) -> Option<DecorLen> {
         _ => parse_decor_length(t)?,
     })
 }
-

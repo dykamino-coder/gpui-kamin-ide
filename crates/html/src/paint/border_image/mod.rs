@@ -14,8 +14,8 @@
 use crate::style::computed::{Computed, Tiling};
 use crate::style::values::value::Len;
 mod sampling;
-use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled, px};
 use crate::paint::border_image::sampling::paint_slice;
+use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled, px};
 
 /// Слой рамки-картинки поверх коробки.
 pub fn layer(c: &Computed) -> Option<AnyElement> {
@@ -65,10 +65,7 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                 // (`border-image-image-type-004/005`).
                 let (iw, ih) = (
                     intrinsic.w.unwrap_or(f32::from(area.size.width)).max(1.0),
-                    intrinsic
-                        .h
-                        .unwrap_or(f32::from(area.size.height))
-                        .max(1.0),
+                    intrinsic.h.unwrap_or(f32::from(area.size.height)).max(1.0),
                 );
                 let Some(raster) = found.raster((iw, ih)) else {
                     return;
@@ -164,12 +161,8 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                         } else {
                             (sw, sh)
                         };
-                        let cells = pieces(
-                            image.repeat,
-                            (dx, dy, dw, dh),
-                            unit,
-                            (col == 1, row == 1),
-                        );
+                        let cells =
+                            pieces(image.repeat, (dx, dy, dw, dh), unit, (col == 1, row == 1));
                         for (cell, (fx, fy)) in cells {
                             // Источник обрезанной копии — та же доля куска.
                             let part = (

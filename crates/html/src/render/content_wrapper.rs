@@ -2,8 +2,8 @@
 use crate::layout::writing_mode::native_intrinsic;
 #[path = "content_wrapper/axis_alignment.rs"]
 mod axis_alignment;
-use crate::style::computed::Computed;
 use crate::dom::Element;
+use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, CssSizingKeyword, IntoElement, ParentElement, Styled, div, px};
 
@@ -21,7 +21,9 @@ fn wrapper_width_keyword(style: &Computed) -> Option<CssSizingKeyword> {
 }
 
 pub(crate) fn content_sized_wraps(element: &Element) -> bool {
-    if native_intrinsic::eligible(element) { return false; }
+    if native_intrinsic::eligible(element) {
+        return false;
+    }
     let c = &element.style;
     let keyword = |l: Option<Len>| {
         matches!(
@@ -40,18 +42,28 @@ pub(crate) fn content_sized_wraps(element: &Element) -> bool {
     (keyword(c.width) || keyword(c.height))
         && !matches!(
             c.position,
-            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute)
+                | Some(crate::style::computed::Position::Fixed)
         )
 }
 
 /// Every builder must preserve preferred sizing, including the float-band
 /// builder, which constructs its children without passing through `blocks`.
-pub(crate) fn for_element(el: AnyElement, element: &Element, parent: &Computed,
-    placement: (Option<gpui::GridLocation>, Option<gpui::GridLineNames>)) -> AnyElement {
+pub(crate) fn for_element(
+    el: AnyElement,
+    element: &Element,
+    parent: &Computed,
+    placement: (Option<gpui::GridLocation>, Option<gpui::GridLineNames>),
+) -> AnyElement {
     if super::replaced_tag(element) || native_intrinsic::eligible(element) {
         el
     } else {
-        content_sized(el, &element.style, &crate::style::cascade::inherit::inherit(parent, &element.style), placement)
+        content_sized(
+            el,
+            &element.style,
+            &crate::style::cascade::inherit::inherit(parent, &element.style),
+            placement,
+        )
     }
 }
 
@@ -81,7 +93,8 @@ pub(crate) fn content_sized(
     // растягивается — размер по содержимому получается сам.
     if matches!(
         c.position,
-        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute)
+            | Some(crate::style::computed::Position::Fixed)
     ) {
         return el;
     }
@@ -134,11 +147,15 @@ pub(crate) fn content_sized(
     // `margin-left: auto` при точечном max-content — прижим вправо
     // (align-baseline-ref: правый столбец текста уезжал влево).
     let auto = |l: Option<Len>| matches!(l, Some(Len::Auto));
-    wrap.style().justify_items = Some(if axis_alignment::fills_width(c) { gpui::AlignItems::Stretch } else { match (auto(c.margin.left), auto(c.margin.right)) {
-        (true, false) => gpui::AlignItems::FlexEnd,
-        (true, true) => gpui::AlignItems::Center,
-        _ => gpui::AlignItems::FlexStart,
-    } });
+    wrap.style().justify_items = Some(if axis_alignment::fills_width(c) {
+        gpui::AlignItems::Stretch
+    } else {
+        match (auto(c.margin.left), auto(c.margin.right)) {
+            (true, false) => gpui::AlignItems::FlexEnd,
+            (true, true) => gpui::AlignItems::Center,
+            _ => gpui::AlignItems::FlexStart,
+        }
+    });
     // Прижим внутри дорожки ничего не двигает, когда дорожка `max-content`
     // ровно по коробке, а сама обёртка растянута на строку родителя:
     // свободное место — между ДОРОЖКОЙ и краем сетки. Его делит
@@ -182,17 +199,29 @@ mod tests {
     use super::*;
     #[test]
     fn intrinsic_wrapper_preserves_keyword_without_duplicating_fit_argument() {
-        let mut style = Computed { width: Some(Len::FitContent), ..Computed::default() };
-        assert_eq!(wrapper_width_keyword(&style), Some(CssSizingKeyword::FitContent));
+        let mut style = Computed {
+            width: Some(Len::FitContent),
+            ..Computed::default()
+        };
+        assert_eq!(
+            wrapper_width_keyword(&style),
+            Some(CssSizingKeyword::FitContent)
+        );
         for argument in [Len::Px(50.0), Len::Pct(0.5)] {
             style.fit_arg[0] = Some(argument);
             assert_eq!(wrapper_width_keyword(&style), None);
         }
         style.fit_arg[0] = None;
         style.width = Some(Len::MinContent);
-        assert_eq!(wrapper_width_keyword(&style), Some(CssSizingKeyword::MinContent));
+        assert_eq!(
+            wrapper_width_keyword(&style),
+            Some(CssSizingKeyword::MinContent)
+        );
         style.width = Some(Len::MaxContent);
-        assert_eq!(wrapper_width_keyword(&style), Some(CssSizingKeyword::MaxContent));
+        assert_eq!(
+            wrapper_width_keyword(&style),
+            Some(CssSizingKeyword::MaxContent)
+        );
         style.vertical = Some(true);
         assert_eq!(wrapper_width_keyword(&style), None);
     }

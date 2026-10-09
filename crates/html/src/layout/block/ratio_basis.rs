@@ -30,8 +30,8 @@ pub(crate) fn block_axis(parent: &Computed) -> AxisSizes {
 
 #[cfg(test)]
 mod tests {
-    use crate::layout::writing_mode::orthogonal_inline::resolve;
     use super::*;
+    use crate::layout::writing_mode::orthogonal_inline::resolve;
 
     #[test]
     fn ratio_parent_resolves_orthogonal_percentage_before_content_expands() {

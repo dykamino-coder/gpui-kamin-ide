@@ -13,18 +13,14 @@ pub fn apply_text(mut d: Div, c: &Computed) -> Div {
     // рисуется обычными `div`, и подчёркивание, живущее только в прогонах,
     // там пропадало.
     if c.underline == Some(true) {
-        d.style()
-            .text
-            .underline = Some(gpui::UnderlineStyle {
+        d.style().text.underline = Some(gpui::UnderlineStyle {
             thickness: px(1.),
             color: c.color.map(|col| col.to_hsla()),
             wavy: false,
         });
     }
     if c.line_through == Some(true) {
-        d.style()
-            .text
-            .strikethrough = Some(gpui::StrikethroughStyle {
+        d.style().text.strikethrough = Some(gpui::StrikethroughStyle {
             thickness: px(1.),
             color: c.color.map(|col| col.to_hsla()),
         });
@@ -42,15 +38,11 @@ pub fn apply_text(mut d: Div, c: &Computed) -> Div {
         );
     }
     if let Some(pct) = c.font_stretch {
-        d.style()
-            .text
-            .font_stretch = Some(gpui::FontStretch::from_percent(pct));
+        d.style().text.font_stretch = Some(gpui::FontStretch::from_percent(pct));
     }
     let features = c.used_features();
     if !features.is_empty() {
-        d.style()
-            .text
-            .font_features = Some(gpui::FontFeatures(std::sync::Arc::new(features)));
+        d.style().text.font_features = Some(gpui::FontFeatures(std::sync::Arc::new(features)));
     }
     if let Some(col) = c.color {
         d = d.text_color(col.to_hsla());

@@ -5,9 +5,9 @@ use crate::dom::{Element, Node};
 use crate::style::computed::Computed;
 use crate::text::text_box::blank_text;
 
+pub(crate) mod container;
 mod ruby_hiding;
 pub(crate) mod ruby_transform;
-pub(crate) mod container;
 
 /// Единица руби (css-ruby-1 §2.3.2): содержимое одной базы или одной
 /// аннотации. Пустой вектор — анонимная пустая единица, добавленная спариванием.
@@ -37,7 +37,9 @@ struct RubySegment {
 fn ruby_unit_blank(unit: &[Node]) -> bool {
     unit.iter().all(|n| match n {
         Node::Text(t) => blank_text(t),
-        Node::Element(k) if ruby_role(k).is_some_and(|r| r != crate::style::computed::RubyRole::Container) => {
+        Node::Element(k)
+            if ruby_role(k).is_some_and(|r| r != crate::style::computed::RubyRole::Container) =>
+        {
             ruby_unit_blank(&k.children)
         }
         Node::Element(_) => false,
@@ -128,7 +130,10 @@ fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
         None
     };
     fn fresh() -> RubySegment {
-        RubySegment { bases: Vec::new(), levels: Vec::new() }
+        RubySegment {
+            bases: Vec::new(),
+            levels: Vec::new(),
+        }
     }
     fn flush_run(run: &mut RubyUnit, cur: &mut RubySegment) {
         if !run.is_empty() {
@@ -146,7 +151,12 @@ fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
     // Прежде `<rbc>e</rbc><rbc>f</rbc><rbc>g</rbc><rtc>h</rtc>` склеивались
     // в один сегмент, и `h` вставала над `e`, а не над `g`
     // (`ruby-box-generation-001-ref`).
-    fn base_starts(cur: &mut RubySegment, out: &mut Vec<RubySegment>, loose_level: &mut bool, sealed: &mut bool) {
+    fn base_starts(
+        cur: &mut RubySegment,
+        out: &mut Vec<RubySegment>,
+        loose_level: &mut bool,
+        sealed: &mut bool,
+    ) {
         if !cur.levels.is_empty() || *sealed {
             close_segment(cur, out);
             *loose_level = false;
@@ -216,10 +226,18 @@ fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
             Kind::Rt => {
                 flush_run(&mut run, &mut cur);
                 if !loose_level {
-                    cur.levels.push(RubyLevel { units: Vec::new(), spanning: false, container: None });
+                    cur.levels.push(RubyLevel {
+                        units: Vec::new(),
+                        spanning: false,
+                        container: None,
+                    });
                     loose_level = true;
                 }
-                cur.levels.last_mut().expect("уровень только что открыт").units.push(vec![node.clone()]);
+                cur.levels
+                    .last_mut()
+                    .expect("уровень только что открыт")
+                    .units
+                    .push(vec![node.clone()]);
             }
             Kind::Rtc => {
                 flush_run(&mut run, &mut cur);
@@ -249,7 +267,11 @@ fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
                 } else {
                     rts
                 };
-                cur.levels.push(RubyLevel { units, spanning, container: Some(k.style.clone()) });
+                cur.levels.push(RubyLevel {
+                    units,
+                    spanning,
+                    container: Some(k.style.clone()),
+                });
             }
             Kind::Blank => match (neighbour(i, -1), neighbour(i, 1)) {
                 // Краевой пробел контейнера (п.4).
@@ -267,7 +289,10 @@ fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
                     close_segment(&mut cur, &mut out);
                     loose_level = false;
                     sealed = false;
-                    out.push(RubySegment { bases: vec![vec![node.clone()]], levels: Vec::new() });
+                    out.push(RubySegment {
+                        bases: vec![vec![node.clone()]],
+                        levels: Vec::new(),
+                    });
                 }
                 // Межбазовый (п.6): своя единица, спаривается по порядку.
                 (Some(Kind::Rb | Kind::Rbc), Some(Kind::Rb | Kind::Rbc)) => {
@@ -282,7 +307,11 @@ fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
                 }
                 // Межаннотационный (п.6) — только между двумя `<rt>` контейнера.
                 (Some(Kind::Rt), Some(Kind::Rt)) if loose_level => {
-                    cur.levels.last_mut().expect("уровень открыт").units.push(vec![node.clone()]);
+                    cur.levels
+                        .last_mut()
+                        .expect("уровень открыт")
+                        .units
+                        .push(vec![node.clone()]);
                 }
                 // Аннотация → строчное содержимое: пробел открывает анонимную
                 // базу следующего сегмента вместе с этим содержимым (§2.2
@@ -299,7 +328,10 @@ fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
                     close_segment(&mut cur, &mut out);
                     loose_level = false;
                     sealed = false;
-                    out.push(RubySegment { bases: vec![vec![node.clone()]], levels: Vec::new() });
+                    out.push(RubySegment {
+                        bases: vec![vec![node.clone()]],
+                        levels: Vec::new(),
+                    });
                 }
                 _ => {}
             },

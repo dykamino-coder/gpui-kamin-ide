@@ -1,6 +1,9 @@
 //! Элемент Sticky: липкий сдвиг по кадру прокрутки.
 
-use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window, px};
+use gpui::{
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
+    LayoutId, Pixels, Window, px,
+};
 
 /// `transform` — поворот, масштаб и сдвиг при отрисовке.
 ///

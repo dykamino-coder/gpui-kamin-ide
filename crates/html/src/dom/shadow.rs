@@ -290,7 +290,14 @@ pub(super) fn scan_shadows(
                 )
             });
             let shadow_kids: Vec<Handle> = root.children.borrow().clone();
-            scan_shadows(&shadow_kids, &mut vec![marker], &inner, agent, media, drafts);
+            scan_shadows(
+                &shadow_kids,
+                &mut vec![marker],
+                &inner,
+                agent,
+                media,
+                drafts,
+            );
             path.push(me);
             scan_shadows(&light, path, scope, agent, media, drafts);
             path.pop();

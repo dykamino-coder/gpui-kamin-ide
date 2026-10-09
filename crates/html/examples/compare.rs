@@ -8,8 +8,8 @@
 //! а не тем, где оно нарисовано.
 
 use gpui::{
-    AppContext as _, Bounds, Context, Entity, IntoElement, ParentElement, Render,
-    Styled, TitlebarOptions, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
+    AppContext as _, Bounds, Context, Entity, IntoElement, ParentElement, Render, Styled,
+    TitlebarOptions, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
     WindowOptions, div, point, px, rgb, size,
 };
 use kamin_html::{BROWSER_CSS, Document, RenderOpts, render};

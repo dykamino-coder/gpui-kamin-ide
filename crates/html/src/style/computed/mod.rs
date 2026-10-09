@@ -5,37 +5,37 @@
 //! Во-вторых, ровно она задаёт границу охвата: поле есть — свойство
 //! поддержано, поля нет — свойство игнорируется осознанно, а не потеряно.
 
-mod gradient_paint;
+mod bidi_properties;
+mod border_color;
+pub(crate) mod font_family;
 mod font_kerning;
 pub(super) mod font_members;
-pub(crate) mod font_family;
-mod white_space;
 mod font_shorthand;
 pub(super) mod font_weight;
-mod text_indent;
-mod bidi_properties;
+mod gradient_paint;
 mod image_color;
 mod radius_mask;
-mod border_color;
 mod radius_parse;
+mod text_indent;
+mod white_space;
 pub(crate) use image_color::parse as parse_image_color;
-mod mask_size;
-mod mask_shorthand;
-pub(crate) mod orthogonal;
-mod tab_size;
-mod quotes;
-mod counters;
-mod list_style_string;
-mod list_style;
-mod size_range;
 mod content_functions;
+mod counters;
+mod list_style;
+mod list_style_string;
+mod mask_shorthand;
+mod mask_size;
+pub(crate) mod orthogonal;
+mod quotes;
+mod size_range;
+mod tab_size;
 pub(crate) use content_functions::parse_content;
 mod outline_style;
 use crate::style::computed::outline_style::parse as outline_style_of;
 pub(crate) use outline_style::DOUBLE as OUTLINE_DOUBLE;
 pub(super) mod props;
-mod resolve;
 mod queries;
+mod resolve;
 
 use crate::style::values::value::Len;
 mod fields;
@@ -170,7 +170,6 @@ pub(crate) mod wc {
     pub(crate) const BOX: u8 = 1 << 4;
 }
 
-
 #[cfg(test)]
 mod tests {
     #[test]
@@ -193,7 +192,10 @@ mod tests {
             &super::super::css::parse_decls("color: var(--none, rgba(0,0,0,1))"),
             &super::super::css::Decls::new(),
         );
-        assert_eq!(c.color, crate::style::values::value::Color::parse("rgba(0,0,0,1)"));
+        assert_eq!(
+            c.color,
+            crate::style::values::value::Color::parse("rgba(0,0,0,1)")
+        );
     }
 
     #[test]
@@ -243,7 +245,10 @@ mod tests {
         };
         let mut matched = vec![&ua, &author];
         let c = super::Computed::resolve(&mut matched, &super::super::css::Decls::new());
-        assert_eq!(c.margin.top, Some(crate::style::values::value::Len::Px(0.0)));
+        assert_eq!(
+            c.margin.top,
+            Some(crate::style::values::value::Len::Px(0.0))
+        );
     }
 
     #[test]
@@ -253,8 +258,14 @@ mod tests {
         // страница набиралась чужим шрифтом.
         let mut c = super::Computed::default();
         c.apply_one("font", "50px / 1 Ahem");
-        assert_eq!(c.font_size, Some(crate::style::values::value::Len::Px(50.0)));
-        assert_eq!(c.line_height, Some(crate::style::values::value::Len::Pct(1.0)));
+        assert_eq!(
+            c.font_size,
+            Some(crate::style::values::value::Len::Px(50.0))
+        );
+        assert_eq!(
+            c.line_height,
+            Some(crate::style::values::value::Len::Pct(1.0))
+        );
         assert_eq!(c.font_family.as_deref(), Some("Ahem"));
     }
 

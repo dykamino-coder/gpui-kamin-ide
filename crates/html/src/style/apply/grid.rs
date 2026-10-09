@@ -151,25 +151,41 @@ pub(super) fn grid_line_names(c: &Computed) -> Option<gpui::GridLineNames> {
 /// дорожках родителя стоит ОНА, а не сам элемент (css-grid-2 §8: размещение —
 /// свойство элемента сетки, а элементом здесь служит обёртка). Числовые грани
 /// и именованные (без имён линий самого элемента: обёртка — своя сетка).
-pub(crate) fn grid_item_placement(c: &Computed) -> (Option<gpui::GridLocation>, Option<gpui::GridLineNames>) {
+pub(crate) fn grid_item_placement(
+    c: &Computed,
+) -> (Option<gpui::GridLocation>, Option<gpui::GridLineNames>) {
     let location = (c.grid_col.is_some() || c.grid_row.is_some()).then(|| {
         let span = |p: Option<(Placement, Placement)>| {
             let (a, b) = p.unwrap_or((Placement::Auto, Placement::Auto));
             to_placement(a)..to_placement(b)
         };
         if placement_flip(c) {
-            gpui::GridLocation { row: span(c.grid_col), column: span(c.grid_row) }
+            gpui::GridLocation {
+                row: span(c.grid_col),
+                column: span(c.grid_row),
+            }
         } else {
-            gpui::GridLocation { row: span(c.grid_row), column: span(c.grid_col) }
+            gpui::GridLocation {
+                row: span(c.grid_row),
+                column: span(c.grid_col),
+            }
         }
     });
-    let named = c.grid_col_named.iter().chain(c.grid_row_named.iter()).any(Option::is_some);
+    let named = c
+        .grid_col_named
+        .iter()
+        .chain(c.grid_row_named.iter())
+        .any(Option::is_some);
     let (column, row) = if placement_flip(c) {
         (c.grid_row_named.clone(), c.grid_col_named.clone())
     } else {
         (c.grid_col_named.clone(), c.grid_row_named.clone())
     };
-    let names = named.then(|| gpui::GridLineNames { column, row, ..Default::default() });
+    let names = named.then(|| gpui::GridLineNames {
+        column,
+        row,
+        ..Default::default()
+    });
     (location, names)
 }
 
@@ -391,9 +407,12 @@ pub(super) fn grid_style(mut d: Div, c: &Computed) -> Div {
         } else {
             d.grid_template_rows(line)
         };
-    } else if let (None, Some(r), Some(body)) = (&c.grid_rows, c.auto_repeat_rows, &c.auto_repeat_body_rows)
+    } else if let (None, Some(r), Some(body)) =
+        (&c.grid_rows, c.auto_repeat_rows, &c.auto_repeat_body_rows)
         && body.len() > 1
-        && body.iter().all(|t| matches!(t, TrackSize::Single(crate::style::computed::Track::Px(_))))
+        && body
+            .iter()
+            .all(|t| matches!(t, TrackSize::Single(crate::style::computed::Track::Px(_))))
     {
         // Тело повтора рядов из НЕСКОЛЬКИХ точечных дорожек
         // (`repeat(auto-fill, [v] 10px [w] 10px [x] 10px [y])`) — тем же видом,
@@ -401,7 +420,10 @@ pub(super) fn grid_style(mut d: Div, c: &Computed) -> Div {
         // вовсе, и имена линий повтора (css-grid-2 §7.2.3.1 «names … in the
         // repeat() are repeated as well») разрешались по пустой явной сетке —
         // у лунок и у сетки-эталона по-разному (`row-auto-repeat-014`).
-        let line = vec![gpui::GridTrack::AutoRepeat { fit: r.fit, tracks: body.iter().map(track).collect() }];
+        let line = vec![gpui::GridTrack::AutoRepeat {
+            fit: r.fit,
+            tracks: body.iter().map(track).collect(),
+        }];
         d = if flip {
             d.grid_template_cols(line)
         } else {
@@ -413,26 +435,30 @@ pub(super) fn grid_style(mut d: Div, c: &Computed) -> Div {
     // разметке эталонов (subgrid-alignment-in-subgridded-axis: серый фон до
     // края страницы вместо 100px). gpui-размер — border-box: паддинги и
     // рамки сверху.
-    if c.display == Some(Display::InlineGrid) && c.width.is_none()
-        && let Some(tracks) = &c.grid_tracks {
-            let all_px: Option<f32> = tracks.iter().try_fold(0.0f32, |acc, t| match t {
-                crate::style::computed::TrackSize::Single(crate::style::computed::Track::Px(w)) => Some(acc + w),
-                _ => None,
-            });
-            if let Some(mut total) = all_px.filter(|t| *t > 0.0) {
-                let px_of = |l: Option<Len>| match l {
-                    Some(Len::Px(v)) => v,
-                    _ => 0.0,
-                };
-                let b = c.borders();
-                total += px_of(c.column_gap) * (tracks.len().saturating_sub(1)) as f32
-                    + px_of(c.padding.left)
-                    + px_of(c.padding.right)
-                    + px_of(b.left)
-                    + px_of(b.right);
-                d = d.w(px(total));
+    if c.display == Some(Display::InlineGrid)
+        && c.width.is_none()
+        && let Some(tracks) = &c.grid_tracks
+    {
+        let all_px: Option<f32> = tracks.iter().try_fold(0.0f32, |acc, t| match t {
+            crate::style::computed::TrackSize::Single(crate::style::computed::Track::Px(w)) => {
+                Some(acc + w)
             }
+            _ => None,
+        });
+        if let Some(mut total) = all_px.filter(|t| *t > 0.0) {
+            let px_of = |l: Option<Len>| match l {
+                Some(Len::Px(v)) => v,
+                _ => 0.0,
+            };
+            let b = c.borders();
+            total += px_of(c.column_gap) * (tracks.len().saturating_sub(1)) as f32
+                + px_of(c.padding.left)
+                + px_of(c.padding.right)
+                + px_of(b.left)
+                + px_of(b.right);
+            d = d.w(px(total));
         }
+    }
     if let Some(rows) = &c.grid_rows {
         // Ряды областей сверх шаблона — тоже явные (см. `with_areas` выше).
         let tracks = with_areas(rows, area_rows, &c.grid_auto_rows, &c.grid_auto_rows_list);
@@ -452,15 +478,13 @@ pub(super) fn grid_style(mut d: Div, c: &Computed) -> Div {
     if let Some(t) = auto_line {
         d.style().grid_auto_rows = Some(track(t));
         if !c.grid_auto_rows_list.is_empty() {
-            d.style().grid_auto_rows_list =
-                Some(c.grid_auto_rows_list.iter().map(track).collect());
+            d.style().grid_auto_rows_list = Some(c.grid_auto_rows_list.iter().map(track).collect());
         }
     }
     if let Some(t) = auto_flow_axis {
         d.style().grid_auto_cols = Some(track(t));
         if !c.grid_auto_cols_list.is_empty() {
-            d.style().grid_auto_cols_list =
-                Some(c.grid_auto_cols_list.iter().map(track).collect());
+            d.style().grid_auto_cols_list = Some(c.grid_auto_cols_list.iter().map(track).collect());
         }
     }
     // Лунки на пути сетки: одинокий `repeat(auto-*)` с дорожками ПО
@@ -532,12 +556,25 @@ pub(super) fn grid_style(mut d: Div, c: &Computed) -> Div {
         let col_gap_normal = c.gap.and_then(|g| g.1).or(c.column_gap).is_none();
         let row_gap_normal = c.gap.and_then(|g| g.0).is_none();
         let (cols, rows, col_gap, row_gap) = if flip {
-            (c.subgrid_rows, c.subgrid_cols, row_gap_normal, col_gap_normal)
+            (
+                c.subgrid_rows,
+                c.subgrid_cols,
+                row_gap_normal,
+                col_gap_normal,
+            )
         } else {
-            (c.subgrid_cols, c.subgrid_rows, col_gap_normal, row_gap_normal)
+            (
+                c.subgrid_cols,
+                c.subgrid_rows,
+                col_gap_normal,
+                row_gap_normal,
+            )
         };
         d.style().grid_subgrid = Some(
-            u8::from(cols) | (u8::from(rows) << 1) | (u8::from(col_gap) << 2) | (u8::from(row_gap) << 3),
+            u8::from(cols)
+                | (u8::from(rows) << 1)
+                | (u8::from(col_gap) << 2)
+                | (u8::from(row_gap) << 3),
         );
     }
     d

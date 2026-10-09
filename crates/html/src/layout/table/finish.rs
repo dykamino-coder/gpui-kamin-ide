@@ -41,13 +41,15 @@ pub(super) fn table_finish(
 ) -> AnyElement {
     let mut grid_children = under;
     if paint_layers {
-        grid_children
-            .push(crate::layout::table::paint::CellBgPainter::new(cell_bgs.clone()).into_any_element());
+        grid_children.push(
+            crate::layout::table::paint::CellBgPainter::new(cell_bgs.clone()).into_any_element(),
+        );
     }
     grid_children.extend(cells);
     if paint_layers {
-        grid_children
-            .push(crate::layout::table::paint::EdgePainter::new(table_edges.clone()).into_any_element());
+        grid_children.push(
+            crate::layout::table::paint::EdgePainter::new(table_edges.clone()).into_any_element(),
+        );
     }
     grid_children.extend(cells_over);
     let cells = grid_children;
@@ -63,8 +65,7 @@ pub(super) fn table_finish(
             let cm = inherit(inherited, &cap.style);
             // Сторона — с самого заголовка, при пустоте — от таблицы
             // (наследование caption-side).
-            let cap_side_bottom =
-                cap.style.caption_bottom.or(e.style.caption_bottom) == Some(true);
+            let cap_side_bottom = cap.style.caption_bottom.or(e.style.caption_bottom) == Some(true);
             // CSS 2.1 §9.4.1: a table caption is a block container that
             // establishes a block formatting context, so its auto height
             // contains its floats (§10.6.7), like a cell (`CELL_BFC`).
@@ -134,7 +135,7 @@ pub(super) fn table_finish(
                             + if e.style.border_collapse == Some(true) {
                                 // Половина ПОБЕДИВШЕЙ линии — та же, что
                                 // легла в паддинг ячейки (§17.6.2.1).
-                                
+
                                 win_edges
                                     .get(&cell.node_id)
                                     .map(|w| (w[1] + w[3]) / 2.0)
@@ -259,15 +260,15 @@ pub(super) fn table_finish(
         || (matches!(e.style.height, Some(Len::Pct(_)))
             && inherited.cb_height_def
             && !inherited.stretched);
-            // ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v135, `scout-fonts-tables-2026-09.md`
-            // план 2): строить дорожки рядов и без `table_tall`. Срез 8557 общих:
-            // +3 (`table-as-item-cell-percentage-001/003/004`) при −18 —
-            // `margin-applies-to-001…007` (0.00 → 1.00),
-            // `margin-bottom-applies-to-001…007` (0.03 → 3.00),
-            // `table-cell-overflow-explicit-height-001/002` (0.00 → 8.77),
-            // `percentage-sizing-of-table-cell-children-004` («красное видно»),
-            // `subpixel-table-cell-height-001`. Ряд без заданной высоты обязан
-            // остаться авто-дорожкой ТОЛЬКО в контексте, где стол не растянут.
+    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v135, `scout-fonts-tables-2026-09.md`
+    // план 2): строить дорожки рядов и без `table_tall`. Срез 8557 общих:
+    // +3 (`table-as-item-cell-percentage-001/003/004`) при −18 —
+    // `margin-applies-to-001…007` (0.00 → 1.00),
+    // `margin-bottom-applies-to-001…007` (0.03 → 3.00),
+    // `table-cell-overflow-explicit-height-001/002` (0.00 → 8.77),
+    // `percentage-sizing-of-table-cell-children-004` («красное видно»),
+    // `subpixel-table-cell-height-001`. Ряд без заданной высоты обязан
+    // остаться авто-дорожкой ТОЛЬКО в контексте, где стол не растянут.
     let row_tracks: Option<Vec<gpui::GridTrack>> = match table_tall {
         true if e.style.vertical != Some(true) => Some(
             row_elements
@@ -432,7 +433,8 @@ pub(super) fn table_finish(
     // `align_self`, а его у абсолютной коробки с двумя краями не спрашивают.
     let split_wrapper = matches!(
         inherited.position,
-        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute)
+            | Some(crate::style::computed::Position::Fixed)
     ) && edge_set(inherited.inset.left)
         && edge_set(inherited.inset.right)
         && e.style.width.is_none();
@@ -445,12 +447,11 @@ pub(super) fn table_finish(
         c
     });
     let inherited: &Computed = grid_style.as_ref().unwrap_or(inherited);
-    let needs_clone =
-        collapse
-            || table_border_box
-            || min_h != e.style.min_height
-            || min_w != e.style.min_width
-            || fixed_floor.is_some();
+    let needs_clone = collapse
+        || table_border_box
+        || min_h != e.style.min_height
+        || min_w != e.style.min_width
+        || fixed_floor.is_some();
     let host_style;
     let mut outer = if needs_clone {
         let mut c = inherited.clone();
@@ -592,7 +593,10 @@ pub(super) fn table_finish(
         // ширины в общем разборе) — CSS2 +21/-25: у таблицы без рамки её
         // коробка совпадает с внешними краями ячеек, и те переставали
         // центрироваться.
-        outer = outer.child(crate::layout::table::paint::grid_probe(table_edges.clone(), bw));
+        outer = outer.child(crate::layout::table::paint::grid_probe(
+            table_edges.clone(),
+            bw,
+        ));
     }
     if collapse && (bw.iter().any(|w| *w > 0.0) || e.style.border_side_styles.contains(&Some(1))) {
         // Рамка самой таблицы — участник разбора конфликтов: её кромки
@@ -707,7 +711,11 @@ pub(super) fn table_finish(
             let w = wrap.style();
             w.flex_grow = grow;
             w.flex_shrink = shrink;
-            w.align_self = if e.style.align_self.is_some() { own_align } else { None };
+            w.align_self = if e.style.align_self.is_some() {
+                own_align
+            } else {
+                None
+            };
             // Основа в РЯДУ: главная ось контейнера — строчная ось обёртки,
             // и основа, оставленная на столе внутри колонки `wrap`, там не
             // действует (у колонки это поперечная ось). Переносится на
@@ -717,8 +725,10 @@ pub(super) fn table_finish(
             // the table box's border+padding area»
             // (`table-as-item-inflexible-in-row-2`: `flex: 0 0 80px; border:
             // 10px solid` — стол выходил 20 точек вместо 100).
-            if !matches!(inherited.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse))
-                && let Some(Len::Px(b)) = e.style.flex_basis
+            if !matches!(
+                inherited.flex_dir,
+                Some(FlexDir::Col) | Some(FlexDir::ColReverse)
+            ) && let Some(Len::Px(b)) = e.style.flex_basis
             {
                 s.flex_basis = None;
                 let side = |l: Option<Len>| match l {
@@ -757,7 +767,11 @@ pub(super) fn table_finish(
         // Берём только точки и долю: `em`/`ch` у обёртки считались бы по ЧУЖОМУ
         // шрифту (`apply::len_to_gpui` ветка запасных величин), а стол с
         // `width: auto` обязан остаться сжатым по содержимому (§17.5.2).
-        match if vertical { e.style.height } else { e.style.width } {
+        match if vertical {
+            e.style.height
+        } else {
+            e.style.width
+        } {
             Some(Len::Px(v)) if vertical => wrap = wrap.h(px(v)),
             Some(Len::Px(v)) => wrap = wrap.w(px(v)),
             Some(Len::Pct(v)) if vertical => wrap = wrap.h(gpui::relative(v)),

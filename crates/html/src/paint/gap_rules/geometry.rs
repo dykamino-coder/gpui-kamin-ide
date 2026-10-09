@@ -23,14 +23,29 @@ impl GapItem {
         let x1 = x0 + f32::from(b.size.width);
         let y1 = y0 + f32::from(b.size.height);
         if gap_on_x {
-            GapItem { a0: x0, a1: x1, b0: y0, b1: y1 }
+            GapItem {
+                a0: x0,
+                a1: x1,
+                b0: y0,
+                b1: y1,
+            }
         } else {
-            GapItem { a0: y0, a1: y1, b0: x0, b1: x1 }
+            GapItem {
+                a0: y0,
+                a1: y1,
+                b0: x0,
+                b1: x1,
+            }
         }
     }
 
     pub(crate) fn flipped(&self) -> Self {
-        GapItem { a0: self.b0, a1: self.b1, b0: self.a0, b1: self.a1 }
+        GapItem {
+            a0: self.b0,
+            a1: self.b1,
+            b0: self.a0,
+            b1: self.a1,
+        }
     }
 
     /// Заходит ли элемент в участок `[lo, hi]` вдоль линейки.
@@ -99,7 +114,12 @@ impl GapRun {
             .find(|c| c.lo - GAP_EPS <= pos && pos <= c.hi + GAP_EPS)
         {
             let at = if is_start { c.hi } else { c.lo };
-            return (at, if c.joins { c.hi - c.lo } else { 0.0 }, c.joins, c.cross_w);
+            return (
+                at,
+                if c.joins { c.hi - c.lo } else { 0.0 },
+                c.joins,
+                c.cross_w,
+            );
         }
         (pos, 0.0, false, 0.0)
     }
@@ -161,11 +181,7 @@ fn tracks_a(items: &[GapItem], gap: Option<f32>) -> Vec<(f32, f32)> {
 /// Ограничение: сетка, у которой пуста ВСЯ первая дорожка оси, привяжется со
 /// сдвигом на дорожку — перебор идёт от нулевого смещения. В своде такой пары
 /// нет (у всех 44 разрежённых первая строка и первая колонка заняты).
-fn template_tracks(
-    sizes: &[f32],
-    gap: Option<f32>,
-    items: &[GapItem],
-) -> Option<Vec<(f32, f32)>> {
+fn template_tracks(sizes: &[f32], gap: Option<f32>, items: &[GapItem]) -> Option<Vec<(f32, f32)>> {
     let g = gap?;
     if sizes.len() < 2 {
         return None;
@@ -369,9 +385,9 @@ fn grid_runs_on(
                     let mut breaks = false;
                     let mut joins = false;
                     for side in sides.iter().flatten() {
-                        let blocked_here = flipped.iter().any(|i| {
-                            i.spans_a(lo, hi) && i.covers_b(side.0, side.1)
-                        });
+                        let blocked_here = flipped
+                            .iter()
+                            .any(|i| i.spans_a(lo, hi) && i.covers_b(side.0, side.1));
                         if !blocked_here {
                             breaks = true;
                         }
@@ -384,7 +400,13 @@ fn grid_runs_on(
                         }
                     }
                     let cross_w = cross.and_then(|c| c.widths.at(j, gb.len())).unwrap_or(0.0);
-                    Crossing { lo, hi, breaks, joins, cross_w }
+                    Crossing {
+                        lo,
+                        hi,
+                        breaks,
+                        joins,
+                        cross_w,
+                    }
                 })
                 .collect();
             GapRun {
@@ -519,7 +541,13 @@ pub(super) fn line_runs(
                 .map(|i| (i.b0, i.b1))
                 .collect(),
         );
-        let windows = merge(inner[k].iter().chain(inner[k + 1].iter()).copied().collect());
+        let windows = merge(
+            inner[k]
+                .iter()
+                .chain(inner[k + 1].iter())
+                .copied()
+                .collect(),
+        );
         let crossings = windows
             .iter()
             .map(|&(lo, hi)| Crossing {

@@ -91,7 +91,10 @@ fn natural_content_box(holder: &mut Div, style: &Computed) -> bool {
             && !style.root_box
             && !matches!(
                 style.position,
-                Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
+                Some(
+                    crate::style::computed::Position::Absolute
+                        | crate::style::computed::Position::Fixed
+                )
             )
         {
             // Preserve apply's unresolved block-percentage behavior for min/max too.
@@ -104,7 +107,9 @@ fn natural_content_box(holder: &mut Div, style: &Computed) -> bool {
             Some(Len::Px(value)) => Some(gpui::px((value - offset).max(0.0)).into()),
             Some(Len::Pct(value)) => Some(DefiniteLength::Calc(-offset, value).into()),
             Some(Len::Calc(index)) => {
-                let Some((percentage, pixels)) = crate::style::values::value::calc_get(index).pct_px() else {
+                let Some((percentage, pixels)) =
+                    crate::style::values::value::calc_get(index).pct_px()
+                else {
                     return false;
                 };
                 Some(DefiniteLength::Calc(pixels - offset, percentage).into())

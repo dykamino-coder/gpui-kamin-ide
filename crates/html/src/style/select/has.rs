@@ -2,10 +2,10 @@
 // owner: B
 
 use crate::style::css::Selector;
+use crate::style::select::matching::matches;
 use crate::style::select::{Ancestor, Sibs, census_of};
 use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
-use crate::style::select::matching::matches;
 
 thread_local! {
     pub(crate) static HAS_MARKS: std::cell::RefCell<HashMap<usize, Vec<u64>>> =

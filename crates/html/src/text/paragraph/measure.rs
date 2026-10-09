@@ -72,7 +72,11 @@ impl Paragraph {
                     let t = self.atom_top(b);
                     // Аннотация руби растит строку, только выходя за неё:
                     // полулидинг строки она занимает даром (css-ruby-1 §3.4).
-                    let over = if line_no == 0 && self.ruby_trim.0 { 0.0 } else { b.over };
+                    let over = if line_no == 0 && self.ruby_trim.0 {
+                        0.0
+                    } else {
+                        b.over
+                    };
                     let under = if line_no == last_line && self.ruby_trim.1 {
                         0.0
                     } else {
@@ -83,16 +87,26 @@ impl Paragraph {
                 }
                 // Знак акцента стоит над (под) коробкой содержимого своего
                 // прогона и растит строку, только выходя за неё.
-                for EmphSpan { range, under, size: h, .. } in &self.emph_spans {
+                for EmphSpan {
+                    range,
+                    under,
+                    size: h,
+                    ..
+                } in &self.emph_spans
+                {
                     if range.end <= line.range.start || range.start >= line.range.end {
                         continue;
                     }
                     let mut at = 0usize;
-                    let metrics = self.runs.iter().zip(&self.run_metrics).find_map(|(run, m)| {
-                        let s = at;
-                        at += run.len;
-                        (range.start >= s && range.start < at).then_some(*m)
-                    });
+                    let metrics = self
+                        .runs
+                        .iter()
+                        .zip(&self.run_metrics)
+                        .find_map(|(run, m)| {
+                            let s = at;
+                            at += run.len;
+                            (range.start >= s && range.start < at).then_some(*m)
+                        });
                     let Some((ra, rd)) = metrics else { continue };
                     // Срез текстовой коробки знак не растит так же, как
                     // аннотацию (`text-box-trim-ruby-start-002`).
@@ -168,7 +182,12 @@ impl Paragraph {
     /// Доля считается от ширины строки (css-text-3 §7.1: процент берётся от
     /// ширины содержащего блока), поэтому предел приходит сюда: при замере по
     /// содержимому его нет, и доля обращается в ноль — как в браузере.
-    pub(crate) fn indent_of(&self, head_of_part: bool, first_part: bool, limit: Option<Pixels>) -> Pixels {
+    pub(crate) fn indent_of(
+        &self,
+        head_of_part: bool,
+        first_part: bool,
+        limit: Option<Pixels>,
+    ) -> Pixels {
         let own = if self.indent.each_line {
             head_of_part
         } else {
@@ -269,7 +288,9 @@ impl Paragraph {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.measure_key().hash(&mut h);
         limit.map(|l| f32::from(l).to_bits()).hash(&mut h);
-        self.indent_basis.map(|l| f32::from(l).to_bits()).hash(&mut h);
+        self.indent_basis
+            .map(|l| f32::from(l).to_bits())
+            .hash(&mut h);
         let w = &self.wrap;
         [
             w.nowrap,

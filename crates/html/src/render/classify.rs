@@ -19,7 +19,8 @@ pub(crate) fn out_of_flow(c: &Computed) -> bool {
     c.float.is_some_and(|f| f != 0)
         || matches!(
             c.position,
-            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute)
+                | Some(crate::style::computed::Position::Fixed)
         )
 }
 
@@ -106,7 +107,8 @@ pub(crate) fn in_flow(c: &Computed) -> bool {
     c.float.is_none()
         && !matches!(
             c.position,
-            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute)
+                | Some(crate::style::computed::Position::Fixed)
         )
         && !matches!(
             c.display,
@@ -208,7 +210,8 @@ pub(crate) fn atomic_inline(c: &Computed) -> bool {
     c.float.is_none()
         && !matches!(
             c.position,
-            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute)
+                | Some(crate::style::computed::Position::Fixed)
         )
         && c.inline_display != Some(true)
         && matches!(

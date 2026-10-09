@@ -76,10 +76,16 @@ pub(crate) fn multicol_column_stack(
     let fixed = if let Some(hh) = nest_rows {
         (e.style.column_fill_auto == Some(true)).then_some(hh)
     } else if e.style.column_fill_auto == Some(true) {
-        col_h.or(match if col_vert { e.style.width } else { e.style.height } {
-            Some(Len::Px(h)) => Some(h),
-            _ => None,
-        })
+        col_h.or(
+            match if col_vert {
+                e.style.width
+            } else {
+                e.style.height
+            } {
+                Some(Len::Px(h)) => Some(h),
+                _ => None,
+            },
+        )
     } else {
         None
     };
@@ -100,7 +106,8 @@ pub(crate) fn multicol_column_stack(
     // Строки flex и распорки роста (`grow_pushed`) меряют
     // ФИЗИЧЕСКОЕ дерево и знают только вертикальную ось —
     // в вертикальном письме их нет (следующий шаг).
-    let (kids, kid_par, kid_parent, kid_starts) = if fixed.is_some() && rows.is_none() && !col_vert {
+    let (kids, kid_par, kid_parent, kid_starts) = if fixed.is_some() && rows.is_none() && !col_vert
+    {
         let col_w = match merged.width {
             Some(Len::Px(w)) if merged.border_box != Some(true) && cols > 0 => {
                 Some((w - used_gap * (cols as f32 - 1.0)) / cols as f32)
@@ -110,7 +117,12 @@ pub(crate) fn multicol_column_stack(
         split_flex_lines(kids, col_w, &merged)
     } else {
         let n = kids.len();
-        (kids, vec![crate::layout::fragment::types::Par::default(); n], vec![None; n], (0..=n).collect())
+        (
+            kids,
+            vec![crate::layout::fragment::types::Par::default(); n],
+            vec![None; n],
+            (0..=n).collect(),
+        )
     };
     // `break-inside: avoid` без настоящего монолита — у любого
     // ребёнка колонок (`flow::Par::avoid_only`): с верха колонки
@@ -135,68 +147,65 @@ pub(crate) fn multicol_column_stack(
     // потоком соседей (та же мера, что у `StackChild` ниже):
     // иначе план соседа с потоком разошёлся бы с укладкой.
     // Без `clone` среди детей не считается вовсе.
-    let clone_plan: Vec<Vec<(f32, f32)>> =
-        if !col_vert && kids.iter().any(|(c, _)| clone_dec(c).is_some()) {
-            let probe: Vec<crate::layout::fragment::types::Kid> = kids
-                .iter()
-                .enumerate()
-                .map(|(pi, (c, s))| {
-                    let mut m = c.clone();
-                    m.style.margin.top = None;
-                    m.style.margin.bottom = None;
-                    let (over, cuts, forced, solid) = match shape_full(
-                        &m,
-                        4,
-                        ShapeCx {
-                            unclamped: true,
-                            ..ShapeCx::COLUMNS
-                        },
-                    )
-                    .filter(|_| {
-                        fixed.is_some()
-                            && plain_block_tree(&m, 4)
-                            && visible_overflow(&m.style)
-                    })
-                    .filter(|u| u.0 > s.0 + 0.01)
-                    {
-                        Some(u) => (u.0, u.3, u.4, u.5),
-                        None => (s.0, s.3.clone(), s.4.clone(), s.5.clone()),
-                    };
-                    crate::layout::fragment::types::Kid {
-                        h: s.0,
-                        mt: s.1,
-                        mb: s.2,
-                        monolith: solid_box(c),
-                        cuts,
-                        force_before: edge_break(c, false),
-                        force_after: edge_break(c, true),
-                        avoid_before: edge_avoid(c, false),
-                        avoid_after: edge_avoid(c, true),
-                        forced,
-                        solid,
-                        span: c.style.column_span == Some(true) && !c.inline,
-                        over,
-                        clone_dec: clone_dec(c),
-                        // Тот же предикат, что у `StackChild` ниже:
-                        // иначе план соседа разошёлся бы с укладкой.
-                        overflow_top: fixed.is_some()
-                            && rows.is_none()
-                            && !parallel_items_inside(c, 4),
-                        repeat: repeat_leads(c, fixed, rows),
-                        par: kid_par[pi],
-                    }
+    let clone_plan: Vec<Vec<(f32, f32)>> = if !col_vert
+        && kids.iter().any(|(c, _)| clone_dec(c).is_some())
+    {
+        let probe: Vec<crate::layout::fragment::types::Kid> = kids
+            .iter()
+            .enumerate()
+            .map(|(pi, (c, s))| {
+                let mut m = c.clone();
+                m.style.margin.top = None;
+                m.style.margin.bottom = None;
+                let (over, cuts, forced, solid) = match shape_full(
+                    &m,
+                    4,
+                    ShapeCx {
+                        unclamped: true,
+                        ..ShapeCx::COLUMNS
+                    },
+                )
+                .filter(|_| {
+                    fixed.is_some() && plain_block_tree(&m, 4) && visible_overflow(&m.style)
                 })
-                .collect();
-            crate::layout::multicol::column_stack::ColumnStack::frags_of(
-                &probe,
-                cols as usize,
-                fixed,
-                rows,
-                copies,
-            )
-        } else {
-            Vec::new()
-        };
+                .filter(|u| u.0 > s.0 + 0.01)
+                {
+                    Some(u) => (u.0, u.3, u.4, u.5),
+                    None => (s.0, s.3.clone(), s.4.clone(), s.5.clone()),
+                };
+                crate::layout::fragment::types::Kid {
+                    h: s.0,
+                    mt: s.1,
+                    mb: s.2,
+                    monolith: solid_box(c),
+                    cuts,
+                    force_before: edge_break(c, false),
+                    force_after: edge_break(c, true),
+                    avoid_before: edge_avoid(c, false),
+                    avoid_after: edge_avoid(c, true),
+                    forced,
+                    solid,
+                    span: c.style.column_span == Some(true) && !c.inline,
+                    over,
+                    clone_dec: clone_dec(c),
+                    // Тот же предикат, что у `StackChild` ниже:
+                    // иначе план соседа разошёлся бы с укладкой.
+                    overflow_top: fixed.is_some() && rows.is_none() && !parallel_items_inside(c, 4),
+                    repeat: repeat_leads(c, fixed, rows),
+                    par: kid_par[pi],
+                }
+            })
+            .collect();
+        crate::layout::multicol::column_stack::ColumnStack::frags_of(
+            &probe,
+            cols as usize,
+            fixed,
+            rows,
+            copies,
+        )
+    } else {
+        Vec::new()
+    };
     let rule = if e.style.column_rule_visible == Some(true) {
         Some((
             match e.style.column_rule_width {
@@ -245,23 +254,21 @@ pub(crate) fn multicol_column_stack(
     // делит его поровну, и высота внешней колонки известна до
     // укладки — `h / cols` (не выше потолка коробки; css-multicol-1
     // §7.1; `multicol-breaking-005`: 300 в трёх колонках по 100).
-    let balanced_frag: Option<f32> = (fixed.is_none()
-        && rows.is_none_or(|r| r.cap)
-        && cols > 1
-        && kids.len() == 1)
-        .then(|| {
-            let (c, s) = &kids[0];
-            (nested_rows_box(c)
-                && matches!(c.style.height, Some(Len::Px(_)))
-                && s.3.is_empty()
-                && s.1.abs() < 0.01)
-                .then(|| {
-                    let per = s.0 / cols as f32;
-                    rows.and_then(|r| r.h).map_or(per, |cap| per.min(cap))
-                })
-        })
-        .flatten()
-        .filter(|h| *h > 1.0);
+    let balanced_frag: Option<f32> =
+        (fixed.is_none() && rows.is_none_or(|r| r.cap) && cols > 1 && kids.len() == 1)
+            .then(|| {
+                let (c, s) = &kids[0];
+                (nested_rows_box(c)
+                    && matches!(c.style.height, Some(Len::Px(_)))
+                    && s.3.is_empty()
+                    && s.1.abs() < 0.01)
+                    .then(|| {
+                        let per = s.0 / cols as f32;
+                        rows.and_then(|r| r.h).map_or(per, |cap| per.min(cap))
+                    })
+            })
+            .flatten()
+            .filter(|h| *h > 1.0);
     let fixed_nest = fixed.or(balanced_frag);
     let nest_at: Vec<Option<f32>> = {
         let mut v = Vec::with_capacity(kids.len());
@@ -344,10 +351,8 @@ pub(crate) fn multicol_column_stack(
         // в `blocks()`.
         oof_spots[i].set(crate::layout::positioned::containing_block::Spot {
             fixed_axes: (
-                edge_set(oof.style.inset.left)
-                    || edge_set(oof.style.inset.right),
-                edge_set(oof.style.inset.top)
-                    || edge_set(oof.style.inset.bottom),
+                edge_set(oof.style.inset.left) || edge_set(oof.style.inset.right),
+                edge_set(oof.style.inset.top) || edge_set(oof.style.inset.bottom),
             ),
             rtl: merged.rtl == Some(true),
             vertical: merged.vertical == Some(true),
@@ -383,7 +388,11 @@ pub(crate) fn multicol_column_stack(
             positioned: false,
         };
         // Номер — среди ДЕТЕЙ ДО раскрытия строк flex (`split_flex_lines`).
-        let at = kid_starts.get(*at).copied().unwrap_or(children.len()).min(children.len());
+        let at = kid_starts
+            .get(*at)
+            .copied()
+            .unwrap_or(children.len())
+            .min(children.len());
         children.insert(at, probe);
     }
     // Стопка тянется по СТРОЧНОЙ оси: в вертикальном письме
@@ -393,7 +402,11 @@ pub(crate) fn multicol_column_stack(
     // блочной оси.
     let d = if col_vert {
         let d = d.flex();
-        if col_rl { d.flex_row_reverse() } else { d.flex_row() }
+        if col_rl {
+            d.flex_row_reverse()
+        } else {
+            d.flex_row()
+        }
     } else {
         d
     };
@@ -418,20 +431,21 @@ pub(crate) fn multicol_column_stack(
         // Линейки последней линии — до низа содержимого коробки
         // заданной высоты (Blink `PaintColumnRules`), без
         // спаннеров и рядов (`multicol-rule-nested-balancing-001`).
-        .with_rule_stretch(
-            match merged.height {
-                Some(Len::Px(h))
-                    if h > 0.0
-                        && !col_vert
-                        && nest_rows.is_none()
-                        && e.style.border_box != Some(true)
-                        && !e.children.iter().any(|n| matches!(n, Node::Element(c) if spanner_box(c))) =>
-                {
-                    Some(h)
-                }
-                _ => None,
-            },
-        ),
+        .with_rule_stretch(match merged.height {
+            Some(Len::Px(h))
+                if h > 0.0
+                    && !col_vert
+                    && nest_rows.is_none()
+                    && e.style.border_box != Some(true)
+                    && !e
+                        .children
+                        .iter()
+                        .any(|n| matches!(n, Node::Element(c) if spanner_box(c))) =>
+            {
+                Some(h)
+            }
+            _ => None,
+        }),
     );
     // Флоаты — прежним ходом, соседями стопки.
     for oof in &direct_oof {
@@ -476,7 +490,11 @@ pub(crate) fn multicol_column_stack(
         if let Some(ch) = cb_h
             && oof.style.position == Some(crate::style::computed::Position::Absolute)
         {
-            for l in [&mut oof.style.height, &mut oof.style.min_height, &mut oof.style.max_height] {
+            for l in [
+                &mut oof.style.height,
+                &mut oof.style.min_height,
+                &mut oof.style.max_height,
+            ] {
                 if let Some(Len::Pct(k)) = *l {
                     *l = Some(Len::Px(k * ch));
                 }
@@ -488,7 +506,9 @@ pub(crate) fn multicol_column_stack(
         ));
     }
     if let (Some(buf), Some(spec)) = (gap_items, gap_spec) {
-        d = d.child(crate::paint::gap_rules::painter::GapRulePainter::new(buf, spec).into_any_element());
+        d = d.child(
+            crate::paint::gap_rules::painter::GapRulePainter::new(buf, spec).into_any_element(),
+        );
     }
     return d.into_any_element();
 }
@@ -517,12 +537,13 @@ pub(crate) fn multicol_spanner_segments(
     // Отрисованная — первая `legend` в потоке.
     let mut kids = e.children.clone();
     if e.tag == "fieldset"
-        && let Some(i) = kids.iter().position(|n| {
-            matches!(n, Node::Element(c) if c.tag == "legend" && !out_of_flow(&c.style))
-        }) {
-            let legend = kids.remove(i);
-            d = d.children(blocks(&[legend], &merged, opts));
-        }
+        && let Some(i) = kids.iter().position(
+            |n| matches!(n, Node::Element(c) if c.tag == "legend" && !out_of_flow(&c.style)),
+        )
+    {
+        let legend = kids.remove(i);
+        d = d.children(blocks(&[legend], &merged, opts));
+    }
     for chunk in kids.split_inclusive(&is_span) {
         let (body, span) = match chunk.split_last() {
             Some((last, head)) if is_span(last) => (head, Some(last)),
@@ -612,14 +633,11 @@ pub(crate) fn multicol_spanner_segments(
                                 if !k.inline
                                     && shape_full(k, 4, ShapeCx::COLUMNS).is_some())
                     })
-                    && let Some(rest) = rest_h {
-                        sub.style.height = Some(Len::Px(rest));
-                    }
-                d = d.child(div().children(blocks(
-                    &[Node::Element(sub)],
-                    &merged,
-                    opts,
-                )));
+                    && let Some(rest) = rest_h
+                {
+                    sub.style.height = Some(Len::Px(rest));
+                }
+                d = d.child(div().children(blocks(&[Node::Element(sub)], &merged, opts)));
             }
         }
         if let Some(Node::Element(sp)) = span {
@@ -663,11 +681,7 @@ pub(crate) fn multicol_spanner_segments(
             } else {
                 shell
             };
-            d = d.child(shell.children(blocks(
-                &sp.children,
-                &inner,
-                opts,
-            )));
+            d = d.child(shell.children(blocks(&sp.children, &inner, opts)));
         }
     }
     // Нижняя сторожка: нижнее поле последнего спаннера остаётся

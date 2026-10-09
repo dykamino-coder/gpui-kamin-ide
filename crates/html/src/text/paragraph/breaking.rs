@@ -108,7 +108,12 @@ impl Paragraph {
     }
 
     /// `text-wrap: balance` — те же строки, но одной длины.
-    pub(crate) fn balanced(&self, lines: Vec<Line>, limit: Option<Pixels>, segs: &[Seg]) -> Vec<Line> {
+    pub(crate) fn balanced(
+        &self,
+        lines: Vec<Line>,
+        limit: Option<Pixels>,
+        segs: &[Seg],
+    ) -> Vec<Line> {
         let Some(limit) = limit else { return lines };
         if !self.wrap.balance || lines.len() < 2 {
             return lines;
@@ -337,7 +342,11 @@ impl Paragraph {
                 // Разрыв по мягкому переносу: на строке остаётся знак
                 // переноса, и он же входит в её ширину.
                 let hyphen = self.text[..cut].ends_with('\u{00ad}');
-                let extra = if hyphen { self.hyphen_width(cut) } else { px(0.) };
+                let extra = if hyphen {
+                    self.hyphen_width(cut)
+                } else {
+                    px(0.)
+                };
                 out.push(Line {
                     range: start..self.drop_collapsible_tail(start, cut),
                     width: self.span(segs, head, tail) - self.tail_spacing(tail) + extra,

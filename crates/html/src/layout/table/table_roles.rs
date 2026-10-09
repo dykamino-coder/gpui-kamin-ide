@@ -1,14 +1,16 @@
 //! Authored display overrides the default table-cell role of td and th.
 //! Inline runs become anonymous cells before their whitespace is discarded.
-use crate::style::computed::Display;
 use crate::dom::{Element, Node};
+use crate::style::computed::Display;
 
 /// CSS 2 section 17.2.1 removes only a whitespace-only anonymous inline
 /// box. Leading spaces next to inline content belong to that same box.
 pub(super) fn flush_inline(cells: &mut Vec<Node>, run: &mut Vec<Node>) {
     let inline = std::mem::take(run);
     if inline.iter().any(|node| !crate::render::is_blank(node)) {
-        cells.push(Node::Element(crate::layout::table::anon::anon_element("td", inline)));
+        cells.push(Node::Element(crate::layout::table::anon::anon_element(
+            "td", inline,
+        )));
     }
 }
 
@@ -62,7 +64,11 @@ mod tests {
         let Node::Element(cell) = &row.children[1] else {
             panic!("cell")
         };
-        let [Node::Text(before), Node::Element(content), Node::Text(after)] = &cell.children[..]
+        let [
+            Node::Text(before),
+            Node::Element(content),
+            Node::Text(after),
+        ] = &cell.children[..]
         else {
             panic!("anonymous inline contents")
         };
@@ -74,7 +80,8 @@ mod tests {
 
     #[test]
     fn block_td_is_content_of_an_anonymous_cell_and_retains_its_style() {
-        let mut block = crate::layout::table::anon::anon_element("td", vec![Node::Text("data".into())]);
+        let mut block =
+            crate::layout::table::anon::anon_element("td", vec![Node::Text("data".into())]);
         block.style.display = Some(Display::Block);
         block.node_id = 123;
         let row = crate::layout::table::anon::anon_element("tr", vec![Node::Element(block)]);

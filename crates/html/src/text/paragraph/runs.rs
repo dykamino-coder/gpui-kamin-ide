@@ -81,7 +81,11 @@ pub(super) fn visual_neighbours(
     vis: &[usize],
     range: &std::ops::Range<usize>,
 ) -> (Option<usize>, Option<usize>) {
-    let mut own = vis.iter().enumerate().filter(|(_, p)| range.contains(p)).map(|(i, _)| i);
+    let mut own = vis
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| range.contains(p))
+        .map(|(i, _)| i);
     let Some(first) = own.next() else {
         return (None, None);
     };
@@ -126,20 +130,29 @@ pub(super) fn slice_runs_banded(runs: &[TextRun], range: &std::ops::Range<usize>
     let band = |r: &TextRun| (r.background_color, r.background_border);
     let n = out.len();
     let cut_left = range.start > 0
-        && out
-            .first()
-            .is_some_and(|f| f.background_color.is_some() && band_at(range.start - 1) == Some(band(f)));
+        && out.first().is_some_and(|f| {
+            f.background_color.is_some() && band_at(range.start - 1) == Some(band(f))
+        });
     let cut_right = out
         .last()
         .is_some_and(|l| l.background_color.is_some() && band_at(range.end) == Some(band(l)));
     let mut cuts: Vec<(usize, bool)> = Vec::new();
     if cut_left {
         let own = band(&out[0]);
-        cuts.extend((0..n).take_while(|&i| band(&out[i]) == own).map(|i| (i, true)));
+        cuts.extend(
+            (0..n)
+                .take_while(|&i| band(&out[i]) == own)
+                .map(|i| (i, true)),
+        );
     }
     if cut_right {
         let own = band(&out[n - 1]);
-        cuts.extend((0..n).rev().take_while(|&i| band(&out[i]) == own).map(|i| (i, false)));
+        cuts.extend(
+            (0..n)
+                .rev()
+                .take_while(|&i| band(&out[i]) == own)
+                .map(|i| (i, false)),
+        );
     }
     for (i, left) in cuts {
         cut_band_sides(&mut out[i], left, !left);

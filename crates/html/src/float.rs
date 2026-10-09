@@ -587,7 +587,10 @@ fn measure_columns(
     // разрыва: его переносят к `lines − widows`, но не ближе `orphans` строк
     // от начала колонки.
     let (orphans, widows) = line_breaks;
-    let plain: Vec<usize> = (1..count).map(|i| i * per_col).take_while(|&k| k < lines).collect();
+    let plain: Vec<usize> = (1..count)
+        .map(|i| i * per_col)
+        .take_while(|&k| k < lines)
+        .collect();
     let mut ks: Vec<usize> = Vec::with_capacity(plain.len());
     let mut s = 0usize;
     // `column-fill: auto` с высотой: строки сверх `count` колонок не копятся в
@@ -595,7 +598,11 @@ fn measure_columns(
     // «additional column boxes are created in the inline direction»; Blink
     // заводит column box на каждый фрагментаинер; `multicol-height-001`: 24
     // строки по 8 — третья колонка за коробкой, и линейка перед ней).
-    let max_cols = if fill_height.is_some() { lines.max(count) } else { count };
+    let max_cols = if fill_height.is_some() {
+        lines.max(count)
+    } else {
+        count
+    };
     for _ in 1..max_cols {
         let mut e = s + per_col;
         if e >= lines {
@@ -620,7 +627,10 @@ fn measure_columns(
     if fill_height.is_none() && lines - s > per_col {
         ks = plain;
     }
-    let cuts: Vec<usize> = ks.iter().filter_map(|&k| boundaries.get(k - 1).copied()).collect();
+    let cuts: Vec<usize> = ks
+        .iter()
+        .filter_map(|&k| boundaries.get(k - 1).copied())
+        .collect();
     // Строк в первой колонке — по фактическому первому разрыву (после
     // поправки на `orphans`/`widows`), без разрывов — все строки блока.
     let first = ks.first().copied().unwrap_or(lines);

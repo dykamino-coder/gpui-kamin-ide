@@ -1,15 +1,17 @@
 //! Блочный поток: дети блока в элементы (blocks).
 
-use crate::style::cascade::inherit::inherit;
-use crate::render::*;
 use crate::dom::Node;
 use crate::interactive::sticky::sticky_probe;
 use crate::layout::block::containing::{AVAIL_W, AvailWGuard, CB_WIDTH, scopeguard_cb};
-use crate::layout::block::margins::{CELL_BFC, COLLAPSE_CB_HEIGHT_DEF, COLLAPSE_CB_WIDTH_PX, COLLAPSE_FONT_PX, collapse_margins};
+use crate::layout::block::margins::{
+    CELL_BFC, COLLAPSE_CB_HEIGHT_DEF, COLLAPSE_CB_WIDTH_PX, COLLAPSE_FONT_PX, collapse_margins,
+};
 use crate::layout::block::reorder::reorder;
 use crate::layout::block::struts::zero_len;
 use crate::layout::block::{available_width, margin_height};
-use crate::layout::float::band_flow_host::{BAND_CBH, BAND_CBW, BAND_FL, BAND_WM, BandCbhGuard, BandCbwGuard, BandFlGuard, BandWmGuard};
+use crate::layout::float::band_flow_host::{
+    BAND_CBH, BAND_CBW, BAND_FL, BAND_WM, BandCbhGuard, BandCbwGuard, BandFlGuard, BandWmGuard,
+};
 use crate::layout::float::initial_letter::initial_letter_float;
 use crate::layout::float::wrap::wrap_floats;
 use crate::layout::page::paged::PAGED;
@@ -17,15 +19,17 @@ use crate::layout::positioned::relative::hoist_inset_abs;
 use crate::layout::replaced::replaced_used_style;
 use crate::layout::table::anon::wrap_anon_tables;
 use crate::paint::stacking::by_layer;
+use crate::render::*;
+use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Align, Computed, Display, FlexDir};
 use crate::style::values::value::Len;
 use gpui::AnyElement;
+pub(super) mod canvas;
 pub(super) mod flow;
 pub(super) mod positioned;
-pub(super) mod canvas;
+pub(crate) use crate::render::blocks::canvas::*;
 use crate::render::blocks::flow::*;
 pub(crate) use crate::render::blocks::positioned::*;
-pub(crate) use crate::render::blocks::canvas::*;
 
 // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): разворачивать `text-emphasis` в поштучные
 // руби (по знаку-аннотации над каждой буквой базы, кроме пробелов и
@@ -156,7 +160,10 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
                 {
                     let auto = |l: Option<Len>| l == Some(Len::Auto);
                     let table = e.tag == "table" || e.style.display == Some(Display::Table);
-                    if matches!(e.style.width, None | Some(Len::Auto)) && !table && !replaced_tag(&e) {
+                    if matches!(e.style.width, None | Some(Len::Auto))
+                        && !table
+                        && !replaced_tag(&e)
+                    {
                         e.style.width = Some(Len::FitContent);
                     }
                     if !auto(e.style.margin.left) && !auto(e.style.margin.right) {
@@ -221,7 +228,8 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
             nodes,
             matches!(
                 inherited.position,
-                Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute)
+                    | Some(crate::style::computed::Position::Fixed)
             ),
         );
         margin_height::zero_float_blocks(&mut out, inherited);
@@ -315,13 +323,14 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
                         // (`percentage-heights-002`: синяя полоса по содержимому,
                         // красный фон контейнера под ней).
                         let edge = |l: Option<Len>| l.is_some_and(|v| v != Len::Auto);
-                        let abs_both_insets = matches!(
-                            inherited.position,
-                            Some(crate::style::computed::Position::Absolute)
-                                | Some(crate::style::computed::Position::Fixed)
-                        ) && matches!(inherited.height, None | Some(Len::Auto))
-                            && edge(inherited.inset.top)
-                            && edge(inherited.inset.bottom);
+                        let abs_both_insets =
+                            matches!(
+                                inherited.position,
+                                Some(crate::style::computed::Position::Absolute)
+                                    | Some(crate::style::computed::Position::Fixed)
+                            ) && matches!(inherited.height, None | Some(Len::Auto))
+                                && edge(inherited.inset.top)
+                                && edge(inherited.inset.bottom);
                         let definite = matches!(inherited.height, Some(Len::Px(_)))
                             || (matches!(inherited.height, Some(Len::Pct(_)))
                                 && inherited.cb_height_def)
@@ -400,7 +409,10 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
                     // (`replaced-element-011`, `grid-item-inline-contribution-*`,
                     // `replaced-alignment-with-aspect-ratio-001`).
                     if e.tag == "canvas"
-                        && matches!(inherited.display, Some(Display::Grid) | Some(Display::InlineGrid))
+                        && matches!(
+                            inherited.display,
+                            Some(Display::Grid) | Some(Display::InlineGrid)
+                        )
                         && !positioned_out
                         && (e.style.attr_sized.0 || e.style.attr_sized.1)
                     {
@@ -421,10 +433,10 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
                         // Вертикальную сетку не трогаем: оси там переставлены.
                         let both_attrs = e.style.attr_sized.0 && e.style.attr_sized.1;
                         let transfer = both_attrs && sx != sy && inherited.vertical != Some(true);
-                        let free_x = e.style.attr_sized.0
-                            && (sx || !e.style.attr_sized.1 || transfer);
-                        let free_y = e.style.attr_sized.1
-                            && (sy || !e.style.attr_sized.0 || transfer);
+                        let free_x =
+                            e.style.attr_sized.0 && (sx || !e.style.attr_sized.1 || transfer);
+                        let free_y =
+                            e.style.attr_sized.1 && (sy || !e.style.attr_sized.0 || transfer);
                         if free_x || free_y {
                             // Явный `stretch` по ОБЕИМ осям задаёт обе стороны
                             // растяжением — соотношение не действует
@@ -465,18 +477,26 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
                             }
                         }
                     }
-                    let ratio_ok = e.style.aspect_ratio.is_some_and(|r| r.is_finite() && r > 0.0);
+                    let ratio_ok = e
+                        .style
+                        .aspect_ratio
+                        .is_some_and(|r| r.is_finite() && r > 0.0);
                     e.style.flex_item_ratio = ratio_ok
                         && !positioned_out
-                        && matches!(inherited.display, Some(Display::Flex) | Some(Display::InlineFlex));
+                        && matches!(
+                            inherited.display,
+                            Some(Display::Flex) | Some(Display::InlineFlex)
+                        );
                     // `flex-basis` задаёт размер СОДЕРЖИМОГО (css-flexbox-1 §7.2.3:
                     // «flex-basis determines the size of the content box, unless
                     // otherwise specified such as by box-sizing»), а в раскладку
                     // уходит внешний размер — как `width`/`height` в `apply`, основа
                     // получает отбивку и рамку по ГЛАВНОЙ оси родителя
                     // (`flexbox-mbp-horiz-*`, `flexbox-justify-content-horiz-002`).
-                    if matches!(inherited.display, Some(Display::Flex) | Some(Display::InlineFlex))
-                        && inherited.vertical.is_none()
+                    if matches!(
+                        inherited.display,
+                        Some(Display::Flex) | Some(Display::InlineFlex)
+                    ) && inherited.vertical.is_none()
                         && e.style.border_box != Some(true)
                         && let Some(Len::Px(b)) = e.style.flex_basis
                     {
@@ -487,8 +507,7 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
                         let bd = e.style.borders();
                         let row = matches!(
                             inherited.flex_dir,
-                            None
-                                | Some(crate::style::computed::FlexDir::Row)
+                            None | Some(crate::style::computed::FlexDir::Row)
                                 | Some(crate::style::computed::FlexDir::RowReverse)
                         );
                         let extra = if row {
@@ -512,7 +531,10 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
                     // (`grid-aspect-ratio-001/007/010/038`). ★ ЗАМЕРЕНО: `start`
                     // и по строчной оси — `grid-aspect-ratio-018/038` в красное.
                     if ratio_ok
-                        && matches!(inherited.display, Some(Display::Grid) | Some(Display::InlineGrid))
+                        && matches!(
+                            inherited.display,
+                            Some(Display::Grid) | Some(Display::InlineGrid)
+                        )
                         && !positioned_out
                         && inherited.vertical.is_none()
                     {
@@ -580,7 +602,10 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     } else {
         collapsed
     };
-    let flex_ctx = matches!(inherited.display, Some(Display::Flex) | Some(Display::InlineFlex));
+    let flex_ctx = matches!(
+        inherited.display,
+        Some(Display::Flex) | Some(Display::InlineFlex)
+    );
     let letter_scope = first_letter_scope::Scope::new(&collapsed, inherited);
     // Буквица `initial-letter` расшивается в плавающий узел ДО обтекания —
     // дальше её ведёт `wrap_floats` наравне с авторскими флоатами. В гибком
@@ -610,8 +635,7 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     // логических осях, перевод в физику при сборке (`band_flow::VERT`).
     // Horizontal float sides are physical (CSS 2.1 §9.5.1); paragraphs
     // handle RTL within those bands. Vertical RTL still needs axis conversion.
-    let vert_host = inherited.vertical == Some(true)
-        && inherited.sideways != Some(true);
+    let vert_host = inherited.vertical == Some(true) && inherited.sideways != Some(true);
     // Вне хоста и там, где у раскладки свой счёт строк и разрывов: под
     // `line-clamp` (точка среза считает строки и флоаты за ней —
     // `line-clamp-with-floats-003/004`, `webkit-line-clamp-025`; отложенный
@@ -629,7 +653,8 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
         && (inherited.vertical != Some(true) || vert_host)
         && (inherited.vertical_rl != Some(true) || vert_host)
         && (inherited.rtl != Some(true) || inherited.vertical != Some(true));
-    let _fl_guard = BandFlGuard(BAND_FL.with(|f| f.replace(inherited.first_line.as_deref().cloned())));
+    let _fl_guard =
+        BandFlGuard(BAND_FL.with(|f| f.replace(inherited.first_line.as_deref().cloned())));
     let _cbh_guard = BandCbhGuard(BAND_CBH.with(|h| {
         h.replace(match inherited.height {
             Some(Len::Px(v)) => Some(v),
@@ -824,7 +849,8 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
                     // start — ВЕРХ (правило выше его не касается rtl).
                     if inherited.vertical == Some(true)
                         && inherited.rtl == Some(true)
-                        && !(inherited.sideways == Some(true) && inherited.vertical_rl != Some(true))
+                        && !(inherited.sideways == Some(true)
+                            && inherited.vertical_rl != Some(true))
                         && matches!(
                             e.style.height,
                             Some(Len::Px(_))
@@ -858,7 +884,10 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
                         Some(crate::style::computed::Position::Absolute)
                             | Some(crate::style::computed::Position::Fixed)
                     );
-                    let ratio_ok = e.style.aspect_ratio.is_some_and(|r| r.is_finite() && r > 0.0);
+                    let ratio_ok = e
+                        .style
+                        .aspect_ratio
+                        .is_some_and(|r| r.is_finite() && r > 0.0);
                     if ratio_ok
                         && !ordered_context
                         && matches!(e.style.width, None | Some(Len::Auto))

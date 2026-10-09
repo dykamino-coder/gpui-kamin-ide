@@ -107,7 +107,9 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         // в записи, `background::border_shape_mask_svg`). Кольцо при этом
         // ложится НАД буфером (`Grouped::over`, ниже).
         let (shape, kind, stroke) = match &bs.inner {
-            Some((inner, k)) if colour.a <= 0.0 || c.border_shape_clips() => (inner.as_str(), *k, 0.0),
+            Some((inner, k)) if colour.a <= 0.0 || c.border_shape_clips() => {
+                (inner.as_str(), *k, 0.0)
+            }
             Some(_) => (bs.outer.as_str(), bs.outer_box, 0.0),
             None if c.border_shape_clips() => (bs.outer.as_str(), bs.outer_box, -stroke),
             None => (bs.outer.as_str(), bs.outer_box, stroke),
@@ -131,7 +133,13 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         };
         let family = c.font_family.clone().unwrap_or_default();
         let (ch, ex) = crate::text::metrics::ch_ex_px(&family, px);
-        crate::style::computed::font_lengths_to_px(&s, px, crate::style::values::value::root_font_px(), ex, ch)
+        crate::style::computed::font_lengths_to_px(
+            &s,
+            px,
+            crate::style::values::value::root_font_px(),
+            ex,
+            ch,
+        )
     });
     let mask = c
         .mask_image
@@ -163,11 +171,12 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         })
         .or(c.clip_rect)
         .filter(|_| {
-        matches!(
-            c.position,
-            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
-        )
-    });
+            matches!(
+                c.position,
+                Some(crate::style::computed::Position::Absolute)
+                    | Some(crate::style::computed::Position::Fixed)
+            )
+        });
     // Голое слово коробки — срез краями этой коробки от border-box:
     // margin-box шире на поля, padding-box уже на рамку, content-box — на
     // рамку и отбивку (clip-path-marginBox-*, -paddingBox-*, -contentBox-*).
@@ -269,10 +278,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     {
         let (stroke, _) = c.border_shape_stroke();
         let outer_out = c.geometry_outsets(bs.outer_box);
-        let inner = bs
-            .inner
-            .clone()
-            .map(|(s, k)| (s, c.geometry_outsets(k)));
+        let inner = bs.inner.clone().map(|(s, k)| (s, c.geometry_outsets(k)));
         let shadows = c.resolved_shadows(false);
         wrapper.under = Some(Box::new(move |bw, bh, sl, st, aw, ah| {
             crate::paint::background::border_shape_shadow_svg(
@@ -301,10 +307,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         let (stroke, colour) = c.border_shape_stroke();
         let colour = crate::paint::background::border_paint(c, colour);
         let outer_out = c.geometry_outsets(bs.outer_box);
-        let inner = bs
-            .inner
-            .clone()
-            .map(|(s, k)| (s, c.geometry_outsets(k)));
+        let inner = bs.inner.clone().map(|(s, k)| (s, c.geometry_outsets(k)));
         if (inner.is_some() || stroke > 0.0) && colour.a > 0.0 {
             wrapper.over.push(Box::new(move |bw, bh, sl, st, aw, ah| {
                 crate::paint::background::border_shape_ring_svg(

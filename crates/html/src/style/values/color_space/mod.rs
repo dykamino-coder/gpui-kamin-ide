@@ -456,8 +456,14 @@ fn color_mix(body: &str) -> Option<(f32, f32, f32, f32)> {
     let method = head.strip_prefix("in ").unwrap_or("");
     let space = match method.split_whitespace().next() {
         Some(
-            "srgb-linear" | "xyz" | "xyz-d50" | "xyz-d65" | "display-p3-linear"
-            | "rec2020-linear" | "a98-rgb-linear" | "prophoto-rgb-linear",
+            "srgb-linear"
+            | "xyz"
+            | "xyz-d50"
+            | "xyz-d65"
+            | "display-p3-linear"
+            | "rec2020-linear"
+            | "a98-rgb-linear"
+            | "prophoto-rgb-linear",
         ) => S::Linear,
         Some("oklab") => S::Oklab,
         Some("oklch") => S::Oklch,
@@ -511,7 +517,11 @@ fn color_mix(body: &str) -> Option<(f32, f32, f32, f32)> {
     // сводится к доле `w2·a2 / alpha` — тот же приём, что у `colour_at`
     // (background.rs). У непрозрачной пары доля остаётся `w2`, и `in srgb`
     // даёт прежнее `first·w1 + second·w2`.
-    let k = if alpha > 0.0 { w2 * second.3 / alpha } else { w2 };
+    let k = if alpha > 0.0 {
+        w2 * second.3 / alpha
+    } else {
+        w2
+    };
     let colour = |c: (f32, f32, f32, f32)| crate::style::values::value::Color {
         r: c.0,
         g: c.1,
@@ -775,7 +785,11 @@ fn srgb_to_lab(c: crate::style::values::value::Color) -> (f32, f32, f32) {
     let xyz = mul(D65_TO_D50, xyz65);
     let f = |v: f32, w: f32| {
         let r = v / w;
-        if r > E { r.cbrt() } else { (K * r + 16.0) / 116.0 }
+        if r > E {
+            r.cbrt()
+        } else {
+            (K * r + 16.0) / 116.0
+        }
     };
     let (fx, fy, fz) = (f(xyz[0], D50[0]), f(xyz[1], D50[1]), f(xyz[2], D50[2]));
     (116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz))
@@ -867,7 +881,11 @@ pub(crate) fn apply_icc(
         let xyz50 = mul(m, lin);
         let xyz = mul(D50_TO_D65, xyz50);
         let srgb = mul(XYZ_TO_LINEAR_SRGB, xyz);
-        let (r, g, b) = (srgb_gamma(srgb[0]), srgb_gamma(srgb[1]), srgb_gamma(srgb[2]));
+        let (r, g, b) = (
+            srgb_gamma(srgb[0]),
+            srgb_gamma(srgb[1]),
+            srgb_gamma(srgb[2]),
+        );
         // Погрешность пути профиль → D50 → D65 → sRGB (округление колорантов
         // в профиле, s15Fixed16) выводит чистые цвета чуть за край охвата:
         // у профиля «sRGB IEC61966-2.1» синий 0000ff выходил (−0.01, 0.003,

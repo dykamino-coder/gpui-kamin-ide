@@ -41,7 +41,11 @@ fn layer_enter_path(name: &str) -> (String, Vec<u32>) {
         name.split('.').map(|s| s.trim().to_string()).collect()
     };
     for seg in segs {
-        let child = if full.is_empty() { seg } else { format!("{full}.{seg}") };
+        let child = if full.is_empty() {
+            seg
+        } else {
+            format!("{full}.{seg}")
+        };
         let known = LAYERS.with(|l| l.borrow().get(&child).cloned());
         path = match known {
             Some(p) => p,
@@ -111,14 +115,20 @@ fn declared_prefixes(css: &str) -> std::collections::HashSet<String> {
     let mut rest = cleaned.as_str();
     loop {
         rest = stylesheet_tokens::start(rest);
-        let Some((piece, tail)) = next_piece(rest) else { break };
+        let Some((piece, tail)) = next_piece(rest) else {
+            break;
+        };
         rest = tail;
-        let Piece::Statement { head } = piece else { break };
+        let Piece::Statement { head } = piece else {
+            break;
+        };
         let low = head.trim().to_ascii_lowercase();
         if low.starts_with("@charset") || low.starts_with("@import") || low.starts_with("@layer") {
             continue;
         }
-        let Some(r) = low.strip_prefix("@namespace") else { break };
+        let Some(r) = low.strip_prefix("@namespace") else {
+            break;
+        };
         let first = r.split_whitespace().next().unwrap_or("");
         if !first.is_empty()
             && !first.starts_with('"')
@@ -176,7 +186,9 @@ fn sheet_rules(css: &str, media: Media, top: bool) -> Vec<Rule> {
         if top {
             rest = stylesheet_tokens::start(rest);
         }
-        let Some((piece, tail)) = next_piece(rest) else { break };
+        let Some((piece, tail)) = next_piece(rest) else {
+            break;
+        };
         rest = tail;
         // At-правило-ПРЕДЛОЖЕНИЕ блока не имеет и кончается точкой с запятой:
         // `@import`, `@charset`, `@namespace`, `@layer a, b;`. Ни одно из них
@@ -262,9 +274,12 @@ fn sheet_rules(css: &str, media: Media, top: bool) -> Vec<Rule> {
                 // ещё и `initial-value`. Имя — с исходным регистром.
                 let ident = head["@property".len()..].trim();
                 let decls = parse_decls(body);
-                let syntax = decls
-                    .get("syntax")
-                    .map(|s| s.trim().trim_matches(|c| c == '"' || c == '\'').trim().to_string());
+                let syntax = decls.get("syntax").map(|s| {
+                    s.trim()
+                        .trim_matches(|c| c == '"' || c == '\'')
+                        .trim()
+                        .to_string()
+                });
                 let inherits = decls.get("inherits").map(|s| s.trim().to_ascii_lowercase());
                 let initial = decls.get("initial-value").map(|s| s.trim().to_string());
                 if ident.starts_with("--")
@@ -297,7 +312,10 @@ fn sheet_rules(css: &str, media: Media, top: bool) -> Vec<Rule> {
                     .filter(|(k, _)| k.as_str() != ORDER_KEY)
                     .map(|(k, v)| (k.clone(), v.split(DECL_SEP).map(str::to_string).collect()))
                     .collect();
-                crate::style::generated::counter_style_rules::register(&head["@counter-style".len()..], &descs);
+                crate::style::generated::counter_style_rules::register(
+                    &head["@counter-style".len()..],
+                    &descs,
+                );
                 false
             } else if name.starts_with("@position-try") {
                 // §fallback-rule: тело — обычные объявления (только вставки,
@@ -342,7 +360,11 @@ fn sheet_rules(css: &str, media: Media, top: bool) -> Vec<Rule> {
                 let entered = layer_enter_path(head[6..].trim());
                 LAYER_NOW.with(|l| std::mem::replace(&mut *l.borrow_mut(), entered))
             });
-            let inner_rules = if inner { parse_stylesheet_media(body, media) } else { vec![] };
+            let inner_rules = if inner {
+                parse_stylesheet_media(body, media)
+            } else {
+                vec![]
+            };
             if let Some(saved) = saved_layer {
                 LAYER_NOW.with(|l| *l.borrow_mut() = saved);
             }

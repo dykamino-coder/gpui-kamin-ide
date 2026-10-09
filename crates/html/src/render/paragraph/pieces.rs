@@ -46,16 +46,18 @@ pub(crate) fn paragraph_pieces_routed(
     // level-context-007..012` (rtl, абсолют `display: inline`, текста в абзаце
     // НЕТ, все шесть 0.00) — гейт оставляет её на прежнем пути.
     let flow_text = has_flow_text(nodes);
-    let atom = |e: &Element| -> Option<inline::Piece> {
-        atom_piece(e, inherited, opts, flow_text)
-    };
+    let atom = |e: &Element| -> Option<inline::Piece> { atom_piece(e, inherited, opts, flow_text) };
     // Каждому атому — признак, можно ли поставить его В СТРОКУ абзаца
     // (`atom_line_align`): порядок записей совпадает с порядком `Piece::Atom`.
     // Руби несёт ещё и узлы своих аннотаций: по ним строка растёт
     // (`lines::ruby_extent`). Чужие узлы (руби вне строки внутри атома) атому
     // не достаются.
-    let mut atom_aligns: Vec<Option<(crate::text::paragraph::AtomAlign, crate::text::paragraph::RubyExtents)>> =
-        Vec::new();
+    let mut atom_aligns: Vec<
+        Option<(
+            crate::text::paragraph::AtomAlign,
+            crate::text::paragraph::RubyExtents,
+        )>,
+    > = Vec::new();
     let mut atom_noted = |e: &Element| -> Option<inline::Piece> {
         let (piece, extents) = crate::text::paragraph::collect_ruby_extents(|| atom(e));
         if matches!(piece, Some(inline::Piece::Atom(_))) {
@@ -131,9 +133,9 @@ pub(crate) fn paragraph_pieces_routed(
     // isolate }`) шли слева направо (`anchor-position-005`).
     let own_bidi = inherited.bidi_override == Some(true)
         || (inherited.bidi_isolate == Some(true)
-            && pieces.iter().any(|p| {
-                matches!(p, inline::Piece::Text { text, .. } if !text.trim().is_empty())
-            }));
+            && pieces
+                .iter()
+                .any(|p| matches!(p, inline::Piece::Text { text, .. } if !text.trim().is_empty())));
     let marks = if own_bidi {
         inline::bidi_marks(inherited, inherited)
     } else {
@@ -270,9 +272,10 @@ pub(crate) fn paragraph_pieces_routed(
         for p in pieces {
             match p {
                 inline::Piece::Atom(el) => {
-                    let (align, extents) = aligns
-                        .next()
-                        .unwrap_or((crate::text::paragraph::AtomAlign::Shift(0.0), crate::text::paragraph::RubyExtents::default()));
+                    let (align, extents) = aligns.next().unwrap_or((
+                        crate::text::paragraph::AtomAlign::Shift(0.0),
+                        crate::text::paragraph::RubyExtents::default(),
+                    ));
                     line_atoms.push((at, el, align, extents));
                     out.push(inline::Piece::Text {
                         text: inline::SPACER.to_string(),
@@ -325,8 +328,11 @@ pub(crate) fn paragraph_pieces_routed(
         let opts = &opts;
         // Selection controls handlers, while native text retains its layout and paint.
         let wrap_rules = crate::text::paragraph::rules(inherited);
-        let native = wrap_rules.is_some() && native_request.is_some_and(|request| request.accepts(&pieces, !line_atoms.is_empty()));
-        let selectable = inherited.no_select != Some(true) && inherited.pointer_events_none != Some(true);
+        let native = wrap_rules.is_some()
+            && native_request
+                .is_some_and(|request| request.accepts(&pieces, !line_atoms.is_empty()));
+        let selectable =
+            inherited.no_select != Some(true) && inherited.pointer_events_none != Some(true);
         if !native && !selectable {
             return gpui::StyledText::new(SharedString::from(text))
                 .with_runs(runs)
@@ -334,7 +340,11 @@ pub(crate) fn paragraph_pieces_routed(
         }
         // Native construction remains available without installing selection handlers.
         if let Some(wrap) = wrap_rules {
-            let inherited = if native { native_request.unwrap().style } else { inherited };
+            let inherited = if native {
+                native_request.unwrap().style
+            } else {
+                inherited
+            };
             // Кегль абзаца — самый крупный кусок в нём: строка растёт под него,
             // и от него же считается высота строки в долях.
             //
@@ -387,16 +397,26 @@ pub(crate) fn paragraph_pieces_routed(
             // Preserve wrapping, direction and the sideways alphabetic baseline.
             .opaque_background(inherited)
             .reversed_lines(inherited.lines_reversed == Some(true))
-            .vertical(inherited.para_vertical.is_some(), inherited.para_vertical == Some(true))
+            .vertical(
+                inherited.para_vertical.is_some(),
+                inherited.para_vertical == Some(true),
+            )
             .ortho_limit(inherited.ortho_limit.map(px))
-            .vertical_central_baseline(inherited.sideways != Some(true) && inherited.text_sideways != Some(true))
+            .vertical_central_baseline(
+                inherited.sideways != Some(true) && inherited.text_sideways != Some(true),
+            )
             .rotated_central(
                 inherited.rotated_line == Some(true)
                     && inherited.sideways != Some(true)
                     && inherited.text_sideways != Some(true),
             )
-            .vertical_counter_clockwise(inherited.para_vertical == Some(false) && inherited.sideways == Some(true))
-            .vertical_inline_constraint(inherited.orthogonal_inline, native_vertical::keyword(inherited))
+            .vertical_counter_clockwise(
+                inherited.para_vertical == Some(false) && inherited.sideways == Some(true),
+            )
+            .vertical_inline_constraint(
+                inherited.orthogonal_inline,
+                native_vertical::keyword(inherited),
+            )
             .plaintext(
                 inherited
                     .bidi_plaintext
@@ -409,7 +429,8 @@ pub(crate) fn paragraph_pieces_routed(
                     .filter(|a| {
                         matches!(
                             a,
-                            crate::style::computed::TextAlign::Start | crate::style::computed::TextAlign::End
+                            crate::style::computed::TextAlign::Start
+                                | crate::style::computed::TextAlign::End
                         )
                     }),
             )
@@ -434,7 +455,9 @@ pub(crate) fn paragraph_pieces_routed(
                     &pieces,
                     inherited,
                     biggest,
-                    crate::text::metrics::normal_line(&inherited.font_family.clone().unwrap_or_default()),
+                    crate::text::metrics::normal_line(
+                        &inherited.font_family.clone().unwrap_or_default(),
+                    ),
                 );
                 v.retain(|(r, _)| !in_edge(&edges, r));
                 v
@@ -449,7 +472,9 @@ pub(crate) fn paragraph_pieces_routed(
                     inline::emphasis_spans(
                         &pieces,
                         biggest,
-                        crate::text::metrics::normal_line(&inherited.font_family.clone().unwrap_or_default()),
+                        crate::text::metrics::normal_line(
+                            &inherited.font_family.clone().unwrap_or_default(),
+                        ),
                     )
                 },
             )
@@ -478,7 +503,9 @@ pub(crate) fn paragraph_pieces_routed(
                     // line too: it aligns as `start` (css-text-3 §7.3,
                     // `text-justify-none-001` with `text-align-last: justify`).
                     .map(|a| match a {
-                        crate::text::paragraph::Align::Justify if inherited.no_justify == Some(true) => {
+                        crate::text::paragraph::Align::Justify
+                            if inherited.no_justify == Some(true) =>
+                        {
                             if inherited.rtl == Some(true) {
                                 crate::text::paragraph::Align::Right
                             } else {
@@ -619,7 +646,9 @@ pub(crate) fn paragraph_pieces_routed(
             Some(Len::Px(v)) => v,
             // Ряд из слов долю и прежде не применял (`Pct` идёт нулём); у
             // смеси берутся хотя бы точки — как у чистых точек.
-            Some(Len::Calc(i)) => crate::style::values::value::calc_get(i).pct_px().map_or(0.0, |(_, px)| px),
+            Some(Len::Calc(i)) => crate::style::values::value::calc_get(i)
+                .pct_px()
+                .map_or(0.0, |(_, px)| px),
             _ => 0.0,
         },
         inherited.nowrap == Some(true),

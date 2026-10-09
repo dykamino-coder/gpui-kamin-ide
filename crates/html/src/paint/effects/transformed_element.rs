@@ -2,7 +2,10 @@
 // owner: A
 
 use crate::paint::effects::transform_geometry::quarter_turn;
-use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window, px};
+use gpui::{
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
+    LayoutId, Pixels, Window, px,
+};
 
 pub struct Transformed {
     pub(crate) child: Option<AnyElement>,
@@ -102,7 +105,10 @@ fn flatten_plane(f: &[[f32; 4]; 4], center: (f32, f32)) -> Option<gpui::Transfor
     let rs = [[j(0, 0, x), j(0, 1, x)], [j(1, 0, y), j(1, 1, y)]];
     Some(gpui::TransformationMatrix {
         rotation_scale: rs,
-        translation: [x - rs[0][0] * cx - rs[0][1] * cy, y - rs[1][0] * cx - rs[1][1] * cy],
+        translation: [
+            x - rs[0][0] * cx - rs[0][1] * cy,
+            y - rs[1][0] * cx - rs[1][1] * cy,
+        ],
     })
 }
 
@@ -229,9 +235,7 @@ impl Element for Transformed {
         }
         if flat && self.perspective.is_none() {
             let size = window.layout_size_unrounded(*layout_id);
-            if let Some((sx, sy)) =
-                self.pure_shift(f32::from(size.width), f32::from(size.height))
-            {
+            if let Some((sx, sy)) = self.pure_shift(f32::from(size.width), f32::from(size.height)) {
                 let origin = window.layout_origin_unrounded(*layout_id);
                 window.set_layout_placed_origin(*layout_id, origin + gpui::point(px(sx), px(sy)));
                 self.placed = true;
@@ -390,9 +394,8 @@ impl Element for Transformed {
                     translation: [shift(self.tr[0]), shift(self.tr[1])],
                 })
                 .translate(back);
-            let fill_matrix = quarter.map(|_| {
-                self.exact_fill_matrix(matrix, bounds.origin, raw_origin, scale_factor)
-            });
+            let fill_matrix = quarter
+                .map(|_| self.exact_fill_matrix(matrix, bounds.origin, raw_origin, scale_factor));
             if quarter.is_some() {
                 // Поворот на кратное четверти (и отражение) оставляет коробку
                 // осевой: её края обязаны округляться к точке устройства так
@@ -527,11 +530,17 @@ impl Element for Transformed {
         };
         let root_3d = self.frame_3d.is_some() && under.is_none();
         let in_context = root_3d || under.is_some();
-        let paint_child = |child: &mut AnyElement, m: Option<gpui::TransformationMatrix>, masked: bool, window: &mut Window, cx: &mut App| {
+        let paint_child = |child: &mut AnyElement,
+                           m: Option<gpui::TransformationMatrix>,
+                           masked: bool,
+                           window: &mut Window,
+                           cx: &mut App| {
             if in_context {
                 let mut body = |window: &mut Window| {
                     window.paint_depth_plane(depth, |window| match m {
-                        Some(m) if masked => window.with_transformation_masked(m, |window| child.paint(window, cx)),
+                        Some(m) if masked => {
+                            window.with_transformation_masked(m, |window| child.paint(window, cx))
+                        }
                         Some(m) => window.with_transformation(m, |window| child.paint(window, cx)),
                         None => child.paint(window, cx),
                     })
@@ -543,7 +552,9 @@ impl Element for Transformed {
                 }
             } else {
                 match m {
-                    Some(m) if masked => window.with_transformation_masked(m, |window| child.paint(window, cx)),
+                    Some(m) if masked => {
+                        window.with_transformation_masked(m, |window| child.paint(window, cx))
+                    }
                     Some(m) => window.with_transformation(m, |window| child.paint(window, cx)),
                     None => child.paint(window, cx),
                 }
@@ -557,7 +568,13 @@ impl Element for Transformed {
         let Some(flat) = flat else {
             if self.frame_3d.is_some() {
                 let child = self.child.as_mut().unwrap();
-                paint_child(child, Some(gpui::TransformationMatrix::unit()), false, window, cx);
+                paint_child(
+                    child,
+                    Some(gpui::TransformationMatrix::unit()),
+                    false,
+                    window,
+                    cx,
+                );
             }
             return;
         };

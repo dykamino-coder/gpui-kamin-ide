@@ -1,7 +1,10 @@
 //! Фильтры.
 // owner: A
 
-use gpui::{App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window, px};
+use gpui::{
+    App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
+    Pixels, Window, px,
+};
 
 /// Слой `filter: url(#id)`: SVG с прямоугольником цвета фона под этим
 /// фильтром, растрированный resvg по размеру коробки. Холст вдвое больше
@@ -162,16 +165,25 @@ impl Element for FilterLayer {
         );
         let (pw, ph) = ((cw * sf).round(), (ch * sf).round());
         let key = (markup.clone(), pw as u32, ph as u32);
-        let image = FILTER_RASTERS.with(|m| m.borrow().get(&key).cloned()).or_else(|| {
-            let img = crate::svg::rasterize(&markup, pw, ph)?;
-            FILTER_RASTERS.with(|m| m.borrow_mut().insert(key.clone(), img.clone()));
-            Some(img)
-        });
+        let image = FILTER_RASTERS
+            .with(|m| m.borrow().get(&key).cloned())
+            .or_else(|| {
+                let img = crate::svg::rasterize(&markup, pw, ph)?;
+                FILTER_RASTERS.with(|m| m.borrow_mut().insert(key.clone(), img.clone()));
+                Some(img)
+            });
         let Some(image) = image else { return };
         let area = Bounds {
             origin: gpui::point(bounds.origin.x + px(x0), bounds.origin.y + px(y0)),
             size: gpui::size(px(cw), px(ch)),
         };
-        let _ = window.paint_image_with_sampling(area, gpui::Corners::default(), image, 0, false, gpui::ImageSampling::Linear);
+        let _ = window.paint_image_with_sampling(
+            area,
+            gpui::Corners::default(),
+            image,
+            0,
+            false,
+            gpui::ImageSampling::Linear,
+        );
     }
 }

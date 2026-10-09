@@ -10,12 +10,12 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, Styled, div, px};
 
-mod outline;
-pub(crate) mod text_shadows;
-mod shadows;
-mod border_shape;
 mod backdrop;
+mod border_shape;
 mod gradient_stripes;
+mod outline;
+mod shadows;
+pub(crate) mod text_shadows;
 
 /// Слои, которые в GPUI выражаются только отдельным элементом.
 ///
@@ -198,15 +198,14 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
         if !mixed && widths.iter().any(|w| *w > 0.0) {
             // Без цвета рамка красится цветом текста, без него — чёрным
             // (начальное `border-color: currentColor`).
-            let colour = uniform
-                .or(c.border_color)
-                .or(c.color)
-                .unwrap_or(crate::style::values::value::Color {
+            let colour = uniform.or(c.border_color).or(c.color).unwrap_or(
+                crate::style::values::value::Color {
                     r: 0.0,
                     g: 0.0,
                     b: 0.0,
                     a: 1.0,
-                });
+                },
+            );
             let colour = crate::paint::background::border_paint(c, colour);
             let spec = crate::paint::background::rrect_spec(c, Some(widths));
             let [t, r, b, l] = widths;
@@ -224,7 +223,14 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
                         if let Some(img) =
                             crate::paint::background::rasterize_ring(args, pw, ph, sf, colour)
                         {
-                            let _ = window.paint_image_with_sampling(bounds, gpui::Corners::default(), img, 0, false, gpui::ImageSampling::Linear);
+                            let _ = window.paint_image_with_sampling(
+                                bounds,
+                                gpui::Corners::default(),
+                                img,
+                                0,
+                                false,
+                                gpui::ImageSampling::Linear,
+                            );
                         }
                     },
                 )
@@ -285,12 +291,15 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
         // Сторона без своего цвета красится общим `border-color`, а без него —
         // цветом текста (`currentColor`): квад при полосах цвета не получает
         // (`apply::apply_paint`, `strips`), и такая сторона иначе пропала бы.
-        let fallback = c.border_color.or(c.color).unwrap_or(crate::style::values::value::Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        });
+        let fallback = c
+            .border_color
+            .or(c.color)
+            .unwrap_or(crate::style::values::value::Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            });
         for (i, colour) in c.border_colors.iter().enumerate() {
             let colour = colour.as_ref().unwrap_or(&fallback);
             let w = [t, r, b, l][i];

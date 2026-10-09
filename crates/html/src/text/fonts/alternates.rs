@@ -55,7 +55,8 @@ pub(crate) fn register(families: &str, body: &str, layer: Vec<u32>) {
     let families: Vec<_> = families.split(',').map(str::trim).collect();
     if families.iter().any(|f| {
         !crate::style::computed::family_name_ok(f)
-            || (!f.starts_with(['\'', '"']) && crate::style::computed::is_generic(&f.to_ascii_lowercase()))
+            || (!f.starts_with(['\'', '"'])
+                && crate::style::computed::is_generic(&f.to_ascii_lowercase()))
     }) {
         return;
     }

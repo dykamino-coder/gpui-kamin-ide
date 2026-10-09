@@ -21,7 +21,11 @@ impl ColumnStack {
     }
 
     /// `first_avoid_violation`, пропуская границы, для которых `skip` истинно.
-    pub(crate) fn avoid_violation_where(kids: &[Kid], plan: &[Frag], skip: &dyn Fn(usize) -> bool) -> Option<usize> {
+    pub(crate) fn avoid_violation_where(
+        kids: &[Kid],
+        plan: &[Frag],
+        skip: &dyn Fn(usize) -> bool,
+    ) -> Option<usize> {
         for i in 1..kids.len() {
             if !(kids[i].avoid_before || kids[i - 1].avoid_after) || skip(i) {
                 continue;
@@ -80,8 +84,17 @@ impl ColumnStack {
     /// `fragmentation_utils.cc:266-270`), это взводит `has_violating_break`
     /// (`column_layout_algorithm.cc:994`), и колонки растут на
     /// `minimal_space_shortage` (`:1168-1170`). `None` — растить не на что.
-    pub(crate) fn avoid_shortage(kids: &[Kid], plan: &[Frag], bad: usize, target: f32) -> Option<f32> {
-        let prev_col = plan.iter().filter(|f| f.kid == bad - 1).map(|f| f.col).max()?;
+    pub(crate) fn avoid_shortage(
+        kids: &[Kid],
+        plan: &[Frag],
+        bad: usize,
+        target: f32,
+    ) -> Option<f32> {
+        let prev_col = plan
+            .iter()
+            .filter(|f| f.kid == bad - 1)
+            .map(|f| f.col)
+            .max()?;
         let end = plan
             .iter()
             .filter(|f| f.col == prev_col)
@@ -114,7 +127,12 @@ impl ColumnStack {
             .count();
         let inside: usize = kids
             .iter()
-            .map(|k| k.forced.iter().filter(|&&f| f > 0.01 && f < k.h - 0.01).count())
+            .map(|k| {
+                k.forced
+                    .iter()
+                    .filter(|&&f| f > 0.01 && f < k.h - 0.01)
+                    .count()
+            })
             .sum();
         between + inside
     }
@@ -139,20 +157,21 @@ impl ColumnStack {
         // следующую колонку уводил бы и соседние строки (параллельные потоки),
         // `multi-line-column-flex-fragmentation-028`.
         let lo = if kids[bad].par.group != 0 && !kids[bad].par.group_start {
-            (0..=bad).rev().find(|&i| kids[i].par.line_start).map_or(1, |i| i + 1)
+            (0..=bad)
+                .rev()
+                .find(|&i| kids[i].par.line_start)
+                .map_or(1, |i| i + 1)
         } else {
             1
         };
-        (lo.max(1)..bad)
-            .rev()
-            .find(|&j| {
-                !kids[j].avoid_before
-                    && !kids[j - 1].avoid_after
-                    && !(kids[j].par.group != 0 && kids[j].par.line_start && !kids[j].par.group_start)
-                    && !((kids[bad].par.group == 0 || kids[bad].par.group_start)
-                        && kids[j].par.group != 0
-                        && !kids[j].par.group_start)
-            })
+        (lo.max(1)..bad).rev().find(|&j| {
+            !kids[j].avoid_before
+                && !kids[j - 1].avoid_after
+                && !(kids[j].par.group != 0 && kids[j].par.line_start && !kids[j].par.group_start)
+                && !((kids[bad].par.group == 0 || kids[bad].par.group_start)
+                    && kids[j].par.group != 0
+                    && !kids[j].par.group_start)
+        })
     }
 
     /// `fill_at` с соблюдением правила 1 css-break-4 §4.3: пока план рвёт
@@ -234,7 +253,11 @@ impl ColumnStack {
                     .iter()
                     .rev()
                     .map(|&(need, _)| need)
-                    .filter(|&n| n > 0.01 && n < pk.h - 0.01 && !pk.forced.iter().any(|&f| (f - n).abs() < 0.01))
+                    .filter(|&n| {
+                        n > 0.01
+                            && n < pk.h - 0.01
+                            && !pk.forced.iter().any(|&f| (f - n).abs() < 0.01)
+                    })
                     .take(4)
                     .collect();
                 for at in cands {

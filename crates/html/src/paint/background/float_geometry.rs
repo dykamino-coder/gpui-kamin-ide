@@ -2,7 +2,11 @@
 
 use super::ShapeBox;
 
-pub fn rounded_float(raw: &str, b: &super::ShapeBox, side: i32) -> Option<crate::layout::float::rounded_box::RoundedBox> {
+pub fn rounded_float(
+    raw: &str,
+    b: &super::ShapeBox,
+    side: i32,
+) -> Option<crate::layout::float::rounded_box::RoundedBox> {
     let (rect, radii) = rrect_of(raw, b)?;
     Some(crate::layout::float::rounded_box::RoundedBox::new(
         rect,

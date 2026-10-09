@@ -122,8 +122,13 @@ impl ColumnStack {
                 mx = mx * n + gap_extra;
                 (mn.max(span_min), mx.max(span_max))
             });
-        let mut baselines = (!axis.is_vertical())
-            .then(|| crate::layout::multicol::column_baselines::Measurements::new(&mut self.children, window, cx));
+        let mut baselines = (!axis.is_vertical()).then(|| {
+            crate::layout::multicol::column_baselines::Measurements::new(
+                &mut self.children,
+                window,
+                cx,
+            )
+        });
         let id = window.request_measured_layout_with_baselines(
             gpui::Style::default(),
             move |known, available, window, cx| {

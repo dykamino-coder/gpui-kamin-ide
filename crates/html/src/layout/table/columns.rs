@@ -250,7 +250,10 @@ pub(super) fn push_col_bands(
             if band_style.bg_image.is_none() {
                 band_style.bg_image = band_style.gradient_raw.clone();
             }
-            cells.push(crate::layout::table::paint::CellsClipped::new(rects, band_style).into_any_element());
+            cells.push(
+                crate::layout::table::paint::CellsClipped::new(rects, band_style)
+                    .into_any_element(),
+            );
         }
     }
 }

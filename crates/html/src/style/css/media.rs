@@ -29,7 +29,11 @@ impl Default for Media {
         // Лист WPT по умолчанию — 5in x 3in = 480x288, и `@page { size }`
         // запрос не меняет (csswg#5437; `media-queries-001-print`: запрос
         // 4in..5in x 2in..3in при `@page { size: 10in }` обязан сработать).
-        let (width, height) = if print { (480.0, 288.0) } else { (1280.0, 800.0) };
+        let (width, height) = if print {
+            (480.0, 288.0)
+        } else {
+            (1280.0, 800.0)
+        };
         Media {
             width,
             height,
@@ -154,8 +158,12 @@ fn mq_scalar(raw: &str) -> Option<f32> {
         // Единицы шрифта в медиа-запросе берутся от НАЧАЛЬНОГО шрифта, а не
         // от корневого элемента (mediaqueries-5 §1.3): `:root{font-size:
         // 30000px}` на них не влияет (`mq-calc-003`, `mq-calc-004`).
-        Some(crate::style::values::value::Len::Ex(k)) => Some(k * crate::text::metrics::ch_ex_px("", 16.0).1),
-        Some(crate::style::values::value::Len::Ch(k)) => Some(k * crate::text::metrics::ch_ex_px("", 16.0).0),
+        Some(crate::style::values::value::Len::Ex(k)) => {
+            Some(k * crate::text::metrics::ch_ex_px("", 16.0).1)
+        }
+        Some(crate::style::values::value::Len::Ch(k)) => {
+            Some(k * crate::text::metrics::ch_ex_px("", 16.0).0)
+        }
         Some(crate::style::values::value::Len::Calc(id)) => {
             let sum = crate::style::values::value::calc_get(id);
             let rest = crate::style::values::value::Sum {
@@ -467,8 +475,11 @@ impl Media {
             "pointer" | "any-pointer" => "fine",
             "color-gamut" => "srgb",
             "dynamic-range" | "video-dynamic-range" => "standard",
-            "prefers-reduced-motion" | "prefers-reduced-transparency"
-            | "prefers-reduced-data" | "prefers-contrast" | "forced-colors" => "no-preference",
+            "prefers-reduced-motion"
+            | "prefers-reduced-transparency"
+            | "prefers-reduced-data"
+            | "prefers-contrast"
+            | "forced-colors" => "no-preference",
             "prefers-color-scheme" => {
                 if self.dark {
                     "dark"
@@ -506,7 +517,9 @@ fn mq_keywords(name: &str) -> Option<&'static [&'static str]> {
 /// Имя фичи без приставки диапазона — для проверки «фича это или предел».
 fn mq_base(s: &str) -> &str {
     let s = s.trim();
-    s.strip_prefix("min-").or_else(|| s.strip_prefix("max-")).unwrap_or(s)
+    s.strip_prefix("min-")
+        .or_else(|| s.strip_prefix("max-"))
+        .unwrap_or(s)
 }
 
 fn mq_tri(v: bool) -> SupTri {

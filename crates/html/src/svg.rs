@@ -264,7 +264,11 @@ fn clip_body(
         for (x, y) in points {
             pts.push_str(&format!("{},{} ", bx + at(*x, bw)?, by + at(*y, bh)?));
         }
-        let rule = if c.clip_polygon_evenodd { "evenodd" } else { "nonzero" };
+        let rule = if c.clip_polygon_evenodd {
+            "evenodd"
+        } else {
+            "nonzero"
+        };
         return Some(format!(
             "<polygon clip-rule=\"{rule}\" points=\"{}\"/>",
             pts.trim_end()
@@ -419,79 +423,81 @@ pub(super) fn write_element(e: &Element, out: &mut String) {
         )),
         _ => None,
     };
-    let origin = style_origin.or_else(|| attr_of("transform-origin").and_then(|raw| {
-        let side = |t: &str, base: f32, off: f32| -> Option<f32> {
-            let t = t.trim();
-            Some(match t {
-                "left" | "top" => off,
-                "center" => off + base * 0.5,
-                "right" | "bottom" => off + base,
-                _ if t.ends_with('%') => {
-                    off + t.trim_end_matches('%').parse::<f32>().ok()? / 100.0 * base
-                }
-                _ => {
-                    // Абсолютные единицы (css-values §6.2): 1in = 96px.
-                    let (num, k) = if let Some(n) = t.strip_suffix("px") {
-                        (n, 1.0)
-                    } else if let Some(n) = t.strip_suffix("cm") {
-                        (n, 96.0 / 2.54)
-                    } else if let Some(n) = t.strip_suffix("mm") {
-                        (n, 96.0 / 25.4)
-                    } else if let Some(n) = t.strip_suffix("in") {
-                        (n, 96.0)
-                    } else if let Some(n) = t.strip_suffix("pt") {
-                        (n, 96.0 / 72.0)
-                    } else if let Some(n) = t.strip_suffix("pc") {
-                        (n, 16.0)
-                    } else if let Some(n) = t.strip_suffix('q').or_else(|| t.strip_suffix('Q')) {
-                        (n, 96.0 / 101.6)
-                    } else {
-                        (t, 1.0)
-                    };
-                    // Длина от рамки фигуры — только при
-                    // `transform-box: fill-box`; по умолчанию (`view-box`)
-                    // отсчёт от вьюпорта, то есть без сдвига на `off`
-                    // (`svg-origin-length-*` зелены именно так).
-                    let v = num.trim().parse::<f32>().ok()? * k;
-                    return Some(if e.style.transform_box_fill == Some(true) {
-                        off + v
-                    } else {
-                        v
-                    });
-                }
-            })
-        };
-        let toks: Vec<&str> = raw.split_whitespace().collect();
-        // Осевые ключевые слова (css-transforms §4): одиночный `top`/`bottom`
-        // — это ось Y с центром по X; пара слов может идти в любом порядке,
-        // но `top 100%` невалидна — тогда точка отсчёта остаётся `0 0`
-        // (None = без origin-обёртки).
-        let vert_only = |t: &str| matches!(t.trim(), "top" | "bottom");
-        let horiz_only = |t: &str| matches!(t.trim(), "left" | "right");
-        let keyword = |t: &str| matches!(t.trim(), "top" | "bottom" | "left" | "right" | "center");
-        let (ox, oy) = match toks.as_slice() {
-            [a] if vert_only(a) => (fx + fw * 0.5, side(a, fh, fy)?),
-            [a] => (side(a, fw, fx)?, fy + fh * 0.5),
-            // Пара слов ОДНОЙ оси невалидна (css-transforms-1 §transform-origin):
-            // `top bottom`, `left right` — объявление отбрасывается целиком.
-            [a, b]
-                if (vert_only(a) && vert_only(b)) || (horiz_only(a) && horiz_only(b)) =>
-            {
-                return None;
-            }
-            [a, b] if vert_only(a) || horiz_only(b) => {
-                // Обратный порядок допустим только у ПАРЫ ключевых слов.
-                if keyword(a) && keyword(b) {
-                    (side(b, fw, fx)?, side(a, fh, fy)?)
-                } else {
+    let origin = style_origin.or_else(|| {
+        attr_of("transform-origin").and_then(|raw| {
+            let side = |t: &str, base: f32, off: f32| -> Option<f32> {
+                let t = t.trim();
+                Some(match t {
+                    "left" | "top" => off,
+                    "center" => off + base * 0.5,
+                    "right" | "bottom" => off + base,
+                    _ if t.ends_with('%') => {
+                        off + t.trim_end_matches('%').parse::<f32>().ok()? / 100.0 * base
+                    }
+                    _ => {
+                        // Абсолютные единицы (css-values §6.2): 1in = 96px.
+                        let (num, k) = if let Some(n) = t.strip_suffix("px") {
+                            (n, 1.0)
+                        } else if let Some(n) = t.strip_suffix("cm") {
+                            (n, 96.0 / 2.54)
+                        } else if let Some(n) = t.strip_suffix("mm") {
+                            (n, 96.0 / 25.4)
+                        } else if let Some(n) = t.strip_suffix("in") {
+                            (n, 96.0)
+                        } else if let Some(n) = t.strip_suffix("pt") {
+                            (n, 96.0 / 72.0)
+                        } else if let Some(n) = t.strip_suffix("pc") {
+                            (n, 16.0)
+                        } else if let Some(n) = t.strip_suffix('q').or_else(|| t.strip_suffix('Q'))
+                        {
+                            (n, 96.0 / 101.6)
+                        } else {
+                            (t, 1.0)
+                        };
+                        // Длина от рамки фигуры — только при
+                        // `transform-box: fill-box`; по умолчанию (`view-box`)
+                        // отсчёт от вьюпорта, то есть без сдвига на `off`
+                        // (`svg-origin-length-*` зелены именно так).
+                        let v = num.trim().parse::<f32>().ok()? * k;
+                        return Some(if e.style.transform_box_fill == Some(true) {
+                            off + v
+                        } else {
+                            v
+                        });
+                    }
+                })
+            };
+            let toks: Vec<&str> = raw.split_whitespace().collect();
+            // Осевые ключевые слова (css-transforms §4): одиночный `top`/`bottom`
+            // — это ось Y с центром по X; пара слов может идти в любом порядке,
+            // но `top 100%` невалидна — тогда точка отсчёта остаётся `0 0`
+            // (None = без origin-обёртки).
+            let vert_only = |t: &str| matches!(t.trim(), "top" | "bottom");
+            let horiz_only = |t: &str| matches!(t.trim(), "left" | "right");
+            let keyword =
+                |t: &str| matches!(t.trim(), "top" | "bottom" | "left" | "right" | "center");
+            let (ox, oy) = match toks.as_slice() {
+                [a] if vert_only(a) => (fx + fw * 0.5, side(a, fh, fy)?),
+                [a] => (side(a, fw, fx)?, fy + fh * 0.5),
+                // Пара слов ОДНОЙ оси невалидна (css-transforms-1 §transform-origin):
+                // `top bottom`, `left right` — объявление отбрасывается целиком.
+                [a, b] if (vert_only(a) && vert_only(b)) || (horiz_only(a) && horiz_only(b)) => {
                     return None;
                 }
-            }
-            [a, b] => (side(a, fw, fx)?, side(b, fh, fy)?),
-            _ => return None,
-        };
-        Some((ox, oy))
-    }));
+                [a, b] if vert_only(a) || horiz_only(b) => {
+                    // Обратный порядок допустим только у ПАРЫ ключевых слов.
+                    if keyword(a) && keyword(b) {
+                        (side(b, fw, fx)?, side(a, fh, fy)?)
+                    } else {
+                        return None;
+                    }
+                }
+                [a, b] => (side(a, fw, fx)?, side(b, fh, fy)?),
+                _ => return None,
+            };
+            Some((ox, oy))
+        })
+    });
     // Начальный `transform-origin` SVG-элемента — `0 0` (UA-лист:
     // `*:not(svg), *:not(foreignObject) > svg { transform-origin: 0 0 }`), и
     // отсчитывается он от опорной коробки: при явной `fill-box`/`stroke-box`
@@ -505,8 +511,7 @@ pub(super) fn write_element(e: &Element, out: &mut String) {
     // проценты сдвига — от опорной коробки фигуры (css-transforms-1
     // §transform-box: доля — от reference box; здесь fill-box по атрибутам).
     let style_t = e.style.transform.as_ref().map(|t| {
-        let unit = t.lin == [[1.0, 0.0], [0.0, 1.0]]
-            && t.tr == [[0.0; 3]; 2];
+        let unit = t.lin == [[1.0, 0.0], [0.0, 1.0]] && t.tr == [[0.0; 3]; 2];
         if unit {
             return String::new();
         }
@@ -537,15 +542,19 @@ pub(super) fn write_element(e: &Element, out: &mut String) {
     //
     // Корневой `<svg>` исключён: он обычная CSS-коробка, и `translate:` ему
     // уже сдвигает `apply.rs` — иначе сдвиг лёг бы дважды.
-    let ind_t = e.style.translate.filter(|_| e.tag != "svg").and_then(|(x, y)| {
-        let axis = |l: crate::style::values::value::Len, base: f32| match l {
-            crate::style::values::value::Len::Px(v) => v,
-            crate::style::values::value::Len::Pct(k) => k * base,
-            _ => 0.0,
-        };
-        let (dx, dy) = (axis(x, bw), axis(y, bh));
-        (dx != 0.0 || dy != 0.0).then_some((dx, dy))
-    });
+    let ind_t = e
+        .style
+        .translate
+        .filter(|_| e.tag != "svg")
+        .and_then(|(x, y)| {
+            let axis = |l: crate::style::values::value::Len, base: f32| match l {
+                crate::style::values::value::Len::Px(v) => v,
+                crate::style::values::value::Len::Pct(k) => k * base,
+                _ => 0.0,
+            };
+            let (dx, dy) = (axis(x, bw), axis(y, bh));
+            (dx != 0.0 || dy != 0.0).then_some((dx, dy))
+        });
     // Невалидный список преобразований В АТРИБУТЕ (`rotate(90,)`: запятая без
     // аргумента — грамматика `transform-list`, SVG 1.1 §7.6). Атрибут —
     // презентационная форма свойства `transform` (css-transforms-1
@@ -682,9 +691,10 @@ pub(super) fn write_element(e: &Element, out: &mut String) {
         // предков не учитывается). Без этого `svgbox-stroke-box-003/004` при
         // верной геометрии рисовали обводку вдвое тоньше эталонной.
         let k = match (e.style.svg_non_scaling, e.style.transform) {
-            (Some(true), Some(t)) if !has("vector-effect") => {
-                (t.lin[0][0] * t.lin[1][1] - t.lin[0][1] * t.lin[1][0]).abs().sqrt()
-            }
+            (Some(true), Some(t)) if !has("vector-effect") => (t.lin[0][0] * t.lin[1][1]
+                - t.lin[0][1] * t.lin[1][0])
+                .abs()
+                .sqrt(),
             _ => 1.0,
         };
         match w.trim().trim_end_matches("px").parse::<f32>() {
@@ -802,8 +812,7 @@ fn reference_box(e: &Element, stroke: bool) -> Option<(f32, f32, f32, f32)> {
         _ => return None,
     };
     let non_scaling = e.style.svg_non_scaling == Some(true)
-        || e
-            .attrs
+        || e.attrs
             .iter()
             .any(|(k, v)| k == "vector-effect" && v.trim() == "non-scaling-stroke");
     let paint = e
@@ -887,8 +896,16 @@ pub fn size_of(e: &Element) -> (f32, f32) {
             }
         };
         return (
-            axis(e.style.contains_width(), given_w, e.style.contain_intrinsic.0),
-            axis(e.style.contains_height(), given_h, e.style.contain_intrinsic.1),
+            axis(
+                e.style.contains_width(),
+                given_w,
+                e.style.contain_intrinsic.0,
+            ),
+            axis(
+                e.style.contains_height(),
+                given_h,
+                e.style.contain_intrinsic.1,
+            ),
         );
     }
     if let (Some(w), Some(h)) = (given_w, given_h) {
@@ -996,8 +1013,10 @@ pub fn stretch_fit(e: &Element, cb_width: Option<f32>) -> Element {
         .unwrap_or(vw / vh);
     let side = |l: Option<Len>| px(l).unwrap_or(0.0);
     let b = e.style.borders();
-    let pb_x = side(e.style.padding.left) + side(e.style.padding.right) + side(b.left) + side(b.right);
-    let pb_y = side(e.style.padding.top) + side(e.style.padding.bottom) + side(b.top) + side(b.bottom);
+    let pb_x =
+        side(e.style.padding.left) + side(e.style.padding.right) + side(b.left) + side(b.right);
+    let pb_y =
+        side(e.style.padding.top) + side(e.style.padding.bottom) + side(b.top) + side(b.bottom);
     // Внешний размер = содержимое + паддинг + рамка + поля (css-sizing-3
     // §5.1 «outer size»); `size_of` отдаёт размер СОДЕРЖИМОГО.
     let outer_x = side(e.style.margin.left) + side(e.style.margin.right) + pb_x;
@@ -1013,7 +1032,11 @@ pub fn stretch_fit(e: &Element, cb_width: Option<f32>) -> Element {
     };
     // При `box-sizing: border-box` предел включает паддинг и рамку —
     // содержимому остаётся остальное (как `sub_w`/`sub_h` в `image_with`).
-    let (sub_x, sub_y) = if e.style.border_box == Some(true) { (pb_x, pb_y) } else { (0.0, 0.0) };
+    let (sub_x, sub_y) = if e.style.border_box == Some(true) {
+        (pb_x, pb_y)
+    } else {
+        (0.0, 0.0)
+    };
     if let Some(m) = px(e.style.max_width).map(|m| (m - sub_x).max(0.0))
         && w > m
     {
@@ -1162,8 +1185,10 @@ pub fn element(e: &Element) -> Option<AnyElement> {
     } else {
         0.0
     };
-    let visible_y = !contained && e.style.overflow_y == Some(crate::style::computed::Overflow::Visible);
-    let visible_x = !contained && e.style.overflow_x == Some(crate::style::computed::Overflow::Visible);
+    let visible_y =
+        !contained && e.style.overflow_y == Some(crate::style::computed::Overflow::Visible);
+    let visible_x =
+        !contained && e.style.overflow_x == Some(crate::style::computed::Overflow::Visible);
     let rw = if visible_x {
         w.max(child_extent(true))
     } else {
@@ -1187,7 +1212,9 @@ pub fn element(e: &Element) -> Option<AnyElement> {
         let mut m: f32 = 0.0;
         for c in &e.children {
             let Node::Element(el) = c else { continue };
-            let Some((bx, by, _, _)) = shape_box(el, true) else { continue };
+            let Some((bx, by, _, _)) = shape_box(el, true) else {
+                continue;
+            };
             let (mut dx, mut dy) = el
                 .attr("transform")
                 .and_then(translate_only)
@@ -1332,10 +1359,21 @@ fn masked_units(e: &Element, w: f32, h: f32) -> Option<Vec<MaskedUnit>> {
         let Node::Element(c) = n else { continue };
         if c.style.mask_image.is_some() {
             let (sb, fb) = box_of(c, 0.0, 0.0)?;
-            out.push((Unit { top: i, inner: None }, sb, fb, c.style.clone()));
+            out.push((
+                Unit {
+                    top: i,
+                    inner: None,
+                },
+                sb,
+                fb,
+                c.style.clone(),
+            ));
             continue;
         }
-        if c.tag.eq_ignore_ascii_case("g") && c.style.transform.is_none() && c.style.translate.is_none() {
+        if c.tag.eq_ignore_ascii_case("g")
+            && c.style.transform.is_none()
+            && c.style.translate.is_none()
+        {
             let (gx, gy) = match c.attr("transform") {
                 Some(t) => match translate_only(t) {
                     Some(v) => v,
@@ -1347,7 +1385,15 @@ fn masked_units(e: &Element, w: f32, h: f32) -> Option<Vec<MaskedUnit>> {
                 let Node::Element(k) = m else { continue };
                 if k.style.mask_image.is_some() {
                     let (sb, fb) = box_of(k, gx, gy)?;
-                    out.push((Unit { top: i, inner: Some(j) }, sb, fb, k.style.clone()));
+                    out.push((
+                        Unit {
+                            top: i,
+                            inner: Some(j),
+                        },
+                        sb,
+                        fb,
+                        k.style.clone(),
+                    ));
                 }
             }
         }
@@ -1366,7 +1412,10 @@ fn filtered(e: &Element, keep: &dyn Fn(Unit) -> bool) -> Element {
             kids.push(n.clone());
             continue;
         }
-        if keep(Unit { top: i, inner: None }) {
+        if keep(Unit {
+            top: i,
+            inner: None,
+        }) {
             kids.push(n.clone());
             continue;
         }
@@ -1377,12 +1426,21 @@ fn filtered(e: &Element, keep: &dyn Fn(Unit) -> bool) -> Element {
                 .iter()
                 .enumerate()
                 .filter(|(j, m)| match m {
-                    Node::Element(k) => non_rendering(&k.tag) || keep(Unit { top: i, inner: Some(*j) }),
+                    Node::Element(k) => {
+                        non_rendering(&k.tag)
+                            || keep(Unit {
+                                top: i,
+                                inner: Some(*j),
+                            })
+                    }
                     Node::Text(_) => false,
                 })
                 .map(|(_, m)| m.clone())
                 .collect();
-            if g.children.iter().any(|m| matches!(m, Node::Element(k) if !non_rendering(&k.tag))) {
+            if g.children
+                .iter()
+                .any(|m| matches!(m, Node::Element(k) if !non_rendering(&k.tag)))
+            {
                 kids.push(Node::Element(g));
             }
         }
@@ -1413,7 +1471,12 @@ fn masked_layers(e: &Element, w: f32, h: f32, rw: f32, rh: f32) -> Option<AnyEle
             Some(6) => (0.0, 0.0, w, h),
             _ => layer,
         };
-        [by - ly, (lx + lw) - (bx + bw), (ly + lh) - (by + bh), bx - lx]
+        [
+            by - ly,
+            (lx + lw) - (bx + bw),
+            (ly + lh) - (by + bh),
+            bx - lx,
+        ]
     };
     // Последовательность единиц в порядке отрисовки.
     let mut seq: Vec<Unit> = Vec::new();
@@ -1422,15 +1485,22 @@ fn masked_layers(e: &Element, w: f32, h: f32, rw: f32, rh: f32) -> Option<AnyEle
         if non_rendering(&c.tag) {
             continue;
         }
-        let split = c.tag.eq_ignore_ascii_case("g") && masked.iter().any(|u| u.top == i && u.inner.is_some());
+        let split = c.tag.eq_ignore_ascii_case("g")
+            && masked.iter().any(|u| u.top == i && u.inner.is_some());
         if split {
             for (j, m) in c.children.iter().enumerate() {
                 if matches!(m, Node::Element(k) if !non_rendering(&k.tag)) {
-                    seq.push(Unit { top: i, inner: Some(j) });
+                    seq.push(Unit {
+                        top: i,
+                        inner: Some(j),
+                    });
                 }
             }
         } else {
-            seq.push(Unit { top: i, inner: None });
+            seq.push(Unit {
+                top: i,
+                inner: None,
+            });
         }
     }
     let mut root = gpui::div().w(gpui::px(w)).h(gpui::px(h)).flex_shrink_0();
@@ -1458,7 +1528,8 @@ fn masked_layers(e: &Element, w: f32, h: f32, rw: f32, rh: f32) -> Option<AnyEle
         )
     };
     for u in seq {
-        let Some((_, layer_box, fill_box, style)) = units.iter().find(|(m, _, _, _)| *m == u) else {
+        let Some((_, layer_box, fill_box, style)) = units.iter().find(|(m, _, _, _)| *m == u)
+        else {
             run.push(u);
             continue;
         };
@@ -1482,7 +1553,9 @@ fn masked_layers(e: &Element, w: f32, h: f32, rw: f32, rh: f32) -> Option<AnyEle
         // и `mask-position` переводятся здесь, интринзик — в `Grouped`.
         if (s - 1.0).abs() > 1e-3 {
             let scale_len = |l: crate::style::values::value::Len| match l {
-                crate::style::values::value::Len::Px(v) => crate::style::values::value::Len::Px(v * s),
+                crate::style::values::value::Len::Px(v) => {
+                    crate::style::values::value::Len::Px(v * s)
+                }
                 other => other,
             };
             style.mask_user_scale = s;
@@ -1558,7 +1631,10 @@ fn serialize_sized(e: &Element, w: f32, h: f32, nx: f32, ny: f32) -> String {
     let z = e.style.zoom_eff.unwrap_or(1.0);
     let shifted = nx > 0.0 || ny > 0.0;
     if ((z - 1.0).abs() > f32::EPSILON || shifted)
-        && !e.attrs.iter().any(|(k, _)| k.eq_ignore_ascii_case("viewbox"))
+        && !e
+            .attrs
+            .iter()
+            .any(|(k, _)| k.eq_ignore_ascii_case("viewbox"))
     {
         out.push_str(&format!(
             " viewBox=\"{} {} {} {}\"",

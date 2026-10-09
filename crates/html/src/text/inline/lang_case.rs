@@ -54,9 +54,25 @@ fn combining(ch: char) -> bool {
 fn soft_dotted(ch: char) -> bool {
     matches!(
         ch,
-        'i' | 'j' | '\u{12F}' | '\u{249}' | '\u{268}' | '\u{29D}' | '\u{2B2}' | '\u{3F3}'
-            | '\u{456}' | '\u{458}' | '\u{1D62}' | '\u{1D96}' | '\u{1DA4}' | '\u{1DA8}'
-            | '\u{1E2D}' | '\u{1ECB}' | '\u{2071}' | '\u{2148}' | '\u{2149}' | '\u{2C7C}'
+        'i' | 'j'
+            | '\u{12F}'
+            | '\u{249}'
+            | '\u{268}'
+            | '\u{29D}'
+            | '\u{2B2}'
+            | '\u{3F3}'
+            | '\u{456}'
+            | '\u{458}'
+            | '\u{1D62}'
+            | '\u{1D96}'
+            | '\u{1DA4}'
+            | '\u{1DA8}'
+            | '\u{1E2D}'
+            | '\u{1ECB}'
+            | '\u{2071}'
+            | '\u{2148}'
+            | '\u{2149}'
+            | '\u{2C7C}'
     )
 }
 
@@ -250,7 +266,10 @@ mod tests {
     fn turkic_and_lithuanian_follow_special_casing() {
         assert_eq!(upper("i ı", Tailoring::Turkic), "İ I");
         assert_eq!(lower("İ I\u{307} I", Tailoring::Turkic), "i i ı");
-        assert_eq!(lower("Ì Í Ĩ", Tailoring::Lithuanian), "i\u{307}\u{300} i\u{307}\u{301} i\u{307}\u{303}");
+        assert_eq!(
+            lower("Ì Í Ĩ", Tailoring::Lithuanian),
+            "i\u{307}\u{300} i\u{307}\u{301} i\u{307}\u{303}"
+        );
         assert_eq!(upper("i\u{307}\u{300}", Tailoring::Lithuanian), "I\u{300}");
     }
 
@@ -265,7 +284,10 @@ mod tests {
     #[test]
     fn dutch_ij_and_tags() {
         let mut s = String::new();
-        assert_eq!(title_start('i', &['j', 's'], Tailoring::Dutch, &mut s), Some(1));
+        assert_eq!(
+            title_start('i', &['j', 's'], Tailoring::Dutch, &mut s),
+            Some(1)
+        );
         assert_eq!(s, "IJ");
         assert_eq!(tailoring(Some("NL")), Some(Tailoring::Dutch));
         assert_eq!(tailoring(Some("tr-TR")), Some(Tailoring::Turkic));

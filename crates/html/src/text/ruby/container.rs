@@ -6,7 +6,9 @@ use crate::render::{RenderOpts, blocks, replaced_tag};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
-use crate::text::ruby::{RubyUnit, ruby_hiding, ruby_role, ruby_segments, ruby_transform, ruby_unit_blank};
+use crate::text::ruby::{
+    RubyUnit, ruby_hiding, ruby_role, ruby_segments, ruby_transform, ruby_unit_blank,
+};
 use crate::text::text_box::{blank_text, normal_fraction};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
@@ -22,10 +24,11 @@ pub(crate) fn ruby_container_atom(
     let segments = ruby_segments(&e.children);
     // Без хотя бы одной непустой аннотации руби — обычный строчный
     // (`ruby-line-breaking-001`: `<rtc><rt>` пустой; `ruby-intrinsic-isize-*`).
-    if !segments
-        .iter()
-        .any(|s| s.levels.iter().any(|l| l.units.iter().any(|u| !ruby_unit_blank(u))))
-    {
+    if !segments.iter().any(|s| {
+        s.levels
+            .iter()
+            .any(|l| l.units.iter().any(|u| !ruby_unit_blank(u)))
+    }) {
         return None;
     }
     // `ruby-align`: `space-around` (начальное) и `center` — по центру
@@ -130,8 +133,11 @@ pub(crate) fn ruby_container_atom(
         nodes.iter().all(|n| match n {
             Node::Text(t) => blank_text(t),
             Node::Element(k) => {
-                let plain = ruby_role(k).is_some_and(|r| r != crate::style::computed::RubyRole::Container)
-                    || (k.style.display.is_none() && k.style.inline_display != Some(false) && !replaced_tag(k));
+                let plain = ruby_role(k)
+                    .is_some_and(|r| r != crate::style::computed::RubyRole::Container)
+                    || (k.style.display.is_none()
+                        && k.style.inline_display != Some(false)
+                        && !replaced_tag(k));
                 plain && only_space(&k.children)
             }
         })
@@ -180,7 +186,8 @@ pub(crate) fn ruby_container_atom(
         if let [Node::Element(k)] = nodes
             && matches!(
                 ruby_role(k),
-                Some(crate::style::computed::RubyRole::Base) | Some(crate::style::computed::RubyRole::Text)
+                Some(crate::style::computed::RubyRole::Base)
+                    | Some(crate::style::computed::RubyRole::Text)
             )
         {
             let mut block = k.clone();
@@ -195,7 +202,9 @@ pub(crate) fn ruby_container_atom(
                 .children(blocks(&[Node::Element(block)], &style, opts))
                 .into_any_element();
         }
-        div().children(blocks(nodes, &style, opts)).into_any_element()
+        div()
+            .children(blocks(nodes, &style, opts))
+            .into_any_element()
     };
     let empty: RubyUnit = Vec::new();
     // Стопка уровней одной стороны — узел, чью высоту знает строка
@@ -253,7 +262,11 @@ pub(crate) fn ruby_container_atom(
                 }
                 let nodes = l.units.get(i).unwrap_or(&empty);
                 let base = ruby_hiding::text(seg.bases.get(i).unwrap_or(&empty));
-                let nodes = if ruby_hiding::hidden(nodes, &base, style) { &empty } else { nodes };
+                let nodes = if ruby_hiding::hidden(nodes, &base, style) {
+                    &empty
+                } else {
+                    nodes
+                };
                 let ann = unit_box(nodes, style);
                 if level_under(k) {
                     under.push(ann);
@@ -289,7 +302,9 @@ pub(crate) fn ruby_container_atom(
                     })
                     .unwrap_or(base_font * 0.5);
                 crate::text::paragraph::ruby_base_with_overhang(
-                    merged.ruby_overhang.unwrap_or(crate::style::computed::RubyOverhang::Auto),
+                    merged
+                        .ruby_overhang
+                        .unwrap_or(crate::style::computed::RubyOverhang::Auto),
                     ann_font / 2.0,
                     merged.ruby_align == Some(crate::style::computed::RubyAlign::Start),
                     base_font,
@@ -300,14 +315,16 @@ pub(crate) fn ruby_container_atom(
             };
             let mut over = over_stack(base_el);
             if !over_anns.is_empty() {
-                over = over.child(level_wrap(false).child(extent(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .flex_shrink_0()
-                        .children(over_anns.into_iter().rev()),
-                    false,
-                )));
+                over = over.child(
+                    level_wrap(false).child(extent(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_shrink_0()
+                            .children(over_anns.into_iter().rev()),
+                        false,
+                    )),
+                );
             }
             let col = if under.is_empty() {
                 over.into_any_element()
@@ -327,21 +344,27 @@ pub(crate) fn ruby_container_atom(
             if l.spanning {
                 let nodes = l.units.first().unwrap_or(&empty);
                 let base: String = seg.bases.iter().map(|b| ruby_hiding::text(b)).collect();
-                let nodes = if ruby_hiding::hidden(nodes, &base, style) { &empty } else { nodes };
+                let nodes = if ruby_hiding::hidden(nodes, &base, style) {
+                    &empty
+                } else {
+                    nodes
+                };
                 let host = if level_under(k) {
                     under_stack().child(seg_el)
                 } else {
                     over_stack(seg_el)
                 };
                 seg_el = host
-                    .child(level_wrap(level_under(k)).child(extent(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .flex_shrink_0()
-                            .child(unit_box(nodes, style)),
-                        level_under(k),
-                    )))
+                    .child(
+                        level_wrap(level_under(k)).child(extent(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .flex_shrink_0()
+                                .child(unit_box(nodes, style)),
+                            level_under(k),
+                        )),
+                    )
                     .into_any_element();
             }
         }

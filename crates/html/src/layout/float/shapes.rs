@@ -79,8 +79,7 @@ impl FloatShape {
             FloatShape::Profile { top, ref ext } => {
                 let a = (y0 - top).max(0.0) as usize;
                 let b = ((y1 - top).ceil()).max(0.0) as usize;
-                ext
-                    .get(a..b.min(ext.len()))
+                ext.get(a..b.min(ext.len()))
                     .map(|s| s.iter().fold(0.0f32, |m, &v| m.max(v)))
                     .unwrap_or(0.0)
             }

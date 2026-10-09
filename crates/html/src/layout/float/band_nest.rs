@@ -1,7 +1,6 @@
 //! Вложенные полосы обтекания.
 // owner: A
 
-use crate::style::cascade::inherit::inherit;
 use crate::dom::{Element, Node};
 use crate::layout::block::margins::collapse_margins;
 use crate::layout::block::struts::top_edge_open;
@@ -10,7 +9,10 @@ use crate::layout::float::band_dimensions;
 use crate::layout::float::band_flow_host::{BAND_WM, band_flow_rest, band_kids};
 use crate::layout::float::band_host::{band_edge, band_em, band_margins};
 use crate::layout::float::band_measured::band_float_m;
-use crate::render::{RenderOpts, block_level_in_flow, is_blank, out_of_flow, own_context, replaced_tag};
+use crate::render::{
+    RenderOpts, block_level_in_flow, is_blank, out_of_flow, own_context, replaced_tag,
+};
+use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 

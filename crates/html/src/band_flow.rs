@@ -26,14 +26,14 @@
 
 use crate::bands::FloatBands;
 mod clearance;
-mod piece;
 mod kid;
-pub use kid::{Kid, Kind, Nest};
+mod piece;
 use crate::layout::float::shapes::FloatShape;
 use gpui::{
     AnyElement, App, AvailableSpace, Bounds, Element, ElementId, GlobalElementId,
     InspectorElementId, IntoElement, LayoutId, Pixels, Window, div, point, prelude::*, px, size,
 };
+pub use kid::{Kid, Kind, Nest};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -228,7 +228,11 @@ fn plan(kids: &[Kid], cb: f32, contain_floats: bool, window: &mut Window, cx: &m
     Plan {
         width: cb,
         // §§10.6.3, 10.6.7: only a formatting-context root contains floats.
-        height: if contain_floats { bands.bottom(None).max(y) } else { y },
+        height: if contain_floats {
+            bands.bottom(None).max(y)
+        } else {
+            y
+        },
         slots,
     }
 }
@@ -300,15 +304,13 @@ fn place_seq(
                 let mut ceil = y + kid.margin_offset;
                 // Высота набранного — с вырезами уже поставленных флоатов:
                 // строки рядом с ними у́же и их больше.
-                let height_of = |b: &Build,
-                                 bands: &mut FloatBands,
-                                 window: &mut Window,
-                                 cx: &mut App| {
-                    let walls = bands.set_walls(x0, x1);
-                    let shapes = bands.shapes(y);
-                    bands.set_walls(walls.0, walls.1);
-                    probe_of(Kind::Flow, b, cbw, cbw, Some(shapes), window, cx).1
-                };
+                let height_of =
+                    |b: &Build, bands: &mut FloatBands, window: &mut Window, cx: &mut App| {
+                        let walls = bands.set_walls(x0, x1);
+                        let shapes = bands.shapes(y);
+                        bands.set_walls(walls.0, walls.1);
+                        probe_of(Kind::Flow, b, cbw, cbw, Some(shapes), window, cx).1
+                    };
                 // Строка флоата начинается под набранным до последнего
                 // `<br>` (`floats-placement-vertical-004-ref`: «H<br>» и
                 // флоат на второй строке рядом с первым флоатом).
@@ -734,7 +736,8 @@ impl Element for BandFlow {
                 {
                     return phys(cb, p.height);
                 }
-                let p = window.with_nested_layout(|window| plan(&kids, cb, contain_floats, window, cx));
+                let p =
+                    window.with_nested_layout(|window| plan(&kids, cb, contain_floats, window, cx));
                 let h = p.height;
                 *cache.borrow_mut() = Some(p);
                 phys(cb, h)
@@ -822,13 +825,7 @@ impl Element for BandFlow {
                 Some(true) => (p.height - s.y - s.b, s.x),
                 Some(false) => (s.y, s.x),
             };
-            host = host.child(
-                div()
-                    .absolute()
-                    .left(px(left))
-                    .top(px(top))
-                    .child(el),
-            );
+            host = host.child(div().absolute().left(px(left)).top(px(top)).child(el));
         }
         let mut el = host.into_any_element();
         el.layout_as_root_at(

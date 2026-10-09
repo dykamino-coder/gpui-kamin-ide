@@ -52,8 +52,8 @@ pub fn source(src: &str) -> Option<Source> {
         Some(Source::Shape {
             raw: shape.to_string(),
         })
-    } else if let Some(color) =
-        crate::style::computed::parse_image_color(src_plain).and_then(crate::style::values::value::Color::parse)
+    } else if let Some(color) = crate::style::computed::parse_image_color(src_plain)
+        .and_then(crate::style::values::value::Color::parse)
     {
         Some(Source::Gradient {
             raw: color_image(color),
@@ -112,7 +112,8 @@ fn color_image(c: crate::style::values::value::Color) -> String {
 
 /// Color image samples use straight alpha, as expected by GPUI's image shader.
 pub(super) fn raster_color(raw: &str, w: u32, h: u32) -> Option<std::sync::Arc<gpui::RenderImage>> {
-    let color = crate::style::computed::parse_image_color(raw).and_then(crate::style::values::value::Color::parse)?;
+    let color = crate::style::computed::parse_image_color(raw)
+        .and_then(crate::style::values::value::Color::parse)?;
     let pixel = [
         (color.b * 255.0).round() as u8,
         (color.g * 255.0).round() as u8,

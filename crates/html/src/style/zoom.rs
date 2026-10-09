@@ -31,8 +31,8 @@
 //! `transform: inherit` / `perspective: inherit` — флагов `*_inherit` для
 //! них в `Computed` пока нет, и `explicit` их не видит.
 
-use crate::style::computed::{Computed, Shadow, Sides};
 use crate::dom::Node;
+use crate::style::computed::{Computed, Shadow, Sides};
 use crate::style::values::value::Len;
 
 /// Наследуемые длины, которые проход несёт вниз В ТОЧКАХ: значение
@@ -156,10 +156,18 @@ fn scale_own(c: &mut Computed, k: f32) {
     sides(&mut c.margin);
     sides(&mut c.border_width);
     sides(&mut c.inset);
-    for corner in [&mut c.radius.tl, &mut c.radius.tr, &mut c.radius.br, &mut c.radius.bl] {
+    for corner in [
+        &mut c.radius.tl,
+        &mut c.radius.tr,
+        &mut c.radius.br,
+        &mut c.radius.bl,
+    ] {
         mul(corner);
     }
-    for pair in [c.gap.as_mut(), c.border_spacing.as_mut()].into_iter().flatten() {
+    for pair in [c.gap.as_mut(), c.border_spacing.as_mut()]
+        .into_iter()
+        .flatten()
+    {
         mul(&mut pair.0);
         mul(&mut pair.1);
     }
@@ -225,11 +233,11 @@ fn scale_own(c: &mut Computed, k: f32) {
     c.vertical_shift_px = c.vertical_shift_px.map(|v| v * k);
     // Длины украшений текста (css-text-decor-4): толщина, смещение
     // подчёркивания, отступы концов.
-    let dl = |l: &mut crate::style::computed::DecorLen| {
-        match l {
-            crate::style::computed::DecorLen::Px(v) | crate::style::computed::DecorLen::Mix(_, v) => *v *= k,
-            _ => {}
+    let dl = |l: &mut crate::style::computed::DecorLen| match l {
+        crate::style::computed::DecorLen::Px(v) | crate::style::computed::DecorLen::Mix(_, v) => {
+            *v *= k
         }
+        _ => {}
     };
     if let Some(t) = c.td_thickness.as_mut() {
         dl(t);
@@ -246,7 +254,9 @@ fn scale_own(c: &mut Computed, k: f32) {
 /// точки предка (уже с его зумом) × свой множитель.
 fn inherited(c: &mut Computed, own: f32, carried: &Carried) {
     let put = |slot: &mut Option<Len>, from: Option<f32>| {
-        if slot.is_none() && let Some(v) = from {
+        if slot.is_none()
+            && let Some(v) = from
+        {
             *slot = Some(Len::Px(v * own));
         }
     };
@@ -255,14 +265,20 @@ fn inherited(c: &mut Computed, own: f32, carried: &Carried) {
     put(&mut c.word_spacing, carried.word_spacing);
     put(&mut c.text_indent, carried.text_indent);
     put(&mut c.tab_size_len, carried.tab_size);
-    if c.text_shadow.is_none() && let Some(mut sh) = carried.text_shadow {
+    if c.text_shadow.is_none()
+        && let Some(mut sh) = carried.text_shadow
+    {
         scale_shadow(&mut sh, own);
         c.text_shadow = Some(sh);
     }
-    if c.underline_offset.is_none() && let Some(v) = carried.underline_offset {
+    if c.underline_offset.is_none()
+        && let Some(v) = carried.underline_offset
+    {
         c.underline_offset = Some(crate::style::computed::DecorLen::Px(v * own));
     }
-    if c.border_spacing.is_none() && let Some((row, col)) = carried.border_spacing {
+    if c.border_spacing.is_none()
+        && let Some((row, col)) = carried.border_spacing
+    {
         let px = |v: Option<f32>| v.map(|v| Len::Px(v * own));
         c.border_spacing = Some((px(row), px(col)));
     }
@@ -291,7 +307,9 @@ fn set_side(s: &mut Sides, i: usize, v: Len) {
 /// остаётся, слияние копирует как прежде (доля и `auto` зуму безразличны).
 fn per_side(flags: &mut [bool; 4], into: &mut Sides, from: &Sides, k: f32) {
     for i in 0..4 {
-        if flags[i] && let Some(Len::Px(v)) = side(from, i) {
+        if flags[i]
+            && let Some(Len::Px(v)) = side(from, i)
+        {
             set_side(into, i, Len::Px(v * k));
             flags[i] = false;
         }
@@ -307,18 +325,24 @@ fn explicit(c: &mut Computed, parent: Option<&Computed>, own: f32) {
         Some(Len::Px(v)) => Some(Len::Px(v * own)),
         _ => None,
     };
-    if c.width_inherit && let Some(v) = px(p.width) {
+    if c.width_inherit
+        && let Some(v) = px(p.width)
+    {
         c.width = Some(v);
         c.width_inherit = false;
     }
-    if c.height_inherit && let Some(v) = px(p.height) {
+    if c.height_inherit
+        && let Some(v) = px(p.height)
+    {
         c.height = Some(v);
         c.height_inherit = false;
     }
     // Порядок разрядов — как в `inline::inherit`: min-w, min-h, max-w, max-h.
     let minmax = [p.min_width, p.min_height, p.max_width, p.max_height];
     for (i, from) in minmax.into_iter().enumerate() {
-        if c.minmax_inherit[i] && let Some(v) = px(from) {
+        if c.minmax_inherit[i]
+            && let Some(v) = px(from)
+        {
             match i {
                 0 => c.min_width = Some(v),
                 1 => c.min_height = Some(v),
@@ -331,9 +355,14 @@ fn explicit(c: &mut Computed, parent: Option<&Computed>, own: f32) {
     // `padding: inherit` целиком: снимается, только если все стороны родителя
     // в точках или пусты — иначе слияние копирует весь набор, как прежде.
     if c.padding_inherit
-        && [p.padding.top, p.padding.right, p.padding.bottom, p.padding.left]
-            .iter()
-            .all(|l| matches!(l, None | Some(Len::Px(_))))
+        && [
+            p.padding.top,
+            p.padding.right,
+            p.padding.bottom,
+            p.padding.left,
+        ]
+        .iter()
+        .all(|l| matches!(l, None | Some(Len::Px(_))))
     {
         c.padding = Sides {
             top: px(p.padding.top),
@@ -346,7 +375,12 @@ fn explicit(c: &mut Computed, parent: Option<&Computed>, own: f32) {
     per_side(&mut c.padding_inherit_side, &mut c.padding, &p.padding, own);
     per_side(&mut c.margin_inherit, &mut c.margin, &p.margin, own);
     per_side(&mut c.inset_inherit, &mut c.inset, &p.inset, own);
-    per_side(&mut c.border_inherit_w, &mut c.border_width, &p.border_width, own);
+    per_side(
+        &mut c.border_inherit_w,
+        &mut c.border_width,
+        &p.border_width,
+        own,
+    );
     // `outline-width`/`outline-offset: inherit` и `background-size: inherit`
     // живут разрядами `inherit_bits`, и слияние (`inline::inherit`) копирует
     // точки родителя БЕЗ своего множителя (`zoom/outline-width`,
@@ -358,12 +392,16 @@ fn explicit(c: &mut Computed, parent: Option<&Computed>, own: f32) {
         let from = p.outline.unwrap_or_default();
         let mut o = c.outline.unwrap_or_default();
         let mut hit = false;
-        if c.inherit_bits & inh::OUTLINE_W != 0 && let Some(v) = px(from.width) {
+        if c.inherit_bits & inh::OUTLINE_W != 0
+            && let Some(v) = px(from.width)
+        {
             o.width = Some(v);
             c.inherit_bits &= !inh::OUTLINE_W;
             hit = true;
         }
-        if c.inherit_bits & inh::OUTLINE_O != 0 && let Some(v) = px(from.offset) {
+        if c.inherit_bits & inh::OUTLINE_O != 0
+            && let Some(v) = px(from.offset)
+        {
             o.offset = Some(v);
             c.inherit_bits &= !inh::OUTLINE_O;
             hit = true;
