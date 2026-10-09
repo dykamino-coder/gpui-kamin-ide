@@ -1710,6 +1710,26 @@ pub fn render_paged_select(
             ),
             _ => (false, false, false, Some((root_page.clone(), root_page.clone()))),
         };
+        // Группа флоата: сам флоат имени не передаёт (§named pages п. 2), но
+        // поточные коробки класса A в группе — передают конец — у последней (`page-name-000-print`: флоат, `clear`-блок
+        // страницы `foo` и следом блок страницы `bar` — разрыв перед `bar`).
+        let names = match (&names, n) {
+            (None, Node::Element(e)) if floated(n) && !class_a_box(e) => {
+                let named: Vec<(String, String)> = group
+                    .iter()
+                    .filter_map(|g| match g {
+                        Node::Element(k) if class_a_box(k) => Some(page_names(k, &root_page)),
+                        _ => None,
+                    })
+                    .collect();
+                // Начало группы — продолжение предыдущей: разрыв перед флоатом
+                // увёл бы и его (`page-name-float-002-print`: флоат `b` остаётся
+                // на листе `a`).
+                let start = prev_end.clone().unwrap_or_else(|| root_page.clone());
+                named.last().map(|l| (start, l.1.clone()))
+            }
+            _ => names,
+        };
         // Группа из нескольких узлов монолитом не бывает: её режет край листа.
         let monolith = monolith && group.iter().filter(|g| !is_blank(g)).count() == 1;
         let renamed = match (&prev_end, &names) {
