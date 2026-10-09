@@ -18,7 +18,7 @@ mod counter_decls;
 pub(crate) use counter_decls::{apply_counter_decls, apply_value_hint};
 #[path = "dom_content.rs"]
 mod content;
-pub(crate) use content::content_text;
+pub(crate) use content::{content_text, host_content, resolve_content_attributes};
 
 use crate::computed::{Computed, Display, Position};
 use crate::css::{
@@ -3373,10 +3373,10 @@ fn walk(
                 counters.enter_marker();
                 language::pseudo(counters, &m, &me, path);
                 apply_counter_decls(&m, counters, "", &[], &mut false, &|_, _| 0);
-                if let Some(items) = m.content.as_ref() {
+                if let Some(items) = host_content(&m, &me) {
                     let quotes = m.quotes.as_ref();
                     style.marker_text = Some(content_text(
-                        items,
+                        &items,
                         counters,
                         &attrs,
                         quotes,
@@ -4044,7 +4044,7 @@ fn pseudo_box_named(
     inlinify_in_ruby(&mut style, "", std::iter::once(me).chain(path.iter().rev()));
     // Нет содержимого или коробки — нет и псевдоэлемента: его директивы
     // счётчиков тогда не действуют вовсе (у него нет объекта раскладки).
-    let list = style.content.clone()?;
+    let list = resolve_content_attributes(style.content.as_ref()?, attrs, me.html_attrs)?;
     if style.display == Some(Display::None) {
         return None;
     }

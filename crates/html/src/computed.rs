@@ -1571,8 +1571,8 @@ pub enum ContentItem {
     Counter(String, String),
     /// `counters(имя, разделитель, стиль)`.
     Counters(String, String, String),
-    /// `attr(имя)`.
-    Attr(String),
+    /// Attribute name and serialized fallback; None is guaranteed-invalid.
+    Attr(String, Option<String>),
     /// `open-quote`/`close-quote` (`emit`) и `no-open-quote`/`no-close-quote`
     /// (только сдвиг глубины) — css-content-3 §4.2.
     Quote { open: bool, emit: bool },

@@ -98,7 +98,8 @@ fn pseudo_style(
     }
     let style = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars);
     // Без содержимого коробки нет, а значит нет и счётчиков.
-    (style.content.is_some() && style.display != Some(Display::None)).then_some(style)
+    (crate::dom::host_content(&style, me).is_some() && style.display != Some(Display::None))
+        .then_some(style)
 }
 
 impl Scan<'_> {
