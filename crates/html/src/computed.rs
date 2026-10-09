@@ -5024,7 +5024,7 @@ impl Computed {
                 ) {
                     return;
                 }
-                self.padding.top = Len::parse(v);
+                self.padding.top = crate::value::fold_zero_percentage(Len::parse(v));
                 self.side_seq.padding[0] = self.decl_seq;
             }
             "padding-right" => {
@@ -5043,7 +5043,7 @@ impl Computed {
                 ) {
                     return;
                 }
-                self.padding.right = Len::parse(v);
+                self.padding.right = crate::value::fold_zero_percentage(Len::parse(v));
                 self.side_seq.padding[1] = self.decl_seq;
             }
             "padding-bottom" => {
@@ -5062,7 +5062,7 @@ impl Computed {
                 ) {
                     return;
                 }
-                self.padding.bottom = Len::parse(v);
+                self.padding.bottom = crate::value::fold_zero_percentage(Len::parse(v));
                 self.side_seq.padding[2] = self.decl_seq;
             }
             "padding-left" => {
@@ -5081,7 +5081,7 @@ impl Computed {
                 ) {
                     return;
                 }
-                self.padding.left = Len::parse(v);
+                self.padding.left = crate::value::fold_zero_percentage(Len::parse(v));
                 self.side_seq.padding[3] = self.decl_seq;
             }
             // Физическая запись ГАСИТ логический слот той же стороны: разбор
@@ -5115,7 +5115,7 @@ impl Computed {
                 // её сама (css-values-4 §10.9), а вклад решает долю от нуля
                 // (css-sizing-3 §5.2.1, `calc-margins-*`). Вертикальные поля
                 // — по-прежнему `parse`: смесь там закрыла бы схлопывание.
-                self.margin.right = Len::parse_mixed(v);
+                self.margin.right = crate::value::fold_zero_percentage(Len::parse_mixed(v));
                 self.side_seq.margin[1] = self.decl_seq;
             }
             "margin-bottom" => {
@@ -5132,7 +5132,7 @@ impl Computed {
                     return;
                 }
                 // Смесь «доля ± точки» доживает (см. `margin-right`).
-                self.margin.left = Len::parse_mixed(v);
+                self.margin.left = crate::value::fold_zero_percentage(Len::parse_mixed(v));
                 self.side_seq.margin[3] = self.decl_seq;
             }
 

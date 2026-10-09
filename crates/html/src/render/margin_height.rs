@@ -162,7 +162,11 @@ fn zero_child(node: &Node, inherited: &Computed) -> bool {
                 && inherited.keep_spaces != Some(true)
                 && inherited.preserve_newlines != Some(true);
         }
-        Node::Element(e) if !in_flow(&e.style) => return true,
+        // Only floats and absolutes leave the flow (CSS 2.1 §9.3). An
+        // inline-block/-flex/-grid is inline-level content in flow: it sits in
+        // a line box, which the auto height counts (§10.6.3). `in_flow` is the
+        // block-stack predicate and rejects those too.
+        Node::Element(e) if out_of_flow(&e.style) => return true,
         Node::Element(e) => e,
     };
     if e.style.display == Some(Display::None) {

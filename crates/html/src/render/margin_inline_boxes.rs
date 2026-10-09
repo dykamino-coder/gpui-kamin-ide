@@ -1,6 +1,9 @@
 //! Build undecorated inline continuations before collapsing ancestor block margins.
 
-use super::{Display, Node, contains_block, inline_floats, out_of_flow, real_inline, replaced_tag};
+use super::{
+    Display, Node, contains_block, inline_floats, multicol_container, out_of_flow, real_inline,
+    replaced_tag,
+};
 use super::{split_block_in_inline, wrap_anon_tables};
 
 /// CSS 2.1 sections 9.2.1.1 and 8.3.1: adjoining margins belong to the
@@ -12,7 +15,11 @@ pub(super) fn prepare(nodes: &mut [Node]) {
         let Node::Element(element) = node else {
             continue;
         };
-        if replaced_tag(element) {
+        // A multicol container's content is fragmented from its original
+        // box tree (`shape_full`/column planning); splitting it here would
+        // give the painted boxes a different structure than the planned
+        // fragments (block-in-inline-012, block-max-height-004).
+        if replaced_tag(element) || multicol_container(&element.style) {
             continue;
         }
         prepare(&mut element.children);

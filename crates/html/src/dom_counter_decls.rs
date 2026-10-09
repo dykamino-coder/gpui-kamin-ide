@@ -108,7 +108,11 @@ pub(crate) fn apply_counter_decls(
     // (css-lists-3 §list-item-counter). Порядок строгий: явное увеличение,
     // затем неявное, затем присваивание — иначе `<li value>` считался бы
     // от уже сдвинутого значения.
-    let is_item = tag == "li" || style.display == Some(Display::ListItem);
+    // CSS Lists 3 §4.6: only a box with `display: list-item` increments
+    // `list-item`; an `li` keeps that role only while no author display
+    // replaces the UA `list-item` (`li { display: block }`).
+    let is_item = (tag == "li" && style.display.is_none())
+        || style.display == Some(Display::ListItem);
     *item_flag = is_item;
     let explicit_item = style
         .counter_increment

@@ -126,6 +126,11 @@ pub const BROWSER_CSS: &str = r#"
        'inline-block' box»): без вида кнопка шла строчной коробкой, и доля
        высоты картинки внутри не решалась (`intrinsic-percent-replaced-021`). */
     button { display: inline-block; padding: 1px 6px; border-radius: 0 }
+    /* Widget sizes include their border and padding (Blink html.css and
+       Gecko forms.css: `select`, check boxes and radio buttons are
+       `box-sizing: border-box`): a percentage size must not add the edges
+       to the used size (`widget-percentage-height-001`). */
+    select, input[type="checkbox" i], input[type="radio" i] { box-sizing: border-box }
     canvas { background: none; border: none }
     mark { background: yellow; color: black }
     textarea { background: white; color: black; white-space: pre-wrap;

@@ -14065,7 +14065,11 @@ fn band_kids(
                 // пустого ребёнка выходил нулём, и флоат с детьми не
                 // рисовался вовсе (эталон `css-break/background-image-001`:
                 // колонка-флоат с `<div style="block-size:100%; background">`).
-                if float && !table && !replaced && !vertical {
+                // CSS Lists 3 §2: a floated list item (a `::before`/`::after`
+                // with `display: list-item` too) keeps its marker, which only
+                // `element`'s list-item painter draws.
+                let list_item = copy.style.display == Some(Display::ListItem);
+                if float && !table && !replaced && !vertical && !list_item {
                     // Флоат — блочная коробка (§9.7) каким бы ни был тег: тем
                     // же путём, что у статического хоста (`shape_flow`).
                     // Таблица — своей веткой `element` ниже: каркас блока её
@@ -16297,9 +16301,9 @@ thread_local! {
     /// Определена ли высота содержащего блока уровня схлопывания (§10.5):
     /// доля высоты ребёнка при неопределённой ведёт себя как `auto`.
     static COLLAPSE_CB_HEIGHT_DEF: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    /// The next `blocks` call lays out a table cell's content: the cell is a
-    /// block formatting context root (CSS 2.1 §9.4.1) and contains its
-    /// floats (§10.6.7), even as a `td` without a `display` value.
+    /// The next `blocks` call lays out a table cell's or caption's content:
+    /// both are block formatting context roots (CSS 2.1 §9.4.1) and contain
+    /// their floats (§10.6.7), even as a `td`/`caption` without `display`.
     static CELL_BFC: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
@@ -21190,6 +21194,9 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         // и внепоточных (`:7718`, `:7722`).
         let built = if copy.tag == "img" {
             grouped(image(&copy), &copy.style)
+        } else if copy.style.display == Some(Display::ListItem) {
+            // CSS Lists 3 §2: a floated list item keeps its marker.
+            grouped(list_item::render_with_style(&copy, inherited, &merged, opts), &copy.style)
         } else {
             grouped(
                 styled_div_with(&copy, &merged)
@@ -28183,6 +28190,27 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 ]
             } else if clipped {
                 vec![table_clipped_content::wrap(&mut d, inside)]
+            } else if matches!(cm.vertical_align, Some(Align::Center) | Some(Align::End))
+                && e.style.vertical != Some(true)
+                && cell.children.iter().any(|n| {
+                    matches!(n, Node::Element(c) if matches!(
+                        c.style.position,
+                        Some(crate::computed::Position::Absolute)
+                            | Some(crate::computed::Position::Fixed)
+                    ) && matches!(c.style.inset.top, None | Some(Len::Auto))
+                        && matches!(c.style.inset.bottom, None | Some(Len::Auto)))
+                })
+            {
+                // CSS 2.1 §17.5.3 aligns the cell's IN-FLOW content; an
+                // absolutely positioned child keeps the static position it
+                // would have in that flow (§10.6.4). The cell aligns by flex
+                // justification, which would centre the abspos box itself
+                // (Flexbox §4.1) — align a wrapper of the contents instead,
+                // whose height is the in-flow height only
+                // (position-relative-table-*-left-absolute-child: HTML's
+                // `vertical-align: middle` row groups lifted the box by half
+                // its height).
+                vec![div().w_full().flex().flex_col().children(inside).into_any_element()]
             } else {
                 inside
             };
@@ -28619,10 +28647,16 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // (наследование caption-side).
             let cap_side_bottom =
                 cap.style.caption_bottom.or(e.style.caption_bottom) == Some(true);
+            // CSS 2.1 §9.4.1: a table caption is a block container that
+            // establishes a block formatting context, so its auto height
+            // contains its floats (§10.6.7), like a cell (`CELL_BFC`).
+            CELL_BFC.with(|c| c.set(true));
+            let inside = blocks(&cap.children, &cm, opts);
+            CELL_BFC.with(|c| c.set(false));
             let built = styled_div_with(cap, &cm)
                 .flex()
                 .flex_col()
-                .children(blocks(&cap.children, &cm, opts))
+                .children(inside)
                 .into_any_element();
             // A caption is a transformable block box (css-transforms-1
             // §transformable-element); its `transform` was dropped

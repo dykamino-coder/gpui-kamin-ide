@@ -20,6 +20,25 @@ fn shrink0(d: gpui::Div, li: &Element, parent: &Computed) -> gpui::Div {
     }
 }
 
+/// CSS Lists 3 §3.1.1 UA sheet: `::marker { font-variant-numeric: tabular-nums }`.
+/// It overrides the item's inherited numeric variant; only an author
+/// `::marker` rule naming a numeric variant replaces it.
+fn tabular_marker(style: &mut Computed, item: &Computed, layer: Option<&Computed>) {
+    const NUMERIC: [&str; 8] = ["lnum", "onum", "pnum", "tnum", "frac", "afrc", "ordn", "zero"];
+    let numeric = |t: &str| NUMERIC.contains(&t);
+    if layer.is_some_and(|m| m.font_features.iter().any(|(t, _)| numeric(t))) {
+        return;
+    }
+    let mut features = if style.font_features.is_empty() {
+        item.font_features.clone()
+    } else {
+        std::mem::take(&mut style.font_features)
+    };
+    features.retain(|(t, _)| !numeric(t));
+    features.push(("tnum".into(), 1));
+    style.font_features = features;
+}
+
 pub(super) fn render(li: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let mut merged = inline::inherit(inherited, &li.style);
     if matches!(
@@ -114,6 +133,7 @@ pub(super) fn render_with_style(
             let mut span = anon_element("::marker", vec![Node::Text(marker)]);
             span.inline = true;
             span.style = marker_style.clone().unwrap_or_default();
+            tabular_marker(&mut span.style, merged, li.style.marker_layer.as_deref());
             span.style.content = None;
             span.style.marker_layer = None;
             // CSS Pseudo 4 #first-letter-application excludes marker content.
@@ -137,6 +157,7 @@ pub(super) fn render_with_style(
     {
         mark_style.font_family = Some(opts.text.font_family.to_string());
     }
+    tabular_marker(&mut mark_style, merged, li.style.marker_layer.as_deref());
     let marker = inline::transform_case(&marker, &mark_style);
     // Without line boxes the outside marker is top-aligned to the item, and
     // the item's content height is at least the marker's (csswg-drafts#2417,
@@ -176,9 +197,23 @@ pub(super) fn render_with_style(
                 let m = crate::apply::apply_text(div(), &mark_style)
                     .absolute()
                     .top_0();
+                // An outside marker sits outside the item's principal BORDER
+                // box (CSS 2.1 §12.5.1; Blink places it before the content
+                // start minus border and padding). The absolute insets here
+                // resolve against the padding box, so the start border
+                // becomes the marker's end margin (`padding-left-applies-to-
+                // 010`: the bullet stays left of a 10px start border).
+                let side = li.style.borders();
+                let px_of = |l: Option<crate::value::Len>| match l {
+                    Some(crate::value::Len::Px(v)) if v > 0.0 => v,
+                    _ => 0.0,
+                };
                 if merged.rtl == Some(true) {
-                    m.left(gpui::relative(1.)).text_left()
+                    m.left(gpui::relative(1.))
+                        .ml(gpui::px(px_of(side.right)))
+                        .text_left()
                 } else {
+                    let m = m.mr(gpui::px(px_of(side.left)));
                     // Строки многострочного маркера равняются по
                     // КОНЦУ, к началу содержимого пункта
                     // (`marker-text-align-001`: `"[m] longtext"` при
