@@ -16913,6 +16913,7 @@ fn paragraph_routed(
         if upright && inherited.sideways != Some(true) {
             let mut stack = inherited.clone();
             stack.vertical = None;
+            stack.upright_stack = true;
             stack.break_word = Some(true);
             let em = match stack.font_size {
                 Some(Len::Px(v)) => v,
@@ -17815,7 +17816,7 @@ fn paragraph_pieces_routed(
         // piece of the horizontal pre-rotation paragraph, whose clone has
         // `vertical` cleared. Carry the writing mode on the box itself.
         let vertical_abs;
-        let e = if inherited.rotated_line == Some(true)
+        let e = if (inherited.rotated_line == Some(true) || inherited.upright_stack)
             && e.style.vertical.is_none()
             && matches!(
                 e.style.position,

@@ -2555,6 +2555,9 @@ pub struct Computed {
     /// `hug_inline`): `inline::inherit` начинает с `own.clone()`, а у
     /// вложенного элемента поле пусто.
     pub ortho_col: bool,
+    /// Physical paragraph of a `text-orientation: upright` vertical stack
+    /// (its clone clears `vertical`). Not inherited, like `ortho_col`.
+    pub(crate) upright_stack: bool,
     /// Повёрнутый абзац `vertical-lr`: строки-колонки идут слева направо —
     /// подача строк снизу вверх (см. `Paragraph::reversed_lines`).
     pub lines_reversed: Option<bool>,
