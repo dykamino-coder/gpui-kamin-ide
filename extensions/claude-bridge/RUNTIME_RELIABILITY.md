@@ -1372,7 +1372,9 @@ pending/generation/cancellation/reconciliation guarantees остаются не�
 acceptance общего транспорта; из неё НЕ следует, что подтверждённый путь
 доставки объясняет каждый случай зависшего ответа (см. ниже). **Acceptance будущего fix:** automated transport/lifecycle tests +
 Windows CEF runtime gate.
-**Windows runtime merge gate:** required for a later functional fix; diagnostics alone do not assert a fix.
+**Windows runtime merge gate:** not required for the current bounded diagnostic phase; diagnostics alone do not assert a fix.
+**Later functional fix gate:** required Windows CEF runtime merge gate. Before any behavioral implementation, restore the declaration above to `required` and provide exact-candidate runtime evidence; pending, teardown and reconciliation guarantees remain unaccepted.
+**Diagnostic acceptance:** automated boundary/privacy/retention tests before merge; post-merge production observation by the deployment owner, correlated with native BR-31 pump evidence. Observation does not close BR-24 or satisfy the later functional gate.
 
 Windows acceptance PR #13 воспроизвёл 3 раза из 5: mutating call
 `hooks:set-plugin-approval` завершился host-side, approval store был записан и
@@ -1410,6 +1412,35 @@ call с успешной записью при потерянном ответе
 disposable approval scenario и несколько read-only invokes при tab switch,
 hide/show, extension-host reconnect и CEF reload; ни один promise или modal не
 остаётся бесконечно pending, а повторная mutation не выполняется автоматически.
+
+**Prepared diagnostic phase 2026-10-09:** Three initial real renderer transport
+fixtures failed without document/reply correlation. The paired extension and
+webview now emit allowlisted `invoke-boundary` records into the existing bounded
+`incident.log` (1 MiB × four retained generations, whole-record rotation). Fields
+include boot, view, document/channel pseudonyms, invoke id, stage counter,
+visibility and elapsed time. Selected static startup/approval channels are
+named; other channels remain pseudonymous. Arguments, results, arbitrary
+channel names and exception text are excluded.
+
+Host stages distinguish receipt without handler completion, resolved/rejected/
+unregistered handler, accepted/false/rejected postMessage and reply after
+document replacement/view disposal. Renderer stages distinguish sent, received,
+duplicate, unknown/other-document reply and document end. `reply-accepted`
+means only that postMessage returned true, not native pump delivery or renderer
+receipt. Document end is a best-effort signal; abrupt crash may omit it.
+
+The actual BridgeHost router fixture proves a completed mutation with one false
+reply send, handler-versus-send failures, and replacement during a pending
+handler. A real rolling-log fixture proves privacy and retention under 14,000
+records. No native pump code changes, timeout, automatic retry, cancellation or
+reconciliation are introduced. Existing unresolved pending and other-document
+settlement behavior is deliberately not claimed fixed by diagnostics.
+
+Fix PR [#201](https://github.com/dykamino-coder/gpui-kamin-ide/pull/201) for this diagnostic phase. Status remains confirmed incident;
+maintainer must correlate these records with the native BR-31 pump boundary and
+repeat the original disposable Windows scenario before deciding the complete
+bounded invoke/reconciliation policy. A later behavioral implementation retains
+the required Windows gate. This PR is not field attribution or closure.
 
 ### BR-25 — Verify Agents view delivery and rehydration after reveal
 
