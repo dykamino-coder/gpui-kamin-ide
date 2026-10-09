@@ -1713,6 +1713,21 @@ fn sheet_rules(css: &str, media: Media, top: bool) -> Vec<Rule> {
                         });
                 }
                 false
+            } else if name
+                .strip_prefix("@counter-style")
+                .is_some_and(|s| s.starts_with(char::is_whitespace))
+            {
+                // css-counter-styles-3 §3: дескрипторы правила — в реестр
+                // документа, повторы — по порядку записи (последнее
+                // действительное побеждает). Имя — с исходным регистром.
+                let decls = parse_decls(body);
+                let descs: Vec<(String, Vec<String>)> = decls
+                    .iter()
+                    .filter(|(k, _)| k.as_str() != ORDER_KEY)
+                    .map(|(k, v)| (k.clone(), v.split(DECL_SEP).map(str::to_string).collect()))
+                    .collect();
+                crate::counter_style_rules::register(&head["@counter-style".len()..], &descs);
+                false
             } else if name.starts_with("@position-try") {
                 // §fallback-rule: тело — обычные объявления (только вставки,
                 // поля, размеры, самовыравнивание, `position-anchor`,

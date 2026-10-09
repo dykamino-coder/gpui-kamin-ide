@@ -54,6 +54,9 @@ pub struct Counters {
     /// Заданные `quotes` по пути: владелец и значение. Наследование —
     /// ближайший предок по пути (запись живёт только в своём поддереве).
     quotes: Vec<(Vec<u32>, Option<Vec<(String, String)>>)>,
+    /// Счётчики, созданные `counter-reset` на узлах текущего пути: на выходе
+    /// из узла их снимает `drop_shadowed_reset`.
+    resets: Vec<(Vec<u32>, String)>,
 }
 
 /// Путь родителя: адрес без последнего сегмента.
@@ -96,6 +99,15 @@ impl Counters {
     }
 
     pub fn leave(&mut self) {
+        let mut i = 0;
+        while i < self.resets.len() {
+            if self.resets[i].0 == self.path {
+                let (_, name) = self.resets.remove(i);
+                self.drop_shadowed_reset(&name);
+            } else {
+                i += 1;
+            }
+        }
         self.path.pop();
         self.next.truncate(self.path.len() + 1);
     }
@@ -134,10 +146,38 @@ impl Counters {
             st.pop();
         }
         st.push(Entry {
-            owner: cur,
+            owner: cur.clone(),
             value,
             reversed,
         });
+        if !self.resets.iter().any(|(o, n)| *o == cur && n == name) {
+            self.resets.push((cur, name.to_string()));
+        }
+    }
+
+    /// Выход из узла со своим `counter-reset` (Blink
+    /// `RemoveCounterIfAncestorExists`): если под его счётчиком в стеке лежит
+    /// счётчик ПРЕДКА (или предыдущего брата предка, но не своего брата),
+    /// последующие братья наследуют именно тот — значит, свой снимается.
+    /// Иначе `<span style="counter-reset: c 98">` внутри `#test { counter-reset:
+    /// c }` продолжал бы счёт у следующих братьев (`counter-001`: `99 13 14`,
+    /// а не `99 100 101`).
+    fn drop_shadowed_reset(&mut self, name: &str) {
+        let cur = self.path.clone();
+        let Some(st) = self.stack.get_mut(name) else { return };
+        if st.len() < 2 || st.last().is_none_or(|e| e.owner != cur) {
+            return;
+        }
+        let prev = &st[st.len() - 2].owner;
+        if let Some(root) = self.boundaries.last()
+            && !(prev.len() > root.len() && covers(root, prev))
+        {
+            return;
+        }
+        let pp = parent(prev);
+        if covers(prev, &cur) || (covers(pp, &cur) && pp != parent(&cur)) {
+            st.pop();
+        }
     }
 
     /// Считает ли внутренний счётчик этого имени вниз.

@@ -2644,6 +2644,9 @@ pub struct Computed {
     pub first_letter_own: Option<Box<Computed>>,
     /// Стиль первой строки абзаца (`::first-line`).
     pub first_line: Option<Box<Computed>>,
+    /// Только объявления `::first-line` самого узла — их получает первый
+    /// блок-потомок, несущий первую строку (`render/first_line_descendants`).
+    pub first_line_own: Option<Box<Computed>>,
     /// `initial-letter` (css-inline-3 §initial-letter): размер буквицы в
     /// строках и её осадка (sink) — на базовой какой строки она стоит.
     /// `None` — `normal`, обычная буква. Живёт в слое `::first-letter`.
@@ -6175,6 +6178,25 @@ impl Computed {
                 // Сокращение задаёт ВСЕ составляющие: не названное в нём
                 // размещение возвращается к начальному `outside`
                 // (css-lists-3 §4). Долгая форма чужого значения не трогает.
+                //
+                // Анонимный стиль `symbols(…)` (css-counter-styles-3
+                // §symbols-function) — одно слово целиком; недействительная
+                // запись отбрасывает всё объявление.
+                let symbols_fn = v.to_ascii_lowercase().find("symbols(").map(|at| {
+                    let tail = &v[at..];
+                    &tail[..tail.find(')').map_or(tail.len(), |i| i + 1)]
+                });
+                if symbols_fn.is_some_and(|f| !crate::counter_style_rules::valid_symbols_fn(f)) {
+                    return;
+                }
+                let v_owned;
+                let v = match symbols_fn {
+                    Some(f) => {
+                        v_owned = v.replacen(f, " ", 1);
+                        v_owned.as_str()
+                    }
+                    None => v,
+                };
                 if key == "list-style" {
                     self.list_style_inside = Some(false);
                     for token in v.split_whitespace() {
@@ -6187,6 +6209,10 @@ impl Computed {
                 }
                 self.no_marker = Some(v.contains("none"));
                 if list_style_string::apply_string(self, key, v) {
+                    return;
+                }
+                if let Some(func) = symbols_fn {
+                    self.list_style_type = Some(func.to_string());
                     return;
                 }
                 // Вид маркера — ИМЯ стиля счётчика (css-lists-3 §3): любое,

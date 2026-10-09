@@ -409,6 +409,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     let _ = crate::css::take_page_decls();
     let _ = crate::css::take_try_rules();
     let _ = crate::css::take_property_rules();
+    crate::counter_style_rules::reset();
     crate::css::reset_layers();
     crate::value::set_dark_scheme(false);
     // Корневые метрики (`rem`, `rlh`) — тоже от прошлого документа: у рамки
@@ -3190,7 +3191,9 @@ fn walk(
             let layer = |name, base| initial_pseudos::resolve(name, rules, vars, &me, path, sibs, base);
             let first_letter = layer("first-letter", Some(&style));
             let first_line = layer("first-line", Some(&style));
+            let first_line_own = layer("first-line", None).map(Box::new);
             style.first_letter_own = layer("first-letter", None).map(Box::new);
+            style.first_line_own = first_line_own;
             // `::marker` — НЕ копией стиля хозяина, как первая буква, а
             // ТОЛЬКО своими объявлениями поверх таблицы агента: копия
             // протащила бы в маркер рамку, поля и размеры самого `<li>`.

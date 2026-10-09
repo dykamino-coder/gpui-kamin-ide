@@ -28,6 +28,7 @@ mod margin_height;
 mod float_clear_scope;
 mod inline_floats;
 mod first_letter_descendants;
+mod first_line_descendants;
 mod inline_splits;
 use inline_splits::split_block_in_inline;
 mod native_paragraph_route;
@@ -8317,7 +8318,10 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         collapsed
     } else {
         initial_letter_float(
-            first_letter_descendants::route(collapsed, inherited),
+            first_letter_descendants::route(
+                first_line_descendants::route(collapsed, inherited),
+                inherited,
+            ),
             inherited,
             opts,
         )
