@@ -38,7 +38,7 @@ impl Window {
         };
         let tile = self
             .sprite_atlas
-            .get_or_insert_with(&params.into(), &mut || {
+            .get_or_insert_with(params.into(), &mut || {
                 Ok(Some((
                     data.size(frame_index),
                     Cow::Borrowed(
@@ -59,7 +59,7 @@ impl Window {
                 sampling,
                 ImageSampling::Nearest | ImageSampling::NearestSnapped
             )),
-            grayscale,
+            grayscale: grayscale.into(),
             bounds: match sampling {
                 ImageSampling::LinearSubpixel => bounds,
                 ImageSampling::LinearSnapped | ImageSampling::NearestSnapped => {
