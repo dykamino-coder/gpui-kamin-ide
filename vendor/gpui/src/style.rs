@@ -1,5 +1,5 @@
 pub(crate) mod border_snap;
-mod transformed_box;
+pub(crate) mod transformed_box;
 mod sizing_keyword;
 pub use sizing_keyword::CssSizingKeyword;
 
