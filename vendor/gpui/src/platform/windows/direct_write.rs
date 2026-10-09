@@ -1,3 +1,7 @@
+//! Windows text shaping, font selection and glyph rasterization through DirectWrite.
+
+mod fallbacks;
+
 use std::{borrow::Cow, sync::Arc};
 
 use ::util::ResultExt;
@@ -28,6 +32,8 @@ struct FontInfo {
     font_face: IDWriteFontFace3,
     features: IDWriteTypography,
     fallbacks: Option<IDWriteFontFallback>,
+    scoped_fallbacks: Option<IDWriteFontFallback>,
+    fallback_key: Option<FontFallbacks>,
     is_system_font: bool,
     /// KaminIDE patch: возможность `vert` запрошена — глифы стоячего
     /// вертикального письма. Продвижение такого прогона берётся из
@@ -347,83 +353,6 @@ impl DirectWriteState {
         Ok(())
     }
 
-    fn generate_font_fallbacks(
-        &self,
-        fallbacks: &FontFallbacks,
-    ) -> Result<Option<IDWriteFontFallback>> {
-        if fallbacks.fallback_list().is_empty() {
-            return Ok(None);
-        }
-        unsafe {
-            let builder = self.components.factory.CreateFontFallbackBuilder()?;
-            let font_set = &self.system_font_collection.GetFontSet()?;
-            for entry in fallbacks.fallback_list() {
-                // KaminIDE patch: запись `Семейство@3000-30FF,31F0-31FF`
-                // ограничивает подстановку семейства этими диапазонами
-                // (`FontFallbacks::restricted`) — документ просит шрифт
-                // только под свою письменность, остальное по-прежнему идёт
-                // системной подстановкой. Запись без `@` — как раньше.
-                let (family_name, only) = FontFallbacks::split_restricted(entry);
-                let Some(fonts) = font_set
-                    .GetMatchingFonts(
-                        &HSTRING::from(family_name),
-                        DWRITE_FONT_WEIGHT_NORMAL,
-                        DWRITE_FONT_STRETCH_NORMAL,
-                        DWRITE_FONT_STYLE_NORMAL,
-                    )
-                    .log_err()
-                else {
-                    continue;
-                };
-                if fonts.GetFontCount() == 0 {
-                    log::error!("No matching font found for {}", family_name);
-                    continue;
-                }
-                let font = fonts.GetFontFaceReference(0)?.CreateFontFace()?;
-                let mut count = 0;
-                font.GetUnicodeRanges(None, &mut count).ok();
-                if count == 0 {
-                    continue;
-                }
-                let mut unicode_ranges = vec![DWRITE_UNICODE_RANGE::default(); count as usize];
-                let Some(_) = font
-                    .GetUnicodeRanges(Some(&mut unicode_ranges), &mut count)
-                    .log_err()
-                else {
-                    continue;
-                };
-                unicode_ranges.truncate(count as usize);
-                if let Some(only) = only {
-                    unicode_ranges = unicode_ranges
-                        .iter()
-                        .flat_map(|r| {
-                            only.iter().filter_map(move |&(lo, hi)| {
-                                let first = r.first.max(lo);
-                                let last = r.last.min(hi);
-                                (first <= last).then_some(DWRITE_UNICODE_RANGE { first, last })
-                            })
-                        })
-                        .collect();
-                    if unicode_ranges.is_empty() {
-                        continue;
-                    }
-                }
-                let target_family_name = HSTRING::from(family_name);
-                builder.AddMapping(
-                    &unicode_ranges,
-                    &[target_family_name.as_ptr()],
-                    None,
-                    None,
-                    None,
-                    1.0,
-                )?;
-            }
-            let system_fallbacks = self.components.factory.GetSystemFontFallback()?;
-            builder.AddMappings(&system_fallbacks)?;
-            Ok(Some(builder.CreateFontFallback()?))
-        }
-    }
-
     unsafe fn generate_font_features(
         &self,
         font_features: &FontFeatures,
@@ -536,13 +465,23 @@ impl DirectWriteState {
             else {
                 continue;
             };
-            let fallbacks = font_fallbacks
-                .and_then(|fallbacks| self.generate_font_fallbacks(fallbacks).log_err().flatten());
+            let fallbacks = font_fallbacks.and_then(|fallbacks| {
+                self.generate_font_fallbacks(fallbacks, None)
+                    .log_err()
+                    .flatten()
+            });
+            let scoped_fallbacks = font_fallbacks.and_then(|fallbacks| {
+                self.generate_font_fallbacks(fallbacks, Some(family_name))
+                    .log_err()
+                    .flatten()
+            });
             let font_info = FontInfo {
                 font_family: family_name.to_owned(),
                 font_face,
                 features: direct_write_features,
                 fallbacks,
+                scoped_fallbacks,
+                fallback_key: font_fallbacks.cloned(),
                 is_system_font,
                 vert_advance: font_features
                     .tag_value_list()
@@ -735,8 +674,8 @@ impl DirectWriteState {
                         &HSTRING::from(&self.components.locale),
                     )?
                     .cast()?;
-                if let Some(ref fallbacks) = font_info.fallbacks {
-                    format.SetFontFallback(fallbacks)?;
+                if let Some(fallbacks) = self.layout_fallbacks(font_runs)? {
+                    format.SetFontFallback(&fallbacks)?;
                 }
 
                 let layout = self.components.factory.CreateTextLayout(

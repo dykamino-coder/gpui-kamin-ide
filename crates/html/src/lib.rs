@@ -37,6 +37,7 @@ pub mod border_image;
 pub mod color_space;
 pub mod computed;
 pub mod counter_style;
+pub mod counter_style_rules;
 pub mod counters;
 pub mod counters_scan;
 pub mod coverage;

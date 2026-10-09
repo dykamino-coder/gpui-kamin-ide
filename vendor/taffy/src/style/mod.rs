@@ -836,6 +836,10 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// Is it a replaced element like an image or form field?
     /// <https://drafts.csswg.org/css-sizing-3/#min-content-zero>
     pub item_is_replaced: bool,
+    /// KaminIDE patch: `max-width`/`max-height` given as `min-content` /
+    /// `max-content` (css-sizing-3 §3.2). `max_size` cannot hold these
+    /// keywords; a flex container measures them for its items.
+    pub item_max_size_keywords: Size<Option<AvailableSpace>>,
     /// Should size styles apply to the content box or the border box of the node
     pub box_sizing: BoxSizing,
     /// Sets the direction of text, table and grid columns, and horizontal overflow.
@@ -1082,6 +1086,7 @@ impl<S: CheapCloneStr> Style<S> {
         display: Display::DEFAULT,
         item_is_table: false,
         item_is_replaced: false,
+        item_max_size_keywords: Size { width: None, height: None },
         box_sizing: BoxSizing::BorderBox,
         direction: Direction::Ltr,
         grid_axis_reversed: None,
@@ -1634,6 +1639,10 @@ impl<S: CheapCloneStr> FlexboxItemStyle for Style<S> {
     fn is_table_item(&self) -> bool {
         self.item_is_table
     }
+    #[inline(always)]
+    fn max_size_keywords(&self) -> Size<Option<AvailableSpace>> {
+        self.item_max_size_keywords
+    }
 }
 
 #[cfg(feature = "flexbox")]
@@ -1661,6 +1670,10 @@ impl<T: FlexboxItemStyle> FlexboxItemStyle for &'_ T {
     #[inline(always)]
     fn is_table_item(&self) -> bool {
         (*self).is_table_item()
+    }
+    #[inline(always)]
+    fn max_size_keywords(&self) -> Size<Option<AvailableSpace>> {
+        (*self).max_size_keywords()
     }
 }
 
@@ -1981,6 +1994,7 @@ mod tests {
             display: Default::default(),
             item_is_table: false,
             item_is_replaced: false,
+            item_max_size_keywords: Size { width: None, height: None },
             box_sizing: Default::default(),
             #[cfg(feature = "float_layout")]
             float: Default::default(),

@@ -613,6 +613,16 @@ fn collect_with_empty_metrics(
                     std::mem::swap(&mut lead, &mut trail);
                     std::mem::swap(&mut mlead, &mut mtrail);
                 }
+                // CSS 2.1 sections 8.4 and 14.2: padding belongs to this
+                // inline, even when a descendant supplies a different background.
+                // Its advance is already carried by the edge spacers; paint those
+                // advances instead of extending a descendant's text band into them.
+                let painted_padding =
+                    merged.inline_bg.is_some() && merged.inline_border.is_none();
+                if painted_padding && let Some(pad) = &mut merged.inline_pad {
+                    pad[1] = 0.0;
+                    pad[3] = 0.0;
+                }
                 // Box identity of the edge spacers: the line painter moves them
                 // to the outermost visual fragments after bidi reordering.
                 let parent_rtl = inherited.rtl == Some(true);
@@ -717,7 +727,7 @@ fn collect_with_empty_metrics(
                 if lead != 0.0 {
                     out.push(Piece::Text {
                         text: SPACER.into(),
-                        style: edge(spacer_style(&merged, lead), true),
+                        style: edge(padding_spacer_style(&merged, lead, painted_padding), true),
                     });
                 }
                 if blank
@@ -787,7 +797,7 @@ fn collect_with_empty_metrics(
                 if trail != 0.0 {
                     out.push(Piece::Text {
                         text: SPACER.into(),
-                        style: edge(spacer_style(&merged, trail), false),
+                        style: edge(padding_spacer_style(&merged, trail, painted_padding), false),
                     });
                 }
                 if mtrail != 0.0 {
@@ -1529,7 +1539,7 @@ fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Compu
     // умолчание или роняло объявление.
     if own.inherit_bits != 0 {
         use crate::computed::inh;
-        let on = |b: u16| own.inherit_bits & b != 0;
+        let on = |b: u32| own.inherit_bits & b != 0;
         if on(inh::BG_REPEAT) {
             c.bg_repeat = parent.bg_repeat;
         }
@@ -2889,30 +2899,10 @@ pub fn word_spans(pieces: &[Piece], base_size: f32) -> Vec<(std::ops::Range<usiz
 /// цикл краски полосы не идёт ни разу. Чинится в `vendor/gpui`
 /// (`line_layout.rs` — ширина по знакам, `line.rs` — квад безглифного
 /// прогона), обе пометки «KaminIDE patch».
-/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (две правки одной жилы, §8.4 и §10.8):
+/// Borderless padding paints on its edge spacer independently of a descendant's
+/// background (CSS 2.1 sections 8.4 and 14.2), with no duplicate band extension.
+/// Empty inline boxes still use their explicit overlay for the vertical sides.
 ///
-/// 1. Оставить фон НА РАСПОРКЕ отступа, чтобы область отступа строчной
-///    коробки красилась её фоном. Полный свод CSS2: 5320 → 5319. Единственная
-///    потеря — `word-spacing-characters-001` (0.00 → 5.91): у непустого куска
-///    полосу с отступом уже рисует сам прогон (`inline_pad`), и фон распорки
-///    ложится ВТОРЫМ слоем поверх той же области.
-/// 2. То же, но ТОЛЬКО у пустой строчной коробки (у неё прогона нет вовсе), да
-///    ещё со снятым боковым `inline_pad` (иначе полоса вдвое шире). Срез
-///    linebox/css1/inline/bidi/word-spacing (1844 пары, 1699 зелёных): 1698.
-///    Целевые пары не сдвинулись НИ НА СОТУЮ: `empty-inline-002/003` остались
-///    «красное видно», `c42-ibx-pad-000` 2.19, `inlines-017` 3.00,
-///    `border-padding-bleed-003` «красное видно». Та же
-///    `word-spacing-characters-001` 0.00 → 4.63.
-///
-/// Почему целевые не двигаются: в них пустой `<span>` — ЕДИНСТВЕННОЕ
-/// содержимое блока, а абзац без текста у нас не строится вовсе (проба:
-/// `<div><span style="padding:100px;border:25px;background:green"></span></div>`
-/// не рисует ничего, тогда как с текстом по бокам отступ красится). Значит
-/// начинать надо с абзаца из одной пустой строчной коробки, а не с распорки.
-///
-/// Ещё одна замеренная и откаченная мелочь рядом: надбавка высоты строки от
-/// ПУСТОЙ строчной коробки отрезком нулевой длины (`line_height_spans` +
-/// `line_padding`) — срез linebox 613 без изменений, 0 и 0.
 fn spacer_style(merged: &Computed, advance: f32) -> Computed {
     let mut style = merged.clone();
     style.letter_spacing = Some(Len::Px(advance));
@@ -2920,6 +2910,14 @@ fn spacer_style(merged: &Computed, advance: f32) -> Computed {
     style.word_space_char = None;
     style.inline_bg = None;
     style.inline_border = None;
+    style
+}
+
+fn padding_spacer_style(merged: &Computed, advance: f32, painted: bool) -> Computed {
+    let mut style = spacer_style(merged, advance);
+    if painted {
+        style.inline_bg = merged.inline_bg;
+    }
     style
 }
 

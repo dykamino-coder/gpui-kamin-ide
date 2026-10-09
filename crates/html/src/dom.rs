@@ -9,13 +9,21 @@
 mod subgrid_axes;
 mod grid_static_position;
 mod replaced_display;
+#[path = "dom_display_inheritance.rs"]
+mod display_inheritance;
+use display_inheritance::resolve_display_inherit;
+#[path = "dom_initial_pseudos.rs"]
+mod initial_pseudos;
 #[path = "dom_containment.rs"]
 mod containment;
 #[path = "dom_language.rs"]
 mod language;
 #[path = "dom_counter_decls.rs"]
 mod counter_decls;
-pub(crate) use counter_decls::{apply_counter_decls, apply_value_hint};
+mod presentational_hints;
+pub(crate) use counter_decls::{
+    apply_counter_decls, apply_value_hint, counter_snapshot, inherit_counter_decls,
+};
 #[path = "dom_content.rs"]
 mod content;
 pub(crate) use content::{content_text, host_content, resolve_content_attributes};
@@ -397,6 +405,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     let _ = crate::css::take_page_decls();
     let _ = crate::css::take_try_rules();
     let _ = crate::css::take_property_rules();
+    crate::counter_style_rules::reset();
     crate::css::reset_layers();
     crate::value::set_dark_scheme(false);
     // Корневые метрики (`rem`, `rlh`) — тоже от прошлого документа: у рамки
@@ -515,6 +524,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     );
     // ПЕРВЫМ проходом: табличная починка и подъёмы ниже читают `display`.
     resolve_display_inherit(&mut out, (None, None, None, None, None));
+    resolve_rule_color_inherit(&mut out, &RuleColors::default());
     // Anonymous inline-table around orphan table boxes inside inline boxes
     // (CSS 2.1 §17.2.1 step 3); block parents are fixed up by `blocks()`.
     crate::render::inline_anon_tables(&mut out);
@@ -568,43 +578,41 @@ fn quirks_percent_heights(nodes: &mut [Node], base: Option<f32>) {
     }
 }
 
-/// `display` родителя вместе с метками ролей: то, что переносит `inherit`.
-type DisplayOf = (
-    Option<Display>,
-    Option<bool>,
-    Option<u8>,
-    Option<u8>,
-    Option<bool>,
+type RuleColors = (
+    Option<crate::value::Color>,
+    Option<crate::computed::GapList<Option<crate::value::Color>>>,
+    Option<crate::value::Color>,
+    Option<crate::computed::GapList<Option<crate::value::Color>>>,
 );
 
-/// `display: inherit` — вычисленное значение ДОМ-родителя (CSS 2.1 §6.2.1).
-///
-/// Прежде бит `inh::DISPLAY` решался при сборке (`inline::inherit`) от
-/// РЕНДЕР-родителя, а табличная починка (`fixup_row_children`,
-/// `wrap_anon_tables`) смотрит `e.style.display` раньше и видела `None`:
-/// `#test {display: inherit}` в `.tr {display: table-row}` становился блоком
-/// с красным фоном и рамкой внутри анонимной ячейки, а не рядом без ячеек
-/// (`empty-cells-applies-to-017`). Где рендер-родитель совпадает с
-/// ДОМ-родителем, результат прежний побайтно: значение то же, бит снят.
-fn resolve_display_inherit(nodes: &mut [Node], parent: DisplayOf) {
+/// `column-rule-color: inherit` / `row-rule-color: inherit` — ненаследуемое
+/// свойство берёт ВЫЧИСЛЕННОЕ значение ДОМ-родителя (css-cascade-4 §7.2).
+/// Отрисовка линеек читает собственный стиль коробки, поэтому слово решается
+/// здесь, в дереве, как `display: inherit` выше (`multicol-rule-color-inherit-001`:
+/// родитель `column-rule-color: green` при `column-rule-style: none`, ребёнок
+/// `inherit` — зелёные линейки, а не `currentcolor` красного текста).
+fn resolve_rule_color_inherit(nodes: &mut [Node], parent: &RuleColors) {
+    use crate::computed::inh;
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
-        if el.style.inherit_bits & crate::computed::inh::DISPLAY != 0 {
-            el.style.display = parent.0;
-            el.style.inline_display = parent.1;
-            el.style.row_group_kind = parent.2;
-            el.style.col_role = parent.3;
-            el.style.is_caption = parent.4;
-            el.style.inherit_bits &= !crate::computed::inh::DISPLAY;
+        let s = &mut el.style;
+        if s.inherit_bits & inh::COLUMN_RULE_C != 0 {
+            s.column_rule_color = parent.0;
+            s.column_rule_colors = parent.1.clone();
+            s.inherit_bits &= !inh::COLUMN_RULE_C;
         }
-        let own: DisplayOf = (
-            el.style.display,
-            el.style.inline_display,
-            el.style.row_group_kind,
-            el.style.col_role,
-            el.style.is_caption,
+        if s.inherit_bits & inh::ROW_RULE_C != 0 {
+            s.row_rule_color = parent.2;
+            s.row_rule_colors = parent.3.clone();
+            s.inherit_bits &= !inh::ROW_RULE_C;
+        }
+        let own: RuleColors = (
+            s.column_rule_color,
+            s.column_rule_colors.clone(),
+            s.row_rule_color,
+            s.row_rule_colors.clone(),
         );
-        resolve_display_inherit(&mut el.children, own);
+        resolve_rule_color_inherit(&mut el.children, &own);
     }
 }
 
@@ -1642,6 +1650,8 @@ fn collect_style_tags(handle: &Handle, out: &mut Vec<String>) {
 /// Цепочка предков для сопоставления `.card .title`: тег + классы + id.
 #[derive(Clone)]
 pub(crate) struct Ancestor {
+    /// Computed counter directives follow DOM inheritance, even without a box.
+    pub(crate) counter_style: [Option<String>; 3],
     tag: String,
     /// Only HTML documents use ASCII case-insensitive names on HTML elements.
     html_attrs: bool,
@@ -2115,43 +2125,6 @@ fn apply_direction(style: &mut Computed, tag: &str, attrs: &[(String, String)]) 
     }
 }
 
-/// Размер, заданный АТРИБУТОМ: `<img width="100" height="36">`.
-///
-/// В HTML это «представленческая подсказка» — стиль самого слабого веса, и
-/// без него картинка в разметке без CSS выходит по своему пикселю, а не по
-/// заявленному размеру. Атрибут проигрывает любому правилу CSS, поэтому
-/// применяется, только если размера ещё нет.
-/// Дорешать `display: inline` после каскада (CSS 2.1).
-///
-/// §9.7: плавающий или абсолютный элемент блокифицируется. §10.2: на
-/// незамещаемом строчном width/height/min/max не применяются — раньше
-/// `div { display: inline; width: 1in }` рисовался коробкой (наш строчный
-/// уровень выражается через inline-block, который размеры принимает).
-/// Презентационные цвета разметки: `bgcolor` и `text` — хинты ниже
-/// авторского CSS (каскад уже слит, поэтому «ниже» выражается как
-/// «только если стиль цвета не задал»).
-fn apply_presentational_colors(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
-    let color_of = |name: &str| {
-        attrs
-            .iter()
-            .find(|(k, _)| k == name)
-            .and_then(|(_, v)| crate::value::Color::parse(v.trim()))
-    };
-    if matches!(tag, "body" | "table" | "tr" | "td" | "th")
-        && style.background.is_none()
-        && style.gradient.is_none()
-        && let Some(c) = color_of("bgcolor")
-    {
-        style.background = Some(c);
-    }
-    if tag == "body"
-        && style.color.is_none()
-        && let Some(c) = color_of("text")
-    {
-        style.color = Some(c);
-    }
-}
-
 /// css-ruby-1 §2.2 п.1 «Inlinify block-level boxes».
 ///
 /// Коробка блочного УРОВНЯ в потоке, лежащая внутри руби-коробки (контейнер,
@@ -2579,6 +2552,7 @@ pub(crate) fn ancestor_of(child: &Handle, spot: Spot) -> Option<Ancestor> {
             .map(|a| a.value.to_string())
     };
     Some(Ancestor {
+        counter_style: Default::default(),
         tag: local_name(&name.local),
         html_attrs: content::html_attributes(&name.ns),
         id: find("id"),
@@ -2948,7 +2922,8 @@ fn walk(
                 .find(|(k, _)| k == "class")
                 .map(|(_, v)| v.split_whitespace().map(str::to_string).collect())
                 .unwrap_or_default();
-            let me = Ancestor {
+            let mut me = Ancestor {
+                counter_style: Default::default(),
                 tag: tag.clone(),
                 html_attrs: content::html_attributes(&name.ns),
                 id: id.clone(),
@@ -3050,7 +3025,14 @@ fn walk(
             // (css-values-5 §7.7): слот ставится только на время его каскада.
             crate::computed::set_current_attrs(&attrs);
             crate::computed::set_current_sibling((spot.index > 0).then_some((spot.index, spot.total)));
+            let nowrap_hint = presentational_hints::nowrap(&tag, &attrs);
+            if let Some(rule) = &nowrap_hint {
+                matched.push(rule);
+            }
             let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
+            inherit_counter_decls(&mut style, path.last().map(|p| &p.counter_style));
+            apply_value_hint(&mut style, &me);
+            me.counter_style = counter_snapshot(&style);
             crate::computed::clear_current_attrs();
             crate::computed::set_current_sibling(None);
             // Корневые метрики для `rem`/`rlh` (css-values-4 §6.1.4).
@@ -3084,7 +3066,7 @@ fn walk(
             }
             apply_presentational_size(&mut style, &tag, &attrs);
             promote_auto_ratio(&mut style, &tag);
-            apply_presentational_colors(&mut style, &tag, &attrs);
+            presentational_hints::colors(&mut style, &tag, &attrs);
             finish_inline_display(&mut style, &tag, &attrs);
             style.plain_block_box = {
                 use crate::computed::Display;
@@ -3206,23 +3188,12 @@ fn walk(
             });
             // Псевдоэлементы первой буквы и первой строки — тем же слоем
             // поверх базового стиля: они меняют начертание куска, а не блок.
-            let layer = |name: &str| {
-                let mut found: Vec<&Rule> = rules
-                    .iter()
-                    .filter(|r| r.sel.pseudo.as_deref() == Some(name))
-                    .filter(|r| matches_ignoring_pseudo(&r.sel, &me, path, sibs))
-                    .collect();
-                found.sort_by_key(|r| (r.sel.specificity(), r.order));
-                (!found.is_empty()).then(|| {
-                    let mut merged = style.clone();
-                    for rule in found.iter() {
-                        merged.apply_decls_with_vars(&rule.decls, vars);
-                    }
-                    merged
-                })
-            };
-            let first_letter = layer("first-letter");
-            let first_line = layer("first-line");
+            let layer = |name, base| initial_pseudos::resolve(name, rules, vars, &me, path, sibs, base);
+            let first_letter = layer("first-letter", Some(&style));
+            let first_line = layer("first-line", Some(&style));
+            let first_line_own = layer("first-line", None).map(Box::new);
+            style.first_letter_own = layer("first-letter", None).map(Box::new);
+            style.first_line_own = first_line_own;
             // `::marker` — НЕ копией стиля хозяина, как первая буква, а
             // ТОЛЬКО своими объявлениями поверх таблицы агента: копия
             // протащила бы в маркер рамку, поля и размеры самого `<li>`.
@@ -3367,9 +3338,12 @@ fn walk(
             // содержимое сворачивается в эти поля, а прочие свойства слоя
             // (цвет, шрифт, разрядка) едут в `marker_layer`.
             //
-            // CSS Lists 3 §marker-pseudo: marker counters apply before
-            // ::before and before evaluating the marker's own content.
-            if let Some(m) = marker_layer {
+            // CSS Lists 3 §marker-pseudo: the marker is the item's FIRST child,
+            // before ::before; counter-* declared on ::marker (with DOM
+            // inheritance of counter directives) apply right here, before the
+            // marker's own content is evaluated (`marker-counter`).
+            if let Some(mut m) = marker_layer {
+                inherit_counter_decls(&mut m, Some(&me.counter_style));
                 counters.enter_marker();
                 language::pseudo(counters, &m, &me, path);
                 apply_counter_decls(&m, counters, "", &[], &mut false, &|_, _| 0);
@@ -4038,6 +4012,7 @@ fn pseudo_box_named(
         return None;
     }
     let mut style = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars);
+    inherit_counter_decls(&mut style, Some(&me.counter_style));
     // Псевдоэлемент — ребёнок хозяина: блочный `::before` внутри руби
     // инлайнизируется так же, как элемент (css-ruby-1 §2.2 п.1,
     // `ruby-inlinize-blocks-005`). Ближайший предок — сам хозяин.

@@ -3,15 +3,26 @@ use crate::computed::Computed;
 use crate::value::Len;
 use gpui::CssSizingKeyword;
 
-/// Functional fit arguments and percentage padding need the native content-box
-/// contract: flattening their edges at the HTML boundary loses their sizing basis.
+/// Percentages and functional fit need the native content-box contract: their
+/// used size must add the resolved edges (CSS 2.1 sections 10.2 and 10.5).
 pub(crate) fn native_content_box(style: &Computed) -> bool {
-    style.border_box != Some(true) && (
-        (style.width == Some(Len::FitContent)
+    style.border_box != Some(true)
+        && ((style.width == Some(Len::FitContent)
             && matches!(style.fit_arg[0], Some(Len::Px(_) | Len::Pct(_))))
-        || [style.padding.left, style.padding.right, style.padding.top, style.padding.bottom]
-            .into_iter().any(|side| matches!(side, Some(Len::Pct(_))))
-    )
+            || [
+                style.width,
+                style.height,
+                style.min_width,
+                style.max_width,
+                style.min_height,
+                style.max_height,
+                style.padding.left,
+                style.padding.right,
+                style.padding.top,
+                style.padding.bottom,
+            ]
+            .into_iter()
+            .any(|side| matches!(side, Some(Len::Pct(_)))))
 }
 
 pub(crate) fn keywords(style: &Computed) -> [Option<CssSizingKeyword>; 2] {
@@ -47,7 +58,11 @@ mod tests {
     use gpui::{Styled, div, px};
     #[test]
     fn functional_fit_uses_one_box_model_for_keywords_and_numeric_axes() {
-        let mut c = Computed { width: Some(Len::FitContent), height: Some(Len::Px(60.0)), ..Computed::default() };
+        let mut c = Computed {
+            width: Some(Len::FitContent),
+            height: Some(Len::Px(60.0)),
+            ..Computed::default()
+        };
         c.border_visible = [Some(true); 4];
         c.border_width.left = Some(Len::Px(3.0));
         c.border_width.right = Some(Len::Px(3.0));

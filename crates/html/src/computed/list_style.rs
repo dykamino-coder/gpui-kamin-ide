@@ -24,6 +24,13 @@ pub(super) fn apply(style: &mut Computed, key: &str, value: &str) {
             }
             image = true;
         } else if crate::css::selector_tokens::ident(word) || keyword.starts_with("symbols(") {
+            // css-counter-styles-3 §symbols-function: an invalid anonymous
+            // style invalidates the whole declaration.
+            if keyword.starts_with("symbols(")
+                && !crate::counter_style_rules::valid_symbols_fn(word)
+            {
+                return;
+            }
             if matches!(
                 keyword.as_str(),
                 "inherit" | "initial" | "unset" | "revert" | "revert-layer" | "default"

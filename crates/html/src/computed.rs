@@ -107,23 +107,27 @@ pub(crate) mod ainh {
 }
 
 pub(crate) mod inh {
-    pub(crate) const BG_REPEAT: u16 = 1 << 0;
-    pub(crate) const Z_INDEX: u16 = 1 << 1;
-    pub(crate) const OUTLINE_W: u16 = 1 << 2;
-    pub(crate) const DISPLAY: u16 = 1 << 3;
-    pub(crate) const BG_IMAGE: u16 = 1 << 4;
-    pub(crate) const BG_POS: u16 = 1 << 5;
-    pub(crate) const CLIP: u16 = 1 << 6;
-    pub(crate) const BG_ORIGIN: u16 = 1 << 7;
-    pub(crate) const BG_CLIP: u16 = 1 << 8;
-    pub(crate) const BG_SIZE: u16 = 1 << 9;
-    pub(crate) const TRANSFORM: u16 = 1 << 10;
-    pub(crate) const TRANSFORM_ORIGIN: u16 = 1 << 11;
-    pub(crate) const OUTLINE_C: u16 = 1 << 12;
-    pub(crate) const OUTLINE_S: u16 = 1 << 13;
-    pub(crate) const OUTLINE_O: u16 = 1 << 14;
+    pub(crate) const BG_REPEAT: u32 = 1 << 0;
+    pub(crate) const Z_INDEX: u32 = 1 << 1;
+    pub(crate) const OUTLINE_W: u32 = 1 << 2;
+    pub(crate) const DISPLAY: u32 = 1 << 3;
+    pub(crate) const BG_IMAGE: u32 = 1 << 4;
+    pub(crate) const BG_POS: u32 = 1 << 5;
+    pub(crate) const CLIP: u32 = 1 << 6;
+    pub(crate) const BG_ORIGIN: u32 = 1 << 7;
+    pub(crate) const BG_CLIP: u32 = 1 << 8;
+    pub(crate) const BG_SIZE: u32 = 1 << 9;
+    pub(crate) const TRANSFORM: u32 = 1 << 10;
+    pub(crate) const TRANSFORM_ORIGIN: u32 = 1 << 11;
+    pub(crate) const OUTLINE_C: u32 = 1 << 12;
+    pub(crate) const OUTLINE_S: u32 = 1 << 13;
+    pub(crate) const OUTLINE_O: u32 = 1 << 14;
     /// `overflow-clip-margin: inherit` — коробка отсчёта и поле родителя.
-    pub(crate) const CLIP_MARGIN: u16 = 1 << 15;
+    pub(crate) const CLIP_MARGIN: u32 = 1 << 15;
+    /// `column-rule-color: inherit` — скалярный цвет и список линеек родителя.
+    pub(crate) const COLUMN_RULE_C: u32 = 1 << 16;
+    /// `row-rule-color: inherit`.
+    pub(crate) const ROW_RULE_C: u32 = 1 << 17;
 }
 
 /// Разряды `will_change` (css-will-change-1 §2.1): чего ждать от коробки,
@@ -1946,7 +1950,7 @@ pub struct Computed {
     /// вид (`display`), плитка и её место (`background-image`,
     /// `background-position`), обрезка (`clip`), сокращение шрифта,
     /// преобразование регистра.
-    pub(crate) inherit_bits: u16,
+    pub(crate) inherit_bits: u32,
     pub(crate) padding_inherit_side: [bool; 4],
     /// `box-shadow: inherit`.
     pub(crate) shadow_inherit: bool,
@@ -2639,8 +2643,13 @@ pub struct Computed {
     /// Живёт в стиле, а не в элементе, потому что абзац собирается из кусков
     /// уже без узла-родителя: до кусков доезжает только вычисленный стиль.
     pub first_letter: Option<Box<Computed>>,
+    /// Own declarations remain separate for fictitious inheritance in descendants.
+    pub first_letter_own: Option<Box<Computed>>,
     /// Стиль первой строки абзаца (`::first-line`).
     pub first_line: Option<Box<Computed>>,
+    /// Только объявления `::first-line` самого узла — их получает первый
+    /// блок-потомок, несущий первую строку (`render/first_line_descendants`).
+    pub first_line_own: Option<Box<Computed>>,
     /// `initial-letter` (css-inline-3 §initial-letter): размер буквицы в
     /// строках и её осадка (sink) — на базовой какой строки она стоит.
     /// `None` — `normal`, обычная буква. Живёт в слое `::first-letter`.
@@ -2837,6 +2846,9 @@ pub struct Computed {
     /// `clip-path`/`mask`: обрезка по кругу или скруглённому прямоугольнику.
     /// Хранится долей радиуса от меньшей стороны либо радиусом в точках.
     pub clip_round: Option<f32>,
+    /// The uniform `round` radius of `inset()`/`rect()`/`xywh()` as written
+    /// (points or a percentage of the reference box).
+    pub clip_round_len: Option<Len>,
     /// `clip-path: circle(...)|ellipse(...)` с параметрами: сырые аргументы
     /// формы (`shape:circle(...)`). Радиусы и центр зависят от размера
     /// коробки — он известен только отрисовке, поэтому форма растрируется
@@ -2850,6 +2862,10 @@ pub struct Computed {
     /// `no-repeat, repeat` задаёт свою укладку каждому слою. Список короче
     /// набора слоёв повторяется (css-backgrounds-3 §2.2).
     pub mask_repeat_list: Option<Vec<(bool, bool)>>,
+    /// Per-layer `space`/`round` axes (css-masking-1 §7.6 →
+    /// css-backgrounds-3 §3.4): 2 space, 3 round, anything else as
+    /// `mask_repeat_list` says.
+    pub mask_repeat_modes: Option<Vec<(u8, u8)>>,
     /// `mask-size: contain|cover` (1|2): вписывание по интринзику.
     pub mask_fit: Option<u8>,
     /// `mask-mode: luminance` — маскирует светимость, а не альфа.
@@ -5670,7 +5686,38 @@ impl Computed {
                 // и то же. Разбор тот же, что у отдельного свойства, иначе
                 // тест и эталон разойдутся механикой, а не раскладкой.
                 let mut pos: Vec<String> = vec![];
+                // `<bg-position> [ / <bg-size> ]?` (css-backgrounds-3 §3.10):
+                // the words after the slash are the SIZE. They used to fall
+                // into the position (`top left / 100% auto` positioned at
+                // `top left 100%`, size stayed auto — `background-334`).
+                let mut tokens: Vec<String> = vec![];
                 for token in split_outside_parens(v) {
+                    if token.contains('(') || !token.contains('/') {
+                        tokens.push(token);
+                        continue;
+                    }
+                    let (a, b) = token.split_once('/').unwrap_or((token.as_str(), ""));
+                    if !a.is_empty() {
+                        tokens.push(a.to_string());
+                    }
+                    tokens.push("/".to_string());
+                    if !b.is_empty() {
+                        tokens.push(b.to_string());
+                    }
+                }
+                let mut size_words: Option<Vec<String>> = None;
+                for token in tokens {
+                    if token == "/" {
+                        size_words = Some(vec![]);
+                        continue;
+                    }
+                    if let Some(words) = size_words.as_mut()
+                        && words.len() < 2
+                        && (token == "auto" || token == "cover" || token == "contain" || Len::parse_mixed(&token).is_some())
+                    {
+                        words.push(token);
+                        continue;
+                    }
                     match token.as_str() {
                         "no-repeat" => self.bg_repeat = Some(BgRepeat::NoRepeat),
                         "repeat-x" => self.bg_repeat = Some(BgRepeat::RepeatX),
@@ -5698,6 +5745,9 @@ impl Computed {
                 // положения уехал бы в середину коробки.
                 if !pos.is_empty() {
                     self.bg_pos = parse_pos_words(&pos.join(" "));
+                }
+                if let Some(words) = size_words.filter(|w| !w.is_empty()) {
+                    self.apply_one("background-size", &words.join(" "));
                 }
                 // Цвет живёт в НИЖНЕМ слое списка — верхний его не допускает.
                 if layers.len() > 1 {
@@ -6474,7 +6524,19 @@ impl Computed {
                 self.z_index = v
                     .parse::<i64>()
                     .ok()
-                    .map(|n| n.clamp(i32::MIN as i64, i32::MAX as i64) as i32);
+                    .map(|n| n.clamp(i32::MIN as i64, i32::MAX as i64) as i32)
+                    // `<integer>` from a math function (css-values-4 §10.9):
+                    // rounded to the nearest integer, halves toward +∞
+                    // (`calc-positive-fraction-001`: `calc(3 / 2)` → 2).
+                    .or_else(|| {
+                        (!v.trim_start().starts_with(|c: char| c.is_ascii_digit() || c == '-' || c == '+'))
+                            .then(|| crate::value::number(v))
+                            .flatten()
+                            .map(|x| {
+                                let r = if x.is_nan() { 0.0 } else { (x as f64 + 0.5).floor() };
+                                r.clamp(i32::MIN as f64, i32::MAX as f64) as i32
+                            })
+                    });
             }
 
             // --- Рамки и обводка --------------------------------------------
@@ -7843,6 +7905,18 @@ impl Computed {
                 }
             }
             "column-rule-color" | "row-rule-color" | "rule-color" => {
+                // Ненаследуемое свойство со словом `inherit` (css-cascade-4 §7.2):
+                // цвет линейки родителя целиком, а не `currentcolor` своего текста
+                // (`multicol-rule-color-inherit-001/002`).
+                if v == "inherit" {
+                    if key != "row-rule-color" {
+                        self.inherit_bits |= inh::COLUMN_RULE_C;
+                    }
+                    if key != "column-rule-color" {
+                        self.inherit_bits |= inh::ROW_RULE_C;
+                    }
+                    return;
+                }
                 if let Some(l) = gap_list(v, gap_color) {
                     if key != "row-rule-color" {
                         self.set_gap_colors(true, &l);
@@ -9209,6 +9283,24 @@ impl Computed {
                     crate::css::split_args(v).iter().map(|l| one(l)).collect();
                 self.mask_no_repeat = Some(list.first().copied().unwrap_or((false, false)));
                 self.mask_repeat_list = (!list.is_empty()).then_some(list);
+                let mode = |w: &str| match w {
+                    "space" => 2u8,
+                    "round" => 3,
+                    _ => 0,
+                };
+                let modes: Vec<(u8, u8)> = crate::css::split_args(v)
+                    .iter()
+                    .map(|l| {
+                        let t: Vec<&str> = l.split_whitespace().collect();
+                        match t.as_slice() {
+                            [a] => (mode(a), mode(a)),
+                            [a, b] => (mode(a), mode(b)),
+                            _ => (0, 0),
+                        }
+                    })
+                    .collect();
+                self.mask_repeat_modes =
+                    modes.iter().any(|&(x, y)| x > 0 || y > 0).then_some(modes);
             }
             "mask-position" | "-webkit-mask-position" => {
                 let word = |t: &str| match t {
@@ -9368,12 +9460,32 @@ impl Computed {
                     // §3.1): `polygon(evenodd, …)`. Вершин любое число —
                     // больше восьми (предел шейдера) и `evenodd` уходят
                     // растровой маской-путём при отрисовке.
+                    // css-shapes-2 §basic-shape-polygon: `<fill-rule>? [round
+                    // <length>]?` may lead the list; the radius rounds every
+                    // vertex (a rectangle becomes a rounded rectangle).
+                    let mut round = None;
                     let (rule, rest) = match rest.trim_start().split_once(',') {
-                        Some((r, tail)) if matches!(r.trim(), "nonzero" | "evenodd") => {
-                            (r.trim(), tail)
+                        Some((head, tail))
+                            if head.split_whitespace().next().is_some_and(|w| {
+                                matches!(w, "nonzero" | "evenodd" | "round")
+                            }) =>
+                        {
+                            let mut words = head.split_whitespace().peekable();
+                            let rule = match words.peek() {
+                                Some(&w @ ("nonzero" | "evenodd")) => {
+                                    words.next();
+                                    w
+                                }
+                                _ => "nonzero",
+                            };
+                            if words.next() == Some("round") {
+                                round = words.next().and_then(Len::parse);
+                            }
+                            (rule, tail)
                         }
                         _ => ("nonzero", rest),
                     };
+                    self.clip_round_len = round.filter(|l| matches!(l, Len::Px(_)));
                     let points: Vec<(Len, Len)> = rest
                         .split(',')
                         .filter_map(|pair| {
@@ -9413,10 +9525,11 @@ impl Computed {
                         .collect();
                     if vals.len() == 4 {
                         self.clip_edges = Some([vals[0], vals[1], vals[2], vals[3]]);
+                        self.clip_round_len = inner.split("round").nth(1).and_then(uniform_round);
                         self.clip_round = inner
                             .split("round")
                             .nth(1)
-                            .and_then(|r| Len::parse(r.trim()))
+                            .and_then(uniform_round)
                             .and_then(|l| match l {
                                 Len::Px(v) => Some(v),
                                 _ => None,
@@ -9432,10 +9545,11 @@ impl Computed {
                         .collect();
                     if vals.len() == 4 {
                         self.clip_xywh = Some([vals[0], vals[1], vals[2], vals[3]]);
+                        self.clip_round_len = inner.split("round").nth(1).and_then(uniform_round);
                         self.clip_round = inner
                             .split("round")
                             .nth(1)
-                            .and_then(|r| Len::parse(r.trim()))
+                            .and_then(uniform_round)
                             .and_then(|l| match l {
                                 Len::Px(v) => Some(v),
                                 _ => None,
@@ -9468,10 +9582,11 @@ impl Computed {
                         self.clip_inset = Some([pick(0), pick(1), pick(2), pick(3)]);
                     }
                     let inner = rest.trim_end_matches(')');
+                    self.clip_round_len = inner.split("round").nth(1).and_then(uniform_round);
                     let radius = inner
                         .split("round")
                         .nth(1)
-                        .and_then(|r| Len::parse(r.trim()))
+                        .and_then(uniform_round)
                         .and_then(|l| match l {
                             Len::Px(v) => Some(v),
                             Len::Pct(p) => Some(p),
@@ -11341,6 +11456,30 @@ impl Computed {
     /// слоёв, повторяются по кругу). Градиент слоя уходит в растровую плитку
     /// (`bg_image` с сырой записью), чтобы все слои шли одним путём и в
     /// своём порядке. `None` — слой один.
+    /// `background-clip` of the background COLOR: css-backgrounds-3 §3.2,
+    /// «the background color is clipped according to the background-clip
+    /// value associated with the bottom-most background image layer». The
+    /// number of layers comes from `background-image` (§2.1); a shorter
+    /// `background-clip` list repeats, a longer one is truncated
+    /// (`background-color-clip`: two `none` layers, clip list
+    /// `border-box, content-box, border-box` → `content-box`).
+    pub(crate) fn color_clip(&self) -> Option<BgClip> {
+        let Some((_, clips)) = self.bg_lists.iter().find(|(k, _)| k == "background-clip") else {
+            return self.bg_clip;
+        };
+        let Some((_, images)) = self.bg_lists.iter().find(|(k, _)| k == "background-image") else {
+            return self.bg_clip;
+        };
+        let n = background_layers(images).len();
+        let clips = background_layers(clips);
+        if n < 2 || clips.is_empty() {
+            return self.bg_clip;
+        }
+        let mut probe = Computed::default();
+        probe.apply_one("background-clip", clips[(n - 1) % clips.len()]);
+        probe.bg_clip
+    }
+
     pub(crate) fn bg_layers(&self) -> Option<Vec<Computed>> {
         let short = self.bg_lists.iter().find(|(k, _)| k == "background").map(|(_, v)| v.clone());
         let image = self.bg_lists.iter().find(|(k, _)| k == "background-image").map(|(_, v)| v.clone());
@@ -12850,6 +12989,16 @@ fn calc_size_arg(v: &str) -> Option<CalcSize> {
 }
 
 /// `object-view-box: none | <basic-shape-rect>` — `inset()`, `rect()`,
+/// `round <'border-radius'>` of `inset()`/`rect()`/`xywh()` (css-shapes-1
+/// §basic-shape-rect): one radius for all corners and both axes — every
+/// listed value, before and after `/`, equal. `20px / 20px` is that radius;
+/// unequal corners are not representable here and stay unrounded.
+fn uniform_round(r: &str) -> Option<Len> {
+    let mut it = r.split(|c: char| c == '/' || c.is_whitespace()).filter(|t| !t.is_empty());
+    let first = Len::parse(it.next()?)?;
+    it.all(|t| Len::parse(t) == Some(first)).then_some(first)
+}
+
 /// `xywh()` (css-images-4 §object-view-box; css-shapes-1 §basic-shape-rect).
 /// Длины — точки или доли; `inset` с 1-3 значениями раскрывается как поля.
 fn parse_view_box(v: &str) -> Option<(u8, [Len; 4])> {
