@@ -29,6 +29,8 @@ mod margin_edges;
 mod margin_height;
 mod float_clear_scope;
 mod inline_floats;
+mod float_atom;
+use float_atom::band_atom;
 mod first_letter_descendants;
 mod inline_splits;
 use inline_splits::split_block_in_inline;
@@ -11627,6 +11629,11 @@ fn wrap_floats(
                     .map(|(h, n, l)| (h, n, None, l))
             });
         if let Some((mut host, next, took_lead, lifted)) = hosted {
+            // CSS 2.1 §10.6.3: ordinary blocks count in-flow boxes, not floats.
+            // A complete static suffix has no later sibling needing its bands.
+            if !parent_bfc && next == nodes.len() && host.attr("bands") == Some("1") {
+                host.attrs.push(("inflow-height".into(), "1".into()));
+            }
             if let Some(at) = took_lead {
                 out.truncate(at);
             }
@@ -13139,41 +13146,6 @@ fn has_ruby(n: &Node) -> bool {
             matches!(e.tag.as_str(), "ruby" | "rt" | "rtc" | "rb") || e.children.iter().any(has_ruby)
         }
     }
-}
-
-/// Атом строчного потока для `FlowRow`: инлайн-блок с margin-box в
-/// точках. Поля кладёт слот (обёртка), а не сама коробка — как у
-/// статического хоста (`shape_flow`, ветка атомов).
-fn band_atom(c: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<crate::flow::FlowChild> {
-    let (w, h) = px_margin_box(&c.style)?;
-    let (ml, mt) = (
-        px_margin(&c.style.margin.left).unwrap_or(0.0),
-        px_margin(&c.style.margin.top).unwrap_or(0.0),
-    );
-    let merged = inline::inherit(inherited, &c.style);
-    let mut inner = c.clone();
-    inner.style.margin = crate::computed::Sides::default();
-    let built = if inner.tag == "img" {
-        image_with(
-            &with_inherited_font(&inner, inherited),
-            Some(atom_base_font(inherited, opts)),
-        )
-    } else {
-        styled_div_with(&inner, &merged)
-            .children(blocks(&inner.children, &merged, opts))
-            .into_any_element()
-    };
-    let el = if px_margin_box(&inner.style) == Some((w, h)) {
-        built
-    } else {
-        div()
-            .relative()
-            .w(px(w))
-            .h(px(h))
-            .child(div().absolute().left(px(ml)).top(px(mt)).child(built))
-            .into_any_element()
-    };
-    Some(crate::flow::FlowChild { el, w, h })
 }
 
 /// Есть ли среди флоатов пробега (`run` — узлы от первого флоата до конца
@@ -20977,7 +20949,7 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
     // (число колонок): полная ширина растягивала бы его на страницу.
     let mut host = if inherited.vertical_rl == Some(true) || vert_lr {
         div().relative()
-    } else if bands.bottom(None) > 0.0 {
+    } else if e.attr("inflow-height") != Some("1") && bands.bottom(None) > 0.0 {
         // ★ ЗАМЕРЕНО И ОТКАЧЕНО: гейтить охват флоатов признаком «коробка
         // образует свой контекст форматирования», как это делают Blink
         // (`block_layout_algorithm.cc`: `IsNewFormattingContext()`) и Servo
@@ -21112,7 +21084,8 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         // §10.6.7 плюс собственная высота потока: держатели абсолютные и сами
         // хост не растят. `min_h` переопределяет поставленный на `:5129` —
         // это и нужно, там учтены только флоаты.
-        return host.min_h(px(bands.bottom(None).max(y))).into_any_element();
+        let bottom = if e.attr("inflow-height") == Some("1") { y } else { bands.bottom(None).max(y) };
+        return host.min_h(px(bottom)).into_any_element();
     }
     // Картина из инлайн-блоков с известными размерами — построчный поток
     // атомов (FlowRow): flex-переносом вырезы по строкам не выразить, а
