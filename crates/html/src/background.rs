@@ -32,6 +32,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 mod exact_layer;
 mod tile_positions;
+mod radius_lengths;
 #[cfg(test)]
 use tile_positions::tiling;
 
@@ -932,11 +933,7 @@ pub fn border_shape_outline_svg(
 /// нулём (`side()` в `render::grouped`).
 pub fn rrect_spec(c: &Computed, ring: Option<[f32; 4]>) -> String {
     let ell = c.radius_ell.unwrap_or([None; 4]);
-    let tok = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => format!("{v}"),
-        Some(Len::Pct(p)) => format!("{}%", p * 100.0),
-        _ => "0".to_string(),
-    };
+    let tok = radius_lengths::token;
     let radii = [c.radius.tl, c.radius.tr, c.radius.br, c.radius.bl];
     let mut out = String::from("rrect(");
     for (i, r) in radii.iter().enumerate() {
@@ -980,10 +977,7 @@ fn parse_rrect(args: &str, fw: f32, fh: f32, scale: f32) -> Option<Rrect> {
     // (css-backgrounds-3 §5.1); точки — CSS-точки, множатся на плотность.
     let mut vals = [0f32; 8];
     for (i, t) in toks[..8].iter().enumerate() {
-        vals[i] = match t.strip_suffix('%') {
-            Some(p) => p.parse::<f32>().ok()? / 100.0 * if i % 2 == 0 { fw } else { fh },
-            None => t.parse::<f32>().ok()? * scale,
-        };
+        vals[i] = radius_lengths::resolve(t, if i % 2 == 0 { fw } else { fh }, scale)?;
     }
     let mut k = [1f32; 4];
     for (i, t) in toks.iter().skip(8).enumerate() {

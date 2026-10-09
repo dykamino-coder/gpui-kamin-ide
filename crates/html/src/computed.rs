@@ -11116,37 +11116,6 @@ fn corner_shape_shorthand(raw: &str) -> Option<[f32; 4]> {
     })
 }
 
-fn radius_shorthand(raw: &str) -> Corners {
-    let v: Vec<Option<Len>> = raw.split_whitespace().map(Len::parse).collect();
-    match v.len() {
-        1 => Corners {
-            tl: v[0],
-            tr: v[0],
-            br: v[0],
-            bl: v[0],
-        },
-        2 => Corners {
-            tl: v[0],
-            tr: v[1],
-            br: v[0],
-            bl: v[1],
-        },
-        3 => Corners {
-            tl: v[0],
-            tr: v[1],
-            br: v[2],
-            bl: v[1],
-        },
-        4 => Corners {
-            tl: v[0],
-            tr: v[1],
-            br: v[2],
-            bl: v[3],
-        },
-        _ => Corners::default(),
-    }
-}
-
 /// Подстановка `var(--x)` и `var(--x, запасное)`.
 /// Сколько раз раскрывать переменные внутри переменных.
 ///

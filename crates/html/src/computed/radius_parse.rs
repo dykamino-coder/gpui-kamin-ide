@@ -1,16 +1,22 @@
 //! Preserve both border-radius axes until their length and percentage bases are known.
 
-use super::{Computed, radius_shorthand};
+use super::{Computed, Corners};
 use crate::value::Len;
 
 impl Computed {
     pub(super) fn apply_radius_shorthand(&mut self, raw: &str) {
-        let (h, v) = match raw.split_once('/') {
-            Some((h, v)) => (radius_shorthand(h.trim()), radius_shorthand(v.trim())),
-            None => {
-                let h = radius_shorthand(raw);
-                (h, h)
-            }
+        let Some((horizontal, vertical)) = axes(raw) else {
+            return;
+        };
+        let Some(h) = shorthand(horizontal) else {
+            return;
+        };
+        let v = match vertical {
+            Some(raw) => match shorthand(raw) {
+                Some(v) => v,
+                None => return,
+            },
+            None => h,
         };
         self.radius = h;
         // CSS Backgrounds 3 §5.1: the slash supplies independent vertical radii.
@@ -29,9 +35,15 @@ impl Computed {
     }
 
     pub(super) fn apply_radius_corner(&mut self, key: &str, raw: &str) {
-        let mut tokens = raw.split_whitespace();
-        let x = tokens.next().and_then(Len::parse);
-        let y = tokens.next().and_then(Len::parse).or(x);
+        let tokens = crate::background::split_top(raw);
+        let (x, y) = match tokens.as_slice() {
+            [x] => (length(x), length(x)),
+            [x, y] => (length(x), length(y)),
+            _ => return,
+        };
+        if x.is_none() || y.is_none() {
+            return;
+        }
         let slot = match key {
             "border-top-left-radius" => 0,
             "border-top-right-radius" => 1,
@@ -53,23 +65,80 @@ impl Computed {
     }
 
     pub(crate) fn resolve_radius_lengths(&mut self, fix: impl Fn(&mut Option<Len>)) {
+        let resolve = |radius: &mut Option<Len>| {
+            fix(radius);
+            if let Some(Len::Px(value)) = radius {
+                *value = value.max(0.0);
+            }
+        };
         for corner in [
             &mut self.radius.tl,
             &mut self.radius.tr,
             &mut self.radius.br,
             &mut self.radius.bl,
         ] {
-            fix(corner);
+            resolve(corner);
         }
         if let Some(corners) = self.radius_ell.as_mut() {
             for (x, y) in corners.iter_mut().flatten() {
                 let mut rx = Some(*x);
                 let mut ry = Some(*y);
-                fix(&mut rx);
-                fix(&mut ry);
+                resolve(&mut rx);
+                resolve(&mut ry);
                 *x = rx.unwrap_or(Len::Px(0.0));
                 *y = ry.unwrap_or(Len::Px(0.0));
             }
         }
     }
+}
+
+// CSS Backgrounds 3 §5.1: only a top-level slash separates the radius axes.
+// Division and whitespace inside a math function belong to one length token.
+fn axes(raw: &str) -> Option<(&str, Option<&str>)> {
+    let mut depth = 0usize;
+    let mut slash = None;
+    for (i, ch) in raw.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth = depth.checked_sub(1)?,
+            '/' if depth == 0 => {
+                if slash.replace(i).is_some() {
+                    return None;
+                }
+            }
+            _ => {}
+        }
+    }
+    if depth != 0 {
+        return None;
+    }
+    Some(match slash {
+        Some(i) => (&raw[..i], Some(&raw[i + 1..])),
+        None => (raw, None),
+    })
+}
+
+fn length(raw: &str) -> Option<Len> {
+    match super::size_range::parse(raw)? {
+        Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent | Len::Anchor(_) => None,
+        length => Some(length),
+    }
+}
+
+fn shorthand(raw: &str) -> Option<Corners> {
+    let tokens = crate::background::split_top(raw);
+    let values: Vec<Len> = tokens.into_iter().map(length).collect::<Option<_>>()?;
+    let [tl, tr, br, bl] = match values.as_slice() {
+        [a] => [*a; 4],
+        [a, b] => [*a, *b, *a, *b],
+        [a, b, c] => [*a, *b, *c, *b],
+        [a, b, c, d] => [*a, *b, *c, *d],
+        _ => return None,
+    };
+    Some(Corners {
+        tl: Some(tl),
+        tr: Some(tr),
+        br: Some(br),
+        bl: Some(bl),
+    })
 }

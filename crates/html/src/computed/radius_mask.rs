@@ -9,14 +9,24 @@ impl Computed {
         // CSS Backgrounds 3 §5.1: each percentage resolves against its own
         // border-box axis. A non-square box therefore needs elliptical corners;
         // the GPUI quad only supports one circular radius per corner.
-        let percentage = [
+        let radii = [
             self.radius.tl,
             self.radius.tr,
             self.radius.br,
             self.radius.bl,
-        ]
-        .iter()
-        .any(|r| matches!(r, Some(Len::Pct(p)) if *p > 0.0));
+        ];
+        // A mixed length-percentage cannot be resolved by the quad, even when
+        // the two box axes happen to be equal.
+        let calculated = radii.iter().any(|r| match r {
+            Some(Len::Calc(i)) => {
+                let sum = crate::value::calc_get(*i);
+                sum.has_percentage || sum.pct != 0.0
+            }
+            _ => false,
+        });
+        let percentage = radii
+            .iter()
+            .any(|r| matches!(r, Some(Len::Pct(p)) if *p > 0.0));
         let square = match (self.width, self.height) {
             (Some(Len::Px(w)), Some(Len::Px(h))) => {
                 let sides = |s: super::Sides| {
@@ -36,7 +46,11 @@ impl Computed {
             }
             _ => false,
         };
-        if self.radius_ell.is_some() || self.corner_shaped() || (percentage && !square) {
+        if self.radius_ell.is_some()
+            || self.corner_shaped()
+            || calculated
+            || (percentage && !square)
+        {
             return true;
         }
         // `contain: paint` со скруглением: обрезка содержимого обязана учесть
