@@ -3,7 +3,7 @@
 
 use crate::render::*;
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::needless_borrow)]
 pub(crate) fn multicol_stack_child(
     ix: usize,
     c: Element,
@@ -16,9 +16,9 @@ pub(crate) fn multicol_stack_child(
     e: &Element,
     merged: &Computed,
     opts: &RenderOpts,
-    clone_plan: &Vec<Vec<(f32, f32)>>,
-    kid_parent: &Vec<Option<Computed>>,
-    kid_par: &Vec<crate::layout::fragment::types::Par>,
+    clone_plan: &[Vec<(f32, f32)>],
+    kid_parent: &[Option<Computed>],
+    kid_par: &[crate::layout::fragment::types::Par],
     col_vert: bool,
     col_rl: bool,
     line_col_w: Option<f32>,
@@ -27,7 +27,7 @@ pub(crate) fn multicol_stack_child(
     fixed: Option<f32>,
     fixed_nest: Option<f32>,
     balanced_frag: Option<f32>,
-    nest_at: &Vec<Option<f32>>,
+    nest_at: &[Option<f32>],
     nested_auto: &std::cell::RefCell<Vec<u64>>,
     nested_whole: &std::cell::RefCell<Vec<u64>>,
     measured_kids: &std::cell::RefCell<Vec<(u64, f32)>>,

@@ -240,9 +240,9 @@ pub(crate) fn collapsed_group_edges(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn collapsed_col_edges(
     cell_cols: &std::ops::Range<usize>,
-    col_els: &Vec<Option<&crate::dom::Element>>,
+    col_els: &[Option<&crate::dom::Element>],
     row_ix: i16,
-    row_elements: &Vec<&crate::dom::Element>,
+    row_elements: &[&crate::dom::Element],
     inherited: &Computed,
     table_edges: &std::rc::Rc<std::cell::RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
     px_of: &impl Fn(Option<Len>) -> f32,
@@ -321,9 +321,9 @@ pub(crate) fn collapsed_col_edges(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn collapsed_colgroup_edges(
     cell_cols: std::ops::Range<usize>,
-    grp_els: &Vec<Option<&Element>>,
+    grp_els: &[Option<&Element>],
     row_ix: i16,
-    row_elements: &Vec<&Element>,
+    row_elements: &[&Element],
     inherited: &Computed,
     table_edges: &std::rc::Rc<std::cell::RefCell<Vec<crate::interact::EdgeCell>>>,
     px_of: &impl Fn(Option<Len>) -> f32,
