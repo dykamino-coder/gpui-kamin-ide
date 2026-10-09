@@ -495,6 +495,7 @@ const CONSUMERS: &[&str] = &[
     include_str!("layout/fragment/clone.rs"),
     include_str!("layout/fragment/line_shape.rs"),
     include_str!("layout/fragment/shape_contents.rs"),
+    include_str!("layout/fragment/shape_kids.rs"),
     include_str!("layout/fragment/push.rs"),
     include_str!("layout/fragment/flex_lines.rs"),
     include_str!("layout/fragment/table_bands.rs"),

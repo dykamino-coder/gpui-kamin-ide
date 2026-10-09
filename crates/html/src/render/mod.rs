@@ -120,6 +120,7 @@ pub(crate) use crate::layout::fragment::grid_bands::*;
 pub(crate) use crate::layout::fragment::clone::*;
 pub(crate) use crate::layout::fragment::line_shape::*;
 pub(crate) use crate::layout::fragment::shape_contents::*;
+pub(crate) use crate::layout::fragment::shape_kids::*;
 pub(crate) use crate::layout::fragment::push::*;
 pub(crate) use crate::layout::fragment::flex_lines::*;
 pub(crate) use crate::layout::fragment::table_bands::*;
