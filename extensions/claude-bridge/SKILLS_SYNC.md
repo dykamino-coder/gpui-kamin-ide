@@ -54,6 +54,37 @@ source (`user`/`project`), snapshot revision, `changed`, время постан
 очередь и причина фактического submit. После этого сценарий проверяется на
 Windows при tab switch, reconnect и длительном idle.
 
+## Prepared diagnostic window (BR-08)
+
+`GET /api/sync/:tokenId/reload-diagnostics` использует ту же обязательную
+Bearer owner-проверку, что sync/status; ответ имеет `Cache-Control: no-store`.
+В нём только события этого владельца из последних 256 событий всего процесса.
+Снимать окно нужно вскоре после наблюдения; eviction или restart уничтожают
+историю. Новый endpoint ничего не пишет на диск и не включает debug logging.
+Постоянные ограниченные server logs остаются отдельной задачей BR-17.
+
+События `snapshot`, `queued`, `started`, `enter-written`, `cancelled` связывают
+user/project upload с maintenance revision конкретной session. Фиксируются
+`changed`, count, время queue/события, coalescing, blocker в момент queue,
+успех построения overlay и scheduling reason (`sync-ready`, `prompt-ready`,
+`reattach`, `raw-input-cleared`, `queue-drained`, `teardown`). Причина обозначает
+границу coordinator, разрешившую start, а не доказанную причину клиентского upload.
+`enter-written` означает только успешный PTY write, не CLI acknowledgement.
+
+Token, session, project scope и canonical **incoming snapshot** revision —
+HMAC pseudonyms с непубликуемым случайным ключом на один server boot. `boot`
+помогает отличать окна разных запусков. Snapshot revision не является hash
+effective overlay и не утверждает валидность всех путей incoming map. Содержимое
+skills, имена файлов, пути, draft, bearer и текст ошибок не входят в эти события.
+Отсутствующее поле skills не создаёт событие или reload; одинаковый upload
+пишет `snapshot` с `changed: false`, но не новый `queued`.
+
+Production observation остаётся за deployment owner: сопоставить это окно с
+видимым reload при tab switch/reconnect/idle. До такой проверки поведение
+автоматического reload и существующие PTY invariants не изменены. Окно может
+не содержать старый `queued` после глобального eviction, поэтому отсутствие
+события не доказывает отсутствие sync.
+
 ## Automated checks
 
 ```bash
