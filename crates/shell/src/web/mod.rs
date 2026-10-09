@@ -13,7 +13,10 @@ mod browsers;
 mod context_menu;
 mod copy_frame;
 mod cursors;
+mod d3d_device;
 mod d3d_log;
+mod device_cache;
+mod device_generation;
 mod diag;
 mod element;
 mod frames;
@@ -278,8 +281,6 @@ pub fn flush_retired(cx: &mut gpui::App) {
     }
 }
 
-/// Открыть вью с адресом. Идемпотентно: второй раз ничего не делает.
-/// Живы ли браузеры CEF. Флага больше нет: CEF — единственный путь.
 pub fn enabled() -> bool {
     process::is_live()
 }
@@ -339,7 +340,6 @@ fn html_changed(id: &str) -> bool {
     true
 }
 
-/// Показать в вью нашу страницу (HTML моста).
 /// Отдать странице пачку сообщений расширения.
 ///
 /// В скрипт кладём только НОМЕР пачки: тело страница забирает запросом

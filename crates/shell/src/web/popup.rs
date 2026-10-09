@@ -49,20 +49,21 @@ pub(crate) fn put(id: &str, handle: isize, width: i32, height: i32) {
     if handle == 0 || width <= 0 || height <= 0 {
         return;
     }
-    let device = super::shared_texture::device();
-    if device == 0 {
+    let Some(device) = super::shared_texture::device() else {
         return;
-    }
-    let Some(shared) = open_by_handle(device, handle) else {
+    };
+    let Some(shared) = open_by_handle(device.raw() as isize, handle) else {
         return;
     };
     let desc = shared.desc();
     if desc.Width as i32 != width || desc.Height as i32 != height {
         return; // Chromium уже пересоздал буфер под другой размер.
     }
-    if let Ok(mut map) = INCOMING.lock() {
-        map.insert(id.to_string(), shared);
-    }
+    let _ = super::shared_texture::with_current_device(&device, || {
+        if let Ok(mut map) = INCOMING.lock() {
+            map.insert(id.to_string(), shared);
+        }
+    });
 }
 
 /// Software-кадры попапа (RDP-режим): картинка вместо общей текстуры.
@@ -129,11 +130,24 @@ pub(crate) fn texture_for(
     id: &str,
     window: &gpui::Window,
 ) -> Option<(gpui::ExternalTexture, PopupRect)> {
+    let device = unsafe { super::d3d_device::Device::from_owned(window.d3d_device_raw())? };
+    super::device_cache::sync_device(device.clone());
+    let context = unsafe {
+        super::d3d_device::take_owned::<windows::Win32::Graphics::Direct3D11::ID3D11DeviceContext>(
+            window.d3d_context_raw(),
+        )?
+    };
     let rect = RECTS.lock().ok()?.get(id).copied()?;
     let incoming = INCOMING.lock().ok()?.get(id).cloned()?;
-    let device = window.d3d_device_raw()?;
-    let context = window.d3d_context_raw()?;
-    let own = super::copy_frame::copy_into_own(&copy_key(id), device, context, &incoming)?;
+    if !incoming.belongs_to(device.raw()) {
+        return None;
+    }
+    let own = super::copy_frame::copy_into_own(
+        &copy_key(id),
+        device.raw(),
+        windows::core::Interface::as_raw(&context),
+        &incoming,
+    )?;
     let desc = own.desc();
     let (w, h) = (desc.Width as i32, desc.Height as i32);
     let known = SLOTS.lock().ok().and_then(|m| {
@@ -167,4 +181,14 @@ pub(crate) fn texture_for(
         }
     };
     Some((tile, rect))
+}
+
+/// Device reset касается только GPU path; software frames/rects остаются живы.
+pub(crate) fn forget_device_objects() {
+    if let Ok(mut incoming) = INCOMING.lock() {
+        incoming.clear();
+    }
+    if let Ok(mut slots) = SLOTS.lock() {
+        slots.clear();
+    }
 }

@@ -10,31 +10,14 @@
 //! ссылок здесь уже приводил к падениям — то кадр брался из освобождённой
 //! текстуры, то лишнее освобождение рушило устройство.
 
+use super::d3d_device::Device;
 use super::gpu_texture::GpuTexture;
 use super::open_shared::{open_by_handle, warn_once};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::{LazyLock, Mutex};
 
-/// Устройство D3D11 окна: кладём с потока отрисовки, читаем с потока CEF.
-/// Устройство создано без `SINGLETHREADED`, поэтому открывать текстуры с чужого
-/// потока можно.
-static DEVICE: AtomicIsize = AtomicIsize::new(0);
-
-/// Устройство окна (для попапов: они открывают буферы тем же устройством).
-pub(crate) fn device() -> isize {
-    DEVICE.load(Ordering::Relaxed)
-}
-
-/// Запомнить устройство окна (с потока отрисовки).
-pub(crate) fn remember_device(window: &gpui::Window) {
-    if DEVICE.load(Ordering::Relaxed) != 0 {
-        return;
-    }
-    if let Some(dev) = window.d3d_device_raw() {
-        DEVICE.store(dev as isize, Ordering::Relaxed);
-    }
-}
+use super::device_cache::sync_device;
+pub(crate) use super::device_cache::{device, remember_device, with_current_device};
 
 /// Последний кадр вью: открытая общая текстура Chromium и её размер.
 #[derive(Clone)]
@@ -60,11 +43,8 @@ pub(crate) fn put(id: &str, handle: isize, width: i32, height: i32, content: (i3
     if handle == 0 || width <= 0 || height <= 0 {
         return;
     }
-    let device = DEVICE.load(Ordering::Relaxed);
-    if device == 0 {
-        return;
-    }
-    let Some(shared) = open_by_handle(device, handle) else {
+    let Some(device) = device() else { return };
+    let Some(shared) = open_by_handle(device.raw() as isize, handle) else {
         return;
     };
     // Размер спрашиваем У САМОЙ текстуры: номера буферов Chromium
@@ -76,7 +56,7 @@ pub(crate) fn put(id: &str, handle: isize, width: i32, height: i32, content: (i3
         super::diag::mismatch();
         return;
     }
-    store(id, shared, content);
+    let _ = with_current_device(&device, || store(id, shared, content));
 }
 
 /// Запомнить последний кадр вью.
@@ -119,7 +99,17 @@ pub(crate) fn texture_for(
     window: &gpui::Window,
     want: (i32, i32),
 ) -> Option<gpui::ExternalTexture> {
+    let device = unsafe { Device::from_owned(window.d3d_device_raw())? };
+    sync_device(device.clone());
+    let context = unsafe {
+        super::d3d_device::take_owned::<windows::Win32::Graphics::Direct3D11::ID3D11DeviceContext>(
+            window.d3d_context_raw(),
+        )?
+    };
     let incoming = get(id)?;
+    if !incoming.shared.belongs_to(device.raw()) {
+        return None;
+    }
     // ПЕРЕХОДНЫЕ кадры ресайза не показываем. При расширении по ширине
     // Chromium сначала присылает кадр с НЕДОРИСОВАННОЙ высотой (content_rect
     // короче панели), следующим — полный: на экране это «прыжок» страницы
@@ -143,21 +133,16 @@ pub(crate) fn texture_for(
             }
         }
     }
-    let device = window.d3d_device_raw()?;
-    let context = window.d3d_context_raw()?;
-    // Свернули и развернули окно — gpui пересоздал устройство D3D11, и все наши
-    // текстуры от прежнего мертвы: панели оставались пустыми (поймано на живом
-    // прогоне). Замечаем смену и заводим всё заново.
-    let prev = DEVICE.swap(device as isize, Ordering::Relaxed);
-    if prev != 0 && prev != device as isize {
-        println!("[cef] устройство D3D11 пересоздано — обновляю текстуры");
-        forget_device_objects();
-    }
     // Копия под захватом keyed mutex: читать общую текстуру Chromium прямо в
     // своей отрисовке нельзя — так делает и эталонный `cef-mixer`.
-    let own = super::copy_frame::copy_into_own(id, device, context, &incoming.shared);
+    let own = super::copy_frame::copy_into_own(
+        id,
+        device.raw(),
+        windows::core::Interface::as_raw(&context),
+        &incoming.shared,
+    );
     // Жалобы слоя проверки читаем ПОСЛЕ копирования: на нём он и ругается.
-    super::d3d_log::drain(device);
+    super::d3d_log::drain(device.raw());
     let own = own?;
 
     let known = SLOTS.lock().ok().and_then(|m| {
@@ -258,7 +243,11 @@ pub(crate) fn drain_dead(window: &gpui::Window) {
 }
 
 /// Забыть всё, что привязано к прежнему устройству D3D11.
-fn forget_device_objects() {
+pub(super) fn forget_device_objects() {
+    if let Ok(mut dead) = DEAD_TILES.lock() {
+        dead.clear();
+    }
+    super::popup::forget_device_objects();
     if let Ok(mut map) = SLOTS.lock() {
         map.clear();
     }
