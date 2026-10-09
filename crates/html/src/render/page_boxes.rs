@@ -219,6 +219,7 @@ fn content_nodes(
                 counters,
                 &[],
                 style.quotes.as_ref(),
+                false,
             )));
             run.clear();
         }
