@@ -846,6 +846,30 @@ pub fn calc_store(s: Sum) -> u32 {
     (pool.len() - 1) as u32
 }
 
+/// Margins and padding resolve percentages against the containing block's
+/// inline size, which layout always knows (CSS 2.1 §§8.3, 8.4), so a
+/// percentage term cancelled to zero (`calc(0% + 30px)`) contributes nothing
+/// and the length alone remains. The kept percentage type only matters where
+/// an indefinite basis changes behaviour (heights, insets: CSS Values 4 §10.11).
+pub fn fold_zero_percentage(l: Option<Len>) -> Option<Len> {
+    match l {
+        Some(Len::Calc(i)) => {
+            let s = calc_get(i);
+            if s.has_percentage && s.pct == 0.0 {
+                Sum {
+                    has_percentage: false,
+                    ..s
+                }
+                .collapse()
+                .or(l)
+            } else {
+                l
+            }
+        }
+        _ => l,
+    }
+}
+
 pub fn calc_get(i: u32) -> Sum {
     CALC_POOL
         .lock()
