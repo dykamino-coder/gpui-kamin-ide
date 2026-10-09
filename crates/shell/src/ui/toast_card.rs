@@ -69,6 +69,7 @@ impl Render for ToastView {
                 let id = self.id;
                 cx.defer(move |cx| crate::toast::close(id, cx));
             } else {
+                crate::web::diag_why::tick("frame-request/toast-card");
                 window.request_animation_frame();
             }
         }

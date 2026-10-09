@@ -15,7 +15,9 @@ impl RootView {
     where
         E: gpui::InteractiveElement,
     {
+        let root = root.capture_any_mouse_down(|_, _, _| crate::web::diag_why::tick("input/down"));
         root.on_mouse_move(cx.listener(move |this, e: &MouseMoveEvent, window, cx| {
+            crate::web::diag_why::tick("input/move");
             this.last_mouse = (f32::from(e.position.x), f32::from(e.position.y));
             if this.drag.is_some() {
                 let vw = f32::from(window.viewport_size().width);

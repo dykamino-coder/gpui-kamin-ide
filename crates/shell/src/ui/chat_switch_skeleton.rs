@@ -104,7 +104,10 @@ pub fn brand_loader(p: &Palette, caption: &'static str) -> AnyElement {
                 .with_easing(gpui::ease_in_out),
             // «Дыхание» — только прозрачностью: кольца позиционированы
             // фиксированно и с изменением размера контейнера не масштабируются.
-            |d, delta| d.opacity(0.5 + 0.5 * wave(delta)),
+            |d, delta| {
+                crate::web::diag_why::tick("animation/chat-glow");
+                d.opacity(0.5 + 0.5 * wave(delta))
+            },
         );
 
     // `.logo` — 64×64, «парит» на 4 px вверх и обратно
@@ -123,7 +126,10 @@ pub fn brand_loader(p: &Palette, caption: &'static str) -> AnyElement {
             Animation::new(Duration::from_millis(BREATHE_MS))
                 .repeat()
                 .with_easing(gpui::ease_in_out),
-            |d, delta| d.top(px((BRAND - LOGO) / 2.0 - 4.0 * wave(delta))),
+            |d, delta| {
+                crate::web::diag_why::tick("animation/chat-logo");
+                d.top(px((BRAND - LOGO) / 2.0 - 4.0 * wave(delta)))
+            },
         );
 
     // `.barFill`: три стопа (transparent → accent → transparent) двумя половинами
@@ -148,7 +154,10 @@ pub fn brand_loader(p: &Palette, caption: &'static str) -> AnyElement {
             Animation::new(Duration::from_millis(SWEEP_MS))
                 .repeat()
                 .with_easing(gpui::ease_in_out),
-            |d, delta| d.left(gpui::relative(-1.0 + 2.0 * delta)),
+            |d, delta| {
+                crate::web::diag_why::tick("animation/chat-sweep");
+                d.left(gpui::relative(-1.0 + 2.0 * delta))
+            },
         );
 
     div()

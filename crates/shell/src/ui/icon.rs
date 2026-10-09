@@ -98,7 +98,10 @@ pub fn spinner(
             Animation::new(std::time::Duration::from_millis(PERIOD_MS))
                 .repeat()
                 .with_easing(cubic_bezier_53_21_29_67),
-            |el, delta| el.with_transformation(Transformation::rotate(percentage(delta))),
+            |el, delta| {
+                crate::web::diag_why::tick("animation/spinner");
+                el.with_transformation(Transformation::rotate(percentage(delta)))
+            },
         )
 }
 
@@ -162,7 +165,10 @@ pub fn spinner_ring(
                 .with_animation(
                     id,
                     Animation::new(std::time::Duration::from_millis(PERIOD_MS)).repeat(),
-                    |el, delta| el.with_transformation(Transformation::rotate(percentage(delta))),
+                    |el, delta| {
+                        crate::web::diag_why::tick("animation/spinner");
+                        el.with_transformation(Transformation::rotate(percentage(delta)))
+                    },
                 ),
         )
 }

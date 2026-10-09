@@ -57,11 +57,12 @@ pub(crate) fn software_render() -> bool {
         if software {
             // В лог: по присланному `diag.log` иначе не отличить «медленно
             // из-за WARP» от «медленно из-за нас».
-            println!(
+            super::diag::emit_line(format!(
                 "[cef] рендер программный (WARP): кадры окна не чаще {} мс, бесконечные анимации страниц гасим",
                 SOFTWARE_REPAINT_INTERVAL.as_millis()
-            );
+            ));
         }
+        super::diag::emit_line(format!("[boot] gpui_software={software} forced={forced:?}"));
         software
     })
 }
@@ -83,11 +84,7 @@ pub(crate) fn repaint_interval() -> Duration {
 /// ровно один источник кадров — бесконечное вращение. Спиннер довернёт свой
 /// круг и замрёт, разовые появления отработают как были.
 pub(crate) fn reduced_motion_block() -> &'static str {
-    if software_render() {
-        r#"<style id="__kaminReducedMotion">*,*::before,*::after{animation-iteration-count:1!important}</style>"#
-    } else {
-        ""
-    }
+    super::motion_css::block(software_render())
 }
 
 /// Есть ли в системе хоть один аппаратный адаптер.
@@ -120,10 +117,13 @@ fn detect() -> bool {
             let name = described.trim_matches(char::from(0));
             let software =
                 desc.VendorId == VENDOR_MICROSOFT || name.starts_with("Microsoft Basic Render");
+            super::diag::emit_line(format!(
+                "[boot] adapter index={index} name={name:?} vendor={} software={software}",
+                desc.VendorId
+            ));
             if !software {
                 return false;
             }
-            println!("[cef] адаптер {index}: {name} — программный");
         }
         // Ни одного адаптера — перечисление не удалось; см. выше про догадки.
         seen > 0

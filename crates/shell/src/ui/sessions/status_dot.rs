@@ -67,6 +67,7 @@ pub(crate) fn status_dot(s: &Session, is_active: bool, tab_color: Rgba, p: &Pale
             SharedString::from(format!("sdot-pulse-{}", s.id)),
             gpui::Animation::new(std::time::Duration::from_millis(1100)).repeat(),
             move |d, delta| {
+                crate::web::diag_why::tick("animation/status-dot");
                 let f = (std::f32::consts::PI * delta).sin();
                 let sz = dot_size * (1.0 + 0.5 * f);
                 let off = (dot_size - sz) / 2.0;
