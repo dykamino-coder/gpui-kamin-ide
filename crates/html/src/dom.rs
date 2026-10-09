@@ -24,6 +24,9 @@ mod presentational_hints;
 pub(crate) use counter_decls::{
     apply_counter_decls, apply_value_hint, counter_snapshot, inherit_counter_decls,
 };
+#[path = "dom_content.rs"]
+mod content;
+pub(crate) use content::{content_text, host_content, resolve_content_attributes};
 
 use crate::computed::{Computed, Display, Position};
 use crate::css::{
@@ -215,15 +218,7 @@ pub fn parse(html: &str, extra_css: &str) -> Vec<Node> {
 /// до разбора; void-элементы и содержимое `svg`/`math` (там парсер
 /// самозакрытие понимает) не трогаются.
 fn expand_xhtml_self_closing(html: &str) -> std::borrow::Cow<'_, str> {
-    // Срез шапки — по границе символа: середина многобайтового знака
-    // (CJK в шапке) роняла разбор (`text-orientation-*-100`).
-    let mut cut = html.len().min(2048);
-    while !html.is_char_boundary(cut) {
-        cut -= 1;
-    }
-    let head = &html[..cut];
-    let xhtml = head.trim_start().starts_with("<?xml")
-        || head.contains("http://www.w3.org/1999/xhtml");
+    let xhtml = content::is_xhtml(html);
     // `<pre>`/`<listing>`/`<textarea>` в XHTML тоже требуют правки (см. ниже),
     // даже если самозакрытых тегов в документе нет.
     let lf_tags = ["<pre", "<listing", "<textarea"].iter().any(|t| html.contains(t));
@@ -403,6 +398,7 @@ fn expand_xhtml_self_closing(html: &str) -> std::borrow::Cow<'_, str> {
 
 /// То же, но с известными условиями окружения для `@media`.
 pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
+    let _content_document = content::document(html);
     // Правила `@page` — от последнего РАЗОБРАННОГО документа: почистить,
     // чтобы прошлый лист не красил страницу нового. `@position-try` — тот же
     // пул и та же чистка.
@@ -1657,6 +1653,8 @@ pub(crate) struct Ancestor {
     /// Computed counter directives follow DOM inheritance, even without a box.
     pub(crate) counter_style: [Option<String>; 3],
     tag: String,
+    /// Only HTML documents use ASCII case-insensitive names on HTML elements.
+    html_attrs: bool,
     id: Option<String>,
     classes: Vec<String>,
     /// Все атрибуты узла: нужны атрибутным селекторам.
@@ -2556,6 +2554,7 @@ pub(crate) fn ancestor_of(child: &Handle, spot: Spot) -> Option<Ancestor> {
     Some(Ancestor {
         counter_style: Default::default(),
         tag: local_name(&name.local),
+        html_attrs: content::html_attributes(&name.ns),
         id: find("id"),
         classes: find("class")
             .map(|v| v.split_whitespace().map(str::to_string).collect())
@@ -2926,6 +2925,7 @@ fn walk(
             let mut me = Ancestor {
                 counter_style: Default::default(),
                 tag: tag.clone(),
+                html_attrs: content::html_attributes(&name.ns),
                 id: id.clone(),
                 classes: classes.clone(),
                 attrs: attrs.clone(),
@@ -3338,17 +3338,24 @@ fn walk(
             // содержимое сворачивается в эти поля, а прочие свойства слоя
             // (цвет, шрифт, разрядка) едут в `marker_layer`.
             //
-            // Маркер — ПЕРВЫЙ ребёнок пункта, до `::before` (§marker-pseudo),
-            // и `counter-*`, объявленные на `::marker`, обязаны сработать
-            // именно на этом месте: без них `::marker { counter-increment: c;
-            // content: counters(c, ":") }` читал бы нетронутый счётчик и
-            // ставил ноль во все пункты (`marker-counter`).
+            // CSS Lists 3 §marker-pseudo: the marker is the item's FIRST child,
+            // before ::before; counter-* declared on ::marker (with DOM
+            // inheritance of counter directives) apply right here, before the
+            // marker's own content is evaluated (`marker-counter`).
             if let Some(mut m) = marker_layer {
                 inherit_counter_decls(&mut m, Some(&me.counter_style));
                 counters.enter_marker();
+                language::pseudo(counters, &m, &me, path);
                 apply_counter_decls(&m, counters, "", &[], &mut false, &|_, _| 0);
-                if let Some(items) = m.content.as_ref() {
-                    style.marker_text = Some(content_text(items, counters, &attrs, None));
+                if let Some(items) = host_content(&m, &me) {
+                    let quotes = m.quotes.as_ref();
+                    style.marker_text = Some(content_text(
+                        &items,
+                        counters,
+                        &attrs,
+                        quotes,
+                        me.html_attrs,
+                    ));
                     style.no_marker = Some(false);
                 } else if m.content_none == Some(true) {
                     style.no_marker = Some(true);
@@ -3896,63 +3903,6 @@ fn collect_scroll_markers(
     }
 }
 
-/// Коробка псевдоэлемента `::before`/`::after`, если правила её создают.
-///
-/// В CSS это настоящий потомок с собственным стилем; так его и собираем —
-/// обычным инлайновым элементом с текстовым содержимым. `attr(имя)`
-/// подставляется значением атрибута хозяина.
-// ★ Прошлый заход (06.09) на слой `::marker` был откачен «848 -> 847,
-// +3/-4»: терялись `disclosure-styles`, `marker-counter`,
-// `marker-content-020`, `marker-text-transform-default`. Три корня потерь
-// названы и закрыты здесь же: таблица агента маркера (`text-transform:
-// none`, `unicode-bidi: isolate` — css-lists-3 §marker-properties),
-// исполнение `counter-*` слоя в собственном сегменте маркера и снятие
-// маркера у пункта с чужим `display`. Разбор — `target/scout-markers-
-// 2026-09b.md` §1.
-/// Текст из составляющих `content` (css-content-3 §2): строки как есть,
-/// счётчики — знаками своего стиля, `attr()` — значением атрибута хозяина.
-///
-/// Общий для `::before`/`::after` и для `::marker { content }`: по
-/// css-lists-3 §content-property содержимое маркера строится «exactly as for
-/// ::before».
-pub(crate) fn content_text(
-    items: &[crate::computed::ContentItem],
-    counters: &mut crate::counters::Counters,
-    attrs: &[(String, String)],
-    own_quotes: Option<&Option<Vec<(String, String)>>>,
-) -> String {
-    let mut text = String::new();
-    for item in items {
-        match item {
-            crate::computed::ContentItem::Quote { open, emit } => {
-                text.push_str(&counters.quote(*open, *emit, own_quotes));
-            }
-            crate::computed::ContentItem::Str(sv) => text.push_str(sv),
-            crate::computed::ContentItem::Image(_) => {}
-            crate::computed::ContentItem::Counter(name, style_name) => {
-                let value = counters.value_of(name);
-                text.push_str(&crate::counter_style::repr(value, style_name));
-            }
-            crate::computed::ContentItem::Counters(name, sep, style_name) => {
-                // Вся цепочка области — от внешнего счётчика к внутреннему,
-                // склеенная разделителем (css-lists-3 §counters).
-                let chain: Vec<String> = counters
-                    .chain_of(name)
-                    .into_iter()
-                    .map(|v| crate::counter_style::repr(v, style_name))
-                    .collect();
-                text.push_str(&chain.join(sep));
-            }
-            crate::computed::ContentItem::Attr(name) => {
-                if let Some((_, v)) = attrs.iter().find(|(k, _)| k == name) {
-                    text.push_str(v);
-                }
-            }
-        }
-    }
-    text
-}
-
 /// Подходит ли значение под синтаксис `@property` (css-properties-values-api-1
 /// §5). Проверяются однозначные типы; значение с `var()` решается позже и
 /// принимается; незнакомый синтаксис — тоже (лучше принять, чем потерять).
@@ -3998,6 +3948,19 @@ pub(crate) fn content_image_src(src: &str) -> Option<String> {
     Some(format!("file:///{path}").replace('\\', "/"))
 }
 
+/// Коробка псевдоэлемента `::before`/`::after`, если правила её создают.
+///
+/// В CSS это настоящий потомок с собственным стилем; так его и собираем —
+/// обычным инлайновым элементом с текстовым содержимым. `attr(имя)`
+/// подставляется значением атрибута хозяина.
+// ★ Прошлый заход (06.09) на слой `::marker` был откачен «848 -> 847,
+// +3/-4»: терялись `disclosure-styles`, `marker-counter`,
+// `marker-content-020`, `marker-text-transform-default`. Три корня потерь
+// названы и закрыты здесь же: таблица агента маркера (`text-transform:
+// none`, `unicode-bidi: isolate` — css-lists-3 §marker-properties),
+// исполнение `counter-*` слоя в собственном сегменте маркера и снятие
+// маркера у пункта с чужим `display`. Разбор — `target/scout-markers-
+// 2026-09b.md` §1.
 fn pseudo_box(
     rules: &[Rule],
     vars: &Decls,
@@ -4056,7 +4019,7 @@ fn pseudo_box_named(
     inlinify_in_ruby(&mut style, "", std::iter::once(me).chain(path.iter().rev()));
     // Нет содержимого или коробки — нет и псевдоэлемента: его директивы
     // счётчиков тогда не действуют вовсе (у него нет объекта раскладки).
-    let list = style.content.clone()?;
+    let list = resolve_content_attributes(style.content.as_ref()?, attrs, me.html_attrs)?;
     if style.display == Some(Display::None) {
         return None;
     }
@@ -4073,8 +4036,6 @@ fn pseudo_box_named(
         &mut false,
         &|_, _| 0,
     );
-    // Составляющие склеиваются по порядку (css-content-3 §2): строки как
-    // есть, счётчики — знаками своего стиля, `attr()` — значением атрибута.
     // Составляющие идут по порядку: подряд идущие текстовые склеиваются в
     // один текстовый узел, `url()` становится строчным `<img>` между ними.
     // Ненайденная картинка коробки НЕ даёт вовсе — как в Servo
@@ -4087,7 +4048,13 @@ fn pseudo_box_named(
                  children: &mut Vec<Node>,
                  counters: &mut crate::counters::Counters| {
         if !run.is_empty() {
-            let t = content_text(run, counters, attrs, style.quotes.as_ref());
+            let t = content_text(
+                run,
+                counters,
+                attrs,
+                style.quotes.as_ref(),
+                me.html_attrs,
+            );
             children.push(Node::Text(t));
             run.clear();
         }
@@ -4118,9 +4085,11 @@ fn pseudo_box_named(
     if children.is_empty() {
         children.push(Node::Text(String::new()));
     }
+    let list_item =
+        (style.display == Some(Display::ListItem)).then(|| counters.value_of("list-item"));
     counters.leave();
     Some(Element {
-        list_item: None,
+        list_item,
         // Псевдоэлемент своей анимации не несёт: правило `::before` задаёт
         // содержимое, а не движение.
         node_id: 0,

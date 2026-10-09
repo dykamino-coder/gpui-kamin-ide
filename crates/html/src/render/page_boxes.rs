@@ -62,7 +62,9 @@ fn page_margin_boxes(
         if content == "none" || content == "normal" {
             continue;
         }
-        let Some(items) = crate::computed::parse_content(&content) else {
+        let Some(items) = crate::computed::parse_content(&content)
+            .and_then(|items| crate::dom::resolve_content_attributes(&items, &[], false))
+        else {
             continue;
         };
         let (ta, va) = crate::page_margin::defaults(slot);
@@ -219,6 +221,7 @@ fn content_nodes(
                 counters,
                 &[],
                 style.quotes.as_ref(),
+                false,
             )));
             run.clear();
         }

@@ -29,6 +29,8 @@
 //! которого в документе нет) сводятся ДО сборки (`settle_static`): их место
 //! — статическая позиция, а её выбирает сборщик дерева по `edge_set`.
 
+mod geometry;
+
 use gpui::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId,
     IntoElement, LayoutId, Pixels, Styled, Window, px,
@@ -288,10 +290,9 @@ pub fn probe_for(e: &crate::dom::Element, c: &Computed, hidden: bool) -> Option<
     let id = e.node_id;
     let seq = c.anchor_seq;
     let own_cb = c.cb_node;
-    // Рамка якоря по спеке — BORDER box (§determining), а абсолютный канвас
-    // с нулевыми вставками раскладка ставит в PADDING box (taffy: «insets
-    // are resolved against the container size minus border»). Расширяем на
-    // видимую рамку; содержащему блоку нужен как раз padding box — как есть.
+    // CSS Anchor Positioning 1 resolves logical border-box edges before snapping.
+    // The absolute probe covers the padding box; expand it by the CSS borders.
+    // The containing-block record remains the padding box (CSS 2.1 section 10.1).
     let bw = |l: Option<Len>| match l {
         Some(Len::Px(v)) => v,
         _ => 0.0,
@@ -299,7 +300,7 @@ pub fn probe_for(e: &crate::dom::Element, c: &Computed, hidden: bool) -> Option<
     let b = e.style.borders();
     let border = [bw(b.top), bw(b.right), bw(b.bottom), bw(b.left)];
     Some(
-        gpui::canvas(
+        gpui::canvas_with_unrounded_bounds(
             move |bounds: Bounds<Pixels>, window: &mut Window, _: &mut App| {
                 if cb {
                     CB.with(|m| m.borrow_mut().insert(id, bounds));
@@ -1523,51 +1524,8 @@ pub struct AnchorPlace {
     visibility: u8,
 }
 
-impl AnchorPlace {
-    /// Выбор варианта (§fallback; Blink `OutOfFlowLayoutPart`, цикл
-    /// `TryCalculateOffset`): сперва последний удачный (`CHOSEN`), пока он
-    /// не переполняет; иначе первый непереполняющий по порядку списка, а при
-    /// `position-try-order` — с наибольшим IMCB по заданной оси в письме
-    /// СОДЕРЖАЩЕГО блока (устойчивая сортировка); ни один не влез — база с
-    /// пометкой переполнения. Размер коробки у всех кандидатов — текущий:
-    /// правило, меняющее размер, довозит его следующей сборкой.
-    fn choose(&self, own: Bounds<Pixels>, window: &Window) -> (usize, Placement) {
-        let places: Vec<Placement> = self.plans.iter().map(|p| p.compute(own, window)).collect();
-        if places.len() == 1 {
-            return (0, places[0]);
-        }
-        if let Some(k) = CHOSEN.with(|m| m.borrow().get(&self.key).copied())
-            && k < places.len()
-            && !places[k].overflow
-        {
-            return (k, places[k]);
-        }
-        let mut fit: Vec<usize> = (0..places.len()).filter(|i| !places[*i].overflow).collect();
-        let cb_vertical = self.plans[0].cb_vertical;
-        let size = |i: usize| -> f32 {
-            let (w, h) = places[i].imcb;
-            match self.order {
-                1 => w,
-                2 => h,
-                3 => {
-                    if cb_vertical { w } else { h }
-                }
-                4 => {
-                    if cb_vertical { h } else { w }
-                }
-                _ => 0.0,
-            }
-        };
-        if self.order != 0 {
-            fit.sort_by(|a, b| size(*b).total_cmp(&size(*a)));
-        }
-        let k = fit.first().copied().unwrap_or(0);
-        (k, places[k])
-    }
-}
-
 impl Element for AnchorPlace {
-    type RequestLayoutState = ();
+    type RequestLayoutState = LayoutId;
     /// Спрятана ли коробка по `position-visibility`: `paint` пропускает
     /// всё поддерево (`force-hidden`; Blink — слой и потомки не рисуются).
     type PrepaintState = bool;
@@ -1586,8 +1544,9 @@ impl Element for AnchorPlace {
         _inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
-    ) -> (LayoutId, ()) {
-        (self.child.as_mut().unwrap().request_layout(window, cx), ())
+    ) -> (LayoutId, LayoutId) {
+        let id = self.child.as_mut().unwrap().request_layout(window, cx);
+        (id, id)
     }
 
     fn prepaint(
@@ -1595,11 +1554,12 @@ impl Element for AnchorPlace {
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _state: &mut (),
+        state: &mut LayoutId,
         window: &mut Window,
         cx: &mut App,
     ) -> bool {
-        let (k, p) = self.choose(bounds, window);
+        let own = geometry::logical_own(*state, bounds, window);
+        let (k, p) = self.choose(own, window);
         let plan = &self.plans[k];
         if plan.area.is_some() {
             AREA_NOW.with(|m| m.borrow_mut().insert(self.key, p.imcb));
@@ -1650,7 +1610,7 @@ impl Element for AnchorPlace {
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _request: &mut (),
+        _request: &mut LayoutId,
         hidden: &mut bool,
         window: &mut Window,
         cx: &mut App,

@@ -51,10 +51,13 @@ use animation_live::animated;
 mod table_roles;
 mod table_border_widths;
 mod table_spanning_size;
+mod table_clipped_content;
 mod replaced_used_style;
 mod replaced_holder_ratio;
 mod replaced_content;
 mod svg_percentage_size;
+mod list_item;
+mod list_container;
 mod available_width;
 use replaced_content::svg_replaced;
 mod ratio_basis;
@@ -17804,6 +17807,15 @@ fn paragraph_pieces_routed(
         let in_inline_cb = crate::inline::take_atom_cb();
         let svg_sized = svg_percentage_size::resolve(e, inherited);
         let e = svg_sized.as_ref().unwrap_or(e);
+        // CSS 2.1 sections 10.3.8/10.6.5 use the replaced default size
+        // before solving absolute insets; an empty frame is still replaced.
+        let iframe_sized = (replaced_content::default_iframe(e)
+            && matches!(
+                e.style.position,
+                Some(crate::computed::Position::Absolute | crate::computed::Position::Fixed)
+            ))
+            .then(|| replaced_content::empty_iframe_size(e, inherited, opts.viewport));
+        let e = iframe_sized.as_ref().unwrap_or(e);
         // Абсолютный элемент на статической позиции ВНУТРИ строки — кусок вне
         // потока: место в строке он не занимает, поэтому абзац остаётся
         // текстовым и не теряет пробелы (`line-breaking-018`).
@@ -19270,6 +19282,9 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
             }
             let built = if e.tag == "svg" {
                 crate::svg::element(&copy).unwrap_or_else(|| image(&copy))
+            } else if replaced_content::default_iframe(e) {
+                // The holder owns the CSS box; empty content paints no second border.
+                div().w_0().h_0().flex_shrink_0().into_any_element()
             } else {
                 image(&copy)
             };
@@ -19542,21 +19557,9 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                 Some(atom_base_font(inherited, opts)),
             ))
         }
-        // ЗАМЕРЕНО И ОТКАЧЕНО (04.09): кадру без пригодного `src` давать
-        // замещаемую коробку 300×150 (CSS 2.2 §10.3.2) или по атрибутам.
-        // Срез из 116 пар с `<iframe>`: 83 -> 73, приобретено 2
-        // (`flexbox-basic-iframe-horiz-001`, `stretch-anonymous-block-001`),
-        // потеряно 12 — `inline-block-replaced-height-004/005/007`,
-        // `inline-replaced-height-004/005/007` уходят в «красное видно»,
-        // `contain-size-replaced-003a..d` 0.26 -> 1.42. Пустая коробка кадра
-        // ломает высоту строки у соседей: замещаемому нужен ещё и правильный
-        // вклад в строку, а не только размер.
-        "iframe" => {
-            if let Some(el) = iframe(e, opts) {
-                return Some(el);
-            }
-            None
-        }
+        "iframe" => Some(iframe(e, opts).unwrap_or_else(|| {
+            replaced_content::empty_iframe(e, inherited, opts.viewport)
+        })),
         "svg" => {
             // Рисунок без собственного размера — stretch-fit от содержащего
             // блока (`svg::stretch_fit`): ширина родителя, когда она в
@@ -22501,6 +22504,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // Высота ряда от внешней колонки — только ЭТОМУ элементу (`flow::OUTER_ROW`).
     let outer_row = crate::flow::take_outer_row();
     let mut merged = inline::inherit(inherited, &e.style);
+    list_item::inherited_style(e, inherited, &mut merged);
     // Якорный шаг: ключи реестров кадра (свой `node_id` для содержащего
     // блока детей, порядок сборки, ключ клетки) и размеры от якоря —
     // `anchor-size()`, растяжка в клетке `position-area` — из реестра
@@ -22705,6 +22709,17 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         None
     };
     match e.tag.as_str() {
+        // CSS Lists 3 §2: a block list item generates its own marker even
+        // when its parent is an ordinary block rather than a list container.
+        _ if (e.style.display == Some(Display::ListItem)
+            || (e.tag == "li" && e.style.display.is_none()))
+            && !matches!(
+                e.tag.as_str(),
+                "img" | "svg" | "embed" | "object" | "video" | "canvas" | "iframe"
+            ) =>
+        {
+            list_item::render_with_style(e, inherited, &merged, opts)
+        }
         // `image-orientation` НАСЛЕДУЕТСЯ (css-images-3 §5.4): слитый стиль
         // его уже несёт, а копия для замещаемой коробки — нет. Без переноса
         // блочная картинка под `body { image-orientation: none }` всё равно
@@ -22873,7 +22888,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         }
         // Список с заданной раскладкой — это уже не список, а контейнер:
         // на `ul` верстают навигацию и наборы чипов.
-        "ul" | "ol" if e.style.display.is_none() => list(e, &merged, opts),
+        "ul" | "ol" if e.style.display.is_none() => list_container::render(e, &merged, opts),
         // `white-space: pre*` значим не меньше тега: переводы строк сохраняет
         // именно он, и на `<div style="white-space: pre">` разметка обязана
         // вести себя так же, как на `<pre>`.
@@ -25482,16 +25497,6 @@ thread_local! {
     static IFRAME_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
-/// ПРОБОВАЛИ И ОТКАТИЛИ: считать `<iframe>` БЕЗ адреса замещаемой коробкой
-/// 300×150 (§10.3.2, §10.6.2). Замерено по семьям *replaced*, positioning/*,
-/// normal-flow/*, *float*: приобретено 0, ПОТЕРЯНО 13 — все тринадцать ушли
-/// в «красное видно». Пустая коробка умолчания встаёт поверх зелёной и
-/// открывает красную подложку; этим семьям нужен не размер пустого кадра, а
-/// доля от содержащего блока.
-///
-/// `<iframe>`: вложенный документ со своими стилями и областью просмотра
-/// размером с коробку. Содержимое читается с диска (стенд переписывает
-/// `src` в `file:///...`); без файла остаётся запасной текст тега.
 /// `<object>`, чей `data` — ДОКУМЕНТ, а не картинка (HTML §4.8.7: сначала
 /// атрибут `type`, иначе по расширению адреса). Гейт нарочно узкий: `.svg`,
 /// `image/*` и растры остаются на пути картинки (css-images
@@ -26492,32 +26497,15 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                 }
             }
         }
-        // CSS-умолчание для замещаемого содержимого — заполнить коробку, но
-        // держится оно на СОБСТВЕННОМ соотношении сторон картинки: заданная
-        // одна сторона задаёт вторую. Соотношения мы до загрузки не знаем,
-        // поэтому вторая сторона остаётся своей, и заполнение растягивало бы
-        // рисунок в чужой прямоугольник (замерено: `flexbox-min-width-auto`
-        // ушёл в минус шестью парами). Вписывание в этих условиях ближе.
+        // CSS Images 3 §4.5: object-fit initially fills the content box.
+        // Intrinsic sizing above already preserves the natural ratio. Applying
+        // contain again to the snapped box introduces unintended letterboxing.
         image = match e.style.object_fit.as_deref() {
             Some("cover") => image.object_fit(gpui::ObjectFit::Cover),
             Some("contain") => image.object_fit(gpui::ObjectFit::Contain),
-            Some("fill") => image.object_fit(gpui::ObjectFit::Fill),
             Some("scale-down") => image.object_fit(gpui::ObjectFit::ScaleDown),
             Some("none") => image.object_fit(gpui::ObjectFit::None),
-            // Обе стороны заданы — умолчание CSS: ЗАПОЛНИТЬ коробку, даже с
-            // искажением (`object-fit: fill`). Вписывание оставлено случаю с
-            // одной стороной: там вторая держится на собственном соотношении
-            // рисунка (см. замер выше).
-            _ if e.style.width.is_some() && e.style.height.is_some() => {
-                image.object_fit(gpui::ObjectFit::Fill)
-            }
-            // Заявленное `aspect-ratio` — preferred aspect ratio КОРОБКИ
-            // (css-sizing-4 §5.1): вторая сторона уже посчитана из него, и
-            // рисунок заполняет коробку (`object-fit: fill` по умолчанию,
-            // css-images-3 §5.2), а не вписывается по своему соотношению
-            // (`replaced-element-0*`, `flex-aspect-ratio-0*`).
-            _ if e.style.aspect_ratio.is_some() => image.object_fit(gpui::ObjectFit::Fill),
-            _ => image.object_fit(gpui::ObjectFit::Contain),
+            _ => image.object_fit(gpui::ObjectFit::Fill),
         };
         let mut d = match узкая {
             Some((w, h)) => d.w(px(w + sub_w)).h(px(h + sub_h)),
@@ -26545,235 +26533,6 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             .unwrap_or_else(|| "[изображение]".into()),
     ))
     .into_any_element()
-}
-
-/// Список: маркер рисуем сами — `list-style` в GPUI нет.
-
-/// Пункт списка не сжимается, как и любой блок потока.
-///
-/// `blocks()` ставит `flex-shrink: 0` каждому ребёнку потока (умолчание GPUI —
-/// 1.0), а строки списка строятся мимо него, напрямую. В колонке нулевой
-/// высоты обе строки сжимались до автоминимума: пункт высотой 100 выходил
-/// двадцатью точками (`flex-box-wrap-ref`).
-///
-/// Список со СВОИМ гибким или сеточным видом — исключение: его пункты
-/// настоящие элементы контейнера, и по css-flexbox-1 §7.2 умолчание
-/// `flex-shrink` у них 1.
-fn shrink0(d: gpui::Div, li: &Element, list: &Element) -> gpui::Div {
-    let flex_parent = matches!(
-        list.style.display,
-        Some(Display::Flex) | Some(Display::InlineFlex) | Some(Display::Grid) | Some(Display::InlineGrid)
-    );
-    if li.style.flex_shrink.is_none() && !flex_parent {
-        d.flex_shrink_0()
-    } else {
-        d
-    }
-}
-// ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09): пункт с `display: list-item` вне `<ul>/<ol>`
-// заводить в `list()` через анонимный `<ul>` (как анонимная таблица для
-// ячейки), а `pseudo_box` — не выбрасывать флаг пункта. Срез 1055 пар
-// (lists/pseudo/content/counter-styles): 848 -> 837, **+0/-11**
-// (`list-style-position-applies-to-008/009/015/016/017`,
-// `change-list-style-position-002/003`, `list-style-020` и др.). Анонимный
-// `<ul>` тащит UA-отступы и `list-style-position` списка поверх собственных у
-// пункта. Патч — `target/scout-markers-2026-09.md` П2; маркер надо выносить
-// из `list()` в общий путь блока, а не заворачивать блок в список.
-fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    let ordered = e.tag == "ol";
-    let mut rows = vec![];
-    for child in &e.children {
-        let Node::Element(li) = child else { continue };
-        if li.tag != "li" {
-            // Не-`li` ребёнок списка — обычный блок потока (html §4.4.5:
-            // пунктом становится только `<li>`, остальное `<ol>` просто
-            // содержит). Эталоны семьи Ishida в css-counter-styles (~150 пар
-            // `css3-counter-styles-NNN-ref`) — это `<ol><div><bdi>x. </bdi>x
-            // </div></ol>`, и с голым `continue` они рендерились ПУСТОЙ
-            // страницей: правильные римские `-020` были красными, а пустые
-            // таблицы знаков — «зелёными» (`target/scout-counterstyles-2026-09.md`).
-            // Псевдоэлементы (`ol::before`) по-прежнему мимо: прошлый замер
-            // терял именно на них `foo-counter-reversed-007a/b` (0.38 -> 0.53).
-            if !li.tag.starts_with("::") {
-                rows.extend(blocks(std::slice::from_ref(child), inherited, opts));
-            }
-            continue;
-        }
-        // Номер пункта считает ОБЩИЙ счётчик `list-item` (css-lists-3
-        // §list-item-counter): он один знает и `<ol start>`, и `<li value>`,
-        // и вложенные списки. Своей нумерации у отрисовки больше нет.
-        let idx = li.list_item.unwrap_or(0);
-        // Вид маркера задаёт документ; без указания — умолчание тега.
-        // Строковый маркер берётся дословно и без суффикса-точки.
-        let text_marker = li
-            .style
-            .marker_text
-            .clone()
-            .or_else(|| e.style.marker_text.clone());
-        let kind = li
-            .style
-            .list_style_type
-            .clone()
-            .or_else(|| e.style.list_style_type.clone());
-        let marker = if let Some(t) = text_marker {
-            t
-        } else {
-            // Умолчание тега: у нумерованного перечня десятичный счёт, у
-            // списка возможностей — точка.
-            let name = kind.unwrap_or_else(|| if ordered { "decimal" } else { "disc" }.to_string());
-            crate::counter_style::marker_repr(idx, &name)
-        };
-        // `list-style: none` — на списках верстают навигацию и наборы чипов,
-        // и точки там лишние. Своё слово пункта старше слова списка:
-        // `list-style-type` наследуемое, и `<ul style="list-style-type:
-        // none">` не гасит `li::marker { content }` (`marker-content-012`).
-        //
-        // Чужой `display` на пункте снимает с него признак пункта, а с ним и
-        // маркер (css-display-3: `list-item` есть только у `display:
-        // list-item`; css-pseudo-4 §marker-pseudo: «the computed value of
-        // 'display' on ::marker always loses any list-item aspect» — обратное
-        // верно тем более). Без этого эталон `marker-content-019-ref`
-        // (`li { display: block }`) рисовал у нас полный набор `1. 2. 3. 4.`,
-        // и свёртка `content: none` в тесте разводила стороны ЕЩЁ дальше.
-        let no_marker = li.style.no_marker.or(e.style.no_marker) == Some(true)
-            || !matches!(li.style.display, None | Some(Display::ListItem));
-        let merged = inline::inherit(inherited, &li.style);
-        // Слой `::marker` поверх стиля пункта — им набирается сам маркер
-        // (css-lists-3 §marker-properties: «All properties can be set on a
-        // ::marker … and will have a computed value which will then inherit
-        // to its text content»). Коробочные свойства слоя (`padding`,
-        // `width`, `background`) на маркер не идут — `apply_text` их не
-        // читает, и это ровно то, чего требует «only the following CSS
-        // properties actually apply to a marker box».
-        let marker_style = li
-            .style
-            .marker_layer
-            .as_deref()
-            .map(|m| inline::inherit(&merged, m));
-        // `inside`: маркер — ПЕРВЫЙ инлайновый кусок содержимого пункта
-        // (css-lists-3 §4), поэтому он просто дописывается текстом в начало.
-        // Своей колонки при этом нет, и текст пункта начинается там же, где
-        // у обычного абзаца.
-        let inside = merged.list_style_inside == Some(true);
-        if inside {
-            let mut kids: Vec<Node> = Vec::with_capacity(li.children.len() + 1);
-            if !no_marker {
-                // Со слоем `::marker` знаки идут анонимным строчным куском
-                // со стилем слоя: голым текстом они брали бы у пункта и
-                // регистр, и разрядку, и цвет. Внутри маркер — именно
-                // строчная коробка перед содержимым (css-lists-3
-                // §list-style-position, `inside`), и эталон
-                // `marker-unicode-bidi-default-ref` собран буквально так —
-                // `<span class="marker">` перед текстом пункта.
-                // Без слоя — голым текстом, как прежде.
-                kids.push(match &marker_style {
-                    Some(ms) => {
-                        let mut span = anon_element("::marker", vec![Node::Text(marker)]);
-                        span.inline = true;
-                        span.style = ms.clone();
-                        // Содержимое уже свёрнуто в текст: сам кусок — не
-                        // носитель `content`, иначе `pseudo_box` собрал бы
-                        // его второй раз.
-                        span.style.content = None;
-                        span.style.marker_layer = None;
-                        Node::Element(span)
-                    }
-                    None => Node::Text(marker),
-                });
-            }
-            kids.extend(li.children.iter().cloned());
-            rows.push(
-                shrink0(styled_div_with(li, &merged), li, e)
-                    .flex()
-                    .flex_col()
-                    .children(blocks(&kids, &merged, opts))
-                    .into_any_element(),
-            );
-            continue;
-        }
-        // Знаки маркера без своего семейства — шрифтом ДОКУМЕНТА: голый
-        // `apply_text` без семейства брал шрифт интерфейса (Segoe UI), и
-        // строковый маркер выходил чужой гарнитурой рядом с Times пункта
-        // (`list-style-type-string-*`).
-        let mut mark_style = marker_style.clone().unwrap_or_else(|| merged.clone());
-        if mark_style.font_family.as_deref().is_none_or(str::is_empty)
-            && mark_style.monospace != Some(true)
-        {
-            mark_style.font_family = Some(opts.text.font_family.to_string());
-        }
-        let marker = inline::transform_case(&marker, &mark_style);
-        // Внешний маркер (css-lists-3 §list-style-position `outside`) висит
-        // СНАРУЖИ коробки пункта, концом к началу содержимого, и текст пункта
-        // не двигает. Text transforms apply to its own text (§3.1.1).
-        rows.push(
-            shrink0(styled_div_with(li, &merged), li, e)
-                .relative()
-                .flex()
-                .flex_col()
-                .children((!no_marker).then(|| {
-                    // Знаки маркера набираются шрифтом и цветом ПУНКТА:
-                    // отдельной коробке текстовые свойства не достаются сами,
-                    // и маркер выходил чужой гарнитурой и кеглем. Выключка
-                    // текста на него НЕ переносится: маркер стоит у своего
-                    // края колонки, куда бы ни равнялся текст пункта
-                    // (`list-style-position-018`). Со слоем `::marker` —
-                    // стилем слоя: разрядка, межсловный пробел, шрифт и цвет
-                    // маркера объявлены на нём (css-lists-3
-                    // §marker-properties).
-                    // Сторона начала строки пункта: при `direction: rtl`
-                    // маркер висит СПРАВА от коробки и равняется к ней своим
-                    // левым краем (`list-style-type-string-003`: строка
-                    // маркера уходила за левый край окна).
-                    {
-                        let m = crate::apply::apply_text(div(), &mark_style)
-                            .absolute()
-                            .top_0();
-                        if merged.rtl == Some(true) {
-                            m.left(gpui::relative(1.)).text_left()
-                        } else {
-                            // Строки многострочного маркера равняются по
-                            // КОНЦУ, к началу содержимого пункта
-                            // (`marker-text-align-001`: `"[m] longtext"` при
-                            // `white-space: pre`).
-                            m.right(gpui::relative(1.)).text_right()
-                        }
-                    }
-                    .whitespace_nowrap()
-                        // Хвост срезается только у СОБСТВЕННЫХ отбивок движка
-                        // (обычный пробел после номера пункта). Авторская
-                        // строка `list-style-type: "..."` идёт дословно:
-                        // `trim_end` в Rust считает пробелом и U+00A0, а
-                        // неразрывный пробел в такой строке — ЗНАЧАЩИЙ.
-                        // Замер нейтрален (срез 2268 пар, +0/-0: у
-                        // `list-style-type-string-005a/b/-006` остаток не
-                        // здесь), но срезать значащий знак всё равно нельзя.
-                        // Отбивка после номера (`1. `) — часть маркера: она и
-                        // даёт зазор до содержимого. Пробел в конце строки
-                        // свернулся бы, поэтому он неразрывный.
-                        .child(SharedString::from(match marker.strip_suffix(' ') {
-                            Some(head) => format!("{head}\u{a0}"),
-                            None => marker.clone(),
-                        }))
-                }))
-                // Содержимое — своей колонкой, как прежде: выключка пункта
-                // (`text-align: end` у `<li>`) иначе становится выравниванием
-                // его детей, и блок с `text-align: initial` уезжал к концу
-                // (`marker-text-align-001-ref`).
-                .child(
-                    div()
-                        .w_full()
-                        .flex()
-                        .flex_col()
-                        .children(blocks(&li.children, &merged, opts)),
-                )
-                .into_any_element(),
-        );
-    }
-    styled_div_with(e, inherited)
-        .flex()
-        .flex_col()
-        .children(rows)
-        .into_any_element()
 }
 
 /// Текст поддерева — нужен формам (`<textarea>`, `<option>`).
@@ -28256,13 +28015,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         .into_any_element(),
                 ]
             } else if clipped {
-                vec![
-                    div()
-                        .overflow_hidden()
-                        .size_full()
-                        .children(inside)
-                        .into_any_element(),
-                ]
+                vec![table_clipped_content::wrap(&mut d, inside)]
             } else {
                 inside
             };

@@ -5,6 +5,90 @@ use crate::dom::Element;
 use crate::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, StyledImage, px};
 
+/// CSS 2.1 sections 10.3.2 and 10.6.2: an empty browsing context is still
+/// replaced content; its auto dimensions use the default object size.
+pub(super) fn empty_iframe_size(
+    e: &Element,
+    inherited: &Computed,
+    viewport: (f32, f32),
+) -> Element {
+    let mut copy = super::pct_height_to_px(e, inherited);
+    // Quirks percentage heights can skip auto-height ancestors (Quirks section 3.5).
+    // Resolve that inherited basis before treating an indefinite percentage as auto.
+    let merged = super::inline::inherit(inherited, &copy.style);
+    copy.style.height = merged.height;
+    copy.style.cb_height_def = merged.cb_height_def;
+    copy.style.resolve_viewport(viewport);
+    if crate::dom::quirks()
+        && !matches!(
+            copy.style.position,
+            Some(crate::computed::Position::Absolute | crate::computed::Position::Fixed)
+        )
+        && let Some(Len::Pct(k)) = copy.style.height
+    {
+        copy.style.height = Some(Len::Px(k * inherited.quirk_pct_base.unwrap_or(viewport.1)));
+    }
+    // Containment suppresses natural dimensions (CSS Containment 2 §3.1),
+    // while retaining authored dimensions, ratios and intrinsic overrides.
+    if copy.style.contain_size == Some(true) {
+        return copy;
+    }
+    let ratio = copy
+        .style
+        .aspect_ratio
+        .is_some_and(|r| r.is_finite() && r > 0.0);
+    let auto_width = matches!(copy.style.width, None | Some(Len::Auto));
+    let auto_height = matches!(copy.style.height, None | Some(Len::Auto))
+        || (matches!(copy.style.height, Some(Len::Pct(_)))
+            && !inherited.cb_height_def
+            && !matches!(
+                copy.style.position,
+                Some(crate::computed::Position::Absolute | crate::computed::Position::Fixed)
+            ));
+    if auto_width && (!ratio || auto_height) {
+        let width = if copy.style.contains_width() {
+            copy.style.contain_intrinsic.0.unwrap_or(0.0)
+        } else {
+            300.0
+        };
+        copy.style.width = Some(Len::Px(width));
+    }
+    if auto_height {
+        copy.style.height = if ratio {
+            None
+        } else {
+            let height = if copy.style.contains_height() {
+                copy.style.contain_intrinsic.1.unwrap_or(0.0)
+            } else {
+                150.0
+            };
+            Some(Len::Px(height))
+        };
+    }
+    if ratio
+        && auto_height
+        && let (Some(Len::Px(w)), Some(r)) = (copy.style.width, copy.style.aspect_ratio)
+    {
+        copy.style.height = Some(Len::Px(w / r));
+    }
+    copy
+}
+
+pub(super) fn empty_iframe(e: &Element, inherited: &Computed, viewport: (f32, f32)) -> AnyElement {
+    let mut copy = empty_iframe_size(e, inherited, viewport);
+    if copy.style.contain_size == Some(true) {
+        copy.attrs.retain(|(name, _)| name != "src");
+        return super::image(&copy);
+    }
+    super::styled_div(&copy).flex_shrink_0().into_any_element()
+}
+
+pub(super) fn default_iframe(e: &Element) -> bool {
+    e.tag == "iframe"
+        && e.attr("src").is_none_or(|src| src.trim().is_empty())
+        && e.style.contain_size != Some(true)
+}
+
 pub(super) fn position(mut image: gpui::Img, style: &Computed) -> gpui::Img {
     if let Some(position) = style.object_position {
         image = image.object_position(gpui::point(

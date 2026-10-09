@@ -24,7 +24,10 @@ mod mask_shorthand;
 pub(crate) mod orthogonal;
 mod tab_size;
 mod quotes;
+mod counters;
 mod list_style_string;
+mod list_style;
+mod size_range;
 mod content_functions;
 pub(crate) use content_functions::parse_content;
 mod outline_style;
@@ -1574,8 +1577,8 @@ pub enum ContentItem {
     Counter(String, String),
     /// `counters(имя, разделитель, стиль)`.
     Counters(String, String, String),
-    /// `attr(имя)`.
-    Attr(String),
+    /// Attribute name and serialized fallback; None is guaranteed-invalid.
+    Attr(String, Option<String>),
     /// `open-quote`/`close-quote` (`emit`) и `no-open-quote`/`no-close-quote`
     /// (только сдвиг глубины) — css-content-3 §4.2.
     Quote { open: bool, emit: bool },
@@ -6181,71 +6184,7 @@ impl Computed {
             "list-style-position" => {
                 self.list_style_inside = Some(v.trim() == "inside");
             }
-            "list-style" | "list-style-type" => {
-                // Сокращение задаёт ВСЕ составляющие: не названное в нём
-                // размещение возвращается к начальному `outside`
-                // (css-lists-3 §4). Долгая форма чужого значения не трогает.
-                //
-                // Анонимный стиль `symbols(…)` (css-counter-styles-3
-                // §symbols-function) — одно слово целиком; недействительная
-                // запись отбрасывает всё объявление.
-                let symbols_fn = v.to_ascii_lowercase().find("symbols(").map(|at| {
-                    let tail = &v[at..];
-                    &tail[..tail.find(')').map_or(tail.len(), |i| i + 1)]
-                });
-                if symbols_fn.is_some_and(|f| !crate::counter_style_rules::valid_symbols_fn(f)) {
-                    return;
-                }
-                let v_owned;
-                let v = match symbols_fn {
-                    Some(f) => {
-                        v_owned = v.replacen(f, " ", 1);
-                        v_owned.as_str()
-                    }
-                    None => v,
-                };
-                if key == "list-style" {
-                    self.list_style_inside = Some(false);
-                    for token in v.split_whitespace() {
-                        match token {
-                            "inside" => self.list_style_inside = Some(true),
-                            "outside" => self.list_style_inside = Some(false),
-                            _ => {}
-                        }
-                    }
-                }
-                self.no_marker = Some(v.contains("none"));
-                if list_style_string::apply_string(self, key, v) {
-                    return;
-                }
-                if let Some(func) = symbols_fn {
-                    self.list_style_type = Some(func.to_string());
-                    return;
-                }
-                // Вид маркера — ИМЯ стиля счётчика (css-lists-3 §3): любое,
-                // а не восемь избранных. Ключевые слова размещения и `url()`
-                // именем не являются.
-                for token in v.split_whitespace() {
-                    // Размещение, картинка и глобальные ключевые слова именем
-                    // стиля не являются: последние решает каскад, а до него
-                    // они означали бы «стиль по имени initial».
-                    if matches!(
-                        token,
-                        "inside"
-                            | "outside"
-                            | "none"
-                            | "inherit"
-                            | "initial"
-                            | "unset"
-                            | "revert"
-                            | "revert-layer"
-                    ) || token.starts_with("url(")
-                    {
-                        continue;
-                    }
-                    self.list_style_type = Some(token.to_string());
-                }
-            }
+            "list-style" | "list-style-type" => list_style::apply(self, key, v),
             "object-fit" => self.object_fit = Some(v.to_string()),
             // `image-orientation` (css-images-3 §5.4): `from-image | none |
             // [<angle> || flip]`. Угол со `flip` спека сама помечает
@@ -7502,9 +7441,7 @@ impl Computed {
             }
 
             // --- Псевдоэлементы и шрифт ---------------------------------------
-            "counter-reset" => self.counter_reset = Some(v.to_string()),
-            "counter-increment" => self.counter_increment = Some(v.to_string()),
-            "counter-set" => self.counter_set = Some(v.to_string()),
+            "counter-reset" | "counter-increment" | "counter-set" => counters::apply(self, key, v),
             "quotes" => quotes::apply(self, v),
             "content" => {
                 match v {
@@ -11294,37 +11231,6 @@ fn corner_shape_shorthand(raw: &str) -> Option<[f32; 4]> {
     })
 }
 
-fn radius_shorthand(raw: &str) -> Corners {
-    let v: Vec<Option<Len>> = raw.split_whitespace().map(Len::parse).collect();
-    match v.len() {
-        1 => Corners {
-            tl: v[0],
-            tr: v[0],
-            br: v[0],
-            bl: v[0],
-        },
-        2 => Corners {
-            tl: v[0],
-            tr: v[1],
-            br: v[0],
-            bl: v[1],
-        },
-        3 => Corners {
-            tl: v[0],
-            tr: v[1],
-            br: v[2],
-            bl: v[1],
-        },
-        4 => Corners {
-            tl: v[0],
-            tr: v[1],
-            br: v[2],
-            bl: v[3],
-        },
-        _ => Corners::default(),
-    }
-}
-
 /// Подстановка `var(--x)` и `var(--x, запасное)`.
 /// Сколько раз раскрывать переменные внутри переменных.
 ///
@@ -13128,29 +13034,7 @@ fn assign_size(slot: &mut Option<Len>, v: &str) {
     // Смесь «доля ± точки» доживает индексом (`parse_mixed`): раскладка
     // складывает её сама (`DefiniteLength::Calc`, css-values-4 §10.9).
     // Прежде `calc(50% - 3px)` роняло объявление (`calc-width-block-1`).
-    let parsed = Len::parse_mixed(v);
-    // Отрицательный размер невалиден в ЛЮБОЙ единице (CSS 2.1 §10.4:
-    // `min-width`/`min-height` — «Value: <length> | <percentage> | inherit»,
-    // отрицательные значения не допускаются). Прежде отбраковывались только
-    // px, проценты и em, а `min-height: -1ex` доживал до раскладки.
-    let negative = match parsed {
-        Some(
-            Len::Px(n)
-            | Len::Pct(n)
-            | Len::Em(n)
-            | Len::Vh(n)
-            | Len::Vw(n)
-            | Len::Ch(n)
-            | Len::Ex(n)
-            | Len::Ic(n)
-            | Len::Lh(n),
-        ) => n < 0.0,
-        Some(Len::EmPx(a, b) | Len::LhPx(a, b)) => a < 0.0 || b < 0.0,
-        _ => false,
-    };
-    if negative {
-        return;
-    }
+    let parsed = size_range::parse(v);
     // `none` снимает предел (§10.4) — слот гаснет по праву. Прочая
     // неразборная запись объявление роняет: слот сохраняет прежнее значение,
     // а не гаснет (§4.2).
