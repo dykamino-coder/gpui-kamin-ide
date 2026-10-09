@@ -32,6 +32,7 @@ mod inline_floats;
 mod float_atom;
 use float_atom::band_atom;
 mod first_letter_descendants;
+mod pseudo_line_layers;
 mod first_line_descendants;
 mod inline_splits;
 use inline_splits::split_block_in_inline;
@@ -19602,7 +19603,14 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
             // (`different-block-flow-dir-001/002`).
             || (e.style.vertical.is_some() && e.style.vertical != inherited.vertical) =>
         {
-            let merged = inline::inherit(inherited, &e.style);
+            let mut merged = inline::inherit(inherited, &e.style);
+            // CSS 2 sections 5.12.1-5.12.2 include inline-block containers,
+            // but not ordinary inline boxes, in the pseudo-line scope.
+            if e.style.display == Some(Display::InlineBlock)
+                && e.style.inline_display != Some(true)
+            {
+                pseudo_line_layers::install(e, &mut merged);
+            }
             let mut box_ = styled_div_with(e, &merged);
             // Строчная коробка БЕЗ содержимого всё равно высотой в строку:
             // рамка и фон рисуются по кеглю, а не по тексту. Без этого
@@ -22659,28 +22667,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             }
         }
     }
-    // Псевдоэлементы принадлежат ЭТОМУ узлу: они едут в стиль его детей на
-    // один уровень, а глубже слитый стиль их уже не несёт.
-    // Кегль слоя приводится к точкам ЗДЕСЬ: слой применяется мимо
-    // наследования, и `font-size: 200%` доезжал до набора неразрешённым —
-    // первая строка оставалась обычного размера
-    // (`text-autospace-first-line-001`). Доля считается от кегля самого блока.
-    let resolved = |layer: &Computed| {
-        let mut c = layer.clone();
-        if let Some(Len::Px(base)) = merged.font_size {
-            // ТОЛЬКО доля: `em` у слоя разрешает набор строк, и он считает
-            // её от кегля РОДИТЕЛЯ абзаца (`inline::max_font_size`). Перевод
-            // здесь давал второе умножение — буквица уезжала в четыре кегля
-            // вместо одного (`text-transform-shaping-001`).
-            c.font_size = match c.font_size {
-                Some(Len::Pct(k)) => Some(Len::Px(k * base)),
-                other => other,
-            };
-        }
-        Box::new(c)
-    };
-    merged.first_letter = e.first_letter.as_ref().map(&resolved);
-    merged.first_line = e.first_line.as_ref().map(&resolved);
+    pseudo_line_layers::install(e, &mut merged);
     // Единицы окна разрешаются здесь: размер окна знает только сборщик.
     merged.resolve_viewport(opts.viewport);
     orthogonal_inline::resolve(&mut merged, inherited, opts.viewport, e.tag == "html");
@@ -27291,6 +27278,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 cell.clone()
             };
             let mut cm = inline::inherit(&row_style, &cell.style);
+            pseudo_line_layers::install(cell, &mut cm);
             // `vertical-align` is not inherited (CSS 2.1 §10.8.1): only `td`/
             // `th` take their row's value, through the UA rule
             // `vertical-align: inherit` (HTML §15.3.9). A generic
