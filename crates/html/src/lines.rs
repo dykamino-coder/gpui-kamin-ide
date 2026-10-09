@@ -3309,14 +3309,14 @@ impl Paragraph {
     /// collapsible spaces at the end of a line … is removed». Удаляется из
     /// СТРОКИ, а не только из её ширины: подложка куска больше не тянется по
     /// пробелу (`line-break-anywhere-and-white-space-004`). Схлопываемые —
-    /// только U+0020 и табуляция там, где пробелы не сохраняются; U+3000,
+    /// U+0020, табуляция и U+1680 при normal/nowrap/pre-line (§4.1.3); U+3000,
     /// U+00A0 и прочие Zs не схлопываются, они ВИСЯТ и рисуются (★ откат у
     /// `trim_hanging`: обрезка подложки по всему `hangs` ломала
     /// `trailing-ideographic-space-*`).
     fn drop_collapsible_tail(&self, start: usize, end: usize) -> usize {
         let mut at = end;
         for (i, ch) in self.text[start..end].char_indices().rev() {
-            if matches!(ch, ' ' | '\t') && !self.wrap_at(start + i).keep_spaces {
+            if matches!(ch, ' ' | '\t' | '\u{1680}') && !self.wrap_at(start + i).keep_spaces {
                 at = start + i;
             } else {
                 break;
