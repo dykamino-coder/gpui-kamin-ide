@@ -69,7 +69,7 @@ fn parent_positions(alignment: AlignItems) -> (f32, f32, f32) {
         .new_with_children(
             Style {
                 display: Display::Flex,
-                align_items: Some(alignment),
+                align_items: alignment,
                 ..Style::DEFAULT
             },
             &[lanes, reference],

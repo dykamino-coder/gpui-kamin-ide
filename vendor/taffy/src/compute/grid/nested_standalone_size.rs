@@ -1,10 +1,10 @@
 //! Definite nested standalone content sizes use the ordinary grid-item sizing rules.
-use super::super::OriginZeroLine;
 use super::super::types::GridItem;
+use super::super::OriginZeroLine;
 use crate::geometry::{Line, Size};
 use crate::tree::LayoutPartialTreeExt;
-use crate::util::ResolveOrZero;
 use crate::util::sys::Vec;
+use crate::util::ResolveOrZero;
 use crate::{LayoutGridContainer, SUBGRID_COLUMNS, SUBGRID_ROWS};
 
 pub(super) fn content(

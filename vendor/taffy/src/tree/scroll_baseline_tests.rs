@@ -52,7 +52,7 @@ fn sibling_y(inline_block: bool) -> f32 {
     let root = tree
         .new_with_children(
             Style {
-                align_items: Some(AlignItems::BASELINE),
+                align_items: AlignItems::BASELINE,
                 ..Style::DEFAULT
             },
             &[atom, sibling],

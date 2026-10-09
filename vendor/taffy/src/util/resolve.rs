@@ -1,9 +1,9 @@
 //! Helper trait to calculate dimensions during layout resolution
 
-use crate::CompactLength;
 use crate::geometry::{Rect, Size};
 use crate::style::{Dimension, LengthPercentage, LengthPercentageAuto};
 use crate::style_helpers::TaffyZero;
+use crate::CompactLength;
 
 /// Trait to encapsulate behaviour where we need to resolve from a
 /// potentially context-dependent size or dimension into
@@ -37,7 +37,7 @@ impl MaybeResolve<Option<f32>, Option<f32>> for LengthPercentage {
             CompactLength::LENGTH_TAG => Some(self.0.value()),
             CompactLength::PERCENT_TAG => context.map(|dim| dim * self.0.value()),
             #[cfg(feature = "calc")]
-            _ if self.0.is_calc() => context.map(|dim| calc(self.0.calc_value(), dim)),
+            _ if self.0.is_plain_calc() => context.map(|dim| calc(self.0.calc_value(), dim)),
             _ => unreachable!(),
         }
     }
@@ -56,7 +56,7 @@ impl MaybeResolve<Option<f32>, Option<f32>> for LengthPercentageAuto {
             CompactLength::LENGTH_TAG => Some(self.0.value()),
             CompactLength::PERCENT_TAG => context.map(|dim| dim * self.0.value()),
             #[cfg(feature = "calc")]
-            _ if self.0.is_calc() => context.map(|dim| calc(self.0.calc_value(), dim)),
+            _ if self.0.is_plain_calc() => context.map(|dim| calc(self.0.calc_value(), dim)),
             _ => unreachable!(),
         }
     }
@@ -78,7 +78,7 @@ impl MaybeResolve<Option<f32>, Option<f32>> for Dimension {
             CompactLength::LENGTH_TAG => Some(self.0.value()),
             CompactLength::PERCENT_TAG => context.map(|dim| dim * self.0.value()),
             #[cfg(feature = "calc")]
-            _ if self.0.is_calc() => context.map(|dim| calc(self.0.calc_value(), dim)),
+            _ if self.0.is_plain_calc() => context.map(|dim| calc(self.0.calc_value(), dim)),
             // Intrinsic sizing keywords cannot be resolved to a definite size out of context.
             // Layout algorithms that support them must handle them explicitly.
             _ if self.0.is_sizing_keyword() => None,
@@ -100,6 +100,7 @@ impl<T: MaybeResolve<Option<f32>, Option<f32>>> MaybeResolve<f32, Option<f32>> f
 // Generic MaybeResolve for Size
 impl<In, Out, T: MaybeResolve<In, Out>> MaybeResolve<Size<In>, Size<Out>> for Size<T> {
     /// Converts any `parent`-relative values for size into an absolute size
+    #[inline(always)]
     fn maybe_resolve(self, context: Size<In>, calc: impl Fn(*const (), f32) -> f32) -> Size<Out> {
         Size {
             width: self.width.maybe_resolve(context.width, &calc),
@@ -168,6 +169,7 @@ impl<Out: TaffyZero, T: ResolveOrZero<Option<f32>, Out>> ResolveOrZero<Option<f3
     for Rect<T>
 {
     /// Converts any `parent`-relative values for Rect into an absolute Rect
+    #[inline(always)]
     fn resolve_or_zero(
         self,
         context: Option<f32>,

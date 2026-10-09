@@ -790,10 +790,13 @@ impl ToTaffy<taffy::style::Style> for Style {
             margin: self.margin.to_taffy(rem_size, scale_factor),
             padding: self.padding.to_taffy(rem_size, scale_factor),
             border: self.border_widths.to_taffy(rem_size, scale_factor),
+            // Taffy's container alignments are no longer optional: an absent GPUI value is
+            // the CSS initial value `normal`, which each layout mode resolves itself.
             align_items: alignment_adapter::items(
                 self.align_items.map(Into::into),
                 self.safe_alignment.0,
-            ),
+            )
+            .unwrap_or(taffy::AlignItems::NORMAL),
             align_self: alignment_adapter::items(
                 self.align_self.map(Into::into),
                 self.safe_alignment.1,
@@ -801,11 +804,13 @@ impl ToTaffy<taffy::style::Style> for Style {
             align_content: alignment_adapter::content(
                 self.align_content.map(Into::into),
                 self.safe_alignment.2,
-            ),
+            )
+            .unwrap_or(taffy::AlignContent::NORMAL),
             justify_content: alignment_adapter::content(
                 self.justify_content.map(Into::into),
                 self.safe_alignment.3,
-            ),
+            )
+            .unwrap_or(taffy::JustifyContent::NORMAL),
             gap: self.gap.to_taffy(rem_size, scale_factor),
             flex_direction: self.flex_direction.into(),
             flex_wrap: alignment_adapter::flex_wrap(self.flex_wrap.into(), self.flex_balance_lines),
@@ -907,7 +912,8 @@ impl ToTaffy<taffy::style::Style> for Style {
             justify_items: alignment_adapter::items(
                 self.justify_items.map(Into::into),
                 self.safe_justify_alignment.0,
-            ),
+            )
+            .unwrap_or(taffy::AlignItems::NORMAL),
             justify_self: alignment_adapter::items(
                 self.justify_self.map(Into::into),
                 self.safe_justify_alignment.1,

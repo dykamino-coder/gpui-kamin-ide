@@ -19,11 +19,11 @@ fn offset(lanes: bool, flags: u8, last: bool, direction: Direction) -> f32 {
                 size: Size::from_lengths(80.0, 80.0),
                 grid_template_columns: vec![length(80.0)],
                 grid_template_rows: if lanes { vec![] } else { vec![length(80.0)] },
-                justify_items: Some(if last {
+                justify_items: if last {
                     AlignItems::LAST_BASELINE
                 } else {
                     AlignItems::BASELINE
-                }),
+                },
                 grid_lanes: lanes.then_some(GridLanes {
                     rows: false,
                     track_reverse: false,

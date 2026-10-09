@@ -2,7 +2,7 @@
 use crate::geometry::{Line, Size};
 use crate::style::AvailableSpace;
 use crate::tree::{LayoutGridContainer, LayoutInput, LayoutPartialTreeExt, NodeId, SizingMode};
-use crate::{AbsoluteAxis, BlockFlow, CompactLength, Dimension};
+use crate::{AbsoluteAxis, BlockFlow, CompactLength, CoreStyle, Dimension, ResolveOrZero};
 
 /// A parent's intrinsic probe does not replace an authored intrinsic size.
 pub(super) fn container_space(
@@ -50,6 +50,13 @@ pub(super) fn width(
     parent: Size<Option<f32>>,
     area: f32,
 ) -> f32 {
+    // Upstream #1234: the parent passes the border-box space, so the child's own vertical
+    // margins are deducted here (auto margins count as zero).
+    let margin = tree
+        .get_core_container_style(node)
+        .margin()
+        .resolve_or_zero(parent.width, |val, basis| tree.calc(val, basis));
+    let area = (area - margin.vertical_axis_sum()).max(0.0);
     tree.measure_child_size(
         node,
         Size {
@@ -59,7 +66,6 @@ pub(super) fn width(
         parent,
         Size {
             width: AvailableSpace::MaxContent,
-            // Child layout receives the margin-box area and deducts its edges.
             height: AvailableSpace::Definite(area),
         },
         SizingMode::InherentSize,

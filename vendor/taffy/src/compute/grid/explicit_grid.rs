@@ -4,9 +4,9 @@ use super::types::{GridTrack, GridTrackKind, TrackCounts};
 use crate::geometry::AbsoluteAxis;
 use crate::style::{LengthPercentage, RepetitionCount, TrackSizingFunction};
 use crate::style_helpers::TaffyAuto;
+use crate::util::sys::{ceil, floor, Vec};
 use crate::util::MaybeMath;
 use crate::util::ResolveOrZero;
-use crate::util::sys::{Vec, ceil, floor};
 use core::cmp::min;
 
 use super::MAX_GRID_TRACKS;
@@ -1043,16 +1043,12 @@ mod test {
                 .collect();
             assert_eq!(gutters.len(), live.len().saturating_sub(1));
             for &index in &gutters {
-                assert!(
-                    tracks[..index]
-                        .iter()
-                        .any(|track| track.kind == GridTrackKind::Track && !track.is_collapsed)
-                );
-                assert!(
-                    tracks[index + 1..]
-                        .iter()
-                        .any(|track| track.kind == GridTrackKind::Track && !track.is_collapsed)
-                );
+                assert!(tracks[..index]
+                    .iter()
+                    .any(|track| track.kind == GridTrackKind::Track && !track.is_collapsed));
+                assert!(tracks[index + 1..]
+                    .iter()
+                    .any(|track| track.kind == GridTrackKind::Track && !track.is_collapsed));
                 assert_eq!(
                     tracks[index].min_track_sizing_function,
                     MinTrackSizingFunction::from_length(10.0)

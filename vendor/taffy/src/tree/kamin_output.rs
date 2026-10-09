@@ -67,7 +67,8 @@ mod tests {
             first: Some(5.0),
             last: Some(8.0),
         };
-        assert_eq!(adapt(existing, &style).baselines_x, existing.baselines_x);
+        let expected = existing.baselines_x;
+        assert_eq!(adapt(existing, &style).baselines_x, expected);
     }
 
     #[test]
@@ -78,10 +79,25 @@ mod tests {
         };
         let mut content = measured();
         // Content-order last is the leftmost line in a vertical-rl inline block.
-        content.baselines_x = Baselines { first: Some(32.0), last: Some(8.0) };
+        content.baselines_x = Baselines {
+            first: Some(32.0),
+            last: Some(8.0),
+        };
         let result = adapt(content, &style);
-        assert_eq!(result.baselines, Baselines { first: Some(30.0), last: Some(30.0) });
-        assert_eq!(result.baselines_x, Baselines { first: Some(8.0), last: Some(8.0) });
+        assert_eq!(
+            result.baselines,
+            Baselines {
+                first: Some(30.0),
+                last: Some(30.0)
+            }
+        );
+        assert_eq!(
+            result.baselines_x,
+            Baselines {
+                first: Some(8.0),
+                last: Some(8.0)
+            }
+        );
     }
 
     #[test]
@@ -98,7 +114,10 @@ mod tests {
 
     #[test]
     fn unavailable_baseline_keeps_sizing_and_containment_independent() {
-        let style = Style { baseline_unavailable: true, ..Style::DEFAULT };
+        let style = Style {
+            baseline_unavailable: true,
+            ..Style::DEFAULT
+        };
         let result = adapt(measured(), &style);
         assert_eq!(result.size, measured().size);
         assert_eq!(style.contain, Contain::NONE);

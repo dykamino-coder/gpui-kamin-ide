@@ -12,8 +12,19 @@ pub(super) fn physical_x(
     // A completed parent's width may differ from the callback's intrinsic size.
     // Convert right-origin offsets using the final content box, never the probe size.
     let content_width = (width - inset.left - inset.right).max(0.0);
-    let offset = |value| if measured.baseline_x_from_right { content_width - value } else { value };
-    with_inset(style, measured.baseline_x.map(offset), measured.last_baseline_x.map(offset), inset.left)
+    let offset = |value| {
+        if measured.baseline_x_from_right {
+            content_width - value
+        } else {
+            value
+        }
+    };
+    with_inset(
+        style,
+        measured.baseline_x.map(offset),
+        measured.last_baseline_x.map(offset),
+        inset.left,
+    )
 }
 
 pub(super) fn with_inset(

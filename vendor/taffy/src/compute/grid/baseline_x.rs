@@ -6,6 +6,7 @@ use crate::geometry::{AbstractAxis, Line, Size};
 use crate::style::AlignItemsKeyword;
 use crate::style_helpers::TaffyMaxContent;
 use crate::tree::{LayoutPartialTree, LayoutPartialTreeExt, SizingMode};
+use crate::util::sys::Vec;
 use crate::util::ResolveOrZero;
 
 pub(super) fn resolve_item_baselines_x(
@@ -29,9 +30,15 @@ fn resolve_x_groups(
     };
     let group_of = |item: &GridItem| {
         let span = item.placement(AbstractAxis::Inline);
-        if last { span.end } else { span.start }
+        if last {
+            span.end
+        } else {
+            span.start
+        }
     };
-    items.sort_by_key(group_of);
+    // Upstream #1200: the `GridItem`s stay in document order, only references are sorted.
+    let mut items: Vec<&mut GridItem> = items.iter_mut().collect();
+    items.sort_by_key(|item| group_of(item));
     let mut remaining_items = &mut items[0..];
     while !remaining_items.is_empty() {
         let current_column = group_of(&remaining_items[0]);
@@ -124,6 +131,8 @@ fn resolve_x_groups(
                 } else {
                     item.baseline_shim_x = shim;
                 }
+                // Upstream #1226: shims feed the item's known dimensions, so drop the cached entry.
+                item.known_dimensions_cache = None;
             }
         }
     }

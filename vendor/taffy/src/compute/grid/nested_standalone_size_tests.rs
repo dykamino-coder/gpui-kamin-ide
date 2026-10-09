@@ -1,6 +1,6 @@
 //! Compare nested fixed and fractional standalone rows under identical definite parent tracks.
 use crate::prelude::*;
-use crate::{GridLanes, compute_leaf_layout};
+use crate::{compute_leaf_layout, GridLanes};
 
 fn width(lanes: bool, fractional: bool) -> f32 {
     let mut tree: TaffyTree<()> = TaffyTree::new();

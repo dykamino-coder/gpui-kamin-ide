@@ -1,5 +1,5 @@
 //! Compare column-lane and grid fallback baselines with asymmetric inline margins.
-use crate::{GridLanes, prelude::*};
+use crate::{prelude::*, GridLanes};
 fn positions(lanes: bool, last: bool) -> Vec<(f32, f32)> {
     let mut t: TaffyTree<()> = TaffyTree::new();
     t.disable_rounding();
@@ -72,11 +72,11 @@ fn positions(lanes: bool, last: bool) -> Vec<(f32, f32)> {
                     width: length(3.),
                     height: length(3.),
                 },
-                justify_items: Some(if last {
+                justify_items: if last {
                     AlignItems::LAST_BASELINE
                 } else {
                     AlignItems::BASELINE
-                }),
+                },
                 size: Size {
                     width: length(400.),
                     height: Dimension::AUTO,

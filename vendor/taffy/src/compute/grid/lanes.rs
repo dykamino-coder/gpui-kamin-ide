@@ -16,22 +16,22 @@
 //! (`render::lanes`), и размеры по оси решётки там ОЦЕНИВАЛИСЬ, а эталоны
 //! (`grid-subgridded-to-grid-lanes/**` и соседи) рисовались настоящей сеткой
 //! taffy: тест и эталон шли разными алгоритмами.
-use super::OriginZeroLine;
-use super::lanes_geometry::{absolute_area, stacking_alignment_offset, track_area};
 use super::alignment::{align_item_within_area, align_tracks};
 use super::explicit_grid::{
-    AutoRepeatStrategy, compute_explicit_grid_size_in_axis, initialize_grid_tracks,
+    compute_explicit_grid_size_in_axis, initialize_grid_tracks, AutoRepeatStrategy,
 };
+use super::lanes_geometry::{absolute_area, stacking_alignment_offset, track_area};
 use super::subgrid;
 use super::track_sizing::{
     determine_if_item_crosses_flexible_or_intrinsic_tracks, resolve_item_track_indexes,
     track_sizing_algorithm,
 };
 use super::types::{GridItem, GridTrack, NamedLineResolver, TrackCounts};
+use super::OriginZeroLine;
 use crate::geometry::{AbsoluteAxis, AbstractAxis, InBothAbsAxis, Line, Point, Rect, Size};
 use crate::style::{
-    AlignItems, AlignItemsKeyword, AlignSelf, AlignmentSafety, AvailableSpace,
-    Contain, Direction, GenericGridTemplateComponent, GenericRepetition, GridLanes, GridPlacement,
+    AlignItems, AlignItemsKeyword, AlignSelf, AlignmentSafety, AvailableSpace, Contain, Direction,
+    GenericGridTemplateComponent, GenericRepetition, GridLanes, GridPlacement,
     MaxTrackSizingFunction, MinTrackSizingFunction, Overflow, Position, RepetitionCount,
     TrackSizingFunction,
 };
@@ -39,8 +39,8 @@ use crate::style_helpers::*;
 use crate::tree::{
     Baselines, Layout, LayoutInput, LayoutOutput, LayoutPartialTreeExt, NodeId, RunMode, SizingMode,
 };
+use crate::util::sys::{f32_max, GridTrackVec, Vec};
 use crate::util::MaybeMath;
-use crate::util::sys::{GridTrackVec, Vec, f32_max};
 use crate::util::{MaybeResolve, ResolveOrZero};
 use crate::{
     AlignContent, BoxGenerationMode, BoxSizing, CoreStyle, GridContainerStyle, GridItemStyle,
@@ -180,7 +180,8 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
     };
 
     let style = tree.get_grid_container_style(node);
-    let available_space = super::lanes_stack_measure::container_space(style.size(), style.block_flow(), inputs);
+    let available_space =
+        super::lanes_stack_measure::container_space(style.size(), style.block_flow(), inputs);
     let flow = super::subgrid_flow::axes(&style);
     // Размеры контейнера — тем же порядком, что `compute_grid_layout`.
     let contain = style.contain();
@@ -228,10 +229,16 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
     content_box_inset.right += scrollbar_gutter.x;
     content_box_inset.bottom += scrollbar_gutter.y;
 
-    let align_content = style.align_content();
-    let justify_content = style.justify_content();
-    let align_items = style.align_items();
-    let justify_items = style.justify_items();
+    // Container alignments are no longer `Option` upstream (#1254/#1255); lanes keeps its
+    // `None` = `normal` convention.
+    let align_content = Some(style.align_content())
+        .filter(|a| a.keyword != crate::style::AlignContentKeyword::Normal);
+    let justify_content = Some(style.justify_content())
+        .filter(|a| a.keyword != crate::style::AlignContentKeyword::Normal);
+    let align_items =
+        Some(style.align_items()).filter(|a| a.keyword != crate::style::AlignItemsKeyword::Normal);
+    let justify_items = Some(style.justify_items())
+        .filter(|a| a.keyword != crate::style::AlignItemsKeyword::Normal);
     let align_content_safe = align_content.is_some_and(|a| a.safety == AlignmentSafety::Safe);
     let justify_content_safe = justify_content.is_some_and(|a| a.safety == AlignmentSafety::Safe);
 
@@ -960,7 +967,10 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             .filter(|v| v.is_finite())
             .fold(0.0f32, f32_max);
         let grid_reverse = if rows { flow.height } else { flow.width };
-        let Line { start: area_start, end: area_end } = track_area(&grid_tracks, s, e, grid_reverse);
+        let Line {
+            start: area_start,
+            end: area_end,
+        } = track_area(&grid_tracks, s, e, grid_reverse);
         let area = f32_max(area_end - area_start, 0.0);
         // KaminIDE patch: подсетке — размеры дорожек её пролёта (§9 (a)).
         let lines = Line {
@@ -1202,9 +1212,9 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             contain: item.contain,
             overflow: item.overflow,
             baseline: item.baseline,
-                    baseline_x: item.baseline_x,
-                    last_baseline_x: item.last_baseline_x,
-                    baseline_x_flags: item.baseline_x_flags,
+            baseline_x: item.baseline_x,
+            last_baseline_x: item.last_baseline_x,
+            baseline_x_flags: item.baseline_x_flags,
             stack_align: item.stack_align,
             stack_size_fixed: item.stack_size_fixed,
             area,
@@ -1390,8 +1400,15 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
 
     #[cfg_attr(not(feature = "content_size"), allow(unused_mut))]
     let mut item_content_size_contribution = final_placement::position(
-        tree, &mut placed, rows, flow, stack_content, stack_start_inset, border,
-        #[cfg(feature = "content_size")] is_scroll_container,
+        tree,
+        &mut placed,
+        rows,
+        flow,
+        stack_content,
+        stack_start_inset,
+        border,
+        #[cfg(feature = "content_size")]
+        is_scroll_container,
     );
     // The stacking axis exports the highest first and lowest last baseline
     // across tracks (css-grid-3 §6.5), using actual content baseline sets.
@@ -1442,8 +1459,13 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
                 container_border_box.width - border.right - scrollbar_gutter.x,
             )
         };
-        let Line { start: lo, end: hi } = absolute_area(&grid_tracks, placement, grid_lo, grid_hi,
-            if rows { flow.height } else { flow.width });
+        let Line { start: lo, end: hi } = absolute_area(
+            &grid_tracks,
+            placement,
+            grid_lo,
+            grid_hi,
+            if rows { flow.height } else { flow.width },
+        );
         let grid_area = if rows {
             Rect {
                 top: lo,
@@ -1460,20 +1482,38 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             }
         };
         #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
+        // KaminIDE: grid lanes still lays out its own absolutely positioned children (they are
+        // not emitted as oof candidates: the stacking axis has no grid lines for `oof.rs` to
+        // resolve). Candidates surfacing from their subtrees are dropped here as before the
+        // upgrade; with GPUI every node is positioned, so such candidates are always claimed
+        // below this container.
+        let mut bubbled = crate::tree::OofCandidates::new();
         let (content_size_contribution, _, _, _, _) = super::alignment::align_and_position_item(
             tree,
             child,
             order,
             grid_area,
-            container_align,
+            Size {
+                width: grid_area.right - grid_area.left,
+                height: grid_area.bottom - grid_area.top,
+            },
+            InBothAbsAxis {
+                horizontal: container_align.horizontal.unwrap_or(AlignItems::NORMAL),
+                vertical: container_align.vertical.unwrap_or(AlignItems::NORMAL),
+            },
             Rect::ZERO,
             false,
             0,
-            if flow.width { Direction::Rtl } else { Direction::Ltr },
+            if flow.width {
+                Direction::Rtl
+            } else {
+                Direction::Ltr
+            },
             container_border_box.width,
             border,
             #[cfg(feature = "content_size")]
             is_scroll_container,
+            &mut bubbled,
         );
         #[cfg(feature = "content_size")]
         {
@@ -1498,8 +1538,11 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             Vec::new(),
             Default::default(),
         );
-        let (rows_info, columns_info) =
-            if rows { (lane_info, stack_info) } else { (stack_info, lane_info) };
+        let (rows_info, columns_info) = if rows {
+            (lane_info, stack_info)
+        } else {
+            (stack_info, lane_info)
+        };
         tree.set_detailed_grid_info(
             node,
             super::DetailedGridInfo {
@@ -1507,6 +1550,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
                 rows: rows_info,
                 columns: columns_info,
                 items: Vec::new(),
+                areas: Default::default(),
             },
         );
     }
@@ -2059,7 +2103,9 @@ fn layout_lanes_item(
     } else if rows && inherent_stack.is_none() && stack_known.is_none() {
         // Early max-content width predates the resolved track height. Vertical
         // text may now wrap into more columns, which changes stacking width.
-        Some(super::lanes_stack_measure::width(tree, node, grid_known, cb, area))
+        Some(super::lanes_stack_measure::width(
+            tree, node, grid_known, cb, area,
+        ))
     } else {
         stack_fit
     };
@@ -2116,7 +2162,11 @@ fn layout_lanes_item(
     let grid_position_alignment = if rows {
         grid_alignment
     } else {
-        super::baseline_orientation::projected_x_alignment(grid_alignment, baseline_x_flags & 1 != 0, Direction::Ltr)
+        super::baseline_orientation::projected_x_alignment(
+            grid_alignment,
+            baseline_x_flags & 1 != 0,
+            Direction::Ltr,
+        )
     };
     let (grid_offset, grid_margin) = align_item_within_area(
         Line {

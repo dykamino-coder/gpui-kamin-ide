@@ -22,8 +22,8 @@ fn contribution(vertical: bool, cross: Option<f32>) -> f32 {
                         height: auto(),
                     }
                 },
-                justify_items: Some(AlignItems::START),
-                align_items: Some(AlignItems::START),
+                justify_items: AlignItems::START,
+                align_items: AlignItems::START,
                 ..Style::DEFAULT
             },
             &[text],

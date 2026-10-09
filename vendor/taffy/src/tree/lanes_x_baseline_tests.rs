@@ -1,5 +1,5 @@
 //! Intrinsic block items must preserve physical x baselines in vertical alignment.
-use crate::prelude::{TaffyAuto, TaffyMaxContent, length};
+use crate::prelude::{length, TaffyAuto, TaffyMaxContent};
 use crate::{AlignItems, Baselines, Dimension, Display, Size, Style, TaffyTree};
 
 #[test]
@@ -43,11 +43,11 @@ fn column_lanes_share_first_and_last_vertical_baselines() {
                                 tolerance_pct: None,
                                 stack_block: false,
                             }),
-                            justify_items: Some(if last {
+                            justify_items: if last {
                                 AlignItems::LAST_BASELINE
                             } else {
                                 AlignItems::BASELINE
-                            }),
+                            },
                             ..Style::DEFAULT
                         },
                         &items,

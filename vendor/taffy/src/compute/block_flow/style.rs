@@ -18,6 +18,8 @@ impl<S: CoreStyle> CoreStyle for Logical<S> {
     forward!(
         box_generation_mode -> BoxGenerationMode,
         is_compressible_replaced -> bool,
+        is_replaced -> bool,
+        is_containing_block -> ContainingBlockClaims,
         box_sizing -> BoxSizing,
         scrollbar_width -> f32,
         position -> Position,
@@ -101,11 +103,21 @@ impl<S: CoreStyle> CoreStyle for Logical<S> {
 }
 
 impl<S: BlockContainerStyle> BlockContainerStyle for Logical<S> {
-    forward!(text_align -> TextAlign, align_content -> Option<AlignContent>);
+    // Alignment keywords are already logical (inline/block), so they forward unchanged.
+    forward!(
+        text_align -> TextAlign,
+        align_content -> AlignContent,
+        justify_items -> AlignItems,
+    );
 }
 
 impl<S: BlockItemStyle> BlockItemStyle for Logical<S> {
-    forward!(is_table -> bool);
+    forward!(
+        is_table -> bool,
+        align_self -> Option<AlignSelf>,
+        justify_self -> Option<AlignSelf>,
+        align_content -> AlignContent,
+    );
     #[cfg(feature = "float_layout")]
     forward!(float -> Float, clear -> Clear);
 }

@@ -30,7 +30,7 @@ fn intrinsic_leaf_keeps_transferred_minimum_under_flex_parent() {
                     Style {
                         display: Display::Flex,
                         flex_direction: FlexDirection::Column,
-                        align_items: Some(AlignItems::FLEX_START),
+                        align_items: AlignItems::FLEX_START,
                         size: Size {
                             width: length(784.0),
                             height: Dimension::AUTO,
@@ -47,7 +47,7 @@ fn intrinsic_leaf_keeps_transferred_minimum_under_flex_parent() {
     }
 }
 
-use crate::{GridLanes, compute_leaf_layout};
+use crate::{compute_leaf_layout, GridLanes};
 
 fn verify_equal_columns(lanes: bool, bound: u8) {
     let mut tree: TaffyTree<()> = TaffyTree::new();

@@ -87,7 +87,7 @@ impl LengthPercentage {
             CompactLength::LENGTH_TAG => ExpandedLengthPercentage::Length(self.0.value()),
             CompactLength::PERCENT_TAG => ExpandedLengthPercentage::Percent(self.0.value()),
             #[cfg(feature = "calc")]
-            _ if self.0.is_calc() => ExpandedLengthPercentage::Calc(self.0.calc_value()),
+            _ if self.0.is_plain_calc() => ExpandedLengthPercentage::Calc(self.0.calc_value()),
             _ => unreachable!("LengthPercentage contains a value with an invalid tag"),
         }
     }
@@ -134,7 +134,10 @@ impl<'de> serde::Deserialize<'de> for LengthPercentage {
     {
         let inner = CompactLength::deserialize(deserializer)?;
         // Note: validation intentionally excludes the CALC_TAG as deserializing calc() values is not supported
-        if matches!(inner.tag(), CompactLength::LENGTH_TAG | CompactLength::PERCENT_TAG) {
+        if matches!(
+            inner.tag(),
+            CompactLength::LENGTH_TAG | CompactLength::PERCENT_TAG
+        ) {
             Ok(Self(inner))
         } else {
             Err(serde::de::Error::custom("Invalid tag"))
@@ -235,13 +238,17 @@ impl LengthPercentageAuto {
     ///   - Some(resolved) using the provided context for Percent variants
     ///   - None for Auto variants
     #[inline(always)]
-    pub fn resolve_to_option(self, context: f32, calc_resolver: impl Fn(*const (), f32) -> f32) -> Option<f32> {
+    pub fn resolve_to_option(
+        self,
+        context: f32,
+        calc_resolver: impl Fn(*const (), f32) -> f32,
+    ) -> Option<f32> {
         match self.0.tag() {
             CompactLength::LENGTH_TAG => Some(self.0.value()),
             CompactLength::PERCENT_TAG => Some(context * self.0.value()),
             CompactLength::AUTO_TAG => None,
             #[cfg(feature = "calc")]
-            _ if self.0.is_calc() => Some(calc_resolver(self.0.calc_value(), context)),
+            _ if self.0.is_plain_calc() => Some(calc_resolver(self.0.calc_value(), context)),
             _ => unreachable!("LengthPercentageAuto values cannot be constructed with other tags"),
         }
     }
@@ -263,7 +270,7 @@ impl LengthPercentageAuto {
             CompactLength::PERCENT_TAG => ExpandedLengthPercentageAuto::Percent(self.0.value()),
             CompactLength::AUTO_TAG => ExpandedLengthPercentageAuto::Auto,
             #[cfg(feature = "calc")]
-            _ if self.0.is_calc() => ExpandedLengthPercentageAuto::Calc(self.0.calc_value()),
+            _ if self.0.is_plain_calc() => ExpandedLengthPercentageAuto::Calc(self.0.calc_value()),
             _ => unreachable!("LengthPercentageAuto contains a value with an invalid tag"),
         }
     }
@@ -313,7 +320,10 @@ impl<'de> serde::Deserialize<'de> for LengthPercentageAuto {
     {
         let inner = CompactLength::deserialize(deserializer)?;
         // Note: validation intentionally excludes the CALC_TAG as deserializing calc() values is not supported
-        if matches!(inner.tag(), CompactLength::LENGTH_TAG | CompactLength::PERCENT_TAG | CompactLength::AUTO_TAG) {
+        if matches!(
+            inner.tag(),
+            CompactLength::LENGTH_TAG | CompactLength::PERCENT_TAG | CompactLength::AUTO_TAG
+        ) {
             Ok(Self(inner))
         } else {
             Err(serde::de::Error::custom("Invalid tag"))
@@ -370,14 +380,19 @@ impl FromCss for Dimension {
                 "content" => Ok(Self::content()),
                 _ => Err(parser.new_unexpected_token_error(token))?,
             },
-            Token::Function(ref name) if name.as_ref() == "fit-content" => parser.parse_nested_block(|parser| {
-                let token = parser.next()?.clone();
-                match token {
-                    Token::Percentage { unit_value, .. } => Ok(Self::fit_content_percent(unit_value)),
-                    Token::Dimension { unit, value, .. } if unit == "px" => Ok(Self::fit_content_px(value)),
-                    token => Err(parser.new_unexpected_token_error(token))?,
-                }
-            }),
+            Token::Function(ref name) if name.as_ref() == "fit-content" => parser
+                .parse_nested_block(|parser| {
+                    let token = parser.next()?.clone();
+                    match token {
+                        Token::Percentage { unit_value, .. } => {
+                            Ok(Self::fit_content_percent(unit_value))
+                        }
+                        Token::Dimension { unit, value, .. } if unit == "px" => {
+                            Ok(Self::fit_content_px(value))
+                        }
+                        token => Err(parser.new_unexpected_token_error(token))?,
+                    }
+                }),
             token => Err(parser.new_unexpected_token_error(token))?,
         }
     }
@@ -473,6 +488,29 @@ impl Dimension {
         Self(CompactLength::calc(ptr))
     }
 
+    /// A `fit-content()` value whose limit is a `calc()` value. The value passed here is treated as an opaque
+    /// handle to the actual calc representation and may be a pointer, index, etc.
+    ///
+    /// The low 3 bits are used as a tag value and will be returned as 0.
+    #[inline]
+    #[cfg(feature = "calc")]
+    pub fn fit_content_calc(ptr: *const ()) -> Self {
+        Self(CompactLength::fit_content_calc(ptr))
+    }
+
+    /// Returns true if the value is a `fit-content()` value with a `calc()` limit
+    #[inline(always)]
+    pub fn is_fit_content_calc(self) -> bool {
+        self.0.is_fit_content_calc()
+    }
+
+    /// Get the calc() pointer (valid for `calc()` and `fit-content(calc())` values)
+    #[inline(always)]
+    #[cfg(feature = "calc")]
+    pub fn calc_value(self) -> *const () {
+        self.0.calc_value()
+    }
+
     /// Create a LengthPercentageAuto from a raw `CompactLength`.
     /// # Safety
     /// CompactLength must represent a valid variant for LengthPercentageAuto
@@ -541,12 +579,18 @@ impl Dimension {
             CompactLength::MIN_CONTENT_TAG => ExpandedDimension::MinContent,
             CompactLength::MAX_CONTENT_TAG => ExpandedDimension::MaxContent,
             CompactLength::FIT_CONTENT_PX_TAG => ExpandedDimension::FitContentPx(self.0.value()),
-            CompactLength::FIT_CONTENT_PERCENT_TAG => ExpandedDimension::FitContentPercent(self.0.value()),
+            CompactLength::FIT_CONTENT_PERCENT_TAG => {
+                ExpandedDimension::FitContentPercent(self.0.value())
+            }
             CompactLength::FIT_CONTENT_KEYWORD_TAG => ExpandedDimension::FitContent,
+            #[cfg(feature = "calc")]
+            _ if self.0.is_fit_content_calc() => {
+                ExpandedDimension::FitContentCalc(self.0.calc_value())
+            }
             CompactLength::STRETCH_TAG => ExpandedDimension::Stretch,
             CompactLength::CONTENT_TAG => ExpandedDimension::Content,
             #[cfg(feature = "calc")]
-            _ if self.0.is_calc() => ExpandedDimension::Calc(self.0.calc_value()),
+            _ if self.0.is_plain_calc() => ExpandedDimension::Calc(self.0.calc_value()),
             _ => unreachable!("Dimension contains a value with an invalid tag"),
         }
     }
@@ -572,6 +616,9 @@ pub enum ExpandedDimension {
     FitContentPx(f32),
     /// A `fit-content(...)` value with a percentage limit (see [`Dimension::fit_content_percent`])
     FitContentPercent(f32),
+    /// The size is the fit-content size with a `calc()` limit (an opaque handle to the calc representation)
+    #[cfg(feature = "calc")]
+    FitContentCalc(*const ()),
     /// The `fit-content` keyword with no limit (see [`Dimension::fit_content`])
     FitContent,
     /// The `stretch` keyword (see [`Dimension::stretch`])
@@ -601,6 +648,8 @@ impl From<ExpandedDimension> for Dimension {
             ExpandedDimension::FitContentPx(val) => Self::fit_content_px(val),
             ExpandedDimension::FitContentPercent(val) => Self::fit_content_percent(val),
             ExpandedDimension::FitContent => Self::fit_content(),
+            #[cfg(feature = "calc")]
+            ExpandedDimension::FitContentCalc(ptr) => Self::fit_content_calc(ptr),
             ExpandedDimension::Stretch => Self::stretch(),
             ExpandedDimension::Content => Self::content(),
             #[cfg(feature = "calc")]
@@ -678,23 +727,39 @@ mod expand_tests {
 
     #[test]
     fn length_percentage_round_trips() {
-        let cases = [LengthPercentage::length(12.0), LengthPercentage::percent(0.5), LengthPercentage::ZERO];
+        let cases = [
+            LengthPercentage::length(12.0),
+            LengthPercentage::percent(0.5),
+            LengthPercentage::ZERO,
+        ];
         for value in cases {
             assert_eq!(LengthPercentage::from(value.expand()), value);
             assert_eq!(ExpandedLengthPercentage::from(value), value.expand());
         }
-        assert_eq!(LengthPercentage::length(3.0).expand(), ExpandedLengthPercentage::Length(3.0));
-        assert_eq!(LengthPercentage::percent(0.25).expand(), ExpandedLengthPercentage::Percent(0.25));
+        assert_eq!(
+            LengthPercentage::length(3.0).expand(),
+            ExpandedLengthPercentage::Length(3.0)
+        );
+        assert_eq!(
+            LengthPercentage::percent(0.25).expand(),
+            ExpandedLengthPercentage::Percent(0.25)
+        );
     }
 
     #[test]
     fn length_percentage_auto_round_trips() {
-        let cases =
-            [LengthPercentageAuto::length(12.0), LengthPercentageAuto::percent(0.5), LengthPercentageAuto::auto()];
+        let cases = [
+            LengthPercentageAuto::length(12.0),
+            LengthPercentageAuto::percent(0.5),
+            LengthPercentageAuto::auto(),
+        ];
         for value in cases {
             assert_eq!(LengthPercentageAuto::from(value.expand()), value);
         }
-        assert_eq!(LengthPercentageAuto::auto().expand(), ExpandedLengthPercentageAuto::Auto);
+        assert_eq!(
+            LengthPercentageAuto::auto().expand(),
+            ExpandedLengthPercentageAuto::Auto
+        );
     }
 
     #[test]
@@ -714,7 +779,10 @@ mod expand_tests {
         for value in cases {
             assert_eq!(Dimension::from(value.expand()), value);
         }
-        assert_eq!(Dimension::fit_content_px(30.0).expand(), ExpandedDimension::FitContentPx(30.0));
+        assert_eq!(
+            Dimension::fit_content_px(30.0).expand(),
+            ExpandedDimension::FitContentPx(30.0)
+        );
         assert_eq!(Dimension::content().expand(), ExpandedDimension::Content);
     }
 
@@ -722,9 +790,29 @@ mod expand_tests {
     #[test]
     fn calc_round_trips() {
         let handle = calc_handle();
-        assert_eq!(LengthPercentage::calc(handle).expand(), ExpandedLengthPercentage::Calc(handle));
-        assert_eq!(LengthPercentage::from(ExpandedLengthPercentage::Calc(handle)), LengthPercentage::calc(handle));
-        assert_eq!(Dimension::calc(handle).expand(), ExpandedDimension::Calc(handle));
-        assert_eq!(LengthPercentageAuto::calc(handle).expand(), ExpandedLengthPercentageAuto::Calc(handle));
+        assert_eq!(
+            LengthPercentage::calc(handle).expand(),
+            ExpandedLengthPercentage::Calc(handle)
+        );
+        assert_eq!(
+            LengthPercentage::from(ExpandedLengthPercentage::Calc(handle)),
+            LengthPercentage::calc(handle)
+        );
+        assert_eq!(
+            Dimension::calc(handle).expand(),
+            ExpandedDimension::Calc(handle)
+        );
+        assert_eq!(
+            Dimension::fit_content_calc(handle).expand(),
+            ExpandedDimension::FitContentCalc(handle)
+        );
+        assert_eq!(
+            Dimension::from(ExpandedDimension::FitContentCalc(handle)),
+            Dimension::fit_content_calc(handle)
+        );
+        assert_eq!(
+            LengthPercentageAuto::calc(handle).expand(),
+            ExpandedLengthPercentageAuto::Calc(handle)
+        );
     }
 }

@@ -1,7 +1,7 @@
 //! Independent coordinates exercise every grid-container baseline preference.
 use super::*;
 use crate::compute::grid::OriginZeroLine;
-use crate::{AlignItems, NodeId, geometry::Line};
+use crate::{geometry::Line, AlignItems, NodeId};
 
 type Style = crate::Style;
 

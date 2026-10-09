@@ -56,7 +56,7 @@ rustdoc-args = [
 ]
 
 [features]
-alloc = ["serde?/alloc"]
+alloc = []
 block_layout = []
 calc = []
 content_size = []
@@ -77,17 +77,17 @@ detailed_layout_info = []
 flexbox = []
 flexbox_balance = ["flexbox"]
 float_layout = []
-grid = [
-    "alloc",
-    "dep:smallvec",
-]
+grid = ["dep:smallvec"]
 parse = ["dep:cssparser"]
 parse_faster = [
     "parse",
     "cssparser/fast_match_byte",
 ]
 profile = ["std"]
-serde = ["dep:serde"]
+serde = [
+    "dep:serde",
+    "serde/alloc",
+]
 std = [
     "serde?/std",
     "slotmap?/std",
@@ -131,10 +131,6 @@ path = "examples/measure.rs"
 [[example]]
 name = "nested"
 path = "examples/nested.rs"
-
-[dependencies.arrayvec]
-version = "0.7"
-default-features = false
 
 [dependencies.cssparser]
 version = "0.37.0"

@@ -95,17 +95,25 @@ fn positions(rows: bool, reverse: bool, fill: bool, center: bool) -> (f32, f32) 
                 },
                 grid_template_columns: if rows { vec![] } else { vec![length(80.0)] },
                 grid_template_rows: if rows { vec![length(80.0)] } else { vec![] },
-                align_items: if rows { Some(AlignItems::START) } else { None },
-                justify_items: if rows { None } else { Some(AlignItems::START) },
-                align_content: if !rows && center {
-                    Some(AlignContent::CENTER)
+                align_items: if rows {
+                    AlignItems::START
                 } else {
-                    None
+                    AlignItems::NORMAL
+                },
+                justify_items: if rows {
+                    AlignItems::NORMAL
+                } else {
+                    AlignItems::START
+                },
+                align_content: if !rows && center {
+                    AlignContent::CENTER
+                } else {
+                    AlignContent::NORMAL
                 },
                 justify_content: if rows && center {
-                    Some(AlignContent::CENTER)
+                    AlignContent::CENTER
                 } else {
-                    None
+                    AlignContent::NORMAL
                 },
                 ..Style::DEFAULT
             },
@@ -115,7 +123,11 @@ fn positions(rows: bool, reverse: bool, fill: bool, center: bool) -> (f32, f32) 
     tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
     let a = tree.layout(first).unwrap().location;
     let b = tree.layout(second).unwrap().location;
-    if rows { (a.x, b.x) } else { (a.y, b.y) }
+    if rows {
+        (a.x, b.x)
+    } else {
+        (a.y, b.y)
+    }
 }
 
 #[test]

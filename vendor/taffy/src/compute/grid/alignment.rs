@@ -8,7 +8,7 @@ use crate::style::{
     AlignContent, AlignItems, AlignItemsKeyword, AlignSelf, AvailableSpace, CoreStyle,
     GridItemStyle, Overflow, Position,
 };
-use crate::tree::{Layout, LayoutPartialTreeExt, NodeId, SizingMode};
+use crate::tree::{Layout, LayoutPartialTreeExt, NodeId, OofCandidates, SizingMode};
 use crate::util::sys::f32_max;
 use crate::util::{MaybeMath, MaybeResolve, ResolveOrZero};
 
@@ -119,7 +119,10 @@ pub(super) fn align_and_position_item(
     node: NodeId,
     order: u32,
     grid_area: Rect<f32>,
-    container_alignment_styles: InBothAbsAxis<Option<AlignItems>>,
+    // Percentage basis for the item's styles. Grid passes the grid area size; grid lanes (css-grid-3) items
+    // have the container's content box as their containing block in the stacking axis.
+    containing_block_size: Size<f32>,
+    container_alignment_styles: InBothAbsAxis<AlignItems>,
     shims: Rect<f32>,
     x_end: bool,
     margin_trim: u8,
@@ -127,6 +130,7 @@ pub(super) fn align_and_position_item(
     container_border_box_width: f32,
     container_border: Rect<f32>,
     #[cfg(feature = "content_size")] container_is_scroll_container: bool,
+    bubbled_candidates: &mut OofCandidates,
 ) -> (Rect<f32>, f32, f32, Option<f32>, Option<f32>) {
     let grid_area_size = Size {
         width: grid_area.right - grid_area.left,
@@ -140,39 +144,39 @@ pub(super) fn align_and_position_item(
     let contain = style.contain();
     let scrollbar_width = style.scrollbar_width();
     let aspect_ratio = style.aspect_ratio();
-    // Resolve writing-mode-relative self-start/self-end keywords against the item's own
-    // direction. The horizontal axis is the inline axis (Taffy only supports horizontal-tb);
-    // the vertical (block) axis resolves them to plain start/end.
+    let is_replaced = style.is_replaced();
+    // Fall back to the container's justify-items/align-items if unset (`None`), and then resolve
+    // writing-mode-relative self-start/self-end keywords against the item's own direction.
+    // The horizontal axis is the inline axis (Taffy only supports horizontal-tb); the vertical
+    // (block) axis resolves them to plain start/end.
     let item_direction = style.direction();
     let justify_self = style
         .justify_self()
-        .map(|align| align.resolve_self_relative(item_direction, direction, true));
+        .unwrap_or(container_alignment_styles.horizontal)
+        .resolve_self_relative(item_direction, direction, true);
     let align_self = style
         .align_self()
-        .map(|align| align.resolve_self_relative(item_direction, direction, false));
-    let container_alignment_styles = InBothAbsAxis {
-        horizontal: container_alignment_styles
-            .horizontal
-            .map(|align| align.resolve_self_relative(item_direction, direction, true)),
-        vertical: container_alignment_styles
-            .vertical
-            .map(|align| align.resolve_self_relative(item_direction, direction, false)),
-    };
+        .unwrap_or(container_alignment_styles.vertical)
+        .resolve_self_relative(item_direction, direction, false);
 
     let position = style.position();
     let inset_horizontal = style.inset().horizontal_components().map(|size| {
-        size.resolve_to_option(grid_area_size.width, |val, basis| tree.calc(val, basis))
+        size.resolve_to_option(containing_block_size.width, |val, basis| {
+            tree.calc(val, basis)
+        })
     });
     let inset_vertical = style.inset().vertical_components().map(|size| {
-        size.resolve_to_option(grid_area_size.height, |val, basis| tree.calc(val, basis))
+        size.resolve_to_option(containing_block_size.height, |val, basis| {
+            tree.calc(val, basis)
+        })
     });
     let padding = style.padding().map(|p| {
-        p.resolve_or_zero(Some(grid_area_size.width), |val, basis| {
+        p.resolve_or_zero(Some(containing_block_size.width), |val, basis| {
             tree.calc(val, basis)
         })
     });
     let border = style.border().map(|p| {
-        p.resolve_or_zero(Some(grid_area_size.width), |val, basis| {
+        p.resolve_or_zero(Some(containing_block_size.width), |val, basis| {
             tree.calc(val, basis)
         })
     });
@@ -185,7 +189,7 @@ pub(super) fn align_and_position_item(
     };
 
     // Linked axes ignore all authored size constraints, including native sizing keywords.
-    let subgridded = if position != Position::Absolute && style.grid_lanes().is_none() {
+    let subgridded = if !position.is_out_of_flow() && style.grid_lanes().is_none() {
         style.subgrid() & 3
     } else {
         0
@@ -204,19 +208,18 @@ pub(super) fn align_and_position_item(
     // явно растянута только блочная, строчная при `normal` не тянется, а
     // выводится из соотношения (`grid-aspect-ratio-028/029`).
     let raw_margin = style.margin();
-    let style_size = size_style.maybe_resolve(grid_area_size, |val, basis| tree.calc(val, basis));
+    // Upstream #1254: `normal` is a first-class keyword, so an explicit `stretch` is told apart
+    // from `normal` by the resolved keyword (the container fallback is already applied above).
+    let style_size =
+        size_style.maybe_resolve(containing_block_size, |val, basis| tree.calc(val, basis));
     let stretched_w = subgridded & 1 != 0
-        || (position != Position::Absolute
-            && justify_self
-                .or(container_alignment_styles.horizontal)
-                .is_some_and(|align| align.keyword == AlignItemsKeyword::Stretch)
+        || (!position.is_out_of_flow()
+            && justify_self.keyword == AlignItemsKeyword::Stretch
             && !raw_margin.left.is_auto()
             && !raw_margin.right.is_auto());
     let stretched_h = subgridded & 2 != 0
-        || (position != Position::Absolute
-            && align_self
-                .or(container_alignment_styles.vertical)
-                .is_some_and(|align| align.keyword == AlignItemsKeyword::Stretch)
+        || (!position.is_out_of_flow()
+            && align_self.keyword == AlignItemsKeyword::Stretch
             && !raw_margin.top.is_auto()
             && !raw_margin.bottom.is_auto());
     let aspect_ratio = if (style_size.width.is_some() || stretched_w)
@@ -228,19 +231,19 @@ pub(super) fn align_and_position_item(
     };
 
     let inherent_size = size_style
-        .maybe_resolve(grid_area_size, |val, basis| tree.calc(val, basis))
+        .maybe_resolve(containing_block_size, |val, basis| tree.calc(val, basis))
         .maybe_apply_aspect_ratio(aspect_ratio)
         .maybe_add(box_sizing_adjustment);
     let min_size = style
         .min_size()
-        .maybe_resolve(grid_area_size, |val, basis| tree.calc(val, basis))
+        .maybe_resolve(containing_block_size, |val, basis| tree.calc(val, basis))
         .maybe_add(box_sizing_adjustment)
         .or(padding_border_size.map(Some))
         .maybe_max(padding_border_size)
         .maybe_apply_aspect_ratio(aspect_ratio);
     let max_size = style
         .max_size()
-        .maybe_resolve(grid_area_size, |val, basis| tree.calc(val, basis))
+        .maybe_resolve(containing_block_size, |val, basis| tree.calc(val, basis))
         .maybe_apply_aspect_ratio(aspect_ratio)
         .maybe_add(box_sizing_adjustment);
 
@@ -252,12 +255,12 @@ pub(super) fn align_and_position_item(
     // дорожки сетки не связывается (`subgrid::linked_axes`).
     let (mut inherent_size, mut min_size, mut max_size) = (inherent_size, min_size, max_size);
     let justify_self = if subgridded & 1 != 0 {
-        Some(AlignSelf::STRETCH)
+        AlignSelf::STRETCH
     } else {
         justify_self
     };
     let align_self = if subgridded & 2 != 0 {
-        Some(AlignSelf::STRETCH)
+        AlignSelf::STRETCH
     } else {
         align_self
     };
@@ -272,41 +275,48 @@ pub(super) fn align_and_position_item(
         max_size.height = None;
     }
 
-    // Resolve default alignment styles if they are set on neither the parent or the node itself
+    // Resolve `normal` alignment (the default if alignment is set on neither the parent or the node itself)
     // Note: if the child has a preferred aspect ratio but neither width or height are set, then the width is stretched
     // and the then height is calculated from the width according the aspect ratio
+    // Replaced elements are not stretched: they are sized as for `start`.
     // See: https://www.w3.org/TR/css-grid-1/#grid-item-sizing
     let mut alignment_styles = InBothAbsAxis {
-        horizontal: justify_self
-            .or(container_alignment_styles.horizontal)
-            .unwrap_or_else(|| {
+        horizontal: match justify_self.keyword {
+            AlignItemsKeyword::Normal => {
                 if inherent_size.width.is_some()
                     || size_style.width.is_sizing_keyword()
                     || (aspect_ratio.is_some() && stretched_h)
+                    || is_replaced
                 {
                     AlignSelf::START
                 } else {
                     AlignSelf::STRETCH
                 }
-            }),
-        vertical: align_self
-            .or(container_alignment_styles.vertical)
-            .unwrap_or_else(|| {
+            }
+            _ => justify_self,
+        },
+        vertical: match align_self.keyword {
+            AlignItemsKeyword::Normal => {
                 if inherent_size.height.is_some()
                     || size_style.height.is_sizing_keyword()
                     || aspect_ratio.is_some()
+                    || is_replaced
                 {
                     AlignSelf::START
                 } else {
                     AlignSelf::STRETCH
                 }
-            }),
+            }
+            _ => align_self,
+        },
     };
 
     // Note: This is not a bug. It is part of the CSS spec that both horizontal and vertical margins
     // resolve against the WIDTH of the grid area.
     let mut margin = style.margin().map(|margin| {
-        margin.resolve_to_option(grid_area_size.width, |val, basis| tree.calc(val, basis))
+        margin.resolve_to_option(containing_block_size.width, |val, basis| {
+            tree.calc(val, basis)
+        })
     });
 
     // KaminIDE patch: подсеточная ось — растяжка; `auto`-поле растяжку не
@@ -339,19 +349,34 @@ pub(super) fn align_and_position_item(
 
     drop(style);
 
-    let grid_area_minus_item_margins_size = Size {
+    // Upstream #1234: the border-box space handed to the child as its available space.
+    let available_border_box = Size {
         width: grid_area_size
             .width
             .maybe_sub(margin.left)
             .maybe_sub(margin.right)
-            - shims.left
-            - shims.right,
+            .max(0.0),
         height: grid_area_size
             .height
             .maybe_sub(margin.top)
             .maybe_sub(margin.bottom)
+            .max(0.0),
+    };
+    let grid_area_minus_item_margins_size = Size {
+        width: (grid_area_size
+            .width
+            .maybe_sub(margin.left)
+            .maybe_sub(margin.right)
+            - shims.left
+            - shims.right)
+            .max(0.0),
+        height: (grid_area_size
+            .height
+            .maybe_sub(margin.top)
+            .maybe_sub(margin.bottom)
             - shims.top
-            - shims.bottom,
+            - shims.bottom)
+            .max(0.0),
     };
 
     // A size that is a sizing keyword (min-content, max-content, fit-content,
@@ -361,14 +386,16 @@ pub(super) fn align_and_position_item(
         resolve_sizing_keyword(
             size_style.width,
             Some(grid_area_minus_item_margins_size.width),
-            Some(grid_area_size.width),
+            Some(containing_block_size.width),
+            |val, basis| tree.calc(val, basis),
         )
     });
     let keyword_height = inherent_size.height.is_none().then(|| {
         resolve_sizing_keyword(
             size_style.height,
             Some(grid_area_minus_item_margins_size.height),
-            Some(grid_area_size.height),
+            Some(containing_block_size.height),
+            |val, basis| tree.calc(val, basis),
         )
     });
 
@@ -377,11 +404,11 @@ pub(super) fn align_and_position_item(
         (
             Some(Some(SizingKeywordResolution::Measure(available_width))),
             Some(Some(SizingKeywordResolution::Measure(available_height))),
-        ) if position != Position::Absolute => tree
+        ) if !position.is_out_of_flow() => tree
             .measure_child_size_both(
                 node,
                 Size::NONE,
-                grid_area_size.map(Option::Some),
+                containing_block_size.map(Option::Some),
                 Size {
                     width: *available_width,
                     height: *available_height,
@@ -398,7 +425,7 @@ pub(super) fn align_and_position_item(
     let width = inherent_size.width.or_else(|| {
         // Apply width derived from both the left and right properties of an absolutely
         // positioned element being set
-        if position == Position::Absolute {
+        if position.is_out_of_flow() {
             if let (Some(left), Some(right)) = (inset_horizontal.start, inset_horizontal.end) {
                 return Some(f32_max(
                     grid_area_minus_item_margins_size.width - left - right,
@@ -415,10 +442,10 @@ pub(super) fn align_and_position_item(
                         tree.measure_child_size(
                             node,
                             Size::NONE,
-                            grid_area_size.map(Option::Some),
+                            containing_block_size.map(Option::Some),
                             Size {
                                 width: available_width,
-                                height: AvailableSpace::Definite(grid_area_size.height),
+                                height: AvailableSpace::Definite(available_border_box.height),
                             },
                             SizingMode::InherentSize,
                             AbsoluteAxis::Horizontal,
@@ -436,7 +463,7 @@ pub(super) fn align_and_position_item(
         if margin.left.is_some()
             && margin.right.is_some()
             && alignment_styles.horizontal == AlignSelf::STRETCH
-            && position != Position::Absolute
+            && !position.is_out_of_flow()
         {
             return Some(grid_area_minus_item_margins_size.width);
         }
@@ -452,7 +479,7 @@ pub(super) fn align_and_position_item(
     .maybe_apply_aspect_ratio(aspect_ratio);
 
     let height = height.or_else(|| {
-        if position == Position::Absolute {
+        if position.is_out_of_flow() {
             if let (Some(top), Some(bottom)) = (inset_vertical.start, inset_vertical.end) {
                 return Some(f32_max(
                     grid_area_minus_item_margins_size.height - top - bottom,
@@ -472,7 +499,7 @@ pub(super) fn align_and_position_item(
                                 width,
                                 height: None,
                             },
-                            grid_area_size.map(Option::Some),
+                            containing_block_size.map(Option::Some),
                             Size {
                                 width: width.map(AvailableSpace::Definite).unwrap_or(
                                     AvailableSpace::Definite(
@@ -497,7 +524,7 @@ pub(super) fn align_and_position_item(
         if margin.top.is_some()
             && margin.bottom.is_some()
             && alignment_styles.vertical == AlignSelf::STRETCH
-            && position != Position::Absolute
+            && !position.is_out_of_flow()
         {
             return Some(grid_area_minus_item_margins_size.height);
         }
@@ -517,10 +544,10 @@ pub(super) fn align_and_position_item(
                 width: None,
                 height,
             },
-            grid_area_size.map(Option::Some),
+            containing_block_size.map(Option::Some),
             Size {
                 width: AvailableSpace::MinContent,
-                height: AvailableSpace::Definite(grid_area_size.height),
+                height: AvailableSpace::Definite(available_border_box.height),
             },
             SizingMode::InherentSize,
             AbsoluteAxis::Horizontal,
@@ -536,10 +563,10 @@ pub(super) fn align_and_position_item(
                 width: None,
                 height,
             },
-            grid_area_size.map(Option::Some),
+            containing_block_size.map(Option::Some),
             Size {
                 width: AvailableSpace::MaxContent,
-                height: AvailableSpace::Definite(grid_area_size.height),
+                height: AvailableSpace::Definite(available_border_box.height),
             },
             SizingMode::InherentSize,
             AbsoluteAxis::Horizontal,
@@ -559,12 +586,12 @@ pub(super) fn align_and_position_item(
     let Size { width, height } = Size { width, height }.maybe_clamp(min_size, max_size);
 
     // Layout node
-    let size = if position == Position::Absolute && (width.is_none() || height.is_none()) {
+    let size = if position.is_out_of_flow() && (width.is_none() || height.is_none()) {
         tree.measure_child_size_both(
             node,
             Size { width, height },
-            grid_area_size.map(Option::Some),
-            grid_area_size.map(AvailableSpace::Definite),
+            containing_block_size.map(Option::Some),
+            available_border_box.map(AvailableSpace::Definite),
             SizingMode::InherentSize,
             Line::FALSE,
         )
@@ -573,14 +600,14 @@ pub(super) fn align_and_position_item(
         Size { width, height }
     };
 
-    let layout_output = tree.perform_child_layout(
+    let mut layout_output = tree.perform_child_layout(
         node,
         size,
-        grid_area_size.map(Option::Some),
-        // Child layout accepts available margin-box space and deducts its own
-        // margins. Known sizes and fit-content clamps above are border-box
-        // sizes, but subtracting margins from this input would count them twice.
-        grid_area_size.map(AvailableSpace::Definite),
+        containing_block_size.map(Option::Some),
+        // Upstream #1234: a definite available space is the child's border-box space (the
+        // parent subtracts the item's resolved, possibly trimmed, margins; auto = 0). Baseline
+        // shims are not subtracted here (KaminIDE behaviour before the upgrade).
+        available_border_box.map(AvailableSpace::Definite),
         SizingMode::InherentSize,
         Line::FALSE,
     );
@@ -592,22 +619,25 @@ pub(super) fn align_and_position_item(
 
     // Baseline x groups are physical: writing-mode projection supplies x_end.
     // Ordinary positional keywords still use native inline Direction.
-    let x_alignment = justify_self.unwrap_or(alignment_styles.horizontal);
+    let x_alignment = alignment_styles.horizontal;
     // An absolutely-positioned box takes no part in baseline alignment: its
     // baseline values align it to the containing block's start/end edge like
     // the positional keywords (Blink `absolute_utils.cc` GetAlignmentInsetBias:
     // kBaseline -> InlineStart, kLastBaseline -> InlineEnd).
     let abspos_baseline = |a: AlignItems| match a.keyword {
-        AlignItemsKeyword::Baseline if position == Position::Absolute => {
-            AlignItems { keyword: AlignItemsKeyword::Start, ..a }
-        }
-        AlignItemsKeyword::LastBaseline if position == Position::Absolute => {
-            AlignItems { keyword: AlignItemsKeyword::End, ..a }
-        }
+        AlignItemsKeyword::Baseline if position.is_out_of_flow() => AlignItems {
+            keyword: AlignItemsKeyword::Start,
+            ..a
+        },
+        AlignItemsKeyword::LastBaseline if position.is_out_of_flow() => AlignItems {
+            keyword: AlignItemsKeyword::End,
+            ..a
+        },
         _ => a,
     };
     let x_alignment = abspos_baseline(x_alignment);
-    let x_alignment = super::baseline_orientation::projected_x_alignment(x_alignment, x_end, direction);
+    let x_alignment =
+        super::baseline_orientation::projected_x_alignment(x_alignment, x_end, direction);
     let (x, x_margin) = align_item_within_area(
         Line {
             start: grid_area.left,
@@ -627,7 +657,7 @@ pub(super) fn align_and_position_item(
             start: grid_area.top,
             end: grid_area.bottom,
         },
-        abspos_baseline(align_self.unwrap_or(alignment_styles.vertical)),
+        abspos_baseline(alignment_styles.vertical),
         height,
         position,
         inset_vertical,
@@ -656,6 +686,14 @@ pub(super) fn align_and_position_item(
         top: y_margin.start,
         bottom: y_margin.end,
     };
+
+    // Bubble out-of-flow candidates from the item's subtree, translating anchors from
+    // item-relative to container-relative coordinates
+    let mut item_candidates = layout_output.oof_candidates.take();
+    if !item_candidates.is_empty() {
+        item_candidates.translate(Point { x, y });
+        bubbled_candidates.append(&mut item_candidates);
+    }
 
     tree.set_unrounded_layout(
         node,
@@ -732,7 +770,7 @@ pub(super) fn align_item_within_area(
     // Expand auto margins to fill available space
     let auto_margin_count = margin.start.is_none() as u8 + margin.end.is_none() as u8;
     // Static-position abspos auto margins do not displace the alignment subject.
-    let static_abs = position == Position::Absolute && inset.start.is_none() && inset.end.is_none();
+    let static_abs = position.is_out_of_flow() && inset.start.is_none() && inset.end.is_none();
     let auto_margin_size = if auto_margin_count > 0 && !static_abs {
         free_space / auto_margin_count as f32
     } else {
@@ -771,12 +809,14 @@ pub(super) fn align_item_within_area(
         AlignItemsKeyword::Center => {
             (grid_area_size - resolved_size + resolved_margin.start - resolved_margin.end) / 2.0
         }
-        // SelfStart/SelfEnd are resolved to Start/End against the item's own direction in
-        // `align_and_position_item`.
-        AlignItemsKeyword::SelfStart | AlignItemsKeyword::SelfEnd => unreachable!(),
+        // Normal is resolved, and SelfStart/SelfEnd are resolved to Start/End against
+        // the item's own direction, in `align_and_position_item`.
+        AlignItemsKeyword::Normal | AlignItemsKeyword::SelfStart | AlignItemsKeyword::SelfEnd => {
+            unreachable!()
+        }
     };
 
-    let offset_within_area = if position == Position::Absolute {
+    let offset_within_area = if position.is_out_of_flow() {
         match (inset.start, inset.end) {
             (Some(start), Some(end)) => {
                 if direction.is_rtl() {

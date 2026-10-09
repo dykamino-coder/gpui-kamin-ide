@@ -1,5 +1,5 @@
 //! Real flex layouts distinguish a projected logical cross-start from wrap reversal.
-use crate::style_helpers::{TaffyMaxContent};
+use crate::style_helpers::TaffyMaxContent;
 use crate::{
     AlignItems, AlignmentSafety, Direction, FlexDirection, FlexWrap, Size, Style, TaffyTree,
 };

@@ -183,8 +183,8 @@ fn geometry(mapped: bool) -> Vec<f32> {
                 },
                 grid_template_rows: vec![auto(); 4],
                 grid_template_columns: vec![auto(); 5],
-                align_content: Some(AlignContent::START),
-                justify_content: Some(AlignContent::START),
+                align_content: AlignContent::START,
+                justify_content: AlignContent::START,
                 ..Style::DEFAULT
             },
             &children,

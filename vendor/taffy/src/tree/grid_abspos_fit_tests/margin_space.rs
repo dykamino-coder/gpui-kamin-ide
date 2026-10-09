@@ -2,7 +2,7 @@
 #[cfg(feature = "flexbox")]
 mod tests {
     use crate::prelude::*;
-    use crate::{AlignItems, compute_leaf_layout};
+    use crate::{compute_leaf_layout, AlignItems};
 
     fn item_width(margin: f32, nested: bool) -> f32 {
         item_width_with_keyword(margin, nested, false)
@@ -69,8 +69,8 @@ mod tests {
                     },
                     grid_template_columns: vec![length(200.0)],
                     grid_template_rows: vec![length(100.0)],
-                    justify_items: Some(AlignItems::START),
-                    align_items: Some(AlignItems::START),
+                    justify_items: AlignItems::START,
+                    align_items: AlignItems::START,
                     ..Style::DEFAULT
                 },
                 &[item],

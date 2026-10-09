@@ -43,7 +43,7 @@ fn rows(
                     width: length(200.0),
                     height: auto(),
                 },
-                align_items: Some(AlignItems::BASELINE),
+                align_items: AlignItems::BASELINE,
                 grid_template_rows: tracks,
                 grid_lanes: Some(GridLanes {
                     rows: true,
