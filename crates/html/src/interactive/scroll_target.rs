@@ -1,4 +1,4 @@
-//! Scroll the CSS box itself so an anonymous viewport cannot replace its sizing.
+//! Scroll target: scroll the CSS box itself so an anonymous viewport cannot replace its sizing.
 use crate::{computed::{Computed, Sides}, dom::Element};
 use gpui::{Div, ElementId, InteractiveElement, Interactivity, ScrollHandle,
     StatefulInteractiveElement, Styled};
@@ -34,7 +34,7 @@ impl InteractiveElement for NativeScrollBox {
 }
 impl StatefulInteractiveElement for NativeScrollBox {}
 
-pub(super) fn attach(mut div: Div, e: &Element, c: &Computed) -> Div {
+pub(crate) fn attach(mut div: Div, e: &Element, c: &Computed) -> Div {
     // Only intrinsic CSS roots have a native single-box sizing contract here.
     // Other scrollers still depend on the existing percentage/flex viewport adapter.
     let keyword = |value| matches!(value, Some(crate::value::Len::MinContent |

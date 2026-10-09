@@ -173,7 +173,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     if native_intrinsic::eligible(e) {
         d.style().sizing_keywords = Some(crate::apply::intrinsic_size::keywords(c));
     }
-    d = scroll_box::attach(d, e, c);
+    d = crate::interactive::scroll_target::attach(d, e, c);
     // Проба якоря (css-anchor-position-1 §anchor-name) и содержащего блока
     // (§position-area): канвас во всю коробку пишет её рамку в реестр кадра
     // на подготовке — позже по дереву её прочтёт `anchor::AnchorPlace`

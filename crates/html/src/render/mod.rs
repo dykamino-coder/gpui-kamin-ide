@@ -37,7 +37,6 @@ pub(crate) mod first_line_descendants;
 pub(crate) mod inline_splits;
 pub(crate) use inline_splits::split_block_in_inline;
 pub(crate) mod native_paragraph_route;
-pub(crate) mod scroll_box;
 pub(crate) use crate::layout::writing_mode::orthogonal_fixed_child;
 pub(crate) use crate::layout::writing_mode::orthogonal_children;
 pub(crate) use crate::layout::writing_mode::orthogonal_horizontal;
