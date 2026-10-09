@@ -2425,6 +2425,9 @@ pub struct Computed {
     /// lengths», css-text-decor-3 Overview.bs:868-869), и разбирается в
     /// `resolve_em`.
     pub text_shadow_raw: Option<String>,
+    /// `text-shadow: none`, записанное самим элементом: гасит унаследованный
+    /// список (без флага пустой разбор читался как «не задано»).
+    pub text_shadow_none: bool,
     /// `animation` — ссылка на набор кадров.
     pub animation: Option<AnimSpec>,
     /// `transition` — длительность перехода в секундах.
@@ -8126,6 +8129,7 @@ impl Computed {
             "text-shadow" if has_font_units(v) => self.text_shadow_raw = Some(v.to_string()),
             "text-shadow" => {
                 self.text_shadow_raw = None;
+                self.text_shadow_none = v.trim().eq_ignore_ascii_case("none");
                 let mut list = parse_shadows(v).into_iter();
                 self.text_shadow = list.next();
                 self.text_shadow_rest = list.collect();
