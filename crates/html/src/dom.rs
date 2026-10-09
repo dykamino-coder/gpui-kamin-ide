@@ -2419,8 +2419,8 @@ fn apply_presentational_size(style: &mut Computed, tag: &str, attrs: &[(String, 
     // Своего пикселя у холста нет, но размер по умолчанию задан разметкой:
     // 300 на 150 (HTML §4.12.5). Без него `<canvas width="20">` выходил
     // нулевой высоты, а холст без атрибутов — пустым местом.
-    // Таблица замещаемой не является: у неё намёком служит только `width`
-    // (HTML §15.3.2), а `attr_*` держит соотношение сторон замещаемого и
+    // Таблица замещаемой не является: её height уже прошёл каскад намёков
+    // (HTML §15.3.8), а `attr_*` держит соотношение сторон замещаемого и
     // таблице не принадлежит. Без этого `<table width="300">` вовсе не
     // доходил до стиля, и таблица сжималась по содержимому.
     if tag == "table" {
@@ -3024,10 +3024,8 @@ fn walk(
             // (css-values-5 §7.7): слот ставится только на время его каскада.
             crate::computed::set_current_attrs(&attrs);
             crate::computed::set_current_sibling((spot.index > 0).then_some((spot.index, spot.total)));
-            let nowrap_hint = presentational_hints::nowrap(&tag, &attrs);
-            if let Some(rule) = &nowrap_hint {
-                matched.push(rule);
-            }
+            let hints = presentational_hints::rules(&tag, &attrs);
+            matched.extend(hints.iter());
             let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
             inherit_counter_decls(&mut style, path.last().map(|p| &p.counter_style));
             apply_value_hint(&mut style, &me);

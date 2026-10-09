@@ -9,19 +9,68 @@ pub(super) fn nowrap(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
         return None;
     }
     let normal = super::quirks() && attrs.iter().any(|(k, v)| k == "width" && nonzero_length(v));
+    hint(if normal {
+        "white-space: normal"
+    } else {
+        "white-space: nowrap"
+    })
+}
+
+fn hint(css: &str) -> Option<Rule> {
     Some(Rule {
         sel: Selector::parse("*")?,
-        decls: parse_decls(if normal {
-            "white-space: normal"
-        } else {
-            "white-space: nowrap"
-        }),
+        decls: parse_decls(css),
         order: 0,
         origin: 1,
         // Below every author layer, above UA rules; part of author for revert.
         // CSS Cascade 5 §6.4: author presentational hint origin.
         layer: Vec::new(),
     })
+}
+
+/// HTML §15.3.8 maps table height to the author presentational-hint origin.
+/// Keep it in the cascade so auto, initial, inherit and authored lengths win.
+pub(super) fn rules(tag: &str, attrs: &[(String, String)]) -> Vec<Rule> {
+    nowrap(tag, attrs)
+        .into_iter()
+        .chain(table_height(tag, attrs))
+        .collect()
+}
+
+fn table_height(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
+    if tag != "table" {
+        return None;
+    }
+    let raw = &attrs.iter().find(|(name, _)| name == "height")?.1;
+    let (value, percent) = dimension(raw)?;
+    hint(&format!(
+        "height: {value}{}",
+        if percent { "%" } else { "px" }
+    ))
+}
+
+/// HTML §2.3.4.4 accepts a nonnegative decimal prefix, including zero.
+/// A percent sign must immediately follow that prefix; other suffixes are ignored.
+fn dimension(raw: &str) -> Option<(f32, bool)> {
+    let raw = raw.trim_start_matches(['\t', '\n', '\u{c}', '\r', ' ']);
+    let bytes = raw.as_bytes();
+    let mut end = 0;
+    while bytes.get(end).is_some_and(u8::is_ascii_digit) {
+        end += 1;
+    }
+    if end == 0 {
+        return None;
+    }
+    if bytes.get(end) == Some(&b'.') {
+        end += 1;
+        while bytes.get(end).is_some_and(u8::is_ascii_digit) {
+            end += 1;
+        }
+    }
+    let value: f32 = raw[..end].parse().ok()?;
+    value
+        .is_finite()
+        .then_some((value, bytes.get(end) == Some(&b'%')))
 }
 
 /// HTML §2.3.4.4–5: a decimal numeric prefix, with % recognized immediately
