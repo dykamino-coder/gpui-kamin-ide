@@ -1580,7 +1580,7 @@ pub fn render_paged_select(
     let inline_level = |n: &Node| match n {
         Node::Text(_) => true,
         Node::Element(e) => {
-            e.inline
+            (e.inline || inline_display(e))
                 && !out_of_flow(&e.style)
                 && !matches!(
                     e.style.display,
@@ -1702,7 +1702,7 @@ pub fn render_paged_select(
                 edge_break(e, true),
                 Some(page_names(e, &root_page)),
             ),
-            Node::Element(e) if !e.inline => (
+            Node::Element(e) if !e.inline && !inline_display(e) => (
                 page_monolith(e),
                 edge_break(e, false),
                 edge_break(e, true),
@@ -6180,7 +6180,7 @@ fn grow_grid_track(c: &mut Element, at: f32, grow: f32) -> bool {
 /// блочным тут признаётся по `display` (`page-name-img-004`: иначе картинка
 /// шла анонимным блоком с именем корня и рвала страницу).
 fn class_a_box(e: &Element) -> bool {
-    let blocky = !e.inline
+    let blocky = (!e.inline && !inline_display(e))
         || matches!(
             e.style.display,
             Some(Display::Block)
@@ -6212,6 +6212,25 @@ fn item_container(e: &Element) -> bool {
             | Some(Display::InlineFlex)
             | Some(Display::Grid)
             | Some(Display::InlineGrid)
+    )
+}
+
+/// Строчный уровень по `display` у элемента с блочным тегом: `<div
+/// style="display: inline-block">` стоит в строке и точки класса A не даёт
+/// (css-display-3 §inner-outer; `page-name-inline-block-003-print`: два
+/// таких `div` с разными `page` — одна строка, без разрыва).
+fn inline_display(e: &Element) -> bool {
+    // `display: inline` у блочного тега хранится как `InlineBlock` с меткой
+    // `inline_display`: блоки внутри такого строчного разрывают его
+    // (block-in-inline), и их разрывы — точки класса A
+    // (`css-break/block-in-inline-015-print`). Его не трогаем.
+    e.style.inline_display != Some(true)
+        && matches!(
+        e.style.display,
+        Some(Display::InlineBlock)
+            | Some(Display::InlineFlex)
+            | Some(Display::InlineGrid)
+            | Some(Display::InlineTable)
     )
 }
 
