@@ -30,7 +30,7 @@ impl Drop for Document {
     }
 }
 
-pub(super) fn html_attributes(namespace: &str) -> bool {
+pub(crate) fn html_attributes(namespace: &str) -> bool {
     namespace == "http://www.w3.org/1999/xhtml" && !XHTML.with(Cell::get)
 }
 

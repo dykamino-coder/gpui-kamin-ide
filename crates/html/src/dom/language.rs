@@ -9,7 +9,7 @@ fn own(node: &Ancestor) -> Option<&str> {
         .map(|(_, value)| value.as_str())
 }
 
-pub(super) fn effective<'a>(node: &'a Ancestor, path: &'a [Ancestor]) -> Option<&'a str> {
+pub(crate) fn effective<'a>(node: &'a Ancestor, path: &'a [Ancestor]) -> Option<&'a str> {
     own(node).or_else(|| path.iter().rev().find_map(own))
 }
 
