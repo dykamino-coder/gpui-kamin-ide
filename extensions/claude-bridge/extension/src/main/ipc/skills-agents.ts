@@ -14,6 +14,7 @@ import {
   readEffectivePluginManifest,
 } from '../plugin-helpers'
 import type { TabManager } from '../tab-manager'
+import { createSkillFile, deleteSkillFile, type SkillRoots } from './skill-files'
 
 export interface SkillsAgentsContext {
   getTabManager: () => TabManager | null
@@ -43,6 +44,14 @@ function resolvePluginComponentPath(pluginRoot: string, ref: string): string | n
 }
 
 export function registerSkillsAgentsIPC(ctx: SkillsAgentsContext): void {
+  function skillRoots(): SkillRoots {
+    const cwd = ctx.getUserCwd()
+    return {
+      projectClaudeDir: cwd ? path.join(cwd, '.claude') : null,
+      userClaudeDir: path.join(os.homedir(), '.claude'),
+    }
+  }
+
   // Кэш skills:list: полный рекурсивный обход ~/.claude/plugins + команд + skills
   // (сотни-тысячи readFile) стоил ~10с и запускался ЗАНОВО на КАЖДОЙ открытой
   // странице настроек (useInit каждой customize-вью). Держим последний
@@ -120,34 +129,40 @@ export function registerSkillsAgentsIPC(ctx: SkillsAgentsContext): void {
 
     const enabledPlugins = await loadEnabledPluginsMap()
 
-    const cwd = ctx.getUserCwd() || process.cwd()
-    const commandsDir = path.join(cwd, '.claude', 'commands')
-    const projectPromise = (async (): Promise<SkillRow[]> => {
-      let files: string[]
-      try { files = (await fs.promises.readdir(commandsDir)).filter(f => f.endsWith('.md')) }
-      catch { return [] }
-      const rows = await Promise.all(files.map(async (f): Promise<SkillRow | null> => {
-        const filePath = path.join(commandsDir, f)
-        const content = await safeReadFile(filePath)
-        if (content === null) return null
-        return parseSkillContent(filePath, f, 'project', content)
-      }))
-      return rows.filter((r): r is SkillRow => r !== null)
-    })()
-
-    const userSkillsDir = path.join(os.homedir(), '.claude', 'skills')
-    const userPromise = (async (): Promise<SkillRow[]> => {
+    async function scanSkillDirs(skillsDir: string, source: string): Promise<SkillRow[]> {
       let dirs: import('fs').Dirent[]
-      try { dirs = (await fs.promises.readdir(userSkillsDir, { withFileTypes: true })).filter(d => d.isDirectory()) }
+      try { dirs = (await fs.promises.readdir(skillsDir, { withFileTypes: true })).filter(d => d.isDirectory()) }
       catch { return [] }
       const rows = await Promise.all(dirs.map(async (d): Promise<SkillRow | null> => {
-        const skillMd = path.join(userSkillsDir, d.name, 'SKILL.md')
+        const skillMd = path.join(skillsDir, d.name, 'SKILL.md')
         const content = await safeReadFile(skillMd)
         if (content === null) return null
-        return parseSkillContent(skillMd, d.name, 'user', content, d.name)
+        return parseSkillContent(skillMd, d.name, source, content, d.name)
       }))
       return rows.filter((r): r is SkillRow => r !== null)
+    }
+
+    const { projectClaudeDir, userClaudeDir } = skillRoots()
+    const projectPromise = (async (): Promise<SkillRow[]> => {
+      if (!projectClaudeDir) return []
+      // Legacy `.claude/commands/*.md` still load in the CLI next to skills.
+      const commandsDir = path.join(projectClaudeDir, 'commands')
+      let files: string[] = []
+      try { files = (await fs.promises.readdir(commandsDir)).filter(f => f.endsWith('.md')) }
+      catch { /* no dir */ }
+      const [commands, skills] = await Promise.all([
+        Promise.all(files.map(async (f): Promise<SkillRow | null> => {
+          const filePath = path.join(commandsDir, f)
+          const content = await safeReadFile(filePath)
+          if (content === null) return null
+          return parseSkillContent(filePath, f, 'project', content)
+        })),
+        scanSkillDirs(path.join(projectClaudeDir, 'skills'), 'project'),
+      ])
+      return [...skills, ...commands.filter((r): r is SkillRow => r !== null)]
     })()
+
+    const userPromise = scanSkillDirs(path.join(userClaudeDir, 'skills'), 'user')
 
     const pluginsFile = path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json')
     const pluginsPromise = (async (): Promise<SkillRow[]> => {
@@ -565,22 +580,13 @@ export function registerSkillsAgentsIPC(ctx: SkillsAgentsContext): void {
   })
 
   ipcMain.handle('skills:create', (_event: IpcMainInvokeEvent, name: string, content: string) => {
-    const cwd = ctx.getUserCwd() || process.cwd()
-    const skillsDir = path.join(cwd, '.claude', 'commands')
-    fs.mkdirSync(skillsDir, { recursive: true })
-    const fileName = name.replace(/[^a-zA-Z0-9_-]/g, '-') + '.md'
-    const filePath = path.join(skillsDir, fileName)
-    fs.writeFileSync(filePath, content, 'utf-8')
+    const created = createSkillFile(skillRoots(), name, content)
     invalidateSkillsCache()
-    return { name, fileName, path: filePath }
+    return created
   })
 
-  ipcMain.handle('skills:delete', (_event: IpcMainInvokeEvent, fileName: string) => {
-    const cwd = ctx.getUserCwd() || process.cwd()
-    const filePath = path.join(cwd, '.claude', 'commands', fileName)
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath)
-    }
+  ipcMain.handle('skills:delete', (_event: IpcMainInvokeEvent, skillPath: string) => {
+    deleteSkillFile(skillRoots(), skillPath)
     invalidateSkillsCache()
   })
 

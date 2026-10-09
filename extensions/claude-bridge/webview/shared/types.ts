@@ -544,7 +544,7 @@ export interface KaminBridgeApi {
   }>>
   listOutputStyles(): Promise<Array<{ name: string; description: string; path: string; source: string }>>
   createSkill(name: string, content: string): Promise<{ name: string; fileName: string; path: string }>
-  deleteSkill(fileName: string): Promise<void>
+  deleteSkill(skillPath: string): Promise<void>
   openSkill(filePath: string): Promise<void>
   readSkill(filePath: string): Promise<string | null>
   showSkillInFolder(filePath: string): Promise<void>
