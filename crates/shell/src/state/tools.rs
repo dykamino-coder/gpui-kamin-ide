@@ -69,7 +69,7 @@ impl RootView {
                     // `.view { flex: 1; min-height: 0 }` — вью делят высоту
                     stack = stack.child(div().flex().flex_col().flex_1().min_h(px(0.)).child(
                         if v.webview {
-                            self.contributed_webview_section(&v, p)
+                            self.contributed_webview_section(&v, p, cx)
                         } else {
                             self.contributed_tree_section(&v, p)
                         },

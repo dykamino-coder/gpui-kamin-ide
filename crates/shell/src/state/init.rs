@@ -136,6 +136,7 @@ impl RootView {
             fs_undo: Vec::new(),
             switching_to: None,
             chat_cover: None,
+            loader_tick: None,
             webviews_alive: std::collections::HashSet::new(),
             webview_cover: std::collections::HashMap::new(),
             status_items: std::collections::HashMap::new(),
