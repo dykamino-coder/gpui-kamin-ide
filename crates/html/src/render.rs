@@ -27454,7 +27454,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // `display: table-cell` box keeps its own value or the initial
             // `baseline` (`vertical-align-applies-to-*`: a row group's
             // `bottom` must not move the cell's content).
-            if cell.style.vertical_align.is_none() && !matches!(cell.tag.as_str(), "td" | "th") {
+            if cell.style.vertical_align.is_none() && !html_cell(cell) {
                 cm.vertical_align = None;
             }
             // Потолок вертикальной ячейки режет доступное место её
@@ -28081,7 +28081,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // Только `td`/`th` берут значение ряда (UA-правило
                 // `td, th { vertical-align: inherit }`).
                 let own_va = cell.style.vertical_align.or(
-                    if matches!(cell.tag.as_str(), "td" | "th") {
+                    if html_cell(cell) {
                         row.style.vertical_align
                     } else {
                         None
@@ -29822,7 +29822,22 @@ fn wrap_anon_tables_as(nodes: &[Node], display: Display) -> Vec<Node> {
     out
 }
 
+const ANON_CELL: &str = "anonymous-cell";
+
+/// An HTML `td`/`th` element, whose UA style inherits the row's
+/// `vertical-align` (HTML §15.3.9); anonymous cells keep the initial value.
+fn html_cell(cell: &Element) -> bool {
+    matches!(cell.tag.as_str(), "td" | "th") && cell.attr(ANON_CELL).is_none()
+}
+
 fn anon_element(tag: &str, children: Vec<Node>) -> Element {
+    // CSS 2.1 §17.2.1: an anonymous cell is not an HTML `td`; the UA rule
+    // `td { vertical-align: inherit }` (HTML §15.3.9) does not reach it.
+    let attrs = if tag == "td" {
+        vec![(ANON_CELL.into(), "1".into())]
+    } else {
+        vec![]
+    };
     Element {
         list_item: None,
         node_id: 0,
@@ -29833,7 +29848,7 @@ fn anon_element(tag: &str, children: Vec<Node>) -> Element {
         first_letter: None,
         first_line: None,
         children,
-        attrs: vec![],
+        attrs,
         inline: false,
     }
 }
