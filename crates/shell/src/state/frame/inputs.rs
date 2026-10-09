@@ -226,12 +226,7 @@ impl RootView {
                 _ => None,
             };
             if let Some(input) = target {
-                // 0.7.1: `set_value` больше не шлёт `InputEvent::Change`; подписчики
-                // (dirty/фильтр) ждут его — шлём сами, как было в 0.5.1.
-                input.update(cx, |st, cx| {
-                    st.set_value(text, window, cx);
-                    cx.emit(gpui_component::input::InputEvent::Change);
-                });
+                crate::state::input_value::set_value_emit(&input, text, window, cx);
             }
         }
         // Модалка: автофокус Confirm при открытии и возврат фокуса при

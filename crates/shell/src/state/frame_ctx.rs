@@ -126,11 +126,7 @@ impl RootView {
                 {
                     let differs = inp.read(cx).value() != url.as_str();
                     if differs {
-                        // 0.7.1: `set_value` не шлёт Change — шлём сами.
-                        inp.update(cx, |st, cx| {
-                            st.set_value(url.clone(), window, cx);
-                            cx.emit(gpui_component::input::InputEvent::Change);
-                        });
+                        crate::state::input_value::set_value_emit(inp, url.clone(), window, cx);
                         crate::web::navigate("browser", &url);
                     }
                 }

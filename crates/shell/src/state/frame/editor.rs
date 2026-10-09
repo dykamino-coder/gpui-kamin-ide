@@ -29,12 +29,7 @@ impl RootView {
                 let tab_path = self.ed.editor_tabs[idx].path.clone();
                 let input = self.ed.editor_tabs[idx].input.clone();
                 self.ed.reload_suppress.insert(tab_path);
-                // 0.7.1: `set_value` больше не шлёт `InputEvent::Change`; подписчики
-                // (dirty/фильтр) ждут его — шлём сами, как было в 0.5.1.
-                input.update(cx, |st, cx| {
-                    st.set_value(text, window, cx);
-                    cx.emit(InputEvent::Change);
-                });
+                crate::state::input_value::set_editor_value_emit(&input, text, window, cx);
             }
         }
     }

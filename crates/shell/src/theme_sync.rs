@@ -233,9 +233,7 @@ pub fn apply(kind: ThemeKind, cx: &mut App) {
     Theme::change(mode, None, cx);
 
     let p = kind.palette();
-    // 0.7.1: правки темы — внутри `Theme::update`: он сводит цвета в
-    // `tokens` и проекцию gpui-base (фон Root, скроллбары, панель поиска
-    // читают уже их), `global_mut` эти поля не обновляет.
+    // 0.7.1: только `Theme::update` сводит цвета в `tokens` (их читают Root/скроллбары).
     Theme::update(cx, |theme| {
         // Инпуты/редактор в цветах IDE
         // Фон Input-редактора = editor.background темы (was bg_primary — юзер

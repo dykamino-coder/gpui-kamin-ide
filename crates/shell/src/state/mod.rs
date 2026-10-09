@@ -14,6 +14,7 @@ pub mod drop_hints;
 pub mod editor_save;
 pub mod editor_tab;
 pub mod init;
+pub(crate) mod input_value;
 pub mod metrics;
 pub mod model;
 pub mod model_customize;
