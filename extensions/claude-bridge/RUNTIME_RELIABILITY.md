@@ -421,7 +421,7 @@ coalescing, blocker, overlay refresh and actual PTY Enter scheduling reason.
 No skill content, paths, raw IDs, bearer or error text is emitted. Six initial
 actual route/coordinator regressions failed before implementation; eight final
 new cases and all 186 server tests passed. See `SKILLS_SYNC.md` for retrieval,
-eviction and interpretation. Fix PR pending. Status remains investigation;
+eviction and interpretation. Fix PR [#200](https://github.com/dykamino-coder/gpui-kamin-ide/pull/200). Status remains investigation;
 post-merge production observation belongs to deployment owner. PTY write is
 not a CLI acknowledgement, and no behavioral reload defect is claimed fixed.
 
