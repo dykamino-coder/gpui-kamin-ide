@@ -28183,6 +28183,27 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 ]
             } else if clipped {
                 vec![table_clipped_content::wrap(&mut d, inside)]
+            } else if matches!(cm.vertical_align, Some(Align::Center) | Some(Align::End))
+                && e.style.vertical != Some(true)
+                && cell.children.iter().any(|n| {
+                    matches!(n, Node::Element(c) if matches!(
+                        c.style.position,
+                        Some(crate::computed::Position::Absolute)
+                            | Some(crate::computed::Position::Fixed)
+                    ) && matches!(c.style.inset.top, None | Some(Len::Auto))
+                        && matches!(c.style.inset.bottom, None | Some(Len::Auto)))
+                })
+            {
+                // CSS 2.1 §17.5.3 aligns the cell's IN-FLOW content; an
+                // absolutely positioned child keeps the static position it
+                // would have in that flow (§10.6.4). The cell aligns by flex
+                // justification, which would centre the abspos box itself
+                // (Flexbox §4.1) — align a wrapper of the contents instead,
+                // whose height is the in-flow height only
+                // (position-relative-table-*-left-absolute-child: HTML's
+                // `vertical-align: middle` row groups lifted the box by half
+                // its height).
+                vec![div().w_full().flex().flex_col().children(inside).into_any_element()]
             } else {
                 inside
             };
