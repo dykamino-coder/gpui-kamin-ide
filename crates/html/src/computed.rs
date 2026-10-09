@@ -33,6 +33,8 @@ pub(crate) use content_functions::parse_content;
 mod outline_style;
 use outline_style::parse as outline_style_of;
 pub(crate) use outline_style::DOUBLE as OUTLINE_DOUBLE;
+#[cfg(test)]
+mod snapshot_tests;
 
 use crate::css::{Decls, Rule};
 use crate::value::{Color, Len};
