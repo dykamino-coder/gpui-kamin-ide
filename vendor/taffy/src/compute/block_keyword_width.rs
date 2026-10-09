@@ -9,6 +9,7 @@ pub(super) fn measure(
     style: Dimension,
     resolution: SizingKeywordResolution,
     parent: Size<Option<f32>>,
+    collapsible: Line<bool>,
 ) -> f32 {
     let available = match resolution {
         SizingKeywordResolution::Exact(value) => return value,
@@ -21,7 +22,7 @@ pub(super) fn measure(
             | CompactLength::FIT_CONTENT_KEYWORD_TAG
     );
     let Some(mut argument) = available.into_option().filter(|_| fit) else {
-        return probe(tree, node, parent, available);
+        return probe(tree, node, parent, available, collapsible);
     };
     if style.tag() != CompactLength::FIT_CONTENT_KEYWORD_TAG {
         let core = tree.get_core_container_style(node);
@@ -35,8 +36,8 @@ pub(super) fn measure(
             argument += edges.horizontal_axis_sum();
         }
     }
-    let minimum = probe(tree, node, parent, AvailableSpace::MinContent);
-    let maximum = probe(tree, node, parent, AvailableSpace::MaxContent);
+    let minimum = probe(tree, node, parent, AvailableSpace::MinContent, collapsible);
+    let maximum = probe(tree, node, parent, AvailableSpace::MaxContent, collapsible);
     argument.max(minimum).min(maximum)
 }
 
@@ -45,6 +46,7 @@ fn probe(
     node: NodeId,
     parent: Size<Option<f32>>,
     width: AvailableSpace,
+    collapsible: Line<bool>,
 ) -> f32 {
     tree.measure_child_size(
         node,
@@ -56,6 +58,6 @@ fn probe(
         },
         SizingMode::InherentSize,
         crate::AbsoluteAxis::Horizontal,
-        Line::TRUE,
+        collapsible,
     )
 }

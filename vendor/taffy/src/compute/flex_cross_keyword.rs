@@ -1,10 +1,10 @@
 //! Cross keywords constrain both flex-basis and hypothetical-cross probes.
-use super::{AlgoConstants, FlexItem, item_known_dimension_definiteness};
-use crate::compute::common::sizing_keyword::{SizingKeywordResolution, resolve_sizing_keyword};
+use super::{item_known_dimension_definiteness, AlgoConstants, FlexItem};
+use crate::compute::common::sizing_keyword::{resolve_sizing_keyword, SizingKeywordResolution};
 use crate::geometry::{Line, Size};
 use crate::style::{AvailableSpace, CoreStyle};
 use crate::style_helpers::TaffyMaxContent;
-use crate::tree::{LayoutFlexboxContainer, LayoutInput, RunMode, SizingMode};
+use crate::tree::{LayoutFlexboxContainer, LayoutInput, LayoutPartialTreeExt, RunMode, SizingMode};
 use crate::util::MaybeMath;
 use crate::{BoxSizing, CompactLength};
 
@@ -20,11 +20,13 @@ pub(super) fn available(
         .node_inner_size
         .cross(dir)
         .map(|size| constants.divided_cross_space(size))
-        .maybe_sub(child.margin.cross_axis_sum(dir));
+        .maybe_sub(child.margin.cross_axis_sum(dir))
+        .maybe_max(0.0);
     match resolve_sizing_keyword(
         child.size_style.cross(dir),
         stretch,
         constants.pct_basis().cross(dir),
+        |val, basis| tree.calc(val, basis),
     ) {
         Some(SizingKeywordResolution::Measure(space)) => {
             let style = child.size_style.cross(dir);

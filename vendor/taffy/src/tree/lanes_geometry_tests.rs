@@ -118,8 +118,8 @@ fn reverse_positions(rows: bool, align: AlignContent) -> (f32, f32) {
                 },
                 grid_template_columns: if rows { vec![] } else { vec![length(80.0)] },
                 grid_template_rows: if rows { vec![length(80.0)] } else { vec![] },
-                justify_content: Some(align),
-                align_content: Some(align),
+                justify_content: align,
+                align_content: align,
                 gap: Size {
                     width: LengthPercentage::length(4.0),
                     height: LengthPercentage::length(4.0),

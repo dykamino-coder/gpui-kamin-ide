@@ -24,22 +24,22 @@ mod fixed_standalone_tracks;
 use fixed_standalone_tracks::standalone_tracks_with_known;
 #[path = "nested_standalone_size.rs"]
 mod nested_standalone_size;
-use super::explicit_grid::{AutoRepeatStrategy, compute_explicit_grid_size_in_axis};
+use super::explicit_grid::{compute_explicit_grid_size_in_axis, AutoRepeatStrategy};
 use super::implicit_grid::compute_grid_size_estimate;
+use super::placement::{place_grid_items, ItemPlacement};
 use super::subgrid_tracks::axis_tracks;
-use super::placement::place_grid_items;
 use super::types::{CellOccupancyMatrix, GridItem, GridTrack, NamedLineResolver, TrackCounts};
-use super::{MAX_GRID_TRACKS, OriginZeroLine};
-use crate::GenericRepetition;
-use crate::geometry::{AbsoluteAxis, AbstractAxis, Line, Rect, Size};
+use super::{OriginZeroLine, MAX_GRID_TRACKS};
+use crate::geometry::{AbsoluteAxis, AbstractAxis, InBothAbsAxis, Line, Rect, Size};
 use crate::style::{
     AlignItems, AlignItemsKeyword, MaxTrackSizingFunction, MinTrackSizingFunction, Overflow,
-    Position, SUBGRID_COLUMN_GAP_NORMAL, SUBGRID_COLUMNS, SUBGRID_ROW_GAP_NORMAL, SUBGRID_ROWS,
-    SubgridAxisTracks, SubgridTracks,
+    Position, SubgridAxisTracks, SubgridTracks, SUBGRID_COLUMNS, SUBGRID_COLUMN_GAP_NORMAL,
+    SUBGRID_ROWS, SUBGRID_ROW_GAP_NORMAL,
 };
 use crate::tree::{LayoutPartialTreeExt, NodeId};
 use crate::util::sys::Vec;
 use crate::util::{MaybeResolve, ResolveOrZero};
+use crate::GenericRepetition;
 use crate::{
     BoxGenerationMode, CoreStyle, GridContainerStyle, GridItemStyle, LayoutGridContainer,
     LengthPercentage,
@@ -171,65 +171,45 @@ pub(super) fn place_items<Tree: LayoutGridContainer>(
         name_resolver.set_subgrid_line_names(columns, &lines);
     }
 
-    let child_styles_iter = tree
-        .child_ids(node)
-        .map(|child_node: NodeId| tree.get_grid_child_style(child_node))
-        .filter(|style| contributes_to_placement(style));
-    let (mut est_col_counts, mut est_row_counts) =
-        compute_grid_size_estimate(explicit_col_count, explicit_row_count, child_styles_iter);
-    // KaminIDE patch: оценка неявной сетки не видит ИМЕНОВАННЫХ граней
-    // (`into_origin_zero_ignoring_named`), а имя может указать линию далеко
-    // за явной сеткой (`grid-column: x -5` при двух линиях `x`, css-grid-2
-    // §8.3: недостающие линии считаются неявными). Матрица занятости тогда
-    // мала, и поиск свободного места выходил за её край (паника в `grid`).
-    // Грани с именами разрешаются заранее и расширяют оценку.
-    {
-        use crate::style::GenericGridPlacement as P;
-        let widen = |counts: &mut TrackCounts, line: Line<P<OriginZeroLine>>, explicit: u16| {
-            for side in [line.start, line.end] {
-                if let P::Line(l) = side {
-                    counts.negative_implicit = counts
-                        .negative_implicit
-                        .max(l.implied_negative_implicit_tracks());
-                    counts.positive_implicit = counts
-                        .positive_implicit
-                        .max(l.implied_positive_implicit_tracks(explicit));
-                }
-            }
-        };
-        for child in tree.child_ids(node) {
-            let child_style = tree.get_grid_child_style(child);
-            if !contributes_to_placement(&child_style) {
-                continue;
-            }
-            let col = name_resolver
-                .resolve_column_names(&child_style.grid_column())
-                .map(|p| p.into_origin_zero_placement(explicit_col_count));
-            let row = name_resolver
-                .resolve_row_names(&child_style.grid_row())
-                .map(|p| p.into_origin_zero_placement(explicit_row_count));
-            widen(&mut est_col_counts, col, explicit_col_count);
-            widen(&mut est_row_counts, row, explicit_row_count);
+    // Upstream #1200/#1259: create the items once in document order and resolve the named lines of
+    // their placements once; the results drive both the grid size estimate and placement.
+    // KaminIDE patch (superseded): the estimate used to miss NAMED edges far outside the explicit
+    // grid (`grid-column: x -5`, css-grid-2 §8.3), overflowing the occupancy matrix; upstream now
+    // resolves named lines before the estimate, so the separate widening pass is gone.
+    let child_count = tree.child_count(node);
+    let mut items: Vec<GridItem> = Vec::with_capacity(child_count);
+    let mut placements: Vec<ItemPlacement> = Vec::with_capacity(child_count);
+    for (index, child_node) in tree.child_ids(node).enumerate() {
+        let child_style = tree.get_grid_child_style(child_node);
+        if !contributes_to_placement(&child_style) {
+            continue;
         }
+        placements.push(InBothAbsAxis {
+            horizontal: name_resolver
+                .resolve_column_names(&child_style.grid_column())
+                .into_origin_zero(explicit_col_count),
+            vertical: name_resolver
+                .resolve_row_names(&child_style.grid_row())
+                .into_origin_zero(explicit_row_count),
+        });
+        items.push(GridItem::new_with_style_and_order(
+            child_node,
+            child_style,
+            align_items,
+            justify_items,
+            index as u16,
+        ));
     }
+    let (est_col_counts, est_row_counts) =
+        compute_grid_size_estimate(explicit_col_count, explicit_row_count, &placements);
 
-    let mut items = Vec::with_capacity(tree.child_count(node));
     let mut cell_occupancy_matrix =
         CellOccupancyMatrix::with_track_counts(est_col_counts, est_row_counts);
-    let in_flow_children_iter = || {
-        tree.child_ids(node)
-            .enumerate()
-            .map(|(index, child_node)| (index, child_node, tree.get_grid_child_style(child_node)))
-            .filter(|(_, _, style)| contributes_to_placement(style))
-    };
     place_grid_items(
         &mut cell_occupancy_matrix,
         &mut items,
-        in_flow_children_iter,
+        &placements,
         style.grid_auto_flow(),
-        align_items,
-        justify_items,
-        &name_resolver,
     );
 
     let mut col_counts = *cell_occupancy_matrix.track_counts(AbsoluteAxis::Horizontal);
@@ -577,8 +557,13 @@ fn flatten_into<Tree: LayoutGridContainer>(
         let mut names = parent_resolver
             .map(|r| r.names_in_span(columns, span.start.0 + 1, span.span().max(1)))
             .unwrap_or_default();
-        if if columns { own_axes.width != parent_axes.width }
-        else { own_axes.height != parent_axes.height } { names.reverse(); }
+        if if columns {
+            own_axes.width != parent_axes.width
+        } else {
+            own_axes.height != parent_axes.height
+        } {
+            names.reverse();
+        }
         names
     };
     let sub = SubgridTracks {
@@ -595,8 +580,9 @@ fn flatten_into<Tree: LayoutGridContainer>(
             names: inherited(false, local.1),
         }),
     };
-    let align_items = style.align_items().unwrap_or(AlignItems::STRETCH);
-    let justify_items = style.justify_items().unwrap_or(AlignItems::STRETCH);
+    // Upstream #1254: `align-items`/`justify-items` are no longer `Option` (default `normal`).
+    let align_items = style.align_items();
+    let justify_items = style.justify_items();
     // Размер для `repeat(auto-*)` в СВОЕЙ оси подсетки здесь неизвестен —
     // повтор идёт один раз (css-grid-2 §7.2.3.2 «Otherwise, the specified
     // track list repeats only once»). Подсеточная ось повторов не знает.
@@ -707,11 +693,25 @@ fn flatten_into<Tree: LayoutGridContainer>(
         };
         if linked & SUBGRID_COLUMNS != 0 {
             let inner = (gap.width - root_gap.width) / 2.0;
-            super::subgrid_flow::inner_edges(&mut extra, child.column, span_cols, inner, true, own_axes.width);
+            super::subgrid_flow::inner_edges(
+                &mut extra,
+                child.column,
+                span_cols,
+                inner,
+                true,
+                own_axes.width,
+            );
         }
         if linked & SUBGRID_ROWS != 0 {
             let inner = (gap.height - root_gap.height) / 2.0;
-            super::subgrid_flow::inner_edges(&mut extra, child.row, span_rows, inner, false, own_axes.height);
+            super::subgrid_flow::inner_edges(
+                &mut extra,
+                child.row,
+                span_rows,
+                inner,
+                false,
+                own_axes.height,
+            );
         }
         child.subgrid_cross_auto = cross_auto;
         if let Some(width) = nested_standalone_size::cross(&own_cols, child.column) {
@@ -767,7 +767,6 @@ fn flatten_into<Tree: LayoutGridContainer>(
         out.push(child);
     }
 }
-
 
 /// Размеры записей вектора дорожек, известные ДО алгоритма дорожек: у
 /// записи с одинаковыми определёнными гранями (`100px`, зазор) и у

@@ -3,23 +3,26 @@
 #[cfg(feature = "content_size")]
 use crate::geometry::Rect;
 use crate::geometry::Size;
-use crate::style::{AvailableSpace, Overflow, Position};
+use crate::style::{AvailableSpace, Overflow};
 use crate::tree::{Baselines, CollapsibleMarginSet, RunMode};
 use crate::tree::{LayoutInput, LayoutOutput, MeasureOutput, SizingMode};
-use crate::util::MaybeMath;
 use crate::util::debug::debug_log;
+use crate::util::MaybeMath;
 use crate::util::ResolveOrZero;
 use crate::{BoxSizing, CoreStyle};
 use core::unreachable;
 
 #[path = "leaf_baselines.rs"]
 mod measured_baselines;
-#[path = "leaf_ratio_size.rs"]
-mod ratio_size;
 #[path = "leaf_ratio_constraints.rs"]
 mod ratio_constraints;
+#[path = "leaf_ratio_size.rs"]
+mod ratio_size;
 
 /// Compute the size of a leaf node (node with no children)
+///
+/// A definite `inputs.available_space` is treated as the space available to the node's border box:
+/// the caller is expected to have already subtracted the node's margins from it.
 pub fn compute_leaf_layout<MeasureFunction, Measurement>(
     inputs: LayoutInput,
     style: &impl CoreStyle,
@@ -41,9 +44,6 @@ where
 
     // Note: both horizontal and vertical percentage padding/borders are resolved against the container's inline size (i.e. width).
     // This is not a bug, but is how CSS is specified (see: https://developer.mozilla.org/en-US/docs/Web/CSS/padding#values)
-    let margin = style
-        .margin()
-        .resolve_or_zero(parent_size.width, &resolve_calc_value);
     let padding = style
         .padding()
         .resolve_or_zero(parent_size.width, &resolve_calc_value);
@@ -67,11 +67,13 @@ where
             let node_max_size = Size::NONE;
             (node_size, node_min_size, node_max_size, None)
         }
-        SizingMode::InherentSize => {
-            ratio_constraints::resolve(
-                style, parent_size, known_dimensions, box_sizing_adjustment, &resolve_calc_value,
-            )
-        }
+        SizingMode::InherentSize => ratio_constraints::resolve(
+            style,
+            parent_size,
+            known_dimensions,
+            box_sizing_adjustment,
+            &resolve_calc_value,
+        ),
     };
 
     // Scrollbar gutters are reserved when the `overflow` property is set to `Overflow::Scroll`.
@@ -89,7 +91,7 @@ where
     let has_styles_preventing_being_collapsed_through = !style.is_block()
         || style.overflow().x.is_scroll_container()
         || style.overflow().y.is_scroll_container()
-        || style.position() == Position::Absolute
+        || style.position().is_out_of_flow()
         || style.contain().establishes_independent_formatting_context()
         || padding.top > 0.0
         || padding.bottom > 0.0
@@ -123,6 +125,8 @@ where
                 bottom_margin: CollapsibleMarginSet::ZERO,
                 margins_can_collapse_through: false,
                 inline_block_last_y: None,
+                oof_candidates: crate::tree::OofCandidates::NONE,
+                oof_positioning_area: None,
             };
         };
     }
@@ -133,7 +137,6 @@ where
             .width
             .map(AvailableSpace::from)
             .unwrap_or(available_space.width)
-            .maybe_sub(margin.horizontal_axis_sum())
             .maybe_set(known_dimensions.width)
             .maybe_set(node_size.width)
             .map_definite_value(|size| {
@@ -144,7 +147,6 @@ where
             .height
             .map(AvailableSpace::from)
             .unwrap_or(available_space.height)
-            .maybe_sub(margin.vertical_axis_sum())
             .maybe_set(known_dimensions.height)
             .maybe_set(node_size.height)
             .map_definite_value(|size| {
@@ -169,7 +171,12 @@ where
         .unwrap_or(measured_size + content_box_inset.sum_axes())
         .maybe_clamp(node_min_size, node_max_size);
     let size = ratio_size::size(
-        clamped_size, node_size.height, aspect_ratio, box_sizing_adjustment, node_min_size, node_max_size,
+        clamped_size,
+        node_size.height,
+        aspect_ratio,
+        box_sizing_adjustment,
+        node_min_size,
+        node_max_size,
     );
     let size = size.maybe_max(padding_border.sum_axes().map(Some));
 
@@ -204,9 +211,13 @@ where
     };
 
     let baselines = measured_baselines::with_inset(
-        style, measured.baseline, measured.last_baseline, content_box_inset.top,
+        style,
+        measured.baseline,
+        measured.last_baseline,
+        content_box_inset.top,
     );
-    let baselines_x = measured_baselines::physical_x(style, measured, size.width, content_box_inset);
+    let baselines_x =
+        measured_baselines::physical_x(style, measured, size.width, content_box_inset);
 
     LayoutOutput {
         size,
@@ -220,6 +231,8 @@ where
             && size.height == 0.0
             && measured_size.height == 0.0,
         inline_block_last_y: None,
+        oof_candidates: crate::tree::OofCandidates::NONE,
+        oof_positioning_area: None,
     }
 }
 

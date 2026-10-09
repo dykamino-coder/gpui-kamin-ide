@@ -91,5 +91,9 @@ pub(super) fn stacking_alignment_offset(
         AlignContentKeyword::End | AlignContentKeyword::FlexEnd => free,
         _ => 0.0,
     };
-    if fill_reverse { offset - free } else { offset }
+    if fill_reverse {
+        offset - free
+    } else {
+        offset
+    }
 }

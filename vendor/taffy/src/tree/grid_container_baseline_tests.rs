@@ -39,7 +39,7 @@ fn nested(align: AlignItems, root_height: Option<f32>, top_margin: f32) -> Basel
         .new_with_children(
             Style {
                 display: Display::Grid,
-                align_items: Some(align),
+                align_items: align,
                 size: Size {
                     width: Dimension::length(100.0),
                     height: root_height

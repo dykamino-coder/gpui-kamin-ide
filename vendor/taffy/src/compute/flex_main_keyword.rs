@@ -5,8 +5,8 @@ use crate::geometry::{Line, Size};
 use crate::style::{AvailableSpace, Dimension};
 use crate::style_helpers::TaffyMaxContent;
 use crate::tree::{LayoutFlexboxContainer, LayoutPartialTreeExt, SizingMode};
-use crate::{CompactLength};
 use crate::util::MaybeMath;
+use crate::CompactLength;
 
 pub(super) enum Basis {
     Size(f32, bool),
@@ -31,35 +31,54 @@ pub(super) fn resolve(
     let style = if basis_style.is_sizing_keyword() {
         basis_style
     } else {
-        if let Some(size) = numeric_basis.or(child.size.main(constants.dir)) {
+        // An unresolvable percentage flex basis behaves as `content`, not as the main size
+        // property (upstream #1286).
+        if let Some(size) =
+            numeric_basis.or(child.size.main(constants.dir).filter(|_| basis_style.is_auto()))
+        {
             return Basis::Size(size, true);
+        }
+        if !basis_style.is_auto() {
+            return Basis::Space(None);
         }
         child.size_style.main(constants.dir)
     };
     let basis = constants.pct_basis().main(constants.dir);
-    let stretch = basis.maybe_sub(child.margin.main_axis_sum(constants.dir));
-    let available = match resolve_sizing_keyword(style, stretch, basis) {
+    let stretch = basis
+        .maybe_sub(child.margin.main_axis_sum(constants.dir))
+        .maybe_max(0.0);
+    let available = match resolve_sizing_keyword(style, stretch, basis, |val, basis| {
+        tree.calc(val, basis)
+    }) {
         Some(SizingKeywordResolution::Exact(size)) => return Basis::Size(size, true),
         Some(SizingKeywordResolution::Measure(space)) => space,
         None => return Basis::Space(None),
     };
-    let fit = matches!(style.tag(), CompactLength::FIT_CONTENT_PX_TAG
-        | CompactLength::FIT_CONTENT_PERCENT_TAG | CompactLength::FIT_CONTENT_KEYWORD_TAG);
+    let fit = matches!(
+        style.tag(),
+        CompactLength::FIT_CONTENT_PX_TAG
+            | CompactLength::FIT_CONTENT_PERCENT_TAG
+            | CompactLength::FIT_CONTENT_KEYWORD_TAG
+    );
     let Some(mut argument) = available.into_option().filter(|_| fit) else {
         return Basis::Space(Some(available));
     };
     if style.tag() != CompactLength::FIT_CONTENT_KEYWORD_TAG {
         argument += box_adjustment;
     }
-    let mut probe = |main| tree.measure_child_size(
-        child.node,
-        known.with_main(constants.dir, None),
-        parent,
-        Size::MAX_CONTENT.with_main(constants.dir, main).with_cross(constants.dir, cross_space),
-        SizingMode::ContentSize,
-        constants.dir.main_axis(),
-        Line::FALSE,
-    );
+    let mut probe = |main| {
+        tree.measure_child_size(
+            child.node,
+            known.with_main(constants.dir, None),
+            parent,
+            Size::MAX_CONTENT
+                .with_main(constants.dir, main)
+                .with_cross(constants.dir, cross_space),
+            SizingMode::ContentSize,
+            constants.dir.main_axis(),
+            Line::FALSE,
+        )
+    };
     let minimum = probe(AvailableSpace::MinContent);
     let maximum = probe(AvailableSpace::MaxContent);
     // A fixed argument still depends on content, so this basis is not definite.

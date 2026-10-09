@@ -1,6 +1,6 @@
 //! Physical areas exported by detailed grid information support both reversed axes.
-use super::{DetailedGridInfo, f32_max, f32_min};
-use crate::{CheapCloneStr, Direction, GridPlacement, Line, Point, Rect, Size};
+use super::{f32_max, f32_min, DetailedGridInfo};
+use crate::{CheapCloneStr, Direction, GridAreaAxis, GridPlacement, Line, Point, Rect, Size};
 
 impl<S: CheapCloneStr> DetailedGridInfo<S> {
     /// Resolve the physical grid area for an absolutely positioned box from its grid placement.
@@ -12,14 +12,19 @@ impl<S: CheapCloneStr> DetailedGridInfo<S> {
         direction: Direction,
         padding_box: Rect<f32>,
     ) -> Rect<f32> {
+        // Upstream #1264: area edges are looked up in the separately stored area map.
         let columns = self.columns.resolve_absolute_grid_axis(
             grid_column,
+            &self.areas,
+            GridAreaAxis::Column,
             padding_box.left,
             padding_box.right,
             direction.is_rtl(),
         );
         let rows = self.rows.resolve_absolute_grid_axis(
             grid_row,
+            &self.areas,
+            GridAreaAxis::Row,
             padding_box.top,
             padding_box.bottom,
             self.axis_reversed.height,

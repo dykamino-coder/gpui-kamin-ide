@@ -1,6 +1,6 @@
 //! Row lane placement must use text width after its final inline constraint wraps it.
 use crate::prelude::*;
-use crate::{GridLanes, GridPlacement, compute_leaf_layout};
+use crate::{compute_leaf_layout, GridLanes, GridPlacement};
 
 fn placement(height: f32, authored_width: Option<f32>) -> (f32, f32) {
     let mut tree: TaffyTree<()> = TaffyTree::new();

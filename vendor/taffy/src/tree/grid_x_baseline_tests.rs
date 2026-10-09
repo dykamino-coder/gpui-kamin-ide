@@ -1,5 +1,5 @@
 //! Intrinsic block items must preserve physical x baselines in vertical alignment.
-use crate::prelude::{TaffyAuto, TaffyMaxContent, length};
+use crate::prelude::{length, TaffyAuto, TaffyMaxContent};
 use crate::{AlignItems, Baselines, Dimension, Display, Size, Style, TaffyTree};
 
 #[test]
@@ -35,11 +35,11 @@ fn first_and_last_vertical_baselines_align_after_intrinsic_block_measurement() {
                             display: Display::Grid,
                             grid_template_columns: vec![length(80.0)],
                             grid_template_rows: vec![length(50.0), length(50.0)],
-                            justify_items: Some(if last {
+                            justify_items: if last {
                                 AlignItems::LAST_BASELINE
                             } else {
                                 AlignItems::BASELINE
-                            }),
+                            },
                             ..Style::DEFAULT
                         },
                         &items,

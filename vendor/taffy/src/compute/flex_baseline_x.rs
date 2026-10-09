@@ -45,10 +45,13 @@ pub(super) fn measure(
                         constants, child,
                     ),
                     parent_size: constants.pct_basis(),
+                    // The available space passed to the child excludes the child's margins (#1234)
                     available_space: Size {
                         width: available.width.maybe_set(node_size.width),
                         height: constants.container_size.height.into(),
-                    },
+                    }
+                    .maybe_sub(child.margin.sum_axes())
+                    .maybe_max(Size::ZERO),
                     vertical_margins_are_collapsible: Line::FALSE,
                 },
             );

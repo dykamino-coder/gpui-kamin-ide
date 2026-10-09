@@ -1,6 +1,6 @@
 //! Teardown must release removed contexts while preserving live children and unrelated nodes.
 
-use super::*;
+use crate::TaffyTree;
 use crate::Style;
 use std::rc::Rc;
 

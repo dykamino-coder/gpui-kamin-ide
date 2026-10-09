@@ -54,7 +54,7 @@ fn width(wide: usize, available: AvailableSpace, mode: u8) -> f32 {
                     height: auto(),
                 },
                 grid_template_columns: vec![min_content()],
-                justify_items: Some(crate::AlignItems::START),
+                justify_items: crate::AlignItems::START,
                 ..Style::DEFAULT
             },
             &[lanes],

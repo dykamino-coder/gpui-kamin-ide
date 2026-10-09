@@ -1,9 +1,11 @@
 //! Resolve authored lane-item sizing keywords through native Taffy measurement.
 //! Linked subgrid axes must be masked to auto by the caller before entry.
-use crate::compute::common::sizing_keyword::{SizingKeywordResolution, resolve_sizing_keyword};
+use crate::compute::common::sizing_keyword::{resolve_sizing_keyword, SizingKeywordResolution};
 use crate::geometry::{Line, Size};
 use crate::style::{AvailableSpace, Dimension};
-use crate::tree::{LayoutInput, LayoutPartialTree, NodeId, RequestedAxis, RunMode, SizingMode};
+use crate::tree::{
+    LayoutInput, LayoutPartialTree, LayoutPartialTreeExt, NodeId, RequestedAxis, RunMode, SizingMode,
+};
 
 pub(super) fn resolve_lane_sizing_keywords(
     tree: &mut impl LayoutPartialTree,
@@ -15,12 +17,16 @@ pub(super) fn resolve_lane_sizing_keywords(
     known: Size<Option<f32>>,
 ) -> Size<Option<f32>> {
     let width = if known.width.is_none() {
-        resolve_sizing_keyword(styles.width, stretch.width, parent.width)
+        resolve_sizing_keyword(styles.width, stretch.width, parent.width, |v, b| {
+            tree.calc(v, b)
+        })
     } else {
         None
     };
     let height = if known.height.is_none() {
-        resolve_sizing_keyword(styles.height, stretch.height, parent.height)
+        resolve_sizing_keyword(styles.height, stretch.height, parent.height, |v, b| {
+            tree.calc(v, b)
+        })
     } else {
         None
     };

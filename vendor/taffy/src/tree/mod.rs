@@ -9,14 +9,21 @@ mod layout;
 mod node;
 pub mod traits;
 
+#[doc(hidden)]
+#[cfg(all(debug_assertions, feature = "std"))]
+pub use cache::cache_mode_change_evictions;
 pub use cache::{Cache, ClearState};
 pub use layout::{
-    Baselines, CollapsibleMarginSet, Layout, LayoutInput, LayoutOutput, MeasureOutput,
+    AxisStaticAlign, AxisStaticEdge, AxisStaticPosition, Baselines, CollapsibleMarginSet, Layout,
+    LayoutInput, LayoutOutput, MeasureOutput, OofCandidate, OofCandidates, OofPositioningArea,
     RequestedAxis, RunMode, SizingMode,
 };
 pub use node::NodeId;
 pub(crate) use traits::LayoutPartialTreeExt;
-pub use traits::{LayoutPartialTree, PrintTree, RoundTree, TraversePartialTree, TraverseTree};
+pub use traits::{
+    LayoutContainingBlock, LayoutPartialTree, PrintTree, RoundTree, TraversePartialTree,
+    TraverseTree,
+};
 
 #[cfg(feature = "flexbox")]
 pub use traits::LayoutFlexboxContainer;
@@ -40,7 +47,6 @@ pub use kamin_calc::calc_handle;
 #[cfg(feature = "taffy_tree")]
 pub use kamin_calc::calc_value;
 
-#[cfg(feature = "detailed_layout_info")]
 pub use layout::DetailedLayoutInfo;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
@@ -67,7 +73,12 @@ mod subgrid_flow_tests;
 #[cfg(all(test, feature = "taffy_tree", feature = "block_layout"))]
 mod block_flow_tests;
 
-#[cfg(all(test, feature = "taffy_tree", feature = "block_layout", feature = "float_layout"))]
+#[cfg(all(
+    test,
+    feature = "taffy_tree",
+    feature = "block_layout",
+    feature = "float_layout"
+))]
 mod block_flow_float_tests;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
@@ -79,13 +90,23 @@ mod lanes_stack_measure_tests;
 #[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
 mod lanes_intrinsic_keyword_tests;
 
-#[cfg(all(test, feature = "taffy_tree", feature = "flexbox", feature = "block_layout"))]
+#[cfg(all(
+    test,
+    feature = "taffy_tree",
+    feature = "flexbox",
+    feature = "block_layout"
+))]
 mod ratio_preferred_tests;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
 mod lanes_intrinsic_baseline_tests;
 
-#[cfg(all(test, feature = "taffy_tree", feature = "grid", feature = "block_layout"))]
+#[cfg(all(
+    test,
+    feature = "taffy_tree",
+    feature = "grid",
+    feature = "block_layout"
+))]
 mod lanes_min_content_fraction_tests;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "grid", feature = "flexbox"))]
@@ -94,22 +115,56 @@ mod lanes_container_export_tests;
 #[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
 mod baseline_orientation_tests;
 
-#[cfg(all(test, feature = "taffy_tree", feature = "grid", feature = "block_layout"))]
+#[cfg(all(
+    test,
+    feature = "taffy_tree",
+    feature = "grid",
+    feature = "block_layout"
+))]
 mod grid_x_baseline_tests;
 
-#[cfg(all(test, feature = "taffy_tree", feature = "grid", feature = "block_layout"))]
+#[cfg(all(
+    test,
+    feature = "taffy_tree",
+    feature = "grid",
+    feature = "block_layout"
+))]
 mod lanes_x_baseline_tests;
 
-#[cfg(all(test, feature = "taffy_tree", feature = "flexbox", feature = "block_layout", feature = "grid"))]
+#[cfg(all(
+    test,
+    feature = "taffy_tree",
+    feature = "flexbox",
+    feature = "block_layout",
+    feature = "grid"
+))]
 mod block_fit_content_tests;
 
-#[cfg(all(test, feature = "taffy_tree", feature = "flexbox", feature = "block_layout", feature = "grid"))]
+#[cfg(all(
+    test,
+    feature = "taffy_tree",
+    feature = "flexbox",
+    feature = "block_layout",
+    feature = "grid"
+))]
 mod flex_x_baseline_tests;
 
-#[cfg(all(test, feature = "taffy_tree", feature = "flexbox", feature = "block_layout", feature = "grid"))]
+#[cfg(all(
+    test,
+    feature = "taffy_tree",
+    feature = "flexbox",
+    feature = "block_layout",
+    feature = "grid"
+))]
 mod flex_x_groups_tests;
 
-#[cfg(all(test, feature = "taffy_tree", feature = "flexbox", feature = "block_layout", feature = "grid"))]
+#[cfg(all(
+    test,
+    feature = "taffy_tree",
+    feature = "flexbox",
+    feature = "block_layout",
+    feature = "grid"
+))]
 mod flex_x_relative_tests;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]

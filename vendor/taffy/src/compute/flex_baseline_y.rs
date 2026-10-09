@@ -76,7 +76,10 @@ pub(super) fn calculate_children_base_lines(
                         } else {
                             constants.container_size.height.into()
                         },
-                    },
+                    }
+                    // The available space passed to the child excludes the child's margins (#1234)
+                    .maybe_sub(child.margin.sum_axes())
+                    .maybe_max(Size::ZERO),
                     vertical_margins_are_collapsible: Line::FALSE,
                 },
             );

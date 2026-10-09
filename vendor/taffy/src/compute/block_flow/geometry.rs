@@ -1,6 +1,8 @@
 //! Reversible physical/logical conversion for native block constraints and results.
+use crate::tree::{AxisStaticEdge, AxisStaticPosition, OofCandidates, OofPositioningArea};
 use crate::{
-    Baselines, BlockFlow, Layout, LayoutInput, LayoutOutput, Point, Rect, RequestedAxis, Size,
+    Baselines, BlockFlow, Layout, LayoutInput, LayoutOutput, Line, Point, Rect, RequestedAxis,
+    Size,
 };
 
 impl BlockFlow {
@@ -88,6 +90,21 @@ impl BlockFlow {
         if !self.vertical {
             return value;
         }
+        // Out-of-flow candidates and the positioning area leave the logical block algorithm
+        // here; the containing block's positioning pass (`compute_oof_layout`) is physical.
+        let logical_size = value.size;
+        self.physical_candidates(&mut value.oof_candidates, logical_size);
+        value.oof_positioning_area = value.oof_positioning_area.map(|area| OofPositioningArea {
+            size: self.size(area.size),
+            offset: Point {
+                x: if self.block_reverse {
+                    logical_size.height - area.offset.y - area.size.height
+                } else {
+                    area.offset.y
+                },
+                y: area.offset.x,
+            },
+        });
         value.size = self.size(value.size);
         let x = value.baselines_x;
         value.baselines_x = reflect(value.baselines, value.size.width, self.block_reverse);
@@ -104,6 +121,19 @@ impl BlockFlow {
     pub(super) fn logical_output(self, mut value: LayoutOutput) -> LayoutOutput {
         if !self.vertical {
             return value;
+        }
+        // Candidates bubbling out of a physical child become logical (inverse of `output`).
+        let physical_size = value.size;
+        for candidate in value.oof_candidates.as_mut_slice() {
+            let sp = candidate.static_position;
+            candidate.static_position = Point {
+                x: sp.y,
+                y: if self.block_reverse {
+                    mirror(sp.x, physical_size.width)
+                } else {
+                    sp.x
+                },
+            };
         }
         let x = reflect(value.baselines_x, value.size.width, self.block_reverse);
         value.baselines_x = value.baselines;
@@ -140,6 +170,44 @@ impl BlockFlow {
         }
         value
     }
+}
+
+impl BlockFlow {
+    /// Logical static positions (relative to the logical border box of `logical_size`) to
+    /// physical ones, mirroring `layout`: logical x -> physical y, logical y -> physical x
+    /// (reflected when the block axis runs right-to-left).
+    fn physical_candidates(self, candidates: &mut OofCandidates, logical_size: Size<f32>) {
+        for candidate in candidates.as_mut_slice() {
+            let sp = candidate.static_position;
+            candidate.static_position = Point {
+                x: if self.block_reverse {
+                    mirror(sp.y, logical_size.height)
+                } else {
+                    sp.y
+                },
+                y: sp.x,
+            };
+        }
+    }
+}
+
+/// Reflect a static position within `[0, extent]`: the area flips and so do start/end edges.
+fn mirror(value: AxisStaticPosition, extent: f32) -> AxisStaticPosition {
+    fn flip(edge: AxisStaticEdge) -> AxisStaticEdge {
+        match edge {
+            AxisStaticEdge::Start => AxisStaticEdge::End,
+            AxisStaticEdge::End => AxisStaticEdge::Start,
+            AxisStaticEdge::Center => AxisStaticEdge::Center,
+        }
+    }
+    let mut out = value;
+    out.area = Line {
+        start: extent - value.area.end,
+        end: extent - value.area.start,
+    };
+    out.align.keyword = flip(value.align.keyword);
+    out.align.fallback = flip(value.align.fallback);
+    out
 }
 
 fn reflect(value: Baselines, extent: f32, reverse: bool) -> Baselines {
