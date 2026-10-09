@@ -8,6 +8,7 @@ import crypto from 'crypto'
 import fs from 'fs'
 import fsp from 'fs/promises'
 import path from 'path'
+import { SessionAdmissionError } from './session-admission'
 import { rememberModelSelection } from './model-selection'
 import { waitForDrain, type DrainOutcome } from './download-backpressure'
 import { fingerprintTranscript, canResume, isRecordBoundary, recordUuidMatches } from './jsonl-fingerprint'
@@ -31,7 +32,6 @@ import {
   handleMcpDenied,
   handleElicitationResponse,
   getSession,
-  countUserSessions,
   restartWithEffort,
   restartWithModel,
   getSessionTree,
@@ -152,14 +152,6 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             authenticatedSessionId = null
           }
 
-          // Check max sessions for this user
-          const maxSessions = 10 // TODO: get from token.max_sessions after DB migration
-          const currentCount = countUserSessions(resolved.tokenId)
-          if (currentCount >= maxSessions) {
-            sendError(ws, `Max sessions reached (${maxSessions})`, 4002, 'Max sessions reached')
-            return
-          }
-
           try {
             const bearerHash = crypto.createHash('sha256').update(msg.token).digest('hex').slice(0, 16)
             const session = await createSession(ws, resolved.userName, resolved.tokenId, {
@@ -210,7 +202,12 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err)
             errorLog('Failed to create session', { error: errMsg })
-            sendError(ws, `Failed to create session: ${errMsg}`)
+            sendError(
+              ws,
+              `Failed to create session: ${errMsg}`,
+              err instanceof SessionAdmissionError && err.kind === 'token' ? 4002 : undefined,
+              'Max sessions reached',
+            )
           }
           break
         }
@@ -508,7 +505,12 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err)
             errorLog('Failed to resume session', { error: errMsg })
-            sendError(ws, `Failed to resume session: ${errMsg}`)
+            sendError(
+              ws,
+              `Failed to resume session: ${errMsg}`,
+              err instanceof SessionAdmissionError && err.kind === 'token' ? 4002 : undefined,
+              'Max sessions reached',
+            )
           } finally {
             releaseResumeLock()
           }
