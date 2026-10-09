@@ -28,6 +28,9 @@ fn position(rows: bool, reversed: bool, alignment: AlignItems, lanes: bool) -> P
         .new_with_children(
             Style {
                 display: Display::Grid,
+                // The grid must be the containing block (Static is the default since upstream
+                // #1140) for grid placement to apply to the abspos child.
+                position: Position::Relative,
                 direction: if reversed {
                     Direction::Rtl
                 } else {

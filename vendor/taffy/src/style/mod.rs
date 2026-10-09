@@ -2416,18 +2416,18 @@ mod tests {
         assert_type_size::<Line<GridPlacement<String>>>(64);
         // The local payloads retain inline calc (80 B), two subgrid name groups
         // (144 B), lanes (20 B), x-baseline hint (8 B), and 12 B of flags.
-        // Keep exact assertions: these additions deliberately raise String Style by 280 B, including the separate 16 B ratio basis.
+        // Keep exact assertions (KaminIDE fields + upstream main 2d936b7 fields: compressible-replaced flag, non-Option alignment).
         assert_type_size::<[Option<(f32, f32, f32, f32)>; 4]>(80);
         assert_type_size::<Option<SubgridLineNames<String>>>(72);
         assert_type_size::<Option<GridLanes>>(20);
         assert_type_size::<Option<(f32, bool)>>(8);
         assert_type_size::<Size<Option<f32>>>(16);
-        assert_type_size::<Style<String>>(840);
+        assert_type_size::<Style<String>>(880);
 
         // String-type dependent (Arc<str>)
         assert_type_size::<GridTemplateComponent<Arc<str>>>(56);
         assert_type_size::<GridPlacement<Arc<str>>>(24);
         assert_type_size::<Line<GridPlacement<Arc<str>>>>(48);
-        assert_type_size::<Style<Arc<str>>>(808);
+        assert_type_size::<Style<Arc<str>>>(848);
     }
 }
