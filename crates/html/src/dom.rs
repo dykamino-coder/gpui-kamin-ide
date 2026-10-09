@@ -2609,6 +2609,7 @@ fn attach_anchor(sel: &mut Selector, lead: char) {
         also: vec![],
         ancestor: None,
         prev: None,
+        universal: false,
     };
     match lead {
         '>' => sel.ancestor = Some(Box::new((sentinel, true))),
@@ -4581,6 +4582,7 @@ fn matches_compound(sel: &Selector, node: &Ancestor) -> bool {
     // `selectors/featureless-002`).
     if node.featureless.is_some() {
         let bare = sel.tag.is_none()
+            && !sel.universal
             && sel.id.is_none()
             && sel.classes.is_empty()
             && sel.attrs.is_empty();

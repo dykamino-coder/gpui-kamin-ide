@@ -147,6 +147,9 @@ pub struct Selector {
     /// Предыдущий сосед для `.a + .b` и `.a ~ .b`. Смежный ли — во втором
     /// поле (`+` — ровно предыдущий, `~` — любой раньше).
     pub prev: Option<Box<(Selector, bool)>>,
+    /// Явный универсальный селектор `*` в компаунде: безликий хост тени он не
+    /// берёт (selectors-4 §featureless; `*:host` — `featureless-002`).
+    pub universal: bool,
 }
 
 /// Атрибутный селектор одного условия.
@@ -229,6 +232,7 @@ impl Selector {
                 also: vec![],
                 ancestor: None,
                 prev: None,
+                universal: !s.is_empty(),
             });
         }
         let mut sel = Selector {
@@ -240,6 +244,7 @@ impl Selector {
             also: vec![],
             ancestor: None,
             prev: None,
+            universal: false,
         };
         // Разделитель ищется ВНЕ скобок: в `:not(:first-child)` двоеточие и
         // точка — часть записи псевдокласса, а не начало следующего куска.
@@ -292,6 +297,7 @@ impl Selector {
                 }
                 None => name,
             };
+            sel.universal = name == "*";
             if !name.is_empty() && name != "*" {
                 sel.tag = Some(name);
             }
