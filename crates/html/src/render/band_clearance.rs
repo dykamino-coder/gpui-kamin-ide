@@ -18,7 +18,7 @@ pub(crate) fn supported(e: &Element) -> bool {
     e.style.position.is_none()
 }
 
-pub(super) fn remember_float_margin(e: &mut Element, strut: Option<Strut>, emitted: f32) {
+pub(crate) fn remember_float_margin(e: &mut Element, strut: Option<Strut>, emitted: f32) {
     if e.style.float.is_some_and(|f| f != 0) && e.style.float_margin_offset.is_none() {
         // CSS 2.1 §9.5.1 rule 5: the float starts at the source position after
         // preceding block margins. Self-collapsing boxes can leave that

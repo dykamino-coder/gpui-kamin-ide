@@ -4,7 +4,7 @@ use crate::computed::orthogonal::{AxisSizes, InlineConstraint};
 use crate::computed::{Computed, Display};
 use crate::value::Len;
 
-pub(super) fn normal_block_flow(child: &Computed, parent: &Computed) -> bool {
+pub(crate) fn normal_block_flow(child: &Computed, parent: &Computed) -> bool {
     parent.vertical != Some(true)
         && matches!(parent.display, None | Some(Display::Block))
         && matches!(child.display, None | Some(Display::Block))
