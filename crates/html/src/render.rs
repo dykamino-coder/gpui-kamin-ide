@@ -7876,6 +7876,8 @@ impl Drop for AvailWGuard {
 // линии, а эталоны семьи считают её по-своему. Возвращать вместе с
 // настоящей надстрочной аннотацией (сдвиг базовой линии без атома).
 fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyElement> {
+    // Only the cell's own content list is the BFC root's (see `CELL_BFC`).
+    let cell_bfc = CELL_BFC.with(|c| c.replace(false));
     let cb_prev = CB_WIDTH.get();
     if let Some(Len::Px(w)) = inherited.width
         && w > 0.0
@@ -8499,6 +8501,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             },
             measured_ok,
             own_context_style(inherited) || inherited.flex_item,
+            cell_bfc,
         ),
         flex_ctx,
     );
@@ -11687,6 +11690,10 @@ fn wrap_floats(
     // Содержащий блок — корень БФК (§10.6.7): его авто-высота обязана
     // охватить флоаты, в том числе внутри вложенных блоков.
     parent_bfc: bool,
+    // The parent is a table cell (see `CELL_BFC`): a BFC root whose float
+    // host keeps containing floats, while the band-host choices above stay
+    // those of an ordinary block (margin-collapse-121..125, 157, 158).
+    cell_bfc: bool,
 ) -> Vec<Node> {
     let cb_width = parent.width;
     // `clear: inherit` — сторона родителя (`clear-005`: `clear: left` на
@@ -11855,7 +11862,7 @@ fn wrap_floats(
         if let Some((mut host, next, took_lead, lifted)) = hosted {
             // CSS 2.1 §10.6.3: ordinary blocks count in-flow boxes, not floats.
             // A complete unfragmented suffix needs no later float bands.
-            if !parent_bfc && !parent.in_multicol && next == nodes.len() {
+            if !parent_bfc && !cell_bfc && !parent.in_multicol && next == nodes.len() {
                 host.attrs.push(("inflow-height".into(), "1".into()));
             }
             if let Some(at) = took_lead {
@@ -16283,6 +16290,10 @@ thread_local! {
     /// Определена ли высота содержащего блока уровня схлопывания (§10.5):
     /// доля высоты ребёнка при неопределённой ведёт себя как `auto`.
     static COLLAPSE_CB_HEIGHT_DEF: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// The next `blocks` call lays out a table cell's content: the cell is a
+    /// block formatting context root (CSS 2.1 §9.4.1) and contains its
+    /// floats (§10.6.7), even as a `td` without a `display` value.
+    static CELL_BFC: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// ★ ЗАМЕРЕНО И ОТКАЧЕНО (09.09, v168, `scout-clamp-2026-09g.md` CLAMP-BFC,
@@ -28132,7 +28143,15 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 occupied[c] = span_rows;
             }
             col_ix += span_cols as usize;
+            // CSS 2.1 §9.4.1: a table cell establishes a block formatting
+            // context, so its auto height contains its floats (§10.6.7). A
+            // `td`/`th` gets its role from the tag and carries no `display`,
+            // which `own_context_style` checks; without `CELL_BFC` its float
+            // host took in-flow height only (`floats-wrap-bfc-001-right-
+            // overflow`: the cell ended under the float's first 50px).
+            CELL_BFC.with(|c| c.set(true));
             let inside = blocks(&cell.children, &cm, opts);
+            CELL_BFC.with(|c| c.set(false));
             // Обрезанная ячейка не расталкивает колонки: её минимальный
             // вклад в дорожки НУЛЕВОЙ (css-sizing: automatic minimum при
             // overflow, отличном от visible, равен нулю) — иначе длинное
