@@ -20477,6 +20477,14 @@ fn has_own_box(c: &Computed, font_px: f32) -> bool {
     // `div` с рамкой уходил в коробку — с вертикальными полями и рамкой
     // ВНУТРИ строки (`margin-top-applies-to-008`, §10.6.1: вертикальные
     // поля строчной коробки на строку не действуют).
+    // Graphical effects of the inline box (css-masking-1 §1: `clip-path` and
+    // `mask` apply to all elements; css-color-4 §opacity) act on everything
+    // the box paints, its border and background included. A text run applies
+    // none of them, so the box is needed even when the run could paint the
+    // border itself (`clip-path-inline-006`: the red border stayed unclipped).
+    if c.opacity.is_some() || c.mask_image.is_some() {
+        return true;
+    }
     let inline_level = c.display.is_none() || c.inline_display == Some(true);
     if inline_level
         && (crate::inline::uniform_border(c, font_px).is_some()
