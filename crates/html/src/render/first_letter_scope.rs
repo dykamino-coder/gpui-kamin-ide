@@ -5,7 +5,7 @@ use super::{
     paragraph_probed,
 };
 
-pub(super) struct Scope {
+pub(crate) struct Scope {
     first: bool,
 }
 
