@@ -98,9 +98,9 @@ export function SessionStats(): JSX.Element | null {
 
   // Half-a-million tokens is worth offering the hand-off even on a 1M tier
   // still at ~50% — treat it as at least the warn band so the button appears.
-  const early = s.used >= EARLY_COMPACT_TOKENS
-  const band = (s.pct >= DANGER_PCT || s.used >= DANGER_COMPACT_TOKENS) ? 'danger'
-    : (s.pct >= WARN_PCT || early) ? 'warn' : 'ok'
+  const early = s.used !== null && s.used >= EARLY_COMPACT_TOKENS
+  const band = ((s.pct !== null && s.pct >= DANGER_PCT) || (s.used !== null && s.used >= DANGER_COMPACT_TOKENS)) ? 'danger'
+    : ((s.pct !== null && s.pct >= WARN_PCT) || early) ? 'warn' : 'ok'
   // Only highlight when we're approaching the limit. Below the warn band
   // the bar is just a muted progress indicator — colour is reserved for
   // signal ("getting close" / "about to auto-compact").
@@ -119,20 +119,27 @@ export function SessionStats(): JSX.Element | null {
     bridge.submitText(id, `/compact ${HANDOFF_COMPACT_INSTRUCTIONS}`)
   }
 
+  const contextText = s.used === null ? 'Context pending' : `${s.freshness === 'compact' ? '≈' : ''}${formatTokens(s.used)}`
+  const contextTooltip = s.freshness === 'pending'
+    ? 'Compact completed; waiting for post-compact context usage.'
+    : s.freshness === 'compact'
+      ? `Post-compact context ≈ ${formatTokens(s.used!)} / ${formatTokens(s.limit)}; waiting for the next model usage.`
+      : `Context: ${formatTokens(s.used!)} / ${formatTokens(s.limit)}`
+
   return (
     <div
       class="session-stats"
-      data-tooltip={`Context: ${formatTokens(s.used)} / ${formatTokens(s.limit)} · Session cost ≈ ${costSettling ? 'calculating…' : formatCost(s.cost)}`}
+      data-tooltip={`${contextTooltip} · Session cost ≈ ${costSettling ? 'calculating…' : formatCost(s.cost)}`}
       style="display:inline-flex;align-items:center;gap:8px;font-size:11px;color:var(--text-muted);line-height:1;font-variant-numeric:tabular-nums"
     >
-      <div style="width:60px;height:4px;background:var(--bg-surface);border-radius:var(--radius-xs);overflow:hidden;flex-shrink:0">
+      {s.pct !== null && <div style="width:60px;height:4px;background:var(--bg-surface);border-radius:var(--radius-xs);overflow:hidden;flex-shrink:0">
         <div
           style={`width:${s.pct}%;height:100%;background:${barColor};transition:width 0.3s;border-radius:var(--radius-xs)`}
         />
-      </div>
-      <span style={`color:${pctColor};font-weight:600`}>{s.pct}%</span>
-      <span style="color:var(--text-disabled)">·</span>
-      <span>{formatTokens(s.used)}</span>
+      </div>}
+      {s.pct !== null && <span style={`color:${pctColor};font-weight:600`}>{s.freshness === 'compact' ? '≈' : ''}{s.pct}%</span>}
+      {s.pct !== null && <span style="color:var(--text-disabled)">·</span>}
+      <span>{contextText}</span>
       <span style="color:var(--text-disabled)">·</span>
       {costSettling
         ? <span style="color:var(--text-disabled)" title="Session cost finalises once history finishes loading">…</span>

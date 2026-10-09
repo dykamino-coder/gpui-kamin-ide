@@ -94,6 +94,8 @@ export function formatCost(usd: number): string {
 /** A minimal assistant JSONL row shape for stats. */
 interface StatEntry {
   type?: string
+  subtype?: string
+  compactMetadata?: { postTokens?: number }
   model?: unknown
   usage?: UsageBlock
   message?: { id?: string; model?: unknown; usage?: UsageBlock }
@@ -104,15 +106,17 @@ interface StatEntry {
 
 export interface ContextStats {
   /** Context-window occupancy as a rounded percentage of the model limit. */
-  pct: number
+  pct: number | null
   /** Effective input tokens driving the bar (window occupancy). */
-  used: number
+  used: number | null
   /** Model context-window size the pct is against. */
   limit: number
   /** Cumulative $ cost across the segment (deduped by message.id). */
   cost: number
   /** Model id used to resolve the limit. */
   model: string
+  /** Compact metadata is provisional until a real post-boundary usage arrives. */
+  freshness: 'usage' | 'compact' | 'pending'
 }
 
 /** Cost + context-pressure for ONE compact segment's entries (already sliced).
@@ -142,8 +146,18 @@ export function computeContextStats(
   let latestUsedTokens = -1
   let latestModel: string | null = null
   const seenMessages = new Set<string>()
+  let lastCompact: { postTokens?: number } | null = null
 
   for (const e of entries) {
+    if (e.isSidechain || e.subagentId) continue
+    if (isLiveSegment && e.type === 'system' && e.subtype === 'compact_boundary') {
+      // A completed compact invalidates previous Current occupancy immediately.
+      // Synthetic summaries and hook errors are not newer model usage.
+      lastCompact = e.compactMetadata ?? {}
+      latestUsage = null
+      latestUsedTokens = -1
+      continue
+    }
     if (e.type !== 'assistant') continue
     // Субагентские ходы имеют СВОЁ окно контекста — включённые в общий стор
     // (canonical sidechain-строки + живые streaming-стабы) они дёргали главный
@@ -169,7 +183,7 @@ export function computeContextStats(
     if (typeof model === 'string') latestModel = model
   }
 
-  if (!peakUsage) return null
+  if (!peakUsage && !lastCompact) return null
   const useUsage = isLiveSegment ? (latestUsage ?? peakUsage) : peakUsage
   const useUsedTokens = isLiveSegment && latestUsedTokens >= 0 ? latestUsedTokens : peakUsedTokens
   const useModel = isLiveSegment ? (latestModel ?? peakModel) : peakModel
@@ -182,7 +196,13 @@ export function computeContextStats(
   const jsonlLimit = useModel ? contextLimitForModel(useModel) : 0
   const limit = Math.max(tabLimit, jsonlLimit) || contextLimitForModel('claude-opus-5-5')
   const modelForLimit = (tabLimit >= jsonlLimit ? tabModel : useModel) ?? useModel ?? tabModel ?? 'claude-opus-5-5'
-  const used = useUsedTokens >= 0 ? useUsedTokens : effectiveInputTokens(useUsage)
-  const pct = Math.min(100, Math.round((used / limit) * 100))
-  return { pct, used, limit, cost: cumulativeCost, model: modelForLimit }
+  let used: number | null = useUsedTokens >= 0 ? useUsedTokens : (useUsage ? effectiveInputTokens(useUsage) : null)
+  let freshness: ContextStats['freshness'] = 'usage'
+  if (isLiveSegment && lastCompact && !latestUsage) {
+    const post = lastCompact.postTokens
+    used = typeof post === 'number' && Number.isSafeInteger(post) && post >= 0 ? post : null
+    freshness = used === null ? 'pending' : 'compact'
+  }
+  const pct = used === null ? null : Math.min(100, Math.round((used / limit) * 100))
+  return { pct, used, limit, cost: cumulativeCost, model: modelForLimit, freshness }
 }
