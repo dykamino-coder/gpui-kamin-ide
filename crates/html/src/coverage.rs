@@ -430,7 +430,7 @@ pub fn broken_promises() -> Vec<&'static str> {
 /// стиль превращается в элементы; тест требует, чтобы каждое поле
 /// разрешённого стиля было прочитано хотя бы в одном из них.
 const CONSUMERS: &[&str] = &[
-    include_str!("apply.rs"),
+    include_str!("style/apply/mod.rs"),
     include_str!("render/mod.rs"),
     include_str!("inline.rs"),
     include_str!("forms.rs"),

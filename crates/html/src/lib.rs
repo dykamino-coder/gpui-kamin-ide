@@ -29,7 +29,7 @@
 )]
 
 pub mod anchor;
-pub mod apply;
+pub use style::apply;
 pub mod background;
 pub mod band_flow;
 pub mod bands;

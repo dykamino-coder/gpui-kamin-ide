@@ -338,7 +338,7 @@ pub fn self_align(a: Align, last: bool) -> gpui::AlignItems {
     }
 }
 
-#[path = "apply/alignment_axes.rs"]
+#[path = "alignment_axes.rs"]
 mod alignment_axes;
 pub(crate) mod item_metadata;
 
@@ -2417,5 +2417,5 @@ pub fn apply_text(mut d: Div, c: &Computed) -> Div {
 }
 
 #[cfg(test)]
-#[path = "apply/tests.rs"]
+#[path = "tests.rs"]
 mod tests;
