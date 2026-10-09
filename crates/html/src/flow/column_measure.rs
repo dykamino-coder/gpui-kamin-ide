@@ -3,7 +3,7 @@
 use super::*;
 
 impl ColumnStack {
-    pub(super) fn request_column_layout(
+    pub(crate) fn request_column_layout(
         &mut self,
         window: &mut Window,
         cx: &mut App,

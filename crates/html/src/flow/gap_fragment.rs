@@ -20,7 +20,7 @@ pub(crate) fn current() -> Option<Scope> {
     ACTIVE.with(|active| active.borrow().clone())
 }
 
-pub(super) fn with<R>(scope: Option<Scope>, f: impl FnOnce() -> R) -> R {
+pub(crate) fn with<R>(scope: Option<Scope>, f: impl FnOnce() -> R) -> R {
     let previous = ACTIVE.with(|active| active.replace(scope));
     let result = f();
     ACTIVE.with(|active| active.replace(previous));

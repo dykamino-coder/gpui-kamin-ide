@@ -2,7 +2,7 @@
 
 use gpui::{Bounds, ContentMask, Pixels, point, px, size};
 
-pub(super) fn snap(bounds: Bounds<Pixels>, scale: f32) -> ContentMask<Pixels> {
+pub(crate) fn snap(bounds: Bounds<Pixels>, scale: f32) -> ContentMask<Pixels> {
     let scale = scale.max(0.01);
     let edge = |value: Pixels| px((f32::from(value) * scale).round() / scale);
     let left = edge(bounds.origin.x);
