@@ -2,6 +2,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { wsClient } from './ws-client'
 import { isConnected, terminalSessions } from '../signals/server'
 
+// Server CI installs only server dependencies, not the dashboard.
+// This transport fixture needs mutable values, not Preact rendering.
+vi.mock('../signals/server', () => ({
+  serverHealth: { value: null },
+  healthCheckedAt: { value: null },
+  serverStats: { value: null },
+  isConnected: { value: false },
+  terminalSessions: { value: 0 },
+  ptySessions: { value: [] },
+  cachedAccount: { value: null },
+  accountCheckedAt: { value: null },
+  cachedUsage: { value: null },
+}))
+vi.mock('../signals/requests', () => ({
+  addRequest: vi.fn(),
+  updateRequest: vi.fn(),
+  addError: vi.fn(),
+  seedErrors: vi.fn(),
+}))
+
 class Socket {
   static OPEN = 1
   static instances: Socket[] = []
