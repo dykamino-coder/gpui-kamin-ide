@@ -30,7 +30,7 @@
 
 pub mod anchor;
 pub use style::apply;
-pub mod background;
+pub use paint::background;
 pub mod band_flow;
 pub mod bands;
 pub mod border_image;

@@ -439,7 +439,7 @@ const CONSUMERS: &[&str] = &[
     include_str!("render/mod.rs"),
     include_str!("inline.rs"),
     include_str!("forms.rs"),
-    include_str!("background.rs"),
+    include_str!("paint/background/mod.rs"),
     include_str!("border_image.rs"),
     include_str!("svg.rs"),
     include_str!("scroll.rs"),
