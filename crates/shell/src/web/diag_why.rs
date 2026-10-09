@@ -87,10 +87,10 @@ fn policy() -> String {
     let forced = flag("KAMIN_REDUCE_MOTION");
     let (remote, animation) = system_policy();
     format!(
-        "[motion] reduce={reduce} source={} rdp={remote:?} client_area_animation={animation:?} force_reduce={forced:?} force_sw_render={:?} cef_force_sw={:?} prepaint_prof={:?}",
+        "[motion] reduce={reduce} source={} rdp={remote:?} client_area_animation={animation:?} force_reduce={forced:?} force_sw_render={:?} cef_force_sw_present={} prepaint_prof={:?}",
         if forced.is_some() { "env" } else { "rdp" },
         flag("KAMIN_FORCE_SW_RENDER"),
-        flag("KAMIN_CEF_FORCE_SW"),
+        std::env::var_os("KAMIN_CEF_FORCE_SW").is_some(),
         flag("KAMIN_PREPAINT_PROF")
     )
 }
