@@ -2102,8 +2102,16 @@ fn apply_direction(style: &mut Computed, tag: &str, attrs: &[(String, String)]) 
     // не задал `unicode-bidi` сам. HTML UA-лист даёт `[dir] { unicode-bidi:
     // isolate }`; здесь сохранено прежнее встраивание — переход на
     // изоляцию отдельный шаг с замером.
-    if style.bidi_embed.is_none() && matches!(value.to_ascii_lowercase().as_str(), "rtl" | "ltr" | "auto") {
-        style.bidi_embed = Some(true);
+    // HTML §15.3.4 (Bidirectional text): `[dir=ltr i], [dir=rtl i] {
+    // unicode-bidi: isolate }` — изоляция, а не встраивание: строчный
+    // `<span dir=rtl>` в rtl-абзаце не перемешивается с соседним ltr-текстом
+    // (`text-overflow-string-007/008-ref`). `auto` пока остаётся прежним
+    // встраиванием: сторону ему выбирает отрисовка.
+    let explicit = style.bidi_embed.is_some() || style.bidi_isolate.is_some();
+    match value.to_ascii_lowercase().as_str() {
+        "rtl" | "ltr" if !explicit && tag != "bdo" => style.bidi_isolate = Some(true),
+        "rtl" | "ltr" | "auto" if style.bidi_embed.is_none() => style.bidi_embed = Some(true),
+        _ => {}
     }
     match value.to_ascii_lowercase().as_str() {
         "rtl" => {
