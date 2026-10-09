@@ -21,7 +21,16 @@ fn shrink0(d: gpui::Div, li: &Element, parent: &Computed) -> gpui::Div {
 }
 
 pub(super) fn render(li: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    render_with_style(li, inherited, &inline::inherit(inherited, &li.style), opts)
+    let mut merged = inline::inherit(inherited, &li.style);
+    if matches!(
+        li.style.display,
+        None | Some(Display::Block | Display::ListItem | Display::TableCell)
+    )
+        || (li.style.display == Some(Display::InlineBlock) && li.style.inline_display != Some(true))
+    {
+        super::pseudo_line_layers::install_first_letter(li, &mut merged);
+    }
+    render_with_style(li, inherited, &merged, opts)
 }
 
 pub(super) fn render_with_style(
@@ -100,21 +109,16 @@ pub(super) fn render_with_style(
             // §list-style-position, `inside`), и эталон
             // `marker-unicode-bidi-default-ref` собран буквально так —
             // `<span class="marker">` перед текстом пункта.
-            // Без слоя — голым текстом, как прежде.
-            kids.push(match &marker_style {
-                Some(ms) => {
-                    let mut span = anon_element("::marker", vec![Node::Text(marker)]);
-                    span.inline = true;
-                    span.style = ms.clone();
-                    // Содержимое уже свёрнуто в текст: сам кусок — не
-                    // носитель `content`, иначе `pseudo_box` собрал бы
-                    // его второй раз.
-                    span.style.content = None;
-                    span.style.marker_layer = None;
-                    Node::Element(span)
-                }
-                None => Node::Text(marker),
-            });
+            // Mark every marker run, including the default marker, so the
+            // first-letter selector starts in the principal content.
+            let mut span = anon_element("::marker", vec![Node::Text(marker)]);
+            span.inline = true;
+            span.style = marker_style.clone().unwrap_or_default();
+            span.style.content = None;
+            span.style.marker_layer = None;
+            // CSS Pseudo 4 #first-letter-application excludes marker content.
+            span.style.first_letter_excluded = true;
+            kids.push(Node::Element(span));
         }
         kids.extend(li.children.iter().cloned());
         return shrink0(styled_div_with(li, merged), li, inherited)

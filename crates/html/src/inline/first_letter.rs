@@ -15,8 +15,12 @@ pub fn split_first_letter(pieces: Vec<Piece>, style: &Computed) -> Vec<Piece> {
                 blocked = true;
                 None
             }
-            Piece::Text { text: part, .. }
-                if !blocked && part != SPACER && part != ZWSP && !part.chars().all(bidi_format) =>
+            Piece::Text { text: part, style: own }
+                if !own.first_letter_excluded
+                    && !blocked
+                    && part != SPACER
+                    && part != ZWSP
+                    && !part.chars().all(bidi_format) =>
             {
                 let start = text.len();
                 text.push_str(part);

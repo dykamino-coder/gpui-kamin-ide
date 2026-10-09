@@ -1161,6 +1161,7 @@ pub(crate) fn inherit_unpainted(parent: &Computed, own: &Computed) -> Computed {
 
 fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Computed {
     let mut c = own.clone();
+    c.first_letter_excluded = own.first_letter_excluded || parent.first_letter_excluded;
     bidi_controls::resolve(parent, &mut c);
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
     c.in_multicol = parent.in_multicol

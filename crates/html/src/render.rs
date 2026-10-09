@@ -32,6 +32,7 @@ mod inline_floats;
 mod float_atom;
 use float_atom::band_atom;
 mod first_letter_descendants;
+mod first_letter_scope;
 mod pseudo_line_layers;
 mod first_line_descendants;
 mod inline_splits;
@@ -8415,6 +8416,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         collapsed
     };
     let flex_ctx = matches!(inherited.display, Some(Display::Flex) | Some(Display::InlineFlex));
+    let mut letter_scope = first_letter_scope::Scope::new(&collapsed, inherited);
     // Буквица `initial-letter` расшивается в плавающий узел ДО обтекания —
     // дальше её ведёт `wrap_floats` наравне с авторскими флоатами. В гибком
     // контейнере и сетке `::first-letter` не действует — там не трогаем.
@@ -8784,7 +8786,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     for (idx, n) in nodes.iter().enumerate() {
         if run_breaks.contains(&idx) && !pending.is_empty() {
             let taken = std::mem::take(&mut pending);
-            out.push(paint_inline_step7(paragraph_probed(&taken, inherited, opts)));
+            out.push(paint_inline_step7(letter_scope.paragraph(&taken, inherited, opts)));
         }
         let is_inline = match n {
             // Пробельный узел между инлайн-соседями — часть строки, а не
@@ -8947,7 +8949,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         }
         if !pending.is_empty() {
             let taken = std::mem::take(&mut pending);
-            out.push(paint_inline_step7(paragraph_probed(&taken, inherited, opts)));
+            out.push(paint_inline_step7(letter_scope.paragraph(&taken, inherited, opts)));
         }
         // Позиционированные с `z-index: auto` красятся В ПОРЯДКЕ ДЕРЕВА
         // (CSS 2.1 прил. E, шаг 8; Blink `paint_layer_paint_order_iterator.h`
@@ -8982,7 +8984,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             );
             // Ряд обтекания: текст рядом с плавающим блоком и остаток под ним.
             if e.tag == "kamin-float" {
-                out.push(float_flow(e, inherited, opts));
+                out.push(letter_scope.flow(&e.children, inherited, |s| float_flow(e, s, opts)));
                 continue;
             }
             if let Some(el) = scrollable(e, inherited, opts) {
@@ -10019,7 +10021,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         }
     }
     if !pending.is_empty() {
-        out.push(paint_inline_step7(paragraph_probed(&pending, inherited, opts)));
+        out.push(paint_inline_step7(letter_scope.paragraph(&pending, inherited, opts)));
     }
     // `text-box-trim` (css-inline-3 §4.2): у блочного контейнера срезается
     // блочно-начальная сторона ПЕРВОЙ отформатированной строки и

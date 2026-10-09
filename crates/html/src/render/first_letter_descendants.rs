@@ -18,7 +18,7 @@ pub(super) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
     for node in &mut nodes {
         match node {
             Node::Text(t) if blank_text(t) => continue,
-            Node::Element(e) if out_of_flow(&e.style) => continue,
+            Node::Element(e) if out_of_flow(&e.style) || e.tag == "::marker" => continue,
             Node::Element(e)
                 if block_level_in_flow(e)
                     && e.style.position.is_none()

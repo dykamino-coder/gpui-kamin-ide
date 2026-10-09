@@ -2643,6 +2643,8 @@ pub struct Computed {
     /// Живёт в стиле, а не в элементе, потому что абзац собирается из кусков
     /// уже без узла-родителя: до кусков доезжает только вычисленный стиль.
     pub first_letter: Option<Box<Computed>>,
+    /// Renderer metadata: marker text is outside first-letter selection.
+    pub first_letter_excluded: bool,
     /// Own declarations remain separate for fictitious inheritance in descendants.
     pub first_letter_own: Option<Box<Computed>>,
     /// Стиль первой строки абзаца (`::first-line`).
