@@ -2,7 +2,7 @@
 
 use crate::{Bounds, Pixels, Style, Window, point, px};
 
-pub(super) fn bounds(style: &Style, bounds: Bounds<Pixels>, window: &Window) -> Bounds<Pixels> {
+pub(crate) fn bounds(style: &Style, bounds: Bounds<Pixels>, window: &Window) -> Bounds<Pixels> {
     if !style.css_border_snap
         || style.border_widths.any(|l| !l.is_zero())
         || style.corner_radii.to_pixels(window.rem_size()).max() != Pixels::ZERO
@@ -19,7 +19,10 @@ pub(super) fn bounds(style: &Style, bounds: Bounds<Pixels>, window: &Window) -> 
         && c.abs() <= 1e-5
         && a.abs() > 1e-5
         && d.abs() > 1e-5
-        && ((a - 1.0).abs() >= 1e-5 || (d - 1.0).abs() >= 1e-5);
+        && ((a - 1.0).abs() >= 1e-5 || (d - 1.0).abs() >= 1e-5 || m.translation == [0.0, 0.0]);
+    // CSS solid fills snap their final device edges, including boxes moved
+    // after layout (anchor positioning). Snapping before that relocation
+    // leaves fractional device edges even when the transform is identity.
     // Diagonal reflections, including flattened 3D planes, preserve axes.
     // Signed axis permutations also preserve rectangles. They must snap both
     // transformed edges, rather than move an already-rounded local box.

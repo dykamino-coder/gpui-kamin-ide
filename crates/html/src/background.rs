@@ -30,8 +30,9 @@ use gpui::{AnyElement, Bounds, IntoElement, Pixels, RenderImage, Styled, px};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
-mod exact_layer;
+pub(crate) mod exact_layer;
 mod tile_positions;
+mod radius_lengths;
 #[cfg(test)]
 use tile_positions::tiling;
 
@@ -932,11 +933,7 @@ pub fn border_shape_outline_svg(
 /// нулём (`side()` в `render::grouped`).
 pub fn rrect_spec(c: &Computed, ring: Option<[f32; 4]>) -> String {
     let ell = c.radius_ell.unwrap_or([None; 4]);
-    let tok = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => format!("{v}"),
-        Some(Len::Pct(p)) => format!("{}%", p * 100.0),
-        _ => "0".to_string(),
-    };
+    let tok = radius_lengths::token;
     let radii = [c.radius.tl, c.radius.tr, c.radius.br, c.radius.bl];
     let mut out = String::from("rrect(");
     for (i, r) in radii.iter().enumerate() {
@@ -980,10 +977,7 @@ fn parse_rrect(args: &str, fw: f32, fh: f32, scale: f32) -> Option<Rrect> {
     // (css-backgrounds-3 §5.1); точки — CSS-точки, множатся на плотность.
     let mut vals = [0f32; 8];
     for (i, t) in toks[..8].iter().enumerate() {
-        vals[i] = match t.strip_suffix('%') {
-            Some(p) => p.parse::<f32>().ok()? / 100.0 * if i % 2 == 0 { fw } else { fh },
-            None => t.parse::<f32>().ok()? * scale,
-        };
+        vals[i] = radius_lengths::resolve(t, if i % 2 == 0 { fw } else { fh }, scale)?;
     }
     let mut k = [1f32; 4];
     for (i, t) in toks.iter().skip(8).enumerate() {
@@ -2813,7 +2807,13 @@ pub fn paint_tiles(
     // Отступ слоя от ВНУТРЕННЕГО края рамки: слой лежит внутри коробки и
     // меряется именно им, а `background-origin` может требовать другого края
     // (css-backgrounds-3 §3.6). Положительное значение вжимает внутрь.
+    // css-backgrounds-3 §3.6: «If background-attachment is fixed, this
+    // property has no effect» — the positioning area is the viewport itself
+    // (`background-origin-006`: content-box origin moved a fixed tile by the
+    // box's border and padding).
+    let fixed_area = c.bg_fixed == Some(true) && canvas.is_some();
     let inset = match c.bg_origin {
+        _ if fixed_area => [0.0; 4],
         Some(crate::computed::BgClip::BorderBox) => [
             -px_of(border.top),
             -px_of(border.right),
@@ -2845,16 +2845,21 @@ pub fn paint_tiles(
     // border-box по умолчанию заходит под рамку, content-box режется полем
     // (`origin-*`, `background-size-cover-00*`, `background-origin-007`).
     // Слой лежит в padding-box коробки.
+    // A fixed layer is positioned against the viewport but PAINTED in its
+    // own box (`canvas`): the clip area is measured from that box, exactly as
+    // for a scrolling layer (css-backgrounds-3 §3.7 still applies; the
+    // transparent dotted border of `background-origin-006` shows the tile).
+    let paint_base = if fixed_area { canvas.unwrap_or(bounds) } else { bounds };
     let paint_box = match c.bg_clip {
-        Some(crate::computed::BgClip::PaddingBox) | Some(crate::computed::BgClip::Text) => bounds,
+        Some(crate::computed::BgClip::PaddingBox) | Some(crate::computed::BgClip::Text) => paint_base,
         Some(crate::computed::BgClip::ContentBox) => Bounds {
             origin: gpui::point(
-                bounds.origin.x + px(px_of(c.padding.left)),
-                bounds.origin.y + px(px_of(c.padding.top)),
+                paint_base.origin.x + px(px_of(c.padding.left)),
+                paint_base.origin.y + px(px_of(c.padding.top)),
             ),
             size: gpui::size(
-                (bounds.size.width - px(px_of(c.padding.left) + px_of(c.padding.right))).max(px(0.0)),
-                (bounds.size.height - px(px_of(c.padding.top) + px_of(c.padding.bottom))).max(px(0.0)),
+                (paint_base.size.width - px(px_of(c.padding.left) + px_of(c.padding.right))).max(px(0.0)),
+                (paint_base.size.height - px(px_of(c.padding.top) + px_of(c.padding.bottom))).max(px(0.0)),
             ),
         },
         _ => {
@@ -2880,8 +2885,8 @@ pub fn paint_tiles(
                 ext(border.left, 3),
             );
             Bounds {
-                origin: gpui::point(bounds.origin.x - px(l), bounds.origin.y - px(t)),
-                size: gpui::size(bounds.size.width + px(l + r), bounds.size.height + px(t + b)),
+                origin: gpui::point(paint_base.origin.x - px(l), paint_base.origin.y - px(t)),
+                size: gpui::size(paint_base.size.width + px(l + r), paint_base.size.height + px(t + b)),
             }
         }
     };
@@ -2932,15 +2937,39 @@ pub fn paint_tiles(
         merge(tile.1, box_size.1, repeat.axis(false)),
     );
     // `round` меняет САМ размер плитки, поэтому считается до смещения.
+    let before = tile;
     let tile = (
         rounded(repeat.axis(true), tile.0, box_size.0),
         rounded(repeat.axis(false), tile.1, box_size.1),
     );
+    // css-backgrounds-3 §3.9, third step: `round` along one axis only with
+    // `auto` size along the other rescales that other axis so the original
+    // aspect ratio is restored (`background-size-029`: 52px auto + round
+    // repeat → 60×60, not 60×52).
+    let auto_axis = |horizontal: bool| match size {
+        BgSize::Auto => true,
+        BgSize::Fixed(w, h) => if horizontal { w.is_none() } else { h.is_none() },
+        _ => false,
+    };
+    let (round_x, round_y) = (
+        repeat.axis(true) == Tiling::Round,
+        repeat.axis(false) == Tiling::Round,
+    );
+    let tile = if round_x && !round_y && auto_axis(false) && before.0 > 0.0 {
+        (tile.0, tile.0 * before.1 / before.0)
+    } else if round_y && !round_x && auto_axis(true) && before.1 > 0.0 {
+        (tile.1 * before.0 / before.1, tile.1)
+    } else {
+        tile
+    };
     // Плитки МЕРЯЮТСЯ областью позиционирования, а КЛАДУТСЯ по всей краске:
     // у канваса это весь холст, и полоса `repeat-x` обязана выходить за поля
     // корня (`background-root-016`: «extending … to the left and right edges
     // of the page»).
-    let clip = sampling::snapped_clip(canvas.unwrap_or(paint_box), window);
+    let clip = sampling::snapped_clip(
+        if fixed_area { paint_box } else { canvas.unwrap_or(paint_box) },
+        window,
+    );
     let start = origin(pos, box_size, tile);
     let shift = (
         f64::from(f32::from(bounds.origin.x)) - f64::from(f32::from(clip.origin.x)),

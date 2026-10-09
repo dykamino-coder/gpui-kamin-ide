@@ -3360,7 +3360,13 @@ impl Window {
     pub fn paint_depth_context<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
         self.invalidator.debug_assert_paint();
         self.next_frame.scene.push_depth_context();
-        let result = f(self);
+        // Everything of the context is painted before it is sorted: a
+        // boundary recorded here keeps a pass-through placeholder inside
+        // (`paint_reopen`) from reopening an OUTER `PaintLast` collector,
+        // which painted a hoisted abspos of a `preserve-3d` box after the
+        // sorted planes (`3d-rendering-context-and-abspos`).
+        let result =
+            crate::elements::paint_last::hoist_boundary(|| f(self));
         self.next_frame.scene.pop_depth_context();
         result
     }

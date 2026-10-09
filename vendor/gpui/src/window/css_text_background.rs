@@ -30,9 +30,16 @@ impl Window {
             && bounds.size.height > px(0.0)
         {
             let exact = self.css_exact_bounds.map_or(bounds, |(_, exact)| exact);
+            // Opaque text uses the final fill device frame, including boxes
+            // placed after layout. Preserve the existing transformed policy.
+            let fill_bounds = if self.current_transformation() == TransformationMatrix::unit() {
+                crate::style::transformed_box::bounds(style, bounds, self)
+            } else {
+                bounds
+            };
             self.css_text_backgrounds.push((
                 exact,
-                exact.origin - bounds.origin,
+                exact.origin - fill_bounds.origin,
                 self.current_transformation(),
             ));
         }

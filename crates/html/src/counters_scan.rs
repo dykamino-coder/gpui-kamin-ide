@@ -100,14 +100,17 @@ fn pseudo_style(
     let mut style = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars);
     crate::dom::inherit_counter_decls(&mut style, Some(&me.counter_style));
     // Без содержимого коробки нет, а значит нет и счётчиков.
-    (style.content.is_some() && style.display != Some(Display::None)).then_some(style)
+    (crate::dom::host_content(&style, me).is_some() && style.display != Some(Display::None))
+        .then_some(style)
 }
 
 impl Scan<'_> {
     /// Шаг алгоритма для одного узла: сумма отрицаний увеличений, последний
     /// ненулевой шаг и обрыв на `counter-set`.
     fn step(&mut self, style: &Computed, is_item: bool) {
-        if style.display == Some(Display::Contents) {
+        // CSS Lists 3 §4.4.2: the first counter-set ends the scan, including
+        // that element's pseudo-elements and ancestors' trailing pseudos.
+        if self.done || style.display == Some(Display::Contents) {
             return;
         }
         let neg = match decl_value(&style.counter_increment, self.name, 1) {

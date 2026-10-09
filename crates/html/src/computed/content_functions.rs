@@ -99,7 +99,16 @@ pub(crate) fn parse_content(raw: &str) -> Option<Vec<ContentItem>> {
                 arg(1)?,
                 arg(2).unwrap_or_else(|| "decimal".to_string()),
             )),
-            "attr" if args.len() == 1 => out.push(ContentItem::Attr(arg(0)?)),
+            "attr" => {
+                let body = &raw[at + open + 1..close];
+                let comma = super::top_level_comma(body);
+                let head = comma.map_or(body, |i| &body[..i]);
+                let (name, explicit_type) = attr_name(head)?;
+                let fallback = comma
+                    .map(|i| body[i + 1..].trim().to_string())
+                    .or_else(|| (!explicit_type).then(|| "\"\"".to_string()));
+                out.push(ContentItem::Attr(name, fallback));
+            }
             "url" if args.len() <= 1 => out.push(ContentItem::Image(arg(0).unwrap_or_default())),
             // ПРОБОВАЛИ И ОТКАТИЛИ: принимать `url()` (§12.2 объявляет его
             // действительным) и класть в псевдоэлемент синтетический `<img>`.
@@ -113,6 +122,35 @@ pub(crate) fn parse_content(raw: &str) -> Option<Vec<ContentItem>> {
         at = close + 1;
     }
     (!out.is_empty()).then_some(out)
+}
+
+/// CSS Values 5 §8.7: omitting the type and explicit raw-string both insert
+/// the attribute verbatim. The type keyword is not part of its name.
+fn attr_name(head: &str) -> Option<(String, bool)> {
+    let head = head.trim();
+    let ident = crate::css::selector_tokens::ident;
+    let attr_ident = |raw: &str| {
+        ident(raw)
+            || raw
+                .split_once('|')
+                .is_some_and(|(prefix, local)| (prefix.is_empty() || ident(prefix)) && ident(local))
+    };
+    if attr_ident(head) {
+        return Some((crate::css::unescape(head), false));
+    }
+    // A hex escape may consume whitespace within either identifier. Only
+    // split where both sides are complete identifier tokens.
+    head.char_indices().find_map(|(at, ch)| {
+        if !matches!(ch, ' ' | '\t' | '\n' | '\r' | '\u{c}') {
+            return None;
+        }
+        let name = head[..at].trim_end();
+        let ty = head[at..].trim_start();
+        (attr_ident(name)
+            && ident(ty)
+            && crate::css::unescape(ty).eq_ignore_ascii_case("raw-string"))
+        .then(|| (crate::css::unescape(name), true))
+    })
 }
 
 /// Индекс парной закрывающей скобки от места ПОСЛЕ открывающей.

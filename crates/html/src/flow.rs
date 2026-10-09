@@ -2410,7 +2410,7 @@ impl ColumnStack {
                         continue;
                     }
                 }
-                return (target, slots);
+                return (target, Self::avoid_at_cap(kids, target, limit, slots));
             }
             // Недолаза не было ни у одной коробки: `shortage` так и остался
             // сторожевым `f32::MAX`. Значит лишние колонки родились
@@ -2441,13 +2441,28 @@ impl ColumnStack {
                 return (target, slots);
             }
             if cap.is_some_and(|c| target >= c) {
-                return (target, slots);
+                return (target, Self::avoid_at_cap(kids, target, limit, slots));
             }
             // Как blink: расти ровно на минимально необходимое.
             target = clamp(target + if shortage > 0.0 { shortage } else { 1.0 });
         }
         let (_, _, slots) = Self::fill(kids, target, limit, false);
         (target, slots)
+    }
+
+    /// Колонки упёрлись в потолок (`Rows::cap`, заданная высота коробки), а
+    /// план рвёт запрещённую границу: выше расти нельзя, но окончательная
+    /// укладка в колонки этой высоты — обычная фрагментация со своими ранними
+    /// разрывами (css-break-3 §4.3 правило 1; Blink балансирует высоту
+    /// `CalculateBalancedColumnBlockSize`, а затем раскладывает содержимое
+    /// `LayoutRow` той же `block_layout_algorithm` с `early_break_`,
+    /// `fragmentation_utils.cc:1250`). `flex-container-fragmentation-003/004`:
+    /// 50 + 50 + 300 при `break-before: avoid` у третьей — разрыв после первой.
+    fn avoid_at_cap(kids: &[Kid], target: f32, limit: usize, slots: Vec<Frag>) -> Vec<Frag> {
+        if Self::first_avoid_violation(kids, &slots).is_none() {
+            return slots;
+        }
+        Self::fill_avoiding(kids, &|_| target, limit, false).2
     }
 
     /// Пробег линий колонок между спаннерами: первая линия высотой `first`

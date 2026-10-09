@@ -32,6 +32,7 @@ mod inline_floats;
 mod float_atom;
 use float_atom::band_atom;
 mod first_letter_descendants;
+mod first_line_descendants;
 mod inline_splits;
 use inline_splits::split_block_in_inline;
 mod native_paragraph_route;
@@ -50,10 +51,13 @@ use animation_live::animated;
 mod table_roles;
 mod table_border_widths;
 mod table_spanning_size;
+mod table_clipped_content;
 mod replaced_used_style;
 mod replaced_holder_ratio;
 mod replaced_content;
 mod svg_percentage_size;
+mod list_item;
+mod list_container;
 mod available_width;
 use replaced_content::svg_replaced;
 mod ratio_basis;
@@ -131,6 +135,40 @@ fn styled_div(e: &Element) -> gpui::Div {
     styled_div_with(e, &e.style)
 }
 
+/// Fill `outer` minus `hole` (both `(left, top, right, bottom)` in window
+/// points) with up to four rectangles whose edges snap to the device grid —
+/// the shape of a sharp, square box shadow (css-backgrounds-3 §7.1). An empty
+/// or disjoint hole leaves `outer` whole.
+fn paint_rect_minus(
+    window: &mut gpui::Window,
+    (ol, ot, or, ob): (f32, f32, f32, f32),
+    (hl, ht, hr, hb): (f32, f32, f32, f32),
+    fill: gpui::Hsla,
+) {
+    let sf = window.scale_factor();
+    let snap = |v: f32| (v * sf).round() / sf;
+    let mut paint = |x0: f32, y0: f32, x1: f32, y1: f32| {
+        let (x0, y0, x1, y1) = (snap(x0), snap(y0), snap(x1), snap(y1));
+        if x1 > x0 && y1 > y0 {
+            window.paint_quad(gpui::fill(
+                gpui::Bounds::from_corners(gpui::point(px(x0), px(y0)), gpui::point(px(x1), px(y1))),
+                fill,
+            ));
+        }
+    };
+    if hl >= hr || ht >= hb {
+        paint(ol, ot, or, ob);
+        return;
+    }
+    // Above and below the hole: full width.
+    paint(ol, ot, or, ht.min(ob));
+    paint(ol, hb.max(ot), or, ob);
+    // Beside the hole, within its rows.
+    let (y0, y1) = (ht.max(ot), hb.min(ob));
+    paint(ol, y0, hl.min(or), y1);
+    paint(hr.max(ol), y0, or, y1);
+}
+
 /// То же, но со стилем, уже разрешённым по родителю.
 ///
 /// Наследование даёт две вещи: текстовые свойства и разрешённые `em` — без
@@ -148,7 +186,7 @@ fn styled_div(e: &Element) -> gpui::Div {
 /// вместо него всю коробку — заметно хуже, чем не красить (тесты на него
 /// прямо пишут «no red» про залитый прямоугольник).
 fn clip_layer(c: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
-    let clip = c.bg_clip?;
+    let clip = c.color_clip()?;
     if c.gradient.is_none() && c.background.is_none() {
         return None;
     }
@@ -403,7 +441,8 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     // разлёт. Радиус фигуры — по спеке (css-backgrounds-3 §7.1): нулевой
     // остаётся острым, иначе растёт на разлёт; доля считается от размера
     // раздутой фигуры (известные ширина и высота).
-    for sh in &c.shadows {
+    // css-backgrounds-3 §7.1: «The first shadow is on top» — paint bottom-up.
+    for sh in c.shadows.iter().rev() {
         // Тень без цвета помечена отрицательной альфой и берёт `color`
         // (css-backgrounds-3 §7.1) — как в `apply::shadow_colour`.
         // У `border-shape` тени повторяют фигуру — растром под группой
@@ -461,6 +500,41 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
             _ => 0.0,
         };
         let (bt, br, bb, bl) = (side(bw.top), side(bw.right), side(bw.bottom), side(bw.left));
+        let square = [c.radius.tl, c.radius.tr, c.radius.br, c.radius.bl]
+            .iter()
+            .all(|r| matches!(r, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0))));
+        if square && c.radius_ell.is_none() && c.corner_shape.is_none() {
+            // A square sharp shadow is «the shadow rect minus the border box»
+            // (css-backgrounds-3 §7.1) — up to four plain rectangles. They are
+            // painted as FILLS, the same primitive as a box background, so a
+            // translucent shadow blends exactly like the equivalent colored
+            // box (`box-shadow-039`: the border-ring primitive gave 128 where
+            // a 50% fill gives 127), and any offset larger than the spread is
+            // covered too.
+            let (dx, dy) = (sh.x, sh.y);
+            let fill = colour.to_hsla();
+            out.push(
+                crate::background::exact_layer::ExactLayer::inset(
+                    [-bt, -br, -bb, -bl],
+                    move |r: gpui::Bounds<gpui::Pixels>, window: &mut gpui::Window| {
+                        // Blink offsets the UNSNAPPED border box and snaps
+                        // the result (a 72.5-device-pixel top with a -62.5
+                        // offset lands on row 10, not 11).
+                        let r = crate::background::exact_layer::positioning(r);
+                        // `r` is the box's unrounded border box; the shadow
+                        // rect is it moved by the offset and grown by the
+                        // spread (§7.1). Edges snap to the device grid.
+                        let (bl, bt) = (f32::from(r.left()), f32::from(r.top()));
+                        let (br, bb) = (f32::from(r.right()), f32::from(r.bottom()));
+                        let (rl, rt) = (bl + dx - spread, bt + dy - spread);
+                        let (rr, rb) = (br + dx + spread, bb + dy + spread);
+                        paint_rect_minus(window, (rl, rt, rr, rb), (bl, bt, br, bb), fill);
+                    },
+                )
+                .into_any_element(),
+            );
+            continue;
+        }
         let mut ring = div()
             .absolute()
             .top(px(sh.y - spread - bt))
@@ -542,7 +616,7 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     // краску несёт рамка толщиной «разлёт ± смещение»: её внутренний край и
     // есть фигура. Слой — после плиток фона и до рамки: «inner shadows …
     // immediately above the background … (below the borders and border image)».
-    for sh in &c.inset_shadows {
+    for sh in c.inset_shadows.iter().rev() {
         // У `border-shape` внутренняя тень — растр по внутреннему контуру
         // (слой фигуры ниже), кольцо здесь было бы прямоугольным.
         if sh.blur > 0.0 || sh.color.a == 0.0 || c.border_shape.is_some() {
@@ -566,6 +640,37 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
             (s + sh.x).max(0.0),
         ];
         if widths.iter().all(|v| *v <= 0.0) {
+            continue;
+        }
+        let square = [c.radius.tl, c.radius.tr, c.radius.br, c.radius.bl]
+            .iter()
+            .all(|r| matches!(r, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0))));
+        if square && c.radius_ell.is_none() && c.corner_shape.is_none() {
+            // Square inner shadow = padding box minus the padding box moved by
+            // the offset and shrunk by the spread (css-backgrounds-3 §7.1),
+            // from the unrounded padding box, painted as fills like the outer
+            // one (`box-shadow-041`: the ring's inner edge came from the
+            // snapped box and missed a device column).
+            let (dx, dy) = (sh.x, sh.y);
+            let fill = colour.to_hsla();
+            out.push(
+                crate::background::exact_layer::ExactLayer::inset(
+                    [0.0; 4],
+                    move |r: gpui::Bounds<gpui::Pixels>, window: &mut gpui::Window| {
+                        let r = crate::background::exact_layer::positioning(r);
+                        let (pl, pt) = (f32::from(r.left()), f32::from(r.top()));
+                        let (pr, pb) = (f32::from(r.right()), f32::from(r.bottom()));
+                        let hole = (
+                            (pl + dx + s).max(pl),
+                            (pt + dy + s).max(pt),
+                            (pr + dx - s).min(pr),
+                            (pb + dy - s).min(pb),
+                        );
+                        paint_rect_minus(window, (pl, pt, pr, pb), hole, fill);
+                    },
+                )
+                .into_any_element(),
+            );
             continue;
         }
         let mut ring = div()
@@ -1584,7 +1689,7 @@ pub fn render_paged_select(
     let inline_level = |n: &Node| match n {
         Node::Text(_) => true,
         Node::Element(e) => {
-            e.inline
+            (e.inline || inline_display(e))
                 && !out_of_flow(&e.style)
                 && !matches!(
                     e.style.display,
@@ -1706,13 +1811,33 @@ pub fn render_paged_select(
                 edge_break(e, true),
                 Some(page_names(e, &root_page)),
             ),
-            Node::Element(e) if !e.inline => (
+            Node::Element(e) if !e.inline && !inline_display(e) => (
                 page_monolith(e),
                 edge_break(e, false),
                 edge_break(e, true),
                 None,
             ),
             _ => (false, false, false, Some((root_page.clone(), root_page.clone()))),
+        };
+        // Группа флоата: сам флоат имени не передаёт (§named pages п. 2), но
+        // поточные коробки класса A в группе — передают конец — у последней (`page-name-000-print`: флоат, `clear`-блок
+        // страницы `foo` и следом блок страницы `bar` — разрыв перед `bar`).
+        let names = match (&names, n) {
+            (None, Node::Element(e)) if floated(n) && !class_a_box(e) => {
+                let named: Vec<(String, String)> = group
+                    .iter()
+                    .filter_map(|g| match g {
+                        Node::Element(k) if class_a_box(k) => Some(page_names(k, &root_page)),
+                        _ => None,
+                    })
+                    .collect();
+                // Начало группы — продолжение предыдущей: разрыв перед флоатом
+                // увёл бы и его (`page-name-float-002-print`: флоат `b` остаётся
+                // на листе `a`).
+                let start = prev_end.clone().unwrap_or_else(|| root_page.clone());
+                named.last().map(|l| (start, l.1.clone()))
+            }
+            _ => names,
         };
         // Группа из нескольких узлов монолитом не бывает: её режет край листа.
         let monolith = monolith && group.iter().filter(|g| !is_blank(g)).count() == 1;
@@ -4133,7 +4258,9 @@ fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     let page_kid: Vec<Option<(String, String)>> = kids
         .iter()
         .map(|n| match n {
-            Node::Element(k) if cx.paged && class_a_box(k) => Some(page_names(k, "")),
+            Node::Element(k) if cx.paged && !item_container(c) && class_a_box(k) => {
+                Some(page_names(k, ""))
+            }
             _ => None,
         })
         .collect();
@@ -6182,7 +6309,7 @@ fn grow_grid_track(c: &mut Element, at: f32, grow: f32) -> bool {
 /// блочным тут признаётся по `display` (`page-name-img-004`: иначе картинка
 /// шла анонимным блоком с именем корня и рвала страницу).
 fn class_a_box(e: &Element) -> bool {
-    let blocky = !e.inline
+    let blocky = (!e.inline && !inline_display(e))
         || matches!(
             e.style.display,
             Some(Display::Block)
@@ -6198,6 +6325,42 @@ fn class_a_box(e: &Element) -> bool {
             e.style.display,
             Some(Display::None) | Some(Display::Contents)
         )
+}
+
+/// Флекс- и грид-контейнер: его дети — элементы раскладки, не блоки потока.
+/// 'page' применяется только к коробкам с точками разрыва класса A
+/// (css-page-3 §page-prop «Applies to: boxes that create class A break
+/// points»), и имя элемента флекса/грида контейнеру не передаётся и
+/// разрыва между элементами не ставит (`page-name-flex-001/002-print`:
+/// эталон без разрывов). Внутри элемента — обычный блочный поток
+/// (`page-name-flex-004-print`).
+fn item_container(e: &Element) -> bool {
+    matches!(
+        e.style.display,
+        Some(Display::Flex)
+            | Some(Display::InlineFlex)
+            | Some(Display::Grid)
+            | Some(Display::InlineGrid)
+    )
+}
+
+/// Строчный уровень по `display` у элемента с блочным тегом: `<div
+/// style="display: inline-block">` стоит в строке и точки класса A не даёт
+/// (css-display-3 §inner-outer; `page-name-inline-block-003-print`: два
+/// таких `div` с разными `page` — одна строка, без разрыва).
+fn inline_display(e: &Element) -> bool {
+    // `display: inline` у блочного тега хранится как `InlineBlock` с меткой
+    // `inline_display`: блоки внутри такого строчного разрывают его
+    // (block-in-inline), и их разрывы — точки класса A
+    // (`css-break/block-in-inline-015-print`). Его не трогаем.
+    e.style.inline_display != Some(true)
+        && matches!(
+        e.style.display,
+        Some(Display::InlineBlock)
+            | Some(Display::InlineFlex)
+            | Some(Display::InlineGrid)
+            | Some(Display::InlineTable)
+    )
 }
 
 /// Табличная коробка — по тегу или по `display`.
@@ -7145,7 +7308,9 @@ fn page_names(e: &Element, inherited: &str) -> (String, String) {
             || out_of_flow(&k.style) || k.style.float.unwrap_or(0) != 0))
         .collect();
     let via = |n: Option<&&Node>| match n {
-        Some(Node::Element(k)) if class_a_box(k) => Some(page_names(k, &used)),
+        Some(Node::Element(k)) if !item_container(e) && class_a_box(k) => {
+            Some(page_names(k, &used))
+        }
         _ => None,
     };
     let start = via(boxes.first()).map(|p| p.0).unwrap_or_else(|| used.clone());
@@ -7184,9 +7349,45 @@ fn renames_inside(e: &Element) -> bool {
             _ => None,
         })
         .collect();
-    kids.windows(2)
-        .any(|w| page_names(w[0], "").1 != page_names(w[1], "").0)
+    (!item_container(e)
+        && kids
+            .windows(2)
+            .any(|w| page_names(w[0], "").1 != page_names(w[1], "").0))
         || kids.iter().any(|k| renames_inside(k))
+}
+
+/// Есть ли внутри коробки принудительный разрыв МЕЖДУ соседями класса A
+/// (css-break-4 §3.1 `break-before`/`break-after` не у крайнего ребёнка;
+/// крайний передаёт разрыв самой коробке, `edge_break`) — на любой глубине
+/// блочного потока. Мера коробки с текстом неизвестна (`shape_full` —
+/// `None`), и разрыв внутри такого ребёнка стопки иначе терялся
+/// (`page-name-propagated-002-print-ref`: `break-before: page` у второго
+/// ребёнка обёртки).
+fn breaks_inside(e: &Element) -> bool {
+    // Только блочный поток: внутри таблицы разрыв режет ряды и группы
+    // (`rowgroup-page-break-inside-avoid-5-print-ref`: `thead { break-after }`
+    // — таблица не обёртка, снимать её нельзя).
+    let table_part = matches!(
+        e.tag.as_str(),
+        "table" | "thead" | "tbody" | "tfoot" | "tr" | "td" | "th" | "caption" | "colgroup"
+    );
+    if table_part || table_box(e) || item_container(e) || forced_opaque(e) {
+        return false;
+    }
+    let kids: Vec<&Element> = e
+        .children
+        .iter()
+        .filter_map(|n| match n {
+            Node::Element(k) if class_a_box(k) => Some(k),
+            _ => None,
+        })
+        .collect();
+    let n = kids.len();
+    kids.iter().enumerate().any(|(i, k)| {
+        (i > 0 && k.style.break_before_force)
+            || (i + 1 < n && k.style.break_after_force)
+            || breaks_inside(k)
+    })
 }
 
 /// Обёртка без собственной коробки на листе: блок без полей, рамок,
@@ -7240,7 +7441,7 @@ fn hoist_named_wrappers(nodes: &mut Vec<Node>) {
         let mut out = Vec::with_capacity(nodes.len());
         for n in std::mem::take(nodes) {
             match n {
-                Node::Element(e) if plain_wrapper(&e) && renames_inside(&e) => {
+                Node::Element(e) if plain_wrapper(&e) && (renames_inside(&e) || breaks_inside(&e)) => {
                     changed = true;
                     out.extend(e.children);
                 }
@@ -8220,7 +8421,10 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         collapsed
     } else {
         initial_letter_float(
-            first_letter_descendants::route(collapsed, inherited),
+            first_letter_descendants::route(
+                first_line_descendants::route(collapsed, inherited),
+                inherited,
+            ),
             inherited,
             opts,
         )
@@ -9599,6 +9803,15 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 } else {
                     built
                 };
+                // A positive `z-index` orders the box above the auto/0
+                // positioned boxes (CSS 2.1 §9.9 steps 8–9), as on the
+                // CB-layer path above: `scalex` — a static-position abspos
+                // with `z-index: 11` painted under its `z-index: 10` sibling.
+                let built = if !below && e.style.z_index.is_some_and(|z| z > 0) {
+                    layered(built, &e.style, inherited, layer_ok, under_tf)
+                } else {
+                    built
+                };
                 // Абсолют на статической позиции — тоже шаг 8: в собирателе
                 // он встаёт среди позиционированных по ключу, а не поверх
                 // всех соседей контейнера.
@@ -9787,7 +10000,14 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     // Только прозрачность: у `contain`/`will-change`/
                     // `transform` положительный `z-index` потомков держится
                     // на краске на месте (`contain-paint-stacking-context-*`).
-                    && e.style.opacity.is_some_and(|o| o < 1.0)
+                    && (e.style.opacity.is_some_and(|o| o < 1.0)
+                        // css-transforms-1 §transform-rendering: a transformed
+                        // box establishes a stacking context and is painted
+                        // as a positioned `z-index: 0` layer (Blink puts it in
+                        // the z-order list with 0): `perspective-zero` — a
+                        // static transformed box after a `relative` one.
+                        || e.style.transform.is_some()
+                        || e.style.translate.is_some())
                     && !e.style.z_index.is_some_and(|z| z > 0 && z_index_applies(&e.style, inherited))
                     && !matches!(e.tag.as_str(), "html" | "body")
                     && paint_last_ok(e, &nodes[idx + 1..]));
@@ -17587,6 +17807,15 @@ fn paragraph_pieces_routed(
         let in_inline_cb = crate::inline::take_atom_cb();
         let svg_sized = svg_percentage_size::resolve(e, inherited);
         let e = svg_sized.as_ref().unwrap_or(e);
+        // CSS 2.1 sections 10.3.8/10.6.5 use the replaced default size
+        // before solving absolute insets; an empty frame is still replaced.
+        let iframe_sized = (replaced_content::default_iframe(e)
+            && matches!(
+                e.style.position,
+                Some(crate::computed::Position::Absolute | crate::computed::Position::Fixed)
+            ))
+            .then(|| replaced_content::empty_iframe_size(e, inherited, opts.viewport));
+        let e = iframe_sized.as_ref().unwrap_or(e);
         // Абсолютный элемент на статической позиции ВНУТРИ строки — кусок вне
         // потока: место в строке он не занимает, поэтому абзац остаётся
         // текстовым и не теряет пробелы (`line-breaking-018`).
@@ -19053,6 +19282,9 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
             }
             let built = if e.tag == "svg" {
                 crate::svg::element(&copy).unwrap_or_else(|| image(&copy))
+            } else if replaced_content::default_iframe(e) {
+                // The holder owns the CSS box; empty content paints no second border.
+                div().w_0().h_0().flex_shrink_0().into_any_element()
             } else {
                 image(&copy)
             };
@@ -19325,21 +19557,9 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                 Some(atom_base_font(inherited, opts)),
             ))
         }
-        // ЗАМЕРЕНО И ОТКАЧЕНО (04.09): кадру без пригодного `src` давать
-        // замещаемую коробку 300×150 (CSS 2.2 §10.3.2) или по атрибутам.
-        // Срез из 116 пар с `<iframe>`: 83 -> 73, приобретено 2
-        // (`flexbox-basic-iframe-horiz-001`, `stretch-anonymous-block-001`),
-        // потеряно 12 — `inline-block-replaced-height-004/005/007`,
-        // `inline-replaced-height-004/005/007` уходят в «красное видно»,
-        // `contain-size-replaced-003a..d` 0.26 -> 1.42. Пустая коробка кадра
-        // ломает высоту строки у соседей: замещаемому нужен ещё и правильный
-        // вклад в строку, а не только размер.
-        "iframe" => {
-            if let Some(el) = iframe(e, opts) {
-                return Some(el);
-            }
-            None
-        }
+        "iframe" => Some(iframe(e, opts).unwrap_or_else(|| {
+            replaced_content::empty_iframe(e, inherited, opts.viewport)
+        })),
         "svg" => {
             // Рисунок без собственного размера — stretch-fit от содержащего
             // блока (`svg::stretch_fit`): ширина родителя, когда она в
@@ -20451,6 +20671,14 @@ fn has_own_box(c: &Computed, font_px: f32) -> bool {
     // `div` с рамкой уходил в коробку — с вертикальными полями и рамкой
     // ВНУТРИ строки (`margin-top-applies-to-008`, §10.6.1: вертикальные
     // поля строчной коробки на строку не действуют).
+    // Graphical effects of the inline box (css-masking-1 §1: `clip-path` and
+    // `mask` apply to all elements; css-color-4 §opacity) act on everything
+    // the box paints, its border and background included. A text run applies
+    // none of them, so the box is needed even when the run could paint the
+    // border itself (`clip-path-inline-006`: the red border stayed unclipped).
+    if c.opacity.is_some() || c.mask_image.is_some() {
+        return true;
+    }
     let inline_level = c.display.is_none() || c.inline_display == Some(true);
     if inline_level
         && (crate::inline::uniform_border(c, font_px).is_some()
@@ -21190,6 +21418,17 @@ fn px_of2(l: &Option<Len>) -> Option<f32> {
     }
 }
 
+/// `inset()`/`rect()`/`xywh()` with a `round` radius in points: the group
+/// buffer rounds the clip rectangle (css-shapes-1 §basic-shape-rect);
+/// percentages resolve against the reference box at paint time.
+pub(crate) fn rounded_rect_clip(c: &Computed) -> bool {
+    matches!(c.clip_round_len, Some(Len::Px(v) | Len::Pct(v)) if v > 0.0)
+        && (c.clip_inset.is_some()
+            || c.clip_edges.is_some()
+            || c.clip_xywh.is_some()
+            || c.clip_polygon.is_some())
+}
+
 /// Отрисовать поддерево в отдельный буфер, когда эффекту нужна готовая
 /// картинка целиком.
 ///
@@ -21490,6 +21729,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     wrapper.mask_fit = c.mask_fit.unwrap_or(0);
     wrapper.mask_no_repeat = c.mask_no_repeat.unwrap_or((false, false));
     wrapper.mask_repeat_list = c.mask_repeat_list.clone().unwrap_or_default();
+    wrapper.mask_repeat_modes = c.mask_repeat_modes.clone().unwrap_or_default();
     wrapper.mask_luminance = c.mask_luminance == Some(true);
     wrapper.mask_alpha_mode = c.mask_alpha_mode == Some(true);
     wrapper.mask_pos = c.mask_pos;
@@ -21503,6 +21743,9 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     wrapper.clip_inset = clip_inset;
     wrapper.clip_edges = c.clip_edges;
     wrapper.clip_xywh = c.clip_xywh;
+    if rounded_rect_clip(c) {
+        wrapper.clip_round = c.clip_round_len;
+    }
     // `clip`/`mask-clip` живут в системе координат элемента ДО трансформа, а
     // трансформ рисуется ВНУТРИ буфера группы — коробка клипа обязана ехать
     // вместе (clip-transform-order: сдвинутый рисунок резался по старому
@@ -21582,6 +21825,17 @@ fn flattens_3d(c: &Computed) -> bool {
 }
 
 fn transformed(el: AnyElement, c: &Computed, parent: &Computed) -> AnyElement {
+    transformed_with(el, c, parent, None)
+}
+
+/// `transformed` with a shared reference box (`interact::Transformed::ref_box`):
+/// a table row or row group transform spread over its cells.
+fn transformed_with(
+    el: AnyElement,
+    c: &Computed,
+    parent: &Computed,
+    ref_box: Option<crate::interact::RefBox>,
+) -> AnyElement {
     // `transform: inherit` / `transform-origin: inherit` (css-cascade-4
     // §inherit: «the property's specified and computed values are the
     // inherited value»). Разбор ставит только бит (computed.rs:6535), а
@@ -21626,6 +21880,7 @@ fn transformed(el: AnyElement, c: &Computed, parent: &Computed) -> AnyElement {
         return el;
     }
     let mut wrapper = crate::interact::Transformed::new(el);
+    wrapper.ref_box = ref_box;
     wrapper.under_3d = under_3d;
     wrapper.frame_3d = if keeps_3d { c.frame_3d.clone() } else { None };
     // Перспектива РОДИТЕЛЯ читается объёмным путём (css-transforms-2
@@ -22249,6 +22504,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // Высота ряда от внешней колонки — только ЭТОМУ элементу (`flow::OUTER_ROW`).
     let outer_row = crate::flow::take_outer_row();
     let mut merged = inline::inherit(inherited, &e.style);
+    list_item::inherited_style(e, inherited, &mut merged);
     // Якорный шаг: ключи реестров кадра (свой `node_id` для содержащего
     // блока детей, порядок сборки, ключ клетки) и размеры от якоря —
     // `anchor-size()`, растяжка в клетке `position-area` — из реестра
@@ -22453,6 +22709,17 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         None
     };
     match e.tag.as_str() {
+        // CSS Lists 3 §2: a block list item generates its own marker even
+        // when its parent is an ordinary block rather than a list container.
+        _ if (e.style.display == Some(Display::ListItem)
+            || (e.tag == "li" && e.style.display.is_none()))
+            && !matches!(
+                e.tag.as_str(),
+                "img" | "svg" | "embed" | "object" | "video" | "canvas" | "iframe"
+            ) =>
+        {
+            list_item::render_with_style(e, inherited, &merged, opts)
+        }
         // `image-orientation` НАСЛЕДУЕТСЯ (css-images-3 §5.4): слитый стиль
         // его уже несёт, а копия для замещаемой коробки — нет. Без переноса
         // блочная картинка под `body { image-orientation: none }` всё равно
@@ -22621,7 +22888,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         }
         // Список с заданной раскладкой — это уже не список, а контейнер:
         // на `ul` верстают навигацию и наборы чипов.
-        "ul" | "ol" if e.style.display.is_none() => list(e, &merged, opts),
+        "ul" | "ol" if e.style.display.is_none() => list_container::render(e, &merged, opts),
         // `white-space: pre*` значим не меньше тега: переводы строк сохраняет
         // именно он, и на `<div style="white-space: pre">` разметка обязана
         // вести себя так же, как на `<pre>`.
@@ -25230,16 +25497,6 @@ thread_local! {
     static IFRAME_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
-/// ПРОБОВАЛИ И ОТКАТИЛИ: считать `<iframe>` БЕЗ адреса замещаемой коробкой
-/// 300×150 (§10.3.2, §10.6.2). Замерено по семьям *replaced*, positioning/*,
-/// normal-flow/*, *float*: приобретено 0, ПОТЕРЯНО 13 — все тринадцать ушли
-/// в «красное видно». Пустая коробка умолчания встаёт поверх зелёной и
-/// открывает красную подложку; этим семьям нужен не размер пустого кадра, а
-/// доля от содержащего блока.
-///
-/// `<iframe>`: вложенный документ со своими стилями и областью просмотра
-/// размером с коробку. Содержимое читается с диска (стенд переписывает
-/// `src` в `file:///...`); без файла остаётся запасной текст тега.
 /// `<object>`, чей `data` — ДОКУМЕНТ, а не картинка (HTML §4.8.7: сначала
 /// атрибут `type`, иначе по расширению адреса). Гейт нарочно узкий: `.svg`,
 /// `image/*` и растры остаются на пути картинки (css-images
@@ -26240,32 +26497,15 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                 }
             }
         }
-        // CSS-умолчание для замещаемого содержимого — заполнить коробку, но
-        // держится оно на СОБСТВЕННОМ соотношении сторон картинки: заданная
-        // одна сторона задаёт вторую. Соотношения мы до загрузки не знаем,
-        // поэтому вторая сторона остаётся своей, и заполнение растягивало бы
-        // рисунок в чужой прямоугольник (замерено: `flexbox-min-width-auto`
-        // ушёл в минус шестью парами). Вписывание в этих условиях ближе.
+        // CSS Images 3 §4.5: object-fit initially fills the content box.
+        // Intrinsic sizing above already preserves the natural ratio. Applying
+        // contain again to the snapped box introduces unintended letterboxing.
         image = match e.style.object_fit.as_deref() {
             Some("cover") => image.object_fit(gpui::ObjectFit::Cover),
             Some("contain") => image.object_fit(gpui::ObjectFit::Contain),
-            Some("fill") => image.object_fit(gpui::ObjectFit::Fill),
             Some("scale-down") => image.object_fit(gpui::ObjectFit::ScaleDown),
             Some("none") => image.object_fit(gpui::ObjectFit::None),
-            // Обе стороны заданы — умолчание CSS: ЗАПОЛНИТЬ коробку, даже с
-            // искажением (`object-fit: fill`). Вписывание оставлено случаю с
-            // одной стороной: там вторая держится на собственном соотношении
-            // рисунка (см. замер выше).
-            _ if e.style.width.is_some() && e.style.height.is_some() => {
-                image.object_fit(gpui::ObjectFit::Fill)
-            }
-            // Заявленное `aspect-ratio` — preferred aspect ratio КОРОБКИ
-            // (css-sizing-4 §5.1): вторая сторона уже посчитана из него, и
-            // рисунок заполняет коробку (`object-fit: fill` по умолчанию,
-            // css-images-3 §5.2), а не вписывается по своему соотношению
-            // (`replaced-element-0*`, `flex-aspect-ratio-0*`).
-            _ if e.style.aspect_ratio.is_some() => image.object_fit(gpui::ObjectFit::Fill),
-            _ => image.object_fit(gpui::ObjectFit::Contain),
+            _ => image.object_fit(gpui::ObjectFit::Fill),
         };
         let mut d = match узкая {
             Some((w, h)) => d.w(px(w + sub_w)).h(px(h + sub_h)),
@@ -26293,235 +26533,6 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             .unwrap_or_else(|| "[изображение]".into()),
     ))
     .into_any_element()
-}
-
-/// Список: маркер рисуем сами — `list-style` в GPUI нет.
-
-/// Пункт списка не сжимается, как и любой блок потока.
-///
-/// `blocks()` ставит `flex-shrink: 0` каждому ребёнку потока (умолчание GPUI —
-/// 1.0), а строки списка строятся мимо него, напрямую. В колонке нулевой
-/// высоты обе строки сжимались до автоминимума: пункт высотой 100 выходил
-/// двадцатью точками (`flex-box-wrap-ref`).
-///
-/// Список со СВОИМ гибким или сеточным видом — исключение: его пункты
-/// настоящие элементы контейнера, и по css-flexbox-1 §7.2 умолчание
-/// `flex-shrink` у них 1.
-fn shrink0(d: gpui::Div, li: &Element, list: &Element) -> gpui::Div {
-    let flex_parent = matches!(
-        list.style.display,
-        Some(Display::Flex) | Some(Display::InlineFlex) | Some(Display::Grid) | Some(Display::InlineGrid)
-    );
-    if li.style.flex_shrink.is_none() && !flex_parent {
-        d.flex_shrink_0()
-    } else {
-        d
-    }
-}
-// ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09): пункт с `display: list-item` вне `<ul>/<ol>`
-// заводить в `list()` через анонимный `<ul>` (как анонимная таблица для
-// ячейки), а `pseudo_box` — не выбрасывать флаг пункта. Срез 1055 пар
-// (lists/pseudo/content/counter-styles): 848 -> 837, **+0/-11**
-// (`list-style-position-applies-to-008/009/015/016/017`,
-// `change-list-style-position-002/003`, `list-style-020` и др.). Анонимный
-// `<ul>` тащит UA-отступы и `list-style-position` списка поверх собственных у
-// пункта. Патч — `target/scout-markers-2026-09.md` П2; маркер надо выносить
-// из `list()` в общий путь блока, а не заворачивать блок в список.
-fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    let ordered = e.tag == "ol";
-    let mut rows = vec![];
-    for child in &e.children {
-        let Node::Element(li) = child else { continue };
-        if li.tag != "li" {
-            // Не-`li` ребёнок списка — обычный блок потока (html §4.4.5:
-            // пунктом становится только `<li>`, остальное `<ol>` просто
-            // содержит). Эталоны семьи Ishida в css-counter-styles (~150 пар
-            // `css3-counter-styles-NNN-ref`) — это `<ol><div><bdi>x. </bdi>x
-            // </div></ol>`, и с голым `continue` они рендерились ПУСТОЙ
-            // страницей: правильные римские `-020` были красными, а пустые
-            // таблицы знаков — «зелёными» (`target/scout-counterstyles-2026-09.md`).
-            // Псевдоэлементы (`ol::before`) по-прежнему мимо: прошлый замер
-            // терял именно на них `foo-counter-reversed-007a/b` (0.38 -> 0.53).
-            if !li.tag.starts_with("::") {
-                rows.extend(blocks(std::slice::from_ref(child), inherited, opts));
-            }
-            continue;
-        }
-        // Номер пункта считает ОБЩИЙ счётчик `list-item` (css-lists-3
-        // §list-item-counter): он один знает и `<ol start>`, и `<li value>`,
-        // и вложенные списки. Своей нумерации у отрисовки больше нет.
-        let idx = li.list_item.unwrap_or(0);
-        // Вид маркера задаёт документ; без указания — умолчание тега.
-        // Строковый маркер берётся дословно и без суффикса-точки.
-        let text_marker = li
-            .style
-            .marker_text
-            .clone()
-            .or_else(|| e.style.marker_text.clone());
-        let kind = li
-            .style
-            .list_style_type
-            .clone()
-            .or_else(|| e.style.list_style_type.clone());
-        let marker = if let Some(t) = text_marker {
-            t
-        } else {
-            // Умолчание тега: у нумерованного перечня десятичный счёт, у
-            // списка возможностей — точка.
-            let name = kind.unwrap_or_else(|| if ordered { "decimal" } else { "disc" }.to_string());
-            crate::counter_style::marker_repr(idx, &name)
-        };
-        // `list-style: none` — на списках верстают навигацию и наборы чипов,
-        // и точки там лишние. Своё слово пункта старше слова списка:
-        // `list-style-type` наследуемое, и `<ul style="list-style-type:
-        // none">` не гасит `li::marker { content }` (`marker-content-012`).
-        //
-        // Чужой `display` на пункте снимает с него признак пункта, а с ним и
-        // маркер (css-display-3: `list-item` есть только у `display:
-        // list-item`; css-pseudo-4 §marker-pseudo: «the computed value of
-        // 'display' on ::marker always loses any list-item aspect» — обратное
-        // верно тем более). Без этого эталон `marker-content-019-ref`
-        // (`li { display: block }`) рисовал у нас полный набор `1. 2. 3. 4.`,
-        // и свёртка `content: none` в тесте разводила стороны ЕЩЁ дальше.
-        let no_marker = li.style.no_marker.or(e.style.no_marker) == Some(true)
-            || !matches!(li.style.display, None | Some(Display::ListItem));
-        let merged = inline::inherit(inherited, &li.style);
-        // Слой `::marker` поверх стиля пункта — им набирается сам маркер
-        // (css-lists-3 §marker-properties: «All properties can be set on a
-        // ::marker … and will have a computed value which will then inherit
-        // to its text content»). Коробочные свойства слоя (`padding`,
-        // `width`, `background`) на маркер не идут — `apply_text` их не
-        // читает, и это ровно то, чего требует «only the following CSS
-        // properties actually apply to a marker box».
-        let marker_style = li
-            .style
-            .marker_layer
-            .as_deref()
-            .map(|m| inline::inherit(&merged, m));
-        // `inside`: маркер — ПЕРВЫЙ инлайновый кусок содержимого пункта
-        // (css-lists-3 §4), поэтому он просто дописывается текстом в начало.
-        // Своей колонки при этом нет, и текст пункта начинается там же, где
-        // у обычного абзаца.
-        let inside = merged.list_style_inside == Some(true);
-        if inside {
-            let mut kids: Vec<Node> = Vec::with_capacity(li.children.len() + 1);
-            if !no_marker {
-                // Со слоем `::marker` знаки идут анонимным строчным куском
-                // со стилем слоя: голым текстом они брали бы у пункта и
-                // регистр, и разрядку, и цвет. Внутри маркер — именно
-                // строчная коробка перед содержимым (css-lists-3
-                // §list-style-position, `inside`), и эталон
-                // `marker-unicode-bidi-default-ref` собран буквально так —
-                // `<span class="marker">` перед текстом пункта.
-                // Без слоя — голым текстом, как прежде.
-                kids.push(match &marker_style {
-                    Some(ms) => {
-                        let mut span = anon_element("::marker", vec![Node::Text(marker)]);
-                        span.inline = true;
-                        span.style = ms.clone();
-                        // Содержимое уже свёрнуто в текст: сам кусок — не
-                        // носитель `content`, иначе `pseudo_box` собрал бы
-                        // его второй раз.
-                        span.style.content = None;
-                        span.style.marker_layer = None;
-                        Node::Element(span)
-                    }
-                    None => Node::Text(marker),
-                });
-            }
-            kids.extend(li.children.iter().cloned());
-            rows.push(
-                shrink0(styled_div_with(li, &merged), li, e)
-                    .flex()
-                    .flex_col()
-                    .children(blocks(&kids, &merged, opts))
-                    .into_any_element(),
-            );
-            continue;
-        }
-        // Знаки маркера без своего семейства — шрифтом ДОКУМЕНТА: голый
-        // `apply_text` без семейства брал шрифт интерфейса (Segoe UI), и
-        // строковый маркер выходил чужой гарнитурой рядом с Times пункта
-        // (`list-style-type-string-*`).
-        let mut mark_style = marker_style.clone().unwrap_or_else(|| merged.clone());
-        if mark_style.font_family.as_deref().is_none_or(str::is_empty)
-            && mark_style.monospace != Some(true)
-        {
-            mark_style.font_family = Some(opts.text.font_family.to_string());
-        }
-        let marker = inline::transform_case(&marker, &mark_style);
-        // Внешний маркер (css-lists-3 §list-style-position `outside`) висит
-        // СНАРУЖИ коробки пункта, концом к началу содержимого, и текст пункта
-        // не двигает. Text transforms apply to its own text (§3.1.1).
-        rows.push(
-            shrink0(styled_div_with(li, &merged), li, e)
-                .relative()
-                .flex()
-                .flex_col()
-                .children((!no_marker).then(|| {
-                    // Знаки маркера набираются шрифтом и цветом ПУНКТА:
-                    // отдельной коробке текстовые свойства не достаются сами,
-                    // и маркер выходил чужой гарнитурой и кеглем. Выключка
-                    // текста на него НЕ переносится: маркер стоит у своего
-                    // края колонки, куда бы ни равнялся текст пункта
-                    // (`list-style-position-018`). Со слоем `::marker` —
-                    // стилем слоя: разрядка, межсловный пробел, шрифт и цвет
-                    // маркера объявлены на нём (css-lists-3
-                    // §marker-properties).
-                    // Сторона начала строки пункта: при `direction: rtl`
-                    // маркер висит СПРАВА от коробки и равняется к ней своим
-                    // левым краем (`list-style-type-string-003`: строка
-                    // маркера уходила за левый край окна).
-                    {
-                        let m = crate::apply::apply_text(div(), &mark_style)
-                            .absolute()
-                            .top_0();
-                        if merged.rtl == Some(true) {
-                            m.left(gpui::relative(1.)).text_left()
-                        } else {
-                            // Строки многострочного маркера равняются по
-                            // КОНЦУ, к началу содержимого пункта
-                            // (`marker-text-align-001`: `"[m] longtext"` при
-                            // `white-space: pre`).
-                            m.right(gpui::relative(1.)).text_right()
-                        }
-                    }
-                    .whitespace_nowrap()
-                        // Хвост срезается только у СОБСТВЕННЫХ отбивок движка
-                        // (обычный пробел после номера пункта). Авторская
-                        // строка `list-style-type: "..."` идёт дословно:
-                        // `trim_end` в Rust считает пробелом и U+00A0, а
-                        // неразрывный пробел в такой строке — ЗНАЧАЩИЙ.
-                        // Замер нейтрален (срез 2268 пар, +0/-0: у
-                        // `list-style-type-string-005a/b/-006` остаток не
-                        // здесь), но срезать значащий знак всё равно нельзя.
-                        // Отбивка после номера (`1. `) — часть маркера: она и
-                        // даёт зазор до содержимого. Пробел в конце строки
-                        // свернулся бы, поэтому он неразрывный.
-                        .child(SharedString::from(match marker.strip_suffix(' ') {
-                            Some(head) => format!("{head}\u{a0}"),
-                            None => marker.clone(),
-                        }))
-                }))
-                // Содержимое — своей колонкой, как прежде: выключка пункта
-                // (`text-align: end` у `<li>`) иначе становится выравниванием
-                // его детей, и блок с `text-align: initial` уезжал к концу
-                // (`marker-text-align-001-ref`).
-                .child(
-                    div()
-                        .w_full()
-                        .flex()
-                        .flex_col()
-                        .children(blocks(&li.children, &merged, opts)),
-                )
-                .into_any_element(),
-        );
-    }
-    styled_div_with(e, inherited)
-        .flex()
-        .flex_col()
-        .children(rows)
-        .into_any_element()
 }
 
 /// Текст поддерева — нужен формам (`<textarea>`, `<option>`).
@@ -27117,8 +27128,12 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // Алгоритм тот же, что у авторазмещения сетки: занятые клетки
     // пропускаются.
     let mut occupied: Vec<u16> = vec![0; cols as usize];
+    let mut group_refs: std::collections::HashMap<u64, crate::interact::RefBox> =
+        std::collections::HashMap::new();
+    let tbl_style: &Computed = inherited;
     for (row, carry) in rows {
         row_ix += 1;
+        let row_ref: crate::interact::RefBox = Default::default();
         for slot in occupied.iter_mut() {
             *slot = slot.saturating_sub(1);
         }
@@ -28000,13 +28015,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         .into_any_element(),
                 ]
             } else if clipped {
-                vec![
-                    div()
-                        .overflow_hidden()
-                        .size_full()
-                        .children(inside)
-                        .into_any_element(),
-                ]
+                vec![table_clipped_content::wrap(&mut d, inside)]
             } else {
                 inside
             };
@@ -28370,9 +28379,9 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // переходит на каждую ячейку; поворот/масштаб ряда требует его
             // коробки и пока не применяется.
             let mut built = d.children(inside).into_any_element();
-            if cell.style.transform.is_some() {
-                built = transformed(built, &cell.style, &row_style);
-            }
+            // Also without own transform: a `preserve-3d` cell or one under a
+            // 3D row needs its wrapper for the context chain.
+            built = transformed(built, &cell.style, &row_style);
             let pure_shift = |t: &crate::computed::Transform| {
                 !t.has_3d
                     && t.lin == [[1.0, 0.0], [0.0, 1.0]]
@@ -28381,13 +28390,30 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     && t.tr[1][1] == 0.0
                     && t.tr[1][2] == 0.0
             };
-            if row.style.transform.as_ref().is_some_and(pure_shift) {
-                built = transformed(built, &row.style, inherited);
-            }
-            if let Some(g) = carry.3
-                && g.style.transform.as_ref().is_some_and(pure_shift)
-            {
-                built = transformed(built, &g.style, inherited);
+            // Any other row/group transform resolves its origin and
+            // percentages against the row/group box: the union of its cells'
+            // boxes, shared by their wrappers (`interact::Transformed::ref_box`;
+            // `transform-transformed-tr-contains-fixed-position`: `rotate(45deg)`
+            // with `transform-origin: left` on the `<tr>`).
+            // The wrappers also carry a `preserve-3d` chain through the
+            // row and group (css-transforms-2 §3d-rendering-context:
+            // `transform-table-009/011`); without transform, perspective or
+            // 3D context `transformed_with` returns the cell unchanged.
+            let rb = row
+                .style
+                .transform
+                .as_ref()
+                .is_some_and(|t| !pure_shift(t))
+                .then(|| row_ref.clone());
+            built = transformed_with(built, &row.style, inherited, rb);
+            if let Some(g) = carry.3 {
+                let rb = g
+                    .style
+                    .transform
+                    .as_ref()
+                    .is_some_and(|t| !pure_shift(t))
+                    .then(|| group_refs.entry(g.node_id).or_default().clone());
+                built = transformed_with(built, &g.style, tbl_style, rb);
             }
             if paint_layers && cell_paints_over(&cell.children, 24) {
                 cells_over.push(built);
@@ -28431,6 +28457,10 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 .flex_col()
                 .children(blocks(&cap.children, &cm, opts))
                 .into_any_element();
+            // A caption is a transformable block box (css-transforms-1
+            // §transformable-element); its `transform` was dropped
+            // (`transform-transformed-caption-contains-fixed-position`).
+            let built = transformed(built, &cap.style, inherited);
             // ВСЕ подписи, а не первая. Прежний `break` ронял вторую целиком:
             // у таблицы с верхней И нижней подписью рисовалась только верхняя
             // (`table-border-002/003/004`, снимок `table-border-004`: зелёное

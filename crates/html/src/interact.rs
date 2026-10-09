@@ -417,6 +417,8 @@ pub struct Grouped {
     pub mask_no_repeat: (bool, bool),
     /// `mask-repeat` ПО СЛОЯМ (css-masking-1 §7.6); пусто — берётся скаляр.
     pub mask_repeat_list: Vec<(bool, bool)>,
+    /// Per-layer `space`/`round` axes (2/3); empty — none.
+    pub mask_repeat_modes: Vec<(u8, u8)>,
     /// `mask-mode: luminance` — гасит светимостью, а не альфой.
     pub mask_luminance: bool,
     /// `mask-mode: alpha`: ссылка на `<mask>` маскирует альфой.
@@ -440,6 +442,9 @@ pub struct Grouped {
     pub clip_inset: Option<[crate::value::Len; 4]>,
     pub clip_edges: Option<[Option<crate::value::Len>; 4]>,
     pub clip_xywh: Option<[crate::value::Len; 4]>,
+    /// `round <radius>` of `inset()`/`rect()`/`xywh()` in points: the group
+    /// composites through a rounded rectangle equal to the clip rectangle.
+    pub clip_round: Option<crate::value::Len>,
     /// `mask-composite` по слоям: 0 add, 1 subtract, 2 intersect, 3 exclude.
     pub mask_composite: Vec<u8>,
     /// Подложка ПОД буфером группы, вне его маски: наружные тени
@@ -481,6 +486,8 @@ impl Grouped {
             mask_fit: 0,
             mask_no_repeat: (false, false),
             mask_repeat_list: Vec::new(),
+            mask_repeat_modes: Vec::new(),
+            clip_round: None,
             mask_luminance: false,
             mask_alpha_mode: false,
             mask_pos_far: (false, false),
@@ -601,8 +608,14 @@ impl Element for Grouped {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
-        self.child.as_mut().unwrap().prepaint(window, cx);
+        // The clip reference box is read BEFORE the child's prepaint: a pure
+        // translation of the element is placed into its layout origin there
+        // (`Transformed::prepaint`), while `clip_shift` already moves the clip
+        // with the transform (CSS Masking §5: clip lives in the element's
+        // pre-transform space). Read afterwards, the shift applied twice
+        // (clip-transform-order: the clip landed 110px right of the box).
         let clip_bounds = rectangular_clip::reference_box(self, bounds, *_state, window);
+        self.child.as_mut().unwrap().prepaint(window, cx);
         // Mask positioning box before device snapping (css-masking-1 §7.7).
         let mask_box = mask_geometry::positioning_box(self.mask.as_deref(), bounds, *_state, window);
         (clip_bounds, mask_box)
@@ -818,7 +831,7 @@ impl Element for Grouped {
                     || l.starts_with("shapedef:")
                     || (l.contains('#') && l.contains(".svg"))
             });
-            if layers.len() > 1 || referenced {
+            if layers.len() > 1 || referenced || !self.mask_repeat_modes.is_empty() {
                 let sf = window.scale_factor();
                 let (cw, ch) = (
                     (bw * sf).round().max(1.0) as u32,
@@ -862,6 +875,8 @@ impl Element for Grouped {
                     .iter()
                     .enumerate()
                     .filter_map(|(i, l)| {
+                        let mut space_gap = (0.0, 0.0);
+                        let mut space_once = (false, false);
                         // Ссылка на определение в документе: растр под
                         // коробку, светимость вместо альфы.
                         let (image, tile, lum) = if let Some(id) = l.strip_prefix("svgsnap:") {
@@ -936,20 +951,38 @@ impl Element for Grouped {
                             let (tw, th) = mask_size::tile(
                                 source.intrinsic(), self.mask_scale, (bw, bh), self.mask_size, self.mask_fit,
                             );
+                            let modes = self.mask_repeat_modes.as_slice();
+                            let (mx, my) = if modes.is_empty() { (0, 0) } else { modes[i % modes.len()] };
+                            let (tw, th) = mask_size::round_tile(
+                                (tw, th),
+                                (bw, bh),
+                                (mx == 3, my == 3),
+                                self.mask_size,
+                            );
                             // Плитка кладётся не в угол, а в точку СВОЕГО
                             // слоя: без этого `mask-position: top, bottom`
                             // сваливал оба слоя в (0,0) (mask-position-5).
                             let (ox, oy) = pos_of(i, tw, th);
+                            // `space` (css-backgrounds-3 §3.4): whole tiles
+                            // with equal gaps, the outer ones touching the
+                            // edges; position only acts when fewer than two fit.
+                            let (ox, gx, nx) = mask_size::space_axis(mx == 2, ox, tw, bw);
+                            let (oy, gy, ny) = mask_size::space_axis(my == 2, oy, th, bh);
+                            space_gap = (gx * sf, gy * sf);
+                            space_once = (nx, ny);
                             (
                                 source.mask_raster((tw, th), sf)?,
                                 [ox * sf, oy * sf, tw * sf, th * sf],
                                 false,
                             )
                         };
+                        let no_repeat = repeat_of(i);
                         Some(crate::background::MaskLayer {
                             image,
                             tile,
-                            no_repeat: repeat_of(i),
+                            no_repeat: (no_repeat.0 || space_once.0, no_repeat.1 || space_once.1),
+                            gap: space_gap,
+                            snap: !self.mask_repeat_modes.is_empty(),
                             // Список операторов КОРОЧЕ набора слоёв
                             // повторяется (css-masking-1 §7.12 ->
                             // css-backgrounds-3 §2.2): прежде слоям сверх
@@ -968,13 +1001,27 @@ impl Element for Grouped {
                         })
                     })
                     .collect();
+                // Snapped tiles need a canvas on the device grid: its origin
+                // rounds, and the tiles keep their exact device positions.
+                let (mut built, mut origin, mut size) = (
+                    built,
+                    gpui::point(bounds.origin.x + px(ol), bounds.origin.y + px(ot)),
+                    gpui::size(px(bw), px(bh)),
+                );
+                if !self.mask_repeat_modes.is_empty() {
+                    let (ex, ey) = (f32::from(origin.x) * sf, f32::from(origin.y) * sf);
+                    let (rx, ry) = (ex.round(), ey.round());
+                    for layer in &mut built {
+                        layer.tile[0] += ex - rx;
+                        layer.tile[1] += ey - ry;
+                    }
+                    origin = gpui::point(px(rx / sf), px(ry / sf));
+                    size = gpui::size(px(cw as f32 / sf), px(ch as f32 / sf));
+                }
                 let img = crate::background::compose_mask_layers(&built, cw, ch)?;
                 return Some((
                     img,
-                    Bounds {
-                        origin: gpui::point(bounds.origin.x + px(ol), bounds.origin.y + px(ot)),
-                        size: gpui::size(px(bw), px(bh)),
-                    },
+                    Bounds { origin, size },
                     // Светимость уже учтена при сборке полотна.
                     3,
                 ));
@@ -1121,10 +1168,41 @@ impl Element for Grouped {
         {
             let _ = window.paint_image(layer_at, gpui::Corners::default(), img, 0, false);
         }
+        // css-shapes-1 §basic-shape-rect: `round` rounds the corners of the
+        // clip rectangle itself; the composite quad carries those radii.
+        // Percentages: Blink BasicShapeInset resolves radii against the
+        // reference box; one scalar radius per corner takes the smaller axis.
+        let round = match self.clip_round {
+            Some(crate::value::Len::Px(v)) => v,
+            Some(crate::value::Len::Pct(p)) => {
+                p * f32::from(_prepaint.0.size.width).min(f32::from(_prepaint.0.size.height))
+            }
+            _ => 0.0,
+        };
+        let (area, corners) = match mask_clip {
+            Some([x, y, w, h])
+                if round > 0.0
+                    && mask.is_none()
+                    && polygon.is_empty()
+                    && w > 0.0
+                    && h > 0.0 =>
+            {
+                let sf = window.scale_factor();
+                let (w, h) = (w / sf, h / sf);
+                (
+                    Bounds {
+                        origin: gpui::point(px(x / sf), px(y / sf)),
+                        size: gpui::size(px(w), px(h)),
+                    },
+                    gpui::Corners::all(px(round.min(w / 2.0).min(h / 2.0))),
+                )
+            }
+            _ => (area, gpui::Corners::default()),
+        };
         let child = self.child.as_mut().unwrap();
         window.paint_group(
             area,
-            gpui::Corners::default(),
+            corners,
             self.blur,
             self.opacity,
             self.blend,
@@ -1205,7 +1283,15 @@ pub struct Transformed {
     /// отрисовке округляет края от него (`layout_origin_unrounded` доступен
     /// только до отрисовки).
     exact_origin: Option<gpui::Point<Pixels>>,
+    /// Reference box shared by the cells of a transformed table row or row
+    /// group (css-transforms-1 §transformable-element: the row has no box
+    /// of its own in our grid): every cell unions its unrounded box into it
+    /// on prepaint, and paint resolves origin/percentages against it.
+    pub ref_box: Option<RefBox>,
 }
+
+/// Union of unrounded boxes, filled on prepaint (see `Transformed::ref_box`).
+pub type RefBox = std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<Pixels>>>>;
 
 /// Сплющивание плоскости z=0 в аффинную матрицу экрана
 /// (css-transforms-2 §3d-transform-rendering).
@@ -1294,6 +1380,7 @@ impl Transformed {
             under_3d: None,
             placed: false,
             exact_origin: None,
+            ref_box: None,
         }
     }
 
@@ -1361,6 +1448,13 @@ impl Element for Transformed {
         // тот же механизм у `LatePlace`), края округляются на конечном месте.
         self.placed = false;
         self.exact_origin = Some(window.layout_origin_unrounded(*layout_id));
+        if let Some(r) = self.ref_box.as_ref() {
+            let own = gpui::Bounds {
+                origin: window.layout_origin_unrounded(*layout_id),
+                size: window.layout_size_unrounded(*layout_id),
+            };
+            r.set(Some(r.get().map_or(own, |u| u.union(&own))));
+        }
         if flat && self.perspective.is_none() {
             let size = window.layout_size_unrounded(*layout_id);
             if let Some((sx, sy)) =
@@ -1428,8 +1522,20 @@ impl Element for Transformed {
         // 0.4px от `translateY(50px)` (`transform-percent-*`).
         let exact = window.layout_size_unrounded(*layout_id);
         let (w, h) = (f32::from(exact.width), f32::from(exact.height));
-        let ox = w * self.origin.0 + self.origin_px.0.unwrap_or(0.0);
-        let oy = h * self.origin.1 + self.origin_px.1.unwrap_or(0.0);
+        // Reference box of a table row/row group spread over its cells
+        // (`ref_box`): origin and percentages resolve against it, offset
+        // from this cell's own box.
+        let (rw, rh, rdx, rdy) = match self.ref_box.as_ref().and_then(|r| r.get()) {
+            Some(r) => (
+                f32::from(r.size.width),
+                f32::from(r.size.height),
+                f32::from(r.origin.x - raw_origin.x),
+                f32::from(r.origin.y - raw_origin.y),
+            ),
+            None => (w, h, 0.0, 0.0),
+        };
+        let ox = rdx + rw * self.origin.0 + self.origin_px.0.unwrap_or(0.0);
+        let oy = rdy + rh * self.origin.1 + self.origin_px.1.unwrap_or(0.0);
         let origin = gpui::point(
             dev(f32::from(scaled_origin.x) + ox),
             dev(f32::from(scaled_origin.y) + oy),
@@ -1442,7 +1548,7 @@ impl Element for Transformed {
         // §transform-rendering), вокруг точки отсчёта: она уводится в ноль и
         // возвращается. Проценты сдвига считаются от собственного размера —
         // он известен только здесь, на отрисовке.
-        let shift = |row: [f32; 3]| (row[0] + w * row[1] + h * row[2]) * scale_factor;
+        let shift = |row: [f32; 3]| (row[0] + rw * row[1] + rh * row[2]) * scale_factor;
         // Изнанка (css-transforms-2 §backface-visibility): элемент разложен и
         // держит место, но не рисуется. m33 — из полной 4×4 самого элемента;
         // у плоских функций он равен 1, так что 2D-путь сюда не попадает.
@@ -1569,7 +1675,7 @@ impl Element for Transformed {
         // каждый объёмный элемент сжимался в 1/sf; scout-3d-2026-09b.md §1.)
         let mut own = self.m4;
         for i in 0..3 {
-            own[i][3] = (own[i][3] + w * self.m4_pct[i][0] + h * self.m4_pct[i][1]) * sf;
+            own[i][3] = (own[i][3] + rw * self.m4_pct[i][0] + rh * self.m4_pct[i][1]) * sf;
         }
         for j in 0..3 {
             own[3][j] /= sf;

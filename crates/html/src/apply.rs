@@ -18,6 +18,7 @@ use contained_intrinsic::empty_contained_size;
 mod grid_flow_axes;
 mod flex_cross_default;
 mod inset_percent;
+mod size_percent;
 
 /// Ширина/высота/отступ: доля родителя или пиксели.
 pub(crate) fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
@@ -1293,38 +1294,7 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         ) {
             continue;
         }
-        // ПРОБОВАЛИ И ОТКАТИЛИ (§10.5: доля высоты от содержащего блока
-        // НЕОПРЕДЕЛЁННОЙ высоты считается как `auto`): признак
-        // `cb_height_def`, ставится при наследовании по цепочке долей.
-        // Проба по 450 парам семей `*height*`: приобретено 2, потеряно 2
-        // (`max-height-percentage-002` 1.92 -> 0.00 и `height-percentage-002`
-        // против `height-percentage-003a` и `min-height-percentage-003`,
-        // обе 0.00 -> «красное видно»). Сужение до одной `height` — хуже,
-        // 1 против 2. «Определённость» у нас не полна: её дают ещё
-        // растяжение элемента гибкого контейнера и высота ячейки, а их
-        // признак не видит.
-        // §10.5: доля ВЫСОТЫ от содержащего блока неопределённой высоты
-        // считается как `auto`. Прежде она уходила в раскладку и решалась от
-        // высоты, посчитанной по содержимому, — то есть от самой себя.
-        // Оговорка спеки — про САМ элемент: абсолютно позиционированный
-        // считает долю всегда, его блок определён по построению.
-        // ПРОБОВАЛИ И ОТКАТИЛИ: гейт «правило только для слитого стиля»
-        // (признак `merged`, ставился в `inline::inherit`). Задумывался как
-        // защита сырого стиля — рамки, замещаемого и подписи таблицы, — но
-        // замерено полным сводом: CSS3 2355 -> 2354, `row-auto-repeat-auto-023`
-        // 0.32 -> 9.86, приобретений ноль. Сырому стилю правило тоже нужно.
-        if (matches!(l, Len::Pct(_))
-            || matches!(l, Len::Calc(i) if crate::value::calc_get(i).pct != 0.0))
-            && f % 2 == 1
-            && !c.cb_height_def
-            && !c.root_box
-            && !matches!(
-                c.position,
-                Some(Position::Absolute) | Some(Position::Fixed)
-            )
-        {
-            continue;
-        }
+        let Some(l) = size_percent::resolve(c, l, f) else { continue };
         // Доли считаются от родителя и компенсации не требуют.
         let l = match l {
             Len::Px(v) if f % 2 == 0 => Len::Px(v + pad_x),
@@ -1565,7 +1535,7 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
     // `clip-path: circle()` — обрезка содержимого по кругу. Прямоугольная
     // обрезка со скруглением — единственная в конвейере, но для круга и
     // эллипса она точна.
-    if let Some(round) = c.clip_round {
+    if let Some(round) = c.clip_round.filter(|_| !crate::render::rounded_rect_clip(c)) {
         let base = match (c.width, c.height) {
             (Some(Len::Px(w)), Some(Len::Px(h))) => w.min(h),
             (Some(Len::Px(w)), _) => w,
@@ -2118,7 +2088,7 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
     // Фон, обрезанный внутренним краем (`background-clip`), красит не сама
     // коробка, а отдельный слой внутри неё (`render::clip_layer`): коробка в
     // раскладке красится целиком, вместе с рамкой и полями.
-    if c.bg_clip.is_none() {
+    if c.color_clip().is_none() {
         if let Some(g) = &c.gradient {
             // Градиенту с размером/повтором/позицией нужна механика плитки —
             // его рисует слой-картинка (см. render::decorations), заливка
@@ -2262,6 +2232,9 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
         d.style().inset_box_shadow = Some(
             c.inset_shadows
                 .iter()
+                // css-backgrounds-3 §7.1: «The first shadow is on top»; the
+                // list is painted bottom-up, so the last one goes first.
+                .rev()
                 // Резкую внутреннюю рисует слой-кольцо в декорациях: примитив
                 // с нулевым размытием вырождается в шейдере (как у внешней).
                 .filter(|s| s.blur > 0.0)
@@ -2285,6 +2258,8 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
         d = d.shadow(
             c.shadows
                 .iter()
+                // css-backgrounds-3 §7.1: the first shadow is on top.
+                .rev()
                 // Резкую тень (без размытия) рисует слой-квад в декорациях:
                 // примитив с нулевым размытием вырождается в шейдере.
                 .filter(|s| s.blur > 0.0)

@@ -37,6 +37,7 @@ pub mod border_image;
 pub mod color_space;
 pub mod computed;
 pub mod counter_style;
+pub mod counter_style_rules;
 pub mod counters;
 pub mod counters_scan;
 pub mod coverage;
@@ -84,6 +85,8 @@ pub const BROWSER_CSS: &str = r#"
     h5 { font-size: 0.83em; margin-block: 1.67em; margin-inline: 0 }
     h6 { font-size: 0.67em; margin-block: 2.33em; margin-inline: 0 }
     ul, ol { margin-block: 1em; margin-inline: 0; padding-inline-start: 40px }
+    ol { list-style-type: decimal }
+    ul, menu, dir { list-style-type: disc }
     li { margin: 0 }
     dl { margin-block: 1em; margin-inline: 0 }
     dd { margin-left: 40px }
@@ -99,6 +102,9 @@ pub const BROWSER_CSS: &str = r#"
     small { font-size: 0.83em }
     hr { height: 0; margin: 0.5em 0; background: none; border: 1px inset gray }
     table { margin: 0; border-spacing: 2px }
+    /* HTML §15.3.9: row groups center cells unless authored alignment wins. */
+    thead, tbody, tfoot, table > tr { vertical-align: middle }
+    tr, td, th { vertical-align: inherit }
     th { padding: 1px; font-weight: bold; text-align: center }
     td { padding: 1px }
     caption { font-weight: normal; margin: 0; text-align: center }
