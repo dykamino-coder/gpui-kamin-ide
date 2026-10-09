@@ -1,0 +1,2 @@
+//! Элемент `ScrollArea`.
+// owner: A

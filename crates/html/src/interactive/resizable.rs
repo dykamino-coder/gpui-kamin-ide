@@ -1,0 +1,2 @@
+//! Элемент `Resizable`.
+// owner: A

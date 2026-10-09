@@ -63,6 +63,20 @@ pub mod transition;
 pub mod value;
 pub mod zoom;
 
+// Доменные модули (рефакторинг монолитов: перенос по доменам).
+#[doc(hidden)]
+pub mod animation;
+#[doc(hidden)]
+pub mod interactive;
+#[doc(hidden)]
+pub mod layout;
+#[doc(hidden)]
+pub mod paint;
+#[doc(hidden)]
+pub mod style;
+#[doc(hidden)]
+pub mod text;
+
 /// Умолчания тегов, как в браузере, — для тех, кто рисует СТРАНИЦУ.
 ///
 /// Своя таблица движка настроена под чат: там отступы мельче, а типографика

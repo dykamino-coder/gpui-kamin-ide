@@ -1,0 +1,2 @@
+//! Элемент `Transformed`.
+// owner: A
