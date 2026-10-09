@@ -1,6 +1,8 @@
+import { useBridge } from '../../hooks/useBridge'
+import { DownloadJsonlButton } from '../chat-header/DownloadJsonlButton'
 import type { JSX } from 'preact'
 import { useState, useEffect, useRef } from 'preact/hooks'
-import { tabAgentTrees, tabAgentHistory, findAgentByName, agentEntriesWithLive, type AgentInfo } from '../../signals/agents'
+import { tabAgentTrees, tabAgentHistory, findAgentByName, agentEntriesWithLive, agentTranscriptDownloadId, type AgentInfo } from '../../signals/agents'
 import { partitionAgents, type PartitionSide, type TeamView } from '../../signals/agent-partition'
 import { jsonlEntriesByTab } from '../../signals/jsonl'
 import { activeTabId } from '../../signals/tabs'
@@ -129,6 +131,8 @@ function AgentReader({ name, onBack }: { name: string; onBack: () => void }): JS
   // Subscribe to the main store so the live streaming stub repaints as it flushes.
   void (tabId ? jsonlEntriesByTab.value.get(tabId)?.length : 0)
   const entries = agentEntriesWithLive(tabId, name, info?.agentType) as JsonlEntryData[]
+  const bridge = useBridge()
+  const downloadId = name ? agentTranscriptDownloadId(tabId, name, info?.agentType, info?.agentId) : undefined
 
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const prevLenRef = useRef(0)
@@ -150,6 +154,8 @@ function AgentReader({ name, onBack }: { name: string; onBack: () => void }): JS
           <span>Agents</span>
         </button>
         <span class={styles.readerTitle}>{name}</span>
+        <span title="The reader keeps a bounded recent window; export includes full history.">Recent messages</span>
+        {tabId && downloadId && <DownloadJsonlButton label="Download full agent transcript" onDownload={() => bridge.downloadJsonl(tabId, downloadId)} />}
         {info?.status && <span class={`${styles.status} ${styles[info.status]}`}>{STATUS_LABEL[info.status]}</span>}
       </div>
       <div class={styles.readerBody} ref={bodyRef}>

@@ -896,10 +896,11 @@ export class ConnectionManager {
     this.sendRaw({ type: 'jsonl:segment-request', fromTs, toTs })
   }
 
-  requestJsonlDownload(): Promise<{ content: string | null; fileName: string | null; error?: string }> {
+  requestJsonlDownload(agentId?: string): Promise<{ content: string | null; fileName: string | null; error?: string }> {
+    if (this._downloadResolve) return Promise.resolve({ content: null, fileName: null, error: 'Another transcript download is already in progress' })
     return new Promise((resolve) => {
       this._downloadResolve = resolve
-      this.sendRaw({ type: 'jsonl:download-request' })
+      this.sendRaw({ type: 'jsonl:download-request', agentId })
       // If this fires, the response never came at all — the transport is fast
       // (36MB in ~2s from this same server), so a timeout means a fault, not a
       // slow file. The caller used to discard this result, which is why a failed

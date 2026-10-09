@@ -14,6 +14,7 @@ import { tabActivity, tabWaiting, sidebarMode, activeCustomizePanel } from '../s
 import { hostEditorSelection } from '../signals/file-viewer'
 import { showToast } from '../signals/toasts'
 import { activeWidgets } from '../signals/widgets'
+import { boundAgentTranscript, boundAgentSlots } from '../signals/agent-retention'
 import { tabAgentTrees, tabJsonlLive, subagentTileState, clearAgentTabState } from '../signals/agents'
 
 // Terminal registry for bridge.onOutput routing
@@ -59,7 +60,6 @@ export type WebviewRole = 'chat' | 'tools' | 'customize'
  *  unbounded AND never pruned (subagentTileState is keyed by agent, not tab), so
  *  a long team session walked the shared WebView2 heap to OOM — three panels at
  *  ~480MB each of accumulated subagent entries in the freeze report. */
-const SUBAGENT_TILE_MAX_ENTRIES = 600
 
 // МОДУЛЬНЫЙ уровень, не тело effect: ре-подписка на реконнекте (deps
 // reconnectNonce) пересоздавала эти структуры — hook-driven таб снова
@@ -506,21 +506,17 @@ export function useBridgeListeners(
         // его вид оставался «No messages from this agent yet» (прод-скрин).
         const firstSeen = new Set<string>()
         for (const e of entries) { const u = (e as { uuid?: string }).uuid; if (u) firstSeen.add(u) }
-        state = { tileKey: '', entries: [...entries], seen: firstSeen }
+        state = { tabId, agentId, agentName, tileKey: '', entries: [...entries], seen: firstSeen }
+        boundAgentTranscript(state)
         const nextMap = new Map(curMap)
         nextMap.set(routingKey, state)
         if (routingKey !== agentName) nextMap.set(agentName, state)
-        subagentTileState.value = nextMap
+        subagentTileState.value = boundAgentSlots(nextMap)
       } else if (fresh.length > 0) {
         state.entries.push(...fresh)
-        // Hard per-agent cap — keep the most recent window, drop older overflow.
-        // Without this the tile transcript grew without limit for the whole
-        // session (never pruned) and was the dominant term in the shared-heap OOM.
-        if (state.entries.length > SUBAGENT_TILE_MAX_ENTRIES) {
-          state.entries.splice(0, state.entries.length - SUBAGENT_TILE_MAX_ENTRIES)
-        }
-        subagentTileState.value = new Map(subagentTileState.value)
       }
+      boundAgentTranscript(state)
+      subagentTileState.value = boundAgentSlots(new Map(subagentTileState.value))
       // Пульс жизни для staleness-прунера: рабочий агент пишет в свой JSONL,
       // даже если не шлёт teammate-message — без touch его running ложно
       // протухал бы через STALE_RUNNING_MS.

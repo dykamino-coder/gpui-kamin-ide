@@ -1,6 +1,8 @@
+import { useBridge } from '../../hooks/useBridge'
+import { DownloadJsonlButton } from '../chat-header/DownloadJsonlButton'
 import type { JSX } from 'preact'
 import { useEffect, useRef } from 'preact/hooks'
-import { fullscreenAgentId, subagentTileState, tabAgentTrees, findAgentByName, agentEntriesWithLive } from '../../signals/agents'
+import { fullscreenAgentId, subagentTileState, tabAgentTrees, findAgentByName, agentEntriesWithLive, agentTranscriptDownloadId } from '../../signals/agents'
 import { jsonlEntriesByTab } from '../../signals/jsonl'
 import { activeTabId } from '../../signals/tabs'
 import { JsonlEntry } from '../jsonl-viewer/JsonlEntry'
@@ -22,6 +24,8 @@ export function SubagentFullscreen(): JSX.Element | null {
   void tick
   const info = name ? findAgentByName(tree, name) : undefined
   const entries = name ? (agentEntriesWithLive(tabId, name, info?.agentType) as JsonlEntryData[]) : []
+  const bridge = useBridge()
+  const downloadId = name ? agentTranscriptDownloadId(tabId, name, info?.agentType, info?.agentId) : undefined
 
   // Switching sessions must drop the overlay — the expanded agent belongs to the
   // tab we just left. (Hook runs before the early return so order stays stable.)
@@ -54,6 +58,8 @@ export function SubagentFullscreen(): JSX.Element | null {
         <span class={styles.title}>
           {name}{info?.agentType ? <span class={styles.type}> · {info.agentType}</span> : null}
         </span>
+        <span title="The reader keeps a bounded recent window; export includes full history.">Recent messages</span>
+        {tabId && downloadId && <DownloadJsonlButton label="Download full agent transcript" onDownload={() => bridge.downloadJsonl(tabId, downloadId)} />}
         {info?.status && <span class={`${styles.status} ${styles[info.status]}`}>{info.status}</span>}
       </div>
       <div class={styles.body} ref={bodyRef}>

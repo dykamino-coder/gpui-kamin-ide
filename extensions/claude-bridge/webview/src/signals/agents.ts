@@ -60,6 +60,11 @@ export function recordAgentHistory(tabId: string, agent: AgentInfo): void {
 }
 
 export interface SubagentTileState {
+  tabId?: string
+  agentId?: string
+  agentName?: string
+  retainedBytes?: number
+  touchedAt?: number
   tileKey: string
   entries: any[]
   /** uuid-дедуп: реплей приходит повторно на каждый resync/реаттач, и без
@@ -91,6 +96,7 @@ export function clearAgentTabState(tabId: string): void {
   if (tabAgentHistory.value.has(tabId)) {
     const m = new Map(tabAgentHistory.value); m.delete(tabId); tabAgentHistory.value = m
   }
+  subagentTileState.value = new Map([...subagentTileState.value].filter(([, state]) => state.tabId !== tabId))
   fullscreenAgentId.value = null // a closed tab must not leave its subagent overlay up
 }
 
@@ -152,5 +158,16 @@ export function agentEntriesWithLive(tabId: string | null, name: string, agentTy
     const mid = e.message?.id
     return !mid || !seen.has(mid)
   })
-  return live.length ? [...canonical, ...live] : canonical
+  return (live.length ? [...canonical, ...live] : canonical).slice(-600)
+}
+
+
+/** A full export uses a file ID from an unambiguous cache slot, never a name as
+ * a filesystem path. Distinct mailbox IDs need a unique name/type match. */
+export function agentTranscriptDownloadId(tabId: string | null, name: string, agentType?: string, agentId?: string): string | undefined {
+  if (!tabId) return undefined
+  const states = [...new Set(subagentTileState.value.values())].filter(state => state.tabId === tabId)
+  if (agentId && !agentId.includes('@')) return agentId.replace(/^agent-/, '')
+  const candidates = states.filter(state => state.agentName === name || (agentType && state.agentName === agentType))
+  return candidates.length === 1 ? candidates[0].agentId?.replace(/^agent-/, '') : undefined
 }
