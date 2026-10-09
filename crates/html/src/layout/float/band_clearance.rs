@@ -1,6 +1,8 @@
 //! Eligibility and margin transport for measured float clearance.
 
-use crate::render::{Element, Node, Strut, is_blank, out_of_flow, solve};
+use crate::dom::{Element, Node};
+use crate::layout::block::struts::{Strut, solve};
+use crate::render::{is_blank, out_of_flow};
 
 pub(crate) fn mark_start(host: &mut Element, top_open: bool, preceding: &[Node]) {
     if top_open

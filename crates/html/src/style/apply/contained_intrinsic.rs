@@ -1,7 +1,7 @@
 //! Empty containment sizes retain the box geometry while excluding descendant contributions.
 
-use crate::computed::{Computed, Display, Track, TrackSize};
-use crate::value::Len;
+use crate::style::computed::{Computed, Display, Track, TrackSize};
+use crate::style::values::value::Len;
 use gpui::{Div, Styled};
 
 /// Внутренний размер ПУСТОЙ коробки с `contain: size` по оси (без отступов).

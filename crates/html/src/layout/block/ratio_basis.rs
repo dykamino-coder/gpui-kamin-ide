@@ -1,10 +1,10 @@
 //! Orthogonal percentages retain a ratio-derived preferred containing-block size.
 //! Content may expand the used height without changing that percentage basis.
 
-use crate::render::orthogonal_inline::{axis, edges};
-use crate::computed::Computed;
-use crate::computed::orthogonal::AxisSizes;
-use crate::value::Len;
+use crate::layout::writing_mode::orthogonal_inline::{axis, edges};
+use crate::style::computed::Computed;
+use crate::style::computed::orthogonal::AxisSizes;
+use crate::style::values::value::Len;
 
 pub(crate) fn block_axis(parent: &Computed) -> AxisSizes {
     let mut block = axis(parent, true);
@@ -30,7 +30,7 @@ pub(crate) fn block_axis(parent: &Computed) -> AxisSizes {
 
 #[cfg(test)]
 mod tests {
-    use crate::render::orthogonal_inline::resolve;
+    use crate::layout::writing_mode::orthogonal_inline::resolve;
     use super::*;
 
     #[test]

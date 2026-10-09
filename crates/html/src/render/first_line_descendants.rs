@@ -8,7 +8,11 @@
 //! pseudo-element travel: everything it does not set stays with the text's
 //! own style, as for `first_letter_descendants`.
 
-use super::{Computed, Display, Node, blank_text, block_level_in_flow, out_of_flow, table_box};
+use crate::dom::Node;
+use crate::layout::fragment::table_bands::table_box;
+use crate::style::computed::{Computed, Display};
+use crate::text::text_box::blank_text;
+use super::{block_level_in_flow, out_of_flow};
 
 pub(super) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
     let Some(first) = parent.first_line_own.as_deref() else {

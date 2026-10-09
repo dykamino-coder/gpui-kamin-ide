@@ -1,7 +1,11 @@
 //! `:has()`.
 // owner: B
 
-use crate::dom::*;
+use crate::style::css::Selector;
+use crate::style::select::{Ancestor, Sibs, census_of};
+use markup5ever_rcdom::Handle;
+use std::collections::HashMap;
+use crate::style::select::matching::matches;
 
 thread_local! {
     pub(crate) static HAS_MARKS: std::cell::RefCell<HashMap<usize, Vec<u64>>> =
@@ -44,7 +48,7 @@ pub(crate) fn attach_anchor(sel: &mut Selector, lead: char) {
         tag: None,
         id: None,
         classes: vec![],
-        attrs: vec![crate::css::AttrSel {
+        attrs: vec![crate::style::css::AttrSel {
             name: HAS_SENTINEL.to_string(),
             op: None,
             ci: false,
@@ -67,7 +71,7 @@ pub(crate) fn attach_anchor(sel: &mut Selector, lead: char) {
 /// битая часть делает недействительным весь аргумент - `None`.
 pub(crate) fn parse_has_arg(arg: &str) -> Option<HasArg> {
     let mut parts = vec![];
-    for one in crate::css::split_selector_list(arg) {
+    for one in crate::style::css::split_selector_list(arg) {
         let one = one.trim();
         let (lead, rest) = match one.chars().next()? {
             c @ ('>' | '+' | '~') => (c, &one[1..]),
@@ -104,7 +108,7 @@ pub(crate) fn collect_has_args(sel: &Selector, out: &mut Vec<String>) -> bool {
             }
         } else if let Some((_, arg)) = p.split_once('(')
             && let Some(arg) = arg.strip_suffix(')')
-            && let Some((_, list)) = crate::css::nth_of_parts(arg)
+            && let Some((_, list)) = crate::style::css::nth_of_parts(arg)
         {
             for s in &list {
                 if !collect_has_args(s, out) {

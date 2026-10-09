@@ -152,7 +152,7 @@ fn target_selectors(css: &str, selector: &str) -> String {
             b'[' => brackets += 1,
             b']' => brackets = brackets.saturating_sub(1),
             b'{' if brackets == 0 => {
-                let prelude = crate::css::strip_comments(&css[head..i]);
+                let prelude = crate::style::css::strip_comments(&css[head..i]);
                 let name = prelude.trim().split_whitespace().next().unwrap_or("");
                 let group = [
                     "@media",
@@ -180,7 +180,7 @@ fn target_selectors(css: &str, selector: &str) -> String {
                 && b.get(i + 1) != Some(&b':') =>
             {
                 let end = name_end(b, i + 1);
-                if crate::css::unescape(&css[i + 1..end]).eq_ignore_ascii_case("target")
+                if crate::style::css::unescape(&css[i + 1..end]).eq_ignore_ascii_case("target")
                     && b.get(end) != Some(&b'(')
                 {
                     out.push_str(&css[from..i]);

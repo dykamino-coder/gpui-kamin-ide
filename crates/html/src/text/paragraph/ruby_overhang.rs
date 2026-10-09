@@ -13,7 +13,8 @@
 //! - `none`: never.
 
 use super::*;
-use crate::computed::RubyOverhang;
+use crate::style::computed::RubyOverhang;
+use gpui::Window;
 
 /// Space separators a ruby annotation may overhang (Blink
 /// `IsSpaceForRubyOverhang`: Unicode General Category Zs).

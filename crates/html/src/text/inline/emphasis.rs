@@ -1,7 +1,7 @@
 //! Build emphasis spans with their line geometry and clipped background fill.
 
 use super::Piece;
-use crate::value::Len;
+use crate::style::values::value::Len;
 
 /// Куски со знаком акцента. Знак набирается в половину кегля своей базы
 /// (css-text-decor-3 §5.3, как аннотация руби с `font-size: 50%`) и встаёт
@@ -11,7 +11,7 @@ pub fn emphasis_spans(
     pieces: &[Piece],
     base_size: f32,
     normal: f32,
-) -> Vec<crate::lines::EmphSpan> {
+) -> Vec<crate::text::paragraph::EmphSpan> {
     let mut out = Vec::new();
     let mut at = 0usize;
     for p in pieces {
@@ -31,7 +31,7 @@ pub fn emphasis_spans(
                 Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
                 _ => normal * size,
             };
-            out.push(crate::lines::EmphSpan {
+            out.push(crate::text::paragraph::EmphSpan {
                 range: at..end,
                 under: style.emphasis_under,
                 size: size * 0.5,
@@ -44,7 +44,7 @@ pub fn emphasis_spans(
                 color: style.emphasis_color.map(|color| {
                     style
                         .text_clip_fill
-                        .map_or(color, |fill| crate::background::over(color, fill))
+                        .map_or(color, |fill| crate::paint::background::over(color, fill))
                         .to_hsla()
                 }),
             });

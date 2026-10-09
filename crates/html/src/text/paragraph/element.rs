@@ -1,6 +1,7 @@
 //! impl Element/IntoElement for Paragraph: раскладка, prepaint, отрисовка.
 
 use crate::text::paragraph::*;
+use gpui::{App, Bounds, Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, IntoElement, LayoutId, Pixels, Window, point, px, size};
 
 impl Element for Paragraph {
     type RequestLayoutState = LayoutId;
@@ -225,7 +226,7 @@ impl Element for Paragraph {
                 // band host's intrinsic probe, like `VerticalText` does: the
                 // box itself stretches to the window along the line axis.
                 if vertical {
-                    crate::interact::VT_INLINE_MAX.with(|c| {
+                    crate::text::vertical::VT_INLINE_MAX.with(|c| {
                         if let Some(v) = c.get() {
                             c.set(Some(v.max(f32::from(content))));
                         }
@@ -383,7 +384,7 @@ impl Element for Paragraph {
         if !self.overlays.is_empty() {
             let segs = self.measure(window);
             let mut placed = std::mem::take(&mut self.overlays);
-            let rotated = crate::interact::in_rotated_frame();
+            let rotated = crate::text::vertical::in_rotated_frame();
             let scale = window.scale_factor().max(0.01);
             for (at, el, how) in placed.iter_mut() {
                 // Абсолют от строчного содержащего блока: края считает
@@ -531,7 +532,7 @@ impl Element for Paragraph {
                     })
                     .collect(),
             };
-            crate::interact::publish_para_rows(tag, rows);
+            crate::text::clamp::publish_para_rows(tag, rows);
         }
         // Строки снизу вверх: место строки считается ОТ ВЕРХА коробки одним
         // сложением (`origin + px(смещение)`), как у `point_of`. Прежде

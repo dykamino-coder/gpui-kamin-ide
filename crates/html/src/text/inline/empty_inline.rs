@@ -1,6 +1,6 @@
 //! Keep empty inline metrics in a paragraph that already generates a line.
 
-use crate::computed::{Computed, Display, Position};
+use crate::style::computed::{Computed, Display, Position};
 use crate::dom::Node;
 
 pub(super) fn has_text(children: &[Node]) -> bool {

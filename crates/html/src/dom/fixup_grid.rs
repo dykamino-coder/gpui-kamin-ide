@@ -1,6 +1,8 @@
 //! Правки сетки: подсетка (дорожки родителя), fr в точки, лунки как сетка, абсолютные в сетке.
 
 use crate::dom::*;
+use crate::style::computed::{Computed, Display, Position};
+use crate::style::values::value::Len;
 
 /// Ребёнок гибкого контейнера или сетки не плавает и не очищает.
 ///
@@ -16,10 +18,10 @@ use crate::dom::*;
 /// Только явные формы: у подсетки без размещения среза нет, и трогать её
 /// нельзя — авто-размещение считает уже раскладка.
 pub(crate) fn subgrid_slot(
-    place: &Option<(crate::computed::Placement, crate::computed::Placement)>,
+    place: &Option<(crate::style::computed::Placement, crate::style::computed::Placement)>,
     count: usize,
 ) -> Option<(usize, usize)> {
-    use crate::computed::Placement;
+    use crate::style::computed::Placement;
     let line = |n: i16| -> usize {
         if n > 0 {
             (n as usize - 1).min(count.saturating_sub(1))
@@ -58,8 +60,8 @@ pub(crate) fn subgrid_slot(
 /// авто-размещение, а сколько дорожек она занимает — видно сразу
 /// (css-grid-2 §subgrid-size-contribution: число дорожек авто-размещённой
 /// подсетки берётся из её пролёта).
-pub(crate) fn subgrid_span(place: &Option<(crate::computed::Placement, crate::computed::Placement)>) -> usize {
-    use crate::computed::Placement;
+pub(crate) fn subgrid_span(place: &Option<(crate::style::computed::Placement, crate::style::computed::Placement)>) -> usize {
+    use crate::style::computed::Placement;
     match place {
         Some((Placement::Span(k), Placement::Auto)) | Some((Placement::Auto, Placement::Span(k))) => {
             (*k as usize).max(1)
@@ -75,11 +77,11 @@ pub(crate) fn subgrid_span(place: &Option<(crate::computed::Placement, crate::co
 /// эталона WPT выписывают результат числами (`grid-gap-larger-001-ref`
 /// `70px 130px 70px` при родительских 100/190/100).
 pub(crate) fn subgrid_gap_slice(
-    slice: &mut [crate::computed::TrackSize],
+    slice: &mut [crate::style::computed::TrackSize],
     parent: Option<Len>,
     own: Option<Len>,
 ) {
-    use crate::computed::{Track, TrackSize};
+    use crate::style::computed::{Track, TrackSize};
     let px = |l: Option<Len>| match l {
         Some(Len::Px(v)) => v,
         _ => 0.0,
@@ -186,7 +188,7 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                     || !tracks.iter().all(|t| {
                         matches!(
                             t,
-                            crate::computed::TrackSize::Single(crate::computed::Track::Px(_))
+                            crate::style::computed::TrackSize::Single(crate::style::computed::Track::Px(_))
                         )
                     })
                 {
@@ -251,7 +253,7 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                     let Some((at, span)) = slot else {
                         continue;
                     };
-                    let slice: Vec<crate::computed::TrackSize> = (at..at + span)
+                    let slice: Vec<crate::style::computed::TrackSize> = (at..at + span)
                         .filter_map(|i| tracks.get(i).cloned())
                         .collect();
                     if slice.len() != span || span == 0 {
@@ -280,13 +282,13 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                         )
                     };
                     let mut slice = slice;
-                    if let Some(crate::computed::TrackSize::Single(crate::computed::Track::Px(
+                    if let Some(crate::style::computed::TrackSize::Single(crate::style::computed::Track::Px(
                         w,
                     ))) = slice.first_mut()
                     {
                         *w = (*w - lead).max(0.0);
                     }
-                    if let Some(crate::computed::TrackSize::Single(crate::computed::Track::Px(
+                    if let Some(crate::style::computed::TrackSize::Single(crate::style::computed::Track::Px(
                         w,
                     ))) = slice.last_mut()
                     {
@@ -401,7 +403,7 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                                 child.style.max_width = None;
                                 child.style.min_width = Some(Len::Px(0.0));
                             }
-                            let stretch = Some(crate::computed::Align::Stretch);
+                            let stretch = Some(crate::style::computed::Align::Stretch);
                             if row_dir {
                                 child.style.align_self = stretch;
                             } else {
@@ -419,7 +421,7 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                             // своей области. Спека требует «размер
                             // игнорируется», а не «минимум по содержимому».
                             child.style.min_height = Some(Len::Px(0.0));
-                            child.style.align_self = Some(crate::computed::Align::Stretch);
+                            child.style.align_self = Some(crate::style::computed::Align::Stretch);
                         }
                     } else {
                         child.style.grid_tracks = Some(slice);
@@ -429,7 +431,7 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                             child.style.width = None;
                             child.style.max_width = None;
                             child.style.min_width = Some(Len::Px(0.0));
-                            child.style.justify_self = Some(crate::computed::Align::Stretch);
+                            child.style.justify_self = Some(crate::style::computed::Align::Stretch);
                         }
                     }
                 }
@@ -452,10 +454,10 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
 /// содержимое (`minmax(auto, 1fr)`) здесь не виден — у пар семьи элементы пустые.
 pub(crate) fn fr_tracks_to_px(
     style: &Computed,
-    tracks: &[crate::computed::TrackSize],
+    tracks: &[crate::style::computed::TrackSize],
     row_dir: bool,
-) -> Option<Vec<crate::computed::TrackSize>> {
-    use crate::computed::{Track, TrackSize};
+) -> Option<Vec<crate::style::computed::TrackSize>> {
+    use crate::style::computed::{Track, TrackSize};
     let mut fr_sum = 0.0f32;
     let mut px_sum = 0.0f32;
     for t in tracks {

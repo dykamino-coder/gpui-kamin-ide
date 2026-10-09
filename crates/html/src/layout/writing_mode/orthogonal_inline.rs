@@ -1,8 +1,8 @@
 //! Carry the nearest scrollport separately from ordinary block inline constraints.
-use crate::render::ratio_basis;
-use crate::computed::orthogonal::{AxisSizes, InlineConstraint, available};
-use crate::computed::{Computed, Display, Overflow, Position};
-use crate::value::Len;
+use crate::layout::block::ratio_basis;
+use crate::style::computed::orthogonal::{AxisSizes, InlineConstraint, available};
+use crate::style::computed::{Computed, Display, Overflow, Position};
+use crate::style::values::value::Len;
 
 fn px(value: Option<Len>) -> Option<f32> {
     match value {
@@ -70,8 +70,8 @@ pub(crate) fn resolve(
     let vertical = style.vertical == Some(true);
     let parent_vertical = parent.vertical == Some(true);
     style.orthogonal_inline = if vertical == parent_vertical && ordinary(style) {
-        crate::render::orthogonal_fixed_child::containing_inline(parent)
-            .map(|constraint| crate::render::orthogonal_fixed_child::inherit(style, constraint))
+        crate::layout::writing_mode::orthogonal_fixed_child::containing_inline(parent)
+            .map(|constraint| crate::layout::writing_mode::orthogonal_fixed_child::inherit(style, constraint))
     } else {
         None
     };

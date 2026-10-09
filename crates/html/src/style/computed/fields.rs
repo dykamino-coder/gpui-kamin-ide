@@ -1,6 +1,7 @@
 //! Тип Computed: все поля вычисленного стиля (один тип, не делится).
 
 use crate::style::computed::*;
+use crate::style::values::value::{Color, Len};
 
 #[derive(Clone, Debug, Default)]
 pub struct Computed {
@@ -1309,7 +1310,7 @@ pub struct Computed {
     /// Вырезы обтекания для абзацев ПОД этим элементом: формы слева и
     /// справа от верха первого абзаца (заполняет сборка shape-flow).
     pub flow_shapes:
-        Option<std::sync::Arc<(Vec<crate::flow::FloatShape>, Vec<crate::flow::FloatShape>)>>,
+        Option<std::sync::Arc<(Vec<crate::layout::float::shapes::FloatShape>, Vec<crate::layout::float::shapes::FloatShape>)>>,
     /// `mask-position`: смещение плитки; доля — от свободного места
     /// (коробка минус плитка), как у `background-position`.
     pub mask_pos: Option<(Len, Len)>,
@@ -1382,7 +1383,7 @@ pub struct Computed {
     pub font_settings: Option<Vec<(String, u32)>>,
     /// Font-specific names stay unresolved until the used family is known
     /// (CSS Fonts 4 §font-variant-alternates-prop).
-    pub font_alternates: Option<crate::fonts::alternates::Alternates>,
+    pub font_alternates: Option<crate::text::fonts::alternates::Alternates>,
     /// `font-synthesis-weight|style|small-caps: none` — подмена начертания
     /// запрещена (css-fonts-4 §6.5). Ложь = `none`, пусто = `auto`.
     pub font_synth: (Option<bool>, Option<bool>, Option<bool>),

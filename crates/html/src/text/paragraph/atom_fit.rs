@@ -13,6 +13,7 @@
 //! size (`inline_layout_algorithm.cc` → `LayoutAtomicInline`).
 
 use super::*;
+use gpui::{App, Window, px, size};
 
 pub(super) struct FitAtom {
     /// Index into `atoms` / `atom_boxes`.

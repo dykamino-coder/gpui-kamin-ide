@@ -1,9 +1,7 @@
 //! Vertical grids with indefinite inline tracks measure child text before stretch.
-use crate::{
-    computed::{Align, Computed, Display},
-    dom::Node,
-    value::Len,
-};
+use crate::dom::Node;
+use crate::style::computed::{Align, Computed, Display};
+use crate::style::values::value::Len;
 
 /// Строчная ось вертикального контейнера по СОДЕРЖИМОМУ: кому из детей
 /// повёрнутый абзац обязан заявить высоту строкой (`hug_inline`).
@@ -72,7 +70,7 @@ mod tests {
             vertical: Some(true),
             ..Computed::default()
         };
-        let child = crate::render::anon_element("div", vec![]);
+        let child = crate::layout::table::anon::anon_element("div", vec![]);
         let claimed = |child, parent: &Computed| {
             let out = children(vec![Node::Element(child)], parent, parent);
             let Node::Element(child) = &out[0] else {
@@ -93,7 +91,7 @@ mod tests {
         horizontal.style.vertical = Some(false);
         assert_eq!(claimed(horizontal, &parent), (false, false));
         let mut positioned = child;
-        positioned.style.position = Some(crate::computed::Position::Absolute);
+        positioned.style.position = Some(crate::style::computed::Position::Absolute);
         assert_eq!(claimed(positioned, &parent), (false, false));
     }
 }

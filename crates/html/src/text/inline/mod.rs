@@ -38,16 +38,12 @@ pub use tabs::tab_stops;
 
 pub(crate) mod text_case;
 
-pub(crate) use crate::computed::{Computed, TextAlign};
-pub(crate) use crate::dom::{Element, Node};
-pub(crate) use crate::value::{Color, Len};
-pub(crate) use gpui::{
-    AnyElement, FontStyle, FontWeight, HighlightStyle, IntoElement, ParentElement, Styled, TextRun,
-    TextStyle, UnderlineStyle,
-};
+use crate::dom::{Element, Node};
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
+use gpui::{AnyElement, IntoElement};
 pub(crate) mod collect;
 pub(crate) use crate::text::inline::collect::*;
-pub(crate) use crate::style::cascade::inherit::*;
 pub(crate) mod hyphenate;
 pub use crate::text::inline::hyphenate::*;
 pub(crate) mod spans;
@@ -320,7 +316,7 @@ pub fn style_first_line(pieces: Vec<Piece>, at: usize, style: &Computed) -> Vec<
                         .font_alternates
                         .clone()
                         .or_else(|| base.font_alternates.clone());
-                    crate::computed::font_family::inherit(&mut c, style, base);
+                    crate::style::computed::font_family::inherit(&mut c, style, base);
                     c.font_settings = style
                         .font_settings
                         .clone()
@@ -393,16 +389,16 @@ pub(crate) fn establishes_cb(c: &Computed) -> bool {
     // (css-display-3 §3.2).
     if matches!(
         c.display,
-        Some(crate::computed::Display::Contents) | Some(crate::computed::Display::None)
+        Some(crate::style::computed::Display::Contents) | Some(crate::style::computed::Display::None)
     ) {
         return false;
     }
     matches!(
         c.position,
-        Some(crate::computed::Position::Relative)
-            | Some(crate::computed::Position::Absolute)
-            | Some(crate::computed::Position::Fixed)
-            | Some(crate::computed::Position::Sticky)
+        Some(crate::style::computed::Position::Relative)
+            | Some(crate::style::computed::Position::Absolute)
+            | Some(crate::style::computed::Position::Fixed)
+            | Some(crate::style::computed::Position::Sticky)
     ) || c.transform.is_some()
         // css-transforms-2: `preserve-3d` is a containing block for all descendants.
         || c.preserve_3d == Some(true)
@@ -411,7 +407,7 @@ pub(crate) fn establishes_cb(c: &Computed) -> bool {
         || c.contain_layout == Some(true)
         // css-will-change-1 §2.1: обещание свойства, которое дало бы блок,
         // даёт его уже сейчас (`will-change-abspos-cb-002/003`).
-        || c.will_change & (crate::computed::wc::CB_ABS | crate::computed::wc::CB_FIXED) != 0
+        || c.will_change & (crate::style::computed::wc::CB_ABS | crate::style::computed::wc::CB_FIXED) != 0
 }
 
 /// Корень подложки (filter-effects-2 §BackdropRoot) — без корня документа:
@@ -419,7 +415,7 @@ pub(crate) fn establishes_cb(c: &Computed) -> bool {
 /// наследуется (`inherit`), но они и так под корнем.
 pub(crate) fn backdrop_root(c: &Computed) -> bool {
     c.opacity.is_some_and(|o| o < 1.0)
-        || c.filter.is_some_and(|f| f != crate::computed::Filter::neutral())
+        || c.filter.is_some_and(|f| f != crate::style::computed::Filter::neutral())
         || c.filter_ref.is_some()
         || c.mask_image.is_some()
         || c.clip_ref.is_some()
@@ -447,7 +443,9 @@ pub(crate) fn backdrop_root(c: &Computed) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::css::parse_decls;
+    use crate::style::cascade::inherit::inherit;
+    use crate::style::computed::TextAlign;
+    use crate::style::css::parse_decls;
 
     fn styled(css: &str) -> Computed {
         let mut c = Computed::default();
@@ -473,18 +471,18 @@ mod tests {
         let parent = Computed::default();
         let ltr = inherit(&parent, &styled("text-align: start"));
         assert_eq!(ltr.text_align, Some(TextAlign::Start));
-        assert_eq!(crate::lines::align_for(&ltr), crate::lines::Align::Left);
+        assert_eq!(crate::text::paragraph::align_for(&ltr), crate::text::paragraph::Align::Left);
         let rtl = inherit(&parent, &styled("text-align: start; direction: rtl"));
-        assert_eq!(crate::lines::align_for(&rtl), crate::lines::Align::Right);
+        assert_eq!(crate::text::paragraph::align_for(&rtl), crate::text::paragraph::Align::Right);
         let rtl_end = inherit(&parent, &styled("text-align: end; direction: rtl"));
-        assert_eq!(crate::lines::align_for(&rtl_end), crate::lines::Align::Left);
+        assert_eq!(crate::text::paragraph::align_for(&rtl_end), crate::text::paragraph::Align::Left);
         // Умолчание CSS — `start`: без выключки текст справа налево прижат
         // вправо, а не влево.
         let bare = inherit(&parent, &styled("direction: rtl"));
-        assert_eq!(crate::lines::align_for(&bare), crate::lines::Align::Right);
+        assert_eq!(crate::text::paragraph::align_for(&bare), crate::text::paragraph::Align::Right);
         // Наследник блока справа налево берёт сторону письма у него.
         let child = inherit(&bare, &Computed::default());
-        assert_eq!(crate::lines::align_for(&child), crate::lines::Align::Right);
+        assert_eq!(crate::text::paragraph::align_for(&child), crate::text::paragraph::Align::Right);
     }
 
     #[test]
@@ -499,7 +497,7 @@ mod tests {
             "white-space: break-spaces",
         ] {
             let style = styled(css);
-            assert!(crate::lines::rules(&style).is_some(), "{css}");
+            assert!(crate::text::paragraph::rules(&style).is_some(), "{css}");
             assert_eq!(breakable("a b", &style), "a b", "{css}");
         }
         // Своей раскладке мягкий перенос доезжает КАК ЕСТЬ: она знает его
@@ -578,7 +576,8 @@ mod tests {
 #[cfg(test)]
 mod em_tests {
     use super::*;
-    use crate::css::parse_decls;
+    use crate::style::cascade::inherit::inherit;
+    use crate::style::css::parse_decls;
 
     fn styled(css: &str) -> Computed {
         let mut c = Computed::default();

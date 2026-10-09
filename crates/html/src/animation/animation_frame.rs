@@ -1,5 +1,5 @@
 //! Apply sampled declarations to the real node, preserving its formatting identity.
-use crate::computed::Computed;
+use crate::style::computed::Computed;
 use crate::dom::Element;
 
 pub(crate) fn sample(e: &Element, frame: &Computed, transforms: bool) -> Element {
@@ -52,11 +52,11 @@ pub(crate) fn sample(e: &Element, frame: &Computed, transforms: bool) -> Element
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::{Color, Len};
+    use crate::style::values::value::{Color, Len};
 
     #[test]
     fn sampled_height_keeps_identity_placement_edges_and_unanimated_width() {
-        let mut element = crate::render::anon_element("div", vec![]);
+        let mut element = crate::layout::table::anon::anon_element("div", vec![]);
         element.node_id = 17;
         element.style.width = Some(Len::Px(200.0));
         element.style.height = Some(Len::Px(100.0));
@@ -79,7 +79,7 @@ mod tests {
 
     #[test]
     fn sampled_percent_and_color_replace_actual_node_declarations() {
-        let mut element = crate::render::anon_element("div", vec![]);
+        let mut element = crate::layout::table::anon::anon_element("div", vec![]);
         element.style.width = Some(Len::Px(200.0));
         element.style.height = Some(Len::Px(100.0));
         element.style.color = Some(Color {

@@ -1,7 +1,10 @@
 //! Относительный сдвиг и подъём абсолютных коробок.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::positioned::static_position::at_static_position;
+use crate::render::{is_blank, real_inline};
+use crate::style::values::value::Len;
 
 /// Абсолют с краями по ОБЕИМ осям внутри НЕпозиционированного строчного —
 /// наружу, соседом этого строчного на блочном уровне. Его содержащий блок —
@@ -20,7 +23,7 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node]) -> Vec<Node> {
         let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
         matches!(
             e.style.position,
-            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
         ) && !at_static_position(&e.style)
             && (edge(e.style.inset.left) || edge(e.style.inset.right))
             && (edge(e.style.inset.top) || edge(e.style.inset.bottom))
@@ -57,7 +60,7 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node]) -> Vec<Node> {
             && e.style.transform.is_none()
             && e.style.contain_layout != Some(true)
             && e.style.contain_paint != Some(true)
-            && !crate::inline::establishes_cb(&e.style)
+            && !crate::text::inline::establishes_cb(&e.style)
     }
     fn take(e: &mut Element, out: &mut Vec<Node>) {
         let kids = std::mem::take(&mut e.children);
@@ -110,7 +113,7 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node]) -> Vec<Node> {
 /// against the parent's percentage-resolution size, crbug.com/1227884,
 /// `position-relative-011/012`).
 pub(crate) fn relative_shift(e: &Element, parent: Option<&Element>) -> (f32, f32) {
-    if e.style.position != Some(crate::computed::Position::Relative) {
+    if e.style.position != Some(crate::style::computed::Position::Relative) {
         return (0.0, 0.0);
     }
     let basis = |l: Option<Len>| match l {
@@ -152,7 +155,7 @@ pub(crate) fn hoist_relative(e: &mut Element) -> (f32, f32) {
     let (mut dx, mut dy) = (0.0f32, 0.0f32);
     let mut cur = e;
     loop {
-        if cur.style.position == Some(crate::computed::Position::Relative) {
+        if cur.style.position == Some(crate::style::computed::Position::Relative) {
             let px_side = |a: Option<Len>, b: Option<Len>| match (a, b) {
                 (Some(Len::Px(v)), _) => Some(v),
                 (_, Some(Len::Px(v))) => Some(-v),
@@ -182,7 +185,7 @@ pub(crate) fn hoist_relative(e: &mut Element) -> (f32, f32) {
                 if (!k.inline || k.style.display.is_none())
                     && matches!(
                         k.style.position,
-                        None | Some(crate::computed::Position::Relative)
+                        None | Some(crate::style::computed::Position::Relative)
                     ) =>
             {
                 i

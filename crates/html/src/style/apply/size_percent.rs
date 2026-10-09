@@ -1,8 +1,8 @@
 //! Minimum calc sizes retain their length term when percentages are cyclic.
 //! CSS Sizing 3 §5.2.1 resolves cyclic percentages in minimum contributions to zero.
 
-use crate::computed::{Computed, Position};
-use crate::value::{Len, calc_get};
+use crate::style::computed::{Computed, Position};
+use crate::style::values::value::{Len, calc_get};
 
 pub(super) fn resolve(style: &Computed, value: Len, field: u8) -> Option<Len> {
     let (percentage, length) = match value {

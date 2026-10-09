@@ -12,7 +12,7 @@
 //! Сторона — `i8`, как в стиле: -1 слева, 1 справа (`computed.rs` `float`);
 //! `clear` — `Option<i8>`, где `Some(0)` значит `both`.
 
-use crate::flow::FloatShape;
+use crate::layout::float::shapes::FloatShape;
 use std::sync::Arc;
 
 /// Допуск сравнения точек: та же величина, что у ряда обтекания в

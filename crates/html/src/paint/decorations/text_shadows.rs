@@ -1,7 +1,7 @@
 //! Paint text shadows with the same paragraph geometry and decoration mask.
 
 use crate::render::{RenderOpts, gather_text, normalize_for_shadow, paragraph};
-use crate::computed::{Computed, Shadow};
+use crate::style::computed::{Computed, Shadow};
 use crate::dom::Node;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
 
@@ -34,7 +34,7 @@ fn shadow_layer(
             .into_any_element()
     };
     let copy = if shadow.blur > 0.5 {
-        let mut group = crate::interact::Grouped::new(copy);
+        let mut group = crate::paint::effects::grouped_element::Grouped::new(copy);
         group.blur = shadow.blur * 0.5;
         group.into_any_element()
     } else {
@@ -89,7 +89,7 @@ pub(crate) fn with_text_shadow(
     };
     let mut plain = String::new();
     gather_text(nodes, &mut plain);
-    let plain = crate::inline::transform_case(&normalize_for_shadow(&plain), style);
+    let plain = crate::text::inline::transform_case(&normalize_for_shadow(&plain), style);
     if plain.trim().is_empty() {
         return el;
     }
@@ -135,11 +135,11 @@ fn atomic(e: &crate::dom::Element) -> bool {
     // Кусок со своей коробкой абзац ставит атомом со СВОИМ абзацем внутри,
     // и тень тот рисует сам (`render::has_own_box`).
     let font = match e.style.font_size {
-        Some(crate::value::Len::Px(v)) => v,
+        Some(crate::style::values::value::Len::Px(v)) => v,
         _ => 16.0,
     };
     !e.inline
-        || crate::render::has_own_box(&e.style, font)
+        || crate::layout::positioned::predicates::has_own_box(&e.style, font)
         || matches!(
             e.tag.as_str(),
             "img"
@@ -179,8 +179,8 @@ fn collect_groups(nodes: &[Node], current: &[Shadow], out: &mut Vec<Vec<Shadow>>
     }
 }
 
-fn transparent() -> crate::value::Color {
-    crate::value::Color {
+fn transparent() -> crate::style::values::value::Color {
+    crate::style::values::value::Color {
         r: 0.0,
         g: 0.0,
         b: 0.0,
@@ -214,7 +214,7 @@ fn masked_layer(
     let masked = mask_nodes(nodes, block, &style.decors, &mask.decors, group, shadow);
     let copy = paragraph(&masked, &mask, opts);
     let copy = if shadow.blur > 0.5 {
-        let mut g = crate::interact::Grouped::new(copy);
+        let mut g = crate::paint::effects::grouped_element::Grouped::new(copy);
         g.blur = shadow.blur * 0.5;
         g.into_any_element()
     } else {
@@ -232,8 +232,8 @@ fn masked_layer(
 fn mask_nodes(
     nodes: &[Node],
     parent: &[Shadow],
-    parent_decors: &[crate::computed::Decor],
-    parent_masked: &[crate::computed::Decor],
+    parent_decors: &[crate::style::computed::Decor],
+    parent_masked: &[crate::style::computed::Decor],
     group: &[Shadow],
     shadow: &Shadow,
 ) -> Vec<Node> {

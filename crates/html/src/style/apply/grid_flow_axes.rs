@@ -1,5 +1,5 @@
 //! Project CSS grid flow onto physical axes after swapping vertical track templates.
-use crate::computed::Computed;
+use crate::style::computed::Computed;
 
 pub(super) fn reversed(c: &Computed) -> [bool; 2] {
     let vertical = c.vertical == Some(true);

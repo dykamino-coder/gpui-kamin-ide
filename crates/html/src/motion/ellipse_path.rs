@@ -1,6 +1,8 @@
 //! Continuous circle/ellipse motion paths, including their true tangents.
 
-use super::{Computed, Len, origin_shift, rotation};
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
+use super::{origin_shift, rotation};
 use std::f64::consts::FRAC_PI_2;
 
 pub(super) fn css(
@@ -10,7 +12,7 @@ pub(super) fn css(
     height: f32,
     shift: (f32, f32),
 ) -> Option<String> {
-    let (cx, cy, rx, ry) = crate::background::shape_params(raw, width, height, 1.0)?;
+    let (cx, cy, rx, ry) = crate::paint::background::shape_params(raw, width, height, 1.0)?;
     if rx <= 0.0 || ry <= 0.0 {
         return Some(origin_shift(
             c,
@@ -28,7 +30,7 @@ pub(super) fn css(
     let requested = match c.offset_distance {
         Some(Len::Px(v)) => f64::from(v),
         Some(Len::Pct(p)) => f64::from(p) * length,
-        Some(Len::Calc(i)) => crate::value::calc_get(i)
+        Some(Len::Calc(i)) => crate::style::values::value::calc_get(i)
             .pct_px()
             .map_or(0.0, |(p, px)| f64::from(p) * length + f64::from(px)),
         _ => 0.0,

@@ -1,13 +1,13 @@
 //! CSS Transforms 1 §transformable-element excludes non-replaced inline boxes.
 //! Ruby units use block wrappers internally; that must not make them transformable.
 
-use crate::computed::{Computed, Display, inh};
+use crate::style::computed::{Computed, Display, inh};
 use crate::dom::Element;
 
 pub(crate) fn used(e: &Element) -> Option<Element> {
     // A block ruby principal box remains transformable. Author display changes
     // that remove a ruby role likewise retain ordinary transform behavior.
-    if crate::render::ruby_role(e).is_none() || e.style.display == Some(Display::Block) {
+    if crate::text::ruby::ruby_role(e).is_none() || e.style.display == Some(Display::Block) {
         return None;
     }
     let mut e = e.clone();

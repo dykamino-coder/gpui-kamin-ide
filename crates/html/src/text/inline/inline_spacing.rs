@@ -1,7 +1,7 @@
 //! Inline spacing uses physical sides projected into the paragraph shaping plane.
-use crate::computed::Computed;
+use crate::style::computed::Computed;
 use crate::dom::Element;
-use crate::value::Len;
+use crate::style::values::value::Len;
 
 /// Боковые поля, рамки и отступы строчной коробки в точках.
 ///
@@ -23,10 +23,10 @@ pub(super) fn inline_sides(
     // containing block»), то есть блока абзаца. Прежде доля молча давала
     // ноль (`text-indent-percentage-001`: эталон `margin-left: 50%` на
     // `<span>` стоял у края).
-    let cb = crate::render::avail_width();
+    let cb = crate::layout::block::containing::avail_width();
     let px_of = |l: Option<Len>| match l {
         Some(Len::Px(_)) | Some(Len::Em(_)) | Some(Len::Ch(_)) | Some(Len::Ex(_)) => {
-            crate::metrics::spacing_px(l, &family, size)
+            crate::text::metrics::spacing_px(l, &family, size)
         }
         Some(Len::Pct(k)) => cb.map_or(0.0, |w| k * w),
         _ => 0.0,
@@ -46,7 +46,7 @@ pub(super) fn inline_sides(
     // Поле возвращается ОТДЕЛЬНО от рамки с отступом: под полем виден фон
     // ПРЕДКА (§8.3 — поля всегда прозрачны), а под рамкой и отступом — свой
     // (§14.2). Одной распоркой обе полосы не выразить: фон у неё один.
-    let flat = |s: crate::computed::Sides| {
+    let flat = |s: crate::style::computed::Sides| {
         super::physical_sides::project(flow, [s.top, s.right, s.bottom, s.left]).map(px_of)
     };
     let margin = flat(e.style.margin);

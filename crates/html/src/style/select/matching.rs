@@ -1,7 +1,10 @@
 //! `matches` и структурные псевдоклассы.
 // owner: B
 
-use crate::dom::*;
+use crate::dom::language;
+use crate::style::css::Selector;
+use crate::style::select::has::has_id;
+use crate::style::select::{Ancestor, Sibs, Spot};
 
 /// Сопоставление селектора с узлом и его цепочкой предков.
 ///
@@ -121,7 +124,7 @@ pub(crate) fn nth_of_form(pseudo: &str) -> bool {
     matches!(name, "nth-child" | "nth-last-child")
         && arg
             .strip_suffix(')')
-            .is_some_and(|a| crate::css::nth_of_parts(a).is_some())
+            .is_some_and(|a| crate::style::css::nth_of_parts(a).is_some())
 }
 
 /// `:nth-child(An+B of S)` / `:nth-last-child(An+B of S)` (селекторы-4):
@@ -135,7 +138,7 @@ pub(crate) fn nth_of_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs:
         _ => return None,
     };
     let arg = arg.strip_suffix(')')?;
-    let (anb, list) = crate::css::nth_of_parts(arg)?;
+    let (anb, list) = crate::style::css::nth_of_parts(arg)?;
     let hit = |a: &Ancestor, s: Sibs| list.iter().any(|sel| matches(sel, a, path, s));
     if !sibs.is_elem || list.is_empty() || !hit(me, sibs) {
         return Some(false);
@@ -299,7 +302,7 @@ pub(crate) fn has_slotted_holds(pseudo: &str, me: &Ancestor) -> bool {
     else {
         return !slot.flattened.is_empty();
     };
-    let list: Vec<Selector> = crate::css::split_selector_list(arg)
+    let list: Vec<Selector> = crate::style::css::split_selector_list(arg)
         .into_iter()
         .filter_map(Selector::parse)
         .collect();

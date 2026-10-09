@@ -10,7 +10,7 @@ pub(crate) fn positioning_box(
     window: &mut Window,
 ) -> Bounds<Pixels> {
     let Some(src) = src else { return fallback };
-    if crate::css::split_args(src).len() != 1
+    if crate::style::css::split_args(src).len() != 1
         || src.starts_with("shape:")
         || src.starts_with("bordershape:")
         || src.contains("snap:")

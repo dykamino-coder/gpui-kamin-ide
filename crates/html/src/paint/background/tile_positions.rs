@@ -6,7 +6,8 @@
 //! Blink background_image_geometry.cc:179-191 likewise keeps repeat phase
 //! unsnapped, independently of the paint rectangle.
 
-use super::{MAX_TILES, Tiling};
+use crate::style::computed::Tiling;
+use super::MAX_TILES;
 
 pub(super) fn axis(mode: Tiling, from: f32, tile: f32, shift: f64, own: f32, all: f32) -> Vec<f64> {
     let (from, tile, own, all) = (

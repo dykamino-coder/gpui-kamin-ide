@@ -1,6 +1,9 @@
 //! Раскладка: display/flex/позиционирование/размеры (apply_layout).
 
 use crate::style::apply::*;
+use crate::style::computed::{Align, Computed, Display, FlexDir, Justify, Overflow, Placement, Position};
+use crate::style::values::value::Len;
+use gpui::{Div, Styled, px};
 
 pub(crate) fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // Вертикальная `-webkit-box` с действующим `continue` (`line-clamp`,
@@ -441,7 +444,7 @@ pub(crate) fn apply_layout(mut d: Div, c: &Computed) -> Div {
                 return Some(len_to_gpui(l));
             }
             if let Len::Calc(i) = l
-                && let Some((k, add)) = crate::value::calc_get(i).pct_px()
+                && let Some((k, add)) = crate::style::values::value::calc_get(i).pct_px()
             {
                 return basis.map(|b| px((add + k * b).max(0.0)).into());
             }
@@ -622,7 +625,7 @@ pub(crate) fn apply_layout(mut d: Div, c: &Computed) -> Div {
         // доля считается от родителя и поправки не требует. Новая пара НЕ
         // кладётся в арену (`calc_store` на каждом кадре раздувал бы её).
         let g = match l {
-            Len::Calc(i) => match crate::value::calc_get(i).pct_px() {
+            Len::Calc(i) => match crate::style::values::value::calc_get(i).pct_px() {
                 Some((pct, add)) => {
                     gpui::DefiniteLength::Calc(add + if f % 2 == 0 { pad_x } else { pad_y }, pct)
                 }

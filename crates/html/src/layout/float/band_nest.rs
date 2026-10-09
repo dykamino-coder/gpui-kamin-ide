@@ -1,7 +1,18 @@
 //! Вложенные полосы обтекания.
 // owner: A
 
-use crate::render::*;
+use crate::style::cascade::inherit::inherit;
+use crate::dom::{Element, Node};
+use crate::layout::block::margins::collapse_margins;
+use crate::layout::block::struts::top_edge_open;
+use crate::layout::float::band_clearance::supported as band_clear_supported;
+use crate::layout::float::band_dimensions;
+use crate::layout::float::band_flow_host::{BAND_WM, band_flow_rest, band_kids};
+use crate::layout::float::band_host::{band_edge, band_em, band_margins};
+use crate::layout::float::band_measured::band_float_m;
+use crate::render::{RenderOpts, block_level_in_flow, is_blank, out_of_flow, own_context, replaced_tag};
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
 
 /// Прогон-продолжение после `<br>` (`cont`, `band_flow_rest`): его первая
 /// строка — не первая строка абзаца, и `text-indent` её не сдвигает
@@ -84,7 +95,7 @@ pub(crate) fn band_nest(
     }
     let inner_em = band_em(&c.style, em)?;
     let seq = band_seq(collapse_margins(&c.children, false), inner_em)?;
-    let merged = inline::inherit(inherited, &c.style);
+    let merged = inherit(inherited, &c.style);
     let kids = band_kids(&seq, 0, &merged, opts, inner_em, top_edge_open(c));
     Some(crate::band_flow::Nest {
         kids,

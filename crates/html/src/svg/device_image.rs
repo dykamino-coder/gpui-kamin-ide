@@ -89,7 +89,7 @@ fn paint(
         && integral(bounds.size.width)
         && integral(bounds.size.height))
     .then(|| {
-        crate::background::alpha_sampling::resample(
+        crate::paint::background::alpha_sampling::resample(
             &image,
             (f32::from(bounds.size.width) * sf).round() as u32,
             (f32::from(bounds.size.height) * sf).round() as u32,

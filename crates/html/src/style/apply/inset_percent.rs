@@ -3,8 +3,8 @@
 //! CSS Values 4 §10.9 preserves mixed lengths; CSS 2 §9.3.2 makes vertical
 //! relative percentage insets auto when the containing height is indefinite.
 
-use crate::computed::{Computed, Position};
-use crate::value::{Len, calc_get};
+use crate::style::computed::{Computed, Position};
+use crate::style::values::value::{Len, calc_get};
 
 pub(super) fn is_auto(style: &Computed, value: Len, side: u8) -> bool {
     let percentage = match value {

@@ -1,6 +1,6 @@
 //! Пробы и записи раскладки: места атомов, экстенты руби, оформление, базовые линии, LayoutTap.
 
-use crate::text::paragraph::*;
+use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window, px, size};
 
 /// Как атом встаёт в строке по вертикали (`vertical-align`, CSS 2.1 §10.8.1).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -59,7 +59,7 @@ impl RubyExtents {
 /// base's font size (no end overhang over larger following text).
 #[derive(Clone)]
 pub struct RubyOverhangInfo {
-    pub mode: crate::computed::RubyOverhang,
+    pub mode: crate::style::computed::RubyOverhang,
     pub half_annotation_font: f32,
     pub align_start: bool,
     pub base_font: f32,
@@ -79,7 +79,7 @@ thread_local! {
 /// width into it. Also registers the overhang info for the atom being
 /// collected (`collect_ruby_extents`).
 pub fn ruby_base_with_overhang<T>(
-    mode: crate::computed::RubyOverhang,
+    mode: crate::style::computed::RubyOverhang,
     half_annotation_font: f32,
     align_start: bool,
     base_font: f32,
@@ -171,7 +171,7 @@ pub struct DecorSpan {
 /// Одно украшение куска.
 #[derive(Clone, Debug)]
 pub struct DecorItem {
-    pub decor: crate::computed::Decor,
+    pub decor: crate::style::computed::Decor,
     /// Шрифт украшающей коробки (метрики линий).
     pub font: gpui::Font,
     /// Украшенный прогон (Blink «decorated run»): смежные куски с тем же

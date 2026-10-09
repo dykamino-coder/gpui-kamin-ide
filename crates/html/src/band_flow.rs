@@ -29,7 +29,7 @@ mod clearance;
 mod piece;
 mod kid;
 pub use kid::{Kid, Kind, Nest};
-use crate::flow::FloatShape;
+use crate::layout::float::shapes::FloatShape;
 use gpui::{
     AnyElement, App, AvailableSpace, Bounds, Element, ElementId, GlobalElementId,
     InspectorElementId, IntoElement, LayoutId, Pixels, Window, div, point, prelude::*, px, size,
@@ -204,9 +204,9 @@ fn intrinsic_of(build: &Build, window: &mut Window, cx: &mut App) -> (f32, f32) 
             // Повёрнутый текст свою длину высотой не заявляет (растягивается
             // окном) — берём её у самого текста через сборщик
             // `VT_INLINE_MAX`; коробка без текста отвечает раскладкой.
-            let prev = crate::interact::VT_INLINE_MAX.with(|c| c.replace(Some(0.0)));
+            let prev = crate::text::vertical::VT_INLINE_MAX.with(|c| c.replace(Some(0.0)));
             el.layout_as_root(size(AvailableSpace::MaxContent, a), window, cx);
-            let text = crate::interact::VT_INLINE_MAX
+            let text = crate::text::vertical::VT_INLINE_MAX
                 .with(|c| c.replace(prev))
                 .unwrap_or(0.0);
             let laid = unrounded(&tap, window).1;

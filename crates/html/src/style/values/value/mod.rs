@@ -427,7 +427,7 @@ impl Color {
         // используемой схеме узла. Прежде функция не разбиралась, и
         // объявление пропадало целиком.
         if s.get(..11).is_some_and(|h| h.eq_ignore_ascii_case("light-dark(")) && s.ends_with(')') {
-            let args = crate::css::split_args(&s[11..s.len() - 1]);
+            let args = crate::style::css::split_args(&s[11..s.len() - 1]);
             if args.len() == 2 {
                 return Self::parse(args[usize::from(dark_scheme())]);
             }
@@ -463,7 +463,7 @@ impl Color {
         // Записи CSS Color 4 (`lab`, `oklch`, `color()`, `color-mix()` и
         // родня) — своим разбором: они задают цвет в других системах
         // координат, и без настоящего преобразования не приблизить.
-        if let Some((r, g, b, a)) = crate::color_space::parse(s) {
+        if let Some((r, g, b, a)) = crate::style::values::color_space::parse(s) {
             return Some(Color {
                 r: r.clamp(0.0, 1.0),
                 g: g.clamp(0.0, 1.0),

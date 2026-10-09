@@ -1,6 +1,7 @@
 //! Computed::apply_one: color, line-height, text-align/indent/transform/wrap, white-space, word-*, hyphens, vertical-align, line-clamp, text-box*, writing modes.
 
 use crate::style::computed::*;
+use crate::style::values::value::{Color, Len};
 
 impl Computed {
     #[allow(unused_variables)]

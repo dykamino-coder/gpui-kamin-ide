@@ -29,29 +29,19 @@
 )]
 
 pub mod anchor;
-pub use style::apply;
-pub use paint::background;
 pub mod band_flow;
 pub mod bands;
-pub use paint::border_image;
-pub use style::values::color_space;
-pub use style::computed;
-pub use style::generated::counter_style;
-pub use style::generated::counter_style_rules;
-pub use style::generated::counters;
-pub use style::generated::counters_scan;
 pub mod coverage;
 pub use style::css;
-pub use document as doc;
 pub mod dom;
 pub use dom::encoding;
 pub mod float;
-pub mod flow;
+/// Внешний путь геометрии страниц (`kamin_html::flow::PageGeom`).
+pub mod flow {
+    pub use crate::layout::page::page_stack::{PageGeom, PageGeomFn};
+}
 pub use text::fonts;
 pub mod forms;
-pub use text::inline;
-pub mod interact;
-pub use text::paragraph as lines;
 pub use text::metrics;
 pub mod page_margin;
 mod motion;
@@ -61,7 +51,6 @@ pub mod select;
 pub mod svg;
 pub mod transition;
 pub use style::values::value;
-pub use style::zoom;
 
 // Доменные модули (рефакторинг монолитов: перенос по доменам).
 #[doc(hidden)]
@@ -154,6 +143,6 @@ pub const BROWSER_CSS: &str = r#"
                border-radius: 0; padding: 2px; margin: 0 }
 "#;
 
-pub use doc::Document;
+pub use document::Document;
 pub use dom::{Element, Node, parse};
 pub use render::{RenderOpts, render, render_block};

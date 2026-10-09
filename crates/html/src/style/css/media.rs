@@ -148,22 +148,22 @@ pub(crate) fn mq_scalar(raw: &str) -> Option<f32> {
     if let Some(n) = s.strip_suffix("dpcm") {
         return n.trim().parse::<f32>().ok().map(|v| v * 2.54 / 96.0);
     }
-    match crate::value::Len::parse(s) {
-        Some(crate::value::Len::Px(v)) => Some(v),
-        Some(crate::value::Len::Em(k)) => Some(k * 16.0),
+    match crate::style::values::value::Len::parse(s) {
+        Some(crate::style::values::value::Len::Px(v)) => Some(v),
+        Some(crate::style::values::value::Len::Em(k)) => Some(k * 16.0),
         // Единицы шрифта в медиа-запросе берутся от НАЧАЛЬНОГО шрифта, а не
         // от корневого элемента (mediaqueries-5 §1.3): `:root{font-size:
         // 30000px}` на них не влияет (`mq-calc-003`, `mq-calc-004`).
-        Some(crate::value::Len::Ex(k)) => Some(k * crate::metrics::ch_ex_px("", 16.0).1),
-        Some(crate::value::Len::Ch(k)) => Some(k * crate::metrics::ch_ex_px("", 16.0).0),
-        Some(crate::value::Len::Calc(id)) => {
-            let sum = crate::value::calc_get(id);
-            let rest = crate::value::Sum {
+        Some(crate::style::values::value::Len::Ex(k)) => Some(k * crate::text::metrics::ch_ex_px("", 16.0).1),
+        Some(crate::style::values::value::Len::Ch(k)) => Some(k * crate::text::metrics::ch_ex_px("", 16.0).0),
+        Some(crate::style::values::value::Len::Calc(id)) => {
+            let sum = crate::style::values::value::calc_get(id);
+            let rest = crate::style::values::value::Sum {
                 px: 0.0,
                 em: 0.0,
                 ..sum
             };
-            if rest == crate::value::Sum::default() {
+            if rest == crate::style::values::value::Sum::default() {
                 Some(sum.px + sum.em * 16.0)
             } else {
                 None

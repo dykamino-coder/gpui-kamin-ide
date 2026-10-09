@@ -289,7 +289,7 @@ fn load_faces_into(css: &str) {
                     .push((width, real.clone()));
             });
             if let Some(list) = declaration(&block, "font-feature-settings")
-                .and_then(|v| crate::computed::feature_list(&v))
+                .and_then(|v| crate::style::computed::feature_list(&v))
             {
                 FEATURES.with(|f| f.borrow_mut().insert(name.clone(), list));
             }
@@ -416,7 +416,7 @@ fn faces(css: &str) -> Vec<String> {
     let mut out = Vec::new();
     // Комментарии срезаются ДО поиска: `/* @font-face {...} */` разбирался
     // как живое правило и грузил чужой файл.
-    let css = &crate::css::strip_comments(css);
+    let css = &crate::style::css::strip_comments(css);
     let lower = css.to_ascii_lowercase();
     let mut from = 0usize;
     while let Some(at) = lower[from..].find("@font-face") {
@@ -438,7 +438,7 @@ fn faces(css: &str) -> Vec<String> {
         let base = lower[..start]
             .rfind("<style")
             .map_or(0, |s| lower[s..start].find('>').map_or(start, |g| s + g + 1));
-        if crate::css::in_false_group(&css[base..], start - base, crate::css::Media::default()) {
+        if crate::style::css::in_false_group(&css[base..], start - base, crate::style::css::Media::default()) {
             continue;
         }
         out.push(body);

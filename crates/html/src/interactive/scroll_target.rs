@@ -1,5 +1,6 @@
 //! Scroll target: scroll the CSS box itself so an anonymous viewport cannot replace its sizing.
-use crate::{computed::{Computed, Sides}, dom::Element};
+use crate::dom::Element;
+use crate::style::computed::{Computed, Sides};
 use gpui::{Div, ElementId, InteractiveElement, Interactivity, ScrollHandle,
     StatefulInteractiveElement, Styled};
 use std::cell::RefCell;
@@ -37,8 +38,8 @@ impl StatefulInteractiveElement for NativeScrollBox {}
 pub(crate) fn attach(mut div: Div, e: &Element, c: &Computed) -> Div {
     // Only intrinsic CSS roots have a native single-box sizing contract here.
     // Other scrollers still depend on the existing percentage/flex viewport adapter.
-    let keyword = |value| matches!(value, Some(crate::value::Len::MinContent |
-        crate::value::Len::MaxContent | crate::value::Len::FitContent));
+    let keyword = |value| matches!(value, Some(crate::style::values::value::Len::MinContent |
+        crate::style::values::value::Len::MaxContent | crate::style::values::value::Len::FitContent));
     if !keyword(c.width) && !keyword(c.height) { return div; }
     let target = TARGET.with(|slot| {
         let mut slot = slot.borrow_mut();
@@ -48,8 +49,8 @@ pub(crate) fn attach(mut div: Div, e: &Element, c: &Computed) -> Div {
         Some((target.handle.clone(), target.horizontal, target.vertical, target.margin))
     });
     let Some((handle, horizontal, vertical, margin)) = target else { return div; };
-    div = crate::apply::margins(div, &margin);
-    div.style().sizing_keywords = Some(crate::apply::intrinsic_size::keywords(c));
+    div = crate::style::apply::margins(div, &margin);
+    div.style().sizing_keywords = Some(crate::style::apply::intrinsic_size::keywords(c));
     div.interactivity().element_id = Some(ElementId::Integer(e.node_id + 1));
     let mut stateful = NativeScrollBox(div).track_scroll(&handle);
     if horizontal { stateful = stateful.overflow_x_scroll(); }
@@ -60,12 +61,12 @@ pub(crate) fn attach(mut div: Div, e: &Element, c: &Computed) -> Div {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::Len;
+    use crate::style::values::value::Len;
     use gpui::{CssSizingKeyword, Overflow, div, px};
 
     #[test]
     fn native_scroll_target_preserves_css_box_and_restores_nested_scope() {
-        let mut e = crate::render::anon_element("div", vec![]);
+        let mut e = crate::layout::table::anon::anon_element("div", vec![]);
         e.node_id = 7;
         let c = Computed { self_node: 7, width: Some(Len::FitContent), ..Computed::default() };
         let mut margin = Sides::default(); margin.left = Some(Len::Px(10.0));

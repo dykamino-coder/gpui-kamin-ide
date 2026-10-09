@@ -1,7 +1,8 @@
 //! Геометрия правил промежутков: дорожки и прогоны.
 // owner: A
 
-use crate::interact::*;
+use crate::paint::gap_rules::GapAxisRule;
+use gpui::{Bounds, Pixels};
 
 /// Допуск сравнения координат раскладки.
 pub(crate) const GAP_EPS: f32 = 0.35;

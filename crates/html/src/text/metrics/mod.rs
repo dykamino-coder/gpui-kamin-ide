@@ -86,7 +86,7 @@ pub fn vmetrics_px(family: &str, size_px: f32) -> (f32, f32, f32) {
     // получал ПОДСТАНОВОЧНЫЙ шрифт, и полулидинг среза расходился со
     // строкой, которую рисует настоящее лицо (`text-box-trim-start-002`,
     // `-end-003`). `fractions()` разворачивает имя так же.
-    let real = crate::fonts::alias(family);
+    let real = crate::text::fonts::alias(family);
     let family = real.as_deref().unwrap_or(family);
     let key = family.to_ascii_lowercase();
     if let Some(hit) = VCACHE.with(|c| c.borrow().get(&key).copied()) {
@@ -160,8 +160,8 @@ pub fn ic_px(family: &str, size_px: f32) -> f32 {
 ///
 /// Единая точка: прежде этот match был дословно повторён в пяти местах
 /// (apply/background/computed), и правка запасных значений расходилась.
-pub fn fallback_len_px(l: crate::value::Len, family: &str, font_px: f32) -> Option<f32> {
-    use crate::value::Len;
+pub fn fallback_len_px(l: crate::style::values::value::Len, family: &str, font_px: f32) -> Option<f32> {
+    use crate::style::values::value::Len;
     Some(match l {
         Len::Px(v) => v,
         Len::Em(k) => k * font_px,
@@ -237,7 +237,7 @@ fn fractions(family: &str) -> (f32, f32, f32, f32) {
     } else {
         family
     };
-    let real = crate::fonts::alias(family);
+    let real = crate::text::fonts::alias(family);
     let family = real.as_deref().unwrap_or(family);
     if let Some(hit) = CACHE.with(|c| c.borrow().get(family).copied()) {
         return hit;
@@ -338,7 +338,7 @@ pub fn use_text_system(text_system: std::sync::Arc<gpui::TextSystem>) {
         // шрифт, а разряд, и поиск по нему кончается ничем. Подставляется то
         // же семейство, что и в каскаде за `sans-serif`.
         let name: gpui::SharedString = if family.is_empty() {
-            crate::computed::GENERIC_SANS.into()
+            crate::style::computed::GENERIC_SANS.into()
         } else {
             family.to_string().into()
         };
@@ -376,7 +376,7 @@ pub fn use_text_system(text_system: std::sync::Arc<gpui::TextSystem>) {
     // считает срез (css-inline-3 §4.2).
     install_vprobe(move |family, size| {
         let name: gpui::SharedString = if family.is_empty() {
-            crate::computed::GENERIC_SANS.into()
+            crate::style::computed::GENERIC_SANS.into()
         } else {
             family.to_string().into()
         };

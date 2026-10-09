@@ -1,6 +1,7 @@
 //! Computed::apply_one: mask*, clip, clip-path, shape-*.
 
 use crate::style::computed::*;
+use crate::style::values::value::Len;
 
 impl Computed {
     #[allow(unused_variables)]
@@ -146,7 +147,7 @@ impl Computed {
                     }
                 };
                 let list: Vec<(bool, bool)> =
-                    crate::css::split_args(v).iter().map(|l| one(l)).collect();
+                    crate::style::css::split_args(v).iter().map(|l| one(l)).collect();
                 self.mask_no_repeat = Some(list.first().copied().unwrap_or((false, false)));
                 self.mask_repeat_list = (!list.is_empty()).then_some(list);
                 let mode = |w: &str| match w {
@@ -154,7 +155,7 @@ impl Computed {
                     "round" => 3,
                     _ => 0,
                 };
-                let modes: Vec<(u8, u8)> = crate::css::split_args(v)
+                let modes: Vec<(u8, u8)> = crate::style::css::split_args(v)
                     .iter()
                     .map(|l| {
                         let t: Vec<&str> = l.split_whitespace().collect();
@@ -211,7 +212,7 @@ impl Computed {
                     };
                     Some((x, y, false, false))
                 };
-                let list: Vec<(Len, Len, bool, bool)> = crate::css::split_args(v)
+                let list: Vec<(Len, Len, bool, bool)> = crate::style::css::split_args(v)
                     .iter()
                     .filter_map(|l| one(l))
                     .collect();
@@ -461,7 +462,7 @@ impl Computed {
                             | Len::Ic(_)
                             | Len::Ex(_)
                             | Len::Lh(_)
-                            | Len::LhPx(..)) => crate::metrics::fallback_len_px(l, "", 16.0),
+                            | Len::LhPx(..)) => crate::text::metrics::fallback_len_px(l, "", 16.0),
                             Len::Vw(_) | Len::Vh(_) | Len::Calc(_) | Len::Anchor(_) => None,
                             Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => None,
                         });

@@ -1,12 +1,16 @@
 //! Контексты наложения и слои покраски.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::positioned::predicates::edge_set;
+use crate::render::is_blank;
+use crate::style::computed::{Computed, Display};
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 /// Stacking contexts isolate descendant paint order (CSS2 Appendix E).
 pub(crate) fn stacking_context(c: &Computed) -> bool {
     // CSS Will Change §2.1; CSS Containment 2 §§3.2/3.3 also create contexts.
-    c.will_change & crate::computed::wc::STACK != 0
+    c.will_change & crate::style::computed::wc::STACK != 0
         || c.contain_layout == Some(true)
         || c.contain_paint == Some(true)
         || c.transform.is_some()
@@ -20,10 +24,10 @@ pub(crate) fn stacking_context(c: &Computed) -> bool {
         || (c.z_index.is_some()
             && matches!(
                 c.position,
-                Some(crate::computed::Position::Relative)
-                    | Some(crate::computed::Position::Absolute)
-                    | Some(crate::computed::Position::Fixed)
-                    | Some(crate::computed::Position::Sticky)
+                Some(crate::style::computed::Position::Relative)
+                    | Some(crate::style::computed::Position::Absolute)
+                    | Some(crate::style::computed::Position::Fixed)
+                    | Some(crate::style::computed::Position::Sticky)
             ))
 }
 
@@ -64,10 +68,10 @@ pub(crate) fn blends_inside(nodes: &[Node], depth: usize) -> bool {
 pub(crate) fn z_index_applies(c: &Computed, parent: &Computed) -> bool {
     matches!(
         c.position,
-        Some(crate::computed::Position::Relative)
-            | Some(crate::computed::Position::Absolute)
-            | Some(crate::computed::Position::Fixed)
-            | Some(crate::computed::Position::Sticky)
+        Some(crate::style::computed::Position::Relative)
+            | Some(crate::style::computed::Position::Absolute)
+            | Some(crate::style::computed::Position::Fixed)
+            | Some(crate::style::computed::Position::Sticky)
     ) || matches!(
         parent.display,
         Some(Display::Flex)
@@ -87,15 +91,15 @@ pub(crate) fn fixed_cb_layer_box(c: &Computed) -> bool {
         || c.preserve_3d == Some(true)
         || c.contain_layout == Some(true)
         || c.contain_paint == Some(true)
-        || c.will_change & crate::computed::wc::CB_FIXED != 0
+        || c.will_change & crate::style::computed::wc::CB_FIXED != 0
 }
 
 /// Будет ли элемент с таким стилем отложен.
 pub(crate) fn defers(c: &Computed, parent: &Computed, under_tf: bool) -> bool {
     // `fixed` под трансформированным предком — абсолют в его блоке, а не
     // слой окна (css-transforms-1 §transform-rendering).
-    (c.position == Some(crate::computed::Position::Fixed) && !under_tf)
-        || c.position == Some(crate::computed::Position::Sticky)
+    (c.position == Some(crate::style::computed::Position::Fixed) && !under_tf)
+        || c.position == Some(crate::style::computed::Position::Sticky)
         || (c.z_index.is_some_and(|z| z > 0) && z_index_applies(c, parent))
 }
 
@@ -113,7 +117,7 @@ pub(crate) fn layered(
     allowed: bool,
     under_tf: bool,
 ) -> AnyElement {
-    let fixed_to_window = c.position == Some(crate::computed::Position::Fixed) && !under_tf;
+    let fixed_to_window = c.position == Some(crate::style::computed::Position::Fixed) && !under_tf;
     if !allowed {
         // Внутри отложенного поддерева `position: fixed` отсчитывается от
         // ближайшего отложенного предка, а не от окна: своей системы
@@ -143,12 +147,12 @@ pub(crate) fn layered(
         // Гейт `z_index_applies` — CSS 2.1 §9.9.1 «Applies to: positioned
         // elements» (плюс элементы flex/grid по css-flexbox-1 §5.4).
         Some(z) if z > 0 && z_index_applies(c, parent) => {
-            let cell: crate::interact::MaskCell = Default::default();
-            let inner = crate::interact::MaskUse { cell: cell.clone(), child: el };
+            let cell: crate::paint::effects::mask::element::MaskCell = Default::default();
+            let inner = crate::paint::effects::mask::element::MaskUse { cell: cell.clone(), child: el };
             let deferred = gpui::deferred(inner)
                 .with_priority(z as usize)
                 .into_any_element();
-            crate::interact::MaskKeep { cell, child: deferred }.into_any_element()
+            crate::paint::effects::mask::element::MaskKeep { cell, child: deferred }.into_any_element()
         }
         // ПРОБОВАЛИ И ОТКАТИЛИ: откладывать ЛЮБОЙ абсолютный элемент, чтобы
         // он рисовался поверх соседей (CSS 2.1 §9.9, шаг 8). На пробе помогло
@@ -196,8 +200,8 @@ pub(crate) fn by_layer(mut nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
                 || flex_ctx
                 || (matches!(
                     e.style.position,
-                    Some(crate::computed::Position::Absolute)
-                        | Some(crate::computed::Position::Fixed)
+                    Some(crate::style::computed::Position::Absolute)
+                        | Some(crate::style::computed::Position::Fixed)
                 ) && x_set
                     && y_set))
     };
@@ -227,11 +231,11 @@ pub(crate) fn by_layer(mut nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
         let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
         let free_inline = !x_set
             && block_only
-            && e.style.position == Some(crate::computed::Position::Absolute)
+            && e.style.position == Some(crate::style::computed::Position::Absolute)
             && e.style.vertical != Some(true);
         (matches!(
             e.style.position,
-            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
         ) && (x_set || free_inline)
             && y_set
             && !e.style.z_index.is_some_and(|z| z < 0))

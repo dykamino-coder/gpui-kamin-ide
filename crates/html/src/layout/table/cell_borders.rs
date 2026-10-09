@@ -1,14 +1,17 @@
 //! Сросшиеся рамки ячеек (border-collapse): кромки ячейки, ряда, группы рядов, колонки и группы колонок.
 // owner: A
 
-use crate::render::*;
+use crate::dom::Element;
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
+use gpui::ParentElement;
 
 pub(crate) fn collapsed_cell_edge(
     cell: &mut Element,
     cm: &Computed,
     win_edges: &std::collections::HashMap<u64, [f32; 4]>,
     px_of: &impl Fn(Option<Len>) -> f32,
-) -> Option<([f32; 4], [crate::value::Color; 4], [u8; 4], u32)> {
+) -> Option<([f32; 4], [crate::style::values::value::Color; 4], [u8; 4], u32)> {
     // Толщина в кегельных единицах — из СЛИТОГО стиля, где `em`
     // уже разрешён кеглем ячейки (то же правило, что у `box_style`
     // ниже): сырой `Em` давал нулевую кромку, и ячейка с `border:
@@ -22,7 +25,7 @@ pub(crate) fn collapsed_cell_edge(
             Some(Len::Px(_)) | None => o,
             _ => m,
         };
-        crate::computed::Sides {
+        crate::style::computed::Sides {
             top: pick(own.top, merged.top),
             right: pick(own.right, merged.right),
             bottom: pick(own.bottom, merged.bottom),
@@ -30,7 +33,7 @@ pub(crate) fn collapsed_cell_edge(
         }
     };
     let widths = [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)];
-    let black = crate::value::Color {
+    let black = crate::style::values::value::Color {
         r: 0.0,
         g: 0.0,
         b: 0.0,
@@ -78,7 +81,7 @@ pub(crate) fn collapsed_cell_edge(
         };
         Some(Len::Px(base + win[i] / 2.0))
     };
-    cell.style.padding = crate::computed::Sides {
+    cell.style.padding = crate::style::computed::Sides {
         top: half(0, cell.style.padding.top, merged_pad.top),
         right: half(1, cell.style.padding.right, merged_pad.right),
         bottom: half(2, cell.style.padding.bottom, merged_pad.bottom),
@@ -118,7 +121,7 @@ pub(crate) fn collapsed_row_edges(
             rw[2],
             if start_col == 0 { rw[3] } else { 0.0 },
         ];
-        let black = crate::value::Color {
+        let black = crate::style::values::value::Color {
             r: 0.0,
             g: 0.0,
             b: 0.0,
@@ -144,7 +147,7 @@ pub(crate) fn collapsed_row_edges(
             })
         };
         let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
-        d = d.child(crate::interact::edge_probe(
+        d = d.child(crate::layout::table::paint::edge_probe(
             table_edges.clone(),
             widths,
             colors,
@@ -201,7 +204,7 @@ pub(crate) fn collapsed_group_edges(
     // обязана попасть наравне с видимыми.
     let hidden_grp = g.style.border_side_styles.contains(&Some(1));
     if widths.iter().any(|w| *w > 0.0) || hidden_grp {
-        let black = crate::value::Color {
+        let black = crate::style::values::value::Color {
             r: 0.0,
             g: 0.0,
             b: 0.0,
@@ -224,7 +227,7 @@ pub(crate) fn collapsed_group_edges(
             g.style.border_side_styles[k].unwrap_or(if widths[k] > 0.0 { 9 } else { 0 })
         };
         let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
-        d = d.child(crate::interact::edge_probe(
+        d = d.child(crate::layout::table::paint::edge_probe(
             table_edges.clone(),
             widths,
             colors,
@@ -278,7 +281,7 @@ pub(crate) fn collapsed_col_edges(
         if !(widths.iter().any(|w| *w > 0.0) || hidden) {
             continue;
         }
-        let black = crate::value::Color {
+        let black = crate::style::values::value::Color {
             r: 0.0,
             g: 0.0,
             b: 0.0,
@@ -305,7 +308,7 @@ pub(crate) fn collapsed_col_edges(
             })
         };
         let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
-        d = d.child(crate::interact::edge_probe(
+        d = d.child(crate::layout::table::paint::edge_probe(
             table_edges.clone(),
             widths,
             colors,
@@ -325,7 +328,7 @@ pub(crate) fn collapsed_colgroup_edges(
     row_ix: i16,
     row_elements: &[&Element],
     inherited: &Computed,
-    table_edges: &std::rc::Rc<std::cell::RefCell<Vec<crate::interact::EdgeCell>>>,
+    table_edges: &std::rc::Rc<std::cell::RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
     px_of: &impl Fn(Option<Len>) -> f32,
     mut d: gpui::Div,
 ) -> gpui::Div {
@@ -359,7 +362,7 @@ pub(crate) fn collapsed_colgroup_edges(
         if !(widths.iter().any(|w| *w > 0.0) || hidden) {
             continue;
         }
-        let black = crate::value::Color {
+        let black = crate::style::values::value::Color {
             r: 0.0,
             g: 0.0,
             b: 0.0,
@@ -386,7 +389,7 @@ pub(crate) fn collapsed_colgroup_edges(
             })
         };
         let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
-        d = d.child(crate::interact::edge_probe(
+        d = d.child(crate::layout::table::paint::edge_probe(
             table_edges.clone(),
             widths,
             colors,

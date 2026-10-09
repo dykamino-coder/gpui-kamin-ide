@@ -1,6 +1,12 @@
 //! Collapse the block-start edge independently of the block-end edge.
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::block::containing::{CB_WIDTH, with_inner_cb};
+use crate::layout::block::margin_height;
+use crate::layout::block::struts::{Strut, adjoin, float_only_wrapper, leading_chain, margin_or_bail, pin_inherited_margins, solve, strut_of, through_strut, through_strut_no_clear, top_edge_open, zero_at, zero_len};
+use crate::render::{in_flow, inline_level_box, own_context, phantom_inline};
+use crate::style::values::value::Len;
+use crate::text::text_box::blank_text;
 
 pub(crate) fn collapse_top(e: &mut Element) {
     // CSS 2.1 section 8.3.1: a top border/padding prevents only top

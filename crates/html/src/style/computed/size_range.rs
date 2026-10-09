@@ -1,7 +1,7 @@
 //! Size ranges apply to a complete math expression, not its individual terms.
 //! CSS Values 4 §10.12 accepts out-of-range math and clamps its resolved result.
 
-use crate::value::Len;
+use crate::style::values::value::Len;
 
 pub(super) fn parse(value: &str) -> Option<Len> {
     let parsed = Len::parse_mixed(value)?;

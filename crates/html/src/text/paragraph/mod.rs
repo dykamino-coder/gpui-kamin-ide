@@ -38,11 +38,7 @@ pub(crate) mod vertical_content_baselines;
 pub(crate) mod vertical_geometry;
 pub(crate) mod vertical_inline;
 
-pub(crate) use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior, Hsla,
-    InspectorElementId, IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, Pixels, Point, SharedString, TextRun, Window, point, px, size,
-};
+use gpui::{AnyElement, Bounds, ElementId, Hsla, Pixels, Point, SharedString, TextRun, point, px};
 pub(crate) mod element;
 pub(crate) mod probes;
 pub use crate::text::paragraph::probes::*;
@@ -133,7 +129,7 @@ pub struct Paragraph {
     /// абзаца между жёсткими разрывами по его первому сильному знаку. В
     /// преформате такой абзац — это строка, поэтому и `start`/`end` у каждой
     /// строки свои (HTML ставит это правило на `dir="auto"`).
-    plaintext: Option<crate::computed::TextAlign>,
+    plaintext: Option<crate::style::computed::TextAlign>,
     /// Строки в ОБРАТНОМ порядке (снизу вверх): у `vertical-lr` колонки идут
     /// слева направо, а поворот по часовой кладёт ПЕРВУЮ строку правой —
     /// подача снизу вверх возвращает ей левую колонку.
@@ -174,7 +170,7 @@ pub struct Paragraph {
     /// строчный ребёнок блока, а не куска у среза; `block-ellipsis-005`).
     marker_color: Option<Hsla>,
     /// `text-fit`: подбор кегля под ширину коробки.
-    fit: Option<crate::computed::TextFit>,
+    fit: Option<crate::style::computed::TextFit>,
     /// Масштабируемые части подбора кегля (css-text-5 §text-fit): интервалы
     /// в ДОЛЯХ кегля масштабируются вместе с ним, в точках и `em` — нет
     /// (`em` считается от вычисленного кегля, а его подбор не трогает).
@@ -192,7 +188,7 @@ pub struct Paragraph {
     /// строк, места в них не занимают.
     /// Третье поле — блочный уровень: коробка встаёт в начало СЛЕДУЮЩЕЙ
     /// строки (см. `inline::Piece::Overlay`).
-    overlays: Vec<(usize, AnyElement, crate::inline::OverlayAt)>,
+    overlays: Vec<(usize, AnyElement, crate::text::inline::OverlayAt)>,
     /// Трекинг (`letter-spacing`): добавка к каждому знаку.
     letter_spacing: Pixels,
     /// `word-spacing` — добавка к КАЖДОМУ пробелу. Шейпер о ней не знает,
@@ -225,14 +221,14 @@ pub struct Paragraph {
     /// snapped size plus one device pixel of slack, so a 50% indent landed
     /// half a device pixel off (`text-indent-103`).
     indent_basis: Option<Pixels>,
-    vertical_inline: Option<(crate::computed::orthogonal::InlineConstraint, Option<crate::computed::orthogonal::InlineKeyword>)>,
+    vertical_inline: Option<(crate::style::computed::orthogonal::InlineConstraint, Option<crate::style::computed::orthogonal::InlineKeyword>)>,
     /// Предел строки для ОРТОГОНАЛЬНОГО потока: ось строки абзаца совпала с
     /// осью потока родителя, а та не ограничена. По CSS Writing Modes §7.3
     /// предел берётся от ближайшего предка-контейнера прокрутки, а при его
     /// отсутствии — от начального содержащего блока, то есть от окна.
     ortho_limit: Option<Pixels>,
     /// Какая пунктуация свисает за край (`hanging-punctuation`).
-    hanging: crate::computed::Hanging,
+    hanging: crate::style::computed::Hanging,
     /// Отступ первой строки (`text-indent`).
     indent: Indent,
     /// Места знаков-распорок (`inline::SPACER`) — байтовые смещения по
@@ -245,7 +241,7 @@ pub struct Paragraph {
     box_extents: Vec<(u32, usize, usize)>,
     /// Вырезы обтекания (`shape-outside`): формы слева и справа, в
     /// координатах от верха абзаца. Сужают СВОИ строки по их высоте.
-    flow: std::sync::Arc<(Vec<crate::flow::FloatShape>, Vec<crate::flow::FloatShape>)>,
+    flow: std::sync::Arc<(Vec<crate::layout::float::shapes::FloatShape>, Vec<crate::layout::float::shapes::FloatShape>)>,
     /// Опознание абзаца для памяти выделения. Без него абзац не выделяется:
     /// состояние между кадрами хранит раскладка по этому ключу.
     id: Option<ElementId>,
@@ -405,7 +401,7 @@ impl Paragraph {
             indent_basis: None,
             vertical_inline: None,
             ortho_limit: None,
-            hanging: crate::computed::Hanging::default(),
+            hanging: crate::style::computed::Hanging::default(),
             indent: Indent::default(),
             spacers: Vec::new(),
             spacer_edges: Vec::new(),
@@ -539,7 +535,7 @@ impl Paragraph {
     /// Выключка последней строки — своя, если разметка её задала.
     /// `unicode-bidi: plaintext`: логическая выключка, которую надо решать по
     /// стороне КАЖДОЙ строки.
-    pub fn plaintext(mut self, align: Option<crate::computed::TextAlign>) -> Self {
+    pub fn plaintext(mut self, align: Option<crate::style::computed::TextAlign>) -> Self {
         self.plaintext = align;
         self
     }
@@ -588,7 +584,7 @@ impl Paragraph {
     }
 
     /// Свисающая пунктуация (`hanging-punctuation`).
-    pub fn hanging(mut self, hanging: Option<crate::computed::Hanging>) -> Self {
+    pub fn hanging(mut self, hanging: Option<crate::style::computed::Hanging>) -> Self {
         self.hanging = hanging.unwrap_or_default();
         self
     }
@@ -614,7 +610,7 @@ impl Paragraph {
     /// Вырезы обтекания (`shape-outside`).
     pub fn flow_shapes(
         mut self,
-        flow: std::sync::Arc<(Vec<crate::flow::FloatShape>, Vec<crate::flow::FloatShape>)>,
+        flow: std::sync::Arc<(Vec<crate::layout::float::shapes::FloatShape>, Vec<crate::layout::float::shapes::FloatShape>)>,
     ) -> Self {
         self.flow = flow;
         self
@@ -738,13 +734,13 @@ impl Paragraph {
     }
 
     /// Куски вне потока: место в тексте → элемент.
-    pub fn overlays(mut self, overlays: Vec<(usize, AnyElement, crate::inline::OverlayAt)>) -> Self {
+    pub fn overlays(mut self, overlays: Vec<(usize, AnyElement, crate::text::inline::OverlayAt)>) -> Self {
         self.overlays = overlays;
         self
     }
 
     /// `text-fit`: подбирать ли кегль под ширину коробки.
-    pub fn text_fit(mut self, fit: Option<crate::computed::TextFit>) -> Self {
+    pub fn text_fit(mut self, fit: Option<crate::style::computed::TextFit>) -> Self {
         self.fit = fit;
         self
     }

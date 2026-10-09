@@ -1,6 +1,7 @@
 //! Запросы к стилю: border-shape, тени, содержимое (contain), рамки, слои фона.
 
 use crate::style::computed::*;
+use crate::style::values::value::{Color, Len};
 
 impl Computed {
     /// Активный кламп строк: стандартный `line-clamp` всегда, а
@@ -106,7 +107,7 @@ impl Computed {
         } else {
             self.border_shape_stroke().0
         };
-        let spike = if stroke > 0.0 && crate::background::shape_is_linear(&bs.outer) {
+        let spike = if stroke > 0.0 && crate::paint::background::shape_is_linear(&bs.outer) {
             stroke * 5.0
         } else {
             0.0
@@ -348,12 +349,12 @@ impl Computed {
         };
         let family = self.font_family.clone().unwrap_or_else(|| {
             if self.monospace == Some(true) {
-                crate::metrics::mono_family_for(self.lang.as_deref()).to_string()
+                crate::text::metrics::mono_family_for(self.lang.as_deref()).to_string()
             } else {
                 String::new()
             }
         });
-        let (ch, ex) = crate::metrics::ch_ex_px(&family, font_px);
+        let (ch, ex) = crate::text::metrics::ch_ex_px(&family, font_px);
         let px_of = |v: &str| -> String {
             if has_font_units(v) {
                 font_lengths_to_px(v, font_px, 16.0, ex, ch)

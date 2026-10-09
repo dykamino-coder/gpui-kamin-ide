@@ -1,6 +1,7 @@
 //! Convert screen pointer coordinates into the same flat space used to paint native vertical text.
 
 use super::*;
+use gpui::{Bounds, Pixels, Point, point};
 
 impl Paragraph {
     pub(super) fn index_at(
@@ -56,6 +57,7 @@ fn unrotate_pointer(bounds: Bounds<Pixels>, ccw: bool, at: Point<Pixels>) -> Poi
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::{px, size};
 
     #[test]
     fn pointer_inverse_matches_actual_gpui_paint_matrix_at_fractional_scales() {

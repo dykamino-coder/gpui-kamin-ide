@@ -1,7 +1,8 @@
 //! Содержащий блок абсолютных коробок (поздняя расстановка).
 // owner: A
 
-use crate::interact::*;
+use crate::layout::positioned::spot_geometry;
+use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, ParentElement, Pixels, Styled, Window, px};
 
 #[derive(Clone, Copy, Default)]
 pub struct Spot {

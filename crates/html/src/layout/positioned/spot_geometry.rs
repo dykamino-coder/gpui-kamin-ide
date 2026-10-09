@@ -1,6 +1,7 @@
 //! Static positions retain CSS geometry until the positioned subtree is placed.
 
-use crate::interact::{SpotCell, VT_FRAME, vt_map};
+use crate::layout::positioned::containing_block::SpotCell;
+use crate::text::vertical::{VT_FRAME, vt_map};
 use gpui::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
     LayoutId, Pixels, Window, px,

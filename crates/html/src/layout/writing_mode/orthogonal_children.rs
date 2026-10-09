@@ -1,8 +1,8 @@
 //! Orthogonal horizontal children keep percentages and native intrinsic sizing.
 use crate::render::in_flow;
-use crate::computed::{Align, Computed, Display};
+use crate::style::computed::{Align, Computed, Display};
 use crate::dom::Node;
-use crate::value::Len;
+use crate::style::values::value::Len;
 
 pub(crate) fn orthogonal_children(
     children: Vec<Node>,
@@ -73,7 +73,7 @@ pub(crate) fn orthogonal_children(
         // (`value.rs`: `Len::parse("auto")`), и `is_none()` читал его как
         // заданную ширину — предел ортогонального потока не ставился вовсе.
         // Этой записью открывается каждый тест `sizing-orthog-htb-in-v*`.
-        if crate::render::orthogonal_horizontal::size_auto(ch, container, icb_w) {
+        if crate::layout::writing_mode::orthogonal_horizontal::size_auto(ch, container, icb_w) {
             continue;
         }
         let explicit_auto = matches!(ch.style.width, Some(Len::Auto));

@@ -27,7 +27,7 @@ pub(crate) fn parse_content(raw: &str) -> Option<Vec<ContentItem>> {
         }
         if ch == '"' || ch == '\'' {
             let body = at + ch.len_utf8();
-            let len = crate::css::skip_string(&raw[body..], ch);
+            let len = crate::style::css::skip_string(&raw[body..], ch);
             // Незакрытая строка обрывается переводом строки — значение негодно.
             if !raw[body..body + len].ends_with(ch) {
                 return None;
@@ -60,7 +60,7 @@ pub(crate) fn parse_content(raw: &str) -> Option<Vec<ContentItem>> {
         let open = rest.find('(')?;
         let name = rest[..open].trim().to_ascii_lowercase();
         let close = at + open + 1 + find_close(&rest[open + 1..])?;
-        let args = crate::css::split_args(&raw[at + open + 1..close]);
+        let args = crate::style::css::split_args(&raw[at + open + 1..close]);
         let arg = |i: usize| -> Option<String> {
             let a = args.get(i)?.trim();
             let unq = a
@@ -78,7 +78,7 @@ pub(crate) fn parse_content(raw: &str) -> Option<Vec<ContentItem>> {
             // and CSS-wide keywords from <counter-name>. Compare decoded
             // identifiers case-insensitively, then invalidate the declaration
             // so an earlier valid content value survives the cascade.
-            let counter_name = crate::css::unescape(args.first()?.trim()).to_ascii_lowercase();
+            let counter_name = crate::style::css::unescape(args.first()?.trim()).to_ascii_lowercase();
             if matches!(
                 counter_name.as_str(),
                 "none" | "default" | "initial" | "inherit" | "unset" | "revert" | "revert-layer"
@@ -128,7 +128,7 @@ pub(crate) fn parse_content(raw: &str) -> Option<Vec<ContentItem>> {
 /// the attribute verbatim. The type keyword is not part of its name.
 fn attr_name(head: &str) -> Option<(String, bool)> {
     let head = head.trim();
-    let ident = crate::css::selector_tokens::ident;
+    let ident = crate::style::css::selector_tokens::ident;
     let attr_ident = |raw: &str| {
         ident(raw)
             || raw
@@ -136,7 +136,7 @@ fn attr_name(head: &str) -> Option<(String, bool)> {
                 .is_some_and(|(prefix, local)| (prefix.is_empty() || ident(prefix)) && ident(local))
     };
     if attr_ident(head) {
-        return Some((crate::css::unescape(head), false));
+        return Some((crate::style::css::unescape(head), false));
     }
     // A hex escape may consume whitespace within either identifier. Only
     // split where both sides are complete identifier tokens.
@@ -148,8 +148,8 @@ fn attr_name(head: &str) -> Option<(String, bool)> {
         let ty = head[at..].trim_start();
         (attr_ident(name)
             && ident(ty)
-            && crate::css::unescape(ty).eq_ignore_ascii_case("raw-string"))
-        .then(|| (crate::css::unescape(name), true))
+            && crate::style::css::unescape(ty).eq_ignore_ascii_case("raw-string"))
+        .then(|| (crate::style::css::unescape(name), true))
     })
 }
 
@@ -162,7 +162,7 @@ fn find_close(after_open: &str) -> Option<usize> {
         match ch {
             '"' | '\'' => {
                 at += ch.len_utf8();
-                at += crate::css::skip_string(&after_open[at..], ch);
+                at += crate::style::css::skip_string(&after_open[at..], ch);
                 continue;
             }
             '(' => depth += 1,

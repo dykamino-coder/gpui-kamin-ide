@@ -1,7 +1,17 @@
 //! Флекс-строки при фрагментации.
 // owner: A
 
-use crate::render::*;
+use crate::style::cascade::inherit::inherit;
+use crate::dom::{Element, Node};
+use crate::layout::fragment::breaks::{edge_avoid, edge_break};
+use crate::layout::fragment::fragment_size::shape_full;
+use crate::layout::fragment::probe::size_monolith;
+use crate::layout::fragment::{Shape, ShapeCx};
+use crate::layout::page::paged::visible_overflow;
+use crate::layout::positioned::predicates::carries_abspos;
+use crate::render::{is_blank, out_of_flow};
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
 
 /// Многострочный КОЛОНОЧНЫЙ flex-контейнер — ребёнок стопки колонок —
 /// раскрывается в свои элементы, разложенные по строкам (`flow::Par`): строки
@@ -33,9 +43,9 @@ pub(crate) fn split_flex_lines(
     kids: Vec<(Element, Shape)>,
     col_w: Option<f32>,
     merged: &Computed,
-) -> (Vec<(Element, Shape)>, Vec<crate::flow::Par>, Vec<Option<Computed>>, Vec<usize>) {
+) -> (Vec<(Element, Shape)>, Vec<crate::layout::fragment::types::Par>, Vec<Option<Computed>>, Vec<usize>) {
     let mut out: Vec<(Element, Shape)> = Vec::with_capacity(kids.len());
-    let mut par: Vec<crate::flow::Par> = Vec::with_capacity(kids.len());
+    let mut par: Vec<crate::layout::fragment::types::Par> = Vec::with_capacity(kids.len());
     let mut parent: Vec<Option<Computed>> = Vec::with_capacity(kids.len());
     let mut group = 0u32;
     let mut starts: Vec<usize> = Vec::with_capacity(kids.len() + 1);
@@ -44,7 +54,7 @@ pub(crate) fn split_flex_lines(
         match flex_lines_of(&c, col_w) {
             Some(lines) => {
                 group += 1;
-                let pm = inline::inherit(merged, &c.style);
+                let pm = inherit(merged, &c.style);
                 let h = match c.style.height {
                     Some(Len::Px(v)) => v,
                     _ => 0.0,
@@ -79,7 +89,7 @@ pub(crate) fn split_flex_lines(
                 boxc.style.break_after_force = false;
                 boxc.style.break_after_avoid = false;
                 out.push((boxc, (h, 0.0, 0.0, Vec::new(), Vec::new(), Vec::new())));
-                par.push(crate::flow::Par {
+                par.push(crate::layout::fragment::types::Par {
                     group,
                     group_start: true,
                     line_start: true,
@@ -104,7 +114,7 @@ pub(crate) fn split_flex_lines(
                             && !size_monolith(&e)
                             && visible_overflow(&e.style);
                         out.push((e, sh));
-                        par.push(crate::flow::Par {
+                        par.push(crate::layout::fragment::types::Par {
                             group,
                             group_start: false,
                             line_start: ii == 0,
@@ -127,7 +137,7 @@ pub(crate) fn split_flex_lines(
                 // `flex_layout_algorithm.cc:2167-2213`: элемент ряда — свой
                 // поток, конец ряда — самый дальний конец его элементов).
                 Some(lines) => {
-                    let pm = inline::inherit(merged, &c.style);
+                    let pm = inherit(merged, &c.style);
                     for items in lines {
                         group += 1;
                         let m = items.len();
@@ -136,7 +146,7 @@ pub(crate) fn split_flex_lines(
                                 && !size_monolith(&e)
                                 && visible_overflow(&e.style);
                             out.push((e, sh));
-                            par.push(crate::flow::Par {
+                            par.push(crate::layout::fragment::types::Par {
                                 group,
                                 group_start: ii == 0,
                                 line_start: true,
@@ -152,7 +162,7 @@ pub(crate) fn split_flex_lines(
                 }
                 None => {
                     out.push((c, s));
-                    par.push(crate::flow::Par::default());
+                    par.push(crate::layout::fragment::types::Par::default());
                     parent.push(None);
                 }
             },
@@ -166,7 +176,7 @@ pub(crate) fn split_flex_lines(
 /// мерой)`. `None` — контейнер вне гейта.
 #[allow(clippy::type_complexity)]
 pub(crate) fn flex_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<(f32, Vec<(Element, Shape)>)>> {
-    use crate::computed::FlexDir;
+    use crate::style::computed::FlexDir;
     if flex_gap_rules(&c.style) {
         return None;
     }
@@ -191,7 +201,7 @@ pub(crate) fn flex_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<(f32,
         // `position: relative` без сдвигов ничего не двигает, а содержащим
         // блоком ему служить некому (внепоточных детей гейт не пускает).
         || !(s.position.is_none()
-            || (s.position == Some(crate::computed::Position::Relative)
+            || (s.position == Some(crate::style::computed::Position::Relative)
                 && [&s.inset.top, &s.inset.right, &s.inset.bottom, &s.inset.left]
                     .into_iter()
                     .all(|l| matches!(l, None | Some(Len::Auto)))))
@@ -243,7 +253,7 @@ pub(crate) fn flex_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<(f32,
         let ks = &k.style;
         if k.inline
             || out_of_flow(ks)
-            || !matches!(ks.position, None | Some(crate::computed::Position::Relative))
+            || !matches!(ks.position, None | Some(crate::style::computed::Position::Relative))
             || ks.float.unwrap_or(0) != 0
             || ks.flex_grow.is_some_and(|g| g > 0.0)
             || ks.flex_basis.is_some()
@@ -373,7 +383,7 @@ pub(crate) fn flex_gap_rules(s: &Computed) -> bool {
 /// нескольких элементов: ряд «элемент на строку» прежний путь уже знает.
 #[allow(clippy::type_complexity)]
 pub(crate) fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, Element, Shape)>>> {
-    use crate::computed::FlexDir;
+    use crate::style::computed::FlexDir;
     if flex_gap_rules(&c.style) {
         return None;
     }
@@ -403,7 +413,7 @@ pub(crate) fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<V
         || s.background.is_some()
         || s.bg_image.is_some()
         || !(s.position.is_none()
-            || (s.position == Some(crate::computed::Position::Relative)
+            || (s.position == Some(crate::style::computed::Position::Relative)
                 && [&s.inset.top, &s.inset.right, &s.inset.bottom, &s.inset.left]
                     .into_iter()
                     .all(|l| matches!(l, None | Some(Len::Auto)))))
@@ -454,7 +464,7 @@ pub(crate) fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<V
         let ks = &k.style;
         if k.inline
             || out_of_flow(ks)
-            || !matches!(ks.position, None | Some(crate::computed::Position::Relative))
+            || !matches!(ks.position, None | Some(crate::style::computed::Position::Relative))
             || ks.float.unwrap_or(0) != 0
             || ks.flex_grow.is_some_and(|g| g > 0.0)
             || ks.align_self.is_some()

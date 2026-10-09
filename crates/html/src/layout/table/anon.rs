@@ -1,13 +1,19 @@
 //! Анонимные объекты таблицы.
 // owner: A
 
-use crate::render::*;
+use crate::style::cascade::inherit::inherit;
+use crate::dom::{Element, Node};
+use crate::layout::positioned::relative::relative_shift;
+use crate::layout::table::columns::col_role;
+use crate::layout::table::{is_cell, table_roles};
+use crate::render::is_blank;
+use crate::style::computed::{Computed, Display};
 
 /// Сдвиг, фон и СТИЛЬ ГРУППЫ строк: письмо/шрифт с `<tbody>` наследуются в
 /// ряды и ячейки, хотя своей коробки у группы нет (ch-units-vrl-006).
 /// Сдвиг, фон и САМА ГРУППА рядов: от неё нужны и наследуемый стиль, и
 /// `node_id` с рамками — кромки группы строит ряд.
-pub(crate) type RowCarry<'a> = (f32, f32, Option<crate::value::Color>, Option<&'a Element>);
+pub(crate) type RowCarry<'a> = (f32, f32, Option<crate::style::values::value::Color>, Option<&'a Element>);
 
 pub(crate) fn collect_rows<'a>(
     nodes: &'a [Node],
@@ -95,7 +101,7 @@ pub(crate) fn anon_role(n: &Node) -> Option<bool> {
     if e.style.float.is_some_and(|f| f != 0)
         || matches!(
             e.style.position,
-            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
         )
     {
         return None;
@@ -248,7 +254,7 @@ pub(crate) fn fixup_row_children(row: &Element) -> Vec<Node> {
                         .cloned()
                         .map(|n| match n {
                             Node::Element(mut ge) => {
-                                ge.style = inline::inherit(&el.style, &ge.style);
+                                ge.style = inherit(&el.style, &ge.style);
                                 Node::Element(ge)
                             }
                             // Голый текст стиля не несёт: наследуемое от
@@ -355,7 +361,7 @@ pub(crate) fn fixup_table_children(children: &[Node]) -> Vec<Node> {
                 for grand in fixup_table_children(&el.children) {
                     match grand {
                         Node::Element(mut ge) => {
-                            ge.style = inline::inherit(&el.style, &ge.style);
+                            ge.style = inherit(&el.style, &ge.style);
                             let row = ge.tag == "tr"
                                 || matches!(
                                     ge.style.display,

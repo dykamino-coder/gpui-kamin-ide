@@ -1,7 +1,9 @@
 //! Lift floats from undecorated inline containers into their block's float layout.
 //! Text fragments retain the inline's inherited style on both sides of each float.
 
-use crate::render::{Computed, Element, Node, inline};
+use crate::style::cascade::inherit::inherit;
+use crate::dom::{Element, Node};
+use crate::style::computed::Computed;
 
 pub(crate) fn lift(nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
     if parent.vertical == Some(true) {
@@ -15,7 +17,7 @@ pub(crate) fn lift(nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
 
 pub(crate) fn transparent(e: &Element) -> bool {
     let s = &e.style;
-    let zero = |v| matches!(v, None | Some(crate::value::Len::Px(0.0)));
+    let zero = |v| matches!(v, None | Some(crate::style::values::value::Len::Px(0.0)));
     let undecorated = [s.margin, s.padding, s.borders()]
         .iter()
         .all(|s| [s.top, s.right, s.bottom, s.left].into_iter().all(zero));
@@ -61,7 +63,7 @@ fn split(node: Node, parent: &Computed) -> Vec<Node> {
     if !transparent(e) || !e.children.iter().any(contains_float) {
         return vec![node];
     }
-    let style = inline::inherit(parent, &e.style);
+    let style = inherit(parent, &e.style);
     let children = lift(e.children.clone(), &style);
     if !children.iter().any(floated) {
         return vec![node];
@@ -78,7 +80,7 @@ fn split(node: Node, parent: &Computed) -> Vec<Node> {
             .all(|n| matches!(n, Node::Text(_)) || floated(n))
         && matches!(
             children.iter().find(|n| match n {
-                Node::Text(t) => !crate::render::blank_text(t),
+                Node::Text(t) => !crate::text::text_box::blank_text(t),
                 _ => true,
             }),
             Some(Node::Text(_))
@@ -109,8 +111,8 @@ fn split(node: Node, parent: &Computed) -> Vec<Node> {
             };
             // CSS 2 sections 9.5 and 10.1: the block remains the containing
             // block, while inherited text properties come through the inline.
-            let containing = inline::inherit(parent, &float.style);
-            float.style = inline::inherit(&style, &float.style);
+            let containing = inherit(parent, &float.style);
+            float.style = inherit(&style, &float.style);
             float.style.cb_height_def = containing.cb_height_def;
             float.style.quirk_pct_base = containing.quirk_pct_base;
             output.push(Node::Element(float));

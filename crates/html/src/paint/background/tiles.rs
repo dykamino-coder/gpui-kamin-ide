@@ -1,6 +1,9 @@
 //! Плитки фона: размер, начало, раскладка и отрисовка (paint_tiles).
 
 use crate::paint::background::*;
+use crate::style::computed::{BgPos, BgRepeat, BgSize, Computed, Tiling};
+use crate::style::values::value::Len;
+use gpui::{Bounds, Pixels, px};
 
 /// Размер одной плитки в точках по правилам `background-size`.
 pub(crate) fn tile_size(i: Intrinsic, box_size: (f32, f32), size: BgSize) -> (f32, f32) {
@@ -44,7 +47,7 @@ pub(crate) fn len_px(l: Option<Len>, base: f32) -> Option<f32> {
         Len::Px(v) => Some(v),
         Len::Pct(v) => Some(base * v),
         Len::Calc(i) => {
-            let s = crate::value::calc_get(i);
+            let s = crate::style::values::value::calc_get(i);
             Some(s.px + base * s.pct)
         }
         // Шрифтовые единицы — от запасного кегля, единой точкой.
@@ -54,7 +57,7 @@ pub(crate) fn len_px(l: Option<Len>, base: f32) -> Option<f32> {
         | Len::Ic(_)
         | Len::Ex(_)
         | Len::Lh(_)
-        | Len::LhPx(..)) => crate::metrics::fallback_len_px(l, "", 16.0),
+        | Len::LhPx(..)) => crate::text::metrics::fallback_len_px(l, "", 16.0),
         Len::Vw(_) | Len::Vh(_) => None,
         Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent | Len::Anchor(_) => None,
     }
@@ -69,7 +72,7 @@ pub(crate) fn origin(pos: BgPos, box_size: (f32, f32), tile: (f32, f32)) -> (f32
             // `calc(50px + 50%)`: доля — от свободного места, как у чистой
             // доли (css-backgrounds-3 §3.6), точки — как есть. Смесь с
             // третьей природой парой не отдаётся и, как прежде, идёт нулём.
-            Some(Len::Calc(i)) => crate::value::calc_get(i)
+            Some(Len::Calc(i)) => crate::style::values::value::calc_get(i)
                 .pct_px()
                 .map_or(0.0, |(pct, px)| (box_len - tile_len) * pct + px),
             _ => 0.0,
@@ -116,16 +119,16 @@ pub fn paint_tiles(
         // семье `border-*-width-applies-to-00*`.
         let to_px = |l: Option<Len>| match l {
             Some(u @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_) | Len::Ic(_) | Len::Lh(_))) => {
-                Some(Len::Px(crate::metrics::spacing_px(Some(u), &family, font)))
+                Some(Len::Px(crate::text::metrics::spacing_px(Some(u), &family, font)))
             }
             other => other,
         };
-        crate::computed::BgPos {
+        crate::style::computed::BgPos {
             x: to_px(c.bg_pos.x),
             y: to_px(c.bg_pos.y),
         }
     };
-    let px_of = |l: Option<Len>| crate::metrics::spacing_px(l, &family, font);
+    let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &family, font);
     let border = c.borders();
     // Отступ слоя от ВНУТРЕННЕГО края рамки: слой лежит внутри коробки и
     // меряется именно им, а `background-origin` может требовать другого края
@@ -137,13 +140,13 @@ pub fn paint_tiles(
     let fixed_area = c.bg_fixed == Some(true) && canvas.is_some();
     let inset = match c.bg_origin {
         _ if fixed_area => [0.0; 4],
-        Some(crate::computed::BgClip::BorderBox) => [
+        Some(crate::style::computed::BgClip::BorderBox) => [
             -px_of(border.top),
             -px_of(border.right),
             -px_of(border.bottom),
             -px_of(border.left),
         ],
-        Some(crate::computed::BgClip::ContentBox) => [
+        Some(crate::style::computed::BgClip::ContentBox) => [
             px_of(c.padding.top),
             px_of(c.padding.right),
             px_of(c.padding.bottom),
@@ -174,8 +177,8 @@ pub fn paint_tiles(
     // transparent dotted border of `background-origin-006` shows the tile).
     let paint_base = if fixed_area { canvas.unwrap_or(bounds) } else { bounds };
     let paint_box = match c.bg_clip {
-        Some(crate::computed::BgClip::PaddingBox) | Some(crate::computed::BgClip::Text) => paint_base,
-        Some(crate::computed::BgClip::ContentBox) => Bounds {
+        Some(crate::style::computed::BgClip::PaddingBox) | Some(crate::style::computed::BgClip::Text) => paint_base,
+        Some(crate::style::computed::BgClip::ContentBox) => Bounds {
             origin: gpui::point(
                 paint_base.origin.x + px(px_of(c.padding.left)),
                 paint_base.origin.y + px(px_of(c.padding.top)),
@@ -341,8 +344,8 @@ pub fn paint_tiles(
     // padding-box, а фон по `background-clip` живёт до border-box: маска
     // раздвигается на рамку — ровно на то, что коробка отняла у себя сама
     // (`attachment-local-clipping-image-*`).
-    let clips_self = matches!(c.overflow_x, Some(o) if o != crate::computed::Overflow::Visible)
-        || matches!(c.overflow_y, Some(o) if o != crate::computed::Overflow::Visible);
+    let clips_self = matches!(c.overflow_x, Some(o) if o != crate::style::computed::Overflow::Visible)
+        || matches!(c.overflow_y, Some(o) if o != crate::style::computed::Overflow::Visible);
     let outer = if clips_self {
         let cur = window.content_mask().bounds;
         Bounds {

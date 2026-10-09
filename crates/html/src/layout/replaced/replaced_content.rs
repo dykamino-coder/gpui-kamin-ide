@@ -1,8 +1,8 @@
 //! Replaced content can be empty without erasing its surrounding CSS box.
 use crate::render::styled_div_with;
-use crate::computed::Computed;
+use crate::style::computed::Computed;
 use crate::dom::Element;
-use crate::value::Len;
+use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, StyledImage, px};
 
 /// CSS 2.1 sections 10.3.2 and 10.6.2: an empty browsing context is still
@@ -12,17 +12,17 @@ pub(crate) fn empty_iframe_size(
     inherited: &Computed,
     viewport: (f32, f32),
 ) -> Element {
-    let mut copy = crate::render::pct_height_to_px(e, inherited);
+    let mut copy = crate::layout::replaced::image::pct_height_to_px(e, inherited);
     // Quirks percentage heights can skip auto-height ancestors (Quirks section 3.5).
     // Resolve that inherited basis before treating an indefinite percentage as auto.
-    let merged = crate::render::inline::inherit(inherited, &copy.style);
+    let merged = crate::style::cascade::inherit::inherit(inherited, &copy.style);
     copy.style.height = merged.height;
     copy.style.cb_height_def = merged.cb_height_def;
     copy.style.resolve_viewport(viewport);
-    if crate::dom::quirks()
+    if crate::style::select::quirks()
         && !matches!(
             copy.style.position,
-            Some(crate::computed::Position::Absolute | crate::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
         )
         && let Some(Len::Pct(k)) = copy.style.height
     {
@@ -43,7 +43,7 @@ pub(crate) fn empty_iframe_size(
             && !inherited.cb_height_def
             && !matches!(
                 copy.style.position,
-                Some(crate::computed::Position::Absolute | crate::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
             ));
     if auto_width && (!ratio || auto_height) {
         let width = if copy.style.contains_width() {
@@ -78,7 +78,7 @@ pub(crate) fn empty_iframe(e: &Element, inherited: &Computed, viewport: (f32, f3
     let mut copy = empty_iframe_size(e, inherited, viewport);
     if copy.style.contain_size == Some(true) {
         copy.attrs.retain(|(name, _)| name != "src");
-        return crate::render::image(&copy);
+        return crate::layout::replaced::image::image(&copy);
     }
     crate::render::styled_div(&copy).flex_shrink_0().into_any_element()
 }
@@ -92,8 +92,8 @@ pub(crate) fn default_iframe(e: &Element) -> bool {
 pub(crate) fn position(mut image: gpui::Img, style: &Computed) -> gpui::Img {
     if let Some(position) = style.object_position {
         image = image.object_position(gpui::point(
-            crate::apply::len_to_gpui(position.x.unwrap_or(Len::Pct(0.5))),
-            crate::apply::len_to_gpui(position.y.unwrap_or(Len::Pct(0.5))),
+            crate::style::apply::len_to_gpui(position.x.unwrap_or(Len::Pct(0.5))),
+            crate::style::apply::len_to_gpui(position.y.unwrap_or(Len::Pct(0.5))),
         ));
     }
     image

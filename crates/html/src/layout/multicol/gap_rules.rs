@@ -1,7 +1,10 @@
 //! Правила промежутков колонок (`column-rule`, `*-rule`).
 // owner: A
 
-use crate::render::*;
+use crate::dom::Element;
+use crate::render::RenderOpts;
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
 
 /// Пробельный текстовый узел: в подсчёте детей он не участвует.
 /// Правила линеек промежутков (css-gaps-1) контейнера — `None`, когда ни
@@ -11,9 +14,9 @@ pub(crate) fn gap_rule_spec(
     e: &Element,
     merged: &Computed,
     opts: &RenderOpts,
-) -> Option<crate::interact::GapRuleSpec> {
-    use crate::computed::{FlexDir, GapInset, GapList};
-    use crate::interact::{GapAxisRule, GapLayout};
+) -> Option<crate::paint::gap_rules::GapRuleSpec> {
+    use crate::style::computed::{FlexDir, GapInset, GapList};
+    use crate::paint::gap_rules::{GapAxisRule, GapLayout};
     if !matches!(
         merged.display,
         Some(Display::Flex)
@@ -33,7 +36,7 @@ pub(crate) fn gap_rule_spec(
         Len::Em(k) => k * size,
         _ => 3.0,
     };
-    let fallback = merged.color.unwrap_or(crate::value::Color {
+    let fallback = merged.color.unwrap_or(crate::style::values::value::Color {
         r: 0.0,
         g: 0.0,
         b: 0.0,
@@ -153,8 +156,8 @@ pub(crate) fn gap_rule_spec(
     // использованного размера контейнера ещё нет. Строки и ленты
     // (`GapLayout::Lines`) шаблона не имеют вовсе: у каждой строки свои
     // промежутки между элементами (css-gaps-1 §gap-flex).
-    let track_px = |list: Option<&Vec<crate::computed::TrackSize>>| -> Option<Vec<f32>> {
-        use crate::computed::{Track, TrackSize};
+    let track_px = |list: Option<&Vec<crate::style::computed::TrackSize>>| -> Option<Vec<f32>> {
+        use crate::style::computed::{Track, TrackSize};
         let list = list?;
         if list.len() < 2 {
             return None;
@@ -210,7 +213,7 @@ pub(crate) fn gap_rule_spec(
         Some(Display::Grid) | Some(Display::InlineGrid) => 0,
         _ => 1,
     };
-    Some(crate::interact::GapRuleSpec {
+    Some(crate::paint::gap_rules::GapRuleSpec {
         pad,
         lines_extent,
         lanes_content_aligned: lanes
@@ -252,12 +255,12 @@ pub(crate) fn multicol_gap_rule_spec(
     opts: &RenderOpts,
     column_gap: f32,
     row_gap: f32,
-) -> Option<crate::interact::GapRuleSpec> {
+) -> Option<crate::paint::gap_rules::GapRuleSpec> {
     let mut probe = merged.clone();
     probe.display = Some(Display::Flex);
     let mut spec = gap_rule_spec(e, &probe, opts)?;
     let vertical = spec.vertical;
-    spec.kind = crate::interact::GapLayout::Lines {
+    spec.kind = crate::paint::gap_rules::GapLayout::Lines {
         stacked_vertically: !vertical,
     };
     if let Some(c) = spec.col.as_mut()

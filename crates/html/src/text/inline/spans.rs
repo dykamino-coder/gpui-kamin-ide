@@ -1,6 +1,9 @@
 //! Прогоны по кускам: перенос, сдвиги, высота строки, интервалы, оформление, слова, автопробелы.
 
 use crate::text::inline::*;
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
+use gpui::TextStyle;
 
 /// `word-space-transform: ideographic-space`.
 ///
@@ -15,12 +18,12 @@ use crate::text::inline::*;
 pub fn wrap_spans(
     pieces: &[Piece],
     base: &Computed,
-) -> Vec<(std::ops::Range<usize>, crate::lines::Wrap)> {
+) -> Vec<(std::ops::Range<usize>, crate::text::paragraph::Wrap)> {
     // Правила абзаца целиком — с ними сравнивается каждый кусок: в список
     // попадает только тот, у кого они ДРУГИЕ. Без сравнения `<span>` со своим
     // `white-space` внутри `pre` неотличим от родителя, и перенос ему
     // запрещён вместе со всем абзацем.
-    let whole = crate::lines::wrap_of(base);
+    let whole = crate::text::paragraph::wrap_of(base);
     let mut out = Vec::new();
     let mut at = 0usize;
     for p in pieces {
@@ -31,7 +34,7 @@ pub fn wrap_spans(
             continue;
         }
         let end = at + text.len();
-        let w = crate::lines::wrap_of(style);
+        let w = crate::text::paragraph::wrap_of(style);
         if w != whole {
             out.push((at..end, w));
         }
@@ -102,7 +105,7 @@ pub fn shift_spans(
         let out_of_flow = style.float.is_some_and(|f| f != 0)
             || matches!(
                 style.position,
-                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
             );
         let dy = (!out_of_flow)
             .then(|| style.vertical_shift_px)
@@ -112,7 +115,7 @@ pub fn shift_spans(
                 // уже известны.
                 style.vertical_shift_len.map(|l| {
                     let family = style.font_family.clone().unwrap_or_default();
-                    -crate::metrics::spacing_px(Some(l), &family, size)
+                    -crate::text::metrics::spacing_px(Some(l), &family, size)
                 })
             })
             .or_else(|| style.vertical_shift.map(|k| k * size))
@@ -235,7 +238,7 @@ pub fn letter_spans(
             _ => base_size,
         };
         let extra = style.letter_spacing.map(|len| {
-            crate::metrics::spacing_px(
+            crate::text::metrics::spacing_px(
                 Some(len),
                 &style.font_family.clone().unwrap_or_default(),
                 size,
@@ -264,7 +267,7 @@ pub fn letter_spans(
         if let Some(len) = style.letter_spacing_after
             && let Some(last) = text.char_indices().next_back()
         {
-            let v = crate::metrics::spacing_px(
+            let v = crate::text::metrics::spacing_px(
                 Some(len),
                 &style.font_family.clone().unwrap_or_default(),
                 size,
@@ -298,8 +301,8 @@ pub(crate) fn zero_width_format(ch: char) -> bool {
 /// Куски с украшениями (css-text-decor-3 §2.1) и их украшенные прогоны:
 /// смежные куски с тем же украшением на том же месте списка (Blink
 /// `ContinuesDecoratedRun`); атом прогон рвёт. Скрытый кусок не украшается.
-pub fn decor_spans(pieces: &[Piece], base: &TextStyle) -> Vec<crate::lines::DecorSpan> {
-    use crate::lines::{DecorItem, DecorSpan};
+pub fn decor_spans(pieces: &[Piece], base: &TextStyle) -> Vec<crate::text::paragraph::DecorSpan> {
+    use crate::text::paragraph::{DecorItem, DecorSpan};
     let mut out: Vec<DecorSpan> = Vec::new();
     let mut at = 0usize;
     let mut broken = true;
@@ -389,7 +392,7 @@ pub fn word_spans(pieces: &[Piece], base_size: f32) -> Vec<(std::ops::Range<usiz
             _ => base_size,
         };
         let extra = style.word_spacing.map(|len| {
-            crate::metrics::spacing_px(
+            crate::text::metrics::spacing_px(
                 Some(len),
                 &style.font_family.clone().unwrap_or_default(),
                 size,
@@ -460,7 +463,7 @@ pub fn autospace_spans(
                 && autospace_between(p_ch, ch, style)
             {
                 let family = p_style.font_family.clone().unwrap_or_default();
-                let had = crate::metrics::spacing_px(p_style.letter_spacing, &family, p_size);
+                let had = crate::text::metrics::spacing_px(p_style.letter_spacing, &family, p_size);
                 // ЗАМЕРЕНО И ОТКАЧЕНО: считать зазор от `ic`, а не от кегля
                 // (css-text-4 §7.1 «1/8 of the ideographic advance»). Полный
                 // свод CSS3: приобретено 0, потеряно 1 —

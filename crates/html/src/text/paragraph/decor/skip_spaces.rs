@@ -2,6 +2,7 @@
 
 use super::*;
 use unicode_properties::{GeneralCategory, UnicodeGeneralCategory};
+use gpui::{Pixels, px};
 
 fn spacer(c: char) -> bool {
     c != '\u{202f}' && c.general_category() == GeneralCategory::SpaceSeparator

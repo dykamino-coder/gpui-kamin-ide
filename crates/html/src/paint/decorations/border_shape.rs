@@ -1,7 +1,9 @@
 //! Рамка `border-shape` (css-borders-4 §border-shape) растровым слоем.
 // owner: A
 
-use crate::render::*;
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
+use gpui::{IntoElement, Styled, px};
 
 pub(crate) fn border_shape_layer(
     c: &Computed,
@@ -15,7 +17,7 @@ pub(crate) fn border_shape_layer(
     // контур, что у маски группы (`background::border_shape_path`).
     if let Some(bs) = c.border_shape.clone() {
         let (stroke, colour) = c.border_shape_stroke();
-        let colour = crate::background::border_paint(c, colour);
+        let colour = crate::paint::background::border_paint(c, colour);
         let outer_out = c.geometry_outsets(bs.outer_box);
         let inner = bs
             .inner
@@ -43,7 +45,7 @@ pub(crate) fn border_shape_layer(
                     move |bounds, _, window, _| {
                         let (cw, ch) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
                         let (bw, bh) = (cw - ext[3] - ext[1], ch - ext[0] - ext[2]);
-                        let markup = crate::background::border_shape_shadow_svg(
+                        let markup = crate::paint::background::border_shape_shadow_svg(
                             (bs.outer.as_str(), outer_out),
                             inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
                             stroke,
@@ -80,7 +82,7 @@ pub(crate) fn border_shape_layer(
                     move |bounds, _, window, _| {
                         let (cw, ch) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
                         let (bw, bh) = (cw - ext[3] - ext[1], ch - ext[0] - ext[2]);
-                        let markup = crate::background::border_shape_ring_svg(
+                        let markup = crate::paint::background::border_shape_ring_svg(
                             (bs.outer.as_str(), outer_out),
                             inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
                             stroke,

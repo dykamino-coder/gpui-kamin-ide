@@ -27,7 +27,7 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
                     break;
                 }
                 let body = at + 1;
-                let len = crate::css::skip_string(&other[body..], ch);
+                let len = crate::style::css::skip_string(&other[body..], ch);
                 if !other[body..body + len].ends_with(ch) {
                     ok = false;
                     break;

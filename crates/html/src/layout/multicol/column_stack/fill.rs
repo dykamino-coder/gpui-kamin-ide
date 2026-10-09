@@ -1,7 +1,8 @@
 //! Заполнение колонок.
 // owner: A
 
-use crate::flow::*;
+use crate::layout::fragment::types::{Frag, Kid, NOT_TOP};
+use crate::layout::multicol::column_stack::ColumnStack;
 
 impl ColumnStack {
     /// Жадная укладка при данной высоте колонки: сколько колонок вышло,

@@ -1,6 +1,10 @@
 //! ::scroll-marker и ::scroll-marker-group.
 
 use crate::dom::*;
+use crate::style::computed::{Computed, Display, Position};
+use crate::style::css::{Decls, Rule};
+use crate::style::select::matching::matches_ignoring_pseudo;
+use crate::style::select::{Ancestor, Sibs};
 
 /// Псевдокоробки скроллера ВНЕ его коробки (css-overflow-5): группа маркеров
 /// и кнопки прокрутки. Порядок в дереве — Blink `kBoxTreeOrder`.
@@ -26,7 +30,7 @@ pub(crate) struct ScrollPseudos {
 pub(crate) fn scroll_marker_pass(
     rules: &[Rule],
     vars: &Decls,
-    counters: &mut crate::counters::Counters,
+    counters: &mut crate::style::generated::counters::Counters,
     me: &Ancestor,
     path: &[Ancestor],
     sibs: Sibs,
@@ -35,7 +39,7 @@ pub(crate) fn scroll_marker_pass(
     attrs: &[(String, String)],
     children: &mut Vec<Node>,
 ) -> ScrollPseudos {
-    use crate::computed::Overflow;
+    use crate::style::computed::Overflow;
     let mut out = ScrollPseudos {
         group_before: None,
         group_after: None,
@@ -102,7 +106,7 @@ pub(crate) fn scroll_marker_pass(
     }
     let mut markers = vec![];
     {
-        let abs_ok = crate::inline::establishes_cb(style);
+        let abs_ok = crate::text::inline::establishes_cb(style);
         let fixed_ok = style.transform.is_some()
             || style.contain_layout == Some(true)
             || style.contain_paint == Some(true);
@@ -176,7 +180,7 @@ pub(crate) fn collect_scroll_markers(
     fixed_ok: bool,
     out: &mut Vec<Element>,
 ) {
-    use crate::computed::Overflow;
+    use crate::style::computed::Overflow;
     for n in nodes.iter_mut() {
         let Node::Element(e) = n else { continue };
         if e.tag.starts_with("::") {
@@ -213,7 +217,7 @@ pub(crate) fn collect_scroll_markers(
         if nested || e.style.display == Some(Display::None) {
             continue;
         }
-        let abs2 = abs_ok || crate::inline::establishes_cb(&e.style);
+        let abs2 = abs_ok || crate::text::inline::establishes_cb(&e.style);
         let fixed2 = fixed_ok
             || e.style.transform.is_some()
             || e.style.contain_layout == Some(true)

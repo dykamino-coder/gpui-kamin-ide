@@ -3,7 +3,7 @@
 //! CSS Text 3 #text-transform-mapping applies tailoring before glyph shaping.
 
 use super::lang_case;
-use crate::computed::{Computed, TextTransform};
+use crate::style::computed::{Computed, TextTransform};
 
 /// CSS Text 3 §2.1: inline boundaries do not delimit words, even when
 /// the adjoining text has a different text-transform value.
@@ -146,13 +146,13 @@ pub(super) fn transform(text: &str, style: &Computed, context: &mut Context) -> 
         .chars()
         .map(|ch| {
             let mut ch = ch;
-            if flags & crate::computed::TT_FULL_WIDTH != 0 {
+            if flags & crate::style::computed::TT_FULL_WIDTH != 0 {
                 ch = super::full_width(ch);
             }
-            if flags & crate::computed::TT_KANA != 0 {
+            if flags & crate::style::computed::TT_KANA != 0 {
                 ch = super::full_size_kana(ch);
             }
-            if flags & crate::computed::TT_MATH != 0 && single {
+            if flags & crate::style::computed::TT_MATH != 0 && single {
                 ch = super::math_italic(ch);
             }
             ch

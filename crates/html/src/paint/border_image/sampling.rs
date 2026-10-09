@@ -83,7 +83,7 @@ pub(super) fn paint_slice(
                     .then(|| gpui::crop_image(raster, key.1, key.2, key.3, key.4, key.3, key.4))
                     .flatten()
                     .and_then(|cut| {
-                        crate::background::alpha_sampling::resample(&cut, out_w, out_h)
+                        crate::paint::background::alpha_sampling::resample(&cut, out_w, out_h)
                     });
                 let Some(cut) = filtered
                     .or_else(|| gpui::crop_image(raster, key.1, key.2, key.3, key.4, out_w, out_h))

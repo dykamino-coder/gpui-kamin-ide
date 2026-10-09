@@ -1,7 +1,7 @@
 //! Preserve an auto-layout spanning cell's declared minimum before grid sizing.
 
-use crate::computed::Computed;
-use crate::value::Len;
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
 
 pub(crate) fn preserve(
     cell: &mut Computed,

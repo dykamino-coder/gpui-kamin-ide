@@ -11,7 +11,7 @@ pub(crate) mod subgrid_axes;
 pub(crate) mod grid_static_position;
 pub(crate) mod replaced_display;
 pub(crate) mod display_inheritance;
-use display_inheritance::resolve_display_inherit;
+use crate::dom::display_inheritance::resolve_display_inherit;
 pub(crate) mod initial_pseudos;
 pub(crate) mod containment;
 pub(crate) mod language;
@@ -24,15 +24,14 @@ pub(crate) use counter_decls::{
 pub(crate) mod content;
 pub(crate) use content::{content_text, host_content, resolve_content_attributes};
 
-pub(crate) use crate::computed::{Computed, Display, Position};
-pub(crate) use crate::css::{
-    Decls, Keyframes, Media, Rule, Selector, parse_decls, parse_keyframes, parse_stylesheet_media,
-};
-pub(crate) use crate::value::Len;
-pub(crate) use html5ever::tendril::TendrilSink;
-pub(crate) use markup5ever_rcdom::{Handle, NodeData, RcDom};
-pub(crate) use std::collections::HashMap;
-pub(crate) use std::rc::Rc;
+use crate::style::computed::Computed;
+use crate::style::css::{Decls, Media, Rule, parse_keyframes, parse_stylesheet_media};
+use crate::style::select::has::{HAS_MARKS, HasArg, collect_has_args, mark_has, parse_has_arg};
+use crate::style::select::{QUIRKS, quirks};
+use markup5ever_rcdom::{Handle, NodeData, RcDom};
+use std::collections::HashMap;
+use std::rc::Rc;
+use html5ever::tendril::TendrilSink;
 pub(crate) mod xhtml;
 pub(crate) use crate::dom::xhtml::*;
 pub(crate) mod fixup_tree;
@@ -49,9 +48,6 @@ pub(crate) mod scroll_markers;
 pub(crate) use crate::dom::scroll_markers::*;
 pub(crate) mod pseudo;
 pub(crate) use crate::dom::pseudo::*;
-pub(crate) use crate::style::select::has::*;
-pub(crate) use crate::style::select::matching::*;
-pub(crate) use crate::style::select::*;
 
 /// Узел документа: либо текст, либо элемент со своими детьми.
 #[derive(Clone, Debug)]
@@ -231,16 +227,16 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     // Правила `@page` — от последнего РАЗОБРАННОГО документа: почистить,
     // чтобы прошлый лист не красил страницу нового. `@position-try` — тот же
     // пул и та же чистка.
-    let _ = crate::css::take_page_decls();
-    let _ = crate::css::take_try_rules();
-    let _ = crate::css::take_property_rules();
-    crate::counter_style_rules::reset();
-    crate::css::reset_layers();
-    crate::value::set_dark_scheme(false);
+    let _ = crate::style::css::take_page_decls();
+    let _ = crate::style::css::take_try_rules();
+    let _ = crate::style::css::take_property_rules();
+    crate::style::generated::counter_style_rules::reset();
+    crate::style::css::reset_layers();
+    crate::style::values::value::set_dark_scheme(false);
     // Корневые метрики (`rem`, `rlh`) — тоже от прошлого документа: у рамки
     // и у страницы свой корень, и чужие четыре точки на кегль испортили бы
     // весь разбор. Пишет их `walk` ниже, на элементе `html`.
-    crate::value::reset_root_metrics();
+    crate::style::values::value::reset_root_metrics();
     let html = expand_xhtml_self_closing(html);
     let dom = html5ever::parse_document(RcDom::default(), Default::default())
         .from_utf8()
@@ -309,7 +305,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
         frames: frames.clone(),
     };
     for css in &sheets {
-        frames.extend(crate::css::parse_keyframes_in(css, Some(media)));
+        frames.extend(crate::style::css::parse_keyframes_in(css, Some(media)));
     }
     // `:has()`: аргументы собираются со всех селекторов, правила с
     // вложенным `:has` выкидываются (спека: cannot be nested), отметки
@@ -339,7 +335,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     let mut counter = 0u64;
     // Счётчики документа: имя → текущее значение. Обход идёт в порядке
     // разметки, поэтому значение на узле — это то же, что видит браузер.
-    let mut counters = crate::counters::Counters::default();
+    let mut counters = crate::style::generated::counters::Counters::default();
     walk_children(
         &dom.document,
         &doc.rules,
@@ -356,7 +352,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     resolve_rule_color_inherit(&mut out, &RuleColors::default());
     // Anonymous inline-table around orphan table boxes inside inline boxes
     // (CSS 2.1 §17.2.1 step 3); block parents are fixed up by `blocks()`.
-    crate::render::inline_anon_tables(&mut out);
+    crate::layout::table::anon::inline_anon_tables(&mut out);
     // Лунки, которые умеет taffy, — на путь сетки ДО подъёмов и среза
     // подсетки: дальше они идут тем же кодом, что и сетка.
     lanes_as_grid(&mut out);
@@ -421,7 +417,7 @@ mod tests {
     use super::*;
 
     /// Цвета детей по порядку — короткая запись для проверок каскада.
-    fn child_colors(html: &str) -> Vec<Option<crate::value::Color>> {
+    fn child_colors(html: &str) -> Vec<Option<crate::style::values::value::Color>> {
         fn find<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Element> {
             for n in nodes {
                 if let Node::Element(e) = n {
@@ -487,8 +483,8 @@ mod tests {
 
     #[test]
     fn has_relational_pseudo() {
-        let red = crate::value::Color::parse("red");
-        let green = crate::value::Color::parse("green");
+        let red = crate::style::values::value::Color::parse("red");
+        let green = crate::style::values::value::Color::parse("green");
         // Предметная позиция: якорь с потомком-предметом.
         let colors = child_colors(
             "<style>div { color: red } div:has(span) { color: green }</style>             <div id=\"box\"><div><span></span></div><div><b></b></div></div>",
@@ -512,8 +508,8 @@ mod tests {
 
     #[test]
     fn nth_child_of_selector_list() {
-        let red = crate::value::Color::parse("red");
-        let green = crate::value::Color::parse("green");
+        let red = crate::style::values::value::Color::parse("red");
+        let green = crate::style::values::value::Color::parse("green");
         // Индекс считается среди совпавших с S братьев, а не среди всех:
         // второй `.a` — это :nth-child(2 of .a), хотя среди детей он третий.
         let colors = child_colors(
@@ -529,8 +525,8 @@ mod tests {
 
     #[test]
     fn custom_properties_cascade_and_inherit() {
-        let red = crate::value::Color::parse("red");
-        let blue = crate::value::Color::parse("blue");
+        let red = crate::style::values::value::Color::parse("red");
+        let blue = crate::style::values::value::Color::parse("blue");
         // Переключение темы классом: у потомка внутри `.dark` своё значение
         // переменной, у остальных — корневое. Пока переменные собирались в
         // один плоский словарь на документ, последнее объявление красило ВЕСЬ
@@ -543,7 +539,7 @@ mod tests {
 
     #[test]
     fn nth_child_selects_by_position() {
-        let red = crate::value::Color::parse("red");
+        let red = crate::style::values::value::Color::parse("red");
         let colors = child_colors(
             "<style>i:nth-child(2) { color: red }</style>\
              <div id=box><i></i><i></i><i></i></div>",
@@ -553,7 +549,7 @@ mod tests {
 
     #[test]
     fn nth_child_understands_an_plus_b() {
-        let red = crate::value::Color::parse("red");
+        let red = crate::style::values::value::Color::parse("red");
         let colors = child_colors(
             "<style>i:nth-child(2n+1) { color: red }</style>\
              <div id=box><i></i><i></i><i></i><i></i></div>",
@@ -563,7 +559,7 @@ mod tests {
 
     #[test]
     fn last_child_counts_from_the_end() {
-        let red = crate::value::Color::parse("red");
+        let red = crate::style::values::value::Color::parse("red");
         let colors = child_colors(
             "<style>i:last-child { color: red }</style>\
              <div id=box><i></i><i></i></div>",
@@ -573,7 +569,7 @@ mod tests {
 
     #[test]
     fn of_type_counts_only_the_same_tag() {
-        let red = crate::value::Color::parse("red");
+        let red = crate::style::values::value::Color::parse("red");
         // Второй `<i>` — четвёртый ребёнок, но второй своего тега.
         let colors = child_colors(
             "<style>i:nth-of-type(2) { color: red }</style>\
@@ -706,8 +702,8 @@ mod tests {
 
     #[test]
     fn declarative_shadow_scopes_styles_and_slots() {
-        let red = crate::value::Color::parse("red");
-        let green = crate::value::Color::parse("green");
+        let red = crate::style::values::value::Color::parse("red");
+        let green = crate::style::values::value::Color::parse("green");
         // Плоские дети хоста: `b` тени (её правило, не документное) и слот
         // (правило тени). Документное `b { red }` в тень не протекает.
         let colors = child_colors(
@@ -756,6 +752,7 @@ mod tests {
 #[cfg(test)]
 mod presentational_tests {
     use super::*;
+    use crate::style::values::value::Len;
 
     /// `<img width=100>` — представленческая подсказка, и без неё картинка
     /// набирается по своему пикселю вместо заявленного размера.
@@ -841,7 +838,7 @@ mod white_space_tests {
         }
         let div = find(&nodes).expect("блок в дереве");
         assert_eq!(div.style.break_after_spaces, Some(true), "разбор");
-        let wrap = crate::lines::rules(&div.style).expect("правила");
+        let wrap = crate::text::paragraph::rules(&div.style).expect("правила");
         assert!(wrap.break_spaces, "правила переноса");
         assert!(wrap.keep_spaces, "сохранение пробелов");
     }

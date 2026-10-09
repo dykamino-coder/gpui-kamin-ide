@@ -12,8 +12,8 @@ use super::{ch_ex_px, ic_px};
 /// отбрасывались, `word-spacing: -1ch` не действовал вовсе
 /// (`word-spacing-002`). Доля берётся от кегля — как `em`: в модели ширина
 /// пробела шрифта отдельно не хранится.
-pub fn spacing_px(len: Option<crate::value::Len>, family: &str, size_px: f32) -> f32 {
-    use crate::value::Len;
+pub fn spacing_px(len: Option<crate::style::values::value::Len>, family: &str, size_px: f32) -> f32 {
+    use crate::style::values::value::Len;
     let (ch, ex) = ch_ex_px(family, size_px);
     match len {
         Some(Len::Px(v)) => v,
@@ -28,7 +28,7 @@ pub fn spacing_px(len: Option<crate::value::Len>, family: &str, size_px: f32) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::Len;
+    use crate::style::values::value::Len;
 
     #[test]
     fn ic_spacing_uses_the_measured_ideographic_advance() {

@@ -1,6 +1,7 @@
 //! Дорожки сетки: имена линий, размещение, repeat(auto-fill), разбор дорожек.
 
 use crate::style::computed::*;
+use crate::style::values::value::Len;
 
 /// Токены записи шаблона для имён линий: `[имена]`, `функция(…)`, слова.
 pub(crate) fn line_name_tokens(v: &str) -> Vec<String> {
@@ -222,7 +223,7 @@ impl Track {
     /// после разрешения кегля узла.
     pub(crate) fn resolve_font_one(&mut self, family: &str, size_px: f32) {
         if let Track::Font(l) = *self {
-            *self = Track::Px(crate::metrics::spacing_px(Some(l), family, size_px));
+            *self = Track::Px(crate::text::metrics::spacing_px(Some(l), family, size_px));
         }
     }
 }

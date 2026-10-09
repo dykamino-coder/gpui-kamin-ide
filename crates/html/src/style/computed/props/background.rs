@@ -1,6 +1,7 @@
 //! Computed::apply_one: background*, box-shadow, object-*, image-orientation.
 
 use crate::style::computed::*;
+use crate::style::values::value::{Color, Len};
 
 impl Computed {
     #[allow(unused_variables)]
@@ -266,7 +267,7 @@ impl Computed {
                 if !box_shadow_valid(v) {
                     return;
                 }
-                let (inset, outer): (Vec<&str>, Vec<&str>) = crate::css::split_args(v)
+                let (inset, outer): (Vec<&str>, Vec<&str>) = crate::style::css::split_args(v)
                     .into_iter()
                     .partition(|one| one.contains("inset"));
                 self.shadows = parse_shadows(&outer.join(","));
@@ -306,7 +307,7 @@ impl Computed {
                     // фильтр применяется К КАРТИНКЕ, не к элементу — цвета
                     // градиента пересчитываются на месте.
                     let inner = rest.rfind(')').map(|i| &rest[..i]).unwrap_or(rest);
-                    let parts = crate::css::split_args(inner);
+                    let parts = crate::style::css::split_args(inner);
                     if let Some(img) = parts.first().map(|p| p.trim())
                         && (img.starts_with("linear-gradient(")
                             || img.starts_with("radial-gradient("))
@@ -350,7 +351,7 @@ impl Computed {
                     // из одного цвета.
                     let inner = rest.rfind(')').map(|i| &rest[..i]).unwrap_or(rest);
                     let mut url = None;
-                    for part in crate::css::split_args(inner) {
+                    for part in crate::style::css::split_args(inner) {
                         let part = part.trim();
                         if let Some(u) = parse_url(part) {
                             url = Some(u);

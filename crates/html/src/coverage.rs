@@ -12,8 +12,8 @@
 //! * `Impossible` — примитива в GPUI нет, перенести невозможно. Причина
 //!   обязательна и попадает в документацию.
 
-use crate::computed::Computed;
-use crate::css::parse_decls;
+use crate::style::computed::Computed;
+use crate::style::css::parse_decls;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Support {
@@ -471,7 +471,6 @@ const CONSUMERS: &[&str] = &[
     include_str!("style/select/has.rs"),
     include_str!("style/select/matching.rs"),
     include_str!("transition.rs"),
-    include_str!("interact.rs"),
     include_str!("anchor.rs"),
     include_str!("motion.rs"),
     include_str!("style/zoom.rs"),

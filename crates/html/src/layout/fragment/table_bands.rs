@@ -1,7 +1,16 @@
 //! Полосы таблицы при фрагментации.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::fragment::breaks::{edge_avoid, edge_break};
+use crate::layout::fragment::clone::solid_box;
+use crate::layout::fragment::fragment_size::shape_full;
+use crate::layout::fragment::{Shape, ShapeCx};
+use crate::layout::table::anon::fixup_table_children;
+use crate::layout::table::is_cell;
+use crate::render::is_blank;
+use crate::style::computed::Display;
+use crate::style::values::value::Len;
 
 /// Табличная коробка — по тегу или по `display`.
 pub(crate) fn table_box(c: &Element) -> bool {
@@ -48,7 +57,7 @@ pub(crate) struct TableBands {
 }
 
 /// Повтор секций для стопки: полосы `flow::Repeat` и геометрия укладки.
-pub(crate) type RepeatSpec = (Option<(f32, f32)>, Option<(f32, f32)>, crate::flow::RepeatGeom);
+pub(crate) type RepeatSpec = (Option<(f32, f32)>, Option<(f32, f32)>, crate::layout::fragment::types::RepeatGeom);
 
 /// Повтор шапки/подвала таблицы-ребёнка стопки колонок (css-tables-3
 /// §repeated-headers; Blink `table_layout_algorithm.cc:1082-1150`): секция
@@ -62,7 +71,7 @@ pub(crate) type RepeatSpec = (Option<(f32, f32)>, Option<(f32, f32)>, crate::flo
 pub(crate) fn repeat_bands(
     c: &Element,
     fixed: Option<f32>,
-    rows: Option<crate::flow::Rows>,
+    rows: Option<crate::layout::fragment::types::Rows>,
 ) -> Option<RepeatSpec> {
     let per = fixed.filter(|_| rows.is_none() && table_box(c))?;
     let mut b = TableBands::default();
@@ -79,7 +88,7 @@ pub(crate) fn repeat_bands(
     if head.is_none() && foot.is_none() {
         return None;
     }
-    let geom = crate::flow::RepeatGeom {
+    let geom = crate::layout::fragment::types::RepeatGeom {
         head: head.map_or(0.0, |h| h.1),
         foot: foot.map_or(0.0, |f| f.1),
         head_end: head.map_or(0.0, |(at, h)| at + h),
@@ -96,8 +105,8 @@ pub(crate) fn repeat_bands(
 pub(crate) fn repeat_leads(
     c: &Element,
     fixed: Option<f32>,
-    rows: Option<crate::flow::Rows>,
-) -> crate::flow::RepeatGeom {
+    rows: Option<crate::layout::fragment::types::Rows>,
+) -> crate::layout::fragment::types::RepeatGeom {
     repeat_bands(c, fixed, rows).map_or_else(Default::default, |r| r.2)
 }
 

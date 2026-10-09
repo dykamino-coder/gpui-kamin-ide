@@ -1,6 +1,11 @@
 //! Сборка кусков абзаца из узлов (collect_with_empty_metrics) и сдвиги наложений.
 
+use crate::dom::{Element, Node};
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::Computed;
+use crate::style::values::value::{Color, Len};
 use crate::text::inline::*;
+use gpui::{AnyElement, ParentElement, Styled};
 
 pub(crate) fn collect_with_empty_metrics(
     children: &[Node],
@@ -78,7 +83,7 @@ pub(crate) fn collect_with_empty_metrics(
                 // line break, no break opportunity
                 // (`display-contents-sharing-001`).
                 if matches!(e.tag.as_str(), "br" | "wbr")
-                    && e.style.display == Some(crate::computed::Display::Contents)
+                    && e.style.display == Some(crate::style::computed::Display::Contents)
                 {
                     continue;
                 }
@@ -113,7 +118,7 @@ pub(crate) fn collect_with_empty_metrics(
                 // (`render.rs:4358`), а строчный сбор вёл такой элемент обычным
                 // `<span>`, и рамка рисовалась прогоном
                 // (`display-contents-inline-001` «красное видно»).
-                if e.style.display == Some(crate::computed::Display::Contents) {
+                if e.style.display == Some(crate::style::computed::Display::Contents) {
                     let merged = inherit(inherited, &e.style);
                     out.extend(collect_with_empty_metrics(
                         &e.children, &merged, atom, has_text, case,
@@ -164,7 +169,7 @@ pub(crate) fn collect_with_empty_metrics(
                 // несёт цвет глифов (`inherit`), узорную показать нечем.
                 if let Some(bg) = merged
                     .background
-                    .filter(|_| merged.bg_clip != Some(crate::computed::BgClip::Text))
+                    .filter(|_| merged.bg_clip != Some(crate::style::computed::BgClip::Text))
                 {
                     merged.inline_bg = Some(bg);
                     // Единицы шрифта разрешаются так же, как в `inline_sides`:
@@ -178,17 +183,17 @@ pub(crate) fn collect_with_empty_metrics(
                     // чтобы фон строки не попадал в один порядок с глифами
                     // соседней. Замерено там же: 0 и 0.
                     let size = match merged.font_size {
-                        Some(crate::value::Len::Px(v)) => v,
+                        Some(crate::style::values::value::Len::Px(v)) => v,
                         _ => 16.0,
                     };
                     let family = merged.font_family.clone().unwrap_or_default();
-                    let px_of = |l: Option<crate::value::Len>| match l {
+                    let px_of = |l: Option<crate::style::values::value::Len>| match l {
                         Some(
-                            crate::value::Len::Px(_)
-                            | crate::value::Len::Em(_)
-                            | crate::value::Len::Ch(_)
-                            | crate::value::Len::Ex(_),
-                        ) => crate::metrics::spacing_px(l, &family, size),
+                            crate::style::values::value::Len::Px(_)
+                            | crate::style::values::value::Len::Em(_)
+                            | crate::style::values::value::Len::Ch(_)
+                            | crate::style::values::value::Len::Ex(_),
+                        ) => crate::text::metrics::spacing_px(l, &family, size),
                         _ => 0.0,
                     };
                     merged.inline_pad = Some(physical_sides::project(inherited, [
@@ -208,7 +213,7 @@ pub(crate) fn collect_with_empty_metrics(
                 };
                 let own_bg = merged
                     .background
-                    .filter(|_| merged.bg_clip != Some(crate::computed::BgClip::Text))
+                    .filter(|_| merged.bg_clip != Some(crate::style::computed::BgClip::Text))
                     .is_some();
                 let mut own_border = true;
                 if let Some((color, width)) = uniform_border(&e.style, font_px) {
@@ -235,13 +240,13 @@ pub(crate) fn collect_with_empty_metrics(
                         a: 0.0,
                     });
                     let family = merged.font_family.clone().unwrap_or_default();
-                    let px_of = |l: Option<crate::value::Len>| match l {
+                    let px_of = |l: Option<crate::style::values::value::Len>| match l {
                         Some(
-                            crate::value::Len::Px(_)
-                            | crate::value::Len::Em(_)
-                            | crate::value::Len::Ch(_)
-                            | crate::value::Len::Ex(_),
-                        ) => crate::metrics::spacing_px(l, &family, font_px),
+                            crate::style::values::value::Len::Px(_)
+                            | crate::style::values::value::Len::Em(_)
+                            | crate::style::values::value::Len::Ch(_)
+                            | crate::style::values::value::Len::Ex(_),
+                        ) => crate::text::metrics::spacing_px(l, &family, font_px),
                         _ => 0.0,
                     };
                     merged.inline_pad = Some(physical_sides::project(inherited, [
@@ -306,10 +311,10 @@ pub(crate) fn collect_with_empty_metrics(
                 // отсечка стоит в `has_own_box`.
                 let atomic = matches!(
                     e.style.display,
-                    Some(crate::computed::Display::InlineBlock)
-                        | Some(crate::computed::Display::InlineFlex)
-                        | Some(crate::computed::Display::InlineGrid)
-                        | Some(crate::computed::Display::InlineTable)
+                    Some(crate::style::computed::Display::InlineBlock)
+                        | Some(crate::style::computed::Display::InlineFlex)
+                        | Some(crate::style::computed::Display::InlineGrid)
+                        | Some(crate::style::computed::Display::InlineTable)
                 ) && e.style.inline_display != Some(true);
                 // Ограничитель атомарной коробки — служебный знак, а не текст
                 // документа: замена нулевого пробела идеографическим его
@@ -410,17 +415,17 @@ pub(crate) fn collect_with_empty_metrics(
                     // рядом с полосой соседа (`word-spacing-characters-001`).
                     let family = merged.font_family.clone().unwrap_or_else(|| {
                         if merged.monospace == Some(true) {
-                            crate::metrics::mono_family_for(merged.lang.as_deref()).to_string()
+                            crate::text::metrics::mono_family_for(merged.lang.as_deref()).to_string()
                         } else {
                             String::new()
                         }
                     });
-                    let (asc, desc, _) = crate::metrics::vmetrics_px(&family, size);
+                    let (asc, desc, _) = crate::text::metrics::vmetrics_px(&family, size);
                     let content = if asc + desc > 0.0 { asc + desc } else { size };
                     let line = match merged.line_height {
                         Some(Len::Px(v)) => v,
                         Some(Len::Em(k)) => k * size,
-                        _ => size * crate::metrics::normal_line(&family),
+                        _ => size * crate::text::metrics::normal_line(&family),
                     };
                     // Коробка стоит на области содержимого: она в середине
                     // строки, а полулидинг делит остаток поровну (§10.8).
@@ -597,7 +602,7 @@ pub(crate) fn boundary_gap_after_box(e: &Element, inherited: &Computed) -> Optio
         Some(Len::Px(v)) => v,
         _ => 16.0,
     };
-    let gap = crate::metrics::spacing_px(
+    let gap = crate::text::metrics::spacing_px(
         inherited.letter_spacing,
         &inherited.font_family.clone().unwrap_or_default(),
         size,
@@ -623,9 +628,9 @@ pub(crate) fn set_boundary_spacing(pieces: &mut [Piece], spacing: Option<Len>) {
 /// раскладка), поэтому работает прежний обход — нулевая распорка на месте
 /// куска и сам элемент в позднем слое, который рисуется от её угла.
 pub(crate) fn overlay_in_row(el: AnyElement) -> AnyElement {
-    let spot: crate::interact::SpotCell = Default::default();
-    let probe = crate::interact::spot_probe(spot.clone(), false);
-    match crate::interact::late_push(spot, el) {
+    let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
+    let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false);
+    match crate::layout::positioned::containing_block::late_push(spot, el) {
         None => probe,
         Some(kept) => {
             let mut hole = gpui::div().relative().w_0().h_0().flex_shrink_0();
@@ -638,7 +643,7 @@ pub(crate) fn overlay_in_row(el: AnyElement) -> AnyElement {
 /// Относительный сдвиг коробки в точках: `left - right`, `top - bottom`
 /// (CSS 2.1 §9.4.3). Нулевой, если элемент не относительный.
 pub(crate) fn relative_inset(style: &Computed) -> (f32, f32) {
-    if style.position != Some(crate::computed::Position::Relative) {
+    if style.position != Some(crate::style::computed::Position::Relative) {
         return (0.0, 0.0);
     }
     let px_of = |l: Option<Len>| match l {
@@ -663,7 +668,7 @@ pub(crate) fn relative_inset(style: &Computed) -> (f32, f32) {
 /// отбивкой, а копится в `OverlayAt::rot_dy` и прикладывается `lines.rs`
 /// одним округлением вместе с местом в строке.
 pub(crate) fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool) -> Vec<Piece> {
-    if style.position != Some(crate::computed::Position::Relative) {
+    if style.position != Some(crate::style::computed::Position::Relative) {
         return pieces;
     }
     let px_of = |l: Option<Len>| match l {

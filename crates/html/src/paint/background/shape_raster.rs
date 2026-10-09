@@ -1,6 +1,8 @@
 //! Растр фигур: скруглённые прямоугольники, кольца, эллипсы, параметры фигуры.
 
 use crate::paint::background::*;
+use gpui::RenderImage;
+use std::sync::Arc;
 
 /// Порог Blink (`core/style/superellipse.h`, `kHighCurvatureThreshold`):
 /// K ≥ 16 — прямой угол (радиус как нулевой), K ≤ −16 — полная выемка.
@@ -191,7 +193,7 @@ pub fn rasterize_ring(
     w: u32,
     h: u32,
     scale: f32,
-    colour: crate::value::Color,
+    colour: crate::style::values::value::Color,
 ) -> Option<Arc<RenderImage>> {
     let (fw, fh) = (w as f32, h as f32);
     let r = parse_rrect(args, fw, fh, scale)?;
@@ -268,12 +270,12 @@ pub fn shape_params(raw: &str, fw: f32, fh: f32, scale: f32) -> Option<(f32, f32
             "right" | "bottom" => Some(side),
             // Смесь долей и точек в центре (`at calc(50% - 10px) …`).
             _ if t.starts_with("calc(") => {
-                let (p, add) = crate::value::calc_pct_px(t)?;
+                let (p, add) = crate::style::values::value::calc_pct_px(t)?;
                 Some(p * side + add * scale)
             }
-            _ => match crate::value::Len::parse(t)? {
-                crate::value::Len::Px(v) => Some(v * scale),
-                crate::value::Len::Pct(p) => Some(p * side),
+            _ => match crate::style::values::value::Len::parse(t)? {
+                crate::style::values::value::Len::Px(v) => Some(v * scale),
+                crate::style::values::value::Len::Pct(p) => Some(p * side),
                 _ => None,
             },
         }
@@ -356,9 +358,9 @@ pub fn shape_params(raw: &str, fw: f32, fh: f32, scale: f32) -> Option<(f32, f32
             "farthest-side" => Some(side_r("farthest-side", c, side)),
             "closest-corner" => Some(corner_r(false)),
             "farthest-corner" => Some(corner_r(true)),
-            _ => match crate::value::Len::parse(token)? {
-                crate::value::Len::Px(v) => Some(v * scale),
-                crate::value::Len::Pct(p) => Some(p * pct_base),
+            _ => match crate::style::values::value::Len::parse(token)? {
+                crate::style::values::value::Len::Px(v) => Some(v * scale),
+                crate::style::values::value::Len::Pct(p) => Some(p * pct_base),
                 _ => None,
             },
         }

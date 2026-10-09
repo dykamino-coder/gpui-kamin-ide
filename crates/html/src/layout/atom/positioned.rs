@@ -1,7 +1,18 @@
 //! Позиционированный строчный атом: статическая позиция и абсолютная коробка.
 // owner: A
 
-use crate::render::*;
+use crate::dom::Element;
+use crate::layout::positioned::predicates::edge_set;
+use crate::layout::replaced::image::image;
+use crate::layout::replaced::replaced_content::svg_replaced;
+use crate::layout::replaced::{inline_replaced_position, replaced_content};
+use crate::paint::stacking::stacking_context;
+use crate::render::{RenderOpts, blocks, inline_abs_paint_last, styled_div_with};
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
+use crate::text::text_box::line_height_px;
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 #[allow(clippy::needless_return)]
 pub(crate) fn static_position_atom(
@@ -9,7 +20,7 @@ pub(crate) fn static_position_atom(
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
-    let mut merged = inline::inherit(inherited, &e.style);
+    let mut merged = inherit(inherited, &e.style);
     // Позиционирование с внутренней коробки СНИМАЕТСЯ. Содержащим блоком
     // ей стала бы нулевая пустышка, а ширина у неё «по содержимому» —
     // в нулевом блоке это ноль, и элемент пропадал вовсе. Без
@@ -51,7 +62,7 @@ pub(crate) fn static_position_atom(
     // Рисуется элемент ПОВЕРХ соседей по строке, поэтому содержимое
     // уходит в верхний слой блока-контейнера, а в строке остаётся щуп: он
     // и держит место, и сообщает, куда потом вернуть содержимое.
-    let spot: crate::interact::SpotCell = Default::default();
+    let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
     let below = e.style.z_index.is_some_and(|z| z < 0);
     // Блочный элемент встал бы на НОВУЮ строку — там его статическая
     // позиция и находится: левый край содержимого родителя, верх — низ
@@ -71,7 +82,7 @@ pub(crate) fn static_position_atom(
     // Флаги направления нужны и СТРОЧНОМУ атому: в rtl-строке статическая
     // позиция — правый край, заместитель вешается правым краем на точку
     // распорки. Начало новой строки — только у блочного.
-    spot.set(crate::interact::Spot {
+    spot.set(crate::layout::positioned::containing_block::Spot {
         hole: None,
         next_line: (!inline_level).then(|| line_height_px(inherited, opts)),
         rtl: inherited.rtl == Some(true),
@@ -79,7 +90,7 @@ pub(crate) fn static_position_atom(
         vertical_rl: inherited.vertical_rl == Some(true),
         ..Default::default()
     });
-    let probe = crate::interact::spot_probe(spot.clone(), false);
+    let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false);
     let inner = match replaced {
         Some(el) => el,
         None => inner.into_any_element(),
@@ -87,7 +98,7 @@ pub(crate) fn static_position_atom(
     let taken = if below {
         Some(inner)
     } else {
-        crate::interact::late_push(spot, inner)
+        crate::layout::positioned::containing_block::late_push(spot, inner)
     };
     return match taken {
         None => Some(probe),
@@ -105,17 +116,17 @@ pub(crate) fn absolute_atom(
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
-    let merged = inline::inherit(inherited, &e.style);
+    let merged = inherit(inherited, &e.style);
     // Содержащий блок — позиционированный СТРОЧНЫЙ предок в этом абзаце
     // (CSS 2.1 §10.1 п.4): края по обеим осям считает `lines.rs` от
     // прямоугольника его фрагментов, коробка идёт без пустышки и слоёв.
-    let inline_cb = crate::inline::take_atom_cb()
-        && e.style.position == Some(crate::computed::Position::Absolute)
+    let inline_cb = crate::text::inline::take_atom_cb()
+        && e.style.position == Some(crate::style::computed::Position::Absolute)
         && (edge_set(e.style.inset.left) || edge_set(e.style.inset.right))
         && (edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom))
         && e.style.z_index.unwrap_or(0) >= 0;
     if inline_cb {
-        crate::inline::note_abs_cb();
+        crate::text::inline::note_abs_cb();
     }
     // ПРОБОВАЛИ И ОТКАТИЛИ: отдавать элемент без пустышки, чтобы `inset: 0`
     // считался от позиционированного ПРЕДКА. В раскладке под нами
@@ -180,8 +191,8 @@ pub(crate) fn absolute_atom(
         // containing block; the auto axis keeps its inline static spot.
         // Route to that block's layer, rather than the paragraph wrapper.
         if x_set != y_set && e.style.z_index.unwrap_or(0) >= 0 {
-            let spot: crate::interact::SpotCell = Default::default();
-            spot.set(crate::interact::Spot {
+            let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
+            spot.set(crate::layout::positioned::containing_block::Spot {
                 hole: None,
                 next_line: None,
                 fixed_axes: (x_set, y_set),
@@ -196,7 +207,7 @@ pub(crate) fn absolute_atom(
                 ),
                 ..Default::default()
             });
-            let probe = crate::interact::spot_probe(spot.clone(), false);
+            let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false);
             return match inline_replaced_position::push(
                 spot,
                 inline_abs_paint_last(e, holder.into_any_element()),
@@ -219,15 +230,15 @@ pub(crate) fn absolute_atom(
             && y_set
             && !inline_cb
             && (e.style.z_index.unwrap_or(0) >= 0 || below_icb)
-            && !(inherited.cb_ancestor || crate::inline::establishes_cb(inherited))
+            && !(inherited.cb_ancestor || crate::text::inline::establishes_cb(inherited))
         {
             let holder: AnyElement = if below_icb {
-                crate::interact::Underlay::new(holder.into_any_element()).into_any_element()
+                crate::paint::effects::underlay::Underlay::new(holder.into_any_element()).into_any_element()
             } else {
                 holder.into_any_element()
             };
-            let spot: crate::interact::SpotCell = Default::default();
-            spot.set(crate::interact::Spot {
+            let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
+            spot.set(crate::layout::positioned::containing_block::Spot {
                 fixed_axes: (true, true),
                 rtl: inherited.rtl == Some(true),
                 vertical: inherited.vertical == Some(true),
@@ -241,7 +252,7 @@ pub(crate) fn absolute_atom(
             });
             // Слоя нет — элемент возвращается назад, и рисуем его на
             // месте прежним путём.
-            match crate::interact::icb_push(spot, holder.into_any_element()) {
+            match crate::layout::positioned::containing_block::icb_push(spot, holder.into_any_element()) {
                 None => {
                     return Some(div().w_0().h_0().flex_shrink_0().into_any_element());
                 }
@@ -276,8 +287,8 @@ pub(crate) fn absolute_atom(
     let x_set = edge_set(e.style.inset.left) || edge_set(e.style.inset.right);
     let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
     if x_set != y_set && e.style.z_index.unwrap_or(0) >= 0 {
-        let spot: crate::interact::SpotCell = Default::default();
-        spot.set(crate::interact::Spot {
+        let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
+        spot.set(crate::layout::positioned::containing_block::Spot {
             hole: None,
             next_line: None,
             fixed_axes: (x_set, y_set),
@@ -288,8 +299,8 @@ pub(crate) fn absolute_atom(
             own_vertical: e.style.vertical == Some(true),
             ..Default::default()
         });
-        let probe = crate::interact::spot_probe(spot.clone(), false);
-        return match crate::interact::late_push(spot, inline_abs_paint_last(e, inner.into_any_element())) {
+        let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false);
+        return match crate::layout::positioned::containing_block::late_push(spot, inline_abs_paint_last(e, inner.into_any_element())) {
             None => Some(probe),
             Some(kept) => {
                 let mut hole = div().relative().w_0().h_0().flex_shrink_0();

@@ -9,12 +9,12 @@ use std::{collections::HashMap, sync::Mutex};
 /// размер, и кэш обязан различать развёрнутый растр и сырой. Отдельного
 /// параметра у `source` нет намеренно: кэш ключуется строкой, и приставка
 /// ключа дешевле, чем переписывание тринадцати мест вызова.
-pub fn key_exif(src: &str, c: &crate::computed::Computed) -> String {
-    let resolved = crate::computed::parse_image_color(src)
+pub fn key_exif(src: &str, c: &crate::style::computed::Computed) -> String {
+    let resolved = crate::style::computed::parse_image_color(src)
         .and_then(|color| {
-            crate::color_space::resolve_relative(
+            crate::style::values::color_space::resolve_relative(
                 color,
-                c.color.unwrap_or(crate::value::Color {
+                c.color.unwrap_or(crate::style::values::value::Color {
                     r: 0.0,
                     g: 0.0,
                     b: 0.0,
@@ -31,7 +31,7 @@ pub fn key_exif(src: &str, c: &crate::computed::Computed) -> String {
     }
 }
 
-pub fn key(src: &str, c: &crate::computed::Computed) -> String {
+pub fn key(src: &str, c: &crate::style::computed::Computed) -> String {
     key_exif(src, c)
 }
 
@@ -53,7 +53,7 @@ pub fn source(src: &str) -> Option<Source> {
             raw: shape.to_string(),
         })
     } else if let Some(color) =
-        crate::computed::parse_image_color(src_plain).and_then(crate::value::Color::parse)
+        crate::style::computed::parse_image_color(src_plain).and_then(crate::style::values::value::Color::parse)
     {
         Some(Source::Gradient {
             raw: color_image(color),
@@ -99,7 +99,7 @@ pub fn source(src: &str) -> Option<Source> {
 }
 
 /// Resolve currentColor without turning the color image into a CSS box fill.
-fn color_image(c: crate::value::Color) -> String {
+fn color_image(c: crate::style::values::value::Color) -> String {
     let color = format!(
         "rgba({}, {}, {}, {})",
         c.r * 255.0,
@@ -112,7 +112,7 @@ fn color_image(c: crate::value::Color) -> String {
 
 /// Color image samples use straight alpha, as expected by GPUI's image shader.
 pub(super) fn raster_color(raw: &str, w: u32, h: u32) -> Option<std::sync::Arc<gpui::RenderImage>> {
-    let color = crate::computed::parse_image_color(raw).and_then(crate::value::Color::parse)?;
+    let color = crate::style::computed::parse_image_color(raw).and_then(crate::style::values::value::Color::parse)?;
     let pixel = [
         (color.b * 255.0).round() as u8,
         (color.g * 255.0).round() as u8,

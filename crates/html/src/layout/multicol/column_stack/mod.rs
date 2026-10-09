@@ -1,7 +1,9 @@
 //! Элемент стопки колонок `ColumnStack`.
 // owner: A
 
-use crate::flow::*;
+use crate::layout::fragment::fragment_mask;
+use crate::layout::fragment::types::{Frag, Intrinsic, Kid, RepeatGeom, Rows, StackAxis, StackChild, axis_box};
+use gpui::{App, Bounds, IntoElement, Pixels, Window, point, px, size};
 
 pub mod avoid;
 pub mod balance;
@@ -37,7 +39,7 @@ pub struct ColumnStack {
     /// Буфер границ колонок и спаннеров для `GapRulePainter` (css-gaps-1
     /// §gap-multicol): колонки линии — элементы строки, спаннер — элемент во
     /// всю ширину. Заполняется в `prepaint`, художник забирает в `paint`.
-    pub(crate) gap_items: Option<crate::interact::GapItems>,
+    pub(crate) gap_items: Option<crate::paint::gap_rules::GapItems>,
     pub(crate) plan: std::cell::RefCell<Vec<Frag>>,
     pub(crate) col_w: std::cell::Cell<f32>,
     /// Линии колонок после укладки: `(y, высота)` каждой — линейкам и
@@ -56,7 +58,7 @@ impl ColumnStack {
         fixed_height: Option<f32>,
         rule: Option<(f32, gpui::Hsla)>,
         rows: Option<Rows>,
-        gap_items: Option<crate::interact::GapItems>,
+        gap_items: Option<crate::paint::gap_rules::GapItems>,
         intrinsic: Option<Intrinsic>,
     ) -> Self {
         // Без рядов копий ровно столько, сколько колонок (как прежде); с

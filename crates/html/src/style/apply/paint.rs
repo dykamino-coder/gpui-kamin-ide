@@ -1,6 +1,9 @@
 //! Покраска: фон, рамки, двойная рамка, слой рамки (apply_paint).
 
 use crate::style::apply::*;
+use crate::style::computed::{Computed, Display, Position};
+use crate::style::values::value::Len;
+use gpui::{Div, Styled, px};
 
 /// Рамка `double` (css-backgrounds-3 §4.2): «two parallel solid lines with
 /// some space between them». Квад GPUI умеет только сплошную, поэтому обе
@@ -8,7 +11,7 @@ use crate::style::apply::*;
 /// получают. `Some((цвет, толщины))`, когда КАЖДАЯ видимая сторона `double`
 /// толщиной от 3 px (тоньше линии не разойтись — Blink рисует сплошной) и
 /// цвет у сторон один (иначе поверх легли бы полосы сторон).
-pub(crate) fn double_border(c: &Computed) -> Option<(crate::value::Color, [f32; 4])> {
+pub(crate) fn double_border(c: &Computed) -> Option<(crate::style::values::value::Color, [f32; 4])> {
     if c.border_image.as_ref().is_some_and(|bi| !bi.src.is_empty())
         || c.corner_shaped()
         || c.border_shape.is_some()
@@ -44,13 +47,13 @@ pub(crate) fn double_border(c: &Computed) -> Option<(crate::value::Color, [f32; 
         .copied()
         .or(c.border_color)
         .or(c.color)
-        .unwrap_or(crate::value::Color {
+        .unwrap_or(crate::style::values::value::Color {
             r: 0.0,
             g: 0.0,
             b: 0.0,
             a: 1.0,
         });
-    Some((crate::background::border_paint(c, colour), widths))
+    Some((crate::paint::background::border_paint(c, colour), widths))
 }
 
 /// Рамка ПОВЕРХ слоя картинки: цвет и толщины сторон, если рамку надо
@@ -65,7 +68,7 @@ pub(crate) fn double_border(c: &Computed) -> Option<(crate::value::Color, [f32; 
 /// `PaintFillLayers` → `PaintBorder`. Сплошную непрозрачную рамку
 /// `paint_tiles` и раньше обходил ужатием области краски — слой делает то же
 /// для любой рамки. `None` — рисовать по-старому.
-pub(crate) fn border_layer(c: &Computed) -> Option<(crate::value::Color, [f32; 4])> {
+pub(crate) fn border_layer(c: &Computed) -> Option<(crate::style::values::value::Color, [f32; 4])> {
     // Рамку `double` рисуют кольца (`double_border`) — поверх плиток и так.
     if double_border(c).is_some() {
         return None;
@@ -85,8 +88,8 @@ pub(crate) fn border_layer(c: &Computed) -> Option<(crate::value::Color, [f32; 4
     // Обрезка содержимого срезала бы и слой: он лежит В коробке, на
     // отрицательных отступах (`css3-background-size-contain`: пунктирная
     // рамка исчезала при `overflow: hidden`). Такие коробки красит квад.
-    if !matches!(c.overflow_x, None | Some(crate::computed::Overflow::Visible))
-        || !matches!(c.overflow_y, None | Some(crate::computed::Overflow::Visible))
+    if !matches!(c.overflow_x, None | Some(crate::style::computed::Overflow::Visible))
+        || !matches!(c.overflow_y, None | Some(crate::style::computed::Overflow::Visible))
     {
         return None;
     }
@@ -110,13 +113,13 @@ pub(crate) fn border_layer(c: &Computed) -> Option<(crate::value::Color, [f32; 4
         .copied()
         .or(c.border_color)
         .or(c.color)
-        .unwrap_or(crate::value::Color {
+        .unwrap_or(crate::style::values::value::Color {
             r: 0.0,
             g: 0.0,
             b: 0.0,
             a: 1.0,
         });
-    Some((crate::background::border_paint(c, colour), widths))
+    Some((crate::paint::background::border_paint(c, colour), widths))
 }
 
 pub(crate) fn apply_paint(mut d: Div, c: &Computed) -> Div {
@@ -197,7 +200,7 @@ pub(crate) fn apply_paint(mut d: Div, c: &Computed) -> Div {
             .any(|l| matches!(l, Some(Len::Px(v)) if *v > 0.0))
     };
     let current = any_border.then(|| {
-        c.color.unwrap_or(crate::value::Color {
+        c.color.unwrap_or(crate::style::values::value::Color {
             r: 0.0,
             g: 0.0,
             b: 0.0,
@@ -228,7 +231,7 @@ pub(crate) fn apply_paint(mut d: Div, c: &Computed) -> Div {
         && double_border(c).is_none()
         && let Some(bc) = uniform.copied().copied().or(c.border_color).or(current)
     {
-        d = d.border_color(crate::background::border_paint(c, bc).to_hsla());
+        d = d.border_color(crate::paint::background::border_paint(c, bc).to_hsla());
     }
     if c.border_dashed == Some(true) {
         d = d.border_dashed();
@@ -282,9 +285,9 @@ pub(crate) fn apply_paint(mut d: Div, c: &Computed) -> Div {
     }
     // Тень без своего цвета — цветом текста ЭТОГО элемента (метка:
     // отрицательная альфа; css-backgrounds-3 §7, currentColor).
-    let shadow_colour = |sh: &crate::computed::Shadow| {
+    let shadow_colour = |sh: &crate::style::computed::Shadow| {
         if sh.color.a < 0.0 {
-            c.color.unwrap_or(crate::value::Color {
+            c.color.unwrap_or(crate::style::values::value::Color {
                 r: 0.0,
                 g: 0.0,
                 b: 0.0,

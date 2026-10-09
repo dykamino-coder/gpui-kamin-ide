@@ -1,8 +1,9 @@
 //! Orthogonal auto inline sizes use intrinsic floors, not artificial CSS max-width.
-use crate::render::{native_intrinsic, orthogonal_inline};
-use crate::computed::{Computed, Display, orthogonal::available};
+use crate::layout::writing_mode::{native_intrinsic, orthogonal_inline};
+use crate::style::computed::orthogonal::available;
+use crate::style::computed::{Computed, Display};
 use crate::dom::Element;
-use crate::value::Len;
+use crate::style::values::value::Len;
 
 pub(super) fn size_auto(child: &mut Element, container: &Computed, icb_width: f32) -> bool {
     // This fallback sizes ordinary blocks; grid and flex own their item sizing.
@@ -41,7 +42,7 @@ pub(super) fn size_auto(child: &mut Element, container: &Computed, icb_width: f3
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::computed::{Display, Position};
+    use crate::style::computed::{Display, Position};
 
     #[test]
     fn omitted_and_authored_auto_have_the_same_intrinsic_contract() {
@@ -50,7 +51,7 @@ mod tests {
             ..Computed::default()
         };
         for authored in [None, Some(Len::Auto)] {
-            let mut child = crate::render::anon_element("div", vec![]);
+            let mut child = crate::layout::table::anon::anon_element("div", vec![]);
             child.style.width = authored;
             child.style.border_width.left = Some(Len::Px(3.0));
             child.style.border_width.right = Some(Len::Px(3.0));
@@ -69,13 +70,13 @@ mod tests {
     fn nearest_scrollport_and_border_box_define_the_available_border_edge() {
         let mut container = Computed::default();
         container.orthogonal_scrollport = Some([
-            crate::computed::orthogonal::AxisSizes {
+            crate::style::computed::orthogonal::AxisSizes {
                 size: Some(300.0),
                 ..Default::default()
             },
             Default::default(),
         ]);
-        let mut child = crate::render::anon_element("div", vec![]);
+        let mut child = crate::layout::table::anon::anon_element("div", vec![]);
         child.style.margin.left = Some(Len::Px(10.0));
         child.style.padding.left = Some(Len::Px(20.0));
         child.style.border_box = Some(true);
@@ -86,7 +87,7 @@ mod tests {
     #[test]
     fn independent_layout_roles_and_authored_width_keep_their_own_contract() {
         let container = Computed::default();
-        let mut child = crate::render::anon_element("div", vec![]);
+        let mut child = crate::layout::table::anon::anon_element("div", vec![]);
         for display in [
             Display::Flex,
             Display::Grid,

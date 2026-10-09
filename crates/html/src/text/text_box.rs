@@ -1,7 +1,11 @@
 //! `text-box`, высота строки, пустой текст.
 // owner: A
 
-use crate::render::*;
+use crate::style::cascade::inherit::inherit;
+use crate::dom::Node;
+use crate::render::{RenderOpts, breaks_inline, contains_block, holds_line_box, out_of_flow, real_inline};
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
 
 /// Стиль блока, которому принадлежит первая (`start`) или последняя
 /// отформатированная строка контейнера — для `text-box-trim`
@@ -34,7 +38,7 @@ pub(crate) fn text_box_line_style(nodes: &[Node], inherited: &Computed, start: b
             continue;
         }
         if e.style.display == Some(Display::Contents) {
-            return text_box_line_style(&e.children, &inline::inherit(inherited, &e.style), start);
+            return text_box_line_style(&e.children, &inherit(inherited, &e.style), start);
         }
         if breaks_inline(n) {
             // Через гибкий, сеточный и табличный контекст свойство не
@@ -48,7 +52,7 @@ pub(crate) fn text_box_line_style(nodes: &[Node], inherited: &Computed, start: b
             ) {
                 return None;
             }
-            let merged = inline::inherit(inherited, &e.style);
+            let merged = inherit(inherited, &e.style);
             let px_of = |l: Option<Len>| match l {
                 Some(Len::Px(v)) => v,
                 _ => 0.0,
@@ -110,7 +114,7 @@ pub(crate) fn text_box_trim_px(line_style: &Computed, start: bool, opts: &Render
         _ => opts.base_size(),
     };
     let family = line_style.font_family.clone().unwrap_or_default();
-    let (ascent, descent, cap) = crate::metrics::vmetrics_px(&family, size);
+    let (ascent, descent, cap) = crate::text::metrics::vmetrics_px(&family, size);
     let line = match line_style.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
@@ -119,14 +123,14 @@ pub(crate) fn text_box_trim_px(line_style: &Computed, start: bool, opts: &Render
     let half = (line - (ascent + descent)) / 2.0;
     if start {
         half + match line_style.text_box_over {
-            crate::computed::TextEdge::Cap => ascent - cap,
-            crate::computed::TextEdge::Ex => ascent - crate::metrics::ch_ex_px(&family, size).1,
+            crate::style::computed::TextEdge::Cap => ascent - cap,
+            crate::style::computed::TextEdge::Ex => ascent - crate::text::metrics::ch_ex_px(&family, size).1,
             _ => 0.0,
         }
     } else {
         half + match line_style.text_box_under {
-            crate::computed::TextEdge::Alphabetic => {
-                descent + crate::fonts::alphabetic_em(&family) * size
+            crate::style::computed::TextEdge::Alphabetic => {
+                descent + crate::text::fonts::alphabetic_em(&family) * size
             }
             _ => 0.0,
         }
@@ -174,12 +178,12 @@ pub(crate) fn normal_fraction(style: &Computed, opts: &RenderOpts) -> f32 {
         .filter(|f| !f.is_empty())
         .unwrap_or_else(|| {
             if style.monospace == Some(true) {
-                crate::metrics::mono_family_for(style.lang.as_deref()).to_string()
+                crate::text::metrics::mono_family_for(style.lang.as_deref()).to_string()
             } else {
                 opts.text.font_family.to_string()
             }
         });
-    let measured = crate::metrics::normal_line(&family);
+    let measured = crate::text::metrics::normal_line(&family);
     if measured > 0.0 {
         measured
     } else {

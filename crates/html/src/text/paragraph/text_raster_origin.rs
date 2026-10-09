@@ -1,12 +1,13 @@
 //! Preserve inline background geometry and align glyph raster baselines at paint time.
 
 use super::*;
+use gpui::{App, Pixels, Point, Window, point, px};
 
 impl Paragraph {
-    pub(crate) fn opaque_background(mut self, c: &crate::computed::Computed) -> Self {
-        let empty = |v| matches!(v, Some(crate::value::Len::Px(n) | crate::value::Len::Pct(n) | crate::value::Len::Em(n)) if n == 0.0);
+    pub(crate) fn opaque_background(mut self, c: &crate::style::computed::Computed) -> Self {
+        let empty = |v| matches!(v, Some(crate::style::values::value::Len::Px(n) | crate::style::values::value::Len::Pct(n) | crate::style::values::value::Len::Em(n)) if n == 0.0);
         self.opaque_text_origin = c.background.is_some_and(|color| color.a == 1.0)
-            && c.bg_clip != Some(crate::computed::BgClip::Text)
+            && c.bg_clip != Some(crate::style::computed::BgClip::Text)
             && !empty(c.width)
             && !empty(c.height);
         self
@@ -24,7 +25,7 @@ impl Paragraph {
         // snapping the paragraph first shifts equivalent baseline-aligned boxes.
         // Glyph painting restores this same offset through Window separately.
         let mut exact = origin + self.glyph_nudge;
-        if self.selection_vertical.is_none() && !crate::interact::in_rotated_frame() {
+        if self.selection_vertical.is_none() && !crate::text::vertical::in_rotated_frame() {
             let base = (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent;
             // CSS 2.1 section 14.2: transparent descendants paint in their
             // containing opaque fill's device frame, as glyphs do below.
@@ -42,7 +43,7 @@ impl Paragraph {
         origin: Point<Pixels>,
         window: &Window,
     ) -> Point<Pixels> {
-        if self.selection_vertical.is_some() || crate::interact::in_rotated_frame() {
+        if self.selection_vertical.is_some() || crate::text::vertical::in_rotated_frame() {
             return origin;
         }
         // A pixel-exact font (Ahem) is placed at its exact sub-pixel baseline
@@ -69,7 +70,7 @@ impl Paragraph {
         base: Pixels,
         window: &Window,
     ) -> Point<Pixels> {
-        if self.selection_vertical.is_some() || crate::interact::in_rotated_frame() {
+        if self.selection_vertical.is_some() || crate::text::vertical::in_rotated_frame() {
             return origin;
         }
         // Keep the raster origin coherent with an opaque box's snapped fill

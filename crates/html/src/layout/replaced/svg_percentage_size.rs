@@ -1,8 +1,8 @@
 //! Resolve outer SVG percentage geometry before its viewport is rasterized.
 
-use crate::computed::{Computed, Display, Position};
+use crate::style::computed::{Computed, Display, Position};
 use crate::dom::Element;
-use crate::value::Len;
+use crate::style::values::value::Len;
 
 /// SVG width/height presentation attributes participate in CSS sizing, rather
 /// than supplying a natural pixel size (SVG 2 §8.12; CSS 2 §10.5). Blink's

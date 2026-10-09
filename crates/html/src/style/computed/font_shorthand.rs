@@ -1,7 +1,7 @@
 //! Apply the font shorthand while retaining its variant and reset behavior.
 
 use super::{Computed, font_size_token, font_slash, join_slash, split_font, split_outside_parens};
-use crate::value::Len;
+use crate::style::values::value::Len;
 
 pub(super) fn apply(style: &mut Computed, v: &str) {
     // Все части сокращения наследуемые: `inherit` для них — это
@@ -103,7 +103,7 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
     style.font_weight = Some(400);
     style.font_weight_step = 0;
     style.font_kerning = Some(2);
-    style.font_alternates = Some(crate::fonts::alternates::normal());
+    style.font_alternates = Some(crate::text::fonts::alternates::normal());
     style.line_height = Some(Len::Auto);
     for token in split_outside_parens(head) {
         let t = token.as_str();

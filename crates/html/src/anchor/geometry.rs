@@ -1,6 +1,7 @@
 //! Resolve anchor placement from logical geometry before device pixel snapping.
 
-use super::{AnchorPlace, Bounds, CHOSEN, LayoutId, Pixels, Placement, Window, px};
+use gpui::{Bounds, LayoutId, Pixels, Window, px};
+use super::{AnchorPlace, CHOSEN, Placement};
 
 pub(super) fn logical_own(
     layout: LayoutId,

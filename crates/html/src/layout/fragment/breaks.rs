@@ -1,7 +1,15 @@
 //! Принудительные разрывы и запреты.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::fragment::ShapeCx;
+use crate::layout::fragment::flex_lines::class_a_box;
+use crate::layout::fragment::fragment_size::shape_full;
+use crate::layout::fragment::probe::forced_opaque;
+use crate::layout::table::is_cell;
+use crate::render::{is_blank, out_of_flow};
+use crate::style::computed::Display;
+use crate::style::values::value::Len;
 
 /// Досягаемость внепоточного корня стопки страниц: низ его коробки, а при
 /// видимом переполнении — низ стопки его блочных детей (Blink копит
@@ -31,9 +39,9 @@ pub(crate) fn oof_reach(e: &Element, cx: ShapeCx) -> f32 {
     });
     let clipped = matches!(
         e.style.overflow_y,
-        Some(crate::computed::Overflow::Hidden)
-            | Some(crate::computed::Overflow::Clip)
-            | Some(crate::computed::Overflow::Scroll)
+        Some(crate::style::computed::Overflow::Hidden)
+            | Some(crate::style::computed::Overflow::Clip)
+            | Some(crate::style::computed::Overflow::Scroll)
     );
     let inner: f32 = if clipped {
         0.0
@@ -59,7 +67,7 @@ pub(crate) fn oof_reach(e: &Element, cx: ShapeCx) -> f32 {
             .iter()
             .filter_map(|n| match n {
                 Node::Element(k)
-                    if k.style.position == Some(crate::computed::Position::Absolute) =>
+                    if k.style.position == Some(crate::style::computed::Position::Absolute) =>
                 {
                     Some(oof_reach(k, cx))
                 }
@@ -75,8 +83,8 @@ pub(crate) fn oof_reach(e: &Element, cx: ShapeCx) -> f32 {
 /// атомарный строчный. Сплошной строчный набор монолитом НЕ считается:
 /// страница режет его по краю, а обе стороны пары режутся одинаково.
 pub(crate) fn page_monolith(e: &Element) -> bool {
-    let scrolls = |o: Option<crate::computed::Overflow>| {
-        matches!(o, Some(crate::computed::Overflow::Scroll))
+    let scrolls = |o: Option<crate::style::computed::Overflow>| {
+        matches!(o, Some(crate::style::computed::Overflow::Scroll))
     };
     e.style.break_inside_avoid
         || e.style.contain_size == Some(true)
@@ -132,7 +140,7 @@ pub(crate) fn edge_avoid(e: &Element, last: bool) -> bool {
         && e.style.webkit_box != Some(true)
         && matches!(
             e.style.flex_dir,
-            None | Some(crate::computed::FlexDir::Row) | Some(crate::computed::FlexDir::RowReverse)
+            None | Some(crate::style::computed::FlexDir::Row) | Some(crate::style::computed::FlexDir::RowReverse)
         )
         && e.style.flex_wrap != Some(true);
     if row_line {
@@ -159,7 +167,7 @@ pub(crate) fn edge_break(e: &Element, last: bool) -> bool {
     // (`out-of-flow-in-multicolumn-005`).
     if matches!(
         e.style.position,
-        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
     ) {
         return false;
     }
@@ -200,7 +208,7 @@ pub(crate) fn edge_break(e: &Element, last: bool) -> bool {
     ) || e.style.webkit_box == Some(true))
         && matches!(
             e.style.flex_dir,
-            None | Some(crate::computed::FlexDir::Row) | Some(crate::computed::FlexDir::RowReverse)
+            None | Some(crate::style::computed::FlexDir::Row) | Some(crate::style::computed::FlexDir::RowReverse)
         )
         && e.style.flex_wrap != Some(true)
         && e.style.webkit_box_vertical != Some(true);
@@ -239,7 +247,7 @@ pub(crate) fn edge_break(e: &Element, last: bool) -> bool {
         && e.style.grid_areas.is_none()
         && !matches!(
             e.style.grid_auto_flow,
-            Some(crate::computed::AutoFlow::Col) | Some(crate::computed::AutoFlow::ColDense)
+            Some(crate::style::computed::AutoFlow::Col) | Some(crate::style::computed::AutoFlow::ColDense)
         )
         && !e.children.iter().any(|n| matches!(n, Node::Element(k)
             if k.style.grid_row.is_some() || k.style.grid_area_name.is_some()))

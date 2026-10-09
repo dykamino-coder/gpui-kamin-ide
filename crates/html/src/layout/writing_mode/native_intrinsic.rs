@@ -1,7 +1,7 @@
 //! Intrinsic block and grid boxes retain their actual node and containing block.
-use crate::computed::{Display, Position};
+use crate::style::computed::{Display, Position};
 use crate::dom::Element;
-use crate::value::Len;
+use crate::style::values::value::Len;
 
 fn keyword(value: Option<Len>) -> bool {
     matches!(
@@ -40,7 +40,7 @@ mod tests {
     use super::*;
     #[test]
     fn ordinary_keyword_items_keep_margins_placement_and_numeric_limits() {
-        let mut element = crate::render::anon_element("div", vec![]);
+        let mut element = crate::layout::table::anon::anon_element("div", vec![]);
         element.style.width = Some(Len::MinContent);
         element.style.height = Some(Len::MaxContent);
         element.style.margin.left = Some(Len::Px(-10.0));
@@ -57,12 +57,12 @@ mod tests {
 
     #[test]
     fn intrinsic_grid_containers_keep_keywords_on_their_actual_node() {
-        let mut element = crate::render::anon_element("div", vec![]);
+        let mut element = crate::layout::table::anon::anon_element("div", vec![]);
         element.style.height = Some(Len::MaxContent);
         element.style.inline_display = Some(true);
         element.style.grid_row = Some((
-            crate::computed::Placement::Line(2),
-            crate::computed::Placement::Span(3),
+            crate::style::computed::Placement::Line(2),
+            crate::style::computed::Placement::Span(3),
         ));
         element.style.margin.top = Some(Len::Px(10.0));
         for display in [Display::Grid, Display::InlineGrid, Display::GridLanes] {
@@ -76,7 +76,7 @@ mod tests {
 
     #[test]
     fn specialized_roles_and_intrinsic_constraints_keep_their_existing_contracts() {
-        let mut element = crate::render::anon_element("div", vec![]);
+        let mut element = crate::layout::table::anon::anon_element("div", vec![]);
         element.style.width = Some(Len::FitContent);
         element.style.display = Some(Display::Block);
         for tag in ["table", "td", "img", "input", "canvas", "li"] {

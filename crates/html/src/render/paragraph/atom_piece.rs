@@ -1,7 +1,23 @@
 //! Строчный атом абзаца в кусок (`Piece::Atom`): тело замыкания `atom` из `paragraph_pieces_routed`.
 // owner: A
 
+use crate::animation::frames::bake_frozen;
+use crate::dom::Element;
+use crate::layout::atom::atom_element;
+use crate::layout::positioned::static_position::at_static_position;
+use crate::layout::replaced::image::image;
+use crate::layout::replaced::{replaced_content, svg_percentage_size};
+use crate::layout::writing_mode::rotated_atom;
+use crate::paint::effects::grouped::grouped;
+use crate::paint::effects::transform::transformed;
 use crate::render::*;
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
+use crate::text::inline;
+use crate::text::ruby::ruby_transform;
+use crate::text::vertical::combined_text;
+use gpui::{IntoElement, ParentElement, Styled, div};
 
 pub(crate) fn atom_piece(
     e: &Element,
@@ -9,7 +25,7 @@ pub(crate) fn atom_piece(
     opts: &RenderOpts,
     flow_text: bool,
 ) -> Option<inline::Piece> {
-    let in_inline_cb = crate::inline::take_atom_cb();
+    let in_inline_cb = crate::text::inline::take_atom_cb();
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
     // CSS 2.1 sections 10.3.8/10.6.5 use the replaced default size
@@ -17,7 +33,7 @@ pub(crate) fn atom_piece(
     let iframe_sized = (replaced_content::default_iframe(e)
         && matches!(
             e.style.position,
-            Some(crate::computed::Position::Absolute | crate::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
         ))
         .then(|| replaced_content::empty_iframe_size(e, inherited, opts.viewport));
     let e = iframe_sized.as_ref().unwrap_or(e);
@@ -58,7 +74,7 @@ pub(crate) fn atom_piece(
         && at_static_position(&e.style)
         && (inline_level(e) || e.style.inline_display == Some(true) || rot_block)
     {
-        let mut merged = inline::inherit(inherited, &e.style);
+        let mut merged = inherit(inherited, &e.style);
         merged.position = None;
         merged.abs_static = true;
         // Замещаемый элемент строит своя ветка: дети `<svg>` — не блоки,
@@ -110,7 +126,7 @@ pub(crate) fn atom_piece(
         // письмо коробки (css-writing-modes-4 §7.1, строки 1926-1931).
         let rotated_rtl = inherited.rtl == Some(true) && inherited.rotated_line == Some(true);
         let inner = if inherited.rtl == Some(true) && !rot_block && !rotated_rtl {
-            crate::interact::InlineStartHang::new(inner).into_any_element()
+            crate::layout::positioned::containing_block::InlineStartHang::new(inner).into_any_element()
         } else {
             inner
         };
@@ -155,7 +171,7 @@ pub(crate) fn atom_piece(
         && e.style.display == Some(Display::InlineBlock)
         && e.style.vertical == Some(false)
     {
-        let mut merged = inline::inherit(inherited, &e.style);
+        let mut merged = inherit(inherited, &e.style);
         merged.rotated_line = None;
         let em = match merged.width {
             Some(Len::Px(v)) => v,
@@ -168,7 +184,7 @@ pub(crate) fn atom_piece(
             .children(blocks(&e.children, &merged, opts))
             .into_any_element();
         return Some(inline::Piece::Atom(
-            crate::interact::CombinedUpright::upright_box(inner, em).into_any_element(),
+            crate::text::vertical::CombinedUpright::upright_box(inner, em).into_any_element(),
         ));
     }
     if let Some(piece) = combined_text::piece(e, inherited, opts) {
@@ -202,9 +218,9 @@ pub(crate) fn atom_piece(
     // (эталоны `fixed-table-layout-021..023`: `img{vertical-align:top}`
     // плюс `margin-left`).
     let wrapped = match e.style.vertical_align {
-        Some(crate::computed::Align::Start)
-        | Some(crate::computed::Align::End)
-        | Some(crate::computed::Align::Center) => true,
+        Some(crate::style::computed::Align::Start)
+        | Some(crate::style::computed::Align::End)
+        | Some(crate::style::computed::Align::Center) => true,
         _ => false,
     };
     let original_margin = rotated_atom::margin(&e.style, inherited);
@@ -227,7 +243,7 @@ pub(crate) fn atom_piece(
         && e.style.vertical.is_none()
         && matches!(
             e.style.position,
-            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
         )
         && !at_static_position(&e.style)
         && !replaced_tag(e)
@@ -241,10 +257,10 @@ pub(crate) fn atom_piece(
     } else {
         e
     };
-    crate::inline::set_atom_cb(in_inline_cb);
+    crate::text::inline::set_atom_cb(in_inline_cb);
     let built = atom_element(e, inherited, opts);
-    crate::inline::set_atom_cb(false);
-    let abs_cb = crate::inline::take_abs_cb();
+    crate::text::inline::set_atom_cb(false);
+    let abs_cb = crate::text::inline::take_abs_cb();
     built.map(|el| {
         // `mix-blend-mode` на ЗАМЕЩАЕМОМ атоме строки: блочный путь,
         // атом с коробкой и флоат смешивают через `grouped`, а `<svg>`,
@@ -272,7 +288,7 @@ pub(crate) fn atom_piece(
             "input" | "textarea" | "select" | "progress" | "meter"
         ) || matches!(
             e.style.position,
-            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
         ) {
             el
         } else {
@@ -286,7 +302,7 @@ pub(crate) fn atom_piece(
         // атомарного куска прижимом к краю строки. Замерено по семьям
         // linebox/*, css1/*, *vertical*: 0 и 0 — этим парам нужен сдвиг
         // относительно ТЕКСТОВОЙ области родителя, а не край строки.
-        use crate::computed::Align;
+        use crate::style::computed::Align;
         let self_align = match e.style.vertical_align {
             Some(Align::Start) => Some(gpui::AlignItems::FlexStart),
             Some(Align::End) => Some(gpui::AlignItems::FlexEnd),
@@ -295,7 +311,7 @@ pub(crate) fn atom_piece(
         };
         let el = match self_align {
             Some(a) => {
-                let mut w = crate::apply::margins(div().flex_shrink_0(), &original_margin);
+                let mut w = crate::style::apply::margins(div().flex_shrink_0(), &original_margin);
                 w.style().align_self = Some(a);
                 // Доля куска считается от его КОНТЕЙНЕРА, а обёртка встаёт
                 // между ним и рядом: без своей ширины она сжимается по
@@ -318,9 +334,9 @@ pub(crate) fn atom_piece(
         // (background-size-document-root-vrl-*: красный маркер обязан
         // лечь под зелёный фон iframe).
         let el = if e.style.z_index.is_some_and(|z| z < 0)
-            && e.style.position == Some(crate::computed::Position::Relative)
+            && e.style.position == Some(crate::style::computed::Position::Relative)
         {
-            crate::interact::Underlay::new(el).into_any_element()
+            crate::paint::effects::underlay::Underlay::new(el).into_any_element()
         } else {
             el
         };
@@ -332,7 +348,7 @@ pub(crate) fn atom_piece(
         // предка. `Overlay` абзац с текстового пути не уводит.
         if matches!(
             e.style.position,
-            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
         ) && !at_static_position(&e.style)
             && !matches!(
                 e.tag.as_str(),

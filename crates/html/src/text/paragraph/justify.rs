@@ -1,6 +1,7 @@
 //! Выключка при отрисовке (paint_justified): слова, полосы, видимые прогоны.
 
 use crate::text::paragraph::*;
+use gpui::{App, Bounds, Hsla, Pixels, SharedString, TextRun, Window, point, px};
 
 impl Paragraph {
     /// Выключка по ширине: остаток строки раздаётся её пробелам.
@@ -109,7 +110,7 @@ impl Paragraph {
                     .chain(
                         self.spacers
                             .iter()
-                            .flat_map(|p| [*p, *p + crate::inline::SPACER.len()]),
+                            .flat_map(|p| [*p, *p + crate::text::inline::SPACER.len()]),
                     )
                     .chain(self.box_extents.iter().flat_map(|b| [b.1, b.2]))
                     .filter(|s| *s > at && *s < w.range.end)
@@ -207,7 +208,7 @@ impl Paragraph {
                 let mut pts = vec![s, e];
                 for &p in self.spacers.iter().filter(|p| **p >= s && **p < e) {
                     pts.push(p);
-                    pts.push((p + crate::inline::SPACER.len()).min(e));
+                    pts.push((p + crate::text::inline::SPACER.len()).min(e));
                 }
                 // Box content edges: a fragment of a box starts a piece.
                 for b in &self.box_extents {
@@ -770,7 +771,7 @@ impl Paragraph {
             } else {
                 !nb.is_some_and(|a| {
                     self.spacer_edges.iter().any(|&(p, id, _, _)| {
-                        p <= a && a < p + crate::inline::SPACER.len() && holders.contains(&id)
+                        p <= a && a < p + crate::text::inline::SPACER.len() && holders.contains(&id)
                     })
                 })
             };

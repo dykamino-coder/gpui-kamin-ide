@@ -1,6 +1,7 @@
 //! Доводка вычисленного стиля: логические стороны, единицы окна и шрифта, текстовые и смешанные стили.
 
 use crate::style::computed::*;
+use crate::style::values::value::{Color, Len};
 
 impl Computed {
     // ПРОБОВАЛИ И ОТКАТИЛИ: блокификация под `float` и абсолютным
@@ -29,7 +30,7 @@ impl Computed {
     /// блочная коробка — её путь отрисовки один (`render.rs`, блочная ветка
     /// `transformed(animated(e))`), и края у неё не заданы.
     pub fn folded_shift(&self) -> Option<(f32, f32)> {
-        use crate::computed::inh;
+        use crate::style::computed::inh;
         if !matches!(self.position, None | Some(Position::Static))
             || self.hoisted_block
             || self.rotate_prop.is_some()
@@ -78,7 +79,7 @@ impl Computed {
         c.bg_image = None;
         c.gradient = None;
         c.gradient_raw = None;
-        c.border_color = Some(crate::value::Color {
+        c.border_color = Some(crate::style::values::value::Color {
             r: 0.0,
             g: 0.0,
             b: 0.0,
@@ -297,7 +298,7 @@ impl Computed {
             Some(Len::Vw(k)) => *l = Some(Len::Px(k * viewport.0)),
             Some(Len::Vh(k)) => *l = Some(Len::Px(k * viewport.1)),
             Some(Len::Calc(i)) => {
-                let mut s = crate::value::calc_get(i);
+                let mut s = crate::style::values::value::calc_get(i);
                 // Без слагаемых окна складывать нечего: индекс остаётся
                 // (арена append-only, `resolve_viewport` идёт на каждом
                 // слитом стиле), а `collapse` стёр бы процентную смесь
@@ -317,7 +318,7 @@ impl Computed {
                     Some(Len::Vw(k)) => *one = Some(Len::Px(k * viewport.0)),
                     Some(Len::Vh(k)) => *one = Some(Len::Px(k * viewport.1)),
                     Some(Len::Calc(i)) => {
-                        let mut s = crate::value::calc_get(i);
+                        let mut s = crate::style::values::value::calc_get(i);
                         // То же, что у размеров: смесь с долей доживает.
                         if s.vw != 0.0 || s.vh != 0.0 {
                             s.px += s.vw * viewport.0 + s.vh * viewport.1;
@@ -375,10 +376,10 @@ impl Computed {
         } else {
             0
         };
-        let size_adjust = crate::fonts::size_adjust(family, slope);
+        let size_adjust = crate::text::fonts::size_adjust(family, slope);
         match self.font_size_adjust {
             Some((metric, want)) if want.is_finite() => {
-                match crate::metrics::adjust_aspect(family, metric) {
+                match crate::text::metrics::adjust_aspect(family, metric) {
                     Some(have) if have > 0.0 => want / have,
                     _ => size_adjust,
                 }
@@ -394,7 +395,7 @@ impl Computed {
         // тому шрифту, которым текст в самом деле наберётся.
         let family = self.font_family.clone().unwrap_or_else(|| {
             if self.monospace == Some(true) {
-                crate::metrics::mono_family_for(self.lang.as_deref()).to_string()
+                crate::text::metrics::mono_family_for(self.lang.as_deref()).to_string()
             } else {
                 String::new()
             }
@@ -417,7 +418,7 @@ impl Computed {
                 Some(Len::Em(k)) => k * parent_font_px,
                 _ => parent_font_px,
             };
-            let (ch, ex) = crate::metrics::ch_ex_px(&family, own_font);
+            let (ch, ex) = crate::text::metrics::ch_ex_px(&family, own_font);
             if let Some(raw) = self.transform_raw.take() {
                 let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
                 self.apply_one("transform", &px);
@@ -444,7 +445,7 @@ impl Computed {
                 Some(Len::Em(k)) => k * parent_font_px,
                 _ => parent_font_px,
             };
-            let (ch, ex) = crate::metrics::ch_ex_px(&family, own_font);
+            let (ch, ex) = crate::text::metrics::ch_ex_px(&family, own_font);
             let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
             if let Some(g) = parse_gradient(&px) {
                 self.gradient = Some(g);
@@ -464,15 +465,15 @@ impl Computed {
         match self.font_size {
             Some(Len::Em(k)) => self.font_size = Some(Len::Px(k * parent_font_px)),
             Some(Len::Ch(k)) => {
-                let (ch, _) = crate::metrics::ch_ex_px(&family, parent_font_px);
+                let (ch, _) = crate::text::metrics::ch_ex_px(&family, parent_font_px);
                 self.font_size = Some(Len::Px(k * ch));
             }
             Some(Len::Ex(k)) => {
-                let (_, ex) = crate::metrics::ch_ex_px(&family, parent_font_px);
+                let (_, ex) = crate::text::metrics::ch_ex_px(&family, parent_font_px);
                 self.font_size = Some(Len::Px(k * ex));
             }
             Some(Len::Ic(k)) => {
-                self.font_size = Some(Len::Px(k * crate::metrics::ic_px(&family, parent_font_px)));
+                self.font_size = Some(Len::Px(k * crate::text::metrics::ic_px(&family, parent_font_px)));
             }
             _ => {}
         }
@@ -500,7 +501,7 @@ impl Computed {
             }
             self.font_size = Some(Len::Px(used.max(0.01)));
         }
-        let (mut ch, ex) = crate::metrics::ch_ex_px(&family, used);
+        let (mut ch, ex) = crate::text::metrics::ch_ex_px(&family, used);
         // `ch` — продвижение нуля вдоль оси строки. При стоящих глифах в
         // вертикальном письме строка идёт сверху вниз, и продвижение равно
         // кеглю, а не ширине глифа (CSS Writing Modes §7.4).
@@ -508,11 +509,11 @@ impl Computed {
             ch = used;
         }
         // `ic` меряется по тому же семейству и тем же шагом, что `ch` и `ex`.
-        let ic = crate::metrics::ic_px(&family, used);
+        let ic = crate::text::metrics::ic_px(&family, used);
         // `cap` — высота прописной того же лица (css-values-4 §6.1.4). Щуп
         // вертикальных метрик её уже отдаёт третьим числом (по нему
         // `text-box-trim` считает срез `cap`), своего замера не нужно.
-        let cap = crate::metrics::vmetrics_px(&family, used).2;
+        let cap = crate::text::metrics::vmetrics_px(&family, used).2;
         let to_px = move |l: &mut Option<Len>| match *l {
             Some(Len::Em(k)) => *l = Some(Len::Px(k * base)),
             Some(Len::EmPx(k, add)) => *l = Some(Len::Px(k * base + add)),
@@ -522,7 +523,7 @@ impl Computed {
             // Смешанный calc: шрифтовые слагаемые складываются здесь — база
             // и метрики известны; остаток сворачивается заново.
             Some(Len::Calc(i)) => {
-                let mut s = crate::value::calc_get(i);
+                let mut s = crate::style::values::value::calc_get(i);
                 // Без шрифтовых слагаемых складывать нечего — индекс остаётся
                 // прежним: арена append-only, а `resolve_em` идёт на каждом
                 // наследовании, и повторное хранение раздувало бы её впустую.
@@ -595,9 +596,9 @@ impl Computed {
     pub fn used_features(&self) -> Vec<(String, u32)> {
         // Шаг 2 §7.2 — дескриптор правила `@font-face`, МЛАДШЕ свойств.
         let mut all: Vec<(String, u32)> =
-            crate::fonts::face_features(self.font_family.as_deref().unwrap_or(""));
+            crate::text::fonts::face_features(self.font_family.as_deref().unwrap_or(""));
         all.extend(self.font_features.iter().cloned());
-        all.extend(crate::fonts::alternates::resolve(
+        all.extend(crate::text::fonts::alternates::resolve(
             self.font_family.as_deref().unwrap_or(""),
             self.font_alternates.as_ref(),
         ));

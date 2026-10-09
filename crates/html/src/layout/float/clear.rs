@@ -1,7 +1,13 @@
 //! `clear` и пропуск флоатов.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::block::containing::CB_WIDTH;
+use crate::layout::block::struts::top_edge_open;
+use crate::paint::effects::grouped::px_of2;
+use crate::render::{in_flow, inline_marked_block, is_blank, own_context};
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
 
 /// Отрисовать корневые узлы документа.
 ///

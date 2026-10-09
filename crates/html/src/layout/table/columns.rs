@@ -1,7 +1,9 @@
 //! Колонки таблицы: дорожки и ширины.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::style::values::value::Len;
+use gpui::{AnyElement, IntoElement, px};
 
 /// Дорожки таблицы: все по содержимому, последняя забирает остаток строки.
 ///
@@ -220,7 +222,7 @@ pub(crate) fn push_col_bands<'a>(
     els: &[Option<&'a Element>],
     salt: u64,
     have_rows: bool,
-    rects_by_col: &mut [Option<crate::interact::RowRects>],
+    rects_by_col: &mut [Option<crate::layout::table::paint::RowRects>],
     cells: &mut Vec<AnyElement>,
 ) {
     let mut seen: Vec<u64> = vec![];
@@ -240,7 +242,7 @@ pub(crate) fn push_col_bands<'a>(
         if !(picture || el.style.background.is_some() || !el.style.shadows.is_empty()) {
             continue;
         }
-        let rects = crate::interact::row_rects_for(el.node_id ^ salt);
+        let rects = crate::layout::table::paint::row_rects_for(el.node_id ^ salt);
         rects_by_col[i] = Some(rects.clone());
         if !seen.contains(&el.node_id) {
             seen.push(el.node_id);
@@ -248,7 +250,7 @@ pub(crate) fn push_col_bands<'a>(
             if band_style.bg_image.is_none() {
                 band_style.bg_image = band_style.gradient_raw.clone();
             }
-            cells.push(crate::interact::CellsClipped::new(rects, band_style).into_any_element());
+            cells.push(crate::layout::table::paint::CellsClipped::new(rects, band_style).into_any_element());
         }
     }
 }

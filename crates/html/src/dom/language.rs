@@ -1,6 +1,6 @@
 //! Content language lookup shared by selectors and automatic quotation marks.
 
-use super::Ancestor;
+use crate::style::select::Ancestor;
 
 fn own(node: &Ancestor) -> Option<&str> {
     node.attrs
@@ -24,8 +24,8 @@ pub(super) fn parent<'a>(node: &'a Ancestor, path: &'a [Ancestor]) -> Option<&'a
 
 /// Explicit auto on a pseudo selects its originating element's language.
 pub(super) fn pseudo(
-    counters: &mut crate::counters::Counters,
-    style: &crate::computed::Computed,
+    counters: &mut crate::style::generated::counters::Counters,
+    style: &crate::style::computed::Computed,
     node: &Ancestor,
     path: &[Ancestor],
 ) {

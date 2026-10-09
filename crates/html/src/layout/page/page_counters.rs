@@ -1,7 +1,7 @@
 //! Paged counters persist across pages and are obscured by margin-local counters.
 
-use crate::computed::Computed;
-use crate::counters::Counters;
+use crate::style::computed::Computed;
+use crate::style::generated::counters::Counters;
 use std::collections::HashMap;
 
 type Values = HashMap<String, i32>;

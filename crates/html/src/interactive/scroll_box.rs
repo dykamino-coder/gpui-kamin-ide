@@ -1,7 +1,15 @@
 //! Прокручиваемые коробки.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::positioned::predicates::{edge_set, stays_positioned};
+use crate::paint::effects::paint_scope::DepthScope;
+use crate::paint::effects::paint_scope::inside as inside_deferred;
+use crate::paint::effects::paint_scope::snapshot as defer_depth;
+use crate::render::{RenderOpts, blocks, element, in_flow};
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 /// Обернуть элемент лентой прокрутки, если `overflow` её просит.
 ///
@@ -22,14 +30,14 @@ use crate::render::*;
 /// НЕПОСРЕДСТВЕННЫЕ дети ленты и только при ОБЕИХ заданных осях (по свободной
 /// оси место сообщает щуп, а он остался бы в замыкании).
 pub(crate) fn hoist_from_scroll(e: &mut Element, inherited: &Computed, opts: &RenderOpts) {
-    use crate::computed::Position;
-    if !crate::interact::icb_active() || inside_deferred() {
+    use crate::style::computed::Position;
+    if !crate::layout::positioned::containing_block::icb_active() || inside_deferred() {
         return;
     }
-    let merged = crate::inline::inherit(inherited, &e.style);
+    let merged = crate::style::cascade::inherit::inherit(inherited, &e.style);
     // Лента внутри позиционированного предка не выносит ничего: у её потомков
     // содержащий блок есть.
-    if merged.cb_ancestor || crate::inline::establishes_cb(&merged) {
+    if merged.cb_ancestor || crate::text::inline::establishes_cb(&merged) {
         return;
     }
     if matches!(
@@ -81,7 +89,7 @@ pub(crate) fn hoist_from_scroll(e: &mut Element, inherited: &Computed, opts: &Re
 }
 
 pub(crate) fn scrollable(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
-    use crate::computed::Overflow;
+    use crate::style::computed::Overflow;
     let horizontal = e.style.overflow_x == Some(Overflow::Scroll);
     let vertical = e.style.overflow_y == Some(Overflow::Scroll);
     if !horizontal && !vertical {
@@ -143,7 +151,7 @@ pub(crate) fn scrollable(e: &Element, inherited: &Computed, opts: &RenderOpts) -
                 || element(&inner, &inherited, &opts));
             if native_box { return built; }
             use gpui::{InteractiveElement, StatefulInteractiveElement};
-            let mut d = crate::apply::margins(div(), &outer_margin)
+            let mut d = crate::style::apply::margins(div(), &outer_margin)
                 .id(gpui::ElementId::Integer(node.node_id as u64 + 1))
                 .track_scroll(handle)
                 .child(built);
@@ -174,7 +182,7 @@ pub(crate) fn scrollable(e: &Element, inherited: &Computed, opts: &RenderOpts) -
             // ширины не резала ничего (`white-space-pre-wrap-trailing-spaces-
             // 021`: висящие пробелы `overflow: auto`-коробки шириной в `ch`
             // выходили за её край).
-            let sized = crate::inline::inherit(&inherited, &inner.style);
+            let sized = crate::style::cascade::inherit::inherit(&inherited, &inner.style);
             if h && let Some(Len::Px(w)) = sized.width {
                 let side = |l: Option<Len>| match l {
                     None | Some(Len::Auto) => Some(0.0),
@@ -214,7 +222,7 @@ pub(crate) fn scrollable(e: &Element, inherited: &Computed, opts: &RenderOpts) -
         },
     );
     Some(
-        crate::interact::ScrollArea::new(
+        crate::interactive::scroll_area::ScrollArea::new(
             gpui::ElementId::Integer(e.node_id as u64),
             horizontal,
             vertical,
@@ -231,9 +239,9 @@ pub(crate) fn resizable(e: &Element, inherited: &Computed, opts: &RenderOpts) ->
     }
     let (horizontal, vertical) = e.style.resize?;
     let axis = match (horizontal, vertical) {
-        (true, true) => crate::interact::ResizeAxis::Both,
-        (true, false) => crate::interact::ResizeAxis::Horizontal,
-        _ => crate::interact::ResizeAxis::Vertical,
+        (true, true) => crate::interactive::resizable::ResizeAxis::Both,
+        (true, false) => crate::interactive::resizable::ResizeAxis::Horizontal,
+        _ => crate::interactive::resizable::ResizeAxis::Vertical,
     };
     let node = e.clone();
     let inherited = inherited.clone();
@@ -254,7 +262,7 @@ pub(crate) fn resizable(e: &Element, inherited: &Computed, opts: &RenderOpts) ->
         element(&mixed, &inherited, &opts)
     });
     Some(
-        crate::interact::Resizable::new(gpui::ElementId::Integer(e.node_id as u64), axis, build)
+        crate::interactive::resizable::Resizable::new(gpui::ElementId::Integer(e.node_id as u64), axis, build)
             .into_any_element(),
     )
 }

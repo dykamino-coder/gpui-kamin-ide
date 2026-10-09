@@ -1,7 +1,16 @@
 //! Таблицы: драйвер раскладки.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::block::containing::CB_WIDTH;
+use crate::layout::replaced::limits::atom_base_font;
+use crate::layout::table::anon::{RowCarry, collect_rows, fixup_table_children};
+use crate::layout::table::columns::{col_element_widths, col_elements, colgroup_elements, push_col_bands};
+use crate::paint::stacking::stacking_context;
+use crate::render::{RenderOpts, inline_level_box};
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
+use gpui::AnyElement;
 
 pub mod anon;
 pub mod columns;
@@ -91,7 +100,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
             let px_of = |l: Option<Len>| match l {
                 Some(Len::Px(v)) => v,
                 Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_) | Len::Ic(_))) => {
-                    crate::metrics::fallback_len_px(l, "", em).unwrap_or(0.0)
+                    crate::text::metrics::fallback_len_px(l, "", em).unwrap_or(0.0)
                 }
                 _ => 0.0,
             };
@@ -212,7 +221,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // (`collapsed-border-paint-phase-001`, `collapsed-borders-painting-order-
     // 009/010/012/013`: вложенный стол и инлайн-блок с отрицательным полем
     // накрывались кромками внешнего стола).
-    let cell_bgs: crate::interact::CellBgs = Default::default();
+    let cell_bgs: crate::layout::table::paint::CellBgs = Default::default();
     // Слои фонов и кромок строятся только при настоящем `border-collapse:
     // collapse` — ровно там, где ниже кладётся `EdgePainter` (у легаси
     // `rules=` без `border-collapse` кромки живут на коробках, и проба фона
@@ -463,7 +472,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
                             .font_family
                             .clone()
                             .unwrap_or_else(|| table_family.clone());
-                        let v = crate::metrics::spacing_px(Some(l), &family, size) + extra;
+                        let v = crate::text::metrics::spacing_px(Some(l), &family, size) + extra;
                         if v > 0.0 {
                             let slot = &mut col_widths[ix].0;
                             *slot = Some(slot.map_or(v, |old| old.max(v)));
@@ -483,8 +492,8 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // (css-tables-3 §layers).
     let grp_els = colgroup_elements(&e.children);
     let col_els = col_elements(&e.children);
-    let mut grp_rects: Vec<Option<crate::interact::RowRects>> = vec![None; cols as usize];
-    let mut col_rects: Vec<Option<crate::interact::RowRects>> = vec![None; cols as usize];
+    let mut grp_rects: Vec<Option<crate::layout::table::paint::RowRects>> = vec![None; cols as usize];
+    let mut col_rects: Vec<Option<crate::layout::table::paint::RowRects>> = vec![None; cols as usize];
     let have_rows = !row_elements.is_empty();
     push_col_bands(
         &grp_els,
@@ -509,7 +518,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
         _ => 16.0,
     };
     let table_family = inherited.font_family.clone().unwrap_or_default();
-    let px_of = |l: Option<Len>| crate::metrics::spacing_px(l, &table_family, table_em);
+    let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &table_family, table_em);
     let table_border = e.style.borders();
     let bw = [
         px_of(table_border.top),
@@ -517,7 +526,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
         px_of(table_border.bottom),
         px_of(table_border.left),
     ];
-    let table_edges = crate::interact::cell_edges_for(e.node_id ^ opts.doc_salt);
+    let table_edges = crate::layout::table::paint::cell_edges_for(e.node_id ^ opts.doc_salt);
     let collapse_cells = e.style.border_collapse == Some(true)
         || (e.style.border_collapse.is_none() && e.attr("rules").is_some());
     // Легаси-атрибут `rules` (HTML rendering §15.3.10): `groups` даёт
@@ -563,7 +572,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // Алгоритм тот же, что у авторазмещения сетки: занятые клетки
     // пропускаются.
     let occupied: Vec<u16> = vec![0; cols as usize];
-    let group_refs: std::collections::HashMap<u64, crate::interact::RefBox> =
+    let group_refs: std::collections::HashMap<u64, crate::paint::effects::transformed_element::RefBox> =
         std::collections::HashMap::new();
     let tbl_style: &Computed = inherited;
     table_rows(
@@ -628,10 +637,10 @@ pub(crate) fn cell_paints_over(nodes: &[Node], depth: u8) -> bool {
                     || k.style.float.unwrap_or(0) != 0
                     || matches!(
                         k.style.position,
-                        Some(crate::computed::Position::Relative)
-                            | Some(crate::computed::Position::Absolute)
-                            | Some(crate::computed::Position::Fixed)
-                            | Some(crate::computed::Position::Sticky)
+                        Some(crate::style::computed::Position::Relative)
+                            | Some(crate::style::computed::Position::Absolute)
+                            | Some(crate::style::computed::Position::Fixed)
+                            | Some(crate::style::computed::Position::Sticky)
                     )
                     || stacking_context(&k.style)
                     || cell_paints_over(&k.children, depth - 1)

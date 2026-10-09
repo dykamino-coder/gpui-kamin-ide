@@ -5,7 +5,11 @@ pub mod defaults;
 pub mod inherit;
 pub mod vars;
 
-use crate::style::computed::*;
+use crate::style::cascade::defaults::{inherited_property, initial_value};
+use crate::style::cascade::vars::{resolve_attrs, resolve_sibling, resolve_vars};
+use crate::style::computed::{BG_LIST_KEYS, Computed, background_layers, font_members, top_level_comma};
+use crate::style::css::{Decls, Rule};
+use crate::style::values::value::Color;
 
 impl Computed {
     /// Собрать стиль узла: правила таблицы (по специфичности), затем `style=""`.
@@ -25,8 +29,8 @@ impl Computed {
         // объявления откатываемого слоя (а у важного — и всё между его
         // обычным и важным уровнями) снимаются с копий правил.
         let reverted = revert_layers(matched);
-        let owned_refs: Vec<&crate::css::Rule> = reverted.iter().flatten().collect();
-        let matched: &mut Vec<&crate::css::Rule> = &mut if reverted.is_some() {
+        let owned_refs: Vec<&crate::style::css::Rule> = reverted.iter().flatten().collect();
+        let matched: &mut Vec<&crate::style::css::Rule> = &mut if reverted.is_some() {
             owned_refs
         } else {
             matched.clone()
@@ -67,10 +71,10 @@ impl Computed {
 
     pub fn apply_decls(&mut self, d: &Decls) {
         for (k, v) in d {
-            if k.starts_with(crate::css::CUSTOM_IMPORTANT) {
+            if k.starts_with(crate::style::css::CUSTOM_IMPORTANT) {
                 continue;
             }
-            for part in v.split(crate::css::DECL_SEP) {
+            for part in v.split(crate::style::css::DECL_SEP) {
                 self.apply_one(k, part);
             }
         }
@@ -113,8 +117,8 @@ impl Computed {
         // Возвращать полный порядок вместе с независимым применением
         // объявлений.
         let order: Vec<&str> = d
-            .get(crate::css::ORDER_KEY)
-            .map(|s| s.split(crate::css::DECL_SEP).collect())
+            .get(crate::style::css::ORDER_KEY)
+            .map(|s| s.split(crate::style::css::DECL_SEP).collect())
             .unwrap_or_default();
         let mut keys: Vec<&String> = d.keys().collect();
         // Внутри СЕМЬИ (сокращение и его длинные свойства) порядок — по
@@ -194,7 +198,7 @@ impl Computed {
         let all_at = d
             .get("all")
             .and_then(|v| {
-                v.split(crate::css::DECL_SEP)
+                v.split(crate::style::css::DECL_SEP)
                     .filter(|part| is_important(part) == important)
                     .last()
             })
@@ -217,7 +221,7 @@ impl Computed {
         let all_reset = all_at.filter(|_| {
             d.get("all")
                 .and_then(|v| {
-                    v.split(crate::css::DECL_SEP)
+                    v.split(crate::style::css::DECL_SEP)
                         .filter(|part| is_important(part) == important)
                         .last()
                 })
@@ -275,8 +279,8 @@ impl Computed {
         }
         for k in &ordered {
             let Some(v) = d.get(*k) else { continue };
-            if k.starts_with("--") || k.as_str() == crate::css::ORDER_KEY
-                || k.starts_with(crate::css::CUSTOM_IMPORTANT) {
+            if k.starts_with("--") || k.as_str() == crate::style::css::ORDER_KEY
+                || k.starts_with(crate::style::css::CUSTOM_IMPORTANT) {
                 continue;
             }
             if let Some(at) = all_at
@@ -294,7 +298,7 @@ impl Computed {
             // же блока переживало откат (`revert-layer-001`: сплошной красный
             // квадрат вместо зелёного).
             let parts: Vec<&str> = v
-                .split(crate::css::DECL_SEP)
+                .split(crate::style::css::DECL_SEP)
                 .filter(|part| is_important(part) == important)
                 .collect();
             // САМО слово откатa по-прежнему уходит в `apply_one`: для 33
@@ -314,7 +318,7 @@ impl Computed {
                 // CSS Variables §3: invalid after substitution means unset;
                 // a preceding specified color cannot survive the computed value.
                 if k.as_str() == "color"
-                    && crate::css::variable_values::has_var(strip_important(part))
+                    && crate::style::css::variable_values::has_var(strip_important(part))
                     && Color::parse(&resolved).is_none()
                     && !matches!(resolved.trim().to_ascii_lowercase().as_str(),
                         "inherit" | "initial" | "unset" | "revert" | "revert-layer")
@@ -423,8 +427,8 @@ impl Computed {
 /// важные в L и в слоях после него (у важных они слабее) и обычные в L и
 /// после него. `all: revert-layer` откатывает каждое свойство, чьё
 /// объявление в том же слое стоит до него. `None` — откатывать нечего.
-pub(crate) fn revert_layers(matched: &[&crate::css::Rule]) -> Option<Vec<crate::css::Rule>> {
-    use crate::css::DECL_SEP;
+pub(crate) fn revert_layers(matched: &[&crate::style::css::Rule]) -> Option<Vec<crate::style::css::Rule>> {
+    use crate::style::css::DECL_SEP;
     let is_rl = |part: &str| strip_important(part).trim().eq_ignore_ascii_case("revert-layer");
     if !matched
         .iter()
@@ -432,18 +436,18 @@ pub(crate) fn revert_layers(matched: &[&crate::css::Rule]) -> Option<Vec<crate::
     {
         return None;
     }
-    let mut rules: Vec<crate::css::Rule> = matched.iter().map(|r| (*r).clone()).collect();
+    let mut rules: Vec<crate::style::css::Rule> = matched.iter().map(|r| (*r).clone()).collect();
     // Порядки каскада: обычный — по возрастанию, важный — слой по убыванию.
-    let normal_key = |r: &crate::css::Rule| (r.origin, r.layer.clone(), r.sel.specificity(), r.order);
+    let normal_key = |r: &crate::style::css::Rule| (r.origin, r.layer.clone(), r.sel.specificity(), r.order);
     let mut keys: Vec<String> = rules
         .iter()
         .flat_map(|r| r.decls.keys().cloned())
-        .filter(|k| !k.starts_with("--") && k != crate::css::ORDER_KEY)
+        .filter(|k| !k.starts_with("--") && k != crate::style::css::ORDER_KEY)
         .collect();
     keys.sort();
     keys.dedup();
     // Снять части свойства `key` важности `imp` у правил, прошедших фильтр.
-    let strip = |rules: &mut Vec<crate::css::Rule>, key: &str, imp: bool, keep: &dyn Fn(&crate::css::Rule) -> bool| {
+    let strip = |rules: &mut Vec<crate::style::css::Rule>, key: &str, imp: bool, keep: &dyn Fn(&crate::style::css::Rule) -> bool| {
         for r in rules.iter_mut().filter(|r| !keep(r)) {
             if let Some(v) = r.decls.get(key) {
                 let rest: Vec<&str> = v.split(DECL_SEP).filter(|p| is_important(p) != imp).collect();
@@ -457,8 +461,8 @@ pub(crate) fn revert_layers(matched: &[&crate::css::Rule]) -> Option<Vec<crate::
         }
     };
     // Победитель свойства: (индекс правила, слой, значение) по порядку каскада.
-    let winner = |rules: &Vec<crate::css::Rule>, key: &str, imp: bool| -> Option<(Vec<u32>, String)> {
-        let mut best: Option<(&crate::css::Rule, String)> = None;
+    let winner = |rules: &Vec<crate::style::css::Rule>, key: &str, imp: bool| -> Option<(Vec<u32>, String)> {
+        let mut best: Option<(&crate::style::css::Rule, String)> = None;
         for r in rules {
             let Some(v) = r.decls.get(key) else { continue };
             let Some(part) = v.split(DECL_SEP).filter(|p| is_important(p) == imp).last() else {
@@ -494,7 +498,7 @@ pub(crate) fn revert_layers(matched: &[&crate::css::Rule]) -> Option<Vec<crate::
             let props: Vec<String> = r
                 .decls
                 .keys()
-                .filter(|k| !k.starts_with("--") && *k != crate::css::ORDER_KEY && *k != "direction" && *k != "unicode-bidi")
+                .filter(|k| !k.starts_with("--") && *k != crate::style::css::ORDER_KEY && *k != "direction" && *k != "unicode-bidi")
                 .cloned()
                 .collect();
             for k in props {

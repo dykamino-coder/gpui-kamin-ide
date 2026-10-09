@@ -1,6 +1,7 @@
 //! Shape visible line suffixes while retaining the source soft hyphen style.
 
 use super::*;
+use gpui::{Pixels, TextRun, Window, px};
 
 impl Paragraph {
     pub(super) fn prepare_hyphen_widths(&self, window: &mut Window) {

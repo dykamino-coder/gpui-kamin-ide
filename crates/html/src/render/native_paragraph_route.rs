@@ -1,5 +1,6 @@
 //! Select native vertical shaping from actual collected pieces without rebuilding atoms.
-use crate::{computed::Computed, inline::Piece};
+use crate::style::computed::Computed;
+use crate::text::inline::Piece;
 use std::cell::Cell;
 
 pub(crate) struct Request<'a> {

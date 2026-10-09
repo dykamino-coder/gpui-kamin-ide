@@ -1,5 +1,6 @@
 //! Resolve basic rectangular clips before snapping their absolute device edges.
-use crate::interact::{Grouped, legacy_clip, polygon_clip};
+use crate::paint::effects::grouped_element::Grouped;
+use crate::paint::effects::{legacy_clip, polygon_clip};
 use gpui::{Bounds, LayoutId, Pixels, Window};
 
 fn rectangular(group: &Grouped) -> bool {
@@ -72,9 +73,9 @@ pub(crate) fn resolve(group: &Grouped, clip_bounds: Bounds<Pixels>, sf: f32) -> 
                     f32::from(clip_bounds.size.width),
                     f32::from(clip_bounds.size.height),
                 );
-                let side = |v: crate::value::Len, s: f32| match v {
-                    crate::value::Len::Px(p) => p,
-                    crate::value::Len::Pct(p) => p * s,
+                let side = |v: crate::style::values::value::Len, s: f32| match v {
+                    crate::style::values::value::Len::Px(p) => p,
+                    crate::style::values::value::Len::Pct(p) => p * s,
                     _ => 0.0,
                 };
                 let (t, b) = (side(t, bh), side(b, bh));
@@ -89,9 +90,9 @@ pub(crate) fn resolve(group: &Grouped, clip_bounds: Bounds<Pixels>, sf: f32) -> 
                     f32::from(clip_bounds.size.width),
                     f32::from(clip_bounds.size.height),
                 );
-                let side = |v: Option<crate::value::Len>, s: f32, def: f32| match v {
-                    Some(crate::value::Len::Px(p)) => p,
-                    Some(crate::value::Len::Pct(p)) => p * s,
+                let side = |v: Option<crate::style::values::value::Len>, s: f32, def: f32| match v {
+                    Some(crate::style::values::value::Len::Px(p)) => p,
+                    Some(crate::style::values::value::Len::Pct(p)) => p * s,
                     _ => def,
                 };
                 let (t, b) = (side(t, bh, 0.0), side(b, bh, bh));
@@ -116,9 +117,9 @@ pub(crate) fn resolve(group: &Grouped, clip_bounds: Bounds<Pixels>, sf: f32) -> 
                     f32::from(clip_bounds.size.width),
                     f32::from(clip_bounds.size.height),
                 );
-                let side = |v: crate::value::Len, s: f32| match v {
-                    crate::value::Len::Px(p) => p,
-                    crate::value::Len::Pct(p) => p * s,
+                let side = |v: crate::style::values::value::Len, s: f32| match v {
+                    crate::style::values::value::Len::Px(p) => p,
+                    crate::style::values::value::Len::Pct(p) => p * s,
                     _ => 0.0,
                 };
                 [

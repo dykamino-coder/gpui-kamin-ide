@@ -1,10 +1,20 @@
 //! Цикл рядов таблицы: ячейки, рамки ячеек, фоны (table_rows).
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::block::margins::CELL_BFC;
+use crate::layout::positioned::relative::relative_shift;
+use crate::layout::table::anon::html_cell;
+use crate::layout::table::{cell_paints_over, collapsed_cell_edge, collapsed_col_edges, collapsed_colgroup_edges, collapsed_group_edges, collapsed_row_edges, is_cell, row_span_in_group, table_clipped_content, table_finish, table_spanning_size};
+use crate::paint::effects::transform::{transformed, transformed_with};
+use crate::render::{RenderOpts, blocks, gather_text, pseudo_line_layers, styled_div_with};
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::{Align, Computed};
+use crate::style::values::value::Len;
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 #[allow(clippy::too_many_arguments, clippy::unnecessary_cast)]
 pub(crate) fn table_rows(
-    rows: Vec<(&Element, (f32, f32, Option<crate::value::Color>, Option<&Element>))>,
+    rows: Vec<(&Element, (f32, f32, Option<crate::style::values::value::Color>, Option<&Element>))>,
     mut row_ix: i16,
     mut occupied: Vec<u16>,
     opts: &RenderOpts,
@@ -25,13 +35,13 @@ pub(crate) fn table_rows(
     paint_layers: bool,
     cell_bgs: std::rc::Rc<std::cell::RefCell<Vec<(gpui::Bounds<gpui::Pixels>, gpui::Hsla)>>>,
     row_elements: Vec<&Element>,
-    table_edges: std::rc::Rc<std::cell::RefCell<Vec<crate::interact::EdgeCell>>>,
-    col_rects: Vec<Option<crate::interact::RowRects>>,
+    table_edges: std::rc::Rc<std::cell::RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
+    col_rects: Vec<Option<crate::layout::table::paint::RowRects>>,
     col_els: Vec<Option<&Element>>,
-    grp_rects: Vec<Option<crate::interact::RowRects>>,
+    grp_rects: Vec<Option<crate::layout::table::paint::RowRects>>,
     grp_els: Vec<Option<&Element>>,
     rules_groups: bool,
-    mut group_refs: std::collections::HashMap<u64, crate::interact::RefBox>,
+    mut group_refs: std::collections::HashMap<u64, crate::paint::effects::transformed_element::RefBox>,
     tbl_style: &Computed,
     mut cells_over: Vec<AnyElement>,
     spacing: (f32, f32),
@@ -45,7 +55,7 @@ pub(crate) fn table_rows(
 ) -> AnyElement {
     for (row, carry) in rows {
         row_ix += 1;
-        let row_ref: crate::interact::RefBox = Default::default();
+        let row_ref: crate::paint::effects::transformed_element::RefBox = Default::default();
         for slot in occupied.iter_mut() {
             *slot = slot.saturating_sub(1);
         }
@@ -53,10 +63,10 @@ pub(crate) fn table_rows(
         // ЯЧЕЙКАХ, непрерывно от начала ряда, зазоры остаются чистыми.
         // Полоса на весь ряд несёт слой фона, но обрезает его прямоугольниками
         // ячеек, снятыми пробами прошлого кадра.
-        let row_rects: Option<crate::interact::RowRects> = (row.style.bg_image.is_some()
+        let row_rects: Option<crate::layout::table::paint::RowRects> = (row.style.bg_image.is_some()
             || row.style.gradient_raw.is_some()
             || !row.style.shadows.is_empty())
-        .then(|| crate::interact::row_rects_for(row.node_id ^ opts.doc_salt));
+        .then(|| crate::layout::table::paint::row_rects_for(row.node_id ^ opts.doc_salt));
         if let Some(rects) = &row_rects {
             // Градиент ряда идёт слоем-картинкой: источник понимает записи
             // `linear-gradient(...)` и растрирует их сам.
@@ -65,7 +75,7 @@ pub(crate) fn table_rows(
                 band_style.bg_image = band_style.gradient_raw.clone();
             }
             under.push(
-                crate::interact::CellsClipped::new(rects.clone(), band_style).into_any_element(),
+                crate::layout::table::paint::CellsClipped::new(rects.clone(), band_style).into_any_element(),
             );
         }
         // Фон ГРУППЫ рядов красится так же, как фон ряда (§17.5.1, слой 3):
@@ -77,12 +87,12 @@ pub(crate) fn table_rows(
         // тоже идёт полосой: своей коробки у группы нет, а охват её ячеек
         // полоса уже считает (`visibility-collapse-border-spacing-001`:
         // `tbody { outline: 10px }` не рисовался вовсе).
-        let grp_band: Option<crate::interact::RowRects> = carry.3.and_then(|g| {
+        let grp_band: Option<crate::layout::table::paint::RowRects> = carry.3.and_then(|g| {
             (g.style.bg_image.is_some()
                 || g.style.gradient_raw.is_some()
                 || !g.style.shadows.is_empty()
                 || g.style.outline.is_some())
-            .then(|| crate::interact::row_rects_for(g.node_id ^ opts.doc_salt))
+            .then(|| crate::layout::table::paint::row_rects_for(g.node_id ^ opts.doc_salt))
         });
         if let (Some(rects), Some(g)) = (&grp_band, carry.3)
             && group_of
@@ -100,7 +110,7 @@ pub(crate) fn table_rows(
                 band_style.background = None;
             }
             under.push(
-                crate::interact::CellsClipped::new(rects.clone(), band_style).into_any_element(),
+                crate::layout::table::paint::CellsClipped::new(rects.clone(), band_style).into_any_element(),
             );
         }
         let shift = (carry.0, carry.1);
@@ -115,7 +125,7 @@ pub(crate) fn table_rows(
         let group_layer;
         let inherited = match carry.3 {
             Some(g) => {
-                group_layer = inline::inherit(inherited, &g.style);
+                group_layer = inherit(inherited, &g.style);
                 &group_layer
             }
             None => inherited,
@@ -123,7 +133,7 @@ pub(crate) fn table_rows(
         // Направление на строке ОСТАЁТСЯ: замерено, что его обнуление сдвигает
         // ячейки в парах `position-relative-table-*-left` (29 → 25).
         // ПРОБОВАЛИ ТРИЖДЫ И ОТКАТИЛИ: доводить до ячеек наследуемые свойства
-        // САМОЙ таблицы (`inline::inherit(inherited, &e.style)` как основа).
+        // САМОЙ таблицы (`inherit(inherited, &e.style)` как основа).
         // Дыра настоящая — `white-space` и шрифт с тега таблицы до ячейки не
         // доходят, — но цена: css-text −3 (`shaping-tatweel-002/003`,
         // `shaping-join-003`), а выигрыш НУЛЕВОЙ: семейство
@@ -135,7 +145,7 @@ pub(crate) fn table_rows(
         // `font-size: 2em` на теге давал ячейке 64 точки вместо 32, строки
         // не влезали в колонку и таблица разъезжалась на лишние полосы
         // (вся семья `table-anonymous-objects-059…098`).
-        let row_style = inline::inherit(inherited, &own);
+        let row_style = inherit(inherited, &own);
         // Ряд БЕЗ ячеек с заданной высотой держит свою дорожку (CSS 2.1
         // §17.5.3: высота ряда — не меньше его `height`). Элементов сетки у
         // него нет, и дорожка пропадала: `border-collapse-empty-row` терял
@@ -170,7 +180,7 @@ pub(crate) fn table_rows(
             // §17.6.1.1: `empty-cells: hide` прячет фон и рамку ПУСТОЙ
             // ячейки — в раздельной модели рамок. Пустая это та, у которой нет
             // ни текста, ни элементов-детей.
-            let прячем_пустую = inline::inherit(&row_style, &cell.style).empty_cells_hide
+            let прячем_пустую = inherit(&row_style, &cell.style).empty_cells_hide
                 == Some(true)
                 && e.style.border_collapse != Some(true)
                 && {
@@ -202,7 +212,7 @@ pub(crate) fn table_rows(
             } else {
                 cell.clone()
             };
-            let mut cm = inline::inherit(&row_style, &cell.style);
+            let mut cm = inherit(&row_style, &cell.style);
             pseudo_line_layers::install(cell, &mut cm);
             // `vertical-align` is not inherited (CSS 2.1 §10.8.1): only `td`/
             // `th` take their row's value, through the UA rule
@@ -279,8 +289,8 @@ pub(crate) fn table_rows(
             let spans_collapsed = span_cols > 1
                 && (col_ix..col_ix + span_cols as usize)
                     .any(|i| cols_collapsed.get(i).copied().unwrap_or(false));
-            let clipped = cell.style.overflow_x == Some(crate::computed::Overflow::Hidden)
-                || cell.style.overflow_y == Some(crate::computed::Overflow::Hidden)
+            let clipped = cell.style.overflow_x == Some(crate::style::computed::Overflow::Hidden)
+                || cell.style.overflow_y == Some(crate::style::computed::Overflow::Hidden)
                 || spans_collapsed;
             let mut cell = cell.clone();
             // `padding: inherit` и `border: inherit` решаются только в СЛИТОМ
@@ -348,7 +358,7 @@ pub(crate) fn table_rows(
                 let pd = &cell.style.padding;
                 if ua(pd.top) && ua(pd.right) && ua(pd.bottom) && ua(pd.left) {
                     let v = Some(Len::Px(pad));
-                    cell.style.padding = crate::computed::Sides {
+                    cell.style.padding = crate::style::computed::Sides {
                         top: v,
                         right: v,
                         bottom: v,
@@ -409,7 +419,7 @@ pub(crate) fn table_rows(
                     .font_family
                     .clone()
                     .unwrap_or_else(|| table_family.clone());
-                let v = crate::metrics::spacing_px(Some(l), &family, size);
+                let v = crate::text::metrics::spacing_px(Some(l), &family, size);
                 if v > 0.0 {
                     cell.style.width = None;
                     cell.style.min_width = Some(Len::Px(v));
@@ -439,7 +449,7 @@ pub(crate) fn table_rows(
                     base
                 } else {
                     let family = inherited.font_family.clone().unwrap_or_default();
-                    crate::metrics::ch_ex_px(&family, base).0
+                    crate::text::metrics::ch_ex_px(&family, base).0
                 };
                 cell.style.height = Some(Len::Px(k * ch));
             }
@@ -506,7 +516,7 @@ pub(crate) fn table_rows(
                         k * base
                     } else {
                         let family = inherited.font_family.clone().unwrap_or_default();
-                        k * crate::metrics::ch_ex_px(&family, base).0
+                        k * crate::text::metrics::ch_ex_px(&family, base).0
                     }),
                     _ => None,
                 };
@@ -565,7 +575,7 @@ pub(crate) fn table_rows(
                         && el
                             .style
                             .overflow_y
-                            .is_some_and(|o| o != crate::computed::Overflow::Visible)
+                            .is_some_and(|o| o != crate::style::computed::Overflow::Visible)
                         && let Some(Len::Px(m)) = el.style.min_height
                     {
                         el.style.height = Some(Len::Px(m * k));
@@ -608,7 +618,7 @@ pub(crate) fn table_rows(
                     Some(Len::Px(_)) | None => own,
                     _ => merged,
                 };
-                c.padding = crate::computed::Sides {
+                c.padding = crate::style::computed::Sides {
                     top: fixup(c.padding.top, cm.padding.top),
                     right: fixup(c.padding.right, cm.padding.right),
                     bottom: fixup(c.padding.bottom, cm.padding.bottom),
@@ -620,7 +630,7 @@ pub(crate) fn table_rows(
                 // только `Px` (`apply.rs`: прочие длины молча отбрасываются),
                 // и рамка пропадала целиком (`table-height-algorithm-008b/c`
                 // против зелёной `-008a`, где то же самое написано отступом).
-                c.border_width = crate::computed::Sides {
+                c.border_width = crate::style::computed::Sides {
                     top: fixup(c.border_width.top, cm.border_width.top),
                     right: fixup(c.border_width.right, cm.border_width.right),
                     bottom: fixup(c.border_width.bottom, cm.border_width.bottom),
@@ -671,14 +681,14 @@ pub(crate) fn table_rows(
                 }
             }
             if let Some(bg) = layer_bg {
-                d = d.child(crate::interact::cell_bg_probe(cell_bgs.clone(), bg.to_hsla()));
+                d = d.child(crate::layout::table::paint::cell_bg_probe(cell_bgs.clone(), bg.to_hsla()));
             }
             // Сдвиг строки или её группы: собственного элемента у них нет,
             // поэтому край, заданный на `<tr>`/`<tbody>`, двигает ячейки.
             // A relatively positioned cell's own percentage insets resolve
             // against the row's specified height (`position-relative-013`),
             // not the table grid the cell is laid out in; the row offset adds.
-            let own_pct = cell.style.position == Some(crate::computed::Position::Relative)
+            let own_pct = cell.style.position == Some(crate::style::computed::Position::Relative)
                 && [cell.style.inset.left, cell.style.inset.right, cell.style.inset.top, cell.style.inset.bottom]
                     .iter()
                     .any(|l| matches!(l, Some(Len::Pct(_))));
@@ -722,7 +732,7 @@ pub(crate) fn table_rows(
                 // ВЕРТИКАЛЬНОЕ положение строки (line-left = верх), а
                 // `vertical-align` уходит на поперечную ось
                 // (table-cell-align-005/006).
-                use crate::computed::TextAlign;
+                use crate::style::computed::TextAlign;
                 // `start`/`end` — края СТРОКИ: вертикальная строка идёт
                 // сверху вниз, `dir=rtl` разворачивает её снизу вверх.
                 let rtl = cm.rtl == Some(true);
@@ -864,8 +874,8 @@ pub(crate) fn table_rows(
                 && cell.children.iter().any(|n| {
                     matches!(n, Node::Element(c) if matches!(
                         c.style.position,
-                        Some(crate::computed::Position::Absolute)
-                            | Some(crate::computed::Position::Fixed)
+                        Some(crate::style::computed::Position::Absolute)
+                            | Some(crate::style::computed::Position::Fixed)
                     ) && matches!(c.style.inset.top, None | Some(Len::Auto))
                         && matches!(c.style.inset.bottom, None | Some(Len::Auto)))
                 })
@@ -891,7 +901,7 @@ pub(crate) fn table_rows(
             // паддинге ячейки: полосы фонов встают по месту без поправки.
             let shift = (0.0, 0.0);
             if let Some((widths, colors, styles, doc_ix)) = cell_edge {
-                d = d.child(crate::interact::edge_probe(
+                d = d.child(crate::layout::table::paint::edge_probe(
                     table_edges.clone(),
                     widths,
                     colors,
@@ -912,7 +922,7 @@ pub(crate) fn table_rows(
                 [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)]
             };
             if let Some(rects) = &row_rects {
-                d = d.child(crate::interact::cell_rect_probe(
+                d = d.child(crate::layout::table::paint::cell_rect_probe(
                     rects.clone(),
                     span_rows == 1,
                     shift,
@@ -920,7 +930,7 @@ pub(crate) fn table_rows(
                 ));
             }
             if let Some(rects) = &grp_band {
-                d = d.child(crate::interact::cell_rect_probe(
+                d = d.child(crate::layout::table::paint::cell_rect_probe(
                     rects.clone(),
                     span_rows == 1,
                     shift,
@@ -938,7 +948,7 @@ pub(crate) fn table_rows(
                 ) {
                     if !probed.contains(&el.node_id) {
                         probed.push(el.node_id);
-                        d = d.child(crate::interact::cell_rect_probe(
+                        d = d.child(crate::layout::table::paint::cell_rect_probe(
                             rects,
                             span_cols == 1,
                             shift,
@@ -959,7 +969,7 @@ pub(crate) fn table_rows(
                 ) {
                     if !probed_group.contains(&el.node_id) {
                         probed_group.push(el.node_id);
-                        d = d.child(crate::interact::cell_rect_probe(
+                        d = d.child(crate::layout::table::paint::cell_rect_probe(
                             rects,
                             span_cols == 1,
                             shift,
@@ -1044,7 +1054,7 @@ pub(crate) fn table_rows(
             // Also without own transform: a `preserve-3d` cell or one under a
             // 3D row needs its wrapper for the context chain.
             built = transformed(built, &cell.style, &row_style);
-            let pure_shift = |t: &crate::computed::Transform| {
+            let pure_shift = |t: &crate::style::computed::Transform| {
                 !t.has_3d
                     && t.lin == [[1.0, 0.0], [0.0, 1.0]]
                     && t.tr[0][1] == 0.0

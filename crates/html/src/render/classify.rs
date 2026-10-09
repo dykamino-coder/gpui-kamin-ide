@@ -1,6 +1,10 @@
 //! Предикаты коробок: строчные, блочные, в потоке, свой контекст, замещаемые.
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::block::struts::inline_axis_edges;
+use crate::layout::multicol::spanner::multicol_container;
+use crate::style::computed::{Computed, Display};
+use crate::text::text_box::blank_text;
 
 /// Обтекание: плавающий блок и следующие за ним встают в один ряд.
 ///
@@ -15,7 +19,7 @@ pub(crate) fn out_of_flow(c: &Computed) -> bool {
     c.float.is_some_and(|f| f != 0)
         || matches!(
             c.position,
-            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
         )
 }
 
@@ -102,7 +106,7 @@ pub(crate) fn in_flow(c: &Computed) -> bool {
     c.float.is_none()
         && !matches!(
             c.position,
-            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
         )
         && !matches!(
             c.display,
@@ -151,10 +155,10 @@ pub(crate) fn own_context(e: &Element) -> bool {
 pub(crate) fn own_context_style(c: &Computed) -> bool {
     !matches!(
         c.overflow_y,
-        None | Some(crate::computed::Overflow::Visible)
+        None | Some(crate::style::computed::Overflow::Visible)
     ) || !matches!(
         c.overflow_x,
-        None | Some(crate::computed::Overflow::Visible)
+        None | Some(crate::style::computed::Overflow::Visible)
     ) || matches!(
         c.display,
         Some(Display::Flex)
@@ -166,7 +170,7 @@ pub(crate) fn own_context_style(c: &Computed) -> bool {
             | Some(Display::InlineTable)
     ) || matches!(
         c.position,
-        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
     ) || c.float.is_some()
         || c.contain_paint == Some(true)
         || c.contain_layout == Some(true)
@@ -204,7 +208,7 @@ pub(crate) fn atomic_inline(c: &Computed) -> bool {
     c.float.is_none()
         && !matches!(
             c.position,
-            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
         )
         && c.inline_display != Some(true)
         && matches!(
@@ -256,8 +260,8 @@ pub(crate) fn holds_line_box(children: &[Node]) -> bool {
             if ch.style.float.is_some_and(|f| f != 0)
                 || matches!(
                     ch.style.position,
-                    Some(crate::computed::Position::Absolute)
-                        | Some(crate::computed::Position::Fixed)
+                    Some(crate::style::computed::Position::Absolute)
+                        | Some(crate::style::computed::Position::Fixed)
                 )
             {
                 return false;

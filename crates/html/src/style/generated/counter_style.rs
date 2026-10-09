@@ -703,7 +703,7 @@ pub(crate) fn builtin_initial(name: &str, n: u64) -> Option<String> {
 /// (римский, алфавитные) вне его тоже падают на десятичный.
 pub fn repr(value: i32, style: &str) -> String {
     let style = &*normalize_name(style);
-    if let Some(s) = crate::counter_style_rules::custom_repr(value as i64, style) {
+    if let Some(s) = crate::style::generated::counter_style_rules::custom_repr(value as i64, style) {
         return s;
     }
     builtin_repr(value, style)
@@ -847,7 +847,7 @@ pub fn marker_repr(value: i32, style: &str) -> String {
         return String::new();
     }
     let style = &*normalize_name(style);
-    if let Some(s) = crate::counter_style_rules::custom_marker(value as i64, style) {
+    if let Some(s) = crate::style::generated::counter_style_rules::custom_marker(value as i64, style) {
         return s;
     }
     let body = repr(value, style);

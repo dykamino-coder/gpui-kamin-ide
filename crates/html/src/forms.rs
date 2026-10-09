@@ -9,8 +9,8 @@
 //! фильтры, макеты интерфейса от модели. Пустое место вместо поля выглядит
 //! поломкой; нарисованное поле честно показывает задуманный вид.
 
-use crate::apply::apply;
-use crate::computed::Computed;
+use crate::style::apply::apply;
+use crate::style::computed::Computed;
 use crate::dom::Element;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px, rgb};
 
@@ -22,7 +22,7 @@ const ACCENT: u32 = 0x3b5bdb;
 const MUTED: u32 = 0x8a90a4;
 
 /// Отрисовать элемент формы. `None` — тег не относится к формам.
-pub fn element(e: &Element, style: &Computed, opts: &crate::RenderOpts) -> Option<AnyElement> {
+pub fn element(e: &Element, style: &Computed, opts: &crate::render::RenderOpts) -> Option<AnyElement> {
     match e.tag.as_str() {
         "input" => Some(input(e, style)),
         "textarea" => Some(textarea(e, style, opts)),
@@ -76,7 +76,7 @@ fn text_field(e: &Element, style: &Computed) -> AnyElement {
         .into_any_element()
 }
 
-fn textarea(e: &Element, style: &Computed, opts: &crate::RenderOpts) -> AnyElement {
+fn textarea(e: &Element, style: &Computed, opts: &crate::render::RenderOpts) -> AnyElement {
     let mut text = String::new();
     crate::render::gather_text_public(&e.children, &mut text);
     let muted = text.trim().is_empty();
@@ -258,7 +258,7 @@ fn range(e: &Element, style: &Computed) -> AnyElement {
 fn color_swatch(e: &Element, style: &Computed) -> AnyElement {
     let color = e
         .attr("value")
-        .and_then(crate::value::Color::parse)
+        .and_then(crate::style::values::value::Color::parse)
         .map(|c| c.to_hsla());
     let mut d = apply(div(), style)
         .w(px(28.))

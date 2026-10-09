@@ -1,7 +1,15 @@
 //! Поток флоатов.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::paint::effects::paint_scope::DepthScope;
+use crate::paint::effects::paint_scope::snapshot as defer_depth;
+use crate::render::{RenderOpts, blocks, gather_text, is_blank, measure_font, split_nodes, styled_div_with};
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
+use crate::text::text_box::normal_fraction;
+use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 
 /// Ряд обтекания: рядом с плавающим блоком столько текста, сколько помещается
 /// в его высоту, остальное — под ним на всю ширину.
@@ -14,7 +22,7 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
     // Ряд без разреза — прежнее поведение: две колонки до конца абзаца.
     // Стиль берётся СЛИТЫЙ: у ряда своя раскладка, и без неё дети встают
     // друг под другом вместо колонок.
-    let merged = inline::inherit(inherited, &row.style);
+    let merged = inherit(inherited, &row.style);
     // Ряд обтекания ФИЗИЧЕСКИЙ: левые флоаты собраны в начало, правые — в
     // конец (сборка `float_runs`), а `float: left/right` от письма не
     // зависят (CSS 2.1 §9.5.1). Унаследованное `direction: rtl` разворачивало
@@ -148,12 +156,12 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
     // даёт `ClampCut` признак «за точкой есть содержимое» — потолок снова на
     // низе N-й строки. Авто-режим не трогаем: там пересечённая коробка без
     // считаемых строк внутри ушла бы целиком.
-    match crate::interact::clamp_context() {
+    match crate::text::clamp::clamp_context() {
         Some((key, skip)) if inherited.line_clamp.is_some() => div()
             .relative()
             .child(flow)
-            .child(crate::interact::clamp_probe(
-                crate::interact::clamp_lines_for(key),
+            .child(crate::text::clamp::clamp_probe(
+                crate::text::clamp::clamp_lines_for(key),
                 0.0,
                 skip,
                 false,

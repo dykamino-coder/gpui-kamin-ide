@@ -1,6 +1,6 @@
 //! Retain extended RGB coordinates for CIE/OK gradient stop interpolation.
 
-use crate::value::Color;
+use crate::style::values::value::Color;
 
 pub(super) fn components(body: &str, ok: bool, polar: bool) -> Option<(f32, f32, f32, f32)> {
     let (list, alpha) = super::parts(body);
@@ -65,13 +65,13 @@ pub(crate) fn out_of_gamut(color: Color) -> bool {
 }
 
 pub(crate) fn colour_at(
-    stops: &[(crate::value::Color, f32)],
+    stops: &[(crate::style::values::value::Color, f32)],
     t: f32,
-    space: crate::computed::GradSpace,
+    space: crate::style::computed::GradSpace,
     hue: u8,
-) -> crate::value::Color {
+) -> crate::style::values::value::Color {
     let Some(first) = stops.first() else {
-        return crate::value::Color {
+        return crate::style::values::value::Color {
             r: 0.0,
             g: 0.0,
             b: 0.0,
@@ -97,8 +97,8 @@ pub(crate) fn colour_at(
             // для прямоугольных осей она равна доле `k·a1 / alpha`.
             let alpha = a.0.a + (b.0.a - a.0.a) * k;
             let kc = if alpha > 0.0 { k * b.0.a / alpha } else { k };
-            let (r, g, bl) = crate::color_space::mix_in(space, hue, a.0, b.0, kc);
-            return crate::value::Color {
+            let (r, g, bl) = crate::style::values::color_space::mix_in(space, hue, a.0, b.0, kc);
+            return crate::style::values::value::Color {
                 r,
                 g,
                 b: bl,

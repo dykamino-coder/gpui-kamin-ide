@@ -10,11 +10,12 @@
 //! завершает область создателя (css-lists-3 §4.3, §4.4.2).
 
 mod values;
-use values::{decl_has, decl_value};
+use crate::style::generated::counters_scan::values::{decl_has, decl_value};
 
-use crate::computed::{Computed, Display};
-use crate::css::{Decls, Rule};
-use crate::dom::{Ancestor, Sibs, Spot, ancestor_of, census_of, matches_ignoring_pseudo};
+use crate::style::computed::{Computed, Display};
+use crate::style::css::{Decls, Rule};
+use crate::style::select::matching::matches_ignoring_pseudo;
+use crate::style::select::{Ancestor, Sibs, Spot, ancestor_of, census_of};
 use markup5ever_rcdom::{Handle, NodeData};
 
 /// Состояние обхода: набранная сумма и последний ненулевой шаг.
@@ -67,11 +68,11 @@ fn scan_style(
         .borrow()
         .iter()
         .find(|a| &*a.name.local == "style")
-        .map(|a| crate::css::parse_decls(&a.value))
+        .map(|a| crate::style::css::parse_decls(&a.value))
         .unwrap_or_default();
     let mut matched: Vec<&Rule> = rules
         .iter()
-        .filter(|r| crate::dom::matches(&r.sel, me, path, sibs))
+        .filter(|r| crate::style::select::matching::matches(&r.sel, me, path, sibs))
         .collect();
     let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
     crate::dom::inherit_counter_decls(&mut style, path.last().map(|p| &p.counter_style));

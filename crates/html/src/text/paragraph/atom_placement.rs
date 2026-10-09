@@ -1,6 +1,7 @@
 //! Inline atoms round their absolute edges from the raw paragraph origin.
 
 use super::*;
+use gpui::{App, Bounds, LayoutId, Window, point, px};
 
 impl Paragraph {
     pub(super) fn place_atoms(&mut self, root: LayoutId, window: &mut Window, cx: &mut App) {

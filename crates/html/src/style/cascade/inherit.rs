@@ -1,7 +1,9 @@
 //! Наследование стиля.
 // owner: B
 
-use crate::text::inline::*;
+use crate::style::computed::{Computed, TextAlign};
+use crate::style::values::value::{Color, Len};
+use crate::text::inline::{backdrop_root, bidi_controls, establishes_cb};
 
 // ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09): `zoom` (css-viewport-1) как домножение
 // использованных длин здесь, в `inherit`, плюс `zoom`/`zoom_eff` и `scale_px`
@@ -33,11 +35,11 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
             || parent.column_height.is_some())
             && !matches!(
                 parent.display,
-                Some(crate::computed::Display::Grid)
-                    | Some(crate::computed::Display::InlineGrid)
-                    | Some(crate::computed::Display::GridLanes)
-                    | Some(crate::computed::Display::Flex)
-                    | Some(crate::computed::Display::InlineFlex)
+                Some(crate::style::computed::Display::Grid)
+                    | Some(crate::style::computed::Display::InlineGrid)
+                    | Some(crate::style::computed::Display::GridLanes)
+                    | Some(crate::style::computed::Display::Flex)
+                    | Some(crate::style::computed::Display::InlineFlex)
             ));
     c.backdrop_root_above = parent.backdrop_root_above || backdrop_root(parent);
     // filter-effects-2 §3 шаг 4: содержимое B — и его СОБСТВЕННЫЙ фон —
@@ -49,9 +51,9 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
         && !c.backdrop_root_above
         && c.bg_clip.is_none()
         && (c.background.is_some() || c.gradient.is_some())
-        && matches!(c.display, None | Some(crate::computed::Display::Block))
+        && matches!(c.display, None | Some(crate::style::computed::Display::Block))
     {
-        c.bg_clip = Some(crate::computed::BgClip::BorderBox);
+        c.bg_clip = Some(crate::style::computed::BgClip::BorderBox);
     }
     // Ближайший содержащий блок абсолюта по `node_id` — ключ реестра рамок
     // `anchor::CB` (нужен `position-area`); корень даёт 0 = начальный
@@ -76,29 +78,29 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
         || parent.contain_paint == Some(true)
         // css-will-change-1 §2.1: блок для `fixed` — и от обещанного свойства
         // (`will-change-fixpos-cb-*`, `-fixedpos-cb-*`).
-        || parent.will_change & crate::computed::wc::CB_FIXED != 0;
+        || parent.will_change & crate::style::computed::wc::CB_FIXED != 0;
     // `will-change: z-index` — контекст наложения ровно там, где `z-index`
     // действует: у позиционированной коробки и у элемента flex/grid
     // (css-flexbox-1 §5.4, css-grid-2 §6.2) — `-stacking-context-z-index-2/3`;
     // у простого блока — нет (`-z-index-4` зелёный и обязан остаться). Это не
     // домножение длин (★ выше): один битовый тест, страница без
     // `will-change` в ветку не заходит.
-    if own.will_change & crate::computed::wc::STACK_Z != 0
+    if own.will_change & crate::style::computed::wc::STACK_Z != 0
         && (matches!(
             own.position,
-            Some(crate::computed::Position::Relative)
-                | Some(crate::computed::Position::Absolute)
-                | Some(crate::computed::Position::Fixed)
-                | Some(crate::computed::Position::Sticky)
+            Some(crate::style::computed::Position::Relative)
+                | Some(crate::style::computed::Position::Absolute)
+                | Some(crate::style::computed::Position::Fixed)
+                | Some(crate::style::computed::Position::Sticky)
         ) || matches!(
             parent.display,
-            Some(crate::computed::Display::Flex)
-                | Some(crate::computed::Display::InlineFlex)
-                | Some(crate::computed::Display::Grid)
-                | Some(crate::computed::Display::InlineGrid)
+            Some(crate::style::computed::Display::Flex)
+                | Some(crate::style::computed::Display::InlineFlex)
+                | Some(crate::style::computed::Display::Grid)
+                | Some(crate::style::computed::Display::InlineGrid)
         ))
     {
-        c.will_change |= crate::computed::wc::STACK;
+        c.will_change |= crate::style::computed::wc::STACK;
     }
     c.cb_rtl = parent.rtl == Some(true);
     // Внутри повёрнутого абзаца родитель — горизонтальный клон
@@ -125,30 +127,30 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
     // потери во `flexbox-definite-sizes-*` и `*-subgrid-*`.
     let laid_out_parent = matches!(
         parent.display,
-        Some(crate::computed::Display::Flex)
-            | Some(crate::computed::Display::InlineFlex)
-            | Some(crate::computed::Display::Grid)
-            | Some(crate::computed::Display::InlineGrid)
-            | Some(crate::computed::Display::GridLanes)
-            | Some(crate::computed::Display::TableCell)
+        Some(crate::style::computed::Display::Flex)
+            | Some(crate::style::computed::Display::InlineFlex)
+            | Some(crate::style::computed::Display::Grid)
+            | Some(crate::style::computed::Display::InlineGrid)
+            | Some(crate::style::computed::Display::GridLanes)
+            | Some(crate::style::computed::Display::TableCell)
     );
     // Растяжение передаётся дальше: у растянутой коробки высота от полосы, и
     // для её потомков блок определён (`column-align-items-005`).
-    c.stretched = laid_out_parent && !matches!(own.height, Some(crate::value::Len::Px(_)));
+    c.stretched = laid_out_parent && !matches!(own.height, Some(crate::style::values::value::Len::Px(_)));
     // Высота, выведенная из `aspect-ratio` при определённой ширине, —
     // определённая (css-sizing-4 §5.1: «the resulting size is definite if
     // its input sizes are also definite»): проценты детей решаются от неё
     // (`percentage-resolution-001/002`, `flex-aspect-ratio-047/048`).
     let ratio_height = parent.aspect_ratio.is_some()
-        && matches!(parent.height, None | Some(crate::value::Len::Auto))
-        && matches!(parent.width, Some(crate::value::Len::Px(_)));
+        && matches!(parent.height, None | Some(crate::style::values::value::Len::Auto))
+        && matches!(parent.width, Some(crate::style::values::value::Len::Px(_)));
     // Ребёнок элемента КОЛОНКИ, у которой главный размер неопределён:
     // блок неопределён, и доля высоты ведёт себя как `auto`
     // (css-flexbox-1 §9.8 п.1-2; `percentage-heights-016/020`), кроме
     // случая, когда сам элемент имеет высоту в точках или основу в точках.
     let indefinite_column_item = parent.flex_main_def == Some(false)
-        && !matches!(parent.height, Some(crate::value::Len::Px(_)))
-        && !matches!(parent.flex_basis, Some(crate::value::Len::Px(_)))
+        && !matches!(parent.height, Some(crate::style::values::value::Len::Px(_)))
+        && !matches!(parent.flex_basis, Some(crate::style::values::value::Len::Px(_)))
         // Соотношение сторон САМО даёт главный размер: строчную ось
         // элемента колонки решает контейнер, и высота выводится из неё
         // (Blink `AspectRatioProvidesBlockMainSize`;
@@ -160,7 +162,7 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
         || parent.stretched
         || ratio_height
         || match parent.height {
-            Some(crate::value::Len::Px(_)) => true,
+            Some(crate::style::values::value::Len::Px(_)) => true,
             // Доля высоты у абсолютной/фиксированной коробки решается ВСЕГДА
             // (§10.5: оговорка «not absolutely positioned»; её же держит гейт
             // `apply.rs`), значит её высота для детей определена — как у
@@ -168,17 +170,17 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
             // Прежде `.modal {position: fixed; height: stretch}` передавал
             // ложный признак от `body`, и `height: 100%` цепочки гас
             // (`intrinsic-height-abspos-stretch-percentage-child`: 25 %).
-            Some(crate::value::Len::Pct(_)) => {
+            Some(crate::style::values::value::Len::Pct(_)) => {
                 parent.cb_height_def
                     || matches!(
                         parent.position,
-                        Some(crate::computed::Position::Absolute)
-                            | Some(crate::computed::Position::Fixed)
+                        Some(crate::style::computed::Position::Absolute)
+                            | Some(crate::style::computed::Position::Fixed)
                     )
             }
             _ => matches!(
                 parent.position,
-                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
             ),
         });
     // Quirks Mode §3.5 «The percentage height calculation quirk»: в режиме
@@ -191,9 +193,10 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
     // `float-percentage-resolution-quirks-mode`). Blink:
     // `LayoutBox::ContainingBlockLogicalHeightForPercentageResolution`
     // (`SkipContainingBlockForPercentHeightCalculation`).
-    if crate::dom::quirks() {
-        use crate::computed::{Display as D, Position as P};
-        use crate::value::Len as L;
+    if crate::style::select::quirks() {
+        use crate::style::computed::Display as D;
+        use crate::style::computed::Position as P;
+        use crate::style::values::value::Len as L;
         let out_of_flow = matches!(own.position, Some(P::Absolute) | Some(P::Fixed));
         let tabular = matches!(
             own.display,
@@ -231,21 +234,21 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
         // выходит круговая зависимость. Для всего остального (`height: 1lh`)
         // базой остаётся своя строка — та же оговорка, скобка в конце абзаца.
         let parent_font = match parent.font_size {
-            Some(crate::value::Len::Px(v)) => v,
+            Some(crate::style::values::value::Len::Px(v)) => v,
             _ => 16.0,
         };
         let parent_family = parent.font_family.clone().unwrap_or_else(|| {
             if parent.monospace == Some(true) {
-                crate::metrics::mono_family_for(parent.lang.as_deref()).to_string()
+                crate::text::metrics::mono_family_for(parent.lang.as_deref()).to_string()
             } else {
                 String::new()
             }
         });
         let parent_line = match parent.line_height {
-            Some(crate::value::Len::Px(v)) => v,
-            Some(crate::value::Len::Em(k)) | Some(crate::value::Len::Pct(k)) => k * parent_font,
+            Some(crate::style::values::value::Len::Px(v)) => v,
+            Some(crate::style::values::value::Len::Em(k)) | Some(crate::style::values::value::Len::Pct(k)) => k * parent_font,
             _ => {
-                let f = crate::metrics::normal_line(&parent_family);
+                let f = crate::text::metrics::normal_line(&parent_family);
                 if f > 0.0 {
                     f * parent_font
                 } else {
@@ -256,12 +259,12 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
         // `c` — это `own.clone()`: слияние с родителем ещё впереди, значит в
         // `c.line_height`/`c.font_size` лежит ровно то, что задано НА ЭТОМ
         // элементе. Незаданное поле — `None`, и ветка молчит.
-        let from_parent = |l: &mut Option<crate::value::Len>| match *l {
-            Some(crate::value::Len::Lh(k)) => {
-                *l = Some(crate::value::Len::Px(k * parent_line))
+        let from_parent = |l: &mut Option<crate::style::values::value::Len>| match *l {
+            Some(crate::style::values::value::Len::Lh(k)) => {
+                *l = Some(crate::style::values::value::Len::Px(k * parent_line))
             }
-            Some(crate::value::Len::LhPx(k, add)) => {
-                *l = Some(crate::value::Len::Px(k * parent_line + add))
+            Some(crate::style::values::value::Len::LhPx(k, add)) => {
+                *l = Some(crate::style::values::value::Len::Px(k * parent_line + add))
             }
             _ => {}
         };
@@ -273,7 +276,7 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
         // выйти 96, а не 3 × normal(16) ≈ 55 (`line-clamp-auto-035`: блок
         // с `height: 3lh` не доставал до потолка и не прятался).
         let font = match c.font_size {
-            Some(crate::value::Len::Px(v)) => v,
+            Some(crate::style::values::value::Len::Px(v)) => v,
             None => parent_font,
             _ => 16.0,
         };
@@ -286,23 +289,23 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
             .or_else(|| parent.font_family.clone())
             .unwrap_or_else(|| {
                 if c.monospace.or(parent.monospace) == Some(true) {
-                    crate::metrics::mono_family_for(c.lang.as_deref()).to_string()
+                    crate::text::metrics::mono_family_for(c.lang.as_deref()).to_string()
                 } else {
                     String::new()
                 }
             });
         let line = match c.line_height.or(parent.line_height) {
-            Some(crate::value::Len::Px(v)) => v,
-            Some(crate::value::Len::Em(k)) | Some(crate::value::Len::Pct(k)) => k * font,
+            Some(crate::style::values::value::Len::Px(v)) => v,
+            Some(crate::style::values::value::Len::Em(k)) | Some(crate::style::values::value::Len::Pct(k)) => k * font,
             _ => {
-                let f = crate::metrics::normal_line(&family);
+                let f = crate::text::metrics::normal_line(&family);
                 if f > 0.0 { f * font } else { 1.2 * font }
             }
         };
-        let fix = |l: &mut Option<crate::value::Len>| match *l {
-            Some(crate::value::Len::Lh(k)) => *l = Some(crate::value::Len::Px(k * line)),
-            Some(crate::value::Len::LhPx(k, add)) => {
-                *l = Some(crate::value::Len::Px(k * line + add))
+        let fix = |l: &mut Option<crate::style::values::value::Len>| match *l {
+            Some(crate::style::values::value::Len::Lh(k)) => *l = Some(crate::style::values::value::Len::Px(k * line)),
+            Some(crate::style::values::value::Len::LhPx(k, add)) => {
+                *l = Some(crate::style::values::value::Len::Px(k * line + add))
             }
             _ => {}
         };
@@ -318,7 +321,7 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
         // 1.2 × 16 = 19.2 — ровно то, что видно на снимке), а сплошной
         // перевод единиц в самом `background.rs` уже ЗАМЕРЕН в минус
         // (★ `background.rs:2577`, CSS2 4614 → 4610).
-        if let crate::computed::BgSize::Fixed(w, h) = &mut c.bg_size {
+        if let crate::style::computed::BgSize::Fixed(w, h) = &mut c.bg_size {
             fix(w);
             fix(h);
         }
@@ -368,7 +371,7 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
     // родителя целиком, с его `safe`/`last` (`place-items: inherit` во
     // вложенной сетке — `grid-self-alignment-baseline-with-grid-001`).
     if own.align_inherit != 0 {
-        use crate::computed::ainh;
+        use crate::style::computed::ainh;
         let on = |b: u8| own.align_inherit & b != 0;
         if on(ainh::ALIGN_ITEMS) {
             c.align_items = parent.align_items;
@@ -402,7 +405,7 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
     // целиком (§6.2.1). Разбор их слотов слово не выражает — там оно давало
     // умолчание или роняло объявление.
     if own.inherit_bits != 0 {
-        use crate::computed::inh;
+        use crate::style::computed::inh;
         let on = |b: u32| own.inherit_bits & b != 0;
         if on(inh::BG_REPEAT) {
             c.bg_repeat = parent.bg_repeat;
@@ -540,13 +543,13 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
     // элемента. Функция остаётся в поле — её унаследуют дети и решат своим
     // цветом заново.
     if let Some(expr) = c.background_rcs.clone() {
-        let current = c.color.unwrap_or(crate::value::Color {
+        let current = c.color.unwrap_or(crate::style::values::value::Color {
             r: 0.0,
             g: 0.0,
             b: 0.0,
             a: 1.0,
         });
-        if let Some(resolved) = crate::color_space::resolve_relative(&expr, current) {
+        if let Some(resolved) = crate::style::values::color_space::resolve_relative(&expr, current) {
             c.background = Some(resolved);
         }
     }
@@ -568,7 +571,7 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
             c.font_size = Some(Len::Px(0.01));
         }
     }
-    crate::computed::font_weight::inherit(&mut c, parent, own);
+    crate::style::computed::font_weight::inherit(&mut c, parent, own);
     c.italic = own.italic.or(parent.italic);
     c.oblique = own.oblique.or(parent.oblique);
     c.underline = own.underline.or(parent.underline);
@@ -590,7 +593,7 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
     c.text_align_last = own.text_align_last.or(parent.text_align_last);
     c.hanging = own.hanging.or(parent.hanging);
     c.monospace = own.monospace.or(parent.monospace);
-    crate::computed::font_family::inherit(&mut c, own, parent);
+    crate::style::computed::font_family::inherit(&mut c, own, parent);
     c.nowrap = own.nowrap.or(parent.nowrap);
     c.orphans = own.orphans.or(parent.orphans);
     c.widows = own.widows.or(parent.widows);
@@ -609,7 +612,7 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
     // the in-flow inline measure of the paragraph it was written in.
     c.orthogonal_inline = if matches!(
         own.position,
-        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
     ) {
         None
     } else {
@@ -628,7 +631,7 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
     // Кегль родителя нужен `text-top`/`text-bottom`: край куска равняется по
     // ЕГО текстовой области.
     c.vertical_align_base = match parent.font_size {
-        Some(crate::value::Len::Px(v)) => Some(v),
+        Some(crate::style::values::value::Len::Px(v)) => Some(v),
         _ => own.vertical_align_base,
     };
     c.upright = own.upright.or(parent.upright);
@@ -636,7 +639,7 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
     // Сетка-родитель и её письмо: у вертикальной сетки оси выравнивания
     // элемента переставляются (`apply.rs`), а по оси x идут группы базовых.
     c.parent_grid = match parent.display {
-        Some(crate::computed::Display::Grid) | Some(crate::computed::Display::InlineGrid) => {
+        Some(crate::style::computed::Display::Grid) | Some(crate::style::computed::Display::InlineGrid) => {
             match (parent.vertical == Some(true), parent.vertical_rl == Some(true)) {
                 (false, _) => 1,
                 (true, false) => 2,
@@ -645,15 +648,15 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
         }
         _ => 0,
     };
-    c.parent_lanes = parent.display == Some(crate::computed::Display::GridLanes);
+    c.parent_lanes = parent.display == Some(crate::style::computed::Display::GridLanes);
     c.parent_subgrid = c.parent_grid != 0 && (parent.subgrid_cols || parent.subgrid_rows);
     c.parent_flex_grid = matches!(
         parent.display,
-        Some(crate::computed::Display::Flex)
-            | Some(crate::computed::Display::InlineFlex)
-            | Some(crate::computed::Display::Grid)
-            | Some(crate::computed::Display::InlineGrid)
-            | Some(crate::computed::Display::GridLanes)
+        Some(crate::style::computed::Display::Flex)
+            | Some(crate::style::computed::Display::InlineFlex)
+            | Some(crate::style::computed::Display::Grid)
+            | Some(crate::style::computed::Display::InlineGrid)
+            | Some(crate::style::computed::Display::GridLanes)
     );
     // Наследуемые текстовые свойства из второй волны разбора. Без них
     // `text-transform` на контейнере не доходил до вложенного текста —
@@ -705,10 +708,10 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
     if own.align_self_normal
         && matches!(
             parent.display,
-            Some(crate::computed::Display::Flex) | Some(crate::computed::Display::InlineFlex)
+            Some(crate::style::computed::Display::Flex) | Some(crate::style::computed::Display::InlineFlex)
         )
     {
-        c.align_self = Some(crate::computed::Align::Stretch);
+        c.align_self = Some(crate::style::computed::Align::Stretch);
     }
     // `self-start`/`self-end` меряются по письму САМОГО элемента (css-align-3
     // §6.2). Значение уже физическое (начало = левый край при ltr), поэтому
@@ -723,8 +726,8 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
     // `apply.rs`: `flex_cross_reverse` / `flip`).
     if c.parent_grid == 0 && own.align_self_own_axis && own.rtl.or(parent.rtl).unwrap_or(false) != parent.rtl.unwrap_or(false) {
         c.align_self = match c.align_self {
-            Some(crate::computed::Align::Start) => Some(crate::computed::Align::End),
-            Some(crate::computed::Align::End) => Some(crate::computed::Align::Start),
+            Some(crate::style::computed::Align::Start) => Some(crate::style::computed::Align::End),
+            Some(crate::style::computed::Align::End) => Some(crate::style::computed::Align::Start),
             other => other,
         };
     }
@@ -739,12 +742,12 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
         && parent.flex_wrap_reverse == Some(true)
         && matches!(
             parent.display,
-            Some(crate::computed::Display::Flex) | Some(crate::computed::Display::InlineFlex)
+            Some(crate::style::computed::Display::Flex) | Some(crate::style::computed::Display::InlineFlex)
         )
     {
         c.align_self = match c.align_self {
-            Some(crate::computed::Align::Start) => Some(crate::computed::Align::End),
-            Some(crate::computed::Align::End) => Some(crate::computed::Align::Start),
+            Some(crate::style::computed::Align::Start) => Some(crate::style::computed::Align::End),
+            Some(crate::style::computed::Align::End) => Some(crate::style::computed::Align::Start),
             other => other,
         };
     }
@@ -873,9 +876,9 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
         // (`filter-function-repeating-*-ref`: `filter: invert(1)` на фоне).
         if own.bg_image.is_some()
             && let Some(img) = c.bg_image.as_deref()
-            && crate::computed::gradient_as_raster(img)
+            && crate::style::computed::gradient_as_raster(img)
         {
-            c.bg_image = Some(crate::computed::filter_gradient_text(img, &f));
+            c.bg_image = Some(crate::style::computed::filter_gradient_text(img, &f));
         }
         if !own.shadows.is_empty() {
             for sh in c.shadows.iter_mut() {
@@ -896,7 +899,7 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
     if let Some(sh) = c.drop_shadow
         && c.background.is_some_and(|b| b.a >= 1.0)
     {
-        let as_box = crate::computed::Shadow {
+        let as_box = crate::style::computed::Shadow {
             blur: sh.blur * 2.0,
             ..sh
         };
@@ -921,12 +924,12 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
     };
     let out_of_flow = matches!(
         own.position,
-        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
     );
-    if let Some(fill) = crate::background::text_clip_fill(&c) {
+    if let Some(fill) = crate::paint::background::text_clip_fill(&c) {
         c.text_clip_raw = c.color;
         c.text_clip_fill = Some(fill);
-        c.color = Some(crate::background::over(c.color.unwrap_or(black), fill));
+        c.color = Some(crate::paint::background::over(c.color.unwrap_or(black), fill));
     } else if parent.text_clip_fill.is_some() && out_of_flow {
         c.text_clip_fill = None;
         c.text_clip_raw = None;
@@ -937,7 +940,7 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
         c.text_clip_fill = Some(fill);
         if own.color.is_some() {
             c.text_clip_raw = c.color;
-            c.color = Some(crate::background::over(c.color.unwrap_or(black), fill));
+            c.color = Some(crate::paint::background::over(c.color.unwrap_or(black), fill));
         } else {
             c.text_clip_raw = parent.text_clip_raw;
         }
@@ -1034,7 +1037,7 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
         _ => parent_px,
     };
     c.tab_size_len = match own.tab_size_len {
-        Some(len) => Some(Len::Px(crate::metrics::spacing_px(
+        Some(len) => Some(Len::Px(crate::text::metrics::spacing_px(
             Some(len),
             &c.font_family.clone().unwrap_or_default(),
             own_px,
@@ -1052,20 +1055,20 @@ pub(crate) fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: boo
 /// абсолюты); цвет, рисунок, толщина и метрики — от украшающей коробки.
 /// `display: contents` коробки не даёт и своих линий не кладёт.
 pub(crate) fn decorate(parent: &Computed, own: &Computed, c: &mut Computed, own_px: f32) {
-    use crate::computed::{
-        DECOR_THROUGH, DECOR_UNDER, Decor, DecorFont, DecorLen, Display as D, Position as P,
-    };
+    use crate::style::computed::Display as D;
+    use crate::style::computed::Position as P;
+    use crate::style::computed::{DECOR_THROUGH, DECOR_UNDER, Decor, DecorFont, DecorLen};
     // Семейство для `ch`/`ex` — как у `resolve_em`: родовое `monospace`
     // имени не даёт, а меряться должно тем шрифтом, которым набран текст.
     let family = c.font_family.clone().unwrap_or_else(|| {
         if c.monospace == Some(true) {
-            crate::metrics::mono_family_for(c.lang.as_deref()).to_string()
+            crate::text::metrics::mono_family_for(c.lang.as_deref()).to_string()
         } else {
             String::new()
         }
     });
     let resolve = |l: DecorLen| match l {
-        DecorLen::Raw(raw) => crate::metrics::fallback_len_px(raw, &family, own_px)
+        DecorLen::Raw(raw) => crate::text::metrics::fallback_len_px(raw, &family, own_px)
             .map_or(DecorLen::Auto, DecorLen::Px),
         other => other,
     };

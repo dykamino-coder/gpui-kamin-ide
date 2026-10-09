@@ -10,14 +10,15 @@
 //! Образ декодируется один раз и лежит в кэше: разбор PNG на каждом кадре
 //! стоил бы дороже всей остальной отрисовки документа.
 
-pub(crate) use crate::computed::{BgPos, BgRepeat, BgSize, Computed, Tiling};
-pub(crate) use crate::value::Len;
-pub(crate) use crate::color_space::gradient_colour_at as colour_at;
+use crate::style::computed::{BgRepeat, Computed, Tiling};
+use gpui::{AnyElement, Bounds, IntoElement, Pixels, RenderImage, Styled, px};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 pub(crate) mod sampling;
 pub(crate) mod oriented_vector;
 pub(crate) mod alpha_sampling;
 pub(crate) mod float_geometry;
-use float_geometry::rrect_of;
+use crate::paint::background::float_geometry::rrect_of;
 pub use float_geometry::rounded_float;
 pub(crate) mod mask_composite;
 pub use mask_composite::{MaskLayer, compose_mask_layers};
@@ -26,15 +27,12 @@ pub(crate) mod sources;
 pub use sources::{key, key_exif, source};
 pub(crate) mod gradient_raster;
 pub(crate) mod svg_fragment;
-pub(crate) use gpui::{AnyElement, Bounds, IntoElement, Pixels, RenderImage, Styled, px};
-pub(crate) use std::collections::HashMap;
-pub(crate) use std::sync::{Arc, Mutex, OnceLock};
 
 pub(crate) mod exact_layer;
 pub(crate) mod tile_positions;
 pub(crate) mod radius_lengths;
 #[cfg(test)]
-use tile_positions::tiling;
+use crate::paint::background::tile_positions::tiling;
 pub(crate) mod shape_path;
 pub use crate::paint::background::shape_path::*;
 pub(crate) mod shape_raster;
@@ -119,7 +117,7 @@ impl Source {
             // Конический градиент и цвет-изображение растрируются своими путями
             // (`conic`, `sources::raster_color`) — им обычный путь плитки.
             && !conic::is_conic(raw)
-            && crate::computed::parse_image_color(raw).is_none()
+            && crate::style::computed::parse_image_color(raw).is_none()
         {
             // CSS Masking section 7.8 uses CSS image sizing, but coverage is sampled
             // at device pixel centres. Avoid resizing a CSS-resolution alpha
@@ -257,7 +255,7 @@ impl RootArea {
         let left_abs = self
             .left_key
             .filter(|_| self.width.is_none())
-            .and_then(crate::interact::root_left_prev)
+            .and_then(crate::text::vertical::root_left_prev)
             .map(|l| l - f32::from(clip.origin.x));
         let (x, w) = match left_abs {
             Some(l) => (l, (cw - l - self.right).max(0.0)),
@@ -301,8 +299,8 @@ pub fn canvas_layer(c: &Computed, area: RootArea) -> Option<AnyElement> {
 /// the area painted by the border» — одноцветный фон тогда просто лежит ПОД
 /// краской рамки. Рисуют его те же примитивы, что и рамку (квад, слой рамки,
 /// кольца `corner-shape` и `border-shape`), с той же геометрией стиля.
-pub(crate) fn border_area_fill(c: &Computed) -> Option<crate::value::Color> {
-    if c.bg_clip != Some(crate::computed::BgClip::BorderArea) {
+pub(crate) fn border_area_fill(c: &Computed) -> Option<crate::style::values::value::Color> {
+    if c.bg_clip != Some(crate::style::computed::BgClip::BorderArea) {
         return None;
     }
     flat_fill(c)
@@ -310,7 +308,7 @@ pub(crate) fn border_area_fill(c: &Computed) -> Option<crate::value::Color> {
 
 /// Цвет, которым красится рамка: свой `border-color` поверх заливки
 /// `border-area` («ignoring any transparency introduced by border-color»).
-pub(crate) fn border_paint(c: &Computed, colour: crate::value::Color) -> crate::value::Color {
+pub(crate) fn border_paint(c: &Computed, colour: crate::style::values::value::Color) -> crate::style::values::value::Color {
     match border_area_fill(c) {
         Some(fill) => over(colour, fill),
         None => colour,
@@ -354,13 +352,13 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
 // краски хватает цвета глифа или рамки.
 
 /// Краска `top` поверх `base` (source-over), цвета без премультипликации.
-pub(crate) fn over(top: crate::value::Color, base: crate::value::Color) -> crate::value::Color {
+pub(crate) fn over(top: crate::style::values::value::Color, base: crate::style::values::value::Color) -> crate::style::values::value::Color {
     let a = top.a + base.a * (1.0 - top.a);
     if a <= 0.0 {
-        return crate::value::Color::default();
+        return crate::style::values::value::Color::default();
     }
     let mix = |t: f32, b: f32| (t * top.a + b * base.a * (1.0 - top.a)) / a;
-    crate::value::Color {
+    crate::style::values::value::Color {
         r: mix(top.r, base.r),
         g: mix(top.g, base.g),
         b: mix(top.b, base.b),
@@ -369,7 +367,7 @@ pub(crate) fn over(top: crate::value::Color, base: crate::value::Color) -> crate
 }
 
 /// Единственный цвет растра, если все его точки одинаковы и непрозрачны.
-pub(crate) fn flat_colour(src: &str) -> Option<crate::value::Color> {
+pub(crate) fn flat_colour(src: &str) -> Option<crate::style::values::value::Color> {
     let Source::Raster(image) = source(src)? else {
         return None;
     };
@@ -379,7 +377,7 @@ pub(crate) fn flat_colour(src: &str) -> Option<crate::value::Color> {
         return None;
     }
     // Порядок байтов растра — BGRA (см. `border_image::tests`).
-    Some(crate::value::Color {
+    Some(crate::style::values::value::Color {
         r: first[2] as f32 / 255.0,
         g: first[1] as f32 / 255.0,
         b: first[0] as f32 / 255.0,
@@ -390,7 +388,7 @@ pub(crate) fn flat_colour(src: &str) -> Option<crate::value::Color> {
 /// Весь фон коробки одним цветом, если он таков: цвет фона, поверх него
 /// одноцветный градиент или одноцветный растр, мощённый без зазоров.
 /// `None` — фон узорный (или его нет вовсе).
-pub(crate) fn flat_fill(c: &Computed) -> Option<crate::value::Color> {
+pub(crate) fn flat_fill(c: &Computed) -> Option<crate::style::values::value::Color> {
     if c.gradient.is_some() && c.bg_image.is_some() {
         return None;
     }
@@ -423,8 +421,8 @@ pub(crate) fn flat_fill(c: &Computed) -> Option<crate::value::Color> {
 /// Только НЕПРОЗРАЧНАЯ: тогда «цвет поверх заливки» тоже непрозрачен, и
 /// повторное слияние стилей (`inline::inherit` зовётся цепочкой) даёт тот же
 /// цвет — смешение не копится.
-pub(crate) fn text_clip_fill(c: &Computed) -> Option<crate::value::Color> {
-    if c.bg_clip != Some(crate::computed::BgClip::Text) {
+pub(crate) fn text_clip_fill(c: &Computed) -> Option<crate::style::values::value::Color> {
+    if c.bg_clip != Some(crate::style::computed::BgClip::Text) {
         return None;
     }
     flat_fill(c).filter(|f| f.a >= 1.0)

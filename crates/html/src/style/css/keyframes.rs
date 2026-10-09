@@ -1,6 +1,7 @@
 //! @keyframes: разбор кадров и условных групп.
 
 use crate::style::css::*;
+use std::collections::HashMap;
 
 /// Кадры анимации: доля времени и объявления на этой доле.
 pub type Keyframes = Vec<(f32, Decls)>;

@@ -1,15 +1,22 @@
 //! Строчный контейнер руби (`<ruby>` атомом строки): сегменты, базы и аннотации.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::render::{RenderOpts, blocks, replaced_tag};
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
+use crate::text::ruby::{RubyUnit, ruby_hiding, ruby_role, ruby_segments, ruby_transform, ruby_unit_blank};
+use crate::text::text_box::{blank_text, normal_fraction};
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 pub(crate) fn ruby_container_atom(
     inherited: &Computed,
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
-    use crate::computed::{RubyAlign, TextAlign};
-    let mut merged = inline::inherit(inherited, &e.style);
+    use crate::style::computed::{RubyAlign, TextAlign};
+    let mut merged = inherit(inherited, &e.style);
     // Внутри руби знак акцента не разворачивается (как прежде).
     merged.text_emphasis = None;
     let segments = ruby_segments(&e.children);
@@ -123,7 +130,7 @@ pub(crate) fn ruby_container_atom(
         nodes.iter().all(|n| match n {
             Node::Text(t) => blank_text(t),
             Node::Element(k) => {
-                let plain = ruby_role(k).is_some_and(|r| r != crate::computed::RubyRole::Container)
+                let plain = ruby_role(k).is_some_and(|r| r != crate::style::computed::RubyRole::Container)
                     || (k.style.display.is_none() && k.style.inline_display != Some(false) && !replaced_tag(k));
                 plain && only_space(&k.children)
             }
@@ -173,7 +180,7 @@ pub(crate) fn ruby_container_atom(
         if let [Node::Element(k)] = nodes
             && matches!(
                 ruby_role(k),
-                Some(crate::computed::RubyRole::Base) | Some(crate::computed::RubyRole::Text)
+                Some(crate::style::computed::RubyRole::Base) | Some(crate::style::computed::RubyRole::Text)
             )
         {
             let mut block = k.clone();
@@ -200,7 +207,7 @@ pub(crate) fn ruby_container_atom(
             _ => opts.base_size(),
         };
         let family = merged.font_family.clone().unwrap_or_default();
-        let (asc, desc, _) = crate::metrics::vmetrics_px(&family, size);
+        let (asc, desc, _) = crate::text::metrics::vmetrics_px(&family, size);
         let line = match merged.line_height {
             Some(Len::Px(v)) => v,
             Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
@@ -209,7 +216,7 @@ pub(crate) fn ruby_container_atom(
         (line - (asc + desc)) / 2.0
     };
     let extent = |d: gpui::Div, under: bool| {
-        crate::lines::ruby_extent(d.into_any_element(), under, base_half)
+        crate::text::paragraph::ruby_extent(d.into_any_element(), under, base_half)
     };
     let mut row = div().flex().flex_row().items_baseline().flex_shrink_0();
     for seg in &segments {
@@ -218,7 +225,7 @@ pub(crate) fn ruby_container_atom(
             .levels
             .iter()
             .map(|l| match &l.container {
-                Some(c) => inline::inherit(&merged, c),
+                Some(c) => inherit(&merged, c),
                 None => merged.clone(),
             })
             .collect();
@@ -281,10 +288,10 @@ pub(crate) fn ruby_container_atom(
                         _ => None,
                     })
                     .unwrap_or(base_font * 0.5);
-                crate::lines::ruby_base_with_overhang(
-                    merged.ruby_overhang.unwrap_or(crate::computed::RubyOverhang::Auto),
+                crate::text::paragraph::ruby_base_with_overhang(
+                    merged.ruby_overhang.unwrap_or(crate::style::computed::RubyOverhang::Auto),
                     ann_font / 2.0,
-                    merged.ruby_align == Some(crate::computed::RubyAlign::Start),
+                    merged.ruby_align == Some(crate::style::computed::RubyAlign::Start),
                     base_font,
                     || unit_box(base_nodes, &merged),
                 )

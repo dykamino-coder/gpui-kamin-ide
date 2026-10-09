@@ -1,7 +1,7 @@
 //! Select the containing block for a replaced inline box with one explicit inset axis.
 
-use crate::computed::{Computed, Position};
-use crate::interact::{SpotCell, cb_push, icb_push, late_push};
+use crate::style::computed::{Computed, Position};
+use crate::layout::positioned::containing_block::{SpotCell, cb_push, icb_push, late_push};
 use gpui::AnyElement;
 
 pub(crate) fn push(
@@ -17,7 +17,7 @@ pub(crate) fn push(
     if own.position != Some(Position::Absolute) {
         return late_push(spot, element);
     }
-    if inherited.cb_ancestor || crate::inline::establishes_cb(inherited) {
+    if inherited.cb_ancestor || crate::text::inline::establishes_cb(inherited) {
         cb_push(spot, element)
     } else {
         icb_push(spot, element)

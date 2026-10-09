@@ -1,5 +1,5 @@
 //! Only the child's linked physical axis may inherit parent subgrid tracks.
-use crate::computed::Computed;
+use crate::style::computed::Computed;
 
 pub(super) fn linked(parent: &Computed, child: &Computed, parent_rows: bool) -> bool {
     let parallel = parent.vertical.unwrap_or(false) == child.vertical.unwrap_or(false);
@@ -13,10 +13,8 @@ pub(super) fn linked(parent: &Computed, child: &Computed, parent_rows: bool) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        computed::{Track, TrackSize},
-        dom::{Node, parse},
-    };
+    use crate::dom::{Node, parse};
+    use crate::style::computed::{Track, TrackSize};
 
     fn target(nodes: &[Node]) -> Option<&Computed> {
         for node in nodes {

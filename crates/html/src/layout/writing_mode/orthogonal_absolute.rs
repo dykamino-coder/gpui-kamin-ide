@@ -1,8 +1,8 @@
 //! Absolute vertical text uses its own definite inline size or intrinsic length.
 //! Keep grid/flex static-position and two-inset stretch contracts separate.
-use crate::computed::orthogonal::InlineConstraint;
-use crate::computed::{Computed, Position};
-use crate::value::Len;
+use crate::style::computed::orthogonal::InlineConstraint;
+use crate::style::computed::{Computed, Position};
+use crate::style::values::value::Len;
 
 pub(super) fn constraint(style: &Computed, available: f32) -> Option<InlineConstraint> {
     let positioned =
@@ -11,7 +11,7 @@ pub(super) fn constraint(style: &Computed, available: f32) -> Option<InlineConst
     if !positioned || style.vertical != Some(true) || style.ortho_col || style.parent_flex_grid {
         return None;
     }
-    let own = crate::render::orthogonal_inline::axis(style, true);
+    let own = crate::layout::writing_mode::orthogonal_inline::axis(style, true);
     // The inline atomic path can retain a containing-block wrapping fallback.
     // A definite physical height replaces it before RTL text alignment.
     if own.size.is_none()

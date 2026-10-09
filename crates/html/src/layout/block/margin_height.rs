@@ -1,6 +1,12 @@
 //! Resolve proven block heights and height-constrained margin separation.
 
-use crate::render::*;
+use crate::style::cascade::inherit::inherit;
+use crate::dom::{Element, Node};
+use crate::layout::block::struts::{margin_or_bail, margin_px, pin_inherited_margins, zero_len};
+use crate::render::{in_flow, inline_level_box, out_of_flow, own_context, replaced_inline};
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
+use crate::text::text_box::blank_text;
 
 pub(crate) fn separate(e: &mut Element) -> bool {
     if !lowers(e) {
@@ -151,7 +157,7 @@ fn zero_inflow(e: &Element, inherited: &Computed) -> bool {
     {
         return false;
     }
-    let merged = inline::inherit(inherited, &e.style);
+    let merged = inherit(inherited, &e.style);
     merged.vertical != Some(true) && e.children.iter().all(|node| zero_child(node, &merged))
 }
 
@@ -173,7 +179,7 @@ fn zero_child(node: &Node, inherited: &Computed) -> bool {
         return true;
     }
     let b = e.style.borders();
-    let merged = inline::inherit(inherited, &e.style);
+    let merged = inherit(inherited, &e.style);
     merged.vertical != Some(true)
         && !inline_level_box(e)
         && matches!(e.style.display, None | Some(Display::Block))
@@ -202,7 +208,7 @@ fn zero_child(node: &Node, inherited: &Computed) -> bool {
 pub(crate) fn zero_float_blocks(nodes: &mut [Node], inherited: &Computed) {
     if matches!(
         inherited.position,
-        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
     ) {
         return;
     }

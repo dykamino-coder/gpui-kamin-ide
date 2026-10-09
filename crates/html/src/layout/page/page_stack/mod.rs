@@ -1,7 +1,10 @@
 //! Элемент стопки страниц `PageStack`.
 // owner: A
 
-use crate::flow::*;
+use crate::layout::fragment::types::{Frag, Kid, Par, RepeatGeom};
+use crate::layout::multicol::column_stack::ColumnStack;
+use crate::layout::page::margin_boxes::layout_margin_boxes;
+use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window, point, px, size};
 
 /// Лист страницы (css-page-3 §page-model): полный размер, поля, рамка и
 /// отступы (верх/право/низ/лево), фон листа, канвас документа и page area —
@@ -90,7 +93,7 @@ pub struct MarginBox {
     pub probe: AnyElement,
     pub w: Option<f32>,
     pub h: Option<f32>,
-    pub intrinsic: [Option<crate::value::Len>; 2],
+    pub intrinsic: [Option<crate::style::values::value::Len>; 2],
     pub margin: [Option<f32>; 4],
 }
 

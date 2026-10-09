@@ -1,7 +1,15 @@
 //! Струны полей: сквозное схлопывание, цепочки первого и последнего ребёнка.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::block::containing::{CB_WIDTH, with_inner_cb};
+use crate::layout::block::margins::{COLLAPSE_CB_WIDTH_PX, COLLAPSE_FONT_PX};
+use crate::layout::float::clear::bfc_no_fit;
+use crate::layout::float::initial_letter::px_margin_w;
+use crate::render::{atomic_inline, holds_line_box, in_flow, inline_level_box, inline_marked_block, own_context, replaced_inline};
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
+use crate::text::text_box::blank_text;
 
 /// Первый (по направлению итератора) IN-FLOW блочный ребёнок: плавающие,
 /// абсолютные и пустые строчные пропускаются, непробельный текст и строчный
@@ -556,7 +564,7 @@ pub(crate) fn margin_px(l: Option<Len>, style: &Computed) -> Option<f32> {
         // неразрешёнными, потому что `resolve_em` живёт в наследовании
         // (`inline::inherit`), а схлопывание идёт раньше. Прежде `-6ex`
         // отдавало `None`, поле пропадало целиком (`positioning/top-091`).
-        l @ (Len::Ch(_) | Len::Ex(_)) => Some(crate::metrics::spacing_px(
+        l @ (Len::Ch(_) | Len::Ex(_)) => Some(crate::text::metrics::spacing_px(
             Some(l),
             &style.font_family.clone().unwrap_or_default(),
             base,

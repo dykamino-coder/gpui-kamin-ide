@@ -1,6 +1,9 @@
 //! Текст и прогоны абзаца, строка из элементов, склейка атомов.
 
+use crate::style::computed::Computed;
+use crate::style::values::value::{Color, Len};
 use crate::text::inline::*;
+use gpui::{AnyElement, FontStyle, FontWeight, HighlightStyle, ParentElement, Styled, TextRun, TextStyle, UnderlineStyle};
 
 /// Можно ли собрать всё в один текстовый блок: одинаковый размер шрифта и ни
 /// одного не-текстового куска.
@@ -107,18 +110,18 @@ pub fn strut_font(style: &Computed, base: &TextStyle) -> gpui::Font {
 
 pub(crate) fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun {
     let mut font = base.font();
-    font.fallbacks = crate::computed::font_family::fallbacks(style, font.fallbacks);
+    font.fallbacks = crate::style::computed::font_family::fallbacks(style, font.fallbacks);
     // Названное семейство сильнее родового: подстановкой занимается система.
     // Пустое имя — «шрифт документа» (разбор `font-family`): база как есть.
     if let Some(family) = style.font_family.as_ref().filter(|f| !f.is_empty()) {
         // Имя из разметки может быть придуманным (`@font-face`) — система
         // шрифтов знает файл под его собственным именем. Лиц у имени бывает
         // несколько, и нужное выбирает ширина начертания (§font-matching).
-        font.family = crate::fonts::alias_stretch(family, style.font_stretch)
+        font.family = crate::text::fonts::alias_stretch(family, style.font_stretch)
             .unwrap_or_else(|| family.clone())
             .into();
     } else if style.monospace == Some(true) {
-        font.family = crate::metrics::mono_family_for(style.lang.as_deref()).into();
+        font.family = crate::text::metrics::mono_family_for(style.lang.as_deref()).into();
     }
     // Вес и курсив — ВСЕГДА от стиля куска: `None` в слитом стиле — это
     // обычное начертание, а не «как у базы» (база абзаца строится по
@@ -227,8 +230,8 @@ pub fn highlight_for(style: &Computed) -> HighlightStyle {
 /// Поэтому куски режутся на слова: перенос идёт по ним, как в строке.
 pub fn as_wrapped_row(
     pieces: Vec<Piece>,
-    align: Option<crate::computed::Align>,
-    text_align: Option<crate::computed::TextAlign>,
+    align: Option<crate::style::computed::Align>,
+    text_align: Option<crate::style::computed::TextAlign>,
     // Уровень абзаца по HL1 (css-writing-modes-4 §2.4): `direction`
     // содержащего блока. В `text_align` он уже растворён физической стороной,
     // а порядку коробок в строке нужен сам признак.
@@ -242,7 +245,7 @@ pub fn as_wrapped_row(
     // замерено, `horizontal-rule-vlr-003` 0.08 → 1.22.
     pct_from_parent: bool,
 ) -> AnyElement {
-    use crate::computed::{Align, TextAlign};
+    use crate::style::computed::{Align, TextAlign};
     // `vertical-align` в строке: умолчание — базовая линия, но `middle`,
     // `top` и `bottom` встречаются и раньше не доезжали никуда, кроме
     // ячейки таблицы.

@@ -1,7 +1,32 @@
 //! Запись стопки колонок для одного ребёнка многоколоночника (тело замыкания `multicol_column_stack`).
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::block::struts::through_strut;
+use crate::layout::float::float_only_box;
+use crate::layout::fragment::breaks::{edge_avoid, edge_break};
+use crate::layout::fragment::clone::{clone_dec, clone_fragment, solid_box};
+use crate::layout::fragment::fragment_size::shape_full;
+use crate::layout::fragment::grid_bands::{grid_rows_px, grid_stack};
+use crate::layout::fragment::line_shape::{nested_box_w, nested_rows_box, side_margin_wrap, slack_fill, transpose_tree};
+use crate::layout::fragment::probe::{plain_block_tree, size_monolith, stacked_flex_tree};
+use crate::layout::fragment::shape_contents::strip_through_top;
+use crate::layout::fragment::table_bands::{repeat_bands, table_box};
+use crate::layout::fragment::{ShapeCx, with_lines};
+use crate::layout::grid::place_named_areas;
+use crate::layout::multicol::gap_rules::gap_rule_spec;
+use crate::layout::multicol::spanner::{multicol_inside, parallel_items_inside};
+use crate::layout::page::paged::visible_overflow;
+use crate::layout::positioned::predicates::{OOF_OWN, carries_abspos};
+use crate::layout::positioned::relative::hoist_relative;
+use crate::layout::table::table;
+use crate::paint::effects::transform::transformed;
+use crate::paint::stacking::fixed_cb_layer_box;
+use crate::render::{RenderOpts, blocks, element, is_blank, styled_div_with};
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
+use gpui::{IntoElement, ParentElement, Styled, px};
 
 #[allow(clippy::too_many_arguments, clippy::needless_borrow)]
 pub(crate) fn multicol_stack_child(
@@ -22,7 +47,7 @@ pub(crate) fn multicol_stack_child(
     col_vert: bool,
     col_rl: bool,
     line_col_w: Option<f32>,
-    rows: Option<crate::flow::Rows>,
+    rows: Option<crate::layout::fragment::types::Rows>,
     copies: usize,
     fixed: Option<f32>,
     fixed_nest: Option<f32>,
@@ -31,7 +56,7 @@ pub(crate) fn multicol_stack_child(
     nested_auto: &std::cell::RefCell<Vec<u64>>,
     nested_whole: &std::cell::RefCell<Vec<u64>>,
     measured_kids: &std::cell::RefCell<Vec<(u64, f32)>>,
-) -> crate::flow::StackChild {
+) -> crate::layout::fragment::types::StackChild {
     // `box-decoration-break: clone` — фрагменты ЭТОГО
     // ребёнка по плану. Неразрезанная коробка идёт
     // `slice`: вид тот же, а её переполнение остаётся
@@ -125,11 +150,11 @@ pub(crate) fn multicol_stack_child(
         let ov = copy_m.as_ref().unwrap_or(&copy);
         let block_visible = matches!(
             ov.style.overflow_y,
-            None | Some(crate::computed::Overflow::Visible)
+            None | Some(crate::style::computed::Overflow::Visible)
         ) && matches!(
             ov.style.overflow_x,
-            None | Some(crate::computed::Overflow::Visible)
-                | Some(crate::computed::Overflow::Clip)
+            None | Some(crate::style::computed::Overflow::Visible)
+                | Some(crate::style::computed::Overflow::Clip)
         );
         fixed.is_some() && plain && block_visible
     })
@@ -194,7 +219,7 @@ pub(crate) fn multicol_stack_child(
             }
     });
     let nest_phase_k = nest_at.get(ix).copied().flatten().unwrap_or(0.0);
-    let inner = inline::inherit(&merged, &copy.style);
+    let inner = inherit(&merged, &copy.style);
     // Копии на случай разреза между колонками:
     // элемент GPUI рисуется один раз, а фрагмент
     // нужен свой в каждой колонке. Больше, чем
@@ -238,11 +263,11 @@ pub(crate) fn multicol_stack_child(
     /// брать нельзя — `blocks` решает по `under_tf`
     /// из `inherit`, и расхождение дало бы коробку и
     /// в копии, и в слое ICB.
-    fn fixed_cb_box(c: &crate::computed::Computed) -> bool {
+    fn fixed_cb_box(c: &crate::style::computed::Computed) -> bool {
         c.transform.is_some()
             || c.contain_layout == Some(true)
             || c.contain_paint == Some(true)
-            || c.will_change & crate::computed::wc::CB_FIXED != 0
+            || c.will_change & crate::style::computed::wc::CB_FIXED != 0
     }
     /// css-position-3 §abspos-breaking: «User
     /// agents must not paginate the content of
@@ -295,7 +320,7 @@ pub(crate) fn multicol_stack_child(
             Node::Element(k)
                 if !fixed_cb
                     && k.style.position
-                        == Some(crate::computed::Position::Fixed) =>
+                        == Some(crate::style::computed::Position::Fixed) =>
             {
                 None
             }
@@ -352,7 +377,7 @@ pub(crate) fn multicol_stack_child(
             _ => None,
         };
         let frag_inner =
-            frag.as_ref().map(|f| inline::inherit(&merged, &f.style));
+            frag.as_ref().map(|f| inherit(&merged, &f.style));
         let src: &Element = frag.as_ref().unwrap_or(&copy);
         let src_inner: &Computed = frag_inner.as_ref().unwrap_or(&inner);
         let kids: Vec<Node> = if first {
@@ -388,7 +413,7 @@ pub(crate) fn multicol_stack_child(
                 ^ (ix as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
         });
         let frag_gap_guard =
-            frag_gap_key.map(crate::interact::GapGuard::enter);
+            frag_gap_key.map(crate::paint::gap_rules::GapGuard::enter);
         // css-break-3 §5.5: «Fragmentation … occurs
         // before relative positioning, transforms,
         // and any other graphical effects. Such
@@ -475,9 +500,9 @@ pub(crate) fn multicol_stack_child(
                 mc.style.border_box = None;
             }
             drop(frag_gap_guard);
-            crate::flow::set_outer_row(Some((hh, nest_phase_k)));
+            crate::layout::fragment::types::set_outer_row(Some((hh, nest_phase_k)));
             let el = element(&mc, &merged, opts);
-            crate::flow::set_outer_row(None);
+            crate::layout::fragment::types::set_outer_row(None);
             return el;
         }
         if whole {
@@ -564,13 +589,13 @@ pub(crate) fn multicol_stack_child(
             }
             _ => kids,
         };
-        let frag_cb_layer = crate::inline::establishes_cb(&inner);
+        let frag_cb_layer = crate::text::inline::establishes_cb(&inner);
         if frag_cb_layer {
-            crate::interact::cb_open_with(fixed_cb_layer_box(&inner));
+            crate::layout::positioned::containing_block::cb_open_with(fixed_cb_layer_box(&inner));
         }
         let mut body = blocks(&kids, src_inner, opts);
         if frag_cb_layer {
-            body.extend(crate::interact::cb_close());
+            body.extend(crate::layout::positioned::containing_block::cb_close());
         }
         drop(frag_gap_guard);
         let mut d = styled_div_with(src, src_inner);
@@ -682,8 +707,8 @@ pub(crate) fn multicol_stack_child(
             // (css-gaps-1: «just above the border»).
             body.insert(
                 0,
-                crate::interact::GapRulePainter::new(
-                    crate::interact::gap_items_for(key),
+                crate::paint::gap_rules::painter::GapRulePainter::new(
+                    crate::paint::gap_rules::gap_items_for(key),
                     spec,
                 )
                 .into_any_element(),
@@ -709,8 +734,8 @@ pub(crate) fn multicol_stack_child(
     // §4.1 «scroll containers»); `hidden`/`clip` —
     // обрезка, не прокрутка, и режется как блок
     // (корень A4).
-    let scrolls = |o: Option<crate::computed::Overflow>| {
-        matches!(o, Some(crate::computed::Overflow::Scroll))
+    let scrolls = |o: Option<crate::style::computed::Overflow>| {
+        matches!(o, Some(crate::style::computed::Overflow::Scroll))
     };
     let block_kid = |n: &Node| {
         matches!(n, Node::Element(k)
@@ -780,7 +805,7 @@ pub(crate) fn multicol_stack_child(
     // Пока строятся копии — «внутри стопки»: вложенный
     // многоколоночник со спаннером остаётся на
     // сегментном пути (см. `unified` выше).
-    let _nested = crate::flow::StackScope::enter();
+    let _nested = crate::layout::fragment::types::StackScope::enter();
     let span = copy.style.column_span == Some(true) && !copy.inline;
     // Переполняющие колонки (css-multicol-1 §8.2: «A multicol
     // container can have more columns than it has room for due
@@ -822,7 +847,7 @@ pub(crate) fn multicol_stack_child(
         }
         _ => copies,
     };
-    crate::flow::StackChild {
+    crate::layout::fragment::types::StackChild {
         measure,
         el: side_margin_wrap(build(true, 0), &copy, col_vert),
         frags: if span {
@@ -864,8 +889,8 @@ pub(crate) fn multicol_stack_child(
         positioned: !span
             && (matches!(
                 copy.style.position,
-                Some(crate::computed::Position::Relative)
-                    | Some(crate::computed::Position::Sticky)
+                Some(crate::style::computed::Position::Relative)
+                    | Some(crate::style::computed::Position::Sticky)
             ) || copy.style.transform.is_some())
             && copy.style.z_index.unwrap_or(0) == 0,
         // Хвост непоследнего фрагмента таблицы — её фоном
@@ -888,7 +913,7 @@ pub(crate) fn multicol_stack_child(
         // щупов (`repeat_leads`).
         repeat: repeat_bands(&copy, fixed, rows)
             .filter(|_| !span && !col_vert)
-            .map(|(head, foot, geom)| crate::flow::Repeat {
+            .map(|(head, foot, geom)| crate::layout::fragment::types::Repeat {
                 head,
                 foot,
                 geom,

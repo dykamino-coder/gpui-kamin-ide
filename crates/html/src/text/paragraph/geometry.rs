@@ -1,6 +1,7 @@
 //! Геометрия строк: выравнивание, точка знака, коробка строчного блока, rtl-края.
 
 use crate::text::paragraph::*;
+use gpui::{Bounds, Pixels, Point, point, px};
 
 impl Paragraph {
     /// Выключка строки `i`: последняя строка и строка перед жёстким разрывом
@@ -83,7 +84,7 @@ impl Paragraph {
         // (`visual_x_rtl`) — строка прижата к правому краю до-поворотной
         // коробки и переставлена разбором UAX#9, а логическое продвижение от
         // левого края верно только для одного rtl-прогона.
-        if self.wrap.rtl && crate::interact::in_rotated_frame() {
+        if self.wrap.rtl && crate::text::vertical::in_rotated_frame() {
             let free_raw =
                 bounds.size.width - line.width - line.indent - px(self.flow_cut(row).1);
             let left = bounds.origin.x
@@ -365,7 +366,7 @@ impl Paragraph {
 /// пунктуация должны решаться одним алгоритмом, иначе соседние абзацы одной
 /// страницы ломаются по-разному. Поэтому правила есть всегда — отбор «кому
 /// своя раскладка нужна, а кому нет» отсюда снят.
-pub fn rules(c: &crate::computed::Computed) -> Option<Wrap> {
+pub fn rules(c: &crate::style::computed::Computed) -> Option<Wrap> {
     Some(wrap_of(c))
 }
 
@@ -406,16 +407,16 @@ pub(crate) fn line_offset(align: Align, rtl: bool, free: Pixels) -> Pixels {
 }
 
 /// Выключка из стиля.
-pub fn align_of(a: Option<crate::computed::TextAlign>) -> Align {
+pub fn align_of(a: Option<crate::style::computed::TextAlign>) -> Align {
     a.map(align_of_value).unwrap_or(Align::Left)
 }
 
 /// Выключка абзаца с разворотом логических краёв по стороне письма.
-pub fn align_for(c: &crate::computed::Computed) -> Align {
+pub fn align_for(c: &crate::style::computed::Computed) -> Align {
     let rtl = c.rtl == Some(true);
     let value = c
         .text_align
-        .unwrap_or(crate::computed::TextAlign::Start)
+        .unwrap_or(crate::style::computed::TextAlign::Start)
         .physical(rtl);
     let align = align_of_value(value);
     // `text-justify: none` — растягивать запрещено, и строка идёт к началу:
@@ -427,11 +428,11 @@ pub fn align_for(c: &crate::computed::Computed) -> Align {
 }
 
 /// Выключка из заданного значения.
-pub fn align_of_value(a: crate::computed::TextAlign) -> Align {
+pub fn align_of_value(a: crate::style::computed::TextAlign) -> Align {
     match a {
-        crate::computed::TextAlign::Center => Align::Center,
-        crate::computed::TextAlign::Right => Align::Right,
-        crate::computed::TextAlign::Justify => Align::Justify,
+        crate::style::computed::TextAlign::Center => Align::Center,
+        crate::style::computed::TextAlign::Right => Align::Right,
+        crate::style::computed::TextAlign::Justify => Align::Justify,
         _ => Align::Left,
     }
 }

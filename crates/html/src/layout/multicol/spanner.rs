@@ -1,7 +1,15 @@
 //! Охватчики колонок `column-span` и контейнер колонок.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::fragment::ShapeCx;
+use crate::layout::fragment::fragment_size::shape_full;
+use crate::layout::fragment::grid_bands::grid_stack;
+use crate::layout::fragment::push::avoid_only_monolith;
+use crate::layout::fragment::table_bands::table_box;
+use crate::render::{block_level_in_flow, is_blank, out_of_flow, real_inline, split_block_in_inline};
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
 
 /// Есть ли в поддереве (вместе с самой коробкой) элементы РЯДА: гибкий
 /// контейнер, сетка, таблица, вложенный многоколоночник. Их элементы
@@ -24,7 +32,7 @@ pub(crate) fn parallel_items_inside(c: &Element, depth: u8) -> bool {
         && c.style.vertical != Some(true)
         && matches!(
             c.style.flex_dir,
-            Some(crate::computed::FlexDir::Col) | Some(crate::computed::FlexDir::ColReverse)
+            Some(crate::style::computed::FlexDir::Col) | Some(crate::style::computed::FlexDir::ColReverse)
         )
         && c.style.flex_wrap != Some(true))
         || (c.style.display == Some(Display::Grid) && grid_stack(c));
@@ -157,10 +165,10 @@ pub(crate) fn passes_spanner(c: &Element) -> bool {
     }
     if !matches!(
         c.style.overflow_x,
-        None | Some(crate::computed::Overflow::Visible)
+        None | Some(crate::style::computed::Overflow::Visible)
     ) || !matches!(
         c.style.overflow_y,
-        None | Some(crate::computed::Overflow::Visible)
+        None | Some(crate::style::computed::Overflow::Visible)
     ) {
         return false;
     }
@@ -504,7 +512,7 @@ pub(crate) fn intrinsic_inline_size(c: &Computed, parent: &Computed) -> bool {
     c.float.unwrap_or(0) != 0
         || matches!(
             c.position,
-            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
         )
         || matches!(
             c.display,

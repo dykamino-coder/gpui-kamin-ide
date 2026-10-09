@@ -39,9 +39,9 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use crate::computed::{Align, Computed, Position, PositionAnchor};
+use crate::style::computed::{Align, Computed, Position, PositionAnchor};
 use crate::dom::Node;
-use crate::value::{AnchorFn, AnchorSide, AnchorSize, Len, anchor_get};
+use crate::style::values::value::{AnchorFn, AnchorSide, AnchorSize, Len, anchor_get};
 
 /// Запись якоря в реестре кадра: рамка (border box), маска обрезки в точке
 /// пробы и `visibility: hidden` (§position-visibility: anchor-visible), свой
@@ -159,7 +159,7 @@ fn request_rebuild(window: &mut Window) {
 /// Расходник кадра — чистится в `interact::frame_sanitize`. Реестры текущего
 /// кадра не выбрасываются, а переезжают в `LAST_*`.
 pub fn reset() {
-    crate::render::absolute_overflow::reset();
+    crate::layout::positioned::absolute_overflow::reset();
     NAMED.with(|m| m.borrow_mut().clear());
     let named = NAMED_SEQ.with(|v| std::mem::take(&mut *v.borrow_mut()));
     LAST_NAMED.with(|v| *v.borrow_mut() = named);
@@ -283,7 +283,7 @@ pub fn probe_for(e: &crate::dom::Element, c: &Computed, hidden: bool) -> Option<
     // Содержащий блок абсолюта — каждая коробка с `establishes_cb`: её
     // padding box читает сетка `position-area` (§position-area-grid-resolution),
     // связь с её собственным содержащим блоком — приемлемость якоря (§target).
-    let cb = e.node_id != 0 && crate::inline::establishes_cb(&e.style);
+    let cb = e.node_id != 0 && crate::text::inline::establishes_cb(&e.style);
     if names.is_empty() && !implicit && !cb {
         return None;
     }
@@ -894,7 +894,7 @@ impl AnchorPlan {
                     || inherited.transform.is_some()
                     || inherited.contain_layout == Some(true)
                     || inherited.contain_paint == Some(true)
-                    || inherited.will_change & crate::computed::wc::CB_FIXED != 0),
+                    || inherited.will_change & crate::style::computed::wc::CB_FIXED != 0),
             key: own.anchor_key,
             seq: own.anchor_seq,
             refs_default,
@@ -1488,7 +1488,7 @@ pub fn place(el: AnyElement, own: &Computed, inherited: &Computed) -> AnyElement
     for fb in &base.position_try_fallbacks {
         let mut c = base.clone();
         if let Some(n) = &fb.name {
-            let Some(decls) = crate::css::try_rule(n) else {
+            let Some(decls) = crate::style::css::try_rule(n) else {
                 continue;
             };
             c.apply_decls(&decls);
@@ -1647,7 +1647,7 @@ pub fn apply_chosen(c: &mut Computed) {
         && let Some(fb) = base.position_try_fallbacks.get(chosen - 1)
     {
         if let Some(n) = &fb.name
-            && let Some(decls) = crate::css::try_rule(n)
+            && let Some(decls) = crate::style::css::try_rule(n)
         {
             c.apply_decls(&decls);
         }

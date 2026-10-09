@@ -1,6 +1,8 @@
 //! Текст: шрифт, цвет, выравнивание (apply_text).
 
-use crate::style::apply::*;
+use crate::style::computed::{Computed, TextAlign};
+use crate::style::values::value::Len;
+use gpui::{Div, Styled, px, relative};
 
 /// Текстовые свойства коробки: шрифт, кегль, цвет, начертание.
 ///
@@ -35,7 +37,7 @@ pub fn apply_text(mut d: Div, c: &Computed) -> Div {
         // текст, идущий гpui-раскладкой (не резчиком), набирался подменным
         // системным шрифтом.
         d = d.font_family(
-            crate::fonts::alias_stretch(family, c.font_stretch)
+            crate::text::fonts::alias_stretch(family, c.font_stretch)
                 .unwrap_or_else(|| family.clone()),
         );
     }
@@ -68,7 +70,7 @@ pub fn apply_text(mut d: Div, c: &Computed) -> Div {
             Len::Pct(mult) => d.line_height(relative(mult)),
             Len::Em(k) => d.line_height(px(k * 16.0)),
             l @ (Len::EmPx(..) | Len::Ch(_) | Len::Ic(_) | Len::Ex(_)) => d.line_height(px(
-                crate::metrics::fallback_len_px(l, "", 16.0).unwrap_or(16.0),
+                crate::text::metrics::fallback_len_px(l, "", 16.0).unwrap_or(16.0),
             )),
             Len::Lh(k) | Len::LhPx(k, _) => d.line_height(relative(k)),
             Len::Vw(k) | Len::Vh(k) => d.line_height(relative(k)),
@@ -111,7 +113,7 @@ pub fn apply_text(mut d: Div, c: &Computed) -> Div {
         None => {}
     }
     if c.monospace == Some(true) {
-        d = d.font_family(crate::metrics::mono_family_for(c.lang.as_deref()));
+        d = d.font_family(crate::text::metrics::mono_family_for(c.lang.as_deref()));
     }
     if let Some(Len::Px(v)) = c.letter_spacing {
         d = d.letter_spacing(px(v));
@@ -122,7 +124,7 @@ pub fn apply_text(mut d: Div, c: &Computed) -> Div {
     // где текст помещался.
     if c.ellipsis == Some(true)
         && c.overflow_x
-            .is_some_and(|o| o != crate::computed::Overflow::Visible)
+            .is_some_and(|o| o != crate::style::computed::Overflow::Visible)
     {
         // Строковый маркер `text-overflow: "…текст…"` рисуется вместо
         // многоточия (css-overflow-4): gpui умеет любой текст усечения.

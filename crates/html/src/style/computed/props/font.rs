@@ -1,6 +1,7 @@
 //! Computed::apply_one: font*, font-variant/feature/synthesis/size-adjust/stretch/kerning.
 
 use crate::style::computed::*;
+use crate::style::values::value::{Color, Len};
 
 impl Computed {
     #[allow(unused_variables)]
@@ -133,7 +134,7 @@ impl Computed {
                         return;
                     }
                     let Some(alternates) =
-                        crate::fonts::alternates::parse(v, key == "font-variant")
+                        crate::text::fonts::alternates::parse(v, key == "font-variant")
                     else {
                         return;
                     };
@@ -249,7 +250,7 @@ impl Computed {
                 let want = if number == "from-font" {
                     f32::NAN
                 } else {
-                    match crate::value::number(number) {
+                    match crate::style::values::value::number(number) {
                         Some(k) if k >= 0.0 => k,
                         _ => return,
                     }

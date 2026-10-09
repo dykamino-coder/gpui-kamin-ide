@@ -1,7 +1,9 @@
 //! `var()`, `attr()`, `sibling-index()`.
 // owner: B
 
-use crate::style::computed::*;
+use crate::style::computed::top_level_comma;
+use crate::style::css::Decls;
+use crate::style::values::value::{Color, Len};
 
 /// Подстановка `var(--x)` и `var(--x, запасное)`.
 /// Сколько раз раскрывать переменные внутри переменных.
@@ -202,7 +204,7 @@ pub(crate) fn resolve_attrs(key: &str, value: &str) -> String {
 pub(crate) fn resolve_vars(value: &str, vars: &Decls) -> String {
     let mut out = value.to_string();
     for _ in 0..VAR_DEPTH {
-        let Some(next) = crate::css::variable_values::substitute(
+        let Some(next) = crate::style::css::variable_values::substitute(
             &out, &mut |name| vars.get(name).cloned(),
         ) else {
             return "unset".into();
@@ -211,11 +213,11 @@ pub(crate) fn resolve_vars(value: &str, vars: &Decls) -> String {
             break;
         }
         out = next;
-        if !crate::css::variable_values::has_var(&out) {
+        if !crate::style::css::variable_values::has_var(&out) {
             break;
         }
     }
-    if out.trim().is_empty() && crate::css::variable_values::has_var(value) {
+    if out.trim().is_empty() && crate::style::css::variable_values::has_var(value) {
         "unset".into()
     } else {
         out

@@ -1,6 +1,7 @@
 //! Select first-letter text across inline text fragments before styling it.
 
-use super::{Computed, Piece, SPACER, ZWSP, bidi_format};
+use crate::style::computed::Computed;
+use super::{Piece, SPACER, ZWSP, bidi_format};
 
 /// CSS 2.1 §5.12.2 and CSS Pseudo §first-letter-tree permit a first letter
 /// spanning multiple elements, including generated punctuation. Select the

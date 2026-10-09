@@ -1,7 +1,20 @@
 //! Обтекание флоатов: `wrap_floats` и хвост потока.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::block::struts::{float_only_wrapper, margin_px, through_strut};
+use crate::layout::float::band_flow_host::BAND_FL;
+use crate::layout::float::band_host::{BandPiece, band_host, band_piece, px_margin_box_em};
+use crate::layout::float::band_measured::{band_host_m, band_host_nested};
+use crate::layout::float::clear::{bfc_no_fit, clears_side, leading_clear};
+use crate::layout::float::initial_letter::{inline_float_host, px_margin_w, split_leading_float};
+use crate::layout::float::{band_clearance, float_clear_scope, inline_floats};
+use crate::layout::positioned::static_position::at_static_position;
+use crate::layout::writing_mode::native_vertical;
+use crate::render::{inline_level, inline_level_box, is_blank, out_of_flow, own_context, phantom_inline, replaced_inline};
+use crate::style::computed::{Align, Computed, Display, FlexDir};
+use crate::style::values::value::Len;
+use crate::text::text_box::blank_text;
 
 /// Пустой блок потока, который флоат обязан НАКРЫТЬ (§9.5).
 ///
@@ -399,8 +412,8 @@ pub(crate) fn wrap_floats(
             if let Node::Element(next) = &nodes[j]
                 && matches!(
                     next.style.position,
-                    Some(crate::computed::Position::Absolute)
-                        | Some(crate::computed::Position::Fixed)
+                    Some(crate::style::computed::Position::Absolute)
+                        | Some(crate::style::computed::Position::Fixed)
                 )
                 && !at_static_position(&next.style)
             {

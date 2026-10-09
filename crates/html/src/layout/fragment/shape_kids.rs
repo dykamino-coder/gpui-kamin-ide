@@ -1,7 +1,7 @@
 //! Укладка замеренных детей коробки в стопку для `shape_contents`: точки разреза, запреты разрыва, поля.
 // owner: A
 
-use crate::render::*;
+use crate::layout::fragment::ShapeCx;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn stack_kids(

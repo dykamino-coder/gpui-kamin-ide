@@ -1,9 +1,10 @@
 //! Keep authored initial-pseudo declarations separate from the originating box.
 //! The existing direct text path also needs its legacy base-style layer.
 
-use super::{Ancestor, Sibs, matches_ignoring_pseudo};
-use crate::computed::Computed;
-use crate::css::{Decls, Rule};
+use crate::style::select::matching::matches_ignoring_pseudo;
+use crate::style::select::{Ancestor, Sibs};
+use crate::style::computed::Computed;
+use crate::style::css::{Decls, Rule};
 
 pub(super) fn resolve(
     name: &str,

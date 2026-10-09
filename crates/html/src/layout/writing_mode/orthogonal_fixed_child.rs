@@ -1,8 +1,8 @@
 //! A definite vertical containing block passes its content inline size to children.
-use crate::render::orthogonal_inline::{axis, edges};
-use crate::computed::orthogonal::{AxisSizes, InlineConstraint};
-use crate::computed::{Computed, Display};
-use crate::value::Len;
+use crate::layout::writing_mode::orthogonal_inline::{axis, edges};
+use crate::style::computed::orthogonal::{AxisSizes, InlineConstraint};
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
 
 pub(crate) fn normal_block_flow(child: &Computed, parent: &Computed) -> bool {
     parent.vertical != Some(true)
@@ -170,7 +170,8 @@ mod tests {
 
     #[test]
     fn parallel_block_retains_inline_block_height_during_intrinsic_measurement() {
-        use crate::render::{native_vertical, orthogonal_inline::resolve};
+        use crate::layout::writing_mode::native_vertical;
+        use crate::layout::writing_mode::orthogonal_inline::resolve;
         let mut container = Computed {
             vertical: Some(true),
             display: Some(Display::InlineBlock),
@@ -198,7 +199,8 @@ mod tests {
 
     #[test]
     fn parallel_cell_children_fill_the_cells_authored_inline_size() {
-        use crate::render::{native_vertical, orthogonal_inline::resolve};
+        use crate::layout::writing_mode::native_vertical;
+        use crate::layout::writing_mode::orthogonal_inline::resolve;
         let mut cell = Computed {
             vertical: Some(true),
             display: Some(Display::TableCell),

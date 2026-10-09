@@ -1,9 +1,12 @@
 //! List item boxes paint their markers independently of the parent element tag.
 
-use crate::render::{
-    AnyElement, Computed, Display, Element, IntoElement, Node, ParentElement, RenderOpts,
-    SharedString, Styled, anon_element, blocks, div, inline, styled_div_with,
-};
+use crate::style::cascade::inherit::inherit;
+use crate::dom::{Element, Node};
+use crate::layout::table::anon::anon_element;
+use crate::render::{RenderOpts, blocks, styled_div_with};
+use crate::style::computed::{Computed, Display};
+use crate::text::inline;
+use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 
 fn shrink0(d: gpui::Div, li: &Element, parent: &Computed) -> gpui::Div {
     let flex_parent = matches!(
@@ -40,7 +43,7 @@ fn tabular_marker(style: &mut Computed, item: &Computed, layer: Option<&Computed
 }
 
 pub(super) fn render(li: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    let mut merged = inline::inherit(inherited, &li.style);
+    let mut merged = inherit(inherited, &li.style);
     if matches!(
         li.style.display,
         None | Some(Display::Block | Display::ListItem | Display::TableCell)
@@ -85,7 +88,7 @@ pub(crate) fn render_with_style(
         // Умолчание тега: у нумерованного перечня десятичный счёт, у
         // списка возможностей — точка.
         let name = kind.unwrap_or_else(|| "disc".to_string());
-        crate::counter_style::marker_repr(idx, &name)
+        crate::style::generated::counter_style::marker_repr(idx, &name)
     };
     // `list-style: none` — на списках верстают навигацию и наборы чипов,
     // и точки там лишние. Своё слово пункта старше слова списка:
@@ -112,7 +115,7 @@ pub(crate) fn render_with_style(
         .style
         .marker_layer
         .as_deref()
-        .map(|m| inline::inherit(merged, m));
+        .map(|m| inherit(merged, m));
     // `inside`: маркер — ПЕРВЫЙ инлайновый кусок содержимого пункта
     // (css-lists-3 §4), поэтому он просто дописывается текстом в начало.
     // Своей колонки при этом нет, и текст пункта начинается там же, где
@@ -165,7 +168,7 @@ pub(crate) fn render_with_style(
     // item with no content gets a hidden zero-width copy of the marker line.
     let empty = li.children.iter().all(crate::render::is_blank);
     let strut = (!no_marker && empty).then(|| {
-        let mut d = crate::apply::apply_text(div(), &mark_style)
+        let mut d = crate::style::apply::apply_text(div(), &mark_style)
             .w_0()
             .whitespace_nowrap()
             .child(SharedString::from(marker.clone()));
@@ -194,7 +197,7 @@ pub(crate) fn render_with_style(
             // левым краем (`list-style-type-string-003`: строка
             // маркера уходила за левый край окна).
             {
-                let m = crate::apply::apply_text(div(), &mark_style)
+                let m = crate::style::apply::apply_text(div(), &mark_style)
                     .absolute()
                     .top_0();
                 // An outside marker sits outside the item's principal BORDER
@@ -204,8 +207,8 @@ pub(crate) fn render_with_style(
                 // becomes the marker's end margin (`padding-left-applies-to-
                 // 010`: the bullet stays left of a 10px start border).
                 let side = li.style.borders();
-                let px_of = |l: Option<crate::value::Len>| match l {
-                    Some(crate::value::Len::Px(v)) if v > 0.0 => v,
+                let px_of = |l: Option<crate::style::values::value::Len>| match l {
+                    Some(crate::style::values::value::Len::Px(v)) if v > 0.0 => v,
                     _ => 0.0,
                 };
                 if merged.rtl == Some(true) {

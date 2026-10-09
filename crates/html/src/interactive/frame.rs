@@ -1,7 +1,8 @@
 //! Сброс состояния кадра.
 // owner: A
 
-use crate::interact::*;
+use crate::layout::positioned::containing_block::{CB, CB_FIXED, ICB, LATE};
+use crate::text::vertical::{VT_FRAME, VT_SEQ};
 
 pub fn frame_sanitize() {
     // Рамка повёрнутого абзаца не должна пережить страницу: сброс при смене

@@ -1,7 +1,10 @@
 //! Resolve each inline tab-size against the block container's font and spacing.
 
 use super::Piece;
-use crate::{computed::Computed, lines::tabs::TabStops, metrics, value::Len};
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
+use crate::text::metrics;
+use crate::text::paragraph::tabs::TabStops;
 
 pub fn tab_stops(pieces: &[Piece], block: &Computed, base: &gpui::TextStyle) -> TabStops {
     let size = match block.font_size {
@@ -104,7 +107,7 @@ mod tests {
             tab_size: Some(5.0),
             ..Default::default()
         };
-        let child = super::super::inherit(&parent, &own);
+        let child = crate::style::cascade::inherit::inherit(&parent, &own);
         assert_eq!(child.tab_size, Some(5.0));
         assert_eq!(child.tab_size_len, None);
     }

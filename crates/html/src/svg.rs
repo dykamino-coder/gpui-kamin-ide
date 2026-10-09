@@ -178,8 +178,8 @@ fn shape_box(e: &Element, stroke: bool) -> Option<(f32, f32, f32, f32)> {
         e.attr(k)
             .and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok())
     };
-    let css = |l: Option<crate::value::Len>| match l {
-        Some(crate::value::Len::Px(v)) => Some(v),
+    let css = |l: Option<crate::style::values::value::Len>| match l {
+        Some(crate::style::values::value::Len::Px(v)) => Some(v),
         _ => None,
     };
     let (x, y, w, h) = match e.tag.to_ascii_lowercase().as_str() {
@@ -250,10 +250,10 @@ fn func_end(s: &str) -> Option<usize> {
 /// Содержимое `<clipPath>` для CSS-фигуры в пользовательской системе фигуры;
 /// `rb` — опорная коробка (x, y, w, h). `None` — фигура не выражается.
 fn clip_body(
-    c: &crate::computed::Computed,
+    c: &crate::style::computed::Computed,
     (bx, by, bw, bh): (f32, f32, f32, f32),
 ) -> Option<String> {
-    use crate::value::Len;
+    use crate::style::values::value::Len;
     let at = |l: Len, side: f32| match l {
         Len::Px(v) => Some(v),
         Len::Pct(p) => Some(p * side),
@@ -292,7 +292,7 @@ fn clip_body(
         }
         // Хвост после функции — слово коробки (`… view-box`): отрезается.
         let func = &raw[..func_end(raw)?];
-        let (cx, cy, rx, ry) = crate::background::shape_params(func, bw, bh, 1.0)?;
+        let (cx, cy, rx, ry) = crate::paint::background::shape_params(func, bw, bh, 1.0)?;
         return Some(format!(
             "<ellipse cx=\"{}\" cy=\"{}\" rx=\"{rx}\" ry=\"{ry}\"/>",
             bx + cx,
@@ -304,7 +304,7 @@ fn clip_body(
         (rule, d.to_string())
     } else if let Some(rest) = spec.strip_prefix("shapedef:") {
         let (rule, body) = rest.split_once(':')?;
-        (rule, crate::background::shape_to_path(body, bw, bh)?)
+        (rule, crate::paint::background::shape_to_path(body, bw, bh)?)
     } else {
         return None;
     };
@@ -329,7 +329,7 @@ fn synth_clip(e: &Element, out: &mut String) -> Option<String> {
     if e.tag.eq_ignore_ascii_case("svg") || IN_CLIP.with(|c| c.get()) {
         return None;
     }
-    let has = |c: &crate::computed::Computed| {
+    let has = |c: &crate::style::computed::Computed| {
         c.clip_polygon.is_some()
             || c.clip_inset.is_some()
             || c.clip_bare_box
@@ -339,14 +339,14 @@ fn synth_clip(e: &Element, out: &mut String) -> Option<String> {
     };
     // Каскад сильнее презентационного атрибута; атрибут разбирается тем же
     // `apply_one`, что и CSS-объявление.
-    let parsed: crate::computed::Computed;
+    let parsed: crate::style::computed::Computed;
     let (c, view_box) = if has(&e.style) {
         (&e.style, false)
     } else {
         let raw = e
             .attr("clip-path")
             .filter(|v| !v.trim_start().starts_with("url("))?;
-        let mut fresh = crate::computed::Computed::default();
+        let mut fresh = crate::style::computed::Computed::default();
         fresh.apply_one("clip-path", raw);
         parsed = fresh;
         (&parsed, raw.contains("view-box"))
@@ -538,9 +538,9 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
     // Корневой `<svg>` исключён: он обычная CSS-коробка, и `translate:` ему
     // уже сдвигает `apply.rs` — иначе сдвиг лёг бы дважды.
     let ind_t = e.style.translate.filter(|_| e.tag != "svg").and_then(|(x, y)| {
-        let axis = |l: crate::value::Len, base: f32| match l {
-            crate::value::Len::Px(v) => v,
-            crate::value::Len::Pct(k) => k * base,
+        let axis = |l: crate::style::values::value::Len, base: f32| match l {
+            crate::style::values::value::Len::Px(v) => v,
+            crate::style::values::value::Len::Pct(k) => k * base,
             _ => 0.0,
         };
         let (dx, dy) = (axis(x, bw), axis(y, bh));
@@ -643,12 +643,12 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
     // если разметка своих не задала.
     let has = |name: &str| e.attrs.iter().any(|(k, _)| k == name);
     if e.tag != "svg" {
-        if let Some(crate::value::Len::Px(w)) = e.style.width
+        if let Some(crate::style::values::value::Len::Px(w)) = e.style.width
             && !has("width")
         {
             out.push_str(&format!(" width=\"{w}\""));
         }
-        if let Some(crate::value::Len::Px(h)) = e.style.height
+        if let Some(crate::style::values::value::Len::Px(h)) = e.style.height
             && !has("height")
         {
             out.push_str(&format!(" height=\"{h}\""));
@@ -699,12 +699,12 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
         }
     }
     if e.tag != "svg" {
-        if let Some(crate::value::Len::Px(x)) = e.style.svg_x
+        if let Some(crate::style::values::value::Len::Px(x)) = e.style.svg_x
             && !has("x")
         {
             out.push_str(&format!(" x=\"{x}\""));
         }
-        if let Some(crate::value::Len::Px(y)) = e.style.svg_y
+        if let Some(crate::style::values::value::Len::Px(y)) = e.style.svg_y
             && !has("y")
         {
             out.push_str(&format!(" y=\"{y}\""));
@@ -865,8 +865,8 @@ pub fn size_of(e: &Element) -> (f32, f32) {
             .map(|v| v * z)
     };
     // Стилевые размеры СТАРШЕ атрибутов (CSS поверх разметки).
-    let css = |l: Option<crate::value::Len>| match l {
-        Some(crate::value::Len::Px(v)) => Some(v),
+    let css = |l: Option<crate::style::values::value::Len>| match l {
+        Some(crate::style::values::value::Len::Px(v)) => Some(v),
         _ => None,
     };
     let given_w = css(e.style.width).or_else(|| num("width"));
@@ -962,7 +962,7 @@ fn view_box_ratio(e: &Element) -> Option<(f32, f32)> {
 ///
 /// Возвращает копию с обеими сторонами в точках — их и возьмёт `size_of`.
 pub fn stretch_fit(e: &Element, cb_width: Option<f32>) -> Element {
-    use crate::value::Len;
+    use crate::style::values::value::Len;
     let px = |l: Option<Len>| match l {
         Some(Len::Px(v)) => Some(v),
         _ => None,
@@ -1098,8 +1098,8 @@ pub fn element(e: &Element) -> Option<AnyElement> {
     // `overflow: visible` по оси выпускает фигуры за канву (SVG 2 §overflow):
     // растр расширяется до содержимого по свободной оси, а коробка остаётся
     // размером канвы — картинка переполняет её, как в браузере.
-    let px_len = |l: Option<crate::value::Len>| match l {
-        Some(crate::value::Len::Px(v)) => Some(v),
+    let px_len = |l: Option<crate::style::values::value::Len>| match l {
+        Some(crate::style::values::value::Len::Px(v)) => Some(v),
         _ => None,
     };
     let child_extent = |horiz: bool| -> f32 {
@@ -1130,7 +1130,7 @@ pub fn element(e: &Element) -> Option<AnyElement> {
                         .attr("transform")
                         .and_then(translate_only)
                         .unwrap_or((0.0, 0.0));
-                    let pure = |t: &crate::computed::Transform| {
+                    let pure = |t: &crate::style::computed::Transform| {
                         t.rotate_rad == 0.0
                             && t.skew_rad == (0.0, 0.0)
                             && t.scale == (1.0, 1.0)
@@ -1162,8 +1162,8 @@ pub fn element(e: &Element) -> Option<AnyElement> {
     } else {
         0.0
     };
-    let visible_y = !contained && e.style.overflow_y == Some(crate::computed::Overflow::Visible);
-    let visible_x = !contained && e.style.overflow_x == Some(crate::computed::Overflow::Visible);
+    let visible_y = !contained && e.style.overflow_y == Some(crate::style::computed::Overflow::Visible);
+    let visible_x = !contained && e.style.overflow_x == Some(crate::style::computed::Overflow::Visible);
     let rw = if visible_x {
         w.max(child_extent(true))
     } else {
@@ -1252,7 +1252,7 @@ struct Unit {
 type Rect = (f32, f32, f32, f32);
 
 /// Маскированная единица: stroke-box (коробка слоя), fill-box, стиль.
-type MaskedUnit = (Unit, Rect, Rect, crate::computed::Computed);
+type MaskedUnit = (Unit, Rect, Rect, crate::style::computed::Computed);
 
 /// Теги, которые ничего не рисуют и нужны любому срезу разметки
 /// (определения, стили, заголовки).
@@ -1481,8 +1481,8 @@ fn masked_layers(e: &Element, w: f32, h: f32, rw: f32, rh: f32) -> Option<AnyEle
         // 100×100 CSS-точек (mask-origin-3, mask-clip-2). Точечные `mask-size`
         // и `mask-position` переводятся здесь, интринзик — в `Grouped`.
         if (s - 1.0).abs() > 1e-3 {
-            let scale_len = |l: crate::value::Len| match l {
-                crate::value::Len::Px(v) => crate::value::Len::Px(v * s),
+            let scale_len = |l: crate::style::values::value::Len| match l {
+                crate::style::values::value::Len::Px(v) => crate::style::values::value::Len::Px(v * s),
                 other => other,
             };
             style.mask_user_scale = s;
@@ -1511,7 +1511,7 @@ fn masked_layers(e: &Element, w: f32, h: f32, rw: f32, rh: f32) -> Option<AnyEle
             .w(gpui::px(*bw))
             .h(gpui::px(*bh))
             .into_any_element();
-        let layer = crate::render::grouped(layer, style);
+        let layer = crate::paint::effects::grouped::grouped(layer, style);
         root = root.child(
             gpui::div()
                 .absolute()

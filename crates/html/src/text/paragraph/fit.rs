@@ -1,6 +1,7 @@
 //! Растяжение строк: места выключки, text-fit, масштаб.
 
 use crate::text::paragraph::*;
+use gpui::{Pixels, Window, px};
 
 impl Paragraph {
     /// Justification opportunity BETWEEN two characters (not at a word

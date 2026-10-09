@@ -1,5 +1,5 @@
 //! Item-facing grid metadata also belongs on an anonymous sizing wrapper.
-use crate::computed::Computed;
+use crate::style::computed::Computed;
 
 fn grid_mode(c: &Computed) -> u8 {
     if c.parent_grid != 0 {
@@ -36,7 +36,7 @@ pub(crate) fn baseline_x_flags(c: &Computed) -> Option<u8> {
     }
     let vertical = c.vertical == Some(true);
     let rl = if c.parent_grid != 0
-        && matches!(c.position, Some(crate::computed::Position::Absolute | crate::computed::Position::Fixed))
+        && matches!(c.position, Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed))
     {
         // No baseline-sharing context: fallback is the item's own self-start.
         super::grid_flow_axes::reversed(c)[0]
@@ -80,7 +80,7 @@ pub(crate) fn project_wrapper(style: &mut gpui::StyleRefinement, c: &Computed) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::computed::{Align, Display};
+    use crate::style::computed::{Align, Display};
 
     #[test]
     fn own_vertical_flex_items_keep_the_parent_central_synthesis_policy() {
@@ -91,7 +91,7 @@ mod tests {
                 vertical_rl: Some(rl), sideways: Some(sideways),
                 ..Computed::default()
             };
-            let effective = crate::inline::inherit(&parent, &Computed::default());
+            let effective = crate::style::cascade::inherit::inherit(&parent, &Computed::default());
             assert_eq!(baseline_x_flags(&effective), Some(flags));
             let mut wrapper = gpui::StyleRefinement::default();
             project_wrapper(&mut wrapper, &effective);
@@ -119,7 +119,7 @@ mod tests {
                 text_sideways: Some(false),
                 ..Computed::default()
             };
-            let effective = crate::inline::inherit(&parent, &own);
+            let effective = crate::style::cascade::inherit::inherit(&parent, &own);
             assert_eq!(baseline_x_flags(&effective), Some(flags));
             let mut wrapper = gpui::StyleRefinement::default();
             project_wrapper(&mut wrapper, &effective);
@@ -139,7 +139,7 @@ mod tests {
                 vertical_rl: Some(rl),
                 ..Computed::default()
             };
-            let effective = crate::inline::inherit(&parent, &own);
+            let effective = crate::style::cascade::inherit::inherit(&parent, &own);
             assert_eq!(baseline_x_flags(&effective), Some(flags));
             let mut wrapper = gpui::StyleRefinement::default();
             wrapper.align_self = Some(gpui::AlignItems::End);
@@ -148,7 +148,7 @@ mod tests {
             assert_eq!(wrapper.align_self, Some(gpui::AlignItems::End));
         }
         assert_eq!(
-            baseline_x_flags(&crate::inline::inherit(&parent, &Computed::default())),
+            baseline_x_flags(&crate::style::cascade::inherit::inherit(&parent, &Computed::default())),
             None
         );
     }
@@ -166,7 +166,7 @@ mod tests {
             justify_self_last: true,
             ..Computed::default()
         };
-        let effective = crate::inline::inherit(&parent, &own);
+        let effective = crate::style::cascade::inherit::inherit(&parent, &own);
         let mut wrapper = gpui::StyleRefinement::default();
         project_wrapper(&mut wrapper, &effective);
         assert_eq!(wrapper.baseline_x_flags, Some(5));

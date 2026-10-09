@@ -1,7 +1,24 @@
 //! Содержимое формы фрагмента.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::float::{block_like_float, float_only_box, has_float};
+use crate::layout::fragment::breaks::{edge_avoid, edge_break};
+use crate::layout::fragment::clone::solid_box;
+use crate::layout::fragment::flex_lines::{class_a_box, item_container};
+use crate::layout::fragment::fragment_size::shape_full;
+use crate::layout::fragment::grid_bands::{grid_auto_row_bands, grid_row_forced, grid_row_gaps, grid_rows_px, grid_stack};
+use crate::layout::fragment::line_shape::{basis_sized, inline_content, line_run_shape};
+use crate::layout::fragment::probe::forced_opaque;
+use crate::layout::fragment::shape_kids::stack_kids;
+use crate::layout::fragment::table_bands::{table_box, table_shape};
+use crate::layout::fragment::{LineScope, Shape, ShapeCx, fragment_size};
+use crate::layout::multicol::spanner::multicol_container;
+use crate::layout::page::names::page_names;
+use crate::layout::positioned::predicates::OOF_OWN;
+use crate::render::{is_blank, out_of_flow};
+use crate::style::computed::Display;
+use crate::style::values::value::Len;
 
 /// ★ ЗАМЕРЕНО И ОТКАЧЕНО (08.09, v164, `scout-breakcore-2026-09.md` FRAG-FLEX-WRAP,
 /// 11 хунков): сбор строк гибкого контейнера с `flex-wrap` при фрагментации
@@ -115,14 +132,14 @@ pub(crate) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
     ) && c.style.webkit_box != Some(true)
         && !(matches!(
             c.style.flex_dir,
-            None | Some(crate::computed::FlexDir::Row) | Some(crate::computed::FlexDir::RowReverse)
+            None | Some(crate::style::computed::FlexDir::Row) | Some(crate::style::computed::FlexDir::RowReverse)
         ) && c.style.flex_wrap != Some(true));
     let flex_col = flex_items
         && c.style.vertical != Some(true)
         && c.style.flex_wrap != Some(true)
         && matches!(
             c.style.flex_dir,
-            Some(crate::computed::FlexDir::Col) | Some(crate::computed::FlexDir::ColReverse)
+            Some(crate::style::computed::FlexDir::Col) | Some(crate::style::computed::FlexDir::ColReverse)
         );
     let flex_gap = match c.style.gap {
         Some((Some(Len::Px(v)), _)) if flex_items && c.style.vertical != Some(true) => v.max(0.0),
@@ -147,7 +164,7 @@ pub(crate) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
         .iter()
         .map(|n| {
             matches!(n, Node::Element(k)
-                if k.style.position == Some(crate::computed::Position::Absolute)
+                if k.style.position == Some(crate::style::computed::Position::Absolute)
                     && matches!(k.style.inset.top, Some(l) if !matches!(l, Len::Auto)))
         })
         .collect();
@@ -167,7 +184,7 @@ pub(crate) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
         && c.style.vertical != Some(true)
         && matches!(
             c.style.flex_dir,
-            None | Some(crate::computed::FlexDir::Row) | Some(crate::computed::FlexDir::RowReverse)
+            None | Some(crate::style::computed::FlexDir::Row) | Some(crate::style::computed::FlexDir::RowReverse)
         )
         && c.style.flex_wrap == Some(true)
         && c.style.flex_wrap_reverse != Some(true);
@@ -289,8 +306,8 @@ pub(crate) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
         && matches!(
             c.style.flex_dir,
             None
-                | Some(crate::computed::FlexDir::Row)
-                | Some(crate::computed::FlexDir::RowReverse)
+                | Some(crate::style::computed::FlexDir::Row)
+                | Some(crate::style::computed::FlexDir::RowReverse)
         )
         && c.style.flex_wrap != Some(true)
         && c.style.webkit_box_vertical != Some(true);
@@ -372,7 +389,7 @@ pub(crate) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
                 Node::Element(k) if out_of_flow(&k.style) => {
                     let abs = matches!(
                         k.style.position,
-                        Some(crate::computed::Position::Absolute)
+                        Some(crate::style::computed::Position::Absolute)
                     );
                     let reach = if abs {
                         // `top: 100vh` у страниц — от page area (эталоны
@@ -407,7 +424,7 @@ pub(crate) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
                     if !k.inline
                         && (k.style.position.is_none()
                             || k.style.position
-                                == Some(crate::computed::Position::Relative))
+                                == Some(crate::style::computed::Position::Relative))
                         && (k.style.float.unwrap_or(0) == 0
                             || block_like_float(&k.style)) =>
                 {
@@ -637,7 +654,7 @@ pub(crate) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
     // НЕ является, дотяг принадлежит кому-то выше и здесь
     // не учитывается — он всплывёт там.
     let own_h = h;
-    let h = if crate::inline::establishes_cb(&c.style) {
+    let h = if crate::text::inline::establishes_cb(&c.style) {
         h.max(oof_reach + bot)
     } else {
         h
@@ -796,7 +813,7 @@ pub(crate) fn strip_through_top(c: &mut Element, depth: u8) {
         || out_of_flow(&k.style)
         || !matches!(
             k.style.position,
-            None | Some(crate::computed::Position::Relative)
+            None | Some(crate::style::computed::Position::Relative)
         )
     {
         return;

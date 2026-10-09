@@ -11,11 +11,11 @@
 //! увеличенным и сдвинутым так, чтобы нужный кусок лёг ровно в своё место, а
 //! всё остальное срезала маска куска.
 
-use crate::computed::{Computed, Tiling};
-use crate::value::Len;
+use crate::style::computed::{Computed, Tiling};
+use crate::style::values::value::Len;
 mod sampling;
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled, px};
-use sampling::paint_slice;
+use crate::paint::border_image::sampling::paint_slice;
 
 /// Слой рамки-картинки поверх коробки.
 pub fn layer(c: &Computed) -> Option<AnyElement> {
@@ -26,7 +26,7 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
         _ => 16.0,
     };
     let border = c.borders();
-    let px_of = |l: Option<Len>| crate::metrics::spacing_px(l, &family, size);
+    let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &family, size);
     // Толщина самой рамки нужна дважды: как умолчание ширины рамки-картинки и
     // как основа для записи её числом (`border-image-width: 2` — это два
     // значения `border-width`).
@@ -40,12 +40,12 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
     // `image-orientation` действует и на рамку-картинку (css-images-3 §5.4,
     // «Applies to: all elements»). Ключ строится ДО замыкания: в него уезжает
     // готовая строка, а не стиль.
-    let src = crate::background::key_exif(&image.src, c);
+    let src = crate::paint::background::key_exif(&image.src, c);
     Some(
         gpui::canvas_with_unrounded_bounds(
             |_, _, _| {},
             move |bounds: Bounds<Pixels>, _, window, _| {
-                let Some(found) = crate::background::source(&src) else {
+                let Some(found) = crate::paint::background::source(&src) else {
                     return;
                 };
                 let area = Bounds {
@@ -91,7 +91,7 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                 // своей величины — толщина рамки (`BorderImageWidth::px`).
                 let own_size = intrinsic.w.is_some() && intrinsic.h.is_some();
                 let one = |i: usize, border: f32, side: f32| match image.width[i] {
-                    crate::computed::BorderImageWidth::Auto if own_size => cut[i],
+                    crate::style::computed::BorderImageWidth::Auto if own_size => cut[i],
                     other => other.px(border, side),
                 };
                 let mut w = [
@@ -182,7 +182,7 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                                 window,
                                 &raster,
                                 (iw, ih),
-                                matches!(found, crate::background::Source::Raster(_)),
+                                matches!(found, crate::paint::background::Source::Raster(_)),
                                 part,
                                 cell,
                             );
@@ -289,24 +289,24 @@ fn along(mode: Tiling, span: f32, piece: f32) -> Vec<(f32, f32)> {
 
 /// Ширина куска рамки: число — во столько раз толще самой рамки, длина — как
 /// есть, доля — от стороны коробки (css-backgrounds-3 §6.5).
-impl crate::computed::BorderImageWidth {
+impl crate::style::computed::BorderImageWidth {
     pub fn px(self, border: f32, side: f32) -> f32 {
         match self {
-            crate::computed::BorderImageWidth::Times(k) => k * border,
-            crate::computed::BorderImageWidth::Px(v) => v,
-            crate::computed::BorderImageWidth::Pct(k) => k * side,
+            crate::style::computed::BorderImageWidth::Times(k) => k * border,
+            crate::style::computed::BorderImageWidth::Px(v) => v,
+            crate::style::computed::BorderImageWidth::Pct(k) => k * side,
             // `auto` — своя величина куска образа; её мы приравниваем к рамке.
-            crate::computed::BorderImageWidth::Auto => border,
+            crate::style::computed::BorderImageWidth::Auto => border,
         }
     }
 }
 
 /// Срез образа: число — в его собственных точках, доля — от его стороны.
-impl crate::computed::BorderImageSlice {
+impl crate::style::computed::BorderImageSlice {
     pub fn px(self, side: f32) -> f32 {
         match self {
-            crate::computed::BorderImageSlice::Px(v) => v,
-            crate::computed::BorderImageSlice::Pct(k) => k * side,
+            crate::style::computed::BorderImageSlice::Px(v) => v,
+            crate::style::computed::BorderImageSlice::Pct(k) => k * side,
         }
     }
 }

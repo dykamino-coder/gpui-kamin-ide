@@ -1,5 +1,5 @@
 //! Containment contexts keep positioned descendant paint within their own box.
-use crate::computed::Computed;
+use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, PaintCollect};
 
 pub(crate) fn collect(mut children: Vec<AnyElement>, style: &Computed) -> Vec<AnyElement> {
@@ -9,7 +9,7 @@ pub(crate) fn collect(mut children: Vec<AnyElement>, style: &Computed) -> Vec<An
     // CSS Will Change §2.1 requires the same context for an announced contain.
     if style.contain_layout == Some(true)
         || style.contain_paint == Some(true)
-        || style.will_change & crate::computed::wc::STACK != 0
+        || style.will_change & crate::style::computed::wc::STACK != 0
         // css-transforms-2 §transform-style-property: `preserve-3d` is a
         // stacking context too; its positioned descendants sort by depth with
         // the context's planes (`transform-style-stacking-context`).

@@ -1,7 +1,8 @@
 //! Вертикальный текст.
 // owner: A
 
-use crate::interact::*;
+use crate::layout::writing_mode::orthogonal_measure;
+use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window, px};
 
 pub(crate) mod combined_text;
 pub(crate) mod vertical_line_baseline;
@@ -277,8 +278,8 @@ pub struct VerticalText {
     /// заявляется честно — иначе гибкая ячейка считает коробку нулевой и
     /// `justify-content` уводит рисунок из виду (table-cell-align-005).
     pub(crate) fit_limit: Option<Pixels>,
-    pub(crate) inline_constraint: Option<crate::computed::orthogonal::InlineConstraint>,
-    pub(crate) inline_keyword: Option<crate::computed::orthogonal::InlineKeyword>,
+    pub(crate) inline_constraint: Option<crate::style::computed::orthogonal::InlineConstraint>,
+    pub(crate) inline_keyword: Option<crate::style::computed::orthogonal::InlineKeyword>,
     /// `writing-mode: sideways-lr` — поворот ПРОТИВ часовой стрелки.
     /// css-writing-modes-4, таблица Abstract-Physical Mapping: у `sideways-lr`
     /// line-left = НИЗ, line-right = ВЕРХ, over = ЛЕВО (у всех остальных

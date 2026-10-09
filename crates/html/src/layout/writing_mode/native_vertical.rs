@@ -1,8 +1,8 @@
 //! Native vertical paragraphs retain orthogonal flow, absolute and table-track sizing contracts.
 
-use crate::computed::Computed;
-use crate::computed::orthogonal::{InlineConstraint, InlineKeyword};
-use crate::value::Len;
+use crate::style::computed::Computed;
+use crate::style::computed::orthogonal::{InlineConstraint, InlineKeyword};
+use crate::style::values::value::Len;
 
 /// Float placement removes the CSS float flag; preserve its intrinsic sizing contract.
 pub(crate) fn claim_float_inline_size(
@@ -36,10 +36,10 @@ pub(crate) fn claim_float_inline_size(
 }
 
 pub(crate) fn constraint(style: &Computed, fallback: f32) -> Option<InlineConstraint> {
-    crate::render::vertical_intrinsic::constraint(style, fallback)
+    crate::layout::writing_mode::vertical_intrinsic::constraint(style, fallback)
         .map(|(_, value)| value)
         .or_else(|| {
-            let own = crate::render::orthogonal_inline::axis(style, true);
+            let own = crate::layout::writing_mode::orthogonal_inline::axis(style, true);
             own.size.map(|size| InlineConstraint {
                 available: fallback,
                 fixed: Some(size),
@@ -47,13 +47,13 @@ pub(crate) fn constraint(style: &Computed, fallback: f32) -> Option<InlineConstr
                 max: own.max,
             })
         })
-        .or(crate::render::orthogonal_inline::flow_constraint(style))
-        .or_else(|| crate::render::orthogonal_absolute::constraint(style, fallback))
+        .or(crate::layout::writing_mode::orthogonal_inline::flow_constraint(style))
+        .or_else(|| crate::layout::writing_mode::orthogonal_absolute::constraint(style, fallback))
         .or_else(|| {
             if !style.hug_inline {
                 return None;
             }
-            let own = crate::render::orthogonal_inline::axis(style, true);
+            let own = crate::layout::writing_mode::orthogonal_inline::axis(style, true);
             Some(InlineConstraint {
                 available: fallback,
                 fixed: own.size,
@@ -67,7 +67,7 @@ pub(crate) fn constraint(style: &Computed, fallback: f32) -> Option<InlineConstr
             if !style.ortho_col || style.ortho_limit.is_none() {
                 return None;
             }
-            let own = crate::render::orthogonal_inline::axis(style, true);
+            let own = crate::layout::writing_mode::orthogonal_inline::axis(style, true);
             Some(InlineConstraint {
                 available: fallback,
                 fixed: own.size,
@@ -136,7 +136,7 @@ mod tests {
     fn authored_inline_size_remains_definite_without_an_orthogonal_boundary() {
         let style = Computed {
             vertical: Some(true),
-            display: Some(crate::computed::Display::InlineBlock),
+            display: Some(crate::style::computed::Display::InlineBlock),
             height: Some(Len::Px(160.0)),
             ..Computed::default()
         };

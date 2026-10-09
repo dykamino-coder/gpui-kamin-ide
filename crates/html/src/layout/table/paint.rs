@@ -1,7 +1,8 @@
 //! Покраска фонов ячеек и рамок таблицы.
 // owner: A
 
-use crate::interact::*;
+use crate::text::clamp::forget_clamp_buffers;
+use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Styled, Window, px};
 
 /// Отрисовка ребёнка только в ПРЯМОУГОЛЬНИКАХ, снятых пробами прошлого кадра.
 ///
@@ -60,12 +61,12 @@ thread_local! {
 pub(crate) const BAND_WAIT_FRAMES: u8 = 2;
 
 pub struct CellsClipped {
-    pub(crate) style: crate::computed::Computed,
+    pub(crate) style: crate::style::computed::Computed,
     pub(crate) rects: RowRects,
 }
 
 impl CellsClipped {
-    pub fn new(rects: RowRects, style: crate::computed::Computed) -> Self {
+    pub fn new(rects: RowRects, style: crate::style::computed::Computed) -> Self {
         CellsClipped { style, rects }
     }
 }
@@ -172,7 +173,7 @@ impl Element for CellsClipped {
         // обход вырождения шейдера, что у обычных коробок.
         for sh in &self.style.shadows {
             let colour = if sh.color.a < 0.0 {
-                self.style.color.unwrap_or(crate::value::Color {
+                self.style.color.unwrap_or(crate::style::values::value::Color {
                     r: 0.0,
                     g: 0.0,
                     b: 0.0,
@@ -231,12 +232,12 @@ impl Element for CellsClipped {
         // Тот же кольцевой квад, что у резкой тени выше.
         if let Some(o) = &self.style.outline {
             let em = match self.style.font_size {
-                Some(crate::value::Len::Px(v)) => v,
+                Some(crate::style::values::value::Len::Px(v)) => v,
                 _ => 16.0,
             };
-            let px_of = |l: Option<crate::value::Len>| match l {
-                Some(crate::value::Len::Px(v)) => v,
-                Some(crate::value::Len::Em(k)) => k * em,
+            let px_of = |l: Option<crate::style::values::value::Len>| match l {
+                Some(crate::style::values::value::Len::Px(v)) => v,
+                Some(crate::style::values::value::Len::Em(k)) => k * em,
                 _ => 0.0,
             };
             let w = px_of(o.width);
@@ -270,7 +271,7 @@ impl Element for CellsClipped {
                 if let Some(bg) = self.style.background {
                     window.paint_quad(gpui::fill(rect, bg.to_hsla()));
                 }
-                crate::background::paint_area(&self.style, positioning, window);
+                crate::paint::background::paint_area(&self.style, positioning, window);
             });
         }
     }
@@ -292,7 +293,7 @@ pub struct EdgeCell {
     pub bounds: Bounds<Pixels>,
     /// Ширины кромок [верх, право, низ, лево] в точках.
     pub widths: [f32; 4],
-    pub colors: [crate::value::Color; 4],
+    pub colors: [crate::style::values::value::Color; 4],
     /// Ранги стилей сторон (см. `Computed::border_side_styles`); 9 = solid.
     pub styles: [u8; 4],
     /// Ранг источника (CSS 2.1 §17.6.2.1 п.4), больше — сильнее: таблица 0,
@@ -426,7 +427,7 @@ pub fn grid_probe(edges: CellEdges, inset: [f32; 4]) -> AnyElement {
     edge_probe(
         edges,
         [0.0; 4],
-        [crate::value::Color::default(); 4],
+        [crate::style::values::value::Color::default(); 4],
         [0; 4],
         GRID_BOX,
         0,
@@ -437,7 +438,7 @@ pub fn grid_probe(edges: CellEdges, inset: [f32; 4]) -> AnyElement {
 pub fn edge_probe(
     edges: CellEdges,
     widths: [f32; 4],
-    colors: [crate::value::Color; 4],
+    colors: [crate::style::values::value::Color; 4],
     styles: [u8; 4],
     source: u8,
     doc_ix: u32,
@@ -567,7 +568,7 @@ impl Element for EdgePainter {
             style: u8,
             source: u8,
             doc_ix: u32,
-            colour: crate::value::Color,
+            colour: crate::style::values::value::Color,
             /// Наружная сторона крайней линии таблицы (-1/1); 0 — центр.
             outward: i8,
         }
@@ -659,7 +660,7 @@ impl Element for EdgePainter {
         // против жёлтой горизонтали второй — в эталоне угол синий).
         // При равном ключе вертикаль идёт первой — прежний порядок.
         type SegKey = (f32, u8, u8, u32);
-        let mut segs: Vec<(SegKey, bool, Bounds<Pixels>, crate::value::Color)> = Vec::new();
+        let mut segs: Vec<(SegKey, bool, Bounds<Pixels>, crate::style::values::value::Color)> = Vec::new();
         let mut draw = |cands: &mut Vec<Cand>, vertical: bool, grid_lo: Option<f32>| {
             cands.sort_by(|p, q| {
                 p.line

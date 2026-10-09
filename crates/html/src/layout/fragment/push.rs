@@ -1,7 +1,21 @@
 //! Перенос коробок на следующий фрагмент.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::fragment::breaks::{edge_avoid, edge_break};
+use crate::layout::fragment::clone::{clone_dec, solid_box};
+use crate::layout::fragment::fragment_size::shape_full;
+use crate::layout::fragment::grid_bands::{grid_auto_row_bands, grid_items_spotted, grid_stack, grow_grid_track};
+use crate::layout::fragment::line_shape::basis_sized;
+use crate::layout::fragment::probe::size_monolith;
+use crate::layout::fragment::table_bands::{repeat_leads, table_box};
+use crate::layout::fragment::{Shape, ShapeCx};
+use crate::layout::multicol::spanner::parallel_items_inside;
+use crate::layout::table::anon::fixup_table_children;
+use crate::layout::table::is_cell;
+use crate::render::{is_blank, out_of_flow};
+use crate::style::computed::Display;
+use crate::style::values::value::Len;
 
 /// Самая внешняя коробка, начинающаяся ровно в `a` от верха `c`, — перед
 /// ней встаёт распорка роста (`grow_pushed`). Смещения детей — той же
@@ -84,8 +98,8 @@ pub(crate) fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
         && matches!(
             c.style.flex_dir,
             None
-                | Some(crate::computed::FlexDir::Row)
-                | Some(crate::computed::FlexDir::RowReverse)
+                | Some(crate::style::computed::FlexDir::Row)
+                | Some(crate::style::computed::FlexDir::RowReverse)
         )
         && c.style.flex_wrap != Some(true)
         && c.style.webkit_box_vertical != Some(true);
@@ -141,7 +155,7 @@ pub(crate) fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
             (0.0, 0.0, 0.0)
         } else if !k.inline
             && (k.style.position.is_none()
-                || k.style.position == Some(crate::computed::Position::Relative))
+                || k.style.position == Some(crate::style::computed::Position::Relative))
             && k.style.float.unwrap_or(0) == 0
         {
             // Та же база элемента колонки flex, что у `shape_full`.
@@ -354,7 +368,7 @@ pub(crate) fn spacer_before(c: &mut Element, id: u64, grow: f32) -> bool {
     let row_nowrap = is_flex
         && matches!(
             c.style.flex_dir,
-            None | Some(crate::computed::FlexDir::Row) | Some(crate::computed::FlexDir::RowReverse)
+            None | Some(crate::style::computed::FlexDir::Row) | Some(crate::style::computed::FlexDir::RowReverse)
         )
         && c.style.flex_wrap != Some(true)
         && c.style.webkit_box_vertical != Some(true);
@@ -395,7 +409,7 @@ pub(crate) fn spacer_before(c: &mut Element, id: u64, grow: f32) -> bool {
                 k.style.margin.bottom = None;
             }
         }
-        let mut style = crate::computed::Computed::default();
+        let mut style = crate::style::computed::Computed::default();
         style.height = Some(Len::Px(grow));
         style.margin.bottom = prev_mb;
         // Распорка в гибком хозяине — сама элемент: при переносе по строкам
@@ -471,15 +485,15 @@ pub(crate) fn grow_pushed(
     mut kids: Vec<(Element, Shape)>,
     count: usize,
     fixed: Option<f32>,
-    rows: Option<crate::flow::Rows>,
+    rows: Option<crate::layout::fragment::types::Rows>,
     copies: usize,
-    par: &[crate::flow::Par],
+    par: &[crate::layout::fragment::types::Par],
 ) -> Vec<(Element, Shape)> {
     for _ in 0..6 {
-        let probe: Vec<crate::flow::Kid> = kids
+        let probe: Vec<crate::layout::fragment::types::Kid> = kids
             .iter()
             .enumerate()
-            .map(|(i, (c, s))| crate::flow::Kid {
+            .map(|(i, (c, s))| crate::layout::fragment::types::Kid {
                 h: s.0,
                 mt: s.1,
                 mb: s.2,
@@ -515,7 +529,7 @@ pub(crate) fn grow_pushed(
                 par: par.get(i).copied().unwrap_or_default(),
             })
             .collect();
-        let mut grows = crate::flow::ColumnStack::growths(&probe, count, fixed, rows, copies);
+        let mut grows = crate::layout::multicol::column_stack::ColumnStack::growths(&probe, count, fixed, rows, copies);
         // Внутри ребёнка — снизу вверх: правка ниже точки не сдвигает точки
         // выше, и `at` из одного плана остаётся верным для всех записей
         // прохода (рост дорожки иначе находил ряд по устаревшим полосам:
@@ -567,7 +581,7 @@ pub(crate) fn grow_pushed(
 /// сплошного строчного набора (тот же список, что у `monolith` в сборке
 /// стопки, без `break_inside_avoid`).
 pub(crate) fn avoid_only_monolith(c: &Element) -> bool {
-    let scrolls = |o: Option<crate::computed::Overflow>| matches!(o, Some(crate::computed::Overflow::Scroll));
+    let scrolls = |o: Option<crate::style::computed::Overflow>| matches!(o, Some(crate::style::computed::Overflow::Scroll));
     let block_kid = |n: &Node| matches!(n, Node::Element(k) if !k.inline || k.style.display == Some(Display::Block));
     !(size_monolith(c)
         || scrolls(c.style.overflow_x)
@@ -585,7 +599,7 @@ pub(crate) fn avoid_only_monolith(c: &Element) -> bool {
 
 /// Перемера после распорки — с прежними полями у элемента строки flex
 /// (`split_flex_lines` кладёт в поле ещё и `row-gap`).
-pub(crate) fn keep_par_margins(s: Shape, old: &Shape, par: Option<&crate::flow::Par>) -> Shape {
+pub(crate) fn keep_par_margins(s: Shape, old: &Shape, par: Option<&crate::layout::fragment::types::Par>) -> Shape {
     if par.is_some_and(|p| p.group != 0) {
         (s.0, old.1, old.2, s.3, s.4, s.5)
     } else {

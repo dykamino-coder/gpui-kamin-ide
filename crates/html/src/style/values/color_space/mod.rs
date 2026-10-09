@@ -198,7 +198,7 @@ pub fn parse(raw: &str) -> Option<(f32, f32, f32, f32)> {
     // `contrast-color()` — чёрный или белый, что контрастнее к данному цвету
     // (css-color-5 §3): сравниваются отношения контраста к обоим.
     if let Some(body) = inner("contrast-color") {
-        let c = crate::value::Color::parse(body)?;
+        let c = crate::style::values::value::Color::parse(body)?;
         let y = 0.2126 * srgb_linear(c.r) + 0.7152 * srgb_linear(c.g) + 0.0722 * srgb_linear(c.b);
         let against_white = 1.05 / (y + 0.05);
         let against_black = (y + 0.05) / 0.05;
@@ -441,8 +441,8 @@ fn color_fn(body: &str) -> Option<(f32, f32, f32, f32)> {
 /// `mix_in`, что считает точки градиента: смесь-стоп эталона и точка
 /// градиента теста сходятся по построению.
 fn color_mix(body: &str) -> Option<(f32, f32, f32, f32)> {
-    use crate::computed::GradSpace as S;
-    let mut it = crate::css::split_args(body).into_iter();
+    use crate::style::computed::GradSpace as S;
+    let mut it = crate::style::css::split_args(body).into_iter();
     // css-color-5 §2.1: пара смешивается «as described in
     // [[css-color-4#interpolation]]», дугой тона управляет
     // <hue-interpolation-method>, по умолчанию shorter. Blink несёт
@@ -512,7 +512,7 @@ fn color_mix(body: &str) -> Option<(f32, f32, f32, f32)> {
     // (background.rs). У непрозрачной пары доля остаётся `w2`, и `in srgb`
     // даёт прежнее `first·w1 + second·w2`.
     let k = if alpha > 0.0 { w2 * second.3 / alpha } else { w2 };
-    let colour = |c: (f32, f32, f32, f32)| crate::value::Color {
+    let colour = |c: (f32, f32, f32, f32)| crate::style::values::value::Color {
         r: c.0,
         g: c.1,
         b: c.2,
@@ -530,9 +530,9 @@ fn color_mix(body: &str) -> Option<(f32, f32, f32, f32)> {
 /// преобразования им пока не заведены.
 pub(crate) fn resolve_relative(
     expr: &str,
-    current: crate::value::Color,
-) -> Option<crate::value::Color> {
-    use crate::value::Color;
+    current: crate::style::values::value::Color,
+) -> Option<crate::style::values::value::Color> {
+    use crate::style::values::value::Color;
     // Голое слово: цвет текста этого же элемента.
     if expr.eq_ignore_ascii_case("currentcolor") {
         return Some(current);
@@ -554,7 +554,7 @@ pub(crate) fn resolve_relative(
     let name = expr[..open].trim();
     let inner = expr[open + 1..].trim().strip_suffix(')')?;
     let rest = inner.trim().strip_prefix("from ")?;
-    let words = crate::computed::split_outside_parens(rest);
+    let words = crate::style::computed::split_outside_parens(rest);
     let base_tok = words.first()?;
     let base = if base_tok.eq_ignore_ascii_case("currentcolor") {
         current
@@ -657,13 +657,13 @@ pub(crate) fn resolve_relative(
 /// (§12.4). Прозрачность сюда не входит — она линейна всегда и считается
 /// вызывающим.
 pub(crate) fn mix_in(
-    space: crate::computed::GradSpace,
+    space: crate::style::computed::GradSpace,
     hue: u8,
-    a: crate::value::Color,
-    b: crate::value::Color,
+    a: crate::style::values::value::Color,
+    b: crate::style::values::value::Color,
     k: f32,
 ) -> (f32, f32, f32) {
-    use crate::computed::GradSpace as S;
+    use crate::style::computed::GradSpace as S;
     let lerp = |x: f32, y: f32| x + (y - x) * k;
     match space {
         S::Srgb => gamut_map(lerp(a.r, b.r), lerp(a.g, b.g), lerp(a.b, b.b)),
@@ -762,12 +762,12 @@ fn hue_arc(from: f32, to: f32, method: u8, k: f32) -> f32 {
 }
 
 /// sRGB → OKLab: кривая снимается, дальше готовая матрица (§9.2).
-fn srgb_to_oklab(c: crate::value::Color) -> (f32, f32, f32) {
+fn srgb_to_oklab(c: crate::style::values::value::Color) -> (f32, f32, f32) {
     linear_srgb_to_oklab(srgb_linear(c.r), srgb_linear(c.g), srgb_linear(c.b))
 }
 
 /// sRGB → CIE Lab при точке белого D50 (§10.3) — обратное к `lab_to_srgb`.
-fn srgb_to_lab(c: crate::value::Color) -> (f32, f32, f32) {
+fn srgb_to_lab(c: crate::style::values::value::Color) -> (f32, f32, f32) {
     const K: f32 = 24389.0 / 27.0;
     const E: f32 = 216.0 / 24389.0;
     let lin = [srgb_linear(c.r), srgb_linear(c.g), srgb_linear(c.b)];
@@ -787,7 +787,7 @@ fn gamut_map_tuple(v: (f32, f32, f32)) -> (f32, f32, f32) {
 }
 
 /// sRGB → HSL: тон в градусах, насыщенность и светлота в долях.
-pub(crate) fn rgb_to_hsl(c: crate::value::Color) -> (f32, f32, f32) {
+pub(crate) fn rgb_to_hsl(c: crate::style::values::value::Color) -> (f32, f32, f32) {
     let (max, min) = (c.r.max(c.g).max(c.b), c.r.min(c.g).min(c.b));
     let l = (max + min) / 2.0;
     if (max - min).abs() < 1e-6 {
@@ -903,7 +903,7 @@ thread_local! {
 pub fn load_profiles(css: &str) {
     PROFILES.with(|p| p.borrow_mut().clear());
     // Комментарии срезаются ДО поиска — как у `@font-face` (fonts::faces).
-    let css = &crate::css::strip_comments(css);
+    let css = &crate::style::css::strip_comments(css);
     let lower = css.to_ascii_lowercase();
     let mut from = 0usize;
     while let Some(at) = lower[from..].find("@color-profile") {
@@ -934,7 +934,7 @@ pub fn load_profiles(css: &str) {
         }) else {
             continue;
         };
-        let Some(path) = crate::computed::parse_url(&src) else {
+        let Some(path) = crate::style::computed::parse_url(&src) else {
             continue;
         };
         let clean = path.strip_prefix("file:///").unwrap_or(&path);

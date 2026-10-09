@@ -1,7 +1,8 @@
 //! Conic gradient rays in CSS coordinates, sampled at device pixel centers.
 
-use super::{Source, angle_fraction, colour_at, len_px, place_stops, split_top, wrap_repeat};
-use crate::computed::parse_pos_words;
+use crate::style::values::color_space::gradient_colour_at as colour_at;
+use super::{Source, angle_fraction, len_px, place_stops, split_top, wrap_repeat};
+use crate::style::computed::parse_pos_words;
 use gpui::RenderImage;
 use std::sync::Arc;
 
@@ -18,7 +19,7 @@ pub(super) fn rasterize(raw: &str, size: (f32, f32), density: f32) -> Option<Arc
     let repeating = raw.starts_with("repeating-");
     let raw = raw.strip_prefix("repeating-").unwrap_or(raw);
     let inner = raw.strip_prefix("conic-gradient(")?.strip_suffix(')')?;
-    let parts = crate::css::split_args(inner);
+    let parts = crate::style::css::split_args(inner);
     let mut idx = 0;
     let mut from = 0.0;
     let mut center = (size.0 * 0.5, size.1 * 0.5);
@@ -61,10 +62,10 @@ pub(super) fn rasterize(raw: &str, size: (f32, f32), density: f32) -> Option<Arc
     let mut colors = Vec::new();
     let mut raw_stops = Vec::new();
     for part in &parts[idx..] {
-        let words = crate::computed::split_outside_parens(part);
+        let words = crate::style::computed::split_outside_parens(part);
         let Some(color) = words
             .first()
-            .and_then(|w| crate::color_space::interpolation_color(w))
+            .and_then(|w| crate::style::values::color_space::interpolation_color(w))
         else {
             continue;
         };
@@ -83,7 +84,7 @@ pub(super) fn rasterize(raw: &str, size: (f32, f32), density: f32) -> Option<Arc
         return None;
     }
     // Reuse interpolation-space selection and hue rules for all gradient kinds.
-    let method = crate::computed::parse_gradient(&format!(
+    let method = crate::style::computed::parse_gradient(&format!(
         "linear-gradient({interpolation}{})",
         colors.join(", ")
     ))?;

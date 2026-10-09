@@ -1,7 +1,9 @@
 //! Липкие коробки `position: sticky`.
 // owner: A
 
-use crate::render::*;
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
+use gpui::{AnyElement, IntoElement, Styled};
 
 pub mod element;
 
@@ -14,10 +16,10 @@ pub mod element;
 ///
 /// Абсолютная и во весь родитель: так её собственный прямоугольник и есть
 /// коробка родителя, а обрезка на замере — это видимая часть прокрутки.
-pub(crate) fn sticky_probe(frame: crate::interact::StickyCell) -> AnyElement {
+pub(crate) fn sticky_probe(frame: crate::interactive::sticky::element::StickyCell) -> AnyElement {
     gpui::canvas(
         move |bounds, window, _| {
-            frame.set(crate::interact::StickyFrame {
+            frame.set(crate::interactive::sticky::element::StickyFrame {
                 container: Some(bounds),
                 viewport: Some(window.content_mask().bounds),
             });
@@ -39,10 +41,10 @@ pub(crate) fn sticky_probe(frame: crate::interact::StickyCell) -> AnyElement {
 pub(crate) fn sticky_wrap(
     el: AnyElement,
     c: &Computed,
-    frame: &crate::interact::StickyCell,
+    frame: &crate::interactive::sticky::element::StickyCell,
     allowed: bool,
 ) -> AnyElement {
-    if c.position != Some(crate::computed::Position::Sticky) {
+    if c.position != Some(crate::style::computed::Position::Sticky) {
         return el;
     }
     let side = |l: Option<Len>| match l {
@@ -52,7 +54,7 @@ pub(crate) fn sticky_wrap(
         // только на отрисовке, поэтому берём ноль — как `top: 0`.
         Some(_) => Some(0.0),
     };
-    let mut wrapper = crate::interact::Sticky::new(el, frame.clone());
+    let mut wrapper = crate::interactive::sticky::element::Sticky::new(el, frame.clone());
     wrapper.top = side(c.inset.top);
     wrapper.bottom = side(c.inset.bottom);
     wrapper.left = side(c.inset.left);

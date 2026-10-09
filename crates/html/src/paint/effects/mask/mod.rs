@@ -1,7 +1,7 @@
 //! Маски.
 // owner: A
 
-use crate::render::*;
+use crate::dom::Node;
 
 pub mod element;
 pub(crate) mod mask_geometry;

@@ -1,9 +1,7 @@
 //! Resolve mask image sizes with the CSS background image sizing algorithm.
-use crate::{
-    background::{Intrinsic, tile_size},
-    computed::BgSize,
-    value::Len,
-};
+use crate::paint::background::{Intrinsic, tile_size};
+use crate::style::computed::BgSize;
+use crate::style::values::value::Len;
 use gpui::{Bounds, Pixels, Point, point, px, size};
 
 pub(crate) fn snap_tile(at: Point<Pixels>, tile: (f32, f32), scale: f32) -> Bounds<Pixels> {

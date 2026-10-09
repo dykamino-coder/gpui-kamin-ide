@@ -1,6 +1,7 @@
 //! line-clamp и text-overflow: обрезка строк, многоточие, маркеры.
 
 use crate::text::paragraph::*;
+use gpui::{Pixels, Window, px};
 
 impl Paragraph {
     /// `line-clamp`: строк остаётся не больше заданного числа, а на последней

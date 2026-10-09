@@ -34,9 +34,9 @@
 //! отрисовка), проход отдаёт `None`, и работают ровно те ветки, что работали
 //! раньше: `path()` и `ray()` с пиксельным `offset-distance`.
 
-use crate::computed::{Computed, Position};
+use crate::style::computed::{Computed, Position};
 use crate::dom::Node;
-use crate::value::Len;
+use crate::style::values::value::Len;
 
 mod ellipse_path;
 
@@ -161,7 +161,7 @@ fn walk(nodes: &mut [Node], parent: Option<(Cb, bool)>) {
         let Node::Element(e) = n else { continue };
         // Геометрия снимается ДО правки стиля: `transform` на размеры коробки
         // не влияет, но порядок так честнее читается.
-        let mine = cb_of(&e.style).map(|g| (g, crate::inline::establishes_cb(&e.style)));
+        let mine = cb_of(&e.style).map(|g| (g, crate::text::inline::establishes_cb(&e.style)));
         if e.style.offset_path.is_some() {
             let cb = parent
                 .filter(|(_, est)| cb_is_parent(&e.style, *est))
@@ -350,9 +350,9 @@ fn offset_transform_css(c: &Computed, cb: Option<&Cb>) -> Option<String> {
     let d = if func.is_empty() {
         // Голый `<coord-box>` = `inset(0 round X)` (§offset-path); слово
         // передаём любое — `rrect_of` берёт из него только размер и радиусы.
-        crate::background::motion_shape_d("border-box", rb.2, rb.3, g.radius)?
+        crate::paint::background::motion_shape_d("border-box", rb.2, rb.3, g.radius)?
     } else {
-        crate::background::motion_shape_d(&shape, rb.2, rb.3, g.radius)?
+        crate::paint::background::motion_shape_d(&shape, rb.2, rb.3, g.radius)?
     };
     // Путь строится в системе ОПОРНОЙ коробки, а `transform` живёт в системе
     // самой коробки: сдвигаем на разницу их начал.
@@ -435,7 +435,7 @@ fn path_css(c: &Computed, d: &str, shift: (f32, f32)) -> Option<String> {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(p)) => p * total,
         // Смесь долей и точек: доля — от длины пути (css-values-4 §10.9).
-        Some(Len::Calc(i)) => crate::value::calc_get(i)
+        Some(Len::Calc(i)) => crate::style::values::value::calc_get(i)
             .pct_px()
             .map_or(0.0, |(p, px)| p * total + px),
         _ => 0.0,

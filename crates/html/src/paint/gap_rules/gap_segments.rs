@@ -1,18 +1,19 @@
 //! Form ordered CSS gap decoration segments before extending their endpoints.
 
-use crate::interact::{GapAxisRule, GapRun, subtract};
+use crate::paint::gap_rules::GapAxisRule;
+use crate::paint::gap_rules::geometry::{GapRun, subtract};
 
 // CSS Gaps 1 §3.3: overlap-join reaches the far edge of the crossing
 // decoration; main-direction junctions use half the crossing gap only.
 fn inset_px(
-    inset: crate::computed::GapInset,
+    inset: crate::style::computed::GapInset,
     cw: f32,
     joins: bool,
     cross_w: f32,
     main_like: bool,
 ) -> f32 {
-    use crate::computed::GapInset;
-    use crate::value::Len;
+    use crate::style::computed::GapInset;
+    use crate::style::values::value::Len;
     match inset {
         GapInset::Len(Len::Px(v)) => v,
         GapInset::Len(Len::Pct(k)) => k * cw,

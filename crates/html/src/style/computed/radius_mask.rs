@@ -1,7 +1,7 @@
 //! Select the raster corner mask when circular quad radii cannot express the CSS shape.
 
 use super::{Computed, Overflow};
-use crate::value::Len;
+use crate::style::values::value::Len;
 
 impl Computed {
     /// Use the group mask for elliptical, shaped, or oversized nonuniform corners.
@@ -19,7 +19,7 @@ impl Computed {
         // the two box axes happen to be equal.
         let calculated = radii.iter().any(|r| match r {
             Some(Len::Calc(i)) => {
-                let sum = crate::value::calc_get(*i);
+                let sum = crate::style::values::value::calc_get(*i);
                 sum.has_percentage || sum.pct != 0.0
             }
             _ => false,
@@ -76,7 +76,7 @@ impl Computed {
         // там нет, снимать скругление квада нельзя.
         let font_len = |l: Option<Len>| match l {
             Some(Len::Pct(p)) => Some(p),
-            Some(l) => crate::metrics::fallback_len_px(l, "", 16.0),
+            Some(l) => crate::text::metrics::fallback_len_px(l, "", 16.0),
             None => None,
         };
         if self.contain_paint == Some(true)

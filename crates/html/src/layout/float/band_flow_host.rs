@@ -1,7 +1,23 @@
 //! Поток полос: дети и охранники полос.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::block::containing::{AVAIL_W, AvailWGuard, CB_WIDTH, scopeguard_cb};
+use crate::layout::float::band_clearance::supported as band_clear_supported;
+use crate::layout::float::band_host::{BandPiece, band_margins, band_piece, px_margin_box};
+use crate::layout::float::band_measured::{band_nest_ok, band_piece_m, has_ruby};
+use crate::layout::float::band_nest::{band_nest, cont_indent};
+use crate::layout::float::float_atom::band_atom;
+use crate::layout::replaced::image::image;
+use crate::layout::writing_mode::native_vertical;
+use crate::paint::effects::grouped::grouped;
+use crate::paint::effects::paint_scope::DepthScope;
+use crate::paint::effects::paint_scope::snapshot as defer_depth;
+use crate::render::{RenderOpts, block_level_in_flow, blocks, content_wrapper, element, inline_level, is_blank, out_of_flow, own_context, replaced_tag, styled_div_with};
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
+use gpui::{AnyElement, IntoElement, ParentElement};
 
 thread_local! {
     /// Письмо содержащего блока, для которого `wrap_floats` собирает хост:
@@ -131,7 +147,7 @@ pub(crate) fn flow_interior_plain(c: &Element) -> bool {
             // `text-box-trim-float-clear-br-001` терял 0.00 → 16.21.
             if k.style.clear.is_some()
                 && c.style.text_box_trim_end
-                && c.style.text_box_under != crate::computed::TextEdge::Text
+                && c.style.text_box_under != crate::style::computed::TextEdge::Text
             {
                 return false;
             }
@@ -169,7 +185,7 @@ pub(crate) fn abs_pinned(c: &Computed) -> bool {
     let set = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
     matches!(
         c.position,
-        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
     ) && (set(c.inset.top) || set(c.inset.bottom))
         && (set(c.inset.left) || set(c.inset.right))
 }
@@ -557,7 +573,7 @@ pub(crate) fn band_kids(
                 // статического хоста.
                 copy.style.float = None;
                 copy.style.clear = None;
-                copy.style.margin = crate::computed::Sides::default();
+                copy.style.margin = crate::style::computed::Sides::default();
                 // Флоат заводит свой контекст форматирования (§9.4.1), а
                 // `float` с копии снят — метка остаётся: по ней дети флоата
                 // узнают корень БФК (`parent_bfc` у `wrap_floats` — §10.6.7:
@@ -626,7 +642,7 @@ pub(crate) fn band_kids(
                     );
                 if copy.attr("atoms") == Some("1") {
                     // Прогон атомов: `FlowRow` режет строки вырезами полос.
-                    let atoms: Vec<crate::flow::FlowChild> = copy
+                    let atoms: Vec<crate::layout::fragment::types::FlowChild> = copy
                         .children
                         .iter()
                         .filter_map(|n| match n {
@@ -639,7 +655,7 @@ pub(crate) fn band_kids(
                         .flow_shapes
                         .clone()
                         .unwrap_or_else(|| std::sync::Arc::new((Vec::new(), Vec::new())));
-                    return crate::flow::FlowRow::new(atoms, shapes, inherited.rtl == Some(true)).into_any_element();
+                    return crate::layout::fragment::types::FlowRow::new(atoms, shapes, inherited.rtl == Some(true)).into_any_element();
                 }
                 // Замещаемый флоат, кроме `<img>` (`embed`, `object`,
                 // `video`…), — своей веткой `element` ниже: каркас блока со
@@ -663,8 +679,8 @@ pub(crate) fn band_kids(
                     // же путём, что у статического хоста (`shape_flow`).
                     // Таблица — своей веткой `element` ниже: каркас блока её
                     // не соберёт.
-                    let mut merged = inline::inherit(&inherited, &copy.style);
-                    merged.margin = crate::computed::Sides::default();
+                    let mut merged = inherit(&inherited, &copy.style);
+                    merged.margin = crate::style::computed::Sides::default();
                     if copy.tag == "img" {
                         grouped(image(&copy), &copy.style)
                     } else {

@@ -1,6 +1,6 @@
 //! Replaced content keeps an inline box when given an internal table display.
 
-use crate::computed::{Computed, Display, Position};
+use crate::style::computed::{Computed, Display, Position};
 
 /// CSS Display 3 section 2.4 requires this used display before whitespace
 /// removal and anonymous table fixup, rather than only when painting content.

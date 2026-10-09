@@ -1,7 +1,14 @@
 //! Кадры анимаций и переходов.
 // owner: A
 
-use crate::render::*;
+use crate::animation::animation_frame;
+use crate::dom::Element;
+use crate::paint::effects::paint_scope::DepthScope;
+use crate::paint::effects::paint_scope::snapshot as defer_depth;
+use crate::render::{RenderOpts, element};
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
+use gpui::{AnyElement, IntoElement};
 
 /// Обернуть элемент плавным переходом, если он задан.
 ///
@@ -58,7 +65,7 @@ pub(crate) fn frame_at(frames: &[(f32, Computed)], t: f32) -> Computed {
     if let (Some(a), Some(b)) = (prev.1.opacity, next.1.opacity) {
         out.opacity = Some(lerp(a, b));
     }
-    let mix = |a: crate::value::Color, b: crate::value::Color| crate::value::Color {
+    let mix = |a: crate::style::values::value::Color, b: crate::style::values::value::Color| crate::style::values::value::Color {
         r: lerp(a.r, b.r),
         g: lerp(a.g, b.g),
         b: lerp(a.b, b.b),
@@ -76,7 +83,7 @@ pub(crate) fn frame_at(frames: &[(f32, Computed)], t: f32) -> Computed {
             (Len::Pct(x), Len::Pct(y)) => Some(Len::Pct(lerp(x, y))),
             // Разные природы (`0px → 200vw`, `0% → 200vw`) — покомпонентно,
             // как `calc()`; несводимая смесь — ближайший кадр.
-            (x, y) => Some(crate::value::lerp_len(x, y, k).unwrap_or(x)),
+            (x, y) => Some(crate::style::values::value::lerp_len(x, y, k).unwrap_or(x)),
         }
     };
     out.width = len(prev.1.width, next.1.width).or(out.width);
@@ -87,12 +94,12 @@ pub(crate) fn frame_at(frames: &[(f32, Computed)], t: f32) -> Computed {
         let a = prev
             .1
             .filter
-            .unwrap_or_else(crate::computed::Filter::neutral);
+            .unwrap_or_else(crate::style::computed::Filter::neutral);
         let b = next
             .1
             .filter
-            .unwrap_or_else(crate::computed::Filter::neutral);
-        out.filter = Some(crate::computed::Filter {
+            .unwrap_or_else(crate::style::computed::Filter::neutral);
+        out.filter = Some(crate::style::computed::Filter {
             grayscale: lerp(a.grayscale, b.grayscale),
             brightness: lerp(a.brightness, b.brightness),
             saturate: lerp(a.saturate, b.saturate),
@@ -117,12 +124,12 @@ pub(crate) fn frame_at(frames: &[(f32, Computed)], t: f32) -> Computed {
         let a = prev
             .1
             .backdrop_color
-            .unwrap_or_else(crate::computed::Filter::neutral);
+            .unwrap_or_else(crate::style::computed::Filter::neutral);
         let b = next
             .1
             .backdrop_color
-            .unwrap_or_else(crate::computed::Filter::neutral);
-        out.backdrop_color = Some(crate::computed::Filter {
+            .unwrap_or_else(crate::style::computed::Filter::neutral);
+        out.backdrop_color = Some(crate::style::computed::Filter {
             grayscale: lerp(a.grayscale, b.grayscale),
             brightness: lerp(a.brightness, b.brightness),
             saturate: lerp(a.saturate, b.saturate),
@@ -139,12 +146,12 @@ pub(crate) fn frame_at(frames: &[(f32, Computed)], t: f32) -> Computed {
     // Цвет — в умноженном на альфу виде: `black → transparent` на середине
     // даёт `rgba(0,0,0,0.5)` (`css-filters-animation-drop-shadow`).
     if prev.1.drop_shadow.is_some() || next.1.drop_shadow.is_some() {
-        let none = crate::computed::Shadow {
+        let none = crate::style::computed::Shadow {
             x: 0.0,
             y: 0.0,
             blur: 0.0,
             spread: 0.0,
-            color: crate::value::Color {
+            color: crate::style::values::value::Color {
                 r: 0.0,
                 g: 0.0,
                 b: 0.0,
@@ -161,12 +168,12 @@ pub(crate) fn frame_at(frames: &[(f32, Computed)], t: f32) -> Computed {
                 0.0
             }
         };
-        out.drop_shadow = Some(crate::computed::Shadow {
+        out.drop_shadow = Some(crate::style::computed::Shadow {
             x: lerp(a.x, b.x),
             y: lerp(a.y, b.y),
             blur: lerp(a.blur, b.blur),
             spread: lerp(a.spread, b.spread),
-            color: crate::value::Color {
+            color: crate::style::values::value::Color {
                 r: pm(a.color.r, b.color.r),
                 g: pm(a.color.g, b.color.g),
                 b: pm(a.color.b, b.color.b),

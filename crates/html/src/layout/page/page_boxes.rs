@@ -1,13 +1,20 @@
 //! Page margin boxes use generated content inside their resolved border boxes.
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::page::names::{PageMarginDecls, PageMarginDeclsFn};
+use crate::layout::page::page_counters;
+use crate::render::{RenderOpts, blocks};
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
+use gpui::{AnyElement, IntoElement, ParentElement, div};
 
 pub(crate) fn builder(
     declarations: PageMarginDeclsFn,
     root: Computed,
     opts: RenderOpts,
     counters: page_counters::PageCounters,
-) -> crate::flow::MarginFn {
+) -> crate::layout::page::page_stack::MarginFn {
     let counters = std::cell::RefCell::new(counters);
     std::rc::Rc::new(move |i, name, pages, geometry| {
         page_margin_boxes(
@@ -32,11 +39,11 @@ fn page_margin_boxes(
     decls: &PageMarginDecls,
     page: usize,
     pages: usize,
-    g: &crate::flow::PageGeom,
+    g: &crate::layout::page::page_stack::PageGeom,
     root: &Computed,
     opts: &RenderOpts,
     counters: &mut page_counters::PageCounters,
-) -> Vec<crate::flow::MarginBox> {
+) -> Vec<crate::layout::page::page_stack::MarginBox> {
     let (ctx, boxes) = decls;
     let mut ctx_own = Computed::default();
     for (k, v) in ctx {
@@ -44,7 +51,7 @@ fn page_margin_boxes(
     }
     page_counters::resolve(&mut ctx_own, root);
     counters.begin(page, pages, &ctx_own);
-    let ctx_style = inline::inherit(root, &ctx_own);
+    let ctx_style = inherit(root, &ctx_own);
     let mut out = Vec::new();
     for (slot, list) in boxes {
         let Some(place) = crate::page_margin::place(slot) else {
@@ -62,7 +69,7 @@ fn page_margin_boxes(
         if content == "none" || content == "normal" {
             continue;
         }
-        let Some(items) = crate::computed::parse_content(&content)
+        let Some(items) = crate::style::computed::parse_content(&content)
             .and_then(|items| crate::dom::resolve_content_attributes(&items, &[], false))
         else {
             continue;
@@ -77,7 +84,7 @@ fn page_margin_boxes(
             }
         }
         page_counters::resolve(&mut own, &ctx_own);
-        let resolved = inline::inherit(&ctx_style, &own);
+        let resolved = inherit(&ctx_style, &own);
         let fs = match resolved.font_size {
             Some(Len::Px(v)) => v,
             _ => 16.0,
@@ -189,7 +196,7 @@ fn page_margin_boxes(
             }
         };
         let probe = build(None);
-        out.push(crate::flow::MarginBox {
+        out.push(crate::layout::page::page_stack::MarginBox {
             place,
             make: std::rc::Rc::new(move |w, h| build(Some((w, h)))),
             probe,
@@ -205,16 +212,16 @@ fn page_margin_boxes(
 // CSS Paged Media 3 §populating-margin-boxes uses the ordinary generated
 // content model (CSS Content 3 §2), including quotes and inline images.
 fn content_nodes(
-    items: &[crate::computed::ContentItem],
+    items: &[crate::style::computed::ContentItem],
     style: &Computed,
-    counters: &mut crate::counters::Counters,
+    counters: &mut crate::style::generated::counters::Counters,
 ) -> Vec<Node> {
-    use crate::computed::ContentItem;
+    use crate::style::computed::ContentItem;
     let mut children = Vec::new();
     let mut run = Vec::new();
     let flush = |run: &mut Vec<ContentItem>,
                  children: &mut Vec<Node>,
-                 counters: &mut crate::counters::Counters| {
+                 counters: &mut crate::style::generated::counters::Counters| {
         if !run.is_empty() {
             children.push(Node::Text(crate::dom::content_text(
                 run,
@@ -230,7 +237,7 @@ fn content_nodes(
         if let ContentItem::Image(src) = item {
             flush(&mut run, &mut children, counters);
             if let Some(src) = crate::dom::content_image_src(src) {
-                let mut image = crate::render::anon_element("img", vec![]);
+                let mut image = crate::layout::table::anon::anon_element("img", vec![]);
                 image.inline = true;
                 image.attrs.push(("src".into(), src));
                 children.push(Node::Element(image));

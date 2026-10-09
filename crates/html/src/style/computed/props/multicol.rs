@@ -1,6 +1,7 @@
 //! Computed::apply_one: column*, break-*, *-rule*, margin-trim, page, orphans/widows.
 
 use crate::style::computed::*;
+use crate::style::values::value::{Color, Len};
 
 impl Computed {
     #[allow(unused_variables)]
@@ -495,7 +496,7 @@ pub(crate) fn gap_rule(entry: &str) -> Option<(Option<Len>, Option<bool>, Option
 pub(crate) fn gap_list<T: Copy>(v: &str, one: impl Fn(&str) -> Option<T>) -> Option<GapList<T>> {
     let mut out = GapList { lead: vec![], auto: vec![], tail: vec![] };
     let mut seen_auto = false;
-    for entry in crate::css::split_args(v) {
+    for entry in crate::style::css::split_args(v) {
         let entry = entry.trim();
         let Some(inner) = entry
             .strip_prefix("repeat(")
@@ -509,7 +510,7 @@ pub(crate) fn gap_list<T: Copy>(v: &str, one: impl Fn(&str) -> Option<T>) -> Opt
             }
             continue;
         };
-        let args = crate::css::split_args(inner);
+        let args = crate::style::css::split_args(inner);
         let (count, vals) = args.split_first()?;
         let vals: Vec<T> = vals.iter().map(|s| one(s.trim())).collect::<Option<Vec<T>>>()?;
         if vals.is_empty() {

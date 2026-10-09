@@ -31,7 +31,7 @@ pub(crate) mod size_range;
 pub(crate) mod content_functions;
 pub(crate) use content_functions::parse_content;
 pub(crate) mod outline_style;
-use outline_style::parse as outline_style_of;
+use crate::style::computed::outline_style::parse as outline_style_of;
 pub(crate) use outline_style::DOUBLE as OUTLINE_DOUBLE;
 pub(crate) mod props;
 pub(crate) mod resolve;
@@ -39,10 +39,7 @@ pub(crate) mod queries;
 #[cfg(test)]
 pub(crate) mod snapshot_tests;
 
-pub(crate) use crate::css::{Decls, Rule};
-pub(crate) use crate::value::{Color, Len};
-pub(crate) use crate::style::cascade::vars::*;
-pub(crate) use crate::style::cascade::defaults::*;
+use crate::style::values::value::Len;
 pub(crate) mod fields;
 pub use crate::style::computed::fields::*;
 pub(crate) mod transform;
@@ -191,14 +188,14 @@ mod tests {
             &super::super::css::parse_decls("color: var(--c, rgba(0,0,0,.5))"),
             &vars,
         );
-        assert_eq!(c.color, crate::value::Color::parse("red"));
+        assert_eq!(c.color, crate::style::values::value::Color::parse("red"));
         // Незаданная переменная берёт запасное значение ЦЕЛИКОМ.
         let mut c = super::Computed::default();
         c.apply_decls_with_vars(
             &super::super::css::parse_decls("color: var(--none, rgba(0,0,0,1))"),
             &super::super::css::Decls::new(),
         );
-        assert_eq!(c.color, crate::value::Color::parse("rgba(0,0,0,1)"));
+        assert_eq!(c.color, crate::style::values::value::Color::parse("rgba(0,0,0,1)"));
     }
 
     #[test]
@@ -223,7 +220,7 @@ mod tests {
         };
         let mut matched = vec![&early, &late];
         let c = super::Computed::resolve(&mut matched, &super::super::css::Decls::new());
-        assert_eq!(c.color, crate::value::Color::parse("red"));
+        assert_eq!(c.color, crate::style::values::value::Color::parse("red"));
     }
 
     #[test]
@@ -248,7 +245,7 @@ mod tests {
         };
         let mut matched = vec![&ua, &author];
         let c = super::Computed::resolve(&mut matched, &super::super::css::Decls::new());
-        assert_eq!(c.margin.top, Some(super::Len::Px(0.0)));
+        assert_eq!(c.margin.top, Some(crate::style::values::value::Len::Px(0.0)));
     }
 
     #[test]
@@ -258,13 +255,14 @@ mod tests {
         // страница набиралась чужим шрифтом.
         let mut c = super::Computed::default();
         c.apply_one("font", "50px / 1 Ahem");
-        assert_eq!(c.font_size, Some(super::Len::Px(50.0)));
-        assert_eq!(c.line_height, Some(super::Len::Pct(1.0)));
+        assert_eq!(c.font_size, Some(crate::style::values::value::Len::Px(50.0)));
+        assert_eq!(c.line_height, Some(crate::style::values::value::Len::Pct(1.0)));
         assert_eq!(c.font_family.as_deref(), Some("Ahem"));
     }
 
     use super::*;
-    use crate::css::parse_decls;
+    use crate::style::css::Decls;
+    use crate::style::css::parse_decls;
 
     fn computed(css: &str) -> Computed {
         let mut c = Computed::default();
@@ -422,12 +420,12 @@ mod tests {
 
     #[test]
     fn cascade_order_specificity_then_inline() {
-        let rules = crate::css::parse_stylesheet(".a { color: red } div.a { color: blue }");
-        let mut matched: Vec<&crate::css::Rule> = rules.iter().collect();
+        let rules = crate::style::css::parse_stylesheet(".a { color: red } div.a { color: blue }");
+        let mut matched: Vec<&crate::style::css::Rule> = rules.iter().collect();
         let c = Computed::resolve(&mut matched, &parse_decls("color: green"));
         assert_eq!(c.color.map(|c| c.g), Some(0.5019608), "инлайн бьёт таблицу");
 
-        let mut matched: Vec<&crate::css::Rule> = rules.iter().collect();
+        let mut matched: Vec<&crate::style::css::Rule> = rules.iter().collect();
         let c = Computed::resolve(&mut matched, &Decls::new());
         assert_eq!(
             c.color.map(|c| c.b),
@@ -440,7 +438,7 @@ mod tests {
 #[cfg(test)]
 mod gradient_tests {
     use super::*;
-    use crate::css::parse_decls;
+    use crate::style::css::parse_decls;
 
     fn c(css: &str) -> Computed {
         let mut c = Computed::default();

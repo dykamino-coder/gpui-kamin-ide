@@ -1,6 +1,8 @@
 //! Continue column gap decorations to the edge of a fragment's suppressed gutter.
 
-use crate::interact::{GapAxisRule, GapRun, segments};
+use crate::paint::gap_rules::GapAxisRule;
+use crate::paint::gap_rules::gap_segments::segments;
+use crate::paint::gap_rules::geometry::GapRun;
 use gpui::{Bounds, ContentMask, Hsla, Pixels, TransformationMatrix, Window, point, px, size};
 
 pub(crate) fn paint(
@@ -10,7 +12,7 @@ pub(crate) fn paint(
     rule: &GapAxisRule,
     color: Hsla,
 ) {
-    let Some(scope) = crate::flow::gap_fragment::current() else {
+    let Some(scope) = crate::layout::fragment::gap_fragment::current() else {
         return;
     };
     if window.current_transformation() != TransformationMatrix::unit()

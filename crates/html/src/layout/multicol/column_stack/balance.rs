@@ -1,7 +1,8 @@
 //! Балансировка колонок.
 // owner: A
 
-use crate::flow::*;
+use crate::layout::fragment::types::{Frag, Kid, NotTop, Rows, StackAxis};
+use crate::layout::multicol::column_stack::ColumnStack;
 
 impl ColumnStack {
     /// Укладка стопки: её высота, линии колонок `(y, высота)`, план кусков и

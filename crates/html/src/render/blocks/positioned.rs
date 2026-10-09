@@ -1,7 +1,14 @@
 //! Позиционированные дети потока блоков: держатель краёв и слой статической позиции.
 // owner: A
 
+use crate::dom::Element;
+use crate::layout::block::struts::margin_px;
+use crate::layout::positioned::static_position::{static_line_align, static_self_align};
+use crate::paint::stacking::{layered, stacking_context};
 use crate::render::*;
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn static_position_layer(
@@ -38,8 +45,8 @@ pub(crate) fn static_position_layer(
     // (CSS 2.1 §9.9, шаг 3), поэтому в верхний слой он не идёт:
     // там его место — поверх всего.
     let below = e.style.z_index.is_some_and(|z| z < 0);
-    let spot: crate::interact::SpotCell = Default::default();
-    spot.set(crate::interact::Spot {
+    let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
+    spot.set(crate::layout::positioned::containing_block::Spot {
         rtl: inherited.rtl == Some(true),
         vertical: inherited.vertical == Some(true),
         vertical_rl: inherited.vertical_rl == Some(true),
@@ -52,7 +59,7 @@ pub(crate) fn static_position_layer(
         self_align: static_self_align(e, inherited),
         ..Default::default()
     });
-    let probe = crate::interact::spot_probe(spot.clone(), true);
+    let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), true);
     // Поля сдвигают абсолютный элемент ОТ статической позиции
     // (CSS 2.1 §10.3.7: auto-края = static + margin). Раскладка
     // под нами поля у absolute без краёв не считает — сдвиг
@@ -99,12 +106,12 @@ pub(crate) fn static_position_layer(
     let taken = if below {
         Some(built)
     } else if paint_last_ok(e, &nodes[idx + 1..]) {
-        crate::interact::late_push(
+        crate::layout::positioned::containing_block::late_push(
             spot,
             gpui::PaintLast::new(built).key(paint_key).into_any_element(),
         )
     } else {
-        crate::interact::late_push(spot, built)
+        crate::layout::positioned::containing_block::late_push(spot, built)
     };
     match taken {
         None => out.push(probe),
@@ -133,13 +140,13 @@ pub(crate) fn static_position_layer(
             let kept = if below
                 && matches!(
                     inherited.position,
-                    Some(crate::computed::Position::Relative)
-                        | Some(crate::computed::Position::Absolute)
+                    Some(crate::style::computed::Position::Relative)
+                        | Some(crate::style::computed::Position::Absolute)
                 )
                 && !inherited.cb_ancestor
                 && !stacking_context(inherited)
             {
-                crate::interact::Underlay::new(kept).into_any_element()
+                crate::paint::effects::underlay::Underlay::new(kept).into_any_element()
             } else {
                 kept
             };
@@ -186,9 +193,9 @@ pub(crate) fn inset_holder_box(
     holder.z_index = e.style.z_index;
     holder.display = Some(Display::Flex);
     holder.flex_dir = Some(if block_axis {
-        crate::computed::FlexDir::Col
+        crate::style::computed::FlexDir::Col
     } else {
-        crate::computed::FlexDir::Row
+        crate::style::computed::FlexDir::Row
     });
     // Поля вдоль оси остаются у ВНУТРЕННЕЙ коробки: auto-поля
     // элемента гибкого контейнера забирают остаток, а при нехватке
@@ -243,7 +250,7 @@ pub(crate) fn inset_holder_box(
         inner.style.margin.bottom = None;
     }
     inner.style.z_index = None;
-    crate::apply::apply(div(), &holder)
+    crate::style::apply::apply(div(), &holder)
         .child(element(&inner, inherited, opts))
         .into_any_element()
 }

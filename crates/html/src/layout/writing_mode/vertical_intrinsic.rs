@@ -1,8 +1,8 @@
 //! Physical height is the inline axis of vertical text, including intrinsic sizes.
 //! CSS Sizing 3 §5.1: max-content is not capped by available inline space.
-use crate::computed::Computed;
-use crate::computed::orthogonal::{InlineConstraint, InlineKeyword};
-use crate::value::Len;
+use crate::style::computed::Computed;
+use crate::style::computed::orthogonal::{InlineConstraint, InlineKeyword};
+use crate::style::values::value::Len;
 
 pub(super) fn constraint(
     style: &Computed,
@@ -17,7 +17,7 @@ pub(super) fn constraint(
         Some(Len::FitContent) => InlineKeyword::FitContent,
         _ => return None,
     };
-    let axis = crate::render::orthogonal_inline::axis(style, true);
+    let axis = crate::layout::writing_mode::orthogonal_inline::axis(style, true);
     Some((
         keyword,
         InlineConstraint {

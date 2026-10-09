@@ -1,7 +1,9 @@
 //! Градиент из пяти и более стопов полосами.
 // owner: A
 
-use crate::render::*;
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 pub(crate) fn gradient_stripes(
     c: &Computed,
@@ -52,7 +54,7 @@ pub(crate) fn gradient_stripes(
                     continue;
                 }
                 let (from, to) = (a.0, b.0);
-                let band = crate::computed::Gradient {
+                let band = crate::style::computed::Gradient {
                     angle_deg: if vertical { 180.0 } else { 90.0 },
                     radial: false,
                     circle: false,
@@ -65,7 +67,7 @@ pub(crate) fn gradient_stripes(
                     space: g.space,
                     hue: g.hue,
                 };
-                let layer = div().absolute().bg(crate::apply::fill(&band));
+                let layer = div().absolute().bg(crate::style::apply::fill(&band));
                 bands.push(
                     match (vertical, reverse) {
                         (true, false) => layer.left_0().right_0().top(px(p0)).h(px(p1 - p0)),
@@ -109,7 +111,7 @@ pub(crate) fn gradient_stripes(
                     (p0, p1) = (1.0 - p1, 1.0 - p0);
                     (from, to) = (to, from);
                 }
-                let band = crate::computed::Gradient {
+                let band = crate::style::computed::Gradient {
                     angle_deg: g.angle_deg,
                     radial: false,
                     circle: false,
@@ -122,7 +124,7 @@ pub(crate) fn gradient_stripes(
                     space: g.space,
                     hue: g.hue,
                 };
-                let mut layer = div().absolute().bg(crate::apply::fill(&band));
+                let mut layer = div().absolute().bg(crate::style::apply::fill(&band));
                 // «Первая» полоса по направлению отрисовки, а не по списку:
                 // при обратном направлении список развёрнут.
                 let first_edge = if reverse { idx == last_band } else { idx == 0 };

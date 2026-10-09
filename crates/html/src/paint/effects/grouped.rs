@@ -1,7 +1,10 @@
 //! Сгруппированная покраска (непрозрачность, обрезка).
 // owner: A
 
-use crate::render::*;
+use crate::paint::effects::mask::{PAINT_VIEWPORT, mask_geometry, resolve_mask_refs};
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
+use gpui::{AnyElement, IntoElement};
 
 /// Точки стороны коробки: только явный `px` (None непроходной).
 pub(crate) fn px_of2(l: &Option<Len>) -> Option<f32> {
@@ -49,7 +52,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
             Len::Px(_) | Len::Pct(_) => l,
             Len::Vw(k) => Len::Px(k * poly_vp.0),
             Len::Vh(k) => Len::Px(k * poly_vp.1),
-            other => crate::metrics::fallback_len_px(other, &poly_family, poly_font)
+            other => crate::text::metrics::fallback_len_px(other, &poly_family, poly_font)
                 .map(Len::Px)
                 .unwrap_or(other),
         }
@@ -84,7 +87,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     let rrect = c.radius_masked().then(|| {
         let mut own = c.clone();
         own.resolve_radius_lengths(|r| *r = r.map(poly_unit));
-        format!("shape:{}", crate::background::rrect_spec(&own, None))
+        format!("shape:{}", crate::paint::background::rrect_spec(&own, None))
     });
     // `border-shape` (css-borders-4): фон и содержимое режутся ВНЕШНИМ
     // контуром рамки (Blink клипует фон внешней фигурой, у двух фигур —
@@ -97,7 +100,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         let (stroke, colour) = c.border_shape_stroke();
         // Рамка, несущая заливку `border-area`, видима — маска берёт внешнюю
         // фигуру, как у цветной рамки.
-        let colour = crate::background::border_paint(c, colour);
+        let colour = crate::paint::background::border_paint(c, colour);
         // Обрезка переполнения — ВНУТРЕННИМ контуром (css-borders-4
         // §border-shape-overflow-interaction; Blink `InnerPath`): у двух фигур
         // внутренняя, у одной — внешняя минус обводка (отрицательная обводка
@@ -127,8 +130,8 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
             _ => 16.0,
         };
         let family = c.font_family.clone().unwrap_or_default();
-        let (ch, ex) = crate::metrics::ch_ex_px(&family, px);
-        crate::computed::font_lengths_to_px(&s, px, crate::value::root_font_px(), ex, ch)
+        let (ch, ex) = crate::text::metrics::ch_ex_px(&family, px);
+        crate::style::computed::font_lengths_to_px(&s, px, crate::style::values::value::root_font_px(), ex, ch)
     });
     let mask = c
         .mask_image
@@ -154,7 +157,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
             let family = c.font_family.clone().unwrap_or_default();
             sides.map(|l| match l {
                 Some(Len::Px(v)) => Some(v),
-                Some(other) => Some(crate::metrics::spacing_px(Some(other), &family, base)),
+                Some(other) => Some(crate::text::metrics::spacing_px(Some(other), &family, base)),
                 None => None,
             })
         })
@@ -162,7 +165,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         .filter(|_| {
         matches!(
             c.position,
-            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
         )
     });
     // Голое слово коробки — срез краями этой коробки от border-box:
@@ -251,7 +254,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         && clip_inset.is_none()
         && c.clip_edges.is_none()
         && c.clip_xywh.is_none();
-    let mut wrapper = crate::interact::Grouped::new(el);
+    let mut wrapper = crate::paint::effects::grouped_element::Grouped::new(el);
     wrapper.spill = pure_isolation || mask_geometry::unclipped(c);
     wrapper.blur = blur;
     wrapper.blend = u32::from(blend);
@@ -272,7 +275,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
             .map(|(s, k)| (s, c.geometry_outsets(k)));
         let shadows = c.resolved_shadows(false);
         wrapper.under = Some(Box::new(move |bw, bh, sl, st, aw, ah| {
-            crate::background::border_shape_shadow_svg(
+            crate::paint::background::border_shape_shadow_svg(
                 (bs.outer.as_str(), outer_out),
                 inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
                 stroke,
@@ -296,7 +299,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         && c.border_shape_clips()
     {
         let (stroke, colour) = c.border_shape_stroke();
-        let colour = crate::background::border_paint(c, colour);
+        let colour = crate::paint::background::border_paint(c, colour);
         let outer_out = c.geometry_outsets(bs.outer_box);
         let inner = bs
             .inner
@@ -304,7 +307,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
             .map(|(s, k)| (s, c.geometry_outsets(k)));
         if (inner.is_some() || stroke > 0.0) && colour.a > 0.0 {
             wrapper.over.push(Box::new(move |bw, bh, sl, st, aw, ah| {
-                crate::background::border_shape_ring_svg(
+                crate::paint::background::border_shape_ring_svg(
                     (bs.outer.as_str(), outer_out),
                     inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
                     stroke,
@@ -333,9 +336,9 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         let double = c
             .outline
             .as_ref()
-            .is_some_and(|o| o.style == Some(crate::computed::OUTLINE_DOUBLE));
+            .is_some_and(|o| o.style == Some(crate::style::computed::OUTLINE_DOUBLE));
         wrapper.over.push(Box::new(move |bw, bh, sl, st, aw, ah| {
-            crate::background::border_shape_outline_svg(
+            crate::paint::background::border_shape_outline_svg(
                 (bs.outer.as_str(), outer_out),
                 single,
                 stroke,

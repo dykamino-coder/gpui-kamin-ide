@@ -1,7 +1,8 @@
 //! Structural table borders participate in the same grid-edge width as cells.
 //! CSS 2.1 §17.6.2–17.6.2.1 includes rows, row groups, columns and column groups.
 
-use crate::render::{Element, col_elements, col_role, colgroup_elements};
+use crate::dom::Element;
+use crate::layout::table::columns::{col_elements, col_role, colgroup_elements};
 
 pub(super) struct Edges<'a> {
     rows: &'a [&'a Element],
@@ -36,12 +37,12 @@ impl<'a> Edges<'a> {
     fn widths(&self, element: &Element) -> [f32; 4] {
         let border = element.style.borders();
         let font = match element.style.font_size {
-            Some(crate::value::Len::Px(size)) => size,
+            Some(crate::style::values::value::Len::Px(size)) => size,
             _ => self.font,
         };
         let family = element.style.font_family.as_deref().unwrap_or(self.family);
         [border.top, border.right, border.bottom, border.left]
-            .map(|length| crate::metrics::spacing_px(length, family, font))
+            .map(|length| crate::text::metrics::spacing_px(length, family, font))
     }
 
     pub(super) fn cell(&self, r: usize, c: usize, sr: usize, sc: usize) -> [f32; 4] {

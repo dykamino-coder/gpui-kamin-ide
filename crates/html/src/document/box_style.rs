@@ -7,7 +7,7 @@ use super::any_side;
 /// `body { width: 600px; position: relative }` — обычный способ задать
 /// систему координат странице, и снятая обёртка уносила её с собой: проценты
 /// внутри считались от окна, а абсолютные дети — от другого предка.
-pub(super) fn has_box_style(c: &crate::computed::Computed) -> bool {
+pub(super) fn has_box_style(c: &crate::style::computed::Computed) -> bool {
     // Page margin counters read the document's counter scope. Removing these
     // wrappers would erase the directives before render_paged sees the tree.
     c.counter_reset.is_some()

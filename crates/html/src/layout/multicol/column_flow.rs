@@ -1,7 +1,17 @@
 //! Поток колонок.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::fragment::line_shape::nested_rows_box;
+use crate::layout::fragment::probe::size_monolith;
+use crate::paint::effects::paint_scope::DepthScope;
+use crate::paint::effects::paint_scope::snapshot as defer_depth;
+use crate::render::{RenderOpts, blocks, is_blank, measure_font, split_nodes};
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
+use crate::text::text_box::normal_fraction;
+use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
 
 // ★ ЗАМЕРЕНО И ОТКАЧЕНО (11.09, `scout-mctextflow-2026-09.md`, пакет A,
 // 3 хунка): рекурсия `column_flow` переносит `column-gap`/`column-fill`,
@@ -83,7 +93,7 @@ pub(crate) fn column_flow_in(
         if nested_rows_box(only) {
             return None;
         }
-        let inside = inline::inherit(inherited, &only.style);
+        let inside = inherit(inherited, &only.style);
         return column_flow_in(only, &inside, opts, count, col_w, whole || size_monolith(only), stretch);
     }
     // `<br>` — жёсткий разрыв: в собранном тексте он помечается U+2028,
@@ -183,14 +193,14 @@ pub(crate) fn column_flow_in(
         Some(Len::Em(k)) => k * size,
         _ => 3.0,
     };
-    let rule_owned: Option<(f32, crate::value::Color)> =
+    let rule_owned: Option<(f32, crate::style::values::value::Color)> =
         if e.style.column_rule_visible == Some(true) {
             Some((
                 rule_px(&e.style.column_rule_width, size),
                 e.style
                     .column_rule_color
                     .or(inherited.color)
-                    .unwrap_or(crate::value::Color {
+                    .unwrap_or(crate::style::values::value::Color {
                         r: 0.0,
                         g: 0.0,
                         b: 0.0,

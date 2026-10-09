@@ -1,6 +1,6 @@
 //! Preserve intrinsic size keywords through the GPUI/native layout boundary.
-use crate::computed::Computed;
-use crate::value::Len;
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
 use gpui::CssSizingKeyword;
 
 /// Percentages and functional fit need the native content-box contract: their

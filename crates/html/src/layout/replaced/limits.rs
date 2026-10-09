@@ -1,7 +1,10 @@
 //! Пределы размеров замещаемых элементов.
 // owner: A
 
-use crate::render::*;
+use crate::dom::Element;
+use crate::render::{RenderOpts, replaced_tag};
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
 
 /// Ключевое слово содержимого в `min-width`/`max-width` при `width` в точках.
 ///

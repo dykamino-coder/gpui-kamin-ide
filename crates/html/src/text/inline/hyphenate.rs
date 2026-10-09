@@ -1,6 +1,7 @@
 //! Переносы: hyphenate_pieces и места разрыва.
 
 use crate::text::inline::*;
+use crate::style::computed::Computed;
 
 /// `hyphens: auto` — расставить знаки мягкого переноса по слогоразделу.
 ///
@@ -158,7 +159,7 @@ pub(crate) fn breakable(text: &str, style: &Computed) -> String {
     // нужна только ЧУЖОМУ набору — он о мягком переносе не знает.
     let owned = if style.hyphenate == Some(false) {
         text.replace('\u{00ad}', "")
-    } else if crate::lines::rules(style).is_some() {
+    } else if crate::text::paragraph::rules(style).is_some() {
         text.to_string()
     } else {
         text.replace('\u{00ad}', "\u{200b}")
@@ -167,7 +168,7 @@ pub(crate) fn breakable(text: &str, style: &Computed) -> String {
     // правила считает сама и по НАСТОЯЩЕМУ тексту, поэтому подсказки ей
     // только мешают: невидимый знак становится лишней точкой разрыва и
     // сдвигает границы прогонов.
-    if crate::lines::rules(style).is_some() {
+    if crate::text::paragraph::rules(style).is_some() {
         return owned;
     }
     // `white-space: break-spaces`: после КАЖДОГО сохранённого пробела есть

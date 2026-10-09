@@ -1,6 +1,25 @@
 //! Блочный поток: дети блока в элементы (blocks).
 
+use crate::style::cascade::inherit::inherit;
 use crate::render::*;
+use crate::dom::Node;
+use crate::interactive::sticky::sticky_probe;
+use crate::layout::block::containing::{AVAIL_W, AvailWGuard, CB_WIDTH, scopeguard_cb};
+use crate::layout::block::margins::{CELL_BFC, COLLAPSE_CB_HEIGHT_DEF, COLLAPSE_CB_WIDTH_PX, COLLAPSE_FONT_PX, collapse_margins};
+use crate::layout::block::reorder::reorder;
+use crate::layout::block::struts::zero_len;
+use crate::layout::block::{available_width, margin_height};
+use crate::layout::float::band_flow_host::{BAND_CBH, BAND_CBW, BAND_FL, BAND_WM, BandCbhGuard, BandCbwGuard, BandFlGuard, BandWmGuard};
+use crate::layout::float::initial_letter::initial_letter_float;
+use crate::layout::float::wrap::wrap_floats;
+use crate::layout::page::paged::PAGED;
+use crate::layout::positioned::relative::hoist_inset_abs;
+use crate::layout::replaced::replaced_used_style;
+use crate::layout::table::anon::wrap_anon_tables;
+use crate::paint::stacking::by_layer;
+use crate::style::computed::{Align, Computed, Display, FlexDir};
+use crate::style::values::value::Len;
+use gpui::AnyElement;
 pub(crate) mod flow;
 pub(crate) mod positioned;
 pub(crate) mod canvas;
@@ -69,7 +88,7 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
         || inherited.transform.is_some()
         || inherited.contain_layout == Some(true)
         || inherited.contain_paint == Some(true)
-        || inherited.will_change & crate::computed::wc::CB_FIXED != 0;
+        || inherited.will_change & crate::style::computed::wc::CB_FIXED != 0;
     let ordered_context = matches!(
         inherited.display,
         Some(Display::Flex)
@@ -196,13 +215,13 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
         // Определённость высоты блока для ДОЛЕЙ высоты детей — тем же
         // предикатом, что у слитого стиля (`inline::inherit`): он зависит
         // только от родителя, а сырой стиль ребёнка признака ещё не несёт.
-        let cb_h_def = inline::inherit(inherited, &Computed::default()).cb_height_def;
+        let cb_h_def = inherit(inherited, &Computed::default()).cb_height_def;
         let prev_h = COLLAPSE_CB_HEIGHT_DEF.with(|c| c.replace(cb_h_def));
         let mut out = collapse_margins(
             nodes,
             matches!(
                 inherited.position,
-                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
             ),
         );
         margin_height::zero_float_blocks(&mut out, inherited);
@@ -298,8 +317,8 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
                         let edge = |l: Option<Len>| l.is_some_and(|v| v != Len::Auto);
                         let abs_both_insets = matches!(
                             inherited.position,
-                            Some(crate::computed::Position::Absolute)
-                                | Some(crate::computed::Position::Fixed)
+                            Some(crate::style::computed::Position::Absolute)
+                                | Some(crate::style::computed::Position::Fixed)
                         ) && matches!(inherited.height, None | Some(Len::Auto))
                             && edge(inherited.inset.top)
                             && edge(inherited.inset.bottom);
@@ -331,8 +350,8 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
                         && matches!(e.style.height, Some(Len::Pct(_)))
                         && !matches!(
                             e.style.position,
-                            Some(crate::computed::Position::Absolute)
-                                | Some(crate::computed::Position::Fixed)
+                            Some(crate::style::computed::Position::Absolute)
+                                | Some(crate::style::computed::Position::Fixed)
                         )
                     {
                         let edge = |l: Option<Len>| l.is_some_and(|v| v != Len::Auto);
@@ -341,8 +360,8 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
                                 && inherited.cb_height_def)
                             || (matches!(
                                 inherited.position,
-                                Some(crate::computed::Position::Absolute)
-                                    | Some(crate::computed::Position::Fixed)
+                                Some(crate::style::computed::Position::Absolute)
+                                    | Some(crate::style::computed::Position::Fixed)
                             ) && edge(inherited.inset.top)
                                 && edge(inherited.inset.bottom))
                             || inherited.stretched
@@ -351,14 +370,14 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
                         if !cross_definite {
                             e.style.height = None;
                             let stretch = match e.style.align_self {
-                                Some(a) => a == crate::computed::Align::Stretch,
+                                Some(a) => a == crate::style::computed::Align::Stretch,
                                 None => matches!(
                                     inherited.align_items,
-                                    None | Some(crate::computed::Align::Stretch)
+                                    None | Some(crate::style::computed::Align::Stretch)
                                 ),
                             };
                             if stretch {
-                                e.style.align_self = Some(crate::computed::Align::Start);
+                                e.style.align_self = Some(crate::style::computed::Align::Start);
                             }
                         }
                     }
@@ -369,8 +388,8 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
                     // действует). Их место — здесь, среди детей ряда/сетки.
                     let positioned_out = matches!(
                         e.style.position,
-                        Some(crate::computed::Position::Absolute)
-                            | Some(crate::computed::Position::Fixed)
+                        Some(crate::style::computed::Position::Absolute)
+                            | Some(crate::style::computed::Position::Fixed)
                     );
                     // `<canvas>` в сетке: атрибуты `width/height` — природный
                     // размер и соотношение сторон, а не CSS-размер (HTML
@@ -469,8 +488,8 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
                         let row = matches!(
                             inherited.flex_dir,
                             None
-                                | Some(crate::computed::FlexDir::Row)
-                                | Some(crate::computed::FlexDir::RowReverse)
+                                | Some(crate::style::computed::FlexDir::Row)
+                                | Some(crate::style::computed::FlexDir::RowReverse)
                         );
                         let extra = if row {
                             px_of(e.style.padding.left)
@@ -601,7 +620,7 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     // `monolithic-overflow-020-print`).
     let measured_ok = !flex_ctx
         && inherited.line_clamp.is_none()
-        && crate::interact::clamp_context().is_none()
+        && crate::text::clamp::clamp_context().is_none()
         && !PAGED.with(std::cell::Cell::get)
         && !matches!(
             inherited.display,
@@ -745,8 +764,8 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
                             ))
                         && !matches!(
                             e.style.position,
-                            Some(crate::computed::Position::Absolute)
-                                | Some(crate::computed::Position::Fixed)
+                            Some(crate::style::computed::Position::Absolute)
+                                | Some(crate::style::computed::Position::Fixed)
                         )
                     {
                         e.style.align_self = Some(Align::End);
@@ -784,8 +803,8 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
                         && matches!(e.style.display, None | Some(Display::Block))
                         && !matches!(
                             e.style.position,
-                            Some(crate::computed::Position::Absolute)
-                                | Some(crate::computed::Position::Fixed)
+                            Some(crate::style::computed::Position::Absolute)
+                                | Some(crate::style::computed::Position::Fixed)
                         )
                     {
                         e.style.align_self = Some(Align::End);
@@ -819,8 +838,8 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
                         && matches!(e.style.display, None | Some(Display::Block))
                         && !matches!(
                             e.style.position,
-                            Some(crate::computed::Position::Absolute)
-                                | Some(crate::computed::Position::Fixed)
+                            Some(crate::style::computed::Position::Absolute)
+                                | Some(crate::style::computed::Position::Fixed)
                         )
                     {
                         e.style.align_self = Some(Align::End);
@@ -836,8 +855,8 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
                     // (css-sizing-4 §5.1; `zero-or-infinity-002`).
                     let positioned_out = matches!(
                         e.style.position,
-                        Some(crate::computed::Position::Absolute)
-                            | Some(crate::computed::Position::Fixed)
+                        Some(crate::style::computed::Position::Absolute)
+                            | Some(crate::style::computed::Position::Fixed)
                     );
                     let ratio_ok = e.style.aspect_ratio.is_some_and(|r| r.is_finite() && r > 0.0);
                     if ratio_ok
@@ -881,7 +900,7 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     let collapsed: Vec<Node> = if ordered_context {
         let in_flow = |n: &Node| match n {
             Node::Element(e) => {
-                e.style.position != Some(crate::computed::Position::Absolute)
+                e.style.position != Some(crate::style::computed::Position::Absolute)
                     || e.style.z_index.is_some_and(|z| z < 0)
             }
             Node::Text(_) => true,
@@ -916,17 +935,17 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     // родителя и видимая часть ленты. Их снимает распорка — она идёт первой,
     // потому что готовит замер до отрисовки детей.
     let sticky = collapsed.iter().any(|n| match n {
-        Node::Element(e) => e.style.position == Some(crate::computed::Position::Sticky),
+        Node::Element(e) => e.style.position == Some(crate::style::computed::Position::Sticky),
         _ => false,
     });
-    let frame: crate::interact::StickyCell = Default::default();
+    let frame: crate::interactive::sticky::element::StickyCell = Default::default();
     if sticky {
         out.push(sticky_probe(frame.clone()));
     }
     let pending: Vec<Node> = vec![];
     // Слой верхней отрисовки этого контейнера: позиционированные элементы
     // складывают сюда содержимое, а забирается оно последними детьми.
-    crate::interact::late_open();
+    crate::layout::positioned::containing_block::late_open();
     let nodes = collapsed.as_slice();
     blocks_flow(
         nodes,

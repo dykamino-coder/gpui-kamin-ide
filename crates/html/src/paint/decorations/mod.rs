@@ -1,7 +1,14 @@
 //! Украшения коробки: тени, рамки по форме, слои градиентов.
 // owner: A
 
-use crate::render::*;
+use crate::paint::decorations::backdrop::backdrop_matrix;
+use crate::paint::decorations::border_shape::border_shape_layer;
+use crate::paint::decorations::gradient_stripes::gradient_stripes;
+use crate::paint::decorations::shadows::{inset_shadows, outer_shadows};
+use crate::paint::effects::mask::mask_def;
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
+use gpui::{AnyElement, IntoElement, Styled, div, px};
 
 pub(crate) mod outline;
 pub(crate) mod text_shadows;
@@ -42,7 +49,7 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
             _ => "none".to_string(),
         };
         out.push(
-            crate::interact::FilterLayer {
+            crate::paint::effects::filter::FilterLayer {
                 def,
                 id: id.to_string(),
                 fill,
@@ -56,18 +63,18 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     // механикой, снизу вверх — первый в списке рисуется последним, поверх.
     if let Some(layers) = c.bg_layers() {
         for l in layers.iter().rev() {
-            if let Some(layer) = crate::background::layer(l) {
+            if let Some(layer) = crate::paint::background::layer(l) {
                 out.push(layer);
             }
         }
-    } else if let Some(layer) = crate::background::layer(c) {
+    } else if let Some(layer) = crate::paint::background::layer(c) {
         out.push(layer);
     } else if c.gradient_as_tile() {
         // Градиент с размером/повтором/позицией — той же механикой плитки:
         // источник понимает записи `linear-gradient(...)`.
         let mut tiled = c.clone();
         tiled.bg_image = tiled.gradient_raw.clone();
-        if let Some(layer) = crate::background::layer(&tiled) {
+        if let Some(layer) = crate::paint::background::layer(&tiled) {
             out.push(layer);
         }
     }
@@ -82,7 +89,7 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     // Квад цвета не получает (`apply::apply_paint`); слой повторяет толщины,
     // стиль и скругление рамки и вынесен на толщину сторон — абсолютный
     // ребёнок отсчитывается от padding-box (как полосы сторон ниже).
-    if let Some((colour, [t, r, b, l])) = crate::apply::border_layer(c) {
+    if let Some((colour, [t, r, b, l])) = crate::style::apply::border_layer(c) {
         let mut layer = div()
             .absolute()
             .top(px(-t))
@@ -107,7 +114,7 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
         // Скругление — как у квада (`apply::apply_radius`): при маске группы
         // или `border-shape` квад углов не получает, и слой тоже.
         if !c.radius_masked() && c.border_shape.is_none() {
-            let rad = |l: Option<Len>| crate::apply::radius_px(c, l).unwrap_or(0.0);
+            let rad = |l: Option<Len>| crate::style::apply::radius_px(c, l).unwrap_or(0.0);
             layer = layer
                 .rounded_tl(px(rad(c.radius.tl)))
                 .rounded_tr(px(rad(c.radius.tr)))
@@ -121,7 +128,7 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     // трети толщины, зазор — остаток (Blink
     // `BorderEdge::GetDoubleBorderStripeWidths`: 50 → 17/16/17, 5 → 2/1/2).
     // Квад и слой рамки её не красят (`apply::double_border`).
-    if let Some((colour, [t, r, b, l])) = crate::apply::double_border(c) {
+    if let Some((colour, [t, r, b, l])) = crate::style::apply::double_border(c) {
         let third = |w: f32| (w / 3.0).round();
         let (o_t, o_r, o_b, o_l) = (third(t), third(r), third(b), third(l));
         let mut outer = div()
@@ -148,7 +155,7 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
             .border_l(px(o_l))
             .border_color(colour.to_hsla());
         if !c.radius_masked() {
-            let rad = |x: Option<Len>| crate::apply::radius_px(c, x).unwrap_or(0.0);
+            let rad = |x: Option<Len>| crate::style::apply::radius_px(c, x).unwrap_or(0.0);
             let shrink = |x: Option<Len>, a: f32, b: f32| (rad(x) - a.max(b)).max(0.0);
             outer = outer
                 .rounded_tl(px(rad(c.radius.tl)))
@@ -194,14 +201,14 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
             let colour = uniform
                 .or(c.border_color)
                 .or(c.color)
-                .unwrap_or(crate::value::Color {
+                .unwrap_or(crate::style::values::value::Color {
                     r: 0.0,
                     g: 0.0,
                     b: 0.0,
                     a: 1.0,
                 });
-            let colour = crate::background::border_paint(c, colour);
-            let spec = crate::background::rrect_spec(c, Some(widths));
+            let colour = crate::paint::background::border_paint(c, colour);
+            let spec = crate::paint::background::rrect_spec(c, Some(widths));
             let [t, r, b, l] = widths;
             out.push(
                 gpui::canvas(
@@ -215,7 +222,7 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
                         );
                         let args = spec.trim_start_matches("rrect(").trim_end_matches(')');
                         if let Some(img) =
-                            crate::background::rasterize_ring(args, pw, ph, sf, colour)
+                            crate::paint::background::rasterize_ring(args, pw, ph, sf, colour)
                         {
                             let _ = window.paint_image_with_sampling(bounds, gpui::Corners::default(), img, 0, false, gpui::ImageSampling::Linear);
                         }
@@ -236,7 +243,7 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     border_shape_layer(c, &mut out);
 
     // Рамка-картинка рисуется ПОВЕРХ фона и заменяет обычную рамку.
-    if let Some(layer) = crate::border_image::layer(c) {
+    if let Some(layer) = crate::paint::border_image::layer(c) {
         out.push(layer);
     }
 
@@ -278,7 +285,7 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
         // Сторона без своего цвета красится общим `border-color`, а без него —
         // цветом текста (`currentColor`): квад при полосах цвета не получает
         // (`apply::apply_paint`, `strips`), и такая сторона иначе пропала бы.
-        let fallback = c.border_color.or(c.color).unwrap_or(crate::value::Color {
+        let fallback = c.border_color.or(c.color).unwrap_or(crate::style::values::value::Color {
             r: 0.0,
             g: 0.0,
             b: 0.0,

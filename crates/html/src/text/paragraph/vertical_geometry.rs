@@ -1,6 +1,7 @@
 //! Paint native vertical text about the matching physical edge for both sideways directions.
 
 use super::*;
+use gpui::{Bounds, Pixels, Point, point, px};
 
 impl Paragraph {
     pub(super) fn vertical_line_extent(&self) -> Pixels {
@@ -63,6 +64,7 @@ impl Paragraph {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::size;
 
     #[test]
     fn clockwise_left_flow_anchors_content_in_a_stretched_physical_box() {

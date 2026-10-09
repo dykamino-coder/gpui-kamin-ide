@@ -10,7 +10,7 @@
 use std::hash::{Hash, Hasher};
 
 use super::Computed;
-use crate::css::parse_decls;
+use crate::style::css::parse_decls;
 
 fn digest(c: &Computed) -> u64 {
     let mut h = std::hash::DefaultHasher::new();

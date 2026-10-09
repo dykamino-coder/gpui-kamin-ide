@@ -1,7 +1,7 @@
 //! Покраска правил промежутков.
 // owner: A
 
-use crate::interact::*;
+use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window, px};
 
 pub mod geometry;
 pub mod painter;
@@ -154,13 +154,13 @@ impl IntoElement for GapItemProbe {
 #[derive(Clone, Debug)]
 pub struct GapAxisRule {
     /// Ширина, цвет и видимость стиля — по промежуткам (§lists).
-    pub widths: crate::computed::GapList<f32>,
-    pub colors: crate::computed::GapList<crate::value::Color>,
-    pub styles: crate::computed::GapList<bool>,
+    pub widths: crate::style::computed::GapList<f32>,
+    pub colors: crate::style::computed::GapList<crate::style::values::value::Color>,
+    pub styles: crate::style::computed::GapList<bool>,
     /// §break: 0 `none`, 1 `normal`, 2 `intersection`.
     pub brk: u8,
     /// §inset: [cap-start, cap-end, junction-start, junction-end].
-    pub inset: [crate::computed::GapInset; 4],
+    pub inset: [crate::style::computed::GapInset; 4],
     /// §visibility-items: 0 `normal`, 1 `all`, 2 `around`, 3 `between`.
     pub visibility: u8,
     /// `double` style: two lines of a third of the width each, the rest a

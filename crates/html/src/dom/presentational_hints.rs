@@ -1,6 +1,6 @@
 //! HTML presentational attributes at the DOM/cascade boundary.
-use crate::computed::Computed;
-use crate::css::{Rule, Selector, parse_decls};
+use crate::style::computed::Computed;
+use crate::style::css::{Rule, Selector, parse_decls};
 
 /// HTML rendering §15.3.8: cell nowrap is a presentational hint, with a
 /// nonzero-length width exception in quirks mode. Author CSS takes precedence.
@@ -8,7 +8,7 @@ pub(super) fn nowrap(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
     if !matches!(tag, "td" | "th") || !attrs.iter().any(|(k, _)| k == "nowrap") {
         return None;
     }
-    let normal = super::quirks() && attrs.iter().any(|(k, v)| k == "width" && nonzero_length(v));
+    let normal = crate::style::select::quirks() && attrs.iter().any(|(k, v)| k == "width" && nonzero_length(v));
     hint(if normal {
         "white-space: normal"
     } else {
@@ -104,7 +104,7 @@ pub(super) fn colors(style: &mut Computed, tag: &str, attrs: &[(String, String)]
         attrs
             .iter()
             .find(|(k, _)| k == name)
-            .and_then(|(_, v)| crate::value::Color::parse(v.trim()))
+            .and_then(|(_, v)| crate::style::values::value::Color::parse(v.trim()))
     };
     if matches!(tag, "body" | "table" | "tr" | "td" | "th")
         && style.background.is_none()

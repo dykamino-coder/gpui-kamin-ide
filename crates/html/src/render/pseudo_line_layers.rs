@@ -1,6 +1,8 @@
 //! Install a block container's own first-line and first-letter layers.
 
-use super::{Computed, Element, Len};
+use crate::dom::Element;
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
 
 /// CSS 2 sections 5.12.1-5.12.2 apply to block containers, including
 /// inline-blocks and table cells. These specialized render paths must seed

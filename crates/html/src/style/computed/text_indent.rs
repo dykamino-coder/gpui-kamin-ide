@@ -1,7 +1,7 @@
 //! Resolve text indentation while preserving an explicit inheritance request.
 
 use super::{Computed, split_outside_parens};
-use crate::value::Len;
+use crate::style::values::value::Len;
 
 pub(super) fn apply(style: &mut Computed, value: &str) {
     // CSS Cascade §7.3.2: inherit overrides an earlier specified value.

@@ -1,16 +1,20 @@
 //! Мелкие общие помощники сборки: шрифт замера, деление узлов, ключи текста, сбор текста.
 
+use crate::dom::Node;
 use crate::render::*;
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
+use gpui::{Styled, px};
 
 pub(crate) fn measure_font(c: &Computed, opts: &RenderOpts) -> gpui::Font {
     let mut font = opts.text.font();
-    font.fallbacks = crate::computed::font_family::fallbacks(c, font.fallbacks);
+    font.fallbacks = crate::style::computed::font_family::fallbacks(c, font.fallbacks);
     if let Some(family) = c.font_family.as_ref().filter(|f| !f.is_empty()) {
-        font.family = crate::fonts::alias_stretch(family, c.font_stretch)
+        font.family = crate::text::fonts::alias_stretch(family, c.font_stretch)
             .unwrap_or_else(|| family.clone())
             .into();
     } else if c.monospace == Some(true) {
-        font.family = crate::metrics::mono_family_for(c.lang.as_deref()).into();
+        font.family = crate::text::metrics::mono_family_for(c.lang.as_deref()).into();
     }
     if let Some(w) = c.font_weight {
         font.weight = gpui::FontWeight(w as f32);

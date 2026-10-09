@@ -10,9 +10,9 @@
 //! none of them establishes a formatting context, and the root has no border
 //! that would show its float-containing height.
 
-use crate::computed::Display;
+use crate::style::computed::Display;
 use crate::dom::Node;
-use crate::value::Len;
+use crate::style::values::value::Len;
 
 pub(super) fn mark(nodes: &mut [Node]) {
     for node in nodes.iter_mut() {

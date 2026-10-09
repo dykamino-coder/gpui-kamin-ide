@@ -1,9 +1,7 @@
 //! Grid and flex items preserve their own margins on both physical axes.
 //! Horizontal block-margin collapse applies only to ordinary vertical block flow.
-use crate::{
-    computed::{Computed, Display},
-    dom::Node,
-};
+use crate::dom::Node;
+use crate::style::computed::{Computed, Display};
 
 pub(crate) fn children(
     children: Vec<Node>,
@@ -23,19 +21,19 @@ pub(crate) fn children(
     ) {
         children
     } else {
-        crate::render::collapse_flow_margins(children, reverse, lead)
+        crate::layout::block::margins::collapse_flow_margins(children, reverse, lead)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::Len;
+    use crate::style::values::value::Len;
 
     fn items() -> Vec<Node> {
         (0..3)
             .map(|_| {
-                let mut element = crate::render::anon_element("div", vec![Node::Text("É".into())]);
+                let mut element = crate::layout::table::anon::anon_element("div", vec![Node::Text("É".into())]);
                 element.style.margin.left = Some(Len::Px(12.0));
                 element.style.margin.right = Some(Len::Px(6.0));
                 Node::Element(element)

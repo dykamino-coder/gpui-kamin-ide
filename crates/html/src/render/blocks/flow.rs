@@ -1,6 +1,29 @@
 //! Цикл по детям блока: строчные прогоны, блочные дети, позиционированные (blocks_flow).
 
+use crate::animation::animation_live::animated;
+use crate::animation::frames::transitioned;
+use crate::dom::Node;
+use crate::interactive::scroll_box::{resizable, scrollable};
+use crate::interactive::sticky::sticky_wrap;
+use crate::layout::atom::pct_resolved_for_wrapper;
+use crate::layout::block::struts::margin_px;
+use crate::layout::float::float_flow::float_flow;
+use crate::layout::page::paged::{FIXED_LAYER, PAGED};
+use crate::layout::positioned::predicates::{edge_set, stays_positioned};
+use crate::layout::positioned::static_position::{at_static_position, cb_padding_shifts_replaced};
+use crate::layout::replaced::limits::content_limit_swapped;
+use crate::layout::writing_mode::vertical_hug;
+use crate::paint::effects::grouped::grouped;
+use crate::paint::effects::paint_scope::inside as inside_deferred;
+use crate::paint::effects::transform::transformed;
+use crate::paint::effects::{containment_paint, paint_scope};
+use crate::paint::stacking::{blends_inside, defers, fixed_cb_layer_box, layered, stacking_context, z_index_applies};
 use crate::render::*;
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
+use crate::text::text_box::{blank_text, text_box_line_style};
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn blocks_flow(
@@ -13,7 +36,7 @@ pub(crate) fn blocks_flow(
     opts: &RenderOpts,
     ordered_context: bool,
     under_tf: bool,
-    frame: std::rc::Rc<std::cell::Cell<crate::interact::StickyFrame>>,
+    frame: std::rc::Rc<std::cell::Cell<crate::interactive::sticky::element::StickyFrame>>,
     mut below_run_end: usize,
     mut below_run_start: usize,
     mut below_zs: Vec<i32>,
@@ -48,8 +71,8 @@ pub(crate) fn blocks_flow(
             Node::Element(e)
                 if matches!(
                     e.style.position,
-                    Some(crate::computed::Position::Absolute)
-                        | Some(crate::computed::Position::Fixed)
+                    Some(crate::style::computed::Position::Absolute)
+                        | Some(crate::style::computed::Position::Fixed)
                 ) && !at_static_position(&e.style)
                     && {
                         let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
@@ -92,8 +115,8 @@ pub(crate) fn blocks_flow(
                         Node::Text(t) => !t.trim().is_empty(),
                         Node::Element(x) => !matches!(
                             x.style.position,
-                            Some(crate::computed::Position::Absolute)
-                                | Some(crate::computed::Position::Fixed)
+                            Some(crate::style::computed::Position::Absolute)
+                                | Some(crate::style::computed::Position::Fixed)
                         ),
                     })
                     && {
@@ -198,15 +221,15 @@ pub(crate) fn blocks_flow(
         // их заместителей уже известны. Отрицательный `z-index` не трогаем:
         // у него своя сортировка прогона (`below_run_*`).
         if let Node::Element(e) = n
-            && crate::interact::late_pending()
+            && crate::layout::positioned::containing_block::late_pending()
             && !e.style.z_index.is_some_and(|z| z < 0)
             && matches!(
                 e.style.position,
-                Some(crate::computed::Position::Relative) | Some(crate::computed::Position::Sticky)
+                Some(crate::style::computed::Position::Relative) | Some(crate::style::computed::Position::Sticky)
             )
         {
-            out.extend(crate::interact::late_close());
-            crate::interact::late_open();
+            out.extend(crate::layout::positioned::containing_block::late_close());
+            crate::layout::positioned::containing_block::late_open();
         }
         if let Node::Element(e) = n {
             // Ключ краски шага 8 — до сборки детей (см. `next_paint_key`).
@@ -239,7 +262,7 @@ pub(crate) fn blocks_flow(
             // `display: contents` — своей коробки у элемента нет: дети
             // становятся детьми родителя, и стиль самого элемента исчезает.
             if e.style.display == Some(Display::Contents) {
-                let mut merged = inline::inherit(inherited, &e.style);
+                let mut merged = inherit(inherited, &e.style);
                 // Своей коробки нет — значит и объёмный контекст она не
                 // обрывает: дети берут ячейки ДЕДА (css-display-3
                 // §box-generation; transform3d-preserve3d-014 — `rotateX(90)`
@@ -290,7 +313,7 @@ pub(crate) fn blocks_flow(
             // уходил бы в её неявный ряд. Прежде обёртка без размещения
             // ставилась авто-размещением (`row-fill-reverse-align-self-001`:
             // `width: min-content; grid-row: 2` в лунках вставал в ряд 1).
-            let placement = crate::apply::grid_item_placement(&e.style);
+            let placement = crate::style::apply::grid_item_placement(&e.style);
             let hoist_place = content_sized_wraps(e)
                 && !replaced_tag(e)
                 && (placement.0.is_some() || placement.1.is_some());
@@ -376,7 +399,7 @@ pub(crate) fn blocks_flow(
             };
             let positioned_out = matches!(
                 e.style.position,
-                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
             );
             // Предел ключевым словом содержимого при АВТОМАТИЧЕСКОМ размере —
             // тот же держатель: css-sizing-3 §fit-content в блочной оси даёт
@@ -509,16 +532,16 @@ pub(crate) fn blocks_flow(
             // предок ему не содержащий блок, и заданной оси от него не
             // требуется — незаданная сторона держит статическое место. Пока он
             // шёл общим путём, коробка висела от края родителя.
-            let fixed = e.style.position == Some(crate::computed::Position::Fixed) && !under_tf;
+            let fixed = e.style.position == Some(crate::style::computed::Position::Fixed) && !under_tf;
             // `fixed` под трансформом — абсолют относительно этого предка.
-            let abs_like = e.style.position == Some(crate::computed::Position::Absolute)
-                || (e.style.position == Some(crate::computed::Position::Fixed) && under_tf);
+            let abs_like = e.style.position == Some(crate::style::computed::Position::Absolute)
+                || (e.style.position == Some(crate::style::computed::Position::Fixed) && under_tf);
             // В стопке страниц абсолют корня уходит в слой и без заданных
             // сторон: на месте его резала бы маска фрагмента кида
             // (`monolithic-overflow-013`); статическую позицию копии 0 даёт
             // щуп, копии ≥ 1 идут непрерывным потоком от верха листа.
             let orphan_abs = abs_like
-                && !(inherited.cb_ancestor || crate::inline::establishes_cb(inherited))
+                && !(inherited.cb_ancestor || crate::text::inline::establishes_cb(inherited))
                 && (x_set || y_set || PAGED.with(|p| p.get()));
             // Позиционированный предок ЕСТЬ, но это не родитель: коробку
             // забирает слой ближайшего содержащего блока (§10.1).
@@ -547,7 +570,7 @@ pub(crate) fn blocks_flow(
             // css-contain-2 §3.2), а позиционированные между ними — нет
             // (`out-of-flow-in-multicolumn-029`: `fixed` внутри абсолюта
             // внутри трансформа). Родитель-трансформ держит его на месте.
-            let tf_fixed = e.style.position == Some(crate::computed::Position::Fixed) && under_tf;
+            let tf_fixed = e.style.position == Some(crate::style::computed::Position::Fixed) && under_tf;
             // Без заданных сторон — тоже: на месте раскладка разрешила бы
             // проценты размеров от РОДИТЕЛЯ (`width: 100%` у абсолютного
             // родителя нулевой ширины, `out-of-flow-in-multicolumn-044`), а
@@ -556,7 +579,7 @@ pub(crate) fn blocks_flow(
             let far_abs = !tf_fixed
                 && abs_like
                 && inherited.cb_ancestor
-                && !crate::inline::establishes_cb(inherited)
+                && !crate::text::inline::establishes_cb(inherited)
                 && (x_set || y_set);
             let far_abs = far_abs || far_fixed;
             // A negative `z-index` box whose containing block is the ICB goes
@@ -586,8 +609,8 @@ pub(crate) fn blocks_flow(
                 && e.style.z_index.unwrap_or(0) >= 0
                 && !stays_positioned(&nodes[idx + 1..]);
             let built = if to_icb || to_cb {
-                let spot: crate::interact::SpotCell = Default::default();
-                spot.set(crate::interact::Spot {
+                let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
+                spot.set(crate::layout::positioned::containing_block::Spot {
                     fixed_axes: (x_set, y_set),
                     free_margin: (
                         if x_set {
@@ -615,9 +638,9 @@ pub(crate) fn blocks_flow(
                     // Стопка страниц: фиксированный — в свой слой, по копии
                     // на лист без сдвига (`FIXED_LAYER`). Обёртка `LatePlace`
                     // та же, что у слоя ICB, — через вложенный слой.
-                    crate::interact::icb_open();
-                    let _ = crate::interact::icb_push(spot.clone(), built);
-                    FIXED_LAYER.with(|f| f.borrow_mut().extend(crate::interact::icb_close()));
+                    crate::layout::positioned::containing_block::icb_open();
+                    let _ = crate::layout::positioned::containing_block::icb_push(spot.clone(), built);
+                    FIXED_LAYER.with(|f| f.borrow_mut().extend(crate::layout::positioned::containing_block::icb_close()));
                     None
                 } else {
                     // Слой содержащего блока рисуется после его потока, но
@@ -645,16 +668,16 @@ pub(crate) fn blocks_flow(
                         built
                     };
                     let built = if to_icb && below_icb {
-                        crate::interact::Underlay::new(built).into_any_element()
+                        crate::paint::effects::underlay::Underlay::new(built).into_any_element()
                     } else {
                         built
                     };
                     if to_icb {
-                        crate::interact::icb_push(spot.clone(), built)
+                        crate::layout::positioned::containing_block::icb_push(spot.clone(), built)
                     } else if far_fixed {
-                        crate::interact::cb_push_fixed(spot.clone(), built)
+                        crate::layout::positioned::containing_block::cb_push_fixed(spot.clone(), built)
                     } else {
-                        crate::interact::cb_push(spot.clone(), built)
+                        crate::layout::positioned::containing_block::cb_push(spot.clone(), built)
                     }
                 };
                 match sent {
@@ -663,7 +686,7 @@ pub(crate) fn blocks_flow(
                         // больше неоткуда. При заданных обеих осях на месте
                         // не остаётся ничего.
                         if !(x_set && y_set) {
-                            out.push(crate::interact::spot_probe(spot, true));
+                            out.push(crate::layout::positioned::containing_block::spot_probe(spot, true));
                         }
                         continue;
                     }
@@ -687,7 +710,7 @@ pub(crate) fn blocks_flow(
             // `top: 1px` отсчитывался от статической позиции — коробка
             // съезжала под весь поток (`margin-collapse-clear-012..016`:
             // красная подложка `z-index: -1` под жёлтым блоком).
-            let below_cb_axis = e.style.position == Some(crate::computed::Position::Absolute)
+            let below_cb_axis = e.style.position == Some(crate::style::computed::Position::Absolute)
                 && e.style.z_index.is_some_and(|z| z < 0)
                 && y_set
                 && !x_set
@@ -697,14 +720,14 @@ pub(crate) fn blocks_flow(
                 && e.style.vertical != Some(true)
                 && matches!(
                     inherited.position,
-                    Some(crate::computed::Position::Relative)
-                        | Some(crate::computed::Position::Absolute)
+                    Some(crate::style::computed::Position::Relative)
+                        | Some(crate::style::computed::Position::Absolute)
                 )
-                && crate::inline::establishes_cb(inherited)
+                && crate::text::inline::establishes_cb(inherited)
                 && !inherited.cb_ancestor
                 && !stacking_context(inherited)
                 && !ordered_context;
-            let below_free_axis = e.style.position == Some(crate::computed::Position::Absolute)
+            let below_free_axis = e.style.position == Some(crate::style::computed::Position::Absolute)
                 && e.style.z_index.is_some_and(|z| z < 0)
                 && !(x_set && y_set)
                 && !below_cb_axis;
@@ -749,7 +772,7 @@ pub(crate) fn blocks_flow(
                 };
                 let root_b = inherited.borders();
                 let offset = side(e.style.margin.left) + side(inherited.padding.left) + side(root_b.left);
-                done = crate::interact::record_root_left(done, opts.doc_salt, offset);
+                done = crate::text::vertical::record_root_left(done, opts.doc_salt, offset);
             }
             // Корень vertical-rl прижат к ПРАВОМУ краю окна (§8.2 principal
             // flow): свой анкор-ряд вокруг ОДНОГО узла — соседей не трогает.
@@ -800,17 +823,17 @@ pub(crate) fn blocks_flow(
             // весь документ (`individual-transform/stacking-context-00*`,
             // `transform-stacking-001`).
             if e.style.z_index.is_some_and(|z| z < 0)
-                && e.style.position == Some(crate::computed::Position::Relative)
+                && e.style.position == Some(crate::style::computed::Position::Relative)
                 && e.tag != "body"
                 && !stacking_context(inherited)
             {
-                done = crate::interact::Underlay::new(done).into_any_element();
+                done = crate::paint::effects::underlay::Underlay::new(done).into_any_element();
             }
             // Абсолют с `z-index < 0`, оставленный на месте (`below_cb_axis`):
             // краска — шаг 3 корневого контекста, под потоком родителя, как и
             // у держателя на распорке выше.
             if below_cb_axis {
-                done = crate::interact::Underlay::new(done).into_any_element();
+                done = crate::paint::effects::underlay::Underlay::new(done).into_any_element();
             }
             // Позиционированный блок с `z-index: auto | 0` рисуется на шаге 8
             // приложения E CSS 2.1 — ПОСЛЕ блоков и строк потока, — а у нас
@@ -823,9 +846,9 @@ pub(crate) fn blocks_flow(
             // уже отложены `layered`, отрицательный — подложка выше.
             let step8 = matches!(
                 e.style.position,
-                Some(crate::computed::Position::Relative)
-                    | Some(crate::computed::Position::Absolute)
-                    | Some(crate::computed::Position::Sticky)
+                Some(crate::style::computed::Position::Relative)
+                    | Some(crate::style::computed::Position::Absolute)
+                    | Some(crate::style::computed::Position::Sticky)
             ) && e.style.z_index.unwrap_or(0) == 0
                 && !matches!(e.tag.as_str(), "html" | "body")
                 && paint_last_ok(e, &nodes[idx + 1..]);
@@ -835,7 +858,7 @@ pub(crate) fn blocks_flow(
             // 0»; Blink кладёт такой слой в список z-порядка с нулём): после
             // блоков и строк потока, в порядке разметки (`t32-opacity-zorder-c`).
             let step8 = step8
-                || (e.style.position.is_none_or(|p| p == crate::computed::Position::Static)
+                || (e.style.position.is_none_or(|p| p == crate::style::computed::Position::Static)
                     // `z-index` у непозиционированного не действует
                     // (CSS 2.1 §9.9.1 «Applies to: positioned elements»).
                     && (e.style.z_index.unwrap_or(0) == 0
@@ -890,7 +913,7 @@ pub(crate) fn blocks_flow(
                 _ => opts.base_size(),
             };
             let family = line_style.font_family.clone().unwrap_or_default();
-            let (ascent, descent, cap) = crate::metrics::vmetrics_px(&family, size);
+            let (ascent, descent, cap) = crate::text::metrics::vmetrics_px(&family, size);
             let line = match line_style.line_height {
                 Some(Len::Px(v)) => v,
                 Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
@@ -907,9 +930,9 @@ pub(crate) fn blocks_flow(
             // kAuto = kText).
             if start {
                 let over = match line_style.text_box_over {
-                    crate::computed::TextEdge::Cap => ascent - cap,
-                    crate::computed::TextEdge::Ex => {
-                        ascent - crate::metrics::ch_ex_px(&family, size).1
+                    crate::style::computed::TextEdge::Cap => ascent - cap,
+                    crate::style::computed::TextEdge::Ex => {
+                        ascent - crate::text::metrics::ch_ex_px(&family, size).1
                     }
                     _ => 0.0,
                 };
@@ -918,8 +941,8 @@ pub(crate) fn blocks_flow(
                 let under = match line_style.text_box_under {
                     // Алфавитная линия может стоять НАД нулём глифа (BASE `romn`,
                     // `BaselineDiagnostic`: +50/1000 — `text-box-trim-end-002`).
-                    crate::computed::TextEdge::Alphabetic => {
-                        descent + crate::fonts::alphabetic_em(&family) * size
+                    crate::style::computed::TextEdge::Alphabetic => {
+                        descent + crate::text::fonts::alphabetic_em(&family) * size
                     }
                     _ => 0.0,
                 };
@@ -969,6 +992,6 @@ pub(crate) fn blocks_flow(
     }
     // Верхний слой: то, что обязано рисоваться поверх соседей, идёт последним
     // и возвращается на своё место замеренным сдвигом.
-    out.extend(crate::interact::late_close());
+    out.extend(crate::layout::positioned::containing_block::late_close());
     containment_paint::collect(out, inherited)
 }

@@ -1,6 +1,7 @@
 //! @page (селекторы страниц, поля), @property, @position-try.
 
 use crate::style::css::*;
+use std::collections::HashMap;
 
 /// Селектор страницы (css-page-3 §page-selectors): имя типа страницы и
 /// счётчики псевдоклассов. `:blank` хранится ради специфичности — пустых

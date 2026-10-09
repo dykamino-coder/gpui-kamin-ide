@@ -1,7 +1,10 @@
 //! Внешние и внутренние резкие тени коробки (css-backgrounds-3 §7.1).
 // owner: A
 
-use crate::render::*;
+use crate::render::paint_rect_minus;
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
+use gpui::{IntoElement, Styled, div, px};
 
 pub(crate) fn outer_shadows(
     c: &Computed,
@@ -22,7 +25,7 @@ pub(crate) fn outer_shadows(
             continue;
         }
         let colour = if sh.color.a < 0.0 {
-            c.color.unwrap_or(crate::value::Color {
+            c.color.unwrap_or(crate::style::values::value::Color {
                 r: 0.0,
                 g: 0.0,
                 b: 0.0,
@@ -85,13 +88,13 @@ pub(crate) fn outer_shadows(
             let (dx, dy) = (sh.x, sh.y);
             let fill = colour.to_hsla();
             out.push(
-                crate::background::exact_layer::ExactLayer::inset(
+                crate::paint::background::exact_layer::ExactLayer::inset(
                     [-bt, -br, -bb, -bl],
                     move |r: gpui::Bounds<gpui::Pixels>, window: &mut gpui::Window| {
                         // Blink offsets the UNSNAPPED border box and snaps
                         // the result (a 72.5-device-pixel top with a -62.5
                         // offset lands on row 10, not 11).
-                        let r = crate::background::exact_layer::positioning(r);
+                        let r = crate::paint::background::exact_layer::positioning(r);
                         // `r` is the box's unrounded border box; the shadow
                         // rect is it moved by the offset and grown by the
                         // spread (§7.1). Edges snap to the device grid.
@@ -146,7 +149,7 @@ pub(crate) fn inset_shadows(
             continue;
         }
         let colour = if sh.color.a < 0.0 {
-            c.color.unwrap_or(crate::value::Color {
+            c.color.unwrap_or(crate::style::values::value::Color {
                 r: 0.0,
                 g: 0.0,
                 b: 0.0,
@@ -177,10 +180,10 @@ pub(crate) fn inset_shadows(
             let (dx, dy) = (sh.x, sh.y);
             let fill = colour.to_hsla();
             out.push(
-                crate::background::exact_layer::ExactLayer::inset(
+                crate::paint::background::exact_layer::ExactLayer::inset(
                     [0.0; 4],
                     move |r: gpui::Bounds<gpui::Pixels>, window: &mut gpui::Window| {
-                        let r = crate::background::exact_layer::positioning(r);
+                        let r = crate::paint::background::exact_layer::positioning(r);
                         let (pl, pt) = (f32::from(r.left()), f32::from(r.top()));
                         let (pr, pb) = (f32::from(r.right()), f32::from(r.bottom()));
                         let hole = (
@@ -218,7 +221,7 @@ pub(crate) fn inset_shadows(
                 _ => 0.0,
             };
             let pad = |r: Option<Len>, a: Option<Len>, b: Option<Len>| {
-                (crate::apply::radius_px(c, r).unwrap_or(0.0) - side(a).max(side(b))).max(0.0)
+                (crate::style::apply::radius_px(c, r).unwrap_or(0.0) - side(a).max(side(b))).max(0.0)
             };
             ring = ring
                 .rounded_tl(px(pad(c.radius.tl, bw.top, bw.left)))

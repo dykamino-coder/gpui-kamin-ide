@@ -10,7 +10,7 @@ pub(super) fn apply(style: &mut Computed, key: &str, value: &str) {
     let words = split_outside_parens(value);
     let (mut kind, mut position, mut image, mut none) = (None, None, false, 0);
     for word in &words {
-        let decoded = crate::css::unescape(word);
+        let decoded = crate::style::css::unescape(word);
         let keyword = decoded.to_ascii_lowercase();
         if key == "list-style" && matches!(keyword.as_str(), "inside" | "outside") {
             if position.replace(keyword == "inside").is_some() {
@@ -23,11 +23,11 @@ pub(super) fn apply(style: &mut Computed, key: &str, value: &str) {
                 return;
             }
             image = true;
-        } else if crate::css::selector_tokens::ident(word) || keyword.starts_with("symbols(") {
+        } else if crate::style::css::selector_tokens::ident(word) || keyword.starts_with("symbols(") {
             // css-counter-styles-3 §symbols-function: an invalid anonymous
             // style invalidates the whole declaration.
             if keyword.starts_with("symbols(")
-                && !crate::counter_style_rules::valid_symbols_fn(word)
+                && !crate::style::generated::counter_style_rules::valid_symbols_fn(word)
             {
                 return;
             }

@@ -1,6 +1,8 @@
 //! Live keyframes rebuild the actual formatting node, rather than sizing an extra box.
-use crate::render::{RenderOpts, animation_frame, bake_frozen, element, frame_at};
-use crate::computed::{AnimSpec, Computed};
+use crate::animation::animation_frame;
+use crate::animation::frames::{bake_frozen, frame_at};
+use crate::render::{RenderOpts, element};
+use crate::style::computed::{AnimSpec, Computed};
 use crate::dom::Element;
 use gpui::{AnyElement, IntoElement};
 

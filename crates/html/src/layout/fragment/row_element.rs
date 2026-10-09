@@ -1,6 +1,7 @@
 //! Flow children retain absolute fractional origins until device rounding.
 
-use crate::flow::*;
+use crate::layout::fragment::types::{FlowChild, FlowRow};
+use gpui::{App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window, point, px, size};
 
 impl Element for FlowRow {
     type RequestLayoutState = LayoutId;

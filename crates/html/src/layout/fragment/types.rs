@@ -1,7 +1,8 @@
 //! Типы потока фрагментов: полосы, дети, строки, ось стопки.
 // owner: A
 
-use crate::flow::*;
+use crate::layout::float::shapes::FloatShape;
+use gpui::{AnyElement, Bounds, IntoElement, Pixels, point, px, size};
 
 /// Полоса выреза: на строках, пересекающих [y0, y1), начало (или конец)
 /// строки занято на `left`/`right` точек.

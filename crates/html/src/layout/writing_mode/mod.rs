@@ -1,7 +1,10 @@
 //! Режимы письма: ортогональные потоки, вертикальная раскладка.
 // owner: A
 
-use crate::render::*;
+use crate::dom::Element;
+use crate::render::in_flow;
+use crate::style::computed::{Computed, Display};
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 pub(crate) mod orthogonal_inline;
 pub(crate) mod native_vertical;
@@ -54,7 +57,7 @@ pub(crate) fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) ->
     // (`available-size-001`: the vertical-rl `#red` 1ch below the green 0).
     if matches!(
         e.style.position,
-        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
     ) {
         return el;
     }

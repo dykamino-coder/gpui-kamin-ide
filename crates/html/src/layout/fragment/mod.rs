@@ -1,7 +1,11 @@
 //! Фрагментация: формы, полосы, переносимые коробки.
 // owner: A
 
-use crate::render::*;
+use crate::dom::Element;
+use crate::layout::fragment::line_shape::{items_kind, line_content_w};
+use crate::render::RenderOpts;
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
 
 pub mod breaks;
 pub mod clone;
@@ -119,7 +123,7 @@ impl LineScope {
             let Some(top) = cx.frames.last() else {
                 return LineScope(false);
             };
-            let inh = crate::inline::inherit(&top.inh, &c.style);
+            let inh = crate::style::cascade::inherit::inherit(&top.inh, &c.style);
             let w = top.w.and_then(|pw| match top.items {
                 // Элемент flex/сетки шириной по раскладке: известна лишь
                 // заданная в точках.

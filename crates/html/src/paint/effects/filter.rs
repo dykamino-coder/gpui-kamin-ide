@@ -1,7 +1,7 @@
 //! Фильтры.
 // owner: A
 
-use crate::interact::*;
+use gpui::{App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window, px};
 
 /// Слой `filter: url(#id)`: SVG с прямоугольником цвета фона под этим
 /// фильтром, растрированный resvg по размеру коробки. Холст вдвое больше

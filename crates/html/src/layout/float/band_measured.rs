@@ -1,7 +1,15 @@
 //! Замеренные полосы обтекания.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::block::margins::collapse_margins;
+use crate::layout::block::struts::zero_len;
+use crate::layout::float::band_clearance::supported as band_clear_supported;
+use crate::layout::float::band_flow_host::{BAND_CBH, BAND_CBW, band_flow_block, band_flow_rest, band_flow_rest_lift, band_orthogonal, subtree_has_text};
+use crate::layout::float::band_host::{BandPiece, band_em, band_margins, band_piece};
+use crate::layout::float::band_nest::{band_nest_block, band_seq};
+use crate::render::{block_level_in_flow, is_blank, out_of_flow, own_context, replaced_tag};
+use crate::style::computed::{Computed, Display};
 
 /// Кусок хвоста измеряемого хоста: `Some(true)` — коробка, флоаты не
 /// перекрывающая (§9.5, последний абзац), `Some(false)` — распорка, `None` —
@@ -22,7 +30,7 @@ pub(crate) fn band_piece_m(n: &Node, em: f32) -> Option<bool> {
     };
     if matches!(
         c.style.position,
-        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
     ) || c.style.float.is_some_and(|f| f != 0)
         || (c.style.clear.is_some() && !band_clear_supported(c))
         || matches!(

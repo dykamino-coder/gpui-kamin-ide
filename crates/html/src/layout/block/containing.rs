@@ -1,7 +1,10 @@
 //! Ширина содержащего блока и доступная ширина (охранники потока).
 // owner: A
 
-use crate::render::*;
+use crate::layout::block::margins::{COLLAPSE_CB_WIDTH_PX, COLLAPSE_FONT_PX};
+use crate::render::in_flow;
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
 
 thread_local! {
     /// Ширина содержащего блока в точках, когда её видно из стиля родителя.

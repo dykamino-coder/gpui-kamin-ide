@@ -1,7 +1,13 @@
 //! Пробы фрагментации.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::fragment::ShapeCx;
+use crate::layout::fragment::flex_lines::flex_gap_rules;
+use crate::layout::fragment::fragment_size::shape_full;
+use crate::render::out_of_flow;
+use crate::style::computed::Display;
+use crate::style::values::value::Len;
 
 /// Коробка и всё её поддерево — ОБЫЧНЫЕ блоки: ни гибкого контейнера, ни
 /// сетки, ни таблицы, ни вложенного многоколоночника. Только у такого
@@ -45,7 +51,7 @@ pub(crate) fn plain_block_tree(c: &Element, depth: u8) -> bool {
 /// (ветка «строка = элемент»), и её переполнение заданной высоты продолжается
 /// в следующем фрагментаинере параллельным потоком (css-break-3 §3).
 pub(crate) fn stacked_flex_tree(c: &Element, depth: u8) -> bool {
-    use crate::computed::FlexDir;
+    use crate::style::computed::FlexDir;
     if c.style.column_count.is_some() || c.style.column_width.is_some() || c.style.webkit_box == Some(true) {
         return false;
     }
@@ -142,7 +148,7 @@ pub(crate) fn forced_inside(e: &Element, depth: u8) -> bool {
         Node::Element(k)
             if matches!(
                 k.style.position,
-                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
             ) =>
         {
             false
@@ -157,8 +163,8 @@ pub(crate) fn forced_inside(e: &Element, depth: u8) -> bool {
 }
 
 pub(crate) fn forced_opaque(k: &Element) -> bool {
-    let scrolls = |o: Option<crate::computed::Overflow>| {
-        matches!(o, Some(crate::computed::Overflow::Scroll))
+    let scrolls = |o: Option<crate::style::computed::Overflow>| {
+        matches!(o, Some(crate::style::computed::Overflow::Scroll))
     };
     size_monolith(k)
         || ((scrolls(k.style.overflow_x) || scrolls(k.style.overflow_y))

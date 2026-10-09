@@ -1,7 +1,8 @@
 //! Трансформы.
 // owner: A
 
-use crate::render::*;
+use crate::style::computed::Computed;
+use gpui::{AnyElement, IntoElement};
 
 /// css-transforms-2 §grouping-property-values: «групповые» свойства делают
 /// из элемента группу, и ИСПОЛЬЗУЕМОЕ значение `transform-style` у него —
@@ -12,7 +13,7 @@ use crate::render::*;
 /// `clip-not-absolute-positioned-003`, `corner-shape-bevel-overflow-composite`
 /// и `view-transition-name-is-grouping` уходят в красное.
 pub(crate) fn flattens_3d(c: &Computed) -> bool {
-    use crate::computed::Overflow;
+    use crate::style::computed::Overflow;
     let clipped = |o: Option<Overflow>| matches!(o, Some(o) if o != Overflow::Visible);
     c.opacity.is_some_and(|o| o < 1.0)
         || c.filter.is_some()
@@ -38,7 +39,7 @@ pub(crate) fn transformed_with(
     el: AnyElement,
     c: &Computed,
     parent: &Computed,
-    ref_box: Option<crate::interact::RefBox>,
+    ref_box: Option<crate::paint::effects::transformed_element::RefBox>,
 ) -> AnyElement {
     // `transform: inherit` / `transform-origin: inherit` (css-cascade-4
     // §inherit: «the property's specified and computed values are the
@@ -50,7 +51,7 @@ pub(crate) fn transformed_with(
     // от того же родителя; у формы (`&merged`) результат тот же.
     let inherited_tf;
     let c = {
-        use crate::computed::inh;
+        use crate::style::computed::inh;
         let bits = c.inherit_bits & (inh::TRANSFORM | inh::TRANSFORM_ORIGIN);
         if bits == 0 {
             c
@@ -83,7 +84,7 @@ pub(crate) fn transformed_with(
     if c.transform.is_none() && c.perspective.is_none() && !keeps_3d && under_3d.is_none() {
         return el;
     }
-    let mut wrapper = crate::interact::Transformed::new(el);
+    let mut wrapper = crate::paint::effects::transformed_element::Transformed::new(el);
     wrapper.ref_box = ref_box;
     wrapper.under_3d = under_3d;
     wrapper.frame_3d = if keeps_3d { c.frame_3d.clone() } else { None };

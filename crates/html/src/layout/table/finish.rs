@@ -1,6 +1,17 @@
 //! Хвост раскладки таблицы: сетка ячеек, дорожки, рамка и подписи (table_finish).
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::block::containing::CB_WIDTH;
+use crate::layout::block::margins::CELL_BFC;
+use crate::layout::positioned::predicates::edge_set;
+use crate::layout::table::columns::track_list_collapsed;
+use crate::layout::table::is_cell;
+use crate::paint::effects::transform::transformed;
+use crate::render::{RenderOpts, blocks, styled_div_with};
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::{Computed, FlexDir};
+use crate::style::values::value::Len;
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 #[allow(clippy::too_many_arguments, clippy::ptr_arg)]
 pub(crate) fn table_finish(
@@ -8,7 +19,7 @@ pub(crate) fn table_finish(
     paint_layers: bool,
     cell_bgs: std::rc::Rc<std::cell::RefCell<Vec<(gpui::Bounds<gpui::Pixels>, gpui::Hsla)>>>,
     cells: Vec<AnyElement>,
-    table_edges: std::rc::Rc<std::cell::RefCell<Vec<crate::interact::EdgeCell>>>,
+    table_edges: std::rc::Rc<std::cell::RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
     cells_over: Vec<AnyElement>,
     e: &Element,
     inherited: &Computed,
@@ -31,12 +42,12 @@ pub(crate) fn table_finish(
     let mut grid_children = under;
     if paint_layers {
         grid_children
-            .push(crate::interact::CellBgPainter::new(cell_bgs.clone()).into_any_element());
+            .push(crate::layout::table::paint::CellBgPainter::new(cell_bgs.clone()).into_any_element());
     }
     grid_children.extend(cells);
     if paint_layers {
         grid_children
-            .push(crate::interact::EdgePainter::new(table_edges.clone()).into_any_element());
+            .push(crate::layout::table::paint::EdgePainter::new(table_edges.clone()).into_any_element());
     }
     grid_children.extend(cells_over);
     let cells = grid_children;
@@ -49,7 +60,7 @@ pub(crate) fn table_finish(
         if let Node::Element(cap) = c
             && (cap.tag == "caption" || cap.style.is_caption == Some(true))
         {
-            let cm = inline::inherit(inherited, &cap.style);
+            let cm = inherit(inherited, &cap.style);
             // Сторона — с самого заголовка, при пустоте — от таблицы
             // (наследование caption-side).
             let cap_side_bottom =
@@ -156,7 +167,7 @@ pub(crate) fn table_finish(
                                 .font_family
                                 .clone()
                                 .unwrap_or_else(|| table_family.clone());
-                            let v = crate::metrics::spacing_px(Some(l), &family, size);
+                            let v = crate::text::metrics::spacing_px(Some(l), &family, size);
                             out.push((v > 0.0).then_some(v + extra));
                         }
                         // Доля считается от места, отдаваемого дорожкам:
@@ -421,7 +432,7 @@ pub(crate) fn table_finish(
     // `align_self`, а его у абсолютной коробки с двумя краями не спрашивают.
     let split_wrapper = matches!(
         inherited.position,
-        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
     ) && edge_set(inherited.inset.left)
         && edge_set(inherited.inset.right)
         && e.style.width.is_none();
@@ -449,7 +460,7 @@ pub(crate) fn table_finish(
             // §17.6.2: внутрь таблицы уходит ПОЛОВИНА её кромки. Паддингом,
             // а не рамкой: проба кромок — абсолютный ребёнок по паддинг-боксу,
             // и рамка утащила бы линию сетки внутрь на свою величину.
-            c.padding = crate::computed::Sides {
+            c.padding = crate::style::computed::Sides {
                 top: Some(Len::Px(outer_win[0] / 2.0)),
                 right: Some(Len::Px(outer_win[1] / 2.0)),
                 bottom: Some(Len::Px(outer_win[2] / 2.0)),
@@ -581,13 +592,13 @@ pub(crate) fn table_finish(
         // ширины в общем разборе) — CSS2 +21/-25: у таблицы без рамки её
         // коробка совпадает с внешними краями ячеек, и те переставали
         // центрироваться.
-        outer = outer.child(crate::interact::grid_probe(table_edges.clone(), bw));
+        outer = outer.child(crate::layout::table::paint::grid_probe(table_edges.clone(), bw));
     }
     if collapse && (bw.iter().any(|w| *w > 0.0) || e.style.border_side_styles.contains(&Some(1))) {
         // Рамка самой таблицы — участник разбора конфликтов: её кромки
         // уходят в тот же слой (EdgePainter), линии — внутренние края
         // рамочного места, победившая кромка рисуется наружу.
-        let black = crate::value::Color {
+        let black = crate::style::values::value::Color {
             r: 0.0,
             g: 0.0,
             b: 0.0,
@@ -626,7 +637,7 @@ pub(crate) fn table_finish(
             outer_win[2] / 2.0,
             outer_win[3] / 2.0,
         ];
-        outer = outer.child(crate::interact::edge_probe(
+        outer = outer.child(crate::layout::table::paint::edge_probe(
             table_edges.clone(),
             bw,
             colors,
@@ -809,7 +820,7 @@ pub(crate) fn table_finish(
         wrap.position = e.style.position;
         wrap.inset = e.style.inset;
         wrap.z_index = e.style.z_index;
-        let mut wrap = crate::apply::apply(div(), &wrap).flex().flex_row();
+        let mut wrap = crate::style::apply::apply(div(), &wrap).flex().flex_row();
         wrap.style().no_inline_block_baseline = Some(true);
         return wrap.child(outer).into_any_element();
     }

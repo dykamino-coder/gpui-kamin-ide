@@ -1,7 +1,18 @@
 //! Обтекание по форме `shape-outside`.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::float::band_flow_host::band_flow_host;
+use crate::layout::float::band_host::{BandPiece, band_piece, px_margin, px_margin_box};
+use crate::layout::float::float_atom::band_atom;
+use crate::layout::list::list_item;
+use crate::layout::replaced::image::image;
+use crate::paint::effects::grouped::grouped;
+use crate::render::{RenderOpts, blocks, inline_level, styled_div_with};
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 /// Обтекание плавающих блоков ФОРМОЙ (`shape-outside`, css-shapes-1 §2).
 ///
@@ -19,8 +30,8 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
         Some(Len::Px(v)) => *v,
         _ => 0.0,
     };
-    let mut left: Vec<crate::flow::FloatShape> = Vec::new();
-    let mut right: Vec<crate::flow::FloatShape> = Vec::new();
+    let mut left: Vec<crate::layout::float::shapes::FloatShape> = Vec::new();
+    let mut right: Vec<crate::layout::float::shapes::FloatShape> = Vec::new();
     // Ширина содержащего блока: от неё считаются доли формы и поля
     // (`shape-margin: 5%`), она же — дальний край для правила 7 §9.5.1.
     // Известна только точками: непроходную единицу `px_of` глушит в ноль.
@@ -99,8 +110,8 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
             && chh <= 0.0
             && let Some(raw0) = f.style.shape_outside.as_deref()
             && raw0.contains("url(")
-            && let Some(u) = crate::computed::parse_url(raw0)
-            && let Some((w, h)) = crate::background::intrinsic_px(&u)
+            && let Some(u) = crate::style::computed::parse_url(raw0)
+            && let Some((w, h)) = crate::paint::background::intrinsic_px(&u)
         {
             // Своя величина, а не размер растра: SVG растрируется вдвое
             // плотнее (`background::intrinsic_px`).
@@ -167,7 +178,7 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
                 Some(end) => &inner[..=end],
                 None => inner,
             };
-            match crate::background::shape_params(inner, bw, bh, 1.0) {
+            match crate::paint::background::shape_params(inner, bw, bh, 1.0) {
                 Some((cx, cy, rx, ry)) => {
                     // Координаты — от опорной коробки; переводим к margin-box.
                     let (cx, cy) = (cx + bx, cy + by);
@@ -192,7 +203,7 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
                         let ext: Vec<f32> = (0..rows)
                             .map(|r| {
                                 let y0 = r as f32;
-                                let v = crate::flow::ellipse_cut(
+                                let v = crate::layout::float::shapes::ellipse_cut(
                                     cy,
                                     rx,
                                     ry,
@@ -204,12 +215,12 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
                                 if v > 0.0 { off + v } else { 0.0 }
                             })
                             .collect();
-                        crate::flow::FloatShape::Profile {
+                        crate::layout::float::shapes::FloatShape::Profile {
                             top: 0.0,
                             ext: std::sync::Arc::new(ext),
                         }
                     } else {
-                        crate::flow::FloatShape::Ellipse {
+                        crate::layout::float::shapes::FloatShape::Ellipse {
                             top: 0.0,
                             cx: cx + off,
                             cy,
@@ -218,7 +229,7 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
                         }
                     }
                 }
-                None => crate::flow::FloatShape::Band {
+                None => crate::layout::float::shapes::FloatShape::Band {
                     top: 0.0,
                     h: mh,
                     w: off + mw + sm,
@@ -226,12 +237,12 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
             }
         } else {
             // Geometric rounded boxes stay continuous; raster shapes retain dilation.
-            let radius_of = |c: &Option<crate::value::Len>| match c {
-                Some(crate::value::Len::Px(v)) => (*v, *v),
-                Some(crate::value::Len::Pct(k)) => (k * bw, k * bh),
+            let radius_of = |c: &Option<crate::style::values::value::Len>| match c {
+                Some(crate::style::values::value::Len::Px(v)) => (*v, *v),
+                Some(crate::style::values::value::Len::Pct(k)) => (k * bw, k * bh),
                 _ => (0.0, 0.0),
             };
-            let sb = crate::background::ShapeBox {
+            let sb = crate::paint::background::ShapeBox {
                 mw,
                 mh,
                 rx: bx,
@@ -247,12 +258,12 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
                 // Each axis resolves a percentage against its own box side.
                 radius: {
                     let ell = f.style.radius_ell.unwrap_or([None; 4]);
-                    let axis = |l: crate::value::Len, base: f32| match l {
-                        crate::value::Len::Px(v) => v,
-                        crate::value::Len::Pct(k) => k * base,
+                    let axis = |l: crate::style::values::value::Len, base: f32| match l {
+                        crate::style::values::value::Len::Px(v) => v,
+                        crate::style::values::value::Len::Pct(k) => k * base,
                         _ => 0.0,
                     };
-                    let pair = |i: usize, c: &Option<crate::value::Len>| match ell[i] {
+                    let pair = |i: usize, c: &Option<crate::style::values::value::Len>| match ell[i] {
                         Some((x, y)) => (axis(x, bw), axis(y, bh)),
                         None => radius_of(c),
                     };
@@ -266,10 +277,10 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
                 threshold: f.style.shape_threshold.unwrap_or(0.0),
             };
             if let Some(shape) = (!vert_rl && sm <= 0.0)
-                .then(|| crate::background::rounded_float(&raw, &sb, side))
+                .then(|| crate::paint::background::rounded_float(&raw, &sb, side))
                 .flatten()
             {
-                crate::flow::FloatShape::RoundedBox {
+                crate::layout::float::shapes::FloatShape::RoundedBox {
                     top: 0.0,
                     off,
                     shape: std::sync::Arc::new(shape),
@@ -280,17 +291,17 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
                     // правый край (так его и строит `shape_profile_block`), у
                     // `vertical-lr` — левый, то есть тот же профиль задом наперёд.
                     let pside = if line_left_bottom { -side } else { side };
-                    crate::background::shape_profile_block(&raw, &sb, sm.max(0.0), pside).map(|mut p| {
+                    crate::paint::background::shape_profile_block(&raw, &sb, sm.max(0.0), pside).map(|mut p| {
                         if vert_lr {
                             p.reverse();
                         }
                         p
                     })
                 } else {
-                    crate::background::shape_profile(&raw, &sb, sm.max(0.0), side)
+                    crate::paint::background::shape_profile(&raw, &sb, sm.max(0.0), side)
                 };
                 match profile {
-                    Some(ext) => crate::flow::FloatShape::Profile {
+                    Some(ext) => crate::layout::float::shapes::FloatShape::Profile {
                         top: 0.0,
                         ext: std::sync::Arc::new(
                             ext.into_iter()
@@ -301,7 +312,7 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
                     None if vert_rl => {
                         // Непонятная запись в вертикали: занята вся блок-ось
                         // margin-box на всю его инлайн-ось.
-                        crate::flow::FloatShape::Band {
+                        crate::layout::float::shapes::FloatShape::Band {
                             top: 0.0,
                             h: mw,
                             w: mh,
@@ -311,7 +322,7 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
                         // Непонятная запись: прямоугольник опорной коробки со
                         // стороны текста.
                         let w_cut = if side < 0 { bx + bw } else { mw - bx };
-                        crate::flow::FloatShape::Band {
+                        crate::layout::float::shapes::FloatShape::Band {
                             top: by,
                             h: bh,
                             w: off + w_cut + sm,
@@ -336,15 +347,15 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
         // `float` заводит лишний контекст обрезки.
         copy.style.float = None;
         copy.style.clear = None;
-        let mut merged = inline::inherit(inherited, &copy.style);
+        let mut merged = inherit(inherited, &copy.style);
         // Поля кладёт держатель (позиция absolute от края) — на самой
         // коробке они сдвигали бы её обратно (float: right с margin-left
         // вылезал за правый край контейнера). Снимать их надо И СО СЛИТОГО
         // стиля: коробку строит он, и через него поле возвращалось —
         // четвёрка флоатов с `margin: 10px` уезжала на поле целиком
         // (`floats-014`).
-        copy.style.margin = crate::computed::Sides::default();
-        merged.margin = crate::computed::Sides::default();
+        copy.style.margin = crate::style::computed::Sides::default();
+        merged.margin = crate::style::computed::Sides::default();
         // Маска и обрезка формой живут в буфере группы (`grouped`): у флоата
         // с `shape-outside` этот путь был не пройден вовсе, и `clip-path`
         // на нём не резал НИЧЕГО — коробка рисовалась целым прямоугольником,
@@ -512,8 +523,8 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
             let mut inner = c.clone();
             // Поля кладёт держатель — на самой коробке они сдвинули бы её
             // ещё раз (та же причина, что у флоатов, `:5092-5095`).
-            inner.style.margin = crate::computed::Sides::default();
-            let merged = inline::inherit(inherited, &c.style);
+            inner.style.margin = crate::style::computed::Sides::default();
+            let merged = inherit(inherited, &c.style);
             let built = styled_div_with(&inner, &merged)
                 .children(blocks(&inner.children, &merged, opts))
                 .into_any_element();
@@ -534,7 +545,7 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
     // Картина из инлайн-блоков с известными размерами — построчный поток
     // атомов (FlowRow): flex-переносом вырезы по строкам не выразить, а
     // абзац таких детей не набирает.
-    let mut atoms: Vec<crate::flow::FlowChild> = Vec::new();
+    let mut atoms: Vec<crate::layout::fragment::types::FlowChild> = Vec::new();
     let mut atoms_ok = true;
     for n in &rest {
         match n {
@@ -599,7 +610,7 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
         // семейства (`shape-outside-inset-023-ref` и родня) меряют свой
         // `inset-inline-start` именно снизу.
         if inherited.vertical_rl == Some(true) || vert_lr {
-            let mut row = crate::flow::FlowRow::new(atoms, shapes, rtl).vertical_rl();
+            let mut row = crate::layout::fragment::types::FlowRow::new(atoms, shapes, rtl).vertical_rl();
             if vert_lr {
                 row = row.block_lr();
             }
@@ -616,7 +627,7 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
                 .into_any_element();
         }
         return host
-            .child(crate::flow::FlowRow::new(atoms, shapes, rtl))
+            .child(crate::layout::fragment::types::FlowRow::new(atoms, shapes, rtl))
             .into_any_element();
     }
     let mut flowed = inherited.clone();

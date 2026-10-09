@@ -1,6 +1,6 @@
 //! CSS Writing Modes 4 §2.2 maps inline bidi values to Unicode control sequences.
 //! Isolated overrides need both nesting levels; plaintext chooses its own first strong direction.
-use crate::computed::Computed;
+use crate::style::computed::Computed;
 
 pub fn bidi_marks(
     own: &Computed,

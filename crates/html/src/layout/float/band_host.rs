@@ -1,7 +1,12 @@
 //! Хозяин полос обтекания.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::positioned::static_position::at_static_position;
+use crate::paint::effects::grouped::px_of2;
+use crate::render::{inline_level, is_blank, own_context};
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
 
 /// Многоколоночный поток из сплошного текста.
 ///
@@ -153,7 +158,7 @@ pub(crate) fn band_piece(n: &Node) -> Option<BandPiece> {
     // требует зазора, которого шаг B1 не считает.
     if matches!(
         c.style.position,
-        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
     ) || c.style.float.is_some_and(|f| f != 0)
         || c.style.clear.is_some()
     {
@@ -266,7 +271,7 @@ pub(crate) fn band_host(
         if let Node::Element(next) = &nodes[j]
             && matches!(
                 next.style.position,
-                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
             )
             && !at_static_position(&next.style)
         {

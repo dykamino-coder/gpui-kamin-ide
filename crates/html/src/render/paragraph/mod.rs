@@ -1,6 +1,18 @@
 //! Абзац: строчные куски узла в элемент Paragraph, выравнивание атомов по строке.
 
+use crate::dom::{Element, Node};
+use crate::layout::positioned::static_position::at_static_position;
+use crate::layout::writing_mode::{native_vertical, rotated_atom};
+use crate::paint::effects::paint_scope::DepthScope;
+use crate::paint::effects::paint_scope::snapshot as defer_depth;
 use crate::render::*;
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
+use crate::text::inline;
+use crate::text::ruby::ruby_role;
+use crate::text::text_box::normal_fraction;
+use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
 
 pub(crate) mod pieces;
 pub(crate) mod atom_piece;
@@ -160,7 +172,7 @@ pub(crate) fn paragraph_routed(
         // снято ради отсчёта, и без пометки `abs_static` гейт её не узнавал.
         let free_inline = (matches!(
             inherited.position,
-            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
         ) || inherited.abs_static
             || inherited.hug_inline)
             && !matches!(inherited.height, Some(Len::Px(_)) | Some(Len::Pct(_)))
@@ -203,7 +215,7 @@ pub(crate) fn paragraph_routed(
             _ => None,
         };
         let central = inherited.sideways != Some(true) && inherited.text_sideways != Some(true);
-        let vt = crate::interact::VerticalText::new(inner)
+        let vt = crate::text::vertical::VerticalText::new(inner)
             .counter_clockwise(ccw_line)
             .lines_left_first(inherited.vertical_rl != Some(true) && !ccw_line)
             .first_line(measure_font(inherited, opts), px(em), lh, central)
@@ -214,7 +226,7 @@ pub(crate) fn paragraph_routed(
             // min-content колонки заведомо не больше него.
             .column_min(col_min)
             .inline_keyword(native_vertical::keyword(inherited))
-            .keyed(crate::interact::vt_seq_key(
+            .keyed(crate::text::vertical::vt_seq_key(
                 text_id(&plain) ^ opts.doc_salt ^ (nodes.len() as u64).wrapping_mul(0x9E3779B9),
             ));
         // Настоящий предел от родителя (ортогональная ячейка): строка,
@@ -249,7 +261,7 @@ pub(crate) fn paragraph_routed(
         let opts_owned = opts.clone();
         let mut plain = String::new();
         first_line_text::gather(nodes, inherited.preserve_newlines == Some(true), &mut plain);
-        let plain = crate::inline::transform_case(&normalize_for_shadow(&plain), inherited);
+        let plain = crate::text::inline::transform_case(&normalize_for_shadow(&plain), inherited);
         if !plain.trim().is_empty() {
             let size = match base.font_size {
                 Some(Len::Px(v)) => v,
@@ -275,7 +287,7 @@ pub(crate) fn paragraph_routed(
             // жирная первая строка занимает больше места, и разрез по
             // обычному шрифту не помещался бы в неё целиком.
             let mut font = opts.text.font();
-            font.fallbacks = crate::computed::font_family::fallbacks(&first, font.fallbacks);
+            font.fallbacks = crate::style::computed::font_family::fallbacks(&first, font.fallbacks);
             if let Some(w) = first.font_weight {
                 font.weight = gpui::FontWeight(w as f32);
             }
@@ -330,8 +342,8 @@ pub(crate) fn has_flow_text(nodes: &[Node]) -> bool {
         Node::Element(e) => {
             !matches!(
                 e.style.position,
-                Some(crate::computed::Position::Absolute)
-                    | Some(crate::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute)
+                    | Some(crate::style::computed::Position::Fixed)
             ) && has_flow_text(&e.children)
         }
     })
@@ -349,7 +361,7 @@ pub(crate) fn edge_pieces(
     inherited: &Computed,
     opts: &RenderOpts,
 ) -> Vec<(std::ops::Range<usize>, bool, f32)> {
-    use crate::computed::Align;
+    use crate::style::computed::Align;
     let mut out: Vec<(std::ops::Range<usize>, bool, f32)> = Vec::new();
     // A rotated vertical paragraph is laid out in its pre-rotation frame,
     // whose top is the line-over side (css-writing-modes-4 §line-relative
@@ -371,7 +383,7 @@ pub(crate) fn edge_pieces(
         let out_of_flow = style.float.is_some_and(|f| f != 0)
             || matches!(
                 style.position,
-                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
             );
         if let Some(top) = top
             && style.vertical_align != inherited.vertical_align
@@ -528,7 +540,7 @@ pub(crate) fn atoms_fit_line(inherited: &Computed, ruby: bool) -> bool {
         && (ruby || inherited.rtl != Some(true))
         && inherited.no_select != Some(true)
         && inherited.pointer_events_none != Some(true)
-        && crate::lines::align_for(inherited) != crate::lines::Align::Justify
+        && crate::text::paragraph::align_for(inherited) != crate::text::paragraph::Align::Justify
         // Обрыв строки многоточием (`text-overflow: ellipsis`) режет текст по
         // знакам, а распорку атома знаком не считает: атом обрывался не там
         // (`text-overflow-016`, `text-overflow-ruby`) — такой абзац в ряду.
@@ -545,8 +557,8 @@ pub(crate) fn atom_line_align(
     e: &Element,
     inherited: &Computed,
     opts: &RenderOpts,
-) -> Option<crate::lines::AtomAlign> {
-    use crate::lines::AtomAlign;
+) -> Option<crate::text::paragraph::AtomAlign> {
+    use crate::text::paragraph::AtomAlign;
     let st = &e.style;
     let atomic = matches!(
         st.display,
@@ -563,7 +575,7 @@ pub(crate) fn atom_line_align(
     // монолитны (§3.5), а строка обязана вырасти под аннотацию (§3.4), чего
     // гибкий ряд слов не умеет. Прочие роли (база, аннотация вне контейнера)
     // остаются в ряду.
-    let ruby = ruby_role(e) == Some(crate::computed::RubyRole::Container);
+    let ruby = ruby_role(e) == Some(crate::style::computed::RubyRole::Container);
     if !(atomic || replaced || ruby) || (st.ruby_role.is_some() && !ruby) {
         return None;
     }
@@ -626,7 +638,7 @@ pub(crate) fn atom_line_align(
     // (`background-bg-pos-204-ref`).
     if matches!(
         st.position,
-        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
     ) {
         if replaced && !at_static_position(st) {
             return Some(AtomAlign::Shift(0.0));
@@ -634,7 +646,7 @@ pub(crate) fn atom_line_align(
         return None;
     }
     let fixed = |l: Option<Len>| !matches!(l, Some(Len::Pct(_)) | Some(Len::Calc(_)));
-    let sides = |s: &crate::computed::Sides| {
+    let sides = |s: &crate::style::computed::Sides| {
         fixed(s.top) && fixed(s.right) && fixed(s.bottom) && fixed(s.left)
     };
     if ![
@@ -654,15 +666,15 @@ pub(crate) fn atom_line_align(
     }
     // Сдвиги — как у текстового куска (`inline::shift_spans`), но от кегля
     // САМОГО атома; ось подъёма смотрит вверх.
-    let merged = inline::inherit(inherited, st);
+    let merged = inherit(inherited, st);
     let size = match merged.font_size {
         Some(Len::Px(v)) => v,
         _ => own_size(inherited, opts),
     };
     Some(match st.vertical_align {
-        Some(crate::computed::Align::Start) => AtomAlign::Top,
-        Some(crate::computed::Align::End) => AtomAlign::Bottom,
-        Some(crate::computed::Align::Center) => AtomAlign::Middle,
+        Some(crate::style::computed::Align::Start) => AtomAlign::Top,
+        Some(crate::style::computed::Align::End) => AtomAlign::Bottom,
+        Some(crate::style::computed::Align::Center) => AtomAlign::Middle,
         _ => match st.vertical_align_text {
             Some(true) => AtomAlign::TextTop,
             Some(false) => AtomAlign::TextBottom,
@@ -671,7 +683,7 @@ pub(crate) fn atom_line_align(
                     AtomAlign::Shift(-v)
                 } else if let Some(l) = st.vertical_shift_len {
                     let family = merged.font_family.clone().unwrap_or_default();
-                    AtomAlign::Shift(crate::metrics::spacing_px(Some(l), &family, size))
+                    AtomAlign::Shift(crate::text::metrics::spacing_px(Some(l), &family, size))
                 } else if let Some(k) = st.vertical_shift {
                     AtomAlign::Shift(-k * size)
                 } else if let Some(k) = st.vertical_shift_pct {

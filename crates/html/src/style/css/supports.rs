@@ -313,7 +313,7 @@ pub(crate) fn supports_eval_term(term: &str) -> SupTri {
         // @supports rule can have !important specified»). `parse_decls`
         // оставляет её в значении для каскада — здесь она мешает разобрать
         // само значение (`css-supports-004`, `at-supports-007`).
-        let clean: crate::css::Decls = decls
+        let clean: crate::style::css::Decls = decls
             .iter()
             .map(|(k, v)| {
                 if k == ORDER_KEY {
@@ -329,7 +329,7 @@ pub(crate) fn supports_eval_term(term: &str) -> SupTri {
                 (k.clone(), parts.join(&DECL_SEP.to_string()))
             })
             .collect();
-        let mut c = crate::computed::Computed::default();
+        let mut c = crate::style::computed::Computed::default();
         c.apply_decls(&clean);
         // Счётчик порядка объявлений и номера сторон — БУХГАЛТЕРИЯ каскада, а
         // не значения свойств: они меняются у любого объявления, и без
@@ -337,7 +337,7 @@ pub(crate) fn supports_eval_term(term: &str) -> SupTri {
         // `(color: rainbow)` (`css-supports-005`, `at-supports-009`).
         c.decl_seq = 0;
         c.side_seq = Default::default();
-        return if format!("{c:?}") != format!("{:?}", crate::computed::Computed::default()) {
+        return if format!("{c:?}") != format!("{:?}", crate::style::computed::Computed::default()) {
             SupTri::True
         } else {
             SupTri::False

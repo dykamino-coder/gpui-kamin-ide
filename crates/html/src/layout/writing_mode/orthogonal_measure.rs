@@ -1,6 +1,6 @@
 //! Measure rotated CSS contributions before device-pixel rounding.
 //! Rounded min/max contributions must not change intrinsic size or wrapping.
-use crate::computed::orthogonal::{InlineConstraint, InlineKeyword};
+use crate::style::computed::orthogonal::{InlineConstraint, InlineKeyword};
 use gpui::{AnyElement, App, AvailableSpace, Pixels, Size, Window, px, size};
 
 pub(crate) fn measure(

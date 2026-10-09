@@ -1,6 +1,7 @@
 //! Разбиение на строки: split, lay_in, балансировка, аварийные разрывы, места переноса (UAX #14).
 
 use crate::text::paragraph::*;
+use gpui::{Pixels, Window, px};
 
 impl Paragraph {
     /// Разбить текст на строки под заданную ширину и оборвать по `line-clamp`.
@@ -1095,7 +1096,7 @@ pub(crate) fn no_break_after(ch: char) -> bool {
 }
 
 /// Правила переноса из стиля БЕЗ вопроса, нужна ли своя раскладка.
-pub fn wrap_of(c: &crate::computed::Computed) -> Wrap {
+pub fn wrap_of(c: &crate::style::computed::Computed) -> Wrap {
     Wrap {
         nowrap: c.nowrap == Some(true),
         break_spaces: c.break_after_spaces == Some(true),

@@ -1,6 +1,7 @@
 //! Контуры фигур: shape_to_path, border-shape (путь, маска, кольцо, тень, обводка), rrect.
 
 use crate::paint::background::*;
+use crate::style::computed::Computed;
 
 /// Перевести `shape()` (css-shapes-2 §2.4) в контур SVG `d`.
 ///
@@ -20,14 +21,14 @@ pub fn shape_to_path(args: &str, bw: f32, bh: f32) -> Option<String> {
         // Смесь долей и точек (`of calc(10px + 15%)`): `Len::parse` её
         // отбрасывает, и прежде `?` ронял ВЕСЬ контур — элемент рисовался
         // без обрезки (clip-path-shape-011 и его эталон: 6.83).
-        if let Some((p, add)) = crate::value::calc_pct_px(t) {
+        if let Some((p, add)) = crate::style::values::value::calc_pct_px(t) {
             return Some(p * side + add);
         }
-        match crate::value::Len::parse(t)? {
-            crate::value::Len::Px(v) => Some(v),
-            crate::value::Len::Pct(p) => Some(p * side),
+        match crate::style::values::value::Len::parse(t)? {
+            crate::style::values::value::Len::Px(v) => Some(v),
+            crate::style::values::value::Len::Pct(p) => Some(p * side),
             // Шрифтовые единицы — от запасного кегля (16px).
-            l => crate::metrics::fallback_len_px(l, "", 16.0),
+            l => crate::text::metrics::fallback_len_px(l, "", 16.0),
         }
     };
     // Пара координат из токенов: позиционные слова идут в любом порядке
@@ -420,7 +421,7 @@ pub fn border_shape_ring_svg(
     outer: (&str, [f32; 4]),
     inner: Option<(&str, [f32; 4])>,
     stroke: f32,
-    colour: crate::value::Color,
+    colour: crate::style::values::value::Color,
     bw: f32,
     bh: f32,
     dx: f32,
@@ -500,7 +501,7 @@ pub fn border_shape_shadow_svg(
     outer: (&str, [f32; 4]),
     inner: Option<(&str, [f32; 4])>,
     stroke: f32,
-    shadows: &[(crate::computed::Shadow, crate::value::Color)],
+    shadows: &[(crate::style::computed::Shadow, crate::style::values::value::Color)],
     inset: bool,
     bw: f32,
     bh: f32,
@@ -529,7 +530,7 @@ pub fn border_shape_shadow_svg(
         }
         None => (tr_o.clone(), d_o.clone(), rule_o, ml_o),
     };
-    let rgb = |c: crate::value::Color| {
+    let rgb = |c: crate::style::values::value::Color| {
         format!(
             "rgb({},{},{})",
             (c.r * 255.0).round(),
@@ -641,7 +642,7 @@ pub fn border_shape_outline_svg(
     off: f32,
     width: f32,
     double: bool,
-    colour: crate::value::Color,
+    colour: crate::style::values::value::Color,
     bw: f32,
     bh: f32,
     dx: f32,

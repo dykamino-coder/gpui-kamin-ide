@@ -1,6 +1,7 @@
 //! Отрисовка строк: выделение, строка, маркеры.
 
 use crate::text::paragraph::*;
+use gpui::{App, Bounds, GlobalElementId, Hitbox, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, TextRun, Window, point, px};
 
 impl Paragraph {
     /// Прогоны с подложкой на выделенном куске: прогон нельзя раскрасить

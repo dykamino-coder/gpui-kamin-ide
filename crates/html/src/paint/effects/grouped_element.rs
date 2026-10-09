@@ -1,7 +1,8 @@
 //! Элемент `Grouped`.
 // owner: A
 
-use crate::interact::*;
+use crate::paint::effects::{mask_geometry, mask_size, polygon_clip, rectangular_clip};
+use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window, px};
 
 /// Сетка таблицы, у которой ширины колонок считаются по содержимому.
 ///
@@ -24,7 +25,7 @@ pub struct Grouped {
     /// режет — вылезшие за неё потомки остаются видимыми.
     pub spill: bool,
     /// Обрезка многоугольником: вершины в долях коробки (`clip-path`).
-    pub polygon: Vec<(crate::value::Len, crate::value::Len)>,
+    pub polygon: Vec<(crate::style::values::value::Len, crate::style::values::value::Len)>,
     /// Правило намотки полигона: `evenodd` шейдер не умеет.
     pub polygon_evenodd: bool,
     /// Сдвиг опорной коробки формы от bounds наружу: верх/право/низ/лево
@@ -36,7 +37,7 @@ pub struct Grouped {
     /// css-masking §7.4), а он известен только здесь.
     pub mask: Option<String>,
     /// `mask-size`: размер плитки; None — auto (интринзик картинки).
-    pub mask_size: Option<(crate::value::Len, crate::value::Len)>,
+    pub mask_size: Option<(crate::style::values::value::Len, crate::style::values::value::Len)>,
     /// `mask-size: contain|cover` (1|2) — вписывание по интринзику.
     pub mask_fit: u8,
     /// `mask-repeat`: пооосный запрет мощения (no-x, no-y) — первого слоя.
@@ -50,12 +51,12 @@ pub struct Grouped {
     /// `mask-mode: alpha`: ссылка на `<mask>` маскирует альфой.
     pub mask_alpha_mode: bool,
     /// `mask-position`: смещение плитки; доля — от свободного места.
-    pub mask_pos: Option<(crate::value::Len, crate::value::Len)>,
+    pub mask_pos: Option<(crate::style::values::value::Len, crate::style::values::value::Len)>,
     /// Смещение от правого/нижнего края (`right 30px bottom 25px`).
     pub mask_pos_far: (bool, bool),
     /// `mask-position` ПО СЛОЯМ (css-masking-1 §7.7): `(x, y, справа, снизу)`;
     /// пусто — берётся скаляр.
-    pub mask_pos_list: Vec<(crate::value::Len, crate::value::Len, bool, bool)>,
+    pub mask_pos_list: Vec<(crate::style::values::value::Len, crate::style::values::value::Len, bool, bool)>,
     /// Края коробки укладки (`mask-origin`) от border-box внутрь: t/r/b/l.
     pub mask_origin_off: [f32; 4],
     /// Края коробки окраски (`mask-clip`); None — border-box/no-clip.
@@ -65,12 +66,12 @@ pub struct Grouped {
     /// Сдвиг коробки клипа трансформом элемента: px и доли своего размера.
     pub clip_shift: (f32, f32, f32, f32),
     /// `clip-path: inset(t r b l)`: срезы краёв; доли — от своих сторон.
-    pub clip_inset: Option<[crate::value::Len; 4]>,
-    pub clip_edges: Option<[Option<crate::value::Len>; 4]>,
-    pub clip_xywh: Option<[crate::value::Len; 4]>,
+    pub clip_inset: Option<[crate::style::values::value::Len; 4]>,
+    pub clip_edges: Option<[Option<crate::style::values::value::Len>; 4]>,
+    pub clip_xywh: Option<[crate::style::values::value::Len; 4]>,
     /// `round <radius>` of `inset()`/`rect()`/`xywh()` in points: the group
     /// composites through a rounded rectangle equal to the clip rectangle.
-    pub clip_round: Option<crate::value::Len>,
+    pub clip_round: Option<crate::style::values::value::Len>,
     /// `mask-composite` по слоям: 0 add, 1 subtract, 2 intersect, 3 exclude.
     pub mask_composite: Vec<u8>,
     /// Подложка ПОД буфером группы, вне его маски: наружные тени
@@ -183,7 +184,7 @@ pub(crate) fn rasterize_mask_def(
     h: f32,
     force_white: bool,
 ) -> Option<std::sync::Arc<gpui::RenderImage>> {
-    let markup = crate::render::mask_snapshot(key)?;
+    let markup = crate::paint::effects::mask::mask_snapshot(key)?;
     // Внутри <clipPath> правило намотки несёт `clip-rule`; растеризатор
     // рисует контур как обычный и читает только `fill-rule`
     // (clip-path-shape-002: у эталона пропадала дырка evenodd).
@@ -265,7 +266,7 @@ impl Element for Grouped {
         if let Some(src) = self.mask.as_deref()
             && src.contains("url(")
         {
-            let layers: Vec<String> = crate::css::split_args(src)
+            let layers: Vec<String> = crate::style::css::split_args(src)
                 .iter()
                 .filter_map(|l| mask_layer_source(l))
                 .collect();
@@ -285,7 +286,7 @@ impl Element for Grouped {
                     && !l.contains('?')
             };
             if !layers.is_empty()
-                && layers.iter().all(|l| plain(l) && crate::background::source(l).is_none())
+                && layers.iter().all(|l| plain(l) && crate::paint::background::source(l).is_none())
             {
                 return;
             }
@@ -320,7 +321,7 @@ impl Element for Grouped {
                 return None;
             }
             let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-            let (cx, cy, rx, ry) = crate::background::shape_params(raw, bw, bh, 1.0)?;
+            let (cx, cy, rx, ry) = crate::paint::background::shape_params(raw, bw, bh, 1.0)?;
             let l = (rx - cx).max(0.0);
             let t = (ry - cy).max(0.0);
             let r = (cx + rx - bw).max(0.0);
@@ -333,8 +334,8 @@ impl Element for Grouped {
         // там (outline) терялась бы вместе с буфером.
         let (sl, st, sr, sb) = match self.clip_inset {
             Some([t, r, b, l]) => {
-                let neg = |v: crate::value::Len| match v {
-                    crate::value::Len::Px(p) if p < 0.0 => -p,
+                let neg = |v: crate::style::values::value::Len| match v {
+                    crate::style::values::value::Len::Px(p) if p < 0.0 => -p,
                     _ => 0.0,
                 };
                 (sl.max(neg(l)), st.max(neg(t)), sr.max(neg(r)), sb.max(neg(b)))
@@ -410,7 +411,7 @@ impl Element for Grouped {
                 let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
                 let (aw, ah) = (bw + sl + sr, bh + st + sb);
                 let markup =
-                    crate::background::border_shape_mask_svg(spec, bw, bh, sl, st, aw, ah)?;
+                    crate::paint::background::border_shape_mask_svg(spec, bw, bh, sl, st, aw, ah)?;
                 let img = crate::svg::rasterize(&markup, aw, ah)?;
                 return Some((
                     img,
@@ -427,7 +428,7 @@ impl Element for Grouped {
             let layers: Vec<String> = if src.starts_with("shape:") {
                 vec![src.to_string()]
             } else {
-                crate::css::split_args(src)
+                crate::style::css::split_args(src)
                     .iter()
                     .filter_map(|l| mask_layer_source(l))
                     .collect()
@@ -441,9 +442,9 @@ impl Element for Grouped {
                 f32::from(bounds.size.width) - ol - or_,
                 f32::from(bounds.size.height) - ot - ob,
             );
-            let len = |l: crate::value::Len, side: f32, auto: f32| match l {
-                crate::value::Len::Px(v) => v,
-                crate::value::Len::Pct(p) => p * side,
+            let len = |l: crate::style::values::value::Len, side: f32, auto: f32| match l {
+                crate::style::values::value::Len::Px(v) => v,
+                crate::style::values::value::Len::Pct(p) => p * side,
                 _ => auto,
             };
             // Несколько слоёв или снимок определения из документа:
@@ -488,16 +489,16 @@ impl Element for Grouped {
                     let Some((x, y, fx, fy)) = pick else {
                         return (0.0, 0.0);
                     };
-                    let one = |l: crate::value::Len, free: f32, far: bool| {
+                    let one = |l: crate::style::values::value::Len, free: f32, far: bool| {
                         let val = match l {
-                            crate::value::Len::Pct(p) => p * free,
+                            crate::style::values::value::Len::Pct(p) => p * free,
                             l => len(l, free, 0.0),
                         };
                         if far { free - val } else { val }
                     };
                     (one(x, bw - tw, fx), one(y, bh - th, fy))
                 };
-                let built: Vec<crate::background::MaskLayer> = layers
+                let built: Vec<crate::paint::background::MaskLayer> = layers
                     .iter()
                     .enumerate()
                     .filter_map(|(i, l)| {
@@ -550,7 +551,7 @@ impl Element for Grouped {
                                 (bw + el + self.poly_expand[1]).max(1.0),
                                 (bh + et + self.poly_expand[2]).max(1.0),
                             );
-                            let d = crate::background::shape_to_path(body, fw2, fh2)?;
+                            let d = crate::paint::background::shape_to_path(body, fw2, fh2)?;
                             let (dx, dy) = (-el, -et);
                             let markup = format!(
                                 r##"<svg xmlns="http://www.w3.org/2000/svg" width="{bw}" height="{bh}"><g transform="translate({dx} {dy})"><path fill="#ffffff" fill-rule="{rule}" d="{d}"/></g></svg>"##
@@ -573,7 +574,7 @@ impl Element for Grouped {
                                 true,
                             )
                         } else {
-                            let source = crate::background::source(l)?;
+                            let source = crate::paint::background::source(l)?;
                             let (tw, th) = mask_size::tile(
                                 source.intrinsic(), self.mask_scale, (bw, bh), self.mask_size, self.mask_fit,
                             );
@@ -603,7 +604,7 @@ impl Element for Grouped {
                             )
                         };
                         let no_repeat = repeat_of(i);
-                        Some(crate::background::MaskLayer {
+                        Some(crate::paint::background::MaskLayer {
                             image,
                             tile,
                             no_repeat: (no_repeat.0 || space_once.0, no_repeat.1 || space_once.1),
@@ -644,7 +645,7 @@ impl Element for Grouped {
                     origin = gpui::point(px(rx / sf), px(ry / sf));
                     size = gpui::size(px(cw as f32 / sf), px(ch as f32 / sf));
                 }
-                let img = crate::background::compose_mask_layers(&built, cw, ch)?;
+                let img = crate::paint::background::compose_mask_layers(&built, cw, ch)?;
                 return Some((
                     img,
                     Bounds { origin, size },
@@ -652,9 +653,9 @@ impl Element for Grouped {
                     3,
                 ));
             }
-            let source = crate::background::source(src)?;
+            let source = crate::paint::background::source(src)?;
             let (img, tw, th) = match &source {
-                crate::background::Source::Raster(img) => {
+                crate::paint::background::Source::Raster(img) => {
                     let (tw, th) = mask_size::tile(
                         source.intrinsic(), self.mask_scale, (bw, bh), self.mask_size, self.mask_fit,
                     );
@@ -669,7 +670,7 @@ impl Element for Grouped {
                     // (clip-path-circle-010 и родня: 0.71 вместо нуля).
                     let sf = window.scale_factor();
                     let img = match &source {
-                        crate::background::Source::Shape { raw }
+                        crate::paint::background::Source::Shape { raw }
                             if !raw.trim_start().starts_with("rrect(") =>
                         {
                             // Форма может выйти за коробку — растр кроет
@@ -686,10 +687,10 @@ impl Element for Grouped {
                             let [pt, pr, pb, pl] = self.poly_expand;
                             let (rw, rh) = ((bw + pl + pr).max(1.0), (bh + pt + pb).max(1.0));
                             let (cx0, cy0, rx, ry) =
-                                crate::background::shape_params(raw, rw, rh, 1.0)?;
+                                crate::paint::background::shape_params(raw, rw, rh, 1.0)?;
                             let (cx, cy) = (cx0 - pl, cy0 - pt);
                             let (aw, ah) = (bw + sl + sr, bh + st + sb);
-                            let img = crate::background::rasterize_ellipse_px(
+                            let img = crate::paint::background::rasterize_ellipse_px(
                                 (cx + sl) * sf,
                                 (cy + st) * sf,
                                 rx * sf,
@@ -710,10 +711,10 @@ impl Element for Grouped {
                                 3,
                             ));
                         }
-                        crate::background::Source::Shape { raw } => {
+                        crate::paint::background::Source::Shape { raw } => {
                             // Точечные величины формы записаны в CSS-точках —
                             // растеризатору нужен их масштаб.
-                            crate::background::rasterize_shape(
+                            crate::paint::background::rasterize_shape(
                                 raw,
                                 (tw * sf).round().max(1.0) as u32,
                                 (th * sf).round().max(1.0) as u32,
@@ -738,9 +739,9 @@ impl Element for Grouped {
                 Some((x, y)) => {
                     // Доля — от свободного места; `right/bottom` зеркалит
                     // отсчёт (css-backgrounds §3.6, mask-position-1a).
-                    let one = |l: crate::value::Len, free: f32, far: bool| {
+                    let one = |l: crate::style::values::value::Len, free: f32, far: bool| {
                         let v = match l {
-                            crate::value::Len::Pct(p) => p * free,
+                            crate::style::values::value::Len::Pct(p) => p * free,
                             l => len(l, free, 0.0),
                         };
                         if far { free - v } else { v }
@@ -789,8 +790,8 @@ impl Element for Grouped {
         // Percentages: Blink BasicShapeInset resolves radii against the
         // reference box; one scalar radius per corner takes the smaller axis.
         let round = match self.clip_round {
-            Some(crate::value::Len::Px(v)) => v,
-            Some(crate::value::Len::Pct(p)) => {
+            Some(crate::style::values::value::Len::Px(v)) => v,
+            Some(crate::style::values::value::Len::Pct(p)) => {
                 p * f32::from(_prepaint.0.size.width).min(f32::from(_prepaint.0.size.height))
             }
             _ => 0.0,

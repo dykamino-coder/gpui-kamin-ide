@@ -1,7 +1,10 @@
 //! Элемент покраски правил промежутков.
 // owner: A
 
-use crate::interact::*;
+use crate::paint::gap_rules::gap_segments::segments;
+use crate::paint::gap_rules::geometry::{GAP_EPS, GapItem, GapRun, GridTracks, grid_runs, line_runs, uncollapsed, uniq_sorted};
+use crate::paint::gap_rules::{GapAxisRule, GapItems, GapLayout, GapRuleSpec, gap_fragment_tail};
+use gpui::{App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window, px};
 
 /// Слой линеек промежутков. Забирает буфер проб в `paint` (к этому моменту
 /// prepaint всех детей уже прошёл — так же работает `EdgePainter`), строит

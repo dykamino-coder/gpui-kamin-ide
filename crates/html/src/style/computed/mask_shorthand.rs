@@ -1,12 +1,12 @@
 //! Expand a single mask layer into the existing mask longhand representation.
 
 use super::{Computed, split_outside_parens};
-use crate::value::Len;
+use crate::style::values::value::Len;
 
 pub(super) fn apply(style: &mut Computed, value: &str) -> bool {
     // Layer-specific size, origin, clip and mode lists need their own computed
     // representation. Keep the existing multi-layer route until it has one.
-    if crate::css::split_args(value).len() != 1 {
+    if crate::style::css::split_args(value).len() != 1 {
         return false;
     }
     let mut spaced = String::new();

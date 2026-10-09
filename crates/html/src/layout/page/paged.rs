@@ -1,7 +1,20 @@
 //! Постраничная отрисовка документа.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::fragment::ShapeCx;
+use crate::layout::fragment::breaks::{edge_break, oof_reach, page_monolith};
+use crate::layout::fragment::flex_lines::{class_a_box, inline_display};
+use crate::layout::fragment::fragment_size::shape_full;
+use crate::layout::page::names::{PageMarginDeclsFn, fill_used_page, first_kid_page_name, hoist_named_wrappers, page_names};
+use crate::layout::page::{page_boxes, page_counters};
+use crate::layout::replaced::iframe::IFRAME_DEPTH;
+use crate::paint::effects::mask::collect_mask_defs;
+use crate::render::{RenderOpts, blocks, is_blank, out_of_flow};
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 /// Копий ребёнка в стопке страниц — потолок числа страниц, на которые может
 /// растянуться один блок верхнего уровня (в `css-page` не больше шести).
@@ -32,7 +45,7 @@ thread_local! {
 pub fn render_paged(
     nodes: &[Node],
     opts: &RenderOpts,
-    geom_for: crate::flow::PageGeomFn,
+    geom_for: crate::layout::page::page_stack::PageGeomFn,
     margin_decls: Option<PageMarginDeclsFn>,
 ) -> AnyElement {
     render_paged_select(nodes, opts, geom_for, margin_decls, None)
@@ -42,7 +55,7 @@ pub fn render_paged(
 pub fn render_paged_select(
     nodes: &[Node],
     opts: &RenderOpts,
-    geom_for: crate::flow::PageGeomFn,
+    geom_for: crate::layout::page::page_stack::PageGeomFn,
     margin_decls: Option<PageMarginDeclsFn>,
     select: Option<Vec<usize>>,
 ) -> AnyElement {
@@ -52,7 +65,7 @@ pub fn render_paged_select(
     let mut canvas: Option<gpui::Hsla> = None;
     let mut root = opts.root_style();
     let document_counters = page_counters::PageCounters::from_document(nodes);
-    crate::interact::frame_sanitize();
+    crate::interactive::frame::frame_sanitize();
     IFRAME_DEPTH.with(|d| d.set(0));
     collect_mask_defs(nodes);
     let mut nodes: Vec<Node> = nodes.to_vec();
@@ -111,7 +124,7 @@ pub fn render_paged_select(
         if let Some(p) = &e.style.page {
             root_page = p.clone();
         }
-        root = inline::inherit(&root, &e.style);
+        root = inherit(&root, &e.style);
         nodes = e.children;
     }
     fill_used_page(&mut nodes, &root_page);
@@ -120,7 +133,7 @@ pub fn render_paged_select(
     if root.vertical != Some(true) {
         hoist_named_wrappers(&mut nodes);
     }
-    let geom_for: crate::flow::PageGeomFn = std::rc::Rc::new(move |i, name: &str| {
+    let geom_for: crate::layout::page::page_stack::PageGeomFn = std::rc::Rc::new(move |i, name: &str| {
         let mut g = geom_for(i, name);
         if none {
             g.bg = gpui::white();
@@ -147,7 +160,7 @@ pub fn render_paged_select(
     let mut fixed_copies: Vec<Vec<AnyElement>> =
         (0..PAGE_COPIES).map(|_| Vec::new()).collect();
     let mut icb_reach = 0.0f32;
-    let mut kids: Vec<crate::flow::PageKid> = Vec::new();
+    let mut kids: Vec<crate::layout::page::page_stack::PageKid> = Vec::new();
     let mut prev_end: Option<String> = None;
     let mut first = true;
     PAGED.with(|p| p.set(true));
@@ -209,7 +222,7 @@ pub fn render_paged_select(
             e.style.float.is_some_and(|f| f != 0)
                 && !matches!(
                     e.style.position,
-                    Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+                    Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
                 )
                 && !matches!(e.style.display, Some(Display::None))
         }
@@ -263,7 +276,7 @@ pub fn render_paged_select(
         let pad_top = if first { top } else { 0.0 };
         first = false;
         let build = |slot: &mut Vec<AnyElement>, fixed_slot: &mut Vec<AnyElement>| {
-            crate::interact::icb_open();
+            crate::layout::positioned::containing_block::icb_open();
             FIXED_LAYER.with(|f| f.borrow_mut().clear());
             // Оставленная обёртка (`html`/`body`) с долей высоты считает её от
             // page area — содержащего блока корня (css-page-3 §page-model).
@@ -275,7 +288,7 @@ pub fn render_paged_select(
                 wrap = wrap.h(px(ah));
             }
             let el = wrap.children(blocks(group, &root, opts)).into_any_element();
-            slot.extend(layer(crate::interact::icb_close()));
+            slot.extend(layer(crate::layout::positioned::containing_block::icb_close()));
             fixed_slot.extend(layer(
                 FIXED_LAYER.with(|f| std::mem::take(&mut *f.borrow_mut())),
             ));
@@ -364,7 +377,7 @@ pub fn render_paged_select(
         let positioned = |e: &Element| {
             matches!(
                 e.style.position,
-                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
             )
         };
         // Поля ребёнка: мера `shape_full` — border box, а обёртка рисует его
@@ -429,7 +442,7 @@ pub fn render_paged_select(
         // Монолит выше листа решается в `fill` (правило «сначала перенос,
         // потом разрыв внутри»): здесь мера считается и для него — точки
         // класса A нужны, когда он окажется с верха страницы.
-        kids.push(crate::flow::PageKid {
+        kids.push(crate::layout::page::page_stack::PageKid {
             el,
             frags,
             monolith,
@@ -448,7 +461,7 @@ pub fn render_paged_select(
     let margin_for = margin_decls.map(|f| {
         page_boxes::builder(f, root.clone(), opts.clone(), document_counters)
     });
-    crate::flow::PageStack::new(kids, geom_for, icb_copies, icb_reach, fixed_copies, margin_for)
+    crate::layout::page::page_stack::PageStack::new(kids, geom_for, icb_copies, icb_reach, fixed_copies, margin_for)
         .with_select(select)
         .into_any_element()
 }
@@ -480,7 +493,7 @@ pub fn render_paged_select(
 /// ворота им ничего не стоят, а зелёные с обрезкой (`overflow-clip-*`)
 /// закрывают.
 pub(crate) fn visible_overflow(c: &Computed) -> bool {
-    use crate::computed::Overflow;
+    use crate::style::computed::Overflow;
     // Параллельный поток живёт по БЛОЧНОЙ оси: решает `overflow-y`. Строчная ось
     // мешает, только если делает коробку прокручиваемой — css-overflow-3
     // §overflow-control: «if the other axis specifies a scrollable value, a

@@ -1,6 +1,6 @@
 //! Containment eligibility is determined by the principal box after blockification.
 
-use crate::computed::{Computed, Display, RubyRole};
+use crate::style::computed::{Computed, Display, RubyRole};
 
 pub(super) fn normalize(style: &mut Computed, tag: &str, out_of_flow: bool) {
     // CSS Containment 2 §§3.1–3.4: display:contents has no principal box.

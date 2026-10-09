@@ -1,6 +1,7 @@
 //! Gradient rasterization retains CSS stop lengths at the mask device resolution.
 
-use super::{angle_fraction, colour_at, place_stops, rasterize_cross_fade, wrap_repeat};
+use crate::style::values::color_space::gradient_colour_at as colour_at;
+use super::{angle_fraction, place_stops, rasterize_cross_fade, wrap_repeat};
 use gpui::RenderImage;
 use std::sync::Arc;
 
@@ -25,7 +26,7 @@ pub(super) fn raster(
         .strip_prefix("conic-gradient(")
         .and_then(|t| t.strip_suffix(')'))
     {
-        let parts = crate::css::split_args(inner);
+        let parts = crate::style::css::split_args(inner);
         let mut idx = 0usize;
         let mut from = 0.0f32;
         if let Some(first) = parts.first().map(|f| f.trim())
@@ -36,12 +37,12 @@ pub(super) fn raster(
                 from = angle_fraction(a.split_whitespace().next().unwrap_or("")).unwrap_or(0.0);
             }
         }
-        let mut raw: Vec<(crate::value::Color, Option<f32>)> = vec![];
+        let mut raw: Vec<(crate::style::values::value::Color, Option<f32>)> = vec![];
         for part in &parts[idx..] {
-            let words = crate::computed::split_outside_parens(part);
+            let words = crate::style::computed::split_outside_parens(part);
             let Some(colour) = words
                 .first()
-                .and_then(|w| crate::color_space::interpolation_color(w))
+                .and_then(|w| crate::style::values::color_space::interpolation_color(w))
             else {
                 continue;
             };
@@ -62,17 +63,17 @@ pub(super) fn raster(
         (
             Mode::Sweep { from },
             place_stops(raw),
-            crate::computed::GradSpace::Srgb,
+            crate::style::computed::GradSpace::Srgb,
             0u8,
         )
     } else {
-        let g = crate::computed::parse_gradient(src)?;
+        let g = crate::style::computed::parse_gradient(src)?;
         let angle = g.angle_deg.to_radians();
         let (dx, dy) = (angle.sin(), -angle.cos());
         // Absolute stop lengths use the CSS line length, independent of raster density.
         let stops = if g.stops_raw.iter().any(|(_, _, p)| p.is_some()) {
             let axis = (css.0 * dx).abs() + (css.1 * dy).abs();
-            let raw: Vec<(crate::value::Color, Option<f32>)> = g
+            let raw: Vec<(crate::style::values::value::Color, Option<f32>)> = g
                 .stops_raw
                 .iter()
                 .map(|(c, f, p)| {

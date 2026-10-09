@@ -1,7 +1,7 @@
 //! Общие хелперы сетки.
 // owner: A
 
-use crate::render::*;
+use crate::dom::Node;
 
 /// Развернуть именованные области сетки в номера линий.
 ///
@@ -9,7 +9,7 @@ use crate::render::*;
 /// GPUI, ни taffy имён не знают, но знают номера: имя ищется в раскладке
 /// контейнера, и ребёнок получает готовый прямоугольник линий.
 pub(crate) fn place_named_areas(areas: &[Vec<String>], children: Vec<Node>) -> Vec<Node> {
-    use crate::computed::Placement;
+    use crate::style::computed::Placement;
     children
         .into_iter()
         .map(|n| match n {

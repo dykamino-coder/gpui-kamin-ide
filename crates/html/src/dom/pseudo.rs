@@ -1,6 +1,10 @@
 //! Псевдоэлементы ::before/::after/::marker и др.: коробка, content-картинка.
 
 use crate::dom::*;
+use crate::style::computed::{Computed, Display};
+use crate::style::css::{Decls, Rule};
+use crate::style::select::matching::matches_ignoring_pseudo;
+use crate::style::select::{Ancestor, Sibs};
 
 /// Подходит ли значение под синтаксис `@property` (css-properties-values-api-1
 /// §5). Проверяются однозначные типы; значение с `var()` решается позже и
@@ -13,16 +17,16 @@ pub(crate) fn syntax_accepts(syntax: &str, value: &str) -> bool {
     let one = |ty: &str| -> bool {
         match ty.trim() {
             "<color>" => {
-                crate::value::Color::parse(v).is_some()
+                crate::style::values::value::Color::parse(v).is_some()
                     || v.eq_ignore_ascii_case("currentcolor")
                     || v.to_ascii_lowercase().starts_with("light-dark(")
             }
             "<length>" => {
                 !v.ends_with('%')
-                    && (v == "0" || matches!(crate::value::Len::parse_mixed(v), Some(l) if !matches!(l, crate::value::Len::Pct(_) | crate::value::Len::Auto)))
+                    && (v == "0" || matches!(crate::style::values::value::Len::parse_mixed(v), Some(l) if !matches!(l, crate::style::values::value::Len::Pct(_) | crate::style::values::value::Len::Auto)))
             }
-            "<length-percentage>" => crate::value::Len::parse_mixed(v)
-                .is_some_and(|l| l != crate::value::Len::Auto),
+            "<length-percentage>" => crate::style::values::value::Len::parse_mixed(v)
+                .is_some_and(|l| l != crate::style::values::value::Len::Auto),
             "<percentage>" => v.ends_with('%') && v[..v.len() - 1].trim().parse::<f32>().is_ok(),
             "<number>" => v.parse::<f32>().is_ok(),
             "<integer>" => v.parse::<i64>().is_ok(),
@@ -63,7 +67,7 @@ pub(crate) fn content_image_src(src: &str) -> Option<String> {
 pub(crate) fn pseudo_box(
     rules: &[Rule],
     vars: &Decls,
-    counters: &mut crate::counters::Counters,
+    counters: &mut crate::style::generated::counters::Counters,
     me: &Ancestor,
     path: &[Ancestor],
     sibs: Sibs,
@@ -93,7 +97,7 @@ pub(crate) fn pseudo_box(
 pub(crate) fn pseudo_box_named(
     rules: &[Rule],
     vars: &Decls,
-    counters: &mut crate::counters::Counters,
+    counters: &mut crate::style::generated::counters::Counters,
     me: &Ancestor,
     path: &[Ancestor],
     sibs: Sibs,
@@ -142,10 +146,10 @@ pub(crate) fn pseudo_box_named(
     // ошибке загрузки, и элемент пропускается). Прошлые заходы давали ей
     // коробку и теряли `before-after-images-001` и `-table-whitespace-001`.
     let mut children: Vec<Node> = vec![];
-    let mut run: Vec<crate::computed::ContentItem> = vec![];
-    let flush = |run: &mut Vec<crate::computed::ContentItem>,
+    let mut run: Vec<crate::style::computed::ContentItem> = vec![];
+    let flush = |run: &mut Vec<crate::style::computed::ContentItem>,
                  children: &mut Vec<Node>,
-                 counters: &mut crate::counters::Counters| {
+                 counters: &mut crate::style::generated::counters::Counters| {
         if !run.is_empty() {
             let t = content_text(
                 run,
@@ -159,7 +163,7 @@ pub(crate) fn pseudo_box_named(
         }
     };
     for item in &list {
-        if let crate::computed::ContentItem::Image(src) = item {
+        if let crate::style::computed::ContentItem::Image(src) = item {
             flush(&mut run, &mut children, counters);
             if let Some(src) = content_image_src(src) {
                 children.push(Node::Element(Element {
@@ -195,7 +199,7 @@ pub(crate) fn pseudo_box_named(
         anim: None,
         inline: !matches!(
             style.position,
-            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
         ),
         tag: format!("::{tag}"),
         style,

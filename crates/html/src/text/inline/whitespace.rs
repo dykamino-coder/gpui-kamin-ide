@@ -1,6 +1,9 @@
 //! Пробелы: обрезка краёв, схлопывание, висящие хвосты, принудительные разрывы, широкие знаки.
 
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
 use crate::text::inline::*;
+use gpui::{AnyElement, Styled};
 
 /// ★ ЗАМЕРЕНО И ОТКАЧЕНО (08.09, v158→v162, `scout-trimedge-2026-09.md` Х1):
 /// узкий гейт «атом обрывает ВЕДУЩИЙ срез, если за рядом пробелов текст»

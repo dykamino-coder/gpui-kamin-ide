@@ -1,7 +1,27 @@
 //! Многоколоночная ветвь `element()`.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::fragment::breaks::{edge_avoid, edge_break};
+use crate::layout::fragment::clone::{clone_dec, solid_box};
+use crate::layout::fragment::flex_lines::split_flex_lines;
+use crate::layout::fragment::fragment_size::shape_full;
+use crate::layout::fragment::line_shape::nested_rows_box;
+use crate::layout::fragment::probe::plain_block_tree;
+use crate::layout::fragment::push::{avoid_only_monolith, grow_pushed};
+use crate::layout::fragment::table_bands::repeat_leads;
+use crate::layout::fragment::{Shape, ShapeCx};
+use crate::layout::multicol::column_flow::column_flow;
+use crate::layout::multicol::gap_rules::multicol_gap_rule_spec;
+use crate::layout::multicol::spanner::{intrinsic_inline_size, parallel_items_inside, spanner_box};
+use crate::layout::multicol::stack_child::multicol_stack_child;
+use crate::layout::page::paged::visible_overflow;
+use crate::layout::positioned::predicates::edge_set;
+use crate::render::{RenderOpts, blocks, element, is_blank, out_of_flow, styled_div_with};
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 #[allow(clippy::too_many_arguments, clippy::needless_return)]
 pub(crate) fn multicol_column_stack(
@@ -15,12 +35,12 @@ pub(crate) fn multicol_column_stack(
     column_width: Option<Len>,
     used_gap: f32,
     row_gap: f32,
-    col_axis: crate::flow::StackAxis,
+    col_axis: crate::layout::fragment::types::StackAxis,
     col_vert: bool,
     col_rl: bool,
     col_h: Option<f32>,
     line_col_w: Option<f32>,
-    rows: Option<crate::flow::Rows>,
+    rows: Option<crate::layout::fragment::types::Rows>,
     nest_rows: Option<f32>,
     nest_phase: f32,
     direct_oof: Vec<Element>,
@@ -90,7 +110,7 @@ pub(crate) fn multicol_column_stack(
         split_flex_lines(kids, col_w, &merged)
     } else {
         let n = kids.len();
-        (kids, vec![crate::flow::Par::default(); n], vec![None; n], (0..=n).collect())
+        (kids, vec![crate::layout::fragment::types::Par::default(); n], vec![None; n], (0..=n).collect())
     };
     // `break-inside: avoid` без настоящего монолита — у любого
     // ребёнка колонок (`flow::Par::avoid_only`): с верха колонки
@@ -117,7 +137,7 @@ pub(crate) fn multicol_column_stack(
     // Без `clone` среди детей не считается вовсе.
     let clone_plan: Vec<Vec<(f32, f32)>> =
         if !col_vert && kids.iter().any(|(c, _)| clone_dec(c).is_some()) {
-            let probe: Vec<crate::flow::Kid> = kids
+            let probe: Vec<crate::layout::fragment::types::Kid> = kids
                 .iter()
                 .enumerate()
                 .map(|(pi, (c, s))| {
@@ -142,7 +162,7 @@ pub(crate) fn multicol_column_stack(
                         Some(u) => (u.0, u.3, u.4, u.5),
                         None => (s.0, s.3.clone(), s.4.clone(), s.5.clone()),
                     };
-                    crate::flow::Kid {
+                    crate::layout::fragment::types::Kid {
                         h: s.0,
                         mt: s.1,
                         mb: s.2,
@@ -167,7 +187,7 @@ pub(crate) fn multicol_column_stack(
                     }
                 })
                 .collect();
-            crate::flow::ColumnStack::frags_of(
+            crate::layout::multicol::column_stack::ColumnStack::frags_of(
                 &probe,
                 cols as usize,
                 fixed,
@@ -192,7 +212,7 @@ pub(crate) fn multicol_column_stack(
             e.style
                 .column_rule_color
                 .or(merged.color)
-                .unwrap_or(crate::value::Color {
+                .unwrap_or(crate::style::values::value::Color {
                     r: 0.0,
                     g: 0.0,
                     b: 0.0,
@@ -214,7 +234,7 @@ pub(crate) fn multicol_column_stack(
         .and_then(|_| multicol_gap_rule_spec(e, &merged, opts, used_gap, row_gap));
     let gap_items = gap_spec
         .as_ref()
-        .map(|_| crate::interact::gap_items_for(e.node_id ^ opts.doc_salt ^ 0x4D43_4F4C));
+        .map(|_| crate::paint::gap_rules::gap_items_for(e.node_id ^ opts.doc_salt ^ 0x4D43_4F4C));
     let rule = rule.filter(|_| gap_spec.is_none());
     // Где начинается ребёнок в первой внешней колонке — для
     // вложенного рядами с заданной высотой (`nest_row`): все
@@ -262,7 +282,7 @@ pub(crate) fn multicol_column_stack(
         }
         v
     };
-    let children: Vec<crate::flow::StackChild> = kids
+    let children: Vec<crate::layout::fragment::types::StackChild> = kids
         .into_iter()
         .enumerate()
         .map(|(ix, (c, (h, mt, mb, cuts, forced, solid)))| {
@@ -315,14 +335,14 @@ pub(crate) fn multicol_column_stack(
     // `LayoutFragmentainerDescendants`: позиция кандидата
     // считается относительно ФРАГМЕНТАИНЕРА.
     let mut children = children;
-    let oof_spots: Vec<crate::interact::SpotCell> =
+    let oof_spots: Vec<crate::layout::positioned::containing_block::SpotCell> =
         oof_static.iter().map(|_| Default::default()).collect();
     for (i, (at, oof)) in oof_static.iter().enumerate().rev() {
         // Заданную ось считает раскладка от содержащего
         // блока, щуп правит только ПУСТУЮ (CSS 2.1
         // §10.3.7) — тот же гейт `fixed_axes`, что у слоёв
         // в `blocks()`.
-        oof_spots[i].set(crate::interact::Spot {
+        oof_spots[i].set(crate::layout::positioned::containing_block::Spot {
             fixed_axes: (
                 edge_set(oof.style.inset.left)
                     || edge_set(oof.style.inset.right),
@@ -335,9 +355,9 @@ pub(crate) fn multicol_column_stack(
             own_vertical: oof.style.vertical == Some(true),
             ..Default::default()
         });
-        let probe = crate::flow::StackChild {
+        let probe = crate::layout::fragment::types::StackChild {
             measure: None,
-            el: crate::interact::spot_probe(oof_spots[i].clone(), true),
+            el: crate::layout::positioned::containing_block::spot_probe(oof_spots[i].clone(), true),
             frags: Vec::new(),
             monolith: false,
             cuts: Vec::new(),
@@ -357,7 +377,7 @@ pub(crate) fn multicol_column_stack(
             overflow_top: false,
             nested_cols: false,
             repeat: None,
-            par: crate::flow::Par::default(),
+            par: crate::layout::fragment::types::Par::default(),
             slack: None,
             laid_w: Default::default(),
             positioned: false,
@@ -378,7 +398,7 @@ pub(crate) fn multicol_column_stack(
         d
     };
     let mut d = d.child(
-        crate::flow::ColumnStack::new(
+        crate::layout::multicol::column_stack::ColumnStack::new(
             children,
             cols as usize,
             used_gap,
@@ -387,7 +407,7 @@ pub(crate) fn multicol_column_stack(
             rows,
             gap_items.clone(),
             intrinsic_inline_size(&e.style, inherited).then(|| {
-                crate::flow::Intrinsic(match column_width {
+                crate::layout::fragment::types::Intrinsic(match column_width {
                     Some(Len::Px(w)) if w > 0.0 => Some(w),
                     _ => None,
                 })
@@ -433,7 +453,7 @@ pub(crate) fn multicol_column_stack(
     // 50%` без `top`). Пересчитываем в точки заранее, когда
     // высота многоколоночника известна в точках.
     let cb_h: Option<f32> = (e.style.position.is_some()
-        && e.style.position != Some(crate::computed::Position::Static)
+        && e.style.position != Some(crate::style::computed::Position::Static)
         && !col_vert)
         .then(|| {
             let px = |l: Option<Len>| match l {
@@ -454,7 +474,7 @@ pub(crate) fn multicol_column_stack(
     for (i, (_, oof)) in oof_static.iter().enumerate() {
         let mut oof = oof.clone();
         if let Some(ch) = cb_h
-            && oof.style.position == Some(crate::computed::Position::Absolute)
+            && oof.style.position == Some(crate::style::computed::Position::Absolute)
         {
             for l in [&mut oof.style.height, &mut oof.style.min_height, &mut oof.style.max_height] {
                 if let Some(Len::Pct(k)) = *l {
@@ -462,13 +482,13 @@ pub(crate) fn multicol_column_stack(
                 }
             }
         }
-        d = d.child(crate::interact::spot_place(
+        d = d.child(crate::layout::positioned::containing_block::spot_place(
             oof_spots[i].clone(),
             element(&oof, &merged, opts),
         ));
     }
     if let (Some(buf), Some(spec)) = (gap_items, gap_spec) {
-        d = d.child(crate::interact::GapRulePainter::new(buf, spec).into_any_element());
+        d = d.child(crate::paint::gap_rules::painter::GapRulePainter::new(buf, spec).into_any_element());
     }
     return d.into_any_element();
 }
@@ -566,10 +586,10 @@ pub(crate) fn multicol_spanner_segments(
                 sub.style.backdrop_blur = None;
                 if matches!(
                     sub.style.position,
-                    Some(crate::computed::Position::Absolute)
-                        | Some(crate::computed::Position::Fixed)
+                    Some(crate::style::computed::Position::Absolute)
+                        | Some(crate::style::computed::Position::Fixed)
                 ) {
-                    sub.style.position = Some(crate::computed::Position::Relative);
+                    sub.style.position = Some(crate::style::computed::Position::Relative);
                 }
                 sub.style.inset = Default::default();
                 sub.style.z_index = None;
@@ -626,7 +646,7 @@ pub(crate) fn multicol_spanner_segments(
             }
             seg_open = true;
             span_prev = Some(key);
-            let inner = inline::inherit(&merged, &sp.style);
+            let inner = inherit(&merged, &sp.style);
             // Спаннер — независимый контекст форматирования
             // (§column-span). Голый `styled_div_with` — блок taffy,
             // и тот схлопывал поле первого/последнего ребёнка

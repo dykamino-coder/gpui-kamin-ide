@@ -1,6 +1,7 @@
 //! Значения свойств: перечисления и записи, из которых собран Computed.
 
 use crate::style::computed::*;
+use crate::style::values::value::{Color, Len};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Display {
@@ -545,7 +546,7 @@ pub fn parse_pos_words(v: &str) -> BgPos {
     let is_kw = |t: &str| matches!(t, "left" | "right" | "top" | "bottom" | "center");
     // Список слоёв (`a, b`): здесь — позиция ПЕРВОГО слоя, как и картинка,
     // которую берёт разбор фона.
-    let first = crate::css::split_args(v).into_iter().next().unwrap_or_default();
+    let first = crate::style::css::split_args(v).into_iter().next().unwrap_or_default();
     let tokens = split_outside_parens(first.trim());
     // Форма из трёх-четырёх значений (css-backgrounds-3 §3.6): ключевое слово
     // края с СМЕЩЕНИЕМ от него — `right 10px top 20%`. Прежде смещение

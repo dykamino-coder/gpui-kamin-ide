@@ -1,14 +1,32 @@
 //! Узел-элемент в элемент GPUI: element().
 
+use crate::dom::{Element, Node};
+use crate::layout::block::containing::{AVAIL_W, CB_WIDTH};
+use crate::layout::float::shape_flow::shape_flow;
+use crate::layout::list::{list_container, list_item};
+use crate::layout::replaced::iframe::{iframe, object_is_document};
+use crate::layout::replaced::image::{image, image_with, pct_height_to_px};
+use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
+use crate::layout::replaced::replaced_content::svg_replaced;
+use crate::layout::replaced::{replaced_used_style, svg_percentage_size};
+use crate::layout::table::anon::anon_element;
+use crate::layout::table::table;
+use crate::layout::writing_mode::orthogonal_inline;
+use crate::paint::effects::mask::PAINT_VIEWPORT;
+use crate::paint::effects::transform::transformed;
 use crate::render::*;
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
+use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled};
 
 /// Блочный элемент.
 pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
     // Высота ряда от внешней колонки — только ЭТОМУ элементу (`flow::OUTER_ROW`).
-    let outer_row = crate::flow::take_outer_row();
-    let mut merged = inline::inherit(inherited, &e.style);
+    let outer_row = crate::layout::fragment::types::take_outer_row();
+    let mut merged = inherit(inherited, &e.style);
     list_item::inherited_style(e, inherited, &mut merged);
     // Якорный шаг: ключи реестров кадра (свой `node_id` для содержащего
     // блока детей, порядок сборки, ключ клетки) и размеры от якоря —
@@ -345,9 +363,9 @@ pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> A
             Some(Display::Table) | Some(Display::InlineTable)
         ) =>
         {
-            let _clamp_bfc = crate::interact::clamp_context()
+            let _clamp_bfc = crate::text::clamp::clamp_context()
                 .is_some()
-                .then(crate::interact::ClampGuard::enter_bfc);
+                .then(crate::text::clamp::ClampGuard::enter_bfc);
             table(e, &merged, opts)
         }
         // Ряд, группа рядов или ячейка ВНЕ таблицы получают анонимную
@@ -358,16 +376,16 @@ pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> A
             Some(Display::TableRowGroup) | Some(Display::TableRow) | Some(Display::TableCell)
         ) =>
         {
-            let _clamp_bfc = crate::interact::clamp_context()
+            let _clamp_bfc = crate::text::clamp::clamp_context()
                 .is_some()
-                .then(crate::interact::ClampGuard::enter_bfc);
+                .then(crate::text::clamp::ClampGuard::enter_bfc);
             let wrapper = anon_element("table", vec![Node::Element(e.clone())]);
             table(&wrapper, &merged, opts)
         }
         "table" => {
-            let _clamp_bfc = crate::interact::clamp_context()
+            let _clamp_bfc = crate::text::clamp::clamp_context()
                 .is_some()
-                .then(crate::interact::ClampGuard::enter_bfc);
+                .then(crate::text::clamp::ClampGuard::enter_bfc);
             table(e, &merged, opts)
         }
         // Список с заданной раскладкой — это уже не список, а контейнер:

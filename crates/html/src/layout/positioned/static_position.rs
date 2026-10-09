@@ -1,7 +1,10 @@
 //! Статическая позиция абсолютных коробок.
 // owner: A
 
-use crate::render::*;
+use crate::dom::Element;
+use crate::layout::positioned::predicates::edge_set;
+use crate::style::computed::{Align, Computed};
+use crate::style::values::value::Len;
 
 /// Абсолютный элемент, которому не задан ни один край.
 ///
@@ -24,12 +27,12 @@ pub(crate) fn static_line_align(e: &Element, inherited: &Computed) -> Option<f32
     let rtl = inherited.rtl == Some(true);
     match inherited
         .text_align
-        .unwrap_or(crate::computed::TextAlign::Start)
+        .unwrap_or(crate::style::computed::TextAlign::Start)
         .physical(rtl)
     {
-        crate::computed::TextAlign::Center => Some(0.5),
-        crate::computed::TextAlign::Left => Some(0.0),
-        crate::computed::TextAlign::Right => Some(1.0),
+        crate::style::computed::TextAlign::Center => Some(0.5),
+        crate::style::computed::TextAlign::Left => Some(0.0),
+        crate::style::computed::TextAlign::Right => Some(1.0),
         // Выключка по ширине пустую строку не двигает — она как `start`.
         _ => None,
     }
@@ -118,7 +121,7 @@ pub(crate) fn cb_padding_shifts_replaced(e: &Element, inherited: &Computed) -> b
     // Содержащий блок — именно РОДИТЕЛЬ. Если он не позиционирован, коробка
     // считает края от более далёкого предка или от области просмотра, и
     // отбивка родителя к делу не относится вовсе.
-    if !crate::inline::establishes_cb(inherited) {
+    if !crate::text::inline::establishes_cb(inherited) {
         return false;
     }
     let side = |l: Option<Len>| matches!(l, Some(Len::Px(v)) if v > 0.0);
@@ -148,7 +151,7 @@ pub(crate) fn at_static_position(c: &Computed) -> bool {
         || matches!(c.max_height, Some(Len::Pct(_)));
     // Только `absolute`: у `fixed` содержащий блок — окно, и слой ему строит
     // сборщик дерева; пустышка в потоке ломала бы этот слой.
-    c.position == Some(crate::computed::Position::Absolute)
+    c.position == Some(crate::style::computed::Position::Absolute)
         && !relative_size
         && !edge_set(c.inset.top)
         && !edge_set(c.inset.right)

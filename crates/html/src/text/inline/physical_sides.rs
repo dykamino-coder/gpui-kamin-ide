@@ -1,6 +1,6 @@
 //! Convert physical inline decorations to the paragraph's unrotated shaping plane.
 //! The containing paragraph fixes this plane even if an inline overrides writing-mode.
-use crate::computed::{Computed, Sides};
+use crate::style::computed::{Computed, Sides};
 
 pub(super) fn project<T: Copy>(flow: &Computed, sides: [T; 4]) -> [T; 4] {
     super::physical_projection::project(
@@ -47,7 +47,7 @@ pub(super) fn project_box(flow: &Computed, style: &mut Computed) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::Len;
+    use crate::style::values::value::Len;
 
     fn flow(rotated: bool, ccw: bool) -> Computed {
         Computed {

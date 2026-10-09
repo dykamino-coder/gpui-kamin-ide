@@ -2,7 +2,7 @@
 //! CSS Lists 3 #ua-stylesheet also applies those hints to reversed-counter scans.
 
 use super::squeeze_parens;
-use crate::computed::{Computed, Display};
+use crate::style::computed::{Computed, Display};
 
 /// CSS 2 sections 6.2.1 and 12.4: explicit inheritance copies the parent's
 /// computed declaration list; counter values and counter scopes are separate.
@@ -54,7 +54,7 @@ pub(crate) fn list_value_hint(
         .and_then(|(_, value)| value.trim().parse().ok())
 }
 
-pub(crate) fn apply_value_hint(style: &mut Computed, node: &super::Ancestor) {
+pub(crate) fn apply_value_hint(style: &mut Computed, node: &crate::style::select::Ancestor) {
     if let Some(value) = list_value_hint(style, &node.tag, &node.attrs) {
         style.counter_set = Some(format!("list-item {value}"));
     }
@@ -66,11 +66,11 @@ pub(crate) fn apply_value_hint(style: &mut Computed, node: &super::Ancestor) {
 /// накапливаются увеличения, затем присваиваются значения.
 pub(crate) fn apply_counter_decls(
     style: &Computed,
-    counters: &mut crate::counters::Counters,
+    counters: &mut crate::style::generated::counters::Counters,
     tag: &str,
     attrs: &[(String, String)],
     item_flag: &mut bool,
-    reversed_start: &dyn Fn(&str, &mut crate::counters::Counters) -> i32,
+    reversed_start: &dyn Fn(&str, &mut crate::style::generated::counters::Counters) -> i32,
 ) {
     // CSS Lists 3 §4.5: display:contents has no box, so its directives
     // do not apply, while the flattened descendants still participate.

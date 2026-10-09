@@ -1,6 +1,7 @@
 //! Таблица стилей: правила, каскадные слои, пространства имён.
 
 use crate::style::css::*;
+use std::collections::HashMap;
 
 thread_local! {
     /// Реестр слоёв документа: полное имя → путь индексов (порядок —
@@ -18,7 +19,7 @@ thread_local! {
 
 /// Сбросить реестр слоёв — на входе разбора документа.
 pub fn reset_layers() {
-    crate::fonts::alternates::reset();
+    crate::text::fonts::alternates::reset();
     LAYERS.with(|l| l.borrow_mut().clear());
     LAYER_NEXT.with(|l| l.borrow_mut().clear());
     LAYER_NOW.with(|l| *l.borrow_mut() = (String::new(), Vec::new()));
@@ -220,7 +221,7 @@ pub(crate) fn sheet_rules(css: &str, media: Media, top: bool) -> Vec<Rule> {
                 .strip_prefix("@font-feature-values")
                 .is_some_and(|s| s.starts_with(char::is_whitespace))
             {
-                crate::fonts::alternates::register(&head[20..], body, layer_of_rules());
+                crate::text::fonts::alternates::register(&head[20..], body, layer_of_rules());
                 false
             } else if name.starts_with("@page") {
                 // Правило с головой (имя, `:first/:left/:right/:blank`,
@@ -296,7 +297,7 @@ pub(crate) fn sheet_rules(css: &str, media: Media, top: bool) -> Vec<Rule> {
                     .filter(|(k, _)| k.as_str() != ORDER_KEY)
                     .map(|(k, v)| (k.clone(), v.split(DECL_SEP).map(str::to_string).collect()))
                     .collect();
-                crate::counter_style_rules::register(&head["@counter-style".len()..], &descs);
+                crate::style::generated::counter_style_rules::register(&head["@counter-style".len()..], &descs);
                 false
             } else if name.starts_with("@position-try") {
                 // §fallback-rule: тело — обычные объявления (только вставки,

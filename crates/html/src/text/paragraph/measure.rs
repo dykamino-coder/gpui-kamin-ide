@@ -1,6 +1,7 @@
 //! Замеры абзаца: поля строк, вырезы обтекания, отступы, висячие знаки, ширины, min-content.
 
 use crate::text::paragraph::*;
+use gpui::{Pixels, Window, px};
 
 impl Paragraph {
     /// Вырез строки номер `line_no`: (слева, справа).

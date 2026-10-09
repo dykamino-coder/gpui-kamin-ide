@@ -1,7 +1,16 @@
 //! Схлопывание полей в потоке (CSS 2.1 §8.3.1).
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::block::containing::with_inner_cb;
+use crate::layout::block::struts::{Strut, adjoin, first_in_flow, leading_chain, margin_px, pin_inherited_margins, solve, strut_of, through_strut, through_strut_no_clear, trailing_chain, zero_at};
+use crate::layout::block::{margin_edges, margin_height, margin_inline_boxes};
+use crate::layout::float::band_clearance;
+use crate::layout::table::anon::wrap_anon_tables;
+use crate::render::{in_flow, inline_level, inline_level_box, is_blank, own_context, split_block_in_inline};
+use crate::style::computed::Display;
+use crate::style::values::value::Len;
+use crate::text::text_box::blank_text;
 
 /// `lead` — собственное поле КОНТЕЙНЕРА по ведущей стороне оси потока
 /// (`margin-left` при `vertical-lr`, `margin-right` при `vertical-rl`), если
@@ -50,8 +59,8 @@ pub(crate) fn collapse_flow_margins(children: Vec<Node>, reverse: bool, lead: Op
                 Node::Element(c)
                     if !matches!(
                         c.style.position,
-                        Some(crate::computed::Position::Absolute)
-                            | Some(crate::computed::Position::Fixed)
+                        Some(crate::style::computed::Position::Absolute)
+                            | Some(crate::style::computed::Position::Fixed)
                     ) && c.style.display.is_none()
                         // Схлопка живёт в ОДНОМ потоке: ребёнок со своим
                         // письмом заводит другой и границу запечатывает.
@@ -125,16 +134,16 @@ pub(crate) fn collapse_flow_margins(children: Vec<Node>, reverse: bool, lead: Op
             && e.style.vertical_rl.is_none()
             && !matches!(
                 e.style.position,
-                Some(crate::computed::Position::Absolute)
-                    | Some(crate::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute)
+                    | Some(crate::style::computed::Position::Fixed)
             )
             && matches!(
                 e.style.overflow_x,
-                None | Some(crate::computed::Overflow::Visible)
+                None | Some(crate::style::computed::Overflow::Visible)
             )
             && matches!(
                 e.style.overflow_y,
-                None | Some(crate::computed::Overflow::Visible)
+                None | Some(crate::style::computed::Overflow::Visible)
             )
             && e.style.flow_root != Some(true)
             && e.style.contain_layout != Some(true)
@@ -159,7 +168,7 @@ pub(crate) fn collapse_flow_margins(children: Vec<Node>, reverse: bool, lead: Op
         };
         // Out-of-flow boxes neither collapse nor interrupt adjacent block margins.
         if child.style.float.is_some_and(|f| f != 0)
-            || matches!(child.style.position, Some(crate::computed::Position::Absolute | crate::computed::Position::Fixed))
+            || matches!(child.style.position, Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed))
         {
             continue;
         }
@@ -185,11 +194,11 @@ pub(crate) fn collapse_flow_margins(children: Vec<Node>, reverse: bool, lead: Op
             || child.style.display.is_some()
             || !matches!(
                 child.style.overflow_x,
-                None | Some(crate::computed::Overflow::Visible)
+                None | Some(crate::style::computed::Overflow::Visible)
             )
             || !matches!(
                 child.style.overflow_y,
-                None | Some(crate::computed::Overflow::Visible)
+                None | Some(crate::style::computed::Overflow::Visible)
             )
             || child.style.flow_root == Some(true)
             || child.style.align_content_block
@@ -414,8 +423,8 @@ pub(crate) fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
                 if ch.style.float.is_some()
                     || matches!(
                         ch.style.position,
-                        Some(crate::computed::Position::Absolute)
-                            | Some(crate::computed::Position::Fixed)
+                        Some(crate::style::computed::Position::Absolute)
+                            | Some(crate::style::computed::Position::Fixed)
                     ))
             }))
             .and_then(|(i, ch)| {

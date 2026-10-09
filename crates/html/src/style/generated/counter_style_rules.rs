@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crate::counter_style::{builtin, builtin_initial, builtin_repr, normalize_name};
+use crate::style::generated::counter_style::{builtin, builtin_initial, builtin_repr, normalize_name};
 
 #[derive(Clone, Debug, PartialEq)]
 enum System {

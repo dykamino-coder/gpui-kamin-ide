@@ -211,10 +211,10 @@ pub(crate) fn shape_mask(raw: &str, b: &ShapeBox, cols: usize, rows: usize) -> O
             let start = raw[head..at]
                 .rfind("repeating-")
                 .map_or(head, |s| head + s);
-            crate::background::source(raw[start..].trim().trim_end_matches(|c| c != ')'))
+            crate::paint::background::source(raw[start..].trim().trim_end_matches(|c| c != ')'))
                 .and_then(|s| s.raster((b.cw.max(1.0), b.ch.max(1.0))))
         } else {
-            crate::computed::parse_url(raw).and_then(|u| load(&u))
+            crate::style::computed::parse_url(raw).and_then(|u| load(&u))
         }?;
         let bytes = src.as_bytes(0)?;
         let sz = src.size(0);
@@ -261,9 +261,9 @@ pub(crate) fn svg_path_of(raw: &str, b: &ShapeBox) -> Option<(String, &'static s
                 pts_src = rest.trim_start().trim_start_matches(',');
             }
             let len_px = |t: &str, base: f32| -> f32 {
-                match crate::value::Len::parse(t) {
-                    Some(crate::value::Len::Px(v)) => v,
-                    Some(crate::value::Len::Pct(k)) => k * base,
+                match crate::style::values::value::Len::parse(t) {
+                    Some(crate::style::values::value::Len::Px(v)) => v,
+                    Some(crate::style::values::value::Len::Pct(k)) => k * base,
                     _ => 0.0,
                 }
             };

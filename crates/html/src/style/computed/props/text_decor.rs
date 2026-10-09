@@ -1,6 +1,7 @@
 //! Computed::apply_one: text-decoration*, text-underline-*, text-emphasis*, text-shadow, ruby-*.
 
 use crate::style::computed::*;
+use crate::style::values::value::Color;
 
 impl Computed {
     #[allow(unused_variables)]
@@ -13,7 +14,7 @@ impl Computed {
                 // (§4.2): `text-decoration: diagonal` оставляет прежнее
                 // значение (`c71-fwd-parsing-003`).
                 let lower = v.trim().to_ascii_lowercase();
-                let words = crate::background::split_top(&lower);
+                let words = crate::paint::background::split_top(&lower);
                 if words.is_empty() {
                     return;
                 }
@@ -137,10 +138,10 @@ impl Computed {
                     self.td_inset = Some(None);
                     return;
                 }
-                let words = crate::background::split_top(&t);
+                let words = crate::paint::background::split_top(&t);
                 // Смесь доли и точек доживает до отрисовки: доля — от
                 // ширины украшенного прогона (css-text-decor-4 §4.1).
-                let one = |w: &str| match crate::value::calc_pct_px(w) {
+                let one = |w: &str| match crate::style::values::value::calc_pct_px(w) {
                     Some((k, p)) if k != 0.0 => Some(DecorLen::Mix(k, p)),
                     _ => parse_decor_length(w),
                 };

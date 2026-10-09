@@ -1,5 +1,5 @@
 //! Configuration for rotated text sizing and writing-mode projection.
-use crate::interact::VerticalText;
+use crate::text::vertical::VerticalText;
 use gpui::{AnyElement, Pixels};
 
 impl VerticalText {
@@ -69,7 +69,7 @@ impl VerticalText {
     /// Мерить содержимое по МИНИМАЛЬНОМУ вдоль строки (см. поле `col_min`).
     pub(crate) fn inline_constraint(
         mut self,
-        constraint: crate::computed::orthogonal::InlineConstraint,
+        constraint: crate::style::computed::orthogonal::InlineConstraint,
     ) -> Self {
         self.inline_constraint = Some(constraint);
         self
@@ -82,7 +82,7 @@ impl VerticalText {
 
     pub(crate) fn inline_keyword(
         mut self,
-        keyword: Option<crate::computed::orthogonal::InlineKeyword>,
+        keyword: Option<crate::style::computed::orthogonal::InlineKeyword>,
     ) -> Self {
         self.inline_keyword = keyword;
         self

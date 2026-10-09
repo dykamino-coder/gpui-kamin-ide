@@ -31,9 +31,9 @@
 //! `transform: inherit` / `perspective: inherit` — флагов `*_inherit` для
 //! них в `Computed` пока нет, и `explicit` их не видит.
 
-use crate::computed::{Computed, Shadow, Sides};
+use crate::style::computed::{Computed, Shadow, Sides};
 use crate::dom::Node;
-use crate::value::Len;
+use crate::style::values::value::Len;
 
 /// Наследуемые длины, которые проход несёт вниз В ТОЧКАХ: значение
 /// ближайшего предка, задавшего свойство, уже домноженное на его зум.
@@ -169,7 +169,7 @@ fn scale_own(c: &mut Computed, k: f32) {
     }
     // `background-size` в точках — тоже длина (§493; `zoom/background-size`);
     // `cover`/`contain` и доли зуму безразличны.
-    if let crate::computed::BgSize::Fixed(w, h) = &mut c.bg_size {
+    if let crate::style::computed::BgSize::Fixed(w, h) = &mut c.bg_size {
         mul(w);
         mul(h);
     }
@@ -225,9 +225,9 @@ fn scale_own(c: &mut Computed, k: f32) {
     c.vertical_shift_px = c.vertical_shift_px.map(|v| v * k);
     // Длины украшений текста (css-text-decor-4): толщина, смещение
     // подчёркивания, отступы концов.
-    let dl = |l: &mut crate::computed::DecorLen| {
+    let dl = |l: &mut crate::style::computed::DecorLen| {
         match l {
-            crate::computed::DecorLen::Px(v) | crate::computed::DecorLen::Mix(_, v) => *v *= k,
+            crate::style::computed::DecorLen::Px(v) | crate::style::computed::DecorLen::Mix(_, v) => *v *= k,
             _ => {}
         }
     };
@@ -260,7 +260,7 @@ fn inherited(c: &mut Computed, own: f32, carried: &Carried) {
         c.text_shadow = Some(sh);
     }
     if c.underline_offset.is_none() && let Some(v) = carried.underline_offset {
-        c.underline_offset = Some(crate::computed::DecorLen::Px(v * own));
+        c.underline_offset = Some(crate::style::computed::DecorLen::Px(v * own));
     }
     if c.border_spacing.is_none() && let Some((row, col)) = carried.border_spacing {
         let px = |v: Option<f32>| v.map(|v| Len::Px(v * own));
@@ -353,7 +353,7 @@ fn explicit(c: &mut Computed, parent: Option<&Computed>, own: f32) {
     // `outline-offset`, `background-size`: вторая коробка группы с зумом 2).
     // Значение родителя — его собственный стиль, уже с его зумом, × `own`;
     // разряд снимается. Не в точках — разряд остаётся, как прежде.
-    use crate::computed::inh;
+    use crate::style::computed::inh;
     if c.inherit_bits & (inh::OUTLINE_W | inh::OUTLINE_O) != 0 {
         let from = p.outline.unwrap_or_default();
         let mut o = c.outline.unwrap_or_default();
@@ -373,10 +373,10 @@ fn explicit(c: &mut Computed, parent: Option<&Computed>, own: f32) {
         }
     }
     if c.inherit_bits & inh::BG_SIZE != 0
-        && let crate::computed::BgSize::Fixed(w, h) = p.bg_size
+        && let crate::style::computed::BgSize::Fixed(w, h) = p.bg_size
     {
         let k = |l: Option<Len>| px(l).or(l);
-        c.bg_size = crate::computed::BgSize::Fixed(k(w), k(h));
+        c.bg_size = crate::style::computed::BgSize::Fixed(k(w), k(h));
         c.inherit_bits &= !inh::BG_SIZE;
     }
 }
@@ -406,7 +406,7 @@ fn remember(c: &Computed, k: &mut Carried) {
         k.border_spacing = Some((px(row), px(col)));
     }
     match c.underline_offset {
-        Some(crate::computed::DecorLen::Px(v)) => k.underline_offset = Some(v),
+        Some(crate::style::computed::DecorLen::Px(v)) => k.underline_offset = Some(v),
         Some(_) => k.underline_offset = None,
         None => {}
     }

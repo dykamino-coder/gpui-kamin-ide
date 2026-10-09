@@ -1,7 +1,9 @@
 //! Руби: сегменты и уровни.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::style::computed::Computed;
+use crate::text::text_box::blank_text;
 
 pub(crate) mod ruby_hiding;
 pub(crate) mod ruby_transform;
@@ -35,7 +37,7 @@ pub(crate) struct RubySegment {
 pub(crate) fn ruby_unit_blank(unit: &[Node]) -> bool {
     unit.iter().all(|n| match n {
         Node::Text(t) => blank_text(t),
-        Node::Element(k) if ruby_role(k).is_some_and(|r| r != crate::computed::RubyRole::Container) => {
+        Node::Element(k) if ruby_role(k).is_some_and(|r| r != crate::style::computed::RubyRole::Container) => {
             ruby_unit_blank(&k.children)
         }
         Node::Element(_) => false,
@@ -47,8 +49,8 @@ pub(crate) fn ruby_unit_blank(unit: &[Node]) -> bool {
 /// СНИМАЕТ (`display: block` на `<rt>` — обычный блок, как в Blink, где
 /// `IsInlineRubyText` смотрит на `Display()`, а не на тег): роль по тегу
 /// действует только без своего `display`.
-pub(crate) fn ruby_role(e: &Element) -> Option<crate::computed::RubyRole> {
-    use crate::computed::RubyRole;
+pub(crate) fn ruby_role(e: &Element) -> Option<crate::style::computed::RubyRole> {
+    use crate::style::computed::RubyRole;
     if let Some(role) = e.style.ruby_role {
         return Some(role);
     }
@@ -103,10 +105,10 @@ pub(crate) fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
         Node::Text(_) => Kind::Text,
         Node::Element(k) if k.tag == "rp" => Kind::Drop,
         Node::Element(k) => match ruby_role(k) {
-            Some(crate::computed::RubyRole::Base) => Kind::Rb,
-            Some(crate::computed::RubyRole::BaseContainer) => Kind::Rbc,
-            Some(crate::computed::RubyRole::Text) => Kind::Rt,
-            Some(crate::computed::RubyRole::TextContainer) => Kind::Rtc,
+            Some(crate::style::computed::RubyRole::Base) => Kind::Rb,
+            Some(crate::style::computed::RubyRole::BaseContainer) => Kind::Rbc,
+            Some(crate::style::computed::RubyRole::Text) => Kind::Rt,
+            Some(crate::style::computed::RubyRole::TextContainer) => Kind::Rtc,
             _ => Kind::Text,
         },
     };
@@ -228,7 +230,7 @@ pub(crate) fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
                     .iter()
                     .filter(|c| {
                         matches!(c, Node::Element(r)
-                            if ruby_role(r) == Some(crate::computed::RubyRole::Text))
+                            if ruby_role(r) == Some(crate::style::computed::RubyRole::Text))
                     })
                     .map(|c| vec![c.clone()])
                     .collect();

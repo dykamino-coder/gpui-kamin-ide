@@ -1,7 +1,7 @@
 //! Outline rings outside the border box, without changing layout.
 
-use crate::computed::{Computed, OUTLINE_DOUBLE};
-use crate::value::Len;
+use crate::style::computed::{Computed, OUTLINE_DOUBLE};
+use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, Styled, div, px};
 
 pub(crate) fn decorations(c: &Computed) -> Vec<AnyElement> {
@@ -46,7 +46,7 @@ pub(crate) fn decorations(c: &Computed) -> Vec<AnyElement> {
                 None
             })
             .or(c.color)
-            .or(Some(crate::value::Color {
+            .or(Some(crate::style::values::value::Color {
                 r: 0.0,
                 g: 0.0,
                 b: 0.0,
@@ -77,7 +77,7 @@ pub(crate) fn decorations(c: &Computed) -> Vec<AnyElement> {
             // Угол контура повторяет угол коробки, раздвинутый сдвигом и
             // толщиной (css-ui-4 §outline): доля решается так же, как у
             // рамки, — прежде она читалась нулём (`outline-005`).
-            let corner = crate::apply::radius_px(c, c.radius.tl)
+            let corner = crate::style::apply::radius_px(c, c.radius.tl)
                 .filter(|v| *v > 0.0)
                 .map_or(0.0, |v| v + off + w);
             // Абсолютный ребёнок отсчитывается от padding-box (CSS 2.1

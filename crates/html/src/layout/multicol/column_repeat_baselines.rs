@@ -1,6 +1,8 @@
 //! Repeated table bands nominate only the content lines visible in their painted masks.
 
 use super::*;
+use crate::layout::fragment::types::{Frag, StackChild};
+use gpui::{App, Window, px};
 
 #[derive(Default)]
 pub(super) struct RepeatedMeasurements {

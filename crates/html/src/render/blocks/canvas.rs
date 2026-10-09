@@ -1,7 +1,12 @@
 //! Слой фона холста у корня (группа корня, css-compositing-1 §pagebackdrop).
 // owner: A
 
+use crate::dom::Element;
+use crate::paint::effects::grouped::grouped;
 use crate::render::*;
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
+use gpui::{ParentElement, Styled, div, px};
 
 pub(crate) fn canvas_layer(
     e: &Element,
@@ -34,7 +39,7 @@ pub(crate) fn canvas_layer(
                 stop.0 = f.apply(stop.0);
             }
         }
-        layer = layer.bg(crate::apply::fill(&g));
+        layer = layer.bg(crate::style::apply::fill(&g));
     } else if let Some(bg) = e.style.background {
         let bg = root_filter.map_or(bg, |f| f.apply(bg));
         layer = layer.bg(bg.to_hsla());
@@ -64,12 +69,12 @@ pub(crate) fn canvas_layer(
             let side = |l: Option<Len>| match l {
                 Some(Len::Px(v)) => v,
                 Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_))) => {
-                    crate::metrics::spacing_px(Some(l), &fam, em)
+                    crate::text::metrics::spacing_px(Some(l), &fam, em)
                 }
                 _ => 0.0,
             };
             let b = e.style.borders();
-            let area = crate::background::RootArea {
+            let area = crate::paint::background::RootArea {
                 left: side(e.style.margin.left) + side(b.left),
                 top: side(e.style.margin.top) + side(b.top),
                 right: side(e.style.margin.right) + side(b.right),
@@ -99,13 +104,13 @@ pub(crate) fn canvas_layer(
                 Some(layers) => {
                     let mut stack = div().absolute().top_0().left_0().right_0().bottom_0();
                     for l in layers.iter().rev() {
-                        if let Some(t) = crate::background::canvas_layer(l, area) {
+                        if let Some(t) = crate::paint::background::canvas_layer(l, area) {
                             stack = stack.child(t);
                         }
                     }
                     Some(stack.into_any_element())
                 }
-                None => crate::background::canvas_layer(&e.style, area),
+                None => crate::paint::background::canvas_layer(&e.style, area),
             }
         }
     {
@@ -119,7 +124,7 @@ pub(crate) fn canvas_layer(
             .child(tiles)
             .into_any_element();
     } else if e.style.bg_image.is_some()
-        && let Some(tiles) = crate::background::layer(&e.style)
+        && let Some(tiles) = crate::paint::background::layer(&e.style)
     {
         // Область ПОЗИЦИОНИРОВАНИЯ краски — PADDING-BOX корня:
         // ширина + горизонтальные отступы; полоса прижата по

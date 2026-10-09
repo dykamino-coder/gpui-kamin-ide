@@ -1,7 +1,13 @@
 //! Буквица `initial-letter` как флоат.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::float::band_host::px_margin;
+use crate::paint::effects::grouped::px_of2;
+use crate::render::RenderOpts;
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
+use crate::text::text_box::{blank_text, normal_fraction};
 
 /// `initial-letter` (css-inline-3 §initial-letter): буквица — не кусок
 /// текста, а коробка В НАЧАЛЕ БЛОКА, которую строки обтекают. Эталоны WPT
@@ -70,7 +76,7 @@ pub(crate) fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts:
         _ => opts.base_size(),
     };
     let family = inherited.font_family.clone().unwrap_or_default();
-    let (asc, desc, cap) = crate::metrics::vmetrics_px(&family, font_px);
+    let (asc, desc, cap) = crate::text::metrics::vmetrics_px(&family, font_px);
     let line = match inherited.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * font_px,
@@ -78,13 +84,13 @@ pub(crate) fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts:
     };
     // Доля прописной — у шрифта БУКВИЦЫ: слой может сменить семейство.
     let letter_family = first.font_family.clone().unwrap_or_else(|| family.clone());
-    let (_, _, cap_frac) = crate::metrics::vmetrics_px(&letter_family, 1.0);
+    let (_, _, cap_frac) = crate::text::metrics::vmetrics_px(&letter_family, 1.0);
     if cap_frac <= 0.0 || line <= 0.0 {
         return nodes;
     }
     let want_cap = (size_lines - 1.0) * line + cap;
     let letter_px = want_cap / cap_frac;
-    let (l_asc, l_desc, _) = crate::metrics::vmetrics_px(&letter_family, letter_px);
+    let (l_asc, l_desc, _) = crate::text::metrics::vmetrics_px(&letter_family, letter_px);
     let box_h = l_asc + l_desc;
     let half_leading = (line - (asc + desc)) / 2.0;
     // Размер меньше осадки (`3 5`) — выравнивание по верху
@@ -160,7 +166,7 @@ pub(crate) fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts:
         && inherited.keep_spaces == Some(true)
         && !lead.contains(|c: char| c == '\n' || c == '\r')
     {
-        let space = crate::metrics::ch_ex_px(&family, font_px).0;
+        let space = crate::text::metrics::ch_ex_px(&family, font_px).0;
         let stop = match inherited.tab_size_len {
             Some(Len::Px(v)) if v > 0.0 => v,
             _ => inherited.tab_size.unwrap_or(8.0).max(0.0) * space,
@@ -181,7 +187,7 @@ pub(crate) fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts:
         // несёт и внутренний отступ строки буквицы, и ведущие пробелы:
         // `float_flow` меряет обтекание по ней (`float.rs` `narrow`).
         width: Some(Len::Px(
-            crate::metrics::ch_ex_px(&letter_family, letter_px).0 + indent + lead_w,
+            crate::text::metrics::ch_ex_px(&letter_family, letter_px).0 + indent + lead_w,
         )),
         height: Some(Len::Px(box_h)),
         font_size: Some(Len::Px(letter_px)),

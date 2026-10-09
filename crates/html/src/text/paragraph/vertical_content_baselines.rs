@@ -2,6 +2,7 @@
 //! Right-origin offsets are translated by native layout after the final width is known.
 
 use super::*;
+use gpui::{Pixels, px};
 
 impl Paragraph {
     /// Select the dominant vertical baseline: central for upright/mixed, alphabetic for sideways.
@@ -67,6 +68,7 @@ impl Paragraph {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::size;
 
     fn paragraph() -> Paragraph {
         let mut paragraph = Paragraph::new(

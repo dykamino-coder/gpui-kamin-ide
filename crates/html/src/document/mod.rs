@@ -11,10 +11,10 @@
 //! проверяется по хэшу, а не по строке целиком.
 
 mod box_style;
-use box_style::has_box_style;
+use crate::document::box_style::has_box_style;
 
 use crate::dom::Node;
-use crate::value::Len;
+use crate::style::values::value::Len;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -23,7 +23,7 @@ pub struct Document {
     nodes: Vec<Node>,
     /// Текстовый стиль `body`: им набирается текст верхнего уровня, у
     /// которого своего элемента нет.
-    root: crate::computed::Computed,
+    root: crate::style::computed::Computed,
     /// Хэш разметки и темы: по нему видно, нужен ли повторный разбор.
     key: u64,
 }
@@ -32,11 +32,11 @@ impl Document {
     pub fn new(html: &str, theme_css: &str) -> Self {
         // Свои шрифты страницы грузятся ДО разбора: иначе первый же замер
         // ширины пойдёт по подстановке, а перерисовки под новый шрифт нет.
-        crate::fonts::load_faces(html);
-        crate::color_space::load_profiles(html);
-        crate::lines::forget_measures();
-        crate::interact::forget_row_rects();
-        crate::interact::forget_vt_measures();
+        crate::text::fonts::load_faces(html);
+        crate::style::values::color_space::load_profiles(html);
+        crate::text::paragraph::forget_measures();
+        crate::layout::table::paint::forget_row_rects();
+        crate::text::vertical::forget_vt_measures();
         let (nodes, root) = unwrap_document(mark_canvas_background(resolve_logical(
             propagate_writing_mode(viewport_overflow(crate::dom::parse(html, theme_css))),
         )));
@@ -49,7 +49,7 @@ impl Document {
 
     /// Текстовый стиль страницы (`html`/`body`): им набирается текст, у
     /// которого своего элемента нет.
-    pub fn root_style(&self) -> &crate::computed::Computed {
+    pub fn root_style(&self) -> &crate::style::computed::Computed {
         &self.root
     }
 
@@ -109,7 +109,7 @@ impl Document {
 /// Нулевой не считается: `body { margin: 0 }` пишут именно затем, чтобы
 /// обёртка ничего не делала, — держать её ради этого значит терять
 /// виртуализацию на ровном месте.
-fn any_side(s: &crate::computed::Sides) -> bool {
+fn any_side(s: &crate::style::computed::Sides) -> bool {
     [&s.top, &s.right, &s.bottom, &s.left]
         .into_iter()
         .any(|one| !matches!(one, None | Some(Len::Px(0.0))))
@@ -137,8 +137,8 @@ fn viewport_overflow(mut nodes: Vec<Node>) -> Vec<Node> {
                 // Viewport Propagation): иначе во вьюпорт идёт корневое, а
                 // тело держит своё (`overflow-body-propagation-012`).
                 let root_own_overflow = e.tag == "html"
-                    && (matches!(e.style.overflow_x, Some(o) if o != crate::computed::Overflow::Visible)
-                        || matches!(e.style.overflow_y, Some(o) if o != crate::computed::Overflow::Visible));
+                    && (matches!(e.style.overflow_x, Some(o) if o != crate::style::computed::Overflow::Visible)
+                        || matches!(e.style.overflow_y, Some(o) if o != crate::style::computed::Overflow::Visible));
                 if !own && !root_contained {
                     e.style.overflow_x = None;
                     e.style.overflow_y = None;
@@ -204,17 +204,17 @@ fn mark_canvas_background(mut nodes: Vec<Node>) -> Vec<Node> {
             // the root element». Без коробки корня слой канваса (`canvas_bg`
             // ниже) не заводился, и фон-картинка корня пропадала целиком
             // (`display-contents-root-background` 99.93).
-            if html.style.display == Some(crate::computed::Display::Contents) {
-                html.style.display = Some(crate::computed::Display::Block);
+            if html.style.display == Some(crate::style::computed::Display::Contents) {
+                html.style.display = Some(crate::style::computed::Display::Block);
             }
         }
         // Фон переносится только от элемента С КОРОБКОЙ: `display: none` и
         // `display: contents` коробки не дают, и канвас остаётся чистым
         // (`background-color-body-propagation-007`, `-root-propagation-001`).
-        let boxed = |e: &crate::Element| {
+        let boxed = |e: &crate::dom::Element| {
             !matches!(
                 e.style.display,
-                Some(crate::computed::Display::None) | Some(crate::computed::Display::Contents)
+                Some(crate::style::computed::Display::None) | Some(crate::style::computed::Display::Contents)
             )
         };
         if html.tag != "html" {
@@ -241,7 +241,7 @@ fn mark_canvas_background(mut nodes: Vec<Node>) -> Vec<Node> {
         // on the root element». Фон тела ПЕРЕЕЗЖАЕТ на корень целиком, а не
         // помечается на месте: иначе область отсчёта плитки считалась бы от
         // полей ТЕЛА.
-        let mut moved: Option<crate::computed::Computed> = None;
+        let mut moved: Option<crate::style::computed::Computed> = None;
         for c in html.children.iter_mut() {
             let Node::Element(body) = c else { continue };
             // Переезд фона тела НА КОРЕНЬ — это и есть распространение
@@ -249,7 +249,7 @@ fn mark_canvas_background(mut nodes: Vec<Node>) -> Vec<Node> {
             // element»). Любое обособление тела его отменяет.
             if body.tag == "body" && has_bg(body) && boxed(body) && !any_containment(body) {
                 let s = &mut body.style;
-                let mut take = crate::computed::Computed::default();
+                let mut take = crate::style::computed::Computed::default();
                 take.background = s.background.take();
                 take.background_rcs = s.background_rcs.take();
                 take.gradient = s.gradient.take();
@@ -268,16 +268,16 @@ fn mark_canvas_background(mut nodes: Vec<Node>) -> Vec<Node> {
                 // ждёт. Значит корень пары не в кегле, а в области отсчёта
                 // перенесённого фона. Возвращать вместе с ней.
                 let em = match s.font_size {
-                    Some(crate::value::Len::Px(v)) => v,
+                    Some(crate::style::values::value::Len::Px(v)) => v,
                     _ => 16.0,
                 };
                 let fam = s.font_family.clone().unwrap_or_default();
-                let to_px = |l: Option<crate::value::Len>| match l {
+                let to_px = |l: Option<crate::style::values::value::Len>| match l {
                     Some(
-                        crate::value::Len::Em(_)
-                        | crate::value::Len::Ex(_)
-                        | crate::value::Len::Ch(_),
-                    ) => Some(crate::value::Len::Px(crate::metrics::spacing_px(
+                        crate::style::values::value::Len::Em(_)
+                        | crate::style::values::value::Len::Ex(_)
+                        | crate::style::values::value::Len::Ch(_),
+                    ) => Some(crate::style::values::value::Len::Px(crate::text::metrics::spacing_px(
                         l, &fam, em,
                     ))),
                     other => other,
@@ -356,7 +356,7 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
                 && b.style.height.is_none()
                 && b.style.min_height.is_none()
             {
-                b.style.min_height = Some(crate::value::Len::Px(0.0));
+                b.style.min_height = Some(crate::style::values::value::Len::Px(0.0));
             }
         }
     }
@@ -418,7 +418,7 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
         && html.style.align_self.is_none()
         && html.style.bg_image.is_none()
     {
-        html.style.align_self = Some(crate::computed::Align::End);
+        html.style.align_self = Some(crate::style::computed::Align::End);
     }
     // Вертикальный корень с ФОНОМ-КАРТИНКОЙ: без минимума высоты его
     // коробка при пустом теле нулевая, и краске негде лечь
@@ -429,7 +429,7 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
         && html.style.height.is_none()
         && html.style.min_height.is_none()
     {
-        html.style.min_height = Some(crate::value::Len::Vh(1.0));
+        html.style.min_height = Some(crate::style::values::value::Len::Vh(1.0));
     }
     let side_lr = taken.3 == Some(true) && taken.1 != Some(true);
     if taken.0 == Some(true)
@@ -437,7 +437,7 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
         && html.style.height.is_none()
         && html.style.min_height.is_none()
     {
-        html.style.min_height = Some(crate::value::Len::Vh(1.0));
+        html.style.min_height = Some(crate::style::values::value::Len::Vh(1.0));
     }
     if taken == own {
         return nodes;
@@ -457,7 +457,7 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
         e.style.sideways = e.style.sideways.or(own.3);
     }
     if taken.0 == Some(true) && html.style.height.is_none() && html.style.min_height.is_none() {
-        html.style.min_height = Some(crate::value::Len::Vh(1.0));
+        html.style.min_height = Some(crate::style::values::value::Len::Vh(1.0));
     }
     (
         html.style.vertical,
@@ -513,7 +513,7 @@ fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
             // (замеренный откат в шапке `resolve_logical`), поэтому
             // проверяются оба признака.
             let is_cell = matches!(e.tag.as_str(), "td" | "th")
-                || e.style.display == Some(crate::computed::Display::TableCell);
+                || e.style.display == Some(crate::style::computed::Display::TableCell);
             e.style.resolve_logical(mode.0, is_cell);
             // Слои `:hover`, `::first-letter` и `::first-line` — ТЕМ ЖЕ
             // проходом. Слой собирается копией стиля элемента ДО этого
@@ -559,7 +559,7 @@ fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
     // `inline::inherit` (см. ★ перед ней). Идёт после `walk`: логические
     // стороны уже физические. Страницу без `zoom` проход не меняет: у неё ни
     // одного элемента с `zoom`, и ни одна ветка записи не исполняется.
-    crate::zoom::resolve(&mut nodes);
+    crate::style::zoom::resolve(&mut nodes);
     // `z-index: inherit` и `clip: inherit` разбор выражает только разрядом
     // `inherit_bits`, а значение родителя кладёт слияние (`inline::inherit`) —
     // в СЛИТЫЙ стиль. Сборщик же дерева решает слой и обрезку по
@@ -587,8 +587,8 @@ fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
 /// Оба свойства ненаследуемые, поэтому собственный стиль родителя и есть его
 /// вычисленное значение (как у `zoom::explicit`). Проход сверху вниз: у
 /// родителя цепочка `inherit` к этому шагу уже разрешена.
-fn settle_explicit_inherit(nodes: &mut [Node], parent: Option<&crate::computed::Computed>) {
-    use crate::computed::inh;
+fn settle_explicit_inherit(nodes: &mut [Node], parent: Option<&crate::style::computed::Computed>) {
+    use crate::style::computed::inh;
     for n in nodes.iter_mut() {
         let Node::Element(e) = n else { continue };
         if let Some(p) = parent {
@@ -621,21 +621,21 @@ fn settle_explicit_inherit(nodes: &mut [Node], parent: Option<&crate::computed::
 /// §4.8.5), а не внешним окном (`css-page/media-queries-002-print`: рамка
 /// 100x100 и `@media (width: 100px) and (height: 100px)`).
 pub fn parse_embedded(html: &str, theme_css: &str, viewport: (f32, f32)) -> (Vec<Node>, u64) {
-    crate::fonts::load_faces_additive(html);
-    crate::color_space::load_profiles(html);
+    crate::text::fonts::load_faces_additive(html);
+    crate::style::values::color_space::load_profiles(html);
     // Пулы `@page` ВНЕШНЕГО документа: `parse_media` начинает с их очистки
     // (`take_page_decls`), а рамка разбирается на КАЖДОМ кадре — лист
     // печатной пары со второго кадра терял size/margin/фон. Правила `@page`
     // самой рамки к листам внешнего документа не относятся (css-page-3: page
     // context — только у корневого документа), поэтому пулы возвращаются.
-    let outer_rules = crate::css::page_rules_snapshot();
-    let media = crate::css::Media {
+    let outer_rules = crate::style::css::page_rules_snapshot();
+    let media = crate::style::css::Media {
         width: viewport.0,
         height: viewport.1,
-        ..crate::css::Media::default()
+        ..crate::style::css::Media::default()
     };
     let parsed = crate::dom::parse_media(html, theme_css, media);
-    *crate::css::PAGE_RULES.lock().unwrap() = outer_rules;
+    *crate::style::css::PAGE_RULES.lock().unwrap() = outer_rules;
     let (mut nodes, _root) = unwrap_document(mark_canvas_background(resolve_logical(
         propagate_writing_mode(viewport_overflow(parsed)),
     )));
@@ -651,8 +651,8 @@ pub fn parse_embedded(html: &str, theme_css: &str, viewport: (f32, f32)) -> (Vec
 /// Без этого «блоков верхнего уровня» ровно один — весь документ — и
 /// виртуализация теряет смысл: список спрашивает единственный элемент и
 /// раскладывает вместе с ним всё содержимое.
-fn unwrap_document(nodes: Vec<Node>) -> (Vec<Node>, crate::computed::Computed) {
-    let mut root = crate::computed::Computed::default();
+fn unwrap_document(nodes: Vec<Node>) -> (Vec<Node>, crate::style::computed::Computed) {
+    let mut root = crate::style::computed::Computed::default();
     let mut nodes = nodes;
     loop {
         let single_wrapper = match nodes.as_slice() {
@@ -667,7 +667,7 @@ fn unwrap_document(nodes: Vec<Node>) -> (Vec<Node>, crate::computed::Computed) {
         let Some(Node::Element(e)) = nodes.pop() else {
             return (nodes, root);
         };
-        root = crate::inline::inherit_unpainted(&root, &e.style);
+        root = crate::style::cascade::inherit::inherit_unpainted(&root, &e.style);
         // Обёртка снимается ради виртуализации: единица прокрутки — блок
         // верхнего уровня, а не документ целиком. Но её ТЕКСТОВЫЙ стиль
         // принадлежит содержимому: `body { font: 13px system-ui }` — самый
@@ -678,7 +678,7 @@ fn unwrap_document(nodes: Vec<Node>) -> (Vec<Node>, crate::computed::Computed) {
             .into_iter()
             .map(|n| match n {
                 Node::Element(mut child) => {
-                    child.style = crate::inline::inherit_unpainted(&e.style, &child.style);
+                    child.style = crate::style::cascade::inherit::inherit_unpainted(&e.style, &child.style);
                     Node::Element(child)
                 }
                 other => other,

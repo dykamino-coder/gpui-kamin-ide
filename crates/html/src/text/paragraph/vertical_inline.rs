@@ -2,7 +2,8 @@
 //! Intrinsic probes and final constraints share the actual paragraph shaping path.
 
 use super::*;
-use crate::computed::orthogonal::{InlineConstraint, InlineKeyword};
+use crate::style::computed::orthogonal::{InlineConstraint, InlineKeyword};
+use gpui::{Pixels, Window, px};
 
 impl Paragraph {
     pub(crate) fn vertical_inline_constraint(

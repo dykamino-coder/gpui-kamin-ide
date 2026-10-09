@@ -1,6 +1,7 @@
 //! Градиенты и image-set: разбор, угол, растр, image-resolution.
 
 use crate::style::computed::*;
+use crate::style::values::value::{Color, Len};
 
 /// Выбор кандидата `image-set()` (css-images-4 §2.5).
 ///
@@ -12,7 +13,7 @@ use crate::style::computed::*;
 ///   `<string>` inside image-set() represents a `<url>`»).
 pub(crate) fn image_set_pick(inner: &str) -> Option<Option<String>> {
     let mut options: Vec<(String, f32)> = vec![];
-    for cand in crate::css::split_args(inner) {
+    for cand in crate::style::css::split_args(inner) {
         let mut image: Option<String> = None;
         let mut res: Option<f32> = None;
         let mut type_ok = true;
@@ -174,7 +175,7 @@ pub(crate) fn filter_gradient_text(raw: &str, f: &Filter) -> String {
     if close <= open {
         return raw.to_string();
     }
-    let parts: Vec<String> = crate::css::split_args(&raw[open + 1..close])
+    let parts: Vec<String> = crate::style::css::split_args(&raw[open + 1..close])
         .into_iter()
         .map(|part| {
             split_outside_parens(part)
@@ -239,7 +240,7 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
             "linear-gradient("
         })?
         .strip_suffix(')')?;
-    let parts: Vec<&str> = crate::css::split_args(inner);
+    let parts: Vec<&str> = crate::style::css::split_args(inner);
     if parts.is_empty() {
         return None;
     }
@@ -366,7 +367,7 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
     let mut all_legacy = true;
     for p in &parts[idx..] {
         let words = split_outside_parens(p);
-        let Some(colour) = words.first().and_then(|w| crate::color_space::interpolation_color(w)) else {
+        let Some(colour) = words.first().and_then(|w| crate::style::values::color_space::interpolation_color(w)) else {
             continue;
         };
         all_legacy &= legacy_srgb_color(words[0].as_str());
@@ -427,7 +428,7 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
     // без позиции — поровну между соседями С позициями (а не по номеру в
     // списке). Тот же расклад, что у растра.
     let last = raw.len() - 1;
-    let stops: Vec<(Color, f32)> = crate::background::place_stops(raw.clone());
+    let stops: Vec<(Color, f32)> = crate::paint::background::place_stops(raw.clone());
     // TODO(gradient): `in hsl longer hue` — дуга тона синтетическими стопами
     // (css-images-4 §3.4.1.1) была за отладочным флагом HSL_ARC, замерена в
     // минус (−13/+2) и удалена; вернуться с точной математикой полос.

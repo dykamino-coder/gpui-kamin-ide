@@ -1,6 +1,8 @@
 //! Декодирование картинок: EXIF-ориентация, SVG-размер, data:-URL, собственный размер.
 
 use crate::paint::background::*;
+use gpui::RenderImage;
+use std::sync::Arc;
 
 /// Цвет градиента в точке `t` (0..1) по расставленным стопам.
 /// Растр или рисунок — по содержимому файла, а не по расширению: у `data:`-URI
@@ -30,7 +32,7 @@ pub(crate) fn decode(bytes: &[u8], orient: bool) -> Option<Source> {
     // Вшитый цветовой профиль (PNG `iCCP`) — часть картинки: её точки заданы
     // в ЕГО пространстве (css-color-4 §12, tagged images).
     let image = match gpui::png_icc_profile(bytes)
-        .and_then(|profile| crate::color_space::apply_icc(&image, &profile))
+        .and_then(|profile| crate::style::values::color_space::apply_icc(&image, &profile))
     {
         Some(fixed) => fixed,
         None => image,
@@ -198,7 +200,7 @@ pub(crate) fn degenerate_viewbox(markup: &str) -> bool {
 ///
 /// Это CSS-свойство замещаемого корня, а не SVG-контент — растеризатор его
 /// не рисует, и рисунок из одного фона выходил прозрачным (box-sizing-007).
-pub(crate) fn svg_root_background(markup: &str) -> Option<crate::value::Color> {
+pub(crate) fn svg_root_background(markup: &str) -> Option<crate::style::values::value::Color> {
     let head = match markup.find("<svg") {
         Some(at) => {
             &markup[at..markup[at..]
@@ -212,11 +214,11 @@ pub(crate) fn svg_root_background(markup: &str) -> Option<crate::value::Color> {
     let rest = head[at + 6..].trim_start();
     let quote = rest.chars().next()?;
     let style = rest[1..].split(quote).next()?;
-    let decls = crate::css::parse_decls(style);
+    let decls = crate::style::css::parse_decls(style);
     let v = decls
         .get("background")
         .or_else(|| decls.get("background-color"))?;
-    crate::value::Color::parse(v.split_whitespace().next()?)
+    crate::style::values::value::Color::parse(v.split_whitespace().next()?)
 }
 
 pub(crate) fn svg_size(markup: &str) -> Intrinsic {

@@ -1,7 +1,28 @@
 //! Строчные атомы: `atom_element`.
 // owner: A
 
-use crate::render::*;
+use crate::dom::Element;
+use crate::layout::atom::own_box::own_box_atom;
+use crate::layout::atom::positioned::{absolute_atom, static_position_atom};
+use crate::layout::block::containing::{AVAIL_W, CB_WIDTH};
+use crate::layout::multicol::spanner::multicol_container;
+use crate::layout::positioned::predicates::has_own_box;
+use crate::layout::positioned::static_position::at_static_position;
+use crate::layout::replaced::iframe::{iframe, object_is_document};
+use crate::layout::replaced::image::{image_with, pct_height_to_px};
+use crate::layout::replaced::limits::{atom_base_font, canvas_limit_keywords, with_inherited_font};
+use crate::layout::replaced::replaced_content::svg_replaced;
+use crate::layout::replaced::{replaced_content, replaced_used_style, svg_percentage_size};
+use crate::layout::table::table;
+use crate::layout::writing_mode::rotated_atom;
+use crate::paint::effects::transform::transformed;
+use crate::render::{RenderOpts, content_sized, content_sized_wraps, element, replaced_tag, styled_div_with};
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::{Align, Computed, Display};
+use crate::style::values::value::Len;
+use crate::text::ruby::container::ruby_container_atom;
+use crate::text::ruby::ruby_role;
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 pub(crate) mod own_box;
 pub(crate) mod positioned;
@@ -35,7 +56,7 @@ pub(crate) fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts)
         && !replaced_tag(e)
         && !at_static_position(&e.style)
         && !matches!(e.tag.as_str(), "input" | "select" | "textarea" | "button");
-    Some(if wraps { content_sized(el, &e.style, &inline::inherit(inherited, &e.style), (None, None)) } else { el })
+    Some(if wraps { content_sized(el, &e.style, &inherit(inherited, &e.style), (None, None)) } else { el })
 }
 
 pub(crate) fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
@@ -54,12 +75,12 @@ pub(crate) fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderO
             | Some(Display::InlineGrid)
             | Some(Display::InlineTable)
     ) && e.style.inline_display != Some(true)
-        && crate::interact::clamp_context().is_some())
-    .then(crate::interact::ClampGuard::enter_bfc);
+        && crate::text::clamp::clamp_context().is_some())
+    .then(crate::text::clamp::ClampGuard::enter_bfc);
     // Элементу формы нужен СЛИТЫЙ стиль: в своём у него единицы шрифта ещё не
     // разрешены (`width: 3ch` считался бы по базовому кеглю, а не по своему),
     // да и наследуемое до поля иначе не доходит.
-    if let Some(el) = crate::forms::element(e, &inline::inherit(inherited, &e.style), opts) {
+    if let Some(el) = crate::forms::element(e, &inherit(inherited, &e.style), opts) {
         // Трансформы поля формы шли МИМО обёртки: инпуты стояли ровно, а
         // эталон сдвигал (transform-input-001..019).
         return Some(transformed(el, &e.style, inherited));
@@ -88,7 +109,7 @@ pub(crate) fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderO
     // Пока он был обычной коробкой куска, строка росла под его высоту.
     if matches!(
         e.style.position,
-        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
     ) {
         return absolute_atom(inherited, e, opts);
     }
@@ -116,7 +137,7 @@ pub(crate) fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderO
         return Some(element(e, inherited, opts));
     }
     if multicol_container(&e.style) {
-        let merged = inline::inherit(inherited, &e.style);
+        let merged = inherit(inherited, &e.style);
         let gap = match e.style.column_gap {
             Some(Len::Px(v)) => v,
             _ => match merged.font_size {
@@ -139,7 +160,7 @@ pub(crate) fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderO
     // Таблица в строке — атомарная коробка со своей табличной раскладкой:
     // путь блока строил бы детей-ряды как обычные блоки, без решётки.
     if e.style.display == Some(Display::InlineTable) {
-        let built = table(e, &inline::inherit(inherited, &e.style), opts);
+        let built = table(e, &inherit(inherited, &e.style), opts);
         // `vertical-align` коробки в строке: низ/верх/середина СТРОКИ, а не
         // базовая линия. Строка — гибкий ряд, и место коробки задаёт её
         // собственный `align-self`.
@@ -170,7 +191,7 @@ pub(crate) fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderO
             // лунки — тоже свой путь (`row-auto-repeat-auto-023/024`: 0.32 →
             // 4.93 с переносом признака).
             if !matches!(inherited.display, Some(Display::TableCell) | Some(Display::GridLanes)) {
-                copy.style.cb_height_def = inline::inherit(inherited, &e.style).cb_height_def;
+                copy.style.cb_height_def = inherit(inherited, &e.style).cb_height_def;
             }
             // Единицы окна (`vw`/`vh`, в том числе внутри `calc`) — в точки: держатель
             // строится из СЫРОГО стиля, а сворачивает их только слитый
@@ -292,7 +313,7 @@ pub(crate) fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderO
         // спуска в детей (`inline.rs:156`), так что сюда доходит и `<span>`.
         // Главная коробка `block ruby` сюда не попадает: она блок, а
         // строчный контейнер внутри неё — синтетический `<ruby>` (`dom.rs`).
-        _ if ruby_role(e) == Some(crate::computed::RubyRole::Container) => {
+        _ if ruby_role(e) == Some(crate::style::computed::RubyRole::Container) => {
             ruby_container_atom(inherited, e, opts)
         }
         // `<canvas>` — замещаемый элемент с собственными размерами 300x150
@@ -322,7 +343,7 @@ pub(crate) fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderO
             // при высоте блока в `Px` и блочном `display` (оговорки там же).
             let converted = pct_height_to_px(&canvas_limit_keywords(e), inherited);
             let e = &converted;
-            let merged = inline::inherit(inherited, &e.style);
+            let merged = inherit(inherited, &e.style);
             let d = styled_div_with(e, &merged).flex_shrink_0();
             // Перенос размера через соотношение сторон (css-sizing-4 §4.1)
             // у АТОМАРНОЙ строчной коробки срабатывает лишь тогда, когда

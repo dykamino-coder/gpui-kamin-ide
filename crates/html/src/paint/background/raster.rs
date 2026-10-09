@@ -1,6 +1,8 @@
 //! Растр слоёв-изображений: cross-fade, градиенты, раскладка стопов.
 
 use crate::paint::background::*;
+use gpui::RenderImage;
+use std::sync::Arc;
 
 /// Задать рисунку область просмотра размером с плитку.
 ///
@@ -71,7 +73,7 @@ pub(crate) fn rasterize_cross_fade(src: &str, w: u32, h: u32) -> Option<Arc<Rend
     let inner = &inner[..inner.rfind(')')?];
     let n = (w * h) as usize;
     let mut items: Vec<(Option<f32>, Vec<u8>)> = vec![];
-    for part in crate::css::split_args(inner) {
+    for part in crate::style::css::split_args(inner) {
         let mut pct = None;
         let mut img = None;
         for t in split_top(part.trim()) {
@@ -81,7 +83,7 @@ pub(crate) fn rasterize_cross_fade(src: &str, w: u32, h: u32) -> Option<Arc<Rend
             }
         }
         let img = img?;
-        let colour = crate::value::Color::parse(
+        let colour = crate::style::values::value::Color::parse(
             img.strip_prefix("image(").and_then(|t| t.strip_suffix(')')).unwrap_or(img),
         );
         let buf = if let Some(c) = colour {
@@ -96,7 +98,7 @@ pub(crate) fn rasterize_cross_fade(src: &str, w: u32, h: u32) -> Option<Arc<Rend
             let image = if img.contains("gradient(") {
                 rasterize_gradient(img, w, h)?
             } else {
-                let url = crate::computed::parse_url(img)?;
+                let url = crate::style::computed::parse_url(img)?;
                 source(&url)?.raster((w as f32, h as f32))?
             };
             let size = image.size(0);
@@ -154,7 +156,7 @@ pub(crate) fn rasterize_cross_fade(src: &str, w: u32, h: u32) -> Option<Arc<Rend
 }
 
 pub(crate) fn rasterize_gradient(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
-    if crate::computed::parse_image_color(src).is_some() {
+    if crate::style::computed::parse_image_color(src).is_some() {
         return sources::raster_color(src, w, h);
     }
     if src.starts_with("cross-fade(") {
@@ -192,10 +194,10 @@ pub(crate) fn angle_fraction(token: &str) -> Option<f32> {
 /// края, промежуточные — поровну между соседями с позициями, и позиции не
 /// убывают.
 pub(crate) fn place_stops(
-    raw: Vec<(crate::value::Color, Option<f32>)>,
-) -> Vec<(crate::value::Color, f32)> {
+    raw: Vec<(crate::style::values::value::Color, Option<f32>)>,
+) -> Vec<(crate::style::values::value::Color, f32)> {
     let last = raw.len() - 1;
-    let mut out: Vec<(crate::value::Color, f32)> = Vec::with_capacity(raw.len());
+    let mut out: Vec<(crate::style::values::value::Color, f32)> = Vec::with_capacity(raw.len());
     // Зажим снизу — только позицией ПРЕДШЕСТВЕННИКА (css-images-3 §3.5.3):
     // у первого стопа его нет, и отрицательная позиция законна. Нулевой
     // пол сдвигал `calc(-65535000px)` в ноль, и вся коробка красилась
@@ -229,7 +231,7 @@ pub(crate) fn place_stops(
 /// повторяется бесконечно в обе стороны со сдвигом на разность позиций
 /// последнего и первого стопа. Нулевая разность повторять нечем — спека
 /// объявляет такой градиент вырожденным, и точка остаётся как есть.
-pub(crate) fn wrap_repeat(t: f32, stops: &[(crate::value::Color, f32)]) -> f32 {
+pub(crate) fn wrap_repeat(t: f32, stops: &[(crate::style::values::value::Color, f32)]) -> f32 {
     let (Some(first), Some(last)) = (stops.first(), stops.last()) else {
         return t;
     };

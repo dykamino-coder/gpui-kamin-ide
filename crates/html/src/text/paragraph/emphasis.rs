@@ -1,6 +1,7 @@
 //! Paint emphasis marks centered on character advances before added spacing.
 
 use super::*;
+use gpui::{App, Pixels, Point, SharedString, TextRun, Window, point, px};
 
 impl Paragraph {
     /// Знаки акцента прогона (css-text-decor-3 §5.3): «drawn exactly as if

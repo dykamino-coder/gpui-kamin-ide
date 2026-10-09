@@ -1,10 +1,11 @@
 //! Преобразования текста: text-transform, полноширинные формы, кана, математический курсив.
 
 use crate::text::inline::*;
+use crate::style::computed::Computed;
 
 /// Пробелы куска набираются U+3000 (`text-transform: full-width`).
 pub(crate) fn full_width_spaces(style: &Computed) -> bool {
-    style.text_transform_flags & crate::computed::TT_FULL_WIDTH != 0
+    style.text_transform_flags & crate::style::computed::TT_FULL_WIDTH != 0
 }
 
 /// `word-space-transform` по КУСКАМ абзаца.

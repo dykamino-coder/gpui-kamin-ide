@@ -1,6 +1,7 @@
 //! Expose the actual line positions used for painting, including intermediate fragment lines.
 
 use super::*;
+use gpui::{Pixels, Window, px};
 
 impl Paragraph {
 

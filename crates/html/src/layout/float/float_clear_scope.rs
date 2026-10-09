@@ -1,6 +1,8 @@
 //! Resolve clearance only for boxes to which CSS 2.1 section 9.5.2 applies.
 
-use crate::render::*;
+use crate::dom::Node;
+use crate::render::{inline_level_box, out_of_flow};
+use crate::style::computed::Computed;
 
 pub(crate) fn used(nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
     nodes

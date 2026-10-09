@@ -1,7 +1,11 @@
 //! Сопоставление селекторов.
 // owner: B
 
-use crate::dom::*;
+use crate::dom::{SlotInfo, content, local_name, slot_of};
+use crate::style::select::has::has_marks_of;
+use markup5ever_rcdom::{Handle, NodeData};
+use std::collections::HashMap;
+use std::rc::Rc;
 
 pub mod has;
 pub mod matching;

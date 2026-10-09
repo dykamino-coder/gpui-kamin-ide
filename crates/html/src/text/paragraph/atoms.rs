@@ -1,6 +1,7 @@
 //! Атомы в строке: места, базовые линии, высоты строк.
 
 use crate::text::paragraph::*;
+use gpui::{AnyElement, App, IntoElement, Pixels, Window, px, size};
 
 impl Paragraph {
     /// Атомы в строке: место в тексте (байт распорки) → элемент и его

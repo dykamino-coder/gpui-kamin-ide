@@ -1,7 +1,13 @@
 //! `iframe`.
 // owner: A
 
-use crate::render::*;
+use crate::dom::Element;
+use crate::layout::block::reorder::orthogonal_vertical_children;
+use crate::layout::replaced::limits::responsive_embedded_sizing;
+use crate::render::{RenderOpts, blocks, styled_div};
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
 /// Картинка: `src` с `data:`-URI или путь. Внешние URL не грузим — документ
 /// рисуется в чате, где сеть запрещена по тем же причинам, что и в вебвью.
@@ -93,7 +99,7 @@ pub(crate) fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
             .sum()
     };
     let bw = st.borders();
-    let (ex, ey) = if crate::apply::intrinsic_size::native_content_box(st) {
+    let (ex, ey) = if crate::style::apply::intrinsic_size::native_content_box(st) {
         (0.0, 0.0)
     } else {
         (
@@ -121,8 +127,8 @@ pub(crate) fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     // Рамка меряет свои `@media` своей коробкой (`doc::parse_embedded`).
     // Режим quirks у вложенного документа свой: разбор его перепишет, а
     // внешний возвращается после сборки рамки.
-    let outer_quirks = crate::dom::quirks();
-    let (nodes, salt) = crate::doc::parse_embedded(&html, crate::BROWSER_CSS, (w, h));
+    let outer_quirks = crate::style::select::quirks();
+    let (nodes, salt) = crate::document::parse_embedded(&html, crate::BROWSER_CSS, (w, h));
     // Верхний уровень вложенного документа проходит те же ортогональные
     // поправки, что и дети контейнера.
     let nodes = orthogonal_vertical_children(nodes, &Computed::default());
@@ -136,11 +142,11 @@ pub(crate) fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     // рамки, а не внешней страницы (HTML §4.8.5 «nested browsing context»;
     // `abs-pos-non-replaced-icb-*`: коробка с `right: 80%` улетала в левый
     // верхний угол внешнего документа).
-    crate::interact::icb_open();
+    crate::layout::positioned::containing_block::icb_open();
     let mut kids = blocks(&nodes, &sub.root_style(), &sub);
-    kids.extend(crate::interact::icb_close());
+    kids.extend(crate::layout::positioned::containing_block::icb_close());
     IFRAME_DEPTH.with(|d| d.set(d.get() - 1));
-    crate::dom::QUIRKS.with(|q| q.set(outer_quirks));
+    crate::style::select::QUIRKS.with(|q| q.set(outer_quirks));
     Some(
         {
             let frame = styled_div(e).w(px(outer_w));

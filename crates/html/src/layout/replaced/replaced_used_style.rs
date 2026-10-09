@@ -1,14 +1,14 @@
 //! Resolve replaced content's sizing behavior before constructing its inner image.
 //! CSS Sizing 3's “behaves as auto” also applies to intrinsic ratio transfer.
 
-use crate::computed::Position;
+use crate::style::computed::Position;
 use crate::dom::Element;
-use crate::value::Len;
+use crate::style::values::value::Len;
 
 /// CSS Sizing 4 #aspect-ratio: authored ratios transfer the box-sizing box;
 /// natural ratios, including auto <ratio>, always transfer the content box.
 pub(crate) fn transfer(
-    style: &crate::computed::Computed,
+    style: &crate::style::computed::Computed,
     size: f32,
     ratio: f32,
     from_width: bool,
@@ -74,7 +74,7 @@ pub(crate) fn normalize(element: &Element, containing_width: Option<f32>) -> Opt
 
 /// CSS 2 sections 10.2 and 10.3.2 resolve an inline replaced width against
 /// its containing block, before the synthetic line flex row is constructed.
-pub(crate) fn inline_percentage_width(style: &mut crate::computed::Computed, basis: Option<f32>) {
+pub(crate) fn inline_percentage_width(style: &mut crate::style::computed::Computed, basis: Option<f32>) {
     let Some(Len::Pct(fraction)) = style.width else {
         return;
     };
@@ -135,21 +135,21 @@ mod tests {
 
     #[test]
     fn indefinite_percentage_height_transfers_max_width_through_intrinsic_ratio() {
-        let mut image = crate::render::anon_element("img", vec![]);
+        let mut image = crate::layout::table::anon::anon_element("img", vec![]);
         image.style.height = Some(Len::Pct(1.0));
         image.style.max_width = Some(Len::Pct(1.0));
         let normalized = normalize(&image, Some(100.0)).unwrap();
         assert_eq!(normalized.style.height, None);
         assert_eq!(normalized.style.max_width, Some(Len::Px(100.0)));
         assert_eq!(
-            crate::render::css2_replaced_limits(200.0, 200.0, None, Some(100.0), None, None,),
+            crate::layout::replaced::limits::css2_replaced_limits(200.0, 200.0, None, Some(100.0), None, None,),
             (100.0, 100.0)
         );
     }
 
     #[test]
     fn definite_and_positioned_percentage_heights_keep_their_basis() {
-        let mut image = crate::render::anon_element("img", vec![]);
+        let mut image = crate::layout::table::anon::anon_element("img", vec![]);
         image.style.height = Some(Len::Pct(0.5));
         image.style.cb_height_def = true;
         assert!(normalize(&image, None).is_none());
@@ -162,7 +162,7 @@ mod tests {
 
     #[test]
     fn unresolved_width_constraints_keep_percentage_identity() {
-        let mut image = crate::render::anon_element("img", vec![]);
+        let mut image = crate::layout::table::anon::anon_element("img", vec![]);
         image.style.max_width = Some(Len::Pct(0.5));
         assert!(normalize(&image, None).is_none());
     }

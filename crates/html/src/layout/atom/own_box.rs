@@ -1,14 +1,21 @@
 //! Строчный кусок со своей коробкой (фон, рамка, отступы) или своим письмом.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::paint::effects::grouped::grouped;
+use crate::render::{RenderOpts, blocks, pseudo_line_layers, styled_div_with};
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::{Align, Computed, Display};
+use crate::style::values::value::Len;
+use crate::text::text_box::{has_text, line_height_px};
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
 pub(crate) fn own_box_atom(
     inherited: &Computed,
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
-    let mut merged = inline::inherit(inherited, &e.style);
+    let mut merged = inherit(inherited, &e.style);
     // CSS 2 sections 5.12.1-5.12.2 include inline-block containers,
     // but not ordinary inline boxes, in the pseudo-line scope.
     if e.style.display == Some(Display::InlineBlock)

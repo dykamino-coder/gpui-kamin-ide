@@ -1,6 +1,6 @@
 //! A height-only intrinsic wrapper must preserve automatic block width independently.
-use crate::computed::{Computed, Display};
-use crate::value::Len;
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
 
 pub(super) fn fills_width(style: &Computed) -> bool {
     style.vertical != Some(true)

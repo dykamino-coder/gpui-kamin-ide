@@ -1,6 +1,9 @@
 //! Сетка: дорожки, имена линий, размещение элементов, grid_style.
 
 use crate::style::apply::*;
+use crate::style::computed::{AutoFlow, Computed, Display, Justify, Placement, Track, TrackSize};
+use crate::style::values::value::Len;
+use gpui::{Div, Styled, px};
 
 /// Дорожка сетки в терминах GPUI. Нижняя грань всегда `min-content`: без неё
 /// колонка на узкой панели схлопывается в ноль и содержимое обрезается.
@@ -223,7 +226,7 @@ pub(crate) fn grid_style(mut d: Div, c: &Computed) -> Div {
         // проёмом; Blink `ResolvedAlignSelf(normal)` :1056-1060), а общий
         // путь `align-items: stretch` в стиль не пишет — для сетки это
         // умолчание. Лункам явная растяжка нужна в стиле.
-        if c.align_items == Some(crate::computed::Align::Stretch) {
+        if c.align_items == Some(crate::style::computed::Align::Stretch) {
             d.style().align_items = Some(gpui::AlignItems::Stretch);
         }
     }
@@ -308,7 +311,7 @@ pub(crate) fn grid_style(mut d: Div, c: &Computed) -> Div {
                 // `KAMIN_REPEAT_DIAG` показала `Some(Grid)`), поэтому вид его
                 // не отсекает: `column-auto-repeat-013` (лунки, черновик)
                 // уходит 0.00 → 10.92 — это записанная цена жилы.
-                && !matches!(c.display, Some(crate::computed::Display::GridLanes)) =>
+                && !matches!(c.display, Some(crate::style::computed::Display::GridLanes)) =>
         {
             d = along_line(
                 d,
@@ -390,7 +393,7 @@ pub(crate) fn grid_style(mut d: Div, c: &Computed) -> Div {
         };
     } else if let (None, Some(r), Some(body)) = (&c.grid_rows, c.auto_repeat_rows, &c.auto_repeat_body_rows)
         && body.len() > 1
-        && body.iter().all(|t| matches!(t, TrackSize::Single(crate::computed::Track::Px(_))))
+        && body.iter().all(|t| matches!(t, TrackSize::Single(crate::style::computed::Track::Px(_))))
     {
         // Тело повтора рядов из НЕСКОЛЬКИХ точечных дорожек
         // (`repeat(auto-fill, [v] 10px [w] 10px [x] 10px [y])`) — тем же видом,
@@ -413,7 +416,7 @@ pub(crate) fn grid_style(mut d: Div, c: &Computed) -> Div {
     if c.display == Some(Display::InlineGrid) && c.width.is_none() {
         if let Some(tracks) = &c.grid_tracks {
             let all_px: Option<f32> = tracks.iter().try_fold(0.0f32, |acc, t| match t {
-                crate::computed::TrackSize::Single(crate::computed::Track::Px(w)) => Some(acc + w),
+                crate::style::computed::TrackSize::Single(crate::style::computed::Track::Px(w)) => Some(acc + w),
                 _ => None,
             });
             if let Some(mut total) = all_px.filter(|t| *t > 0.0) {
@@ -483,7 +486,7 @@ pub(crate) fn grid_style(mut d: Div, c: &Computed) -> Div {
             && body.iter().any(|t| {
                 !matches!(
                     t,
-                    TrackSize::Single(crate::computed::Track::Px(_) | crate::computed::Track::Pct(_))
+                    TrackSize::Single(crate::style::computed::Track::Px(_) | crate::style::computed::Track::Pct(_))
                 )
             })
         {

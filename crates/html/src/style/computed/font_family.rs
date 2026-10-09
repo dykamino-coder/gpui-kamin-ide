@@ -49,7 +49,7 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
     // Имя нормализуется до сравнения: неквотированное имя из
     // нескольких слов — это один пробел между ними (§15.3).
     let norm = |f: &str| {
-        let un = crate::css::unescape(f);
+        let un = crate::style::css::unescape(f);
         un.split_whitespace().collect::<Vec<_>>().join(" ")
     };
     // Годно ли имя списка как ИМЯ СЕМЕЙСТВА: в кавычках — всегда
@@ -86,8 +86,8 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
     // (замер по настоящему имени) доли кегля брались с ЧУЖОГО
     // файла — `first-available-font-002/007`, `ex-unit-004`.
     let available = |f: &str| {
-        (crate::metrics::font_installed(f) || crate::fonts::alias(f).is_some())
-            && crate::fonts::covers_space(f)
+        (crate::text::metrics::font_installed(f) || crate::text::fonts::alias(f).is_some())
+            && crate::text::fonts::covers_space(f)
     };
     let installed = v
         .split(',')
@@ -111,7 +111,7 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
     // не наследует, `-017`), а меряется и набирается как `None`.
     // Пока список установленных не снят (`fonts_known`), о
     // доступности судить нечем — ниже прежняя ветка.
-    if crate::metrics::fonts_known() && lower.trim() != "inherit" {
+    if crate::text::metrics::fonts_known() && lower.trim() != "inherit" {
         style.font_family = match first_generic.as_deref() {
             Some("monospace" | "ui-monospace") => None,
             Some(_) => generic.map(str::to_string),
@@ -135,7 +135,7 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
         // New`, CSS2 §15.3; font-family-013 и родня). Экранирование
         // раскрывается как в любом идентификаторе.
         .map(|f| {
-            let un = crate::css::unescape(f);
+            let un = crate::style::css::unescape(f);
             un.split_whitespace().collect::<Vec<_>>().join(" ")
         })
         .or_else(|| generic.map(str::to_string));
@@ -149,13 +149,13 @@ fn families(value: &str) -> Vec<String> {
             if !name.starts_with(['\'', '"']) {
                 let lower = name.to_ascii_lowercase();
                 if matches!(lower.as_str(), "monospace" | "ui-monospace") {
-                    return crate::metrics::mono_family_for(None).to_string();
+                    return crate::text::metrics::mono_family_for(None).to_string();
                 }
                 if let Some(family) = generic_family(&lower) {
                     return family.to_string();
                 }
             }
-            crate::css::unescape(name.trim_matches(is_quote))
+            crate::style::css::unescape(name.trim_matches(is_quote))
                 .split_whitespace()
                 .collect::<Vec<_>>()
                 .join(" ")
@@ -179,7 +179,7 @@ pub(crate) fn fallbacks(
     base: Option<gpui::FontFallbacks>,
 ) -> Option<gpui::FontFallbacks> {
     let Some(families) = &style.font_families else {
-        return base.or_else(crate::fonts::document_fallbacks);
+        return base.or_else(crate::text::fonts::document_fallbacks);
     };
     // CSS Fonts 4 section 5.2: missing glyphs continue through the authored
     // family list before system fallback. Metrics still use the first available
@@ -187,12 +187,12 @@ pub(crate) fn fallbacks(
     let mut list: Vec<String> = families
         .iter()
         .filter(|name| Some(name.as_str()) != style.font_family.as_deref())
-        .filter(|name| crate::metrics::font_installed(name) || crate::fonts::alias(name).is_some())
+        .filter(|name| crate::text::metrics::font_installed(name) || crate::text::fonts::alias(name).is_some())
         .map(|name| {
-            crate::fonts::alias_stretch(name, style.font_stretch).unwrap_or_else(|| name.clone())
+            crate::text::fonts::alias_stretch(name, style.font_stretch).unwrap_or_else(|| name.clone())
         })
         .collect();
-    if let Some(document) = crate::fonts::document_fallbacks() {
+    if let Some(document) = crate::text::fonts::document_fallbacks() {
         list.extend(document.fallback_list().iter().cloned());
     }
     (!list.is_empty()).then(|| gpui::FontFallbacks::from_fonts(list))

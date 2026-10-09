@@ -13,7 +13,7 @@ pub(super) fn apply_string(style: &mut Computed, key: &str, raw: &str) -> bool {
             if marker.is_some() {
                 return false;
             }
-            let len = crate::css::skip_string(&rest[1..], ch);
+            let len = crate::style::css::skip_string(&rest[1..], ch);
             let quoted = &rest[1..1 + len];
             if !quoted.ends_with(ch) {
                 return false;

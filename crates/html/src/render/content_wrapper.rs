@@ -1,10 +1,10 @@
 //! Intrinsic sizing wrappers preserve the preferred size seen by their parent.
-use super::native_intrinsic;
+use crate::layout::writing_mode::native_intrinsic;
 #[path = "content_wrapper/axis_alignment.rs"]
 mod axis_alignment;
-use crate::computed::{Computed, Display};
+use crate::style::computed::Computed;
 use crate::dom::Element;
-use crate::value::Len;
+use crate::style::values::value::Len;
 use gpui::{AnyElement, CssSizingKeyword, IntoElement, ParentElement, Styled, div, px};
 
 fn wrapper_width_keyword(style: &Computed) -> Option<CssSizingKeyword> {
@@ -40,7 +40,7 @@ pub(crate) fn content_sized_wraps(element: &Element) -> bool {
     (keyword(c.width) || keyword(c.height))
         && !matches!(
             c.position,
-            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
         )
 }
 
@@ -51,7 +51,7 @@ pub(crate) fn for_element(el: AnyElement, element: &Element, parent: &Computed,
     if super::replaced_tag(element) || native_intrinsic::eligible(element) {
         el
     } else {
-        content_sized(el, &element.style, &crate::inline::inherit(parent, &element.style), placement)
+        content_sized(el, &element.style, &crate::style::cascade::inherit::inherit(parent, &element.style), placement)
     }
 }
 
@@ -81,7 +81,7 @@ pub(crate) fn content_sized(
     // растягивается — размер по содержимому получается сам.
     if matches!(
         c.position,
-        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
     ) {
         return el;
     }
@@ -116,7 +116,7 @@ pub(crate) fn content_sized(
         let family = c.font_family.clone().unwrap_or_default();
         match l {
             Some(Len::Px(_) | Len::Em(_) | Len::Ch(_) | Len::Ex(_)) => {
-                let v = crate::metrics::spacing_px(l, &family, size);
+                let v = crate::text::metrics::spacing_px(l, &family, size);
                 (v < 0.0).then_some(v)
             }
             _ => None,
@@ -157,7 +157,7 @@ pub(crate) fn content_sized(
     // потоки (three-levels-of-orthogonal-flows).
     if let Some(a) = c.align_self.filter(|_| c.vertical != Some(true)) {
         // `anchor-center` без якоря ведёт себя как `center` (css-anchor-position-1 §5.2).
-        wrap.style().align_self = Some(crate::apply::self_align(a, c.align_self_last));
+        wrap.style().align_self = Some(crate::style::apply::self_align(a, c.align_self_last));
     }
     if let Some(col) = col {
         wrap = wrap.grid_template_cols(vec![col]);
@@ -165,7 +165,7 @@ pub(crate) fn content_sized(
     if let Some(row) = row {
         wrap = wrap.grid_template_rows(vec![row]);
     }
-    crate::apply::item_metadata::project_wrapper(wrap.style(), item_style);
+    crate::style::apply::item_metadata::project_wrapper(wrap.style(), item_style);
     // Размещение элемента в сетке родителя — на обёртке (см. вызов).
     let (location, names) = placement;
     if let Some(location) = location {

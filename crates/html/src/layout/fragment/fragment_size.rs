@@ -4,12 +4,12 @@
 //! overflowing descendants remain a parallel flow, rather than increasing the
 //! distance to the following sibling. Min-height wins when min exceeds max.
 
-use crate::render::{Shape, ShapeCx, shape_contents, table_box};
-use crate::{
-    computed::{Computed, Overflow},
-    dom::Element,
-    value::Len,
-};
+use crate::layout::fragment::shape_contents::shape_contents;
+use crate::layout::fragment::table_bands::table_box;
+use crate::layout::fragment::{Shape, ShapeCx};
+use crate::dom::Element;
+use crate::style::computed::{Computed, Overflow};
+use crate::style::values::value::Len;
 
 pub(crate) fn shape_full(element: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     let mut shape = shape_contents(element, depth, cx)?;
@@ -114,7 +114,7 @@ mod tests {
 
     #[test]
     fn positioned_descendants_keep_their_balancing_extent() {
-        use crate::computed::Position;
+        use crate::style::computed::Position;
         let child = element(
             Computed {
                 height: Some(Len::Px(160.0)),
@@ -201,7 +201,7 @@ mod tests {
             min_height: Some(Len::Px(30.0)),
             max_height: Some(Len::Px(50.0)),
             border_box: Some(true),
-            padding: crate::computed::Sides {
+            padding: crate::style::computed::Sides {
                 top: Some(Len::Px(10.0)),
                 ..Default::default()
             },

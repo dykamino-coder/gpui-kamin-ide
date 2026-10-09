@@ -16,9 +16,9 @@ impl super::Computed {
         }
         self.gradient_raw.is_some()
             && (self.gradient.as_ref().is_some_and(|g| {
-                g.stops.iter().any(|s| crate::color_space::out_of_gamut(s.0))
+                g.stops.iter().any(|s| crate::style::values::color_space::out_of_gamut(s.0))
             })
-                || self.bg_size != crate::computed::BgSize::Auto
+                || self.bg_size != crate::style::computed::BgSize::Auto
                 || self.bg_repeat.is_some()
                 || self.bg_pos.x.is_some()
                 || self.bg_pos.y.is_some()
@@ -30,8 +30,8 @@ impl super::Computed {
                 // квантование полос уже замерено в минус (см. `HSL_ARC`).
                 || !matches!(
                     self.gradient.as_ref().map(|g| g.space),
-                    None | Some(crate::computed::GradSpace::Srgb)
-                        | Some(crate::computed::GradSpace::Oklab)
+                    None | Some(crate::style::computed::GradSpace::Srgb)
+                        | Some(crate::style::computed::GradSpace::Oklab)
                 )
                 // Цвет фона лежит ПОД всеми слоями (css-backgrounds-3 §3.1):
                 // у заливки коробки место одно, поэтому цвет — ей, градиент —

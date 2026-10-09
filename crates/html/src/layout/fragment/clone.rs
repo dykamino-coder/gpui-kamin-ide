@@ -1,7 +1,13 @@
 //! Клонирование коробок по фрагментам (`box-decoration-break`).
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::fragment::probe::size_monolith;
+use crate::layout::fragment::table_bands::table_box;
+use crate::layout::multicol::spanner::multicol_container;
+use crate::render::{is_blank, out_of_flow};
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
 
 /// Гибкий контейнер или сетка БЕЗ своей коробки (ни рамок, ни отбивок, ни фона,
 /// ни заданной высоты, ни позиционирования) с единственным элементом, у которого
@@ -13,7 +19,7 @@ use crate::render::*;
 /// украшение (css-break-4 §break-decoration) фрагментирует сам элемент
 /// (`box-decoration-break-clone-018/019/028/029`). Иначе `None`.
 pub(crate) fn clone_wrapper_item(w: &Element) -> Option<Element> {
-    use crate::computed::FlexDir;
+    use crate::style::computed::FlexDir;
     let s = &w.style;
     let zero = |l: &Option<Len>| match l {
         None => true,
@@ -80,8 +86,8 @@ pub(crate) fn clone_wrapper_item(w: &Element) -> Option<Element> {
 /// строчное содержимое (строк укладка не видит) — пустая
 /// коробка монолитом НЕ является.
 pub(crate) fn solid_box(k: &Element) -> bool {
-    let scrolls = |o: Option<crate::computed::Overflow>| {
-        matches!(o, Some(crate::computed::Overflow::Scroll))
+    let scrolls = |o: Option<crate::style::computed::Overflow>| {
+        matches!(o, Some(crate::style::computed::Overflow::Scroll))
     };
     let block_kid = |n: &Node| {
         matches!(n, Node::Element(x)
@@ -132,7 +138,7 @@ pub(crate) fn solid_box(k: &Element) -> bool {
 /// внепоточный потомок (`clone-005.tentative`: содержащим блоком стало бы
 /// поднятое тело без отбивки).
 pub(crate) fn clone_dec(c: &Element) -> Option<(f32, f32)> {
-    use crate::computed::Position;
+    use crate::style::computed::Position;
     if !c.style.bdb_clone {
         return None;
     }
@@ -196,7 +202,7 @@ pub(crate) fn clone_dec(c: &Element) -> Option<(f32, f32)> {
 /// сторонами, краска общим путём (`box_fragment_painter.cc:2322` разводит
 /// только `slice`).
 pub(crate) fn clone_fragment(c: &Element, dt: f32, db: f32, from: f32, fh: f32, clip: f32) -> Element {
-    use crate::computed::{Overflow, Position, Sides};
+    use crate::style::computed::{Overflow, Position, Sides};
     let mut body = c.clone();
     body.style = c.style.paint_off();
     body.style.padding = Sides::default();

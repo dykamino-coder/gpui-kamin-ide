@@ -1,6 +1,9 @@
 //! Спейсеры инлайн-коробок: стили, рамки, края, наложения.
 
 use crate::text::inline::*;
+use crate::style::computed::Computed;
+use crate::style::values::value::{Color, Len};
+use gpui::AnyElement;
 
 /// Слой знака-распорки: ширину ему даёт трекинг на своём куске, а всё
 /// остальное с него снимается — фон и замена пробелов принадлежат тексту.
@@ -75,7 +78,7 @@ pub(crate) fn border_px(l: Option<Len>, c: &Computed, font_px: f32) -> Option<f3
                 _ => font_px,
             };
             let family = c.font_family.clone().unwrap_or_default();
-            Some(crate::metrics::spacing_px(Some(u), &family, size))
+            Some(crate::text::metrics::spacing_px(Some(u), &family, size))
         }
         _ => None,
     }

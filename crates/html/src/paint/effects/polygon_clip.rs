@@ -1,6 +1,7 @@
 //! Resolve polygon coordinates and route axis-aligned rectangles through a device clip.
-use crate::interact::{Grouped, legacy_clip};
-use crate::value::Len;
+use crate::paint::effects::grouped_element::Grouped;
+use crate::paint::effects::legacy_clip;
+use crate::style::values::value::Len;
 use gpui::{Bounds, Pixels, Point, point, px, size};
 
 pub(super) fn points(group: &Grouped, bounds: Bounds<Pixels>) -> Vec<Point<Pixels>> {

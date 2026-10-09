@@ -1,7 +1,8 @@
 //! Запреты разрывов внутри колонок.
 // owner: A
 
-use crate::flow::*;
+use crate::layout::fragment::types::{Frag, Kid};
+use crate::layout::multicol::column_stack::ColumnStack;
 
 impl ColumnStack {
     /// Первая граница плана, нарушающая правило 1 css-break-4 §4.3: коробка

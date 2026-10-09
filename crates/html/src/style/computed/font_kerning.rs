@@ -24,7 +24,8 @@ impl Computed {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{css::parse_decls, inline::inherit};
+    use crate::style::cascade::inherit::inherit;
+    use crate::style::css::parse_decls;
 
     fn computed(css: &str) -> Computed {
         let mut style = Computed::default();

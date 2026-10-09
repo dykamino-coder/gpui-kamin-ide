@@ -1,6 +1,7 @@
 //! Computed::apply_one: display, flex*, align-*/justify-*/place-*, gap, order.
 
 use crate::style::computed::*;
+use crate::style::values::value::Len;
 
 impl Computed {
     #[allow(unused_variables)]
@@ -310,7 +311,7 @@ impl Computed {
                             // Безразмерная основа кроме нуля делает ВСЁ
                             // объявление невалидным (`flex: 0 0 4` не
                             // применяется вовсе, flexbox_flex-*-unitless-basis).
-                            if crate::value::number(c).is_some_and(|n| n != 0.0) {
+                            if crate::style::values::value::number(c).is_some_and(|n| n != 0.0) {
                                 return;
                             }
                             self.flex_grow = number(a);

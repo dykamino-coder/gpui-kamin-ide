@@ -1,7 +1,13 @@
 //! Переупорядочение детей, процентные инлайн-размеры, ортогональные дети.
 // owner: A
 
-use crate::render::*;
+use crate::dom::Node;
+use crate::layout::table::anon::anon_element;
+use crate::layout::writing_mode::orthogonal_fixed_child;
+use crate::render::in_flow;
+use crate::style::computed::{Align, Computed, Display};
+use crate::style::values::value::Len;
+use crate::text::text_box::blank_text;
 
 /// `order`: визуальный порядок в гибкой строке.
 ///
@@ -70,7 +76,7 @@ pub(crate) fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
         Node::Element(e)
             if matches!(
                 e.style.position,
-                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
             ) =>
         {
             0
@@ -217,7 +223,7 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
             && ch.style.align_self.is_none()
             && ch.style.bg_image.is_none()
         {
-            ch.style.align_self = Some(crate::computed::Align::End);
+            ch.style.align_self = Some(crate::style::computed::Align::End);
         }
         // Ordinary orthogonal blocks now compute their own used inline size.
         if orthogonal_fixed_child::normal_block_flow(&ch.style, container) {

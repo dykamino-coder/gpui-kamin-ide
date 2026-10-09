@@ -1,7 +1,7 @@
 //! Resolve display inheritance before box fixup, including implicit HTML display values.
 
 use super::{Element, Node};
-use crate::computed::Display;
+use crate::style::computed::Display;
 
 /// `display` родителя вместе с метками ролей: то, что переносит `inherit`.
 type DisplayOf = (
@@ -24,13 +24,13 @@ type DisplayOf = (
 pub(super) fn resolve_display_inherit(nodes: &mut [Node], parent: DisplayOf) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
-        if el.style.inherit_bits & crate::computed::inh::DISPLAY != 0 {
+        if el.style.inherit_bits & crate::style::computed::inh::DISPLAY != 0 {
             el.style.display = parent.0;
             el.style.inline_display = parent.1;
             el.style.row_group_kind = parent.2;
             el.style.col_role = parent.3;
             el.style.is_caption = parent.4;
-            el.style.inherit_bits &= !crate::computed::inh::DISPLAY;
+            el.style.inherit_bits &= !crate::style::computed::inh::DISPLAY;
         }
         let own = display_of(el);
         resolve_display_inherit(&mut el.children, own);

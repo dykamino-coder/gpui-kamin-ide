@@ -1,8 +1,8 @@
 //! Definite content widths passed through the HTML flow adapters.
 //! CSS 2 sections 10.2-10.4 use the containing block to resolve and clamp percentages.
 
-use crate::computed::{Computed, Display};
-use crate::value::Len;
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
 
 pub(crate) fn inner(st: &Computed, outer: Option<f32>) -> Option<f32> {
     // Доли полей и отступов — от ширины содержащего блока (CSS 2.1 §8.3,
@@ -40,7 +40,7 @@ pub(crate) fn inner(st: &Computed, outer: Option<f32>) -> Option<f32> {
             // Preserve deferred layout for out-of-flow and intrinsic limits.
             if matches!(
                 st.position,
-                Some(crate::computed::Position::Absolute | crate::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
             ) {
                 return None;
             }
@@ -52,8 +52,8 @@ pub(crate) fn inner(st: &Computed, outer: Option<f32>) -> Option<f32> {
             if st.float.is_some_and(|f| f != 0)
                 || matches!(
                     st.position,
-                    Some(crate::computed::Position::Absolute)
-                        | Some(crate::computed::Position::Fixed)
+                    Some(crate::style::computed::Position::Absolute)
+                        | Some(crate::style::computed::Position::Fixed)
                 )
             {
                 return None;

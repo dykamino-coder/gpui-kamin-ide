@@ -1,7 +1,7 @@
 //! Reset all border color longhands when a single-value shorthand wins the cascade.
 
 use super::Computed;
-use crate::value::Color;
+use crate::style::values::value::Color;
 
 impl Computed {
     pub(super) fn apply_single_border_color(&mut self, value: &str) {

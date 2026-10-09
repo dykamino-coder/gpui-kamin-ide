@@ -1,6 +1,6 @@
 //! Validate the color-only image() syntax while preserving currentColor.
 
-use crate::value::Color;
+use crate::style::values::value::Color;
 
 pub(crate) fn parse(raw: &str) -> Option<&str> {
     let color = raw.trim().strip_prefix("image(")?.strip_suffix(')')?.trim();

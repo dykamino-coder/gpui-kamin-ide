@@ -1,6 +1,9 @@
 //! Доводка стиля элемента: направление, руби, строчный display, авто-пропорция, размеры из атрибутов.
 
 use crate::dom::*;
+use crate::style::computed::{Computed, Display, Position};
+use crate::style::select::Ancestor;
+use crate::style::values::value::Len;
 
 /// Направление письма, заданное АТРИБУТОМ: `<div dir="rtl">`.
 ///
@@ -100,12 +103,12 @@ pub(crate) fn inlinify_in_ruby<'a>(
 }
 
 pub(crate) fn finish_inline_display(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
-    use crate::computed::Display;
+    use crate::style::computed::Display;
     replaced_display::normalize(style, tag, attrs);
     let out_of_flow = style.float.is_some()
         || matches!(
             style.position,
-            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
         );
     // Блокификация СТРОЧНЫХ вариантов под float/abspos (§9.7): каждый
     // получает свой блочный аналог, а не только `inline`.
@@ -114,7 +117,7 @@ pub(crate) fn finish_inline_display(style: &mut Computed, tag: &str, attrs: &[(S
     // ряд обтекания и до выноса в слой окна не доходил (`position-fixed-007`).
     if matches!(
         style.position,
-        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
     ) {
         style.float = None;
         // Блокифицированная коробка строчного выравнивания не имеет
@@ -127,7 +130,7 @@ pub(crate) fn finish_inline_display(style: &mut Computed, tag: &str, attrs: &[(S
     if out_of_flow {
         if matches!(
             style.position,
-            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
         ) && matches!(
             style.display,
             Some(Display::InlineFlex)

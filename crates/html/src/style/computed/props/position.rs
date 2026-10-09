@@ -1,6 +1,7 @@
 //! Computed::apply_one: position, anchor*, inset/top..., z-index, overflow*, float, clear, opacity, visibility.
 
 use crate::style::computed::*;
+use crate::style::values::value::Len;
 
 impl Computed {
     #[allow(unused_variables)]
@@ -164,7 +165,7 @@ impl Computed {
                     // (`calc-positive-fraction-001`: `calc(3 / 2)` → 2).
                     .or_else(|| {
                         (!v.trim_start().starts_with(|c: char| c.is_ascii_digit() || c == '-' || c == '+'))
-                            .then(|| crate::value::number(v))
+                            .then(|| crate::style::values::value::number(v))
                             .flatten()
                             .map(|x| {
                                 let r = if x.is_nan() { 0.0 } else { (x as f64 + 0.5).floor() };

@@ -4,32 +4,19 @@
 //! собираются в один абзац (`inline.rs`). Списки, таблицы и картинки имеют
 //! свои правила — они и описаны в доке отдельными разделами.
 
-pub(crate) use crate::layout::fragment::fragment_size;
+use crate::dom::{Element, Node};
+use crate::layout::block::containing::AVAIL_W;
+use crate::layout::float::clear::without_inert_clear;
+use crate::layout::positioned::predicates::positioned_later;
+use crate::layout::replaced::iframe::IFRAME_DEPTH;
+use crate::paint::decorations::text_shadows::with_text_shadow;
+use crate::paint::effects::mask::collect_mask_defs;
+use crate::style::computed::{Computed, Display};
+use crate::text::text_box::line_height_px;
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, TextStyle, div, px};
 pub(crate) mod first_line_text;
-pub(crate) use crate::layout::float::band_clearance;
-pub(crate) use crate::layout::float::band_dimensions;
-pub(crate) use crate::layout::block::margin_inline_boxes;
-pub(crate) use band_clearance::supported as band_clear_supported;
-pub(crate) use crate::paint::effects::mask::mask_geometry;
 pub(crate) mod content_wrapper;
 pub(crate) use content_wrapper::{content_sized, content_sized_wraps};
-pub(crate) use crate::layout::writing_mode::orthogonal_inline;
-pub(crate) use crate::layout::writing_mode::native_vertical;
-pub(crate) use crate::paint::effects::containment_paint;
-pub(crate) use crate::paint::effects::paint_scope;
-pub(crate) use paint_scope::{DepthScope, snapshot as defer_depth, inside as inside_deferred};
-pub(crate) use crate::layout::page::page_boxes;
-pub(crate) use crate::layout::page::page_counters;
-pub(crate) use crate::layout::writing_mode::rotated_atom;
-pub(crate) use crate::text::vertical::combined_text;
-pub(crate) use crate::layout::writing_mode::physical_atomic;
-pub(crate) use crate::layout::block::vertical_flow_margins;
-pub(crate) use crate::layout::block::margin_edges;
-pub(crate) use crate::layout::block::margin_height;
-pub(crate) use crate::layout::float::float_clear_scope;
-pub(crate) use crate::layout::float::inline_floats;
-pub(crate) use crate::layout::float::float_atom;
-pub(crate) use float_atom::band_atom;
 pub(crate) mod first_letter_descendants;
 pub(crate) mod first_letter_scope;
 pub(crate) mod pseudo_line_layers;
@@ -37,111 +24,15 @@ pub(crate) mod first_line_descendants;
 pub(crate) mod inline_splits;
 pub(crate) use inline_splits::split_block_in_inline;
 pub(crate) mod native_paragraph_route;
-pub(crate) use crate::layout::writing_mode::orthogonal_fixed_child;
-pub(crate) use crate::layout::writing_mode::orthogonal_children;
-pub(crate) use crate::layout::writing_mode::orthogonal_horizontal;
-pub(crate) use orthogonal_children::orthogonal_children;
-pub(crate) use crate::layout::writing_mode::orthogonal_absolute;
-pub(crate) use crate::layout::writing_mode::vertical_intrinsic;
-pub(crate) use crate::layout::writing_mode::vertical_hug;
-pub(crate) use crate::layout::writing_mode::native_intrinsic;
-pub(crate) use crate::animation::animation_frame;
-pub(crate) use crate::animation::animation_live;
-pub(crate) use animation_live::animated;
-pub(crate) use crate::layout::table::table_roles;
-pub(crate) use crate::layout::replaced::replaced_used_style;
-pub(crate) use crate::layout::replaced::inline_replaced_position;
-pub(crate) use crate::layout::replaced::replaced_holder_ratio;
-pub(crate) use crate::layout::replaced::replaced_content;
-pub(crate) use crate::layout::replaced::svg_percentage_size;
-pub(crate) use crate::layout::list::list_item;
-pub(crate) use crate::layout::list::list_container;
-pub(crate) use crate::layout::block::available_width;
-pub(crate) use replaced_content::svg_replaced;
-pub(crate) use crate::layout::block::ratio_basis;
-pub(crate) use crate::layout::positioned::absolute_overflow;
-pub(crate) use crate::layout::positioned::absolute_overflow_math;
-pub(crate) use crate::text::ruby::ruby_hiding;
-pub(crate) use crate::text::ruby::ruby_transform;
-pub(crate) use crate::paint::decorations::text_shadows;
-pub(crate) use text_shadows::with_text_shadow;
-pub(crate) use fragment_size::shape_full;
 
-pub(crate) use crate::apply::{apply, apply_hover};
-pub(crate) use crate::computed::{Align, Computed, Display, FlexDir};
-pub(crate) use crate::dom::{Element, Node};
-pub(crate) use crate::inline::{self};
-pub(crate) use crate::value::Len;
-pub(crate) use gpui::{
-    AnyElement, IntoElement, ParentElement, SharedString, Styled, StyledImage, TextStyle, div, px,
-};
-pub(crate) use crate::paint::stacking::*;
-pub(crate) use crate::paint::decorations::*;
-pub(crate) use crate::paint::decorations::gradient_stripes::*;
-pub(crate) use crate::paint::decorations::backdrop::*;
-pub(crate) use crate::paint::decorations::border_shape::*;
-pub(crate) use crate::paint::decorations::shadows::*;
 pub(crate) mod box_div;
 pub(crate) use crate::render::box_div::*;
 pub(crate) mod classify;
 pub(crate) use crate::render::classify::*;
 pub(crate) mod util;
 pub(crate) use crate::render::util::*;
-pub(crate) use crate::layout::table::*;
-pub(crate) use crate::layout::table::columns::*;
-pub(crate) use crate::layout::table::anon::*;
-pub(crate) use crate::layout::replaced::image::*;
-pub(crate) use crate::layout::replaced::limits::*;
-pub(crate) use crate::layout::replaced::iframe::*;
-pub(crate) use crate::layout::atom::*;
-pub(crate) use crate::layout::atom::own_box::*;
-pub(crate) use crate::layout::atom::positioned::*;
-pub(crate) use crate::text::ruby::container::*;
-pub(crate) use crate::layout::positioned::static_position::*;
-pub(crate) use crate::layout::positioned::predicates::*;
-pub(crate) use crate::layout::positioned::relative::*;
-pub(crate) use crate::interactive::sticky::*;
-pub(crate) use crate::layout::float::*;
-pub(crate) use crate::layout::float::clear::*;
-pub(crate) use crate::layout::float::initial_letter::*;
-pub(crate) use crate::layout::float::wrap::*;
-pub(crate) use crate::layout::float::band_host::*;
-pub(crate) use crate::layout::float::band_measured::*;
-pub(crate) use crate::layout::float::band_flow_host::*;
-pub(crate) use crate::layout::float::band_nest::*;
-pub(crate) use crate::layout::float::float_flow::*;
-pub(crate) use crate::layout::float::shape_flow::*;
-pub(crate) use crate::layout::multicol::column_flow::*;
-pub(crate) use crate::layout::multicol::gap_rules::*;
-pub(crate) use crate::layout::multicol::spanner::*;
-pub(crate) use crate::layout::fragment::*;
-pub(crate) use crate::layout::fragment::probe::*;
-pub(crate) use crate::layout::fragment::grid_bands::*;
-pub(crate) use crate::layout::fragment::clone::*;
-pub(crate) use crate::layout::fragment::line_shape::*;
-pub(crate) use crate::layout::fragment::shape_contents::*;
-pub(crate) use crate::layout::fragment::shape_kids::*;
-pub(crate) use crate::layout::fragment::push::*;
-pub(crate) use crate::layout::fragment::flex_lines::*;
-pub(crate) use crate::layout::fragment::table_bands::*;
-pub(crate) use crate::layout::fragment::breaks::*;
-pub(crate) use crate::layout::page::paged::*;
-pub(crate) use crate::layout::page::names::*;
 pub use crate::layout::page::names::{PageMarginDecls, PageMarginDeclsFn, first_page_name};
 pub use crate::layout::page::paged::{render_paged, render_paged_select};
-pub(crate) use crate::paint::effects::mask::*;
-pub(crate) use crate::paint::effects::grouped::*;
-pub(crate) use crate::paint::effects::transform::*;
-pub(crate) use crate::layout::block::containing::*;
-pub(crate) use crate::layout::block::reorder::*;
-pub(crate) use crate::layout::block::margins::*;
-pub(crate) use crate::layout::block::struts::*;
-pub(crate) use crate::layout::writing_mode::*;
-pub(crate) use crate::text::ruby::*;
-pub(crate) use crate::text::text_box::*;
-pub(crate) use crate::animation::frames::*;
-pub(crate) use crate::interactive::scroll_box::*;
-pub(crate) use crate::layout::grid::*;
 pub(crate) mod paragraph;
 pub(crate) use crate::render::paragraph::*;
 pub(crate) use crate::render::paragraph::pieces::*;
@@ -152,8 +43,6 @@ pub(crate) mod element;
 pub(crate) mod generic_box;
 pub(crate) use crate::render::element::*;
 pub(crate) use crate::render::generic_box::*;
-pub(crate) use crate::layout::multicol::container::*;
-pub(crate) use crate::layout::multicol::stack_child::*;
 
 /// Настройки отрисовки: то, что задаёт приложение, а не документ.
 #[derive(Clone)]
@@ -209,9 +98,9 @@ impl RenderOpts {
 pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     let stripped = without_inert_clear(nodes);
     let nodes: &[Node] = stripped.as_deref().unwrap_or(nodes);
-    crate::metrics::set_doc_family(&opts.text.font_family);
+    crate::text::metrics::set_doc_family(&opts.text.font_family);
     let root = opts.root_style();
-    crate::interact::frame_sanitize();
+    crate::interactive::frame::frame_sanitize();
     // Пойманная паника кадра внутри рамки оставляла счётчик глубины
     // навсегда — три такие паники, и рамки исчезали до перезапуска.
     IFRAME_DEPTH.with(|d| d.set(0));
@@ -219,7 +108,7 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     // Слой начального содержащего блока: внепоточные элементы без
     // позиционированного предка дописываются последними детьми документа —
     // их края решает область просмотра (§10.1 п.4).
-    crate::interact::icb_open();
+    crate::layout::positioned::containing_block::icb_open();
     // Корень документа получает ширину области просмотра: от неё цепочка
     // `AVAIL_W` вычитает поля/рамки/отступы `html` и `body`.
     let avail_prev = AVAIL_W.replace(Some(opts.viewport.0).filter(|w| *w > 0.0));
@@ -238,7 +127,7 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     let unkeyed_prev = UNKEYED.replace(unkeyed_positions(nodes));
     let mut out = blocks(nodes, &root, opts);
     AVAIL_W.set(avail_prev);
-    out.extend(crate::interact::icb_close());
+    out.extend(crate::layout::positioned::containing_block::icb_close());
     UNKEYED.replace(unkeyed_prev);
     RENDER_DEPTH.with(|d| d.set(d.get() - 1));
     let (open, close) = gpui::PaintCollect::pair();
@@ -286,10 +175,10 @@ pub(crate) fn unkeyed_positioned(e: &Element) -> bool {
             "tr" | "td" | "th" | "tbody" | "thead" | "tfoot" | "caption" | "col" | "colgroup"
         ));
     match e.style.position {
-        Some(crate::computed::Position::Relative) | Some(crate::computed::Position::Sticky) => {
+        Some(crate::style::computed::Position::Relative) | Some(crate::style::computed::Position::Sticky) => {
             table_part || !block_level_in_flow(e)
         }
-        Some(crate::computed::Position::Absolute) => {
+        Some(crate::style::computed::Position::Absolute) => {
             table_part || (e.style.display.is_none() && e.inline)
         }
         _ => false,
@@ -367,17 +256,17 @@ pub(crate) fn inline_abs_paint_last(e: &Element, el: AnyElement) -> AnyElement {
 /// держится дерево файлов и чат.
 pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<AnyElement> {
     let node = nodes.get(index)?;
-    crate::interact::frame_sanitize();
+    crate::interactive::frame::frame_sanitize();
     IFRAME_DEPTH.with(|d| d.set(0));
     collect_mask_defs(nodes);
     let root = opts.root_style();
     // Слой ICB закрывается на блок ленты: дальше своего блока внепоточный
     // элемент всё равно не уедет, а без слоя он остался бы на месте.
-    crate::interact::icb_open();
+    crate::layout::positioned::containing_block::icb_open();
     let avail_prev = AVAIL_W.replace(Some(opts.viewport.0).filter(|w| *w > 0.0));
     let out = blocks(std::slice::from_ref(node), &root, opts);
     AVAIL_W.set(avail_prev);
-    let layer = crate::interact::icb_close();
+    let layer = crate::layout::positioned::containing_block::icb_close();
     let first = out.into_iter().next()?;
     if layer.is_empty() {
         return Some(first);
@@ -417,30 +306,30 @@ pub(crate) fn paragraph_probed(taken: &[Node], inherited: &Computed, opts: &Rend
     // Номер абзаца выдаётся в порядке ПОСТРОЕНИЯ и уезжает в пробу,
     // поэтому сопоставление кадров не зависит от порядка обхода на
     // отрисовке.
-    let ctx = crate::interact::clamp_context();
-    let seq = ctx.map(|(key, _)| crate::interact::clamp_next_seq(key));
+    let ctx = crate::text::clamp::clamp_context();
+    let seq = ctx.map(|(key, _)| crate::text::clamp::clamp_next_seq(key));
     let budget = match (ctx, seq) {
-        (Some((key, _)), Some(s)) => match crate::interact::clamp_para(key) {
+        (Some((key, _)), Some(s)) => match crate::text::clamp::clamp_para(key) {
             Some((ps, k)) if ps == s => Some(k),
             _ => None,
         },
         _ => None,
     };
-    crate::interact::set_para_budget(budget);
-    crate::interact::set_para_tag(ctx.zip(seq).map(|((key, _), s)| (key, s)));
+    crate::text::clamp::set_para_budget(budget);
+    crate::text::clamp::set_para_tag(ctx.zip(seq).map(|((key, _), s)| (key, s)));
     let para = paragraph(taken, inherited, opts);
-    crate::interact::set_para_tag(None);
+    crate::text::clamp::set_para_tag(None);
     // Ячейку обязательно опустошить и когда абзац её не забрал
     // (вертикальное письмо уходит из `paragraph` раньше): иначе бюджет
     // достался бы СЛЕДУЮЩЕМУ абзацу.
-    crate::interact::set_para_budget(None);
+    crate::text::clamp::set_para_budget(None);
     let para = with_text_shadow(para, inherited, taken, opts);
     if let Some((key, skip)) = ctx {
         div()
             .relative()
             .child(para)
-            .child(crate::interact::clamp_probe(
-                crate::interact::clamp_lines_for(key),
+            .child(crate::text::clamp::clamp_probe(
+                crate::text::clamp::clamp_lines_for(key),
                 line_height_px(inherited, opts),
                 skip,
                 false,
@@ -467,6 +356,8 @@ pub(crate) fn paragraph_probed(taken: &[Node], inherited: &Computed, opts: &Rend
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::layout::block::margins::collapse_margins;
+    use crate::style::values::value::Len;
     use crate::dom::parse;
 
     fn find_class<'a>(nodes: &'a [Node], class: &str) -> Option<&'a Element> {

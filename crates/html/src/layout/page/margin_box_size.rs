@@ -1,8 +1,8 @@
 //! Intrinsic page margin dimensions remain distinct from auto stretch sizing.
 
-use crate::flow::*;
-use crate::value::Len;
-use gpui::AvailableSpace;
+use crate::layout::page::page_stack::MarginBox;
+use crate::style::values::value::Len;
+use gpui::{App, AvailableSpace, Window, px, size};
 
 pub(super) fn keyword(length: Option<Len>) -> bool {
     matches!(

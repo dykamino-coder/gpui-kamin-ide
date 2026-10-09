@@ -74,19 +74,19 @@ fn paint_gradient(
     if !raw.starts_with("linear-gradient(") {
         return false;
     }
-    let Some(gradient) = crate::computed::parse_gradient(raw) else {
+    let Some(gradient) = crate::style::computed::parse_gradient(raw) else {
         return false;
     };
     if gradient.stops.len() > 4
         || gradient.stops_raw.iter().any(|(_, _, px)| px.is_some())
         || !matches!(
             gradient.space,
-            crate::computed::GradSpace::Srgb | crate::computed::GradSpace::Oklab
+            crate::style::computed::GradSpace::Srgb | crate::style::computed::GradSpace::Oklab
         )
         || gradient
             .stops
             .iter()
-            .any(|s| crate::color_space::out_of_gamut(s.0))
+            .any(|s| crate::style::values::color_space::out_of_gamut(s.0))
     {
         return false;
     }
@@ -102,7 +102,7 @@ fn paint_gradient(
         gpui::point(edge(bounds.left()), edge(bounds.top())),
         gpui::point(edge(bounds.right()), edge(bounds.bottom())),
     );
-    let mut quad = gpui::fill(bounds, crate::apply::fill(&gradient));
+    let mut quad = gpui::fill(bounds, crate::style::apply::fill(&gradient));
     quad.corner_radii = corners;
     window.paint_quad(quad);
     true

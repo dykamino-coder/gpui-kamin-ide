@@ -1,7 +1,7 @@
 //! Preserve abspos self alignment until actual static and original CB bounds exist.
-use crate::render::absolute_overflow_math::{Span, place};
-use crate::computed::{Align, Computed, Display, FlexDir, Position};
-use crate::value::Len;
+use crate::layout::positioned::absolute_overflow_math::{Span, place};
+use crate::style::computed::{Align, Computed, Display, FlexDir, Position};
+use crate::style::values::value::Len;
 use gpui::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
     LayoutId, Pixels, Styled, Window, point, px,
@@ -25,7 +25,7 @@ pub(crate) fn probe(style: &Computed) -> Option<AnyElement> {
         gpui::canvas(
             move |bounds: Bounds<Pixels>, window, _: &mut App| {
                 let side = |length: Option<Len>| {
-                    crate::apply::len_to_gpui(length.unwrap_or(Len::Px(0.0)))
+                    crate::style::apply::len_to_gpui(length.unwrap_or(Len::Px(0.0)))
                         .to_pixels(bounds.size.width.into(), window.rem_size())
                 };
                 let left = side(padding.left);
@@ -129,7 +129,7 @@ impl Plan {
     pub(crate) fn prepare(&self, style: &mut gpui::StyleRefinement) {
         // Native layout supplies the requested static-position alignment; safety
         // is applied once both geometries are available during prepaint.
-        style.align_self = Some(crate::apply::self_align(self.align, false));
+        style.align_self = Some(crate::style::apply::self_align(self.align, false));
         let (items, _, content, justify) = style.safe_alignment.unwrap_or_default();
         style.safe_alignment = Some((items, false, content, justify));
     }
@@ -160,7 +160,7 @@ impl Plan {
         let (cb_start, cb_size) = axis(cb);
         let margin = self.margin.map(|length| {
             f32::from(
-                crate::apply::len_to_gpui(length.unwrap_or(Len::Px(0.0)))
+                crate::style::apply::len_to_gpui(length.unwrap_or(Len::Px(0.0)))
                     .to_pixels(cb.size.width.into(), window.rem_size()),
             )
         });

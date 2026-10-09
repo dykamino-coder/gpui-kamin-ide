@@ -1,6 +1,7 @@
 //! CSS mask painting extents and reference-box offsets from the border box.
 
-use crate::{computed::Computed, value::Len};
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
 
 pub(crate) fn unclipped(c: &Computed) -> bool {
     // CSS Masking section 7.5: no-clip includes paint outside the element box.

@@ -1,7 +1,7 @@
 //! Ruby annotation hiding after pairing, CSS Ruby 1 §hiding.
 //! Compare textContent before whitespace collapsing and text transformation.
 
-use crate::computed::Computed;
+use crate::style::computed::Computed;
 use crate::dom::Node;
 
 pub(crate) fn text(nodes: &[Node]) -> String {

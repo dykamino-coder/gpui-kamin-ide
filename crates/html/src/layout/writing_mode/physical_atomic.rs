@@ -106,10 +106,10 @@ impl Element for PhysicalAtomic {
             cx,
         );
         let (physical, inverse_text) =
-            crate::interact::physical_atomic_frame::map(bounds, window.scale_factor());
+            crate::layout::writing_mode::physical_atomic_frame::map(bounds, window.scale_factor());
         self.inverse_text = inverse_text;
         window.set_layout_root_origin(root, physical.origin);
-        crate::interact::physical_atomic_frame::without_frame(|| {
+        crate::layout::writing_mode::physical_atomic_frame::without_frame(|| {
             self.child.prepaint_at(point(px(0.0), px(0.0)), window, cx);
         });
     }

@@ -1,6 +1,14 @@
 //! Обход html5ever-дерева: каскад и сборка узлов (walk).
 
 use crate::dom::*;
+use crate::style::computed::{Computed, Display, Position};
+use crate::style::css::{Decls, Keyframes, Rule, parse_decls};
+use crate::style::select::has::has_marks_of;
+use crate::style::select::matching::{matches, matches_ignoring_pseudo};
+use crate::style::select::{Ancestor, Sibs, Spot, census_of};
+use markup5ever_rcdom::{Handle, NodeData};
+use std::collections::HashMap;
+use std::rc::Rc;
 
 /// Обойти детей узла, посчитав каждому его место среди соседей.
 #[allow(clippy::too_many_arguments)]
@@ -10,7 +18,7 @@ pub(crate) fn walk_children(
     vars: &Decls,
     frames: &HashMap<String, Keyframes>,
     counter: &mut u64,
-    counters: &mut crate::counters::Counters,
+    counters: &mut crate::style::generated::counters::Counters,
     path: &[Ancestor],
     preserve: bool,
     out: &mut Vec<Node>,
@@ -45,7 +53,7 @@ pub(crate) fn walk(
     vars: &Decls,
     frames: &HashMap<String, Keyframes>,
     counter: &mut u64,
-    counters: &mut crate::counters::Counters,
+    counters: &mut crate::style::generated::counters::Counters,
     path: &[Ancestor],
     spot: Spot,
     preserve: bool,
@@ -174,11 +182,11 @@ pub(crate) fn walk(
             // и `.dark{--c:blue}` складывались в него подряд, и последнее
             // объявление красило ВЕСЬ документ — переключение темы классом
             // не работало в принципе.
-            let registered = crate::css::property_rules();
-            let cascaded = crate::css::custom_properties::cascade(
+            let registered = crate::style::css::property_rules();
+            let cascaded = crate::style::css::custom_properties::cascade(
                 &matched, &inline_decls, vars, &registered, syntax_accepts,
             );
-            let own_vars = crate::css::variable_values::compute(
+            let own_vars = crate::style::css::variable_values::compute(
                 &cascaded, vars, &registered, syntax_accepts,
             );
             let vars = &own_vars;
@@ -207,31 +215,31 @@ pub(crate) fn walk(
             struct SchemeGuard(bool);
             impl Drop for SchemeGuard {
                 fn drop(&mut self) {
-                    crate::value::set_dark_scheme(self.0);
+                    crate::style::values::value::set_dark_scheme(self.0);
                 }
             }
-            let parent_dark = crate::value::dark_scheme();
+            let parent_dark = crate::style::values::value::dark_scheme();
             let _scheme = SchemeGuard(parent_dark);
             if let Some(v) = scheme {
                 let low = v.to_ascii_lowercase();
                 let words: Vec<&str> = low.split_whitespace().collect();
                 let dark = words.contains(&"dark") && !words.contains(&"light");
                 if !low.contains("inherit") {
-                    crate::value::set_dark_scheme(dark);
+                    crate::style::values::value::set_dark_scheme(dark);
                 }
             }
             // Типизированный `attr()` читает атрибуты ЭТОГО элемента
             // (css-values-5 §7.7): слот ставится только на время его каскада.
-            crate::computed::set_current_attrs(&attrs);
-            crate::computed::set_current_sibling((spot.index > 0).then_some((spot.index, spot.total)));
+            crate::style::cascade::vars::set_current_attrs(&attrs);
+            crate::style::cascade::vars::set_current_sibling((spot.index > 0).then_some((spot.index, spot.total)));
             let hints = presentational_hints::rules(&tag, &attrs);
             matched.extend(hints.iter());
             let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
             inherit_counter_decls(&mut style, path.last().map(|p| &p.counter_style));
             apply_value_hint(&mut style, &me);
             me.counter_style = counter_snapshot(&style);
-            crate::computed::clear_current_attrs();
-            crate::computed::set_current_sibling(None);
+            crate::style::cascade::vars::clear_current_attrs();
+            crate::style::cascade::vars::set_current_sibling(None);
             // Корневые метрики для `rem`/`rlh` (css-values-4 §6.1.4).
             // Записываются ЗДЕСЬ, а не в наследовании: `Len::parse` работает
             // на разборе объявлений, а `walk` идёт в порядке документа —
@@ -241,23 +249,23 @@ pub(crate) fn walk(
             // так меряется РОДИТЕЛЬСКИМИ (начальными) метриками.
             if tag == "html" {
                 let font = match style.font_size {
-                    Some(crate::value::Len::Px(v)) => v,
-                    Some(crate::value::Len::Em(k)) | Some(crate::value::Len::Pct(k)) => k * 16.0,
+                    Some(crate::style::values::value::Len::Px(v)) => v,
+                    Some(crate::style::values::value::Len::Em(k)) | Some(crate::style::values::value::Len::Pct(k)) => k * 16.0,
                     _ => 16.0,
                 };
                 let family = style.font_family.clone().unwrap_or_default();
                 let line = match style.line_height {
-                    Some(crate::value::Len::Px(v)) => v,
-                    Some(crate::value::Len::Em(k)) | Some(crate::value::Len::Pct(k)) => k * font,
+                    Some(crate::style::values::value::Len::Px(v)) => v,
+                    Some(crate::style::values::value::Len::Em(k)) | Some(crate::style::values::value::Len::Pct(k)) => k * font,
                     _ => {
-                        let f = crate::metrics::normal_line(&family);
+                        let f = crate::text::metrics::normal_line(&family);
                         if f > 0.0 { f * font } else { 1.2 * font }
                     }
                 };
-                crate::value::set_root_metrics(font, line);
-                crate::value::set_root_font_view(match style.font_size {
-                    Some(crate::value::Len::Vh(k)) => Some((true, k)),
-                    Some(crate::value::Len::Vw(k)) => Some((false, k)),
+                crate::style::values::value::set_root_metrics(font, line);
+                crate::style::values::value::set_root_font_view(match style.font_size {
+                    Some(crate::style::values::value::Len::Vh(k)) => Some((true, k)),
+                    Some(crate::style::values::value::Len::Vw(k)) => Some((false, k)),
                     _ => None,
                 });
             }
@@ -266,7 +274,7 @@ pub(crate) fn walk(
             presentational_hints::colors(&mut style, &tag, &attrs);
             finish_inline_display(&mut style, &tag, &attrs);
             style.plain_block_box = {
-                use crate::computed::Display;
+                use crate::style::computed::Display;
                 let special = matches!(
                     tag.as_str(),
                     "table" | "caption" | "colgroup" | "col" | "thead" | "tbody" | "tfoot"
@@ -293,7 +301,7 @@ pub(crate) fn walk(
             // (`will-change-transform-inline`: `fixed` внутри `<span>` стоит от
             // окна); замещаемые и вынесенные из потока — атомарны. Вид коробки
             // известен только здесь, после `finish_inline_display`.
-            if style.will_change & crate::computed::wc::BOX != 0 {
+            if style.will_change & crate::style::computed::wc::BOX != 0 {
                 let out_of_flow = style.float.is_some_and(|f| f != 0)
                     || matches!(style.position, Some(Position::Absolute) | Some(Position::Fixed));
                 let replaced = matches!(
@@ -308,7 +316,7 @@ pub(crate) fn walk(
                     && (style.inline_display == Some(true)
                         || (style.display.is_none() && inline_tag));
                 if !non_atomic {
-                    use crate::computed::wc;
+                    use crate::style::computed::wc;
                     style.will_change |= wc::CB_ABS | wc::CB_FIXED | wc::STACK;
                 }
             }
@@ -343,13 +351,13 @@ pub(crate) fn walk(
             if matches!(tag.as_str(), "rbc" | "rtc")
                 || matches!(
                     style.ruby_role,
-                    Some(crate::computed::RubyRole::BaseContainer)
-                        | Some(crate::computed::RubyRole::TextContainer)
+                    Some(crate::style::computed::RubyRole::BaseContainer)
+                        | Some(crate::style::computed::RubyRole::TextContainer)
                 )
             {
-                style.margin = crate::computed::Sides::default();
-                style.padding = crate::computed::Sides::default();
-                style.border_width = crate::computed::Sides::default();
+                style.margin = crate::style::computed::Sides::default();
+                style.padding = crate::style::computed::Sides::default();
+                style.border_width = crate::style::computed::Sides::default();
             }
             // motion-1: offset-трансформ считается НЕ здесь, а вторым проходом
             // по дереву коробок (`motion::settle`, зовётся из `doc.rs`).
@@ -408,7 +416,7 @@ pub(crate) fn walk(
                 found.sort_by_key(|r| (r.sel.specificity(), r.order));
                 (!found.is_empty() || tag == "li" || style.display == Some(Display::ListItem)).then(|| {
                     let mut m = Computed::default();
-                    m.text_transform = Some(crate::computed::TextTransform::None);
+                    m.text_transform = Some(crate::style::computed::TextTransform::None);
                     if !found.is_empty() {
                         m.bidi_isolate = Some(true);
                     }
@@ -423,8 +431,8 @@ pub(crate) fn walk(
             // предварительного обхода области (css-lists-3
             // §instantiating-counters). Считается ЗДЕСЬ, до применения
             // директив: запись создаётся уже готовым числом.
-            let reversed_start = |nm: &str, counters: &mut crate::counters::Counters| {
-                crate::counters_scan::reversed_initial(
+            let reversed_start = |nm: &str, counters: &mut crate::style::generated::counters::Counters| {
+                crate::style::generated::counters_scan::reversed_initial(
                     rules, vars, nm, handle, &me, path, sibs, level, spots, level_pos,
                 )
             };
@@ -754,7 +762,7 @@ pub(crate) fn walk(
                     let mut base = style.clone();
                     for name in &a.names {
                         if let Some(track) = resolve(name, &base) {
-                            base = crate::render::frame_at(&track, t);
+                            base = crate::animation::frames::frame_at(&track, t);
                         }
                     }
                     return Some(vec![(0.0, base.clone()), (1.0, base)]);
@@ -814,7 +822,7 @@ pub(crate) fn walk(
             // обычным `inline::inherit` (стиль контейнера пуст). Тег `ruby` у
             // синтетического узла — роль контейнера по тегу (`block-ruby-001`).
             let children = if style.display == Some(Display::Block)
-                && style.ruby_role == Some(crate::computed::RubyRole::Container)
+                && style.ruby_role == Some(crate::style::computed::RubyRole::Container)
             {
                 vec![Node::Element(Element {
                     list_item: None,
@@ -846,7 +854,7 @@ pub(crate) fn walk(
             // трогается: замещаемого корня у нас нет. Ненайденная картинка
             // замены не делает (Servo `replaced.rs:348`: `None` при ошибке).
             let (tag, children, attrs) = match style.content.as_deref() {
-                Some([crate::computed::ContentItem::Image(src)])
+                Some([crate::style::computed::ContentItem::Image(src)])
                     if tag != "html" && content_image_src(src).is_some() =>
                 {
                     let mut attrs: Vec<(String, String)> =

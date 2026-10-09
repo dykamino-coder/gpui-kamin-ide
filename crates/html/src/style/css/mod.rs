@@ -5,17 +5,17 @@
 //! четырнадцать. Полноценная CSS-машина здесь не окупается, а лишняя
 //! зависимость — окупается ещё меньше.
 
-pub(crate) use std::collections::HashMap;
+use std::collections::HashMap;
 
 pub(crate) mod selector_tokens;
 pub(crate) mod stylesheet_tokens;
 pub(crate) use stylesheet_tokens::next_piece;
-use stylesheet_tokens::find_matching;
+use crate::style::css::stylesheet_tokens::find_matching;
 pub(crate) mod component_tokens;
 pub(crate) mod font_family_values;
 pub(crate) use component_tokens::skip_string;
 pub(crate) mod priority_tokens;
-use priority_tokens::top_level_bang;
+use crate::style::css::priority_tokens::top_level_bang;
 pub(crate) mod variable_tokens;
 pub(crate) mod custom_properties;
 pub(crate) mod variable_values;

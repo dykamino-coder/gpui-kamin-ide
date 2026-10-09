@@ -1,6 +1,18 @@
 //! Коробка элемента: базовый стиль div, обрезка и покраска фона за вычетом области.
 
+use crate::dom::{Element, Node};
+use crate::layout::block::margin_height;
+use crate::layout::multicol::spanner::multicol_container;
+use crate::layout::positioned::absolute_overflow;
+use crate::layout::replaced::limits::auto_clamp_limit;
+use crate::layout::writing_mode::native_intrinsic;
+use crate::paint::decorations::decorations;
+use crate::paint::effects::mask::mask_def;
 use crate::render::*;
+use crate::style::apply::{apply, apply_hover};
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
+use gpui::{AnyElement, ParentElement, Styled, div, px};
 
 /// Базовый стиль элемента плюс слой наведения и дорисовка того, чего в
 /// `gpui::Style` нет: обводки, размытия подложки, разноцветных сторон рамки.
@@ -67,20 +79,20 @@ pub(crate) fn clip_layer(c: &Computed, opts: &RenderOpts) -> Option<AnyElement> 
     // padding-box лёг бы внутрь кольца.
     if matches!(
         clip,
-        crate::computed::BgClip::Text | crate::computed::BgClip::BorderArea
+        crate::style::computed::BgClip::Text | crate::style::computed::BgClip::BorderArea
     ) {
         return None;
     }
     let size = own_size(c, opts);
     let family = c.font_family.clone().unwrap_or_default();
-    let px_of = |l: Option<Len>| crate::metrics::spacing_px(l, &family, size);
+    let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &family, size);
     let border = c.borders();
     // Абсолютный слой в раскладке отсчитывается уже от padding-box
     // (`vendor/taffy/src/compute/block.rs`, как в CSS 2.1 §10.1): рамку
     // вычитать второй раз нельзя — проба `probe-bg-clipinset` давала 60×60
     // вместо 100×100 при рамке 20px.
     let pad = |p: Option<Len>| {
-        if clip == crate::computed::BgClip::ContentBox {
+        if clip == crate::style::computed::BgClip::ContentBox {
             px_of(p)
         } else {
             0.0
@@ -93,7 +105,7 @@ pub(crate) fn clip_layer(c: &Computed, opts: &RenderOpts) -> Option<AnyElement> 
         .bottom(px(pad(c.padding.bottom)))
         .left(px(pad(c.padding.left)));
     layer = match (&c.gradient, c.background) {
-        (Some(g), _) => layer.bg(crate::apply::fill(g)),
+        (Some(g), _) => layer.bg(crate::style::apply::fill(g)),
         (None, Some(bg)) => layer.bg(gpui::Background::from(bg.to_hsla())),
         _ => return None,
     };
@@ -171,7 +183,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     let auto_height = margin_height::used_style(e, paint);
     let mut d = apply(div(), auto_height.as_ref().unwrap_or(paint));
     if native_intrinsic::eligible(e) {
-        d.style().sizing_keywords = Some(crate::apply::intrinsic_size::keywords(c));
+        d.style().sizing_keywords = Some(crate::style::apply::intrinsic_size::keywords(c));
     }
     d = crate::interactive::scroll_target::attach(d, e, c);
     // Проба якоря (css-anchor-position-1 §anchor-name) и содержащего блока
@@ -222,7 +234,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     let bw = c.borders();
     let mbp_y = side(bw.top) + side(bw.bottom) + side(c.padding.top) + side(c.padding.bottom);
     if !multicol && e.style.clamp_auto == Some(true) && auto_clamp_limit(c).is_some() {
-        if let Some(cut) = crate::interact::clamp_cut(e.node_id).filter(|c| !sized && c.is_finite()) {
+        if let Some(cut) = crate::text::clamp::clamp_cut(e.node_id).filter(|c| !sized && c.is_finite()) {
             d = d.max_h(px(cut + mbp_y));
         }
         // Прячется только содержимое ЗА точкой среза — по блочной оси;
@@ -252,7 +264,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
             Some(Len::Em(k)) => k * font,
             _ => 1.2 * font,
         };
-        let cut = crate::interact::clamp_cut(e.node_id).unwrap_or(n as f32 * line);
+        let cut = crate::text::clamp::clamp_cut(e.node_id).unwrap_or(n as f32 * line);
         if !sized && cut.is_finite() {
             d = d.max_h(px(cut + mbp_y));
         }

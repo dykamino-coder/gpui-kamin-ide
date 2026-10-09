@@ -1,7 +1,33 @@
 //! Общий рукав `element()`: блочная коробка без особого тега.
 // owner: A
 
+use crate::dom::{Element, Node};
+use crate::layout::block::reorder::{orthogonal_vertical_children, resolve_inline_pct};
+use crate::layout::block::struts::{margin_px, zero_len};
+use crate::layout::block::vertical_flow_margins;
+use crate::layout::float::block_like_float;
+use crate::layout::fragment::clone::clone_wrapper_item;
+use crate::layout::fragment::fragment_size::shape_full;
+use crate::layout::fragment::line_shape::{group_inline_runs, inline_content, nested_rows_box, nested_rows_shape, resolved_lengths, transpose_tree};
+use crate::layout::fragment::probe::forced_inside;
+use crate::layout::fragment::{Shape, ShapeCx, with_lines};
+use crate::layout::grid::place_named_areas;
+use crate::layout::multicol::column_flow::column_flow;
+use crate::layout::multicol::container::{multicol_column_stack, multicol_spanner_segments};
+use crate::layout::multicol::gap_rules::gap_rule_spec;
+use crate::layout::multicol::spanner::{has_deep_spanner, hoist_spanners, multicol_container, spanner_box};
+use crate::layout::positioned::absolute_overflow;
+use crate::layout::replaced::limits::auto_clamp_limit;
+use crate::layout::table::anon::has_box_style_probe;
+use crate::layout::writing_mode::orthogonal_children::orthogonal_children;
+use crate::layout::writing_mode::vertical_hug;
+use crate::paint::stacking::fixed_cb_layer_box;
 use crate::render::*;
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
+use crate::text::text_box::text_box_trim_px;
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
 pub(crate) fn generic_box(
     e: &Element,
@@ -78,12 +104,12 @@ pub(crate) fn generic_box(
     let col_rl = merged.vertical_rl == Some(true);
     let col_axis = if merged.vertical == Some(true) && merged.rtl != Some(true) {
         if col_rl {
-            crate::flow::StackAxis::VerticalRl
+            crate::layout::fragment::types::StackAxis::VerticalRl
         } else {
-            crate::flow::StackAxis::VerticalLr
+            crate::layout::fragment::types::StackAxis::VerticalLr
         }
     } else {
-        crate::flow::StackAxis::Horizontal
+        crate::layout::fragment::types::StackAxis::Horizontal
     };
     let col_vert = col_axis.is_vertical();
     let col_inline_size = if col_vert { merged.height } else { merged.width };
@@ -166,7 +192,7 @@ pub(crate) fn generic_box(
             Some(Len::Em(k)) => k * em,
             _ => em,
         };
-        let rows = (col_h.is_some() || wrap).then_some(crate::flow::Rows {
+        let rows = (col_h.is_some() || wrap).then_some(crate::layout::fragment::types::Rows {
             h: col_h.or(if wrap { box_h } else { None }),
             gap: row_gap,
             wrap,
@@ -219,7 +245,7 @@ pub(crate) fn generic_box(
             col_h.is_none() && e.style.column_wrap.is_none() && !col_vert
         });
         let rows = match nest_rows {
-            Some(hh) => Some(crate::flow::Rows {
+            Some(hh) => Some(crate::layout::fragment::types::Rows {
                 h: Some(hh),
                 gap: 0.0,
                 wrap: true,
@@ -230,8 +256,8 @@ pub(crate) fn generic_box(
         let rows = rows.or_else(|| {
             (cap_h.is_some()
                 && e.style.column_fill_auto != Some(true)
-                && !crate::flow::in_stack())
-            .then_some(crate::flow::Rows {
+                && !crate::layout::fragment::types::in_stack())
+            .then_some(crate::layout::fragment::types::Rows {
                 h: cap_h,
                 gap: row_gap,
                 wrap: false,
@@ -281,7 +307,7 @@ pub(crate) fn generic_box(
             None => e,
         };
         let is_span = |n: &Node| matches!(n, Node::Element(c) if spanner_box(c));
-        let unified = rows.is_some_and(|r| r.wrap && r.h.is_some()) && !crate::flow::in_stack();
+        let unified = rows.is_some_and(|r| r.wrap && r.h.is_some()) && !crate::layout::fragment::types::in_stack();
         // Хвостовой ряд колонок при `column-fill: auto` НЕ стоит перед
         // спаннером, и §column-fill («content in a multi-column line that
         // does not immediately precede a spanner») велит заполнять его
@@ -317,7 +343,7 @@ pub(crate) fn generic_box(
                             return None;
                         }
                         spans += 1;
-                        let st = inline::inherit(&merged, &sp.style);
+                        let st = inherit(&merged, &sp.style);
                         used += shape_full(sp, 4, ShapeCx::COLUMNS)?.0
                             + px(&st.margin.top)?
                             + px(&st.margin.bottom)?;
@@ -372,8 +398,8 @@ pub(crate) fn generic_box(
             let positioned = |s: &Computed| {
                 matches!(
                     s.position,
-                    Some(crate::computed::Position::Absolute)
-                        | Some(crate::computed::Position::Fixed)
+                    Some(crate::style::computed::Position::Absolute)
+                        | Some(crate::style::computed::Position::Fixed)
                 )
             };
             // Строчный размер колонки для меры строк (`with_lines`):
@@ -616,7 +642,7 @@ pub(crate) fn generic_box(
                         if !c.inline
                             && (c.style.position.is_none()
                                 || c.style.position
-                                    == Some(crate::computed::Position::Relative))
+                                    == Some(crate::style::computed::Position::Relative))
                             && (c.style.float.unwrap_or(0) == 0
                                 || block_like_float(&c.style)) =>
                     {
@@ -842,10 +868,10 @@ pub(crate) fn generic_box(
             // (`overflow: hidden`, v100: 0.00 → «красное видно»).
             let bfc = !matches!(
                 e.style.overflow_x,
-                None | Some(crate::computed::Overflow::Visible)
+                None | Some(crate::style::computed::Overflow::Visible)
             ) || !matches!(
                 e.style.overflow_y,
-                None | Some(crate::computed::Overflow::Visible)
+                None | Some(crate::style::computed::Overflow::Visible)
             ) || e.style.float.is_some()
                 || e.style.display.is_some()
                 || e.style.flow_root == Some(true)
@@ -893,13 +919,13 @@ pub(crate) fn generic_box(
     let is_clamp = (e.style.clamp_lines().is_some()
         || (e.style.clamp_auto == Some(true) && auto_clamp_limit(&merged).is_some()))
         && !multicol_container(&e.style);
-    let _clamp_guard = is_clamp.then(|| crate::interact::ClampGuard::enter(e.node_id));
+    let _clamp_guard = is_clamp.then(|| crate::text::clamp::ClampGuard::enter(e.node_id));
     let makes_bfc = matches!(
         merged.overflow_x,
-        Some(crate::computed::Overflow::Hidden) | Some(crate::computed::Overflow::Scroll)
+        Some(crate::style::computed::Overflow::Hidden) | Some(crate::style::computed::Overflow::Scroll)
     ) || matches!(
         merged.overflow_y,
-        Some(crate::computed::Overflow::Hidden) | Some(crate::computed::Overflow::Scroll)
+        Some(crate::style::computed::Overflow::Hidden) | Some(crate::style::computed::Overflow::Scroll)
     ) || merged.float.is_some()
         || merged.flow_root == Some(true)
         // Независимый контекст форматирования и без overflow/float/
@@ -921,18 +947,18 @@ pub(crate) fn generic_box(
         // `<fieldset>` — тоже отдельная раскладка
         // (`webkit-line-clamp-027`).
         || e.tag == "fieldset";
-    let _bfc_guard = (!is_clamp && makes_bfc && crate::interact::clamp_context().is_some())
-        .then(crate::interact::ClampGuard::enter_bfc);
+    let _bfc_guard = (!is_clamp && makes_bfc && crate::text::clamp::clamp_context().is_some())
+        .then(crate::text::clamp::ClampGuard::enter_bfc);
     // Проба элемента сетки/гибкого контейнера: пишет свои разложенные
     // границы в буфер родителя. Ставится ДО clamp-пробы, чтобы её
     // ранний `return` не съел запись. Абсолютные дети дорожек не
     // занимают (css-grid-1 §9), а пустой анонимный блок — это
     // распорка лент (`spacer()`), не элемент.
-    if let Some(key) = crate::interact::gap_context()
+    if let Some(key) = crate::paint::gap_rules::gap_context()
         && !matches!(
             e.style.position,
-            Some(crate::computed::Position::Absolute)
-                | Some(crate::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute)
+                | Some(crate::style::computed::Position::Fixed)
         )
         && !(e.node_id == 0 && e.children.is_empty())
     {
@@ -947,12 +973,12 @@ pub(crate) fn generic_box(
             _ => 0.0,
         };
         let b = e.style.borders();
-        kids.push(crate::interact::gap_item_probe(
-            crate::interact::gap_items_for(key),
+        kids.push(crate::paint::gap_rules::gap_item_probe(
+            crate::paint::gap_rules::gap_items_for(key),
             [bw(b.top), bw(b.right), bw(b.bottom), bw(b.left)],
         ));
     }
-    if let Some((key, skip)) = crate::interact::clamp_context() {
+    if let Some((key, skip)) = crate::text::clamp::clamp_context() {
         // Строки дают пробы абзацев (paragraph_probed); здесь — только
         // коробка с краской: блок прячется целиком, если срез внутри.
         // Поточная коробка со СВОИМ контекстом форматирования точек
@@ -966,8 +992,8 @@ pub(crate) fn generic_box(
             && !merged.float.is_some_and(|f| f != 0)
             && !matches!(
                 merged.position,
-                Some(crate::computed::Position::Absolute)
-                    | Some(crate::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute)
+                    | Some(crate::style::computed::Position::Fixed)
             )
             && !matches!(
                 merged.display,
@@ -985,8 +1011,8 @@ pub(crate) fn generic_box(
                 _ => 0.0,
             };
             let bp_after = side(e.style.borders().bottom) + side(e.style.padding.bottom);
-            kids.push(crate::interact::clamp_probe(
-                crate::interact::clamp_lines_for(key),
+            kids.push(crate::text::clamp::clamp_probe(
+                crate::text::clamp::clamp_lines_for(key),
                 0.0,
                 skip,
                 e.style.height.is_some() || e.style.min_height.is_some() || monolithic,
@@ -1002,13 +1028,13 @@ pub(crate) fn generic_box(
             && !merged.float.is_some_and(|f| f != 0)
             && !matches!(
                 merged.position,
-                Some(crate::computed::Position::Absolute)
-                    | Some(crate::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute)
+                    | Some(crate::style::computed::Position::Fixed)
             )
             && matches!(merged.display, None | Some(Display::Block))
         {
-            kids.push(crate::interact::clamp_empty_probe(
-                crate::interact::clamp_lines_for(key),
+            kids.push(crate::text::clamp::clamp_empty_probe(
+                crate::text::clamp::clamp_lines_for(key),
             ));
         }
     }
@@ -1016,9 +1042,9 @@ pub(crate) fn generic_box(
     // (§10.1), а раскладка под нами знает только непосредственного
     // родителя. Пока строятся дети, открыт слой: коробка, чей родитель
     // содержащим блоком не является, переезжает сюда.
-    let cb_layer = crate::inline::establishes_cb(&merged);
+    let cb_layer = crate::text::inline::establishes_cb(&merged);
     if cb_layer {
-        crate::interact::cb_open_with(fixed_cb_layer_box(&merged));
+        crate::layout::positioned::containing_block::cb_open_with(fixed_cb_layer_box(&merged));
     }
     // Линейки промежутков (css-gaps-1). Слой заводится ТОЛЬКО когда
     // задан стиль хотя бы одной линейки: начальное `none` означает,
@@ -1027,10 +1053,10 @@ pub(crate) fn generic_box(
     let gap_rules = gap_rule_spec(e, &merged, opts);
     let gap_buf = gap_rules
         .is_some()
-        .then(|| crate::interact::gap_items_for(e.node_id ^ opts.doc_salt));
+        .then(|| crate::paint::gap_rules::gap_items_for(e.node_id ^ opts.doc_salt));
     let _gap_guard = gap_buf
         .as_ref()
-        .map(|_| crate::interact::GapGuard::enter(e.node_id ^ opts.doc_salt));
+        .map(|_| crate::paint::gap_rules::GapGuard::enter(e.node_id ^ opts.doc_salt));
     // css-gaps-1 §gap-decorations: «Gap decorations are painted just
     // above the border of the container» — ПОД детьми. Слой идёт до
     // них: буфер проб он всё равно читает в `paint`, а prepaint всего
@@ -1038,11 +1064,11 @@ pub(crate) fn generic_box(
     // и `flex-033` кладут линейки `z-index: -1`, `008/023` — элементы
     // `z-index: 2`).
     if let (Some(buf), Some(spec)) = (gap_buf, gap_rules) {
-        kids.push(crate::interact::GapRulePainter::new(buf, spec).into_any_element());
+        kids.push(crate::paint::gap_rules::painter::GapRulePainter::new(buf, spec).into_any_element());
     }
     kids.extend(blocks(&children, &merged, opts));
     if cb_layer {
-        kids.extend(crate::interact::cb_close());
+        kids.extend(crate::layout::positioned::containing_block::cb_close());
     }
     if is_clamp {
         // Бюджет среза — высота ПОЛЯ СОДЕРЖИМОГО: при `box-sizing:
@@ -1079,9 +1105,9 @@ pub(crate) fn generic_box(
             0.0
         };
         kids.push(
-            crate::interact::ClampCut::new(
+            crate::text::clamp::ClampCut::new(
                 e.node_id,
-                crate::interact::clamp_lines_for(e.node_id),
+                crate::text::clamp::clamp_lines_for(e.node_id),
                 e.style.clamp_lines(),
                 max_h,
             )

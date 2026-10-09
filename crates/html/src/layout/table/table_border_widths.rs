@@ -1,8 +1,9 @@
 //! Resolve collapsed border widths before measuring table cells and tracks.
 //! CSS 2.1 §17.6.2 centers each winning edge on a grid line.
 
-use crate::render::{Element, Node, is_cell, row_span_in_group};
-use crate::value::Len;
+use crate::dom::{Element, Node};
+use crate::layout::table::{is_cell, row_span_in_group};
+use crate::style::values::value::Len;
 mod structural;
 use std::collections::HashMap;
 
@@ -17,7 +18,7 @@ pub(crate) fn resolve(
 ) -> (HashMap<u64, [f32; 4]>, [f32; 4]) {
     let collapse_cells_pre = e.style.border_collapse == Some(true)
         || (e.style.border_collapse.is_none() && e.attr("rules").is_some());
-    let px_of_pre = |l: Option<Len>| crate::metrics::spacing_px(l, &table_family, table_font);
+    let px_of_pre = |l: Option<Len>| crate::text::metrics::spacing_px(l, &table_family, table_font);
     let tb = e.style.borders();
     let bw_pre = [
         px_of_pre(tb.top),

@@ -1,6 +1,7 @@
 //! Разборщики значений: выравнивание, шрифт, url, пробелы, тени, border-shape, слои фона, calc-size.
 
 use crate::style::computed::*;
+use crate::style::values::value::{Color, Len};
 
 /// Функция картинки в начале слоя и хвост за её закрывающей скобкой.
 pub(crate) fn split_image_func(v: &str) -> (&str, &str) {
@@ -387,7 +388,7 @@ pub(crate) fn unescape_content(text: &str) -> String {
             None => {}
         }
     }
-    crate::css::unescape(&joined)
+    crate::style::css::unescape(&joined)
 }
 
 /// `url(...)` из значения фона; кавычки внутри необязательны.
@@ -409,11 +410,11 @@ pub(crate) fn parse_url(v: &str) -> Option<String> {
             }
             '"' | '\'' => {
                 at += ch.len_utf8();
-                at += crate::css::skip_string(&v[at..], ch);
+                at += crate::style::css::skip_string(&v[at..], ch);
                 continue;
             }
-            _ if crate::css::at_url(&v[at..]) => {
-                let end = at + crate::css::skip_url(&v[at..]);
+            _ if crate::style::css::at_url(&v[at..]) => {
+                let end = at + crate::style::css::skip_url(&v[at..]);
                 // Обрыв на конце файла закрывает запись сам (§4.2): скобки
                 // может не быть, и тогда резать последний знак нельзя, а
                 // кавычка остаётся только открывающая (`uri-017`).
@@ -478,7 +479,7 @@ pub(crate) fn split_outside_parens(v: &str) -> Vec<String> {
 /// `None`: её здесь сложить не с чем, и запись, как прежде, не применяется.
 pub(crate) fn pct_px_pair(t: &str) -> Option<(f32, f32)> {
     match Len::parse_mixed(t)? {
-        Len::Calc(i) => crate::value::calc_get(i).pct_px(),
+        Len::Calc(i) => crate::style::values::value::calc_get(i).pct_px(),
         _ => None,
     }
 }
@@ -924,7 +925,7 @@ pub(crate) fn box_shadow_valid(v: &str) -> bool {
     if v.trim().eq_ignore_ascii_case("none") {
         return true;
     }
-    crate::css::split_args(v).iter().all(|s| {
+    crate::style::css::split_args(v).iter().all(|s| {
         let (mut lens, mut colours, mut insets) = (0, 0, 0);
         for token in tokenize_shadow(s) {
             match Len::parse(&token) {
@@ -945,7 +946,7 @@ pub(crate) fn box_shadow_valid(v: &str) -> bool {
 
 pub(crate) fn parse_shadows(v: &str) -> Vec<Shadow> {
     let mut out = vec![];
-    for s in crate::css::split_args(v) {
+    for s in crate::style::css::split_args(v) {
         // Внутренние тени не рисуются — но синтаксис их проверяется: одна
         // невалидная тень роняет ВСЮ декларацию (css-backgrounds-3 §7.2).
         let inner = s.contains("inset");
@@ -957,18 +958,18 @@ pub(crate) fn parse_shadows(v: &str) -> Vec<Shadow> {
                 // calc() из абсолютных единиц уже свёрнут в px; примесь
                 // процентов невалидна для тени.
                 Some(Len::Calc(id)) => {
-                    let sum = crate::value::calc_get(id);
+                    let sum = crate::style::values::value::calc_get(id);
                     if sum.pct != 0.0 {
                         return vec![];
                     }
                     // Шрифтовые/оконные слагаемые здесь не резолвятся —
                     // тень пропускается, но декларация остаётся валидной.
-                    let bare = crate::value::Sum {
+                    let bare = crate::style::values::value::Sum {
                         px: 0.0,
                         pct: 0.0,
                         ..sum
                     };
-                    lens.push((bare == crate::value::Sum::default()).then_some(sum.px));
+                    lens.push((bare == crate::style::values::value::Sum::default()).then_some(sum.px));
                 }
                 Some(Len::Pct(_)) => return vec![],
                 // em/vh и прочее — валидно, но контекста тут нет.
@@ -1047,7 +1048,7 @@ pub(crate) fn tokenize_shadow(s: &str) -> Vec<String> {
 /// множителей и доли свободного места не уходили в бесконечность и `NaN`
 /// (`flex-grow-009`: `flex: calc(infinity) 0 0px` забирает всё место).
 pub(crate) fn flex_factor(v: &str) -> Option<f32> {
-    let g = crate::value::number(v)?;
+    let g = crate::style::values::value::number(v)?;
     if g.is_nan() || g < 0.0 {
         return None;
     }

@@ -1,6 +1,9 @@
 //! Коробка: поля, отступы, рамки по сторонам, скругления (apply_box).
 
 use crate::style::apply::*;
+use crate::style::computed::{Computed, Display, Overflow, Position, Sides};
+use crate::style::values::value::Len;
+use gpui::{Div, Styled, px};
 
 pub(crate) fn apply_box(mut d: Div, c: &Computed) -> Div {
     contained_intrinsic::apply(&mut d, c);
@@ -52,7 +55,7 @@ pub(crate) fn apply_box(mut d: Div, c: &Computed) -> Div {
     ) || c.float.is_some()
         || matches!(
             c.position,
-            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
         );
     if c.contains_width()
         && (matches!(
@@ -97,7 +100,7 @@ pub(crate) fn apply_box(mut d: Div, c: &Computed) -> Div {
     // `clip-path: circle()` — обрезка содержимого по кругу. Прямоугольная
     // обрезка со скруглением — единственная в конвейере, но для круга и
     // эллипса она точна.
-    if let Some(round) = c.clip_round.filter(|_| !crate::render::rounded_rect_clip(c)) {
+    if let Some(round) = c.clip_round.filter(|_| !crate::paint::effects::grouped::rounded_rect_clip(c)) {
         let base = match (c.width, c.height) {
             (Some(Len::Px(w)), Some(Len::Px(h))) => w.min(h),
             (Some(Len::Px(w)), _) => w,
@@ -468,7 +471,7 @@ pub(crate) fn radius_px(c: &Computed, l: Option<Len>) -> Option<f32> {
         Len::Pct(p) if base.is_nan() => Some(9999.0 * p.min(1.0)),
         Len::Pct(p) => Some(base * p),
         // Шрифтовые единицы — от запасного кегля, единой точкой.
-        l => crate::metrics::fallback_len_px(l, "", 16.0),
+        l => crate::text::metrics::fallback_len_px(l, "", 16.0),
     }
 }
 

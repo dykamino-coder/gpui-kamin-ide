@@ -1,7 +1,12 @@
 //! Предикаты позиционирования.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::multicol::spanner::multicol_container;
+use crate::layout::page::paged::visible_overflow;
+use crate::render::block_level_in_flow;
+use crate::style::computed::{Computed, Display};
+use crate::style::values::value::Len;
 
 /// Несёт ли поддерево АБСОЛЮТНОГО потомка, чей низ `shape_full` сворачивает
 /// в меру коробки (дотяг `oof_reach`). Только такому ребёнку стопки колонок
@@ -24,7 +29,7 @@ pub(crate) fn carries_abspos(c: &Element, depth: u8) -> bool {
     depth > 0
         && c.children.iter().any(|n| match n {
             Node::Element(k) => {
-                k.style.position == Some(crate::computed::Position::Absolute)
+                k.style.position == Some(crate::style::computed::Position::Absolute)
                     || (visible_overflow(&k.style)
                         && !multicol_container(&k.style)
                         && carries_abspos(k, depth - 1))
@@ -52,9 +57,9 @@ pub(crate) fn positioned_later(rest: &[Node]) -> bool {
     fn positioned(e: &Element) -> bool {
         matches!(
             e.style.position,
-            Some(crate::computed::Position::Relative)
-                | Some(crate::computed::Position::Sticky)
-                | Some(crate::computed::Position::Absolute)
+            Some(crate::style::computed::Position::Relative)
+                | Some(crate::style::computed::Position::Sticky)
+                | Some(crate::style::computed::Position::Absolute)
         )
     }
     fn walk(nodes: &[Node]) -> bool {
@@ -67,7 +72,7 @@ pub(crate) fn positioned_later(rest: &[Node]) -> bool {
         let Node::Element(e) = n else { return false };
         let late_sibling = matches!(
             e.style.position,
-            Some(crate::computed::Position::Relative) | Some(crate::computed::Position::Sticky)
+            Some(crate::style::computed::Position::Relative) | Some(crate::style::computed::Position::Sticky)
         ) && e.style.z_index.unwrap_or(0) == 0
             && block_level_in_flow(e);
         if late_sibling {
@@ -95,13 +100,13 @@ pub(crate) fn stays_positioned(rest: &[Node]) -> bool {
             let pos = e.style.position;
             let positioned = matches!(
                 pos,
-                Some(crate::computed::Position::Relative)
-                    | Some(crate::computed::Position::Sticky)
-                    | Some(crate::computed::Position::Absolute)
+                Some(crate::style::computed::Position::Relative)
+                    | Some(crate::style::computed::Position::Sticky)
+                    | Some(crate::style::computed::Position::Absolute)
             );
             // Тот же предикат, что и у выноса: такой сосед уедет в слой, и
             // взаимный порядок сохранится.
-            let hoisted = pos == Some(crate::computed::Position::Absolute)
+            let hoisted = pos == Some(crate::style::computed::Position::Absolute)
                 && !under_cb
                 && e.style.z_index.unwrap_or(0) >= 0
                 && (edge_set(e.style.inset.left)
@@ -131,7 +136,7 @@ pub(crate) fn stays_positioned(rest: &[Node]) -> bool {
             }
             walk(
                 &e.children,
-                under_cb || crate::inline::establishes_cb(&e.style),
+                under_cb || crate::text::inline::establishes_cb(&e.style),
             )
         })
     }
@@ -162,7 +167,7 @@ pub(crate) fn has_own_box(c: &Computed, font_px: f32) -> bool {
     // а вынутый кусок рвёт соединение букв и общий перенос по словам.
     let set = |l: &Option<Len>| !matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
     let any =
-        |s: &crate::computed::Sides| set(&s.top) || set(&s.right) || set(&s.bottom) || set(&s.left);
+        |s: &crate::style::computed::Sides| set(&s.top) || set(&s.right) || set(&s.bottom) || set(&s.left);
     // Вертикальные поля признаком коробки НЕ служат: строку они не двигают
     // (замерено на `flexbox_inline`, где `margin-top: -20em` обязан пройти
     // впустую), и по ним коробка заводилась бы только затем, чтобы уехать за
@@ -201,7 +206,7 @@ pub(crate) fn has_own_box(c: &Computed, font_px: f32) -> bool {
     // Возвращать вместе с настоящей коробкой строчного фрагмента.
     let positioned = matches!(
         c.position,
-        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
     );
     if atomic || positioned {
         return true;
@@ -244,12 +249,12 @@ pub(crate) fn has_own_box(c: &Computed, font_px: f32) -> bool {
     }
     let inline_level = c.display.is_none() || c.inline_display == Some(true);
     if inline_level
-        && (crate::inline::uniform_border(c, font_px).is_some()
-            || crate::inline::sided_border(c, font_px).is_some())
+        && (crate::text::inline::uniform_border(c, font_px).is_some()
+            || crate::text::inline::sided_border(c, font_px).is_some())
     {
         return false;
     }
-    let visible = |col: &Option<crate::value::Color>| col.is_some_and(|x| x.a > 0.0);
+    let visible = |col: &Option<crate::style::values::value::Color>| col.is_some_and(|x| x.a > 0.0);
     let colored = c.border_color.is_some() || c.border_colors.iter().any(Option::is_some);
     let border_paints = visible(&c.border_color)
         || c.border_colors.iter().any(visible)

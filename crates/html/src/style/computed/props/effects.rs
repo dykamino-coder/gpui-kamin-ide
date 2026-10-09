@@ -1,6 +1,7 @@
 //! Computed::apply_one: filter, blend, isolation, animation, transition, will-change, contain*, content, counters, quotes, lists, svg, cursor and the rest.
 
 use crate::style::computed::*;
+use crate::style::values::value::{Color, Len};
 
 impl Computed {
     #[allow(unused_variables)]
@@ -23,7 +24,7 @@ impl Computed {
             // `UnzoomedLength` через `ConvertUnzoomedLength`
             // (css_properties.json5:6150-6159).
             "stroke-width" => {
-                self.svg_stroke_width = Some(match crate::value::calc_pct_px(v) {
+                self.svg_stroke_width = Some(match crate::style::values::value::calc_pct_px(v) {
                     Some((pct, px)) if pct == 0.0 => format!("{px}"),
                     _ => v.to_string(),
                 });
@@ -31,8 +32,8 @@ impl Computed {
             // `x`/`y` — геометрические СВОЙСТВА фигуры (SVG 2 §Geometry).
             // У HTML-коробки таких свойств нет, поэтому имена свободны, а в
             // разметку они уходят только внутри SVG-поддерева (гейт в svg.rs).
-            "x" => self.svg_x = crate::value::Len::parse(v),
-            "y" => self.svg_y = crate::value::Len::parse(v),
+            "x" => self.svg_x = crate::style::values::value::Len::parse(v),
+            "y" => self.svg_y = crate::style::values::value::Len::parse(v),
             "caption-side" => self.caption_bottom = Some(v.eq_ignore_ascii_case("bottom")),
             "list-style-position" => {
                 self.list_style_inside = Some(v.trim() == "inside");

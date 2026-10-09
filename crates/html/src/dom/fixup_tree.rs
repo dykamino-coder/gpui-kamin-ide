@@ -1,6 +1,8 @@
 //! Правки дерева после разбора: quirks-проценты, цвета правил, run-in, флоаты во флексе, выравнивание, руби.
 
 use crate::dom::*;
+use crate::style::computed::{Computed, Display, Position};
+use crate::style::values::value::Len;
 
 /// Quirks Mode §3.5 «The percentage height calculation quirk»: в режиме quirks
 /// доля высоты элемента в потоке ищет опору через предков-блоков с
@@ -36,10 +38,10 @@ pub(crate) fn quirks_percent_heights(nodes: &mut [Node], base: Option<f32>) {
 }
 
 pub(crate) type RuleColors = (
-    Option<crate::value::Color>,
-    Option<crate::computed::GapList<Option<crate::value::Color>>>,
-    Option<crate::value::Color>,
-    Option<crate::computed::GapList<Option<crate::value::Color>>>,
+    Option<crate::style::values::value::Color>,
+    Option<crate::style::computed::GapList<Option<crate::style::values::value::Color>>>,
+    Option<crate::style::values::value::Color>,
+    Option<crate::style::computed::GapList<Option<crate::style::values::value::Color>>>,
 );
 
 /// `column-rule-color: inherit` / `row-rule-color: inherit` — ненаследуемое
@@ -49,7 +51,7 @@ pub(crate) type RuleColors = (
 /// родитель `column-rule-color: green` при `column-rule-style: none`, ребёнок
 /// `inherit` — зелёные линейки, а не `currentcolor` красного текста).
 pub(crate) fn resolve_rule_color_inherit(nodes: &mut [Node], parent: &RuleColors) {
-    use crate::computed::inh;
+    use crate::style::computed::inh;
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
         let s = &mut el.style;
@@ -119,8 +121,8 @@ pub(crate) fn fold_run_ins(nodes: &mut Vec<Node>, parent: Option<&Computed>) {
             e.style.float.is_some()
                 || matches!(
                     e.style.position,
-                    Some(crate::computed::Position::Absolute)
-                        | Some(crate::computed::Position::Fixed)
+                    Some(crate::style::computed::Position::Absolute)
+                        | Some(crate::style::computed::Position::Fixed)
                 )
         }
         // Блочная коробка В ПОТОКЕ где угодно внутри (в том числе за
@@ -306,7 +308,7 @@ pub(crate) fn align_self_from_dom_parent(nodes: &mut [Node], parent: Option<&Par
 
 /// Что дети берут у родителя в `align_self_from_dom_parent`.
 pub(crate) struct ParentAlign {
-    pub(crate) value: Option<crate::computed::Align>,
+    pub(crate) value: Option<crate::style::computed::Align>,
     /// safe, normal, own_axis, flex_kw, last.
     pub(crate) flags: (bool, bool, bool, bool, bool),
     /// Родитель — блочный контейнер (не flex/grid/contents/таблица).
@@ -341,7 +343,7 @@ pub(crate) fn grid_table_items_keep_stretch(nodes: &mut [Node]) {
         }
         if !matches!(
             el.style.align_items,
-            None | Some(crate::computed::Align::Stretch)
+            None | Some(crate::style::computed::Align::Stretch)
         ) {
             continue;
         }
@@ -359,7 +361,7 @@ pub(crate) fn grid_table_items_keep_stretch(nodes: &mut [Node]) {
                     Some(Display::Table) | Some(Display::InlineTable)
                 );
             if is_table && child.style.align_self.is_none() {
-                child.style.align_self = Some(crate::computed::Align::Stretch);
+                child.style.align_self = Some(crate::style::computed::Align::Stretch);
             }
         }
     }
@@ -369,8 +371,8 @@ pub(crate) fn grid_table_items_keep_stretch(nodes: &mut [Node]) {
 /// не с чем — контейнера в этот момент нет.
 /// Руби-роль коробки (css-ruby-1 §2.1): своё `display: ruby*`, иначе тег
 /// без авторского `display` (A.1). Зеркало `render::ruby_role`.
-pub(crate) fn ruby_box_role(tag: &str, style: &Computed) -> Option<crate::computed::RubyRole> {
-    use crate::computed::RubyRole;
+pub(crate) fn ruby_box_role(tag: &str, style: &Computed) -> Option<crate::style::computed::RubyRole> {
+    use crate::style::computed::RubyRole;
     if let Some(role) = style.ruby_role {
         return Some(role);
     }
@@ -394,7 +396,7 @@ pub(crate) fn ruby_box_role(tag: &str, style: &Computed) -> Option<crate::comput
 /// пишет те же коробки внутри `<ruby>`). Краевые пробелы серии остаются
 /// снаружи, строчное содержимое серию обрывает.
 pub(crate) fn wrap_misparented_ruby(children: Vec<Node>) -> Vec<Node> {
-    use crate::computed::RubyRole;
+    use crate::style::computed::RubyRole;
     let internal = |n: &Node| {
         matches!(n, Node::Element(e)
             if ruby_box_role(&e.tag, &e.style).is_some_and(|r| r != RubyRole::Container))

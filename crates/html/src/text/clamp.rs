@@ -1,7 +1,7 @@
 //! Обрезка строк `line-clamp`.
 // owner: A
 
-use crate::interact::*;
+use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Styled, Window};
 
 /// Бюджет строк обрезки (`line-clamp`, css-overflow-3/4): точка среза —
 /// низ N-й СЧИТАЕМОЙ строки. Строки потомков в собственном контексте

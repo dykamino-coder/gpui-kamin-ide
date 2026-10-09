@@ -33,7 +33,7 @@ fn name(raw: &str, reversed: bool) -> Option<String> {
     } else {
         raw
     };
-    if !crate::css::selector_tokens::ident(body)
+    if !crate::style::css::selector_tokens::ident(body)
         || matches!(
             body.to_ascii_lowercase().as_str(),
             "none" | "default" | "inherit" | "initial" | "unset" | "revert" | "revert-layer"
@@ -100,7 +100,7 @@ fn normalized(raw: &str, reversed: bool) -> Option<String> {
                 }
                 // CSS Values 4 §§5.1, 10.9: numeric calculations may occupy an
                 // integer slot, with exact half ties rounded toward +infinity.
-                let value = crate::value::number(&format!("calc({next})"))?;
+                let value = crate::style::values::value::number(&format!("calc({next})"))?;
                 // CSS Values 4 §10.9.2 censors top-level NaN to zero.
                 let value = if value.is_nan() { 0.0 } else { value };
                 out.push(((value + 0.5).floor() as i32).to_string());

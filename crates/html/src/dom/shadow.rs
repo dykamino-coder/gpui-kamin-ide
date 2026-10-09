@@ -1,6 +1,12 @@
 //! Теневое дерево: декларативный shadow root, слоты, развёртка.
 
 use crate::dom::*;
+use crate::style::css::{Keyframes, Media, Rule, parse_stylesheet_media};
+use crate::style::select::has::{HasArg, collect_has_args, mark_has, parse_has_arg};
+use crate::style::select::{Ancestor, Spot, census_of};
+use markup5ever_rcdom::{Handle, NodeData};
+use std::collections::HashMap;
+use std::rc::Rc;
 
 /// Таблицы одной области дерева — документа или тени: правила и кадры.
 pub(crate) struct Scope {
@@ -142,7 +148,7 @@ pub(crate) fn shadow_scope(root: &Handle, agent: &Scope, media: Media) -> (Rc<Sc
                 ..r
             });
         }
-        frames.extend(crate::css::parse_keyframes_in(css, Some(media)));
+        frames.extend(crate::style::css::parse_keyframes_in(css, Some(media)));
     }
     let mut raw: Vec<String> = vec![];
     rules.retain(|r| collect_has_args(&r.sel, &mut raw));

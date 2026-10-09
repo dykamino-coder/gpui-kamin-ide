@@ -1,7 +1,7 @@
 //! Preserve the number/length distinction for CSS Text's tab-size property.
 
 use super::Computed;
-use crate::value::{Len, css_number};
+use crate::style::values::value::{Len, css_number};
 
 pub(super) fn apply(style: &mut Computed, value: &str) {
     if let Some(number) = css_number(value) {

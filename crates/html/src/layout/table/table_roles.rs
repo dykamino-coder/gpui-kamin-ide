@@ -1,6 +1,6 @@
 //! Authored display overrides the default table-cell role of td and th.
 //! Inline runs become anonymous cells before their whitespace is discarded.
-use crate::computed::Display;
+use crate::style::computed::Display;
 use crate::dom::{Element, Node};
 
 /// CSS 2 section 17.2.1 removes only a whitespace-only anonymous inline
@@ -8,7 +8,7 @@ use crate::dom::{Element, Node};
 pub(crate) fn flush_inline(cells: &mut Vec<Node>, run: &mut Vec<Node>) {
     let inline = std::mem::take(run);
     if inline.iter().any(|node| !crate::render::is_blank(node)) {
-        cells.push(Node::Element(crate::render::anon_element("td", inline)));
+        cells.push(Node::Element(crate::layout::table::anon::anon_element("td", inline)));
     }
 }
 
@@ -26,25 +26,25 @@ mod tests {
 
     #[test]
     fn authored_display_controls_cell_role_before_anonymous_fixup() {
-        let mut cell = crate::render::anon_element("td", vec![]);
-        assert!(crate::render::is_cell(&cell));
+        let mut cell = crate::layout::table::anon::anon_element("td", vec![]);
+        assert!(crate::layout::table::is_cell(&cell));
         cell.style.display = Some(Display::Block);
-        assert!(!crate::render::is_cell(&cell));
+        assert!(!crate::layout::table::is_cell(&cell));
         cell.style.display = Some(Display::TableCell);
-        assert!(crate::render::is_cell(&cell));
+        assert!(crate::layout::table::is_cell(&cell));
         cell.tag = "div".into();
-        assert!(crate::render::is_cell(&cell));
+        assert!(crate::layout::table::is_cell(&cell));
     }
 
     #[test]
     fn whitespace_around_inline_content_stays_in_its_anonymous_cell() {
         let node = |tag, text: &str| {
-            Node::Element(crate::render::anon_element(
+            Node::Element(crate::layout::table::anon::anon_element(
                 tag,
                 vec![Node::Text(text.into())],
             ))
         };
-        let row = crate::render::anon_element(
+        let row = crate::layout::table::anon::anon_element(
             "tr",
             vec![
                 node("td", "a"),
@@ -54,7 +54,7 @@ mod tests {
                 node("td", "d"),
             ],
         );
-        let fixed = crate::render::fixup_row_children(&row);
+        let fixed = crate::layout::table::anon::fixup_row_children(&row);
         let Node::Element(row) = &fixed[0] else {
             panic!("row")
         };
@@ -74,18 +74,18 @@ mod tests {
 
     #[test]
     fn block_td_is_content_of_an_anonymous_cell_and_retains_its_style() {
-        let mut block = crate::render::anon_element("td", vec![Node::Text("data".into())]);
+        let mut block = crate::layout::table::anon::anon_element("td", vec![Node::Text("data".into())]);
         block.style.display = Some(Display::Block);
         block.node_id = 123;
-        let row = crate::render::anon_element("tr", vec![Node::Element(block)]);
-        let fixed = crate::render::fixup_row_children(&row);
+        let row = crate::layout::table::anon::anon_element("tr", vec![Node::Element(block)]);
+        let fixed = crate::layout::table::anon::fixup_row_children(&row);
         let Node::Element(row) = &fixed[0] else {
             panic!("row")
         };
         let Node::Element(cell) = &row.children[0] else {
             panic!("anonymous cell")
         };
-        assert!(crate::render::is_cell(cell));
+        assert!(crate::layout::table::is_cell(cell));
         assert_eq!(cell.style.display, None);
         let Node::Element(block) = &cell.children[0] else {
             panic!("authored block")

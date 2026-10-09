@@ -1,7 +1,23 @@
 //! Формы строк и рамки строк.
 // owner: A
 
-use crate::render::*;
+use crate::dom::{Element, Node};
+use crate::layout::fragment::breaks::{edge_avoid, edge_break};
+use crate::layout::fragment::clone::solid_box;
+use crate::layout::fragment::fragment_size::shape_full;
+use crate::layout::fragment::grid_bands::grid_stack;
+use crate::layout::fragment::table_bands::table_box;
+use crate::layout::fragment::{LINE_CX, LineFrame, Shape, ShapeCx, with_lines};
+use crate::layout::multicol::spanner::{has_deep_spanner, multicol_container};
+use crate::layout::page::paged::visible_overflow;
+use crate::layout::positioned::predicates::carries_abspos;
+use crate::layout::table::anon::anon_element;
+use crate::render::{RenderOpts, is_blank, measure_font, out_of_flow};
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::{Align, Computed, Display};
+use crate::style::values::value::Len;
+use crate::text::text_box::normal_fraction;
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 /// Ширина содержимого блока в потоке родителя шириной `pw` (CSS 2.1 §10.3.3:
 /// `margin-left + border + padding + width + … = containing block width`).
@@ -18,7 +34,7 @@ pub(crate) fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
         )
         || s.webkit_box == Some(true)
         || s.float.unwrap_or(0) != 0
-        || !matches!(s.position, None | Some(crate::computed::Position::Relative))
+        || !matches!(s.position, None | Some(crate::style::computed::Position::Relative))
         || table_box(c)
         || multicol_container(s)
     {
@@ -50,7 +66,7 @@ pub(crate) fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
 /// даёт, и гибкость базу не меняет (§9.7). `None` — мера по `height`
 /// элемента, как прежде.
 pub(crate) fn basis_sized(c: &Element, k: &Element) -> Option<Element> {
-    use crate::computed::FlexDir;
+    use crate::style::computed::FlexDir;
     let s = &c.style;
     if k.inline
         || s.display != Some(Display::Flex)
@@ -107,7 +123,7 @@ pub(crate) fn slack_fill(c: &Element) -> Option<gpui::Hsla> {
 
 /// Как ширина детей коробки `c` известна мере строк (`LineFrame::items`).
 pub(crate) fn items_kind(c: &Element) -> u8 {
-    use crate::computed::FlexDir;
+    use crate::style::computed::FlexDir;
     let s = &c.style;
     match s.display {
         Some(Display::Flex) => {
@@ -137,7 +153,7 @@ pub(crate) fn line_text(nodes: &[Node]) -> Option<String> {
                 Node::Element(e)
                     if matches!(
                         e.style.position,
-                        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+                        Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
                     ) => {}
                 Node::Element(e) => {
                     let s = &e.style;
@@ -150,7 +166,7 @@ pub(crate) fn line_text(nodes: &[Node]) -> Option<String> {
                         // §9.4.3: «after laying out … shifted»), рисует его копия
                         // (`text-box-trim-multicol-002-ref`: `<span
                         // style="position: relative">`).
-                        || !matches!(s.position, None | Some(crate::computed::Position::Relative))
+                        || !matches!(s.position, None | Some(crate::style::computed::Position::Relative))
                         || s.font_size.is_some()
                         || s.font_family.is_some()
                         || s.font_weight.is_some()
@@ -281,7 +297,7 @@ pub(crate) fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) 
         return None;
     }
     let font = measure_font(&inh, &opts);
-    let lines = crate::metrics::line_count(&font, size, &text, w)?.max(1);
+    let lines = crate::text::metrics::line_count(&font, size, &text, w)?.max(1);
     let orphans = inh.orphans.unwrap_or(2).max(1) as usize;
     let widows = inh.widows.unwrap_or(2).max(1) as usize;
     // Свой срез первой/последней строки (`blocks()` кладёт его отрицательным
@@ -362,18 +378,18 @@ pub(crate) fn brk_trim(frames: &[LineFrame], side: impl Fn(&Computed) -> bool) -
 /// `blocks()` (`trim_for`).
 pub(crate) fn trim_amount(s: &Computed, size: f32, lh: f32, start: bool) -> f32 {
     let family = s.font_family.clone().unwrap_or_default();
-    let (ascent, descent, cap) = crate::metrics::vmetrics_px(&family, size);
+    let (ascent, descent, cap) = crate::text::metrics::vmetrics_px(&family, size);
     let half = (lh - (ascent + descent)) / 2.0;
     let edge = if start {
         match s.text_box_over {
-            crate::computed::TextEdge::Cap => ascent - cap,
-            crate::computed::TextEdge::Ex => ascent - crate::metrics::ch_ex_px(&family, size).1,
+            crate::style::computed::TextEdge::Cap => ascent - cap,
+            crate::style::computed::TextEdge::Ex => ascent - crate::text::metrics::ch_ex_px(&family, size).1,
             _ => 0.0,
         }
     } else {
         match s.text_box_under {
-            crate::computed::TextEdge::Alphabetic => {
-                descent + crate::fonts::alphabetic_em(&family) * size
+            crate::style::computed::TextEdge::Alphabetic => {
+                descent + crate::text::fonts::alphabetic_em(&family) * size
             }
             _ => 0.0,
         }
@@ -399,7 +415,7 @@ pub(crate) fn inline_content(k: &Element) -> bool {
 /// рисунок кладёт их в точках. Наследуемые (`font-size`, `line-height`) не
 /// трогаются: число в `line-height` наследуется множителем.
 pub(crate) fn resolved_lengths(c: &Element, parent: &Computed) -> Element {
-    let m = crate::inline::inherit(parent, &c.style);
+    let m = crate::style::cascade::inherit::inherit(parent, &c.style);
     let mut t = c.clone();
     // Подменяются ТОЛЬКО шрифтовые единицы, разрешённые в точки: прочее
     // (`None`, `auto`, доли, точки) остаётся как было — `inherit` дописывает
@@ -412,7 +428,7 @@ pub(crate) fn resolved_lengths(c: &Element, parent: &Computed) -> Element {
             *own = res;
         }
     }
-    fn fix_sides(own: &mut crate::computed::Sides, res: &crate::computed::Sides) {
+    fn fix_sides(own: &mut crate::style::computed::Sides, res: &crate::style::computed::Sides) {
         fix(&mut own.top, res.top);
         fix(&mut own.right, res.right);
         fix(&mut own.bottom, res.bottom);
@@ -493,7 +509,7 @@ pub(crate) fn oof_descendant(e: &Element) -> bool {
 /// (`resolved_lengths` + `with_lines`), что у копии через `element()`.
 /// Точек разреза нет: внешняя стопка режет коробку краем колонки — по рядам.
 pub(crate) fn nested_rows_shape(c: &Element, parent: &Computed, hh: f32, cw: f32, opts: &RenderOpts) -> Option<Shape> {
-    let m = inline::inherit(parent, &c.style);
+    let m = inherit(parent, &c.style);
     let w = nested_box_w(c, cw)?;
     let n = match m.column_count {
         Some(n) if n > 1 => n as usize,
@@ -513,7 +529,7 @@ pub(crate) fn nested_rows_shape(c: &Element, parent: &Computed, hh: f32, cw: f32
     let mut mc = c.clone();
     mc.style.width = Some(Len::Px(w));
     let g = group_inline_runs(&mc).unwrap_or(mc);
-    let kids: Vec<crate::flow::Kid> = with_lines(&m, Some(col_w), opts, || {
+    let kids: Vec<crate::layout::fragment::types::Kid> = with_lines(&m, Some(col_w), opts, || {
         g.children
             .iter()
             .filter(|n| !is_blank(n))
@@ -527,12 +543,12 @@ pub(crate) fn nested_rows_shape(c: &Element, parent: &Computed, hh: f32, cw: f32
                     if !k.inline
                         && inline_content(k)
                         && !out_of_flow(&k.style)
-                        && matches!(k.style.position, None | Some(crate::computed::Position::Relative))
+                        && matches!(k.style.position, None | Some(crate::style::computed::Position::Relative))
                         && k.style.float.unwrap_or(0) == 0 =>
                 {
                     let k = resolved_lengths(k, &m);
                     let sh = shape_full(&k, 4, ShapeCx::COLUMNS)?;
-                    Some(crate::flow::Kid {
+                    Some(crate::layout::fragment::types::Kid {
                         h: sh.0,
                         mt: sh.1,
                         mb: sh.2,
@@ -560,13 +576,13 @@ pub(crate) fn nested_rows_shape(c: &Element, parent: &Computed, hh: f32, cw: f32
         return None;
     }
     let fixed = (m.column_fill_auto == Some(true)).then_some(hh);
-    let rows = crate::flow::Rows {
+    let rows = crate::layout::fragment::types::Rows {
         h: Some(hh),
         gap: 0.0,
         wrap: true,
         cap: false,
     };
-    let content = crate::flow::ColumnStack::measure_rows(&kids, n, gap, fixed, rows);
+    let content = crate::layout::multicol::column_stack::ColumnStack::measure_rows(&kids, n, gap, fixed, rows);
     let px = |l: &Option<Len>| match l {
         None => Some(0.0),
         Some(Len::Px(v)) => Some(*v),
@@ -697,7 +713,7 @@ pub(crate) fn transpose_tree(c: &Element, rl: bool) -> Option<Element> {
     {
         return None;
     }
-    let turn = |s: &crate::computed::Sides| crate::computed::Sides {
+    let turn = |s: &crate::style::computed::Sides| crate::style::computed::Sides {
         top: if rl { s.right } else { s.left },
         bottom: if rl { s.left } else { s.right },
         left: s.top,

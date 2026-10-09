@@ -54,15 +54,15 @@ fn kind(s: &str) -> bool {
 pub(crate) fn register(families: &str, body: &str, layer: Vec<u32>) {
     let families: Vec<_> = families.split(',').map(str::trim).collect();
     if families.iter().any(|f| {
-        !crate::computed::family_name_ok(f)
-            || (!f.starts_with(['\'', '"']) && crate::computed::is_generic(&f.to_ascii_lowercase()))
+        !crate::style::computed::family_name_ok(f)
+            || (!f.starts_with(['\'', '"']) && crate::style::computed::is_generic(&f.to_ascii_lowercase()))
     }) {
         return;
     }
     let families: Vec<_> = families
         .iter()
         .map(|f| {
-            let name = crate::css::unescape(f.trim_matches(['\'', '"']));
+            let name = crate::style::css::unescape(f.trim_matches(['\'', '"']));
             let name = if f.starts_with(['\'', '"']) {
                 name
             } else {
@@ -72,9 +72,9 @@ pub(crate) fn register(families: &str, body: &str, layer: Vec<u32>) {
         })
         .collect();
     let mut rest = body;
-    while let Some((piece, tail)) = crate::css::next_piece(rest) {
+    while let Some((piece, tail)) = crate::style::css::next_piece(rest) {
         rest = tail;
-        let crate::css::Piece::Block { head, body } = piece else {
+        let crate::style::css::Piece::Block { head, body } = piece else {
             continue;
         };
         let group = head.trim().to_ascii_lowercase();
@@ -86,7 +86,7 @@ pub(crate) fn register(families: &str, body: &str, layer: Vec<u32>) {
             let Some((name, value)) = decl.split_once(':') else {
                 continue;
             };
-            let name = crate::css::unescape(name.trim());
+            let name = crate::style::css::unescape(name.trim());
             let numbers: Option<Vec<u32>> =
                 value.split_whitespace().map(|n| n.parse().ok()).collect();
             let Some(numbers) = numbers.filter(|n| !n.is_empty()) else {
@@ -134,7 +134,7 @@ pub(crate) fn parse(value: &str, shorthand: bool) -> Option<Alternates> {
             let close = rest.find(')')?;
             let names: Vec<_> = rest[1..close]
                 .split(',')
-                .map(|n| crate::css::unescape(n.trim()))
+                .map(|n| crate::style::css::unescape(n.trim()))
                 .collect();
             if names.iter().any(|n| !ident(n))
                 || (!matches!(group.as_str(), "styleset" | "character-variant") && names.len() != 1)

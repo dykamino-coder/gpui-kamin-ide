@@ -1,6 +1,6 @@
 //! Parse mask dimensions without duplicating a single value into both axes.
 use super::Computed;
-use crate::value::Len;
+use crate::style::values::value::Len;
 
 pub(super) fn apply(style: &mut Computed, value: &str) {
     let (size, fit) = match value.trim() {
@@ -8,7 +8,7 @@ pub(super) fn apply(style: &mut Computed, value: &str) {
         "cover" => (None, 2),
         "auto" | "auto auto" => (None, 0),
         value => {
-            let words = crate::background::split_top(value);
+            let words = crate::paint::background::split_top(value);
             if !(1..=2).contains(&words.len()) {
                 return;
             }

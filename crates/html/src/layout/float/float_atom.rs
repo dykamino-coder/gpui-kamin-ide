@@ -1,7 +1,12 @@
 //! Build atomic inline margin boxes for measured and static float wrapping.
 
-use crate::render::{Computed, Element, RenderOpts, atom_base_font, blocks, image_with};
-use crate::render::{inline, px_margin, px_margin_box, styled_div_with, with_inherited_font};
+use crate::dom::Element;
+use crate::layout::float::band_host::{px_margin, px_margin_box};
+use crate::layout::replaced::image::image_with;
+use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
+use crate::render::{RenderOpts, blocks, styled_div_with};
+use crate::style::cascade::inherit::inherit;
+use crate::style::computed::Computed;
 use gpui::{IntoElement, ParentElement, Styled, div, px};
 
 /// Атом строчного потока для `FlowRow`: инлайн-блок с margin-box в
@@ -11,18 +16,18 @@ pub(crate) fn band_atom(
     c: &Element,
     inherited: &Computed,
     opts: &RenderOpts,
-) -> Option<crate::flow::FlowChild> {
+) -> Option<crate::layout::fragment::types::FlowChild> {
     let (w, h) = px_margin_box(&c.style)?;
     let (ml, mt) = (
         px_margin(&c.style.margin.left).unwrap_or(0.0),
         px_margin(&c.style.margin.top).unwrap_or(0.0),
     );
-    let mut merged = inline::inherit(inherited, &c.style);
+    let mut merged = inherit(inherited, &c.style);
     // CSS 2.1 sections 9.4.2 and 10.6.6: the outer holder already
     // represents the margin box; its contents paint the border box once.
-    merged.margin = crate::computed::Sides::default();
+    merged.margin = crate::style::computed::Sides::default();
     let mut inner = c.clone();
-    inner.style.margin = crate::computed::Sides::default();
+    inner.style.margin = crate::style::computed::Sides::default();
     let built = if inner.tag == "img" {
         image_with(
             &with_inherited_font(&inner, inherited),
@@ -43,5 +48,5 @@ pub(crate) fn band_atom(
             .child(div().absolute().left(px(ml)).top(px(mt)).child(built))
             .into_any_element()
     };
-    Some(crate::flow::FlowChild { el, w, h })
+    Some(crate::layout::fragment::types::FlowChild { el, w, h })
 }

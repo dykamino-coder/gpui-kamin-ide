@@ -8,9 +8,8 @@
 mod skip_spaces;
 
 use super::*;
-use crate::computed::{
-    DECOR_OVER, DECOR_THROUGH, DECOR_UNDER, DecorLen, DecorStyle, UPOS_FROM_FONT, UPOS_UNDER,
-};
+use crate::style::computed::{DECOR_OVER, DECOR_THROUGH, DECOR_UNDER, DecorLen, DecorStyle, UPOS_FROM_FONT, UPOS_UNDER};
+use gpui::{Bounds, Hsla, Pixels, Point, TextRun, Window, point, px, size};
 
 impl Paragraph {
     /// Lines are painted by the paragraph itself (not by GPUI's run
@@ -275,9 +274,9 @@ impl Paragraph {
                     self.selection_vertical.is_some() && self.vertical_central_baseline;
                 let flip = vertical
                     && if d.over_lang {
-                        d.position & crate::computed::UPOS_LEFT == 0
+                        d.position & crate::style::computed::UPOS_LEFT == 0
                     } else {
-                        d.position & crate::computed::UPOS_RIGHT != 0
+                        d.position & crate::style::computed::UPOS_RIGHT != 0
                     };
                 // The underline offset is from the decorating box, on the
                 // shared baseline (a shifted descendant keeps its box's line).

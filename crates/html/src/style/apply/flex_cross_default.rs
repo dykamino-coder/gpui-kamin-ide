@@ -1,5 +1,5 @@
 //! Preserve the legacy vertical row cross-end only on its physical X axis.
-use crate::computed::{Computed, Display, FlexDir};
+use crate::style::computed::{Computed, Display, FlexDir};
 pub(super) fn ends_on_x(c: &Computed, physical: Option<FlexDir>) -> bool {
     c.vertical_rl == Some(true)
         && c.align_items.is_none()
@@ -9,7 +9,7 @@ pub(super) fn ends_on_x(c: &Computed, physical: Option<FlexDir>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::computed::Align;
+    use crate::style::computed::Align;
     #[test]
     fn logical_vertical_columns_do_not_get_a_physical_bottom_default() {
         for display in [Display::Flex, Display::InlineFlex] {

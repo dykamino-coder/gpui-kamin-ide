@@ -1,8 +1,8 @@
 //! Expose a replaced image's ratio on its layout holder for deferred automatic sizing.
 //! The inner measured image alone cannot transfer the holder's opposite-axis bounds.
 
-use crate::computed::Computed;
-use crate::value::Len;
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
 use gpui::{Div, Styled};
 
 pub(crate) fn apply(holder: &mut Div, style: &Computed, ratio: Option<f32>, fixed: bool) -> bool {
@@ -82,7 +82,7 @@ fn natural_content_box(holder: &mut Div, style: &Computed) -> bool {
         let offset = offsets[index % 2];
         let percentage = match value {
             Some(Len::Pct(_)) => true,
-            Some(Len::Calc(index)) => crate::value::calc_get(index).pct != 0.0,
+            Some(Len::Calc(index)) => crate::style::values::value::calc_get(index).pct != 0.0,
             _ => false,
         };
         if percentage
@@ -91,7 +91,7 @@ fn natural_content_box(holder: &mut Div, style: &Computed) -> bool {
             && !style.root_box
             && !matches!(
                 style.position,
-                Some(crate::computed::Position::Absolute | crate::computed::Position::Fixed)
+                Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
             )
         {
             // Preserve apply's unresolved block-percentage behavior for min/max too.
@@ -100,11 +100,11 @@ fn natural_content_box(holder: &mut Div, style: &Computed) -> bool {
         converted[index] = match value {
             None | Some(Len::Auto) => None,
             Some(Len::MinContent | Len::MaxContent | Len::FitContent) => return false,
-            Some(value) if offset == 0.0 => Some(crate::apply::len_to_gpui(value).into()),
+            Some(value) if offset == 0.0 => Some(crate::style::apply::len_to_gpui(value).into()),
             Some(Len::Px(value)) => Some(gpui::px((value - offset).max(0.0)).into()),
             Some(Len::Pct(value)) => Some(DefiniteLength::Calc(-offset, value).into()),
             Some(Len::Calc(index)) => {
-                let Some((percentage, pixels)) = crate::value::calc_get(index).pct_px() else {
+                let Some((percentage, pixels)) = crate::style::values::value::calc_get(index).pct_px() else {
                     return false;
                 };
                 Some(DefiniteLength::Calc(pixels - offset, percentage).into())
@@ -141,7 +141,7 @@ mod tests {
         style.padding.right = Some(Len::Px(10.0));
         style.padding.top = Some(Len::Px(10.0));
         style.padding.bottom = Some(Len::Px(10.0));
-        let mut holder = crate::apply::apply(div(), &style);
+        let mut holder = crate::style::apply::apply(div(), &style);
         assert!(!apply(&mut holder, &style, Some(113.0 / 120.0), false));
         assert_eq!(holder.style().content_box, Some(true));
         assert_eq!(
@@ -162,7 +162,7 @@ mod tests {
         };
         style.padding.top = Some(Len::Px(7.0));
         style.padding.bottom = Some(Len::Px(7.0));
-        let mut holder = crate::apply::apply(div(), &style);
+        let mut holder = crate::style::apply::apply(div(), &style);
         assert_eq!(holder.style().max_size.height, Some(px(114.0).into()));
         assert!(!apply(&mut holder, &style, Some(113.0 / 120.0), false));
         assert_eq!(holder.style().max_size.height, Some(px(100.0).into()));
@@ -175,7 +175,7 @@ mod tests {
             max_height: Some(Len::Pct(0.5)),
             ..Computed::default()
         };
-        let mut holder = crate::apply::apply(div(), &style);
+        let mut holder = crate::style::apply::apply(div(), &style);
         assert_eq!(holder.style().max_size.height, None);
         assert!(!apply(&mut holder, &style, Some(113.0 / 120.0), false));
         assert_eq!(holder.style().max_size.height, None);

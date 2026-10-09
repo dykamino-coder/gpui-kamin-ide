@@ -1,6 +1,7 @@
 //! Computed::apply_one: border*, corner*, radius, outline*, border-spacing/collapse, border-image, border-shape.
 
 use crate::style::computed::*;
+use crate::style::values::value::{Color, Len};
 
 impl Computed {
     #[allow(unused_variables)]

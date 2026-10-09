@@ -1,7 +1,7 @@
 //! Элемент `Underlay`.
 // owner: A
 
-use crate::interact::*;
+use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window};
 
 /// Подложка: поддерево рисуется ПОД всем содержимым кадра.
 ///

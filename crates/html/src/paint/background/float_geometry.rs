@@ -2,9 +2,9 @@
 
 use super::ShapeBox;
 
-pub fn rounded_float(raw: &str, b: &super::ShapeBox, side: i32) -> Option<crate::flow::RoundedBox> {
+pub fn rounded_float(raw: &str, b: &super::ShapeBox, side: i32) -> Option<crate::layout::float::rounded_box::RoundedBox> {
     let (rect, radii) = rrect_of(raw, b)?;
-    Some(crate::flow::RoundedBox::new(
+    Some(crate::layout::float::rounded_box::RoundedBox::new(
         rect,
         radii,
         (b.mw, b.mh),
@@ -15,9 +15,9 @@ pub fn rounded_float(raw: &str, b: &super::ShapeBox, side: i32) -> Option<crate:
 /// inset/rect/xywh/слово-коробка → прямоугольник (x,y,w,h) + радиусы.
 pub(super) fn rrect_of(raw: &str, b: &ShapeBox) -> Option<((f32, f32, f32, f32), [(f32, f32); 4])> {
     let len_px = |t: &str, base: f32| -> f32 {
-        match crate::value::Len::parse(t) {
-            Some(crate::value::Len::Px(v)) => v,
-            Some(crate::value::Len::Pct(k)) => k * base,
+        match crate::style::values::value::Len::parse(t) {
+            Some(crate::style::values::value::Len::Px(v)) => v,
+            Some(crate::style::values::value::Len::Pct(k)) => k * base,
             _ => 0.0,
         }
     };

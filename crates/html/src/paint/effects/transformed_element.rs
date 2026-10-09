@@ -1,7 +1,8 @@
 //! Элемент `Transformed`.
 // owner: A
 
-use crate::interact::*;
+use crate::paint::effects::transform_geometry::quarter_turn;
+use gpui::{AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Window, px};
 
 pub struct Transformed {
     pub(crate) child: Option<AnyElement>,
@@ -37,16 +38,16 @@ pub struct Transformed {
     pub perspective: Option<f32>,
     pub perspective_origin: (f32, f32),
     pub perspective_origin_px: (Option<f32>, Option<f32>),
-    pub perspective_frame: Option<crate::computed::PerspectiveFrame>,
+    pub perspective_frame: Option<crate::style::computed::PerspectiveFrame>,
     /// Ячейка ПРЯМОГО родителя: объёмный путь домножает на неё слева
     /// (css-transforms-2 §3d-transform-rendering, п.3).
-    pub under_perspective: Option<crate::computed::PerspectiveFrame>,
+    pub under_perspective: Option<crate::style::computed::PerspectiveFrame>,
     /// Своя ячейка объёмного контекста (`transform-style: preserve-3d`):
     /// `paint` кладёт в неё накопленную 4×4 и свою аффинную долю ДО детей.
-    pub frame_3d: Option<crate::computed::Frame3d>,
+    pub frame_3d: Option<crate::style::computed::Frame3d>,
     /// Ячейка объёмного контекста ПРЯМОГО родителя: своя матрица копится
     /// поверх неё, изнанка решается по накопленной, доля родителя снимается.
-    pub under_3d: Option<crate::computed::Frame3d>,
+    pub under_3d: Option<crate::style::computed::Frame3d>,
     /// Чистый плоский сдвиг уже перенесён в место раскладки на подготовке
     /// (`prepaint`, `Window::set_layout_placed_origin`): `paint` рисует без
     /// матрицы.
@@ -78,7 +79,7 @@ pub type RefBox = std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<Pixels>>>>;
 
 pub(crate) fn flatten_plane(f: &[[f32; 4]; 4], center: (f32, f32)) -> Option<gpui::TransformationMatrix> {
     const EPS: f32 = 1e-5;
-    if crate::computed::det3_plane(f).abs() < EPS {
+    if crate::style::computed::det3_plane(f).abs() < EPS {
         return None;
     }
     let (cx, cy) = center;
@@ -138,7 +139,7 @@ impl Transformed {
             origin_px: (None, None),
             lin: [[1.0, 0.0], [0.0, 1.0]],
             tr: [[0.0; 3]; 2],
-            m4: crate::computed::IDENTITY4,
+            m4: crate::style::computed::IDENTITY4,
             m4_pct: [[0.0; 2]; 4],
             has_3d: false,
             backface_hidden: false,
@@ -331,7 +332,7 @@ impl Element for Transformed {
         // `m33` не зависит ни от сдвигов, ни от свёртки `S·M·S⁻¹`, поэтому
         // считается прямо здесь, до перевода в точки устройства.
         let accum33 = match self.under_3d.as_ref().and_then(|f| f.get()) {
-            Some((a, _)) => crate::computed::mul4(a, self.m4)[2][2],
+            Some((a, _)) => crate::style::computed::mul4(a, self.m4)[2][2],
             None => self.m4[2][2],
         };
         // Владелец `preserve-3d` изнанкой уносит только СЕБЯ: его дети —
@@ -347,7 +348,7 @@ impl Element for Transformed {
         // сдвиги ×sf, m34 = −1/(d·sf). Сам элемент перспективой не трогается
         // (она действует только на детей) и идёт своим путём как прежде.
         if let (Some(d), Some(frame)) = (self.perspective, self.perspective_frame.as_ref()) {
-            use crate::computed::{mul4, Transform};
+            use crate::style::computed::{Transform, mul4};
             let px = self
                 .perspective_origin_px
                 .0
@@ -438,7 +439,7 @@ impl Element for Transformed {
             return;
         }
         // --- Объёмный путь: одна 4×4 ОДНОГО элемента, сплющенная на экран ---
-        use crate::computed::{det4, mul4, Transform};
+        use crate::style::computed::{Transform, det4, mul4};
         let sf = scale_factor;
         // Из css-точек в точки устройства — подобие S·M·S⁻¹, S = diag(sf, sf,
         // sf, 1): столбец сдвига строк 0..2 умножается на sf, строка w
