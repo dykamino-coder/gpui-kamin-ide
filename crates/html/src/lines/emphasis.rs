@@ -66,7 +66,7 @@ impl Paragraph {
                 underline: None,
                 strikethrough: None,
             };
-            let mark = window.text_system().shape_line(
+            let mark = window.text_system().with_ligature_breaking(false).shape_line(
                 SharedString::from(span.mark.clone()),
                 px(span.size),
                 &[mark_run],

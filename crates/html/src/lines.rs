@@ -1349,7 +1349,7 @@ impl Paragraph {
                 .map(|i| start + i)
                 .unwrap_or(self.text.len());
             let runs = slice_runs(&self.runs, &(start..end));
-            let layout = window.text_system().layout_line_spaced(
+            let layout = window.text_system().with_ligature_breaking(false).layout_line_spaced(
                 &self.text[start..end],
                 self.font_size,
                 &runs,
@@ -5638,11 +5638,11 @@ impl Paragraph {
                 let mut runs = runs;
                 let body = controlled_shape::text(&slice, &mut runs, true);
                 window
-                    .text_system()
+                    .text_system().with_ligature_breaking(false)
                     .shape_line_rtl(body, self.font_size, &runs, spacing)
             } else {
                 window
-                    .text_system()
+                    .text_system().with_ligature_breaking(false)
                     .shape_line_spaced(slice, self.font_size, &runs, None, spacing)
             };
             let logical = (self.x_at(segs, word.range.start, Edge::Start) - from)
@@ -5755,7 +5755,7 @@ impl Paragraph {
                         .find(|(r, _)| r.contains(&gap.start))
                         .map(|(_, v)| *v)
                         .unwrap_or(self.letter_spacing);
-                    let mut gap_shaped = window.text_system().shape_line_spaced(
+                    let mut gap_shaped = window.text_system().with_ligature_breaking(false).shape_line_spaced(
                         gap_text.clone(),
                         self.font_size,
                         &gap_runs,
@@ -5771,7 +5771,7 @@ impl Paragraph {
                         - self.x_at(segs, gap.start, Edge::Start);
                     let n = gap_text.chars().count().max(1) as f32;
                     if (want - gap_shaped.width).abs() > px(0.5) {
-                        gap_shaped = window.text_system().shape_line_spaced(
+                        gap_shaped = window.text_system().with_ligature_breaking(false).shape_line_spaced(
                             gap_text,
                             self.font_size,
                             &gap_runs,
@@ -5834,7 +5834,7 @@ impl Paragraph {
         let slice: SharedString = self.text[word.range.clone()].to_string().into();
         let runs = slice_runs(&self.runs, &word.range);
         window
-            .text_system()
+            .text_system().with_ligature_breaking(false)
             .shape_line_spaced(
                 slice,
                 self.font_size,

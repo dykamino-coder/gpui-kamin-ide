@@ -1039,6 +1039,9 @@ fn apply_force_width_to_layout(layout: &mut LineLayout, force_width: Pixels) {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 #[expect(missing_docs)]
 pub struct FontRun {
+    /// Break ligatures at style boundaries (the normal GPUI text policy).
+    /// Included in layout cache keys so browser shaping cannot reuse IDE layouts.
+    pub break_ligatures: bool,
     pub len: usize,
     pub font_id: FontId,
     /// KaminIDE patch: свой кегль прогона.

@@ -18445,6 +18445,7 @@ fn paragraph_pieces_routed(
         let selectable = inherited.no_select != Some(true) && inherited.pointer_events_none != Some(true);
         if !native && !selectable {
             return gpui::StyledText::new(SharedString::from(text))
+                .with_ligature_breaking(false)
                 .with_runs(runs)
                 .into_any_element();
         }

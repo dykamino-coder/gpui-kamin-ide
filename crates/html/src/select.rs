@@ -106,6 +106,7 @@ impl Element for Selectable {
             None => ((0, 0), State::default()).0,
         };
         let styled = StyledText::new(self.text.clone())
+            .with_ligature_breaking(false)
             .with_runs(self.runs_with_selection(selection.0, selection.1));
         // Раскладка нужна на этапе отрисовки, чтобы попасть точкой в символ.
         self.layout = Some(styled.layout().clone());

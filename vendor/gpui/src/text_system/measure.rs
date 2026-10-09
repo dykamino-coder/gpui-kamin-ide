@@ -11,6 +11,7 @@ impl TextSystem {
     /// window text system as before.
     pub fn measure_line(&self, text: &str, font: &Font, size: Pixels) -> Pixels {
         let run = FontRun {
+            break_ligatures: true,
             len: text.len(),
             font_id: self.resolve_font(font),
             font_size: size,

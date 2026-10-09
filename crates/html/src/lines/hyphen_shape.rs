@@ -92,7 +92,7 @@ impl Paragraph {
         let body = body.as_str();
         let body = controlled_shape::text(body, &mut piece, rtl);
         if !rtl {
-            return Some(window.text_system().shape_line_spaced(
+            return Some(window.text_system().with_ligature_breaking(false).shape_line_spaced(
                 body,
                 self.font_size,
                 &piece,
@@ -102,7 +102,7 @@ impl Paragraph {
         }
         Some(
             window
-                .text_system()
+                .text_system().with_ligature_breaking(false)
                 .shape_line_rtl(body, self.font_size, &piece, self.letter_spacing),
         )
     }

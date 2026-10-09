@@ -12,6 +12,8 @@ mod dispatcher;
 mod display;
 mod events;
 mod keyboard;
+#[cfg(test)]
+mod ligature_tests;
 mod platform;
 mod system_notifications;
 mod system_settings;

@@ -1,3 +1,5 @@
+mod shaping;
+
 use crate::{
     ActiveTooltip, AnyView, App, Bounds, DispatchPhase, Element, ElementId, GlobalElementId,
     HighlightStyle, Hitbox, HitboxBehavior, InspectorElementId, IntoElement, LayoutId,
@@ -271,7 +273,7 @@ impl Element for &'static str {
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
         let mut state = TextLayout::default();
-        let layout_id = state.layout(SharedString::from(*self), None, window, cx);
+        let layout_id = state.layout(SharedString::from(*self), None, true, window, cx);
         (layout_id, state)
     }
 
@@ -345,7 +347,7 @@ impl Element for SharedString {
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
         let mut state = TextLayout::default();
-        let layout_id = state.layout(self.clone(), None, window, cx);
+        let layout_id = state.layout(self.clone(), None, true, window, cx);
         (layout_id, state)
     }
 
@@ -394,6 +396,7 @@ pub struct StyledText {
     delayed_highlights: Option<Vec<(Range<usize>, HighlightStyle)>>,
     delayed_font_family_overrides: Option<Vec<(Range<usize>, SharedString)>>,
     layout: TextLayout,
+    break_ligatures: bool,
 }
 
 impl StyledText {
@@ -405,6 +408,7 @@ impl StyledText {
             delayed_highlights: None,
             delayed_font_family_overrides: None,
             layout: TextLayout::default(),
+            break_ligatures: true,
         }
     }
 
@@ -571,7 +575,9 @@ impl Element for StyledText {
             Self::apply_font_family_overrides(runs, overrides);
         }
 
-        let layout_id = self.layout.layout(self.text.clone(), runs, window, cx);
+        let layout_id = self
+            .layout
+            .layout(self.text.clone(), runs, self.break_ligatures, window, cx);
         (layout_id, ())
     }
 
@@ -621,6 +627,7 @@ enum TextPaintPass {
 }
 
 struct TextLayoutInner {
+    break_ligatures: bool,
     len: usize,
     lines: SmallVec<[WrappedLine; 1]>,
     line_height: Pixels,
@@ -635,6 +642,7 @@ impl TextLayout {
         &self,
         text: SharedString,
         runs: Option<Vec<TextRun>>,
+        break_ligatures: bool,
         window: &mut Window,
         _: &mut App,
     ) -> LayoutId {
@@ -714,6 +722,7 @@ impl TextLayout {
                     && matches!(available_space.width, crate::AvailableSpace::MinContent);
                 if !min_probe
                     && let Some(text_layout) = element_state.0.borrow().as_ref()
+                    && text_layout.break_ligatures == break_ligatures
                     && text_layout.size.is_some()
                     && wrap_width == text_layout.wrap_width
                     // upstream: усечённую раскладку повторно не берём — при
@@ -753,6 +762,7 @@ impl TextLayout {
                         )
                     } else if let Some(unclipped) = window
                         .text_system()
+                        .with_ligature_breaking(break_ligatures)
                         .shape_text(text.clone(), font_size, &runs, None, None)
                         .log_err()
                         && unclipped
@@ -782,6 +792,7 @@ impl TextLayout {
 
                 let Some(lines) = window
                     .text_system()
+                    .with_ligature_breaking(break_ligatures)
                     // KaminIDE patch: трекинг из стиля (`letter-spacing`);
                     // при переносе он гасится внутри (план 99)
                     .shape_text_spaced(
@@ -795,6 +806,7 @@ impl TextLayout {
                     .log_err()
                 else {
                     element_state.0.borrow_mut().replace(TextLayoutInner {
+                        break_ligatures,
                         lines: Default::default(),
                         len: 0,
                         line_height,
@@ -847,6 +859,7 @@ impl TextLayout {
                 let baseline = lines.first().map(|_| (line_height - asc - desc) / 2. + asc);
 
                 let measured = TextLayoutInner {
+                    break_ligatures,
                     lines,
                     len,
                     line_height,

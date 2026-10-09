@@ -73,6 +73,7 @@ impl LineWrapper {
             // считает по положениям глифов, и посимвольная сумма с ними
             // расходится — слово рвалось посередине (1.0.44).
             let run = FontRun {
+                break_ligatures: true,
                 len: to - from,
                 font_id: this.font_id,
                 font_size: this.font_size,
