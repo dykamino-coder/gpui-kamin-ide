@@ -65,7 +65,7 @@ mod tests {
 
     #[test]
     fn native_scroll_target_preserves_css_box_and_restores_nested_scope() {
-        let mut e = super::super::anon_element("div", vec![]);
+        let mut e = crate::render::anon_element("div", vec![]);
         e.node_id = 7;
         let c = Computed { self_node: 7, width: Some(Len::FitContent), ..Computed::default() };
         let mut margin = Sides::default(); margin.left = Some(Len::Px(10.0));

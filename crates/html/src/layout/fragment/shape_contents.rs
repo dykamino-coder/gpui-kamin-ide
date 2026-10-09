@@ -199,7 +199,7 @@ pub(crate) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
             _ => None,
         })
         .collect();
-    let mut page_prev: Option<String> = None;
+    let page_prev: Option<String> = None;
     let blk_avoid: Vec<(bool, bool)> = kids
         .iter()
         .map(|n| match n {
@@ -480,7 +480,7 @@ pub(crate) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
     // соседей не двигает — нужен только фрагментации.
     let mut oof_reach = 0.0f32;
     if let Some(kids) = inner.filter(|k| !k.is_empty()) {
-        (stacked, oof_reach, page_prev) = stack_kids(
+        (stacked, oof_reach) = stack_kids(
             kids,
             row_nowrap,
             top,
@@ -498,7 +498,6 @@ pub(crate) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
             line_inner,
             blk_avoid,
             page_kid,
-            stacked,
             oof_reach,
             page_prev,
         );

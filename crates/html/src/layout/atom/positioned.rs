@@ -3,6 +3,7 @@
 
 use crate::render::*;
 
+#[allow(clippy::needless_return)]
 pub(crate) fn static_position_atom(
     inherited: &Computed,
     e: &Element,
@@ -98,6 +99,7 @@ pub(crate) fn static_position_atom(
     };
 }
 
+#[allow(clippy::needless_return)]
 pub(crate) fn absolute_atom(
     inherited: &Computed,
     e: &Element,

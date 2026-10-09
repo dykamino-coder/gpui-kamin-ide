@@ -22,10 +22,10 @@ pub(crate) fn stack_kids(
     line_inner: Vec<bool>,
     blk_avoid: Vec<(bool, bool)>,
     page_kid: Vec<Option<(std::string::String, std::string::String)>>,
-    mut stacked: Option<(f32, f32, f32)>,
     mut oof_reach: f32,
     mut page_prev: Option<String>,
-) -> (Option<(f32, f32, f32)>, f32, Option<String>) {
+) -> (Option<(f32, f32, f32)>, f32) {
+    let stacked: Option<(f32, f32, f32)>;
     let inner_h: Vec<f32> = kids.iter().map(|k| k.0).collect();
     // Ряд flex БЕЗ переноса: дети стоят бок о бок, и
     // каждый фрагментируется СВОИМИ точками (Blink
@@ -248,5 +248,5 @@ pub(crate) fn stack_kids(
     // проценты), ветка не срабатывает. Нужна ширина из
     // раскладки, а не из стиля (корень R4 scout-flexfrag).
     }
-    (stacked, oof_reach, page_prev)
+    (stacked, oof_reach)
 }
