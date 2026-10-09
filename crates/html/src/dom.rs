@@ -4265,16 +4265,51 @@ fn lang_matches(want: &str, me: &Ancestor, path: &[Ancestor]) -> bool {
     let Some(lang) = language::effective(me, path) else {
         return false;
     };
-    let want = want
-        .trim()
-        .trim_matches(|c| c == '"' || c == char::from(39));
-    if want.is_empty() || want == "*" {
-        return !lang.is_empty();
+    // Список диапазонов через запятую (`:lang(de, nl, fr)`), каждый —
+    // идентификатор или строка; совпадение с любым.
+    want.split(',').any(|range| {
+        let range = range
+            .trim()
+            .trim_matches(|c| c == '"' || c == char::from(39));
+        if range.is_empty() || range == "*" {
+            return !lang.is_empty();
+        }
+        extended_lang_filter(range, &lang)
+    })
+}
+
+/// Расширенная фильтрация RFC 4647 §3.3.2 (Selectors-4 §7.2 «:lang()»):
+/// первый подтег совпадает или диапазон `*`; дальше каждый подтег
+/// диапазона ищется в теге по порядку, пропуская несовпавшие подтеги тега,
+/// но не перескакивая через одиночный (`x`, `u`…). `*` в середине
+/// диапазона пропускается. `*-FR` совпадает с `fr-Latn-FR`, `fr-FR` — тоже.
+fn extended_lang_filter(range: &str, tag: &str) -> bool {
+    let mut r = range.split('-');
+    let mut t = tag.split('-');
+    let (Some(r0), Some(t0)) = (r.next(), t.next()) else {
+        return false;
+    };
+    if r0 != "*" && !r0.eq_ignore_ascii_case(t0) {
+        return false;
     }
-    lang.eq_ignore_ascii_case(want)
-        || (lang.len() > want.len()
-            && lang.as_bytes()[want.len()] == b'-'
-            && lang[..want.len()].eq_ignore_ascii_case(want))
+    let mut t_cur = t.next();
+    for rs in r {
+        if rs == "*" {
+            continue;
+        }
+        loop {
+            let Some(ts) = t_cur else { return false };
+            if ts.eq_ignore_ascii_case(rs) {
+                t_cur = t.next();
+                break;
+            }
+            if ts.len() == 1 {
+                return false;
+            }
+            t_cur = t.next();
+        }
+    }
+    true
 }
 
 /// Выполняется ли ОДИН псевдокласс на узле — для дополнительных

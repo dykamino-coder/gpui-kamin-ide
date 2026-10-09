@@ -6354,6 +6354,16 @@ impl Element for FilterLayer {
             x1 = x1.max(rx + rw).min(4096.0);
             y1 = y1.max(ry + rh).min(4096.0);
         }
+        // Края холста — на точках устройства: растр ложится один к одному,
+        // без пересэмплирования. Полкоробки запаса при масштабе 1.25 давали
+        // дробный угол (−62.5 точки), и вся заливка расплывалась на
+        // полточки (`filter-chained-url-url-001`, `svg-feimage-005`).
+        let sf = window.scale_factor();
+        let (ox, oy) = (f32::from(bounds.origin.x), f32::from(bounds.origin.y));
+        let x0 = ((ox + x0) * sf).floor() / sf - ox;
+        let y0 = ((oy + y0) * sf).floor() / sf - oy;
+        let x1 = ((ox + x1) * sf).ceil() / sf - ox;
+        let y1 = ((oy + y1) * sf).ceil() / sf - oy;
         let (cw, ch) = (x1 - x0, y1 - y0);
         if cw <= 0.0 || ch <= 0.0 {
             return;
@@ -6374,10 +6384,10 @@ impl Element for FilterLayer {
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="{cw}" height="{ch}" viewBox="0 0 {cw} {ch}"><defs>{}</defs><g transform="translate({} {})">{body}</g></svg>"##,
             self.def, -x0, -y0
         );
-        let sf = window.scale_factor();
-        let key = (markup.clone(), (cw * sf) as u32, (ch * sf) as u32);
+        let (pw, ph) = ((cw * sf).round(), (ch * sf).round());
+        let key = (markup.clone(), pw as u32, ph as u32);
         let image = FILTER_RASTERS.with(|m| m.borrow().get(&key).cloned()).or_else(|| {
-            let img = crate::svg::rasterize(&markup, cw * sf, ch * sf)?;
+            let img = crate::svg::rasterize(&markup, pw, ph)?;
             FILTER_RASTERS.with(|m| m.borrow_mut().insert(key.clone(), img.clone()));
             Some(img)
         });
