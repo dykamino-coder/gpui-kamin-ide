@@ -8436,13 +8436,12 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         && zero_len(inherited.padding.top)
         && zero_len(inherited.borders().top);
     // Измеряемый бандовый хост (`band_flow.rs`) — только в БЛОЧНОМ контейнере
-    // горизонтального письма слева направо: в гибком и сетке `float` не
-    // действует (css-flexbox-1 §3, css-grid-1 §6.1), а полосы считают обе
-    // стенки от ЛЕВОГО края физически (логических осей у них нет, шаг F10).
+    // горизонтального письма: в гибком и сетке `float` не
+    // действует (css-flexbox-1 §3, css-grid-1 §6.1).
     // С шагом F10 (`BF_F10=1`) хост работает и в вертикальном письме: план в
     // логических осях, перевод в физику при сборке (`band_flow::VERT`).
-    // `sideways-*` и `direction: rtl` по-прежнему вне хоста — у них line-left
-    // не верх (css-writing-modes-4 :1877-1888).
+    // Horizontal float sides are physical (CSS 2.1 §9.5.1); paragraphs
+    // handle RTL within those bands. Vertical RTL still needs axis conversion.
     let vert_host = inherited.vertical == Some(true)
         && band_f10()
         && inherited.sideways != Some(true);
@@ -8462,7 +8461,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         )
         && (inherited.vertical != Some(true) || vert_host)
         && (inherited.vertical_rl != Some(true) || vert_host)
-        && inherited.rtl != Some(true);
+        && (inherited.rtl != Some(true) || inherited.vertical != Some(true));
     let _fl_guard = BandFlGuard(BAND_FL.with(|f| f.replace(inherited.first_line.as_deref().cloned())));
     let _cbh_guard = BandCbhGuard(BAND_CBH.with(|h| {
         h.replace(match inherited.height {
@@ -13871,6 +13870,7 @@ fn band_kids(
         } else {
             match band_piece_m(n, em) {
                 Some(true) => Kind::Piece {
+                    rtl: inherited.rtl == Some(true),
                     table: c.tag == "table" || matches!(c.style.display, Some(Display::Table)),
                 },
                 Some(false) => Kind::Strut(px_margin_box(&c.style).map_or(0.0, |(_, h)| h)),
@@ -14031,7 +14031,7 @@ fn band_kids(
                         .flow_shapes
                         .clone()
                         .unwrap_or_else(|| std::sync::Arc::new((Vec::new(), Vec::new())));
-                    return crate::flow::FlowRow::new(atoms, shapes, false).into_any_element();
+                    return crate::flow::FlowRow::new(atoms, shapes, inherited.rtl == Some(true)).into_any_element();
                 }
                 // Замещаемый флоат, кроме `<img>` (`embed`, `object`,
                 // `video`…), — своей веткой `element` ниже: каркас блока со

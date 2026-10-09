@@ -26,6 +26,7 @@
 
 use crate::bands::FloatBands;
 mod clearance;
+mod piece;
 mod kid;
 pub use kid::{Kid, Kind, Nest};
 use crate::flow::FloatShape;
@@ -341,7 +342,7 @@ fn place_seq(
             Kind::Strut(h) => {
                 y += h;
             }
-            Kind::Piece { table } => {
+            Kind::Piece { table, rtl } => {
                 // Пол ширины таблицы: каркас пробы жмёт её до окна, а
                 // переполнение содержимым ширины коробки не растит.
                 let floor = if table {
@@ -364,23 +365,6 @@ fn place_seq(
                 // содержащего блока, сужает (`floats-wrap-bfc-with-margin-008`:
                 // правый флоат 50 в блоке 100, содержащий блок коробки —
                 // `margin-right: 50px`).
-                let edge = |l: f32, r: f32| {
-                    let (has_l, has_r) = (l > root.0 + EPS, r < root.1 - EPS);
-                    let (ll, rr) = if !has_l && !has_r {
-                        (l + ml, r - mr)
-                    } else {
-                        (l.max(x0 + ml.max(0.0)), r.min(x1 - mr.max(0.0)))
-                    };
-                    (ll, (rr - ll).max(0.0), has_l, has_r)
-                };
-                // Влезает ли border-box `bw` с левым краем `x` в окно `[l, r)`
-                // (`:2259-2274`: не наезжать на флоаты слева и справа, а в
-                // суженное окно — целиком).
-                let fits = |l: f32, r: f32, x: f32, bw: f32, has_l: bool, has_r: bool| {
-                    !(has_l && x < l - EPS)
-                        && !(has_r && x + bw > r + EPS)
-                        && !((has_l || has_r) && bw > r - l + EPS)
-                };
                 // Проба коробки с верхом `top`: место (левый край, доступная
                 // ширина), если она влезает в окно на всю свою высоту. Окно на
                 // верхней полосе → проба → проверка окна на всю высоту пробы
@@ -389,18 +373,22 @@ fn place_seq(
                 // `try_to_expand_for_auto_block_size`, `flow/float.rs:260`).
                 let try_at = |top: f32, window: &mut Window, cx: &mut App| -> Option<(f32, f32)> {
                     let (l, r) = bands.available(top, 0.0);
-                    let (x, avail, has_l, has_r) = edge(l, r);
+                    let edge = piece::Edges::new(l, r, root, (x0, x1), (ml, mr));
+                    let avail = edge.available();
                     let (bw, bh) = probe(kid, cbw, avail, None, window, cx);
                     let bw = bw.max(floor);
+                    let x = edge.origin(bw, rtl);
                     let (l2, r2) = bands.available(top, bh);
                     if (l2 - l).abs() < EPS && (r2 - r).abs() < EPS {
-                        return fits(l, r, x, bw, has_l, has_r).then_some((x, avail));
+                        return edge.fits(l, r, x, bw).then_some((x, avail));
                     }
-                    let (x2, avail2, h_l, h_r) = edge(l2, r2);
+                    let edge2 = piece::Edges::new(l2, r2, root, (x0, x1), (ml, mr));
+                    let avail2 = edge2.available();
                     let (bw2, bh2) = probe(kid, cbw, avail2, None, window, cx);
                     let bw2 = bw2.max(floor);
+                    let x2 = edge2.origin(bw2, rtl);
                     let (l3, r3) = bands.available(top, bh2);
-                    (l3 <= l2 + EPS && r3 >= r2 - EPS && fits(l2, r2, x2, bw2, h_l, h_r))
+                    (l3 <= l2 + EPS && r3 >= r2 - EPS && edge2.fits(l2, r2, x2, bw2))
                         .then_some((x2, avail2))
                 };
                 // Примыкающие флоаты (Blink `block_layout_algorithm.cc`
