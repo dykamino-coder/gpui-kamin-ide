@@ -32,140 +32,90 @@ pub(super) fn collapse_flow_margins(
     reverse: bool,
     lead: Option<f32>,
 ) -> Vec<Node> {
-    // Поле контейнера схлопывается С КРАЙНИМ flow-ребёнком через пустую
-    // границу (CSS 2.1 §8.3.1): у `<body>` без рамки и паддинга хвостовое
-    // поле — max(своё, block-end последнего ребёнка), рекурсивно. Без этого
-    // `html::after` за body отъезжал на сумму полей (wm-propagation-body-042:
-    // 16 у последнего `<p>` + 8 у body складывались вместо max).
-    // Поглощение: поле крайнего ребёнка ОБНУЛЯЕТСЯ и уезжает на контейнер
-    // (иначе оно распирало бы его коробку изнутри и зазор снаружи удваивался).
-    fn absorb_margin(e: &mut Element, tail_side: bool, reverse: bool) -> f32 {
-        let own = if tail_side == reverse {
-            margin_px(e.style.margin.left, &e.style)
-        } else {
-            margin_px(e.style.margin.right, &e.style)
-        }
-        .unwrap_or(0.0);
-        // Контейнер с ГОРИЗОНТАЛЬНЫМ письмом в вертикальном потоке —
-        // ортогональный: его внутренний поток идёт по другой оси, и полей
-        // на этой границе не отдаёт (available-size-020..023).
-        if e.style.vertical == Some(false) {
-            return own;
-        }
-        let b = e.style.borders();
-        let (border, pad) = if tail_side == reverse {
-            (b.left, e.style.padding.left)
-        } else {
-            (b.right, e.style.padding.right)
-        };
-        let sealed = margin_px(border, &e.style).unwrap_or(0.0) > 0.0
-            || margin_px(pad, &e.style).unwrap_or(0.0) > 0.0;
-        if sealed {
-            return own;
-        }
-        let edge_child = {
-            let mut it = e.children.iter_mut().filter_map(|n| match n {
-                Node::Element(c)
-                    if !matches!(
-                        c.style.position,
-                        Some(crate::style::computed::Position::Absolute)
-                            | Some(crate::style::computed::Position::Fixed)
-                    ) && c.style.display.is_none()
-                        // Схлопка живёт в ОДНОМ потоке: ребёнок со своим
-                        // письмом заводит другой и границу запечатывает.
-                        && c.style.vertical.is_none()
-                        && c.style.vertical_rl.is_none() =>
-                {
-                    Some(c)
-                }
-                _ => None,
-            });
-            if tail_side { it.last() } else { it.next() }
-        };
-        match edge_child {
-            Some(c) => {
-                let inner = absorb_margin(c, tail_side, reverse);
-                // Поглощать есть что только при ненулевом внутреннем поле;
-                // иначе стили НЕ переписываются: заморозка `Em` в точки
-                // до разрешения кегля портила поле (`font-size: 5em` у
-                // text-combine-upright-value-*).
-                if inner <= 0.0 {
-                    return own;
-                }
-                if tail_side == reverse {
-                    c.style.margin.left = Some(Len::Px(0.0));
-                } else {
-                    c.style.margin.right = Some(Len::Px(0.0));
-                }
-                let total = own.max(inner);
-                if tail_side == reverse {
-                    e.style.margin.left = Some(Len::Px(total));
-                } else {
-                    e.style.margin.right = Some(Len::Px(total));
-                }
-                total
-            }
-            None => own,
-        }
-    }
     let mut out = children;
-    // Ведущее поле ПЕРВОГО ребёнка схлопывается с полем контейнера так же,
-    // как поля братьев между собой (§8.3.1, первый in-flow ребёнок): в
-    // `prev` кладётся поле контейнера, и ребёнку остаётся разница.
-    // `body { margin: 8px }` + `p { margin-block: 1em }` при `html
-    // { writing-mode: vertical-lr }` дают 16 от края окна, а не 24 — ровно
-    // на эти 8 CSS px уезжала ВСЯ страница (`abs-pos-non-replaced-vlr-007`
-    // 1.09, `text-indent-vlr-011` 1.09, `clip-rect-vlr-011` 1.00: снимок
-    // сдвинут на 10 px при масштабе 1.25, эталон `…-vlr-007-ref` считает
-    // «80px + p's margin-left (1em)» от `margin-left: 0.5em` + `body` 8).
-    // Отрицательное поле контейнера в схлопывание не вступает (иначе
-    // `kept` росло бы на его модуль).
-    // Прежний замер «available-size-022/023 0.00 -> 2.66» относился к детям
-    // КОРНЯ — у `html` поля не схлопываются, вызов передаёт `None`.
-    // Пустой блок, сквозь который смыкаются его собственные поля вдоль оси
-    // потока (CSS 2.1 §8.3.1: «does not establish a new block formatting
-    // context … zero computed 'min-height', zero or 'auto' computed 'height',
-    // and no in-flow children … it is possible for margins to collapse through
-    // it»; css-writing-modes-4 §7.1 переносит правило на горизонталь
-    // вертикального письма, Overview.bs:1918-1926). Ось потока здесь
-    // горизонтальна, поэтому «высота» правила — `width`/`min-width`, а рамки
-    // и отступы — левые и правые. Своё письмо и собственный контекст
-    // форматирования поток запечатывают.
-    fn collapses_through(e: &Element) -> bool {
-        let none_or_zero = |l: Option<Len>| match l {
-            None | Some(Len::Auto) => true,
-            Some(Len::Px(v)) => v == 0.0,
-            _ => false,
-        };
-        let b = e.style.borders();
-        e.style.display.is_none()
-            && e.style.vertical.is_none()
-            && e.style.vertical_rl.is_none()
-            && !matches!(
-                e.style.position,
-                Some(crate::style::computed::Position::Absolute)
-                    | Some(crate::style::computed::Position::Fixed)
-            )
-            && matches!(
-                e.style.overflow_x,
-                None | Some(crate::style::computed::Overflow::Visible)
-            )
-            && matches!(
-                e.style.overflow_y,
-                None | Some(crate::style::computed::Overflow::Visible)
-            )
-            && e.style.flow_root != Some(true)
-            && e.style.contain_layout != Some(true)
-            && e.style.contain_paint != Some(true)
-            && none_or_zero(e.style.width)
-            && none_or_zero(e.style.min_width)
-            && none_or_zero(b.left)
-            && none_or_zero(b.right)
-            && none_or_zero(e.style.padding.left)
-            && none_or_zero(e.style.padding.right)
-            && e.children.iter().all(is_blank)
+    let trailing: Option<f32> = lead.filter(|m| *m >= 0.0);
+    collapse_flow_kids(reverse, &mut out, trailing);
+    out
+}
+
+// Поле контейнера схлопывается С КРАЙНИМ flow-ребёнком через пустую
+// границу (CSS 2.1 §8.3.1): у `<body>` без рамки и паддинга хвостовое
+// поле — max(своё, block-end последнего ребёнка), рекурсивно. Без этого
+// `html::after` за body отъезжал на сумму полей (wm-propagation-body-042:
+// 16 у последнего `<p>` + 8 у body складывались вместо max).
+// Поглощение: поле крайнего ребёнка ОБНУЛЯЕТСЯ и уезжает на контейнер
+// (иначе оно распирало бы его коробку изнутри и зазор снаружи удваивался).
+fn absorb_margin(e: &mut Element, tail_side: bool, reverse: bool) -> f32 {
+    let own = if tail_side == reverse {
+        margin_px(e.style.margin.left, &e.style)
+    } else {
+        margin_px(e.style.margin.right, &e.style)
     }
-    let mut trailing: Option<f32> = lead.filter(|m| *m >= 0.0);
+    .unwrap_or(0.0);
+    // Контейнер с ГОРИЗОНТАЛЬНЫМ письмом в вертикальном потоке —
+    // ортогональный: его внутренний поток идёт по другой оси, и полей
+    // на этой границе не отдаёт (available-size-020..023).
+    if e.style.vertical == Some(false) {
+        return own;
+    }
+    let b = e.style.borders();
+    let (border, pad) = if tail_side == reverse {
+        (b.left, e.style.padding.left)
+    } else {
+        (b.right, e.style.padding.right)
+    };
+    let sealed = margin_px(border, &e.style).unwrap_or(0.0) > 0.0
+        || margin_px(pad, &e.style).unwrap_or(0.0) > 0.0;
+    if sealed {
+        return own;
+    }
+    let edge_child = {
+        let mut it = e.children.iter_mut().filter_map(|n| match n {
+            Node::Element(c)
+                if !matches!(
+                    c.style.position,
+                    Some(crate::style::computed::Position::Absolute)
+                        | Some(crate::style::computed::Position::Fixed)
+                ) && c.style.display.is_none()
+                    // Схлопка живёт в ОДНОМ потоке: ребёнок со своим
+                    // письмом заводит другой и границу запечатывает.
+                    && c.style.vertical.is_none()
+                    && c.style.vertical_rl.is_none() =>
+            {
+                Some(c)
+            }
+            _ => None,
+        });
+        if tail_side { it.last() } else { it.next() }
+    };
+    match edge_child {
+        Some(c) => {
+            let inner = absorb_margin(c, tail_side, reverse);
+            // Поглощать есть что только при ненулевом внутреннем поле;
+            // иначе стили НЕ переписываются: заморозка `Em` в точки
+            // до разрешения кегля портила поле (`font-size: 5em` у
+            // text-combine-upright-value-*).
+            if inner <= 0.0 {
+                return own;
+            }
+            if tail_side == reverse {
+                c.style.margin.left = Some(Len::Px(0.0));
+            } else {
+                c.style.margin.right = Some(Len::Px(0.0));
+            }
+            let total = own.max(inner);
+            if tail_side == reverse {
+                e.style.margin.left = Some(Len::Px(total));
+            } else {
+                e.style.margin.right = Some(Len::Px(total));
+            }
+            total
+        }
+        None => own,
+    }
+}
+
+fn collapse_flow_kids(reverse: bool, out: &mut [Node], mut trailing: Option<f32>) {
     for node in out.iter_mut() {
         let child = match node {
             Node::Element(child) => child,
@@ -277,7 +227,63 @@ pub(super) fn collapse_flow_margins(
         }
         trailing = Some(absorb_margin(child, true, reverse));
     }
-    out
+}
+
+// Ведущее поле ПЕРВОГО ребёнка схлопывается с полем контейнера так же,
+// как поля братьев между собой (§8.3.1, первый in-flow ребёнок): в
+// `prev` кладётся поле контейнера, и ребёнку остаётся разница.
+// `body { margin: 8px }` + `p { margin-block: 1em }` при `html
+// { writing-mode: vertical-lr }` дают 16 от края окна, а не 24 — ровно
+// на эти 8 CSS px уезжала ВСЯ страница (`abs-pos-non-replaced-vlr-007`
+// 1.09, `text-indent-vlr-011` 1.09, `clip-rect-vlr-011` 1.00: снимок
+// сдвинут на 10 px при масштабе 1.25, эталон `…-vlr-007-ref` считает
+// «80px + p's margin-left (1em)» от `margin-left: 0.5em` + `body` 8).
+// Отрицательное поле контейнера в схлопывание не вступает (иначе
+// `kept` росло бы на его модуль).
+// Прежний замер «available-size-022/023 0.00 -> 2.66» относился к детям
+// КОРНЯ — у `html` поля не схлопываются, вызов передаёт `None`.
+// Пустой блок, сквозь который смыкаются его собственные поля вдоль оси
+// потока (CSS 2.1 §8.3.1: «does not establish a new block formatting
+// context … zero computed 'min-height', zero or 'auto' computed 'height',
+// and no in-flow children … it is possible for margins to collapse through
+// it»; css-writing-modes-4 §7.1 переносит правило на горизонталь
+// вертикального письма, Overview.bs:1918-1926). Ось потока здесь
+// горизонтальна, поэтому «высота» правила — `width`/`min-width`, а рамки
+// и отступы — левые и правые. Своё письмо и собственный контекст
+// форматирования поток запечатывают.
+fn collapses_through(e: &Element) -> bool {
+    let none_or_zero = |l: Option<Len>| match l {
+        None | Some(Len::Auto) => true,
+        Some(Len::Px(v)) => v == 0.0,
+        _ => false,
+    };
+    let b = e.style.borders();
+    e.style.display.is_none()
+        && e.style.vertical.is_none()
+        && e.style.vertical_rl.is_none()
+        && !matches!(
+            e.style.position,
+            Some(crate::style::computed::Position::Absolute)
+                | Some(crate::style::computed::Position::Fixed)
+        )
+        && matches!(
+            e.style.overflow_x,
+            None | Some(crate::style::computed::Overflow::Visible)
+        )
+        && matches!(
+            e.style.overflow_y,
+            None | Some(crate::style::computed::Overflow::Visible)
+        )
+        && e.style.flow_root != Some(true)
+        && e.style.contain_layout != Some(true)
+        && e.style.contain_paint != Some(true)
+        && none_or_zero(e.style.width)
+        && none_or_zero(e.style.min_width)
+        && none_or_zero(b.left)
+        && none_or_zero(b.right)
+        && none_or_zero(e.style.padding.left)
+        && none_or_zero(e.style.padding.right)
+        && e.children.iter().all(is_blank)
 }
 
 /// Схлопывание вертикальных отступов соседних блоков.
@@ -310,6 +316,30 @@ pub(crate) fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
     // Отступ первого ребёнка «протекает» наружу, если родителя от него не
     // отделяют ни рамка, ни внутренний отступ: в CSS это один и тот же отступ,
     // а не два. Без этого блок уезжает вниз на величину детского отступа.
+    collapse_kid_margins(&mut out);
+    // Струна примыкающих полей соседей (§8.3.1). `emitted` — сколько точек уже
+    // ЗАПИСАНО в стили этого зазора: раскладка складывает поля сама, и
+    // верхнему полю следующего блока достаётся только разница.
+    let mut strut: Option<Strut> = None;
+    let mut emitted = 0.0f32;
+    // Последняя коробка прогона с клиренсом: её остаток поля остаётся ВНУТРИ
+    // родителя и наружу не уходит.
+    let mut cleared_run: Option<usize> = None;
+    emit_margin_struts(&mut out, &mut strut, &mut emitted, &mut cleared_run);
+    // Прогон кончился на коробке с клиренсом: остаток слитого поля пишется ей
+    // самой — родителя он растит, но наружу не выходит.
+    if let (Some(i), Some(s)) = (cleared_run, strut) {
+        let rest = solve(s) - emitted;
+        if rest > 0.0
+            && let Some(Node::Element(e)) = out.get_mut(i)
+        {
+            e.style.margin.bottom = Some(Len::Px(rest));
+        }
+    }
+    out
+}
+
+fn collapse_kid_margins(out: &mut [Node]) {
     for node in out.iter_mut() {
         let Node::Element(e) = node else { continue };
         if inline_level_box(e) {
@@ -468,14 +498,14 @@ pub(crate) fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
             margin_edges::collapse_bottom(e);
         }
     }
-    // Струна примыкающих полей соседей (§8.3.1). `emitted` — сколько точек уже
-    // ЗАПИСАНО в стили этого зазора: раскладка складывает поля сама, и
-    // верхнему полю следующего блока достаётся только разница.
-    let mut strut: Option<Strut> = None;
-    let mut emitted = 0.0f32;
-    // Последняя коробка прогона с клиренсом: её остаток поля остаётся ВНУТРИ
-    // родителя и наружу не уходит.
-    let mut cleared_run: Option<usize> = None;
+}
+
+fn emit_margin_struts(
+    out: &mut [Node],
+    strut: &mut Option<(f32, f32)>,
+    emitted: &mut f32,
+    cleared_run: &mut Option<usize>,
+) {
     for (idx, node) in out.iter_mut().enumerate() {
         let Node::Element(e) = node else {
             // Переводы строк между блоками разрывом потока не считаются: в
@@ -484,14 +514,14 @@ pub(crate) fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
             if matches!(node, Node::Text(t) if blank_text(t)) {
                 continue;
             }
-            strut = None;
+            *strut = None;
             continue;
         };
         // Строчный элемент С СОДЕРЖИМЫМ порождает строчную коробку, и поля
         // блоков через неё уже не примыкают.
         if inline_level_box(e) {
             if !e.children.is_empty() {
-                strut = None;
+                *strut = None;
             }
             continue;
         }
@@ -501,13 +531,13 @@ pub(crate) fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
         // между блоками сплошь, и разрыв струны разводит их полями врозь.
         // Возвращаться вместе с настоящей строчной коробкой в раскладке.
         if !in_flow(&e.style) {
-            band_clearance::remember_float_margin(e, strut, emitted);
+            band_clearance::remember_float_margin(e, *strut, *emitted);
             continue;
         }
         let top = margin_px(e.style.margin.top, &e.style).unwrap_or(0.0);
         let bottom = margin_px(e.style.margin.bottom, &e.style).unwrap_or(0.0);
         let through = through_strut(e);
-        let mut merged = match strut {
+        let mut merged = match *strut {
             Some(s) => {
                 let m = adjoin(s, strut_of(top));
                 // Верхний край насквозь-схлопнутой коробки встаёт там, где
@@ -515,13 +545,13 @@ pub(crate) fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
                 // строка даёт это и обычной коробке: нижнее поле соседа
                 // раскладка уже поставила, верхнему достаётся разница.
                 pin_inherited_margins(e, true, false);
-                e.style.margin.top = Some(Len::Px(solve(m) - emitted));
-                emitted = solve(m);
+                e.style.margin.top = Some(Len::Px(solve(m) - *emitted));
+                *emitted = solve(m);
                 m
             }
             None => {
                 // Примыкать не к чему: верхнее поле остаётся как написано.
-                emitted = top;
+                *emitted = top;
                 strut_of(top)
             }
         };
@@ -533,11 +563,11 @@ pub(crate) fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
         // Верхнее поле уже выложено рядом обтекания, поэтому наружу идёт
         // только остаток.
         if through.is_none() && e.style.clear.is_some() && through_strut_no_clear(e).is_some() {
-            emitted = top;
+            *emitted = top;
             pin_inherited_margins(e, false, true);
             e.style.margin.bottom = Some(Len::Px(0.0));
-            strut = Some(adjoin(strut_of(top), strut_of(bottom)));
-            cleared_run = Some(idx);
+            *strut = Some(adjoin(strut_of(top), strut_of(bottom)));
+            *cleared_run = Some(idx);
             continue;
         }
         if let Some(own) = through {
@@ -551,24 +581,13 @@ pub(crate) fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
             // `floats-clear/margin-collapse-033/034/035`, прибавки нет. Поля
             // детей уже учтены струной, но раскладка ставит саму коробку не
             // по струне, а по своим полям — снятие уводит её вверх.
-            strut = Some(merged);
+            *strut = Some(merged);
             continue;
         }
-        strut = Some(strut_of(bottom));
-        emitted = bottom;
-        cleared_run = None;
+        *strut = Some(strut_of(bottom));
+        *emitted = bottom;
+        *cleared_run = None;
     }
-    // Прогон кончился на коробке с клиренсом: остаток слитого поля пишется ей
-    // самой — родителя он растит, но наружу не выходит.
-    if let (Some(i), Some(s)) = (cleared_run, strut) {
-        let rest = solve(s) - emitted;
-        if rest > 0.0
-            && let Some(Node::Element(e)) = out.get_mut(i)
-        {
-            e.style.margin.bottom = Some(Len::Px(rest));
-        }
-    }
-    out
 }
 
 thread_local! {

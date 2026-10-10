@@ -166,6 +166,84 @@ pub(crate) fn initial_letter_float(
     // (`tab-size` × ширина `0`, css-text-3 §tab-size); пробел меряется той же
     // шириной — точной ширины пробела здесь нет, у Ahem они равны.
     let lead = &text[..pos];
+    let style = initial_letter_style(
+        inherited,
+        first,
+        vert,
+        block_rl,
+        font_px,
+        family,
+        letter_family,
+        letter_px,
+        box_h,
+        top,
+        own,
+        color,
+        rtl,
+        para_indent,
+        indent,
+        lead,
+    );
+    let synthetic = |tag: &str, style: Computed, children: Vec<Node>, inline: bool| {
+        Node::Element(Element {
+            list_item: None,
+            node_id: 0,
+            anim: None,
+            tag: tag.into(),
+            style,
+            hover: None,
+            first_letter: None,
+            first_line: None,
+            children,
+            attrs: vec![],
+            inline,
+        })
+    };
+    let mut out: Vec<Node> = Vec::with_capacity(nodes.len() + 2 + shift as usize);
+    out.extend(nodes[..at].iter().cloned());
+    let mut letter = synthetic(
+        "div",
+        style,
+        vec![Node::Text(text[pos..end].to_string())],
+        false,
+    );
+    // Метка буквицы: её место — исключение строки (css-inline-3
+    // §initial-letter, Blink `initial_letter_utils.cc`), а не флоат полос:
+    // измеряемый хост ставит её `FloatBands::add_initial_letter` (шаг F11);
+    // прогон с руби хост по-прежнему не берёт (`initial-letter-*-ruby`).
+    if let Node::Element(e) = &mut letter {
+        e.attrs.push(("initial-letter".into(), "1".into()));
+    }
+    out.push(letter);
+    for _ in 0..shift {
+        out.push(synthetic("br", Computed::default(), vec![], true));
+    }
+    if end < text.len() {
+        out.push(Node::Text(text[end..].to_string()));
+    }
+    out.extend(nodes[at + 1..].iter().cloned());
+    out
+}
+
+#[allow(clippy::too_many_arguments)]
+fn initial_letter_style(
+    inherited: &Computed,
+    first: &Computed,
+    vert: bool,
+    block_rl: bool,
+    font_px: f32,
+    family: String,
+    letter_family: String,
+    letter_px: f32,
+    box_h: f32,
+    top: f32,
+    own: impl Fn(Option<Len>, Option<Len>) -> f32,
+    color: Option<crate::style::values::value::Color>,
+    rtl: bool,
+    para_indent: f32,
+    indent: f32,
+    lead: &str,
+) -> Computed {
     let lead_w = if !vert && inherited.keep_spaces == Some(true) && !lead.contains(['\n', '\r']) {
         let space = crate::text::metrics::ch_ex_px(&family, font_px).0;
         let stop = match inherited.tab_size_len {
@@ -242,45 +320,7 @@ pub(crate) fn initial_letter_float(
     if lead_w > 0.0 {
         style.text_indent = Some(Len::Px(para_indent + lead_w));
     }
-    let synthetic = |tag: &str, style: Computed, children: Vec<Node>, inline: bool| {
-        Node::Element(Element {
-            list_item: None,
-            node_id: 0,
-            anim: None,
-            tag: tag.into(),
-            style,
-            hover: None,
-            first_letter: None,
-            first_line: None,
-            children,
-            attrs: vec![],
-            inline,
-        })
-    };
-    let mut out: Vec<Node> = Vec::with_capacity(nodes.len() + 2 + shift as usize);
-    out.extend(nodes[..at].iter().cloned());
-    let mut letter = synthetic(
-        "div",
-        style,
-        vec![Node::Text(text[pos..end].to_string())],
-        false,
-    );
-    // Метка буквицы: её место — исключение строки (css-inline-3
-    // §initial-letter, Blink `initial_letter_utils.cc`), а не флоат полос:
-    // измеряемый хост ставит её `FloatBands::add_initial_letter` (шаг F11);
-    // прогон с руби хост по-прежнему не берёт (`initial-letter-*-ruby`).
-    if let Node::Element(e) = &mut letter {
-        e.attrs.push(("initial-letter".into(), "1".into()));
-    }
-    out.push(letter);
-    for _ in 0..shift {
-        out.push(synthetic("br", Computed::default(), vec![], true));
-    }
-    if end < text.len() {
-        out.push(Node::Text(text[end..].to_string()));
-    }
-    out.extend(nodes[at + 1..].iter().cloned());
-    out
+    style
 }
 
 /// Флоат, ради которого строчная коробка и существует, — и ничего кроме него.
