@@ -1058,11 +1058,11 @@ impl PlatformWindow for WindowsWindow {
     }
 
     fn d3d_device_raw(&self) -> Option<*mut std::ffi::c_void> {
-        Some(self.state.renderer.borrow().d3d_device_raw())
+        self.state.renderer.borrow().d3d_device_raw()
     }
 
     fn d3d_context_raw(&self) -> Option<*mut std::ffi::c_void> {
-        Some(self.state.renderer.borrow().d3d_context_raw())
+        self.state.renderer.borrow().d3d_context_raw()
     }
 
     fn register_external_texture(
