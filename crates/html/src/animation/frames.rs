@@ -36,8 +36,12 @@ pub(crate) fn transitioned(
         element(&mixed, &inherited, &opts)
     });
     Some(
-        crate::transition::Transition::new(gpui::ElementId::Integer(e.node_id), seconds, build)
-            .into_any_element(),
+        crate::animation::transition::Transition::new(
+            gpui::ElementId::Integer(e.node_id),
+            seconds,
+            build,
+        )
+        .into_any_element(),
     )
 }
 

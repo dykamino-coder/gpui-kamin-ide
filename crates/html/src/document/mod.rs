@@ -573,7 +573,7 @@ fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
     // motion-1: offset-трансформ — вторым проходом по СОБРАННОМУ дереву, где у
     // каждой коробки есть родитель. Идёт после `zoom::resolve` (длины уже
     // домножены) и после `resolve_logical` (стороны уже физические).
-    crate::motion::settle(&mut nodes);
+    crate::animation::motion::settle(&mut nodes);
     nodes
 }
 
@@ -637,7 +637,7 @@ pub fn parse_embedded(html: &str, theme_css: &str, viewport: (f32, f32)) -> (Vec
     // Вложенному документу offset-трансформ нужен ровно так же: проход по
     // дереву переехал сюда из разбора стиля (`dom.rs`), и без этой строки
     // `<iframe>` потерял бы всё, что раньше работало.
-    crate::motion::settle(&mut nodes);
+    crate::animation::motion::settle(&mut nodes);
     (nodes, hash_of(html, theme_css))
 }
 

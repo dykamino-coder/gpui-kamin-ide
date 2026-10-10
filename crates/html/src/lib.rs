@@ -42,13 +42,11 @@ pub mod flow {
 }
 pub use text::fonts;
 pub use text::metrics;
-mod motion;
 pub mod page_margin;
 pub mod render;
 pub use interactive::scroll;
 pub use interactive::select;
 pub mod svg;
-pub mod transition;
 pub use style::values::value;
 
 // Доменные модули (рефакторинг монолитов: перенос по доменам).
