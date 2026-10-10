@@ -53,6 +53,12 @@ pub(crate) fn software_render() -> bool {
             Some("0") => Some(false),
             _ => None,
         };
+        #[cfg(debug_assertions)]
+        let forced = if crate::native_acceptance::config::Config::from_env().software_policy {
+            Some(true)
+        } else {
+            forced
+        };
         let software = forced.unwrap_or_else(detect);
         if software {
             // В лог: по присланному `diag.log` иначе не отличить «медленно

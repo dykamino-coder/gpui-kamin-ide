@@ -20,6 +20,8 @@ use std::sync::Arc;
 impl Render for RootView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         crate::web::drawn();
+        #[cfg(all(debug_assertions, windows))]
+        crate::native_acceptance::device::observe(window);
         let _draw_started = std::time::Instant::now();
 
         let _ctx_started = std::time::Instant::now();
@@ -262,9 +264,7 @@ impl Render for RootView {
                 &self.tx,
                 p,
             ))
-            // Скрим-затемнение под инпутными оверлеями (палитра/QuickOpen/FiF/
-            // symbols/модалка): сам оверлей рисуется в overlay-окне без альфы,
-            // затемнить фон может только main (вебвью, увы, вне досягаемости)
+            // Скрим под инпутными оверлеями затемняет фон только в main.
             .map(|root| self.with_main_overlays(root, p))
             // Ф6: весь стек оверлеев (тултипы/меню/пикеры/модалки) — слоем
             // ЭТОГО окна, второго окна больше нет.

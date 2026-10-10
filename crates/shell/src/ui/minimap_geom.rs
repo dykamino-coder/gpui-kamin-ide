@@ -3,7 +3,7 @@
 //! Перенесено без изменения поведения (`plan/100-refactor-250.md`).
 
 use gpui::px;
-use gpui_component::input::InputState;
+use gpui_component::input::EditorState as CodeEditorState;
 
 /// `editor.rs:310`: `MINIMAP_FONT_SIZE: AbsoluteLength = px(2.)`.
 pub(crate) const MM_FONT: f32 = 2.0;
@@ -29,7 +29,7 @@ pub(crate) struct Geom {
     pub scroll_row: f32,
     pub max_scroll: f32,
 }
-pub(crate) fn geom(st: &InputState, height: f32) -> Geom {
+pub(crate) fn geom(st: &CodeEditorState, height: f32) -> Geom {
     let (total, lh) = st.minimap_metrics();
     let line_h = lh.map(f32::from).unwrap_or(20.0).max(1.0);
     let total = total as f32;
@@ -60,7 +60,11 @@ pub(crate) fn geom(st: &InputState, height: f32) -> Geom {
 }
 /// Прыжок скролла по y-координате внутри минимапы (клик/драг): кликнутая
 /// строка центрируется во вьюпорте (как Zed paint_minimap).
-pub(crate) fn jump_to(st: &InputState, local_y: f32, height: f32) -> gpui::Point<gpui::Pixels> {
+pub(crate) fn jump_to(
+    st: &CodeEditorState,
+    local_y: f32,
+    height: f32,
+) -> gpui::Point<gpui::Pixels> {
     let g = geom(st, height);
     let row = g.mm_top + local_y / MM_LINE_H - g.vis_ed / 2.0;
     let target = row.clamp(0.0, g.max_scroll);

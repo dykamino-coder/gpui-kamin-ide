@@ -13,6 +13,8 @@ pub mod ctree;
 pub mod ctxmenu;
 pub mod customize;
 pub mod cz;
+#[cfg(debug_assertions)]
+pub(crate) mod debug_loaders;
 pub mod design;
 pub mod design_panel;
 pub mod design_samples;
@@ -106,3 +108,5 @@ pub mod workspace_symbols;
 pub fn metrics_radius() -> f32 {
     kamin_metrics::RADIUS_MD
 }
+
+mod loading_motion;

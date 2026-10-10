@@ -5,20 +5,29 @@ use slotmap::SecondaryMap;
 use slotmap::SparseSecondaryMap as SecondaryMap;
 use slotmap::{DefaultKey, SlotMap};
 
+use super::kamin_calc::calc_value;
+#[path = "computed_output.rs"]
+mod computed_output;
+#[path = "node_lifetime.rs"]
+mod node_lifetime;
+#[cfg(feature = "block_layout")]
+use crate::block::BlockContext;
 use crate::geometry::Size;
 use crate::style::{AvailableSpace, Display, Style};
 use crate::sys::DefaultCheapStr;
 use crate::tree::{
-    Cache, ClearState, Layout, LayoutInput, LayoutOutput, LayoutPartialTree, NodeId, PrintTree, RoundTree, RunMode,
-    TraversePartialTree, TraverseTree,
+    Cache, ClearState, Layout, LayoutContainingBlock, LayoutInput, LayoutOutput, LayoutPartialTree,
+    NodeId, PrintTree, RoundTree, RunMode, TraversePartialTree, TraverseTree,
 };
 use crate::util::debug::{debug_log, debug_log_node};
-use crate::util::sys::{new_vec_with_capacity, ChildrenVec, Vec};
+use crate::util::sys::{new_const_children_vec, new_vec_with_capacity, Box, ChildrenVec, Vec};
 
 use crate::compute::{
-    compute_cached_layout, compute_hidden_layout, compute_leaf_layout, compute_root_layout, round_layout,
+    compute_cached_layout, compute_hidden_layout, compute_leaf_layout, compute_oof_layout,
+    compute_root_layout, round_layout,
 };
 use crate::CacheTree;
+
 #[cfg(feature = "block_layout")]
 use crate::{compute::compute_block_layout, LayoutBlockContainer};
 #[cfg(feature = "flexbox")]
@@ -26,9 +35,8 @@ use crate::{compute::compute_flexbox_layout, LayoutFlexboxContainer};
 #[cfg(feature = "grid")]
 use crate::{compute::compute_grid_layout, LayoutGridContainer};
 
-#[cfg(all(feature = "detailed_layout_info", feature = "grid"))]
+#[cfg(feature = "grid")]
 use crate::compute::grid::DetailedGridInfo;
-#[cfg(feature = "detailed_layout_info")]
 use crate::tree::layout::DetailedLayoutInfo;
 
 /// The error Taffy generates on invalid operations
@@ -57,14 +65,22 @@ pub enum TaffyError {
 impl core::fmt::Display for TaffyError {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
-            TaffyError::ChildIndexOutOfBounds { parent, child_index, child_count } => {
+            TaffyError::ChildIndexOutOfBounds {
+                parent,
+                child_index,
+                child_count,
+            } => {
                 write!(f, "Index (is {child_index}) should be < child_count ({child_count}) for parent node {parent:?}")
             }
             TaffyError::InvalidParentNode(parent) => {
                 write!(f, "Parent Node {parent:?} is not in the TaffyTree instance")
             }
-            TaffyError::InvalidChildNode(child) => write!(f, "Child Node {child:?} is not in the TaffyTree instance"),
-            TaffyError::InvalidInputNode(node) => write!(f, "Supplied Node {node:?} is not in the TaffyTree instance"),
+            TaffyError::InvalidChildNode(child) => {
+                write!(f, "Child Node {child:?} is not in the TaffyTree instance")
+            }
+            TaffyError::InvalidInputNode(node) => {
+                write!(f, "Supplied Node {node:?} is not in the TaffyTree instance")
+            }
         }
     }
 }
@@ -104,12 +120,23 @@ struct NodeData {
     /// Whether the node has context data associated with it or not
     pub(crate) has_context: bool,
 
+    /// Out-of-flow (absolute/fixed) boxes whose containing block is this node,
+    /// as recorded by the out-of-flow positioning pass
+    pub(crate) hoisted_children: ChildrenVec<NodeId>,
+
     /// The cached results of the layout computation
     pub(crate) cache: Cache,
 
     /// The computation result from layout algorithm
-    #[cfg(feature = "detailed_layout_info")]
     pub(crate) detailed_layout_info: DetailedLayoutInfo,
+    /// Tracks published by the parent subgrid layout, outside the native cache key.
+    #[cfg(feature = "grid")]
+    pub(crate) subgrid_tracks: Option<crate::style::SubgridTracks>,
+    /// Parent-height basis used by an anonymous row's percentage-height children.
+    pub(crate) pct_parent_h: Option<Option<f32>>,
+    /// KaminIDE patch: y offset of this node's children inside its box (see
+    /// `LayoutGridContainer::set_content_shift`).
+    pub(crate) content_shift: f32,
 }
 
 impl NodeData {
@@ -122,8 +149,12 @@ impl NodeData {
             unrounded_layout: Layout::new(),
             final_layout: Layout::new(),
             has_context: false,
-            #[cfg(feature = "detailed_layout_info")]
+            hoisted_children: new_const_children_vec(),
             detailed_layout_info: DetailedLayoutInfo::None,
+            #[cfg(feature = "grid")]
+            subgrid_tracks: None,
+            pct_parent_h: None,
+            content_shift: 0.0,
         }
     }
 
@@ -207,25 +238,12 @@ impl<NodeContext> TraverseTree for TaffyTree<NodeContext> {}
 
 // CacheTree impl for TaffyTree
 impl<NodeContext> CacheTree for TaffyTree<NodeContext> {
-    fn cache_get(
-        &self,
-        node_id: NodeId,
-        known_dimensions: Size<Option<f32>>,
-        available_space: Size<AvailableSpace>,
-        run_mode: RunMode,
-    ) -> Option<LayoutOutput> {
-        self.nodes[node_id.into()].cache.get(known_dimensions, available_space, run_mode)
+    fn cache_get(&mut self, node_id: NodeId, input: &LayoutInput) -> Option<LayoutOutput> {
+        self.nodes[node_id.into()].cache.get(input)
     }
 
-    fn cache_store(
-        &mut self,
-        node_id: NodeId,
-        known_dimensions: Size<Option<f32>>,
-        available_space: Size<AvailableSpace>,
-        run_mode: RunMode,
-        layout_output: LayoutOutput,
-    ) {
-        self.nodes[node_id.into()].cache.store(known_dimensions, available_space, run_mode, layout_output)
+    fn cache_store(&mut self, node_id: NodeId, input: &LayoutInput, layout_output: LayoutOutput) {
+        self.nodes[node_id.into()].cache.store(input, layout_output)
     }
 
     fn cache_clear(&mut self, node_id: NodeId) {
@@ -246,6 +264,8 @@ impl<NodeContext> PrintTree for TaffyTree<NodeContext> {
             (0, _) => "LEAF",
             #[cfg(feature = "block_layout")]
             (_, Display::Block) => "BLOCK",
+            #[cfg(feature = "block_layout")]
+            (_, Display::FlowRoot) => "FLOW-ROOT",
             #[cfg(feature = "flexbox")]
             (_, Display::Flex) => {
                 use crate::FlexDirection;
@@ -274,8 +294,7 @@ impl<NodeContext> PrintTree for TaffyTree<NodeContext> {
 /// which makes the lifetimes of the context much more flexible.
 pub(crate) struct TaffyView<'t, NodeContext, MeasureFunction>
 where
-    MeasureFunction:
-        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput,
+    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 {
     /// A reference to the TaffyTree
     pub(crate) taffy: &'t mut TaffyTree<NodeContext>,
@@ -283,11 +302,165 @@ where
     pub(crate) measure_function: MeasureFunction,
 }
 
-// TraversePartialTree impl for TaffyView
-impl<NodeContext, MeasureFunction> TraversePartialTree for TaffyView<'_, NodeContext, MeasureFunction>
+impl<NodeContext, MeasureFunction> TaffyView<'_, NodeContext, MeasureFunction>
 where
-    MeasureFunction:
-        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput,
+    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
+{
+    /// Resolve keyword-based calc-size axes before the final native dispatch.
+    fn compute_child_layout(
+        &mut self,
+        node_id: NodeId,
+        inputs: LayoutInput,
+        #[cfg(feature = "block_layout")] block_ctx: Option<&mut BlockContext<'_>>,
+    ) -> LayoutOutput {
+        if inputs.run_mode == RunMode::PerformHiddenLayout {
+            return compute_hidden_layout(self, node_id);
+        }
+        let expressions = self.taffy.nodes[node_id.into()].style.calc_size;
+        let width = expressions[0].filter(|_| inputs.known_dimensions.width.is_none());
+        let height = expressions[1].filter(|_| inputs.known_dimensions.height.is_none());
+        let mut resolved = inputs;
+        if let Some(expression) = width {
+            let auto = self.compute_child_layout_inner(
+                node_id,
+                LayoutInput {
+                    run_mode: RunMode::ComputeSize,
+                    ..resolved
+                },
+                #[cfg(feature = "block_layout")]
+                None,
+            );
+            let ratio = self.taffy.nodes[node_id.into()].style.aspect_ratio;
+            let base = match (ratio, resolved.known_dimensions.height) {
+                (Some(ratio), Some(height)) => auto.size.width.max(height * ratio),
+                _ => auto.size.width,
+            };
+            resolved.known_dimensions.width = Some(crate::style::apply_calc_size(expression, base));
+            // The parser folds fixed-length bases into ordinary lengths. These
+            // remaining expressions have intrinsic keyword bases, so their
+            // used width does not make the axis definite for child percentages.
+            resolved.known_dimensions_are_definite.width = false;
+        }
+        if let Some(expression) = height {
+            let auto = self.compute_child_layout_inner(
+                node_id,
+                LayoutInput {
+                    run_mode: RunMode::ComputeSize,
+                    ..resolved
+                },
+                #[cfg(feature = "block_layout")]
+                None,
+            );
+            let ratio = self.taffy.nodes[node_id.into()]
+                .style
+                .aspect_ratio
+                .filter(|ratio| *ratio > 0.0);
+            let base = match (ratio, resolved.known_dimensions.width) {
+                (Some(ratio), Some(width)) => auto.size.height.max(width / ratio),
+                _ => auto.size.height,
+            };
+            resolved.known_dimensions.height =
+                Some(crate::style::apply_calc_size(expression, base));
+            resolved.known_dimensions_are_definite.height = false;
+        }
+        self.compute_child_layout_inner(
+            node_id,
+            resolved,
+            #[cfg(feature = "block_layout")]
+            block_ctx,
+        )
+    }
+
+    #[inline(always)]
+    /// Unified implementation that both `LayoutPartialTree::compute_child_layout`
+    /// and `LayoutBlockContainer::compute_block_child_layout` delegate to.
+    fn compute_child_layout_inner(
+        &mut self,
+        node_id: NodeId,
+        inputs: LayoutInput,
+        #[cfg(feature = "block_layout")] block_ctx: Option<&mut BlockContext<'_>>,
+    ) -> LayoutOutput {
+        // If RunMode is PerformHiddenLayout then this indicates that an ancestor node is `Display::None`
+        // and thus that we should lay out this node using hidden layout regardless of it's own display style.
+        if inputs.run_mode == RunMode::PerformHiddenLayout {
+            debug_log!("HIDDEN");
+            return compute_hidden_layout(self, node_id);
+        }
+
+        #[cfg(feature = "flexbox")]
+        if self.taffy.nodes[node_id.into()]
+            .style
+            .percent_basis_from_parent
+            && self.taffy.row_uses_pct_height(node_id)
+        {
+            let node = &mut self.taffy.nodes[node_id.into()];
+            if node.pct_parent_h != Some(inputs.parent_size.height) {
+                node.cache.clear();
+                node.pct_parent_h = Some(inputs.parent_size.height);
+            }
+        }
+
+        // We run the following wrapped in "compute_cached_layout", which will check the cache for an entry matching the node and inputs and:
+        //   - Return that entry if exists
+        //   - Else call the passed closure (below) to compute the result
+        //
+        // If there was no cache match and a new result needs to be computed then that result will be added to the cache
+        compute_cached_layout(self, node_id, inputs, |tree, node_id, inputs| {
+            let display_mode = tree.taffy.nodes[node_id.into()].style.display;
+            let has_children = tree.child_count(node_id) > 0;
+
+            debug_log!(display_mode);
+            debug_log_node!(inputs);
+
+            // Dispatch to a layout algorithm based on the node's display style and whether the node has children or not.
+            let output = match (display_mode, has_children) {
+                (Display::None, _) => compute_hidden_layout(tree, node_id),
+                #[cfg(feature = "block_layout")]
+                (Display::Block, true) => compute_block_layout(tree, node_id, inputs, block_ctx),
+                #[cfg(feature = "block_layout")]
+                (Display::FlowRoot, true) => compute_block_layout(tree, node_id, inputs, None),
+                #[cfg(feature = "flexbox")]
+                (Display::Flex, true) => compute_flexbox_layout(tree, node_id, inputs),
+                #[cfg(feature = "grid")]
+                (Display::Grid, true) => compute_grid_layout(tree, node_id, inputs),
+                // An empty grid without a measurement context still has explicit
+                // tracks and auto-fill sizing. A measured grid leaf stays a leaf.
+                #[cfg(feature = "grid")]
+                (Display::Grid, false) if !tree.taffy.nodes[node_id.into()].has_context => {
+                    compute_grid_layout(tree, node_id, inputs)
+                }
+                (_, false) => {
+                    let node_key = node_id.into();
+                    let style = &tree.taffy.nodes[node_key].style;
+                    let has_context = tree.taffy.nodes[node_key].has_context;
+                    let node_context = has_context
+                        .then(|| tree.taffy.node_context_data.get_mut(node_key))
+                        .flatten();
+                    (tree.measure_function)(inputs, node_id, node_context, style)
+                }
+            };
+            let mut output =
+                super::kamin_output::adapt(output, &tree.taffy.nodes[node_id.into()].style);
+
+            // Lay out any out-of-flow candidates for which this node is the containing block.
+            // The rest bubble up via `output.oof_candidates`. This runs inside the cache-miss
+            // closure so that cached outputs already contain the processed candidate list.
+            // Only full layout passes run it: measure passes must not write hoisted box layouts
+            // (which would not be rewritten if the final layout pass is a cache hit).
+            if inputs.run_mode == RunMode::PerformLayout {
+                compute_oof_layout(tree, node_id, &mut output);
+            }
+
+            output
+        })
+    }
+}
+
+// TraversePartialTree impl for TaffyView
+impl<NodeContext, MeasureFunction> TraversePartialTree
+    for TaffyView<'_, NodeContext, MeasureFunction>
+where
+    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 {
     type ChildIter<'a>
         = TaffyTreeChildIter<'a>
@@ -312,16 +485,14 @@ where
 
 // TraverseTree impl for TaffyView
 impl<NodeContext, MeasureFunction> TraverseTree for TaffyView<'_, NodeContext, MeasureFunction> where
-    MeasureFunction:
-        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput
+    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput
 {
 }
 
 // LayoutPartialTree impl for TaffyView
 impl<NodeContext, MeasureFunction> LayoutPartialTree for TaffyView<'_, NodeContext, MeasureFunction>
 where
-    MeasureFunction:
-        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput,
+    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 {
     type CoreContainerStyle<'a>
         = &'a Style
@@ -341,86 +512,66 @@ where
     }
 
     #[inline(always)]
-    fn resolve_calc_value(&self, _val: *const (), _basis: f32) -> f32 {
-        0.0
+    fn resolve_calc_value(&self, val: *const (), basis: f32) -> f32 {
+        calc_value(val, basis)
     }
 
     #[inline(always)]
-    fn compute_child_layout(&mut self, node: NodeId, inputs: LayoutInput) -> LayoutOutput {
-        // If RunMode is PerformHiddenLayout then this indicates that an ancestor node is `Display::None`
-        // and thus that we should lay out this node using hidden layout regardless of it's own display style.
-        if inputs.run_mode == RunMode::PerformHiddenLayout {
-            debug_log!("HIDDEN");
-            return compute_hidden_layout(self, node);
-        }
+    fn compute_child_layout(&mut self, node_id: NodeId, inputs: LayoutInput) -> LayoutOutput {
+        self.compute_child_layout(
+            node_id,
+            inputs,
+            #[cfg(feature = "block_layout")]
+            None,
+        )
+    }
+}
 
-        // We run the following wrapped in "compute_cached_layout", which will check the cache for an entry matching the node and inputs and:
-        //   - Return that entry if exists
-        //   - Else call the passed closure (below) to compute the result
-        //
-        // If there was no cache match and a new result needs to be computed then that result will be added to the cache
-        compute_cached_layout(self, node, inputs, |tree, node, inputs| {
-            let display_mode = tree.taffy.nodes[node.into()].style.display;
-            let has_children = tree.child_count(node) > 0;
+impl<NodeContext, MeasureFunction> LayoutContainingBlock
+    for TaffyView<'_, NodeContext, MeasureFunction>
+where
+    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
+{
+    type OofItemStyle<'a>
+        = &'a Style
+    where
+        Self: 'a;
 
-            debug_log!(display_mode);
-            debug_log_node!(
-                inputs.known_dimensions,
-                inputs.parent_size,
-                inputs.available_space,
-                inputs.run_mode,
-                inputs.sizing_mode
-            );
+    #[inline(always)]
+    fn get_oof_item_style(&self, node_id: NodeId) -> Self::OofItemStyle<'_> {
+        &self.taffy.nodes[node_id.into()].style
+    }
 
-            // Dispatch to a layout algorithm based on the node's display style and whether the node has children or not.
-            match (display_mode, has_children) {
-                (Display::None, _) => compute_hidden_layout(tree, node),
-                #[cfg(feature = "block_layout")]
-                (Display::Block, true) => compute_block_layout(tree, node, inputs),
-                #[cfg(feature = "flexbox")]
-                (Display::Flex, true) => compute_flexbox_layout(tree, node, inputs),
-                #[cfg(feature = "grid")]
-                (Display::Grid, true) => compute_grid_layout(tree, node, inputs),
-                (_, false) => {
-                    let node_key = node.into();
-                    let style = &tree.taffy.nodes[node_key].style;
-                    let has_context = tree.taffy.nodes[node_key].has_context;
-                    let node_context = has_context.then(|| tree.taffy.node_context_data.get_mut(node_key)).flatten();
-                    let measure_function = |known_dimensions, available_space| {
-                        (tree.measure_function)(known_dimensions, available_space, node, node_context, style)
-                    };
-                    // TODO: implement calc() in high-level API
-                    compute_leaf_layout(inputs, style, |_, _| 0.0, measure_function)
-                }
-            }
-        })
+    #[inline(always)]
+    fn clear_hoisted_children(&mut self, node_id: NodeId) {
+        self.taffy.nodes[node_id.into()].hoisted_children.clear();
+    }
+
+    #[inline(always)]
+    fn add_hoisted_children(&mut self, node_id: NodeId, hoisted: &[NodeId]) {
+        self.taffy.nodes[node_id.into()]
+            .hoisted_children
+            .extend_from_slice(hoisted);
+    }
+
+    #[inline(always)]
+    fn get_detailed_layout_info(&self, node_id: NodeId) -> &DetailedLayoutInfo {
+        &self.taffy.nodes[node_id.into()].detailed_layout_info
     }
 }
 
 impl<NodeContext, MeasureFunction> CacheTree for TaffyView<'_, NodeContext, MeasureFunction>
 where
-    MeasureFunction:
-        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput,
+    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 {
-    fn cache_get(
-        &self,
-        node_id: NodeId,
-        known_dimensions: Size<Option<f32>>,
-        available_space: Size<AvailableSpace>,
-        run_mode: RunMode,
-    ) -> Option<LayoutOutput> {
-        self.taffy.nodes[node_id.into()].cache.get(known_dimensions, available_space, run_mode)
+    fn cache_get(&mut self, node_id: NodeId, input: &LayoutInput) -> Option<LayoutOutput> {
+        self.taffy.nodes[node_id.into()].cache.get(input)
     }
 
-    fn cache_store(
-        &mut self,
-        node_id: NodeId,
-        known_dimensions: Size<Option<f32>>,
-        available_space: Size<AvailableSpace>,
-        run_mode: RunMode,
-        layout_output: LayoutOutput,
-    ) {
-        self.taffy.nodes[node_id.into()].cache.store(known_dimensions, available_space, run_mode, layout_output)
+    fn cache_store(&mut self, node_id: NodeId, input: &LayoutInput, layout_output: LayoutOutput) {
+        self.taffy.nodes[node_id.into()]
+            .cache
+            .store(input, layout_output)
     }
 
     fn cache_clear(&mut self, node_id: NodeId) {
@@ -429,10 +580,10 @@ where
 }
 
 #[cfg(feature = "block_layout")]
-impl<NodeContext, MeasureFunction> LayoutBlockContainer for TaffyView<'_, NodeContext, MeasureFunction>
+impl<NodeContext, MeasureFunction> LayoutBlockContainer
+    for TaffyView<'_, NodeContext, MeasureFunction>
 where
-    MeasureFunction:
-        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput,
+    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 {
     type BlockContainerStyle<'a>
         = &'a Style
@@ -452,13 +603,23 @@ where
     fn get_block_child_style(&self, child_node_id: NodeId) -> Self::BlockItemStyle<'_> {
         self.get_core_container_style(child_node_id)
     }
+
+    #[inline(always)]
+    fn compute_block_child_layout(
+        &mut self,
+        node_id: NodeId,
+        inputs: LayoutInput,
+        block_ctx: Option<&mut BlockContext<'_>>,
+    ) -> LayoutOutput {
+        self.compute_child_layout(node_id, inputs, block_ctx)
+    }
 }
 
 #[cfg(feature = "flexbox")]
-impl<NodeContext, MeasureFunction> LayoutFlexboxContainer for TaffyView<'_, NodeContext, MeasureFunction>
+impl<NodeContext, MeasureFunction> LayoutFlexboxContainer
+    for TaffyView<'_, NodeContext, MeasureFunction>
 where
-    MeasureFunction:
-        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput,
+    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 {
     type FlexboxContainerStyle<'a>
         = &'a Style
@@ -481,10 +642,10 @@ where
 }
 
 #[cfg(feature = "grid")]
-impl<NodeContext, MeasureFunction> LayoutGridContainer for TaffyView<'_, NodeContext, MeasureFunction>
+impl<NodeContext, MeasureFunction> LayoutGridContainer
+    for TaffyView<'_, NodeContext, MeasureFunction>
 where
-    MeasureFunction:
-        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput,
+    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 {
     type GridContainerStyle<'a>
         = &'a Style
@@ -505,18 +666,33 @@ where
         &self.taffy.nodes[child_node_id.into()].style
     }
 
+    fn get_subgrid_tracks(&self, node_id: NodeId) -> Option<crate::style::SubgridTracks> {
+        self.taffy.nodes[node_id.into()].subgrid_tracks.clone()
+    }
+
+    fn set_content_shift(&mut self, node_id: NodeId, dy: f32) {
+        self.taffy.nodes[node_id.into()].content_shift = dy;
+    }
+
+    fn set_subgrid_tracks(&mut self, node_id: NodeId, tracks: Option<crate::style::SubgridTracks>) {
+        let node = &mut self.taffy.nodes[node_id.into()];
+        if node.subgrid_tracks != tracks {
+            node.subgrid_tracks = tracks;
+            node.cache.clear();
+        }
+    }
+
     #[inline(always)]
-    #[cfg(feature = "detailed_layout_info")]
     fn set_detailed_grid_info(&mut self, node_id: NodeId, detailed_grid_info: DetailedGridInfo) {
-        self.taffy.nodes[node_id.into()].detailed_layout_info = DetailedLayoutInfo::Grid(Box::new(detailed_grid_info));
+        self.taffy.nodes[node_id.into()].detailed_layout_info =
+            DetailedLayoutInfo::Grid(Box::new(detailed_grid_info));
     }
 }
 
 // RoundTree impl for TaffyView
 impl<NodeContext, MeasureFunction> RoundTree for TaffyView<'_, NodeContext, MeasureFunction>
 where
-    MeasureFunction:
-        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput,
+    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 {
     #[inline(always)]
     fn get_unrounded_layout(&self, node: NodeId) -> Layout {
@@ -527,10 +703,50 @@ where
     fn set_final_layout(&mut self, node_id: NodeId, layout: &Layout) {
         self.taffy.nodes[node_id.into()].final_layout = *layout;
     }
+
+    #[inline(always)]
+    fn is_out_of_flow(&self, node_id: NodeId) -> bool {
+        let node = &self.taffy.nodes[node_id.into()];
+        node.style.position.is_out_of_flow() && node.style.display != crate::style::Display::None
+    }
+
+    #[inline(always)]
+    fn hoisted_child_count(&self, node_id: NodeId) -> usize {
+        self.taffy.nodes[node_id.into()].hoisted_children.len()
+    }
+
+    #[inline(always)]
+    fn get_hoisted_child_id(&self, node_id: NodeId, index: usize) -> NodeId {
+        self.taffy.nodes[node_id.into()].hoisted_children[index]
+    }
 }
 
 #[allow(clippy::iter_cloned_collect)] // due to no-std support, we need to use `iter_cloned` instead of `collect`
 impl<NodeContext> TaffyTree<NodeContext> {
+    #[cfg(feature = "flexbox")]
+    fn row_uses_pct_height(&self, node: NodeId) -> bool {
+        use crate::style::{ExpandedDimension, ExpandedLengthPercentageAuto};
+        let preferred = |value: crate::style::Dimension| match value.expand() {
+            ExpandedDimension::Percent(_) | ExpandedDimension::FitContentPercent(_) => true,
+            #[cfg(feature = "calc")]
+            ExpandedDimension::Calc(_) => true,
+            _ => false,
+        };
+        let limit = |value: crate::style::LengthPercentageAuto| match value.expand() {
+            ExpandedLengthPercentageAuto::Percent(_) => true,
+            #[cfg(feature = "calc")]
+            ExpandedLengthPercentageAuto::Calc(_) => true,
+            _ => false,
+        };
+        self.children[node.into()].iter().any(|&child| {
+            let style = &self.nodes[child.into()].style;
+            preferred(style.size.height)
+                || limit(style.min_size.height)
+                || limit(style.max_size.height)
+                || (style.percent_basis_from_parent && self.row_uses_pct_height(child))
+        })
+    }
+
     /// Creates a new [`TaffyTree`]
     ///
     /// The default capacity of a [`TaffyTree`] is 16 nodes.
@@ -575,7 +791,11 @@ impl<NodeContext> TaffyTree<NodeContext> {
     /// Creates and adds a new unattached leaf node to the tree, and returns the [`NodeId`] of the new node
     ///
     /// Creates and adds a new leaf node with a supplied context
-    pub fn new_leaf_with_context(&mut self, layout: Style, context: NodeContext) -> TaffyResult<NodeId> {
+    pub fn new_leaf_with_context(
+        &mut self,
+        layout: Style,
+        context: NodeContext,
+    ) -> TaffyResult<NodeId> {
         let mut data = NodeData::new(layout);
         data.has_context = true;
 
@@ -596,7 +816,9 @@ impl<NodeContext> TaffyTree<NodeContext> {
             self.parents[(*child).into()] = Some(id);
         }
 
-        let _ = self.children.insert(children.iter().copied().collect::<_>());
+        let _ = self
+            .children
+            .insert(children.iter().copied().collect::<_>());
         let _ = self.parents.insert(None);
 
         Ok(id)
@@ -607,6 +829,10 @@ impl<NodeContext> TaffyTree<NodeContext> {
         self.nodes.clear();
         self.children.clear();
         self.parents.clear();
+        // A context belongs to the node that owns it. Leaving it behind keeps arbitrary
+        // user data -- for a measure function, a boxed closure and everything it
+        // captures -- alive after the node it belonged to is gone.
+        self.node_context_data.clear();
     }
 
     /// Remove a specific node from the tree and drop it
@@ -618,6 +844,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
             if let Some(children) = self.children.get_mut(parent.into()) {
                 children.retain(|f| *f != node);
             }
+            self.mark_dirty(parent)?;
         }
 
         // Remove "parent" references to a node when removing that node
@@ -630,13 +857,18 @@ impl<NodeContext> TaffyTree<NodeContext> {
         let _ = self.children.remove(key);
         let _ = self.parents.remove(key);
         let _ = self.nodes.remove(key);
+        let _ = self.node_context_data.remove(key);
 
         Ok(node)
     }
 
     /// Sets the context data associated with the node
     #[inline]
-    pub fn set_node_context(&mut self, node: NodeId, measure: Option<NodeContext>) -> TaffyResult<()> {
+    pub fn set_node_context(
+        &mut self,
+        node: NodeId,
+        measure: Option<NodeContext>,
+    ) -> TaffyResult<()> {
         let key = node.into();
         if let Some(measure) = measure {
             self.nodes[key].has_context = true;
@@ -668,7 +900,8 @@ impl<NodeContext> TaffyTree<NodeContext> {
         &mut self,
         keys: [NodeId; N],
     ) -> Option<[&mut NodeContext; N]> {
-        self.node_context_data.get_disjoint_mut(keys.map(|k| k.into()))
+        self.node_context_data
+            .get_disjoint_mut(keys.map(|k| k.into()))
     }
 
     /// Adds a `child` node under the supplied `parent`
@@ -683,12 +916,21 @@ impl<NodeContext> TaffyTree<NodeContext> {
     }
 
     /// Inserts a `child` node at the given `child_index` under the supplied `parent`, shifting all children after it to the right.
-    pub fn insert_child_at_index(&mut self, parent: NodeId, child_index: usize, child: NodeId) -> TaffyResult<()> {
+    pub fn insert_child_at_index(
+        &mut self,
+        parent: NodeId,
+        child_index: usize,
+        child: NodeId,
+    ) -> TaffyResult<()> {
         let parent_key = parent.into();
 
         let child_count = self.children[parent_key].len();
         if child_index > child_count {
-            return Err(TaffyError::ChildIndexOutOfBounds { parent, child_index, child_count });
+            return Err(TaffyError::ChildIndexOutOfBounds {
+                parent,
+                child_index,
+                child_count,
+            });
         }
 
         self.parents[child.into()] = Some(parent);
@@ -718,7 +960,9 @@ impl<NodeContext> TaffyTree<NodeContext> {
 
         let parent_children = &mut self.children[parent_key];
         parent_children.clear();
-        children.iter().for_each(|child| parent_children.push(*child));
+        children
+            .iter()
+            .for_each(|child| parent_children.push(*child));
 
         self.mark_dirty(parent)?;
 
@@ -729,18 +973,29 @@ impl<NodeContext> TaffyTree<NodeContext> {
     ///
     /// The child is not removed from the tree entirely, it is simply no longer attached to its previous parent.
     pub fn remove_child(&mut self, parent: NodeId, child: NodeId) -> TaffyResult<NodeId> {
-        let index = self.children[parent.into()].iter().position(|n| *n == child).unwrap();
+        let index = self.children[parent.into()]
+            .iter()
+            .position(|n| *n == child)
+            .unwrap();
         self.remove_child_at_index(parent, index)
     }
 
     /// Removes the child at the given `index` from the `parent`
     ///
     /// The child is not removed from the tree entirely, it is simply no longer attached to its previous parent.
-    pub fn remove_child_at_index(&mut self, parent: NodeId, child_index: usize) -> TaffyResult<NodeId> {
+    pub fn remove_child_at_index(
+        &mut self,
+        parent: NodeId,
+        child_index: usize,
+    ) -> TaffyResult<NodeId> {
         let parent_key = parent.into();
         let child_count = self.children[parent_key].len();
         if child_index >= child_count {
-            return Err(TaffyError::ChildIndexOutOfBounds { parent, child_index, child_count });
+            return Err(TaffyError::ChildIndexOutOfBounds {
+                parent,
+                child_index,
+                child_count,
+            });
         }
 
         let child = self.children[parent_key].remove(child_index);
@@ -782,7 +1037,11 @@ impl<NodeContext> TaffyTree<NodeContext> {
 
         let child_count = self.children[parent_key].len();
         if child_index >= child_count {
-            return Err(TaffyError::ChildIndexOutOfBounds { parent, child_index, child_count });
+            return Err(TaffyError::ChildIndexOutOfBounds {
+                parent,
+                child_index,
+                child_count,
+            });
         }
 
         self.parents[new_child.into()] = Some(parent);
@@ -800,7 +1059,11 @@ impl<NodeContext> TaffyTree<NodeContext> {
         let parent_key = parent.into();
         let child_count = self.children[parent_key].len();
         if child_index >= child_count {
-            return Err(TaffyError::ChildIndexOutOfBounds { parent, child_index, child_count });
+            return Err(TaffyError::ChildIndexOutOfBounds {
+                parent,
+                child_index,
+                child_count,
+            });
         }
 
         Ok(self.children[parent_key][child_index])
@@ -824,6 +1087,13 @@ impl<NodeContext> TaffyTree<NodeContext> {
     /// Returns a list of children that belong to the parent node
     pub fn children(&self, parent: NodeId) -> TaffyResult<Vec<NodeId>> {
         Ok(self.children[parent.into()].clone())
+    }
+
+    /// Returns the out-of-flow (absolute/fixed) boxes whose containing block is `node`, as
+    /// recorded by the last layout. These boxes are laid out by `node` rather than by their
+    /// parent, and their [`Layout::location`] is relative to `node`.
+    pub fn hoisted_children(&self, node: NodeId) -> TaffyResult<&[NodeId]> {
+        Ok(&self.nodes[node.into()].hoisted_children)
     }
 
     /// Sets the [`Style`] of the provided `node`
@@ -850,6 +1120,14 @@ impl<NodeContext> TaffyTree<NodeContext> {
         }
     }
 
+    /// KaminIDE patch: y offset of the node's children inside its box (a
+    /// `vertical-align: baseline` table cell); add it to the node's origin when
+    /// placing its children.
+    #[inline]
+    pub fn content_shift(&self, node: NodeId) -> f32 {
+        self.nodes[node.into()].content_shift
+    }
+
     /// Returns this node layout with unrounded values relative to its parent.
     #[inline]
     pub fn unrounded_layout(&self, node: NodeId) -> &Layout {
@@ -860,7 +1138,6 @@ impl<NodeContext> TaffyTree<NodeContext> {
     ///
     /// Currently this is only implemented for CSS Grid containers where it contains
     /// the computed size of each grid track and the computed placement of each grid item
-    #[cfg(feature = "detailed_layout_info")]
     #[inline]
     pub fn detailed_layout_info(&self, node_id: NodeId) -> &DetailedLayoutInfo {
         &self.nodes[node_id.into()].detailed_layout_info
@@ -907,10 +1184,13 @@ impl<NodeContext> TaffyTree<NodeContext> {
     ) -> Result<(), TaffyError>
     where
         MeasureFunction:
-            FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput,
+            FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
     {
         let use_rounding = self.config.use_rounding;
-        let mut taffy_view = TaffyView { taffy: self, measure_function };
+        let mut taffy_view = TaffyView {
+            taffy: self,
+            measure_function,
+        };
         compute_root_layout(&mut taffy_view, node_id, available_space);
         if use_rounding {
             round_layout(&mut taffy_view, node_id);
@@ -919,8 +1199,14 @@ impl<NodeContext> TaffyTree<NodeContext> {
     }
 
     /// Updates the stored layout of the provided `node` and its children
-    pub fn compute_layout(&mut self, node: NodeId, available_space: Size<AvailableSpace>) -> Result<(), TaffyError> {
-        self.compute_layout_with_measure(node, available_space, |_, _, _, _, _| Size::ZERO.into())
+    pub fn compute_layout(
+        &mut self,
+        node: NodeId,
+        available_space: Size<AvailableSpace>,
+    ) -> Result<(), TaffyError> {
+        self.compute_layout_with_measure(node, available_space, |inputs, _, _, style| {
+            compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
+        })
     }
 
     /// Prints a debug representation of the tree's layout
@@ -932,7 +1218,12 @@ impl<NodeContext> TaffyTree<NodeContext> {
     /// Returns an instance of LayoutTree representing the TaffyTree
     #[cfg(test)]
     pub(crate) fn as_layout_tree(&mut self) -> impl LayoutPartialTree + CacheTree + '_ {
-        TaffyView { taffy: self, measure_function: |_, _, _, _, _| Size::ZERO.into() }
+        TaffyView {
+            taffy: self,
+            measure_function: |inputs, _, _, style| {
+                compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
+            },
+        }
     }
 }
 
@@ -945,13 +1236,19 @@ mod tests {
     use crate::util::sys;
 
     fn size_measure_function(
-        known_dimensions: Size<Option<f32>>,
-        _available_space: Size<AvailableSpace>,
+        inputs: LayoutInput,
         _node_id: NodeId,
         node_context: Option<&mut Size<f32>>,
-        _style: &Style,
-    ) -> crate::tree::MeasureOutput {
-        known_dimensions.unwrap_or(node_context.cloned().unwrap_or(Size::ZERO)).into()
+        style: &Style,
+    ) -> LayoutOutput {
+        compute_leaf_layout(
+            inputs,
+            style,
+            |_, _| 0.0,
+            |known_dimensions, _available_space| {
+                known_dimensions.unwrap_or(node_context.cloned().unwrap_or(Size::ZERO))
+            },
+        )
     }
 
     #[test]
@@ -1004,7 +1301,9 @@ mod tests {
         let mut taffy: TaffyTree<()> = TaffyTree::new();
         let child0 = taffy.new_leaf(Style::default()).unwrap();
         let child1 = taffy.new_leaf(Style::default()).unwrap();
-        let node = taffy.new_with_children(Style::default(), &[child0, child1]).unwrap();
+        let node = taffy
+            .new_with_children(Style::default(), &[child0, child1])
+            .unwrap();
 
         // node should have two children
         assert_eq!(taffy.child_count(node), 2);
@@ -1054,15 +1353,65 @@ mod tests {
         taffy.remove(parent).unwrap();
     }
 
+    // Related to: https://github.com/DioxusLabs/taffy/issues/998
+    #[test]
+    fn remove_node_marks_parent_dirty() {
+        use crate::prelude::*;
+
+        let mut taffy: TaffyTree<()> = TaffyTree::new();
+
+        // The root's height comes entirely from its child's 1px bottom border
+        let child = taffy
+            .new_leaf(Style {
+                border: Rect {
+                    bottom: length(1f32),
+                    ..Rect::zero()
+                },
+                ..Default::default()
+            })
+            .unwrap();
+        let root = taffy.new_with_children(Style::default(), &[child]).unwrap();
+
+        taffy.compute_layout(root, Size::MIN_CONTENT).unwrap();
+        assert_eq!(taffy.layout(root).unwrap().size.height, 1f32);
+
+        taffy.remove(child).unwrap();
+        assert_eq!(taffy.dirty(root), Ok(true));
+
+        // The root no longer has any children, so its height should shrink back to zero
+        taffy.compute_layout(root, Size::MIN_CONTENT).unwrap();
+        assert_eq!(taffy.layout(root).unwrap().size.height, 0f32);
+    }
+
     #[test]
     fn set_measure() {
         let mut taffy: TaffyTree<Size<f32>> = TaffyTree::new();
-        let node = taffy.new_leaf_with_context(Style::default(), Size { width: 200.0, height: 200.0 }).unwrap();
-        taffy.compute_layout_with_measure(node, Size::MAX_CONTENT, size_measure_function).unwrap();
+        let node = taffy
+            .new_leaf_with_context(
+                Style::default(),
+                Size {
+                    width: 200.0,
+                    height: 200.0,
+                },
+            )
+            .unwrap();
+        taffy
+            .compute_layout_with_measure(node, Size::MAX_CONTENT, size_measure_function)
+            .unwrap();
         assert_eq!(taffy.layout(node).unwrap().size.width, 200.0);
 
-        taffy.set_node_context(node, Some(Size { width: 100.0, height: 100.0 })).unwrap();
-        taffy.compute_layout_with_measure(node, Size::MAX_CONTENT, size_measure_function).unwrap();
+        taffy
+            .set_node_context(
+                node,
+                Some(Size {
+                    width: 100.0,
+                    height: 100.0,
+                }),
+            )
+            .unwrap();
+        taffy
+            .compute_layout_with_measure(node, Size::MAX_CONTENT, size_measure_function)
+            .unwrap();
         assert_eq!(taffy.layout(node).unwrap().size.width, 100.0);
     }
 
@@ -1070,11 +1419,23 @@ mod tests {
     fn set_measure_of_previously_unmeasured_node() {
         let mut taffy: TaffyTree<Size<f32>> = TaffyTree::new();
         let node = taffy.new_leaf(Style::default()).unwrap();
-        taffy.compute_layout_with_measure(node, Size::MAX_CONTENT, size_measure_function).unwrap();
+        taffy
+            .compute_layout_with_measure(node, Size::MAX_CONTENT, size_measure_function)
+            .unwrap();
         assert_eq!(taffy.layout(node).unwrap().size.width, 0.0);
 
-        taffy.set_node_context(node, Some(Size { width: 100.0, height: 100.0 })).unwrap();
-        taffy.compute_layout_with_measure(node, Size::MAX_CONTENT, size_measure_function).unwrap();
+        taffy
+            .set_node_context(
+                node,
+                Some(Size {
+                    width: 100.0,
+                    height: 100.0,
+                }),
+            )
+            .unwrap();
+        taffy
+            .compute_layout_with_measure(node, Size::MAX_CONTENT, size_measure_function)
+            .unwrap();
         assert_eq!(taffy.layout(node).unwrap().size.width, 100.0);
     }
 
@@ -1127,7 +1488,9 @@ mod tests {
 
         let child0 = taffy.new_leaf(Style::default()).unwrap();
         let child1 = taffy.new_leaf(Style::default()).unwrap();
-        let node = taffy.new_with_children(Style::default(), &[child0, child1]).unwrap();
+        let node = taffy
+            .new_with_children(Style::default(), &[child0, child1])
+            .unwrap();
 
         assert_eq!(taffy.child_count(node), 2);
         assert_eq!(taffy.children(node).unwrap()[0], child0);
@@ -1148,7 +1511,9 @@ mod tests {
         let mut taffy: TaffyTree<()> = TaffyTree::new();
         let child0 = taffy.new_leaf(Style::default()).unwrap();
         let child1 = taffy.new_leaf(Style::default()).unwrap();
-        let node = taffy.new_with_children(Style::default(), &[child0, child1]).unwrap();
+        let node = taffy
+            .new_with_children(Style::default(), &[child0, child1])
+            .unwrap();
 
         assert_eq!(taffy.child_count(node), 2);
 
@@ -1165,7 +1530,9 @@ mod tests {
         let mut taffy: TaffyTree<()> = TaffyTree::new();
         let child0 = taffy.new_leaf(Style::default()).unwrap();
         let child1 = taffy.new_leaf(Style::default()).unwrap();
-        let node = taffy.new_with_children(Style::default(), &[child0, child1]).unwrap();
+        let node = taffy
+            .new_with_children(Style::default(), &[child0, child1])
+            .unwrap();
 
         assert_eq!(taffy.child_count(node), 2);
 
@@ -1184,7 +1551,9 @@ mod tests {
         let child1 = taffy.new_leaf(Style::default()).unwrap();
         let child2 = taffy.new_leaf(Style::default()).unwrap();
         let child3 = taffy.new_leaf(Style::default()).unwrap();
-        let node = taffy.new_with_children(Style::default(), &[child0, child1, child2, child3]).unwrap();
+        let node = taffy
+            .new_with_children(Style::default(), &[child0, child1, child2, child3])
+            .unwrap();
 
         assert_eq!(taffy.child_count(node), 4);
 
@@ -1222,7 +1591,9 @@ mod tests {
         let child0 = taffy.new_leaf(Style::default()).unwrap();
         let child1 = taffy.new_leaf(Style::default()).unwrap();
 
-        let node = taffy.new_with_children(Style::default(), &[child0]).unwrap();
+        let node = taffy
+            .new_with_children(Style::default(), &[child0])
+            .unwrap();
         assert_eq!(taffy.child_count(node), 1);
         assert_eq!(taffy.children(node).unwrap()[0], child0);
 
@@ -1236,18 +1607,34 @@ mod tests {
         let child0 = taffy.new_leaf(Style::default()).unwrap();
         let child1 = taffy.new_leaf(Style::default()).unwrap();
         let child2 = taffy.new_leaf(Style::default()).unwrap();
-        let node = taffy.new_with_children(Style::default(), &[child0, child1, child2]).unwrap();
+        let node = taffy
+            .new_with_children(Style::default(), &[child0, child1, child2])
+            .unwrap();
 
-        assert!(if let Ok(result) = taffy.child_at_index(node, 0) { result == child0 } else { false });
-        assert!(if let Ok(result) = taffy.child_at_index(node, 1) { result == child1 } else { false });
-        assert!(if let Ok(result) = taffy.child_at_index(node, 2) { result == child2 } else { false });
+        assert!(if let Ok(result) = taffy.child_at_index(node, 0) {
+            result == child0
+        } else {
+            false
+        });
+        assert!(if let Ok(result) = taffy.child_at_index(node, 1) {
+            result == child1
+        } else {
+            false
+        });
+        assert!(if let Ok(result) = taffy.child_at_index(node, 2) {
+            result == child2
+        } else {
+            false
+        });
     }
     #[test]
     fn test_child_count() {
         let mut taffy: TaffyTree<()> = TaffyTree::new();
         let child0 = taffy.new_leaf(Style::default()).unwrap();
         let child1 = taffy.new_leaf(Style::default()).unwrap();
-        let node = taffy.new_with_children(Style::default(), &[child0, child1]).unwrap();
+        let node = taffy
+            .new_with_children(Style::default(), &[child0, child1])
+            .unwrap();
 
         assert!(taffy.child_count(node) == 2);
         assert!(taffy.child_count(child0) == 0);
@@ -1260,7 +1647,9 @@ mod tests {
         let mut taffy: TaffyTree<()> = TaffyTree::new();
         let child0 = taffy.new_leaf(Style::default()).unwrap();
         let child1 = taffy.new_leaf(Style::default()).unwrap();
-        let node = taffy.new_with_children(Style::default(), &[child0, child1]).unwrap();
+        let node = taffy
+            .new_with_children(Style::default(), &[child0, child1])
+            .unwrap();
 
         let mut children = sys::Vec::new();
         children.push(child0);
@@ -1278,14 +1667,26 @@ mod tests {
         let node = taffy.new_leaf(Style::default()).unwrap();
         assert_eq!(taffy.style(node).unwrap().display, Display::Flex);
 
-        taffy.set_style(node, Style { display: Display::None, ..Style::default() }).unwrap();
+        taffy
+            .set_style(
+                node,
+                Style {
+                    display: Display::None,
+                    ..Style::default()
+                },
+            )
+            .unwrap();
         assert_eq!(taffy.style(node).unwrap().display, Display::None);
     }
     #[test]
     fn test_style() {
         let mut taffy: TaffyTree<()> = TaffyTree::new();
 
-        let style = Style { display: Display::None, flex_direction: FlexDirection::RowReverse, ..Default::default() };
+        let style = Style {
+            display: Display::None,
+            flex_direction: FlexDirection::RowReverse,
+            ..Default::default()
+        };
 
         let node = taffy.new_leaf(style.clone()).unwrap();
 
@@ -1308,7 +1709,9 @@ mod tests {
         let mut taffy: TaffyTree<()> = TaffyTree::new();
         let child0 = taffy.new_leaf(Style::default()).unwrap();
         let child1 = taffy.new_leaf(Style::default()).unwrap();
-        let node = taffy.new_with_children(Style::default(), &[child0, child1]).unwrap();
+        let node = taffy
+            .new_with_children(Style::default(), &[child0, child1])
+            .unwrap();
 
         taffy.compute_layout(node, Size::MAX_CONTENT).unwrap();
 
@@ -1332,14 +1735,20 @@ mod tests {
     fn compute_layout_should_produce_valid_result() {
         let mut taffy: TaffyTree<()> = TaffyTree::new();
         let node_result = taffy.new_leaf(Style {
-            size: Size { width: Dimension::from_length(10f32), height: Dimension::from_length(10f32) },
+            size: Size {
+                width: Dimension::from_length(10f32),
+                height: Dimension::from_length(10f32),
+            },
             ..Default::default()
         });
         assert!(node_result.is_ok());
         let node = node_result.unwrap();
         let layout_result = taffy.compute_layout(
             node,
-            Size { width: AvailableSpace::Definite(100.), height: AvailableSpace::Definite(100.) },
+            Size {
+                width: AvailableSpace::Definite(100.),
+                height: AvailableSpace::Definite(100.),
+            },
         );
         assert!(layout_result.is_ok());
     }
@@ -1352,7 +1761,10 @@ mod tests {
 
         let node = taffy
             .new_leaf(Style {
-                size: Size { width: Dimension::from_percent(1f32), height: Dimension::from_percent(1f32) },
+                size: Size {
+                    width: Dimension::from_percent(1f32),
+                    height: Dimension::from_percent(1f32),
+                },
                 ..Default::default()
             })
             .unwrap();
@@ -1360,7 +1772,10 @@ mod tests {
         let root = taffy
             .new_with_children(
                 Style {
-                    size: Size { width: Dimension::from_length(100f32), height: Dimension::from_length(100f32) },
+                    size: Size {
+                        width: Dimension::from_length(100f32),
+                        height: Dimension::from_length(100f32),
+                    },
                     padding: Rect {
                         left: length(10f32),
                         right: length(20f32),
@@ -1398,5 +1813,51 @@ mod tests {
         taffy.set_children(new_parent, &[child]).unwrap();
 
         assert!(taffy.children(old_parent).unwrap().is_empty());
+    }
+
+    /// A context that increments a counter when dropped. Each test owns its own static
+    /// counter so the two can run in parallel.
+    struct DropCounted(&'static core::sync::atomic::AtomicUsize);
+
+    impl Drop for DropCounted {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn remove_drops_the_nodes_context() {
+        static DROPS: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+        let mut taffy: TaffyTree<DropCounted> = TaffyTree::new();
+        let node = taffy
+            .new_leaf_with_context(Style::DEFAULT, DropCounted(&DROPS))
+            .unwrap();
+
+        taffy.remove(node).unwrap();
+
+        assert_eq!(
+            DROPS.load(core::sync::atomic::Ordering::SeqCst),
+            1,
+            "removing a node must drop its context rather than strand it in node_context_data"
+        );
+    }
+
+    #[test]
+    fn clear_drops_every_nodes_context() {
+        static DROPS: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+        let mut taffy: TaffyTree<DropCounted> = TaffyTree::new();
+        for _ in 0..8 {
+            taffy
+                .new_leaf_with_context(Style::DEFAULT, DropCounted(&DROPS))
+                .unwrap();
+        }
+
+        taffy.clear();
+
+        assert_eq!(
+            DROPS.load(core::sync::atomic::Ordering::SeqCst),
+            8,
+            "clear() drops all nodes, so it must drop their contexts too"
+        );
     }
 }
