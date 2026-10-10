@@ -42,6 +42,9 @@ export interface SafeRendererSample {
   storeWindow: number
   scrollUpMax: number
   windowState: "within-configured-window" | "over-configured-window" | "unknown"
+  /** Debug acceptance only (KAMIN_DEBUG_AGENT_RETENTION=1): subagent transcript
+   *  retention counters for the INC-2026-0008 gate. Absent otherwise. */
+  agentRetention?: { slots: number; storedEntries: number; uuidIndex: number; closedTabSlots: number }
 }
 
 function boundedCount(value: unknown): number {
@@ -110,7 +113,19 @@ export function normalizeRendererSample(raw: unknown): SafeRendererSample {
     storeWindow: boundedCount(sample.storeWindow),
     scrollUpMax: boundedCount(sample.scrollUpMax),
     windowState,
+    ...debugAgentRetention(sample.agentRetention),
   }
+}
+
+function debugAgentRetention(raw: unknown): Pick<SafeRendererSample, "agentRetention"> {
+  if (process.env.KAMIN_DEBUG_AGENT_RETENTION !== "1" || !raw || typeof raw !== "object") return {}
+  const r = raw as Record<string, unknown>
+  return { agentRetention: {
+    slots: boundedCount(r.slots),
+    storedEntries: boundedCount(r.storedEntries),
+    uuidIndex: boundedCount(r.uuidIndex),
+    closedTabSlots: boundedCount(r.closedTabSlots),
+  } }
 }
 
 export function formatIncidentLine(record: SafeConnectionTransition | SafeRendererSample | SafeRecordDropped | SafeInvokeBoundary): string {
