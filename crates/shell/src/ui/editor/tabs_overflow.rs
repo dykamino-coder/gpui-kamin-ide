@@ -96,6 +96,7 @@ pub(crate) fn overflow(
                     offset: gpui::point(px(0.), px(6.)),
                     blur_radius: px(24.),
                     spread_radius: px(0.),
+                    inset: false,
                 }])
                 .p(px(m::SPACE_1))
                 .flex()

@@ -2,8 +2,6 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
-import { WebglAddon } from '@xterm/addon-webgl'
-import { CanvasAddon } from '@xterm/addon-canvas'
 import { SerializeAddon } from '@xterm/addon-serialize'
 import { stripMouseTracking } from '../lib/strip-mouse-tracking'
 import { buildTerminalTheme } from '../theme/terminal-theme'
@@ -15,6 +13,7 @@ import { terminalAtBottom } from '../signals/ui'
 import { activeTabId } from '../signals/tabs'
 import { tabPromptVisible, tabPromptReady } from '../signals/connection'
 import { localQueue } from '../signals/queue'
+import { enableTerminalRenderer } from './terminal-renderer'
 
 /** True once the terminal buffer holds ANY non-blank line — used to keep the
  *  "Connecting…" overlay up until the console actually has something to show
@@ -135,40 +134,7 @@ export function useTerminal(tabId: string): TerminalRefs {
       if (stored) terminal.write(stripMouseTracking(stored))
     } catch { /* malformed historical snapshot */ }
 
-    // Renderer ladder: WebGL → Canvas → DOM. WebGL gives ~5-9× the throughput
-    // of the DOM renderer on heavy streams (per VSCode benchmarks) and uses
-    // GPU-side glyph caching. We try it first; on context loss (driver
-    // crash, GPU eviction, sandbox without GL) the addon emits
-    // `onContextLoss` — we dispose and fall back to Canvas. Canvas itself
-    // can fail in environments with no 2D acceleration; in that case we
-    // just leave the default DOM renderer in place. xterm's DOM renderer
-    // ALWAYS works, so any failure path is safe.
-    let activeRenderer: WebglAddon | CanvasAddon | null = null
-    function tryWebgl(): boolean {
-      try {
-        const webgl = new WebglAddon()
-        webgl.onContextLoss(() => {
-          try { webgl.dispose() } catch { /* ignore */ }
-          activeRenderer = null
-          tryCanvas()
-        })
-        terminal.loadAddon(webgl)
-        activeRenderer = webgl
-        return true
-      } catch {
-        return false
-      }
-    }
-    function tryCanvas(): void {
-      try {
-        const canvas = new CanvasAddon()
-        terminal.loadAddon(canvas)
-        activeRenderer = canvas
-      } catch {
-        // Both accelerated paths failed — DOM stays. Nothing to do.
-      }
-    }
-    if (!tryWebgl()) tryCanvas()
+    const disposeRenderer = enableTerminalRenderer(terminal)
 
     // Clipboard: paste via native paste event on xterm's textarea
     const xtermTextarea = container.querySelector('textarea')
@@ -420,8 +386,7 @@ export function useTerminal(tabId: string): TerminalRefs {
       // the addon, but explicit dispose surfaces WebGL context release
       // immediately so a fast tab-recreate doesn't pile up zombie GL
       // contexts.
-      try { activeRenderer?.dispose() } catch { /* ignore */ }
-      activeRenderer = null
+      disposeRenderer()
       try { serializeAddon.dispose() } catch { /* ignore */ }
       terminal.dispose()
       terminalRef.current = null
