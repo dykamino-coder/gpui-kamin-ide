@@ -29,8 +29,6 @@ import {
   writeInput,
   submitText,
   resizeTerminal,
-  handleMcpResponse,
-  handleMcpDenied,
   handleElicitationResponse,
   getSession,
   restartWithEffort,
@@ -38,6 +36,8 @@ import {
   getSessionTree,
   deleteSessionByConversationId,
 } from './session-manager'
+import { settleMcpResult } from './session-mcp-call'
+import { sendToClient } from './session-io'
 import { eventBus } from '../events/bus'
 import { sendSessionError as sendError } from './session-error'
 
@@ -273,8 +273,16 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           break
         }
 
-        case 'mcp:response': {
-          handleMcpResponse(msg.requestId, msg.result)
+        case 'mcp:response':
+        case 'mcp:denied': {
+          if (!authenticatedSessionId || sessionWsMap.get(authenticatedSessionId) !== ws) return
+          const accepted = settleMcpResult(authenticatedSessionId, msg)
+          sendToClient(ws, {
+            type: 'mcp:result-ack',
+            sessionId: authenticatedSessionId,
+            requestId: msg.requestId,
+            accepted,
+          })
           break
         }
 
@@ -282,11 +290,6 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           // Local hook executor in the client host returned its result.
           const { handleLocalHookResponse } = await import('../hooks/dispatcher')
           handleLocalHookResponse(msg.requestId, msg.result)
-          break
-        }
-
-        case 'mcp:denied': {
-          handleMcpDenied(msg.requestId, msg.reason)
           break
         }
 
