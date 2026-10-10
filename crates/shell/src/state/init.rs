@@ -137,6 +137,7 @@ impl RootView {
             switching_to: None,
             chat_cover: None,
             webviews_alive: std::collections::HashSet::new(),
+            webview_slots: super::webview_visibility::Slots::default(),
             webview_cover: std::collections::HashMap::new(),
             status_items: std::collections::HashMap::new(),
             diags: std::collections::HashMap::new(),
