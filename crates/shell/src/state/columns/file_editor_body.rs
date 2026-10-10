@@ -203,7 +203,11 @@ impl RootView {
                     // накладывается: три колонки в ряд.
                     .child(crate::ui::editor_minimap::minimap(
                         input,
-                        self.ed.minimap_input.as_ref(),
+                        self.ed
+                            .editor_tabs
+                            .iter()
+                            .find(|t| t.path == apath)
+                            .map(|t| &t.minimap),
                         p,
                     ))
                     .child(crate::ui::editor_minimap::scrollbar(

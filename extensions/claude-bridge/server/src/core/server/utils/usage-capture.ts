@@ -2,6 +2,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
 import headless from '@xterm/headless'
+import { devCli } from '../../pty/dev-cli'
 import { injectProxyEnv } from '../../config/settings'
 import { emptyPlanUsage, combinePlanUsage, parseUsageScreen } from './plan-usage'
 import { createUsageProbe, quoteCaptureArgument } from './usage-statusline'
@@ -26,6 +27,9 @@ async function captureSnapshot(): Promise<UsageData> {
   let stop = () => {}
   try {
     const pty = await import('node-pty')
+    // The guarded checkout-only path shares the capture pipeline. An invalid
+    // fake configuration must fail closed, never fall back to an installed CLI.
+    const developmentCli = devCli()
     const env: Record<string, string> = {}
     for (const [name, value] of Object.entries(process.env))
       if (value !== undefined && name !== 'CLAUDECODE') env[name] = value
@@ -33,7 +37,13 @@ async function captureSnapshot(): Promise<UsageData> {
     const command = `${quoteCaptureArgument(findClaude())} --dangerously-skip-permissions --settings ${quoteCaptureArgument(probe.settings)} /usage`
     const shell = process.platform === 'win32' ? 'cmd.exe' : 'bash'
     const args = process.platform === 'win32' ? ['/d', '/v:off', '/s', '/c', command] : ['-lc', `exec ${command}`]
-    const proc = pty.spawn(shell, args, { name: 'xterm-256color', cols: 120, rows: 80, cwd: os.homedir(), env })
+    const proc = pty.spawn(
+      developmentCli?.command ?? shell,
+      developmentCli
+        ? [...developmentCli.prefix, '--dangerously-skip-permissions', '--settings', probe.settings, '/usage']
+        : args,
+      { name: 'xterm-256color', cols: 120, rows: 80, cwd: os.homedir(), env },
+    )
     let stopped = false
     stop = () => {
       if (stopped) return

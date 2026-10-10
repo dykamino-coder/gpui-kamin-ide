@@ -37,7 +37,7 @@ mod visibility;
 pub use diag::{ctx_took, draw_took, drawn, rows_built};
 pub use element::{ensure_focus_handles, web_view};
 pub use process::{exit_if_child_process, init, shutdown};
-pub use visibility::{mark_visible, mark_visible_union};
+pub use visibility::mark_visible;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
@@ -225,7 +225,7 @@ pub(crate) fn respawn_stalled() {
 const NEVER_REAP: &[&str] = &["claudeBridgeChat"];
 
 pub(crate) fn reap_hidden() {
-    let visible = visibility::visible_set();
+    let (visible, retained) = visibility::reap_sets();
     let now = std::time::Instant::now();
     for id in browsers::ids() {
         if NEVER_REAP.contains(&id.as_str()) {
@@ -235,6 +235,9 @@ pub(crate) fn reap_hidden() {
             if let Ok(mut m) = HIDDEN_AT.lock() {
                 m.remove(&id);
             }
+            continue;
+        }
+        if retained.contains(&id) {
             continue;
         }
         let expired = {
@@ -277,7 +280,6 @@ pub fn flush_retired(cx: &mut gpui::App) {
     }
 }
 
-/// Открыть вью с адресом. Идемпотентно: второй раз ничего не делает.
 /// Живы ли браузеры CEF. Флага больше нет: CEF — единственный путь.
 pub fn enabled() -> bool {
     process::is_live()
@@ -338,7 +340,6 @@ fn html_changed(id: &str) -> bool {
     true
 }
 
-/// Показать в вью нашу страницу (HTML моста).
 /// Отдать странице пачку сообщений расширения.
 ///
 /// В скрипт кладём только НОМЕР пачки: тело страница забирает запросом

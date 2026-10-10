@@ -1,3 +1,4 @@
+import os from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const fake = vi.hoisted(() => ({
   fail: false,
@@ -5,6 +6,7 @@ const fake = vi.hoisted(() => ({
     data?: (text: string) => void
     exit?: () => void
     kill: ReturnType<typeof vi.fn>
+    file: string
     args: string[]
   }>,
 }))
@@ -15,6 +17,7 @@ vi.mock('node-pty', () => ({
       data: undefined as ((text: string) => void) | undefined,
       exit: undefined as (() => void) | undefined,
       kill: vi.fn(),
+      file: _file,
       args,
     }
     fake.processes.push(proc)
@@ -45,6 +48,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.clearAllTimers()
   vi.useRealTimers()
+  vi.unstubAllEnvs()
 })
 const common = (session = 23, week = 42, model = 'Fable', percent = 17) =>
   `Current session\r\n${session}% used\r\nResets 6pm (UTC)\r\nCurrent week (all models)\r\n${week}% used\r\nResets Oct 12 at 6pm (UTC)\r\nPromotion: bonus usage until next month\r\nCurrent week (${model})\r\n${percent}% used\r\nResets Oct 12 at 6pm (UTC)\r\nExtra usage\r\nNot enabled\r\nEsc to cancel`
@@ -56,6 +60,47 @@ async function emit(index: number, text: string) {
   await vi.advanceTimersByTimeAsync(30)
 }
 describe('BR-20 actual capture contract', () => {
+  // PTY spawn is mocked: these selector tests never start a CLI or server.
+  it('routes fake CLI through the same dynamic windows and final-screen capture', async () => {
+    vi.stubEnv('NODE_ENV', 'test')
+    vi.stubEnv('BRIDGE_DEV_FAKE_CLI', '1')
+    vi.stubEnv('BRIDGE_FAKE_CLI_HOME', os.homedir())
+    const { captureUsage } = await import('./usage-capture')
+    const { fakeCliPath } = await import('../../pty/dev-cli')
+    const promise = captureUsage(true)
+    await emit(0, common(12, 31) + '\x1b[2J\x1b[H' + common(29, 48, 'Fable', 19))
+    const proc = fake.processes[0]!
+    expect(proc.file).toBe(process.execPath)
+    expect(proc.args[0]).toBe(fakeCliPath)
+    expect(proc.args).toEqual(expect.arrayContaining(['--settings', '/usage']))
+    expect((await promise).windows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'five_hour', percent: 29 }),
+        expect.objectContaining({ id: 'seven_day', percent: 48 }),
+        expect.objectContaining({ model: 'Fable', percent: 19 }),
+      ]),
+    )
+    expect(proc.kill).toHaveBeenCalledTimes(1)
+  })
+  it('uses the production shell capture even when a fake opt-in is present', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('BRIDGE_DEV_FAKE_CLI', '1')
+    vi.stubEnv('BRIDGE_FAKE_CLI_HOME', os.homedir())
+    const { captureUsage } = await import('./usage-capture')
+    const promise = captureUsage(true)
+    await emit(0, common())
+    expect(fake.processes[0]!.file).toBe(process.platform === 'win32' ? 'cmd.exe' : 'bash')
+    expect(fake.processes[0]!.args.join(' ')).toContain('--settings')
+    expect((await promise).windows.some((window) => window.model === 'Fable')).toBe(true)
+  })
+  it('fails closed for an invalid fake profile instead of starting the installed CLI', async () => {
+    vi.stubEnv('NODE_ENV', 'test')
+    vi.stubEnv('BRIDGE_DEV_FAKE_CLI', '1')
+    vi.stubEnv('BRIDGE_FAKE_CLI_HOME', '')
+    const { captureUsage } = await import('./usage-capture')
+    expect(await captureUsage(true)).toMatchObject({ state: 'unavailable', reason: 'capture-error' })
+    expect(fake.processes).toHaveLength(0)
+  })
   it('includes all common and arbitrary model-specific windows despite promo sections', async () => {
     const { captureUsage } = await import('./usage-capture')
     const promise = captureUsage(true)
