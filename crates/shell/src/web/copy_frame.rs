@@ -25,9 +25,23 @@ static OWN: LazyLock<Mutex<HashMap<String, Vec<GpuTexture>>>> =
 /// третий — запас на промежуточный размер; больше держать незачем: каждая
 /// текстура это w×h×4 байт видеопамяти.
 const OWN_KEEP: usize = 3;
+static RETRIES: LazyLock<Mutex<HashMap<String, super::keyed_access::RetryBudget>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static RECOVERY: LazyLock<Mutex<HashMap<String, super::keyed_access::RetryBudget>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub(crate) fn frame_arrived(id: &str) {
+    if let Ok(mut retries) = RETRIES.lock() {
+        retries.remove(id);
+    }
+}
 
 /// Забыть свою текстуру одного вью (закрытие браузера).
 pub(crate) fn forget_view(id: &str) {
+    frame_arrived(id);
+    if let Ok(mut recovery) = RECOVERY.lock() {
+        recovery.remove(id);
+    }
     if let Ok(mut map) = OWN.lock() {
         map.remove(id);
     }
@@ -35,6 +49,12 @@ pub(crate) fn forget_view(id: &str) {
 
 /// Забыть свои текстуры: после пересоздания устройства D3D11 они мертвы.
 pub(crate) fn forget_all() {
+    if let Ok(mut recovery) = RECOVERY.lock() {
+        recovery.clear();
+    }
+    if let Ok(mut retries) = RETRIES.lock() {
+        retries.clear();
+    }
     if let Ok(mut map) = OWN.lock() {
         map.clear();
     }
@@ -86,7 +106,8 @@ pub(crate) fn copy_into_own(
                         .cloned()
                 })
             });
-            let own = match fitting {
+            let fresh = fitting.is_none();
+            let own = match fitting.clone() {
                 Some(texture) => texture,
                 None => {
                     let mut desc = src_desc;
@@ -99,40 +120,89 @@ pub(crate) fn copy_into_own(
                     device
                         .CreateTexture2D(&desc, None, Some(&mut created))
                         .ok()?;
-                    let texture = GpuTexture::from_owned(created?.into_raw())?;
-                    if let Ok(mut m) = OWN.lock() {
-                        // Свежую — в начало: она же самая нужная, и при
-                        // переполнении вылетает самый давний размер.
-                        let pool = m.entry(id.to_string()).or_default();
-                        pool.insert(0, texture.clone());
-                        pool.truncate(OWN_KEEP);
-                    }
-                    texture
+                    GpuTexture::from_owned(created?.into_raw())?
                 }
             };
 
-            // Захват общей текстуры. Если ключа нет — копируем как есть.
+            // Raw HRESULT: WAIT_TIMEOUT и WAIT_ABANDONED положительны, но
+            // не дают права читать поверхность или вызывать ReleaseSync.
             let mutex: Option<IDXGIKeyedMutex> = shared.raw().cast().ok();
-            let acquire = |m: &IDXGIKeyedMutex| {
+            #[cfg(debug_assertions)]
+            let injected = mutex
+                .as_ref()
+                .and_then(|_| crate::native_acceptance::faults::wait_status(id));
+            let status = mutex.as_ref().map(|m| {
                 #[cfg(debug_assertions)]
-                return super::acceptance::acquire(id, m);
-                #[cfg(not(debug_assertions))]
-                m.AcquireSync(0, 16)
-            };
-            if let Some(m) = &mutex
-                && acquire(m).is_err()
-            {
-                // Производитель держит кадр. Ждать нельзя — встанет поток
-                // отрисовки; но и молчать нельзя: кадр остался бы лежать
-                // непоказанным до следующего события мыши («анимация идёт
-                // только когда двигаю мышь»). Заказываем ещё проход.
-                super::diag::busy();
-                super::repaint_requested();
-                return Some(own);
+                if let Some(status) = injected {
+                    return status;
+                }
+                super::keyed_mutex::acquire(m)
+            });
+            #[cfg(debug_assertions)]
+            let (copied, released) = (std::cell::Cell::new(false), std::cell::Cell::new(false));
+            let access = super::keyed_access::with_access(
+                status,
+                || {
+                    #[cfg(debug_assertions)]
+                    copied.set(true);
+                    context.CopyResource(own.raw(), shared.raw());
+                },
+                || {
+                    if let Some(m) = &mutex {
+                        #[cfg(debug_assertions)]
+                        released.set(true);
+                        let _ = m.ReleaseSync(0);
+                    }
+                },
+            );
+            #[cfg(debug_assertions)]
+            if let Some(status) = injected {
+                super::acceptance::acceptance_log(format!(
+                    "[acceptance] mutex_result view={id} status={status} copied={} released={} access={access:?}",
+                    copied.get(),
+                    released.get()
+                ));
             }
-            context.CopyResource(own.raw(), shared.raw());
-            if let Some(m) = &mutex {
-                let _ = m.ReleaseSync(0);
+            match access {
+                super::keyed_access::Access::Retry => {
+                    super::diag::busy();
+                    if RETRIES
+                        .lock()
+                        .is_ok_and(|mut retries| retries.entry(id.to_string()).or_default().take())
+                    {
+                        super::repaint_requested();
+                    }
+                    // Только успешно скопированный прежний кадр. Новая own
+                    // текстура до CopyResource не содержит валидных пикселей.
+                    return fitting;
+                }
+                super::keyed_access::Access::Recreate => {
+                    let view = id.strip_suffix("::popup").unwrap_or(id);
+                    let mut budget = RECOVERY.lock().ok()?.get(view).cloned().unwrap_or_default();
+                    let retry = budget.take();
+                    forget_view(view);
+                    super::shared_texture::forget_view(view);
+                    super::popup::forget_view(view);
+                    RECOVERY.lock().ok()?.insert(view.to_string(), budget);
+                    // Поверхность принадлежит producer: простое повторное
+                    // открытие abandoned handle её не восстанавливает.
+                    if retry {
+                        super::browsers::close(view);
+                        super::repaint_requested();
+                    }
+                    return None;
+                }
+                super::keyed_access::Access::Copied => {
+                    if let Ok(mut recovery) = RECOVERY.lock() {
+                        recovery.remove(id.strip_suffix("::popup").unwrap_or(id));
+                    }
+                    frame_arrived(id);
+                }
+            }
+            if fresh && let Ok(mut map) = OWN.lock() {
+                let pool = map.entry(id.to_string()).or_default();
+                pool.insert(0, own.clone());
+                pool.truncate(OWN_KEEP);
             }
             Some(own)
         })();
@@ -152,3 +222,7 @@ pub(crate) fn copy_into_own(
 ) -> Option<GpuTexture> {
     None
 }
+
+#[cfg(all(test, windows))]
+#[path = "copy_frame_tests.rs"]
+mod tests;
