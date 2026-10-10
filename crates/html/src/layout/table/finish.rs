@@ -58,45 +58,7 @@ pub(super) fn table_finish(
     // таблицы его не трогают; `caption-side: bottom` ставит его под сетку.
     let mut caps_top: Vec<AnyElement> = Vec::new();
     let mut caps_bot: Vec<AnyElement> = Vec::new();
-    for c in &e.children {
-        if let Node::Element(cap) = c
-            && (cap.tag == "caption" || cap.style.is_caption == Some(true))
-        {
-            let cm = inherit(inherited, &cap.style);
-            // Сторона — с самого заголовка, при пустоте — от таблицы
-            // (наследование caption-side).
-            let cap_side_bottom = cap.style.caption_bottom.or(e.style.caption_bottom) == Some(true);
-            // CSS 2.1 §9.4.1: a table caption is a block container that
-            // establishes a block formatting context, so its auto height
-            // contains its floats (§10.6.7), like a cell (`CELL_BFC`).
-            CELL_BFC.with(|c| c.set(true));
-            let inside = blocks(&cap.children, &cm, opts);
-            CELL_BFC.with(|c| c.set(false));
-            let built = styled_div_with(cap, &cm)
-                .flex()
-                .flex_col()
-                .children(inside)
-                .into_any_element();
-            // A caption is a transformable block box (css-transforms-1
-            // §transformable-element); its `transform` was dropped
-            // (`transform-transformed-caption-contains-fixed-position`).
-            let built = transformed(built, &cap.style, inherited);
-            // ВСЕ подписи, а не первая. Прежний `break` ронял вторую целиком:
-            // у таблицы с верхней И нижней подписью рисовалась только верхняя
-            // (`table-border-002/003/004`, снимок `table-border-004`: зелёное
-            // теста обрывается на y = 253, то есть на 110 + 20 + 20 = 150
-            // css-пикселях, а нижняя подпись в 250 пикселей не нарисована
-            // ВООБЩЕ). CSS 2.1 §17.4 и css-tables-3 §terminology кладут в
-            // обёртку ВСЕ подписи; Blink — двумя петлями по всем подписям
-            // своей стороны (`table_layout_algorithm.cc:988` «Add all the top
-            // captions», `:1584` «Add all the bottom captions»).
-            if cap_side_bottom {
-                caps_bot.push(built);
-            } else {
-                caps_top.push(built);
-            }
-        }
-    }
+    collect_captions(e, inherited, opts, &mut caps_top, &mut caps_bot);
 
     // Оси таблицы ЛОГИЧЕСКИЕ, как и у сетки: колонки идут вдоль строки. При
     // вертикальном письме строка идёт сверху вниз, и дорожки колонок
@@ -105,90 +67,15 @@ pub(super) fn table_finish(
     // Ширины колонок фиксированной раскладки — из ПЕРВОГО ряда
     // (CSS 2.1 §17.5.2.1): ячейка с шириной держит её, остальные делят
     // остаток поровну.
-    let first_row_widths: Vec<Option<f32>> = row_elements
-        .first()
-        .map(|row| {
-            let mut out = vec![];
-            for c in &row.children {
-                if let Node::Element(cell) = c
-                    && is_cell(cell)
-                {
-                    let span = cell
-                        .attr("colspan")
-                        .and_then(|v| v.parse::<usize>().ok())
-                        .unwrap_or(1)
-                        .max(1);
-                    // Колонка = width + горизонтальные паддинги и рамки
-                    // ячейки (§17.5.2.1, content-box); в сросшейся модели
-                    // рамка входит ПОЛОВИНОЙ.
-                    let side = |l: Option<Len>| match l {
-                        Some(Len::Px(p)) => p,
-                        _ => 0.0,
-                    };
-                    let extra = if cell.style.border_box == Some(true) {
-                        0.0
-                    } else {
-                        let b = cell.style.borders();
-                        let border = side(b.left) + side(b.right);
-                        side(cell.style.padding.left)
-                            + side(cell.style.padding.right)
-                            + if e.style.border_collapse == Some(true) {
-                                // Половина ПОБЕДИВШЕЙ линии — та же, что
-                                // легла в паддинг ячейки (§17.6.2.1).
-
-                                win_edges
-                                    .get(&cell.node_id)
-                                    .map(|w| (w[1] + w[3]) / 2.0)
-                                    .unwrap_or(border / 2.0)
-                            } else {
-                                border
-                            }
-                    };
-                    // ★ ЗАМЕРЕНО И ОТКАЧЕНО: разрешать ширину ячейки в
-                    // единицах ШРИФТА (`width: 1em` доезжает сюда
-                    // неразрешённой — `resolve_em` живёт в наследовании, а
-                    // ширины колонок считаются раньше). Срез из 10 пар
-                    // `separated-border-model-*`: 8 зелёных до и после, ни
-                    // один вердикт не сдвинулся. Одной этой половины мало:
-                    // цель (`-004c/-004d`) требует ещё нижней грани ширины
-                    // стола по сумме дорожек — возвращать вместе с ней.
-                    match cell.style.width {
-                        Some(Len::Px(v)) if span == 1 => out.push(Some(v + extra)),
-                        // Ширина в единицах шрифта — кеглем САМОЙ ячейки
-                        // (ряд → таблица): без неё колонка `width: 1em`
-                        // уходила в безразмерные, и пол ширины стола ниже
-                        // (§17.5.2.1) не складывался (`separated-border-model-004c`).
-                        Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_))) if span == 1 => {
-                            let size = match cell.style.font_size.or(row.style.font_size) {
-                                Some(Len::Px(v)) => v,
-                                _ => table_font,
-                            };
-                            let family = cell
-                                .style
-                                .font_family
-                                .clone()
-                                .unwrap_or_else(|| table_family.clone());
-                            let v = crate::text::metrics::spacing_px(Some(l), &family, size);
-                            out.push((v > 0.0).then_some(v + extra));
-                        }
-                        // Доля считается от места, отдаваемого дорожкам:
-                        // ширина таблицы за вычетом зазоров (§17.5.2.1,
-                        // «a percentage value ... of the table width»).
-                        // Известна, только когда ширина таблицы в точках.
-                        Some(Len::Pct(p)) if span == 1 => match e.style.width {
-                            Some(Len::Px(tw)) => {
-                                let gaps = spacing.0 * (f32::from(cols) + 1.0);
-                                out.push(Some((tw - gaps).max(0.0) * p + extra));
-                            }
-                            _ => out.push(None),
-                        },
-                        _ => out.extend(std::iter::repeat_n(None, span)),
-                    }
-                }
-            }
-            out
-        })
-        .unwrap_or_default();
+    let first_row_widths = first_row_widths_of(
+        e,
+        &row_elements,
+        win_edges,
+        table_font,
+        table_family,
+        spacing,
+        cols,
+    );
     // `<col>`-ширины старше ячеек первого ряда (§17.5.2.1) и действуют и в
     // авто-раскладке: колонка с шириной держит её (как ширина ячейки).
     for (i, w) in from_cols.iter().enumerate() {
@@ -269,89 +156,7 @@ pub(super) fn table_finish(
     // `percentage-sizing-of-table-cell-children-004` («красное видно»),
     // `subpixel-table-cell-height-001`. Ряд без заданной высоты обязан
     // остаться авто-дорожкой ТОЛЬКО в контексте, где стол не растянут.
-    let row_tracks: Option<Vec<gpui::GridTrack>> = match table_tall {
-        true if e.style.vertical != Some(true) => Some(
-            row_elements
-                .iter()
-                .map(|row| {
-                    let cell_h = |c: &Node| match c {
-                        Node::Element(cell) if is_cell(cell) => match cell.style.height {
-                            Some(Len::Px(v)) => Some(v),
-                            _ => None,
-                        },
-                        _ => None,
-                    };
-                    let own = match row.style.height {
-                        Some(Len::Px(v)) => Some(v),
-                        _ => None,
-                    };
-                    match own
-                        .into_iter()
-                        .chain(row.children.iter().filter_map(cell_h))
-                        .fold(None::<f32>, |a, v| Some(a.map_or(v, |x| x.max(v))))
-                    {
-                        Some(h) => gpui::GridTrack::Pixels(px(h)),
-                        None => gpui::GridTrack::Fraction(1.0),
-                    }
-                })
-                .collect(),
-        ),
-        _ => None,
-    };
-    // Стол БЕЗ заданной высоты, но с рядами заданной высоты: дорожка такого
-    // ряда — `minmax(h, auto)` (CSS 2.1 §17.5.3: высота ряда — большее из
-    // заданной и нужной ячейкам), прочие — `auto`. Без дорожек высота ряда
-    // не доезжала до сетки вовсе: `tr {height: 50px}` с пустыми ячейками
-    // давал ряд в 2 точки паддинга (`table-as-item-cell-percentage-001/003/
-    // 004`: стол 100×4 вместо 100×100). Это НЕ откатанный вариант «дорожки
-    // рядов и без table_tall» (★ выше): там авто-ряды становились долями
-    // `1fr` с `flex_grow`, и ряды растягивались на высоту растянутого стола;
-    // здесь авто-ряд остаётся `auto`, а пол — только у ряда с высотой.
-    let row_floors: Option<Vec<gpui::GridTrack>> = (row_tracks.is_none()
-        && e.style.vertical != Some(true)
-        && row_elements
-            .iter()
-            .any(|r| matches!(r.style.height, Some(Len::Px(h)) if h > 0.0)))
-    .then(|| {
-        row_elements
-            .iter()
-            .map(|row| match row.style.height {
-                Some(Len::Px(h)) if h > 0.0 => gpui::GridTrack::MinMax(Box::new((
-                    gpui::GridTrack::Pixels(px(h)),
-                    gpui::GridTrack::Auto,
-                ))),
-                _ => gpui::GridTrack::Auto,
-            })
-            .collect()
-    });
-    let grid_box = if e.style.vertical == Some(true) {
-        // Ряд таблицы — КОЛОНКА сетки: заполнение идёт сверху вниз, ряд за
-        // рядом поперёк (css-writing-modes-3 §8, table-progression-*).
-        let mut g = div().grid().grid_template_rows(tracks);
-        g.style().grid_auto_flow = Some(gpui::GridAutoFlow::Column);
-        g
-    } else {
-        let mut g = div().grid().grid_template_cols(tracks);
-        if let Some(rt) = row_tracks {
-            // Сетка обязана занять ВСЮ высоту таблицы: доли рядов считаются
-            // от её остатка, а auto-высота ребёнка гибкой колонки — ноль.
-            g = g.grid_template_rows(rt).flex_grow_1();
-        } else if let Some(rt) = row_floors {
-            // Полы рядов (см. `row_floors`); растяжение элемента гибкого
-            // контейнера — как в ветке ниже.
-            g = g.grid_template_rows(rt);
-            if inherited.flex_item {
-                g = g.flex_grow_1();
-            }
-        } else if inherited.flex_item {
-            // Стол — элемент гибкого контейнера: высоту, данную ему ростом
-            // или растяжением, делят ряды (CSS 2.1 §17.5.3; у сетки
-            // `align-content: normal` = stretch тянет auto-ряды), иначе ячейки
-            // оставались по содержимому (`table-as-item-stretch-cross-size-2`).
-            g = g.flex_grow_1();
-        }
-        g
-    };
+    let grid_box = table_grid_box(e, inherited, row_elements, tracks, table_tall);
     // Сросшиеся рамки: у таблицы нет паддинга, а кромка между её рамкой и
     // краевыми ячейками одна — ячейки накрывают ВНУТРЕННЮЮ ПОЛОВИНУ рамки
     // (CSS 2.1 §17.6.2). Рамка при этом рисуется ПОВЕРХ фонов ячеек, как и
@@ -598,6 +403,307 @@ pub(super) fn table_finish(
             bw,
         ));
     }
+    outer = paint_table_border(table_edges, e, bw, outer_win, collapse, inherited, outer);
+    let shrink_wrap = root_table
+        || (e.style.width.is_none()
+            // Заданная высота или её порог приходят от РАСКЛАДКИ родителя:
+            // обёртка рвёт эту связь (★ ЗАМЕРЕНО: без отсечки
+            // `min-height-table-2` 0.00 -> 19.24).
+            && e.style.height.is_none()
+            && e.style.min_height.is_none()
+            && !inherited.stretched
+            && e.style.flex_basis.is_none()
+            && e.style.align_self.is_none()
+            && e.style.grid_col.is_none()
+            && e.style.grid_row.is_none());
+    let mut outer = outer;
+    // Сжатие по содержимому — `min(max-content, доступное)` (CSS 2.1
+    // §17.5.2.2: «the used width is the greater of W and MIN» при W =
+    // ширине контейнера, если таблица шире): в ряду-обёртке стол обязан
+    // ужиматься. Блоку потока сжатие выключено (`flex_shrink = 0` в
+    // `collapsed`), и стол с длинным текстом вылезал из узкого родителя
+    // на всю max-content ширину. Пол GRIDMIN держит `item_is_table`.
+    if shrink_wrap && caps_top.is_empty() && caps_bot.is_empty() && !split_wrapper {
+        outer.style().flex_shrink = Some(1.0);
+    }
+    let outer = outer;
+    // Обёртка «заголовок + коробка»: заголовок вне рамки и обрезки.
+    let outer = wrap_with_captions(e, caps_top, caps_bot, inherited, outer);
+    // Вторая половина §17.4: сама обёртка. Гибкий ряд возвращает сетке сжатие
+    // по содержимому — тот же приём, что у корневого стола ниже.
+    if split_wrapper {
+        let mut wrap = Computed::default();
+        wrap.position = e.style.position;
+        wrap.inset = e.style.inset;
+        wrap.z_index = e.style.z_index;
+        let mut wrap = crate::style::apply::apply(div(), &wrap).flex().flex_row();
+        wrap.style().no_inline_block_baseline = Some(true);
+        return wrap.child(outer).into_any_element();
+    }
+    // Стол с `width: auto` СЖИМАЕТСЯ по содержимому (§17.5.2): у нас это
+    // делает гибкий ряд-обёртка. Приём `align_self: FlexStart` выше работает
+    // только когда родитель — гибкая колонка нашей сборки; под `body` со
+    // сброшенными полями путь другой, и стол растягивался во всю ширину
+    // (`html-display-table`, `root-box-002`). Обёртка снимает зависимость от
+    // родителя. Элемент гибкого контейнера, сетки и ячейки не заворачивается:
+    // там стол — сам элемент раскладки, и обёртка забрала бы его свойства.
+    if shrink_wrap {
+        let mut wrap = div().flex().flex_row();
+        if root_table {
+            wrap = wrap.w_full();
+        }
+        wrap.style().no_inline_block_baseline = Some(true);
+        return wrap.child(outer).into_any_element();
+    }
+    outer.into_any_element()
+}
+
+fn collect_captions(
+    e: &Element,
+    inherited: &Computed,
+    opts: &RenderOpts,
+    caps_top: &mut Vec<AnyElement>,
+    caps_bot: &mut Vec<AnyElement>,
+) {
+    for c in &e.children {
+        if let Node::Element(cap) = c
+            && (cap.tag == "caption" || cap.style.is_caption == Some(true))
+        {
+            let cm = inherit(inherited, &cap.style);
+            // Сторона — с самого заголовка, при пустоте — от таблицы
+            // (наследование caption-side).
+            let cap_side_bottom = cap.style.caption_bottom.or(e.style.caption_bottom) == Some(true);
+            // CSS 2.1 §9.4.1: a table caption is a block container that
+            // establishes a block formatting context, so its auto height
+            // contains its floats (§10.6.7), like a cell (`CELL_BFC`).
+            CELL_BFC.with(|c| c.set(true));
+            let inside = blocks(&cap.children, &cm, opts);
+            CELL_BFC.with(|c| c.set(false));
+            let built = styled_div_with(cap, &cm)
+                .flex()
+                .flex_col()
+                .children(inside)
+                .into_any_element();
+            // A caption is a transformable block box (css-transforms-1
+            // §transformable-element); its `transform` was dropped
+            // (`transform-transformed-caption-contains-fixed-position`).
+            let built = transformed(built, &cap.style, inherited);
+            // ВСЕ подписи, а не первая. Прежний `break` ронял вторую целиком:
+            // у таблицы с верхней И нижней подписью рисовалась только верхняя
+            // (`table-border-002/003/004`, снимок `table-border-004`: зелёное
+            // теста обрывается на y = 253, то есть на 110 + 20 + 20 = 150
+            // css-пикселях, а нижняя подпись в 250 пикселей не нарисована
+            // ВООБЩЕ). CSS 2.1 §17.4 и css-tables-3 §terminology кладут в
+            // обёртку ВСЕ подписи; Blink — двумя петлями по всем подписям
+            // своей стороны (`table_layout_algorithm.cc:988` «Add all the top
+            // captions», `:1584` «Add all the bottom captions»).
+            if cap_side_bottom {
+                caps_bot.push(built);
+            } else {
+                caps_top.push(built);
+            }
+        }
+    }
+}
+
+fn first_row_widths_of(
+    e: &Element,
+    row_elements: &Vec<&Element>,
+    win_edges: std::collections::HashMap<u64, [f32; 4]>,
+    table_font: f32,
+    table_family: &str,
+    spacing: (f32, f32),
+    cols: u16,
+) -> Vec<Option<f32>> {
+    let first_row_widths: Vec<Option<f32>> = row_elements
+        .first()
+        .map(|row| {
+            let mut out = vec![];
+            for c in &row.children {
+                if let Node::Element(cell) = c
+                    && is_cell(cell)
+                {
+                    let span = cell
+                        .attr("colspan")
+                        .and_then(|v| v.parse::<usize>().ok())
+                        .unwrap_or(1)
+                        .max(1);
+                    // Колонка = width + горизонтальные паддинги и рамки
+                    // ячейки (§17.5.2.1, content-box); в сросшейся модели
+                    // рамка входит ПОЛОВИНОЙ.
+                    let side = |l: Option<Len>| match l {
+                        Some(Len::Px(p)) => p,
+                        _ => 0.0,
+                    };
+                    let extra = if cell.style.border_box == Some(true) {
+                        0.0
+                    } else {
+                        let b = cell.style.borders();
+                        let border = side(b.left) + side(b.right);
+                        side(cell.style.padding.left)
+                            + side(cell.style.padding.right)
+                            + if e.style.border_collapse == Some(true) {
+                                // Половина ПОБЕДИВШЕЙ линии — та же, что
+                                // легла в паддинг ячейки (§17.6.2.1).
+
+                                win_edges
+                                    .get(&cell.node_id)
+                                    .map(|w| (w[1] + w[3]) / 2.0)
+                                    .unwrap_or(border / 2.0)
+                            } else {
+                                border
+                            }
+                    };
+                    // ★ ЗАМЕРЕНО И ОТКАЧЕНО: разрешать ширину ячейки в
+                    // единицах ШРИФТА (`width: 1em` доезжает сюда
+                    // неразрешённой — `resolve_em` живёт в наследовании, а
+                    // ширины колонок считаются раньше). Срез из 10 пар
+                    // `separated-border-model-*`: 8 зелёных до и после, ни
+                    // один вердикт не сдвинулся. Одной этой половины мало:
+                    // цель (`-004c/-004d`) требует ещё нижней грани ширины
+                    // стола по сумме дорожек — возвращать вместе с ней.
+                    match cell.style.width {
+                        Some(Len::Px(v)) if span == 1 => out.push(Some(v + extra)),
+                        // Ширина в единицах шрифта — кеглем САМОЙ ячейки
+                        // (ряд → таблица): без неё колонка `width: 1em`
+                        // уходила в безразмерные, и пол ширины стола ниже
+                        // (§17.5.2.1) не складывался (`separated-border-model-004c`).
+                        Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_))) if span == 1 => {
+                            let size = match cell.style.font_size.or(row.style.font_size) {
+                                Some(Len::Px(v)) => v,
+                                _ => table_font,
+                            };
+                            let family = cell
+                                .style
+                                .font_family
+                                .clone()
+                                .unwrap_or_else(|| table_family.to_string());
+                            let v = crate::text::metrics::spacing_px(Some(l), &family, size);
+                            out.push((v > 0.0).then_some(v + extra));
+                        }
+                        // Доля считается от места, отдаваемого дорожкам:
+                        // ширина таблицы за вычетом зазоров (§17.5.2.1,
+                        // «a percentage value ... of the table width»).
+                        // Известна, только когда ширина таблицы в точках.
+                        Some(Len::Pct(p)) if span == 1 => match e.style.width {
+                            Some(Len::Px(tw)) => {
+                                let gaps = spacing.0 * (f32::from(cols) + 1.0);
+                                out.push(Some((tw - gaps).max(0.0) * p + extra));
+                            }
+                            _ => out.push(None),
+                        },
+                        _ => out.extend(std::iter::repeat_n(None, span)),
+                    }
+                }
+            }
+            out
+        })
+        .unwrap_or_default();
+    first_row_widths
+}
+
+fn table_grid_box(
+    e: &Element,
+    inherited: &Computed,
+    row_elements: Vec<&Element>,
+    tracks: Vec<gpui::GridTrack>,
+    table_tall: bool,
+) -> gpui::Div {
+    let row_tracks: Option<Vec<gpui::GridTrack>> = match table_tall {
+        true if e.style.vertical != Some(true) => Some(
+            row_elements
+                .iter()
+                .map(|row| {
+                    let cell_h = |c: &Node| match c {
+                        Node::Element(cell) if is_cell(cell) => match cell.style.height {
+                            Some(Len::Px(v)) => Some(v),
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    let own = match row.style.height {
+                        Some(Len::Px(v)) => Some(v),
+                        _ => None,
+                    };
+                    match own
+                        .into_iter()
+                        .chain(row.children.iter().filter_map(cell_h))
+                        .fold(None::<f32>, |a, v| Some(a.map_or(v, |x| x.max(v))))
+                    {
+                        Some(h) => gpui::GridTrack::Pixels(px(h)),
+                        None => gpui::GridTrack::Fraction(1.0),
+                    }
+                })
+                .collect(),
+        ),
+        _ => None,
+    };
+    // Стол БЕЗ заданной высоты, но с рядами заданной высоты: дорожка такого
+    // ряда — `minmax(h, auto)` (CSS 2.1 §17.5.3: высота ряда — большее из
+    // заданной и нужной ячейкам), прочие — `auto`. Без дорожек высота ряда
+    // не доезжала до сетки вовсе: `tr {height: 50px}` с пустыми ячейками
+    // давал ряд в 2 точки паддинга (`table-as-item-cell-percentage-001/003/
+    // 004`: стол 100×4 вместо 100×100). Это НЕ откатанный вариант «дорожки
+    // рядов и без table_tall» (★ выше): там авто-ряды становились долями
+    // `1fr` с `flex_grow`, и ряды растягивались на высоту растянутого стола;
+    // здесь авто-ряд остаётся `auto`, а пол — только у ряда с высотой.
+    let row_floors: Option<Vec<gpui::GridTrack>> = (row_tracks.is_none()
+        && e.style.vertical != Some(true)
+        && row_elements
+            .iter()
+            .any(|r| matches!(r.style.height, Some(Len::Px(h)) if h > 0.0)))
+    .then(|| {
+        row_elements
+            .iter()
+            .map(|row| match row.style.height {
+                Some(Len::Px(h)) if h > 0.0 => gpui::GridTrack::MinMax(Box::new((
+                    gpui::GridTrack::Pixels(px(h)),
+                    gpui::GridTrack::Auto,
+                ))),
+                _ => gpui::GridTrack::Auto,
+            })
+            .collect()
+    });
+
+    if e.style.vertical == Some(true) {
+        // Ряд таблицы — КОЛОНКА сетки: заполнение идёт сверху вниз, ряд за
+        // рядом поперёк (css-writing-modes-3 §8, table-progression-*).
+        let mut g = div().grid().grid_template_rows(tracks);
+        g.style().grid_auto_flow = Some(gpui::GridAutoFlow::Column);
+        g
+    } else {
+        let mut g = div().grid().grid_template_cols(tracks);
+        if let Some(rt) = row_tracks {
+            // Сетка обязана занять ВСЮ высоту таблицы: доли рядов считаются
+            // от её остатка, а auto-высота ребёнка гибкой колонки — ноль.
+            g = g.grid_template_rows(rt).flex_grow_1();
+        } else if let Some(rt) = row_floors {
+            // Полы рядов (см. `row_floors`); растяжение элемента гибкого
+            // контейнера — как в ветке ниже.
+            g = g.grid_template_rows(rt);
+            if inherited.flex_item {
+                g = g.flex_grow_1();
+            }
+        } else if inherited.flex_item {
+            // Стол — элемент гибкого контейнера: высоту, данную ему ростом
+            // или растяжением, делят ряды (CSS 2.1 §17.5.3; у сетки
+            // `align-content: normal` = stretch тянет auto-ряды), иначе ячейки
+            // оставались по содержимому (`table-as-item-stretch-cross-size-2`).
+            g = g.flex_grow_1();
+        }
+        g
+    }
+}
+
+fn paint_table_border(
+    table_edges: std::rc::Rc<std::cell::RefCell<Vec<super::paint::EdgeCell>>>,
+    e: &Element,
+    bw: [f32; 4],
+    outer_win: [f32; 4],
+    collapse: bool,
+    inherited: &Computed,
+    mut outer: gpui::Div,
+) -> gpui::Div {
     if collapse && (bw.iter().any(|w| *w > 0.0) || e.style.border_side_styles.contains(&Some(1))) {
         // Рамка самой таблицы — участник разбора конфликтов: её кромки
         // уходят в тот же слой (EdgePainter), линии — внутренние края
@@ -651,31 +757,17 @@ pub(super) fn table_finish(
             half,
         ));
     }
-    let shrink_wrap = root_table
-        || (e.style.width.is_none()
-            // Заданная высота или её порог приходят от РАСКЛАДКИ родителя:
-            // обёртка рвёт эту связь (★ ЗАМЕРЕНО: без отсечки
-            // `min-height-table-2` 0.00 -> 19.24).
-            && e.style.height.is_none()
-            && e.style.min_height.is_none()
-            && !inherited.stretched
-            && e.style.flex_basis.is_none()
-            && e.style.align_self.is_none()
-            && e.style.grid_col.is_none()
-            && e.style.grid_row.is_none());
-    let mut outer = outer;
-    // Сжатие по содержимому — `min(max-content, доступное)` (CSS 2.1
-    // §17.5.2.2: «the used width is the greater of W and MIN» при W =
-    // ширине контейнера, если таблица шире): в ряду-обёртке стол обязан
-    // ужиматься. Блоку потока сжатие выключено (`flex_shrink = 0` в
-    // `collapsed`), и стол с длинным текстом вылезал из узкого родителя
-    // на всю max-content ширину. Пол GRIDMIN держит `item_is_table`.
-    if shrink_wrap && caps_top.is_empty() && caps_bot.is_empty() && !split_wrapper {
-        outer.style().flex_shrink = Some(1.0);
-    }
-    let outer = outer;
-    // Обёртка «заголовок + коробка»: заголовок вне рамки и обрезки.
-    let outer = if caps_top.is_empty() && caps_bot.is_empty() {
+    outer
+}
+
+fn wrap_with_captions(
+    e: &Element,
+    caps_top: Vec<AnyElement>,
+    caps_bot: Vec<AnyElement>,
+    inherited: &Computed,
+    outer: gpui::Div,
+) -> AnyElement {
+    if caps_top.is_empty() && caps_bot.is_empty() {
         outer.into_any_element()
     } else {
         // `caption-side: top/bottom` — стороны block-start/block-end стола
@@ -826,32 +918,5 @@ pub(super) fn table_finish(
         }
         wrap.style().no_inline_block_baseline = Some(true);
         wrap.children(cap_wrap).into_any_element()
-    };
-    // Вторая половина §17.4: сама обёртка. Гибкий ряд возвращает сетке сжатие
-    // по содержимому — тот же приём, что у корневого стола ниже.
-    if split_wrapper {
-        let mut wrap = Computed::default();
-        wrap.position = e.style.position;
-        wrap.inset = e.style.inset;
-        wrap.z_index = e.style.z_index;
-        let mut wrap = crate::style::apply::apply(div(), &wrap).flex().flex_row();
-        wrap.style().no_inline_block_baseline = Some(true);
-        return wrap.child(outer).into_any_element();
     }
-    // Стол с `width: auto` СЖИМАЕТСЯ по содержимому (§17.5.2): у нас это
-    // делает гибкий ряд-обёртка. Приём `align_self: FlexStart` выше работает
-    // только когда родитель — гибкая колонка нашей сборки; под `body` со
-    // сброшенными полями путь другой, и стол растягивался во всю ширину
-    // (`html-display-table`, `root-box-002`). Обёртка снимает зависимость от
-    // родителя. Элемент гибкого контейнера, сетки и ячейки не заворачивается:
-    // там стол — сам элемент раскладки, и обёртка забрала бы его свойства.
-    if shrink_wrap {
-        let mut wrap = div().flex().flex_row();
-        if root_table {
-            wrap = wrap.w_full();
-        }
-        wrap.style().no_inline_block_baseline = Some(true);
-        return wrap.child(outer).into_any_element();
-    }
-    outer.into_any_element()
 }

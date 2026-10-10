@@ -359,7 +359,171 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
     // фрагментация обязана его видеть: css-position-3
     // §abspos-breaking — «The box may subsequently be
     // broken over several fragmentation containers».
-    type KidShape = (
+    let inner = kid_shapes(c, depth, px_or, cx, &kids, flex_col, no_descent);
+    let mut cuts: Vec<(f32, f32)> = Vec::new();
+    let mut forced: Vec<f32> = Vec::new();
+    let mut solid: Vec<(f32, f32)> = Vec::new();
+    // Рамка и отбивка самой коробки — без разрывов (Blink:
+    // «Avoid breaking inside block-start border»).
+    if top > 0.0 {
+        solid.push((0.0, top));
+    }
+    // Стек вложенных: конец, поле первого, схлопнувшееся
+    // сквозь верх без отбивки, поле последнего.
+    let mut stacked: Option<(f32, f32, f32)> = None;
+    // Самый нижний край внепоточных потомков, отсчитанный
+    // от верха ЭТОЙ коробки. В поток не входит, высоту
+    // соседей не двигает — нужен только фрагментации.
+    let mut oof_reach = 0.0f32;
+    if let Some(kids) = inner.filter(|k| !k.is_empty()) {
+        (stacked, oof_reach) = stack_kids(
+            kids,
+            row_nowrap,
+            top,
+            &mut cuts,
+            &mut forced,
+            &mut solid,
+            flex_items,
+            oof_kid,
+            cx,
+            abs_top,
+            grid_rows_stack,
+            row_gap,
+            flex_gap,
+            avoid_kid,
+            line_inner,
+            blk_avoid,
+            page_kid,
+            oof_reach,
+            page_prev,
+        );
+    }
+    // Заданная высота — в точках или (для страниц) в единицах окна.
+    let (h, mt, mb) = match shaped_height(
+        c,
+        depth,
+        px_or,
+        mt,
+        mb,
+        unclamp,
+        cx,
+        top,
+        bot,
+        kids,
+        &mut cuts,
+        &mut forced,
+        &mut solid,
+        stacked,
+    ) {
+        Ok(value) => value,
+        Err(value) => return value,
+    };
+    // Содержащий блок обязан дотянуться до низа своих
+    // внепоточных потомков — только тогда фрагментация
+    // родит под них колонки, а балансировка их посчитает
+    // (css-position-3 §abspos-breaking; Blink
+    // `column_layout_algorithm.cc:1092-1131` прогоняет
+    // `OutOfFlowLayoutPart` внутри цикла балансировки
+    // именно ради этого). Если коробка содержащим блоком
+    // НЕ является, дотяг принадлежит кому-то выше и здесь
+    // не учитывается — он всплывёт там.
+    let own_h = h;
+    let h = if crate::text::inline::establishes_cb(&c.style) {
+        h.max(oof_reach + bot)
+    } else {
+        h
+    };
+    let h = fragment_size::constrain(h, &c.style, top + bot, cx.viewport, unclamp);
+    // Дотяг меняет меру фрагментации, но не размер коробки: сосед в потоке
+    // встаёт под КОНЦОМ коробки, а абсолют продолжается параллельным потоком
+    // (css-position-3 §abspos-breaking; Blink ведёт OOF во фрагментаинере
+    // отдельно от потока). Стопка берёт собственный размер из `OOF_OWN`.
+    {
+        let own = fragment_size::constrain(own_h, &c.style, top + bot, cx.viewport, unclamp);
+        OOF_OWN.with(|m| {
+            let mut m = m.borrow_mut();
+            if own < h - 0.01 {
+                m.insert(c.node_id, (own, h));
+            } else {
+                m.remove(&c.node_id);
+            }
+        });
+    }
+    // css-gaps-1 §fragmentation / css-align-3 §column-row-gap: «the gap
+    // disappears when it coincides with a fragmentation break»; Blink
+    // `GridLayoutAlgorithm` `MaybeSuppressLastGap`: зазор рядов, в который
+    // попал край фрагментаинера (внутрь, на начало или на конец), снимается —
+    // следующий ряд начинается с верха следующего фрагмента, линейка в таком
+    // зазоре не рисуется (`grid-gap-decorations-fragmentation-001…010`).
+    // В стопке колонок это точка класса A с усечением: край внутри
+    // `solid`-диапазона зазора уводит разрез к его началу (`fill`, `at(a)`),
+    // а `cuts` с тем же `need` продолжает копию с КОНЦА зазора.
+    // Keep the cut at the actual gutter start: fill_at's at(edge) handles
+    // an exact start boundary. Moving it by a tolerance shortens the painted
+    // fragment and can discard a device row. Only extend the end interval
+    // for Blink's inclusive last_gap_end_offset >= fragmentainer_space check.
+    for (a, b) in grid_row_gaps(&c.style, h - top - bot) {
+        cuts.push((top + a, top + b));
+        solid.push((top + a, top + b + 0.05));
+    }
+    // Принудительный разрыв элемента сетки — на границу его РЯДА
+    // (css-grid-2 §Fragmenting Grid Layout; Blink `grid_layout_algorithm.cc`
+    // `row_break_between`). Сетка без `grid_stack` спуска не знает, и до
+    // этого места её `forced` был пуст ВСЕГДА: разрез шёл по краю колонки
+    // (`flow.rs: fill_at`, ветка `Some(at(edge))`) —
+    // `grid-item-fragmentation-044` резался на 100 при границе ряда 50
+    // (снимок `target/wpt-shots/_fg-grid-item-fragmentation-044.png`:
+    // красный прямоугольник `x 73..134, y 129..191`). Проба
+    // `target/probe-fg/p-fg-044.html` (та же геометрия блоками, разрыв на
+    // границе ряда) = 0.00.
+    let (row_forced, row_mono) = grid_row_forced(c);
+    for f in row_forced {
+        forced.push(top + f);
+    }
+    // Монолитный ряд — целиком (`grid_row_forced`); разрез у его начала
+    // растит предыдущую дорожку (`grow_grid_track`), и переполнение
+    // элементов предыдущего ряда остаётся в колонке, как у Blink.
+    for (a, e) in row_mono {
+        solid.push((top + a, top + e));
+    }
+    // Внутренние принудительные разрывы монолита фрагментации не видны
+    // (`forced_opaque`): `fill_at` проверяет `forced` РАНЬШЕ монолитности и
+    // разрезал бы `contain: size`-коробку по разрыву её потомка.
+    if forced_opaque(c) {
+        forced.clear();
+    }
+    cuts.retain(|&(need, _)| need > 0.01 && need < h - 0.01);
+    forced.retain(|&f| f > 0.01 && f < h - 0.01);
+    // Монолит ребёнка за ЗАДАННОЙ высотой коробки — параллельный поток, а
+    // не запрет разреза в её потоке (css-break-4 §parallel-flows; Blink
+    // `FinishFragmentation`, `fragmentation_utils.cc`: «If the block-size is
+    // constrained / fixed … we know that we're at the end» — сосед
+    // продолжает в той же колонке; `BoxFragmentBuilder::
+    // MustStayInCurrentFragmentainer`: «any first piece of child content
+    // also needs to stay in the current fragmentainer, even if this causes
+    // fragmentainer overflow»). Начатый ниже низа — вычёркивается, начатый
+    // выше — бережётся лишь до низа. Без этого `contain: size` в
+    // переполняющем ребёнке выталкивал коробку целиком (`single-line-
+    // column-flex-fragmentation-051`, `tall-content-inside-constrained-
+    // block-*`). У коробки с высотой auto диапазоны и так внутри `h`.
+    solid.retain(|&(a, _)| a < h - 0.01);
+    for r in solid.iter_mut() {
+        r.1 = r.1.min(h);
+    }
+    bottom_edge_cuts(bot, &mut solid, stacked, h);
+    Some((h, mt, mb, cuts, forced, solid))
+}
+
+fn kid_shapes(
+    c: &Element,
+    depth: u8,
+    px_or: impl Fn(&Option<Len>, bool) -> Option<f32>,
+    cx: ShapeCx,
+    kids: &Vec<&Node>,
+    flex_col: bool,
+    no_descent: bool,
+) -> Option<
+    Vec<(
         f32,
         f32,
         f32,
@@ -369,7 +533,8 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
         bool,
         bool,
         f32,
-    );
+    )>,
+> {
     let inner: Option<Vec<KidShape>> = if depth == 0 || no_descent {
         None
     } else {
@@ -486,45 +651,26 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
             })
             .collect()
     };
-    let mut cuts: Vec<(f32, f32)> = Vec::new();
-    let mut forced: Vec<f32> = Vec::new();
-    let mut solid: Vec<(f32, f32)> = Vec::new();
-    // Рамка и отбивка самой коробки — без разрывов (Blink:
-    // «Avoid breaking inside block-start border»).
-    if top > 0.0 {
-        solid.push((0.0, top));
-    }
-    // Стек вложенных: конец, поле первого, схлопнувшееся
-    // сквозь верх без отбивки, поле последнего.
-    let mut stacked: Option<(f32, f32, f32)> = None;
-    // Самый нижний край внепоточных потомков, отсчитанный
-    // от верха ЭТОЙ коробки. В поток не входит, высоту
-    // соседей не двигает — нужен только фрагментации.
-    let mut oof_reach = 0.0f32;
-    if let Some(kids) = inner.filter(|k| !k.is_empty()) {
-        (stacked, oof_reach) = stack_kids(
-            kids,
-            row_nowrap,
-            top,
-            &mut cuts,
-            &mut forced,
-            &mut solid,
-            flex_items,
-            oof_kid,
-            cx,
-            abs_top,
-            grid_rows_stack,
-            row_gap,
-            flex_gap,
-            avoid_kid,
-            line_inner,
-            blk_avoid,
-            page_kid,
-            oof_reach,
-            page_prev,
-        );
-    }
-    // Заданная высота — в точках или (для страниц) в единицах окна.
+    inner
+}
+
+#[allow(clippy::too_many_arguments)]
+fn shaped_height(
+    c: &Element,
+    depth: u8,
+    px_or: impl Fn(&Option<Len>, bool) -> Option<f32>,
+    mt: f32,
+    mb: f32,
+    unclamp: bool,
+    cx: ShapeCx,
+    top: f32,
+    bot: f32,
+    kids: Vec<&Node>,
+    cuts: &mut Vec<(f32, f32)>,
+    forced: &mut Vec<f32>,
+    solid: &mut Vec<(f32, f32)>,
+    stacked: Option<(f32, f32, f32)>,
+) -> Result<(f32, f32, f32), Option<(f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>)>> {
     let (h, mt, mb) = match c
         .style
         .height
@@ -555,7 +701,7 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
             mt,
             mb,
         ),
-        Some(None) => return None,
+        Some(None) => return Err(None),
         None => match stacked {
             Some((end, through, last_mb)) => (
                 // Нижнее поле последнего ребёнка при собственном нижнем
@@ -649,103 +795,20 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
                         (b.last().map_or(0.0, |r| r.1) + top + bot, mt, mb)
                     }
                     None if kids.is_empty() => (top + bot, mt, mb),
-                    None => return None,
+                    None => return Err(None),
                 },
             },
         },
     };
-    // Содержащий блок обязан дотянуться до низа своих
-    // внепоточных потомков — только тогда фрагментация
-    // родит под них колонки, а балансировка их посчитает
-    // (css-position-3 §abspos-breaking; Blink
-    // `column_layout_algorithm.cc:1092-1131` прогоняет
-    // `OutOfFlowLayoutPart` внутри цикла балансировки
-    // именно ради этого). Если коробка содержащим блоком
-    // НЕ является, дотяг принадлежит кому-то выше и здесь
-    // не учитывается — он всплывёт там.
-    let own_h = h;
-    let h = if crate::text::inline::establishes_cb(&c.style) {
-        h.max(oof_reach + bot)
-    } else {
-        h
-    };
-    let h = fragment_size::constrain(h, &c.style, top + bot, cx.viewport, unclamp);
-    // Дотяг меняет меру фрагментации, но не размер коробки: сосед в потоке
-    // встаёт под КОНЦОМ коробки, а абсолют продолжается параллельным потоком
-    // (css-position-3 §abspos-breaking; Blink ведёт OOF во фрагментаинере
-    // отдельно от потока). Стопка берёт собственный размер из `OOF_OWN`.
-    {
-        let own = fragment_size::constrain(own_h, &c.style, top + bot, cx.viewport, unclamp);
-        OOF_OWN.with(|m| {
-            let mut m = m.borrow_mut();
-            if own < h - 0.01 {
-                m.insert(c.node_id, (own, h));
-            } else {
-                m.remove(&c.node_id);
-            }
-        });
-    }
-    // css-gaps-1 §fragmentation / css-align-3 §column-row-gap: «the gap
-    // disappears when it coincides with a fragmentation break»; Blink
-    // `GridLayoutAlgorithm` `MaybeSuppressLastGap`: зазор рядов, в который
-    // попал край фрагментаинера (внутрь, на начало или на конец), снимается —
-    // следующий ряд начинается с верха следующего фрагмента, линейка в таком
-    // зазоре не рисуется (`grid-gap-decorations-fragmentation-001…010`).
-    // В стопке колонок это точка класса A с усечением: край внутри
-    // `solid`-диапазона зазора уводит разрез к его началу (`fill`, `at(a)`),
-    // а `cuts` с тем же `need` продолжает копию с КОНЦА зазора.
-    // Keep the cut at the actual gutter start: fill_at's at(edge) handles
-    // an exact start boundary. Moving it by a tolerance shortens the painted
-    // fragment and can discard a device row. Only extend the end interval
-    // for Blink's inclusive last_gap_end_offset >= fragmentainer_space check.
-    for (a, b) in grid_row_gaps(&c.style, h - top - bot) {
-        cuts.push((top + a, top + b));
-        solid.push((top + a, top + b + 0.05));
-    }
-    // Принудительный разрыв элемента сетки — на границу его РЯДА
-    // (css-grid-2 §Fragmenting Grid Layout; Blink `grid_layout_algorithm.cc`
-    // `row_break_between`). Сетка без `grid_stack` спуска не знает, и до
-    // этого места её `forced` был пуст ВСЕГДА: разрез шёл по краю колонки
-    // (`flow.rs: fill_at`, ветка `Some(at(edge))`) —
-    // `grid-item-fragmentation-044` резался на 100 при границе ряда 50
-    // (снимок `target/wpt-shots/_fg-grid-item-fragmentation-044.png`:
-    // красный прямоугольник `x 73..134, y 129..191`). Проба
-    // `target/probe-fg/p-fg-044.html` (та же геометрия блоками, разрыв на
-    // границе ряда) = 0.00.
-    let (row_forced, row_mono) = grid_row_forced(c);
-    for f in row_forced {
-        forced.push(top + f);
-    }
-    // Монолитный ряд — целиком (`grid_row_forced`); разрез у его начала
-    // растит предыдущую дорожку (`grow_grid_track`), и переполнение
-    // элементов предыдущего ряда остаётся в колонке, как у Blink.
-    for (a, e) in row_mono {
-        solid.push((top + a, top + e));
-    }
-    // Внутренние принудительные разрывы монолита фрагментации не видны
-    // (`forced_opaque`): `fill_at` проверяет `forced` РАНЬШЕ монолитности и
-    // разрезал бы `contain: size`-коробку по разрыву её потомка.
-    if forced_opaque(c) {
-        forced.clear();
-    }
-    cuts.retain(|&(need, _)| need > 0.01 && need < h - 0.01);
-    forced.retain(|&f| f > 0.01 && f < h - 0.01);
-    // Монолит ребёнка за ЗАДАННОЙ высотой коробки — параллельный поток, а
-    // не запрет разреза в её потоке (css-break-4 §parallel-flows; Blink
-    // `FinishFragmentation`, `fragmentation_utils.cc`: «If the block-size is
-    // constrained / fixed … we know that we're at the end» — сосед
-    // продолжает в той же колонке; `BoxFragmentBuilder::
-    // MustStayInCurrentFragmentainer`: «any first piece of child content
-    // also needs to stay in the current fragmentainer, even if this causes
-    // fragmentainer overflow»). Начатый ниже низа — вычёркивается, начатый
-    // выше — бережётся лишь до низа. Без этого `contain: size` в
-    // переполняющем ребёнке выталкивал коробку целиком (`single-line-
-    // column-flex-fragmentation-051`, `tall-content-inside-constrained-
-    // block-*`). У коробки с высотой auto диапазоны и так внутри `h`.
-    solid.retain(|&(a, _)| a < h - 0.01);
-    for r in solid.iter_mut() {
-        r.1 = r.1.min(h);
-    }
+    Ok((h, mt, mb))
+}
+
+fn bottom_edge_cuts(
+    bot: f32,
+    solid: &mut Vec<(f32, f32)>,
+    stacked: Option<(f32, f32, f32)>,
+    h: f32,
+) {
     if bot > 0.0 {
         // Между последним поточным ребёнком и нижней отбивкой/рамкой БЕЗ зазора
         // точки разрыва нет: класс C css-break-4 §possible-breaks существует лишь
@@ -776,7 +839,6 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
         };
         solid.push((glue, h));
     }
-    Some((h, mt, mb, cuts, forced, solid))
 }
 
 /// Поле, которое мера схлопнула СКВОЗЬ верх коробки (`shape_full`: у первого
@@ -831,3 +893,15 @@ pub(crate) fn strip_through_top(c: &mut Element, depth: u8) {
     k.style.margin.top = None;
     strip_through_top(k, depth - 1);
 }
+
+type KidShape = (
+    f32,
+    f32,
+    f32,
+    Vec<(f32, f32)>,
+    Vec<f32>,
+    Vec<(f32, f32)>,
+    bool,
+    bool,
+    f32,
+);

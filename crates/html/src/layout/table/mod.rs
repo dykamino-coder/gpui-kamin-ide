@@ -93,30 +93,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
         _ => e.style.border_spacing,
     };
     // Раздельные рамки — умолчание; при `collapse` зазора между ячейками нет.
-    let spacing = match (e.style.border_collapse, border_spacing) {
-        (Some(true), _) => (0.0, 0.0),
-        (None, _) if e.attr("rules").is_some() => (0.0, 0.0),
-        // Заданный `border-spacing` перекрывает умолчание браузера в 2px.
-        // Шрифтовые единицы разрешаются по кеглю САМОЙ таблицы: `1em` роняло
-        // зазор в ноль, и вся подсемья Хикси с `border-spacing: 1em`
-        // расходилась с эталоном ровно на зазор.
-        (_, Some((x, y))) => {
-            let em = atom_base_font(inherited, opts);
-            let px_of = |l: Option<Len>| match l {
-                Some(Len::Px(v)) => v,
-                Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_) | Len::Ic(_))) => {
-                    crate::text::metrics::fallback_len_px(l, "", em).unwrap_or(0.0)
-                }
-                _ => 0.0,
-            };
-            (px_of(x), px_of(y))
-        }
-        // Начальное значение `border-spacing` — НОЛЬ: два пикселя — это
-        // умолчание браузера для ТЕГА `<table>`, и оно приходит сюда
-        // каскадом из своего стилевого листа. `div` с `display: table`
-        // зазора не имеет.
-        _ => (0.0, 0.0),
-    };
+    let spacing = table_spacing(e, opts, inherited, border_spacing);
     // Дети таблицы ЧИНЯТСЯ перед сбором (css-tables-3 §3, fixup):
     // `display: contents` растворяется — его дети идут в таблицу со слитым
     // стилем, — а бесхозные ячейки и текст заворачиваются в анонимный ряд.
@@ -127,41 +104,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // HTML §14.3.9) СТАБИЛЬНОЙ перестановкой ГРУПП: прочий порядок детей
     // не трогается. Прошлая попытка ломала css-position — она сдвигала
     // ряды и там, где группы уже стояли по порядку.
-    let fixed = {
-        // Роль группы задаётся ТЕГОМ ИЛИ `display` (§17.5.3): `div` с
-        // `table-header-group` встаёт первым так же, как `<thead>`.
-        let kind_of = |g: &Element| -> Option<u8> {
-            match g.tag.as_str() {
-                "thead" => Some(0),
-                "tbody" => Some(1),
-                "tfoot" => Some(2),
-                _ => g.style.row_group_kind,
-            }
-        };
-        let first_with = |k: u8| -> Option<u64> {
-            fixed.iter().find_map(|n| match n {
-                Node::Element(g) if kind_of(g) == Some(k) => Some(g.node_id),
-                _ => None,
-            })
-        };
-        // Заголовочной и подвальной становится только ПЕРВАЯ группа
-        // своего рода; последующие — обычные группы рядов.
-        let head = first_with(0);
-        let foot = first_with(2);
-        let key = |n: &Node| match n {
-            Node::Element(g) if Some(g.node_id) == head => 0u8,
-            Node::Element(g) if Some(g.node_id) == foot => 2,
-            _ => 1,
-        };
-        let ordered = fixed.windows(2).all(|w| key(&w[0]) <= key(&w[1]));
-        if ordered {
-            fixed
-        } else {
-            let mut sorted = fixed;
-            sorted.sort_by_key(key);
-            sorted
-        }
-    };
+    let fixed = table_rows_fixed(fixed);
     let mut rows: Vec<(&Element, RowCarry)> = vec![];
     collect_rows(&fixed, Some(e), (0.0, 0.0, None, None), &mut rows);
     // Сколько рядов от i-го до конца ЕГО группы (включая сам ряд): охват
@@ -269,6 +212,229 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // стола (`fixed-table-layout-025/028..031`). Ширина стола АВТО в этот
     // гейт не попадает: на ней держится семья `margin-*-applies-to-*`, на
     // которой умерли три прошлых захода (см. записи ниже по ячейке).
+    let zero_cols = zero_width_cols(e, cols, &row_elements, &from_cols);
+    let busy: Vec<u16> = vec![0; cols as usize];
+    let (win_edges, outer_win) = table_border_widths::resolve(
+        e,
+        &row_elements,
+        &rows.iter().map(|(_, carry)| carry.3).collect::<Vec<_>>(),
+        &rows_left,
+        cols,
+        table_font,
+        &table_family,
+    );
+    // Вертикальность САМОЙ таблицы: `inherited` внутри цикла рядов
+    // перекрыт слоем группы строк (`<tbody>` с письмом травил гейты,
+    // table-progression-htb-001 — письмо к рядам и группам НЕ применяется).
+    let table_is_vertical = e.style.vertical == Some(true) || inherited.vertical == Some(true);
+    measure_col_widths(
+        e,
+        inherited,
+        &rows_left,
+        &row_elements,
+        &mut col_widths,
+        table_font,
+        table_family,
+        busy,
+        &win_edges,
+    );
+    // Слой ГРУПП КОЛОНОК и слой КОЛОНОК — две полосы, снизу вверх (§17.5.1:
+    // «the next layer contains the column groups… on top of the column groups
+    // are the areas representing the column boxes»). У каждой свой буфер
+    // проб: площадь группы шире колоночной, и `background-position` у них
+    // разный. Обе идут ПЕРЕД рядами: колонка рисуется ниже ряда
+    // (css-tables-3 §layers).
+    let grp_els = colgroup_elements(&e.children);
+    let col_els = col_elements(&e.children);
+    let mut grp_rects: Vec<Option<crate::layout::table::paint::RowRects>> =
+        vec![None; cols as usize];
+    let mut col_rects: Vec<Option<crate::layout::table::paint::RowRects>> =
+        vec![None; cols as usize];
+    let have_rows = !row_elements.is_empty();
+    push_col_bands(
+        &grp_els,
+        opts.doc_salt,
+        have_rows,
+        &mut grp_rects,
+        &mut under,
+    );
+    push_col_bands(
+        &col_els,
+        opts.doc_salt,
+        have_rows,
+        &mut col_rects,
+        &mut under,
+    );
+    // Ширины рамки самой таблицы: крайние ячейки расползаются фоном на её
+    // половину в сросшейся модели.
+    // Кегль СВОЙ, а не жёсткие 16 точек: `border: 0.5em` у таблицы с крупным
+    // шрифтом давал вчетверо тоньше линию (`border-conflict-element-001d/e`).
+    let table_em = match inherited.font_size {
+        Some(Len::Px(v)) => v,
+        _ => 16.0,
+    };
+    let table_family = inherited.font_family.clone().unwrap_or_default();
+    let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &table_family, table_em);
+    let table_border = e.style.borders();
+    let bw = [
+        px_of(table_border.top),
+        px_of(table_border.right),
+        px_of(table_border.bottom),
+        px_of(table_border.left),
+    ];
+    let table_edges = crate::layout::table::paint::cell_edges_for(e.node_id ^ opts.doc_salt);
+    let collapse_cells = e.style.border_collapse == Some(true)
+        || (e.style.border_collapse.is_none() && e.attr("rules").is_some());
+    // Легаси-атрибут `rules` (HTML rendering §15.3.10): `groups` даёт
+    // группам рядов тонкие кромки по умолчанию.
+    let rules_groups = e
+        .attr("rules")
+        .is_some_and(|v| v.eq_ignore_ascii_case("groups"));
+    // Границы ГРУПП РЯДОВ: первый/последний ряд группы несёт её кромку
+    // (UA-хинт `rules=groups` — тонкая сплошная, если авторState не задал).
+    // Границы снимаются с самих РЯДОВ, а не с детей таблицы: группа может
+    // стоять на любом теге через `display: table-row-group`, её ряды — через
+    // `display: table-row`, и до фильтра `thead|tbody|tfoot` они не доходили
+    // (`border-*-width-applies-to-001/002/003`). Первым и последним рядом
+    // группы считаются края её НЕПРЕРЫВНОГО куска в собранном порядке —
+    // после перестановки §17.5.3 он уже правильный.
+    let mut group_of: std::collections::HashMap<u64, (&Element, bool, bool)> =
+        std::collections::HashMap::new();
+    collect_group_edges(&rows, &mut group_of);
+    // ПРОБОВАЛИ И ОТКАТИЛИ: подавать ряды в обратном порядке для vertical-rl
+    // (ряды-колонки от правого края). Без обратных охватов rowspan (сетка
+    // умеет спан только вперёд) -001 пары ушли 1.02 → 1.31; -003 выиграла
+    // 1.18 → 0.82 — нетто минус. Возвращаться с ЯВНОЙ расстановкой клеток.
+    let row_ix = 0i16;
+    // Занятость колонок ячейками с rowspan из ПРЕДЫДУЩИХ рядов: без неё
+    // номер колонки считался по порядку детей ряда и съезжал — рамки,
+    // схлопнутые колонки и пробы фона приписывались не тем колонкам.
+    // Алгоритм тот же, что у авторазмещения сетки: занятые клетки
+    // пропускаются.
+    let occupied: Vec<u16> = vec![0; cols as usize];
+    let group_refs: std::collections::HashMap<
+        u64,
+        crate::paint::effects::transformed_element::RefBox,
+    > = std::collections::HashMap::new();
+    let tbl_style: &Computed = inherited;
+    table_rows(
+        rows,
+        row_ix,
+        occupied,
+        opts,
+        under,
+        group_of,
+        inherited,
+        e,
+        cols,
+        cells,
+        zero_cols,
+        rows_left,
+        cols_collapsed,
+        collapse_cells,
+        win_edges,
+        table_is_vertical,
+        table_font,
+        &table_family,
+        paint_layers,
+        cell_bgs,
+        row_elements,
+        table_edges,
+        col_rects,
+        col_els,
+        grp_rects,
+        grp_els,
+        rules_groups,
+        group_refs,
+        tbl_style,
+        cells_over,
+        spacing,
+        from_cols,
+        col_widths,
+        cols_pct,
+        bw,
+        outer_win,
+        have_rows,
+        px_of,
+    )
+}
+
+fn table_spacing(
+    e: &Element,
+    opts: &RenderOpts,
+    inherited: &Computed,
+    border_spacing: Option<(Option<Len>, Option<Len>)>,
+) -> (f32, f32) {
+    match (e.style.border_collapse, border_spacing) {
+        (Some(true), _) => (0.0, 0.0),
+        (None, _) if e.attr("rules").is_some() => (0.0, 0.0),
+        // Заданный `border-spacing` перекрывает умолчание браузера в 2px.
+        // Шрифтовые единицы разрешаются по кеглю САМОЙ таблицы: `1em` роняло
+        // зазор в ноль, и вся подсемья Хикси с `border-spacing: 1em`
+        // расходилась с эталоном ровно на зазор.
+        (_, Some((x, y))) => {
+            let em = atom_base_font(inherited, opts);
+            let px_of = |l: Option<Len>| match l {
+                Some(Len::Px(v)) => v,
+                Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_) | Len::Ic(_))) => {
+                    crate::text::metrics::fallback_len_px(l, "", em).unwrap_or(0.0)
+                }
+                _ => 0.0,
+            };
+            (px_of(x), px_of(y))
+        }
+        // Начальное значение `border-spacing` — НОЛЬ: два пикселя — это
+        // умолчание браузера для ТЕГА `<table>`, и оно приходит сюда
+        // каскадом из своего стилевого листа. `div` с `display: table`
+        // зазора не имеет.
+        _ => (0.0, 0.0),
+    }
+}
+
+fn table_rows_fixed(fixed: Vec<Node>) -> Vec<Node> {
+    {
+        // Роль группы задаётся ТЕГОМ ИЛИ `display` (§17.5.3): `div` с
+        // `table-header-group` встаёт первым так же, как `<thead>`.
+        let kind_of = |g: &Element| -> Option<u8> {
+            match g.tag.as_str() {
+                "thead" => Some(0),
+                "tbody" => Some(1),
+                "tfoot" => Some(2),
+                _ => g.style.row_group_kind,
+            }
+        };
+        let first_with = |k: u8| -> Option<u64> {
+            fixed.iter().find_map(|n| match n {
+                Node::Element(g) if kind_of(g) == Some(k) => Some(g.node_id),
+                _ => None,
+            })
+        };
+        // Заголовочной и подвальной становится только ПЕРВАЯ группа
+        // своего рода; последующие — обычные группы рядов.
+        let head = first_with(0);
+        let foot = first_with(2);
+        let key = |n: &Node| match n {
+            Node::Element(g) if Some(g.node_id) == head => 0u8,
+            Node::Element(g) if Some(g.node_id) == foot => 2,
+            _ => 1,
+        };
+        let ordered = fixed.windows(2).all(|w| key(&w[0]) <= key(&w[1]));
+        if ordered {
+            fixed
+        } else {
+            let mut sorted = fixed;
+            sorted.sort_by_key(key);
+            sorted
+        }
+    }
+}
+
+fn zero_width_cols(
+    e: &Element,
+    cols: u16,
+    row_elements: &Vec<&Element>,
+    from_cols: &[Option<f32>],
+) -> Vec<bool> {
     let zero_cols: Vec<bool> = {
         let px_of = |l: Option<Len>| match l {
             Some(Len::Px(v)) => Some(v),
@@ -346,20 +512,21 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
             _ => vec![false; cols as usize],
         }
     };
-    let mut busy: Vec<u16> = vec![0; cols as usize];
-    let (win_edges, outer_win) = table_border_widths::resolve(
-        e,
-        &row_elements,
-        &rows.iter().map(|(_, carry)| carry.3).collect::<Vec<_>>(),
-        &rows_left,
-        cols,
-        table_font,
-        &table_family,
-    );
-    // Вертикальность САМОЙ таблицы: `inherited` внутри цикла рядов
-    // перекрыт слоем группы строк (`<tbody>` с письмом травил гейты,
-    // table-progression-htb-001 — письмо к рядам и группам НЕ применяется).
-    let table_is_vertical = e.style.vertical == Some(true) || inherited.vertical == Some(true);
+    zero_cols
+}
+
+#[allow(clippy::too_many_arguments)]
+fn measure_col_widths(
+    e: &Element,
+    inherited: &Computed,
+    rows_left: &[usize],
+    row_elements: &Vec<&Element>,
+    col_widths: &mut [(Option<f32>, Option<f32>)],
+    table_font: f32,
+    table_family: String,
+    mut busy: Vec<u16>,
+    win_edges: &std::collections::HashMap<u64, [f32; 4]>,
+) {
     for (ri, row) in row_elements.iter().enumerate() {
         let mut ix = 0usize;
         for slot in busy.iter_mut() {
@@ -494,141 +661,35 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
             ix += span;
         }
     }
-    // Слой ГРУПП КОЛОНОК и слой КОЛОНОК — две полосы, снизу вверх (§17.5.1:
-    // «the next layer contains the column groups… on top of the column groups
-    // are the areas representing the column boxes»). У каждой свой буфер
-    // проб: площадь группы шире колоночной, и `background-position` у них
-    // разный. Обе идут ПЕРЕД рядами: колонка рисуется ниже ряда
-    // (css-tables-3 §layers).
-    let grp_els = colgroup_elements(&e.children);
-    let col_els = col_elements(&e.children);
-    let mut grp_rects: Vec<Option<crate::layout::table::paint::RowRects>> =
-        vec![None; cols as usize];
-    let mut col_rects: Vec<Option<crate::layout::table::paint::RowRects>> =
-        vec![None; cols as usize];
-    let have_rows = !row_elements.is_empty();
-    push_col_bands(
-        &grp_els,
-        opts.doc_salt,
-        have_rows,
-        &mut grp_rects,
-        &mut under,
-    );
-    push_col_bands(
-        &col_els,
-        opts.doc_salt,
-        have_rows,
-        &mut col_rects,
-        &mut under,
-    );
-    // Ширины рамки самой таблицы: крайние ячейки расползаются фоном на её
-    // половину в сросшейся модели.
-    // Кегль СВОЙ, а не жёсткие 16 точек: `border: 0.5em` у таблицы с крупным
-    // шрифтом давал вчетверо тоньше линию (`border-conflict-element-001d/e`).
-    let table_em = match inherited.font_size {
-        Some(Len::Px(v)) => v,
-        _ => 16.0,
-    };
-    let table_family = inherited.font_family.clone().unwrap_or_default();
-    let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &table_family, table_em);
-    let table_border = e.style.borders();
-    let bw = [
-        px_of(table_border.top),
-        px_of(table_border.right),
-        px_of(table_border.bottom),
-        px_of(table_border.left),
-    ];
-    let table_edges = crate::layout::table::paint::cell_edges_for(e.node_id ^ opts.doc_salt);
-    let collapse_cells = e.style.border_collapse == Some(true)
-        || (e.style.border_collapse.is_none() && e.attr("rules").is_some());
-    // Легаси-атрибут `rules` (HTML rendering §15.3.10): `groups` даёт
-    // группам рядов тонкие кромки по умолчанию.
-    let rules_groups = e
-        .attr("rules")
-        .is_some_and(|v| v.eq_ignore_ascii_case("groups"));
-    // Границы ГРУПП РЯДОВ: первый/последний ряд группы несёт её кромку
-    // (UA-хинт `rules=groups` — тонкая сплошная, если авторState не задал).
-    // Границы снимаются с самих РЯДОВ, а не с детей таблицы: группа может
-    // стоять на любом теге через `display: table-row-group`, её ряды — через
-    // `display: table-row`, и до фильтра `thead|tbody|tfoot` они не доходили
-    // (`border-*-width-applies-to-001/002/003`). Первым и последним рядом
-    // группы считаются края её НЕПРЕРЫВНОГО куска в собранном порядке —
-    // после перестановки §17.5.3 он уже правильный.
-    let mut group_of: std::collections::HashMap<u64, (&Element, bool, bool)> =
-        std::collections::HashMap::new();
-    {
-        let mut i = 0usize;
-        while i < rows.len() {
-            let Some(g) = rows[i].1.3 else {
-                i += 1;
-                continue;
-            };
-            let mut j = i;
-            while j < rows.len() && rows[j].1.3.map(|o| o.node_id) == Some(g.node_id) {
-                j += 1;
-            }
-            for k in i..j {
-                group_of.insert(rows[k].0.node_id, (g, k == i, k + 1 == j));
-            }
-            i = j;
+}
+
+fn collect_group_edges<'a>(
+    rows: &[(
+        &'a Element,
+        (
+            f32,
+            f32,
+            Option<crate::style::values::value::Color>,
+            Option<&'a Element>,
+        ),
+    )],
+    group_of: &mut std::collections::HashMap<u64, (&'a Element, bool, bool)>,
+) {
+    let mut i = 0usize;
+    while i < rows.len() {
+        let Some(g) = rows[i].1.3 else {
+            i += 1;
+            continue;
+        };
+        let mut j = i;
+        while j < rows.len() && rows[j].1.3.map(|o| o.node_id) == Some(g.node_id) {
+            j += 1;
         }
+        for k in i..j {
+            group_of.insert(rows[k].0.node_id, (g, k == i, k + 1 == j));
+        }
+        i = j;
     }
-    // ПРОБОВАЛИ И ОТКАТИЛИ: подавать ряды в обратном порядке для vertical-rl
-    // (ряды-колонки от правого края). Без обратных охватов rowspan (сетка
-    // умеет спан только вперёд) -001 пары ушли 1.02 → 1.31; -003 выиграла
-    // 1.18 → 0.82 — нетто минус. Возвращаться с ЯВНОЙ расстановкой клеток.
-    let row_ix = 0i16;
-    // Занятость колонок ячейками с rowspan из ПРЕДЫДУЩИХ рядов: без неё
-    // номер колонки считался по порядку детей ряда и съезжал — рамки,
-    // схлопнутые колонки и пробы фона приписывались не тем колонкам.
-    // Алгоритм тот же, что у авторазмещения сетки: занятые клетки
-    // пропускаются.
-    let occupied: Vec<u16> = vec![0; cols as usize];
-    let group_refs: std::collections::HashMap<
-        u64,
-        crate::paint::effects::transformed_element::RefBox,
-    > = std::collections::HashMap::new();
-    let tbl_style: &Computed = inherited;
-    table_rows(
-        rows,
-        row_ix,
-        occupied,
-        opts,
-        under,
-        group_of,
-        inherited,
-        e,
-        cols,
-        cells,
-        zero_cols,
-        rows_left,
-        cols_collapsed,
-        collapse_cells,
-        win_edges,
-        table_is_vertical,
-        table_font,
-        &table_family,
-        paint_layers,
-        cell_bgs,
-        row_elements,
-        table_edges,
-        col_rects,
-        col_els,
-        grp_rects,
-        grp_els,
-        rules_groups,
-        group_refs,
-        tbl_style,
-        cells_over,
-        spacing,
-        from_cols,
-        col_widths,
-        cols_pct,
-        bw,
-        outer_win,
-        have_rows,
-        px_of,
-    )
 }
 
 pub(super) fn is_cell(e: &Element) -> bool {

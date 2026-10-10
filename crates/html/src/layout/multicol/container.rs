@@ -147,91 +147,8 @@ pub(crate) fn multicol_column_stack(
     // потоком соседей (та же мера, что у `StackChild` ниже):
     // иначе план соседа с потоком разошёлся бы с укладкой.
     // Без `clone` среди детей не считается вовсе.
-    let clone_plan: Vec<Vec<(f32, f32)>> = if !col_vert
-        && kids.iter().any(|(c, _)| clone_dec(c).is_some())
-    {
-        let probe: Vec<crate::layout::fragment::types::Kid> = kids
-            .iter()
-            .enumerate()
-            .map(|(pi, (c, s))| {
-                let mut m = c.clone();
-                m.style.margin.top = None;
-                m.style.margin.bottom = None;
-                let (over, cuts, forced, solid) = match shape_full(
-                    &m,
-                    4,
-                    ShapeCx {
-                        unclamped: true,
-                        ..ShapeCx::COLUMNS
-                    },
-                )
-                .filter(|_| {
-                    fixed.is_some() && plain_block_tree(&m, 4) && visible_overflow(&m.style)
-                })
-                .filter(|u| u.0 > s.0 + 0.01)
-                {
-                    Some(u) => (u.0, u.3, u.4, u.5),
-                    None => (s.0, s.3.clone(), s.4.clone(), s.5.clone()),
-                };
-                crate::layout::fragment::types::Kid {
-                    h: s.0,
-                    mt: s.1,
-                    mb: s.2,
-                    monolith: solid_box(c),
-                    cuts,
-                    force_before: edge_break(c, false),
-                    force_after: edge_break(c, true),
-                    avoid_before: edge_avoid(c, false),
-                    avoid_after: edge_avoid(c, true),
-                    forced,
-                    solid,
-                    span: c.style.column_span == Some(true) && !c.inline,
-                    over,
-                    clone_dec: clone_dec(c),
-                    // Тот же предикат, что у `StackChild` ниже:
-                    // иначе план соседа разошёлся бы с укладкой.
-                    overflow_top: fixed.is_some() && rows.is_none() && !parallel_items_inside(c, 4),
-                    repeat: repeat_leads(c, fixed, rows),
-                    par: kid_par[pi],
-                }
-            })
-            .collect();
-        crate::layout::multicol::column_stack::ColumnStack::frags_of(
-            &probe,
-            cols as usize,
-            fixed,
-            rows,
-            copies,
-        )
-    } else {
-        Vec::new()
-    };
-    let rule = if e.style.column_rule_visible == Some(true) {
-        Some((
-            match e.style.column_rule_width {
-                Some(Len::Px(v)) => v,
-                Some(Len::Em(k)) => {
-                    k * match e.style.font_size {
-                        Some(Len::Px(fs)) => fs,
-                        _ => opts.base_size(),
-                    }
-                }
-                _ => 3.0,
-            },
-            e.style
-                .column_rule_color
-                .or(merged.color)
-                .unwrap_or(crate::style::values::value::Color {
-                    r: 0.0,
-                    g: 0.0,
-                    b: 0.0,
-                    a: 1.0,
-                })
-                .to_hsla(),
-        ))
-    } else {
-        None
-    };
+    let clone_plan = clone_plan_of(cols, col_vert, rows, copies, fixed, &kid_par, &kids);
+    let rule = column_rule_of(e, &merged, opts);
     // С рядами линейки (`column-rule` со втяжкой/разрывом,
     // `row-rule` — css-multicol-2 §rg/§crc → css-gaps-1)
     // красит `GapRulePainter` по границам колонок и
@@ -341,6 +258,167 @@ pub(crate) fn multicol_column_stack(
     // `out_of_flow_layout_part.cc`,
     // `LayoutFragmentainerDescendants`: позиция кандидата
     // считается относительно ФРАГМЕНТАИНЕРА.
+    let (children, oof_spots) = place_oof_statics(&merged, &oof_static, kid_starts, children);
+    // Стопка тянется по СТРОЧНОЙ оси: в вертикальном письме
+    // это высота, значит коробка кладёт её гибким рядом
+    // (поперечная ось растягивает высоту), у `vertical-rl` —
+    // от ПРАВОГО края (`flex_row_reverse`), там начало
+    // блочной оси.
+    let mut d = column_stack_div(
+        d,
+        e,
+        inherited,
+        &merged,
+        cols,
+        column_width,
+        used_gap,
+        col_axis,
+        col_vert,
+        col_rl,
+        rows,
+        nest_rows,
+        nest_phase,
+        fixed,
+        &gap_items,
+        rule,
+        children,
+    );
+    // Флоаты — прежним ходом, соседями стопки.
+    for oof in &direct_oof {
+        d = d.child(element(oof, &merged, opts));
+    }
+    // Заместитель на месте щупа: рисуется ПОСЛЕ стопки и
+    // после флоатов (позиционированная коробка выше и
+    // поточного содержимого, и плавающих — CSS 2.1 §9.9,
+    // шаг 8 против шагов 4 и 5; на этом держится
+    // `abspos-after-spanner`, где под зеленью поточная
+    // красная коробка), а встаёт туда, где щуп стоял в
+    // колонке.
+    // Процентная высота абсолюта — от высоты отбивки
+    // содержащего блока (CSS 2.1 §10.5, §10.1 п. 4), а здесь им
+    // служит САМ многоколоночник. Заместитель же кладёт коробку
+    // в нулевую обёртку (`spot_place`), и раскладка под нами
+    // считала проценты от неё — коробка схлопывалась в ноль
+    // (`single-line-row-flex-fragmentation-019/020`: `height:
+    // 50%` без `top`). Пересчитываем в точки заранее, когда
+    // высота многоколоночника известна в точках.
+    finish_column_stack(
+        e, merged, opts, col_vert, oof_static, gap_spec, gap_items, oof_spots, d,
+    )
+}
+
+fn clone_plan_of(
+    cols: u16,
+    col_vert: bool,
+    rows: Option<crate::layout::fragment::types::Rows>,
+    copies: usize,
+    fixed: Option<f32>,
+    kid_par: &[crate::layout::fragment::types::Par],
+    kids: &[(
+        Element,
+        (f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>),
+    )],
+) -> Vec<Vec<(f32, f32)>> {
+    let clone_plan: Vec<Vec<(f32, f32)>> = if !col_vert
+        && kids.iter().any(|(c, _)| clone_dec(c).is_some())
+    {
+        let probe: Vec<crate::layout::fragment::types::Kid> = kids
+            .iter()
+            .enumerate()
+            .map(|(pi, (c, s))| {
+                let mut m = c.clone();
+                m.style.margin.top = None;
+                m.style.margin.bottom = None;
+                let (over, cuts, forced, solid) = match shape_full(
+                    &m,
+                    4,
+                    ShapeCx {
+                        unclamped: true,
+                        ..ShapeCx::COLUMNS
+                    },
+                )
+                .filter(|_| {
+                    fixed.is_some() && plain_block_tree(&m, 4) && visible_overflow(&m.style)
+                })
+                .filter(|u| u.0 > s.0 + 0.01)
+                {
+                    Some(u) => (u.0, u.3, u.4, u.5),
+                    None => (s.0, s.3.clone(), s.4.clone(), s.5.clone()),
+                };
+                crate::layout::fragment::types::Kid {
+                    h: s.0,
+                    mt: s.1,
+                    mb: s.2,
+                    monolith: solid_box(c),
+                    cuts,
+                    force_before: edge_break(c, false),
+                    force_after: edge_break(c, true),
+                    avoid_before: edge_avoid(c, false),
+                    avoid_after: edge_avoid(c, true),
+                    forced,
+                    solid,
+                    span: c.style.column_span == Some(true) && !c.inline,
+                    over,
+                    clone_dec: clone_dec(c),
+                    // Тот же предикат, что у `StackChild` ниже:
+                    // иначе план соседа разошёлся бы с укладкой.
+                    overflow_top: fixed.is_some() && rows.is_none() && !parallel_items_inside(c, 4),
+                    repeat: repeat_leads(c, fixed, rows),
+                    par: kid_par[pi],
+                }
+            })
+            .collect();
+        crate::layout::multicol::column_stack::ColumnStack::frags_of(
+            &probe,
+            cols as usize,
+            fixed,
+            rows,
+            copies,
+        )
+    } else {
+        Vec::new()
+    };
+    clone_plan
+}
+
+fn column_rule_of(e: &Element, merged: &Computed, opts: &RenderOpts) -> Option<(f32, gpui::Hsla)> {
+    if e.style.column_rule_visible == Some(true) {
+        Some((
+            match e.style.column_rule_width {
+                Some(Len::Px(v)) => v,
+                Some(Len::Em(k)) => {
+                    k * match e.style.font_size {
+                        Some(Len::Px(fs)) => fs,
+                        _ => opts.base_size(),
+                    }
+                }
+                _ => 3.0,
+            },
+            e.style
+                .column_rule_color
+                .or(merged.color)
+                .unwrap_or(crate::style::values::value::Color {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 0.0,
+                    a: 1.0,
+                })
+                .to_hsla(),
+        ))
+    } else {
+        None
+    }
+}
+
+fn place_oof_statics(
+    merged: &Computed,
+    oof_static: &[(usize, Element)],
+    kid_starts: Vec<usize>,
+    children: Vec<crate::layout::fragment::types::StackChild>,
+) -> (
+    Vec<crate::layout::fragment::types::StackChild>,
+    Vec<std::rc::Rc<std::cell::Cell<crate::layout::positioned::containing_block::Spot>>>,
+) {
     let mut children = children;
     let oof_spots: Vec<crate::layout::positioned::containing_block::SpotCell> =
         oof_static.iter().map(|_| Default::default()).collect();
@@ -395,11 +473,29 @@ pub(crate) fn multicol_column_stack(
             .min(children.len());
         children.insert(at, probe);
     }
-    // Стопка тянется по СТРОЧНОЙ оси: в вертикальном письме
-    // это высота, значит коробка кладёт её гибким рядом
-    // (поперечная ось растягивает высоту), у `vertical-rl` —
-    // от ПРАВОГО края (`flex_row_reverse`), там начало
-    // блочной оси.
+    (children, oof_spots)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn column_stack_div(
+    d: gpui::Div,
+    e: &Element,
+    inherited: &Computed,
+    merged: &Computed,
+    cols: u16,
+    column_width: Option<Len>,
+    used_gap: f32,
+    col_axis: crate::layout::fragment::types::StackAxis,
+    col_vert: bool,
+    col_rl: bool,
+    rows: Option<crate::layout::fragment::types::Rows>,
+    nest_rows: Option<f32>,
+    nest_phase: f32,
+    fixed: Option<f32>,
+    gap_items: &Option<std::rc::Rc<std::cell::RefCell<Vec<gpui::Bounds<gpui::Pixels>>>>>,
+    rule: Option<(f32, gpui::Hsla)>,
+    children: Vec<crate::layout::fragment::types::StackChild>,
+) -> gpui::Div {
     let d = if col_vert {
         let d = d.flex();
         if col_rl {
@@ -410,7 +506,8 @@ pub(crate) fn multicol_column_stack(
     } else {
         d
     };
-    let mut d = d.child(
+
+    d.child(
         crate::layout::multicol::column_stack::ColumnStack::new(
             children,
             cols as usize,
@@ -446,26 +543,21 @@ pub(crate) fn multicol_column_stack(
             }
             _ => None,
         }),
-    );
-    // Флоаты — прежним ходом, соседями стопки.
-    for oof in &direct_oof {
-        d = d.child(element(oof, &merged, opts));
-    }
-    // Заместитель на месте щупа: рисуется ПОСЛЕ стопки и
-    // после флоатов (позиционированная коробка выше и
-    // поточного содержимого, и плавающих — CSS 2.1 §9.9,
-    // шаг 8 против шагов 4 и 5; на этом держится
-    // `abspos-after-spanner`, где под зеленью поточная
-    // красная коробка), а встаёт туда, где щуп стоял в
-    // колонке.
-    // Процентная высота абсолюта — от высоты отбивки
-    // содержащего блока (CSS 2.1 §10.5, §10.1 п. 4), а здесь им
-    // служит САМ многоколоночник. Заместитель же кладёт коробку
-    // в нулевую обёртку (`spot_place`), и раскладка под нами
-    // считала проценты от неё — коробка схлопывалась в ноль
-    // (`single-line-row-flex-fragmentation-019/020`: `height:
-    // 50%` без `top`). Пересчитываем в точки заранее, когда
-    // высота многоколоночника известна в точках.
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finish_column_stack(
+    e: &Element,
+    merged: Computed,
+    opts: &RenderOpts,
+    col_vert: bool,
+    oof_static: Vec<(usize, Element)>,
+    gap_spec: Option<crate::paint::gap_rules::GapRuleSpec>,
+    gap_items: Option<std::rc::Rc<std::cell::RefCell<Vec<gpui::Bounds<gpui::Pixels>>>>>,
+    oof_spots: Vec<std::rc::Rc<std::cell::Cell<crate::layout::positioned::containing_block::Spot>>>,
+    mut d: gpui::Div,
+) -> AnyElement {
     let cb_h: Option<f32> = (e.style.position.is_some()
         && e.style.position != Some(crate::style::computed::Position::Static)
         && !col_vert)
@@ -510,7 +602,7 @@ pub(crate) fn multicol_column_stack(
             crate::paint::gap_rules::painter::GapRulePainter::new(buf, spec).into_any_element(),
         );
     }
-    return d.into_any_element();
+    d.into_any_element()
 }
 
 #[allow(clippy::too_many_arguments, clippy::needless_return)]

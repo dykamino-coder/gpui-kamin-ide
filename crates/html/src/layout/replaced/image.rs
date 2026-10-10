@@ -262,113 +262,10 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
     // соотношения, — их задаёт `contain-intrinsic-size`. Врезка ранняя: ниже
     // по ветке `intrinsic()` вернул бы настоящие 100×100, и всё посчиталось бы
     // по ним.
-    if e.style.contains_width() || e.style.contains_height() {
-        let side = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
-        let b = e.style.borders();
-        let pad_x =
-            side(e.style.padding.left) + side(e.style.padding.right) + side(b.left) + side(b.right);
-        let pad_y =
-            side(e.style.padding.top) + side(e.style.padding.bottom) + side(b.top) + side(b.bottom);
-        let used = |explicit: Option<Len>, ci: Option<f32>| match explicit {
-            Some(Len::Px(v)) => v,
-            _ => ci.unwrap_or(0.0),
-        };
-        // Обособление снимает ПРИРОДНОЕ соотношение, но не ЗАЯВЛЕННОЕ:
-        // css-contain-2 §size containment, «Size containment only suppresses
-        // the natural aspect ratio, so properties like 'aspect-ratio' which
-        // affect that preferred aspect ratio directly are honored»
-        // (Overview.bs:659-662), и пример там же (:737-752):
-        // `img{width:100px;aspect-ratio:1/1;contain:size}` = 100×100, а без
-        // объявленного соотношения — 100×0. Пара атрибутов `width`/`height`
-        // разметки — это `aspect-ratio: auto <ratio>` (HTML Rendering
-        // §attributes for embedded content): природная его половина снята,
-        // заявленная осталась. Blink делает ровно так —
-        // `BlockNode::GetReplacedAspectRatio` (`block_node.cc:1328`):
-        // заявленное отдаётся ДО проверки обособления, гейт
-        // `ShouldApplyAnySizeContainment` стоит только вокруг природного.
-        let ratio = e
-            .style
-            .aspect_ratio
-            .filter(|r| r.is_finite() && *r > 0.0)
-            .or_else(|| match (e.style.attr_width, e.style.attr_height) {
-                (Some(Len::Px(aw)), Some(Len::Px(ah))) if aw > 0.0 && ah > 0.0 => Some(aw / ah),
-                _ => None,
-            });
-        let named = |l: Option<Len>| matches!(l, Some(Len::Px(_)));
-        let (nw, nh) = (named(e.style.width), named(e.style.height));
-        let cw = match ratio {
-            Some(r) if !nw && nh => used(e.style.height, e.style.contain_intrinsic.1) * r,
-            _ => used(e.style.width, e.style.contain_intrinsic.0),
-        };
-        let ch = match ratio {
-            Some(r) if nw && !nh => used(e.style.width, e.style.contain_intrinsic.0) / r,
-            _ => used(e.style.height, e.style.contain_intrinsic.1),
-        };
-        let mut d = d;
-        if e.style.contains_width() && matches!(e.style.width, None | Some(Len::Auto)) {
-            d = d.w(px(cw + pad_x));
-        }
-        if e.style.contains_height() && matches!(e.style.height, None | Some(Len::Auto)) {
-            d = d.h(px(ch + pad_y));
-        }
-        // Источник берётся тем же путём, что и вне обособления: строку со
-        // схемой `file:` система уходит скачивать, и картинка молча не
-        // рисуется. Растр декодируется своим декодером, вектор растрируется
-        // в уже посчитанный размер.
-        let local = src
-            .strip_prefix("file:///")
-            .or_else(|| src.strip_prefix("file://"))
-            .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
-        let mut image = match crate::paint::background::source(&crate::paint::background::key(
-            local.unwrap_or(src),
-            &e.style,
-        )) {
-            Some(crate::paint::background::Source::Vector { markup, .. })
-                if cw > 0.0 && ch > 0.0 =>
-            {
-                match crate::svg::raster::rasterize(&markup, cw, ch) {
-                    Some(r) => gpui::img(r),
-                    None => gpui::img(SharedString::from(src.to_string())),
-                }
-            }
-            Some(crate::paint::background::Source::Raster(ready)) => {
-                gpui::img(ready).preserve_natural_pixels(true)
-            }
-            _ => match local {
-                Some(path) => gpui::img(std::path::PathBuf::from(path)),
-                None => gpui::img(SharedString::from(src.to_string())),
-            },
-        };
-        // Подгонка содержимого замещаемой коробки считается от ПРИРОДНОГО
-        // размера картинки, который у самой картинки никуда не делся:
-        // обособление меняет коробку, а не объект. У Blink это два разных
-        // входа — раскладочный `LayoutReplaced::ComputeNaturalSizingInfo`
-        // начинается с `DCHECK(!ShouldApplySizeContainment())`
-        // (`layout_replaced.cc:509`), а рисовательный
-        // `LayoutReplaced::ReplacedContentRectFrom` берёт
-        // `GetNaturalDimensions()` БЕЗ всякого гейта (`:497`), и уже от него
-        // `ComputeObjectFitAndPositionRect` (`:426`) считает `object-fit`.
-        // Поэтому коробку домеряем здесь, а рисуем ОБЫЧНЫМ путём: клон с уже
-        // посчитанными сторонами содержимого и снятым обособлением — это и
-        // есть второй такт, «laying out in-place» (css-contain-2
-        // Overview.bs:702-707).
-        if e.style.object_fit.is_some() || e.style.object_position.is_some() {
-            let mut fitted = e.clone();
-            fitted.style.width = Some(Len::Px(cw));
-            fitted.style.height = Some(Len::Px(ch));
-            // `cw`/`ch` — размер СОДЕРЖИМОГО по построению, поэтому клон
-            // меряется по содержимому независимо от `box-sizing` документа.
-            fitted.style.border_box = Some(false);
-            fitted.style.contain_size = Some(false);
-            fitted.style.contain_inline_size = Some(false);
-            return image_with(&fitted, base_font);
-        }
-        image = image.w(px(cw)).h(px(ch)).object_fit(gpui::ObjectFit::Fill);
-        return d.child(image).into_any_element();
-    }
+    let d = match contained_image(base_font, src, e, d) {
+        Ok(value) => return value,
+        Err(d) => d,
+    };
     if src.starts_with("data:") || src.starts_with("file:") || src.starts_with('/') {
         // Локальный файл отдаётся ПУТЁМ, а не строкой адреса. Строку со схемой
         // `file:` система разбирает как сетевой адрес и уходит его скачивать —
@@ -404,95 +301,10 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                 .object_fit
                 .as_deref()
                 .is_some_and(|f| matches!(f, "fill" | "contain" | "cover" | "none" | "scale-down"));
-        if let (true, Some(Len::Px(w)), Some(Len::Px(h))) =
-            (wants_pipe, e.style.width, e.style.height)
-        {
-            let pos = e
-                .style
-                .object_position
-                .unwrap_or(crate::style::computed::BgPos {
-                    x: Some(Len::Pct(0.5)),
-                    y: Some(Len::Pct(0.5)),
-                });
-            use crate::style::computed::BgSize;
-            let mut bgc = crate::style::computed::Computed::default();
-            bgc.bg_image = Some(local.unwrap_or(src).to_string());
-            bgc.bg_repeat = Some(crate::style::computed::BgRepeat::NoRepeat);
-            bgc.bg_pos = pos;
-            // Стиль трубы собран с нуля, и отказ от EXIF-разворота в него надо
-            // положить руками: иначе `image-orientation: none` вместе с
-            // `object-fit`/`object-position` уходил бы мимо ключа источника.
-            bgc.image_orient_none = e.style.image_orient_none;
-            bgc.bg_size = match e.style.object_fit.as_deref() {
-                Some("contain") => BgSize::Contain,
-                Some("cover") => BgSize::Cover,
-                Some("none") => BgSize::Auto,
-                Some("scale-down") => {
-                    // Меньшее из `none` и `contain`: влезает — своим
-                    // размером, нет — вписать.
-                    let fits = crate::paint::background::source(&crate::paint::background::key(
-                        local.unwrap_or(src),
-                        &e.style,
-                    ))
-                    .map(|s| s.intrinsic())
-                    .is_some_and(|i| {
-                        i.w.is_some_and(|iw| iw <= w) && i.h.is_some_and(|ih| ih <= h)
-                    });
-                    if fits { BgSize::Auto } else { BgSize::Contain }
-                }
-                _ => BgSize::Fixed(Some(Len::Pct(1.0)), Some(Len::Pct(1.0))),
-            };
-            // `overflow: visible` на замещаемом (HTML §rendering: UA-правило
-            // `img { overflow: clip; overflow-clip-margin: content-box }`,
-            // css-overflow-3): ЯВНОЕ `visible` выпускает картинку за content
-            // box — `object-fit: none` рисуется своим размером целиком,
-            // скругление её тоже не режет (`overflow-img`, `-svg`,
-            // `-border-radius`: эталон — та же картинка без обрезки).
-            // Умолчание (`None`) — UA-шный `clip`, прежний путь ниже.
-            let spills = e.style.overflow_x == Some(crate::style::computed::Overflow::Visible)
-                && e.style.overflow_y == Some(crate::style::computed::Overflow::Visible);
-            if spills {
-                let style = bgc.clone();
-                let layer = gpui::canvas(
-                    |_, _, _| {},
-                    move |bounds: gpui::Bounds<gpui::Pixels>, _, window, _| {
-                        // Область ОТСЧЁТА — content box, область КРАСКИ — с
-                        // запасом во все стороны: плитка одна (`no-repeat`),
-                        // и рисуется она ровно своим размером.
-                        let reach = px(4096.0);
-                        let paint = gpui::Bounds {
-                            origin: gpui::point(bounds.origin.x - reach, bounds.origin.y - reach),
-                            size: gpui::size(
-                                bounds.size.width + reach * 2.0,
-                                bounds.size.height + reach * 2.0,
-                            ),
-                        };
-                        crate::paint::background::paint_tiles(&style, bounds, Some(paint), window);
-                    },
-                )
-                .absolute()
-                .top_0()
-                .left_0()
-                .size_full();
-                return d
-                    .child(div().w(px(w)).h(px(h)).relative().child(layer))
-                    .into_any_element();
-            }
-            if let Some(layer) = crate::paint::background::layer(&bgc) {
-                // Внутренняя коробка = content box: поля и рамка остаются
-                // на хосте, слой не должен их накрывать.
-                return d
-                    .child(
-                        div()
-                            .w(px(w))
-                            .h(px(h))
-                            .relative()
-                            .overflow_hidden()
-                            .child(layer),
-                    )
-                    .into_any_element();
-            }
-        }
+        let d = match piped_image(src, e, d, local, wants_pipe) {
+            Ok(value) => return value,
+            Err(d) => d,
+        };
         let mut image = match (own, local) {
             (Some(ready), _) => gpui::img(ready).preserve_natural_pixels(true),
             (None, Some(path)) => gpui::img(std::path::PathBuf::from(path)),
@@ -625,236 +437,22 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         let transfer = |size, ratio, from_width| {
             replaced_used_style::transfer(&e.style, size, ratio, from_width, [sub_w, sub_h])
         };
-        if let (Some(Len::Px(w)), Some(Len::Px(h))) = (e.style.width, e.style.height) {
-            image = vectorize(image, (w - sub_w).max(1.0), (h - sub_h).max(1.0));
-            // Элемент ГИБКОГО контейнера: коробку задаёт раскладка (рост,
-            // сжатие — css-flexbox-1 §9.7), и картинка заполняет её
-            // (`object-fit: fill`, css-images-3 §5.5), а не держит
-            // объявленную ширину. Прежде коробка `flex: 5` росла до 122.5,
-            // а картинка оставалась 10 точек (`flexbox-basic-img-horiz-001`,
-            // `-vert-001`).
-            image = if e.style.flex_item {
-                image.size_full()
-            } else {
-                image.w(px(w)).h(px(h))
-            };
-        } else if let (Some(Len::Px(w)), None | Some(Len::Auto)) = (e.style.width, e.style.height) {
-            // Заданная ширина + auto-высота: высота из соотношения (§10.6.2),
-            // без соотношения — своя, резерв 150.
-            // §10.7: пределы зажимают и НАЗВАННУЮ сторону тоже. Коробку
-            // `apply` уже зажал, а картинка шла как написана и вылезала за неё.
-            let cw = limit((w - sub_w).max(0.0), clamp(e.style.min_width, sub_w), max_w);
-            let ch = match ratio_of() {
-                Some(r) if r > 0.0 => transfer(cw, r, true),
-                _ => crate::paint::background::source(&crate::paint::background::key(
-                    local.unwrap_or(src),
-                    &e.style,
-                ))
-                .and_then(|s| s.intrinsic().h)
-                .unwrap_or(150.0),
-            };
-            // §10.4: пределы держат ВЫВЕДЕННУЮ сторону тоже — заданная
-            // остаётся как написана, а высота из соотношения обязана влезть
-            // в свой потолок и пол. Замерено отдельно: 0 и 0 — правка по
-            // спеке, счёт на ней не держится.
-            let ch_free = ch;
-            let ch = limit(ch, clamp(e.style.min_height, sub_h), max_h);
-            // §10.4: когда потолок или пол ИЗМЕНИЛИ выведенную сторону,
-            // заданная пересчитывается по соотношению — коробка остаётся
-            // пропорциональной, а не растягивается. `width: 200px` при
-            // `max-height: 50px` у картинки 100×50 — это 100×50, а не
-            // 200×50.
-            let cw = match ratio_of() {
-                Some(r) if r > 0.0 && (ch - ch_free).abs() > 0.01 => {
-                    let w = limit(
-                        transfer(ch, r, false),
-                        clamp(e.style.min_width, sub_w),
-                        max_w,
-                    );
-                    // Коробка ужимается ТОЛЬКО когда предел и правда изменил
-                    // выведенную сторону: иначе высота у неё остаётся `auto`,
-                    // и подстановка ломала замещённые без пределов вовсе
-                    // (`replaced-intrinsic-004`).
-                    узкая = Some((w, ch));
-                    w
-                }
-                _ => cw,
-            };
-            image = vectorize(image, cw.max(1.0), ch.max(1.0))
-                .w(px(cw))
-                .h(px(ch))
-                .object_fit(gpui::ObjectFit::Fill);
-        } else if let (None | Some(Len::Auto), Some(Len::Px(h))) = (e.style.width, e.style.height) {
-            // Зеркально: заданная высота + auto-ширина (§10.3.2).
-            let ch = limit(
-                (h - sub_h).max(0.0),
-                clamp(e.style.min_height, sub_h),
-                max_h,
-            );
-            let cw = match ratio_of() {
-                Some(r) if r > 0.0 => transfer(ch, r, false),
-                _ => crate::paint::background::source(&crate::paint::background::key(
-                    local.unwrap_or(src),
-                    &e.style,
-                ))
-                .and_then(|s| s.intrinsic().w)
-                .unwrap_or(300.0),
-            };
-            let cw_free = cw;
-            let cw = limit(cw, clamp(e.style.min_width, sub_w), max_w);
-            // Зеркально §10.4: изменённая ширина тянет за собой высоту.
-            let ch = match ratio_of() {
-                Some(r) if r > 0.0 && (cw - cw_free).abs() > 0.01 => {
-                    let h = limit(
-                        transfer(cw, r, true),
-                        clamp(e.style.min_height, sub_h),
-                        max_h,
-                    );
-                    узкая = Some((cw, h));
-                    h
-                }
-                _ => ch,
-            };
-            image = vectorize(image, cw.max(1.0), ch.max(1.0))
-                .w(px(cw))
-                .h(px(ch))
-                .object_fit(gpui::ObjectFit::Fill);
-        } else if let (Some(Len::Pct(_)), None | Some(Len::Auto)) = (e.style.width, e.style.height)
-        {
-            // Доля ширины при auto-высоте: ширину даёт содержащий блок, высоту
-            // — собственное соотношение сторон (§10.3.2, §10.6.2). Раньше доля
-            // не попадала ни в одну ветку, и замещаемый рисовался СВОИМ
-            // пикселем (`absolute-replaced-width-006`: 15×15 вместо 96×96).
-            // Долю по этой оси УЖЕ поставил хозяин (`styled_div(e)` несёт
-            // стиль элемента целиком), поэтому картинке остаётся заполнить
-            // его: `relative(kw)` внутри давал долю ОТ ДОЛИ — `width: 50%`
-            // выходило четвертью содержащего блока.
-            image = image.w(gpui::relative(1.0));
-            if let Some(r) = ratio_of().filter(|r| *r > 0.0) {
-                image.style().aspect_ratio = Some(r);
-            }
-        } else if let (None | Some(Len::Auto), Some(Len::Pct(_))) = (e.style.width, e.style.height)
-        {
-            // Зеркально: доля высоты при auto-ширине.
-            image = image.h(gpui::relative(1.0));
-            if let Some(r) = ratio_of().filter(|r| *r > 0.0) {
-                image.style().aspect_ratio = Some(r);
-            }
-        } else if !matches!(e.style.width, None | Some(Len::Auto))
-            && !matches!(e.style.height, None | Some(Len::Auto))
-        {
-            // Обе стороны заданы, но не обе в точках: каждая ось — своим
-            // значением. `width:100%; height:100%` растягивается на коробку
-            // (sizing-percentages-replaced-orthogonal-001), а смешанная
-            // запись `width:50%; height:15px` раньше падала в size_full и
-            // ТЕРЯЛА пиксельную сторону (inline-replaced-width-011..015).
-            image = match (e.style.width, e.style.height) {
-                (Some(Len::Pct(_)), Some(Len::Px(h))) => image.w(gpui::relative(1.0)).h(px(h)),
-                (Some(Len::Px(w)), Some(Len::Pct(_))) => image.w(px(w)).h(gpui::relative(1.0)),
-                _ => image.size_full(),
-            };
-        } else if !matches!(e.style.width, Some(Len::Px(_)))
-            && !matches!(e.style.height, Some(Len::Px(_)))
-        {
-            let both_auto = matches!(e.style.width, None | Some(Len::Auto))
-                && matches!(e.style.height, None | Some(Len::Auto));
-            if both_auto
-                && let Some(ready) = crate::paint::background::source(
-                    &crate::paint::background::key(local.unwrap_or(src), &e.style),
-                )
-            {
-                // Авто-размер замещаемого считается ЗДЕСЬ, а не отдаётся
-                // загрузчику картинок: тот работает асинхронно, и в первом
-                // кадре коробка выходила нулевой высоты (box-sizing-007 —
-                // страница вовсе без квадратов). Недостающая сторона
-                // достраивается соотношением, резерв — 300×150
-                // (CSS 2.1 §10.3.2/§10.6.2, css-images-3 §default-sizing).
-                let side = ready.intrinsic();
-                let (w0, h0) = match (side.w, side.h, side.ratio) {
-                    (Some(w), Some(h), _) => (w, h),
-                    (Some(w), None, Some(r)) => (w, w / r),
-                    (None, Some(h), Some(r)) => (h * r, h),
-                    (Some(w), None, None) => (w, 150.0),
-                    (None, Some(h), None) => (300.0, h),
-                    (None, None, Some(r)) => {
-                        // §10.3.2, последний пункт: при обеих `auto` и одном
-                        // лишь соотношении ширина берётся из содержащего
-                        // блока, а не из резерва. Резерв остаётся, когда
-                        // ширину взять неоткуда (`ratio-2.svg` в
-                        // `visudet/replaced-elements-*`: мы рисовали 300×150,
-                        // эталон — 200×100 по `div { width: 200px }`).
-                        let w = CB_WIDTH
-                            .get()
-                            .filter(|v| *v > 0.0)
-                            .unwrap_or_else(|| (150.0 * r).min(300.0));
-                        (w, w / r)
-                    }
-                    // ★ ЗАМЕРЕНО И ОТКАЧЕНО: считать ДОЛЮ собственного
-                    // размера рисунка (`<svg width="100%">` и SVG вовсе без
-                    // атрибутов — у него подразумевается `100%`) и разрешать
-                    // её от содержащего блока. Написано было и в `Intrinsic`
-                    // (поля `w_pct`/`h_pct` в `background::svg_size`), и
-                    // здесь. Срез из 943 пар (replaced/normal-flow/svg/
-                    // background-size/image): 880 → 874. `replaced-intrinsic-
-                    // 002` пошла 6.10 → 1.41, но вся семья `replaced-
-                    // elements-*` рухнула (0.01 → 24.17 и родня).
-                    // Причина в РАЗНИЦЕ ДВУХ СЛУЧАЕВ: у `<img>` доля значит
-                    // «своего размера нет» и работает умолчальный размер
-                    // 300×150 (css-images-3 §5.2), а у `<object>` SVG — это
-                    // вложенный ДОКУМЕНТ, и его `100%` считается от коробки
-                    // объекта, то есть от содержащего блока. Возвращать
-                    // вместе с этим различением.
-                    (None, None, None) => (300.0, 150.0),
-                };
-                if w0 > 0.0 && h0 > 0.0 {
-                    // §10.4: пределы — по таблице (`css2_replaced_limits`).
-                    let min_w = clamp(e.style.min_width, sub_w);
-                    let min_h = clamp(e.style.min_height, sub_h);
-                    // Без СОБСТВЕННОГО соотношения стороны независимы: потолок
-                    // высоты режет только высоту, и ширина остаётся своей
-                    // (§10.4, таблица «no intrinsic ratio»). Прежде общий
-                    // множитель ужимал и её — картинка без соотношения под
-                    // `max-height: 20px` выходила у́же в пятнадцать раз
-                    // (`replaced-elements-max-height-20`, снимки `no-ratio` и
-                    // `height-25-no-ratio`).
-                    let без_соотношения =
-                        side.ratio.is_none() && !(side.w.is_some() && side.h.is_some());
-                    let (rw, rh) = if без_соотношения {
-                        (limit(w0, min_w, max_w), limit(h0, min_h, max_h))
-                    } else {
-                        css2_replaced_limits(w0, h0, min_w, max_w, min_h, max_h)
-                    };
-                    image = vectorize(image, rw, rh)
-                        .w(px(rw))
-                        .h(px(rh))
-                        .object_fit(gpui::ObjectFit::Fill);
-                }
-            } else if (max_w.is_some() || max_h.is_some())
-                && let Some(ready) = crate::paint::background::source(
-                    &crate::paint::background::key(local.unwrap_or(src), &e.style),
-                )
-            {
-                let side = ready.intrinsic();
-                if let (Some(w0), Some(h0)) = (side.w, side.h)
-                    && w0 > 0.0
-                    && h0 > 0.0
-                {
-                    let mut scale = 1.0f32;
-                    if let Some(m) = max_w {
-                        scale = scale.min(m / w0);
-                    }
-                    if let Some(m) = max_h {
-                        scale = scale.min(m / h0);
-                    }
-                    if scale < 1.0 {
-                        image = vectorize(image, w0 * scale, h0 * scale)
-                            .w(px(w0 * scale))
-                            .h(px(h0 * scale))
-                            .object_fit(gpui::ObjectFit::Fill);
-                    }
-                }
-            }
-        }
+        image = sized_image(
+            src,
+            e,
+            local,
+            image,
+            vectorize,
+            sub_w,
+            sub_h,
+            clamp,
+            max_w,
+            max_h,
+            limit,
+            &mut узкая,
+            ratio_of,
+            transfer,
+        );
         // CSS Images 3 §4.5: object-fit initially fills the content box.
         // Intrinsic sizing above already preserves the natural ratio. Applying
         // contain again to the snapped box introduces unintended letterboxing.
@@ -893,4 +491,468 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             .unwrap_or_else(|| "[изображение]".into()),
     ))
     .into_any_element()
+}
+
+#[allow(clippy::result_large_err)]
+fn contained_image(
+    base_font: Option<f32>,
+    src: &str,
+    e: &Element,
+    d: gpui::Div,
+) -> Result<AnyElement, gpui::Div> {
+    if e.style.contains_width() || e.style.contains_height() {
+        let side = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let b = e.style.borders();
+        let pad_x =
+            side(e.style.padding.left) + side(e.style.padding.right) + side(b.left) + side(b.right);
+        let pad_y =
+            side(e.style.padding.top) + side(e.style.padding.bottom) + side(b.top) + side(b.bottom);
+        let used = |explicit: Option<Len>, ci: Option<f32>| match explicit {
+            Some(Len::Px(v)) => v,
+            _ => ci.unwrap_or(0.0),
+        };
+        // Обособление снимает ПРИРОДНОЕ соотношение, но не ЗАЯВЛЕННОЕ:
+        // css-contain-2 §size containment, «Size containment only suppresses
+        // the natural aspect ratio, so properties like 'aspect-ratio' which
+        // affect that preferred aspect ratio directly are honored»
+        // (Overview.bs:659-662), и пример там же (:737-752):
+        // `img{width:100px;aspect-ratio:1/1;contain:size}` = 100×100, а без
+        // объявленного соотношения — 100×0. Пара атрибутов `width`/`height`
+        // разметки — это `aspect-ratio: auto <ratio>` (HTML Rendering
+        // §attributes for embedded content): природная его половина снята,
+        // заявленная осталась. Blink делает ровно так —
+        // `BlockNode::GetReplacedAspectRatio` (`block_node.cc:1328`):
+        // заявленное отдаётся ДО проверки обособления, гейт
+        // `ShouldApplyAnySizeContainment` стоит только вокруг природного.
+        let ratio = e
+            .style
+            .aspect_ratio
+            .filter(|r| r.is_finite() && *r > 0.0)
+            .or_else(|| match (e.style.attr_width, e.style.attr_height) {
+                (Some(Len::Px(aw)), Some(Len::Px(ah))) if aw > 0.0 && ah > 0.0 => Some(aw / ah),
+                _ => None,
+            });
+        let named = |l: Option<Len>| matches!(l, Some(Len::Px(_)));
+        let (nw, nh) = (named(e.style.width), named(e.style.height));
+        let cw = match ratio {
+            Some(r) if !nw && nh => used(e.style.height, e.style.contain_intrinsic.1) * r,
+            _ => used(e.style.width, e.style.contain_intrinsic.0),
+        };
+        let ch = match ratio {
+            Some(r) if nw && !nh => used(e.style.width, e.style.contain_intrinsic.0) / r,
+            _ => used(e.style.height, e.style.contain_intrinsic.1),
+        };
+        let mut d = d;
+        if e.style.contains_width() && matches!(e.style.width, None | Some(Len::Auto)) {
+            d = d.w(px(cw + pad_x));
+        }
+        if e.style.contains_height() && matches!(e.style.height, None | Some(Len::Auto)) {
+            d = d.h(px(ch + pad_y));
+        }
+        // Источник берётся тем же путём, что и вне обособления: строку со
+        // схемой `file:` система уходит скачивать, и картинка молча не
+        // рисуется. Растр декодируется своим декодером, вектор растрируется
+        // в уже посчитанный размер.
+        let local = src
+            .strip_prefix("file:///")
+            .or_else(|| src.strip_prefix("file://"))
+            .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
+        let mut image = match crate::paint::background::source(&crate::paint::background::key(
+            local.unwrap_or(src),
+            &e.style,
+        )) {
+            Some(crate::paint::background::Source::Vector { markup, .. })
+                if cw > 0.0 && ch > 0.0 =>
+            {
+                match crate::svg::raster::rasterize(&markup, cw, ch) {
+                    Some(r) => gpui::img(r),
+                    None => gpui::img(SharedString::from(src.to_string())),
+                }
+            }
+            Some(crate::paint::background::Source::Raster(ready)) => {
+                gpui::img(ready).preserve_natural_pixels(true)
+            }
+            _ => match local {
+                Some(path) => gpui::img(std::path::PathBuf::from(path)),
+                None => gpui::img(SharedString::from(src.to_string())),
+            },
+        };
+        // Подгонка содержимого замещаемой коробки считается от ПРИРОДНОГО
+        // размера картинки, который у самой картинки никуда не делся:
+        // обособление меняет коробку, а не объект. У Blink это два разных
+        // входа — раскладочный `LayoutReplaced::ComputeNaturalSizingInfo`
+        // начинается с `DCHECK(!ShouldApplySizeContainment())`
+        // (`layout_replaced.cc:509`), а рисовательный
+        // `LayoutReplaced::ReplacedContentRectFrom` берёт
+        // `GetNaturalDimensions()` БЕЗ всякого гейта (`:497`), и уже от него
+        // `ComputeObjectFitAndPositionRect` (`:426`) считает `object-fit`.
+        // Поэтому коробку домеряем здесь, а рисуем ОБЫЧНЫМ путём: клон с уже
+        // посчитанными сторонами содержимого и снятым обособлением — это и
+        // есть второй такт, «laying out in-place» (css-contain-2
+        // Overview.bs:702-707).
+        if e.style.object_fit.is_some() || e.style.object_position.is_some() {
+            let mut fitted = e.clone();
+            fitted.style.width = Some(Len::Px(cw));
+            fitted.style.height = Some(Len::Px(ch));
+            // `cw`/`ch` — размер СОДЕРЖИМОГО по построению, поэтому клон
+            // меряется по содержимому независимо от `box-sizing` документа.
+            fitted.style.border_box = Some(false);
+            fitted.style.contain_size = Some(false);
+            fitted.style.contain_inline_size = Some(false);
+            return Ok(image_with(&fitted, base_font));
+        }
+        image = image.w(px(cw)).h(px(ch)).object_fit(gpui::ObjectFit::Fill);
+        return Ok(d.child(image).into_any_element());
+    }
+    Err(d)
+}
+
+#[allow(clippy::result_large_err)]
+fn piped_image(
+    src: &str,
+    e: &Element,
+    d: gpui::Div,
+    local: Option<&str>,
+    wants_pipe: bool,
+) -> Result<AnyElement, gpui::Div> {
+    if let (true, Some(Len::Px(w)), Some(Len::Px(h))) = (wants_pipe, e.style.width, e.style.height)
+    {
+        let pos = e
+            .style
+            .object_position
+            .unwrap_or(crate::style::computed::BgPos {
+                x: Some(Len::Pct(0.5)),
+                y: Some(Len::Pct(0.5)),
+            });
+        use crate::style::computed::BgSize;
+        let mut bgc = crate::style::computed::Computed::default();
+        bgc.bg_image = Some(local.unwrap_or(src).to_string());
+        bgc.bg_repeat = Some(crate::style::computed::BgRepeat::NoRepeat);
+        bgc.bg_pos = pos;
+        // Стиль трубы собран с нуля, и отказ от EXIF-разворота в него надо
+        // положить руками: иначе `image-orientation: none` вместе с
+        // `object-fit`/`object-position` уходил бы мимо ключа источника.
+        bgc.image_orient_none = e.style.image_orient_none;
+        bgc.bg_size = match e.style.object_fit.as_deref() {
+            Some("contain") => BgSize::Contain,
+            Some("cover") => BgSize::Cover,
+            Some("none") => BgSize::Auto,
+            Some("scale-down") => {
+                // Меньшее из `none` и `contain`: влезает — своим
+                // размером, нет — вписать.
+                let fits = crate::paint::background::source(&crate::paint::background::key(
+                    local.unwrap_or(src),
+                    &e.style,
+                ))
+                .map(|s| s.intrinsic())
+                .is_some_and(|i| i.w.is_some_and(|iw| iw <= w) && i.h.is_some_and(|ih| ih <= h));
+                if fits { BgSize::Auto } else { BgSize::Contain }
+            }
+            _ => BgSize::Fixed(Some(Len::Pct(1.0)), Some(Len::Pct(1.0))),
+        };
+        // `overflow: visible` на замещаемом (HTML §rendering: UA-правило
+        // `img { overflow: clip; overflow-clip-margin: content-box }`,
+        // css-overflow-3): ЯВНОЕ `visible` выпускает картинку за content
+        // box — `object-fit: none` рисуется своим размером целиком,
+        // скругление её тоже не режет (`overflow-img`, `-svg`,
+        // `-border-radius`: эталон — та же картинка без обрезки).
+        // Умолчание (`None`) — UA-шный `clip`, прежний путь ниже.
+        let spills = e.style.overflow_x == Some(crate::style::computed::Overflow::Visible)
+            && e.style.overflow_y == Some(crate::style::computed::Overflow::Visible);
+        if spills {
+            let style = bgc.clone();
+            let layer = gpui::canvas(
+                |_, _, _| {},
+                move |bounds: gpui::Bounds<gpui::Pixels>, _, window, _| {
+                    // Область ОТСЧЁТА — content box, область КРАСКИ — с
+                    // запасом во все стороны: плитка одна (`no-repeat`),
+                    // и рисуется она ровно своим размером.
+                    let reach = px(4096.0);
+                    let paint = gpui::Bounds {
+                        origin: gpui::point(bounds.origin.x - reach, bounds.origin.y - reach),
+                        size: gpui::size(
+                            bounds.size.width + reach * 2.0,
+                            bounds.size.height + reach * 2.0,
+                        ),
+                    };
+                    crate::paint::background::paint_tiles(&style, bounds, Some(paint), window);
+                },
+            )
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full();
+            return Ok(d
+                .child(div().w(px(w)).h(px(h)).relative().child(layer))
+                .into_any_element());
+        }
+        if let Some(layer) = crate::paint::background::layer(&bgc) {
+            // Внутренняя коробка = content box: поля и рамка остаются
+            // на хосте, слой не должен их накрывать.
+            return Ok(d
+                .child(
+                    div()
+                        .w(px(w))
+                        .h(px(h))
+                        .relative()
+                        .overflow_hidden()
+                        .child(layer),
+                )
+                .into_any_element());
+        }
+    }
+    Err(d)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn sized_image(
+    src: &str,
+    e: &Element,
+    local: Option<&str>,
+    mut image: gpui::Img,
+    vectorize: impl Fn(gpui::Img, f32, f32) -> gpui::Img,
+    sub_w: f32,
+    sub_h: f32,
+    clamp: impl Fn(Option<Len>, f32) -> Option<f32>,
+    max_w: Option<f32>,
+    max_h: Option<f32>,
+    limit: impl Fn(f32, Option<f32>, Option<f32>) -> f32,
+    узкая: &mut Option<(f32, f32)>,
+    ratio_of: impl Fn() -> Option<f32>,
+    transfer: impl Fn(f32, f32, bool) -> f32,
+) -> gpui::Img {
+    if let (Some(Len::Px(w)), Some(Len::Px(h))) = (e.style.width, e.style.height) {
+        image = vectorize(image, (w - sub_w).max(1.0), (h - sub_h).max(1.0));
+        // Элемент ГИБКОГО контейнера: коробку задаёт раскладка (рост,
+        // сжатие — css-flexbox-1 §9.7), и картинка заполняет её
+        // (`object-fit: fill`, css-images-3 §5.5), а не держит
+        // объявленную ширину. Прежде коробка `flex: 5` росла до 122.5,
+        // а картинка оставалась 10 точек (`flexbox-basic-img-horiz-001`,
+        // `-vert-001`).
+        image = if e.style.flex_item {
+            image.size_full()
+        } else {
+            image.w(px(w)).h(px(h))
+        };
+    } else if let (Some(Len::Px(w)), None | Some(Len::Auto)) = (e.style.width, e.style.height) {
+        // Заданная ширина + auto-высота: высота из соотношения (§10.6.2),
+        // без соотношения — своя, резерв 150.
+        // §10.7: пределы зажимают и НАЗВАННУЮ сторону тоже. Коробку
+        // `apply` уже зажал, а картинка шла как написана и вылезала за неё.
+        let cw = limit((w - sub_w).max(0.0), clamp(e.style.min_width, sub_w), max_w);
+        let ch = match ratio_of() {
+            Some(r) if r > 0.0 => transfer(cw, r, true),
+            _ => crate::paint::background::source(&crate::paint::background::key(
+                local.unwrap_or(src),
+                &e.style,
+            ))
+            .and_then(|s| s.intrinsic().h)
+            .unwrap_or(150.0),
+        };
+        // §10.4: пределы держат ВЫВЕДЕННУЮ сторону тоже — заданная
+        // остаётся как написана, а высота из соотношения обязана влезть
+        // в свой потолок и пол. Замерено отдельно: 0 и 0 — правка по
+        // спеке, счёт на ней не держится.
+        let ch_free = ch;
+        let ch = limit(ch, clamp(e.style.min_height, sub_h), max_h);
+        // §10.4: когда потолок или пол ИЗМЕНИЛИ выведенную сторону,
+        // заданная пересчитывается по соотношению — коробка остаётся
+        // пропорциональной, а не растягивается. `width: 200px` при
+        // `max-height: 50px` у картинки 100×50 — это 100×50, а не
+        // 200×50.
+        let cw = match ratio_of() {
+            Some(r) if r > 0.0 && (ch - ch_free).abs() > 0.01 => {
+                let w = limit(
+                    transfer(ch, r, false),
+                    clamp(e.style.min_width, sub_w),
+                    max_w,
+                );
+                // Коробка ужимается ТОЛЬКО когда предел и правда изменил
+                // выведенную сторону: иначе высота у неё остаётся `auto`,
+                // и подстановка ломала замещённые без пределов вовсе
+                // (`replaced-intrinsic-004`).
+                *узкая = Some((w, ch));
+                w
+            }
+            _ => cw,
+        };
+        image = vectorize(image, cw.max(1.0), ch.max(1.0))
+            .w(px(cw))
+            .h(px(ch))
+            .object_fit(gpui::ObjectFit::Fill);
+    } else if let (None | Some(Len::Auto), Some(Len::Px(h))) = (e.style.width, e.style.height) {
+        // Зеркально: заданная высота + auto-ширина (§10.3.2).
+        let ch = limit(
+            (h - sub_h).max(0.0),
+            clamp(e.style.min_height, sub_h),
+            max_h,
+        );
+        let cw = match ratio_of() {
+            Some(r) if r > 0.0 => transfer(ch, r, false),
+            _ => crate::paint::background::source(&crate::paint::background::key(
+                local.unwrap_or(src),
+                &e.style,
+            ))
+            .and_then(|s| s.intrinsic().w)
+            .unwrap_or(300.0),
+        };
+        let cw_free = cw;
+        let cw = limit(cw, clamp(e.style.min_width, sub_w), max_w);
+        // Зеркально §10.4: изменённая ширина тянет за собой высоту.
+        let ch = match ratio_of() {
+            Some(r) if r > 0.0 && (cw - cw_free).abs() > 0.01 => {
+                let h = limit(
+                    transfer(cw, r, true),
+                    clamp(e.style.min_height, sub_h),
+                    max_h,
+                );
+                *узкая = Some((cw, h));
+                h
+            }
+            _ => ch,
+        };
+        image = vectorize(image, cw.max(1.0), ch.max(1.0))
+            .w(px(cw))
+            .h(px(ch))
+            .object_fit(gpui::ObjectFit::Fill);
+    } else if let (Some(Len::Pct(_)), None | Some(Len::Auto)) = (e.style.width, e.style.height) {
+        // Доля ширины при auto-высоте: ширину даёт содержащий блок, высоту
+        // — собственное соотношение сторон (§10.3.2, §10.6.2). Раньше доля
+        // не попадала ни в одну ветку, и замещаемый рисовался СВОИМ
+        // пикселем (`absolute-replaced-width-006`: 15×15 вместо 96×96).
+        // Долю по этой оси УЖЕ поставил хозяин (`styled_div(e)` несёт
+        // стиль элемента целиком), поэтому картинке остаётся заполнить
+        // его: `relative(kw)` внутри давал долю ОТ ДОЛИ — `width: 50%`
+        // выходило четвертью содержащего блока.
+        image = image.w(gpui::relative(1.0));
+        if let Some(r) = ratio_of().filter(|r| *r > 0.0) {
+            image.style().aspect_ratio = Some(r);
+        }
+    } else if let (None | Some(Len::Auto), Some(Len::Pct(_))) = (e.style.width, e.style.height) {
+        // Зеркально: доля высоты при auto-ширине.
+        image = image.h(gpui::relative(1.0));
+        if let Some(r) = ratio_of().filter(|r| *r > 0.0) {
+            image.style().aspect_ratio = Some(r);
+        }
+    } else if !matches!(e.style.width, None | Some(Len::Auto))
+        && !matches!(e.style.height, None | Some(Len::Auto))
+    {
+        // Обе стороны заданы, но не обе в точках: каждая ось — своим
+        // значением. `width:100%; height:100%` растягивается на коробку
+        // (sizing-percentages-replaced-orthogonal-001), а смешанная
+        // запись `width:50%; height:15px` раньше падала в size_full и
+        // ТЕРЯЛА пиксельную сторону (inline-replaced-width-011..015).
+        image = match (e.style.width, e.style.height) {
+            (Some(Len::Pct(_)), Some(Len::Px(h))) => image.w(gpui::relative(1.0)).h(px(h)),
+            (Some(Len::Px(w)), Some(Len::Pct(_))) => image.w(px(w)).h(gpui::relative(1.0)),
+            _ => image.size_full(),
+        };
+    } else if !matches!(e.style.width, Some(Len::Px(_)))
+        && !matches!(e.style.height, Some(Len::Px(_)))
+    {
+        let both_auto = matches!(e.style.width, None | Some(Len::Auto))
+            && matches!(e.style.height, None | Some(Len::Auto));
+        if both_auto
+            && let Some(ready) = crate::paint::background::source(&crate::paint::background::key(
+                local.unwrap_or(src),
+                &e.style,
+            ))
+        {
+            // Авто-размер замещаемого считается ЗДЕСЬ, а не отдаётся
+            // загрузчику картинок: тот работает асинхронно, и в первом
+            // кадре коробка выходила нулевой высоты (box-sizing-007 —
+            // страница вовсе без квадратов). Недостающая сторона
+            // достраивается соотношением, резерв — 300×150
+            // (CSS 2.1 §10.3.2/§10.6.2, css-images-3 §default-sizing).
+            let side = ready.intrinsic();
+            let (w0, h0) = match (side.w, side.h, side.ratio) {
+                (Some(w), Some(h), _) => (w, h),
+                (Some(w), None, Some(r)) => (w, w / r),
+                (None, Some(h), Some(r)) => (h * r, h),
+                (Some(w), None, None) => (w, 150.0),
+                (None, Some(h), None) => (300.0, h),
+                (None, None, Some(r)) => {
+                    // §10.3.2, последний пункт: при обеих `auto` и одном
+                    // лишь соотношении ширина берётся из содержащего
+                    // блока, а не из резерва. Резерв остаётся, когда
+                    // ширину взять неоткуда (`ratio-2.svg` в
+                    // `visudet/replaced-elements-*`: мы рисовали 300×150,
+                    // эталон — 200×100 по `div { width: 200px }`).
+                    let w = CB_WIDTH
+                        .get()
+                        .filter(|v| *v > 0.0)
+                        .unwrap_or_else(|| (150.0 * r).min(300.0));
+                    (w, w / r)
+                }
+                // ★ ЗАМЕРЕНО И ОТКАЧЕНО: считать ДОЛЮ собственного
+                // размера рисунка (`<svg width="100%">` и SVG вовсе без
+                // атрибутов — у него подразумевается `100%`) и разрешать
+                // её от содержащего блока. Написано было и в `Intrinsic`
+                // (поля `w_pct`/`h_pct` в `background::svg_size`), и
+                // здесь. Срез из 943 пар (replaced/normal-flow/svg/
+                // background-size/image): 880 → 874. `replaced-intrinsic-
+                // 002` пошла 6.10 → 1.41, но вся семья `replaced-
+                // elements-*` рухнула (0.01 → 24.17 и родня).
+                // Причина в РАЗНИЦЕ ДВУХ СЛУЧАЕВ: у `<img>` доля значит
+                // «своего размера нет» и работает умолчальный размер
+                // 300×150 (css-images-3 §5.2), а у `<object>` SVG — это
+                // вложенный ДОКУМЕНТ, и его `100%` считается от коробки
+                // объекта, то есть от содержащего блока. Возвращать
+                // вместе с этим различением.
+                (None, None, None) => (300.0, 150.0),
+            };
+            if w0 > 0.0 && h0 > 0.0 {
+                // §10.4: пределы — по таблице (`css2_replaced_limits`).
+                let min_w = clamp(e.style.min_width, sub_w);
+                let min_h = clamp(e.style.min_height, sub_h);
+                // Без СОБСТВЕННОГО соотношения стороны независимы: потолок
+                // высоты режет только высоту, и ширина остаётся своей
+                // (§10.4, таблица «no intrinsic ratio»). Прежде общий
+                // множитель ужимал и её — картинка без соотношения под
+                // `max-height: 20px` выходила у́же в пятнадцать раз
+                // (`replaced-elements-max-height-20`, снимки `no-ratio` и
+                // `height-25-no-ratio`).
+                let без_соотношения =
+                    side.ratio.is_none() && !(side.w.is_some() && side.h.is_some());
+                let (rw, rh) = if без_соотношения {
+                    (limit(w0, min_w, max_w), limit(h0, min_h, max_h))
+                } else {
+                    css2_replaced_limits(w0, h0, min_w, max_w, min_h, max_h)
+                };
+                image = vectorize(image, rw, rh)
+                    .w(px(rw))
+                    .h(px(rh))
+                    .object_fit(gpui::ObjectFit::Fill);
+            }
+        } else if (max_w.is_some() || max_h.is_some())
+            && let Some(ready) = crate::paint::background::source(&crate::paint::background::key(
+                local.unwrap_or(src),
+                &e.style,
+            ))
+        {
+            let side = ready.intrinsic();
+            if let (Some(w0), Some(h0)) = (side.w, side.h)
+                && w0 > 0.0
+                && h0 > 0.0
+            {
+                let mut scale = 1.0f32;
+                if let Some(m) = max_w {
+                    scale = scale.min(m / w0);
+                }
+                if let Some(m) = max_h {
+                    scale = scale.min(m / h0);
+                }
+                if scale < 1.0 {
+                    image = vectorize(image, w0 * scale, h0 * scale)
+                        .w(px(w0 * scale))
+                        .h(px(h0 * scale))
+                        .object_fit(gpui::ObjectFit::Fill);
+                }
+            }
+        }
+    }
+    image
 }
