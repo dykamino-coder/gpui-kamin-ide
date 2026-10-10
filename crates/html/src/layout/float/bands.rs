@@ -64,6 +64,11 @@ pub struct FloatBands {
     clear_l: f32,
     /// То же для правых.
     clear_r: f32,
+    /// Block-end of the lowest initial letter on each side (left, right).
+    /// Not a float edge for float placement, but `clear` and a new formatting
+    /// context's auto height include it (css-inline-3 §clearing initial
+    /// letters; Blink `ClearanceOffsetIncludingInitialLetter`).
+    letter: (f32, f32),
 }
 
 impl FloatBands {
@@ -87,6 +92,7 @@ impl FloatBands {
             ceil_flow: 0.0,
             clear_l: 0.0,
             clear_r: 0.0,
+            letter: (0.0, 0.0),
         }
     }
 
@@ -255,7 +261,8 @@ impl FloatBands {
     /// строки вниз, где влезает на всю свою высоту (Blink
     /// `PostPlaceInitialLetterBox`, `inline_layout_algorithm.cc`: исключение
     /// от позиции строки, «after floats» — за флоатами той же строки).
-    /// Потолков флоатов и позиций `clear` она не меняет.
+    /// Потолков флоатов и посадки флоатов с `clear` она не меняет; её низ
+    /// входит только в `bottom` (`clear` блоков и высота нового контекста).
     pub fn add_initial_letter(&mut self, side: i8, w: f32, h: f32, top: f32) -> (f32, f32) {
         let (w, h) = (w.max(0.0), h.max(0.0));
         let mut y = top;
@@ -271,6 +278,11 @@ impl FloatBands {
         }
         let (l, r) = self.available(y, h);
         let x = if side < 0 { l } else { r - w };
+        if side < 0 {
+            self.letter.0 = self.letter.0.max(y + h);
+        } else {
+            self.letter.1 = self.letter.1.max(y + h);
+        }
         let edge = if side < 0 { x + w } else { x };
         let a = self.split_at(y);
         let b = self.split_at(y + h);
@@ -344,9 +356,13 @@ impl FloatBands {
     /// растёт — они из него вываливаются.
     pub fn bottom(&self, side: Option<i8>) -> f32 {
         match side {
-            Some(-1) => self.clear_l,
-            Some(1) => self.clear_r,
-            _ => self.clear_l.max(self.clear_r),
+            Some(-1) => self.clear_l.max(self.letter.0),
+            Some(1) => self.clear_r.max(self.letter.1),
+            _ => self
+                .clear_l
+                .max(self.clear_r)
+                .max(self.letter.0)
+                .max(self.letter.1),
         }
     }
 
