@@ -404,7 +404,13 @@ coordinator, но это не revision/reason telemetry, связывающая 
 наблюдавшимся `/reload-skills`. Diagnostic telemetry PR ещё нужен; поведение reload до
 evidence не менять. Production observation — владелец deployment.
 
-**Status:** investigation. **Dependency:** диагностические поля из BR-01 можно
+**Close-out 2026-10-11:** diagnostic telemetry merged in [#200](https://github.com/dykamino-coder/gpui-kamin-ide/pull/200)
+(`bca61f0`, not yet in a published release) with its automated route/coordinator
+tests (`core/sync/skills-reload-telemetry.test.ts`). The card's acceptance also
+requires the post-merge production observation, which has not happened, so the
+task stays open as `waiting`/observation; no reload defect is claimed fixed.
+
+**Status:** investigation (telemetry merged; production observation pending). **Dependency:** диагностические поля из BR-01 можно
 реализовать узко в этом PR. **Acceptance:** automated + post-merge production
 observation. Windows runtime merge gate потребуется отдельному behavioral fix,
 если telemetry подтвердит дефект.
@@ -812,7 +818,15 @@ persisted privacy-safe logs, retention и lifecycle evidence ещё не реа�
 будущего PR доступны filesystem tests и disposable Linux Docker gate без Windows UI, но
 это новый operational код и он не входит в эту ревизию.
 
-**Status:** ready как отдельный operational PR. **Dependency:** none.
+**Close-out 2026-10-11:** implementation merged in [#203](https://github.com/dykamino-coder/gpui-kamin-ide/pull/203)
+(`259925d`, identical to head `c2fc074`; not yet in a published release) with
+filesystem/lifecycle tests (`core/logging/lifecycle.test.ts`,
+`core/pty/lifecycle-persistence.test.ts`) and the implementer's disposable Podman
+gate described below. Task stays open: the production rollout of the lifecycle
+volume and its read-only confirmation by the deployment owner have not happened,
+and the historical termination cause is still unknown.
+
+**Status:** verify (implementation merged; deployment observation pending). **Dependency:** none.
 **Acceptance:** automated filesystem tests + isolated Linux Docker/Podman
 runtime gate; Windows UI acceptance не требуется.
 
@@ -1062,7 +1076,17 @@ is still surfaced.
 нужен isolated authenticated Linux/browser comparison из acceptance; без него нельзя
 объявлять реальные quota windows проверенными.
 
-**Status:** ready. **Dependency:** none. **Acceptance:** automated + isolated
+**Close-out 2026-10-11:** done. Fix [#202](https://github.com/dykamino-coder/gpui-kamin-ide/pull/202)
+merged as `cb04705` (identical to the accepted head `343a7c1`; not yet in a
+published release) with plan-usage/capture/statusline/UsageBars tests. The
+mandatory authenticated gate ran on that exact head: real Claude CLI 2.1.296 in
+Podman with the owner's acceptance login, native `/usage`, dashboard JSON and the
+Account card within ~23 s all showed 5 hours 17% / Week (all) 77% / Week (Fable)
+0% with reset labels and the partial-metadata note; the merge-base omitted the
+Fable window ([private evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/44348ab014945d8bfafa3bbed332683e403c36b5/incidents/BR-20/evidence/2026-10-11-runtime-acceptance-343a7c1)).
+The blocker text below is historical. Reopen if a later CLI changes the windows.
+
+**Status:** done. **Dependency:** none. **Acceptance:** automated + isolated
 authenticated Linux container/browser runtime gate; production rollout is not
 part of the implementation PR.
 
@@ -1470,7 +1494,13 @@ pending/generation/cancellation/reconciliation guarantees остаются не�
 следующий artifact — bounded diagnostics по границам invoke и pump, с повторной проверкой
 после BR-31. Timeout сам по себе не доказывает отсутствие повторной mutation.
 
-**Status:** confirmed incident; transport diagnostics pending.
+**Close-out 2026-10-11:** the bounded diagnostic phase merged in
+[#201](https://github.com/dykamino-coder/gpui-kamin-ide/pull/201) (`18a9be6`, not yet in a
+published release) with its boundary/privacy/retention tests. Task stays open:
+the post-merge production observation correlated with the BR-31 pump and the
+later behavioral invoke/reconciliation fix with its Windows CEF gate are not done.
+
+**Status:** confirmed incident; transport diagnostics merged (#201), observation and behavioral fix pending.
 **Dependency:** PR #12–#16 влиты; BR-31 РЕАЛИЗОВАН и влит
 ([#147](https://github.com/dykamino-coder/gpui-kamin-ide/pull/147)) — путь
 доставки, который он закрывал, больше не ждёт. Остаётся окончательная runtime
