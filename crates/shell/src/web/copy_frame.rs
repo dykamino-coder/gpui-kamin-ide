@@ -127,16 +127,42 @@ pub(crate) fn copy_into_own(
             // Raw HRESULT: WAIT_TIMEOUT и WAIT_ABANDONED положительны, но
             // не дают права читать поверхность или вызывать ReleaseSync.
             let mutex: Option<IDXGIKeyedMutex> = shared.raw().cast().ok();
-            let status = mutex.as_ref().map(|m| super::keyed_mutex::acquire(m));
+            #[cfg(debug_assertions)]
+            let injected = mutex
+                .as_ref()
+                .and_then(|_| crate::native_acceptance::faults::wait_status(id));
+            let status = mutex.as_ref().map(|m| {
+                #[cfg(debug_assertions)]
+                if let Some(status) = injected {
+                    return status;
+                }
+                super::keyed_mutex::acquire(m)
+            });
+            #[cfg(debug_assertions)]
+            let (copied, released) = (std::cell::Cell::new(false), std::cell::Cell::new(false));
             let access = super::keyed_access::with_access(
                 status,
-                || context.CopyResource(own.raw(), shared.raw()),
+                || {
+                    #[cfg(debug_assertions)]
+                    copied.set(true);
+                    context.CopyResource(own.raw(), shared.raw());
+                },
                 || {
                     if let Some(m) = &mutex {
+                        #[cfg(debug_assertions)]
+                        released.set(true);
                         let _ = m.ReleaseSync(0);
                     }
                 },
             );
+            #[cfg(debug_assertions)]
+            if let Some(status) = injected {
+                super::acceptance::acceptance_log(format!(
+                    "[acceptance] mutex_result view={id} status={status} copied={} released={} access={access:?}",
+                    copied.get(),
+                    released.get()
+                ));
+            }
             match access {
                 super::keyed_access::Access::Retry => {
                     super::diag::busy();

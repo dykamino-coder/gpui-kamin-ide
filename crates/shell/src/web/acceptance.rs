@@ -16,4 +16,3 @@ pub(crate) fn reset_fixture() {
             .join(format!("{}.html", crate::native_acceptance::VIEW)),
     );
 }
-
