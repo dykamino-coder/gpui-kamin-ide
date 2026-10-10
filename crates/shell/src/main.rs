@@ -35,6 +35,8 @@ mod icon_theme;
 mod job;
 mod layout_store;
 mod legacy_bridge;
+#[cfg(any(debug_assertions, test))]
+mod native_acceptance;
 mod os_clipboard;
 mod output_log;
 mod overlay;
@@ -65,23 +67,19 @@ fn main() {
     // ПЕРВАЯ строка: дочерние процессы CEF — это копии нашего exe. Они обязаны
     // уйти отсюда до probe, сайдкара и окна (`web/process.rs`).
     web::exit_if_child_process();
+    #[cfg(debug_assertions)]
+    if std::env::args().any(|arg| arg == "--native-acceptance-capabilities") {
+        println!("debug-native-acceptance-v1");
+        return;
+    }
     // Общий Job: дети CEF в группе приложения и умирают вместе с ним.
     job::adopt_children();
 
-    // Падение в чужом коде (D3D11, Chromium) уносит процесс молча — ставим
-    // перехватчик, который назовёт модуль и адрес. Отчёт идёт в файл
-    // `<cache>/crash.log`: у packaged GUI-сборки консоли нет, а именно с
-    // машины человека нужны цифры.
+    // Crash handler сохраняет модуль/адрес в cache/crash.log даже без консоли.
     kamin_crash::install("main", kamin_crash::AfterReport::SystemDialog);
 
-    // DirectComposition ВКЛЮЧЁН: непокрытая при ресайзе область окна
-    // ПРОЗРАЧНА (просвечивает то, что за окном) — а не чёрные полосы blit
-    // (жалоба юзера). Историческая болезнь dcomp «разворот со старым
-    // контентом» вылечена синхронным кадром в WM_SIZE + resize_boost
-    // (vendored events.rs): стенд 6/6 разворотов и внешние ресайзы чисты.
-    // Аварийный выключатель: GPUI_DISABLE_DIRECT_COMPOSITION=true → blit
-    // (там дополнительно выключено стирание фона — см. патчи
-    // hbrBackground/WM_ERASEBKGND).
+    // DirectComposition сохраняет прозрачность при ресайзе. WM_SIZE +
+    // resize_boost чинят разворот; GPUI_DISABLE_DIRECT_COMPOSITION=true → blit.
     // SAFETY: до Application::new, второго потока ещё нет.
     if std::env::var_os("GPUI_DISABLE_DIRECT_COMPOSITION").is_none() {
         unsafe { std::env::set_var("GPUI_DISABLE_DIRECT_COMPOSITION", "false") };
@@ -115,6 +113,8 @@ fn main() {
     let _ = host_link::t0();
     let (tx, rx) = smol::channel::unbounded::<host_link::ShellEvent>();
     host_link::start(tx.clone());
+    #[cfg(debug_assertions)]
+    native_acceptance::startup();
     // Восстановить открытые файлы прошлой сессии (персист layout.json)
     for path in crate::layout_store::load_string_list("openFiles") {
         let _ = tx.try_send(host_link::ShellEvent::Ed(EdEvent::OpenFile(path)));

@@ -350,6 +350,14 @@ jobs:
           echo "html5lib-tests $(git -C vendor/html5lib-tests rev-parse --short HEAD), wpt $(git -C vendor/wpt-parsing rev-parse --short HEAD)"
 
       - run: cargo test --workspace
+      - name: Acceptance environment is inert without debug assertions
+        shell: pwsh
+        run: |
+          $testExe = Join-Path $env:RUNNER_TEMP 'native-acceptance-release-test.exe'
+          rustc --edition=2024 --test -D warnings -C debug-assertions=no crates/shell/src/native_acceptance/config.rs -o $testExe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $testExe
+          exit $LASTEXITCODE
       - run: python scripts/check_event_routing.py
 
       - name: Set up Node.js for the installer
