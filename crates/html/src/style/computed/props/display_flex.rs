@@ -2,8 +2,8 @@
 
 use crate::style::computed::*;
 use crate::style::values::value::Len;
-mod gap_place;
 mod flex_items;
+mod gap_place;
 
 impl Computed {
     #[allow(unused_variables)]

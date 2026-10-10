@@ -4,7 +4,13 @@ use super::*;
 
 impl Computed {
     #[allow(unused_variables)]
-    pub(super) fn apply_text_decor_emphasis_ruby(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_text_decor_emphasis_ruby(
+        &mut self,
+        key: &str,
+        val: &str,
+        v: &str,
+        hit: &mut bool,
+    ) {
         match key {
             "text-emphasis"
             | "text-emphasis-style"

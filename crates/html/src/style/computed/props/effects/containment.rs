@@ -4,7 +4,13 @@ use super::*;
 
 impl Computed {
     #[allow(unused_variables)]
-    pub(super) fn apply_effects_containment(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_effects_containment(
+        &mut self,
+        key: &str,
+        val: &str,
+        v: &str,
+        hit: &mut bool,
+    ) {
         match key {
             "container-type" => {
                 // css-conditional-5 §container-type:

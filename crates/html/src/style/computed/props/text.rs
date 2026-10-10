@@ -2,8 +2,8 @@
 
 use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
-mod vertical_clamp;
 mod breaking;
+mod vertical_clamp;
 
 impl Computed {
     #[allow(unused_variables)]

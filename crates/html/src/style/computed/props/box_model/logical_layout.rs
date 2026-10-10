@@ -4,7 +4,13 @@ use super::*;
 
 impl Computed {
     #[allow(unused_variables)]
-    pub(super) fn apply_box_model_logical(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_box_model_logical(
+        &mut self,
+        key: &str,
+        val: &str,
+        v: &str,
+        hit: &mut bool,
+    ) {
         match key {
             // --- Логические свойства ---------------------------------------
             // Письмо у нас только слева направо и сверху вниз, поэтому
