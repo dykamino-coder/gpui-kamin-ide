@@ -4,7 +4,8 @@
 //! * `host` + `cmds` — приём команд по TCP и их разбор;
 //! * `emit*` — искусственные события (открыть меню, показать тост);
 //! * `input`, `keys` — синтетические мышь и клавиатура;
-//! * `shot` — снимок окна.
+//! * `shot` — снимок окна, `shot_region` — одной области;
+//! * `wv_eval` — ответ страницы вью на `wveval`.
 
 #[cfg(feature = "probe")]
 pub mod cmds;
@@ -17,3 +18,7 @@ pub mod input;
 pub mod keys;
 pub mod registry;
 pub mod shot;
+#[cfg(feature = "probe")]
+pub mod shot_region;
+#[cfg(feature = "probe")]
+pub mod wv_eval;

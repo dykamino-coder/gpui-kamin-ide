@@ -361,7 +361,7 @@ pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
             move |ev: &gpui::MouseDownEvent, _w, _cx| {
                 let (x, y) = local(ev.position, id);
                 if let Some(fh) = &fh_click {
-                    _w.focus(fh);
+                    _w.focus(fh, _cx);
                 }
                 super::input::focus_view(id);
                 super::input::click(

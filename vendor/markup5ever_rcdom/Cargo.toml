@@ -40,17 +40,17 @@ name = "markup5ever_rcdom"
 path = "lib.rs"
 
 [dependencies.html5ever]
-version = "0.39"
+version = "0.40"
 
 [dependencies.markup5ever]
-version = "0.39"
+version = "0.40"
 features = ["serde"]
 
 [dependencies.tendril]
 version = "0.5"
 
 [dependencies.xml5ever]
-version = "0.39"
+version = "0.40"
 
 [dev-dependencies.env_logger]
 version = "0.11"

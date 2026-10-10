@@ -14,6 +14,8 @@ edition.workspace = true
 
 [dependencies]
 encoding_rs = "0.8.35"
+# XML source ranges preserve SVG markup when resolving URL fragments.
+roxmltree = "0.21.1"
 # Распаковка шрифтов в упаковках `woff` и `woff2` (правило `@font-face`):
 # у второй сверх сжатия ещё и перестроение таблицы глифов, руками её не брать.
 wuff = { version = "0.2.8", features = ["z", "brotli"] }
@@ -29,6 +31,10 @@ unicode-linebreak = "0.1"
 # Уровни встроенности по UBA: порядок ПРОГОНОВ строки на экране. Знаки внутри
 # прогона переставляет набор, здесь только порядок самих прогонов.
 unicode-bidi = "0.3.18"
+# Typographic units for text-combine-upright include combining marks.
+unicode-segmentation = "=1.13.3"
+# Unicode categories for first-letter punctuation in every script.
+unicode-properties = { version = "0.1.4", default-features = false, features = ["general-category"] }
 # Слогораздел по образцам Лианга — `hyphens: auto`. Образцы вшиты в крейт по
 # языкам: своих словарей не заводим и в сеть не ходим.
 hypher = "0.1.7"
@@ -46,6 +52,8 @@ windows = { version = "0.62", features = [
 ] }
 encoding_rs = "0.8"
 serde_json.workspace = true
+# Платформа gpui (окно, рендерер) — отдельный крейт с 0.3.8.
+gpui-platform.workspace = true
 # Выгрузка снимков разошедшихся пар (`WPT_DUMP=1`): без картинки причину
 # расхождения приходится угадывать по одному числу.
 png = "0.18.1"

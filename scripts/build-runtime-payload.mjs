@@ -19,7 +19,7 @@
 // this is safe for production AND keeps renderer-only rebuilds (which don't
 // touch the payload) near-instant + lets cargo skip re-embedding the blob.
 //   * runtime deps are installed into a persistent cache, reinstalled only when
-//     their ranges / the node version change (`.deps-cache/.hash`).
+//     their locked graph / the node version change (`.deps-cache/.hash`).
 //   * the final archive is gated on a hash of all its real inputs
 //     (`runtime.tar.zst.hash`).
 // Env knobs (DEV ONLY — production keeps the defaults):
@@ -43,6 +43,7 @@ import { fileURLToPath } from "node:url"
 import { constants as zlibConstants, zstdCompressSync } from "node:zlib"
 
 import { create as tarCreate } from "tar"
+import { runtimeDependencyPlan } from "./runtime-dependencies.mjs"
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
 const payloadDir = join(root, "payload")
@@ -64,7 +65,6 @@ const builtinSrc = join(root, "builtin-extensions")
 // config): a native addon + two packages whose "browser" field would
 // otherwise resolve to broken browser builds. node resolves these from
 // the runtime's node_modules at launch.
-const RUNTIME_DEPS = ["@homebridge/node-pty-prebuilt-multiarch", "ws", "chokidar"]
 // zstd level 19: near-max ratio (smaller embedded blob → smaller exe). DEV
 // builds drop this via env for speed; production keeps 19.
 const ZSTD_LEVEL = Number(process.env.KAMIN_PAYLOAD_ZSTD_LEVEL) || 19
@@ -100,31 +100,24 @@ function hashTree(dir) {
   return h.digest("hex")
 }
 
-// Pin the runtime deps to the exact ranges the app already builds against,
-// so the shipped runtime can't drift from what dev/CI verified.
-function resolveDepRanges() {
+// The payload installs the same resolved graph that npm ci and tests consume.
+function resolveRuntimePlan() {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"))
-  const deps = manifest.dependencies ?? {}
-  const out = {}
-  for (const name of RUNTIME_DEPS) {
-    const range = deps[name]
-    if (!range) fail(`${name} missing from package.json dependencies`)
-    out[name] = range
-  }
-  return out
+  const lock = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8"))
+  return runtimeDependencyPlan(manifest, lock)
 }
 
-/** Identity of the installed deps: their ranges + the node/platform they're for. */
+/** Identity includes exact transitive resolutions, not just manifest ranges. */
 function depsHash() {
   return createHash("sha256")
-    .update(JSON.stringify(resolveDepRanges()))
+    .update(JSON.stringify(resolveRuntimePlan()))
     .update(process.version).update(process.platform).update(process.arch)
     .digest("hex")
 }
 
 // Fresh, dev-free install of just the runtime deps → a minimal node_modules
-// with their transitive closure resolved correctly. Cached: reinstalled only
-// when the dep ranges / node version change.
+// with the checked transitive closure. Cached: reinstalled only when the locked
+// graph or Node version changes.
 function ensureRuntimeDeps() {
   const want = depsHash()
   if (!FORCE && existsSync(depsModules) && existsSync(depsHashPath) && readFileSync(depsHashPath, "utf8") === want) {
@@ -135,14 +128,15 @@ function ensureRuntimeDeps() {
   mkdirSync(depsCacheDir, { recursive: true })
   writeFileSync(
     join(depsCacheDir, "package.json"),
-    `${JSON.stringify({ name: "kamin-runtime", private: true, dependencies: resolveDepRanges() }, null, 2)}\n`,
+    `${JSON.stringify(resolveRuntimePlan().manifest, null, 2)}\n`,
   )
-  console.log("[payload] installing runtime deps (npm i --omit=dev)…")
+  writeFileSync(join(depsCacheDir, "package-lock.json"), `${JSON.stringify(resolveRuntimePlan().lock, null, 2)}\n`)
+  console.log("[payload] installing locked runtime deps (npm ci --omit=dev)…")
   // Scripts stay ENABLED: node-pty-prebuilt-multiarch's install step lays
   // down the prebuilt .node binary for this platform.
   const result = spawnSync(
     "npm",
-    ["install", "--omit=dev", "--no-audit", "--no-fund", "--no-package-lock"],
+    ["ci", "--omit=dev", "--no-audit", "--no-fund"],
     { cwd: depsCacheDir, stdio: "inherit", shell: true },
   )
   if (result.status !== 0) fail("npm install failed for the runtime deps")
