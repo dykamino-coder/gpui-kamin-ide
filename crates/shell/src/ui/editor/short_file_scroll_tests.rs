@@ -8,17 +8,17 @@ use gpui::{
     Render, ScrollDelta, ScrollWheelEvent, Styled as _, TestAppContext, TouchPhase,
     VisualTestContext, Window, div, point, px, size,
 };
-use gpui_component::input::{Input, InputState};
+use gpui_component::input::{Editor, EditorState as CodeEditorState};
 
 struct Host {
-    input: Entity<InputState>,
+    input: Entity<CodeEditorState>,
 }
 
 impl Render for Host {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         div()
             .size_full()
-            .child(Input::new(&self.input).h_full().appearance(false))
+            .child(Editor::new(&self.input).h_full().appearance(false))
     }
 }
 
@@ -26,7 +26,7 @@ fn editor(
     cx: &mut TestAppContext,
     lines: usize,
     beyond: bool,
-) -> (Entity<InputState>, &mut VisualTestContext) {
+) -> (Entity<CodeEditorState>, &mut VisualTestContext) {
     cx.update(gpui_component::init);
     let text: String = (1..=lines)
         .map(|i| format!("const v{i} = {i};\n"))
@@ -34,9 +34,12 @@ fn editor(
     let mut input = None;
     let w = cx.add_window(|window, cx| {
         let st = cx.new(|cx| {
-            let mut st = InputState::new(window, cx)
-                .code_editor("typescript")
-                .scroll_beyond_last_line(beyond)
+            // `beyond`: upstream-умолчание (`None`, полвьюпорта) против
+            // `Some(0)` из `state/frame/editor.rs`
+            let mut st = CodeEditorState::new(window, cx)
+                .language("typescript")
+                .folding(false)
+                .scroll_beyond_last_line(if beyond { None } else { Some(0) })
                 .soft_wrap(false);
             st.set_value(text.clone(), window, cx);
             st
@@ -50,12 +53,12 @@ fn editor(
     cx.simulate_resize(size(px(600.), px(400.)));
     cx.run_until_parked();
     let st = input.unwrap();
-    cx.update(|window, cx| window.focus(&st.read(cx).focus_handle(cx)));
+    cx.update(|window, cx| window.focus(&st.read(cx).focus_handle(cx), cx));
     cx.run_until_parked();
     (st, cx)
 }
 
-fn offset_y(input: &Entity<InputState>, cx: &mut VisualTestContext) -> f32 {
+fn offset_y(input: &Entity<CodeEditorState>, cx: &mut VisualTestContext) -> f32 {
     cx.update(|_, cx| f32::from(input.read(cx).scroll_handle.offset().y))
 }
 
