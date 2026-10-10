@@ -900,7 +900,13 @@ fn resolve_links(html: &str, path: &str) -> String {
                 rest = &tail[end + 1..];
                 continue;
             }
-            match attr_value(tag, attr).and_then(|v| resolve(&v).map(|p| (v, p))) {
+            // Пустой адрес (`<img src="">`) не переписывается: `replace("", uri)`
+            // вставлял адрес между каждыми двумя символами тега
+            // (block-max-height-004).
+            match attr_value(tag, attr)
+                .filter(|v| !v.trim().is_empty())
+                .and_then(|v| resolve(&v).map(|p| (v, p)))
+            {
                 Some((href, file))
                     if lower.starts_with("<img")
                         || lower.starts_with("<iframe")
