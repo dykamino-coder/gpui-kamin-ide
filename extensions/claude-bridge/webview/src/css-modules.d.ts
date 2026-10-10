@@ -22,3 +22,5 @@ declare module '*.svg?raw' {
   const source: string
   export default source
 }
+// Plain stylesheets are side-effect imports handled by Vite.
+declare module '*.css' {}

@@ -17,6 +17,7 @@ import { activeWidgets } from '../signals/widgets'
 import { tabAgentTrees, tabJsonlLive, ingestAgentEntries, clearAgentTabState } from '../signals/agents'
 
 // Terminal registry for bridge.onOutput routing
+import { terminalSnapshots } from '../signals/terminal-snapshots'
 import { terminalRegistry, resetConsoleForReconnect } from '../signals/terminal-registry'
 import { splitTrailingEscape, stripMouseTracking } from '../lib/strip-mouse-tracking'
 
@@ -126,6 +127,7 @@ export function useBridgeListeners(
     })
 
     const unsubTabClosed = bridge.onTabClosed((tabId: string) => {
+      terminalSnapshots.close(tabId)
       forgetTabConnection(tabId)
       const closedTab = tabs.value.find(t => t.id === tabId)
       const remaining = tabs.value.filter(t => t.id !== tabId)

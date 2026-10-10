@@ -2,7 +2,7 @@
 // Session WebSocket — multiplexed PTY stream + MCP on /ws/session
 // ============================================================================
 
-import { lifecycleLog } from '../logging/lifecycle'
+import { lifecycleLog, type DestroyReason } from '../logging/lifecycle'
 import { WebSocketServer, WebSocket as WS } from 'ws'
 import type { Server as HttpServer } from 'http'
 import crypto from 'crypto'
@@ -30,8 +30,6 @@ import {
   writeInput,
   submitText,
   resizeTerminal,
-  handleMcpResponse,
-  handleMcpDenied,
   handleElicitationResponse,
   getSession,
   restartWithEffort,
@@ -39,6 +37,8 @@ import {
   getSessionTree,
   deleteSessionByConversationId,
 } from './session-manager'
+import { settleMcpResult } from './session-mcp-call'
+import { sendToClient } from './session-io'
 import { eventBus } from '../events/bus'
 import { sendSessionError as sendError } from './session-error'
 
@@ -100,6 +100,49 @@ export function attachSessionWebSocket(_server: HttpServer): void {
   wss.on('connection', (ws: WS) => {
     let authenticatedSessionId: string | null = null
     let authenticatedUser: string | null = null
+    let authenticatedTokenId: string | null = null
+    let socketGone = false
+    type Startup = { reason?: 'disconnected' | 'ended' | 'replaced'; destroyReason?: DestroyReason }
+    let startup: Startup | undefined
+    const beginStartup = (reason: DestroyReason): Startup => {
+      if (startup) {
+        startup.reason ??= 'replaced'
+        startup.destroyReason ??= reason
+      }
+      return (startup = {})
+    }
+    const ownsStartup = (operation: Startup) =>
+      startup === operation && !operation.reason && !socketGone && ws.readyState === WS.OPEN
+    const cancelStartup = (reason: Startup['reason']) => {
+      if (startup) {
+        startup.reason ??= reason
+        if (reason === 'ended') startup.destroyReason ??= 'explicit_end'
+      }
+      startup = undefined
+    }
+    const dropTokenIndex = () => {
+      if (!authenticatedTokenId) return
+      const clients = tokenWsMap.get(authenticatedTokenId)
+      clients?.delete(ws)
+      if (clients?.size === 0) tokenWsMap.delete(authenticatedTokenId)
+      authenticatedTokenId = null
+    }
+    const retireBinding = (reason: DestroyReason) => {
+      dropTokenIndex()
+      if (authenticatedSessionId && sessionWsMap.get(authenticatedSessionId) === ws) {
+        sessionWsMap.delete(authenticatedSessionId)
+        destroySession(authenticatedSessionId, reason)
+      }
+      authenticatedSessionId = null
+      authenticatedUser = null
+    }
+    const releaseLateSession = (session: PtySession, operation: Startup) => {
+      // A newer socket may already have stolen this registered session.
+      if (session.ws !== ws || (sessionWsMap.has(session.id) && sessionWsMap.get(session.id) !== ws)) return
+      if (operation.reason === 'ended' || operation.reason === 'replaced')
+        destroySession(session.id, operation.destroyReason)
+      else detachSession(session.id)
+    }
 
     // Heartbeat: detect half-open sockets that the OS hasn't reported as
     // closed. Common when the client suspends (laptop lid close), drops a
@@ -130,6 +173,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
     }, 15_000)
 
     ws.on('message', async (raw: Buffer | string) => {
+      if (socketGone || ws.readyState !== WS.OPEN) return
       let msg: ClientToServerMsg
       try {
         msg = JSON.parse(typeof raw === 'string' ? raw : raw.toString())
@@ -140,97 +184,95 @@ export function attachSessionWebSocket(_server: HttpServer): void {
 
       switch (msg.type) {
         case 'session:create': {
-          // Authenticate token
-          const resolved = await resolveToken(msg.token)
-          if (!resolved) {
-            sendError(ws, 'Invalid token', 4001, 'Invalid token')
-            return
-          }
-
-          // Clean up previous session on this WS (if any)
-          if (authenticatedSessionId) {
-            sessionWsMap.delete(authenticatedSessionId)
-            destroySession(authenticatedSessionId, 'replace_start')
-            authenticatedSessionId = null
-          }
-
+          const operation = beginStartup('replace_start')
           try {
-            const bearerHash = crypto.createHash('sha256').update(msg.token).digest('hex').slice(0, 16)
-            const session = await createSession(ws, resolved.userName, resolved.tokenId, {
-              cwd: msg.cwd,
-              cols: msg.cols,
-              rows: msg.rows,
-              basePrompt: msg.basePrompt,
-              transcriptMirrorDir: msg.transcriptMirrorDir,
-              bearerHash,
-              protocolVersion: msg.protocolVersion ?? 0,
-            })
-
-            // Register external MCP tools BEFORE CLI initializes
-            if (msg.externalTools && Array.isArray(msg.externalTools)) {
-              session.registeredTools = msg.externalTools
-              debugLog('External tools registered at session create', {
-                sessionId: session.id,
-                count: msg.externalTools.length,
-                tools: msg.externalTools.map((t) => t.name),
-              })
+            // Authenticate token
+            const resolved = await resolveToken(msg.token)
+            if (!ownsStartup(operation)) return
+            if (!resolved) {
+              sendError(ws, 'Invalid token', 4001, 'Invalid token')
+              return
             }
 
-            authenticatedSessionId = session.id
-            authenticatedUser = resolved.userName
-            sessionWsMap.set(session.id, ws)
+            retireBinding('replace_start')
 
-            // Track WS by tokenId for tree broadcasts
-            if (!tokenWsMap.has(resolved.tokenId)) tokenWsMap.set(resolved.tokenId, new Set())
-            tokenWsMap.get(resolved.tokenId)!.add(ws)
+            // Admission reservations in createSession cover pending startups too.
+            try {
+              const bearerHash = crypto.createHash('sha256').update(msg.token).digest('hex').slice(0, 16)
+              const session = await createSession(ws, resolved.userName, resolved.tokenId, {
+                cwd: msg.cwd,
+                cols: msg.cols,
+                rows: msg.rows,
+                basePrompt: msg.basePrompt,
+                transcriptMirrorDir: msg.transcriptMirrorDir,
+                bearerHash,
+                protocolVersion: msg.protocolVersion ?? 0,
+              })
 
-            ws.send(
-              JSON.stringify({
-                type: 'session:created',
+              if (!ownsStartup(operation)) {
+                releaseLateSession(session, operation)
+                return
+              }
+
+              // Register external MCP tools BEFORE CLI initializes
+              if (msg.externalTools && Array.isArray(msg.externalTools)) {
+                session.registeredTools = msg.externalTools
+                debugLog('External tools registered at session create', {
+                  sessionId: session.id,
+                  count: msg.externalTools.length,
+                  tools: msg.externalTools.map((t) => t.name),
+                })
+              }
+
+              authenticatedSessionId = session.id
+              authenticatedUser = resolved.userName
+              authenticatedTokenId = resolved.tokenId
+              sessionWsMap.set(session.id, ws)
+
+              // Track WS by tokenId for tree broadcasts
+              if (!tokenWsMap.has(resolved.tokenId)) tokenWsMap.set(resolved.tokenId, new Set())
+              tokenWsMap.get(resolved.tokenId)!.add(ws)
+
+              ws.send(
+                JSON.stringify({
+                  type: 'session:created',
+                  sessionId: session.id,
+                  effort: session.effort,
+                  model: session.model,
+                  settingsDir: session.settingsDir,
+                }),
+              )
+
+              // Send initial tree to this client
+              broadcastTree(resolved.tokenId)
+
+              debugLog('Session WS authenticated', {
                 sessionId: session.id,
-                effort: session.effort,
-                model: session.model,
-                settingsDir: session.settingsDir,
-              }),
-            )
-
-            // Send initial tree to this client
-            broadcastTree(resolved.tokenId)
-
-            debugLog('Session WS authenticated', {
-              sessionId: session.id,
-              userName: resolved.userName,
-            })
-          } catch (err) {
-            const errMsg = err instanceof Error ? err.message : String(err)
-            errorLog('Failed to create session', { error: errMsg })
-            sendError(
-              ws,
-              `Failed to create session: ${errMsg}`,
-              err instanceof SessionAdmissionError && err.kind === 'token' ? 4002 : undefined,
-              'Max sessions reached',
-            )
+                userName: resolved.userName,
+              })
+            } catch (err) {
+              if (!ownsStartup(operation)) return
+              const errMsg = err instanceof Error ? err.message : String(err)
+              errorLog('Failed to create session', { error: errMsg })
+              sendError(
+                ws,
+                `Failed to create session: ${errMsg}`,
+                err instanceof SessionAdmissionError && err.kind === 'token' ? 4002 : undefined,
+                'Max sessions reached',
+              )
+            }
+            break
+          } catch (error) {
+            if (ownsStartup(operation)) sendError(ws, 'Session authentication failed')
+          } finally {
+            if (startup === operation) startup = undefined
           }
           break
         }
 
         case 'session:end': {
-          // Explicit end from the client (Disconnect button / tab close).
-          // Unlike a bare WS drop this destroys the session immediately —
-          // no detach grace.
-          if (!authenticatedSessionId) return
-          debugLog('Session explicitly ended by client', { sessionId: authenticatedSessionId })
-          sessionWsMap.delete(authenticatedSessionId)
-          const endedSession = getSession(authenticatedSessionId)
-          if (endedSession) {
-            const clients = tokenWsMap.get(endedSession.tokenId)
-            if (clients) {
-              clients.delete(ws)
-              if (clients.size === 0) tokenWsMap.delete(endedSession.tokenId)
-            }
-          }
-          destroySession(authenticatedSessionId, 'explicit_end')
-          authenticatedSessionId = null
+          cancelStartup('ended')
+          retireBinding('explicit_end')
           break
         }
 
@@ -274,8 +316,16 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           break
         }
 
-        case 'mcp:response': {
-          handleMcpResponse(msg.requestId, msg.result)
+        case 'mcp:response':
+        case 'mcp:denied': {
+          if (!authenticatedSessionId || sessionWsMap.get(authenticatedSessionId) !== ws) return
+          const accepted = settleMcpResult(authenticatedSessionId, msg)
+          sendToClient(ws, {
+            type: 'mcp:result-ack',
+            sessionId: authenticatedSessionId,
+            requestId: msg.requestId,
+            accepted,
+          })
           break
         }
 
@@ -286,11 +336,6 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           break
         }
 
-        case 'mcp:denied': {
-          handleMcpDenied(msg.requestId, msg.reason)
-          break
-        }
-
         case 'elicitation:response': {
           if (!authenticatedSessionId) return
           handleElicitationResponse(authenticatedSessionId, msg.requestId, msg.action, msg.content)
@@ -298,225 +343,229 @@ export function attachSessionWebSocket(_server: HttpServer): void {
         }
 
         case 'session:resume': {
-          // Resume a previous conversation
-          const resolved = await resolveToken(msg.token)
-          if (!resolved) {
-            sendError(ws, 'Invalid token', 4001, 'Invalid token')
-            return
-          }
-
-          // Clean up previous session on this WS (if any)
-          if (authenticatedSessionId) {
-            sessionWsMap.delete(authenticatedSessionId)
-            destroySession(authenticatedSessionId, 'replace_resume')
-            authenticatedSessionId = null
-          }
-
-          // Сериализация конкурентных resume одного диалога. Между
-          // findSessionByConversation и регистрацией createSession есть
-          // async-окно: два одновременных session:resume (реконнект ВСЕХ
-          // вкладок перезапущенного приложения) оба не находили live-сессию
-          // и спавнили ДВА CLI на один conversationId — два писателя одного
-          // JSONL. Прод-транскрипт 968683a8: ~344 резюм-отпечатка, часть
-          // ложится ВНУТРЬ чужих 5-секундных тул-лупов (интерливинг).
-          // Второй resume ждёт первого, затем находит его сессию live-поиском
-          // и реаттачится. Страховочный таймер снимает лок, если владелец
-          // умер, не дойдя до release (исключение вне внутреннего try).
-          // Канонизируем id ДО лока и live-поиска: вкладка с устаревшим id A
-          // иначе не находила живую сессию, идущую под tip B той же цепочки,
-          // и спавнила ВТОРОЙ CLI на ту же беседу (лок по сырому A тоже не
-          // спасал) — двойной писатель, хвост в осиротевшем файле.
-          if (msg.conversationId) {
-            const canonical = followCompactLinks(msg.conversationId)
-            if (canonical !== msg.conversationId) {
-              infoLog('Resume: canonicalized to chain tip before lock', {
-                requested: msg.conversationId,
-                tip: canonical,
-              })
-              msg.conversationId = canonical
-            }
-          }
-          const resumeLockKey = msg.conversationId ? `${resolved.tokenId}:${msg.conversationId}` : null
+          const operation = beginStartup('replace_resume')
           let releaseResumeLock: () => void = () => {}
-          if (resumeLockKey) {
-            if (resumeLocks.has(resumeLockKey)) lifecycleLog('resume_wait')
-            while (resumeLocks.has(resumeLockKey)) {
-              await resumeLocks.get(resumeLockKey)!.catch(() => {
-                /* ждём, исход не важен */
-              })
+          try {
+            const resolved = await resolveToken(msg.token)
+            if (!ownsStartup(operation)) return
+            if (!resolved) {
+              sendError(ws, 'Invalid token', 4001, 'Invalid token')
+              return
             }
-            let resolveLock!: () => void
-            const lock = new Promise<void>((r) => {
-              resolveLock = r
-            })
-            resumeLocks.set(resumeLockKey, lock)
-            const safety = setTimeout(() => {
-              releaseResumeLock()
-            }, RESUME_LOCK_SAFETY_MS)
-            releaseResumeLock = () => {
-              clearTimeout(safety)
-              if (resumeLocks.get(resumeLockKey) === lock) resumeLocks.delete(resumeLockKey)
-              resolveLock()
-            }
-          }
 
-          // Reattach path: the conversation's CLI is still alive (client WS
-          // dropped and reconnected within the detach grace window, or the
-          // same conversation is being opened from a fresh app instance).
-          // Binding the new WS to the live session instead of killing +
-          // respawning is what protects the JSONL from double-writer forks.
-          const live = findSessionByConversation(resolved.tokenId, msg.conversationId)
-          if (live) {
-            lifecycleLog('resume_reuse', { sessionId: live.id })
-            const oldWs = sessionWsMap.get(live.id)
-            if (oldWs && oldWs !== ws) {
-              // Steal: a zombie WS is still bound (half-open socket) — close
-              // it; its close handler is a no-op because the map no longer
-              // points at it (stale-ws guard below).
-              try {
-                oldWs.close(4003, 'Session reattached from another client')
-              } catch {
-                /* ignore */
+            retireBinding('replace_resume')
+            // Canonicalize before the shared lock: compact-chain aliases must
+            // serialize on the same live conversation, with ownership checked
+            // after each await before a waiter can create or reattach a PTY.
+            if (msg.conversationId) {
+              const canonical = followCompactLinks(msg.conversationId)
+              if (canonical !== msg.conversationId) {
+                infoLog('Resume: canonicalized to chain tip before lock', {
+                  requested: msg.conversationId,
+                  tip: canonical,
+                })
+                msg.conversationId = canonical
+              }
+            }
+            const resumeLockKey = msg.conversationId ? `${resolved.tokenId}:${msg.conversationId}` : null
+            if (resumeLockKey) {
+              if (resumeLocks.has(resumeLockKey)) lifecycleLog('resume_wait')
+              while (resumeLocks.has(resumeLockKey)) {
+                await resumeLocks.get(resumeLockKey)!.catch(() => {
+                  /* wait for either outcome */
+                })
+              }
+              if (!ownsStartup(operation)) return
+              let resolveLock!: () => void
+              const lock = new Promise<void>((resolve) => {
+                resolveLock = resolve
+              })
+              resumeLocks.set(resumeLockKey, lock)
+              const safety = setTimeout(() => {
+                releaseResumeLock()
+              }, RESUME_LOCK_SAFETY_MS)
+              releaseResumeLock = () => {
+                clearTimeout(safety)
+                if (resumeLocks.get(resumeLockKey) === lock) resumeLocks.delete(resumeLockKey)
+                resolveLock()
               }
             }
 
-            reattachSession(live, ws)
-            authenticatedSessionId = live.id
-            authenticatedUser = resolved.userName
-            sessionWsMap.set(live.id, ws)
-            if (!tokenWsMap.has(resolved.tokenId)) tokenWsMap.set(resolved.tokenId, new Set())
-            tokenWsMap.get(resolved.tokenId)!.add(ws)
+            // Reattach path: the conversation's CLI is still alive (client WS
+            // dropped and reconnected within the detach grace window, or the
+            // same conversation is being opened from a fresh app instance).
+            // Binding the new WS to the live session instead of killing +
+            // respawning is what protects the JSONL from double-writer forks.
+            if (!ownsStartup(operation)) return
+            const live = findSessionByConversation(resolved.tokenId, msg.conversationId)
+            if (live) {
+              lifecycleLog('resume_reuse', { sessionId: live.id })
+              const oldWs = sessionWsMap.get(live.id)
+              sessionWsMap.set(live.id, ws)
+              if (oldWs && oldWs !== ws) {
+                // Steal: a zombie WS is still bound (half-open socket) — close
+                // it; its close handler is a no-op because the map no longer
+                // points at it (stale-ws guard below).
+                try {
+                  oldWs.close(4003, 'Session reattached from another client')
+                } catch {
+                  /* ignore */
+                }
+              }
 
-            // reattach does NOT recreate the session, so refresh the negotiated
-            // stream protocol from THIS client (an old client reattaching a
-            // session first created by a new one, or vice-versa, must get the
-            // mode it actually supports).
-            live.streamProtocol = msg.protocolVersion ?? 0
+              reattachSession(live, ws)
+              authenticatedSessionId = live.id
+              authenticatedUser = resolved.userName
+              authenticatedTokenId = resolved.tokenId
+              sessionWsMap.set(live.id, ws)
+              if (!tokenWsMap.has(resolved.tokenId)) tokenWsMap.set(resolved.tokenId, new Set())
+              tokenWsMap.get(resolved.tokenId)!.add(ws)
 
-            if (msg.externalTools && Array.isArray(msg.externalTools)) {
-              live.registeredTools = msg.externalTools
-            }
+              // reattach does NOT recreate the session, so refresh the negotiated
+              // stream protocol from THIS client (an old client reattaching a
+              // session first created by a new one, or vice-versa, must get the
+              // mode it actually supports).
+              live.streamProtocol = msg.protocolVersion ?? 0
 
-            ws.send(
-              JSON.stringify({
-                type: 'session:created',
-                sessionId: live.id,
-                effort: live.effort,
-                model: live.model,
-                settingsDir: live.settingsDir,
-                reattached: true,
-              }),
-            )
-            if (live.cliConversationId) {
+              if (msg.externalTools && Array.isArray(msg.externalTools)) {
+                live.registeredTools = msg.externalTools
+              }
+
               ws.send(
                 JSON.stringify({
-                  type: 'session:conversation-id',
+                  type: 'session:created',
                   sessionId: live.id,
-                  conversationId: live.cliConversationId,
+                  effort: live.effort,
+                  model: live.model,
+                  settingsDir: live.settingsDir,
+                  reattached: true,
                 }),
               )
-            }
-            // Re-emit the full transcript so the fresh client rebuilds its
-            // chat state (same contract as a real resume).
-            live.jsonlWatcher?.replayAll?.()
+              if (live.cliConversationId) {
+                ws.send(
+                  JSON.stringify({
+                    type: 'session:conversation-id',
+                    sessionId: live.id,
+                    conversationId: live.cliConversationId,
+                  }),
+                )
+              }
+              // Re-emit the full transcript so the fresh client rebuilds its
+              // chat state (same contract as a real resume).
+              live.jsonlWatcher?.replayAll?.()
 
-            broadcastTree(resolved.tokenId)
-            debugLog('Session reattached via WS', {
-              sessionId: live.id,
-              conversationId: msg.conversationId,
-            })
-            releaseResumeLock()
-            break
-          }
-
-          try {
-            const bearerHash = crypto.createHash('sha256').update(msg.token).digest('hex').slice(0, 16)
-            const session = await createSession(ws, resolved.userName, resolved.tokenId, {
-              cwd: msg.cwd,
-              cols: msg.cols,
-              rows: msg.rows,
-              resumeConversationId: msg.conversationId,
-              // A resumed session respawns the CLI, so it must carry the
-              // prompt too — otherwise the instructions only ever applied to
-              // brand-new sessions.
-              basePrompt: msg.basePrompt,
-              transcriptMirrorDir: msg.transcriptMirrorDir,
-              bearerHash,
-              protocolVersion: msg.protocolVersion ?? 0,
-            })
-
-            // Register external MCP tools BEFORE CLI initializes
-            if (msg.externalTools && Array.isArray(msg.externalTools)) {
-              session.registeredTools = msg.externalTools
-              debugLog('External tools registered at session resume', {
-                sessionId: session.id,
-                count: msg.externalTools.length,
+              broadcastTree(resolved.tokenId)
+              debugLog('Session reattached via WS', {
+                sessionId: live.id,
+                conversationId: msg.conversationId,
               })
+              releaseResumeLock()
+              break
             }
 
-            authenticatedSessionId = session.id
-            authenticatedUser = resolved.userName
-            sessionWsMap.set(session.id, ws)
+            try {
+              const bearerHash = crypto.createHash('sha256').update(msg.token).digest('hex').slice(0, 16)
+              const session = await createSession(ws, resolved.userName, resolved.tokenId, {
+                cwd: msg.cwd,
+                cols: msg.cols,
+                rows: msg.rows,
+                resumeConversationId: msg.conversationId,
+                // A resumed session respawns the CLI, so it must carry the
+                // prompt too — otherwise the instructions only ever applied to
+                // brand-new sessions.
+                basePrompt: msg.basePrompt,
+                transcriptMirrorDir: msg.transcriptMirrorDir,
+                bearerHash,
+                protocolVersion: msg.protocolVersion ?? 0,
+              })
 
-            // Track WS by tokenId for tree broadcasts
-            if (!tokenWsMap.has(resolved.tokenId)) tokenWsMap.set(resolved.tokenId, new Set())
-            tokenWsMap.get(resolved.tokenId)!.add(ws)
+              if (!ownsStartup(operation)) {
+                releaseLateSession(session, operation)
+                return
+              }
 
-            ws.send(
-              JSON.stringify({
-                type: 'session:created',
-                sessionId: session.id,
-                effort: session.effort,
-                model: session.model,
-                settingsDir: session.settingsDir,
-                resumeNotFound: session.resumeNotFound || undefined,
-              }),
-            )
+              // Register external MCP tools BEFORE CLI initializes
+              if (msg.externalTools && Array.isArray(msg.externalTools)) {
+                session.registeredTools = msg.externalTools
+                debugLog('External tools registered at session resume', {
+                  sessionId: session.id,
+                  count: msg.externalTools.length,
+                })
+              }
 
-            // The requested conversation is not on this server — a fresh one
-            // was started. Nothing hits the JSONL until the first message, so
-            // without this the client sits in "Loading conversation…" until
-            // its 20s watchdog. Declare the (empty) replay complete right away.
-            if (session.resumeNotFound) {
+              authenticatedSessionId = session.id
+              authenticatedUser = resolved.userName
+              authenticatedTokenId = resolved.tokenId
+              sessionWsMap.set(session.id, ws)
+
+              // Track WS by tokenId for tree broadcasts
+              if (!tokenWsMap.has(resolved.tokenId)) tokenWsMap.set(resolved.tokenId, new Set())
+              tokenWsMap.get(resolved.tokenId)!.add(ws)
+
               ws.send(
                 JSON.stringify({
-                  type: 'jsonl:status',
-                  status: 'watching',
-                  replayComplete: true,
+                  type: 'session:created',
+                  sessionId: session.id,
+                  effort: session.effort,
+                  model: session.model,
+                  settingsDir: session.settingsDir,
+                  resumeNotFound: session.resumeNotFound || undefined,
                 }),
               )
-            }
 
-            // Send initial tree to this client
-            broadcastTree(resolved.tokenId)
+              // The requested conversation is not on this server — a fresh one
+              // was started. Nothing hits the JSONL until the first message, so
+              // without this the client sits in "Loading conversation…" until
+              // its 20s watchdog. Declare the (empty) replay complete right away.
+              if (session.resumeNotFound) {
+                ws.send(
+                  JSON.stringify({
+                    type: 'jsonl:status',
+                    status: 'watching',
+                    replayComplete: true,
+                  }),
+                )
+              }
 
-            // Fire BridgeReconnect bridge-emit event — the client just
-            // re-attached to (or first-attached to) this resumed session.
-            try {
-              const { emitBridgeEvent } = await import('../hooks/bridge-emitter')
-              await emitBridgeEvent('BridgeReconnect', {
+              // Send initial tree to this client
+              broadcastTree(resolved.tokenId)
+
+              // Fire BridgeReconnect bridge-emit event — the client just
+              // re-attached to (or first-attached to) this resumed session.
+              try {
+                const { emitBridgeEvent } = await import('../hooks/bridge-emitter')
+                if (!ownsStartup(operation)) return
+                await emitBridgeEvent('BridgeReconnect', {
+                  sessionId: session.id,
+                  conversationId: msg.conversationId,
+                })
+              } catch {
+                /* ignore */
+              }
+
+              debugLog('Session resumed via WS', {
                 sessionId: session.id,
                 conversationId: msg.conversationId,
               })
-            } catch {
-              /* ignore */
+            } catch (err) {
+              if (!ownsStartup(operation)) return
+              const errMsg = err instanceof Error ? err.message : String(err)
+              errorLog('Failed to resume session', { error: errMsg })
+              sendError(
+                ws,
+                `Failed to resume session: ${errMsg}`,
+                err instanceof SessionAdmissionError && err.kind === 'token' ? 4002 : undefined,
+                'Max sessions reached',
+              )
+            } finally {
+              releaseResumeLock()
             }
-
-            debugLog('Session resumed via WS', {
-              sessionId: session.id,
-              conversationId: msg.conversationId,
-            })
-          } catch (err) {
-            const errMsg = err instanceof Error ? err.message : String(err)
-            errorLog('Failed to resume session', { error: errMsg })
-            sendError(
-              ws,
-              `Failed to resume session: ${errMsg}`,
-              err instanceof SessionAdmissionError && err.kind === 'token' ? 4002 : undefined,
-              'Max sessions reached',
-            )
+            break
+          } catch (error) {
+            if (ownsStartup(operation)) sendError(ws, 'Session authentication failed')
           } finally {
             releaseResumeLock()
+            if (startup === operation) startup = undefined
           }
           break
         }
@@ -532,6 +581,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             sendError(ws, 'Session not found')
             return
           }
+          const operation = beginStartup('effort_restart')
           try {
             const oldSessionId = authenticatedSessionId
             // Preserve the negotiated stream protocol across the PTY restart —
@@ -540,6 +590,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
 
             // Remove old session from WS map
             sessionWsMap.delete(oldSessionId)
+            authenticatedSessionId = null
 
             let newSession: PtySession
             if (session.cliConversationId) {
@@ -559,11 +610,18 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 protocolVersion: preservedProto,
               })
             }
+            if (!ownsStartup(operation)) {
+              releaseLateSession(newSession, operation)
+              return
+            }
             newSession.streamProtocol = preservedProto
 
             // Update tracked session
             authenticatedSessionId = newSession.id
             sessionWsMap.set(newSession.id, ws)
+            authenticatedTokenId = session.tokenId
+            if (!tokenWsMap.has(session.tokenId)) tokenWsMap.set(session.tokenId, new Set())
+            tokenWsMap.get(session.tokenId)!.add(ws)
 
             // Notify client about the restart (include both effort + model for UI sync)
             ws.send(
@@ -581,9 +639,12 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               effort: msg.effort,
             })
           } catch (err) {
+            if (!ownsStartup(operation)) return
             const errMsg = err instanceof Error ? err.message : String(err)
             errorLog('Failed to change effort', { error: errMsg })
             sendError(ws, `Failed to change effort: ${errMsg}`)
+          } finally {
+            if (startup === operation) startup = undefined
           }
           break
         }
@@ -630,6 +691,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               return
             }
           }
+          const operation = beginStartup('model_restart')
           try {
             const oldSessionId = authenticatedSessionId
             // Preserve the negotiated stream protocol across the PTY restart.
@@ -637,6 +699,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
 
             // Remove old session from WS map
             sessionWsMap.delete(oldSessionId)
+            authenticatedSessionId = null
 
             let newSession: PtySession
             if (session.cliConversationId) {
@@ -656,11 +719,18 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 protocolVersion: preservedProto,
               })
             }
+            if (!ownsStartup(operation)) {
+              releaseLateSession(newSession, operation)
+              return
+            }
             newSession.streamProtocol = preservedProto
 
             // Update tracked session
             authenticatedSessionId = newSession.id
             sessionWsMap.set(newSession.id, ws)
+            authenticatedTokenId = session.tokenId
+            if (!tokenWsMap.has(session.tokenId)) tokenWsMap.set(session.tokenId, new Set())
+            tokenWsMap.get(session.tokenId)!.add(ws)
 
             // Notify client about the restart (include both effort + model for UI sync)
             ws.send(
@@ -678,9 +748,12 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               model: msg.model,
             })
           } catch (err) {
+            if (!ownsStartup(operation)) return
             const errMsg = err instanceof Error ? err.message : String(err)
             errorLog('Failed to change model', { error: errMsg })
             sendError(ws, `Failed to change model: ${errMsg}`)
+          } finally {
+            if (startup === operation) startup = undefined
           }
           break
         }
@@ -944,6 +1017,9 @@ export function attachSessionWebSocket(_server: HttpServer): void {
     // (mid-write kill + instant-reconnect double writer).
     const handleSocketGone = () => {
       clearInterval(heartbeat)
+      socketGone = true
+      cancelStartup('disconnected')
+      dropTokenIndex()
       if (!authenticatedSessionId) return
 
       // Stale-ws guard: if another WS already took over this session
@@ -1013,6 +1089,14 @@ eventBus.on('session:created', (data: any) => {
   if (data?.tokenId) broadcastTree(data.tokenId)
 })
 
-eventBus.on('session:destroyed', (data: any) => {
+eventBus.on('session:destroyed', (event: any) => {
+  const data = event?.data ?? event
+  const socket = sessionWsMap.get(data?.sessionId)
+  sessionWsMap.delete(data?.sessionId)
+  if (socket && ![...sessionWsMap.values()].includes(socket)) {
+    const clients = tokenWsMap.get(data?.tokenId)
+    clients?.delete(socket)
+    if (clients?.size === 0) tokenWsMap.delete(data.tokenId)
+  }
   if (data?.tokenId) broadcastTree(data.tokenId)
 })

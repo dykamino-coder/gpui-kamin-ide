@@ -35,6 +35,8 @@ mod icon_theme;
 mod job;
 mod layout_store;
 mod legacy_bridge;
+#[cfg(any(debug_assertions, test))]
+mod native_acceptance;
 mod os_clipboard;
 mod output_log;
 mod overlay;
@@ -52,9 +54,7 @@ mod when;
 mod win_integration;
 
 use crate::host::events::EdEvent;
-use gpui::{
-    AppContext as _, Application, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size,
-};
+use gpui::{AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
 use gpui_component::Root;
 use kamin_metrics as m;
 
@@ -67,23 +67,19 @@ fn main() {
     // ПЕРВАЯ строка: дочерние процессы CEF — это копии нашего exe. Они обязаны
     // уйти отсюда до probe, сайдкара и окна (`web/process.rs`).
     web::exit_if_child_process();
+    #[cfg(debug_assertions)]
+    if std::env::args().any(|arg| arg == "--native-acceptance-capabilities") {
+        println!("debug-native-acceptance-v1");
+        return;
+    }
     // Общий Job: дети CEF в группе приложения и умирают вместе с ним.
     job::adopt_children();
 
-    // Падение в чужом коде (D3D11, Chromium) уносит процесс молча — ставим
-    // перехватчик, который назовёт модуль и адрес. Отчёт идёт в файл
-    // `<cache>/crash.log`: у packaged GUI-сборки консоли нет, а именно с
-    // машины человека нужны цифры.
+    // Crash handler сохраняет модуль/адрес в cache/crash.log даже без консоли.
     kamin_crash::install("main", kamin_crash::AfterReport::SystemDialog);
 
-    // DirectComposition ВКЛЮЧЁН: непокрытая при ресайзе область окна
-    // ПРОЗРАЧНА (просвечивает то, что за окном) — а не чёрные полосы blit
-    // (жалоба юзера). Историческая болезнь dcomp «разворот со старым
-    // контентом» вылечена синхронным кадром в WM_SIZE + resize_boost
-    // (vendored events.rs): стенд 6/6 разворотов и внешние ресайзы чисты.
-    // Аварийный выключатель: GPUI_DISABLE_DIRECT_COMPOSITION=true → blit
-    // (там дополнительно выключено стирание фона — см. патчи
-    // hbrBackground/WM_ERASEBKGND).
+    // DirectComposition сохраняет прозрачность при ресайзе. WM_SIZE +
+    // resize_boost чинят разворот; GPUI_DISABLE_DIRECT_COMPOSITION=true → blit.
     // SAFETY: до Application::new, второго потока ещё нет.
     if std::env::var_os("GPUI_DISABLE_DIRECT_COMPOSITION").is_none() {
         unsafe { std::env::set_var("GPUI_DISABLE_DIRECT_COMPOSITION", "false") };
@@ -117,13 +113,18 @@ fn main() {
     let _ = host_link::t0();
     let (tx, rx) = smol::channel::unbounded::<host_link::ShellEvent>();
     host_link::start(tx.clone());
+    #[cfg(debug_assertions)]
+    native_acceptance::startup();
     // Восстановить открытые файлы прошлой сессии (персист layout.json)
     for path in crate::layout_store::load_string_list("openFiles") {
         let _ = tx.try_send(host_link::ShellEvent::Ed(EdEvent::OpenFile(path)));
     }
 
-    let app = Application::new().with_assets(assets::Assets);
+    let app = gpui_platform::application().with_assets(assets::Assets);
     app.run(move |cx| {
+        // Серые глифы, как до gpui-pre 0.3.8 (ClearType меняет вид всего текста
+        // и не пишет альфу — в прозрачных слоях текст бы пропадал).
+        cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
         // Шрифты вложены в бинарь (plan/22: Bricolage задаёт всю метрику).
         // Сабсеты ТЕ ЖЕ, что шипит kamin-ide; name-таблица починена
         // (апстрим: family «96pt ExtraBold», STAT-синтез — см. память).
@@ -217,7 +218,7 @@ fn main() {
                     size(px(m::WINDOW_DEFAULT_WIDTH), px(m::WINDOW_DEFAULT_HEIGHT)),
                     cx,
                 )
-            })?;
+            });
             // Рестор габаритов прошлого запуска (metrics.rs персистит на
             // устоявшийся ресайз): бут в ДРУГОМ размере прогонял ширины
             // колонок через фактор-масштаб и записывал урезанные — краш до
@@ -262,17 +263,16 @@ fn main() {
             cx.open_window(options, |window, cx| {
                 let view = cx.new(|cx| RootView::new(view_tx, cx));
                 let fh = view.read(cx).focus_handle.clone();
-                window.focus(&fh);
+                window.focus(&fh, cx);
                 view_slot = Some(view.clone());
                 // Заказы перерисовки на приход кадров CEF адресуем ЭТОМУ вью:
                 // `cx.refresh()` глушил бы кэш панелей (`web/pump.rs`).
                 web::set_repaint_target(view.downgrade());
+                // Фон окна рисует корневой канвас `RootView`: фон `Root`
+                // перекрывал бы его собственный слой (0.7.1: `Root` — `Styled`,
+                // свой стиль ложится поверх фона темы).
                 cx.new(|cx| {
-                    let mut root = Root::new(view, window, cx);
-                    // Фон окна рисует корневой канвас `RootView`: фон `Root`
-                    // перекрывал бы его собственный слой.
-                    root.transparent = true;
-                    root
+                    gpui::Styled::bg(Root::new(view, window, cx), gpui::transparent_black())
                 })
             })?;
 
@@ -283,7 +283,7 @@ fn main() {
                 smol::Timer::after(std::time::Duration::from_millis(300)).await;
                 #[cfg(windows)]
                 {
-                    let main_hwnd = cx.update(|_cx| overlay::main_hwnd_isize())?;
+                    let main_hwnd = cx.update(|_cx| overlay::main_hwnd_isize());
                     overlay::set_main_hwnd(main_hwnd);
                 }
             }
@@ -291,26 +291,21 @@ fn main() {
             // Насос событий host_link → RootView (foreground)
             if let Some(view) = view_slot {
                 while let Ok(event) = rx.recv().await {
-                    if view
-                        .update(cx, |v, cx| {
-                            let needs_frame = v.apply(event, cx);
-                            // Пропсы компонентов обновляем ЗДЕСЬ, а не в
-                            // рендере: `notify` из фазы отрисовки не помечает
-                            // окно грязным и нового кадра не заказывает
-                            // (`vendor/gpui/src/window.rs:117-127`), то есть
-                            // проверка изменений молча не работала.
-                            v.sync_panels(cx);
-                            // Холостые события (вывод терминала, доставка
-                            // страницам) кадра не заказывают: раньше каждое
-                            // будило полную пересборку RootView.
-                            if needs_frame {
-                                cx.notify();
-                            }
-                        })
-                        .is_err()
-                    {
-                        break; // окно закрыто
-                    }
+                    view.update(cx, |v, cx| {
+                        let needs_frame = v.apply(event, cx);
+                        // Пропсы компонентов обновляем ЗДЕСЬ, а не в
+                        // рендере: `notify` из фазы отрисовки не помечает
+                        // окно грязным и нового кадра не заказывает
+                        // (`vendor/gpui/src/window.rs:117-127`), то есть
+                        // проверка изменений молча не работала.
+                        v.sync_panels(cx);
+                        // Холостые события (вывод терминала, доставка
+                        // страницам) кадра не заказывают: раньше каждое
+                        // будило полную пересборку RootView.
+                        if needs_frame {
+                            cx.notify();
+                        }
+                    });
                 }
             }
             Ok::<_, anyhow::Error>(())

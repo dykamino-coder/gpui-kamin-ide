@@ -60,12 +60,14 @@ export interface WsMsgSessionResize {
 
 export interface WsMsgMcpResponse {
   type: 'mcp:response'
+  sessionId?: string
   requestId: string
   result: unknown
 }
 
 export interface WsMsgMcpDenied {
   type: 'mcp:denied'
+  sessionId?: string
   requestId: string
   reason: string
 }

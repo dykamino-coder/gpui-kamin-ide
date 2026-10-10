@@ -113,8 +113,14 @@ pub(crate) fn copy_into_own(
 
             // Захват общей текстуры. Если ключа нет — копируем как есть.
             let mutex: Option<IDXGIKeyedMutex> = shared.raw().cast().ok();
+            let acquire = |m: &IDXGIKeyedMutex| {
+                #[cfg(debug_assertions)]
+                return super::acceptance::acquire(id, m);
+                #[cfg(not(debug_assertions))]
+                m.AcquireSync(0, 16)
+            };
             if let Some(m) = &mutex
-                && m.AcquireSync(0, 16).is_err()
+                && acquire(m).is_err()
             {
                 // Производитель держит кадр. Ждать нельзя — встанет поток
                 // отрисовки; но и молчать нельзя: кадр остался бы лежать

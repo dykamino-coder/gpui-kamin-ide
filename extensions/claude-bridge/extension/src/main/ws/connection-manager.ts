@@ -6,6 +6,7 @@ import type { ConnectionConfig, ConnectionState, PermissionDecision } from '../.
 import type { ClientMessage, ServerMessage } from '../../shared/mcp-protocol'
 import { PermissionManager } from '../mcp/permission-manager'
 import { JsonlBatcher } from './jsonl-batcher'
+import { McpResultOutbox } from './mcp-result-outbox'
 import { TranscriptMirror } from './transcript-mirror'
 import { toRendererConnectionState } from './connection-state'
 
@@ -206,6 +207,14 @@ export class ConnectionManager {
   // Timestamp of the last `bridge:reconnected` we sent — the storm guard
   // (RECONNECT_RELOAD_DEBOUNCE_MS; the webview debounces resubscribe via this).
   private lastReloadAt = 0
+
+  private readonly recentMcpCalls = new Map<string, number>()
+  private mcpSessionId: string | null = null
+  private readonly mcpResults = new McpResultOutbox(frame => {
+    if (this.ws?.readyState !== WebSocket.OPEN || this.ws.bufferedAmount > 4 * 1024 * 1024) return false
+    this.ws.send(frame)
+    return true
+  })
 
   // Pending MCP calls (requestId → { toolName, input })
   private pendingMcpCalls = new Map<string, { toolName: string; input: Record<string, unknown> }>()
@@ -584,7 +593,13 @@ export class ConnectionManager {
     // finished» стрелял для уже закрытого таба (аудит #70 C14).
     if (opts.endSession) this.idleTracker.dispose()
 
-    this.pendingMcpCalls.clear()
+    this.mcpResults.detach()
+    if (opts.endSession) {
+      this.mcpResults.dispose()
+      this.mcpSessionId = null
+      this.recentMcpCalls.clear()
+      this.pendingMcpCalls.clear()
+    }
     // Осиротевшие permission-промисы резолвим отказом, иначе handleMcpCall
     // висит на await навсегда (утечка замыкания; сервер отваливается по
     // своему таймауту без ответа).
@@ -645,29 +660,36 @@ export class ConnectionManager {
 
   /** Send an MCP tool result back to the server. */
   respondMcp(requestId: string, result: unknown): void {
-    this.send({ type: 'mcp:response', requestId, result })
-    this.pendingMcpCalls.delete(requestId)
-    this.window.webContents.send('mcp-activity', this.tabId, {
-      requestId,
-      toolName: '',
-      input: {},
-      timestamp: Date.now(),
-      status: 'completed',
-      result,
-    })
+    void this.deliverMcpResult({ type: 'mcp:response', requestId, result })
   }
 
-  /** Send an MCP tool denial back to the server. */
+  /** Send a denial through the same acknowledged delivery path as results. */
   denyMcp(requestId: string, reason: string): void {
-    this.send({ type: 'mcp:denied', requestId, reason })
-    this.pendingMcpCalls.delete(requestId)
-    this.window.webContents.send('mcp-activity', this.tabId, {
-      requestId,
-      toolName: '',
-      input: {},
-      timestamp: Date.now(),
-      status: 'denied',
-    })
+    void this.deliverMcpResult({ type: 'mcp:denied', requestId, reason })
+  }
+
+  private reportMcpDeliveryFailure(): void {
+    void vscode.window.showWarningMessage('Bridge did not acknowledge a tool result. Delivery stopped; the session may still be waiting. Check the session and tool outcome before continuing.')
+  }
+
+  private async deliverMcpResult(outcome: Extract<ClientMessage, { type: 'mcp:response' | 'mcp:denied' }>): Promise<void> {
+    if (!this.pendingMcpCalls.has(outcome.requestId) || !this.mcpSessionId) return
+    try {
+      await this.mcpResults.deliver(this.mcpSessionId, outcome)
+      if (!this.pendingMcpCalls.has(outcome.requestId)) return
+      this.window.webContents.send('mcp-activity', this.tabId, {
+        requestId: outcome.requestId, toolName: '', input: {}, timestamp: Date.now(),
+        status: outcome.type === 'mcp:denied' ? 'denied' : 'completed',
+        result: outcome.type === 'mcp:response' ? outcome.result : outcome.reason,
+      })
+    } catch (error) {
+      if (!this.pendingMcpCalls.has(outcome.requestId)) return
+      this.reportMcpDeliveryFailure()
+      this.window.webContents.send('mcp-activity', this.tabId, {
+        requestId: outcome.requestId, toolName: '', input: {}, timestamp: Date.now(),
+        status: 'denied', result: `Delivery failed: ${String(error)}`,
+      })
+    } finally { this.pendingMcpCalls.delete(outcome.requestId) }
   }
 
   /** Replay all cached JSONL entries/status/subagent data to the renderer.
@@ -922,6 +944,21 @@ export class ConnectionManager {
   // ─── Private ────────────────────────────────────────────
 
   private dispatchMessage(msg: ServerMessage): void {
+    if (msg.type === 'mcp:call') {
+      for (const [id, expires] of this.recentMcpCalls) {
+        if (Date.now() >= expires) this.recentMcpCalls.delete(id)
+      }
+      if (this.pendingMcpCalls.has(msg.requestId) || this.recentMcpCalls.has(msg.requestId)) return
+      this.recentMcpCalls.set(msg.requestId, Date.now() + 120_000)
+      if (this.recentMcpCalls.size > 4096) this.recentMcpCalls.delete(this.recentMcpCalls.keys().next().value!)
+    }
+    if (msg.type === 'mcp:result-ack') {
+      if (msg.sessionId === this.mcpSessionId && this.pendingMcpCalls.has(msg.requestId)) {
+        this.recentMcpCalls.set(msg.requestId, Date.now() + 120_000)
+      }
+      this.mcpResults.acknowledge(msg.sessionId, msg.requestId, msg.accepted)
+      return
+    }
     handleServerMessage(msg, {
       window: this.window,
       tabId: this.tabId,
@@ -1078,6 +1115,10 @@ export class ConnectionManager {
       window: this.window,
       tabId: this.tabId,
       send: (m) => this.send(m),
+      reportDeliveryFailure: () => this.reportMcpDeliveryFailure(),
+      deliverResult: (outcome) => this.mcpSessionId
+        ? this.mcpResults.deliver(this.mcpSessionId, outcome)
+        : Promise.reject(new Error('MCP server session ended')),
       pendingMcpCalls: this.pendingMcpCalls,
       pendingPermissions: this.pendingPermissions,
       permissionMode: () => this.permissionMode,
@@ -1106,7 +1147,17 @@ export class ConnectionManager {
     this.state = state
     this.stateRevision++
     // Session confirmed — the establish watchdog did its job; disarm + reset.
-    if (state.status === 'authenticated') { this.clearEstablishTimer(); this.establishFailures = 0 }
+    if (state.status === 'authenticated') {
+      this.clearEstablishTimer(); this.establishFailures = 0
+      if (state.sessionId) {
+        if (this.mcpSessionId && this.mcpSessionId !== state.sessionId) {
+          this.pendingMcpCalls.clear()
+          this.recentMcpCalls.clear()
+        }
+        this.mcpSessionId = state.sessionId
+        this.mcpResults.attach(state.sessionId)
+      }
+    } else this.mcpResults.detach()
     const rendererState = this.getState()
     this.window.webContents.send('connection-state-changed', this.tabId, rendererState)
     ConnectionManager.onStatus?.(this.tabId, rendererState.status)
