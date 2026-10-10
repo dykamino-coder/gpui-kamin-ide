@@ -11,12 +11,14 @@ use crate::layout::page::{page_boxes, page_counters};
 use crate::layout::replaced::iframe::IFRAME_DEPTH;
 use crate::paint::effects::mask::collect_mask_defs;
 use crate::render::{RenderOpts, is_blank, out_of_flow};
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::Display;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 mod kids;
 use kids::page_kids_from_groups;
 mod root;
 use root::{Run, group_runs, resolve_root_page};
+mod overflow;
+pub(crate) use overflow::visible_overflow;
 
 /// Копий ребёнка в стопке страниц — потолок числа страниц, на которые может
 /// растянуться один блок верхнего уровня (в `css-page` не больше шести).
@@ -221,47 +223,4 @@ pub fn render_paged_select(
     )
     .with_select(select)
     .into_any_element()
-}
-
-// Мера блочного поддерева для укладки по фрагментаинерам — колонкам и
-// страницам: высота, поля, точки законного разреза, принудительные разрывы
-// и монолиты. Раньше жила внутри `element()`; локальных переменных не
-// захватывала, вынесена ради `render_paged`.
-/// Флоат ВО ВСЮ ШИРИНУ содержащего блока в блочной оси неотличим от блока:
-/// рядом с ним поместиться нечему — следующий флоат встаёт ПОД ним, строка
-/// сдвигается ПОД него (CSS 2.1 §9.5). Значит укладка по фрагментаинерам
-/// может вести его обычным ребёнком стопки, и css-break-4 §3.1 прямо этого
-/// требует: «User agents should also apply these properties to floated boxes
-/// whose containing block is in the normal flow of the root fragmented
-/// element». Узкий флоат (`width: 60%`, `auto`) — параллельный поток, стопкой
-/// его не выразить, и он по-прежнему гейт (FRAG-PARALLEL-FLOW).
-/// ВНИМАНИЕ: `Len::Pct` — ДОЛЯ, а не проценты (`value.rs:175`
-/// `Len::Pct(v / 100.0)`, то есть `100%` хранится как `Pct(1.0)`), сравнение
-/// идёт с единицей.
-/// Отрисовку это не меняет: `apply()` читает `float` ровно в одном месте
-/// (`apply.rs:924`, предикат `shrink_to_fit`) и только при `width: None|Auto`,
-/// а здесь ширина задана явно.
-/// Коробка своё переполнение ПОКАЗЫВАЕТ. Обрезающая (`hidden`/`clip`) и
-/// прокручиваемая (`scroll`) коробка параллельного потока не рождает
-/// вовсе: за её низом ничего не видно, и повторить её содержимое в
-/// следующей колонке значило бы нарисовать то, что браузер прячет
-/// (css-overflow-3 §3; css-break-3 §4.1 — прокручиваемая коробка ещё и
-/// монолит). У всех девяти приобретений корня `overflow` не задан, так что
-/// ворота им ничего не стоят, а зелёные с обрезкой (`overflow-clip-*`)
-/// закрывают.
-pub(crate) fn visible_overflow(c: &Computed) -> bool {
-    use crate::style::computed::Overflow;
-    // Параллельный поток живёт по БЛОЧНОЙ оси: решает `overflow-y`. Строчная ось
-    // мешает, только если делает коробку прокручиваемой — css-overflow-3
-    // §overflow-control: «if the other axis specifies a scrollable value, a
-    // specified value of visible computes to auto»; `clip` прокручиваемым
-    // значением не является, и `visible` по y остаётся видимым (раскраска по
-    // осям раздельная, `apply.rs` `overflow.x = Clip`). `overflow-clip-003/008`:
-    // `overflow-x: clip` на коробке 150/200 с содержимым 200/400 — хвост обязан
-    // уйти в следующие колонки, а ворота отдавали ему нулевой поток.
-    matches!(c.overflow_y, None | Some(Overflow::Visible))
-        && matches!(
-            c.overflow_x,
-            None | Some(Overflow::Visible) | Some(Overflow::Clip)
-        )
 }

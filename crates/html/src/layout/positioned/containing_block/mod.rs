@@ -1,13 +1,25 @@
 //! Содержащий блок абсолютных коробок (поздняя расстановка).
 // owner: A
 
-use gpui::{AnyElement, Bounds, IntoElement, Pixels};
+use gpui::{AnyElement, Bounds, Pixels};
 mod late;
 pub use late::LatePlace;
 pub use late::spot_place;
 pub use late::spot_probe;
 mod hang;
 pub use hang::InlineStartHang;
+mod layers;
+pub(crate) use layers::ICB;
+pub(crate) use layers::LATE;
+pub use layers::icb_active;
+pub use layers::icb_close;
+pub use layers::icb_open;
+use layers::icb_place;
+pub use layers::icb_push;
+pub use layers::late_close;
+pub use layers::late_open;
+pub use layers::late_pending;
+pub use layers::late_push;
 
 #[derive(Clone, Copy, Default)]
 pub struct Spot {
@@ -90,26 +102,6 @@ pub struct Spot {
 pub type SpotCell = std::rc::Rc<std::cell::Cell<Spot>>;
 
 thread_local! {
-    /// Слои верхней отрисовки: по одному на каждый блок-контейнер в работе.
-    /// Позиционированный элемент кладёт себя в верхний слой, а контейнер
-    /// забирает слой целиком и дописывает его последними детьми.
-    pub(crate) static LATE: std::cell::RefCell<Vec<Vec<(SpotCell, AnyElement)>>> =
-        const { std::cell::RefCell::new(Vec::new()) };
-}
-
-// Открыть слой на время сборки детей контейнера.
-thread_local! {
-    /// Слои НАЧАЛЬНОГО содержащего блока: внепоточные элементы, которым не
-    /// нашлось позиционированного предка. По §10.1 их содержащий блок —
-    /// область просмотра, а не ближайший родитель, поэтому они дописываются
-    /// последними детьми документа.
-    /// Пара `(SpotCell, AnyElement)`: по ПУСТОЙ оси элемент стоит на
-    /// статической позиции, и её сообщает щуп с его места в потоке.
-    pub(crate) static ICB: std::cell::RefCell<Vec<Vec<(SpotCell, AnyElement)>>> =
-        const { std::cell::RefCell::new(Vec::new()) };
-}
-
-thread_local! {
     /// Слой БЛИЖАЙШЕГО содержащего блока: абсолютная коробка, чей родитель
     /// содержащим блоком не является, переезжает сюда.
     ///
@@ -169,90 +161,6 @@ pub fn cb_close() -> Vec<AnyElement> {
 /// возвращается, рисовать на месте.
 pub fn cb_push(spot: SpotCell, el: AnyElement) -> Option<AnyElement> {
     CB.with(|s| match s.borrow_mut().last_mut() {
-        Some(layer) => {
-            layer.push((spot, el));
-            None
-        }
-        None => Some(el),
-    })
-}
-
-/// Открыть слой ICB: документ, блок ленты или вложенный документ.
-pub fn icb_open() {
-    ICB.with(|s| s.borrow_mut().push(Vec::new()));
-}
-
-/// Забрать накопленное верхним слоем ICB и закрыть его.
-pub fn icb_close() -> Vec<AnyElement> {
-    ICB.with(|s| s.borrow_mut().pop())
-        .unwrap_or_default()
-        .into_iter()
-        .map(|(spot, el)| icb_place(spot, el))
-        .collect()
-}
-
-/// Заместитель слоя ICB — БЕЗ обёртки, в отличие от `spot_place`.
-///
-/// Любая коробка вокруг стала бы для раскладки содержащим блоком абсолютного
-/// ребёнка (понятия «позиционированный предок» у раскладки нет), и края
-/// считались бы от неё, а не от области просмотра — то есть ровно то, ради
-/// чего затеян вынос. `LatePlace` своей коробки не заводит: он отдаёт
-/// `layout_id` ребёнка.
-fn icb_place(spot: SpotCell, child: AnyElement) -> AnyElement {
-    LatePlace {
-        child: Some(child),
-        spot,
-    }
-    .into_any_element()
-}
-
-/// Открыт ли слой начального содержащего блока.
-///
-/// Поддерево ленты прокрутки строится в замыкании, а зовёт его
-/// `ScrollArea::request_layout` — уже ПОСЛЕ `icb_close()`. Вынимать оттуда
-/// кандидатов можно только пока слой ещё есть.
-pub fn icb_active() -> bool {
-    ICB.with(|s| !s.borrow().is_empty())
-}
-
-/// Отдать элемент слою ICB. Слоя нет — элемент возвращается, рисовать на
-/// месте.
-pub fn icb_push(spot: SpotCell, el: AnyElement) -> Option<AnyElement> {
-    ICB.with(|s| match s.borrow_mut().last_mut() {
-        Some(layer) => {
-            layer.push((spot, el));
-            None
-        }
-        None => Some(el),
-    })
-}
-
-pub fn late_open() {
-    LATE.with(|s| s.borrow_mut().push(Vec::new()));
-}
-
-/// Забрать накопленное верхним слоем и закрыть его.
-pub fn late_close() -> Vec<AnyElement> {
-    LATE.with(|s| s.borrow_mut().pop())
-        .unwrap_or_default()
-        .into_iter()
-        .map(|(spot, el)| spot_place(spot, el))
-        .collect()
-}
-
-/// Есть ли в открытом верхнем слое накопленное содержимое. Спрашивает цикл
-/// детей контейнера перед позиционированным соседом: слой выпускается
-/// раньше него, чтобы абсолют на статической позиции красился в порядке
-/// дерева (CSS 2.1 прил. E, шаг 8), а не поверх всех позиционированных
-/// соседей после него.
-pub fn late_pending() -> bool {
-    LATE.with(|s| s.borrow().last().is_some_and(|layer| !layer.is_empty()))
-}
-
-/// Отдать содержимое верхнему слою. Если слоя нет (элемент собирают вне
-/// блока-контейнера), содержимое возвращается — рисовать его на месте.
-pub fn late_push(spot: SpotCell, el: AnyElement) -> Option<AnyElement> {
-    LATE.with(|s| match s.borrow_mut().last_mut() {
         Some(layer) => {
             layer.push((spot, el));
             None
