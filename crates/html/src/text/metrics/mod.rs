@@ -9,10 +9,20 @@
 //! Пока щуп не поставлен, работает запасное значение спецификации (полкегля):
 //! CSS сам разрешает его, когда нужного глифа в шрифте не нашлось.
 
+mod families;
+#[cfg(test)]
+mod tests;
+mod text_system;
+pub use crate::text::metrics::families::font_installed;
+pub use crate::text::metrics::families::fonts_known;
+use crate::text::metrics::families::fractions;
+pub use crate::text::metrics::families::set_doc_family;
+pub use crate::text::metrics::text_system::use_text_system;
+
 mod spacing;
-pub use spacing::spacing_px;
+pub use crate::text::metrics::spacing::spacing_px;
 mod space;
-pub use space::{install_space_probe, space_advance};
+pub use crate::text::metrics::space::{install_space_probe, space_advance};
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -202,223 +212,4 @@ pub fn adjust_aspect(family: &str, metric: u8) -> Option<f32> {
     })
 }
 
-// Доли кегля для семейства: замер идёт один раз и запоминается.
-//
-// Имя из разметки может быть ПРИДУМАННЫМ (`@font-face`): система шрифтов
-// знает файл под его собственным именем из name-таблицы. Набор подмену уже
-// делает (`inline::run_for`, `render::measure_font`), а замер — нет, и
-// DirectWrite на неизвестное имя молча подставлял системный UI-шрифт
-// (`direct_write.rs`, `select_font`): `line-height: normal` считался по
-// ЧУЖИМ метрикам. Для `WOFF Test` это 1.33 вместо 1.0 — строка съезжала на
-// полулидинг, 33 точки при кегле 200 (весь набор `css/WOFF2`).
-//
-// Замер запоминается по НАСТОЯЩЕМУ имени: придуманное на соседней странице
-// значит другой файл, а имя семейства в системе одно на всех.
-thread_local! {
-    /// Семейство ДОКУМЕНТА (`RenderOpts::text.font_family`): им набирается
-    /// текст без своего `font-family`. Ставит `render::render`.
-    static DOC_FAMILY: RefCell<String> = const { RefCell::new(String::new()) };
-}
-
-/// Запомнить семейство документа для замеров без своего семейства.
-pub fn set_doc_family(family: &str) {
-    DOC_FAMILY.with(|d| {
-        if d.borrow().as_str() != family {
-            *d.borrow_mut() = family.to_string();
-        }
-    });
-}
-
-fn fractions(family: &str) -> (f32, f32, f32, f32) {
-    // Пустое семейство — это шрифт документа, а не родовой sans: щуп мерил
-    // его как Segoe UI, и `1ch` выходил 0.56 кегля при наборе Times New Roman
-    // с нулём в 0.5 (`white-space-wrap-after-nowrap-001`: «12345 67890»
-    // влезало в `width: 10ch`). Та же развилка, что у `normal_fraction`.
-    let doc;
-    let family = if family.is_empty() {
-        doc = DOC_FAMILY.with(|d| d.borrow().clone());
-        if doc.is_empty() { family } else { doc.as_str() }
-    } else {
-        family
-    };
-    let real = crate::text::fonts::alias(family);
-    let family = real.as_deref().unwrap_or(family);
-    if let Some(hit) = CACHE.with(|c| c.borrow().get(family).copied()) {
-        return hit;
-    }
-    let measured = PROBE.with(|p| {
-        p.borrow()
-            .as_ref()
-            .map(|probe| probe(family, PROBE_SIZE))
-            .map(|(ch, ex, line, ic)| {
-                (
-                    ch / PROBE_SIZE,
-                    ex / PROBE_SIZE,
-                    line / PROBE_SIZE,
-                    ic / PROBE_SIZE,
-                )
-            })
-    });
-    // Нулевая метрика — это не «шрифт шириной ноль», а неудавшийся замер:
-    // такой ответ хуже запасного значения, потому что схлопывает коробку.
-    let out = match measured {
-        Some((ch, ex, line, ic)) if ch > 0.0 && ex > 0.0 && line > 0.0 => {
-            (ch, ex, line, if ic > 0.0 { ic } else { FALLBACK.3 })
-        }
-        Some((ch, _, line, ic)) if ch > 0.0 => (
-            ch,
-            FALLBACK.1,
-            if line > 0.0 { line } else { FALLBACK.2 },
-            if ic > 0.0 { ic } else { FALLBACK.3 },
-        ),
-        _ => FALLBACK,
-    };
-    CACHE.with(|c| c.borrow_mut().insert(family.to_string(), out));
-    out
-}
-
-thread_local! {
-    static INSTALLED: std::cell::RefCell<std::collections::HashSet<String>> =
-        std::cell::RefCell::new(std::collections::HashSet::new());
-}
-
-/// Есть ли такое семейство в системе шрифтов. До `use_text_system` список пуст,
-/// и ответ отрицательный для всех — разбор тогда работает как раньше.
-pub fn font_installed(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    INSTALLED.with(|i| i.borrow().contains(&lower))
-}
-
-/// Снят ли список установленных семейств (`use_text_system`). До него
-/// `font_installed` отрицателен для всех, и судить о «недоступности» имени
-/// нельзя.
-pub fn fonts_known() -> bool {
-    INSTALLED.with(|i| !i.borrow().is_empty())
-}
-
-/// Поставить щуп поверх системы шрифтов GPUI.
-///
-/// Вызывается один раз при старте приложения, ПОСЛЕ регистрации своих
-/// шрифтов: до неё `Ahem` ещё не найден и замер вернул бы метрики подмены.
-pub fn use_text_system(text_system: std::sync::Arc<gpui::TextSystem>) {
-    space::use_text_system(text_system.clone());
-    let names = text_system.all_font_names();
-    // Список семейств из каскада разбирается ДО отрисовки, а выбирать из него
-    // надо УСТАНОВЛЕННОЕ: `font-family: Courier New, Ahem` при отсутствующем
-    // `Courier New` обязан взять `Ahem`, а не отдать системе имя, которого
-    // нет (§15.3).
-    INSTALLED.with(|i| {
-        *i.borrow_mut() = names
-            .iter()
-            .map(|n| n.to_ascii_lowercase())
-            .collect::<std::collections::HashSet<_>>();
-    });
-    if let Some(found) = MONO_FAMILIES
-        .into_iter()
-        .find(|want| names.iter().any(|have| have.eq_ignore_ascii_case(want)))
-    {
-        MONO.with(|m| *m.borrow_mut() = found);
-    }
-    // Второму щупу (вертикальные метрики) нужен свой владелец `Arc`:
-    // первый забирает `text_system` в замыкание целиком.
-    let text_system2 = text_system.clone();
-    let text_system3 = text_system.clone();
-    WRAP.with(|w| {
-        *w.borrow_mut() = Some(Box::new(
-            move |font: &gpui::Font, size: f32, text: &str, width: f32| {
-                let mut wrapper = text_system3.line_wrapper(font.clone(), gpui::px(size));
-                let mut lines = 0usize;
-                for seg in text.split('\n') {
-                    lines += 1;
-                    lines += wrapper
-                        .wrap_line_css(&[gpui::LineFragment::text(seg)], gpui::px(width.max(0.0)))
-                        .filter(|b| seg.as_bytes().get(b.ix.wrapping_sub(1)) == Some(&b' '))
-                        .count();
-                }
-                lines
-            },
-        ));
-    });
-    install_probe(move |family, size| {
-        // Родовое имя системе шрифтов отдавать нельзя: `sans-serif` — это не
-        // шрифт, а разряд, и поиск по нему кончается ничем. Подставляется то
-        // же семейство, что и в каскаде за `sans-serif`.
-        let name: gpui::SharedString = if family.is_empty() {
-            crate::style::computed::GENERIC_SANS.into()
-        } else {
-            family.to_string().into()
-        };
-        let font = gpui::font(name);
-        let id = text_system.resolve_font(&font);
-        let size = gpui::px(size);
-        let ch = text_system
-            .ch_advance(id, size)
-            .map(f32::from)
-            .unwrap_or(0.0);
-        // `line-height: normal` — это НЕ постоянная доля кегля, а метрика
-        // шрифта: подъём плюс спуск (и зазор строк, если он есть). У Ahem она
-        // ровно кегль, у текстовых шрифтов около 1.15–1.3 — из-за постоянной
-        // 1.31 соседние коробки одной страницы расходились по высоте строк.
-        let line =
-            f32::from(text_system.ascent(id, size)) - f32::from(text_system.descent(id, size));
-        // `ic` — продвижение знака `水`. Шрифт без него отдаёт запасной глиф,
-        // и такой замер отбрасывается в пользу целого кегля.
-        // A font without `水` must not answer with its .notdef advance
-        // (DirectWrite maps a missing character to glyph 0; Times New Roman
-        // gave 0.78em and `4ic` came out a quarter short,
-        // `white-space-intrinsic-size-022`): the measure then falls back to
-        // 1em (css-values-4 `ic`; Blink `SimpleFontData::
-        // IdeographicInlineSize` returns nothing without the glyph).
-        let ic = text_system
-            .advance(id, size, '水')
-            .map(|a| f32::from(a.width))
-            .ok()
-            .filter(|_| text_system.has_glyph(id, '水'))
-            .unwrap_or(0.0);
-        (ch, f32::from(text_system.x_height(id, size)), line, ic)
-    });
-    // Вертикальные метрики того же семейства: подъём и спуск ПОРОЗНЬ (в GPUI
-    // спуск отрицателен) плюс высота прописной — по ним `text-box-trim`
-    // считает срез (css-inline-3 §4.2).
-    install_vprobe(move |family, size| {
-        let name: gpui::SharedString = if family.is_empty() {
-            crate::style::computed::GENERIC_SANS.into()
-        } else {
-            family.to_string().into()
-        };
-        let id = text_system2.resolve_font(&gpui::font(name));
-        let size = gpui::px(size);
-        (
-            f32::from(text_system2.ascent(id, size)),
-            -f32::from(text_system2.descent(id, size)),
-            f32::from(text_system2.cap_height(id, size)),
-        )
-    });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn falls_back_to_half_the_font_size() {
-        assert_eq!(ch_ex_px("нет такого шрифта", 20.0), (10.0, 10.0));
-    }
-
-    #[test]
-    fn probe_result_scales_with_the_font_size() {
-        install_probe(|family, size| {
-            // У Ahem все знаки в кегль, включая иероглиф.
-            if family == "Ahem" {
-                (size, size * 0.8, size, size)
-            } else {
-                (size * 0.5, size * 0.5, size * 1.2, size)
-            }
-        });
-        assert_eq!(ch_ex_px("Ahem", 20.0), (20.0, 16.0));
-        assert_eq!(ch_ex_px("Segoe UI", 20.0), (10.0, 10.0));
-        // Щуп снимается: иначе он утечёт в соседние тесты того же потока.
-        PROBE.with(|p| *p.borrow_mut() = None);
-        CACHE.with(|c| c.borrow_mut().clear());
-    }
-}
+use crate::text::metrics::families::INSTALLED;
