@@ -58,7 +58,7 @@ pub(crate) fn extract_a_character_encoding_from_a_meta_element(
                 .iter()
                 .position(|byte| byte == quote)?;
             Some(input.subtendril(position as u32 + 1, length as u32))
-        },
+        }
         _ => {
             // Return the result of getting an encoding from the substring that consists of this character
             // up to but not including the first ASCII whitespace or U+003B SEMICOLON character (;),
@@ -71,7 +71,7 @@ pub(crate) fn extract_a_character_encoding_from_a_meta_element(
             } else {
                 Some(input.subtendril(position as u32, (input.len() - position) as u32))
             }
-        },
+        }
     }
 }
 

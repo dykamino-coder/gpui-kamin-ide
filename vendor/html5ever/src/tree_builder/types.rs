@@ -9,8 +9,8 @@
 
 //! Types used within the tree builder code. Not exported to users.
 
-use crate::tokenizer::Tag;
 use crate::tokenizer::states::RawKind;
+use crate::tokenizer::Tag;
 
 use crate::tendril::StrTendril;
 

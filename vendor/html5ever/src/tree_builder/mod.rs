@@ -9,8 +9,8 @@
 
 //! The HTML5 tree builder.
 
+pub use crate::interface::{create_element, ElemName, ElementFlags, Tracer, TreeSink};
 pub use crate::interface::{AppendNode, AppendText, Attribute, NodeOrText};
-pub use crate::interface::{ElemName, ElementFlags, Tracer, TreeSink, create_element};
 pub use crate::interface::{LimitedQuirks, NoQuirks, Quirks, QuirksMode};
 pub use markup5ever::interface::tree_builder::create_element_with_flags;
 
@@ -32,7 +32,7 @@ use std::{fmt, slice};
 use crate::tokenizer::states::RawKind;
 use crate::tree_builder::tag_sets::*;
 use crate::util::str::to_escaped_string;
-use log::{Level, debug, log_enabled, warn};
+use log::{debug, log_enabled, warn, Level};
 use markup5ever::{expanded_name, local_name, namespace_prefix, ns};
 
 #[macro_use]
