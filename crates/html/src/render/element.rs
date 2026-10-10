@@ -189,7 +189,7 @@ pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> A
     PAINT_VIEWPORT.with(|v| v.set(opts.viewport));
     // Элементы форм рисуются своим набором: без него поле ввода — пустой
     // прямоугольник, что выглядит поломкой разметки.
-    if let Some(el) = crate::forms::element(e, &merged, opts) {
+    if let Some(el) = crate::interactive::forms::element(e, &merged, opts) {
         return transformed(el, &merged, inherited);
     }
     // Рамка строится ОДИН раз до match: прежний `is_some() => unwrap()`

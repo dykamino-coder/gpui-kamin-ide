@@ -95,7 +95,7 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
     // Элементу формы нужен СЛИТЫЙ стиль: в своём у него единицы шрифта ещё не
     // разрешены (`width: 3ch` считался бы по базовому кеглю, а не по своему),
     // да и наследуемое до поля иначе не доходит.
-    if let Some(el) = crate::forms::element(e, &inherit(inherited, &e.style), opts) {
+    if let Some(el) = crate::interactive::forms::element(e, &inherit(inherited, &e.style), opts) {
         // Трансформы поля формы шли МИМО обёртки: инпуты стояли ровно, а
         // эталон сдвигал (transform-input-001..019).
         return Some(transformed(el, &e.style, inherited));
