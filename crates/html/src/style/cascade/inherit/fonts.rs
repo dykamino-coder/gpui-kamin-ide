@@ -41,6 +41,7 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     c.justify_chars = own.justify_chars.or(parent.justify_chars);
     c.ruby_unit = own.ruby_unit || parent.ruby_unit;
     c.text_align_last = own.text_align_last.or(parent.text_align_last);
+    c.image_pixelated = own.image_pixelated.or(parent.image_pixelated);
     match_parent_align(parent, own, c);
     c.hanging = own.hanging.or(parent.hanging);
     c.monospace = own.monospace.or(parent.monospace);

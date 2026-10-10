@@ -287,6 +287,10 @@ pub struct Computed {
     /// бит 2 — у `text-align-last`; решается при наследовании по письму
     /// РОДИТЕЛЯ (`inherit_fonts`).
     pub text_align_match_parent: u8,
+    /// `image-rendering` (css-images-3 §image-rendering), наследуется:
+    /// `Some(true)` — `pixelated`/`crisp-edges`, растр масштабируется без
+    /// сглаживания; `Some(false)` — `auto`/`smooth`/`high-quality`.
+    pub image_pixelated: Option<bool>,
     /// `text-justify: none` — выключка запрещена, строка идёт как `start`.
     pub no_justify: Option<bool>,
     /// CSS Text 4: ruby annotation justification excludes word spaces.

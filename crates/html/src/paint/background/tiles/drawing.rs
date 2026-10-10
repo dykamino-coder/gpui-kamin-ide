@@ -155,6 +155,7 @@ pub(crate) fn draw_tiles(
         return;
     };
     let corners = gpui::Corners::all(px(radius));
+    let pixelated = c.image_pixelated == Some(true);
     // Собственная обрезка коробки (`overflow` ≠ visible) режет по её
     // padding-box, а фон по `background-clip` живёт до border-box: маска
     // раздвигается на рамку — ровно на то, что коробка отняла у себя сама
@@ -189,7 +190,7 @@ pub(crate) fn draw_tiles(
                         origin: at,
                         size: gpui::size(px(tile.0), px(tile.1)),
                     };
-                    sampling::paint_tile(window, cell, corners, image.clone(), &found);
+                    sampling::paint_tile(window, cell, corners, image.clone(), &found, pixelated);
                 }
             }
         });
