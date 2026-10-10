@@ -94,7 +94,7 @@ pub(crate) fn style_pieces(
         pieces = inline::split_first_letter(pieces, &first);
     }
     if first_line_at > 0 {
-        pieces = inline::style_first_line(pieces, first_line_at, first_line);
+        pieces = inline::style_first_line(pieces, first_line_at, first_line, inherited);
     }
     pieces
 }
