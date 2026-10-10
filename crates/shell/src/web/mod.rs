@@ -8,7 +8,7 @@
 mod acceptance;
 mod browsers;
 #[cfg(debug_assertions)]
-pub(crate) use acceptance::{acceptance_close, acceptance_log, reset_fixture};
+pub(crate) use acceptance::{acceptance_log, reset_fixture};
 mod context_menu;
 mod copy_frame;
 mod cursors;
