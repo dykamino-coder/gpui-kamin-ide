@@ -26,15 +26,30 @@ pub(crate) fn emit_tools(kind: &str, req: &Value, sid: String, name: String) -> 
             req.get("line").and_then(Value::as_i64).unwrap_or(5) as i32,
         )),
         "termMenu" => ShellEvent::Term(TermEvent::ToggleTermMenu),
-        // {"cmd":"emit","kind":"quickPick","dir":true(=canPickMany)} — дев-пик
+        // {"cmd":"emit","kind":"quickPick","dir":true(=canPickMany),"line":N}
+        // — дев-пик; N дополнительных пунктов проверяют потолок панели
         "quickPick" => ShellEvent::QuickPickShow(
             0,
-            serde_json::json!([
-                {"label": "First option", "description": "desc one"},
-                {"label": "Second option", "picked": true},
-                {"label": "Group", "kind": -1},
-                {"label": "Third option", "detail": "with detail"},
-            ]),
+            {
+                let mut items = serde_json::json!([
+                    {"label": "First option", "description": "desc one"},
+                    {"label": "Second option", "picked": true},
+                    {"label": "Group", "kind": -1},
+                    {"label": "Third option", "detail": "with detail"},
+                ]);
+                let extra = req
+                    .get("line")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0)
+                    .min(500);
+                if let Some(list) = items.as_array_mut() {
+                    list.extend(
+                        (1..=extra)
+                            .map(|i| serde_json::json!({"label": format!("Extra option {i}")})),
+                    );
+                }
+                items
+            },
             serde_json::json!({
                 "title": "Probe Quick Pick",
                 "placeHolder": "Filter options…",
