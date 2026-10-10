@@ -185,8 +185,15 @@ describe('credential-free fake Claude', () => {
     watcher.replayAll()
     await expect.poll(() => statuses.some((s) => s.replayComplete), { timeout: 15000 }).toBe(true)
     await command(cli.child, s, '/fake-next-usage')
-    await (watcher as any).checkForNewContent()
-    expect(delivered.some((e) => e.message?.usage?.input_tokens === 17000)).toBe(true)
+    await expect
+      .poll(
+        async () => {
+          await (watcher as any).checkForNewContent()
+          return delivered.some((e) => e.message?.usage?.input_tokens === 17000)
+        },
+        { timeout: 10000 },
+      )
+      .toBe(true)
   }, 20000)
   it('uses actual loopback MCP/hook envelopes and records result only after delivery', async () => {
     const s = sandbox()

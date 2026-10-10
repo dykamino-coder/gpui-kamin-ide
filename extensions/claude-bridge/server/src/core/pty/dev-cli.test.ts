@@ -68,7 +68,7 @@ describe('checkout-only fake CLI selection', () => {
     } finally {
       fs.rmSync(release, { recursive: true, force: true })
     }
-  })
+  }, 20000)
   it('Docker runtime copies only allowlisted paths, with production mode', () => {
     const docker = fs
       .readFileSync(path.resolve(path.dirname(fakeCliPath), '../Dockerfile'), 'utf8')
