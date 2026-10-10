@@ -569,7 +569,7 @@ fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
     // значению или к `auto` ЗДЕСЬ — сборщик дерева выбирает статическую
     // позицию по `edge_set`, а логические вставки к этому шагу уже легли на
     // физические стороны (`Computed::resolve_logical` выше).
-    crate::layout::positioned::anchor::settle_static(&mut nodes);
+    crate::layout::positioned::anchor::settle::settle_static(&mut nodes);
     // motion-1: offset-трансформ — вторым проходом по СОБРАННОМУ дереву, где у
     // каждой коробки есть родитель. Идёт после `zoom::resolve` (длины уже
     // домножены) и после `resolve_logical` (стороны уже физические).

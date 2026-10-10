@@ -1,5 +1,8 @@
 //! Computed::apply_one: position, anchor*, inset/top..., z-index, overflow*, float, clear, opacity, visibility.
 
+use crate::layout::positioned::anchor::parse::{
+    parse_area, parse_try_fallbacks, parse_try_order, parse_visibility,
+};
 use crate::style::computed::*;
 use crate::style::values::value::Len;
 
@@ -45,16 +48,15 @@ impl Computed {
             // §position-area: сетка 3×3 от якоря и содержащего блока; разбор
             // и физическое разрешение — в `anchor`.
             "position-area" => {
-                self.position_area = crate::layout::positioned::anchor::parse_area(v);
+                self.position_area = parse_area(v);
             }
             // §position-try-fallbacks: список вариантов, разбор — в `anchor`.
             "position-try-fallbacks" => {
-                self.position_try_fallbacks =
-                    crate::layout::positioned::anchor::parse_try_fallbacks(v);
+                self.position_try_fallbacks = parse_try_fallbacks(v);
             }
             // §position-try-order-property.
             "position-try-order" => {
-                if let Some(o) = crate::layout::positioned::anchor::parse_try_order(v.trim()) {
+                if let Some(o) = parse_try_order(v.trim()) {
                     self.position_try_order = o;
                 }
             }
@@ -63,28 +65,21 @@ impl Computed {
             "position-try" => {
                 let v = v.trim();
                 let (order, rest) = match v.split_once(char::is_whitespace) {
-                    Some((a, b))
-                        if crate::layout::positioned::anchor::parse_try_order(a).is_some() =>
-                    {
-                        (
-                            crate::layout::positioned::anchor::parse_try_order(a).unwrap_or(0),
-                            b.trim(),
-                        )
+                    Some((a, b)) if parse_try_order(a).is_some() => {
+                        (parse_try_order(a).unwrap_or(0), b.trim())
                     }
-                    None if crate::layout::positioned::anchor::parse_try_order(v).is_some() => (
-                        crate::layout::positioned::anchor::parse_try_order(v).unwrap_or(0),
-                        "none",
-                    ),
+                    None if parse_try_order(v).is_some() => {
+                        (parse_try_order(v).unwrap_or(0), "none")
+                    }
                     _ => (0, v),
                 };
                 self.position_try_order = order;
-                self.position_try_fallbacks =
-                    crate::layout::positioned::anchor::parse_try_fallbacks(rest);
+                self.position_try_fallbacks = parse_try_fallbacks(rest);
             }
             // §position-visibility; легаси `anchors-valid`/`anchors-visible` —
             // псевдонимы (спека разрешает их узнавать).
             "position-visibility" => {
-                self.position_visibility = crate::layout::positioned::anchor::parse_visibility(v);
+                self.position_visibility = parse_visibility(v);
             }
             "top" | "right" | "bottom" | "left" => {
                 let (side, slot) = match key {

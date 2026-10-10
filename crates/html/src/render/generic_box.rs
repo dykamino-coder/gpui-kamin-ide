@@ -1171,5 +1171,5 @@ pub(super) fn generic_box(
         Some(plan) => plan.wrap(child),
         None => child,
     };
-    crate::layout::positioned::anchor::place(child, &merged, inherited)
+    crate::layout::positioned::anchor::place::place(child, &merged, inherited)
 }
