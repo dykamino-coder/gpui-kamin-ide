@@ -158,7 +158,7 @@ export function PluginOptionsModal({ pluginId, pluginName, onClose, onSaved }: P
     return (
       <input
         class={styles.input}
-        type={isSensitive ? 'password' : 'text'}
+        {...(isSensitive ? { type: 'password' as const } : { type: 'text' as const })}
         value={typeof v === 'string' || typeof v === 'number' ? String(v) : ''}
         placeholder={placeholder}
         onInput={(e) => updateValue(key, (e.target as HTMLInputElement).value)}
