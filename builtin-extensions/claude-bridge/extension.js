@@ -50854,8 +50854,19 @@ function normalizeRendererSample(raw) {
     activeEntries: boundedCount(sample.activeEntries),
     storeWindow: boundedCount(sample.storeWindow),
     scrollUpMax: boundedCount(sample.scrollUpMax),
-    windowState
+    windowState,
+    ...debugAgentRetention(sample.agentRetention)
   };
+}
+function debugAgentRetention(raw) {
+  if (process.env.KAMIN_DEBUG_AGENT_RETENTION !== "1" || !raw || typeof raw !== "object") return {};
+  const r = raw;
+  return { agentRetention: {
+    slots: boundedCount(r.slots),
+    storedEntries: boundedCount(r.storedEntries),
+    uuidIndex: boundedCount(r.uuidIndex),
+    closedTabSlots: boundedCount(r.closedTabSlots)
+  } };
 }
 function formatIncidentLine(record) {
   return `[incident] ${JSON.stringify({
