@@ -1,15 +1,14 @@
-//! Веб-содержимое на CEF: браузер рисует кадр, кадр рисуем мы (`plan/101-cef.md`).
+//! CEF lifecycle (`plan/101-cef.md`); кадры и элементы — в соседних модулях.
 //!
-//! Здесь только жизненный цикл процесса и библиотеки. Сам элемент интерфейса
-//! и приём кадров — в соседних модулях, по мере готовности фаз.
-//!
-//! **Главное про запуск.** CEF на Windows запускает свои дочерние процессы
-//! (renderer, gpu, network) КОПИЕЙ нашего же exe с другими ключами командной
-//! строки. Поэтому [`exit_if_child_process`] обязана стоять первой строкой
-//! `main`: до probe, до сайдкара, до окна. Иначе каждый дочерний процесс
-//! попытается открыть тот же TCP-порт, поднять `kamin-host` и нарисовать окно.
+//! На Windows дети CEF (renderer, gpu, network) запускаются копией нашего exe.
+//! [`exit_if_child_process`] должна стоять первой строкой main: до probe,
+//! сайдкара и окна. Иначе дети тоже откроют TCP-порт, kamin-host и окно.
 
+#[cfg(debug_assertions)]
+mod acceptance;
 mod browsers;
+#[cfg(debug_assertions)]
+pub(crate) use acceptance::{acceptance_log, reset_fixture};
 mod context_menu;
 mod copy_frame;
 mod cursors;
