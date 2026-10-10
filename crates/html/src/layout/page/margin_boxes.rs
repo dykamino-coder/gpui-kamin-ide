@@ -15,7 +15,7 @@ pub(super) fn layout_margin_boxes(
     window: &mut Window,
     cx: &mut App,
 ) -> Vec<((f32, f32, f32, f32), AnyElement)> {
-    use crate::page_margin::{self as pm, Place, Pref, Side};
+    use crate::layout::page::margin_layout::{self as pm, Place, Pref, Side};
     let mut out: Vec<(usize, (f32, f32, f32, f32), AnyElement)> = Vec::new();
     let mut edges: Vec<(Side, [Option<MarginBox>; 3])> = vec![
         (Side::Top, [None, None, None]),

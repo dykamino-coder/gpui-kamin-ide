@@ -54,7 +54,7 @@ fn page_margin_boxes(
     let ctx_style = inherit(root, &ctx_own);
     let mut out = Vec::new();
     for (slot, list) in boxes {
-        let Some(place) = crate::page_margin::place(slot) else {
+        let Some(place) = crate::layout::page::margin_layout::place(slot) else {
             continue;
         };
         let last = |key: &str| {
@@ -74,7 +74,7 @@ fn page_margin_boxes(
         else {
             continue;
         };
-        let (ta, va) = crate::page_margin::defaults(slot);
+        let (ta, va) = crate::layout::page::margin_layout::defaults(slot);
         let va = last("vertical-align").unwrap_or_else(|| va.to_string());
         let mut own = Computed::default();
         own.apply_one("text-align", ta);
@@ -91,7 +91,7 @@ fn page_margin_boxes(
         };
         let mut content_counters = counters.for_margin(&own);
         let children = content_nodes(&items, &resolved, &mut content_counters);
-        let cb = crate::page_margin::containing_block(place, g.size, g.margin);
+        let cb = crate::layout::page::margin_layout::containing_block(place, g.size, g.margin);
         // Длина по базе: `auto` — `None`; проценты — от содержащего блока по
         // СВОЕЙ оси (Blink `kContainingBlockSize`).
         let len = |l: &Option<Len>, base: f32| -> Option<f32> {

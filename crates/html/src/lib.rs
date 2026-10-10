@@ -42,7 +42,6 @@ pub mod flow {
 }
 pub use text::fonts;
 pub use text::metrics;
-pub mod page_margin;
 pub mod render;
 pub use interactive::scroll;
 pub use interactive::select;

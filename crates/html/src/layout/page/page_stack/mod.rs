@@ -89,7 +89,7 @@ pub type PageGeomFn = std::rc::Rc<dyn Fn(usize, &str) -> PageGeom>;
 /// border box, его копия для меры по содержимому, заданные размеры (border box,
 /// `None` — `auto`) и поля (`None` — `auto`), верх/право/низ/лево.
 pub struct MarginBox {
-    pub place: crate::page_margin::Place,
+    pub place: crate::layout::page::margin_layout::Place,
     /// Элемент коробки по её border box (ширина, высота) — строится после
     /// раскладки, с размером в точках.
     pub make: std::rc::Rc<dyn Fn(f32, f32) -> AnyElement>,
