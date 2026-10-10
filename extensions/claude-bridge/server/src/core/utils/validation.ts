@@ -3,6 +3,7 @@
 // ============================================================================
 
 import type { AnthropicRequest, AnthropicMessage, ThinkingConfig } from "../types"
+import { DEFAULT_SESSION_MODEL } from "../config"
 
 export interface ValidationResult {
   valid: boolean
@@ -174,7 +175,7 @@ export function validateRequest(body: unknown): ValidationResult {
   return {
     valid: true,
     data: {
-      model: (req.model as string) || "sonnet",
+      model: (req.model as string) || DEFAULT_SESSION_MODEL,
       messages: req.messages as AnthropicMessage[],
       stream: req.stream as boolean | undefined,
       max_tokens: req.max_tokens as number | undefined,
