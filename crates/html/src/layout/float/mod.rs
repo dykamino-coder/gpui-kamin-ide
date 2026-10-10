@@ -10,10 +10,12 @@ use crate::text::text_box::blank_text;
 
 pub(super) mod band_clearance;
 mod band_dimensions;
+mod band_flow;
 pub mod band_flow_host;
 pub mod band_host;
 pub mod band_measured;
 pub mod band_nest;
+pub mod bands;
 pub mod clear;
 mod float_atom;
 mod float_clear_scope;
@@ -23,6 +25,7 @@ pub(super) mod inline_floats;
 pub(crate) mod rounded_box;
 pub mod shape_flow;
 pub(crate) mod shapes;
+pub(crate) mod split_flow;
 pub mod wrap;
 
 pub(crate) fn block_like_float(c: &Computed) -> bool {

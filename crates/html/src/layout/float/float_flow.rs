@@ -87,43 +87,44 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
     let inherited_owned = inherited.clone();
     let opts_owned = opts.clone();
     let depth = defer_depth();
-    let build: crate::float::Split = std::rc::Rc::new(move |split: usize, width: gpui::Pixels| {
-        let _depth = DepthScope::enter(depth);
-        let (beside, below) = split_nodes(&rest, split);
-        let mut side = column_style.clone();
-        side.display = Some(Display::Block);
-        let column_el = Element {
-            list_item: None,
-            node_id: 0,
-            anim: None,
-            tag: "div".into(),
-            style: side,
-            hover: None,
-            first_letter: None,
-            first_line: None,
-            children: beside,
-            attrs: vec![],
-            inline: false,
-        };
-        let row_children = if left {
-            vec![Node::Element(floater.clone()), Node::Element(column_el)]
-        } else {
-            vec![Node::Element(column_el), Node::Element(floater.clone())]
-        };
-        let mut top = row_node.clone();
-        top.tag = "div".into();
-        top.children = row_children;
-        let mut all = vec![Node::Element(top)];
-        all.extend(below);
-        // Ширина коробки задаётся явно: дерево раскладывается отдельным
-        // корнем, и без неё текст считает себя свободным и не переносится.
-        div()
-            .flex()
-            .flex_col()
-            .w(width)
-            .children(blocks(&all, &inherited_owned, &opts_owned))
-            .into_any_element()
-    });
+    let build: crate::layout::float::split_flow::Split =
+        std::rc::Rc::new(move |split: usize, width: gpui::Pixels| {
+            let _depth = DepthScope::enter(depth);
+            let (beside, below) = split_nodes(&rest, split);
+            let mut side = column_style.clone();
+            side.display = Some(Display::Block);
+            let column_el = Element {
+                list_item: None,
+                node_id: 0,
+                anim: None,
+                tag: "div".into(),
+                style: side,
+                hover: None,
+                first_letter: None,
+                first_line: None,
+                children: beside,
+                attrs: vec![],
+                inline: false,
+            };
+            let row_children = if left {
+                vec![Node::Element(floater.clone()), Node::Element(column_el)]
+            } else {
+                vec![Node::Element(column_el), Node::Element(floater.clone())]
+            };
+            let mut top = row_node.clone();
+            top.tag = "div".into();
+            top.children = row_children;
+            let mut all = vec![Node::Element(top)];
+            all.extend(below);
+            // Ширина коробки задаётся явно: дерево раскладывается отдельным
+            // корнем, и без неё текст считает себя свободным и не переносится.
+            div()
+                .flex()
+                .flex_col()
+                .w(width)
+                .children(blocks(&all, &inherited_owned, &opts_owned))
+                .into_any_element()
+        });
 
     let size = match inherited.font_size {
         Some(Len::Px(v)) => v,
@@ -135,7 +136,7 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
         Some(Len::Pct(k)) => size * k,
         _ => size * normal_fraction(inherited, opts),
     };
-    let flow = crate::float::FloatFlow::new(
+    let flow = crate::layout::float::split_flow::FloatFlow::new(
         build,
         SharedString::from(plain),
         (fw, fh),

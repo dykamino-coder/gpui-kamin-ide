@@ -1,6 +1,6 @@
 //! Resolve clearance when the block-start margin adjoins preceding floats.
 
-use crate::bands::FloatBands;
+use crate::layout::float::bands::FloatBands;
 
 /// CSS 2.1 §9.5.2: test the hypothetical position with `clear: none`.
 /// An adjoining start margin would move both the block and the preceding

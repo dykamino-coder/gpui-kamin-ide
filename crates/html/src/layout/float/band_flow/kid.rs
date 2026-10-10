@@ -1,6 +1,6 @@
 //! Child kinds and margin channels for measured float placement.
 
-use crate::band_flow::{Build, Edge};
+use crate::layout::float::band_flow::{Build, Edge};
 
 /// Чем ребёнок хоста участвует в полосах.
 #[derive(Clone, Copy, Debug)]

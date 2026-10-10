@@ -320,7 +320,7 @@ fn column_flow_in(
             row.into_any_element()
         });
     Some(
-        crate::float::ColumnFlow::new(
+        crate::layout::float::split_flow::ColumnFlow::new(
             build,
             SharedString::from(plain),
             count,

@@ -349,7 +349,8 @@ pub(super) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpt
         em,
         e.attr("adjoining-start") == Some("1"),
     );
-    let flow = crate::band_flow::BandFlow::new(kids, e.attr("inflow-height") != Some("1"));
+    let flow =
+        crate::layout::float::band_flow::BandFlow::new(kids, e.attr("inflow-height") != Some("1"));
     if inherited.vertical == Some(true) {
         flow.vertical(inherited.vertical_rl == Some(true))
             .into_any_element()
@@ -368,8 +369,8 @@ pub(super) fn band_kids(
     opts: &RenderOpts,
     em: f32,
     start_open: bool,
-) -> Vec<crate::band_flow::Kid> {
-    use crate::band_flow::{Kid, Kind, Nest};
+) -> Vec<crate::layout::float::band_flow::Kid> {
+    use crate::layout::float::band_flow::{Kid, Kind, Nest};
     let depth = defer_depth();
     let mut kids: Vec<Kid> = vec![];
     // Письмо содержащего блока: план хоста — в логических осях, поля
@@ -391,7 +392,7 @@ pub(super) fn band_kids(
         .iter()
         .any(|n| matches!(n, Node::Element(p) if p.attr("lead-probe") == Some("1")));
     let nowrap = inherited.nowrap == Some(true);
-    let mk_build = |p: &Element| -> crate::band_flow::Build {
+    let mk_build = |p: &Element| -> crate::layout::float::band_flow::Build {
         let p = p.clone();
         let inherited = inherited.clone();
         let opts = opts.clone();
@@ -401,7 +402,7 @@ pub(super) fn band_kids(
         })
     };
     // Первый прогон — щуп для всех флоатов при `nowrap`.
-    let nowrap_probe: Option<crate::band_flow::Build> = (nowrap && has_lead)
+    let nowrap_probe: Option<crate::layout::float::band_flow::Build> = (nowrap && has_lead)
         .then(|| {
             nodes.iter().find_map(|n| match n {
                 Node::Element(p)
@@ -414,7 +415,7 @@ pub(super) fn band_kids(
         })
         .flatten();
     // Щупы по номерам флоатов (`lead-for`/`lead-base` = «a-b»).
-    let probes_of = |key: &str| -> Vec<(usize, usize, crate::band_flow::Build)> {
+    let probes_of = |key: &str| -> Vec<(usize, usize, crate::layout::float::band_flow::Build)> {
         nodes
             .iter()
             .filter_map(|n| match n {
@@ -428,13 +429,13 @@ pub(super) fn band_kids(
     };
     let lead_probes = probes_of("lead-for");
     let base_probes = probes_of("lead-base");
-    let base_for = |idx: usize| -> Option<crate::band_flow::Build> {
+    let base_for = |idx: usize| -> Option<crate::layout::float::band_flow::Build> {
         base_probes
             .iter()
             .find(|(a, b, _)| (*a..*b).contains(&idx))
             .map(|(_, _, b)| b.clone())
     };
-    let lead_for = |idx: usize| -> Option<crate::band_flow::Build> {
+    let lead_for = |idx: usize| -> Option<crate::layout::float::band_flow::Build> {
         if let Some(b) = nowrap_probe.as_ref() {
             return Some(b.clone());
         }
@@ -520,7 +521,7 @@ pub(super) fn band_kids(
         // в 200px, строки `XXXXX` по 100px рядом, а `XXXXXXXXXX` — ниже).
         // При `nowrap` и значимых пробелах слово не граница строки — голову
         // не заводим, мерится весь прогон.
-        let head: Option<crate::band_flow::Build> = if c.attr("anon") == Some("1")
+        let head: Option<crate::layout::float::band_flow::Build> = if c.attr("anon") == Some("1")
             && inherited.nowrap != Some(true)
             && inherited.keep_spaces != Some(true)
         {
@@ -534,7 +535,7 @@ pub(super) fn band_kids(
                     hn.children = vec![Node::Text(word.to_string())];
                     let inherited = inherited.clone();
                     let opts = opts.clone();
-                    let b: crate::band_flow::Build =
+                    let b: crate::layout::float::band_flow::Build =
                         std::rc::Rc::new(move |_cb: f32, _avail: f32, _shapes, _h: Option<f32>| {
                             let _depth = DepthScope::enter(depth);
                             element(&hn, &inherited, &opts)
@@ -556,7 +557,7 @@ pub(super) fn band_kids(
         let vertical = vert.is_some();
         let cb_height = inherited.height;
         let cb_block_w = inherited.width;
-        let build: crate::band_flow::Build =
+        let build: crate::layout::float::band_flow::Build =
             std::rc::Rc::new(move |cb: f32, avail: f32, shapes, height: Option<f32>| {
                 let _depth = DepthScope::enter(depth);
                 // Ширина содержащего блока — та, что намерил хост: замещаемым

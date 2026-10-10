@@ -57,7 +57,7 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
     // (`shape-outside`) в полосы не попадает вовсе и идёт отдельными
     // списками `left`/`right`: форма меняет область ОБТЕКАНИЯ, но не
     // позицию самого флоата (css-shapes-1 §1).
-    let mut bands = crate::bands::FloatBands::new(wall);
+    let mut bands = crate::layout::float::bands::FloatBands::new(wall);
     let mut floats: Vec<AnyElement> = Vec::new();
     let mut rest: Vec<Node> = Vec::new();
     let host_side: i32 = if e.attr("side") == Some("right") {

@@ -59,8 +59,8 @@ pub(super) fn band_nest_block(c: &Element, em: f32) -> bool {
 }
 
 /// Рамка плюс отступ коробки (верх, право, низ, лево) для `Kind::Nest`.
-fn band_inset(c: &Element, em: f32) -> Option<[crate::band_flow::Edge; 4]> {
-    use crate::band_flow::Edge;
+fn band_inset(c: &Element, em: f32) -> Option<[crate::layout::float::band_flow::Edge; 4]> {
+    use crate::layout::float::band_flow::Edge;
     let em = band_em(&c.style, em)?;
     let b = c.style.borders();
     let side = |p: &Option<Len>, b: &Option<Len>| -> Option<Edge> {
@@ -91,7 +91,7 @@ pub(super) fn band_nest(
     inherited: &Computed,
     opts: &RenderOpts,
     em: f32,
-) -> Option<crate::band_flow::Nest> {
+) -> Option<crate::layout::float::band_flow::Nest> {
     if !band_nest_block(c, em) {
         return None;
     }
@@ -99,7 +99,7 @@ pub(super) fn band_nest(
     let seq = band_seq(collapse_margins(&c.children, false), inner_em)?;
     let merged = inherit(inherited, &c.style);
     let kids = band_kids(&seq, 0, &merged, opts, inner_em, top_edge_open(c));
-    Some(crate::band_flow::Nest {
+    Some(crate::layout::float::band_flow::Nest {
         kids,
         inset: band_inset(c, em)?,
         height: match c.style.height {

@@ -29,13 +29,10 @@
 )]
 
 pub mod anchor;
-pub mod band_flow;
-pub mod bands;
 pub mod coverage;
 pub use style::css;
 pub mod dom;
 pub use dom::encoding;
-pub mod float;
 /// Внешний путь геометрии страниц (`kamin_html::flow::PageGeom`).
 pub mod flow {
     pub use crate::layout::page::page_stack::{PageGeom, PageGeomFn};

@@ -364,8 +364,8 @@ pub(super) fn band_host(
 /// `em` по кеглю `em`; `auto` — ноль (у флоата так велит §10.3.5, у куска
 /// хвоста — как `px_margin` статического хоста). Прочее (`calc`, `vw`…) —
 /// `None`, хост отменяется.
-pub(super) fn band_edge(l: &Option<Len>, em: f32) -> Option<crate::band_flow::Edge> {
-    use crate::band_flow::Edge;
+pub(super) fn band_edge(l: &Option<Len>, em: f32) -> Option<crate::layout::float::band_flow::Edge> {
+    use crate::layout::float::band_flow::Edge;
     match l {
         None | Some(Len::Auto) => Some(Edge::Px(0.0)),
         Some(Len::Px(v)) => Some(Edge::Px(*v)),
@@ -387,7 +387,10 @@ pub(super) fn band_em(c: &Computed, em: f32) -> Option<f32> {
 }
 
 /// Все четыре поля коробки разрешимы для измеряемого хоста.
-pub(super) fn band_margins(c: &Computed, em: f32) -> Option<[crate::band_flow::Edge; 4]> {
+pub(super) fn band_margins(
+    c: &Computed,
+    em: f32,
+) -> Option<[crate::layout::float::band_flow::Edge; 4]> {
     let em = band_em(c, em)?;
     Some([
         band_edge(&c.margin.top, em)?,

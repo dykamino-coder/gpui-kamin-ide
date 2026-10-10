@@ -284,14 +284,16 @@ fn paragraph_routed(
             };
             let for_build = first.clone();
             let depth = defer_depth();
-            let build: crate::float::Split = std::rc::Rc::new(move |at, width| {
-                let _depth = DepthScope::enter(depth);
-                let mut styled = base.clone();
-                styled.first_line = None;
-                let mut para = paragraph_pieces(&nodes_owned, &styled, &opts_owned, at, &for_build);
-                para = div().w(width).child(para).into_any_element();
-                para
-            });
+            let build: crate::layout::float::split_flow::Split =
+                std::rc::Rc::new(move |at, width| {
+                    let _depth = DepthScope::enter(depth);
+                    let mut styled = base.clone();
+                    styled.first_line = None;
+                    let mut para =
+                        paragraph_pieces(&nodes_owned, &styled, &opts_owned, at, &for_build);
+                    para = div().w(width).child(para).into_any_element();
+                    para
+                });
             // Мерить надо ТЕМ начертанием, каким строка и будет набрана:
             // жирная первая строка занимает больше места, и разрез по
             // обычному шрифту не помещался бы в неё целиком.
@@ -311,7 +313,7 @@ fn paragraph_routed(
                 Some(Len::Em(k)) => k * size,
                 _ => size,
             };
-            return crate::float::FirstLine::new(
+            return crate::layout::float::split_flow::FirstLine::new(
                 build,
                 SharedString::from(plain.trim().to_string()),
                 font,

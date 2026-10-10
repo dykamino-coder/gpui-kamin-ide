@@ -24,7 +24,7 @@
 //! там, в основное дерево не годится — поэтому дети приходят не элементами, а
 //! построителями, и строятся заново на каждую пробу и на `prepaint`.
 
-use crate::bands::FloatBands;
+use crate::layout::float::bands::FloatBands;
 mod clearance;
 mod kid;
 mod piece;

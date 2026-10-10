@@ -1,6 +1,6 @@
 //! Physical float opportunities and direction-dependent block origins.
 
-use crate::band_flow::EPS;
+use crate::layout::float::band_flow::EPS;
 
 pub(super) struct Edges {
     start: f32,
