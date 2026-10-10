@@ -39,6 +39,8 @@ use cef::*;
 struct Views {
     /// На экране по решению раскладки.
     visible: HashSet<String>,
+    /// Customize сохраняет тёплые панели, но не оставляет их видимыми.
+    retained: HashSet<String>,
     /// Кому уже сказали «ты скрыт». Отдельно от `visible`, потому что
     /// усыпление отложено на тик: состав видимых меняется чаще, чем мы
     /// беспокоим CEF.
@@ -48,28 +50,23 @@ struct Views {
 static VIEWS: LazyLock<Mutex<Views>> = LazyLock::new(|| Mutex::new(Views::default()));
 
 /// Сообщить, какие вью сейчас видимы. Зовётся после каждого события.
-pub fn mark_visible(ids: Vec<String>) {
+pub fn mark_visible(ids: Vec<String>, retained: Vec<String>) {
     let next: HashSet<String> = ids.into_iter().collect();
     let Ok(mut views) = VIEWS.lock() else {
         return;
     };
     let appeared: Vec<String> = next.difference(&views.visible).cloned().collect();
     views.visible = next;
+    views.retained = retained.into_iter().collect();
     wake(&mut views, appeared);
 }
 
-/// Расширить множество видимых, не сбрасывая прежнее: для кадров с неполным
-/// снапшотом реестра тулов — полный ранний выход замораживал TTL скрытых
-/// вью навсегда (они не выгружались), а сброс «скрывал» живые панели.
-pub fn mark_visible_union(ids: Vec<String>) {
-    let Ok(mut views) = VIEWS.lock() else {
-        return;
-    };
-    let appeared: Vec<String> = ids
-        .into_iter()
-        .filter(|id| views.visible.insert(id.clone()))
-        .collect();
-    wake(&mut views, appeared);
+/// Согласованный snapshot для eviction; оба множества меняются под одним замком.
+pub(crate) fn reap_sets() -> (HashSet<String>, HashSet<String>) {
+    VIEWS
+        .lock()
+        .map(|v| (v.visible.clone(), v.retained.clone()))
+        .unwrap_or_default()
 }
 
 /// Копия множества видимых — для выгрузки и ватчдога (`web::reap_hidden`,
