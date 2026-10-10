@@ -47,15 +47,17 @@ static SOFTWARE: OnceLock<bool> = OnceLock::new();
 /// адаптеров за время работы не меняется, а ответ нужен на горячем пути
 /// (каждый тик насоса).
 pub(crate) fn software_render() -> bool {
-    #[cfg(debug_assertions)]
-    if crate::native_acceptance::config::Config::from_env().software_policy {
-        return true;
-    }
     *SOFTWARE.get_or_init(|| {
         let forced = match std::env::var(FORCE_ENV).ok().as_deref() {
             Some("1") => Some(true),
             Some("0") => Some(false),
             _ => None,
+        };
+        #[cfg(debug_assertions)]
+        let forced = if crate::native_acceptance::config::Config::from_env().software_policy {
+            Some(true)
+        } else {
+            forced
         };
         let software = forced.unwrap_or_else(detect);
         if software {

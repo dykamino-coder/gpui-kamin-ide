@@ -61,6 +61,10 @@ pub(crate) fn startup() {
     let config = config::Config::from_env();
     if config.loaders {
         enable();
+        crate::web::acceptance_log(format!(
+            "[acceptance] policy reduced_animations={} software={} no_host={}",
+            config.reduced_animations, config.software_policy, config.no_host
+        ));
         if let Some(tx) = crate::host_link::event_tx() {
             let _ = tx.try_send(crate::host_link::ShellEvent::NativeAcceptance(
                 Action::Loaders,
