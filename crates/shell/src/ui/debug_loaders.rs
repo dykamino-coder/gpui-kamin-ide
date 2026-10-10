@@ -6,6 +6,8 @@ use kamin_theme::Palette;
 
 pub(crate) fn preview(p: &'static Palette) -> AnyElement {
     let color = crate::colors::rgba(p.accent_primary);
+    let mut track = color;
+    track.a = 0.16;
     div()
         .flex()
         .flex_col()
@@ -22,7 +24,7 @@ pub(crate) fn preview(p: &'static Palette) -> AnyElement {
         .child(super::icon::spinner_ring(
             "acceptance-ring",
             24.0,
-            color,
+            track,
             color,
         ))
         .into_any_element()

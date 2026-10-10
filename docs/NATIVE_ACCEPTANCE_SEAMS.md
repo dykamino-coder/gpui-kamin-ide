@@ -134,7 +134,10 @@ return-to-baseline measurement. Seam балансирует собственны
 
 ## #187 / INC-2026-0001
 
-Запустить `-Warp -ReducedAnimations`, затем `ready`. С #187 native `[why]`,
+Запустить `-Warp -ReducedAnimations -SoftwareCef`, затем `ready`; accelerated
+сравнение выполнить отдельным обычным запуском без этих трёх switches.
+Так CEF software path не зависит от совместимости shared handles между
+аппаратным Chromium и WARP-устройством GPUI. С #187 native `[why]`,
 `[views]`, adapter/browser policy строки должны атрибутировать synthetic
 software/accelerated frames, native loader callbacks и реальные input/wake/pull.
 OS animation value остаётся реальным; debug override указан в capture manifest.
