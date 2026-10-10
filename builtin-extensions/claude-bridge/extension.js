@@ -26,9 +26,9 @@ var __export = (target, all) => {
 };
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    for (let key2 of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key2) && key2 !== except)
+        __defProp(to, key2, { get: () => from[key2], enumerable: !(desc = __getOwnPropDesc(from, key2)) || desc.enumerable });
   }
   return to;
 };
@@ -493,44 +493,44 @@ var require_permessage_deflate = __commonJS({
        */
       normalizeParams(configurations) {
         configurations.forEach((params) => {
-          Object.keys(params).forEach((key) => {
-            let value = params[key];
+          Object.keys(params).forEach((key2) => {
+            let value = params[key2];
             if (value.length > 1) {
-              throw new Error(`Parameter "${key}" must have only a single value`);
+              throw new Error(`Parameter "${key2}" must have only a single value`);
             }
             value = value[0];
-            if (key === "client_max_window_bits") {
+            if (key2 === "client_max_window_bits") {
               if (value !== true) {
                 const num = +value;
                 if (!Number.isInteger(num) || num < 8 || num > 15) {
                   throw new TypeError(
-                    `Invalid value for parameter "${key}": ${value}`
+                    `Invalid value for parameter "${key2}": ${value}`
                   );
                 }
                 value = num;
               } else if (!this._isServer) {
                 throw new TypeError(
-                  `Invalid value for parameter "${key}": ${value}`
+                  `Invalid value for parameter "${key2}": ${value}`
                 );
               }
-            } else if (key === "server_max_window_bits") {
+            } else if (key2 === "server_max_window_bits") {
               const num = +value;
               if (!Number.isInteger(num) || num < 8 || num > 15) {
                 throw new TypeError(
-                  `Invalid value for parameter "${key}": ${value}`
+                  `Invalid value for parameter "${key2}": ${value}`
                 );
               }
               value = num;
-            } else if (key === "client_no_context_takeover" || key === "server_no_context_takeover") {
+            } else if (key2 === "client_no_context_takeover" || key2 === "server_no_context_takeover") {
               if (value !== true) {
                 throw new TypeError(
-                  `Invalid value for parameter "${key}": ${value}`
+                  `Invalid value for parameter "${key2}": ${value}`
                 );
               }
             } else {
-              throw new Error(`Unknown parameter "${key}"`);
+              throw new Error(`Unknown parameter "${key2}"`);
             }
-            params[key] = value;
+            params[key2] = value;
           });
         });
         return configurations;
@@ -578,8 +578,8 @@ var require_permessage_deflate = __commonJS({
       _decompress(data, fin, callback) {
         const endpoint = this._isServer ? "client" : "server";
         if (!this._inflate) {
-          const key = `${endpoint}_max_window_bits`;
-          const windowBits = typeof this.params[key] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key];
+          const key2 = `${endpoint}_max_window_bits`;
+          const windowBits = typeof this.params[key2] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key2];
           this._inflate = zlib.createInflateRaw({
             ...this._options.zlibInflateOptions,
             windowBits
@@ -629,8 +629,8 @@ var require_permessage_deflate = __commonJS({
       _compress(data, fin, callback) {
         const endpoint = this._isServer ? "server" : "client";
         if (!this._deflate) {
-          const key = `${endpoint}_max_window_bits`;
-          const windowBits = typeof this.params[key] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key];
+          const key2 = `${endpoint}_max_window_bits`;
+          const windowBits = typeof this.params[key2] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key2];
           this._deflate = zlib.createDeflateRaw({
             ...this._options.zlibDeflateOptions,
             windowBits
@@ -2408,7 +2408,7 @@ var require_websocket = __commonJS({
     var http = require("http");
     var net2 = require("net");
     var tls = require("tls");
-    var { randomBytes: randomBytes3, createHash: createHash2 } = require("crypto");
+    var { randomBytes: randomBytes4, createHash: createHash2 } = require("crypto");
     var { Duplex, Readable } = require("stream");
     var { URL: URL2 } = require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -2946,7 +2946,7 @@ var require_websocket = __commonJS({
         }
       }
       const defaultPort = isSecure ? 443 : 80;
-      const key = randomBytes3(16).toString("base64");
+      const key2 = randomBytes4(16).toString("base64");
       const request = isSecure ? https.request : http.request;
       const protocolSet = /* @__PURE__ */ new Set();
       let perMessageDeflate;
@@ -2957,7 +2957,7 @@ var require_websocket = __commonJS({
       opts.headers = {
         ...opts.headers,
         "Sec-WebSocket-Version": opts.protocolVersion,
-        "Sec-WebSocket-Key": key,
+        "Sec-WebSocket-Key": key2,
         Connection: "Upgrade",
         Upgrade: "websocket"
       };
@@ -3008,8 +3008,8 @@ var require_websocket = __commonJS({
           const headers = options && options.headers;
           options = { ...options, headers: {} };
           if (headers) {
-            for (const [key2, value] of Object.entries(headers)) {
-              options.headers[key2.toLowerCase()] = value;
+            for (const [key3, value] of Object.entries(headers)) {
+              options.headers[key3.toLowerCase()] = value;
             }
           }
         } else if (websocket.listenerCount("redirect") === 0) {
@@ -3076,7 +3076,7 @@ var require_websocket = __commonJS({
           abortHandshake(websocket, socket, "Invalid Upgrade header");
           return;
         }
-        const digest = createHash2("sha1").update(key + GUID).digest("base64");
+        const digest = createHash2("sha1").update(key2 + GUID).digest("base64");
         if (res.headers["sec-websocket-accept"] !== digest) {
           abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
           return;
@@ -3644,7 +3644,7 @@ var require_websocket_server = __commonJS({
        */
       handleUpgrade(req, socket, head, cb) {
         socket.on("error", socketOnError);
-        const key = req.headers["sec-websocket-key"];
+        const key2 = req.headers["sec-websocket-key"];
         const upgrade = req.headers.upgrade;
         const version = +req.headers["sec-websocket-version"];
         if (req.method !== "GET") {
@@ -3657,7 +3657,7 @@ var require_websocket_server = __commonJS({
           abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
           return;
         }
-        if (key === void 0 || !keyRegex.test(key)) {
+        if (key2 === void 0 || !keyRegex.test(key2)) {
           const message = "Missing or invalid Sec-WebSocket-Key header";
           abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
           return;
@@ -3717,7 +3717,7 @@ var require_websocket_server = __commonJS({
               }
               this.completeUpgrade(
                 extensions,
-                key,
+                key2,
                 protocols,
                 req,
                 socket,
@@ -3729,7 +3729,7 @@ var require_websocket_server = __commonJS({
           }
           if (!this.options.verifyClient(info)) return abortHandshake(socket, 401);
         }
-        this.completeUpgrade(extensions, key, protocols, req, socket, head, cb);
+        this.completeUpgrade(extensions, key2, protocols, req, socket, head, cb);
       }
       /**
        * Upgrade the connection to WebSocket.
@@ -3744,7 +3744,7 @@ var require_websocket_server = __commonJS({
        * @throws {Error} If called more than once with the same socket
        * @private
        */
-      completeUpgrade(extensions, key, protocols, req, socket, head, cb) {
+      completeUpgrade(extensions, key2, protocols, req, socket, head, cb) {
         if (!socket.readable || !socket.writable) return socket.destroy();
         if (socket[kWebSocket]) {
           throw new Error(
@@ -3752,7 +3752,7 @@ var require_websocket_server = __commonJS({
           );
         }
         if (this._state > RUNNING) return abortHandshake(socket, 503);
-        const digest = createHash2("sha1").update(key + GUID).digest("base64");
+        const digest = createHash2("sha1").update(key2 + GUID).digest("base64");
         const headers = [
           "HTTP/1.1 101 Switching Protocols",
           "Upgrade: websocket",
@@ -3916,11 +3916,11 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path46) {
-      const ctrl = callVisitor(key, node, visitor, path46);
+    function visit_(key2, node, visitor, path46) {
+      const ctrl = callVisitor(key2, node, visitor, path46);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path46, ctrl);
-        return visit_(key, ctrl, visitor, path46);
+        replaceNode(key2, path46, ctrl);
+        return visit_(key2, ctrl, visitor, path46);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
@@ -3964,11 +3964,11 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path46) {
-      const ctrl = await callVisitor(key, node, visitor, path46);
+    async function visitAsync_(key2, node, visitor, path46) {
+      const ctrl = await callVisitor(key2, node, visitor, path46);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path46, ctrl);
-        return visitAsync_(key, ctrl, visitor, path46);
+        replaceNode(key2, path46, ctrl);
+        return visitAsync_(key2, ctrl, visitor, path46);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
@@ -4018,27 +4018,27 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path46) {
+    function callVisitor(key2, node, visitor, path46) {
       if (typeof visitor === "function")
-        return visitor(key, node, path46);
+        return visitor(key2, node, path46);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path46);
+        return visitor.Map?.(key2, node, path46);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path46);
+        return visitor.Seq?.(key2, node, path46);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path46);
+        return visitor.Pair?.(key2, node, path46);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path46);
+        return visitor.Scalar?.(key2, node, path46);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path46);
+        return visitor.Alias?.(key2, node, path46);
       return void 0;
     }
-    function replaceNode(key, path46, node) {
+    function replaceNode(key2, path46, node) {
       const parent = path46[path46.length - 1];
       if (identity.isCollection(parent)) {
-        parent.items[key] = node;
+        parent.items[key2] = node;
       } else if (identity.isPair(parent)) {
-        if (key === "key")
+        if (key2 === "key")
           parent.key = node;
         else
           parent.value = node;
@@ -4275,9 +4275,9 @@ var require_anchors = __commonJS({
          */
         setAnchors: () => {
           for (const source of aliasObjects) {
-            const ref = sourceObjects.get(source);
-            if (typeof ref === "object" && ref.anchor && (identity.isScalar(ref.node) || identity.isCollection(ref.node))) {
-              ref.node.anchor = ref.anchor;
+            const ref2 = sourceObjects.get(source);
+            if (typeof ref2 === "object" && ref2.anchor && (identity.isScalar(ref2.node) || identity.isCollection(ref2.node))) {
+              ref2.node.anchor = ref2.anchor;
             } else {
               const error = new Error("Failed to resolve repeated object (this should not happen)");
               error.source = source;
@@ -4299,7 +4299,7 @@ var require_anchors = __commonJS({
 var require_applyReviver = __commonJS({
   "node_modules/yaml/dist/doc/applyReviver.js"(exports2) {
     "use strict";
-    function applyReviver(reviver, obj, key, val) {
+    function applyReviver(reviver, obj, key2, val) {
       if (val && typeof val === "object") {
         if (Array.isArray(val)) {
           for (let i = 0, len = val.length; i < len; ++i) {
@@ -4339,7 +4339,7 @@ var require_applyReviver = __commonJS({
           }
         }
       }
-      return reviver.call(obj, key, val);
+      return reviver.call(obj, key2, val);
     }
     exports2.applyReviver = applyReviver;
   }
@@ -4594,15 +4594,15 @@ var require_createNode = __commonJS({
         value = value.valueOf();
       }
       const { aliasDuplicateObjects, onAnchor, onTagObj, schema, sourceObjects } = ctx;
-      let ref = void 0;
+      let ref2 = void 0;
       if (aliasDuplicateObjects && value && typeof value === "object") {
-        ref = sourceObjects.get(value);
-        if (ref) {
-          ref.anchor ?? (ref.anchor = onAnchor(value));
-          return new Alias.Alias(ref.anchor);
+        ref2 = sourceObjects.get(value);
+        if (ref2) {
+          ref2.anchor ?? (ref2.anchor = onAnchor(value));
+          return new Alias.Alias(ref2.anchor);
         } else {
-          ref = { anchor: null, node: null };
-          sourceObjects.set(value, ref);
+          ref2 = { anchor: null, node: null };
+          sourceObjects.set(value, ref2);
         }
       }
       if (tagName?.startsWith("!!"))
@@ -4614,8 +4614,8 @@ var require_createNode = __commonJS({
         }
         if (!value || typeof value !== "object") {
           const node2 = new Scalar.Scalar(value);
-          if (ref)
-            ref.node = node2;
+          if (ref2)
+            ref2.node = node2;
           return node2;
         }
         tagObj = value instanceof Map ? schema[identity.MAP] : Symbol.iterator in Object(value) ? schema[identity.SEQ] : schema[identity.MAP];
@@ -4629,8 +4629,8 @@ var require_createNode = __commonJS({
         node.tag = tagName;
       else if (!tagObj.default)
         node.tag = tagObj.tag;
-      if (ref)
-        ref.node = node;
+      if (ref2)
+        ref2.node = node;
       return node;
     }
     exports2.createNode = createNode;
@@ -4700,14 +4700,14 @@ var require_Collection = __commonJS({
         if (isEmptyPath(path46))
           this.add(value);
         else {
-          const [key, ...rest] = path46;
-          const node = this.get(key, true);
+          const [key2, ...rest] = path46;
+          const node = this.get(key2, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
           else if (node === void 0 && this.schema)
-            this.set(key, collectionFromPath(this.schema, rest, value));
+            this.set(key2, collectionFromPath(this.schema, rest, value));
           else
-            throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest}`);
+            throw new Error(`Expected YAML collection at ${key2}. Remaining path: ${rest}`);
         }
       }
       /**
@@ -4715,14 +4715,14 @@ var require_Collection = __commonJS({
        * @returns `true` if the item was found and removed.
        */
       deleteIn(path46) {
-        const [key, ...rest] = path46;
+        const [key2, ...rest] = path46;
         if (rest.length === 0)
-          return this.delete(key);
-        const node = this.get(key, true);
+          return this.delete(key2);
+        const node = this.get(key2, true);
         if (identity.isCollection(node))
           return node.deleteIn(rest);
         else
-          throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest}`);
+          throw new Error(`Expected YAML collection at ${key2}. Remaining path: ${rest}`);
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -4730,8 +4730,8 @@ var require_Collection = __commonJS({
        * `true` (collections are always returned intact).
        */
       getIn(path46, keepScalar) {
-        const [key, ...rest] = path46;
-        const node = this.get(key, true);
+        const [key2, ...rest] = path46;
+        const node = this.get(key2, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
         else
@@ -4749,10 +4749,10 @@ var require_Collection = __commonJS({
        * Checks if the collection includes a value with the key `key`.
        */
       hasIn(path46) {
-        const [key, ...rest] = path46;
+        const [key2, ...rest] = path46;
         if (rest.length === 0)
-          return this.has(key);
-        const node = this.get(key, true);
+          return this.has(key2);
+        const node = this.get(key2, true);
         return identity.isCollection(node) ? node.hasIn(rest) : false;
       }
       /**
@@ -4760,17 +4760,17 @@ var require_Collection = __commonJS({
        * boolean to add/remove the item from the set.
        */
       setIn(path46, value) {
-        const [key, ...rest] = path46;
+        const [key2, ...rest] = path46;
         if (rest.length === 0) {
-          this.set(key, value);
+          this.set(key2, value);
         } else {
-          const node = this.get(key, true);
+          const node = this.get(key2, true);
           if (identity.isCollection(node))
             node.setIn(rest, value);
           else if (node === void 0 && this.schema)
-            this.set(key, collectionFromPath(this.schema, rest, value));
+            this.set(key2, collectionFromPath(this.schema, rest, value));
           else
-            throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest}`);
+            throw new Error(`Expected YAML collection at ${key2}. Remaining path: ${rest}`);
         }
       }
     };
@@ -5348,19 +5348,19 @@ var require_stringifyPair = __commonJS({
     var Scalar = require_Scalar();
     var stringify = require_stringify();
     var stringifyComment = require_stringifyComment();
-    function stringifyPair({ key, value }, ctx, onComment, onChompKeep) {
+    function stringifyPair({ key: key2, value }, ctx, onComment, onChompKeep) {
       const { allNullValues, doc, indent, indentStep, options: { commentString, indentSeq, simpleKeys } } = ctx;
-      let keyComment = identity.isNode(key) && key.comment || null;
+      let keyComment = identity.isNode(key2) && key2.comment || null;
       if (simpleKeys) {
         if (keyComment) {
           throw new Error("With simple keys, key nodes cannot have comments");
         }
-        if (identity.isCollection(key) || !identity.isNode(key) && typeof key === "object") {
+        if (identity.isCollection(key2) || !identity.isNode(key2) && typeof key2 === "object") {
           const msg = "With simple keys, collection cannot be used as a key value";
           throw new Error(msg);
         }
       }
-      let explicitKey = !simpleKeys && (!key || keyComment && value == null && !ctx.inFlow || identity.isCollection(key) || (identity.isScalar(key) ? key.type === Scalar.Scalar.BLOCK_FOLDED || key.type === Scalar.Scalar.BLOCK_LITERAL : typeof key === "object"));
+      let explicitKey = !simpleKeys && (!key2 || keyComment && value == null && !ctx.inFlow || identity.isCollection(key2) || (identity.isScalar(key2) ? key2.type === Scalar.Scalar.BLOCK_FOLDED || key2.type === Scalar.Scalar.BLOCK_LITERAL : typeof key2 === "object"));
       ctx = Object.assign({}, ctx, {
         allNullValues: false,
         implicitKey: !explicitKey && (simpleKeys || !allNullValues),
@@ -5368,7 +5368,7 @@ var require_stringifyPair = __commonJS({
       });
       let keyCommentDone = false;
       let chompKeep = false;
-      let str = stringify.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
+      let str = stringify.stringify(key2, ctx, () => keyCommentDone = true, () => chompKeep = true);
       if (!explicitKey && !ctx.inFlow && str.length > 1024) {
         if (simpleKeys)
           throw new Error("With simple keys, single line scalar must not span more than 1024 characters");
@@ -5512,7 +5512,7 @@ var require_merge = __commonJS({
       }),
       stringify: () => MERGE_KEY
     };
-    var isMergeKey = (ctx, key) => (merge.identify(key) || identity.isScalar(key) && (!key.type || key.type === Scalar.Scalar.PLAIN) && merge.identify(key.value)) && ctx?.doc.schema.tags.some((tag) => tag.tag === merge.tag && tag.default);
+    var isMergeKey = (ctx, key2) => (merge.identify(key2) || identity.isScalar(key2) && (!key2.type || key2.type === Scalar.Scalar.PLAIN) && merge.identify(key2.value)) && ctx?.doc.schema.tags.some((tag) => tag.tag === merge.tag && tag.default);
     function addMergeToJSMap(ctx, map, value) {
       const source = resolveAliasValue(ctx, value);
       if (identity.isSeq(source))
@@ -5529,14 +5529,14 @@ var require_merge = __commonJS({
       if (!identity.isMap(source))
         throw new Error("Merge sources must be maps or map aliases");
       const srcMap = source.toJSON(null, ctx, Map);
-      for (const [key, value2] of srcMap) {
+      for (const [key2, value2] of srcMap) {
         if (map instanceof Map) {
-          if (!map.has(key))
-            map.set(key, value2);
+          if (!map.has(key2))
+            map.set(key2, value2);
         } else if (map instanceof Set) {
-          map.add(key);
-        } else if (!Object.prototype.hasOwnProperty.call(map, key)) {
-          Object.defineProperty(map, key, {
+          map.add(key2);
+        } else if (!Object.prototype.hasOwnProperty.call(map, key2)) {
+          Object.defineProperty(map, key2, {
             value: value2,
             writable: true,
             enumerable: true,
@@ -5564,19 +5564,19 @@ var require_addPairToJSMap = __commonJS({
     var stringify = require_stringify();
     var identity = require_identity();
     var toJS = require_toJS();
-    function addPairToJSMap(ctx, map, { key, value }) {
-      if (identity.isNode(key) && key.addToJSMap)
-        key.addToJSMap(ctx, map, value);
-      else if (merge.isMergeKey(ctx, key))
+    function addPairToJSMap(ctx, map, { key: key2, value }) {
+      if (identity.isNode(key2) && key2.addToJSMap)
+        key2.addToJSMap(ctx, map, value);
+      else if (merge.isMergeKey(ctx, key2))
         merge.addMergeToJSMap(ctx, map, value);
       else {
-        const jsKey = toJS.toJS(key, "", ctx);
+        const jsKey = toJS.toJS(key2, "", ctx);
         if (map instanceof Map) {
           map.set(jsKey, toJS.toJS(value, jsKey, ctx));
         } else if (map instanceof Set) {
           map.add(jsKey);
         } else {
-          const stringKey = stringifyKey(key, jsKey, ctx);
+          const stringKey = stringifyKey(key2, jsKey, ctx);
           const jsValue = toJS.toJS(value, stringKey, ctx);
           if (stringKey in map)
             Object.defineProperty(map, stringKey, {
@@ -5591,19 +5591,19 @@ var require_addPairToJSMap = __commonJS({
       }
       return map;
     }
-    function stringifyKey(key, jsKey, ctx) {
+    function stringifyKey(key2, jsKey, ctx) {
       if (jsKey === null)
         return "";
       if (typeof jsKey !== "object")
         return String(jsKey);
-      if (identity.isNode(key) && ctx?.doc) {
+      if (identity.isNode(key2) && ctx?.doc) {
         const strCtx = stringify.createStringifyContext(ctx.doc, {});
         strCtx.anchors = /* @__PURE__ */ new Set();
         for (const node of ctx.anchors.keys())
           strCtx.anchors.add(node.anchor);
         strCtx.inFlow = true;
         strCtx.inStringifyKey = true;
-        const strKey = key.toString(strCtx);
+        const strKey = key2.toString(strCtx);
         if (!ctx.mapKeyWarned) {
           let jsonStr = JSON.stringify(strKey);
           if (jsonStr.length > 40)
@@ -5627,24 +5627,24 @@ var require_Pair = __commonJS({
     var stringifyPair = require_stringifyPair();
     var addPairToJSMap = require_addPairToJSMap();
     var identity = require_identity();
-    function createPair(key, value, ctx) {
-      const k = createNode.createNode(key, void 0, ctx);
+    function createPair(key2, value, ctx) {
+      const k = createNode.createNode(key2, void 0, ctx);
       const v = createNode.createNode(value, void 0, ctx);
       return new Pair(k, v);
     }
     var Pair = class _Pair {
-      constructor(key, value = null) {
+      constructor(key2, value = null) {
         Object.defineProperty(this, identity.NODE_TYPE, { value: identity.PAIR });
-        this.key = key;
+        this.key = key2;
         this.value = value;
       }
       clone(schema) {
-        let { key, value } = this;
-        if (identity.isNode(key))
-          key = key.clone(schema);
+        let { key: key2, value } = this;
+        if (identity.isNode(key2))
+          key2 = key2.clone(schema);
         if (identity.isNode(value))
           value = value.clone(schema);
-        return new _Pair(key, value);
+        return new _Pair(key2, value);
       }
       toJSON(_, ctx) {
         const pair = ctx?.mapAsMap ? /* @__PURE__ */ new Map() : {};
@@ -5820,11 +5820,11 @@ var require_YAMLMap = __commonJS({
     var identity = require_identity();
     var Pair = require_Pair();
     var Scalar = require_Scalar();
-    function findPair(items, key) {
-      const k = identity.isScalar(key) ? key.value : key;
+    function findPair(items, key2) {
+      const k = identity.isScalar(key2) ? key2.value : key2;
       for (const it of items) {
         if (identity.isPair(it)) {
-          if (it.key === key || it.key === k)
+          if (it.key === key2 || it.key === k)
             return it;
           if (identity.isScalar(it.key) && it.key.value === k)
             return it;
@@ -5847,20 +5847,20 @@ var require_YAMLMap = __commonJS({
       static from(schema, obj, ctx) {
         const { keepUndefined, replacer } = ctx;
         const map = new this(schema);
-        const add = (key, value) => {
+        const add = (key2, value) => {
           if (typeof replacer === "function")
-            value = replacer.call(obj, key, value);
-          else if (Array.isArray(replacer) && !replacer.includes(key))
+            value = replacer.call(obj, key2, value);
+          else if (Array.isArray(replacer) && !replacer.includes(key2))
             return;
           if (value !== void 0 || keepUndefined)
-            map.items.push(Pair.createPair(key, value, ctx));
+            map.items.push(Pair.createPair(key2, value, ctx));
         };
         if (obj instanceof Map) {
-          for (const [key, value] of obj)
-            add(key, value);
+          for (const [key2, value] of obj)
+            add(key2, value);
         } else if (obj && typeof obj === "object") {
-          for (const key of Object.keys(obj))
-            add(key, obj[key]);
+          for (const key2 of Object.keys(obj))
+            add(key2, obj[key2]);
         }
         if (typeof schema.sortMapEntries === "function") {
           map.items.sort(schema.sortMapEntries);
@@ -5900,23 +5900,23 @@ var require_YAMLMap = __commonJS({
           this.items.push(_pair);
         }
       }
-      delete(key) {
-        const it = findPair(this.items, key);
+      delete(key2) {
+        const it = findPair(this.items, key2);
         if (!it)
           return false;
         const del = this.items.splice(this.items.indexOf(it), 1);
         return del.length > 0;
       }
-      get(key, keepScalar) {
-        const it = findPair(this.items, key);
+      get(key2, keepScalar) {
+        const it = findPair(this.items, key2);
         const node = it?.value;
         return (!keepScalar && identity.isScalar(node) ? node.value : node) ?? void 0;
       }
-      has(key) {
-        return !!findPair(this.items, key);
+      has(key2) {
+        return !!findPair(this.items, key2);
       }
-      set(key, value) {
-        this.add(new Pair.Pair(key, value), true);
+      set(key2, value) {
+        this.add(new Pair.Pair(key2, value), true);
       }
       /**
        * @param ctx - Conversion context, originally set in Document#toJS()
@@ -6005,15 +6005,15 @@ var require_YAMLSeq = __commonJS({
        *
        * @returns `true` if the item was found and removed.
        */
-      delete(key) {
-        const idx = asItemIndex(key);
+      delete(key2) {
+        const idx = asItemIndex(key2);
         if (typeof idx !== "number")
           return false;
         const del = this.items.splice(idx, 1);
         return del.length > 0;
       }
-      get(key, keepScalar) {
-        const idx = asItemIndex(key);
+      get(key2, keepScalar) {
+        const idx = asItemIndex(key2);
         if (typeof idx !== "number")
           return void 0;
         const it = this.items[idx];
@@ -6025,8 +6025,8 @@ var require_YAMLSeq = __commonJS({
        * `key` must contain a representation of an integer for this to succeed.
        * It may be wrapped in a `Scalar`.
        */
-      has(key) {
-        const idx = asItemIndex(key);
+      has(key2) {
+        const idx = asItemIndex(key2);
         return typeof idx === "number" && idx < this.items.length;
       }
       /**
@@ -6036,10 +6036,10 @@ var require_YAMLSeq = __commonJS({
        * If `key` does not contain a representation of an integer, this will throw.
        * It may be wrapped in a `Scalar`.
        */
-      set(key, value) {
-        const idx = asItemIndex(key);
+      set(key2, value) {
+        const idx = asItemIndex(key2);
         if (typeof idx !== "number")
-          throw new Error(`Expected a valid index, not ${key}.`);
+          throw new Error(`Expected a valid index, not ${key2}.`);
         const prev = this.items[idx];
         if (identity.isScalar(prev) && Scalar.isScalarValue(value))
           prev.value = value;
@@ -6073,8 +6073,8 @@ var require_YAMLSeq = __commonJS({
           let i = 0;
           for (let it of obj) {
             if (typeof replacer === "function") {
-              const key = obj instanceof Set ? it : String(i++);
-              it = replacer.call(obj, key, it);
+              const key2 = obj instanceof Set ? it : String(i++);
+              it = replacer.call(obj, key2, it);
             }
             seq.items.push(createNode.createNode(it, void 0, ctx));
           }
@@ -6082,8 +6082,8 @@ var require_YAMLSeq = __commonJS({
         return seq;
       }
     };
-    function asItemIndex(key) {
-      let idx = identity.isScalar(key) ? key.value : key;
+    function asItemIndex(key2) {
+      let idx = identity.isScalar(key2) ? key2.value : key2;
       if (idx && typeof idx === "string")
         idx = Number(idx);
       return typeof idx === "number" && Number.isInteger(idx) && idx >= 0 ? idx : null;
@@ -6497,25 +6497,25 @@ ${cn.comment}` : item.comment;
         for (let it of iterable) {
           if (typeof replacer === "function")
             it = replacer.call(iterable, String(i++), it);
-          let key, value;
+          let key2, value;
           if (Array.isArray(it)) {
             if (it.length === 2) {
-              key = it[0];
+              key2 = it[0];
               value = it[1];
             } else
               throw new TypeError(`Expected [key, value] tuple: ${it}`);
           } else if (it && it instanceof Object) {
             const keys = Object.keys(it);
             if (keys.length === 1) {
-              key = keys[0];
-              value = it[key];
+              key2 = keys[0];
+              value = it[key2];
             } else {
               throw new TypeError(`Expected tuple with one key, not ${keys.length} keys`);
             }
           } else {
-            key = it;
+            key2 = it;
           }
-          pairs2.items.push(Pair.createPair(key, value, ctx));
+          pairs2.items.push(Pair.createPair(key2, value, ctx));
         }
       return pairs2;
     }
@@ -6562,16 +6562,16 @@ var require_omap = __commonJS({
         if (ctx?.onCreate)
           ctx.onCreate(map);
         for (const pair of this.items) {
-          let key, value;
+          let key2, value;
           if (identity.isPair(pair)) {
-            key = toJS.toJS(pair.key, "", ctx);
-            value = toJS.toJS(pair.value, key, ctx);
+            key2 = toJS.toJS(pair.key, "", ctx);
+            value = toJS.toJS(pair.value, key2, ctx);
           } else {
-            key = toJS.toJS(pair, "", ctx);
+            key2 = toJS.toJS(pair, "", ctx);
           }
-          if (map.has(key))
+          if (map.has(key2))
             throw new Error("Ordered maps must not include duplicate keys");
-          map.set(key, value);
+          map.set(key2, value);
         }
         return map;
       }
@@ -6592,12 +6592,12 @@ var require_omap = __commonJS({
       resolve(seq, onError) {
         const pairs$1 = pairs.resolvePairs(seq, onError);
         const seenKeys = [];
-        for (const { key } of pairs$1.items) {
-          if (identity.isScalar(key)) {
-            if (seenKeys.includes(key.value)) {
-              onError(`Ordered maps must not include duplicate keys: ${key.value}`);
+        for (const { key: key2 } of pairs$1.items) {
+          if (identity.isScalar(key2)) {
+            if (seenKeys.includes(key2.value)) {
+              onError(`Ordered maps must not include duplicate keys: ${key2.value}`);
             } else {
-              seenKeys.push(key.value);
+              seenKeys.push(key2.value);
             }
           }
         }
@@ -6782,14 +6782,14 @@ var require_set = __commonJS({
         super(schema);
         this.tag = _YAMLSet.tag;
       }
-      add(key) {
+      add(key2) {
         let pair;
-        if (identity.isPair(key))
-          pair = key;
-        else if (key && typeof key === "object" && "key" in key && "value" in key && key.value === null)
-          pair = new Pair.Pair(key.key, null);
+        if (identity.isPair(key2))
+          pair = key2;
+        else if (key2 && typeof key2 === "object" && "key" in key2 && "value" in key2 && key2.value === null)
+          pair = new Pair.Pair(key2.key, null);
         else
-          pair = new Pair.Pair(key, null);
+          pair = new Pair.Pair(key2, null);
         const prev = YAMLMap.findPair(this.items, pair.key);
         if (!prev)
           this.items.push(pair);
@@ -6798,18 +6798,18 @@ var require_set = __commonJS({
        * If `keepPair` is `true`, returns the Pair matching `key`.
        * Otherwise, returns the value of that Pair's key.
        */
-      get(key, keepPair) {
-        const pair = YAMLMap.findPair(this.items, key);
+      get(key2, keepPair) {
+        const pair = YAMLMap.findPair(this.items, key2);
         return !keepPair && identity.isPair(pair) ? identity.isScalar(pair.key) ? pair.key.value : pair.key : pair;
       }
-      set(key, value) {
+      set(key2, value) {
         if (typeof value !== "boolean")
           throw new Error(`Expected boolean value for set(key, value) in a YAML set, not ${typeof value}`);
-        const prev = YAMLMap.findPair(this.items, key);
+        const prev = YAMLMap.findPair(this.items, key2);
         if (prev && !value) {
           this.items.splice(this.items.indexOf(prev), 1);
         } else if (!prev && value) {
-          this.items.push(new Pair.Pair(key));
+          this.items.push(new Pair.Pair(key2));
         }
       }
       toJSON(_, ctx) {
@@ -7056,7 +7056,7 @@ var require_tags = __commonJS({
         if (Array.isArray(customTags))
           tags = [];
         else {
-          const keys = Array.from(schemas.keys()).filter((key) => key !== "yaml11").map((key) => JSON.stringify(key)).join(", ");
+          const keys = Array.from(schemas.keys()).filter((key2) => key2 !== "yaml11").map((key2) => JSON.stringify(key2)).join(", ");
           throw new Error(`Unknown schema "${schemaName}"; use one of ${keys} or define customTags array`);
         }
       }
@@ -7072,7 +7072,7 @@ var require_tags = __commonJS({
         const tagObj = typeof tag === "string" ? tagsByName[tag] : tag;
         if (!tagObj) {
           const tagName = JSON.stringify(tag);
-          const keys = Object.keys(tagsByName).map((key) => JSON.stringify(key)).join(", ");
+          const keys = Object.keys(tagsByName).map((key2) => JSON.stringify(key2)).join(", ");
           throw new Error(`Unknown custom tag ${tagName}; use one of ${keys}`);
         }
         if (!tags2.includes(tagObj))
@@ -7336,8 +7336,8 @@ var require_Document = __commonJS({
        * Convert a key and a value into a `Pair` using the current schema,
        * recursively wrapping all values as `Scalar` or `Collection` nodes.
        */
-      createPair(key, value, options = {}) {
-        const k = this.createNode(key, null, options);
+      createPair(key2, value, options = {}) {
+        const k = this.createNode(key2, null, options);
         const v = this.createNode(value, null, options);
         return new Pair.Pair(k, v);
       }
@@ -7345,8 +7345,8 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      delete(key) {
-        return assertCollection(this.contents) ? this.contents.delete(key) : false;
+      delete(key2) {
+        return assertCollection(this.contents) ? this.contents.delete(key2) : false;
       }
       /**
        * Removes a value from the document.
@@ -7366,8 +7366,8 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      get(key, keepScalar) {
-        return identity.isCollection(this.contents) ? this.contents.get(key, keepScalar) : void 0;
+      get(key2, keepScalar) {
+        return identity.isCollection(this.contents) ? this.contents.get(key2, keepScalar) : void 0;
       }
       /**
        * Returns item at `path`, or `undefined` if not found. By default unwraps
@@ -7382,8 +7382,8 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value with the key `key`.
        */
-      has(key) {
-        return identity.isCollection(this.contents) ? this.contents.has(key) : false;
+      has(key2) {
+        return identity.isCollection(this.contents) ? this.contents.has(key2) : false;
       }
       /**
        * Checks if the document includes a value at `path`.
@@ -7397,11 +7397,11 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      set(key, value) {
+      set(key2, value) {
         if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, [key], value);
+          this.contents = Collection.collectionFromPath(this.schema, [key2], value);
         } else if (assertCollection(this.contents)) {
-          this.contents.set(key, value);
+          this.contents.set(key2, value);
         }
       }
       /**
@@ -7709,24 +7709,24 @@ var require_resolve_props = __commonJS({
 var require_util_contains_newline = __commonJS({
   "node_modules/yaml/dist/compose/util-contains-newline.js"(exports2) {
     "use strict";
-    function containsNewline(key) {
-      if (!key)
+    function containsNewline(key2) {
+      if (!key2)
         return null;
-      switch (key.type) {
+      switch (key2.type) {
         case "alias":
         case "scalar":
         case "double-quoted-scalar":
         case "single-quoted-scalar":
-          if (key.source.includes("\n"))
+          if (key2.source.includes("\n"))
             return true;
-          if (key.end) {
-            for (const st of key.end)
+          if (key2.end) {
+            for (const st of key2.end)
               if (st.type === "newline")
                 return true;
           }
           return false;
         case "flow-collection":
-          for (const it of key.items) {
+          for (const it of key2.items) {
             for (const st of it.start)
               if (st.type === "newline")
                 return true;
@@ -7800,10 +7800,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start, key, sep, value } = collItem;
+        const { start, key: key2, sep, value } = collItem;
         const keyProps = resolveProps.resolveProps(start, {
           indicator: "explicit-key-ind",
-          next: key ?? sep?.[0],
+          next: key2 ?? sep?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -7811,10 +7811,10 @@ var require_resolve_block_map = __commonJS({
         });
         const implicitKey = !keyProps.found;
         if (implicitKey) {
-          if (key) {
-            if (key.type === "block-seq")
+          if (key2) {
+            if (key2.type === "block-seq")
               onError(offset, "BLOCK_AS_IMPLICIT_KEY", "A block sequence may not be used as an implicit map key");
-            else if ("indent" in key && key.indent !== bm.indent)
+            else if ("indent" in key2 && key2.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
           if (!keyProps.anchor && !keyProps.tag && !sep) {
@@ -7827,17 +7827,17 @@ var require_resolve_block_map = __commonJS({
             }
             continue;
           }
-          if (keyProps.newlineAfterProp || utilContainsNewline.containsNewline(key)) {
-            onError(key ?? start[start.length - 1], "MULTILINE_IMPLICIT_KEY", "Implicit keys need to be on a single line");
+          if (keyProps.newlineAfterProp || utilContainsNewline.containsNewline(key2)) {
+            onError(key2 ?? start[start.length - 1], "MULTILINE_IMPLICIT_KEY", "Implicit keys need to be on a single line");
           }
         } else if (keyProps.found?.indent !== bm.indent) {
           onError(offset, "BAD_INDENT", startColMsg);
         }
         ctx.atKey = true;
         const keyStart = keyProps.end;
-        const keyNode = key ? composeNode(ctx, key, keyProps, onError) : composeEmptyNode(ctx, keyStart, start, null, keyProps, onError);
+        const keyNode = key2 ? composeNode(ctx, key2, keyProps, onError) : composeEmptyNode(ctx, keyStart, start, null, keyProps, onError);
         if (ctx.schema.compat)
-          utilFlowIndentCheck.flowIndentCheck(bm.indent, key, onError);
+          utilFlowIndentCheck.flowIndentCheck(bm.indent, key2, onError);
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
@@ -7847,7 +7847,7 @@ var require_resolve_block_map = __commonJS({
           offset: keyNode.range[2],
           onError,
           parentIndent: bm.indent,
-          startOnNewline: !key || key.type === "block-scalar"
+          startOnNewline: !key2 || key2.type === "block-scalar"
         });
         offset = valueProps.end;
         if (valueProps.found) {
@@ -8011,11 +8011,11 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start, key, sep, value } = collItem;
+        const { start, key: key2, sep, value } = collItem;
         const props = resolveProps.resolveProps(start, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep?.[0],
+          next: key2 ?? sep?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
@@ -8036,9 +8036,9 @@ var require_resolve_flow_collection = __commonJS({
             offset = props.end;
             continue;
           }
-          if (!isMap && ctx.options.strict && utilContainsNewline.containsNewline(key))
+          if (!isMap && ctx.options.strict && utilContainsNewline.containsNewline(key2))
             onError(
-              key,
+              key2,
               // checked by containsNewline()
               "MULTILINE_IMPLICIT_KEY",
               "Implicit keys of flow sequence pairs need to be on a single line"
@@ -8085,8 +8085,8 @@ var require_resolve_flow_collection = __commonJS({
         } else {
           ctx.atKey = true;
           const keyStart = props.end;
-          const keyNode = key ? composeNode(ctx, key, props, onError) : composeEmptyNode(ctx, keyStart, start, null, props, onError);
-          if (isBlock(key))
+          const keyNode = key2 ? composeNode(ctx, key2, props, onError) : composeEmptyNode(ctx, keyStart, start, null, props, onError);
+          if (isBlock(key2))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
           const valueProps = resolveProps.resolveProps(sep ?? [], {
@@ -9235,9 +9235,9 @@ var require_cst_scalar = __commonJS({
         ];
         if (!addEndtoBlockProps(props, "end" in token ? token.end : void 0))
           props.push({ type: "newline", offset: -1, indent, source: "\n" });
-        for (const key of Object.keys(token))
-          if (key !== "type" && key !== "offset")
-            delete token[key];
+        for (const key2 of Object.keys(token))
+          if (key2 !== "type" && key2 !== "offset")
+            delete token[key2];
         Object.assign(token, { type: "block-scalar", indent, props, source: body });
       }
     }
@@ -9285,9 +9285,9 @@ var require_cst_scalar = __commonJS({
         default: {
           const indent = "indent" in token ? token.indent : -1;
           const end = "end" in token && Array.isArray(token.end) ? token.end.filter((st) => st.type === "space" || st.type === "comment" || st.type === "newline") : [];
-          for (const key of Object.keys(token))
-            if (key !== "type" && key !== "offset")
-              delete token[key];
+          for (const key2 of Object.keys(token))
+            if (key2 !== "type" && key2 !== "offset")
+              delete token[key2];
           Object.assign(token, { type, indent, source, end });
         }
       }
@@ -9342,12 +9342,12 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start, key, sep, value }) {
+    function stringifyItem({ start, key: key2, sep, value }) {
       let res = "";
       for (const st of start)
         res += st.source;
-      if (key)
-        res += stringifyToken(key);
+      if (key2)
+        res += stringifyToken(key2);
       if (sep)
         for (const st of sep)
           res += st.source;
@@ -10679,7 +10679,7 @@ var require_parser = __commonJS({
                   });
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start2 = getFirstKeyStartProps(it.start);
-                  const key = it.key;
+                  const key2 = it.key;
                   const sep = it.sep;
                   sep.push(this.sourceToken);
                   delete it.key;
@@ -10688,7 +10688,7 @@ var require_parser = __commonJS({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep }]
+                    items: [{ start: start2, key: key2, sep }]
                   });
                 } else if (start.length > 0) {
                   it.sep = it.sep.concat(start, this.sourceToken);
@@ -11275,11 +11275,11 @@ function firstBodyLine(content, fallback = "") {
   const first = body.split("\n")[0]?.replace(/^#+\s*/, "").trim() || fallback;
   return first.length > 100 ? first.slice(0, 97) + "..." : first;
 }
-function matchYamlField(fm, key) {
+function matchYamlField(fm, key2) {
   if (!fm) return void 0;
   const obj = parseFmObject(fm);
-  if (!(key in obj)) return void 0;
-  const v = obj[key];
+  if (!(key2 in obj)) return void 0;
+  const v = obj[key2];
   if (v == null) return void 0;
   if (typeof v === "string") return v;
   if (typeof v === "number" || typeof v === "boolean") return String(v);
@@ -11339,17 +11339,17 @@ function mergeIndependentDeclaration(entryValue, manifestValue) {
 }
 function mergePluginDeclarations(pluginRoot, pluginName, entry, manifest) {
   const effective = { ...entry ?? {}, ...manifest ?? {} };
-  for (const key of ["hooks", "dependencies"]) {
-    const merged = mergeIndependentDeclaration(entry?.[key], manifest?.[key]);
-    if (merged !== void 0) effective[key] = merged;
+  for (const key2 of ["hooks", "dependencies"]) {
+    const merged = mergeIndependentDeclaration(entry?.[key2], manifest?.[key2]);
+    if (merged !== void 0) effective[key2] = merged;
   }
-  for (const key of ["mcpServers", "lspServers"]) {
-    const merged = mergeDeclaration(entry?.[key], manifest?.[key]);
-    if (merged !== void 0) effective[key] = merged;
+  for (const key2 of ["mcpServers", "lspServers"]) {
+    const merged = mergeDeclaration(entry?.[key2], manifest?.[key2]);
+    if (merged !== void 0) effective[key2] = merged;
   }
-  for (const key of ["userConfig", "experimental"]) {
-    const merged = mergeDeclaration(entry?.[key], manifest?.[key]);
-    if (merged !== void 0) effective[key] = merged;
+  for (const key2 of ["userConfig", "experimental"]) {
+    const merged = mergeDeclaration(entry?.[key2], manifest?.[key2]);
+    if (merged !== void 0) effective[key2] = merged;
   }
   if (typeof entry?.defaultEnabled === "boolean") effective.defaultEnabled = entry.defaultEnabled;
   effective.name = pluginName || manifest?.name || entry?.name || import_path2.default.basename(pluginRoot);
@@ -11427,8 +11427,8 @@ async function listEnabledInstalledPlugins() {
     loadEnabledPluginsMap()
   ]);
   const out = [];
-  for (const [key, entry] of installedMap) {
-    if (enabled.get(key) === false) continue;
+  for (const [key2, entry] of installedMap) {
+    if (enabled.get(key2) === false) continue;
     if (!entry.installPath) continue;
     let exists = false;
     try {
@@ -11436,17 +11436,17 @@ async function listEnabledInstalledPlugins() {
     } catch {
     }
     if (!exists) continue;
-    const atIdx = key.lastIndexOf("@");
-    const name = atIdx > 0 ? key.slice(0, atIdx) : key;
-    const marketplace = atIdx > 0 ? key.slice(atIdx + 1) : "";
-    if (!enabled.has(key)) {
+    const atIdx = key2.lastIndexOf("@");
+    const name = atIdx > 0 ? key2.slice(0, atIdx) : key2;
+    const marketplace = atIdx > 0 ? key2.slice(atIdx + 1) : "";
+    if (!enabled.has(key2)) {
       const manifest = await readEffectivePluginManifest(entry.installPath, name, marketplace);
       if (manifest.defaultEnabled === false) continue;
     }
-    out.push({ name, marketplace, key, installPath: entry.installPath });
+    out.push({ name, marketplace, key: key2, installPath: entry.installPath });
   }
   const explicitlyEnabled = new Set(
-    [...enabled].filter(([, value]) => value === true).map(([key]) => key)
+    [...enabled].filter(([, value]) => value === true).map(([key2]) => key2)
   );
   const winners = selectPluginNamespaceWinners(out, explicitlyEnabled);
   if (winners.length !== out.length) {
@@ -11478,8 +11478,8 @@ function loadPluginOptions(pluginId) {
       const marketplace = at > 0 ? pluginId.slice(at + 1) : "";
       const schema = readEffectivePluginManifestSync(root, pluginName, marketplace).userConfig;
       if (schema && typeof schema === "object" && !Array.isArray(schema)) {
-        for (const [key, spec] of Object.entries(schema)) {
-          if (spec && typeof spec === "object" && "default" in spec) out[key] = spec.default;
+        for (const [key2, spec] of Object.entries(schema)) {
+          if (spec && typeof spec === "object" && "default" in spec) out[key2] = spec.default;
         }
       }
     }
@@ -11508,8 +11508,8 @@ function loadPluginOptions(pluginId) {
   return out;
 }
 function substituteUserConfig(value, options) {
-  return value.replace(/\$\{user_config\.([^}]+)\}/g, (match, key) => {
-    if (key in options) return String(options[key]);
+  return value.replace(/\$\{user_config\.([^}]+)\}/g, (match, key2) => {
+    if (key2 in options) return String(options[key2]);
     return match;
   });
 }
@@ -11525,10 +11525,10 @@ async function loadInstalledPluginsMap() {
   try {
     const data = JSON.parse(raw);
     if (data?.version !== 2 || !data?.plugins) return out;
-    for (const [key, entries2] of Object.entries(data.plugins)) {
+    for (const [key2, entries2] of Object.entries(data.plugins)) {
       const arr = entries2;
       if (arr.length > 0 && arr[0]?.installPath) {
-        out.set(key, { installPath: arr[0].installPath });
+        out.set(key2, { installPath: arr[0].installPath });
       }
     }
   } catch {
@@ -11763,8 +11763,8 @@ function spawnMonitor(inst) {
   }
 }
 async function loadMonitorDeclarations(pluginRoot, manifest) {
-  const readFile2 = async (ref) => {
-    const resolved = import_path3.default.resolve(pluginRoot, ref);
+  const readFile2 = async (ref2) => {
+    const resolved = import_path3.default.resolve(pluginRoot, ref2);
     const relative = import_path3.default.relative(pluginRoot, resolved);
     if (relative === ".." || relative.startsWith(".." + import_path3.default.sep) || import_path3.default.isAbsolute(relative)) return [];
     try {
@@ -12193,10 +12193,10 @@ function portableBasename(value) {
 function localizeHookPayload(payload, cacheDir = process.env.KAMIN_CACHE_DIR) {
   const localized = { ...payload };
   if (!cacheDir) return localized;
-  for (const key of ["transcript_path", "agent_transcript_path"]) {
-    const remotePath = localized[key];
+  for (const key2 of ["transcript_path", "agent_transcript_path"]) {
+    const remotePath = localized[key2];
     if (typeof remotePath === "string" && remotePath.length > 0) {
-      localized[key] = import_node_path3.default.join(cacheDir, "transcripts", portableBasename(remotePath));
+      localized[key2] = import_node_path3.default.join(cacheDir, "transcripts", portableBasename(remotePath));
     }
   }
   return localized;
@@ -12299,8 +12299,8 @@ async function executeHook(req) {
       command = substituteUserConfig(command, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginRoot).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, dataDir).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, cwd);
       args = args?.map((arg) => substituteUserConfig(arg, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginRoot).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, dataDir).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, cwd));
     }
-    for (const [key, value] of Object.entries(options)) {
-      pluginEnv[`CLAUDE_PLUGIN_OPTION_${key.toUpperCase()}`] = String(value);
+    for (const [key2, value] of Object.entries(options)) {
+      pluginEnv[`CLAUDE_PLUGIN_OPTION_${key2.toUpperCase()}`] = String(value);
     }
     pluginEnv.CLAUDE_PLUGIN_ROOT = shell2 ? shellPluginEnvValue(pluginRoot, shell2) : pluginRoot;
     pluginEnv.CLAUDE_PLUGIN_DATA = shell2 ? shellPluginEnvValue(dataDir, shell2) : dataDir;
@@ -13005,8 +13005,8 @@ var require_to_regex_range = __commonJS({
     function compare(a, b) {
       return a > b ? 1 : b > a ? -1 : 0;
     }
-    function contains(arr, key, val) {
-      return arr.some((ele) => ele[key] === val);
+    function contains(arr, key2, val) {
+      return arr.some((ele) => ele[key2] === val);
     }
     function countNines(min, len) {
       return Number(String(min).slice(0, -len) + "9".repeat(len));
@@ -15633,7 +15633,7 @@ var require_micromatch = __commonJS({
       }
       let keys = micromatch(Object.keys(obj), patterns, options);
       let res = {};
-      for (let key of keys) res[key] = obj[key];
+      for (let key2 of keys) res[key2] = obj[key2];
       return res;
     };
     micromatch.some = (list, patterns, options) => {
@@ -16330,9 +16330,9 @@ var require_run_parallel = __commonJS({
       if (!pending) {
         done(null);
       } else if (keys) {
-        keys.forEach(function(key) {
-          tasks[key](function(err, result) {
-            each(key, err, result);
+        keys.forEach(function(key2) {
+          tasks[key2](function(err, result) {
+            each(key2, err, result);
           });
         });
       } else {
@@ -19493,8 +19493,8 @@ var require_MouseEvent = __commonJS({
         }
         this.relatedTarget = relatedTarget;
       } },
-      getModifierState: { value: function(key) {
-        switch (key) {
+      getModifierState: { value: function(key2) {
+        switch (key2) {
           case "Alt":
             return this.altKey;
           case "Control":
@@ -21389,11 +21389,11 @@ var require_DOMTokenList = __commonJS({
       } else {
         var seen = /* @__PURE__ */ Object.create(null);
         return str.split(/[ \t\r\n\f]+/g).filter(function(n) {
-          var key = "$" + n;
-          if (seen[key]) {
+          var key2 = "$" + n;
+          if (seen[key2]) {
             return false;
           }
-          seen[key] = true;
+          seen[key2] = true;
           return true;
         });
       }
@@ -21556,11 +21556,11 @@ var require_select = __commonJS({
           return el.nodeName.toLowerCase() === type;
         };
       },
-      "attr": function(key, op, val, i) {
+      "attr": function(key2, op, val, i) {
         op = operators[op];
         return function(el) {
           var attr;
-          switch (key) {
+          switch (key2) {
             case "for":
               attr = el.htmlFor;
               break;
@@ -21572,7 +21572,7 @@ var require_select = __commonJS({
               break;
             case "href":
             case "src":
-              attr = el.getAttribute(key, 2);
+              attr = el.getAttribute(key2, 2);
               break;
             case "title":
               attr = el.getAttribute("title") || null;
@@ -21586,15 +21586,15 @@ var require_select = __commonJS({
             case "tabIndex":
             case "style":
               if (el.getAttribute) {
-                attr = el.getAttribute(key);
+                attr = el.getAttribute(key2);
                 break;
               }
             /* falls through */
             default:
-              if (el.hasAttribute && !el.hasAttribute(key)) {
+              if (el.hasAttribute && !el.hasAttribute(key2)) {
                 break;
               }
-              attr = el[key] != null ? el[key] : el.getAttribute && el.getAttribute(key);
+              attr = el[key2] != null ? el[key2] : el.getAttribute && el.getAttribute(key2);
               break;
           }
           if (attr == null) return;
@@ -21885,18 +21885,18 @@ var require_select = __commonJS({
       },
       "ref": function(test, name) {
         var node;
-        function ref(el) {
+        function ref2(el) {
           var doc = el.ownerDocument, nodes = doc.getElementsByTagName("*"), i = nodes.length;
           while (i--) {
             node = nodes[i];
-            if (ref.test(el)) {
+            if (ref2.test(el)) {
               node = null;
               return true;
             }
           }
           node = null;
         }
-        ref.combinator = function(el) {
+        ref2.combinator = function(el) {
           if (!node || !node.getAttribute) return;
           var attr = node.getAttribute(name) || "";
           if (attr[0] === "#") attr = attr.substring(1);
@@ -21904,7 +21904,7 @@ var require_select = __commonJS({
             return node;
           }
         };
-        return ref;
+        return ref2;
       }
     };
     var rules = {
@@ -21936,7 +21936,7 @@ var require_select = __commonJS({
     rules.ident = replace(rules.ident, "cssid", rules.cssid);
     rules.str_escape = replace(rules.str_escape, "escape", rules.escape);
     var compile = function(sel_) {
-      var sel = sel_.replace(/^\s+|\s+$/g, ""), test, filter = [], buff = [], subject, qname, cap, op, ref;
+      var sel = sel_.replace(/^\s+|\s+$/g, ""), test, filter = [], buff = [], subject, qname, cap, op, ref2;
       while (sel) {
         if (cap = rules.qname.exec(sel)) {
           sel = sel.substring(cap[0].length);
@@ -21962,8 +21962,8 @@ var require_select = __commonJS({
         }
         if (cap = rules.ref.exec(sel)) {
           sel = sel.substring(cap[0].length);
-          ref = combinators.ref(makeSimple(buff), decodeid(cap[1]));
-          filter.push(ref.combinator);
+          ref2 = combinators.ref(makeSimple(buff), decodeid(cap[1]));
+          filter.push(ref2.combinator);
           buff = [];
           continue;
         }
@@ -21993,11 +21993,11 @@ var require_select = __commonJS({
         subject.sel = test.sel;
         test = subject;
       }
-      if (ref) {
-        ref.test = test;
-        ref.qname = test.qname;
-        ref.sel = test.sel;
-        test = ref;
+      if (ref2) {
+        ref2.test = test;
+        ref2.qname = test.qname;
+        ref2.sel = test.sel;
+        test = ref2;
       }
       return test;
     };
@@ -22767,8 +22767,8 @@ var require_Element = __commonJS({
       hasAttributeNS: { value: function hasAttributeNS(ns, lname) {
         ns = ns === void 0 || ns === null ? "" : String(ns);
         lname = String(lname);
-        var key = ns + "|" + lname;
-        return this._attrsByLName[key] !== void 0;
+        var key2 = ns + "|" + lname;
+        return this._attrsByLName[key2] !== void 0;
       } },
       hasAttributes: { value: function hasAttributes() {
         return this._numattrs > 0;
@@ -22826,17 +22826,17 @@ var require_Element = __commonJS({
           lname = qname.substring(pos + 1);
         }
         if (ns === "" || ns === void 0) ns = null;
-        var key = (ns === null ? "" : ns) + "|" + lname;
-        var attr = this._attrsByLName[key];
+        var key2 = (ns === null ? "" : ns) + "|" + lname;
+        var attr = this._attrsByLName[key2];
         var isnew;
         if (!attr) {
           attr = new Attr(this, lname, prefix, ns);
           isnew = true;
-          this._attrsByLName[key] = attr;
+          this._attrsByLName[key2] = attr;
           if (this._attributes) {
             this._attributes[this._attrKeys.length] = attr;
           }
-          this._attrKeys.push(key);
+          this._attrKeys.push(key2);
           this._addQName(attr);
         } else if (false) {
           if (attr.prefix !== prefix) {
@@ -22889,17 +22889,17 @@ var require_Element = __commonJS({
           throw new DOMException(DOMException.INUSE_ATTRIBUTE_ERR);
         }
         var ns = attr.namespaceURI;
-        var key = (ns === null ? "" : ns) + "|" + attr.localName;
-        var oldAttr = this._attrsByLName[key];
+        var key2 = (ns === null ? "" : ns) + "|" + attr.localName;
+        var oldAttr = this._attrsByLName[key2];
         if (oldAttr) {
           this.removeAttributeNode(oldAttr);
         }
         attr._setOwnerElement(this);
-        this._attrsByLName[key] = attr;
+        this._attrsByLName[key2] = attr;
         if (this._attributes) {
           this._attributes[this._attrKeys.length] = attr;
         }
-        this._attrKeys.push(key);
+        this._attrKeys.push(key2);
         this._addQName(attr);
         if (this._newattrhook) this._newattrhook(attr.name, attr.value);
         return oldAttr || null;
@@ -22921,9 +22921,9 @@ var require_Element = __commonJS({
           this._attrsByQName[qname] = void 0;
         }
         var ns = attr.namespaceURI;
-        var key = (ns === null ? "" : ns) + "|" + attr.localName;
-        this._attrsByLName[key] = void 0;
-        var i = this._attrKeys.indexOf(key);
+        var key2 = (ns === null ? "" : ns) + "|" + attr.localName;
+        this._attrsByLName[key2] = void 0;
+        var i = this._attrKeys.indexOf(key2);
         if (this._attributes) {
           Array.prototype.splice.call(this._attributes, i, 1);
           this._attributes[qname] = void 0;
@@ -22939,11 +22939,11 @@ var require_Element = __commonJS({
       removeAttributeNS: { value: function removeAttributeNS(ns, lname) {
         ns = ns === void 0 || ns === null ? "" : String(ns);
         lname = String(lname);
-        var key = ns + "|" + lname;
-        var attr = this._attrsByLName[key];
+        var key2 = ns + "|" + lname;
+        var attr = this._attrsByLName[key2];
         if (!attr) return;
-        this._attrsByLName[key] = void 0;
-        var i = this._attrKeys.indexOf(key);
+        this._attrsByLName[key2] = void 0;
+        var i = this._attrKeys.indexOf(key2);
         if (this._attributes) {
           Array.prototype.splice.call(this._attributes, i, 1);
         }
@@ -22958,8 +22958,8 @@ var require_Element = __commonJS({
       } },
       removeAttributeNode: { value: function removeAttributeNode(attr) {
         var ns = attr.namespaceURI;
-        var key = (ns === null ? "" : ns) + "|" + attr.localName;
-        if (this._attrsByLName[key] !== attr) {
+        var key2 = (ns === null ? "" : ns) + "|" + attr.localName;
+        if (this._attrsByLName[key2] !== attr) {
           utils.NotFoundError();
         }
         this.removeAttributeNS(ns, attr.localName);
@@ -22967,8 +22967,8 @@ var require_Element = __commonJS({
       } },
       getAttributeNames: { value: function getAttributeNames() {
         var elt = this;
-        return this._attrKeys.map(function(key) {
-          return elt._attrsByLName[key].name;
+        return this._attrKeys.map(function(key2) {
+          return elt._attrsByLName[key2].name;
         });
       } },
       // This 'raw' version of getAttribute is used by the getter functions
@@ -22994,13 +22994,13 @@ var require_Element = __commonJS({
       // Used by setAttribute() and by set()
       _newattr: { value: function _newattr(qname) {
         var attr = new Attr(this, qname, null, null);
-        var key = "|" + qname;
+        var key2 = "|" + qname;
         this._attrsByQName[qname] = attr;
-        this._attrsByLName[key] = attr;
+        this._attrsByLName[key2] = attr;
         if (this._attributes) {
           this._attributes[this._attrKeys.length] = attr;
         }
-        this._attrKeys.push(key);
+        this._attrKeys.push(key2);
         return attr;
       } },
       // Add a qname->Attr mapping to the _attrsByQName object, taking into
@@ -24559,7 +24559,7 @@ var require_CSSStyleDeclaration = __commonJS({
         get: function(target, property) {
           return property in target ? target[property] : target.getPropertyValue(dasherizeProperty(property));
         },
-        has: function(target, key) {
+        has: function(target, key2) {
           return true;
         },
         set: function(target, property, value) {
@@ -36037,8 +36037,8 @@ var require_turndown_cjs = __commonJS({
     function extend(destination) {
       for (var i = 1; i < arguments.length; i++) {
         var source = arguments[i];
-        for (var key in source) {
-          if (Object.prototype.hasOwnProperty.call(source, key)) destination[key] = source[key];
+        for (var key2 in source) {
+          if (Object.prototype.hasOwnProperty.call(source, key2)) destination[key2] = source[key2];
         }
       }
       return destination;
@@ -36293,10 +36293,10 @@ var require_turndown_cjs = __commonJS({
         replacement: options.defaultReplacement
       };
       this.array = [];
-      for (var key in options.rules) this.array.push(options.rules[key]);
+      for (var key2 in options.rules) this.array.push(options.rules[key2]);
     }
     Rules.prototype = {
-      add: function(key, rule) {
+      add: function(key2, rule) {
         this.array.unshift(rule);
       },
       keep: function(filter) {
@@ -36595,8 +36595,8 @@ var require_turndown_cjs = __commonJS({
        * @returns The Turndown instance for chaining
        * @type Object
        */
-      addRule: function(key, rule) {
-        this.rules.add(key, rule);
+      addRule: function(key2, rule) {
+        this.rules.add(key2, rule);
         return this;
       },
       /**
@@ -37315,8 +37315,8 @@ async function todoWrite(input, context) {
   if (!Array.isArray(todos)) {
     return { content: [{ type: "text", text: "Error: todos must be an array" }] };
   }
-  const key = context?.tabId || "__global__";
-  todoStore.set(key, todos);
+  const key2 = context?.tabId || "__global__";
+  todoStore.set(key2, todos);
   const summary = todos.map((t, i) => `${i + 1}. [${t.status}] ${t.content}`).join("\n");
   return {
     content: [
@@ -37329,8 +37329,8 @@ ${summary}`
   };
 }
 async function todoList(_input, context) {
-  const key = context?.tabId || "__global__";
-  const list = todoStore.get(key) ?? [];
+  const key2 = context?.tabId || "__global__";
+  const list = todoStore.get(key2) ?? [];
   if (list.length === 0) {
     return { content: [{ type: "text", text: "No todos." }] };
   }
@@ -37416,8 +37416,8 @@ function readJson(filePath) {
 }
 function collectConfigMap(target, value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return;
-  for (const [key, config] of Object.entries(value)) {
-    if (config && typeof config === "object" && !Array.isArray(config)) target[key] = config;
+  for (const [key2, config] of Object.entries(value)) {
+    if (config && typeof config === "object" && !Array.isArray(config)) target[key2] = config;
   }
 }
 async function discoverPluginLspConfigs() {
@@ -37443,8 +37443,8 @@ async function discoverPluginLspConfigs() {
       if (!config.extensionToLanguage || typeof config.extensionToLanguage !== "object" || Array.isArray(config.extensionToLanguage)) continue;
       const subst = (value, project = "${CLAUDE_PROJECT_DIR}") => substituteUserConfig(value, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, plugin.installPath).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, import_node_path8.default.join(import_node_os3.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"))).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, project).replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name) => name === "CLAUDE_PROJECT_DIR" ? match : process.env[name] ?? "");
       const env4 = {};
-      for (const [key, value] of Object.entries(config.env ?? {})) if (typeof value === "string") env4[key] = subst(value);
-      for (const [key, value] of Object.entries(options)) env4[`CLAUDE_PLUGIN_OPTION_${key.toUpperCase()}`] = String(value);
+      for (const [key2, value] of Object.entries(config.env ?? {})) if (typeof value === "string") env4[key2] = subst(value);
+      for (const [key2, value] of Object.entries(options)) env4[`CLAUDE_PLUGIN_OPTION_${key2.toUpperCase()}`] = String(value);
       out.push({
         id: `${plugin.key}/${serverKey}`,
         pluginId: plugin.key,
@@ -37813,13 +37813,13 @@ var init_plugin_lsp = __esm({
         this.tabInstances.delete(tabId);
         if (!keys) return;
         const stopping = [];
-        for (const key of keys) {
-          const owners = this.instanceOwners.get(key);
+        for (const key2 of keys) {
+          const owners = this.instanceOwners.get(key2);
           owners?.delete(tabId);
           if (owners && owners.size > 0) continue;
-          this.instanceOwners.delete(key);
-          const instance = this.instances.get(key);
-          this.instances.delete(key);
+          this.instanceOwners.delete(key2);
+          const instance = this.instances.get(key2);
+          this.instances.delete(key2);
           if (instance) stopping.push(instance.stop());
         }
         await Promise.all(stopping);
@@ -37905,8 +37905,8 @@ function errorResult6(message) {
 function textResult6(text) {
   return { content: [{ type: "text", text }] };
 }
-function requireAbsolutePath(input, key = "file") {
-  const raw = input[key];
+function requireAbsolutePath(input, key2 = "file") {
+  const raw = input[key2];
   if (typeof raw !== "string" || !raw) return null;
   return import_path5.default.isAbsolute(raw) ? raw : null;
 }
@@ -39088,27 +39088,27 @@ var require_lrucache = __commonJS({
         this.max = 1e3;
         this.map = /* @__PURE__ */ new Map();
       }
-      get(key) {
-        const value = this.map.get(key);
+      get(key2) {
+        const value = this.map.get(key2);
         if (value === void 0) {
           return void 0;
         } else {
-          this.map.delete(key);
-          this.map.set(key, value);
+          this.map.delete(key2);
+          this.map.set(key2, value);
           return value;
         }
       }
-      delete(key) {
-        return this.map.delete(key);
+      delete(key2) {
+        return this.map.delete(key2);
       }
-      set(key, value) {
-        const deleted = this.delete(key);
+      set(key2, value) {
+        const deleted = this.delete(key2);
         if (!deleted && value !== void 0) {
           if (this.map.size >= this.max) {
             const firstKey = this.map.keys().next().value;
             this.delete(firstKey);
           }
-          this.map.set(key, value);
+          this.map.set(key2, value);
         }
         return this;
       }
@@ -40671,11 +40671,11 @@ var RulesStore = class {
       this.data = { rules: {} };
     }
   }
-  get(key) {
-    return this.data[key];
+  get(key2) {
+    return this.data[key2];
   }
-  set(key, value) {
-    this.data[key] = value;
+  set(key2, value) {
+    this.data[key2] = value;
     try {
       import_node_fs.default.mkdirSync(import_node_path.default.dirname(this.file), { recursive: true });
       const tmp = `${this.file}.tmp`;
@@ -42542,13 +42542,13 @@ var ConnectionManager = class _ConnectionManager {
       setCachedStreamingEntry: (e) => {
         this.cachedStreamingEntry = e;
       },
-      pushSubagentCache: (key, agentName, agentId, entries2) => {
-        const slot = this.cachedSubagentEntries.get(key) ?? { agentName, agentId, entries: [] };
+      pushSubagentCache: (key2, agentName, agentId, entries2) => {
+        const slot = this.cachedSubagentEntries.get(key2) ?? { agentName, agentId, entries: [] };
         slot.entries.push(...entries2);
         if (slot.entries.length > _ConnectionManager.SUBAGENT_CACHE_CAP) {
           slot.entries.splice(0, slot.entries.length - _ConnectionManager.SUBAGENT_CACHE_CAP);
         }
-        this.cachedSubagentEntries.set(key, slot);
+        this.cachedSubagentEntries.set(key2, slot);
       },
       setCachedJsonlStatus: (s) => {
         this.cachedJsonlStatus = s;
@@ -42694,8 +42694,8 @@ function isInside2(root, candidate) {
   const rel = import_path7.default.relative(import_path7.default.resolve(root), import_path7.default.resolve(candidate));
   return rel === "" || !rel.startsWith(".." + import_path7.default.sep) && rel !== ".." && !import_path7.default.isAbsolute(rel);
 }
-function safeResolve(root, ref) {
-  const resolved = import_path7.default.isAbsolute(ref) ? import_path7.default.resolve(ref) : import_path7.default.resolve(root, ref);
+function safeResolve(root, ref2) {
+  const resolved = import_path7.default.isAbsolute(ref2) ? import_path7.default.resolve(ref2) : import_path7.default.resolve(root, ref2);
   return isInside2(root, resolved) ? resolved : null;
 }
 function manifestPathRefs(value) {
@@ -42748,15 +42748,15 @@ Resolve sibling scripts, references, and assets from that original host path. Fi
 }
 function mergeNonSensitivePluginOptions(manifest, savedOptions) {
   const out = {};
-  for (const [key, spec] of Object.entries(manifest?.userConfig ?? {})) {
+  for (const [key2, spec] of Object.entries(manifest?.userConfig ?? {})) {
     if (spec && typeof spec === "object" && spec.sensitive !== true && "default" in spec) {
-      out[key] = spec.default;
+      out[key2] = spec.default;
     }
   }
   if (savedOptions && typeof savedOptions === "object" && !Array.isArray(savedOptions)) {
-    for (const [key, value] of Object.entries(savedOptions)) {
-      const spec = manifest?.userConfig?.[key];
-      if (spec && typeof spec === "object" && spec.sensitive !== true) out[key] = value;
+    for (const [key2, value] of Object.entries(savedOptions)) {
+      const spec = manifest?.userConfig?.[key2];
+      if (spec && typeof spec === "object" && spec.sensitive !== true) out[key2] = value;
     }
   }
   return out;
@@ -42785,8 +42785,8 @@ async function collectComponentFiles(pluginRoot, refs, kind, options) {
     if (kind === "workflows") return /\.(?:c|m)?js$/.test(lower);
     return lower.endsWith(".md");
   };
-  for (const ref of refs) {
-    const source = safeResolve(pluginRoot, ref);
+  for (const ref2 of refs) {
+    const source = safeResolve(pluginRoot, ref2);
     if (!source) continue;
     let stat;
     try {
@@ -42843,8 +42843,8 @@ async function readHookFile(filePath) {
 async function collectPluginHooks(pluginRoot, manifest) {
   const out = {};
   const seen = /* @__PURE__ */ new Set();
-  const addPath = async (ref) => {
-    const filePath = safeResolve(pluginRoot, ref);
+  const addPath = async (ref2) => {
+    const filePath = safeResolve(pluginRoot, ref2);
     if (!filePath || seen.has(filePath)) return;
     seen.add(filePath);
     mergeHooks(out, await readHookFile(filePath));
@@ -42949,8 +42949,8 @@ function rewritePluginMcpMatchers(pluginName, hooks) {
 function proxyManifest(manifest, fallbackName) {
   const allowed = ["name", "displayName", "version", "description", "author", "homepage", "repository", "license", "keywords"];
   const out = { name: typeof manifest.name === "string" ? manifest.name : fallbackName };
-  for (const key of allowed) {
-    if (key in manifest && manifest[key] !== void 0) out[key] = manifest[key];
+  for (const key2 of allowed) {
+    if (key2 in manifest && manifest[key2] !== void 0) out[key2] = manifest[key2];
   }
   return out;
 }
@@ -43130,13 +43130,13 @@ async function syncUserDataOnce(serverUrl, token) {
   }
 }
 function syncUserData(serverUrl, token) {
-  const key = `${toHttpUrl(serverUrl)}\0${tokenHash(token)}`;
-  const existing = userSyncInFlight.get(key);
+  const key2 = `${toHttpUrl(serverUrl)}\0${tokenHash(token)}`;
+  const existing = userSyncInFlight.get(key2);
   if (existing) return existing;
   const pending = syncUserDataOnce(serverUrl, token);
-  userSyncInFlight.set(key, pending);
+  userSyncInFlight.set(key2, pending);
   return pending.finally(() => {
-    if (userSyncInFlight.get(key) === pending) userSyncInFlight.delete(key);
+    if (userSyncInFlight.get(key2) === pending) userSyncInFlight.delete(key2);
   });
 }
 async function syncProjectDataOnce(serverUrl, token, projectPath) {
@@ -43184,13 +43184,13 @@ async function syncProjectDataOnce(serverUrl, token, projectPath) {
   }
 }
 function syncProjectData(serverUrl, token, projectPath) {
-  const key = `${toHttpUrl(serverUrl)}\0${tokenHash(token)}\0${projectPath}`;
-  const existing = projectSyncInFlight.get(key);
+  const key2 = `${toHttpUrl(serverUrl)}\0${tokenHash(token)}\0${projectPath}`;
+  const existing = projectSyncInFlight.get(key2);
   if (existing) return existing;
   const pending = syncProjectDataOnce(serverUrl, token, projectPath);
-  projectSyncInFlight.set(key, pending);
+  projectSyncInFlight.set(key2, pending);
   return pending.finally(() => {
-    if (projectSyncInFlight.get(key) === pending) projectSyncInFlight.delete(key);
+    if (projectSyncInFlight.get(key2) === pending) projectSyncInFlight.delete(key2);
   });
 }
 function resetSyncTimers() {
@@ -43710,11 +43710,11 @@ var ConfigStore = class {
   }
   getSavedSessions() {
     const map = this.data.savedSessionsByToken ?? {};
-    const key = this.currentKey();
-    if (map[key] && map[key].length > 0) return map[key];
+    const key2 = this.currentKey();
+    if (map[key2] && map[key2].length > 0) return map[key2];
     const legacy = this.data.savedSessions ?? [];
     if (legacy.length > 0) {
-      this.data.savedSessionsByToken = { ...map, [key]: legacy };
+      this.data.savedSessionsByToken = { ...map, [key2]: legacy };
       this.data.savedSessions = [];
       this.persist();
       return legacy;
@@ -43723,18 +43723,18 @@ var ConfigStore = class {
   }
   addSavedSession(session) {
     const map = this.data.savedSessionsByToken ?? {};
-    const key = this.currentKey();
-    const existing = map[key] ?? [];
+    const key2 = this.currentKey();
+    const existing = map[key2] ?? [];
     const filtered = existing.filter((s) => s.conversationId !== session.conversationId);
     filtered.unshift(session);
-    this.data.savedSessionsByToken = { ...map, [key]: filtered.slice(0, 50) };
+    this.data.savedSessionsByToken = { ...map, [key2]: filtered.slice(0, 50) };
     this.persist();
   }
   removeSavedSession(conversationId) {
     const map = this.data.savedSessionsByToken ?? {};
-    const key = this.currentKey();
-    const existing = map[key] ?? [];
-    this.data.savedSessionsByToken = { ...map, [key]: existing.filter((s) => s.conversationId !== conversationId) };
+    const key2 = this.currentKey();
+    const existing = map[key2] ?? [];
+    this.data.savedSessionsByToken = { ...map, [key2]: existing.filter((s) => s.conversationId !== conversationId) };
     this.persist();
   }
   /** One-shot migration: pull the Electron Bridge's saved sessions into this
@@ -43769,12 +43769,12 @@ var ConfigStore = class {
         this.data.config = { ...this.data.config, ...raw.config };
       }
       const src = raw.savedSessionsByToken ?? {};
-      for (const [key, sessions3] of Object.entries(src)) {
+      for (const [key2, sessions3] of Object.entries(src)) {
         if (!Array.isArray(sessions3) || sessions3.length === 0) continue;
         const byId = /* @__PURE__ */ new Map();
-        for (const s of map[key] ?? []) if (s?.conversationId) byId.set(s.conversationId, s);
+        for (const s of map[key2] ?? []) if (s?.conversationId) byId.set(s.conversationId, s);
         for (const s of sessions3) if (s?.conversationId && !byId.has(s.conversationId)) byId.set(s.conversationId, s);
-        map[key] = [...byId.values()].sort((a, b) => activityMs(b) - activityMs(a)).slice(0, 50);
+        map[key2] = [...byId.values()].sort((a, b) => activityMs(b) - activityMs(a)).slice(0, 50);
         importedTokens++;
       }
     }
@@ -44305,8 +44305,8 @@ function invalidateSkillsCache() {
   skillsInFlight = null;
   skillsCacheGeneration += 1;
 }
-function resolvePluginComponentPath(pluginRoot, ref) {
-  const resolved = import_path14.default.isAbsolute(ref) ? import_path14.default.resolve(ref) : import_path14.default.resolve(pluginRoot, ref);
+function resolvePluginComponentPath(pluginRoot, ref2) {
+  const resolved = import_path14.default.isAbsolute(ref2) ? import_path14.default.resolve(ref2) : import_path14.default.resolve(pluginRoot, ref2);
   const relative = import_path14.default.relative(import_path14.default.resolve(pluginRoot), resolved);
   return relative === "" || relative !== ".." && !relative.startsWith(".." + import_path14.default.sep) && !import_path14.default.isAbsolute(relative) ? resolved : null;
 }
@@ -44335,7 +44335,7 @@ function registerSkillsAgentsIPC(ctx) {
   async function scanSkills() {
     function parseSkillContent(filePath, fileName, source, content, overrideName) {
       const fm = extractFrontmatter(content) ?? "";
-      const match = (key) => matchYamlField(fm, key);
+      const match = (key2) => matchYamlField(fm, key2);
       const userInvocable = match("user-invocable");
       if (userInvocable && parseYamlBool(userInvocable) === false) return null;
       const rawName = match("name")?.trim().replace(/^["']|["']$/g, "");
@@ -44454,11 +44454,11 @@ function registerSkillsAgentsIPC(ctx) {
         return nested.flat();
       }
       const perPlugin = await Promise.all(
-        Object.entries(data.plugins).map(async ([key, entries2]) => {
-          if (enabledPlugins.get(key) === false) return [];
-          const at = key.lastIndexOf("@");
-          const pluginName = at > 0 ? key.slice(0, at) : key;
-          const marketplace = at > 0 ? key.slice(at + 1) : "";
+        Object.entries(data.plugins).map(async ([key2, entries2]) => {
+          if (enabledPlugins.get(key2) === false) return [];
+          const at = key2.lastIndexOf("@");
+          const pluginName = at > 0 ? key2.slice(0, at) : key2;
+          const marketplace = at > 0 ? key2.slice(at + 1) : "";
           const entry = entries2[0];
           if (!entry?.installPath) return [];
           const pluginRoot = entry.installPath;
@@ -44484,8 +44484,8 @@ function registerSkillsAgentsIPC(ctx) {
             ...(Array.isArray(manifest.skills) ? manifest.skills : [manifest.skills]).filter((v) => typeof v === "string")
           ];
           const skillPaths = /* @__PURE__ */ new Set();
-          for (const ref of skillRefs) {
-            const resolved = import_path14.default.resolve(pluginRoot, ref);
+          for (const ref2 of skillRefs) {
+            const resolved = import_path14.default.resolve(pluginRoot, ref2);
             const relative = import_path14.default.relative(pluginRoot, resolved);
             if (relative === ".." || relative.startsWith(".." + import_path14.default.sep) || import_path14.default.isAbsolute(relative)) continue;
             let stat;
@@ -44580,7 +44580,7 @@ function registerSkillsAgentsIPC(ctx) {
         }
       }
       const fm = extractFrontmatter(content) ?? "";
-      const match = (key) => matchYamlField(fm, key);
+      const match = (key2) => matchYamlField(fm, key2);
       const fileName = import_path14.default.basename(filePath);
       let name = overrideName ?? fileName.replace(/\.md$/, "");
       let description = "";
@@ -44665,11 +44665,11 @@ function registerSkillsAgentsIPC(ctx) {
       }
       if (data.version !== 2 || !data.plugins) return [];
       const perPlugin = await Promise.all(
-        Object.entries(data.plugins).map(async ([key, entries2]) => {
-          if (enabledPluginsForAgents.get(key) === false) return [];
-          const at = key.lastIndexOf("@");
-          const pluginName = at > 0 ? key.slice(0, at) : key;
-          const marketplace = at > 0 ? key.slice(at + 1) : "";
+        Object.entries(data.plugins).map(async ([key2, entries2]) => {
+          if (enabledPluginsForAgents.get(key2) === false) return [];
+          const at = key2.lastIndexOf("@");
+          const pluginName = at > 0 ? key2.slice(0, at) : key2;
+          const marketplace = at > 0 ? key2.slice(at + 1) : "";
           const entry = entries2[0];
           if (!entry?.installPath) return [];
           const pluginRoot = entry.installPath;
@@ -44759,11 +44759,11 @@ function registerSkillsAgentsIPC(ctx) {
         description: desc || firstBodyLine(content, "")
       };
     }
-    for (const [key, entries2] of Object.entries(data.plugins)) {
-      if (enabled.get(key) === false) continue;
-      const at = key.lastIndexOf("@");
-      const pluginName = at > 0 ? key.slice(0, at) : key;
-      const marketplace = at > 0 ? key.slice(at + 1) : "";
+    for (const [key2, entries2] of Object.entries(data.plugins)) {
+      if (enabled.get(key2) === false) continue;
+      const at = key2.lastIndexOf("@");
+      const pluginName = at > 0 ? key2.slice(0, at) : key2;
+      const marketplace = at > 0 ? key2.slice(at + 1) : "";
       const entry = entries2[0];
       if (!entry?.installPath) continue;
       const pluginRoot = entry.installPath;
@@ -44989,8 +44989,8 @@ async function resolvePluginSource(p, marketplaceName, baseDir) {
     if (import_fs14.default.existsSync(import_path15.default.join(targetDir, ".git"))) return { dir: targetDir };
     if (import_fs14.default.existsSync(targetDir)) return { dir: targetDir };
     const refRaw = (typeof src.ref === "string" ? src.ref : typeof src.revision === "string" ? src.revision : typeof src.commit === "string" ? src.commit : "").trim();
-    const ref = refRaw || void 0;
-    const isSha = !!ref && /^[0-9a-f]{7,40}$/i.test(ref);
+    const ref2 = refRaw || void 0;
+    const isSha = !!ref2 && /^[0-9a-f]{7,40}$/i.test(ref2);
     const authedUrl = propagateMarketplaceAuth(rawUrlSeed, marketplaceName);
     try {
       import_fs14.default.mkdirSync(import_path15.default.dirname(targetDir), { recursive: true });
@@ -44998,11 +44998,11 @@ async function resolvePluginSource(p, marketplaceName, baseDir) {
     }
     const TIMEOUT = 12e4;
     try {
-      if (ref && !isSha) {
-        await runGit(["clone", "--depth=1", "--branch", ref, "--", authedUrl, targetDir], { timeoutMs: TIMEOUT });
+      if (ref2 && !isSha) {
+        await runGit(["clone", "--depth=1", "--branch", ref2, "--", authedUrl, targetDir], { timeoutMs: TIMEOUT });
       } else if (isSha) {
         await runGit(["clone", "--no-checkout", "--filter=blob:none", "--", authedUrl, targetDir], { timeoutMs: TIMEOUT });
-        await runGit(["fetch", "--depth=1", "origin", ref], { cwd: targetDir, timeoutMs: TIMEOUT });
+        await runGit(["fetch", "--depth=1", "origin", ref2], { cwd: targetDir, timeoutMs: TIMEOUT });
         await runGit(["checkout", "FETCH_HEAD"], { cwd: targetDir, timeoutMs: TIMEOUT });
       } else {
         await runGit(["clone", "--depth=1", "--", authedUrl, targetDir], { timeoutMs: TIMEOUT });
@@ -45011,12 +45011,12 @@ async function resolvePluginSource(p, marketplaceName, baseDir) {
     } catch (err) {
       const stderrRaw = typeof err?.stderr === "string" ? err.stderr : "";
       const redactedErr = redactUrl(stderrRaw).slice(0, 300) || (err instanceof Error ? err.message : String(err));
-      console.error(`[plugins] clone failed for ${pluginName} <${redactUrl(rawUrlSeed)}> ref=${ref || "HEAD"}:`, redactedErr);
+      console.error(`[plugins] clone failed for ${pluginName} <${redactUrl(rawUrlSeed)}> ref=${ref2 || "HEAD"}:`, redactedErr);
       try {
         import_fs14.default.rmSync(targetDir, { recursive: true, force: true });
       } catch {
       }
-      return { dir: null, error: redactedErr, url: redactUrl(rawUrlSeed), ref };
+      return { dir: null, error: redactedErr, url: redactUrl(rawUrlSeed), ref: ref2 };
     }
   }
   return import_fs14.default.existsSync(baseDir) ? { dir: baseDir } : { dir: null, error: "Unsupported source shape" };
@@ -45386,10 +45386,10 @@ function registerInstallHandlers(reloadMcp) {
     } catch {
     }
     const sourceManifest = mergeMarketplaceDependencies(pluginName, marketplace, await readPluginManifest(pluginPath) ?? {});
-    const key = `${pluginName}@${marketplace}`;
-    const dependencyClosure = await ensureDependencyClosure(data, key, sourceManifest);
+    const key2 = `${pluginName}@${marketplace}`;
+    const dependencyClosure = await ensureDependencyClosure(data, key2, sourceManifest);
     const defaultEnabled = pluginDefaultEnabled(pluginName, marketplace, sourceManifest);
-    await assertCanEnablePlugins([...dependencyClosure, ...defaultEnabled ? [key] : []]);
+    await assertCanEnablePlugins([...dependencyClosure, ...defaultEnabled ? [key2] : []]);
     const cacheDir = import_path16.default.join(import_os11.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName, version);
     import_fs15.default.rmSync(cacheDir, { recursive: true, force: true });
     import_fs15.default.mkdirSync(cacheDir, { recursive: true });
@@ -45414,7 +45414,7 @@ function registerInstallHandlers(reloadMcp) {
     }
     copyDir(pluginPath, cacheDir);
     const now = (/* @__PURE__ */ new Date()).toISOString();
-    data.plugins[key] = [{
+    data.plugins[key2] = [{
       scope: "user",
       installPath: cacheDir,
       version,
@@ -45423,16 +45423,16 @@ function registerInstallHandlers(reloadMcp) {
     }];
     writeJsonAtomic(installedFile, data);
     for (const dependencyId of dependencyClosure) setPluginEnabled(dependencyId, true);
-    setPluginEnabled(key, defaultEnabled);
+    setPluginEnabled(key2, defaultEnabled);
     try {
-      await requestHookApproval(key, cacheDir);
+      await requestHookApproval(key2, cacheDir);
     } catch {
     }
     await requestDependencyHookApprovals(data, dependencyClosure);
     await reloadMcp();
     try {
       const { emitBridgeHookEvent: emitBridgeHookEvent2 } = await Promise.resolve().then(() => (init_emit_bridge_event(), emit_bridge_event_exports));
-      emitBridgeHookEvent2("PluginInstalled", { pluginId: key, version, installPath: cacheDir });
+      emitBridgeHookEvent2("PluginInstalled", { pluginId: key2, version, installPath: cacheDir });
     } catch {
     }
   });
@@ -45458,11 +45458,11 @@ function registerInstallHandlers(reloadMcp) {
     }
     const installedFile = INSTALLED_FILE;
     const data = readInstalledData();
-    const key = `${pluginName}@${marketplace}`;
+    const key2 = `${pluginName}@${marketplace}`;
     const localManifest = await readPluginManifest(pluginDir) ?? {};
-    const dependencyClosure = await ensureDependencyClosure(data, key, localManifest);
+    const dependencyClosure = await ensureDependencyClosure(data, key2, localManifest);
     const defaultEnabled = pluginDefaultEnabled(pluginName, marketplace, localManifest);
-    await assertCanEnablePlugins([...dependencyClosure, ...defaultEnabled ? [key] : []]);
+    await assertCanEnablePlugins([...dependencyClosure, ...defaultEnabled ? [key2] : []]);
     const cacheDir = import_path16.default.join(import_os11.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName, version);
     const parentDir = import_path16.default.join(import_os11.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName);
     if (import_fs15.default.existsSync(parentDir)) {
@@ -45490,7 +45490,7 @@ function registerInstallHandlers(reloadMcp) {
     }
     copyDir(pluginDir, cacheDir);
     const now = (/* @__PURE__ */ new Date()).toISOString();
-    data.plugins[key] = [{
+    data.plugins[key2] = [{
       scope: "user",
       installPath: cacheDir,
       version,
@@ -45499,9 +45499,9 @@ function registerInstallHandlers(reloadMcp) {
     }];
     writeJsonAtomic(installedFile, data);
     for (const dependencyId of dependencyClosure) setPluginEnabled(dependencyId, true);
-    setPluginEnabled(key, defaultEnabled);
+    setPluginEnabled(key2, defaultEnabled);
     try {
-      await requestHookApproval(key, cacheDir);
+      await requestHookApproval(key2, cacheDir);
     } catch {
     }
     await requestDependencyHookApprovals(data, dependencyClosure);
@@ -45513,19 +45513,19 @@ function registerInstallHandlers(reloadMcp) {
     if (!import_fs15.default.existsSync(installedFile)) return;
     try {
       const data = JSON.parse(import_fs15.default.readFileSync(installedFile, "utf-8"));
-      const key = `${pluginName}@${marketplace}`;
-      const dependants = enabledDependants(data, key);
+      const key2 = `${pluginName}@${marketplace}`;
+      const dependants = enabledDependants(data, key2);
       if (dependants.length > 0) {
-        throw new Error(`Cannot uninstall ${key}; required by enabled plugin(s): ${dependants.join(", ")}`);
+        throw new Error(`Cannot uninstall ${key2}; required by enabled plugin(s): ${dependants.join(", ")}`);
       }
-      if (data.plugins?.[key]) {
-        const entry = data.plugins[key][0];
+      if (data.plugins?.[key2]) {
+        const entry = data.plugins[key2][0];
         if (entry?.installPath && import_fs15.default.existsSync(entry.installPath)) {
           import_fs15.default.rmSync(entry.installPath, { recursive: true, force: true });
         }
-        delete data.plugins[key];
+        delete data.plugins[key2];
         writeJsonAtomic(installedFile, data);
-        setPluginEnabled(key, null);
+        setPluginEnabled(key2, null);
       }
     } catch (err) {
       if (err instanceof Error) throw err;
@@ -45603,17 +45603,17 @@ function loadEnabledPluginsHost() {
     } catch {
     }
     const out = [];
-    for (const [key, entries2] of Object.entries(parsed.plugins ?? {})) {
-      if (enabledMap[key] === false) continue;
+    for (const [key2, entries2] of Object.entries(parsed.plugins ?? {})) {
+      if (enabledMap[key2] === false) continue;
       const entry = Array.isArray(entries2) ? entries2[0] : null;
       if (!entry?.installPath) continue;
-      if (!Object.prototype.hasOwnProperty.call(enabledMap, key)) {
-        const at = key.lastIndexOf("@");
-        const name = at > 0 ? key.slice(0, at) : key;
-        const marketplace = at > 0 ? key.slice(at + 1) : "";
+      if (!Object.prototype.hasOwnProperty.call(enabledMap, key2)) {
+        const at = key2.lastIndexOf("@");
+        const name = at > 0 ? key2.slice(0, at) : key2;
+        const marketplace = at > 0 ? key2.slice(at + 1) : "";
         if (readEffectivePluginManifestSync(entry.installPath, name, marketplace).defaultEnabled === false) continue;
       }
-      out.push({ pluginId: key, installPath: entry.installPath });
+      out.push({ pluginId: key2, installPath: entry.installPath });
     }
     return out;
   } catch {
@@ -45648,9 +45648,9 @@ function readPluginHooksHost(installPath) {
         if (hooks && Object.keys(hooks).length > 0) return hooks;
       } else if (Array.isArray(hooksField)) {
         const merged = {};
-        for (const ref of hooksField) {
-          if (typeof ref !== "string") continue;
-          const refPath = import_path17.default.isAbsolute(ref) ? ref : import_path17.default.join(installPath, ref);
+        for (const ref2 of hooksField) {
+          if (typeof ref2 !== "string") continue;
+          const refPath = import_path17.default.isAbsolute(ref2) ? ref2 : import_path17.default.join(installPath, ref2);
           const hooks = readHooksAtPath(refPath);
           if (!hooks) continue;
           for (const [evt, matchers] of Object.entries(hooks)) {
@@ -46332,9 +46332,9 @@ function countPluginLspServers(pluginName, marketplace, pluginDir) {
 function listPluginContents(pluginDir) {
   const out = { skills: [], agents: [], commands: [], mcpServers: [], hooks: [] };
   if (!pluginDir || !import_fs18.default.existsSync(pluginDir)) return out;
-  function extractFmField(fm, key) {
+  function extractFmField(fm, key2) {
     const lines = fm.replace(/\r/g, "").split("\n");
-    const re = new RegExp(`^(\\s*)${key}:\\s*(.*)$`);
+    const re = new RegExp(`^(\\s*)${key2}:\\s*(.*)$`);
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (line === void 0) continue;
@@ -46515,8 +46515,8 @@ function registerContentHandlers() {
         const installedBareNames = new Set(
           Object.keys(data.plugins).map((k) => k.split("@")[0])
         );
-        return Object.entries(data.plugins).map(([key, entries2]) => {
-          const [name, marketplace] = key.split("@");
+        return Object.entries(data.plugins).map(([key2, entries2]) => {
+          const [name, marketplace] = key2.split("@");
           const entry = entries2[0];
           let description = "";
           let rawDeps = null;
@@ -46578,7 +46578,7 @@ function registerContentHandlers() {
           return {
             name,
             marketplace: marketplace || "",
-            enabled: enabledMap.get(key) !== false,
+            enabled: enabledMap.get(key2) !== false,
             version: entry?.version || "unknown",
             scope: entry?.scope || "user",
             installPath,
@@ -46609,27 +46609,27 @@ function writeJsonAtomic2(filePath, value) {
   import_fs20.default.writeFileSync(tmp, JSON.stringify(value, null, 2), "utf-8");
   import_fs20.default.renameSync(tmp, filePath);
 }
-function validateOption(key, value, spec) {
+function validateOption(key2, value, spec) {
   if (value === void 0 || value === null || value === "") return;
   const type = spec.type;
   if (type === "string" && spec.multiple === true) {
     if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
-      throw new Error(`${key} must be an array of strings`);
+      throw new Error(`${key2} must be an array of strings`);
     }
     return;
   }
-  if (type === "boolean" && typeof value !== "boolean") throw new Error(`${key} must be a boolean`);
+  if (type === "boolean" && typeof value !== "boolean") throw new Error(`${key2} must be a boolean`);
   if (type === "number") {
-    if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${key} must be a finite number`);
-    if (typeof spec.min === "number" && value < spec.min) throw new Error(`${key} must be at least ${spec.min}`);
-    if (typeof spec.max === "number" && value > spec.max) throw new Error(`${key} must be at most ${spec.max}`);
+    if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${key2} must be a finite number`);
+    if (typeof spec.min === "number" && value < spec.min) throw new Error(`${key2} must be at least ${spec.min}`);
+    if (typeof spec.max === "number" && value > spec.max) throw new Error(`${key2} must be at most ${spec.max}`);
   }
   if (["string", "directory", "file"].includes(type) && typeof value !== "string") {
-    throw new Error(`${key} must be a string`);
+    throw new Error(`${key2} must be a string`);
   }
   const allowed = Array.isArray(spec.enum) ? spec.enum : Array.isArray(spec.options) ? spec.options : null;
   if (allowed && !allowed.some((candidate) => Object.is(candidate, value))) {
-    throw new Error(`${key} must be one of: ${allowed.map(String).join(", ")}`);
+    throw new Error(`${key2} must be one of: ${allowed.map(String).join(", ")}`);
   }
 }
 function registerOptionsHandlers(reloadRuntime) {
@@ -46685,9 +46685,9 @@ function registerOptionsHandlers(reloadRuntime) {
       const manifest = await readEffectivePluginManifest(installPath, pluginId.slice(0, at), pluginId.slice(at + 1));
       if (manifest.userConfig && typeof manifest.userConfig === "object") schema = manifest.userConfig;
     }
-    for (const key of Object.keys(values)) {
-      if (!Object.prototype.hasOwnProperty.call(schema, key)) throw new Error(`Unknown plugin option: ${key}`);
-      validateOption(key, values[key], schema[key] ?? {});
+    for (const key2 of Object.keys(values)) {
+      if (!Object.prototype.hasOwnProperty.call(schema, key2)) throw new Error(`Unknown plugin option: ${key2}`);
+      validateOption(key2, values[key2], schema[key2] ?? {});
     }
     let existingOptions = {};
     let existingSecrets = {};
@@ -46699,13 +46699,13 @@ function registerOptionsHandlers(reloadRuntime) {
       existingSecrets = JSON.parse(import_fs20.default.readFileSync(import_path21.default.join(import_os16.default.homedir(), ".claude", ".credentials.json"), "utf-8"))?.pluginSecrets?.[pluginId] ?? {};
     } catch {
     }
-    for (const [key, spec] of Object.entries(schema)) {
+    for (const [key2, spec] of Object.entries(schema)) {
       if (!spec || typeof spec !== "object" || spec.required !== true) continue;
-      const candidate = Object.prototype.hasOwnProperty.call(values, key) ? values[key] : existingSecrets[key] ?? existingOptions[key] ?? spec.default;
+      const candidate = Object.prototype.hasOwnProperty.call(values, key2) ? values[key2] : existingSecrets[key2] ?? existingOptions[key2] ?? spec.default;
       if (candidate === void 0 || candidate === null || candidate === "" || Array.isArray(candidate) && candidate.length === 0) {
-        throw new Error(`Required plugin option is missing: ${key}`);
+        throw new Error(`Required plugin option is missing: ${key2}`);
       }
-      validateOption(key, candidate, spec);
+      validateOption(key2, candidate, spec);
     }
     const settingsPath = import_path21.default.join(import_os16.default.homedir(), ".claude", "settings.json");
     let settings = {};
@@ -46718,13 +46718,13 @@ function registerOptionsHandlers(reloadRuntime) {
     if (!settings.pluginConfigs) settings.pluginConfigs = {};
     if (!settings.pluginConfigs[pluginId]) settings.pluginConfigs[pluginId] = {};
     const nextOptions = { ...settings.pluginConfigs[pluginId].options || {} };
-    for (const [key, spec] of Object.entries(schema)) {
-      if (spec?.sensitive === true) delete nextOptions[key];
+    for (const [key2, spec] of Object.entries(schema)) {
+      if (spec?.sensitive === true) delete nextOptions[key2];
     }
-    for (const [key, value] of Object.entries(values)) {
-      if (schema[key]?.sensitive === true) continue;
-      if (value === null) delete nextOptions[key];
-      else nextOptions[key] = value;
+    for (const [key2, value] of Object.entries(values)) {
+      if (schema[key2]?.sensitive === true) continue;
+      if (value === null) delete nextOptions[key2];
+      else nextOptions[key2] = value;
     }
     settings.pluginConfigs[pluginId].options = nextOptions;
     writeJsonAtomic2(settingsPath, settings);
@@ -46738,19 +46738,19 @@ function registerOptionsHandlers(reloadRuntime) {
     }
     if (!creds.pluginSecrets) creds.pluginSecrets = {};
     const nextSecrets = { ...creds.pluginSecrets[pluginId] || {} };
-    for (const [key, spec] of Object.entries(schema)) {
+    for (const [key2, spec] of Object.entries(schema)) {
       if (spec?.sensitive !== true) continue;
-      if (!Object.prototype.hasOwnProperty.call(values, key) && !Object.prototype.hasOwnProperty.call(nextSecrets, key) && Object.prototype.hasOwnProperty.call(existingOptions, key)) {
-        nextSecrets[key] = existingOptions[key];
+      if (!Object.prototype.hasOwnProperty.call(values, key2) && !Object.prototype.hasOwnProperty.call(nextSecrets, key2) && Object.prototype.hasOwnProperty.call(existingOptions, key2)) {
+        nextSecrets[key2] = existingOptions[key2];
       }
     }
-    for (const [key, spec] of Object.entries(schema)) {
-      if (spec?.sensitive !== true) delete nextSecrets[key];
+    for (const [key2, spec] of Object.entries(schema)) {
+      if (spec?.sensitive !== true) delete nextSecrets[key2];
     }
-    for (const [key, value] of Object.entries(values)) {
-      if (schema[key]?.sensitive !== true) continue;
-      if (value === null) delete nextSecrets[key];
-      else nextSecrets[key] = value;
+    for (const [key2, value] of Object.entries(values)) {
+      if (schema[key2]?.sensitive !== true) continue;
+      if (value === null) delete nextSecrets[key2];
+      else nextSecrets[key2] = value;
     }
     if (Object.keys(nextSecrets).length > 0) creds.pluginSecrets[pluginId] = nextSecrets;
     else delete creds.pluginSecrets[pluginId];
@@ -46795,12 +46795,12 @@ function registerBrowseHandlers() {
           } catch {
           }
         }
-        const key = `${name}@${marketplaceName}`;
+        const key2 = `${name}@${marketplaceName}`;
         const counts = countPluginContents(dir, baseDir);
         counts.lspServers = countPluginLspServers(name, marketplaceName, dir);
         let isCached = false;
-        if (installedKeys.has(key)) {
-          const ie = installedPluginsMap[key]?.[0];
+        if (installedKeys.has(key2)) {
+          const ie = installedPluginsMap[key2]?.[0];
           if (ie?.installPath && import_fs21.default.existsSync(ie.installPath)) isCached = true;
         }
         results.push({
@@ -46811,7 +46811,7 @@ function registerBrowseHandlers() {
           marketplace: marketplaceName,
           keywords,
           pluginPath: dir,
-          isInstalled: installedKeys.has(key),
+          isInstalled: installedKeys.has(key2),
           isCached,
           hasCommands,
           counts
@@ -46882,7 +46882,7 @@ function registerBrowseHandlers() {
               }
               const pluginDir = resolved.dir;
               const hasCommands = import_fs21.default.existsSync(import_path22.default.join(pluginDir, "commands"));
-              const key = `${pluginName}@${marketplaceName}`;
+              const key2 = `${pluginName}@${marketplaceName}`;
               let author = "";
               let keywords = [];
               const pluginJsonPath = import_path22.default.join(pluginDir, ".claude-plugin", "plugin.json");
@@ -46905,8 +46905,8 @@ function registerBrowseHandlers() {
               if (Array.isArray(p.commands)) counts.commands = p.commands.length;
               if (Array.isArray(p.agents)) counts.agents = p.agents.length;
               let isCached = false;
-              if (installedKeys.has(key)) {
-                const instEntry = installedPluginsMap[key]?.[0];
+              if (installedKeys.has(key2)) {
+                const instEntry = installedPluginsMap[key2]?.[0];
                 if (instEntry?.installPath && import_fs21.default.existsSync(instEntry.installPath)) isCached = true;
               }
               const srcTag = typeof p?.source === "object" ? p.source?.source : void 0;
@@ -46919,7 +46919,7 @@ function registerBrowseHandlers() {
                 marketplace: marketplaceName,
                 keywords,
                 pluginPath: pluginDir,
-                isInstalled: installedKeys.has(key),
+                isInstalled: installedKeys.has(key2),
                 isCached,
                 hasCommands,
                 counts,
@@ -47017,14 +47017,14 @@ function registerBrowseHandlers() {
           const guess = import_path22.default.join(pluginPath, "plugins", name);
           if (import_fs21.default.existsSync(guess)) childDir = guess;
         }
-        const key = `${name}@${nestedName}`;
+        const key2 = `${name}@${nestedName}`;
         const counts = childDir ? countPluginContents(childDir, pluginPath) : { commands: 0, agents: 0, skills: 0, lspServers: 0, mcpServers: 0, hooks: 0 };
         counts.lspServers = childDir ? countPluginLspServers(name, nestedName, childDir) : 0;
         let isCached = false;
-        if (installedKeys.has(key)) {
+        if (installedKeys.has(key2)) {
           try {
             const instData = JSON.parse(import_fs21.default.readFileSync(installedFile, "utf-8"));
-            const ie = instData.plugins?.[key]?.[0];
+            const ie = instData.plugins?.[key2]?.[0];
             if (ie?.installPath && import_fs21.default.existsSync(ie.installPath)) isCached = true;
           } catch {
           }
@@ -47037,7 +47037,7 @@ function registerBrowseHandlers() {
           marketplace: nestedName,
           keywords: Array.isArray(p.keywords) ? p.keywords : [],
           pluginPath: childDir || "",
-          isInstalled: installedKeys.has(key),
+          isInstalled: installedKeys.has(key2),
           isCached,
           hasCommands: !!childDir && import_fs21.default.existsSync(import_path22.default.join(childDir, "commands")),
           counts
@@ -47121,8 +47121,8 @@ function syncPluginCacheFromSubClone(pluginName, marketplace, baseDir) {
     } catch {
     }
   }
-  const key = `${pluginName}@${marketplace}`;
-  if (!data.plugins?.[key]) {
+  const key2 = `${pluginName}@${marketplace}`;
+  if (!data.plugins?.[key2]) {
     return { ok: true, version };
   }
   const pluginCacheParent = import_path23.default.join(import_os18.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName);
@@ -47149,8 +47149,8 @@ function syncPluginCacheFromSubClone(pluginName, marketplace, baseDir) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
   const now = (/* @__PURE__ */ new Date()).toISOString();
-  const existing = data.plugins[key]?.[0];
-  data.plugins[key] = [{
+  const existing = data.plugins[key2]?.[0];
+  data.plugins[key2] = [{
     scope: existing?.scope || "user",
     installPath: cacheDir,
     version,
@@ -47270,11 +47270,11 @@ function registerSourceHandlers(reloadMcp) {
       } catch {
       }
     }
-    const key = `${pluginName}@${marketplace}`;
+    const key2 = `${pluginName}@${marketplace}`;
     const dependencyManifest = mergeMarketplaceDependencies(pluginName, marketplace, await readPluginManifest(pluginSourcePath) ?? {});
     const now = (/* @__PURE__ */ new Date()).toISOString();
-    const existing = data.plugins[key]?.[0];
-    data.plugins[key] = [{
+    const existing = data.plugins[key2]?.[0];
+    data.plugins[key2] = [{
       scope: existing?.scope || "user",
       installPath: cacheDir,
       version,
@@ -47282,8 +47282,8 @@ function registerSourceHandlers(reloadMcp) {
       lastUpdated: now
     }];
     import_fs23.default.writeFileSync(installedFile, JSON.stringify(data, null, 2), "utf-8");
-    await enableRequiredPluginDependencies(key, dependencyManifest);
-    await requestHookApproval(key, cacheDir);
+    await enableRequiredPluginDependencies(key2, dependencyManifest);
+    await requestHookApproval(key2, cacheDir);
     await reloadMcp();
     return { version, cacheDir };
   });
@@ -47325,15 +47325,15 @@ function registerSourceHandlers(reloadMcp) {
       return { ok: false, changed: pullResult.changed, error: `Pull OK but cache sync failed: ${syncRes.error}` };
     }
     if (pullResult.changed) {
-      const key = `${pluginName}@${marketplace}`;
+      const key2 = `${pluginName}@${marketplace}`;
       let refreshedRoot = "";
       try {
-        refreshedRoot = JSON.parse(import_fs23.default.readFileSync(import_path24.default.join(import_os19.default.homedir(), ".claude", "plugins", "installed_plugins.json"), "utf-8"))?.plugins?.[key]?.[0]?.installPath ?? "";
+        refreshedRoot = JSON.parse(import_fs23.default.readFileSync(import_path24.default.join(import_os19.default.homedir(), ".claude", "plugins", "installed_plugins.json"), "utf-8"))?.plugins?.[key2]?.[0]?.installPath ?? "";
       } catch {
       }
       if (refreshedRoot) {
-        await enableRequiredPluginDependencies(key, mergeMarketplaceDependencies(pluginName, marketplace, await readPluginManifest(refreshedRoot) ?? {}));
-        await requestHookApproval(key, refreshedRoot);
+        await enableRequiredPluginDependencies(key2, mergeMarketplaceDependencies(pluginName, marketplace, await readPluginManifest(refreshedRoot) ?? {}));
+        await requestHookApproval(key2, refreshedRoot);
       }
       await reloadMcp();
     }
@@ -47669,13 +47669,13 @@ function removeMarketplace(name) {
     try {
       const data = JSON.parse(import_fs29.default.readFileSync(installedFile, "utf-8"));
       if (data.plugins) {
-        for (const key of Object.keys(data.plugins)) {
-          if (key.endsWith(`@${name}`)) {
-            const pluginEntry = data.plugins[key][0];
+        for (const key2 of Object.keys(data.plugins)) {
+          if (key2.endsWith(`@${name}`)) {
+            const pluginEntry = data.plugins[key2][0];
             if (pluginEntry?.installPath && import_fs29.default.existsSync(pluginEntry.installPath)) {
               import_fs29.default.rmSync(pluginEntry.installPath, { recursive: true, force: true });
             }
-            delete data.plugins[key];
+            delete data.plugins[key2];
           }
         }
         import_fs29.default.writeFileSync(installedFile, JSON.stringify(data, null, 2), "utf-8");
@@ -47779,11 +47779,11 @@ var McpLegacyStore = class {
       this.data = { mcpServers: [] };
     }
   }
-  get(key) {
-    return this.data[key];
+  get(key2) {
+    return this.data[key2];
   }
-  set(key, value) {
-    this.data[key] = value;
+  set(key2, value) {
+    this.data[key2] = value;
     try {
       import_fs31.default.mkdirSync(import_path30.default.dirname(this.file), { recursive: true });
       const tmp = `${this.file}.tmp`;
@@ -47888,8 +47888,8 @@ function saveTokens(ctx, tokens) {
   if (!creds.mcpOAuth) creds.mcpOAuth = {};
   const mcpOAuth = creds.mcpOAuth;
   const existingKey = findKeyByServerUrl(mcpOAuth, ctx.serverUrl);
-  const key = existingKey ?? `${ctx.serverName}|${hashUrl(ctx.serverUrl)}`;
-  const prev = mcpOAuth[key] ?? {};
+  const key2 = existingKey ?? `${ctx.serverName}|${hashUrl(ctx.serverUrl)}`;
+  const prev = mcpOAuth[key2] ?? {};
   const entry = {
     serverName: ctx.serverName,
     serverUrl: ctx.serverUrl,
@@ -47903,16 +47903,16 @@ function saveTokens(ctx, tokens) {
     ...prev.discoveryState ?? {},
     ...ctx.authServerUrl ? { authorizationServerUrl: ctx.authServerUrl } : {}
   };
-  mcpOAuth[key] = entry;
+  mcpOAuth[key2] = entry;
   writeCreds(creds);
 }
 function loadTokens(serverUrl) {
   const creds = readCreds();
   if (!creds.mcpOAuth) return null;
   const map = creds.mcpOAuth;
-  const key = findKeyByServerUrl(map, serverUrl);
-  if (!key) return null;
-  const e = map[key];
+  const key2 = findKeyByServerUrl(map, serverUrl);
+  if (!key2) return null;
+  const e = map[key2];
   if (!e?.accessToken || typeof e.accessToken !== "string") return null;
   const out = { access_token: e.accessToken };
   if (e.refreshToken) out.refresh_token = e.refreshToken;
@@ -47926,9 +47926,9 @@ function deleteTokens(serverUrl) {
   const creds = readCreds();
   if (!creds.mcpOAuth) return;
   const map = creds.mcpOAuth;
-  const key = findKeyByServerUrl(map, serverUrl);
-  if (!key) return;
-  delete map[key];
+  const key2 = findKeyByServerUrl(map, serverUrl);
+  if (!key2) return;
+  delete map[key2];
   writeCreds(creds);
 }
 function migrateLegacyStore(resolver) {
@@ -50852,6 +50852,9 @@ function emit(record) {
   log2.writeRecord(`${formatIncidentLine({ event: "record-dropped", dropped: record.event })}
 `);
 }
+function recordInvokeBoundary(record) {
+  emit(record);
+}
 function recordBridgeOutbound(channel, args) {
   if (channel !== "connection-state-changed") return;
   const record = normalizeConnectionTransition(args[0], args[1]);
@@ -50893,6 +50896,107 @@ function installIncidentDiagnostics(logDir, subscribe) {
   subscribe((sample) => recordRendererSample(sample));
 }
 
+// src/invoke-diagnostics.ts
+var import_node_crypto4 = require("node:crypto");
+var key = (0, import_node_crypto4.randomBytes)(32);
+var boot = (0, import_node_crypto4.randomBytes)(8).toString("hex");
+var MAX_INPUT_CHARS = 256;
+var MAX_ID = Number.MAX_SAFE_INTEGER;
+var rendererStages = /* @__PURE__ */ new Set(["renderer-sent", "renderer-received", "renderer-duplicate", "renderer-unknown", "renderer-other-document", "renderer-ended", "renderer-send-threw"]);
+var knownChannels = /* @__PURE__ */ new Set([
+  "get-config",
+  "tab:list",
+  "tab:get-active",
+  "tabs:restore-state",
+  "hooks:set-plugin-approval",
+  "hooks:get-plugin-approval",
+  "hooks:list-pending-plugin-approvals",
+  "plugins:list-marketplaces",
+  "plugins:list-installed",
+  "mcp:get-servers",
+  "session:get-saved"
+]);
+function ref(domain, value) {
+  const input = typeof value === "string" && value.length <= MAX_INPUT_CHARS ? value : "unavailable";
+  return (0, import_node_crypto4.createHmac)("sha256", key).update(domain).update(input).digest("hex").slice(0, 24);
+}
+function safeId(value) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= MAX_ID ? value : 0;
+}
+var InvokeDiagnostics = class {
+  constructor(emit2) {
+    this.emit = emit2;
+  }
+  emit;
+  views = /* @__PURE__ */ new WeakMap();
+  sequence = 0;
+  counts = /* @__PURE__ */ new Map();
+  attach(view) {
+    this.views.set(view, { id: ++this.sequence, documentRef: ref("document", void 0), detached: false, hidden: false });
+  }
+  state(view) {
+    if (!this.views.has(view)) this.attach(view);
+    return this.views.get(view);
+  }
+  setHidden(view, hidden) {
+    this.state(view).hidden = hidden;
+  }
+  detach(view) {
+    const state = this.state(view);
+    state.detached = true;
+    this.record(state, state.documentRef, "", 0, "view-detached", 0);
+  }
+  record(state, documentRef, channel, id, stage, elapsedMs) {
+    const count = Math.min(1e9, (this.counts.get(stage) ?? 0) + 1);
+    this.counts.set(stage, count);
+    try {
+      this.emit({
+        event: "invoke-boundary",
+        boot,
+        view: state.id,
+        documentRef,
+        channelRef: ref("channel", channel),
+        channel: typeof channel === "string" && knownChannels.has(channel) ? channel : "other",
+        id: safeId(id),
+        stage,
+        hidden: state.hidden,
+        count,
+        elapsedMs: Math.min(1e9, Math.max(0, Math.trunc(elapsedMs)))
+      });
+    } catch {
+    }
+  }
+  renderer(view, raw) {
+    if (!raw || typeof raw !== "object") return;
+    const message = raw;
+    if (typeof message.stage !== "string" || !rendererStages.has(message.stage)) return;
+    const state = this.state(view);
+    const documentRef = ref("document", message.generation);
+    if (message.stage === "renderer-sent") state.documentRef = documentRef;
+    this.record(state, documentRef, message.channel, message.id, message.stage, 0);
+  }
+  begin(view, id, channel, generation) {
+    const state = this.state(view);
+    const documentRef = ref("document", generation);
+    state.documentRef = documentRef;
+    const started = Date.now();
+    const record = (stage) => this.record(state, documentRef, channel, id, stage, Date.now() - started);
+    record("host-received");
+    return {
+      handler: (outcome) => record(`handler-${outcome}`),
+      reply: async (send) => {
+        if (state.detached) record("reply-source-disposed");
+        if (state.documentRef !== documentRef) record("reply-document-replaced");
+        try {
+          record(await send() ? "reply-accepted" : "reply-false");
+        } catch {
+          record("reply-rejected");
+        }
+      }
+    };
+  }
+};
+
 // src/bridge-host.ts
 var HEAVY_SESSION_CHANNELS = /* @__PURE__ */ new Set([
   "jsonl-entries",
@@ -50914,6 +51018,7 @@ var BridgeHost = class {
   // customize sections). Events fan out to all — except the per-session heavy
   // channels, withheld by role (see post()); invoke replies target the origin.
   webviews = /* @__PURE__ */ new Set();
+  invokeDiagnostics = new InvokeDiagnostics(recordInvokeBoundary);
   // Each webview's role, so the fan-out can skip the heavy per-session streams
   // (jsonl / streaming / pty) for panels that render none of it. The customize
   // sections don't touch the conversation at all — sending them the jsonl
@@ -51167,6 +51272,7 @@ var BridgeHost = class {
    *  originating webview. */
   attach(webview, role = "chat") {
     this.webviews.add(webview);
+    this.invokeDiagnostics.attach(webview);
     this.webviewRoles.set(webview, role);
     if (role !== "customize") this.resync.markStale(webview);
     updateUiToolsWindow(this.sink);
@@ -51175,6 +51281,7 @@ var BridgeHost = class {
       dispose: () => {
         sub.dispose();
         this.webviews.delete(webview);
+        this.invokeDiagnostics.detach(webview);
         this.resync.forget(webview);
         if (this.webviewRoles.get(webview) === "chat") clearDisplayedTab();
         this.webviewRoles.delete(webview);
@@ -51189,6 +51296,7 @@ var BridgeHost = class {
   /** A tracked webview view's visibility changed; resync if this reveal has a
    *  recorded gap (see ResyncTracker.setVisible). */
   setWebviewVisible(webview, visible) {
+    this.invokeDiagnostics.setHidden(webview, !visible);
     if (this.resync.setVisible(webview, visible)) this.onResyncNeeded?.();
   }
   /** Read-only view of the external-MCP manager — for the status-bar
@@ -51201,6 +51309,7 @@ var BridgeHost = class {
     this.disposed = true;
     this.tabManager.disconnectAll();
     void pluginLspManager.restart();
+    for (const view of this.webviews) this.invokeDiagnostics.detach(view);
     this.webviews.clear();
   }
   /** Public event fan-out — push a host→renderer event (e.g. editor-selection)
@@ -51230,6 +51339,10 @@ var BridgeHost = class {
     }
   }
   async onMessage(msg, source) {
+    if (msg?.kind === "invoke-diagnostic") {
+      this.invokeDiagnostics.renderer(source, msg);
+      return;
+    }
     if (!msg || typeof msg.channel !== "string") return;
     const args = Array.isArray(msg.args) ? msg.args : [];
     if (msg.kind === "send") {
@@ -51237,16 +51350,20 @@ var BridgeHost = class {
       return;
     }
     if (msg.kind === "invoke") {
-      const reply = (frame) => void source.postMessage({ kind: "invoke-reply", id: msg.id, ...frame });
+      const trace = this.invokeDiagnostics.begin(source, msg.id, msg.channel, msg.generation);
+      const reply = (frame) => trace.reply(() => source.postMessage({ kind: "invoke-reply", id: msg.id, generation: msg.generation, ...frame }));
       try {
         const result = await ipcMain.invokeHandler(msg.channel, this.event, ...args);
-        reply({ ok: true, result });
+        trace.handler("resolved");
+        await reply({ ok: true, result });
       } catch (err) {
         if (!ipcMain.hasHandler(msg.channel)) {
-          console.warn(`[claude-bridge] unimplemented invoke channel: ${msg.channel}`);
-          reply({ ok: true, result: null });
+          trace.handler("unregistered");
+          console.warn("[claude-bridge] unimplemented invoke channel (see incident channelRef)");
+          await reply({ ok: true, result: null });
         } else {
-          reply({ ok: false, error: err instanceof Error ? err.message : String(err) });
+          trace.handler("rejected");
+          await reply({ ok: false, error: err instanceof Error ? err.message : String(err) });
         }
       }
     }
@@ -51316,9 +51433,9 @@ function installMcpStatusBar(mgr) {
     const connected = enabled.filter((s) => s.status === "connected").length;
     const errored = enabled.filter((s) => s.status === "error").length;
     const connecting = enabled.filter((s) => s.status === "connecting" || s.status === "disconnected").length;
-    const key = `${enabled.length}|${connected}|${errored}|${connecting}`;
-    if (key === last) return;
-    last = key;
+    const key2 = `${enabled.length}|${connected}|${errored}|${connecting}`;
+    if (key2 === last) return;
+    last = key2;
     if (enabled.length === 0) {
       conn.hide();
       err.hide();

@@ -2,12 +2,14 @@
 // Session WebSocket — multiplexed PTY stream + MCP on /ws/session
 // ============================================================================
 
+import { lifecycleLog } from '../logging/lifecycle'
 import { WebSocketServer, WebSocket as WS } from 'ws'
 import type { Server as HttpServer } from 'http'
 import crypto from 'crypto'
 import fs from 'fs'
 import fsp from 'fs/promises'
 import path from 'path'
+import { SessionAdmissionError } from './session-admission'
 import { rememberModelSelection } from './model-selection'
 import { waitForDrain, type DrainOutcome } from './download-backpressure'
 import { fingerprintTranscript, canResume, isRecordBoundary, recordUuidMatches } from './jsonl-fingerprint'
@@ -29,7 +31,6 @@ import {
   resizeTerminal,
   handleElicitationResponse,
   getSession,
-  countUserSessions,
   restartWithEffort,
   restartWithModel,
   getSessionTree,
@@ -148,16 +149,8 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           // Clean up previous session on this WS (if any)
           if (authenticatedSessionId) {
             sessionWsMap.delete(authenticatedSessionId)
-            destroySession(authenticatedSessionId)
+            destroySession(authenticatedSessionId, 'replace_start')
             authenticatedSessionId = null
-          }
-
-          // Check max sessions for this user
-          const maxSessions = 10 // TODO: get from token.max_sessions after DB migration
-          const currentCount = countUserSessions(resolved.tokenId)
-          if (currentCount >= maxSessions) {
-            sendError(ws, `Max sessions reached (${maxSessions})`, 4002, 'Max sessions reached')
-            return
           }
 
           try {
@@ -210,7 +203,12 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err)
             errorLog('Failed to create session', { error: errMsg })
-            sendError(ws, `Failed to create session: ${errMsg}`)
+            sendError(
+              ws,
+              `Failed to create session: ${errMsg}`,
+              err instanceof SessionAdmissionError && err.kind === 'token' ? 4002 : undefined,
+              'Max sessions reached',
+            )
           }
           break
         }
@@ -230,7 +228,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               if (clients.size === 0) tokenWsMap.delete(endedSession.tokenId)
             }
           }
-          destroySession(authenticatedSessionId)
+          destroySession(authenticatedSessionId, 'explicit_end')
           authenticatedSessionId = null
           break
         }
@@ -312,7 +310,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           // Clean up previous session on this WS (if any)
           if (authenticatedSessionId) {
             sessionWsMap.delete(authenticatedSessionId)
-            destroySession(authenticatedSessionId)
+            destroySession(authenticatedSessionId, 'replace_resume')
             authenticatedSessionId = null
           }
 
@@ -343,6 +341,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           const resumeLockKey = msg.conversationId ? `${resolved.tokenId}:${msg.conversationId}` : null
           let releaseResumeLock: () => void = () => {}
           if (resumeLockKey) {
+            if (resumeLocks.has(resumeLockKey)) lifecycleLog('resume_wait')
             while (resumeLocks.has(resumeLockKey)) {
               await resumeLocks.get(resumeLockKey)!.catch(() => {
                 /* ждём, исход не важен */
@@ -370,6 +369,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           // respawning is what protects the JSONL from double-writer forks.
           const live = findSessionByConversation(resolved.tokenId, msg.conversationId)
           if (live) {
+            lifecycleLog('resume_reuse', { sessionId: live.id })
             const oldWs = sessionWsMap.get(live.id)
             if (oldWs && oldWs !== ws) {
               // Steal: a zombie WS is still bound (half-open socket) — close
@@ -511,7 +511,12 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err)
             errorLog('Failed to resume session', { error: errMsg })
-            sendError(ws, `Failed to resume session: ${errMsg}`)
+            sendError(
+              ws,
+              `Failed to resume session: ${errMsg}`,
+              err instanceof SessionAdmissionError && err.kind === 'token' ? 4002 : undefined,
+              'Max sessions reached',
+            )
           } finally {
             releaseResumeLock()
           }
@@ -546,7 +551,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               // No conversation yet (empty chat) → recreate fresh with effort, preserve model
               session.isRestarting = true
               const preservedModel = session.model
-              destroySession(oldSessionId)
+              destroySession(oldSessionId, 'effort_restart')
               newSession = await createSession(ws, authenticatedUser!, session.tokenId, {
                 cwd: session.cwd,
                 cols: 120,
@@ -643,7 +648,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               // No conversation yet (empty chat) → recreate fresh with model, preserve effort
               session.isRestarting = true
               const preservedEffort = session.effort
-              destroySession(oldSessionId)
+              destroySession(oldSessionId, 'model_restart')
               newSession = await createSession(ws, authenticatedUser!, session.tokenId, {
                 cwd: session.cwd,
                 cols: 120,
