@@ -31,96 +31,60 @@
 #
 # Как накатывать при обновлении вендора: 3-way merge (база — дерево
 # предыдущей upstream-ревизии, ours — vendor/, theirs — новая ревизия), либо
-#   cd vendor/resvg && patch -p1 -l < ../resvg-kaminide.patch
+#   git -C vendor/resvg apply --unidiff-zero ../resvg-kaminide.patch
 # Ниже — полный diff vendor/resvg относительно upstream 77b12f49.
 
 diff --git a/src/filter/color_matrix.rs b/src/filter/color_matrix.rs
 index 3e00148..0583fa8 100644
 --- a/src/filter/color_matrix.rs
 +++ b/src/filter/color_matrix.rs
-@@ -1,3 +1,5 @@
+@@ -0,0 +1,2 @@
 +//! Quantize color-matrix results without a systematic downward color bias.
 +
- // Copyright 2020 the Resvg Authors
- // SPDX-License-Identifier: Apache-2.0 OR MIT
- 
-@@ -106,5 +108,8 @@ fn to_normalized_components(pixel: RGBA8) -> (f32, f32, f32, f32) {
- 
- #[inline]
- fn from_normalized(c: f32) -> u8 {
+@@ -109 +111,4 @@ fn from_normalized(c: f32) -> u8 {
 -    (f32_bound(0.0, c, 1.0) * 255.0) as u8
 +    // CSS Color 4 section 5.1: reducing calculated RGB precision rounds to
 +    // the nearest integer, with ties toward positive infinity. The filter
 +    // matrix is evaluated before this conversion (Filter Effects 1 section 9.6).
 +    (f32_bound(0.0, c, 1.0) * 255.0).round() as u8
- }
 diff --git a/src/filter/convolve_matrix.rs b/src/filter/convolve_matrix.rs
 index bd14dfe..f7b7997 100644
 --- a/src/filter/convolve_matrix.rs
 +++ b/src/filter/convolve_matrix.rs
-@@ -82,7 +82,10 @@ pub fn apply(matrix: &ConvolveMatrix, src: ImageRefMut) {
-         let bounded_new_a = f32_bound(0.0, new_a, 1.0);
- 
-         let calc = |x| {
+@@ -85 +85,4 @@ pub fn apply(matrix: &ConvolveMatrix, src: ImageRefMut) {
 -            let x = x / matrix.divisor().get() + matrix.bias() * new_a;
 +            // KaminIDE patch: bias умножается на ОГРАНИЧЕННУЮ альфу
 +            // результата (SVG Filter Effects §feConvolveMatrix:
 +            // «… / divisor + bias * ALPHA»), не на сырую сумму.
 +            let x = x / matrix.divisor().get() + matrix.bias() * bounded_new_a;
- 
-             let x = if matrix.preserve_alpha() {
-                 f32_bound(0.0, x, 1.0) * bounded_new_a
 diff --git a/src/filter/mod.rs b/src/filter/mod.rs
 index 28f92f9..1c87e8a 100644
 --- a/src/filter/mod.rs
 +++ b/src/filter/mod.rs
-@@ -976,11 +976,18 @@ fn apply_displacement_map(
-     input2: Image,
- ) -> Result<Image, Error> {
-     let pixmap1 = input1.into_color_space(cs)?.take()?;
+@@ -979 +979,4 @@ fn apply_displacement_map(
 -    let pixmap2 = input2.into_color_space(cs)?.take()?;
 +    // KaminIDE patch: карта смещения обязана быть unpremultiplied
 +    // (контракт displacement_map::apply) — как у соседних примитивов.
 +    let mut pixmap2 = input2.into_color_space(cs)?.take()?;
 +    demultiply_alpha(pixmap2.data_mut().as_rgba_mut());
- 
-     let mut pixmap = tiny_skia::Pixmap::try_create(region.width(), region.height())?;
- 
+@@ -983 +986,5 @@ fn apply_displacement_map(
 -    let (sx, sy) = match scale_coordinates(fe.scale(), fe.scale(), ts) {
 +    // KaminIDE patch: scale_coordinates уже умножает на масштаб холста, а
 +    // displacement_map::apply домножает на fe.scale() сам — передача
 +    // fe.scale() сюда удваивала множитель, смещение всегда улетало за
 +    // регион, и выход примитива был пустым (все tainting-* WPT).
 +    let (sx, sy) = match scale_coordinates(1.0, 1.0, ts) {
-         Some(v) => v,
-         None => return Ok(Image::from_image(pixmap1, cs)),
-     };
 diff --git a/src/path.rs b/src/path.rs
 index c11349a..16b55ea 100644
 --- a/src/path.rs
 +++ b/src/path.rs
-@@ -61,7 +61,7 @@ pub fn fill_path(
-             paint.shader = tiny_skia::Pattern::new(
-                 pattern_pixmap.as_ref(),
-                 tiny_skia::SpreadMode::Repeat,
+@@ -64 +64 @@ pub fn fill_path(
 -                tiny_skia::FilterQuality::Bicubic,
 +                pattern_quality(transform, patt_ts),
-                 fill.opacity().get(),
-                 patt_ts,
-             );
-@@ -101,7 +101,7 @@ fn stroke_path(
-             paint.shader = tiny_skia::Pattern::new(
-                 pattern_pixmap.as_ref(),
-                 tiny_skia::SpreadMode::Repeat,
+@@ -104 +104 @@ fn stroke_path(
 -                tiny_skia::FilterQuality::Bicubic,
 +                pattern_quality(transform, patt_ts),
-                 stroke.opacity().get(),
-                 patt_ts,
-             );
-@@ -176,6 +176,27 @@ fn convert_base_gradient(
-     Some((mode, points))
- }
- 
+@@ -178,0 +179,21 @@ fn convert_base_gradient(
 +/// KaminIDE patch: the tile is rasterized at the device scale of the
 +/// pattern (`render_pattern_pixmap`), so when tile space maps to device
 +/// space 1:1 (axis-aligned, scale ±1 — flips included) every device pixel
@@ -142,6 +106,3 @@ index c11349a..16b55ea 100644
 +    }
 +}
 +
- fn render_pattern_pixmap(
-     pattern: &usvg::Pattern,
-     ctx: &Context,
