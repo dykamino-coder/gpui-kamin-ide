@@ -8,17 +8,15 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::AnyElement;
 mod row_setup;
-use row_setup::hides_empty_cell;
-use row_setup::{cell_cascaded_style, cell_spans, push_empty_row_track, row_band_probes};
+use row_setup::{push_empty_row_track, row_band_probes};
+mod cell;
 mod cell_box;
-use cell_box::prepare_cell_box;
-mod cell_heights;
-use cell_heights::resolve_cell_heights;
-mod emit;
-use emit::emit_cell;
 mod cell_div;
+mod cell_heights;
 mod cell_inside;
 mod edge_probes;
+mod emit;
+use cell::table_cell;
 
 #[allow(clippy::too_many_arguments, clippy::unnecessary_cast)]
 pub(super) fn table_rows(
@@ -122,57 +120,7 @@ pub(super) fn table_rows(
             while col_ix < occupied.len() && occupied[col_ix] > 0 {
                 col_ix += 1;
             }
-            // §17.6.1.1: `empty-cells: hide` прячет фон и рамку ПУСТОЙ
-            // ячейки — в раздельной модели рамок. Пустая это та, у которой нет
-            // ни текста, ни элементов-детей.
-            let прячем_пустую = hides_empty_cell(e, &row_style, cell);
-            // Ячейка в НУЛЕВОЙ дорожке: свои горизонтальные отступ и рамку
-            // она держать не может — дорожки под них нет (§17.5.2.1).
-            let cell = &if прячем_пустую {
-                let mut copy = cell.clone();
-                copy.style.background = None;
-                copy.style.gradient = None;
-                copy.style.bg_image = None;
-                copy.style.border_visible = [Some(false); 4];
-                copy.style.border_width = Default::default();
-                copy
-            } else {
-                cell.clone()
-            };
-            let cell = &if zero_cols.get(col_ix).copied().unwrap_or(false) {
-                let mut copy = cell.clone();
-                copy.style.padding.left = Some(Len::Px(0.0));
-                copy.style.padding.right = Some(Len::Px(0.0));
-                copy.style.border_width.left = Some(Len::Px(0.0));
-                copy.style.border_width.right = Some(Len::Px(0.0));
-                copy
-            } else {
-                cell.clone()
-            };
-            let mut cm = cell_cascaded_style(e, &row_style, cell);
-            let (span_cols, span_rows, spans_collapsed, clipped) =
-                cell_spans(row_ix, &rows_left, &cols_collapsed, col_ix, cell);
-            let mut cell = cell.clone();
-            let cell_edge = prepare_cell_box(
-                e,
-                &cols_collapsed,
-                collapse_cells,
-                &win_edges,
-                table_is_vertical,
-                table_font,
-                table_family,
-                &px_of,
-                row,
-                col_ix,
-                &cm,
-                span_cols,
-                spans_collapsed,
-                clipped,
-                &mut cell,
-            );
-            resolve_cell_heights(opts, e, row, inherited, &mut cm, &mut cell);
-            let cell = &cell;
-            emit_cell(
+            table_cell(
                 row_ix,
                 &mut occupied,
                 opts,
@@ -180,7 +128,14 @@ pub(super) fn table_rows(
                 e,
                 cols,
                 &mut cells,
+                &zero_cols,
+                &rows_left,
+                &cols_collapsed,
                 collapse_cells,
+                &win_edges,
+                table_is_vertical,
+                table_font,
+                table_family,
                 paint_layers,
                 &cell_bgs,
                 &row_elements,
@@ -203,12 +158,6 @@ pub(super) fn table_rows(
                 inherited,
                 &row_style,
                 &mut col_ix,
-                cm,
-                span_cols,
-                span_rows,
-                spans_collapsed,
-                clipped,
-                cell_edge,
                 cell,
             );
         }
