@@ -2,6 +2,7 @@
 // PTY Session Manager core — spawns and manages Claude CLI sessions
 // ============================================================================
 
+import { devCli, waitForDevCliStartup } from './dev-cli'
 import { randomUUID } from 'crypto'
 import fs from 'fs'
 import os from 'os'
@@ -126,6 +127,8 @@ async function createAdmittedSession(
   registered: (session: PtySession) => void,
   signal?: AbortSignal,
 ): Promise<PtySession> {
+  const developmentCli = devCli()
+  if (developmentCli?.startupDelay) await waitForDevCliStartup(developmentCli, signal)
   const sessionId = randomUUID()
   const mcpToken = randomUUID() // per-session secret for MCP endpoint auth
 
@@ -257,7 +260,7 @@ async function createAdmittedSession(
   let streamingProxy: { port: number; caCertPath: string; stop: () => Promise<void>; interrupt: () => void } | undefined
   try {
     const settings = await getStreamingSettings(tokenId)
-    if (settings.enabled) {
+    if (settings.enabled && !developmentCli) {
       // Chain through any pre-existing corporate proxy. Priority:
       //   1. Bridge's own dashboard settings (DuckDB) — set via the UI's
       //      Network/Proxy panel. These are the values users actually
@@ -414,11 +417,11 @@ async function createAdmittedSession(
   const cwd = settingsDir
 
   // On Windows, node-pty needs .cmd extension for npm global binaries
-  const claudeCmd = process.platform === 'win32' ? 'claude.cmd' : 'claude'
+  const claudeCmd = developmentCli?.command ?? (process.platform === 'win32' ? 'claude.cmd' : 'claude')
 
   let pty: ReturnType<typeof import('node-pty').spawn>
   try {
-    pty = nodePty.spawn(claudeCmd, args, {
+    pty = nodePty.spawn(claudeCmd, [...(developmentCli?.prefix ?? []), ...args], {
       name: 'xterm-256color',
       cols: config.cols ?? 120,
       rows: config.rows ?? 40,
