@@ -94,6 +94,31 @@ afterEach(() => {
   vi.useRealTimers()
 })
 describe('INC-2026-0012 actual core admission', () => {
+  it('fake CLI delayed startup respects actual core cancellation and releases admission', async () => {
+    vi.stubEnv('NODE_ENV', 'test')
+    vi.stubEnv('BRIDGE_DEV_FAKE_CLI', '1')
+    vi.stubEnv('BRIDGE_FAKE_CLI_HOME', os.homedir())
+    vi.stubEnv('BRIDGE_FAKE_CLI_STARTUP_DELAY_MS', '30000')
+    const controller = new AbortController()
+    const starting = core.createSession(socket, 'tester', 'token', {}, controller.signal)
+    controller.abort()
+    await expect(starting).rejects.toThrow()
+    expect(h.spawn).not.toHaveBeenCalled()
+    expect(h.settings).not.toHaveBeenCalled()
+    expect(core.sessions.size).toBe(0)
+    vi.stubEnv('BRIDGE_FAKE_CLI_STARTUP_DELAY_MS', '0')
+    await core.createSession(socket, 'tester', 'token')
+    expect(h.spawn.mock.calls[0]![0]).toBe(process.execPath)
+    expect(h.spawn.mock.calls[0]![1][0]).toContain('fake-claude.mjs')
+  })
+  it('production session spawn cannot select fake even with the switch enabled', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('BRIDGE_DEV_FAKE_CLI', '1')
+    await core.createSession(socket, 'tester', 'token')
+    expect(h.spawn.mock.calls[0]![0]).toBe(process.platform === 'win32' ? 'claude.cmd' : 'claude')
+    expect(h.spawn.mock.calls[0]![1]).toEqual([])
+  })
+
   it('reserves capacity while the real snapshot lock blocks concurrent startup', async () => {
     // Import the same real lock instance as the reset core module.
     const { withUserSyncLock } = await import('../sync/lock')
