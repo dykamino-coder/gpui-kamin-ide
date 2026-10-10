@@ -294,6 +294,11 @@ pub struct InputState {
     /// line-height от родителя (иначе `Input` жёстко ставит `Rems(1.25)` =
     /// 20px, и строки при кегле 2px расходятся на 20px вместо 3.2).
     pub(super) minimap: bool,
+    /// KaminIDE patch: прокрутка code editor-а за последнюю строку
+    /// (`scrollBeyondLastLine`). Upstream всегда добавляет снизу
+    /// `max(вьюпорт/2, 3 строки)`; KaminIDE ставит `false`, как Monaco в
+    /// оригинале (INC-2026-0060).
+    pub(super) scroll_beyond_last_line: bool,
     pub(super) masked: bool,
     pub(super) clean_on_escape: bool,
     pub(super) soft_wrap: bool,
@@ -389,6 +394,7 @@ impl InputState {
             disabled: false,
             masked: false,
             minimap: false,
+            scroll_beyond_last_line: true,
             clean_on_escape: false,
             soft_wrap: true,
             loading: false,
@@ -681,6 +687,15 @@ impl InputState {
     #[allow(unused)]
     pub(crate) fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
+        self
+    }
+
+    /// KaminIDE patch: разрешить ли прокрутку code editor-а за последнюю
+    /// строку (Monaco `scrollBeyondLastLine`, по умолчанию `true` как upstream).
+    /// При `false` предел прокрутки — высота текста минус вьюпорт: файл,
+    /// который целиком помещается, не прокручивается вовсе.
+    pub fn scroll_beyond_last_line(mut self, enabled: bool) -> Self {
+        self.scroll_beyond_last_line = enabled;
         self
     }
 

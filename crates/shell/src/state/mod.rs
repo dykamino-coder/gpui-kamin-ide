@@ -11,6 +11,7 @@ pub mod consts;
 pub mod drag;
 pub(crate) mod drag_flag;
 pub mod drop_hints;
+pub(crate) mod editor_minimap_sync;
 pub mod editor_save;
 pub mod editor_tab;
 pub mod init;
