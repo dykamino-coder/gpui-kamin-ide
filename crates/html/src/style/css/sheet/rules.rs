@@ -120,7 +120,7 @@ pub(super) fn sheet_rules(css: &str, media: Media, top: bool) -> Vec<Rule> {
 /// `@page`, `@property`, `@counter-style`, `@position-try` обрабатываются здесь же и дают `false`.
 fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media) -> bool {
     if name.starts_with("@media") {
-        media.matches(&name)
+        media.matches(name)
     } else if name
         .strip_prefix("@font-feature-values")
         .is_some_and(|s| s.starts_with(char::is_whitespace))
