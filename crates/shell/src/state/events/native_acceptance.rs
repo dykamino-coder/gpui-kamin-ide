@@ -10,7 +10,13 @@ body{background:#18202d;color:white;font:18px sans-serif} .spin{display:inline-b
 @keyframes spin{to{transform:rotate(360deg)}}
 </style></head><body><p>Native acceptance fixture</p><span class="spin">◌</span>
 <input placeholder="Type here"><button onclick="this.textContent='Clicked'">Click</button>
-<select><option>Popup one</option><option>Popup two</option></select></body></html>"#;
+<select><option>Popup one</option><option>Popup two</option></select>
+<script>
+requestAnimationFrame(() => requestAnimationFrame(() => fetch('/__ipc', {
+  method: 'POST', body: JSON.stringify({__view: location.pathname.slice(1),
+    __kaminWebview: true, msg: {type: 'initialized'}})
+}).catch(() => {})));
+</script></body></html>"#;
 
 impl RootView {
     #[expect(
