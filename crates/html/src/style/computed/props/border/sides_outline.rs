@@ -43,6 +43,24 @@ impl Computed {
             "border-block-end" => self.logical().border[2] = Some(v.to_string()),
             "border-inline-start" => self.logical().border[3] = Some(v.to_string()),
             "border-inline-end" => self.logical().border[1] = Some(v.to_string()),
+            // css-logical-1 §4.3: `border-block-width` и родня — одно или два
+            // значения, начало и конец оси; раздаются своим лонгхендам.
+            "border-block-width"
+            | "border-block-style"
+            | "border-block-color"
+            | "border-inline-width"
+            | "border-inline-style"
+            | "border-inline-color" => {
+                let parts = split_outside_parens(v);
+                let (a, b) = match parts.as_slice() {
+                    [a] => (a, a),
+                    [a, b] => (a, b),
+                    _ => return,
+                };
+                let (axis, prop) = key["border-".len()..].split_once('-').unwrap_or_default();
+                self.apply_one(&format!("border-{axis}-start-{prop}"), a);
+                self.apply_one(&format!("border-{axis}-end-{prop}"), b);
+            }
             "border-block-start-color" => self.border_colors[0] = side_color(v, self.color),
             "border-block-end-color" => self.border_colors[2] = side_color(v, self.color),
             "border-inline-start-color" => self.border_colors[3] = side_color(v, self.color),

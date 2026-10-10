@@ -44,6 +44,7 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
     // «Applies to: all elements»). Ключ строится ДО замыкания: в него уезжает
     // готовая строка, а не стиль.
     let src = crate::paint::background::key_exif(&image.src, c);
+    let pixelated = c.image_pixelated == Some(true);
     Some(
         gpui::canvas_with_unrounded_bounds(
             |_, _, _| {},
@@ -181,6 +182,7 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                                 matches!(found, crate::paint::background::Source::Raster(_)),
                                 part,
                                 cell,
+                                pixelated,
                             );
                         }
                     }

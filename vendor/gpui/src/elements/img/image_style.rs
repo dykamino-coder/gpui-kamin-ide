@@ -5,6 +5,7 @@ use crate::{AnyElement, Bounds, DefiniteLength, ObjectFit, Pixels, Point};
 pub struct ImageStyle {
     pub(super) grayscale: bool,
     pub(super) preserve_natural_pixels: bool,
+    pub(super) pixelated: bool,
     pub(super) object_fit: ObjectFit,
     pub(super) object_position: Option<Point<DefiniteLength>>,
     pub(super) loading: Option<Box<dyn Fn() -> AnyElement>>,
@@ -16,6 +17,7 @@ impl Default for ImageStyle {
         Self {
             grayscale: false,
             preserve_natural_pixels: false,
+            pixelated: false,
             object_fit: ObjectFit::Contain,
             object_position: None,
             loading: None,
@@ -39,6 +41,13 @@ pub trait StyledImage: Sized {
     /// Resized or transformed content keeps interpolation. Disabled by default.
     fn preserve_natural_pixels(mut self, preserve: bool) -> Self {
         self.image_style().preserve_natural_pixels = preserve;
+        self
+    }
+
+    /// Scale resized raster content by nearest neighbour instead of interpolation
+    /// (CSS `image-rendering: pixelated`). Disabled by default.
+    fn pixelated(mut self, pixelated: bool) -> Self {
+        self.image_style().pixelated = pixelated;
         self
     }
 

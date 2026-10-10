@@ -91,6 +91,8 @@ pub(super) fn local_image_source<'a>(
         (None, Some(path)) => gpui::img(std::path::PathBuf::from(path)),
         (None, None) => gpui::img(SharedString::from(src.to_string())),
     };
+    // css-images-3 §image-rendering: `pixelated` scales by nearest neighbour.
+    image = image.pixelated(e.style.image_pixelated == Some(true));
     if e.style.filter.is_some_and(|f| f.grayscale > 0.5) {
         image = image.grayscale(true);
     }
@@ -123,6 +125,7 @@ pub(super) fn piped_image(
         // положить руками: иначе `image-orientation: none` вместе с
         // `object-fit`/`object-position` уходил бы мимо ключа источника.
         bgc.image_orient_none = e.style.image_orient_none;
+        bgc.image_pixelated = e.style.image_pixelated;
         bgc.bg_size = match e.style.object_fit.as_deref() {
             Some("contain") => BgSize::Contain,
             Some("cover") => BgSize::Cover,

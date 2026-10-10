@@ -1114,6 +1114,43 @@ Account card within ten seconds and compares percentages plus reset timestamps;
 it also proves graceful rendering when an optional window is absent. Secrets
 and raw OAuth credentials are never stored in evidence.
 
+**Prepared implementation 2026-10-09:** Three actual capture regressions proved
+missing dynamic windows, first-frame ANSI redraw parsing and stale-cache return
+during overlapping forced refreshes. The prepared contract uses typed windows
+with per-window source/observedAt/reset metadata/freshness and capture-level
+version, partial/unavailable reason and bounded missing-field diagnostics.
+Documented common statusline windows take precedence when the scoped capture
+reports them. The capture-only statusLine setting does not modify global or
+live-session settings and stores only allowlisted usage/version fields.
+
+The final headless terminal screen supplies compatibility common/model windows,
+including Fable and unknown future labels, without concatenated-frame regexes.
+Human reset labels are preserved with an explicit missing epoch reason, never
+guessed into timestamps. Previously supported missing rows remain labelled
+stale. The Account component renders dynamic rows and explicit partial/error
+state; concurrent forced refreshes share one capture and cache responses are
+detached copies. PTY output is capped at 1 MiB, windows at 16, probe stdin at
+128 KiB and retained probe JSON at 4 KiB; no raw TUI/error payload is exposed.
+
+Fix PR [#202](https://github.com/dykamino-coder/gpui-kamin-ide/pull/202).
+Task-specific status: implementation prepared; blocked on mandatory authenticated Linux runtime acceptance, not done. Synthetic fixtures and
+the actual Account component Chrome comparison do not replace the required
+authenticated isolated Linux CLI/browser quota comparison within ten seconds.
+Remaining merge blocker (owner: maintainer with an authorized disposable Linux account/runtime): on the exact PR candidate, record the actual Claude Code version and authenticate the disposable account; compare native `/usage`, dashboard JSON and the actual Account card for that same account/reset window within ten seconds. Verify matching percentages and reset timestamps for every available common/model window, graceful absence of optional windows, and partial/stale treatment when authoritative reset epochs are absent. Confirm the statusline field contract against that actual CLI version. Record candidate SHA, timestamps and sanitized task-specific evidence; never retain OAuth credentials or raw account output. This authenticated comparison and version-specific contract verification are NOT RUN. Green required CI, the synthetic Linux PTY gate and component screenshots satisfy neither. No deployment credentials were sought. Statusline rate limits may be absent
+before a model response, so compatibility capture stays explicitly partial when
+authoritative reset epochs or version metadata are unavailable.
+
+Primary contract references: [Claude Code statusline](https://code.claude.com/docs/en/statusline)
+and [capture-scoped settings flag](https://code.claude.com/docs/en/cli-reference).
+
+Synthetic component-only Chrome 154 QA (no authentication/account data):
+[baseline](runtime-issues/evidence/BR-20/synthetic-before.png),
+[dynamic rows](runtime-issues/evidence/BR-20/synthetic-after.png),
+[partial refresh](runtime-issues/evidence/BR-20/synthetic-partial.png).
+These show the actual old/new Account component with synthetic inputs, not the
+full dashboard or authenticated quota runtime gate. Adjacent control focus,
+unavailable refresh and last-known row retention passed in the same harness.
+
 ### BR-21 — Define and reconcile dashboard analytics semantics
 
 **Close-out audit 2026-09-06:** Утверждённого metric-contract decision artifact нет.
