@@ -6,6 +6,7 @@ import { setHostBusy } from '../../lib/host-ready'
 
 interface DownloadJsonlButtonProps {
   /** Resolves with the outcome — the button OWNS reporting it. */
+  label?: string
   onDownload: () => Promise<{ success: boolean; error?: string }>
 }
 
@@ -26,7 +27,7 @@ const RESULT_LINGER_MS = 4000
  *  a 30s timeout), the button did nothing at all: no file, no error, no hint.
  *  The user's report was literally "the jsonl of this chat never downloaded to
  *  the folder". A control that can fail must be able to say so. */
-export function DownloadJsonlButton({ onDownload }: DownloadJsonlButtonProps): JSX.Element {
+export function DownloadJsonlButton({ onDownload, label = 'Download session log' }: DownloadJsonlButtonProps): JSX.Element {
   const [phase, setPhase] = useState<Phase>({ k: 'idle' })
   const bridge = useBridge()
 
@@ -67,7 +68,7 @@ export function DownloadJsonlButton({ onDownload }: DownloadJsonlButtonProps): J
   const tooltip = phase.k === 'busy' ? (phase.pct === undefined ? 'Downloading session log…' : `Downloading session log — ${String(phase.pct)}%`)
     : phase.k === 'done' ? 'Session log saved'
       : phase.k === 'failed' ? phase.msg
-        : 'Download session log'
+        : label
 
   return (
     <button

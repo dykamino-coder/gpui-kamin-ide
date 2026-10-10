@@ -3,7 +3,7 @@ import styles from './SettingsInput.module.css'
 
 interface Props {
   label: string
-  type: string
+  type: 'text' | 'password'
   placeholder: string
   value: string
   onChange: (value: string) => void
@@ -30,7 +30,7 @@ export function SettingsInput({ label, type, placeholder, value, onChange, label
       <div style="position:relative">
         <input
           class={styles.input}
-          type={type}
+          {...(type === 'password' ? { type: 'password' as const } : { type: 'text' as const })}
           placeholder={placeholder}
           value={value}
           onInput={(e) => onChange((e.target as HTMLInputElement).value)}

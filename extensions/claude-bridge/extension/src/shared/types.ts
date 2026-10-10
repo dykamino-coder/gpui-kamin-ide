@@ -341,7 +341,7 @@ export interface KaminBridgeApi {
   requestJsonlReplay(tabId?: string): void
 
   // ─── JSONL Download ───────────────────────────────────
-  downloadJsonl(tabId: string): Promise<{ success: boolean; filePath?: string; error?: string }>
+  downloadJsonl(tabId: string, agentId?: string): Promise<{ success: boolean; filePath?: string; error?: string }>
   /** Bulk export: pick a folder, then download EVERY transcript tied to the
    *  current token into it (one <conversationId>.jsonl per session), each pulled
    *  in byte-range batches. Progress rides `onJsonlDownloadAllProgress`. */

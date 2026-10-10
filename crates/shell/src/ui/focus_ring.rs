@@ -101,11 +101,11 @@ pub fn focused_id() -> Option<String> {
 /// Сфокусировать элемент по id (если хэндл уже отчеканен). Нужно там, где
 /// оригинал ставит `autoFocus`/`ref.focus()` — например кнопке Confirm
 /// модалки (`ConfirmModal.tsx:46-56`).
-pub fn focus_id(id: &str, window: &mut Window) -> bool {
+pub fn focus_id(id: &str, window: &mut Window, cx: &mut App) -> bool {
     let handle = HANDLES.lock().unwrap().get(id).cloned();
     match handle {
         Some(h) => {
-            window.focus(&h);
+            window.focus(&h, cx);
             true
         }
         None => {
