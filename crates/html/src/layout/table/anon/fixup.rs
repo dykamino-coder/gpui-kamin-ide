@@ -121,32 +121,14 @@ pub(crate) fn fixup_table_children(children: &[Node]) -> Vec<Node> {
         }
         out.push(Node::Element(anon_element("tr", cells)));
     }
+    // `display: contents` children are replaced by their own children
+    // BEFORE the fixup (css-display-3 §box-generation): the cells of two
+    // `tr { display: contents }` are consecutive siblings and share one
+    // anonymous row (`display-contents-tr-001`).
+    let flat = flatten_contents(children);
+    let children = flat.as_slice();
     for child in children {
         match child {
-            Node::Element(el) if el.style.display == Some(Display::Contents) => {
-                // Дети идут в таблицу со СЛИТЫМ стилем: наследуемое от
-                // растворённого элемента (цвет, шрифт) обязано дойти.
-                for grand in fixup_table_children(&el.children) {
-                    match grand {
-                        Node::Element(mut ge) => {
-                            ge.style = inherit(&el.style, &ge.style);
-                            let row = ge.tag == "tr"
-                                || matches!(
-                                    ge.style.display,
-                                    Some(Display::TableRow) | Some(Display::TableRowGroup)
-                                )
-                                || matches!(ge.tag.as_str(), "thead" | "tbody" | "tfoot");
-                            if row {
-                                flush(&mut stray, &mut out);
-                                out.push(Node::Element(ge));
-                            } else {
-                                stray.push(Node::Element(ge));
-                            }
-                        }
-                        text => stray.push(text),
-                    }
-                }
-            }
             Node::Element(el) => {
                 // Колоночные элементы — не содержимое: их читают дорожки.
                 // Роль задаётся тегом ИЛИ `display` (§17.2.1).
@@ -211,5 +193,39 @@ pub(crate) fn fixup_table_children(children: &[Node]) -> Vec<Node> {
         }
     }
     flush(&mut stray, &mut out);
+    out
+}
+
+/// Replace `display: contents` elements by their children, merging the
+/// dissolved element's inherited style into them; bare text gets an inline
+/// wrapper that carries that style.
+fn flatten_contents(children: &[Node]) -> Vec<Node> {
+    let mut out = Vec::with_capacity(children.len());
+    for n in children {
+        let Node::Element(el) = n else {
+            out.push(n.clone());
+            continue;
+        };
+        if el.style.display != Some(Display::Contents) {
+            out.push(n.clone());
+            continue;
+        }
+        for g in flatten_contents(&el.children) {
+            match g {
+                Node::Element(mut ge) => {
+                    ge.style = inherit(&el.style, &ge.style);
+                    out.push(Node::Element(ge));
+                }
+                Node::Text(t) if !t.trim().is_empty() => {
+                    let mut span = anon_element("span", vec![Node::Text(t)]);
+                    span.style = el.style.clone();
+                    span.style.display = None;
+                    span.inline = true;
+                    out.push(Node::Element(span));
+                }
+                text => out.push(text),
+            }
+        }
+    }
     out
 }

@@ -7,7 +7,14 @@ use crate::style::computed::Computed;
 /// Одеть первые `at` байт абзаца в стиль первой строки (`::first-line`).
 ///
 /// Длину первой строки считает замер: до переноса она неизвестна.
-pub fn style_first_line(pieces: Vec<Piece>, at: usize, style: &Computed) -> Vec<Piece> {
+/// `block` — стиль самого блока: значения, которые кусок не унаследовал от
+/// него, а получил от своего строчного элемента, первая строка не трогает.
+pub fn style_first_line(
+    pieces: Vec<Piece>,
+    at: usize,
+    style: &Computed,
+    block: &Computed,
+) -> Vec<Piece> {
     let mut out: Vec<Piece> = Vec::with_capacity(pieces.len() + 1);
     let mut seen = 0usize;
     for p in pieces {
@@ -16,7 +23,13 @@ pub fn style_first_line(pieces: Vec<Piece>, at: usize, style: &Computed) -> Vec<
                 let dress = |base: &Computed| {
                     let mut c = base.clone();
                     c.font_size = style.font_size.or(base.font_size);
-                    c.color = style.color.or(base.color);
+                    // The fictional `::first-line` tag sequence wraps the
+                    // line's inline elements (css-pseudo-4
+                    // §first-line-inheritance): an element's own color wins
+                    // (`display-contents-first-line-002`: green spans).
+                    if base.color == block.color {
+                        c.color = style.color.or(base.color);
+                    }
                     c.font_weight = style.font_weight.or(base.font_weight);
                     c.italic = style.italic.or(base.italic);
                     // Возможности шрифта первой строки, в том числе запрет
