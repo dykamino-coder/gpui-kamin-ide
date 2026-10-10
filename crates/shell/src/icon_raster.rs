@@ -50,7 +50,7 @@ pub fn warm_all(window: &mut gpui::Window) {
         for light in [false, true] {
             let key = format!("{asset}#{}", u8::from(light));
             if let Some(im) = raster_svg(&key, light, || Some(bytes.to_vec())) {
-                let _ = window.paint_image(
+                let _ = window.paint_image_with_sampling(
                     gpui::Bounds {
                         origin: gpui::point(gpui::px(0.0), gpui::px(0.0)),
                         size: gpui::size(gpui::px(1.0), gpui::px(1.0)),
@@ -59,6 +59,7 @@ pub fn warm_all(window: &mut gpui::Window) {
                     im,
                     0,
                     false,
+                    gpui::ImageSampling::Linear,
                 );
             }
         }

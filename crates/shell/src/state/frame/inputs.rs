@@ -26,7 +26,7 @@ impl RootView {
                     st.set_value(seed, window, cx);
                     st
                 });
-                window.focus(&input.read(cx).focus_handle(cx));
+                window.focus(&input.read(cx).focus_handle(cx), cx);
                 // `ref.select()` при входе в правку (`SessionItem.tsx:41`):
                 // имя выделено целиком, ввод сразу заменяет его (ревью ц.13)
                 window.dispatch_action(Box::new(gpui_component::input::SelectAll), cx);
@@ -53,7 +53,7 @@ impl RootView {
                         .unwrap_or_else(|| "Type to filter…".into()),
                 )
             });
-            window.focus(&input.read(cx).focus_handle(cx));
+            window.focus(&input.read(cx).focus_handle(cx), cx);
             self.qp_sub = Some(cx.subscribe(&input, |_, _, _: &InputEvent, cx| cx.notify()));
             self.qp_input = Some(input);
         }
@@ -128,14 +128,14 @@ impl RootView {
         if self.palette_open && self.palette_input.is_none() {
             let input =
                 cx.new(|cx| InputState::new(window, cx).placeholder("Type a command name…"));
-            window.focus(&input.read(cx).focus_handle(cx));
+            window.focus(&input.read(cx).focus_handle(cx), cx);
             self.palette_sub = Some(cx.subscribe(&input, |_, _, _: &InputEvent, cx| cx.notify()));
             self.palette_input = Some(input);
         }
         // Quick Open: инпут + подписка (Change → findFile-запрос)
         if self.sov.quickopen_open && self.sov.quickopen_input.is_none() {
             let input = cx.new(|cx| InputState::new(window, cx).placeholder("Type a file name…"));
-            window.focus(&input.read(cx).focus_handle(cx));
+            window.focus(&input.read(cx).focus_handle(cx), cx);
             self.sov.quickopen_sub =
                 Some(cx.subscribe(&input, |this, entity, _: &InputEvent, cx| {
                     let q = entity.read(cx).value().to_string();
@@ -158,7 +158,7 @@ impl RootView {
         // Find in Files: инпут + подписка (Change → findInFiles при len>=2)
         if self.sov.fif_open && self.sov.fif_input.is_none() {
             let input = cx.new(|cx| InputState::new(window, cx).placeholder("Search in files…"));
-            window.focus(&input.read(cx).focus_handle(cx));
+            window.focus(&input.read(cx).focus_handle(cx), cx);
             self.sov.fif_sub = Some(cx.subscribe(&input, |this, entity, _: &InputEvent, cx| {
                 let q = entity.read(cx).value().to_string();
                 this.sov.fif_query_len = q.chars().count();
@@ -189,7 +189,7 @@ impl RootView {
         if self.sov.ws_open && self.sov.ws_input.is_none() {
             let input =
                 cx.new(|cx| InputState::new(window, cx).placeholder("Go to symbol in workspace…"));
-            window.focus(&input.read(cx).focus_handle(cx));
+            window.focus(&input.read(cx).focus_handle(cx), cx);
             self.sov.ws_sub = Some(cx.subscribe(&input, |this, entity, _: &InputEvent, cx| {
                 let q = entity.read(cx).value().to_string();
                 this.sov.ws_query_len = q.chars().count();
@@ -226,24 +226,24 @@ impl RootView {
                 _ => None,
             };
             if let Some(input) = target {
-                input.update(cx, |st, cx| st.set_value(text, window, cx));
+                crate::state::input_value::set_value_emit(&input, text, window, cx);
             }
         }
         // Модалка: автофокус Confirm при открытии и возврат фокуса при
         // закрытии (`ConfirmModal.tsx:46-56`)
         if self.modal.is_some() {
             if self.modal_autofocus_pending
-                && crate::ui::focus_ring::focus_id("modal-confirm", window)
+                && crate::ui::focus_ring::focus_id("modal-confirm", window, cx)
             {
                 self.modal_autofocus_pending = false;
             }
         } else if let Some(back) = self.modal_focus_return.take() {
-            crate::ui::focus_ring::focus_id(&back, window);
+            crate::ui::focus_ring::focus_id(&back, window, cx);
         }
         if std::mem::take(&mut self.probe_editor_find)
             && let Some(tab) = self.ed.editor_tabs.get(self.ed.editor_active)
         {
-            window.focus(&tab.input.read(cx).focus_handle(cx));
+            window.focus(&tab.input.read(cx).focus_handle(cx), cx);
             window.dispatch_action(Box::new(gpui_component::input::Search), cx);
         }
     }
