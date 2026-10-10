@@ -4,6 +4,7 @@ mod line;
 mod line_layout;
 mod line_wrapper;
 mod measure;
+mod shaping;
 
 pub use font_fallbacks::*;
 pub use font_features::*;
@@ -463,6 +464,7 @@ impl TextSystem {
                     len: buffer.len(),
                     font_id,
                     font_size,
+                    break_ligatures: true,
                 }],
             )
             .width
@@ -625,9 +627,10 @@ impl TextSystem {
 }
 
 /// The GPUI text layout subsystem.
-#[derive(Deref)]
+#[derive(Clone, Deref)]
 pub struct WindowTextSystem {
-    line_layout_cache: LineLayoutCache,
+    line_layout_cache: Arc<LineLayoutCache>,
+    break_ligatures: bool,
     #[deref]
     text_system: Arc<TextSystem>,
 }
@@ -636,10 +639,11 @@ impl WindowTextSystem {
     /// Create a new WindowTextSystem with the given TextSystem.
     pub fn new(text_system: Arc<TextSystem>) -> Self {
         Self {
-            line_layout_cache: LineLayoutCache::new(
+            line_layout_cache: Arc::new(LineLayoutCache::new(
                 text_system.platform_text_system.clone(),
                 text_system.font_generation.clone(),
-            ),
+            )),
+            break_ligatures: true,
             text_system,
         }
     }
@@ -981,7 +985,7 @@ impl WindowTextSystem {
                 if let Some(font_run) = font_runs.last_mut()
                     && font_id == font_run.font_id
                     && font_run.font_size == run_size
-                    && !decoration_changed
+                    && (!self.break_ligatures || !decoration_changed)
                 {
                     font_run.len += run_len_within_line;
                 } else {
@@ -989,6 +993,7 @@ impl WindowTextSystem {
                         len: run_len_within_line,
                         font_id,
                         font_size: run_size,
+                        break_ligatures: self.break_ligatures,
                     });
                 }
 
@@ -1091,29 +1096,7 @@ impl WindowTextSystem {
         let mut font_runs = self.font_runs_pool.lock().pop().unwrap_or_default();
         font_runs.clear();
 
-        for run in runs.iter() {
-            let run_size = run.font_size.unwrap_or(font_size);
-            // KaminIDE patch: шрифт прогона разрешается ДО сравнения — прежде
-            // сравнивался `last_font` с самим собой, и после первого прогона
-            // все сливались в один независимо от семейства/веса/курсива
-            // (`abc<b>def</b>ghi` набирался одним начертанием по всему корпусу).
-            // Прогоны одного шрифта и кегля НЕ рвутся по цвету/подчёркиванию:
-            // декорации красятся по `TextRun`, а лишняя граница диапазона в
-            // DirectWrite ломает кернинг и лигатуры через `<span>`.
-            let font_id = self.resolve_font(&run.font);
-            if let Some(font_run) = font_runs.last_mut()
-                && font_run.font_id == font_id
-                && font_run.font_size == run_size
-            {
-                font_run.len += run.len;
-            } else {
-                font_runs.push(FontRun {
-                    len: run.len,
-                    font_id,
-                    font_size: run_size,
-                });
-            }
-        }
+        self.fill_font_runs(runs, font_size, &mut font_runs);
 
         // KaminIDE patch: неразрывный дефис (U+2011) без своего глифа в шрифте
         // прогона набирается глифом дефиса U+2010 того же шрифта — так делает
@@ -1180,6 +1163,7 @@ impl WindowTextSystem {
                     len: buffer.len(),
                     font_id,
                     font_size,
+                    break_ligatures: true,
                 }],
                 None,
             )
@@ -1210,25 +1194,7 @@ impl WindowTextSystem {
         let mut font_runs = self.font_runs_pool.lock().pop().unwrap_or_default();
         font_runs.clear();
 
-        for run in runs.iter() {
-            // KaminIDE patch: то же слияние прогонов, что в `layout_line_spaced`
-            // (свой кегль прогона, без разрыва по цвету/подчёркиванию), — иначе
-            // строка по хэшу набиралась бы иначе, чем та же строка по тексту.
-            let run_size = run.font_size.unwrap_or(font_size);
-            let font_id = self.resolve_font(&run.font);
-            if let Some(font_run) = font_runs.last_mut()
-                && font_run.font_id == font_id
-                && font_run.font_size == run_size
-            {
-                font_run.len += run.len;
-            } else {
-                font_runs.push(FontRun {
-                    len: run.len,
-                    font_id,
-                    font_size: run_size,
-                });
-            }
-        }
+        self.fill_font_runs(runs, font_size, &mut font_runs);
 
         let layout = self.line_layout_cache.try_layout_line_by_hash(
             text_hash,
@@ -1263,25 +1229,7 @@ impl WindowTextSystem {
         let mut font_runs = self.font_runs_pool.lock().pop().unwrap_or_default();
         font_runs.clear();
 
-        for run in runs.iter() {
-            // KaminIDE patch: то же слияние прогонов, что в `layout_line_spaced`
-            // (свой кегль прогона, без разрыва по цвету/подчёркиванию), — иначе
-            // строка по хэшу набиралась бы иначе, чем та же строка по тексту.
-            let run_size = run.font_size.unwrap_or(font_size);
-            let font_id = self.resolve_font(&run.font);
-            if let Some(font_run) = font_runs.last_mut()
-                && font_run.font_id == font_id
-                && font_run.font_size == run_size
-            {
-                font_run.len += run.len;
-            } else {
-                font_runs.push(FontRun {
-                    len: run.len,
-                    font_id,
-                    font_size: run_size,
-                });
-            }
-        }
+        self.fill_font_runs(runs, font_size, &mut font_runs);
 
         let layout = self.line_layout_cache.layout_line_by_hash(
             text_hash,

@@ -22,13 +22,18 @@ impl Paragraph {
         self.style_marker_run(mark, run);
         let run = run.clone();
         if self.is_block_mark(mark) || self.overflow_marker.as_deref() != Some(mark) {
-            return vec![window.text_system().shape_line_spaced(
-                SharedString::from(mark.to_string()),
-                self.font_size,
-                &[run],
-                None,
-                self.letter_spacing,
-            )];
+            return vec![
+                window
+                    .text_system()
+                    .with_ligature_breaking(false)
+                    .shape_line_spaced(
+                        SharedString::from(mark.to_string()),
+                        self.font_size,
+                        &[run],
+                        None,
+                        self.letter_spacing,
+                    ),
+            ];
         }
         // CSS Overflow 4 §5.1: the anonymous isolate inherits the bidi
         // paragraph's direction; its first strong character cannot choose it.
@@ -49,13 +54,18 @@ impl Paragraph {
         };
         let (levels, visual) = info.visual_runs(paragraph, 0..mark.len());
         if visual.len() == 1 && !levels[visual[0].start].is_rtl() {
-            return vec![window.text_system().shape_line_spaced(
-                SharedString::from(mark.to_string()),
-                self.font_size,
-                &[run],
-                None,
-                self.letter_spacing,
-            )];
+            return vec![
+                window
+                    .text_system()
+                    .with_ligature_breaking(false)
+                    .shape_line_spaced(
+                        SharedString::from(mark.to_string()),
+                        self.font_size,
+                        &[run],
+                        None,
+                        self.letter_spacing,
+                    ),
+            ];
         }
         visual
             .into_iter()
@@ -66,22 +76,17 @@ impl Paragraph {
                 if levels[range.start].is_rtl() {
                     let mut runs = [run];
                     let text = controlled_shape::text(body, &mut runs, true);
-                    window.text_system().shape_line_rtl(
-                        text,
-                        self.font_size,
-                        &runs,
-                        self.letter_spacing,
-                    )
+                    window
+                        .text_system()
+                        .with_ligature_breaking(false)
+                        .shape_line_rtl(text, self.font_size, &runs, self.letter_spacing)
                 } else {
                     let mut runs = [run];
                     let text = controlled_shape::text(body, &mut runs, false);
-                    window.text_system().shape_line_spaced(
-                        text,
-                        self.font_size,
-                        &runs,
-                        None,
-                        self.letter_spacing,
-                    )
+                    window
+                        .text_system()
+                        .with_ligature_breaking(false)
+                        .shape_line_spaced(text, self.font_size, &runs, None, self.letter_spacing)
                 }
             })
             .collect()

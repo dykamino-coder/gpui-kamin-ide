@@ -729,12 +729,7 @@ impl DirectWriteState {
             let mut folded: Vec<(usize, usize, FontId)> = Vec::new();
             let mut applied = font_runs[0].font_id;
             let mut applied_size = font_runs[0].font_size;
-            let mut first_run = true;
-            for run in font_runs {
-                if first_run {
-                    first_run = false;
-                    continue;
-                }
+            for (run_index, run) in font_runs.iter().enumerate().skip(1) {
                 let font_info = &self.fonts[run.font_id.0];
                 let current_text = text
                     .get(utf8_offset..(utf8_offset + run.len))
@@ -743,7 +738,8 @@ impl DirectWriteState {
                 utf8_offset += run.len;
                 let current_text_utf16_length = current_text.encode_utf16().count() as u32;
                 let base = &self.fonts[applied.0];
-                if run.font_size == applied_size
+                if !run.break_ligatures
+                    && run.font_size == applied_size
                     && font_info.font_collection == base.font_collection
                     && font_info.face_key == base.face_key
                     && font_info.features_key == base.features_key
@@ -765,10 +761,14 @@ impl DirectWriteState {
                 utf16_offset += current_text_utf16_length;
                 text_layout.SetFontCollection(collection, text_range)?;
                 text_layout.SetFontFamilyName(&font_info.font_family_h, text_range)?;
-                // KaminIDE patch: кегль прогона (`font-size` у куска строки).
-                // upstream `break_ligatures` (кегль `next_up` через прогон) не
-                // берём: наши прогоны намеренно шейпятся через границу коробок.
-                text_layout.SetFontSize(run.font_size.as_f32(), text_range)?;
+                // Upstream's alternating nudge prevents ligatures spanning style runs.
+                // Browser callers opt out to retain CSS boundary shaping (§7.4).
+                let size = if run.break_ligatures && run_index % 2 == 1 {
+                    run.font_size.as_f32().next_up()
+                } else {
+                    run.font_size.as_f32()
+                };
+                text_layout.SetFontSize(size, text_range)?;
                 text_layout.SetFontStyle(font_info.font_face.GetStyle(), text_range)?;
                 text_layout.SetFontWeight(font_info.font_face.GetWeight(), text_range)?;
                 text_layout.SetTypography(&font_info.features, text_range)?;

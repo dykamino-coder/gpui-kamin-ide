@@ -67,12 +67,15 @@ impl Paragraph {
                 underline: None,
                 strikethrough: None,
             };
-            let mark = window.text_system().shape_line(
-                SharedString::from(span.mark.clone()),
-                px(span.size),
-                &[mark_run],
-                None,
-            );
+            let mark = window
+                .text_system()
+                .with_ligature_breaking(false)
+                .shape_line(
+                    SharedString::from(span.mark.clone()),
+                    px(span.size),
+                    &[mark_run],
+                    None,
+                );
             // Та же привязка базовой линии к точке устройства, что у строки
             // (`text_raster_origin`), но от высоты строки знака: like an
             // `<rt>` paragraph's glyphs, the mark keeps the opaque ancestor

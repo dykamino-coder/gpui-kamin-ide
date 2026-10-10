@@ -350,13 +350,16 @@ impl Paragraph {
                 .map(|i| start + i)
                 .unwrap_or(self.text.len());
             let runs = slice_runs(&self.runs, &(start..end));
-            let layout = window.text_system().layout_line_spaced(
-                &self.text[start..end],
-                self.font_size,
-                &runs,
-                None,
-                self.letter_spacing,
-            );
+            let layout = window
+                .text_system()
+                .with_ligature_breaking(false)
+                .layout_line_spaced(
+                    &self.text[start..end],
+                    self.font_size,
+                    &runs,
+                    None,
+                    self.letter_spacing,
+                );
             // Ширина куска вместе с трекингом кусков и `word-spacing`: набор
             // их не знает, `x_at` добавляет их сам — и позиция табуляции за
             // куском обязана их учесть (`word-spacing-characters-001`:

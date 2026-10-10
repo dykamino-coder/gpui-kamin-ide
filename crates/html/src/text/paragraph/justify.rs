@@ -413,10 +413,12 @@ impl Paragraph {
                 let body = controlled_shape::text(&slice, &mut runs, true);
                 window
                     .text_system()
+                    .with_ligature_breaking(false)
                     .shape_line_rtl(body, self.font_size, &runs, spacing)
             } else {
                 window
                     .text_system()
+                    .with_ligature_breaking(false)
                     .shape_line_spaced(slice, self.font_size, &runs, None, spacing)
             };
             let logical = (self.x_at(segs, word.range.start, Edge::Start) - from)
@@ -536,13 +538,16 @@ impl Paragraph {
                         .find(|(r, _)| r.contains(&gap.start))
                         .map(|(_, v)| *v)
                         .unwrap_or(self.letter_spacing);
-                    let mut gap_shaped = window.text_system().shape_line_spaced(
-                        gap_text.clone(),
-                        self.font_size,
-                        &gap_runs,
-                        None,
-                        spacing,
-                    );
+                    let mut gap_shaped = window
+                        .text_system()
+                        .with_ligature_breaking(false)
+                        .shape_line_spaced(
+                            gap_text.clone(),
+                            self.font_size,
+                            &gap_runs,
+                            None,
+                            spacing,
+                        );
                     // Ширина промежутка — по РАЗЛОЖЕННОЙ строке: там в нём уже
                     // лежит `word-spacing`, а отдельный набор пробела его не
                     // знает, и полоса `<span>` рвалась на каждом растянутом
@@ -552,13 +557,16 @@ impl Paragraph {
                         - self.x_at(segs, gap.start, Edge::Start);
                     let n = gap_text.chars().count().max(1) as f32;
                     if (want - gap_shaped.width).abs() > px(0.5) {
-                        gap_shaped = window.text_system().shape_line_spaced(
-                            gap_text,
-                            self.font_size,
-                            &gap_runs,
-                            None,
-                            spacing + (want - gap_shaped.width) / n,
-                        );
+                        gap_shaped = window
+                            .text_system()
+                            .with_ligature_breaking(false)
+                            .shape_line_spaced(
+                                gap_text,
+                                self.font_size,
+                                &gap_runs,
+                                None,
+                                spacing + (want - gap_shaped.width) / n,
+                            );
                     }
                     let gap_x = bounds.origin.x
                         + dx
@@ -614,6 +622,7 @@ impl Paragraph {
         let runs = slice_runs(&self.runs, &word.range);
         window
             .text_system()
+            .with_ligature_breaking(false)
             .shape_line_spaced(
                 slice,
                 self.font_size,
