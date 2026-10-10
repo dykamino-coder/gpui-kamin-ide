@@ -9,6 +9,7 @@ import crypto from 'crypto'
 import fs from 'fs'
 import fsp from 'fs/promises'
 import path from 'path'
+import { subagentTranscriptPath } from './subagent-transcript-path'
 import { SessionAdmissionError } from './session-admission'
 import { rememberModelSelection } from './model-selection'
 import { waitForDrain, type DrainOutcome } from './download-backpressure'
@@ -875,7 +876,10 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             )
             return
           }
-          const filePath = dlSession.jsonlWatcher.getFilePath()
+          const mainPath = dlSession.jsonlWatcher.getFilePath()
+          const filePath = msg.agentId
+            ? await subagentTranscriptPath(mainPath, msg.agentId, dlSession.conversationAliases)
+            : mainPath
           if (!filePath) {
             ws.send(
               JSON.stringify({

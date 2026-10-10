@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { formatIncidentLine, normalizeConnectionTransition, normalizeRendererSample } from "./incident-diagnostics"
 
@@ -69,5 +69,24 @@ describe("incident diagnostics", () => {
 
     expect(record.cause).toBe("network")
     expect(JSON.stringify(record)).not.toContain("private close reason")
+  })
+
+  describe("agent retention counters (INC-2026-0008 debug gate)", () => {
+    afterEach(() => { vi.unstubAllEnvs() })
+    const raw = { role: "tools", agentRetention: { slots: 3, storedEntries: 1800.7, uuidIndex: -1, closedTabSlots: "x", tab: "secret-tab" } }
+
+    it("are absent without the debug acceptance switch", () => {
+      vi.stubEnv("KAMIN_DEBUG_AGENT_RETENTION", "")
+      expect(normalizeRendererSample(raw)).not.toHaveProperty("agentRetention")
+      vi.stubEnv("KAMIN_DEBUG_AGENT_RETENTION", "true")
+      expect(normalizeRendererSample(raw)).not.toHaveProperty("agentRetention")
+    })
+
+    it("are bounded counts only when KAMIN_DEBUG_AGENT_RETENTION=1", () => {
+      vi.stubEnv("KAMIN_DEBUG_AGENT_RETENTION", "1")
+      const record = normalizeRendererSample(raw)
+      expect(record.agentRetention).toEqual({ slots: 3, storedEntries: 1800, uuidIndex: 0, closedTabSlots: 0 })
+      expect(formatIncidentLine(record)).not.toContain("secret-tab")
+    })
   })
 })

@@ -42423,10 +42423,11 @@ var ConnectionManager = class _ConnectionManager {
   loadSegment(fromTs, toTs) {
     this.sendRaw({ type: "jsonl:segment-request", fromTs, toTs });
   }
-  requestJsonlDownload() {
+  requestJsonlDownload(agentId) {
+    if (this._downloadResolve) return Promise.resolve({ content: null, fileName: null, error: "Another transcript download is already in progress" });
     return new Promise((resolve) => {
       this._downloadResolve = resolve;
-      this.sendRaw({ type: "jsonl:download-request" });
+      this.sendRaw({ type: "jsonl:download-request", agentId });
       if (this._downloadTimeout) clearTimeout(this._downloadTimeout);
       this._downloadTimeout = setTimeout(() => {
         this._downloadTimeout = null;
@@ -43985,7 +43986,7 @@ function registerSessionsIPC(ctx) {
     const conn = tm()?.getConnection(tabId);
     return conn && typeof toolName === "string" ? conn.toolUsageEntries(toolName) : [];
   });
-  ipcMain.handle("jsonl:download", async (_event, tabId) => {
+  ipcMain.handle("jsonl:download", async (_event, tabId, agentId) => {
     const conn = tm()?.getConnection(tabId);
     if (!conn) return { success: false, error: "No connection" };
     const { dialog: dialog2 } = await Promise.resolve().then(() => (init_host_compat(), host_compat_exports));
@@ -43993,11 +43994,11 @@ function registerSessionsIPC(ctx) {
     if (!win) return { success: false, error: "No main window" };
     const convId = conn.getConversationId();
     const { canceled, filePath } = await dialog2.showSaveDialog(win, {
-      defaultPath: convId ? `${convId}.jsonl` : "session.jsonl",
+      defaultPath: agentId && /^[a-zA-Z0-9_-]{1,128}$/.test(agentId) ? `${agentId}.jsonl` : convId ? `${convId}.jsonl` : "session.jsonl",
       filters: [{ name: "JSONL", extensions: ["jsonl"] }]
     });
     if (canceled || !filePath) return { success: false, error: "Cancelled" };
-    const result = await conn.requestJsonlDownload();
+    const result = await conn.requestJsonlDownload(agentId);
     if (result.error || !result.content) {
       return { success: false, error: result.error || "No content" };
     }
@@ -50853,8 +50854,19 @@ function normalizeRendererSample(raw) {
     activeEntries: boundedCount(sample.activeEntries),
     storeWindow: boundedCount(sample.storeWindow),
     scrollUpMax: boundedCount(sample.scrollUpMax),
-    windowState
+    windowState,
+    ...debugAgentRetention(sample.agentRetention)
   };
+}
+function debugAgentRetention(raw) {
+  if (process.env.KAMIN_DEBUG_AGENT_RETENTION !== "1" || !raw || typeof raw !== "object") return {};
+  const r = raw;
+  return { agentRetention: {
+    slots: boundedCount(r.slots),
+    storedEntries: boundedCount(r.storedEntries),
+    uuidIndex: boundedCount(r.uuidIndex),
+    closedTabSlots: boundedCount(r.closedTabSlots)
+  } };
 }
 function formatIncidentLine(record) {
   return `[incident] ${JSON.stringify({

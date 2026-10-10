@@ -55,6 +55,7 @@ import {
  *  the conversation (the OOM/freeze root — see jsonl-project.ts). */
 export type WebviewRole = 'chat' | 'tools' | 'customize'
 
+
 // МОДУЛЬНЫЙ уровень, не тело effect: ре-подписка на реконнекте (deps
 // reconnectNonce) пересоздавала эти структуры — hook-driven таб снова
 // отдавался OSC-эвристике, и Stop мог флипнуться в Send посреди хода сразу
