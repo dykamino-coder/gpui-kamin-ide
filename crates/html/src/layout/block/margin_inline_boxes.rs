@@ -18,11 +18,18 @@ pub(super) fn prepare(nodes: &mut [Node]) {
         let Node::Element(element) = node else {
             continue;
         };
-        // A multicol container's content is fragmented from its original
-        // box tree (`shape_full`/column planning); splitting it here would
-        // give the painted boxes a different structure than the planned
-        // fragments (block-in-inline-012, block-max-height-004).
-        if replaced_tag(element) || multicol_container(&element.style) {
+        // The column stack plans each in-flow child of a multicol container
+        // as a separate fragmentable box and does not model a float of one
+        // child intruding into the lines of the next. Splitting an inline
+        // around a block that carries a float would move the float and the
+        // lines that wrap around it into different stack children
+        // (block-in-inline-012), so such content keeps its original tree.
+        // Without floats the split is needed: margins of the hoisted block
+        // adjoin the column break and are truncated there (css-break-3 §5.2,
+        // margin-at-break-003…005).
+        if replaced_tag(element)
+            || (multicol_container(&element.style) && floats_inside(&element.children))
+        {
             continue;
         }
         prepare(&mut element.children);
@@ -60,5 +67,13 @@ fn eligible(nodes: &[Node]) -> bool {
             inline_floats::transparent(child) && eligible(&child.children)
         }
         _ => true,
+    })
+}
+
+/// Whether any in-flow descendant of `nodes` is floated.
+fn floats_inside(nodes: &[Node]) -> bool {
+    nodes.iter().any(|node| match node {
+        Node::Element(e) => e.style.float.is_some_and(|f| f != 0) || floats_inside(&e.children),
+        Node::Text(_) => false,
     })
 }
