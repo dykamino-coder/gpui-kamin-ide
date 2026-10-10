@@ -90,12 +90,19 @@ export function truncateMcpResult(result: Record<string, unknown>, toolName: str
   return result
 }
 
-function logMcpRequest(session: PtySession, method: string, status: 'ok' | 'error', error?: string, durationMs?: number): void {
+function logMcpRequest(
+  session: PtySession,
+  method: string,
+  status: 'ok' | 'error',
+  error?: string,
+  durationMs?: number,
+  stickyError = true,
+): void {
   session.mcpLog.push({ ts: Date.now(), method, status, error, durationMs })
   if (session.mcpLog.length > MCP_LOG_MAX) {
     session.mcpLog = session.mcpLog.slice(-MCP_LOG_MAX)
   }
-  if (status === 'error' && error) {
+  if (status === 'error' && error && stickyError) {
     session.mcpLastError = error
   }
 }
@@ -112,8 +119,7 @@ function logMcpRequest(session: PtySession, method: string, status: 'ok' | 'erro
  *  automatically appears here, and `session-core.ts:DISALLOWED_BUILTIN_TOOLS`
  *  picks it up to deny the matching CLI native (so the model uses our MCP
  *  version instead of the CLI's own implementation). */
-export const MCP_TOOL_NAMES: readonly string[] = MCP_TOOLS.map(t => t.name)
-
+export const MCP_TOOL_NAMES: readonly string[] = MCP_TOOLS.map((t) => t.name)
 
 // ---------------------------------------------------------------------------
 // JSON-RPC helpers
@@ -240,10 +246,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
   // Validate session exists
   const session = getSession(sessionId)
   if (!session) {
-    return c.json(
-      jsonRpcError(undefined, -32000, `Session ${sessionId} not found`),
-      404
-    )
+    return c.json(jsonRpcError(undefined, -32000, `Session ${sessionId} not found`), 404)
   }
 
   // Validate MCP auth token — prevents external access to tool endpoints.
@@ -296,10 +299,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
    * `StreamableHTTPClientTransport` parses this exactly the same way as a
    * plain JSON response from the caller's perspective.
    */
-  function sseStreamResponse(
-    jsonRpcId: string | number | null,
-    work: () => Promise<unknown>,
-  ): Response {
+  function sseStreamResponse(jsonRpcId: string | number | null, work: () => Promise<unknown>): Response {
     const encoder = new TextEncoder()
     // 25s < CLI's 60s fetch timeout, and well under any commonly seen corp
     // proxy idle-drop window. Spec-allowed `:`-comment lines are ignored by
@@ -309,7 +309,12 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
     // Hoisted so cancel() (client disconnect) can stop the keepalive too.
     let closed = false
     let heartbeat: ReturnType<typeof setInterval> | null = null
-    const clearHeartbeat = (): void => { if (heartbeat) { clearInterval(heartbeat); heartbeat = null } }
+    const clearHeartbeat = (): void => {
+      if (heartbeat) {
+        clearInterval(heartbeat)
+        heartbeat = null
+      }
+    }
 
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
@@ -318,13 +323,21 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
           // A throw here means the consumer went away between our writes —
           // mark closed AND kill the keepalive so it doesn't fire uselessly for
           // the rest of a long (up-to-30-min) tool run.
-          try { controller.enqueue(bytes) }
-          catch { closed = true; clearHeartbeat() }
+          try {
+            controller.enqueue(bytes)
+          } catch {
+            closed = true
+            clearHeartbeat()
+          }
         }
         const safeClose = (): void => {
           if (closed) return
           closed = true
-          try { controller.close() } catch { /* ignore */ }
+          try {
+            controller.close()
+          } catch {
+            /* ignore */
+          }
         }
 
         // Force headers + first byte onto the wire immediately so the
@@ -366,14 +379,25 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache, no-transform',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no',  // disable nginx/proxy buffering if present
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no', // disable nginx/proxy buffering if present
         'Mcp-Session-Id': sid,
       },
     })
   }
 
   switch (body.method) {
+    case 'server/discover': {
+      // Bridge uses the legacy initialize handshake. A discovery success would
+      // identify it as a modern peer to CLI 2.1.296. Keep the expected fallback
+      // signal (HTTP 400 / -32601), but don't present this probe as a failure of
+      // the session. Other errors remain sticky, including ones predating it.
+      // https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http#backward-compatibility
+      const message = 'Method not found: server/discover'
+      logMcpRequest(session, body.method, 'error', message, Date.now() - reqStart, false)
+      return jsonResponse(jsonRpcError(body.id, -32601, message), 400)
+    }
+
     case 'initialize': {
       // Read client's requested protocol version
       const params = body.params as { protocolVersion?: string } | undefined
@@ -391,19 +415,20 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
         lastActivityAt: session.lastActivityAt.toISOString(),
       })
 
-      return jsonResponse(jsonRpcResponse(body.id, {
-        protocolVersion: clientVersion,
-        capabilities: {
-          tools: {},
-          resources: {},
-          prompts: {},
-          elicitation: {},
-        },
-        serverInfo: {
-          name: 'open-claude-bridge-user-tools',
-          version: '4.0.0',
-        },
-        instructions: `This MCP server provides tools that execute on the user's local machine. All file, shell, and search operations run locally, not on the server.
+      return jsonResponse(
+        jsonRpcResponse(body.id, {
+          protocolVersion: clientVersion,
+          capabilities: {
+            tools: {},
+            resources: {},
+            prompts: {},
+            elicitation: {},
+          },
+          serverInfo: {
+            name: 'open-claude-bridge-user-tools',
+            version: '4.0.0',
+          },
+          instructions: `This MCP server provides tools that execute on the user's local machine. All file, shell, and search operations run locally, not on the server.
 
 Key tool capabilities:
 - **Read**: Reads any file. Supports images (PNG, JPG, GIF, WebP) — image contents are presented visually. Also reads PDFs (use pages parameter for large files) and Jupyter notebooks (.ipynb). ALWAYS use Read to view screenshots or image files the user mentions.
@@ -419,7 +444,8 @@ Key tool capabilities:
 - **NotebookEdit**: Edit Jupyter notebook cells. Read the notebook first.
 - **EnterWorktree**: Create isolated git worktree (only when user explicitly asks).
 - **AskUserQuestion**: ALWAYS use this tool to ask the user questions — shows an interactive widget with clickable buttons. NEVER print questions as plain text.`,
-      }))
+        }),
+      )
     }
 
     case 'notifications/initialized':
@@ -434,10 +460,10 @@ Key tool capabilities:
 
     case 'tools/list': {
       // Merge built-in MCP_TOOLS with any external tools registered via WS
-      const builtinNames = new Set(MCP_TOOLS.map(t => t.name))
+      const builtinNames = new Set(MCP_TOOLS.map((t) => t.name))
       const externalTools = session.registeredTools
-        .filter(t => !builtinNames.has(t.name))
-        .map(t => ({
+        .filter((t) => !builtinNames.has(t.name))
+        .map((t) => ({
           name: t.name,
           description: t.description,
           inputSchema: t.inputSchema,
@@ -445,10 +471,16 @@ Key tool capabilities:
       const toolList = [...MCP_TOOLS, ...externalTools]
 
       logMcpRequest(session, 'tools/list', 'ok', undefined, Date.now() - reqStart)
-      debugLog('tools/list response', { builtinCount: MCP_TOOLS.length, externalCount: externalTools.length, total: toolList.length })
-      return jsonResponse(jsonRpcResponse(body.id, {
-        tools: toolList,
-      }))
+      debugLog('tools/list response', {
+        builtinCount: MCP_TOOLS.length,
+        externalCount: externalTools.length,
+        total: toolList.length,
+      })
+      return jsonResponse(
+        jsonRpcResponse(body.id, {
+          tools: toolList,
+        }),
+      )
     }
 
     case 'tools/call': {
@@ -462,8 +494,8 @@ Key tool capabilities:
       }
 
       // Check tool exists in built-in tools OR registered external tools
-      const isBuiltin = MCP_TOOLS.some(t => t.name === toolName)
-      const isExternal = session.registeredTools.some(t => t.name === toolName)
+      const isBuiltin = MCP_TOOLS.some((t) => t.name === toolName)
+      const isExternal = session.registeredTools.some((t) => t.name === toolName)
       if (!isBuiltin && !isExternal) {
         logMcpRequest(session, `tools/call:${toolName}`, 'error', `Unknown tool: ${toolName}`)
         return jsonResponse(jsonRpcError(body.id, -32602, `Unknown tool: ${toolName}`), 400)
@@ -483,18 +515,26 @@ Key tool capabilities:
 
           // If the client host returned a properly-formatted MCP result (with content array),
           // pass it through directly. This preserves image content blocks and other types.
-          if (result && typeof result === 'object' && !Array.isArray(result) &&
-              'content' in (result as Record<string, unknown>) &&
-              Array.isArray((result as Record<string, unknown>).content)) {
+          if (
+            result &&
+            typeof result === 'object' &&
+            !Array.isArray(result) &&
+            'content' in (result as Record<string, unknown>) &&
+            Array.isArray((result as Record<string, unknown>).content)
+          ) {
             return jsonRpcResponse(body.id, truncateMcpResult(result as Record<string, unknown>, toolName))
           }
 
           // Otherwise wrap raw result in text
-          return jsonRpcResponse(body.id, truncateMcpResult({
-            content: [
-              { type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result) },
-            ],
-          }, toolName))
+          return jsonRpcResponse(
+            body.id,
+            truncateMcpResult(
+              {
+                content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result) }],
+              },
+              toolName,
+            ),
+          )
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err)
           errorLog('MCP tool call failed', { sessionId, toolName, error: errMsg })
@@ -502,9 +542,7 @@ Key tool capabilities:
 
           // Return error as tool result (not JSON-RPC error) so Claude can see it
           return jsonRpcResponse(body.id, {
-            content: [
-              { type: 'text', text: `Error: ${errMsg}` },
-            ],
+            content: [{ type: 'text', text: `Error: ${errMsg}` }],
             isError: true,
           })
         }
@@ -515,10 +553,12 @@ Key tool capabilities:
     // Elicitation — interactive user prompts (AskUserQuestion, ExitPlanMode)
     // -----------------------------------------------------------------
     case 'elicitation/create': {
-      const params = body.params as {
-        message?: string
-        requestedSchema?: Record<string, unknown>
-      } | undefined
+      const params = body.params as
+        | {
+            message?: string
+            requestedSchema?: Record<string, unknown>
+          }
+        | undefined
 
       const message = params?.message || ''
       const requestedSchema = params?.requestedSchema
@@ -547,8 +587,12 @@ Key tool capabilities:
       // a re-send on reattach can still find it (a momentary not-OPEN socket
       // during a reconnect must NOT silently lose the question, the old bug).
       session.pendingElicitations.set(requestId, {
-        resolve: () => { /* unused in deferred flow */ },
-        reject: () => { /* unused in deferred flow */ },
+        resolve: () => {
+          /* unused in deferred flow */
+        },
+        reject: () => {
+          /* unused in deferred flow */
+        },
         toolName: 'elicitation',
         message,
         requestedSchema,
@@ -569,45 +613,64 @@ Key tool capabilities:
       eventBus.emit('elicitation:pending', { sessionId, requestId, message })
 
       logMcpRequest(session, 'elicitation/create', 'ok', undefined, Date.now() - reqStart)
-      return jsonResponse(jsonRpcResponse(body.id, {
-        action: 'accept',
-        content: {
-          _deferred: true,
-          note: 'User is still answering the interactive question. Do not act yet — their reply will arrive as the next user message.',
-        },
-      }))
+      return jsonResponse(
+        jsonRpcResponse(body.id, {
+          action: 'accept',
+          content: {
+            _deferred: true,
+            note: 'User is still answering the interactive question. Do not act yet — their reply will arrive as the next user message.',
+          },
+        }),
+      )
     }
 
     case 'resources/list': {
       logMcpRequest(session, 'resources/list', 'ok')
-      return jsonResponse(jsonRpcResponse(body.id, {
-        resources: session.registeredResources.map(({ uri, name, description, mimeType }) => ({ uri, name, description, mimeType })),
-      }))
+      return jsonResponse(
+        jsonRpcResponse(body.id, {
+          resources: session.registeredResources.map(({ uri, name, description, mimeType }) => ({
+            uri,
+            name,
+            description,
+            mimeType,
+          })),
+        }),
+      )
     }
 
     case 'resources/templates/list': {
       logMcpRequest(session, 'resources/templates/list', 'ok')
-      return jsonResponse(jsonRpcResponse(body.id, {
-        resourceTemplates: session.registeredResourceTemplates.map(({ uriTemplate, name, description, mimeType }) => ({
-          uriTemplate, name, description, mimeType,
-        })),
-      }))
+      return jsonResponse(
+        jsonRpcResponse(body.id, {
+          resourceTemplates: session.registeredResourceTemplates.map(
+            ({ uriTemplate, name, description, mimeType }) => ({
+              uriTemplate,
+              name,
+              description,
+              mimeType,
+            }),
+          ),
+        }),
+      )
     }
 
     case 'resources/read': {
       const params = body.params as { uri?: string } | undefined
-      const resource = session.registeredResources.find(item => item.uri === params?.uri)
-      const template = !resource && typeof params?.uri === 'string'
-        ? session.registeredResourceTemplates.find(item => matchesResourceTemplate(item.uriTemplate, params.uri!))
-        : undefined
+      const resource = session.registeredResources.find((item) => item.uri === params?.uri)
+      const template =
+        !resource && typeof params?.uri === 'string'
+          ? session.registeredResourceTemplates.find((item) => matchesResourceTemplate(item.uriTemplate, params.uri!))
+          : undefined
       if (!resource && !template) {
         logMcpRequest(session, 'resources/read', 'error', 'resource not found')
         return jsonResponse(jsonRpcError(body.id, -32002, `Resource not found: ${params?.uri ?? '(no uri)'}`))
       }
       try {
-        const result = await sendMcpCall(sessionId, '__bridge_mcp_resource_read', resource
-          ? { uri: resource.uri }
-          : { uri: params!.uri!, serverId: template!.serverId })
+        const result = await sendMcpCall(
+          sessionId,
+          '__bridge_mcp_resource_read',
+          resource ? { uri: resource.uri } : { uri: params!.uri!, serverId: template!.serverId },
+        )
         if (!result || typeof result !== 'object' || !Array.isArray((result as { contents?: unknown[] }).contents)) {
           throw new Error('External MCP server returned an invalid resources/read result')
         }
@@ -622,15 +685,22 @@ Key tool capabilities:
 
     case 'prompts/list': {
       logMcpRequest(session, 'prompts/list', 'ok')
-      return jsonResponse(jsonRpcResponse(body.id, {
-        prompts: session.registeredPrompts.map(({ name, description, arguments: args }) => ({ name, description, arguments: args })),
-      }))
+      return jsonResponse(
+        jsonRpcResponse(body.id, {
+          prompts: session.registeredPrompts.map(({ name, description, arguments: args }) => ({
+            name,
+            description,
+            arguments: args,
+          })),
+        }),
+      )
     }
 
     case 'prompts/get': {
       const params = body.params as { name?: string; arguments?: Record<string, unknown> } | undefined
-      const prompt = session.registeredPrompts.find(item => item.name === params?.name)
-      if (!prompt) return jsonResponse(jsonRpcError(body.id, -32602, `Prompt not found: ${params?.name ?? '(no name)'}`))
+      const prompt = session.registeredPrompts.find((item) => item.name === params?.name)
+      if (!prompt)
+        return jsonResponse(jsonRpcError(body.id, -32602, `Prompt not found: ${params?.name ?? '(no name)'}`))
       try {
         const result = await sendMcpCall(sessionId, '__bridge_mcp_prompt_get', {
           name: prompt.name,
@@ -660,10 +730,7 @@ Key tool capabilities:
       }
       warnLog('Unknown MCP method', { method: body.method })
       logMcpRequest(session, body.method, 'error', `Method not found: ${body.method}`)
-      return jsonResponse(
-        jsonRpcError(body.id, -32601, `Method not found: ${body.method}`),
-        400
-      )
+      return jsonResponse(jsonRpcError(body.id, -32601, `Method not found: ${body.method}`), 400)
     }
   }
 }
