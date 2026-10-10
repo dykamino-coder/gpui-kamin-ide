@@ -91,6 +91,11 @@ pub(super) fn wrap_with_captions(
         // (§17.5.2), а в гибком контейнере отбирал растяжение
         // (`table-as-item-stretch-cross-size*`, `-flex-cross-size`).
         let mut outer = outer;
+        // CSS 2.1 §17.4: the table's margins are used on the table WRAPPER
+        // box, so captions sit inside them too (`list-style-applies-to-015`:
+        // a caption list item of a table with `margin-left: 1in`).
+        let margin = std::mem::take(&mut outer.style().margin);
+        wrap.style().margin = margin;
         if inherited.flex_item && !vertical {
             let s = outer.style();
             let grow = s.flex_grow.take();
