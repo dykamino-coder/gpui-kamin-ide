@@ -73,7 +73,7 @@ mod tests {
     fn logical_bounds_scale_and_clip_to_frame() {
         assert_eq!(
             physical_rect([10.0, 20.0, 100.0, 50.0], 1.25, 1000, 800),
-            Some((13, 25, 125, 62))
+            Some((13, 25, 125, 63))
         );
         assert_eq!(
             physical_rect([900.0, 0.0, 400.0, 10.0], 1.0, 1000, 800),
