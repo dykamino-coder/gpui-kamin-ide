@@ -90,7 +90,9 @@ try {
        port = $Port; warp_requested = [bool]$Warp; device_loss_supported_requested = [bool]$DeviceLoss;
        reduced_animations = [bool]$ReducedAnimations; software_cef = [bool]$SoftwareCef;
        started_utc = [DateTime]::UtcNow.ToString('o') } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'manifest.json')
-    $process = Start-Process -FilePath $appExe -WorkingDirectory $repo -PassThru -WindowStyle Hidden `
+    # This is the interactive acceptance GUI, not a background helper: Hidden
+    # also hides GPUI's first window and makes visible-loader acceptance fail.
+    $process = Start-Process -FilePath $appExe -WorkingDirectory $repo -PassThru -WindowStyle Normal `
         -RedirectStandardOutput (Join-Path $evidence 'stdout.log') -RedirectStandardError (Join-Path $evidence 'stderr.log')
     # Restore the launcher's process environment as soon as the child inherits it.
     foreach ($name in $savedEnv.Keys) { [Environment]::SetEnvironmentVariable($name, $savedEnv[$name], 'Process') }
