@@ -1,3 +1,4 @@
+import { agentIdentity } from './agents'
 import type { AgentInfo, AgentTreeState, TeamInfo } from './agents'
 
 /** One team as the Agents panel shows it on ONE side of the partition: only the
@@ -32,7 +33,7 @@ export function isActiveAgent(agent: AgentInfo, team?: Pick<TeamInfo, 'status'>)
 }
 
 /** Derive the partition from one snapshot: the live tree first, then the
- *  history of agents the tree already pruned. A name is counted once — the
+ *  history of agents the tree already pruned. A spawn identity is counted once — the
  *  tree record wins over history, so cleanup (which only moves a finished
  *  agent from the tree to history) never changes what the panel shows. */
 export function partitionAgents(tree: AgentTreeState | undefined, history: readonly AgentInfo[]): AgentPartition {
@@ -56,24 +57,24 @@ export function partitionAgents(tree: AgentTreeState | undefined, history: reado
   if (tree) {
     for (const team of tree.teams.values()) {
       for (const agent of team.agents.values()) {
-        if (seen.has(agent.name)) continue
-        seen.add(agent.name)
+        if (seen.has(agentIdentity(agent))) continue
+        seen.add(agentIdentity(agent))
         const side = isActiveAgent(agent, team) ? active : completed
         teamSide(team, side, side === active ? 'active' : 'completed').members.push(agent)
         side.count += 1
       }
     }
     for (const agent of tree.standaloneAgents.values()) {
-      if (seen.has(agent.name)) continue
-      seen.add(agent.name)
+      if (seen.has(agentIdentity(agent))) continue
+      seen.add(agentIdentity(agent))
       const side = isActiveAgent(agent) ? active : completed
       side.solo.push(agent)
       side.count += 1
     }
   }
   for (const agent of history) {
-    if (seen.has(agent.name)) continue
-    seen.add(agent.name)
+    if (seen.has(agentIdentity(agent))) continue
+    seen.add(agentIdentity(agent))
     // History only ever holds finished agents; a stale `running` record would
     // otherwise resurrect a row the tree already closed.
     if (agent.status === 'running') continue
