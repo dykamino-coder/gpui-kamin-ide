@@ -471,7 +471,7 @@ const CONSUMERS: &[&str] = &[
     include_str!("style/select/has.rs"),
     include_str!("style/select/matching.rs"),
     include_str!("animation/transition.rs"),
-    include_str!("anchor.rs"),
+    include_str!("layout/positioned/anchor/mod.rs"),
     include_str!("animation/motion/mod.rs"),
     include_str!("style/zoom.rs"),
     include_str!("render/blocks/flow.rs"),

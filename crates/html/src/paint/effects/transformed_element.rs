@@ -257,14 +257,14 @@ impl Element for Transformed {
             let sx = self.tr[0][0] + w * self.tr[0][1] + h * self.tr[0][2];
             let sy = self.tr[1][0] + w * self.tr[1][1] + h * self.tr[1][2];
             let [[a, b], [c, d]] = self.lin;
-            crate::anchor::tf_push([
+            crate::layout::positioned::anchor::tf_push([
                 [a, b, ox - a * ox - b * oy + sx],
                 [c, d, oy - c * ox - d * oy + sy],
             ]);
         }
         self.child.as_mut().unwrap().prepaint(window, cx);
         if flat {
-            crate::anchor::tf_pop();
+            crate::layout::positioned::anchor::tf_pop();
         }
     }
 

@@ -20,5 +20,5 @@ pub fn frame_sanitize() {
     CB_FIXED.with(|s| s.borrow_mut().clear());
     // Реестр якорей — расходник кадра того же рода: пишется на подготовке,
     // читается там же, к следующей сборке дерева обязан быть пуст.
-    crate::anchor::reset();
+    crate::layout::positioned::anchor::reset();
 }

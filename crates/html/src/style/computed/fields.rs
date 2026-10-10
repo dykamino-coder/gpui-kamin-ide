@@ -160,12 +160,12 @@ pub struct Computed {
     pub implicit_anchor: Option<u64>,
     /// `position-area` (§position-area): два слова области, разбор и смысл —
     /// `anchor::parse_area`. `none`/не задано — `None`.
-    pub position_area: Option<crate::anchor::PositionArea>,
+    pub position_area: Option<crate::layout::positioned::anchor::PositionArea>,
     /// `position-try-fallbacks` (§position-try-fallbacks): варианты позиции —
     /// имя `@position-try`-правила и/или тактика, либо `<position-area>`.
     /// Перебор — `anchor::AnchorPlace` на подготовке кадра, выбранный
     /// вариант накладывается на стиль следующей сборки (`anchor::apply_chosen`).
-    pub position_try_fallbacks: Vec<crate::anchor::TryFallback>,
+    pub position_try_fallbacks: Vec<crate::layout::positioned::anchor::TryFallback>,
     /// `position-try-order` (§position-try-order-property): 0 normal,
     /// 1 most-width, 2 most-height, 3 most-block-size, 4 most-inline-size.
     pub position_try_order: u8,

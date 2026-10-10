@@ -143,7 +143,7 @@ impl Plan {
         let cb = if self.cb == 0 {
             Some(Bounds::new(point(px(0.0), px(0.0)), window.viewport_size()))
         } else {
-            crate::anchor::containing_bounds(self.cb)
+            crate::layout::positioned::anchor::containing_bounds(self.cb)
         };
         let Some(cb) = cb else {
             return point(px(0.0), px(0.0));

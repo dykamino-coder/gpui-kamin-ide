@@ -196,7 +196,9 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     // `anchor-position-005`), и держатели. `visibility: hidden` якоря —
     // из `style`: `c` может быть `paint_off()` без этого флага
     // (§position-visibility: anchor-visible, «anchor box is invisible»).
-    if let Some(probe) = crate::anchor::probe_for(e, c, style.hidden == Some(true)) {
+    if let Some(probe) =
+        crate::layout::positioned::anchor::probe_for(e, c, style.hidden == Some(true))
+    {
         d = d.child(probe);
     }
     if let Some(probe) = absolute_overflow::probe(c) {

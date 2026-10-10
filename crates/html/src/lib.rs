@@ -28,7 +28,6 @@
     clippy::redundant_guards
 )]
 
-pub mod anchor;
 pub mod coverage;
 pub use style::css;
 pub mod dom;
