@@ -729,7 +729,7 @@ it to the existing prepend path. Acceptance is unchanged: the reading point
 moves by no more than the existing 2 px tolerance beyond the user's own scroll.
 
 **Evidence and next step:** registration author @ToToshka45 (owner-directed);
-Diagnostic PR: pending. Only the owner's sanitized text report was used; no
+Diagnostic PR: [PR #207](https://github.com/dykamino-coder/gpui-kamin-ide/pull/207). Only the owner's sanitized text report was used; no
 logs, screenshots or message contents were supplied, so no private evidence
 upload is needed. Build version and a measured trace remain missing. Preserve
 BR-16's open status, the BR-22 classification prerequisite and the automated +
