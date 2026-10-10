@@ -1,0 +1,8 @@
+# The library reads no environment: behaviour must not depend on debug flags.
+# The WPT runner example (examples/wptrun*) keeps its WPT_* run settings and
+# allows this lint at its crate root.
+disallowed-methods = [
+    { path = "std::env::var", reason = "no environment reads in kamin-html (debug flags were removed)" },
+    { path = "std::env::var_os", reason = "no environment reads in kamin-html (debug flags were removed)" },
+    { path = "std::env::vars", reason = "no environment reads in kamin-html (debug flags were removed)" },
+]

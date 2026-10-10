@@ -8,7 +8,7 @@ use crate::state::editor_tab::EditorTab;
 use crate::state::model::RootView;
 use gpui::prelude::*;
 use gpui::{Context, Focusable, Window};
-use gpui_component::input::{InputEvent, InputState};
+use gpui_component::input::{EditorState as CodeEditorState, InputEvent};
 
 impl RootView {
     pub(crate) fn frame_editor_reload(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -29,7 +29,7 @@ impl RootView {
                 let tab_path = self.ed.editor_tabs[idx].path.clone();
                 let input = self.ed.editor_tabs[idx].input.clone();
                 self.ed.reload_suppress.insert(tab_path);
-                input.update(cx, |st, cx| st.set_value(text, window, cx));
+                crate::state::input_value::set_editor_value_emit(&input, text, window, cx);
             }
         }
     }
@@ -57,16 +57,20 @@ impl RootView {
             lsp.open(&text);
             let mirror_src = text.clone();
             let input = cx.new(|cx| {
-                let mut st = InputState::new(window, cx)
-                    .code_editor(lang)
+                // 0.7.1 сворачивает блоки по умолчанию; у нас сворачивания не
+                // было, а его шевроны ложатся поверх нашего глиф-бара.
+                let mut st = CodeEditorState::new(window, cx)
+                    .language(lang)
+                    .folding(false)
                     // Monaco оригинала: `scrollBeyondLastLine: false`
                     // (`MonacoEditor.tsx:185`). Иначе колесо уводит под
                     // строку пути даже файл, целиком помещённый в вьюпорт
-                    // (INC-2026-0060)
-                    .scroll_beyond_last_line(false)
+                    // (INC-2026-0060). В 0.7.1 это штатная опция upstream:
+                    // `Some(0)` — ни одной пустой строки под последней.
+                    .scroll_beyond_last_line(Some(0))
                     .soft_wrap(false);
-                st.lsp.hover_provider = Some(lsp.clone());
-                st.lsp.definition_provider = Some(lsp.clone());
+                st.lsp_mut().hover_provider = Some(lsp.clone());
+                st.lsp_mut().definition_provider = Some(lsp.clone());
                 st.set_value(text, window, cx);
                 st
             });
@@ -90,7 +94,7 @@ impl RootView {
                     }
                 }
             });
-            window.focus(&input.read(cx).focus_handle(cx));
+            window.focus(&input.read(cx).focus_handle(cx), cx);
             // LRU-лимит: 13-й таб вытесняет самый давний ЧИСТЫЙ (dirty не трогаем)
             if self.ed.editor_tabs.len() >= MAX_EDITOR_TABS
                 && let Some(evict) = self
