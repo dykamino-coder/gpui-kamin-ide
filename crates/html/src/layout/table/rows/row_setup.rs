@@ -3,6 +3,7 @@
 
 use crate::dom::{Element, Node};
 use crate::layout::table::anon::html_cell;
+use crate::layout::table::rows::gather_text;
 use crate::layout::table::{is_cell, row_span_in_group};
 use crate::render::{RenderOpts, pseudo_line_layers};
 use crate::style::cascade::inherit::inherit;
@@ -208,4 +209,14 @@ pub(super) fn cell_cascaded_style(e: &Element, row_style: &Computed, cell: &Elem
         cm.ortho_col = true;
     }
     cm
+}
+
+pub(super) fn hides_empty_cell(e: &Element, row_style: &Computed, cell: &Element) -> bool {
+    inherit(row_style, &cell.style).empty_cells_hide == Some(true)
+        && e.style.border_collapse != Some(true)
+        && {
+            let mut текст = String::new();
+            gather_text(&cell.children, &mut текст);
+            текст.trim().is_empty() && !cell.children.iter().any(|n| matches!(n, Node::Element(_)))
+        }
 }

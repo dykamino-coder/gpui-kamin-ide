@@ -8,6 +8,7 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::AnyElement;
 mod row_setup;
+use row_setup::hides_empty_cell;
 use row_setup::{cell_cascaded_style, cell_spans, push_empty_row_track, row_band_probes};
 mod cell_box;
 use cell_box::prepare_cell_box;
@@ -124,14 +125,7 @@ pub(super) fn table_rows(
             // §17.6.1.1: `empty-cells: hide` прячет фон и рамку ПУСТОЙ
             // ячейки — в раздельной модели рамок. Пустая это та, у которой нет
             // ни текста, ни элементов-детей.
-            let прячем_пустую = inherit(&row_style, &cell.style).empty_cells_hide == Some(true)
-                && e.style.border_collapse != Some(true)
-                && {
-                    let mut текст = String::new();
-                    gather_text(&cell.children, &mut текст);
-                    текст.trim().is_empty()
-                        && !cell.children.iter().any(|n| matches!(n, Node::Element(_)))
-                };
+            let прячем_пустую = hides_empty_cell(e, &row_style, cell);
             // Ячейка в НУЛЕВОЙ дорожке: свои горизонтальные отступ и рамку
             // она держать не может — дорожки под них нет (§17.5.2.1).
             let cell = &if прячем_пустую {
