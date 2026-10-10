@@ -1,4 +1,3 @@
-import { storage } from "@bridge/storage"
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
@@ -8,7 +7,8 @@ import { stripMouseTracking } from '../lib/strip-mouse-tracking'
 import { buildTerminalTheme } from '../theme/terminal-theme'
 import { resolvedTheme, themeNonce } from '../theme/apply-theme'
 import { useBridge } from './useBridge'
-import { terminalRegistry, terminalSnapshotKey } from '../signals/terminal-registry'
+import { terminalRegistry } from '../signals/terminal-registry'
+import { terminalSnapshots } from '../signals/terminal-snapshots'
 import { terminalAtBottom } from '../signals/ui'
 import { activeTabId } from '../signals/tabs'
 import { tabPromptVisible, tabPromptReady } from '../signals/connection'
@@ -107,20 +107,9 @@ export function useTerminal(tabId: string): TerminalRefs {
     terminal.loadAddon(fitAddon)
     terminal.loadAddon(new WebLinksAddon())
 
-    // Scrollback snapshot — restores terminal contents across renderer
-    // reloads (HMR, devtools refresh, full application relaunch). Without
-    // this, every reload presents the user with an empty xterm even
-    // though the PTY session is still running on the server side; the
-    // server replays JSONL but not the raw PTY output stream that
-    // produced the rendered terminal layout (cursor moves, redraws,
-    // etc). 256KB cap per tab keeps localStorage well under Chromium's
-    // 5MB quota even with 30 active tabs.
+    // A document-local remount cache, not durable CEF/app persistence.
     const serializeAddon = new SerializeAddon()
     terminal.loadAddon(serializeAddon)
-    const SNAPSHOT_KEY = terminalSnapshotKey(tabId)
-    const SNAPSHOT_MAX_BYTES = 256 * 1024
-    const SNAPSHOT_INTERVAL_MS = 10_000
-
     terminal.open(container)
     fitAddon.fit()
 
@@ -136,16 +125,14 @@ export function useTerminal(tabId: string): TerminalRefs {
       firstOutput.dispose()
     })
 
-    // Restore prior snapshot, if any. We do this BEFORE attaching the
-    // server output stream so the replay layers cleanly on top of the
-    // stored buffer (server keeps its own scrollback and will deliver
-    // anything new since disconnect).
+    // Restore a prior mount in this document before attaching PTY output.
+    // Document recreation/restart starts fresh; reconnect clears this cache.
     try {
-      const stored = storage.getItem(SNAPSHOT_KEY)
+      const stored = terminalSnapshots.get(tabId)
       // Snapshots taken before the mouse-tracking filter landed may still
       // carry the DECSET that disables drag-selection — strip on restore too.
       if (stored) terminal.write(stripMouseTracking(stored))
-    } catch { /* localStorage may be quota-exceeded or disabled */ }
+    } catch { /* malformed historical snapshot */ }
 
     const disposeRenderer = enableTerminalRenderer(terminal)
 
@@ -367,25 +354,12 @@ export function useTerminal(tabId: string): TerminalRefs {
     }
     terminal.onRender(scheduleCheckPromptVisible)
 
-    // Periodic snapshot — debounced to once per SNAPSHOT_INTERVAL_MS so
-    // the cost of serializing 5000 rows (~5-10ms on Chromium per the
-    // addon benchmarks) stays off the render hot path. Cap on bytes
-    // protects localStorage from overflowing on shells that produce
-    // massive ANSI graphs (htop, btop, etc.).
-    const snapshotTimer = setInterval(() => {
-      try {
-        const data = serializeAddon.serialize({ scrollback: 1000 })
-        if (data.length <= SNAPSHOT_MAX_BYTES) {
-          storage.setItem(SNAPSHOT_KEY, data)
-        } else {
-          // Too big — drop the oldest material by trimming from the
-          // front. Loose heuristic: keep the trailing 90% of the cap so
-          // the cursor / current screen survives.
-          storage.setItem(SNAPSHOT_KEY, data.slice(-Math.floor(SNAPSHOT_MAX_BYTES * 0.9)))
-        }
-      } catch { /* quota or disabled — silently drop */ }
-    }, SNAPSHOT_INTERVAL_MS)
-
+    // One shared tick checkpoints only parsed writes. Snapshot payloads never
+    // enter the UI state API or a multi-tab IPC serialization.
+    const snapshot = terminalSnapshots.attach(tabId, scrollback => serializeAddon.serialize({ scrollback }))
+    const snapshotDirty = terminal.onWriteParsed(() => {
+      if (!terminalRegistry.get(tabId)?.needsClear) snapshot.markDirty()
+    })
     terminalRef.current = terminal
     fitAddonRef.current = fitAddon
 
@@ -396,16 +370,8 @@ export function useTerminal(tabId: string): TerminalRefs {
     bridge.resize(tabId, terminal.cols, terminal.rows)
 
     return () => {
-      // One last snapshot before tear-down so the next mount starts
-      // from the very latest state, not from up-to-10s-ago.
-      clearInterval(snapshotTimer)
-      try {
-        const data = serializeAddon.serialize({ scrollback: 1000 })
-        const trimmed = data.length > SNAPSHOT_MAX_BYTES
-          ? data.slice(-Math.floor(SNAPSHOT_MAX_BYTES * 0.9))
-          : data
-        storage.setItem(SNAPSHOT_KEY, trimmed)
-      } catch { /* ignore */ }
+      snapshotDirty.dispose()
+      snapshot.detach() // close invalidates the owner before this cleanup
 
       try { firstOutput.dispose() } catch { /* already disposed */ }
       const entry = terminalRegistry.get(tabId)

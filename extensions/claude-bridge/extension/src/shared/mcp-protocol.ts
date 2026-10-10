@@ -5,8 +5,8 @@ export type ClientMessage =
   | { type: 'session:interrupt' }
   | { type: 'session:submitText'; data: string }
   | { type: 'session:resize'; cols: number; rows: number }
-  | { type: 'mcp:response'; requestId: string; result: unknown }
-  | { type: 'mcp:denied'; requestId: string; reason: string }
+  | { type: 'mcp:response'; sessionId?: string; requestId: string; result: unknown }
+  | { type: 'mcp:denied'; sessionId?: string; requestId: string; reason: string }
   | { type: 'elicitation:response'; requestId: string; action: 'accept' | 'deny' | 'dismiss'; content?: Record<string, unknown> }
   | { type: 'session:resume'; token: string; conversationId: string; cwd?: string; cols?: number; rows?: number; protocolVersion?: number }
   | { type: 'session:change-effort'; effort: string }
@@ -17,6 +17,7 @@ export type ClientMessage =
 
 // Server → VSIX bridge host
 export type ServerMessage =
+  | { type: 'mcp:result-ack'; sessionId: string; requestId: string; accepted: boolean }
   | { type: 'session:created'; sessionId: string; effort?: string; model?: string; settingsDir?: string }
   | { type: 'session:output'; data: string }
   | { type: 'session:exit'; code: number; sessionId: string }
