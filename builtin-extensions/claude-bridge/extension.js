@@ -437,7 +437,7 @@ var require_permessage_deflate = __commonJS({
       acceptAsServer(offers) {
         const opts = this._options;
         const accepted = offers.find((params) => {
-          if (opts.serverNoContextTakeover === false && params.server_no_context_takeover || params.server_max_window_bits && (opts.serverMaxWindowBits === false || typeof opts.serverMaxWindowBits === "number" && opts.serverMaxWindowBits > params.server_max_window_bits) || typeof opts.clientMaxWindowBits === "number" && !params.client_max_window_bits) {
+          if (opts.serverNoContextTakeover === false && params.server_no_context_takeover || params.server_max_window_bits && (opts.serverMaxWindowBits === false || typeof opts.serverMaxWindowBits === "number" && opts.serverMaxWindowBits > params.server_max_window_bits) || typeof opts.clientMaxWindowBits === "number" && (typeof params.client_max_window_bits === "number" ? opts.clientMaxWindowBits > params.client_max_window_bits : !params.client_max_window_bits)) {
             return false;
           }
           return true;
@@ -957,6 +957,7 @@ var require_receiver = __commonJS({
         this._opcode = 0;
         this._totalPayloadLength = 0;
         this._messageLength = 0;
+        this._numFragments = 0;
         this._fragments = [];
         this._errored = false;
         this._loop = false;
@@ -1307,23 +1308,23 @@ var require_receiver = __commonJS({
           this.controlMessage(data, cb);
           return;
         }
+        if (this._maxFragments > 0 && ++this._numFragments > this._maxFragments) {
+          const error = this.createError(
+            RangeError,
+            "Too many message fragments",
+            false,
+            1008,
+            "WS_ERR_TOO_MANY_BUFFERED_PARTS"
+          );
+          cb(error);
+          return;
+        }
         if (this._compressed) {
           this._state = INFLATING;
           this.decompress(data, cb);
           return;
         }
         if (data.length) {
-          if (this._maxFragments > 0 && this._fragments.length >= this._maxFragments) {
-            const error = this.createError(
-              RangeError,
-              "Too many message fragments",
-              false,
-              1008,
-              "WS_ERR_TOO_MANY_BUFFERED_PARTS"
-            );
-            cb(error);
-            return;
-          }
           this._messageLength = this._totalPayloadLength;
           this._fragments.push(data);
         }
@@ -1353,17 +1354,6 @@ var require_receiver = __commonJS({
               cb(error);
               return;
             }
-            if (this._maxFragments > 0 && this._fragments.length >= this._maxFragments) {
-              const error = this.createError(
-                RangeError,
-                "Too many message fragments",
-                false,
-                1008,
-                "WS_ERR_TOO_MANY_BUFFERED_PARTS"
-              );
-              cb(error);
-              return;
-            }
             this._fragments.push(buf);
           }
           this.dataMessage(cb);
@@ -1386,6 +1376,7 @@ var require_receiver = __commonJS({
         this._totalPayloadLength = 0;
         this._messageLength = 0;
         this._fragmented = 0;
+        this._numFragments = 0;
         this._fragments = [];
         if (this._opcode === 2) {
           let data;
@@ -2464,11 +2455,23 @@ var require_websocket = __commonJS({
           this._isServer = false;
           this._redirects = 0;
           if (protocols === void 0) {
-            protocols = [];
+            if (!options || options.protocols === void 0) {
+              protocols = [];
+            } else if (Array.isArray(options.protocols)) {
+              protocols = options.protocols;
+            } else {
+              protocols = [options.protocols];
+            }
           } else if (!Array.isArray(protocols)) {
             if (typeof protocols === "object" && protocols !== null) {
               options = protocols;
-              protocols = [];
+              if (options.protocols === void 0) {
+                protocols = [];
+              } else if (Array.isArray(options.protocols)) {
+                protocols = options.protocols;
+              } else {
+                protocols = [options.protocols];
+              }
             } else {
               protocols = [protocols];
             }
@@ -2665,7 +2668,6 @@ var require_websocket = __commonJS({
           }
           return;
         }
-        this._readyState = _WebSocket.CLOSING;
         this._sender.close(code, data, !this._isServer, (err) => {
           if (err) return;
           this._closeFrameSent = true;
@@ -2673,6 +2675,7 @@ var require_websocket = __commonJS({
             this._socket.end();
           }
         });
+        this._readyState = _WebSocket.CLOSING;
         setCloseTimer(this);
       }
       /**
@@ -2886,8 +2889,8 @@ var require_websocket = __commonJS({
         autoPong: true,
         closeTimeout: CLOSE_TIMEOUT,
         protocolVersion: protocolVersions[1],
-        maxBufferedChunks: 1024 * 1024,
-        maxFragments: 128 * 1024,
+        maxBufferedChunks: 256 * 1024,
+        maxFragments: 16 * 1024,
         maxPayload: 100 * 1024 * 1024,
         skipUTF8Validation: false,
         perMessageDeflate: true,
@@ -2897,6 +2900,7 @@ var require_websocket = __commonJS({
         socketPath: void 0,
         hostname: void 0,
         protocol: void 0,
+        protocols: void 0,
         timeout: void 0,
         method: "GET",
         host: void 0,
@@ -3474,9 +3478,9 @@ var require_websocket_server = __commonJS({
        *     called
        * @param {Function} [options.handleProtocols] A hook to handle protocols
        * @param {String} [options.host] The hostname where to bind the server
-       * @param {Number} [options.maxBufferedChunks=1048576] The maximum number of
+       * @param {Number} [options.maxBufferedChunks=262144] The maximum number of
        *     buffered data chunks
-       * @param {Number} [options.maxFragments=131072] The maximum number of message
+       * @param {Number} [options.maxFragments=16384] The maximum number of message
        *     fragments
        * @param {Number} [options.maxPayload=104857600] The maximum allowed message
        *     size
@@ -3499,8 +3503,8 @@ var require_websocket_server = __commonJS({
         options = {
           allowSynchronousEvents: true,
           autoPong: true,
-          maxBufferedChunks: 1024 * 1024,
-          maxFragments: 128 * 1024,
+          maxBufferedChunks: 256 * 1024,
+          maxFragments: 16 * 1024,
           maxPayload: 100 * 1024 * 1024,
           skipUTF8Validation: false,
           perMessageDeflate: false,
@@ -4463,36 +4467,38 @@ var require_Alias = __commonJS({
           if (node.anchor === this.source)
             found = node;
         }
+        if (found && ctx) {
+          const { anchors: anchors2, doc: doc2, maxAliasCount } = ctx;
+          let data = anchors2.get(found);
+          if (!data) {
+            toJS.toJS(found, null, ctx);
+            data = anchors2.get(found);
+          }
+          if (data?.res === void 0) {
+            const msg = "This should not happen: Alias anchor was not resolved?";
+            throw new ReferenceError(msg);
+          }
+          if (maxAliasCount >= 0) {
+            data.count += 1;
+            if (data.aliasCount === 0)
+              data.aliasCount = getAliasCount(doc2, found, anchors2);
+            if (data.count * data.aliasCount > maxAliasCount) {
+              const msg = "Excessive alias count indicates a resource exhaustion attack";
+              throw new ReferenceError(msg);
+            }
+          }
+        }
         return found;
       }
       toJSON(_arg, ctx) {
         if (!ctx)
           return { source: this.source };
-        const { anchors: anchors2, doc, maxAliasCount } = ctx;
-        const source = this.resolve(doc, ctx);
+        const source = this.resolve(ctx.doc, ctx);
         if (!source) {
           const msg = `Unresolved alias (the anchor must be set before the alias): ${this.source}`;
           throw new ReferenceError(msg);
         }
-        let data = anchors2.get(source);
-        if (!data) {
-          toJS.toJS(source, null, ctx);
-          data = anchors2.get(source);
-        }
-        if (data?.res === void 0) {
-          const msg = "This should not happen: Alias anchor was not resolved?";
-          throw new ReferenceError(msg);
-        }
-        if (maxAliasCount >= 0) {
-          data.count += 1;
-          if (data.aliasCount === 0)
-            data.aliasCount = getAliasCount(doc, source, anchors2);
-          if (data.count * data.aliasCount > maxAliasCount) {
-            const msg = "Excessive alias count indicates a resource exhaustion attack";
-            throw new ReferenceError(msg);
-          }
-        }
-        return data.res;
+        return ctx.anchors.get(source).res;
       }
       toString(ctx, _onComment, _onChompKeep) {
         const src = `*${this.source}`;
@@ -8494,37 +8500,38 @@ var require_resolve_flow_scalar = __commonJS({
       }
       if (badChar)
         onError(0, "BAD_SCALAR_START", `Plain value cannot start with ${badChar}`);
-      return foldLines(source);
+      return unfoldLines(source);
     }
     function singleQuotedValue(source, onError) {
       if (source[source.length - 1] !== "'" || source.length === 1)
         onError(source.length, "MISSING_CHAR", "Missing closing 'quote");
-      return foldLines(source.slice(1, -1)).replace(/''/g, "'");
+      return unfoldLines(source.slice(1, -1)).replace(/''/g, "'");
     }
-    function foldLines(source) {
-      let first, line;
-      try {
-        first = new RegExp("(.*?)(?<![ 	])[ 	]*\r?\n", "sy");
-        line = new RegExp("[ 	]*(.*?)(?:(?<![ 	])[ 	]*)?\r?\n", "sy");
-      } catch {
-        first = /(.*?)[ \t]*\r?\n/sy;
-        line = /[ \t]*(.*?)[ \t]*\r?\n/sy;
-      }
-      let match = first.exec(source);
+    function unfoldLines(source) {
+      const line = /(.*?)\r?\n/sy;
+      let match = line.exec(source);
       if (!match)
         return source;
-      let res = match[1];
+      let trimEnd, trimBoth;
+      try {
+        trimEnd = new RegExp("(?<![ 	])[ 	]+$");
+        trimBoth = new RegExp("^[ 	]+|(?<![ 	])[ 	]+$", "g");
+      } catch {
+        trimEnd = /[ \t]+$/;
+        trimBoth = /^[ \t]+|[ \t]+$/g;
+      }
+      let res = match[1].replace(trimEnd, "");
       let sep = " ";
-      let pos = first.lastIndex;
-      line.lastIndex = pos;
+      let pos = line.lastIndex;
       while (match = line.exec(source)) {
-        if (match[1] === "") {
+        const lm = match[1].replace(trimBoth, "");
+        if (lm === "") {
           if (sep === "\n")
             res += sep;
           else
             sep = "\n";
         } else {
-          res += sep + match[1];
+          res += sep + lm;
           sep = " ";
         }
         pos = line.lastIndex;
@@ -40921,6 +40928,89 @@ var JsonlBatcher = class {
   }
 };
 
+// src/main/ws/mcp-result-outbox.ts
+var MCP_RESULT_LIMITS = { count: 64, bytes: 16 * 1024 * 1024, frameBytes: 4 * 1024 * 1024, lifetimeMs: 12e4, retryMs: 1e3 };
+var McpResultOutbox = class {
+  constructor(sendFrame) {
+    this.sendFrame = sendFrame;
+  }
+  sendFrame;
+  slots = /* @__PURE__ */ new Map();
+  bytes = 0;
+  sessionId = null;
+  timer = null;
+  deliver(sessionId, outcome) {
+    const existing = this.slots.get(outcome.requestId);
+    if (existing) return existing.sessionId === sessionId ? existing.promise : Promise.reject(new Error("MCP result session mismatch"));
+    let frame;
+    try {
+      frame = JSON.stringify({ ...outcome, sessionId });
+    } catch {
+      return Promise.reject(new Error("MCP result cannot be serialized"));
+    }
+    const bytes = Buffer.byteLength(frame);
+    if (bytes > MCP_RESULT_LIMITS.frameBytes || this.bytes + bytes > MCP_RESULT_LIMITS.bytes || this.slots.size >= MCP_RESULT_LIMITS.count) {
+      return Promise.reject(new Error("MCP result delivery capacity exceeded"));
+    }
+    let resolve;
+    let reject;
+    const promise = new Promise((ok, fail) => {
+      resolve = ok;
+      reject = fail;
+    });
+    this.slots.set(outcome.requestId, { sessionId, frame, bytes, expires: Date.now() + MCP_RESULT_LIMITS.lifetimeMs, promise, resolve, reject });
+    this.bytes += bytes;
+    this.timer ??= setInterval(() => this.flush(), MCP_RESULT_LIMITS.retryMs);
+    this.timer.unref?.();
+    this.flush();
+    return promise;
+  }
+  attach(sessionId) {
+    this.sessionId = sessionId;
+    for (const [id, slot] of this.slots) {
+      if (slot.sessionId !== sessionId) this.finish(id, new Error("MCP result belongs to an ended server session"));
+    }
+    this.flush();
+  }
+  detach() {
+    this.sessionId = null;
+  }
+  acknowledge(sessionId, requestId, accepted) {
+    const slot = this.slots.get(requestId);
+    if (!slot || sessionId !== this.sessionId || sessionId !== slot.sessionId) return;
+    this.finish(requestId, accepted ? void 0 : new Error("Server no longer accepts this MCP result"));
+  }
+  dispose() {
+    this.detach();
+    for (const id of this.slots.keys()) this.finish(id, new Error("MCP result delivery cancelled: session ended"));
+  }
+  flush() {
+    for (const [id, slot] of this.slots) {
+      if (Date.now() >= slot.expires) {
+        this.finish(id, new Error("MCP result acknowledgement timed out"));
+        continue;
+      }
+      if (this.sessionId !== slot.sessionId) continue;
+      try {
+        this.sendFrame(slot.frame);
+      } catch {
+      }
+    }
+  }
+  finish(id, error) {
+    const slot = this.slots.get(id);
+    if (!slot) return;
+    this.slots.delete(id);
+    this.bytes -= slot.bytes;
+    if (this.slots.size === 0 && this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+    if (error) slot.reject(error);
+    else slot.resolve();
+  }
+};
+
 // src/main/ws/transcript-mirror.ts
 var import_fs = require("fs");
 var import_promises = __toESM(require("fs/promises"), 1);
@@ -41576,6 +41666,7 @@ async function handleHookExecute(ctx, msg) {
   }
 }
 async function handleMcpCall(ctx, msg) {
+  if (ctx.pendingMcpCalls.has(msg.requestId)) return;
   ctx.pendingMcpCalls.set(msg.requestId, { toolName: msg.toolName, input: msg.input });
   ctx.window.webContents.send("mcp-activity", ctx.tabId, {
     requestId: msg.requestId,
@@ -41589,13 +41680,18 @@ async function handleMcpCall(ctx, msg) {
     ctx.denyMcp(msg.requestId, "User denied permission");
     return;
   }
+  const start = Date.now();
+  let result;
   try {
     const { executeTool: executeTool2 } = await Promise.resolve().then(() => (init_executor2(), executor_exports2));
-    const start = Date.now();
-    const result = await executeTool2(msg.toolName, msg.input, { tabId: ctx.tabId });
-    const durationMs = Date.now() - start;
-    ctx.send({ type: "mcp:response", requestId: msg.requestId, result });
-    ctx.pendingMcpCalls.delete(msg.requestId);
+    result = await executeTool2(msg.toolName, msg.input, { tabId: ctx.tabId });
+  } catch (err) {
+    result = `Error: ${err instanceof Error ? err.message : String(err)}`;
+  }
+  if (!ctx.pendingMcpCalls.has(msg.requestId)) return;
+  try {
+    await ctx.deliverResult({ type: "mcp:response", requestId: msg.requestId, result });
+    if (!ctx.pendingMcpCalls.has(msg.requestId)) return;
     ctx.window.webContents.send("mcp-activity", ctx.tabId, {
       requestId: msg.requestId,
       toolName: msg.toolName,
@@ -41603,11 +41699,20 @@ async function handleMcpCall(ctx, msg) {
       timestamp: Date.now(),
       status: "completed",
       result,
-      durationMs
+      durationMs: Date.now() - start
     });
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    ctx.send({ type: "mcp:response", requestId: msg.requestId, result: `Error: ${errMsg}` });
+  } catch (error) {
+    if (!ctx.pendingMcpCalls.has(msg.requestId)) return;
+    ctx.reportDeliveryFailure();
+    ctx.window.webContents.send("mcp-activity", ctx.tabId, {
+      requestId: msg.requestId,
+      toolName: msg.toolName,
+      input: msg.input,
+      timestamp: Date.now(),
+      status: "denied",
+      result: `Delivery failed: ${String(error)}`
+    });
+  } finally {
     ctx.pendingMcpCalls.delete(msg.requestId);
   }
 }
@@ -41724,6 +41829,13 @@ var ConnectionManager = class _ConnectionManager {
   // Timestamp of the last `bridge:reconnected` we sent — the storm guard
   // (RECONNECT_RELOAD_DEBOUNCE_MS; the webview debounces resubscribe via this).
   lastReloadAt = 0;
+  recentMcpCalls = /* @__PURE__ */ new Map();
+  mcpSessionId = null;
+  mcpResults = new McpResultOutbox((frame) => {
+    if (this.ws?.readyState !== wrapper_default.OPEN || this.ws.bufferedAmount > 4 * 1024 * 1024) return false;
+    this.ws.send(frame);
+    return true;
+  });
   // Pending MCP calls (requestId → { toolName, input })
   pendingMcpCalls = /* @__PURE__ */ new Map();
   // Permission responses waiting to be resolved
@@ -42045,7 +42157,13 @@ var ConnectionManager = class _ConnectionManager {
     this.batcher.flushSubagent();
     if (opts.endSession) void this.mirror?.close();
     if (opts.endSession) this.idleTracker.dispose();
-    this.pendingMcpCalls.clear();
+    this.mcpResults.detach();
+    if (opts.endSession) {
+      this.mcpResults.dispose();
+      this.mcpSessionId = null;
+      this.recentMcpCalls.clear();
+      this.pendingMcpCalls.clear();
+    }
     for (const resolve of this.pendingPermissions.values()) {
       try {
         resolve("deny");
@@ -42102,28 +42220,42 @@ var ConnectionManager = class _ConnectionManager {
   }
   /** Send an MCP tool result back to the server. */
   respondMcp(requestId, result) {
-    this.send({ type: "mcp:response", requestId, result });
-    this.pendingMcpCalls.delete(requestId);
-    this.window.webContents.send("mcp-activity", this.tabId, {
-      requestId,
-      toolName: "",
-      input: {},
-      timestamp: Date.now(),
-      status: "completed",
-      result
-    });
+    void this.deliverMcpResult({ type: "mcp:response", requestId, result });
   }
-  /** Send an MCP tool denial back to the server. */
+  /** Send a denial through the same acknowledged delivery path as results. */
   denyMcp(requestId, reason) {
-    this.send({ type: "mcp:denied", requestId, reason });
-    this.pendingMcpCalls.delete(requestId);
-    this.window.webContents.send("mcp-activity", this.tabId, {
-      requestId,
-      toolName: "",
-      input: {},
-      timestamp: Date.now(),
-      status: "denied"
-    });
+    void this.deliverMcpResult({ type: "mcp:denied", requestId, reason });
+  }
+  reportMcpDeliveryFailure() {
+    void vscode4.window.showWarningMessage("Bridge did not acknowledge a tool result. Delivery stopped; the session may still be waiting. Check the session and tool outcome before continuing.");
+  }
+  async deliverMcpResult(outcome) {
+    if (!this.pendingMcpCalls.has(outcome.requestId) || !this.mcpSessionId) return;
+    try {
+      await this.mcpResults.deliver(this.mcpSessionId, outcome);
+      if (!this.pendingMcpCalls.has(outcome.requestId)) return;
+      this.window.webContents.send("mcp-activity", this.tabId, {
+        requestId: outcome.requestId,
+        toolName: "",
+        input: {},
+        timestamp: Date.now(),
+        status: outcome.type === "mcp:denied" ? "denied" : "completed",
+        result: outcome.type === "mcp:response" ? outcome.result : outcome.reason
+      });
+    } catch (error) {
+      if (!this.pendingMcpCalls.has(outcome.requestId)) return;
+      this.reportMcpDeliveryFailure();
+      this.window.webContents.send("mcp-activity", this.tabId, {
+        requestId: outcome.requestId,
+        toolName: "",
+        input: {},
+        timestamp: Date.now(),
+        status: "denied",
+        result: `Delivery failed: ${String(error)}`
+      });
+    } finally {
+      this.pendingMcpCalls.delete(outcome.requestId);
+    }
   }
   /** Replay all cached JSONL entries/status/subagent data to the renderer.
    *  Called after renderer reload (HMR or manual page refresh). */
@@ -42307,6 +42439,21 @@ var ConnectionManager = class _ConnectionManager {
   }
   // ─── Private ────────────────────────────────────────────
   dispatchMessage(msg) {
+    if (msg.type === "mcp:call") {
+      for (const [id, expires] of this.recentMcpCalls) {
+        if (Date.now() >= expires) this.recentMcpCalls.delete(id);
+      }
+      if (this.pendingMcpCalls.has(msg.requestId) || this.recentMcpCalls.has(msg.requestId)) return;
+      this.recentMcpCalls.set(msg.requestId, Date.now() + 12e4);
+      if (this.recentMcpCalls.size > 4096) this.recentMcpCalls.delete(this.recentMcpCalls.keys().next().value);
+    }
+    if (msg.type === "mcp:result-ack") {
+      if (msg.sessionId === this.mcpSessionId && this.pendingMcpCalls.has(msg.requestId)) {
+        this.recentMcpCalls.set(msg.requestId, Date.now() + 12e4);
+      }
+      this.mcpResults.acknowledge(msg.sessionId, msg.requestId, msg.accepted);
+      return;
+    }
     handleServerMessage(msg, {
       window: this.window,
       tabId: this.tabId,
@@ -42450,6 +42597,8 @@ var ConnectionManager = class _ConnectionManager {
       window: this.window,
       tabId: this.tabId,
       send: (m) => this.send(m),
+      reportDeliveryFailure: () => this.reportMcpDeliveryFailure(),
+      deliverResult: (outcome) => this.mcpSessionId ? this.mcpResults.deliver(this.mcpSessionId, outcome) : Promise.reject(new Error("MCP server session ended")),
       pendingMcpCalls: this.pendingMcpCalls,
       pendingPermissions: this.pendingPermissions,
       permissionMode: () => this.permissionMode,
@@ -42477,7 +42626,15 @@ var ConnectionManager = class _ConnectionManager {
     if (state.status === "authenticated") {
       this.clearEstablishTimer();
       this.establishFailures = 0;
-    }
+      if (state.sessionId) {
+        if (this.mcpSessionId && this.mcpSessionId !== state.sessionId) {
+          this.pendingMcpCalls.clear();
+          this.recentMcpCalls.clear();
+        }
+        this.mcpSessionId = state.sessionId;
+        this.mcpResults.attach(state.sessionId);
+      }
+    } else this.mcpResults.detach();
     const rendererState = this.getState();
     this.window.webContents.send("connection-state-changed", this.tabId, rendererState);
     _ConnectionManager.onStatus?.(this.tabId, rendererState.status);

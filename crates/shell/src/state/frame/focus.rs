@@ -22,9 +22,9 @@ impl RootView {
         // (рисующие функции не получают ни `cx`, ни `window`)
         if let Some(forward) = self.pending_focus_step.take() {
             if forward {
-                window.focus_next();
+                window.focus_next(cx);
             } else {
-                window.focus_prev();
+                window.focus_prev(cx);
             }
         }
         // probe `shape`: считаем ширину строки ЭТИМ ЖЕ шейпером, что и рендер
