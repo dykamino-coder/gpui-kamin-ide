@@ -3,6 +3,7 @@
 // response (or denial). Pending calls + their timers live in this module.
 
 import { randomUUID } from 'crypto'
+import type { WsMsgMcpResponse, WsMsgMcpDenied } from '../types/ws'
 import type { PtySession, PendingMcpCall } from './types'
 import { eventBus } from '../events/bus'
 import { debugLog, warnLog } from '../logging'
@@ -141,6 +142,28 @@ export function resendUndeliveredMcpCalls(session: PtySession): void {
   }
 }
 
+// Bounded acknowledgement history contains IDs only, never tool payloads.
+// A lost ack must not turn a settled result into an unknown-request failure.
+const settledResults = new Map<string, { sessionId: string; expires: number }>()
+const RESULT_ACK_TTL_MS = 120_000
+const RESULT_ACK_MAX = 4096
+
+export function settleMcpResult(sessionId: string, outcome: WsMsgMcpResponse | WsMsgMcpDenied): boolean {
+  if (outcome.sessionId && outcome.sessionId !== sessionId) return false
+  for (const [id, settled] of settledResults) {
+    if (Date.now() >= settled.expires) settledResults.delete(id)
+  }
+  const settled = settledResults.get(outcome.requestId)
+  if (settled) return settled.sessionId === sessionId
+  const pending = pendingMcpCalls.get(outcome.requestId)
+  if (!pending || pending.sessionId !== sessionId) return false
+  settledResults.set(outcome.requestId, { sessionId, expires: Date.now() + RESULT_ACK_TTL_MS })
+  if (settledResults.size > RESULT_ACK_MAX) settledResults.delete(settledResults.keys().next().value!)
+  if (outcome.type === 'mcp:response') handleMcpResponse(outcome.requestId, outcome.result)
+  else handleMcpDenied(outcome.requestId, outcome.reason)
+  return true
+}
+
 export function handleMcpResponse(requestId: string, result: unknown): void {
   const pending = pendingMcpCalls.get(requestId)
   if (!pending) {
@@ -165,6 +188,7 @@ export function handleMcpDenied(requestId: string, reason: string): void {
 
 /** Reject all pending MCP calls — used on graceful shutdown. */
 export function rejectAllPending(reason: string): void {
+  settledResults.clear()
   for (const [, pending] of pendingMcpCalls) {
     if (pending.timer) clearTimeout(pending.timer)
     pending.reject(new Error(reason))
@@ -178,6 +202,9 @@ export function rejectAllPending(reason: string): void {
  *  no timeout and would otherwise keep its SSE stream + heartbeat interval alive
  *  forever. */
 export function rejectPendingForSession(sessionId: string, reason: string): void {
+  for (const [id, settled] of settledResults) {
+    if (settled.sessionId === sessionId) settledResults.delete(id)
+  }
   for (const [id, pending] of pendingMcpCalls) {
     if (pending.sessionId !== sessionId) continue
     if (pending.timer) clearTimeout(pending.timer)

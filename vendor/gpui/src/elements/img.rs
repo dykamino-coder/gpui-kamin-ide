@@ -1,17 +1,26 @@
-use crate::{
-    AnyElement, AnyImageCache, App, Asset, AssetLogger, Bounds, DefiniteLength, Element, ElementId,
-    Entity, GlobalElementId, Hitbox, Image, ImageCache, InspectorElementId, InteractiveElement,
-    Interactivity, IntoElement, LayoutId, Length, ObjectFit, Pixels, RenderImage, Resource,
-    SMOOTH_SVG_SCALE_FACTOR, SharedString, SharedUri, StyleRefinement, Styled, SvgSize, Task,
-    Window, px, swap_rgba_pa_to_bgra,
-};
-use anyhow::{Context as _, Result};
+//! Image loading, intrinsic sizing, and painting.
 
-use futures::{AsyncReadExt, Future};
+mod natural_size;
+mod image_style;
+mod sampling;
+pub use image_style::{ImageStyle, StyledImage};
+
+use crate::{
+    AnyElement, AnyImageCache, App, Asset, AssetLogger, Bounds, Element, ElementId,
+    Entity, GlobalElementId, Hitbox, Image, ImageCache, InspectorElementId, InteractiveElement,
+    Interactivity, IntoElement, LayoutId, Length, Pixels, RenderImage, Resource,
+    SharedString, SharedUri, StyleRefinement, Styled, Task, Window, decode_static_image,
+    decode_static_image_from_decoder, px,
+};
+use anyhow::Result;
+
+use futures::Future;
+use gpui_util::ResultExt;
 use image::{
-    AnimationDecoder, DynamicImage, Frame, ImageBuffer, ImageError, ImageFormat, Rgba,
+    AnimationDecoder, ImageError, ImageFormat, Rgba,
     codecs::{gif::GifDecoder, webp::WebPDecoder},
 };
+use scheduler::Instant;
 use smallvec::SmallVec;
 use std::{
     fs,
@@ -20,10 +29,9 @@ use std::{
     path::{Path, PathBuf},
     str::FromStr,
     sync::Arc,
-    time::{Duration, Instant},
+    time::Duration,
 };
 use thiserror::Error;
-use util::ResultExt;
 
 use super::{Stateful, StatefulInteractiveElement};
 
@@ -50,7 +58,7 @@ pub enum ImageSource {
 }
 
 fn is_uri(uri: &str) -> bool {
-    http_client::Uri::from_str(uri).is_ok()
+    url::Url::from_str(uri).is_ok()
 }
 
 impl From<SharedUri> for ImageSource {
@@ -121,55 +129,6 @@ where
 {
     fn from(value: F) -> Self {
         Self::Custom(Arc::new(value))
-    }
-}
-
-/// The style of an image element.
-pub struct ImageStyle {
-    grayscale: bool,
-    object_fit: ObjectFit,
-    loading: Option<Box<dyn Fn() -> AnyElement>>,
-    fallback: Option<Box<dyn Fn() -> AnyElement>>,
-}
-
-impl Default for ImageStyle {
-    fn default() -> Self {
-        Self {
-            grayscale: false,
-            object_fit: ObjectFit::Contain,
-            loading: None,
-            fallback: None,
-        }
-    }
-}
-
-/// Style an image element.
-pub trait StyledImage: Sized {
-    /// Get a mutable [ImageStyle] from the element.
-    fn image_style(&mut self) -> &mut ImageStyle;
-
-    /// Set the image to be displayed in grayscale.
-    fn grayscale(mut self, grayscale: bool) -> Self {
-        self.image_style().grayscale = grayscale;
-        self
-    }
-
-    /// Set the object fit for the image.
-    fn object_fit(mut self, object_fit: ObjectFit) -> Self {
-        self.image_style().object_fit = object_fit;
-        self
-    }
-
-    /// Set the object fit for the image.
-    fn with_fallback(mut self, fallback: impl Fn() -> AnyElement + 'static) -> Self {
-        self.image_style().fallback = Some(Box::new(fallback));
-        self
-    }
-
-    /// Set the object fit for the image.
-    fn with_loading(mut self, loading: impl Fn() -> AnyElement + 'static) -> Self {
-        self.image_style().loading = Some(Box::new(loading));
-        self
     }
 }
 
@@ -257,6 +216,8 @@ struct ImgState {
 pub struct ImgLayoutState {
     frame_index: usize,
     replacement: Option<AnyElement>,
+    natural_layout: Option<LayoutId>,
+    natural_bounds: Option<Bounds<Pixels>>,
 }
 
 impl Element for Img {
@@ -281,6 +242,8 @@ impl Element for Img {
         let mut layout_state = ImgLayoutState {
             frame_index: 0,
             replacement: None,
+            natural_layout: None,
+            natural_bounds: None,
         };
 
         window.with_optional_element_state(global_id, |state, window| {
@@ -292,7 +255,7 @@ impl Element for Img {
                 })
             });
 
-            let frame_index = state.as_ref().map(|state| state.frame_index).unwrap_or(0);
+            let mut frame_index = state.as_ref().map(|state| state.frame_index).unwrap_or(0);
 
             let layout_id = self.interactivity.request_layout(
                 global_id,
@@ -301,6 +264,9 @@ impl Element for Img {
                 cx,
                 |mut style, window, cx| {
                     let mut replacement_id = None;
+                    // KaminIDE patch: природный размер для листа с замером
+                    // (авто-ширина при высоте-доле, см. ниже).
+                    let mut natural_for_measure: Option<crate::Size<Pixels>> = None;
 
                     match self.source.use_data(
                         self.image_cache
@@ -310,60 +276,66 @@ impl Element for Img {
                         cx,
                     ) {
                         Some(Ok(data)) => {
-                            if let Some(state) = &mut state {
-                                let frame_count = data.frame_count();
-                                if frame_count > 1 {
-                                    let current_time = Instant::now();
-                                    if let Some(last_frame_time) = state.last_frame_time {
-                                        let elapsed = current_time - last_frame_time;
-                                        let frame_duration =
-                                            Duration::from(data.delay(state.frame_index));
+                            let frame_count = data.frame_count();
+                            let max_frame_index = frame_count.saturating_sub(1);
 
-                                        if elapsed >= frame_duration {
-                                            state.frame_index =
-                                                (state.frame_index + 1) % frame_count;
-                                            state.last_frame_time =
-                                                Some(current_time - (elapsed - frame_duration));
+                            if let Some(state) = &mut state {
+                                state.frame_index = state.frame_index.min(max_frame_index);
+                                if frame_count > 1 && !cx.reduce_motion() {
+                                    if window.is_window_active() {
+                                        let current_time = Instant::now();
+                                        if let Some(last_frame_time) = state.last_frame_time {
+                                            let elapsed = current_time - last_frame_time;
+                                            let frame_duration =
+                                                Duration::from(data.delay(state.frame_index));
+
+                                            if elapsed >= frame_duration {
+                                                state.frame_index =
+                                                    (state.frame_index + 1) % frame_count;
+                                                state.last_frame_time =
+                                                    Some(current_time - (elapsed - frame_duration));
+                                            }
+                                        } else {
+                                            state.last_frame_time = Some(current_time);
                                         }
                                     } else {
-                                        state.last_frame_time = Some(current_time);
+                                        state.last_frame_time = None;
                                     }
+                                } else {
+                                    state.last_frame_time = None;
                                 }
                                 state.started_loading = None;
+                                frame_index = state.frame_index;
                             }
 
                             let image_size = data.render_size(frame_index);
-                            style.aspect_ratio = Some(image_size.width / image_size.height);
-
-                            if let Length::Auto = style.size.width {
-                                style.size.width = match style.size.height {
-                                    Length::Definite(DefiniteLength::Absolute(abs_length)) => {
-                                        let height_px = abs_length.to_pixels(window.rem_size());
-                                        Length::Definite(
-                                            px(image_size.width.0 * height_px.0
-                                                / image_size.height.0)
-                                            .into(),
-                                        )
-                                    }
-                                    _ => Length::Definite(image_size.width.into()),
-                                };
+                            // KaminIDE patch: соотношение сторон влияет ТОЛЬКО
+                            // когда хотя бы одна сторона автоматическая
+                            // (css-sizing-4 §aspect-ratio: «only ever has an
+                            // effect if at least one of the box's sizes is
+                            // automatic»). Прежде оно ставилось всегда и
+                            // вдобавок затирало заданное свойством
+                            // `aspect-ratio`: картинка с обеими заданными
+                            // сторонами тянулась к своей пропорции.
+                            let both_definite = !matches!(style.size.width, Length::Auto)
+                                && !matches!(style.size.height, Length::Auto);
+                            if !both_definite {
+                                style
+                                    .aspect_ratio
+                                    .get_or_insert(image_size.width / image_size.height);
                             }
 
-                            if let Length::Auto = style.size.height {
-                                style.size.height = match style.size.width {
-                                    Length::Definite(DefiniteLength::Absolute(abs_length)) => {
-                                        let width_px = abs_length.to_pixels(window.rem_size());
-                                        Length::Definite(
-                                            px(image_size.height.0 * width_px.0
-                                                / image_size.width.0)
-                                            .into(),
-                                        )
-                                    }
-                                    _ => Length::Definite(image_size.height.into()),
-                                };
-                            }
+                            natural_for_measure = natural_size::resolve(
+                                &mut style,
+                                image_size,
+                                window.rem_size(),
+                            );
 
-                            if global_id.is_some() && data.frame_count() > 1 {
+                            if global_id.is_some()
+                                && data.frame_count() > 1
+                                && window.is_window_active()
+                                && !cx.reduce_motion()
+                            {
                                 window.request_animation_frame();
                             }
                         }
@@ -387,8 +359,7 @@ impl Element for Img {
                                         replacement_id = Some(element.request_layout(window, cx));
                                         layout_state.replacement = Some(element);
                                     }
-                                } else {
-                                    let current_view = window.current_view();
+                                } else if let Some(current_view) = window.current_view_opt() {
                                     let task = window.spawn(cx, async move |cx| {
                                         cx.background_executor().timer(LOADING_DELAY).await;
                                         cx.update(move |_, cx| {
@@ -397,16 +368,41 @@ impl Element for Img {
                                         .ok();
                                     });
                                     state.started_loading = Some((Instant::now(), task));
+                                } else {
+                                    // KaminIDE patch: detached measure — no view to
+                                    // notify; the next frame re-lays out anyway.
+                                    window.request_animation_frame();
                                 }
                             }
                         }
                     }
 
+                    // KaminIDE patch: лист с замером — природный размер,
+                    // когда доля высоты не решилась; при известной стороне
+                    // вторая — через природное соотношение.
+                    if let (Some(natural), None) = (natural_for_measure, replacement_id) {
+                        let ratio = if natural.height.0 > 0.0 {
+                            natural.width.0 / natural.height.0
+                        } else {
+                            1.0
+                        };
+                        return window.request_measured_layout(style, move |known, _, _, _| {
+                            match (known.width, known.height) {
+                                (Some(w), Some(h)) => crate::Size { width: w, height: h },
+                                (None, Some(h)) => crate::Size { width: px(h.0 * ratio), height: h },
+                                (Some(w), None) if ratio > 0.0 => {
+                                    crate::Size { width: w, height: px(w.0 / ratio) }
+                                }
+                                _ => natural,
+                            }
+                        });
+                    }
                     window.request_layout(style, replacement_id, cx)
                 },
             );
 
             layout_state.frame_index = frame_index;
+            layout_state.natural_layout = self.style.preserve_natural_pixels.then_some(layout_id);
 
             ((layout_id, layout_state), state)
         })
@@ -421,6 +417,9 @@ impl Element for Img {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
+        request_layout.natural_bounds = request_layout
+            .natural_layout
+            .and_then(|id| sampling::unrounded_bounds(window, id, bounds));
         self.interactivity.prepaint(
             global_id,
             inspector_id,
@@ -464,27 +463,39 @@ impl Element for Img {
                     window,
                     cx,
                 ) {
-                    let new_bounds = self
-                        .style
-                        .object_fit
-                        .get_bounds(bounds, data.size(layout_state.frame_index));
+                    if data.frame_count() == 0 {
+                        return;
+                    }
+                    let new_bounds = image_style::position(
+                        self.style.object_fit.get_bounds(bounds, data.size(layout_state.frame_index)),
+                        bounds,
+                        self.style.object_position,
+                        window.rem_size(),
+                    );
                     // KaminIDE patch: временная трасса под IMG_DBG.
                     if std::env::var("IMG_DBG").is_ok() {
                         eprintln!("IMG bounds={:?} natural={:?}", bounds, data.size(layout_state.frame_index));
                     }
-                    let corner_radii = style
-                        .corner_radii
-                        .to_pixels(window.rem_size())
-                        .clamp_radii_for_quad_size(new_bounds.size);
-                    window
-                        .paint_image(
-                            new_bounds,
-                            corner_radii,
-                            data,
-                            layout_state.frame_index,
-                            self.style.grayscale,
+                    let exact_bounds = layout_state.natural_bounds.map(|exact| {
+                        image_style::position(
+                            self.style
+                                .object_fit
+                                .get_bounds(exact, data.size(layout_state.frame_index)),
+                            exact,
+                            self.style.object_position,
+                            window.rem_size(),
                         )
-                        .log_err();
+                    });
+                    sampling::paint(
+                        window,
+                        new_bounds,
+                        exact_bounds,
+                        style,
+                        data,
+                        layout_state.frame_index,
+                        &self.style,
+                    )
+                    .log_err();
                 } else if let Some(replacement) = &mut layout_state.replacement {
                     replacement.paint(window, cx);
                 }
@@ -566,6 +577,17 @@ impl ImageSource {
             ImageSource::Image(data) => cx.remove_asset::<AssetLogger<ImageDecoder>>(data),
         }
     }
+
+    /// Check whether this image source is present in the asset system (loading
+    /// or loaded), without fetching it.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn is_asset_cached(&self, cx: &App) -> bool {
+        match self {
+            ImageSource::Resource(resource) => cx.has_asset::<ImgResourceLoader>(resource),
+            ImageSource::Custom(_) | ImageSource::Render(_) => false,
+            ImageSource::Image(data) => cx.has_asset::<AssetLogger<ImageDecoder>>(data),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -605,6 +627,9 @@ impl Asset for ImageAssetLoader {
             let bytes = match source.clone() {
                 Resource::Path(uri) => fs::read(uri.as_ref())?,
                 Resource::Uri(uri) => {
+                    use anyhow::Context as _;
+                    use futures::AsyncReadExt as _;
+
                     let mut response = client
                         .get(uri.as_ref(), ().into(), true)
                         .await
@@ -635,19 +660,33 @@ impl Asset for ImageAssetLoader {
                 }
             };
 
-            let data = if let Ok(format) = image::guess_format(&bytes) {
+            if let Ok(format) = image::guess_format(&bytes) {
                 let data = match format {
                     ImageFormat::Gif => {
                         let decoder = GifDecoder::new(Cursor::new(&bytes))?;
                         let mut frames = SmallVec::new();
 
                         for frame in decoder.into_frames() {
-                            let mut frame = frame?;
-                            // Convert from RGBA to BGRA.
-                            for pixel in frame.buffer_mut().chunks_exact_mut(4) {
-                                pixel.swap(0, 2);
+                            match frame {
+                                Ok(mut frame) => {
+                                    // Convert from RGBA to BGRA.
+                                    for pixel in frame.buffer_mut().chunks_exact_mut(4) {
+                                        pixel.swap(0, 2);
+                                    }
+                                    frames.push(frame);
+                                }
+                                Err(err) => {
+                                    log::debug!(
+                                        "Skipping GIF frame in {source:?} due to decode error: {err}"
+                                    );
+                                }
                             }
-                            frames.push(frame);
+                        }
+
+                        if frames.is_empty() {
+                            return Err(ImageCacheError::Other(Arc::new(anyhow::anyhow!(
+                                "GIF could not be decoded: all frames failed ({source:?})"
+                            ))));
                         }
 
                         frames
@@ -660,58 +699,42 @@ impl Asset for ImageAssetLoader {
                             let mut frames = SmallVec::new();
 
                             for frame in decoder.into_frames() {
-                                let mut frame = frame?;
-                                // Convert from RGBA to BGRA.
-                                for pixel in frame.buffer_mut().chunks_exact_mut(4) {
-                                    pixel.swap(0, 2);
+                                match frame {
+                                    Ok(mut frame) => {
+                                        // Convert from RGBA to BGRA.
+                                        for pixel in frame.buffer_mut().chunks_exact_mut(4) {
+                                            pixel.swap(0, 2);
+                                        }
+                                        frames.push(frame);
+                                    }
+                                    Err(err) => {
+                                        log::debug!(
+                                            "Skipping WebP frame in {source:?} due to decode error: {err}"
+                                        );
+                                    }
                                 }
-                                frames.push(frame);
+                            }
+
+                            if frames.is_empty() {
+                                return Err(ImageCacheError::Other(Arc::new(anyhow::anyhow!(
+                                    "WebP could not be decoded: all frames failed ({source:?})"
+                                ))));
                             }
 
                             frames
                         } else {
-                            let mut data = DynamicImage::from_decoder(decoder)?.into_rgba8();
-
-                            // Convert from RGBA to BGRA.
-                            for pixel in data.chunks_exact_mut(4) {
-                                pixel.swap(0, 2);
-                            }
-
-                            SmallVec::from_elem(Frame::new(data), 1)
+                            decode_static_image_from_decoder(decoder)?
                         }
                     }
-                    _ => {
-                        let mut data =
-                            image::load_from_memory_with_format(&bytes, format)?.into_rgba8();
-
-                        // Convert from RGBA to BGRA.
-                        for pixel in data.chunks_exact_mut(4) {
-                            pixel.swap(0, 2);
-                        }
-
-                        SmallVec::from_elem(Frame::new(data), 1)
-                    }
+                    _ => decode_static_image(&bytes, format)?,
                 };
 
-                RenderImage::new(data)
+                Ok(Arc::new(RenderImage::new(data)))
             } else {
-                let pixmap =
-                    // TODO: Can we make svgs always rescale?
-                    svg_renderer.render_pixmap(&bytes, SvgSize::ScaleFactor(SMOOTH_SVG_SCALE_FACTOR))?;
-
-                let mut buffer =
-                    ImageBuffer::from_raw(pixmap.width(), pixmap.height(), pixmap.take()).unwrap();
-
-                for pixel in buffer.chunks_exact_mut(4) {
-                    swap_rgba_pa_to_bgra(pixel);
-                }
-
-                let mut image = RenderImage::new(SmallVec::from_elem(Frame::new(buffer), 1));
-                image.scale_factor = SMOOTH_SVG_SCALE_FACTOR;
-                image
-            };
-
-            Ok(Arc::new(data))
+                svg_renderer
+                    .render_single_frame(&bytes, 1.0)
+                    .map_err(Into::into)
+            }
         }
     }
 }
@@ -767,5 +790,188 @@ impl From<usvg::Error> for ImageCacheError {
 impl From<image::ImageError> for ImageCacheError {
     fn from(value: image::ImageError) -> Self {
         Self::Image(Arc::new(value))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ParentElement as _, TestAppContext, canvas, div, point, px, size};
+    use image::{Frame, ImageBuffer, Rgba};
+
+    const TEST_IMG_ID: &str = "test-img";
+
+    fn test_image(frame_count: usize) -> Arc<RenderImage> {
+        let frame = Frame::new(ImageBuffer::from_pixel(1, 1, Rgba([0, 0, 0, 0])));
+        Arc::new(RenderImage::new(SmallVec::from_iter(
+            (0..frame_count).map(|_| frame.clone()),
+        )))
+    }
+
+    fn test_image_with_size(width: u32, height: u32) -> Arc<RenderImage> {
+        let frame = Frame::new(ImageBuffer::from_pixel(width, height, Rgba([0, 0, 0, 0])));
+        Arc::new(RenderImage::new(SmallVec::from_elem(frame, 1)))
+    }
+
+    /// Overwrites the cached `frame_index` of the sibling `img` during paint.
+    fn seed_frame_index(frame_index: usize) -> impl IntoElement {
+        canvas(
+            |_, _, _| (),
+            move |_, _, window, _| {
+                window.with_global_id(TEST_IMG_ID.into(), |id, window| {
+                    window.with_element_state::<ImgState, _>(id, |state, _| {
+                        let mut state = state.expect("img state should be initialized");
+                        state.frame_index = frame_index;
+                        ((), state)
+                    });
+                });
+            },
+        )
+    }
+
+    #[gpui::test]
+    fn zero_frame_image_does_not_panic_on_paint(cx: &mut TestAppContext) {
+        cx.add_empty_window()
+            .draw(point(px(0.), px(0.)), size(px(100.), px(100.)), |_, _| {
+                img(ImageSource::Render(test_image(0))).into_any_element()
+            });
+    }
+
+    #[gpui::test]
+    fn image_object_fit_cover_crops_to_element_bounds(cx: &mut TestAppContext) {
+        let window = cx.add_empty_window();
+        let image = test_image_with_size(200, 100);
+        window.draw(point(px(0.), px(0.)), size(px(100.), px(100.)), |_, _| {
+            img(ImageSource::Render(image.clone()))
+                .size_full()
+                .object_fit(ObjectFit::Fill)
+                .into_any_element()
+        });
+        let full_tile_bounds = window.update(|window, _| {
+            window
+                .rendered_frame
+                .scene
+                .polychrome_sprites
+                .last()
+                .expect("fill image should paint a sprite")
+                .tile
+                .bounds
+        });
+
+        window.draw(point(px(10.), px(20.)), size(px(100.), px(100.)), |_, _| {
+            img(ImageSource::Render(image))
+                .size_full()
+                .object_fit(ObjectFit::Cover)
+                .into_any_element()
+        });
+
+        let (rendered_bounds, rendered_tile_bounds, scale_factor) = window.update(|window, _| {
+            let sprite = window
+                .rendered_frame
+                .scene
+                .polychrome_sprites
+                .last()
+                .expect("cover image should paint a sprite");
+            (sprite.bounds, sprite.tile.bounds, window.scale_factor())
+        });
+        assert_eq!(
+            rendered_bounds,
+            Bounds {
+                origin: point(px(10.).scale(scale_factor), px(20.).scale(scale_factor)),
+                size: size(px(100.).scale(scale_factor), px(100.).scale(scale_factor)),
+            }
+        );
+        assert_eq!(
+            (
+                rendered_tile_bounds.origin.x.0 - full_tile_bounds.origin.x.0,
+                rendered_tile_bounds.origin.y.0 - full_tile_bounds.origin.y.0,
+                rendered_tile_bounds.size.width.0,
+                rendered_tile_bounds.size.height.0,
+            ),
+            (50, 0, 100, 100),
+        );
+    }
+
+    #[gpui::test]
+    fn explicit_aspect_ratio_is_not_overridden_by_intrinsic_ratio(cx: &mut TestAppContext) {
+        let window = cx.add_empty_window();
+
+        // A portrait image in a square container
+        window.draw(point(px(0.), px(0.)), size(px(100.), px(100.)), |_, _| {
+            div()
+                .size(px(100.))
+                .overflow_hidden()
+                .child(
+                    img(ImageSource::Render(test_image_with_size(100, 200)))
+                        .size_full()
+                        .aspect_square()
+                        .object_fit(ObjectFit::Contain),
+                )
+                .into_any_element()
+        });
+
+        let (rendered_bounds, scale_factor) = window.update(|window, _| {
+            let sprite = window
+                .rendered_frame
+                .scene
+                .polychrome_sprites
+                .last()
+                .expect("contained image should paint a sprite");
+            (sprite.bounds, window.scale_factor())
+        });
+
+        // The element stays 100x100, so the image is letterboxed horizontally
+        assert_eq!(
+            rendered_bounds,
+            Bounds {
+                origin: point(px(25.).scale(scale_factor), px(0.).scale(scale_factor)),
+                size: size(px(50.).scale(scale_factor), px(100.).scale(scale_factor)),
+            }
+        );
+    }
+
+    #[gpui::test]
+    fn image_object_fit_cover_clamps_corner_radii_to_visible_bounds(cx: &mut TestAppContext) {
+        let window = cx.add_empty_window();
+        window.draw(point(px(0.), px(0.)), size(px(100.), px(100.)), |_, _| {
+            img(ImageSource::Render(test_image_with_size(200, 100)))
+                .size_full()
+                .rounded(px(100.))
+                .object_fit(ObjectFit::Cover)
+                .into_any_element()
+        });
+
+        let (corner_radius, expected_corner_radius) = window.update(|window, _| {
+            (
+                window
+                    .rendered_frame
+                    .scene
+                    .polychrome_sprites
+                    .last()
+                    .map(|sprite| sprite.corner_radii.top_left),
+                px(50.).scale(window.scale_factor()),
+            )
+        });
+        assert_eq!(corner_radius, Some(expected_corner_radius));
+    }
+
+    #[gpui::test]
+    fn stale_frame_index_is_clamped_when_image_changes(cx: &mut TestAppContext) {
+        let window = cx.add_empty_window();
+
+        // Assert that a cached frame_index from a previous multi-frame image
+        // does not cause an out-of-bounds panic when the image is replaced
+        // with one that has fewer frames.
+        window.draw(point(px(0.), px(0.)), size(px(100.), px(100.)), |_, _| {
+            div()
+                .child(img(ImageSource::Render(test_image(5))).id(TEST_IMG_ID))
+                .child(seed_frame_index(4))
+                .into_any_element()
+        });
+        window.draw(point(px(0.), px(0.)), size(px(100.), px(100.)), |_, _| {
+            img(ImageSource::Render(test_image(1)))
+                .id(TEST_IMG_ID)
+                .into_any_element()
+        });
     }
 }

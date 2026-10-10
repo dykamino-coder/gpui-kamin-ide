@@ -7,8 +7,25 @@ version = "1.0.64"
 edition = "2024"
 
 [workspace.dependencies]
-gpui = "0.2.2"
-gpui-component = { version = "0.5.1" }
+# Пакет на crates.io — `gpui-pre` (снимок zed@279fe07), библиотека — `gpui`.
+# `stacker`: рекурсия раскладки/отрисовки под StackSafe — глубокие HTML-деревья
+# (в 0.2.2 было всегда, в 0.3.8 стало фичей).
+gpui = { package = "gpui-pre", version = "=0.3.8", features = ["stacker"] }
+# Платформа (Windows-бэкенд) вынесена из ядра: `gpui_platform::application()`.
+gpui-platform = { package = "gpui-pre-platform", version = "=0.3.8" }
+# Грамматики ровно тех языков, что выдаёт `file_names::editor_lang`. В 0.5.1
+# без фич была только JSON, и ею же (случайно) раскрашивался код остальных
+# языков; 0.7.1 для неизвестной грамматики не красит вовсе.
+gpui-component = { version = "=0.7.1", features = [
+  "tree-sitter",
+  "tree-sitter-rust",
+  "tree-sitter-typescript",
+  "tree-sitter-javascript",
+  "tree-sitter-markdown",
+  "tree-sitter-go",
+  "tree-sitter-html",
+  "tree-sitter-zig",
+] }
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -44,13 +61,22 @@ opt-level = 2
 [profile.dev]
 opt-level = 2
 
-# Vendored gpui-component: 1-строчный патч — pub scroll_handle у InputState
-# (sticky-scroll редактора требует скролл-оффсет; апстрим держит pub(crate)).
 [patch.crates-io]
-# Vendored gpui: per-window чтение GPUI_DISABLE_DIRECT_COMPOSITION
-# (main = blit для WebView2, overlay = dcomp premultiplied-альфа)
-gpui = { path = "vendor/gpui" }
+# Vendored gpui (gpui-pre 0.3.8 + патчи KaminIDE: рендер CSS, текст, раскладка,
+# захват кадра). Windows-платформа в 0.3.8 — отдельный крейт, тоже с патчами
+# (DirectX-рендерер, DirectWrite, dcomp/blit по окну).
+gpui-pre = { path = "vendor/gpui" }
+gpui-pre-windows = { path = "vendor/gpui-windows" }
+# Vendored gpui-component 0.7.1 и gpui-base 0.7.1 (движок ввода/Root переехали
+# туда): патчи редактора (миникарта, скроллбар, кэш подсветки).
 gpui-component = { path = "vendor/gpui-component" }
+gpui-base = { path = "vendor/gpui-base" }
 # Вендорён ради базовой линии текста: замер ЛИСТА теперь может её отдать
 # (`MeasureOutput`), иначе `align-items: baseline` выравнивает по нижним краям.
 taffy = { path = "vendor/taffy" }
+# Vendored resvg + usvg: upstream linebender/resvg main 77b12f49 (0.48.1 +
+# fixes) with KaminIDE patches (feDisplacementMap, feConvolveMatrix bias,
+# feColorMatrix rounding, 1:1 pattern sampling) — see vendor/resvg-kaminide.patch.
+# usvg moves with resvg: upstream resvg main needs the new usvg enum variants.
+resvg = { path = "vendor/resvg" }
+usvg = { path = "vendor/usvg" }

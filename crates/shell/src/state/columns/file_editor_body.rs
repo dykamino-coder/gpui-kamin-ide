@@ -7,8 +7,7 @@ use crate::colors::rgba;
 use crate::state::model::RootView;
 use gpui::prelude::*;
 use gpui::{Context, Entity, div, px};
-use gpui_component::Sizable as _;
-use gpui_component::input::InputState;
+use gpui_component::input::EditorState as CodeEditorState;
 use kamin_metrics as m;
 use kamin_theme::Palette;
 
@@ -17,7 +16,7 @@ impl RootView {
     /// и ссылку внутрь `self.ed.editor_tabs` одновременно нельзя.
     pub(crate) fn file_editor_body(
         &mut self,
-        input: &Entity<InputState>,
+        input: &Entity<CodeEditorState>,
         apath: String,
         cx: &mut Context<Self>,
         p: &'static Palette,
@@ -179,19 +178,17 @@ impl RootView {
                             .child(
                                 // appearance(false): без рамки/
                                 // фона компонента
-                                gpui_component::input::Input::new(input)
+                                // 0.7.1: код-редактор — `Editor` над
+                                // `EditorState`; он ставит моно-шрифт и
+                                // кегль темы и строку 1.5em, поэтому кегль,
+                                // семейство и прежнюю строку `Input`
+                                // (1.25rem) задаём ему самому.
+                                gpui_component::input::Editor::new(input)
                                     .h_full()
                                     .appearance(false)
-                                    // Monaco fontSize 13: у
-                                    // `Input` свой
-                                    // `input_text_size(size)`,
-                                    // который перекрывает
-                                    // кегль обёртки, а
-                                    // `Size::Size` внутри
-                                    // умножается на 0.875
-                                    .with_size(gpui_component::Size::Size(px(
-                                        m::EDITOR_FONT_SIZE / 0.875
-                                    )))
+                                    .font_family("JetBrains Mono")
+                                    .text_size(px(m::EDITOR_FONT_SIZE))
+                                    .line_height(gpui::rems(1.25))
                                     // единственный скроллбар —
                                     // наш, правее глиф-бара
                                     .hide_scrollbar(),

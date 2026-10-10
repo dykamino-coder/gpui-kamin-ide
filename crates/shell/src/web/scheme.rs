@@ -118,6 +118,14 @@ wrap_scheme_handler_factory! {
                     }
                     reply("text/plain", b"ok".to_vec())
                 }
+                // Ответ страницы на probe `wveval` (только сборка с probe).
+                #[cfg(feature = "probe")]
+                "__probe" => {
+                    if let Some(body) = post_body(request) {
+                        crate::probe::wv_eval::deliver(&body);
+                    }
+                    reply("text/plain", b"ok".to_vec())
+                }
                 // Своего значка у наших страниц нет — отдаём прозрачную точку,
                 // иначе браузер каждый раз пишет в лог «страницы нет».
                 "favicon.ico" => reply("image/gif", TRANSPARENT_DOT.to_vec()),

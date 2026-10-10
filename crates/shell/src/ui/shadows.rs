@@ -17,6 +17,7 @@ fn shadow(dark: (f32, f32, f32), light: (f32, f32, f32)) -> Vec<BoxShadow> {
         offset: point(px(0.), px(y)),
         blur_radius: px(blur),
         spread_radius: px(0.),
+        inset: false,
     }]
 }
 
