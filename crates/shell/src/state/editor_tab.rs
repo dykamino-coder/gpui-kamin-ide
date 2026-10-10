@@ -9,6 +9,10 @@ use gpui_component::input::InputState;
 pub struct EditorTab {
     pub path: String,
     pub input: Entity<InputState>,
+    /// Зеркало минимапы ЭТОГО таба (Zed: `minimap_editor` на редактор).
+    pub minimap: Entity<InputState>,
+    /// Буфер менялся после последней синхронизации зеркала.
+    pub minimap_stale: bool,
     pub dirty: bool,
     /// EOL файла на момент открытия ("LF"|"CRLF") — статус-бар.
     pub eol: &'static str,

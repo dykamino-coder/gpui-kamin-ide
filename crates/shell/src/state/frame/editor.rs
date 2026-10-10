@@ -65,40 +65,22 @@ impl RootView {
                 st.set_value(text, window, cx);
                 st
             });
-            // Зеркало для минимапы: тот же текст и язык, свой layout —
-            // это и есть `minimap_editor` из Zed, только на нашем Input.
-            let mirror_text = self
-                .ed
-                .editor_tabs
-                .iter()
-                .find(|t| t.path == path)
-                .map(|_| String::new());
-            let _ = mirror_text;
-            self.ed.minimap_input = Some(cx.new(|cx| {
-                // Zed-минимапа не рисует номера строк и не подсвечивает
-                // текущую строку/выделение — это чистый силуэт текста.
-                let mut st = InputState::new(window, cx)
-                    .code_editor(lang)
-                    .line_number(false)
-                    // Zed `EditorMode::Minimap`: read-only, без подписок и
-                    // каретки. У нас этот флаг ещё и снимает жёсткий
-                    // line-height `Input`-а, иначе строки идут через 20px.
-                    .minimap()
-                    .soft_wrap(false);
-                st.set_value(mirror_src.clone(), window, cx);
-                st
-            }));
+            // Зеркало минимапы — своё у каждого таба (INC-2026-0059)
+            let minimap =
+                crate::state::editor_minimap_sync::new_mirror(lang, mirror_src, window, cx);
             // Change → dirty ЭТОГО таба (ищем по path — индексы плавают)
             let sub_path = path.clone();
             let sub = cx.subscribe(&input, move |this, _, ev: &InputEvent, cx| {
                 if matches!(ev, InputEvent::Change) {
-                    // Программный set_value при внешнем reload — не dirty
-                    if this.ed.reload_suppress.remove(&sub_path) {
-                        return;
-                    }
+                    // Зеркало догоняет буфер и при внешнем reload, поэтому
+                    // метка ставится ДО проверки подавления dirty
+                    let reload = this.ed.reload_suppress.remove(&sub_path);
                     if let Some(tab) = this.ed.editor_tabs.iter_mut().find(|t| t.path == sub_path) {
-                        tab.dirty = true;
-                        this.ed.minimap_stale = true;
+                        tab.minimap_stale = true;
+                        // Программный set_value при внешнем reload — не dirty
+                        if !reload {
+                            tab.dirty = true;
+                        }
                         cx.notify();
                     }
                 }
@@ -124,6 +106,8 @@ impl RootView {
             self.ed.editor_tabs.push(EditorTab {
                 path,
                 input,
+                minimap,
+                minimap_stale: false,
                 dirty: false,
                 eol,
                 last_used: std::time::Instant::now(),
@@ -140,6 +124,7 @@ impl RootView {
         // LRU-штамп активного таба (каждый кадр — всегда актуален)
         if let Some(tab) = self.ed.editor_tabs.get_mut(self.ed.editor_active) {
             tab.last_used = std::time::Instant::now();
+            crate::state::editor_minimap_sync::sync_mirror(tab, window, cx);
         }
         // Выделение в дереве следует за активным файлом. Оригинал — ЭФФЕКТ на
         // смену `selectedFile` (`file-selection.ts:57-63`), а не работа каждый
