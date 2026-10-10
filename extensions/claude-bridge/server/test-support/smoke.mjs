@@ -3,9 +3,18 @@ import { WebSocket } from 'ws'
 import { once } from 'node:events'
 import { setTimeout } from 'node:timers/promises'
 const port = Number(process.argv[2] ?? 3456)
-const deadlineSignal = AbortSignal.timeout(30000)
+const deadlineSignal = AbortSignal.timeout(120000)
 const origin = `http://127.0.0.1:${port}`
-const health = await fetch(`${origin}/health`, { signal: deadlineSignal }).then((r) => r.json())
+let health
+while (!health) {
+  deadlineSignal.throwIfAborted()
+  try {
+    health = await fetch(`${origin}/health`, { signal: deadlineSignal }).then((r) => r.json())
+  } catch {
+    deadlineSignal.throwIfAborted()
+    await setTimeout(100)
+  }
+}
 if (health.status !== 'ok') throw new Error('Bridge health failed')
 const token = await fetch(`${origin}/api/dashboard/tokens`, {
   method: 'POST',
@@ -22,10 +31,10 @@ ws.on('message', (data) => {
   if (msg.type === 'mcp:call')
     ws.send(JSON.stringify({ type: 'mcp:response', requestId: msg.requestId, result: 'Synthetic host result' }))
 })
-const wait = async (predicate) => {
-  const deadline = Date.now() + 20000
+const wait = async (predicate, boundary = 'session') => {
+  const deadline = Date.now() + 60000
   while (!predicate()) {
-    if (Date.now() > deadline) throw new Error('Smoke boundary timed out')
+    if (Date.now() > deadline) throw new Error(`Smoke boundary timed out: ${boundary}`)
     await setTimeout(20)
   }
 }

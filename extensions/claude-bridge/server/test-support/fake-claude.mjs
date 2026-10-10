@@ -140,7 +140,10 @@ async function agents(count = 800, team) {
     call,
     rec.result(call.message.content[0].id, `Spawned successfully.\nagent_id: ${agentId}\nname: ${agentName}\nrunning.`),
   )
-  for (let i = 0; i < count; i++) appendChild(`${conversation} child row ${i}`)
+  const rows = Array.from({ length: count }, (_, i) =>
+    childRec.assistant([{ type: 'text', text: `${conversation} child row ${i}` }], 2000, { isSidechain: true }),
+  )
+  fs.appendFileSync(childFile, rows.map((row) => JSON.stringify(row) + '\n').join(''))
   await hook('SubagentStart', { agent_id: agentId, agent_type: agentName })
 }
 async function execute(command) {
