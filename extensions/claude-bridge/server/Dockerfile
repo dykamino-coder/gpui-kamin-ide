@@ -50,7 +50,7 @@ RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" tsx@4 \
 
 # Non-root user (Claude Code refuses --dangerously-skip-permissions as root).
 RUN groupadd -r bridge && useradd -r -g bridge -m -d /home/bridge -s /bin/bash bridge \
-    && mkdir -p /app/data /home/bridge/.claude \
+    && mkdir -p /app/data /app/logs/lifecycle /home/bridge/.claude \
     && chown -R bridge:bridge /app /home/bridge
 
 WORKDIR /app
@@ -85,7 +85,7 @@ ENV UV_THREADPOOL_SIZE=16
 
 EXPOSE 3456
 
-VOLUME ["/app/data", "/home/bridge/.claude"]
+VOLUME ["/app/data", "/home/bridge/.claude", "/app/logs/lifecycle"]
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["npx", "tsx", "bin/claude-bridge.ts"]

@@ -17,11 +17,11 @@ Windows quality and release candidate passed.
 `;
 
 test("real BR-31 and INC-0002 cards require a live Windows gate", async () => {
-  for (const taskId of ["BR-06", "BR-22", "BR-23", "BR-24", "BR-31",
+  for (const taskId of ["BR-06", "BR-22", "BR-23", "BR-31",
     "INC-2026-0002", "INC-2026-0038", "INC-2026-0043", "INC-2026-0047"]) {
     assert.equal(requiresWindowsRuntimeGate(await taskCard(taskId)), true);
   }
-  for (const taskId of ["BR-02", "BR-14", "BR-17", "INC-2026-0026"]) {
+  for (const taskId of ["BR-02", "BR-14", "BR-17", "BR-24", "INC-2026-0026"]) {
     assert.equal(requiresWindowsRuntimeGate(await taskCard(taskId)), false);
   }
 });
@@ -87,4 +87,24 @@ test("other changes keep their ordinary proportional CI checks", async () => {
     body: "## Task\nBR-17 persistent diagnostics.\n",
     files, headSha: sha, card: diagnosticsCard,
   }));
+});
+
+// The current BR-24 deliverable only observes delivery boundaries. Its later
+// behavioral change must explicitly restore required and pass the same validator.
+test("BR-24 diagnostic phase preserves the later functional runtime gate", async () => {
+  const card = await taskCard("BR-24");
+  assert.match(card, /Later functional fix gate:\*\* required Windows CEF runtime merge gate/);
+  assert.match(card, /restore the declaration above to `required`/);
+  const diagnosticBody = "## Task\nBR-24 bounded invoke diagnostics\n";
+  assert.doesNotThrow(() => validateRuntimeAcceptance({
+    body: diagnosticBody, files, headSha: sha, card,
+  }));
+  const functionalCard = card.replace(
+    /\*\*Windows runtime merge gate:\*\*[^\n]*/,
+    "**Windows runtime merge gate:** required",
+  );
+  assert.equal(requiresWindowsRuntimeGate(functionalCard), true);
+  assert.throws(() => validateRuntimeAcceptance({
+    body: diagnosticBody, files, headSha: sha, card: functionalCard,
+  }), /requires ## Runtime acceptance/);
 });
