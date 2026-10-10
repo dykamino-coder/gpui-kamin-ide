@@ -14,8 +14,7 @@ import { tabActivity, tabWaiting, sidebarMode, activeCustomizePanel } from '../s
 import { hostEditorSelection } from '../signals/file-viewer'
 import { showToast } from '../signals/toasts'
 import { activeWidgets } from '../signals/widgets'
-import { boundAgentTranscript, boundAgentSlots } from '../signals/agent-retention'
-import { tabAgentTrees, tabJsonlLive, subagentTileState, clearAgentTabState } from '../signals/agents'
+import { tabAgentTrees, tabJsonlLive, ingestAgentEntries, clearAgentTabState } from '../signals/agents'
 
 // Terminal registry for bridge.onOutput routing
 import { terminalRegistry, resetConsoleForReconnect } from '../signals/terminal-registry'
@@ -55,11 +54,6 @@ import {
  *  the conversation (the OOM/freeze root — see jsonl-project.ts). */
 export type WebviewRole = 'chat' | 'tools' | 'customize'
 
-/** Per-agent cap on a subagent tile's retained transcript. The tile shows recent
- *  activity only; the full record lives in the JSONL viewer. The push was
- *  unbounded AND never pruned (subagentTileState is keyed by agent, not tab), so
- *  a long team session walked the shared WebView2 heap to OOM — three panels at
- *  ~480MB each of accumulated subagent entries in the freeze report. */
 
 // МОДУЛЬНЫЙ уровень, не тело effect: ре-подписка на реконнекте (deps
 // reconnectNonce) пересоздавала эти структуры — hook-driven таб снова
@@ -490,33 +484,7 @@ export function useBridgeListeners(
     const unsubSubagentEntries = !agentData ? (() => {}) : bridge.onJsonlSubagentEntries((tabId: string, agentName: string, entries: any[], agentId?: string) => {
       const tid = activeTabId.value
       if (tabId !== tid) return
-      const routingKey = agentId || agentName
-      const curMap = subagentTileState.value
-      let state = curMap.get(routingKey) ?? curMap.get(agentName)
-      // uuid-дедуп: серверный реплей субагентских файлов повторяется на каждый
-      // реаттач/resync — без фильтра транскрипт агента множился кратно.
-      let fresh: any[] = entries
-      if (state) {
-        const seen = state.seen ?? (state.seen = new Set<string>())
-        fresh = entries.filter((e) => { const u = (e as { uuid?: string }).uuid; if (!u) return true; if (seen.has(u)) return false; seen.add(u); return true })
-      }
-      if (!state) {
-        // ПЕРВЫЙ батч кладём сразу: state создавался пустым и пришедшие записи
-        // выбрасывались — реплей завершённого агента приходит ОДНИМ батчем, и
-        // его вид оставался «No messages from this agent yet» (прод-скрин).
-        const firstSeen = new Set<string>()
-        for (const e of entries) { const u = (e as { uuid?: string }).uuid; if (u) firstSeen.add(u) }
-        state = { tabId, agentId, agentName, tileKey: '', entries: [...entries], seen: firstSeen }
-        boundAgentTranscript(state)
-        const nextMap = new Map(curMap)
-        nextMap.set(routingKey, state)
-        if (routingKey !== agentName) nextMap.set(agentName, state)
-        subagentTileState.value = boundAgentSlots(nextMap)
-      } else if (fresh.length > 0) {
-        state.entries.push(...fresh)
-      }
-      boundAgentTranscript(state)
-      subagentTileState.value = boundAgentSlots(new Map(subagentTileState.value))
+      ingestAgentEntries(tabId, agentName, entries, agentId)
       // Пульс жизни для staleness-прунера: рабочий агент пишет в свой JSONL,
       // даже если не шлёт teammate-message — без touch его running ложно
       // протухал бы через STALE_RUNNING_MS.

@@ -4,7 +4,7 @@ vi.mock('preact/hooks', () => ({ useRef: (value: unknown) => ({ current: value }
 vi.mock('@bridge/storage', () => ({ storage: { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() } }))
 import { useBridgeListeners } from './useBridgeListeners'
 import { activeTabId } from '../signals/tabs'
-import { subagentTileState, clearAgentTabState, tabAgentHistory } from '../signals/agents'
+import { subagentTileState, clearAgentTabState, tabAgentHistory, agentEntriesWithLive, agentTranscriptDownloadId } from '../signals/agents'
 import type { KaminBridgeApi } from '../../shared/types'
 
 let listeners: Map<string, (...args: any[]) => void>
@@ -31,6 +31,19 @@ function send(entries: any[]) {
   listeners.get('onJsonlSubagentEntries')!('a', 'worker', entries, 'agent-a')
 }
 describe('INC-2026-0008 actual retained state', () => {
+  it('bounds each session identity without mixing same-name readers or exports', () => {
+    send(batch(0, 5000))
+    ingest('b', 'worker', 'agent-b', 'b-only')
+    expect(agentEntriesWithLive('a', 'worker', undefined, 'a')).toHaveLength(600)
+    expect(agentEntriesWithLive('b', 'worker', undefined, 'b')).toEqual([{ uuid: 'b-only' }])
+    expect(agentTranscriptDownloadId('a', 'worker')).toBe('a')
+    expect(agentTranscriptDownloadId('b', 'worker')).toBe('b')
+    ingest('a', 'worker', 'agent-other', 'other-only')
+    expect(agentEntriesWithLive('a', 'worker')).toEqual([])
+    expect(agentTranscriptDownloadId('a', 'worker')).toBeUndefined()
+    clearAgentTabState('a')
+    expect(agentEntriesWithLive('b', 'worker', undefined, 'b')).toEqual([{ uuid: 'b-only' }])
+  })
   it('caps the first large batch and duplicate replay', () => {
     send(batch(0, 5000))
     expect(retained()[0].entries).toHaveLength(600)
