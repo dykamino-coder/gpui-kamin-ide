@@ -8,12 +8,12 @@ use crate::style::values::value::Len;
 #[allow(clippy::too_many_arguments)]
 pub(super) fn prepare_cell_box(
     e: &Element,
-    cols_collapsed: &Vec<bool>,
+    cols_collapsed: &[bool],
     collapse_cells: bool,
     win_edges: &std::collections::HashMap<u64, [f32; 4]>,
     table_is_vertical: bool,
     table_font: f32,
-    table_family: &String,
+    table_family: &str,
     px_of: &impl Fn(Option<Len>) -> f32,
     row: &Element,
     col_ix: usize,
@@ -152,7 +152,7 @@ pub(super) fn prepare_cell_box(
             .style
             .font_family
             .clone()
-            .unwrap_or_else(|| table_family.clone());
+            .unwrap_or_else(|| table_family.to_string());
         let v = crate::text::metrics::spacing_px(Some(l), &family, size);
         if v > 0.0 {
             cell.style.width = None;

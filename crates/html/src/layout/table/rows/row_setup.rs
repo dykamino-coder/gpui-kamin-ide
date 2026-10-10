@@ -12,8 +12,8 @@ use gpui::{AnyElement, IntoElement, Styled, div, px};
 
 pub(super) fn cell_spans(
     row_ix: i16,
-    rows_left: &Vec<usize>,
-    cols_collapsed: &Vec<bool>,
+    rows_left: &[usize],
+    cols_collapsed: &[bool],
     col_ix: usize,
     cell: &Element,
 ) -> (u16, u16, bool, bool) {
@@ -131,7 +131,7 @@ pub(super) fn row_band_probes(
 
 pub(super) fn push_empty_row_track(
     row_ix: i16,
-    occupied: &Vec<u16>,
+    occupied: &[u16],
     e: &Element,
     cols: u16,
     cells: &mut Vec<AnyElement>,

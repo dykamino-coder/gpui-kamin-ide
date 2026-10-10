@@ -14,7 +14,7 @@ use gpui::{AnyElement, IntoElement, ParentElement};
 #[allow(clippy::too_many_arguments)]
 pub(super) fn emit_cell(
     row_ix: i16,
-    occupied: &mut Vec<u16>,
+    occupied: &mut [u16],
     opts: &RenderOpts,
     group_of: &std::collections::HashMap<u64, (&Element, bool, bool)>,
     e: &Element,
@@ -25,9 +25,9 @@ pub(super) fn emit_cell(
     cell_bgs: &std::rc::Rc<std::cell::RefCell<Vec<(gpui::Bounds<gpui::Pixels>, gpui::Hsla)>>>,
     row_elements: &Vec<&Element>,
     table_edges: &std::rc::Rc<std::cell::RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
-    col_rects: &Vec<Option<crate::layout::table::paint::RowRects>>,
+    col_rects: &[Option<crate::layout::table::paint::RowRects>],
     col_els: &Vec<Option<&Element>>,
-    grp_rects: &Vec<Option<crate::layout::table::paint::RowRects>>,
+    grp_rects: &[Option<crate::layout::table::paint::RowRects>],
     grp_els: &Vec<Option<&Element>>,
     rules_groups: bool,
     group_refs: &mut std::collections::HashMap<

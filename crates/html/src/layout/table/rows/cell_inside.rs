@@ -13,7 +13,7 @@ pub(super) fn place_cell_in_grid(
     row_ix: i16,
     e: &Element,
     cols: u16,
-    row_elements: &Vec<&Element>,
+    row_elements: &[&Element],
     col_ix: usize,
     span_cols: u16,
     span_rows: u16,
@@ -22,9 +22,9 @@ pub(super) fn place_cell_in_grid(
     // Вертикальное письмо таблицы: ряды идут ПОПЕРЁК — охваты
     // меняются осями вместе с сеткой (css-writing-modes-3 §8).
     let (grid_cols, grid_rows) = if e.style.vertical == Some(true) {
-        (span_rows as u16, span_cols as u16)
+        (span_rows, span_cols)
     } else {
-        (span_cols, span_rows as u16)
+        (span_cols, span_rows)
     };
     if grid_cols > 1 {
         d = d.col_span(grid_cols);
