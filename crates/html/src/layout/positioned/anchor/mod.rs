@@ -38,15 +38,26 @@ mod plan;
 pub(crate) mod resolve;
 pub(crate) mod settle;
 
-use gpui::{AnyElement, App, Bounds, IntoElement, Pixels, Styled, Window, px};
+use gpui::{AnyElement, Bounds, Pixels};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
-use crate::dom::Node;
-use crate::style::computed::{Align, Computed, PositionAnchor};
+use crate::style::computed::Align;
 use crate::style::values::value::{AnchorFn, Len};
 use area::Tracks;
 use settle::DefaultAnchor;
+mod probe;
+pub use probe::key_of;
+pub use probe::probe_for;
+mod tf_stack;
+pub(super) use tf_stack::containing_bounds;
+pub use tf_stack::tf_pop;
+pub use tf_stack::tf_push;
+use tf_stack::{tf_map, tf_under};
+mod frame;
+pub use frame::next_seq;
+pub use frame::reset;
+use frame::{reframe_if_stale, request_rebuild};
 
 /// Запись якоря в реестре кадра: рамка (border box), маска обрезки в точке
 /// пробы и `visibility: hidden` (§position-visibility: anchor-visible), свой
@@ -137,249 +148,6 @@ thread_local! {
     /// Extra frames requested for this document because those previous-frame
     /// values changed (bounded, so an oscillating page cannot loop forever).
     static REFRAMES: Cell<u32> = const { Cell::new(0) };
-}
-
-/// Sizes resolved before layout from the previous frame are only correct once
-/// the anchor geometry they read has settled; nothing else repaints a static
-/// page, so ask for one more frame while it is still changing.
-fn reframe_if_stale(window: &mut Window) {
-    if REFRAMES.with(|r| r.get()) < 8 {
-        REFRAMES.with(|r| r.set(r.get() + 1));
-        request_rebuild(window);
-    }
-}
-
-/// Rebuild the page on the next frame. Called from `prepaint`, where
-/// `window.refresh()` is ignored (GPUI drops invalidation while drawing), so the
-/// view is notified from a next-frame callback instead.
-fn request_rebuild(window: &mut Window) {
-    if let Some(view) = window.current_view_opt() {
-        window.on_next_frame(move |window, cx| {
-            cx.notify(view);
-            window.refresh();
-        });
-    }
-}
-
-/// Расходник кадра — чистится в `interact::frame_sanitize`. Реестры текущего
-/// кадра не выбрасываются, а переезжают в `LAST_*`.
-pub fn reset() {
-    crate::layout::positioned::absolute_overflow::reset();
-    NAMED.with(|m| m.borrow_mut().clear());
-    let named = NAMED_SEQ.with(|v| std::mem::take(&mut *v.borrow_mut()));
-    LAST_NAMED.with(|v| *v.borrow_mut() = named);
-    let implicit = IMPLICIT.with(|m| std::mem::take(&mut *m.borrow_mut()));
-    LAST_IMPLICIT.with(|m| *m.borrow_mut() = implicit);
-    CB.with(|m| m.borrow_mut().clear());
-    CB_PARENT.with(|m| m.borrow_mut().clear());
-    let area = AREA_NOW.with(|m| std::mem::take(&mut *m.borrow_mut()));
-    AREA_LAST.with(|m| *m.borrow_mut() = area);
-    let cell = CELL_NOW.with(|m| std::mem::take(&mut *m.borrow_mut()));
-    CELL_LAST.with(|m| *m.borrow_mut() = cell);
-    SEQ.with(|s| s.set(0));
-    TF_NEXT.with(|n| n.set(0));
-    USED_LAST.with(|u| u.set(false));
-}
-
-/// Порядковый номер сборки элемента в кадре: зовёт `render::element` в
-/// порядке дерева, номер устойчив от кадра к кадру (дерево то же).
-pub fn next_seq() -> u32 {
-    SEQ.with(|s| {
-        let v = s.get() + 1;
-        s.set(v);
-        v
-    })
-}
-
-/// Read the actual padding box of an absolute containing block in this frame.
-pub(super) fn containing_bounds(node: u64) -> Option<Bounds<Pixels>> {
-    CB.with(|map| map.borrow().get(&node).copied())
-}
-
-/// Положить плоский трансформ на стек подготовки (`Transformed::prepaint`).
-pub fn tf_push(m: [[f32; 3]; 2]) {
-    let id = TF_NEXT.with(|n| {
-        let v = n.get() + 1;
-        n.set(v);
-        v
-    });
-    TF.with(|s| s.borrow_mut().push((id, m)));
-}
-
-/// Снять трансформ со стека подготовки.
-pub fn tf_pop() {
-    TF.with(|s| {
-        s.borrow_mut().pop();
-    });
-}
-
-/// Рамка через весь стек: углы идут от ВНУТРЕННЕГО трансформа к внешнему
-/// (экран = внешний(…внутренний(p))), результат — объемлющий прямоугольник
-/// (§2: «axis-aligned bounding rectangle»). Второе — номер внутреннего
-/// трансформа (0 — стек пуст).
-fn tf_map(r: Bounds<Pixels>) -> (Bounds<Pixels>, u32) {
-    TF.with(|s| {
-        let s = s.borrow();
-        let Some(&(top, _)) = s.last() else {
-            return (r, 0);
-        };
-        let x0 = f32::from(r.origin.x);
-        let y0 = f32::from(r.origin.y);
-        let x1 = x0 + f32::from(r.size.width);
-        let y1 = y0 + f32::from(r.size.height);
-        let (mut lx, mut ly, mut hx, mut hy) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
-        for (mut x, mut y) in [(x0, y0), (x1, y0), (x0, y1), (x1, y1)] {
-            for (_, m) in s.iter().rev() {
-                (x, y) = (
-                    m[0][0] * x + m[0][1] * y + m[0][2],
-                    m[1][0] * x + m[1][1] * y + m[1][2],
-                );
-            }
-            lx = lx.min(x);
-            ly = ly.min(y);
-            hx = hx.max(x);
-            hy = hy.max(y);
-        }
-        let b = Bounds {
-            origin: gpui::point(px(lx), px(ly)),
-            size: gpui::size(px(hx - lx), px(hy - ly)),
-        };
-        (b, top)
-    })
-}
-
-/// Лежит ли трансформ `id` на текущем стеке — то есть предок ли он коробки,
-/// которая сейчас готовится.
-fn tf_under(id: u32) -> bool {
-    TF.with(|s| s.borrow().iter().any(|(i, _)| *i == id))
-}
-
-/// Ключ коробки в реестрах между кадрами: `node_id`; у псевдоэлемента он 0 —
-/// ключ от хозяина (`implicit_anchor`) и вида.
-pub fn key_of(e: &crate::dom::Element) -> u64 {
-    if e.node_id != 0 {
-        return e.node_id;
-    }
-    (1u64 << 63) | (e.style.implicit_anchor.unwrap_or(0) << 1) | u64::from(e.tag == "::after")
-}
-
-/// Ссылается ли коробка на НЕЯВНЫЙ якорь: `position-anchor: auto`, либо
-/// `normal` (в том числе не задано) при непустой `position-area`
-/// (§position-anchor: «normal: If position-area is none, behaves as none.
-/// Otherwise, behaves as auto»).
-fn wants_implicit(c: &Computed) -> bool {
-    match &c.position_anchor {
-        Some(PositionAnchor::Auto) => true,
-        Some(PositionAnchor::Normal) | None => c.position_area.is_some(),
-        _ => false,
-    }
-}
-
-/// Проба якоря для коробки `e`: нужна, когда у неё есть `anchor-name` или
-/// её псевдоэлемент ссылается на неё как на неявный якорь. Канвас во всю
-/// коробку (`absolute` + `size_full`) — та же форма, что у `edge_probe`.
-/// `hidden` — `visibility: hidden` коробки (§position-visibility).
-pub fn probe_for(e: &crate::dom::Element, c: &Computed, hidden: bool) -> Option<AnyElement> {
-    let names: Vec<String> = e.style.anchor_name.clone().unwrap_or_default();
-    let implicit = e.node_id != 0
-        && e.children.iter().any(|n| {
-            matches!(n, Node::Element(k) if k.tag.starts_with("::") && wants_implicit(&k.style))
-        });
-    // Содержащий блок абсолюта — каждая коробка с `establishes_cb`: её
-    // padding box читает сетка `position-area` (§position-area-grid-resolution),
-    // связь с её собственным содержащим блоком — приемлемость якоря (§target).
-    let cb = e.node_id != 0 && crate::text::inline::establishes_cb(&e.style);
-    if names.is_empty() && !implicit && !cb {
-        return None;
-    }
-    let id = e.node_id;
-    let seq = c.anchor_seq;
-    let own_cb = c.cb_node;
-    // CSS Anchor Positioning 1 resolves logical border-box edges before snapping.
-    // The absolute probe covers the padding box; expand it by the CSS borders.
-    // The containing-block record remains the padding box (CSS 2.1 section 10.1).
-    let bw = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
-    let b = e.style.borders();
-    let border = [bw(b.top), bw(b.right), bw(b.bottom), bw(b.left)];
-    Some(
-        gpui::canvas_with_unrounded_bounds(
-            move |bounds: Bounds<Pixels>, window: &mut Window, _: &mut App| {
-                if cb {
-                    CB.with(|m| m.borrow_mut().insert(id, bounds));
-                    CB_PARENT.with(|m| m.borrow_mut().insert(id, own_cb));
-                }
-                if names.is_empty() && !implicit {
-                    return;
-                }
-                let outer = Bounds {
-                    origin: gpui::point(
-                        bounds.origin.x - px(border[3]),
-                        bounds.origin.y - px(border[0]),
-                    ),
-                    size: gpui::size(
-                        bounds.size.width + px(border[1] + border[3]),
-                        bounds.size.height + px(border[0] + border[2]),
-                    ),
-                };
-                // Маска обрезки в точке пробы — пересечение `overflow`-обрезок
-                // всех предков: по ней `AnchorPlace` решает, обрезан ли якорь
-                // промежуточными коробками (§position-visibility).
-                // Рамка раскладки — до трансформов: `Transformed` матрицу
-                // применяет только на отрисовке. Отображённую снимаем здесь же
-                // по стеку предков (`tf_map`), выбирает её цель (`lookup`):
-                // `transform-001/002/009` — якорь с `translate(-200px, -100px)
-                // scale(2)` обязан стоять там, где нарисован.
-                let (rect_tf, tf_top) = tf_map(outer);
-                let rec = AnchorRec {
-                    rect: outer,
-                    clip: window.content_mask().bounds,
-                    hidden,
-                    id,
-                    cb: own_cb,
-                    rect_tf,
-                    tf_top,
-                };
-                NAMED.with(|m| {
-                    let mut m = m.borrow_mut();
-                    for n in &names {
-                        m.insert(n.clone(), rec);
-                    }
-                });
-                NAMED_SEQ.with(|v| {
-                    let mut v = v.borrow_mut();
-                    for n in &names {
-                        v.push((n.clone(), seq, rec));
-                    }
-                });
-                if implicit {
-                    IMPLICIT.with(|m| m.borrow_mut().insert(id, rec));
-                }
-                if USED_LAST.with(|u| u.get()) {
-                    let same = |r: &AnchorRec| r.rect == rec.rect && r.rect_tf == rec.rect_tf;
-                    let stale = names.iter().any(|n| {
-                        !LAST_NAMED.with(|v| {
-                            v.borrow()
-                                .iter()
-                                .any(|(k, s, r)| k == n && *s == seq && same(r))
-                        })
-                    }) || (implicit
-                        && !LAST_IMPLICIT.with(|m| m.borrow().get(&id).is_some_and(same)));
-                    if stale {
-                        reframe_if_stale(window);
-                    }
-                }
-            },
-            |_, _, _, _| {},
-        )
-        .absolute()
-        .top_0()
-        .left_0()
-        .size_full()
-        .into_any_element(),
-    )
 }
 
 /// Одна вставка с `anchor()` и поле коробки по этой стороне: функция
