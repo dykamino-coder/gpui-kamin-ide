@@ -38,7 +38,7 @@ mod plan;
 pub(crate) mod resolve;
 pub(crate) mod settle;
 
-use gpui::{AnyElement, Bounds, Pixels, Window};
+use gpui::{AnyElement, Bounds, Pixels};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
@@ -54,6 +54,10 @@ pub(super) use tf_stack::containing_bounds;
 pub use tf_stack::tf_pop;
 pub use tf_stack::tf_push;
 use tf_stack::{tf_map, tf_under};
+mod frame;
+pub use frame::next_seq;
+pub use frame::reset;
+use frame::{reframe_if_stale, request_rebuild};
 
 /// Запись якоря в реестре кадра: рамка (border box), маска обрезки в точке
 /// пробы и `visibility: hidden` (§position-visibility: anchor-visible), свой
@@ -144,58 +148,6 @@ thread_local! {
     /// Extra frames requested for this document because those previous-frame
     /// values changed (bounded, so an oscillating page cannot loop forever).
     static REFRAMES: Cell<u32> = const { Cell::new(0) };
-}
-
-/// Sizes resolved before layout from the previous frame are only correct once
-/// the anchor geometry they read has settled; nothing else repaints a static
-/// page, so ask for one more frame while it is still changing.
-fn reframe_if_stale(window: &mut Window) {
-    if REFRAMES.with(|r| r.get()) < 8 {
-        REFRAMES.with(|r| r.set(r.get() + 1));
-        request_rebuild(window);
-    }
-}
-
-/// Rebuild the page on the next frame. Called from `prepaint`, where
-/// `window.refresh()` is ignored (GPUI drops invalidation while drawing), so the
-/// view is notified from a next-frame callback instead.
-fn request_rebuild(window: &mut Window) {
-    if let Some(view) = window.current_view_opt() {
-        window.on_next_frame(move |window, cx| {
-            cx.notify(view);
-            window.refresh();
-        });
-    }
-}
-
-/// Расходник кадра — чистится в `interact::frame_sanitize`. Реестры текущего
-/// кадра не выбрасываются, а переезжают в `LAST_*`.
-pub fn reset() {
-    crate::layout::positioned::absolute_overflow::reset();
-    NAMED.with(|m| m.borrow_mut().clear());
-    let named = NAMED_SEQ.with(|v| std::mem::take(&mut *v.borrow_mut()));
-    LAST_NAMED.with(|v| *v.borrow_mut() = named);
-    let implicit = IMPLICIT.with(|m| std::mem::take(&mut *m.borrow_mut()));
-    LAST_IMPLICIT.with(|m| *m.borrow_mut() = implicit);
-    CB.with(|m| m.borrow_mut().clear());
-    CB_PARENT.with(|m| m.borrow_mut().clear());
-    let area = AREA_NOW.with(|m| std::mem::take(&mut *m.borrow_mut()));
-    AREA_LAST.with(|m| *m.borrow_mut() = area);
-    let cell = CELL_NOW.with(|m| std::mem::take(&mut *m.borrow_mut()));
-    CELL_LAST.with(|m| *m.borrow_mut() = cell);
-    SEQ.with(|s| s.set(0));
-    TF_NEXT.with(|n| n.set(0));
-    USED_LAST.with(|u| u.set(false));
-}
-
-/// Порядковый номер сборки элемента в кадре: зовёт `render::element` в
-/// порядке дерева, номер устойчив от кадра к кадру (дерево то же).
-pub fn next_seq() -> u32 {
-    SEQ.with(|s| {
-        let v = s.get() + 1;
-        s.set(v);
-        v
-    })
 }
 
 /// Одна вставка с `anchor()` и поле коробки по этой стороне: функция
