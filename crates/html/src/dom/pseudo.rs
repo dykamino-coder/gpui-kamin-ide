@@ -185,11 +185,11 @@ pub(super) fn pseudo_box_named(
         // содержимое, а не движение.
         node_id: 0,
         anim: None,
-        inline: !matches!(
-            style.position,
-            Some(crate::style::computed::Position::Absolute)
-                | Some(crate::style::computed::Position::Fixed)
-        ),
+        // A pseudo-element is inline unless `display` says otherwise; an
+        // absolutely positioned one keeps that original inline display for
+        // its static position (CSS 2.1 §10.3.7 hypothetical box), so `PASS`
+        // of `span::after { position: absolute }` stays on the span's line.
+        inline: true,
         tag: format!("::{tag}"),
         style,
         hover: None,
