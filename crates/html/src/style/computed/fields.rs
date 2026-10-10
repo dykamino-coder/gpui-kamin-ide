@@ -283,6 +283,10 @@ pub struct Computed {
     /// свойство, потому что по умолчанию последняя строка не растягивается:
     /// иначе абзац из одного слова разъехался бы во всю ширину.
     pub text_align_last: Option<TextAlign>,
+    /// `match-parent` (css-text-3 §text-align): бит 1 — у `text-align-all`,
+    /// бит 2 — у `text-align-last`; решается при наследовании по письму
+    /// РОДИТЕЛЯ (`inherit_fonts`).
+    pub text_align_match_parent: u8,
     /// `text-justify: none` — выключка запрещена, строка идёт как `start`.
     pub no_justify: Option<bool>,
     /// CSS Text 4: ruby annotation justification excludes word spaces.

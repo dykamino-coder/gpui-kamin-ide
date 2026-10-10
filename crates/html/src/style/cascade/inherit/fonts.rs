@@ -41,6 +41,7 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     c.justify_chars = own.justify_chars.or(parent.justify_chars);
     c.ruby_unit = own.ruby_unit || parent.ruby_unit;
     c.text_align_last = own.text_align_last.or(parent.text_align_last);
+    match_parent_align(parent, own, c);
     c.hanging = own.hanging.or(parent.hanging);
     c.monospace = own.monospace.or(parent.monospace);
     crate::style::computed::font_family::inherit(c, own, parent);
@@ -145,4 +146,33 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     c.balance_lines = own.balance_lines.or(parent.balance_lines);
     c.break_anywhere_strict = own.break_anywhere_strict.or(parent.break_anywhere_strict);
     c.line_break_loose = own.line_break_loose.or(parent.line_break_loose);
+}
+
+/// `match-parent`: «the inherited value of start or end is interpreted against the parent's
+/// direction» (css-text-3 §text-align). У корня родителя нет — там это `start` по своему письму.
+/// Последняя строка родителя с `auto` следует его `text-align-all` (`justify` → `start`).
+fn match_parent_align(parent: &Computed, own: &Computed, c: &mut Computed) {
+    if own.text_align_match_parent == 0 || (parent.rtl.is_none() && parent.text_align.is_none()) {
+        return;
+    }
+    let rtl = parent.rtl == Some(true);
+    let resolve = |a: Option<TextAlign>| {
+        Some(match a.unwrap_or(TextAlign::Start) {
+            TextAlign::Start if rtl => TextAlign::Right,
+            TextAlign::Start => TextAlign::Left,
+            TextAlign::End if rtl => TextAlign::Left,
+            TextAlign::End => TextAlign::Right,
+            other => other,
+        })
+    };
+    if own.text_align_match_parent & 1 != 0 {
+        c.text_align = resolve(parent.text_align);
+    }
+    if own.text_align_match_parent & 2 != 0 {
+        let last = parent.text_align_last.or(match parent.text_align {
+            Some(TextAlign::Justify) => Some(TextAlign::Start),
+            a => a,
+        });
+        c.text_align_last = resolve(last);
+    }
 }
