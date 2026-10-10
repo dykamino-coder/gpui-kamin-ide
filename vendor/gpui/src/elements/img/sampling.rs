@@ -49,6 +49,13 @@ pub(super) fn paint(
             image_style.grayscale,
         );
     }
+    let sampling = match image_style.pixelated {
+        true if window.current_transformation() == crate::TransformationMatrix::unit() => {
+            ImageSampling::NearestSnapped
+        }
+        true => ImageSampling::Nearest,
+        false => sampling,
+    };
     window.paint_image_with_sampling(
         bounds,
         corners,
