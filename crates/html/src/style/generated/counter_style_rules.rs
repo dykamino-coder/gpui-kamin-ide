@@ -928,7 +928,9 @@ mod tests {
                 ("d", &[("system", "numeric"), ("symbols", "'0' '1' '2'")]),
             ],
             || {
-                assert_eq!(custom_repr(-2, "a").unwrap(), "\u{2020}");
+                // css-counter-styles-3 §cyclic: index `(value - 1) mod N` with a
+                // non-negative modulo, so -2 with two symbols is index 1.
+                assert_eq!(custom_repr(-2, "a").unwrap(), "\u{2021}");
                 assert_eq!(custom_repr(-1, "b").unwrap(), "-*I");
                 assert_eq!(custom_repr(0, "b").unwrap(), "0");
                 assert_eq!(custom_repr(6, "b").unwrap(), "6");

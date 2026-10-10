@@ -158,7 +158,7 @@ mod tests {
     }
 
     #[test]
-    fn natural_content_box_removes_preflattened_padding_from_bounds() {
+    fn natural_content_box_keeps_content_box_bounds() {
         let mut style = Computed {
             height: Some(Len::Pct(1.0)),
             max_height: Some(Len::Px(100.0)),
@@ -167,8 +167,12 @@ mod tests {
         };
         style.padding.top = Some(Len::Px(7.0));
         style.padding.bottom = Some(Len::Px(7.0));
+        // A percentage size already switches `apply` to the native content
+        // box (`intrinsic_size::native_content_box`), so padding is not
+        // folded into the bounds there and the holder keeps them.
         let mut holder = crate::style::apply::apply(div(), &style);
-        assert_eq!(holder.style().max_size.height, Some(px(114.0).into()));
+        assert_eq!(holder.style().content_box, Some(true));
+        assert_eq!(holder.style().max_size.height, Some(px(100.0).into()));
         assert!(!apply(&mut holder, &style, Some(113.0 / 120.0), false));
         assert_eq!(holder.style().max_size.height, Some(px(100.0).into()));
         assert_eq!(holder.style().content_box, Some(true));

@@ -467,6 +467,8 @@ const CONSUMERS: &[&str] = &[
     include_str!("dom/pseudo.rs"),
     include_str!("dom/scroll_markers.rs"),
     include_str!("dom/xhtml.rs"),
+    include_str!("dom/counter_decls.rs"),
+    include_str!("layout/page/page_counters.rs"),
     include_str!("style/select/mod.rs"),
     include_str!("style/select/has.rs"),
     include_str!("style/select/matching.rs"),
