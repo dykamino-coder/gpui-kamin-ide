@@ -22,8 +22,10 @@ services:
       dockerfile: Dockerfile
     container_name: claude-bridge
     ports:
-      - "${BRIDGE_PORT:-3456}:3456"
+      - '${BRIDGE_PORT:-3456}:3456'
     volumes:
+      # Persist only allowlisted lifecycle metadata, never legacy raw logs.
+      - bridge-lifecycle-logs:/app/logs/lifecycle
       - bridge-data:/app/data
       - claude-auth:/home/bridge/.claude
       # Legacy sync volume retained for one-time migration into
@@ -46,7 +48,13 @@ services:
       # to log the shape of /v1/messages requests (subagent-attribution diag).
       - KAMIN_MITM_REQDIAG=${KAMIN_MITM_REQDIAG:-}
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:3456/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3456/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -54,6 +62,8 @@ services:
     restart: unless-stopped
 
 volumes:
+  bridge-lifecycle-logs:
+    driver: local
   bridge-data:
     driver: local
   claude-auth:
