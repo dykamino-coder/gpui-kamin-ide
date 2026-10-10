@@ -11,9 +11,11 @@ pub mod consts;
 pub mod drag;
 pub(crate) mod drag_flag;
 pub mod drop_hints;
+pub(crate) mod editor_minimap_sync;
 pub mod editor_save;
 pub mod editor_tab;
 pub mod init;
+pub(crate) mod input_value;
 pub mod metrics;
 pub mod model;
 pub mod model_customize;
@@ -47,3 +49,6 @@ pub mod splitters;
 pub mod term_grid;
 pub mod terminal_body;
 pub mod tools;
+
+mod sync_web_visibility;
+mod webview_visibility;

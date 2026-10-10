@@ -13,6 +13,8 @@ pub mod ctree;
 pub mod ctxmenu;
 pub mod customize;
 pub mod cz;
+#[cfg(debug_assertions)]
+pub(crate) mod debug_loaders;
 pub mod design;
 pub mod design_panel;
 pub mod design_samples;

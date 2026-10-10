@@ -199,7 +199,7 @@ impl RootView {
                         }))
                         .on_mouse_down(gpui::MouseButton::Left, {
                             let fh = self.terminal_focus.clone();
-                            move |_, window, _| window.focus(&fh)
+                            move |_, window, cx| window.focus(&fh, cx)
                         })
                         .flex()
                         .flex_col()

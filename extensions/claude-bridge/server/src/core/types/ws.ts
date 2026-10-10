@@ -60,12 +60,14 @@ export interface WsMsgSessionResize {
 
 export interface WsMsgMcpResponse {
   type: 'mcp:response'
+  sessionId?: string
   requestId: string
   result: unknown
 }
 
 export interface WsMsgMcpDenied {
   type: 'mcp:denied'
+  sessionId?: string
   requestId: string
   reason: string
 }
@@ -139,6 +141,7 @@ export interface WsMsgRegisterExternalContent {
 /** Client requests raw JSONL file download */
 export interface WsMsgJsonlDownloadRequest {
   type: 'jsonl:download-request'
+  agentId?: string
 }
 
 /** Incremental catch-up: the client mirrors the transcript locally and asks for

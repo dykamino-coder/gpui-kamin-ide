@@ -123,9 +123,9 @@ pub struct RootView {
     pub chat_cover: Option<(std::time::Instant, Option<std::time::Instant>)>,
     /// Один отложенный тик для retry/deadline видимых лоадеров.
     pub(crate) loader_tick: Option<gpui::Task<()>>,
-    /// Вью, чей скрипт уже слал ipc (жив) — до этого wv2 скрыт (chat-cover:
-    /// вместо белой вспышки виден gpui-плейсхолдер «Loading…»).
+    /// Вью, чей скрипт уже слал ipc; остальные показывают loading cover.
     pub webviews_alive: std::collections::HashSet<String>,
+    pub(crate) webview_slots: super::webview_visibility::Slots,
     /// Крышка загрузки вебвью: (когда появился html, когда вью «отрисовалось»).
     /// Второе — `__kaminReady` оригинала: пинг страницы либо фолбэк 1200 мс.
     pub webview_cover:

@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 
 import { RollingLogWriter } from "../../../../src/kamin-host/rolling-log.js"
+import type { SafeInvokeBoundary } from './invoke-diagnostics'
 
 const MAX_TRACKED_TABS = 256
 const MAX_TRACKED_RENDERERS = 16
@@ -28,7 +29,7 @@ export interface SafeConnectionTransition {
  *  пустое поколение даже тогда, когда исходная запись в него не поместилась. */
 export interface SafeRecordDropped {
   event: "record-dropped"
-  dropped: SafeConnectionTransition["event"] | SafeRendererSample["event"]
+  dropped: SafeConnectionTransition["event"] | SafeRendererSample["event"] | SafeInvokeBoundary['event']
 }
 
 export interface SafeRendererSample {
@@ -41,6 +42,9 @@ export interface SafeRendererSample {
   storeWindow: number
   scrollUpMax: number
   windowState: "within-configured-window" | "over-configured-window" | "unknown"
+  /** Debug acceptance only (KAMIN_DEBUG_AGENT_RETENTION=1): subagent transcript
+   *  retention counters for the INC-2026-0008 gate. Absent otherwise. */
+  agentRetention?: { slots: number; storedEntries: number; uuidIndex: number; closedTabSlots: number }
 }
 
 function boundedCount(value: unknown): number {
@@ -109,10 +113,22 @@ export function normalizeRendererSample(raw: unknown): SafeRendererSample {
     storeWindow: boundedCount(sample.storeWindow),
     scrollUpMax: boundedCount(sample.scrollUpMax),
     windowState,
+    ...debugAgentRetention(sample.agentRetention),
   }
 }
 
-export function formatIncidentLine(record: SafeConnectionTransition | SafeRendererSample | SafeRecordDropped): string {
+function debugAgentRetention(raw: unknown): Pick<SafeRendererSample, "agentRetention"> {
+  if (process.env.KAMIN_DEBUG_AGENT_RETENTION !== "1" || !raw || typeof raw !== "object") return {}
+  const r = raw as Record<string, unknown>
+  return { agentRetention: {
+    slots: boundedCount(r.slots),
+    storedEntries: boundedCount(r.storedEntries),
+    uuidIndex: boundedCount(r.uuidIndex),
+    closedTabSlots: boundedCount(r.closedTabSlots),
+  } }
+}
+
+export function formatIncidentLine(record: SafeConnectionTransition | SafeRendererSample | SafeRecordDropped | SafeInvokeBoundary): string {
   return `[incident] ${JSON.stringify({
     schema: 1,
     ts: new Date().toISOString(),
@@ -136,7 +152,7 @@ let dropMarked = false
  *  оставалась в `.1`, хвост уходил в новое поколение, и ни один обломок не
  *  разбирался как JSONL (INC-2026-0026). `writeRecord` вращает журнал заранее
  *  и кладёт запись целиком. */
-function emit(record: SafeConnectionTransition | SafeRendererSample): void {
+function emit(record: SafeConnectionTransition | SafeRendererSample | SafeInvokeBoundary): void {
   const log = incidentLog
   if (!log) return
   if (log.writeRecord(`${formatIncidentLine(record)}\n`)) return
@@ -147,6 +163,8 @@ function emit(record: SafeConnectionTransition | SafeRendererSample): void {
   dropMarked = true
   log.writeRecord(`${formatIncidentLine({ event: "record-dropped", dropped: record.event })}\n`)
 }
+
+export function recordInvokeBoundary(record: SafeInvokeBoundary): void { emit(record) }
 
 export function recordBridgeOutbound(channel: string, args: unknown[]): void {
   if (channel !== "connection-state-changed") return

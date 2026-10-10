@@ -11,7 +11,8 @@ import { setFrameRetentionProvider } from '../lib/host-ready'
 import { jsonlEntriesByTab } from '../signals/jsonl'
 import { mergeInitialTabSnapshot } from '../signals/tab-connection-reconcile'
 import { snd } from '../lib/bridge-transport'
-import { buildRendererIncidentSample } from '../lib/renderer-incident-sample'
+import { buildRendererIncidentSample, countAgentRetention } from '../lib/renderer-incident-sample'
+import { subagentTileState } from '../signals/agents'
 
 const INCIDENT_SAMPLE_INTERVAL_MS = 15_000
 
@@ -41,6 +42,8 @@ export function useInit(bridge: KaminBridgeApi, role: WebviewRole = 'chat'): voi
         role,
         jsonlEntriesByTab.value,
         activeTabId.value,
+        undefined,
+        countAgentRetention(subagentTileState.value, new Set(tabs.value.map((t) => t.id))),
       ))
     }
     report()

@@ -48,7 +48,7 @@ impl RootView {
                         }
                     });
                     self.modal_input_sub = Some(sub);
-                    window.focus(&input.read(cx).focus_handle(cx));
+                    window.focus(&input.read(cx).focus_handle(cx), cx);
                     // `inputRef.current?.select()` при открытии
                     // (`PromptModal.tsx:42-45`): предложенное имя выделено
                     // целиком, ввод сразу заменяет его (ревью ц.20/22)

@@ -76,6 +76,9 @@ impl RootView {
             COVER_GRACE_MS,
             COVER_FADE_MS,
         );
+        let covers_chat = d.id == crate::ui::chat_webview::CHAT_VIEW_ID;
+        #[cfg(debug_assertions)]
+        let covers_chat = covers_chat || d.id == crate::native_acceptance::VIEW;
         // Крышка: непрозрачна до готовности, потом фейд 180 мс
         // (`.loader` → `.loaderHidden`)
         const READY_FALLBACK_MS: u128 = 1200;
@@ -170,12 +173,9 @@ impl RootView {
                                 )),
                         )
                     })
-                    // Накрывашка переключения сессии поверх ЧАТА
-                    // (`chat-switch-cover` оригинала): пока сессия
-                    // переключается, вместо чужой переписки видно
-                    // брендовое ожидание (элементы 72/76)
+                    // Шторка переключения скрывает прежнее содержимое чата.
                     .when_some(
-                        if d.id == crate::ui::chat_webview::CHAT_VIEW_ID {
+                        if covers_chat {
                             chat_cover_opacity
                         } else {
                             None

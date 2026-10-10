@@ -1,20 +1,22 @@
-//! Веб-содержимое на CEF: браузер рисует кадр, кадр рисуем мы (`plan/101-cef.md`).
+//! CEF lifecycle (`plan/101-cef.md`); кадры и элементы — в соседних модулях.
 //!
-//! Здесь только жизненный цикл процесса и библиотеки. Сам элемент интерфейса
-//! и приём кадров — в соседних модулях, по мере готовности фаз.
-//!
-//! **Главное про запуск.** CEF на Windows запускает свои дочерние процессы
-//! (renderer, gpu, network) КОПИЕЙ нашего же exe с другими ключами командной
-//! строки. Поэтому [`exit_if_child_process`] обязана стоять первой строкой
-//! `main`: до probe, до сайдкара, до окна. Иначе каждый дочерний процесс
-//! попытается открыть тот же TCP-порт, поднять `kamin-host` и нарисовать окно.
+//! На Windows дети CEF (renderer, gpu, network) запускаются копией нашего exe.
+//! [`exit_if_child_process`] должна стоять первой строкой main: до probe,
+//! сайдкара и окна. Иначе дети тоже откроют TCP-порт, kamin-host и окно.
 
+#[cfg(debug_assertions)]
+mod acceptance;
 mod browsers;
+#[cfg(debug_assertions)]
+pub(crate) use acceptance::{acceptance_log, reset_fixture};
 mod context_menu;
 mod copy_frame;
 mod cursors;
 mod d3d_log;
 mod diag;
+mod diag_clock;
+mod diag_log;
+mod diag_sink;
 mod element;
 mod frames;
 mod gpu_mode;
@@ -34,7 +36,7 @@ mod visibility;
 pub use diag::{ctx_took, draw_took, drawn, rows_built};
 pub use element::{ensure_focus_handles, web_view};
 pub use process::{exit_if_child_process, init, shutdown};
-pub use visibility::{mark_visible, mark_visible_union};
+pub use visibility::mark_visible;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
@@ -157,11 +159,7 @@ pub fn set_wake(tx: smol::channel::Sender<()>) {
     let _ = WAKE.set(tx);
 }
 
-// Просить перерисовку через `InvalidateRect` НЕЛЬЗЯ: gpui рисует через
-// DirectComposition и не подтверждает область перерисовки, поэтому Windows
-// шлёт `WM_PAINT` без конца — процесс съедал целое ядро на простое (замер:
-// 5.03 с CPU за 5 с, без CEF — 0). Перерисовку заказывает задача-насос
-// в `main.rs` через `cx.refresh()`.
+// Перерисовку заказывает pump через notify; InvalidateRect вызывает WM_PAINT loop.
 
 /// Забрать и сбросить признак «есть новый кадр» (поток UI).
 pub fn take_repaint_request() -> bool {
@@ -226,7 +224,7 @@ pub(crate) fn respawn_stalled() {
 const NEVER_REAP: &[&str] = &["claudeBridgeChat"];
 
 pub(crate) fn reap_hidden() {
-    let visible = visibility::visible_set();
+    let (visible, retained) = visibility::reap_sets();
     let now = std::time::Instant::now();
     for id in browsers::ids() {
         if NEVER_REAP.contains(&id.as_str()) {
@@ -236,6 +234,9 @@ pub(crate) fn reap_hidden() {
             if let Ok(mut m) = HIDDEN_AT.lock() {
                 m.remove(&id);
             }
+            continue;
+        }
+        if retained.contains(&id) {
             continue;
         }
         let expired = {
@@ -278,7 +279,6 @@ pub fn flush_retired(cx: &mut gpui::App) {
     }
 }
 
-/// Открыть вью с адресом. Идемпотентно: второй раз ничего не делает.
 /// Живы ли браузеры CEF. Флага больше нет: CEF — единственный путь.
 pub fn enabled() -> bool {
     process::is_live()
@@ -339,7 +339,6 @@ fn html_changed(id: &str) -> bool {
     true
 }
 
-/// Показать в вью нашу страницу (HTML моста).
 /// Отдать странице пачку сообщений расширения.
 ///
 /// В скрипт кладём только НОМЕР пачки: тело страница забирает запросом
