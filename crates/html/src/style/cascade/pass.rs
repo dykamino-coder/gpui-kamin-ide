@@ -1,6 +1,7 @@
 //! Computed::apply_pass: один проход объявлений (обычные или !important) с подстановкой var()/attr(), all, порядком логических и физических свойств.
 
 use super::*;
+mod all_reset;
 
 impl Computed {
     /// Один проход: только обычные объявления либо только важные.
@@ -128,53 +129,7 @@ impl Computed {
         });
         let all_at = all_at.map(|(at, _)| at);
         if let Some((_, initial)) = all_reset {
-            let keep = (
-                self.rtl,
-                self.bidi_override,
-                self.bidi_isolate,
-                self.bidi_plaintext,
-                self.bidi_embed,
-                self.bidi_inherit,
-                self.decl_seq,
-            );
-            *self = Computed::default();
-            (
-                self.rtl,
-                self.bidi_override,
-                self.bidi_isolate,
-                self.bidi_plaintext,
-                self.bidi_embed,
-                self.bidi_inherit,
-                self.decl_seq,
-            ) = keep;
-            self.apply_one("display", "inline");
-            if initial {
-                // Наследуемые свойства: пустое поле у нас значит «от
-                // родителя», поэтому начальное значение ставится явно.
-                for key in [
-                    "color",
-                    "font-family",
-                    "font-size",
-                    "font-style",
-                    "font-variant",
-                    "font-weight",
-                    "letter-spacing",
-                    "line-height",
-                    "list-style-position",
-                    "list-style-type",
-                    "quotes",
-                    "text-align",
-                    "text-indent",
-                    "text-transform",
-                    "visibility",
-                    "white-space",
-                    "word-spacing",
-                ] {
-                    if let Some(start) = initial_value(key) {
-                        self.apply_one(key, start);
-                    }
-                }
-            }
+            self.reset_for_all(initial);
         }
         for k in &ordered {
             let Some(v) = d.get(*k) else { continue };
