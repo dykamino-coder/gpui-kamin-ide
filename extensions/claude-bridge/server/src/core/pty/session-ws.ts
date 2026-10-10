@@ -2,12 +2,14 @@
 // Session WebSocket — multiplexed PTY stream + MCP on /ws/session
 // ============================================================================
 
+import { lifecycleLog, type DestroyReason } from '../logging/lifecycle'
 import { WebSocketServer, WebSocket as WS } from 'ws'
 import type { Server as HttpServer } from 'http'
 import crypto from 'crypto'
 import fs from 'fs'
 import fsp from 'fs/promises'
 import path from 'path'
+import { SessionAdmissionError } from './session-admission'
 import { rememberModelSelection } from './model-selection'
 import { waitForDrain, type DrainOutcome } from './download-backpressure'
 import { fingerprintTranscript, canResume, isRecordBoundary, recordUuidMatches } from './jsonl-fingerprint'
@@ -31,7 +33,6 @@ import {
   handleMcpDenied,
   handleElicitationResponse,
   getSession,
-  countUserSessions,
   restartWithEffort,
   restartWithModel,
   getSessionTree,
@@ -100,16 +101,22 @@ export function attachSessionWebSocket(_server: HttpServer): void {
     let authenticatedUser: string | null = null
     let authenticatedTokenId: string | null = null
     let socketGone = false
-    type Startup = { reason?: 'disconnected' | 'ended' | 'replaced' }
+    type Startup = { reason?: 'disconnected' | 'ended' | 'replaced'; destroyReason?: DestroyReason }
     let startup: Startup | undefined
-    const beginStartup = (): Startup => {
-      if (startup) startup.reason ??= 'replaced'
+    const beginStartup = (reason: DestroyReason): Startup => {
+      if (startup) {
+        startup.reason ??= 'replaced'
+        startup.destroyReason ??= reason
+      }
       return (startup = {})
     }
     const ownsStartup = (operation: Startup) =>
       startup === operation && !operation.reason && !socketGone && ws.readyState === WS.OPEN
     const cancelStartup = (reason: Startup['reason']) => {
-      if (startup) startup.reason ??= reason
+      if (startup) {
+        startup.reason ??= reason
+        if (reason === 'ended') startup.destroyReason ??= 'explicit_end'
+      }
       startup = undefined
     }
     const dropTokenIndex = () => {
@@ -119,11 +126,11 @@ export function attachSessionWebSocket(_server: HttpServer): void {
       if (clients?.size === 0) tokenWsMap.delete(authenticatedTokenId)
       authenticatedTokenId = null
     }
-    const retireBinding = () => {
+    const retireBinding = (reason: DestroyReason) => {
       dropTokenIndex()
       if (authenticatedSessionId && sessionWsMap.get(authenticatedSessionId) === ws) {
         sessionWsMap.delete(authenticatedSessionId)
-        destroySession(authenticatedSessionId)
+        destroySession(authenticatedSessionId, reason)
       }
       authenticatedSessionId = null
       authenticatedUser = null
@@ -131,7 +138,8 @@ export function attachSessionWebSocket(_server: HttpServer): void {
     const releaseLateSession = (session: PtySession, operation: Startup) => {
       // A newer socket may already have stolen this registered session.
       if (session.ws !== ws || (sessionWsMap.has(session.id) && sessionWsMap.get(session.id) !== ws)) return
-      if (operation.reason === 'ended' || operation.reason === 'replaced') destroySession(session.id)
+      if (operation.reason === 'ended' || operation.reason === 'replaced')
+        destroySession(session.id, operation.destroyReason)
       else detachSession(session.id)
     }
 
@@ -175,7 +183,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
 
       switch (msg.type) {
         case 'session:create': {
-          const operation = beginStartup()
+          const operation = beginStartup('replace_start')
           try {
             // Authenticate token
             const resolved = await resolveToken(msg.token)
@@ -185,16 +193,9 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               return
             }
 
-            retireBinding()
+            retireBinding('replace_start')
 
-            // Check max sessions for this user
-            const maxSessions = 10 // TODO: get from token.max_sessions after DB migration
-            const currentCount = countUserSessions(resolved.tokenId)
-            if (currentCount >= maxSessions) {
-              sendError(ws, `Max sessions reached (${maxSessions})`, 4002, 'Max sessions reached')
-              return
-            }
-
+            // Admission reservations in createSession cover pending startups too.
             try {
               const bearerHash = crypto.createHash('sha256').update(msg.token).digest('hex').slice(0, 16)
               const session = await createSession(ws, resolved.userName, resolved.tokenId, {
@@ -252,7 +253,12 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               if (!ownsStartup(operation)) return
               const errMsg = err instanceof Error ? err.message : String(err)
               errorLog('Failed to create session', { error: errMsg })
-              sendError(ws, `Failed to create session: ${errMsg}`)
+              sendError(
+                ws,
+                `Failed to create session: ${errMsg}`,
+                err instanceof SessionAdmissionError && err.kind === 'token' ? 4002 : undefined,
+                'Max sessions reached',
+              )
             }
             break
           } catch (error) {
@@ -265,7 +271,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
 
         case 'session:end': {
           cancelStartup('ended')
-          retireBinding()
+          retireBinding('explicit_end')
           break
         }
 
@@ -333,10 +339,9 @@ export function attachSessionWebSocket(_server: HttpServer): void {
         }
 
         case 'session:resume': {
-          const operation = beginStartup()
+          const operation = beginStartup('replace_resume')
           let releaseResumeLock: () => void = () => {}
           try {
-            // Resume a previous conversation
             const resolved = await resolveToken(msg.token)
             if (!ownsStartup(operation)) return
             if (!resolved) {
@@ -344,22 +349,10 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               return
             }
 
-            retireBinding()
-
-            // Сериализация конкурентных resume одного диалога. Между
-            // findSessionByConversation и регистрацией createSession есть
-            // async-окно: два одновременных session:resume (реконнект ВСЕХ
-            // вкладок перезапущенного приложения) оба не находили live-сессию
-            // и спавнили ДВА CLI на один conversationId — два писателя одного
-            // JSONL. Прод-транскрипт 968683a8: ~344 резюм-отпечатка, часть
-            // ложится ВНУТРЬ чужих 5-секундных тул-лупов (интерливинг).
-            // Второй resume ждёт первого, затем находит его сессию live-поиском
-            // и реаттачится. Страховочный таймер снимает лок, если владелец
-            // умер, не дойдя до release (исключение вне внутреннего try).
-            // Канонизируем id ДО лока и live-поиска: вкладка с устаревшим id A
-            // иначе не находила живую сессию, идущую под tip B той же цепочки,
-            // и спавнила ВТОРОЙ CLI на ту же беседу (лок по сырому A тоже не
-            // спасал) — двойной писатель, хвост в осиротевшем файле.
+            retireBinding('replace_resume')
+            // Canonicalize before the shared lock: compact-chain aliases must
+            // serialize on the same live conversation, with ownership checked
+            // after each await before a waiter can create or reattach a PTY.
             if (msg.conversationId) {
               const canonical = followCompactLinks(msg.conversationId)
               if (canonical !== msg.conversationId) {
@@ -372,15 +365,16 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             }
             const resumeLockKey = msg.conversationId ? `${resolved.tokenId}:${msg.conversationId}` : null
             if (resumeLockKey) {
+              if (resumeLocks.has(resumeLockKey)) lifecycleLog('resume_wait')
               while (resumeLocks.has(resumeLockKey)) {
                 await resumeLocks.get(resumeLockKey)!.catch(() => {
-                  /* ждём, исход не важен */
+                  /* wait for either outcome */
                 })
               }
               if (!ownsStartup(operation)) return
               let resolveLock!: () => void
-              const lock = new Promise<void>((r) => {
-                resolveLock = r
+              const lock = new Promise<void>((resolve) => {
+                resolveLock = resolve
               })
               resumeLocks.set(resumeLockKey, lock)
               const safety = setTimeout(() => {
@@ -401,6 +395,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             if (!ownsStartup(operation)) return
             const live = findSessionByConversation(resolved.tokenId, msg.conversationId)
             if (live) {
+              lifecycleLog('resume_reuse', { sessionId: live.id })
               const oldWs = sessionWsMap.get(live.id)
               sessionWsMap.set(live.id, ws)
               if (oldWs && oldWs !== ws) {
@@ -552,7 +547,12 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               if (!ownsStartup(operation)) return
               const errMsg = err instanceof Error ? err.message : String(err)
               errorLog('Failed to resume session', { error: errMsg })
-              sendError(ws, `Failed to resume session: ${errMsg}`)
+              sendError(
+                ws,
+                `Failed to resume session: ${errMsg}`,
+                err instanceof SessionAdmissionError && err.kind === 'token' ? 4002 : undefined,
+                'Max sessions reached',
+              )
             } finally {
               releaseResumeLock()
             }
@@ -577,7 +577,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             sendError(ws, 'Session not found')
             return
           }
-          const operation = beginStartup()
+          const operation = beginStartup('effort_restart')
           try {
             const oldSessionId = authenticatedSessionId
             // Preserve the negotiated stream protocol across the PTY restart —
@@ -596,7 +596,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               // No conversation yet (empty chat) → recreate fresh with effort, preserve model
               session.isRestarting = true
               const preservedModel = session.model
-              destroySession(oldSessionId)
+              destroySession(oldSessionId, 'effort_restart')
               newSession = await createSession(ws, authenticatedUser!, session.tokenId, {
                 cwd: session.cwd,
                 cols: 120,
@@ -687,7 +687,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               return
             }
           }
-          const operation = beginStartup()
+          const operation = beginStartup('model_restart')
           try {
             const oldSessionId = authenticatedSessionId
             // Preserve the negotiated stream protocol across the PTY restart.
@@ -705,7 +705,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               // No conversation yet (empty chat) → recreate fresh with model, preserve effort
               session.isRestarting = true
               const preservedEffort = session.effort
-              destroySession(oldSessionId)
+              destroySession(oldSessionId, 'model_restart')
               newSession = await createSession(ws, authenticatedUser!, session.tokenId, {
                 cwd: session.cwd,
                 cols: 120,

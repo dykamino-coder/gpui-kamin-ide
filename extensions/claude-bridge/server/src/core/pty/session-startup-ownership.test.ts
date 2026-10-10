@@ -106,6 +106,7 @@ vi.mock('../proxy/native-mitm', () => ({ startNativeMitm: vi.fn() }))
 vi.mock('../proxy/streaming-settings', () => ({ getStreamingSettings: async () => ({ enabled: false }) }))
 vi.mock('./transcript-archive', () => ({ archiveTranscriptForSession: vi.fn(), dropArchivedTranscript: vi.fn() }))
 import { WebSocket } from 'ws'
+import { SessionAdmissionError } from './session-admission'
 import { attachSessionWebSocket, getSessionWs } from './session-ws'
 class Socket extends EventEmitter {
   readyState: number = WebSocket.OPEN
@@ -152,6 +153,14 @@ afterEach(() => {
   vi.useRealTimers()
 })
 describe('INC-2026-0013 actual WebSocket startup ownership', () => {
+  it.each(['session:create', 'session:resume'])('preserves admission error handling for %s', async (type) => {
+    h.create.mockRejectedValue(new SessionAdmissionError('token', 10))
+    const close = vi.spyOn(socket, 'close')
+    await socket.message({ type, token: 'synthetic', conversationId: 'conversation' })
+    expect(close).toHaveBeenCalledWith(4002, 'Max sessions reached')
+    expect(h.create).toHaveBeenCalledTimes(1)
+    expect(h.destroy).not.toHaveBeenCalled()
+  })
   it.each(['session:create', 'session:resume'])(
     'bounds late %s completion after close without stale indexes',
     async (type) => {
@@ -203,7 +212,7 @@ describe('INC-2026-0013 actual WebSocket startup ownership', () => {
     const session = makeSession('ended', socket)
     release(session)
     await request
-    expect(h.destroy).toHaveBeenCalledWith('ended')
+    expect(h.destroy).toHaveBeenCalledWith('ended', 'explicit_end')
     expect(h.detach).not.toHaveBeenCalled()
     expect(getSessionWs('ended')).toBeUndefined()
   })
@@ -233,7 +242,7 @@ describe('INC-2026-0013 actual WebSocket startup ownership', () => {
     await second
     old(makeSession('old', socket))
     await first
-    expect(h.destroy).toHaveBeenCalledWith('old')
+    expect(h.destroy).toHaveBeenCalledWith('old', 'replace_start')
     expect(getSessionWs('old')).toBeUndefined()
     expect(getSessionWs('new')).toBe(socket)
   })
