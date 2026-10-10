@@ -1,5 +1,5 @@
 import type { JSX } from 'preact'
-import { tabAgentTrees, fullscreenAgentId, listAgents } from '../../signals/agents'
+import { tabAgentTrees, fullscreenAgentId, listAgents, agentSelectionKey } from '../../signals/agents'
 import { activeTabId } from '../../signals/tabs'
 import styles from './SubagentButtonsRow.module.css'
 
@@ -19,10 +19,10 @@ export function SubagentButtonsRow(): JSX.Element | null {
     <div class={styles.row} role="toolbar" aria-label="Subagents">
       {agents.map((a) => (
         <button
-          key={a.name}
+          key={agentSelectionKey(tabId!, a)}
           type="button"
           class={styles.chip}
-          onClick={() => { fullscreenAgentId.value = a.name }}
+          onClick={() => { fullscreenAgentId.value = agentSelectionKey(tabId!, a) }}
           title={`${a.name}${a.agentType ? ` · ${a.agentType}` : ''} — ${a.status}`}
         >
           <span class={`${styles.dot} ${styles[a.status]}`} aria-hidden="true" />

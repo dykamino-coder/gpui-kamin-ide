@@ -4,12 +4,12 @@
 use super::{new_mirror, sync_mirror};
 use crate::state::editor_tab::EditorTab;
 use gpui::{AppContext as _, Entity, TestAppContext, VisualTestContext};
-use gpui_component::input::InputState;
+use gpui_component::input::EditorState as CodeEditorState;
 
 fn tab(path: &str, text: &str, cx: &mut VisualTestContext) -> EditorTab {
     let (input, minimap) = cx.update(|window, cx| {
         let input = cx.new(|cx| {
-            let mut st = InputState::new(window, cx).code_editor("rust");
+            let mut st = CodeEditorState::new(window, cx).language("rust");
             st.set_value(text.to_string(), window, cx);
             st
         });
@@ -29,7 +29,7 @@ fn tab(path: &str, text: &str, cx: &mut VisualTestContext) -> EditorTab {
     }
 }
 
-fn text(e: &Entity<InputState>, cx: &mut VisualTestContext) -> String {
+fn text(e: &Entity<CodeEditorState>, cx: &mut VisualTestContext) -> String {
     cx.update(|_, cx| e.read(cx).value().to_string())
 }
 

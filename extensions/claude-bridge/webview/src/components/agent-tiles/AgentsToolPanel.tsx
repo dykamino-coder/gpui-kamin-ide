@@ -1,6 +1,6 @@
 import type { JSX } from 'preact'
 import { useState, useEffect, useRef } from 'preact/hooks'
-import { tabAgentTrees, tabAgentHistory, findAgentByName, agentEntriesWithLive, type AgentInfo } from '../../signals/agents'
+import { tabAgentTrees, tabAgentHistory, agentIdentity, agentSelectionKey, agentEntriesWithLive, type AgentInfo } from '../../signals/agents'
 import { partitionAgents, type PartitionSide, type TeamView } from '../../signals/agent-partition'
 import { jsonlEntriesByTab } from '../../signals/jsonl'
 import { activeTabId } from '../../signals/tabs'
@@ -31,13 +31,13 @@ export function AgentsToolPanel(): JSX.Element {
 
   const [tab, setTab] = useState<'active' | 'completed'>('active')
   const [selected, setSelected] = useState<string | null>(null)
-  const known = new Set<string>()
+  const known = new Map<string, AgentInfo>()
   for (const side of [partition.active, partition.completed]) {
-    for (const t of side.teams) for (const m of t.members) known.add(m.name)
-    for (const a of side.solo) known.add(a.name)
+    for (const t of side.teams) for (const agent of t.members) if (tabId) known.set(agentSelectionKey(tabId, agent), agent)
+    for (const agent of side.solo) if (tabId) known.set(agentSelectionKey(tabId, agent), agent)
   }
-  const sel = selected && known.has(selected) ? selected : null
-  if (sel) return <AgentReader name={sel} onBack={() => { setSelected(null) }} />
+  const selectedInfo = selected ? known.get(selected) : undefined
+  if (selectedInfo) return <AgentReader info={selectedInfo} onBack={() => { setSelected(null) }} />
 
   if (partition.active.count === 0 && partition.completed.count === 0) {
     return (
@@ -49,7 +49,7 @@ export function AgentsToolPanel(): JSX.Element {
     )
   }
 
-  const open = (name: string): void => { setSelected(name) }
+  const open = (agent: AgentInfo): void => { if (tabId) setSelected(agentSelectionKey(tabId, agent)) }
   const side = tab === 'active' ? partition.active : partition.completed
 
   return (
@@ -71,20 +71,20 @@ export function AgentsToolPanel(): JSX.Element {
   )
 }
 
-function SideRows({ side, onOpen }: { side: PartitionSide; onOpen: (name: string) => void }): JSX.Element {
+function SideRows({ side, onOpen }: { side: PartitionSide; onOpen: (agent: AgentInfo) => void }): JSX.Element {
   return (
     <>
       {side.teams.map((team) => <TeamGroup key={`team:${team.name}`} team={team} onOpen={onOpen} />)}
       {side.solo.length > 0 && (
         <div class={styles.section}>
-          {side.solo.map((a) => <AgentRow key={a.name} agent={a} onClick={() => { onOpen(a.name) }} />)}
+          {side.solo.map((a) => <AgentRow key={agentIdentity(a)} agent={a} onClick={() => { onOpen(a) }} />)}
         </div>
       )}
     </>
   )
 }
 
-function TeamGroup({ team, onOpen }: { team: TeamView; onOpen: (name: string) => void }): JSX.Element {
+function TeamGroup({ team, onOpen }: { team: TeamView; onOpen: (agent: AgentInfo) => void }): JSX.Element {
   const running = team.members.filter((m) => m.status === 'running').length
   const badge = team.status === 'disbanded'
     ? 'disbanded'
@@ -98,7 +98,7 @@ function TeamGroup({ team, onOpen }: { team: TeamView; onOpen: (name: string) =>
       </div>
       {team.members.length === 0
         ? <div class={styles.teamEmpty}>no members</div>
-        : team.members.map((a) => <AgentRow key={a.name} agent={a} nested onClick={() => { onOpen(a.name) }} />)}
+        : team.members.map((a) => <AgentRow key={agentIdentity(a)} agent={a} nested onClick={() => { onOpen(a) }} />)}
     </div>
   )
 }
@@ -119,16 +119,12 @@ function AgentRow({ agent, nested, onClick }: { agent: AgentInfo; nested?: boole
   )
 }
 
-function AgentReader({ name, onBack }: { name: string; onBack: () => void }): JSX.Element {
+function AgentReader({ info, onBack }: { info: AgentInfo; onBack: () => void }): JSX.Element {
+  const name = info.name
   const tabId = activeTabId.value
-  const tree = tabId ? tabAgentTrees.value.get(tabId) : undefined
-  // Live tree first, else the history record (a finished agent left the tree but
-  // its transcript survives in subagentTileState).
-  const info = findAgentByName(tree, name)
-    ?? (tabId ? tabAgentHistory.value.get(tabId) : undefined)?.find((a) => a.name === name)
   // Subscribe to the main store so the live streaming stub repaints as it flushes.
   void (tabId ? jsonlEntriesByTab.value.get(tabId)?.length : 0)
-  const entries = agentEntriesWithLive(tabId, name, info?.agentType) as JsonlEntryData[]
+  const entries = agentEntriesWithLive(tabId, name, info.agentType, info.agentId, info.teamName) as JsonlEntryData[]
 
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const prevLenRef = useRef(0)

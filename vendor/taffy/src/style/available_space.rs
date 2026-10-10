@@ -5,6 +5,9 @@ use crate::{
     Size,
 };
 
+#[cfg(feature = "parse")]
+use crate::util::parse::{from_str_from_css, CssParseResult, FromCss, Parser, Token};
+
 /// The amount of space available to a node in a given axis
 /// <https://www.w3.org/TR/css-sizing-3/#available>
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -27,20 +30,35 @@ impl TaffyMinContent for AvailableSpace {
     const MIN_CONTENT: Self = Self::MinContent;
 }
 impl FromLength for AvailableSpace {
-    fn from_length<Input: Into<f32> + Copy>(value: Input) -> Self {
-        Self::Definite(value.into())
+    fn from_length<Input: Into<f64> + Copy>(value: Input) -> Self {
+        Self::Definite(value.into() as f32)
     }
 }
 
+#[cfg(feature = "parse")]
+impl FromCss for AvailableSpace {
+    fn from_css<'i>(parser: &mut Parser<'i, '_>) -> CssParseResult<'i, Self> {
+        match parser.next()?.clone() {
+            Token::Number { value, .. } if value >= 0.0 => Ok(Self::Definite(value)),
+            Token::Dimension { value, .. } if value >= 0.0 => Ok(Self::Definite(value)),
+            Token::Ident(ident) if ident == "max-content" => Ok(Self::MaxContent),
+            Token::Ident(ident) if ident == "min-content" => Ok(Self::MinContent),
+            token => Err(parser.new_unexpected_token_error(token))?,
+        }
+    }
+}
+#[cfg(feature = "parse")]
+from_str_from_css!(AvailableSpace);
+
 impl AvailableSpace {
     /// Returns true for definite values, else false
-    pub fn is_definite(self) -> bool {
+    pub const fn is_definite(self) -> bool {
         matches!(self, AvailableSpace::Definite(_))
     }
 
     /// Convert to Option
     /// Definite values become Some(value). Constraints become None.
-    pub fn into_option(self) -> Option<f32> {
+    pub const fn into_option(self) -> Option<f32> {
         match self {
             AvailableSpace::Definite(value) => Some(value),
             _ => None,
@@ -135,11 +153,17 @@ impl From<Option<f32>> for AvailableSpace {
 impl Size<AvailableSpace> {
     /// Convert `Size<AvailableSpace>` into `Size<Option<f32>>`
     pub fn into_options(self) -> Size<Option<f32>> {
-        Size { width: self.width.into_option(), height: self.height.into_option() }
+        Size {
+            width: self.width.into_option(),
+            height: self.height.into_option(),
+        }
     }
 
     /// If passed value is Some then return AvailableSpace::Definite containing that value, else return self
     pub fn maybe_set(self, value: Size<Option<f32>>) -> Size<AvailableSpace> {
-        Size { width: self.width.maybe_set(value.width), height: self.height.maybe_set(value.height) }
+        Size {
+            width: self.width.maybe_set(value.width),
+            height: self.height.maybe_set(value.height),
+        }
     }
 }
