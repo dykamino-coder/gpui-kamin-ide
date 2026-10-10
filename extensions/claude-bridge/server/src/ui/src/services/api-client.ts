@@ -1,9 +1,10 @@
 import type { RequestLogEntry, ServerConfig, ExtendedStats, UserTimeSeriesEntry } from '../types'
 import { getSessionToken, isAuthenticated } from '../signals/auth'
+import type { PlanUsageData as UsageData } from '../../../shared/plan-usage'
 
 function authHeaders(): Record<string, string> {
   const token = getSessionToken()
-  return token ? { 'Authorization': `Bearer ${token}` } : {}
+  return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
 /** Handle 401 responses — clear auth state */
@@ -36,11 +37,26 @@ async function deleteJson<T>(path: string): Promise<T> {
 }
 
 export const api = {
-  getSessions: () => fetchJson<{ sessions: Array<{ id: string; userName: string; cwd: string; state: string; createdAt: string; lastActivityAt: string; mcpCallCount: number; durationSec: number; idleSec: number }> }>('/api/dashboard/sessions'),
-  killSession: (id: string) => postJson<{ ok: boolean; id: string }>(`/api/dashboard/sessions/${encodeURIComponent(id)}/kill`),
+  getSessions: () =>
+    fetchJson<{
+      sessions: Array<{
+        id: string
+        userName: string
+        cwd: string
+        state: string
+        createdAt: string
+        lastActivityAt: string
+        mcpCallCount: number
+        durationSec: number
+        idleSec: number
+      }>
+    }>('/api/dashboard/sessions'),
+  killSession: (id: string) =>
+    postJson<{ ok: boolean; id: string }>(`/api/dashboard/sessions/${encodeURIComponent(id)}/kill`),
   getStatus: () => fetchJson<Record<string, unknown>>('/api/dashboard/status'),
   getStats: () => fetchJson<ExtendedStats>('/api/dashboard/stats'),
-  getRequests: (limit = 50, offset = 0) => fetchJson<RequestLogEntry[]>(`/api/dashboard/requests?limit=${limit}&offset=${offset}`),
+  getRequests: (limit = 50, offset = 0) =>
+    fetchJson<RequestLogEntry[]>(`/api/dashboard/requests?limit=${limit}&offset=${offset}`),
   getFilteredRequests: (filter: { endpoint?: string; userName?: string; status?: string }, limit = 50, offset = 0) => {
     const params = new URLSearchParams()
     params.set('limit', String(limit))
@@ -50,7 +66,8 @@ export const api = {
     if (filter.status) params.set('status', filter.status)
     return fetchJson<RequestLogEntry[]>(`/api/dashboard/requests?${params.toString()}`)
   },
-  getUserChat: (userName: string) => fetchJson<RequestLogEntry[]>(`/api/dashboard/user-chat/${encodeURIComponent(userName)}`),
+  getUserChat: (userName: string) =>
+    fetchJson<RequestLogEntry[]>(`/api/dashboard/user-chat/${encodeURIComponent(userName)}`),
   getRequest: (id: string) => fetchJson<RequestLogEntry>(`/api/dashboard/requests/${id}`),
   getConfig: () => fetchJson<ServerConfig>('/api/dashboard/config'),
   refreshHealth: (prompt?: string, force = false) => {
@@ -62,7 +79,10 @@ export const api = {
   },
   getAccount: (force = false) => fetchJson<AccountInfo>(`/api/dashboard/account${force ? '?force=true' : ''}`),
   getUsage: (force = false) => fetchJson<UsageData>(`/api/dashboard/usage${force ? '?force=1' : ''}`),
-  getAuthStatus: (force = false) => fetchJson<{ loggedIn: boolean; authMethod?: string; apiProvider?: string; error?: string }>(`/api/dashboard/auth-status${force ? '?force=true' : ''}`),
+  getAuthStatus: (force = false) =>
+    fetchJson<{ loggedIn: boolean; authMethod?: string; apiProvider?: string; error?: string }>(
+      `/api/dashboard/auth-status${force ? '?force=true' : ''}`,
+    ),
   clearHistory: () => deleteJson<{ ok: boolean }>('/api/dashboard/requests'),
   deleteByFilter: (filter: { endpoint?: string; userName?: string; status?: string }) => {
     const params = new URLSearchParams()
@@ -145,10 +165,4 @@ export interface UserSummary {
   lastSeen: string | null
 }
 
-export interface UsageData {
-  session: { percent: number; resets: string } | null
-  weekAll: { percent: number; resets: string } | null
-  weekSonnet: { percent: number; resets: string } | null
-  extra: string | null
-  timestamp: string
-}
+export type { PlanUsageData as UsageData } from '../../../shared/plan-usage'
