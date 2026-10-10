@@ -9,6 +9,15 @@
 //! фильтры, макеты интерфейса от модели. Пустое место вместо поля выглядит
 //! поломкой; нарисованное поле честно показывает задуманный вид.
 
+mod indicators;
+use indicators::color_swatch;
+use indicators::progress;
+use indicators::range;
+
+mod choice;
+use choice::select;
+use choice::toggle;
+
 use crate::dom::Element;
 use crate::style::apply::apply;
 use crate::style::computed::Computed;
@@ -108,101 +117,6 @@ fn textarea(e: &Element, style: &Computed, opts: &crate::render::RenderOpts) -> 
         .into_any_element()
 }
 
-/// Список выбора: показываем выбранный вариант либо первый.
-fn select(e: &Element, style: &Computed) -> AnyElement {
-    let mut chosen: Option<String> = None;
-    let mut first: Option<String> = None;
-    for child in &e.children {
-        let crate::dom::Node::Element(opt) = child else {
-            continue;
-        };
-        if opt.tag != "option" {
-            continue;
-        }
-        let mut label = String::new();
-        crate::render::gather_text_public(&opt.children, &mut label);
-        let label = label.trim().to_string();
-        if first.is_none() {
-            first = Some(label.clone());
-        }
-        if opt.attr("selected").is_some() {
-            chosen = Some(label);
-        }
-    }
-    let text = chosen.or(first).unwrap_or_default();
-    // «Sizing as if empty»: под обособлением СТРОЧНОЙ оси коробка мерится
-    // так, будто содержимого нет вовсе — «not even through pseudo-elements»
-    // (css-contain-2 Overview.bs:627-630). Подпись выбранного пункта уходит в
-    // наложенный слой: мериться перестаёт, рисоваться продолжает — это второй
-    // такт, «laying out in-place» (там же, :702-707). Без этого
-    // `<select style="width:100px; contain:size">` растягивался по самому
-    // длинному `option`.
-    if style.contains_width() {
-        return field_box(style)
-            .relative()
-            .justify_between()
-            .child(
-                div()
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .overflow_hidden()
-                    .child(SharedString::from(text)),
-            )
-            .child(div().text_color(rgb(MUTED)).child(SharedString::from("⌄")))
-            .into_any_element();
-    }
-    let mut b = field_box(style);
-    // Пол `min_h(24)` у поля — для ПУСТОГО списка. С подписью он лишь
-    // подменял автоминимум элемента гибкого контейнера (css-flexbox-1 §4.5:
-    // `min-height: auto` = высота содержимого) явным 24, и в колонке высоты 0
-    // список сжимался ниже своей строки (`select-element-zero-height-001/002`).
-    if !text.is_empty() && style.min_height.is_none() {
-        b.style().min_size.height = None;
-    }
-    b.justify_between()
-        .child(SharedString::from(text))
-        // Стрелка рисуется символом: своей иконки у документа нет, а без неё
-        // список неотличим от обычного поля.
-        .child(div().text_color(rgb(MUTED)).child(SharedString::from("⌄")))
-        .into_any_element()
-}
-
-/// Флажок и переключатель отличаются только скруглением и отметкой.
-fn toggle(e: &Element, style: &Computed, round: bool) -> AnyElement {
-    let on = e.attr("checked").is_some();
-    // `accent-color` красит именно отметку флажка и переключателя — это
-    // единственное, на что оно влияет.
-    let accent: gpui::Hsla = style
-        .accent_color
-        .map(|c| c.to_hsla())
-        .unwrap_or_else(|| rgb(ACCENT).into());
-    let mut mark = apply(div(), style)
-        .w(px(15.))
-        .h(px(15.))
-        .flex()
-        .flex_shrink_0()
-        .items_center()
-        .justify_center()
-        .border_1()
-        .border_color(if on { accent } else { rgb(BORDER).into() })
-        .bg(if on { accent } else { rgb(FIELD_BG).into() });
-    mark = if round {
-        mark.rounded_full()
-    } else {
-        mark.rounded(px(3.))
-    };
-    if on {
-        mark = mark.child(
-            div()
-                .text_size(px(10.))
-                .text_color(rgb(0xffffff))
-                .child(SharedString::from(if round { "•" } else { "✓" })),
-        );
-    }
-    mark.into_any_element()
-}
-
 /// `<input type="button">` — значение лежит в атрибуте, а не в детях.
 fn button_like(e: &Element, style: &Computed) -> AnyElement {
     apply(div(), style)
@@ -215,95 +129,6 @@ fn button_like(e: &Element, style: &Computed) -> AnyElement {
         .child(SharedString::from(
             e.attr("value").unwrap_or("Кнопка").to_string(),
         ))
-        .into_any_element()
-}
-
-/// Ползунок: дорожка и заполненная часть по значению.
-fn range(e: &Element, style: &Computed) -> AnyElement {
-    let num = |name: &str, default: f32| -> f32 {
-        e.attr(name).and_then(|v| v.parse().ok()).unwrap_or(default)
-    };
-    let (min, max, val) = (num("min", 0.), num("max", 100.), num("value", 50.));
-    let accent: gpui::Hsla = style
-        .accent_color
-        .map(|c| c.to_hsla())
-        .unwrap_or_else(|| rgb(ACCENT).into());
-    let frac = if max > min {
-        ((val - min) / (max - min)).clamp(0., 1.)
-    } else {
-        0.
-    };
-    apply(div(), style)
-        .h(px(16.))
-        .min_w(px(60.))
-        .flex()
-        .items_center()
-        .child(
-            div()
-                .relative()
-                .w_full()
-                .h(px(4.))
-                .rounded(px(2.))
-                .bg(rgb(BORDER))
-                .child(
-                    div()
-                        .absolute()
-                        .left(px(0.))
-                        .top(px(0.))
-                        .h(px(4.))
-                        .w(gpui::relative(frac))
-                        .rounded(px(2.))
-                        .bg(accent),
-                ),
-        )
-        .into_any_element()
-}
-
-fn color_swatch(e: &Element, style: &Computed) -> AnyElement {
-    let color = e
-        .attr("value")
-        .and_then(crate::style::values::value::Color::parse)
-        .map(|c| c.to_hsla());
-    let mut d = apply(div(), style)
-        .w(px(28.))
-        .h(px(16.))
-        .rounded(px(3.))
-        .border_1()
-        .border_color(rgb(BORDER));
-    if let Some(c) = color {
-        d = d.bg(c);
-    }
-    d.into_any_element()
-}
-
-/// Полоса выполнения: `<progress value max>`.
-fn progress(e: &Element, style: &Computed) -> AnyElement {
-    let num = |name: &str, default: f32| -> f32 {
-        e.attr(name).and_then(|v| v.parse().ok()).unwrap_or(default)
-    };
-    let frac = (num("value", 0.) / num("max", 1.).max(0.0001)).clamp(0., 1.);
-    // Заполненную часть полосы `accent-color` красит так же, как флажок.
-    let accent: gpui::Hsla = style
-        .accent_color
-        .map(|c| c.to_hsla())
-        .unwrap_or_else(|| rgb(ACCENT).into());
-    apply(div(), style)
-        .h(px(8.))
-        .w_full()
-        // Внутри колонки шириной по содержимому `w_full` даёт ноль: у полосы
-        // нет собственной ширины, и колонка схлопывается вместе с ней.
-        .min_w(px(60.))
-        .rounded(px(4.))
-        .bg(rgb(FIELD_BG))
-        .border_1()
-        .border_color(rgb(BORDER))
-        .child(
-            div()
-                .h_full()
-                .w(gpui::relative(frac))
-                .rounded(px(4.))
-                .bg(accent),
-        )
         .into_any_element()
 }
 
@@ -355,4 +180,9 @@ impl Muted for gpui::Div {
             self
         }
     }
+}
+
+/// Авторский цвет акцента формы, общий для выбора и индикаторов.
+pub(super) fn control_accent(style: &Computed) -> Option<crate::style::values::value::Color> {
+    style.accent_color
 }

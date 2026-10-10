@@ -27,7 +27,7 @@ pub(super) fn css(
         integral(rx, ry, 0.0, FRAC_PI_2, 16)
     };
     let length = 4.0 * quarter;
-    let requested = match c.offset_distance {
+    let requested = match super::motion_style(c).offset_distance {
         Some(Len::Px(v)) => f64::from(v),
         Some(Len::Pct(p)) => f64::from(p) * length,
         Some(Len::Calc(i)) => crate::style::values::value::calc_get(i)
