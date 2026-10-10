@@ -26,9 +26,9 @@ var __export = (target, all) => {
 };
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    for (let key2 of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key2) && key2 !== except)
+        __defProp(to, key2, { get: () => from[key2], enumerable: !(desc = __getOwnPropDesc(from, key2)) || desc.enumerable });
   }
   return to;
 };
@@ -493,44 +493,44 @@ var require_permessage_deflate = __commonJS({
        */
       normalizeParams(configurations) {
         configurations.forEach((params) => {
-          Object.keys(params).forEach((key) => {
-            let value = params[key];
+          Object.keys(params).forEach((key2) => {
+            let value = params[key2];
             if (value.length > 1) {
-              throw new Error(`Parameter "${key}" must have only a single value`);
+              throw new Error(`Parameter "${key2}" must have only a single value`);
             }
             value = value[0];
-            if (key === "client_max_window_bits") {
+            if (key2 === "client_max_window_bits") {
               if (value !== true) {
                 const num = +value;
                 if (!Number.isInteger(num) || num < 8 || num > 15) {
                   throw new TypeError(
-                    `Invalid value for parameter "${key}": ${value}`
+                    `Invalid value for parameter "${key2}": ${value}`
                   );
                 }
                 value = num;
               } else if (!this._isServer) {
                 throw new TypeError(
-                  `Invalid value for parameter "${key}": ${value}`
+                  `Invalid value for parameter "${key2}": ${value}`
                 );
               }
-            } else if (key === "server_max_window_bits") {
+            } else if (key2 === "server_max_window_bits") {
               const num = +value;
               if (!Number.isInteger(num) || num < 8 || num > 15) {
                 throw new TypeError(
-                  `Invalid value for parameter "${key}": ${value}`
+                  `Invalid value for parameter "${key2}": ${value}`
                 );
               }
               value = num;
-            } else if (key === "client_no_context_takeover" || key === "server_no_context_takeover") {
+            } else if (key2 === "client_no_context_takeover" || key2 === "server_no_context_takeover") {
               if (value !== true) {
                 throw new TypeError(
-                  `Invalid value for parameter "${key}": ${value}`
+                  `Invalid value for parameter "${key2}": ${value}`
                 );
               }
             } else {
-              throw new Error(`Unknown parameter "${key}"`);
+              throw new Error(`Unknown parameter "${key2}"`);
             }
-            params[key] = value;
+            params[key2] = value;
           });
         });
         return configurations;
@@ -578,8 +578,8 @@ var require_permessage_deflate = __commonJS({
       _decompress(data, fin, callback) {
         const endpoint = this._isServer ? "client" : "server";
         if (!this._inflate) {
-          const key = `${endpoint}_max_window_bits`;
-          const windowBits = typeof this.params[key] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key];
+          const key2 = `${endpoint}_max_window_bits`;
+          const windowBits = typeof this.params[key2] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key2];
           this._inflate = zlib.createInflateRaw({
             ...this._options.zlibInflateOptions,
             windowBits
@@ -629,8 +629,8 @@ var require_permessage_deflate = __commonJS({
       _compress(data, fin, callback) {
         const endpoint = this._isServer ? "server" : "client";
         if (!this._deflate) {
-          const key = `${endpoint}_max_window_bits`;
-          const windowBits = typeof this.params[key] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key];
+          const key2 = `${endpoint}_max_window_bits`;
+          const windowBits = typeof this.params[key2] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key2];
           this._deflate = zlib.createDeflateRaw({
             ...this._options.zlibDeflateOptions,
             windowBits
@@ -2399,7 +2399,7 @@ var require_websocket = __commonJS({
     var http = require("http");
     var net2 = require("net");
     var tls = require("tls");
-    var { randomBytes: randomBytes3, createHash: createHash2 } = require("crypto");
+    var { randomBytes: randomBytes4, createHash: createHash2 } = require("crypto");
     var { Duplex, Readable } = require("stream");
     var { URL: URL2 } = require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -2950,7 +2950,7 @@ var require_websocket = __commonJS({
         }
       }
       const defaultPort = isSecure ? 443 : 80;
-      const key = randomBytes3(16).toString("base64");
+      const key2 = randomBytes4(16).toString("base64");
       const request = isSecure ? https.request : http.request;
       const protocolSet = /* @__PURE__ */ new Set();
       let perMessageDeflate;
@@ -2961,7 +2961,7 @@ var require_websocket = __commonJS({
       opts.headers = {
         ...opts.headers,
         "Sec-WebSocket-Version": opts.protocolVersion,
-        "Sec-WebSocket-Key": key,
+        "Sec-WebSocket-Key": key2,
         Connection: "Upgrade",
         Upgrade: "websocket"
       };
@@ -3012,8 +3012,8 @@ var require_websocket = __commonJS({
           const headers = options && options.headers;
           options = { ...options, headers: {} };
           if (headers) {
-            for (const [key2, value] of Object.entries(headers)) {
-              options.headers[key2.toLowerCase()] = value;
+            for (const [key3, value] of Object.entries(headers)) {
+              options.headers[key3.toLowerCase()] = value;
             }
           }
         } else if (websocket.listenerCount("redirect") === 0) {
@@ -3080,7 +3080,7 @@ var require_websocket = __commonJS({
           abortHandshake(websocket, socket, "Invalid Upgrade header");
           return;
         }
-        const digest = createHash2("sha1").update(key + GUID).digest("base64");
+        const digest = createHash2("sha1").update(key2 + GUID).digest("base64");
         if (res.headers["sec-websocket-accept"] !== digest) {
           abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
           return;
@@ -3648,7 +3648,7 @@ var require_websocket_server = __commonJS({
        */
       handleUpgrade(req, socket, head, cb) {
         socket.on("error", socketOnError);
-        const key = req.headers["sec-websocket-key"];
+        const key2 = req.headers["sec-websocket-key"];
         const upgrade = req.headers.upgrade;
         const version = +req.headers["sec-websocket-version"];
         if (req.method !== "GET") {
@@ -3661,7 +3661,7 @@ var require_websocket_server = __commonJS({
           abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
           return;
         }
-        if (key === void 0 || !keyRegex.test(key)) {
+        if (key2 === void 0 || !keyRegex.test(key2)) {
           const message = "Missing or invalid Sec-WebSocket-Key header";
           abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
           return;
@@ -3721,7 +3721,7 @@ var require_websocket_server = __commonJS({
               }
               this.completeUpgrade(
                 extensions,
-                key,
+                key2,
                 protocols,
                 req,
                 socket,
@@ -3733,7 +3733,7 @@ var require_websocket_server = __commonJS({
           }
           if (!this.options.verifyClient(info)) return abortHandshake(socket, 401);
         }
-        this.completeUpgrade(extensions, key, protocols, req, socket, head, cb);
+        this.completeUpgrade(extensions, key2, protocols, req, socket, head, cb);
       }
       /**
        * Upgrade the connection to WebSocket.
@@ -3748,7 +3748,7 @@ var require_websocket_server = __commonJS({
        * @throws {Error} If called more than once with the same socket
        * @private
        */
-      completeUpgrade(extensions, key, protocols, req, socket, head, cb) {
+      completeUpgrade(extensions, key2, protocols, req, socket, head, cb) {
         if (!socket.readable || !socket.writable) return socket.destroy();
         if (socket[kWebSocket]) {
           throw new Error(
@@ -3756,7 +3756,7 @@ var require_websocket_server = __commonJS({
           );
         }
         if (this._state > RUNNING) return abortHandshake(socket, 503);
-        const digest = createHash2("sha1").update(key + GUID).digest("base64");
+        const digest = createHash2("sha1").update(key2 + GUID).digest("base64");
         const headers = [
           "HTTP/1.1 101 Switching Protocols",
           "Upgrade: websocket",
@@ -3920,17 +3920,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path45) {
-      const ctrl = callVisitor(key, node, visitor, path45);
+    function visit_(key2, node, visitor, path46) {
+      const ctrl = callVisitor(key2, node, visitor, path46);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path45, ctrl);
-        return visit_(key, ctrl, visitor, path45);
+        replaceNode(key2, path46, ctrl);
+        return visit_(key2, ctrl, visitor, path46);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path45 = Object.freeze(path45.concat(node));
+          path46 = Object.freeze(path46.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path45);
+            const ci = visit_(i, node.items[i], visitor, path46);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -3941,13 +3941,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path45 = Object.freeze(path45.concat(node));
-          const ck = visit_("key", node.key, visitor, path45);
+          path46 = Object.freeze(path46.concat(node));
+          const ck = visit_("key", node.key, visitor, path46);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path45);
+          const cv = visit_("value", node.value, visitor, path46);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -3968,17 +3968,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path45) {
-      const ctrl = await callVisitor(key, node, visitor, path45);
+    async function visitAsync_(key2, node, visitor, path46) {
+      const ctrl = await callVisitor(key2, node, visitor, path46);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path45, ctrl);
-        return visitAsync_(key, ctrl, visitor, path45);
+        replaceNode(key2, path46, ctrl);
+        return visitAsync_(key2, ctrl, visitor, path46);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path45 = Object.freeze(path45.concat(node));
+          path46 = Object.freeze(path46.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path45);
+            const ci = await visitAsync_(i, node.items[i], visitor, path46);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -3989,13 +3989,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path45 = Object.freeze(path45.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path45);
+          path46 = Object.freeze(path46.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path46);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path45);
+          const cv = await visitAsync_("value", node.value, visitor, path46);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -4022,27 +4022,27 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path45) {
+    function callVisitor(key2, node, visitor, path46) {
       if (typeof visitor === "function")
-        return visitor(key, node, path45);
+        return visitor(key2, node, path46);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path45);
+        return visitor.Map?.(key2, node, path46);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path45);
+        return visitor.Seq?.(key2, node, path46);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path45);
+        return visitor.Pair?.(key2, node, path46);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path45);
+        return visitor.Scalar?.(key2, node, path46);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path45);
+        return visitor.Alias?.(key2, node, path46);
       return void 0;
     }
-    function replaceNode(key, path45, node) {
-      const parent = path45[path45.length - 1];
+    function replaceNode(key2, path46, node) {
+      const parent = path46[path46.length - 1];
       if (identity.isCollection(parent)) {
-        parent.items[key] = node;
+        parent.items[key2] = node;
       } else if (identity.isPair(parent)) {
-        if (key === "key")
+        if (key2 === "key")
           parent.key = node;
         else
           parent.value = node;
@@ -4279,9 +4279,9 @@ var require_anchors = __commonJS({
          */
         setAnchors: () => {
           for (const source of aliasObjects) {
-            const ref = sourceObjects.get(source);
-            if (typeof ref === "object" && ref.anchor && (identity.isScalar(ref.node) || identity.isCollection(ref.node))) {
-              ref.node.anchor = ref.anchor;
+            const ref2 = sourceObjects.get(source);
+            if (typeof ref2 === "object" && ref2.anchor && (identity.isScalar(ref2.node) || identity.isCollection(ref2.node))) {
+              ref2.node.anchor = ref2.anchor;
             } else {
               const error = new Error("Failed to resolve repeated object (this should not happen)");
               error.source = source;
@@ -4303,7 +4303,7 @@ var require_anchors = __commonJS({
 var require_applyReviver = __commonJS({
   "node_modules/yaml/dist/doc/applyReviver.js"(exports2) {
     "use strict";
-    function applyReviver(reviver, obj, key, val) {
+    function applyReviver(reviver, obj, key2, val) {
       if (val && typeof val === "object") {
         if (Array.isArray(val)) {
           for (let i = 0, len = val.length; i < len; ++i) {
@@ -4343,7 +4343,7 @@ var require_applyReviver = __commonJS({
           }
         }
       }
-      return reviver.call(obj, key, val);
+      return reviver.call(obj, key2, val);
     }
     exports2.applyReviver = applyReviver;
   }
@@ -4600,15 +4600,15 @@ var require_createNode = __commonJS({
         value = value.valueOf();
       }
       const { aliasDuplicateObjects, onAnchor, onTagObj, schema, sourceObjects } = ctx;
-      let ref = void 0;
+      let ref2 = void 0;
       if (aliasDuplicateObjects && value && typeof value === "object") {
-        ref = sourceObjects.get(value);
-        if (ref) {
-          ref.anchor ?? (ref.anchor = onAnchor(value));
-          return new Alias.Alias(ref.anchor);
+        ref2 = sourceObjects.get(value);
+        if (ref2) {
+          ref2.anchor ?? (ref2.anchor = onAnchor(value));
+          return new Alias.Alias(ref2.anchor);
         } else {
-          ref = { anchor: null, node: null };
-          sourceObjects.set(value, ref);
+          ref2 = { anchor: null, node: null };
+          sourceObjects.set(value, ref2);
         }
       }
       if (tagName?.startsWith("!!"))
@@ -4620,8 +4620,8 @@ var require_createNode = __commonJS({
         }
         if (!value || typeof value !== "object") {
           const node2 = new Scalar.Scalar(value);
-          if (ref)
-            ref.node = node2;
+          if (ref2)
+            ref2.node = node2;
           return node2;
         }
         tagObj = value instanceof Map ? schema[identity.MAP] : Symbol.iterator in Object(value) ? schema[identity.SEQ] : schema[identity.MAP];
@@ -4635,8 +4635,8 @@ var require_createNode = __commonJS({
         node.tag = tagName;
       else if (!tagObj.default)
         node.tag = tagObj.tag;
-      if (ref)
-        ref.node = node;
+      if (ref2)
+        ref2.node = node;
       return node;
     }
     exports2.createNode = createNode;
@@ -4650,10 +4650,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path45, value) {
+    function collectionFromPath(schema, path46, value) {
       let v = value;
-      for (let i = path45.length - 1; i >= 0; --i) {
-        const k = path45[i];
+      for (let i = path46.length - 1; i >= 0; --i) {
+        const k = path46[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -4672,7 +4672,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path45) => path45 == null || typeof path45 === "object" && !!path45[Symbol.iterator]().next().done;
+    var isEmptyPath = (path46) => path46 == null || typeof path46 === "object" && !!path46[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -4702,42 +4702,42 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path45, value) {
-        if (isEmptyPath(path45))
+      addIn(path46, value) {
+        if (isEmptyPath(path46))
           this.add(value);
         else {
-          const [key, ...rest] = path45;
-          const node = this.get(key, true);
+          const [key2, ...rest] = path46;
+          const node = this.get(key2, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
           else if (node === void 0 && this.schema)
-            this.set(key, collectionFromPath(this.schema, rest, value));
+            this.set(key2, collectionFromPath(this.schema, rest, value));
           else
-            throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest}`);
+            throw new Error(`Expected YAML collection at ${key2}. Remaining path: ${rest}`);
         }
       }
       /**
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path45) {
-        const [key, ...rest] = path45;
+      deleteIn(path46) {
+        const [key2, ...rest] = path46;
         if (rest.length === 0)
-          return this.delete(key);
-        const node = this.get(key, true);
+          return this.delete(key2);
+        const node = this.get(key2, true);
         if (identity.isCollection(node))
           return node.deleteIn(rest);
         else
-          throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest}`);
+          throw new Error(`Expected YAML collection at ${key2}. Remaining path: ${rest}`);
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path45, keepScalar) {
-        const [key, ...rest] = path45;
-        const node = this.get(key, true);
+      getIn(path46, keepScalar) {
+        const [key2, ...rest] = path46;
+        const node = this.get(key2, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
         else
@@ -4754,29 +4754,29 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path45) {
-        const [key, ...rest] = path45;
+      hasIn(path46) {
+        const [key2, ...rest] = path46;
         if (rest.length === 0)
-          return this.has(key);
-        const node = this.get(key, true);
+          return this.has(key2);
+        const node = this.get(key2, true);
         return identity.isCollection(node) ? node.hasIn(rest) : false;
       }
       /**
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path45, value) {
-        const [key, ...rest] = path45;
+      setIn(path46, value) {
+        const [key2, ...rest] = path46;
         if (rest.length === 0) {
-          this.set(key, value);
+          this.set(key2, value);
         } else {
-          const node = this.get(key, true);
+          const node = this.get(key2, true);
           if (identity.isCollection(node))
             node.setIn(rest, value);
           else if (node === void 0 && this.schema)
-            this.set(key, collectionFromPath(this.schema, rest, value));
+            this.set(key2, collectionFromPath(this.schema, rest, value));
           else
-            throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest}`);
+            throw new Error(`Expected YAML collection at ${key2}. Remaining path: ${rest}`);
         }
       }
     };
@@ -5354,19 +5354,19 @@ var require_stringifyPair = __commonJS({
     var Scalar = require_Scalar();
     var stringify = require_stringify();
     var stringifyComment = require_stringifyComment();
-    function stringifyPair({ key, value }, ctx, onComment, onChompKeep) {
+    function stringifyPair({ key: key2, value }, ctx, onComment, onChompKeep) {
       const { allNullValues, doc, indent, indentStep, options: { commentString, indentSeq, simpleKeys } } = ctx;
-      let keyComment = identity.isNode(key) && key.comment || null;
+      let keyComment = identity.isNode(key2) && key2.comment || null;
       if (simpleKeys) {
         if (keyComment) {
           throw new Error("With simple keys, key nodes cannot have comments");
         }
-        if (identity.isCollection(key) || !identity.isNode(key) && typeof key === "object") {
+        if (identity.isCollection(key2) || !identity.isNode(key2) && typeof key2 === "object") {
           const msg = "With simple keys, collection cannot be used as a key value";
           throw new Error(msg);
         }
       }
-      let explicitKey = !simpleKeys && (!key || keyComment && value == null && !ctx.inFlow || identity.isCollection(key) || (identity.isScalar(key) ? key.type === Scalar.Scalar.BLOCK_FOLDED || key.type === Scalar.Scalar.BLOCK_LITERAL : typeof key === "object"));
+      let explicitKey = !simpleKeys && (!key2 || keyComment && value == null && !ctx.inFlow || identity.isCollection(key2) || (identity.isScalar(key2) ? key2.type === Scalar.Scalar.BLOCK_FOLDED || key2.type === Scalar.Scalar.BLOCK_LITERAL : typeof key2 === "object"));
       ctx = Object.assign({}, ctx, {
         allNullValues: false,
         implicitKey: !explicitKey && (simpleKeys || !allNullValues),
@@ -5374,7 +5374,7 @@ var require_stringifyPair = __commonJS({
       });
       let keyCommentDone = false;
       let chompKeep = false;
-      let str = stringify.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
+      let str = stringify.stringify(key2, ctx, () => keyCommentDone = true, () => chompKeep = true);
       if (!explicitKey && !ctx.inFlow && str.length > 1024) {
         if (simpleKeys)
           throw new Error("With simple keys, single line scalar must not span more than 1024 characters");
@@ -5518,7 +5518,7 @@ var require_merge = __commonJS({
       }),
       stringify: () => MERGE_KEY
     };
-    var isMergeKey = (ctx, key) => (merge.identify(key) || identity.isScalar(key) && (!key.type || key.type === Scalar.Scalar.PLAIN) && merge.identify(key.value)) && ctx?.doc.schema.tags.some((tag) => tag.tag === merge.tag && tag.default);
+    var isMergeKey = (ctx, key2) => (merge.identify(key2) || identity.isScalar(key2) && (!key2.type || key2.type === Scalar.Scalar.PLAIN) && merge.identify(key2.value)) && ctx?.doc.schema.tags.some((tag) => tag.tag === merge.tag && tag.default);
     function addMergeToJSMap(ctx, map, value) {
       const source = resolveAliasValue(ctx, value);
       if (identity.isSeq(source))
@@ -5535,14 +5535,14 @@ var require_merge = __commonJS({
       if (!identity.isMap(source))
         throw new Error("Merge sources must be maps or map aliases");
       const srcMap = source.toJSON(null, ctx, Map);
-      for (const [key, value2] of srcMap) {
+      for (const [key2, value2] of srcMap) {
         if (map instanceof Map) {
-          if (!map.has(key))
-            map.set(key, value2);
+          if (!map.has(key2))
+            map.set(key2, value2);
         } else if (map instanceof Set) {
-          map.add(key);
-        } else if (!Object.prototype.hasOwnProperty.call(map, key)) {
-          Object.defineProperty(map, key, {
+          map.add(key2);
+        } else if (!Object.prototype.hasOwnProperty.call(map, key2)) {
+          Object.defineProperty(map, key2, {
             value: value2,
             writable: true,
             enumerable: true,
@@ -5570,19 +5570,19 @@ var require_addPairToJSMap = __commonJS({
     var stringify = require_stringify();
     var identity = require_identity();
     var toJS = require_toJS();
-    function addPairToJSMap(ctx, map, { key, value }) {
-      if (identity.isNode(key) && key.addToJSMap)
-        key.addToJSMap(ctx, map, value);
-      else if (merge.isMergeKey(ctx, key))
+    function addPairToJSMap(ctx, map, { key: key2, value }) {
+      if (identity.isNode(key2) && key2.addToJSMap)
+        key2.addToJSMap(ctx, map, value);
+      else if (merge.isMergeKey(ctx, key2))
         merge.addMergeToJSMap(ctx, map, value);
       else {
-        const jsKey = toJS.toJS(key, "", ctx);
+        const jsKey = toJS.toJS(key2, "", ctx);
         if (map instanceof Map) {
           map.set(jsKey, toJS.toJS(value, jsKey, ctx));
         } else if (map instanceof Set) {
           map.add(jsKey);
         } else {
-          const stringKey = stringifyKey(key, jsKey, ctx);
+          const stringKey = stringifyKey(key2, jsKey, ctx);
           const jsValue = toJS.toJS(value, stringKey, ctx);
           if (stringKey in map)
             Object.defineProperty(map, stringKey, {
@@ -5597,19 +5597,19 @@ var require_addPairToJSMap = __commonJS({
       }
       return map;
     }
-    function stringifyKey(key, jsKey, ctx) {
+    function stringifyKey(key2, jsKey, ctx) {
       if (jsKey === null)
         return "";
       if (typeof jsKey !== "object")
         return String(jsKey);
-      if (identity.isNode(key) && ctx?.doc) {
+      if (identity.isNode(key2) && ctx?.doc) {
         const strCtx = stringify.createStringifyContext(ctx.doc, {});
         strCtx.anchors = /* @__PURE__ */ new Set();
         for (const node of ctx.anchors.keys())
           strCtx.anchors.add(node.anchor);
         strCtx.inFlow = true;
         strCtx.inStringifyKey = true;
-        const strKey = key.toString(strCtx);
+        const strKey = key2.toString(strCtx);
         if (!ctx.mapKeyWarned) {
           let jsonStr = JSON.stringify(strKey);
           if (jsonStr.length > 40)
@@ -5633,24 +5633,24 @@ var require_Pair = __commonJS({
     var stringifyPair = require_stringifyPair();
     var addPairToJSMap = require_addPairToJSMap();
     var identity = require_identity();
-    function createPair(key, value, ctx) {
-      const k = createNode.createNode(key, void 0, ctx);
+    function createPair(key2, value, ctx) {
+      const k = createNode.createNode(key2, void 0, ctx);
       const v = createNode.createNode(value, void 0, ctx);
       return new Pair(k, v);
     }
     var Pair = class _Pair {
-      constructor(key, value = null) {
+      constructor(key2, value = null) {
         Object.defineProperty(this, identity.NODE_TYPE, { value: identity.PAIR });
-        this.key = key;
+        this.key = key2;
         this.value = value;
       }
       clone(schema) {
-        let { key, value } = this;
-        if (identity.isNode(key))
-          key = key.clone(schema);
+        let { key: key2, value } = this;
+        if (identity.isNode(key2))
+          key2 = key2.clone(schema);
         if (identity.isNode(value))
           value = value.clone(schema);
-        return new _Pair(key, value);
+        return new _Pair(key2, value);
       }
       toJSON(_, ctx) {
         const pair = ctx?.mapAsMap ? /* @__PURE__ */ new Map() : {};
@@ -5826,11 +5826,11 @@ var require_YAMLMap = __commonJS({
     var identity = require_identity();
     var Pair = require_Pair();
     var Scalar = require_Scalar();
-    function findPair(items, key) {
-      const k = identity.isScalar(key) ? key.value : key;
+    function findPair(items, key2) {
+      const k = identity.isScalar(key2) ? key2.value : key2;
       for (const it of items) {
         if (identity.isPair(it)) {
-          if (it.key === key || it.key === k)
+          if (it.key === key2 || it.key === k)
             return it;
           if (identity.isScalar(it.key) && it.key.value === k)
             return it;
@@ -5853,20 +5853,20 @@ var require_YAMLMap = __commonJS({
       static from(schema, obj, ctx) {
         const { keepUndefined, replacer } = ctx;
         const map = new this(schema);
-        const add = (key, value) => {
+        const add = (key2, value) => {
           if (typeof replacer === "function")
-            value = replacer.call(obj, key, value);
-          else if (Array.isArray(replacer) && !replacer.includes(key))
+            value = replacer.call(obj, key2, value);
+          else if (Array.isArray(replacer) && !replacer.includes(key2))
             return;
           if (value !== void 0 || keepUndefined)
-            map.items.push(Pair.createPair(key, value, ctx));
+            map.items.push(Pair.createPair(key2, value, ctx));
         };
         if (obj instanceof Map) {
-          for (const [key, value] of obj)
-            add(key, value);
+          for (const [key2, value] of obj)
+            add(key2, value);
         } else if (obj && typeof obj === "object") {
-          for (const key of Object.keys(obj))
-            add(key, obj[key]);
+          for (const key2 of Object.keys(obj))
+            add(key2, obj[key2]);
         }
         if (typeof schema.sortMapEntries === "function") {
           map.items.sort(schema.sortMapEntries);
@@ -5906,23 +5906,23 @@ var require_YAMLMap = __commonJS({
           this.items.push(_pair);
         }
       }
-      delete(key) {
-        const it = findPair(this.items, key);
+      delete(key2) {
+        const it = findPair(this.items, key2);
         if (!it)
           return false;
         const del = this.items.splice(this.items.indexOf(it), 1);
         return del.length > 0;
       }
-      get(key, keepScalar) {
-        const it = findPair(this.items, key);
+      get(key2, keepScalar) {
+        const it = findPair(this.items, key2);
         const node = it?.value;
         return (!keepScalar && identity.isScalar(node) ? node.value : node) ?? void 0;
       }
-      has(key) {
-        return !!findPair(this.items, key);
+      has(key2) {
+        return !!findPair(this.items, key2);
       }
-      set(key, value) {
-        this.add(new Pair.Pair(key, value), true);
+      set(key2, value) {
+        this.add(new Pair.Pair(key2, value), true);
       }
       /**
        * @param ctx - Conversion context, originally set in Document#toJS()
@@ -6011,15 +6011,15 @@ var require_YAMLSeq = __commonJS({
        *
        * @returns `true` if the item was found and removed.
        */
-      delete(key) {
-        const idx = asItemIndex(key);
+      delete(key2) {
+        const idx = asItemIndex(key2);
         if (typeof idx !== "number")
           return false;
         const del = this.items.splice(idx, 1);
         return del.length > 0;
       }
-      get(key, keepScalar) {
-        const idx = asItemIndex(key);
+      get(key2, keepScalar) {
+        const idx = asItemIndex(key2);
         if (typeof idx !== "number")
           return void 0;
         const it = this.items[idx];
@@ -6031,8 +6031,8 @@ var require_YAMLSeq = __commonJS({
        * `key` must contain a representation of an integer for this to succeed.
        * It may be wrapped in a `Scalar`.
        */
-      has(key) {
-        const idx = asItemIndex(key);
+      has(key2) {
+        const idx = asItemIndex(key2);
         return typeof idx === "number" && idx < this.items.length;
       }
       /**
@@ -6042,10 +6042,10 @@ var require_YAMLSeq = __commonJS({
        * If `key` does not contain a representation of an integer, this will throw.
        * It may be wrapped in a `Scalar`.
        */
-      set(key, value) {
-        const idx = asItemIndex(key);
+      set(key2, value) {
+        const idx = asItemIndex(key2);
         if (typeof idx !== "number")
-          throw new Error(`Expected a valid index, not ${key}.`);
+          throw new Error(`Expected a valid index, not ${key2}.`);
         const prev = this.items[idx];
         if (identity.isScalar(prev) && Scalar.isScalarValue(value))
           prev.value = value;
@@ -6079,8 +6079,8 @@ var require_YAMLSeq = __commonJS({
           let i = 0;
           for (let it of obj) {
             if (typeof replacer === "function") {
-              const key = obj instanceof Set ? it : String(i++);
-              it = replacer.call(obj, key, it);
+              const key2 = obj instanceof Set ? it : String(i++);
+              it = replacer.call(obj, key2, it);
             }
             seq.items.push(createNode.createNode(it, void 0, ctx));
           }
@@ -6088,8 +6088,8 @@ var require_YAMLSeq = __commonJS({
         return seq;
       }
     };
-    function asItemIndex(key) {
-      let idx = identity.isScalar(key) ? key.value : key;
+    function asItemIndex(key2) {
+      let idx = identity.isScalar(key2) ? key2.value : key2;
       if (idx && typeof idx === "string")
         idx = Number(idx);
       return typeof idx === "number" && Number.isInteger(idx) && idx >= 0 ? idx : null;
@@ -6503,25 +6503,25 @@ ${cn.comment}` : item.comment;
         for (let it of iterable) {
           if (typeof replacer === "function")
             it = replacer.call(iterable, String(i++), it);
-          let key, value;
+          let key2, value;
           if (Array.isArray(it)) {
             if (it.length === 2) {
-              key = it[0];
+              key2 = it[0];
               value = it[1];
             } else
               throw new TypeError(`Expected [key, value] tuple: ${it}`);
           } else if (it && it instanceof Object) {
             const keys = Object.keys(it);
             if (keys.length === 1) {
-              key = keys[0];
-              value = it[key];
+              key2 = keys[0];
+              value = it[key2];
             } else {
               throw new TypeError(`Expected tuple with one key, not ${keys.length} keys`);
             }
           } else {
-            key = it;
+            key2 = it;
           }
-          pairs2.items.push(Pair.createPair(key, value, ctx));
+          pairs2.items.push(Pair.createPair(key2, value, ctx));
         }
       return pairs2;
     }
@@ -6568,16 +6568,16 @@ var require_omap = __commonJS({
         if (ctx?.onCreate)
           ctx.onCreate(map);
         for (const pair of this.items) {
-          let key, value;
+          let key2, value;
           if (identity.isPair(pair)) {
-            key = toJS.toJS(pair.key, "", ctx);
-            value = toJS.toJS(pair.value, key, ctx);
+            key2 = toJS.toJS(pair.key, "", ctx);
+            value = toJS.toJS(pair.value, key2, ctx);
           } else {
-            key = toJS.toJS(pair, "", ctx);
+            key2 = toJS.toJS(pair, "", ctx);
           }
-          if (map.has(key))
+          if (map.has(key2))
             throw new Error("Ordered maps must not include duplicate keys");
-          map.set(key, value);
+          map.set(key2, value);
         }
         return map;
       }
@@ -6598,12 +6598,12 @@ var require_omap = __commonJS({
       resolve(seq, onError) {
         const pairs$1 = pairs.resolvePairs(seq, onError);
         const seenKeys = [];
-        for (const { key } of pairs$1.items) {
-          if (identity.isScalar(key)) {
-            if (seenKeys.includes(key.value)) {
-              onError(`Ordered maps must not include duplicate keys: ${key.value}`);
+        for (const { key: key2 } of pairs$1.items) {
+          if (identity.isScalar(key2)) {
+            if (seenKeys.includes(key2.value)) {
+              onError(`Ordered maps must not include duplicate keys: ${key2.value}`);
             } else {
-              seenKeys.push(key.value);
+              seenKeys.push(key2.value);
             }
           }
         }
@@ -6788,14 +6788,14 @@ var require_set = __commonJS({
         super(schema);
         this.tag = _YAMLSet.tag;
       }
-      add(key) {
+      add(key2) {
         let pair;
-        if (identity.isPair(key))
-          pair = key;
-        else if (key && typeof key === "object" && "key" in key && "value" in key && key.value === null)
-          pair = new Pair.Pair(key.key, null);
+        if (identity.isPair(key2))
+          pair = key2;
+        else if (key2 && typeof key2 === "object" && "key" in key2 && "value" in key2 && key2.value === null)
+          pair = new Pair.Pair(key2.key, null);
         else
-          pair = new Pair.Pair(key, null);
+          pair = new Pair.Pair(key2, null);
         const prev = YAMLMap.findPair(this.items, pair.key);
         if (!prev)
           this.items.push(pair);
@@ -6804,18 +6804,18 @@ var require_set = __commonJS({
        * If `keepPair` is `true`, returns the Pair matching `key`.
        * Otherwise, returns the value of that Pair's key.
        */
-      get(key, keepPair) {
-        const pair = YAMLMap.findPair(this.items, key);
+      get(key2, keepPair) {
+        const pair = YAMLMap.findPair(this.items, key2);
         return !keepPair && identity.isPair(pair) ? identity.isScalar(pair.key) ? pair.key.value : pair.key : pair;
       }
-      set(key, value) {
+      set(key2, value) {
         if (typeof value !== "boolean")
           throw new Error(`Expected boolean value for set(key, value) in a YAML set, not ${typeof value}`);
-        const prev = YAMLMap.findPair(this.items, key);
+        const prev = YAMLMap.findPair(this.items, key2);
         if (prev && !value) {
           this.items.splice(this.items.indexOf(prev), 1);
         } else if (!prev && value) {
-          this.items.push(new Pair.Pair(key));
+          this.items.push(new Pair.Pair(key2));
         }
       }
       toJSON(_, ctx) {
@@ -7062,7 +7062,7 @@ var require_tags = __commonJS({
         if (Array.isArray(customTags))
           tags = [];
         else {
-          const keys = Array.from(schemas.keys()).filter((key) => key !== "yaml11").map((key) => JSON.stringify(key)).join(", ");
+          const keys = Array.from(schemas.keys()).filter((key2) => key2 !== "yaml11").map((key2) => JSON.stringify(key2)).join(", ");
           throw new Error(`Unknown schema "${schemaName}"; use one of ${keys} or define customTags array`);
         }
       }
@@ -7078,7 +7078,7 @@ var require_tags = __commonJS({
         const tagObj = typeof tag === "string" ? tagsByName[tag] : tag;
         if (!tagObj) {
           const tagName = JSON.stringify(tag);
-          const keys = Object.keys(tagsByName).map((key) => JSON.stringify(key)).join(", ");
+          const keys = Object.keys(tagsByName).map((key2) => JSON.stringify(key2)).join(", ");
           throw new Error(`Unknown custom tag ${tagName}; use one of ${keys}`);
         }
         if (!tags2.includes(tagObj))
@@ -7281,9 +7281,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path45, value) {
+      addIn(path46, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path45, value);
+          this.contents.addIn(path46, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -7342,8 +7342,8 @@ var require_Document = __commonJS({
        * Convert a key and a value into a `Pair` using the current schema,
        * recursively wrapping all values as `Scalar` or `Collection` nodes.
        */
-      createPair(key, value, options = {}) {
-        const k = this.createNode(key, null, options);
+      createPair(key2, value, options = {}) {
+        const k = this.createNode(key2, null, options);
         const v = this.createNode(value, null, options);
         return new Pair.Pair(k, v);
       }
@@ -7351,76 +7351,76 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      delete(key) {
-        return assertCollection(this.contents) ? this.contents.delete(key) : false;
+      delete(key2) {
+        return assertCollection(this.contents) ? this.contents.delete(key2) : false;
       }
       /**
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path45) {
-        if (Collection.isEmptyPath(path45)) {
+      deleteIn(path46) {
+        if (Collection.isEmptyPath(path46)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path45) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path46) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      get(key, keepScalar) {
-        return identity.isCollection(this.contents) ? this.contents.get(key, keepScalar) : void 0;
+      get(key2, keepScalar) {
+        return identity.isCollection(this.contents) ? this.contents.get(key2, keepScalar) : void 0;
       }
       /**
        * Returns item at `path`, or `undefined` if not found. By default unwraps
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path45, keepScalar) {
-        if (Collection.isEmptyPath(path45))
+      getIn(path46, keepScalar) {
+        if (Collection.isEmptyPath(path46))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path45, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path46, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
        */
-      has(key) {
-        return identity.isCollection(this.contents) ? this.contents.has(key) : false;
+      has(key2) {
+        return identity.isCollection(this.contents) ? this.contents.has(key2) : false;
       }
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path45) {
-        if (Collection.isEmptyPath(path45))
+      hasIn(path46) {
+        if (Collection.isEmptyPath(path46))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path45) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path46) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      set(key, value) {
+      set(key2, value) {
         if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, [key], value);
+          this.contents = Collection.collectionFromPath(this.schema, [key2], value);
         } else if (assertCollection(this.contents)) {
-          this.contents.set(key, value);
+          this.contents.set(key2, value);
         }
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path45, value) {
-        if (Collection.isEmptyPath(path45)) {
+      setIn(path46, value) {
+        if (Collection.isEmptyPath(path46)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path45), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path46), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path45, value);
+          this.contents.setIn(path46, value);
         }
       }
       /**
@@ -7715,24 +7715,24 @@ var require_resolve_props = __commonJS({
 var require_util_contains_newline = __commonJS({
   "node_modules/yaml/dist/compose/util-contains-newline.js"(exports2) {
     "use strict";
-    function containsNewline(key) {
-      if (!key)
+    function containsNewline(key2) {
+      if (!key2)
         return null;
-      switch (key.type) {
+      switch (key2.type) {
         case "alias":
         case "scalar":
         case "double-quoted-scalar":
         case "single-quoted-scalar":
-          if (key.source.includes("\n"))
+          if (key2.source.includes("\n"))
             return true;
-          if (key.end) {
-            for (const st of key.end)
+          if (key2.end) {
+            for (const st of key2.end)
               if (st.type === "newline")
                 return true;
           }
           return false;
         case "flow-collection":
-          for (const it of key.items) {
+          for (const it of key2.items) {
             for (const st of it.start)
               if (st.type === "newline")
                 return true;
@@ -7806,10 +7806,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start, key, sep, value } = collItem;
+        const { start, key: key2, sep, value } = collItem;
         const keyProps = resolveProps.resolveProps(start, {
           indicator: "explicit-key-ind",
-          next: key ?? sep?.[0],
+          next: key2 ?? sep?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -7817,10 +7817,10 @@ var require_resolve_block_map = __commonJS({
         });
         const implicitKey = !keyProps.found;
         if (implicitKey) {
-          if (key) {
-            if (key.type === "block-seq")
+          if (key2) {
+            if (key2.type === "block-seq")
               onError(offset, "BLOCK_AS_IMPLICIT_KEY", "A block sequence may not be used as an implicit map key");
-            else if ("indent" in key && key.indent !== bm.indent)
+            else if ("indent" in key2 && key2.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
           if (!keyProps.anchor && !keyProps.tag && !sep) {
@@ -7833,17 +7833,17 @@ var require_resolve_block_map = __commonJS({
             }
             continue;
           }
-          if (keyProps.newlineAfterProp || utilContainsNewline.containsNewline(key)) {
-            onError(key ?? start[start.length - 1], "MULTILINE_IMPLICIT_KEY", "Implicit keys need to be on a single line");
+          if (keyProps.newlineAfterProp || utilContainsNewline.containsNewline(key2)) {
+            onError(key2 ?? start[start.length - 1], "MULTILINE_IMPLICIT_KEY", "Implicit keys need to be on a single line");
           }
         } else if (keyProps.found?.indent !== bm.indent) {
           onError(offset, "BAD_INDENT", startColMsg);
         }
         ctx.atKey = true;
         const keyStart = keyProps.end;
-        const keyNode = key ? composeNode(ctx, key, keyProps, onError) : composeEmptyNode(ctx, keyStart, start, null, keyProps, onError);
+        const keyNode = key2 ? composeNode(ctx, key2, keyProps, onError) : composeEmptyNode(ctx, keyStart, start, null, keyProps, onError);
         if (ctx.schema.compat)
-          utilFlowIndentCheck.flowIndentCheck(bm.indent, key, onError);
+          utilFlowIndentCheck.flowIndentCheck(bm.indent, key2, onError);
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
@@ -7853,7 +7853,7 @@ var require_resolve_block_map = __commonJS({
           offset: keyNode.range[2],
           onError,
           parentIndent: bm.indent,
-          startOnNewline: !key || key.type === "block-scalar"
+          startOnNewline: !key2 || key2.type === "block-scalar"
         });
         offset = valueProps.end;
         if (valueProps.found) {
@@ -8017,11 +8017,11 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start, key, sep, value } = collItem;
+        const { start, key: key2, sep, value } = collItem;
         const props = resolveProps.resolveProps(start, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep?.[0],
+          next: key2 ?? sep?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
@@ -8042,9 +8042,9 @@ var require_resolve_flow_collection = __commonJS({
             offset = props.end;
             continue;
           }
-          if (!isMap && ctx.options.strict && utilContainsNewline.containsNewline(key))
+          if (!isMap && ctx.options.strict && utilContainsNewline.containsNewline(key2))
             onError(
-              key,
+              key2,
               // checked by containsNewline()
               "MULTILINE_IMPLICIT_KEY",
               "Implicit keys of flow sequence pairs need to be on a single line"
@@ -8091,8 +8091,8 @@ var require_resolve_flow_collection = __commonJS({
         } else {
           ctx.atKey = true;
           const keyStart = props.end;
-          const keyNode = key ? composeNode(ctx, key, props, onError) : composeEmptyNode(ctx, keyStart, start, null, props, onError);
-          if (isBlock(key))
+          const keyNode = key2 ? composeNode(ctx, key2, props, onError) : composeEmptyNode(ctx, keyStart, start, null, props, onError);
+          if (isBlock(key2))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
           const valueProps = resolveProps.resolveProps(sep ?? [], {
@@ -9242,9 +9242,9 @@ var require_cst_scalar = __commonJS({
         ];
         if (!addEndtoBlockProps(props, "end" in token ? token.end : void 0))
           props.push({ type: "newline", offset: -1, indent, source: "\n" });
-        for (const key of Object.keys(token))
-          if (key !== "type" && key !== "offset")
-            delete token[key];
+        for (const key2 of Object.keys(token))
+          if (key2 !== "type" && key2 !== "offset")
+            delete token[key2];
         Object.assign(token, { type: "block-scalar", indent, props, source: body });
       }
     }
@@ -9292,9 +9292,9 @@ var require_cst_scalar = __commonJS({
         default: {
           const indent = "indent" in token ? token.indent : -1;
           const end = "end" in token && Array.isArray(token.end) ? token.end.filter((st) => st.type === "space" || st.type === "comment" || st.type === "newline") : [];
-          for (const key of Object.keys(token))
-            if (key !== "type" && key !== "offset")
-              delete token[key];
+          for (const key2 of Object.keys(token))
+            if (key2 !== "type" && key2 !== "offset")
+              delete token[key2];
           Object.assign(token, { type, indent, source, end });
         }
       }
@@ -9349,12 +9349,12 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start, key, sep, value }) {
+    function stringifyItem({ start, key: key2, sep, value }) {
       let res = "";
       for (const st of start)
         res += st.source;
-      if (key)
-        res += stringifyToken(key);
+      if (key2)
+        res += stringifyToken(key2);
       if (sep)
         for (const st of sep)
           res += st.source;
@@ -9381,9 +9381,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path45) => {
+    visit.itemAtPath = (cst, path46) => {
       let item = cst;
-      for (const [field, index] of path45) {
+      for (const [field, index] of path46) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -9392,23 +9392,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path45) => {
-      const parent = visit.itemAtPath(cst, path45.slice(0, -1));
-      const field = path45[path45.length - 1][0];
+    visit.parentCollection = (cst, path46) => {
+      const parent = visit.itemAtPath(cst, path46.slice(0, -1));
+      const field = path46[path46.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path45, item, visitor) {
-      let ctrl = visitor(item, path45);
+    function _visit(path46, item, visitor) {
+      let ctrl = visitor(item, path46);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path45.concat([[field, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path46.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -9419,10 +9419,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path45);
+            ctrl = ctrl(item, path46);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path45) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path46) : ctrl;
     }
     exports2.visit = visit;
   }
@@ -10686,7 +10686,7 @@ var require_parser = __commonJS({
                   });
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start2 = getFirstKeyStartProps(it.start);
-                  const key = it.key;
+                  const key2 = it.key;
                   const sep = it.sep;
                   sep.push(this.sourceToken);
                   delete it.key;
@@ -10695,7 +10695,7 @@ var require_parser = __commonJS({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep }]
+                    items: [{ start: start2, key: key2, sep }]
                   });
                 } else if (start.length > 0) {
                   it.sep = it.sep.concat(start, this.sourceToken);
@@ -10724,14 +10724,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs40 = this.flowScalar(this.type);
+              const fs41 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start, key: fs40, sep: [] });
+                map.items.push({ start, key: fs41, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs40);
+                this.stack.push(fs41);
               } else {
-                Object.assign(it, { key: fs40, sep: [] });
+                Object.assign(it, { key: fs41, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -10859,13 +10859,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs40 = this.flowScalar(this.type);
+              const fs41 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs40, sep: [] });
+                fc.items.push({ start: [], key: fs41, sep: [] });
               else if (it.sep)
-                this.stack.push(fs40);
+                this.stack.push(fs41);
               else
-                Object.assign(it, { key: fs40, sep: [] });
+                Object.assign(it, { key: fs41, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -11282,11 +11282,11 @@ function firstBodyLine(content, fallback = "") {
   const first = body.split("\n")[0]?.replace(/^#+\s*/, "").trim() || fallback;
   return first.length > 100 ? first.slice(0, 97) + "..." : first;
 }
-function matchYamlField(fm, key) {
+function matchYamlField(fm, key2) {
   if (!fm) return void 0;
   const obj = parseFmObject(fm);
-  if (!(key in obj)) return void 0;
-  const v = obj[key];
+  if (!(key2 in obj)) return void 0;
+  const v = obj[key2];
   if (v == null) return void 0;
   if (typeof v === "string") return v;
   if (typeof v === "number" || typeof v === "boolean") return String(v);
@@ -11346,17 +11346,17 @@ function mergeIndependentDeclaration(entryValue, manifestValue) {
 }
 function mergePluginDeclarations(pluginRoot, pluginName, entry, manifest) {
   const effective = { ...entry ?? {}, ...manifest ?? {} };
-  for (const key of ["hooks", "dependencies"]) {
-    const merged = mergeIndependentDeclaration(entry?.[key], manifest?.[key]);
-    if (merged !== void 0) effective[key] = merged;
+  for (const key2 of ["hooks", "dependencies"]) {
+    const merged = mergeIndependentDeclaration(entry?.[key2], manifest?.[key2]);
+    if (merged !== void 0) effective[key2] = merged;
   }
-  for (const key of ["mcpServers", "lspServers"]) {
-    const merged = mergeDeclaration(entry?.[key], manifest?.[key]);
-    if (merged !== void 0) effective[key] = merged;
+  for (const key2 of ["mcpServers", "lspServers"]) {
+    const merged = mergeDeclaration(entry?.[key2], manifest?.[key2]);
+    if (merged !== void 0) effective[key2] = merged;
   }
-  for (const key of ["userConfig", "experimental"]) {
-    const merged = mergeDeclaration(entry?.[key], manifest?.[key]);
-    if (merged !== void 0) effective[key] = merged;
+  for (const key2 of ["userConfig", "experimental"]) {
+    const merged = mergeDeclaration(entry?.[key2], manifest?.[key2]);
+    if (merged !== void 0) effective[key2] = merged;
   }
   if (typeof entry?.defaultEnabled === "boolean") effective.defaultEnabled = entry.defaultEnabled;
   effective.name = pluginName || manifest?.name || entry?.name || import_path2.default.basename(pluginRoot);
@@ -11434,8 +11434,8 @@ async function listEnabledInstalledPlugins() {
     loadEnabledPluginsMap()
   ]);
   const out = [];
-  for (const [key, entry] of installedMap) {
-    if (enabled.get(key) === false) continue;
+  for (const [key2, entry] of installedMap) {
+    if (enabled.get(key2) === false) continue;
     if (!entry.installPath) continue;
     let exists = false;
     try {
@@ -11443,17 +11443,17 @@ async function listEnabledInstalledPlugins() {
     } catch {
     }
     if (!exists) continue;
-    const atIdx = key.lastIndexOf("@");
-    const name = atIdx > 0 ? key.slice(0, atIdx) : key;
-    const marketplace = atIdx > 0 ? key.slice(atIdx + 1) : "";
-    if (!enabled.has(key)) {
+    const atIdx = key2.lastIndexOf("@");
+    const name = atIdx > 0 ? key2.slice(0, atIdx) : key2;
+    const marketplace = atIdx > 0 ? key2.slice(atIdx + 1) : "";
+    if (!enabled.has(key2)) {
       const manifest = await readEffectivePluginManifest(entry.installPath, name, marketplace);
       if (manifest.defaultEnabled === false) continue;
     }
-    out.push({ name, marketplace, key, installPath: entry.installPath });
+    out.push({ name, marketplace, key: key2, installPath: entry.installPath });
   }
   const explicitlyEnabled = new Set(
-    [...enabled].filter(([, value]) => value === true).map(([key]) => key)
+    [...enabled].filter(([, value]) => value === true).map(([key2]) => key2)
   );
   const winners = selectPluginNamespaceWinners(out, explicitlyEnabled);
   if (winners.length !== out.length) {
@@ -11485,8 +11485,8 @@ function loadPluginOptions(pluginId) {
       const marketplace = at > 0 ? pluginId.slice(at + 1) : "";
       const schema = readEffectivePluginManifestSync(root, pluginName, marketplace).userConfig;
       if (schema && typeof schema === "object" && !Array.isArray(schema)) {
-        for (const [key, spec] of Object.entries(schema)) {
-          if (spec && typeof spec === "object" && "default" in spec) out[key] = spec.default;
+        for (const [key2, spec] of Object.entries(schema)) {
+          if (spec && typeof spec === "object" && "default" in spec) out[key2] = spec.default;
         }
       }
     }
@@ -11515,8 +11515,8 @@ function loadPluginOptions(pluginId) {
   return out;
 }
 function substituteUserConfig(value, options) {
-  return value.replace(/\$\{user_config\.([^}]+)\}/g, (match, key) => {
-    if (key in options) return String(options[key]);
+  return value.replace(/\$\{user_config\.([^}]+)\}/g, (match, key2) => {
+    if (key2 in options) return String(options[key2]);
     return match;
   });
 }
@@ -11532,10 +11532,10 @@ async function loadInstalledPluginsMap() {
   try {
     const data = JSON.parse(raw);
     if (data?.version !== 2 || !data?.plugins) return out;
-    for (const [key, entries2] of Object.entries(data.plugins)) {
+    for (const [key2, entries2] of Object.entries(data.plugins)) {
       const arr = entries2;
       if (arr.length > 0 && arr[0]?.installPath) {
-        out.set(key, { installPath: arr[0].installPath });
+        out.set(key2, { installPath: arr[0].installPath });
       }
     }
   } catch {
@@ -11770,8 +11770,8 @@ function spawnMonitor(inst) {
   }
 }
 async function loadMonitorDeclarations(pluginRoot, manifest) {
-  const readFile2 = async (ref) => {
-    const resolved = import_path3.default.resolve(pluginRoot, ref);
+  const readFile2 = async (ref2) => {
+    const resolved = import_path3.default.resolve(pluginRoot, ref2);
     const relative = import_path3.default.relative(pluginRoot, resolved);
     if (relative === ".." || relative.startsWith(".." + import_path3.default.sep) || import_path3.default.isAbsolute(relative)) return [];
     try {
@@ -12200,10 +12200,10 @@ function portableBasename(value) {
 function localizeHookPayload(payload, cacheDir = process.env.KAMIN_CACHE_DIR) {
   const localized = { ...payload };
   if (!cacheDir) return localized;
-  for (const key of ["transcript_path", "agent_transcript_path"]) {
-    const remotePath = localized[key];
+  for (const key2 of ["transcript_path", "agent_transcript_path"]) {
+    const remotePath = localized[key2];
     if (typeof remotePath === "string" && remotePath.length > 0) {
-      localized[key] = import_node_path3.default.join(cacheDir, "transcripts", portableBasename(remotePath));
+      localized[key2] = import_node_path3.default.join(cacheDir, "transcripts", portableBasename(remotePath));
     }
   }
   return localized;
@@ -12306,8 +12306,8 @@ async function executeHook(req) {
       command = substituteUserConfig(command, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginRoot).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, dataDir).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, cwd);
       args = args?.map((arg) => substituteUserConfig(arg, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginRoot).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, dataDir).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, cwd));
     }
-    for (const [key, value] of Object.entries(options)) {
-      pluginEnv[`CLAUDE_PLUGIN_OPTION_${key.toUpperCase()}`] = String(value);
+    for (const [key2, value] of Object.entries(options)) {
+      pluginEnv[`CLAUDE_PLUGIN_OPTION_${key2.toUpperCase()}`] = String(value);
     }
     pluginEnv.CLAUDE_PLUGIN_ROOT = shell2 ? shellPluginEnvValue(pluginRoot, shell2) : pluginRoot;
     pluginEnv.CLAUDE_PLUGIN_DATA = shell2 ? shellPluginEnvValue(dataDir, shell2) : dataDir;
@@ -12495,7 +12495,7 @@ var require_path = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.convertPosixPathToPattern = exports2.convertWindowsPathToPattern = exports2.convertPathToPattern = exports2.escapePosixPath = exports2.escapeWindowsPath = exports2.escape = exports2.removeLeadingDotSegment = exports2.makeAbsolute = exports2.unixify = void 0;
     var os32 = require("os");
-    var path45 = require("path");
+    var path46 = require("path");
     var IS_WINDOWS_PLATFORM = os32.platform() === "win32";
     var LEADING_DOT_SEGMENT_CHARACTERS_COUNT = 2;
     var POSIX_UNESCAPED_GLOB_SYMBOLS_RE = /(\\?)([()*?[\]{|}]|^!|[!+@](?=\()|\\(?![!()*+?@[\]{|}]))/g;
@@ -12507,7 +12507,7 @@ var require_path = __commonJS({
     }
     exports2.unixify = unixify;
     function makeAbsolute(cwd, filepath) {
-      return path45.resolve(cwd, filepath);
+      return path46.resolve(cwd, filepath);
     }
     exports2.makeAbsolute = makeAbsolute;
     function removeLeadingDotSegment(entry) {
@@ -13012,8 +13012,8 @@ var require_to_regex_range = __commonJS({
     function compare(a, b) {
       return a > b ? 1 : b > a ? -1 : 0;
     }
-    function contains(arr, key, val) {
-      return arr.some((ele) => ele[key] === val);
+    function contains(arr, key2, val) {
+      return arr.some((ele) => ele[key2] === val);
     }
     function countNines(min, len) {
       return Number(String(min).slice(0, -len) + "9".repeat(len));
@@ -13804,7 +13804,7 @@ var require_braces = __commonJS({
 var require_constants3 = __commonJS({
   "node_modules/picomatch/lib/constants.js"(exports2, module2) {
     "use strict";
-    var path45 = require("path");
+    var path46 = require("path");
     var WIN_SLASH = "\\\\/";
     var WIN_NO_SLASH = `[^${WIN_SLASH}]`;
     var DEFAULT_MAX_EXTGLOB_RECURSION = 0;
@@ -13978,7 +13978,7 @@ var require_constants3 = __commonJS({
       /* | */
       CHAR_ZERO_WIDTH_NOBREAK_SPACE: 65279,
       /* \uFEFF */
-      SEP: path45.sep,
+      SEP: path46.sep,
       /**
        * Create EXTGLOB_CHARS
        */
@@ -14005,7 +14005,7 @@ var require_constants3 = __commonJS({
 var require_utils2 = __commonJS({
   "node_modules/picomatch/lib/utils.js"(exports2) {
     "use strict";
-    var path45 = require("path");
+    var path46 = require("path");
     var win32 = process.platform === "win32";
     var {
       REGEX_BACKSLASH,
@@ -14034,7 +14034,7 @@ var require_utils2 = __commonJS({
       if (options && typeof options.windows === "boolean") {
         return options.windows;
       }
-      return win32 === true || path45.sep === "\\";
+      return win32 === true || path46.sep === "\\";
     };
     exports2.escapeLast = (input, char, lastIdx) => {
       const idx = input.lastIndexOf(char, lastIdx);
@@ -15398,7 +15398,7 @@ var require_parse2 = __commonJS({
 var require_picomatch = __commonJS({
   "node_modules/picomatch/lib/picomatch.js"(exports2, module2) {
     "use strict";
-    var path45 = require("path");
+    var path46 = require("path");
     var scan = require_scan();
     var parse = require_parse2();
     var utils = require_utils2();
@@ -15483,7 +15483,7 @@ var require_picomatch = __commonJS({
     };
     picomatch.matchBase = (input, glob, options, posix = utils.isWindows(options)) => {
       const regex = glob instanceof RegExp ? glob : picomatch.makeRe(glob, options);
-      return regex.test(path45.basename(input));
+      return regex.test(path46.basename(input));
     };
     picomatch.isMatch = (str, patterns, options) => picomatch(patterns, options)(str);
     picomatch.parse = (pattern, options) => {
@@ -15640,7 +15640,7 @@ var require_micromatch = __commonJS({
       }
       let keys = micromatch(Object.keys(obj), patterns, options);
       let res = {};
-      for (let key of keys) res[key] = obj[key];
+      for (let key2 of keys) res[key2] = obj[key2];
       return res;
     };
     micromatch.some = (list, patterns, options) => {
@@ -15710,7 +15710,7 @@ var require_pattern = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.isAbsolute = exports2.partitionAbsoluteAndRelative = exports2.removeDuplicateSlashes = exports2.matchAny = exports2.convertPatternsToRe = exports2.makeRe = exports2.getPatternParts = exports2.expandBraceExpansion = exports2.expandPatternsWithBraceExpansion = exports2.isAffectDepthOfReadingPattern = exports2.endsWithSlashGlobStar = exports2.hasGlobStar = exports2.getBaseDirectory = exports2.isPatternRelatedToParentDirectory = exports2.getPatternsOutsideCurrentDirectory = exports2.getPatternsInsideCurrentDirectory = exports2.getPositivePatterns = exports2.getNegativePatterns = exports2.isPositivePattern = exports2.isNegativePattern = exports2.convertToNegativePattern = exports2.convertToPositivePattern = exports2.isDynamicPattern = exports2.isStaticPattern = void 0;
-    var path45 = require("path");
+    var path46 = require("path");
     var globParent = require_glob_parent();
     var micromatch = require_micromatch();
     var GLOBSTAR = "**";
@@ -15805,7 +15805,7 @@ var require_pattern = __commonJS({
     }
     exports2.endsWithSlashGlobStar = endsWithSlashGlobStar;
     function isAffectDepthOfReadingPattern(pattern) {
-      const basename = path45.basename(pattern);
+      const basename = path46.basename(pattern);
       return endsWithSlashGlobStar(pattern) || isStaticPattern(basename);
     }
     exports2.isAffectDepthOfReadingPattern = isAffectDepthOfReadingPattern;
@@ -15863,7 +15863,7 @@ var require_pattern = __commonJS({
     }
     exports2.partitionAbsoluteAndRelative = partitionAbsoluteAndRelative;
     function isAbsolute(pattern) {
-      return path45.isAbsolute(pattern);
+      return path46.isAbsolute(pattern);
     }
     exports2.isAbsolute = isAbsolute;
   }
@@ -16038,10 +16038,10 @@ var require_utils3 = __commonJS({
     exports2.array = array;
     var errno = require_errno();
     exports2.errno = errno;
-    var fs40 = require_fs();
-    exports2.fs = fs40;
-    var path45 = require_path();
-    exports2.path = path45;
+    var fs41 = require_fs();
+    exports2.fs = fs41;
+    var path46 = require_path();
+    exports2.path = path46;
     var pattern = require_pattern();
     exports2.pattern = pattern;
     var stream = require_stream2();
@@ -16153,8 +16153,8 @@ var require_async = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.read = void 0;
-    function read(path45, settings, callback) {
-      settings.fs.lstat(path45, (lstatError, lstat) => {
+    function read(path46, settings, callback) {
+      settings.fs.lstat(path46, (lstatError, lstat) => {
         if (lstatError !== null) {
           callFailureCallback(callback, lstatError);
           return;
@@ -16163,7 +16163,7 @@ var require_async = __commonJS({
           callSuccessCallback(callback, lstat);
           return;
         }
-        settings.fs.stat(path45, (statError, stat) => {
+        settings.fs.stat(path46, (statError, stat) => {
           if (statError !== null) {
             if (settings.throwErrorOnBrokenSymbolicLink) {
               callFailureCallback(callback, statError);
@@ -16195,13 +16195,13 @@ var require_sync = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.read = void 0;
-    function read(path45, settings) {
-      const lstat = settings.fs.lstatSync(path45);
+    function read(path46, settings) {
+      const lstat = settings.fs.lstatSync(path46);
       if (!lstat.isSymbolicLink() || !settings.followSymbolicLink) {
         return lstat;
       }
       try {
-        const stat = settings.fs.statSync(path45);
+        const stat = settings.fs.statSync(path46);
         if (settings.markSymbolicLink) {
           stat.isSymbolicLink = () => true;
         }
@@ -16223,12 +16223,12 @@ var require_fs2 = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.createFileSystemAdapter = exports2.FILE_SYSTEM_ADAPTER = void 0;
-    var fs40 = require("fs");
+    var fs41 = require("fs");
     exports2.FILE_SYSTEM_ADAPTER = {
-      lstat: fs40.lstat,
-      stat: fs40.stat,
-      lstatSync: fs40.lstatSync,
-      statSync: fs40.statSync
+      lstat: fs41.lstat,
+      stat: fs41.stat,
+      lstatSync: fs41.lstatSync,
+      statSync: fs41.statSync
     };
     function createFileSystemAdapter(fsMethods) {
       if (fsMethods === void 0) {
@@ -16245,12 +16245,12 @@ var require_settings = __commonJS({
   "node_modules/@nodelib/fs.stat/out/settings.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var fs40 = require_fs2();
+    var fs41 = require_fs2();
     var Settings = class {
       constructor(_options = {}) {
         this._options = _options;
         this.followSymbolicLink = this._getValue(this._options.followSymbolicLink, true);
-        this.fs = fs40.createFileSystemAdapter(this._options.fs);
+        this.fs = fs41.createFileSystemAdapter(this._options.fs);
         this.markSymbolicLink = this._getValue(this._options.markSymbolicLink, false);
         this.throwErrorOnBrokenSymbolicLink = this._getValue(this._options.throwErrorOnBrokenSymbolicLink, true);
       }
@@ -16272,17 +16272,17 @@ var require_out = __commonJS({
     var sync = require_sync();
     var settings_1 = require_settings();
     exports2.Settings = settings_1.default;
-    function stat(path45, optionsOrSettingsOrCallback, callback) {
+    function stat(path46, optionsOrSettingsOrCallback, callback) {
       if (typeof optionsOrSettingsOrCallback === "function") {
-        async.read(path45, getSettings(), optionsOrSettingsOrCallback);
+        async.read(path46, getSettings(), optionsOrSettingsOrCallback);
         return;
       }
-      async.read(path45, getSettings(optionsOrSettingsOrCallback), callback);
+      async.read(path46, getSettings(optionsOrSettingsOrCallback), callback);
     }
     exports2.stat = stat;
-    function statSync2(path45, optionsOrSettings) {
+    function statSync2(path46, optionsOrSettings) {
       const settings = getSettings(optionsOrSettings);
-      return sync.read(path45, settings);
+      return sync.read(path46, settings);
     }
     exports2.statSync = statSync2;
     function getSettings(settingsOrOptions = {}) {
@@ -16337,9 +16337,9 @@ var require_run_parallel = __commonJS({
       if (!pending) {
         done(null);
       } else if (keys) {
-        keys.forEach(function(key) {
-          tasks[key](function(err, result) {
-            each(key, err, result);
+        keys.forEach(function(key2) {
+          tasks[key2](function(err, result) {
+            each(key2, err, result);
           });
         });
       } else {
@@ -16405,8 +16405,8 @@ var require_utils4 = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.fs = void 0;
-    var fs40 = require_fs3();
-    exports2.fs = fs40;
+    var fs41 = require_fs3();
+    exports2.fs = fs41;
   }
 });
 
@@ -16498,16 +16498,16 @@ var require_async2 = __commonJS({
           return;
         }
         const tasks = names.map((name) => {
-          const path45 = common.joinPathSegments(directory, name, settings.pathSegmentSeparator);
+          const path46 = common.joinPathSegments(directory, name, settings.pathSegmentSeparator);
           return (done) => {
-            fsStat.stat(path45, settings.fsStatSettings, (error, stats) => {
+            fsStat.stat(path46, settings.fsStatSettings, (error, stats) => {
               if (error !== null) {
                 done(error);
                 return;
               }
               const entry = {
                 name,
-                path: path45,
+                path: path46,
                 dirent: utils.fs.createDirentFromStats(name, stats)
               };
               if (settings.stats) {
@@ -16601,14 +16601,14 @@ var require_fs4 = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.createFileSystemAdapter = exports2.FILE_SYSTEM_ADAPTER = void 0;
-    var fs40 = require("fs");
+    var fs41 = require("fs");
     exports2.FILE_SYSTEM_ADAPTER = {
-      lstat: fs40.lstat,
-      stat: fs40.stat,
-      lstatSync: fs40.lstatSync,
-      statSync: fs40.statSync,
-      readdir: fs40.readdir,
-      readdirSync: fs40.readdirSync
+      lstat: fs41.lstat,
+      stat: fs41.stat,
+      lstatSync: fs41.lstatSync,
+      statSync: fs41.statSync,
+      readdir: fs41.readdir,
+      readdirSync: fs41.readdirSync
     };
     function createFileSystemAdapter(fsMethods) {
       if (fsMethods === void 0) {
@@ -16625,15 +16625,15 @@ var require_settings2 = __commonJS({
   "node_modules/@nodelib/fs.scandir/out/settings.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var path45 = require("path");
+    var path46 = require("path");
     var fsStat = require_out();
-    var fs40 = require_fs4();
+    var fs41 = require_fs4();
     var Settings = class {
       constructor(_options = {}) {
         this._options = _options;
         this.followSymbolicLinks = this._getValue(this._options.followSymbolicLinks, false);
-        this.fs = fs40.createFileSystemAdapter(this._options.fs);
-        this.pathSegmentSeparator = this._getValue(this._options.pathSegmentSeparator, path45.sep);
+        this.fs = fs41.createFileSystemAdapter(this._options.fs);
+        this.pathSegmentSeparator = this._getValue(this._options.pathSegmentSeparator, path46.sep);
         this.stats = this._getValue(this._options.stats, false);
         this.throwErrorOnBrokenSymbolicLink = this._getValue(this._options.throwErrorOnBrokenSymbolicLink, true);
         this.fsStatSettings = new fsStat.Settings({
@@ -16660,17 +16660,17 @@ var require_out2 = __commonJS({
     var sync = require_sync2();
     var settings_1 = require_settings2();
     exports2.Settings = settings_1.default;
-    function scandir(path45, optionsOrSettingsOrCallback, callback) {
+    function scandir(path46, optionsOrSettingsOrCallback, callback) {
       if (typeof optionsOrSettingsOrCallback === "function") {
-        async.read(path45, getSettings(), optionsOrSettingsOrCallback);
+        async.read(path46, getSettings(), optionsOrSettingsOrCallback);
         return;
       }
-      async.read(path45, getSettings(optionsOrSettingsOrCallback), callback);
+      async.read(path46, getSettings(optionsOrSettingsOrCallback), callback);
     }
     exports2.scandir = scandir;
-    function scandirSync(path45, optionsOrSettings) {
+    function scandirSync(path46, optionsOrSettings) {
       const settings = getSettings(optionsOrSettings);
-      return sync.read(path45, settings);
+      return sync.read(path46, settings);
     }
     exports2.scandirSync = scandirSync;
     function getSettings(settingsOrOptions = {}) {
@@ -17317,7 +17317,7 @@ var require_settings3 = __commonJS({
   "node_modules/@nodelib/fs.walk/out/settings.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var path45 = require("path");
+    var path46 = require("path");
     var fsScandir = require_out2();
     var Settings = class {
       constructor(_options = {}) {
@@ -17327,7 +17327,7 @@ var require_settings3 = __commonJS({
         this.deepFilter = this._getValue(this._options.deepFilter, null);
         this.entryFilter = this._getValue(this._options.entryFilter, null);
         this.errorFilter = this._getValue(this._options.errorFilter, null);
-        this.pathSegmentSeparator = this._getValue(this._options.pathSegmentSeparator, path45.sep);
+        this.pathSegmentSeparator = this._getValue(this._options.pathSegmentSeparator, path46.sep);
         this.fsScandirSettings = new fsScandir.Settings({
           followSymbolicLinks: this._options.followSymbolicLinks,
           fs: this._options.fs,
@@ -17389,7 +17389,7 @@ var require_reader2 = __commonJS({
   "node_modules/fast-glob/out/readers/reader.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var path45 = require("path");
+    var path46 = require("path");
     var fsStat = require_out();
     var utils = require_utils3();
     var Reader = class {
@@ -17402,7 +17402,7 @@ var require_reader2 = __commonJS({
         });
       }
       _getFullEntryPath(filepath) {
-        return path45.resolve(this._settings.cwd, filepath);
+        return path46.resolve(this._settings.cwd, filepath);
       }
       _makeEntry(stats, pattern) {
         const entry = {
@@ -17818,7 +17818,7 @@ var require_provider = __commonJS({
   "node_modules/fast-glob/out/providers/provider.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var path45 = require("path");
+    var path46 = require("path");
     var deep_1 = require_deep();
     var entry_1 = require_entry();
     var error_1 = require_error();
@@ -17832,7 +17832,7 @@ var require_provider = __commonJS({
         this.entryTransformer = new entry_2.default(this._settings);
       }
       _getRootDirectory(task) {
-        return path45.resolve(this._settings.cwd, task.base);
+        return path46.resolve(this._settings.cwd, task.base);
       }
       _getReaderOptions(task) {
         const basePath = task.base === "." ? "" : task.base;
@@ -18013,16 +18013,16 @@ var require_settings4 = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.DEFAULT_FILE_SYSTEM_ADAPTER = void 0;
-    var fs40 = require("fs");
+    var fs41 = require("fs");
     var os32 = require("os");
     var CPU_COUNT = Math.max(os32.cpus().length, 1);
     exports2.DEFAULT_FILE_SYSTEM_ADAPTER = {
-      lstat: fs40.lstat,
-      lstatSync: fs40.lstatSync,
-      stat: fs40.stat,
-      statSync: fs40.statSync,
-      readdir: fs40.readdir,
-      readdirSync: fs40.readdirSync
+      lstat: fs41.lstat,
+      lstatSync: fs41.lstatSync,
+      stat: fs41.stat,
+      statSync: fs41.statSync,
+      readdir: fs41.readdir,
+      readdirSync: fs41.readdirSync
     };
     var Settings = class {
       constructor(_options = {}) {
@@ -18169,12 +18169,12 @@ var require_out4 = __commonJS({
 });
 
 // src/main/mcp/tools/notebook.ts
-async function readNotebookCapped(path45) {
-  const st = await import_promises2.default.stat(path45);
+async function readNotebookCapped(path46) {
+  const st = await import_promises2.default.stat(path46);
   if (st.size > MAX_NOTEBOOK_BYTES) {
     throw new Error(`Notebook too large (${Math.round(st.size / 1024 / 1024)} MB > 50 MB cap)`);
   }
-  return import_promises2.default.readFile(path45, "utf8");
+  return import_promises2.default.readFile(path46, "utf8");
 }
 function textResult(text) {
   return { content: [{ type: "text", text }] };
@@ -19500,8 +19500,8 @@ var require_MouseEvent = __commonJS({
         }
         this.relatedTarget = relatedTarget;
       } },
-      getModifierState: { value: function(key) {
-        switch (key) {
+      getModifierState: { value: function(key2) {
+        switch (key2) {
           case "Alt":
             return this.altKey;
           case "Control":
@@ -21396,11 +21396,11 @@ var require_DOMTokenList = __commonJS({
       } else {
         var seen = /* @__PURE__ */ Object.create(null);
         return str.split(/[ \t\r\n\f]+/g).filter(function(n) {
-          var key = "$" + n;
-          if (seen[key]) {
+          var key2 = "$" + n;
+          if (seen[key2]) {
             return false;
           }
-          seen[key] = true;
+          seen[key2] = true;
           return true;
         });
       }
@@ -21563,11 +21563,11 @@ var require_select = __commonJS({
           return el.nodeName.toLowerCase() === type;
         };
       },
-      "attr": function(key, op, val, i) {
+      "attr": function(key2, op, val, i) {
         op = operators[op];
         return function(el) {
           var attr;
-          switch (key) {
+          switch (key2) {
             case "for":
               attr = el.htmlFor;
               break;
@@ -21579,7 +21579,7 @@ var require_select = __commonJS({
               break;
             case "href":
             case "src":
-              attr = el.getAttribute(key, 2);
+              attr = el.getAttribute(key2, 2);
               break;
             case "title":
               attr = el.getAttribute("title") || null;
@@ -21593,15 +21593,15 @@ var require_select = __commonJS({
             case "tabIndex":
             case "style":
               if (el.getAttribute) {
-                attr = el.getAttribute(key);
+                attr = el.getAttribute(key2);
                 break;
               }
             /* falls through */
             default:
-              if (el.hasAttribute && !el.hasAttribute(key)) {
+              if (el.hasAttribute && !el.hasAttribute(key2)) {
                 break;
               }
-              attr = el[key] != null ? el[key] : el.getAttribute && el.getAttribute(key);
+              attr = el[key2] != null ? el[key2] : el.getAttribute && el.getAttribute(key2);
               break;
           }
           if (attr == null) return;
@@ -21892,18 +21892,18 @@ var require_select = __commonJS({
       },
       "ref": function(test, name) {
         var node;
-        function ref(el) {
+        function ref2(el) {
           var doc = el.ownerDocument, nodes = doc.getElementsByTagName("*"), i = nodes.length;
           while (i--) {
             node = nodes[i];
-            if (ref.test(el)) {
+            if (ref2.test(el)) {
               node = null;
               return true;
             }
           }
           node = null;
         }
-        ref.combinator = function(el) {
+        ref2.combinator = function(el) {
           if (!node || !node.getAttribute) return;
           var attr = node.getAttribute(name) || "";
           if (attr[0] === "#") attr = attr.substring(1);
@@ -21911,7 +21911,7 @@ var require_select = __commonJS({
             return node;
           }
         };
-        return ref;
+        return ref2;
       }
     };
     var rules = {
@@ -21943,7 +21943,7 @@ var require_select = __commonJS({
     rules.ident = replace(rules.ident, "cssid", rules.cssid);
     rules.str_escape = replace(rules.str_escape, "escape", rules.escape);
     var compile = function(sel_) {
-      var sel = sel_.replace(/^\s+|\s+$/g, ""), test, filter = [], buff = [], subject, qname, cap, op, ref;
+      var sel = sel_.replace(/^\s+|\s+$/g, ""), test, filter = [], buff = [], subject, qname, cap, op, ref2;
       while (sel) {
         if (cap = rules.qname.exec(sel)) {
           sel = sel.substring(cap[0].length);
@@ -21969,8 +21969,8 @@ var require_select = __commonJS({
         }
         if (cap = rules.ref.exec(sel)) {
           sel = sel.substring(cap[0].length);
-          ref = combinators.ref(makeSimple(buff), decodeid(cap[1]));
-          filter.push(ref.combinator);
+          ref2 = combinators.ref(makeSimple(buff), decodeid(cap[1]));
+          filter.push(ref2.combinator);
           buff = [];
           continue;
         }
@@ -22000,11 +22000,11 @@ var require_select = __commonJS({
         subject.sel = test.sel;
         test = subject;
       }
-      if (ref) {
-        ref.test = test;
-        ref.qname = test.qname;
-        ref.sel = test.sel;
-        test = ref;
+      if (ref2) {
+        ref2.test = test;
+        ref2.qname = test.qname;
+        ref2.sel = test.sel;
+        test = ref2;
       }
       return test;
     };
@@ -22774,8 +22774,8 @@ var require_Element = __commonJS({
       hasAttributeNS: { value: function hasAttributeNS(ns, lname) {
         ns = ns === void 0 || ns === null ? "" : String(ns);
         lname = String(lname);
-        var key = ns + "|" + lname;
-        return this._attrsByLName[key] !== void 0;
+        var key2 = ns + "|" + lname;
+        return this._attrsByLName[key2] !== void 0;
       } },
       hasAttributes: { value: function hasAttributes() {
         return this._numattrs > 0;
@@ -22833,17 +22833,17 @@ var require_Element = __commonJS({
           lname = qname.substring(pos + 1);
         }
         if (ns === "" || ns === void 0) ns = null;
-        var key = (ns === null ? "" : ns) + "|" + lname;
-        var attr = this._attrsByLName[key];
+        var key2 = (ns === null ? "" : ns) + "|" + lname;
+        var attr = this._attrsByLName[key2];
         var isnew;
         if (!attr) {
           attr = new Attr(this, lname, prefix, ns);
           isnew = true;
-          this._attrsByLName[key] = attr;
+          this._attrsByLName[key2] = attr;
           if (this._attributes) {
             this._attributes[this._attrKeys.length] = attr;
           }
-          this._attrKeys.push(key);
+          this._attrKeys.push(key2);
           this._addQName(attr);
         } else if (false) {
           if (attr.prefix !== prefix) {
@@ -22896,17 +22896,17 @@ var require_Element = __commonJS({
           throw new DOMException(DOMException.INUSE_ATTRIBUTE_ERR);
         }
         var ns = attr.namespaceURI;
-        var key = (ns === null ? "" : ns) + "|" + attr.localName;
-        var oldAttr = this._attrsByLName[key];
+        var key2 = (ns === null ? "" : ns) + "|" + attr.localName;
+        var oldAttr = this._attrsByLName[key2];
         if (oldAttr) {
           this.removeAttributeNode(oldAttr);
         }
         attr._setOwnerElement(this);
-        this._attrsByLName[key] = attr;
+        this._attrsByLName[key2] = attr;
         if (this._attributes) {
           this._attributes[this._attrKeys.length] = attr;
         }
-        this._attrKeys.push(key);
+        this._attrKeys.push(key2);
         this._addQName(attr);
         if (this._newattrhook) this._newattrhook(attr.name, attr.value);
         return oldAttr || null;
@@ -22928,9 +22928,9 @@ var require_Element = __commonJS({
           this._attrsByQName[qname] = void 0;
         }
         var ns = attr.namespaceURI;
-        var key = (ns === null ? "" : ns) + "|" + attr.localName;
-        this._attrsByLName[key] = void 0;
-        var i = this._attrKeys.indexOf(key);
+        var key2 = (ns === null ? "" : ns) + "|" + attr.localName;
+        this._attrsByLName[key2] = void 0;
+        var i = this._attrKeys.indexOf(key2);
         if (this._attributes) {
           Array.prototype.splice.call(this._attributes, i, 1);
           this._attributes[qname] = void 0;
@@ -22946,11 +22946,11 @@ var require_Element = __commonJS({
       removeAttributeNS: { value: function removeAttributeNS(ns, lname) {
         ns = ns === void 0 || ns === null ? "" : String(ns);
         lname = String(lname);
-        var key = ns + "|" + lname;
-        var attr = this._attrsByLName[key];
+        var key2 = ns + "|" + lname;
+        var attr = this._attrsByLName[key2];
         if (!attr) return;
-        this._attrsByLName[key] = void 0;
-        var i = this._attrKeys.indexOf(key);
+        this._attrsByLName[key2] = void 0;
+        var i = this._attrKeys.indexOf(key2);
         if (this._attributes) {
           Array.prototype.splice.call(this._attributes, i, 1);
         }
@@ -22965,8 +22965,8 @@ var require_Element = __commonJS({
       } },
       removeAttributeNode: { value: function removeAttributeNode(attr) {
         var ns = attr.namespaceURI;
-        var key = (ns === null ? "" : ns) + "|" + attr.localName;
-        if (this._attrsByLName[key] !== attr) {
+        var key2 = (ns === null ? "" : ns) + "|" + attr.localName;
+        if (this._attrsByLName[key2] !== attr) {
           utils.NotFoundError();
         }
         this.removeAttributeNS(ns, attr.localName);
@@ -22974,8 +22974,8 @@ var require_Element = __commonJS({
       } },
       getAttributeNames: { value: function getAttributeNames() {
         var elt = this;
-        return this._attrKeys.map(function(key) {
-          return elt._attrsByLName[key].name;
+        return this._attrKeys.map(function(key2) {
+          return elt._attrsByLName[key2].name;
         });
       } },
       // This 'raw' version of getAttribute is used by the getter functions
@@ -23001,13 +23001,13 @@ var require_Element = __commonJS({
       // Used by setAttribute() and by set()
       _newattr: { value: function _newattr(qname) {
         var attr = new Attr(this, qname, null, null);
-        var key = "|" + qname;
+        var key2 = "|" + qname;
         this._attrsByQName[qname] = attr;
-        this._attrsByLName[key] = attr;
+        this._attrsByLName[key2] = attr;
         if (this._attributes) {
           this._attributes[this._attrKeys.length] = attr;
         }
-        this._attrKeys.push(key);
+        this._attrKeys.push(key2);
         return attr;
       } },
       // Add a qname->Attr mapping to the _attrsByQName object, taking into
@@ -24422,32 +24422,32 @@ var require_URL = __commonJS({
           else
             return basepath.substring(0, lastslash + 1) + refpath;
         }
-        function remove_dot_segments(path45) {
-          if (!path45) return path45;
+        function remove_dot_segments(path46) {
+          if (!path46) return path46;
           var output = "";
-          while (path45.length > 0) {
-            if (path45 === "." || path45 === "..") {
-              path45 = "";
+          while (path46.length > 0) {
+            if (path46 === "." || path46 === "..") {
+              path46 = "";
               break;
             }
-            var twochars = path45.substring(0, 2);
-            var threechars = path45.substring(0, 3);
-            var fourchars = path45.substring(0, 4);
+            var twochars = path46.substring(0, 2);
+            var threechars = path46.substring(0, 3);
+            var fourchars = path46.substring(0, 4);
             if (threechars === "../") {
-              path45 = path45.substring(3);
+              path46 = path46.substring(3);
             } else if (twochars === "./") {
-              path45 = path45.substring(2);
+              path46 = path46.substring(2);
             } else if (threechars === "/./") {
-              path45 = "/" + path45.substring(3);
-            } else if (twochars === "/." && path45.length === 2) {
-              path45 = "/";
-            } else if (fourchars === "/../" || threechars === "/.." && path45.length === 3) {
-              path45 = "/" + path45.substring(4);
+              path46 = "/" + path46.substring(3);
+            } else if (twochars === "/." && path46.length === 2) {
+              path46 = "/";
+            } else if (fourchars === "/../" || threechars === "/.." && path46.length === 3) {
+              path46 = "/" + path46.substring(4);
               output = output.replace(/\/?[^\/]*$/, "");
             } else {
-              var segment = path45.match(/(\/?([^\/]*))/)[0];
+              var segment = path46.match(/(\/?([^\/]*))/)[0];
               output += segment;
-              path45 = path45.substring(segment.length);
+              path46 = path46.substring(segment.length);
             }
           }
           return output;
@@ -24566,7 +24566,7 @@ var require_CSSStyleDeclaration = __commonJS({
         get: function(target, property) {
           return property in target ? target[property] : target.getPropertyValue(dasherizeProperty(property));
         },
-        has: function(target, key) {
+        has: function(target, key2) {
           return true;
         },
         set: function(target, property, value) {
@@ -36044,8 +36044,8 @@ var require_turndown_cjs = __commonJS({
     function extend(destination) {
       for (var i = 1; i < arguments.length; i++) {
         var source = arguments[i];
-        for (var key in source) {
-          if (Object.prototype.hasOwnProperty.call(source, key)) destination[key] = source[key];
+        for (var key2 in source) {
+          if (Object.prototype.hasOwnProperty.call(source, key2)) destination[key2] = source[key2];
         }
       }
       return destination;
@@ -36300,10 +36300,10 @@ var require_turndown_cjs = __commonJS({
         replacement: options.defaultReplacement
       };
       this.array = [];
-      for (var key in options.rules) this.array.push(options.rules[key]);
+      for (var key2 in options.rules) this.array.push(options.rules[key2]);
     }
     Rules.prototype = {
-      add: function(key, rule) {
+      add: function(key2, rule) {
         this.array.unshift(rule);
       },
       keep: function(filter) {
@@ -36602,8 +36602,8 @@ var require_turndown_cjs = __commonJS({
        * @returns The Turndown instance for chaining
        * @type Object
        */
-      addRule: function(key, rule) {
-        this.rules.add(key, rule);
+      addRule: function(key2, rule) {
+        this.rules.add(key2, rule);
         return this;
       },
       /**
@@ -37322,8 +37322,8 @@ async function todoWrite(input, context) {
   if (!Array.isArray(todos)) {
     return { content: [{ type: "text", text: "Error: todos must be an array" }] };
   }
-  const key = context?.tabId || "__global__";
-  todoStore.set(key, todos);
+  const key2 = context?.tabId || "__global__";
+  todoStore.set(key2, todos);
   const summary = todos.map((t, i) => `${i + 1}. [${t.status}] ${t.content}`).join("\n");
   return {
     content: [
@@ -37336,8 +37336,8 @@ ${summary}`
   };
 }
 async function todoList(_input, context) {
-  const key = context?.tabId || "__global__";
-  const list = todoStore.get(key) ?? [];
+  const key2 = context?.tabId || "__global__";
+  const list = todoStore.get(key2) ?? [];
   if (list.length === 0) {
     return { content: [{ type: "text", text: "No todos." }] };
   }
@@ -37423,8 +37423,8 @@ function readJson(filePath) {
 }
 function collectConfigMap(target, value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return;
-  for (const [key, config] of Object.entries(value)) {
-    if (config && typeof config === "object" && !Array.isArray(config)) target[key] = config;
+  for (const [key2, config] of Object.entries(value)) {
+    if (config && typeof config === "object" && !Array.isArray(config)) target[key2] = config;
   }
 }
 async function discoverPluginLspConfigs() {
@@ -37450,8 +37450,8 @@ async function discoverPluginLspConfigs() {
       if (!config.extensionToLanguage || typeof config.extensionToLanguage !== "object" || Array.isArray(config.extensionToLanguage)) continue;
       const subst = (value, project = "${CLAUDE_PROJECT_DIR}") => substituteUserConfig(value, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, plugin.installPath).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, import_node_path8.default.join(import_node_os3.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"))).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, project).replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name) => name === "CLAUDE_PROJECT_DIR" ? match : process.env[name] ?? "");
       const env4 = {};
-      for (const [key, value] of Object.entries(config.env ?? {})) if (typeof value === "string") env4[key] = subst(value);
-      for (const [key, value] of Object.entries(options)) env4[`CLAUDE_PLUGIN_OPTION_${key.toUpperCase()}`] = String(value);
+      for (const [key2, value] of Object.entries(config.env ?? {})) if (typeof value === "string") env4[key2] = subst(value);
+      for (const [key2, value] of Object.entries(options)) env4[`CLAUDE_PLUGIN_OPTION_${key2.toUpperCase()}`] = String(value);
       out.push({
         id: `${plugin.key}/${serverKey}`,
         pluginId: plugin.key,
@@ -37820,13 +37820,13 @@ var init_plugin_lsp = __esm({
         this.tabInstances.delete(tabId);
         if (!keys) return;
         const stopping = [];
-        for (const key of keys) {
-          const owners = this.instanceOwners.get(key);
+        for (const key2 of keys) {
+          const owners = this.instanceOwners.get(key2);
           owners?.delete(tabId);
           if (owners && owners.size > 0) continue;
-          this.instanceOwners.delete(key);
-          const instance = this.instances.get(key);
-          this.instances.delete(key);
+          this.instanceOwners.delete(key2);
+          const instance = this.instances.get(key2);
+          this.instances.delete(key2);
           if (instance) stopping.push(instance.stop());
         }
         await Promise.all(stopping);
@@ -37912,8 +37912,8 @@ function errorResult6(message) {
 function textResult6(text) {
   return { content: [{ type: "text", text }] };
 }
-function requireAbsolutePath(input, key = "file") {
-  const raw = input[key];
+function requireAbsolutePath(input, key2 = "file") {
+  const raw = input[key2];
   if (typeof raw !== "string" || !raw) return null;
   return import_path5.default.isAbsolute(raw) ? raw : null;
 }
@@ -39095,27 +39095,27 @@ var require_lrucache = __commonJS({
         this.max = 1e3;
         this.map = /* @__PURE__ */ new Map();
       }
-      get(key) {
-        const value = this.map.get(key);
+      get(key2) {
+        const value = this.map.get(key2);
         if (value === void 0) {
           return void 0;
         } else {
-          this.map.delete(key);
-          this.map.set(key, value);
+          this.map.delete(key2);
+          this.map.set(key2, value);
           return value;
         }
       }
-      delete(key) {
-        return this.map.delete(key);
+      delete(key2) {
+        return this.map.delete(key2);
       }
-      set(key, value) {
-        const deleted = this.delete(key);
+      set(key2, value) {
+        const deleted = this.delete(key2);
         if (!deleted && value !== void 0) {
           if (this.map.size >= this.max) {
             const firstKey = this.map.keys().next().value;
             this.delete(firstKey);
           }
-          this.map.set(key, value);
+          this.map.set(key2, value);
         }
         return this;
       }
@@ -40494,10 +40494,10 @@ __export(claude_code_import_exports, {
   findClaudeCodeEntryByServerUrl: () => findClaudeCodeEntryByServerUrl
 });
 function readCredentialsFile() {
-  const file = import_path17.default.join(import_os13.default.homedir(), ".claude", ".credentials.json");
+  const file = import_path18.default.join(import_os13.default.homedir(), ".claude", ".credentials.json");
   let raw;
   try {
-    raw = import_fs16.default.readFileSync(file, "utf-8");
+    raw = import_fs17.default.readFileSync(file, "utf-8");
   } catch {
     return null;
   }
@@ -40521,12 +40521,12 @@ function findClaudeCodeEntryByServerUrl(serverUrl) {
   }
   return null;
 }
-var import_fs16, import_path17, import_os13;
+var import_fs17, import_path18, import_os13;
 var init_claude_code_import = __esm({
   "src/main/mcp/claude-code-import.ts"() {
     "use strict";
-    import_fs16 = __toESM(require("fs"), 1);
-    import_path17 = __toESM(require("path"), 1);
+    import_fs17 = __toESM(require("fs"), 1);
+    import_path18 = __toESM(require("path"), 1);
     import_os13 = __toESM(require("os"), 1);
   }
 });
@@ -40540,8 +40540,8 @@ __export(index_exports, {
 module.exports = __toCommonJS(index_exports);
 var vscode9 = __toESM(require("vscode"), 1);
 var kaminide2 = __toESM(require("kaminide"), 1);
-var import_fs34 = __toESM(require("fs"), 1);
-var import_path34 = __toESM(require("path"), 1);
+var import_fs35 = __toESM(require("fs"), 1);
+var import_path35 = __toESM(require("path"), 1);
 
 // src/bridge-host.ts
 var vscode6 = __toESM(require("vscode"), 1);
@@ -40678,11 +40678,11 @@ var RulesStore = class {
       this.data = { rules: {} };
     }
   }
-  get(key) {
-    return this.data[key];
+  get(key2) {
+    return this.data[key2];
   }
-  set(key, value) {
-    this.data[key] = value;
+  set(key2, value) {
+    this.data[key2] = value;
     try {
       import_node_fs.default.mkdirSync(import_node_path.default.dirname(this.file), { recursive: true });
       const tmp = `${this.file}.tmp`;
@@ -42409,13 +42409,13 @@ var ConnectionManager = class _ConnectionManager {
       setCachedStreamingEntry: (e) => {
         this.cachedStreamingEntry = e;
       },
-      pushSubagentCache: (key, agentName, agentId, entries2) => {
-        const slot = this.cachedSubagentEntries.get(key) ?? { agentName, agentId, entries: [] };
+      pushSubagentCache: (key2, agentName, agentId, entries2) => {
+        const slot = this.cachedSubagentEntries.get(key2) ?? { agentName, agentId, entries: [] };
         slot.entries.push(...entries2);
         if (slot.entries.length > _ConnectionManager.SUBAGENT_CACHE_CAP) {
           slot.entries.splice(0, slot.entries.length - _ConnectionManager.SUBAGENT_CACHE_CAP);
         }
-        this.cachedSubagentEntries.set(key, slot);
+        this.cachedSubagentEntries.set(key2, slot);
       },
       setCachedJsonlStatus: (s) => {
         this.cachedJsonlStatus = s;
@@ -42551,8 +42551,8 @@ function isInside2(root, candidate) {
   const rel = import_path7.default.relative(import_path7.default.resolve(root), import_path7.default.resolve(candidate));
   return rel === "" || !rel.startsWith(".." + import_path7.default.sep) && rel !== ".." && !import_path7.default.isAbsolute(rel);
 }
-function safeResolve(root, ref) {
-  const resolved = import_path7.default.isAbsolute(ref) ? import_path7.default.resolve(ref) : import_path7.default.resolve(root, ref);
+function safeResolve(root, ref2) {
+  const resolved = import_path7.default.isAbsolute(ref2) ? import_path7.default.resolve(ref2) : import_path7.default.resolve(root, ref2);
   return isInside2(root, resolved) ? resolved : null;
 }
 function manifestPathRefs(value) {
@@ -42605,15 +42605,15 @@ Resolve sibling scripts, references, and assets from that original host path. Fi
 }
 function mergeNonSensitivePluginOptions(manifest, savedOptions) {
   const out = {};
-  for (const [key, spec] of Object.entries(manifest?.userConfig ?? {})) {
+  for (const [key2, spec] of Object.entries(manifest?.userConfig ?? {})) {
     if (spec && typeof spec === "object" && spec.sensitive !== true && "default" in spec) {
-      out[key] = spec.default;
+      out[key2] = spec.default;
     }
   }
   if (savedOptions && typeof savedOptions === "object" && !Array.isArray(savedOptions)) {
-    for (const [key, value] of Object.entries(savedOptions)) {
-      const spec = manifest?.userConfig?.[key];
-      if (spec && typeof spec === "object" && spec.sensitive !== true) out[key] = value;
+    for (const [key2, value] of Object.entries(savedOptions)) {
+      const spec = manifest?.userConfig?.[key2];
+      if (spec && typeof spec === "object" && spec.sensitive !== true) out[key2] = value;
     }
   }
   return out;
@@ -42642,8 +42642,8 @@ async function collectComponentFiles(pluginRoot, refs, kind, options) {
     if (kind === "workflows") return /\.(?:c|m)?js$/.test(lower);
     return lower.endsWith(".md");
   };
-  for (const ref of refs) {
-    const source = safeResolve(pluginRoot, ref);
+  for (const ref2 of refs) {
+    const source = safeResolve(pluginRoot, ref2);
     if (!source) continue;
     let stat;
     try {
@@ -42700,8 +42700,8 @@ async function readHookFile(filePath) {
 async function collectPluginHooks(pluginRoot, manifest) {
   const out = {};
   const seen = /* @__PURE__ */ new Set();
-  const addPath = async (ref) => {
-    const filePath = safeResolve(pluginRoot, ref);
+  const addPath = async (ref2) => {
+    const filePath = safeResolve(pluginRoot, ref2);
     if (!filePath || seen.has(filePath)) return;
     seen.add(filePath);
     mergeHooks(out, await readHookFile(filePath));
@@ -42806,8 +42806,8 @@ function rewritePluginMcpMatchers(pluginName, hooks) {
 function proxyManifest(manifest, fallbackName) {
   const allowed = ["name", "displayName", "version", "description", "author", "homepage", "repository", "license", "keywords"];
   const out = { name: typeof manifest.name === "string" ? manifest.name : fallbackName };
-  for (const key of allowed) {
-    if (key in manifest && manifest[key] !== void 0) out[key] = manifest[key];
+  for (const key2 of allowed) {
+    if (key2 in manifest && manifest[key2] !== void 0) out[key2] = manifest[key2];
   }
   return out;
 }
@@ -42987,13 +42987,13 @@ async function syncUserDataOnce(serverUrl, token) {
   }
 }
 function syncUserData(serverUrl, token) {
-  const key = `${toHttpUrl(serverUrl)}\0${tokenHash(token)}`;
-  const existing = userSyncInFlight.get(key);
+  const key2 = `${toHttpUrl(serverUrl)}\0${tokenHash(token)}`;
+  const existing = userSyncInFlight.get(key2);
   if (existing) return existing;
   const pending = syncUserDataOnce(serverUrl, token);
-  userSyncInFlight.set(key, pending);
+  userSyncInFlight.set(key2, pending);
   return pending.finally(() => {
-    if (userSyncInFlight.get(key) === pending) userSyncInFlight.delete(key);
+    if (userSyncInFlight.get(key2) === pending) userSyncInFlight.delete(key2);
   });
 }
 async function syncProjectDataOnce(serverUrl, token, projectPath) {
@@ -43041,13 +43041,13 @@ async function syncProjectDataOnce(serverUrl, token, projectPath) {
   }
 }
 function syncProjectData(serverUrl, token, projectPath) {
-  const key = `${toHttpUrl(serverUrl)}\0${tokenHash(token)}\0${projectPath}`;
-  const existing = projectSyncInFlight.get(key);
+  const key2 = `${toHttpUrl(serverUrl)}\0${tokenHash(token)}\0${projectPath}`;
+  const existing = projectSyncInFlight.get(key2);
   if (existing) return existing;
   const pending = syncProjectDataOnce(serverUrl, token, projectPath);
-  projectSyncInFlight.set(key, pending);
+  projectSyncInFlight.set(key2, pending);
   return pending.finally(() => {
-    if (projectSyncInFlight.get(key) === pending) projectSyncInFlight.delete(key);
+    if (projectSyncInFlight.get(key2) === pending) projectSyncInFlight.delete(key2);
   });
 }
 function resetSyncTimers() {
@@ -43567,11 +43567,11 @@ var ConfigStore = class {
   }
   getSavedSessions() {
     const map = this.data.savedSessionsByToken ?? {};
-    const key = this.currentKey();
-    if (map[key] && map[key].length > 0) return map[key];
+    const key2 = this.currentKey();
+    if (map[key2] && map[key2].length > 0) return map[key2];
     const legacy = this.data.savedSessions ?? [];
     if (legacy.length > 0) {
-      this.data.savedSessionsByToken = { ...map, [key]: legacy };
+      this.data.savedSessionsByToken = { ...map, [key2]: legacy };
       this.data.savedSessions = [];
       this.persist();
       return legacy;
@@ -43580,18 +43580,18 @@ var ConfigStore = class {
   }
   addSavedSession(session) {
     const map = this.data.savedSessionsByToken ?? {};
-    const key = this.currentKey();
-    const existing = map[key] ?? [];
+    const key2 = this.currentKey();
+    const existing = map[key2] ?? [];
     const filtered = existing.filter((s) => s.conversationId !== session.conversationId);
     filtered.unshift(session);
-    this.data.savedSessionsByToken = { ...map, [key]: filtered.slice(0, 50) };
+    this.data.savedSessionsByToken = { ...map, [key2]: filtered.slice(0, 50) };
     this.persist();
   }
   removeSavedSession(conversationId) {
     const map = this.data.savedSessionsByToken ?? {};
-    const key = this.currentKey();
-    const existing = map[key] ?? [];
-    this.data.savedSessionsByToken = { ...map, [key]: existing.filter((s) => s.conversationId !== conversationId) };
+    const key2 = this.currentKey();
+    const existing = map[key2] ?? [];
+    this.data.savedSessionsByToken = { ...map, [key2]: existing.filter((s) => s.conversationId !== conversationId) };
     this.persist();
   }
   /** One-shot migration: pull the Electron Bridge's saved sessions into this
@@ -43626,12 +43626,12 @@ var ConfigStore = class {
         this.data.config = { ...this.data.config, ...raw.config };
       }
       const src = raw.savedSessionsByToken ?? {};
-      for (const [key, sessions3] of Object.entries(src)) {
+      for (const [key2, sessions3] of Object.entries(src)) {
         if (!Array.isArray(sessions3) || sessions3.length === 0) continue;
         const byId = /* @__PURE__ */ new Map();
-        for (const s of map[key] ?? []) if (s?.conversationId) byId.set(s.conversationId, s);
+        for (const s of map[key2] ?? []) if (s?.conversationId) byId.set(s.conversationId, s);
         for (const s of sessions3) if (s?.conversationId && !byId.has(s.conversationId)) byId.set(s.conversationId, s);
-        map[key] = [...byId.values()].sort((a, b) => activityMs(b) - activityMs(a)).slice(0, 50);
+        map[key2] = [...byId.values()].sort((a, b) => activityMs(b) - activityMs(a)).slice(0, 50);
         importedTokens++;
       }
     }
@@ -44079,10 +44079,80 @@ function registerTabsIPC(ctx) {
 
 // src/main/ipc/skills-agents.ts
 init_host_compat();
-var import_path13 = __toESM(require("path"), 1);
-var import_fs12 = __toESM(require("fs"), 1);
+var import_path14 = __toESM(require("path"), 1);
+var import_fs13 = __toESM(require("fs"), 1);
 var import_os9 = __toESM(require("os"), 1);
 init_plugin_helpers();
+
+// src/main/ipc/skill-files.ts
+var import_path13 = __toESM(require("path"), 1);
+var import_fs12 = __toESM(require("fs"), 1);
+init_plugin_helpers();
+function skillSlug(name) {
+  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64).replace(/-+$/, "");
+}
+function withSkillFrontmatter(slug, content) {
+  if (extractFrontmatter(content) !== null) return content;
+  const description = firstBodyLine(content, slug);
+  return `---
+name: ${slug}
+description: ${JSON.stringify(description)}
+---
+
+${content.trimStart()}`;
+}
+function refuseLinkedAncestors(directory) {
+  let current = import_path13.default.resolve(directory);
+  for (; ; ) {
+    try {
+      if (import_fs12.default.lstatSync(current).isSymbolicLink()) throw new Error("Linked skill ancestors are not writable");
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    const parent = import_path13.default.dirname(current);
+    if (parent === current) return;
+    current = parent;
+  }
+}
+function createSkillFile(roots, name, content) {
+  const slug = skillSlug(name);
+  if (!slug) throw new Error("Skill name must contain letters or digits");
+  const skillsDir = import_path13.default.join(roots.projectClaudeDir ?? roots.userClaudeDir, "skills");
+  const skillDir = import_path13.default.join(skillsDir, slug);
+  refuseLinkedAncestors(skillsDir);
+  import_fs12.default.mkdirSync(skillsDir, { recursive: true });
+  try {
+    import_fs12.default.mkdirSync(skillDir);
+  } catch (error) {
+    if (error.code === "EEXIST") throw new Error(`Skill "${slug}" already exists`);
+    throw error;
+  }
+  const filePath = import_path13.default.join(skillDir, "SKILL.md");
+  import_fs12.default.writeFileSync(filePath, withSkillFrontmatter(slug, content), "utf-8");
+  return { name: slug, fileName: slug, path: filePath };
+}
+function deleteSkillFile(roots, skillPath) {
+  const target = import_path13.default.resolve(skillPath);
+  const parent = import_path13.default.dirname(target);
+  const skillsRoots = [roots.projectClaudeDir, roots.userClaudeDir].filter((dir) => dir !== null).map((dir) => import_path13.default.resolve(dir, "skills"));
+  if (import_path13.default.basename(target).toLowerCase() === "skill.md" && skillsRoots.includes(import_path13.default.dirname(parent))) {
+    refuseLinkedAncestors(import_path13.default.dirname(parent));
+    if (import_fs12.default.lstatSync(parent).isSymbolicLink()) {
+      import_fs12.default.unlinkSync(parent);
+      return;
+    }
+    import_fs12.default.rmSync(parent, { recursive: true, force: true });
+    return;
+  }
+  if (roots.projectClaudeDir && target.endsWith(".md") && parent === import_path13.default.resolve(roots.projectClaudeDir, "commands")) {
+    refuseLinkedAncestors(parent);
+    import_fs12.default.rmSync(target, { force: true });
+    return;
+  }
+  throw new Error("Only project or user skills can be deleted");
+}
+
+// src/main/ipc/skills-agents.ts
 var skillsCache = null;
 var skillsInFlight = null;
 var skillsCacheGeneration = 0;
@@ -44092,12 +44162,19 @@ function invalidateSkillsCache() {
   skillsInFlight = null;
   skillsCacheGeneration += 1;
 }
-function resolvePluginComponentPath(pluginRoot, ref) {
-  const resolved = import_path13.default.isAbsolute(ref) ? import_path13.default.resolve(ref) : import_path13.default.resolve(pluginRoot, ref);
-  const relative = import_path13.default.relative(import_path13.default.resolve(pluginRoot), resolved);
-  return relative === "" || relative !== ".." && !relative.startsWith(".." + import_path13.default.sep) && !import_path13.default.isAbsolute(relative) ? resolved : null;
+function resolvePluginComponentPath(pluginRoot, ref2) {
+  const resolved = import_path14.default.isAbsolute(ref2) ? import_path14.default.resolve(ref2) : import_path14.default.resolve(pluginRoot, ref2);
+  const relative = import_path14.default.relative(import_path14.default.resolve(pluginRoot), resolved);
+  return relative === "" || relative !== ".." && !relative.startsWith(".." + import_path14.default.sep) && !import_path14.default.isAbsolute(relative) ? resolved : null;
 }
 function registerSkillsAgentsIPC(ctx) {
+  function skillRoots() {
+    const cwd = ctx.getUserCwd();
+    return {
+      projectClaudeDir: cwd ? import_path14.default.join(cwd, ".claude") : null,
+      userClaudeDir: import_path14.default.join(import_os9.default.homedir(), ".claude")
+    };
+  }
   ipcMain.handle("skills:list", async () => {
     const now = Date.now();
     if (skillsCache && now - skillsCache.at < SKILLS_TTL_MS) return skillsCache.rows;
@@ -44115,7 +44192,7 @@ function registerSkillsAgentsIPC(ctx) {
   async function scanSkills() {
     function parseSkillContent(filePath, fileName, source, content, overrideName) {
       const fm = extractFrontmatter(content) ?? "";
-      const match = (key) => matchYamlField(fm, key);
+      const match = (key2) => matchYamlField(fm, key2);
       const userInvocable = match("user-invocable");
       if (userInvocable && parseYamlBool(userInvocable) === false) return null;
       const rawName = match("name")?.trim().replace(/^["']|["']$/g, "");
@@ -44147,46 +44224,49 @@ function registerSkillsAgentsIPC(ctx) {
     }
     async function safeReadFile2(p) {
       try {
-        return await import_fs12.default.promises.readFile(p, "utf-8");
+        return await import_fs13.default.promises.readFile(p, "utf-8");
       } catch {
         return null;
       }
     }
     const enabledPlugins = await loadEnabledPluginsMap();
-    const cwd = ctx.getUserCwd() || process.cwd();
-    const commandsDir = import_path13.default.join(cwd, ".claude", "commands");
-    const projectPromise = (async () => {
-      let files;
-      try {
-        files = (await import_fs12.default.promises.readdir(commandsDir)).filter((f) => f.endsWith(".md"));
-      } catch {
-        return [];
-      }
-      const rows = await Promise.all(files.map(async (f) => {
-        const filePath = import_path13.default.join(commandsDir, f);
-        const content = await safeReadFile2(filePath);
-        if (content === null) return null;
-        return parseSkillContent(filePath, f, "project", content);
-      }));
-      return rows.filter((r) => r !== null);
-    })();
-    const userSkillsDir = import_path13.default.join(import_os9.default.homedir(), ".claude", "skills");
-    const userPromise = (async () => {
+    async function scanSkillDirs(skillsDir, source) {
       let dirs;
       try {
-        dirs = (await import_fs12.default.promises.readdir(userSkillsDir, { withFileTypes: true })).filter((d) => d.isDirectory());
+        dirs = (await import_fs13.default.promises.readdir(skillsDir, { withFileTypes: true })).filter((d) => d.isDirectory());
       } catch {
         return [];
       }
       const rows = await Promise.all(dirs.map(async (d) => {
-        const skillMd = import_path13.default.join(userSkillsDir, d.name, "SKILL.md");
+        const skillMd = import_path14.default.join(skillsDir, d.name, "SKILL.md");
         const content = await safeReadFile2(skillMd);
         if (content === null) return null;
-        return parseSkillContent(skillMd, d.name, "user", content, d.name);
+        return parseSkillContent(skillMd, d.name, source, content, d.name);
       }));
       return rows.filter((r) => r !== null);
+    }
+    const { projectClaudeDir, userClaudeDir } = skillRoots();
+    const projectPromise = (async () => {
+      if (!projectClaudeDir) return [];
+      const commandsDir = import_path14.default.join(projectClaudeDir, "commands");
+      let files = [];
+      try {
+        files = (await import_fs13.default.promises.readdir(commandsDir)).filter((f) => f.endsWith(".md"));
+      } catch {
+      }
+      const [commands6, skills] = await Promise.all([
+        Promise.all(files.map(async (f) => {
+          const filePath = import_path14.default.join(commandsDir, f);
+          const content = await safeReadFile2(filePath);
+          if (content === null) return null;
+          return parseSkillContent(filePath, f, "project", content);
+        })),
+        scanSkillDirs(import_path14.default.join(projectClaudeDir, "skills"), "project")
+      ]);
+      return [...skills, ...commands6.filter((r) => r !== null)];
     })();
-    const pluginsFile = import_path13.default.join(import_os9.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+    const userPromise = scanSkillDirs(import_path14.default.join(userClaudeDir, "skills"), "user");
+    const pluginsFile = import_path14.default.join(import_os9.default.homedir(), ".claude", "plugins", "installed_plugins.json");
     const pluginsPromise = (async () => {
       const raw = await safeReadFile2(pluginsFile);
       if (!raw) return [];
@@ -44200,17 +44280,17 @@ function registerSkillsAgentsIPC(ctx) {
       async function scanCommandsDir(dir, prefix = "") {
         let entries2;
         try {
-          entries2 = await import_fs12.default.promises.readdir(dir, { withFileTypes: true });
+          entries2 = await import_fs13.default.promises.readdir(dir, { withFileTypes: true });
         } catch {
           return [];
         }
         const nested = await Promise.all(entries2.map(async (e) => {
           if (e.isDirectory()) {
-            return scanCommandsDir(import_path13.default.join(dir, e.name), prefix ? `${prefix}/${e.name}` : e.name);
+            return scanCommandsDir(import_path14.default.join(dir, e.name), prefix ? `${prefix}/${e.name}` : e.name);
           }
           if (e.name.endsWith(".md")) {
             const name = e.name.replace(/\.md$/, "");
-            return [{ relName: prefix ? `${prefix}/${name}` : name, filePath: import_path13.default.join(dir, e.name) }];
+            return [{ relName: prefix ? `${prefix}/${name}` : name, filePath: import_path14.default.join(dir, e.name) }];
           }
           return [];
         }));
@@ -44219,68 +44299,68 @@ function registerSkillsAgentsIPC(ctx) {
       async function scanSkillFiles(dir) {
         let entries2;
         try {
-          entries2 = await import_fs12.default.promises.readdir(dir, { withFileTypes: true });
+          entries2 = await import_fs13.default.promises.readdir(dir, { withFileTypes: true });
         } catch {
           return [];
         }
         const nested = await Promise.all(entries2.map(async (entry) => {
-          const full = import_path13.default.join(dir, entry.name);
+          const full = import_path14.default.join(dir, entry.name);
           if (entry.isDirectory()) return scanSkillFiles(full);
           return entry.isFile() && entry.name.toLowerCase() === "skill.md" ? [full] : [];
         }));
         return nested.flat();
       }
       const perPlugin = await Promise.all(
-        Object.entries(data.plugins).map(async ([key, entries2]) => {
-          if (enabledPlugins.get(key) === false) return [];
-          const at = key.lastIndexOf("@");
-          const pluginName = at > 0 ? key.slice(0, at) : key;
-          const marketplace = at > 0 ? key.slice(at + 1) : "";
+        Object.entries(data.plugins).map(async ([key2, entries2]) => {
+          if (enabledPlugins.get(key2) === false) return [];
+          const at = key2.lastIndexOf("@");
+          const pluginName = at > 0 ? key2.slice(0, at) : key2;
+          const marketplace = at > 0 ? key2.slice(at + 1) : "";
           const entry = entries2[0];
           if (!entry?.installPath) return [];
           const pluginRoot = entry.installPath;
           const rows = [];
           const manifest = await readEffectivePluginManifest(pluginRoot, pluginName, marketplace);
-          const commandsDirLocal = import_path13.default.join(pluginRoot, "commands");
+          const commandsDirLocal = import_path14.default.join(pluginRoot, "commands");
           const cmds = manifest.commands === void 0 ? await scanCommandsDir(commandsDirLocal) : [];
           const scanRows = await Promise.all(cmds.map(async (cmd) => {
             const content = await safeReadFile2(cmd.filePath);
             if (content === null) return null;
             return parseSkillContent(
               cmd.filePath,
-              import_path13.default.basename(cmd.filePath),
+              import_path14.default.basename(cmd.filePath),
               `plugin:${pluginName}`,
               content,
               cmd.relName
             );
           }));
           for (const r of scanRows) if (r) rows.push(r);
-          const marketplaceRootSource = import_fs12.default.existsSync(import_path13.default.join(pluginRoot, ".claude-plugin", "marketplace.json"));
+          const marketplaceRootSource = import_fs13.default.existsSync(import_path14.default.join(pluginRoot, ".claude-plugin", "marketplace.json"));
           const skillRefs = [
             ...!(marketplaceRootSource && manifest.skills !== void 0) ? ["skills"] : [],
             ...(Array.isArray(manifest.skills) ? manifest.skills : [manifest.skills]).filter((v) => typeof v === "string")
           ];
           const skillPaths = /* @__PURE__ */ new Set();
-          for (const ref of skillRefs) {
-            const resolved = import_path13.default.resolve(pluginRoot, ref);
-            const relative = import_path13.default.relative(pluginRoot, resolved);
-            if (relative === ".." || relative.startsWith(".." + import_path13.default.sep) || import_path13.default.isAbsolute(relative)) continue;
+          for (const ref2 of skillRefs) {
+            const resolved = import_path14.default.resolve(pluginRoot, ref2);
+            const relative = import_path14.default.relative(pluginRoot, resolved);
+            if (relative === ".." || relative.startsWith(".." + import_path14.default.sep) || import_path14.default.isAbsolute(relative)) continue;
             let stat;
             try {
-              stat = await import_fs12.default.promises.stat(resolved);
+              stat = await import_fs13.default.promises.stat(resolved);
             } catch {
               continue;
             }
             if (stat.isDirectory()) {
               for (const filePath of await scanSkillFiles(resolved)) skillPaths.add(filePath);
-            } else if (stat.isFile() && import_path13.default.basename(resolved).toLowerCase() === "skill.md") {
+            } else if (stat.isFile() && import_path14.default.basename(resolved).toLowerCase() === "skill.md") {
               skillPaths.add(resolved);
             }
           }
           for (const skillMd of skillPaths) {
             const content = await safeReadFile2(skillMd);
             if (content === null) continue;
-            const skillName = import_path13.default.basename(import_path13.default.dirname(skillMd));
+            const skillName = import_path14.default.basename(import_path14.default.dirname(skillMd));
             const parsed = parseSkillContent(skillMd, skillName, `plugin:${pluginName}`, content, skillName);
             if (parsed) rows.push(parsed);
           }
@@ -44293,17 +44373,17 @@ function registerSkillsAgentsIPC(ctx) {
               if (!resolved) continue;
               let stat;
               try {
-                stat = await import_fs12.default.promises.stat(resolved);
+                stat = await import_fs13.default.promises.stat(resolved);
               } catch {
                 continue;
               }
-              const declared = stat.isDirectory() ? await scanCommandsDir(resolved) : [{ relName: import_path13.default.basename(resolved, ".md"), filePath: resolved }];
+              const declared = stat.isDirectory() ? await scanCommandsDir(resolved) : [{ relName: import_path14.default.basename(resolved, ".md"), filePath: resolved }];
               for (const command of declared) {
                 const content = await safeReadFile2(command.filePath);
                 if (content === null || seenPaths.has(command.filePath)) continue;
                 const parsed = parseSkillContent(
                   command.filePath,
-                  import_path13.default.basename(command.filePath),
+                  import_path14.default.basename(command.filePath),
                   `plugin:${pluginName}`,
                   content,
                   command.relName
@@ -44322,8 +44402,8 @@ function registerSkillsAgentsIPC(ctx) {
                 else if (typeof meta.content === "string") content = meta.content;
                 if (content === null) continue;
                 const row = parseSkillContent(
-                  srcPath ?? import_path13.default.join(pluginRoot, `${cmdName}.md`),
-                  srcPath ? import_path13.default.basename(srcPath) : `${cmdName}.md`,
+                  srcPath ?? import_path14.default.join(pluginRoot, `${cmdName}.md`),
+                  srcPath ? import_path14.default.basename(srcPath) : `${cmdName}.md`,
                   `plugin:${pluginName}`,
                   content,
                   cmdName
@@ -44351,14 +44431,14 @@ function registerSkillsAgentsIPC(ctx) {
       if (typeof contentOverride === "string") content = contentOverride;
       else {
         try {
-          content = await import_fs12.default.promises.readFile(filePath, "utf-8");
+          content = await import_fs13.default.promises.readFile(filePath, "utf-8");
         } catch {
           return null;
         }
       }
       const fm = extractFrontmatter(content) ?? "";
-      const match = (key) => matchYamlField(fm, key);
-      const fileName = import_path13.default.basename(filePath);
+      const match = (key2) => matchYamlField(fm, key2);
+      const fileName = import_path14.default.basename(filePath);
       let name = overrideName ?? fileName.replace(/\.md$/, "");
       let description = "";
       let model = null;
@@ -44405,12 +44485,12 @@ function registerSkillsAgentsIPC(ctx) {
     async function scanAgentsDir(dir, source) {
       let files;
       try {
-        files = await import_fs12.default.promises.readdir(dir, { withFileTypes: true });
+        files = await import_fs13.default.promises.readdir(dir, { withFileTypes: true });
       } catch {
         return [];
       }
       const mdFiles = files.filter((f) => f.isFile() && f.name.endsWith(".md"));
-      const parsed = await Promise.all(mdFiles.map((f) => parseAgent(import_path13.default.join(dir, f.name), source)));
+      const parsed = await Promise.all(mdFiles.map((f) => parseAgent(import_path14.default.join(dir, f.name), source)));
       return parsed.filter((p) => p !== null);
     }
     const enabledPluginsForAgents = await loadEnabledPluginsMap();
@@ -44423,14 +44503,14 @@ function registerSkillsAgentsIPC(ctx) {
     } catch {
     }
     const projectPromise = Promise.all(
-      [...projectCwds].map((cwd) => scanAgentsDir(import_path13.default.join(cwd, ".claude", "agents"), "project"))
+      [...projectCwds].map((cwd) => scanAgentsDir(import_path14.default.join(cwd, ".claude", "agents"), "project"))
     ).then((arrs) => arrs.flat());
-    const userPromise = scanAgentsDir(import_path13.default.join(import_os9.default.homedir(), ".claude", "agents"), "user");
+    const userPromise = scanAgentsDir(import_path14.default.join(import_os9.default.homedir(), ".claude", "agents"), "user");
     const pluginsPromise = (async () => {
-      const pluginsFile = import_path13.default.join(import_os9.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+      const pluginsFile = import_path14.default.join(import_os9.default.homedir(), ".claude", "plugins", "installed_plugins.json");
       let raw;
       try {
-        raw = await import_fs12.default.promises.readFile(pluginsFile, "utf-8");
+        raw = await import_fs13.default.promises.readFile(pluginsFile, "utf-8");
       } catch {
         return [];
       }
@@ -44442,16 +44522,16 @@ function registerSkillsAgentsIPC(ctx) {
       }
       if (data.version !== 2 || !data.plugins) return [];
       const perPlugin = await Promise.all(
-        Object.entries(data.plugins).map(async ([key, entries2]) => {
-          if (enabledPluginsForAgents.get(key) === false) return [];
-          const at = key.lastIndexOf("@");
-          const pluginName = at > 0 ? key.slice(0, at) : key;
-          const marketplace = at > 0 ? key.slice(at + 1) : "";
+        Object.entries(data.plugins).map(async ([key2, entries2]) => {
+          if (enabledPluginsForAgents.get(key2) === false) return [];
+          const at = key2.lastIndexOf("@");
+          const pluginName = at > 0 ? key2.slice(0, at) : key2;
+          const marketplace = at > 0 ? key2.slice(at + 1) : "";
           const entry = entries2[0];
           if (!entry?.installPath) return [];
           const pluginRoot = entry.installPath;
           const manifest = await readEffectivePluginManifest(pluginRoot, pluginName, marketplace);
-          const scanned = manifest.agents === void 0 ? await scanAgentsDir(import_path13.default.join(pluginRoot, "agents"), `plugin:${pluginName}`) : [];
+          const scanned = manifest.agents === void 0 ? await scanAgentsDir(import_path14.default.join(pluginRoot, "agents"), `plugin:${pluginName}`) : [];
           const seenPaths = new Set(scanned.map((a) => a.path));
           const spec = manifest?.agents;
           const items = Array.isArray(spec) ? spec : typeof spec === "string" || spec && typeof spec === "object" && !Array.isArray(spec) ? [spec] : [];
@@ -44461,7 +44541,7 @@ function registerSkillsAgentsIPC(ctx) {
               if (!resolved) continue;
               let stat;
               try {
-                stat = await import_fs12.default.promises.stat(resolved);
+                stat = await import_fs13.default.promises.stat(resolved);
               } catch {
                 continue;
               }
@@ -44485,7 +44565,7 @@ function registerSkillsAgentsIPC(ctx) {
                 const srcPath = typeof meta.source === "string" ? resolvePluginComponentPath(pluginRoot, meta.source) : null;
                 const contentOverride = typeof meta.content === "string" ? meta.content : void 0;
                 const parsed = await parseAgent(
-                  srcPath ?? import_path13.default.join(pluginRoot, `${agentName}.md`),
+                  srcPath ?? import_path14.default.join(pluginRoot, `${agentName}.md`),
                   `plugin:${pluginName}`,
                   agentName,
                   contentOverride
@@ -44509,10 +44589,10 @@ function registerSkillsAgentsIPC(ctx) {
   ipcMain.handle("output-styles:list", async () => {
     const rows = [];
     const enabled = await loadEnabledPluginsMap();
-    const pluginsFile = import_path13.default.join(import_os9.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+    const pluginsFile = import_path14.default.join(import_os9.default.homedir(), ".claude", "plugins", "installed_plugins.json");
     let raw;
     try {
-      raw = await import_fs12.default.promises.readFile(pluginsFile, "utf-8");
+      raw = await import_fs13.default.promises.readFile(pluginsFile, "utf-8");
     } catch {
       return [];
     }
@@ -44526,7 +44606,7 @@ function registerSkillsAgentsIPC(ctx) {
     async function readMdMeta(p) {
       let content;
       try {
-        content = await import_fs12.default.promises.readFile(p, "utf-8");
+        content = await import_fs13.default.promises.readFile(p, "utf-8");
       } catch {
         return null;
       }
@@ -44536,23 +44616,23 @@ function registerSkillsAgentsIPC(ctx) {
         description: desc || firstBodyLine(content, "")
       };
     }
-    for (const [key, entries2] of Object.entries(data.plugins)) {
-      if (enabled.get(key) === false) continue;
-      const at = key.lastIndexOf("@");
-      const pluginName = at > 0 ? key.slice(0, at) : key;
-      const marketplace = at > 0 ? key.slice(at + 1) : "";
+    for (const [key2, entries2] of Object.entries(data.plugins)) {
+      if (enabled.get(key2) === false) continue;
+      const at = key2.lastIndexOf("@");
+      const pluginName = at > 0 ? key2.slice(0, at) : key2;
+      const marketplace = at > 0 ? key2.slice(at + 1) : "";
       const entry = entries2[0];
       if (!entry?.installPath) continue;
       const pluginRoot = entry.installPath;
       const source = `plugin:${pluginName}`;
       const manifest = await readEffectivePluginManifest(pluginRoot, pluginName, marketplace);
       if (manifest.outputStyles === void 0) {
-        const stylesDir = import_path13.default.join(pluginRoot, "output-styles");
+        const stylesDir = import_path14.default.join(pluginRoot, "output-styles");
         try {
-          const files = await import_fs12.default.promises.readdir(stylesDir, { withFileTypes: true });
+          const files = await import_fs13.default.promises.readdir(stylesDir, { withFileTypes: true });
           for (const f of files) {
             if (!f.isFile() || !f.name.endsWith(".md")) continue;
-            const fp = import_path13.default.join(stylesDir, f.name);
+            const fp = import_path14.default.join(stylesDir, f.name);
             const meta = await readMdMeta(fp);
             if (!meta) continue;
             rows.push({ name: f.name.replace(/\.md$/, ""), description: meta.description, path: fp, source });
@@ -44568,15 +44648,15 @@ function registerSkillsAgentsIPC(ctx) {
           if (!resolved) continue;
           let stat;
           try {
-            stat = await import_fs12.default.promises.stat(resolved);
+            stat = await import_fs13.default.promises.stat(resolved);
           } catch {
             continue;
           }
-          const files = stat.isDirectory() ? (await import_fs12.default.promises.readdir(resolved, { withFileTypes: true })).filter((file) => file.isFile() && file.name.endsWith(".md")).map((file) => import_path13.default.join(resolved, file.name)) : [resolved];
+          const files = stat.isDirectory() ? (await import_fs13.default.promises.readdir(resolved, { withFileTypes: true })).filter((file) => file.isFile() && file.name.endsWith(".md")).map((file) => import_path14.default.join(resolved, file.name)) : [resolved];
           for (const filePath of files) {
             const meta = await readMdMeta(filePath);
             if (!meta) continue;
-            rows.push({ name: import_path13.default.basename(filePath, ".md"), description: meta.description, path: filePath, source });
+            rows.push({ name: import_path14.default.basename(filePath, ".md"), description: meta.description, path: filePath, source });
           }
         } else if (item && typeof item === "object" && !Array.isArray(item)) {
           for (const [styleName, m] of Object.entries(item)) {
@@ -44586,7 +44666,7 @@ function registerSkillsAgentsIPC(ctx) {
             rows.push({
               name: styleName,
               description,
-              path: srcPath ?? import_path13.default.join(pluginRoot, `${styleName}.md`),
+              path: srcPath ?? import_path14.default.join(pluginRoot, `${styleName}.md`),
               source
             });
           }
@@ -44596,21 +44676,12 @@ function registerSkillsAgentsIPC(ctx) {
     return rows;
   });
   ipcMain.handle("skills:create", (_event, name, content) => {
-    const cwd = ctx.getUserCwd() || process.cwd();
-    const skillsDir = import_path13.default.join(cwd, ".claude", "commands");
-    import_fs12.default.mkdirSync(skillsDir, { recursive: true });
-    const fileName = name.replace(/[^a-zA-Z0-9_-]/g, "-") + ".md";
-    const filePath = import_path13.default.join(skillsDir, fileName);
-    import_fs12.default.writeFileSync(filePath, content, "utf-8");
+    const created = createSkillFile(skillRoots(), name, content);
     invalidateSkillsCache();
-    return { name, fileName, path: filePath };
+    return created;
   });
-  ipcMain.handle("skills:delete", (_event, fileName) => {
-    const cwd = ctx.getUserCwd() || process.cwd();
-    const filePath = import_path13.default.join(cwd, ".claude", "commands", fileName);
-    if (import_fs12.default.existsSync(filePath)) {
-      import_fs12.default.unlinkSync(filePath);
-    }
+  ipcMain.handle("skills:delete", (_event, skillPath) => {
+    deleteSkillFile(skillRoots(), skillPath);
     invalidateSkillsCache();
   });
   ipcMain.handle("skills:open", (_event, filePath) => {
@@ -44621,7 +44692,7 @@ function registerSkillsAgentsIPC(ctx) {
   });
   ipcMain.handle("skills:read", (_event, filePath) => {
     try {
-      return import_fs12.default.readFileSync(filePath, "utf-8");
+      return import_fs13.default.readFileSync(filePath, "utf-8");
     } catch {
       return null;
     }
@@ -44630,22 +44701,22 @@ function registerSkillsAgentsIPC(ctx) {
 
 // src/main/ipc/hooks.ts
 init_host_compat();
-var import_fs15 = __toESM(require("fs"), 1);
+var import_fs16 = __toESM(require("fs"), 1);
 var import_os12 = __toESM(require("os"), 1);
-var import_path16 = __toESM(require("path"), 1);
+var import_path17 = __toESM(require("path"), 1);
 
 // src/main/ipc/plugins/handlers-install.ts
 init_host_compat();
-var import_path15 = __toESM(require("path"), 1);
-var import_fs14 = __toESM(require("fs"), 1);
+var import_path16 = __toESM(require("path"), 1);
+var import_fs15 = __toESM(require("fs"), 1);
 var import_os11 = __toESM(require("os"), 1);
 init_plugin_helpers();
 var import_semver = __toESM(require_semver2(), 1);
 var import_crypto7 = __toESM(require("crypto"), 1);
 
 // src/main/ipc/plugins/shared.ts
-var import_path14 = __toESM(require("path"), 1);
-var import_fs13 = __toESM(require("fs"), 1);
+var import_path15 = __toESM(require("path"), 1);
+var import_fs14 = __toESM(require("fs"), 1);
 var import_os10 = __toESM(require("os"), 1);
 
 // src/main/marketplace/url-auth.ts
@@ -44740,9 +44811,9 @@ function propagateMarketplaceAuth(pluginUrl, marketplaceName) {
   try {
     const plug = new URL(pluginUrl);
     if (plug.protocol !== "http:" && plug.protocol !== "https:") return pluginUrl;
-    const knownFile = import_path14.default.join(import_os10.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
-    if (!import_fs13.default.existsSync(knownFile)) return pluginUrl;
-    const known = JSON.parse(import_fs13.default.readFileSync(knownFile, "utf-8"));
+    const knownFile = import_path15.default.join(import_os10.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
+    if (!import_fs14.default.existsSync(knownFile)) return pluginUrl;
+    const known = JSON.parse(import_fs14.default.readFileSync(knownFile, "utf-8"));
     const entry = known[marketplaceName];
     const mktUrl = entry?.source?.url || "";
     if (!mktUrl) return pluginUrl;
@@ -44759,36 +44830,36 @@ function propagateMarketplaceAuth(pluginUrl, marketplaceName) {
 }
 async function resolvePluginSource(p, marketplaceName, baseDir) {
   if (typeof p?.source === "string") {
-    const abs = import_path14.default.resolve(baseDir, p.source);
-    return import_fs13.default.existsSync(abs) ? { dir: abs } : { dir: null, error: `Source path "${p.source}" not found inside marketplace` };
+    const abs = import_path15.default.resolve(baseDir, p.source);
+    return import_fs14.default.existsSync(abs) ? { dir: abs } : { dir: null, error: `Source path "${p.source}" not found inside marketplace` };
   }
   const src = p?.source;
-  if (!src || typeof src !== "object") return import_fs13.default.existsSync(baseDir) ? { dir: baseDir } : { dir: null, error: "Plugin has no source field" };
+  if (!src || typeof src !== "object") return import_fs14.default.existsSync(baseDir) ? { dir: baseDir } : { dir: null, error: "Plugin has no source field" };
   if (src.source === "directory" && typeof src.path === "string") {
-    return import_fs13.default.existsSync(src.path) ? { dir: src.path } : { dir: null, error: `Directory ${src.path} does not exist` };
+    return import_fs14.default.existsSync(src.path) ? { dir: src.path } : { dir: null, error: `Directory ${src.path} does not exist` };
   }
   const isGitSource = src.source === "url" || src.source === "git" || src.source === "github";
   const rawUrlSeed = src.source === "github" && typeof src.repo === "string" ? `https://github.com/${src.repo}.git` : typeof src.url === "string" ? src.url : "";
   if (isGitSource && rawUrlSeed) {
     const pluginName = p.name || "unknown";
-    const targetDir = import_path14.default.join(baseDir, "plugins", pluginName);
-    if (import_fs13.default.existsSync(import_path14.default.join(targetDir, ".git"))) return { dir: targetDir };
-    if (import_fs13.default.existsSync(targetDir)) return { dir: targetDir };
+    const targetDir = import_path15.default.join(baseDir, "plugins", pluginName);
+    if (import_fs14.default.existsSync(import_path15.default.join(targetDir, ".git"))) return { dir: targetDir };
+    if (import_fs14.default.existsSync(targetDir)) return { dir: targetDir };
     const refRaw = (typeof src.ref === "string" ? src.ref : typeof src.revision === "string" ? src.revision : typeof src.commit === "string" ? src.commit : "").trim();
-    const ref = refRaw || void 0;
-    const isSha = !!ref && /^[0-9a-f]{7,40}$/i.test(ref);
+    const ref2 = refRaw || void 0;
+    const isSha = !!ref2 && /^[0-9a-f]{7,40}$/i.test(ref2);
     const authedUrl = propagateMarketplaceAuth(rawUrlSeed, marketplaceName);
     try {
-      import_fs13.default.mkdirSync(import_path14.default.dirname(targetDir), { recursive: true });
+      import_fs14.default.mkdirSync(import_path15.default.dirname(targetDir), { recursive: true });
     } catch {
     }
     const TIMEOUT = 12e4;
     try {
-      if (ref && !isSha) {
-        await runGit(["clone", "--depth=1", "--branch", ref, "--", authedUrl, targetDir], { timeoutMs: TIMEOUT });
+      if (ref2 && !isSha) {
+        await runGit(["clone", "--depth=1", "--branch", ref2, "--", authedUrl, targetDir], { timeoutMs: TIMEOUT });
       } else if (isSha) {
         await runGit(["clone", "--no-checkout", "--filter=blob:none", "--", authedUrl, targetDir], { timeoutMs: TIMEOUT });
-        await runGit(["fetch", "--depth=1", "origin", ref], { cwd: targetDir, timeoutMs: TIMEOUT });
+        await runGit(["fetch", "--depth=1", "origin", ref2], { cwd: targetDir, timeoutMs: TIMEOUT });
         await runGit(["checkout", "FETCH_HEAD"], { cwd: targetDir, timeoutMs: TIMEOUT });
       } else {
         await runGit(["clone", "--depth=1", "--", authedUrl, targetDir], { timeoutMs: TIMEOUT });
@@ -44797,29 +44868,29 @@ async function resolvePluginSource(p, marketplaceName, baseDir) {
     } catch (err) {
       const stderrRaw = typeof err?.stderr === "string" ? err.stderr : "";
       const redactedErr = redactUrl(stderrRaw).slice(0, 300) || (err instanceof Error ? err.message : String(err));
-      console.error(`[plugins] clone failed for ${pluginName} <${redactUrl(rawUrlSeed)}> ref=${ref || "HEAD"}:`, redactedErr);
+      console.error(`[plugins] clone failed for ${pluginName} <${redactUrl(rawUrlSeed)}> ref=${ref2 || "HEAD"}:`, redactedErr);
       try {
-        import_fs13.default.rmSync(targetDir, { recursive: true, force: true });
+        import_fs14.default.rmSync(targetDir, { recursive: true, force: true });
       } catch {
       }
-      return { dir: null, error: redactedErr, url: redactUrl(rawUrlSeed), ref };
+      return { dir: null, error: redactedErr, url: redactUrl(rawUrlSeed), ref: ref2 };
     }
   }
-  return import_fs13.default.existsSync(baseDir) ? { dir: baseDir } : { dir: null, error: "Unsupported source shape" };
+  return import_fs14.default.existsSync(baseDir) ? { dir: baseDir } : { dir: null, error: "Unsupported source shape" };
 }
 
 // src/main/ipc/plugins/handlers-install.ts
-var SETTINGS_FILE = import_path15.default.join(import_os11.default.homedir(), ".claude", "settings.json");
-var INSTALLED_FILE = import_path15.default.join(import_os11.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+var SETTINGS_FILE = import_path16.default.join(import_os11.default.homedir(), ".claude", "settings.json");
+var INSTALLED_FILE = import_path16.default.join(import_os11.default.homedir(), ".claude", "plugins", "installed_plugins.json");
 function writeJsonAtomic(filePath, value) {
-  import_fs14.default.mkdirSync(import_path15.default.dirname(filePath), { recursive: true });
+  import_fs15.default.mkdirSync(import_path16.default.dirname(filePath), { recursive: true });
   const tmp = `${filePath}.${process.pid}.tmp`;
-  import_fs14.default.writeFileSync(tmp, JSON.stringify(value, null, 2), "utf-8");
-  import_fs14.default.renameSync(tmp, filePath);
+  import_fs15.default.writeFileSync(tmp, JSON.stringify(value, null, 2), "utf-8");
+  import_fs15.default.renameSync(tmp, filePath);
 }
 function readInstalledData() {
   try {
-    const parsed = JSON.parse(import_fs14.default.readFileSync(INSTALLED_FILE, "utf-8"));
+    const parsed = JSON.parse(import_fs15.default.readFileSync(INSTALLED_FILE, "utf-8"));
     return parsed?.version === 2 && parsed.plugins ? parsed : { version: 2, plugins: parsed?.plugins ?? {} };
   } catch {
     return { version: 2, plugins: {} };
@@ -44846,10 +44917,10 @@ function pluginDependencies(manifest, marketplace) {
 }
 function marketplaceEntryManifest(pluginName, marketplace) {
   try {
-    const known = JSON.parse(import_fs14.default.readFileSync(import_path15.default.join(import_os11.default.homedir(), ".claude", "plugins", "known_marketplaces.json"), "utf-8"));
+    const known = JSON.parse(import_fs15.default.readFileSync(import_path16.default.join(import_os11.default.homedir(), ".claude", "plugins", "known_marketplaces.json"), "utf-8"));
     const root = known?.[marketplace]?.installLocation;
     if (typeof root !== "string") return {};
-    const manifest = JSON.parse(import_fs14.default.readFileSync(import_path15.default.join(root, ".claude-plugin", "marketplace.json"), "utf-8"));
+    const manifest = JSON.parse(import_fs15.default.readFileSync(import_path16.default.join(root, ".claude-plugin", "marketplace.json"), "utf-8"));
     const entry = manifest?.plugins?.find((plugin) => plugin?.name === pluginName);
     return entry && typeof entry === "object" ? entry : {};
   } catch {
@@ -44858,7 +44929,7 @@ function marketplaceEntryManifest(pluginName, marketplace) {
 }
 function marketplaceInstallRoot(marketplace) {
   try {
-    const known = JSON.parse(import_fs14.default.readFileSync(import_path15.default.join(import_os11.default.homedir(), ".claude", "plugins", "known_marketplaces.json"), "utf-8"));
+    const known = JSON.parse(import_fs15.default.readFileSync(import_path16.default.join(import_os11.default.homedir(), ".claude", "plugins", "known_marketplaces.json"), "utf-8"));
     return typeof known?.[marketplace]?.installLocation === "string" ? known[marketplace].installLocation : null;
   } catch {
     return null;
@@ -44869,7 +44940,7 @@ function crossMarketplaceDependencyAllowed(rootMarketplace, targetMarketplace) {
   try {
     const root = marketplaceInstallRoot(rootMarketplace);
     if (!root) return false;
-    const manifest = JSON.parse(import_fs14.default.readFileSync(import_path15.default.join(root, ".claude-plugin", "marketplace.json"), "utf-8"));
+    const manifest = JSON.parse(import_fs15.default.readFileSync(import_path16.default.join(root, ".claude-plugin", "marketplace.json"), "utf-8"));
     return Array.isArray(manifest?.allowCrossMarketplaceDependenciesOn) && manifest.allowCrossMarketplaceDependenciesOn.includes(targetMarketplace);
   } catch {
     return false;
@@ -44877,16 +44948,16 @@ function crossMarketplaceDependencyAllowed(rootMarketplace, targetMarketplace) {
 }
 function copyPluginDirectory(src, dest) {
   const skipDirs = /* @__PURE__ */ new Set(["node_modules", ".git", "__pycache__", ".venv"]);
-  import_fs14.default.mkdirSync(dest, { recursive: true });
-  for (const entry of import_fs14.default.readdirSync(src, { withFileTypes: true })) {
+  import_fs15.default.mkdirSync(dest, { recursive: true });
+  for (const entry of import_fs15.default.readdirSync(src, { withFileTypes: true })) {
     if (skipDirs.has(entry.name)) continue;
-    const srcPath = import_path15.default.join(src, entry.name);
-    const destPath = import_path15.default.join(dest, entry.name);
+    const srcPath = import_path16.default.join(src, entry.name);
+    const destPath = import_path16.default.join(dest, entry.name);
     if (entry.isDirectory()) copyPluginDirectory(srcPath, destPath);
     else if (entry.isFile()) {
-      import_fs14.default.copyFileSync(srcPath, destPath);
+      import_fs15.default.copyFileSync(srcPath, destPath);
       try {
-        import_fs14.default.chmodSync(destPath, import_fs14.default.statSync(srcPath).mode);
+        import_fs15.default.chmodSync(destPath, import_fs15.default.statSync(srcPath).mode);
       } catch {
       }
     }
@@ -44909,7 +44980,7 @@ function installedManifest(data, pluginId) {
   const root = data?.plugins?.[pluginId]?.[0]?.installPath;
   if (typeof root !== "string") return null;
   try {
-    return JSON.parse(import_fs14.default.readFileSync(import_path15.default.join(root, ".claude-plugin", "plugin.json"), "utf-8"));
+    return JSON.parse(import_fs15.default.readFileSync(import_path16.default.join(root, ".claude-plugin", "plugin.json"), "utf-8"));
   } catch {
     return {};
   }
@@ -44981,7 +45052,7 @@ async function ensureDependencyClosure(data, pluginId, manifestOverride) {
           throw new Error(`Missing dependency ${depId} required by ${id}; plugin is not in the configured marketplace`);
         }
         const source = await resolvePluginSource(catalogEntry, depMarketplace, marketplaceRoot);
-        if (!source.dir || !import_fs14.default.existsSync(source.dir)) {
+        if (!source.dir || !import_fs15.default.existsSync(source.dir)) {
           throw new Error(`Unable to resolve dependency ${depId}: ${source.error || "source directory not found"}`);
         }
         const localManifest = await readPluginManifest(source.dir) ?? {};
@@ -44992,8 +45063,8 @@ async function ensureDependencyClosure(data, pluginId, manifestOverride) {
             throw new Error(`Dependency ${depId}@${version} does not satisfy ${dependency.version} required by ${id}`);
           }
         }
-        const cacheDir = import_path15.default.join(import_os11.default.homedir(), ".claude", "plugins", "cache", depMarketplace, depName, version);
-        import_fs14.default.rmSync(cacheDir, { recursive: true, force: true });
+        const cacheDir = import_path16.default.join(import_os11.default.homedir(), ".claude", "plugins", "cache", depMarketplace, depName, version);
+        import_fs15.default.rmSync(cacheDir, { recursive: true, force: true });
         copyPluginDirectory(source.dir, cacheDir);
         const now = (/* @__PURE__ */ new Date()).toISOString();
         data.plugins[depId] = [{
@@ -45024,7 +45095,7 @@ async function ensureDependencyClosure(data, pluginId, manifestOverride) {
 function enabledDependants(data, targetId) {
   let enabled = {};
   try {
-    enabled = JSON.parse(import_fs14.default.readFileSync(SETTINGS_FILE, "utf-8"))?.enabledPlugins ?? {};
+    enabled = JSON.parse(import_fs15.default.readFileSync(SETTINGS_FILE, "utf-8"))?.enabledPlugins ?? {};
   } catch {
   }
   const result = [];
@@ -45052,7 +45123,7 @@ function enabledDependants(data, targetId) {
 function setPluginEnabled(pluginId, enabled) {
   let settings = {};
   try {
-    settings = JSON.parse(import_fs14.default.readFileSync(SETTINGS_FILE, "utf-8"));
+    settings = JSON.parse(import_fs15.default.readFileSync(SETTINGS_FILE, "utf-8"));
   } catch {
   }
   if (!settings.enabledPlugins || typeof settings.enabledPlugins !== "object") settings.enabledPlugins = {};
@@ -45084,8 +45155,8 @@ async function collectHookApprovalEntries(pluginId, pluginRoot) {
   }
   let approvedHashes = [];
   try {
-    const approvalFile = import_path15.default.join(import_os11.default.homedir(), ".claude", "open-claude-bridge", "plugin-hook-approvals.json");
-    approvedHashes = JSON.parse(import_fs14.default.readFileSync(approvalFile, "utf-8"))?.[pluginId] ?? [];
+    const approvalFile = import_path16.default.join(import_os11.default.homedir(), ".claude", "open-claude-bridge", "plugin-hook-approvals.json");
+    approvedHashes = JSON.parse(import_fs15.default.readFileSync(approvalFile, "utf-8"))?.[pluginId] ?? [];
   } catch {
   }
   return { pluginId, hooks: flat, approvedHashes };
@@ -45136,8 +45207,8 @@ async function enableRequiredPluginDependencies(pluginId, manifest) {
 function registerInstallHandlers(reloadMcp) {
   ipcMain.handle("plugins:install", async (_event, pluginName, marketplace, pluginPath) => {
     try {
-      const hasPluginJson = import_fs14.default.existsSync(import_path15.default.join(pluginPath, ".claude-plugin", "plugin.json"));
-      const hasMarketplaceJson = import_fs14.default.existsSync(import_path15.default.join(pluginPath, ".claude-plugin", "marketplace.json"));
+      const hasPluginJson = import_fs15.default.existsSync(import_path16.default.join(pluginPath, ".claude-plugin", "plugin.json"));
+      const hasMarketplaceJson = import_fs15.default.existsSync(import_path16.default.join(pluginPath, ".claude-plugin", "marketplace.json"));
       if (!hasPluginJson && hasMarketplaceJson) {
         throw new Error(
           `"${pluginName}" is a marketplace, not a plugin. Use "Add Marketplace" instead, then install individual sub-plugins from it.`
@@ -45150,19 +45221,19 @@ function registerInstallHandlers(reloadMcp) {
     const data = readInstalledData();
     let version = "1.0.0";
     try {
-      const pj = import_path15.default.join(pluginPath, ".claude-plugin", "plugin.json");
-      if (import_fs14.default.existsSync(pj)) {
-        const manifest = JSON.parse(import_fs14.default.readFileSync(pj, "utf-8"));
+      const pj = import_path16.default.join(pluginPath, ".claude-plugin", "plugin.json");
+      if (import_fs15.default.existsSync(pj)) {
+        const manifest = JSON.parse(import_fs15.default.readFileSync(pj, "utf-8"));
         if (manifest.version) version = manifest.version;
       } else {
-        const knownFile = import_path15.default.join(import_os11.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
-        if (import_fs14.default.existsSync(knownFile)) {
-          const known = JSON.parse(import_fs14.default.readFileSync(knownFile, "utf-8"));
+        const knownFile = import_path16.default.join(import_os11.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
+        if (import_fs15.default.existsSync(knownFile)) {
+          const known = JSON.parse(import_fs15.default.readFileSync(knownFile, "utf-8"));
           const mktInfo = known[marketplace];
           if (mktInfo?.installLocation) {
-            const mktJsonPath = import_path15.default.join(mktInfo.installLocation, ".claude-plugin", "marketplace.json");
-            if (import_fs14.default.existsSync(mktJsonPath)) {
-              const mktData = JSON.parse(import_fs14.default.readFileSync(mktJsonPath, "utf-8"));
+            const mktJsonPath = import_path16.default.join(mktInfo.installLocation, ".claude-plugin", "marketplace.json");
+            if (import_fs15.default.existsSync(mktJsonPath)) {
+              const mktData = JSON.parse(import_fs15.default.readFileSync(mktJsonPath, "utf-8"));
               const found = mktData.plugins?.find((p) => p.name === pluginName);
               if (found?.version) version = found.version;
             }
@@ -45172,27 +45243,27 @@ function registerInstallHandlers(reloadMcp) {
     } catch {
     }
     const sourceManifest = mergeMarketplaceDependencies(pluginName, marketplace, await readPluginManifest(pluginPath) ?? {});
-    const key = `${pluginName}@${marketplace}`;
-    const dependencyClosure = await ensureDependencyClosure(data, key, sourceManifest);
+    const key2 = `${pluginName}@${marketplace}`;
+    const dependencyClosure = await ensureDependencyClosure(data, key2, sourceManifest);
     const defaultEnabled = pluginDefaultEnabled(pluginName, marketplace, sourceManifest);
-    await assertCanEnablePlugins([...dependencyClosure, ...defaultEnabled ? [key] : []]);
-    const cacheDir = import_path15.default.join(import_os11.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName, version);
-    import_fs14.default.rmSync(cacheDir, { recursive: true, force: true });
-    import_fs14.default.mkdirSync(cacheDir, { recursive: true });
+    await assertCanEnablePlugins([...dependencyClosure, ...defaultEnabled ? [key2] : []]);
+    const cacheDir = import_path16.default.join(import_os11.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName, version);
+    import_fs15.default.rmSync(cacheDir, { recursive: true, force: true });
+    import_fs15.default.mkdirSync(cacheDir, { recursive: true });
     const skipDirs = /* @__PURE__ */ new Set(["node_modules", ".git", "__pycache__", ".venv"]);
     function copyDir(src, dest) {
-      import_fs14.default.mkdirSync(dest, { recursive: true });
-      const entries2 = import_fs14.default.readdirSync(src, { withFileTypes: true });
+      import_fs15.default.mkdirSync(dest, { recursive: true });
+      const entries2 = import_fs15.default.readdirSync(src, { withFileTypes: true });
       for (const entry of entries2) {
         if (skipDirs.has(entry.name)) continue;
-        const srcPath = import_path15.default.join(src, entry.name);
-        const destPath = import_path15.default.join(dest, entry.name);
+        const srcPath = import_path16.default.join(src, entry.name);
+        const destPath = import_path16.default.join(dest, entry.name);
         if (entry.isDirectory()) {
           copyDir(srcPath, destPath);
         } else {
-          import_fs14.default.copyFileSync(srcPath, destPath);
+          import_fs15.default.copyFileSync(srcPath, destPath);
           try {
-            import_fs14.default.chmodSync(destPath, import_fs14.default.statSync(srcPath).mode);
+            import_fs15.default.chmodSync(destPath, import_fs15.default.statSync(srcPath).mode);
           } catch {
           }
         }
@@ -45200,7 +45271,7 @@ function registerInstallHandlers(reloadMcp) {
     }
     copyDir(pluginPath, cacheDir);
     const now = (/* @__PURE__ */ new Date()).toISOString();
-    data.plugins[key] = [{
+    data.plugins[key2] = [{
       scope: "user",
       installPath: cacheDir,
       version,
@@ -45209,16 +45280,16 @@ function registerInstallHandlers(reloadMcp) {
     }];
     writeJsonAtomic(installedFile, data);
     for (const dependencyId of dependencyClosure) setPluginEnabled(dependencyId, true);
-    setPluginEnabled(key, defaultEnabled);
+    setPluginEnabled(key2, defaultEnabled);
     try {
-      await requestHookApproval(key, cacheDir);
+      await requestHookApproval(key2, cacheDir);
     } catch {
     }
     await requestDependencyHookApprovals(data, dependencyClosure);
     await reloadMcp();
     try {
       const { emitBridgeHookEvent: emitBridgeHookEvent2 } = await Promise.resolve().then(() => (init_emit_bridge_event(), emit_bridge_event_exports));
-      emitBridgeHookEvent2("PluginInstalled", { pluginId: key, version, installPath: cacheDir });
+      emitBridgeHookEvent2("PluginInstalled", { pluginId: key2, version, installPath: cacheDir });
     } catch {
     }
   });
@@ -45230,13 +45301,13 @@ function registerInstallHandlers(reloadMcp) {
     });
     if (result.canceled || result.filePaths.length === 0) return null;
     const pluginDir = result.filePaths[0];
-    let pluginName = import_path15.default.basename(pluginDir);
+    let pluginName = import_path16.default.basename(pluginDir);
     const marketplace = "local";
     let version = "1.0.0";
     try {
-      const pj = import_path15.default.join(pluginDir, ".claude-plugin", "plugin.json");
-      if (import_fs14.default.existsSync(pj)) {
-        const manifest = JSON.parse(import_fs14.default.readFileSync(pj, "utf-8"));
+      const pj = import_path16.default.join(pluginDir, ".claude-plugin", "plugin.json");
+      if (import_fs15.default.existsSync(pj)) {
+        const manifest = JSON.parse(import_fs15.default.readFileSync(pj, "utf-8"));
         if (typeof manifest.name === "string" && manifest.name.trim()) pluginName = manifest.name.trim();
         if (manifest.version) version = manifest.version;
       }
@@ -45244,31 +45315,31 @@ function registerInstallHandlers(reloadMcp) {
     }
     const installedFile = INSTALLED_FILE;
     const data = readInstalledData();
-    const key = `${pluginName}@${marketplace}`;
+    const key2 = `${pluginName}@${marketplace}`;
     const localManifest = await readPluginManifest(pluginDir) ?? {};
-    const dependencyClosure = await ensureDependencyClosure(data, key, localManifest);
+    const dependencyClosure = await ensureDependencyClosure(data, key2, localManifest);
     const defaultEnabled = pluginDefaultEnabled(pluginName, marketplace, localManifest);
-    await assertCanEnablePlugins([...dependencyClosure, ...defaultEnabled ? [key] : []]);
-    const cacheDir = import_path15.default.join(import_os11.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName, version);
-    const parentDir = import_path15.default.join(import_os11.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName);
-    if (import_fs14.default.existsSync(parentDir)) {
-      import_fs14.default.rmSync(parentDir, { recursive: true, force: true });
+    await assertCanEnablePlugins([...dependencyClosure, ...defaultEnabled ? [key2] : []]);
+    const cacheDir = import_path16.default.join(import_os11.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName, version);
+    const parentDir = import_path16.default.join(import_os11.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName);
+    if (import_fs15.default.existsSync(parentDir)) {
+      import_fs15.default.rmSync(parentDir, { recursive: true, force: true });
     }
-    import_fs14.default.mkdirSync(cacheDir, { recursive: true });
+    import_fs15.default.mkdirSync(cacheDir, { recursive: true });
     const skipDirs = /* @__PURE__ */ new Set(["node_modules", ".git", "__pycache__", ".venv"]);
     function copyDir(src, dest) {
-      import_fs14.default.mkdirSync(dest, { recursive: true });
-      const entries2 = import_fs14.default.readdirSync(src, { withFileTypes: true });
+      import_fs15.default.mkdirSync(dest, { recursive: true });
+      const entries2 = import_fs15.default.readdirSync(src, { withFileTypes: true });
       for (const entry of entries2) {
         if (skipDirs.has(entry.name)) continue;
-        const srcPath = import_path15.default.join(src, entry.name);
-        const destPath = import_path15.default.join(dest, entry.name);
+        const srcPath = import_path16.default.join(src, entry.name);
+        const destPath = import_path16.default.join(dest, entry.name);
         if (entry.isDirectory()) {
           copyDir(srcPath, destPath);
         } else {
-          import_fs14.default.copyFileSync(srcPath, destPath);
+          import_fs15.default.copyFileSync(srcPath, destPath);
           try {
-            import_fs14.default.chmodSync(destPath, import_fs14.default.statSync(srcPath).mode);
+            import_fs15.default.chmodSync(destPath, import_fs15.default.statSync(srcPath).mode);
           } catch {
           }
         }
@@ -45276,7 +45347,7 @@ function registerInstallHandlers(reloadMcp) {
     }
     copyDir(pluginDir, cacheDir);
     const now = (/* @__PURE__ */ new Date()).toISOString();
-    data.plugins[key] = [{
+    data.plugins[key2] = [{
       scope: "user",
       installPath: cacheDir,
       version,
@@ -45285,9 +45356,9 @@ function registerInstallHandlers(reloadMcp) {
     }];
     writeJsonAtomic(installedFile, data);
     for (const dependencyId of dependencyClosure) setPluginEnabled(dependencyId, true);
-    setPluginEnabled(key, defaultEnabled);
+    setPluginEnabled(key2, defaultEnabled);
     try {
-      await requestHookApproval(key, cacheDir);
+      await requestHookApproval(key2, cacheDir);
     } catch {
     }
     await requestDependencyHookApprovals(data, dependencyClosure);
@@ -45296,22 +45367,22 @@ function registerInstallHandlers(reloadMcp) {
   });
   ipcMain.handle("plugins:uninstall", async (_event, pluginName, marketplace) => {
     const installedFile = INSTALLED_FILE;
-    if (!import_fs14.default.existsSync(installedFile)) return;
+    if (!import_fs15.default.existsSync(installedFile)) return;
     try {
-      const data = JSON.parse(import_fs14.default.readFileSync(installedFile, "utf-8"));
-      const key = `${pluginName}@${marketplace}`;
-      const dependants = enabledDependants(data, key);
+      const data = JSON.parse(import_fs15.default.readFileSync(installedFile, "utf-8"));
+      const key2 = `${pluginName}@${marketplace}`;
+      const dependants = enabledDependants(data, key2);
       if (dependants.length > 0) {
-        throw new Error(`Cannot uninstall ${key}; required by enabled plugin(s): ${dependants.join(", ")}`);
+        throw new Error(`Cannot uninstall ${key2}; required by enabled plugin(s): ${dependants.join(", ")}`);
       }
-      if (data.plugins?.[key]) {
-        const entry = data.plugins[key][0];
-        if (entry?.installPath && import_fs14.default.existsSync(entry.installPath)) {
-          import_fs14.default.rmSync(entry.installPath, { recursive: true, force: true });
+      if (data.plugins?.[key2]) {
+        const entry = data.plugins[key2][0];
+        if (entry?.installPath && import_fs15.default.existsSync(entry.installPath)) {
+          import_fs15.default.rmSync(entry.installPath, { recursive: true, force: true });
         }
-        delete data.plugins[key];
+        delete data.plugins[key2];
         writeJsonAtomic(installedFile, data);
-        setPluginEnabled(key, null);
+        setPluginEnabled(key2, null);
       }
     } catch (err) {
       if (err instanceof Error) throw err;
@@ -45356,19 +45427,19 @@ function registerInstallHandlers(reloadMcp) {
 
 // src/main/ipc/hooks.ts
 init_plugin_helpers();
-var USER_SETTINGS = import_path16.default.join(import_os12.default.homedir(), ".claude", "settings.json");
+var USER_SETTINGS = import_path17.default.join(import_os12.default.homedir(), ".claude", "settings.json");
 function readSettings() {
   try {
-    if (!import_fs15.default.existsSync(USER_SETTINGS)) return {};
-    return JSON.parse(import_fs15.default.readFileSync(USER_SETTINGS, "utf-8"));
+    if (!import_fs16.default.existsSync(USER_SETTINGS)) return {};
+    return JSON.parse(import_fs16.default.readFileSync(USER_SETTINGS, "utf-8"));
   } catch {
     return {};
   }
 }
 function readHooksAtPath(filePath) {
   try {
-    if (!import_fs15.default.existsSync(filePath)) return null;
-    const raw = import_fs15.default.readFileSync(filePath, "utf-8");
+    if (!import_fs16.default.existsSync(filePath)) return null;
+    const raw = import_fs16.default.readFileSync(filePath, "utf-8");
     const parsed = JSON.parse(raw);
     return parsed.hooks ?? null;
   } catch {
@@ -45377,29 +45448,29 @@ function readHooksAtPath(filePath) {
 }
 function loadEnabledPluginsHost() {
   try {
-    const installedFile = import_path16.default.join(import_os12.default.homedir(), ".claude", "plugins", "installed_plugins.json");
-    if (!import_fs15.default.existsSync(installedFile)) return [];
-    const parsed = JSON.parse(import_fs15.default.readFileSync(installedFile, "utf-8"));
+    const installedFile = import_path17.default.join(import_os12.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+    if (!import_fs16.default.existsSync(installedFile)) return [];
+    const parsed = JSON.parse(import_fs16.default.readFileSync(installedFile, "utf-8"));
     const settingsFile = USER_SETTINGS;
     let enabledMap = {};
     try {
-      if (import_fs15.default.existsSync(settingsFile)) {
-        enabledMap = JSON.parse(import_fs15.default.readFileSync(settingsFile, "utf-8")).enabledPlugins ?? {};
+      if (import_fs16.default.existsSync(settingsFile)) {
+        enabledMap = JSON.parse(import_fs16.default.readFileSync(settingsFile, "utf-8")).enabledPlugins ?? {};
       }
     } catch {
     }
     const out = [];
-    for (const [key, entries2] of Object.entries(parsed.plugins ?? {})) {
-      if (enabledMap[key] === false) continue;
+    for (const [key2, entries2] of Object.entries(parsed.plugins ?? {})) {
+      if (enabledMap[key2] === false) continue;
       const entry = Array.isArray(entries2) ? entries2[0] : null;
       if (!entry?.installPath) continue;
-      if (!Object.prototype.hasOwnProperty.call(enabledMap, key)) {
-        const at = key.lastIndexOf("@");
-        const name = at > 0 ? key.slice(0, at) : key;
-        const marketplace = at > 0 ? key.slice(at + 1) : "";
+      if (!Object.prototype.hasOwnProperty.call(enabledMap, key2)) {
+        const at = key2.lastIndexOf("@");
+        const name = at > 0 ? key2.slice(0, at) : key2;
+        const marketplace = at > 0 ? key2.slice(at + 1) : "";
         if (readEffectivePluginManifestSync(entry.installPath, name, marketplace).defaultEnabled === false) continue;
       }
-      out.push({ pluginId: key, installPath: entry.installPath });
+      out.push({ pluginId: key2, installPath: entry.installPath });
     }
     return out;
   } catch {
@@ -45408,35 +45479,35 @@ function loadEnabledPluginsHost() {
 }
 function readPluginHooksHost(installPath) {
   for (const cand of [
-    import_path16.default.join(installPath, ".claude-plugin", "plugin.json"),
+    import_path17.default.join(installPath, ".claude-plugin", "plugin.json"),
     // CLI supports a legacy `<dir>/plugin.json` fallback when the
     // .claude-plugin directory is absent.
-    import_path16.default.join(installPath, "plugin.json"),
-    import_path16.default.join(installPath, "hooks.json"),
-    import_path16.default.join(installPath, ".claude-plugin", "hooks.json"),
+    import_path17.default.join(installPath, "plugin.json"),
+    import_path17.default.join(installPath, "hooks.json"),
+    import_path17.default.join(installPath, ".claude-plugin", "hooks.json"),
     // Canonical CLI convention — most plugins (redact, etc.) ship hooks here.
-    import_path16.default.join(installPath, "hooks", "hooks.json")
+    import_path17.default.join(installPath, "hooks", "hooks.json")
   ]) {
     const hooks = readHooksAtPath(cand);
     if (hooks && Object.keys(hooks).length > 0) return hooks;
   }
   for (const mp of [
-    import_path16.default.join(installPath, ".claude-plugin", "plugin.json"),
-    import_path16.default.join(installPath, "plugin.json")
+    import_path17.default.join(installPath, ".claude-plugin", "plugin.json"),
+    import_path17.default.join(installPath, "plugin.json")
   ]) {
-    if (!import_fs15.default.existsSync(mp)) continue;
+    if (!import_fs16.default.existsSync(mp)) continue;
     try {
-      const m = JSON.parse(import_fs15.default.readFileSync(mp, "utf-8"));
+      const m = JSON.parse(import_fs16.default.readFileSync(mp, "utf-8"));
       const hooksField = m?.hooks;
       if (typeof hooksField === "string") {
-        const refPath = import_path16.default.isAbsolute(hooksField) ? hooksField : import_path16.default.join(installPath, hooksField);
+        const refPath = import_path17.default.isAbsolute(hooksField) ? hooksField : import_path17.default.join(installPath, hooksField);
         const hooks = readHooksAtPath(refPath);
         if (hooks && Object.keys(hooks).length > 0) return hooks;
       } else if (Array.isArray(hooksField)) {
         const merged = {};
-        for (const ref of hooksField) {
-          if (typeof ref !== "string") continue;
-          const refPath = import_path16.default.isAbsolute(ref) ? ref : import_path16.default.join(installPath, ref);
+        for (const ref2 of hooksField) {
+          if (typeof ref2 !== "string") continue;
+          const refPath = import_path17.default.isAbsolute(ref2) ? ref2 : import_path17.default.join(installPath, ref2);
           const hooks = readHooksAtPath(refPath);
           if (!hooks) continue;
           for (const [evt, matchers] of Object.entries(hooks)) {
@@ -45465,20 +45536,20 @@ function mergeHooksOnHost(cwd) {
   const userHooks = readHooksAtPath(USER_SETTINGS);
   if (userHooks) pushAll(userHooks, { kind: "user" });
   if (cwd) {
-    const projectHooks = readHooksAtPath(import_path16.default.join(cwd, ".claude", "settings.json"));
+    const projectHooks = readHooksAtPath(import_path17.default.join(cwd, ".claude", "settings.json"));
     if (projectHooks) pushAll(projectHooks, { kind: "project", projectPath: cwd });
   }
   for (const p of loadEnabledPluginsHost()) {
     const hooks = readPluginHooksHost(p.installPath);
     if (!hooks) continue;
-    const manifestPath = import_path16.default.join(p.installPath, ".claude-plugin", "plugin.json");
+    const manifestPath = import_path17.default.join(p.installPath, ".claude-plugin", "plugin.json");
     pushAll(hooks, { kind: "plugin", pluginId: p.pluginId, manifestPath });
   }
   return { hooks: flat };
 }
 function writeSettings(settings) {
-  import_fs15.default.mkdirSync(import_path16.default.dirname(USER_SETTINGS), { recursive: true });
-  import_fs15.default.writeFileSync(USER_SETTINGS, JSON.stringify(settings, null, 2));
+  import_fs16.default.mkdirSync(import_path17.default.dirname(USER_SETTINGS), { recursive: true });
+  import_fs16.default.writeFileSync(USER_SETTINGS, JSON.stringify(settings, null, 2));
 }
 async function bridgeFetch(ctx, suffix, init) {
   const cfg = ctx.configStore.get();
@@ -45632,9 +45703,9 @@ function registerHooksIPC(ctx) {
   ipcMain.handle("hooks:list-pending-plugin-approvals", async () => listPendingHookApprovals());
   ipcMain.handle("hooks:get-plugin-approval", async (_e, pluginId) => {
     try {
-      const approvalsFile = import_path16.default.join(import_os12.default.homedir(), ".claude", "open-claude-bridge", "plugin-hook-approvals.json");
-      if (!import_fs15.default.existsSync(approvalsFile)) return { approved: false, hashes: [] };
-      const parsed = JSON.parse(import_fs15.default.readFileSync(approvalsFile, "utf-8"));
+      const approvalsFile = import_path17.default.join(import_os12.default.homedir(), ".claude", "open-claude-bridge", "plugin-hook-approvals.json");
+      if (!import_fs16.default.existsSync(approvalsFile)) return { approved: false, hashes: [] };
+      const parsed = JSON.parse(import_fs16.default.readFileSync(approvalsFile, "utf-8"));
       return { approved: !!parsed[pluginId], hashes: parsed[pluginId] ?? [] };
     } catch {
       return { approved: false, hashes: [] };
@@ -45642,16 +45713,16 @@ function registerHooksIPC(ctx) {
   });
   ipcMain.handle("hooks:set-plugin-approval", async (_e, pluginId, hashes) => {
     try {
-      const approvalsFile = import_path16.default.join(import_os12.default.homedir(), ".claude", "open-claude-bridge", "plugin-hook-approvals.json");
-      import_fs15.default.mkdirSync(import_path16.default.dirname(approvalsFile), { recursive: true });
+      const approvalsFile = import_path17.default.join(import_os12.default.homedir(), ".claude", "open-claude-bridge", "plugin-hook-approvals.json");
+      import_fs16.default.mkdirSync(import_path17.default.dirname(approvalsFile), { recursive: true });
       let parsed = {};
       try {
-        if (import_fs15.default.existsSync(approvalsFile)) parsed = JSON.parse(import_fs15.default.readFileSync(approvalsFile, "utf-8"));
+        if (import_fs16.default.existsSync(approvalsFile)) parsed = JSON.parse(import_fs16.default.readFileSync(approvalsFile, "utf-8"));
       } catch {
       }
       const reviewMarker = await getHookApprovalReviewMarker(pluginId);
       parsed[pluginId] = [.../* @__PURE__ */ new Set([...hashes, ...reviewMarker ? [reviewMarker] : []])];
-      import_fs15.default.writeFileSync(approvalsFile, JSON.stringify(parsed, null, 2));
+      import_fs16.default.writeFileSync(approvalsFile, JSON.stringify(parsed, null, 2));
       await syncHookConfig();
       return { ok: true, restartRequired: true };
     } catch (err) {
@@ -45910,32 +45981,32 @@ function registerMcpIPC(ctx) {
 
 // src/main/ipc/plugins/handlers-content.ts
 init_host_compat();
-var import_path19 = __toESM(require("path"), 1);
-var import_fs18 = __toESM(require("fs"), 1);
+var import_path20 = __toESM(require("path"), 1);
+var import_fs19 = __toESM(require("fs"), 1);
 var import_os15 = __toESM(require("os"), 1);
 
 // src/main/ipc/plugins/content-scan.ts
-var import_path18 = __toESM(require("path"), 1);
-var import_fs17 = __toESM(require("fs"), 1);
+var import_path19 = __toESM(require("path"), 1);
+var import_fs18 = __toESM(require("fs"), 1);
 var import_os14 = __toESM(require("os"), 1);
 init_plugin_helpers();
 function countPluginContents(pluginDir, marketplaceRoot) {
   const counts = { commands: 0, agents: 0, skills: 0, lspServers: 0, mcpServers: 0, hooks: 0 };
-  if (!pluginDir || !import_fs17.default.existsSync(pluginDir)) return counts;
+  if (!pluginDir || !import_fs18.default.existsSync(pluginDir)) return counts;
   try {
     let countMdFiles2 = function(dir) {
       let n = 0;
-      if (!import_fs17.default.existsSync(dir)) return 0;
-      for (const e of import_fs17.default.readdirSync(dir, { withFileTypes: true })) {
-        if (e.isDirectory()) n += countMdFiles2(import_path18.default.join(dir, e.name));
+      if (!import_fs18.default.existsSync(dir)) return 0;
+      for (const e of import_fs18.default.readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) n += countMdFiles2(import_path19.default.join(dir, e.name));
         else if (e.name.endsWith(".md")) n++;
       }
       return n;
     }, countSkillsRecursive2 = function(dir) {
       let n = 0;
-      if (!import_fs17.default.existsSync(dir)) return 0;
-      for (const e of import_fs17.default.readdirSync(dir, { withFileTypes: true })) {
-        const full = import_path18.default.join(dir, e.name);
+      if (!import_fs18.default.existsSync(dir)) return 0;
+      for (const e of import_fs18.default.readdirSync(dir, { withFileTypes: true })) {
+        const full = import_path19.default.join(dir, e.name);
         if (e.isDirectory()) {
           n += countSkillsRecursive2(full);
         } else if (e.isFile()) {
@@ -45945,20 +46016,20 @@ function countPluginContents(pluginDir, marketplaceRoot) {
       return n;
     };
     var countMdFiles = countMdFiles2, countSkillsRecursive = countSkillsRecursive2;
-    const isSameAsMarketplaceRoot = !!marketplaceRoot && import_path18.default.resolve(pluginDir) === import_path18.default.resolve(marketplaceRoot);
-    const hasPluginJson = import_fs17.default.existsSync(import_path18.default.join(pluginDir, ".claude-plugin", "plugin.json"));
-    const hasMarketplaceJson = import_fs17.default.existsSync(import_path18.default.join(pluginDir, ".claude-plugin", "marketplace.json"));
+    const isSameAsMarketplaceRoot = !!marketplaceRoot && import_path19.default.resolve(pluginDir) === import_path19.default.resolve(marketplaceRoot);
+    const hasPluginJson = import_fs18.default.existsSync(import_path19.default.join(pluginDir, ".claude-plugin", "plugin.json"));
+    const hasMarketplaceJson = import_fs18.default.existsSync(import_path19.default.join(pluginDir, ".claude-plugin", "marketplace.json"));
     if (!hasPluginJson && hasMarketplaceJson && !isSameAsMarketplaceRoot) {
       counts.isBrokenMarketplace = true;
       try {
-        const raw = import_fs17.default.readFileSync(import_path18.default.join(pluginDir, ".claude-plugin", "marketplace.json"), "utf-8");
+        const raw = import_fs18.default.readFileSync(import_path19.default.join(pluginDir, ".claude-plugin", "marketplace.json"), "utf-8");
         const m = JSON.parse(raw);
         if (Array.isArray(m?.plugins)) counts.subPluginTotal = m.plugins.length;
         if (typeof m?.name === "string") counts.nestedMarketplaceName = m.name;
         if (counts.nestedMarketplaceName && counts.subPluginTotal !== void 0) {
-          const installedPath = import_path18.default.join(import_os14.default.homedir(), ".claude", "plugins", "installed_plugins.json");
-          if (import_fs17.default.existsSync(installedPath)) {
-            const inst = JSON.parse(import_fs17.default.readFileSync(installedPath, "utf-8"));
+          const installedPath = import_path19.default.join(import_os14.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+          if (import_fs18.default.existsSync(installedPath)) {
+            const inst = JSON.parse(import_fs18.default.readFileSync(installedPath, "utf-8"));
             if (inst?.version === 2 && inst?.plugins) {
               const keys = Object.keys(inst.plugins);
               const prefix = `@${counts.nestedMarketplaceName}`;
@@ -45974,24 +46045,24 @@ function countPluginContents(pluginDir, marketplaceRoot) {
       }
       return counts;
     }
-    counts.commands = countMdFiles2(import_path18.default.join(pluginDir, "commands"));
-    counts.agents = countMdFiles2(import_path18.default.join(pluginDir, "agents"));
-    if (import_fs17.default.existsSync(import_path18.default.join(pluginDir, "SKILL.md"))) counts.skills = 1;
-    const skillsDir = import_path18.default.join(pluginDir, "skills");
-    if (import_fs17.default.existsSync(skillsDir)) {
+    counts.commands = countMdFiles2(import_path19.default.join(pluginDir, "commands"));
+    counts.agents = countMdFiles2(import_path19.default.join(pluginDir, "agents"));
+    if (import_fs18.default.existsSync(import_path19.default.join(pluginDir, "SKILL.md"))) counts.skills = 1;
+    const skillsDir = import_path19.default.join(pluginDir, "skills");
+    if (import_fs18.default.existsSync(skillsDir)) {
       counts.skills += countSkillsRecursive2(skillsDir);
-      for (const e of import_fs17.default.readdirSync(skillsDir, { withFileTypes: true })) {
+      for (const e of import_fs18.default.readdirSync(skillsDir, { withFileTypes: true })) {
         if (e.isFile() && e.name.endsWith(".md") && e.name.toUpperCase() !== "README.MD") {
           counts.skills++;
         }
       }
     }
     try {
-      const manifestJson = import_path18.default.join(pluginDir, ".claude-plugin", "plugin.json");
-      const altManifestJson = import_path18.default.join(pluginDir, "plugin.json");
-      const mp = import_fs17.default.existsSync(manifestJson) ? manifestJson : import_fs17.default.existsSync(altManifestJson) ? altManifestJson : null;
+      const manifestJson = import_path19.default.join(pluginDir, ".claude-plugin", "plugin.json");
+      const altManifestJson = import_path19.default.join(pluginDir, "plugin.json");
+      const mp = import_fs18.default.existsSync(manifestJson) ? manifestJson : import_fs18.default.existsSync(altManifestJson) ? altManifestJson : null;
       if (mp) {
-        const m = JSON.parse(import_fs17.default.readFileSync(mp, "utf-8"));
+        const m = JSON.parse(import_fs18.default.readFileSync(mp, "utf-8"));
         const addPaths = (field) => {
           if (!field) return [];
           if (typeof field === "string") return [field];
@@ -45999,35 +46070,35 @@ function countPluginContents(pluginDir, marketplaceRoot) {
           if (typeof field === "object") return Object.keys(field);
           return [];
         };
-        const resolvePath = (rel) => import_path18.default.isAbsolute(rel) ? rel : import_path18.default.join(pluginDir, rel);
+        const resolvePath = (rel) => import_path19.default.isAbsolute(rel) ? rel : import_path19.default.join(pluginDir, rel);
         for (const rel of addPaths(m?.commands)) {
           const p = resolvePath(rel);
-          if (import_fs17.default.existsSync(p)) counts.commands += import_fs17.default.statSync(p).isDirectory() ? countMdFiles2(p) : 1;
+          if (import_fs18.default.existsSync(p)) counts.commands += import_fs18.default.statSync(p).isDirectory() ? countMdFiles2(p) : 1;
         }
         for (const rel of addPaths(m?.agents)) {
           const p = resolvePath(rel);
-          if (import_fs17.default.existsSync(p)) counts.agents += import_fs17.default.statSync(p).isDirectory() ? countMdFiles2(p) : 1;
+          if (import_fs18.default.existsSync(p)) counts.agents += import_fs18.default.statSync(p).isDirectory() ? countMdFiles2(p) : 1;
         }
         for (const rel of addPaths(m?.skills)) {
           const p = resolvePath(rel);
-          if (import_fs17.default.existsSync(p)) counts.skills += import_fs17.default.statSync(p).isDirectory() ? countSkillsRecursive2(p) : 1;
+          if (import_fs18.default.existsSync(p)) counts.skills += import_fs18.default.statSync(p).isDirectory() ? countSkillsRecursive2(p) : 1;
         }
       }
     } catch {
     }
     try {
-      const manifestJson = import_path18.default.join(pluginDir, ".claude-plugin", "plugin.json");
-      if (import_fs17.default.existsSync(manifestJson)) {
-        const m = JSON.parse(import_fs17.default.readFileSync(manifestJson, "utf-8"));
+      const manifestJson = import_path19.default.join(pluginDir, ".claude-plugin", "plugin.json");
+      if (import_fs18.default.existsSync(manifestJson)) {
+        const m = JSON.parse(import_fs18.default.readFileSync(manifestJson, "utf-8"));
         const spec = m?.mcpServers;
         if (spec && typeof spec === "object" && !Array.isArray(spec)) {
           counts.mcpServers = Object.keys(spec).length;
         }
       }
       if (counts.mcpServers === 0) {
-        const mcpJson = import_path18.default.join(pluginDir, ".mcp.json");
-        if (import_fs17.default.existsSync(mcpJson)) {
-          const m = JSON.parse(import_fs17.default.readFileSync(mcpJson, "utf-8"));
+        const mcpJson = import_path19.default.join(pluginDir, ".mcp.json");
+        if (import_fs18.default.existsSync(mcpJson)) {
+          const m = JSON.parse(import_fs18.default.readFileSync(mcpJson, "utf-8"));
           const spec = m?.mcpServers;
           if (spec && typeof spec === "object" && !Array.isArray(spec)) {
             counts.mcpServers = Object.keys(spec).length;
@@ -46039,15 +46110,15 @@ function countPluginContents(pluginDir, marketplaceRoot) {
     try {
       let hooksObj = null;
       const candidates = [
-        import_path18.default.join(pluginDir, ".claude-plugin", "plugin.json"),
-        import_path18.default.join(pluginDir, "hooks.json"),
-        import_path18.default.join(pluginDir, ".claude-plugin", "hooks.json"),
-        import_path18.default.join(pluginDir, "hooks", "hooks.json")
+        import_path19.default.join(pluginDir, ".claude-plugin", "plugin.json"),
+        import_path19.default.join(pluginDir, "hooks.json"),
+        import_path19.default.join(pluginDir, ".claude-plugin", "hooks.json"),
+        import_path19.default.join(pluginDir, "hooks", "hooks.json")
       ];
       for (const cand of candidates) {
-        if (!import_fs17.default.existsSync(cand)) continue;
+        if (!import_fs18.default.existsSync(cand)) continue;
         try {
-          const parsed = JSON.parse(import_fs17.default.readFileSync(cand, "utf-8"));
+          const parsed = JSON.parse(import_fs18.default.readFileSync(cand, "utf-8"));
           if (parsed?.hooks && typeof parsed.hooks === "object") {
             hooksObj = parsed.hooks;
             break;
@@ -46072,26 +46143,26 @@ function countPluginContents(pluginDir, marketplaceRoot) {
   return counts;
 }
 function countPluginLspServers(pluginName, marketplace, pluginDir) {
-  if (pluginDir && import_fs17.default.existsSync(pluginDir)) {
-    const lspJson = import_path18.default.join(pluginDir, ".lsp.json");
-    if (import_fs17.default.existsSync(lspJson)) {
+  if (pluginDir && import_fs18.default.existsSync(pluginDir)) {
+    const lspJson = import_path19.default.join(pluginDir, ".lsp.json");
+    if (import_fs18.default.existsSync(lspJson)) {
       try {
-        const data = JSON.parse(import_fs17.default.readFileSync(lspJson, "utf-8"));
+        const data = JSON.parse(import_fs18.default.readFileSync(lspJson, "utf-8"));
         if (data && typeof data === "object" && !Array.isArray(data)) return Object.keys(data).length;
       } catch {
       }
     }
-    const manifestJson = import_path18.default.join(pluginDir, ".claude-plugin", "plugin.json");
-    if (import_fs17.default.existsSync(manifestJson)) {
+    const manifestJson = import_path19.default.join(pluginDir, ".claude-plugin", "plugin.json");
+    if (import_fs18.default.existsSync(manifestJson)) {
       try {
-        const m = JSON.parse(import_fs17.default.readFileSync(manifestJson, "utf-8"));
+        const m = JSON.parse(import_fs18.default.readFileSync(manifestJson, "utf-8"));
         const spec = m?.lspServers;
         if (spec && typeof spec === "object" && !Array.isArray(spec)) return Object.keys(spec).length;
         if (Array.isArray(spec)) return spec.length;
         if (typeof spec === "string") {
-          const resolved = import_path18.default.isAbsolute(spec) ? spec : import_path18.default.join(pluginDir, spec);
-          if (import_fs17.default.existsSync(resolved)) {
-            const lsp = JSON.parse(import_fs17.default.readFileSync(resolved, "utf-8"));
+          const resolved = import_path19.default.isAbsolute(spec) ? spec : import_path19.default.join(pluginDir, spec);
+          if (import_fs18.default.existsSync(resolved)) {
+            const lsp = JSON.parse(import_fs18.default.readFileSync(resolved, "utf-8"));
             if (lsp && typeof lsp === "object" && !Array.isArray(lsp)) return Object.keys(lsp).length;
           }
         }
@@ -46101,9 +46172,9 @@ function countPluginLspServers(pluginName, marketplace, pluginDir) {
   }
   if (marketplace) {
     try {
-      const mktJson = import_path18.default.join(import_os14.default.homedir(), ".claude", "plugins", "marketplaces", marketplace, ".claude-plugin", "marketplace.json");
-      if (import_fs17.default.existsSync(mktJson)) {
-        const mkt = JSON.parse(import_fs17.default.readFileSync(mktJson, "utf-8"));
+      const mktJson = import_path19.default.join(import_os14.default.homedir(), ".claude", "plugins", "marketplaces", marketplace, ".claude-plugin", "marketplace.json");
+      if (import_fs18.default.existsSync(mktJson)) {
+        const mkt = JSON.parse(import_fs18.default.readFileSync(mktJson, "utf-8"));
         const found = mkt.plugins?.find((p) => p.name === pluginName);
         if (found?.lspServers && typeof found.lspServers === "object" && !Array.isArray(found.lspServers)) {
           return Object.keys(found.lspServers).length;
@@ -46117,10 +46188,10 @@ function countPluginLspServers(pluginName, marketplace, pluginDir) {
 }
 function listPluginContents(pluginDir) {
   const out = { skills: [], agents: [], commands: [], mcpServers: [], hooks: [] };
-  if (!pluginDir || !import_fs17.default.existsSync(pluginDir)) return out;
-  function extractFmField(fm, key) {
+  if (!pluginDir || !import_fs18.default.existsSync(pluginDir)) return out;
+  function extractFmField(fm, key2) {
     const lines = fm.replace(/\r/g, "").split("\n");
-    const re = new RegExp(`^(\\s*)${key}:\\s*(.*)$`);
+    const re = new RegExp(`^(\\s*)${key2}:\\s*(.*)$`);
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (line === void 0) continue;
@@ -46153,10 +46224,10 @@ function listPluginContents(pluginDir) {
   }
   function readDescription(filePath) {
     try {
-      const fd = import_fs17.default.openSync(filePath, "r");
+      const fd = import_fs18.default.openSync(filePath, "r");
       const buf = Buffer.alloc(16384);
-      const n = import_fs17.default.readSync(fd, buf, 0, buf.length, 0);
-      import_fs17.default.closeSync(fd);
+      const n = import_fs18.default.readSync(fd, buf, 0, buf.length, 0);
+      import_fs18.default.closeSync(fd);
       const head = buf.slice(0, n).toString("utf-8");
       const fm = extractFrontmatter(head);
       if (!fm) return void 0;
@@ -46175,41 +46246,41 @@ function listPluginContents(pluginDir) {
     }
   }
   function listMd(dir, cap) {
-    if (!import_fs17.default.existsSync(dir)) return [];
+    if (!import_fs18.default.existsSync(dir)) return [];
     const acc = [];
     try {
-      for (const e of import_fs17.default.readdirSync(dir, { withFileTypes: true })) {
+      for (const e of import_fs18.default.readdirSync(dir, { withFileTypes: true })) {
         if (acc.length >= cap) break;
         if (e.isFile() && e.name.endsWith(".md")) {
-          acc.push({ name: e.name.replace(/\.md$/, ""), description: readDescription(import_path18.default.join(dir, e.name)) });
+          acc.push({ name: e.name.replace(/\.md$/, ""), description: readDescription(import_path19.default.join(dir, e.name)) });
         }
       }
     } catch {
     }
     return acc;
   }
-  out.commands = listMd(import_path18.default.join(pluginDir, "commands"), 50);
-  out.agents = listMd(import_path18.default.join(pluginDir, "agents"), 50);
-  if (import_fs17.default.existsSync(import_path18.default.join(pluginDir, "SKILL.md"))) {
+  out.commands = listMd(import_path19.default.join(pluginDir, "commands"), 50);
+  out.agents = listMd(import_path19.default.join(pluginDir, "agents"), 50);
+  if (import_fs18.default.existsSync(import_path19.default.join(pluginDir, "SKILL.md"))) {
     out.skills.push({
-      name: import_path18.default.basename(pluginDir),
-      description: readDescription(import_path18.default.join(pluginDir, "SKILL.md"))
+      name: import_path19.default.basename(pluginDir),
+      description: readDescription(import_path19.default.join(pluginDir, "SKILL.md"))
     });
   }
-  const skillsDir = import_path18.default.join(pluginDir, "skills");
-  if (import_fs17.default.existsSync(skillsDir)) {
+  const skillsDir = import_path19.default.join(pluginDir, "skills");
+  if (import_fs18.default.existsSync(skillsDir)) {
     try {
-      for (const e of import_fs17.default.readdirSync(skillsDir, { withFileTypes: true })) {
+      for (const e of import_fs18.default.readdirSync(skillsDir, { withFileTypes: true })) {
         if (out.skills.length >= 50) break;
         if (e.isDirectory()) {
-          const skillMd = import_path18.default.join(skillsDir, e.name, "SKILL.md");
-          if (import_fs17.default.existsSync(skillMd)) {
+          const skillMd = import_path19.default.join(skillsDir, e.name, "SKILL.md");
+          if (import_fs18.default.existsSync(skillMd)) {
             out.skills.push({ name: e.name, description: readDescription(skillMd) });
           }
         } else if (e.isFile() && e.name.endsWith(".md") && e.name.toUpperCase() !== "README.MD") {
           out.skills.push({
             name: e.name.replace(/\.md$/i, ""),
-            description: readDescription(import_path18.default.join(skillsDir, e.name))
+            description: readDescription(import_path19.default.join(skillsDir, e.name))
           });
         }
       }
@@ -46217,17 +46288,17 @@ function listPluginContents(pluginDir) {
     }
   }
   try {
-    const manifestPath = import_path18.default.join(pluginDir, ".claude-plugin", "plugin.json");
-    if (import_fs17.default.existsSync(manifestPath)) {
-      const m = JSON.parse(import_fs17.default.readFileSync(manifestPath, "utf-8"));
+    const manifestPath = import_path19.default.join(pluginDir, ".claude-plugin", "plugin.json");
+    if (import_fs18.default.existsSync(manifestPath)) {
+      const m = JSON.parse(import_fs18.default.readFileSync(manifestPath, "utf-8"));
       if (m?.mcpServers && typeof m.mcpServers === "object" && !Array.isArray(m.mcpServers)) {
         out.mcpServers = Object.keys(m.mcpServers).slice(0, 50);
       }
     }
     if (out.mcpServers.length === 0) {
-      const mcpPath = import_path18.default.join(pluginDir, ".mcp.json");
-      if (import_fs17.default.existsSync(mcpPath)) {
-        const m = JSON.parse(import_fs17.default.readFileSync(mcpPath, "utf-8"));
+      const mcpPath = import_path19.default.join(pluginDir, ".mcp.json");
+      if (import_fs18.default.existsSync(mcpPath)) {
+        const m = JSON.parse(import_fs18.default.readFileSync(mcpPath, "utf-8"));
         if (m?.mcpServers && typeof m.mcpServers === "object" && !Array.isArray(m.mcpServers)) {
           out.mcpServers = Object.keys(m.mcpServers).slice(0, 50);
         }
@@ -46238,15 +46309,15 @@ function listPluginContents(pluginDir) {
   try {
     let hooksObj = null;
     for (const cand of [
-      import_path18.default.join(pluginDir, ".claude-plugin", "plugin.json"),
-      import_path18.default.join(pluginDir, "plugin.json"),
-      import_path18.default.join(pluginDir, "hooks.json"),
-      import_path18.default.join(pluginDir, ".claude-plugin", "hooks.json"),
-      import_path18.default.join(pluginDir, "hooks", "hooks.json")
+      import_path19.default.join(pluginDir, ".claude-plugin", "plugin.json"),
+      import_path19.default.join(pluginDir, "plugin.json"),
+      import_path19.default.join(pluginDir, "hooks.json"),
+      import_path19.default.join(pluginDir, ".claude-plugin", "hooks.json"),
+      import_path19.default.join(pluginDir, "hooks", "hooks.json")
     ]) {
-      if (!import_fs17.default.existsSync(cand)) continue;
+      if (!import_fs18.default.existsSync(cand)) continue;
       try {
-        const parsed = JSON.parse(import_fs17.default.readFileSync(cand, "utf-8"));
+        const parsed = JSON.parse(import_fs18.default.readFileSync(cand, "utf-8"));
         if (parsed?.hooks && typeof parsed.hooks === "object" && Object.keys(parsed.hooks).length > 0) {
           hooksObj = parsed.hooks;
           break;
@@ -46282,10 +46353,10 @@ function registerContentHandlers() {
     return listPluginContents(pluginDir);
   });
   ipcMain.handle("plugins:list-installed", () => {
-    const pluginsFile = import_path19.default.join(import_os15.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+    const pluginsFile = import_path20.default.join(import_os15.default.homedir(), ".claude", "plugins", "installed_plugins.json");
     const enabledMap = /* @__PURE__ */ new Map();
     try {
-      const settings = JSON.parse(import_fs18.default.readFileSync(import_path19.default.join(import_os15.default.homedir(), ".claude", "settings.json"), "utf-8"));
+      const settings = JSON.parse(import_fs19.default.readFileSync(import_path20.default.join(import_os15.default.homedir(), ".claude", "settings.json"), "utf-8"));
       const ep = settings?.enabledPlugins;
       if (ep && typeof ep === "object") {
         for (const [k, v] of Object.entries(ep)) {
@@ -46295,22 +46366,22 @@ function registerContentHandlers() {
     } catch {
     }
     try {
-      const data = JSON.parse(import_fs18.default.readFileSync(pluginsFile, "utf-8"));
+      const data = JSON.parse(import_fs19.default.readFileSync(pluginsFile, "utf-8"));
       if (data.version === 2 && data.plugins) {
         const installedKeys = new Set(Object.keys(data.plugins));
         const installedBareNames = new Set(
           Object.keys(data.plugins).map((k) => k.split("@")[0])
         );
-        return Object.entries(data.plugins).map(([key, entries2]) => {
-          const [name, marketplace] = key.split("@");
+        return Object.entries(data.plugins).map(([key2, entries2]) => {
+          const [name, marketplace] = key2.split("@");
           const entry = entries2[0];
           let description = "";
           let rawDeps = null;
           if (entry?.installPath) {
             try {
-              const pj = import_path19.default.join(entry.installPath, ".claude-plugin", "plugin.json");
-              if (import_fs18.default.existsSync(pj)) {
-                const manifest = JSON.parse(import_fs18.default.readFileSync(pj, "utf-8"));
+              const pj = import_path20.default.join(entry.installPath, ".claude-plugin", "plugin.json");
+              if (import_fs19.default.existsSync(pj)) {
+                const manifest = JSON.parse(import_fs19.default.readFileSync(pj, "utf-8"));
                 description = manifest.description || "";
                 rawDeps = manifest.dependencies;
               }
@@ -46318,9 +46389,9 @@ function registerContentHandlers() {
             }
             if (!description && marketplace) {
               try {
-                const mktJson = import_path19.default.join(import_os15.default.homedir(), ".claude", "plugins", "marketplaces", marketplace, ".claude-plugin", "marketplace.json");
-                if (import_fs18.default.existsSync(mktJson)) {
-                  const mkt = JSON.parse(import_fs18.default.readFileSync(mktJson, "utf-8"));
+                const mktJson = import_path20.default.join(import_os15.default.homedir(), ".claude", "plugins", "marketplaces", marketplace, ".claude-plugin", "marketplace.json");
+                if (import_fs19.default.existsSync(mktJson)) {
+                  const mkt = JSON.parse(import_fs19.default.readFileSync(mktJson, "utf-8"));
                   const found = mkt.plugins?.find((p) => p.name === name);
                   if (found) {
                     description = found.description || "";
@@ -46332,16 +46403,16 @@ function registerContentHandlers() {
             }
           }
           const installPath = entry?.installPath || "";
-          const isCached = installPath ? import_fs18.default.existsSync(installPath) : false;
+          const isCached = installPath ? import_fs19.default.existsSync(installPath) : false;
           let contentDir = isCached ? installPath : "";
           if (!contentDir && marketplace) {
-            const mktRoot = import_path19.default.join(import_os15.default.homedir(), ".claude", "plugins", "marketplaces", marketplace);
+            const mktRoot = import_path20.default.join(import_os15.default.homedir(), ".claude", "plugins", "marketplaces", marketplace);
             for (const candidate of [
-              import_path19.default.join(mktRoot, "plugins", name),
-              import_path19.default.join(mktRoot, "plugins", "mcp", name),
-              import_path19.default.join(mktRoot, "external_plugins", name)
+              import_path20.default.join(mktRoot, "plugins", name),
+              import_path20.default.join(mktRoot, "plugins", "mcp", name),
+              import_path20.default.join(mktRoot, "external_plugins", name)
             ]) {
-              if (import_fs18.default.existsSync(candidate)) {
+              if (import_fs19.default.existsSync(candidate)) {
                 contentDir = candidate;
                 break;
               }
@@ -46364,7 +46435,7 @@ function registerContentHandlers() {
           return {
             name,
             marketplace: marketplace || "",
-            enabled: enabledMap.get(key) !== false,
+            enabled: enabledMap.get(key2) !== false,
             version: entry?.version || "unknown",
             scope: entry?.scope || "user",
             installPath,
@@ -46385,37 +46456,37 @@ function registerContentHandlers() {
 
 // src/main/ipc/plugins/handlers-options.ts
 init_host_compat();
-var import_path20 = __toESM(require("path"), 1);
-var import_fs19 = __toESM(require("fs"), 1);
+var import_path21 = __toESM(require("path"), 1);
+var import_fs20 = __toESM(require("fs"), 1);
 var import_os16 = __toESM(require("os"), 1);
 init_plugin_helpers();
 function writeJsonAtomic2(filePath, value) {
-  import_fs19.default.mkdirSync(import_path20.default.dirname(filePath), { recursive: true });
+  import_fs20.default.mkdirSync(import_path21.default.dirname(filePath), { recursive: true });
   const tmp = `${filePath}.${process.pid}.tmp`;
-  import_fs19.default.writeFileSync(tmp, JSON.stringify(value, null, 2), "utf-8");
-  import_fs19.default.renameSync(tmp, filePath);
+  import_fs20.default.writeFileSync(tmp, JSON.stringify(value, null, 2), "utf-8");
+  import_fs20.default.renameSync(tmp, filePath);
 }
-function validateOption(key, value, spec) {
+function validateOption(key2, value, spec) {
   if (value === void 0 || value === null || value === "") return;
   const type = spec.type;
   if (type === "string" && spec.multiple === true) {
     if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
-      throw new Error(`${key} must be an array of strings`);
+      throw new Error(`${key2} must be an array of strings`);
     }
     return;
   }
-  if (type === "boolean" && typeof value !== "boolean") throw new Error(`${key} must be a boolean`);
+  if (type === "boolean" && typeof value !== "boolean") throw new Error(`${key2} must be a boolean`);
   if (type === "number") {
-    if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${key} must be a finite number`);
-    if (typeof spec.min === "number" && value < spec.min) throw new Error(`${key} must be at least ${spec.min}`);
-    if (typeof spec.max === "number" && value > spec.max) throw new Error(`${key} must be at most ${spec.max}`);
+    if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${key2} must be a finite number`);
+    if (typeof spec.min === "number" && value < spec.min) throw new Error(`${key2} must be at least ${spec.min}`);
+    if (typeof spec.max === "number" && value > spec.max) throw new Error(`${key2} must be at most ${spec.max}`);
   }
   if (["string", "directory", "file"].includes(type) && typeof value !== "string") {
-    throw new Error(`${key} must be a string`);
+    throw new Error(`${key2} must be a string`);
   }
   const allowed = Array.isArray(spec.enum) ? spec.enum : Array.isArray(spec.options) ? spec.options : null;
   if (allowed && !allowed.some((candidate) => Object.is(candidate, value))) {
-    throw new Error(`${key} must be one of: ${allowed.map(String).join(", ")}`);
+    throw new Error(`${key2} must be one of: ${allowed.map(String).join(", ")}`);
   }
 }
 function registerOptionsHandlers(reloadRuntime) {
@@ -46423,10 +46494,10 @@ function registerOptionsHandlers(reloadRuntime) {
     if (typeof pluginId !== "string" || !pluginId.includes("@")) {
       return { schema: {}, values: {}, sensitiveKeys: [] };
     }
-    const pluginsFile = import_path20.default.join(import_os16.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+    const pluginsFile = import_path21.default.join(import_os16.default.homedir(), ".claude", "plugins", "installed_plugins.json");
     let installPath = "";
     try {
-      const data = JSON.parse(import_fs19.default.readFileSync(pluginsFile, "utf-8"));
+      const data = JSON.parse(import_fs20.default.readFileSync(pluginsFile, "utf-8"));
       installPath = data?.plugins?.[pluginId]?.[0]?.installPath || "";
     } catch {
     }
@@ -46436,7 +46507,7 @@ function registerOptionsHandlers(reloadRuntime) {
     const schema = manifest?.userConfig && typeof manifest.userConfig === "object" ? manifest.userConfig : {};
     const nonSensitive = {};
     try {
-      const settings = JSON.parse(import_fs19.default.readFileSync(import_path20.default.join(import_os16.default.homedir(), ".claude", "settings.json"), "utf-8"));
+      const settings = JSON.parse(import_fs20.default.readFileSync(import_path21.default.join(import_os16.default.homedir(), ".claude", "settings.json"), "utf-8"));
       const opts = settings?.pluginConfigs?.[pluginId]?.options;
       if (opts && typeof opts === "object") Object.assign(nonSensitive, opts);
     } catch {
@@ -46458,10 +46529,10 @@ function registerOptionsHandlers(reloadRuntime) {
       throw new Error("Invalid pluginId");
     }
     if (!values || typeof values !== "object") throw new Error("Invalid values");
-    const pluginsFile = import_path20.default.join(import_os16.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+    const pluginsFile = import_path21.default.join(import_os16.default.homedir(), ".claude", "plugins", "installed_plugins.json");
     let installPath = "";
     try {
-      const data = JSON.parse(import_fs19.default.readFileSync(pluginsFile, "utf-8"));
+      const data = JSON.parse(import_fs20.default.readFileSync(pluginsFile, "utf-8"));
       installPath = data?.plugins?.[pluginId]?.[0]?.installPath || "";
     } catch {
     }
@@ -46471,78 +46542,78 @@ function registerOptionsHandlers(reloadRuntime) {
       const manifest = await readEffectivePluginManifest(installPath, pluginId.slice(0, at), pluginId.slice(at + 1));
       if (manifest.userConfig && typeof manifest.userConfig === "object") schema = manifest.userConfig;
     }
-    for (const key of Object.keys(values)) {
-      if (!Object.prototype.hasOwnProperty.call(schema, key)) throw new Error(`Unknown plugin option: ${key}`);
-      validateOption(key, values[key], schema[key] ?? {});
+    for (const key2 of Object.keys(values)) {
+      if (!Object.prototype.hasOwnProperty.call(schema, key2)) throw new Error(`Unknown plugin option: ${key2}`);
+      validateOption(key2, values[key2], schema[key2] ?? {});
     }
     let existingOptions = {};
     let existingSecrets = {};
     try {
-      existingOptions = JSON.parse(import_fs19.default.readFileSync(import_path20.default.join(import_os16.default.homedir(), ".claude", "settings.json"), "utf-8"))?.pluginConfigs?.[pluginId]?.options ?? {};
+      existingOptions = JSON.parse(import_fs20.default.readFileSync(import_path21.default.join(import_os16.default.homedir(), ".claude", "settings.json"), "utf-8"))?.pluginConfigs?.[pluginId]?.options ?? {};
     } catch {
     }
     try {
-      existingSecrets = JSON.parse(import_fs19.default.readFileSync(import_path20.default.join(import_os16.default.homedir(), ".claude", ".credentials.json"), "utf-8"))?.pluginSecrets?.[pluginId] ?? {};
+      existingSecrets = JSON.parse(import_fs20.default.readFileSync(import_path21.default.join(import_os16.default.homedir(), ".claude", ".credentials.json"), "utf-8"))?.pluginSecrets?.[pluginId] ?? {};
     } catch {
     }
-    for (const [key, spec] of Object.entries(schema)) {
+    for (const [key2, spec] of Object.entries(schema)) {
       if (!spec || typeof spec !== "object" || spec.required !== true) continue;
-      const candidate = Object.prototype.hasOwnProperty.call(values, key) ? values[key] : existingSecrets[key] ?? existingOptions[key] ?? spec.default;
+      const candidate = Object.prototype.hasOwnProperty.call(values, key2) ? values[key2] : existingSecrets[key2] ?? existingOptions[key2] ?? spec.default;
       if (candidate === void 0 || candidate === null || candidate === "" || Array.isArray(candidate) && candidate.length === 0) {
-        throw new Error(`Required plugin option is missing: ${key}`);
+        throw new Error(`Required plugin option is missing: ${key2}`);
       }
-      validateOption(key, candidate, spec);
+      validateOption(key2, candidate, spec);
     }
-    const settingsPath = import_path20.default.join(import_os16.default.homedir(), ".claude", "settings.json");
+    const settingsPath = import_path21.default.join(import_os16.default.homedir(), ".claude", "settings.json");
     let settings = {};
-    if (import_fs19.default.existsSync(settingsPath)) {
+    if (import_fs20.default.existsSync(settingsPath)) {
       try {
-        settings = JSON.parse(import_fs19.default.readFileSync(settingsPath, "utf-8"));
+        settings = JSON.parse(import_fs20.default.readFileSync(settingsPath, "utf-8"));
       } catch {
       }
     }
     if (!settings.pluginConfigs) settings.pluginConfigs = {};
     if (!settings.pluginConfigs[pluginId]) settings.pluginConfigs[pluginId] = {};
     const nextOptions = { ...settings.pluginConfigs[pluginId].options || {} };
-    for (const [key, spec] of Object.entries(schema)) {
-      if (spec?.sensitive === true) delete nextOptions[key];
+    for (const [key2, spec] of Object.entries(schema)) {
+      if (spec?.sensitive === true) delete nextOptions[key2];
     }
-    for (const [key, value] of Object.entries(values)) {
-      if (schema[key]?.sensitive === true) continue;
-      if (value === null) delete nextOptions[key];
-      else nextOptions[key] = value;
+    for (const [key2, value] of Object.entries(values)) {
+      if (schema[key2]?.sensitive === true) continue;
+      if (value === null) delete nextOptions[key2];
+      else nextOptions[key2] = value;
     }
     settings.pluginConfigs[pluginId].options = nextOptions;
     writeJsonAtomic2(settingsPath, settings);
-    const credsPath = import_path20.default.join(import_os16.default.homedir(), ".claude", ".credentials.json");
+    const credsPath = import_path21.default.join(import_os16.default.homedir(), ".claude", ".credentials.json");
     let creds = {};
-    if (import_fs19.default.existsSync(credsPath)) {
+    if (import_fs20.default.existsSync(credsPath)) {
       try {
-        creds = JSON.parse(import_fs19.default.readFileSync(credsPath, "utf-8"));
+        creds = JSON.parse(import_fs20.default.readFileSync(credsPath, "utf-8"));
       } catch {
       }
     }
     if (!creds.pluginSecrets) creds.pluginSecrets = {};
     const nextSecrets = { ...creds.pluginSecrets[pluginId] || {} };
-    for (const [key, spec] of Object.entries(schema)) {
+    for (const [key2, spec] of Object.entries(schema)) {
       if (spec?.sensitive !== true) continue;
-      if (!Object.prototype.hasOwnProperty.call(values, key) && !Object.prototype.hasOwnProperty.call(nextSecrets, key) && Object.prototype.hasOwnProperty.call(existingOptions, key)) {
-        nextSecrets[key] = existingOptions[key];
+      if (!Object.prototype.hasOwnProperty.call(values, key2) && !Object.prototype.hasOwnProperty.call(nextSecrets, key2) && Object.prototype.hasOwnProperty.call(existingOptions, key2)) {
+        nextSecrets[key2] = existingOptions[key2];
       }
     }
-    for (const [key, spec] of Object.entries(schema)) {
-      if (spec?.sensitive !== true) delete nextSecrets[key];
+    for (const [key2, spec] of Object.entries(schema)) {
+      if (spec?.sensitive !== true) delete nextSecrets[key2];
     }
-    for (const [key, value] of Object.entries(values)) {
-      if (schema[key]?.sensitive !== true) continue;
-      if (value === null) delete nextSecrets[key];
-      else nextSecrets[key] = value;
+    for (const [key2, value] of Object.entries(values)) {
+      if (schema[key2]?.sensitive !== true) continue;
+      if (value === null) delete nextSecrets[key2];
+      else nextSecrets[key2] = value;
     }
     if (Object.keys(nextSecrets).length > 0) creds.pluginSecrets[pluginId] = nextSecrets;
     else delete creds.pluginSecrets[pluginId];
     writeJsonAtomic2(credsPath, creds);
     try {
-      import_fs19.default.chmodSync(credsPath, 384);
+      import_fs20.default.chmodSync(credsPath, 384);
     } catch {
     }
     await reloadRuntime();
@@ -46552,18 +46623,18 @@ function registerOptionsHandlers(reloadRuntime) {
 
 // src/main/ipc/plugins/handlers-browse.ts
 init_host_compat();
-var import_path21 = __toESM(require("path"), 1);
-var import_fs20 = __toESM(require("fs"), 1);
+var import_path22 = __toESM(require("path"), 1);
+var import_fs21 = __toESM(require("fs"), 1);
 var import_os17 = __toESM(require("os"), 1);
 function registerBrowseHandlers() {
   ipcMain.handle("plugins:browse-marketplace", async (event, marketplaceName) => {
-    const knownFile = import_path21.default.join(import_os17.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
+    const knownFile = import_path22.default.join(import_os17.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
     try {
       let scanPluginDir2 = function(dir, pluginDirName) {
-        const manifestPath = import_path21.default.join(dir, ".claude-plugin", "plugin.json");
-        const commandsDir = import_path21.default.join(dir, "commands");
-        const hasManifest = import_fs20.default.existsSync(manifestPath);
-        const hasCommands = import_fs20.default.existsSync(commandsDir) && import_fs20.default.statSync(commandsDir).isDirectory();
+        const manifestPath = import_path22.default.join(dir, ".claude-plugin", "plugin.json");
+        const commandsDir = import_path22.default.join(dir, "commands");
+        const hasManifest = import_fs21.default.existsSync(manifestPath);
+        const hasCommands = import_fs21.default.existsSync(commandsDir) && import_fs21.default.statSync(commandsDir).isDirectory();
         if (!hasManifest && !hasCommands) return;
         let name = pluginDirName;
         let version = "";
@@ -46572,7 +46643,7 @@ function registerBrowseHandlers() {
         let keywords = [];
         if (hasManifest) {
           try {
-            const manifest = JSON.parse(import_fs20.default.readFileSync(manifestPath, "utf-8"));
+            const manifest = JSON.parse(import_fs21.default.readFileSync(manifestPath, "utf-8"));
             name = manifest.name || pluginDirName;
             version = manifest.version || "";
             description = manifest.description || "";
@@ -46581,13 +46652,13 @@ function registerBrowseHandlers() {
           } catch {
           }
         }
-        const key = `${name}@${marketplaceName}`;
+        const key2 = `${name}@${marketplaceName}`;
         const counts = countPluginContents(dir, baseDir);
         counts.lspServers = countPluginLspServers(name, marketplaceName, dir);
         let isCached = false;
-        if (installedKeys.has(key)) {
-          const ie = installedPluginsMap[key]?.[0];
-          if (ie?.installPath && import_fs20.default.existsSync(ie.installPath)) isCached = true;
+        if (installedKeys.has(key2)) {
+          const ie = installedPluginsMap[key2]?.[0];
+          if (ie?.installPath && import_fs21.default.existsSync(ie.installPath)) isCached = true;
         }
         results.push({
           name,
@@ -46597,24 +46668,24 @@ function registerBrowseHandlers() {
           marketplace: marketplaceName,
           keywords,
           pluginPath: dir,
-          isInstalled: installedKeys.has(key),
+          isInstalled: installedKeys.has(key2),
           isCached,
           hasCommands,
           counts
         });
       };
       var scanPluginDir = scanPluginDir2;
-      if (!import_fs20.default.existsSync(knownFile)) return [];
-      const known = JSON.parse(import_fs20.default.readFileSync(knownFile, "utf-8"));
+      if (!import_fs21.default.existsSync(knownFile)) return [];
+      const known = JSON.parse(import_fs21.default.readFileSync(knownFile, "utf-8"));
       const marketplace = known[marketplaceName];
       if (!marketplace?.installLocation) return [];
       const baseDir = marketplace.installLocation;
       let installedKeys = /* @__PURE__ */ new Set();
       let installedPluginsMap = {};
-      const installedFile = import_path21.default.join(import_os17.default.homedir(), ".claude", "plugins", "installed_plugins.json");
-      if (import_fs20.default.existsSync(installedFile)) {
+      const installedFile = import_path22.default.join(import_os17.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+      if (import_fs21.default.existsSync(installedFile)) {
         try {
-          const instData = JSON.parse(import_fs20.default.readFileSync(installedFile, "utf-8"));
+          const instData = JSON.parse(import_fs21.default.readFileSync(installedFile, "utf-8"));
           if (instData.version === 2 && instData.plugins) {
             installedKeys = new Set(Object.keys(instData.plugins));
             installedPluginsMap = instData.plugins;
@@ -46623,10 +46694,10 @@ function registerBrowseHandlers() {
         }
       }
       const results = [];
-      const marketplaceJsonPath = import_path21.default.join(baseDir, ".claude-plugin", "marketplace.json");
-      if (import_fs20.default.existsSync(marketplaceJsonPath)) {
+      const marketplaceJsonPath = import_path22.default.join(baseDir, ".claude-plugin", "marketplace.json");
+      if (import_fs21.default.existsSync(marketplaceJsonPath)) {
         try {
-          const mktData = JSON.parse(import_fs20.default.readFileSync(marketplaceJsonPath, "utf-8"));
+          const mktData = JSON.parse(import_fs21.default.readFileSync(marketplaceJsonPath, "utf-8"));
           if (Array.isArray(mktData.plugins)) {
             const seenNames = /* @__PURE__ */ new Set();
             const uniquePlugins = mktData.plugins.filter((pl) => {
@@ -46667,14 +46738,14 @@ function registerBrowseHandlers() {
                 };
               }
               const pluginDir = resolved.dir;
-              const hasCommands = import_fs20.default.existsSync(import_path21.default.join(pluginDir, "commands"));
-              const key = `${pluginName}@${marketplaceName}`;
+              const hasCommands = import_fs21.default.existsSync(import_path22.default.join(pluginDir, "commands"));
+              const key2 = `${pluginName}@${marketplaceName}`;
               let author = "";
               let keywords = [];
-              const pluginJsonPath = import_path21.default.join(pluginDir, ".claude-plugin", "plugin.json");
-              if (import_fs20.default.existsSync(pluginJsonPath)) {
+              const pluginJsonPath = import_path22.default.join(pluginDir, ".claude-plugin", "plugin.json");
+              if (import_fs21.default.existsSync(pluginJsonPath)) {
                 try {
-                  const pj = JSON.parse(import_fs20.default.readFileSync(pluginJsonPath, "utf-8"));
+                  const pj = JSON.parse(import_fs21.default.readFileSync(pluginJsonPath, "utf-8"));
                   author = pj.author?.name || (typeof pj.author === "string" ? pj.author : "");
                   keywords = Array.isArray(pj.keywords) ? pj.keywords : [];
                 } catch {
@@ -46691,9 +46762,9 @@ function registerBrowseHandlers() {
               if (Array.isArray(p.commands)) counts.commands = p.commands.length;
               if (Array.isArray(p.agents)) counts.agents = p.agents.length;
               let isCached = false;
-              if (installedKeys.has(key)) {
-                const instEntry = installedPluginsMap[key]?.[0];
-                if (instEntry?.installPath && import_fs20.default.existsSync(instEntry.installPath)) isCached = true;
+              if (installedKeys.has(key2)) {
+                const instEntry = installedPluginsMap[key2]?.[0];
+                if (instEntry?.installPath && import_fs21.default.existsSync(instEntry.installPath)) isCached = true;
               }
               const srcTag = typeof p?.source === "object" ? p.source?.source : void 0;
               const isRemoteSource = srcTag === "url" || srcTag === "git" || srcTag === "github";
@@ -46705,7 +46776,7 @@ function registerBrowseHandlers() {
                 marketplace: marketplaceName,
                 keywords,
                 pluginPath: pluginDir,
-                isInstalled: installedKeys.has(key),
+                isInstalled: installedKeys.has(key2),
                 isCached,
                 hasCommands,
                 counts,
@@ -46746,23 +46817,23 @@ function registerBrowseHandlers() {
       }
       let scanDir;
       if (marketplaceName === "anthropic-agent-skills") {
-        scanDir = import_path21.default.join(baseDir, "skills");
+        scanDir = import_path22.default.join(baseDir, "skills");
       } else {
-        scanDir = import_path21.default.join(baseDir, "plugins");
+        scanDir = import_path22.default.join(baseDir, "plugins");
       }
-      if (!import_fs20.default.existsSync(scanDir)) return results;
-      const entries2 = import_fs20.default.readdirSync(scanDir, { withFileTypes: true }).filter((e) => e.isDirectory());
+      if (!import_fs21.default.existsSync(scanDir)) return results;
+      const entries2 = import_fs21.default.readdirSync(scanDir, { withFileTypes: true }).filter((e) => e.isDirectory());
       for (const entry of entries2) {
-        const entryPath = import_path21.default.join(scanDir, entry.name);
-        const hasManifest = import_fs20.default.existsSync(import_path21.default.join(entryPath, ".claude-plugin", "plugin.json"));
-        const hasCommands = import_fs20.default.existsSync(import_path21.default.join(entryPath, "commands"));
+        const entryPath = import_path22.default.join(scanDir, entry.name);
+        const hasManifest = import_fs21.default.existsSync(import_path22.default.join(entryPath, ".claude-plugin", "plugin.json"));
+        const hasCommands = import_fs21.default.existsSync(import_path22.default.join(entryPath, "commands"));
         if (hasManifest || hasCommands) {
           scanPluginDir2(entryPath, entry.name);
         } else {
           try {
-            const subEntries = import_fs20.default.readdirSync(entryPath, { withFileTypes: true }).filter((e) => e.isDirectory());
+            const subEntries = import_fs21.default.readdirSync(entryPath, { withFileTypes: true }).filter((e) => e.isDirectory());
             for (const sub of subEntries) {
-              scanPluginDir2(import_path21.default.join(entryPath, sub.name), sub.name);
+              scanPluginDir2(import_path22.default.join(entryPath, sub.name), sub.name);
             }
           } catch {
           }
@@ -46775,17 +46846,17 @@ function registerBrowseHandlers() {
   });
   ipcMain.handle("plugins:browse-nested-marketplace", (_event, pluginPath) => {
     try {
-      if (!pluginPath || !import_fs20.default.existsSync(pluginPath)) return [];
-      const mktJson = import_path21.default.join(pluginPath, ".claude-plugin", "marketplace.json");
-      if (!import_fs20.default.existsSync(mktJson)) return [];
-      const mktData = JSON.parse(import_fs20.default.readFileSync(mktJson, "utf-8"));
-      const nestedName = typeof mktData?.name === "string" ? mktData.name : import_path21.default.basename(pluginPath);
+      if (!pluginPath || !import_fs21.default.existsSync(pluginPath)) return [];
+      const mktJson = import_path22.default.join(pluginPath, ".claude-plugin", "marketplace.json");
+      if (!import_fs21.default.existsSync(mktJson)) return [];
+      const mktData = JSON.parse(import_fs21.default.readFileSync(mktJson, "utf-8"));
+      const nestedName = typeof mktData?.name === "string" ? mktData.name : import_path22.default.basename(pluginPath);
       const plugins = Array.isArray(mktData?.plugins) ? mktData.plugins : [];
-      const installedFile = import_path21.default.join(import_os17.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+      const installedFile = import_path22.default.join(import_os17.default.homedir(), ".claude", "plugins", "installed_plugins.json");
       let installedKeys = /* @__PURE__ */ new Set();
-      if (import_fs20.default.existsSync(installedFile)) {
+      if (import_fs21.default.existsSync(installedFile)) {
         try {
-          const inst = JSON.parse(import_fs20.default.readFileSync(installedFile, "utf-8"));
+          const inst = JSON.parse(import_fs21.default.readFileSync(installedFile, "utf-8"));
           if (inst?.version === 2 && inst?.plugins) installedKeys = new Set(Object.keys(inst.plugins));
         } catch {
         }
@@ -46795,23 +46866,23 @@ function registerBrowseHandlers() {
         const name = p.name || "unknown";
         let childDir = null;
         const src = p.source;
-        if (typeof src === "string") childDir = import_path21.default.isAbsolute(src) ? src : import_path21.default.join(pluginPath, src);
+        if (typeof src === "string") childDir = import_path22.default.isAbsolute(src) ? src : import_path22.default.join(pluginPath, src);
         else if (src && typeof src === "object" && src.source === "directory" && typeof src.path === "string") {
-          childDir = import_path21.default.isAbsolute(src.path) ? src.path : import_path21.default.join(pluginPath, src.path);
+          childDir = import_path22.default.isAbsolute(src.path) ? src.path : import_path22.default.join(pluginPath, src.path);
         }
-        if (!childDir || !import_fs20.default.existsSync(childDir)) {
-          const guess = import_path21.default.join(pluginPath, "plugins", name);
-          if (import_fs20.default.existsSync(guess)) childDir = guess;
+        if (!childDir || !import_fs21.default.existsSync(childDir)) {
+          const guess = import_path22.default.join(pluginPath, "plugins", name);
+          if (import_fs21.default.existsSync(guess)) childDir = guess;
         }
-        const key = `${name}@${nestedName}`;
+        const key2 = `${name}@${nestedName}`;
         const counts = childDir ? countPluginContents(childDir, pluginPath) : { commands: 0, agents: 0, skills: 0, lspServers: 0, mcpServers: 0, hooks: 0 };
         counts.lspServers = childDir ? countPluginLspServers(name, nestedName, childDir) : 0;
         let isCached = false;
-        if (installedKeys.has(key)) {
+        if (installedKeys.has(key2)) {
           try {
-            const instData = JSON.parse(import_fs20.default.readFileSync(installedFile, "utf-8"));
-            const ie = instData.plugins?.[key]?.[0];
-            if (ie?.installPath && import_fs20.default.existsSync(ie.installPath)) isCached = true;
+            const instData = JSON.parse(import_fs21.default.readFileSync(installedFile, "utf-8"));
+            const ie = instData.plugins?.[key2]?.[0];
+            if (ie?.installPath && import_fs21.default.existsSync(ie.installPath)) isCached = true;
           } catch {
           }
         }
@@ -46823,9 +46894,9 @@ function registerBrowseHandlers() {
           marketplace: nestedName,
           keywords: Array.isArray(p.keywords) ? p.keywords : [],
           pluginPath: childDir || "",
-          isInstalled: installedKeys.has(key),
+          isInstalled: installedKeys.has(key2),
           isCached,
-          hasCommands: !!childDir && import_fs20.default.existsSync(import_path21.default.join(childDir, "commands")),
+          hasCommands: !!childDir && import_fs21.default.existsSync(import_path22.default.join(childDir, "commands")),
           counts
         });
       }
@@ -46838,20 +46909,20 @@ function registerBrowseHandlers() {
 
 // src/main/ipc/plugins/handlers-source.ts
 init_host_compat();
-var import_path23 = __toESM(require("path"), 1);
-var import_fs22 = __toESM(require("fs"), 1);
+var import_path24 = __toESM(require("path"), 1);
+var import_fs23 = __toESM(require("fs"), 1);
 var import_os19 = __toESM(require("os"), 1);
 
 // src/main/plugins/sub-clone.ts
-var import_fs21 = __toESM(require("fs"), 1);
-var import_path22 = __toESM(require("path"), 1);
+var import_fs22 = __toESM(require("fs"), 1);
+var import_path23 = __toESM(require("path"), 1);
 var import_os18 = __toESM(require("os"), 1);
 async function pullSubClone(baseDir, pluginName) {
-  const pluginDir = import_path22.default.join(baseDir, "plugins", pluginName);
-  if (!import_fs21.default.existsSync(pluginDir)) {
+  const pluginDir = import_path23.default.join(baseDir, "plugins", pluginName);
+  if (!import_fs22.default.existsSync(pluginDir)) {
     return { pluginName, ok: true, skipped: "not-present" };
   }
-  if (!import_fs21.default.existsSync(import_path22.default.join(pluginDir, ".git"))) {
+  if (!import_fs22.default.existsSync(import_path23.default.join(pluginDir, ".git"))) {
     return { pluginName, ok: true, skipped: "no-git" };
   }
   try {
@@ -46864,11 +46935,11 @@ async function pullSubClone(baseDir, pluginName) {
   }
 }
 async function pullAllSubClones(baseDir) {
-  const pluginsDir = import_path22.default.join(baseDir, "plugins");
-  if (!import_fs21.default.existsSync(pluginsDir)) return [];
+  const pluginsDir = import_path23.default.join(baseDir, "plugins");
+  if (!import_fs22.default.existsSync(pluginsDir)) return [];
   let entries2 = [];
   try {
-    entries2 = import_fs21.default.readdirSync(pluginsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+    entries2 = import_fs22.default.readdirSync(pluginsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
   } catch {
     return [];
   }
@@ -46879,64 +46950,64 @@ async function pullAllSubClones(baseDir) {
   return results;
 }
 function syncPluginCacheFromSubClone(pluginName, marketplace, baseDir) {
-  const pluginSourcePath = import_path22.default.join(baseDir, "plugins", pluginName);
-  if (!import_fs21.default.existsSync(pluginSourcePath)) {
+  const pluginSourcePath = import_path23.default.join(baseDir, "plugins", pluginName);
+  if (!import_fs22.default.existsSync(pluginSourcePath)) {
     return { ok: false, error: "plugin source not found" };
   }
   let version = "1.0.0";
   try {
-    const pj = import_path22.default.join(pluginSourcePath, ".claude-plugin", "plugin.json");
-    if (import_fs21.default.existsSync(pj)) {
-      const manifest = JSON.parse(import_fs21.default.readFileSync(pj, "utf-8"));
+    const pj = import_path23.default.join(pluginSourcePath, ".claude-plugin", "plugin.json");
+    if (import_fs22.default.existsSync(pj)) {
+      const manifest = JSON.parse(import_fs22.default.readFileSync(pj, "utf-8"));
       if (manifest.version) version = manifest.version;
     } else {
-      const mktJsonPath = import_path22.default.join(baseDir, ".claude-plugin", "marketplace.json");
-      if (import_fs21.default.existsSync(mktJsonPath)) {
-        const mktData = JSON.parse(import_fs21.default.readFileSync(mktJsonPath, "utf-8"));
+      const mktJsonPath = import_path23.default.join(baseDir, ".claude-plugin", "marketplace.json");
+      if (import_fs22.default.existsSync(mktJsonPath)) {
+        const mktData = JSON.parse(import_fs22.default.readFileSync(mktJsonPath, "utf-8"));
         const found = mktData.plugins?.find((p) => p.name === pluginName);
         if (found?.version) version = found.version;
       }
     }
   } catch {
   }
-  const installedFile = import_path22.default.join(import_os18.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+  const installedFile = import_path23.default.join(import_os18.default.homedir(), ".claude", "plugins", "installed_plugins.json");
   let data = { version: 2, plugins: {} };
-  if (import_fs21.default.existsSync(installedFile)) {
+  if (import_fs22.default.existsSync(installedFile)) {
     try {
-      data = JSON.parse(import_fs21.default.readFileSync(installedFile, "utf-8"));
+      data = JSON.parse(import_fs22.default.readFileSync(installedFile, "utf-8"));
     } catch {
     }
   }
-  const key = `${pluginName}@${marketplace}`;
-  if (!data.plugins?.[key]) {
+  const key2 = `${pluginName}@${marketplace}`;
+  if (!data.plugins?.[key2]) {
     return { ok: true, version };
   }
-  const pluginCacheParent = import_path22.default.join(import_os18.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName);
-  const cacheDir = import_path22.default.join(pluginCacheParent, version);
+  const pluginCacheParent = import_path23.default.join(import_os18.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName);
+  const cacheDir = import_path23.default.join(pluginCacheParent, version);
   try {
     let copyDir2 = function(src, dest) {
-      import_fs21.default.mkdirSync(dest, { recursive: true });
-      for (const entry of import_fs21.default.readdirSync(src, { withFileTypes: true })) {
+      import_fs22.default.mkdirSync(dest, { recursive: true });
+      for (const entry of import_fs22.default.readdirSync(src, { withFileTypes: true })) {
         if (skipDirs.has(entry.name)) continue;
-        const srcPath = import_path22.default.join(src, entry.name);
-        const destPath = import_path22.default.join(dest, entry.name);
+        const srcPath = import_path23.default.join(src, entry.name);
+        const destPath = import_path23.default.join(dest, entry.name);
         if (entry.isDirectory()) copyDir2(srcPath, destPath);
-        else import_fs21.default.copyFileSync(srcPath, destPath);
+        else import_fs22.default.copyFileSync(srcPath, destPath);
       }
     };
     var copyDir = copyDir2;
-    if (import_fs21.default.existsSync(pluginCacheParent)) {
-      import_fs21.default.rmSync(pluginCacheParent, { recursive: true, force: true });
+    if (import_fs22.default.existsSync(pluginCacheParent)) {
+      import_fs22.default.rmSync(pluginCacheParent, { recursive: true, force: true });
     }
-    import_fs21.default.mkdirSync(cacheDir, { recursive: true });
+    import_fs22.default.mkdirSync(cacheDir, { recursive: true });
     const skipDirs = /* @__PURE__ */ new Set(["node_modules", ".git", "__pycache__", ".venv"]);
     copyDir2(pluginSourcePath, cacheDir);
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
   const now = (/* @__PURE__ */ new Date()).toISOString();
-  const existing = data.plugins[key]?.[0];
-  data.plugins[key] = [{
+  const existing = data.plugins[key2]?.[0];
+  data.plugins[key2] = [{
     scope: existing?.scope || "user",
     installPath: cacheDir,
     version,
@@ -46944,7 +47015,7 @@ function syncPluginCacheFromSubClone(pluginName, marketplace, baseDir) {
     lastUpdated: now
   }];
   try {
-    import_fs21.default.writeFileSync(installedFile, JSON.stringify(data, null, 2), "utf-8");
+    import_fs22.default.writeFileSync(installedFile, JSON.stringify(data, null, 2), "utf-8");
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -46955,42 +47026,42 @@ function syncPluginCacheFromSubClone(pluginName, marketplace, baseDir) {
 init_plugin_helpers();
 function registerSourceHandlers(reloadMcp) {
   ipcMain.handle("plugins:get-source-path", async (_event, pluginName, marketplace) => {
-    const knownFile = import_path23.default.join(import_os19.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
-    if (!import_fs22.default.existsSync(knownFile)) return null;
+    const knownFile = import_path24.default.join(import_os19.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
+    if (!import_fs23.default.existsSync(knownFile)) return null;
     try {
-      const known = JSON.parse(import_fs22.default.readFileSync(knownFile, "utf-8"));
+      const known = JSON.parse(import_fs23.default.readFileSync(knownFile, "utf-8"));
       const mktInfo = known[marketplace];
       if (!mktInfo?.installLocation) return null;
       const baseDir = mktInfo.installLocation;
-      const mktJsonPath = import_path23.default.join(baseDir, ".claude-plugin", "marketplace.json");
-      if (import_fs22.default.existsSync(mktJsonPath)) {
-        const mktData = JSON.parse(import_fs22.default.readFileSync(mktJsonPath, "utf-8"));
+      const mktJsonPath = import_path24.default.join(baseDir, ".claude-plugin", "marketplace.json");
+      if (import_fs23.default.existsSync(mktJsonPath)) {
+        const mktData = JSON.parse(import_fs23.default.readFileSync(mktJsonPath, "utf-8"));
         const found = mktData.plugins?.find((p) => p.name === pluginName);
         if (found?.source) {
           const resolved = await resolvePluginSource(found, marketplace, baseDir);
-          if (resolved.dir && import_fs22.default.existsSync(resolved.dir)) return resolved.dir;
+          if (resolved.dir && import_fs23.default.existsSync(resolved.dir)) return resolved.dir;
         }
       }
-      const subDir = import_path23.default.join(baseDir, pluginName);
-      if (import_fs22.default.existsSync(subDir)) return subDir;
+      const subDir = import_path24.default.join(baseDir, pluginName);
+      if (import_fs23.default.existsSync(subDir)) return subDir;
       return baseDir;
     } catch {
       return null;
     }
   });
   ipcMain.handle("plugins:sync-cache", async (_event, pluginName, marketplace) => {
-    const knownFile = import_path23.default.join(import_os19.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
-    if (!import_fs22.default.existsSync(knownFile)) throw new Error("No marketplaces configured");
-    const known = JSON.parse(import_fs22.default.readFileSync(knownFile, "utf-8"));
+    const knownFile = import_path24.default.join(import_os19.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
+    if (!import_fs23.default.existsSync(knownFile)) throw new Error("No marketplaces configured");
+    const known = JSON.parse(import_fs23.default.readFileSync(knownFile, "utf-8"));
     const mktInfo = known[marketplace];
     if (!mktInfo?.installLocation) throw new Error(`Marketplace "${marketplace}" not found`);
     const baseDir = mktInfo.installLocation;
     let pluginSourcePath = "";
     let mktVersion = "";
-    const mktJsonPath = import_path23.default.join(baseDir, ".claude-plugin", "marketplace.json");
-    if (import_fs22.default.existsSync(mktJsonPath)) {
+    const mktJsonPath = import_path24.default.join(baseDir, ".claude-plugin", "marketplace.json");
+    if (import_fs23.default.existsSync(mktJsonPath)) {
       try {
-        const mktData = JSON.parse(import_fs22.default.readFileSync(mktJsonPath, "utf-8"));
+        const mktData = JSON.parse(import_fs23.default.readFileSync(mktJsonPath, "utf-8"));
         if (Array.isArray(mktData.plugins)) {
           const found = mktData.plugins.find((p) => p.name === pluginName);
           if (found?.source) {
@@ -47004,17 +47075,17 @@ function registerSourceHandlers(reloadMcp) {
       } catch {
       }
     }
-    if (!pluginSourcePath || !import_fs22.default.existsSync(pluginSourcePath)) {
-      pluginSourcePath = import_path23.default.join(baseDir, pluginName);
+    if (!pluginSourcePath || !import_fs23.default.existsSync(pluginSourcePath)) {
+      pluginSourcePath = import_path24.default.join(baseDir, pluginName);
     }
-    if (!import_fs22.default.existsSync(pluginSourcePath)) {
+    if (!import_fs23.default.existsSync(pluginSourcePath)) {
       pluginSourcePath = baseDir;
     }
     let version = "1.0.0";
     try {
-      const pj = import_path23.default.join(pluginSourcePath, ".claude-plugin", "plugin.json");
-      if (import_fs22.default.existsSync(pj)) {
-        const manifest = JSON.parse(import_fs22.default.readFileSync(pj, "utf-8"));
+      const pj = import_path24.default.join(pluginSourcePath, ".claude-plugin", "plugin.json");
+      if (import_fs23.default.existsSync(pj)) {
+        const manifest = JSON.parse(import_fs23.default.readFileSync(pj, "utf-8"));
         if (manifest.version) version = manifest.version;
       } else if (mktVersion) {
         version = mktVersion;
@@ -47022,77 +47093,77 @@ function registerSourceHandlers(reloadMcp) {
     } catch {
       if (mktVersion) version = mktVersion;
     }
-    const pluginCacheParent = import_path23.default.join(import_os19.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName);
-    const cacheDir = import_path23.default.join(pluginCacheParent, version);
-    if (import_fs22.default.existsSync(pluginCacheParent)) {
-      import_fs22.default.rmSync(pluginCacheParent, { recursive: true, force: true });
+    const pluginCacheParent = import_path24.default.join(import_os19.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName);
+    const cacheDir = import_path24.default.join(pluginCacheParent, version);
+    if (import_fs23.default.existsSync(pluginCacheParent)) {
+      import_fs23.default.rmSync(pluginCacheParent, { recursive: true, force: true });
     }
-    import_fs22.default.mkdirSync(cacheDir, { recursive: true });
+    import_fs23.default.mkdirSync(cacheDir, { recursive: true });
     const skipDirs = /* @__PURE__ */ new Set(["node_modules", ".git", "__pycache__", ".venv"]);
     function copyDir(src, dest) {
-      import_fs22.default.mkdirSync(dest, { recursive: true });
-      const entries2 = import_fs22.default.readdirSync(src, { withFileTypes: true });
+      import_fs23.default.mkdirSync(dest, { recursive: true });
+      const entries2 = import_fs23.default.readdirSync(src, { withFileTypes: true });
       for (const entry of entries2) {
         if (skipDirs.has(entry.name)) continue;
-        const srcPath = import_path23.default.join(src, entry.name);
-        const destPath = import_path23.default.join(dest, entry.name);
+        const srcPath = import_path24.default.join(src, entry.name);
+        const destPath = import_path24.default.join(dest, entry.name);
         if (entry.isDirectory()) {
           copyDir(srcPath, destPath);
         } else {
-          import_fs22.default.copyFileSync(srcPath, destPath);
+          import_fs23.default.copyFileSync(srcPath, destPath);
           try {
-            import_fs22.default.chmodSync(destPath, import_fs22.default.statSync(srcPath).mode);
+            import_fs23.default.chmodSync(destPath, import_fs23.default.statSync(srcPath).mode);
           } catch {
           }
         }
       }
     }
     copyDir(pluginSourcePath, cacheDir);
-    const installedFile = import_path23.default.join(import_os19.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+    const installedFile = import_path24.default.join(import_os19.default.homedir(), ".claude", "plugins", "installed_plugins.json");
     let data = { version: 2, plugins: {} };
-    if (import_fs22.default.existsSync(installedFile)) {
+    if (import_fs23.default.existsSync(installedFile)) {
       try {
-        data = JSON.parse(import_fs22.default.readFileSync(installedFile, "utf-8"));
+        data = JSON.parse(import_fs23.default.readFileSync(installedFile, "utf-8"));
       } catch {
       }
     }
-    const key = `${pluginName}@${marketplace}`;
+    const key2 = `${pluginName}@${marketplace}`;
     const dependencyManifest = mergeMarketplaceDependencies(pluginName, marketplace, await readPluginManifest(pluginSourcePath) ?? {});
     const now = (/* @__PURE__ */ new Date()).toISOString();
-    const existing = data.plugins[key]?.[0];
-    data.plugins[key] = [{
+    const existing = data.plugins[key2]?.[0];
+    data.plugins[key2] = [{
       scope: existing?.scope || "user",
       installPath: cacheDir,
       version,
       installedAt: existing?.installedAt || now,
       lastUpdated: now
     }];
-    import_fs22.default.writeFileSync(installedFile, JSON.stringify(data, null, 2), "utf-8");
-    await enableRequiredPluginDependencies(key, dependencyManifest);
-    await requestHookApproval(key, cacheDir);
+    import_fs23.default.writeFileSync(installedFile, JSON.stringify(data, null, 2), "utf-8");
+    await enableRequiredPluginDependencies(key2, dependencyManifest);
+    await requestHookApproval(key2, cacheDir);
     await reloadMcp();
     return { version, cacheDir };
   });
   ipcMain.handle("plugins:retry-plugin-source", (_event, pluginName, marketplace) => {
     try {
-      const knownFile = import_path23.default.join(import_os19.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
-      if (!import_fs22.default.existsSync(knownFile)) return { ok: false, error: "No marketplaces configured" };
-      const known = JSON.parse(import_fs22.default.readFileSync(knownFile, "utf-8"));
+      const knownFile = import_path24.default.join(import_os19.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
+      if (!import_fs23.default.existsSync(knownFile)) return { ok: false, error: "No marketplaces configured" };
+      const known = JSON.parse(import_fs23.default.readFileSync(knownFile, "utf-8"));
       const mktInfo = known[marketplace];
       if (!mktInfo?.installLocation) return { ok: false, error: `Marketplace "${marketplace}" not found` };
-      const targetDir = import_path23.default.join(mktInfo.installLocation, "plugins", pluginName);
-      if (import_fs22.default.existsSync(targetDir)) import_fs22.default.rmSync(targetDir, { recursive: true, force: true });
+      const targetDir = import_path24.default.join(mktInfo.installLocation, "plugins", pluginName);
+      if (import_fs23.default.existsSync(targetDir)) import_fs23.default.rmSync(targetDir, { recursive: true, force: true });
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
   ipcMain.handle("plugins:refresh-plugin-source", async (_event, pluginName, marketplace) => {
-    const knownFile = import_path23.default.join(import_os19.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
-    if (!import_fs22.default.existsSync(knownFile)) return { ok: false, error: "No marketplaces configured" };
+    const knownFile = import_path24.default.join(import_os19.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
+    if (!import_fs23.default.existsSync(knownFile)) return { ok: false, error: "No marketplaces configured" };
     let known;
     try {
-      known = JSON.parse(import_fs22.default.readFileSync(knownFile, "utf-8"));
+      known = JSON.parse(import_fs23.default.readFileSync(knownFile, "utf-8"));
     } catch {
       return { ok: false, error: "known_marketplaces.json malformed" };
     }
@@ -47111,15 +47182,15 @@ function registerSourceHandlers(reloadMcp) {
       return { ok: false, changed: pullResult.changed, error: `Pull OK but cache sync failed: ${syncRes.error}` };
     }
     if (pullResult.changed) {
-      const key = `${pluginName}@${marketplace}`;
+      const key2 = `${pluginName}@${marketplace}`;
       let refreshedRoot = "";
       try {
-        refreshedRoot = JSON.parse(import_fs22.default.readFileSync(import_path23.default.join(import_os19.default.homedir(), ".claude", "plugins", "installed_plugins.json"), "utf-8"))?.plugins?.[key]?.[0]?.installPath ?? "";
+        refreshedRoot = JSON.parse(import_fs23.default.readFileSync(import_path24.default.join(import_os19.default.homedir(), ".claude", "plugins", "installed_plugins.json"), "utf-8"))?.plugins?.[key2]?.[0]?.installPath ?? "";
       } catch {
       }
       if (refreshedRoot) {
-        await enableRequiredPluginDependencies(key, mergeMarketplaceDependencies(pluginName, marketplace, await readPluginManifest(refreshedRoot) ?? {}));
-        await requestHookApproval(key, refreshedRoot);
+        await enableRequiredPluginDependencies(key2, mergeMarketplaceDependencies(pluginName, marketplace, await readPluginManifest(refreshedRoot) ?? {}));
+        await requestHookApproval(key2, refreshedRoot);
       }
       await reloadMcp();
     }
@@ -47148,25 +47219,25 @@ function registerPluginsIPC(ctx = {}) {
 init_host_compat();
 
 // src/main/marketplace/known-store.ts
-var import_fs23 = __toESM(require("fs"), 1);
+var import_fs24 = __toESM(require("fs"), 1);
 var import_os20 = __toESM(require("os"), 1);
-var import_path24 = __toESM(require("path"), 1);
+var import_path25 = __toESM(require("path"), 1);
 function knownMarketplacesPath() {
-  return import_path24.default.join(import_os20.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
+  return import_path25.default.join(import_os20.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
 }
 function readKnownMarketplaces() {
   const file = knownMarketplacesPath();
-  if (!import_fs23.default.existsSync(file)) return {};
+  if (!import_fs24.default.existsSync(file)) return {};
   try {
-    return JSON.parse(import_fs23.default.readFileSync(file, "utf-8"));
+    return JSON.parse(import_fs24.default.readFileSync(file, "utf-8"));
   } catch {
     return {};
   }
 }
 function writeKnownMarketplaces(data) {
   const file = knownMarketplacesPath();
-  import_fs23.default.mkdirSync(import_path24.default.dirname(file), { recursive: true });
-  import_fs23.default.writeFileSync(file, JSON.stringify(data, null, 2), "utf-8");
+  import_fs24.default.mkdirSync(import_path25.default.dirname(file), { recursive: true });
+  import_fs24.default.writeFileSync(file, JSON.stringify(data, null, 2), "utf-8");
 }
 
 // src/main/marketplace/list.ts
@@ -47184,12 +47255,12 @@ function listMarketplaces() {
 }
 
 // src/main/marketplace/clone.ts
-var import_fs25 = __toESM(require("fs"), 1);
+var import_fs26 = __toESM(require("fs"), 1);
 var import_os21 = __toESM(require("os"), 1);
-var import_path26 = __toESM(require("path"), 1);
+var import_path27 = __toESM(require("path"), 1);
 
 // src/main/validators.ts
-var import_path25 = __toESM(require("path"), 1);
+var import_path26 = __toESM(require("path"), 1);
 var VALID_NAME = /^[A-Za-z0-9._-]{1,64}$/;
 var VALID_GIT_URL = /^(https?:\/\/|git@|ssh:\/\/|git:\/\/)[A-Za-z0-9._\-\/:@+%~]{4,512}(\.git)?$/;
 function assertValidName(s, field) {
@@ -47199,14 +47270,14 @@ function assertValidGitUrl(u) {
   if (typeof u !== "string" || !VALID_GIT_URL.test(u)) throw new Error(`Invalid git URL: ${u}`);
 }
 function assertAbsolutePath(p, field) {
-  if (typeof p !== "string" || !import_path25.default.isAbsolute(p)) throw new Error(`Invalid ${field}: ${p}`);
+  if (typeof p !== "string" || !import_path26.default.isAbsolute(p)) throw new Error(`Invalid ${field}: ${p}`);
 }
 
 // src/main/fs-helpers.ts
-var import_fs24 = __toESM(require("fs"), 1);
+var import_fs25 = __toESM(require("fs"), 1);
 function silentRm(target) {
   try {
-    import_fs24.default.rmSync(target, { recursive: true, force: true });
+    import_fs25.default.rmSync(target, { recursive: true, force: true });
   } catch {
   }
 }
@@ -47224,7 +47295,7 @@ async function cloneMarketplace({ name, rawInput, auth }) {
   if (SHORTFORM.test(input)) {
     sourceBlock = { source: "github", repo: input };
     cloneUrl = `https://github.com/${input}.git`;
-  } else if (import_path26.default.isAbsolute(input) && import_fs25.default.existsSync(input) && import_fs25.default.statSync(input).isDirectory()) {
+  } else if (import_path27.default.isAbsolute(input) && import_fs26.default.existsSync(input) && import_fs26.default.statSync(input).isDirectory()) {
     sourceBlock = { source: "directory", path: input };
     localPath = input;
   } else {
@@ -47232,7 +47303,7 @@ async function cloneMarketplace({ name, rawInput, auth }) {
     sourceBlock = { source: "git", url: input };
     cloneUrl = input;
   }
-  const installLocation = sourceBlock.source === "directory" ? localPath : import_path26.default.join(import_os21.default.homedir(), ".claude", "plugins", "marketplaces", name);
+  const installLocation = sourceBlock.source === "directory" ? localPath : import_path27.default.join(import_os21.default.homedir(), ".claude", "plugins", "marketplaces", name);
   const token = auth?.token?.trim() || "";
   const username = auth?.username?.trim() || "oauth2";
   const hasToken = Boolean(token && cloneUrl && /^https?:\/\//i.test(cloneUrl));
@@ -47244,9 +47315,9 @@ async function cloneMarketplace({ name, rawInput, auth }) {
     sourceBlock = { source: "git", url: authedUrl };
   }
   if (cloneUrl) {
-    if (import_fs25.default.existsSync(installLocation)) {
-      const gitDir = import_path26.default.join(installLocation, ".git");
-      if (!import_fs25.default.existsSync(gitDir)) {
+    if (import_fs26.default.existsSync(installLocation)) {
+      const gitDir = import_path27.default.join(installLocation, ".git");
+      if (!import_fs26.default.existsSync(gitDir)) {
         silentRm(installLocation);
       } else {
         throw new Error(`Marketplace "${name}" already cloned at ${installLocation}`);
@@ -47294,9 +47365,9 @@ ${stdout}`
 }
 
 // src/main/marketplace/refresh.ts
-var import_fs26 = __toESM(require("fs"), 1);
+var import_fs27 = __toESM(require("fs"), 1);
 async function refreshMarketplaceOnce(name) {
-  if (!import_fs26.default.existsSync(knownMarketplacesPath())) return { ok: false, error: "known_marketplaces.json not found" };
+  if (!import_fs27.default.existsSync(knownMarketplacesPath())) return { ok: false, error: "known_marketplaces.json not found" };
   assertValidName(name, "marketplace name");
   const known = readKnownMarketplaces();
   const entry = known[name];
@@ -47352,7 +47423,7 @@ ${stderr}`
   }
 }
 async function refreshAllMarketplaces(window9) {
-  if (!import_fs26.default.existsSync(knownMarketplacesPath())) return { ok: true, results: [] };
+  if (!import_fs27.default.existsSync(knownMarketplacesPath())) return { ok: true, results: [] };
   const known = readKnownMarketplaces();
   const names = Object.keys(known).filter((n) => known[n]?.autoUpdate !== false);
   const results = [];
@@ -47384,11 +47455,11 @@ async function refreshAllMarketplaces(window9) {
 }
 
 // src/main/marketplace/auth.ts
-var import_fs27 = __toESM(require("fs"), 1);
-var import_path27 = __toESM(require("path"), 1);
+var import_fs28 = __toESM(require("fs"), 1);
+var import_path28 = __toESM(require("path"), 1);
 async function setMarketplaceAuth(name, auth) {
   assertValidName(name, "marketplace name");
-  if (!import_fs27.default.existsSync(knownMarketplacesPath())) return { ok: false, error: "known_marketplaces.json not found" };
+  if (!import_fs28.default.existsSync(knownMarketplacesPath())) return { ok: false, error: "known_marketplaces.json not found" };
   let known;
   try {
     known = readKnownMarketplaces();
@@ -47425,7 +47496,7 @@ async function setMarketplaceAuth(name, auth) {
     lastUpdated: (/* @__PURE__ */ new Date()).toISOString()
   };
   writeKnownMarketplaces(known);
-  if (entry.installLocation && import_fs27.default.existsSync(import_path27.default.join(entry.installLocation, ".git"))) {
+  if (entry.installLocation && import_fs28.default.existsSync(import_path28.default.join(entry.installLocation, ".git"))) {
     try {
       await runGit(["remote", "set-url", "origin", newUrl], { cwd: entry.installLocation, timeoutMs: 15e3 });
     } catch (err) {
@@ -47437,34 +47508,34 @@ async function setMarketplaceAuth(name, auth) {
 }
 
 // src/main/marketplace/remove.ts
-var import_fs28 = __toESM(require("fs"), 1);
+var import_fs29 = __toESM(require("fs"), 1);
 var import_os22 = __toESM(require("os"), 1);
-var import_path28 = __toESM(require("path"), 1);
+var import_path29 = __toESM(require("path"), 1);
 function removeMarketplace(name) {
   const known = readKnownMarketplaces();
   const entry = known[name];
   if (entry) {
-    if (entry.installLocation && import_fs28.default.existsSync(entry.installLocation)) {
-      import_fs28.default.rmSync(entry.installLocation, { recursive: true, force: true });
+    if (entry.installLocation && import_fs29.default.existsSync(entry.installLocation)) {
+      import_fs29.default.rmSync(entry.installLocation, { recursive: true, force: true });
     }
     delete known[name];
     writeKnownMarketplaces(known);
   }
-  const installedFile = import_path28.default.join(import_os22.default.homedir(), ".claude", "plugins", "installed_plugins.json");
-  if (import_fs28.default.existsSync(installedFile)) {
+  const installedFile = import_path29.default.join(import_os22.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+  if (import_fs29.default.existsSync(installedFile)) {
     try {
-      const data = JSON.parse(import_fs28.default.readFileSync(installedFile, "utf-8"));
+      const data = JSON.parse(import_fs29.default.readFileSync(installedFile, "utf-8"));
       if (data.plugins) {
-        for (const key of Object.keys(data.plugins)) {
-          if (key.endsWith(`@${name}`)) {
-            const pluginEntry = data.plugins[key][0];
-            if (pluginEntry?.installPath && import_fs28.default.existsSync(pluginEntry.installPath)) {
-              import_fs28.default.rmSync(pluginEntry.installPath, { recursive: true, force: true });
+        for (const key2 of Object.keys(data.plugins)) {
+          if (key2.endsWith(`@${name}`)) {
+            const pluginEntry = data.plugins[key2][0];
+            if (pluginEntry?.installPath && import_fs29.default.existsSync(pluginEntry.installPath)) {
+              import_fs29.default.rmSync(pluginEntry.installPath, { recursive: true, force: true });
             }
-            delete data.plugins[key];
+            delete data.plugins[key2];
           }
         }
-        import_fs28.default.writeFileSync(installedFile, JSON.stringify(data, null, 2), "utf-8");
+        import_fs29.default.writeFileSync(installedFile, JSON.stringify(data, null, 2), "utf-8");
       }
     } catch {
     }
@@ -47472,9 +47543,9 @@ function removeMarketplace(name) {
 }
 
 // src/main/marketplace/autoupdate.ts
-var import_fs29 = __toESM(require("fs"), 1);
+var import_fs30 = __toESM(require("fs"), 1);
 function setMarketplaceAutoUpdate(name, autoUpdate) {
-  if (!import_fs29.default.existsSync(knownMarketplacesPath())) return { ok: false, error: "no known_marketplaces.json" };
+  if (!import_fs30.default.existsSync(knownMarketplacesPath())) return { ok: false, error: "no known_marketplaces.json" };
   assertValidName(name, "marketplace name");
   try {
     const known = readKnownMarketplaces();
@@ -47547,34 +47618,34 @@ init_toast_window();
 
 // src/main/mcp/manager.ts
 var import_crypto12 = require("crypto");
-var import_path32 = __toESM(require("path"), 1);
+var import_path33 = __toESM(require("path"), 1);
 var import_os26 = __toESM(require("os"), 1);
 
 // src/main/mcp/state-persistence.ts
-var import_path29 = __toESM(require("path"), 1);
-var import_fs30 = __toESM(require("fs"), 1);
+var import_path30 = __toESM(require("path"), 1);
+var import_fs31 = __toESM(require("fs"), 1);
 var import_os23 = __toESM(require("os"), 1);
 var McpLegacyStore = class {
-  file = import_path29.default.join(import_os23.default.homedir(), ".claude", "open-claude-bridge", "mcp-servers.json");
+  file = import_path30.default.join(import_os23.default.homedir(), ".claude", "open-claude-bridge", "mcp-servers.json");
   data;
   constructor() {
     try {
-      this.data = JSON.parse(import_fs30.default.readFileSync(this.file, "utf8"));
+      this.data = JSON.parse(import_fs31.default.readFileSync(this.file, "utf8"));
       if (!Array.isArray(this.data.mcpServers)) this.data.mcpServers = [];
     } catch {
       this.data = { mcpServers: [] };
     }
   }
-  get(key) {
-    return this.data[key];
+  get(key2) {
+    return this.data[key2];
   }
-  set(key, value) {
-    this.data[key] = value;
+  set(key2, value) {
+    this.data[key2] = value;
     try {
-      import_fs30.default.mkdirSync(import_path29.default.dirname(this.file), { recursive: true });
+      import_fs31.default.mkdirSync(import_path30.default.dirname(this.file), { recursive: true });
       const tmp = `${this.file}.tmp`;
-      import_fs30.default.writeFileSync(tmp, JSON.stringify(this.data, null, 2), "utf8");
-      import_fs30.default.renameSync(tmp, this.file);
+      import_fs31.default.writeFileSync(tmp, JSON.stringify(this.data, null, 2), "utf8");
+      import_fs31.default.renameSync(tmp, this.file);
     } catch {
     }
   }
@@ -47598,22 +47669,22 @@ function configToClaudeJsonEntry(config) {
   return entry;
 }
 async function mutateClaudeJson(mutate) {
-  const claudeJsonPath = import_path29.default.join(import_os23.default.homedir(), ".claude.json");
+  const claudeJsonPath = import_path30.default.join(import_os23.default.homedir(), ".claude.json");
   let parsed = {};
   try {
-    const raw = await import_fs30.default.promises.readFile(claudeJsonPath, "utf-8");
+    const raw = await import_fs31.default.promises.readFile(claudeJsonPath, "utf-8");
     parsed = JSON.parse(raw);
   } catch {
   }
   if (!parsed || typeof parsed !== "object") parsed = {};
   if (!parsed.mcpServers || typeof parsed.mcpServers !== "object") parsed.mcpServers = {};
   mutate(parsed.mcpServers, parsed);
-  await import_fs30.default.promises.writeFile(claudeJsonPath, JSON.stringify(parsed, null, 2), "utf-8");
+  await import_fs31.default.promises.writeFile(claudeJsonPath, JSON.stringify(parsed, null, 2), "utf-8");
 }
-var toolSchemaCacheFile = import_path29.default.join(import_os23.default.homedir(), ".claude", "open-claude-bridge", "mcp-tool-schemas.json");
+var toolSchemaCacheFile = import_path30.default.join(import_os23.default.homedir(), ".claude", "open-claude-bridge", "mcp-tool-schemas.json");
 function loadToolSchemaCache() {
   try {
-    const parsed = JSON.parse(import_fs30.default.readFileSync(toolSchemaCacheFile, "utf8"));
+    const parsed = JSON.parse(import_fs31.default.readFileSync(toolSchemaCacheFile, "utf8"));
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       return parsed;
     }
@@ -47623,24 +47694,24 @@ function loadToolSchemaCache() {
 }
 function saveToolSchemaCache(cache2) {
   try {
-    import_fs30.default.mkdirSync(import_path29.default.dirname(toolSchemaCacheFile), { recursive: true });
+    import_fs31.default.mkdirSync(import_path30.default.dirname(toolSchemaCacheFile), { recursive: true });
     const tmp = `${toolSchemaCacheFile}.tmp`;
-    import_fs30.default.writeFileSync(tmp, JSON.stringify(cache2, null, 2), "utf8");
-    import_fs30.default.renameSync(tmp, toolSchemaCacheFile);
+    import_fs31.default.writeFileSync(tmp, JSON.stringify(cache2, null, 2), "utf8");
+    import_fs31.default.renameSync(tmp, toolSchemaCacheFile);
   } catch {
   }
 }
 
 // src/main/mcp/oauth-store.ts
-var import_fs31 = __toESM(require("fs"), 1);
-var import_path30 = __toESM(require("path"), 1);
+var import_fs32 = __toESM(require("fs"), 1);
+var import_path31 = __toESM(require("path"), 1);
 var import_os24 = __toESM(require("os"), 1);
 var import_crypto9 = __toESM(require("crypto"), 1);
 init_host_compat();
-var CREDS_PATH = import_path30.default.join(import_os24.default.homedir(), ".claude", ".credentials.json");
+var CREDS_PATH = import_path31.default.join(import_os24.default.homedir(), ".claude", ".credentials.json");
 function readCreds() {
   try {
-    const raw = import_fs31.default.readFileSync(CREDS_PATH, "utf-8");
+    const raw = import_fs32.default.readFileSync(CREDS_PATH, "utf-8");
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object") return parsed;
   } catch {
@@ -47648,10 +47719,10 @@ function readCreds() {
   return {};
 }
 function writeCreds(data) {
-  import_fs31.default.mkdirSync(import_path30.default.dirname(CREDS_PATH), { recursive: true });
-  import_fs31.default.writeFileSync(CREDS_PATH, JSON.stringify(data, null, 2), "utf-8");
+  import_fs32.default.mkdirSync(import_path31.default.dirname(CREDS_PATH), { recursive: true });
+  import_fs32.default.writeFileSync(CREDS_PATH, JSON.stringify(data, null, 2), "utf-8");
   try {
-    import_fs31.default.chmodSync(CREDS_PATH, 384);
+    import_fs32.default.chmodSync(CREDS_PATH, 384);
   } catch {
   }
 }
@@ -47674,8 +47745,8 @@ function saveTokens(ctx, tokens) {
   if (!creds.mcpOAuth) creds.mcpOAuth = {};
   const mcpOAuth = creds.mcpOAuth;
   const existingKey = findKeyByServerUrl(mcpOAuth, ctx.serverUrl);
-  const key = existingKey ?? `${ctx.serverName}|${hashUrl(ctx.serverUrl)}`;
-  const prev = mcpOAuth[key] ?? {};
+  const key2 = existingKey ?? `${ctx.serverName}|${hashUrl(ctx.serverUrl)}`;
+  const prev = mcpOAuth[key2] ?? {};
   const entry = {
     serverName: ctx.serverName,
     serverUrl: ctx.serverUrl,
@@ -47689,16 +47760,16 @@ function saveTokens(ctx, tokens) {
     ...prev.discoveryState ?? {},
     ...ctx.authServerUrl ? { authorizationServerUrl: ctx.authServerUrl } : {}
   };
-  mcpOAuth[key] = entry;
+  mcpOAuth[key2] = entry;
   writeCreds(creds);
 }
 function loadTokens(serverUrl) {
   const creds = readCreds();
   if (!creds.mcpOAuth) return null;
   const map = creds.mcpOAuth;
-  const key = findKeyByServerUrl(map, serverUrl);
-  if (!key) return null;
-  const e = map[key];
+  const key2 = findKeyByServerUrl(map, serverUrl);
+  if (!key2) return null;
+  const e = map[key2];
   if (!e?.accessToken || typeof e.accessToken !== "string") return null;
   const out = { access_token: e.accessToken };
   if (e.refreshToken) out.refresh_token = e.refreshToken;
@@ -47712,16 +47783,16 @@ function deleteTokens(serverUrl) {
   const creds = readCreds();
   if (!creds.mcpOAuth) return;
   const map = creds.mcpOAuth;
-  const key = findKeyByServerUrl(map, serverUrl);
-  if (!key) return;
-  delete map[key];
+  const key2 = findKeyByServerUrl(map, serverUrl);
+  if (!key2) return;
+  delete map[key2];
   writeCreds(creds);
 }
 function migrateLegacyStore(resolver) {
-  const legacyPath = import_path30.default.join(app.getPath("userData"), "mcp-oauth-tokens.json");
+  const legacyPath = import_path31.default.join(app.getPath("userData"), "mcp-oauth-tokens.json");
   let raw;
   try {
-    raw = import_fs31.default.readFileSync(legacyPath, "utf-8");
+    raw = import_fs32.default.readFileSync(legacyPath, "utf-8");
   } catch {
     return 0;
   }
@@ -47760,7 +47831,7 @@ function migrateLegacyStore(resolver) {
     moved++;
   }
   try {
-    import_fs31.default.renameSync(legacyPath, legacyPath + ".migrated");
+    import_fs32.default.renameSync(legacyPath, legacyPath + ".migrated");
   } catch {
   }
   return moved;
@@ -47863,8 +47934,8 @@ async function doRefreshTokens(state) {
 
 // src/main/mcp/discovery.ts
 var import_crypto10 = require("crypto");
-var import_path31 = __toESM(require("path"), 1);
-var import_fs32 = __toESM(require("fs"), 1);
+var import_path32 = __toESM(require("path"), 1);
+var import_fs33 = __toESM(require("fs"), 1);
 var import_os25 = __toESM(require("os"), 1);
 init_plugin_helpers();
 function resolveEnvVars(value) {
@@ -47877,25 +47948,25 @@ function resolveEnvVars(value) {
 function expandHome(value) {
   if (value === "~") return import_os25.default.homedir();
   if (value.startsWith("~/") || value.startsWith("~\\")) {
-    return import_path31.default.join(import_os25.default.homedir(), value.slice(2));
+    return import_path32.default.join(import_os25.default.homedir(), value.slice(2));
   }
   return value;
 }
 function parseMcpJson(parsed, sourcePath, pluginId) {
   const configs = [];
   const root = parsed.mcpServers ?? parsed;
-  let pluginRoot = import_path31.default.dirname(sourcePath);
-  if (import_path31.default.basename(pluginRoot) === ".claude-plugin") {
-    pluginRoot = import_path31.default.dirname(pluginRoot);
+  let pluginRoot = import_path32.default.dirname(sourcePath);
+  if (import_path32.default.basename(pluginRoot) === ".claude-plugin") {
+    pluginRoot = import_path32.default.dirname(pluginRoot);
   }
   const userConfig = pluginId ? loadPluginOptions(pluginId) : null;
-  const pluginDataDir = pluginId ? import_path31.default.join(import_os25.default.homedir(), ".claude", "plugins", "data", pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-")) : null;
+  const pluginDataDir = pluginId ? import_path32.default.join(import_os25.default.homedir(), ".claude", "plugins", "data", pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-")) : null;
   let dataDirEnsured = false;
   const ensureDataDir = () => {
     if (!pluginDataDir) return null;
     if (!dataDirEnsured) {
       try {
-        import_fs32.default.mkdirSync(pluginDataDir, { recursive: true });
+        import_fs33.default.mkdirSync(pluginDataDir, { recursive: true });
       } catch {
       }
       dataDirEnsured = true;
@@ -47955,15 +48026,15 @@ async function loadMarketplaceDescriptionsAsync(pluginsDir) {
   const descriptions = /* @__PURE__ */ new Map();
   let marketplaces;
   try {
-    marketplaces = await import_fs32.default.promises.readdir(pluginsDir);
+    marketplaces = await import_fs33.default.promises.readdir(pluginsDir);
   } catch {
     return descriptions;
   }
   await Promise.allSettled(marketplaces.map(async (marketplace) => {
-    const manifestPath = import_path31.default.join(pluginsDir, marketplace, ".claude-plugin", "marketplace.json");
+    const manifestPath = import_path32.default.join(pluginsDir, marketplace, ".claude-plugin", "marketplace.json");
     let raw;
     try {
-      raw = await import_fs32.default.promises.readFile(manifestPath, "utf-8");
+      raw = await import_fs33.default.promises.readFile(manifestPath, "utf-8");
     } catch {
       return;
     }
@@ -47987,10 +48058,10 @@ async function discoverPluginConfigs(pluginsDir) {
   ]);
   const nested = await Promise.all(plugins.map(async ({ name, marketplace, installPath }) => {
     const sources = [];
-    const mcpJson = import_path31.default.join(installPath, ".mcp.json");
-    const mcpRaw = await import_fs32.default.promises.readFile(mcpJson, "utf-8").catch(() => null);
+    const mcpJson = import_path32.default.join(installPath, ".mcp.json");
+    const mcpRaw = await import_fs33.default.promises.readFile(mcpJson, "utf-8").catch(() => null);
     if (mcpRaw !== null) sources.push({ path: mcpJson, raw: mcpRaw });
-    const manifestJson = import_path31.default.join(installPath, ".claude-plugin", "plugin.json");
+    const manifestJson = import_path32.default.join(installPath, ".claude-plugin", "plugin.json");
     const effectiveManifest = await readEffectivePluginManifest(installPath, name, marketplace);
     let manifestDescription;
     try {
@@ -48005,13 +48076,13 @@ async function discoverPluginConfigs(pluginsDir) {
             console.warn(`[MCP] ${name}: .mcpb bundles not supported (${item})`);
             continue;
           }
-          const resolved = import_path31.default.resolve(installPath, item);
-          const relative = import_path31.default.relative(installPath, resolved);
-          if (relative === ".." || relative.startsWith(".." + import_path31.default.sep) || import_path31.default.isAbsolute(relative)) {
+          const resolved = import_path32.default.resolve(installPath, item);
+          const relative = import_path32.default.relative(installPath, resolved);
+          if (relative === ".." || relative.startsWith(".." + import_path32.default.sep) || import_path32.default.isAbsolute(relative)) {
             console.warn(`[MCP] ${name}: refusing config path outside plugin root (${item})`);
             continue;
           }
-          const raw = await import_fs32.default.promises.readFile(resolved, "utf-8").catch(() => null);
+          const raw = await import_fs33.default.promises.readFile(resolved, "utf-8").catch(() => null);
           if (raw !== null) sources.push({ path: resolved, raw });
         } else if (item && typeof item === "object" && !Array.isArray(item)) {
           sources.push({ path: manifestJson, raw: JSON.stringify({ mcpServers: item }) });
@@ -48049,10 +48120,10 @@ async function discoverPluginConfigs(pluginsDir) {
 async function discoverProjectConfigs(projectRoots) {
   const roots = [...projectRoots];
   const nested = await Promise.all(roots.map(async (root) => {
-    const mcpJson = import_path31.default.join(root, ".mcp.json");
+    const mcpJson = import_path32.default.join(root, ".mcp.json");
     let raw;
     try {
-      raw = await import_fs32.default.promises.readFile(mcpJson, "utf-8");
+      raw = await import_fs33.default.promises.readFile(mcpJson, "utf-8");
     } catch {
       return [];
     }
@@ -48065,19 +48136,19 @@ async function discoverProjectConfigs(projectRoots) {
     const configs = parseMcpJson(parsed, mcpJson);
     for (const config of configs) {
       config.sourceType = "project";
-      config.description = `From ${import_path31.default.basename(root)}/.mcp.json`;
+      config.description = `From ${import_path32.default.basename(root)}/.mcp.json`;
     }
     return configs;
   }));
   return nested.flat();
 }
 async function discoverFromClaudeJsonAsync(claudeDir) {
-  const claudeJsonPath = import_path31.default.join(claudeDir, ".claude.json");
-  const homeClaudeJson = import_path31.default.join(import_os25.default.homedir(), ".claude.json");
+  const claudeJsonPath = import_path32.default.join(claudeDir, ".claude.json");
+  const homeClaudeJson = import_path32.default.join(import_os25.default.homedir(), ".claude.json");
   const collected = [];
   const reads = await Promise.all([claudeJsonPath, homeClaudeJson].map(async (jsonPath) => {
     try {
-      return { path: jsonPath, raw: await import_fs32.default.promises.readFile(jsonPath, "utf-8") };
+      return { path: jsonPath, raw: await import_fs33.default.promises.readFile(jsonPath, "utf-8") };
     } catch {
       return null;
     }
@@ -48104,7 +48175,7 @@ async function discoverFromClaudeJsonAsync(claudeDir) {
         autoDiscovered: true,
         sourcePath: r.path,
         sourceType: "claude-config",
-        description: `From ${import_path31.default.basename(r.path)}`
+        description: `From ${import_path32.default.basename(r.path)}`
       };
       if (serverType === "http" || serverType === "sse" || serverType === "ws") {
         config.url = e.url;
@@ -49319,7 +49390,7 @@ var McpServerManager = class _McpServerManager {
   // All three sources are scanned concurrently with fs.promises to avoid
   // blocking the main process when the user has many plugins or projects.
   async discoverLocalMcpConfigs() {
-    const claudeDir = import_path32.default.join(import_os26.default.homedir(), ".claude");
+    const claudeDir = import_path33.default.join(import_os26.default.homedir(), ".claude");
     const existingNames = /* @__PURE__ */ new Set();
     for (const state of this.servers.values()) {
       if (!state.config.autoDiscovered) {
@@ -49374,7 +49445,7 @@ var McpServerManager = class _McpServerManager {
         }
       }
     };
-    const pluginsDir = import_path32.default.join(claudeDir, "plugins", "marketplaces");
+    const pluginsDir = import_path33.default.join(claudeDir, "plugins", "marketplaces");
     const [pluginConfigs, claudeJsonConfigs, projectConfigs] = await Promise.all([
       discoverPluginConfigs(pluginsDir),
       discoverFromClaudeJsonAsync(claudeDir),
@@ -49560,14 +49631,14 @@ var McpServerManager = class _McpServerManager {
   /** Add a new external MCP server */
   addServer(config) {
     const id = (0, import_crypto12.randomUUID)();
-    const claudeJsonPath = import_path32.default.join(import_os26.default.homedir(), ".claude.json");
+    const claudeJsonPath = import_path33.default.join(import_os26.default.homedir(), ".claude.json");
     const fullConfig = {
       ...config,
       id,
       autoDiscovered: config.autoDiscovered ?? true,
       sourceType: config.sourceType ?? "claude-config",
       sourcePath: config.sourcePath ?? claudeJsonPath,
-      description: config.description ?? `From ${import_path32.default.basename(claudeJsonPath)}`
+      description: config.description ?? `From ${import_path33.default.basename(claudeJsonPath)}`
     };
     const state = {
       config: fullConfig,
@@ -50088,8 +50159,8 @@ init_emit_bridge_event();
 
 // src/core-ipc.ts
 var vscode5 = __toESM(require("vscode"), 1);
-var import_fs33 = __toESM(require("fs"), 1);
-var import_path33 = __toESM(require("path"), 1);
+var import_fs34 = __toESM(require("fs"), 1);
+var import_path34 = __toESM(require("path"), 1);
 var import_os27 = __toESM(require("os"), 1);
 init_host_compat();
 
@@ -50138,8 +50209,8 @@ function enrichTreeWithTabs(tree, tabManager) {
 }
 
 // src/main/sync/request-auth.ts
-function withSyncAuthorization(path45, init, token) {
-  if (!path45.startsWith("/api/sync/") || !token) return init;
+function withSyncAuthorization(path46, init, token) {
+  if (!path46.startsWith("/api/sync/") || !token) return init;
   return {
     ...init,
     headers: { ...init?.headers ?? {}, Authorization: `Bearer ${token}` }
@@ -50201,17 +50272,17 @@ function registerCoreIpc(context, configStore) {
     const out = [];
     for (const uri of picked) {
       const p = uri.fsPath;
-      const ext = import_path33.default.extname(p).replace(/^\./, "").toLowerCase();
+      const ext = import_path34.default.extname(p).replace(/^\./, "").toLowerCase();
       const isImage = IMG_EXT.includes(ext);
       let base64 = "", mimeType = "";
       if (isImage) {
         try {
-          base64 = (await import_fs33.default.promises.readFile(p)).toString("base64");
+          base64 = (await import_fs34.default.promises.readFile(p)).toString("base64");
           mimeType = MIME[`.${ext}`] ?? "application/octet-stream";
         } catch {
         }
       }
-      out.push({ path: p, name: import_path33.default.basename(p), ext, base64, mimeType, isImage });
+      out.push({ path: p, name: import_path34.default.basename(p), ext, base64, mimeType, isImage });
     }
     return out;
   };
@@ -50219,16 +50290,16 @@ function registerCoreIpc(context, configStore) {
   ipcMain.handle("open-image-dialog", () => pickAttachments(true));
   ipcMain.handle("save-clipboard-image", async (_e, base64Data, mimeType) => {
     const ext = mimeType === "image/jpeg" ? ".jpg" : ".png";
-    const filePath = import_path33.default.join(import_os27.default.tmpdir(), `claude-paste-${String(Date.now())}${ext}`);
-    await import_fs33.default.promises.writeFile(filePath, Buffer.from(base64Data, "base64"));
+    const filePath = import_path34.default.join(import_os27.default.tmpdir(), `claude-paste-${String(Date.now())}${ext}`);
+    await import_fs34.default.promises.writeFile(filePath, Buffer.from(base64Data, "base64"));
     return filePath;
   });
   ipcMain.handle("save-dropped-file", async (_e, base64Data, name) => {
     const safe = (name || "attachment").replace(/[/\\]/g, "_").slice(-120);
-    const dir = import_path33.default.join(import_os27.default.tmpdir(), `claude-drop-${String(Date.now())}`);
-    await import_fs33.default.promises.mkdir(dir, { recursive: true });
-    const filePath = import_path33.default.join(dir, safe);
-    await import_fs33.default.promises.writeFile(filePath, Buffer.from(base64Data, "base64"));
+    const dir = import_path34.default.join(import_os27.default.tmpdir(), `claude-drop-${String(Date.now())}`);
+    await import_fs34.default.promises.mkdir(dir, { recursive: true });
+    const filePath = import_path34.default.join(dir, safe);
+    await import_fs34.default.promises.writeFile(filePath, Buffer.from(base64Data, "base64"));
     return filePath;
   });
   const revealInOs = (_e, p) => {
@@ -50239,15 +50310,15 @@ function registerCoreIpc(context, configStore) {
   ipcMain.on("reveal-in-explorer", revealInOs);
   ipcMain.handle("fs:path-exists", (_e, p) => {
     try {
-      return import_fs33.default.existsSync(p);
+      return import_fs34.default.existsSync(p);
     } catch {
       return false;
     }
   });
   ipcMain.handle("fs:read-base64", async (_e, filePath) => {
     try {
-      const buf = await import_fs33.default.promises.readFile(filePath);
-      const ext = import_path33.default.extname(filePath).toLowerCase();
+      const buf = await import_fs34.default.promises.readFile(filePath);
+      const ext = import_path34.default.extname(filePath).toLowerCase();
       return { ok: true, base64: buf.toString("base64"), mimeType: MIME[ext] ?? "application/octet-stream" };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -50263,19 +50334,19 @@ function registerCoreIpc(context, configStore) {
     return await resp.json();
   });
   ipcMain.handle("bridge:server-version", async (_e, httpBase) => {
-    for (const path45 of ["/api/bridge-version", "/health"]) {
+    for (const path46 of ["/api/bridge-version", "/health"]) {
       try {
-        const resp = await fetch(`${httpBase}${path45}`, { signal: AbortSignal.timeout(8e3) });
+        const resp = await fetch(`${httpBase}${path46}`, { signal: AbortSignal.timeout(8e3) });
         if (resp.ok) return await resp.json();
       } catch {
       }
     }
     return null;
   });
-  ipcMain.handle("bridge:server-fetch", async (_e, httpBase, path45, init) => {
+  ipcMain.handle("bridge:server-fetch", async (_e, httpBase, path46, init) => {
     try {
-      const authenticatedInit = withSyncAuthorization(path45, init, configStore.get().token);
-      const resp = await fetch(`${httpBase}${path45}`, {
+      const authenticatedInit = withSyncAuthorization(path46, init, configStore.get().token);
+      const resp = await fetch(`${httpBase}${path46}`, {
         method: authenticatedInit?.method ?? "GET",
         headers: authenticatedInit?.headers ?? (authenticatedInit?.body ? { "Content-Type": "application/json" } : void 0),
         body: authenticatedInit?.body,
@@ -50299,7 +50370,7 @@ function registerCoreIpc(context, configStore) {
         defaultUri: opts.defaultName ? vscode5.Uri.file(opts.defaultName) : void 0
       });
       if (!uri) return { ok: false, error: "Cancelled" };
-      await import_fs33.default.promises.writeFile(uri.fsPath, opts.text ?? "", "utf8");
+      await import_fs34.default.promises.writeFile(uri.fsPath, opts.text ?? "", "utf8");
       return { ok: true, filePath: uri.fsPath };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -50391,32 +50462,32 @@ var import_node_path9 = require("node:path");
 
 // ../../../src/kamin-host/rolling-log.ts
 var import_node_fs6 = require("node:fs");
-function removeIfPresent(path45) {
+function removeIfPresent(path46) {
   try {
-    if ((0, import_node_fs6.existsSync)(path45)) (0, import_node_fs6.unlinkSync)(path45);
+    if ((0, import_node_fs6.existsSync)(path46)) (0, import_node_fs6.unlinkSync)(path46);
   } catch {
   }
 }
-function rotateLogFiles(path45, backups) {
+function rotateLogFiles(path46, backups) {
   if (backups <= 0) {
-    removeIfPresent(path45);
-    return !(0, import_node_fs6.existsSync)(path45);
+    removeIfPresent(path46);
+    return !(0, import_node_fs6.existsSync)(path46);
   }
-  removeIfPresent(`${path45}.${String(backups)}`);
+  removeIfPresent(`${path46}.${String(backups)}`);
   for (let i = backups - 1; i >= 1; i -= 1) {
-    const from = `${path45}.${String(i)}`;
+    const from = `${path46}.${String(i)}`;
     if (!(0, import_node_fs6.existsSync)(from)) continue;
-    const to = `${path45}.${String(i + 1)}`;
+    const to = `${path46}.${String(i + 1)}`;
     removeIfPresent(to);
     try {
       (0, import_node_fs6.renameSync)(from, to);
     } catch {
     }
   }
-  if ((0, import_node_fs6.existsSync)(path45)) {
-    removeIfPresent(`${path45}.1`);
+  if ((0, import_node_fs6.existsSync)(path46)) {
+    removeIfPresent(`${path46}.1`);
     try {
-      (0, import_node_fs6.renameSync)(path45, `${path45}.1`);
+      (0, import_node_fs6.renameSync)(path46, `${path46}.1`);
     } catch {
       return false;
     }
@@ -50424,8 +50495,8 @@ function rotateLogFiles(path45, backups) {
   return true;
 }
 var RollingLogWriter = class {
-  constructor(path45, options) {
-    this.path = path45;
+  constructor(path46, options) {
+    this.path = path46;
     this.options = options;
     if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) {
       throw new Error("rolling log maxBytes must be a positive safe integer");
@@ -50433,8 +50504,8 @@ var RollingLogWriter = class {
     if (!Number.isSafeInteger(options.backups) || options.backups < 0) {
       throw new Error("rolling log backups must be a non-negative safe integer");
     }
-    if (options.rotateOnOpen && (0, import_node_fs6.existsSync)(path45) && (0, import_node_fs6.statSync)(path45).size > 0) {
-      rotateLogFiles(path45, options.backups);
+    if (options.rotateOnOpen && (0, import_node_fs6.existsSync)(path46) && (0, import_node_fs6.statSync)(path46).size > 0) {
+      rotateLogFiles(path46, options.backups);
     }
     this.open();
   }
@@ -50638,6 +50709,9 @@ function emit(record) {
   log2.writeRecord(`${formatIncidentLine({ event: "record-dropped", dropped: record.event })}
 `);
 }
+function recordInvokeBoundary(record) {
+  emit(record);
+}
 function recordBridgeOutbound(channel, args) {
   if (channel !== "connection-state-changed") return;
   const record = normalizeConnectionTransition(args[0], args[1]);
@@ -50679,6 +50753,107 @@ function installIncidentDiagnostics(logDir, subscribe) {
   subscribe((sample) => recordRendererSample(sample));
 }
 
+// src/invoke-diagnostics.ts
+var import_node_crypto4 = require("node:crypto");
+var key = (0, import_node_crypto4.randomBytes)(32);
+var boot = (0, import_node_crypto4.randomBytes)(8).toString("hex");
+var MAX_INPUT_CHARS = 256;
+var MAX_ID = Number.MAX_SAFE_INTEGER;
+var rendererStages = /* @__PURE__ */ new Set(["renderer-sent", "renderer-received", "renderer-duplicate", "renderer-unknown", "renderer-other-document", "renderer-ended", "renderer-send-threw"]);
+var knownChannels = /* @__PURE__ */ new Set([
+  "get-config",
+  "tab:list",
+  "tab:get-active",
+  "tabs:restore-state",
+  "hooks:set-plugin-approval",
+  "hooks:get-plugin-approval",
+  "hooks:list-pending-plugin-approvals",
+  "plugins:list-marketplaces",
+  "plugins:list-installed",
+  "mcp:get-servers",
+  "session:get-saved"
+]);
+function ref(domain, value) {
+  const input = typeof value === "string" && value.length <= MAX_INPUT_CHARS ? value : "unavailable";
+  return (0, import_node_crypto4.createHmac)("sha256", key).update(domain).update(input).digest("hex").slice(0, 24);
+}
+function safeId(value) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= MAX_ID ? value : 0;
+}
+var InvokeDiagnostics = class {
+  constructor(emit2) {
+    this.emit = emit2;
+  }
+  emit;
+  views = /* @__PURE__ */ new WeakMap();
+  sequence = 0;
+  counts = /* @__PURE__ */ new Map();
+  attach(view) {
+    this.views.set(view, { id: ++this.sequence, documentRef: ref("document", void 0), detached: false, hidden: false });
+  }
+  state(view) {
+    if (!this.views.has(view)) this.attach(view);
+    return this.views.get(view);
+  }
+  setHidden(view, hidden) {
+    this.state(view).hidden = hidden;
+  }
+  detach(view) {
+    const state = this.state(view);
+    state.detached = true;
+    this.record(state, state.documentRef, "", 0, "view-detached", 0);
+  }
+  record(state, documentRef, channel, id, stage, elapsedMs) {
+    const count = Math.min(1e9, (this.counts.get(stage) ?? 0) + 1);
+    this.counts.set(stage, count);
+    try {
+      this.emit({
+        event: "invoke-boundary",
+        boot,
+        view: state.id,
+        documentRef,
+        channelRef: ref("channel", channel),
+        channel: typeof channel === "string" && knownChannels.has(channel) ? channel : "other",
+        id: safeId(id),
+        stage,
+        hidden: state.hidden,
+        count,
+        elapsedMs: Math.min(1e9, Math.max(0, Math.trunc(elapsedMs)))
+      });
+    } catch {
+    }
+  }
+  renderer(view, raw) {
+    if (!raw || typeof raw !== "object") return;
+    const message = raw;
+    if (typeof message.stage !== "string" || !rendererStages.has(message.stage)) return;
+    const state = this.state(view);
+    const documentRef = ref("document", message.generation);
+    if (message.stage === "renderer-sent") state.documentRef = documentRef;
+    this.record(state, documentRef, message.channel, message.id, message.stage, 0);
+  }
+  begin(view, id, channel, generation) {
+    const state = this.state(view);
+    const documentRef = ref("document", generation);
+    state.documentRef = documentRef;
+    const started = Date.now();
+    const record = (stage) => this.record(state, documentRef, channel, id, stage, Date.now() - started);
+    record("host-received");
+    return {
+      handler: (outcome) => record(`handler-${outcome}`),
+      reply: async (send) => {
+        if (state.detached) record("reply-source-disposed");
+        if (state.documentRef !== documentRef) record("reply-document-replaced");
+        try {
+          record(await send() ? "reply-accepted" : "reply-false");
+        } catch {
+          record("reply-rejected");
+        }
+      }
+    };
+  }
+};
+
 // src/bridge-host.ts
 var HEAVY_SESSION_CHANNELS = /* @__PURE__ */ new Set([
   "jsonl-entries",
@@ -50700,6 +50875,7 @@ var BridgeHost = class {
   // customize sections). Events fan out to all — except the per-session heavy
   // channels, withheld by role (see post()); invoke replies target the origin.
   webviews = /* @__PURE__ */ new Set();
+  invokeDiagnostics = new InvokeDiagnostics(recordInvokeBoundary);
   // Each webview's role, so the fan-out can skip the heavy per-session streams
   // (jsonl / streaming / pty) for panels that render none of it. The customize
   // sections don't touch the conversation at all — sending them the jsonl
@@ -50953,6 +51129,7 @@ var BridgeHost = class {
    *  originating webview. */
   attach(webview, role = "chat") {
     this.webviews.add(webview);
+    this.invokeDiagnostics.attach(webview);
     this.webviewRoles.set(webview, role);
     if (role !== "customize") this.resync.markStale(webview);
     updateUiToolsWindow(this.sink);
@@ -50961,6 +51138,7 @@ var BridgeHost = class {
       dispose: () => {
         sub.dispose();
         this.webviews.delete(webview);
+        this.invokeDiagnostics.detach(webview);
         this.resync.forget(webview);
         if (this.webviewRoles.get(webview) === "chat") clearDisplayedTab();
         this.webviewRoles.delete(webview);
@@ -50975,6 +51153,7 @@ var BridgeHost = class {
   /** A tracked webview view's visibility changed; resync if this reveal has a
    *  recorded gap (see ResyncTracker.setVisible). */
   setWebviewVisible(webview, visible) {
+    this.invokeDiagnostics.setHidden(webview, !visible);
     if (this.resync.setVisible(webview, visible)) this.onResyncNeeded?.();
   }
   /** Read-only view of the external-MCP manager — for the status-bar
@@ -50987,6 +51166,7 @@ var BridgeHost = class {
     this.disposed = true;
     this.tabManager.disconnectAll();
     void pluginLspManager.restart();
+    for (const view of this.webviews) this.invokeDiagnostics.detach(view);
     this.webviews.clear();
   }
   /** Public event fan-out — push a host→renderer event (e.g. editor-selection)
@@ -51016,6 +51196,10 @@ var BridgeHost = class {
     }
   }
   async onMessage(msg, source) {
+    if (msg?.kind === "invoke-diagnostic") {
+      this.invokeDiagnostics.renderer(source, msg);
+      return;
+    }
     if (!msg || typeof msg.channel !== "string") return;
     const args = Array.isArray(msg.args) ? msg.args : [];
     if (msg.kind === "send") {
@@ -51023,16 +51207,20 @@ var BridgeHost = class {
       return;
     }
     if (msg.kind === "invoke") {
-      const reply = (frame) => void source.postMessage({ kind: "invoke-reply", id: msg.id, ...frame });
+      const trace = this.invokeDiagnostics.begin(source, msg.id, msg.channel, msg.generation);
+      const reply = (frame) => trace.reply(() => source.postMessage({ kind: "invoke-reply", id: msg.id, generation: msg.generation, ...frame }));
       try {
         const result = await ipcMain.invokeHandler(msg.channel, this.event, ...args);
-        reply({ ok: true, result });
+        trace.handler("resolved");
+        await reply({ ok: true, result });
       } catch (err) {
         if (!ipcMain.hasHandler(msg.channel)) {
-          console.warn(`[claude-bridge] unimplemented invoke channel: ${msg.channel}`);
-          reply({ ok: true, result: null });
+          trace.handler("unregistered");
+          console.warn("[claude-bridge] unimplemented invoke channel (see incident channelRef)");
+          await reply({ ok: true, result: null });
         } else {
-          reply({ ok: false, error: err instanceof Error ? err.message : String(err) });
+          trace.handler("rejected");
+          await reply({ ok: false, error: err instanceof Error ? err.message : String(err) });
         }
       }
     }
@@ -51102,9 +51290,9 @@ function installMcpStatusBar(mgr) {
     const connected = enabled.filter((s) => s.status === "connected").length;
     const errored = enabled.filter((s) => s.status === "error").length;
     const connecting = enabled.filter((s) => s.status === "connecting" || s.status === "disconnected").length;
-    const key = `${enabled.length}|${connected}|${errored}|${connecting}`;
-    if (key === last) return;
-    last = key;
+    const key2 = `${enabled.length}|${connected}|${errored}|${connecting}`;
+    if (key2 === last) return;
+    last = key2;
     if (enabled.length === 0) {
       conn.hide();
       err.hide();
@@ -51483,9 +51671,9 @@ function activate(context) {
 function deactivate() {
 }
 function loadWebviewHtml(context, file) {
-  const p = import_path34.default.join(context.extensionPath, file);
+  const p = import_path35.default.join(context.extensionPath, file);
   try {
-    return import_fs34.default.readFileSync(p, "utf8");
+    return import_fs35.default.readFileSync(p, "utf8");
   } catch {
     return `<html><body style='font-family:system-ui;padding:16px;color:#e1e4e8'><h2>Claude Bridge</h2><p>${file} missing \u2014 run <code>npm run build</code> in extensions/claude-bridge/webview.</p></body></html>`;
   }

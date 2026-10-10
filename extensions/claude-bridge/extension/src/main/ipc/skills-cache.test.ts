@@ -47,10 +47,40 @@ describe('skills:list cache invalidation', () => {
   it('refreshes immediately after create and delete instead of serving the 30s cache', async () => {
     expect(await invoke<any[]>('skills:list')).toEqual([])
 
-    const created = await invoke<{ fileName: string }>('skills:create', 'fresh-skill', '# Fresh skill')
+    const created = await invoke<{ path: string }>('skills:create', 'fresh-skill', '# Fresh skill')
     expect((await invoke<any[]>('skills:list')).map(row => row.name)).toContain('fresh-skill')
 
-    await invoke('skills:delete', created.fileName)
+    await invoke('skills:delete', created.path)
     expect((await invoke<any[]>('skills:list')).map(row => row.name)).not.toContain('fresh-skill')
+  })
+
+  it('creates a project skill directory, not a legacy command, and lists it as project', async () => {
+    const created = await invoke<{ path: string }>('skills:create', 'Review Code', '# Review the diff')
+
+    expect(created.path).toBe(path.join(project, '.claude', 'skills', 'review-code', 'SKILL.md'))
+    expect(fs.existsSync(path.join(project, '.claude', 'commands'))).toBe(false)
+    const row = (await invoke<any[]>('skills:list')).find(r => r.name === 'review-code')
+    expect(row).toMatchObject({ source: 'project', description: 'Review the diff', path: created.path })
+  })
+
+  it('creates a user skill instead of writing into the host process cwd when no folder is open', async () => {
+    ipcHandlers.clear()
+    registerSkillsAgentsIPC({ getTabManager: () => null, getUserCwd: () => null })
+
+    const created = await invoke<{ path: string }>('skills:create', 'no-folder', 'Do it')
+
+    expect(created.path).toBe(path.join(os.homedir(), '.claude', 'skills', 'no-folder', 'SKILL.md'))
+    expect((await invoke<any[]>('skills:list')).find(r => r.name === 'no-folder')?.source).toBe('user')
+  })
+
+  it('still lists and deletes legacy project commands', async () => {
+    const commandsDir = path.join(project, '.claude', 'commands')
+    fs.mkdirSync(commandsDir, { recursive: true })
+    const legacy = path.join(commandsDir, 'legacy.md')
+    fs.writeFileSync(legacy, '# Legacy command')
+
+    expect((await invoke<any[]>('skills:list')).map(row => row.name)).toContain('legacy')
+    await invoke('skills:delete', legacy)
+    expect(fs.existsSync(legacy)).toBe(false)
   })
 })

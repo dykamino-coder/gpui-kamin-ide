@@ -27,7 +27,7 @@ export function SkillDetail({ skill, onDeleted }: Props): JSX.Element {
       ? 'User'
       : prettifyPluginName(skill.source.replace('plugin:', ''))
 
-  const canDelete = skill.source === 'project'
+  const canDelete = skill.source === 'project' || skill.source === 'user'
 
   return (
     <div class={styles.container}>
@@ -43,7 +43,6 @@ export function SkillDetail({ skill, onDeleted }: Props): JSX.Element {
 
       <SkillActions
         path={skill.path}
-        fileName={skill.fileName}
         canDelete={canDelete}
         onDeleted={onDeleted}
       />
