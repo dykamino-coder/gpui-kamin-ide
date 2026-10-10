@@ -59,7 +59,7 @@ pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>) 
                             ch,
                         );
                         if let Some(markup) = markup
-                            && let Some(img) = crate::svg::rasterize(&markup, cw, ch)
+                            && let Some(img) = crate::svg::raster::rasterize(&markup, cw, ch)
                         {
                             let _ = window.paint_image_with_sampling(
                                 bounds,
@@ -103,7 +103,7 @@ pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>) 
                             ch,
                         );
                         if let Some(markup) = markup
-                            && let Some(img) = crate::svg::rasterize(&markup, cw, ch)
+                            && let Some(img) = crate::svg::raster::rasterize(&markup, cw, ch)
                         {
                             let _ = window.paint_image_with_sampling(
                                 bounds,

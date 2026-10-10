@@ -67,7 +67,7 @@ pub fn load(src: &str) -> Option<Arc<RenderImage>> {
         // неё, а нужный размер плитки посчитает вызывающий.
         Source::Vector { markup, size } => {
             let (w, h) = default_size(size, (300.0, 150.0));
-            crate::svg::rasterize(&markup, w, h)
+            crate::svg::raster::rasterize(&markup, w, h)
         }
         Source::Gradient { raw } => rasterize_gradient(&raw, 300, 150),
         Source::Shape { raw } => rasterize_shape(&raw, 300, 150, 1.0),
@@ -171,7 +171,7 @@ impl Source {
                 // ломаются — но видима лишь часть плитки в коробке, а сам
                 // рисунок растрируется в свою область просмотра целиком.
                 let raster = (tile.0.clamp(1.0, LIMIT), tile.1.clamp(1.0, LIMIT));
-                crate::svg::rasterize(&with_viewport(markup, raster), raster.0, raster.1)
+                crate::svg::raster::rasterize(&with_viewport(markup, raster), raster.0, raster.1)
             }
             Source::Gradient { raw } => {
                 const LIMIT: f32 = 2048.0;

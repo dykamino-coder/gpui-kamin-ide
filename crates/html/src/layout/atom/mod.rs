@@ -281,7 +281,7 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
             sized.style.resolve_em(atom_base_font(inherited, opts));
             // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`; стиль
             // коробки — свой, с решёнными шрифтовыми единицами.
-            let fitted = crate::svg::stretch_fit(&sized, cb_w);
+            let fitted = crate::svg::size::stretch_fit(&sized, cb_w);
             let shell = sized.style.clone();
             svg_replaced(&sized, &fitted, &shell).or_else(|| {
                 Some(image_with(

@@ -59,7 +59,7 @@ pub(super) fn paint(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{ow}\" height=\"{oh}\" viewBox=\"0 0 {ow} {oh}\"><g transform=\"matrix({a} {c} {b} {d} {} {})\">{inner}</g></svg>",
         -left, -top,
     );
-    let Some(image) = crate::svg::rasterize(&oriented, ow, oh) else {
+    let Some(image) = crate::svg::raster::rasterize(&oriented, ow, oh) else {
         return false;
     };
     let scale = window.scale_factor();

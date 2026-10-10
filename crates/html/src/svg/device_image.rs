@@ -7,8 +7,8 @@ pub(super) fn element(markup: String, w: f32, h: f32) -> Option<Div> {
     // reaches beyond its edge, so the clip below can end on the snapped box
     // edge.
     const PAD: f32 = 1.0;
-    let image = super::rasterize(&markup, w, h)?;
-    let padded = super::rasterize_padded(&markup, w, h, PAD);
+    let image = super::raster::rasterize(&markup, w, h)?;
+    let padded = super::raster::rasterize_padded(&markup, w, h, PAD);
     let base = |v: f32| (v * super::DENSITY).round().max(1.0);
     let pad_px = (PAD * super::DENSITY).round();
     let (dw, dh) = (

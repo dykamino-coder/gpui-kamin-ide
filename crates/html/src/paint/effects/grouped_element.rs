@@ -211,7 +211,7 @@ fn rasterize_mask_def(
     } else {
         markup
     };
-    crate::svg::rasterize(
+    crate::svg::raster::rasterize(
         &format!(
             r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}">{body}</svg>"#
         ),
@@ -445,7 +445,7 @@ impl Element for Grouped {
                 let (aw, ah) = (bw + sl + sr, bh + st + sb);
                 let markup =
                     crate::paint::background::border_shape_mask_svg(spec, bw, bh, sl, st, aw, ah)?;
-                let img = crate::svg::rasterize(&markup, aw, ah)?;
+                let img = crate::svg::raster::rasterize(&markup, aw, ah)?;
                 return Some((
                     img,
                     Bounds {
@@ -568,7 +568,7 @@ impl Element for Grouped {
                                 r#"<svg xmlns="http://www.w3.org/2000/svg" width="{bw}" height="{bh}">{markup}</svg>"#
                             );
                             (
-                                crate::svg::rasterize(&markup, bw, bh)?,
+                                crate::svg::raster::rasterize(&markup, bw, bh)?,
                                 [0.0, 0.0, bw * sf, bh * sf],
                                 true,
                             )
@@ -590,7 +590,7 @@ impl Element for Grouped {
                                 r##"<svg xmlns="http://www.w3.org/2000/svg" width="{bw}" height="{bh}"><g transform="translate({dx} {dy})"><path fill="#ffffff" fill-rule="{rule}" d="{d}"/></g></svg>"##
                             );
                             (
-                                crate::svg::rasterize(&markup, bw, bh)?,
+                                crate::svg::raster::rasterize(&markup, bw, bh)?,
                                 [0.0, 0.0, bw * sf, bh * sf],
                                 true,
                             )
@@ -602,7 +602,7 @@ impl Element for Grouped {
                                 r##"<svg xmlns="http://www.w3.org/2000/svg" width="{bw}" height="{bh}"><path fill="#ffffff" fill-rule="{rule}" d="{d}"/></svg>"##
                             );
                             (
-                                crate::svg::rasterize(&markup, bw, bh)?,
+                                crate::svg::raster::rasterize(&markup, bw, bh)?,
                                 [0.0, 0.0, bw * sf, bh * sf],
                                 true,
                             )
@@ -814,7 +814,7 @@ impl Element for Grouped {
         };
         if let Some(under) = self.under.as_ref()
             && let Some(markup) = under(bw, bh, sl, st, aw, ah)
-            && let Some(img) = crate::svg::rasterize(&markup, aw, ah)
+            && let Some(img) = crate::svg::raster::rasterize(&markup, aw, ah)
         {
             let _ = window.paint_image_with_sampling(
                 layer_at,
@@ -868,7 +868,7 @@ impl Element for Grouped {
         // композита, в тот же контекст.
         for over in &self.over {
             if let Some(markup) = over(bw, bh, sl, st, aw, ah)
-                && let Some(img) = crate::svg::rasterize(&markup, aw, ah)
+                && let Some(img) = crate::svg::raster::rasterize(&markup, aw, ah)
             {
                 let _ = window.paint_image_with_sampling(
                     layer_at,

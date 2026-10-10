@@ -168,7 +168,7 @@ impl Element for FilterLayer {
         let image = FILTER_RASTERS
             .with(|m| m.borrow().get(&key).cloned())
             .or_else(|| {
-                let img = crate::svg::rasterize(&markup, pw, ph)?;
+                let img = crate::svg::raster::rasterize(&markup, pw, ph)?;
                 FILTER_RASTERS.with(|m| m.borrow_mut().insert(key.clone(), img.clone()));
                 Some(img)
             });

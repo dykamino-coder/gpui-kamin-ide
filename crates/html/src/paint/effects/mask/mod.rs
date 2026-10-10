@@ -221,7 +221,7 @@ pub(crate) fn collect_mask_defs(nodes: &[Node]) {
                 let mut markup = String::new();
                 for c in &e.children {
                     if let Node::Element(el) = c {
-                        crate::svg::write_element(el, &mut markup);
+                        crate::svg::serialize::write_element(el, &mut markup);
                     }
                 }
                 out.insert(id.to_string(), markup);
@@ -232,7 +232,7 @@ pub(crate) fn collect_mask_defs(nodes: &[Node]) {
                 && let Some(id) = e.attr("id")
             {
                 let mut markup = String::new();
-                crate::svg::write_element(e, &mut markup);
+                crate::svg::serialize::write_element(e, &mut markup);
                 out.insert(format!("filter:{id}"), markup);
             }
             walk(&e.children, out);

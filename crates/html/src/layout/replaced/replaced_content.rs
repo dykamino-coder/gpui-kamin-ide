@@ -133,7 +133,7 @@ pub(crate) fn svg_replaced(e: &Element, sized: &Element, merged: &Computed) -> O
         Some(Len::Px(v)) => v,
         _ => 0.0,
     };
-    let (w, h) = crate::svg::size_of(sized);
+    let (w, h) = crate::svg::size::size_of(sized);
     // Empty replaced content still has its CSS padding, border and background.
     if raster.is_none() && w > 0.0 && h > 0.0 {
         return None;

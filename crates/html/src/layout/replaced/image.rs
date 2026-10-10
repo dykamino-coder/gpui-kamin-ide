@@ -329,7 +329,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             Some(crate::paint::background::Source::Vector { markup, .. })
                 if cw > 0.0 && ch > 0.0 =>
             {
-                match crate::svg::rasterize(&markup, cw, ch) {
+                match crate::svg::raster::rasterize(&markup, cw, ch) {
                     Some(r) => gpui::img(r),
                     None => gpui::img(SharedString::from(src.to_string())),
                 }
@@ -524,7 +524,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         });
         let vectorize = |old: gpui::Img, w: f32, h: f32| -> gpui::Img {
             let Some(m) = &vector else { return old };
-            let mut out = match crate::svg::rasterize(m, w, h) {
+            let mut out = match crate::svg::raster::rasterize(m, w, h) {
                 Some(r) => gpui::img(r),
                 None => old,
             };

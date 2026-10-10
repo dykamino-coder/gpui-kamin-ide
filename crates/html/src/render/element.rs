@@ -325,7 +325,7 @@ pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> A
                 _ => CB_WIDTH.get().filter(|v| *v > 0.0),
             };
             // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`.
-            svg_replaced(e, &crate::svg::stretch_fit(e, cb_w), &merged).unwrap_or_else(|| {
+            svg_replaced(e, &crate::svg::size::stretch_fit(e, cb_w), &merged).unwrap_or_else(|| {
                 styled_div_with(e, &merged)
                     .child(SharedString::from("[рисунок]"))
                     .into_any_element()
