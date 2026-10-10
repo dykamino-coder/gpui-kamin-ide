@@ -687,6 +687,55 @@ open status, BR-22 classification prerequisite and automated + Windows CEF
 acceptance; this observation does not satisfy that prerequisite or authorize an
 implementation, closure or execution-batch change.
 
+**Owner report (2026-10-09): slow upward scroll lands at the start of a tall
+message.** Refines the tall-message scenario above. The owner sends a very
+large message in Cloud Bridge Chat; the agent finishes its turn with several
+intermediate and final messages. Scrolling slowly upward from the end, the
+moment the owner's large message reaches the viewport, the view jumps to the
+beginning of that message. The owner was only reading upward a little at a
+time and did not ask for a jump. The report concerns completed output, not
+active streaming, and does not say whether an older-page load happened at the
+same time.
+
+**Bounded source observation** on `main` `259925dc`. This is a hypothesis to
+measure, not a confirmed cause:
+
+- Both the row wrapper (`.entryWrapper` in `JsonlViewer.module.css`) and its
+  inner card (`.jsonl-entry` in `webview/src/theme/legacy-global.css`) use
+  `content-visibility: auto` with `contain-intrinsic-size: auto 80px`. A row
+  that has never been rendered has no remembered size, so a message many
+  viewport heights tall occupies about 80 px until it becomes relevant. It
+  then grows in up to two steps (wrapper, then card).
+- The growth happens at the top edge of the viewport during upward reading.
+  If the scroll anchor stays at or above the growing row, or the adjustment is
+  not applied, `scrollTop` stays the same while the content under it becomes
+  the top of the expanded message. That matches the reported landing point.
+- `useChatScrollPin.restoreAnchor()` runs only from the `MutationObserver`.
+  A deferred `content-visibility` layout changes no DOM, so that path cannot
+  correct it. Browser `overflow-anchor` is left at its default, as noted
+  above.
+
+**Additional reproduction for the maintainer:** a completed conversation whose
+user message is several viewport heights tall, followed by several assistant
+entries and fully resident in the render window, with no older-page fetch.
+Scroll upward with slow wheel steps from the bottom. At each step, record the
+target row's `getBoundingClientRect()` height and top, `scrollTop`,
+`scrollHeight`, the browser's chosen anchor if observable, and whether any
+mutation or `restoreAnchor` write happened. Repeat with the same message
+already rendered once (remembered size present), and with an assistant message
+of similar height. A jump with no mutation and no page load assigns this case
+to deferred layout; a jump only after a resident-window or page change assigns
+it to the existing prepend path. Acceptance is unchanged: the reading point
+moves by no more than the existing 2 px tolerance beyond the user's own scroll.
+
+**Evidence and next step:** registration author @ToToshka45 (owner-directed);
+Diagnostic PR: pending. Only the owner's sanitized text report was used; no
+logs, screenshots or message contents were supplied, so no private evidence
+upload is needed. Build version and a measured trace remain missing. Preserve
+BR-16's open status, the BR-22 classification prerequisite and the automated +
+Windows CEF acceptance. This supplement does not authorize an implementation,
+closure or execution-batch change.
+
 **Owner report (2026-09-09): streaming repeatedly pulls the reader down.**
 During a large, actively streaming assistant response in Cloud Bridge Chat,
 attempting to scroll upward toward older messages repeatedly returns the
