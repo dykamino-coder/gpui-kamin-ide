@@ -5,8 +5,9 @@ use crate::native_acceptance::{Action, LOADERS, TOOL, VIEW};
 use crate::root::RootView;
 use gpui::Context;
 
-pub(crate) const HTML: &str = r#"<!doctype html><html><head><style>
-body{background:#18202d;color:white;font:18px sans-serif} .spin{display:inline-block;animation:spin 1s linear infinite!important}
+pub(crate) const HTML: &str = r#"<!doctype html><html><head><meta charset="utf-8"><style>
+body{background:#18202d;color:white;font:18px sans-serif} input{display:block;max-width:100%;box-sizing:border-box;margin:8px 0}
+.spin{display:block;width:24px;height:24px;animation:spin 1s linear infinite!important}
 @keyframes spin{to{transform:rotate(360deg)}}
 </style></head><body><p>Native acceptance fixture</p><span class="spin">◌</span>
 <input placeholder="Type here"><button onclick="this.textContent='Clicked'">Click</button>
