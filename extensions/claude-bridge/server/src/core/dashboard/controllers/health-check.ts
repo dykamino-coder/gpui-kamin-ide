@@ -2,6 +2,7 @@
 // Dashboard health refresh endpoint
 // ============================================================================
 
+import { claudeInvocation } from '../../pty/dev-cli'
 import type { Hono } from 'hono'
 import { eventBus } from '../../events/bus'
 import { getAllSessions } from '../../pty/session-manager'
@@ -22,17 +23,18 @@ export function registerHealthCheckRoutes(api: Hono): void {
       const { execFile } = await import('child_process')
       const { promisify } = await import('util')
       const execFileAsync = promisify(execFile)
-      const claudeCmd = process.platform === 'win32' ? 'claude.cmd' : 'claude'
+      const authCli = claudeInvocation(['--dangerously-skip-permissions', 'auth', 'status'])
+      const versionCli = claudeInvocation(['--version'])
 
       const env = { ...process.env, HOME: process.env.HOME || '/home/bridge' } as Record<string, string>
       injectProxyEnv(env)
 
       const [authResult, versionResult] = await Promise.allSettled([
-        execFileAsync(claudeCmd, ['--dangerously-skip-permissions', 'auth', 'status'], {
+        execFileAsync(authCli.command, authCli.args, {
           timeout: 10_000,
           env,
         }),
-        execFileAsync(claudeCmd, ['--version'], {
+        execFileAsync(versionCli.command, versionCli.args, {
           timeout: 5_000,
           env,
         }),
@@ -41,9 +43,7 @@ export function registerHealthCheckRoutes(api: Hono): void {
       if (authResult.status === 'rejected') throw authResult.reason
       const parsed = JSON.parse(authResult.value.stdout.trim())
 
-      const cliVersion = versionResult.status === 'fulfilled'
-        ? versionResult.value.stdout.trim()
-        : 'unknown'
+      const cliVersion = versionResult.status === 'fulfilled' ? versionResult.value.stdout.trim() : 'unknown'
 
       const sessions = getAllSessions()
       const health = {
@@ -56,14 +56,19 @@ export function registerHealthCheckRoutes(api: Hono): void {
         cliVersion,
         sessions: {
           total: sessions.length,
-          active: sessions.filter(s => s.state === 'running').length,
+          active: sessions.filter((s) => s.state === 'running').length,
         },
       }
       healthCache.set(health)
       eventBus.emit('health:updated', health)
       return c.json(health)
     } catch (err) {
-      const health = { sdk: false, account: null, apiPing: null, error: err instanceof Error ? err.message : 'Health check failed' }
+      const health = {
+        sdk: false,
+        account: null,
+        apiPing: null,
+        error: err instanceof Error ? err.message : 'Health check failed',
+      }
       eventBus.emit('health:updated', health)
       return c.json(health, 503)
     }
