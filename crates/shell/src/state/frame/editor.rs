@@ -59,6 +59,11 @@ impl RootView {
             let input = cx.new(|cx| {
                 let mut st = InputState::new(window, cx)
                     .code_editor(lang)
+                    // Monaco оригинала: `scrollBeyondLastLine: false`
+                    // (`MonacoEditor.tsx:185`). Иначе колесо уводит под
+                    // строку пути даже файл, целиком помещённый в вьюпорт
+                    // (INC-2026-0060)
+                    .scroll_beyond_last_line(false)
                     .soft_wrap(false);
                 st.lsp.hover_provider = Some(lsp.clone());
                 st.lsp.definition_provider = Some(lsp.clone());
