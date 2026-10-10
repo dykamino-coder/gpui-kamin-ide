@@ -70,6 +70,8 @@ windows = { version = "0.62", features = [
   "Win32_System_Ole",
   "Win32_UI_Shell",                  # DragQueryFileW
   "Win32_Graphics_Direct3D11",       # общая текстура кадра CEF (plan/101)
+  "Win32_Graphics_Direct3D11on12",   # debug-only application device loss
+  "Win32_Graphics_Direct3D12",
   "Win32_System_Diagnostics_Debug",  # отчёт о падении (crash_report)
   "Win32_System_Kernel",             # перехватчик исключений
   "Win32_System_Threading",          # текущий процесс для символов

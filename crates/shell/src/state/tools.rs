@@ -51,6 +51,8 @@ impl RootView {
     ) -> Option<AnyElement> {
         let active = self.activity.state(slot).active.clone()?;
         let el = match active.as_str() {
+            #[cfg(debug_assertions)]
+            crate::native_acceptance::LOADERS => crate::ui::debug_loaders::preview(p),
             id if crate::activity::dyn_tool(id).is_some() => {
                 // Contributed контейнер: ВСЕ его вью стопкой, у каждого свой
                 // хедер и тело — вебвью либо дерево провайдера

@@ -55,6 +55,7 @@ import {
  *  the conversation (the OOM/freeze root — see jsonl-project.ts). */
 export type WebviewRole = 'chat' | 'tools' | 'customize'
 
+
 // МОДУЛЬНЫЙ уровень, не тело effect: ре-подписка на реконнекте (deps
 // reconnectNonce) пересоздавала эти структуры — hook-driven таб снова
 // отдавался OSC-эвристике, и Stop мог флипнуться в Send посреди хода сразу
@@ -90,6 +91,15 @@ export function useBridgeListeners(
     // Replay generation per tab (BR-26): the value handed to publishAgentReplay.
   const replayGeneration = new Map<string, number>()
   useEffect(() => {
+    let disposed = false
+    let nextReplayEpoch = 0
+    const replayEpochs = new Map<string, number>()
+    const replayCompletions = new Map<string, ReturnType<typeof setTimeout>>()
+    const cancelReplayCompletion = (tabId: string): void => {
+      const timer = replayCompletions.get(tabId)
+      if (timer !== undefined) clearTimeout(timer)
+      replayCompletions.delete(tabId)
+    }
     let reconnectSnapshotRequest: number | undefined
     // hookDrivenTabs / stuckIdleTimers живут на уровне модуля (см. выше):
     // Set табов с детерминированными lifecycle-хуками CLI (OSC-эвристика для
@@ -137,6 +147,8 @@ export function useBridgeListeners(
       // reachable forever. Only the SESSION that was closed is dropped.
       clearJsonlEntries(tabId)
       clearAgentTabState(tabId)
+      cancelReplayCompletion(tabId)
+      replayEpochs.delete(tabId)
       abandonAgentReplay(tabId)
       replayGeneration.delete(tabId)
       forgetTabRecency(tabId)
@@ -386,7 +398,10 @@ export function useBridgeListeners(
     }) : undefined
 
     const unsubJsonlStatus = bridge.onJsonlStatus((tabId: string, status: any) => {
+      if (disposed) return
       if (status.status === 'watching' && !status.replayComplete) {
+        cancelReplayCompletion(tabId)
+        replayEpochs.set(tabId, ++nextReplayEpoch)
         tabJsonlLive.value = new Set([...tabJsonlLive.value].filter(id => id !== tabId))
         // Open a replay generation: the published tree stays as it is until
         // this generation completes; a newer replay supersedes it.
@@ -396,32 +411,26 @@ export function useBridgeListeners(
         resetToolUsage(tabId)
       }
       if (status.replayComplete && !tabJsonlLive.value.has(tabId)) {
-        // Clear the download bar for THIS tab regardless of whether it's active —
-        // JsonlViewer only clears it for the active one, so a background tab that
-        // finished replaying while the user was elsewhere would keep a stale
-        // progress value forever, permanently wedging its input (isLoading).
-        setReplayProgress(tabId, null)
-        // The mirror is fully written now — pull the complete compact-segment
-        // index so the segment strip can show every compact, not only the ones
-        // that fit the resident window.
-        if (role !== 'customize') bridge.requestBoundaries?.(tabId)
+        // Own every completion side effect, including non-agent panels' flags.
+        // A new replay, tab close or listener cleanup invalidates this epoch.
+        if (!replayEpochs.has(tabId)) replayEpochs.set(tabId, ++nextReplayEpoch)
+        const epoch = replayEpochs.get(tabId)
         const generation = replayGeneration.get(tabId)
-        setTimeout(() => {
-          if (tabJsonlLive.value.has(tabId)) return
-          const nextLive = new Set(tabJsonlLive.value)
-          nextLive.add(tabId)
-          tabJsonlLive.value = nextLive
-          // Publish the staged snapshot atomically (a stale generation is a
-          // no-op), then hand finished agents to history as before.
-          if (agentData && generation !== undefined && publishAgentReplay(tabId, generation)) {
+        cancelReplayCompletion(tabId)
+        replayCompletions.set(tabId, setTimeout(() => {
+          if (disposed || replayEpochs.get(tabId) !== epoch || tabJsonlLive.value.has(tabId)) return
+          replayCompletions.delete(tabId)
+          if (agentData && generation !== undefined) {
+            if (!publishAgentReplay(tabId, generation)) return
             replayGeneration.delete(tabId)
             if (sessionTree.value) sessionTree.value = mergeAgentTree(sessionTree.value)
           }
+          setReplayProgress(tabId, null)
+          if (role !== 'customize') bridge.requestBoundaries?.(tabId)
+          tabJsonlLive.value = new Set([...tabJsonlLive.value, tabId])
           const changed = markAllAgentsExited(tabId)
-          if (changed && sessionTree.value) {
-            sessionTree.value = mergeAgentTree(sessionTree.value)
-          }
-        }, 50)
+          if (changed && sessionTree.value) sessionTree.value = mergeAgentTree(sessionTree.value)
+        }, 50))
       }
       if (status.compacted) {
         // A compaction switched the CLI to a new transcript file; the entries we
@@ -731,6 +740,12 @@ export function useBridgeListeners(
     }
 
     return () => {
+      disposed = true
+      replayCompletions.forEach(clearTimeout)
+      replayCompletions.clear()
+      replayEpochs.clear()
+      for (const [tabId, generation] of replayGeneration) abandonAgentReplay(tabId, generation)
+      replayGeneration.clear()
       if (reconnectSnapshotRequest !== undefined) {
         reconnectSnapshotRequests.current.invalidate(reconnectSnapshotRequest)
       }

@@ -1,4 +1,5 @@
 import { signal } from '@preact/signals'
+import { boundAgentTranscript, boundAgentSlots } from './agent-retention'
 import { jsonlEntriesByTab } from './jsonl'
 
 export interface AgentInfo {
@@ -63,6 +64,8 @@ export interface SubagentTileState {
   tabId?: string
   agentName?: string
   agentId?: string
+  retainedBytes?: number
+  touchedAt?: number
   tileKey: string
   entries: any[]
   /** uuid-дедуп: реплей приходит повторно на каждый resync/реаттач, и без
@@ -91,8 +94,7 @@ export function clearAgentTabState(tabId: string): void {
   if (tabAgentHistory.value.has(tabId)) {
     const m = new Map(tabAgentHistory.value); m.delete(tabId); tabAgentHistory.value = m
   }
-  const transcripts = new Map([...subagentTileState.value].filter(([, state]) => state.tabId !== tabId))
-  subagentTileState.value = transcripts
+  subagentTileState.value = new Map([...subagentTileState.value].filter(([, state]) => state.tabId !== tabId))
   if (fullscreenAgentId.value) {
     try { if (JSON.parse(fullscreenAgentId.value)[0] === tabId) fullscreenAgentId.value = null }
     catch { fullscreenAgentId.value = null }
@@ -169,9 +171,9 @@ export function ingestAgentEntries(tabId: string, agentName: string, entries: an
     const seen = state.seen ?? (state.seen = new Set())
     const fresh = entries.filter(entry => { if (!entry.uuid) return true; if (seen.has(entry.uuid)) return false; seen.add(entry.uuid); return true })
     state.entries.push(...fresh)
-    if (fresh.length && state.entries.length > 600) state.entries.splice(0, state.entries.length - 600)
   }
-  const next = new Map(map); next.set(key, state); subagentTileState.value = next
+  boundAgentTranscript(state)
+  const next = new Map(map); next.set(key, state); subagentTileState.value = boundAgentSlots(next)
 }
 
 /** `<name>-<n>@<team>` → `<name>`: the base agent name a subagentId belongs to,
@@ -204,5 +206,16 @@ export function agentEntriesWithLive(tabId: string | null, name: string, agentTy
     const mid = e.message?.id
     return !mid || !seen.has(mid)
   })
-  return live.length ? [...canonical, ...live] : canonical
+  return (live.length ? [...canonical, ...live] : canonical).slice(-600)
+}
+
+
+/** A full export uses a file ID from an unambiguous cache slot, never a name as
+ * a filesystem path. Distinct mailbox IDs need a unique name/type match. */
+export function agentTranscriptDownloadId(tabId: string | null, name: string, agentType?: string, agentId?: string): string | undefined {
+  if (!tabId) return undefined
+  const states = [...new Set(subagentTileState.value.values())].filter(state => state.tabId === tabId)
+  if (agentId && !agentId.includes('@')) return agentId.replace(/^agent-/, '')
+  const candidates = states.filter(state => state.agentName === name || (agentType && state.agentName === agentType))
+  return candidates.length === 1 ? candidates[0].agentId?.replace(/^agent-/, '') : undefined
 }

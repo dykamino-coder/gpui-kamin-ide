@@ -1,8 +1,5 @@
-//! Типы, которыми хост говорит с UI: событие `ShellEvent` и его спутники
-//! (отмена файловой операции, контейнеры и страницы Customize).
-//!
-//! Это ЧИСТЫЕ ДАННЫЕ: ни запросов, ни сокета — только описание того, что
-//! может случиться. Вынесено из `host_link.rs` без изменений.
+//! ShellEvent и спутники: чистые данные хост→UI, без запросов и сокета.
+//! Вынесено из host_link.rs; undo, контейнеры и страницы Customize.
 
 pub use crate::host::events_cz::CzEvent;
 pub use crate::host::events_editor::EdEvent;
@@ -57,6 +54,8 @@ pub enum HoverPillSource {
 /// События к UI (перекачиваются в RootView foreground-циклом).
 #[derive(Clone)]
 pub enum ShellEvent {
+    #[cfg(debug_assertions)]
+    NativeAcceptance(crate::native_acceptance::Action),
     HostReady(HostEndpoint),
     /// Контекст-меню веб-страницы: показать (Some) или закрыть (None).
     WebMenu(Option<crate::ui::web_menu::WebMenuState>),

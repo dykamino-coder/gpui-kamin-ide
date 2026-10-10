@@ -42,7 +42,7 @@ FROM node:22-bookworm-slim AS runtime
 # handshake → hook round-trip) before shipping a new pin.
 # + tsx (a devDependency, but the runtime CMD invokes it via npx; install it
 # globally so the container doesn't pull it from the network on first start).
-ARG CLAUDE_CODE_VERSION=2.1.284
+ARG CLAUDE_CODE_VERSION=2.1.296
 ARG CLAUDE_CODE_CACHE_BUST=1
 RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" tsx@4 \
     && npm cache clean --force \
@@ -77,6 +77,9 @@ ENV NODE_ENV=production
 ENV CLAUDE_PROXY_HOST=0.0.0.0
 ENV CLAUDE_PROXY_PORT=3456
 ENV HOME=/home/bridge
+# An interactive `claude` inside the container (`/login`, manual checks) uses the
+# same default model as Bridge sessions (DEFAULT_SESSION_MODEL in src/core/config).
+ENV ANTHROPIC_MODEL=claude-opus-5-5
 # libuv threadpool default is 4 — too small for our stack (DuckDB pool=8 +
 # node-pty + native-mitm TLS + webcrypto leaf-cert + fs.promises). At 4
 # threads, fs.createReadStream readers can starve and never emit. Must be
