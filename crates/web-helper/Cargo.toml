@@ -12,7 +12,7 @@ name = "kaminide-web"
 path = "src/main.rs"
 
 [dependencies]
-cef = { version = "150", default-features = false }
+cef = { version = "154", default-features = false }
 kamin-crash = { path = "../crash" }
 
 [build-dependencies]

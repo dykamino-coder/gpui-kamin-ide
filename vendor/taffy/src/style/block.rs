@@ -1,5 +1,18 @@
 //! Style types for Block layout
+use crate::style::{AlignContent, AlignItems, AlignSelf};
 use crate::{CoreStyle, Style};
+
+/// Logical block axes projected onto physical coordinates by a writing-mode adapter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct BlockFlow {
+    /// The inline axis is physical y instead of x.
+    pub vertical: bool,
+    /// The block axis starts at the physical right edge in vertical writing.
+    pub block_reverse: bool,
+    /// The inline axis starts at its physical end (RTL or sideways-lr).
+    pub inline_reverse: bool,
+}
 
 /// The set of styles required for a Block layout container
 pub trait BlockContainerStyle: CoreStyle {
@@ -7,6 +20,20 @@ pub trait BlockContainerStyle: CoreStyle {
     #[inline(always)]
     fn text_align(&self) -> TextAlign {
         Style::<Self::CustomIdent>::DEFAULT.text_align
+    }
+
+    /// How children of this block container are aligned in the block (cross) axis
+    #[inline(always)]
+    fn align_content(&self) -> AlignContent {
+        Style::<Self::CustomIdent>::DEFAULT.align_content
+    }
+
+    /// The default inline-axis alignment of this block container's children (`justify-items`).
+    /// Out-of-flow children with `justify-self: auto` are aligned within their static-position
+    /// rectangle according to this value.
+    #[inline(always)]
+    fn justify_items(&self) -> AlignItems {
+        Style::<Self::CustomIdent>::DEFAULT.justify_items
     }
 }
 
@@ -16,6 +43,43 @@ pub trait BlockItemStyle: CoreStyle {
     #[inline(always)]
     fn is_table(&self) -> bool {
         false
+    }
+
+    /// How an out-of-flow (absolutely positioned) child is aligned in the block axis of its
+    /// static-position rectangle (`align-self`). `None` corresponds to `normal`/`auto`.
+    #[inline(always)]
+    fn align_self(&self) -> Option<AlignSelf> {
+        None
+    }
+
+    /// How an out-of-flow (absolutely positioned) child is aligned in the inline axis of its
+    /// static-position rectangle (`justify-self`). `None` corresponds to `normal`/`auto`.
+    #[inline(always)]
+    fn justify_self(&self) -> Option<AlignSelf> {
+        None
+    }
+
+    /// The `align-content` of the item (if it is itself a block container). A non-`normal`
+    /// value makes the item establish an independent formatting context, so that it is laid
+    /// out next to (rather than underneath) floats and does not collapse margins with its
+    /// parent (<https://www.w3.org/TR/css-align-3/#distribution-block>).
+    #[inline(always)]
+    fn align_content(&self) -> AlignContent {
+        AlignContent::NORMAL
+    }
+
+    /// Whether the item is a floated
+    #[cfg(feature = "float_layout")]
+    #[inline(always)]
+    fn float(&self) -> super::Float {
+        super::Float::None
+    }
+
+    /// Whether the item is a floated
+    #[cfg(feature = "float_layout")]
+    #[inline(always)]
+    fn clear(&self) -> super::Clear {
+        super::Clear::None
     }
 }
 
@@ -33,3 +97,11 @@ pub enum TextAlign {
     /// Corresponds to `-webkit-center` or `-moz-center` in browsers
     LegacyCenter,
 }
+
+#[cfg(feature = "parse")]
+crate::util::parse::impl_parse_for_keyword_enum!(TextAlign,
+    "auto" => Auto,
+    "-webkit-left" => LegacyLeft,
+    "-webkit-right" => LegacyRight,
+    "-webkit-center" => LegacyCenter,
+);

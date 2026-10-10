@@ -11,7 +11,7 @@
 
 use crate::state::editor_tab::EditorTab;
 use gpui::{AppContext as _, Entity, Window};
-use gpui_component::input::InputState;
+use gpui_component::input::EditorState as CodeEditorState;
 
 /// Read-only зеркало для минимапы: тот же текст и язык, без номеров строк.
 pub(crate) fn new_mirror(
@@ -19,12 +19,13 @@ pub(crate) fn new_mirror(
     text: String,
     window: &mut Window,
     cx: &mut gpui::App,
-) -> Entity<InputState> {
+) -> Entity<CodeEditorState> {
     cx.new(|cx| {
         // Zed-минимапа не рисует номера строк и не подсвечивает текущую
         // строку/выделение — это чистый силуэт текста.
-        let mut st = InputState::new(window, cx)
-            .code_editor(lang)
+        let mut st = CodeEditorState::new(window, cx)
+            .language(lang)
+            .folding(false)
             .line_number(false)
             // Zed `EditorMode::Minimap`: read-only, без подписок и каретки.
             // Флаг ещё и снимает жёсткий line-height `Input`-а, иначе строки

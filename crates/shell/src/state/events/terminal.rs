@@ -28,7 +28,7 @@ impl RootView {
                 const SCROLL_MIN_PAGE_PX: f32 = 32.0;
                 let view_w = f32::from(self.term.term_tab_scroll.bounds().size.width);
                 let page = (view_w * SCROLL_PAGE_RATIO).floor().max(SCROLL_MIN_PAGE_PX);
-                let max = f32::from(self.term.term_tab_scroll.max_offset().width);
+                let max = f32::from(self.term.term_tab_scroll.max_offset().x);
                 let cur = -f32::from(self.term.term_tab_scroll.offset().x);
                 let next = (cur + page * delta as f32).clamp(0.0, max);
                 self.term

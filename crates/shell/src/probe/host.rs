@@ -20,6 +20,7 @@ impl ProbeHandler for ShellProbe {
         crate::probe::cmds::inspect::handle_inspect(cmd, req)
             .or_else(|| crate::probe::cmds::input::handle_input(cmd, req))
             .or_else(|| crate::probe::cmds::app::handle_app(cmd, req))
+            .or_else(|| crate::probe::cmds::accept::handle_accept(cmd, req))
             .unwrap_or_else(|| json!({"ok": false, "err": format!("unknown cmd: {cmd}")}))
     }
 }

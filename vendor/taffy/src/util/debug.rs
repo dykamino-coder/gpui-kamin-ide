@@ -16,7 +16,9 @@ static EMPTY_STRING: String = String::new();
 #[cfg(any(feature = "debug", feature = "profile"))]
 impl DebugLogger {
     pub const fn new() -> Self {
-        Self { stack: Mutex::new(Vec::new()) }
+        Self {
+            stack: Mutex::new(Vec::new()),
+        }
     }
 
     pub fn push_node(&self, new_key: crate::NodeId) {
@@ -96,12 +98,12 @@ macro_rules! debug_log {
 }
 
 macro_rules! debug_log_node {
-    ($known_dimensions: expr, $parent_size: expr, $available_space: expr, $run_mode: expr, $sizing_mode: expr) => {
-        debug_log!(dbg:$run_mode);
-        debug_log!("sizing_mode", dbg:$sizing_mode);
-        debug_log!("known_dimensions", dbg:$known_dimensions);
-        debug_log!("parent_size", dbg:$parent_size);
-        debug_log!("available_space", dbg:$available_space);
+    ($inputs: expr) => {
+        debug_log!(dbg:$inputs.run_mode);
+        debug_log!("sizing_mode", dbg:$inputs.sizing_mode);
+        debug_log!("known_dimensions", dbg:$inputs.known_dimensions);
+        debug_log!("parent_size", dbg:$inputs.parent_size);
+        debug_log!("available_space", dbg:$inputs.available_space);
     };
 }
 
