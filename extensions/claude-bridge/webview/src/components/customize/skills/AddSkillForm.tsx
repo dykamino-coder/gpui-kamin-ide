@@ -14,10 +14,17 @@ export function AddSkillForm({ onCancel, onSaved }: Props): JSX.Element {
   const bridge = useBridge()
   const [name, setName] = useState('')
   const [skillContent, setSkillContent] = useState('')
+  const [error, setError] = useState<string | null>(null)
 
   async function handleCreate(): Promise<void> {
     if (!name || !skillContent) return
-    await bridge.createSkill(name, skillContent)
+    setError(null)
+    try {
+      await bridge.createSkill(name, skillContent)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      return
+    }
     setName('')
     setSkillContent('')
     onSaved()
@@ -29,7 +36,7 @@ export function AddSkillForm({ onCancel, onSaved }: Props): JSX.Element {
         <h2>New Skill</h2>
       </div>
       <div class={styles.section}>
-        <Field label="Skill name (used as /command)" required>
+        <Field label="Skill name (invoked as /name)" required error={error}>
           <input
             class={styles.input}
             type="text"

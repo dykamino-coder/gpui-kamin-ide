@@ -49,7 +49,7 @@ impl TokenSink for TokenPrinter {
                 for c in b.chars() {
                     self.do_char(c);
                 }
-            },
+            }
             NullCharacterToken => self.do_char('\0'),
             TagToken(tag) => {
                 self.is_char(false);
@@ -68,15 +68,15 @@ impl TokenSink for TokenPrinter {
                     print!(" \x1b[31m/\x1b[0m");
                 }
                 println!(">");
-            },
+            }
             ParseError(err) => {
                 self.is_char(false);
                 println!("ERROR: {err}");
-            },
+            }
             _ => {
                 self.is_char(false);
                 println!("OTHER: {token:?}");
-            },
+            }
         }
         TokenSinkResult::Continue
     }

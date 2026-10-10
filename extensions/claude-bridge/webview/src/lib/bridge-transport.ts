@@ -12,10 +12,21 @@ type Disposer = () => void
 type EventCb = (...args: unknown[]) => void
 
 let seq = 0
-const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: unknown) => void }>()
+// Diagnostic document identity only; not an authentication or cancellation key.
+const generation: string = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
+const recentlySettled = new Map<number, string>()
+function diagnostic(stage: string, id = 0, channel = '', documentGeneration = generation): void {
+  const safeId = Number.isSafeInteger(id) && id >= 0 ? id : 0
+  const safeChannel = typeof channel === 'string' && channel.length <= 256 ? channel : ''
+  const safeGeneration = typeof documentGeneration === 'string' && documentGeneration.length <= 256 ? documentGeneration : ''
+  try { vscodeApi.postMessage({ kind: 'invoke-diagnostic', stage, id: safeId, channel: safeChannel, generation: safeGeneration }) }
+  catch { /* best-effort diagnostics cannot change invoke outcomes */ }
+}
+window.addEventListener('pagehide', () => diagnostic('renderer-ended'))
+const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: unknown) => void; channel: string }>()
 const subs = new Map<string, Set<EventCb>>()
 
-interface ReplyFrame { kind: "invoke-reply"; id: number; ok: boolean; result?: unknown; error?: unknown }
+interface ReplyFrame { kind: "invoke-reply"; id: number; generation?: string; ok: boolean; result?: unknown; error?: unknown }
 interface EventFrame { kind: "event"; channel: string; args?: unknown[] }
 
 window.addEventListener("message", (e: MessageEvent) => {
@@ -23,8 +34,13 @@ window.addEventListener("message", (e: MessageEvent) => {
   if (!msg || typeof msg !== "object") return
   if (msg.kind === "invoke-reply") {
     const p = pending.get(msg.id)
+    const otherDocument = typeof msg.generation === 'string' && msg.generation !== generation
+    diagnostic(otherDocument ? 'renderer-other-document' : p ? 'renderer-received' : recentlySettled.has(msg.id) ? 'renderer-duplicate' : 'renderer-unknown',
+      msg.id, p?.channel ?? recentlySettled.get(msg.id) ?? '', msg.generation ?? generation)
     if (!p) return
     pending.delete(msg.id)
+    recentlySettled.set(msg.id, p.channel)
+    if (recentlySettled.size > 64) recentlySettled.delete(recentlySettled.keys().next().value!)
     if (msg.ok) p.resolve(msg.result)
     else p.reject(new Error(String(msg.error ?? "bridge invoke failed")))
   } else if (msg.kind === "event") {
@@ -40,8 +56,14 @@ window.addEventListener("message", (e: MessageEvent) => {
 export function inv(channel: string, ...args: unknown[]): Promise<unknown> {
   const id = ++seq
   return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject })
-    vscodeApi.postMessage({ kind: "invoke", id, channel, args })
+    pending.set(id, { resolve, reject, channel: channel.length <= 256 ? channel : '' })
+    try {
+      vscodeApi.postMessage({ kind: "invoke", id, channel, args, generation })
+      diagnostic('renderer-sent', id, channel)
+    } catch (error) {
+      diagnostic('renderer-send-threw', id, channel)
+      throw error
+    }
   })
 }
 

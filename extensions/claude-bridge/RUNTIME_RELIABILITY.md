@@ -414,6 +414,17 @@ reload, changed skills sync планирует, а pending maintenance може�
 после reattach. Нужно добавить revision/reason telemetry и сопоставить её с
 полевым transcript. До этого автоматический reload не удаляется.
 
+**Prepared implementation 2026-10-09:** owner-scoped, no-store diagnostic GET
+retains a process-local window of 256 fixed metadata records. Boot-local HMAC
+pseudonyms correlate changed/no-op user/project snapshots with queue revision,
+coalescing, blocker, overlay refresh and actual PTY Enter scheduling reason.
+No skill content, paths, raw IDs, bearer or error text is emitted. Six initial
+actual route/coordinator regressions failed before implementation; eight final
+new cases and all 186 server tests passed. See `SKILLS_SYNC.md` for retrieval,
+eviction and interpretation. Fix PR [#200](https://github.com/dykamino-coder/gpui-kamin-ide/pull/200). Status remains investigation;
+post-merge production observation belongs to deployment owner. PTY write is
+not a CLI acknowledgement, and no behavioral reload defect is claimed fixed.
+
 ### BR-09 — Make Agent Teams report delivery explicit
 
 **Close-out audit 2026-09-06:** В [PR
@@ -676,6 +687,55 @@ open status, BR-22 classification prerequisite and automated + Windows CEF
 acceptance; this observation does not satisfy that prerequisite or authorize an
 implementation, closure or execution-batch change.
 
+**Owner report (2026-10-09): slow upward scroll lands at the start of a tall
+message.** Refines the tall-message scenario above. The owner sends a very
+large message in Cloud Bridge Chat; the agent finishes its turn with several
+intermediate and final messages. Scrolling slowly upward from the end, the
+moment the owner's large message reaches the viewport, the view jumps to the
+beginning of that message. The owner was only reading upward a little at a
+time and did not ask for a jump. The report concerns completed output, not
+active streaming, and does not say whether an older-page load happened at the
+same time.
+
+**Bounded source observation** on `main` `259925dc`. This is a hypothesis to
+measure, not a confirmed cause:
+
+- Both the row wrapper (`.entryWrapper` in `JsonlViewer.module.css`) and its
+  inner card (`.jsonl-entry` in `webview/src/theme/legacy-global.css`) use
+  `content-visibility: auto` with `contain-intrinsic-size: auto 80px`. A row
+  that has never been rendered has no remembered size, so a message many
+  viewport heights tall occupies about 80 px until it becomes relevant. It
+  then grows in up to two steps (wrapper, then card).
+- The growth happens at the top edge of the viewport during upward reading.
+  If the scroll anchor stays at or above the growing row, or the adjustment is
+  not applied, `scrollTop` stays the same while the content under it becomes
+  the top of the expanded message. That matches the reported landing point.
+- `useChatScrollPin.restoreAnchor()` runs only from the `MutationObserver`.
+  A deferred `content-visibility` layout changes no DOM, so that path cannot
+  correct it. Browser `overflow-anchor` is left at its default, as noted
+  above.
+
+**Additional reproduction for the maintainer:** a completed conversation whose
+user message is several viewport heights tall, followed by several assistant
+entries and fully resident in the render window, with no older-page fetch.
+Scroll upward with slow wheel steps from the bottom. At each step, record the
+target row's `getBoundingClientRect()` height and top, `scrollTop`,
+`scrollHeight`, the browser's chosen anchor if observable, and whether any
+mutation or `restoreAnchor` write happened. Repeat with the same message
+already rendered once (remembered size present), and with an assistant message
+of similar height. A jump with no mutation and no page load assigns this case
+to deferred layout; a jump only after a resident-window or page change assigns
+it to the existing prepend path. Acceptance is unchanged: the reading point
+moves by no more than the existing 2 px tolerance beyond the user's own scroll.
+
+**Evidence and next step:** registration author @ToToshka45 (owner-directed);
+Diagnostic PR: [PR #207](https://github.com/dykamino-coder/gpui-kamin-ide/pull/207). Only the owner's sanitized text report was used; no
+logs, screenshots or message contents were supplied, so no private evidence
+upload is needed. Build version and a measured trace remain missing. Preserve
+BR-16's open status, the BR-22 classification prerequisite and the automated +
+Windows CEF acceptance. This supplement does not authorize an implementation,
+closure or execution-batch change.
+
 **Owner report (2026-09-09): streaming repeatedly pulls the reader down.**
 During a large, actively streaming assistant response in Cloud Bridge Chat,
 attempting to scroll upward toward older messages repeatedly returns the
@@ -755,6 +815,25 @@ persisted privacy-safe logs, retention и lifecycle evidence ещё не реа�
 **Status:** ready как отдельный operational PR. **Dependency:** none.
 **Acceptance:** automated filesystem tests + isolated Linux Docker/Podman
 runtime gate; Windows UI acceptance не требуется.
+
+**Prepared implementation [PR #203](https://github.com/dykamino-coder/gpui-kamin-ide/pull/203) (not merged, task remains open):** отдельный
+allowlisted journal сохраняет boot/sequence, псевдоним сессии, фиксированную
+причину teardown, age/idle/grace и exit code. Explicit end, dashboard kill,
+detach grace, reaper reasons и live resume reuse различимы на default level.
+Compose сохраняет **только** `/app/logs/lifecycle` в отдельном named volume:
+mount всего `/app/logs` сохранил бы существующие произвольные error/debug/prompt
+payloads и нарушил privacy boundary. Raw logging остаётся вне этого volume.
+Retention: `lifecycle.jsonl` + четыре поколения, каждый не более 1 MiB;
+разделяемый несколькими server processes volume не поддерживается.
+Реальная причина исторического termination не установлена этим изменением.
+Локально: два actual teardown regression-теста FAIL на базе, восемь новых
+filesystem/lifecycle cases PASS; полный server suite 216 PASS / 3 opt-in SKIP,
+typecheck/lint PASS. Disposable Linux Podman gate подтвердил non-root запись,
+retention после recreation, 30 000 synthetic writes с пятью bounded JSONL
+файлами без fake secrets и запись после rotation. Это operational validation,
+не атрибуция старого инцидента; CI/review и merge ещё требуются.
+Merge/status closure/release в этом поручении запрещены.
+Runbook: [безопасный lifecycle journal](server/DEPLOYMENT.md#lifecycle-journal-br-17).
 
 Server logger пишет относительно `process.cwd()` в `logs/`; в production image
 с `WORKDIR /app` это `/app/logs`. Текущий compose не монтирует этот путь, поэтому
@@ -1361,7 +1440,9 @@ pending/generation/cancellation/reconciliation guarantees остаются не�
 acceptance общего транспорта; из неё НЕ следует, что подтверждённый путь
 доставки объясняет каждый случай зависшего ответа (см. ниже). **Acceptance будущего fix:** automated transport/lifecycle tests +
 Windows CEF runtime gate.
-**Windows runtime merge gate:** required for a later functional fix; diagnostics alone do not assert a fix.
+**Windows runtime merge gate:** not required for the current bounded diagnostic phase; diagnostics alone do not assert a fix.
+**Later functional fix gate:** required Windows CEF runtime merge gate. Before any behavioral implementation, restore the declaration above to `required` and provide exact-candidate runtime evidence; pending, teardown and reconciliation guarantees remain unaccepted.
+**Diagnostic acceptance:** automated boundary/privacy/retention tests before merge; post-merge production observation by the deployment owner, correlated with native BR-31 pump evidence. Observation does not close BR-24 or satisfy the later functional gate.
 
 Windows acceptance PR #13 воспроизвёл 3 раза из 5: mutating call
 `hooks:set-plugin-approval` завершился host-side, approval store был записан и
@@ -1399,6 +1480,35 @@ call с успешной записью при потерянном ответе
 disposable approval scenario и несколько read-only invokes при tab switch,
 hide/show, extension-host reconnect и CEF reload; ни один promise или modal не
 остаётся бесконечно pending, а повторная mutation не выполняется автоматически.
+
+**Prepared diagnostic phase 2026-10-09:** Three initial real renderer transport
+fixtures failed without document/reply correlation. The paired extension and
+webview now emit allowlisted `invoke-boundary` records into the existing bounded
+`incident.log` (1 MiB × four retained generations, whole-record rotation). Fields
+include boot, view, document/channel pseudonyms, invoke id, stage counter,
+visibility and elapsed time. Selected static startup/approval channels are
+named; other channels remain pseudonymous. Arguments, results, arbitrary
+channel names and exception text are excluded.
+
+Host stages distinguish receipt without handler completion, resolved/rejected/
+unregistered handler, accepted/false/rejected postMessage and reply after
+document replacement/view disposal. Renderer stages distinguish sent, received,
+duplicate, unknown/other-document reply and document end. `reply-accepted`
+means only that postMessage returned true, not native pump delivery or renderer
+receipt. Document end is a best-effort signal; abrupt crash may omit it.
+
+The actual BridgeHost router fixture proves a completed mutation with one false
+reply send, handler-versus-send failures, and replacement during a pending
+handler. A real rolling-log fixture proves privacy and retention under 14,000
+records. No native pump code changes, timeout, automatic retry, cancellation or
+reconciliation are introduced. Existing unresolved pending and other-document
+settlement behavior is deliberately not claimed fixed by diagnostics.
+
+Fix PR [#201](https://github.com/dykamino-coder/gpui-kamin-ide/pull/201) for this diagnostic phase. Status remains confirmed incident;
+maintainer must correlate these records with the native BR-31 pump boundary and
+repeat the original disposable Windows scenario before deciding the complete
+bounded invoke/reconciliation policy. A later behavioral implementation retains
+the required Windows gate. This PR is not field attribution or closure.
 
 ### BR-25 — Verify Agents view delivery and rehydration after reveal
 

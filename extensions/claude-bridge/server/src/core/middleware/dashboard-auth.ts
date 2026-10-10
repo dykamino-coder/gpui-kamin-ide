@@ -3,6 +3,7 @@
 // ============================================================================
 
 import type { Context, Next } from 'hono'
+import { consumeJsonlDownload } from '../dashboard/jsonl-download'
 import { isDashboardAuthEnabled, validateDashboardSession } from '../auth/dashboard-auth'
 import { resolveTokenSync } from '../auth/tokens'
 
@@ -19,12 +20,14 @@ const PUBLIC_PATHS = [
 ]
 
 export async function dashboardAuthMiddleware(c: Context, next: Next) {
+  if (consumeJsonlDownload(c)) return next()
+
   // Skip if auth not enabled (no env vars set)
   if (!isDashboardAuthEnabled()) return next()
 
   // Skip public auth endpoints (exact or prefix match for /tokens/:id)
   const path = c.req.path
-  if (PUBLIC_PATHS.some(p => path === p || path.startsWith(p + '/'))) return next()
+  if (PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + '/'))) return next()
 
   // Check for session token
   const auth = c.req.header('authorization')
