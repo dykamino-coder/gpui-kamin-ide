@@ -106,8 +106,13 @@ pub(crate) fn multicol_box(
     // `max -= CurrentContentBlockOffset(line_offset)`). Только когда
     // до хвоста стоит ОДИН измеримый спаннер и больше ничего:
     // высоту сбалансированных рядов до спаннера здесь не знаем.
-    let rest_h: Option<f32> = match (e.style.column_fill_auto, box_h, rows) {
-        (Some(true), Some(total), None) => e.children.iter().rposition(&is_span).and_then(|j| {
+    // То же при балансе: колонки хвоста не выше остатка коробки, лишние
+    // переполняют вбок (Blink `ConstrainColumnBlockSize` действует и на
+    // балансируемый ряд; `multicol-span-all-012`: 120 в трёх колонках по 30
+    // после спаннера 70 в коробке 100).
+    let cap_only = rows.is_none_or(|r| r.cap);
+    let rest_h: Option<f32> = match (box_h, cap_only) {
+        (Some(total), true) => e.children.iter().rposition(&is_span).and_then(|j| {
             let px = |l: &Option<Len>| match l {
                 None => Some(0.0),
                 Some(Len::Px(v)) => Some(*v),
