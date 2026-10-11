@@ -3,6 +3,7 @@
 // ============================================================================
 
 import { eventBus } from '../events/bus'
+import { lifecycleLog } from '../logging/lifecycle'
 import { debugLog, warnLog } from '../logging'
 import { sessions, destroySession } from './session-core'
 import { hasInflightMcpCall } from './session-mcp-call'
@@ -12,17 +13,17 @@ import { hasInflightMcpCall } from './session-mcp-call'
 // duplicating magic numbers).
 // ---------------------------------------------------------------------------
 
-export const REAPER_INTERVAL_MS = 60_000          // check every 60s
-export const STARTUP_TIMEOUT_MS = 60_000          // kill if stuck starting for 60s
-export const DEFAULT_IDLE_TIMEOUT_MIN = 30        // 30 min default idle timeout
-export const DEFAULT_MAX_LIFETIME_MIN = 1440      // 24h max lifetime
+export const REAPER_INTERVAL_MS = 60_000 // check every 60s
+export const STARTUP_TIMEOUT_MS = 60_000 // kill if stuck starting for 60s
+export const DEFAULT_IDLE_TIMEOUT_MIN = 30 // 30 min default idle timeout
+export const DEFAULT_MAX_LIFETIME_MIN = 1440 // 24h max lifetime
 // Sub-agent idle window. Used to be 2 min, which silently killed sub-
 // agents in the middle of long Bash/Grep tool calls — `lastActivityAt`
 // only updates on MCP send/receive, so a single `npm install` inside a
 // sub-agent looked like dead-air to the reaper. The inflight-MCP guard
 // in `decideReap()` is the primary defence, this window is the upper
 // bound when no MCP call is pending (waiting on the model itself).
-export const SUB_AGENT_IDLE_TIMEOUT_MS = 10 * 60_000  // 10 min
+export const SUB_AGENT_IDLE_TIMEOUT_MS = 10 * 60_000 // 10 min
 
 // ---------------------------------------------------------------------------
 // Reaper state
@@ -36,6 +37,7 @@ let reaperTimer: ReturnType<typeof setInterval> | null = null
  */
 export function startSessionReaper(): void {
   if (reaperTimer) return
+  lifecycleLog('server_start')
   reaperTimer = setInterval(reapSessions, REAPER_INTERVAL_MS)
   debugLog('Session reaper started', { intervalMs: REAPER_INTERVAL_MS })
 }
@@ -45,6 +47,7 @@ export function startSessionReaper(): void {
  */
 export function stopSessionReaper(): void {
   if (reaperTimer) {
+    lifecycleLog('server_shutdown', { reason: 'shutdown' })
     clearInterval(reaperTimer)
     reaperTimer = null
   }
@@ -115,9 +118,12 @@ function reapSessions(): void {
         isSubAgent: session.isSubAgent,
       })
       eventBus.emit('session:reaped', { sessionId: session.id, reason })
-      destroySession(session.id)
+      destroySession(session.id, reason)
     } catch (err) {
-      warnLog('Reap failed for session', { sessionId: session.id, error: err instanceof Error ? err.message : String(err) })
+      warnLog('Reap failed for session', {
+        sessionId: session.id,
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
   }
 }

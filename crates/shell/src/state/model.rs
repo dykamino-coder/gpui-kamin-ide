@@ -120,12 +120,12 @@ pub struct RootView {
     /// Сессия в процессе открытия (спиннер на чипе до open в снапшоте).
     pub switching_to: Option<String>,
     /// Шторка переключения чата: (когда поднята, когда начала гаснуть).
-    /// Ставится на ЛЮБОЙ переход session→session, снимается по первому
-    /// сообщению чат-вебвью или по таймауту 2500 мс, уходит фейдом 140 мс.
     pub chat_cover: Option<(std::time::Instant, Option<std::time::Instant>)>,
-    /// Вью, чей скрипт уже слал ipc (жив) — до этого wv2 скрыт (chat-cover:
-    /// вместо белой вспышки виден gpui-плейсхолдер «Loading…»).
+    /// Один отложенный тик для retry/deadline видимых лоадеров.
+    pub(crate) loader_tick: Option<gpui::Task<()>>,
+    /// Вью, чей скрипт уже слал ipc; остальные показывают loading cover.
     pub webviews_alive: std::collections::HashSet<String>,
+    pub(crate) webview_slots: super::webview_visibility::Slots,
     /// Крышка загрузки вебвью: (когда появился html, когда вью «отрисовалось»).
     /// Второе — `__kaminReady` оригинала: пинг страницы либо фолбэк 1200 мс.
     pub webview_cover:

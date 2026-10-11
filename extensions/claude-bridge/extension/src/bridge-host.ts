@@ -39,11 +39,13 @@ import { setHookEmitConfigStore } from "./main/hooks/emit-bridge-event"
 import { ConnectionManager } from "./main/ws/connection-manager"
 import { registerCoreIpc, wireConnectionCallbacks } from "./core-ipc"
 import { registerSyncIPC } from "./main/ipc/sync"
-import { installIncidentDiagnostics, recordBridgeOutbound } from "./incident-diagnostics"
+import { installIncidentDiagnostics, recordBridgeOutbound, recordInvokeBoundary } from "./incident-diagnostics"
+import { InvokeDiagnostics } from './invoke-diagnostics'
 
 interface InboundMessage {
-  kind: "invoke" | "send"
+  kind: "invoke" | "send" | "invoke-diagnostic"
   id?: number
+  generation?: string
   channel: string
   args?: unknown[]
 }
@@ -90,6 +92,7 @@ export class BridgeHost {
   // customize sections). Events fan out to all — except the per-session heavy
   // channels, withheld by role (see post()); invoke replies target the origin.
   private readonly webviews = new Set<vscode.Webview>()
+  private readonly invokeDiagnostics = new InvokeDiagnostics<vscode.Webview>(recordInvokeBoundary)
   // Each webview's role, so the fan-out can skip the heavy per-session streams
   // (jsonl / streaming / pty) for panels that render none of it. The customize
   // sections don't touch the conversation at all — sending them the jsonl
@@ -411,6 +414,7 @@ export class BridgeHost {
    *  originating webview. */
   attach(webview: vscode.Webview, role: WebviewRole = "chat"): vscode.Disposable {
     this.webviews.add(webview)
+    this.invokeDiagnostics.attach(webview)
     this.webviewRoles.set(webview, role)
     // Session-вью, привязавшееся ПОЗЖЕ раннего серверного реплея (aux-панели
     // резолвятся после snapshot-регистрации, а сабагент-реплей уходит в первые
@@ -424,6 +428,7 @@ export class BridgeHost {
       dispose: () => {
         sub.dispose()
         this.webviews.delete(webview)
+        this.invokeDiagnostics.detach(webview)
         // Drop the visibility/stale bookkeeping too: a torn-down view left
         // behind as "hidden" would otherwise keep accruing staleness forever.
         this.resync.forget(webview)
@@ -445,6 +450,7 @@ export class BridgeHost {
   /** A tracked webview view's visibility changed; resync if this reveal has a
    *  recorded gap (see ResyncTracker.setVisible). */
   setWebviewVisible(webview: vscode.Webview, visible: boolean): void {
+    this.invokeDiagnostics.setHidden(webview, !visible)
     if (this.resync.setVisible(webview, visible)) this.onResyncNeeded?.()
   }
 
@@ -459,6 +465,7 @@ export class BridgeHost {
     this.disposed = true
     this.tabManager.disconnectAll()
     void pluginLspManager.restart()
+    for (const view of this.webviews) this.invokeDiagnostics.detach(view)
     this.webviews.clear()
   }
 
@@ -495,6 +502,10 @@ export class BridgeHost {
   }
 
   private async onMessage(msg: InboundMessage, source: vscode.Webview): Promise<void> {
+    if (msg?.kind === 'invoke-diagnostic') {
+      this.invokeDiagnostics.renderer(source, msg)
+      return
+    }
     if (!msg || typeof msg.channel !== "string") return
     const args = Array.isArray(msg.args) ? msg.args : []
 
@@ -504,18 +515,22 @@ export class BridgeHost {
     }
 
     if (msg.kind === "invoke") {
-      const reply = (frame: Record<string, unknown>) => void source.postMessage({ kind: "invoke-reply", id: msg.id, ...frame })
+      const trace = this.invokeDiagnostics.begin(source, msg.id, msg.channel, msg.generation)
+      const reply = (frame: Record<string, unknown>) => trace.reply(() => source.postMessage({ kind: "invoke-reply", id: msg.id, generation: msg.generation, ...frame }))
       try {
         const result = await ipcMain.invokeHandler(msg.channel, this.event, ...args)
-        reply({ ok: true, result })
+        trace.handler('resolved')
+        await reply({ ok: true, result })
       } catch (err) {
         // Unimplemented channels (peripheral panels not yet ported) resolve to
         // null rather than rejecting, so the renderer degrades gracefully.
         if (!ipcMain.hasHandler(msg.channel)) {
-          console.warn(`[claude-bridge] unimplemented invoke channel: ${msg.channel}`)
-          reply({ ok: true, result: null })
+          trace.handler('unregistered')
+          console.warn('[claude-bridge] unimplemented invoke channel (see incident channelRef)')
+          await reply({ ok: true, result: null })
         } else {
-          reply({ ok: false, error: err instanceof Error ? err.message : String(err) })
+          trace.handler('rejected')
+          await reply({ ok: false, error: err instanceof Error ? err.message : String(err) })
         }
       }
     }

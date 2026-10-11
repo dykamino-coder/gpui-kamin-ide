@@ -1,21 +1,45 @@
 //! Style types for CSS Grid layout
 use super::{
-    AlignContent, AlignItems, AlignSelf, CheapCloneStr, CompactLength, CoreStyle, Dimension, JustifyContent,
-    LengthPercentage, LengthPercentageAuto, Style,
+    AlignContent, AlignContentKeyword, AlignItems, AlignSelf, CheapCloneStr, CompactLength,
+    CoreStyle, Dimension, JustifyContent, LengthPercentage, LengthPercentageAuto, Style,
 };
-use crate::compute::grid::{GridCoordinate, GridLine, OriginZeroLine};
+use crate::compute::grid::{GridCoordinate, GridLine, OriginZeroLine, MAX_GRID_TRACKS};
 use crate::geometry::{AbsoluteAxis, AbstractAxis, Line, MinMax, Size};
 use crate::style_helpers::*;
 use crate::sys::{DefaultCheapStr, Vec};
 use core::cmp::{max, min};
 use core::fmt::Debug;
 
+#[cfg(feature = "parse")]
+use crate::util::parse::{
+    from_str_from_css, parse_css_str_entirely, CssParseResult, FromCss, ParseError, Parser, Token,
+};
+
+/// Defines the value of the `grid-template-areas` property: the named areas plus the overall
+/// size (in tracks) of the area template.
+///
+/// The template may be larger than the extents of the named areas due to unnamed (`.`) cells,
+/// so the size is stored explicitly.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct GridTemplateAreas<CustomIdent: CheapCloneStr> {
+    /// The named grid areas
+    pub areas: crate::util::sys::GridTrackVec<GridTemplateArea<CustomIdent>>,
+    /// The number of rows in the area template
+    pub row_count: u16,
+    /// The number of columns in the area template
+    pub column_count: u16,
+}
+
 /// Defines a grid area
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct GridTemplateArea<CustomIdent: CheapCloneStr> {
     /// The name of the grid area which
-    #[cfg_attr(feature = "serde", serde(deserialize_with = "crate::util::deserialize_from_str"))]
+    #[cfg_attr(
+        feature = "serde",
+        serde(deserialize_with = "crate::util::deserialize_from_str")
+    )]
     pub name: CustomIdent,
     /// The index of the row at which the grid area starts in grid coordinates.
     pub row_start: u16,
@@ -32,7 +56,10 @@ pub struct GridTemplateArea<CustomIdent: CheapCloneStr> {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NamedGridLine<CustomIdent: CheapCloneStr> {
     /// The name of the grid area which
-    #[cfg_attr(feature = "serde", serde(deserialize_with = "crate::util::deserialize_from_str"))]
+    #[cfg_attr(
+        feature = "serde",
+        serde(deserialize_with = "crate::util::deserialize_from_str")
+    )]
     pub name: CustomIdent,
     /// The index of the row at which the grid area starts in grid coordinates.
     pub index: u16,
@@ -75,9 +102,13 @@ pub trait GenericRepetition {
     fn tracks(&self) -> Self::RepetitionTrackList<'_>;
     /// Returns the number of repeated tracks
     fn track_count(&self) -> u16 {
-        self.tracks().len() as u16
+        self.tracks().len().min(u16::MAX as usize) as u16
     }
     /// Returns an iterator over the lines names
+    ///
+    /// Line name sets are positional: set `i` names the `i`th line of each repetition. The iterator
+    /// must yield either no line name sets at all (all lines are unnamed) or exactly
+    /// `track_count() + 1` of them (one set per line, including both edge lines).
     fn lines_names(&self) -> Self::TemplateLineNames<'_>;
 }
 
@@ -122,7 +153,10 @@ where
     pub fn is_auto_repetition(&self) -> bool {
         match self {
             Self::Single(_) => false,
-            Self::Repeat(repeat) => matches!(repeat.count(), RepetitionCount::AutoFit | RepetitionCount::AutoFill),
+            Self::Repeat(repeat) => matches!(
+                repeat.count(),
+                RepetitionCount::AutoFit | RepetitionCount::AutoFill
+            ),
         }
     }
 }
@@ -171,6 +205,32 @@ pub trait GridContainerStyle: CoreStyle {
 
     /// Named grid areas
     fn grid_template_areas(&self) -> Option<Self::GridTemplateAreas<'_>>;
+    /// The number of rows in the `grid-template-areas` template (0 if there is no template).
+    /// May be greater than the extent of the named areas due to unnamed (`.`) cells.
+    fn grid_template_area_row_count(&self) -> u16 {
+        self.grid_template_areas()
+            .map(|areas| {
+                areas
+                    .into_iter()
+                    .map(|area| area.row_end.max(1) - 1)
+                    .max()
+                    .unwrap_or(0)
+            })
+            .unwrap_or(0)
+    }
+    /// The number of columns in the `grid-template-areas` template (0 if there is no template).
+    /// May be greater than the extent of the named areas due to unnamed (`.`) cells.
+    fn grid_template_area_column_count(&self) -> u16 {
+        self.grid_template_areas()
+            .map(|areas| {
+                areas
+                    .into_iter()
+                    .map(|area| area.column_end.max(1) - 1)
+                    .max()
+                    .unwrap_or(0)
+            })
+            .unwrap_or(0)
+    }
     /// Defines the line names for row lines
     fn grid_template_column_names(&self) -> Option<Self::TemplateLineNames<'_>>;
     /// Defines the size of implicitly created rows
@@ -192,23 +252,33 @@ pub trait GridContainerStyle: CoreStyle {
 
     /// How should content contained within this item be aligned in the cross/block axis
     #[inline(always)]
-    fn align_content(&self) -> Option<AlignContent> {
+    fn align_content(&self) -> AlignContent {
         Style::<Self::CustomIdent>::DEFAULT.align_content
     }
     /// How should contained within this item be aligned in the main/inline axis
     #[inline(always)]
-    fn justify_content(&self) -> Option<JustifyContent> {
+    fn justify_content(&self) -> JustifyContent {
         Style::<Self::CustomIdent>::DEFAULT.justify_content
     }
     /// How this node's children aligned in the cross/block axis?
     #[inline(always)]
-    fn align_items(&self) -> Option<AlignItems> {
+    fn align_items(&self) -> AlignItems {
         Style::<Self::CustomIdent>::DEFAULT.align_items
     }
     /// How this node's children should be aligned in the inline axis
     #[inline(always)]
-    fn justify_items(&self) -> Option<AlignItems> {
+    fn justify_items(&self) -> AlignItems {
         Style::<Self::CustomIdent>::DEFAULT.justify_items
+    }
+
+    /// KaminIDE patch: `<line-name-list>` подсеточной оси (`subgrid [a] [b]`),
+    /// `columns` — физические колонки. `None` — у оси такого списка нет.
+    #[inline(always)]
+    fn subgrid_line_names(
+        &self,
+        _columns: bool,
+    ) -> Option<super::SubgridLineNames<Self::CustomIdent>> {
+        None
     }
 
     /// Get a grid item's row or column placement depending on the axis passed
@@ -221,11 +291,16 @@ pub trait GridContainerStyle: CoreStyle {
     }
 
     /// Get a grid container's align-content or justify-content alignment depending on the axis passed
+    /// (with `normal` resolved to `stretch`)
     #[inline(always)]
     fn grid_align_content(&self, axis: AbstractAxis) -> AlignContent {
-        match axis {
-            AbstractAxis::Inline => self.justify_content().unwrap_or(AlignContent::Stretch),
-            AbstractAxis::Block => self.align_content().unwrap_or(AlignContent::Stretch),
+        let alignment = match axis {
+            AbstractAxis::Inline => self.justify_content(),
+            AbstractAxis::Block => self.align_content(),
+        };
+        match alignment.keyword {
+            AlignContentKeyword::Normal => AlignContent::STRETCH,
+            _ => alignment,
         }
     }
 }
@@ -273,10 +348,11 @@ pub trait GridItemStyle: CoreStyle {
 /// Defaults to [`GridAutoFlow::Row`]
 ///
 /// [MDN](https://developer.mozilla.org/en-US/docs/Web/CSS/grid-auto-flow)
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum GridAutoFlow {
     /// Items are placed by filling each row in turn, adding new rows as necessary
+    #[default]
     Row,
     /// Items are placed by filling each column in turn, adding new columns as necessary.
     Column,
@@ -286,16 +362,51 @@ pub enum GridAutoFlow {
     ColumnDense,
 }
 
-impl Default for GridAutoFlow {
-    fn default() -> Self {
-        Self::Row
+#[cfg(feature = "parse")]
+impl FromCss for GridAutoFlow {
+    fn from_css<'i>(parser: &mut Parser<'i, '_>) -> CssParseResult<'i, Self> {
+        let mut axis: Option<&'static str> = None;
+        let mut dense = false;
+
+        for _ in 0..2 {
+            if let Ok(ident) = parser.try_parse(|parser| parser.expect_ident_cloned()) {
+                match &*ident {
+                    "row" => {
+                        axis = Some("row");
+                    }
+                    "column" => {
+                        axis = Some("column");
+                    }
+                    "dense" => dense = true,
+                    _ => {
+                        return Err(parser.new_unexpected_token_error(Token::Ident(ident)));
+                    }
+                }
+            } else {
+                break;
+            }
+        }
+
+        match (axis, dense) {
+            (Some("row"), false) => Ok(Self::Row),
+            (Some("row") | None, true) => Ok(Self::RowDense),
+            (Some("column"), false) => Ok(Self::Column),
+            (Some("column"), true) => Ok(Self::ColumnDense),
+            (None, false) => {
+                let token = parser.next().cloned()?;
+                Err(parser.new_unexpected_token_error(token))
+            }
+            _ => unreachable!(),
+        }
     }
 }
+#[cfg(feature = "parse")]
+from_str_from_css!(GridAutoFlow);
 
 impl GridAutoFlow {
     /// Whether grid auto placement uses the sparse placement algorithm or the dense placement algorithm
     /// See: <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-auto-flow#values>
-    pub fn is_dense(&self) -> bool {
+    pub const fn is_dense(&self) -> bool {
         match self {
             Self::Row | Self::Column => false,
             Self::RowDense | Self::ColumnDense => true,
@@ -304,7 +415,7 @@ impl GridAutoFlow {
 
     /// Whether grid auto placement fills areas row-wise or column-wise
     /// See: <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-auto-flow#values>
-    pub fn primary_axis(&self) -> AbsoluteAxis {
+    pub const fn primary_axis(&self) -> AbsoluteAxis {
         match self {
             Self::Row | Self::RowDense => AbsoluteAxis::Horizontal,
             Self::Column | Self::ColumnDense => AbsoluteAxis::Vertical,
@@ -315,10 +426,8 @@ impl GridAutoFlow {
 /// A grid line placement specification which is generic over the coordinate system that it uses to define
 /// grid line positions.
 ///
-/// GenericGridPlacement<GridLine> is aliased as GridPlacement and is exposed to users of Taffy to define styles.
-/// GenericGridPlacement<OriginZeroLine> is aliased as OriginZeroGridPlacement and is used internally for placement computations.
-///
-/// See [`crate::compute::grid::type::coordinates`] for documentation on the different coordinate systems.
+/// `GenericGridPlacement<GridLine>` is aliased as GridPlacement and is exposed to users of Taffy to define styles.
+/// `GenericGridPlacement<OriginZeroLine>` is aliased as OriginZeroGridPlacement and is used internally for placement computations.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum GenericGridPlacement<LineType: GridCoordinate> {
@@ -343,10 +452,11 @@ pub(crate) type NonNamedGridPlacement = GenericGridPlacement<GridLine>;
 /// Defaults to `GridPlacement::Auto`
 ///
 /// [Specification](https://www.w3.org/TR/css3-grid-layout/#typedef-grid-row-start-grid-line)
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum GridPlacement<S: CheapCloneStr = DefaultCheapStr> {
     /// Place item according to the auto-placement algorithm, and the parent's grid_auto_flow property
+    #[default]
     Auto,
     /// Place item at specified line (column or row) index
     Line(GridLine),
@@ -354,9 +464,9 @@ pub enum GridPlacement<S: CheapCloneStr = DefaultCheapStr> {
     NamedLine(S, i16),
     /// Item should span specified number of tracks (columns or rows)
     Span(u16),
-    /// Item should span until the nth line named <name>.
+    /// Item should span until the nth line named `<name>`.
     ///
-    /// If there are less than n lines named <name> in the specified direction then
+    /// If there are less than n lines named `<name>` in the specified direction then
     /// all implicit lines will be counted.
     NamedSpan(S, u16),
 }
@@ -370,7 +480,10 @@ impl<S: CheapCloneStr> TaffyGridLine for GridPlacement<S> {
 }
 impl<S: CheapCloneStr> TaffyGridLine for Line<GridPlacement<S>> {
     fn from_line_index(index: i16) -> Self {
-        Line { start: GridPlacement::<S>::from_line_index(index), end: GridPlacement::<S>::Auto }
+        Line {
+            start: GridPlacement::<S>::from_line_index(index),
+            end: GridPlacement::<S>::Auto,
+        }
     }
 }
 impl<S: CheapCloneStr> TaffyGridSpan for GridPlacement<S> {
@@ -380,27 +493,112 @@ impl<S: CheapCloneStr> TaffyGridSpan for GridPlacement<S> {
 }
 impl<S: CheapCloneStr> TaffyGridSpan for Line<GridPlacement<S>> {
     fn from_span(span: u16) -> Self {
-        Line { start: GridPlacement::<S>::from_span(span), end: GridPlacement::<S>::Auto }
+        Line {
+            start: GridPlacement::<S>::from_span(span),
+            end: GridPlacement::<S>::Auto,
+        }
     }
 }
 
-impl<S: CheapCloneStr> Default for GridPlacement<S> {
-    fn default() -> Self {
-        Self::Auto
+#[cfg(feature = "parse")]
+/// Saturates an `i32` to the range representable by `i16`.
+fn saturating_i16(value: i32) -> i16 {
+    value.clamp(i16::MIN as i32, i16::MAX as i32) as i16
+}
+
+#[cfg(feature = "parse")]
+/// Saturates an `i32` to the range representable by `u16`.
+fn saturating_u16(value: i32) -> u16 {
+    value.clamp(u16::MIN as i32, u16::MAX as i32) as u16
+}
+
+#[cfg(feature = "parse")]
+impl<S: CheapCloneStr> FromCss for GridPlacement<S> {
+    fn from_css<'i>(parser: &mut Parser<'i, '_>) -> CssParseResult<'i, Self> {
+        let mut span = false;
+        let mut number = None;
+        let mut ident = None;
+
+        while !parser.is_exhausted() {
+            let token = parser.next()?.clone();
+            match &token {
+                Token::Ident(s) => match s.as_ref() {
+                    "auto" => {
+                        if span || number.is_some() || ident.is_some() {
+                            return Err(parser.new_unexpected_token_error(token));
+                        }
+                        parser.expect_exhausted()?;
+                        return Ok(Self::Auto);
+                    }
+                    "span" => {
+                        if span {
+                            return Err(parser.new_unexpected_token_error(token));
+                        }
+                        span = true;
+                    }
+                    other => {
+                        if ident.is_some() {
+                            return Err(parser.new_unexpected_token_error(token));
+                        }
+                        ident = Some(S::from(other));
+                    }
+                },
+                Token::Number {
+                    int_value: Some(value),
+                    ..
+                } if *value != 0 => {
+                    if number.is_some() {
+                        return Err(parser.new_unexpected_token_error(token));
+                    }
+                    number = Some(*value);
+                }
+                _ => return Err(parser.new_unexpected_token_error(token)),
+            };
+        }
+
+        match (span, number, ident) {
+            (true, None, None) => Ok(Self::Span(0)),
+            (true, Some(number), None) => Ok(Self::Span(saturating_u16(number))),
+            (true, None, Some(ident)) => Ok(Self::NamedSpan(ident, 0)),
+            (true, Some(number), Some(ident)) => Ok(Self::NamedSpan(ident, saturating_u16(number))),
+            (false, Some(number), None) => Ok(Self::Line(GridLine::from(saturating_i16(number)))),
+            (false, Some(number), Some(ident)) => {
+                Ok(Self::NamedLine(ident, saturating_i16(number)))
+            }
+            (false, None, Some(ident)) => Ok(Self::NamedLine(ident, 0)),
+            (false, None, None) => {
+                Err(parser.new_error(cssparser::BasicParseErrorKind::EndOfInput))
+            }
+        }
+    }
+}
+
+#[cfg(feature = "parse")]
+impl<S: CheapCloneStr> core::str::FromStr for GridPlacement<S> {
+    type Err = ParseError;
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        parse_css_str_entirely(input)
     }
 }
 
 impl<S: CheapCloneStr> GridPlacement<S> {
     /// Apply a mapping function if the [`GridPlacement`] is a `Line`. Otherwise return `self` unmodified.
-    pub fn into_origin_zero_placement_ignoring_named(&self, explicit_track_count: u16) -> OriginZeroGridPlacement {
+    pub fn into_origin_zero_placement_ignoring_named(
+        &self,
+        explicit_track_count: u16,
+    ) -> OriginZeroGridPlacement {
         match self {
             Self::Auto => OriginZeroGridPlacement::Auto,
-            Self::Span(span) => OriginZeroGridPlacement::Span(*span),
+            // Spans are clamped between 1 (a zero span is an invalid value which is treated as 1)
+            // and the maximum track limit (https://www.w3.org/TR/css-grid-1/#overlarge-grids)
+            Self::Span(span) => OriginZeroGridPlacement::Span((*span).clamp(1, MAX_GRID_TRACKS)),
             // Grid line zero is an invalid index, so it gets treated as Auto
             // See: https://developer.mozilla.org/en-US/docs/Web/CSS/grid-row-start#values
             Self::Line(line) => match line.as_i16() {
                 0 => OriginZeroGridPlacement::Auto,
-                _ => OriginZeroGridPlacement::Line(line.into_origin_zero_line(explicit_track_count)),
+                _ => {
+                    OriginZeroGridPlacement::Line(line.into_origin_zero_line(explicit_track_count))
+                }
             },
             Self::NamedLine(_, _) => OriginZeroGridPlacement::Auto,
             Self::NamedSpan(_, _) => OriginZeroGridPlacement::Auto,
@@ -410,10 +608,17 @@ impl<S: CheapCloneStr> GridPlacement<S> {
 
 impl<S: CheapCloneStr> Line<GridPlacement<S>> {
     /// Apply a mapping function if the [`GridPlacement`] is a `Line`. Otherwise return `self` unmodified.
-    pub fn into_origin_zero_ignoring_named(&self, explicit_track_count: u16) -> Line<OriginZeroGridPlacement> {
+    pub fn into_origin_zero_ignoring_named(
+        &self,
+        explicit_track_count: u16,
+    ) -> Line<OriginZeroGridPlacement> {
         Line {
-            start: self.start.into_origin_zero_placement_ignoring_named(explicit_track_count),
-            end: self.end.into_origin_zero_placement_ignoring_named(explicit_track_count),
+            start: self
+                .start
+                .into_origin_zero_placement_ignoring_named(explicit_track_count),
+            end: self
+                .end
+                .into_origin_zero_placement_ignoring_named(explicit_track_count),
         }
     }
 }
@@ -427,12 +632,16 @@ impl NonNamedGridPlacement {
     ) -> OriginZeroGridPlacement {
         match self {
             Self::Auto => OriginZeroGridPlacement::Auto,
-            Self::Span(span) => OriginZeroGridPlacement::Span(*span),
+            // Spans are clamped between 1 (a zero span is an invalid value which is treated as 1)
+            // and the maximum track limit (https://www.w3.org/TR/css-grid-1/#overlarge-grids)
+            Self::Span(span) => OriginZeroGridPlacement::Span((*span).clamp(1, MAX_GRID_TRACKS)),
             // Grid line zero is an invalid index, so it gets treated as Auto
             // See: https://developer.mozilla.org/en-US/docs/Web/CSS/grid-row-start#values
             Self::Line(line) => match line.as_i16() {
                 0 => OriginZeroGridPlacement::Auto,
-                _ => OriginZeroGridPlacement::Line(line.into_origin_zero_line(explicit_track_count)),
+                _ => {
+                    OriginZeroGridPlacement::Line(line.into_origin_zero_line(explicit_track_count))
+                }
             },
         }
     }
@@ -441,7 +650,7 @@ impl NonNamedGridPlacement {
 impl<T: GridCoordinate> Line<GenericGridPlacement<T>> {
     /// Resolves the span for an indefinite placement (a placement that does not consist of two `Track`s).
     /// Panics if called on a definite placement
-    pub fn indefinite_span(&self) -> u16 {
+    pub const fn indefinite_span(&self) -> u16 {
         use GenericGridPlacement as GP;
         match (self.start, self.end) {
             (GP::Line(_), GP::Auto) => 1,
@@ -452,7 +661,9 @@ impl<T: GridCoordinate> Line<GenericGridPlacement<T>> {
             (GP::Span(span), GP::Auto) => span,
             (GP::Auto, GP::Span(span)) => span,
             (GP::Span(span), GP::Span(_)) => span,
-            (GP::Line(_), GP::Line(_)) => panic!("indefinite_span should only be called on indefinite grid tracks"),
+            (GP::Line(_), GP::Line(_)) => {
+                panic!("indefinite_span should only be called on indefinite grid tracks")
+            }
         }
     }
 }
@@ -499,8 +710,11 @@ impl Line<OriginZeroGridPlacement> {
     #[inline]
     /// Whether the track position is definite in this axis (or the item will need auto placement)
     /// The track position is definite if least one of the start and end positions is a track index
-    pub fn is_definite(&self) -> bool {
-        matches!((self.start, self.end), (GenericGridPlacement::Line(_), _) | (_, GenericGridPlacement::Line(_)))
+    pub const fn is_definite(&self) -> bool {
+        matches!(
+            (self.start, self.end),
+            (GenericGridPlacement::Line(_), _) | (_, GenericGridPlacement::Line(_))
+        )
     }
 
     /// If at least one of the of the start and end positions is a track index then the other end can be resolved
@@ -510,16 +724,36 @@ impl Line<OriginZeroGridPlacement> {
         match (self.start, self.end) {
             (GP::Line(line1), GP::Line(line2)) => {
                 if line1 == line2 {
-                    Line { start: line1, end: line1 + 1 }
+                    Line {
+                        start: line1,
+                        end: line1 + 1,
+                    }
                 } else {
-                    Line { start: min(line1, line2), end: max(line1, line2) }
+                    Line {
+                        start: min(line1, line2),
+                        end: max(line1, line2),
+                    }
                 }
             }
-            (GP::Line(line), GP::Span(span)) => Line { start: line, end: line + span },
-            (GP::Line(line), GP::Auto) => Line { start: line, end: line + 1 },
-            (GP::Span(span), GP::Line(line)) => Line { start: line - span, end: line },
-            (GP::Auto, GP::Line(line)) => Line { start: line - 1, end: line },
-            _ => panic!("resolve_definite_grid_tracks should only be called on definite grid tracks"),
+            (GP::Line(line), GP::Span(span)) => Line {
+                start: line,
+                end: line + span,
+            },
+            (GP::Line(line), GP::Auto) => Line {
+                start: line,
+                end: line + 1,
+            },
+            (GP::Span(span), GP::Line(line)) => Line {
+                start: line - span,
+                end: line,
+            },
+            (GP::Auto, GP::Line(line)) => Line {
+                start: line - 1,
+                end: line,
+            },
+            _ => {
+                panic!("resolve_definite_grid_tracks should only be called on definite grid tracks")
+            }
         }
     }
 
@@ -537,16 +771,37 @@ impl Line<OriginZeroGridPlacement> {
         match (self.start, self.end) {
             (GP::Line(track1), GP::Line(track2)) => {
                 if track1 == track2 {
-                    Line { start: Some(track1), end: Some(track1 + 1) }
+                    Line {
+                        start: Some(track1),
+                        end: Some(track1 + 1),
+                    }
                 } else {
-                    Line { start: Some(min(track1, track2)), end: Some(max(track1, track2)) }
+                    Line {
+                        start: Some(min(track1, track2)),
+                        end: Some(max(track1, track2)),
+                    }
                 }
             }
-            (GP::Line(track), GP::Span(span)) => Line { start: Some(track), end: Some(track + span) },
-            (GP::Line(track), GP::Auto) => Line { start: Some(track), end: None },
-            (GP::Span(span), GP::Line(track)) => Line { start: Some(track - span), end: Some(track) },
-            (GP::Auto, GP::Line(track)) => Line { start: None, end: Some(track) },
-            _ => Line { start: None, end: None },
+            (GP::Line(track), GP::Span(span)) => Line {
+                start: Some(track),
+                end: Some(track + span),
+            },
+            (GP::Line(track), GP::Auto) => Line {
+                start: Some(track),
+                end: None,
+            },
+            (GP::Span(span), GP::Line(track)) => Line {
+                start: Some(track - span),
+                end: Some(track),
+            },
+            (GP::Auto, GP::Line(track)) => Line {
+                start: None,
+                end: Some(track),
+            },
+            _ => Line {
+                start: None,
+                end: None,
+            },
         }
     }
 
@@ -555,11 +810,25 @@ impl Line<OriginZeroGridPlacement> {
     pub fn resolve_indefinite_grid_tracks(&self, start: OriginZeroLine) -> Line<OriginZeroLine> {
         use OriginZeroGridPlacement as GP;
         match (self.start, self.end) {
-            (GP::Auto, GP::Auto) => Line { start, end: start + 1 },
-            (GP::Span(span), GP::Auto) => Line { start, end: start + span },
-            (GP::Auto, GP::Span(span)) => Line { start, end: start + span },
-            (GP::Span(span), GP::Span(_)) => Line { start, end: start + span },
-            _ => panic!("resolve_indefinite_grid_tracks should only be called on indefinite grid tracks"),
+            (GP::Auto, GP::Auto) => Line {
+                start,
+                end: start + 1,
+            },
+            (GP::Span(span), GP::Auto) => Line {
+                start,
+                end: start + span,
+            },
+            (GP::Auto, GP::Span(span)) => Line {
+                start,
+                end: start + span,
+            },
+            (GP::Span(span), GP::Span(_)) => Line {
+                start,
+                end: start + span,
+            },
+            _ => panic!(
+                "resolve_indefinite_grid_tracks should only be called on indefinite grid tracks"
+            ),
         }
     }
 }
@@ -567,7 +836,10 @@ impl Line<OriginZeroGridPlacement> {
 /// Represents the start and end points of a GridItem within a given axis
 impl<S: CheapCloneStr> Default for Line<GridPlacement<S>> {
     fn default() -> Self {
-        Line { start: GridPlacement::<S>::Auto, end: GridPlacement::<S>::Auto }
+        Line {
+            start: GridPlacement::<S>::Auto,
+            end: GridPlacement::<S>::Auto,
+        }
     }
 }
 
@@ -592,13 +864,13 @@ impl TaffyMaxContent for MaxTrackSizingFunction {
     const MAX_CONTENT: Self = Self(CompactLength::MAX_CONTENT);
 }
 impl FromLength for MaxTrackSizingFunction {
-    fn from_length<Input: Into<f32> + Copy>(value: Input) -> Self {
-        Self::length(value.into())
+    fn from_length<Input: Into<f64> + Copy>(value: Input) -> Self {
+        Self::length(value.into() as f32)
     }
 }
 impl FromPercent for MaxTrackSizingFunction {
-    fn from_percent<Input: Into<f32> + Copy>(value: Input) -> Self {
-        Self::percent(value.into())
+    fn from_percent<Input: Into<f64> + Copy>(value: Input) -> Self {
+        Self::percent(value.into() as f32)
     }
 }
 impl TaffyFitContent for MaxTrackSizingFunction {
@@ -607,8 +879,8 @@ impl TaffyFitContent for MaxTrackSizingFunction {
     }
 }
 impl FromFr for MaxTrackSizingFunction {
-    fn from_fr<Input: Into<f32> + Copy>(value: Input) -> Self {
-        Self::fr(value.into())
+    fn from_fr<Input: Into<f64> + Copy>(value: Input) -> Self {
+        Self::fr(value.into() as f32)
     }
 }
 impl From<LengthPercentage> for MaxTrackSizingFunction {
@@ -623,7 +895,14 @@ impl From<LengthPercentageAuto> for MaxTrackSizingFunction {
 }
 impl From<Dimension> for MaxTrackSizingFunction {
     fn from(input: Dimension) -> Self {
-        Self(input.0)
+        // Dimension supports values that are not valid max track sizing functions.
+        // Map those to `auto`.
+        match input.0.tag() {
+            CompactLength::FIT_CONTENT_KEYWORD_TAG
+            | CompactLength::STRETCH_TAG
+            | CompactLength::CONTENT_TAG => Self::auto(),
+            _ => Self(input.0),
+        }
     }
 }
 impl From<MinTrackSizingFunction> for MaxTrackSizingFunction {
@@ -631,6 +910,44 @@ impl From<MinTrackSizingFunction> for MaxTrackSizingFunction {
         Self(input.0)
     }
 }
+
+#[cfg(feature = "parse")]
+impl FromCss for MaxTrackSizingFunction {
+    fn from_css<'i>(parser: &mut Parser<'i, '_>) -> CssParseResult<'i, Self> {
+        let token = parser.next()?.clone();
+        match token {
+            Token::Percentage { unit_value, .. } => Ok(Self::percent(unit_value)),
+            Token::Dimension { unit, value, .. } if unit == "px" => Ok(Self::length(value)),
+            Token::Dimension { unit, value, .. } if unit == "fr" && value.is_sign_positive() => {
+                Ok(Self::fr(value))
+            }
+            Token::Ident(ref ident) => match ident.as_ref() {
+                "auto" => Ok(Self::auto()),
+                "min-content" => Ok(Self::min_content()),
+                "max-content" => Ok(Self::max_content()),
+                _ => Err(parser.new_unexpected_token_error(token))?,
+            },
+            Token::Function(ref name) if name.as_ref() == "fit-content" => parser
+                .parse_nested_block(|parser| {
+                    let token = parser.next()?.clone();
+                    match token {
+                        Token::Percentage { unit_value, .. } => {
+                            Ok(Self::fit_content_percent(unit_value))
+                        }
+                        Token::Dimension { unit, value, .. } if unit == "px" => {
+                            Ok(Self::fit_content_px(value))
+                        }
+                        token => Err(parser.new_unexpected_token_error(token))?,
+                    }
+                }),
+            token => Err(parser.new_unexpected_token_error(token))?,
+        }
+    }
+}
+
+#[cfg(feature = "parse")]
+from_str_from_css!(MaxTrackSizingFunction);
+
 #[cfg(feature = "serde")]
 impl<'de> serde::Deserialize<'de> for MaxTrackSizingFunction {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -740,6 +1057,16 @@ impl MaxTrackSizingFunction {
         Self(CompactLength::calc(ptr))
     }
 
+    /// A `fit-content()` track sizing function whose limit is a `calc()` value. The value passed here is treated
+    /// as an opaque handle to the actual calc representation and may be a pointer, index, etc.
+    ///
+    /// The low 3 bits are used as a tag value and will be returned as 0.
+    #[inline]
+    #[cfg(feature = "calc")]
+    pub fn fit_content_calc(ptr: *const ()) -> Self {
+        Self(CompactLength::fit_content_calc(ptr))
+    }
+
     /// Create a LengthPercentageAuto from a raw `CompactLength`.
     /// # Safety
     /// CompactLength must represent a valid variant for LengthPercentageAuto
@@ -810,7 +1137,7 @@ impl MaxTrackSizingFunction {
             CompactLength::LENGTH_TAG => true,
             CompactLength::PERCENT_TAG => parent_size.is_some(),
             #[cfg(feature = "calc")]
-            _ if self.0.is_calc() => parent_size.is_some(),
+            _ if self.0.is_plain_calc() => parent_size.is_some(),
             _ => false,
         }
     }
@@ -828,7 +1155,31 @@ impl MaxTrackSizingFunction {
             CompactLength::LENGTH_TAG => Some(self.0.value()),
             CompactLength::PERCENT_TAG => parent_size.map(|size| self.0.value() * size),
             #[cfg(feature = "calc")]
-            _ if self.0.is_calc() => parent_size.map(|size| calc_resolver(self.0.calc_value(), size)),
+            _ if self.0.is_plain_calc() => {
+                parent_size.map(|size| calc_resolver(self.0.calc_value(), size))
+            }
+            _ => None,
+        }
+    }
+
+    /// Resolve the `fit-content()` limit of this track sizing function against the passed `parent_size`.
+    /// Returns `None` if this is not a `fit-content()` function, or if it has a percentage or `calc()`
+    /// argument and `parent_size` is indefinite.
+    #[inline(always)]
+    pub fn fit_content_limit(
+        self,
+        parent_size: Option<f32>,
+        calc_resolver: impl Fn(*const (), f32) -> f32,
+    ) -> Option<f32> {
+        #[cfg(not(feature = "calc"))]
+        let _ = &calc_resolver;
+        match self.0.tag() {
+            CompactLength::FIT_CONTENT_PX_TAG => Some(self.0.value()),
+            CompactLength::FIT_CONTENT_PERCENT_TAG => parent_size.map(|size| self.0.value() * size),
+            #[cfg(feature = "calc")]
+            _ if self.0.is_fit_content_calc() => {
+                parent_size.map(|size| calc_resolver(self.0.calc_value(), size))
+            }
             _ => None,
         }
     }
@@ -848,6 +1199,10 @@ impl MaxTrackSizingFunction {
         match self.0.tag() {
             CompactLength::FIT_CONTENT_PX_TAG => Some(self.0.value()),
             CompactLength::FIT_CONTENT_PERCENT_TAG => parent_size.map(|size| self.0.value() * size),
+            #[cfg(feature = "calc")]
+            _ if self.0.is_fit_content_calc() => {
+                parent_size.map(|size| calc_resolver(self.0.calc_value(), size))
+            }
             _ => self.definite_value(parent_size, calc_resolver),
         }
     }
@@ -867,6 +1222,96 @@ impl MaxTrackSizingFunction {
     #[inline(always)]
     pub fn uses_percentage(self) -> bool {
         self.0.uses_percentage()
+    }
+
+    /// Expand the compact representation into an [`ExpandedMaxTrackSizingFunction`] enum.
+    ///
+    /// This is useful when integrating with other libraries (e.g. for style inspection or
+    /// serialization) as it allows the value to be pattern-matched without having to work
+    /// with the raw [`CompactLength`] tagged-pointer representation directly.
+    pub fn expand(self) -> ExpandedMaxTrackSizingFunction {
+        match self.0.tag() {
+            CompactLength::LENGTH_TAG => ExpandedMaxTrackSizingFunction::Length(self.0.value()),
+            CompactLength::PERCENT_TAG => ExpandedMaxTrackSizingFunction::Percent(self.0.value()),
+            CompactLength::AUTO_TAG => ExpandedMaxTrackSizingFunction::Auto,
+            CompactLength::MIN_CONTENT_TAG => ExpandedMaxTrackSizingFunction::MinContent,
+            CompactLength::MAX_CONTENT_TAG => ExpandedMaxTrackSizingFunction::MaxContent,
+            CompactLength::FIT_CONTENT_PX_TAG => {
+                ExpandedMaxTrackSizingFunction::FitContentPx(self.0.value())
+            }
+            CompactLength::FIT_CONTENT_PERCENT_TAG => {
+                ExpandedMaxTrackSizingFunction::FitContentPercent(self.0.value())
+            }
+            #[cfg(feature = "calc")]
+            _ if self.0.is_fit_content_calc() => {
+                ExpandedMaxTrackSizingFunction::FitContentCalc(self.0.calc_value())
+            }
+            CompactLength::FR_TAG => ExpandedMaxTrackSizingFunction::Fr(self.0.value()),
+            #[cfg(feature = "calc")]
+            _ if self.0.is_plain_calc() => {
+                ExpandedMaxTrackSizingFunction::Calc(self.0.calc_value())
+            }
+            _ => unreachable!("MaxTrackSizingFunction contains a value with an invalid tag"),
+        }
+    }
+}
+
+/// The expanded, non-compact representation of a [`MaxTrackSizingFunction`].
+///
+/// Obtained via [`MaxTrackSizingFunction::expand`]. Can be converted back into a
+/// [`MaxTrackSizingFunction`] using the [`From`] implementation.
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub enum ExpandedMaxTrackSizingFunction {
+    /// An absolute length (see [`MaxTrackSizingFunction::length`])
+    Length(f32),
+    /// A percentage length (see [`MaxTrackSizingFunction::percent`])
+    Percent(f32),
+    /// The automatic keyword (see [`MaxTrackSizingFunction::auto`])
+    Auto,
+    /// The `min-content` keyword (see [`MaxTrackSizingFunction::min_content`])
+    MinContent,
+    /// The `max-content` keyword (see [`MaxTrackSizingFunction::max_content`])
+    MaxContent,
+    /// A `fit-content(...)` value with a length limit (see [`MaxTrackSizingFunction::fit_content_px`])
+    FitContentPx(f32),
+    /// A `fit-content(...)` value with a percentage limit (see [`MaxTrackSizingFunction::fit_content_percent`])
+    FitContentPercent(f32),
+    /// Track maximum size should be content sized under a max-content constraint, but not larger than
+    /// the `calc()` limit (an opaque handle to the calc representation)
+    #[cfg(feature = "calc")]
+    FitContentCalc(*const ()),
+    /// A fraction of the leftover space (see [`MaxTrackSizingFunction::fr`])
+    Fr(f32),
+    /// A `calc()` value (see [`MaxTrackSizingFunction::calc`]). The pointer is an opaque handle to
+    /// the calc representation, exactly as passed to the constructor.
+    #[cfg(feature = "calc")]
+    Calc(*const ()),
+}
+
+impl From<MaxTrackSizingFunction> for ExpandedMaxTrackSizingFunction {
+    fn from(value: MaxTrackSizingFunction) -> Self {
+        value.expand()
+    }
+}
+
+impl From<ExpandedMaxTrackSizingFunction> for MaxTrackSizingFunction {
+    fn from(value: ExpandedMaxTrackSizingFunction) -> Self {
+        match value {
+            ExpandedMaxTrackSizingFunction::Length(val) => Self::length(val),
+            ExpandedMaxTrackSizingFunction::Percent(val) => Self::percent(val),
+            ExpandedMaxTrackSizingFunction::Auto => Self::auto(),
+            ExpandedMaxTrackSizingFunction::MinContent => Self::min_content(),
+            ExpandedMaxTrackSizingFunction::MaxContent => Self::max_content(),
+            ExpandedMaxTrackSizingFunction::FitContentPx(val) => Self::fit_content_px(val),
+            ExpandedMaxTrackSizingFunction::FitContentPercent(val) => {
+                Self::fit_content_percent(val)
+            }
+            #[cfg(feature = "calc")]
+            ExpandedMaxTrackSizingFunction::FitContentCalc(ptr) => Self::fit_content_calc(ptr),
+            ExpandedMaxTrackSizingFunction::Fr(val) => Self::fr(val),
+            #[cfg(feature = "calc")]
+            ExpandedMaxTrackSizingFunction::Calc(ptr) => Self::calc(ptr),
+        }
     }
 }
 
@@ -891,13 +1336,13 @@ impl TaffyMaxContent for MinTrackSizingFunction {
     const MAX_CONTENT: Self = Self(CompactLength::MAX_CONTENT);
 }
 impl FromLength for MinTrackSizingFunction {
-    fn from_length<Input: Into<f32> + Copy>(value: Input) -> Self {
-        Self::length(value.into())
+    fn from_length<Input: Into<f64> + Copy>(value: Input) -> Self {
+        Self::length(value.into() as f32)
     }
 }
 impl FromPercent for MinTrackSizingFunction {
-    fn from_percent<Input: Into<f32> + Copy>(value: Input) -> Self {
-        Self::percent(value.into())
+    fn from_percent<Input: Into<f64> + Copy>(value: Input) -> Self {
+        Self::percent(value.into() as f32)
     }
 }
 impl From<LengthPercentage> for MinTrackSizingFunction {
@@ -912,9 +1357,50 @@ impl From<LengthPercentageAuto> for MinTrackSizingFunction {
 }
 impl From<Dimension> for MinTrackSizingFunction {
     fn from(input: Dimension) -> Self {
+        // Dimension supports values that are not valid min track sizing functions.
+        // Map those to `auto`.
+        match input.0.tag() {
+            CompactLength::FIT_CONTENT_PX_TAG
+            | CompactLength::FIT_CONTENT_PERCENT_TAG
+            | CompactLength::FIT_CONTENT_KEYWORD_TAG
+            | CompactLength::STRETCH_TAG
+            | CompactLength::CONTENT_TAG => Self::auto(),
+            _ if input.0.is_fit_content_calc() => Self::auto(),
+            _ => Self(input.0),
+        }
+    }
+}
+
+impl From<MaxTrackSizingFunction> for MinTrackSizingFunction {
+    fn from(input: MaxTrackSizingFunction) -> Self {
+        if input.is_fr() || input.is_fit_content() {
+            return Self::auto();
+        }
         Self(input.0)
     }
 }
+
+#[cfg(feature = "parse")]
+impl FromCss for MinTrackSizingFunction {
+    fn from_css<'i>(parser: &mut Parser<'i, '_>) -> CssParseResult<'i, Self> {
+        let token = parser.next()?.clone();
+        match token {
+            Token::Percentage { unit_value, .. } => Ok(Self::percent(unit_value)),
+            Token::Dimension { unit, value, .. } if unit == "px" => Ok(Self::length(value)),
+            Token::Ident(ref ident) => match ident.as_ref() {
+                "auto" => Ok(Self::auto()),
+                "min-content" => Ok(Self::min_content()),
+                "max-content" => Ok(Self::max_content()),
+                _ => Err(parser.new_unexpected_token_error(token))?,
+            },
+            token => Err(parser.new_unexpected_token_error(token))?,
+        }
+    }
+}
+
+#[cfg(feature = "parse")]
+from_str_from_css!(MinTrackSizingFunction);
+
 #[cfg(feature = "serde")]
 impl<'de> serde::Deserialize<'de> for MinTrackSizingFunction {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -1024,6 +1510,12 @@ impl MinTrackSizingFunction {
         self.0.is_auto()
     }
 
+    /// Returns true if the value is `Auto`, or is a percentage and `parent_size` is `None`
+    #[inline(always)]
+    pub fn behaves_as_auto(&self, parent_size: Option<f32>) -> bool {
+        self.0.is_auto() || (parent_size.is_none() && self.0.uses_percentage())
+    }
+
     /// Returns true if value is MinContent
     #[inline(always)]
     pub fn is_min_content(&self) -> bool {
@@ -1049,7 +1541,9 @@ impl MinTrackSizingFunction {
             CompactLength::LENGTH_TAG => Some(self.0.value()),
             CompactLength::PERCENT_TAG => parent_size.map(|size| self.0.value() * size),
             #[cfg(feature = "calc")]
-            _ if self.0.is_calc() => parent_size.map(|size| calc_resolver(self.0.calc_value(), size)),
+            _ if self.0.is_plain_calc() => {
+                parent_size.map(|size| calc_resolver(self.0.calc_value(), size))
+            }
             _ => None,
         }
     }
@@ -1068,13 +1562,68 @@ impl MinTrackSizingFunction {
     /// Whether the track sizing functions depends on the size of the parent node
     #[inline(always)]
     pub fn uses_percentage(self) -> bool {
-        #[cfg(feature = "calc")]
-        {
-            matches!(self.0.tag(), CompactLength::PERCENT_TAG) || self.0.is_calc()
+        self.0.uses_percentage()
+    }
+
+    /// Expand the compact representation into an [`ExpandedMinTrackSizingFunction`] enum.
+    ///
+    /// This is useful when integrating with other libraries (e.g. for style inspection or
+    /// serialization) as it allows the value to be pattern-matched without having to work
+    /// with the raw [`CompactLength`] tagged-pointer representation directly.
+    pub fn expand(self) -> ExpandedMinTrackSizingFunction {
+        match self.0.tag() {
+            CompactLength::LENGTH_TAG => ExpandedMinTrackSizingFunction::Length(self.0.value()),
+            CompactLength::PERCENT_TAG => ExpandedMinTrackSizingFunction::Percent(self.0.value()),
+            CompactLength::AUTO_TAG => ExpandedMinTrackSizingFunction::Auto,
+            CompactLength::MIN_CONTENT_TAG => ExpandedMinTrackSizingFunction::MinContent,
+            CompactLength::MAX_CONTENT_TAG => ExpandedMinTrackSizingFunction::MaxContent,
+            #[cfg(feature = "calc")]
+            _ if self.0.is_plain_calc() => {
+                ExpandedMinTrackSizingFunction::Calc(self.0.calc_value())
+            }
+            _ => unreachable!("MinTrackSizingFunction contains a value with an invalid tag"),
         }
-        #[cfg(not(feature = "calc"))]
-        {
-            matches!(self.0.tag(), CompactLength::PERCENT_TAG)
+    }
+}
+
+/// The expanded, non-compact representation of a [`MinTrackSizingFunction`].
+///
+/// Obtained via [`MinTrackSizingFunction::expand`]. Can be converted back into a
+/// [`MinTrackSizingFunction`] using the [`From`] implementation.
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub enum ExpandedMinTrackSizingFunction {
+    /// An absolute length (see [`MinTrackSizingFunction::length`])
+    Length(f32),
+    /// A percentage length (see [`MinTrackSizingFunction::percent`])
+    Percent(f32),
+    /// The automatic keyword (see [`MinTrackSizingFunction::auto`])
+    Auto,
+    /// The `min-content` keyword (see [`MinTrackSizingFunction::min_content`])
+    MinContent,
+    /// The `max-content` keyword (see [`MinTrackSizingFunction::max_content`])
+    MaxContent,
+    /// A `calc()` value (see [`MinTrackSizingFunction::calc`]). The pointer is an opaque handle to
+    /// the calc representation, exactly as passed to the constructor.
+    #[cfg(feature = "calc")]
+    Calc(*const ()),
+}
+
+impl From<MinTrackSizingFunction> for ExpandedMinTrackSizingFunction {
+    fn from(value: MinTrackSizingFunction) -> Self {
+        value.expand()
+    }
+}
+
+impl From<ExpandedMinTrackSizingFunction> for MinTrackSizingFunction {
+    fn from(value: ExpandedMinTrackSizingFunction) -> Self {
+        match value {
+            ExpandedMinTrackSizingFunction::Length(val) => Self::length(val),
+            ExpandedMinTrackSizingFunction::Percent(val) => Self::percent(val),
+            ExpandedMinTrackSizingFunction::Auto => Self::auto(),
+            ExpandedMinTrackSizingFunction::MinContent => Self::min_content(),
+            ExpandedMinTrackSizingFunction::MaxContent => Self::max_content(),
+            #[cfg(feature = "calc")]
+            ExpandedMinTrackSizingFunction::Calc(ptr) => Self::calc(ptr),
         }
     }
 }
@@ -1099,54 +1648,112 @@ impl TrackSizingFunction {
     }
 }
 impl TaffyAuto for TrackSizingFunction {
-    const AUTO: Self = Self { min: MinTrackSizingFunction::AUTO, max: MaxTrackSizingFunction::AUTO };
+    const AUTO: Self = Self {
+        min: MinTrackSizingFunction::AUTO,
+        max: MaxTrackSizingFunction::AUTO,
+    };
 }
 impl TaffyMinContent for TrackSizingFunction {
-    const MIN_CONTENT: Self =
-        Self { min: MinTrackSizingFunction::MIN_CONTENT, max: MaxTrackSizingFunction::MIN_CONTENT };
+    const MIN_CONTENT: Self = Self {
+        min: MinTrackSizingFunction::MIN_CONTENT,
+        max: MaxTrackSizingFunction::MIN_CONTENT,
+    };
 }
 impl TaffyMaxContent for TrackSizingFunction {
-    const MAX_CONTENT: Self =
-        Self { min: MinTrackSizingFunction::MAX_CONTENT, max: MaxTrackSizingFunction::MAX_CONTENT };
+    const MAX_CONTENT: Self = Self {
+        min: MinTrackSizingFunction::MAX_CONTENT,
+        max: MaxTrackSizingFunction::MAX_CONTENT,
+    };
 }
 impl TaffyFitContent for TrackSizingFunction {
     fn fit_content(argument: LengthPercentage) -> Self {
-        Self { min: MinTrackSizingFunction::AUTO, max: MaxTrackSizingFunction::fit_content(argument) }
+        Self {
+            min: MinTrackSizingFunction::AUTO,
+            max: MaxTrackSizingFunction::fit_content(argument),
+        }
     }
 }
 impl TaffyZero for TrackSizingFunction {
-    const ZERO: Self = Self { min: MinTrackSizingFunction::ZERO, max: MaxTrackSizingFunction::ZERO };
+    const ZERO: Self = Self {
+        min: MinTrackSizingFunction::ZERO,
+        max: MaxTrackSizingFunction::ZERO,
+    };
 }
 impl FromLength for TrackSizingFunction {
-    fn from_length<Input: Into<f32> + Copy>(value: Input) -> Self {
-        Self { min: MinTrackSizingFunction::from_length(value), max: MaxTrackSizingFunction::from_length(value) }
+    fn from_length<Input: Into<f64> + Copy>(value: Input) -> Self {
+        Self {
+            min: MinTrackSizingFunction::from_length(value),
+            max: MaxTrackSizingFunction::from_length(value),
+        }
     }
 }
 impl FromPercent for TrackSizingFunction {
-    fn from_percent<Input: Into<f32> + Copy>(percent: Input) -> Self {
-        Self { min: MinTrackSizingFunction::from_percent(percent), max: MaxTrackSizingFunction::from_percent(percent) }
+    fn from_percent<Input: Into<f64> + Copy>(percent: Input) -> Self {
+        Self {
+            min: MinTrackSizingFunction::from_percent(percent),
+            max: MaxTrackSizingFunction::from_percent(percent),
+        }
     }
 }
 impl FromFr for TrackSizingFunction {
-    fn from_fr<Input: Into<f32> + Copy>(flex: Input) -> Self {
-        Self { min: MinTrackSizingFunction::AUTO, max: MaxTrackSizingFunction::from_fr(flex) }
+    fn from_fr<Input: Into<f64> + Copy>(flex: Input) -> Self {
+        Self {
+            min: MinTrackSizingFunction::AUTO,
+            max: MaxTrackSizingFunction::from_fr(flex),
+        }
     }
 }
 impl From<LengthPercentage> for TrackSizingFunction {
     fn from(input: LengthPercentage) -> Self {
-        Self { min: input.into(), max: input.into() }
+        Self {
+            min: input.into(),
+            max: input.into(),
+        }
     }
 }
 impl From<LengthPercentageAuto> for TrackSizingFunction {
     fn from(input: LengthPercentageAuto) -> Self {
-        Self { min: input.into(), max: input.into() }
+        Self {
+            min: input.into(),
+            max: input.into(),
+        }
     }
 }
 impl From<Dimension> for TrackSizingFunction {
     fn from(input: Dimension) -> Self {
-        Self { min: input.into(), max: input.into() }
+        Self {
+            min: input.into(),
+            max: input.into(),
+        }
     }
 }
+
+#[cfg(feature = "parse")]
+impl FromCss for TrackSizingFunction {
+    fn from_css<'i>(parser: &mut Parser<'i, '_>) -> CssParseResult<'i, Self> {
+        // Try to parse a minmax() function
+        if let Ok(value) = parser.try_parse(|parser| {
+            parser.expect_function_matching("minmax")?;
+            parser.parse_nested_block(|parser| {
+                let min = MinTrackSizingFunction::from_css(parser)?;
+                parser.expect_comma()?;
+                let max = MaxTrackSizingFunction::from_css(parser)?;
+
+                Ok(Self { min, max })
+            })
+        }) {
+            return Ok(value);
+        }
+
+        // Else parse a max track sizing function
+        let max = MaxTrackSizingFunction::from_css(parser)?;
+        let min = max.into();
+        Ok(Self { min, max })
+    }
+}
+
+#[cfg(feature = "parse")]
+from_str_from_css!(TrackSizingFunction);
 
 /// The first argument to a repeated track definition. This type represents the type of automatic repetition to perform.
 ///
@@ -1192,6 +1799,23 @@ impl TryFrom<&str> for RepetitionCount {
     }
 }
 
+#[cfg(feature = "parse")]
+impl FromCss for RepetitionCount {
+    fn from_css<'i>(parser: &mut Parser<'i, '_>) -> CssParseResult<'i, Self> {
+        match parser.next()?.clone() {
+            Token::Number {
+                int_value: Some(value),
+                ..
+            } if value.is_positive() => Ok(Self::Count(saturating_u16(value))),
+            Token::Ident(ident) if ident == "auto-fit" => Ok(Self::AutoFit),
+            Token::Ident(ident) if ident == "auto-fill" => Ok(Self::AutoFill),
+            token => Err(parser.new_unexpected_token_error(token))?,
+        }
+    }
+}
+#[cfg(feature = "parse")]
+from_str_from_css!(RepetitionCount);
+
 /// A typed representation of a `repeat(..)` in `grid-template-*` value
 #[derive(Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -1201,6 +1825,10 @@ pub struct GridTemplateRepetition<S: CheapCloneStr> {
     /// The tracks to repeat
     pub tracks: Vec<TrackSizingFunction>,
     /// The line names for the repeated tracks
+    ///
+    /// Line name sets are positional: set `i` names the `i`th line of each repetition. This must
+    /// either be empty (all lines are unnamed) or contain exactly `tracks.len() + 1` sets (one set
+    /// per line, including both edge lines; sets may be empty). Other lengths panic during layout.
     pub line_names: Vec<Vec<S>>,
 }
 
@@ -1215,7 +1843,7 @@ impl<S: CheapCloneStr> GenericRepetition for &'_ GridTemplateRepetition<S> {
     }
     #[inline(always)]
     fn track_count(&self) -> u16 {
-        self.tracks.len() as u16
+        self.tracks.len().min(u16::MAX as usize) as u16
     }
     #[inline(always)]
     fn tracks(&self) -> Self::RepetitionTrackList<'_> {
@@ -1246,7 +1874,9 @@ impl<S: CheapCloneStr> GridTemplateComponent<S> {
     pub fn as_component_ref(&self) -> GenericGridTemplateComponent<S, &GridTemplateRepetition<S>> {
         match self {
             GridTemplateComponent::Single(size) => GenericGridTemplateComponent::Single(*size),
-            GridTemplateComponent::Repeat(repetition) => GenericGridTemplateComponent::Repeat(repetition),
+            GridTemplateComponent::Repeat(repetition) => {
+                GenericGridTemplateComponent::Repeat(repetition)
+            }
         }
     }
 }
@@ -1256,7 +1886,10 @@ impl<S: CheapCloneStr> GridTemplateComponent<S> {
     pub fn is_auto_repetition(&self) -> bool {
         matches!(
             self,
-            Self::Repeat(GridTemplateRepetition { count: RepetitionCount::AutoFit | RepetitionCount::AutoFill, .. })
+            Self::Repeat(GridTemplateRepetition {
+                count: RepetitionCount::AutoFit | RepetitionCount::AutoFill,
+                ..
+            })
         )
     }
 }
@@ -1278,22 +1911,300 @@ impl<S: CheapCloneStr> TaffyZero for GridTemplateComponent<S> {
     const ZERO: Self = Self::Single(TrackSizingFunction::ZERO);
 }
 impl<S: CheapCloneStr> FromLength for GridTemplateComponent<S> {
-    fn from_length<Input: Into<f32> + Copy>(value: Input) -> Self {
+    fn from_length<Input: Into<f64> + Copy>(value: Input) -> Self {
         Self::Single(TrackSizingFunction::from_length(value))
     }
 }
 impl<S: CheapCloneStr> FromPercent for GridTemplateComponent<S> {
-    fn from_percent<Input: Into<f32> + Copy>(percent: Input) -> Self {
+    fn from_percent<Input: Into<f64> + Copy>(percent: Input) -> Self {
         Self::Single(TrackSizingFunction::from_percent(percent))
     }
 }
 impl<S: CheapCloneStr> FromFr for GridTemplateComponent<S> {
-    fn from_fr<Input: Into<f32> + Copy>(flex: Input) -> Self {
+    fn from_fr<Input: Into<f64> + Copy>(flex: Input) -> Self {
         Self::Single(TrackSizingFunction::from_fr(flex))
     }
 }
-impl<S: CheapCloneStr> From<MinMax<MinTrackSizingFunction, MaxTrackSizingFunction>> for GridTemplateComponent<S> {
+impl<S: CheapCloneStr> From<MinMax<MinTrackSizingFunction, MaxTrackSizingFunction>>
+    for GridTemplateComponent<S>
+{
     fn from(input: MinMax<MinTrackSizingFunction, MaxTrackSizingFunction>) -> Self {
         Self::Single(input)
+    }
+}
+
+#[cfg(feature = "parse")]
+impl<S: CheapCloneStr> FromCss for GridTemplateComponent<S> {
+    fn from_css<'i>(parser: &mut Parser<'i, '_>) -> CssParseResult<'i, Self> {
+        // Try to parse a minmax() function
+        if let Ok(value) = parser.try_parse(|parser| {
+            parser.expect_function_matching("repeat")?;
+            parser.parse_nested_block(|parser| {
+                let count = RepetitionCount::from_css(parser)?;
+                parser.expect_comma()?;
+                let tracks = GridTemplateTracks::<S, TrackSizingFunction>::from_css(parser)?;
+
+                Ok(Self::Repeat(GridTemplateRepetition {
+                    count,
+                    tracks: tracks.tracks,
+                    line_names: tracks.line_names,
+                }))
+            })
+        }) {
+            return Ok(value);
+        }
+
+        // Else parse a track sizing function
+        let track_sizing_function = TrackSizingFunction::from_css(parser)?;
+        Ok(Self::Single(track_sizing_function))
+    }
+}
+#[cfg(feature = "parse")]
+impl<S: CheapCloneStr> core::str::FromStr for GridTemplateComponent<S> {
+    type Err = ParseError;
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        parse_css_str_entirely(input)
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[doc(hidden)]
+pub struct GridTemplateTracks<S: CheapCloneStr, Track> {
+    /// The tracks to repeat
+    pub tracks: Vec<Track>,
+    /// The line names for the repeated tracks
+    pub line_names: Vec<Vec<S>>,
+}
+
+impl<S: CheapCloneStr, Track> Default for GridTemplateTracks<S, Track> {
+    fn default() -> Self {
+        Self {
+            tracks: Vec::new(),
+            line_names: Vec::new(),
+        }
+    }
+}
+
+#[cfg(feature = "parse")]
+impl<S: CheapCloneStr, Track: FromCss + Debug> FromCss for GridTemplateTracks<S, Track> {
+    fn from_css<'i>(parser: &mut Parser<'i, '_>) -> CssParseResult<'i, Self> {
+        fn try_parse_line_names<'i, S: CheapCloneStr>(
+            parser: &mut Parser<'i, '_>,
+        ) -> CssParseResult<'i, Vec<S>> {
+            parser.try_parse(|parser| {
+                parser.expect_square_bracket_block()?;
+                parser.parse_nested_block(|parser| {
+                    let mut line_names = Vec::new();
+                    while !parser.is_exhausted() {
+                        line_names.push(S::from(parser.expect_ident_cloned()?.as_ref()));
+                    }
+                    Ok(line_names)
+                })
+            })
+        }
+
+        // Line name groups are positional (group `i` names line `i`), so a group is pushed for
+        // every line, empty when the line has no `[...]` in the source
+        let mut tracks = Self::default();
+        tracks
+            .line_names
+            .push(try_parse_line_names(parser).unwrap_or_default());
+
+        while !parser.is_exhausted() {
+            tracks.tracks.push(Track::from_css(parser)?);
+            tracks
+                .line_names
+                .push(try_parse_line_names(parser).unwrap_or_default());
+        }
+
+        if tracks.tracks.is_empty() {
+            return Err(parser.new_error(cssparser::BasicParseErrorKind::EndOfInput));
+        }
+
+        Ok(tracks)
+    }
+}
+#[cfg(feature = "parse")]
+impl<S: CheapCloneStr, Track: FromCss + Debug> core::str::FromStr for GridTemplateTracks<S, Track> {
+    type Err = ParseError;
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        parse_css_str_entirely(input)
+    }
+}
+
+#[derive(Default)]
+#[doc(hidden)]
+pub struct GridAutoTracks(pub Vec<TrackSizingFunction>);
+
+#[cfg(feature = "parse")]
+impl FromCss for GridAutoTracks {
+    fn from_css<'i>(parser: &mut Parser<'i, '_>) -> CssParseResult<'i, Self> {
+        let mut tracks = Self::default();
+        while !parser.is_exhausted() {
+            tracks.0.push(TrackSizingFunction::from_css(parser)?);
+        }
+        if tracks.0.is_empty() {
+            return Err(parser.new_error(cssparser::BasicParseErrorKind::EndOfInput));
+        }
+        Ok(tracks)
+    }
+}
+#[cfg(feature = "parse")]
+from_str_from_css!(GridAutoTracks);
+
+#[cfg(all(test, feature = "parse"))]
+mod tests {
+    use super::*;
+    use crate::sys::DefaultCheapStr;
+
+    #[test]
+    fn grid_placement_parser_saturates_numeric_values() {
+        assert_eq!(
+            "32768".parse::<GridPlacement<DefaultCheapStr>>().unwrap(),
+            GridPlacement::Line(GridLine::from(i16::MAX))
+        );
+        assert_eq!(
+            "-32769".parse::<GridPlacement<DefaultCheapStr>>().unwrap(),
+            GridPlacement::Line(GridLine::from(i16::MIN))
+        );
+        assert_eq!(
+            "span 65536"
+                .parse::<GridPlacement<DefaultCheapStr>>()
+                .unwrap(),
+            GridPlacement::Span(u16::MAX)
+        );
+
+        let named_line = "32768 line"
+            .parse::<GridPlacement<DefaultCheapStr>>()
+            .unwrap();
+        assert!(matches!(named_line, GridPlacement::NamedLine(_, i16::MAX)));
+
+        let named_span = "span 65536 line"
+            .parse::<GridPlacement<DefaultCheapStr>>()
+            .unwrap();
+        assert!(matches!(named_span, GridPlacement::NamedSpan(_, u16::MAX)));
+    }
+
+    #[test]
+    fn repetition_parser_saturates_numeric_values() {
+        assert_eq!(
+            "65536".parse::<RepetitionCount>().unwrap(),
+            RepetitionCount::Count(u16::MAX)
+        );
+
+        let component = "repeat(65536, 1px)"
+            .parse::<GridTemplateComponent<DefaultCheapStr>>()
+            .unwrap();
+        assert!(matches!(
+            component,
+            GridTemplateComponent::Repeat(GridTemplateRepetition {
+                count: RepetitionCount::Count(u16::MAX),
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn repetition_track_count_saturates() {
+        let repetition = GridTemplateRepetition::<DefaultCheapStr> {
+            count: RepetitionCount::Count(1),
+            tracks: vec![TrackSizingFunction::AUTO; u16::MAX as usize + 1],
+            line_names: Vec::new(),
+        };
+        assert_eq!((&repetition).track_count(), u16::MAX);
+    }
+}
+
+#[cfg(test)]
+mod expand_tests {
+    use super::*;
+
+    #[test]
+    fn max_track_sizing_function_round_trips() {
+        let cases = [
+            MaxTrackSizingFunction::length(12.0),
+            MaxTrackSizingFunction::percent(0.5),
+            MaxTrackSizingFunction::auto(),
+            MaxTrackSizingFunction::min_content(),
+            MaxTrackSizingFunction::max_content(),
+            MaxTrackSizingFunction::fit_content_px(30.0),
+            MaxTrackSizingFunction::fit_content_percent(0.75),
+            MaxTrackSizingFunction::fr(2.0),
+        ];
+        for value in cases {
+            assert_eq!(MaxTrackSizingFunction::from(value.expand()), value);
+            assert_eq!(ExpandedMaxTrackSizingFunction::from(value), value.expand());
+        }
+        assert_eq!(
+            MaxTrackSizingFunction::fr(2.0).expand(),
+            ExpandedMaxTrackSizingFunction::Fr(2.0)
+        );
+        assert_eq!(
+            MaxTrackSizingFunction::fit_content_px(30.0).expand(),
+            ExpandedMaxTrackSizingFunction::FitContentPx(30.0)
+        );
+    }
+
+    #[test]
+    fn min_track_sizing_function_round_trips() {
+        let cases = [
+            MinTrackSizingFunction::length(12.0),
+            MinTrackSizingFunction::percent(0.5),
+            MinTrackSizingFunction::auto(),
+            MinTrackSizingFunction::min_content(),
+            MinTrackSizingFunction::max_content(),
+        ];
+        for value in cases {
+            assert_eq!(MinTrackSizingFunction::from(value.expand()), value);
+            assert_eq!(ExpandedMinTrackSizingFunction::from(value), value.expand());
+        }
+        assert_eq!(
+            MinTrackSizingFunction::max_content().expand(),
+            ExpandedMinTrackSizingFunction::MaxContent
+        );
+    }
+
+    #[cfg(feature = "calc")]
+    #[test]
+    fn track_sizing_function_calc_round_trips() {
+        #[allow(dead_code)]
+        #[repr(align(8))]
+        struct Aligned(u64);
+        static HANDLE: Aligned = Aligned(0);
+        let handle = &HANDLE as *const Aligned as *const ();
+
+        assert_eq!(
+            MaxTrackSizingFunction::calc(handle).expand(),
+            ExpandedMaxTrackSizingFunction::Calc(handle)
+        );
+        assert_eq!(
+            MaxTrackSizingFunction::fit_content_calc(handle).expand(),
+            ExpandedMaxTrackSizingFunction::FitContentCalc(handle)
+        );
+        assert_eq!(
+            MaxTrackSizingFunction::from(ExpandedMaxTrackSizingFunction::FitContentCalc(handle)),
+            MaxTrackSizingFunction::fit_content_calc(handle)
+        );
+        assert_eq!(
+            MaxTrackSizingFunction::fit_content(LengthPercentage::calc(handle)),
+            MaxTrackSizingFunction::fit_content_calc(handle)
+        );
+        assert_eq!(
+            MinTrackSizingFunction::from(MaxTrackSizingFunction::fit_content_calc(handle)),
+            MinTrackSizingFunction::AUTO
+        );
+        assert_eq!(
+            MinTrackSizingFunction::from(Dimension::fit_content_calc(handle)),
+            MinTrackSizingFunction::AUTO
+        );
+        assert_eq!(
+            MaxTrackSizingFunction::from(ExpandedMaxTrackSizingFunction::Calc(handle)),
+            MaxTrackSizingFunction::calc(handle)
+        );
+        assert_eq!(
+            MinTrackSizingFunction::calc(handle).expand(),
+            ExpandedMinTrackSizingFunction::Calc(handle)
+        );
     }
 }

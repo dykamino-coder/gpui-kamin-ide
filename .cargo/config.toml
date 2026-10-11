@@ -1,0 +1,6 @@
+[target.x86_64-pc-windows-msvc]
+# 64MB стека main-треду: рекурсивный рендер глубоко вложенных документов
+# (element -> blocks -> element) с раздутыми кадрами переполнял штатный 1MB
+# (first-line-with-out-of-flow после cc4f9e1). Настоящая бесконечная
+# рекурсия всё равно упрётся и упадёт.
+rustflags = ["-C", "link-args=/STACK:67108864"]

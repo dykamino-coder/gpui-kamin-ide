@@ -126,7 +126,7 @@ impl RootView {
                 {
                     let differs = inp.read(cx).value() != url.as_str();
                     if differs {
-                        inp.update(cx, |st, cx| st.set_value(url.clone(), window, cx));
+                        crate::state::input_value::set_value_emit(inp, url.clone(), window, cx);
                         crate::web::navigate("browser", &url);
                     }
                 }

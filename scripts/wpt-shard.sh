@@ -3,9 +3,25 @@
 # параллельно, затем склеивает отчёты. Использование:
 #   bash scripts/wpt-shard.sh target/all-nojs.txt 6
 # Результат: target/wpt-report-merged.txt + счёт зелёных.
-# ВАЖНО: бинарь должен быть уже собран (cargo build --example wptrun -p kamin-html);
+# ВАЖНО: бинарь должен быть уже собран (cargo build --example wptrun — БЕЗ `-p kamin-html`:
+# с `-p` gpui собирается с фичами одного крейта, бинарь на 1,5 МБ легче и
+# line-clamp ведёт себя иначе — line-clamp-auto-036 0.00 → 5.23 при том же коде);
 # скрипт НЕ вызывает cargo, чтобы шарды не дрались за target-lock.
 #
+# ЧИСЛО ШАРДОВ 08.09: держать ДВА. Стенд, отрисовав 600-1500 страниц при
+# ЧЕТЫРЁХ параллельных процессах, слепнет НАВСЕГДА: до конца списка выдаёт
+# «пустая страница 0/0» (шард 0 ослеп на 1055-й паре, шард 3 — на 632-й, и
+# последние 60 строк у обоих пустые сплошь). Проверено, что это не регресс
+# движка: те же 15 «пустых» пар одиночным прогоном дают 0.00-0.11, а 900 пар
+# одним процессом — одну пустую за 10,5 минут. На ДВУХ шардах 1800 пар дали
+# одну пустую и ноль зависаний. Признак подделки — массовые «пустая страница»
+# там, где база их не имеет вовсе; перед бисектом перепроверять одиночным
+# прогоном.
+#
+# ЧИСЛО ШАРДОВ: 16 на этой машине ЗАМЕРЕНО как ненадёжное — свод css3 выдал
+# 833 пары «пустая страница» на местах, где по одному прогону всё зелёное
+# (перепроверено поимённо). Это соперничество за отрисовку, а не регресс движка.
+# Восемь шардов такого не дают. Мерить сводами при N=8.
 # ВОТЧДОГ: страница, зацикливающая рендер (vars-font-shorthand-001 и родня),
 # вешает процесс навсегда — отчёт перестаёт расти. Вотчдог убивает такой
 # процесс, помечает ПЕРВУЮ невыполненную пару вердиктом HUNG и продолжает
@@ -14,27 +30,65 @@ set -o pipefail
 LIST="${1:?список пар}"
 N="${2:-6}"
 STALL="${WPT_STALL_SECS:-90}"
-BIN="target/debug/examples/wptrun.exe"
-[ -x "$BIN" ] || { echo "нет бинаря $BIN — сначала cargo build --example wptrun -p kamin-html"; exit 1; }
+BIN="${WPT_BIN:-target/debug/examples/wptrun.exe}"
+# Печатные пары (`-print`, css-page) — постранично, как задумано в WPT
+# (решение пользователя 01.10). Флаг действует только вместе с печатной
+# медиа (`wptrun.rs`: `PRINT_MEDIA && WPT_PAGE`), экранные пары не трогает.
+# Снять для сравнения со сводами до v223: `WPT_PAGE= bash scripts/wpt-shard.sh …`.
+export WPT_PAGE="${WPT_PAGE-1}"
+[ -z "$WPT_PAGE" ] && unset WPT_PAGE
+[ -x "$BIN" ] || { echo "нет бинаря $BIN — сначала cargo build --example wptrun (без -p)"; exit 1; }
 total=$(grep -c '|' "$LIST")
 per=$(( (total + N - 1) / N ))
-rm -f target/wpt-shard-*.txt target/wpt-shard-*.list
-split -l "$per" -d "$LIST" target/wpt-shard- --additional-suffix=.list
+# СВОЙ каталог на прогон: имена шардов были общими на всю машину, и два
+# прогона одновременно стирали работу друг друга (`rm -f` в начале плюс
+# склейка `cat target/wpt-shard-*.txt` в конце). Отчёты выходили
+# перемешанные: свод сетки приносил вердикты флексбокса, а десятки пар
+# получали ложный HUNG от соперничества. Каталог берётся от имени отчёта,
+# поэтому два прогона с разными `WPT_REPORT` не пересекаются.
+MERGED="${WPT_REPORT:-target/wpt-report-merged.txt}"
+WORK="$(dirname "$MERGED")/.shard-$(basename "$MERGED" .txt)"
+rm -rf "$WORK"
+mkdir -p "$WORK"
+split -l "$per" -d "$LIST" "$WORK/part-" --additional-suffix=.list
+
+# СТОП-КРАН. Раньше убийство скрипта оставляло живыми подоболочки `run_shard`,
+# и те продолжали поднимать новые стенды: со стороны это выглядело как «тесты
+# сами рестартятся». Теперь каждый запущенный стенд записывается в реестр, а
+# трап на выходе гасит их всех и ставит стоп-файл, по которому оставшиеся
+# подоболочки выходят из цикла сами.
+CHILDREN="$WORK/.pids"
+: > "$CHILDREN"
+stop_all() {
+  touch "$WORK/.stop" 2>/dev/null
+  [ -f "$CHILDREN" ] || return 0
+  while read -r cp; do [ -n "$cp" ] && kill -9 "$cp" 2>/dev/null; done < "$CHILDREN"
+}
+trap stop_all EXIT INT TERM
+# Остановить свод снаружи: touch "$WORK/.stop"
 
 run_shard() { # $1 = list file, $2 = report file
   local list="$1" report="$2" tries=0
   : > "$report"
   local work="$list.work"
   cp "$list" "$work"
-  while [ -s "$work" ] && [ "$tries" -lt 50 ]; do
+  # 50 попыток на шард — это и был «авто-перезапуск»: одна страница, вешающая
+  # отрисовку, заставляла поднимать стенд снова и снова. Потолок 8: шард с
+  # восемью зависаниями — повод смотреть глазами, а не молотить дальше.
+  while [ -s "$work" ] && [ "$tries" -lt 8 ] && [ ! -f "$WORK/.stop" ]; do
     tries=$((tries+1))
     WPT_REPORT="$report.part" "$BIN" "$work" >/dev/null 2>&1 &
     local pid=$!
+    echo "$pid" >> "$CHILDREN"
     local last=0 quiet=0
     while kill -0 "$pid" 2>/dev/null; do
       sleep 5
       local now
-      now=$(grep -c '|' "$report.part" 2>/dev/null || echo 0)
+      # `grep -c` при НУЛЕ совпадений и печатает 0, и выходит с ошибкой —
+      # тогда `|| echo 0` дописывал вторую строку, и сравнение ниже падало
+      # («integer expression expected»), убивая весь свод на середине.
+      now=$(grep -c '|' "$report.part" 2>/dev/null | head -1)
+      now=${now:-0}
       if [ "$now" -gt "$last" ]; then last=$now; quiet=0; else quiet=$((quiet+5)); fi
       if [ "$quiet" -ge "$STALL" ]; then
         kill -9 "$pid" 2>/dev/null
@@ -47,8 +101,15 @@ run_shard() { # $1 = list file, $2 = report file
     # осталось = пары work без вердикта; первая из них — висючая (если процесс убит)
     awk -F'|' '{print $1}' "$report" | sort -u > "$report.done"
     grep -vFf "$report.done" "$work" > "$work.rest" || true
-    if [ -s "$work.rest" ]; then
-      if [ "$last" -ge 0 ] && ! kill -0 "$pid" 2>/dev/null; then
+    # НОЛЬ вердиктов за попытку — стенд не запустился вовсе (нет DirectWrite,
+    # битый двоичный файл), а не завис на одной странице. Перезапускать
+    # бессмысленно: 50 попыток x N шардов = сотня модальных окон на экране
+    # пользователя. Обрываем шард сразу.
+    if [ "$last" -eq 0 ]; then
+      echo "shard $list: stend ne zapustilsya, ostalos $(wc -l < "$work.rest") par" >&2
+      : > "$work"
+    elif [ -s "$work.rest" ]; then
+      if ! kill -0 "$pid" 2>/dev/null; then
         # процесс мёртв, а пары остались: первую считаем висючей
         head -1 "$work.rest" | awk -F'|' '{print $1"|"$2"|HUNG"}' >> "$report"
         tail -n +2 "$work.rest" > "$work"
@@ -65,15 +126,16 @@ run_shard() { # $1 = list file, $2 = report file
 
 pids=()
 i=0
-for part in target/wpt-shard-*.list; do
-  run_shard "$part" "target/wpt-shard-$i.txt" &
+for part in "$WORK"/part-*.list; do
+  run_shard "$part" "$WORK/rep-$i.txt" &
   pids+=($!)
   i=$((i+1))
 done
 fail=0
 for p in "${pids[@]}"; do wait "$p" || fail=1; done
-cat target/wpt-shard-*.txt > target/wpt-report-merged.txt
-got=$(grep -c '|' target/wpt-report-merged.txt)
-green=$(awk -F'|' '$3~/^[0-9.]+$/ && $3+0<=0.5' target/wpt-report-merged.txt | wc -l)
-hung=$(grep -c '|HUNG' target/wpt-report-merged.txt)
+cat "$WORK"/rep-*.txt > "$MERGED"
+rm -rf "$WORK"
+got=$(grep -c '|' "$MERGED")
+green=$(awk -F'|' '$3~/^[0-9.]+$/ && $3+0<=0.5' "$MERGED" | wc -l)
+hung=$(grep -c '|HUNG' "$MERGED")
 echo "pairs: $got/$total, green: $green, hung: $hung, fail_flag: $fail"

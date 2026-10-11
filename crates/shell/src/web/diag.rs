@@ -2,8 +2,9 @@
 //!
 //! Без них «зависла текстура» не отличить от «кадр не пришёл»: и то, и другое
 //! выглядит как застывшая панель. Раз в секунду строка в лог — только если
-//! что-то происходило.
+//! что-то происходило; при нулевых счётчиках — heartbeat раз в минуту.
 
+use super::diag_sink::emit_line;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 /// Кадры от Chromium (`on_accelerated_paint`).
@@ -118,19 +119,21 @@ pub(crate) fn cropped() {
     CROPPED.fetch_add(1, Ordering::Relaxed);
 }
 
-/// Начало текущей секунды отсчёта.
-static SINCE: std::sync::LazyLock<std::sync::Mutex<std::time::Instant>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::time::Instant::now()));
+static CLOCK: std::sync::LazyLock<std::sync::Mutex<super::diag_clock::Clock>> =
+    std::sync::LazyLock::new(|| {
+        std::sync::Mutex::new(super::diag_clock::Clock::new(std::time::Instant::now()))
+    });
 
-/// Напечатать сводку, если прошла секунда. Зовётся из насоса.
+/// Напечатать сводку активности или минутный heartbeat. Насос не останавливаем.
 pub(crate) fn report() {
-    {
-        let Ok(mut since) = SINCE.lock() else { return };
-        if since.elapsed().as_millis() < 1000 {
+    let now = std::time::Instant::now();
+    let interval = {
+        let Ok(mut clock) = CLOCK.lock() else { return };
+        let Some(interval) = clock.sample(now) else {
             return;
-        }
-        *since = std::time::Instant::now();
-    }
+        };
+        interval.as_millis()
+    };
     let f = FRAMES.swap(0, Ordering::Relaxed);
     let p = PAINTS.swap(0, Ordering::Relaxed);
     let r = REFRESH.swap(0, Ordering::Relaxed);
@@ -184,9 +187,21 @@ pub(crate) fn report() {
             "[cef] УМЕРЛО renderer-процессов за секунду: {died} (подробности в crash.log)"
         ));
     }
-    emit_line(format!(
-        "[cef] за секунду: кадров {f}, кадров окна {d}, отрисовок {p}, заказов {r}, занято {b}, не тот размер {m}, обрезано {c}, растянуто {stretched}, точно {exact}, кадр окна в среднем {avg} мкс, худший {mx} мкс, из них состояние {ctx_avg} мкс; текстуры {tex} мс, строк дерева {rows}; окно сложило {gf} кадров: сцена {gd} мс, презент {gp} мс (раскладка {g_pre} мс, попадания {g_hit} мс, рисование {g_pnt} мс); узлов на кадр {per}, замеров на кадр {per_meas}, проходов {g_runs}; taffy {g_taffy} мс, замеры {g_measus} мс; переиграно вью {g_reused}; шейпинг: промахов {g_shaped} ({g_shape_ms} мс), из кэша {g_cachedl}"
-    ));
+    let active = [
+        f, p, r, b, m, c, d, us, mx, ctx, tex, gd, gp, gf, g_pre, g_hit, g_pnt, g_nodes, g_runs,
+        g_meas, g_taffy, g_measus, g_reused, sw_put, sw_dirty, sw_gap, g_shaped, g_cachedl,
+        g_shape_ms, stretched, exact, died,
+    ]
+    .iter()
+    .any(|&count| count != 0);
+    let emit = CLOCK
+        .lock()
+        .is_ok_and(|mut clock| clock.should_emit(active, now));
+    if emit {
+        emit_line(format!(
+            "[cef] interval_ms={interval}: кадров {f}, кадров окна {d}, отрисовок {p}, заказов {r}, занято {b}, не тот размер {m}, обрезано {c}, растянуто {stretched}, точно {exact}, кадр окна в среднем {avg} мкс, худший {mx} мкс, из них состояние {ctx_avg} мкс; текстуры {tex} мс, строк дерева {rows}; окно сложило {gf} кадров: сцена {gd} мс, презент {gp} мс (раскладка {g_pre} мс, попадания {g_hit} мс, рисование {g_pnt} мс); узлов на кадр {per}, замеров на кадр {per_meas}, проходов {g_runs}; taffy {g_taffy} мс, замеры {g_measus} мс; переиграно вью {g_reused}; шейпинг: промахов {g_shaped} ({g_shape_ms} мс), из кэша {g_cachedl}"
+        ));
+    }
     // #76: топ self-time prepaint по типам элементов (KAMIN_PREPAINT_PROF=1).
     let top = gpui::prepaint_prof::take_top(6);
     if !top.is_empty() {
@@ -195,40 +210,5 @@ pub(crate) fn report() {
             .map(|(name, us, cnt)| format!("{name} {} мс/{cnt}", us / 1000))
             .collect();
         emit_line(format!("[prepaint] {}", line.join(", ")));
-    }
-}
-
-/// Диаг-строка: в stdout (dev, стенды) И в файл `cache/diag.log` — packaged
-/// GUI-сборка без консоли иначе теряет телеметрию, а именно с прод-машины
-/// юзера нужны цифры (#76: «задержка неприятная», слабый RDP-комп). Ротация:
-/// перерос лимит — начали файл заново.
-fn emit_line(line: String) {
-    println!("{line}");
-    use std::io::Write as _;
-    const ROTATE_BYTES: u64 = 5 * 1024 * 1024;
-    static FILE: std::sync::LazyLock<std::sync::Mutex<Option<std::fs::File>>> =
-        std::sync::LazyLock::new(|| {
-            let path = crate::host::paths::data_dirs().1.join("diag.log");
-            let rotate = std::fs::metadata(&path)
-                .map(|m| m.len() > ROTATE_BYTES)
-                .unwrap_or(false);
-            let mut file = std::fs::OpenOptions::new()
-                .create(true)
-                .append(!rotate)
-                .truncate(rotate)
-                .write(true)
-                .open(path)
-                .ok();
-            // Версия и старт сессии — иначе по присланному логу не отличить,
-            // какая сборка реально запущена (инцидент «не вижу изменений»).
-            if let Some(f) = file.as_mut() {
-                let _ = writeln!(f, "[boot] KaminIDE {}", env!("CARGO_PKG_VERSION"));
-            }
-            std::sync::Mutex::new(file)
-        });
-    if let Ok(mut guard) = FILE.lock()
-        && let Some(f) = guard.as_mut()
-    {
-        let _ = writeln!(f, "{line}");
     }
 }

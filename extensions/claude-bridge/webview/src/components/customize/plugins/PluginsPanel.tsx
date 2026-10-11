@@ -1,5 +1,5 @@
 import type { JSX } from 'preact'
-import { useState, useEffect } from 'preact/hooks'
+import { useState, useEffect, useRef } from 'preact/hooks'
 import { useBridge } from '../../../hooks/useBridge'
 import type { MarketplaceInfo, MarketplacePlugin } from '../../../../shared/types'
 import { PluginsTabs } from './PluginsTabs'
@@ -37,6 +37,44 @@ export function PluginsPanel(): JSX.Element {
   const [bgRefreshing, setBgRefreshing] = useState(false)
   const [loadProgress, setLoadProgress] = useState<{ done: number; total: number; current: string | null } | null>(null)
   const [showCloneForm, setShowCloneForm] = useState(false)
+  const loadGeneration = useRef(0)
+  const disposed = useRef(false)
+  const currentTab = useRef<Tab>(tab)
+  const currentMarketplace = useRef<string | null>(selectedMarketplace)
+  currentTab.current = tab
+  currentMarketplace.current = selectedMarketplace
+  const isCurrent = (generation: number): boolean => !disposed.current && loadGeneration.current === generation
+
+  useEffect(() => {
+    disposed.current = false
+    return () => { disposed.current = true; loadGeneration.current++ }
+  }, [bridge])
+
+  // Active hides marketplace chips, so it owns its completion subscription.
+  // Coalesce a completion burst into one in-flight read and one trailing read.
+  useEffect(() => {
+    let cancelled = false
+    let running = false
+    let queued = false
+    const off = bridge.onMarketplaceUpdated((payload) => {
+      if (cancelled || disposed.current || currentTab.current !== 'active') return
+      if (payload.ok === false) showToast({ type: 'error', title: payload.name, message: payload.error || 'Update failed' })
+      queued = true
+      if (running) return
+      running = true
+      void (async () => {
+        try {
+          do {
+            queued = false
+            await loadInstalled(true) // Disk may have partial successes.
+          } while (queued && !cancelled && !disposed.current && currentTab.current === 'active')
+        } finally { running = false }
+      })().catch(() => {
+        if (!cancelled && !disposed.current) showToast({ type: 'error', title: 'Plugin list unavailable' })
+      })
+    })
+    return () => { cancelled = true; off() }
+  }, [bridge])
 
   // Subscribe once to the browse-progress stream. The main process emits
   // these before every git-clone inside `plugins:browse-marketplace`, which
@@ -44,6 +82,7 @@ export function PluginsPanel(): JSX.Element {
   // bare spinner. Now we surface "Loading N/TOTAL — <pluginName>" instead.
   useEffect(() => {
     const off = bridge.onPluginsBrowseProgress((p) => {
+      if (disposed.current || currentTab.current === 'active') return
       if (p.done >= p.total) setLoadProgress(null)
       else setLoadProgress({ done: p.done, total: p.total, current: p.current })
     })
@@ -51,31 +90,36 @@ export function PluginsPanel(): JSX.Element {
   }, [bridge])
 
   async function loadMarketplaces(activeTab: Tab, force = false): Promise<void> {
+    const generation = ++loadGeneration.current
     if (activeTab === 'active') {
-      await loadInstalled(force)
+      await loadInstalled(force, generation)
       return
     }
     try {
       const all = await bridge.listMarketplaces()
+      if (!isCurrent(generation)) return
       const filtered = all.filter((m) =>
         activeTab === 'anthropic' ? m.isAnthropicOfficial : !m.isAnthropicOfficial
       )
       setMarketplaces(filtered)
       if (filtered.length > 0) {
-        const first = selectedMarketplace && filtered.find((m) => m.name === selectedMarketplace)
-          ? selectedMarketplace
+        const first = currentMarketplace.current && filtered.find((m) => m.name === currentMarketplace.current)
+          ? currentMarketplace.current
           : filtered[0].name
+        currentMarketplace.current = first
         setSelectedMarketplace(first)
-        await loadMarketplacePlugins(first, force)
+        await loadMarketplacePlugins(first, force, generation)
       } else {
-        setPlugins([])
+        setPlugins([]); setLoading(false); setBgRefreshing(false); setLoadProgress(null)
       }
     } catch {
-      setPlugins([])
+      if (isCurrent(generation)) { setPlugins([]); setLoading(false); setBgRefreshing(false); setLoadProgress(null) }
     }
   }
 
-  async function loadInstalled(force = false): Promise<void> {
+  async function loadInstalled(force = false, generation?: number): Promise<void> {
+    if (disposed.current || currentTab.current !== 'active') return
+    generation ??= ++loadGeneration.current
     const cached = force ? null : readPluginsCache<any[]>('installed')
     if (cached) {
       setInstalledPlugins(cached); setLoading(false); setBgRefreshing(true)
@@ -84,18 +128,23 @@ export function PluginsPanel(): JSX.Element {
     }
     try {
       const result = await bridge.listInstalledPlugins()
+      if (!isCurrent(generation) || currentTab.current !== 'active') return
       setInstalledPlugins(result ?? [])
       writePluginsCache('installed', result ?? [])
     } catch {
-      if (!cached) setInstalledPlugins([])
+      if (!isCurrent(generation)) return
+      showToast({ type: 'error', title: 'Plugin list unavailable', message: 'Could not refresh the installed plugin list.' })
     }
+    if (!isCurrent(generation)) return
     setLoading(false); setBgRefreshing(false); setLoadProgress(null)
   }
 
   // Cache-first: paint the last-known list INSTANTLY from persisted state, then
   // revalidate in the BACKGROUND (thin progress bar, panel stays interactive).
   // `force` (the refresh button) bypasses the cache for a full reload.
-  async function loadMarketplacePlugins(name: string, force = false): Promise<void> {
+  async function loadMarketplacePlugins(name: string, force = false, generation?: number): Promise<void> {
+    if (disposed.current || currentTab.current === 'active' || (currentMarketplace.current && currentMarketplace.current !== name)) return
+    generation ??= ++loadGeneration.current
     const cacheKey = `mkt.${name}`
     const cached = force ? null : readPluginsCache<MarketplacePlugin[]>(cacheKey)
     if (cached) {
@@ -105,24 +154,31 @@ export function PluginsPanel(): JSX.Element {
     }
     try {
       const result = await bridge.browseMarketplace(name)
+      if (!isCurrent(generation)) return
       setPlugins(result ?? [])
       writePluginsCache(cacheKey, result ?? [])
     } catch {
+      if (!isCurrent(generation)) return
       if (!cached) setPlugins([])
     }
+    if (!isCurrent(generation)) return
     setLoading(false); setBgRefreshing(false); setLoadProgress(null)
   }
 
   useEffect(() => {
     loadMarketplaces(tab)
-  }, [tab])
+  }, [tab, bridge])
 
   function handleTabChange(newTab: Tab): void {
+    loadGeneration.current++
+    currentTab.current = newTab
+    currentMarketplace.current = null
     setTab(newTab)
     setSelectedMarketplace(null)
   }
 
   async function handleMarketplaceSelect(name: string): Promise<void> {
+    currentMarketplace.current = name
     setSelectedMarketplace(name)
     await loadMarketplacePlugins(name)
   }
@@ -133,6 +189,7 @@ export function PluginsPanel(): JSX.Element {
 
   async function handleCloneDone(name: string): Promise<void> {
     setShowCloneForm(false)
+    currentMarketplace.current = name
     setSelectedMarketplace(name)
     await loadMarketplaces(tab)
   }

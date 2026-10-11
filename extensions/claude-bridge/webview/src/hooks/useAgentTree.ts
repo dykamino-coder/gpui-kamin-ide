@@ -2,6 +2,7 @@ import type { TreeNode } from '../../shared/types'
 import type { JsonlEntryData } from '../types/jsonl'
 import { tabAgentTrees, tabJsonlLive, recordAgentHistory, findAgentByName, type AgentInfo, type AgentTreeState } from '../signals/agents'
 import { sessionTree } from '../signals/tabs'
+import { findTeammate, inheritTeammateCycle, recordTeammateIdle, rememberFollowUp, acknowledgeFollowUp, applyFollowUps } from './teammate-follow-up'
 
 /** A fresh, unpublished agent tree (replay staging builds into one of these
  *  and publishes it whole — see signals/agent-replay.ts). */
@@ -85,6 +86,8 @@ export function parseAgentEntriesInto(tree: AgentTreeState, entries: any[]): boo
         }
 
         if (block.name === 'Agent') {
+          const existing = [...tree.agentIdToAgent.values(), ...tree.standaloneAgents.values(), ...[...tree.teams.values()].flatMap(t => [...t.agents.values()])].find(a => a.id === block.id)
+          if (existing) { tree.pendingAgentCalls.set(block.id, existing); continue }
           const agentName = block.input?.name || block.input?.description || 'agent'
           const rawTeamName = block.input?.team_name
           let teamName: string | undefined = rawTeamName
@@ -119,6 +122,7 @@ export function parseAgentEntriesInto(tree: AgentTreeState, entries: any[]): boo
           if (prior && prior.id.startsWith('synthetic-')) {
             if (prior.status !== 'running') agent.status = prior.status
             agent.messages = prior.messages
+            inheritTeammateCycle(prior, agent)
             if (prior.agentId) agent.agentId = prior.agentId
             if (prior.lastSeenAt && (!agent.lastSeenAt || prior.lastSeenAt > agent.lastSeenAt)) agent.lastSeenAt = prior.lastSeenAt
           }
@@ -157,18 +161,13 @@ export function parseAgentEntriesInto(tree: AgentTreeState, entries: any[]): boo
           const recipient = block.input?.recipient
           const msgContent = block.input?.content
           const msgType = block.input?.type
-          if (recipient && msgContent) {
-            for (const team of tree.teams.values()) {
-              const agent = team.agents.get(recipient)
-              if (agent) { agent.messages.push({ from: 'team-lead', text: String(msgContent).substring(0, 500), ts: Date.now() }); changed = true }
-            }
-            const contentStr = String(msgContent)
-            const isShutdown = msgType === 'shutdown_request' || contentStr.includes('shutdown_request')
-            if (isShutdown) {
-              for (const team of tree.teams.values()) {
-                const agent = team.agents.get(recipient)
-                if (agent) { agent.status = 'terminated'; changed = true } // lead kicked it — not a natural finish
-              }
+          if (typeof recipient === 'string') {
+            const agent = findTeammate(tree, recipient)
+            if (agent && msgContent) { agent.messages.push({ from: 'team-lead', text: String(msgContent).substring(0, 500), ts: Date.now() }); changed = true }
+            if (msgType === 'shutdown_request') {
+              if (agent) { agent.status = 'terminated'; changed = true }
+            } else if (!msgType || msgType === 'message') {
+              changed = rememberFollowUp(tree, block.id, recipient) || changed
             }
           }
         }
@@ -183,6 +182,7 @@ export function parseAgentEntriesInto(tree: AgentTreeState, entries: any[]): boo
       const content = entry.message.content
       for (const block of content) {
         if (block.type === 'tool_result' && block.tool_use_id) {
+          changed = acknowledgeFollowUp(tree, block.tool_use_id, entry.timestamp, !!block.is_error) || changed
           const pending = tree.pendingAgentCalls.get(block.tool_use_id)
           if (pending) {
             pending.lastSeenAt = entry.timestamp || pending.lastSeenAt
@@ -245,7 +245,7 @@ export function parseAgentEntriesInto(tree: AgentTreeState, entries: any[]): boo
               // status showed "done" the instant the panel opened). A blocking
               // subagent's tool_result carries no such status, so it still
               // completes here; a teammate finishes via its idle_notification below.
-              else if (!pending.teamName && !asyncLaunch && tur?.status !== 'teammate_spawned') { pending.status = 'done'; changed = true }
+              else if (!pending.teamName && !asyncLaunch && tur?.status !== 'teammate_spawned' && !(agentIdMatch && /receive instructions via mailbox/i.test(resultText))) { pending.status = 'done'; changed = true }
             }
           }
         }
@@ -293,23 +293,13 @@ export function parseAgentEntriesInto(tree: AgentTreeState, entries: any[]): boo
         const msgBody = tmMatch[2].trim()
         let msgText = msgBody
         let msgType = ''
+        let emittedAt: string | undefined
         try {
           const parsed = JSON.parse(msgBody)
-          if (parsed && typeof parsed === 'object') { msgType = parsed.type || ''; msgText = parsed.summary || parsed.message || parsed.type || msgBody }
+          if (parsed && typeof parsed === 'object') { msgType = parsed.type || ''; emittedAt = typeof parsed.timestamp === 'string' ? parsed.timestamp : undefined; msgText = parsed.summary || parsed.message || parsed.type || msgBody }
         } catch { /* not json */ }
 
-        let foundAgent: AgentInfo | undefined
-        for (const team of tree.teams.values()) {
-          foundAgent = team.agents.get(senderId)
-          if (foundAgent) break
-        }
-        if (!foundAgent) foundAgent = tree.standaloneAgents.get(senderId)
-        if (!foundAgent) foundAgent = tree.agentIdToAgent.get(senderId)
-        if (!foundAgent) {
-          for (const [aid, agent] of tree.agentIdToAgent) {
-            if (aid.startsWith(senderId + '@')) { foundAgent = agent; break }
-          }
-        }
+        let foundAgent = findTeammate(tree, senderId)
         // Proof-of-life for an agent whose TeamCreate/Agent tool_use got
         // wiped on replay→live — materialize a standalone entry so the
         // sidebar reflects the agent that CLI is actively talking with.
@@ -338,7 +328,7 @@ export function parseAgentEntriesInto(tree: AgentTreeState, entries: any[]): boo
           const isKicked = msgType === 'shutdown_approved' || msgType === 'shutdown_response'
             || msgType === 'teammate_terminated' || msgBody.includes('shutdown_approved')
           if (isKicked) foundAgent.status = 'terminated'
-          else if (msgType === 'idle_notification' && foundAgent.status === 'running') foundAgent.status = 'done'
+          else if (msgType === 'idle_notification') recordTeammateIdle(foundAgent, emittedAt, entry.timestamp)
         }
       }
     }
@@ -381,7 +371,7 @@ export function parseAgentEntriesInto(tree: AgentTreeState, entries: any[]): boo
     }
   }
 
-  return changed
+  return applyFollowUps(tree) || changed
 }
 
 /** Build TreeNode children from agent tree for a given tab.

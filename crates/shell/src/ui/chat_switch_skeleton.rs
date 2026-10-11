@@ -51,6 +51,7 @@ pub fn chat_switch_skeleton(p: &Palette) -> AnyElement {
 /// Используется шторкой чата И скелетом загрузки вебвью-панелей — загрузка
 /// везде выглядит одинаково, а не зоопарком разных плейсхолдеров.
 pub fn brand_loader(p: &Palette, caption: &'static str) -> AnyElement {
+    let reduced = crate::win_integration::reduce_motion();
     let accent = rgba(p.accent_primary);
     let clear = tint(accent, 0.0);
 
@@ -96,16 +97,24 @@ pub fn brand_loader(p: &Palette, caption: &'static str) -> AnyElement {
         .w(px(GLOW))
         .h(px(GLOW))
         .left(px((BRAND - GLOW) / 2.0))
-        .top(px((BRAND - GLOW) / 2.0))
-        .with_animation(
-            "chat-switch-breathe",
-            Animation::new(Duration::from_millis(BREATHE_MS))
-                .repeat()
-                .with_easing(gpui::ease_in_out),
-            // «Дыхание» — только прозрачностью: кольца позиционированы
-            // фиксированно и с изменением размера контейнера не масштабируются.
-            |d, delta| d.opacity(0.5 + 0.5 * wave(delta)),
-        );
+        .top(px((BRAND - GLOW) / 2.0));
+    let glow = super::loading_motion::select(
+        reduced,
+        glow,
+        |e| e.into_any_element(),
+        |glow| {
+            glow.with_animation(
+                "chat-switch-breathe",
+                Animation::new(Duration::from_millis(BREATHE_MS))
+                    .repeat()
+                    .with_easing(gpui::ease_in_out),
+                // «Дыхание» — только прозрачностью: кольца позиционированы
+                // фиксированно и с изменением размера контейнера не масштабируются.
+                |d, delta| d.opacity(0.5 + 0.5 * wave(delta)),
+            )
+            .into_any_element()
+        },
+    );
 
     // `.logo` — 64×64, «парит» на 4 px вверх и обратно
     let logo = div()
@@ -118,13 +127,22 @@ pub fn brand_loader(p: &Palette, caption: &'static str) -> AnyElement {
                 .w(px(LOGO))
                 .h(px(LOGO)),
         )
-        .with_animation(
-            "chat-switch-float",
-            Animation::new(Duration::from_millis(BREATHE_MS))
-                .repeat()
-                .with_easing(gpui::ease_in_out),
-            |d, delta| d.top(px((BRAND - LOGO) / 2.0 - 4.0 * wave(delta))),
-        );
+        .top(px((BRAND - LOGO) / 2.0));
+    let logo = super::loading_motion::select(
+        reduced,
+        logo,
+        |e| e.into_any_element(),
+        |logo| {
+            logo.with_animation(
+                "chat-switch-float",
+                Animation::new(Duration::from_millis(BREATHE_MS))
+                    .repeat()
+                    .with_easing(gpui::ease_in_out),
+                |d, delta| d.top(px((BRAND - LOGO) / 2.0 - 4.0 * wave(delta))),
+            )
+            .into_any_element()
+        },
+    );
 
     // `.barFill`: три стопа (transparent → accent → transparent) двумя половинами
     let sweep = div()
@@ -143,13 +161,23 @@ pub fn brand_loader(p: &Palette, caption: &'static str) -> AnyElement {
             linear_color_stop(accent, 0.),
             linear_color_stop(clear, 1.),
         )))
-        .with_animation(
-            "chat-switch-sweep",
-            Animation::new(Duration::from_millis(SWEEP_MS))
-                .repeat()
-                .with_easing(gpui::ease_in_out),
-            |d, delta| d.left(gpui::relative(-1.0 + 2.0 * delta)),
-        );
+        .left_0();
+    let sweep = super::loading_motion::select(
+        reduced,
+        sweep,
+        |e| e.into_any_element(),
+        |sweep| {
+            sweep
+                .with_animation(
+                    "chat-switch-sweep",
+                    Animation::new(Duration::from_millis(SWEEP_MS))
+                        .repeat()
+                        .with_easing(gpui::ease_in_out),
+                    |d, delta| d.left(gpui::relative(-1.0 + 2.0 * delta)),
+                )
+                .into_any_element()
+        },
+    );
 
     div()
         .absolute()

@@ -78,7 +78,7 @@ pub fn spinner(
     id: impl Into<gpui::ElementId>,
     size_px: f32,
     color: gpui::Rgba,
-) -> gpui::AnimationElement<gpui::Svg> {
+) -> gpui::AnyElement {
     use gpui::{Animation, AnimationExt as _, Transformation, percentage};
     // `codicon.css:35-39` задаёт `codicon-spin 1.5s steps(30) infinite`, но
     // `:50-53` перебивает ИМЕННО для `.codicon-loading`:
@@ -87,19 +87,28 @@ pub fn spinner(
     // `!important` бьёт шорткат, значит шагов НЕТ и период 1000 мс —
     // мы крутили 1500 мс дискретно по 30 шагов (ревью ц.25).
     const PERIOD_MS: u64 = 1000;
-    gpui::svg()
+    let spinner = gpui::svg()
         .path("icons/codicon-loading.svg")
         .w(px(size_px))
         .h(px(size_px))
         .flex_shrink_0()
-        .text_color(color)
-        .with_animation(
-            id,
-            Animation::new(std::time::Duration::from_millis(PERIOD_MS))
-                .repeat()
-                .with_easing(cubic_bezier_53_21_29_67),
-            |el, delta| el.with_transformation(Transformation::rotate(percentage(delta))),
-        )
+        .text_color(color);
+    super::loading_motion::select(
+        crate::win_integration::reduce_motion(),
+        spinner,
+        |e| e.into_any_element(),
+        |spinner| {
+            spinner
+                .with_animation(
+                    id,
+                    Animation::new(std::time::Duration::from_millis(PERIOD_MS))
+                        .repeat()
+                        .with_easing(cubic_bezier_53_21_29_67),
+                    |el, delta| el.with_transformation(Transformation::rotate(percentage(delta))),
+                )
+                .into_any_element()
+        },
+    )
 }
 
 /// `cubic-bezier(0.53, 0.21, 0.29, 0.67)` спиннера кодиконов: по x решаем
@@ -140,6 +149,28 @@ pub fn spinner_ring(
     use gpui::{Animation, AnimationExt as _, Transformation, percentage};
     const PERIOD_MS: u64 = 700;
     const BORDER: f32 = 2.5;
+    let arc = gpui::svg()
+        .path("icons/spinner-arc.svg")
+        .absolute()
+        // Дуга и рамка имеют общий радиус и бокс без границ.
+        .top(px(-BORDER))
+        .left(px(-BORDER))
+        .w(px(size_px))
+        .h(px(size_px))
+        .text_color(arc);
+    let arc = super::loading_motion::select(
+        crate::win_integration::reduce_motion(),
+        arc,
+        |e| e.into_any_element(),
+        |arc| {
+            arc.with_animation(
+                id,
+                Animation::new(std::time::Duration::from_millis(PERIOD_MS)).repeat(),
+                |el, delta| el.with_transformation(Transformation::rotate(percentage(delta))),
+            )
+            .into_any_element()
+        },
+    );
     div()
         .relative()
         .w(px(size_px))
@@ -148,23 +179,7 @@ pub fn spinner_ring(
         .rounded_full()
         .border(px(BORDER))
         .border_color(ring)
-        .child(
-            gpui::svg()
-                .path("icons/spinner-arc.svg")
-                .absolute()
-                // Дуга рисуется по тому же радиусу, что и рамка: бокс кольца
-                // без границ, сдвинутый на её толщину
-                .top(px(-BORDER))
-                .left(px(-BORDER))
-                .w(px(size_px))
-                .h(px(size_px))
-                .text_color(arc)
-                .with_animation(
-                    id,
-                    Animation::new(std::time::Duration::from_millis(PERIOD_MS)).repeat(),
-                    |el, delta| el.with_transformation(Transformation::rotate(percentage(delta))),
-                ),
-        )
+        .child(arc)
 }
 
 /// `data:image/<fmt>;base64,<...>` → картинка для `gpui::img`.

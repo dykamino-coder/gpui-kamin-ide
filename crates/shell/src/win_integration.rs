@@ -55,6 +55,10 @@ fn flush_icon_cache() {
 /// изолирован. Зовётся из фонового потока — reg.exe небыстрый.
 #[cfg(windows)]
 pub fn register_context_menu() {
+    #[cfg(debug_assertions)]
+    if crate::native_acceptance::config::Config::from_env().no_host {
+        return;
+    }
     use std::os::windows::process::CommandExt as _;
     use std::process::Stdio;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -158,6 +162,10 @@ pub fn stored_launch_folder() -> Option<PathBuf> {
 /// `KAMIN_REDUCE_MOTION=1|0` — форс/запрет режима (тестовые стенды без RDP
 /// и ручной откат юзером); без переменной — детект RDP.
 fn reduce_motion_env() -> Option<bool> {
+    #[cfg(debug_assertions)]
+    if crate::native_acceptance::config::Config::from_env().reduced_animations {
+        return Some(true);
+    }
     match std::env::var("KAMIN_REDUCE_MOTION").ok().as_deref() {
         Some("1") => Some(true),
         Some("0") => Some(false),

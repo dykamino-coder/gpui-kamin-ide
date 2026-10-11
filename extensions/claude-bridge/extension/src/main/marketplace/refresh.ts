@@ -55,32 +55,34 @@ export async function refreshMarketplaceOnce(name: string): Promise<RefreshResul
 
   try {
     const { stdout: out } = await runGit(['pull', '--ff-only'], { cwd: loc, timeoutMs: 60_000 })
-    const changed = !/Already up to date\.?/i.test(out)
+    let changed = !/Already up to date\.?/i.test(out)
     entry.lastUpdated = new Date().toISOString()
     writeKnownMarketplaces(known)
-    // After the marketplace itself is up to date, pull every sub-cloned
-    // plugin under `<loc>/plugins/<name>/` (git-sourced plugins populated
-    // by `resolvePluginSource`). Best-effort — per-plugin failures are
-    // logged but don't mark the marketplace refresh as failed. When a
-    // sub-clone actually receives new commits and the plugin is installed,
-    // the cached copy under `~/.claude/plugins/cache/...` is refreshed too.
+    // Reconcile supported Git sources with their installed cache even when
+    // this pull is unchanged: the previous launch may have advanced source
+    // but failed before publishing the cache. A recorded revision avoids
+    // recopying an already reconciled cache on each launch. Keep progressing
+    // other sources; report partial failure through the existing result contract.
+    const sourceErrors: string[] = []
     try {
       const subResults = await pullAllSubClones(loc)
       for (const r of subResults) {
         if (!r.ok) {
-          console.warn(`[marketplaces] ${name}: sub-clone pull failed for "${r.pluginName}" — ${r.error}`)
+          sourceErrors.push(`${r.pluginName}: source update failed: ${r.error ?? 'unknown error'}`)
           continue
         }
-        if (r.changed) {
-          const sync = syncPluginCacheFromSubClone(r.pluginName, name, loc)
+        if (!r.skipped) {
+          const sync = syncPluginCacheFromSubClone(r.pluginName, name, loc, r.revision)
+          changed = changed || !!r.changed || !!sync.changed
           if (!sync.ok) {
-            console.warn(`[marketplaces] ${name}: cache sync failed for "${r.pluginName}" — ${sync.error}`)
+            sourceErrors.push(`${r.pluginName}: cache sync failed: ${sync.error ?? 'unknown error'}`)
           }
         }
       }
     } catch (err) {
-      console.warn(`[marketplaces] ${name}: sub-clone sweep threw —`, err instanceof Error ? err.message : err)
+      sourceErrors.push(`Source/cache sweep failed: ${err instanceof Error ? err.message : String(err)}`)
     }
+    if (sourceErrors.length) return { ok: false, changed, lastUpdated: entry.lastUpdated, error: redactUrlsInText(sourceErrors.join('\n')).slice(0, 2000) }
     return { ok: true, lastUpdated: entry.lastUpdated, changed }
   } catch (err: any) {
     const stderrRaw = typeof err?.stderr === 'string' ? err.stderr : err?.stderr?.toString() || ''

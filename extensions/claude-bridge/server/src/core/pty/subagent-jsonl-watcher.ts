@@ -24,7 +24,12 @@ const WATCH_SAFETY_POLL_MS = 10_000
 const SUBAGENT_DISCOVERY_TIMEOUT_MS = 120_000
 
 async function pathExists(p: string): Promise<boolean> {
-  try { await fsp.access(p); return true } catch { return false }
+  try {
+    await fsp.access(p)
+    return true
+  } catch {
+    return false
+  }
 }
 
 export class SubagentJsonlWatcher {
@@ -47,11 +52,7 @@ export class SubagentJsonlWatcher {
   private tailWatcher: fs.FSWatcher | null = null
   private retryTimer: ReturnType<typeof setTimeout> | null = null
 
-  constructor(
-    agentToolUseId: string,
-    filePath: string,
-    sendEntries: (entries: JsonlEntry[]) => boolean | void,
-  ) {
+  constructor(agentToolUseId: string, filePath: string, sendEntries: (entries: JsonlEntry[]) => boolean | void) {
     this.agentToolUseId = agentToolUseId
     this.filePath = filePath
     this.sendEntries = sendEntries
@@ -66,8 +67,14 @@ export class SubagentJsonlWatcher {
       if (this.stopped) return
       void (async () => {
         if (await pathExists(this.filePath)) {
-          if (this.discoveryTimer) { clearInterval(this.discoveryTimer); this.discoveryTimer = null }
-          if (this.discoveryTimeout) { clearTimeout(this.discoveryTimeout); this.discoveryTimeout = null }
+          if (this.discoveryTimer) {
+            clearInterval(this.discoveryTimer)
+            this.discoveryTimer = null
+          }
+          if (this.discoveryTimeout) {
+            clearTimeout(this.discoveryTimeout)
+            this.discoveryTimeout = null
+          }
           void this.startTailing()
         }
       })()
@@ -91,11 +98,28 @@ export class SubagentJsonlWatcher {
 
   stop(): void {
     this.stopped = true
-    if (this.discoveryTimer) { clearInterval(this.discoveryTimer); this.discoveryTimer = null }
-    if (this.discoveryTimeout) { clearTimeout(this.discoveryTimeout); this.discoveryTimeout = null }
-    if (this.tailTimer) { clearInterval(this.tailTimer); this.tailTimer = null }
-    if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = null }
-    if (this.tailWatcher) { try { this.tailWatcher.close() } catch {}; this.tailWatcher = null }
+    if (this.discoveryTimer) {
+      clearInterval(this.discoveryTimer)
+      this.discoveryTimer = null
+    }
+    if (this.discoveryTimeout) {
+      clearTimeout(this.discoveryTimeout)
+      this.discoveryTimeout = null
+    }
+    if (this.tailTimer) {
+      clearInterval(this.tailTimer)
+      this.tailTimer = null
+    }
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer)
+      this.retryTimer = null
+    }
+    if (this.tailWatcher) {
+      try {
+        this.tailWatcher.close()
+      } catch {}
+      this.tailWatcher = null
+    }
   }
 
   private async startTailing(): Promise<void> {
@@ -118,7 +142,9 @@ export class SubagentJsonlWatcher {
         }
         this.lastOffset = stat.size
       }
-    } catch { /* file may be empty or briefly locked */ }
+    } catch {
+      /* file may be empty or briefly locked */
+    }
 
     // Prefer native fs.watch + lazy poll fallback; see main-session watcher above.
     try {
@@ -134,23 +160,36 @@ export class SubagentJsonlWatcher {
       this.tailWatcher = fs.watch(this.filePath, { persistent: false }, (eventType) => {
         if (this.stopped) return
         if (eventType === 'rename') {
-          if (this.tailWatcher) { try { this.tailWatcher.close() } catch {}; this.tailWatcher = null }
+          if (this.tailWatcher) {
+            try {
+              this.tailWatcher.close()
+            } catch {}
+            this.tailWatcher = null
+          }
         }
         schedule()
       })
       // Async FSWatcher 'error' (inotify limits / FS quirks) would otherwise
       // throw uncaught → crash; close + fall back to the interval poll below.
       this.tailWatcher.on('error', () => {
-        if (this.tailWatcher) { try { this.tailWatcher.close() } catch {}; this.tailWatcher = null }
+        if (this.tailWatcher) {
+          try {
+            this.tailWatcher.close()
+          } catch {}
+          this.tailWatcher = null
+        }
       })
     } catch {
       this.tailWatcher = null
     }
 
-    this.tailTimer = setInterval(() => {
-      if (this.stopped || this.reading) return
-      void this.checkForNew()
-    }, this.tailWatcher ? WATCH_SAFETY_POLL_MS : SUBAGENT_POLL_MS)
+    this.tailTimer = setInterval(
+      () => {
+        if (this.stopped || this.reading) return
+        void this.checkForNew()
+      },
+      this.tailWatcher ? WATCH_SAFETY_POLL_MS : SUBAGENT_POLL_MS,
+    )
   }
 
   private async checkForNew(): Promise<void> {
@@ -161,7 +200,10 @@ export class SubagentJsonlWatcher {
       this.lastActivityAt = Date.now()
       this.reading = true
       const entries = await this.readEntries(this.lastOffset)
-      if (entries.length === 0) { this.lastOffset = stat.size; return }
+      if (entries.length === 0) {
+        this.lastOffset = stat.size
+        return
+      }
       // Deliver BEFORE advancing the offset — the same rule the MAIN watcher was
       // given in 6.3.25 (jsonl-watcher.ts). `sendEntries` returns false when the
       // WS dropped the frame (bufferedAmount past the 16MB cap, or a frozen
@@ -178,8 +220,11 @@ export class SubagentJsonlWatcher {
         return
       }
       this.lastOffset = stat.size
-    } catch { /* ignore */ }
-    finally { this.reading = false }
+    } catch {
+      /* ignore */
+    } finally {
+      this.reading = false
+    }
   }
 
   private async readEntries(offset: number): Promise<JsonlEntry[]> {
@@ -198,13 +243,23 @@ export class SubagentJsonlWatcher {
       await fd.close()
     }
     const entries: JsonlEntry[] = []
+    let position = offset
     for (const line of chunkText.split('\n')) {
+      const lineStart = position
+      position += Buffer.byteLength(line, 'utf8') + 1
       if (!line.trim()) continue
       if (line.includes(SKIP_LINE_MARKER)) continue
       try {
         const parsed = JSON.parse(line) as JsonlEntry
-        entries.push(parsed)
-      } catch { /* skip */ }
+        const positioned: JsonlEntry & { _pos: number; _posEnd: number } = {
+          ...parsed,
+          _pos: lineStart,
+          _posEnd: Math.min(position, stat.size),
+        }
+        entries.push(positioned)
+      } catch {
+        /* skip */
+      }
     }
     return entries
   }

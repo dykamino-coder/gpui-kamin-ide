@@ -8,8 +8,8 @@
 //! а не тем, где оно нарисовано.
 
 use gpui::{
-    AppContext as _, Application, Bounds, Context, Entity, IntoElement, ParentElement, Render,
-    Styled, TitlebarOptions, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
+    AppContext as _, Bounds, Context, Entity, IntoElement, ParentElement, Render, Styled,
+    TitlebarOptions, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
     WindowOptions, div, point, px, rgb, size,
 };
 use kamin_html::{BROWSER_CSS, Document, RenderOpts, render};
@@ -55,7 +55,9 @@ fn main() {
         std::process::exit(1);
     });
 
-    Application::new().run(move |cx| {
+    gpui_platform::application().run(move |cx| {
+        // Серые (не ClearType) глифы: как до gpui-pre 0.3.8, точный RGB стенда.
+        cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
         // Тот же служебный шрифт, что и в прогоне reftest-ов: без него замер
         // против Chrome врал бы на шрифте, а не на раскладке.
         if let Ok(bytes) = std::fs::read("vendor/wpt-parsing/fonts/Ahem.ttf") {

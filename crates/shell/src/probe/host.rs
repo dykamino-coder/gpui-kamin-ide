@@ -13,9 +13,14 @@ struct ShellProbe;
 
 impl ProbeHandler for ShellProbe {
     fn handle(&self, cmd: &str, req: &Value) -> Value {
+        #[cfg(debug_assertions)]
+        if let Some(reply) = crate::native_acceptance::handle(cmd, req) {
+            return reply;
+        }
         crate::probe::cmds::inspect::handle_inspect(cmd, req)
             .or_else(|| crate::probe::cmds::input::handle_input(cmd, req))
             .or_else(|| crate::probe::cmds::app::handle_app(cmd, req))
+            .or_else(|| crate::probe::cmds::accept::handle_accept(cmd, req))
             .unwrap_or_else(|| json!({"ok": false, "err": format!("unknown cmd: {cmd}")}))
     }
 }

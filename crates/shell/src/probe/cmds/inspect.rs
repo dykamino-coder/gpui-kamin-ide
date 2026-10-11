@@ -12,6 +12,7 @@ pub(crate) fn handle_inspect(cmd: &str, req: &Value) -> Option<Value> {
         cmd,
         "children"
             | "emit"
+            | "flushLayout"
             | "focus"
             | "hits"
             | "metric"

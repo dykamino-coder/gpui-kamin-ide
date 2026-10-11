@@ -40,7 +40,7 @@ export function AskUserOption({ label, name, value, checked, kind, onChange }: A
       onMouseLeave={() => { hovered.value = false }}
     >
       <input
-        type={kind ?? 'radio'}
+        {...(kind === 'checkbox' ? { type: 'checkbox' as const } : { type: 'radio' as const })}
         name={name}
         value={String(value)}
         checked={checked}

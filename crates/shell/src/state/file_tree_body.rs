@@ -77,52 +77,6 @@ impl RootView {
         }
     }
 
-    /// Сообщить CEF, какие вью сейчас видимы: скрытые дольше 20 с выгружаются
-    /// (`web::reap_hidden`), возврат поднимает их из HTML-стора мгновенно.
-    fn sync_web_visibility(&self) {
-        // Панельные вью считаем видимыми ВСЕГДА, даже при открытых настройках:
-        // раньше customize подменял множество целиком, чат уходил в hidden и
-        // через 20с терял renderer — «настройки→назад перезагружают чат».
-        let mut visible: Vec<String> = Vec::new();
-        let mut registry_incomplete = false;
-        for slot in crate::activity::PanelSlot::ALL {
-            let Some(tool) = self.activity.state(slot).active.clone() else {
-                continue;
-            };
-            let Some(d) = crate::activity::dyn_tool(&tool) else {
-                // Активный contributed-тул без записи в реестре = снапшот
-                // registry:update неполон (рестарт ext-host, гонка на смене
-                // сессии). Не «скрываем» его вью — сохраняем прошлый набор.
-                if crate::activity::is_singleton(&tool) {
-                    registry_incomplete = true;
-                }
-                continue;
-            };
-            for v in d.views {
-                if v.webview {
-                    visible.push(v.id);
-                }
-            }
-        }
-        if self.layout.file_panel_visible && self.layout.file_panel_mode == "web" {
-            visible.push("browser".to_string());
-        }
-        if self.cz.customize_open
-            && let Some(active) = self.cz.customize_contrib.clone()
-        {
-            // Открыта contributed-страница Customize — её вью под своим id.
-            visible.push(active);
-        }
-        if registry_incomplete {
-            // Неполный снапшот: не сбрасываем прошлый набор (иначе «скроем»
-            // живые панели), но добавляем то, что видно точно — TTL остальных
-            // продолжает тикать, вью не зависают в вечно-видимых.
-            crate::web::mark_visible_union(visible);
-            return;
-        }
-        crate::web::mark_visible(visible);
-    }
-
     pub(crate) fn file_tree_body(
         &mut self,
         slot: &'static str,

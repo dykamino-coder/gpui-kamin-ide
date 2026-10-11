@@ -6,6 +6,11 @@ pub(crate) mod sys;
 pub use math::MaybeMath;
 pub use resolve::{MaybeResolve, ResolveOrZero};
 
+#[cfg(feature = "grid")]
+mod front_back_vec_builder;
+#[cfg(feature = "grid")]
+pub(crate) use front_back_vec_builder::FrontBackVecBuilder;
+
 #[doc(hidden)]
 #[macro_use]
 pub(crate) mod debug;
@@ -14,6 +19,13 @@ pub(crate) mod debug;
 mod print;
 #[cfg(feature = "std")]
 pub use print::print_tree;
+#[cfg(feature = "std")]
+pub use print::write_tree;
+
+#[cfg(feature = "parse")]
+pub(crate) mod parse;
+#[cfg(feature = "parse")]
+pub use parse::{ParseError, ParseResult};
 
 /// Deserialize a type `S` by deserializing a string, then using the `FromStr`
 /// impl of `S` to create the result. The generic type `S` is not required to
@@ -24,6 +36,6 @@ where
     S: for<'a> From<&'a str>,
     D: serde::Deserializer<'de>,
 {
-    let s: String = serde::Deserialize::deserialize(deserializer)?;
+    let s: crate::util::sys::String = serde::Deserialize::deserialize(deserializer)?;
     Ok(S::from(&s))
 }

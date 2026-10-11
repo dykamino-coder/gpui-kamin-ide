@@ -34,6 +34,8 @@ impl RootView {
                 | ShellEvent::Tree(TreeEvent::RefreshTree)
         );
         match &event {
+            #[cfg(debug_assertions)]
+            ShellEvent::NativeAcceptance { .. } => self.apply_native_acceptance(event, cx),
             ShellEvent::HostReady { .. }
             | ShellEvent::WsConnected
             | ShellEvent::WsDisconnected

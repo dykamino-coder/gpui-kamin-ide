@@ -135,6 +135,7 @@ pub fn session_tabs(
                         offset: gpui::point(px(0.), px(0.)),
                         blur_radius: px(4.),
                         spread_radius: px(0.),
+                        inset: false,
                     }]),
             );
         }

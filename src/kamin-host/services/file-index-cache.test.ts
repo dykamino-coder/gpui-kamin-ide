@@ -54,9 +54,8 @@ describe("file index cache", () => {
   })
 
   it("writes the compact line form, not JSON", async () => {
-    const dir = await freshCacheRoot()
+    await freshCacheRoot()
     await __testing.saveCache(ROOT, FILES)
-    void dir
     const written = await readFile(join(__testing.cacheDirFor(ROOT), __testing.CACHE_FILE), "utf8")
     expect(written.startsWith("v2\t")).toBe(true)
     expect(written).not.toContain("{")

@@ -126,7 +126,7 @@ impl RootView {
                         // (`Sidebar.module.css:10`, `Sidebar.tsx:55`):
                         // при нехватке ширины сайдбар ужимается, а не
                         // выталкивает соседей (ревью ц.13)
-                        .flex_shrink()
+                        .flex_shrink_1()
                         .min_w(px(m::PANEL_MIN_SIZE))
                         .h_full()
                         .child(probe_area("sidebar"))

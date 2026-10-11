@@ -1,4 +1,6 @@
 import type { PtySession } from './types'
+import { recordSkillsMaintenance } from '../sync/skills-reload-telemetry'
+import type { ReloadReason, SkillsReloadContext, SkillsReloadEvent } from '../sync/skills-reload-telemetry'
 
 const INPUT_CLEAR_SETTLE_MS = 50
 const INPUT_ECHO_QUIET_MS = 80
@@ -11,6 +13,9 @@ interface QueuedSubmission {
   text: string
   maintenanceKey?: string
   maintenanceRevision?: number
+  telemetry?: SkillsReloadContext
+  queuedAt?: number
+  submitReason?: ReloadReason
 }
 
 interface ActiveSubmission extends QueuedSubmission {
@@ -25,6 +30,8 @@ interface ActiveSubmission extends QueuedSubmission {
 interface PendingMaintenance {
   text: string
   revision: number
+  telemetry?: SkillsReloadContext
+  queuedAt: number
 }
 
 interface SessionInputState {
@@ -69,16 +76,22 @@ function cancelMaintenanceTimer(state: SessionInputState): void {
 }
 
 function canRunMaintenance(session: PtySession, state: SessionInputState): boolean {
-  return session.state === 'running'
-    && !session.detachedAt
-    && state.promptReady
-    && !state.rawInputDirty
-    && !state.active
-    && state.queue.length === 0
-    && state.pendingMaintenance.size > 0
+  return (
+    session.state === 'running' &&
+    !session.detachedAt &&
+    state.promptReady &&
+    !state.rawInputDirty &&
+    !state.active &&
+    state.queue.length === 0 &&
+    state.pendingMaintenance.size > 0
+  )
 }
 
-function schedulePendingMaintenance(session: PtySession, state = inputState(session)): void {
+function schedulePendingMaintenance(
+  session: PtySession,
+  state = inputState(session),
+  reason: ReloadReason = 'sync-ready',
+): void {
   if (!canRunMaintenance(session, state)) {
     cancelMaintenanceTimer(state)
     return
@@ -99,6 +112,9 @@ function schedulePendingMaintenance(session: PtySession, state = inputState(sess
       text: pending.text,
       maintenanceKey,
       maintenanceRevision: pending.revision,
+      telemetry: pending.telemetry,
+      queuedAt: pending.queuedAt,
+      submitReason: reason,
     })
   }, delay)
 }
@@ -106,7 +122,7 @@ function schedulePendingMaintenance(session: PtySession, state = inputState(sess
 function updateRawInputState(state: SessionInputState, data: string): void {
   const pasteStart = '\x1b[200~'
   const pasteEnd = '\x1b[201~'
-  for (let i = 0; i < data.length;) {
+  for (let i = 0; i < data.length; ) {
     if (data.startsWith(pasteStart, i)) {
       state.rawPasteMode = true
       i += pasteStart.length
@@ -145,7 +161,7 @@ function writeRawNow(session: PtySession, state: SessionInputState, data: string
   session.pty.write(data)
   state.lastRawInputAt = Date.now()
   updateRawInputState(state, data)
-  schedulePendingMaintenance(session, state)
+  schedulePendingMaintenance(session, state, 'raw-input-cleared')
 }
 
 function disposeActiveTimers(active: ActiveSubmission): void {
@@ -153,7 +169,11 @@ function disposeActiveTimers(active: ActiveSubmission): void {
   if (active.quietTimer) clearTimeout(active.quietTimer)
   if (active.hardTimer) clearTimeout(active.hardTimer)
   if (active.postEnterTimer) clearTimeout(active.postEnterTimer)
-  try { active.outputSubscription?.dispose() } catch { /* noop */ }
+  try {
+    active.outputSubscription?.dispose()
+  } catch {
+    /* noop */
+  }
   active.clearTimer = null
   active.quietTimer = null
   active.hardTimer = null
@@ -185,7 +205,7 @@ function finishSubmission(
 
   const next = state.queue.shift()
   if (next && session.state === 'running') startSubmission(session, state, next)
-  else schedulePendingMaintenance(session, state)
+  else schedulePendingMaintenance(session, state, 'queue-drained')
 }
 
 function startSubmission(session: PtySession, state: SessionInputState, queued: QueuedSubmission): void {
@@ -203,6 +223,11 @@ function startSubmission(session: PtySession, state: SessionInputState, queued: 
   }
   state.active = active
   state.rawInputDirty = false
+  if (active.kind === 'maintenance') {
+    recordSkillsMaintenance(active.telemetry, session.id, 'started', active.maintenanceRevision!, active.queuedAt!, {
+      reason: active.submitReason,
+    })
+  }
 
   // Clear, paste and Enter are coordinator-owned. No raw or programmatic input
   // can interleave while this transaction is active.
@@ -231,7 +256,19 @@ function startSubmission(session: PtySession, state: SessionInputState, queued: 
           session.pty.write('\r')
           state.promptReady = false
           submitted = true
-        } catch { /* PTY exited between state check and write */ }
+          if (active.kind === 'maintenance') {
+            recordSkillsMaintenance(
+              active.telemetry,
+              session.id,
+              'enter-written',
+              active.maintenanceRevision!,
+              active.queuedAt!,
+              { reason: active.submitReason },
+            )
+          }
+        } catch {
+          /* PTY exited between state check and write */
+        }
       }
       if (!submitted) finishSubmission(session, state, active, false)
       else {
@@ -291,17 +328,48 @@ export function submitCoordinatedText(session: PtySession, text: string): void {
 export function setSessionPromptReady(session: PtySession, promptReady: boolean): void {
   const state = inputState(session)
   state.promptReady = promptReady
-  schedulePendingMaintenance(session, state)
+  schedulePendingMaintenance(session, state, 'prompt-ready')
 }
 
 export function notifySessionAttachmentChanged(session: PtySession): void {
-  schedulePendingMaintenance(session)
+  schedulePendingMaintenance(session, inputState(session), 'reattach')
 }
 
-export function requestMaintenanceSubmission(session: PtySession, key: string, text: string): void {
+export function requestMaintenanceSubmission(
+  session: PtySession,
+  key: string,
+  text: string,
+  telemetry?: SkillsReloadContext,
+  overlayRefreshed?: boolean,
+): void {
   const state = inputState(session)
   state.maintenanceRevision++
-  state.pendingMaintenance.set(key, { text, revision: state.maintenanceRevision })
+  const queuedAt = Date.now()
+  const coalesced = state.pendingMaintenance.has(key)
+  // Only the fixed skills maintenance key participates in this diagnostic lane.
+  const context = key === 'reload-skills' ? telemetry : undefined
+  state.pendingMaintenance.set(key, { text, revision: state.maintenanceRevision, telemetry: context, queuedAt })
+  const blockedBy: SkillsReloadEvent['blockedBy'] =
+    session.state !== 'running'
+      ? 'not-running'
+      : session.detachedAt
+        ? 'detached'
+        : !state.promptReady
+          ? 'prompt-not-ready'
+          : state.rawInputDirty
+            ? 'raw-input'
+            : state.active
+              ? 'submission-active'
+              : state.queue.length
+                ? 'user-queue'
+                : state.lastRawInputAt + MAINTENANCE_INPUT_QUIET_MS > queuedAt
+                  ? 'input-quiet'
+                  : 'ready'
+  recordSkillsMaintenance(context, session.id, 'queued', state.maintenanceRevision, queuedAt, {
+    blockedBy,
+    coalesced,
+    overlayRefreshed,
+  })
   schedulePendingMaintenance(session, state)
 }
 
@@ -327,5 +395,10 @@ export function clearSessionInputState(session: PtySession): void {
   if (!state) return
   cancelMaintenanceTimer(state)
   if (state.active) disposeActiveTimers(state.active)
+  for (const pending of state.pendingMaintenance.values()) {
+    recordSkillsMaintenance(pending.telemetry, session.id, 'cancelled', pending.revision, pending.queuedAt, {
+      reason: 'teardown',
+    })
+  }
   sessionInputStates.delete(session)
 }

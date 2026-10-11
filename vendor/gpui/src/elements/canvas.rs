@@ -1,8 +1,8 @@
 use refineable::Refineable as _;
 
 use crate::{
-    App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, Pixels,
-    Style, StyleRefinement, Styled, Window,
+    App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
+    Pixels, Style, StyleRefinement, Styled, TransformationMatrix, Window, px,
 };
 
 /// Construct a canvas element with the given paint callback.
@@ -15,7 +15,21 @@ pub fn canvas<T>(
         prepaint: Some(Box::new(prepaint)),
         paint: Some(Box::new(paint)),
         style: StyleRefinement::default(),
+        unrounded: false,
+        layout_id: None,
+        unrounded_paint_bounds: None,
     }
+}
+
+/// Construct a canvas whose untransformed paint callback uses logical layout bounds.
+/// This lets the caller resolve relative geometry before device pixel snapping.
+pub fn canvas_with_unrounded_bounds<T>(
+    prepaint: impl 'static + FnOnce(Bounds<Pixels>, &mut Window, &mut App) -> T,
+    paint: impl 'static + FnOnce(Bounds<Pixels>, T, &mut Window, &mut App),
+) -> Canvas<T> {
+    let mut canvas = canvas(prepaint, paint);
+    canvas.unrounded = true;
+    canvas
 }
 
 /// A canvas element, meant for accessing the low level paint API without defining a whole
@@ -24,6 +38,9 @@ pub struct Canvas<T> {
     prepaint: Option<Box<dyn FnOnce(Bounds<Pixels>, &mut Window, &mut App) -> T>>,
     paint: Option<Box<dyn FnOnce(Bounds<Pixels>, T, &mut Window, &mut App)>>,
     style: StyleRefinement,
+    unrounded: bool,
+    layout_id: Option<LayoutId>,
+    unrounded_paint_bounds: Option<Bounds<Pixels>>,
 }
 
 impl<T: 'static> IntoElement for Canvas<T> {
@@ -56,6 +73,7 @@ impl<T: 'static> Element for Canvas<T> {
         let mut style = Style::default();
         style.refine(&self.style);
         let layout_id = window.request_layout(style.clone(), [], cx);
+        self.layout_id = Some(layout_id);
         (layout_id, style)
     }
 
@@ -68,7 +86,27 @@ impl<T: 'static> Element for Canvas<T> {
         window: &mut Window,
         cx: &mut App,
     ) -> Option<T> {
-        Some(self.prepaint.take().unwrap()(bounds, window, cx))
+        if self.unrounded
+            && let Some(layout_id) = self.layout_id
+        {
+            let raw = Bounds {
+                origin: window.layout_origin_unrounded(layout_id),
+                size: window.layout_size_unrounded(layout_id),
+            };
+            // A manually placed canvas may be outside its original layout tree.
+            // Only restore the displacement permitted by device origin snapping.
+            let half = px(0.5 / window.scale_factor() + 1e-4);
+            if (raw.origin.x - bounds.origin.x).abs() <= half
+                && (raw.origin.y - bounds.origin.y).abs() <= half
+            {
+                self.unrounded_paint_bounds = Some(raw);
+            }
+        }
+        // KaminIDE patch: an unrounded canvas hands the same logical bounds to
+        // its prepaint callback, so geometry recorded there (collapsed table
+        // border probes) can be snapped once, from the exact layout.
+        let prepaint_bounds = self.unrounded_paint_bounds.unwrap_or(bounds);
+        Some(self.prepaint.take().unwrap()(prepaint_bounds, window, cx))
     }
 
     fn paint(
@@ -83,7 +121,12 @@ impl<T: 'static> Element for Canvas<T> {
     ) {
         let prepaint = prepaint.take().unwrap();
         style.paint(bounds, window, cx, |window, cx| {
-            (self.paint.take().unwrap())(bounds, prepaint, window, cx)
+            let paint_bounds = if window.current_transformation() == TransformationMatrix::unit() {
+                self.unrounded_paint_bounds.unwrap_or(bounds)
+            } else {
+                bounds
+            };
+            (self.paint.take().unwrap())(paint_bounds, prepaint, window, cx)
         });
     }
 }

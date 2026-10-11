@@ -3,8 +3,6 @@
 
 use crate::state::drag::TabDrag;
 use crate::state::editor_tab::EditorTab;
-use gpui::Entity;
-use gpui_component::input::InputState;
 
 #[derive(Default)]
 pub struct EditorState {
@@ -22,9 +20,6 @@ pub struct EditorState {
     pub reload_suppress: std::collections::HashSet<String>,
     /// Переход к строке после открытия файла (scroll-to-line из поиска).
     pub pending_goto: Option<(String, u32)>,
-    pub minimap_stale: bool,
-    /// Зеркальный редактор минимапы (Zed: отдельный `minimap_editor`).
-    pub minimap_input: Option<Entity<InputState>>,
     /// Путь → текст ошибки чтения: вкладка рисует карточку `.error`.
     pub editor_errors: std::collections::HashMap<String, String>,
     /// Открытый файл-просмотрщик (path + строки + целевая строка).

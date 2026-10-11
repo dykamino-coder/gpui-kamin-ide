@@ -25,6 +25,10 @@ cef::wrap_app! {
                 return;
             }
             if let Some(cl) = command_line {
+                #[cfg(debug_assertions)]
+                if crate::native_acceptance::config::Config::from_env().reduced_animations {
+                    cl.append_switch(Some(&"force-prefers-reduced-motion".into()));
+                }
                 cl.append_switch_with_value(
                     Some(&"renderer-process-limit".into()),
                     Some(&"2".into()),
@@ -161,6 +165,19 @@ pub fn init() {
             0
         },
         ..Default::default()
+    };
+    #[cfg(debug_assertions)]
+    let settings = {
+        let mut settings = settings;
+        if crate::native_acceptance::config::Config::from_env().loaders {
+            settings.log_file = crate::host_link::data_dirs()
+                .1
+                .join("cef.log")
+                .to_string_lossy()
+                .as_ref()
+                .into();
+        }
+        settings
     };
     let t_cef = std::time::Instant::now();
     let ok = initialize(

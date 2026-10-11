@@ -18,15 +18,14 @@ use std::rc::Rc;
 
 use gpui::prelude::*;
 use gpui::{AnyElement, Entity, div, px};
-use gpui_component::Sizable as _;
-use gpui_component::input::InputState;
+use gpui_component::input::EditorState as CodeEditorState;
 use kamin_theme::Palette;
 
 use crate::colors::rgba;
 
 pub fn minimap(
-    input: &Entity<InputState>,
-    mirror: Option<&Entity<InputState>>,
+    input: &Entity<CodeEditorState>,
+    mirror: Option<&Entity<CodeEditorState>>,
     p: &Palette,
 ) -> AnyElement {
     // Origin канвы для мышиной математики (координаты события — оконные)
@@ -162,13 +161,13 @@ pub fn minimap(
                     // зеркало наследует line-height родителя (см. MM_LINE_H).
                     .line_height(px(MM_LINE_H))
                     .child(
-                        gpui_component::input::Input::new(&mm)
+                        // 0.7.1: `Editor` над `EditorState`; у минимапы он
+                        // строку не ставит (наследуется MM_LINE_H выше).
+                        gpui_component::input::Editor::new(&mm)
                             .h_full()
                             .appearance(false)
                             .hide_scrollbar()
-                            // `input_text_size(Size::Size(s))` = `s * 0.875`,
-                            // поэтому кегль просим с обратной поправкой
-                            .with_size(gpui_component::Size::Size(px(MM_FONT / 0.875))),
+                            .text_size(px(MM_FONT)),
                     ),
             )
         })

@@ -1,3 +1,8 @@
+pub(crate) mod border_snap;
+pub(crate) mod transformed_box;
+mod sizing_keyword;
+pub use sizing_keyword::CssSizingKeyword;
+
 use std::{
     hash::{Hash, Hasher},
     iter, mem,
@@ -11,7 +16,7 @@ use crate::{
     Hsla, Length,
     Pixels, Point,
     PointRefinement, Rgba, SharedString, Size, SizeRefinement, Styled, TextRun, Window, black, phi,
-    point, quad, rems, size,
+    point, px, quad, rems, size,
 };
 use collections::HashSet;
 use refineable::Refineable;
@@ -146,6 +151,42 @@ impl ObjectFit {
     }
 }
 
+/// The minimum size of a column or row in a grid layout
+#[derive(
+    Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Default, JsonSchema, Serialize, Deserialize,
+)]
+pub enum GridTemplateMinSize {
+    /// The column or row size may be 0
+    #[default]
+    Zero,
+    /// The column or row size can be determined by the min content
+    MinContent,
+    /// The column or row size can be determined by the max content
+    MaxContent,
+}
+
+/// A simplified representation of the grid-template-* value
+#[derive(
+    Copy,
+    Clone,
+    Refineable,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Debug,
+    Default,
+    JsonSchema,
+    Serialize,
+    Deserialize,
+)]
+pub struct GridTemplate {
+    /// How this template directive should be repeated
+    pub repeat: u16,
+    /// The minimum size in the repeat(<>, minmax(_, 1fr)) equation
+    pub min_size: GridTemplateMinSize,
+}
+
 /// The CSS styling that can be applied to an element via the `Styled` trait
 #[derive(Clone, Refineable, Debug)]
 #[refineable(Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -168,11 +209,15 @@ pub struct Style {
     pub scrollbar_width: AbsoluteLength,
     /// Whether both x and y axis should be scrollable at the same time.
     pub allow_concurrent_scroll: bool,
-    /// Whether scrolling should be restricted to the axis indicated by the mouse wheel.
+    /// Whether scrolling should be restricted to the input gesture's axis.
     ///
-    /// This means that:
-    /// - The mouse wheel alone will only ever scroll the Y axis.
-    /// - Holding `Shift` and using the mouse wheel will scroll the X axis.
+    /// Pixel-based scroll gestures are locked to their initially dominant axis. The lock may be
+    /// released when the gesture changes direction strongly. Touch phases delimit gestures when
+    /// available, with a timeout fallback for platforms that only emit moved events.
+    ///
+    /// This also prevents input from being remapped to another axis. For example, horizontal input
+    /// will not scroll a container that only has vertical overflow enabled. Mouse wheel platforms
+    /// typically report ordinary wheel input on the Y axis and Shift-modified input on the X axis.
     ///
     /// ## Motivation
     ///
@@ -210,6 +255,15 @@ pub struct Style {
     pub max_size: Size<Length>,
     /// Sets the preferred aspect ratio for the item. The ratio is calculated as width divided by height.
     pub aspect_ratio: Option<f32>,
+    /// Preferred border-box size transferred through an authored aspect ratio.
+    pub aspect_ratio_preferred_size: [Option<f32>; 2],
+    /// Intrinsic width and height passed directly to the native layout.
+    pub sizing_keywords: [Option<CssSizingKeyword>; 2],
+    /// KaminIDE patch: intrinsic `max-width`/`max-height` keywords (`min-content`,
+    /// `max-content`) passed to the native layout; `None` keeps `max_size`.
+    pub max_sizing_keywords: [Option<CssSizingKeyword>; 2],
+    /// Content-box intrinsic sizes for contained physical axes, in logical pixels.
+    pub contained_intrinsic_size: [Option<f32>; 2],
 
     // Spacing Properties
     /// How large should the margin be on each side?
@@ -231,6 +285,11 @@ pub struct Style {
     pub align_content: Option<AlignContent>,
     /// How should contained within this item be aligned in the main/inline axis
     pub justify_content: Option<JustifyContent>,
+    /// KaminIDE patch: приставка `safe` у выравнивания (css-align-3 §4.4) —
+    /// `align_items`, `align_self`, `align_content`, `justify_content`.
+    pub safe_alignment: (bool, bool, bool, bool),
+    /// Safety of inline-axis item/self alignment, projected with grid axes.
+    pub safe_justify_alignment: (bool, bool),
     /// How large should the gaps between items in a flex container be?
     #[refineable]
     pub gap: Size<DefiniteLength>,
@@ -240,6 +299,80 @@ pub struct Style {
     pub flex_direction: FlexDirection,
     /// Should elements wrap, or stay in a single line?
     pub flex_wrap: FlexWrap,
+    /// KaminIDE patch: `flex-wrap: balance` — 0 = обычный перенос; N ≥ 1 =
+    /// балансировка строк с минимумом N строк (`flex-line-count`).
+    pub flex_balance_lines: u16,
+    /// KaminIDE patch: поперечная ось ОДНОСТРОЧНОГО контейнера идёт
+    /// от физического конца (cross-start справа): гибкая колонка при
+    /// `direction: rtl` (css-flexbox-1 §2 «cross-start … inline-start»).
+    /// Выравнивание читает это как `wrap-reverse`, перенос строк — нет.
+    pub flex_cross_reverse: bool,
+    /// KaminIDE patch: размеры — `content-box` (CSS `box-sizing`). Обычно
+    /// html-слой сам прибавляет отбивки к размеру, но долю отступа он в точки
+    /// не переведёт — тогда пересчёт делает раскладка (`taffy::BoxSizing`).
+    pub content_box: bool,
+    /// KaminIDE patch: анонимный ряд строки — не коробка CSS (CSS 2.1 §10.1:
+    /// содержащий блок строчного атома — блок-контейнер). Доли высоты детей
+    /// решаются от высоты РОДИТЕЛЯ ряда, а не от самого ряда.
+    pub percent_basis_from_parent: bool,
+    /// KaminIDE patch: `calc-size()` у `width`, `height`, `min-width`,
+    /// `min-height`: `(mul, add, max, min)` в логических точках (см.
+    /// `taffy::Style::calc_size`).
+    pub calc_size: [Option<(f32, f32, f32, f32)>; 4],
+    /// KaminIDE patch: узел не отдаёт базовые линии родителю
+    /// (css-contain-2 §3.2 п.7, `contain: layout`).
+    pub hides_baseline: bool,
+    /// KaminIDE patch: наружу отдаётся ПОСЛЕДНЯЯ базовая (`inline-block`,
+    /// css-inline-3 §baseline-source).
+    pub baseline_from_last: bool,
+    /// The box has no exportable baseline, independently of layout containment.
+    pub baseline_unavailable: bool,
+    /// KaminIDE patch: a table box or its wrapper — contributes no baseline to an
+    /// enclosing `inline-block` (CSS 2.1 §10.8.1; Blink `PropagateBaselineFromBlockChild`).
+    pub no_inline_block_baseline: bool,
+    /// KaminIDE patch: table cell with `vertical-align: baseline` (taffy
+    /// `Style::table_cell_baseline`): the row aligns its content by the
+    /// baseline, the cell box still fills the row.
+    pub table_cell_baseline: bool,
+    /// KaminIDE patch: собственная базовая линия по оси x (повёрнутый
+    /// вертикальный абзац): смещение и «от правого края».
+    pub baseline_x_hint: Option<(f32, bool)>,
+    /// KaminIDE patch: биты выравнивания по базовой по оси x (taffy
+    /// `Style::baseline_x_flags`): 1 — группа у правого края, 2 —
+    /// центральный синтез, 4 — своя базовая по x.
+    pub baseline_x_flags: u8,
+    /// KaminIDE patch: `margin-trim` (css-box-4 §margin-trim) гибкого
+    /// контейнера и сетки — ФИЗИЧЕСКИЕ края: 1 верх, 2 право, 4 низ, 8 лево.
+    pub margin_trim: u8,
+    /// KaminIDE patch: контейнер-сетка раскладывается ЛУНКАМИ (css-grid-3).
+    pub grid_lanes: Option<crate::GridLanesFlow>,
+    /// Physical grid track ordering after the caller projects writing mode: x and y.
+    pub grid_axis_reversed: [bool; 2],
+    /// Native block writing axes: vertical, reversed block flow, reversed inline flow.
+    pub block_flow: Option<[bool; 3]>,
+    /// KaminIDE patch: ПОДСЕТКА (css-grid-2 §9) — физические биты taffy:
+    /// 1 колонки, 2 ряды подсеточные; 4 / 8 — зазор колонок / рядов `normal`
+    /// (зазор родителя). 0 — не подсетка.
+    pub grid_subgrid: u8,
+    /// KaminIDE patch: имена линий и именованные грани сетки (см.
+    /// [`crate::GridLineNames`]).
+    pub grid_line_names: Option<Box<crate::GridLineNames>>,
+    /// KaminIDE patch: наружная коробка ТАБЛИЦЫ (`crates/html` `render::table`).
+    /// Гибкая раскладка не ужимает такой элемент по главной оси ниже
+    /// min-content его содержимого (css-tables-3 §3.9: GRIDMIN сильнее
+    /// `min-width`/`max-width`/`flex-shrink`).
+    pub item_is_table: bool,
+    /// KaminIDE patch: the box paints atomically (CSS 2.1 Appendix E step
+    /// 7.2.1.4 / css-flexbox-1 §5.4 / css-grid-1 §9: inline-blocks, floats,
+    /// flex and grid items paint "as if" they created a stacking context):
+    /// its own inline content is not deferred past later sibling
+    /// backgrounds of the outer stacking context (`paint_last::hoist_atomic`).
+    pub paint_atomic: bool,
+    /// KaminIDE patch: the box establishes a stacking context through an
+    /// integer `z-index` (CSS 2.1 §9.9.1): its whole subtree, including the
+    /// deferred inline content and positioned descendants, paints inside it
+    /// (`paint_last::hoist_collect`), like a box with opacity < 1.
+    pub paint_stacking: bool,
     /// Sets the initial main axis size of the item
     pub flex_basis: Length,
     /// The relative rate at which this item grows when it is expanding to fill space, 0.0 is the default value, and this value must be positive.
@@ -256,6 +389,12 @@ pub struct Style {
     /// The border style of this element
     pub border_style: BorderStyle,
 
+    /// Snap axis-aligned square CSS borders to device pixels; HTML opt-in.
+    pub css_border_snap: bool,
+    /// A table row/group fill replicated onto a cell is not the cell's own
+    /// CSS background (CSS 2.1 section 17.5.1). Keep its text layout frame.
+    pub css_synthetic_background: bool,
+
     /// The radius of the corners of this element
     #[refineable]
     pub corner_radii: Corners<AbsoluteLength>,
@@ -271,6 +410,7 @@ pub struct Style {
     pub inset_box_shadow: Vec<BoxShadow>,
 
     /// The text style of this element
+    #[refineable]
     pub text: TextStyleRefinement,
 
     /// The mouse cursor style shown when the mouse pointer is over an element.
@@ -280,17 +420,20 @@ pub struct Style {
     pub opacity: Option<f32>,
 
     /// The grid columns of this element
-    /// Equivalent to the Tailwind `grid-cols-<number>`
-    pub grid_cols: Option<u16>,
+    /// Roughly equivalent to the Tailwind `grid-cols-<number>`
+    pub grid_cols: Option<GridTemplate>,
 
     /// Minimal track width for `grid-template-columns:
     /// repeat(auto-fill, minmax(<min>, 1fr))`.
     /// Takes precedence over `grid_cols` when set.
     pub grid_cols_min: Option<Pixels>,
+    /// KaminIDE patch: `repeat(auto-fit, …)` — пустые дорожки схлопываются,
+    /// остаток делят непустые (css-grid-2 §auto-repeat).
+    pub grid_cols_fit: bool,
 
     /// The row span of this element
     /// Equivalent to the Tailwind `grid-rows-<number>`
-    pub grid_rows: Option<u16>,
+    pub grid_rows: Option<GridTemplate>,
 
     /// KaminIDE patch: произвольный список дорожек колонок.
     ///
@@ -319,6 +462,14 @@ pub struct Style {
 
     /// KaminIDE patch: размер неявных колонок (`grid-auto-columns`).
     pub grid_auto_cols: Option<GridTrack>,
+
+    /// KaminIDE patch: `grid-auto-columns: A B C` — НЕСКОЛЬКО неявных дорожек,
+    /// раскладка их циклит. Одиночного `grid_auto_cols` для этого мало, а
+    /// менять его тип значило бы трогать всех, кто его читает.
+    pub grid_auto_cols_list: Vec<GridTrack>,
+
+    /// KaminIDE patch: то же для неявных РЯДОВ (`grid-auto-rows: A B C`).
+    pub grid_auto_rows_list: Vec<GridTrack>,
 
     /// The grid location of this element
     pub grid_location: Option<GridLocation>,
@@ -366,6 +517,41 @@ pub struct BoxShadow {
     pub blur_radius: Pixels,
     /// How much should the shadow spread?
     pub spread_radius: Pixels,
+    /// Whether this is an inset shadow (drawn inside the element's bounds).
+    pub inset: bool,
+}
+
+impl BoxShadow {
+    /// Creates a new [`BoxShadow`] with the given offset and color, matching the order
+    /// of the CSS `box-shadow` property. Use the builder methods to set blur radius,
+    /// spread radius, and inset.
+    pub fn new(offset_x: Pixels, offset_y: Pixels, color: Hsla) -> Self {
+        Self {
+            color,
+            offset: point(offset_x, offset_y),
+            blur_radius: px(0.),
+            spread_radius: px(0.),
+            inset: false,
+        }
+    }
+
+    /// Sets the shadow blur radius.
+    pub fn blur_radius(mut self, blur_radius: Pixels) -> Self {
+        self.blur_radius = blur_radius;
+        self
+    }
+
+    /// Sets the shadow spread radius.
+    pub fn spread_radius(mut self, spread_radius: Pixels) -> Self {
+        self.spread_radius = spread_radius;
+        self
+    }
+
+    /// Marks the shadow as inset (drawn inside the element's bounds).
+    pub fn inset(mut self) -> Self {
+        self.inset = true;
+        self
+    }
 }
 
 /// How to handle whitespace in text
@@ -381,9 +567,17 @@ pub enum WhiteSpace {
 /// How to truncate text that overflows the width of the element
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum TextOverflow {
-    /// Truncate the text when it doesn't fit, and represent this truncation by displaying the
-    /// provided string.
+    /// Truncate the text at the end when it doesn't fit, and represent this truncation by
+    /// displaying the provided string (e.g., "very long te…").
     Truncate(SharedString),
+    /// Truncate the text at the start when it doesn't fit, and represent this truncation by
+    /// displaying the provided string at the beginning (e.g., "…ong text here").
+    /// Typically more adequate for file paths where the end is more important than the beginning.
+    TruncateStart(SharedString),
+    /// Truncate the text in the middle when it doesn't fit, preserving both the start and end
+    /// of the string (e.g., "long fi…name.rs"). Useful for filenames where both the prefix
+    /// and the extension are important context.
+    TruncateMiddle(SharedString),
 }
 
 /// How to align text within the element
@@ -692,6 +886,43 @@ impl Style {
         }
     }
 
+    /// KaminIDE patch: `overflow_mask` of an HTML box (`css_border_snap`)
+    /// computed from its unrounded geometry, each edge snapped to the device
+    /// pixel grid like its border edges (`border_snap`): Blink clips to the
+    /// pixel-snapped clip rect, so a clip edge and a border edge at the same
+    /// exact position cover the same device pixels (`overflow-clip-margin-013`,
+    /// `clip-under-filter-003`).
+    pub fn overflow_mask_snapped(
+        &self,
+        bounds: Bounds<Pixels>,
+        window: &Window,
+    ) -> Option<ContentMask<Pixels>> {
+        let exact = window
+            .css_exact_bounds
+            .filter(|(snapped, _)| *snapped == bounds)
+            .map(|(_, exact)| exact);
+        let exact = match exact {
+            Some(exact)
+                if self.css_border_snap
+                    && window.current_transformation()
+                        == crate::TransformationMatrix::unit() =>
+            {
+                exact
+            }
+            _ => return self.overflow_mask(bounds, window.rem_size()),
+        };
+        let mask = self.overflow_mask(exact, window.rem_size())?;
+        let scale = window.scale_factor();
+        let at = |v: Pixels| crate::px((f32::from(v) * scale).round() / scale);
+        let b = mask.bounds;
+        Some(ContentMask {
+            bounds: Bounds::from_corners(
+                point(at(b.left()), at(b.top())),
+                point(at(b.right()), at(b.bottom())),
+            ),
+        })
+    }
+
     /// Paints the background of an element styled with this style.
     pub fn paint(
         &self,
@@ -716,18 +947,15 @@ impl Style {
             .to_pixels(rem_size)
             .clamp_radii_for_quad_size(bounds.size);
 
-        window.paint_shadows(bounds, corner_radii, &self.box_shadow);
-        // KaminIDE patch: внутренние тени рисуются ПОСЛЕ фона — они лежат
-        // поверх заливки, как в браузере.
-        if !self.inset_box_shadow.is_empty() {
-            window.paint_shadows_inset(bounds, corner_radii, &self.inset_box_shadow, true);
-        }
+        window.paint_drop_shadows(bounds, corner_radii, &self.box_shadow);
 
         let background_color = self.background.as_ref().and_then(Fill::color);
         if background_color.is_some_and(|color| !color.is_transparent()) {
             let mut border_color = match background_color {
                 Some(color) => match color.tag {
-                    BackgroundTag::Solid => color.solid,
+                    BackgroundTag::Solid
+                    | BackgroundTag::PatternSlash
+                    | BackgroundTag::Checkerboard => color.solid,
                     // KaminIDE patch: радиальный хранит цвета там же, где
                     // линейный, — берём первый стоп.
                     BackgroundTag::RadialGradient => color
@@ -740,13 +968,12 @@ impl Style {
                         .first()
                         .map(|stop| stop.color)
                         .unwrap_or_default(),
-                    BackgroundTag::PatternSlash => color.solid,
                 },
                 None => Hsla::default(),
             };
             border_color.a = 0.;
             window.paint_quad(quad(
-                bounds,
+                transformed_box::bounds(self, bounds, window),
                 corner_radii,
                 background_color.unwrap_or_default(),
                 Edges::default(),
@@ -755,69 +982,48 @@ impl Style {
             ));
         }
 
-        continuation(window, cx);
+        // Upstream's own inset shadows (`BoxShadow::inset` in `box_shadow`),
+        // cast from the border box; HTML uses `inset_box_shadow` below.
+        window.paint_inset_shadows(bounds, corner_radii, &self.box_shadow);
 
-        if self.is_border_visible() {
-            let border_widths = self.border_widths.to_pixels(rem_size);
-            let max_border_width = border_widths.max();
-            let max_corner_radius = corner_radii.max();
-
-            let top_bounds = Bounds::from_corners(
-                bounds.origin,
-                bounds.top_right() + point(Pixels::ZERO, max_border_width.max(max_corner_radius)),
+        // KaminIDE patch: внутренние тени рисуются ПОСЛЕ квада фона — они
+        // лежат поверх заливки (css-backgrounds-3 §box-shadow: «inner
+        // shadows … immediately above the background»). Прежде вызов стоял
+        // до квада, и непрозрачный фон закрывал тень целиком
+        // (border-shape-inset-shadow-blur: красная тень не видна вовсе).
+        if !self.inset_box_shadow.is_empty() {
+            // KaminIDE patch: внутренняя тень отсчитывается от PADDING-box
+            // (css-backgrounds-3 §box-shadow: «an inner box-shadow casts a
+            // shadow as if everything outside the padding edge were opaque»),
+            // радиусы внутреннего края — внешние минус рамка (§5.4). Прежде
+            // тень шла от border-box и первые `border-width` точек прятались
+            // под рамкой (border-shape-inset-shadow-blur: тень бледнее эталона).
+            let bw = self.border_widths.to_pixels(rem_size);
+            let inner = Bounds::from_corners(
+                bounds.origin + point(bw.left, bw.top),
+                bounds.bottom_right() - point(bw.right, bw.bottom),
             );
-            let bottom_bounds = Bounds::from_corners(
-                bounds.bottom_left() - point(Pixels::ZERO, max_border_width.max(max_corner_radius)),
-                bounds.bottom_right(),
-            );
-            let left_bounds = Bounds::from_corners(
-                top_bounds.bottom_left(),
-                bottom_bounds.origin + point(max_border_width, Pixels::ZERO),
-            );
-            let right_bounds = Bounds::from_corners(
-                top_bounds.bottom_right() - point(max_border_width, Pixels::ZERO),
-                bottom_bounds.top_right(),
-            );
-
-            let mut background = self.border_color.unwrap_or_default();
-            background.a = 0.;
-            let quad = quad(
-                bounds,
-                corner_radii,
-                background,
-                border_widths,
-                self.border_color.unwrap_or_default(),
-                self.border_style,
-            );
-
-            window.with_content_mask(Some(ContentMask { bounds: top_bounds }), |window| {
-                window.paint_quad(quad.clone());
-            });
-            window.with_content_mask(
-                Some(ContentMask {
-                    bounds: right_bounds,
-                }),
-                |window| {
-                    window.paint_quad(quad.clone());
-                },
-            );
-            window.with_content_mask(
-                Some(ContentMask {
-                    bounds: bottom_bounds,
-                }),
-                |window| {
-                    window.paint_quad(quad.clone());
-                },
-            );
-            window.with_content_mask(
-                Some(ContentMask {
-                    bounds: left_bounds,
-                }),
-                |window| {
-                    window.paint_quad(quad);
-                },
-            );
+            let shrink = |r: Pixels, a: Pixels, b: Pixels| (r - a.max(b)).max(Pixels::ZERO);
+            let inner_radii = Corners {
+                top_left: shrink(corner_radii.top_left, bw.top, bw.left),
+                top_right: shrink(corner_radii.top_right, bw.top, bw.right),
+                bottom_right: shrink(corner_radii.bottom_right, bw.bottom, bw.right),
+                bottom_left: shrink(corner_radii.bottom_left, bw.bottom, bw.left),
+            };
+            let inset: smallvec::SmallVec<[BoxShadow; 2]> = self
+                .inset_box_shadow
+                .iter()
+                .map(|shadow| BoxShadow {
+                    inset: true,
+                    ..shadow.clone()
+                })
+                .collect();
+            window.paint_inset_shadows(inner, inner_radii, &inset);
         }
+
+        border_snap::paint(self, bounds, corner_radii, rem_size, window);
+
+        continuation(window, cx);
 
         #[cfg(debug_assertions)]
         if self.debug_below {
@@ -835,6 +1041,8 @@ impl Style {
 impl Default for Style {
     fn default() -> Self {
         Style {
+            safe_alignment: (false, false, false, false),
+            safe_justify_alignment: (false, false),
             display: Display::Block,
             visibility: Visibility::Visible,
             overflow: Point {
@@ -854,6 +1062,10 @@ impl Default for Style {
             min_size: Size::auto(),
             max_size: Size::auto(),
             aspect_ratio: None,
+            aspect_ratio_preferred_size: [None; 2],
+            sizing_keywords: [None; 2],
+            max_sizing_keywords: [None; 2],
+            contained_intrinsic_size: [None; 2],
             gap: Size::default(),
             // Alignment
             align_items: None,
@@ -866,15 +1078,40 @@ impl Default for Style {
             grid_auto_flow: None,
             grid_auto_rows: None,
             grid_auto_cols: None,
+            grid_auto_cols_list: Vec::new(),
+            grid_auto_rows_list: Vec::new(),
             // Flexbox
             flex_direction: FlexDirection::Row,
             flex_wrap: FlexWrap::NoWrap,
+            flex_balance_lines: 0,
+            flex_cross_reverse: false,
+            content_box: false,
+            percent_basis_from_parent: false,
+            calc_size: [None; 4],
+            hides_baseline: false,
+            baseline_from_last: false,
+            baseline_unavailable: false,
+            no_inline_block_baseline: false,
+            table_cell_baseline: false,
+            baseline_x_hint: None,
+            baseline_x_flags: 0,
+            margin_trim: 0,
+            grid_lanes: None,
+            grid_axis_reversed: [false; 2],
+            block_flow: None,
+            grid_subgrid: 0,
+            grid_line_names: None,
             flex_grow: 0.0,
             flex_shrink: 1.0,
+            item_is_table: false,
+            paint_atomic: false,
+            paint_stacking: false,
             flex_basis: Length::Auto,
             background: None,
             border_color: None,
             border_style: BorderStyle::default(),
+            css_border_snap: false,
+            css_synthetic_background: false,
             corner_radii: Corners::default(),
             box_shadow: Default::default(),
             inset_box_shadow: Default::default(),
@@ -884,6 +1121,7 @@ impl Default for Style {
             grid_rows: None,
             grid_cols: None,
             grid_cols_min: None,
+            grid_cols_fit: false,
             grid_template_cols: None,
             grid_template_rows: None,
             grid_location: None,
@@ -1132,6 +1370,9 @@ pub enum AlignItems {
     Baseline,
     /// Stretch to fill the container
     Stretch,
+    /// KaminIDE patch: `last baseline` — выравнивание по ПОСЛЕДНИМ базовым
+    /// линиям с прижимом группы к концу оси (css-align-3 §4.2, §9.3).
+    LastBaseline,
 }
 /// Used to control how child nodes are aligned.
 /// Does not apply to Flexbox, and will be ignored if specified on a flex container
@@ -1324,13 +1565,14 @@ pub enum Position {
 impl From<AlignItems> for taffy::style::AlignItems {
     fn from(value: AlignItems) -> Self {
         match value {
-            AlignItems::Start => Self::Start,
-            AlignItems::End => Self::End,
-            AlignItems::FlexStart => Self::FlexStart,
-            AlignItems::FlexEnd => Self::FlexEnd,
-            AlignItems::Center => Self::Center,
-            AlignItems::Baseline => Self::Baseline,
-            AlignItems::Stretch => Self::Stretch,
+            AlignItems::Start => Self::START,
+            AlignItems::End => Self::END,
+            AlignItems::FlexStart => Self::FLEX_START,
+            AlignItems::FlexEnd => Self::FLEX_END,
+            AlignItems::Center => Self::CENTER,
+            AlignItems::Baseline => Self::BASELINE,
+            AlignItems::Stretch => Self::STRETCH,
+            AlignItems::LastBaseline => Self::LAST_BASELINE,
         }
     }
 }
@@ -1338,15 +1580,15 @@ impl From<AlignItems> for taffy::style::AlignItems {
 impl From<AlignContent> for taffy::style::AlignContent {
     fn from(value: AlignContent) -> Self {
         match value {
-            AlignContent::Start => Self::Start,
-            AlignContent::End => Self::End,
-            AlignContent::FlexStart => Self::FlexStart,
-            AlignContent::FlexEnd => Self::FlexEnd,
-            AlignContent::Center => Self::Center,
-            AlignContent::Stretch => Self::Stretch,
-            AlignContent::SpaceBetween => Self::SpaceBetween,
-            AlignContent::SpaceEvenly => Self::SpaceEvenly,
-            AlignContent::SpaceAround => Self::SpaceAround,
+            AlignContent::Start => Self::START,
+            AlignContent::End => Self::END,
+            AlignContent::FlexStart => Self::FLEX_START,
+            AlignContent::FlexEnd => Self::FLEX_END,
+            AlignContent::Center => Self::CENTER,
+            AlignContent::Stretch => Self::STRETCH,
+            AlignContent::SpaceBetween => Self::SPACE_BETWEEN,
+            AlignContent::SpaceEvenly => Self::SPACE_EVENLY,
+            AlignContent::SpaceAround => Self::SPACE_AROUND,
         }
     }
 }
@@ -1582,6 +1824,23 @@ mod tests {
                     }
                 )
             ]
+        );
+    }
+
+    #[perf]
+    fn test_text_style_refinement() {
+        let mut style = Style::default();
+        style.refine(&StyleRefinement::default().text_size(px(20.0)));
+        style.refine(&StyleRefinement::default().font_weight(FontWeight::SEMIBOLD));
+
+        assert_eq!(
+            Some(AbsoluteLength::from(px(20.0))),
+            style.text_style().unwrap().font_size
+        );
+
+        assert_eq!(
+            Some(FontWeight::SEMIBOLD),
+            style.text_style().unwrap().font_weight
         );
     }
 }

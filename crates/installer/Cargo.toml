@@ -10,10 +10,11 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 # Распаковка приклеенного payload (tar.zst каталога dist-installer).
-zstd = "0.13"
+zstd = "0.14"
 tar = "0.4"
 # Брендированное окно с полосой прогресса (обычный запуск и /update).
 gpui.workspace = true
+gpui-platform.workspace = true
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"

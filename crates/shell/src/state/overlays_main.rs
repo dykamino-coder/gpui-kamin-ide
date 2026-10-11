@@ -106,6 +106,7 @@ impl RootView {
                             offset: gpui::point(px(0.), px(4.)),
                             blur_radius: px(14.),
                             spread_radius: px(0.),
+                            inset: false,
                         }])
                         .opacity(0.92)
                         // svg 18 (`DEFAULT_SIZE_PX`), codicon 16: `.ghost`

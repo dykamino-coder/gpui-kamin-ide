@@ -254,7 +254,7 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
   })
 
   // ─── JSONL Download ─────────────────────────────────────
-  ipcMain.handle('jsonl:download', async (_event: IpcMainInvokeEvent, tabId: string) => {
+  ipcMain.handle('jsonl:download', async (_event: IpcMainInvokeEvent, tabId: string, agentId?: string) => {
     const conn = tm()?.getConnection(tabId)
     if (!conn) return { success: false, error: 'No connection' }
 
@@ -269,12 +269,12 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
     if (!win) return { success: false, error: 'No main window' }
     const convId = conn.getConversationId()
     const { canceled, filePath } = await dialog.showSaveDialog(win, {
-      defaultPath: convId ? `${convId}.jsonl` : 'session.jsonl',
+      defaultPath: agentId && /^[a-zA-Z0-9_-]{1,128}$/.test(agentId) ? `${agentId}.jsonl` : convId ? `${convId}.jsonl` : 'session.jsonl',
       filters: [{ name: 'JSONL', extensions: ['jsonl'] }],
     })
     if (canceled || !filePath) return { success: false, error: 'Cancelled' }
 
-    const result = await conn.requestJsonlDownload()
+    const result = await conn.requestJsonlDownload(agentId)
     if (result.error || !result.content) {
       return { success: false, error: result.error || 'No content' }
     }

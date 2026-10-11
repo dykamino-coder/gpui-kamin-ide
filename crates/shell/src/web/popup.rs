@@ -60,6 +60,9 @@ pub(crate) fn put(id: &str, handle: isize, width: i32, height: i32) {
         return; // Chromium уже пересоздал буфер под другой размер.
     }
     let _ = super::shared_texture::with_current_device(&device, || {
+        // Only a frame accepted for the current device generation is a new
+        // producer frame for the bounded wait-retry budget (INC-2026-0021).
+        super::copy_frame::frame_arrived(&copy_key(id));
         if let Ok(mut map) = INCOMING.lock() {
             map.insert(id.to_string(), shared);
         }

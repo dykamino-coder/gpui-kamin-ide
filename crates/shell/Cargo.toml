@@ -15,15 +15,16 @@ probe = ["dep:kamin-probe"]
 [dependencies]
 # Веб-содержимое (plan/101): offscreen-браузер вместо окон WebView2.
 # default-features off: `sandbox` на Windows меняет тип цели, `build-util` тянет clap.
-cef = { version = "150", default-features = false }
+cef = { version = "154", default-features = false }
 # Кадр CEF заворачиваем в RenderImage gpui — тип кадра берём из image той же версии.
 image = { version = "0.25", default-features = false }
 # Пре-декод SVG-иконок дерева (icon_raster) — та же версия, что в vendored gpui.
-resvg = { version = "0.45.0", default-features = false }
-usvg = { version = "0.45.0", default-features = false }
+resvg = { version = "0.48.0", default-features = false }
+usvg = { version = "0.48.0", default-features = false }
 lsp-types = { version = "0.97.0", features = ["proposed"] }
 gpui.workspace = true
 gpui-component.workspace = true
+gpui-platform.workspace = true
 anyhow.workspace = true
 serde_json.workspace = true
 mimalloc.workspace = true
@@ -36,7 +37,7 @@ kamin-metrics.workspace = true
 kamin-theme.workspace = true
 kamin-probe = { workspace = true, optional = true }
 # data:-иконки расширений (`isImageIcon`)
-base64 = "0.22.1"
+base64 = "0.23.1"
 # radial-bg бейк + probe-скриншоты
 png = "0.18"
 # window_handle() для wry build_as_child (вебвью-оверлей)
@@ -69,6 +70,8 @@ windows = { version = "0.62", features = [
   "Win32_System_Ole",
   "Win32_UI_Shell",                  # DragQueryFileW
   "Win32_Graphics_Direct3D11",       # общая текстура кадра CEF (plan/101)
+  "Win32_Graphics_Direct3D11on12",   # debug-only application device loss
+  "Win32_Graphics_Direct3D12",
   "Win32_System_Diagnostics_Debug",  # отчёт о падении (crash_report)
   "Win32_System_Kernel",             # перехватчик исключений
   "Win32_System_Threading",          # текущий процесс для символов

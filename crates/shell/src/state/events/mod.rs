@@ -10,6 +10,8 @@ pub mod find_in_files;
 pub mod layout_panels;
 pub mod layout_presets;
 pub mod misc;
+#[cfg(debug_assertions)]
+mod native_acceptance;
 pub mod output;
 pub mod overlays;
 pub mod sessions;
