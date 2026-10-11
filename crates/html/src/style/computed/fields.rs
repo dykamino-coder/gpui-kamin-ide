@@ -854,7 +854,7 @@ pub struct Computed {
     /// она при этом быть не перестаёт.
     pub word_space_char: Option<char>,
     /// Edge spacer of an inline box (`inline::SPACER`): (box id, physical
-    /// left edge, parent direction is rtl). Bidi reordering moves the edges to
+    /// left edge, the box's own direction is rtl). Bidi reordering moves the edges to
     /// the box's visually outermost fragments (CSS 2.1 §8.6).
     pub spacer_edge: Option<(u32, bool, bool)>,
     /// `text-autospace` — зазор в 1/8 кегля между иероглифом и соседней

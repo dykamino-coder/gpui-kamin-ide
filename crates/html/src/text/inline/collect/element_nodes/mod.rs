@@ -84,12 +84,15 @@ pub(super) fn collect_element(
     // невидимый знак-распорка. Соединитель слов (U+FEFF) выбран
     // не случайно: точкой переноса он не является, а нулевой
     // пробел ею был бы — строка рвалась бы по краю `<span>`.
-    // CSS Writing Modes 4 §2.4, bidi-fragment-boxes: physical edges
-    // follow the parent's direction, not the inline's own embedding.
-    // Spacers sit outside the inline's bidi controls, in that parent.
+    // CSS 2.1 §8.6 (Blink `InlineLayoutStateStack::AddBoxData`): the
+    // first fragment carries the box's OWN start edge, the last one its
+    // end edge — `direction` of the inline itself, not of its parent
+    // (`CSS2/box/ltr-span-only`). Spacers sit outside the inline's bidi
+    // controls; the line painter moves them to the visual side by flag.
     let ((mut mlead, mut mtrail), (mut lead, mut trail)) =
         inline_spacing::inline_sides(e, &merged, inherited);
-    if inherited.rtl == Some(true) {
+    let own_rtl = merged.rtl == Some(true);
+    if own_rtl {
         std::mem::swap(&mut lead, &mut trail);
         std::mem::swap(&mut mlead, &mut mtrail);
     }
@@ -104,14 +107,13 @@ pub(super) fn collect_element(
     }
     // Box identity of the edge spacers: the line painter moves them
     // to the outermost visual fragments after bidi reordering.
-    let parent_rtl = inherited.rtl == Some(true);
     let box_id = if mlead != 0.0 || lead != 0.0 || trail != 0.0 || mtrail != 0.0 {
         SPACER_BOX.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     } else {
         0
     };
     let edge = |mut style: Computed, leading: bool| {
-        style.spacer_edge = Some((box_id, leading != parent_rtl, parent_rtl));
+        style.spacer_edge = Some((box_id, leading != own_rtl, own_rtl));
         style
     };
     if mlead != 0.0 {
@@ -150,7 +152,7 @@ pub(super) fn collect_element(
     let box_marker = |start: bool| Piece::Text {
         text: String::new(),
         style: Computed {
-            spacer_edge: Some((box_id, start, parent_rtl)),
+            spacer_edge: Some((box_id, start, own_rtl)),
             ..merged.clone()
         },
     };
