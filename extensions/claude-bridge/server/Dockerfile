@@ -33,6 +33,10 @@ RUN npm prune --omit=dev --no-audit --no-fund
 # ---------- Stage 2: runtime -----------------------------------------------
 FROM node:22-bookworm-slim AS runtime
 
+# Explicit system roots are assembled by outbound-tls.ts in verified mode.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 # Claude Code CLI — PINNED. The bridge leans on undocumented CLI internals
 # (IS_DEMO gate bypass, resume-threshold env vars, the project-slug algorithm,
 # MITM TLS interception), so `@latest` silently drifting the CLI on every image
