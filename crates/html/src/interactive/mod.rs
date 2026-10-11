@@ -8,5 +8,8 @@ pub mod scroll;
 pub mod scroll_area;
 pub mod scroll_box;
 pub(super) mod scroll_target;
+pub(crate) mod scrollbars;
 pub mod select;
 pub mod sticky;
+
+pub(crate) mod scroll_extent;

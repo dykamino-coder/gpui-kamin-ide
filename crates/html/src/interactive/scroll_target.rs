@@ -2,8 +2,8 @@
 use crate::dom::Element;
 use crate::style::computed::{Computed, Sides};
 use gpui::{
-    Div, ElementId, InteractiveElement, Interactivity, ScrollHandle, StatefulInteractiveElement,
-    Styled,
+    Div, ElementId, InteractiveElement, Interactivity, ParentElement, ScrollHandle,
+    StatefulInteractiveElement, Styled,
 };
 use std::cell::RefCell;
 
@@ -59,8 +59,9 @@ impl InteractiveElement for NativeScrollBox {
 impl StatefulInteractiveElement for NativeScrollBox {}
 
 pub(crate) fn attach(mut div: Div, e: &Element, c: &Computed) -> Div {
-    // Only intrinsic CSS roots have a native single-box sizing contract here.
-    // Other scrollers still depend on the existing percentage/flex viewport adapter.
+    // Colored scrollbars need the CSS box's descendant overflow extent.
+    // Intrinsic roots already use this native box; other scrollers retain
+    // the percentage/flex viewport adapter until its sizing contract is replaced.
     let keyword = |value| {
         matches!(
             value,
@@ -71,7 +72,7 @@ pub(crate) fn attach(mut div: Div, e: &Element, c: &Computed) -> Div {
             )
         )
     };
-    if !keyword(c.width) && !keyword(c.height) {
+    if !keyword(c.width) && !keyword(c.height) && c.scroll.colors.flatten().is_none() {
         return div;
     }
     let target = TARGET.with(|slot| {
@@ -101,7 +102,11 @@ pub(crate) fn attach(mut div: Div, e: &Element, c: &Computed) -> Div {
     if vertical {
         stateful = stateful.overflow_y_scroll();
     }
-    stateful.0
+    let mut div = stateful.0;
+    if let Some(marker) = crate::interactive::scroll_extent::marker(e.node_id) {
+        div = div.child(marker);
+    }
+    div
 }
 
 #[cfg(test)]
@@ -151,5 +156,26 @@ mod tests {
         assert!(matched);
         let mut after = attach(div(), &e, &c);
         assert_eq!(after.style().overflow.x, None);
+    }
+
+    #[test]
+    fn colored_numeric_scrollport_tracks_the_css_box() {
+        let mut e = crate::layout::table::anon::anon_element("div", vec![]);
+        e.node_id = 7;
+        let mut c = Computed {
+            self_node: 7,
+            width: Some(Len::Px(100.0)),
+            ..Computed::default()
+        };
+        c.apply_one("scrollbar-color", "red blue");
+        let handle = ScrollHandle::default();
+        let (_, matched) = build(7, &handle, false, true, Sides::default(), || {
+            let mut d = attach(div(), &e, &c);
+            assert_eq!(d.style().overflow.y, Some(Overflow::Scroll));
+            assert_eq!(d.style().sizing_keywords, Some([None, None]));
+        });
+        assert!(matched);
+        let mut d = attach(div(), &e, &c);
+        assert_eq!(d.style().overflow.y, None);
     }
 }

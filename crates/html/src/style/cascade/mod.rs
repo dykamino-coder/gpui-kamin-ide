@@ -183,7 +183,8 @@ impl Computed {
         }
         // Свойства разнесены по группам (`props/*`): у каждого ключа ровно одна группа,
         // ветви внутри группы идут в исходном порядке.
-        let groups: [fn(&mut Self, &str, &str, &str, &mut bool); 13] = [
+        let groups: [fn(&mut Self, &str, &str, &str, &mut bool); 14] = [
+            Self::apply_scroll,
             Self::apply_display_flex,
             Self::apply_grid,
             Self::apply_box_model,

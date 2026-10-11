@@ -10,7 +10,8 @@
 pub(super) fn inherited_property(key: &str) -> bool {
     matches!(
         key,
-        "color"
+        "scrollbar-color"
+            | "color"
             | "font"
             | "font-family"
             | "font-size"
@@ -52,6 +53,7 @@ pub(super) fn inherited_property(key: &str) -> bool {
 
 pub(super) fn initial_value(key: &str) -> Option<&'static str> {
     Some(match key {
+        "scrollbar-color" | "scrollbar-width" => "auto",
         "border" => "0 none",
         "border-radius" => "0",
         "corner-shape" => "round",
