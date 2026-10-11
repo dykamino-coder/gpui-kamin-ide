@@ -105,12 +105,12 @@ impl Paragraph {
                 .unwrap_or(px(0.));
             // Относительный сдвиг двигает ТОЛЬКО отрисовку куска: место в
             // потоке за ним сохраняется, соседи не съезжают (§9.4.3).
-            let (rx, ry) = self
+            let ((rx, ry), (bx, by)) = self
                 .rel_spans
                 .iter()
-                .find(|(r, _)| r.contains(&word.range.start))
-                .map(|(_, v)| *v)
-                .unwrap_or((0.0, 0.0));
+                .find(|(r, _, _)| r.contains(&word.range.start))
+                .map(|(_, v, b)| (*v, *b))
+                .unwrap_or(((0.0, 0.0), (0.0, 0.0)));
             // Слово набирается своим вызовом, и `ShapedLine::paint` ставит
             // его базовую линию по СВОИМ подъёму и спуску. Сплошной набор
             // строки берёт наибольшие по всей строке — куски разного кегля
@@ -138,8 +138,11 @@ impl Paragraph {
                 None => fix,
             };
             let at = point(x + px(rx), y + dy + px(ry) + fix);
-            // Подложка прогона — отдельным вызовом, см. выше.
-            self.paint_run_background(&shaped, at, window, cx);
+            // Подложка прогона — отдельным вызовом, см. выше. Она — коробка
+            // своего строчного элемента и едет его сдвигом, а не сдвигом
+            // относительного потомка (`position-relative-033`).
+            let box_at = point(at.x - px(rx - bx), at.y - px(ry - by));
+            self.paint_run_background(&shaped, box_at, window, cx);
             let origin = self.text_raster_origin(&shaped, at, window);
             if decor {
                 // Украшения промежутка до слова: от правого края прошлого
