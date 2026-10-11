@@ -1,5 +1,6 @@
 //! Position for spans; split out to keep the owning module within 250 lines.
 
+use crate::render::RenderOpts;
 use crate::style::values::value::Len;
 use crate::text::inline::*;
 
@@ -45,6 +46,7 @@ pub fn shift_spans(
     pieces: &[Piece],
     base_size: f32,
     line_px: f32,
+    opts: &RenderOpts,
 ) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
     let mut out = Vec::new();
     let mut at = 0usize;
@@ -108,7 +110,24 @@ pub fn shift_spans(
                 // Полулидинг БЫВАЕТ отрицательным: `L = line-height − AD`
                 // (§10.8.1), и при `line-height` меньше кегля коробка куска
                 // выше строки. Зажим нулём убивал ровно этот случай.
-                let half = (line_px - size) / 2.0;
+                let alphabetic = style.sideways == Some(true) || style.text_sideways == Some(true);
+                let vertical = style.vertical == Some(true) || style.rotated_line == Some(true);
+                // CSS 2.1 §10.8.1 aligns the subject's own inline box, whose
+                // half-leading comes from its computed line-height. The line's
+                // strut is not that box (Blink inline_box_state.cc:144-150).
+                let own_line = if vertical && alphabetic {
+                    match style.line_height {
+                        Some(Len::Px(v)) => v,
+                        Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
+                        None | Some(Len::Auto) => {
+                            size * crate::text::text_box::normal_fraction(style, opts)
+                        }
+                        _ => line_px,
+                    }
+                } else {
+                    line_px
+                };
+                let half = (own_line - size) / 2.0;
                 style.vertical_align_text.map(|top| {
                     if top {
                         (ASCENT * size + half) - ASCENT * parent

@@ -71,7 +71,7 @@ pub(crate) fn paragraph_spans(
             .concat(),
         )
         .shift_spans({
-            let mut v = inline::shift_spans(pieces, biggest, f32::from(line));
+            let mut v = inline::shift_spans(pieces, biggest, f32::from(line), opts);
             v.retain(|(r, _)| !in_edge(edges, r));
             v
         })
