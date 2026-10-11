@@ -81,6 +81,7 @@ pub(crate) fn put(id: &str, handle: isize, width: i32, height: i32, content: (i3
 
 /// Запомнить последний кадр вью.
 fn store(id: &str, shared: GpuTexture, content: (i32, i32, i32, i32)) {
+    super::copy_frame::frame_arrived(id);
     if let Ok(mut map) = INCOMING.lock() {
         map.insert(id.to_string(), Incoming { shared, content });
     }
@@ -257,7 +258,6 @@ pub(crate) fn drain_dead(window: &gpui::Window) {
     }
 }
 
-/// Забыть всё, что привязано к прежнему устройству D3D11.
 fn forget_device_objects() {
     if let Ok(mut map) = SLOTS.lock() {
         map.clear();

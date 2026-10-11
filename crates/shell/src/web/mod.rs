@@ -22,6 +22,8 @@ mod frames;
 mod gpu_mode;
 mod gpu_texture;
 mod input;
+mod keyed_access;
+mod keyed_mutex;
 mod open_shared;
 mod outbox;
 mod popup;
