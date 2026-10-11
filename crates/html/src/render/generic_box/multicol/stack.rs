@@ -60,7 +60,7 @@ pub(crate) fn stack_box(
     // §9.2.1.1), только когда строки можно измерить.
     let grouped_e = line_col_w.and_then(|_| group_inline_runs(e));
     let ge: &Element = grouped_e.as_ref().unwrap_or(e);
-    let floats_blocked = block_floats(ge, positioned);
+    let floats_blocked = block_floats(ge, positioned, line_col_w);
     let ge: &Element = floats_blocked.as_ref().unwrap_or(ge);
     // Обёртка flex/сетки с ЕДИНСТВЕННЫМ элементом-`clone`
     // (`clone_wrapper_item`): по блочной оси такая обёртка
