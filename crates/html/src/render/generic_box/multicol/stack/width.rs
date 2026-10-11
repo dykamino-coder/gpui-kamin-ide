@@ -1,7 +1,7 @@
 //! Строчный размер колонки для измерения строк.
 
 use crate::dom::{Element, Node};
-use crate::layout::fragment::line_shape::inline_content;
+use crate::layout::fragment::line_shape::{inline_content, nested_rows_box};
 use crate::render::*;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
@@ -45,6 +45,11 @@ pub(crate) fn column_measure_width(
                         || inline_content(k)
                         || (k.children.iter().all(is_blank)
                             && matches!(k.style.height, Some(Len::Px(_))))
+                        // Вложенный многоколоночник: его ширина — колонка
+                        // внешнего, и мерить его раскладкой копии можно
+                        // только при известной ширине (`measured_nested`).
+                        || (nested_rows_box(k)
+                            && matches!(k.style.height, None | Some(Len::Auto)))
                 }
             }))
         .then_some(inherited.width)

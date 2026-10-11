@@ -41,6 +41,7 @@ pub(super) fn place_oof_statics(
             el: crate::layout::positioned::containing_block::spot_probe(oof_spots[i].clone(), true),
             frags: Vec::new(),
             monolith: false,
+            fit_whole: false,
             cuts: Vec::new(),
             force_before: false,
             force_after: false,
