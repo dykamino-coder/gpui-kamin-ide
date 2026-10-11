@@ -160,7 +160,11 @@ pub(super) fn build_band_kid(
     // with `display: list-item` too) keeps its marker, which only
     // `element`'s list-item painter draws.
     let list_item = copy.style.display == Some(Display::ListItem);
-    if float && !table && !replaced && !vertical && !list_item {
+    // Writing Modes 4 §7.3: the float's own formatting context determines its
+    // physical size; placement uses the host's axes (Blink floats_utils.cc:71).
+    // element() installs the vertical block axis and containing-block scopes.
+    let own_vertical = copy.style.vertical.or(inherited.vertical) == Some(true);
+    if float && !table && !replaced && !vertical && !own_vertical && !list_item {
         // Флоат — блочная коробка (§9.7) каким бы ни был тег: тем
         // же путём, что у статического хоста (`shape_flow`).
         // Таблица — своей веткой `element` ниже: каркас блока её

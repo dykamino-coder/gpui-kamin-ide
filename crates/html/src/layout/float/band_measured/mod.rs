@@ -151,21 +151,31 @@ pub(super) fn band_host_m(
         rest.push(nodes[j].clone());
         j += 1;
     }
+    // An orthogonal float-only run still obtains its shared intrinsic inline
+    // size from the row. Independent band probes do not preserve that contract
+    // yet; use them when the floats actually interact with normal-flow content.
+    if lead.is_empty()
+        && rest.iter().all(is_blank)
+        && floaters
+            .iter()
+            .any(|f| band_orthogonal(&f.style) && subtree_has_text(f))
+    {
+        return None;
+    }
     band_host_m_tail(nodes, i, j, em, lead, floaters, rest, probes)
 }
 
 /// Годится ли флоат в измеряемый хост: `None` — хост отменяется.
 pub(super) fn band_float_m(next: &Element, em: f32) -> Option<()> {
     {
-        // Ортогональный флоат (своё письмо вертикально в горизонтальном
-        // контейнере) С ТЕКСТОМ: строчный размер его строк (§7.3.1, от
-        // начального содержащего блока) каркас пробы не считает, и ширина
-        // (блочный размер) выходила по горизонтальной мере текста — на
-        // прежний путь (`float-contiguous-vlr-011`: пять флоатов `abcde`).
-        // Без текста блочный размер — сумма блочных размеров детей, и
-        // проба считает его верно: такой флоат идёт в хост
-        // (`float-shrink-to-fit-vrl-002…`, `contiguous-floated-table-v*`).
-        if band_orthogonal(&next.style) && subtree_has_text(next) {
+        // Вертикальный float меряется через собственный native element
+        // (Writing Modes 4 §7.3), затем полосы размещают физическую коробку
+        // в осях хоста. Горизонтальному ортогональному тексту ещё нужен
+        // fallback доступного строчного размера, поэтому он остаётся в ряду.
+        if band_orthogonal(&next.style)
+            && subtree_has_text(next)
+            && next.style.vertical != Some(true)
+        {
             return None;
         }
         // Флоат с трансформацией — на прежнем пути: трансформацию даёт
