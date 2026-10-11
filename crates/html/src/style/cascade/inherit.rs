@@ -41,6 +41,7 @@ pub(crate) fn inherit_unpainted(parent: &Computed, own: &Computed) -> Computed {
 
 fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Computed {
     let mut c = own.clone();
+    crate::style::computed::scroll::inherit(parent, &mut c);
     inherit_containing(parent, own, &mut c);
     inherit_sizes(parent, own, &mut c);
     inherit_explicit(parent, own, &mut c);

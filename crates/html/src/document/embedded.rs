@@ -1,6 +1,5 @@
 //! Embedded for document; split out to keep the owning module within 250 lines.
 
-use super::{mark_canvas_background, propagate_writing_mode, resolve_logical, viewport_overflow};
 use crate::document::box_style::has_box_style;
 use crate::dom::Node;
 use std::collections::hash_map::DefaultHasher;
@@ -31,9 +30,7 @@ pub fn parse_embedded(html: &str, theme_css: &str, viewport: (f32, f32)) -> (Vec
     };
     let parsed = crate::dom::parse_media(html, theme_css, media);
     *crate::style::css::PAGE_RULES.lock().unwrap() = outer_rules;
-    let (mut nodes, _root) = unwrap_document(mark_canvas_background(resolve_logical(
-        propagate_writing_mode(viewport_overflow(parsed)),
-    )));
+    let (mut nodes, _root) = super::viewport::prepare(parsed);
     // Вложенному документу offset-трансформ нужен ровно так же: проход по
     // дереву переехал сюда из разбора стиля (`dom.rs`), и без этой строки
     // `<iframe>` потерял бы всё, что раньше работало.

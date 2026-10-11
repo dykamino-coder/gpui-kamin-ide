@@ -3,21 +3,13 @@
 use super::*;
 
 pub(super) fn layout_grid_gap(mut d: Div, c: &Computed) -> Div {
-    // `baseline` на ИНЛАЙН-оси НАСТОЯЩЕЙ сетки не действует: элементы не
-    // разделяют колоночный baseline-контекст (css-align §9.1; тест-ассерт
-    // grid-self-baseline-horiz-001: «only align-self should apply») —
-    // применение как items двигало содержимое вправо. У ЛУНОК инлайн-ось
-    // живёт своим каналом (column-grid-lanes-item-baseline-002 полагается).
     let real_grid = matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid));
-    // Теперь фильтр уже: у ГОРИЗОНТАЛЬНОЙ сетки `baseline` доходит до
-    // раскладки — ортогональные (вертикальные) элементы образуют группы по
-    // оси x (css-align-3 §9.1), а параллельные его не видят (бит 8 ниже;
-    // `grid-justify-baseline-001`: одиночные группы `vertical-rl`/`-lr` берут
-    // запасное `safe self-start` — правый и левый край, а не растяжение).
-    if let Some(a) = c
-        .justify_items
-        .filter(|a| *a != Align::Baseline || !real_grid || c.vertical != Some(true))
-    {
+    // CSS Align §9.1 / Blink baseline_utils.h: baseline sharing and synthesis
+    // are decided for each item in its physical alignment axis. Dropping the
+    // container keyword before projection changes baseline fallback to stretch.
+    // A vertical grid projects justify-items onto y, where the layout engine
+    // can use horizontal content baselines or synthesize the bottom baseline.
+    if let Some(a) = c.justify_items {
         d.style().justify_items = Some(self_align(a, c.justify_items_last));
     }
     if let Some(a) = c.justify_self {

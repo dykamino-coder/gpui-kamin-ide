@@ -73,6 +73,10 @@ pub(super) fn table_grid_box(
         // Ряд таблицы — КОЛОНКА сетки: заполнение идёт сверху вниз, ряд за
         // рядом поперёк (css-writing-modes-3 §8, table-progression-*).
         let mut g = div().grid().grid_template_rows(tracks);
+        // Table columns consume the assigned physical height (logical inline size).
+        if table_tall {
+            g = g.flex_grow_1();
+        }
         g.style().grid_auto_flow = Some(gpui::GridAutoFlow::Column);
         g
     } else {

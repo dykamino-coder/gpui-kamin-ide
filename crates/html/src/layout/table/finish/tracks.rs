@@ -22,6 +22,12 @@ pub(super) fn table_tracks(
     cols_collapsed: Vec<bool>,
     cols_pct: Vec<Option<f32>>,
 ) -> (Vec<Option<f32>>, Vec<gpui::GridTrack>, bool) {
+    let vertical = e.style.vertical == Some(true);
+    let inline_size = if vertical {
+        e.style.height
+    } else {
+        e.style.width
+    };
     let first_row_widths = first_row_widths_of(
         e,
         row_elements,
@@ -58,9 +64,9 @@ pub(super) fn table_tracks(
         // от ширины таблицы БЕЗ её рамок и без зазоров между ячейками
         // (`fixed-table-layout-022` расписывает это прямо в тексте: 533 − 58
         // рамок − 75 зазоров = 400).
-        match match e.style.width {
+        match match inline_size {
             Some(Len::Px(v)) => Some(v),
-            Some(Len::Pct(k)) => CB_WIDTH.get().filter(|v| *v > 0.0).map(|cb| cb * k),
+            Some(Len::Pct(k)) if !vertical => CB_WIDTH.get().filter(|v| *v > 0.0).map(|cb| cb * k),
             _ => None,
         } {
             Some(v) => {
@@ -77,7 +83,12 @@ pub(super) fn table_tracks(
                         _ => 0.0,
                     }
                 };
-                Some(v - side(bs.left) - side(bs.right) - gap * (cols as f32 + 1.0))
+                let edges = if vertical {
+                    side(bs.top) + side(bs.bottom)
+                } else {
+                    side(bs.left) + side(bs.right)
+                };
+                Some(v - edges - gap * (cols as f32 + 1.0))
             }
             _ => None,
         },
@@ -114,6 +125,8 @@ pub(super) fn first_row_widths_of(
     spacing: (f32, f32),
     cols: u16,
 ) -> Vec<Option<f32>> {
+    let vertical = e.style.vertical == Some(true);
+    let axes = super::super::axes::Axes::new(&e.style);
     let first_row_widths: Vec<Option<f32>> = row_elements
         .first()
         .map(|row| {
@@ -138,16 +151,32 @@ pub(super) fn first_row_widths_of(
                         0.0
                     } else {
                         let b = cell.style.borders();
-                        let border = side(b.left) + side(b.right);
-                        side(cell.style.padding.left)
-                            + side(cell.style.padding.right)
+                        let border = axes.logical([
+                            side(b.top),
+                            side(b.right),
+                            side(b.bottom),
+                            side(b.left),
+                        ]);
+                        let border = border[1] + border[3];
+                        let pad = &cell.style.padding;
+                        let pad = axes.logical([
+                            side(pad.top),
+                            side(pad.right),
+                            side(pad.bottom),
+                            side(pad.left),
+                        ]);
+                        pad[1]
+                            + pad[3]
                             + if e.style.border_collapse == Some(true) {
                                 // Половина ПОБЕДИВШЕЙ линии — та же, что
                                 // легла в паддинг ячейки (§17.6.2.1).
 
                                 win_edges
                                     .get(&cell.node_id)
-                                    .map(|w| (w[1] + w[3]) / 2.0)
+                                    .map(|w| {
+                                        let w = axes.logical(*w);
+                                        (w[1] + w[3]) / 2.0
+                                    })
                                     .unwrap_or(border / 2.0)
                             } else {
                                 border
@@ -161,7 +190,11 @@ pub(super) fn first_row_widths_of(
                     // один вердикт не сдвинулся. Одной этой половины мало:
                     // цель (`-004c/-004d`) требует ещё нижней грани ширины
                     // стола по сумме дорожек — возвращать вместе с ней.
-                    match cell.style.width {
+                    match if vertical {
+                        cell.style.height
+                    } else {
+                        cell.style.width
+                    } {
                         Some(Len::Px(v)) if span == 1 => out.push(Some(v + extra)),
                         // Ширина в единицах шрифта — кеглем САМОЙ ячейки
                         // (ряд → таблица): без неё колонка `width: 1em`
@@ -185,7 +218,11 @@ pub(super) fn first_row_widths_of(
                         // ширина таблицы за вычетом зазоров (§17.5.2.1,
                         // «a percentage value ... of the table width»).
                         // Известна, только когда ширина таблицы в точках.
-                        Some(Len::Pct(p)) if span == 1 => match e.style.width {
+                        Some(Len::Pct(p)) if span == 1 => match if vertical {
+                            e.style.height
+                        } else {
+                            e.style.width
+                        } {
                             Some(Len::Px(tw)) => {
                                 let gaps = spacing.0 * (f32::from(cols) + 1.0);
                                 out.push(Some((tw - gaps).max(0.0) * p + extra));
