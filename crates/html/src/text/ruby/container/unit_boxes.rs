@@ -107,6 +107,15 @@ pub(super) fn unit_box(nodes: &[Node], style: &Computed, opts: &RenderOpts) -> A
         block.style.text_indent = Some(Len::Px(0.0));
         block.style.text_indent_each_line = Some(false);
         block.style.text_indent_hanging = Some(false);
+        // `ruby-align`, заданный на самой базе (css-ruby-1 §4.3, «Applies
+        // to: ruby bases, …»), выравнивает её содержимое СВОИМ значением, а
+        // не значением контейнера (`ruby-align-001a`: `<rb style=
+        // "ruby-align: start">`). Аннотации выравнивает свой путь.
+        if block.style.ruby_align.is_some()
+            && ruby_role(k) == Some(crate::style::computed::RubyRole::Base)
+        {
+            super::stacks::align_units(&mut block.style);
+        }
         return div()
             .children(blocks(&[Node::Element(block)], &style, opts))
             .into_any_element();
