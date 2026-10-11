@@ -54,6 +54,7 @@ import {
   resendUndeliveredMcpCalls,
 } from './session-mcp-call'
 import { startNativeMitm } from '../proxy/native-mitm'
+import { buildCliCaBundle } from '../proxy/outbound-tls'
 import { getStreamingSettings } from '../proxy/streaming-settings'
 import { SessionAdmission } from './session-admission'
 import { withSyncSnapshotLock } from '../sync/lock'
@@ -379,7 +380,7 @@ async function createAdmittedSession(
       env.HTTP_PROXY = `http://127.0.0.1:${proxy.port}`
       env.https_proxy = env.HTTPS_PROXY
       env.http_proxy = env.HTTP_PROXY
-      env.NODE_EXTRA_CA_CERTS = proxy.caCertPath
+      env.NODE_EXTRA_CA_CERTS = buildCliCaBundle(proxy.caCertPath, env.NODE_EXTRA_CA_CERTS)
       env.CLAUDE_CODE_PROXY_RESOLVES_HOSTS = '1'
       // KEEP NO_PROXY=127.0.0.1,localhost,::1 (set by injectProxyEnv) so the
       // CLI's MCP / OTLP calls to our bridge HTTP server don't loop through

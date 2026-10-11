@@ -25,23 +25,23 @@
 // opens a fresh TCP socket — mirroring Claude Code's `disableKeepAlive()`.
 // ============================================================================
 
-import { Buffer } from "node:buffer"
-import * as fs from "node:fs/promises"
-import * as http from "node:http"
-import * as https from "node:https"
-import * as net from "node:net"
-import { PassThrough, Readable } from "node:stream"
-import * as tls from "node:tls"
-import { EnvHttpProxyAgent, ProxyAgent, fetch as undiciFetch } from "undici"
-import type { Dispatcher, RequestInit as UndiciRequestInit } from "undici"
-import { getOrCreateBridgeCA } from "./ca-store"
-import { EntrySynthesizer, type SynthAssistantEntry } from "./entry-synthesizer"
-import { mintLeafCert } from "./leaf-cert"
-import { SseStreamParser } from "./sse-parser"
-import { warnLog } from "../logging"
+import { Buffer } from 'node:buffer'
+import * as http from 'node:http'
+import * as https from 'node:https'
+import * as net from 'node:net'
+import { PassThrough, Readable } from 'node:stream'
+import * as tls from 'node:tls'
+import { fetch as undiciFetch } from 'undici'
+import { createOutboundDispatcher } from './outbound-tls'
+import type { Dispatcher, RequestInit as UndiciRequestInit } from 'undici'
+import { getOrCreateBridgeCA } from './ca-store'
+import { EntrySynthesizer, type SynthAssistantEntry } from './entry-synthesizer'
+import { mintLeafCert } from './leaf-cert'
+import { SseStreamParser } from './sse-parser'
+import { warnLog } from '../logging'
 
-const ANTHROPIC_HOST = "api.anthropic.com"
-const ANTHROPIC_MESSAGES_PATH = "/v1/messages"
+const ANTHROPIC_HOST = 'api.anthropic.com'
+const ANTHROPIC_MESSAGES_PATH = '/v1/messages'
 
 /** undici throws a bare `TypeError: fetch failed` and hides the REAL reason —
  *  ECONNRESET, a corp TLS-interception cert error, ETIMEDOUT, ENOTFOUND, "socket
@@ -65,7 +65,7 @@ function describeFetchError(err: unknown): string {
       break
     }
   }
-  return parts.join(" ← ")
+  return parts.join(' ← ')
 }
 
 export interface NativeMitmHandle {
@@ -98,31 +98,6 @@ export interface NativeMitmOptions {
   onDelta?: (d: { msgId: string; blockIdx: number; appendText: string; kind: 'text' | 'thinking' }) => void
 }
 
-// ── extra CA cache (bump.crt etc.) ───────────────────────────────────────────
-let cachedExtraCA: Buffer[] | null = null
-// Serialize concurrent first-loads: without this, two simultaneous getDispatcher
-// calls both miss the cache, both fs.readFile, and the second (possibly a failed
-// read → empty array) overwrites the first, poisoning the shared cache.
-let extraCALoad: Promise<Buffer[]> | null = null
-
-async function loadExtraCA(): Promise<Buffer[]> {
-  if (cachedExtraCA) return cachedExtraCA
-  if (extraCALoad) return extraCALoad
-  extraCALoad = (async () => {
-    const out: Buffer[] = []
-    try {
-      const { getSetting } = await import("../config/settings")
-      const caPath = getSetting("caCert")
-      if (caPath) out.push(await fs.readFile(caPath))
-    } catch (e) {
-      warnLog("[mitm] extra CA load failed", { error: String(e) })
-    }
-    cachedExtraCA = out
-    return out
-  })().finally(() => { extraCALoad = null })
-  return extraCALoad
-}
-
 // ── undici dispatcher cache + stale-pool eviction ────────────────────────────
 // One dispatcher per (proxyUrl, caBundle) so connection-pool reuse works
 // between consecutive requests. ECONNRESET on a request → recycle the
@@ -137,51 +112,38 @@ let cachedDispatcher: { key: string; dispatcher: Dispatcher } | null = null
 const secureContextByHost = new Map<string, { certPem: string; ctx: tls.SecureContext }>()
 
 async function getDispatcher(proxyUrl: string | undefined): Promise<Dispatcher> {
-  const caBundle = await loadExtraCA()
-  const caKey = caBundle.length > 0 ? caBundle.map(b => b.length).join(",") : "0"
-  const key = (proxyUrl || "direct") + "|" + caKey
+  const { getSetting } = await import('../config/settings')
+  const caPath = getSetting('caCert')
+  const key = (proxyUrl || 'direct') + '|' + (caPath || '')
   if (cachedDispatcher && cachedDispatcher.key === key) return cachedDispatcher.dispatcher
 
   if (cachedDispatcher) {
-    try { await cachedDispatcher.dispatcher.close() } catch { /* ignore */ }
+    try {
+      await cachedDispatcher.dispatcher.close()
+    } catch {
+      /* ignore */
+    }
   }
 
-  const tlsOpts = caBundle.length > 0 ? { ca: caBundle } : undefined
-  // Reverted to the pre-6.2.53 dispatcher options: 6.2.53 added TCP-level
-  // keepalive (`connect.keepAlive` / `proxyTls.keepAlive` /
-  // `requestTls.keepAlive` with 10s initial delay) hoping to stop corp
-  // proxies dropping idle SSE streams. On at least one prod corp
-  // network this broke API access entirely (TLS handshake failures),
-  // which is a far worse regression than the original `terminated`
-  // mid-stream issue that swallowing benign exceptions already
-  // mitigates. Mirrors what Claude Code itself does (utils/proxy.ts).
-  const dispatcher: Dispatcher = proxyUrl
-    ? new ProxyAgent({
-        uri: proxyUrl,
-        ...(tlsOpts && { connect: tlsOpts, requestTls: tlsOpts }),
-      })
-    : new EnvHttpProxyAgent({
-        ...(tlsOpts && { connect: tlsOpts, requestTls: tlsOpts }),
-      })
+  const dispatcher = createOutboundDispatcher(caPath, proxyUrl)
   cachedDispatcher = { key, dispatcher }
   return dispatcher
 }
 
-/** Clear the cached dispatcher and extra-CA bundle. Called from settings.ts
+/** Clear the cached dispatcher after a trust change. Called from settings.ts
  *  when the user uploads a new CA cert through the Settings UI. */
 export function resetExtraTrustRoots(): void {
-  cachedExtraCA = null
-  extraCALoad = null
   if (cachedDispatcher) {
-    void cachedDispatcher.dispatcher.close().catch(() => { /* ignore */ })
+    void cachedDispatcher.dispatcher.close().catch(() => {
+      /* ignore */
+    })
     cachedDispatcher = null
   }
 }
 
 function recycleDispatcherOnReset(err: unknown): void {
-  const code = (err as { code?: string })?.code
-    ?? ((err as { cause?: { code?: string } })?.cause)?.code
-  if (code === "ECONNRESET" || code === "UND_ERR_SOCKET" || code === "EPIPE") {
+  const code = (err as { code?: string })?.code ?? (err as { cause?: { code?: string } })?.cause?.code
+  if (code === 'ECONNRESET' || code === 'UND_ERR_SOCKET' || code === 'EPIPE') {
     dropCachedDispatcher()
   }
 }
@@ -197,7 +159,9 @@ function recycleDispatcherOnReset(err: unknown): void {
  *  clean turn-ends never pay the re-handshake. */
 function dropCachedDispatcher(): void {
   if (cachedDispatcher) {
-    void cachedDispatcher.dispatcher.close().catch(() => { /* ignore */ })
+    void cachedDispatcher.dispatcher.close().catch(() => {
+      /* ignore */
+    })
     cachedDispatcher = null
   }
 }
@@ -206,7 +170,9 @@ function dropCachedDispatcher(): void {
 export async function startNativeMitm(opts: NativeMitmOptions): Promise<NativeMitmHandle> {
   const ca = await getOrCreateBridgeCA()
   // Warm the dispatcher up-front so the first CLI request doesn't pay for it.
-  await getDispatcher(opts.upstreamProxyUrl).catch(() => { /* deferred */ })
+  await getDispatcher(opts.upstreamProxyUrl).catch(() => {
+    /* deferred */
+  })
 
   // Every in-flight upstream request's AbortController, so interrupt() can cancel
   // the streaming response the moment the user hits Stop. Each handleRequest adds
@@ -226,59 +192,67 @@ export async function startNativeMitm(opts: NativeMitmOptions): Promise<NativeMi
       const timer = setTimeout(() => {
         if (settled) return
         settled = true
-        cb(new Error("cert minting timed out"))
+        cb(new Error('cert minting timed out'))
       }, 8_000)
-      mintLeafCert(targetHost, ca).then((leaf) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        // Reuse the SecureContext for this host+leaf across handshakes/sessions;
-        // only rebuild the OpenSSL context if the leaf rotated.
-        let entry = secureContextByHost.get(targetHost)
-        if (!entry || entry.certPem !== leaf.certPem) {
-          entry = { certPem: leaf.certPem, ctx: tls.createSecureContext({ cert: leaf.certPem, key: leaf.keyPem }) }
-          secureContextByHost.set(targetHost, entry)
-        }
-        cb(null, entry.ctx)
-      }).catch((e) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        warnLog("[mitm] cert minting failed", {
-          sessionId: opts.ptySessionId, host: targetHost, error: String(e),
+      mintLeafCert(targetHost, ca)
+        .then((leaf) => {
+          if (settled) return
+          settled = true
+          clearTimeout(timer)
+          // Reuse the SecureContext for this host+leaf across handshakes/sessions;
+          // only rebuild the OpenSSL context if the leaf rotated.
+          let entry = secureContextByHost.get(targetHost)
+          if (!entry || entry.certPem !== leaf.certPem) {
+            entry = { certPem: leaf.certPem, ctx: tls.createSecureContext({ cert: leaf.certPem, key: leaf.keyPem }) }
+            secureContextByHost.set(targetHost, entry)
+          }
+          cb(null, entry.ctx)
         })
-        cb(e as Error)
-      })
+        .catch((e) => {
+          if (settled) return
+          settled = true
+          clearTimeout(timer)
+          warnLog('[mitm] cert minting failed', {
+            sessionId: opts.ptySessionId,
+            host: targetHost,
+            error: String(e),
+          })
+          cb(e as Error)
+        })
     },
-    ALPNProtocols: ["http/1.1"],
+    ALPNProtocols: ['http/1.1'],
   })
 
-  httpsServer.on("request", (req, res) => {
+  httpsServer.on('request', (req, res) => {
     void handleRequest(req, res, opts, active).catch((err) => {
       // Name the REAL cause (err.cause chain), not undici's opaque "fetch failed".
       const detail = describeFetchError(err)
-      warnLog("[mitm] request handler crashed", {
+      warnLog('[mitm] request handler crashed', {
         sessionId: opts.ptySessionId,
         error: detail,
       })
       try {
         if (!res.headersSent) {
           res.statusCode = 502
-          res.setHeader("content-type", "text/plain")
-          res.end("Bridge upstream error: " + detail)
+          res.setHeader('content-type', 'text/plain')
+          res.end('Bridge upstream error: ' + detail)
         } else {
           res.destroy(err as Error)
         }
-      } catch { /* socket already gone */ }
+      } catch {
+        /* socket already gone */
+      }
     })
   })
 
-  httpsServer.on("tlsClientError", (err: Error) => {
+  httpsServer.on('tlsClientError', (err: Error) => {
     // Common when CLI snaps a tab; not interesting unless a real handshake fails.
     const code = (err as { code?: string }).code
-    if (code !== "ECONNRESET" && code !== "EPIPE") {
-      warnLog("[mitm] tlsClientError", {
-        sessionId: opts.ptySessionId, code, msg: err.message,
+    if (code !== 'ECONNRESET' && code !== 'EPIPE') {
+      warnLog('[mitm] tlsClientError', {
+        sessionId: opts.ptySessionId,
+        code,
+        msg: err.message,
       })
     }
   })
@@ -292,44 +266,56 @@ export async function startNativeMitm(opts: NativeMitmOptions): Promise<NativeMi
     // multi-minute SSE tunnel is never killed by it. Without this a client that
     // opens a socket and never sends \r\n\r\n pins a file descriptor forever.
     clientSock.setTimeout(CONNECT_TIMEOUT_MS)
-    clientSock.once("timeout", () => { try { clientSock.destroy() } catch { /* gone */ } })
+    clientSock.once('timeout', () => {
+      try {
+        clientSock.destroy()
+      } catch {
+        /* gone */
+      }
+    })
     const onData = (chunk: Buffer) => {
       buffer = Buffer.concat([buffer, chunk])
       // Bound the buffer: a client dribbling headers without a terminator would
       // otherwise grow the heap unbounded (indexOf rescans O(n) each chunk too).
       if (buffer.length > CONNECT_MAX_HEADER) {
-        clientSock.removeListener("data", onData)
-        try { clientSock.write("HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Length: 0\r\n\r\n") } catch { /* gone */ }
+        clientSock.removeListener('data', onData)
+        try {
+          clientSock.write('HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Length: 0\r\n\r\n')
+        } catch {
+          /* gone */
+        }
         clientSock.end()
         return
       }
-      const idx = buffer.indexOf("\r\n\r\n")
+      const idx = buffer.indexOf('\r\n\r\n')
       if (idx < 0) return
-      const headerStr = buffer.slice(0, idx).toString("utf8")
+      const headerStr = buffer.slice(0, idx).toString('utf8')
       const rest = buffer.slice(idx + 4)
-      clientSock.removeListener("data", onData)
-      const firstLine = headerStr.split("\r\n", 1)[0] ?? ""
+      clientSock.removeListener('data', onData)
+      const firstLine = headerStr.split('\r\n', 1)[0] ?? ''
       const m = /^CONNECT\s+(\S+)\s+HTTP\/1\.[01]$/i.exec(firstLine)
       if (!m) {
-        clientSock.write("HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n")
+        clientSock.write('HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n')
         clientSock.end()
         return
       }
       // Handshake accepted — cancel the CONNECT-phase idle timeout so the live
       // TLS tunnel (which can carry a >90s thinking stream) isn't reaped.
       clientSock.setTimeout(0)
-      clientSock.write("HTTP/1.1 200 Connection established\r\n\r\n")
+      clientSock.write('HTTP/1.1 200 Connection established\r\n\r\n')
       if (rest.length > 0) clientSock.unshift(rest)
-      httpsServer.emit("connection", clientSock)
+      httpsServer.emit('connection', clientSock)
     }
-    clientSock.on("data", onData)
-    clientSock.on("error", () => { /* client drops happen, no log */ })
+    clientSock.on('data', onData)
+    clientSock.on('error', () => {
+      /* client drops happen, no log */
+    })
   })
 
   await new Promise<void>((resolve, reject) => {
-    server.once("error", reject)
-    server.listen(0, "127.0.0.1", () => {
-      server.removeListener("error", reject)
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      server.removeListener('error', reject)
       resolve()
     })
   })
@@ -340,7 +326,13 @@ export async function startNativeMitm(opts: NativeMitmOptions): Promise<NativeMi
     port,
     caCertPath: ca.certPath,
     interrupt: () => {
-      for (const c of active) { try { c.abort() } catch { /* already settled */ } }
+      for (const c of active) {
+        try {
+          c.abort()
+        } catch {
+          /* already settled */
+        }
+      }
     },
     stop: async () => {
       await new Promise<void>((r) => server.close(() => r()))
@@ -363,26 +355,33 @@ async function handleRequest(
   opts: NativeMitmOptions,
   active: Set<AbortController>,
 ): Promise<void> {
-  const host = (req.headers.host || ANTHROPIC_HOST).split(":")[0]!
-  const targetUrl = `https://${host}${req.url ?? "/"}`
+  const host = (req.headers.host || ANTHROPIC_HOST).split(':')[0]!
+  const targetUrl = `https://${host}${req.url ?? '/'}`
 
   // Strip per-hop headers that mustn't be forwarded.
   const upstreamHeaders: Record<string, string> = {}
   for (const [k, v] of Object.entries(req.headers)) {
     if (v === undefined) continue
     const lk = k.toLowerCase()
-    if (lk === "host" || lk === "connection" || lk === "keep-alive"
-        || lk === "proxy-authorization" || lk === "proxy-connection"
-        || lk === "transfer-encoding" || lk === "upgrade"
-        || lk === "content-length") continue
-    upstreamHeaders[k] = Array.isArray(v) ? v.join(", ") : v
+    if (
+      lk === 'host' ||
+      lk === 'connection' ||
+      lk === 'keep-alive' ||
+      lk === 'proxy-authorization' ||
+      lk === 'proxy-connection' ||
+      lk === 'transfer-encoding' ||
+      lk === 'upgrade' ||
+      lk === 'content-length'
+    )
+      continue
+    upstreamHeaders[k] = Array.isArray(v) ? v.join(', ') : v
   }
   // Anthropic requires the right Host header.
-  upstreamHeaders["host"] = host
+  upstreamHeaders['host'] = host
 
   // Body: undici.fetch accepts a web ReadableStream produced from the Node
   // request.
-  const hasBody = req.method !== "GET" && req.method !== "HEAD"
+  const hasBody = req.method !== 'GET' && req.method !== 'HEAD'
 
   // ── Gated request diagnostic (KAMIN_MITM_REQDIAG=1) ──────────────────────
   // Off by default. When on, buffer a /v1/messages POST body ONCE so we can log
@@ -391,34 +390,44 @@ async function handleRequest(
   // prompt text alone is ambiguous: it appears both as a teammate's first user
   // message AND inside the main agent's tool_use history). Buffered (not
   // streamed) only under the flag; the buffer is then forwarded verbatim.
-  const isMessagesPostReq = (req.url ?? "").startsWith(ANTHROPIC_MESSAGES_PATH) && req.method === "POST"
+  const isMessagesPostReq = (req.url ?? '').startsWith(ANTHROPIC_MESSAGES_PATH) && req.method === 'POST'
   let bufferedBody: Buffer | undefined
   if (hasBody && isMessagesPostReq && process.env.KAMIN_MITM_REQDIAG) {
     const chunks: Buffer[] = []
     for await (const c of req) chunks.push(c as Buffer)
     bufferedBody = Buffer.concat(chunks)
     try {
-      const j = JSON.parse(bufferedBody.toString("utf8")) as Record<string, any>
+      const j = JSON.parse(bufferedBody.toString('utf8')) as Record<string, any>
       const sys = Array.isArray(j.system)
-        ? j.system.map((s: any) => (typeof s === "string" ? s : String(s?.text ?? "")).slice(0, 90))
-        : typeof j.system === "string" ? [j.system.slice(0, 120)] : undefined
+        ? j.system.map((s: any) => (typeof s === 'string' ? s : String(s?.text ?? '')).slice(0, 90))
+        : typeof j.system === 'string'
+          ? [j.system.slice(0, 120)]
+          : undefined
       const msgs = Array.isArray(j.messages) ? j.messages : []
       const m0 = msgs[0]
       const m0Head = m0
-        ? (typeof m0.content === "string" ? m0.content.slice(0, 160) : JSON.stringify(m0.content).slice(0, 240))
-        : ""
-      warnLog("[mitm][reqdiag]", {
+        ? typeof m0.content === 'string'
+          ? m0.content.slice(0, 160)
+          : JSON.stringify(m0.content).slice(0, 240)
+        : ''
+      warnLog('[mitm][reqdiag]', {
         session: opts.ptySessionId,
         model: j.model,
         msgCount: msgs.length,
-        xAgentId: req.headers["x-claude-code-agent-id"],
-        parentSessionId: (() => { try { return JSON.parse(String(j.metadata?.user_id ?? "{}")).parent_session_id } catch { return undefined } })(),
+        xAgentId: req.headers['x-claude-code-agent-id'],
+        parentSessionId: (() => {
+          try {
+            return JSON.parse(String(j.metadata?.user_id ?? '{}')).parent_session_id
+          } catch {
+            return undefined
+          }
+        })(),
         m0Role: m0?.role,
         m0Head: m0Head.slice(0, 60),
-        userAgent: req.headers["user-agent"],
+        userAgent: req.headers['user-agent'],
       })
     } catch {
-      warnLog("[mitm][reqdiag] body parse failed", { session: opts.ptySessionId, len: bufferedBody.length })
+      warnLog('[mitm][reqdiag] body parse failed', { session: opts.ptySessionId, len: bufferedBody.length })
     }
   }
 
@@ -440,16 +449,23 @@ async function handleRequest(
   // handler never gets registered, leaking the upstream request. Aborting on any
   // close is idempotent: on normal completion the fetch is already done.
   active.add(ac)
-  res.on("close", () => { active.delete(ac); try { ac.abort() } catch { /* already settled */ } })
+  res.on('close', () => {
+    active.delete(ac)
+    try {
+      ac.abort()
+    } catch {
+      /* already settled */
+    }
+  })
 
   let upstream: Awaited<ReturnType<typeof undiciFetch>>
   try {
     const init: UndiciRequestInit = {
       method: req.method,
       headers: upstreamHeaders,
-      body: body as UndiciRequestInit["body"],
+      body: body as UndiciRequestInit['body'],
       dispatcher,
-      duplex: "half",
+      duplex: 'half',
       signal: ac.signal,
     }
     upstream = await undiciFetch(targetUrl, init)
@@ -468,9 +484,14 @@ async function handleRequest(
   res.statusCode = upstream.status
   for (const [k, v] of upstream.headers.entries()) {
     const lk = k.toLowerCase()
-    if (lk === "content-encoding" || lk === "content-length"
-        || lk === "transfer-encoding" || lk === "connection"
-        || lk === "keep-alive") continue
+    if (
+      lk === 'content-encoding' ||
+      lk === 'content-length' ||
+      lk === 'transfer-encoding' ||
+      lk === 'connection' ||
+      lk === 'keep-alive'
+    )
+      continue
     res.setHeader(k, v)
   }
 
@@ -478,7 +499,7 @@ async function handleRequest(
   // these itself, so without a signal the chat just stalls silently — the only
   // hint is the raw terminal. `retry-after` is seconds per HTTP spec.
   if (opts.onStatus && (upstream.status === 429 || upstream.status >= 500)) {
-    const ra = upstream.headers.get("retry-after")
+    const ra = upstream.headers.get('retry-after')
     const raNum = ra != null ? Number(ra) : NaN
     opts.onStatus({ code: upstream.status, ...(Number.isFinite(raNum) ? { retryAfterMs: raNum * 1000 } : {}) })
   }
@@ -488,9 +509,9 @@ async function handleRequest(
     return
   }
 
-  const contentType = upstream.headers.get("content-type") || ""
-  const isSse = contentType.includes("text/event-stream")
-  const isMessages = (req.url ?? "").startsWith(ANTHROPIC_MESSAGES_PATH) && req.method === "POST"
+  const contentType = upstream.headers.get('content-type') || ''
+  const isSse = contentType.includes('text/event-stream')
+  const isMessages = (req.url ?? '').startsWith(ANTHROPIC_MESSAGES_PATH) && req.method === 'POST'
 
   // Plain (non-SSE) response — straight pipe.
   if (!isSse || !isMessages) {
@@ -504,25 +525,47 @@ async function handleRequest(
     // and the CLI also fires non-streaming /v1/messages calls (title/quota).
     // A real chat completion asks for the stream via `Accept: text/event-stream`
     // — so `wantedSse && !isSse` on a messages POST is the true #73 failure.
-    if (isMessages && !isSse && !(req.url ?? "").includes("/count_tokens")) {
-      const accept = String(req.headers["accept"] ?? "")
-      warnLog("[mitm][diag#73] non-SSE messages response", {
-        status: upstream.status, contentType, url: req.url,
-        wantedSse: accept.includes("text/event-stream"), accept: accept.slice(0, 48),
+    if (isMessages && !isSse && !(req.url ?? '').includes('/count_tokens')) {
+      const accept = String(req.headers['accept'] ?? '')
+      warnLog('[mitm][diag#73] non-SSE messages response', {
+        status: upstream.status,
+        contentType,
+        url: req.url,
+        wantedSse: accept.includes('text/event-stream'),
+        accept: accept.slice(0, 48),
         session: opts.ptySessionId,
       })
     }
     const src = Readable.fromWeb(upstream.body)
     // pipe() auto-destroys res on source error, but an unhandled 'error' on
     // `src` would still throw; handle it + recycle the pool on a reset.
-    src.on("error", (err: Error) => {
+    src.on('error', (err: Error) => {
       recycleDispatcherOnReset(err)
-      if (!res.writableEnded && !res.destroyed) try { res.destroy(err) } catch { /* gone */ }
+      if (!res.writableEnded && !res.destroyed)
+        try {
+          res.destroy(err)
+        } catch {
+          /* gone */
+        }
     })
     // A write to a dead CLI socket emits 'error' on res; without this listener it
     // becomes an uncaughtException (the SSE branch already guards this at :537).
-    res.on("error", (err: Error) => { warnLog("[mitm] res stream error (non-sse)", { error: err.message }) })
-    res.on("close", () => { try { ac.abort() } catch { /* ignore */ } if (!src.destroyed) try { src.destroy() } catch { /* ignore */ } })
+    res.on('error', (err: Error) => {
+      warnLog('[mitm] res stream error (non-sse)', { error: err.message })
+    })
+    res.on('close', () => {
+      try {
+        ac.abort()
+      } catch {
+        /* ignore */
+      }
+      if (!src.destroyed)
+        try {
+          src.destroy()
+        } catch {
+          /* ignore */
+        }
+    })
     src.pipe(res)
     return
   }
@@ -561,7 +604,7 @@ async function handleRequest(
   // JSONL twin replaced them. Marking the synth sidechain here fixes it AT THE
   // SOURCE: the stub is tagged from its first byte, so the client hides it from
   // the main chat (and can route it to that agent). No body parsing.
-  const hdr = req.headers["x-claude-code-agent-id"]
+  const hdr = req.headers['x-claude-code-agent-id']
   let subagentId = Array.isArray(hdr) ? hdr[0] : hdr
   // Фолбэк-дискриминатор субагента: заголовок x-claude-code-agent-id несёт
   // НЕ каждый Task-tool субагент (только часть). Тогда его ход шёл в основной
@@ -570,15 +613,17 @@ async function handleRequest(
   // (его нет у главного) — используем как id, если заголовка нет.
   if (!subagentId && bufferedBody) {
     try {
-      const j = JSON.parse(bufferedBody.toString("utf8")) as { metadata?: { user_id?: unknown } }
-      const meta = typeof j.metadata?.user_id === "string" ? JSON.parse(j.metadata.user_id) : j.metadata?.user_id
+      const j = JSON.parse(bufferedBody.toString('utf8')) as { metadata?: { user_id?: unknown } }
+      const meta = typeof j.metadata?.user_id === 'string' ? JSON.parse(j.metadata.user_id) : j.metadata?.user_id
       // Наличие parent_session_id = это субагент (у главного его нет). Значение
       // указывает на главного, поэтому id субагента строим от НЕГО + модели
       // запроса недостаточно — берём сам psid как ключ ветки (все ходы одного
       // субагента делят parent, но панель группирует по нему же, что ок).
       const psid = (meta as { parent_session_id?: string } | undefined)?.parent_session_id
       if (psid) subagentId = `psid:${psid}`
-    } catch { /* не JSON — не субагент */ }
+    } catch {
+      /* не JSON — не субагент */
+    }
   }
   const synth = new EntrySynthesizer({
     ptySessionId: opts.ptySessionId,
@@ -598,20 +643,25 @@ async function handleRequest(
   // yet the chat showed nothing, the break is downstream (delivery/client).
   let teeBytes = 0
   let teeEvents = 0
-  tee.on("data", (chunk: Buffer) => {
+  tee.on('data', (chunk: Buffer) => {
     teeBytes += chunk.length
     try {
-      const events = parser.push(chunk.toString("utf8"))
-      if (events.length > 0) { teeEvents += events.length; synth.feed(events) }
+      const events = parser.push(chunk.toString('utf8'))
+      if (events.length > 0) {
+        teeEvents += events.length
+        synth.feed(events)
+      }
     } catch (e) {
-      warnLog("[mitm] sse feed error", { error: e instanceof Error ? e.message : String(e) })
+      warnLog('[mitm] sse feed error', { error: e instanceof Error ? e.message : String(e) })
     }
   })
-  tee.on("end", () => {
+  tee.on('end', () => {
     try {
       const tail = parser.end()
       if (tail.length > 0) synth.feed(tail)
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   })
   // CRITICAL: without this listener, tee.destroy(err) on a mid-stream upstream
   // abort emits an unhandled 'error' → uncaughtException. If the message misses
@@ -619,54 +669,107 @@ async function handleRequest(
   // killing EVERY session on the server. Consume it here (verified: a
   // PassThrough with no 'error' listener throws on destroy(err)). The entry is
   // finalized via synth.abort() on the upstream-error / res-close paths.
-  tee.on("error", () => { /* consumed */ })
+  tee.on('error', () => {
+    /* consumed */
+  })
 
   // Distinguishes a clean SSE finish from a mid-stream interrupt: only the
   // latter (user Ctrl+C → res 'close' while this is still false) must recycle
   // the shared pooled socket, so normal turn-ends never pay a re-handshake.
   let sseCompleted = false
   const upstreamNode = Readable.fromWeb(upstream.body)
-  upstreamNode.on("data", (chunk: Buffer) => {
+  upstreamNode.on('data', (chunk: Buffer) => {
     // Feed our entry synthesizer (observation-only — never blocks).
-    try { tee.write(chunk) } catch { /* tee already destroyed */ }
+    try {
+      tee.write(chunk)
+    } catch {
+      /* tee already destroyed */
+    }
     // Forward to CLI without awaiting drain. Backpressure on `res` would
     // otherwise pull on `upstreamNode` (Readable.fromWeb attaches its own
     // backpressure to the underlying ReadableStream) and slow upstream.
     if (!res.writableEnded && !res.destroyed) {
-      try { res.write(chunk) } catch { /* res already gone */ }
+      try {
+        res.write(chunk)
+      } catch {
+        /* res already gone */
+      }
     }
   })
-  upstreamNode.on("end", () => {
+  upstreamNode.on('end', () => {
     sseCompleted = true
-    try { tee.end() } catch { /* ignore */ }
-    if (!res.writableEnded) try { res.end() } catch { /* ignore */ }
+    try {
+      tee.end()
+    } catch {
+      /* ignore */
+    }
+    if (!res.writableEnded)
+      try {
+        res.end()
+      } catch {
+        /* ignore */
+      }
     // DIAG (#73): summarise what this SSE turn tee'd. `events:0` on a completed
     // SSE turn = parser/synth problem; healthy turns show hundreds of events.
-    warnLog("[mitm][diag#73] SSE turn done", { session: opts.ptySessionId, teeBytes, teeEvents })
+    warnLog('[mitm][diag#73] SSE turn done', { session: opts.ptySessionId, teeBytes, teeEvents })
   })
-  upstreamNode.on("error", (err: Error) => {
-    warnLog("[mitm] upstream stream error", { error: err.message })
+  upstreamNode.on('error', (err: Error) => {
+    warnLog('[mitm] upstream stream error', { error: err.message })
     // Recycle the pool so the next request opens a fresh socket instead of
     // reusing the reset one; finalize the synth entry explicitly rather than
     // relying on the res.destroy → res-close chain.
     recycleDispatcherOnReset(err)
-    try { synth.abort("upstream-error", true) } catch { /* ignore */ }
-    try { tee.destroy(err) } catch { /* ignore */ }
-    if (!res.writableEnded && !res.destroyed) try { res.destroy(err) } catch { /* ignore */ }
+    try {
+      synth.abort('upstream-error', true)
+    } catch {
+      /* ignore */
+    }
+    try {
+      tee.destroy(err)
+    } catch {
+      /* ignore */
+    }
+    if (!res.writableEnded && !res.destroyed)
+      try {
+        res.destroy(err)
+      } catch {
+        /* ignore */
+      }
   })
   // A late async write to a dead CLI socket emits 'error' on res; without this
   // listener it becomes an uncaughtException gated on the benign allowlist.
-  res.on("error", (err: Error) => { warnLog("[mitm] res stream error", { error: err.message }) })
-  res.on("close", () => {
+  res.on('error', (err: Error) => {
+    warnLog('[mitm] res stream error', { error: err.message })
+  })
+  res.on('close', () => {
     // `hard` only when the SSE had NOT completed — a genuine mid-stream interrupt.
     // A normal turn-end also fires 'close' and must not latch the synth off (that
     // races the async tee tail and truncates the response).
-    try { synth.abort("client-closed", !sseCompleted) } catch { /* ignore */ }
+    try {
+      synth.abort('client-closed', !sseCompleted)
+    } catch {
+      /* ignore */
+    }
     // Abort the upstream fetch so undici releases the socket (a silent
     // mid-stream stall would otherwise pin it in the pool); pause first so
     // already-queued 'data' events don't fire into the aborted synth.
-    try { ac.abort() } catch { /* ignore */ }
-    if (!upstreamNode.destroyed) { try { upstreamNode.pause() } catch { /* ignore */ } try { upstreamNode.destroy() } catch { /* ignore */ } }
+    try {
+      ac.abort()
+    } catch {
+      /* ignore */
+    }
+    if (!upstreamNode.destroyed) {
+      try {
+        upstreamNode.pause()
+      } catch {
+        /* ignore */
+      }
+      try {
+        upstreamNode.destroy()
+      } catch {
+        /* ignore */
+      }
+    }
     // A mid-stream close (user Ctrl+C) aborts the fetch as an AbortError, which
     // recycleDispatcherOnReset does NOT match — leaving a torn keep-alive socket
     // in the shared pool that starves the NEXT turn's tee→synth (streaming dies

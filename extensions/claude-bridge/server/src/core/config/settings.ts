@@ -17,12 +17,21 @@ import { getDb } from '../stats/database'
 
 // All setting keys
 export type SettingKey =
-  | 'httpProxy' | 'httpsProxy' | 'noProxy' | 'caCert'
-  | 'maxConcurrent' | 'logLevel'
-  | 'maxConcurrentOpus' | 'maxConcurrentSonnet' | 'maxConcurrentHaiku'
-  | 'loopDetection' | 'loopMinRepeats'
-  | 'keepToolResults' | 'toolResultMax'
-  | 'compression' | 'maxRequests'
+  | 'httpProxy'
+  | 'httpsProxy'
+  | 'noProxy'
+  | 'caCert'
+  | 'maxConcurrent'
+  | 'logLevel'
+  | 'maxConcurrentOpus'
+  | 'maxConcurrentSonnet'
+  | 'maxConcurrentHaiku'
+  | 'loopDetection'
+  | 'loopMinRepeats'
+  | 'keepToolResults'
+  | 'toolResultMax'
+  | 'compression'
+  | 'maxRequests'
   | 'sessionCache'
 
 // Env var fallback map
@@ -36,11 +45,11 @@ const ENV_MAP: Record<SettingKey, string | null> = {
   maxConcurrentSonnet: 'CLAUDE_PROXY_MAX_CONCURRENT_SONNET',
   maxConcurrentHaiku: 'CLAUDE_PROXY_MAX_CONCURRENT_HAIKU',
   logLevel: 'CLAUDE_PROXY_LOG_LEVEL',
-  loopDetection: 'CLAUDE_PROXY_DISABLE_LOOP_DETECTION',  // inverted: env "1" = off
+  loopDetection: 'CLAUDE_PROXY_DISABLE_LOOP_DETECTION', // inverted: env "1" = off
   loopMinRepeats: 'CLAUDE_PROXY_LOOP_MIN_REPEATS',
   keepToolResults: 'CLAUDE_PROXY_KEEP_TOOL_RESULTS',
   toolResultMax: 'CLAUDE_PROXY_TOOL_RESULT_MAX',
-  compression: 'CLAUDE_PROXY_DISABLE_COMPRESSION',        // inverted: env "1" = off
+  compression: 'CLAUDE_PROXY_DISABLE_COMPRESSION', // inverted: env "1" = off
   maxRequests: 'CLAUDE_PROXY_MAX_REQUESTS',
   sessionCache: null,
 }
@@ -56,13 +65,13 @@ const DEFAULTS: Record<SettingKey, string> = {
   maxConcurrentSonnet: '6',
   maxConcurrentHaiku: '6',
   logLevel: 'error',
-  loopDetection: '1',      // "1" = on
+  loopDetection: '1', // "1" = on
   loopMinRepeats: '4',
   keepToolResults: '25',
   toolResultMax: '50000',
-  compression: '1',         // "1" = on
+  compression: '1', // "1" = on
   maxRequests: '1000',
-  sessionCache: '1',        // "1" = on
+  sessionCache: '1', // "1" = on
 }
 
 // In-memory cache — hydrated lazily.
@@ -149,6 +158,10 @@ export function getSettingBool(key: 'loopDetection' | 'compression' | 'sessionCa
  * Pass null or empty string to clear (revert to env/default).
  */
 export async function setSetting(key: SettingKey, value: string | null): Promise<void> {
+  if (key === 'caCert' && value?.trim()) {
+    const { readCaFile } = await import('../proxy/outbound-tls')
+    readCaFile(value.trim())
+  }
   const c = ensureCache()
   const d = await getDb()
   if (!value || value.trim() === '') {
@@ -159,7 +172,7 @@ export async function setSetting(key: SettingKey, value: string | null): Promise
     // DuckDB equivalent of SQLite INSERT OR REPLACE.
     await d.run(
       'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value',
-      [key, trimmed]
+      [key, trimmed],
     )
     c[key] = trimmed
   }
@@ -168,7 +181,12 @@ export async function setSetting(key: SettingKey, value: string | null): Promise
     try {
       const { resetExtraTrustRoots } = await import('../proxy/native-mitm')
       resetExtraTrustRoots()
-    } catch { /* native-mitm not loaded yet */ }
+      const { configureOutboundTls } = await import('../proxy/outbound-tls')
+      configureOutboundTls(getSetting('caCert'))
+    } catch (error) {
+      console.error('[bridge] Failed to apply outbound CA configuration', error)
+      throw error
+    }
   }
 }
 
@@ -180,12 +198,21 @@ export async function resetSettings(): Promise<void> {
   const d = await getDb()
   await d.run('DELETE FROM settings')
   for (const key of Object.keys(c)) delete c[key]
+  const { resetExtraTrustRoots } = await import('../proxy/native-mitm')
+  resetExtraTrustRoots()
+  const { configureOutboundTls } = await import('../proxy/outbound-tls')
+  configureOutboundTls(getSetting('caCert'))
 }
 
 /**
  * Get all proxy-related settings (for dashboard display).
  */
-export function getProxySettings(): { httpProxy: string | null; httpsProxy: string | null; noProxy: string | null; caCert: string | null } {
+export function getProxySettings(): {
+  httpProxy: string | null
+  httpsProxy: string | null
+  noProxy: string | null
+  caCert: string | null
+} {
   return {
     httpProxy: getSetting('httpProxy') || null,
     httpsProxy: getSetting('httpsProxy') || null,
@@ -240,17 +267,32 @@ export function injectProxyEnv(env: Record<string, string>): void {
   const httpsProxy = getSetting('httpsProxy')
   const noProxy = getSetting('noProxy')
   const caCert = getSetting('caCert')
-  if (httpProxy) { env.HTTP_PROXY = httpProxy; env.http_proxy = httpProxy }
-  if (httpsProxy) { env.HTTPS_PROXY = httpsProxy; env.https_proxy = httpsProxy }
-  if (caCert) { env.NODE_EXTRA_CA_CERTS = caCert }
+  if (httpProxy) {
+    env.HTTP_PROXY = httpProxy
+    env.http_proxy = httpProxy
+  }
+  if (httpsProxy) {
+    env.HTTPS_PROXY = httpsProxy
+    env.https_proxy = httpsProxy
+  }
+  if (caCert) {
+    env.NODE_EXTRA_CA_CERTS = caCert
+  }
 
   // Ensure localhost/loopback traffic always bypasses proxy — MCP server runs on 127.0.0.1
   if (httpProxy || httpsProxy) {
     const loopback = '127.0.0.1,localhost,::1'
     const parts = [noProxy, env.NO_PROXY, env.no_proxy, loopback].filter(Boolean)
-    const merged = [...new Set(parts.join(',').split(',').map(s => s.trim()).filter(Boolean))].join(',')
+    const merged = [
+      ...new Set(
+        parts
+          .join(',')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+      ),
+    ].join(',')
     env.NO_PROXY = merged
     env.no_proxy = merged
-
   }
 }
