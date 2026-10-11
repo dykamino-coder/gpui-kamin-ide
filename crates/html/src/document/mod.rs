@@ -15,6 +15,7 @@ mod embedded;
 mod logical_properties;
 #[cfg(test)]
 mod tests;
+mod viewport;
 mod writing_mode;
 use crate::document::canvas_background::any_containment;
 use crate::document::canvas_background::any_side;
@@ -49,9 +50,7 @@ impl Document {
         crate::text::paragraph::forget_measures();
         crate::layout::table::paint::forget_row_rects();
         crate::text::vertical::forget_vt_measures();
-        let (nodes, root) = unwrap_document(mark_canvas_background(resolve_logical(
-            propagate_writing_mode(viewport_overflow(crate::dom::parse(html, theme_css))),
-        )));
+        let (nodes, root) = viewport::prepare(crate::dom::parse(html, theme_css));
         Document {
             nodes,
             root,
@@ -75,9 +74,7 @@ impl Document {
         if key == self.key {
             return false;
         }
-        let (nodes, root) = unwrap_document(mark_canvas_background(resolve_logical(
-            propagate_writing_mode(viewport_overflow(crate::dom::parse(html, theme_css))),
-        )));
+        let (nodes, root) = viewport::prepare(crate::dom::parse(html, theme_css));
         self.nodes = nodes;
         self.root = root;
         self.key = key;

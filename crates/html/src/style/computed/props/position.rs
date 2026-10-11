@@ -103,11 +103,21 @@ impl Computed {
                 let mut it = v.split_whitespace();
                 let x = it.next().and_then(parse_overflow);
                 let y = it.next().and_then(parse_overflow).or(x);
+                self.scroll.forced = [
+                    v.split_whitespace().next() == Some("scroll"),
+                    v.split_whitespace().nth(1).or(v.split_whitespace().next()) == Some("scroll"),
+                ];
                 self.overflow_x = x;
                 self.overflow_y = y;
             }
-            "overflow-x" => self.overflow_x = parse_overflow(v),
-            "overflow-y" => self.overflow_y = parse_overflow(v),
+            "overflow-x" => {
+                self.overflow_x = parse_overflow(v);
+                self.scroll.forced[0] = v == "scroll";
+            }
+            "overflow-y" => {
+                self.overflow_y = parse_overflow(v);
+                self.scroll.forced[1] = v == "scroll";
+            }
             "opacity" => self.opacity = v.parse().ok(),
             // Поле обрезки: край, по которому режется вылезшее содержимое,
             // отодвигается наружу (css-overflow-3 §5). Запись допускает и
