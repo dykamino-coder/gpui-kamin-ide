@@ -245,8 +245,14 @@ fn main() {
                     )
                 })
                 .unwrap_or(WindowBounds::Windowed(bounds));
+            // Debug acceptance on the owner's desktop: show without activating.
+            #[cfg(debug_assertions)]
+            let focus = !native_acceptance::config::Config::from_env().no_activate;
+            #[cfg(not(debug_assertions))]
+            let focus = true;
             let options = WindowOptions {
                 window_bounds: Some(window_bounds),
+                focus,
                 // Нативный хедер убит: frameless, титлбар рисуем сами
                 // (ui/titlebar). Заголовок всё равно задаём — им подписаны
                 // строки диспетчера задач и Alt+Tab.
