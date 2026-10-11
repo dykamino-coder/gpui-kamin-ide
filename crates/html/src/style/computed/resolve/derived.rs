@@ -62,6 +62,7 @@ impl Computed {
             vertical_align_text: self.vertical_align_text,
             vertical_align_base: self.vertical_align_base,
             rel_shift: self.rel_shift,
+            box_shift: self.box_shift,
             text_fit: self.text_fit,
             hyphen_char: self.hyphen_char.clone(),
             // Кусок, собранный из `text_only`, бывает родителем: без базы он

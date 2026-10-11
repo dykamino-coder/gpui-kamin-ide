@@ -21,22 +21,6 @@ pub(crate) fn overlay_in_row(el: AnyElement) -> AnyElement {
     }
 }
 
-/// Относительный сдвиг коробки в точках: `left - right`, `top - bottom`
-/// (CSS 2.1 §9.4.3). Нулевой, если элемент не относительный.
-pub(super) fn relative_inset(style: &Computed) -> (f32, f32) {
-    if style.position != Some(crate::style::computed::Position::Relative) {
-        return (0.0, 0.0);
-    }
-    let px_of = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
-    (
-        px_of(style.inset.left) - px_of(style.inset.right),
-        px_of(style.inset.top) - px_of(style.inset.bottom),
-    )
-}
-
 /// Сдвинуть куски вне потока на относительный сдвиг их строчного предка.
 ///
 /// `rotated` — абзац повёрнутого вертикального письма. Там до-поворотная

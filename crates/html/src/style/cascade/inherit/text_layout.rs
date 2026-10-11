@@ -71,6 +71,7 @@ pub(super) fn inherit_text_layout(parent: &Computed, own: &Computed, c: &mut Com
     }
     c.text_emphasis = own.text_emphasis.clone().or(parent.text_emphasis.clone());
     c.emphasis_under = own.emphasis_under || parent.emphasis_under;
+    c.emphasis_left = own.emphasis_left || parent.emphasis_left;
     c.emphasis_color = own.emphasis_color.or(parent.emphasis_color);
     // css-ruby-1 §4.1/§4.3: оба свойства наследуемые.
     c.ruby_under = own.ruby_under.or(parent.ruby_under);

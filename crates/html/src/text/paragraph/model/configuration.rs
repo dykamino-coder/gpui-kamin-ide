@@ -7,7 +7,10 @@ use gpui::{ElementId, Hsla, Pixels};
 
 impl Paragraph {
     /// Сдвиг кусков по вертикали: отрезок байт → смещение базовой линии.
-    pub fn rel_spans(mut self, spans: Vec<(std::ops::Range<usize>, (f32, f32))>) -> Self {
+    pub fn rel_spans(
+        mut self,
+        spans: Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))>,
+    ) -> Self {
         self.rel_spans = spans;
         self
     }

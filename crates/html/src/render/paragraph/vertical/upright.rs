@@ -38,7 +38,14 @@ pub(crate) fn upright_paragraph(
         _ => em,
     };
     stack.line_height = Some(Len::Px(em));
-    let inner = paragraph(nodes, &stack, opts);
+    // Стопка набрана горизонтально, а физические лево и право строчной
+    // коробки в вертикальном письме — БЛОЧНАЯ ось (css-writing-modes-4
+    // §6.4, Abstract-Physical Mapping): её поля, отбивки и рамки строку не
+    // удлиняют. В горизонтальной стопке они раздвигали знаки
+    // (`line-box-height-vlr-011`: `border-left: 1.5em` у `<span>`
+    // вставлял пустую строку между «2» и «3»).
+    let nodes: Vec<Node> = nodes.iter().map(drop_block_axis_sides).collect();
+    let inner = paragraph(&nodes, &stack, opts);
     div()
         .w(px(lane.max(em)))
         .flex_shrink_0()
@@ -46,4 +53,24 @@ pub(crate) fn upright_paragraph(
         .justify_center()
         .child(div().w(px(em * 0.9)).flex_shrink_0().child(inner))
         .into_any_element()
+}
+
+/// Строчные элементы без физических левых и правых полей, отбивок и рамок.
+fn drop_block_axis_sides(n: &Node) -> Node {
+    match n {
+        Node::Element(e) if e.inline && e.style.display.is_none() => {
+            let mut e = e.clone();
+            for sides in [
+                &mut e.style.margin,
+                &mut e.style.padding,
+                &mut e.style.border_width,
+            ] {
+                sides.left = None;
+                sides.right = None;
+            }
+            e.children = e.children.iter().map(drop_block_axis_sides).collect();
+            Node::Element(e)
+        }
+        other => other.clone(),
+    }
 }

@@ -48,7 +48,7 @@ impl Paragraph {
             }
             // Сдвиг по вертикали — свойство самого глифа: он обязан ехать
             // отдельным вызовом целиком.
-            for (r, _) in self.rel_spans.iter() {
+            for (r, _, _) in self.rel_spans.iter() {
                 cut(r.start);
                 cut(r.end);
             }
