@@ -66,10 +66,12 @@ pub(super) fn finish_stack_child(
     // число копий, и стопка без такого ребёнка байт-в-байт
     // прежняя (`ColumnStack::new` берёт наибольшее число копий).
     let kid_copies = kid_copy_count(e, rows, copies, fixed, copy, h, over, measure, span);
-    stack_child_of(
+    let mut child = stack_child_of(
         ix, mt, mb, kid_par, col_vert, rows, fixed, dec, copy, cuts, forced, solid, h, over, rel,
         build, measure, monolith, span, kid_copies,
-    )
+    );
+    child.fit_whole = whole && fixed.is_some() && measure.is_some();
+    child
 }
 
 #[allow(clippy::too_many_arguments)]

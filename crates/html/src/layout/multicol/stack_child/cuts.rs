@@ -147,6 +147,7 @@ pub(super) fn stack_child_of(
                 .collect()
         },
         monolith,
+        fit_whole: false,
         cuts,
         // Тот же подъём, что в мере (Х5): иначе
         // укладка колонок не увидит разрыва,
