@@ -91,8 +91,28 @@ pub(super) fn local_image_source<'a>(
         (None, Some(path)) => gpui::img(std::path::PathBuf::from(path)),
         (None, None) => gpui::img(SharedString::from(src.to_string())),
     };
+    // css-images-3 §image-rendering: `pixelated` scales by nearest neighbour.
+    image = image.pixelated(e.style.image_pixelated == Some(true));
     if e.style.filter.is_some_and(|f| f.grayscale > 0.5) {
         image = image.grayscale(true);
+    }
+    // Содержимое замещаемого режется кривой ВНУТРЕННЕГО края его поля
+    // содержимого (css-backgrounds-3 §5.3: «the replaced element's content
+    // is clipped to the curve of the content edge»): радиус угла минус
+    // рамка и отбивка прилегающих сторон (`origin-*-box_with_radius-ref`:
+    // `img { border-top-left-radius: 60px }`).
+    let [tl, tr, br, bl] = content_radii(&e.style);
+    if tl > 0.0 {
+        image = image.rounded_tl(px(tl));
+    }
+    if tr > 0.0 {
+        image = image.rounded_tr(px(tr));
+    }
+    if br > 0.0 {
+        image = image.rounded_br(px(br));
+    }
+    if bl > 0.0 {
+        image = image.rounded_bl(px(bl));
     }
     Ok((local, d, image))
 }
@@ -123,6 +143,7 @@ pub(super) fn piped_image(
         // положить руками: иначе `image-orientation: none` вместе с
         // `object-fit`/`object-position` уходил бы мимо ключа источника.
         bgc.image_orient_none = e.style.image_orient_none;
+        bgc.image_pixelated = e.style.image_pixelated;
         bgc.bg_size = match e.style.object_fit.as_deref() {
             Some("contain") => BgSize::Contain,
             Some("cover") => BgSize::Cover,
@@ -192,4 +213,27 @@ pub(super) fn piped_image(
         }
     }
     Err(d)
+}
+
+/// Радиусы углов края содержимого (tl, tr, br, bl) в точках; круговое
+/// приближение — меньшая из двух осей угла.
+fn content_radii(s: &crate::style::computed::Computed) -> [f32; 4] {
+    let v = |l: Option<Len>| match l {
+        Some(Len::Px(x)) => x.max(0.0),
+        _ => 0.0,
+    };
+    let b = s.borders();
+    let (top, right, bottom, left) = (
+        v(b.top) + v(s.padding.top),
+        v(b.right) + v(s.padding.right),
+        v(b.bottom) + v(s.padding.bottom),
+        v(b.left) + v(s.padding.left),
+    );
+    let inner = |r: f32, h: f32, w: f32| (r - h.max(w)).max(0.0);
+    [
+        inner(v(s.radius.tl), left, top),
+        inner(v(s.radius.tr), right, top),
+        inner(v(s.radius.br), right, bottom),
+        inner(v(s.radius.bl), left, bottom),
+    ]
 }

@@ -96,6 +96,9 @@ pub(super) fn inherit_containing(parent: &Computed, own: &Computed, c: &mut Comp
     if c.rel_shift.is_none() {
         c.rel_shift = parent.rel_shift;
     }
+    if c.box_shift.is_none() {
+        c.box_shift = parent.box_shift;
+    }
     // §10.5: доля высоты считается только от ОПРЕДЕЛЁННОЙ высоты содержащего
     // блока. Определена она у корня (его блок — начальный), при высоте
     // родителя в точках, при доле от определённого деда и у абсолютной

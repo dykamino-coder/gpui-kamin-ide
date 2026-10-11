@@ -84,10 +84,6 @@ pub fn paint_tiles(
         ],
         _ => [0.0; 4],
     };
-    let radius = match c.radius.tl {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
     // `image-orientation` действует и на ФОНОВУЮ картинку (css-images-3 §5.4,
     // «Applies to: all elements»): развёрнутый и сырой растр — разные
     // картинки с разным природным размером, и ключ обязан их различать
@@ -159,7 +155,7 @@ pub fn paint_tiles(
     // Область позиционирования — по неокруглённой коробке, когда слой её
     // знает (`exact_layer`); краска режется округлённой (`paint_box` выше).
     draw_tiles(
-        c, bounds, canvas, window, inset, radius, found, paint_box, size, repeat, pos, fixed_area,
-        border, px_of,
+        c, bounds, canvas, window, inset, found, paint_box, size, repeat, pos, fixed_area, border,
+        px_of,
     );
 }

@@ -189,7 +189,10 @@ pub(super) fn pseudo_box_named(
         // absolutely positioned one keeps that original inline display for
         // its static position (CSS 2.1 §10.3.7 hypothetical box), so `PASS`
         // of `span::after { position: absolute }` stays on the span's line.
-        inline: true,
+        // An anchor-positioned one is placed from its anchor instead: the
+        // anchor pass shifts the laid-out box, and an inline placeholder put
+        // it one device row off (`position-anchor-*-pseudo-element-*`).
+        inline: !anchor_positioned(&style),
         tag: format!("::{tag}"),
         style,
         hover: None,
@@ -198,4 +201,21 @@ pub(super) fn pseudo_box_named(
         children,
         attrs: vec![],
     })
+}
+
+/// Absolutely positioned and placed against an anchor: `position-area`, an `anchor()` inset,
+/// `anchor-center` or a named `position-anchor` (css-anchor-position-1).
+fn anchor_positioned(c: &crate::style::computed::Computed) -> bool {
+    use crate::style::computed::{Align, Position, PositionAnchor};
+    use crate::style::values::value::Len;
+    let abspos = matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed));
+    let i = &c.inset;
+    abspos
+        && (c.position_area.is_some()
+            || [i.top, i.right, i.bottom, i.left]
+                .iter()
+                .any(|l| matches!(l, Some(Len::Anchor(_))))
+            || c.align_self == Some(Align::AnchorCenter)
+            || c.justify_self == Some(Align::AnchorCenter)
+            || matches!(c.position_anchor, Some(PositionAnchor::Named(_))))
 }

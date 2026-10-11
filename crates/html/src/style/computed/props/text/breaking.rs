@@ -168,7 +168,12 @@ impl Computed {
                 self.hyphen_char = Some(if v == "auto" {
                     "\u{2010}".to_string()
                 } else {
-                    v.trim_matches(['"', '\'']).to_string()
+                    // Экранирования строки CSS (css-syntax-3 §4.3.7):
+                    // `"\00a0\0640"` — два знака, а не текст
+                    // (`hyphenate-character-005`).
+                    crate::style::computed::parse_util::unescape_content(
+                        v.trim_matches(['"', '\'']),
+                    )
                 });
             }
             "text-fit" => {

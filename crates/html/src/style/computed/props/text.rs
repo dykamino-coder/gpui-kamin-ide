@@ -91,7 +91,20 @@ impl Computed {
                     _ => self.no_justify,
                 };
             }
-            "text-align" => {
+            // `text-align` — сокращение (css-text-4 §text-align): `match-parent`
+            // ставит его обоим лонгхендам; `text-align-all` — только всем
+            // строкам, кроме последней.
+            "text-align" | "text-align-all" if v == "match-parent" => {
+                self.text_align = None;
+                self.text_align_match_parent |= if key == "text-align" { 3 } else { 1 };
+            }
+            "text-align" | "text-align-all" => {
+                if matches!(
+                    v,
+                    "center" | "right" | "left" | "start" | "end" | "justify" | "justify-all"
+                ) {
+                    self.text_align_match_parent &= if key == "text-align" { 0 } else { 2 };
+                }
                 self.text_align = match v {
                     "center" => Some(TextAlign::Center),
                     "right" => Some(TextAlign::Right),
@@ -104,11 +117,18 @@ impl Computed {
                 // `justify-all` — это выключка ВМЕСТЕ с последней строкой:
                 // сокращение от `text-align: justify` + `text-align-last:
                 // justify`.
-                if v == "justify-all" {
+                if v == "justify-all" && key == "text-align" {
                     self.text_align_last = Some(TextAlign::Justify);
                 }
             }
+            "text-align-last" if v == "match-parent" => {
+                self.text_align_last = None;
+                self.text_align_match_parent |= 2;
+            }
             "text-align-last" => {
+                if v != "auto" && v != "inherit" {
+                    self.text_align_match_parent &= 1;
+                }
                 self.text_align_last = match v {
                     "center" => Some(TextAlign::Center),
                     "right" => Some(TextAlign::Right),

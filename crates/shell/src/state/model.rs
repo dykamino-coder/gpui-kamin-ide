@@ -120,9 +120,9 @@ pub struct RootView {
     /// Сессия в процессе открытия (спиннер на чипе до open в снапшоте).
     pub switching_to: Option<String>,
     /// Шторка переключения чата: (когда поднята, когда начала гаснуть).
-    /// Ставится на ЛЮБОЙ переход session→session, снимается по первому
-    /// сообщению чат-вебвью или по таймауту 2500 мс, уходит фейдом 140 мс.
     pub chat_cover: Option<(std::time::Instant, Option<std::time::Instant>)>,
+    /// Один отложенный тик для retry/deadline видимых лоадеров.
+    pub(crate) loader_tick: Option<gpui::Task<()>>,
     /// Вью, чей скрипт уже слал ipc; остальные показывают loading cover.
     pub webviews_alive: std::collections::HashSet<String>,
     pub(crate) webview_slots: super::webview_visibility::Slots,

@@ -1,5 +1,6 @@
-# Launch a disposable DEBUG candidate; restore the two app-scoped D3D overrides.
-# Requires Windows Graphics Tools only for -Warp / -DeviceLoss.
+# Launch a disposable DEBUG candidate with application-level acceptance seams.
+# No system-wide DirectX/graphics setting is read or changed: WARP and device
+# loss are requested from the debug build itself through its environment.
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$Exe,
@@ -9,9 +10,11 @@ param(
     [switch]$DeviceLoss,
     [switch]$ReducedAnimations,
     [switch]$SoftwareCef,
-    [switch]$WithHost
+    [switch]$WithHost,
+    [switch]$Wait
 )
 $ErrorActionPreference = 'Stop'
+if ($Warp -and $DeviceLoss) { throw '-Warp and -DeviceLoss select different GPUI devices; run them separately.' }
 $candidate = (Resolve-Path -LiteralPath $Exe).Path
 $bytes = [IO.File]::ReadAllBytes($candidate)
 if (![Text.Encoding]::UTF8.GetString($bytes).Contains('debug-native-acceptance-v1')) {
@@ -35,77 +38,51 @@ try {
 } catch [AggregateException] {
     # Connection refused means the requested isolated port is free.
 } finally { $probeSocket.Dispose() }
+if ($WithHost -and !(Test-Path -LiteralPath (Join-Path (Split-Path -Parent $candidate) 'reg.exe'))) {
+    # A host-enabled debug build self-registers the Explorer menu through `reg`.
+    throw '-WithHost requires a stub reg.exe next to the candidate exe.'
+}
 New-Item -ItemType Directory -Path $evidence | Out-Null
-$appName = "kaminide-native-acceptance-$PID.exe"
-$appExe = Join-Path (Split-Path -Parent $candidate) $appName
-if (Test-Path -LiteralPath $appExe) { throw 'Acceptance executable already exists.' }
-$d3d = $null
-$original = @{}
-$added = $false
 $process = $null
 $savedEnv = @{}
 function Set-AppEnvironment([string]$Name, [string]$Value) {
     $savedEnv[$Name] = [Environment]::GetEnvironmentVariable($Name, 'Process')
-    [Environment]::SetEnvironmentVariable($Name, $Value, 'Process')
+    # A [string] parameter turns $null into '' and '' would still define the
+    # variable (KAMIN_CEF_FORCE_SW='' forces software CEF): remove it instead.
+    $effective = if ([string]::IsNullOrEmpty($Value)) { [NullString]::Value } else { $Value }
+    [Environment]::SetEnvironmentVariable($Name, $effective, 'Process')
 }
-function Invoke-D3D([string[]]$Arguments) {
-    $output = & $d3d @Arguments 2>&1
-    $code = $LASTEXITCODE
-    $output | Out-File -LiteralPath (Join-Path $evidence 'd3dconfig.log') -Append -Encoding utf8
-    if ($code -ne 0) { throw 'D3DConfig failed; see private d3dconfig.log.' }
-    return $output
-}
+$device = if ($Warp) { 'warp' } elseif ($DeviceLoss) { 'd3d11on12' } else { $null }
 try {
-    Copy-Item -LiteralPath $candidate -Destination $appExe
-    if ($Warp -or $DeviceLoss) {
-        $d3d = (Get-Command d3dconfig.exe -ErrorAction Stop).Source
-        $apps = (Invoke-D3D -Arguments @('apps')) -join "`n"
-        # Settings apply to ALL listed apps. Refuse an existing list instead of
-        # forcing another application or replacing the user's configuration.
-        if ($apps -notmatch '<no apps>') { throw 'D3DConfig has existing apps; use a disposable Windows account with an empty app list.' }
-        $settings = (Invoke-D3D -Arguments @('device')) -join "`n"
-        foreach ($setting in @('force-warp', 'force-d3d11on12')) {
-            $settingMatch = [regex]::Match($settings, "(?m)^$setting=(true|false)\s*$")
-            if (!$settingMatch.Success) { throw 'Cannot preserve D3DConfig settings.' }
-            $original[$setting] = $settingMatch.Groups[1].Value
-        }
-        Invoke-D3D -Arguments @('apps', '--add', $appExe) | Out-Null
-        $added = $true
-        if ($Warp) { Invoke-D3D -Arguments @('device', 'force-warp=true') | Out-Null }
-        if ($DeviceLoss) { Invoke-D3D -Arguments @('device', 'force-d3d11on12=true') | Out-Null }
-    }
-    foreach ($name in @('LOCALAPPDATA', 'APPDATA', 'TEMP', 'TMP')) {
+    foreach ($name in @('LOCALAPPDATA', 'APPDATA', 'TEMP', 'TMP', 'USERPROFILE')) {
         $profileDir = Join-Path $evidence $name
         New-Item -ItemType Directory -Path $profileDir | Out-Null
         Set-AppEnvironment $name $profileDir
     }
+    Set-AppEnvironment 'HOME' (Join-Path $evidence 'USERPROFILE')
     Set-AppEnvironment 'KAMIN_PROBE_PORT' ([string]$Port)
     Set-AppEnvironment 'KAMIN_DEBUG_LOADERS' '1'
     Set-AppEnvironment 'KAMIN_DEBUG_NO_HOST' $(if ($WithHost) { '0' } else { '1' })
+    Set-AppEnvironment 'KAMIN_DEBUG_NO_ACTIVATE' '1'
     Set-AppEnvironment 'KAMIN_DEBUG_REDUCED_ANIMATIONS' $(if ($ReducedAnimations) { '1' } else { '0' })
     Set-AppEnvironment 'KAMIN_DEBUG_SOFTWARE_POLICY' $(if ($Warp) { '1' } else { '0' })
+    Set-AppEnvironment 'KAMIN_DEBUG_D3D_DEVICE' $device
     Set-AppEnvironment 'KAMIN_CEF_FORCE_SW' $(if ($SoftwareCef) { '1' } else { $null })
     Set-AppEnvironment 'KAMIN_DEV_REPO' $repo
-    @{ candidate_sha = (git -C $repo rev-parse HEAD); source_exe_sha256 = (Get-FileHash -LiteralPath $candidate).Hash;
-       port = $Port; warp_requested = [bool]$Warp; device_loss_supported_requested = [bool]$DeviceLoss;
-       reduced_animations = [bool]$ReducedAnimations; software_cef = [bool]$SoftwareCef;
-       started_utc = [DateTime]::UtcNow.ToString('o') } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'manifest.json')
+    $manifest = [ordered]@{ candidate_sha = (git -C $repo rev-parse HEAD); source_exe_sha256 = (Get-FileHash -LiteralPath $candidate).Hash;
+       port = $Port; d3d_device = $(if ($device) { $device } else { 'default' }); reduced_animations = [bool]$ReducedAnimations;
+       software_cef = [bool]$SoftwareCef; with_host = [bool]$WithHost; no_activate = $true;
+       started_utc = [DateTime]::UtcNow.ToString('o') }
     # This is the interactive acceptance GUI, not a background helper: Hidden
-    # also hides GPUI's first window and makes visible-loader acceptance fail.
-    $process = Start-Process -FilePath $appExe -WorkingDirectory $repo -PassThru -WindowStyle Normal `
+    # also hides GPUI's first window. KAMIN_DEBUG_NO_ACTIVATE shows it without
+    # taking the foreground from the operator's current application.
+    $process = Start-Process -FilePath $candidate -WorkingDirectory $repo -PassThru -WindowStyle Normal `
         -RedirectStandardOutput (Join-Path $evidence 'stdout.log') -RedirectStandardError (Join-Path $evidence 'stderr.log')
+    $manifest['pid'] = $process.Id
+    $manifest | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'manifest.json')
+    Write-Host "Acceptance PID=$($process.Id), probe=$Port, d3d_device=$($manifest['d3d_device'])."
+} finally {
     # Restore the launcher's process environment as soon as the child inherits it.
     foreach ($name in $savedEnv.Keys) { [Environment]::SetEnvironmentVariable($name, $savedEnv[$name], 'Process') }
-    Write-Host "Acceptance PID=$($process.Id), probe=$Port. Close the application to restore D3DConfig."
-    $process.WaitForExit()
-} finally {
-    foreach ($name in $savedEnv.Keys) { [Environment]::SetEnvironmentVariable($name, $savedEnv[$name], 'Process') }
-    if ($process -and !$process.HasExited) { $process.WaitForExit() }
-    if ($added) {
-        # Even if restoring one setting fails, still remove the exact test app.
-        try {
-            foreach ($setting in $original.Keys) { Invoke-D3D -Arguments @('device', "$setting=$($original[$setting])") | Out-Null }
-        } finally { Invoke-D3D -Arguments @('apps', '--remove', $appExe) | Out-Null }
-    }
-    if (Test-Path -LiteralPath $appExe) { Remove-Item -LiteralPath $appExe }
 }
+if ($Wait -and $process) { $process.WaitForExit() }

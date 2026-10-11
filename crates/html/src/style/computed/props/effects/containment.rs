@@ -153,6 +153,13 @@ impl Computed {
                     _ => Some(0),
                 }
             }
+            "image-rendering" => {
+                self.image_pixelated = match v {
+                    "pixelated" | "crisp-edges" => Some(true),
+                    "auto" | "smooth" | "high-quality" => Some(false),
+                    _ => self.image_pixelated,
+                }
+            }
             "isolation" => self.isolate = Some(v == "isolate"),
             "user-select" | "-webkit-user-select" => self.no_select = Some(matches!(v, "none")),
             _ => *hit = false,

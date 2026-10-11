@@ -202,6 +202,7 @@ fn view_boxed(e: &Element, vb: (u8, [Len; 4])) -> Option<AnyElement> {
     let (sx, sy) = (bw / vw, bh / vh);
     let picture = gpui::img(ready)
         .preserve_natural_pixels(true)
+        .pixelated(e.style.image_pixelated == Some(true))
         .absolute()
         .left(px(-vx * sx))
         .top(px(-vy * sy))

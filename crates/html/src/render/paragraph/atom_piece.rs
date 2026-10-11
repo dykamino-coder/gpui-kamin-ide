@@ -28,6 +28,25 @@ pub(crate) fn atom_piece(
     opts: &RenderOpts,
     flow_text: bool,
 ) -> Option<inline::Piece> {
+    // Атом внутри строчного предка наследует от НЕГО (`atom_parent`).
+    // Пока только атомы В ПОТОКЕ: абсолют внутри `rtl`-спана, унаследовав
+    // его направление, ставит статическую позицию от правого края, а наш
+    // расчёт этого не умеет (`static-position/htb-ltr-rtl.tentative`
+    // краснел) — внепоточным прежний путь.
+    let parent_style = inline::atom_parent::current().filter(|_| !out_of_flow(&e.style));
+    let inherited = parent_style.as_ref().unwrap_or(inherited);
+    let saved = inline::atom_parent::suspend();
+    let piece = atom_piece_in(e, inherited, opts, flow_text);
+    inline::atom_parent::resume(saved);
+    piece
+}
+
+fn atom_piece_in(
+    e: &Element,
+    inherited: &Computed,
+    opts: &RenderOpts,
+    flow_text: bool,
+) -> Option<inline::Piece> {
     let in_inline_cb = crate::text::inline::take_atom_cb();
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);

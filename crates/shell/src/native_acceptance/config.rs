@@ -6,6 +6,9 @@ pub(crate) struct Config {
     pub(crate) reduced_animations: bool,
     pub(crate) software_policy: bool,
     pub(crate) no_host: bool,
+    /// Show the acceptance window without activating it (no focus stealing
+    /// when a capture runs on the owner's interactive desktop).
+    pub(crate) no_activate: bool,
 }
 
 impl Config {
@@ -21,6 +24,7 @@ impl Config {
             reduced_animations: _env("KAMIN_DEBUG_REDUCED_ANIMATIONS").as_deref() == Some("1"),
             software_policy: _env("KAMIN_DEBUG_SOFTWARE_POLICY").as_deref() == Some("1"),
             no_host: _env("KAMIN_DEBUG_NO_HOST").as_deref() == Some("1"),
+            no_activate: _env("KAMIN_DEBUG_NO_ACTIVATE").as_deref() == Some("1"),
         };
         #[cfg(not(debug_assertions))]
         Self::default()
@@ -37,11 +41,12 @@ mod tests {
             reads.set(reads.get() + 1);
             Some("1".into())
         });
-        assert_eq!(reads.get(), if cfg!(debug_assertions) { 4 } else { 0 });
+        assert_eq!(reads.get(), if cfg!(debug_assertions) { 5 } else { 0 });
         assert_eq!(config.loaders, cfg!(debug_assertions));
         assert_eq!(config.reduced_animations, cfg!(debug_assertions));
         assert_eq!(config.software_policy, cfg!(debug_assertions));
         assert_eq!(config.no_host, cfg!(debug_assertions));
+        assert_eq!(config.no_activate, cfg!(debug_assertions));
         assert_eq!(Config::read(|_| Some("true".into())), Config::default());
         assert_eq!(Config::read(|_| None), Config::default());
         let _ = Config::from_env();

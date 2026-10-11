@@ -84,9 +84,9 @@ pub(super) fn contained_image(
                     None => gpui::img(SharedString::from(src.to_string())),
                 }
             }
-            Some(crate::paint::background::Source::Raster(ready)) => {
-                gpui::img(ready).preserve_natural_pixels(true)
-            }
+            Some(crate::paint::background::Source::Raster(ready)) => gpui::img(ready)
+                .preserve_natural_pixels(true)
+                .pixelated(e.style.image_pixelated == Some(true)),
             _ => match local {
                 Some(path) => gpui::img(std::path::PathBuf::from(path)),
                 None => gpui::img(SharedString::from(src.to_string())),

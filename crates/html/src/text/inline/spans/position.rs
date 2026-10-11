@@ -7,7 +7,7 @@ use crate::text::inline::*;
 ///
 /// Отдельно от `shift_spans`: тот растит строчную коробку, а относительный
 /// сдвиг на поток не влияет вовсе (CSS 2.1 §9.4.3).
-pub fn rel_spans(pieces: &[Piece]) -> Vec<(std::ops::Range<usize>, (f32, f32))> {
+pub fn rel_spans(pieces: &[Piece]) -> Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))> {
     let mut out = Vec::new();
     let mut at = 0usize;
     for p in pieces {
@@ -18,7 +18,7 @@ pub fn rel_spans(pieces: &[Piece]) -> Vec<(std::ops::Range<usize>, (f32, f32))> 
         if let Some(d) = style.rel_shift
             && d != (0.0, 0.0)
         {
-            out.push((at..end, d));
+            out.push((at..end, d, style.box_shift.unwrap_or((0.0, 0.0))));
         }
         at = end;
     }

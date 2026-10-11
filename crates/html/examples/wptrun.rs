@@ -23,6 +23,8 @@ mod capture_dump;
 mod capture_name;
 #[path = "wptrun/config.rs"]
 mod config;
+#[path = "wptrun/css_scan.rs"]
+mod css_scan;
 #[path = "wptrun/frame_metrics.rs"]
 mod frame_metrics;
 #[path = "wptrun/html_attrs.rs"]

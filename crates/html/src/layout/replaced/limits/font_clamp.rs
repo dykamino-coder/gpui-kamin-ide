@@ -37,6 +37,10 @@ pub(crate) fn with_inherited_font(e: &Element, inherited: &Computed) -> Element 
     // `color` наследуется (CSS 2.1 §14.1), а цвет рамки по умолчанию —
     // `currentColor` (css-backgrounds-3 §4.1): без переноса рамка картинки
     // в белом абзаце рисовалась чёрной (`c44-ln-box-001/002/003`).
+    // `image-rendering` тоже наследуется (css-images-3 §image-rendering).
+    if copy.style.image_pixelated.is_none() {
+        copy.style.image_pixelated = inherited.image_pixelated;
+    }
     if copy.style.color.is_none() {
         copy.style.color = inherited.color;
     }

@@ -87,22 +87,16 @@ pub(crate) fn paragraph_spans(
             v.retain(|(r, _)| !in_edge(edges, r));
             v
         })
-        // В повёрнутом абзаце руби в строку не идёт и строку не растит
-        // (`atoms_fit_line`), а эталоны акцента сделаны из руби: рост
-        // только у горизонтального (`text-emphasis-line-height-003*/004*`).
-        .emph_spans(
-            if inherited.rotated_line == Some(true) || inherited.vertical == Some(true) {
-                Vec::new()
-            } else {
-                inline::emphasis_spans(
-                    pieces,
-                    biggest,
-                    crate::text::metrics::normal_line(
-                        &inherited.font_family.clone().unwrap_or_default(),
-                    ),
-                )
-            },
-        )
+        // Знаки акцента рисует и повёрнутый абзац вертикального письма: он
+        // набран горизонтально, и сторону знака переводит `emphasis_spans`
+        // (`text-emphasis-line-height-003*/004*`).
+        .emph_spans(inline::emphasis_spans(
+            pieces,
+            biggest,
+            crate::text::metrics::normal_line(&inherited.font_family.clone().unwrap_or_default()),
+            (inherited.rotated_line == Some(true) || inherited.vertical == Some(true))
+                .then(|| inherited.sideways == Some(true) && inherited.vertical_rl != Some(true)),
+        ))
         // Линии украшений рисует сам абзац (css-text-decor-3 §2); у
         // повёрнутого — прежний путь набора.
         .decor_spans(inline::decor_spans(pieces, &opts.text))

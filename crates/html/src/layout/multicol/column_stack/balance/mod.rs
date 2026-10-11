@@ -57,6 +57,11 @@ impl ColumnStack {
                 count
             };
             let (h, plan) = self.balance_line(kids, limit, None);
+            let h = if self.fill_shrink {
+                h.min(plan.iter().map(|f| f.y + f.h).fold(0.0f32, f32::max))
+            } else {
+                h
+            };
             return (h, vec![(0.0, h)], plan, Vec::new());
         };
         let limit = self.copies;

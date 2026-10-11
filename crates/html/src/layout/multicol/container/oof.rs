@@ -41,6 +41,7 @@ pub(super) fn place_oof_statics(
             el: crate::layout::positioned::containing_block::spot_probe(oof_spots[i].clone(), true),
             frags: Vec::new(),
             monolith: false,
+            fit_whole: false,
             cuts: Vec::new(),
             force_before: false,
             force_after: false,
@@ -122,6 +123,14 @@ pub(super) fn column_stack_div(
             }),
         )
         .with_axis(col_axis)
+        .with_fill_shrink(
+            fixed.is_some()
+                && rows.is_none()
+                && nest_rows.is_none()
+                && !col_vert
+                && e.style.column_height.is_none()
+                && matches!(e.style.height, None | Some(Len::Auto)),
+        )
         .with_row_phase(if nest_rows.is_some() { nest_phase } else { 0.0 })
         // Линейки последней линии — до низа содержимого коробки
         // заданной высоты (Blink `PaintColumnRules`), без

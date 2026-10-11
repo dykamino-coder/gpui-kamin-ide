@@ -4,14 +4,28 @@ use crate::dom::Element;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Color, Len};
-use crate::text::inline::collect::overlays::relative_inset;
 use crate::text::inline::*;
 
 pub(super) fn element_style(e: &Element, inherited: &Computed) -> (Computed, bool) {
     let mut merged = inherit(inherited, &e.style);
     // Относительный сдвиг строчного КОПИТСЯ вниз: вложенные
     // куски двигаются на сумму сдвигов предков.
-    let own_rel = relative_inset(&e.style);
+    // Вставки — из СЛИТОГО стиля: там `em` уже в точках (`resolve_em`), а
+    // в собственном стиле `left: -6em` читался нулём, и вложенный
+    // относительный кусок не сдвигался (`position-relative-033`).
+    let own_rel = if e.style.position == Some(crate::style::computed::Position::Relative) {
+        let px_of = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let i = &merged.inset;
+        (
+            px_of(i.left) - px_of(i.right),
+            px_of(i.top) - px_of(i.bottom),
+        )
+    } else {
+        (0.0, 0.0)
+    };
     if own_rel != (0.0, 0.0) {
         let base = merged.rel_shift.unwrap_or((0.0, 0.0));
         merged.rel_shift = Some((base.0 + own_rel.0, base.1 + own_rel.1));
@@ -88,6 +102,10 @@ pub(super) fn element_style(e: &Element, inherited: &Computed) -> (Computed, boo
     // such a box gets a fully transparent band colour that is unique
     // per box: bands of adjacent boxes stay separate, runs of its
     // descendants (which inherit it) continue the same band.
+    // Своя коробка (подложка или рамка) едет СВОИМ накопленным сдвигом.
+    if own_bg || own_border {
+        merged.box_shift = Some(merged.rel_shift.unwrap_or((0.0, 0.0)));
+    }
     let mut painted_bg = merged.inline_bg.is_some();
     if own_border && !own_bg && !painted_bg {
         let id = BORDER_BAND.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

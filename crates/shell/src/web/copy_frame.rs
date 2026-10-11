@@ -127,17 +127,15 @@ pub(crate) fn copy_into_own(
             // Raw HRESULT: WAIT_TIMEOUT и WAIT_ABANDONED положительны, но
             // не дают права читать поверхность или вызывать ReleaseSync.
             let mutex: Option<IDXGIKeyedMutex> = shared.raw().cast().ok();
+            // Debug acceptance: an armed wait fault replaces the raw status
+            // before any AcquireSync (also without a keyed mutex) and enters
+            // the same exact-status branch below.
             #[cfg(debug_assertions)]
-            let injected = mutex
-                .as_ref()
-                .and_then(|_| crate::native_acceptance::faults::wait_status(id));
-            let status = mutex.as_ref().map(|m| {
-                #[cfg(debug_assertions)]
-                if let Some(status) = injected {
-                    return status;
-                }
-                super::keyed_mutex::acquire(m)
-            });
+            let injected = super::acceptance::injected_wait(id, mutex.is_some());
+            #[cfg(not(debug_assertions))]
+            let injected: Option<i32> = None;
+            let status =
+                injected.or_else(|| mutex.as_ref().map(|m| super::keyed_mutex::acquire(m)));
             #[cfg(debug_assertions)]
             let (copied, released) = (std::cell::Cell::new(false), std::cell::Cell::new(false));
             let access = super::keyed_access::with_access(

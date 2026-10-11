@@ -168,10 +168,11 @@ pub(super) fn first_row_widths_of(
                         // уходила в безразмерные, и пол ширины стола ниже
                         // (§17.5.2.1) не складывался (`separated-border-model-004c`).
                         Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_))) if span == 1 => {
-                            let size = match cell.style.font_size.or(row.style.font_size) {
-                                Some(Len::Px(v)) => v,
-                                _ => table_font,
-                            };
+                            let size = super::super::col_measure::cell_font_px(
+                                cell.style.font_size,
+                                row.style.font_size,
+                                table_font,
+                            );
                             let family = cell
                                 .style
                                 .font_family

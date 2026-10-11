@@ -112,6 +112,29 @@ fn get_adapter(
     ID3D11DeviceContext,
     D3D_FEATURE_LEVEL,
 )> {
+    match crate::debug_device::DeviceOverride::from_env() {
+        crate::debug_device::DeviceOverride::None => {}
+        crate::debug_device::DeviceOverride::Warp => {
+            let adapter: IDXGIAdapter1 = unsafe { dxgi_factory.EnumWarpAdapter()? };
+            log::info!("Debug acceptance override: Direct3D device on the WARP adapter");
+            let mut context: Option<ID3D11DeviceContext> = None;
+            let mut feature_level = D3D_FEATURE_LEVEL::default();
+            let device = get_device(
+                &adapter,
+                Some(&mut context),
+                Some(&mut feature_level),
+                debug_layer_available,
+            )?;
+            return Ok((adapter, device, context.unwrap(), feature_level));
+        }
+        crate::debug_device::DeviceOverride::D3D11On12 => {
+            let adapter: IDXGIAdapter1 = unsafe { dxgi_factory.EnumAdapters(0)?.cast()? };
+            log::info!("Debug acceptance override: D3D11On12 device on adapter 0");
+            let (device, context, feature_level) =
+                get_d3d11on12_device(&adapter, debug_layer_available)?;
+            return Ok((adapter, device, context, feature_level));
+        }
+    }
     for adapter_index in 0.. {
         let adapter: IDXGIAdapter1 = unsafe { dxgi_factory.EnumAdapters(adapter_index)?.cast()? };
         if let Ok(desc) = unsafe { adapter.GetDesc1() } {
@@ -137,6 +160,88 @@ fn get_adapter(
     }
 
     unreachable!()
+}
+
+/// Debug acceptance only (`debug_device.rs`): an application-owned D3D11On12
+/// device, so the shell can call `ID3D12Device5::RemoveDevice` on it and GPUI
+/// takes its real device-lost path without any system-wide D3D setting.
+fn get_d3d11on12_device(
+    adapter: &IDXGIAdapter1,
+    debug_layer_available: bool,
+) -> Result<(ID3D11Device, ID3D11DeviceContext, D3D_FEATURE_LEVEL)> {
+    use windows::Win32::Graphics::{
+        Direct3D11on12::D3D11On12CreateDevice,
+        Direct3D12::{
+            CLSID_D3D12DeviceFactory, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC,
+            D3D12_DEVICE_FACTORY_FLAG_DISALLOW_STORING_NEW_DEVICE_AS_SINGLETON, D3D12CreateDevice,
+            D3D12GetInterface, ID3D12CommandQueue, ID3D12Device, ID3D12DeviceFactory,
+        },
+    };
+    // D3D12 devices are per-adapter singletons: after RemoveDevice the old
+    // generation still holds the removed singleton, so a plain
+    // D3D12CreateDevice during recovery would hand it back. A device factory
+    // that never stores its device as the singleton yields a fresh device for
+    // every generation; fall back to the singleton API where unavailable.
+    let independent = || -> Result<ID3D12Device> {
+        let mut factory: Option<ID3D12DeviceFactory> = None;
+        unsafe { D3D12GetInterface(&CLSID_D3D12DeviceFactory, &mut factory)? };
+        let factory = factory.context("D3D12GetInterface returned no device factory")?;
+        unsafe {
+            factory.SetFlags(D3D12_DEVICE_FACTORY_FLAG_DISALLOW_STORING_NEW_DEVICE_AS_SINGLETON)?
+        };
+        let mut device: Option<ID3D12Device> = None;
+        unsafe { factory.CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, &mut device)? };
+        device.context("ID3D12DeviceFactory::CreateDevice returned no device")
+    };
+    let d3d12 = match independent().log_err() {
+        Some(device) => device,
+        None => {
+            let mut device: Option<ID3D12Device> = None;
+            unsafe { D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, &mut device)? };
+            device.context("D3D12CreateDevice returned no device")?
+        }
+    };
+    let queue: ID3D12CommandQueue = unsafe {
+        d3d12.CreateCommandQueue(&D3D12_COMMAND_QUEUE_DESC {
+            Type: D3D12_COMMAND_LIST_TYPE_DIRECT,
+            ..Default::default()
+        })?
+    };
+    let queues = [Some(queue.cast()?)];
+    let levels = [
+        D3D_FEATURE_LEVEL_11_1,
+        D3D_FEATURE_LEVEL_11_0,
+        D3D_FEATURE_LEVEL_10_1,
+    ];
+    let create = |flags: u32| -> Result<(ID3D11Device, ID3D11DeviceContext, D3D_FEATURE_LEVEL)> {
+        let mut device: Option<ID3D11Device> = None;
+        let mut context: Option<ID3D11DeviceContext> = None;
+        let mut feature_level = D3D_FEATURE_LEVEL::default();
+        unsafe {
+            D3D11On12CreateDevice(
+                &d3d12,
+                flags,
+                Some(&levels),
+                Some(&queues),
+                0,
+                Some(&mut device),
+                Some(&mut context),
+                Some(&mut feature_level),
+            )?
+        };
+        Ok((
+            device.context("D3D11On12CreateDevice returned no device")?,
+            context.context("D3D11On12CreateDevice returned no context")?,
+            feature_level,
+        ))
+    };
+    let bgra = D3D11_CREATE_DEVICE_BGRA_SUPPORT.0 as u32;
+    if debug_layer_available
+        && let Some(created) = create(bgra | D3D11_CREATE_DEVICE_DEBUG.0 as u32).log_err()
+    {
+        return Ok(created);
+    }
+    create(bgra)
 }
 
 #[inline]

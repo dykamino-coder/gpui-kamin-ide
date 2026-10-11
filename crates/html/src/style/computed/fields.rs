@@ -283,6 +283,14 @@ pub struct Computed {
     /// свойство, потому что по умолчанию последняя строка не растягивается:
     /// иначе абзац из одного слова разъехался бы во всю ширину.
     pub text_align_last: Option<TextAlign>,
+    /// `match-parent` (css-text-3 §text-align): бит 1 — у `text-align-all`,
+    /// бит 2 — у `text-align-last`; решается при наследовании по письму
+    /// РОДИТЕЛЯ (`inherit_fonts`).
+    pub text_align_match_parent: u8,
+    /// `image-rendering` (css-images-3 §image-rendering), наследуется:
+    /// `Some(true)` — `pixelated`/`crisp-edges`, растр масштабируется без
+    /// сглаживания; `Some(false)` — `auto`/`smooth`/`high-quality`.
+    pub image_pixelated: Option<bool>,
     /// `text-justify: none` — выключка запрещена, строка идёт как `start`.
     pub no_justify: Option<bool>,
     /// CSS Text 4: ruby annotation justification excludes word spaces.
@@ -878,6 +886,9 @@ pub struct Computed {
     /// (CSS 2.1 §9.4.3): двигает ТОЛЬКО отрисовку, места в потоке не меняет
     /// и строку не растит.
     pub rel_shift: Option<(f32, f32)>,
+    /// `rel_shift` на элементе, чьи подложка и рамка (`inline_bg`,
+    /// `inline_border`) у куска: коробка предка едет только его сдвигом.
+    pub box_shift: Option<(f32, f32)>,
     /// `text-orientation: upright` — глифы стоят прямо, а не лежат боком.
     /// Меняет и меру `ch`: продвижение нуля идёт вдоль оси СТРОКИ, а она в
     /// вертикальном письме вертикальна, то есть равна кеглю.
@@ -1399,6 +1410,8 @@ pub struct Computed {
     pub text_emphasis: Option<String>,
     /// Акцент СНИЗУ (`text-emphasis-position: under`).
     pub emphasis_under: bool,
+    /// Акцент СЛЕВА в вертикальном письме (`text-emphasis-position: … left`).
+    pub emphasis_left: bool,
     /// `text-emphasis-color` (css-text-decor-3 §5.2); пусто — `currentColor`.
     pub emphasis_color: Option<Color>,
     /// `text-decoration-line` самой коробки (биты `DECOR_*`); пусто — не

@@ -22,6 +22,7 @@ pub(super) fn paint_slice(
     raster_source: bool,
     src: (f32, f32, f32, f32),
     dest: (f32, f32, f32, f32),
+    pixelated: bool,
 ) {
     let (sx, sy, sw, sh) = src;
     let (_, _, dw, dh) = dest;
@@ -58,8 +59,20 @@ pub(super) fn paint_slice(
         ((target_w * scale).round() as u32).max(1),
         ((target_h * scale).round() as u32).max(1),
     );
-    let filtered_mode =
-        !unscaled && window.current_transformation() == gpui::TransformationMatrix::unit();
+    // css-images-3 §image-rendering: `pixelated` scales by nearest neighbour,
+    // so the native crop goes to the GPU and is sampled without filtering.
+    let nearest = pixelated && raster_source && !unscaled;
+    let (out_w, out_h) = if nearest {
+        (
+            (sw * kx).round().max(1.0) as u32,
+            (sh * ky).round().max(1.0) as u32,
+        )
+    } else {
+        (out_w, out_h)
+    };
+    let filtered_mode = !nearest
+        && !unscaled
+        && window.current_transformation() == gpui::TransformationMatrix::unit();
     let key: SliceKey = (
         std::sync::Arc::as_ptr(raster) as usize,
         (sx * kx).round() as u32,
@@ -136,7 +149,7 @@ pub(super) fn paint_slice(
         });
         return;
     }
-    let sampling = match (unscaled, snapped) {
+    let sampling = match (unscaled || nearest, snapped) {
         (true, true) => gpui::ImageSampling::NearestSnapped,
         (false, true) => gpui::ImageSampling::LinearSnapped,
         (true, false) => gpui::ImageSampling::Nearest,

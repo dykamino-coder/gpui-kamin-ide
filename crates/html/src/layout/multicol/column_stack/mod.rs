@@ -27,6 +27,11 @@ pub struct ColumnStack {
     pub(crate) row_phase: f32,
     /// `column-fill: auto` + заданная высота: заполнение без баланса.
     pub(crate) fixed_height: Option<f32>,
+    /// `fixed_height` пришёл из `max-height` при авто-высоте: колонки
+    /// заполняются до него, а коробка — по самой высокой занятой колонке
+    /// (Blink `ConstrainColumnBlockSize`; `columnfill-auto-max-height-003`).
+    /// Ставится `with_fill_shrink`.
+    pub(crate) fill_shrink: bool,
     /// Линейка между колонками: ширина и цвет.
     pub(crate) rule: Option<(f32, gpui::Hsla)>,
     pub(crate) rule_to: Option<f32>,
@@ -91,6 +96,7 @@ impl ColumnStack {
             count: count.max(1),
             gap,
             fixed_height,
+            fill_shrink: false,
             rule,
             rule_to: None,
             rows,
@@ -104,6 +110,12 @@ impl ColumnStack {
             lines_plan: std::cell::RefCell::new(Vec::new()),
             spans_plan: std::cell::RefCell::new(Vec::new()),
         }
+    }
+
+    /// Коробка по самой высокой занятой колонке (см. `fill_shrink`).
+    pub(crate) fn with_fill_shrink(mut self, on: bool) -> Self {
+        self.fill_shrink = on;
+        self
     }
 
     /// Блочный размер СОДЕРЖИМОГО многоколоночника рядами `rows` (та же

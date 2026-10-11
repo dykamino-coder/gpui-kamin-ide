@@ -58,6 +58,7 @@ mod text_case;
 use crate::dom::{Element, Node};
 use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement};
+pub(crate) mod atom_parent;
 pub(super) mod collect;
 use crate::text::inline::collect::*;
 pub(super) mod hyphenate;

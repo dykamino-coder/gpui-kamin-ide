@@ -9,6 +9,7 @@ pub(super) fn paint_tile(
     corners: Corners<Pixels>,
     image: Arc<RenderImage>,
     source_kind: &super::Source,
+    pixelated: bool,
 ) {
     if paint_gradient(window, bounds, corners, source_kind) {
         return;
@@ -27,6 +28,17 @@ pub(super) fn paint_tile(
         && window.current_transformation() == gpui::TransformationMatrix::unit()
     {
         let _ = window.paint_natural_image(bounds, corners, image, 0, false);
+        return;
+    }
+    // css-images-3 §image-rendering: a `pixelated` raster is scaled by
+    // nearest neighbour; edges still snap like any untransformed tile.
+    if pixelated && matches!(source_kind, super::Source::Raster(_)) {
+        let sampling = if window.current_transformation() == gpui::TransformationMatrix::unit() {
+            ImageSampling::NearestSnapped
+        } else {
+            ImageSampling::Nearest
+        };
+        let _ = window.paint_image_with_sampling(bounds, corners, image, 0, false, sampling);
         return;
     }
     // An interpolated tile snaps both final edges together as well (CSS

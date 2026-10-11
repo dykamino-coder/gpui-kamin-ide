@@ -67,11 +67,12 @@ impl RootView {
                     ));
                 }
                 let mut stack = div().flex().flex_col().size_full().min_h(px(0.));
+                let visible = self.loader_slot_visible(slot);
                 for v in tool.views.clone() {
                     // `.view { flex: 1; min-height: 0 }` — вью делят высоту
                     stack = stack.child(div().flex().flex_col().flex_1().min_h(px(0.)).child(
                         if v.webview {
-                            self.contributed_webview_section(&v, p)
+                            self.contributed_webview_section(&v, p, visible, cx)
                         } else {
                             self.contributed_tree_section(&v, p)
                         },

@@ -69,7 +69,14 @@ pub(super) fn paint(
         size: size(px(ow), px(oh)),
     };
     window.with_absolute_transformation(TransformationMatrix::unit(), |window| {
-        super::sampling::paint_tile(window, final_bounds, Corners::default(), image, source);
+        super::sampling::paint_tile(
+            window,
+            final_bounds,
+            Corners::default(),
+            image,
+            source,
+            false,
+        );
     });
     true
 }

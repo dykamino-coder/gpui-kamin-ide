@@ -108,3 +108,5 @@ pub mod workspace_symbols;
 pub fn metrics_radius() -> f32 {
     kamin_metrics::RADIUS_MD
 }
+
+mod loading_motion;

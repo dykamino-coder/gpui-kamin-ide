@@ -22,6 +22,8 @@ pub(super) fn inherited_property(key: &str) -> bool {
             | "word-spacing"
             | "line-height"
             | "text-align"
+            | "text-align-all"
+            | "image-rendering"
             | "text-align-last"
             | "text-indent"
             | "text-transform"
@@ -71,7 +73,8 @@ pub(super) fn initial_value(key: &str) -> Option<&'static str> {
         "quotes" => "auto",
         "overflow-wrap" | "word-wrap" => "normal",
         "tab-size" => "8",
-        "text-align" => "start",
+        "text-align" | "text-align-all" => "start",
+        "image-rendering" => "auto",
         "text-justify" => "auto",
         "text-combine-upright" => "none",
         "text-indent" => "0",

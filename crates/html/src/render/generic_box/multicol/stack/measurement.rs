@@ -57,6 +57,26 @@ pub(crate) fn measure_children(
                     None => shape_full(c, 4, ShapeCx::COLUMNS).map(|h| ((*c).clone(), h)),
                 }
             }
+            // Вложенный многоколоночник `height: auto` во внешних колонках с
+            // заданной высотой: его блочный размер — СБАЛАНСИРОВАННЫЕ колонки
+            // (css-multicol-1 §7.1), а не сумма детей, которую даёт
+            // `shape_full`. Высоту даёт раскладка копии (`StackChild::
+            // measure`), разрез — краем внешней колонки (`multicol-nested-
+            // 022…024`: внутренний 200 в двух колонках — коробка 100, а не 200,
+            // и следующий за ним блок уезжал в третью внешнюю колонку).
+            // Первый в потоке и внутренний `column-fill: auto` — прежними
+            // путями (рядами; `multicol-fill-balance-003`, `multicol-nested-013`).
+            Node::Element(c)
+                if measure_ok
+                    && first_flow != Some(n as *const Node)
+                    && c.style.column_fill_auto != Some(true)
+                    && matches!(c.style.height, None | Some(Len::Auto))
+                    && line_col_w.is_some()
+                    && nested_rows_box(c) =>
+            {
+                let c = resolved_lengths(c, merged);
+                measured_nested(&c, line_col_w?, measured_kids, nested_whole)
+            }
             Node::Element(c)
                 if whole_ok
                     && matches!(c.style.height, None | Some(Len::Auto))
@@ -157,4 +177,22 @@ pub(crate) fn measure_children(
             _ => None,
         })
         .collect()
+}
+
+/// Ребёнок-многоколоночник, чью высоту меряет раскладка копии.
+fn measured_nested(
+    c: &Element,
+    w: f32,
+    measured_kids: &std::cell::RefCell<Vec<(u64, f32)>>,
+    nested_whole: &std::cell::RefCell<Vec<u64>>,
+) -> Option<(Element, Shape)> {
+    let m = |l: &Option<Len>| match l {
+        Some(Len::Px(v)) => Some(*v),
+        None | Some(Len::Auto) => Some(0.0),
+        _ => None,
+    };
+    let (mt, mb) = (m(&c.style.margin.top)?, m(&c.style.margin.bottom)?);
+    nested_whole.borrow_mut().push(c.node_id);
+    measured_kids.borrow_mut().push((c.node_id, w));
+    Some((c.clone(), (0.0, mt, mb, Vec::new(), Vec::new(), Vec::new())))
 }

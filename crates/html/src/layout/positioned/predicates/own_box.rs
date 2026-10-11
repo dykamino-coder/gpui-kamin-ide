@@ -98,6 +98,19 @@ pub(crate) fn has_own_box(c: &Computed, font_px: f32) -> bool {
     if c.opacity.is_some() || c.mask_image.is_some() {
         return true;
     }
+    // `clip-path` режет коробку элемента, у строчного — его фрагменты
+    // (css-masking-1 §3.1): прогон текста обрезки не умеет, нужна своя
+    // коробка (`clip-path-inline-007-ref`: `<span style="clip-path:
+    // circle(50%)">` рисовался без обрезки).
+    if c.clip_polygon.is_some()
+        || c.clip_shape.is_some()
+        || c.clip_inset.is_some()
+        || c.clip_edges.is_some()
+        || c.clip_xywh.is_some()
+        || c.clip_bare_box
+    {
+        return true;
+    }
     let inline_level = c.display.is_none() || c.inline_display == Some(true);
     if inline_level
         && (crate::text::inline::uniform_border(c, font_px).is_some()

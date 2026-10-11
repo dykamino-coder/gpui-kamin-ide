@@ -1,221 +1,135 @@
-// ============================================================================
-// Usage Capture — Spawns `claude /usage` via PTY, parses TUI output
-// ============================================================================
-
+import path from 'node:path'
+import fs from 'node:fs'
+import os from 'node:os'
+import headless from '@xterm/headless'
 import { devCli } from '../../pty/dev-cli'
-import * as path from 'path'
-import * as fs from 'fs'
-import * as os from 'os'
-import { debugLog, warnLog } from '../../logging'
 import { injectProxyEnv } from '../../config/settings'
+import { emptyPlanUsage, combinePlanUsage, parseUsageScreen } from './plan-usage'
+import { createUsageProbe, quoteCaptureArgument } from './usage-statusline'
+import type { PlanUsageData } from '../../../shared/plan-usage'
 
-export interface UsageData {
-  session: { percent: number; resets: string } | null
-  weekAll: { percent: number; resets: string } | null
-  weekSonnet: { percent: number; resets: string } | null
-  extra: string | null
-  timestamp: string
-  /** Raw PTY output (only included when all fields are null — for diagnostics) */
-  _raw?: string
-  _error?: string
-}
-
-// Cache to avoid spawning PTY on every request
+export type UsageData = PlanUsageData
+const CACHE_TTL_MS = 30_000
+const MAX_CAPTURE_BYTES = 1024 * 1024
 let cachedUsage: UsageData | null = null
 let cacheTime = 0
-const CACHE_TTL_MS = 30_000 // 30 seconds
-
-let captureInProgress = false
-
-function stripAnsi(str: string): string {
-  return str
-    .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
-    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
-    .replace(/\x1b[()][AB012]/g, '')
-    .replace(/\x1b[^[\]()][^\x1b]?/g, '')
-    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '')
-}
-
-function parseUsageText(text: string): UsageData {
-  const data: UsageData = {
-    session: null,
-    weekAll: null,
-    weekSonnet: null,
-    extra: null,
-    timestamp: new Date().toISOString(),
-  }
-
-  const sessionMatch = text.match(
-    /Current\s*session[^%]*?(\d+)%\s*used[^R]*Rese[ts]*\s*([\d\w\s:(),\/]+?)(?=Current|Extra|Esc)/i,
-  )
-  if (sessionMatch) {
-    data.session = { percent: parseInt(sessionMatch[1]!), resets: sessionMatch[2]!.trim() }
-  }
-
-  const weekAllMatch = text.match(
-    /Current\s*week\s*\(?\s*all\s*models?\s*\)?[^%]*?(\d+)%\s*used[^R]*Resets?\s*([\d\w\s:(),\/]+?)(?=Current|Extra|Esc)/i,
-  )
-  if (weekAllMatch) {
-    data.weekAll = { percent: parseInt(weekAllMatch[1]!), resets: weekAllMatch[2]!.trim() }
-  }
-
-  const weekSonnetMatch = text.match(
-    /Current\s*week\s*\(?\s*Sonnet\s*only\s*\)?[^%]*?(\d+)%\s*used[^R]*Resets?\s*([\d\w\s:(),\/]+?)(?=Current|Extra|Esc)/i,
-  )
-  if (weekSonnetMatch) {
-    data.weekSonnet = { percent: parseInt(weekSonnetMatch[1]!), resets: weekSonnetMatch[2]!.trim() }
-  }
-
-  const extraMatch = text.match(/Extra\s*usage\s*(.*?)(?=Esc|$)/i)
-  if (extraMatch) {
-    const extraText = extraMatch[1]!.trim()
-    data.extra = /not\s*enabled/i.test(extraText) ? 'not enabled' : extraText
-  }
-
-  // Detect CLI-level errors (e.g. "Failed to load usage data")
-  const errorMatch = text.match(/Error:\s*(.+?)(?:\r|$)/i)
-  if (errorMatch && !data.session && !data.weekAll && !data.weekSonnet) {
-    data._error = errorMatch[1]!.trim()
-  }
-
-  // Include raw output when parsing yields nothing — helps diagnose regex mismatches
-  if (!data.session && !data.weekAll && !data.weekSonnet && text.trim().length > 0) {
-    data._raw = text.slice(0, 2000)
-  }
-
-  return data
-}
+let inFlight: Promise<UsageData> | null = null
 
 function findClaude(): string {
-  if (process.platform === 'win32') {
-    const npmCmd = path.join(process.env.APPDATA || '', 'npm', 'claude.cmd')
-    if (fs.existsSync(npmCmd)) return npmCmd
-    return 'claude.cmd'
+  if (process.platform !== 'win32') return 'claude'
+  const command = path.join(process.env.APPDATA || '', 'npm', 'claude.cmd')
+  return fs.existsSync(command) ? command : 'claude.cmd'
+}
+async function captureSnapshot(): Promise<UsageData> {
+  const attemptedAt = new Date().toISOString()
+  const probe = await createUsageProbe()
+  const terminal = new headless.Terminal({ cols: 120, rows: 80, scrollback: 0, allowProposedApi: true })
+  let stop = () => {}
+  try {
+    const pty = await import('node-pty')
+    // The guarded checkout-only path shares the capture pipeline. An invalid
+    // fake configuration must fail closed, never fall back to an installed CLI.
+    const developmentCli = devCli()
+    const env: Record<string, string> = {}
+    for (const [name, value] of Object.entries(process.env))
+      if (value !== undefined && name !== 'CLAUDECODE') env[name] = value
+    injectProxyEnv(env)
+    const command = `${quoteCaptureArgument(findClaude())} --dangerously-skip-permissions --settings ${quoteCaptureArgument(probe.settings)} /usage`
+    const shell = process.platform === 'win32' ? 'cmd.exe' : 'bash'
+    const args = process.platform === 'win32' ? ['/d', '/v:off', '/s', '/c', command] : ['-lc', `exec ${command}`]
+    const proc = pty.spawn(
+      developmentCli?.command ?? shell,
+      developmentCli
+        ? [...developmentCli.prefix, '--dangerously-skip-permissions', '--settings', probe.settings, '/usage']
+        : args,
+      { name: 'xterm-256color', cols: 120, rows: 80, cwd: os.homedir(), env },
+    )
+    let stopped = false
+    stop = () => {
+      if (stopped) return
+      stopped = true
+      try {
+        proc.kill()
+      } catch {
+        /* already exited */
+      }
+    }
+    return await new Promise<UsageData>((resolve) => {
+      let done = false
+      let bytes = 0
+      let limited = false
+      let observedAt = attemptedAt
+      let renderTimer: ReturnType<typeof setTimeout> | undefined
+      let hardTimer: ReturnType<typeof setTimeout> | undefined
+      let dataSub: { dispose(): void } | undefined
+      let exitSub: { dispose(): void } | undefined
+      const finish = (reason?: string) => {
+        if (done) return
+        done = true
+        if (renderTimer) clearTimeout(renderTimer)
+        if (hardTimer) clearTimeout(hardTimer)
+        try {
+          dataSub?.dispose()
+        } catch {
+          /* best effort */
+        }
+        try {
+          exitSub?.dispose()
+        } catch {
+          /* best effort */
+        }
+        stop()
+        terminal.write('', () => {
+          const lines: string[] = []
+          for (let row = 0; row < terminal.rows; row++)
+            lines.push(terminal.buffer.active.getLine(row)?.translateToString(true) ?? '')
+          const result = parseUsageScreen(lines.join('\n'), observedAt)
+          result.attemptedAt = attemptedAt
+          result.diagnostics.outputLimited = limited
+          if (reason) result.reason = reason
+          void probe
+            .read()
+            .then((structured) => resolve(combinePlanUsage(result, structured, cachedUsage)))
+            .catch(() => resolve(combinePlanUsage(emptyPlanUsage('capture-error', attemptedAt), null, cachedUsage)))
+        })
+      }
+      dataSub = proc.onData((chunk: string) => {
+        if (done) return
+        bytes += Buffer.byteLength(chunk)
+        if (bytes > MAX_CAPTURE_BYTES) {
+          limited = true
+          finish('output-limit')
+          return
+        }
+        observedAt = new Date().toISOString()
+        terminal.write(chunk)
+      })
+      exitSub = proc.onExit(() => finish())
+      renderTimer = setTimeout(() => finish(), 8000)
+      hardTimer = setTimeout(() => finish('capture-timeout'), 12_000)
+    })
+  } catch {
+    return combinePlanUsage(emptyPlanUsage('capture-error', attemptedAt), null, cachedUsage)
+  } finally {
+    stop()
+    terminal.dispose()
+    await probe.cleanup()
   }
-  return 'claude'
 }
 
 export async function captureUsage(forceRefresh = false): Promise<UsageData> {
-  // Return cache if fresh
-  if (!forceRefresh && cachedUsage && Date.now() - cacheTime < CACHE_TTL_MS) {
-    return cachedUsage
-  }
-
-  // Prevent concurrent captures
-  if (captureInProgress) {
-    if (cachedUsage) return cachedUsage
-    // Wait for in-progress capture
-    return new Promise((resolve) => {
-      const interval = setInterval(() => {
-        if (!captureInProgress && cachedUsage) {
-          clearInterval(interval)
-          resolve(cachedUsage)
-        }
-      }, 500)
-      // Timeout after 15s
-      setTimeout(() => {
-        clearInterval(interval)
-        resolve(cachedUsage || emptyUsage())
-      }, 15_000)
-    })
-  }
-
-  captureInProgress = true
-
-  try {
-    const pty = await import('node-pty')
-    const developmentCli = devCli()
-    const claudePath = developmentCli?.command ?? findClaude()
-    debugLog('Usage capture: spawning', { claudePath })
-
-    return await new Promise<UsageData>((resolve) => {
-      let buffer = ''
-      let resolved = false
-
-      // Spawn through bash login shell — matches how the terminal runs commands.
-      // Direct spawn misses .bashrc/.profile setup that claude may need.
-      const cleanEnv: Record<string, string> = {}
-      for (const [k, v] of Object.entries(process.env)) {
-        if (v !== undefined && k !== 'CLAUDECODE') cleanEnv[k] = v
-      }
-      injectProxyEnv(cleanEnv)
-
-      const shell = process.platform === 'win32' ? 'cmd.exe' : 'bash'
-      const shellArgs =
-        process.platform === 'win32'
-          ? ['/c', `${claudePath} --dangerously-skip-permissions /usage`]
-          : ['-lc', `${claudePath} --dangerously-skip-permissions /usage`]
-
-      const proc = pty.spawn(
-        developmentCli?.command ?? shell,
-        developmentCli ? [...developmentCli.prefix, '/usage'] : shellArgs,
-        {
-          name: 'xterm-256color',
-          cols: 120,
-          rows: 50,
-          cwd: os.homedir(),
-          env: cleanEnv as any,
-        },
-      )
-
-      proc.onData((data: string) => {
-        buffer += data
-      })
-
-      const finish = () => {
-        if (resolved) return
-        resolved = true
-        const clean = stripAnsi(buffer)
-        const data = parseUsageText(clean)
-        debugLog('Usage capture: parsed', data)
+  if (!forceRefresh && cachedUsage && Date.now() - cacheTime < CACHE_TTL_MS) return structuredClone(cachedUsage)
+  if (!inFlight) {
+    inFlight = captureSnapshot()
+      .catch(() => combinePlanUsage(emptyPlanUsage('capture-error'), null, cachedUsage))
+      .then((data) => {
         cachedUsage = data
         cacheTime = Date.now()
-        captureInProgress = false
-
-        // Kill process
-        try {
-          proc.write('\x1b')
-          setTimeout(() => {
-            try {
-              proc.write('/exit\r')
-            } catch {}
-            setTimeout(() => {
-              try {
-                proc.kill()
-              } catch {}
-            }, 2000)
-          }, 300)
-        } catch {}
-
-        resolve(data)
-      }
-
-      proc.onExit(() => finish())
-      // Wait for TUI to render
-      setTimeout(finish, 8000)
-      // Hard timeout
-      setTimeout(() => {
-        if (!resolved) {
-          warnLog('Usage capture: hard timeout')
-          resolved = true
-          captureInProgress = false
-          try {
-            proc.kill()
-          } catch {}
-          resolve(cachedUsage || emptyUsage())
-        }
-      }, 12_000)
-    })
-  } catch (err) {
-    captureInProgress = false
-    const msg = err instanceof Error ? err.message : 'Unknown'
-    warnLog('Usage capture failed', { error: msg })
-    const result = cachedUsage || emptyUsage()
-    result._error = msg
-    return result
+        return data
+      })
+      .finally(() => {
+        inFlight = null
+      })
   }
-}
-
-function emptyUsage(): UsageData {
-  return { session: null, weekAll: null, weekSonnet: null, extra: null, timestamp: new Date().toISOString() }
+  return structuredClone(await inFlight)
 }
