@@ -11,6 +11,7 @@ use crate::render::{is_blank, out_of_flow};
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 mod cell;
+mod row;
 use cell::pushed_cell_at;
 mod spacer;
 pub(crate) use spacer::avoid_only_monolith;
@@ -32,6 +33,10 @@ thread_local! {
 fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
     if depth == 0 {
         return None;
+    }
+    let _frame = crate::layout::fragment::LineScope::enter(c);
+    if let Some(found) = row::pushed_row_at(c, a, depth) {
+        return found;
     }
     if table_box(c) {
         return pushed_cell_at(c, a, depth);
