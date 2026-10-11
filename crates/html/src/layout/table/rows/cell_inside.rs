@@ -91,7 +91,10 @@ pub(super) fn cell_contents(
     // host took in-flow height only (`floats-wrap-bfc-001-right-
     // overflow`: the cell ended under the float's first 50px).
     CELL_BFC.with(|c| c.set(true));
-    let inside = blocks(&cell.children, &cm, opts);
+    // Многоколоночная ячейка режет содержимое на колонки
+    // (`cell_columns::column_flow_children`, css-multicol-1 §2).
+    let flow = super::cell_columns::column_flow_children(cell);
+    let inside = blocks(flow.as_deref().unwrap_or(&cell.children), &cm, opts);
     CELL_BFC.with(|c| c.set(false));
     // Обрезанная ячейка не расталкивает колонки: её минимальный
     // вклад в дорожки НУЛЕВОЙ (css-sizing: automatic minimum при
