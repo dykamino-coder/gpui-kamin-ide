@@ -93,6 +93,27 @@ fn vertical_grid_axes_preserve_last_baseline_keywords() {
 }
 
 #[test]
+fn vertical_grid_initial_flow_and_inline_baselines_reach_the_physical_axis() {
+    for mode in ["vertical-rl", "vertical-lr", "sideways-rl", "sideways-lr"] {
+        let initial = styled(&format!("display: grid; writing-mode: {mode}"));
+        let declared = styled(&format!(
+            "display: grid; writing-mode: {mode}; grid-auto-flow: row"
+        ));
+        assert_eq!(initial.grid_auto_flow, declared.grid_auto_flow);
+        assert_eq!(initial.grid_auto_flow, Some(gpui::GridAutoFlow::Column));
+        for (keyword, expected) in [
+            ("first baseline", gpui::AlignItems::Baseline),
+            ("last baseline", gpui::AlignItems::LastBaseline),
+        ] {
+            let grid = styled(&format!(
+                "display: grid; writing-mode: {mode}; justify-items: {keyword}"
+            ));
+            assert_eq!(grid.align_items, Some(expected));
+        }
+    }
+}
+
+#[test]
 fn grid_safety_moves_with_container_and_parent_axes() {
     let grid = styled(
         "display: grid; writing-mode: vertical-rl; align-items: unsafe end; justify-items: safe center; align-content: unsafe end; justify-content: safe center",

@@ -59,7 +59,11 @@ pub(super) fn grid_implicit(mut d: Div, c: &Computed, flip: bool) -> Div {
             };
         }
     }
-    if let Some(f) = c.grid_auto_flow {
+    // CSS Grid §7.7 defaults to logical row flow. Taffy's default is physical
+    // row flow, so the initial value needs the same projection as a declaration
+    // (Blink grid_placement.cc:38-49 keeps both placement axes logical).
+    {
+        let f = c.grid_auto_flow.unwrap_or(AutoFlow::Row);
         // Направление наполнения тоже логическое: «по рядам» значит «вдоль
         // строки», а строка при вертикальном письме идёт сверху вниз.
         let f = if flip {
