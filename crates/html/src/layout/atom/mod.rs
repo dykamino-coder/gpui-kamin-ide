@@ -32,6 +32,25 @@ pub(crate) fn atom_element(
     inherited: &Computed,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
+    // Atomic inline containers own a scrollport just like block containers
+    // (CSS Overflow 3 §3). The raw atom path otherwise only clips their content.
+    if !e.style.scroller
+        && e.style.snap.axis != 0
+        && !replaced_tag(e)
+        && matches!(
+            e.style.display,
+            Some(
+                crate::style::computed::Display::InlineBlock
+                    | crate::style::computed::Display::InlineFlex
+                    | crate::style::computed::Display::InlineGrid
+                    | crate::style::computed::Display::InlineTable
+            )
+        )
+        && e.style.inline_display != Some(true)
+        && let Some(scroll) = crate::interactive::scroll_box::scrollable(e, inherited, opts)
+    {
+        return Some(scroll);
+    }
     if let Some(physical) = rotated_atom::physical(e, inherited, opts) {
         return Some(physical);
     }

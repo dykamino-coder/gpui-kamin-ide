@@ -92,6 +92,7 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     // Квад цвета не получает (`apply::apply_paint`); слой повторяет толщины,
     // стиль и скругление рамки и вынесен на толщину сторон — абсолютный
     // ребёнок отсчитывается от padding-box (как полосы сторон ниже).
+    let start = out.len();
     box_borders(c, &mut out);
 
     border_shape_layer(c, &mut out);
@@ -100,6 +101,7 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     if let Some(layer) = crate::paint::border_image::layer(c) {
         out.push(layer);
     }
+    stationary(c, &mut out, start);
 
     backdrop_matrix(c, &mut out);
 
@@ -109,6 +111,17 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
 
     // Разные цвета сторон рамки: у GPUI цвет рамки один на элемент, поэтому
     // несовпадающие стороны дорисовываются полосами поверх.
+    let start = out.len();
     coloured_borders(c, &mut out);
+    stationary(c, &mut out, start);
     out
+}
+
+fn stationary(c: &Computed, out: &mut Vec<AnyElement>, start: usize) {
+    let layers = out.split_off(start);
+    out.extend(
+        layers
+            .into_iter()
+            .map(|el| crate::interactive::scroll_target::stationary(c.self_node, el)),
+    );
 }
