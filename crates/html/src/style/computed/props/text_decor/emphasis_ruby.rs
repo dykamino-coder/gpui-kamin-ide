@@ -72,7 +72,8 @@ impl Computed {
                 // Строка в кавычках — первый её знак (§5.1: «only the first
                 // character is used»).
                 if let Some(q) = v.chars().next().filter(|c| *c == '"' || *c == '\'') {
-                    let body = v.trim_matches(q);
+                    let body =
+                        crate::style::computed::parse_util::unescape_content(v.trim_matches(q));
                     self.text_emphasis = body.chars().next().map(|c| c.to_string());
                     return;
                 }
