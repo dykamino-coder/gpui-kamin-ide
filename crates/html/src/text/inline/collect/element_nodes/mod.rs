@@ -170,7 +170,9 @@ pub(super) fn collect_element(
     if cb_here {
         INLINE_CB_DEPTH.with(|d| d.set(d.get() + 1));
     }
+    crate::text::inline::atom_parent::open(&e.style, inherited);
     let kids = collect_with_empty_metrics(&e.children, &merged, atom, has_text, case);
+    crate::text::inline::atom_parent::close();
     let kids = if cb_here {
         INLINE_CB_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
         mark_inline_cb(kids, e)
