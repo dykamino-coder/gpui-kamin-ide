@@ -23,7 +23,8 @@ import {
 } from './core'
 import type { HealthCheck } from './core'
 import { errorLog } from './core/logging'
-import { injectProxyEnv } from './core/config/settings'
+import { getSetting, injectProxyEnv } from './core/config/settings'
+import { initializeOutboundTls } from './core/proxy/outbound-tls'
 
 // --help
 if (args.help) {
@@ -53,7 +54,8 @@ Environment variables (fallback):
   CLAUDE_PROXY_LOG_LEVEL      Log level (error/warn/info/debug/verbose)
   CLAUDE_PROXY_HTTP_PROXY     HTTP proxy for Claude Code
   CLAUDE_PROXY_HTTPS_PROXY    HTTPS proxy for Claude Code
-  CLAUDE_PROXY_CA_CERT        Path to custom CA cert (→ NODE_EXTRA_CA_CERTS)
+  CLAUDE_PROXY_CA_CERT        PEM corporate CA bundle for server and CLI
+  BRIDGE_TLS_VERIFY=1         Enable server outbound certificate verification (default: off)
   DEBUG=1                     Debug logging
   VERBOSE=1                   Verbose logging
 
@@ -68,6 +70,30 @@ process.setMaxListeners(50)
 let server: ReturnType<typeof serve> | null = null
 
 async function startup(): Promise<void> {
+  // Initialize DuckDB (migrates from SQLite proxy.db on first boot).
+  try {
+    const { initStatsDb } = await import('./core/stats/database/lifecycle')
+    await initStatsDb()
+  } catch (e) {
+    console.warn(`[bridge] DuckDB unavailable (${e instanceof Error ? e.message : e}), running without persistence`)
+  }
+  // Prime caches that need an initial DB read so sync hot paths
+  // (Bearer auth, settings injection) work without awaiting.
+  try {
+    const { primeTokenCache } = await import('./core/auth/tokens')
+    await primeTokenCache()
+  } catch {
+    /* cache will lazy-load on first call */
+  }
+  try {
+    const { primeSettingsCache } = await import('./core/config/settings')
+    await primeSettingsCache()
+  } catch {
+    /* cache will lazy-load on first call */
+  }
+
+  initializeOutboundTls(getSetting('caCert'))
+
   // Create HTTP server
   const app = createApp()
 
@@ -103,28 +129,6 @@ async function startup(): Promise<void> {
   attachSessionWebSocket(nodeServer as any) // /ws/session (PTY + MCP)
   // Install central upgrade handler AFTER all WS routes are registered
   installUpgradeHandler(nodeServer as any)
-
-  // Initialize DuckDB (migrates from SQLite proxy.db on first boot).
-  try {
-    const { initStatsDb } = await import('./core/stats/database/lifecycle')
-    await initStatsDb()
-  } catch (e) {
-    console.warn(`[bridge] DuckDB unavailable (${e instanceof Error ? e.message : e}), running without persistence`)
-  }
-  // Prime caches that need an initial DB read so sync hot paths
-  // (Bearer auth, settings injection) work without awaiting.
-  try {
-    const { primeTokenCache } = await import('./core/auth/tokens')
-    await primeTokenCache()
-  } catch {
-    /* cache will lazy-load on first call */
-  }
-  try {
-    const { primeSettingsCache } = await import('./core/config/settings')
-    await primeSettingsCache()
-  } catch {
-    /* cache will lazy-load on first call */
-  }
 
   // Start the JSONL → SQLite sweeper. Catches up missed entries from
   // ~/.claude/projects/ on boot and runs every 5 min thereafter.
