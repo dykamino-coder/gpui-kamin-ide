@@ -113,15 +113,21 @@ pub(crate) fn copy_into_own(
 
             // Захват общей текстуры. Если ключа нет — копируем как есть.
             let mutex: Option<IDXGIKeyedMutex> = shared.raw().cast().ok();
-            let acquire = |m: &IDXGIKeyedMutex| {
-                #[cfg(debug_assertions)]
-                return super::acceptance::acquire(id, m);
-                #[cfg(not(debug_assertions))]
-                m.AcquireSync(0, 16)
+            // Debug acceptance: an armed wait fault replaces the AcquireSync
+            // status (also when CEF shares the texture without a keyed mutex)
+            // and goes through main's generated-wrapper conversion unchanged.
+            #[cfg(debug_assertions)]
+            let injected = super::acceptance::injected_wait(id, mutex.is_some());
+            #[cfg(not(debug_assertions))]
+            let injected: Option<i32> = None;
+            let acquired = match injected {
+                Some(status) => windows::core::HRESULT(status).ok(),
+                None => match &mutex {
+                    Some(m) => m.AcquireSync(0, 16),
+                    None => Ok(()),
+                },
             };
-            if let Some(m) = &mutex
-                && acquire(m).is_err()
-            {
+            if acquired.is_err() {
                 // Производитель держит кадр. Ждать нельзя — встанет поток
                 // отрисовки; но и молчать нельзя: кадр остался бы лежать
                 // непоказанным до следующего события мыши («анимация идёт
@@ -133,6 +139,13 @@ pub(crate) fn copy_into_own(
             context.CopyResource(own.raw(), shared.raw());
             if let Some(m) = &mutex {
                 let _ = m.ReleaseSync(0);
+            }
+            #[cfg(debug_assertions)]
+            if let Some(status) = injected {
+                super::acceptance_log(format!(
+                    "[acceptance] mutex_result view={id} status={status} copied=true released={} path=generated_result",
+                    mutex.is_some()
+                ));
             }
             Some(own)
         })();
