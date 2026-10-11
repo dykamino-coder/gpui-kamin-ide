@@ -18,7 +18,9 @@ pub(crate) fn drain(device_raw: *mut std::ffi::c_void) {
         return;
     }
     unsafe {
-        let device: ID3D11Device = Interface::from_raw(device_raw);
+        let Some(device) = ID3D11Device::from_raw_borrowed(&device_raw) else {
+            return;
+        };
         if let Ok(queue) = device.cast::<ID3D11InfoQueue>() {
             // Останов процесса выключаем один раз: сообщение полезнее смерти.
             for severity in [
@@ -51,8 +53,6 @@ pub(crate) fn drain(device_raw: *mut std::ffi::c_void) {
                 queue.ClearStoredMessages();
             }
         }
-        // Устройство принадлежит окну — владение возвращаем.
-        let _ = Interface::into_raw(device);
     }
 }
 

@@ -39,9 +39,9 @@ fn open_shared(device_raw: *mut std::ffi::c_void, handle: isize) -> Option<*mut 
         return None;
     }
     unsafe {
-        // Указатель окна нам одолжен — оборачиваем и возвращаем как было.
-        let device: ID3D11Device = Interface::from_raw(device_raw);
-        let opened = (|| {
+        // Borrowed device: caller держит сильный snapshot до конца open.
+        let device = ID3D11Device::from_raw_borrowed(&device_raw)?;
+        (|| {
             let device1: ID3D11Device1 = device.cast().ok()?;
             // CEF 150 отдаёт номер нового образца, но на части драйверов
             // приходит старый — пробуем оба, иначе кадр не показать вовсе.
@@ -57,9 +57,7 @@ fn open_shared(device_raw: *mut std::ffi::c_void, handle: isize) -> Option<*mut 
                     None
                 }
             }
-        })();
-        let _ = Interface::into_raw(device);
-        opened
+        })()
     }
 }
 
