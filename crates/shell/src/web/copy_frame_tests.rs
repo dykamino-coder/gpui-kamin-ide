@@ -82,22 +82,35 @@ fn real_warp_timeout_is_preserved_and_never_publishes_uninitialized_frame() {
     copy_frame::forget_view("first-busy");
 }
 #[test]
-fn missing_mutex_never_copies_or_publishes_a_frame() {
+fn texture_without_keyed_mutex_is_copied_without_release() {
+    // CEF 154 shares accelerated frames without a keyed mutex.
     let (device, context) = device();
     let shared = texture(&device, false);
-    assert!(
-        copy_frame::copy_into_own("no-key", device.as_raw(), context.as_raw(), &shared).is_none()
-    );
+    for _ in 0..3 {
+        assert!(
+            copy_frame::copy_into_own("no-key", device.as_raw(), context.as_raw(), &shared)
+                .is_some()
+        );
+    }
+    assert!(!super::RECOVERY.lock().unwrap().contains_key("no-key"));
     copy_frame::forget_view("no-key");
 }
 
+#[cfg(debug_assertions)]
 #[test]
-fn repeated_missing_mutex_spends_recovery_budget_until_a_successful_copy() {
+fn repeated_abandoned_wait_spends_recovery_budget_until_a_successful_copy() {
     let (device, context) = device();
-    let broken = texture(&device, false);
-    for _ in 0..10 {
+    let shared = texture(&device, true);
+    // The debug wait fault replaces the raw AcquireSync status with
+    // WAIT_ABANDONED before any acquisition, three times.
+    assert!(crate::native_acceptance::faults::arm(
+        "bad-producer",
+        128,
+        3
+    ));
+    for _ in 0..3 {
         assert!(
-            copy_frame::copy_into_own("bad-producer", device.as_raw(), context.as_raw(), &broken)
+            copy_frame::copy_into_own("bad-producer", device.as_raw(), context.as_raw(), &shared)
                 .is_none()
         );
     }
@@ -109,9 +122,8 @@ fn repeated_missing_mutex_spends_recovery_budget_until_a_successful_copy() {
             .unwrap()
             .take()
     );
-    let healthy = texture(&device, true);
     assert!(
-        copy_frame::copy_into_own("bad-producer", device.as_raw(), context.as_raw(), &healthy)
+        copy_frame::copy_into_own("bad-producer", device.as_raw(), context.as_raw(), &shared)
             .is_some()
     );
     assert!(!super::RECOVERY.lock().unwrap().contains_key("bad-producer"));

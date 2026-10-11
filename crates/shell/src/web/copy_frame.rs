@@ -134,8 +134,12 @@ pub(crate) fn copy_into_own(
             let injected = super::acceptance::injected_wait(id, mutex.is_some());
             #[cfg(not(debug_assertions))]
             let injected: Option<i32> = None;
-            let status =
-                injected.or_else(|| mutex.as_ref().map(|m| super::keyed_mutex::acquire(m)));
+            // CEF 154 shares OnAcceleratedPaint textures without a keyed
+            // mutex (observed live): such a texture has no wait to fail and is
+            // copied unsynchronized as before (`Some(0)`, no ReleaseSync).
+            // Treating it as abandoned dropped every accelerated frame.
+            let status = injected
+                .or_else(|| Some(mutex.as_ref().map_or(0, |m| super::keyed_mutex::acquire(m))));
             #[cfg(debug_assertions)]
             let (copied, released) = (std::cell::Cell::new(false), std::cell::Cell::new(false));
             let access = super::keyed_access::with_access(
