@@ -59,8 +59,12 @@ pub(crate) fn line_box_spans(
     inherited: &Computed,
     opts: &RenderOpts,
 ) -> Option<(Vec<(std::ops::Range<usize>, f32)>, f32)> {
-    if inherited.vertical == Some(true)
-        || inherited.rotated_line == Some(true)
+    let vertical = inherited.vertical == Some(true) || inherited.rotated_line == Some(true);
+    // Sideways lines use the same alphabetic metrics and per-run half-leading
+    // as horizontal lines (Blink inline_box_state.cc:110-150). Only the physical
+    // projection differs. Central baseline runs need their own metric table.
+    let alphabetic = inherited.sideways == Some(true) || inherited.text_sideways == Some(true);
+    if (vertical && !alphabetic)
         || crate::render::paragraph::paragraph_style(inherited)
             .text_fit
             .is_some()
