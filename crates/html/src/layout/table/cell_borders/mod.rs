@@ -112,6 +112,7 @@ pub(super) fn collapsed_row_edges(
     span_cols: u16,
     cols: u16,
     row_style: &Computed,
+    table_style: &Computed,
     table_edges: &std::rc::Rc<std::cell::RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
     px_of: &impl Fn(Option<Len>) -> f32,
     mut d: gpui::Div,
@@ -122,12 +123,8 @@ pub(super) fn collapsed_row_edges(
     if rw.iter().any(|w| *w > 0.0) || hidden_row {
         let start_col = col_ix - span_cols as usize;
         let last_col = col_ix >= cols as usize;
-        let widths = [
-            rw[0],
-            if last_col { rw[1] } else { 0.0 },
-            rw[2],
-            if start_col == 0 { rw[3] } else { 0.0 },
-        ];
+        let widths =
+            super::axes::Axes::new(table_style).mask(rw, [true, last_col, true, start_col == 0]);
         let black = crate::style::values::value::Color {
             r: 0.0,
             g: 0.0,
@@ -179,28 +176,22 @@ pub(super) fn collapsed_group_edges(
 ) -> gpui::Div {
     let b = g.style.borders();
     let default_w = if rules_groups { 1.0 } else { 0.0 };
-    let explicit_top = g.style.border_width.top.is_some() || g.style.border_visible[0].is_some();
-    let explicit_bottom =
-        g.style.border_width.bottom.is_some() || g.style.border_visible[2].is_some();
-    let top_w = if explicit_top {
-        px_of(b.top)
-    } else {
-        default_w
-    };
-    let bottom_w = if explicit_bottom {
-        px_of(b.bottom)
-    } else {
-        default_w
-    };
-    // Боковые кромки группы несут крайние ячейки ряда.
+    let axes = super::axes::Axes::new(inherited);
+    let own = axes.logical([b.top, b.right, b.bottom, b.left]);
+    let visible = axes.logical(g.style.border_visible);
+    let widths = std::array::from_fn(|i| {
+        if matches!(i, 0 | 2) && own[i].is_none() && visible[i].is_none() {
+            default_w
+        } else {
+            px_of(own[i])
+        }
+    });
     let start_col = col_ix - span_cols as usize;
     let last_col = col_ix >= cols as usize;
-    let widths = [
-        if first { top_w } else { 0.0 },
-        if last_col { px_of(b.right) } else { 0.0 },
-        if last { bottom_w } else { 0.0 },
-        if start_col == 0 { px_of(b.left) } else { 0.0 },
-    ];
+    let widths = axes.mask(
+        axes.physical(widths),
+        [first, last_col, last, start_col == 0],
+    );
     // Нулевая толщина у `hidden` не значит «кромки нет»: скрытая
     // кромка ГАСИТ соседей (§17.6.2.1), поэтому в разбор она
     // обязана попасть наравне с видимыми.

@@ -19,13 +19,14 @@ pub(super) fn resolve(
     let collapse_cells_pre = e.style.border_collapse == Some(true)
         || (e.style.border_collapse.is_none() && e.attr("rules").is_some());
     let px_of_pre = |l: Option<Len>| crate::text::metrics::spacing_px(l, table_family, table_font);
+    let axes = super::axes::Axes::new(&e.style);
     let tb = e.style.borders();
-    let bw_pre = [
+    let bw_pre = axes.logical([
         px_of_pre(tb.top),
         px_of_pre(tb.right),
         px_of_pre(tb.bottom),
         px_of_pre(tb.left),
-    ];
+    ]);
     let mut win_edges: std::collections::HashMap<u64, [f32; 4]> = Default::default();
     // Наружные полуширины таблицы: победитель на ЕЁ линиях. Копится прямо в
     // условиях края — свод по всем клеткам затягивал сюда и внутренние линии,
@@ -75,12 +76,12 @@ pub(super) fn resolve(
                 // соседом, которого у ячейки нет.
                 let sr = row_span_in_group(cell, rows_left.get(r).copied().unwrap_or(1));
                 let b = cell.style.borders();
-                let own = [
+                let own = axes.logical([
                     px_of_pre(b.top),
                     px_of_pre(b.right),
                     px_of_pre(b.bottom),
                     px_of_pre(b.left),
-                ];
+                ]);
                 let extra = structural.cell(r, c, sr, sc);
                 cels.push(Cel {
                     r,
@@ -136,7 +137,7 @@ pub(super) fn resolve(
                 w[2] = w[2].max(bw_pre[2]);
                 outer_win[2] = outer_win[2].max(w[2]);
             }
-            win_edges.insert(a.id, w);
+            win_edges.insert(a.id, axes.physical(w));
         }
     }
     let outer_win = [
@@ -145,5 +146,40 @@ pub(super) fn resolve(
         outer_win[2].max(bw_pre[2]),
         outer_win[3].max(bw_pre[3]),
     ];
-    (win_edges, outer_win)
+    (win_edges, axes.physical(outer_win))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::table::anon::anon_element;
+    use crate::style::computed::Sides;
+
+    #[test]
+    fn vertical_columns_share_physical_bottom_and_top_borders() {
+        let mut table = anon_element("table", vec![]);
+        table.style.vertical = Some(true);
+        table.style.vertical_rl = Some(true);
+        table.style.border_collapse = Some(true);
+        table.style.border_width.right = Some(Len::Px(20.0));
+        table.style.border_visible[1] = Some(true);
+        let mut first = anon_element("td", vec![]);
+        first.node_id = 1;
+        first.style.border_width.bottom = Some(Len::Px(50.0));
+        first.style.border_visible[2] = Some(true);
+        let mut second = anon_element("td", vec![]);
+        second.node_id = 2;
+        second.style.border_width.top = Some(Len::Px(100.0));
+        second.style.border_visible[0] = Some(true);
+        let row = anon_element("tr", vec![Node::Element(first), Node::Element(second)]);
+        let (widths, outer) = resolve(&table, &[&row], &[None], &[1], 2, 16.0, "");
+        assert_eq!(widths[&1], [0.0, 20.0, 100.0, 0.0]);
+        assert_eq!(widths[&2], [100.0, 20.0, 0.0, 0.0]);
+        assert_eq!(outer, [0.0, 20.0, 0.0, 0.0]);
+        table.style.vertical = Some(false);
+        table.style.border_width = Sides::default();
+        let (widths, _) = resolve(&table, &[&row], &[None], &[1], 2, 16.0, "");
+        assert_eq!(widths[&1][2], 50.0);
+        assert_eq!(widths[&2][0], 100.0);
+    }
 }

@@ -79,10 +79,17 @@ pub(super) fn table_cell(
     };
     let cell = &if zero_cols.get(*col_ix).copied().unwrap_or(false) {
         let mut copy = cell.clone();
-        copy.style.padding.left = Some(Len::Px(0.0));
-        copy.style.padding.right = Some(Len::Px(0.0));
-        copy.style.border_width.left = Some(Len::Px(0.0));
-        copy.style.border_width.right = Some(Len::Px(0.0));
+        if table_is_vertical {
+            copy.style.padding.top = Some(Len::Px(0.0));
+            copy.style.padding.bottom = Some(Len::Px(0.0));
+            copy.style.border_width.top = Some(Len::Px(0.0));
+            copy.style.border_width.bottom = Some(Len::Px(0.0));
+        } else {
+            copy.style.padding.left = Some(Len::Px(0.0));
+            copy.style.padding.right = Some(Len::Px(0.0));
+            copy.style.border_width.left = Some(Len::Px(0.0));
+            copy.style.border_width.right = Some(Len::Px(0.0));
+        }
         copy
     } else {
         cell.clone()

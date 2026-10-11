@@ -133,6 +133,7 @@ pub(super) fn cell_edge_probes(
             span_cols,
             cols,
             row_style,
+            inherited,
             table_edges,
             px_of,
             d,
