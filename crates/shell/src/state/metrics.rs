@@ -57,6 +57,7 @@ impl RootView {
             // Ширина ещё меняется — перезапускаем отсчёт
             Some((w, _)) if (w - viewport_w).abs() > 0.5 => {
                 self.viewport_settle = Some((viewport_w, std::time::Instant::now()));
+                crate::web::diag_why::tick("frame-request/metrics");
                 window.request_animation_frame();
                 false
             }
@@ -66,12 +67,14 @@ impl RootView {
                     // Кадров после остановки ресайза может не быть вовсе —
                     // сами просим следующий, иначе «устоявшийся» размер
                     // никогда не наступит
+                    crate::web::diag_why::tick("frame-request/metrics");
                     window.request_animation_frame();
                 }
                 done
             }
             None => {
                 self.viewport_settle = Some((viewport_w, std::time::Instant::now()));
+                crate::web::diag_why::tick("frame-request/metrics");
                 window.request_animation_frame();
                 false
             }

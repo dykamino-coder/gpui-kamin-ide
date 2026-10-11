@@ -135,7 +135,10 @@ pub(crate) fn term_grid(
                 .with_animation(
                     "term-cursor-blink",
                     gpui::Animation::new(std::time::Duration::from_millis(1200)).repeat(),
-                    |d, delta| if delta < 0.5 { d } else { d.invisible() },
+                    |d, delta| {
+                        crate::web::diag_why::tick("animation/term-cursor");
+                        if delta < 0.5 { d } else { d.invisible() }
+                    },
                 )
                 .into_any_element()
         });

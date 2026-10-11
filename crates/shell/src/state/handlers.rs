@@ -66,8 +66,8 @@ impl RootView {
             this.undo_fs();
             cx.notify();
         }))
-        // Contributed keybindings: root-перехват (после встроенных
-        // action-биндингов; фокусные инпуты съедают свои клавиши раньше)
+        // Contributed keybindings после action-биндингов и фокусных инпутов.
+        .capture_key_down(|_, _, _| crate::web::diag_why::tick("input/key"))
         .on_key_down(cx.listener(|this, ev: &gpui::KeyDownEvent, _, cx| {
             if this.tree_key(ev, cx) {
                 return;

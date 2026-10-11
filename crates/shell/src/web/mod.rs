@@ -17,9 +17,12 @@ mod d3d_log;
 mod device_cache;
 mod device_generation;
 mod diag;
+mod diag_activity;
 mod diag_clock;
 mod diag_log;
 mod diag_sink;
+pub(crate) mod diag_views;
+pub(crate) mod diag_why;
 mod element;
 mod frames;
 mod gpu_mode;
@@ -27,6 +30,7 @@ mod gpu_texture;
 mod input;
 mod keyed_access;
 mod keyed_mutex;
+mod motion_css;
 mod open_shared;
 mod outbox;
 mod popup;
@@ -51,11 +55,9 @@ static DIRTY: AtomicBool = AtomicBool::new(false);
 
 /// Зовётся из хендлера кадров (чужой поток).
 ///
-/// Тут же просим окно перерисоваться. Без этого цепочка рвётся: кадр пришёл,
-/// но пока пользователь не шевелит мышью, окно не перерисовывается, нового
-/// запроса кадра не уходит — и страница навсегда остаётся прежнего размера
-/// (поймано на живом прогоне: «не догнал кадр, ресайз так и остался»).
+/// Будим pump сразу: кадр должен показываться без pointer activity.
 pub(crate) fn repaint_requested() {
+    diag_why::tick("wake/repaint");
     DIRTY.store(true, Ordering::Relaxed);
     // Будим цикл gpui: без этого окно не перерисовывается, пока не придёт
     // ввод — кадр есть, а на экране старый, «зависает, пока не кликну»
@@ -85,6 +87,7 @@ pub(crate) fn wake_pump() {
 /// не заберёт ни события, ни ответы на invoke, пока пользователь не
 /// шевельнёт мышью (INC-2026-0002).
 pub(crate) fn mark_pull_pending(id: &str) {
+    diag_why::tick("wake/pull-pending");
     if let Ok(mut set) = PULL_PENDING.lock() {
         set.insert(id.to_string());
     }
@@ -132,7 +135,7 @@ pub(crate) fn sw_mode() -> bool {
 
 pub(crate) fn set_sw_mode(on: bool) {
     if on && !SW_MODE.swap(on, std::sync::atomic::Ordering::Relaxed) {
-        println!("[cef] software-режим отрисовки (RDP/нет GPU-композитинга)");
+        diag_sink::emit_line("[boot] cef_software=true (RDP/нет GPU-композитинга)".into());
     }
 }
 
@@ -349,6 +352,7 @@ fn html_changed(id: &str) -> bool {
 /// В скрипт кладём только НОМЕР пачки: тело страница забирает запросом
 /// (`web/outbox.rs` объясняет, почему не одним куском).
 pub fn deliver(view_id: &str, json: String) {
+    diag_why::post(view_id);
     let id = crate::ui::webview_body::static_view_id(view_id);
     if !browsers::exists(id) {
         return;
@@ -376,6 +380,7 @@ pub(crate) fn flush_pending_pulls() {
     };
     for id in ids {
         if browsers::exists(&id) {
+            diag_why::tick("pull/dispatched");
             browsers::execute_script(&id, "window.__kaminPull()");
         }
     }

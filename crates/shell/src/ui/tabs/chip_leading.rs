@@ -60,7 +60,10 @@ pub(crate) fn leading(
                 dot.with_animation(
                     "chip-switching-pulse",
                     gpui::Animation::new(std::time::Duration::from_secs(1)).repeat(),
-                    |d, delta| d.opacity(1.0 - 0.75 * (std::f32::consts::PI * delta).sin()),
+                    |d, delta| {
+                        crate::web::diag_why::tick("animation/chip-leading");
+                        d.opacity(1.0 - 0.75 * (std::f32::consts::PI * delta).sin())
+                    },
                 )
                 .into_any_element()
             } else {

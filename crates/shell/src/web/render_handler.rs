@@ -94,6 +94,7 @@ cef::wrap_render_handler! {
             info: Option<&AcceleratedPaintInfo>,
         ) {
             let Some(info) = info else { return };
+            super::diag_why::frame(&self.id, "accelerated/received");
             if type_.as_ref() == &cef::sys::cef_paint_element_type_t::PET_POPUP {
                 // Дропдаун `<select>`: отдельная текстура поверх кадра.
                 super::popup::put(
@@ -157,6 +158,7 @@ cef::wrap_render_handler! {
             if buffer.is_null() || width <= 0 || height <= 0 {
                 return;
             }
+            super::diag_why::frame(&self.id, "software/received");
             if type_.as_ref() == &cef::sys::cef_paint_element_type_t::PET_POPUP {
                 // Дропдаун `<select>` в software-режиме (RDP): буфер попапа
                 // отдельным кадром, рисуется поверх основного в element.
