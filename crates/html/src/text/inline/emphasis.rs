@@ -11,6 +11,7 @@ pub fn emphasis_spans(
     pieces: &[Piece],
     base_size: f32,
     normal: f32,
+    rotated: Option<bool>,
 ) -> Vec<crate::text::paragraph::EmphSpan> {
     let mut out = Vec::new();
     let mut at = 0usize;
@@ -33,7 +34,15 @@ pub fn emphasis_spans(
             };
             out.push(crate::text::paragraph::EmphSpan {
                 range: at..end,
-                under: style.emphasis_under,
+                // Повёрнутый абзац вертикального письма (`rotated` — поворот
+                // против часовой, `sideways-lr`): «над» строкой после
+                // поворота по часовой — ПРАВО. В вертикальном письме сторону
+                // знака задают `right`/`left` (css-text-decor-3 §5.4), а
+                // `over`/`under` — только в горизонтальном.
+                under: match rotated {
+                    Some(ccw) => style.emphasis_left != ccw,
+                    None => style.emphasis_under,
+                },
                 size: size * 0.5,
                 line_height,
                 mark: mark.to_string(),

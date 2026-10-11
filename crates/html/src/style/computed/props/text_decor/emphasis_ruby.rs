@@ -21,6 +21,7 @@ impl Computed {
                 // свой (`emphasis_color`), по умолчанию цвет текста.
                 if key == "text-emphasis-position" {
                     self.emphasis_under = v.split_whitespace().any(|w| w == "under");
+                    self.emphasis_left = v.split_whitespace().any(|w| w == "left");
                     return;
                 }
                 if key == "text-emphasis-color" {

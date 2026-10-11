@@ -1407,6 +1407,8 @@ pub struct Computed {
     pub text_emphasis: Option<String>,
     /// Акцент СНИЗУ (`text-emphasis-position: under`).
     pub emphasis_under: bool,
+    /// Акцент СЛЕВА в вертикальном письме (`text-emphasis-position: … left`).
+    pub emphasis_left: bool,
     /// `text-emphasis-color` (css-text-decor-3 §5.2); пусто — `currentColor`.
     pub emphasis_color: Option<Color>,
     /// `text-decoration-line` самой коробки (биты `DECOR_*`); пусто — не
