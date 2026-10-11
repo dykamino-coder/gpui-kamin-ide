@@ -26,6 +26,11 @@ impl ColumnStack {
                 // Видимое переполнение потомков — параллельный поток
                 // (css-break-3 §3): продолжается в следующих колонках само.
                 c.over = h.max(f32::from(content.height));
+                // Целый вложенный многоколоночник выше колонки — не монолит:
+                // его режет край внешней колонки (`StackChild::fit_whole`).
+                if c.fit_whole {
+                    c.monolith = self.fixed_height.is_none_or(|f| h <= f + 0.01);
+                }
             }
         }
         let heights: Vec<Kid> = self
