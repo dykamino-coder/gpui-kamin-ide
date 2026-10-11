@@ -16,14 +16,20 @@ CI компилирует настоящий config-модуль с `debug-asser
 Перед push/приёмкой: fmt, clippy `-D warnings`, shell tests и event-routing check.
 Сборка со включённым default feature `probe` обязательна для команд ниже.
 
-Windows Graphics Tools / `d3dconfig.exe` нужны только для WARP и device loss.
-Launcher использует отдельное имя exe, требует **пустой** список D3DConfig apps,
-сохраняет исходные `force-warp`/`force-d3d11on12`, добавляет только полный путь
-тестового exe и восстанавливает настройки/удаляет запись после закрытия окна.
-Он не отключает GPU, не меняет системные animation settings и не вызывает TDR.
-Не прерывать launcher до закрытия окна. После аварии launcher удалить его
-точную запись через `d3dconfig apps --remove <path>` и восстановить параметры
-из private `d3dconfig.log`; не использовать `--reset` или `apps --clear`.
+WARP и device loss включаются **внутри debug-сборки**, без D3DConfig и любых
+системных настроек DirectX/графики. Launcher передаёт только переменные
+окружения процесса: `-Warp` → `KAMIN_DEBUG_D3D_DEVICE=warp` (GPUI создаёт
+своё D3D11-устройство на WARP-адаптере своей же DXGI factory,
+`EnumWarpAdapter`), `-DeviceLoss` → `KAMIN_DEBUG_D3D_DEVICE=d3d11on12` (GPUI
+создаёт D3D11On12-устройство поверх собственного D3D12-устройства первого
+аппаратного адаптера). Оба seam находятся в
+`vendor/gpui-windows/src/debug_device.rs`; release не читает переменную, CI
+компилирует файл с `debug-assertions=no` и `yes`. Launcher не отключает GPU,
+не меняет системные animation settings и не вызывает TDR. Окно показывается
+без активации (`KAMIN_DEBUG_NO_ACTIVATE=1` → `WindowOptions.focus=false`),
+поэтому прогон на интерактивном рабочем столе владельца не забирает фокус.
+Launcher возвращает управление сразу после старта (`-Wait` — ждать закрытия);
+закрывать только свой PID из `manifest.json`.
 
 Каждый capture получает новую внешнюю папку `$Capture`. stdout/stderr, crash,
 CEF и native logs, временные файлы и изолированный профиль находятся под ней.
@@ -114,8 +120,8 @@ pending fault подтверждением accelerated path. Повторить 
 
 ## #186 / INC-2026-0022
 
-Launcher с `-DeviceLoss` включает D3D11On12 только для acceptance exe.
-Используется поддержанный [GetD3D12Device](https://learn.microsoft.com/en-us/windows/win32/api/d3d11on12/nf-d3d11on12-id3d11on12device1-getd3d12device)
+Launcher с `-DeviceLoss` просит debug-сборку создать собственное
+D3D11On12-устройство (только этот процесс, без D3DConfig). Используется поддержанный [GetD3D12Device](https://learn.microsoft.com/en-us/windows/win32/api/d3d11on12/nf-d3d11on12-id3d11on12device1-getd3d12device)
 и [RemoveDevice](https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12device5-removedevice),
 без private GPUI struct layout/vtable patches. На неподдержанном runtime
 записывается `device_loss=unsupported`, что означает blocker, а не passed.
