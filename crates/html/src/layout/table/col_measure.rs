@@ -125,15 +125,11 @@ pub(super) fn measure_col_widths(
                     // (наследование row -> table): `td { width: 2em }` при
                     // `table { font: 50px }` — колонка 100px, не пропуск.
                     Some(l @ (Len::Em(_) | Len::Ch(_) | Len::Ex(_))) => {
-                        let size = match cell
-                            .style
-                            .font_size
-                            .or(row.style.font_size)
-                            .or(inherited.font_size)
-                        {
-                            Some(Len::Px(v)) => v,
-                            _ => table_font,
-                        };
+                        let size = cell_font_px(
+                            cell.style.font_size,
+                            row.style.font_size.or(inherited.font_size),
+                            table_font,
+                        );
                         let family = cell
                             .style
                             .font_family
@@ -150,5 +146,24 @@ pub(super) fn measure_col_widths(
             }
             ix += span;
         }
+    }
+}
+
+/// Кегль ячейки в точках для её длин в единицах шрифта. Стиль ячейки здесь
+/// ещё сырой (`resolve_em` работает при наследовании, а дорожки считаются
+/// раньше), поэтому `font-size: 1.25em` решается от кегля родителя (CSS
+/// Fonts 4 §2.5: em у `font-size` — от родительского кегля). Без этого
+/// `td { font: 1.25em Ahem; width: 15em }` получал колонку по кеглю таблицы
+/// (`multicol-table-cell-height-001`: 240 вместо 300).
+pub(super) fn cell_font_px(own: Option<Len>, parent: Option<Len>, table_font: f32) -> f32 {
+    let parent_px = match parent {
+        Some(Len::Px(v)) => v,
+        _ => table_font,
+    };
+    match own {
+        Some(Len::Px(v)) => v,
+        Some(Len::Em(k)) => k * parent_px,
+        None => parent_px,
+        _ => table_font,
     }
 }
