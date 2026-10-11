@@ -53,6 +53,7 @@ impl ColumnStack {
             .collect();
         let count = self.count;
         let fixed = self.fixed_height;
+        let fill_shrink = self.fill_shrink;
         let gap = self.gap;
         let rows = self.rows;
         let copies = self.copies;
@@ -151,6 +152,7 @@ impl ColumnStack {
                         axis,
                         row_phase,
                         fixed_height: fixed,
+                        fill_shrink,
                         rule: None,
                         rule_to: None,
                         rows,
@@ -181,6 +183,7 @@ impl ColumnStack {
                     axis,
                     row_phase,
                     fixed_height: fixed,
+                    fill_shrink,
                     rule: None,
                     rule_to: None,
                     rows,

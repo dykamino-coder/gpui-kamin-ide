@@ -220,6 +220,14 @@ fn fixed_column_height(
                 e.style.height
             } {
                 Some(Len::Px(h)) => Some(h),
+                // Высота авто при заданном `max-height`: колонки заполняются
+                // подряд до него (css-multicol-1 §column-fill `auto`; Blink
+                // `ConstrainColumnBlockSize` берёт `LogicalMaxHeight()`), как
+                // в текстовом пути `column_flow` (`columnfill-auto-max-height-003`).
+                None | Some(Len::Auto) if !col_vert => match e.style.max_height {
+                    Some(Len::Px(m)) if m > 0.0 => Some(m),
+                    _ => None,
+                },
                 _ => None,
             },
         )
