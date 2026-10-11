@@ -12,7 +12,7 @@ use crate::style::computed::Display;
 use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn finish_shape_cuts(
+pub(crate) fn finish_shape_cuts(
     c: &Element,
     unclamp: bool,
     cx: ShapeCx,

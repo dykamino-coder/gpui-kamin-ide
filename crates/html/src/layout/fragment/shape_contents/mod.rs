@@ -15,6 +15,7 @@ mod lines;
 use lines::{line_inner_kids, row_axis_flags};
 mod cuts;
 use cuts::finish_shape_cuts;
+pub(crate) use cuts::finish_shape_cuts as finish_row_shape;
 pub(crate) use cuts::strip_through_top;
 mod kid_shapes;
 use kid_shapes::kid_shapes;
@@ -115,6 +116,11 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
     };
     let top = pad(&c.style.padding.top)? + px_or(&b.top, false)?;
     let bot = pad(&c.style.padding.bottom)? + px_or(&b.bottom, false)?;
+    if let Some(shape) =
+        crate::layout::fragment::flex_lines::measure_rows(c, depth, cx, unclamp, top, bot, mt, mb)
+    {
+        return Some(shape);
+    }
     // Строчное содержимое — по строкам, если ширина колонки известна.
     if !cx.paged
         && inline_content(c)

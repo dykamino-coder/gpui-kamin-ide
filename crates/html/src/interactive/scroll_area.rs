@@ -17,6 +17,8 @@ pub struct ScrollArea {
     pub(crate) id: ElementId,
     pub(crate) horizontal: bool,
     pub(crate) vertical: bool,
+    pub(crate) style: crate::style::computed::Computed,
+    tree: Option<Rc<crate::dom::Element>>,
     pub(crate) build: Rc<dyn Fn(&gpui::ScrollHandle, bool, bool) -> AnyElement>,
 }
 
@@ -32,13 +34,40 @@ impl ScrollArea {
             horizontal,
             vertical,
             build,
+            style: Default::default(),
+            tree: None,
         }
     }
 }
 
+impl ScrollArea {
+    pub(crate) fn with_style(mut self, style: crate::style::computed::Computed) -> Self {
+        self.style = style;
+        self
+    }
+
+    pub(crate) fn with_tree(mut self, e: &crate::dom::Element) -> Self {
+        if self.style.scroll.colors.flatten().is_some() {
+            self.tree = Some(Rc::new(e.clone()));
+        }
+        self
+    }
+}
+
+#[derive(Clone, Default)]
+struct Persistent {
+    handle: gpui::ScrollHandle,
+    extent: super::scroll_extent::Frame,
+}
+
 impl Element for ScrollArea {
-    type RequestLayoutState = AnyElement;
-    type PrepaintState = ();
+    type RequestLayoutState = (
+        AnyElement,
+        gpui::ScrollHandle,
+        super::scroll_extent::Frame,
+        LayoutId,
+    );
+    type PrepaintState = Bounds<Pixels>;
 
     fn id(&self) -> Option<ElementId> {
         Some(self.id.clone())
@@ -54,32 +83,75 @@ impl Element for ScrollArea {
         _inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
-    ) -> (LayoutId, AnyElement) {
+    ) -> (LayoutId, Self::RequestLayoutState) {
         let build = self.build.clone();
         let (h, v) = (self.horizontal, self.vertical);
-        let Some(global_id) = id else {
-            let mut el = build(&gpui::ScrollHandle::default(), h, v);
-            let layout_id = el.request_layout(window, cx);
-            return (layout_id, el);
+        let layout = |state: Persistent, window: &mut Window, cx: &mut App| {
+            let (layout_id, el) = state.extent.within(self.tree.as_deref(), || {
+                let mut el = build(&state.handle, h, v);
+                let layout_id = el.request_layout(window, cx);
+                (layout_id, el)
+            });
+            (
+                (
+                    layout_id,
+                    (el, state.handle.clone(), state.extent.clone(), layout_id),
+                ),
+                state,
+            )
         };
-        window.with_element_state::<gpui::ScrollHandle, _>(global_id, |handle, window| {
-            let handle = handle.unwrap_or_default();
-            let mut el = build(&handle, h, v);
-            let layout_id = el.request_layout(window, cx);
-            ((layout_id, el), handle)
-        })
+        match id {
+            Some(global_id) => window
+                .with_element_state::<Persistent, _>(global_id, |state, window| {
+                    layout(state.unwrap_or_default(), window, cx)
+                }),
+            None => layout(Persistent::default(), window, cx).0,
+        }
     }
 
     fn prepaint(
         &mut self,
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
-        _bounds: Bounds<Pixels>,
-        child: &mut AnyElement,
+        bounds: Bounds<Pixels>,
+        child: &mut Self::RequestLayoutState,
         window: &mut Window,
         cx: &mut App,
-    ) {
-        child.prepaint(window, cx);
+    ) -> Self::PrepaintState {
+        // Match CSS border painting: inset the unrounded box, not a rounded
+        // border box. A relocated prepaint_at node must retain its new bounds.
+        let exact = Bounds {
+            origin: window.layout_origin_unrounded(child.3),
+            size: window.layout_size_unrounded(child.3),
+        };
+        let half = gpui::px(0.5 / window.scale_factor().max(0.01) + 1e-4);
+        let near = |a: Pixels, b: Pixels| (a - b).abs() <= half;
+        let paint_bounds = if near(exact.left(), bounds.left())
+            && near(exact.top(), bounds.top())
+            && near(exact.right(), bounds.right())
+            && near(exact.bottom(), bounds.bottom())
+        {
+            exact
+        } else {
+            bounds
+        };
+        child
+            .2
+            .within(self.tree.as_deref(), || child.0.prepaint(window, cx));
+        if let Some(tree) = self.tree.as_deref()
+            && child.2.settle(tree, &self.style, &child.1)
+        {
+            // Invalidation during prepaint is ignored by GPUI. Rebuild after
+            // this frame, once the native extent proxy has its measured size.
+            let view = window.current_view_opt();
+            window.on_next_frame(move |window, cx| {
+                if let Some(view) = view {
+                    cx.notify(view);
+                }
+                window.refresh();
+            });
+        }
+        paint_bounds
     }
 
     fn paint(
@@ -87,12 +159,13 @@ impl Element for ScrollArea {
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        child: &mut AnyElement,
-        _prepaint: &mut (),
+        child: &mut Self::RequestLayoutState,
+        paint_bounds: &mut Self::PrepaintState,
         window: &mut Window,
         cx: &mut App,
     ) {
-        child.paint(window, cx);
+        child.0.paint(window, cx);
+        crate::interactive::scrollbars::paint(&self.style, &child.1, *paint_bounds, window);
     }
 }
 

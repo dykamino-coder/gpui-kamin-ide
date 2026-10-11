@@ -23,6 +23,7 @@ pub(crate) fn scrollable(
     if !horizontal && !vertical {
         return None;
     }
+    let scroll_style = crate::style::cascade::inherit::inherit(inherited, &e.style);
     let mut node = e.clone();
     // Слой ICB закрывается раньше, чем `ScrollArea` позовёт `build`, — поэтому
     // выносим кандидатов сейчас, из ещё не отданного в замыкание клона.
@@ -164,6 +165,8 @@ pub(crate) fn scrollable(
             vertical,
             build,
         )
+        .with_style(scroll_style)
+        .with_tree(e)
         .into_any_element(),
     )
 }

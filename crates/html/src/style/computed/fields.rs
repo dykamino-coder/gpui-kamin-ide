@@ -186,6 +186,8 @@ pub struct Computed {
     pub cb_node: u64,
     pub anchor_seq: u32,
     pub anchor_key: u64,
+    /// CSS scrollbar colors, width and forced overflow axes (HTML only).
+    pub scroll: super::scroll::ScrollStyle,
     pub overflow_x: Option<Overflow>,
     /// Внутренняя копия прокручиваемой коробки (`render` снимает с неё
     /// `overflow`, чтобы обёртка `ScrollArea` резала сама): по спеке она

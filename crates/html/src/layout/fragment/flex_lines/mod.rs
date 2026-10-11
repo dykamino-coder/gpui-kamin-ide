@@ -14,6 +14,7 @@ pub(super) use column::flex_gap_rules;
 use column::flex_lines_of;
 mod row;
 use row::flex_row_lines_of;
+pub(crate) use row::{geometry as row_geometry, measure_rows, row_break_edge, row_main_size};
 mod items;
 pub(crate) use items::class_a_box;
 pub(crate) use items::inline_display;

@@ -31,6 +31,9 @@ pub(crate) fn edge_avoid(e: &Element, last: bool) -> bool {
     if own {
         return true;
     }
+    if let Some(value) = crate::layout::fragment::flex_lines::row_break_edge(e, last, true) {
+        return value;
+    }
     let mut live = e.children.iter().filter(|n| !is_blank(n)).filter(
         |n| !matches!(n, Node::Element(k) if matches!(k.style.display, Some(Display::None))),
     );
@@ -97,6 +100,9 @@ pub(crate) fn edge_break(e: &Element, last: bool) -> bool {
     // САМОЙ монолитной коробки — он до этой строки.
     if forced_opaque(e) {
         return false;
+    }
+    if let Some(value) = crate::layout::fragment::flex_lines::row_break_edge(e, last, false) {
+        return value;
     }
     let mut live = e.children.iter().filter(|n| !is_blank(n)).filter(
         |n| !matches!(n, Node::Element(k) if matches!(k.style.display, Some(Display::None))),

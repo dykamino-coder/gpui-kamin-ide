@@ -39,6 +39,7 @@ mod resolve;
 
 use crate::style::values::value::Len;
 mod fields;
+pub(crate) mod scroll;
 pub use crate::style::computed::fields::*;
 pub(super) mod transform;
 pub use crate::style::computed::transform::*;
