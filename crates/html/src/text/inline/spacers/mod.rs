@@ -81,7 +81,7 @@ pub(super) static SPACER_BOX: std::sync::atomic::AtomicU32 = std::sync::atomic::
 pub(super) static BORDER_BAND: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 
 /// Edge spacers with their box: (byte offset, box id, physical left edge,
-/// parent rtl), in logical order.
+/// own rtl), in logical order.
 pub fn spacer_edges(pieces: &[Piece]) -> Vec<(usize, u32, bool, bool)> {
     let mut at = 0usize;
     let mut out = Vec::new();
@@ -90,9 +90,9 @@ pub fn spacer_edges(pieces: &[Piece]) -> Vec<(usize, u32, bool, bool)> {
             continue;
         };
         if text == SPACER
-            && let Some((id, left, parent_rtl)) = style.spacer_edge
+            && let Some((id, left, own_rtl)) = style.spacer_edge
         {
-            out.push((at, id, left, parent_rtl));
+            out.push((at, id, left, own_rtl));
         }
         at += text.len();
     }

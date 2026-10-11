@@ -81,7 +81,10 @@ pub(crate) fn prepare_children(
         // Анонимная таблица вокруг ПРОГОНА табличных братьев (§17.2.1 шаг 3)
         // — до разбиения блока в строчном и до схлопывания полей, как это
         // делает и сборщик дерева в браузере.
-        split_block_in_inline(&hoist_inset_abs(&wrap_anon_tables(nodes)))
+        crate::render::inline_splits::split_block_in_inline_dir(
+            &hoist_inset_abs(&wrap_anon_tables(nodes)),
+            inherited.rtl == Some(true),
+        )
     };
     // ★ ЗАМЕРЕНО И ОТКАЧЕНО (08.09, v158, `scout-flex-2026-09e.md` патч №1):
     // снятие АВТОРСКОГО `align-self` у блока в обычном потоке здесь, в начале
