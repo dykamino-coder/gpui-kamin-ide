@@ -108,7 +108,12 @@ impl Paragraph {
             return Vec::new();
         }
         let rtl = self.wrap.rtl;
-        let edges = rtl && self.spacer_edges.iter().any(|e| range.contains(&e.0));
+        // Edges of an rtl box sit on its visual sides even in an ltr line
+        // (CSS 2.1 §8.6): logical order puts its start edge on the left.
+        let edges = self
+            .spacer_edges
+            .iter()
+            .any(|e| range.contains(&e.0) && (rtl || e.3));
         let needs = edges
             || self.text[range.clone()].chars().any(|c| {
                 matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')

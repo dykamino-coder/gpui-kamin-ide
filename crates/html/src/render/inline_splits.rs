@@ -15,6 +15,12 @@ use crate::style::values::value::Len;
 /// остаётся в своих анонимных коробках, сам блок встаёт между ними. Подряд
 /// идущие блоки в отдельные анонимные коробки не заворачиваются.
 pub(crate) fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
+    split_block_in_inline_dir(nodes, false)
+}
+
+/// [`split_block_in_inline`] with the parent's `direction` known: an inline
+/// that does not set its own inherits it, and its start edge follows it.
+pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec<Node> {
     let need = nodes.iter().any(|n| match n {
         Node::Element(e) => real_inline(e) && !out_of_flow(&e.style) && contains_block(&e.children),
         Node::Text(_) => false,
@@ -49,7 +55,8 @@ pub(crate) fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
         };
         // Сторона письма известна только своему стилю: при rtl/вертикали
         // прежнее поведение (пустой кусок пропадает).
-        let ltr = e.style.rtl != Some(true) && e.style.vertical.is_none();
+        let own_rtl = e.style.rtl.unwrap_or(parent_rtl);
+        let ltr = !own_rtl && e.style.vertical.is_none();
         // `first`: кусок до первого блока, `last`: после последнего.
         // Positions in `out` of this element's inline pieces (for edge slicing below).
         let mut hosts: Vec<usize> = vec![];
@@ -62,7 +69,7 @@ pub(crate) fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
         };
         // Split inner ancestors first, then join their inline continuations
         // to this ancestor's fragments on either side of the actual block.
-        let kids = split_block_in_inline(&e.children);
+        let kids = split_block_in_inline_dir(&e.children, own_rtl);
         let mut first = true;
         for child in &kids {
             // CSS 2.1 section 9.2.1.1 breaks inline ancestors around the
@@ -160,9 +167,8 @@ pub(crate) fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
             if host.style.bdb_clone {
                 continue;
             }
-            let rtl = host.style.rtl == Some(true);
             // Physical sides: 1 = right, 3 = left.
-            let (start, end) = if rtl { (1, 3) } else { (3, 1) };
+            let (start, end) = if own_rtl { (1, 3) } else { (3, 1) };
             if k > 0 {
                 drop_inline_side(&mut host.style, start);
             }

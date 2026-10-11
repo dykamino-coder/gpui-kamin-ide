@@ -83,13 +83,13 @@ impl Paragraph {
                     continue;
                 };
                 // Outermost spacer (the margin) goes furthest out: logical
-                // order already is visual for an ltr parent, reversed for rtl.
+                // order already is visual for an ltr box, reversed for rtl.
                 let mut lefts: Vec<(usize, usize, bool)> = Vec::new();
                 let mut rights: Vec<(usize, usize, bool)> = Vec::new();
-                let mut parent_rtl = false;
+                let mut own_rtl = false;
                 for &(a, b, rtl) in units.iter() {
                     if let Some((left, prtl)) = own(a) {
-                        parent_rtl = prtl;
+                        own_rtl = prtl;
                         if left {
                             lefts.push((a, b, rtl));
                         } else {
@@ -99,7 +99,7 @@ impl Paragraph {
                 }
                 lefts.sort_by_key(|u| u.0);
                 rights.sort_by_key(|u| u.0);
-                if parent_rtl {
+                if own_rtl {
                     lefts.reverse();
                     rights.reverse();
                 }
