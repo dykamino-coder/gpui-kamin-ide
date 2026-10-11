@@ -112,7 +112,7 @@ pub fn term_toolbar(
     // scrollWidth − 1` (`TerminalToolbar.tsx:46-47`) — по РЕАЛЬНОМУ скроллу,
     // а не по индексу окна (ревью ц.23)
     let scrolled = -f32::from(tab_scroll.offset().x);
-    let max_scroll = f32::from(tab_scroll.max_offset().width);
+    let max_scroll = f32::from(tab_scroll.max_offset().x);
     if overflow {
         // codicon chevron-left / chevron-right
         bar = bar.child(scroll_btn(

@@ -19,12 +19,12 @@ export default defineConfig({
       formats: ["es"],
       fileName: () => "kamin-host.mjs",
     },
-    rollupOptions: {
+    rolldownOptions: {
       // One self-contained file (the payload ships + the Rust shell spawns a
       // single `kamin-host.mjs`). The role dispatcher's dynamic imports of
       // host-main/child are inlined; only the taken branch's boot runs, so the
       // child never executes the parent's service boot (and vice-versa).
-      output: { inlineDynamicImports: true },
+      output: { codeSplitting: false },
       external: [
         // Native (.node binary) + packages with a "browser" field Vite
         // would otherwise resolve to their browser build (ws → a stub

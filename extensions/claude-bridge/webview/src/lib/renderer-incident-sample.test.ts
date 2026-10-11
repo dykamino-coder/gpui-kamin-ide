@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { SCROLL_UP_MAX, STORE_WINDOW } from '../signals/jsonl'
-import { buildRendererIncidentSample } from './renderer-incident-sample'
+import { buildRendererIncidentSample, countAgentRetention } from './renderer-incident-sample'
 
 describe('renderer incident samples', () => {
   it('contains store counters without tab ids or transcript contents', () => {
@@ -29,5 +29,24 @@ describe('renderer incident samples', () => {
 
     expect(sample.windowState).toBe('over-configured-window')
     expect(sample.activeEntries).toBe(SCROLL_UP_MAX + 1)
+  })
+})
+
+describe('agent retention counters (INC-2026-0008 debug gate)', () => {
+  it('counts unique slots, stored entries, UUID index and closed-tab slots without ids', () => {
+    const open = { tabId: 'open-tab', entries: [1, 2, 3], seen: new Set(['a', 'b', 'c']) }
+    const closed = { tabId: 'closed-tab', entries: [1], seen: new Set(['a', 'b', 'c', 'd']) }
+    const slots = new Map<string, { tabId?: string; entries: unknown[]; seen?: Set<string> }>([
+      ['k1', open], ['alias', open], ['k2', closed], ['legacy', { entries: [1, 2] }],
+    ])
+    const counters = countAgentRetention(slots, new Set(['open-tab']))
+    expect(counters).toEqual({ slots: 3, storedEntries: 6, uuidIndex: 7, closedTabSlots: 1 })
+    const sample = buildRendererIncidentSample('tools', new Map(), null, undefined, counters)
+    expect(sample.agentRetention).toEqual(counters)
+    expect(JSON.stringify(sample)).not.toContain('open-tab')
+  })
+
+  it('omits the counters when none are supplied', () => {
+    expect(buildRendererIncidentSample('chat', new Map(), null, 1)).not.toHaveProperty('agentRetention')
   })
 })

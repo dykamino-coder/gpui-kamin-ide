@@ -4,6 +4,9 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    // Bound workers when running the complete npm check beside Cargo builds.
+    maxWorkers: process.env.KAMIN_TEST_MAX_WORKERS
+      ? Number(process.env.KAMIN_TEST_MAX_WORKERS) : undefined,
     // Each Bridge package installs and tests its own dependency graph in a
     // dedicated CI job. Discovering those suites from the root made this job
     // fail on packages that intentionally are not root dependencies.

@@ -29,6 +29,11 @@ def load(path: Path) -> dict[str, float]:
         if not line:
             continue
         parts = line.split("|")
+        # «вне цели: …» ставит сам стенд тестам, которым нужен JavaScript
+        # (`<meta name="variant">`, `<script>`): без него пара ничего не
+        # проверяет. Это не провал и не зачёт — строка уходит из знаменателя.
+        if parts[-1].startswith("вне цели"):
+            continue
         try:
             out[parts[0]] = float(parts[-1])
         except ValueError:

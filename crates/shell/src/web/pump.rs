@@ -11,9 +11,7 @@ pub fn start_pump(cx: &mut gpui::App) {
     let (wake_tx, wake_rx) = smol::channel::unbounded::<()>();
     super::set_wake(wake_tx);
     cx.spawn(async move |cx| {
-        let Ok(bg) = cx.update(|cx| cx.background_executor().clone()) else {
-            return;
-        };
+        let bg = cx.update(|cx| cx.background_executor().clone());
         while wake_rx.recv().await.is_ok() {
             // Съедаем всё накопившееся: заказ перерисовки нужен ОДИН на кадр,
             // а вью восемь и каждый шлёт свои кадры.
@@ -21,9 +19,7 @@ pub fn start_pump(cx: &mut gpui::App) {
             super::take_repaint_request();
             // Вытесненные текстуры освобождаем ЗДЕСЬ, между кадрами: внутри
             // отрисовки атлас трогать нельзя.
-            if cx.update(super::flush_retired).is_err() {
-                return;
-            }
+            cx.update(super::flush_retired);
             super::diag::refresh();
             // ТОЧЕЧНО, а не `cx.refresh()`. Тот ставит `window.refreshing` и
             // ОТКЛЮЧАЕТ кэш всех вью на кадр (`vendor/gpui/src/view.rs:212`,
@@ -55,9 +51,7 @@ pub fn start_pump(cx: &mut gpui::App) {
 
     // Секундная сводка пути кадра: кадры, отрисовки, заказы (`diag.rs`).
     cx.spawn(async move |cx| {
-        let Ok(bg) = cx.update(|cx| cx.background_executor().clone()) else {
-            return;
-        };
+        let bg = cx.update(|cx| cx.background_executor().clone());
         loop {
             bg.timer(std::time::Duration::from_millis(1000)).await;
             super::diag::report();

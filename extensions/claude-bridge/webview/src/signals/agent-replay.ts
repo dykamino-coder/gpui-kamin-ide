@@ -56,7 +56,8 @@ export function publishAgentReplay(tabId: string, generation: number): boolean {
 }
 
 /** Forget an open replay (tab closed / state reset). */
-export function abandonAgentReplay(tabId: string): void {
+export function abandonAgentReplay(tabId: string, generation?: number): void {
+  if (generation !== undefined && staging.get(tabId)?.generation !== generation) return
   staging.delete(tabId)
 }
 

@@ -14,6 +14,10 @@ pub fn is_singleton(id: &str) -> bool {
     dyn_has(id)
 }
 pub fn dyn_tool(id: &str) -> Option<DynTool> {
+    #[cfg(debug_assertions)]
+    if let Some(tool) = crate::native_acceptance::tool(id) {
+        return Some(tool);
+    }
     crate::activity::dyn_tools::dyn_tools()
         .lock()
         .unwrap()

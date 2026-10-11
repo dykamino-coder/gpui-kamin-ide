@@ -2,6 +2,7 @@
 // Dashboard account & auth-status endpoints
 // ============================================================================
 
+import { claudeInvocation } from '../../pty/dev-cli'
 import type { Hono } from 'hono'
 import { eventBus } from '../../events/bus'
 import { readClaudeLocalInfo } from '../helpers/system-info'
@@ -25,7 +26,8 @@ export function registerAccountRoutes(api: Hono): void {
       const { execFile } = await import('child_process')
       const { promisify } = await import('util')
       const execFileAsync = promisify(execFile)
-      const { stdout } = await execFileAsync(process.platform === 'win32' ? 'claude.cmd' : 'claude', ['--dangerously-skip-permissions', 'auth', 'status'], {
+      const cli = claudeInvocation(['--dangerously-skip-permissions', 'auth', 'status'])
+      const { stdout } = await execFileAsync(cli.command, cli.args, {
         timeout: 10000,
         env: { ...process.env, HOME: process.env.HOME || '/home/bridge' },
       })
@@ -67,13 +69,17 @@ export function registerAccountRoutes(api: Hono): void {
       const { execFile } = await import('child_process')
       const { promisify } = await import('util')
       const execFileAsync = promisify(execFile)
-      const { stdout, stderr } = await execFileAsync(process.platform === 'win32' ? 'claude.cmd' : 'claude', ['--dangerously-skip-permissions', 'auth', 'status'], {
+      const cli = claudeInvocation(['--dangerously-skip-permissions', 'auth', 'status'])
+      const { stdout, stderr } = await execFileAsync(cli.command, cli.args, {
         timeout: 10000,
         env: { ...process.env, HOME: process.env.HOME || '/home/bridge' },
       })
       const trimmed = stdout.trim()
       if (!trimmed) {
-        const fallback = { loggedIn: false, error: `Empty stdout from \`claude auth status\`. stderr: ${(stderr || '').slice(0, 200)}` }
+        const fallback = {
+          loggedIn: false,
+          error: `Empty stdout from \`claude auth status\`. stderr: ${(stderr || '').slice(0, 200)}`,
+        }
         authCache.set(fallback as any)
         return c.json(fallback)
       }

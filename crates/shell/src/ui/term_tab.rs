@@ -35,7 +35,7 @@ pub(crate) fn term_tab<E: gpui::ParentElement>(
         .h(px(30.0))
         .px(px(10.0))
         // `.tab { flex: 0 1 auto }` — при тесноте табы ужимаются
-        .flex_shrink()
+        .flex_shrink_1()
         .min_w(px(80.0))
         .max_w(px(220.0))
         .rounded_tl(px(8.0))

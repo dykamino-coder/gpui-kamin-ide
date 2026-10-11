@@ -45,7 +45,15 @@ def pairs(root):
             href = HREF.search(tag.group(0))
             if not href:
                 continue
-            ref = os.path.normpath(os.path.join(dirpath, href.group(1)))
+            h = href.group(1)
+            # Абсолютная ссылка (`/css/reference/...`) — от корня набора WPT.
+            if h.startswith('/'):
+                wpt_root = root
+                while os.path.basename(wpt_root) != 'wpt-parsing' and os.path.dirname(wpt_root) != wpt_root:
+                    wpt_root = os.path.dirname(wpt_root)
+                ref = os.path.normpath(os.path.join(wpt_root, h.lstrip('/')))
+            else:
+                ref = os.path.normpath(os.path.join(dirpath, h))
             if os.path.exists(ref):
                 out.append((os.path.abspath(path), os.path.abspath(ref)))
     return out

@@ -2,7 +2,9 @@
 // Dashboard stats & request log endpoints — powered by OTel telemetry store
 // ============================================================================
 
-import type { Hono } from 'hono'
+import type { Context, Hono } from 'hono'
+import fsp from 'node:fs/promises'
+import { issueJsonlDownload, jsonlAttachment, jsonlExportCaller, JsonlExportBusy } from '../jsonl-download'
 import path from 'path'
 import {
   getTokenUsageSummary,
@@ -567,27 +569,53 @@ export function registerStatsRoutes(api: Hono): void {
     return c.json({ tokenId, sessions })
   })
 
-  // ── GET /api/dashboard/sessions/:sessionId/jsonl
-  //    Stream the raw JSONL for a session if the file is still on disk.
-  api.get('/api/dashboard/sessions/:sessionId/jsonl', async (c) => {
-    const sessionId = c.req.param('sessionId')
+  // Preserve the authenticated fetch API, now with a bounded byte stream.
+  const jsonlPath = async (c: Context, sessionId: string): Promise<string | Response> => {
     const denied = denyForeignUser(c, await sessionOwner(sessionId))
     if (denied) return denied
     const { getDb } = await import('../../stats/database/lifecycle')
-    const fs = await import('fs')
     const db = await getDb()
     const row = (
       await db.runAndReadAll(`SELECT file_path FROM jsonl_offsets WHERE file_path LIKE '%/' || ? || '.jsonl' LIMIT 1`, [
         sessionId,
       ])
     ).getRowObjects()[0] as { file_path: string } | undefined
-    if (!row?.file_path || !fs.existsSync(row.file_path)) {
+    return row?.file_path ?? c.json({ error: 'JSONL not available — file deleted' }, 404)
+  }
+  const attachment = async (c: Context, requireGrant: boolean) => {
+    const sessionId = c.req.param('sessionId')!
+    if (requireGrant && c.get('jsonlDownloadSession') !== sessionId)
+      return c.json({ error: 'Download authorization required' }, 401)
+    // Ownership is rechecked when the one-use grant is consumed, not only issued.
+    const resolved = await jsonlPath(c, sessionId)
+    if (resolved instanceof Response) return resolved
+    try {
+      return await jsonlAttachment(
+        resolved,
+        sessionId,
+        c.get('jsonlExportCaller') ?? jsonlExportCaller(c),
+        c.req.raw.signal,
+      )
+    } catch (error) {
+      if (error instanceof JsonlExportBusy) return c.json({ error: error.message }, 429)
+      return c.json({ error: 'JSONL not available — file deleted or unreadable' }, 404)
+    }
+  }
+  api.get('/api/dashboard/sessions/:sessionId/jsonl', (c) => attachment(c, false))
+  api.get('/api/dashboard/sessions/:sessionId/jsonl-download', (c) => attachment(c, true))
+  api.post('/api/dashboard/sessions/:sessionId/jsonl-download', async (c) => {
+    const sessionId = c.req.param('sessionId')
+    const resolved = await jsonlPath(c, sessionId)
+    if (resolved instanceof Response) return resolved
+    try {
+      if (!(await fsp.stat(resolved)).isFile()) throw new Error('not a file')
+    } catch {
       return c.json({ error: 'JSONL not available — file deleted' }, 404)
     }
-    const content = fs.readFileSync(row.file_path, 'utf-8')
-    c.header('Content-Type', 'application/x-ndjson')
-    c.header('Content-Disposition', `attachment; filename="${sessionId}.jsonl"`)
-    return c.body(content)
+    const url = issueJsonlDownload(c, sessionId)
+    if (!url) return c.json({ error: 'Export busy; try again shortly' }, 429)
+    c.header('Cache-Control', 'no-store')
+    return c.json({ url })
   })
 
   // ── DELETE /api/dashboard/sessions/:sessionId?rmFile=1

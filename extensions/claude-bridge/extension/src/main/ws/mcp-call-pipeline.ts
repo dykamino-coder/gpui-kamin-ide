@@ -13,6 +13,8 @@ export interface McpCallCtx {
   window: BrowserWindow
   tabId: string
   send: (msg: ClientMessage) => void
+  reportDeliveryFailure: () => void
+  deliverResult: (outcome: Extract<ClientMessage, { type: 'mcp:response' | 'mcp:denied' }>) => Promise<void>
   pendingMcpCalls: Map<string, { toolName: string; input: Record<string, unknown> }>
   pendingPermissions: Map<string, (decision: PermissionDecision) => void>
   permissionMode: () => PermissionMode
@@ -103,6 +105,7 @@ export async function handleMcpCall(
   ctx: McpCallCtx,
   msg: { requestId: string; toolName: string; input: Record<string, unknown> },
 ): Promise<void> {
+  if (ctx.pendingMcpCalls.has(msg.requestId)) return
   ctx.pendingMcpCalls.set(msg.requestId, { toolName: msg.toolName, input: msg.input })
 
   ctx.window.webContents.send('mcp-activity', ctx.tabId, {
@@ -119,29 +122,30 @@ export async function handleMcpCall(
     return
   }
 
+  const start = Date.now()
+  let result: unknown
   try {
     const { executeTool } = await import('../mcp/executor')
-    // Pass the source tabId so widget-based tools (AskUserQuestion, etc.)
-    // show in the correct chat even when the user is looking elsewhere.
-    const start = Date.now()
-    const result = await executeTool(msg.toolName, msg.input, { tabId: ctx.tabId })
-    const durationMs = Date.now() - start
-
-    ctx.send({ type: 'mcp:response', requestId: msg.requestId, result })
-    ctx.pendingMcpCalls.delete(msg.requestId)
-
-    ctx.window.webContents.send('mcp-activity', ctx.tabId, {
-      requestId: msg.requestId,
-      toolName: msg.toolName,
-      input: msg.input,
-      timestamp: Date.now(),
-      status: 'completed',
-      result,
-      durationMs,
-    })
+    result = await executeTool(msg.toolName, msg.input, { tabId: ctx.tabId })
   } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err)
-    ctx.send({ type: 'mcp:response', requestId: msg.requestId, result: `Error: ${errMsg}` })
+    result = `Error: ${err instanceof Error ? err.message : String(err)}`
+  }
+  if (!ctx.pendingMcpCalls.has(msg.requestId)) return
+  try {
+    await ctx.deliverResult({ type: 'mcp:response', requestId: msg.requestId, result })
+    if (!ctx.pendingMcpCalls.has(msg.requestId)) return
+    ctx.window.webContents.send('mcp-activity', ctx.tabId, {
+      requestId: msg.requestId, toolName: msg.toolName, input: msg.input,
+      timestamp: Date.now(), status: 'completed', result, durationMs: Date.now() - start,
+    })
+  } catch (error) {
+    if (!ctx.pendingMcpCalls.has(msg.requestId)) return
+    ctx.reportDeliveryFailure()
+    ctx.window.webContents.send('mcp-activity', ctx.tabId, {
+      requestId: msg.requestId, toolName: msg.toolName, input: msg.input,
+      timestamp: Date.now(), status: 'denied', result: `Delivery failed: ${String(error)}`,
+    })
+  } finally {
     ctx.pendingMcpCalls.delete(msg.requestId)
   }
 }

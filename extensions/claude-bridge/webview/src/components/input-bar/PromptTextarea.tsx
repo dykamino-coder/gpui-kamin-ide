@@ -4,7 +4,7 @@ import { tabPromptReady, tabPromptVisible, mcpLoading } from '../../signals/conn
 import { activeTabId, tabs } from '../../signals/tabs'
 
 interface PromptTextareaProps {
-  textareaRef?: RefObject<HTMLTextAreaElement>
+  textareaRef?: RefObject<HTMLTextAreaElement | null>
   onInput: (value: string) => void
   onKeyDown: (e: KeyboardEvent) => void
   onPaste: (e: ClipboardEvent) => void

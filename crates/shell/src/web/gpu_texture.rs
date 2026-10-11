@@ -45,6 +45,13 @@ impl GpuTexture {
         &self.0
     }
 
+    /// Держим GetDevice owner до сравнения; адрес не переиспользуется,
+    /// пока ресурс владеет своим устройством.
+    pub(crate) fn belongs_to(&self, device: *mut std::ffi::c_void) -> bool {
+        use windows::core::Interface;
+        unsafe { self.0.GetDevice() }.is_ok_and(|owner| owner.as_raw() == device)
+    }
+
     /// Ещё одна ссылка сырым указателем — для того, кто владеет сам (атлас).
     pub(crate) fn extra_ref(&self) -> *mut std::ffi::c_void {
         windows::core::Interface::into_raw(self.0.clone())

@@ -152,6 +152,7 @@ pub(crate) fn pill_wrap(id: String, p: &Palette) -> gpui::Stateful<gpui::Div> {
             offset: gpui::point(px(0.), px(4.)),
             blur_radius: px(16.),
             spread_radius: px(0.),
+            inset: false,
         }])
 }
 /// Пилюля в overlay: absolute на якоре строки (справа от сайдбара).

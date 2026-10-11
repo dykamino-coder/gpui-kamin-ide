@@ -8,7 +8,7 @@ use crate::state::editor_tab::EditorTab;
 use crate::state::model::RootView;
 use gpui::prelude::*;
 use gpui::{Context, Focusable, Window};
-use gpui_component::input::{InputEvent, InputState};
+use gpui_component::input::{EditorState as CodeEditorState, InputEvent};
 
 impl RootView {
     pub(crate) fn frame_editor_reload(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -29,7 +29,7 @@ impl RootView {
                 let tab_path = self.ed.editor_tabs[idx].path.clone();
                 let input = self.ed.editor_tabs[idx].input.clone();
                 self.ed.reload_suppress.insert(tab_path);
-                input.update(cx, |st, cx| st.set_value(text, window, cx));
+                crate::state::input_value::set_editor_value_emit(&input, text, window, cx);
             }
         }
     }
@@ -57,53 +57,44 @@ impl RootView {
             lsp.open(&text);
             let mirror_src = text.clone();
             let input = cx.new(|cx| {
-                let mut st = InputState::new(window, cx)
-                    .code_editor(lang)
+                // 0.7.1 сворачивает блоки по умолчанию; у нас сворачивания не
+                // было, а его шевроны ложатся поверх нашего глиф-бара.
+                let mut st = CodeEditorState::new(window, cx)
+                    .language(lang)
+                    .folding(false)
+                    // Monaco оригинала: `scrollBeyondLastLine: false`
+                    // (`MonacoEditor.tsx:185`). Иначе колесо уводит под
+                    // строку пути даже файл, целиком помещённый в вьюпорт
+                    // (INC-2026-0060). В 0.7.1 это штатная опция upstream:
+                    // `Some(0)` — ни одной пустой строки под последней.
+                    .scroll_beyond_last_line(Some(0))
                     .soft_wrap(false);
-                st.lsp.hover_provider = Some(lsp.clone());
-                st.lsp.definition_provider = Some(lsp.clone());
+                st.lsp_mut().hover_provider = Some(lsp.clone());
+                st.lsp_mut().definition_provider = Some(lsp.clone());
                 st.set_value(text, window, cx);
                 st
             });
-            // Зеркало для минимапы: тот же текст и язык, свой layout —
-            // это и есть `minimap_editor` из Zed, только на нашем Input.
-            let mirror_text = self
-                .ed
-                .editor_tabs
-                .iter()
-                .find(|t| t.path == path)
-                .map(|_| String::new());
-            let _ = mirror_text;
-            self.ed.minimap_input = Some(cx.new(|cx| {
-                // Zed-минимапа не рисует номера строк и не подсвечивает
-                // текущую строку/выделение — это чистый силуэт текста.
-                let mut st = InputState::new(window, cx)
-                    .code_editor(lang)
-                    .line_number(false)
-                    // Zed `EditorMode::Minimap`: read-only, без подписок и
-                    // каретки. У нас этот флаг ещё и снимает жёсткий
-                    // line-height `Input`-а, иначе строки идут через 20px.
-                    .minimap()
-                    .soft_wrap(false);
-                st.set_value(mirror_src.clone(), window, cx);
-                st
-            }));
+            // Зеркало минимапы — своё у каждого таба (INC-2026-0059)
+            let minimap =
+                crate::state::editor_minimap_sync::new_mirror(lang, mirror_src, window, cx);
             // Change → dirty ЭТОГО таба (ищем по path — индексы плавают)
             let sub_path = path.clone();
             let sub = cx.subscribe(&input, move |this, _, ev: &InputEvent, cx| {
                 if matches!(ev, InputEvent::Change) {
-                    // Программный set_value при внешнем reload — не dirty
-                    if this.ed.reload_suppress.remove(&sub_path) {
-                        return;
-                    }
+                    // Зеркало догоняет буфер и при внешнем reload, поэтому
+                    // метка ставится ДО проверки подавления dirty
+                    let reload = this.ed.reload_suppress.remove(&sub_path);
                     if let Some(tab) = this.ed.editor_tabs.iter_mut().find(|t| t.path == sub_path) {
-                        tab.dirty = true;
-                        this.ed.minimap_stale = true;
+                        tab.minimap_stale = true;
+                        // Программный set_value при внешнем reload — не dirty
+                        if !reload {
+                            tab.dirty = true;
+                        }
                         cx.notify();
                     }
                 }
             });
-            window.focus(&input.read(cx).focus_handle(cx));
+            window.focus(&input.read(cx).focus_handle(cx), cx);
             // LRU-лимит: 13-й таб вытесняет самый давний ЧИСТЫЙ (dirty не трогаем)
             if self.ed.editor_tabs.len() >= MAX_EDITOR_TABS
                 && let Some(evict) = self
@@ -124,6 +115,8 @@ impl RootView {
             self.ed.editor_tabs.push(EditorTab {
                 path,
                 input,
+                minimap,
+                minimap_stale: false,
                 dirty: false,
                 eol,
                 last_used: std::time::Instant::now(),
@@ -140,6 +133,7 @@ impl RootView {
         // LRU-штамп активного таба (каждый кадр — всегда актуален)
         if let Some(tab) = self.ed.editor_tabs.get_mut(self.ed.editor_active) {
             tab.last_used = std::time::Instant::now();
+            crate::state::editor_minimap_sync::sync_mirror(tab, window, cx);
         }
         // Выделение в дереве следует за активным файлом. Оригинал — ЭФФЕКТ на
         // смену `selectedFile` (`file-selection.ts:57-63`), а не работа каждый

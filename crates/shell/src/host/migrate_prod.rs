@@ -1,17 +1,16 @@
-//! Подтяжка данных из ПРОД-KaminIDE (Tauri, `%APPDATA%/studio.dykamino.kaminide`)
-//! в стор gpui-порта: host-сессии/проекты (имена, пины, цвета, metadata,
-//! пер-сессионный layout) и bridge-конфиг (savedSessionsByToken — «старые
-//! чаты», token/serverUrl если свои пусты, base prompt'ы). Прод — ТОЛЬКО
-//! ЧТЕНИЕ; свои записи выигрывают при конфликте id (локальное свежее).
+//! Миграция host-сессий/проектов/layout и Bridge metadata/config из
+//! %APPDATA%/studio.dykamino.kaminide. Прод только читается; свои записи выигрывают.
 //!
-//! Пока юзер живёт на двух версиях, прод-стор растёт — мерж повторяется на
-//! каждом буте, на котором mtime прод-файла новее сохранённого маркера
-//! (`prod-merge.json` в data). Чаты как таковые живут на СЕРВЕРЕ и приходят
-//! по conversationId — токен общий, миграция несёт только их СПИСКИ/метаданные.
+//! Новее prod-merge.json → повтор миграции при boot. Чаты хранятся на сервере;
+//! мигрируются только их списки/метаданные и общий token/serverUrl.
 
 use std::path::{Path, PathBuf};
 
 fn prod_dir() -> Option<PathBuf> {
+    #[cfg(debug_assertions)]
+    if crate::native_acceptance::config::Config::from_env().no_host {
+        return None;
+    }
     let appdata = std::env::var("APPDATA").ok()?;
     let p = PathBuf::from(appdata).join("studio.dykamino.kaminide");
     p.exists().then_some(p)

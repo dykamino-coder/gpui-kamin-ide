@@ -38,7 +38,7 @@
 //!   - [flexbox_gap](https://github.com/DioxusLabs/taffy/blob/main/examples/flexbox_gap.rs)
 //!   - [grid_holy_grail](https://github.com/DioxusLabs/taffy/blob/main/examples/grid_holy_grail.rs)
 //!   - [measure](https://github.com/DioxusLabs/taffy/blob/main/examples/measure.rs)
-//!   - [cosmic_text](https://github.com/DioxusLabs/taffy/blob/main/examples/cosmic_text.rs)
+//!   - [parley](https://github.com/DioxusLabs/taffy/blob/main/examples/parley/src/main.rs)
 //!
 //! In particular, the "measure" example shows how to integrate Taffy layout with other layout modalities such as text or image layout when using the high level API.
 //!
@@ -60,7 +60,7 @@
 // document the feature flags for the crate by extracting the comments from Cargo.toml
 #![cfg_attr(feature = "document-features", doc = document_features::document_features!())]
 // annotate items with their required features (gated by docsrs flag as this requires the nightly toolchain)
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
@@ -77,7 +77,7 @@
 #[macro_use]
 extern crate std;
 
-#[cfg(all(not(feature = "std"), feature = "alloc"))]
+#[cfg(not(feature = "std"))]
 extern crate alloc;
 
 #[cfg_attr(feature = "serde", macro_use)]
@@ -97,20 +97,21 @@ mod readme_doctest {
     #![doc = include_str!("../README.md")]
 }
 
-#[cfg(feature = "block_layout")]
-#[doc(inline)]
-pub use crate::compute::compute_block_layout;
 #[cfg(feature = "flexbox")]
 #[doc(inline)]
 pub use crate::compute::compute_flexbox_layout;
 #[cfg(feature = "grid")]
 #[doc(inline)]
 pub use crate::compute::compute_grid_layout;
-#[cfg(feature = "detailed_layout_info")]
 pub use crate::compute::detailed_info::*;
+#[cfg(feature = "block_layout")]
+#[doc(inline)]
+pub use crate::compute::{compute_block_align_content_offset, compute_block_layout};
 #[doc(inline)]
 pub use crate::compute::{
-    compute_cached_layout, compute_hidden_layout, compute_leaf_layout, compute_root_layout, round_layout,
+    compute_cached_layout, compute_hidden_layout, compute_leaf_layout, compute_oof_layout,
+    compute_oof_layout_for_area, compute_root_layout, resolve_static_offset, round_layout,
+    OofLayoutResult,
 };
 #[doc(inline)]
 pub use crate::style::Style;
@@ -123,6 +124,10 @@ pub use crate::tree::TaffyTree;
 #[doc(inline)]
 pub use crate::util::print_tree;
 
+#[cfg(feature = "parse")]
+pub use parse::{ParseError, ParseResult};
+
+pub use crate::compute::*;
 pub use crate::geometry::*;
 pub use crate::style::*;
 pub use crate::tree::*;

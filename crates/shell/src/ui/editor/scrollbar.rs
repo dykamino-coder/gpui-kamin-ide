@@ -7,7 +7,7 @@ use crate::ui::minimap_geom::MIN_THUMB;
 use crate::ui::minimap_geom::geom;
 use gpui::prelude::*;
 use gpui::{AnyElement, Entity, div, px};
-use gpui_component::input::InputState;
+use gpui_component::input::EditorState as CodeEditorState;
 use kamin_theme::Palette;
 use std::cell::Cell;
 use std::rc::Rc;
@@ -17,7 +17,11 @@ use std::rc::Rc;
 /// минимапы (порядок Zed: текст → минимапа → скроллбар).
 /// `markers` — диагностики активного файла (строка 0-based, severity как в
 /// Problems): полосы 2px на треке, как markers Зеда.
-pub fn scrollbar(input: &Entity<InputState>, markers: Vec<(u32, u8)>, p: &Palette) -> AnyElement {
+pub fn scrollbar(
+    input: &Entity<CodeEditorState>,
+    markers: Vec<(u32, u8)>,
+    p: &Palette,
+) -> AnyElement {
     const SB_W: f32 = 12.0;
     let origin: Rc<Cell<(f32, f32, f32)>> = Rc::new(Cell::new((0.0, 0.0, 0.0)));
 

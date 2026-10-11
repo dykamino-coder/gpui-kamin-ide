@@ -55,10 +55,10 @@ pub(super) fn report() {
         return;
     };
     if let Some(policy) = policy {
-        super::diag::emit_line(policy);
+        super::diag_sink::emit_line(policy);
     }
     if let Some(line) = line {
-        super::diag::emit_line(format!("{line} interval_ms={interval:?}"));
+        super::diag_sink::emit_line(format!("{line} interval_ms={interval:?}"));
     }
     super::diag_views::report(now);
 }
@@ -76,7 +76,7 @@ pub(super) fn frame_rate(id: &str) -> i32 {
     } else {
         120
     };
-    super::diag::emit_line(format!(
+    super::diag_sink::emit_line(format!(
         "[boot] view={id:?} windowless_frame_rate={rate} cef_software={}",
         super::sw_mode()
     ));

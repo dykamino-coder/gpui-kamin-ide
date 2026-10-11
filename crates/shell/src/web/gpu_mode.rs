@@ -53,16 +53,22 @@ pub(crate) fn software_render() -> bool {
             Some("0") => Some(false),
             _ => None,
         };
+        #[cfg(debug_assertions)]
+        let forced = if crate::native_acceptance::config::Config::from_env().software_policy {
+            Some(true)
+        } else {
+            forced
+        };
         let software = forced.unwrap_or_else(detect);
         if software {
             // В лог: по присланному `diag.log` иначе не отличить «медленно
             // из-за WARP» от «медленно из-за нас».
-            super::diag::emit_line(format!(
+            super::diag_sink::emit_line(format!(
                 "[cef] рендер программный (WARP): кадры окна не чаще {} мс, бесконечные анимации страниц гасим",
                 SOFTWARE_REPAINT_INTERVAL.as_millis()
             ));
         }
-        super::diag::emit_line(format!("[boot] gpui_software={software} forced={forced:?}"));
+        super::diag_sink::emit_line(format!("[boot] gpui_software={software} forced={forced:?}"));
         software
     })
 }
@@ -117,7 +123,7 @@ fn detect() -> bool {
             let name = described.trim_matches(char::from(0));
             let software =
                 desc.VendorId == VENDOR_MICROSOFT || name.starts_with("Microsoft Basic Render");
-            super::diag::emit_line(format!(
+            super::diag_sink::emit_line(format!(
                 "[boot] adapter index={index} name={name:?} vendor={} software={software}",
                 desc.VendorId
             ));

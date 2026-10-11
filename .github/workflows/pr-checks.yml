@@ -350,6 +350,22 @@ jobs:
           echo "html5lib-tests $(git -C vendor/html5lib-tests rev-parse --short HEAD), wpt $(git -C vendor/wpt-parsing rev-parse --short HEAD)"
 
       - run: cargo test --workspace
+      - name: Acceptance environment is inert without debug assertions
+        shell: pwsh
+        run: |
+          $testExe = Join-Path $env:RUNNER_TEMP 'native-acceptance-release-test.exe'
+          rustc --edition=2024 --test -D warnings -C debug-assertions=no crates/shell/src/native_acceptance/config.rs -o $testExe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $testExe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # GPUI's debug-only WARP/D3D11On12 device override (vendored, not a workspace member).
+          foreach ($assertions in @('no', 'yes')) {
+            $deviceExe = Join-Path $env:RUNNER_TEMP "gpui-debug-device-$assertions.exe"
+            rustc --edition=2024 --test -D warnings -C debug-assertions=$assertions vendor/gpui-windows/src/debug_device.rs -o $deviceExe
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & $deviceExe
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
       - run: python scripts/check_event_routing.py
 
       - name: Set up Node.js for the installer

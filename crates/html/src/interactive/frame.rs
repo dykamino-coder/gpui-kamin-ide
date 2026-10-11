@@ -1,0 +1,24 @@
+//! Сброс состояния кадра.
+// owner: A
+
+use crate::layout::positioned::containing_block::{CB, CB_FIXED, ICB, LATE};
+use crate::text::vertical::{VT_FRAME, VT_SEQ};
+
+pub fn frame_sanitize() {
+    // Рамка повёрнутого абзаца не должна пережить страницу: сброс при смене
+    // документа приходит позже начала следующего рендера, и щупы
+    // горизонтальных абсолютов считались повёрнутыми (`css-sizing/aspect-
+    // ratio/abspos-014..021`: 0.00 в одиночку и 2.36 в пачке).
+    VT_FRAME.with(|c| c.set(None));
+    VT_SEQ.with(|c| c.borrow_mut().clear());
+    LATE.with(|s| s.borrow_mut().clear());
+    // Слой начального содержащего блока — тот же расходник кадра: пойманная
+    // паника оставила бы его открытым навсегда, и следующий документ клал бы
+    // свои внепоточные элементы в чужой слой.
+    ICB.with(|s| s.borrow_mut().clear());
+    CB.with(|s| s.borrow_mut().clear());
+    CB_FIXED.with(|s| s.borrow_mut().clear());
+    // Реестр якорей — расходник кадра того же рода: пишется на подготовке,
+    // читается там же, к следующей сборке дерева обязан быть пуст.
+    crate::layout::positioned::anchor::reset();
+}

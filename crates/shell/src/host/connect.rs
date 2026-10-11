@@ -1,6 +1,4 @@
-//! Старт связки: sidecar, WS-подключение, ре-резолв вебвью.
-//!
-//! Вынесено без изменения поведения (`plan/100-refactor-250.md`).
+//! Sidecar, WS и ре-резолв вебвью (`plan/100-refactor-250.md`).
 
 use crate::host::events::CzEvent;
 pub use crate::host::events::ShellEvent;
@@ -17,6 +15,10 @@ use std::time::Duration;
 /// Старт всей связки. Дёргается один раз из main.
 pub fn start(tx: Sender<ShellEvent>) {
     let _ = EVENT_TX.set(tx.clone());
+    #[cfg(debug_assertions)]
+    if crate::native_acceptance::config::Config::from_env().no_host {
+        return;
+    }
     let (data_dir, cache_dir) = data_dirs();
     let _ = std::fs::create_dir_all(&data_dir);
     let _ = std::fs::create_dir_all(&cache_dir);
@@ -25,9 +27,7 @@ pub fn start(tx: Sender<ShellEvent>) {
     let state_for_reconnect = state.clone();
     let tx_endpoint = tx.clone();
 
-    // Packaged-раскладка: каталог `runtime/` рядом с exe (node + kamin-host.mjs
-    // + builtin-extensions из payload-скрипта kamin-ide) включает Runtime-режим;
-    // без него — dev-репо как раньше. Единственная развилка dev/prod.
+    // runtime/kamin-host.mjs рядом с exe выбирает packaged-режим, иначе dev-репо.
     let runtime_dir = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.join("runtime")))
@@ -56,15 +56,14 @@ pub fn start(tx: Sender<ShellEvent>) {
     );
 }
 
-/// Contributed-вью, которые шелл монтирует как вебвью-оверлеи (id из
-/// registry). Держим синхронно с картами в root.rs.
+/// Вебвью-id синхронны с картами root.rs.
 pub const KNOWN_WEBVIEWS: &[&str] = &[
     "claudeBridgeChat",
     "claudeBridgePlanView",
     "claudeBridgeConsoleView",
 ];
 
-/// Динамические вебвью-id (contributed Customize-страницы из registry).
+/// Contributed Customize webview IDs.
 pub(crate) fn dynamic_webviews() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
     static S: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
         std::sync::OnceLock::new();
@@ -75,13 +74,16 @@ pub fn register_dynamic_webview(id: &str) {
     dynamic_webviews().lock().unwrap().insert(id.to_string());
 }
 
-/// Известен ли вебвью-id (builtin ИЛИ contributed).
 pub fn webview_known(id: &str) -> bool {
     KNOWN_WEBVIEWS.contains(&id) || dynamic_webviews().lock().unwrap().contains(id)
 }
 
 /// Ленивый resolve contributed-вью (по клику страницы Customize).
 pub fn resolve_webview(id: String) {
+    #[cfg(debug_assertions)]
+    if id == crate::native_acceptance::VIEW {
+        return;
+    }
     std::thread::spawn(move || {
         if let Some(client) = client() {
             let _ = client.request("kamin:webviewView:resolve", vec![serde_json::json!(id)]);
@@ -89,9 +91,7 @@ pub fn resolve_webview(id: String) {
     });
 }
 
-/// (Пере)подключение WS-клиента к endpoint. При разрыве — retry через
-/// RETRY_DELAY_MS к последнему известному endpoint (host мог перезапуститься —
-/// свежий endpoint придёт через on_endpoint сайдкара и победит).
+/// Retry через RETRY_DELAY_MS к последнему endpoint; свежий on_endpoint побеждает.
 fn connect_ws(endpoint: HostEndpoint, tx: Sender<ShellEvent>, state: HostState) {
     std::thread::spawn(move || {
         let on_event_tx = tx.clone();

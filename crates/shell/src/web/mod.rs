@@ -1,20 +1,26 @@
-//! Веб-содержимое на CEF: браузер рисует кадр, кадр рисуем мы (`plan/101-cef.md`).
+//! CEF lifecycle (`plan/101-cef.md`); кадры и элементы — в соседних модулях.
 //!
-//! Жизненный цикл; элемент интерфейса и приём кадров — в соседних модулях.
-//!
-//! **Главное про запуск.** CEF на Windows запускает свои дочерние процессы
-//! (renderer, gpu, network) КОПИЕЙ нашего же exe с другими ключами командной
-//! строки. Поэтому [`exit_if_child_process`] обязана стоять первой строкой
-//! `main`: до probe, до сайдкара, до окна. Иначе каждый дочерний процесс
-//! попытается открыть тот же TCP-порт, поднять `kamin-host` и нарисовать окно.
+//! На Windows дети CEF (renderer, gpu, network) запускаются копией нашего exe.
+//! [`exit_if_child_process`] должна стоять первой строкой main: до probe,
+//! сайдкара и окна. Иначе дети тоже откроют TCP-порт, kamin-host и окно.
 
+#[cfg(debug_assertions)]
+mod acceptance;
 mod browsers;
+#[cfg(debug_assertions)]
+pub(crate) use acceptance::{acceptance_log, reset_fixture};
 mod context_menu;
 mod copy_frame;
 mod cursors;
+mod d3d_device;
 mod d3d_log;
+mod device_cache;
+mod device_generation;
 mod diag;
 mod diag_activity;
+mod diag_clock;
+mod diag_log;
+mod diag_sink;
 pub(crate) mod diag_views;
 pub(crate) mod diag_why;
 mod element;
@@ -22,6 +28,8 @@ mod frames;
 mod gpu_mode;
 mod gpu_texture;
 mod input;
+mod keyed_access;
+mod keyed_mutex;
 mod motion_css;
 mod open_shared;
 mod outbox;
@@ -37,7 +45,7 @@ mod visibility;
 pub use diag::{ctx_took, draw_took, drawn, rows_built};
 pub use element::{ensure_focus_handles, web_view};
 pub use process::{exit_if_child_process, init, shutdown};
-pub use visibility::{mark_visible, mark_visible_union};
+pub use visibility::mark_visible;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
@@ -127,7 +135,7 @@ pub(crate) fn sw_mode() -> bool {
 
 pub(crate) fn set_sw_mode(on: bool) {
     if on && !SW_MODE.swap(on, std::sync::atomic::Ordering::Relaxed) {
-        diag::emit_line("[boot] cef_software=true (RDP/нет GPU-композитинга)".into());
+        diag_sink::emit_line("[boot] cef_software=true (RDP/нет GPU-композитинга)".into());
     }
 }
 
@@ -224,7 +232,7 @@ pub(crate) fn respawn_stalled() {
 const NEVER_REAP: &[&str] = &["claudeBridgeChat"];
 
 pub(crate) fn reap_hidden() {
-    let visible = visibility::visible_set();
+    let (visible, retained) = visibility::reap_sets();
     let now = std::time::Instant::now();
     for id in browsers::ids() {
         if NEVER_REAP.contains(&id.as_str()) {
@@ -234,6 +242,9 @@ pub(crate) fn reap_hidden() {
             if let Ok(mut m) = HIDDEN_AT.lock() {
                 m.remove(&id);
             }
+            continue;
+        }
+        if retained.contains(&id) {
             continue;
         }
         let expired = {
@@ -276,7 +287,6 @@ pub fn flush_retired(cx: &mut gpui::App) {
     }
 }
 
-/// Открыть вью с адресом. Идемпотентно: второй раз ничего не делает.
 /// Живы ли браузеры CEF. Флага больше нет: CEF — единственный путь.
 pub fn enabled() -> bool {
     process::is_live()
@@ -337,7 +347,6 @@ fn html_changed(id: &str) -> bool {
     true
 }
 
-/// Показать в вью нашу страницу (HTML моста).
 /// Отдать странице пачку сообщений расширения.
 ///
 /// В скрипт кладём только НОМЕР пачки: тело страница забирает запросом

@@ -111,5 +111,5 @@ pub(super) fn report(now: Instant) {
         .collect::<Vec<_>>()
         .join("; ");
     drop(state);
-    super::diag::emit_line(format!("[views] {status}; ages: {ages}"));
+    super::diag_sink::emit_line(format!("[views] {status}; ages: {ages}"));
 }

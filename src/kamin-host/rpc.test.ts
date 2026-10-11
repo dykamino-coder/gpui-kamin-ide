@@ -39,7 +39,7 @@ describe("RpcEndpoint", () => {
   it("rejects calls to unknown methods", async () => {
     const [a, b] = portPair()
     const caller = new RpcEndpoint(a)
-    void new RpcEndpoint(b)
+    new RpcEndpoint(b)
     await expect(caller.call("nope")).rejects.toThrow("unknown method: nope")
   })
 

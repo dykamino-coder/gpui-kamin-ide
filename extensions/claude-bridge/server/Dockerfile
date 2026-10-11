@@ -33,6 +33,10 @@ RUN npm prune --omit=dev --no-audit --no-fund
 # ---------- Stage 2: runtime -----------------------------------------------
 FROM node:22-bookworm-slim AS runtime
 
+# Explicit system roots are assembled by outbound-tls.ts in verified mode.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 # Claude Code CLI — PINNED. The bridge leans on undocumented CLI internals
 # (IS_DEMO gate bypass, resume-threshold env vars, the project-slug algorithm,
 # MITM TLS interception), so `@latest` silently drifting the CLI on every image
@@ -42,7 +46,7 @@ FROM node:22-bookworm-slim AS runtime
 # handshake → hook round-trip) before shipping a new pin.
 # + tsx (a devDependency, but the runtime CMD invokes it via npx; install it
 # globally so the container doesn't pull it from the network on first start).
-ARG CLAUDE_CODE_VERSION=2.1.284
+ARG CLAUDE_CODE_VERSION=2.1.296
 ARG CLAUDE_CODE_CACHE_BUST=1
 RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" tsx@4 \
     && npm cache clean --force \
@@ -50,7 +54,7 @@ RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" tsx@4 \
 
 # Non-root user (Claude Code refuses --dangerously-skip-permissions as root).
 RUN groupadd -r bridge && useradd -r -g bridge -m -d /home/bridge -s /bin/bash bridge \
-    && mkdir -p /app/data /home/bridge/.claude \
+    && mkdir -p /app/data /app/logs/lifecycle /home/bridge/.claude \
     && chown -R bridge:bridge /app /home/bridge
 
 WORKDIR /app
@@ -77,6 +81,9 @@ ENV NODE_ENV=production
 ENV CLAUDE_PROXY_HOST=0.0.0.0
 ENV CLAUDE_PROXY_PORT=3456
 ENV HOME=/home/bridge
+# An interactive `claude` inside the container (`/login`, manual checks) uses the
+# same default model as Bridge sessions (DEFAULT_SESSION_MODEL in src/core/config).
+ENV ANTHROPIC_MODEL=claude-opus-5-5
 # libuv threadpool default is 4 — too small for our stack (DuckDB pool=8 +
 # node-pty + native-mitm TLS + webcrypto leaf-cert + fs.promises). At 4
 # threads, fs.createReadStream readers can starve and never emit. Must be
@@ -85,7 +92,7 @@ ENV UV_THREADPOOL_SIZE=16
 
 EXPOSE 3456
 
-VOLUME ["/app/data", "/home/bridge/.claude"]
+VOLUME ["/app/data", "/home/bridge/.claude", "/app/logs/lifecycle"]
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["npx", "tsx", "bin/claude-bridge.ts"]

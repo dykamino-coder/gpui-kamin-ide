@@ -1,10 +1,6 @@
-// Persisted key→value store for the webview UI (tab layout, theme, panel sizes).
-// The Electron renderer used window.localStorage, but a sandboxed webview iframe
-// (opaque origin) forbids it — VS Code webviews persist via the state API
-// instead. This is the CORRECT replacement (not a global localStorage monkey-
-// patch): a Storage-shaped module backed by vscodeApi.getState/setState, so the
-// copied renderer's `storage.getItem/setItem` calls persist properly + portably
-// (works the same in real VS Code).
+// Small UI settings use the host state API. In native CEF that API is
+// document-local; callers must not infer durable app persistence from it.
+// Console snapshots have their own bounded cache and never enter state IPC.
 import { vscodeApi } from "./webview-api.js"
 
 const STATE_KEY = "ls"
@@ -12,7 +8,9 @@ const STATE_KEY = "ls"
 function load(): Record<string, string> {
   const s = vscodeApi.getState()
   const ls = (s as { [STATE_KEY]?: unknown } | null)?.[STATE_KEY]
-  return ls && typeof ls === "object" ? { ...(ls as Record<string, string>) } : {}
+  return ls && typeof ls === "object"
+    ? Object.fromEntries(Object.entries(ls as Record<string, string>).filter(([key]) => !key.startsWith("xterm-snapshot:")))
+    : {}
 }
 
 let mem = load()

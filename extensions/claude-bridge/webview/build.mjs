@@ -25,7 +25,9 @@ for (const entry of ["chat", "tools", "customize"]) {
     },
   })
   const builtPath = path.resolve(dir, `dist/${entry}/${entry}.html`)
-  let html = fs.readFileSync(builtPath, "utf8")
+  // Vite can retain Windows line endings in the HTML wrapper. Normalize those
+  // line endings before committing the artifact; leave JS/CSS whitespace intact.
+  let html = fs.readFileSync(builtPath, "utf8").replace(/\r+\n/g, "\n")
   // esbuild emits Highlight.js' PHP whitespace character class as a multiline
   // template literal containing a real space + TAB before the newline. A
   // generic trailing-whitespace cleanup then silently changes `[ \t\n]` into
