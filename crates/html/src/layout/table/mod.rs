@@ -10,6 +10,7 @@ use crate::style::values::value::Len;
 use gpui::AnyElement;
 
 pub mod anon;
+mod axes;
 pub mod columns;
 pub mod paint;
 
@@ -43,6 +44,8 @@ use setup::{
 /// короткая форма умела ровно «N равных колонок», и таблица из даты и длинного
 /// текста разъезжалась пополам.
 pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+    let inherited_axes = axes::inherited(e, inherited);
+    let e = inherited_axes.as_ref().unwrap_or(e);
     // Ключевое слово содержимого в `max-height` таблицы горизонтального
     // письма (блочная ось) ведёт себя как начальное `none`: высота таблицы и
     // так не меньше содержимого (css-tables-3 §computing-the-table-height),

@@ -5,6 +5,7 @@ use crate::dom::Element;
 use crate::layout::table::columns::{col_elements, col_role, colgroup_elements};
 
 pub(super) struct Edges<'a> {
+    axes: super::super::axes::Axes,
     rows: &'a [&'a Element],
     groups: &'a [Option<&'a Element>],
     columns: Vec<Option<&'a Element>>,
@@ -24,6 +25,7 @@ impl<'a> Edges<'a> {
         family: &'a str,
     ) -> Self {
         Self {
+            axes: super::super::axes::Axes::new(&table.style),
             rows,
             groups,
             columns: col_elements(&table.children),
@@ -41,8 +43,10 @@ impl<'a> Edges<'a> {
             _ => self.font,
         };
         let family = element.style.font_family.as_deref().unwrap_or(self.family);
-        [border.top, border.right, border.bottom, border.left]
-            .map(|length| crate::text::metrics::spacing_px(length, family, font))
+        self.axes.logical(
+            [border.top, border.right, border.bottom, border.left]
+                .map(|length| crate::text::metrics::spacing_px(length, family, font)),
+        )
     }
 
     pub(super) fn cell(&self, r: usize, c: usize, sr: usize, sc: usize) -> [f32; 4] {

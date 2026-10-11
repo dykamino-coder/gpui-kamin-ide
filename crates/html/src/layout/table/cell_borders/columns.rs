@@ -37,12 +37,8 @@ pub(crate) fn collapsed_col_edges(
         let left_edge = !same(i as i64 - 1);
         let right_edge = !same(i as i64 + 1);
         let last_row = row_ix as usize >= row_elements.len();
-        let widths = [
-            if row_ix == 1 { cw[0] } else { 0.0 },
-            if right_edge { cw[1] } else { 0.0 },
-            if last_row { cw[2] } else { 0.0 },
-            if left_edge { cw[3] } else { 0.0 },
-        ];
+        let widths = super::super::axes::Axes::new(inherited)
+            .mask(cw, [row_ix == 1, right_edge, last_row, left_edge]);
         if !(widths.iter().any(|w| *w > 0.0) || hidden) {
             continue;
         }
@@ -114,12 +110,8 @@ pub(crate) fn collapsed_colgroup_edges(
         let left_edge = !same(i as i64 - 1);
         let right_edge = !same(i as i64 + 1);
         let last_row = row_ix as usize >= row_elements.len();
-        let widths = [
-            if row_ix == 1 { cw[0] } else { 0.0 },
-            if right_edge { cw[1] } else { 0.0 },
-            if last_row { cw[2] } else { 0.0 },
-            if left_edge { cw[3] } else { 0.0 },
-        ];
+        let widths = super::super::axes::Axes::new(inherited)
+            .mask(cw, [row_ix == 1, right_edge, last_row, left_edge]);
         if !(widths.iter().any(|w| *w > 0.0) || hidden) {
             continue;
         }
