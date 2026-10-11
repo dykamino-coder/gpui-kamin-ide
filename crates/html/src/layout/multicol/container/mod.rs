@@ -86,7 +86,9 @@ pub(crate) fn multicol_column_stack(
     // ФИЗИЧЕСКОЕ дерево и знают только вертикальную ось —
     // в вертикальном письме их нет (следующий шаг).
     let (kid_parent, kid_starts, kid_par, kids) =
-        column_kids(&merged, kids, cols, used_gap, col_vert, rows, copies, fixed);
+        crate::layout::fragment::with_lines(&merged, line_col_w, opts, || {
+            column_kids(&merged, kids, cols, used_gap, col_vert, rows, copies, fixed)
+        });
     // `box-decoration-break: clone`: геометрия фрагментов —
     // ДО сборки копий: каждая копия такой коробки строится
     // отдельной коробкой своей высоты (`clone_fragment`).

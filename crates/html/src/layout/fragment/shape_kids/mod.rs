@@ -6,7 +6,7 @@ mod cuts;
 use cuts::stack_kid_cuts;
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn stack_kids(
+pub(crate) fn stack_kids(
     kids: Vec<(
         f32,
         f32,

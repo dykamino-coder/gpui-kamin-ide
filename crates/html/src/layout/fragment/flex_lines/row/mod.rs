@@ -11,7 +11,16 @@ use crate::render::{is_blank, out_of_flow};
 use crate::style::computed::FlexDir;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
+mod edges;
+pub(crate) mod geometry;
+mod intrinsic;
+mod line_layout;
+pub(crate) use edges::row_break_edge;
+mod measure;
+pub(crate) use measure::{main_size as row_main_size, measure_rows};
 mod shape;
+#[cfg(test)]
+mod tests;
 pub(super) use shape::shape_flex_lines;
 
 /// Строки многострочного РЯДА flex для `split_flex_lines`: по строке —
