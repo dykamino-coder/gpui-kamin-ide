@@ -164,8 +164,13 @@ impl Computed {
         // по нему рисуются все слои (`Computed::bg_layers`). Запись без
         // запятой список своего свойства снимает; сокращение — все.
         if BG_LIST_KEYS.contains(&key) {
+            if key == "background-blend-mode" && !crate::style::computed::background_blend_valid(v)
+            {
+                return;
+            }
             if key == "background" {
-                self.bg_lists.clear();
+                // background-blend-mode is not a background shorthand member.
+                self.bg_lists.retain(|(k, _)| k == "background-blend-mode");
             } else {
                 self.bg_lists.retain(|(k, _)| k != key);
             }

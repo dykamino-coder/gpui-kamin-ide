@@ -14,10 +14,12 @@ mod root_area;
 pub use root_area::RootArea;
 
 mod fills;
+mod flat_stack;
 use fills::border_area_fill;
 pub(crate) use fills::border_paint;
 pub use fills::paint_area;
 pub(crate) use fills::text_clip_fill;
+pub(crate) use flat_stack::collapse as collapse_flat_stack;
 
 mod source_types;
 pub use source_types::Source;

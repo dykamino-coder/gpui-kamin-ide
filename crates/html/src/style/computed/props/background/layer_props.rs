@@ -12,6 +12,32 @@ impl Computed {
         hit: &mut bool,
     ) {
         match key {
+            "background-blend-mode" => {
+                if matches!(
+                    v,
+                    "normal"
+                        | "multiply"
+                        | "screen"
+                        | "darken"
+                        | "lighten"
+                        | "overlay"
+                        | "color-dodge"
+                        | "color-burn"
+                        | "hard-light"
+                        | "soft-light"
+                        | "difference"
+                        | "exclusion"
+                        | "hue"
+                        | "saturation"
+                        | "color"
+                        | "luminosity"
+                        | "inherit"
+                ) {
+                    self.background_blend = Some(v.to_string());
+                } else if matches!(v, "initial" | "unset" | "revert" | "revert-layer") {
+                    self.background_blend = None;
+                }
+            }
             // --- Фоновая картинка --------------------------------------------
             // Запись бывает и ПОосевой: `repeat space`, `round no-repeat`.
             // Один keyword задаёт обе оси, два — свою каждой.

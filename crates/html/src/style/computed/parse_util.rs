@@ -12,7 +12,9 @@ mod sizing;
 mod text;
 mod tokens;
 pub(super) use align::{align_keyword, is_safe, parse_align, parse_justify};
-pub(crate) use background::{BG_LIST_KEYS, background_layers, top_level_comma};
+pub(crate) use background::{
+    BG_LIST_KEYS, background_blend_valid, background_layers, top_level_comma,
+};
 pub(super) use background::{background_shorthand_valid, pct_px_pair, split_image_func};
 pub(super) use border::{
     corner_shape_param, corner_shape_shorthand, four, outline_width_of, parse_border_shape,

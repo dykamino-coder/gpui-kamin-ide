@@ -10,6 +10,9 @@ use gpui::{Bounds, Pixels, px};
 /// краской рамки. Рисуют его те же примитивы, что и рамку (квад, слой рамки,
 /// кольца `corner-shape` и `border-shape`), с той же геометрией стиля.
 pub(super) fn border_area_fill(c: &Computed) -> Option<crate::style::values::value::Color> {
+    if let Some(fill) = c.flat_border_background {
+        return Some(fill);
+    }
     if c.bg_clip != Some(crate::style::computed::BgClip::BorderArea) {
         return None;
     }
@@ -30,8 +33,27 @@ pub(crate) fn border_paint(
 
 /// Единственный цвет растра, если все его точки одинаковы и непрозрачны.
 pub(super) fn flat_colour(src: &str) -> Option<crate::style::values::value::Color> {
-    let Source::Raster(image) = source(src)? else {
-        return None;
+    let image = match source(src)? {
+        Source::Raster(image) => image,
+        Source::Gradient { raw } => {
+            let gradient = crate::style::computed::parse_gradient(&raw)?;
+            let color = gradient.from;
+            // An identical polar color can still travel around a longer hue arc.
+            let constant = gradient.hue != 1
+                || matches!(
+                    gradient.space,
+                    crate::style::computed::GradSpace::Srgb
+                        | crate::style::computed::GradSpace::Linear
+                        | crate::style::computed::GradSpace::Oklab
+                        | crate::style::computed::GradSpace::Lab
+                );
+            return (constant
+                && color.a == 1.0
+                && gradient.stops.iter().all(|s| s.0 == color)
+                && !crate::style::values::color_space::out_of_gamut(color))
+            .then_some(color);
+        }
+        _ => return None,
     };
     let bytes = image.as_bytes(0)?;
     let first = bytes.get(0..4)?;
@@ -57,7 +79,23 @@ pub(super) fn flat_fill(c: &Computed) -> Option<crate::style::values::value::Col
     let mut fill = c.background.unwrap_or_default();
     if let Some(g) = &c.gradient {
         let one = g.from;
-        let flat = !c.gradient_as_tile()
+        let repeat = c.bg_repeat.unwrap_or(BgRepeat::Repeat);
+        let covers = |t| matches!(t, Tiling::Repeat | Tiling::Round);
+        let complete = c.bg_size == crate::style::computed::BgSize::Auto
+            && ((covers(repeat.axis(true)) && covers(repeat.axis(false)))
+                || (repeat == BgRepeat::NoRepeat
+                    && c.bg_pos == Default::default()
+                    && c.bg_origin.is_none()));
+        let flat = complete
+            && (g.hue != 1
+                || matches!(
+                    g.space,
+                    crate::style::computed::GradSpace::Srgb
+                        | crate::style::computed::GradSpace::Linear
+                        | crate::style::computed::GradSpace::Oklab
+                        | crate::style::computed::GradSpace::Lab
+                ))
+            && !crate::style::values::color_space::out_of_gamut(one)
             && g.to == one
             && g.stops.iter().all(|s| s.0 == one)
             && g.stops_px.iter().all(|s| s.0 == one)
@@ -84,6 +122,9 @@ pub(super) fn flat_fill(c: &Computed) -> Option<crate::style::values::value::Col
 /// повторное слияние стилей (`inline::inherit` зовётся цепочкой) даёт тот же
 /// цвет — смешение не копится.
 pub(crate) fn text_clip_fill(c: &Computed) -> Option<crate::style::values::value::Color> {
+    if let Some(fill) = c.flat_text_background {
+        return Some(fill);
+    }
     if c.bg_clip != Some(crate::style::computed::BgClip::Text) {
         return None;
     }
