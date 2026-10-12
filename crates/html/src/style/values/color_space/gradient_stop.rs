@@ -31,6 +31,13 @@ pub(super) fn components(body: &str, ok: bool, polar: bool) -> Option<(f32, f32,
 pub(crate) fn parse(raw: &str) -> Option<Color> {
     let text = raw.trim();
     let lower = text.to_ascii_lowercase();
+    if lower.starts_with("color-mix(") && text.ends_with(')') {
+        // CSS Color 5 §color-mix: the result remains in the mixing space.
+        // Mapping an intermediate stop to sRGB changes the next interpolation
+        // (CSS Color 4 §12). Only the final displayed pixel is gamut mapped.
+        let (r, g, b, a) = super::mix::color_mix_unmapped(&text[10..text.len() - 1])?;
+        return Some(Color { r, g, b, a });
+    }
     for (name, ok, polar) in [
         ("lab", false, false),
         ("lch", false, true),
@@ -55,6 +62,32 @@ fn display(color: Color) -> Color {
         g,
         b,
         a: color.a,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn intermediate_mix_retains_extended_components() {
+        let raw = "color-mix(in lch longer hue, red, blue)";
+        let stop = parse(raw).unwrap();
+        assert!(out_of_gamut(stop));
+        let painted = Color::parse(raw).unwrap();
+        assert!(!out_of_gamut(painted));
+        let red = Color::parse("red").unwrap();
+        let blue = Color::parse("blue").unwrap();
+        let space = crate::style::computed::GradSpace::Lch;
+        let direct = colour_at(&[(red, 0.0), (blue, 1.0)], 0.25, space, 1);
+        let split = colour_at(&[(red, 0.0), (stop, 0.5), (blue, 1.0)], 0.25, space, 0);
+        for (a, b) in [
+            (direct.r, split.r),
+            (direct.g, split.g),
+            (direct.b, split.b),
+        ] {
+            assert!((a - b).abs() < 0.0001, "{a} != {b}");
+        }
     }
 }
 
