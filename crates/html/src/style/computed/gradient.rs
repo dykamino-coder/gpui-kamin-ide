@@ -6,6 +6,7 @@ use crate::style::values::value::{Color, Len};
 mod direction;
 mod image_set;
 mod parse;
+pub(crate) use direction::corner_angle;
 use direction::gradient_direction;
 pub(super) use image_set::image_set_pick;
 use parse::gradient_angle;

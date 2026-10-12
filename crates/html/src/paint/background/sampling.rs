@@ -86,9 +86,15 @@ fn paint_gradient(
     if !raw.starts_with("linear-gradient(") {
         return false;
     }
-    let Some(gradient) = crate::style::computed::parse_gradient(raw) else {
+    let Some(mut gradient) = crate::style::computed::parse_gradient(raw) else {
         return false;
     };
+    if let Some(angle) = crate::style::computed::corner_angle(
+        raw,
+        (f32::from(bounds.size.width), f32::from(bounds.size.height)),
+    ) {
+        gradient.angle_deg = angle;
+    }
     if gradient.stops.len() > 4
         || gradient.stops_raw.iter().any(|(_, _, px)| px.is_some())
         || !matches!(
