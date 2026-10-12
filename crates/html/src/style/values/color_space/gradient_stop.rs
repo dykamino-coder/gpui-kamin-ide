@@ -65,32 +65,6 @@ fn display(color: Color) -> Color {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn intermediate_mix_retains_extended_components() {
-        let raw = "color-mix(in lch longer hue, red, blue)";
-        let stop = parse(raw).unwrap();
-        assert!(out_of_gamut(stop));
-        let painted = Color::parse(raw).unwrap();
-        assert!(!out_of_gamut(painted));
-        let red = Color::parse("red").unwrap();
-        let blue = Color::parse("blue").unwrap();
-        let space = crate::style::computed::GradSpace::Lch;
-        let direct = colour_at(&[(red, 0.0), (blue, 1.0)], 0.25, space, 1);
-        let split = colour_at(&[(red, 0.0), (stop, 0.5), (blue, 1.0)], 0.25, space, 0);
-        for (a, b) in [
-            (direct.r, split.r),
-            (direct.g, split.g),
-            (direct.b, split.b),
-        ] {
-            assert!((a - b).abs() < 0.0001, "{a} != {b}");
-        }
-    }
-}
-
 pub(crate) fn out_of_gamut(color: Color) -> bool {
     [color.r, color.g, color.b]
         .into_iter()
@@ -140,4 +114,30 @@ pub(crate) fn colour_at(
         }
     }
     display(stops.last().map(|s| s.0).unwrap_or(first.0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn intermediate_mix_retains_extended_components() {
+        let raw = "color-mix(in lch longer hue, red, blue)";
+        let stop = parse(raw).unwrap();
+        assert!(out_of_gamut(stop));
+        let painted = Color::parse(raw).unwrap();
+        assert!(!out_of_gamut(painted));
+        let red = Color::parse("red").unwrap();
+        let blue = Color::parse("blue").unwrap();
+        let space = crate::style::computed::GradSpace::Lch;
+        let direct = colour_at(&[(red, 0.0), (blue, 1.0)], 0.25, space, 1);
+        let split = colour_at(&[(red, 0.0), (stop, 0.5), (blue, 1.0)], 0.25, space, 0);
+        for (a, b) in [
+            (direct.r, split.r),
+            (direct.g, split.g),
+            (direct.b, split.b),
+        ] {
+            assert!((a - b).abs() < 0.0001, "{a} != {b}");
+        }
+    }
 }
