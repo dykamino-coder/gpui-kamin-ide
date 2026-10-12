@@ -58,10 +58,14 @@ impl Paragraph {
                 // ПО МЕСТУ: заданное на вложенном `<span>`, оно действует
                 // только на его байты.
                 for (i, ch) in self.text.char_indices().skip(1) {
-                    if !self.wrap_at(i).break_all {
+                    let before = self.text[..i].chars().next_back();
+                    // A letter under `break-all` counts as ID on its own, so
+                    // the boundary with a neighbour outside the element breaks
+                    // too, ID / AL (UAX #14 LB31; `word-break-break-all-inline-009`).
+                    let prev = i - before.map_or(0, char::len_utf8);
+                    if !self.wrap_at(i).break_all && !self.wrap_at(prev).break_all {
                         continue;
                     }
-                    let before = self.text[..i].chars().next_back();
                     // UAX #14 LB21 (`× BA`, `× HY`) still holds once letters
                     // count as ID; only `line-break: loose` lifts it for
                     // U+2010/U+2013 (css-text-3 §5.3, `line-break-*-hyphens-002`).
