@@ -41,11 +41,33 @@ pub fn emphasis_spans(
                 // `over`/`under` — только в горизонтальном.
                 under: match rotated {
                     Some(ccw) => style.emphasis_left != ccw,
+                    None if style.emphasis_position_auto == Some(true) => {
+                        style.lang.as_deref().is_some_and(|lang| {
+                            lang.split('-')
+                                .next()
+                                .is_some_and(|lang| lang.eq_ignore_ascii_case("zh"))
+                        })
+                    }
                     None => style.emphasis_under,
                 },
                 size: size * 0.5,
                 line_height,
-                mark: mark.to_string(),
+                // CSS Text Decoration 4: an omitted shape follows the used
+                // typographic mode, including inherited emphasis on a child.
+                mark: if style.emphasis_auto_shape
+                    && rotated.is_some()
+                    && style.sideways != Some(true)
+                    && style.text_sideways != Some(true)
+                {
+                    if mark == "\u{25CB}" {
+                        "\u{FE46}"
+                    } else {
+                        "\u{FE45}"
+                    }
+                    .to_string()
+                } else {
+                    mark.to_string()
+                },
                 // CSS Backgrounds 4 background-clip:text includes emphasis
                 // geometry regardless of the mark's foreground transparency.
                 // CurrentColor already carries the composited text fill;

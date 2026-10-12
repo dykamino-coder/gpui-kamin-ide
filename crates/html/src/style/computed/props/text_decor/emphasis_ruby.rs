@@ -20,6 +20,7 @@ impl Computed {
                 // заливка) или строкой; `none` его снимает. Цвет знака —
                 // свой (`emphasis_color`), по умолчанию цвет текста.
                 if key == "text-emphasis-position" {
+                    self.emphasis_position_auto = Some(v.trim() == "auto");
                     self.emphasis_under = v.split_whitespace().any(|w| w == "under");
                     self.emphasis_left = v.split_whitespace().any(|w| w == "left");
                     return;
@@ -34,6 +35,7 @@ impl Computed {
                     return;
                 }
                 let v = v.trim();
+                self.emphasis_auto_shape = false;
                 // Сокращение `text-emphasis` несёт и цвет (§5.3): слово,
                 // которое разбирается как цвет, в стиль знака не идёт.
                 let style_words: Vec<&str> =
@@ -66,7 +68,7 @@ impl Computed {
                 let joined = style_words.join(" ");
                 let v = joined.as_str();
                 if v == "none" || v.is_empty() {
-                    self.text_emphasis = None;
+                    self.text_emphasis = Some(String::new());
                     return;
                 }
                 // Строка в кавычках — первый её знак (§5.1: «only the first
@@ -74,19 +76,22 @@ impl Computed {
                 if let Some(q) = v.chars().next().filter(|c| *c == '"' || *c == '\'') {
                     let body =
                         crate::style::computed::parse_util::unescape_content(v.trim_matches(q));
-                    self.text_emphasis = body.chars().next().map(|c| c.to_string());
+                    self.text_emphasis = Some(
+                        body.chars()
+                            .next()
+                            .map_or_else(String::new, |c| c.to_string()),
+                    );
                     return;
                 }
                 let open = v.split_whitespace().any(|w| w == "open");
-                let shape = v
-                    .split_whitespace()
-                    .find(|w| {
-                        matches!(
-                            *w,
-                            "dot" | "circle" | "double-circle" | "triangle" | "sesame"
-                        )
-                    })
-                    .unwrap_or("circle");
+                let shape = v.split_whitespace().find(|w| {
+                    matches!(
+                        *w,
+                        "dot" | "circle" | "double-circle" | "triangle" | "sesame"
+                    )
+                });
+                self.emphasis_auto_shape = shape.is_none();
+                let shape = shape.unwrap_or("circle");
                 let mark = match (shape, open) {
                     ("dot", false) => '\u{2022}',
                     ("dot", true) => '\u{25E6}',
