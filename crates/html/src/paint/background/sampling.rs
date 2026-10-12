@@ -11,6 +11,9 @@ pub(super) fn paint_tile(
     source_kind: &super::Source,
     pixelated: bool,
 ) {
+    if super::flat_vector::paint(window, bounds, corners, source_kind) {
+        return;
+    }
     if paint_gradient(window, bounds, corners, source_kind) {
         return;
     }

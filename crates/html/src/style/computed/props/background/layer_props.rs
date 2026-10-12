@@ -127,7 +127,7 @@ impl Computed {
                     self.inherit_bits |= inh::BG_POS;
                     return;
                 }
-                self.bg_pos = parse_pos_words(v);
+                self.set_background_position(v);
             }
             // `object-position` — та же грамматика, но для замещаемого
             // содержимого (css-images-3 §5.2).
@@ -146,13 +146,7 @@ impl Computed {
                     "right" | "bottom" => Some(Len::Pct(1.0)),
                     other => Len::parse(other),
                 };
-                if val.is_some() {
-                    if key.ends_with("-x") {
-                        self.bg_pos.x = val;
-                    } else {
-                        self.bg_pos.y = val;
-                    }
-                }
+                self.set_background_position_axis(usize::from(key.ends_with("-y")), v, val);
             }
             "background-attachment" => {
                 // `fixed` привязывает плитку к ОБЛАСТИ ПРОСМОТРА: считается

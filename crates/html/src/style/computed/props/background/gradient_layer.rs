@@ -27,12 +27,12 @@ impl Computed {
                     "repeat-y" => self.bg_repeat = Some(BgRepeat::RepeatY),
                     "repeat" => self.bg_repeat = Some(BgRepeat::Repeat),
                     "left" | "right" | "top" | "bottom" | "center" => pos.push(token.clone()),
-                    t if Len::parse_mixed(t).is_some() => pos.push(token.clone()),
+                    t if Self::background_position_length(t) => pos.push(token.clone()),
                     _ => {}
                 }
             }
             if !pos.is_empty() {
-                self.bg_pos = parse_pos_words(&pos.join(" "));
+                self.set_background_position(&pos.join(" "));
                 tiled = true;
             }
             if let Some(size) = size_part {

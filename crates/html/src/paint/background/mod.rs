@@ -29,6 +29,7 @@ use gpui::{AnyElement, Bounds, IntoElement, Pixels, RenderImage, Styled, px};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 pub(crate) mod alpha_sampling;
+mod flat_vector;
 mod float_geometry;
 mod oriented_vector;
 mod sampling;

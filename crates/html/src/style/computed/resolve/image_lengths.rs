@@ -8,13 +8,19 @@ impl Computed {
         // Font probes belong only to images with relative lengths. Besides
         // avoiding needless shaping, this keeps paint-time font measurement
         // out of ordinary backgrounds and masks.
-        if ![&self.bg_image, &self.gradient_raw, &self.mask_image]
-            .into_iter()
+        let position_units = self
+            .bg_position_math
+            .iter()
             .flatten()
-            .any(|raw| {
-                raw.contains("gradient(")
-                    && (raw.contains("lh") || crate::style::computed::has_font_units(raw))
-            })
+            .any(|raw| raw.contains("lh") || crate::style::computed::has_font_units(raw));
+        if !position_units
+            && ![&self.bg_image, &self.gradient_raw, &self.mask_image]
+                .into_iter()
+                .flatten()
+                .any(|raw| {
+                    raw.contains("gradient(")
+                        && (raw.contains("lh") || crate::style::computed::has_font_units(raw))
+                })
         {
             return;
         }
@@ -45,10 +51,22 @@ impl Computed {
             }
             *raw = lengths(raw, font, root_font_px(), ex, ch, line);
         }
+        // Relative units become computed lengths before position inheritance;
+        // only the percentage basis must remain for concrete image geometry.
+        for raw in self.bg_position_math.iter_mut().flatten() {
+            *raw = lengths(raw, font, root_font_px(), ex, ch, line);
+        }
     }
 }
 
-fn lengths(raw: &str, em: f32, rem: f32, ex: f32, ch: f32, lh: f32) -> String {
+pub(in crate::style::computed) fn lengths(
+    raw: &str,
+    em: f32,
+    rem: f32,
+    ex: f32,
+    ch: f32,
+    lh: f32,
+) -> String {
     let raw = crate::style::computed::font_lengths_to_px(raw, em, rem, ex, ch);
     let mut output = String::with_capacity(raw.len());
     let mut token = String::new();
