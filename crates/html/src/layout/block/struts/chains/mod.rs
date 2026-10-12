@@ -26,6 +26,7 @@ pub(crate) fn leading_chain(
     // Нижняя оценка ширины флоатов, которые цепь уже прошла: они ПРИМЫКАЮТ к
     // полю следующего в потоке (их блочное смещение ещё не решено).
     let mut adjoining_floats: Option<f32> = None;
+    let (mut adjoining_left, mut adjoining_right) = (false, false);
     for (i, c) in children.iter().enumerate() {
         let ch = match c {
             Node::Text(t) if blank_text(t) => continue,
@@ -52,6 +53,8 @@ pub(crate) fn leading_chain(
         // Плавающий и абсолютный в потоке не участвуют и примыкания не рвут.
         if !in_flow(&ch.style) {
             if ch.style.float.is_some_and(|f| f != 0) {
+                adjoining_left |= ch.style.float.is_some_and(|f| f < 0);
+                adjoining_right |= ch.style.float.is_some_and(|f| f > 0);
                 let w = px_margin_w(&ch.style).unwrap_or(0.0);
                 adjoining_floats = Some(adjoining_floats.map_or(w, |v| v.min(w)));
             }
@@ -59,7 +62,16 @@ pub(crate) fn leading_chain(
         }
         // Клиренс разделяет поля (§8.3.1): дальше по цепи примыкание не
         // идёт, и поле такого ребёнка наружу не уходит.
-        if ch.style.clear.is_some() {
+        // `clear` alone is not clearance. A non-adjoining float may already
+        // be above the hypothetical border edge after margin collapse.
+        // Blink HasClearancePastAdjoiningFloats tests the cleared side.
+        // Keep definite-height boxes on the existing clearance path: their
+        // external float offset cannot be resolved by this margin-only walk.
+        if ch.style.clear.is_some_and(|side| {
+            ch.style.height.is_some()
+                || (side <= 0 && adjoining_left)
+                || (side >= 0 && adjoining_right)
+        }) {
             return Some(s);
         }
         // Коробка своего контекста, которой рядом с ПРИМЫКАЮЩИМИ флоатами нет
@@ -79,7 +91,9 @@ pub(crate) fn leading_chain(
             s = adjoin(s, t);
             eat.push((path.clone(), true));
             path.pop();
-            if let Some((_, _, w)) = float_only_wrapper(ch) {
+            if let Some((left, right, w)) = float_only_wrapper(ch) {
+                adjoining_left |= left;
+                adjoining_right |= right;
                 adjoining_floats = Some(adjoining_floats.map_or(w, |v| v.min(w)));
             }
             continue;
