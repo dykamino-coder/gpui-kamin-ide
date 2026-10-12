@@ -24,14 +24,10 @@ impl Paragraph {
         let pads = self.line_padding();
         let step = |index: usize| {
             let (above, below) = pads.get(index).copied().unwrap_or((0.0, 0.0));
-            f32::from(self.line_height) + above + below
+            self.line_height + px(above + below)
         };
         // Clockwise paint starts at the right edge; sideways-lr starts at the left.
-        let mut origin = if self.lines_reversed && !self.lines.is_empty() {
-            f32::from(self.vertical_line_extent() - self.line_height)
-        } else {
-            0.0
-        };
+        let mut origin = self.reversed_offset(self.lines.len(), &step);
         if self.lines_reversed && !self.vertical_ccw {
             origin += f32::from(content_size.width - self.vertical_line_extent());
         }
@@ -48,9 +44,9 @@ impl Paragraph {
                 };
                 let offset = px(origin + above + base);
                 origin += if self.lines_reversed {
-                    -step(index)
+                    -f32::from(step(index + 1))
                 } else {
-                    step(index)
+                    f32::from(step(index))
                 };
                 offset
             })
@@ -120,6 +116,17 @@ mod tests {
         );
         assert_eq!(output.first_x, Some(px(35.0)));
         assert_eq!(output.last_x, Some(px(5.0)));
+    }
+
+    #[test]
+    fn reversed_lines_keep_each_annotation_outset_in_its_own_advance() {
+        let mut paragraph = paragraph().reversed_lines(true);
+        paragraph.lh_spans = vec![(0..1, px(20.0)), (2..3, px(30.0))];
+        let output = paragraph.vertical_content_baselines(size(px(70.0), px(10.0)));
+        assert_eq!(
+            output.lines_x,
+            Some(vec![px(60.0), px(45.0), px(25.0), px(5.0)])
+        );
     }
 
     #[test]
