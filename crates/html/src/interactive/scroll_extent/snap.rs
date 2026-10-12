@@ -34,10 +34,10 @@ pub(super) fn initial(
     c: &Computed,
     areas: impl Iterator<Item = Area>,
     handle: &ScrollHandle,
+    bounds: gpui::Bounds<gpui::Pixels>,
     insets: [f32; 4],
     maximum: [f32; 2],
 ) -> bool {
-    let bounds = handle.bounds();
     let border = sides(c.borders(), 0.0);
     let origin = [
         f32::from(bounds.left()) + border[0] + insets[0],
