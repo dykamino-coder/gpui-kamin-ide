@@ -147,7 +147,7 @@ pub(super) fn paint_slice(
         window.paint_image_with_sampling(cell, gpui::Corners::default(), piece, 0, false, sampling);
 }
 
-fn destination_bounds(
+pub(super) fn destination_bounds(
     window: &gpui::Window,
     (x, y, width, height): (f32, f32, f32, f32),
 ) -> Bounds<gpui::Pixels> {

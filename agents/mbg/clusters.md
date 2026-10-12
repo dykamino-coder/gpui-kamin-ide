@@ -299,3 +299,11 @@ Baseline retry: background-size-031 is green on the original exe; exclude its in
 20 targets + 40 greens: +7/-0. Confirmed gains: border-image-013 and space-1/3/4/5/6/7. Paint the original native raster through the slice clip to retain its CSS-to-device source phase. Followed Blink core/paint/nine_piece_image_painter.cc:165-175 and CSS Backgrounds 3 section 6.6. Scaled/filtered slices are unchanged. Space-10 remains red and needs a geometry/precision diagnosis.
 
 Full gate 2: +7/-0 on 179 targets; 159 remain red. Broad 735/735 baseline greens and family 813/813 kept. All 1686 reports compared with gate 1; the same two counter contradictions remain red. Clippy/fmt and 342 lib tests pass.
+
+## Pilot 3: full tile / visible clip geometry
+
+20 targets + 40 greens: +1/-0 (space-10). Keep the full source/destination tile and clip its visible portion; do not round a partial source crop. Repeat centers one tile independently of copy-count parity. Followed CSS Backgrounds 3 section 6.6 steps 3/4 and Blink nine_piece_image_painter.cc:45-75,165-185 (tile phase + DrawImageTiled). Other repeat pairs still need final sampling/geometry diagnosis for exact RGB.
+
+Full gate 3: +1/-0 on 179 targets; 158 remain red. Total stable gains +13/-0 from corrected starting baseline. Broad 735/735 baseline greens and family 813/813 kept; all 1686 reports compared with gate 2. Clippy/fmt and 343 lib tests pass.
+
+Next diagnostic clue: css3-border-image-repeat-repeat has no painted image in the reference table (text is present). Four remaining red pairs use table-layout: fixed image references: border-image-repeat-002/004, css3-border-image-repeat-repeat/stretch. Inspect table cell geometry/painting before further sampler changes; cause is not established.
