@@ -63,7 +63,12 @@ impl Paragraph {
             // box when it has none — sits on the line's central baseline,
             // which is (ascent − descent) / 2 above the strut's alphabetic
             // baseline used by the line model here.
-            let base = if self.rotated_central {
+            // CSS Ruby 1 §line-height aligns bases as ordinary inline text.
+            // Our ruby units export an alphabetic baseline in this shaping
+            // plane already; converting it again shifts the entire ruby by
+            // the strut's alphabetic-to-central offset (Blink ruby_utils.cc,
+            // ComputeEmHeight keeps text and annotations in one baseline set).
+            let base = if self.rotated_central && slot.extents.is_empty() {
                 let (asc, desc, _) = self.strut;
                 let h = f32::from(s.height);
                 let central = if (base - h).abs() < 0.01 {

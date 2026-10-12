@@ -98,7 +98,11 @@ pub(crate) fn native_paragraph(
             }),
         )
         .rel_spans(inline::rel_spans(&pieces))
-        .ruby_justify(inherited.ruby_justify == Some(true), inherited.ruby_unit)
+        .ruby_justify(
+            inherited.ruby_justify == Some(true),
+            inherited.ruby_unit,
+            inherited.rotated_line == Some(true),
+        )
         .justify_chars(inherited.justify_chars.unwrap_or(1))
         .align_last(
             inherited

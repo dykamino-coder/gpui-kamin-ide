@@ -26,6 +26,7 @@ impl Paragraph {
             ruby_justify: false,
             justify_chars: 1,
             ruby_unit: false,
+            ruby_rotated: false,
             plaintext: None,
             lines_reversed: false,
             letter_spacing: px(0.),
