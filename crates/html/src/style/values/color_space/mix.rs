@@ -9,6 +9,14 @@ use super::*;
 /// `mix_in`, что считает точки градиента: смесь-стоп эталона и точка
 /// градиента теста сходятся по построению.
 pub(super) fn color_mix(body: &str) -> Option<(f32, f32, f32, f32)> {
+    color_mix_impl(body, true)
+}
+
+pub(super) fn color_mix_unmapped(body: &str) -> Option<(f32, f32, f32, f32)> {
+    color_mix_impl(body, false)
+}
+
+fn color_mix_impl(body: &str, mapped: bool) -> Option<(f32, f32, f32, f32)> {
     use crate::style::computed::GradSpace as S;
     let mut it = crate::style::css::split_args(body).into_iter();
     // css-color-5 §2.1: пара смешивается «as described in
@@ -96,7 +104,7 @@ pub(super) fn color_mix(body: &str) -> Option<(f32, f32, f32, f32)> {
         b: c.2,
         a: c.3,
     };
-    let (r, g, b) = mix_in(space, hue, colour(first), colour(second), k);
+    let (r, g, b) = mix_in_impl(space, hue, colour(first), colour(second), k, mapped);
     Some((r, g, b, alpha))
 }
 
@@ -113,16 +121,35 @@ pub(super) fn mix_in(
     b: crate::style::values::value::Color,
     k: f32,
 ) -> (f32, f32, f32) {
+    mix_in_impl(space, hue, a, b, k, true)
+}
+
+fn mix_in_impl(
+    space: crate::style::computed::GradSpace,
+    hue: u8,
+    a: crate::style::values::value::Color,
+    b: crate::style::values::value::Color,
+    k: f32,
+    mapped: bool,
+) -> (f32, f32, f32) {
     use crate::style::computed::GradSpace as S;
+    let map = |r, g, b| {
+        if mapped {
+            gamut_map(r, g, b)
+        } else {
+            (r, g, b)
+        }
+    };
+    let map_tuple = |v| if mapped { gamut_map_tuple(v) } else { v };
     let lerp = |x: f32, y: f32| x + (y - x) * k;
     match space {
-        S::Srgb => gamut_map(lerp(a.r, b.r), lerp(a.g, b.g), lerp(a.b, b.b)),
+        S::Srgb => map(lerp(a.r, b.r), lerp(a.g, b.g), lerp(a.b, b.b)),
         // Линейный свет: кривая sRGB снимается и возвращается. Все линейные
         // пространства дают тут один ответ (см. `GradSpace::Linear`).
         S::Linear => {
             let (ar, ag, ab) = (srgb_linear(a.r), srgb_linear(a.g), srgb_linear(a.b));
             let (br, bg, bb) = (srgb_linear(b.r), srgb_linear(b.g), srgb_linear(b.b));
-            gamut_map(
+            map(
                 srgb_gamma(lerp(ar, br)),
                 srgb_gamma(lerp(ag, bg)),
                 srgb_gamma(lerp(ab, bb)),
@@ -136,7 +163,7 @@ pub(super) fn mix_in(
             } else {
                 (lerp(al, bl), lerp(aa, ba), lerp(ab, bb))
             };
-            gamut_map_tuple(oklab_to_srgb(l, x, y))
+            map_tuple(oklab_to_srgb(l, x, y))
         }
         S::Lab | S::Lch => {
             let (al, aa, ab) = srgb_to_lab(a);
@@ -146,7 +173,7 @@ pub(super) fn mix_in(
             } else {
                 (lerp(al, bl), lerp(aa, ba), lerp(ab, bb))
             };
-            gamut_map_tuple(lab_to_srgb(l, x, y))
+            map_tuple(lab_to_srgb(l, x, y))
         }
         S::Hsl | S::Hwb => {
             let (ah, as_, al) = rgb_to_hsl(a);

@@ -49,6 +49,26 @@ pub(super) fn paint_slice(
         && sh == dh
         && [sx, sy, sw, sh].iter().all(|v| v.fract() == 0.0)
         && window.current_transformation().rotation_scale == [[1.0, 0.0], [0.0, 1.0]];
+    if unscaled && window.current_transformation() == gpui::TransformationMatrix::unit() {
+        // CSS Backgrounds 3 §6.6 keeps the tile's source-to-destination map.
+        // Blink nine_piece_image_painter.cc:165-175 defines phase relative to
+        // the whole image, not the slice. Cropping first resets that phase:
+        // a 27px source offset is 33.75 device pixels at 125% scale.
+        let natural = Bounds {
+            origin: gpui::point(px(dest.0 - sx), px(dest.1 - sy)),
+            size: gpui::size(px(image.0), px(image.1)),
+        };
+        window.with_content_mask(Some(gpui::ContentMask { bounds: cell }), |window| {
+            let _ = window.paint_natural_image(
+                natural,
+                gpui::Corners::default(),
+                raster.clone(),
+                0,
+                false,
+            );
+        });
+        return;
+    }
     let scale = if unscaled { 1.0 } else { window.scale_factor() };
     let (target_w, target_h) = if unscaled {
         (dw, dh)
@@ -117,38 +137,6 @@ pub(super) fn paint_slice(
     // subtracting CSS edges can otherwise make an integer size slightly
     // larger, and the native ceil policy would add another device pixel.
     let snapped = window.current_transformation() == gpui::TransformationMatrix::unit();
-    if unscaled && snapped {
-        // CSS Backgrounds 3 section 6.6 leaves an unscaled slice on its native
-        // image grid. Snap its origin, as for a background tile, but retain
-        // its CSS size: snapping both destination edges can shorten a tile
-        // by a device pixel and rescale all its texels. The shared nine-piece
-        // region clips the natural tile instead of changing that mapping.
-        let scale = window.scale_factor();
-        let origin = cell.origin.map(|value| {
-            let device = (f32::from(value) * scale).round();
-            let logical = device / scale;
-            px(if logical * scale < device {
-                logical.next_up()
-            } else {
-                logical
-            })
-        });
-        let natural = Bounds {
-            origin,
-            size: gpui::size(px(dw), px(dh)),
-        };
-        window.with_content_mask(Some(gpui::ContentMask { bounds: cell }), |window| {
-            let _ = window.paint_image_with_sampling(
-                natural,
-                gpui::Corners::default(),
-                piece,
-                0,
-                false,
-                gpui::ImageSampling::Nearest,
-            );
-        });
-        return;
-    }
     let sampling = match (unscaled || nearest, snapped) {
         (true, true) => gpui::ImageSampling::NearestSnapped,
         (false, true) => gpui::ImageSampling::LinearSnapped,
@@ -159,7 +147,7 @@ pub(super) fn paint_slice(
         window.paint_image_with_sampling(cell, gpui::Corners::default(), piece, 0, false, sampling);
 }
 
-fn destination_bounds(
+pub(super) fn destination_bounds(
     window: &gpui::Window,
     (x, y, width, height): (f32, f32, f32, f32),
 ) -> Bounds<gpui::Pixels> {
