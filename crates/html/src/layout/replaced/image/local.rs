@@ -82,6 +82,12 @@ pub(super) fn local_image_source<'a>(
             .object_fit
             .as_deref()
             .is_some_and(|f| matches!(f, "fill" | "contain" | "cover" | "none" | "scale-down"));
+    let mut d = d;
+    if !wants_pipe
+        && let Some(image) = super::grid_measured::measured(e, local.unwrap_or(src), &mut d)
+    {
+        return Err(image);
+    }
     let d = match piped_image(src, e, d, local, wants_pipe) {
         Ok(value) => return Err(value),
         Err(d) => d,

@@ -36,6 +36,7 @@ pub(super) mod language;
 mod presentational_hints;
 mod replaced_display;
 mod subgrid_axes;
+mod subgrid_used;
 pub(crate) use crate::dom::counter_decls::{
     apply_counter_decls, apply_value_hint, counter_snapshot, inherit_counter_decls,
 };
