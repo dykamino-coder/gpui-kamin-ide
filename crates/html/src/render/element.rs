@@ -65,6 +65,13 @@ pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> A
     orthogonal_limit(e, &mut merged, inherited, opts);
     pseudo_line_layers::install(e, &mut merged);
     // Единицы окна разрешаются здесь: размер окна знает только сборщик.
+    if e.tag == "html-viewport" {
+        // The synthetic viewport owns the full window; only author units shrink.
+        merged.width = Some(crate::style::values::value::Len::Px(opts.viewport.0));
+        if merged.height.is_some() {
+            merged.height = Some(crate::style::values::value::Len::Px(opts.viewport.1));
+        }
+    }
     merged.resolve_viewport(opts.viewport);
     let gutters = crate::interactive::scroll_extent::classic::model(e.node_id, &merged);
     merged.scroll.used = gutters.used;

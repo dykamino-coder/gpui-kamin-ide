@@ -17,6 +17,22 @@ pub(super) fn policy(nodes: &[Node]) -> Option<Computed> {
     // This is a computed viewport policy, not another currentColor declaration.
     c.scroll.current = [false; 2];
     c.scroll.inherit_width = false;
+    // CSS Values 4 §6.1.2; Blink ComputeScrollbarWidthsForViewportUnits:
+    // only root policy reduces units, never overflow propagated from body.
+    let viewport_axis = |v| match v {
+        Some(Overflow::Hidden | Overflow::Clip) => Some(Overflow::Hidden),
+        _ => Some(Overflow::Scroll),
+    };
+    let mut unit_policy = c.clone();
+    unit_policy.overflow_x = viewport_axis(c.overflow_x);
+    unit_policy.overflow_y = viewport_axis(c.overflow_y);
+    let model = crate::interactive::scrollbar_gutter::Model::new(&unit_policy, c.scroll.forced);
+    // Blink StyleCascade::ApplyViewportUnitAffecting skips custom scrollbar styles.
+    c.viewport_unit_insets = Some(if c.custom_scrollbar {
+        [0.0; 2]
+    } else {
+        model.total()
+    });
     let visible = |v| matches!(v, None | Some(Overflow::Visible));
     if let Some(body) = root.children.iter().find_map(|node| match node {
         Node::Element(e) if e.tag == "body" => Some(e),
@@ -36,10 +52,6 @@ pub(super) fn policy(nodes: &[Node]) -> Option<Computed> {
             c.scroll.forced = body.style.scroll.forced;
         }
     }
-    let viewport_axis = |v| match v {
-        Some(Overflow::Hidden | Overflow::Clip) => Some(Overflow::Hidden),
-        _ => Some(Overflow::Scroll),
-    };
     c.overflow_x = viewport_axis(c.overflow_x);
     c.overflow_y = viewport_axis(c.overflow_y);
     Some(c)
@@ -71,6 +83,7 @@ pub(super) fn wrap(nodes: Vec<Node>, policy: Option<Computed>) -> Vec<Node> {
         vertical: c.vertical,
         vertical_rl: c.vertical_rl,
         scroll: c.scroll,
+        viewport_unit_insets: c.viewport_unit_insets,
         ..Computed::default()
     };
     vec![Node::Element(viewport)]
