@@ -132,7 +132,8 @@ pub(super) fn band_host_flow(
             // Поля кладёт держатель — на самой коробке они сдвинули бы её
             // ещё раз (та же причина, что у флоатов, `:5092-5095`).
             inner.style.margin = crate::style::computed::Sides::default();
-            let merged = inherit(inherited, &c.style);
+            let mut merged = inherit(inherited, &c.style);
+            merged.self_node = c.node_id;
             let built = styled_div_with(&inner, &merged)
                 .children(blocks(&inner.children, &merged, opts))
                 .into_any_element();
