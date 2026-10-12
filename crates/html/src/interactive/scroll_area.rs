@@ -59,6 +59,7 @@ impl ScrollArea {
 struct Persistent {
     handle: gpui::ScrollHandle,
     extent: super::scroll_extent::Frame,
+    interaction: super::scrollbars::interaction::Interaction,
 }
 
 impl Element for ScrollArea {
@@ -67,8 +68,9 @@ impl Element for ScrollArea {
         gpui::ScrollHandle,
         super::scroll_extent::Frame,
         LayoutId,
+        super::scrollbars::interaction::Interaction,
     );
-    type PrepaintState = Bounds<Pixels>;
+    type PrepaintState = (Bounds<Pixels>, Vec<super::scrollbars::interaction::HitBar>);
 
     fn id(&self) -> Option<ElementId> {
         Some(self.id.clone())
@@ -97,7 +99,13 @@ impl Element for ScrollArea {
             (
                 (
                     layout_id,
-                    (el, state.handle.clone(), state.extent.clone(), layout_id),
+                    (
+                        el,
+                        state.handle.clone(),
+                        state.extent.clone(),
+                        layout_id,
+                        state.interaction.clone(),
+                    ),
                 ),
                 state,
             )
@@ -157,7 +165,16 @@ impl Element for ScrollArea {
                 window.refresh();
             });
         }
-        paint_bounds
+        let hitbars = super::scrollbars::interaction::prepaint(
+            &self.style,
+            &child.1,
+            child.2.bars(),
+            child.2.range(),
+            child.2.insets(),
+            paint_bounds,
+            window,
+        );
+        (paint_bounds, hitbars)
     }
 
     fn paint(
@@ -172,13 +189,15 @@ impl Element for ScrollArea {
     ) {
         child.2.set_decoration_clip(window.content_mask());
         child.0.paint(window, cx);
+        let alpha = child.4.paint(&paint_bounds.1, &child.1, window);
         crate::interactive::scrollbars::paint(
             &self.style,
             &child.1,
             child.2.bars(),
             child.2.range(),
             child.2.insets(),
-            *paint_bounds,
+            paint_bounds.0,
+            alpha,
             window,
         );
     }
