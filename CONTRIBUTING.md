@@ -314,7 +314,11 @@ npm --prefix extensions/claude-bridge/webview run build
 Workflow `.github/workflows/pr-checks.yml` автоматически выполняет этот контур
 для затронутых частей каждого PR. Job `required quality gate` имеет стабильное
 имя и проходит только когда все применимые Node, Bridge и Rust jobs успешны;
-docs-only PR ограничивается проверкой scope и whitespace. Workflow использует
+docs-only PR в этом workflow ограничивается проверкой scope и whitespace.
+Независимый workflow `.github/workflows/pr-metadata.yml` проверяет заголовок и
+описание каждого PR в `main`, включая docs-only, job-ом
+`PR title and description` по §5. Перед merge оба checks должны быть зелёными.
+Workflow использует
 только read-only `GITHUB_TOKEN`, не получает production secrets и ничего не
 публикует. Ручные Windows и deployment-only gates ниже остаются отдельными и не
 подменяются CI.
@@ -439,13 +443,64 @@ perf(webview): reduce resize churn
 docs(contributing): define the release flow
 ```
 
-В описании PR обязательны:
+Описание публичного PR по умолчанию пишется по-английски. Владелец может явно
+поручить другой язык для описания; заголовок PR и итогового squash-коммита
+всегда остаётся английским. Язык общения агента с пользователем этим не
+меняется. Тип и scope определяются по фактическому diff, а не по языку,
+заголовку, метке или выбранному checkbox.
 
-- что и зачем изменено;
-- как проверено;
-- UI evidence для визуального изменения;
-- риски или ограничения;
-- явная отметка, что release-версии намеренно не менялись.
+Для обычного Change/Fix или Diagnostic PR обязательны четыре заполненных
+раздела из `.github/pull_request_template.md`:
+
+- `## Summary` — конкретная проблема, что и зачем изменено. Для регистрации
+  задачи описывается постановка, а не ещё не реализованное исправление;
+- `## Validation` — реально выполненные команды/проверки и их результаты,
+  применимый класс приёмки. Пропущенная проверка отмечается с причиной;
+- `## Risks and limitations` — регрессии, совместимость, rollback или
+  обоснованное отсутствие runtime-риска; оставшиеся ограничения и gates;
+- `## Versioning` — явная строка `Release versions: unchanged`. Дополнительно
+  указать, нужен ли будущий batch release по фактическому diff.
+
+UI evidence для визуального изменения, `## Runtime acceptance` для
+применимого Windows gate, ссылки на task/private evidence, dependencies и
+следующий владелец остаются обязательными там, где их требует flow. Они не
+заменяют четыре основных раздела. Само изменение документации или CI metadata
+не требует живого UI-прогона. HTML comments, unchecked checklist и отдельные
+`TODO`, `TBD` или `N/A` не считаются результатом; `N/A: <конкретная причина>`
+допустимо. Описание обновляется по конечному diff: proposed acceptance не
+выдаётся за проведённую, регистрация не закрывает задачу.
+
+Исключения по формату:
+
+- **Release PR** использует `## Task` / `## Задача` и `## Release notes` по §6;
+  обычный шаблон и декларация unchanged не требуются. Классификация release в
+  CI основана на coordinated version diff, а не на названии PR. Проверки,
+  риски и ограничения выпуска записываются в `Verification and limitations`;
+- **Dependabot PR** сохраняет сгенерированное описание. Исключение относится
+  только к формату body настоящего `dependabot[bot]`, а не к merge authority.
+  Maintainer записывает результат проверки upstream version/SHA, CI, риски и
+  `Release versions: unchanged` в review/comment до merge по правилам ниже.
+
+Job `PR title and description` отклоняет некорректный Conventional Commits
+prefix, не-Latin буквы в заголовке, пустой body и незаполненные обязательные
+разделы. Для release он использует существующий parser release notes. Старые
+русские эквиваленты заголовков разделов принимаются для миграции; новые PR
+используют шаблон выше. CI не распознаёт качество английского текста и не
+проверяет достоверность заявленных тестов или ручного evidence: это проверяет
+maintainer. Изменение body/title повторно запускает metadata check; перед merge
+проверяются актуальные body/title и конечный head. Уже закрытые PR и commit
+history ради нового формата не переписываются.
+
+Локальная проверка обычного PR (JSON — только входные данные, не команды):
+
+```bash
+gh api repos/OWNER/REPO/pulls/NUMBER > /tmp/pr-metadata.json
+node scripts/ci/pr-metadata.mjs --event /tmp/pr-metadata.json
+node --test scripts/ci/pr-metadata.test.mjs
+```
+
+Для coordinated release CLI дополнительно получает `RELEASE_CANDIDATE=true`
+и `GITHUB_REPOSITORY=OWNER/REPO`; workflow сам вычисляет этот класс из diff.
 
 Для Change/Fix PR зарегистрированной runtime-задачи в `## Задача` или
 `## Task` первым указывается её основной BR/INC ID. Если карточка требует
@@ -698,7 +753,8 @@ test. Он также может собрать тот же кандидат л�
 ## 8. Автоматическая публикация после merge
 
 Merge release PR — единственный ручной production approval. Перед ним
-мейнтейнер обязан дождаться зелёного `required quality gate`, скачать и принять
+мейнтейнер обязан дождаться зелёных `PR title and description` и
+`required quality gate`, скачать и принять
 Windows candidate, проверить неизменность release branch и закрыть review
 threads. Сам merge не переносит PR artifact в production.
 
@@ -772,5 +828,7 @@ publish job после merge. Если secret отсутствует, workflow �
 с точным сообщением и релиз остаётся незавершённым.
 
 Для `main` владелец repository также включает правило pull request и делает
-check `required quality gate` обязательным. Иначе зелёный check виден, но GitHub
+checks `required quality gate` и `PR title and description` обязательными.
+Правка workflow сама не меняет Settings/rulesets: эту одноразовую настройку
+выполняет владелец repository. Иначе зелёный check виден, но GitHub
 технически не запрещает merge с красной или незапущенной матрицей.
