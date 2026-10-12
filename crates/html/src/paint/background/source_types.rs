@@ -83,6 +83,18 @@ impl Source {
         match self {
             Source::Raster(image) => Some(image.clone()),
             Source::Vector { markup, .. } => {
+                if let Some(color) = super::flat_vector::color(markup, tile) {
+                    return gpui::bgra_bytes_to_image(
+                        1,
+                        1,
+                        vec![
+                            (color.b * 255.0).round() as u8,
+                            (color.g * 255.0).round() as u8,
+                            (color.r * 255.0).round() as u8,
+                            255,
+                        ],
+                    );
+                }
                 // Растр не бывает больше потолка: при `cover` с вытянутым
                 // соотношением плитка выходит в тысячи точек по длинной
                 // стороне, и растеризатор возвращал НИЧЕГО — страница
@@ -98,7 +110,10 @@ impl Source {
                 // ломаются — но видима лишь часть плитки в коробке, а сам
                 // рисунок растрируется в свою область просмотра целиком.
                 let raster = (tile.0.clamp(1.0, LIMIT), tile.1.clamp(1.0, LIMIT));
-                crate::svg::raster::rasterize(&with_viewport(markup, raster), raster.0, raster.1)
+                // CSS Images 3 §4.3.2: the concrete object size establishes the
+                // SVG viewport. A bitmap allocation limit changes sampling
+                // density, never the viewport or preserveAspectRatio mapping.
+                crate::svg::raster::rasterize(&with_viewport(markup, tile), raster.0, raster.1)
             }
             Source::Gradient { raw } => {
                 const LIMIT: f32 = 2048.0;

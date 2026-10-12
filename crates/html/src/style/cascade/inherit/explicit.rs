@@ -51,6 +51,7 @@ pub(super) fn inherit_explicit(parent: &Computed, own: &Computed, c: &mut Comput
         }
         if on(inh::BG_POS) {
             c.bg_pos = parent.bg_pos;
+            c.bg_position_math = parent.bg_position_math.clone();
         }
         if on(inh::CLIP) {
             c.clip_rect = parent.clip_rect;
@@ -134,6 +135,7 @@ pub(super) fn inherit_explicit(parent: &Computed, own: &Computed, c: &mut Comput
             c.bg_image = parent.bg_image.clone();
             c.bg_repeat = parent.bg_repeat;
             c.bg_pos = parent.bg_pos;
+            c.bg_position_math = parent.bg_position_math.clone();
             c.bg_size = parent.bg_size;
             c.bg_fixed = parent.bg_fixed;
             c.gradient = parent.gradient.clone();

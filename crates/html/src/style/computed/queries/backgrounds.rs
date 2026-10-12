@@ -89,6 +89,7 @@ impl Computed {
                 c.gradient_raw = None;
                 c.bg_size = BgSize::Auto;
                 c.bg_pos = BgPos::default();
+                c.bg_position_math = [None, None];
                 c.bg_repeat = None;
                 c.bg_origin = None;
                 let layers = background_layers(v);

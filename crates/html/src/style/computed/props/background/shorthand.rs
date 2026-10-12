@@ -142,7 +142,7 @@ impl Computed {
                 t if t.starts_with("url(") => {}
                 // Ключевые слова осей и длины — это положение.
                 "left" | "right" | "top" | "bottom" | "center" => pos.push(token.clone()),
-                t if Len::parse_mixed(t).is_some() => pos.push(token.clone()),
+                t if Self::background_position_length(t) => pos.push(token.clone()),
                 t => {
                     if let Some(c) = Color::parse(t) {
                         self.background = Some(c);
@@ -154,7 +154,7 @@ impl Computed {
         // разбор пустой строки отдаёт «по центру», и каждый фон без
         // положения уехал бы в середину коробки.
         if !pos.is_empty() {
-            self.bg_pos = parse_pos_words(&pos.join(" "));
+            self.set_background_position(&pos.join(" "));
         }
         if let Some(words) = size_words.filter(|w| !w.is_empty()) {
             self.apply_one("background-size", &words.join(" "));

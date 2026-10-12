@@ -36,19 +36,12 @@ pub(crate) fn draw_tiles(
     };
     let box_size = (f32::from(bounds.size.width), f32::from(bounds.size.height));
     let tile = tile_size(found.intrinsic(), box_size, size);
-    // Плитка НЕ бывает осмысленно шире считанных коробок: вырожденное
-    // соотношение (`viewBox` в миллиарды) давало размер за пределами
-    // точности float, и координаты копий разваливались. Видима всё равно
-    // только часть в коробке.
-    // Потолок — от БОЛЬШЕЙ стороны коробки: при нулевой высоте места под фон
-    // (`height: 0; padding-bottom: 100px; background-origin: content-box`)
-    // потолок по своей оси выходил 8 точек, и `cover` 100×50 рисовался
-    // полоской 100×8 (`background-size-cover-003`).
-    let cap = box_size.0.max(box_size.1).max(1.0) * 8.0;
-    let tile = (tile.0.min(cap), tile.1.min(cap));
+    // CSS Backgrounds 3 §3.9: cover may require a tile much larger than
+    // the painting area. Cap the allocated raster, never this concrete size,
+    // its aspect ratio, or the free space used by background-position.
     // Нулевая плитка не рисуется вовсе, а вот МЕЛКАЯ — рисуется: браузер
     // мостит и долями точки. Ограничивается не размер плитки, а их ЧИСЛО.
-    if tile.0 <= 0.0 || tile.1 <= 0.0 {
+    if tile.0 <= 0.0 || tile.1 <= 0.0 || !tile.0.is_finite() || !tile.1.is_finite() {
         return;
     }
     // Плитка мельче половины точки неразличима: копии сливаются в сплошную
@@ -110,7 +103,10 @@ pub(crate) fn draw_tiles(
         },
         window,
     );
-    let start = origin(pos, box_size, tile);
+    let start = c.background_position_used(
+        origin(pos, box_size, tile),
+        (box_size.0 - tile.0, box_size.1 - tile.1),
+    );
     let shift = (
         f64::from(f32::from(bounds.origin.x)) - f64::from(f32::from(clip.origin.x)),
         f64::from(f32::from(bounds.origin.y)) - f64::from(f32::from(clip.origin.y)),
