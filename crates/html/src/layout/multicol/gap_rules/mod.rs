@@ -136,9 +136,7 @@ pub(super) fn multicol_gap_rule_spec(
     probe.display = Some(Display::Flex);
     let mut spec = gap_rule_spec(e, &probe, opts)?;
     let vertical = spec.vertical;
-    spec.kind = crate::paint::gap_rules::GapLayout::Lines {
-        stacked_vertically: !vertical,
-    };
+    spec.kind = crate::paint::gap_rules::GapLayout::Multicol;
     if let Some(c) = spec.col.as_mut()
         && c.brk == 1
     {

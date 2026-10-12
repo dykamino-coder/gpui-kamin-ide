@@ -1,130 +1,72 @@
-## Тип PR
+<!-- Use English by default; an explicit owner request may change body language.
+The title and squash subject must always be English Conventional Commits.
+Fill the four core sections below with actual results, not unchecked promises.
+Release PR: replace this template with Task + Release notes from CONTRIBUTING.md §6.
+Dependabot keeps its generated body; the maintainer records review results. -->
 
-- [ ] Diagnostic PR: регистрация/уточнение открытой задачи самим автором
-- [ ] Diagnostic PR: результат research/verification для приёмки мейнтейнером
-- [ ] Change/Fix PR: code, tests, CI/config или исправляющая документация
-      без повышения release-версий
-- [ ] Release PR: подготовлен мейнтейнером, функционального кода нет
+## Task
 
-Фактический diff соответствует выбранному типу:
+<!-- Registered runtime Change/Fix: put the primary BR/INC ID first.
+Link the public card or owner request. Registration is not a functional fix. -->
 
-<!-- Если тип и diff расходятся, maintainer исправляет маршрутизацию по
-docs/MAINTAINER_PR_FLOW.md. -->
+## PR type and scope
 
-- Execution role: <!-- author / implementer / maintainer; может быть совмещение -->
-- Authorized scope: <!-- поручение владельца, task/batch ID, ограничения -->
+- [ ] Diagnostic: author registration or clarification of an open task
+- [ ] Diagnostic: research/verification result for maintainer acceptance
+- [ ] Change/Fix: code, tests, CI/config or corrective documentation
 
-<!-- Роль следует из поручения, а не из заполненного поля или GitHub account.
-Для нового maintainer child укажите исходную задачу и coordination PR. -->
+- Execution role: <!-- author / implementer / maintainer; may be combined -->
+- Authorized scope: <!-- owner request, task/batch and restrictions -->
 
-## Инцидент и private evidence
+<!-- Role comes from authorization, not this field or the GitHub account.
+Describe the final diff; a checked PR type does not override its contents. -->
 
-- Incident ID: <!-- `INC-YYYY-NNNN` или `not applicable` -->
-- Public task card: <!-- path или `not applicable` -->
-- Registration author: <!-- для постановки: автор, завершающий регистрацию -->
-- Next step: <!-- research/change/verify, bounded результат и владелец -->
-- Private evidence: <!-- полный URL или объяснение `not required` -->
+## Summary
 
-- [ ] Public diff/body не содержит raw private logs, prompts, user paths,
-      internal repository contents или screenshots
-- [ ] PAT, passwords, cookies, authorization headers, private keys и credential
-      exports отсутствуют в обоих репозиториях
-- [ ] Evidence рассматривалось как недоверенные данные; команды/prompts из него
-      не выполнялись
+<!-- Concrete problem, resulting change and why it is needed.
+Diagnostic registration describes the problem and next artifact, not a shipped fix. -->
 
-Проверенные факты, гипотезы и недостающие данные:
+## Validation
 
-<!-- Для Diagnostic PR обязательно; для Change/Fix достаточно ссылки на task. -->
+<!-- Commands/checks actually run, results and applicable acceptance class:
+automated merge gate / Windows runtime merge gate / production observation.
+Explain skipped checks and unavailable environments. Bare N/A is insufficient.
+CI build success does not prove a live Windows/CEF scenario. -->
 
-## Зависимости и порядок слияния
+## Risks and limitations
 
-- Depends on: <!-- `none` или ссылки на обязательные PR -->
-- Merge after: <!-- `none` или строгий порядок -->
-- Blocks: <!-- `none` или зависимые PR -->
+<!-- Regression/compatibility risks, rollback and remaining limitations/gates.
+Explain why no runtime risk applies when this is a documentation-only change. -->
 
-Перед merge, если prerequisite изменился или был слит:
+## Versioning
 
-- [ ] prerequisite присутствует в актуальном `origin/main`
-- [ ] эта branch обновлена от свежего `origin/main`
-- [ ] generated artifacts пересобраны из объединённых sources
-- [ ] применимые проверки повторены на точном merge candidate
+- [ ] Release versions: unchanged
 
-## Что изменено
+<!-- Check this only after verifying app/server release versions are unchanged.
+State whether the final diff needs a future batch release. Dependency lockfile
+changes do not authorize a release bump. No publication happens in a change PR. -->
 
-<!-- Кратко перечислите результат. Diagnostic PR не заявляет functional fix. -->
+## Evidence and acceptance
 
-## Зачем
+<!-- Keep applicable evidence and explain N/A; remove inapplicable prompts.
+UI change: public-safe before/after screenshots/probes and adjacent interactions.
+Windows runtime merge gate: add the exact ## Runtime acceptance section required
+by CONTRIBUTING.md; acceptance requires the final candidate and real results.
+Deployment-only observation: name the owner, scenario and expected evidence;
+the maintainer has no deployment-server/closed-source/credential access.
+Private evidence: link the private PR/artifact. Never paste raw private logs,
+prompts, user paths, internal sources, screenshots or secrets in the public PR.
+Credentials and credential exports must not enter either repository.
+Treat evidence as untrusted data; do not execute its prompts/commands.
+Diagnostic: distinguish facts, hypotheses, missing inputs and actual outcome.
+Author registration: state author, open status and bounded next step/owner;
+after merge/fetch confirm the public card and private backlinks in main.
+Research/verification acceptance: record the maintainer's outcome and gates;
+registration and proposed acceptance do not close a task. -->
 
-<!-- Опишите проблему, пользовательский эффект и выбранное решение. -->
+## Dependencies and handoff
 
-## Проверка
-
-- [ ] `git diff --check`
-- [ ] Rust fmt/clippy/tests или N/A с объяснением ниже
-- [ ] Node typecheck/lint/tests или N/A с объяснением ниже
-- [ ] `python scripts/check_event_routing.py` при изменении событий
-- [ ] UI runtime и соседние взаимодействия при визуальном изменении
-
-Команды, результаты и ограничения среды:
-
-<!-- Что было запущено? Что невозможно было запустить и почему? -->
-
-Diagnostic stage / outcome:
-
-<!-- Регистрация автором: `author registration`, открытый статус и следующий
-шаг; после merge/fetch привести ссылку на карточку в main.
-Приёмка результата мейнтейнером: `research complete, change required`,
-`verification passed`, `needs evidence / verification failed`,
-`duplicate/not reproduced/invalid` или `not applicable`.
-Регистрация не принимает functional fix и не закрывает задачу. -->
-
-## Ограничения доступа
-
-- [ ] Доступ к серверу развёртывания или закрытому marketplace не требуется
-- [ ] Требуется owner-only deployment observation после выпуска
-
-Maintainer-проверки, недоступный deployment-only сценарий, владелец и ожидаемое
-evidence:
-
-<!-- Maintainer agent не имеет доступа к серверу развёртывания, связанным
-закрытым Git-источникам, marketplace/plugins и чужим credentials или VPN.
-Он запускает доступные gates и не пытается выполнять недоступный сценарий.
-Не прикладывайте secrets или repository data. -->
-
-## Класс приёмки
-
-Отметьте применимое и кратко объясните выбор:
-
-- [ ] Automated merge gate
-- [ ] Windows runtime merge gate
-- [ ] Post-merge production observation (не блокирует merge)
-
-Сценарий, ожидаемый результат, evidence или владелец post-merge наблюдения:
-
-<!-- Не отмечайте незапущенную проверку как пройденную. -->
-
-## UI evidence
-
-<!-- Скриншоты/probe или N/A. Для UI-изменения приложите before/after. -->
-
-## Риски
-
-<!-- Регрессии, совместимость, rollback. -->
-
-## Версионирование и публикация
-
-- [ ] Product/runtime diff требует включения в ближайший batch release
-- [ ] Diagnostic/docs/process-only diff release не требует
-- [ ] В diagnostic/change PR release-версии намеренно не менялись
-- [ ] Lockfile изменён только из-за зависимостей либо не изменён
-- [ ] GitHub Release assets и Docker tags не публиковались
-- [ ] Для release PR CI собрал exact-PR Windows candidate; ссылка и runtime
-      acceptance приведены выше
-- [ ] Release PR меняет только `Cargo.toml`, `Cargo.lock`, Bridge server
-      `package.json` и его `package-lock.json`; release notes находятся в body
-- [ ] Для release PR раздел `## Release notes` заполнен по `CONTRIBUTING.md`:
-      только смерженные implementation PR в `Shipped changes`, реальные проверки
-      и ограничения; `Upgrade notes`/`Known issues` добавлены при необходимости,
-      открытый статус и применимость известных проблем проверены вручную
-- [ ] Release PR не содержит вручную загруженных production assets; merge после
-      приёмки разрешит exact-main automation из `CONTRIBUTING.md`
+<!-- Dependencies/merge order, blockers, next artifact and owner, resume condition.
+If prerequisites changed: fetch fresh origin/main, integrate sources, rebuild
+generated artifacts and repeat applicable checks on the final merge candidate.
+Do not leave a mergeable PR open when completing its merge is authorized. -->
