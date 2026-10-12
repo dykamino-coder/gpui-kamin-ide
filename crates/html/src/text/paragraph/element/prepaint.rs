@@ -71,6 +71,7 @@ impl Paragraph {
             self.refit_atoms(avail, window, _cx);
         }
         self.lines = self.split(Some(limit), window);
+        self.publish_scroll_overflow(bounds, *state, window);
         self.unbalanced_steps = None;
         if self.clamp_tag.is_some() && self.wrap.balance && self.clamp.is_none() {
             if self.run_metrics.len() != self.runs.len() {

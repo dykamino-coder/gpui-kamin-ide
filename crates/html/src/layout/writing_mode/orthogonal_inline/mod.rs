@@ -32,7 +32,12 @@ pub(crate) fn axis(style: &Computed, vertical: bool) -> AxisSizes {
     } else {
         0.0
     };
-    let inner = |value| px(value).map(|v| (v - adjustment).max(0.0));
+    let gutters = if vertical {
+        style.scroll.used[1] + style.scroll.used[3]
+    } else {
+        style.scroll.used[0] + style.scroll.used[2]
+    };
+    let inner = |value| px(value).map(|v| (v - adjustment - gutters).max(0.0));
     AxisSizes {
         size: inner(size),
         min: inner(min),

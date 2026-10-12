@@ -133,6 +133,7 @@ impl Computed {
                         ..*sh
                     })
                 });
+                self.scrollbar_filter_ops.clear();
                 let mut f = self.filter.unwrap_or_else(Filter::neutral);
                 for call in v.split(')') {
                     let Some((name, arg)) = call.split_once('(') else {
@@ -167,6 +168,9 @@ impl Computed {
                         "contrast" => f.contrast = amount(),
                         // `drop-shadow` и цветовые матрицы — не наш случай.
                         _ => {}
+                    }
+                    if let Some(one) = f.color_operation(name) {
+                        self.scrollbar_filter_ops.push(one);
                     }
                 }
                 self.filter = Some(f);

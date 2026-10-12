@@ -23,6 +23,7 @@ use crate::document::canvas_background::mark_canvas_background;
 use crate::document::canvas_background::viewport_overflow;
 use crate::document::embedded::hash_of;
 pub use crate::document::embedded::parse_embedded;
+pub(crate) use crate::document::embedded::parse_embedded_sized;
 use crate::document::embedded::unwrap_document;
 use crate::document::logical_properties::resolve_logical;
 use crate::document::writing_mode::propagate_writing_mode;

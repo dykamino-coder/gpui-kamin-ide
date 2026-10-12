@@ -33,6 +33,8 @@ pub struct Filter {
     pub blur: f32,
 }
 
+mod operation;
+
 impl Filter {
     /// Нейтральный фильтр: ничего не меняет.
     pub fn neutral() -> Filter {

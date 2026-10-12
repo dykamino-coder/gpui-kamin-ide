@@ -3,7 +3,7 @@ mod stationary;
 use crate::dom::Element;
 use crate::style::computed::{Computed, Sides};
 use gpui::{
-    Div, ElementId, InteractiveElement, Interactivity, ParentElement, ScrollHandle,
+    Div, ElementId, InteractiveElement, Interactivity, IntoElement, ParentElement, ScrollHandle,
     StatefulInteractiveElement, Styled,
 };
 use std::cell::RefCell;
@@ -33,6 +33,25 @@ pub(crate) fn stationary(node: u64, child: gpui::AnyElement) -> gpui::AnyElement
         _ => child,
     }
 }
+// CSS Backgrounds 3 §2.11: the canvas covers the viewport, including gutters.
+pub(crate) fn canvas(child: gpui::AnyElement) -> gpui::AnyElement {
+    let Some((gutter, clip)) = super::scroll_extent::viewport_decoration() else {
+        return child;
+    };
+    let Some(handle) = TARGET.with(|slot| slot.borrow().as_ref().map(|t| t.handle.clone())) else {
+        return child;
+    };
+    let layer = gpui::div()
+        .absolute()
+        .top(gpui::px(-gutter[1]))
+        .left(gpui::px(-gutter[0]))
+        .right(gpui::px(-gutter[2]))
+        .bottom(gpui::px(-gutter[3]))
+        .child(child)
+        .into_any_element();
+    stationary::wrap(layer, handle, clip)
+}
+
 impl Drop for Restore {
     fn drop(&mut self) {
         TARGET.with(|slot| *slot.borrow_mut() = self.0.take());
@@ -75,26 +94,8 @@ impl InteractiveElement for NativeScrollBox {
 impl StatefulInteractiveElement for NativeScrollBox {}
 
 pub(crate) fn attach(mut div: Div, e: &Element, c: &Computed) -> Div {
-    // Colored scrollbars need the CSS box's descendant overflow extent.
-    // Intrinsic roots already use this native box; other scrollers retain
-    // the percentage/flex viewport adapter until its sizing contract is replaced.
-    let keyword = |value| {
-        matches!(
-            value,
-            Some(
-                crate::style::values::value::Len::MinContent
-                    | crate::style::values::value::Len::MaxContent
-                    | crate::style::values::value::Len::FitContent
-            )
-        )
-    };
-    if !keyword(c.width)
-        && !keyword(c.height)
-        && c.scroll.colors.flatten().is_none()
-        && c.snap.axis == 0
-    {
-        return div;
-    }
+    // The CSS box owns both sizing and scroll state. An anonymous viewport
+    // loses percentage, intrinsic, baseline and flex/grid sizing constraints.
     let target = TARGET.with(|slot| {
         let mut slot = slot.borrow_mut();
         let target = slot.as_mut()?;
@@ -123,6 +124,16 @@ pub(crate) fn attach(mut div: Div, e: &Element, c: &Computed) -> Div {
         stateful = stateful.overflow_y_scroll();
     }
     let mut div = stateful.0;
+    let bars = super::scroll_extent::classic::reserve(e.node_id, c);
+    div.style().scrollbar_width = Some(gpui::px(c.scroll.thickness()).into());
+    // Taffy reserves a classic gutter for Scroll, while Hidden has the same
+    // sizing semantics without a gutter. Auto starts without bars.
+    if horizontal && !bars[0] {
+        div.style().overflow.x = Some(gpui::Overflow::Hidden);
+    }
+    if vertical && !bars[1] {
+        div.style().overflow.y = Some(gpui::Overflow::Hidden);
+    }
     // Hidden boxes still support programmatic scrolling and snapping, but must
     // not register GPUI wheel scrolling (CSS Overflow 3 §3).
     if c.overflow_x == Some(crate::style::computed::Overflow::Hidden) {
@@ -156,15 +167,6 @@ mod tests {
         margin.left = Some(Len::Px(10.0));
         let handle = ScrollHandle::default();
         let (_, matched) = build(7, &handle, true, false, margin, || {
-            let mut numeric = attach(
-                div(),
-                &e,
-                &Computed {
-                    width: Some(Len::Px(100.0)),
-                    ..c.clone()
-                },
-            );
-            assert_eq!(numeric.style().overflow.x, None);
             let (_, child_matched) = build(8, &handle, false, true, Sides::default(), || {
                 let mut d = attach(div(), &e, &c);
                 assert_eq!(d.style().overflow.x, None);
@@ -172,7 +174,7 @@ mod tests {
             assert!(!child_matched);
             let mut d = attach(div(), &e, &c);
             assert_eq!(gpui::Element::id(&d), Some(ElementId::Integer(8)));
-            assert_eq!(d.style().overflow.x, Some(Overflow::Scroll));
+            assert_eq!(d.style().overflow.x, Some(Overflow::Hidden));
             assert_eq!(
                 d.style().sizing_keywords,
                 Some([Some(CssSizingKeyword::FitContent), None])
@@ -199,7 +201,7 @@ mod tests {
         let handle = ScrollHandle::default();
         let (_, matched) = build(7, &handle, false, true, Sides::default(), || {
             let mut d = attach(div(), &e, &c);
-            assert_eq!(d.style().overflow.y, Some(Overflow::Scroll));
+            assert_eq!(d.style().overflow.y, Some(Overflow::Hidden));
             assert_eq!(d.style().sizing_keywords, Some([None, None]));
         });
         assert!(matched);

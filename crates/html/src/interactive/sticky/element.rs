@@ -135,7 +135,9 @@ impl Element for Sticky {
     ) {
         let shift = self.shift(bounds);
         let child = self.child.as_mut().unwrap();
-        window.with_exact_element_offset(shift, |window| child.prepaint(window, cx));
+        crate::interactive::scroll_extent::sticky_geometry(shift, || {
+            window.with_exact_element_offset(shift, |window| child.prepaint(window, cx));
+        });
     }
 
     fn paint(

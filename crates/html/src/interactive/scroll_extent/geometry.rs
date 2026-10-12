@@ -33,7 +33,10 @@ pub(super) struct Clip {
 impl Clip {
     pub(super) fn new(c: &Computed) -> Self {
         let axis = |overflow| {
-            if c.contain_paint == Some(true) || overflow == Some(Overflow::Clip) {
+            if c.contain_layout == Some(true)
+                || c.contain_paint == Some(true)
+                || overflow == Some(Overflow::Clip)
+            {
                 1
             } else if matches!(overflow, Some(Overflow::Hidden | Overflow::Scroll)) {
                 2

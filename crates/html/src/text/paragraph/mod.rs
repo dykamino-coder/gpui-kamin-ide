@@ -46,6 +46,7 @@ mod hyphen_shape;
 mod overflow_marker;
 mod ruby_justification;
 mod ruby_overhang;
+mod scroll_overflow;
 mod selection_geometry;
 mod text_raster_origin;
 mod vertical_content_baselines;
