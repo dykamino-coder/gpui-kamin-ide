@@ -572,6 +572,11 @@ pub struct Computed {
     /// Сырая запись градиента фона: источник для слоя-картинки там, где
     /// градиент рисуется плиткой (фон ряда таблицы).
     pub gradient_raw: Option<String>,
+    /// CSS Compositing 1: each image blends with the isolated background stack.
+    pub(crate) background_blend: Option<String>,
+    /// Resolved opaque, constant background stacks retain their clip regions.
+    pub(crate) flat_text_background: Option<Color>,
+    pub(crate) flat_border_background: Option<Color>,
     /// Градиент фона с длинами в единицах шрифта (`green 4em`): позиция
     /// стопа в `em` разбором не читается и терялась (стоп становился «без
     /// позиции»). Ждёт своего кегля и переразбирается в `resolve_em`
@@ -1112,6 +1117,8 @@ pub struct Computed {
     /// внепоточных потомков (§10.1 п.4). Ставится при наследовании: сам
     /// каскад предков не видит.
     pub(crate) cb_ancestor: bool,
+    /// CSS ancestor clipping inside a continuous fragmentation copy.
+    pub(crate) fragment_clip_ancestor: bool,
     /// An ancestor is a multi-column container: the box may be fragmented
     /// across columns (css-break-3 §box-splitting). Set by inheritance.
     pub(crate) in_multicol: bool,
@@ -1371,6 +1378,8 @@ pub struct Computed {
     pub bg_image: Option<String>,
     pub bg_size: BgSize,
     pub bg_pos: BgPos,
+    /// Percentage comparisons wait for the possibly negative image free space.
+    pub(crate) bg_position_math: [Option<String>; 2],
     /// `object-position` замещаемого содержимого (css-images-3 §5.2).
     pub object_position: Option<BgPos>,
     /// `object-view-box` (css-images-4 §object-view-box): видимая область

@@ -27,12 +27,12 @@ impl Computed {
                     "repeat-y" => self.bg_repeat = Some(BgRepeat::RepeatY),
                     "repeat" => self.bg_repeat = Some(BgRepeat::Repeat),
                     "left" | "right" | "top" | "bottom" | "center" => pos.push(token.clone()),
-                    t if Len::parse_mixed(t).is_some() => pos.push(token.clone()),
+                    t if Self::background_position_length(t) => pos.push(token.clone()),
                     _ => {}
                 }
             }
             if !pos.is_empty() {
-                self.bg_pos = parse_pos_words(&pos.join(" "));
+                self.set_background_position(&pos.join(" "));
                 tiled = true;
             }
             if let Some(size) = size_part {
@@ -62,20 +62,17 @@ impl Computed {
         }
         self.gradient = parse_gradient(top);
         self.gradient_em = has_font_units(top).then(|| top.to_string());
-        // Пространство смешения, которого GPU-путь не выражает
-        // (всё, кроме гамма-sRGB и OKLab — css-color-4 §12.1),
-        // рисуется растровой плиткой, как у длинного
-        // `background-image`: там сырая запись ставится всегда, а
-        // сокращение её не заводило, и `in srgb-linear`/`in lch`
-        // смешивались в гамма-sRGB. Радиальный растеризатор пока
-        // рисует осью (`rasterize_gradient` — `Mode::Axis`), его
-        // оставляем на GPU. Сокращение сбрасывает картинку
-        // (css-backgrounds-3 §2.1), поэтому иначе — `None`.
+        // Corner keywords need the concrete image size (CSS Images 3 §3.1).
+        // Preserve the existing native route for other untiled shorthand
+        // gradients: canvas and table backgrounds select it by raw presence.
         self.gradient_raw = self
             .gradient
             .as_ref()
             .filter(|g| {
-                tiled || (!g.radial && !matches!(g.space, GradSpace::Srgb | GradSpace::Oklab))
+                tiled
+                    || (!g.radial
+                        && (!matches!(g.space, GradSpace::Srgb | GradSpace::Oklab)
+                            || corner_angle(top, (1.0, 1.0)).is_some()))
             })
             .map(|_| top.to_string());
         // Цвет ищется в НИЖНЕМ слое (он один его допускает);

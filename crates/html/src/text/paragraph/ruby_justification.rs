@@ -3,9 +3,10 @@
 use super::{Align, Paragraph};
 
 impl Paragraph {
-    pub fn ruby_justify(mut self, enabled: bool, ruby_unit: bool) -> Self {
+    pub fn ruby_justify(mut self, enabled: bool, ruby_unit: bool, rotated: bool) -> Self {
         self.ruby_justify = enabled;
         self.ruby_unit = ruby_unit;
+        self.ruby_rotated = ruby_unit && rotated;
         self
     }
 

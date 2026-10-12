@@ -25,7 +25,10 @@ impl Paragraph {
         // snapping the paragraph first shifts equivalent baseline-aligned boxes.
         // Glyph painting restores this same offset through Window separately.
         let mut exact = origin + self.glyph_nudge;
-        if self.selection_vertical.is_none() && !crate::text::vertical::in_rotated_frame() {
+        if self.selection_vertical.is_none()
+            && !self.ruby_rotated
+            && !crate::text::vertical::in_rotated_frame()
+        {
             let base = (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent;
             // CSS 2.1 section 14.2: transparent descendants paint in their
             // containing opaque fill's device frame, as glyphs do below.
@@ -50,7 +53,10 @@ impl Paragraph {
         origin: Point<Pixels>,
         window: &Window,
     ) -> Point<Pixels> {
-        if self.selection_vertical.is_some() || crate::text::vertical::in_rotated_frame() {
+        if self.selection_vertical.is_some()
+            || self.ruby_rotated
+            || crate::text::vertical::in_rotated_frame()
+        {
             return origin;
         }
         // A pixel-exact font (Ahem) is placed at its exact sub-pixel baseline
@@ -77,7 +83,13 @@ impl Paragraph {
         base: Pixels,
         window: &Window,
     ) -> Point<Pixels> {
-        if self.selection_vertical.is_some() || crate::text::vertical::in_rotated_frame() {
+        // Ruby bases/annotations share the vertical line's glyph raster frame.
+        // Rounding their flat Y baseline first would round the physical X
+        // axis before the text transform, unlike native emphasis glyphs.
+        if self.selection_vertical.is_some()
+            || self.ruby_rotated
+            || crate::text::vertical::in_rotated_frame()
+        {
             return origin;
         }
         // Keep the raster origin coherent with an opaque box's snapped fill

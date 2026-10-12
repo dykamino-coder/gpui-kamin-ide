@@ -34,10 +34,16 @@ pub enum Source {
 impl Source {
     pub(crate) fn mask_raster(&self, tile: (f32, f32), scale: f32) -> Option<Arc<RenderImage>> {
         if let Source::Gradient { raw } = self
+            && conic::is_conic(raw)
+        {
+            // CSS Masking §7.8 uses the same concrete gradient as a background.
+            // Sample the angular discontinuity on the device grid, before a
+            // mask is composited; resizing a CSS-sized mask blurs hard rays.
+            return conic::rasterize(raw, tile, scale);
+        }
+        if let Source::Gradient { raw } = self
             && !raw.starts_with("cross-fade(")
-            // Конический градиент и цвет-изображение растрируются своими путями
-            // (`conic`, `sources::raster_color`) — им обычный путь плитки.
-            && !conic::is_conic(raw)
+            // Color images have their own straight-alpha raster path.
             && crate::style::computed::parse_image_color(raw).is_none()
         {
             // CSS Masking section 7.8 uses CSS image sizing, but coverage is sampled
@@ -77,6 +83,18 @@ impl Source {
         match self {
             Source::Raster(image) => Some(image.clone()),
             Source::Vector { markup, .. } => {
+                if let Some(color) = super::flat_vector::color(markup, tile) {
+                    return gpui::bgra_bytes_to_image(
+                        1,
+                        1,
+                        vec![
+                            (color.b * 255.0).round() as u8,
+                            (color.g * 255.0).round() as u8,
+                            (color.r * 255.0).round() as u8,
+                            255,
+                        ],
+                    );
+                }
                 // Растр не бывает больше потолка: при `cover` с вытянутым
                 // соотношением плитка выходит в тысячи точек по длинной
                 // стороне, и растеризатор возвращал НИЧЕГО — страница
@@ -92,7 +110,10 @@ impl Source {
                 // ломаются — но видима лишь часть плитки в коробке, а сам
                 // рисунок растрируется в свою область просмотра целиком.
                 let raster = (tile.0.clamp(1.0, LIMIT), tile.1.clamp(1.0, LIMIT));
-                crate::svg::raster::rasterize(&with_viewport(markup, raster), raster.0, raster.1)
+                // CSS Images 3 §4.3.2: the concrete object size establishes the
+                // SVG viewport. A bitmap allocation limit changes sampling
+                // density, never the viewport or preserveAspectRatio mapping.
+                crate::svg::raster::rasterize(&with_viewport(markup, tile), raster.0, raster.1)
             }
             Source::Gradient { raw } => {
                 const LIMIT: f32 = 2048.0;

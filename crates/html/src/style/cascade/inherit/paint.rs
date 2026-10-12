@@ -8,6 +8,17 @@ pub(super) fn inherit_paint(
     c: &mut Computed,
     paint_filter: bool,
 ) {
+    if c.background_blend.as_deref() == Some("inherit") {
+        c.background_blend = parent.background_blend.clone();
+        c.bg_lists.retain(|(k, _)| k != "background-blend-mode");
+        c.bg_lists.extend(
+            parent
+                .bg_lists
+                .iter()
+                .filter(|(k, _)| k == "background-blend-mode")
+                .cloned(),
+        );
+    }
     // Фильтр в CSS красит элемент И ВСЁ поддерево. Наследуем его сами и
     // применяем к собственным цветам потомка: раньше фильтр действовал только
     // на узел, где написан, и дети оставались цветными.
@@ -87,6 +98,9 @@ pub(super) fn inherit_paint(
     // Смешивается только ВОЗНИКШЕЕ на узле (как у фильтра выше): унаследованный
     // цвет уже смешан предком. Внепоточные потомки в геометрию текста не входят
     // (`clip-text-out-of-flow-child`) и получают несмешанный цвет обратно.
+    if paint_filter {
+        crate::paint::background::collapse_flat_stack(c);
+    }
     let black = Color {
         r: 0.0,
         g: 0.0,
@@ -99,10 +113,11 @@ pub(super) fn inherit_paint(
             | Some(crate::style::computed::Position::Fixed)
     );
     if let Some(fill) = crate::paint::background::text_clip_fill(c) {
-        c.text_clip_raw = c.color;
+        let foreground = c.text_clip_raw.or(c.color);
+        c.text_clip_raw = foreground;
         c.text_clip_fill = Some(fill);
         c.color = Some(crate::paint::background::over(
-            c.color.unwrap_or(black),
+            foreground.unwrap_or(black),
             fill,
         ));
     } else if parent.text_clip_fill.is_some() && out_of_flow {

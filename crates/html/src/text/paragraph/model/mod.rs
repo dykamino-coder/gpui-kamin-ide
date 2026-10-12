@@ -25,6 +25,8 @@ pub struct Paragraph {
     /// character unit (`inter-character`), see `justify_boundary`.
     pub(super) justify_chars: u8,
     pub(super) ruby_unit: bool,
+    /// Ruby text painted in the unrotated plane of a vertical line.
+    pub(super) ruby_rotated: bool,
     /// Ruby base paragraph: where to report its content width for the ruby
     /// overhang computation (`ruby_base_with_overhang`).
     pub(super) ruby_base_sink: Option<std::rc::Rc<std::cell::Cell<Option<f32>>>>,

@@ -26,6 +26,14 @@ impl Paragraph {
                 value.hash(&mut h);
             }
         }
+        // Segments after a tab (or a soft hyphen) retain cumulative offsets.
+        // Those offsets include inline spacing and ruby spacer advances;
+        // changing overhang must not reuse the tab stops from the wider ruby.
+        for (range, spacing) in self.word_spans.iter().chain(&self.letter_spans) {
+            range.start.hash(&mut h);
+            range.end.hash(&mut h);
+            f32::from(*spacing).to_bits().hash(&mut h);
+        }
         h.finish()
     }
 }
@@ -54,6 +62,9 @@ impl Paragraph {
             w.keep_spaces,
         ]
         .hash(&mut h);
+        // Ruby sub-lines retain trailing spaces and use different expansion
+        // opportunities; a normal line must not reuse their cached cut.
+        [self.ruby_unit, self.ruby_justify].hash(&mut h);
         // Per-piece wrap rules (`white-space`/`word-break` of a nested inline
         // or of a `display: contents` element) change the breaks too: without
         // them a `nowrap` run reused the cached lines of an identical text

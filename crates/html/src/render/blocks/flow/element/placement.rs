@@ -44,6 +44,7 @@ pub(crate) fn place_element(
         let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
         spot.set(crate::layout::positioned::containing_block::Spot {
             fixed_axes: (x_set, y_set),
+            preserve_cb_geometry: to_cb,
             free_margin: (
                 if x_set {
                     0.0

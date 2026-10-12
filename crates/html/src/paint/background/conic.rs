@@ -61,12 +61,18 @@ pub(super) fn rasterize(raw: &str, size: (f32, f32), density: f32) -> Option<Arc
     }
     let mut colors = Vec::new();
     let mut raw_stops = Vec::new();
+    let mut hints = Vec::new();
     for part in &parts[idx..] {
         let words = crate::style::computed::split_outside_parens(part);
         let Some(color) = words
             .first()
             .and_then(|w| crate::style::values::color_space::interpolation_color(w))
         else {
+            if words.len() == 1
+                && let Some(at) = angle_fraction(&words[0])
+            {
+                hints.push((raw_stops.len(), at));
+            }
             continue;
         };
         colors.push(words[0].clone());
@@ -114,6 +120,25 @@ pub(super) fn rasterize(raw: &str, size: (f32, f32), density: f32) -> Option<Arc
                 }
                 if hard_stops.contains(&t) {
                     t = t.next_up();
+                }
+            }
+            // CSS Images 3 §3.4.2: a transition hint places the 50% mix
+            // at the hint and uses an exponential curve between the stops.
+            for &(index, hint) in &hints {
+                if index == 0 || index >= stops.len() {
+                    continue;
+                }
+                let (a, b) = (stops[index - 1].1, stops[index].1);
+                if t > a && t < b {
+                    let h = ((hint - a) / (b - a)).clamp(0.0, 1.0);
+                    let mix = if h == 0.0 {
+                        1.0
+                    } else if h == 1.0 {
+                        0.0
+                    } else {
+                        ((t - a) / (b - a)).powf(0.5f32.ln() / h.ln())
+                    };
+                    t = a + (b - a) * mix;
                 }
             }
             let color = colour_at(&stops, t, method.space, method.hue);

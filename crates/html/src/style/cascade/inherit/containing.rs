@@ -12,6 +12,19 @@ pub(super) fn inherit_containing(parent: &Computed, own: &Computed, c: &mut Comp
     } else {
         parent.cb_scroll_insets
     };
+    let clipped = |o| matches!(o, Some(o) if o != crate::style::computed::Overflow::Visible);
+    c.fragment_clip_ancestor = parent.fragment_clip_ancestor
+        || clipped(parent.overflow_x)
+        || clipped(parent.overflow_y)
+        || parent.contain_paint == Some(true)
+        || parent.clip_ref.is_some()
+        || parent.clip_shape.is_some()
+        || parent.clip_polygon.is_some()
+        || parent.clip_inset.is_some()
+        || parent.clip_xywh.is_some()
+        || parent.clip_rect.is_some()
+        || parent.clip_len.is_some()
+        || parent.mask_image.is_some();
     c.in_multicol = parent.in_multicol
         || ((parent.column_count.is_some()
             || parent.column_width.is_some()

@@ -7,11 +7,12 @@ use crate::style::values::value::Len;
 /// Размер одной плитки в точках по правилам `background-size`.
 pub(crate) fn tile_size(i: Intrinsic, box_size: (f32, f32), size: BgSize) -> (f32, f32) {
     let (bw, bh) = box_size;
-    // Соотношение для растяжений: своё, иначе — из умолчального размера.
+    // CSS Backgrounds 3 §3.9: only a natural ratio can transfer a specified
+    // dimension to an auto one. The default sizing result supplies missing
+    // dimensions, but does not create a natural aspect ratio (Blink
+    // BackgroundImageGeometry::CalculateFillTileSize).
     let auto = default_size(i, box_size);
-    let ratio = i
-        .ratio
-        .unwrap_or_else(|| if auto.1 > 0.0 { auto.0 / auto.1 } else { 1.0 });
+    let ratio = i.ratio.unwrap_or(1.0);
     match size {
         BgSize::Auto => auto,
         // Без своего соотношения картинка растягивается на место под фон
@@ -32,10 +33,10 @@ pub(crate) fn tile_size(i: Intrinsic, box_size: (f32, f32), size: BgSize) -> (f3
         // Заданная одна сторона тянет вторую по соотношению — как в CSS.
         BgSize::Fixed(w, h) => match (len_px(w, bw), len_px(h, bh)) {
             (Some(w), Some(h)) => (w, h),
-            (Some(w), None) if i.ratio.is_some() || i.w.is_some() => (w, w / ratio),
-            (Some(w), None) => (w, auto.1),
-            (None, Some(h)) if i.ratio.is_some() || i.h.is_some() => (h * ratio, h),
-            (None, Some(h)) => (auto.0, h),
+            (Some(w), None) if i.ratio.is_some() => (w, w / ratio),
+            (Some(w), None) => (w, i.h.unwrap_or(bh)),
+            (None, Some(h)) if i.ratio.is_some() => (h * ratio, h),
+            (None, Some(h)) => (i.w.unwrap_or(bw), h),
             (None, None) => auto,
         },
     }
