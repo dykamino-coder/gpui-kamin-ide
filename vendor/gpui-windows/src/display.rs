@@ -206,5 +206,11 @@ fn get_scale_factor_for_monitor(monitor: HMONITOR) -> Result<f32> {
     let mut dpi_y = 0;
     unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y) }?;
     assert_eq!(dpi_x, dpi_y);
-    Ok(dpi_x as f32 / USER_DEFAULT_SCREEN_DPI as f32)
+    Ok(forced_scale().unwrap_or(dpi_x as f32 / USER_DEFAULT_SCREEN_DPI as f32))
+}
+
+/// `KAMIN_FORCE_SCALE` overrides the monitor scale factor (set by the WPT runner to 1;
+/// unset in the IDE, where the real monitor scale applies).
+pub(crate) fn forced_scale() -> Option<f32> {
+    std::env::var("KAMIN_FORCE_SCALE").ok().and_then(|v| v.parse().ok())
 }
