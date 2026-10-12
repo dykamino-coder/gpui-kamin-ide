@@ -41,6 +41,7 @@ mod angle;
 mod conic;
 mod sources;
 pub use sources::{key, key_exif, source};
+mod gradient_geometry;
 mod gradient_raster;
 mod svg_fragment;
 

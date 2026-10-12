@@ -1,9 +1,33 @@
-//! Gradient rasterization retains CSS stop lengths at the mask device resolution.
+//! Sample gradient geometry and stop lengths before quantizing straight-alpha BGRA.
 
-use super::{angle_fraction, place_stops, rasterize_cross_fade, wrap_repeat};
+use super::{gradient_geometry::Geometry, place_stops, rasterize_cross_fade, wrap_repeat};
 use crate::style::values::color_space::gradient_colour_at as colour_at;
 use gpui::RenderImage;
-use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex, OnceLock},
+};
+
+type TileKey = (String, u32, u32, u32, u32);
+type TileCache = Mutex<HashMap<TileKey, Option<Arc<RenderImage>>>>;
+static TILES: OnceLock<TileCache> = OnceLock::new();
+
+/// Device-sized samples depend on the concrete CSS line as well as the bitmap.
+pub(super) fn tile(src: &str, w: u32, h: u32, css: (f32, f32)) -> Option<Arc<RenderImage>> {
+    let key = (src.to_string(), w, h, css.0.to_bits(), css.1.to_bits());
+    let cache = TILES.get_or_init(Default::default);
+    if let Some(hit) = cache.lock().ok().and_then(|c| c.get(&key).cloned()) {
+        return hit;
+    }
+    let result = raster(src, w, h, css, true);
+    if let Ok(mut cache) = cache.lock() {
+        if cache.len() >= 32 {
+            cache.clear();
+        }
+        cache.insert(key, result.clone());
+    }
+    result
+}
 
 pub(super) fn raster(
     src: &str,
@@ -15,127 +39,53 @@ pub(super) fn raster(
     if src.starts_with("cross-fade(") {
         return rasterize_cross_fade(src, w, h);
     }
-    enum Mode {
-        Axis { dx: f32, dy: f32 },
-        Sweep { from: f32 },
-    }
-    // CSS Images 3 section 3.6: repeat the stop interval across the gradient line.
     let repeating = src.starts_with("repeating-");
-    let src = src.strip_prefix("repeating-").unwrap_or(src);
-    let (mode, stops, space, hue) = if let Some(inner) = src
-        .strip_prefix("conic-gradient(")
-        .and_then(|t| t.strip_suffix(')'))
-    {
-        let parts = crate::style::css::split_args(inner);
-        let mut idx = 0usize;
-        let mut from = 0.0f32;
-        if let Some(first) = parts.first().map(|f| f.trim())
-            && (first.starts_with("from ") || first.starts_with("at "))
-        {
-            idx = 1;
-            if let Some(a) = first.strip_prefix("from ") {
-                from = angle_fraction(a.split_whitespace().next().unwrap_or("")).unwrap_or(0.0);
-            }
-        }
-        let mut raw: Vec<(crate::style::values::value::Color, Option<f32>)> = vec![];
-        for part in &parts[idx..] {
-            let words = crate::style::computed::split_outside_parens(part);
-            let Some(colour) = words
-                .first()
-                .and_then(|w| crate::style::values::color_space::interpolation_color(w))
-            else {
-                continue;
+    let g = crate::style::computed::parse_gradient(src)?;
+    let angle = crate::style::computed::corner_angle(src, css).unwrap_or(g.angle_deg);
+    let geometry = Geometry::new(src, css, angle)?;
+    // CSS Images 3 sections 3.2.3 and 3.4.3: percentages refer to the
+    // gradient line, which is the horizontal radius for a radial gradient.
+    let axis = geometry.length();
+    let raw = g
+        .stops_raw
+        .iter()
+        .map(|(c, f, p)| {
+            let px = p.map(|v| if axis > 0.0 { v / axis } else { 0.0 });
+            let at = match (f, px) {
+                (Some(f), Some(px)) => Some(f + px),
+                (f, px) => f.or(px),
             };
-            let angles: Vec<f32> = words[1..]
-                .iter()
-                .filter_map(|w| angle_fraction(w))
-                .collect();
-            if angles.is_empty() {
-                raw.push((colour, None));
-            }
-            for a in angles {
-                raw.push((colour, Some(a)));
-            }
-        }
-        if raw.is_empty() {
-            return None;
-        }
-        (
-            Mode::Sweep { from },
-            place_stops(raw),
-            crate::style::computed::GradSpace::Srgb,
-            0u8,
-        )
-    } else {
-        let g = crate::style::computed::parse_gradient(src)?;
-        let angle = crate::style::computed::corner_angle(src, css)
-            .unwrap_or(g.angle_deg)
-            .to_radians();
-        let (dx, dy) = (angle.sin(), -angle.cos());
-        // Absolute stop lengths use the CSS line length, independent of raster density.
-        let stops = if g.stops_raw.iter().any(|(_, _, p)| p.is_some()) {
-            let axis = (css.0 * dx).abs() + (css.1 * dy).abs();
-            let raw: Vec<(crate::style::values::value::Color, Option<f32>)> = g
-                .stops_raw
-                .iter()
-                .map(|(c, f, p)| {
-                    let px = p.map(|v| if axis > 0.0 { v / axis } else { 0.0 });
-                    let at = match (f, px) {
-                        (Some(f), Some(px)) => Some(f + px),
-                        (f, px) => f.or(px),
-                    };
-                    (*c, at)
-                })
-                .collect();
-            place_stops(raw)
-        } else {
-            g.stops.clone()
-        };
-        (Mode::Axis { dx, dy }, stops, g.space, g.hue)
-    };
-
+            (*c, at)
+        })
+        .collect();
+    let stops = place_stops(raw);
     let mut bytes = Vec::with_capacity((w * h * 4) as usize);
     for y in 0..h {
         for x in 0..w {
-            let (fx, fy) = if centers {
+            let point = if centers {
                 (
-                    (x as f32 + 0.5) / w as f32 - 0.5,
-                    (y as f32 + 0.5) / h as f32 - 0.5,
+                    (x as f32 + 0.5) * css.0 / w as f32,
+                    (y as f32 + 0.5) * css.1 / h as f32,
                 )
             } else {
                 (
-                    x as f32 / (w.max(2) - 1) as f32 - 0.5,
-                    y as f32 / (h.max(2) - 1) as f32 - 0.5,
+                    x as f32 * css.0 / (w.max(2) - 1) as f32,
+                    y as f32 * css.1 / (h.max(2) - 1) as f32,
                 )
             };
-            let t = match mode {
-                Mode::Axis { dx, dy } => {
-                    // CSS Images 3 §3.1: project in the image's coordinates,
-                    // not the normalized square of a bitmap. Both axes
-                    // contribute to the line length at any raster density.
-                    let axis = (css.0 * dx).abs() + (css.1 * dy).abs();
-                    let t = (fx * css.0 * dx + fy * css.1 * dy) / axis.max(f32::EPSILON);
-                    (t + 0.5).clamp(0.0, 1.0)
-                }
-                Mode::Sweep { from } => {
-                    let turn = if centers {
-                        (fx * css.0).atan2(-fy * css.1)
-                    } else {
-                        fx.atan2(-fy)
-                    } / std::f32::consts::TAU;
-                    (turn - from).rem_euclid(1.0)
-                }
-            };
+            // Repeating gradients extend along the entire line, including
+            // outside the 0..100% interval. Clamp only the final color lookup.
+            let t = geometry.at(point, css);
             let t = if repeating { wrap_repeat(t, &stops) } else { t };
-            let colour = colour_at(&stops, t, space, hue);
-            // CSS Color 4 §5.1: reducing calculated component precision
-            // rounds to the nearest integer (ties toward +infinity).
-            // Truncation darkens a constant interpolated color relative to
-            // the same color painted directly. Masks store premultiplied BGRA.
-            bytes.push((colour.b * colour.a * 255.0).round() as u8);
-            bytes.push((colour.g * colour.a * 255.0).round() as u8);
-            bytes.push((colour.r * colour.a * 255.0).round() as u8);
-            bytes.push((colour.a * 255.0) as u8);
+            let colour = colour_at(&stops, t, g.space, g.hue);
+            // The image upload shader premultiplies straight-alpha samples.
+            // Premultiplying here as well darkens transparent gradients twice.
+            bytes.extend_from_slice(&[
+                (colour.b * 255.0).round() as u8,
+                (colour.g * 255.0).round() as u8,
+                (colour.r * 255.0).round() as u8,
+                (colour.a * 255.0).round() as u8,
+            ]);
         }
     }
     gpui::bgra_bytes_to_image(w, h, bytes)

@@ -70,6 +70,7 @@ impl Computed {
             .as_ref()
             .filter(|g| {
                 tiled
+                    || g.radial
                     || (!g.radial
                         && (!matches!(g.space, GradSpace::Srgb | GradSpace::Oklab)
                             || corner_angle(top, (1.0, 1.0)).is_some()))

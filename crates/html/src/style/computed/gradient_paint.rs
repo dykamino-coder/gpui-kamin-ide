@@ -16,7 +16,9 @@ impl super::Computed {
         }
         self.gradient_raw.is_some()
             && (self.gradient.as_ref().is_some_and(|g| {
-                g.stops.iter().any(|s| crate::style::values::color_space::out_of_gamut(s.0))
+                g.radial
+                    || g.stops_raw.iter().any(|(_, _, px)| px.is_some())
+                    || g.stops.iter().any(|s| crate::style::values::color_space::out_of_gamut(s.0))
             })
                 || self.bg_size != crate::style::computed::BgSize::Auto
                 || self.bg_repeat.is_some()

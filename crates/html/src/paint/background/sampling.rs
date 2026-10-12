@@ -86,7 +86,7 @@ fn paint_gradient(
     let super::Source::Gradient { raw } = source else {
         return false;
     };
-    if !raw.starts_with("linear-gradient(") {
+    if !raw.contains("gradient(") || super::conic::is_conic(raw) {
         return false;
     }
     let Some(mut gradient) = crate::style::computed::parse_gradient(raw) else {
@@ -98,7 +98,9 @@ fn paint_gradient(
     ) {
         gradient.angle_deg = angle;
     }
-    if gradient.stops.len() > 4
+    if gradient.radial
+        || raw.starts_with("repeating-")
+        || gradient.stops.len() > 4
         || gradient.stops_raw.iter().any(|(_, _, px)| px.is_some())
         || !matches!(
             gradient.space,
@@ -109,7 +111,30 @@ fn paint_gradient(
             .iter()
             .any(|s| crate::style::values::color_space::out_of_gamut(s.0))
     {
-        return false;
+        let scale = window.scale_factor();
+        // Percentages resolve in the unsnapped concrete image, even when
+        // absolute stop/center lengths accompany them (Blink background
+        // geometry). Only the destination bitmap follows the device grid.
+        let css = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+        let bounds = snapped_clip(bounds, window);
+        let (w, h) = (
+            (f32::from(bounds.size.width) * scale)
+                .round()
+                .clamp(1.0, 4096.0) as u32,
+            (f32::from(bounds.size.height) * scale)
+                .round()
+                .clamp(1.0, 4096.0) as u32,
+        );
+        if let Some(image) = super::gradient_raster::tile(raw, w, h, css) {
+            let sampling = if window.current_transformation() == gpui::TransformationMatrix::unit()
+            {
+                ImageSampling::LinearSnapped
+            } else {
+                ImageSampling::Linear
+            };
+            let _ = window.paint_image_with_sampling(bounds, corners, image, 0, false, sampling);
+        }
+        return true;
     }
     // CSS Images 3 §3.1 and §3.4.2 define a continuous image over its
     // concrete size. Use the box-gradient shader for supported tiles too:
