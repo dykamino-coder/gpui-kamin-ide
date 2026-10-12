@@ -1,5 +1,6 @@
 //! Доводка стиля элемента: направление, руби, строчный display, авто-пропорция, размеры из атрибутов.
 
+mod canvas_size;
 mod presentational_size;
 mod ruby_display;
 pub(super) use crate::dom::element_style::presentational_size::apply_presentational_size;

@@ -1,4 +1,4 @@
-//! Raster flex/grid items retain intrinsic measurement until their used size is known.
+//! Replaced flex/grid items retain intrinsic measurement until their used size is known.
 //! CSS Flexbox 1 §9.2/§9.8 and Grid 2 #algo-overview supply definite dimensions.
 
 use crate::dom::Element;
@@ -62,9 +62,30 @@ pub(super) fn measured(
     }
     let source = crate::paint::background::source(&crate::paint::background::key(source, style))?;
     let natural = source.intrinsic();
-    let crate::paint::background::Source::Raster(ready) = source else {
+    // Decorated vectors still need concrete-size rasterization in the existing
+    // holder pipeline: the measured leaf does not transfer their content-box
+    // cross size separately from padding and borders.
+    if !matches!(source, crate::paint::background::Source::Raster(_))
+        && (!style.flex_item
+            || [
+                style.padding.left,
+                style.padding.right,
+                style.padding.top,
+                style.padding.bottom,
+                border.left,
+                border.right,
+                border.top,
+                border.bottom,
+            ]
+            .into_iter()
+            .any(|edge| !zero(edge)))
+    {
         return None;
-    };
+    }
+    // Vector images have the same intrinsic sizing contract as raster images.
+    // Keep their preferred dimensions automatic until flex layout supplies its
+    // definite percentage bases, rather than freezing the natural size early.
+    let ready = source.raster((natural.w?, natural.h?))?;
     let ratio = style
         .aspect_ratio
         .or(natural.ratio)
