@@ -144,11 +144,12 @@ pub(crate) fn resolve_mask(
                 crate::paint::background::Source::Shape { raw } => {
                     // Точечные величины формы записаны в CSS-точках —
                     // растеризатору нужен их масштаб.
-                    crate::paint::background::rasterize_shape(
+                    crate::paint::background::rasterize_shape_at(
                         raw,
                         (tw * sf).round().max(1.0) as u32,
                         (th * sf).round().max(1.0) as u32,
                         sf,
+                        (f32::from(bounds.origin.x), f32::from(bounds.origin.y)),
                     )?
                 }
                 // Рисунок со СВОИМ размером растрируется в нём:

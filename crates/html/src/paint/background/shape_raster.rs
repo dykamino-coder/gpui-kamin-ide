@@ -6,6 +6,9 @@ pub use ellipse::rasterize_ellipse_px;
 mod shape_parameters;
 pub use shape_parameters::shape_params;
 
+mod linear_corners;
+pub use linear_corners::{rasterize_ring_at, rasterize_shape_at};
+
 use crate::paint::background::*;
 use gpui::RenderImage;
 use std::sync::Arc;

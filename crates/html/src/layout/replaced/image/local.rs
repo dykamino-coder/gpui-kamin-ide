@@ -224,6 +224,10 @@ pub(super) fn piped_image(
 /// Радиусы углов края содержимого (tl, tr, br, bl) в точках; круговое
 /// приближение — меньшая из двух осей угла.
 fn content_radii(s: &crate::style::computed::Computed) -> [f32; 4] {
+    // A circular image clip would erase the corner-shaped CSS box contour.
+    if s.corner_shaped() {
+        return [0.0; 4];
+    }
     let v = |l: Option<Len>| match l {
         Some(Len::Px(x)) => x.max(0.0),
         _ => 0.0,
