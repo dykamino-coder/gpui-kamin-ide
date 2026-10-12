@@ -1419,6 +1419,10 @@ pub struct Computed {
     /// Знак акцента (`text-emphasis-style`, css-text-decor-3 §5): рисуется
     /// над каждым знаком базы, как надстрочная аннотация руби.
     pub text_emphasis: Option<String>,
+    /// Omitted emphasis shape resolves in the element's typographic mode.
+    pub emphasis_auto_shape: bool,
+    /// Explicit position, including language-sensitive `auto`; None inherits.
+    pub emphasis_position_auto: Option<bool>,
     /// Акцент СНИЗУ (`text-emphasis-position: under`).
     pub emphasis_under: bool,
     /// Акцент СЛЕВА в вертикальном письме (`text-emphasis-position: … left`).

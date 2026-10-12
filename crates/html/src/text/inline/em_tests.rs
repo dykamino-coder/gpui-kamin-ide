@@ -39,3 +39,43 @@ fn em_without_own_font_size_uses_the_inherited_one() {
     let merged = inherit(&parent, &child);
     assert_eq!(merged.width, Some(Len::Px(200.0)));
 }
+
+#[test]
+fn inherited_emphasis_resolves_the_childs_typographic_context() {
+    let parent = styled("text-emphasis-style: open; text-emphasis-position: auto");
+    let child = inherit(&parent, &styled("writing-mode: vertical-rl"));
+    let pieces = [super::Piece::Text {
+        text: "試験".into(),
+        style: child,
+    }];
+    let spans = super::emphasis_spans(&pieces, 16.0, 1.2, Some(false));
+    assert_eq!(spans[0].mark, "\u{fe46}");
+    assert!(!spans[0].under);
+
+    let mut child = inherit(&parent, &Computed::default());
+    child.lang = Some("Zh-Hant".into());
+    let pieces = [super::Piece::Text {
+        text: "你好".into(),
+        style: child,
+    }];
+    let spans = super::emphasis_spans(&pieces, 16.0, 1.2, None);
+    assert_eq!(spans[0].mark, "\u{25cb}");
+    assert!(spans[0].under);
+}
+
+#[test]
+fn explicit_emphasis_none_and_position_override_the_parent() {
+    let parent = styled("text-emphasis: sesame; text-emphasis-position: under left");
+    let child = inherit(
+        &parent,
+        &styled("text-emphasis-style: none; text-emphasis-position: over right"),
+    );
+    assert_eq!(child.text_emphasis.as_deref(), Some(""));
+    assert!(!child.emphasis_under);
+    assert!(!child.emphasis_left);
+    let pieces = [super::Piece::Text {
+        text: "text".into(),
+        style: child,
+    }];
+    assert!(super::emphasis_spans(&pieces, 16.0, 1.2, None).is_empty());
+}
