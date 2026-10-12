@@ -98,10 +98,13 @@ fn paint_gradient(
     ) {
         gradient.angle_deg = angle;
     }
+    let css = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+    if let Some(geometry) = super::gradient_geometry::Geometry::new(raw, css, gradient.angle_deg) {
+        gradient.stops = super::gradient_raster::resolved_stops(&gradient, geometry.length());
+    }
     if gradient.radial
         || raw.starts_with("repeating-")
         || gradient.stops.len() > 4
-        || gradient.stops_raw.iter().any(|(_, _, px)| px.is_some())
         || !matches!(
             gradient.space,
             crate::style::computed::GradSpace::Srgb | crate::style::computed::GradSpace::Oklab
@@ -115,7 +118,6 @@ fn paint_gradient(
         // Percentages resolve in the unsnapped concrete image, even when
         // absolute stop/center lengths accompany them (Blink background
         // geometry). Only the destination bitmap follows the device grid.
-        let css = (f32::from(bounds.size.width), f32::from(bounds.size.height));
         let bounds = snapped_clip(bounds, window);
         let (w, h) = (
             (f32::from(bounds.size.width) * scale)

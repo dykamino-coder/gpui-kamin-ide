@@ -45,20 +45,8 @@ pub(super) fn raster(
     let geometry = Geometry::new(src, css, angle)?;
     // CSS Images 3 sections 3.2.3 and 3.4.3: percentages refer to the
     // gradient line, which is the horizontal radius for a radial gradient.
-    let axis = geometry.length();
-    let raw = g
-        .stops_raw
-        .iter()
-        .map(|(c, f, p)| {
-            let px = p.map(|v| if axis > 0.0 { v / axis } else { 0.0 });
-            let at = match (f, px) {
-                (Some(f), Some(px)) => Some(f + px),
-                (f, px) => f.or(px),
-            };
-            (*c, at)
-        })
-        .collect();
-    let stops = place_stops(raw);
+    let stops = resolved_stops(&g, geometry.length());
+    let palette = crate::style::values::color_space::DirectGradient::new(src, stops.len(), g.space);
     let mut bytes = Vec::with_capacity((w * h * 4) as usize);
     for y in 0..h {
         for x in 0..w {
@@ -73,13 +61,13 @@ pub(super) fn raster(
                     y as f32 * css.1 / (h.max(2) - 1) as f32,
                 )
             };
-            // Repeating gradients extend along the entire line, including
-            // outside the 0..100% interval. Clamp only the final color lookup.
             let t = geometry.at(point, css);
             let t = if repeating { wrap_repeat(t, &stops) } else { t };
-            let colour = colour_at(&stops, t, g.space, g.hue);
+            let colour = palette.as_ref().map_or_else(
+                || colour_at(&stops, t, g.space, g.hue),
+                |palette| palette.colour_at(&stops, t, g.hue),
+            );
             // The image upload shader premultiplies straight-alpha samples.
-            // Premultiplying here as well darkens transparent gradients twice.
             bytes.extend_from_slice(&[
                 (colour.b * 255.0).round() as u8,
                 (colour.g * 255.0).round() as u8,
@@ -89,4 +77,23 @@ pub(super) fn raster(
         }
     }
     gpui::bgra_bytes_to_image(w, h, bytes)
+}
+
+pub(super) fn resolved_stops(
+    g: &crate::style::computed::Gradient,
+    axis: f32,
+) -> Vec<(crate::style::values::value::Color, f32)> {
+    let raw = g
+        .stops_raw
+        .iter()
+        .map(|(c, f, p)| {
+            let px = p.map(|v| if axis > 0.0 { v / axis } else { 0.0 });
+            let at = match (f, px) {
+                (Some(f), Some(px)) => Some(f + px),
+                (f, px) => f.or(px),
+            };
+            (*c, at)
+        })
+        .collect();
+    place_stops(raw)
 }
