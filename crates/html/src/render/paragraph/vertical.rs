@@ -32,7 +32,8 @@ pub(crate) fn vertical_paragraph(
             Node::Element(e) => e.style.upright == Some(true),
             Node::Text(t) => t.trim().is_empty(),
         });
-    let upright = inherited.upright == Some(true) || kids_upright;
+    let upright = (inherited.upright == Some(true) || kids_upright)
+        && !upright::only_mixed_text(nodes, inherited);
     if upright && inherited.sideways != Some(true) {
         return upright_paragraph(nodes, inherited, opts);
     }
