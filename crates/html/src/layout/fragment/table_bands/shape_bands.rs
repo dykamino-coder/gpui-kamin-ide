@@ -199,7 +199,7 @@ pub(super) fn table_shape_bands(
         return None;
     }
     row_band_shape(
-        c, depth, cx, bands, px_of, spec_h, spec_min_h, mt, mb, top, bot, spacing, cell_cx,
-        caps_top, caps_bot, parts, rows,
+        c, depth, cx, bands, spec_h, spec_min_h, mt, mb, top, bot, spacing, cell_cx, caps_top,
+        caps_bot, parts, rows,
     )
 }

@@ -3,7 +3,6 @@
 use super::{RowRef, TableBands, table_row_cuts};
 use crate::dom::Element;
 use crate::layout::fragment::ShapeCx;
-use crate::style::values::value::Len;
 mod captions;
 pub(super) use captions::caption_slots_shape;
 
@@ -13,7 +12,6 @@ pub(super) fn row_band_shape(
     depth: u8,
     cx: ShapeCx,
     bands: &mut TableBands,
-    px_of: impl Fn(&Option<Len>) -> Option<f32>,
     spec_h: Option<f32>,
     spec_min_h: Option<f32>,
     mt: f32,
@@ -41,12 +39,13 @@ pub(super) fn row_band_shape(
     let prev_open = 0.0f32;
     let prev_aa = false;
     let force_next = false;
-    // Ячейки с `rowspan`: (первый ряд, охват, высота содержимого). Их высота
-    // НЕ растит свой ряд — она ложится на все охваченные (css-tables-3
+    // Ячейки с `rowspan` через непустые ряды: (первый ряд, охват, высота
+    // содержимого). Их высота ложится на все охваченные (css-tables-3
     // §height-distribution); мера принимается, только если охват и так
     // вмещает ячейку (сверка после цикла), иначе — прежний отказ. Точки
     // разреза внутри такой ячейки не берутся: где именно внутри охвата
-    // стоит её содержимое, мера не знает. Прежде любой `rowspan` отменял
+    // стоит её содержимое, мера не знает. Охваты только пустых рядов с
+    // нулевым зазором разрешает общая `row_geometry`. Прежде любой `rowspan` отменял
     // меру таблицы целиком, и стол не фрагментировался вовсе
     // (`table-rowspan-001`: пустая ячейка `rowspan=2`, снимок — вторая
     // колонка пуста, стол переполняет первую).
@@ -55,7 +54,6 @@ pub(super) fn row_band_shape(
     table_row_cuts(
         depth,
         bands,
-        px_of,
         spacing,
         cell_cx,
         parts,

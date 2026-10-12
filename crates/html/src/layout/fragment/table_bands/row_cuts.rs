@@ -1,19 +1,16 @@
 //! Разрезы между рядами таблицы: avoid/force рядов и групп, охваты rowspan.
 
-use super::TableBands;
+use super::{TableBands, row_geometry};
 use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
-use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::table::is_cell;
 use crate::render::is_blank;
-use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn table_row_cuts(
     depth: u8,
     bands: &mut TableBands,
-    px_of: impl Fn(&Option<Len>) -> Option<f32>,
     spacing: f32,
     cell_cx: ShapeCx,
     parts: Vec<(u8, &Element)>,
@@ -30,40 +27,32 @@ pub(super) fn table_row_cuts(
     spans: &mut Vec<(usize, usize, f32)>,
     row_box: &mut Vec<(f32, f32)>,
 ) -> Option<()> {
+    let topology: Vec<_> = rows
+        .iter()
+        .map(|r| {
+            // Consecutive rows outside a row group share the anonymous group,
+            // just as table::rows_left_and_cols groups their absent parent.
+            let key = if std::ptr::eq(parts[r.group].1, r.row) {
+                usize::MAX
+            } else {
+                r.group
+            };
+            (key, r.row)
+        })
+        .collect();
+    let geometry = row_geometry(&topology, depth, cell_cx, spacing)?;
     for (i, r) in rows.iter().enumerate() {
         let start = *y + spacing;
-        let mut h = px_of(&r.row.style.height)?;
-        for n in r.row.children.iter().filter(|n| !is_blank(n)) {
-            let Node::Element(cell) = n else { return None };
-            if !is_cell(cell) {
-                return None;
-            }
-            // ★ ЗАМЕРЕНО И ОТКАЧЕНО (02.10): урезать охват до оставшихся
-            // рядов (охват в один ряд — обычная ячейка) и брать точки и
-            // монолиты содержимого охватывающей ячейки в меру (от начала её
-            // ряда). Срез css-break/table 136 пар: 64 → 63, ядро 670: 413 →
-            // 412 — потеряна `table-cell-expansion-005` (0.00 → «красное
-            // видно»), приобретений ноль: монолиты ячейки, которой раскладка
-            // отдаёт высоту охвата, закрывали разрез там, где эталон режет.
-            let rs = match cell.attr("rowspan").map(str::trim) {
-                None => 1,
-                Some(v) => match v.parse::<usize>() {
-                    Ok(0) => rows.len().saturating_sub(i).max(1),
-                    Ok(n) => n.max(1),
-                    Err(_) => return None,
-                },
-            };
-            let (ch, _, _, kcuts, kforced, ksolid) = shape_full(cell, depth - 1, cell_cx)?;
-            if rs > 1 {
-                spans.push((i, rs, ch));
+        let h = geometry[i].height;
+        for cell in &geometry[i].cells {
+            let shape = &cell.shape;
+            if !cell.expandable {
+                spans.push((i, cell.span, shape.0));
                 continue;
             }
-            h = h.max(ch);
-            // Точки и монолиты ячеек — объединением, как у ряда flex без
-            // переноса: рвать нельзя там, где не даёт хоть одна ячейка.
-            cuts.extend(kcuts.into_iter().map(|(a, b)| (start + a, start + b)));
-            forced.extend(kforced.into_iter().map(|f| start + f));
-            solid.extend(ksolid.into_iter().map(|(a, b)| (start + a, start + b)));
+            cuts.extend(shape.3.iter().map(|&(a, b)| (start + a, start + b)));
+            forced.extend(shape.4.iter().map(|&f| start + f));
+            solid.extend(shape.5.iter().map(|&(a, b)| (start + a, start + b)));
         }
         // css-break-4 §unforced-breaks Rule 1: «may break at a class A break point
         // only if all the 'break-after' and 'break-before' values applicable to
