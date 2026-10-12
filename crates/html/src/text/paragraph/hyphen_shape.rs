@@ -92,12 +92,22 @@ impl Paragraph {
         let body = body.as_str();
         let body = controlled_shape::text(body, &mut piece, rtl);
         if !rtl {
-            return Some(
-                window
-                    .text_system()
-                    .with_ligature_breaking(false)
-                    .shape_line_spaced(body, self.font_size, &piece, None, self.letter_spacing),
-            );
+            let mut shaped = window
+                .text_system()
+                .with_ligature_breaking(false)
+                .shape_line_spaced(
+                    body,
+                    self.font_size,
+                    &piece,
+                    None,
+                    if self.joined_spacing() {
+                        px(0.)
+                    } else {
+                        self.letter_spacing
+                    },
+                );
+            self.space_shaped(range, &mut shaped);
+            return Some(shaped);
         }
         Some(
             window

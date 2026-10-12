@@ -12,6 +12,9 @@ impl Paragraph {
         f32::from(self.font_size).to_bits().hash(&mut h);
         f32::from(self.letter_spacing).to_bits().hash(&mut h);
         f32::from(self.word_spacing).to_bits().hash(&mut h);
+        // Joined text is shaped without scalar GPUI tracking, then spaced by
+        // typographic units. The visual word path still uses scalar tracking.
+        self.joined_spacing().hash(&mut h);
         self.tab_stop.hash_into(&mut h);
         for run in &self.runs {
             run.len.hash(&mut h);
