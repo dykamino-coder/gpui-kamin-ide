@@ -1,5 +1,7 @@
 //! SVG transform и transform-origin из CSS и презентационных атрибутов.
 
+mod origin;
+
 use crate::dom::Element;
 use crate::svg::clip::reference_box;
 
@@ -18,17 +20,17 @@ pub(crate) fn element_transform(e: &Element) -> (Option<String>, bool) {
         num_attr("width").unwrap_or(0.0),
         num_attr("height").unwrap_or(0.0),
     );
-    // Опорная коробка (css-transforms-1 §transform-box) — только при ЯВНОЙ
-    // `fill-box`/`stroke-box` (и их CSS-двойниках `content-box`/`border-box`).
-    // Тогда и доли, и ДЛИНЫ `transform-origin` отсчитываются от её левого
-    // верха, а проценты `translate()` — от её размера (`fill-box-001`
-    // target4: `75px 75px` — это (100,100), а не (75,75)). Без явного
-    // значения путь прежний: доли от рамки по атрибутам, длины как есть.
+    // SVG without a CSS layout box uses the nearest viewport by default.
+    // Blink TransformHelper::ComputeReferenceBox and css-transforms-1 agree:
+    // fill/stroke boxes use object bounds; view-box uses viewport dimensions.
     let ref_box = match super::svg_box_style(&e.style).0 {
         Some(k @ (1 | 2)) => Some(reference_box(e, k == 2).unwrap_or((fx, fy, fw, fh))),
         _ => None,
     };
-    let (bx, by, bw, bh) = ref_box.unwrap_or((fx, fy, fw, fh));
+    let (bx, by, bw, bh) = ref_box.unwrap_or_else(|| {
+        let (w, h) = crate::svg::VIEW_BOX.with(|v| v.get());
+        (0.0, 0.0, w, h)
+    });
     let from_box = |v: f32, o: f32| if ref_box.is_some() { o + v } else { v };
     // CSS `transform-origin` сильнее презентационного атрибута
     // (css-transforms-1 §specificity): доли — от той же опорной коробки, что
@@ -43,79 +45,8 @@ pub(crate) fn element_transform(e: &Element) -> (Option<String>, bool) {
         _ => None,
     };
     let origin = style_origin.or_else(|| {
-        attr_of("transform-origin").and_then(|raw| {
-            let side = |t: &str, base: f32, off: f32| -> Option<f32> {
-                let t = t.trim();
-                Some(match t {
-                    "left" | "top" => off,
-                    "center" => off + base * 0.5,
-                    "right" | "bottom" => off + base,
-                    _ if t.ends_with('%') => {
-                        off + t.trim_end_matches('%').parse::<f32>().ok()? / 100.0 * base
-                    }
-                    _ => {
-                        // Абсолютные единицы (css-values §6.2): 1in = 96px.
-                        let (num, k) = if let Some(n) = t.strip_suffix("px") {
-                            (n, 1.0)
-                        } else if let Some(n) = t.strip_suffix("cm") {
-                            (n, 96.0 / 2.54)
-                        } else if let Some(n) = t.strip_suffix("mm") {
-                            (n, 96.0 / 25.4)
-                        } else if let Some(n) = t.strip_suffix("in") {
-                            (n, 96.0)
-                        } else if let Some(n) = t.strip_suffix("pt") {
-                            (n, 96.0 / 72.0)
-                        } else if let Some(n) = t.strip_suffix("pc") {
-                            (n, 16.0)
-                        } else if let Some(n) = t.strip_suffix('q').or_else(|| t.strip_suffix('Q'))
-                        {
-                            (n, 96.0 / 101.6)
-                        } else {
-                            (t, 1.0)
-                        };
-                        // Длина от рамки фигуры — только при
-                        // `transform-box: fill-box`; по умолчанию (`view-box`)
-                        // отсчёт от вьюпорта, то есть без сдвига на `off`
-                        // (`svg-origin-length-*` зелены именно так).
-                        let v = num.trim().parse::<f32>().ok()? * k;
-                        return Some(if super::svg_box_style(&e.style).1 == Some(true) {
-                            off + v
-                        } else {
-                            v
-                        });
-                    }
-                })
-            };
-            let toks: Vec<&str> = raw.split_whitespace().collect();
-            // Осевые ключевые слова (css-transforms §4): одиночный `top`/`bottom`
-            // — это ось Y с центром по X; пара слов может идти в любом порядке,
-            // но `top 100%` невалидна — тогда точка отсчёта остаётся `0 0`
-            // (None = без origin-обёртки).
-            let vert_only = |t: &str| matches!(t.trim(), "top" | "bottom");
-            let horiz_only = |t: &str| matches!(t.trim(), "left" | "right");
-            let keyword =
-                |t: &str| matches!(t.trim(), "top" | "bottom" | "left" | "right" | "center");
-            let (ox, oy) = match toks.as_slice() {
-                [a] if vert_only(a) => (fx + fw * 0.5, side(a, fh, fy)?),
-                [a] => (side(a, fw, fx)?, fy + fh * 0.5),
-                // Пара слов ОДНОЙ оси невалидна (css-transforms-1 §transform-origin):
-                // `top bottom`, `left right` — объявление отбрасывается целиком.
-                [a, b] if (vert_only(a) && vert_only(b)) || (horiz_only(a) && horiz_only(b)) => {
-                    return None;
-                }
-                [a, b] if vert_only(a) || horiz_only(b) => {
-                    // Обратный порядок допустим только у ПАРЫ ключевых слов.
-                    if keyword(a) && keyword(b) {
-                        (side(b, fw, fx)?, side(a, fh, fy)?)
-                    } else {
-                        return None;
-                    }
-                }
-                [a, b] => (side(a, fw, fx)?, side(b, fh, fy)?),
-                _ => return None,
-            };
-            Some((ox, oy))
-        })
+        attr_of("transform-origin")
+            .and_then(|raw| origin::parse(raw, (bx, by, bw, bh), ref_box.is_some()))
     });
     // Начальный `transform-origin` SVG-элемента — `0 0` (UA-лист:
     // `*:not(svg), *:not(foreignObject) > svg { transform-origin: 0 0 }`), и
@@ -128,7 +59,7 @@ pub(crate) fn element_transform(e: &Element) -> (Option<String>, bool) {
     // растеризатора.
     // Матрица функций В ПОРЯДКЕ ЗАПИСИ (см. `computed::Transform::lin`);
     // проценты сдвига — от опорной коробки фигуры (css-transforms-1
-    // §transform-box: доля — от reference box; здесь fill-box по атрибутам).
+    // §transform-box: доля — от выбранной reference box).
     let style_t = e.style.transform.as_ref().map(|t| {
         let unit = t.lin == [[1.0, 0.0], [0.0, 1.0]] && t.tr == [[0.0; 3]; 2];
         if unit {
@@ -156,8 +87,7 @@ pub(crate) fn element_transform(e: &Element) -> (Option<String>, bool) {
     // scale, then transform», то есть сдвиг стоит СЛЕВА и от матрицы свойства
     // `transform`, и от презентационного атрибута `transform=` (тот
     // отображается в то же свойство — css-transforms-1 §svg-transform).
-    // Доли — от опорной коробки (§transform-box; здесь fill-box по атрибутам
-    // фигуры, как и у процентов сдвига выше).
+    // Доли — от выбранной опорной коробки (§transform-box).
     //
     // Корневой `<svg>` исключён: он обычная CSS-коробка, и `translate:` ему
     // уже сдвигает `apply.rs` — иначе сдвиг лёг бы дважды.
@@ -188,10 +118,25 @@ pub(crate) fn element_transform(e: &Element) -> (Option<String>, bool) {
         .filter(|_| !attr_bad)
         .map(str::to_string);
     let base_t = style_t.filter(|t| !t.is_empty()).or(attr_t);
-    let transform = match (ind_t, base_t) {
-        (Some((dx, dy)), Some(t)) => Some(format!("translate({dx} {dy}) {t}")),
-        (Some((dx, dy)), None) => Some(format!("translate({dx} {dy})")),
-        (None, t) => t,
+    // css-transforms-2 CTM: translate, rotate, scale, then transform list.
+    // Keep the attribute as the list when individual properties synthesized
+    // an otherwise identity Computed::transform.
+    let mut prefix = String::new();
+    if let Some((dx, dy)) = ind_t {
+        prefix.push_str(&format!("translate({dx} {dy}) "));
+    }
+    if e.tag != "svg" {
+        if let Some(angle) = e.style.rotate_prop {
+            prefix.push_str(&format!("rotate({}) ", angle.to_degrees()));
+        }
+        if let Some((x, y)) = e.style.scale_prop {
+            prefix.push_str(&format!("scale({x} {y}) "));
+        }
+    }
+    let transform = if prefix.is_empty() {
+        base_t
+    } else {
+        Some(format!("{prefix}{}", base_t.unwrap_or_default()))
     };
     let combined = match (origin, transform) {
         (Some((ox, oy)), Some(t)) => Some(format!(
@@ -206,3 +151,6 @@ pub(crate) fn element_transform(e: &Element) -> (Option<String>, bool) {
     };
     (combined, attr_bad)
 }
+
+#[cfg(test)]
+mod tests;
