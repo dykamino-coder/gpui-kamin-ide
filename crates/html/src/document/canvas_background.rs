@@ -39,6 +39,9 @@ pub(super) fn viewport_overflow(mut nodes: Vec<Node>) -> Vec<Node> {
                     && (matches!(e.style.overflow_x, Some(o) if o != crate::style::computed::Overflow::Visible)
                         || matches!(e.style.overflow_y, Some(o) if o != crate::style::computed::Overflow::Visible));
                 if !own && !root_contained {
+                    if e.tag == "html" {
+                        e.style.scroll.viewport_root = true;
+                    }
                     e.style.overflow_x = None;
                     e.style.overflow_y = None;
                 }

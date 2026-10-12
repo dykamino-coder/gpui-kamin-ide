@@ -66,12 +66,23 @@ pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> A
     pseudo_line_layers::install(e, &mut merged);
     // Единицы окна разрешаются здесь: размер окна знает только сборщик.
     merged.resolve_viewport(opts.viewport);
+    let gutters = crate::interactive::scroll_extent::classic::model(e.node_id, &merged);
+    merged.scroll.used = gutters.used;
+    merged.scroll.native = gutters.native;
+    if e.tag == "html-viewport" {
+        merged.icb_scroll_insets = Some(gutters.used);
+    }
     orthogonal_inline::resolve(&mut merged, inherited, opts.viewport, e.tag == "html");
     PAINT_VIEWPORT.with(|v| v.set(opts.viewport));
+    let scroll_projection =
+        crate::interactive::scroll_extent::projection(inherited.self_node, Some(&merged));
     // Элементы форм рисуются своим набором: без него поле ввода — пустой
     // прямоугольник, что выглядит поломкой разметки.
     if let Some(el) = crate::interactive::forms::element(e, &merged, opts) {
-        return transformed(el, &merged, inherited);
+        return crate::interactive::scroll_extent::project(
+            transformed(el, &merged, inherited),
+            scroll_projection,
+        );
     }
     // Рамка строится ОДИН раз до match: прежний `is_some() => unwrap()`
     // читал файл с диска и разбирал вложенный документ дважды за кадр.
@@ -91,5 +102,8 @@ pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> A
     } else {
         None
     };
-    dispatch_element(e, merged, inherited, opts, outer_row, built_iframe)
+    crate::interactive::scroll_extent::project(
+        dispatch_element(e, merged, inherited, opts, outer_row, built_iframe),
+        scroll_projection,
+    )
 }

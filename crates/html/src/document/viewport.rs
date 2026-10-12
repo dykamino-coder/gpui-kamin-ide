@@ -9,13 +9,11 @@ pub(super) fn policy(nodes: &[Node]) -> Option<Computed> {
         Node::Element(e) if e.tag == "html" => Some(e),
         _ => None,
     })?;
-    root.style.scroll.colors.flatten()?;
     if super::canvas_background::any_containment(root) {
         return None;
     }
     let mut c =
         crate::style::cascade::inherit::inherit_unpainted(&Computed::default(), &root.style);
-    c.scroll.colors.flatten()?;
     // This is a computed viewport policy, not another currentColor declaration.
     c.scroll.current = [false; 2];
     c.scroll.inherit_width = false;
@@ -30,6 +28,7 @@ pub(super) fn policy(nodes: &[Node]) -> Option<Computed> {
         c.vertical_rl = body_style.vertical_rl;
         if visible(c.overflow_x)
             && visible(c.overflow_y)
+            && !matches!(body.style.display, Some(Display::None | Display::Contents))
             && !super::canvas_background::any_containment(body)
         {
             c.overflow_x = body.style.overflow_x;
@@ -77,9 +76,28 @@ pub(super) fn wrap(nodes: Vec<Node>, policy: Option<Computed>) -> Vec<Node> {
     vec![Node::Element(viewport)]
 }
 
+pub(super) fn prepare_embedded(nodes: Vec<Node>, responsive: bool) -> Vec<Node> {
+    let viewport = policy(&nodes);
+    let (nodes, _) = super::unwrap_document(super::mark_canvas_background(super::resolve_logical(
+        super::propagate_writing_mode(super::viewport_overflow(nodes)),
+    )));
+    let mut nodes = wrap(nodes, viewport);
+    if responsive
+        && let [Node::Element(root)] = nodes.as_mut_slice()
+        && root.tag == "html-viewport"
+    {
+        root.style.height = None;
+    }
+    nodes
+}
+
 // Keep document preparation identical for initial, updated, and embedded markup.
 pub(super) fn prepare(nodes: Vec<Node>) -> (Vec<Node>, Computed) {
-    let viewport = policy(&nodes);
+    let viewport = policy(&nodes).filter(|c| {
+        c.scroll.colors.flatten().is_some()
+            || c.scroll.forced.into_iter().any(|v| v)
+            || c.scroll.gutter.is_some_and(|v| v != 0)
+    });
     let (nodes, root) =
         super::unwrap_document(super::mark_canvas_background(super::resolve_logical(
             super::propagate_writing_mode(super::viewport_overflow(nodes)),

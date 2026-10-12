@@ -19,6 +19,7 @@ pub struct ScrollArea {
     pub(crate) vertical: bool,
     pub(crate) style: crate::style::computed::Computed,
     tree: Option<Rc<crate::dom::Element>>,
+    parent_extent: Option<super::scroll_extent::Frame>,
     pub(crate) build: Rc<dyn Fn(&gpui::ScrollHandle, bool, bool) -> AnyElement>,
 }
 
@@ -36,6 +37,7 @@ impl ScrollArea {
             build,
             style: Default::default(),
             tree: None,
+            parent_extent: None,
         }
     }
 }
@@ -47,9 +49,8 @@ impl ScrollArea {
     }
 
     pub(crate) fn with_tree(mut self, e: &crate::dom::Element) -> Self {
-        if self.style.scroll.colors.flatten().is_some() || self.style.snap.axis != 0 {
-            self.tree = Some(Rc::new(e.clone()));
-        }
+        self.parent_extent = super::scroll_extent::Frame::parent_for(e.node_id);
+        self.tree = Some(Rc::new(e.clone()));
         self
     }
 }
@@ -87,6 +88,7 @@ impl Element for ScrollArea {
         let build = self.build.clone();
         let (h, v) = (self.horizontal, self.vertical);
         let layout = |state: Persistent, window: &mut Window, cx: &mut App| {
+            state.extent.set_handle(state.handle.clone());
             let (layout_id, el) = state.extent.within(self.tree.as_deref(), || {
                 let mut el = build(&state.handle, h, v);
                 let layout_id = el.request_layout(window, cx);
@@ -135,12 +137,15 @@ impl Element for ScrollArea {
         } else {
             bounds
         };
+        if let (Some(parent), Some(tree)) = (&self.parent_extent, self.tree.as_deref()) {
+            parent.record_border_box(tree.node_id, &self.style, paint_bounds);
+        }
         child.2.set_decoration_clip(window.content_mask());
         child
             .2
             .within(self.tree.as_deref(), || child.0.prepaint(window, cx));
         if let Some(tree) = self.tree.as_deref()
-            && child.2.settle(tree, &self.style, &child.1)
+            && child.2.settle(tree, &self.style, &child.1, paint_bounds)
         {
             // Invalidation during prepaint is ignored by GPUI. Rebuild after
             // this frame, once the native extent proxy has its measured size.
@@ -167,7 +172,15 @@ impl Element for ScrollArea {
     ) {
         child.2.set_decoration_clip(window.content_mask());
         child.0.paint(window, cx);
-        crate::interactive::scrollbars::paint(&self.style, &child.1, *paint_bounds, window);
+        crate::interactive::scrollbars::paint(
+            &self.style,
+            &child.1,
+            child.2.bars(),
+            child.2.range(),
+            child.2.insets(),
+            *paint_bounds,
+            window,
+        );
     }
 }
 

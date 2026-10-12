@@ -1,5 +1,5 @@
 //! Classic scrollbar arrow buttons; disabled state follows the current scroll range.
-use gpui::{Bounds, Hsla, PathBuilder, Pixels, Window, point, px, rgb};
+use gpui::{Bounds, Hsla, PathBuilder, Pixels, Window, point, px};
 
 pub(super) fn paint(
     lane: Bounds<Pixels>,
@@ -7,7 +7,7 @@ pub(super) fn paint(
     button: f32,
     offset: f32,
     maximum: f32,
-    custom: Option<Hsla>,
+    (arrows, custom): ([Hsla; 2], Option<Hsla>),
     window: &mut Window,
 ) {
     if button < 6.0 {
@@ -28,8 +28,7 @@ pub(super) fn paint(
         } else {
             offset >= maximum
         };
-        let mut color =
-            custom.unwrap_or_else(|| rgb(if disabled { 0xa3a3a3 } else { 0x505050 }).into());
+        let mut color = custom.unwrap_or(arrows[usize::from(!disabled)]);
         if custom.is_some() && disabled {
             color.a *= 0.4;
         }

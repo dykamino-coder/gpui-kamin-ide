@@ -110,7 +110,9 @@ impl Paragraph {
         // после правки оба 48).
         let rev_off: f32 = if self.lines_reversed && count > 0 {
             let total: f32 = (0..count).map(|i| f32::from(step(i))).sum();
-            total - f32::from(self.line_height)
+            // The first reversed line owns its entire advance, including
+            // annotation outsets. Its above inset is applied when painted.
+            total - f32::from(step(0))
         } else {
             0.0
         };

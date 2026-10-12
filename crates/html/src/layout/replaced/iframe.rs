@@ -128,7 +128,18 @@ pub(crate) fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     // Режим quirks у вложенного документа свой: разбор его перепишет, а
     // внешний возвращается после сборки рамки.
     let outer_quirks = crate::style::select::quirks();
-    let (nodes, salt) = crate::document::parse_embedded(&html, crate::BROWSER_CSS, (w, h));
+    let responsive = st.frame_sizing_height
+        && matches!(st.height, None | Some(Len::Auto))
+        && e.attr("height").is_none()
+        && responsive_embedded_sizing(&html);
+    let (nodes, salt) = crate::document::parse_embedded_sized(
+        &html,
+        crate::BROWSER_CSS,
+        (w, h),
+        responsive,
+        !e.attr("scrolling")
+            .is_some_and(|v| v.eq_ignore_ascii_case("no")),
+    );
     // Верхний уровень вложенного документа проходит те же ортогональные
     // поправки, что и дети контейнера.
     let nodes = orthogonal_vertical_children(nodes, &Computed::default());
@@ -152,10 +163,6 @@ pub(crate) fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
             let frame = styled_div(e).w(px(outer_w));
             // css-sizing-4 §frame-sizing: высота по содержимому, когда
             // вложенный документ согласился и автор высоту не задал.
-            let responsive = st.frame_sizing_height
-                && matches!(st.height, None | Some(Len::Auto))
-                && e.attr("height").is_none()
-                && responsive_embedded_sizing(&html);
             if responsive {
                 frame
             } else {
