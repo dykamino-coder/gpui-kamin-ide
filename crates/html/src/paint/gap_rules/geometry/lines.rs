@@ -42,6 +42,7 @@ pub(crate) fn line_runs(
     extent: Option<(u8, f32, f32)>,
     content_aligned: bool,
     lanes: Option<(Vec<(f32, f32)>, f32)>,
+    flex_extent: Option<(f32, f32)>,
 ) -> (Vec<GapRun>, Vec<GapRun>) {
     // Гибкие строки: строка — объединение поперечных протяжённостей её
     // элементов (Blink: `line_cross_start/end` строки, а не начало каждого
@@ -54,11 +55,14 @@ pub(crate) fn line_runs(
     // промежуток стоит сразу перед началом следующей записи ленты: центр —
     // `ForwardStackingStart() - stacking_gap / 2` (`FinalGutterCenter`).
     let lane_gap = lanes.as_ref().map(|(_, g)| *g);
-    let lines = match &lanes {
+    let mut lines = match &lanes {
         Some((t, _)) => t.clone(),
         None if flex => line_groups(items),
         None => tracks_a(items, gap_a),
     };
+    if flex && let Some((start, end)) = flex_extent {
+        super::flex_lines::stretch(&mut lines, gap_a.unwrap_or(0.0), start, end);
+    }
     let mut r0 = items.iter().map(|i| i.b0).fold(f32::INFINITY, f32::min);
     let mut r1 = items.iter().map(|i| i.b1).fold(f32::NEG_INFINITY, f32::max);
     let inner: Vec<Vec<(f32, f32)>> = lines
@@ -70,7 +74,7 @@ pub(crate) fn line_runs(
                     if lane_gap.is_some() {
                         i.a0 < e - GAP_EPS && i.a1 > s + GAP_EPS
                     } else if flex {
-                        i.a0 >= s - GAP_EPS && i.a0 <= e + GAP_EPS
+                        (i.a0 - s).abs() <= GAP_EPS || (i.a0 > s && i.a0 < e - GAP_EPS)
                     } else {
                         (i.a0 - s).abs() <= GAP_EPS
                     }
@@ -116,7 +120,9 @@ pub(crate) fn line_runs(
         let blocked = merge(
             items
                 .iter()
-                .filter(|i| i.spans_a(g0, g1))
+                // Элемент flex принадлежит одной строке; касание двух
+                // строк при нулевом gap не блокирует правило между ними.
+                .filter(|i| !flex && i.spans_a(g0, g1))
                 .map(|i| (i.b0, i.b1))
                 .collect(),
         );

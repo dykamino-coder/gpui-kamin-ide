@@ -18,6 +18,7 @@ use std::rc::Rc;
 pub struct FirstLine {
     pub(super) build: Split,
     pub(super) text: SharedString,
+    following: Vec<SharedString>,
     pub(super) font: Font,
     pub(super) font_size: f32,
     pub(super) line_height: f32,
@@ -32,10 +33,12 @@ impl FirstLine {
         font: Font,
         font_size: f32,
         line_height: f32,
+        following: Vec<SharedString>,
     ) -> Self {
         FirstLine {
             build,
             text,
+            following,
             font,
             font_size,
             line_height,
@@ -84,6 +87,7 @@ impl Element for FirstLine {
         _cx: &mut App,
     ) -> (LayoutId, ()) {
         let text = self.text.clone();
+        let following = self.following.clone();
         let font = self.font.clone();
         let font_size = self.font_size;
         let line_height = self.line_height;
@@ -95,8 +99,14 @@ impl Element for FirstLine {
                     AvailableSpace::Definite(w) => w,
                     _ => window.viewport_size().width,
                 });
-                let (at, height) =
+                let (at, mut height) =
                     measure_first_line(&text, &font, font_size, line_height, width, window);
+                // The styled first line does not remove subsequent hard lines
+                // from normal flow (CSS 2 section 10.8).
+                for line in &following {
+                    height +=
+                        measure_first_line(line, &font, font_size, line_height, width, window).1;
+                }
                 cut.set(Cut { at, width });
                 size(width, height)
             },
