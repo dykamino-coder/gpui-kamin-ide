@@ -81,6 +81,13 @@ fn main() {
     // Стенд запускают пачками и без человека у экрана: любое модальное окно
     // gpui («Failed to launch») повесило бы процесс намертво.
     unsafe { std::env::set_var("GPUI_NO_ERROR_DIALOG", "1") };
+    // WPT reftests assume 1 CSS px = 1 device px (official runs use DPR 1). On a
+    // 120-DPI monitor the window would render at 1.25 and fractional lengths would
+    // snap differently in tests and references. KAMIN_FORCE_SCALE (vendor
+    // gpui-windows) pins the scale; an explicit value in the environment wins.
+    if std::env::var_os("KAMIN_FORCE_SCALE").is_none() {
+        unsafe { std::env::set_var("KAMIN_FORCE_SCALE", "1") };
+    }
     std::panic::set_hook(Box::new(|info| {
         let _ = std::fs::write("target/wpt-panic.txt", format!("{info}"));
         eprintln!("{info}");
