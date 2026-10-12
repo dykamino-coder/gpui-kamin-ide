@@ -28,6 +28,9 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     let mut out: Vec<AnyElement> = vec![];
 
     outer_shadows(c, &mut out);
+    if let Some(layer) = crate::paint::background::single_corner::layer(c) {
+        out.push(layer);
+    }
 
     // `filter: url(#id)` на HTML-элементе (filter-effects-1 §filter
     // region): дешёвый путь для коробки без содержимого — SVG с `<rect>`

@@ -210,7 +210,7 @@ fn polar_mix(
 /// 1 longer, 2 increasing, 3 decreasing. Углы приводятся к обороту, дуга
 /// выбирается разностью, и только потом берётся доля — иначе `350°→10°`
 /// поехало бы через весь круг.
-fn hue_arc(from: f32, to: f32, method: u8, k: f32) -> f32 {
+pub(super) fn hue_arc(from: f32, to: f32, method: u8, k: f32) -> f32 {
     let mut d = (to - from).rem_euclid(360.0);
     match method {
         1 => {

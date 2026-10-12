@@ -6,6 +6,9 @@ use crate::style::values::value::Len;
 impl Computed {
     /// Use the group mask for elliptical, shaped, or oversized nonuniform corners.
     pub fn radius_masked(&self) -> bool {
+        if crate::paint::background::single_corner::eligible(self) {
+            return false;
+        }
         // CSS Backgrounds 3 §5.1: each percentage resolves against its own
         // border-box axis. A non-square box therefore needs elliptical corners;
         // the GPUI quad only supports one circular radius per corner.
