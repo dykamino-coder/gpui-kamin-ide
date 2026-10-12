@@ -122,6 +122,7 @@ pub(crate) fn transformed_with(
     // только на пути с собственным преобразованием — красный ребёнок под
     // `rotateX(180deg); preserve-3d` оставался виден.
     wrapper.backface_hidden = c.backface_hidden == Some(true);
+    wrapper.fragment_clip_ancestor = c.fragment_clip_ancestor;
     let Some(t) = c.transform else {
         return wrapper.into_any_element();
     };

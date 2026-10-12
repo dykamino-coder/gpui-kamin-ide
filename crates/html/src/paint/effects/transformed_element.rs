@@ -31,6 +31,7 @@ pub struct Transformed {
     /// `backface-visibility: hidden` — решается по `m4[2][2]` на отрисовке,
     /// коробка держит место.
     pub backface_hidden: bool,
+    pub(crate) fragment_clip_ancestor: bool,
     /// Третья координата `transform-origin` в css-точках.
     pub origin_z: Option<f32>,
     /// Своя `perspective` (css-точки, ≥ 1px), её точка отсчёта долями и
@@ -146,6 +147,7 @@ impl Transformed {
             m4_pct: [[0.0; 2]; 4],
             has_3d: false,
             backface_hidden: false,
+            fragment_clip_ancestor: false,
             origin_z: None,
             perspective: None,
             perspective_origin: (0.5, 0.5),

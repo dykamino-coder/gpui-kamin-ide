@@ -178,6 +178,10 @@ impl ColumnStack {
                                 origin: point(x, y),
                                 size: size(px(col_w), px(f.h)),
                             },
+                            clip: Bounds {
+                                origin: point(x - spill, y),
+                                size: size(px(col_w) + spill + spill, px(f.h)),
+                            },
                         }),
                         || gap_fragment::with(scope, || el.paint(window, cx)),
                     );

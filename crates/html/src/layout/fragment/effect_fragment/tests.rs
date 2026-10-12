@@ -15,7 +15,19 @@ fn scope(y: f32, height: f32) -> Scope {
             bounds: bounds(0.0, 800.0),
         },
         fragment: bounds(y, height),
+        clip: bounds(y, height),
     }
+}
+
+#[test]
+fn fragment_clip_keeps_its_phase_before_scaling_and_defers_viewport_clipping() {
+    let scope = scope(-20.28125, 100.0);
+    let current = super::super::fragment_mask::snap(scope.clip, 1.25)
+        .bounds
+        .intersect(&scope.parent.bounds);
+    assert_eq!(source_clip(scope, current, 1.25), scope.clip);
+    let inner = bounds(10.0, 20.0);
+    assert_eq!(source_clip(scope, inner, 1.25), inner);
 }
 
 #[test]

@@ -10,6 +10,7 @@ use std::cell::RefCell;
 pub(crate) struct Scope {
     pub parent: ContentMask<Pixels>,
     pub fragment: Bounds<Pixels>,
+    pub clip: Bounds<Pixels>,
 }
 
 thread_local! {
@@ -43,23 +44,26 @@ pub(crate) fn reference_box(bounds: Bounds<Pixels>) -> Option<Bounds<Pixels>> {
     })
 }
 
-#[cfg(test)]
-mod tests;
-
 pub(crate) fn paint<R>(
     matrix: TransformationMatrix,
+    clip_matrix: TransformationMatrix,
+    clip_ancestor: bool,
     window: &mut Window,
     f: impl FnOnce(&mut Window) -> R,
 ) -> R {
     let scope = ACTIVE.with(|active| *active.borrow());
     let [[a, b], [c, d]] = matrix.rotation_scale;
     let axes = (b.abs() < 1e-4 && c.abs() < 1e-4) || (a.abs() < 1e-4 && d.abs() < 1e-4);
-    if let Some(scope) = scope.filter(|_| axes) {
-        let mut css = matrix;
+    // A descendant transform must not move a CSS ancestor's clip. Its
+    // reference box remains fragmented, but clip projection needs the
+    // fragment's own mask, without additional subtree clipping.
+    if let Some(scope) = scope.filter(|_| axes && !clip_ancestor) {
+        let mut css = clip_matrix;
         for v in &mut css.translation {
             *v /= window.scale_factor();
         }
-        let source = window.content_mask().bounds;
+        let current = window.content_mask().bounds;
+        let source = source_clip(scope, current, window.scale_factor());
         let p = css.apply(source.origin);
         let q = css.apply(source.origin + point(source.size.width, source.size.height));
         let mask = ContentMask {
@@ -75,3 +79,21 @@ pub(crate) fn paint<R>(
         window.with_transformation_masked(matrix, f)
     }
 }
+
+fn source_clip(scope: Scope, current: Bounds<Pixels>, scale: f32) -> Bounds<Pixels> {
+    let initial = super::fragment_mask::snap(scope.clip, scale)
+        .bounds
+        .intersect(&scope.parent.bounds);
+    // Fragment clipping precedes effects and device snapping (CSS Break 3
+    // §5.5). Mapping an already rounded edge doubles its phase error under
+    // scaling. Recover CSS edges when this is the fragment's own clip; an
+    // additional ancestor clip has no recoverable CSS geometry here.
+    if current == initial {
+        scope.clip
+    } else {
+        current
+    }
+}
+
+#[cfg(test)]
+mod tests;

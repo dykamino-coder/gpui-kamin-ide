@@ -181,13 +181,19 @@ pub(super) fn paint_body(
             matrix.translation[1] += snap(exact.1) - cur.1;
         }
         let child = group.child.as_mut().unwrap();
-        crate::layout::fragment::effect_fragment::paint(matrix, window, |window| {
-            if let Some(exact) = fill_matrix {
-                window.with_css_fill_transform(exact, |window| child.paint(window, cx));
-            } else {
-                child.paint(window, cx);
-            }
-        });
+        crate::layout::fragment::effect_fragment::paint(
+            matrix,
+            fill_matrix.unwrap_or(matrix),
+            group.fragment_clip_ancestor,
+            window,
+            |window| {
+                if let Some(exact) = fill_matrix {
+                    window.with_css_fill_transform(exact, |window| child.paint(window, cx));
+                } else {
+                    child.paint(window, cx);
+                }
+            },
+        );
         return;
     }
     // --- Объёмный путь: одна 4×4 ОДНОГО элемента, сплющенная на экран ---

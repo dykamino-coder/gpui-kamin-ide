@@ -70,7 +70,21 @@ pub(crate) fn layer_route(
         && abs_like
         && inherited.cb_ancestor
         && !crate::text::inline::establishes_cb(inherited)
-        && (x_set || y_set);
+        // Auto-positioned boxes cannot leave an intermediate paint group:
+        // the CB layer has its geometry, but not that group's effects.
+        && (x_set
+            || y_set
+            || (!stacking_context(inherited)
+                && !inherited.backdrop_root_above
+                && !crate::text::inline::backdrop_root(inherited)
+                // Replaced boxes and inline static positions retain their
+                // intrinsic/line wrapper until those layout paths carry CB
+                // geometry separately from the hypothetical inline box.
+                && e.style.inline_display != Some(true)
+                && !matches!(
+                    e.tag.as_str(),
+                    "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"
+                )));
     let far_abs = far_abs || far_fixed;
     // A negative `z-index` box whose containing block is the ICB goes
     // to the ICB layer too, painted in the bottom layer (`Underlay`,
