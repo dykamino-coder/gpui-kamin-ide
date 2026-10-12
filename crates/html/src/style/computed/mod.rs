@@ -5,6 +5,7 @@
 //! Во-вторых, ровно она задаёт границу охвата: поле есть — свойство
 //! поддержано, поля нет — свойство игнорируется осознанно, а не потеряно.
 
+mod background_position;
 mod bidi_properties;
 mod border_color;
 pub(crate) mod font_family;

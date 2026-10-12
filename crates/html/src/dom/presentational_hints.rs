@@ -35,7 +35,23 @@ pub(super) fn rules(tag: &str, attrs: &[(String, String)]) -> Vec<Rule> {
     nowrap(tag, attrs)
         .into_iter()
         .chain(table_height(tag, attrs))
+        .chain(column_width(tag, attrs))
         .collect()
+}
+
+/// HTML rendering §15.3.8 maps col/colgroup width into the hint origin.
+/// Servo Element::synthesize_presentational_hints_for_legacy_attributes
+/// obtains HTMLTableColElement::get_width before the author cascade.
+fn column_width(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
+    if !matches!(tag, "col" | "colgroup") {
+        return None;
+    }
+    let raw = &attrs.iter().find(|(name, _)| name == "width")?.1;
+    let (value, percent) = dimension(raw)?;
+    hint(&format!(
+        "width: {value}{}",
+        if percent { "%" } else { "px" }
+    ))
 }
 
 fn table_height(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
@@ -119,5 +135,41 @@ pub(super) fn colors(style: &mut Computed, tag: &str, attrs: &[(String, String)]
         && let Some(c) = color_of("text")
     {
         style.color = Some(c);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::dom::{Element, Node};
+    use crate::style::values::value::Len;
+
+    fn column(nodes: &[Node]) -> Option<&Element> {
+        for node in nodes {
+            if let Node::Element(e) = node {
+                if e.tag == "col" {
+                    return Some(e);
+                }
+                if let Some(found) = column(&e.children) {
+                    return Some(found);
+                }
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn column_attributes_participate_below_author_width() {
+        for (html, expected) in [
+            ("<table><col width='18junk'></table>", Some(Len::Px(18.0))),
+            ("<table><col width='25%'></table>", Some(Len::Pct(0.25))),
+            (
+                "<style>col{width:auto}</style><table><col width='18'></table>",
+                Some(Len::Auto),
+            ),
+            ("<table><col width='-18'></table>", None),
+        ] {
+            let nodes = crate::dom::parse(html, "");
+            assert_eq!(column(&nodes).unwrap().style.width, expected);
+        }
     }
 }

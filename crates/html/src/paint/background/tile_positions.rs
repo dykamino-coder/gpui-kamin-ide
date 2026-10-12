@@ -18,6 +18,12 @@ pub(super) fn axis(mode: Tiling, from: f32, tile: f32, shift: f64, own: f32, all
     );
     if mode == Tiling::Space {
         let base = tiling(mode, from, tile, own);
+        // CSS Backgrounds 3 §3.4: fewer than two whole tiles falls back to
+        // no-repeat, even when the painting area extends past the origin box.
+        // Blink CalculateRepeatAndPosition switches SpaceFill to NoRepeatFill.
+        if base.len() < 2 {
+            return base.into_iter().map(|v| v + shift).collect();
+        }
         // За областью позиционирования плитки продолжаются с тем же
         // шагом по всей области покраски (css-backgrounds-3 §3.4:
         // «…continue to be repeated at the same spacing»), иначе под
@@ -85,5 +91,24 @@ pub(super) fn tiling(mode: Tiling, start: f64, tile: f64, box_len: f64) -> Vec<f
                 .map(|i| first + f64::from(i) * tile)
                 .collect()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::axis;
+    use crate::style::computed::Tiling;
+
+    #[test]
+    fn space_fallback_keeps_one_tile_inside_an_extended_paint_area() {
+        assert_eq!(axis(Tiling::Space, 5.0, 32.0, 20.0, 48.0, 88.0), vec![25.0]);
+        assert_eq!(
+            axis(Tiling::Space, -10.0, 50.0, 20.0, 32.0, 72.0),
+            vec![10.0]
+        );
+        assert_eq!(
+            axis(Tiling::Space, 5.0, 32.0, 20.0, 106.0, 146.0),
+            vec![-17.0, 20.0, 57.0, 94.0, 131.0]
+        );
     }
 }
