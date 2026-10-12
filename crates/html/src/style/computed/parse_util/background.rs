@@ -79,7 +79,8 @@ pub(in crate::style::computed) fn background_shorthand_valid(v: &str) -> bool {
 }
 
 /// Фоновые свойства со списком слоёв (css-backgrounds-3 §2.1).
-pub(crate) const BG_LIST_KEYS: [&str; 8] = [
+pub(crate) const BG_LIST_KEYS: [&str; 9] = [
+    "background-blend-mode",
     "background",
     "background-image",
     "background-size",
@@ -89,6 +90,37 @@ pub(crate) const BG_LIST_KEYS: [&str; 8] = [
     "background-clip",
     "background-attachment",
 ];
+
+/// Validate the complete blend list before the cascade stores its first value.
+pub(crate) fn background_blend_valid(raw: &str) -> bool {
+    if matches!(
+        raw.trim(),
+        "inherit" | "initial" | "unset" | "revert" | "revert-layer"
+    ) {
+        return true;
+    }
+    background_layers(raw).iter().all(|value| {
+        matches!(
+            value.trim(),
+            "normal"
+                | "multiply"
+                | "screen"
+                | "darken"
+                | "lighten"
+                | "overlay"
+                | "color-dodge"
+                | "color-burn"
+                | "hard-light"
+                | "soft-light"
+                | "difference"
+                | "exclusion"
+                | "hue"
+                | "saturation"
+                | "color"
+                | "luminosity"
+        )
+    })
+}
 
 /// Слои фона: значение режется по запятым ВНЕ скобок.
 ///

@@ -569,6 +569,11 @@ pub struct Computed {
     /// Сырая запись градиента фона: источник для слоя-картинки там, где
     /// градиент рисуется плиткой (фон ряда таблицы).
     pub gradient_raw: Option<String>,
+    /// CSS Compositing 1: each image blends with the isolated background stack.
+    pub(crate) background_blend: Option<String>,
+    /// Resolved opaque, constant background stacks retain their clip regions.
+    pub(crate) flat_text_background: Option<Color>,
+    pub(crate) flat_border_background: Option<Color>,
     /// Градиент фона с длинами в единицах шрифта (`green 4em`): позиция
     /// стопа в `em` разбором не читается и терялась (стоп становился «без
     /// позиции»). Ждёт своего кегля и переразбирается в `resolve_em`

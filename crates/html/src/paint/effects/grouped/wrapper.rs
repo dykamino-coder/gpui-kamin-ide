@@ -30,7 +30,21 @@ pub(crate) fn grouped_wrapper(
     wrapper.spill = pure_isolation || mask_geometry::unclipped(c);
     wrapper.blur = blur;
     wrapper.blend = u32::from(blend);
-    wrapper.mask = mask;
+    wrapper.mask = mask.map(|raw| {
+        // A mask wrapper can be built from the element's own style before
+        // the normal inherited-style resolution. Resolve gradient lengths
+        // here too; background and mask images share CSS Values 4 §6.1.1.
+        if raw.contains("gradient(") {
+            let mut own = c.clone();
+            own.bg_image = None;
+            own.gradient_raw = None;
+            own.mask_image = Some(raw);
+            own.resolve_image_lengths();
+            own.mask_image.unwrap()
+        } else {
+            raw
+        }
+    });
     // Наружные тени коробки с `border-shape` повторяют фигуру и лежат
     // СНАРУЖИ неё — под буфером группы и вне его маски (css-borders-4
     // §border-shape-shadow-interaction; Blink `PaintNormalBoxShadow`, ветка
