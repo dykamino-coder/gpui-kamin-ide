@@ -33,6 +33,7 @@ mod flat_vector;
 mod float_geometry;
 mod oriented_vector;
 mod sampling;
+pub(crate) mod single_corner;
 use crate::paint::background::float_geometry::rrect_of;
 pub use float_geometry::rounded_float;
 mod mask_composite;
@@ -41,6 +42,7 @@ mod angle;
 mod conic;
 mod sources;
 pub use sources::{key, key_exif, source};
+mod gradient_geometry;
 mod gradient_raster;
 mod svg_fragment;
 

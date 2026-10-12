@@ -15,6 +15,8 @@ pub(crate) use gradient_stop::{
 };
 
 mod convert;
+mod direct_gradient;
+pub(crate) use direct_gradient::DirectGradient;
 mod functions;
 mod gradient_stop;
 mod icc;
