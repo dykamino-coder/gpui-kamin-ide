@@ -33,6 +33,7 @@ pub fn emphasis_spans(
                 _ => normal * size,
             };
             out.push(crate::text::paragraph::EmphSpan {
+                ruby: crate::text::ruby::layers::current(),
                 range: at..end,
                 // Повёрнутый абзац вертикального письма (`rotated` — поворот
                 // против часовой, `sideways-lr`): «над» строкой после
@@ -79,6 +80,11 @@ pub fn emphasis_spans(
                         .to_hsla()
                 }),
             });
+        }
+        if let Some(span) = out.last().filter(|span| span.range.end == end)
+            && let Some(ruby) = &span.ruby
+        {
+            ruby.mark(span.under, span.size);
         }
         at = end;
     }

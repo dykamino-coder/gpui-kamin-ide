@@ -89,11 +89,17 @@ impl Paragraph {
                 // прогона и растит строку, только выходя за неё.
                 for EmphSpan {
                     range,
+                    ruby,
                     under,
                     size: h,
                     ..
                 } in &self.emph_spans
                 {
+                    // Ruby's parent line accounts for the complete annotation
+                    // layer; growing the technical base paragraph counts it twice.
+                    if ruby.is_some() {
+                        continue;
+                    }
                     if range.end <= line.range.start || range.start >= line.range.end {
                         continue;
                     }

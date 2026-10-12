@@ -88,6 +88,7 @@ impl Paragraph {
         let flow = self.flow.clone();
         let atom_fit = self.atom_fit.clone();
         let ruby_base_sink = self.ruby_base_sink.clone();
+        let ruby_layers = self.ruby_layers.clone();
         let id = window.request_measured_layout_with_physical_baselines(
             gpui::Style::default(),
             move |known, available, window, _cx| {
@@ -125,6 +126,7 @@ impl Paragraph {
                 // justification. Its intrinsic probe must use the same rules
                 // as the paragraph that later places the base/annotation.
                 probe.ruby_unit = ruby_unit;
+                probe.ruby_layers = ruby_layers.clone();
                 probe.ruby_justify = ruby_justify;
                 probe.emph_spans = emph_spans.clone();
                 probe.box_spans = box_spans.clone();

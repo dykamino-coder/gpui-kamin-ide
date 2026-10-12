@@ -3,6 +3,7 @@
 mod alignment;
 mod flow_items;
 mod ruby_boxes;
+pub(crate) mod ruby_normalize;
 pub(super) use crate::dom::fixup_tree::alignment::align_self_from_dom_parent;
 pub(super) use crate::dom::fixup_tree::alignment::grid_table_items_keep_stretch;
 pub(super) use crate::dom::fixup_tree::flow_items::flex_items_lose_float;

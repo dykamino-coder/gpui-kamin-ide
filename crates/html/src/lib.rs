@@ -40,6 +40,8 @@ pub use text::fonts;
 pub use text::metrics;
 pub mod render;
 pub use interactive::scroll;
+#[doc(hidden)]
+pub use interactive::scrollbars::theme::set_scrollbar_capture_mode;
 pub use interactive::select;
 pub mod svg;
 pub use style::values::value;
