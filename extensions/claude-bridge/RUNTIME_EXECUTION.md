@@ -5,6 +5,11 @@
 [`runtime-issues/INC-*.md`](runtime-issues/). Подробные факты, причины,
 ограничения и acceptance остаются в исходных карточках и здесь не дублируются.
 
+Сверка всей очереди на 2026-10-12 и handoff каждого остатка:
+[RUNTIME_BACKLOG.md](RUNTIME_BACKLOG.md). Сводка не начинает новую пачку,
+не принимает runtime outcomes и не меняет историю прежних запусков. Новые
+incidents после её source snapshot остаются входными данными следующей сверки.
+
 Полный принятый runtime backlog в `origin/main` состоит из BR-реестра ниже и
 всех незакрытых INC-карточек, включая ещё не выбранные в пачку. Автор задачи
 сам завершает её [регистрацию](../../CONTRIBUTING.md#task-registration) через
@@ -41,7 +46,12 @@ merge Diagnostic PR. Отсутствие PR реализации или стр�
 - `observation` — только заранее определённая полевая проверка;
 - `none` — новых PR по задаче сейчас не требуется.
 
-## Текущая пачка `RV-2026-09-29` — реализация слита, приёмка открыта
+## Текущая пачка `RV-2026-09-29` — остаток прежнего snapshot, приёмка открыта
+
+На 2026-10-12 это последний **зафиксированный здесь** execution snapshot,
+а не состав всей текущей очереди и не утверждение, что более поздних PR не было.
+Октябрьские merged результаты и незакрытые INC учитываются в обзоре выше;
+общий новый запуск оформляет новую coordination-пачку, сохраняя эту в истории.
 
 **Status:** verification pending. **Snapshot:** `origin/main` `53439c554b5f979bfbddbf9a857c0342a6353fac`
 (релиз KaminIDE 1.0.59 / server 6.3.136). Открытых PR на момент snapshot нет.
@@ -75,7 +85,7 @@ BR-31 — по доставке в webview. После каждого merge вы
   server/browser, у мейнтейнера такого контура нет; шаг помечен как
   owner-only post-merge observation.
 - **BR-02**, **BR-17** — research/operational PR вне поручения этой пачки.
-- **INC-2026-0011, -0020, -0025, -0043, -0054** (P1 без PR решения) и 42
+- **На исходном snapshot:** INC-2026-0011, -0020, -0025, -0043, -0054 (P1 без PR решения) и 42
   карточки P2 — остаются принятым backlog. Каждая требует собственного
   research или evidence, не покрытого automated-гейтами этой пачки; включение
   их в пачку без этого дало бы speculative fix, что запрещено разделом
@@ -200,7 +210,7 @@ production-run требует repository secrets и отдельный след�
 | [BR-19](RUNTIME_RELIABILITY.md#br-19--treat-shell-disconnect-as-lifecycle-cancellation-not-extension-crash) | ready | verify | lifecycle RPC | PR #146 merged | Живой Windows disconnect/reconnect без ложного crash; task-specific evidence |
 | [BR-20](RUNTIME_RELIABILITY.md#br-20--restore-complete-claude-plan-usage-windows) | done | none | account usage | none | PR #202 in `main`; authenticated Podman CLI/dashboard/Account gate passed on exact head |
 | [BR-21](RUNTIME_RELIABILITY.md#br-21--define-and-reconcile-dashboard-analytics-semantics) | ready | research | analytics | none | Сначала metric-contract decision PR; child PR ниже |
-| [BR-22](RUNTIME_RELIABILITY.md#br-22--keep-live-chat-render-window-populated-by-drawable-rows) | blocked | verify | chat history | paired private diagnostic dumps | Classification одного расходящегося drawable path |
+| [BR-22](RUNTIME_RELIABILITY.md#br-22--keep-live-chat-render-window-populated-by-drawable-rows) | ready | research | chat history | none для source/synthetic research; paired dumps для historical attribution | Current drawable-path classification; BR-16 ждёт результат, Windows fix gate сохранён |
 | [BR-23](RUNTIME_RELIABILITY.md#br-23--make-session-complete-notifications-transient-and-turn-scoped) | ready | change | notifications | PR #161 и regression fix #164 merged | Отдельный explicit transient host contract; текущий toast всё ещё закрывается вручную |
 | [BR-24](RUNTIME_RELIABILITY.md#br-24--bound-and-reconcile-lost-webview-invoke-replies) | waiting | change | invoke transport | diagnostics PR #201 merged; production observation + BR-31 R6 | Behavioral bounded invoke/reconciliation fix with Windows CEF gate |
 | [BR-25](RUNTIME_RELIABILITY.md#br-25--verify-agents-view-delivery-and-rehydration-after-reveal) | waiting | verify | Agent Teams UI | BR-31 R6 ещё открыт; baseline + BR-27 + BR-26 done | Completion gate без repaint workaround после BR-31 R6 |
@@ -248,6 +258,11 @@ JSONL analytics.
 
 ## Следующие планируемые пачки
 
+Ниже сохранены исторические направления выбора, **не актуальный список
+неисправленного кода**. #146/#147/#148/#152/#200/#201/#202/#203 уже merged;
+их текущий outcome — в реестре и обзоре. При общем запуске выбирать по ним,
+а не повторять старые implementation/diagnostic PR из направлений ниже.
+
 Они не входят в verification snapshot `RV-2026-09-06` и не запускаются автоматически:
 
 - **B — Agent Teams completion + independent fixes:** BR-31 → BR-25 completion
@@ -256,8 +271,8 @@ JSONL analytics.
   diagnostics, BR-18A, BR-11, BR-08, BR-06 (после BR-31) и BR-02;
 - **conditional:** BR-21A–E, BR-07, BR-16, BR-03 и любой child из
   BR-22/BR-24/BR-28 только после их prerequisites;
-- **owner-blocked:** BR-12 deployment inventory, BR-13 migration proof и
-  BR-22 evidence collection.
+- **owner-blocked:** BR-12 deployment inventory, BR-13 migration proof;
+  historical BR-22 evidence collection не блокирует independent source research.
 
 Перед продвижением следующей пачки maintainer повторно сверяет её с актуальным
 `origin/main`, открытыми PR и новыми incidents. Продвижение оформляется

@@ -113,7 +113,24 @@ pub(super) fn build_band_kid(
     // Вырезы полос — строкам ЭТОЙ коробки, от её верха (шаг F4):
     // `inline::inherit` начинает слитый стиль с собственного, и
     // вырезы доезжают до прямых строк коробки.
-    if shapes.is_some() {
+    // CSS Writing Modes §3.2: changing writing-mode establishes an independent
+    // formatting context. Blink block_layout_algorithm.cc:1545 clears its
+    // exclusion space; parent bands use different axes and cannot cut its lines.
+    let child_vertical = copy.style.vertical.unwrap_or(vertical);
+    let same_writing_mode = child_vertical == vertical
+        && (!vertical
+            || copy
+                .style
+                .vertical_rl
+                .unwrap_or(inherited.vertical_rl == Some(true))
+                == (inherited.vertical_rl == Some(true)))
+        && (!vertical
+            || copy
+                .style
+                .sideways
+                .unwrap_or(inherited.sideways == Some(true))
+                == (inherited.sideways == Some(true)));
+    if shapes.is_some() && same_writing_mode {
         copy.style.flow_shapes = shapes;
     }
     let table = copy.tag == "table"

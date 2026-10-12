@@ -16,6 +16,7 @@ impl Frame {
         }
         // Probes exclude ancestor sticky/scroll projections. Use the same
         // coordinate space for a nested scrollport's origin (Overflow 3 §2.2).
+        let snap_bounds = bounds;
         let mut bounds = bounds;
         bounds.origin -= super::exact_probe::sticky_shift();
         let boxes = self.boxes.borrow();
@@ -151,6 +152,7 @@ impl Frame {
                 c,
                 areas.into_iter().map(|(_, area)| area),
                 handle,
+                snap_bounds,
                 self.insets.get(),
                 self.range.get(),
             );
