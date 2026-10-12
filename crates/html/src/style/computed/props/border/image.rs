@@ -12,12 +12,16 @@ impl Computed {
     /// <ширина> / <вылет>` и укладку в конце. Отдельные свойства дополняют ту
     /// же запись, поэтому она заводится по первому же из них.
     pub(crate) fn set_border_image(&mut self, name: &str, v: &str) {
+        // CSS Backgrounds 3 §6.7: the shorthand resets omitted longhands.
+        if name == "border-image" {
+            self.border_image = None;
+        }
         let mut image = self.border_image.clone().unwrap_or(BorderImage {
             src: String::new(),
             slice: [BorderImageSlice::Pct(1.0); 4],
             fill: false,
             width: [BorderImageWidth::Times(1.0); 4],
-            outset: [0.0; 4],
+            outset: [BorderImageWidth::Px(0.0); 4],
             repeat: (Tiling::None, Tiling::None),
         });
         let mut set = |part: &str, value: &str| match part {
@@ -79,11 +83,16 @@ impl Computed {
                 }
             }
             "border-image-outset" => {
-                let one = |t: &str| match Len::parse(t) {
-                    Some(Len::Px(v)) => Some(v),
-                    // Голое число — тоже множитель толщины рамки, но её здесь
-                    // ещё нет; берём как точки, это ближе всего к правде.
-                    _ => t.parse().ok(),
+                // §6.4: a number multiplies the corresponding computed border
+                // width. Preserve its type until that width is available.
+                let one = |t: &str| {
+                    if let Ok(k) = t.parse::<f32>() {
+                        return (k >= 0.0).then_some(BorderImageWidth::Times(k));
+                    }
+                    match Len::parse(t) {
+                        Some(Len::Px(v)) if v >= 0.0 => Some(BorderImageWidth::Px(v)),
+                        _ => None,
+                    }
                 };
                 let words: Vec<&str> = value.split_whitespace().collect();
                 if let Some(sides) = four(&words, one) {

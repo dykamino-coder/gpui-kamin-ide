@@ -46,6 +46,11 @@ impl Computed {
                 || token == "hidden"
                 || border_style(token)
                 || line_width(token).is_some()
+                // CSS Backgrounds 3 §4.1 / Color 4 #currentcolor-color:
+                // Blink css_parsing_utils.cc:2779-2821 consumes a deferred
+                // currentColor as a <color>, resolved after inheritance;
+                // Color::parse cannot resolve it while parsing the shorthand.
+                || token.eq_ignore_ascii_case("currentcolor")
                 || Color::parse(token).is_some()
         };
         if !split_outside_parens(v)
@@ -66,7 +71,7 @@ impl Computed {
                     st += 1;
                 } else if line_width(t).is_some() {
                     w += 1;
-                } else if Color::parse(t).is_some() {
+                } else if Color::parse(t).is_some() || t.eq_ignore_ascii_case("currentcolor") {
                     c += 1;
                 }
             }
@@ -157,3 +162,6 @@ impl Computed {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
