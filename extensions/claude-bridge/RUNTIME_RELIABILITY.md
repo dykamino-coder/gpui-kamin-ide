@@ -1,5 +1,11 @@
 # Claude Bridge runtime reliability backlog
 
+Остатки на 2026-10-12, доступный evidence и конкретные следующие gates собраны
+в [RUNTIME_BACKLOG.md](RUNTIME_BACKLOG.md). Технические описания ниже сохраняют
+свои исходные source baselines; слово `ready` в старой BR-карточке не отменяет
+уже merged implementation или последующую обязательную verification из
+[исполняемого реестра](RUNTIME_EXECUTION.md). Это не новый запуск задач.
+
 ## Scope and evidence policy
 
 Здесь ведутся только проблемы KaminIDE/Claude Bridge runtime. Содержимое и
@@ -1333,6 +1339,15 @@ BR-01 желателен для корреляции с runtime events. **Accept
 automated differential/render tests + Windows CEF runtime gate.
 **Windows runtime merge gate:** required for a later functional fix; research alone does not assert a fix.
 
+**Handoff 2026-10-12:** source/synthetic research доступен без старого paired
+capture. Сопоставить predicate/window/projection на свежем `main`, построить
+long-history/stream/question fixtures и сохранить первый расходящийся drawable
+path. Исторический screenshot без paired dumps остаётся неклассифицированным.
+Отсутствие старых dumps не блокирует этот research, но не разрешает выбирать
+произвольный fix или завершать BR-16 до classification. Новый controlled case
+может обосновать свой bounded fix с исходным Windows gate; synthetic
+non-reproduction не выдаётся за объяснение старого empty-window события.
+
 Наблюдаемый 24 августа screenshot локализует отказ уже после загрузки данных:
 
 - Console и activity state продолжают обновляться, поэтому agent/PTY не
@@ -1363,8 +1378,9 @@ session. Уже существующий `DiagnosticButton` записывает
 reconnect или compaction. Payload previews перед передачей redacted; tokens,
 prompts и tool output не публикуются.
 
-Будущий fix обязан сделать один predicate/source of truth для «занимает слот и
-рисуется», а не пополнять очередной несвязанный deny-list. Tests строят окно из
+Если classification подтверждает predicate divergence, bounded fix должен
+согласовать «занимает слот и рисуется», а не пополнять несвязанный deny-list.
+Для другого доказанного boundary выбрать соответствующий fix. Tests строят окно из
 более чем 150 строк каждого non-rendering/unknown/system/attachment/sidechain
 shape, длинный live tool burst, stub→canonical hand-off и cache hit/miss. Для
 непустой loaded session invariant: mounted tail содержит хотя бы последнюю

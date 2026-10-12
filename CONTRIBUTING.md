@@ -35,6 +35,15 @@ calls не выполняются. Credentials не передаются ни в
 готовый Change/Fix PR по `docs/MAINTAINER_PR_FLOW.md`. Diagnostic-only merge
 не вызывает release и не означает устранение проблемы.
 
+Текущий обзор BR/INC и остаточных gates:
+[RUNTIME_BACKLOG.md](extensions/claude-bridge/RUNTIME_BACKLOG.md). Это датированная
+маршрутизация, а не отдельное хранилище статусов. Для постановки/уточнения
+указать, что уже доступно в public source/private package, что можно исследовать
+сейчас и каких конкретных данных не хватает **для закрытия**. Unavailable old
+artifacts не обещать восстановить; historical attribution отделять от controlled
+reproduction и от приёмки текущего контракта. Уточнение product consumer или
+deployment-only observation не заменять общим запросом «пришлите логи».
+
 Каждый новый incident использует собственный path, поэтому его Diagnostic PR
 не меняет общий `extensions/claude-bridge/RUNTIME_EXECUTION.md`. Все карточки
 `INC-*.md` с незакрытым статусом после merge автоматически входят в backlog
