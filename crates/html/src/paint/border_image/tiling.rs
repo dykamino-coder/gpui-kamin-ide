@@ -7,7 +7,8 @@ use crate::style::computed::Tiling;
 /// Растянутый кусок — это один прямоугольник во всю полосу. Мостящийся (`repeat`,
 /// `round`, `space`) режется на копии своего размера: вдоль полосы их столько,
 /// сколько влезает, поперёк кусок всё равно растягивается.
-pub(super) type Cell = ((f32, f32, f32, f32), ((f32, f32), (f32, f32)));
+/// Full destination tile and the visible region; clipping must not resize it.
+pub(super) type Cell = ((f32, f32, f32, f32), (f32, f32, f32, f32));
 
 pub(super) fn pieces(
     mode: (Tiling, Tiling),
@@ -29,19 +30,18 @@ pub(super) fn pieces(
     let mut out = vec![];
     for (oy, h) in &ys {
         for (ox, w) in &xs {
-            // Копия не выходит за свою полосу: девятка клипается по областям
-            // (css-backgrounds-3 §6.2), а `repeat` кладёт копии от середины и
-            // крайние выступают. Видимой части копии отвечает та же ДОЛЯ
-            // исходного куска — обрезанная плитка показывает свой край, а не
-            // сжатый целый кусок.
+            // CSS Backgrounds 3 §6.6 clips tiles to their nine-piece region.
+            // Keep the full tile: rounding a fractional source crop before
+            // scaling changes its texel mapping (Blink DrawImageTiled).
             let (x0, x1) = (ox.max(0.0), (ox + w).min(dw));
             let (y0, y1) = (oy.max(0.0), (oy + h).min(dh));
             if x1 <= x0 || y1 <= y0 {
                 continue;
             }
-            let fx = ((x0 - ox) / w, (x1 - ox) / w);
-            let fy = ((y0 - oy) / h, (y1 - oy) / h);
-            out.push(((dx + x0, dy + y0, x1 - x0, y1 - y0), (fx, fy)));
+            out.push((
+                (dx + ox, dy + oy, *w, *h),
+                (dx + x0, dy + y0, x1 - x0, y1 - y0),
+            ));
         }
     }
     out
@@ -81,8 +81,11 @@ pub(super) fn along(mode: Tiling, span: f32, piece: f32) -> Vec<(f32, f32)> {
         }
         // `repeat` мостит копиями своего размера от СЕРЕДИНЫ полосы.
         Tiling::Repeat => {
-            let count = (span / piece).ceil().max(1.0).min(MAX);
-            let first = (span - count * piece) / 2.0;
+            // §6.6 step 3 centers ONE tile, independent of tile-count parity.
+            // Blink ComputeTileParameters uses (destination - source) / 2.
+            let center = (span - piece) / 2.0;
+            let first = center - (center / piece).ceil() * piece;
+            let count = ((span - first) / piece).ceil().max(1.0).min(MAX);
             (0..count as u32)
                 .map(|i| (first + i as f32 * piece, piece))
                 .collect()

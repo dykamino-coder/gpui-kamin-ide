@@ -17,7 +17,7 @@ use tiling::pieces;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 mod sampling;
-use crate::paint::border_image::sampling::paint_slice;
+use crate::paint::border_image::sampling::{destination_bounds, paint_slice};
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled, px};
 
 /// Слой рамки-картинки поверх коробки.
@@ -167,22 +167,24 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                         };
                         let cells =
                             pieces(image.repeat, (dx, dy, dw, dh), unit, (col == 1, row == 1));
-                        for (cell, (fx, fy)) in cells {
-                            // Источник обрезанной копии — та же доля куска.
-                            let part = (
-                                sx + fx.0 * sw,
-                                sy + fy.0 * sh,
-                                (fx.1 - fx.0) * sw,
-                                (fy.1 - fy.0) * sh,
-                            );
-                            paint_slice(
-                                window,
-                                &raster,
-                                (iw, ih),
-                                matches!(found, crate::paint::background::Source::Raster(_)),
-                                part,
-                                cell,
-                                pixelated,
+                        for (cell, visible) in cells {
+                            let clip = destination_bounds(window, visible);
+                            window.with_content_mask(
+                                Some(gpui::ContentMask { bounds: clip }),
+                                |window| {
+                                    paint_slice(
+                                        window,
+                                        &raster,
+                                        (iw, ih),
+                                        matches!(
+                                            found,
+                                            crate::paint::background::Source::Raster(_)
+                                        ),
+                                        (sx, sy, sw, sh),
+                                        cell,
+                                        pixelated,
+                                    );
+                                },
                             );
                         }
                     }
