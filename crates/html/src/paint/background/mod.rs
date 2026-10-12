@@ -160,22 +160,25 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
     }
     let style = c.clone();
     Some(
-        exact_layer::ExactLayer::new(move |bounds: Bounds<Pixels>, window: &mut gpui::Window| {
-            clip::paint(&style, bounds, window, |style, window| {
-                if style.bg_fixed == Some(true) {
-                    // Плитка меряется и отсчитывается от ОБЛАСТИ ПРОСМОТРА,
-                    // а красится только внутри своей коробки: сдвиг между
-                    // ними держит сам `paint_tiles`.
-                    let view = Bounds {
-                        origin: gpui::point(px(0.0), px(0.0)),
-                        size: window.viewport_size(),
-                    };
-                    paint_tiles(style, view, Some(bounds), window);
-                } else {
-                    paint_area(style, bounds, window);
-                }
-            });
-        })
+        exact_layer::ExactLayer::inset(
+            c.bg_border_insets.unwrap_or([0.0; 4]),
+            move |bounds: Bounds<Pixels>, window: &mut gpui::Window| {
+                clip::paint(&style, bounds, window, |style, window| {
+                    if style.bg_fixed == Some(true) {
+                        // Плитка меряется и отсчитывается от ОБЛАСТИ ПРОСМОТРА,
+                        // а красится только внутри своей коробки: сдвиг между
+                        // ними держит сам `paint_tiles`.
+                        let view = Bounds {
+                            origin: gpui::point(px(0.0), px(0.0)),
+                            size: window.viewport_size(),
+                        };
+                        paint_tiles(style, view, Some(bounds), window);
+                    } else {
+                        paint_area(style, bounds, window);
+                    }
+                });
+            },
+        )
         .into_any_element(),
     )
 }

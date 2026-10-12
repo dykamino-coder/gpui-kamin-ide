@@ -26,6 +26,7 @@ pub(super) fn table_outer_box(
     if needs_clone {
         let mut c = inherited.clone();
         if collapse {
+            c.bg_border_insets = Some(outer_win.map(|width| width / 2.0));
             c.border_width = Default::default();
             c.border_visible = [None; 4];
             // §17.6.2: внутрь таблицы уходит ПОЛОВИНА её кромки. Паддингом,
