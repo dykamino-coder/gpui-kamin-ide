@@ -87,9 +87,10 @@ impl Paragraph {
             // слова просто встают по своим местам.
             if align == Align::Justify
                 || body.contains('\u{9}')
-                || self.word_spacing != px(0.)
-                || !self.word_spans.is_empty()
-                || self.letter_spans_diverge()
+                || (!self.joined_spacing()
+                    && (self.word_spacing != px(0.)
+                        || !self.word_spans.is_empty()
+                        || self.letter_spans_diverge()))
                 || !self.shift_spans.is_empty()
                 || !self.rel_spans.is_empty()
                 || !self.edge_spans.is_empty()
