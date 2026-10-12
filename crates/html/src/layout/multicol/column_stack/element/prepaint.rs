@@ -63,37 +63,12 @@ impl ColumnStack {
         &mut self,
         bounds: Bounds<Pixels>,
         col_w: f32,
-        plan: &Vec<Frag>,
-        spans: &Vec<(usize, f32)>,
+        plan: &[Frag],
+        spans: &[(usize, f32)],
         step: f32,
     ) {
-        if let Some(items) = &self.gap_items {
-            let lines = self.lines_plan.borrow();
-            let mut used = vec![0usize; lines.len()];
-            for f in plan {
-                if let Some(u) = used.get_mut(f.col / self.count) {
-                    *u = (*u).max(f.col % self.count + 1);
-                }
-            }
-            let mut items = items.borrow_mut();
-            for (l, &(ly, lh)) in lines.iter().enumerate() {
-                for c in 0..used[l].max(1) {
-                    items.push(Bounds {
-                        origin: point(
-                            bounds.origin.x + px(c as f32 * step),
-                            bounds.origin.y + px(ly),
-                        ),
-                        size: size(px(col_w), px(lh)),
-                    });
-                }
-            }
-            for &(kid, sy) in spans {
-                items.push(Bounds {
-                    origin: point(bounds.origin.x, bounds.origin.y + px(sy)),
-                    size: size(bounds.size.width, px(self.children[kid].h)),
-                });
-            }
-        }
+        let _ = step;
+        self.collect_gap_geometry(bounds, col_w, plan, spans);
     }
 
     pub(super) fn prepaint_frags(
@@ -102,7 +77,7 @@ impl ColumnStack {
         cx: &mut App,
         bounds: Bounds<Pixels>,
         col_w: f32,
-        plan: &Vec<Frag>,
+        plan: &[Frag],
         step: f32,
     ) {
         for f in plan {

@@ -58,7 +58,9 @@ pub(crate) fn multicol_column_stack(
                 .map(|(_, s)| (s.0 / per).ceil() as usize)
                 .max()
                 .unwrap_or(0);
-            (span + 2).max(cols as usize).min(48)
+            // A spanner can leave a short fragment in every column of the first row.
+            // Reserve those copies in addition to the full-height rows.
+            (span + cols as usize + 1).min(48)
         }
         None => cols.max(1) as usize,
     };
@@ -104,9 +106,14 @@ pub(crate) fn multicol_column_stack(
     // спаннеров из стопки (`ColumnStack::gap_items`);
     // простая полоса `rule` тогда не рисуется. Без рядов —
     // как прежде (`multicol-rule-*` не трогаются).
-    let gap_spec = rows
-        .filter(|r| r.wrap)
-        .and_then(|_| multicol_gap_rule_spec(e, &merged, opts, used_gap, row_gap));
+    let extended_rules = rows.is_some_and(|r| r.wrap)
+        || e.style.row_rule_visible == Some(true)
+        || e.style.column_rule_break.is_some()
+        || e.style.column_rule_inset.is_some()
+        || e.style.column_rule_visibility.is_some();
+    let gap_spec = extended_rules
+        .then(|| multicol_gap_rule_spec(e, &merged, opts, used_gap, row_gap))
+        .flatten();
     let gap_items = gap_spec
         .as_ref()
         .map(|_| crate::paint::gap_rules::gap_items_for(e.node_id ^ opts.doc_salt ^ 0x4D43_4F4C));

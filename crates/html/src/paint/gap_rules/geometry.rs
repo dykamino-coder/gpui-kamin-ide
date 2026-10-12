@@ -1,4 +1,6 @@
 //! Геометрия правил промежутков: дорожки и прогоны.
+mod multicol;
+pub(super) use multicol::multicol_runs;
 mod lines;
 pub(super) use lines::line_runs;
 

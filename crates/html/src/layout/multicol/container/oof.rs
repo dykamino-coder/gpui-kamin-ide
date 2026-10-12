@@ -91,7 +91,7 @@ pub(super) fn column_stack_div(
     nest_rows: Option<f32>,
     nest_phase: f32,
     fixed: Option<f32>,
-    gap_items: &Option<std::rc::Rc<std::cell::RefCell<Vec<gpui::Bounds<gpui::Pixels>>>>>,
+    gap_items: &Option<crate::paint::gap_rules::GapItems>,
     rule: Option<(f32, gpui::Hsla)>,
     children: Vec<crate::layout::fragment::types::StackChild>,
 ) -> gpui::Div {
@@ -161,7 +161,7 @@ pub(super) fn finish_column_stack(
     col_vert: bool,
     oof_static: Vec<(usize, Element)>,
     gap_spec: Option<crate::paint::gap_rules::GapRuleSpec>,
-    gap_items: Option<std::rc::Rc<std::cell::RefCell<Vec<gpui::Bounds<gpui::Pixels>>>>>,
+    gap_items: Option<crate::paint::gap_rules::GapItems>,
     oof_spots: Vec<std::rc::Rc<std::cell::Cell<crate::layout::positioned::containing_block::Spot>>>,
     mut d: gpui::Div,
 ) -> AnyElement {
