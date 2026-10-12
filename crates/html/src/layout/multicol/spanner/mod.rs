@@ -24,6 +24,11 @@ pub(crate) use hoist::multicol_container;
 /// Атомарные строчные (`inline-flex`/`inline-grid`) — монолиты, но внутрь них
 /// спуск всё равно идёт: гейт осторожный.
 pub(crate) fn parallel_items_inside(c: &Element, depth: u8) -> bool {
+    if let Some(parallel) =
+        crate::layout::fragment::table_bands::serial_table_parallel(c, depth, parallel_items_inside)
+    {
+        return parallel;
+    }
     // Элементы, идущие СТОПКОЙ по блочной оси, рядом не стоят: колонка flex
     // без переноса (css-flexbox-1 §9.3: одна строка, элементы друг под
     // другом) и сетка-стопка (`grid_stack`: одна колонка, ряд = элемент).

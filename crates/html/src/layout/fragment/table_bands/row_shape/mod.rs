@@ -87,17 +87,9 @@ pub(super) fn row_band_shape(
     if let Some((_, gs)) = group_open {
         solid.push((gs, y));
     }
-    // Монолит ВНУТРИ коробки рядов (ячейка с `contain: size`, `break-inside:
-    // avoid` ряда или группы) вместе с заданной высотой — прежний отказ.
-    // Устройства «монолит переполняет колонку» у стопки колонок нет:
-    // `flow.rs:826` при `holds(a, b)` и `a <= from` разреза не берёт, а
-    // следующая ветка режет по краю колонки прямо сквозь монолит. Проба
-    // `target/probe-ftb/p-mo-003.html` — та же геометрия ОДНИМИ блоками
-    // (коробка 200 с двумя `contain: size` по 100 в колонках по 60) — даёт
-    // «красное видно», то есть даже верная мера рисунка не спасает, а
-    // `monolithic-overflow-003` сегодня 2.08: мера сделала бы ЕЙ ХУЖЕ.
-    // Единственный диапазон, которого гейт не считает, — верхняя рамка
-    // (0, top): её положили ДО цикла рядов.
+    // Верхняя рамка (0, top) не является содержимым ряда и не мешает
+    // распределению высоты. Остальные монолиты требуют сохранения точек
+    // ячеек: serial_table_parallel позволяет им переполнить колонку.
     // Страницам этот отказ не нужен: у стопки листов переполнение монолитом
     // своё (`ColumnStack::fill_at`, ветка `paged && placed && cur > target`,
     // crbug 1402540), а «монолитом» здесь оказывается уже верхняя рамка любой
@@ -108,9 +100,6 @@ pub(super) fn row_band_shape(
     // 336 + отбивка + рамка = 432 вместо 336 по border-box (UA-лист
     // css-tables-3 `table { box-sizing: border-box }`), третий пустой лист.
     let mono_inside = solid.iter().any(|&(a, b)| a > 0.01 || b > top + 0.01);
-    if mono_inside && !cx.paged && (spec_h.is_some() || spec_min_h.is_some()) {
-        return None;
-    }
     // Заданная высота — ПОЛ коробки рядов. `box-sizing` — та же мерка, что в
     // рисователе (`table()`, `table_border_box`): у ТЕГА `<table>` высота по
     // border-box (UA-правило css-tables-3 `table { box-sizing: border-box }`),
@@ -126,6 +115,13 @@ pub(super) fn row_band_shape(
         .into_iter()
         .chain(spec_min_h.map(|v| v.max(edges)))
         .fold(0.0f32, f32::max);
+    // Specified table height is a minimum (CSS Tables 3 §3.10). It cannot
+    // invalidate measured cell cuts unless it actually distributes surplus
+    // height to rows. Preserve unbreakable content when the floor is already
+    // satisfied by the intrinsic row grid.
+    if mono_inside && !cx.paged && floor_h > content_h + 0.01 {
+        return None;
+    }
     let h_box = content_h.max(floor_h);
     // Растянутая коробка раздаёт остаток РЯДАМ (CSS 2.1 §17.5.3; css-tables-3
     // §height-distribution-algorithm), и границы рядов уезжают с измеренных

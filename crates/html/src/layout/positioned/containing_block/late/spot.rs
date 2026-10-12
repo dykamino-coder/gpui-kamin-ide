@@ -48,7 +48,13 @@ pub fn spot_place(spot: SpotCell, child: AnyElement) -> AnyElement {
     // §10.6.2, а не §10.6.4. Признак содержащего блока (`ortho_limit`) в
     // роли различителя ЗАМЕРЕН И ОТКАЧЕН: он истинен в обоих случаях,
     // срез 480 пар дал +0/−28. Разводит именно замещаемость.
-    if now.fixed_axes != (false, false) && !now.vertical && (now.own_vertical || !now.replaced) {
+    // Auto insets select a static position, not a different containing block
+    // (CSS Position 3 §2.1/§3.5). Ordinary abspos percentages still resolve
+    // against that block; the zero-height wrapper would resolve height to zero.
+    if !now.vertical
+        && ((now.fixed_axes != (false, false) && (now.own_vertical || !now.replaced))
+            || (now.preserve_cb_geometry && !now.replaced))
+    {
         return LatePlace {
             child: Some(child),
             spot,
