@@ -176,24 +176,7 @@ pub(super) fn rasterize_gradient(src: &str, w: u32, h: u32) -> Option<Arc<Render
 
 /// Угол позиции стопа в долях оборота: `90deg`, `25%`, `0.25turn`, голый `0`.
 pub(super) fn angle_fraction(token: &str) -> Option<f32> {
-    let token = token.trim();
-    if let Some(n) = token.strip_suffix('%') {
-        return n.parse::<f32>().ok().map(|v| v / 100.0);
-    }
-    if let Some(n) = token.strip_suffix("deg") {
-        return n.parse::<f32>().ok().map(|v| v / 360.0);
-    }
-    if let Some(n) = token.strip_suffix("grad") {
-        return n.parse::<f32>().ok().map(|v| v / 400.0);
-    }
-    if let Some(n) = token.strip_suffix("rad") {
-        return n.parse::<f32>().ok().map(|v| v / std::f32::consts::TAU);
-    }
-    if let Some(n) = token.strip_suffix("turn") {
-        return n.parse::<f32>().ok();
-    }
-    // Ноль без единицы — законный угол в CSS; прочие голые числа — нет.
-    (token == "0").then_some(0.0)
+    angle::fraction(token)
 }
 
 /// Расставить позиции стопов по правилам css-images: крайние без позиции — на
@@ -235,15 +218,18 @@ pub(crate) fn place_stops(
 
 /// Доля точки в ПОВТОРЯЮЩЕМСЯ градиенте (css-images-3 §3.6): узор стопов
 /// повторяется бесконечно в обе стороны со сдвигом на разность позиций
-/// последнего и первого стопа. Нулевая разность повторять нечем — спека
-/// объявляет такой градиент вырожденным, и точка остаётся как есть.
+/// последнего и первого стопа. При нулевой разности повторять нечем:
+/// вырожденный повтор красит всю картинку цветом последнего стопа.
 pub(super) fn wrap_repeat(t: f32, stops: &[(crate::style::values::value::Color, f32)]) -> f32 {
     let (Some(first), Some(last)) = (stops.first(), stops.last()) else {
         return t;
     };
     let span = last.1 - first.1;
     if span <= 0.0 {
-        return t;
+        // CSS Images 3 §3.4: coincident repeating stops produce the last
+        // color everywhere, including when their common position is >100%.
+        // Blink CSSGradientValue::NormalizeAndAddStops uses the same rule.
+        return last.1.next_up();
     }
     first.1 + (t - first.1).rem_euclid(span)
 }

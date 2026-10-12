@@ -34,10 +34,16 @@ pub enum Source {
 impl Source {
     pub(crate) fn mask_raster(&self, tile: (f32, f32), scale: f32) -> Option<Arc<RenderImage>> {
         if let Source::Gradient { raw } = self
+            && conic::is_conic(raw)
+        {
+            // CSS Masking §7.8 uses the same concrete gradient as a background.
+            // Sample the angular discontinuity on the device grid, before a
+            // mask is composited; resizing a CSS-sized mask blurs hard rays.
+            return conic::rasterize(raw, tile, scale);
+        }
+        if let Source::Gradient { raw } = self
             && !raw.starts_with("cross-fade(")
-            // Конический градиент и цвет-изображение растрируются своими путями
-            // (`conic`, `sources::raster_color`) — им обычный путь плитки.
-            && !conic::is_conic(raw)
+            // Color images have their own straight-alpha raster path.
             && crate::style::computed::parse_image_color(raw).is_none()
         {
             // CSS Masking section 7.8 uses CSS image sizing, but coverage is sampled

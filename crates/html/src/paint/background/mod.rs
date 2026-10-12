@@ -14,10 +14,12 @@ mod root_area;
 pub use root_area::RootArea;
 
 mod fills;
+mod flat_stack;
 use fills::border_area_fill;
 pub(crate) use fills::border_paint;
 pub use fills::paint_area;
 pub(crate) use fills::text_clip_fill;
+pub(crate) use flat_stack::collapse as collapse_flat_stack;
 
 mod source_types;
 pub use source_types::Source;
@@ -34,6 +36,7 @@ use crate::paint::background::float_geometry::rrect_of;
 pub use float_geometry::rounded_float;
 mod mask_composite;
 pub use mask_composite::{MaskLayer, compose_mask_layers};
+mod angle;
 mod conic;
 mod sources;
 pub use sources::{key, key_exif, source};

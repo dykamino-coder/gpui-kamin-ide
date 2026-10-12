@@ -68,7 +68,9 @@ pub(super) fn raster(
         )
     } else {
         let g = crate::style::computed::parse_gradient(src)?;
-        let angle = g.angle_deg.to_radians();
+        let angle = crate::style::computed::corner_angle(src, css)
+            .unwrap_or(g.angle_deg)
+            .to_radians();
         let (dx, dy) = (angle.sin(), -angle.cos());
         // Absolute stop lengths use the CSS line length, independent of raster density.
         let stops = if g.stops_raw.iter().any(|(_, _, p)| p.is_some()) {
@@ -108,14 +110,11 @@ pub(super) fn raster(
             };
             let t = match mode {
                 Mode::Axis { dx, dy } => {
-                    let t = if centers {
-                        // CSS Images 3 section 3.4.1: project the pixel centre onto
-                        // the gradient line, whose length includes both box axes.
-                        let axis = (css.0 * dx).abs() + (css.1 * dy).abs();
-                        (fx * css.0 * dx + fy * css.1 * dy) / axis.max(f32::EPSILON)
-                    } else {
-                        fx * dx + fy * dy
-                    };
+                    // CSS Images 3 §3.1: project in the image's coordinates,
+                    // not the normalized square of a bitmap. Both axes
+                    // contribute to the line length at any raster density.
+                    let axis = (css.0 * dx).abs() + (css.1 * dy).abs();
+                    let t = (fx * css.0 * dx + fy * css.1 * dy) / axis.max(f32::EPSILON);
                     (t + 0.5).clamp(0.0, 1.0)
                 }
                 Mode::Sweep { from } => {
