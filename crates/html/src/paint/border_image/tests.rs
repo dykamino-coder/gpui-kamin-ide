@@ -1,5 +1,20 @@
 //! Проверки контракта родительского модуля; вынесены для ограничения размера файлов.
 
+#[test]
+fn repeat_centers_one_full_tile_and_clips_its_neighbours() {
+    use crate::style::computed::Tiling;
+    let cells = super::tiling::pieces(
+        (Tiling::Repeat, Tiling::None),
+        (0.0, 0.0, 80.0, 10.0),
+        (40.0, 10.0),
+        (true, false),
+    );
+    assert_eq!(cells.len(), 3);
+    assert_eq!(cells[0], ((-20.0, 0.0, 40.0, 10.0), (0.0, 0.0, 20.0, 10.0)));
+    assert_eq!(cells[1], ((20.0, 0.0, 40.0, 10.0), (20.0, 0.0, 40.0, 10.0)));
+    assert_eq!(cells[2], ((60.0, 0.0, 40.0, 10.0), (60.0, 0.0, 20.0, 10.0)));
+}
+
 /// Вырезка с растяжением: угловой знак образа приходит чистым, без
 /// подмешивания соседей.
 #[test]
