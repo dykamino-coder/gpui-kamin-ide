@@ -156,21 +156,20 @@ impl ColumnStack {
                     .iter()
                     .any(|g| g.kid == f.kid && g.copy == f.copy + 1);
                 let parent = window.content_mask();
-                let root = Bounds {
-                    origin: point(x, y - px(f.from)),
-                    size: size(px(kid.laid_w.get()), px(kid.h)),
-                };
                 window.with_content_mask(Some(mask), |window| {
-                    let scope =
-                        (continued && f.foot <= 0.01 && line_h - f.y - f.h > 0.01).then(|| {
-                            gap_fragment::Scope {
-                                root,
-                                parent,
-                                mask: window.content_mask(),
-                                cut: f32::from(y) + f.h,
-                                end: f32::from(y) + line_h - f.y,
-                            }
-                        });
+                    let cut = f32::from(y) + f.h;
+                    let end = if continued && f.foot <= 0.01 {
+                        cut.max(f32::from(y) + line_h - f.y)
+                    } else {
+                        cut
+                    };
+                    let scope = Some(gap_fragment::Scope {
+                        parent,
+                        mask: window.content_mask(),
+                        start: f32::from(y),
+                        cut,
+                        end,
+                    });
                     crate::layout::fragment::effect_fragment::with(
                         Some(crate::layout::fragment::effect_fragment::Scope {
                             parent,

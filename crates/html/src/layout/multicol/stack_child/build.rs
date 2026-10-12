@@ -63,7 +63,8 @@ pub(super) fn build_copy(
     let frag_gap_key = frag_gap_rules.as_ref().map(|_| {
         let ix = copy_ix.get();
         copy_ix.set(ix + 1);
-        (copy.node_id ^ opts.doc_salt) ^ (ix as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        let key = (copy.node_id ^ opts.doc_salt) ^ (ix as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        crate::paint::gap_rules::fresh_gap_items(key).0
     });
     let mut frag_gap_guard = frag_gap_key.map(crate::paint::gap_rules::GapGuard::enter);
     // css-break-3 §5.5: «Fragmentation … occurs
