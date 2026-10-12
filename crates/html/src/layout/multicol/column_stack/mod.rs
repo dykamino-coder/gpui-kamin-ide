@@ -11,6 +11,7 @@ mod axis;
 pub mod balance;
 pub mod element;
 pub mod fill;
+mod gap_geometry;
 
 pub struct ColumnStack {
     pub(crate) children: Vec<StackChild>,
