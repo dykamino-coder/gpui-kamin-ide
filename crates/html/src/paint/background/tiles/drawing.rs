@@ -103,7 +103,10 @@ pub(crate) fn draw_tiles(
         },
         window,
     );
-    let start = origin(pos, box_size, tile);
+    let start = c.background_position_used(
+        origin(pos, box_size, tile),
+        (box_size.0 - tile.0, box_size.1 - tile.1),
+    );
     let shift = (
         f64::from(f32::from(bounds.origin.x)) - f64::from(f32::from(clip.origin.x)),
         f64::from(f32::from(bounds.origin.y)) - f64::from(f32::from(clip.origin.y)),

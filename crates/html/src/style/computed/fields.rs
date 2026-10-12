@@ -1373,6 +1373,8 @@ pub struct Computed {
     pub bg_image: Option<String>,
     pub bg_size: BgSize,
     pub bg_pos: BgPos,
+    /// Percentage comparisons wait for the possibly negative image free space.
+    pub(crate) bg_position_math: [Option<String>; 2],
     /// `object-position` замещаемого содержимого (css-images-3 §5.2).
     pub object_position: Option<BgPos>,
     /// `object-view-box` (css-images-4 §object-view-box): видимая область
