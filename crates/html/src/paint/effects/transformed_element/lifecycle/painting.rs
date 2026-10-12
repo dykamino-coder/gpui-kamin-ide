@@ -48,7 +48,18 @@ pub(super) fn paint_body(
             f32::from(r.origin.x - raw_origin.x),
             f32::from(r.origin.y - raw_origin.y),
         ),
-        None => (w, h, 0.0, 0.0),
+        None => crate::layout::fragment::effect_fragment::reference_box(Bounds {
+            origin: raw_origin,
+            size: exact,
+        })
+        .map_or((w, h, 0.0, 0.0), |r| {
+            (
+                f32::from(r.size.width),
+                f32::from(r.size.height),
+                f32::from(r.origin.x - raw_origin.x),
+                f32::from(r.origin.y - raw_origin.y),
+            )
+        }),
     };
     let ox = rdx + rw * group.origin.0 + group.origin_px.0.unwrap_or(0.0);
     let oy = rdy + rh * group.origin.1 + group.origin_px.1.unwrap_or(0.0);
@@ -170,7 +181,7 @@ pub(super) fn paint_body(
             matrix.translation[1] += snap(exact.1) - cur.1;
         }
         let child = group.child.as_mut().unwrap();
-        window.with_transformation_masked(matrix, |window| {
+        crate::layout::fragment::effect_fragment::paint(matrix, window, |window| {
             if let Some(exact) = fill_matrix {
                 window.with_css_fill_transform(exact, |window| child.paint(window, cx));
             } else {

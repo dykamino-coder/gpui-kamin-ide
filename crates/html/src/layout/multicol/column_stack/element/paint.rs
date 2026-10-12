@@ -171,7 +171,16 @@ impl ColumnStack {
                                 end: f32::from(y) + line_h - f.y,
                             }
                         });
-                    gap_fragment::with(scope, || el.paint(window, cx));
+                    crate::layout::fragment::effect_fragment::with(
+                        Some(crate::layout::fragment::effect_fragment::Scope {
+                            parent,
+                            fragment: Bounds {
+                                origin: point(x, y),
+                                size: size(px(col_w), px(f.h)),
+                            },
+                        }),
+                        || gap_fragment::with(scope, || el.paint(window, cx)),
+                    );
                 });
             } else {
                 el.paint(window, cx);
