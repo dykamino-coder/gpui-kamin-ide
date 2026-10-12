@@ -49,7 +49,7 @@ pub(super) fn apply_paint(mut d: Div, c: &Computed) -> Div {
     // Фон, обрезанный внутренним краем (`background-clip`), красит не сама
     // коробка, а отдельный слой внутри неё (`render::clip_layer`): коробка в
     // раскладке красится целиком, вместе с рамкой и полями.
-    if c.color_clip().is_none() {
+    if c.color_clip().is_none() && !crate::paint::background::single_corner::eligible(c) {
         if let Some(g) = &c.gradient {
             // Градиенту с размером/повтором/позицией нужна механика плитки —
             // его рисует слой-картинка (см. render::decorations), заливка
