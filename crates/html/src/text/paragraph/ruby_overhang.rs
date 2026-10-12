@@ -8,9 +8,11 @@
 //!   more than the base inset (half the excess for centred annotations);
 //!   the end overhang covers at most half of the following text and never
 //!   text set in a larger font than the base.
-//! - `spaces`: only over adjacent space separators (General Category Zs,
-//!   which includes U+0020, U+00A0 and U+3000), up to the base inset.
+//! - `spaces`: over adjacent space separators, preserved tabs and the blank
+//!   edges of fullwidth punctuation, up to the base inset.
 //! - `none`: never.
+
+mod space_edge;
 
 use super::*;
 use crate::style::computed::RubyOverhang;
@@ -77,28 +79,13 @@ impl Paragraph {
         let text = self.text.as_ref();
         let after = (at + len).min(text.len());
         let segs = self.measure(window);
-        // Run of space separators right before / right after the spacer.
-        let mut pre = at;
-        for (i, c) in text[..at].char_indices().rev() {
-            if !is_space_separator(c) {
-                break;
-            }
-            pre = i;
-        }
-        let mut post = after;
-        for (i, c) in text[after..].char_indices() {
-            if !is_space_separator(c) {
-                break;
-            }
-            post = after + i + c.len_utf8();
-        }
         let prev_text = text[..at].chars().next_back().is_some_and(is_text_char);
         let next_text = text[after..].chars().next().is_some_and(is_text_char);
         match info.mode {
             RubyOverhang::None => (0.0, 0.0),
             RubyOverhang::Spaces => {
-                let pre_w = f32::from(self.span(&segs, pre, at));
-                let post_w = f32::from(self.span(&segs, after, post));
+                let pre_w = self.ruby_space_edge_width(&segs, at, true, window);
+                let post_w = self.ruby_space_edge_width(&segs, after, false, window);
                 if info.align_start {
                     return (0.0, (inset * 2.0).min(space).min(post_w));
                 }
