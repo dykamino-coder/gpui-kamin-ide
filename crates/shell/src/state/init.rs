@@ -6,7 +6,6 @@ use crate::host_link::ShellEvent;
 use crate::state::fs_ops::request_extensions;
 use crate::state::model::RootView;
 use crate::ui::file_list::TreeState;
-use crate::ui::radial_bg::RadialBg;
 use gpui::{AppContext as _, Context};
 use kamin_metrics as m;
 use kamin_theme::ThemeKind;
@@ -220,7 +219,6 @@ impl RootView {
             tree_all_collapsed: false,
             probe_query: None,
             probe_editor_find: false,
-            radial_bg: RadialBg::bake(theme.palette()),
             tx: {
                 crate::updater::check_in_background(tx.clone());
                 tx

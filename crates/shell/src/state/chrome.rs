@@ -1,4 +1,4 @@
-//! Хром окна: радиальный фон и титлбар.
+//! Хром окна: титлбар.
 //!
 //! Куски цепочки `render` перенесены как есть (`plan/100-refactor-250.md`).
 
@@ -7,7 +7,7 @@ use crate::state::consts::CHIP_W_RESERVE;
 use crate::state::model::RootView;
 use crate::ui::session_tabs::session_tabs;
 use crate::ui::titlebar::{TitlebarState, titlebar};
-use gpui::{Bounds, Context, Window, px};
+use gpui::{Context, Window};
 use kamin_theme::Palette;
 
 impl RootView {
@@ -22,11 +22,7 @@ impl RootView {
     where
         E: gpui::ParentElement,
     {
-        root.child(self.radial_bg.layers(Bounds {
-            origin: gpui::point(px(0.), px(0.)),
-            size: window.viewport_size(),
-        }))
-        .child(titlebar(
+        root.child(titlebar(
             p,
             TitlebarState {
                 sidebar_visible: self.sidebar_visible,
