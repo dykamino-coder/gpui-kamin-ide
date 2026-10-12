@@ -175,7 +175,17 @@ pub(crate) fn generic_children(
             crate::paint::gap_rules::painter::GapRulePainter::new(buf, spec).into_any_element(),
         );
     }
+    // The viewport scroll tree is built after the outer document ICB
+    // closes. Its padding box still owns the initial containing block
+    // (CSS 2.1 §10.1), including absolute descendants below body margins.
+    let viewport = e.tag == "html-viewport";
+    if viewport {
+        crate::layout::positioned::containing_block::icb_open();
+    }
     kids.extend(blocks(&children, &merged, opts));
+    if viewport {
+        kids.extend(crate::layout::positioned::containing_block::icb_close());
+    }
     if cb_layer {
         kids.extend(crate::layout::positioned::containing_block::cb_close());
     }
