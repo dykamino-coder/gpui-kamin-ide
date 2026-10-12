@@ -149,9 +149,14 @@ impl Element for ScrollArea {
             parent.record_border_box(tree.node_id, &self.style, paint_bounds);
         }
         child.2.set_decoration_clip(window.content_mask());
-        child
-            .2
-            .within(self.tree.as_deref(), || child.0.prepaint(window, cx));
+        child.2.within(self.tree.as_deref(), || {
+            // CSSOM View §6: retain the fractional scroll translation until
+            // HTML paint snaps final edges, rather than snapping the offset
+            // separately from each descendant's layout box.
+            window.with_exact_element_offset(gpui::point(gpui::px(0.0), gpui::px(0.0)), |window| {
+                child.0.prepaint(window, cx)
+            });
+        });
         if let Some(tree) = self.tree.as_deref()
             && child.2.settle(tree, &self.style, &child.1, paint_bounds)
         {
