@@ -6,6 +6,12 @@ pub(super) fn inherit_containing(parent: &Computed, own: &Computed, c: &mut Comp
     c.first_letter_excluded = own.first_letter_excluded || parent.first_letter_excluded;
     bidi_controls::resolve(parent, c);
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
+    c.icb_scroll_insets = own.icb_scroll_insets.or(parent.icb_scroll_insets);
+    c.cb_scroll_insets = if establishes_cb(parent) {
+        (parent.scroll.used, parent.scroll.native)
+    } else {
+        parent.cb_scroll_insets
+    };
     c.in_multicol = parent.in_multicol
         || ((parent.column_count.is_some()
             || parent.column_width.is_some()

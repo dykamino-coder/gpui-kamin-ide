@@ -44,3 +44,51 @@ fn invalid_scrollbar_color_preserves_the_last_valid_declaration() {
         assert_eq!(c.scroll.colors, valid);
     }
 }
+
+#[test]
+fn initial_opposite_overflow_axis_computes_to_auto_without_becoming_forced() {
+    use crate::style::computed::Overflow;
+    let mut own = Computed::default();
+    own.apply_one("overflow-x", "scroll");
+    let c = crate::style::cascade::inherit::inherit(&Computed::default(), &own);
+    assert_eq!([c.overflow_x, c.overflow_y], [Some(Overflow::Scroll); 2]);
+    assert_eq!(c.scroll.forced, [true, false]);
+    let child = crate::style::cascade::inherit::inherit(&c, &Computed::default());
+    assert_eq!([child.overflow_x, child.overflow_y], [None; 2]);
+}
+
+#[test]
+fn clip_preserves_non_scroll_pairs_and_computes_to_hidden_beside_auto() {
+    use crate::style::computed::Overflow;
+    for (declaration, expected) in [
+        (
+            "visible clip",
+            [Some(Overflow::Visible), Some(Overflow::Clip)],
+        ),
+        (
+            "clip auto",
+            [Some(Overflow::Hidden), Some(Overflow::Scroll)],
+        ),
+    ] {
+        let mut own = Computed::default();
+        own.apply_one("overflow", declaration);
+        let c = crate::style::cascade::inherit::inherit(&Computed::default(), &own);
+        assert_eq!([c.overflow_x, c.overflow_y], expected);
+        assert_eq!(c.scroll.forced, [false; 2]);
+    }
+}
+
+#[test]
+fn root_used_gutter_suppression_does_not_change_explicit_computed_inheritance() {
+    let mut parent = Computed::default();
+    parent.apply_one("scrollbar-gutter", "both-edges  stable");
+    parent.scroll.viewport_root = true;
+    let mut own = Computed::default();
+    own.apply_one("scrollbar-gutter", "inherit");
+    own.apply_one("scrollbar-gutter", "both-edges"); // invalid declaration retains inherit
+    let child = crate::style::cascade::inherit::inherit(&parent, &own);
+    assert_eq!(child.scroll.gutter, Some(2));
+    assert!(!child.scroll.viewport_root);
+    let local = crate::style::cascade::inherit::inherit(&parent, &Computed::default());
+    assert_eq!(local.scroll.gutter, None);
+}

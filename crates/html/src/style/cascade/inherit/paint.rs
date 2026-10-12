@@ -13,6 +13,7 @@ pub(super) fn inherit_paint(
     // на узел, где написан, и дети оставались цветными.
     if c.filter.is_none() {
         c.filter = parent.filter;
+        c.scrollbar_filter_ops = parent.scrollbar_filter_ops.clone();
     }
     // ЕДИНСТВЕННАЯ точка окраски фильтром (каскад цвета не трогает).
     // Красится только ВОЗНИКШЕЕ на этом узле: унаследованный цвет уже

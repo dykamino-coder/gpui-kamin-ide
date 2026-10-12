@@ -13,3 +13,4 @@ pub mod select;
 pub mod sticky;
 
 pub(crate) mod scroll_extent;
+pub(crate) mod scrollbar_gutter;

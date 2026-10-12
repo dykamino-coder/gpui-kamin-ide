@@ -66,6 +66,12 @@ pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> A
     pseudo_line_layers::install(e, &mut merged);
     // Единицы окна разрешаются здесь: размер окна знает только сборщик.
     merged.resolve_viewport(opts.viewport);
+    let gutters = crate::interactive::scroll_extent::classic::model(e.node_id, &merged);
+    merged.scroll.used = gutters.used;
+    merged.scroll.native = gutters.native;
+    if e.tag == "html-viewport" {
+        merged.icb_scroll_insets = Some(gutters.used);
+    }
     orthogonal_inline::resolve(&mut merged, inherited, opts.viewport, e.tag == "html");
     PAINT_VIEWPORT.with(|v| v.set(opts.viewport));
     // Элементы форм рисуются своим набором: без него поле ввода — пустой

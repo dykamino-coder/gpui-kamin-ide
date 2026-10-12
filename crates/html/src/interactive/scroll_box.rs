@@ -17,20 +17,30 @@ pub(crate) fn scrollable(
     inherited: &Computed,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
-    if e.style.scroller {
+    if e.style.scroller || e.tag == "frameset" || crate::render::real_inline(e) {
         return None;
     }
     use crate::style::computed::Overflow;
-    let snap = e.style.snap.axis != 0;
-    let horizontal = e.style.overflow_x == Some(Overflow::Scroll)
-        || snap && e.style.overflow_x == Some(Overflow::Hidden);
-    let vertical = e.style.overflow_y == Some(Overflow::Scroll)
-        || snap && e.style.overflow_y == Some(Overflow::Hidden);
-    if !horizontal && !vertical {
+    // Eligibility follows computed overflow; the initially visible opposite
+    // axis becomes auto even when it has no declaration (Overflow 3 §3).
+    if ![e.style.overflow_x, e.style.overflow_y]
+        .into_iter()
+        .any(|o| matches!(o, Some(Overflow::Scroll | Overflow::Hidden)))
+    {
         return None;
     }
     let scroll_style = crate::style::cascade::inherit::inherit(inherited, &e.style);
+    let snap = scroll_style.snap.axis != 0;
+    let horizontal = scroll_style.overflow_x == Some(Overflow::Scroll)
+        || snap && scroll_style.overflow_x == Some(Overflow::Hidden);
+    let vertical = scroll_style.overflow_y == Some(Overflow::Scroll)
+        || snap && scroll_style.overflow_y == Some(Overflow::Hidden);
+    if !horizontal && !vertical {
+        return None;
+    }
     let mut node = e.clone();
+    node.style.overflow_x = scroll_style.overflow_x;
+    node.style.overflow_y = scroll_style.overflow_y;
     // Слой ICB закрывается раньше, чем `ScrollArea` позовёт `build`, — поэтому
     // выносим кандидатов сейчас, из ещё не отданного в замыкание клона.
     hoist_from_scroll(&mut node, inherited, opts);
@@ -41,14 +51,9 @@ pub(crate) fn scrollable(
     let build = std::rc::Rc::new(
         move |handle: &gpui::ScrollHandle, h: bool, v: bool| -> AnyElement {
             let _depth = DepthScope::enter(depth);
-            // Внутренний узел рисуется без прокрутки: ею занимается лента.
+            // Keep CSS overflow on the native box; `scroller` only prevents
+            // recursive adapters while its ScrollHandle is attached.
             let mut inner = node.clone();
-            if inner.style.overflow_x != Some(Overflow::Hidden) {
-                inner.style.overflow_x = None;
-            }
-            if inner.style.overflow_y != Some(Overflow::Hidden) {
-                inner.style.overflow_y = None;
-            }
             inner.style.scroller = true;
             // Доли высоты коробки — от её СОДЕРЖАЩЕГО блока (CSS 2.1 §10.5,
             // §10.7: «calculated with respect to the height of the generated

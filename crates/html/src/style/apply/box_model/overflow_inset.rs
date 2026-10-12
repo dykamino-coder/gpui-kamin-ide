@@ -157,7 +157,7 @@ pub(super) fn box_overflow(mut d: Div, c: &Computed) -> Div {
     );
     if let Some(m) = c
         .clip_margin
-        .filter(|_| !(scroller && c.clip_margin_box == Some(2)))
+        .filter(|_| !(scroller && (c.clip_margin_box == Some(2) || c.contain_paint == Some(true))))
     {
         let side = |l: Option<Len>| match l {
             Some(Len::Px(v)) => v,
@@ -183,6 +183,7 @@ pub(super) fn box_overflow(mut d: Div, c: &Computed) -> Div {
         };
         d.style().overflow_clip_offset = Some(arr);
     }
+    d = crate::interactive::scrollbar_gutter::apply(d, c);
     // Края двигают только позиционированный элемент. У обычного (`static`)
     // браузер их игнорирует, а мы сдвигали — блок с `top` в потоке уезжал.
     // `translate` (css-transforms-2 §individual-transforms) действует и на
@@ -220,5 +221,5 @@ pub(super) fn box_overflow(mut d: Div, c: &Computed) -> Div {
         }
         return d;
     }
-    box_inset(d, c)
+    crate::interactive::scrollbar_gutter::positioned::apply(box_inset(d, c), c)
 }

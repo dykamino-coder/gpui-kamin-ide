@@ -201,5 +201,5 @@ pub(crate) fn native_paragraph(
     if native {
         native_request.unwrap().built.set(true);
     }
-    para.into_any_element()
+    para.scroll_owner(inherited.self_node).into_any_element()
 }

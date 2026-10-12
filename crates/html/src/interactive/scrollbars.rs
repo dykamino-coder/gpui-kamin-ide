@@ -2,32 +2,24 @@
 //! GPUI provides scrolling but deliberately leaves scrollbar painting to clients.
 mod buttons;
 use crate::style::computed::{Computed, Overflow};
-use gpui::{Bounds, Pixels, ScrollHandle, Window, fill, point, px, rgb, size};
+use crate::style::values::value::Color;
+use gpui::{Bounds, Pixels, ScrollHandle, Window, fill, point, px, size};
 
-pub(crate) fn visible(c: &Computed, handle: &ScrollHandle) -> [bool; 2] {
-    let max = handle.max_offset();
-    let enabled = [
-        c.overflow_x == Some(Overflow::Scroll),
-        c.overflow_y == Some(Overflow::Scroll),
-    ];
-    [
-        enabled[0] && (c.scroll.forced[0] || max.x > px(0.01)),
-        enabled[1] && (c.scroll.forced[1] || max.y > px(0.01)),
-    ]
+pub(crate) fn visible(c: &Computed, selected: [bool; 2]) -> [bool; 2] {
+    let overflow = [c.overflow_x, c.overflow_y];
+    std::array::from_fn(|axis| overflow[axis] == Some(Overflow::Scroll) && selected[axis])
 }
 
 pub(crate) fn paint(
     c: &Computed,
     handle: &ScrollHandle,
+    selected: [bool; 2],
+    range: [f32; 2],
+    insets: [f32; 4],
     bounds: Bounds<Pixels>,
     window: &mut Window,
 ) {
-    // Explicit CSS colors are the first supported scrollbar painting policy.
-    // Automatic platform scrollbars await a viewport and intrinsic-sizing owner.
-    if c.scroll.colors.flatten().is_none() {
-        return;
-    }
-    let bars = visible(c, handle);
+    let bars = visible(c, selected);
     let width = c.scroll.thickness();
     if width == 0.0 || c.hidden == Some(true) {
         return;
@@ -42,54 +34,69 @@ pub(crate) fn paint(
     b.origin.y += px(edge(edges.top));
     b.size.width -= px(edge(edges.left) + edge(edges.right));
     b.size.height -= px(edge(edges.top) + edge(edges.bottom));
-    let (thumb, track) = match c.scroll.colors.flatten() {
-        Some([thumb, track]) => (thumb.to_hsla(), track.to_hsla()),
-        None => (rgb(0xc1c1c1).into(), rgb(0xf1f1f1).into()),
+    let paint_color = |mut color: Color| {
+        for filter in &c.scrollbar_filter_ops {
+            color = filter.apply(color);
+        }
+        color.a *= c.opacity.unwrap_or(1.0);
+        color.to_hsla()
     };
-    let max = handle.max_offset();
+    let color = |r, g, b| Color {
+        r: r as f32 / 255.0,
+        g: g as f32 / 255.0,
+        b: b as f32 / 255.0,
+        a: 1.0,
+    };
+    let (thumb, track) = match c.scroll.colors.flatten() {
+        Some([thumb, track]) => (paint_color(thumb), paint_color(track)),
+        None => (
+            paint_color(color(193, 193, 193)),
+            paint_color(color(241, 241, 241)),
+        ),
+    };
+    let arrows = [
+        paint_color(color(163, 163, 163)),
+        paint_color(color(80, 80, 80)),
+    ];
     let offset = handle.offset();
+    let reversed = super::scrollbar_gutter::reversed(c);
     for axis in 0..2 {
         if !bars[axis] {
             continue;
         }
-        let (length, other, start, maximum) = if axis == 0 {
+        let (length, start, maximum) = if axis == 0 {
             (
-                f32::from(b.size.width),
-                bars[1],
+                f32::from(b.size.width) - insets[0] - insets[2],
                 -f32::from(offset.x),
-                f32::from(max.x),
+                range[0],
             )
         } else {
             (
-                f32::from(b.size.height),
-                bars[0],
+                f32::from(b.size.height) - insets[1] - insets[3],
                 -f32::from(offset.y),
-                f32::from(max.y),
+                range[1],
             )
         };
-        let length = (length - if other { width } else { 0.0 }).max(0.0);
+        let start = if reversed[axis] {
+            maximum - start
+        } else {
+            start
+        };
+        let length = length.max(0.0);
         let lane = if axis == 0 {
             Bounds::new(
-                point(
-                    b.left()
-                        + if other && c.rtl == Some(true) {
-                            px(width)
-                        } else {
-                            px(0.0)
-                        },
-                    b.bottom() - px(width),
-                ),
+                point(b.left() + px(insets[0]), b.bottom() - px(width)),
                 size(px(length), px(width)),
             )
         } else {
             Bounds::new(
                 point(
-                    if c.rtl == Some(true) {
+                    if super::scrollbar_gutter::on_left(c) {
                         b.left()
                     } else {
                         b.right() - px(width)
                     },
-                    b.top(),
+                    b.top() + px(insets[1]),
                 ),
                 size(px(width), px(length)),
             )
@@ -104,7 +111,7 @@ pub(crate) fn paint(
             button,
             start,
             maximum,
-            c.scroll.colors.flatten().map(|_| thumb),
+            (arrows, c.scroll.colors.flatten().map(|_| thumb)),
             window,
         );
         let travel = (length - 2.0 * button).max(0.0);
@@ -134,7 +141,7 @@ pub(crate) fn paint(
     if bars == [true, true] {
         let corner = Bounds::new(
             point(
-                if c.rtl == Some(true) {
+                if super::scrollbar_gutter::on_left(c) {
                     b.left()
                 } else {
                     b.right() - px(width)
