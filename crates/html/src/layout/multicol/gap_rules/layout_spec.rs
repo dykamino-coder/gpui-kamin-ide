@@ -82,7 +82,7 @@ pub(super) fn gap_rule_layout(
             track_px(merged.grid_rows.as_ref()),
             track_px(merged.grid_tracks.as_ref()),
         ),
-        GapLayout::Lines { .. } => (None, None),
+        GapLayout::Lines { .. } | GapLayout::Multicol => (None, None),
     };
     // В вертикальном письме колонки сетки идут по y — тем же поворотом, что и
     // `gap_x`/`gap_y` строкой выше.

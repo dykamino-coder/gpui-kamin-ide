@@ -102,40 +102,7 @@ impl ColumnStack {
             );
             kid.el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
         }
-        if let Some(items) = &self.gap_items {
-            let lines = self.lines_plan.borrow();
-            let mut used = vec![0usize; lines.len()];
-            for f in &plan {
-                if let Some(u) = used.get_mut(f.col / self.count) {
-                    *u = (*u).max(f.col % self.count + 1);
-                }
-            }
-            let mut items = items.borrow_mut();
-            for (l, &(ly, lh)) in lines.iter().enumerate() {
-                for c in 0..used[l].max(1) {
-                    items.push(axis_box(
-                        axis,
-                        bounds.origin,
-                        block_avail,
-                        c as f32 * step,
-                        col_w,
-                        ly,
-                        lh,
-                    ));
-                }
-            }
-            for &(kid, sy) in &spans {
-                items.push(axis_box(
-                    axis,
-                    bounds.origin,
-                    block_avail,
-                    0.0,
-                    inline_avail,
-                    sy,
-                    self.children[kid].h,
-                ));
-            }
-        }
+        self.collect_gap_geometry(bounds, col_w, &plan, &spans);
         *self.plan.borrow_mut() = plan;
         *self.spans_plan.borrow_mut() = spans;
     }
