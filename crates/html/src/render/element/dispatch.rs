@@ -54,6 +54,11 @@ pub(crate) fn dispatch_element(
                 replaced_used_style::inline_percentage_width(&mut copy.style, AVAIL_W.get());
             }
             copy.style.image_orient_none = merged.image_orient_none;
+            crate::layout::replaced::image::inherit_item_metadata(
+                &mut copy.style,
+                &merged,
+                inherited,
+            );
             // Признак определённого блока (§10.5) — от слитого стиля: держатель
             // строится из сырого, и `apply` иначе выбрасывал `height: %`
             // (см. строчный рукав `"img"` в `atom_element`; ячейка и лунки —
