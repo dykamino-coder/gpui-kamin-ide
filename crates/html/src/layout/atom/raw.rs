@@ -10,6 +10,7 @@ use crate::layout::replaced::iframe::{iframe, object_is_document};
 use crate::layout::replaced::image::image_with;
 use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
 use crate::layout::replaced::{replaced_content, svg_percentage_size};
+use crate::paint::effects::grouped::grouped;
 use crate::paint::effects::transform::transformed;
 use crate::render::RenderOpts;
 use crate::style::cascade::inherit::inherit;
@@ -101,7 +102,7 @@ pub(super) fn atom_element_raw(
     if let Some(value) = container_atom(inherited, opts, e) {
         return value;
     }
-    match e.tag.as_str() {
+    let built = match e.tag.as_str() {
         "img" => img_atom(inherited, opts, e),
         // Замещаемые с адресом в СВОЁМ атрибуте: у блочного пути такие рукава
         // есть, у строчного не было, и `<object data>` в строке терял
@@ -214,5 +215,13 @@ pub(super) fn atom_element_raw(
         // возвращать вместе с ними.
         "canvas" => canvas_atom(inherited, e),
         _ => None,
-    }
+    };
+    // CSS Borders 4 shapes replaced content together with its CSS box.
+    built.map(|el| {
+        if crate::render::replaced_tag(e) && e.style.corner_shaped() {
+            grouped(el, &e.style)
+        } else {
+            el
+        }
+    })
 }

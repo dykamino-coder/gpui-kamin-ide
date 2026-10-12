@@ -37,7 +37,13 @@ pub(super) fn replaced_abs_atom(
     } else {
         image(&copy)
     };
-    let holder = styled_div_with(e, merged).child(built);
+    let holder = styled_div_with(e, merged).child(built).into_any_element();
+    // Shape the CSS box before moving it into a deferred positioned layer.
+    let holder = if merged.corner_shaped() {
+        crate::paint::effects::grouped::grouped(holder, merged)
+    } else {
+        holder
+    };
     let x_set = edge_set(e.style.inset.left) || edge_set(e.style.inset.right);
     let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
     if x_set != y_set && e.style.z_index.unwrap_or(0) >= 0 {
@@ -60,7 +66,7 @@ pub(super) fn replaced_abs_atom(
         let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false);
         return match inline_replaced_position::push(
             spot,
-            inline_abs_paint_last(e, holder.into_any_element()),
+            inline_abs_paint_last(e, holder),
             &e.style,
             inherited,
         ) {
@@ -80,10 +86,9 @@ pub(super) fn replaced_abs_atom(
         && !(inherited.cb_ancestor || crate::text::inline::establishes_cb(inherited))
     {
         let holder: AnyElement = if below_icb {
-            crate::paint::effects::underlay::Underlay::new(holder.into_any_element())
-                .into_any_element()
+            crate::paint::effects::underlay::Underlay::new(holder).into_any_element()
         } else {
-            holder.into_any_element()
+            holder
         };
         let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
         spot.set(crate::layout::positioned::containing_block::Spot {
@@ -118,7 +123,7 @@ pub(super) fn replaced_abs_atom(
         }
     }
     Some(if stretched {
-        holder.into_any_element()
+        holder
     } else {
         div()
             .w_0()
