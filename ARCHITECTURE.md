@@ -74,11 +74,17 @@ python scripts/check_event_routing.py
 | `state/model.rs` | поля `RootView`, сгруппированные в под-структуры |
 | `ui/` | компоненты интерфейса; вложенные папки — по областям экрана |
 | `overlay/` | отдельное прозрачное окно поверх главного: меню, модалки, тосты |
-| `wv/`, `wv_visual.rs` | хостинг WebView2 (чат Bridge, браузер, вью расширений) |
+| `web/` | хостинг offscreen CEF (чат Bridge, браузер, вью расширений), delivery pump и recovery |
 | `host/` | клиент `kamin-host`: запросы, разбор входящих событий |
 | `probe/` | отладочный канал: снять метрики, кадр, послать клик |
 | `term/` | терминал: PTY, профили шеллов, клавиши, цвета |
 | `icon_theme/` | иконочные темы расширений (иначе — Catppuccin) |
+
+`crates/html` (`kamin-html`) — отдельная реализация HTML/CSS для examples и
+WPT runner. На runtime audit baseline `d54de40` production `shell` зависит от
+CEF, а не от этого crate. Поэтому WPT changes и Bridge runtime acceptance
+ведутся отдельно; текущая граница и условия supersession описаны в
+[RUNTIME_BACKLOG.md](extensions/claude-bridge/RUNTIME_BACKLOG.md#engine-boundary).
 
 ## Правила, которых держимся
 

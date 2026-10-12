@@ -56,6 +56,13 @@ Blocked PR не задерживает независимые PR. Зависим
 обязательный gate регистрации. Передача этой работы мейнтейнеру возможна
 отдельным поручением владельца.
 
+Для runtime использовать [датированный обзор](../extensions/claude-bridge/RUNTIME_BACKLOG.md)
+как навигацию по остаткам, затем сверять canonical cards/registry и fresh PRs.
+Не выводить статус из старого PR body, если более поздняя принятая verification
+его изменила. `Resolved`/`done`, merged implementation и published release —
+разные факты; каждый подтверждается отдельно. WPT/HTML scope сам по себе
+не делает runtime incident неактуальным.
+
 <a id="general-backlog-run"></a>
 
 ### Общий запуск «делай задачи»
@@ -133,6 +140,36 @@ evidence всей обязательной приёмки. `ready/change` мож
 privacy, review и release gates сохраняются; отсутствие среды не является
 прохождением проверки. Ограничения `только исследование`, `без merge`, `без
 release` и другие действующие условия владельца записываются в snapshot.
+
+### Достаточность evidence и незавершённые задачи
+
+Для каждого открытого ID указать: доступный public source/private packet,
+merged fix (если есть), первый bounded deliverable, missing **for closure**,
+владельца следующего шага и условие возобновления. Старый raw capture может
+быть окончательно утрачен. Это не разрешает придумывать причину, но и не
+блокирует independent current-source/synthetic countercheck.
+
+Разделять отсутствие historical attribution, отсутствие reproduction текущего
+дефекта, недоступный runtime gate и product/deployment input. Не запрашивать
+весь архив или production access, когда нужны один handler/exception,
+receiving operation или конкретный Windows сценарий. Controlled reproduction
+доказывает свой source contract, а не личность процесса старого field события.
+Если исходный случай нельзя классифицировать, сохранить этот outcome unknown
+и точный future capture plan; не добавлять speculative fix. Это может быть
+доступный research result, но не `resolved` исходного дефекта.
+
+Все доступные независимые source/synthetic шаги внутри snapshot выполнить до
+вывода «осталось ждать evidence». У `verify` сначала проверить уже записанные
+acceptance artifacts и покрытие: не повторять принятые gates без изменения
+кода/контракта или конкретной unresolved concern. Новые runtime runs требуются
+только по task-specific acceptance. Недоступный Windows gate остаётся открытым.
+
+Общий stop-report без списка ID недостаточен. Для каждого незавершённого ID
+оставить handoff в canonical card/registry: что проверено, что можно делать
+сейчас, каких именно данных/среды не хватает для следующего outcome, owner и
+resume condition. При coordination/close-out синхронизировать затронутые строки
+обзора, сохранив его date/source baseline; остальные строки не выдавать за
+повторно проверенные. Новый запуск перечитывает их от fresh `origin/main`.
 
 ### Задача, обнаруженная мейнтейнером
 

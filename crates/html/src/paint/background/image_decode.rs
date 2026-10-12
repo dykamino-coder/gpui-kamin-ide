@@ -147,7 +147,7 @@ pub struct Intrinsic {
 /// под фон. На этом стоит вся папка `background-size/vector`: рисунок с
 /// долевым размером своих сторон не имеет вовсе и обязан занять место под
 /// фон целиком.
-pub(super) fn default_size(i: Intrinsic, area: (f32, f32)) -> (f32, f32) {
+pub(crate) fn default_size(i: Intrinsic, area: (f32, f32)) -> (f32, f32) {
     match (i.w, i.h, i.ratio) {
         (Some(w), Some(h), _) => (w, h),
         (Some(w), None, Some(r)) if r > 0.0 => (w, w / r),

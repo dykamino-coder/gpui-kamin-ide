@@ -38,7 +38,7 @@ impl Computed {
         // из 1817 пар (border/grid/gap/margin-collapse/ch-units/line-names)
         // дал 1290 → 1290: ни одной пары в любую сторону. Значит порядок в
         // этих парах не решает — держат их другие корни.
-        const SHORTHANDS: &[&str] = &["background"];
+        const SHORTHANDS: &[&str] = &["background", "border-image"];
         let семья = |k: &'a str| -> &'a str {
             if font_members::contains(k) && d.contains_key("font") {
                 return "font";

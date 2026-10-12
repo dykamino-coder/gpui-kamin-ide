@@ -97,6 +97,15 @@ Functional code, tests, runtime artifacts, закрытие задачи и rele
 автор ещё не закончил регистрацию; он сообщает конкретный blocker. Изменение
 чужой карточки или обход обязательных GitHub checks/reviews этим не разрешены.
 
+Для сверки оставшейся работы использовать
+[runtime overview](extensions/claude-bridge/RUNTIME_BACKLOG.md) вместе с
+canonical карточками и execution registry. Обзор имеет дату/source SHA и не
+заменяет свежий fetch. Недоступные старые логи ограничивают историческую
+атрибуцию, но не запрещают независимый source/synthetic research. Не требовать
+новый field capture до доступного bounded исследования; для непроведённого
+gate записать конкретный сценарий, владельца и условие продолжения. WPT/HTML
+progress не закрывает runtime ID без production-path migration и acceptance.
+
 ## Ручной запуск мейнтейнера
 
 Поручение владельца `делай задачи` (или равнозначное поручение выполнить
