@@ -70,6 +70,7 @@ pub(super) fn collapsed_cell_edge(
     // кромок стоит по паддинг-боксу, и рамкой линия уехала бы
     // внутрь.
     let win = win_edges.get(&cell.node_id).copied().unwrap_or(widths);
+    cell.style.bg_border_insets = Some(win.map(|width| width / 2.0));
     // Авторский отступ в кегельных единицах — из СЛИТОГО стиля
     // (`em` там разрешён кеглем ячейки, как у `box_style`): сырой
     // `Em` падал в ноль, и ячейка сросшейся модели с `padding:

@@ -59,7 +59,15 @@ pub fn paint_tiles(
         }
     };
     let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &family, font);
-    let border = c.borders();
+    let border = c.bg_border_insets.map_or_else(
+        || c.borders(),
+        |[t, r, b, l]| crate::style::computed::Sides {
+            top: Some(Len::Px(t)),
+            right: Some(Len::Px(r)),
+            bottom: Some(Len::Px(b)),
+            left: Some(Len::Px(l)),
+        },
+    );
     // Отступ слоя от ВНУТРЕННЕГО края рамки: слой лежит внутри коробки и
     // меряется именно им, а `background-origin` может требовать другого края
     // (css-backgrounds-3 §3.6). Положительное значение вжимает внутрь.
@@ -103,6 +111,10 @@ pub fn paint_tiles(
     // transparent dotted border of `background-origin-006` shows the tile).
     let paint_base = if fixed_area {
         canvas.unwrap_or(bounds)
+    } else if c.bg_border_insets.is_some() {
+        // Expand before snapping: half a collapsed border can occupy a
+        // fractional device pixel even when the layer's inner edge is snapped.
+        super::exact_layer::positioning(bounds)
     } else {
         bounds
     };

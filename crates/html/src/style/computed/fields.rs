@@ -993,6 +993,9 @@ pub struct Computed {
     /// `background-origin`: от какого края коробки отсчитывается фоновая
     /// картинка. `None` — от внутреннего края рамки, как по умолчанию в CSS.
     pub bg_origin: Option<BgClip>,
+    /// Collapsed table borders occupy padding in layout, but remain border
+    /// outsets for background positioning and clipping: top/right/bottom/left.
+    pub(crate) bg_border_insets: Option<[f32; 4]>,
     /// `overflow-clip-margin`: на сколько обрезка отступает НАРУЖУ от коробки.
     /// Узел, чей фон красит КАНВАС (CSS 2.2 §14.2): корневой html, а без
     /// его фона — body. Ставится сборкой документа, не каскадом.
@@ -1038,6 +1041,8 @@ pub struct Computed {
     /// таблице: у неё гибким элементом становится обёртка с подписями
     /// (css-flexbox-1 §4).
     pub(crate) flex_item: bool,
+    /// Physical main axis of the parent flex container, for replaced auto minimums.
+    pub(crate) flex_main_vertical: bool,
     /// Floats of this ordinary block reach nothing after it (`dom::float_tail`):
     /// its float host may use in-flow auto height (CSS 2.1 §10.6.3).
     pub(crate) float_tail: bool,
