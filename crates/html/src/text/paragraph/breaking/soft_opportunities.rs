@@ -62,8 +62,17 @@ impl Paragraph {
                         continue;
                     }
                     let before = self.text[..i].chars().next_back();
+                    // UAX #14 LB21 (`× BA`, `× HY`) still holds once letters
+                    // count as ID; only `line-break: loose` lifts it for
+                    // U+2010/U+2013 (css-text-3 §5.3, `line-break-*-hyphens-002`).
+                    let hyphen = loose_hyphen(ch) && self.wrap_at(i).loose < 2;
                     let allowed = !ch.is_whitespace()
                         && !no_break_before(ch)
+                        && !hyphen
+                        && !matches!(
+                            unicode_linebreak::break_property(ch as u32),
+                            unicode_linebreak::BreakClass::Hyphen
+                        )
                         && before.is_none_or(|c| !no_break_after(c));
                     if allowed {
                         out.push(Stop {
@@ -90,7 +99,15 @@ impl Paragraph {
                         continue;
                     };
                     let cjk = self.wrap_at(i).cjk_lang;
-                    let eased = conditional_japanese_starter(ch)
+                    // css-text-3 §5.3 `loose`: breaks before U+2010 and
+                    // U+2013 after an ideograph (`line-break-loose-hyphens-001`).
+                    let eased = (level >= 2
+                        && loose_hyphen(ch)
+                        && matches!(
+                            unicode_linebreak::break_property(before as u32),
+                            unicode_linebreak::BreakClass::Ideographic
+                        ))
+                        || conditional_japanese_starter(ch)
                         || (level >= 2
                             && (iteration_mark(ch)
                                 || (matches!(ch, '\u{2025}' | '\u{2026}')
@@ -179,4 +196,9 @@ impl Paragraph {
             }
         }
     }
+}
+
+/// Hyphens that `line-break: loose` may break before (css-text-3 §5.3).
+fn loose_hyphen(ch: char) -> bool {
+    matches!(ch, '\u{2010}' | '\u{2013}')
 }
