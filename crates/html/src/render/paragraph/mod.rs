@@ -101,12 +101,20 @@ fn paragraph_routed(
                 Some(Len::Em(k)) => k * size,
                 _ => size,
             };
+            let mut full = String::new();
+            first_line_text::lines(nodes, inherited.preserve_newlines == Some(true), &mut full);
+            let following = full
+                .split('\n')
+                .skip(1)
+                .map(|line| SharedString::from(normalize_for_shadow(line).trim().to_string()))
+                .collect();
             return crate::layout::float::split_flow::FirstLine::new(
                 build,
                 SharedString::from(plain.trim().to_string()),
                 font,
                 measure_size,
                 line,
+                following,
             )
             .into_any_element();
         }

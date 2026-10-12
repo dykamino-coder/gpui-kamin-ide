@@ -36,23 +36,6 @@ pub(crate) struct ExactLayer {
 }
 
 impl ExactLayer {
-    pub(super) fn new(paint: impl FnMut(Bounds<Pixels>, &mut Window) + 'static) -> Self {
-        Self {
-            child: Some(
-                gpui::div()
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .size_full()
-                    .into_any_element(),
-            ),
-            paint: Box::new(paint),
-            exact: None,
-        }
-    }
-}
-
-impl ExactLayer {
     /// A layer laid out with the given `[top, right, bottom, left]` insets
     /// from the parent's padding box (negative = outward), painting with the
     /// unrounded box available through [`positioning`].

@@ -186,6 +186,20 @@ pub(super) fn paint_body(
                 extent,
                 spec.lanes_content_aligned,
                 lane_tracks,
+                spec.flex_line_stretch.then(|| {
+                    let [pt, pr, pb, pl] = spec.pad;
+                    if stacked_vertically {
+                        (
+                            f32::from(bounds.top()) + pt,
+                            f32::from(bounds.bottom()) - pb,
+                        )
+                    } else {
+                        (
+                            f32::from(bounds.left()) + pl,
+                            f32::from(bounds.right()) - pr,
+                        )
+                    }
+                }),
             );
             if let Some(r) = main {
                 for mut run in mains {

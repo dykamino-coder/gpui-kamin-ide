@@ -9,14 +9,14 @@ use gpui::{
 pub mod geometry;
 pub mod painter;
 
-mod gap_fragment_tail;
+mod gap_fragment_runs;
 mod gap_segments;
 
 /// Прямоугольники элементов сетки/гибкого контейнера: их собирают пробы
 /// детей, а по ним слой-художник считает середины промежутков
 /// (css-gaps-1 §geometry: линейка идёт по ЦЕНТРАЛЬНОЙ ЛИНИИ промежутка).
 mod items;
-pub use items::{GapBuffer, MulticolGaps};
+pub use items::{GapBuffer, MulticolGaps, fresh_gap_items};
 pub type GapItems = std::rc::Rc<std::cell::RefCell<GapBuffer>>;
 
 thread_local! {
@@ -232,6 +232,8 @@ pub struct GapRuleSpec {
     /// укладки («MainGaps span the final container content box (or the content
     /// when it overflows)», `grid_lanes_layout_algorithm.cc`).
     pub lines_extent: u8,
+    /// Start-aligned items in stretched flex lines need the full line cross size.
+    pub flex_line_stretch: bool,
     /// Ленты с явным выравниванием содержимого по оси укладки
     /// (`align-content` у колоночных лент, `justify-content` у строчных —
     /// не `normal`): главные промежутки идут лишь по выровненному
