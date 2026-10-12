@@ -20,6 +20,13 @@ pub(super) fn adapt(mut output: LayoutOutput, style: &Style) -> LayoutOutput {
         output.baselines.first = output.inline_block_last_y();
         output.baselines_x.first = output.last_or_first_x();
     }
+    // A vertical box has no native horizontal baseline (Writing Modes 4,
+    // section 4.3). Let the y-axis alignment context synthesize its baseline;
+    // retain the independent x baseline for a parallel vertical context.
+    if style.baseline_x_flags & 4 != 0 {
+        output.baselines = Baselines::NONE;
+        output.inline_block_last_y = None;
+    }
     // General scroll-container baselines use native synthesis/clamping. The
     // inline-block boundary instead exports its margin-box bottom when its
     // overflow is non-visible (CSS 2.1 10.8.1); callers synthesize that fallback.
