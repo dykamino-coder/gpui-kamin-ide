@@ -10,6 +10,8 @@ pub use crate::text::paragraph::probes::ruby_extents::collect_ruby_extents;
 pub use crate::text::paragraph::probes::ruby_extents::ruby_base_with_overhang;
 pub use crate::text::paragraph::probes::ruby_extents::ruby_extent;
 pub(super) use crate::text::paragraph::probes::ruby_extents::take_ruby_base_sink;
+pub(crate) use ruby_extents::ruby_layer;
+pub(crate) use ruby_extents::without_ruby_base_sink;
 
 use gpui::{AnyElement, LayoutId};
 
@@ -117,6 +119,7 @@ pub struct DecorItem {
 /// Кусок со знаком акцента (`text-emphasis`, css-text-decor-3 §5).
 #[derive(Clone, Debug)]
 pub struct EmphSpan {
+    pub(crate) ruby: Option<std::rc::Rc<crate::text::ruby::layers::Layers>>,
     /// Отрезок байт текста абзаца.
     pub range: std::ops::Range<usize>,
     /// Знак под текстом (`text-emphasis-position: under`).

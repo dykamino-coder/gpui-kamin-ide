@@ -36,6 +36,13 @@ pub(super) fn collect_text(
     case: &mut text_case::Context,
     out: &mut Vec<Piece>,
 ) {
+    let ruby_text;
+    let t = if inherited.ruby_suppress_breaks && t.contains('\n') {
+        ruby_text = t.replace('\n', " ");
+        &ruby_text
+    } else {
+        t
+    };
     // Возврат каретки (U+000D) — ПРОБЕЛ при любом `white-space`
     // (css-text-3 §4.1: «carriage returns … are treated
     // identically to spaces»): разбор HTML сводит CR к LF только в

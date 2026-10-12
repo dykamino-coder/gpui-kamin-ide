@@ -158,6 +158,9 @@ pub(crate) fn measured_layout(
     let across = {
         probe.lines = lines.clone();
         let pads = probe.line_padding();
+        if let Some(layers) = &probe.ruby_layers {
+            layers.account_leading(&pads);
+        }
         if !probe.atom_boxes.is_empty() || !probe.box_spans.is_empty() {
             first_above = px(pads.first().map_or(0.0, |p| p.0));
         }
