@@ -21,7 +21,7 @@ Private storage IDs INC-0030/0035/0036 не создают дополнител�
 ## Как начать следующий проход
 
 Поручение владельца «делай runtime-задачи по RUNTIME_BACKLOG.md и maintainer flow,
-без WPT/HTML» выбирает конечный свежий snapshot по
+без работ над kamin-html/WPT» выбирает конечный свежий snapshot по
 [общему запуску](../../docs/MAINTAINER_PR_FLOW.md#general-backlog-run).
 Этот документ сам по себе задачи не запускает. `RV-2026-09-29` — прежняя
 verification-пачка, не список всей октябрьской работы.
@@ -95,7 +95,7 @@ GPUI/gpui-component и DirectX recovery. Native layout/editor/GPU сценари
 | [INC-0032](runtime-issues/INC-2026-0032.md#maintainer-handoff) | `research` | Private screenshot; native Projects overlay/scroll code. | Воспроизвести action-overlay open/close, wheel/hover и сохранение scroll position на synthetic tree. **Граница:** Windows geometry/input artifact при подтверждённом дефекте; rename fix не является доказательством. **Owner:** maintainer. |
 | [INC-0033](runtime-issues/INC-2026-0033.md#maintainer-handoff) | `research` | Private screenshot only; collection plan #204; Markdown/normalization source. | Проверить valid synthetic prose/fences/backticks/table при streaming/final и разных pane widths. **Граница:** Нет исходных Markdown bytes для старого screenshot: его причину не классифицировать. Synthetic result отдельно; capture только при новом естественном случае. **Owner:** maintainer; reporter for a future bounded capture. |
 | [INC-0034](runtime-issues/INC-2026-0034.md#maintainer-handoff) | `research` | Private screenshots; rename/title propagation source. | Synthetic CLI rename → server event → native Projects label; проверить ack, reconnect и две сессии. **Граница:** Versioned authoritative title contract и trace до первого расхождения. **Owner:** maintainer. |
-| [INC-0037](runtime-issues/INC-2026-0037.md#maintainer-handoff) | `research` | Private screenshot only; collection plan #205; shipped hook-generation code. | Составить provenance map shipped/synced/user hooks и проверить generated compact-hook contracts на synthetic settings. **Граница:** Нет effective failing handler/full stderr старого события. Не исправлять неизвестный сторонний hook; bounded capture только при новом случае. **Owner:** maintainer; hook owner for declaration/exception. |
+| [INC-0037](runtime-issues/INC-2026-0037.md#maintainer-handoff) | `research` | Private screenshot + recovered related hook attachments/full redacted stderr; collection plan #205; hook source/relay/executor code. | Составить provenance map shipped/synced/user hooks и проверить generated compact-hook contracts на synthetic settings. **Граница:** Нет effective declaration/script owner и exact linkage старого screenshot; related exceptions восстановлены. Не исправлять неизвестный сторонний hook; bounded capture только при новом случае. **Owner:** maintainer; hook owner for declaration/exception. |
 | [INC-0038](runtime-issues/INC-2026-0038.md#maintainer-handoff) | `research` | Private screenshot; native Projects scroll/layout source. | Synthetic sparse/dense Projects: content bounds, viewport, collapse/expand и пустой scroll tail. **Граница:** Measured geometry и current reproduction; не объявлять duplicate BR-28 без совпадения механизма. **Owner:** maintainer. |
 | [INC-0039](runtime-issues/INC-2026-0039.md#maintainer-handoff) | `research` | Private server report, screenshot and JSON state; AgentTeams/report code. | Разделить delivered report, idle и next-action; synthetic lifecycle плюс current real-CLI trace в isolated account. **Граница:** Versioned report/idle contract; #197 status fix не доказывает управление/доставку отчётов. **Owner:** maintainer/test operator. |
 | [INC-0040](runtime-issues/INC-2026-0040.md#maintainer-handoff) | `research` | Two private server research documents; public marketplace/tool source audit. | Inventory destructive entry points; disposable fake marker checkout для pull/auth/add/remove/no-.git/concurrency. **Граница:** Нет deletion command/ancestry, old bundle provenance и pre-loss inventory. Исторический инициатор unknown; не выбирать backup/re-clone fix по догадке. **Owner:** maintainer; reporter only for a future operation trace. |
@@ -185,10 +185,46 @@ INC-0002 и completion BR-25; outcome каждого acceptance записать
 
 BR `done`: [BR-01](RUNTIME_RELIABILITY.md#br-01--durable-incident-diagnostics), [BR-14](RUNTIME_RELIABILITY.md#br-14--make-release-artifact-provenance-verifiable), [BR-18](RUNTIME_RELIABILITY.md#br-18--keep-sessionend-relay-available-and-secret-safe-during-teardown), [BR-20](RUNTIME_RELIABILITY.md#br-20--restore-complete-claude-plan-usage-windows), [BR-26](RUNTIME_RELIABILITY.md#br-26--publish-agent-replay-state-atomically), [BR-27](RUNTIME_RELIABILITY.md#br-27--derive-active-and-completed-from-one-lifecycle-partition), [BR-28](RUNTIME_RELIABILITY.md#br-28--measure-sidebar-geometry-during-session-hover), [BR-30](RUNTIME_RELIABILITY.md#br-30--keep-incident-log-records-atomic-across-rotation). Их остаточные observations и соседние child tasks читаются по карточкам; первичный fix не повторять.
 
+## Повторный разбор локальных материалов — 2026-10-12
+
+Public source baseline для этого дополнения: `210af97f`; private база до
+supplements: `25c6af31`. Private supplements приняты в
+[#102](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/pull/102) и
+[#103](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/pull/103);
+immutable commits закреплены в карточках. Это уточнение открытых постановок, без новой пачки,
+продуктовых fixes, runtime acceptance или release.
+
+| Проверенная область | Что изменилось в handoff |
+| --- | --- |
+| [INC-0037](runtime-issues/INC-2026-0037.md#recovered-local-context--2026-10-12) | В двух retained transcripts восстановлены семь related compact-hook errors и полный redacted stderr: MODULE_NOT_FOUND для entry script. Не запрашивать этот stderr заново; остаётся declaration/install owner и привязка к старому screenshot. |
+| [INC-0020](runtime-issues/INC-2026-0020.md#older-local-generations-recovered--2026-10-12) | Добавлены более ранние cumulative OOM callbacks; два log поколения имеют общий prefix, поэтому не считать их разными событиями. Они не доказывают memory cause или связь с sleep/RDP. |
+| [INC-0033](runtime-issues/INC-2026-0033.md#retained-source-countercheck--2026-10-12) / [BR-22](RUNTIME_RELIABILITY.md#br-22--keep-live-chat-render-window-populated-by-drawable-rows) | В проверенных roots не найден original Markdown / paired drawable dump для старых screenshots. Другой transcript не заменяет их. Source/synthetic classification доступен сейчас; historical attribution остаётся ограниченной. |
+| [INC-0040](runtime-issues/INC-2026-0040.md#retained-source-countercheck--2026-10-12) | Два original reports уже зарегистрированы; новых deletion/process traces не найдено. Доступен disposable marker matrix текущих destructive/non-destructive entry points. |
+| [INC-0043](runtime-issues/INC-2026-0043.md#retained-source-countercheck--2026-10-12) | Re-read оригинального export подтверждает прежнюю границу: отсутствует поздний crash/reopen interval. Нужен synthetic same-time server/replay/mirror/store comparison, а не повторная отправка того же файла. |
+
+Проверены fingerprint/provenance локальных копий и существующие private packets,
+включая содержимое выбранных ZIP/gzip. Совпадение checksum означает тот же artifact,
+а не новое доказательство причины. Полные transcripts/profile archives могут быть
+намеренно исключены ради credentials/privacy; использовать safe structural extracts.
+Диагностические folders — не отдельная очередь: их старые TASK-номера сопоставлены
+с canonical BR/INC, их локальные статусы не отменяют merged acceptance.
+
+Перед новым fix сверять уже принятый результат: INC-0056/#197 (persistent follow-up),
+INC-0057/#189 (MCP result recovery), BR-18 (relay credential/teardown) не повторять
+ради соседних неразобранных симптомов. INC-0055/0039, BR-09/15/25 сохраняют свои
+отдельные gates. Большой общий transcript сам по себе не доказывает общий дефект.
+Новые native panel PR и изменения GPUI проверять от свежего origin, не принимать
+параллельную незавершённую работу как закрытие задачи.
+
+Итог следующего research по каждой карточке: source boundary + reproducible
+synthetic case либо bounded non-reproduction; затем конкретный остаточный gate,
+owner и условие продолжения. Отсутствие старого field artifact не заменять
+придуманной причиной, а доступную source работу — общим запросом «нужны логи».
+
 ## Существенные пробелы
 
 - **Историческая атрибуция:** INC-0020 (dump/binary), INC-0033 (original Markdown),
-  INC-0037 (handler/full stderr), INC-0040 (deleting operation), BR-22 (paired drawable dumps).
+  INC-0037 (effective declaration/script owner и exact screenshot linkage; related stderr теперь есть), INC-0040 (deleting operation), BR-22 (paired drawable dumps).
   Имеющееся evidence сохраняется; не просить заново весь архив, не обещать его восстановить.
   Независимые current-source/synthetic исследования перечислены выше.
 - **Product input:** INC-0049 — receiving operation, не дополнительные логи.
