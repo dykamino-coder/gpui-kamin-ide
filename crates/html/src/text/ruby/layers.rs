@@ -95,7 +95,7 @@ pub(crate) fn with_base<T>(layers: Rc<Layers>, build: impl FnOnce() -> T) -> T {
 
 pub(crate) fn without_base<T>(build: impl FnOnce() -> T) -> T {
     let saved = BASE.with(|base| base.replace(None));
-    let result = build();
+    let result = crate::text::paragraph::without_ruby_base_sink(build);
     BASE.with(|base| base.replace(saved));
     result
 }

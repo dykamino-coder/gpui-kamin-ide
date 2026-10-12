@@ -79,6 +79,14 @@ pub(crate) fn take_ruby_base_sink() -> Option<std::rc::Rc<std::cell::Cell<Option
     RUBY_BASE_SINK.with(|s| s.borrow_mut().take())
 }
 
+/// Annotation and independent inline contexts cannot consume a base's sink.
+pub(crate) fn without_ruby_base_sink<T>(build: impl FnOnce() -> T) -> T {
+    let saved = RUBY_BASE_SINK.with(|s| s.replace(None));
+    let result = build();
+    RUBY_BASE_SINK.with(|s| s.replace(saved));
+    result
+}
+
 thread_local! {
     /// Сбор узлов аннотаций для атома, который сейчас строится
     /// (`collect_ruby_extents`). `None` — сбора нет: руби вне строки абзаца
