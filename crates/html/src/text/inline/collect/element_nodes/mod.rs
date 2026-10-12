@@ -12,6 +12,7 @@ use crate::text::inline::collect::element_nodes::box_paint::element_style;
 use super::collect_with_empty_metrics;
 use crate::dom::Element;
 use crate::style::computed::Computed;
+use crate::style::values::value::Len;
 use crate::text::inline::collect::boundary_spacing::boundary_gap_after_box;
 use crate::text::inline::collect::boundary_spacing::set_boundary_spacing;
 use crate::text::inline::collect::overlays::shift_overlays;
@@ -39,10 +40,28 @@ pub(super) fn collect_element(
     ATOM_CB.with(|c| c.set(false));
     INLINE_CB_DEPTH.with(|d| d.set(depth));
     if let Some(piece) = built {
+        // CSS Ruby box fixup suppresses the break that an empty block would
+        // introduce. Its inlinified zero-size box must not create a soft
+        // opportunity through our U+FFFC atom placeholder either (UAX14 LB11).
+        let join = inherited.ruby_suppress_breaks
+            && e.children.is_empty()
+            && !crate::render::replaced_tag(e)
+            && matches!(e.style.width, None | Some(Len::Px(0.0)))
+            && matches!(e.style.height, None | Some(Len::Px(0.0)));
+        let joiner = || Piece::Text {
+            text: "\u{2060}".into(),
+            style: inherited.clone(),
+        };
+        if join {
+            out.push(joiner());
+        }
         if matches!(piece, Piece::Atom(_)) {
             case.boundary();
         }
         out.push(piece);
+        if join {
+            out.push(joiner());
+        }
         // Строчный `<span>`, ушедший в свою коробку (узорный фон,
         // `has_own_box`), атомом в CSS не является: зазор между его
         // последним знаком и следующим — ПРЕДКА (css-text-3 §8.2),

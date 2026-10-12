@@ -139,7 +139,9 @@ impl Paragraph {
                 let tail = tail - self.hang_last(tail, false, true);
                 // Разрыв по мягкому переносу: на строке остаётся знак
                 // переноса, и он же входит в её ширину.
-                let hyphen = self.text[..cut].ends_with('\u{00ad}');
+                // An overflowing final word has no following line: reaching
+                // its trailing SHY does not perform a hyphenation break.
+                let hyphen = cut < part.end && self.text[..cut].ends_with('\u{00ad}');
                 let extra = if hyphen {
                     self.hyphen_width(cut)
                 } else {
