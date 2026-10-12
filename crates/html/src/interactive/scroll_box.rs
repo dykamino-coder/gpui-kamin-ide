@@ -38,6 +38,8 @@ pub(crate) fn scrollable(
     if !horizontal && !vertical {
         return None;
     }
+    let scroll_projection =
+        crate::interactive::scroll_extent::projection(inherited.self_node, Some(&scroll_style));
     let mut node = e.clone();
     node.style.overflow_x = scroll_style.overflow_x;
     node.style.overflow_y = scroll_style.overflow_y;
@@ -173,7 +175,7 @@ pub(crate) fn scrollable(
             d.into_any_element()
         },
     );
-    Some(
+    Some(crate::interactive::scroll_extent::project(
         crate::interactive::scroll_area::ScrollArea::new(
             gpui::ElementId::Integer(e.node_id),
             horizontal,
@@ -183,7 +185,8 @@ pub(crate) fn scrollable(
         .with_style(scroll_style)
         .with_tree(e)
         .into_any_element(),
-    )
+        scroll_projection,
+    ))
 }
 
 /// Обернуть элемент ручкой изменения размера, если `resize` разрешает.

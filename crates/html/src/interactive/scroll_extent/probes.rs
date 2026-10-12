@@ -43,16 +43,9 @@ pub(crate) fn probe(id: u64, c: &Computed) -> Option<AnyElement> {
     let clip = Clip::new(c);
     let snap = c.snap;
     let vertical = c.vertical == Some(true);
-    let reverse = [
-        if vertical {
-            c.vertical_rl == Some(true)
-        } else {
-            c.rtl == Some(true)
-        },
-        vertical && c.rtl == Some(true),
-    ];
+    let reverse = super::super::scrollbar_gutter::reversed(c);
     Some(
-        super::exact_probe::ExactProbe::new(move |b: Bounds<Pixels>, snapped: Bounds<Pixels>| {
+        super::exact_probe::ExactProbe::new(move |b: Bounds<Pixels>, _snapped: Bounds<Pixels>| {
             let border = clip.border();
             let rect = [
                 f32::from(b.left()) - border[0],
@@ -62,14 +55,18 @@ pub(crate) fn probe(id: u64, c: &Computed) -> Option<AnyElement> {
             ];
             frame.boxes.borrow_mut().insert(id, (rect, clip));
             if snap.align != [0; 2] {
+                // Inflate CSS geometry before device snapping. Independently
+                // snapped padding edges fabricate 0.8px on a 50px border at 1.25x.
+                let mut snap_bounds = b;
+                snap_bounds.origin += super::exact_probe::sticky_shift();
                 frame.snap_areas.borrow_mut().insert(
                     id,
                     snap::Area {
                         rect: [
-                            f32::from(snapped.left()) - border[0],
-                            f32::from(snapped.top()) - border[1],
-                            f32::from(snapped.right()) + border[2],
-                            f32::from(snapped.bottom()) + border[3],
+                            f32::from(snap_bounds.left()) - border[0],
+                            f32::from(snap_bounds.top()) - border[1],
+                            f32::from(snap_bounds.right()) + border[2],
+                            f32::from(snap_bounds.bottom()) + border[3],
                         ],
                         snap,
                         vertical,

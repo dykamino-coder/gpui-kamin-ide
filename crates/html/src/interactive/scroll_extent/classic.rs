@@ -17,6 +17,9 @@ pub(crate) fn model(id: u64, c: &Computed) -> super::super::scrollbar_gutter::Mo
     });
     let model = super::super::scrollbar_gutter::Model::new(c, bars);
     if let Some(frame) = frame {
+        frame
+            .reverse
+            .set(super::super::scrollbar_gutter::reversed(c));
         frame.reserved.set(model.total());
         frame.insets.set(model.used);
         frame.native_reserved.set(model.native_total());

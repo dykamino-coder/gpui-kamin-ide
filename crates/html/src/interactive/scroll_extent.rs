@@ -26,6 +26,8 @@ pub struct Frame {
     snap_areas: Rc<RefCell<HashMap<u64, snap::Area>>>,
     snapped: Rc<Cell<bool>>,
     bars: Rc<Cell<[bool; 2]>>,
+    reverse: Rc<Cell<[bool; 2]>>,
+    handle: Rc<RefCell<Option<gpui::ScrollHandle>>>,
     reserved: Rc<Cell<[f32; 2]>>,
     range: Rc<Cell<[f32; 2]>>,
     insets: Rc<Cell<[f32; 4]>>,
@@ -44,6 +46,8 @@ impl Default for Frame {
             snap_areas: Rc::default(),
             snapped: Rc::default(),
             bars: Rc::default(),
+            reverse: Rc::default(),
+            handle: Rc::default(),
             reserved: Rc::default(),
             range: Rc::default(),
             insets: Rc::default(),
@@ -60,6 +64,9 @@ impl Drop for Restore {
     }
 }
 impl Frame {
+    pub(super) fn set_handle(&self, handle: gpui::ScrollHandle) {
+        *self.handle.borrow_mut() = Some(handle);
+    }
     pub(super) fn parent_for(id: u64) -> Option<Self> {
         CURRENT
             .with(|slot| slot.borrow().clone())
@@ -110,7 +117,9 @@ impl Frame {
 }
 
 mod probes;
+mod projection;
 mod settle;
 pub(crate) use probes::{
     decoration_clip, marker, probe, record_text, text_active, viewport_decoration,
 };
+pub(crate) use projection::{project, projection};

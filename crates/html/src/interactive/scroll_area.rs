@@ -88,6 +88,7 @@ impl Element for ScrollArea {
         let build = self.build.clone();
         let (h, v) = (self.horizontal, self.vertical);
         let layout = |state: Persistent, window: &mut Window, cx: &mut App| {
+            state.extent.set_handle(state.handle.clone());
             let (layout_id, el) = state.extent.within(self.tree.as_deref(), || {
                 let mut el = build(&state.handle, h, v);
                 let layout_id = el.request_layout(window, cx);

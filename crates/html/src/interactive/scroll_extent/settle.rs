@@ -14,6 +14,10 @@ impl Frame {
         if !self.marker.get() {
             return false;
         }
+        // Probes exclude ancestor sticky/scroll projections. Use the same
+        // coordinate space for a nested scrollport's origin (Overflow 3 §2.2).
+        let mut bounds = bounds;
+        bounds.origin -= super::exact_probe::sticky_shift();
         let boxes = self.boxes.borrow();
         let text_boxes = self.text_boxes.borrow();
         fn area(
@@ -143,7 +147,13 @@ impl Frame {
                 .map(|(&id, &area)| (id, area))
                 .collect();
             areas.sort_by_key(|(id, _)| *id);
-            return snap::initial(c, areas.into_iter().map(|(_, area)| area), handle);
+            return snap::initial(
+                c,
+                areas.into_iter().map(|(_, area)| area),
+                handle,
+                self.insets.get(),
+                self.range.get(),
+            );
         }
         false
     }
