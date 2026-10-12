@@ -54,6 +54,9 @@ impl Paragraph {
             w.keep_spaces,
         ]
         .hash(&mut h);
+        // Ruby sub-lines retain trailing spaces and use different expansion
+        // opportunities; a normal line must not reuse their cached cut.
+        [self.ruby_unit, self.ruby_justify].hash(&mut h);
         // Per-piece wrap rules (`white-space`/`word-break` of a nested inline
         // or of a `display: contents` element) change the breaks too: without
         // them a `nowrap` run reused the cached lines of an identical text
