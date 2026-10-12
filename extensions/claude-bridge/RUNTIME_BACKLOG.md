@@ -188,7 +188,10 @@ BR `done`: [BR-01](RUNTIME_RELIABILITY.md#br-01--durable-incident-diagnostics), 
 ## Повторный разбор локальных материалов — 2026-10-12
 
 Public source baseline для этого дополнения: `210af97f`; private база до
-supplements: `25c6af31`. Это уточнение открытых постановок, без новой пачки,
+supplements: `25c6af31`. Private supplements приняты в
+[#102](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/pull/102) и
+[#103](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/pull/103);
+immutable commits закреплены в карточках. Это уточнение открытых постановок, без новой пачки,
 продуктовых fixes, runtime acceptance или release.
 
 | Проверенная область | Что изменилось в handoff |
