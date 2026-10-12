@@ -19,6 +19,11 @@ pub(super) fn finish_element(
     scroll_pseudos: ScrollPseudos,
     out: &mut Vec<Node>,
 ) {
+    let ruby_parent = ruby_box_role(&tag, &style);
+    if ruby_parent.is_some() {
+        style.ruby_suppress_breaks = true;
+        crate::dom::fixup_tree::ruby_normalize::inlinify(&mut children);
+    }
     // `dir="auto"` — сторону задаёт ПЕРВЫЙ СИЛЬНЫЙ знак содержимого
     // (HTML §3.2.6.4). Раньше здесь не ставилось ничего в расчёте на
     // разбор двунаправленности, но он берёт сторону абзаца, а не
@@ -90,11 +95,7 @@ pub(super) fn finish_element(
     } else {
         children
     };
-    let children = if ruby_box_role(&tag, &style).is_none() {
-        wrap_misparented_ruby(children)
-    } else {
-        children
-    };
+    let children = wrap_misparented_ruby(children, ruby_parent);
     let inline = INLINE_TAGS.contains(&tag.as_str()) || !BLOCK_TAGS.contains(&tag.as_str());
     style.block_tag = !inline;
     // Замена элемента (css-content-3 §content-property: «a single

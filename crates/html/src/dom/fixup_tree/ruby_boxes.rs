@@ -34,11 +34,20 @@ pub(crate) fn ruby_box_role(
 /// строчным текстом в ряду (`ruby-box-generation-*`, вторая строка: эталон
 /// пишет те же коробки внутри `<ruby>`). Краевые пробелы серии остаются
 /// снаружи, строчное содержимое серию обрывает.
-pub(crate) fn wrap_misparented_ruby(children: Vec<Node>) -> Vec<Node> {
+pub(crate) fn wrap_misparented_ruby(
+    children: Vec<Node>,
+    parent: Option<crate::style::computed::RubyRole>,
+) -> Vec<Node> {
     use crate::style::computed::RubyRole;
     let internal = |n: &Node| {
-        matches!(n, Node::Element(e)
-            if ruby_box_role(&e.tag, &e.style).is_some_and(|r| r != RubyRole::Container))
+        matches!(n, Node::Element(e) if ruby_box_role(&e.tag, &e.style).is_some_and(|r| {
+            match r {
+                RubyRole::Container => false,
+                RubyRole::Base => !matches!(parent, Some(RubyRole::Container | RubyRole::BaseContainer)),
+                RubyRole::Text => !matches!(parent, Some(RubyRole::Container | RubyRole::TextContainer)),
+                _ => parent != Some(RubyRole::Container),
+            }
+        }))
     };
     if !children.iter().any(internal) {
         return children;
