@@ -232,6 +232,8 @@ pub struct GapRuleSpec {
     /// укладки («MainGaps span the final container content box (or the content
     /// when it overflows)», `grid_lanes_layout_algorithm.cc`).
     pub lines_extent: u8,
+    /// Start-aligned items in stretched flex lines need the full line cross size.
+    pub flex_line_stretch: bool,
     /// Ленты с явным выравниванием содержимого по оси укладки
     /// (`align-content` у колоночных лент, `justify-content` у строчных —
     /// не `normal`): главные промежутки идут лишь по выровненному
