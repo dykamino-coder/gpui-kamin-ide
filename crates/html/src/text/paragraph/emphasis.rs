@@ -13,11 +13,13 @@ impl Paragraph {
     /// (UA `rt`), знак — по центру продвижения своего знака базы.
     /// Пропускаются разделители (Z*), управляющие (Cc, Cf, Cn) и пунктуация
     /// (P*), кроме перечисленных в §5.3 знаков.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn paint_emphasis(
         &self,
         run: &std::ops::Range<usize>,
         shaped: &gpui::ShapedLine,
         at: Point<Pixels>,
+        rtl: bool,
         window: &mut Window,
         cx: &mut App,
     ) {
@@ -55,6 +57,11 @@ impl Paragraph {
             } else {
                 box_top - mark_lh
             };
+            let offset = span
+                .ruby
+                .as_ref()
+                .map_or(0.0, |ruby| ruby.offset(span.under, window));
+            let top = top + px(if span.under { offset } else { -offset });
             let mark_run = TextRun {
                 len: span.mark.len(),
                 font: base_run.font.clone(),
@@ -98,7 +105,20 @@ impl Paragraph {
                 }
                 let off = lead + s - run.start + i;
                 let x0 = shaped.x_for_index(off);
-                let x1 = shaped.x_for_index(off + c.len_utf8());
+                let x1 = if rtl {
+                    // GPUI exports logical clusters with reversed RTL positions.
+                    // The character's advance ends at the next visual cluster.
+                    shaped
+                        .runs
+                        .iter()
+                        .flat_map(|run| &run.glyphs)
+                        .filter(|glyph| glyph.position.x > x0)
+                        .map(|glyph| glyph.position.x)
+                        .min()
+                        .unwrap_or(shaped.width)
+                } else {
+                    shaped.x_for_index(off + c.len_utf8())
+                };
                 // CSS Text Decoration 3 section 5.3 centers the annotation
                 // on its character, not on the extra inter-character spacing.
                 let spacing = self.tail_spacing(s + i + c.len_utf8());

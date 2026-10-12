@@ -15,6 +15,7 @@ use crate::style::computed::Computed;
 use crate::text::text_box::blank_text;
 
 pub(crate) mod container;
+pub(crate) mod layers;
 mod ruby_hiding;
 pub(crate) mod ruby_transform;
 

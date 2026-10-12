@@ -102,6 +102,7 @@ pub(crate) fn native_paragraph(
             inherited.ruby_justify == Some(true),
             inherited.ruby_unit,
             inherited.rotated_line == Some(true),
+            line_atoms.iter().any(|atom| !atom.3.is_empty()),
         )
         .justify_chars(inherited.justify_chars.unwrap_or(1))
         .align_last(

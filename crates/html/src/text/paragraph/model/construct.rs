@@ -17,6 +17,7 @@ impl Paragraph {
     ) -> Self {
         Paragraph {
             ruby_base_sink: take_ruby_base_sink(),
+            ruby_layers: crate::text::ruby::layers::current(),
             text,
             runs,
             font_size,

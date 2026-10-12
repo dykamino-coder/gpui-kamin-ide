@@ -9,6 +9,7 @@ use gpui::{AnyElement, IntoElement, LayoutId};
 #[derive(Default)]
 pub struct RubyExtents {
     pub levels: Vec<(bool, f32, std::rc::Rc<std::cell::Cell<Option<LayoutId>>>)>,
+    pub(crate) nested: Vec<Vec<crate::text::ruby::layers::LayerAttachment>>,
     /// What the line needs to let the annotation overhang its neighbours
     /// (`ruby_overhang_probe`, css-ruby-1 §4.4); `None` for non-ruby atoms.
     pub overhang: Option<RubyOverhangInfo>,
@@ -102,14 +103,30 @@ pub fn collect_ruby_extents<T>(build: impl FnOnce() -> T) -> (T, RubyExtents) {
 /// чем аннотация выходит за её коробку (Blink `ruby_utils.cc`
 /// `ComputeAnnotationOverflow`). Без сбора — сам элемент как есть.
 pub fn ruby_extent(el: AnyElement, under: bool, inset: f32) -> AnyElement {
+    ruby_layer(el, under, inset, &[])
+}
+
+pub(crate) fn ruby_layer(
+    el: AnyElement,
+    under: bool,
+    inset: f32,
+    layers: &[std::rc::Rc<crate::text::ruby::layers::Layers>],
+) -> AnyElement {
     let slot = std::rc::Rc::new(std::cell::Cell::new(None));
+    let attached: Vec<_> = layers
+        .iter()
+        .map(|layer| (layer.clone(), layer.add(under, slot.clone())))
+        .collect();
     let collecting = RUBY_EXTENTS.with(|r| {
         r.borrow_mut()
             .as_mut()
-            .map(|v| v.levels.push((under, inset, slot.clone())))
+            .map(|v| {
+                v.levels.push((under, inset, slot.clone()));
+                v.nested.push(attached);
+            })
             .is_some()
     });
-    if !collecting {
+    if !collecting && layers.is_empty() {
         return el;
     }
     LayoutTap { child: el, slot }.into_any_element()
