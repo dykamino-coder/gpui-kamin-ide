@@ -19,6 +19,7 @@ mod shape_kids;
 pub mod table_bands;
 pub mod types;
 
+pub(crate) mod effect_fragment;
 pub(super) mod fragment_mask;
 pub(crate) mod fragment_size;
 pub(crate) mod gap_fragment;

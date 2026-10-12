@@ -11,6 +11,8 @@ mod row_shape;
 use row_cuts::{RowRef, table_row_cuts};
 mod shape_bands;
 use shape_bands::table_shape_bands;
+mod serial;
+pub(crate) use serial::serial_table_parallel;
 
 /// Табличная коробка — по тегу или по `display`.
 pub(crate) fn table_box(c: &Element) -> bool {
@@ -35,7 +37,7 @@ pub(crate) fn table_box(c: &Element) -> bool {
 /// рядам и потому идёт сплошным блоком без внутренних точек. Охват `rowspan`
 /// ограничен группой; ячейка растит исходный ряд лишь при равной высоте
 /// ряда и охвата. Неизмеримое распределение высоты охвата,
-/// сросшиеся рамки, вертикальное письмо, монолит внутри при заданной высоте
+/// сросшиеся рамки, вертикальное письмо, монолит при раздаче surplus рядам
 /// и неизмеримая ячейка — `None`: таблица идёт цельным куском измеренной
 /// высоты без точек, как прежде.
 pub(super) fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {

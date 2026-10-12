@@ -152,7 +152,9 @@ pub(super) fn multicol_stack_child(
         &copy,
     );
     let nest_phase_k = nest_at.get(ix).copied().flatten().unwrap_or(0.0);
-    let inner = inherit(&merged, &copy.style);
+    let mut inner = inherit(&merged, &copy.style);
+    // External clipping belongs to Scope.parent, not the copied subtree.
+    inner.fragment_clip_ancestor = false;
     // Копии на случай разреза между колонками:
     // элемент GPUI рисуется один раз, а фрагмент
     // нужен свой в каждой колонке. Больше, чем

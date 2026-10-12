@@ -1109,6 +1109,8 @@ pub struct Computed {
     /// внепоточных потомков (§10.1 п.4). Ставится при наследовании: сам
     /// каскад предков не видит.
     pub(crate) cb_ancestor: bool,
+    /// CSS ancestor clipping inside a continuous fragmentation copy.
+    pub(crate) fragment_clip_ancestor: bool,
     /// An ancestor is a multi-column container: the box may be fragmented
     /// across columns (css-break-3 §box-splitting). Set by inheritance.
     pub(crate) in_multicol: bool,
