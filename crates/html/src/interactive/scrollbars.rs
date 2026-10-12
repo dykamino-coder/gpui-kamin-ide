@@ -1,9 +1,16 @@
 //! Classic HTML scrollbars: CSS Overflow 3 §5 and CSS Scrollbars 1 §2–3.
 //! GPUI provides scrolling but deliberately leaves scrollbar painting to clients.
 mod buttons;
+pub(crate) mod interaction;
+mod modern;
+pub(crate) mod theme;
 use crate::style::computed::{Computed, Overflow};
 use crate::style::values::value::Color;
 use gpui::{Bounds, Pixels, ScrollHandle, Window, fill, point, px, size};
+
+pub(crate) fn uses_modern(c: &Computed) -> bool {
+    c.scroll.colors.flatten().is_none()
+}
 
 pub(crate) fn visible(c: &Computed, selected: [bool; 2]) -> [bool; 2] {
     let overflow = [c.overflow_x, c.overflow_y];
@@ -17,8 +24,14 @@ pub(crate) fn paint(
     range: [f32; 2],
     insets: [f32; 4],
     bounds: Bounds<Pixels>,
+    alpha: f32,
     window: &mut Window,
 ) {
+    if uses_modern(c) {
+        let bars = modern::bars(c, handle, selected, range, insets, bounds);
+        modern::paint(c, &bars, alpha, window);
+        return;
+    }
     let bars = visible(c, selected);
     let width = c.scroll.thickness();
     if width == 0.0 || c.hidden == Some(true) {
