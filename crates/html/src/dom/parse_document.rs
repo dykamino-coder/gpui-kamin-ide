@@ -1,7 +1,7 @@
 //! Parse document for dom; split out to keep the owning module within 250 lines.
 
 use super::{Node, user_agent_css};
-use super::{content, float_tail, grid_static_position};
+use super::{content, float_tail, grid_static_position, subgrid_used};
 use crate::dom::display_inheritance::resolve_display_inherit;
 use crate::dom::fixup_grid::*;
 use crate::dom::fixup_tree::*;
@@ -159,6 +159,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     // Лунки, которые умеет taffy, — на путь сетки ДО подъёмов и среза
     // подсетки: дальше они идут тем же кодом, что и сетка.
     lanes_as_grid(&mut out);
+    subgrid_used::adjust(&mut out);
     hoist_grid_abspos(&mut out);
     grid_static_position::adjust(&mut out);
     flex_items_lose_float(&mut out);

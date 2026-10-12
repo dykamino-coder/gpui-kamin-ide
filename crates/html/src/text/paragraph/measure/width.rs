@@ -56,7 +56,11 @@ impl Paragraph {
                     self.font_size,
                     &runs,
                     None,
-                    self.letter_spacing,
+                    if self.joined_spacing() {
+                        px(0.)
+                    } else {
+                        self.letter_spacing
+                    },
                 );
             // Ширина куска вместе с трекингом кусков и `word-spacing`: набор
             // их не знает, `x_at` добавляет их сам — и позиция табуляции за
@@ -115,6 +119,9 @@ impl Paragraph {
     /// общего и `word-spacing` у пробелов (то же, что `x_at` прибавляет к
     /// положению знака в конце куска).
     pub(crate) fn seg_extra(&self, start: usize, end: usize) -> Pixels {
+        if self.joined_spacing() {
+            return self.spacing_before(start, end);
+        }
         let mut extra = px(0.);
         if self.letter_spans.is_empty() && self.word_spacing == px(0.) && self.word_spans.is_empty()
         {
@@ -159,6 +166,9 @@ impl Paragraph {
         };
         // Сдвиг куска внутри строки: его задаёт табуляция перед ним.
         let mut base = base + seg.offset;
+        if self.joined_spacing() {
+            return base + self.spacing_before(seg.start, i.min(seg.end));
+        }
         if !self.letter_spans.is_empty() {
             let upto = i.min(seg.end);
             for (off, _) in self.text[seg.start..upto].char_indices() {
