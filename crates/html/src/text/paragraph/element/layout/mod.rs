@@ -41,6 +41,8 @@ impl Paragraph {
         let atom_boxes = self.atom_boxes.clone();
         let edge_spans = self.edge_spans.clone();
         let ruby_trim = self.ruby_trim;
+        let ruby_unit = self.ruby_unit;
+        let ruby_justify = self.ruby_justify;
         let emph_spans = self.emph_spans.clone();
         let box_spans = self.box_spans.clone();
         let strut_box = self.strut_box;
@@ -119,6 +121,11 @@ impl Paragraph {
                 probe.atom_boxes = atom_boxes.clone();
                 probe.edge_spans = edge_spans.clone();
                 probe.ruby_trim = ruby_trim;
+                // Ruby's sub-line keeps trailing spaces and suppresses word
+                // justification. Its intrinsic probe must use the same rules
+                // as the paragraph that later places the base/annotation.
+                probe.ruby_unit = ruby_unit;
+                probe.ruby_justify = ruby_justify;
                 probe.emph_spans = emph_spans.clone();
                 probe.box_spans = box_spans.clone();
                 probe.strut_box = strut_box;
