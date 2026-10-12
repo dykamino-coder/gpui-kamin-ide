@@ -85,7 +85,7 @@ pub struct BorderImage {
     /// Ширина кусков рамки на экране: верх, право, низ, лево.
     pub width: [BorderImageWidth; 4],
     /// Насколько рамка выходит за коробку: верх, право, низ, лево.
-    pub outset: [f32; 4],
+    pub outset: [BorderImageWidth; 4],
     /// Как мостятся края: вдоль строки и вдоль колонки.
     pub repeat: (Tiling, Tiling),
 }
