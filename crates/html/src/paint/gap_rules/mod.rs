@@ -9,13 +9,15 @@ use gpui::{
 pub mod geometry;
 pub mod painter;
 
-mod gap_fragment_tail;
+mod gap_fragment_runs;
 mod gap_segments;
 
 /// Прямоугольники элементов сетки/гибкого контейнера: их собирают пробы
 /// детей, а по ним слой-художник считает середины промежутков
 /// (css-gaps-1 §geometry: линейка идёт по ЦЕНТРАЛЬНОЙ ЛИНИИ промежутка).
-pub type GapItems = std::rc::Rc<std::cell::RefCell<Vec<Bounds<Pixels>>>>;
+mod items;
+pub use items::{GapBuffer, MulticolGaps, fresh_gap_items};
+pub type GapItems = std::rc::Rc<std::cell::RefCell<GapBuffer>>;
 
 thread_local! {
     static GAP_ITEMS: std::cell::RefCell<std::collections::HashMap<u64, GapItems>> =
@@ -176,6 +178,8 @@ pub struct GapAxisRule {
 pub enum GapLayout {
     /// Решётка: дорожки общие для всех элементов, спаны перекрывают промежутки.
     Grid,
+    /// Column boxes and spanners from the multicol fragment plan.
+    Multicol,
     /// Строки гибкого контейнера или ленты: у каждой строки СВОИ промежутки
     /// между элементами. `stacked_vertically` — строки уложены сверху вниз
     /// (гибкая строка, ленты-ряды), иначе слева направо (гибкая колонка,
