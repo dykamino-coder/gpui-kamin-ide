@@ -15,6 +15,7 @@ mod cell_columns;
 mod cell_div;
 mod cell_heights;
 mod cell_inside;
+mod cell_size;
 mod edge_probes;
 mod emit;
 use cell::table_cell;

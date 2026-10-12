@@ -3,9 +3,8 @@
 use super::pushed_box_at;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
-use crate::layout::fragment::fragment_size::shape_full;
+use crate::layout::fragment::table_bands::row_geometry;
 use crate::layout::table::anon::fixup_table_children;
-use crate::layout::table::is_cell;
 use crate::render::is_blank;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
@@ -16,8 +15,8 @@ use crate::style::values::value::Len;
 /// `avoid` и разрывов; у ряда, накрывающего `a`, — первая ячейка, в которой
 /// нашлась коробка. Точка ровно на верху ряда — первый ребёнок ячейки
 /// (ячейка — свой контекст, поле сквозь её верх не уходит; в мере
-/// `shape_full(cell)` распорка ложится в `lead`). Что `table_shape` не
-/// меряет (`rowspan`, подпись, сросшиеся рамки, заданная высота), здесь
+/// `shape_full(cell)` распорка ложится в `lead`). Охваты и высоты строк
+/// берутся из общей `row_geometry`. Подпись, сросшиеся рамки и заданная высота здесь
 /// тоже `None` — распорки нет, поведение прежнее.
 pub(super) fn pushed_cell_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
     if depth == 0
@@ -87,38 +86,31 @@ pub(super) fn pushed_cell_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
         parts.push((kind, e));
     }
     parts.sort_by_key(|p| p.0);
-    let mut rows: Vec<&Element> = Vec::new();
-    for (_, e) in &parts {
+    let mut rows: Vec<(usize, &Element)> = Vec::new();
+    for (group, (_, e)) in parts.iter().enumerate() {
         if is_row(e) {
-            rows.push(e);
+            rows.push((usize::MAX, e));
             continue;
         }
         for n in e.children.iter().filter(|n| !is_blank(n)) {
             match n {
-                Node::Element(r) if is_row(r) => rows.push(r),
+                Node::Element(r) if is_row(r) => rows.push((group, r)),
                 _ => return None,
             }
         }
     }
+    let geometry = row_geometry(&rows, depth, cell_cx, spacing)?;
     let mut y = top;
-    for r in rows {
+    for row in geometry {
         let start = y + spacing;
-        let mut h = px_of(&r.style.height)?;
-        let mut cells: Vec<&Element> = Vec::new();
-        for n in r.children.iter().filter(|n| !is_blank(n)) {
-            let Node::Element(cell) = n else { return None };
-            if !is_cell(cell) || cell.attr("rowspan").is_some_and(|v| v.trim() != "1") {
-                return None;
-            }
-            h = h.max(shape_full(cell, depth - 1, cell_cx)?.0);
-            cells.push(cell);
-        }
-        if a > start - 0.01 && a < start + h - 0.01 {
-            return cells
+        if a > start - 0.01 && a < start + row.height - 0.01 {
+            return row
+                .cells
                 .iter()
-                .find_map(|cell| pushed_box_at(cell, a - start, depth - 1));
+                .filter(|cell| cell.expandable)
+                .find_map(|cell| pushed_box_at(cell.cell, a - start, depth - 1));
         }
-        y = start + h;
+        y = start + row.height;
     }
     None
 }

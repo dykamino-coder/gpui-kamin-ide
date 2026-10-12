@@ -4,6 +4,8 @@
 use crate::dom::Element;
 use crate::layout::fragment::{Shape, ShapeCx};
 use crate::style::computed::Display;
+mod row_geometry;
+pub(crate) use row_geometry::row_geometry;
 mod row_cuts;
 mod row_shape;
 use row_cuts::{RowRef, table_row_cuts};
@@ -30,7 +32,9 @@ pub(crate) fn table_box(c: &Element) -> bool {
 /// `tfoot` — последним, как в `table()`. Заданная высота — ПОЛ коробки рядов
 /// (CSS 2.1 §17.5.3, css-tables-3 §terminology: `height` относится к table
 /// grid box, обёртка лишь несёт подписи); растянутая коробка раздаёт остаток
-/// рядам и потому идёт сплошным блоком без внутренних точек. `rowspan`,
+/// рядам и потому идёт сплошным блоком без внутренних точек. Охват `rowspan`
+/// ограничен группой; ячейка растит исходный ряд лишь при равной высоте
+/// ряда и охвата. Неизмеримое распределение высоты охвата,
 /// сросшиеся рамки, вертикальное письмо, монолит внутри при заданной высоте
 /// и неизмеримая ячейка — `None`: таблица идёт цельным куском измеренной
 /// высоты без точек, как прежде.

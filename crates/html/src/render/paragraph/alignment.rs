@@ -81,10 +81,17 @@ pub(crate) fn atom_line_align(
                 | Some(Display::InlineFlex)
         )
     }
-    // Сам атом с вертикальным письмом допустим, если он сетка или гибкий ряд:
-    // размер ему задают дорожки и содержимое, а не доступное место
-    // (`grid-container-baseline-synthesized-002/004`).
-    if (st.vertical.is_some() && !box_layout(st)) || has_vertical(&e.children, box_layout(st)) {
+    // Вертикальный inline-block в горизонтальной строке сохраняет физические
+    // размеры (Writing Modes 4 §4.3); own_box подавляет его содержательную
+    // baseline. Обратная ортогональность требует адаптера повёрнутой строки:
+    // обычный атом и text-combine там пока идут общим прежним путём.
+    let orthogonal_block = st.display == Some(Display::InlineBlock)
+        && st.vertical == Some(true)
+        && inherited.vertical != Some(true)
+        && inherited.rotated_line != Some(true);
+    if (st.vertical.is_some() && !box_layout(st) && !orthogonal_block)
+        || has_vertical(&e.children, box_layout(st))
+    {
         return None;
     }
     // Замещаемый с `aspect-ratio`: соотношение разрешается от ДОСТУПНОГО
