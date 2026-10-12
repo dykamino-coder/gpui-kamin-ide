@@ -7,6 +7,31 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
+/// CSS Writing Modes 4 §5.1: orientation belongs to each text run, including
+/// an explicit mixed override inside an upright container. Atomic contents
+/// belong to their own formatting context and cannot select this route.
+pub(super) fn only_mixed_text(nodes: &[Node], inherited: &Computed) -> bool {
+    fn visit(nodes: &[Node], style: &Computed, seen: &mut bool) -> bool {
+        nodes.iter().all(|node| match node {
+            Node::Text(text) if !text.trim().is_empty() => {
+                *seen = true;
+                style.upright != Some(true)
+            }
+            Node::Element(element)
+                if crate::render::real_inline(element)
+                    || element.style.display == Some(crate::style::computed::Display::Contents) =>
+            {
+                let child =
+                    crate::style::cascade::inherit::inherit_unpainted(style, &element.style);
+                visit(&element.children, &child, seen)
+            }
+            _ => true,
+        })
+    }
+    let mut seen = false;
+    visit(nodes, inherited, &mut seen) && seen
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn upright_paragraph(
     nodes: &[Node],
