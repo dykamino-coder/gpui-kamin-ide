@@ -2,7 +2,7 @@
 
 use crate::dom::Node;
 use crate::render::{RenderOpts, blocks, replaced_tag};
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{Computed, Display, Position};
 use crate::style::values::value::Len;
 use crate::text::ruby::{ruby_role, ruby_transform};
 use crate::text::text_box::blank_text;
@@ -75,6 +75,15 @@ pub(super) fn spaced(nodes: &[Node], done: &mut bool) -> Vec<Node> {
 }
 
 pub(super) fn unit_box(nodes: &[Node], style: &Computed, opts: &RenderOpts) -> AnyElement {
+    // CSS Ruby interlinear-block: an empty base container behaves as a
+    // single empty base, whose strut still supplies the shared baseline.
+    let strut;
+    let nodes = if crate::text::ruby::layers::current().is_some() && !has_inflow(nodes) {
+        strut = empty_base(nodes);
+        &strut[..]
+    } else {
+        nodes
+    };
     let blank_space = !nodes.is_empty() && only_space(nodes) && has_space(nodes);
     let owned;
     let nodes = if blank_space {
@@ -123,4 +132,28 @@ pub(super) fn unit_box(nodes: &[Node], style: &Computed, opts: &RenderOpts) -> A
     div()
         .children(blocks(nodes, &style, opts))
         .into_any_element()
+}
+
+fn has_inflow(nodes: &[Node]) -> bool {
+    nodes.iter().any(|node| match node {
+        Node::Text(text) => !text.is_empty(),
+        Node::Element(e) => {
+            !matches!(e.style.position, Some(Position::Absolute | Position::Fixed))
+                && (replaced_tag(e) || has_inflow(&e.children))
+        }
+    })
+}
+
+fn empty_base(nodes: &[Node]) -> Vec<Node> {
+    let spacer = Node::Text(crate::text::inline::SPACER.into());
+    if let [Node::Element(e)] = nodes
+        && ruby_role(e) == Some(crate::style::computed::RubyRole::Base)
+    {
+        let mut base = e.clone();
+        base.children.push(spacer);
+        return vec![Node::Element(base)];
+    }
+    let mut base = nodes.to_vec();
+    base.push(spacer);
+    base
 }

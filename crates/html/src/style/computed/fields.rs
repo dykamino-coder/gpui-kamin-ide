@@ -309,6 +309,8 @@ pub struct Computed {
     pub justify_chars: Option<u8>,
     /// Internal ruby unit promoted to a technical block for layout.
     pub ruby_unit: bool,
+    /// Blink-compatible forced break suppression within ruby inline content.
+    pub ruby_suppress_breaks: bool,
     /// `hanging-punctuation` — какая пунктуация выходит за край строки.
     /// `text-box-trim` — срезать полулидинг первой/последней строки блока.
     pub text_box_trim_start: bool,

@@ -65,7 +65,9 @@ impl Paragraph {
         ann_w: f32,
         window: &mut Window,
     ) -> (f32, f32) {
-        if info.mode == RubyOverhang::None || ann_w <= base_w + 0.01 {
+        // Blink ComputeRubyBaseInset returns no inset for an empty base:
+        // its annotation cannot overhang adjacent content.
+        if info.mode == RubyOverhang::None || base_w <= 0.01 || ann_w <= base_w + 0.01 {
             return (0.0, 0.0);
         }
         let space = w - base_w;

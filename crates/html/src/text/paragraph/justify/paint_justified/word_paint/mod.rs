@@ -175,6 +175,16 @@ impl Paragraph {
                     + shaped.ascent;
                 decor_prev = Some((word.range.end, at.x + shaped.width, base, dy));
             }
+            if !self.emph_spans.is_empty() {
+                self.paint_emphasis(
+                    &word.range,
+                    &shaped,
+                    at,
+                    visual.is_some_and(|v| v.1),
+                    window,
+                    cx,
+                );
+            }
             self.paint_word_gap(
                 context,
                 word,

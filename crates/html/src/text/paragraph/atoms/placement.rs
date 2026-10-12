@@ -21,6 +21,7 @@ impl Paragraph {
         }
         self.run_metrics = self.measure_runs(window);
         self.atom_boxes.clear();
+        let mut nested_layers = (0.0f32, 0.0f32);
         // Ruby atoms whose annotation may overhang neighbours: resolved after
         // the loop (the computation needs the whole paragraph).
         let mut overhangs: Vec<(usize, usize, usize, f32, f32, f32, RubyOverhangInfo)> = Vec::new();
@@ -84,12 +85,21 @@ impl Paragraph {
             // Уровни одной стороны стоят стопкой в каждой колонке; выход за
             // коробку — по самой высокой стопке.
             let (mut over, mut under) = (0.0f32, 0.0f32);
-            for (below, inset, id) in &slot.extents.levels {
+            for (i, (below, inset, id)) in slot.extents.levels.iter().enumerate() {
                 let Some(id) = id.get() else { continue };
-                let h = f32::from(window.layout_exact(id).1.height) - inset;
+                let extra = slot.extents.nested.get(i).map_or(0.0, |layers| {
+                    layers
+                        .iter()
+                        .map(|(layer, before)| layer.extra(*below, *before, window))
+                        .fold(0.0, f32::max)
+                });
+                let full = f32::from(window.layout_exact(id).1.height) + extra;
+                let h = full - inset;
                 if *below {
+                    nested_layers.1 = nested_layers.1.max(full);
                     under = under.max(h);
                 } else {
+                    nested_layers.0 = nested_layers.0.max(full);
                     over = over.max(h);
                 }
             }
@@ -131,6 +141,9 @@ impl Paragraph {
         }
         // Свес аннотации руби над соседями (css-ruby-1 §4.4): распорка
         // уже на свес, атом сдвинут влево на начальный свес.
+        if let Some(layers) = &self.ruby_layers {
+            layers.set_nested(nested_layers);
+        }
         for (k, at, len, w, base_w, ann_w, info) in overhangs {
             let (start_oh, end_oh) = self.ruby_overhang(&info, at, len, w, base_w, ann_w, window);
             if start_oh + end_oh <= 0.0 {
