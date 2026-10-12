@@ -215,5 +215,5 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
             &clip,
         );
     }
-    out.push(layer);
+    out.push(crate::interactive::scroll_target::canvas(layer));
 }

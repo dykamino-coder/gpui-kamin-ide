@@ -15,6 +15,16 @@ use std::hash::{Hash, Hasher};
 /// §4.8.5), а не внешним окном (`css-page/media-queries-002-print`: рамка
 /// 100x100 и `@media (width: 100px) and (height: 100px)`).
 pub fn parse_embedded(html: &str, theme_css: &str, viewport: (f32, f32)) -> (Vec<Node>, u64) {
+    parse_embedded_sized(html, theme_css, viewport, false, true)
+}
+
+pub(crate) fn parse_embedded_sized(
+    html: &str,
+    theme_css: &str,
+    viewport: (f32, f32),
+    responsive: bool,
+    scrolling: bool,
+) -> (Vec<Node>, u64) {
     crate::text::fonts::load_faces_additive(html);
     crate::style::values::color_space::load_profiles(html);
     // Пулы `@page` ВНЕШНЕГО документа: `parse_media` начинает с их очистки
@@ -30,7 +40,14 @@ pub fn parse_embedded(html: &str, theme_css: &str, viewport: (f32, f32)) -> (Vec
     };
     let parsed = crate::dom::parse_media(html, theme_css, media);
     *crate::style::css::PAGE_RULES.lock().unwrap() = outer_rules;
-    let (mut nodes, _root) = super::viewport::prepare(parsed);
+    let mut nodes = super::viewport::prepare_embedded(parsed, responsive);
+    // HTML's embedding policy also applies when responsive sizing is declined.
+    if !scrolling
+        && let [Node::Element(root)] = nodes.as_mut_slice()
+        && root.tag == "html-viewport"
+    {
+        root.style.scroll.width = Some(2);
+    }
     // Вложенному документу offset-трансформ нужен ровно так же: проход по
     // дереву переехал сюда из разбора стиля (`dom.rs`), и без этой строки
     // `<iframe>` потерял бы всё, что раньше работало.

@@ -11,6 +11,7 @@ use gpui::{AnyElement, Bounds, ElementId, Hsla, Pixels, Point, SharedString, Tex
 
 /// Абзац со своей раскладкой строк.
 pub struct Paragraph {
+    pub(super) scroll_owner: Option<u64>,
     pub(super) text: SharedString,
     pub(super) runs: Vec<TextRun>,
     pub(super) font_size: Pixels,

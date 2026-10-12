@@ -186,6 +186,9 @@ pub struct Computed {
     /// реестре прошлого кадра) и ключ коробки в реестре размеров клетки.
     pub self_node: u64,
     pub cb_node: u64,
+    /// Used classic gutters of the nearest containing block and viewport.
+    pub(crate) cb_scroll_insets: ([f32; 4], [f32; 4]),
+    pub(crate) icb_scroll_insets: Option<[f32; 4]>,
     pub anchor_seq: u32,
     pub anchor_key: u64,
     /// CSS scrollbar colors, width and forced overflow axes (HTML only).
@@ -1362,6 +1365,8 @@ pub struct Computed {
     pub border_shape: Option<BorderShape>,
     /// `filter`: цветовые преобразования, применённые к собственным цветам.
     pub filter: Option<Filter>,
+    /// Ordered color operations for platform scrollbar primitives.
+    pub(crate) scrollbar_filter_ops: Vec<Filter>,
     /// `filter: url(#id)` — ссылка на SVG-`<filter>` документа; рисуется
     /// растровым слоем поверх коробки (`interact::FilterLayer`).
     pub filter_ref: Option<String>,

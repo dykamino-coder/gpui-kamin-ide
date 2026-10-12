@@ -34,27 +34,22 @@ pub(super) fn initial(
     c: &Computed,
     areas: impl Iterator<Item = Area>,
     handle: &ScrollHandle,
+    insets: [f32; 4],
+    maximum: [f32; 2],
 ) -> bool {
     let bounds = handle.bounds();
     let border = sides(c.borders(), 0.0);
     let origin = [
-        f32::from(bounds.left()) + border[0],
-        f32::from(bounds.top()) + border[1],
+        f32::from(bounds.left()) + border[0] + insets[0],
+        f32::from(bounds.top()) + border[1] + insets[1],
     ];
     let view = [
-        f32::from(bounds.size.width) - border[0] - border[2],
-        f32::from(bounds.size.height) - border[1] - border[3],
+        f32::from(bounds.size.width) - border[0] - border[2] - insets[0] - insets[2],
+        f32::from(bounds.size.height) - border[1] - border[3] - insets[1] - insets[3],
     ];
     let padding = snap_sides(c.snap.padding, view);
     let vertical = c.vertical == Some(true);
-    let reverse = [
-        if vertical {
-            c.vertical_rl == Some(true)
-        } else {
-            c.rtl == Some(true)
-        },
-        vertical && (c.rtl == Some(true)),
-    ];
+    let reverse = super::super::scrollbar_gutter::reversed(c);
     let active = match c.snap.axis {
         1 => [true, false],
         2 => [false, true],
@@ -65,8 +60,6 @@ pub(super) fn initial(
     };
     let offset = handle.offset();
     let current = [-f32::from(offset.x), -f32::from(offset.y)];
-    let maximum = handle.max_offset();
-    let maximum = [f32::from(maximum.x), f32::from(maximum.y)];
     let mut choices = [Vec::new(), Vec::new()];
     for area in areas {
         let margin = snap_sides(area.snap.margin, view);
@@ -99,6 +92,7 @@ pub(super) fn initial(
                 (3, _) => (rect[axis] + rect[axis + 2] - port_start - port_end) / 2.0,
                 _ => continue,
             };
+            let delta = if reverse[axis] { -delta } else { delta };
             let candidate = (current[axis] + delta).clamp(0.0, maximum[axis]);
             let distance = (candidate - current[axis]).abs();
             // Proximity is UA-defined (§6.2); use a fraction of the snapport,
@@ -108,7 +102,14 @@ pub(super) fn initial(
             }
             choices[axis].push(selection::Choice {
                 position: candidate,
-                area: Some(rect),
+                area: Some(std::array::from_fn(|side| {
+                    let a = side % 2;
+                    if reverse[a] {
+                        2.0 * origin[a] + view[a] - rect[(side + 2) % 4]
+                    } else {
+                        rect[side]
+                    }
+                })),
             });
         }
     }

@@ -16,6 +16,7 @@ impl Paragraph {
         wrap: Wrap,
     ) -> Self {
         Paragraph {
+            scroll_owner: None,
             ruby_base_sink: take_ruby_base_sink(),
             text,
             runs,

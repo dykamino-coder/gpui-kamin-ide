@@ -130,6 +130,19 @@ pub(crate) fn place_element(
                 }
                 return;
             }
+            Some(kept) if to_icb && !(x_set && y_set) => {
+                // Deferred scroll trees are assembled after the document ICB
+                // closes. Preserve their hypothetical flow position locally.
+                out.push(crate::layout::positioned::containing_block::spot_probe(
+                    spot.clone(),
+                    true,
+                ));
+                crate::layout::positioned::containing_block::LatePlace {
+                    child: Some(kept),
+                    spot,
+                }
+                .into_any_element()
+            }
             Some(kept) => kept,
         }
     } else {

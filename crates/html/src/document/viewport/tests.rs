@@ -7,7 +7,7 @@ fn body_colors_do_not_propagate_to_the_viewport() {
         "<style>body { scrollbar-color: red blue; overflow: scroll }</style>",
         "",
     );
-    assert!(policy(&nodes).is_none());
+    assert!(policy(&nodes).unwrap().scroll.colors.flatten().is_none());
 }
 
 #[test]
