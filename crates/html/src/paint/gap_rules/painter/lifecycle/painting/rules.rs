@@ -3,8 +3,8 @@
 use crate::paint::gap_rules::GapRuleSpec;
 use crate::paint::gap_rules::gap_segments::segments;
 use crate::paint::gap_rules::geometry::GapRun;
-use crate::paint::gap_rules::{GapAxisRule, GapLayout, gap_fragment_tail};
-use gpui::{Bounds, Pixels, Window};
+use crate::paint::gap_rules::{GapAxisRule, GapLayout, gap_fragment_runs};
+use gpui::{Bounds, Pixels, TransformationMatrix, Window};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_rule(
@@ -15,6 +15,53 @@ pub(crate) fn draw_rule(
     main_like: bool,
     spec: &GapRuleSpec,
     bounds: Bounds<Pixels>,
+) {
+    let scope = crate::layout::fragment::gap_fragment::current()
+        .filter(|_| {
+            !spec.vertical
+                && spec.kind != GapLayout::Multicol
+                && spec.lines_extent != 2
+                && window.current_transformation() == TransformationMatrix::unit()
+        })
+        .map(|mut scope| {
+            // Grid tracks stretch through the suppressed gutter's unused
+            // tail; flex line decorations end with the line's item edges.
+            if spec.kind != GapLayout::Grid {
+                scope.end = scope.cut;
+            }
+            scope
+        });
+    let local;
+    let run = if let Some(scope) = &scope {
+        let Some(fragment) = gap_fragment_runs::local_run(run, gap_on_x, scope) else {
+            return;
+        };
+        local = fragment;
+        &local
+    } else {
+        run
+    };
+    let paint = |window: &mut Window| {
+        paint_rule(window, gap_on_x, run, rule, main_like, spec, bounds);
+    };
+    if let Some(scope) = scope.filter(|s| window.content_mask() == s.mask) {
+        // Insets may extend beyond a fragment's cap. The parent still clips
+        // overflow, but the content slice must not cut decoration ink.
+        window.with_content_mask_replaced(scope.parent, paint);
+    } else {
+        paint(window);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn paint_rule(
+    window: &mut Window,
+    gap_on_x: bool,
+    run: &GapRun,
+    rule: &GapAxisRule,
+    main_like: bool,
+    spec: &GapRuleSpec,
+    _bounds: Bounds<Pixels>,
 ) {
     if !rule.styles.at(run.index, run.count).unwrap_or(false) {
         return;
@@ -27,9 +74,6 @@ pub(crate) fn draw_rule(
         return;
     };
     let c = (run.g0 + run.g1) / 2.0;
-    if spec.kind == GapLayout::Grid && !spec.vertical && gap_on_x {
-        gap_fragment_tail::paint(window, bounds, run, rule, colour.to_hsla());
-    }
     // Отрезок вдоль строчной оси (горизонтальный в горизонтальном
     // письме) при `rtl` считает start/end от правого края.
     let flip = spec.rtl && !spec.vertical && !gap_on_x;
