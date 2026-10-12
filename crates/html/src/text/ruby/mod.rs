@@ -1,4 +1,5 @@
 //! Руби: сегменты и уровни.
+mod pairing;
 mod segment_state;
 mod segments;
 use crate::text::ruby::segment_state::Kind;
