@@ -11,7 +11,7 @@ pub(crate) fn flush_inline(
     first: bool,
     last: bool,
     e: &crate::dom::Element,
-    ltr: bool,
+    edges: Option<(usize, usize)>,
     has_edge: impl Fn(usize) -> bool,
 ) {
     // Кусок из одних схлопываемых пробелов коробки не создаёт —
@@ -28,26 +28,19 @@ pub(crate) fn flush_inline(
         // §9.2.1.1 оставляет начальный край первому куску, конечный —
         // последнему (`block-in-inline-whitespace-001a`: синяя черта
         // `border-left` над первым блоком и `border-right` под вторым).
-        let drop = if first && ltr && has_edge(3) {
-            Some(1)
-        } else if last && ltr && has_edge(1) {
-            Some(3)
-        } else {
-            None
-        };
+        let drop = edges.and_then(|(start, end)| {
+            if first && has_edge(start) {
+                Some(end)
+            } else if last && has_edge(end) {
+                Some(start)
+            } else {
+                None
+            }
+        });
         if let Some(drop) = drop {
             let mut host = e.clone();
             host.children = Vec::new();
-            host.style.border_visible[drop] = Some(false);
-            if drop == 1 {
-                host.style.border_width.right = None;
-                host.style.padding.right = None;
-                host.style.margin.right = None;
-            } else {
-                host.style.border_width.left = None;
-                host.style.padding.left = None;
-                host.style.margin.left = None;
-            }
+            super::drop_inline_side(&mut host.style, drop);
             hosts.push(out.len());
             out.push(Node::Element(anon_element(
                 "anon-block",
