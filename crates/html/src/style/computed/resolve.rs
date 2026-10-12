@@ -5,6 +5,7 @@ use crate::style::values::value::{Color, Len};
 
 mod derived;
 mod em;
+mod image_lengths;
 mod logical;
 
 impl Computed {

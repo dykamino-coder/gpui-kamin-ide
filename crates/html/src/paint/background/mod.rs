@@ -34,6 +34,7 @@ use crate::paint::background::float_geometry::rrect_of;
 pub use float_geometry::rounded_float;
 mod mask_composite;
 pub use mask_composite::{MaskLayer, compose_mask_layers};
+mod angle;
 mod conic;
 mod sources;
 pub use sources::{key, key_exif, source};

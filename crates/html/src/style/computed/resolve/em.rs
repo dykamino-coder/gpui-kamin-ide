@@ -197,5 +197,6 @@ impl Computed {
             fix(&mut o.width);
             fix(&mut o.offset);
         }
+        self.resolve_image_lengths();
     }
 }
