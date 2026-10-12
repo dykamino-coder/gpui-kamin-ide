@@ -26,6 +26,14 @@ impl Paragraph {
                 value.hash(&mut h);
             }
         }
+        // Segments after a tab (or a soft hyphen) retain cumulative offsets.
+        // Those offsets include inline spacing and ruby spacer advances;
+        // changing overhang must not reuse the tab stops from the wider ruby.
+        for (range, spacing) in self.word_spans.iter().chain(&self.letter_spans) {
+            range.start.hash(&mut h);
+            range.end.hash(&mut h);
+            f32::from(*spacing).to_bits().hash(&mut h);
+        }
         h.finish()
     }
 }
