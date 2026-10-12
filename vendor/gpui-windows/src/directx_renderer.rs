@@ -77,6 +77,10 @@ pub(crate) struct DirectXRenderer {
     /// In that case we want to discard the first frame that we draw as we got reset in the middle of a frame
     /// meaning we lost all the allocated gpu textures and scene resources.
     skip_draws: bool,
+    /// KaminIDE patch (INC-2026-0001, диагностика): цена кадра по пачкам.
+    gpu_timer: batch_cost::GpuTimer,
+    /// Идёт основная сцена кадра (не буфер группы) — её пачки и меряются.
+    timing_main: bool,
 }
 
 /// KaminIDE patch: ресурсы backdrop blur. Копия бэкбуфера (сэмплить
@@ -461,6 +465,8 @@ impl DirectXRenderer {
             disable_direct_composition,
             font_info: Self::get_font_info(),
             blur: BlurScratch::default(),
+            gpu_timer: batch_cost::GpuTimer::default(),
+            timing_main: false,
             group_target: None,
             group_target_tex: None,
             blend_premultiplied: None,
@@ -720,10 +726,16 @@ impl DirectXRenderer {
             WindowBackgroundAppearance::Opaque => [1.0f32; 4],
             _ => [0.0f32; 4],
         })?;
+        let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
+        self.gpu_timer.begin(&device, &ctx);
         // KaminIDE patch: группы рисуются в свои буферы ДО кадра — в кадре
         // от них остаётся метка, по которой готовый буфер и композитится.
         if let Err(e) = self.render_groups(scene) {
             log::warn!("paint group failed: {e}");
+        }
+        if !scene.groups.is_empty() {
+            batch_cost::count(8, scene.groups.len(), 0.0);
+            self.gpu_timer.mark(&device, &ctx, 8);
         }
         // Цель — снова кадр, даже если проход группы оборвался ошибкой.
         unsafe {
@@ -731,7 +743,12 @@ impl DirectXRenderer {
                 .device_context
                 .OMSetRenderTargets(Some(slice::from_ref(&self.res().render_target_view)), None);
         }
-        self.draw_scene(scene)
+        gpui::batch_cost::quad_detail(&scene.quads);
+        self.timing_main = true;
+        let drawn = self.draw_scene(scene);
+        self.timing_main = false;
+        self.gpu_timer.end(&ctx);
+        drawn
     }
 
     /// KaminIDE patch: примитивы одной сцены — кадра или группы.
@@ -750,6 +767,7 @@ impl DirectXRenderer {
             .and_then(|devices| devices.annotation.clone())
             .filter(|annotation| unsafe { annotation.GetStatus().as_bool() });
         for batch in scene.batches() {
+            let cost = self.timing_main.then(|| batch_area(scene, &batch));
             let _annotation = annotation
                 .as_ref()
                 .map(|annotation| Annotation::new(annotation, HSTRING::from(batch.label())));
@@ -787,6 +805,11 @@ impl DirectXRenderer {
                     scene.surfaces.len(),
                 )
             })?;
+            if let Some((kind, prims, area)) = cost {
+                batch_cost::count(kind, prims, area);
+                let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
+                self.gpu_timer.mark(&device, &ctx, kind);
+            }
         }
         Ok(())
     }
@@ -3313,6 +3336,33 @@ mod dxgi {
 }
 
 mod recovery;
+mod batch_cost;
+
+/// KaminIDE patch (INC-2026-0001, диагностика): вид пачки, число примитивов
+/// и их площадь в пикселях с учётом маски содержимого.
+fn batch_area(scene: &Scene, batch: &PrimitiveBatch) -> (usize, usize, f64) {
+    fn area(b: &Bounds<ScaledPixels>, m: &ContentMask<ScaledPixels>, grow: f32) -> f64 {
+        let b = Bounds {
+            origin: point(b.origin.x - ScaledPixels(grow), b.origin.y - ScaledPixels(grow)),
+            size: size(b.size.width + ScaledPixels(2.0 * grow), b.size.height + ScaledPixels(2.0 * grow)),
+        };
+        let i = b.intersect(&m.bounds);
+        (i.size.width.0.max(0.0) * i.size.height.0.max(0.0)) as f64
+    }
+    fn sum<T>(items: &[T], f: impl Fn(&T) -> f64) -> f64 {
+        items.iter().map(f).sum()
+    }
+    match batch {
+        PrimitiveBatch::Shadows(r) => (0, r.len(), sum(&scene.shadows[r.clone()], |s| area(&s.bounds, &s.content_mask, 3.0 * s.blur_radius.0))),
+        PrimitiveBatch::Quads(r) => (1, r.len(), sum(&scene.quads[r.clone()], |q| area(&q.bounds, &q.content_mask, 0.0))),
+        PrimitiveBatch::Paths(r) => (2, r.len(), sum(&scene.paths[r.clone()], |p| area(&p.bounds, &p.content_mask, 0.0))),
+        PrimitiveBatch::Underlines(r) => (3, r.len(), sum(&scene.underlines[r.clone()], |u| area(&u.bounds, &u.content_mask, 0.0))),
+        PrimitiveBatch::MonochromeSprites { range: r, .. } => (4, r.len(), sum(&scene.monochrome_sprites[r.clone()], |s| area(&s.bounds, &s.content_mask, 0.0))),
+        PrimitiveBatch::SubpixelSprites { range: r, .. } => (5, r.len(), sum(&scene.subpixel_sprites[r.clone()], |s| area(&s.bounds, &s.content_mask, 0.0))),
+        PrimitiveBatch::PolychromeSprites { range: r, .. } => (6, r.len(), sum(&scene.polychrome_sprites[r.clone()], |s| area(&s.bounds, &s.content_mask, 0.0))),
+        PrimitiveBatch::Surfaces(r) => (7, r.len(), sum(&scene.surfaces[r.clone()], |s| area(&s.bounds, &s.content_mask, 0.0))),
+    }
+}
 
 #[cfg(test)]
 mod recovery_tests;
