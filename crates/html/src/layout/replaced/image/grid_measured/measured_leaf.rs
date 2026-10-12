@@ -12,7 +12,7 @@ pub(super) struct MeasuredImage {
 }
 
 impl Element for MeasuredImage {
-    type RequestLayoutState = LayoutId;
+    type RequestLayoutState = (LayoutId, LayoutId);
     type PrepaintState = ();
 
     fn id(&self) -> Option<ElementId> {
@@ -28,7 +28,7 @@ impl Element for MeasuredImage {
         _inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
-    ) -> (LayoutId, LayoutId) {
+    ) -> (LayoutId, Self::RequestLayoutState) {
         let picture = self.image.request_layout(window, cx);
         let natural = self.natural;
         let ratio = self.ratio;
@@ -43,27 +43,32 @@ impl Element for MeasuredImage {
                     (None, None, _) => natural,
                 }
             });
-        (layout, picture)
+        (layout, (picture, layout))
     }
 
     fn prepaint(
         &mut self,
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        picture: &mut LayoutId,
+        _bounds: Bounds<Pixels>,
+        state: &mut Self::RequestLayoutState,
         window: &mut Window,
         cx: &mut App,
     ) {
+        // Reconstruct the decoration from CSS dimensions, before pixel snapping.
+        // Using snapped bounds enlarges a 34px box to 34.4px at scale 1.25,
+        // making its percentage-painted content overlap a dotted border.
+        let dimensions = window.layout_size_unrounded(state.1);
+        let origin = window.layout_origin_unrounded(state.1);
         window.compute_layout(
-            *picture,
+            state.0,
             size(
-                AvailableSpace::Definite(bounds.size.width),
-                AvailableSpace::Definite(bounds.size.height),
+                AvailableSpace::Definite(dimensions.width),
+                AvailableSpace::Definite(dimensions.height),
             ),
             cx,
         );
-        window.set_layout_root_origin(*picture, bounds.origin);
+        window.set_layout_root_origin(state.0, origin);
         self.image.prepaint_at(point(px(0.0), px(0.0)), window, cx);
     }
 
@@ -72,7 +77,7 @@ impl Element for MeasuredImage {
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _picture: &mut LayoutId,
+        _state: &mut Self::RequestLayoutState,
         _prepaint: &mut (),
         window: &mut Window,
         cx: &mut App,
