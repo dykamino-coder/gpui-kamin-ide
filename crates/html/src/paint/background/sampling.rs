@@ -77,7 +77,7 @@ pub(super) fn paint_tile(
     let _ = window.paint_image_with_sampling(bounds, corners, image, 0, false, sampling);
 }
 
-fn paint_gradient(
+pub(crate) fn paint_gradient(
     window: &mut Window,
     bounds: Bounds<Pixels>,
     corners: Corners<Pixels>,

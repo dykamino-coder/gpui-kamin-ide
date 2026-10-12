@@ -87,6 +87,7 @@ impl Paragraph {
             ruby_unit: self.ruby_unit,
             ruby_rotated: self.ruby_rotated,
             ruby_base_sink: None,
+            ruby_layers: None,
             letter_spacing: self.letter_spacing,
             word_spacing: self.word_spacing,
             vertical: self.vertical,

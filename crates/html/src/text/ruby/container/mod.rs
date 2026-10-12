@@ -1,4 +1,5 @@
 //! Строчный контейнер руби (`<ruby>` атомом строки): сегменты, базы и аннотации.
+mod layer_offset;
 mod stacks;
 mod unit_boxes;
 use crate::text::ruby::container::stacks::level_wrap;
@@ -22,8 +23,6 @@ pub(crate) fn ruby_container_atom(
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let mut merged = inherit(inherited, &e.style);
-    // Внутри руби знак акцента не разворачивается (как прежде).
-    merged.text_emphasis = None;
     let segments = ruby_segments(&e.children);
     // Без хотя бы одной непустой аннотации руби — обычный строчный
     // (`ruby-line-breaking-001`: `<rtc><rt>` пустой; `ruby-intrinsic-isize-*`).
@@ -63,8 +62,11 @@ pub(crate) fn ruby_container_atom(
         };
         (line - (asc + desc)) / 2.0
     };
-    let extent = |d: gpui::Div, under: bool| {
-        crate::text::paragraph::ruby_extent(d.into_any_element(), under, base_half)
+    let extent = |d: gpui::Div,
+                  under: bool,
+                  layers: &[std::rc::Rc<crate::text::ruby::layers::Layers>]| {
+        let el = crate::text::paragraph::ruby_layer(d.into_any_element(), under, base_half, layers);
+        layer_offset::offset(el, layers, under)
     };
     let mut row = div().flex().flex_row().items_baseline().flex_shrink_0();
     for seg in &segments {
@@ -72,9 +74,14 @@ pub(crate) fn ruby_container_atom(
         let level_style: Vec<Computed> = seg
             .levels
             .iter()
-            .map(|l| match &l.container {
-                Some(c) => inherit(&merged, c),
-                None => merged.clone(),
+            .map(|l| {
+                let mut style = match &l.container {
+                    Some(c) => inherit(&merged, c),
+                    None => merged.clone(),
+                };
+                // Decorations propagated to a ruby container apply to bases.
+                style.text_emphasis = None;
+                style
             })
             .collect();
         // Колонок столько, сколько баз или аннотаций самого длинного
@@ -90,7 +97,10 @@ pub(crate) fn ruby_container_atom(
         // Колонки не сжимаются: ширина колонки — по самому широкому
         // из базы и аннотаций (§3.1.1), а не по остатку строки.
         let mut cols = div().flex().flex_row().items_baseline().flex_shrink_0();
+        let mut contexts = Vec::new();
         for i in 0..columns {
+            let layers = std::rc::Rc::new(crate::text::ruby::layers::Layers::default());
+            contexts.push(layers.clone());
             // Уровни над базой — в обратную стопку вместе с базой,
             // уровни под ней — прямой стопкой снаружи.
             let mut over_anns: Vec<AnyElement> = Vec::new();
@@ -106,7 +116,7 @@ pub(crate) fn ruby_container_atom(
                 } else {
                     nodes
                 };
-                let ann = unit_box(nodes, style, opts);
+                let ann = crate::text::ruby::layers::without_base(|| unit_box(nodes, style, opts));
                 if level_under(k) {
                     under.push(ann);
                 } else {
@@ -121,39 +131,41 @@ pub(crate) fn ruby_container_atom(
             // wider than the base may overhang the neighbours
             // (`lines::lay_atoms`, Blink `ruby_utils.cc` GetOverhang).
             let base_nodes = seg.bases.get(i).unwrap_or(&empty);
-            let base_el = if segments.len() == 1 && columns == 1 && !seg.levels.is_empty() {
-                let base_font = match merged.font_size {
-                    Some(Len::Px(v)) => v,
-                    _ => opts.base_size(),
-                };
-                // The annotation's own font size: UA `rt { font-size: 50% }`.
-                let ann_font = seg
-                    .levels
-                    .first()
-                    .and_then(|l| l.units.first())
-                    .and_then(|u| match u.as_slice() {
-                        [Node::Element(k)] => match k.style.font_size {
-                            Some(Len::Px(v)) => Some(v),
-                            Some(Len::Pct(p)) | Some(Len::Em(p)) => Some(p * base_font),
+            let base_el = crate::text::ruby::layers::with_base(layers.clone(), || {
+                if segments.len() == 1 && columns == 1 && !seg.levels.is_empty() {
+                    let base_font = match merged.font_size {
+                        Some(Len::Px(v)) => v,
+                        _ => opts.base_size(),
+                    };
+                    // The annotation's own font size: UA `rt { font-size: 50% }`.
+                    let ann_font = seg
+                        .levels
+                        .first()
+                        .and_then(|l| l.units.first())
+                        .and_then(|u| match u.as_slice() {
+                            [Node::Element(k)] => match k.style.font_size {
+                                Some(Len::Px(v)) => Some(v),
+                                Some(Len::Pct(p)) | Some(Len::Em(p)) => Some(p * base_font),
+                                _ => None,
+                            },
                             _ => None,
-                        },
-                        _ => None,
-                    })
-                    .unwrap_or(base_font * 0.5);
-                crate::text::paragraph::ruby_base_with_overhang(
-                    merged
-                        .ruby_overhang
-                        .unwrap_or(crate::style::computed::RubyOverhang::Auto),
-                    ann_font / 2.0,
-                    merged.ruby_align == Some(crate::style::computed::RubyAlign::Start),
-                    base_font,
-                    || unit_box(base_nodes, &merged, opts),
-                )
-            } else {
-                unit_box(base_nodes, &merged, opts)
-            };
+                        })
+                        .unwrap_or(base_font * 0.5);
+                    crate::text::paragraph::ruby_base_with_overhang(
+                        merged
+                            .ruby_overhang
+                            .unwrap_or(crate::style::computed::RubyOverhang::Auto),
+                        ann_font / 2.0,
+                        merged.ruby_align == Some(crate::style::computed::RubyAlign::Start),
+                        base_font,
+                        || unit_box(base_nodes, &merged, opts),
+                    )
+                } else {
+                    unit_box(base_nodes, &merged, opts)
+                }
+            });
             let mut over = over_stack(base_el);
-            if !over_anns.is_empty() {
+            if !over_anns.is_empty() || layers.mark_height(false) > 0.0 {
                 over = over.child(
                     level_wrap(false).child(extent(
                         div()
@@ -162,10 +174,11 @@ pub(crate) fn ruby_container_atom(
                             .flex_shrink_0()
                             .children(over_anns.into_iter().rev()),
                         false,
+                        std::slice::from_ref(&layers),
                     )),
                 );
             }
-            let col = if under.is_empty() {
+            let col = if under.is_empty() && layers.mark_height(true) == 0.0 {
                 over.into_any_element()
             } else {
                 under_stack()
@@ -173,6 +186,7 @@ pub(crate) fn ruby_container_atom(
                     .child(level_wrap(true).child(extent(
                         div().flex().flex_col().flex_shrink_0().children(under),
                         true,
+                        std::slice::from_ref(&layers),
                     )))
                     .into_any_element()
             };
@@ -194,16 +208,15 @@ pub(crate) fn ruby_container_atom(
                     over_stack(seg_el)
                 };
                 seg_el = host
-                    .child(
-                        level_wrap(level_under(k)).child(extent(
-                            div()
-                                .flex()
-                                .flex_col()
-                                .flex_shrink_0()
-                                .child(unit_box(nodes, style, opts)),
-                            level_under(k),
-                        )),
-                    )
+                    .child(level_wrap(level_under(k)).child(extent(
+                        div().flex().flex_col().flex_shrink_0().child(
+                            crate::text::ruby::layers::without_base(|| {
+                                unit_box(nodes, style, opts)
+                            }),
+                        ),
+                        level_under(k),
+                        &contexts,
+                    )))
                     .into_any_element();
             }
         }

@@ -97,14 +97,19 @@ pub(super) fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
                 flush_run(&mut run, &mut cur);
                 loose_level = false;
                 let Node::Element(k) = node else { continue };
+                let first_rt = k.children.iter().position(is_annotation);
+                let last_rt = k.children.iter().rposition(is_annotation);
                 let rts: Vec<RubyUnit> = k
                     .children
                     .iter()
-                    .filter(|c| {
-                        matches!(c, Node::Element(r)
-                            if ruby_role(r) == Some(crate::style::computed::RubyRole::Text))
+                    .enumerate()
+                    .filter(|(i, c)| {
+                        is_annotation(c)
+                            || (first_rt.is_some_and(|first| *i > first)
+                                && last_rt.is_some_and(|last| *i < last)
+                                && matches!(c, Node::Text(t) if blank_text(t)))
                     })
-                    .map(|c| vec![c.clone()])
+                    .map(|(_, c)| vec![c.clone()])
                     .collect();
                 let spanning = rts.is_empty();
                 let units = if spanning {
@@ -193,5 +198,13 @@ pub(super) fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
     }
     flush_run(&mut run, &mut cur);
     close_segment(&mut cur, &mut out);
+    for segment in &mut out {
+        super::pairing::pair(segment);
+    }
     out
+}
+
+fn is_annotation(node: &Node) -> bool {
+    matches!(node, Node::Element(e)
+        if ruby_role(e) == Some(crate::style::computed::RubyRole::Text))
 }

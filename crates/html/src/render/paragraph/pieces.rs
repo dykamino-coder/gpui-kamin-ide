@@ -68,7 +68,21 @@ pub(crate) fn paragraph_pieces_routed(
         )>,
     > = Vec::new();
     let mut atom_noted = |e: &Element| -> Option<inline::Piece> {
-        let (piece, extents) = crate::text::paragraph::collect_ruby_extents(|| atom(e));
+        let build = || crate::text::paragraph::collect_ruby_extents(|| atom(e));
+        let (piece, extents) = if replaced_tag(e)
+            || matches!(
+                e.style.display,
+                Some(
+                    crate::style::computed::Display::InlineBlock
+                        | crate::style::computed::Display::InlineFlex
+                        | crate::style::computed::Display::InlineGrid
+                        | crate::style::computed::Display::InlineTable
+                )
+            ) {
+            crate::text::ruby::layers::without_base(build)
+        } else {
+            build()
+        };
         if matches!(piece, Some(inline::Piece::Atom(_))) {
             let extents = if ruby_role(e) == Some(crate::style::computed::RubyRole::Container) {
                 extents

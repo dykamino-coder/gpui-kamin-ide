@@ -1,4 +1,5 @@
 //! Руби: сегменты и уровни.
+mod pairing;
 mod segment_state;
 mod segments;
 use crate::text::ruby::segment_state::Kind;
@@ -15,6 +16,7 @@ use crate::style::computed::Computed;
 use crate::text::text_box::blank_text;
 
 pub(crate) mod container;
+pub(crate) mod layers;
 mod ruby_hiding;
 pub(crate) mod ruby_transform;
 

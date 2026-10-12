@@ -3,10 +3,18 @@
 use super::{Align, Paragraph};
 
 impl Paragraph {
-    pub fn ruby_justify(mut self, enabled: bool, ruby_unit: bool, rotated: bool) -> Self {
+    pub fn ruby_justify(
+        mut self,
+        enabled: bool,
+        ruby_unit: bool,
+        rotated: bool,
+        has_ruby: bool,
+    ) -> Self {
         self.ruby_justify = enabled;
         self.ruby_unit = ruby_unit;
-        self.ruby_rotated = ruby_unit && rotated;
+        // Ruby and its ordinary text siblings share one transformed raster
+        // frame; snapping only the ordinary words before rotation splits it.
+        self.ruby_rotated = (ruby_unit || has_ruby) && rotated;
         self
     }
 

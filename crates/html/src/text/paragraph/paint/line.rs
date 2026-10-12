@@ -186,8 +186,8 @@ impl Paragraph {
                     window,
                 );
             }
-            if !rtl && !self.emph_spans.is_empty() {
-                self.paint_emphasis(&run, &shaped, point(x, at.y), window, cx);
+            if !self.emph_spans.is_empty() {
+                self.paint_emphasis(&run, &shaped, point(x, at.y), rtl, window, cx);
             }
             x += width;
         }

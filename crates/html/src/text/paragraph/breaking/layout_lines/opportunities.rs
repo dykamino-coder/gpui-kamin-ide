@@ -53,7 +53,7 @@ impl Paragraph {
         let mut width =
             self.span(segs, head, measured - tail_hang) - self.tail_spacing(measured - tail_hang);
         // Строка, кончающаяся мягким переносом, несёт ещё и знак переноса.
-        if self.text[..measured].ends_with('\u{00ad}') {
+        if at < part_end && self.text[..measured].ends_with('\u{00ad}') {
             width += self.hyphen_width(measured);
         }
         // Допуск в сотую точки: ширина строки складывается из замеров
