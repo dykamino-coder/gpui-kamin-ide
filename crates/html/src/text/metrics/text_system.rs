@@ -4,11 +4,35 @@ use super::MONO;
 use super::space;
 use super::{INSTALLED, MONO_FAMILIES, WRAP, install_probe, install_vprobe};
 
+thread_local! {
+    static FONT_SYSTEM: std::cell::RefCell<Option<std::sync::Arc<gpui::TextSystem>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Ruby's content edge uses the selected face, including generic family,
+/// weight and style (CSS Ruby 1 §3.4; Blink ruby_utils.cc ComputeEmHeight).
+pub(crate) fn font_extents(font: &gpui::Font, size: f32) -> (f32, f32) {
+    FONT_SYSTEM.with(|cell| {
+        let system = cell.borrow();
+        if let Some(system) = system.as_ref() {
+            let id = system.resolve_font(font);
+            (
+                f32::from(system.ascent(id, gpui::px(size))),
+                f32::from(system.descent(id, gpui::px(size))).abs(),
+            )
+        } else {
+            let (ascent, descent, _) = super::vmetrics_px(&font.family, size);
+            (ascent, descent)
+        }
+    })
+}
+
 /// Поставить щуп поверх системы шрифтов GPUI.
 ///
 /// Вызывается один раз при старте приложения, ПОСЛЕ регистрации своих
 /// шрифтов: до неё `Ahem` ещё не найден и замер вернул бы метрики подмены.
 pub fn use_text_system(text_system: std::sync::Arc<gpui::TextSystem>) {
+    FONT_SYSTEM.with(|cell| *cell.borrow_mut() = Some(text_system.clone()));
     space::use_text_system(text_system.clone());
     let names = text_system.all_font_names();
     // Список семейств из каскада разбирается ДО отрисовки, а выбирать из него
