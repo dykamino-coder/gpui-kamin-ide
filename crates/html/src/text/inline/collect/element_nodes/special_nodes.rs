@@ -24,6 +24,11 @@ pub(super) fn special_node(
         return true;
     }
     if e.tag == "br" {
+        // Blink inline_items_builder.cc:58-62 suppresses forced breaks
+        // in ruby columns, including bases, until they can be fragmented.
+        if inherited.ruby_suppress_breaks {
+            return true;
+        }
         case.boundary();
         out.push(Piece::Text {
             text: "\n".into(),

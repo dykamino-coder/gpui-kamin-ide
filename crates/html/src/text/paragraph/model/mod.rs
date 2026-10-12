@@ -217,6 +217,7 @@ pub struct Paragraph {
     /// increase the line height»): эталоны семьи `text-emphasis-line-height-*`
     /// строятся именно из руби.
     pub(super) emph_spans: Vec<EmphSpan>,
+    pub(super) ruby_layers: Option<std::rc::Rc<crate::text::ruby::layers::Layers>>,
     /// Куски с украшениями (`text-decoration`, css-text-decor-3 §2): линии
     /// рисует сам абзац (см. `paint_decor`), а не набор GPUI.
     pub(super) decor_spans: Vec<DecorSpan>,

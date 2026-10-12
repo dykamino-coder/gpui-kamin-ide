@@ -40,6 +40,7 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     c.ruby_justify = own.ruby_justify.or(parent.ruby_justify);
     c.justify_chars = own.justify_chars.or(parent.justify_chars);
     c.ruby_unit = own.ruby_unit || parent.ruby_unit;
+    c.ruby_suppress_breaks = own.ruby_suppress_breaks || parent.ruby_suppress_breaks;
     c.text_align_last = own.text_align_last.or(parent.text_align_last);
     c.image_pixelated = own.image_pixelated.or(parent.image_pixelated);
     match_parent_align(parent, own, c);
