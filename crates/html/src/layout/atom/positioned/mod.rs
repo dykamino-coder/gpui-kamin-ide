@@ -92,6 +92,7 @@ pub(super) fn static_position_atom(
     });
     let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false);
     let inner = match replaced {
+        Some(el) if merged.corner_shaped() => crate::paint::effects::grouped::grouped(el, &merged),
         Some(el) => el,
         None => inner.into_any_element(),
     };

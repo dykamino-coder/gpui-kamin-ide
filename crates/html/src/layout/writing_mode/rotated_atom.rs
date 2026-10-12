@@ -29,9 +29,11 @@ pub(crate) fn physical(
     flow: &Computed,
     opts: &crate::render::RenderOpts,
 ) -> Option<gpui::AnyElement> {
+    // Atomic formatting contexts keep physical dimensions and their own
+    // writing mode, including an explicitly orthogonal mode. Only the
+    // enclosing paragraph's text is turned (CSS Writing Modes 4, section 4.3).
     if !HAS_TEXT_TURN.with(|cell| cell.get())
         || flow.rotated_line != Some(true)
-        || e.style.vertical.is_some()
         || e.style.inline_display == Some(true)
         || !matches!(
             e.style.display,
