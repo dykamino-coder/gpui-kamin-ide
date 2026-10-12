@@ -185,6 +185,8 @@ impl Computed {
             fix(l);
         }
         sides(&mut self.padding);
+        sides(&mut self.snap.padding);
+        sides(&mut self.snap.margin);
         sides(&mut self.margin);
         sides(&mut self.border_width);
         sides(&mut self.inset);

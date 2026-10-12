@@ -1,6 +1,7 @@
 //! HTML scrollable-overflow owner; GPUI measures only immediate child bounds.
 //! A transparent extent proxy projects CSS Overflow 3 §2.2 into that native range.
 mod geometry;
+mod snap;
 use crate::dom::{Element, Node};
 use crate::style::computed::Computed;
 use geometry::{Clip, Rect, sides, union};
@@ -17,6 +18,9 @@ pub struct Frame {
     extent: Rc<Cell<Size<Pixels>>>,
     marker: Rc<Cell<bool>>,
     root: Rc<Cell<Option<u64>>>,
+    snap_areas: Rc<RefCell<HashMap<u64, snap::Area>>>,
+    snapped: Rc<Cell<bool>>,
+    decoration_clip: Rc<Cell<Option<gpui::ContentMask<Pixels>>>>,
 }
 impl Default for Frame {
     fn default() -> Self {
@@ -25,6 +29,9 @@ impl Default for Frame {
             extent: Rc::new(Cell::new(size(px(0.0), px(0.0)))),
             marker: Rc::new(Cell::new(false)),
             root: Rc::new(Cell::new(None)),
+            snap_areas: Rc::default(),
+            snapped: Rc::default(),
+            decoration_clip: Rc::default(),
         }
     }
 }
@@ -36,8 +43,12 @@ impl Drop for Restore {
     }
 }
 impl Frame {
+    pub(super) fn set_decoration_clip(&self, clip: gpui::ContentMask<Pixels>) {
+        self.decoration_clip.set(Some(clip));
+    }
     pub(super) fn within<R>(&self, root: Option<&Element>, f: impl FnOnce() -> R) -> R {
         self.boxes.borrow_mut().clear();
+        self.snap_areas.borrow_mut().clear();
         self.marker.set(false);
         self.root.set(root.map(|e| e.node_id));
         let active = root.map(|_| self.clone());
@@ -108,8 +119,28 @@ impl Frame {
             px((end[0] - origin[0] + border[0] + border[2] - padding[0] - padding[2]).max(0.0)),
             px((end[1] - origin[1] + border[1] + border[3] - padding[1] - padding[3]).max(0.0)),
         );
-        self.extent.replace(extent) != extent
+        let changed = self.extent.replace(extent) != extent;
+        if changed {
+            return true;
+        }
+        if c.snap.axis != 0 && !self.snapped.get() && !self.snap_areas.borrow().is_empty() {
+            self.snapped.set(true);
+            let mut areas: Vec<_> = self
+                .snap_areas
+                .borrow()
+                .iter()
+                .map(|(&id, &area)| (id, area))
+                .collect();
+            areas.sort_by_key(|(id, _)| *id);
+            return snap::initial(c, areas.into_iter().map(|(_, area)| area), handle);
+        }
+        false
     }
+}
+
+pub(crate) fn decoration_clip(id: u64) -> Option<Rc<Cell<Option<gpui::ContentMask<Pixels>>>>> {
+    let frame = CURRENT.with(|slot| slot.borrow().clone())?;
+    (frame.root.get() == Some(id)).then(|| frame.decoration_clip.clone())
 }
 
 pub(crate) fn marker(id: u64) -> Option<AnyElement> {
@@ -135,6 +166,16 @@ pub(crate) fn probe(id: u64, c: &Computed) -> Option<AnyElement> {
         return None;
     }
     let clip = Clip::new(c);
+    let snap = c.snap;
+    let vertical = c.vertical == Some(true);
+    let reverse = [
+        if vertical {
+            c.vertical_rl == Some(true)
+        } else {
+            c.rtl == Some(true)
+        },
+        vertical && c.rtl == Some(true),
+    ];
     Some(
         gpui::canvas(
             move |b: Bounds<Pixels>, _, _| {
@@ -146,6 +187,17 @@ pub(crate) fn probe(id: u64, c: &Computed) -> Option<AnyElement> {
                     f32::from(b.bottom()) + border[3],
                 ];
                 frame.boxes.borrow_mut().insert(id, (rect, clip));
+                if snap.align != [0; 2] {
+                    frame.snap_areas.borrow_mut().insert(
+                        id,
+                        snap::Area {
+                            rect,
+                            snap,
+                            vertical,
+                            reverse,
+                        },
+                    );
+                }
             },
             |_, _, _, _| {},
         )

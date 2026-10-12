@@ -53,6 +53,17 @@ pub(super) fn inherited_property(key: &str) -> bool {
 
 pub(super) fn initial_value(key: &str) -> Option<&'static str> {
     Some(match key {
+        "scroll-snap-type" | "scroll-snap-align" => "none",
+        "scroll-padding"
+        | "scroll-padding-top"
+        | "scroll-padding-right"
+        | "scroll-padding-bottom"
+        | "scroll-padding-left" => "auto",
+        "scroll-margin"
+        | "scroll-margin-top"
+        | "scroll-margin-right"
+        | "scroll-margin-bottom"
+        | "scroll-margin-left" => "0",
         "scrollbar-color" | "scrollbar-width" => "auto",
         "border" => "0 none",
         "border-radius" => "0",

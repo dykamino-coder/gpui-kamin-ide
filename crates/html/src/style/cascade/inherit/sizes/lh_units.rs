@@ -97,6 +97,16 @@ pub(super) fn inherit_lh_units(parent: &Computed, c: &mut Computed) {
     fix(&mut c.min_height);
     fix(&mut c.max_width);
     fix(&mut c.max_height);
+    for sides in [&mut c.snap.padding, &mut c.snap.margin] {
+        for value in [
+            &mut sides.top,
+            &mut sides.right,
+            &mut sides.bottom,
+            &mut sides.left,
+        ] {
+            fix(value);
+        }
+    }
     // `background-size: 100px 1lh` — та же единица и та же база
     // (`lh-unit-same-element-*`). Чинится ЗДЕСЬ, а не в `background.rs`:
     // там доступен только запасной кегль 16 (`fallback_len_px` даёт

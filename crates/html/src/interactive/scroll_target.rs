@@ -1,4 +1,5 @@
 //! Scroll target: scroll the CSS box itself so an anonymous viewport cannot replace its sizing.
+mod stationary;
 use crate::dom::Element;
 use crate::style::computed::{Computed, Sides};
 use gpui::{
@@ -17,6 +18,21 @@ struct Target {
 }
 thread_local! { static TARGET: RefCell<Option<Target>> = const { RefCell::new(None) }; }
 struct Restore(Option<Target>);
+pub(crate) fn stationary(node: u64, child: gpui::AnyElement) -> gpui::AnyElement {
+    let handle = TARGET.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .filter(|t| t.applied && t.node == node)
+            .map(|t| t.handle.clone())
+    });
+    match (
+        handle,
+        crate::interactive::scroll_extent::decoration_clip(node),
+    ) {
+        (Some(handle), Some(clip)) => stationary::wrap(child, handle, clip),
+        _ => child,
+    }
+}
 impl Drop for Restore {
     fn drop(&mut self) {
         TARGET.with(|slot| *slot.borrow_mut() = self.0.take());
@@ -72,7 +88,11 @@ pub(crate) fn attach(mut div: Div, e: &Element, c: &Computed) -> Div {
             )
         )
     };
-    if !keyword(c.width) && !keyword(c.height) && c.scroll.colors.flatten().is_none() {
+    if !keyword(c.width)
+        && !keyword(c.height)
+        && c.scroll.colors.flatten().is_none()
+        && c.snap.axis == 0
+    {
         return div;
     }
     let target = TARGET.with(|slot| {
@@ -103,6 +123,14 @@ pub(crate) fn attach(mut div: Div, e: &Element, c: &Computed) -> Div {
         stateful = stateful.overflow_y_scroll();
     }
     let mut div = stateful.0;
+    // Hidden boxes still support programmatic scrolling and snapping, but must
+    // not register GPUI wheel scrolling (CSS Overflow 3 §3).
+    if c.overflow_x == Some(crate::style::computed::Overflow::Hidden) {
+        div.style().overflow.x = Some(gpui::Overflow::Hidden);
+    }
+    if c.overflow_y == Some(crate::style::computed::Overflow::Hidden) {
+        div.style().overflow.y = Some(gpui::Overflow::Hidden);
+    }
     if let Some(marker) = crate::interactive::scroll_extent::marker(e.node_id) {
         div = div.child(marker);
     }

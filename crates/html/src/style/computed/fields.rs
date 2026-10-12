@@ -5,6 +5,8 @@ use crate::style::values::value::{Color, Len};
 
 #[derive(Clone, Debug, Default)]
 pub struct Computed {
+    /// CSS Scroll Snap: container policy and descendant snap-area geometry.
+    pub snap: crate::style::computed::snap::SnapStyle,
     /// Счётчик объявлений этого узла: порядок каскада между логическими и
     /// физическими сторонами (UA `padding-inline-start: 40px` против
     /// авторского `padding-top: 0` в вертикальном письме —
