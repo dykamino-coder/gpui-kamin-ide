@@ -6,6 +6,7 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Refineable, Styled, StyledImage, px, size};
 
+mod automatic_minimum;
 mod measured_leaf;
 use measured_leaf::MeasuredImage;
 
@@ -20,11 +21,6 @@ pub(super) fn measured(
     // This adapter handles intrinsic contributions and shrinking items only.
     if (style.parent_grid == 0 && !style.flex_item)
         || (style.flex_item && style.flex_grow.is_some_and(|grow| grow > 0.0))
-        // Two fixed preferred dimensions already use the resolved image path.
-        // Keep its content-box painting; intrinsic ratio transfer is needed
-        // only while a preferred dimension still awaits layout.
-        || (style.flex_item
-            && matches!((style.width, style.height), (Some(Len::Px(_)), Some(Len::Px(_)))))
         || style.position.is_some()
         || style.gradient.is_some()
         || style.bg_image.is_some()
@@ -82,6 +78,7 @@ pub(super) fn measured(
     let mut native = gpui::Style::default();
     native.refine(holder.style());
     native.aspect_ratio = ratio;
+    automatic_minimum::apply(&mut native, style, natural.w?, natural.h?, ratio);
     // CSS Align 3 #align-grid/#justify-grid: normal on a replaced item with
     // a natural ratio is start; explicit stretch still uses the area size.
     let (mut align_start, mut justify_start) = (
@@ -113,6 +110,7 @@ pub(super) fn measured(
         painted.style().min_size = Default::default();
         painted.style().max_size = Default::default();
         painted.style().aspect_ratio = None;
+        painted.style().content_box = Some(false);
         painted.child(image).into_any_element()
     } else {
         image.into_any_element()
