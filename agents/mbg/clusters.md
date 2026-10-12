@@ -293,3 +293,9 @@ References followed: CSS Color 4 Color Interpolation / Gamut Mapping; CSS Color 
 Full gate 1: 1686 unique pairs, targets +5/-0; 166 of 179 remain red. Broad 735/735 baseline greens kept; counters-010 and counter-reset-reversed-siblings-003 are identically red on own baseline (known contradictions in agent rules). Family 813/813 kept. gate_fast.sh cannot recheck >150 suspects; the complete saved baseline target reports and a separate two-pair baseline slice establish no losses without altering the runner.
 
 Baseline retry: background-size-031 is green on the original exe; exclude its initial capture flake from gains. Stable mechanism gain is +5/-0; 166 reds remain.
+
+## Pilot 2: border-image native source phase
+
+20 targets + 40 greens: +7/-0. Confirmed gains: border-image-013 and space-1/3/4/5/6/7. Paint the original native raster through the slice clip to retain its CSS-to-device source phase. Followed Blink core/paint/nine_piece_image_painter.cc:165-175 and CSS Backgrounds 3 section 6.6. Scaled/filtered slices are unchanged. Space-10 remains red and needs a geometry/precision diagnosis.
+
+Full gate 2: +7/-0 on 179 targets; 159 remain red. Broad 735/735 baseline greens and family 813/813 kept. All 1686 reports compared with gate 1; the same two counter contradictions remain red. Clippy/fmt and 342 lib tests pass.
