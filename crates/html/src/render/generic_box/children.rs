@@ -158,19 +158,19 @@ pub(crate) fn generic_children(
     // что рисовать нечего, и ни одна старая пара сюда не попадает
     // (см. `gap_rule_spec`).
     let gap_rules = gap_rule_spec(e, &merged, opts);
-    let gap_buf = gap_rules
+    let gap_context = gap_rules
         .is_some()
-        .then(|| crate::paint::gap_rules::gap_items_for(e.node_id ^ opts.doc_salt));
-    let _gap_guard = gap_buf
+        .then(|| crate::paint::gap_rules::fresh_gap_items(e.node_id ^ opts.doc_salt));
+    let _gap_guard = gap_context
         .as_ref()
-        .map(|_| crate::paint::gap_rules::GapGuard::enter(e.node_id ^ opts.doc_salt));
+        .map(|(key, _)| crate::paint::gap_rules::GapGuard::enter(*key));
     // css-gaps-1 §gap-decorations: «Gap decorations are painted just
     // above the border of the container» — ПОД детьми. Слой идёт до
     // них: буфер проб он всё равно читает в `paint`, а prepaint всего
     // дерева у gpui проходит раньше (эталоны `grid-gap-decorations-042`
     // и `flex-033` кладут линейки `z-index: -1`, `008/023` — элементы
     // `z-index: 2`).
-    if let (Some(buf), Some(spec)) = (gap_buf, gap_rules) {
+    if let (Some((_, buf)), Some(spec)) = (gap_context, gap_rules) {
         kids.push(
             crate::paint::gap_rules::painter::GapRulePainter::new(buf, spec).into_any_element(),
         );
