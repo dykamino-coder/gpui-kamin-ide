@@ -71,12 +71,13 @@ impl Computed {
                     }
                 }
             }
-            _ => *hit = false,
+            _ => self.apply_snap(key, v, hit),
         }
     }
 }
 
 pub(crate) fn inherit(parent: &Computed, c: &mut Computed) {
+    super::snap::inherit(parent, c);
     // Only color inherits by default (CSS Scrollbars 1 §2). Width and gutter
     // remain local to the scroll container, including a nested one.
     if let Some(Some(mut colors)) = c.scroll.colors {

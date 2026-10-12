@@ -47,7 +47,7 @@ impl ScrollArea {
     }
 
     pub(crate) fn with_tree(mut self, e: &crate::dom::Element) -> Self {
-        if self.style.scroll.colors.flatten().is_some() {
+        if self.style.scroll.colors.flatten().is_some() || self.style.snap.axis != 0 {
             self.tree = Some(Rc::new(e.clone()));
         }
         self
@@ -135,6 +135,7 @@ impl Element for ScrollArea {
         } else {
             bounds
         };
+        child.2.set_decoration_clip(window.content_mask());
         child
             .2
             .within(self.tree.as_deref(), || child.0.prepaint(window, cx));
@@ -164,6 +165,7 @@ impl Element for ScrollArea {
         window: &mut Window,
         cx: &mut App,
     ) {
+        child.2.set_decoration_clip(window.content_mask());
         child.0.paint(window, cx);
         crate::interactive::scrollbars::paint(&self.style, &child.1, *paint_bounds, window);
     }

@@ -17,9 +17,15 @@ pub(crate) fn scrollable(
     inherited: &Computed,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
+    if e.style.scroller {
+        return None;
+    }
     use crate::style::computed::Overflow;
-    let horizontal = e.style.overflow_x == Some(Overflow::Scroll);
-    let vertical = e.style.overflow_y == Some(Overflow::Scroll);
+    let snap = e.style.snap.axis != 0;
+    let horizontal = e.style.overflow_x == Some(Overflow::Scroll)
+        || snap && e.style.overflow_x == Some(Overflow::Hidden);
+    let vertical = e.style.overflow_y == Some(Overflow::Scroll)
+        || snap && e.style.overflow_y == Some(Overflow::Hidden);
     if !horizontal && !vertical {
         return None;
     }
@@ -37,8 +43,12 @@ pub(crate) fn scrollable(
             let _depth = DepthScope::enter(depth);
             // Внутренний узел рисуется без прокрутки: ею занимается лента.
             let mut inner = node.clone();
-            inner.style.overflow_x = None;
-            inner.style.overflow_y = None;
+            if inner.style.overflow_x != Some(Overflow::Hidden) {
+                inner.style.overflow_x = None;
+            }
+            if inner.style.overflow_y != Some(Overflow::Hidden) {
+                inner.style.overflow_y = None;
+            }
             inner.style.scroller = true;
             // Доли высоты коробки — от её СОДЕРЖАЩЕГО блока (CSS 2.1 §10.5,
             // §10.7: «calculated with respect to the height of the generated

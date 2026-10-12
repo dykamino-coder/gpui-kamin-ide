@@ -121,6 +121,8 @@ impl Computed {
             fix(l);
         }
         sides(&mut self.padding);
+        sides(&mut self.snap.padding);
+        sides(&mut self.snap.margin);
         sides(&mut self.margin);
         // Толщина рамки в единицах окна (`border-bottom: 50vh solid`,
         // `monolithic-overflow-021`): без перевода рамка выходила нулевой.
