@@ -54,8 +54,8 @@ pub(crate) fn ruby_container_atom(
             Some(Len::Px(v)) => v,
             _ => opts.base_size(),
         };
-        let family = merged.font_family.clone().unwrap_or_default();
-        let (asc, desc, _) = crate::text::metrics::vmetrics_px(&family, size);
+        let font = crate::text::inline::strut_font(&merged, &opts.text);
+        let (asc, desc) = crate::text::metrics::font_extents(&font, size);
         let line = match merged.line_height {
             Some(Len::Px(v)) => v,
             Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,

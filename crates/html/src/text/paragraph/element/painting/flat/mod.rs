@@ -116,7 +116,7 @@ impl Paragraph {
                     cx,
                 );
                 if self.lines_reversed {
-                    rev_off -= f32::from(step(i));
+                    rev_off -= f32::from(step(i + 1));
                     y = bounds.origin.y + px(rev_off);
                 } else {
                     y += step(i);
@@ -188,7 +188,7 @@ impl Paragraph {
                 self.paint_line(&visible, &runs, at, &mark, window, cx);
             }
             if self.lines_reversed {
-                rev_off -= f32::from(step(i));
+                rev_off -= f32::from(step(i + 1));
                 y = bounds.origin.y + px(rev_off);
             } else {
                 y += step(i);

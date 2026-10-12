@@ -70,8 +70,19 @@ pub(super) fn inherit_text_layout(parent: &Computed, own: &Computed, c: &mut Com
         };
     }
     c.text_emphasis = own.text_emphasis.clone().or(parent.text_emphasis.clone());
-    c.emphasis_under = own.emphasis_under || parent.emphasis_under;
-    c.emphasis_left = own.emphasis_left || parent.emphasis_left;
+    c.emphasis_auto_shape = if own.text_emphasis.is_some() {
+        own.emphasis_auto_shape
+    } else {
+        parent.emphasis_auto_shape
+    };
+    c.emphasis_position_auto = own.emphasis_position_auto.or(parent.emphasis_position_auto);
+    let position = if own.emphasis_position_auto.is_some() {
+        own
+    } else {
+        parent
+    };
+    c.emphasis_under = position.emphasis_under;
+    c.emphasis_left = position.emphasis_left;
     c.emphasis_color = own.emphasis_color.or(parent.emphasis_color);
     // css-ruby-1 §4.1/§4.3: оба свойства наследуемые.
     c.ruby_under = own.ruby_under.or(parent.ruby_under);
