@@ -114,3 +114,80 @@ impl Paragraph {
         }
     }
 }
+
+impl Paragraph {
+    /// Right-to-left counterpart of the stretched gap fill (the left-to-right
+    /// branch above). Words of a right-to-left line are placed by the bidi
+    /// visual order, so a logically adjacent pair may sit either way round:
+    /// the fill spans whichever edges face each other. After the last word,
+    /// the line's trailing spaces (hanging under `pre-wrap`, css-text-3
+    /// §4.1.3) keep their natural advance and box background at the visual
+    /// line end, i.e. left of the leftmost word, overflowing the line start
+    /// like any right-to-left content (Blink paints hanging spaces with
+    /// their text fragment; UAX #9 L1 puts trailing white space at the
+    /// paragraph level).
+    pub(crate) fn paint_rtl_gaps(
+        &self,
+        context: JustifiedPaint<'_>,
+        boxes: &[(Pixels, Pixels, Pixels)],
+        window: &mut Window,
+    ) {
+        let JustifiedPaint {
+            range,
+            segs,
+            words,
+            y,
+            ..
+        } = context;
+        let mut fill = |left: Pixels, right: Pixels, dy: Pixels, bg: gpui::Hsla| {
+            if right > left {
+                window.paint_quad(gpui::fill(
+                    Bounds {
+                        origin: point(left, y + dy),
+                        size: gpui::size(right - left, self.line_height),
+                    },
+                    bg,
+                ));
+            }
+        };
+        for (wi, pair) in words.windows(2).enumerate() {
+            let (word, next) = (&pair[0], &pair[1]);
+            if next.range.start <= word.range.end {
+                continue;
+            }
+            let Some(bg) = self.gap_background(word, next) else {
+                continue;
+            };
+            let ((a, aw, dy), (b, bw, _)) = (boxes[wi], boxes[wi + 1]);
+            if a + aw <= b {
+                fill(a + aw, b, dy, bg);
+            } else if b + bw <= a {
+                fill(b + bw, a, dy, bg);
+            }
+        }
+        let (Some(last), Some(&(_, _, dy))) = (words.last(), boxes.last()) else {
+            return;
+        };
+        if range.end <= last.range.end
+            || !self.text[last.range.end..range.end]
+                .chars()
+                .all(|c| c == ' ')
+        {
+            return;
+        }
+        let tail = Word {
+            range: range.end - 1..range.end,
+            spaces_before: 0,
+        };
+        let Some(bg) = self.gap_background(last, &tail) else {
+            return;
+        };
+        let w =
+            self.x_at(segs, range.end, Edge::Start) - self.x_at(segs, last.range.end, Edge::Start);
+        let left = boxes
+            .iter()
+            .map(|b| b.0)
+            .fold(boxes[0].0, |m, v| if v < m { v } else { m });
+        fill(left - w, left, dy, bg);
+    }
+}
