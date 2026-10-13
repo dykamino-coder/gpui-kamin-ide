@@ -1,18 +1,21 @@
 //! Сайдбар sessions-mode (SessionsMode/ProjectGroup/SessionItem 1:1):
-//!   [actions: No folder session / New session]
+//!   [actions: New session (folder…) / No folder session — как меню «+»]
 //!   [PROJECTS header]
 //!   [группы проектов: chevron + folder-icon + name + count-badge, коллапс]
-//!     [active-сессии: dot 4px + label; active = градиент tab-color]
-//!     [N inactive sessions toggle → inactive-сессии]
+//!     [active-сессии всегда; inactive — под ними, только у раскрытой группы]
+//!   Порядок групп: «No folder» первой, затем группы с активной сессией,
+//!   затем по алфавиту.
 //! Hover-поповеры (deferred pill): сессия=rename/disconnect/delete (+ pin инлайн),
 //! группа=add/delete. RMB=полное контекст-меню. time/drag — след. итерация.
 
 pub use crate::ui::sessions::actions::{activate_session, menu_data};
 pub use crate::ui::sessions::pill::{anchor_for, overlay_pill};
-pub use crate::ui::sessions::pill_menu::{project_actions_pill, session_actions_pill};
+pub use crate::ui::sessions::pill_menu::{
+    project_actions_pill, project_actions_pill_width, session_actions_pill,
+};
 
 use crate::ui::sessions::actions::new_no_folder_session;
-use crate::ui::sessions::header::{inactive_toggle, project_header};
+use crate::ui::sessions::header::project_header;
 use crate::ui::sessions::pill_menu::action_row;
 use crate::ui::sessions::row::session_row;
 
@@ -32,8 +35,7 @@ use crate::host_link::ShellEvent;
 
 pub fn sessions_sidebar(
     snap: Option<&SessionsSnapshot>,
-    collapsed: &HashSet<String>,
-    inactive_open: &HashSet<String>,
+    expanded: &HashSet<String>,
     renaming: Option<(&str, &Entity<InputState>)>,
     hover_pill: Option<&str>,
     tx: &Sender<ShellEvent>,
@@ -65,14 +67,21 @@ pub fn sessions_sidebar(
             .px(px(m::SPACE_2))
             .pb(px(m::SPACE_2))
             .pt(px(4.0))
-            .child(action_row("No folder session", p, new_no_folder_session))
-            // «New session» = сессия В ПАПКЕ: нативный пикер (как «+» титлбара)
-            .child(action_row("New session", p, {
+            // Порядок, подписи и иконки — как в меню «+» титлбара
+            // (`overlay/layers/menus_session.rs`): сессия В ПАПКЕ (нативный
+            // пикер) первой, без папки — второй
+            .child(action_row("New session (folder…)", "\u{eaf7}", p, {
                 let tx = tx.clone();
                 move || {
                     let _ = tx.try_send(ShellEvent::NewSessionInFolderPrompt);
                 }
-            })),
+            }))
+            .child(action_row(
+                "No folder session",
+                "\u{ebb5}",
+                p,
+                new_no_folder_session,
+            )),
     );
     // PROJECTS header
     root = root.child(
@@ -132,11 +141,29 @@ pub fn sessions_sidebar(
         .overflow_y_scrollbar();
 
     let mut any = false;
-    // Проекты — по времени создания (`sessions.ts:62`); порядок доставки
-    // хоста не гарантирован (ревью ц.16)
-    let mut projects: Vec<&kamin_model::Project> = snap.projects.iter().collect();
-    projects.sort_by(|a, b| a.created_at.total_cmp(&b.created_at));
-    for project in projects {
+    // Порядок групп (решение владельца, 2026-10-13): «No folder» всегда
+    // первой, затем группы с активной сессией, затем по алфавиту имени;
+    // при равенстве — по времени создания (порядок хоста не гарантирован)
+    let has_active = |pid: &str| snap.sessions.iter().any(|s| s.project_id == pid && s.open);
+    let mut projects: Vec<(String, &kamin_model::Project)> = snap
+        .projects
+        .iter()
+        .map(|pr| (project_name(pr.folder_path.as_deref()), pr))
+        .collect();
+    projects.sort_by(|(an, a), (bn, b)| {
+        (
+            a.folder_path.is_some(),
+            !has_active(&a.id),
+            an.to_lowercase(),
+        )
+            .cmp(&(
+                b.folder_path.is_some(),
+                !has_active(&b.id),
+                bn.to_lowercase(),
+            ))
+            .then(a.created_at.total_cmp(&b.created_at))
+    });
+    for (name, project) in projects {
         let mut act: Vec<&Session> = snap
             .sessions
             .iter()
@@ -154,18 +181,7 @@ pub fn sessions_sidebar(
         // (ревью ц.16). Неактивные — по дате, свежие сверху.
         act.sort_by(|a, b| a.created_at.total_cmp(&b.created_at));
         inact.sort_by(|a, b| b.last_opened.total_cmp(&a.last_opened));
-        let name = project
-            .folder_path
-            .as_deref()
-            .map(|f| {
-                f.replace('\\', "/")
-                    .rsplit('/')
-                    .next()
-                    .unwrap_or(f)
-                    .to_string()
-            })
-            .unwrap_or_else(|| "No folder".into());
-        let is_collapsed = collapsed.contains(&project.id);
+        let is_collapsed = !expanded.contains(&project.id);
         let total = act.len() + inact.len();
 
         let mut group = div().flex().flex_col().w_full().min_w(px(0.));
@@ -180,11 +196,14 @@ pub fn sessions_sidebar(
             tx,
             p,
         ));
-        if !is_collapsed {
+        // Свёрнутая (по умолчанию) группа показывает только активные сессии,
+        // раскрытая — ещё и неактивные под ними; плашки «N inactive
+        // sessions» больше нет (решение владельца, 2026-10-13)
+        if !is_collapsed || !act.is_empty() {
             let mut sessions = div().flex().flex_col().gap(px(2.0));
-            // «No sessions yet." ТОЛЬКО у полностью пустого проекта
+            // «No sessions yet." ТОЛЬКО у раскрытого полностью пустого проекта
             // (при inactive-only плашка шумела — пойман юзером)
-            if project_empty {
+            if project_empty && !is_collapsed {
                 sessions = sessions.child(
                     div()
                         .pl(px(18.0))
@@ -205,27 +224,17 @@ pub fn sessions_sidebar(
                     p,
                 ));
             }
-            if !inact.is_empty() {
-                let show = inactive_open.contains(&project.id);
-                sessions = sessions.child(inactive_toggle(
-                    inact.len(),
-                    show,
-                    project.id.clone(),
-                    tx,
-                    p,
-                ));
-                if show {
-                    for s in &inact {
-                        sessions = sessions.child(session_row(
-                            s,
-                            sidebar_w,
-                            s.id == active,
-                            rename_for(&s.id),
-                            sess_hovered(&s.id),
-                            tx,
-                            p,
-                        ));
-                    }
+            if !is_collapsed {
+                for s in &inact {
+                    sessions = sessions.child(session_row(
+                        s,
+                        sidebar_w,
+                        s.id == active,
+                        rename_for(&s.id),
+                        sess_hovered(&s.id),
+                        tx,
+                        p,
+                    ));
                 }
             }
             group = group.child(sessions);
@@ -242,4 +251,17 @@ pub fn sessions_sidebar(
         );
     }
     root.child(list).into_any_element()
+}
+
+/// Имя группы: последняя компонента пути папки или «No folder».
+pub fn project_name(folder_path: Option<&str>) -> String {
+    folder_path
+        .map(|f| {
+            f.replace('\\', "/")
+                .rsplit('/')
+                .next()
+                .unwrap_or(f)
+                .to_string()
+        })
+        .unwrap_or_else(|| "No folder".into())
 }
