@@ -21,6 +21,7 @@ import { debugLog, warnLog } from '../logging'
 import { parseStatusline } from '../server/utils/plan-usage'
 import { quoteCaptureArgument } from '../server/utils/usage-statusline'
 import { sendToClient } from './session-io'
+import { currentAccountLimits, onAccountLimitsChanged, recordAccountLimits } from './account-limits'
 import type { PtySession } from '../types/pty'
 
 export const STATUSLINE_SCRIPT_NAME = 'bridge-statusline.cjs'
@@ -75,6 +76,9 @@ export interface SessionUsage {
   model: string | null
   effort: string | null
   observedAt: string
+  /** When the shown 5h/7d windows were reported by a CLI: this snapshot, or
+   *  the account's last report while this CLI has none (account-limits.ts). */
+  limitsObservedAt?: string | null
 }
 
 function clean(value: unknown): string | null {
@@ -112,6 +116,9 @@ export function writeStatusLineScript(claudeDir: string): { type: 'command'; com
 }
 
 const lastUsage = new WeakMap<PtySession, SessionUsage>()
+/** Live watchers: the session's own last snapshot (before the account merge)
+ *  and the dedupe key of what was last sent. */
+const watched = new Map<PtySession, { own: SessionUsage | null; key: string }>()
 
 export function sessionUsageMessage(session: PtySession, usage: SessionUsage): Record<string, unknown> {
   return { type: 'session:usage', sessionId: session.id, usage }
@@ -123,8 +130,36 @@ export function resendSessionUsage(session: PtySession): void {
   if (usage) sendToClient(session.ws, sessionUsageMessage(session, usage))
 }
 
+/** The session's snapshot with the account's last reported 5h/7d windows
+ *  filled in while its own CLI has none yet (see account-limits.ts). */
+export function withAccountLimits(own: SessionUsage, now: number = Date.now()): SessionUsage {
+  if (own.windows.length > 0) return { ...own, limitsObservedAt: own.observedAt }
+  const account = currentAccountLimits(now)
+  return { ...own, windows: account?.windows ?? [], limitsObservedAt: account?.observedAt ?? null }
+}
+
+function emit(session: PtySession, state: { own: SessionUsage | null; key: string }): void {
+  if (!state.own) return
+  const usage = withAccountLimits(state.own)
+  // Timestamps alone never re-send: the row would only flicker.
+  const { observedAt: _observedAt, limitsObservedAt: _limitsObservedAt, ...comparable } = usage
+  const key = JSON.stringify(comparable)
+  if (key === state.key) return
+  state.key = key
+  lastUsage.set(session, usage)
+  sendToClient(session.ws, sessionUsageMessage(session, usage))
+}
+
+onAccountLimitsChanged(() => {
+  for (const [session, state] of watched) emit(session, state)
+})
+
 /** Read the result file once and push it when it changed. Exported for tests. */
-export function readSessionStatus(session: PtySession, resultPath: string, previous: { key: string }): void {
+export function readSessionStatus(
+  session: PtySession,
+  resultPath: string,
+  state: { own: SessionUsage | null; key: string },
+): void {
   let text: string
   try {
     if (fs.statSync(resultPath).size > MAX_RESULT_BYTES) return
@@ -139,25 +174,25 @@ export function readSessionStatus(session: PtySession, resultPath: string, previ
     return
   }
   if (!usage) return
-  const { observedAt: _observedAt, ...comparable } = usage
-  const key = JSON.stringify(comparable)
-  if (key === previous.key) return
-  previous.key = key
-  lastUsage.set(session, usage)
-  sendToClient(session.ws, sessionUsageMessage(session, usage))
+  state.own = usage
+  // Fresh windows from this CLI update every session of the account; the
+  // listener above then re-emits this session too (dedupe keeps it single).
+  if (usage.windows.length > 0) recordAccountLimits(usage.windows, usage.observedAt)
+  emit(session, state)
 }
 
 /** Watch the session's status-line result file. */
 export function watchSessionStatusLine(session: PtySession, claudeDir: string): { stop(): void } {
   const resultPath = path.join(claudeDir, STATUSLINE_RESULT_NAME)
-  const previous = { key: '' }
+  const state: { own: SessionUsage | null; key: string } = { own: null, key: '' }
+  watched.set(session, state)
   let timer: ReturnType<typeof setTimeout> | null = null
   let watcher: fs.FSWatcher | null = null
   const schedule = (): void => {
     if (timer) return
     timer = setTimeout(() => {
       timer = null
-      readSessionStatus(session, resultPath, previous)
+      readSessionStatus(session, resultPath, state)
     }, 50)
   }
   try {
@@ -179,6 +214,7 @@ export function watchSessionStatusLine(session: PtySession, claudeDir: string): 
       timer = null
       watcher?.close()
       watcher = null
+      watched.delete(session)
     },
   }
 }

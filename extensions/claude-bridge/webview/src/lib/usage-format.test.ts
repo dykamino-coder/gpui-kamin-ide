@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatPercent, formatReset, usageItems, usageLevel } from './usage-format'
+import { formatPercent, formatReset, reportedNote, usageItems, usageLevel } from './usage-format'
 import { setTabUsage, usageByTab } from '../signals/session-usage'
 import type { SessionUsage } from '../../shared/types'
 
@@ -55,5 +55,16 @@ describe('usage-format', () => {
     setTabUsage('a', null)
     expect(usageByTab.value.has('a')).toBe(false)
     expect(usageByTab.value.get('b')?.contextPercent).toBe(1)
+  })
+})
+
+describe('limits reported earlier', () => {
+  it('notes the report time only when it is not recent', () => {
+    expect(reportedNote(iso(-60_000), NOW)).toBe('')
+    expect(reportedNote(null, NOW)).toBe('')
+    expect(reportedNote(iso(-3 * 3600_000), NOW)).toMatch(/^ \(reported \d{2}:\d{2}, updates after the next reply\)$/)
+    const items = usageItems({ ...USAGE, limitsObservedAt: iso(-3 * 3600_000) }, NOW)
+    expect(items[0]!.title).toContain('updates after the next reply')
+    expect(items[2]!.title).not.toContain('reported')
   })
 })
