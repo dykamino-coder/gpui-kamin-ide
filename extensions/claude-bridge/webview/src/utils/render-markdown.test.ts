@@ -55,6 +55,19 @@ describe('renderMarkdown — paragraphs', () => {
   })
 })
 
+describe('renderMarkdown — fenced code blocks', () => {
+  // The tag mask used `\x00` and stripped it from the text, which broke the
+  // `\x00CODEBLOCKn\x00` placeholders: the chat showed "CODEBLOCK0".
+  it('renders a fenced block next to inline code, bold and lists', () => {
+    const out = html(
+      'Скрипт повторяет логику `ClosedHandler`:\n\n```sql\nSELECT 1\nFROM t\n```\n\n- **Логин.** см. `lower(x)`',
+    )
+    expect(out).toContain('<pre class="hljs-block"')
+    expect(out).not.toContain('CODEBLOCK')
+    expect(out).toContain('<strong>Логин.</strong>')
+  })
+})
+
 describe('renderMarkdown — attribute injection', () => {
   it('cannot break out of the href attribute via a quote in the URL', () => {
     // The URL patterns accept `"`, and the anchor interpolates the capture into
