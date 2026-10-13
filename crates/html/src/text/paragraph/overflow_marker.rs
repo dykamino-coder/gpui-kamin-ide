@@ -21,7 +21,7 @@ impl Paragraph {
         run.len = mark.len();
         self.style_marker_run(mark, run);
         let run = run.clone();
-        if self.is_block_mark(mark) || self.overflow_marker.as_deref() != Some(mark) {
+        if !self.is_block_mark(mark) && self.overflow_marker.as_deref() != Some(mark) {
             return vec![
                 window
                     .text_system()
@@ -35,7 +35,7 @@ impl Paragraph {
                     ),
             ];
         }
-        // CSS Overflow 4 §5.1: the anonymous isolate inherits the bidi
+        // CSS Overflow 4 text-overflow/block-ellipsis: the isolate inherits the bidi
         // paragraph's direction; its first strong character cannot choose it.
         let base = if self.plaintext.is_some() {
             BidiInfo::new(&self.text, None)
