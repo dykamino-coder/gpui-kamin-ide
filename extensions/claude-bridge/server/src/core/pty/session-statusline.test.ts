@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import fs from 'fs'
 import os from 'os'
@@ -12,11 +12,14 @@ vi.mock('./session-io', () => ({
   },
 }))
 
+import { currentAccountLimits, recordAccountLimits, resetAccountLimitsForTests } from './account-limits'
 import {
   parseSessionStatus,
   readSessionStatus,
   resendSessionUsage,
   STATUSLINE_RESULT_NAME,
+  watchSessionStatusLine,
+  withAccountLimits,
   writeStatusLineScript,
 } from './session-statusline'
 import type { PtySession } from '../types/pty'
@@ -42,8 +45,15 @@ const PAYLOAD = {
 }
 
 let tmp: string | null = null
+let store: string
+beforeEach(() => {
+  store = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-limits-store-'))
+  resetAccountLimitsForTests(path.join(store, 'statusline-limits.json'))
+})
 afterEach(() => {
   sent.length = 0
+  resetAccountLimitsForTests(null)
+  fs.rmSync(store, { recursive: true, force: true })
   if (tmp) fs.rmSync(tmp, { recursive: true, force: true })
   tmp = null
 })
@@ -114,7 +124,7 @@ describe('status-line script', () => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-sl-test-'))
     const result = path.join(tmp, STATUSLINE_RESULT_NAME)
     const session = { id: 's1', ws: {} } as unknown as PtySession
-    const previous = { key: '' }
+    const previous = { own: null, key: '' }
     const snapshot = { rate_limits: PAYLOAD.rate_limits, context: { used_percentage: 12, size: 200000 } }
     fs.writeFileSync(result, JSON.stringify({ ...snapshot, observedAt: '2026-10-13T15:00:00.000Z' }))
     readSessionStatus(session, result, previous)
@@ -127,5 +137,70 @@ describe('status-line script', () => {
     fs.writeFileSync(result, 'x'.repeat(5000))
     readSessionStatus(session, result, previous)
     expect(sent).toHaveLength(2)
+  })
+})
+
+const WINDOWS = [
+  { id: 'five_hour', label: '5 hours', percent: 7, resetsAt: new Date(FUTURE * 1000).toISOString() },
+  { id: 'seven_day', label: 'Week (all)', percent: 6.5, resetsAt: new Date(WEEK * 1000).toISOString() },
+]
+const ctxOnly = (pct: number) => ({
+  observedAt: new Date().toISOString(),
+  rate_limits: {},
+  context: { used_percentage: pct, size: 200000 },
+})
+
+describe('account-wide limits (CLI has no rate_limits before its first response)', () => {
+  it('fills a resumed session with the last windows any CLI reported, marked by their report time', () => {
+    recordAccountLimits(WINDOWS, '2026-10-14T09:00:00.000Z')
+    const own = parseSessionStatus(ctxOnly(65))!
+    expect(own.windows).toEqual([])
+    const shown = withAccountLimits(own)
+    expect(shown.windows.map((w) => [w.id, w.percent])).toEqual([
+      ['five_hour', 7],
+      ['seven_day', 6.5],
+    ])
+    expect(shown.limitsObservedAt).toBe('2026-10-14T09:00:00.000Z')
+    expect(shown.contextPercent).toBe(65)
+  })
+
+  it('prefers the own fresh windows of the session', () => {
+    recordAccountLimits(WINDOWS, '2026-10-14T09:00:00.000Z')
+    const own = parseSessionStatus({
+      ...ctxOnly(3),
+      rate_limits: { five_hour: { used_percentage: 9, resets_at: FUTURE } },
+    })!
+    expect(withAccountLimits(own).windows.map((w) => [w.id, w.percent])).toEqual([['five_hour', 9]])
+  })
+
+  it('ignores older reports, drops reset windows and survives a server restart', () => {
+    recordAccountLimits(WINDOWS, '2026-10-14T09:00:00.000Z')
+    expect(recordAccountLimits([{ ...WINDOWS[0]!, percent: 1 }], '2026-10-14T08:00:00.000Z')).toBe(false)
+    resetAccountLimitsForTests(path.join(store, 'statusline-limits.json')) // drop memory, keep the file
+    expect(currentAccountLimits()?.windows.map((w) => w.percent)).toEqual([7, 6.5])
+    const afterFiveHourReset = (FUTURE + 60) * 1000
+    expect(currentAccountLimits(afterFiveHourReset)?.windows.map((w) => w.id)).toEqual(['seven_day'])
+    expect(currentAccountLimits((WEEK + 60) * 1000)).toBeNull()
+  })
+
+  it('pushes the windows to a live session as soon as another session reports them', async () => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-sl-test-'))
+    const resumed = { id: 'resumed', ws: {} } as unknown as PtySession
+    fs.writeFileSync(path.join(tmp, STATUSLINE_RESULT_NAME), JSON.stringify(ctxOnly(65)))
+    const watcher = watchSessionStatusLine(resumed, tmp)
+    try {
+      await vi.waitFor(() => expect(sent).toHaveLength(1))
+      expect(sent[0]).toMatchObject({ sessionId: 'resumed', usage: { contextPercent: 65, windows: [] } })
+      const active = { id: 'active', ws: {} } as unknown as PtySession
+      const other = path.join(tmp, 'other.json')
+      fs.writeFileSync(other, JSON.stringify({ ...ctxOnly(3), rate_limits: PAYLOAD.rate_limits }))
+      readSessionStatus(active, other, { own: null, key: '' })
+      const update = sent.find(
+        (m) => m.sessionId === 'resumed' && (m.usage as { windows: unknown[] }).windows.length === 2,
+      )
+      expect(update).toMatchObject({ usage: { contextPercent: 65 } })
+    } finally {
+      watcher.stop()
+    }
   })
 })

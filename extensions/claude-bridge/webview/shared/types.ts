@@ -15,6 +15,9 @@ export interface SessionUsage {
   model: string | null
   effort: string | null
   observedAt: string
+  /** When a CLI reported the shown 5h/7d windows (may predate this
+   *  session's CLI, which has none before its first model response). */
+  limitsObservedAt?: string | null
 }
 
 export interface ConnectionConfig {

@@ -29,6 +29,15 @@ export function usageLevel(percent: number): UsageLevel {
   return 'ok'
 }
 
+/** Limits shown from an earlier CLI report (this session's CLI has not had a
+ *  model response yet) say when they were reported. */
+export function reportedNote(limitsObservedAt: string | null | undefined, now: number = Date.now()): string {
+  const at = limitsObservedAt ? Date.parse(limitsObservedAt) : NaN
+  if (!Number.isFinite(at) || now - at < 5 * 60_000) return ''
+  const d = new Date(at)
+  return ` (reported ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}, updates after the next reply)`
+}
+
 export interface UsageItem {
   key: string
   label: string
@@ -42,6 +51,7 @@ export interface UsageItem {
 export function usageItems(usage: SessionUsage | undefined, now: number = Date.now()): UsageItem[] {
   if (!usage) return []
   const items: UsageItem[] = []
+  const reported = reportedNote(usage.limitsObservedAt, now)
   for (const w of usage.windows) {
     if (Date.parse(w.resetsAt) <= now) continue
     const label = SHORT[w.id] ?? w.label
@@ -52,7 +62,7 @@ export function usageItems(usage: SessionUsage | undefined, now: number = Date.n
       percent: w.percent,
       reset,
       level: usageLevel(w.percent),
-      title: `${w.label} limit: ${formatPercent(w.percent)} used, resets ${new Date(w.resetsAt).toLocaleString()}`,
+      title: `${w.label} limit: ${formatPercent(w.percent)} used, resets ${new Date(w.resetsAt).toLocaleString()}${reported}`,
     })
   }
   if (usage.contextPercent !== null) {
