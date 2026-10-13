@@ -10,6 +10,17 @@ use crate::style::values::value::Len;
 pub(crate) fn column_plan(e: &Element, merged: &Computed, opts: &RenderOpts) -> ColumnPlan {
     let used_gap = match merged.column_gap {
         Some(Len::Px(v)) => v,
+        // Доля — от ширины содержимого коробки (css-align-3 §8.1), в
+        // единицах раскладки 1/64 точки, как Blink `LayoutUnit`: иначе
+        // `30%` от 50 даёт 15.0000006, и край колонки 25.4999 округлялся
+        // не так, как у точного `15px` (`multicol-nested-033`).
+        Some(Len::Pct(k)) if matches!(e.style.width, Some(Len::Px(_))) => {
+            let w = match e.style.width {
+                Some(Len::Px(w)) => w,
+                _ => 0.0,
+            };
+            crate::layout::fragment::line_shape::layout_unit(k * w)
+        }
         _ => match merged.font_size {
             Some(Len::Px(size)) => size,
             _ => opts.base_size(),
