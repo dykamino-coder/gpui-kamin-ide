@@ -53,10 +53,13 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
             };
             nz(b) || nz(p) || nz(m)
         };
-        // Сторона письма известна только своему стилю: при rtl/вертикали
-        // прежнее поведение (пустой кусок пропадает).
+        // Horizontal fragments keep their logical start/end edges in either direction.
         let own_rtl = e.style.rtl.unwrap_or(parent_rtl);
-        let ltr = !own_rtl && e.style.vertical.is_none();
+        let edges = e
+            .style
+            .vertical
+            .is_none()
+            .then_some(if own_rtl { (1, 3) } else { (3, 1) });
         // `first`: кусок до первого блока, `last`: после последнего.
         // Positions in `out` of this element's inline pieces (for edge slicing below).
         let mut hosts: Vec<usize> = vec![];
@@ -65,7 +68,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                      hosts: &mut Vec<usize>,
                      first: bool,
                      last: bool| {
-            flush_inline(piece, out, hosts, first, last, e, ltr, has_edge)
+            flush_inline(piece, out, hosts, first, last, e, edges, has_edge)
         };
         // Split inner ancestors first, then join their inline continuations
         // to this ancestor's fragments on either side of the actual block.

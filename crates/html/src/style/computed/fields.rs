@@ -189,6 +189,10 @@ pub struct Computed {
     /// Used classic gutters of the nearest containing block and viewport.
     pub(crate) cb_scroll_insets: ([f32; 4], [f32; 4]),
     pub(crate) icb_scroll_insets: Option<[f32; 4]>,
+    /// Root unconditional gutters reduce viewport units, independently of body overflow.
+    pub(crate) viewport_unit_insets: Option<[f32; 2]>,
+    /// A matching scrollbar pseudo style excludes root viewport-unit reduction.
+    pub(crate) custom_scrollbar: bool,
     pub anchor_seq: u32,
     pub anchor_key: u64,
     /// CSS scrollbar colors, width and forced overflow axes (HTML only).
