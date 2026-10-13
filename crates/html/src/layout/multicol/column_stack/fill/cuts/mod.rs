@@ -112,9 +112,17 @@ pub(super) fn place_cut(
             });
             *from = nf;
         }
-        None if !mono && k.cuts.is_empty() && rest > target + 0.01 && room > 0.01 => {
+        None if !mono
+            && k.cuts.is_empty()
+            && rest > target + 0.01
+            && room > 0.01
+            && !(*placed && *cur > 0.01 && edge_held(k, *from + room)) =>
+        {
             // Коробка без точек разреза выше колонки — вид
-            // `slice` по краю (css-break-3 §4).
+            // `slice` по краю (css-break-3 §4). Край внутри монолита
+            // (верхняя рамка/отбивка, Blink «avoid breaking inside
+            // block-start border») из непустой колонки не режет: ребёнок
+            // уходит в следующую целиком (ветка ниже).
             out.push(Frag {
                 kid,
                 copy,
@@ -203,4 +211,12 @@ pub(super) fn place_cut(
         }
     }
     None
+}
+
+/// Край колонки `edge` (в координатах ребёнка) лежит строго внутри одного из
+/// его монолитных диапазонов.
+fn edge_held(k: &Kid, edge: f32) -> bool {
+    k.solid
+        .iter()
+        .any(|&(a, b)| a < edge - 0.01 && edge < b - 0.01)
 }
