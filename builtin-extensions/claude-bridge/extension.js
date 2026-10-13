@@ -41546,6 +41546,11 @@ function handleServerMessage(msg, ctx) {
         description: msg.description
       });
       break;
+    case "session:usage": {
+      const usage = msg.usage;
+      if (usage && typeof usage === "object") ctx.window.webContents.send("session:usage", ctx.tabId, usage);
+      break;
+    }
     case "session:title": {
       const title = msg.title;
       if (title) {

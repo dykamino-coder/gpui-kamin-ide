@@ -17,6 +17,8 @@ import type { HookMatcher } from '../hooks/types'
 import { BRIDGE_DEFAULT_CLAUDE_MD } from './bridge-default-claude-md'
 import { getDisallowedBuiltinTools } from './session-env'
 import { replaceSkillsOverlay } from './skills-snapshot'
+import { preModelSwitchAllowMatcher } from './live-switch'
+import { writeStatusLineScript } from './session-statusline'
 
 export { BRIDGE_DEFAULT_CLAUDE_MD } from './bridge-default-claude-md'
 
@@ -187,9 +189,16 @@ export function writeSessionSettings(
   const settings: Record<string, unknown> = {
     permissions: { deny: settingsDenyRules() },
   }
-  if (Object.keys(rewrittenHooks).length > 0) {
-    settings.hooks = rewrittenHooks
-  }
+  // Bridge-owned PreModelSwitch `allow`: a model picked in the chat UI is
+  // applied live without the CLI's cache-warning dialog in the Console panel
+  // (see live-switch.ts). Appended after user/plugin hooks, which still win
+  // with `ask`/`deny`. Not relayed: it runs in the container and needs no
+  // client round-trip, so it is added after the rewrite.
+  const cliHooks: Record<string, unknown[]> = { ...(rewrittenHooks as Record<string, unknown[]>) }
+  cliHooks.PreModelSwitch = [...(cliHooks.PreModelSwitch ?? []), preModelSwitchAllowMatcher()]
+  settings.hooks = cliHooks
+  // Live subscription limits / context fill for the chat (session-statusline.ts).
+  settings.statusLine = writeStatusLineScript(claudeDir)
   fs.writeFileSync(path.join(claudeDir, 'settings.json'), JSON.stringify(settings, null, 2))
 
   // ─── 3. Local settings → .claude/settings.local.json ───
