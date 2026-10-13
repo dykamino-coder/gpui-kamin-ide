@@ -177,7 +177,10 @@ pub fn install_with_progress(dir: &Path, version: &str, progress: impl Fn(u8)) -
         let _ = quiet("taskkill", &["/F", "/IM", image]);
     }
     // taskkill возвращается раньше, чем процесс выгрузит свои DLL.
-    let gone = crate::unlock::wait_processes_gone(20);
+    // 2026-10-14: measured 22.4 s from `taskkill /F` until the last
+    // kaminide-gpui.exe disappeared (CEF/GPU teardown); 20 s was too short and
+    // the install fell back to the old version.
+    let gone = crate::unlock::wait_processes_gone(30);
     klog(&format!("taskkill done (processes gone: {gone})"));
     remove_legacy_tauri(dir);
     progress(8);
@@ -186,7 +189,7 @@ pub fn install_with_progress(dir: &Path, version: &str, progress: impl Fn(u8)) -
     // открываться на запись, до 20×1с. Переименование главного exe не годится —
     // Windows разрешает его и у работающего процесса (см. `unlock`).
     let mut locked = None;
-    for attempt in 1..=20u32 {
+    for attempt in 1..=60u32 {
         locked = crate::unlock::first_locked(dir);
         if locked.is_none() {
             klog(&format!("unlocked on attempt {attempt}"));
@@ -195,7 +198,7 @@ pub fn install_with_progress(dir: &Path, version: &str, progress: impl Fn(u8)) -
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
     if let Some(p) = locked {
-        bail!("files still locked after 20s: {}", p.display());
+        bail!("files still locked after 60s: {}", p.display());
     }
     progress(15);
 
