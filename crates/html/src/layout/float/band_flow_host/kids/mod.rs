@@ -44,6 +44,9 @@ pub(crate) fn band_kids(
         .iter()
         .any(|n| matches!(n, Node::Element(p) if p.attr("lead-probe") == Some("1")));
     let nowrap = inherited.nowrap == Some(true);
+    let initial_letter = nodes
+        .iter()
+        .any(|n| matches!(n, Node::Element(e) if e.attr("initial-letter").is_some()));
     let mk_build = |p: &Element| -> crate::layout::float::band_flow::Build {
         let p = p.clone();
         let inherited = inherited.clone();
@@ -103,6 +106,15 @@ pub(crate) fn band_kids(
         if c.attr("lead-probe") == Some("1") {
             continue;
         }
+        let mut continued;
+        let c = if initial_letter && c.attr("anon") == Some("1") {
+            // The initial letter already consumed the paragraph's indent.
+            continued = c.clone();
+            continued.style.text_indent = Some(crate::style::values::value::Len::Px(0.0));
+            &continued
+        } else {
+            c
+        };
         let Some(margin) = band_margins(&c.style, em) else {
             continue;
         };
