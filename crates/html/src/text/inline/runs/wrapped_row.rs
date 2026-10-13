@@ -42,6 +42,9 @@ pub fn as_wrapped_row(
     // меряется отдельным корнем, и его «родитель» — не блок строки:
     // замерено, `horizontal-rule-vlr-003` 0.08 → 1.22.
     pct_from_parent: bool,
+    // Block flow of a turned vertical line (`Some(vertical-rl)`): an
+    // out-of-flow box's static position hangs from the block-start side.
+    turned: Option<bool>,
 ) -> AnyElement {
     use crate::style::computed::{Align, TextAlign};
     // `vertical-align` в строке: умолчание — базовая линия, но `middle`,
@@ -171,7 +174,7 @@ pub fn as_wrapped_row(
                 glued = match p {
                     Piece::Atom(el) => glued.child(el),
                     Piece::Overlay(_, how) if how.cb_marker.is_some() => glued,
-                    Piece::Overlay(el, _) => glued.child(overlay_in_row(el)),
+                    Piece::Overlay(el, _) => glued.child(overlay_in_row(el, turned)),
                     Piece::Text { text, style } => glued.child(render_text(text, &style)),
                 };
             }
@@ -185,7 +188,7 @@ pub fn as_wrapped_row(
                     row.child(el)
                 }
                 Piece::Overlay(_, how) if how.cb_marker.is_some() => row,
-                Piece::Overlay(el, _) => row.child(overlay_in_row(el)),
+                Piece::Overlay(el, _) => row.child(overlay_in_row(el, turned)),
                 Piece::Text { text, style } => {
                     // Пробел остаётся при слове: без него слова слиплись бы.
                     for (n, part) in text.split('\n').enumerate() {

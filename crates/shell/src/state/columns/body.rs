@@ -145,8 +145,7 @@ impl RootView {
                         } else if self.sidebar_activity == "projects" {
                             sessions_sidebar(
                                 self.sessions.as_ref(),
-                                &self.collapsed_projects,
-                                &self.inactive_open,
+                                &self.expanded_projects,
                                 self.renaming_session
                                     .as_deref()
                                     .zip(self.rename_input.as_ref()),
