@@ -144,10 +144,12 @@ impl ColumnStack {
             }
         }
         let plan = self.plan.borrow().clone();
+        let plan_all = plan.clone();
         let mut parts = vec![0usize; self.children.len()];
         for f in &plan {
             parts[f.kid] += 1;
         }
+        let nested_frag = crate::layout::fragment::effect_fragment::active();
         for f in plan {
             let (c, ry) = self.place(f.col);
             let rel = self.children[f.kid].rel;
@@ -163,14 +165,32 @@ impl ColumnStack {
             } else {
                 win_h.max(f32::from(bounds.size.height))
             };
+            // Чернильное переполнение над первым и под последним фрагментом
+            // видно — как у горизонтальной стопки (`paint_frags`).
+            let continued = plan_all
+                .iter()
+                .any(|g| g.kid == f.kid && g.copy == f.copy + 1);
+            let line_h = self.lines_plan.borrow().first().map_or(0.0, |l| l.1);
+            let k0 = &self.children[f.kid];
+            let keep = spill == 0.0 || k0.measure.is_some() || nested_frag;
+            let up = if !keep && f.copy == 0 && f.from <= 0.01 {
+                spill
+            } else {
+                0.0
+            };
+            let down = if keep || continued || f.from + f.h < k0.over - 0.01 {
+                0.0
+            } else {
+                (line_h - f.y - f.h).max(0.0)
+            };
             let b = axis_box(
                 axis,
                 bounds.origin,
                 block_avail,
                 c as f32 * step - spill,
                 col_w + spill + spill,
-                ry + f.y,
-                f.h,
+                ry + f.y - up,
+                f.h + up + down,
             );
             let mask = fragment_mask::snap(
                 Bounds {
