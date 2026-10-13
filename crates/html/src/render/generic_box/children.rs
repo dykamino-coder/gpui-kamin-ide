@@ -163,9 +163,19 @@ pub(crate) fn generic_children(
     // дерева у gpui проходит раньше (эталоны `grid-gap-decorations-042`
     // и `flex-033` кладут линейки `z-index: -1`, `008/023` — элементы
     // `z-index: 2`).
+    // The viewport scroll tree is built after the outer document ICB
+    // closes. Its padding box still owns the initial containing block
+    // (CSS 2.1 §10.1), including absolute descendants below body margins.
+    let viewport = e.tag == "html-viewport";
+    if viewport {
+        crate::layout::positioned::containing_block::icb_open();
+    }
     kids.extend(decorated_children(e, &merged, opts, || {
         blocks(&children, &merged, opts)
     }));
+    if viewport {
+        kids.extend(crate::layout::positioned::containing_block::icb_close());
+    }
     if cb_layer {
         kids.extend(crate::layout::positioned::containing_block::cb_close());
     }
