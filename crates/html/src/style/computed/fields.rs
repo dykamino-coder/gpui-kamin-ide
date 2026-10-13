@@ -1408,6 +1408,8 @@ pub struct Computed {
     /// `content` псевдоэлемента — СПИСОК составляющих (css-content-3 §2):
     /// строки, `counter()`, `counters()`, `attr()` в любом порядке.
     pub content: Option<Vec<ContentItem>>,
+    /// Explicit inheritance is resolved along the DOM before pseudo generation.
+    pub(crate) content_inherit: bool,
     /// `quotes` (css-content-3 §4.1): пары кавычек по уровням вложенности.
     /// `None` inherits; `Some(None)` suppresses marks but keeps nesting depth.
     /// `Some(Some(empty))` is explicit auto; nonempty pairs are a custom system.
