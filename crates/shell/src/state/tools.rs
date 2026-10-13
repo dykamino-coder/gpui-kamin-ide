@@ -84,8 +84,7 @@ impl RootView {
             "terminal" => return self.terminal_tool_body(p, cx),
             "projects" => sessions_sidebar(
                 self.sessions.as_ref(),
-                &self.collapsed_projects,
-                &self.inactive_open,
+                &self.expanded_projects,
                 self.renaming_session
                     .as_deref()
                     .zip(self.rename_input.as_ref()),
