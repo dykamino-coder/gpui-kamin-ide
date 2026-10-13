@@ -25,7 +25,7 @@ pub(super) fn inline_sides(
     // `<span>` стоял у края).
     let cb = crate::layout::block::containing::avail_width();
     let px_of = |l: Option<Len>| match l {
-        Some(Len::Px(_)) | Some(Len::Em(_)) | Some(Len::Ch(_)) | Some(Len::Ex(_)) => {
+        Some(Len::Px(_) | Len::Em(_) | Len::Ch(_) | Len::Ex(_) | Len::Ic(_)) => {
             crate::text::metrics::spacing_px(l, &family, size)
         }
         Some(Len::Pct(k)) => cb.map_or(0.0, |w| k * w),
