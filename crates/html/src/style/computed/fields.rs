@@ -189,6 +189,10 @@ pub struct Computed {
     /// Used classic gutters of the nearest containing block and viewport.
     pub(crate) cb_scroll_insets: ([f32; 4], [f32; 4]),
     pub(crate) icb_scroll_insets: Option<[f32; 4]>,
+    /// Root unconditional gutters reduce viewport units, independently of body overflow.
+    pub(crate) viewport_unit_insets: Option<[f32; 2]>,
+    /// A matching scrollbar pseudo style excludes root viewport-unit reduction.
+    pub(crate) custom_scrollbar: bool,
     pub anchor_seq: u32,
     pub anchor_key: u64,
     /// CSS scrollbar colors, width and forced overflow axes (HTML only).
@@ -993,6 +997,9 @@ pub struct Computed {
     /// `background-origin`: от какого края коробки отсчитывается фоновая
     /// картинка. `None` — от внутреннего края рамки, как по умолчанию в CSS.
     pub bg_origin: Option<BgClip>,
+    /// Collapsed table borders occupy padding in layout, but remain border
+    /// outsets for background positioning and clipping: top/right/bottom/left.
+    pub(crate) bg_border_insets: Option<[f32; 4]>,
     /// `overflow-clip-margin`: на сколько обрезка отступает НАРУЖУ от коробки.
     /// Узел, чей фон красит КАНВАС (CSS 2.2 §14.2): корневой html, а без
     /// его фона — body. Ставится сборкой документа, не каскадом.

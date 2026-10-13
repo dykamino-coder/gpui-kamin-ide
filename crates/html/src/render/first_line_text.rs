@@ -26,6 +26,22 @@ pub(super) fn gather(nodes: &[Node], preserve_newlines: bool, out: &mut String) 
     false
 }
 
+/// Preserve hard breaks for the wrapper's total-height measurement.
+pub(super) fn lines(nodes: &[Node], preserve: bool, out: &mut String) {
+    for node in nodes {
+        match node {
+            Node::Text(text) if preserve => out.push_str(text),
+            Node::Text(text) => out.push_str(&text.replace(['\n', '\r'], " ")),
+            Node::Element(e) if e.tag == "br" => out.push('\n'),
+            Node::Element(e) => lines(
+                &e.children,
+                e.style.preserve_newlines.unwrap_or(preserve),
+                out,
+            ),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

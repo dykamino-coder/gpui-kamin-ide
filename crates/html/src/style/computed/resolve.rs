@@ -72,6 +72,11 @@ impl Computed {
     /// Размер окна известен только сборщику дерева, поэтому `vh`/`vw` доживают
     /// до него неразрешёнными — как и `em` до размера шрифта.
     pub fn resolve_viewport(&mut self, viewport: (f32, f32)) {
+        let insets = self.viewport_unit_insets.unwrap_or_default();
+        let viewport = (
+            (viewport.0 - insets[0]).max(0.0),
+            (viewport.1 - insets[1]).max(0.0),
+        );
         let fix = |l: &mut Option<Len>| match *l {
             Some(Len::Vw(k)) => *l = Some(Len::Px(k * viewport.0)),
             Some(Len::Vh(k)) => *l = Some(Len::Px(k * viewport.1)),

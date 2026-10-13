@@ -7,6 +7,7 @@ pub(super) fn inherit_containing(parent: &Computed, own: &Computed, c: &mut Comp
     bidi_controls::resolve(parent, c);
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
     c.icb_scroll_insets = own.icb_scroll_insets.or(parent.icb_scroll_insets);
+    c.viewport_unit_insets = own.viewport_unit_insets.or(parent.viewport_unit_insets);
     c.cb_scroll_insets = if establishes_cb(parent) {
         (parent.scroll.used, parent.scroll.native)
     } else {

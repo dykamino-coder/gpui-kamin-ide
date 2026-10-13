@@ -161,12 +161,23 @@ pub(crate) fn render_with_style(
                     Some(crate::style::values::value::Len::Px(v)) if v > 0.0 => v,
                     _ => 0.0,
                 };
+                // CSS 2.1 §12.5.1: the outside marker follows the first
+                // line's available area, including a preceding float.
+                // The hidden strut supplies that line for an empty item.
+                let intrusion = merged.flow_shapes.as_ref().map_or(0.0, |shapes| {
+                    let side = if merged.rtl == Some(true) {
+                        &shapes.1
+                    } else {
+                        &shapes.0
+                    };
+                    side.iter().map(|s| s.cut(0.0, 1.0)).fold(0.0, f32::max)
+                });
                 if merged.rtl == Some(true) {
                     m.left(gpui::relative(1.))
-                        .ml(gpui::px(px_of(side.right)))
+                        .ml(gpui::px(px_of(side.right) - intrusion))
                         .text_left()
                 } else {
-                    let m = m.mr(gpui::px(px_of(side.left)));
+                    let m = m.mr(gpui::px(px_of(side.left) - intrusion));
                     // Строки многострочного маркера равняются по
                     // КОНЦУ, к началу содержимого пункта
                     // (`marker-text-align-001`: `"[m] longtext"` при

@@ -40,9 +40,19 @@ pub fn wrap_of(c: &crate::style::computed::Computed) -> Wrap {
         balance: c.balance_lines == Some(true),
         keep_spaces: c.keep_spaces == Some(true),
         loose: c.line_break_loose.unwrap_or(0),
-        cjk_lang: c
-            .lang
-            .as_deref()
-            .is_some_and(|l| l.starts_with("ja") || l.starts_with("zh")),
+        cjk_lang: c.lang.as_deref().is_some_and(cjk_writing),
     }
+}
+
+/// Chinese or Japanese content for `line-break` (css-text-3 §5.3): the
+/// language itself, or a Chinese/Japanese script subtag (BCP 47) even under
+/// another language (`writing-system-line-break-002`: `en-Hrkt`).
+fn cjk_writing(lang: &str) -> bool {
+    lang.starts_with("ja")
+        || lang.starts_with("zh")
+        || lang.split(['-', '_']).skip(1).any(|t| {
+            ["hrkt", "hira", "kana", "jpan", "hani", "hans", "hant"]
+                .iter()
+                .any(|s| t.eq_ignore_ascii_case(s))
+        })
 }

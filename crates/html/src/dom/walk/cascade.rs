@@ -120,6 +120,14 @@ pub(super) fn cascade_element(
     let hints = presentational_hints::rules(&tag, &attrs);
     matched.extend(hints.iter());
     let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
+    style.custom_scrollbar = rules.iter().any(|rule| {
+        if rule.sel.pseudo.as_deref() != Some("-webkit-scrollbar") {
+            return false;
+        }
+        let mut owner = rule.sel.clone();
+        owner.pseudo = None;
+        matches(&owner, me, path, sibs)
+    });
     inherit_counter_decls(&mut style, path.last().map(|p| &p.counter_style));
     apply_value_hint(&mut style, &me);
     me.counter_style = counter_snapshot(&style);
