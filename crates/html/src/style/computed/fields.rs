@@ -727,6 +727,8 @@ pub struct Computed {
     pub text_shadow_none: bool,
     /// `animation` — ссылка на набор кадров.
     pub animation: Option<AnimSpec>,
+    /// Easing also applies when declared on a keyframe.
+    pub animation_easing: Option<crate::animation::easing::Easing>,
     /// `transition` — длительность перехода в секундах.
     pub transition: Option<f32>,
     /// `direction: rtl` — письмо справа налево.

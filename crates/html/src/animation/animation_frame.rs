@@ -17,6 +17,9 @@ pub(super) fn sample(e: &Element, frame: &Computed, transforms: bool) -> Element
     if frame.width.is_some() {
         style.width = frame.width;
     }
+    if frame.font_size.is_some() {
+        style.font_size = frame.font_size;
+    }
     if frame.height.is_some() {
         style.height = frame.height;
     }
