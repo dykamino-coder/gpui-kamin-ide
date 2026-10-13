@@ -166,4 +166,7 @@ pub(crate) fn apply_presentational_size(
             style.height = None;
         }
     }
+    if tag == "canvas" {
+        super::canvas_size::resolve(style);
+    }
 }
