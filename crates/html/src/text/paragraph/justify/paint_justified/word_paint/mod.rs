@@ -130,11 +130,18 @@ impl Paragraph {
                 .iter()
                 .find(|(r, _, _)| r.contains(&word.range.start))
             {
-                Some((_, top, h)) => {
+                Some((r, top, h)) => {
                     let lh = f32::from(self.line_height);
                     let line_top = -pad.0;
                     let box_top = if *top { line_top } else { lh + pad.1 - h };
-                    px(box_top + (h - lh) / 2.0)
+                    // Align the subtree as one box, preserving its common
+                    // baseline (CSS 2.1 section 10.8.1). Centering each word
+                    // separately misaligns descendants with different fonts.
+                    let baseline = match (self.base_of(r), self.base_of(&word.range)) {
+                        (Some(group), Some(word)) => group - word,
+                        _ => 0.0,
+                    };
+                    px(box_top + (h - lh) / 2.0 + baseline)
                 }
                 None => fix,
             };
