@@ -37,6 +37,7 @@ pub(crate) use sampling::paint_gradient;
 pub(crate) mod single_corner;
 use crate::paint::background::float_geometry::rrect_of;
 pub use float_geometry::rounded_float;
+pub(crate) mod filter_image;
 mod mask_composite;
 mod mask_luminance;
 pub use mask_composite::{MaskLayer, compose_mask_layers};
