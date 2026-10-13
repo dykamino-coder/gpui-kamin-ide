@@ -128,6 +128,21 @@ fn main() {
                 break;
             }
         }
+        // Шрифты CSSTest — второе предусловие набора: тесты css-fonts пишут
+        // «Test fonts must be installed for this test» и зовут их по имени
+        // семейства как УСТАНОВЛЕННЫЕ (`font-family: CSSTest Verify`), без
+        // `@font-face`. Без них обе стороны пары набираются подменой.
+        if let Ok(dir) = std::fs::read_dir("vendor/wpt-parsing/fonts/CSSTest") {
+            let mut paths: Vec<_> = dir.flatten().map(|e| e.path()).collect();
+            paths.sort();
+            let fonts: Vec<_> = paths
+                .iter()
+                .filter(|p| p.extension().is_some_and(|e| e == "ttf"))
+                .filter_map(|p| std::fs::read(p).ok())
+                .map(Into::into)
+                .collect();
+            let _ = cx.text_system().add_fonts(fonts);
+        }
         // Щуп метрик ставится ПОСЛЕ регистрации: до неё `Ahem` ещё не найден,
         // и `ch` мерился бы по шрифту-подмене.
         kamin_html::metrics::use_text_system(cx.text_system().clone());
