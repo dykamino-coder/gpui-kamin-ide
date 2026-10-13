@@ -1,6 +1,6 @@
 //! Show one document in the runner window and poll until its own frame has settled.
 
-use super::capture::capture;
+use super::capture::{CaptureCursor, offscreen};
 use super::capture_dump::Shot;
 use super::frame_metrics::flat;
 use super::page::Page;
@@ -40,6 +40,7 @@ impl Stage {
         want_flat: bool,
     ) -> Option<Shot> {
         let (window, hwnd, note) = (self.window, self.hwnd, &self.trace);
+        let mut captures = CaptureCursor::new();
         let _ = cx.update_window(window, |view, window, cx| {
             if let Ok(page) = view.downcast::<Page>() {
                 page.update(cx, |page, cx| {
@@ -86,7 +87,7 @@ impl Stage {
                     window.refresh();
                 });
             }
-            let shot = capture(hwnd);
+            let shot = captures.next(hwnd);
             let Some(now) = shot else { continue };
             let changed = prev.as_ref().is_none_or(|before| *before != now.2);
             let settled = last.as_ref().is_some_and(|before| before.2 == now.2);
@@ -146,6 +147,17 @@ impl Stage {
                 return Some(now);
             }
             last = Some(now);
+            // A cached readback is not another settled frame. Drive a fresh
+            // render so deferred layout gets its next lifecycle pass, even
+            // when an inactive window would otherwise keep its old scene.
+            if offscreen() {
+                let _ = cx.update_window(window, |view, window, cx| {
+                    if let Ok(page) = view.downcast::<Page>() {
+                        page.update(cx, |_, cx| cx.notify());
+                    }
+                    window.refresh();
+                });
+            }
         }
         note.borrow_mut()
             .push(if last.is_some() { 'o' } else { 'n' });
