@@ -118,6 +118,12 @@ struct FlexItem {
     /// KaminIDE: the item exports no baseline to an enclosing `inline-block`
     /// (a table or table wrapper; `LayoutOutput::inline_block_last_y`).
     no_inline_block_baseline: bool,
+    /// KaminIDE: the item hides every baseline from an enclosing `inline-block`
+    /// (a float or a table; `LayoutOutput::inline_block_last_y` is `Some(None)`).
+    hides_inline_block_baseline: bool,
+    /// KaminIDE: the last baseline the item exports to an enclosing `inline-block`,
+    /// from container top; `None` when it has no line box at all.
+    inline_block_last_pos: Option<f32>,
     /// First x baseline after final physical placement, from container left.
     baseline_x_pos: Option<f32>,
     baseline_x_flags: u8,
@@ -1002,12 +1008,23 @@ fn compute_preliminary(
     );
     // An anonymous flex wrapper whose every item is a table (wrapper) box hides
     // the table baseline from an enclosing inline-block as the table itself does.
-    let mut items = flex_lines
-        .iter()
-        .flat_map(|line| line.items.iter())
-        .peekable();
-    if items.peek().is_some() && items.all(|item| item.no_inline_block_baseline) {
-        output.inline_block_last_y = Some(None);
+    // Likewise a float (CSS 2.1 §10.8.1: only in-flow line boxes give an
+    // inline-block its baseline): the enclosing inline-block takes the last
+    // baseline of the endmost item that has one and does not hide it.
+    let mut items = flex_lines.iter().flat_map(|line| line.items.iter());
+    if items.any(|item| item.hides_inline_block_baseline) {
+        let shown = |line: &FlexLine<'_>| {
+            line.items
+                .iter()
+                .rev()
+                .filter(|item| !item.hides_inline_block_baseline)
+                .find_map(|item| item.inline_block_last_pos)
+        };
+        output.inline_block_last_y = Some(if constants.is_wrap_reverse {
+            flex_lines.iter().find_map(shown)
+        } else {
+            flex_lines.iter().rev().find_map(shown)
+        });
     }
     output.oof_candidates = candidates;
     output.oof_positioning_area = Some(OofPositioningArea {
@@ -1364,6 +1381,8 @@ fn generate_anonymous_flex_items(
                 last_baseline_from_end: 0.0,
                 last_baseline_pos: 0.0,
                 no_inline_block_baseline: false,
+                hides_inline_block_baseline: false,
+                inline_block_last_pos: None,
                 baseline_x_pos: None,
                 baseline_x_flags: child_style.baseline_x_flags(),
                 column_baseline: None,
@@ -3853,6 +3872,11 @@ fn calculate_flex_item(
     // an item without any baseline still synthesizes one in the flex container.
     item.no_inline_block_baseline = layout_output.inline_block_last_y == Some(None)
         && layout_output.last_or_first_y().is_some();
+    item.hides_inline_block_baseline = layout_output.inline_block_last_y == Some(None);
+    item.inline_block_last_pos = layout_output.inline_block_last_y().map(|y| {
+        let y = if item.overflow.y.is_scroll_container() { y.min(size.height).max(0.0) } else { y };
+        baseline_origin_y + y
+    });
     // x follows the local physical-position contract and retains both channels.
     // Clamp scroll-container baseline offsets to its own border box as for y.
     let baseline_x = |baseline: f32| {
