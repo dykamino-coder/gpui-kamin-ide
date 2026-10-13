@@ -50,6 +50,32 @@ pub(super) fn width(
     parent: Size<Option<f32>>,
     area: f32,
 ) -> f32 {
+    measure(tree, node, height, parent, area, AvailableSpace::MaxContent)
+}
+
+/// KaminIDE patch: min-content stacking width. Fit-content in the stacking axis is
+/// `min(max-content, max(min-content, room))` (CSS Sizing 3 §fit-content; Blink sizes
+/// the item in a grid-lanes stacking track like a grid item in an auto area), so an
+/// item with rigid content wider than the container is not squeezed below it
+/// (`row-item-percentage-sizes-*`: `min-width: 100%` box kept its 30px content).
+pub(super) fn min_width(
+    tree: &mut impl LayoutGridContainer,
+    node: NodeId,
+    height: Option<f32>,
+    parent: Size<Option<f32>>,
+    area: f32,
+) -> f32 {
+    measure(tree, node, height, parent, area, AvailableSpace::MinContent)
+}
+
+fn measure(
+    tree: &mut impl LayoutGridContainer,
+    node: NodeId,
+    height: Option<f32>,
+    parent: Size<Option<f32>>,
+    area: f32,
+    probe: AvailableSpace,
+) -> f32 {
     // Upstream #1234: the parent passes the border-box space, so the child's own vertical
     // margins are deducted here (auto margins count as zero).
     let margin = tree
@@ -65,7 +91,7 @@ pub(super) fn width(
         },
         parent,
         Size {
-            width: AvailableSpace::MaxContent,
+            width: probe,
             height: AvailableSpace::Definite(area),
         },
         SizingMode::InherentSize,
