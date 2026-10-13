@@ -20,6 +20,7 @@ pub(crate) fn measure_font(c: &Computed, opts: &RenderOpts) -> gpui::Font {
     if c.italic == Some(true) {
         font.style = gpui::FontStyle::Italic;
     }
+    font.features = crate::text::fonts::with_css_weight(&font.features);
     font
 }
 

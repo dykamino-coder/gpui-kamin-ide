@@ -63,7 +63,7 @@ pub(super) fn decode(bytes: &[u8], orient: bool) -> Option<Source> {
 // Подставить корню SVG `viewBox` его `<view id="…">` (SVG 2 §8.2). Не SVG
 // или вида нет — байты как есть.
 
-pub(super) fn read_bytes(src: &str) -> Option<Vec<u8>> {
+pub(crate) fn read_bytes(src: &str) -> Option<Vec<u8>> {
     if let Some(rest) = src.strip_prefix("data:") {
         let (head, payload) = rest.split_once(',')?;
         // RFC 2397: без пометки `base64` содержимое лежит прямо в адресе,

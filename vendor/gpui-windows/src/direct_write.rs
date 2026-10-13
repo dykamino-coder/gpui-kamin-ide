@@ -1,5 +1,6 @@
 //! Windows text shaping, font selection and glyph rasterization through DirectWrite.
 
+mod css_weight;
 mod fallbacks;
 
 use std::{
@@ -56,6 +57,9 @@ struct FontInfo {
     pixel_exact: bool,
     /// Коллекция, из которой взята грань (upstream; заменяет прежний `is_system_font`).
     font_collection: IDWriteFontCollection1,
+    /// KaminIDE patch: вес для раскладки, когда грань выбрана по CSS
+    /// (`css_weight`); иначе — вес самой грани.
+    layout_weight: Option<DWRITE_FONT_WEIGHT>,
 }
 
 /// KaminIDE patch: supersampling factor of `pixel_exact` glyphs. A multiple
@@ -554,10 +558,42 @@ impl DirectWriteState {
             font
         };
         let total_number = unsafe { font.GetFontCount() };
-        for index in 0..total_number {
+        // KaminIDE patch: документ просит подбор веса по CSS (тег `cssw`, см.
+        // `css_weight`) — выбранная грань идёт первой, с подделкой жирного,
+        // если её требует правило; остальные — прежним порядком DirectWrite.
+        let css_pick = if no_synth("cssw") {
+            css_weight::css_weight_pick(
+                factory,
+                collection,
+                &font_family_h,
+                &font,
+                weight.0,
+                !no_bold,
+            )
+        } else {
+            None
+        };
+        // Порядок попыток: выбранная по CSS грань (если есть), затем набор
+        // DirectWrite (`None` — индекс в нём).
+        let order = css_pick
+            .iter()
+            .map(|_| None)
+            .chain((0..total_number).map(Some));
+        for slot in order {
             let res = maybe!({
-                let font_face_ref = unsafe { font.GetFontFaceReference(index).log_err()? };
-                let font_face = unsafe { font_face_ref.CreateFontFace().log_err()? };
+                let font_face_ref = match (slot, css_pick.as_ref()) {
+                    (Some(index), _) => unsafe { font.GetFontFaceReference(index).log_err()? },
+                    (None, Some(pick)) => pick.face.clone(),
+                    (None, None) => return None,
+                };
+                let font_face = match (slot, css_pick.as_ref()) {
+                    (None, Some(pick)) => unsafe {
+                        font_face_ref
+                            .CreateFontFaceWithSimulations(pick.simulations)
+                            .log_err()?
+                    },
+                    _ => unsafe { font_face_ref.CreateFontFace().log_err()? },
+                };
                 let sims = unsafe { font_face.GetSimulations() };
                 if (no_bold && sims.0 & DWRITE_FONT_SIMULATIONS_BOLD.0 != 0)
                     || (no_oblique && sims.0 & DWRITE_FONT_SIMULATIONS_OBLIQUE.0 != 0)
@@ -607,7 +643,14 @@ impl DirectWriteState {
                     pixel_exact: family_name.eq_ignore_ascii_case("ahem")
                         || postscript_name.eq_ignore_ascii_case("ahem"),
                     face_key: postscript_name,
-                    font_collection: collection.clone(),
+                    font_collection: match (slot, css_pick.as_ref()) {
+                        (None, Some(pick)) => pick.collection.clone(),
+                        _ => collection.clone(),
+                    },
+                    layout_weight: match (slot, css_pick.as_ref()) {
+                        (None, Some(pick)) => Some(pick.layout_weight),
+                        _ => None,
+                    },
                 };
                 Some(font_info)
             });
@@ -669,7 +712,9 @@ impl DirectWriteState {
                     .CreateTextFormat(
                         &font_info.font_family_h,
                         collection,
-                        font_info.font_face.GetWeight(),
+                        font_info
+                            .layout_weight
+                            .unwrap_or_else(|| font_info.font_face.GetWeight()),
                         font_info.font_face.GetStyle(),
                         // KaminIDE patch: ширина уже учтена при подборе начертания.
                         font_info.font_face.GetStretch(),
@@ -770,7 +815,12 @@ impl DirectWriteState {
                 };
                 text_layout.SetFontSize(size, text_range)?;
                 text_layout.SetFontStyle(font_info.font_face.GetStyle(), text_range)?;
-                text_layout.SetFontWeight(font_info.font_face.GetWeight(), text_range)?;
+                text_layout.SetFontWeight(
+                    font_info
+                        .layout_weight
+                        .unwrap_or_else(|| font_info.font_face.GetWeight()),
+                    text_range,
+                )?;
                 text_layout.SetTypography(&font_info.features, text_range)?;
             }
 

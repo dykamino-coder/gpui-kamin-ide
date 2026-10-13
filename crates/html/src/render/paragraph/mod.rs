@@ -93,6 +93,7 @@ fn paragraph_routed(
             if first.italic == Some(true) {
                 font.style = gpui::FontStyle::Italic;
             }
+            font.features = crate::text::fonts::with_css_weight(&font.features);
             if let Some(family) = first.font_family.as_ref().filter(|f| !f.is_empty()) {
                 font.family = family.clone().into();
             }
