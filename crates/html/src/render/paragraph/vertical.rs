@@ -1,6 +1,7 @@
 //! Выбор физического маршрута вертикального абзаца.
 
 mod upright;
+mod upright_central;
 pub(super) use upright::upright_paragraph;
 
 use super::{paragraph, paragraph_routed};

@@ -16,9 +16,13 @@ pub(crate) fn font_extents(font: &gpui::Font, size: f32) -> (f32, f32) {
         let system = cell.borrow();
         if let Some(system) = system.as_ref() {
             let id = system.resolve_font(font);
-            (
-                f32::from(system.ascent(id, gpui::px(size))),
-                f32::from(system.descent(id, gpui::px(size))).abs(),
+            crate::text::fonts::metric_overrides::extents(
+                font,
+                size,
+                (
+                    f32::from(system.ascent(id, gpui::px(size))),
+                    f32::from(system.descent(id, gpui::px(size))).abs(),
+                ),
             )
         } else {
             let (ascent, descent, _) = super::vmetrics_px(&font.family, size);

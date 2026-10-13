@@ -727,6 +727,8 @@ pub struct Computed {
     pub text_shadow_none: bool,
     /// `animation` — ссылка на набор кадров.
     pub animation: Option<AnimSpec>,
+    /// Easing also applies when declared on a keyframe.
+    pub animation_easing: Option<crate::animation::easing::Easing>,
     /// `transition` — длительность перехода в секундах.
     pub transition: Option<f32>,
     /// `direction: rtl` — письмо справа налево.
@@ -811,6 +813,9 @@ pub struct Computed {
     pub float: Option<i8>,
     /// Unemitted adjoining margin at the float's source position (CSS 2.1 §9.5.1).
     pub(crate) float_margin_offset: Option<f32>,
+    /// The box is a float whose `float` a float row/host cleared for layout:
+    /// it never gives an enclosing inline-block its baseline (CSS 2.1 §10.8.1).
+    pub(crate) floated_box: bool,
     /// Explicit `clear: inherit`; ordinary `clear` is non-inherited.
     pub(crate) clear_inherit: bool,
     /// `background-attachment: fixed` — плитка считается от области
@@ -1406,6 +1411,8 @@ pub struct Computed {
     /// `content` псевдоэлемента — СПИСОК составляющих (css-content-3 §2):
     /// строки, `counter()`, `counters()`, `attr()` в любом порядке.
     pub content: Option<Vec<ContentItem>>,
+    /// Explicit inheritance is resolved along the DOM before pseudo generation.
+    pub(crate) content_inherit: bool,
     /// `quotes` (css-content-3 §4.1): пары кавычек по уровням вложенности.
     /// `None` inherits; `Some(None)` suppresses marks but keeps nesting depth.
     /// `Some(Some(empty))` is explicit auto; nonempty pairs are a custom system.

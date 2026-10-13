@@ -3,6 +3,29 @@
 
 use std::cell::Cell;
 
+/// CSS2 sections 6.2.1 and 12.2: explicit inheritance follows the DOM,
+/// including ordinary elements on which `content` does not generate a box.
+pub(crate) fn inherit_generated(
+    style: &mut crate::style::computed::Computed,
+    parent: Option<&crate::style::select::Ancestor>,
+) {
+    super::inherit_counter_decls(style, parent.map(|p| &p.counter_style));
+    if style.content_inherit {
+        style.content = parent.and_then(|p| p.content_style.clone());
+        style.content_none = parent.and_then(|p| p.content_none);
+        style.content_inherit = false;
+    }
+}
+
+pub(crate) fn snapshot_generated(
+    node: &mut crate::style::select::Ancestor,
+    style: &crate::style::computed::Computed,
+) {
+    node.counter_style = super::counter_snapshot(style);
+    node.content_style = style.content.clone();
+    node.content_none = style.content_none;
+}
+
 thread_local! {
     static XHTML: Cell<bool> = const { Cell::new(false) };
 }

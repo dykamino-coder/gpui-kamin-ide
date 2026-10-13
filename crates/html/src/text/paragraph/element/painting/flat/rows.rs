@@ -81,10 +81,13 @@ impl Paragraph {
         );
         if line.ellipsis {
             let text = self.span(segs, line.range.start, range.end);
+            let (_, _, step, absorbed, _) = self.prepare_words(range, segs, free);
+            let expanded =
+                step * self.justify_opps(range, range.end).saturating_sub(absorbed) as f32;
             self.paint_suffix(
                 self.line_mark(line),
                 line.range.start,
-                point(bounds.origin.x + dx + text, y),
+                point(bounds.origin.x + dx + text + expanded, y),
                 // На базовую линию строки — ту же, на которую
                 // `paint_justified` опускает слова (`block-ellipsis-005`:
                 // знак кегля блока за `<span>` 1.5em стоял выше).

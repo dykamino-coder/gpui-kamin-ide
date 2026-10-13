@@ -1,5 +1,6 @@
 //! Вложенные ряды: коробка, форма и ширина вложенной стопки рядов.
 
+use super::nested_kid::{oof_in_plain_kids, plain_block_kid};
 use super::{group_inline_runs, inline_content};
 use crate::dom::{Element, Node};
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
@@ -78,7 +79,7 @@ pub(crate) fn nested_rows_box(c: &Element) -> bool {
         && s.vertical != Some(true)
         && s.float.unwrap_or(0) == 0
         && !has_deep_spanner(c)
-        && !carries_abspos(c, 4)
+        && (!carries_abspos(c, 4) || oof_in_plain_kids(c))
         // Ряды считаются от верха СОДЕРЖИМОГО: блочные рамка и отбивка (и их
         // повтор у `box-decoration-break: clone`) сдвинули бы границы рядов с
         // границ внешних колонок (`box-decoration-break-clone-010`).
@@ -97,7 +98,7 @@ pub(crate) fn nested_rows_box(c: &Element) -> bool {
         && c.children.iter().any(|n| !is_blank(n))
         // Внепоточный потомок — содержащий блок и дотяг рядами не выражены
         // (`out-of-flow-in-multicolumn-019`).
-        && !oof_descendant(c)
+        && (!oof_descendant(c) || oof_in_plain_kids(c))
 }
 
 pub(super) fn oof_descendant(e: &Element) -> bool {
@@ -132,6 +133,7 @@ pub(crate) fn nested_rows_shape(
     }
     let gap = match m.column_gap {
         Some(Len::Px(v)) => v,
+        Some(Len::Pct(k)) => super::layout_unit(k * w), // как `column_plan`
         _ => match m.font_size {
             Some(Len::Px(v)) => v,
             _ => opts.base_size(),
@@ -153,7 +155,7 @@ pub(crate) fn nested_rows_shape(
                 // 031` при блочных детях уходили 0.00 → «красное видно»).
                 Node::Element(k)
                     if !k.inline
-                        && inline_content(k)
+                        && (inline_content(k) || plain_block_kid(k))
                         && !out_of_flow(&k.style)
                         && matches!(
                             k.style.position,
@@ -163,6 +165,9 @@ pub(crate) fn nested_rows_shape(
                 {
                     let k = resolved_lengths(k, &m);
                     let sh = shape_full(&k, 4, ShapeCx::COLUMNS)?;
+                    if !inline_content(&k) && sh.5.iter().any(|&(a, b)| b - a > hh + 0.01) {
+                        return None;
+                    }
                     Some(crate::layout::fragment::types::Kid {
                         h: sh.0,
                         mt: sh.1,

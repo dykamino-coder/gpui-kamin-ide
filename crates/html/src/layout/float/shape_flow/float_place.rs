@@ -191,6 +191,7 @@ pub(super) fn push_float_holder(
     // у бандового хоста `float` доживает до сюда, а слитый стиль с
     // `float` заводит лишний контекст обрезки.
     copy.style.float = None;
+    copy.style.floated_box = true;
     copy.style.clear = None;
     let mut merged = inherit(inherited, &copy.style);
     merged.self_node = copy.node_id;
