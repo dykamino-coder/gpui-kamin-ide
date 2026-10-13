@@ -112,12 +112,13 @@ pub fn shift_spans(
                 // Полулидинг БЫВАЕТ отрицательным: `L = line-height − AD`
                 // (§10.8.1), и при `line-height` меньше кегля коробка куска
                 // выше строки. Зажим нулём убивал ровно этот случай.
-                let alphabetic = style.sideways == Some(true) || style.text_sideways == Some(true);
                 let vertical = style.vertical == Some(true) || style.rotated_line == Some(true);
                 // CSS 2.1 §10.8.1 aligns the subject's own inline box, whose
                 // half-leading comes from its computed line-height. The line's
                 // strut is not that box (Blink inline_box_state.cc:144-150).
-                let own_line = if vertical && alphabetic {
+                // The edge is physical, so this holds for the central
+                // dominant baseline of mixed/upright text too.
+                let own_line = if vertical {
                     match style.line_height {
                         Some(Len::Px(v)) => v,
                         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
