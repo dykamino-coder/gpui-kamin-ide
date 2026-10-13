@@ -813,6 +813,9 @@ pub struct Computed {
     pub float: Option<i8>,
     /// Unemitted adjoining margin at the float's source position (CSS 2.1 §9.5.1).
     pub(crate) float_margin_offset: Option<f32>,
+    /// The box is a float whose `float` a float row/host cleared for layout:
+    /// it never gives an enclosing inline-block its baseline (CSS 2.1 §10.8.1).
+    pub(crate) floated_box: bool,
     /// Explicit `clear: inherit`; ordinary `clear` is non-inherited.
     pub(crate) clear_inherit: bool,
     /// `background-attachment: fixed` — плитка считается от области
