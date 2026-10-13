@@ -111,6 +111,15 @@ impl Len {
                 return css_number(num).map(|v| unit(v / 100.0));
             }
         }
+        // Корневые шрифтовые единицы `rcap`/`rch`/`rex`/`ric` — метрика
+        // ПЕРВОГО ДОСТУПНОГО шрифта корня его кеглем (css-values-4 §6.1.2
+        // «root font-relative lengths»). Разбираются ДО `cap`/`ch`/`ex`/`ic`:
+        // иначе `"1rch".strip_suffix("ch")` даёт `"1r"`, и объявление падало.
+        for unit in ["rcap", "rch", "rex", "ric"] {
+            if let Some(num) = s.strip_suffix(unit) {
+                return css_number(num).map(|v| Len::Px(v * root_font_unit(&unit[1..])));
+            }
+        }
         // `ic` — ширина иероглифа (advance у 水). У шрифтов CJK она равна
         // `ic` — продвижение знака `水`, своя метрика шрифта (CSS Values
         // §6.1.4). Синонимом `em` она была только потому, что замера не было:

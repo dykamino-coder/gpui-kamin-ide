@@ -32,7 +32,8 @@ pub use color::{Color, dark_scheme, set_dark_scheme};
 use color_names::named;
 pub use len::Len;
 pub(crate) use len::css_number;
-use root_metrics::ROOT_FONT_VIEW;
+use root_metrics::{ROOT_FONT_VIEW, root_font_unit};
 pub use root_metrics::{
-    reset_root_metrics, root_font_px, root_line_px, set_root_font_view, set_root_metrics,
+    reset_root_metrics, root_font_px, root_line_px, set_root_family, set_root_font_view,
+    set_root_metrics,
 };

@@ -47,7 +47,7 @@ pub(super) fn faces(css: &str) -> Vec<String> {
 
 /// Значение свойства внутри правила.
 pub(super) fn declaration(block: &str, name: &str) -> Option<String> {
-    block.split(';').find_map(|decl| {
+    split_top(block, ';').into_iter().find_map(|decl| {
         let (key, value) = decl.split_once(':')?;
         key.trim()
             .eq_ignore_ascii_case(name)
@@ -55,11 +55,35 @@ pub(super) fn declaration(block: &str, name: &str) -> Option<String> {
     })
 }
 
+/// Разрезать по `sep` вне скобок и кавычек: адрес `data:` несёт в себе и
+/// `;` (`;charset=utf-8;base64`), и `,` (перед содержимым), и прежде правило
+/// с таким `src` распадалось на обрывки (`font-synthesis-*-binary`).
+fn split_top(text: &str, sep: char) -> Vec<&str> {
+    let mut out = Vec::new();
+    let (mut depth, mut quote, mut start) = (0i32, None, 0usize);
+    for (i, c) in text.char_indices() {
+        match (quote, c) {
+            (Some(q), _) if c == q => quote = None,
+            (Some(_), _) => {}
+            (None, '"' | '\'') => quote = Some(c),
+            (None, '(') => depth += 1,
+            (None, ')') => depth -= 1,
+            (None, _) if c == sep && depth <= 0 => {
+                out.push(&text[start..i]);
+                start = i + c.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    out.push(&text[start..]);
+    out
+}
+
 /// Первый пригодный файл из `src`: берём тот, чью упаковку умеем открыть.
 pub(super) fn source(block: &str) -> Option<String> {
     let src = declaration(block, "src")?;
     let mut fallback = None;
-    for part in src.split(',') {
+    for part in split_top(&src, ',') {
         let Some(open) = part.find("url(") else {
             continue;
         };
@@ -102,8 +126,15 @@ pub(super) fn sfnt_ok(bytes: &[u8]) -> bool {
 }
 
 pub(super) fn read_font(path: &str) -> Option<Vec<u8>> {
-    let path = path.strip_prefix("file:///").unwrap_or(path);
-    let bytes = std::fs::read(path).ok()?;
+    // Адрес `data:` (RFC 2397) — шрифт в самой таблице; упаковку тогда
+    // покажет подпись (ветки ниже без расширения).
+    let bytes = if path.starts_with("data:") {
+        crate::paint::background::read_bytes(path)?
+    } else {
+        let path = path.strip_prefix("file:///").unwrap_or(path);
+        std::fs::read(path).ok()?
+    };
+    let path = if path.starts_with("data:") { "" } else { path };
     // Упаковку задаёт АДРЕС, а подпись внутри файла — то, что файл о себе
     // заявляет. Их расхождение — отказ (§4.1 WOFF2): файл `.woff2` с
     // подписью `XXXX` прежде проваливался мимо обеих веток распаковки и

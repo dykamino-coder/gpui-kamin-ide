@@ -38,6 +38,7 @@ pub(super) fn normalize_style(
             }
         };
         crate::style::values::value::set_root_metrics(font, line);
+        crate::style::values::value::set_root_family(&family);
         crate::style::values::value::set_root_font_view(match style.font_size {
             Some(crate::style::values::value::Len::Vh(k)) => Some((true, k)),
             Some(crate::style::values::value::Len::Vw(k)) => Some((false, k)),
