@@ -38,6 +38,9 @@ pub(crate) fn upright_paragraph(
     inherited: &Computed,
     opts: &RenderOpts,
 ) -> AnyElement {
+    if let Some(stack) = super::upright_central::upright_central(nodes, inherited, opts) {
+        return stack;
+    }
     let mut stack = inherited.clone();
     stack.vertical = None;
     stack.upright_stack = true;
