@@ -15,12 +15,17 @@ impl Computed {
             // --- Логические свойства ---------------------------------------
             // Письмо у нас только слева направо и сверху вниз, поэтому
             // логические оси совпадают с физическими один в один.
-            "inline-size" => self.logical().inline_size = Len::parse(v),
-            "block-size" => self.logical().block_size = Len::parse(v),
-            "min-inline-size" => self.logical().min_inline = Len::parse(v),
-            "min-block-size" => self.logical().min_block = Len::parse(v),
-            "max-inline-size" => self.logical().max_inline = Len::parse(v),
-            "max-block-size" => self.logical().max_block = Len::parse(v),
+            // Разбор — тот же, что у физических `width`/`height`
+            // (`assign_size`): смесь «доля ± точки» в `calc()` доживает до
+            // раскладки (css-logical-1 §4.1 — те же значения, что у
+            // `width`). Прежде `Len::parse` роняло `calc(100% - 20px)` в
+            // ничто (`css-break/table/table-row-paint-htb-ltr-ref`).
+            "inline-size" => assign_size(&mut self.logical().inline_size, v),
+            "block-size" => assign_size(&mut self.logical().block_size, v),
+            "min-inline-size" => assign_size(&mut self.logical().min_inline, v),
+            "min-block-size" => assign_size(&mut self.logical().min_block, v),
+            "max-inline-size" => assign_size(&mut self.logical().max_inline, v),
+            "max-block-size" => assign_size(&mut self.logical().max_block, v),
             "padding-inline" | "padding-block" | "margin-inline" | "margin-block"
             | "inset-inline" | "inset-block" => {
                 let (a, b) = axis_pair(v);
