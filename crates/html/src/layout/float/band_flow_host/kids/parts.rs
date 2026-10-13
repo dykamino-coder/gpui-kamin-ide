@@ -5,12 +5,10 @@ use crate::dom::{Element, Node};
 use crate::layout::float::band_flow::Kind;
 use crate::layout::float::band_host::px_margin_box;
 use crate::layout::float::band_measured::band_piece_m;
-use crate::layout::float::band_nest::{band_nest, cont_indent};
-use crate::paint::effects::paint_scope::DepthScope;
-use crate::render::{RenderOpts, element, is_blank};
+use crate::layout::float::band_nest::band_nest;
+use crate::render::RenderOpts;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
-use gpui::AnyElement;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn band_kid_kind(
@@ -54,55 +52,4 @@ pub(crate) fn band_kid_kind(
         }
     };
     Some(kind)
-}
-
-pub(crate) fn band_kid_head(
-    inherited: &Computed,
-    opts: &RenderOpts,
-    depth: crate::paint::effects::paint_scope::Depth,
-    c: &Element,
-    first_layer: &Option<Computed>,
-) -> Option<
-    std::rc::Rc<
-        dyn Fn(
-                f32,
-                f32,
-                Option<
-                    std::sync::Arc<(
-                        Vec<super::super::super::shapes::FloatShape>,
-                        Vec<super::super::super::shapes::FloatShape>,
-                    )>,
-                >,
-                Option<f32>,
-            ) -> AnyElement
-            + 'static,
-    >,
-> {
-    let head: Option<crate::layout::float::band_flow::Build> = if c.attr("anon") == Some("1")
-        && inherited.nowrap != Some(true)
-        && inherited.keep_spaces != Some(true)
-    {
-        match c.children.iter().find(|n| !is_blank(n)) {
-            Some(Node::Text(t)) => t.split_whitespace().next().map(|word| {
-                let mut hn = c.clone();
-                cont_indent(&mut hn, inherited);
-                if first_layer.is_some() {
-                    hn.first_line = first_layer.clone();
-                }
-                hn.children = vec![Node::Text(word.to_string())];
-                let inherited = inherited.clone();
-                let opts = opts.clone();
-                let b: crate::layout::float::band_flow::Build =
-                    std::rc::Rc::new(move |_cb: f32, _avail: f32, _shapes, _h: Option<f32>| {
-                        let _depth = DepthScope::enter(depth);
-                        element(&hn, &inherited, &opts)
-                    });
-                b
-            }),
-            _ => None,
-        }
-    } else {
-        None
-    };
-    head
 }

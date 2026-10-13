@@ -1,7 +1,7 @@
 //! Блок потока в полосах (place_flow) и внутренняя ширина последовательности.
 
 use super::kid::{Kid, Kind};
-use super::{EPS, Slot, clearance, intrinsic, intrinsic_of, probe};
+use super::{EPS, Slot, clearance, intrinsic, probe};
 use crate::layout::float::bands::FloatBands;
 use gpui::{App, Window};
 
@@ -30,7 +30,7 @@ pub(super) fn place_flow(
     // Blink `ComputeLineLayoutOpportunity`,
     // `layout_opportunity.cc:164-189`). Вырезы меряются от краёв
     // САМОЙ коробки: стенки на время — её border-box.
-    let mut top = clearance::top(
+    let top = clearance::top(
         bands,
         kid.clear,
         *y,
@@ -38,31 +38,9 @@ pub(super) fn place_flow(
         kid.start_open && adjoining0 && (*y - y0).abs() < EPS,
     );
     let avail = (cbw - ml - mr).max(0.0);
-    // §9.5: «If a shortened line box is too small to contain any
-    // content, then the line box is shifted downward … until either
-    // some content fits or there are no more floats present».
-    // Наборщик строк сдвигать строку вниз не умеет; у анонимного
-    // прогона это то же, что опустить весь прогон до окна, в
-    // которое влезает его самый узкий кусок (min-content, с
-    // отступом первой строки): `below-float2/3` — флоат на всю
-    // ширину, `x` с `text-indent` встаёт под ним, а не за краем.
-    // Кусок — первое слово (`Kid::head`), когда оно известно.
-    if kid.anon {
-        let need = match kid.head.as_ref() {
-            Some(h) => intrinsic_of(h, window, cx).0,
-            None => intrinsic(kid, window, cx).0,
-        };
-        loop {
-            let (l, r) = bands.available(top, 0.0);
-            if r - l + EPS >= need.min(avail) {
-                break;
-            }
-            match bands.next_edge(top) {
-                Some(t) => top = t,
-                None => break,
-            }
-        }
-    }
+    // CSS 2.1 §9.5: the line breaker moves individual lines below floats.
+    // A first-word min-content probe uses the widest hyphenated fragment,
+    // which can incorrectly clear a float even when the first fragment fits.
     let walls = bands.set_walls(x0 + ml, x1 - mr);
     let shapes = bands.shapes(top);
     bands.set_walls(walls.0, walls.1);
