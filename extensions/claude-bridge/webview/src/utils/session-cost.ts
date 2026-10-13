@@ -7,6 +7,9 @@ export interface CostTier {
   output: number
   cacheWrite: number
   cacheRead: number
+  /** Long-prompt rate: applies to the WHOLE request once its prompt (input +
+   *  cache read + cache write) exceeds `tokens` (Haiku 5.5: 100K). */
+  above?: { tokens: number; tier: CostTier }
 }
 
 const TIER_3_15: CostTier = { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 }
@@ -16,12 +19,20 @@ const TIER_5_25: CostTier = { input: 5, output: 25, cacheWrite: 6.25, cacheRead:
 const TIER_4_20: CostTier = { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 }
 const TIER_FABLE_5_1: CostTier = { input: 10, output: 50, cacheWrite: 12.5, cacheRead: 0.25 }
 const TIER_HAIKU: CostTier = { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 }
+// Haiku 5.5 (platform.claude.com pricing): $0.10/$0.50 up to a 100K-token
+// prompt, $0.50/$2.50 above; cache reads $0.01/$0.05. Cache writes follow the
+// usual 1.25× input rate.
+const TIER_HAIKU_5_5: CostTier = {
+  input: 0.1, output: 0.5, cacheWrite: 0.125, cacheRead: 0.01,
+  above: { tokens: 100_000, tier: { input: 0.5, output: 2.5, cacheWrite: 0.625, cacheRead: 0.05 } },
+}
 
 /** Infer pricing tier from a model identifier. Falls back to Sonnet rate
  *  when nothing matches — keeps the per-session cost estimate within an
  *  order of magnitude for unknown models rather than silently showing $0. */
 export function tierForModel(modelId: string | undefined | null): CostTier {
   const m = (modelId || '').toLowerCase()
+  if (m.includes('haiku-5')) return TIER_HAIKU_5_5
   if (m.includes('haiku')) return TIER_HAIKU
   if (m.includes('fable-5-1')) return TIER_FABLE_5_1
   if (m.includes('opus-5-5')) return TIER_4_20
@@ -51,8 +62,8 @@ export function contextLimitForModel(modelId: string | undefined | null): number
   // Sonnet 5 all ship at 1M by default. Without this branch they fell through
   // to 200K, so the usage bar read "full" at a fifth of the real window (the
   // Fable indicator the user flagged). Opus 4.x (200K base) and Haiku 4.5
-  // (genuinely 200K) are intentionally NOT matched here.
-  if (/claude-(?:fable|mythos|opus)-5|claude-sonnet-5/.test(m)) return 1_000_000
+  // (genuinely 200K) are intentionally NOT matched here; Haiku 5.5 is 1M.
+  if (/claude-(?:fable|mythos|opus)-5|claude-(?:sonnet|haiku)-5/.test(m)) return 1_000_000
   return 200_000
 }
 
@@ -63,11 +74,12 @@ export interface UsageBlock {
   cache_creation_input_tokens?: number
 }
 
-export function costForUsage(usage: UsageBlock, tier: CostTier): number {
+export function costForUsage(usage: UsageBlock, base: CostTier): number {
   const inTok = usage.input_tokens ?? 0
   const outTok = usage.output_tokens ?? 0
   const cacheRead = usage.cache_read_input_tokens ?? 0
   const cacheWrite = usage.cache_creation_input_tokens ?? 0
+  const tier = base.above && inTok + cacheRead + cacheWrite > base.above.tokens ? base.above.tier : base
   return (
     (inTok * tier.input +
       outTok * tier.output +

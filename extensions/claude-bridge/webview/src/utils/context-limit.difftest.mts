@@ -36,6 +36,7 @@ eq('opus', K200, 'the CLI short name for bare Opus stays 200K')
 
 console.log('Genuinely-200K and empty inputs')
 eq('claude-haiku-4-5', K200, 'Haiku 4.5 is really 200K')
+eq('claude-haiku-5-5', 1_000_000, 'Haiku 5.5 has a 1M window')
 eq('haiku', K200, 'Haiku short name')
 eq('', K200, 'empty string falls back to the safe 200K default')
 eq(null, K200, 'null falls back to 200K')

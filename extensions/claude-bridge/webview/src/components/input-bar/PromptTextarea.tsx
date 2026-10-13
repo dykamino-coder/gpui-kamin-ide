@@ -10,7 +10,7 @@ interface PromptTextareaProps {
   onPaste: (e: ClipboardEvent) => void
 }
 
-function getPlaceholder(disabled: boolean, mcp: boolean, connStatus: string, promptReady: boolean): string {
+function getPlaceholder(mcp: boolean, connStatus: string, promptReady: boolean): string {
   if (mcp) return 'Loading MCP tools...'
   if (connStatus === 'disconnected' || connStatus === 'error') return 'Disconnected — waiting for bridge...'
   if (connStatus === 'connecting') return 'Connecting to bridge...'
@@ -28,13 +28,14 @@ export function PromptTextarea({ textareaRef: externalRef, onInput, onKeyDown, o
   const tab = tabs.value.find(t => t.id === tabId)
   const connStatus = tab?.status ?? 'disconnected'
   const isDisconnected = connStatus === 'disconnected' || connStatus === 'error' || connStatus === 'connecting'
-  // Only disable on disconnect — when busy, user can still type for queue
-  const disabled = isDisconnected
+  // The textarea is never disabled: while the bridge (re)connects the user can
+  // keep typing, only SENDING is blocked (InputBar). A disabled textarea also
+  // dropped focus and swallowed keystrokes during a short reconnect.
   const isBusy = !isDisconnected && (!isPromptReady || mcp)
 
   const placeholder = isBusy
     ? 'Type to queue message... (will send when ready)'
-    : getPlaceholder(disabled, mcp, connStatus, isPromptReady)
+    : getPlaceholder(mcp, connStatus, isPromptReady)
 
   function handleInput(): void {
     const el = ref.current
@@ -59,7 +60,6 @@ export function PromptTextarea({ textareaRef: externalRef, onInput, onKeyDown, o
       id="prompt-input"
       placeholder={placeholder}
       rows={1}
-      disabled={disabled}
       onInput={handleInput}
       onKeyDown={onKeyDown}
       onPaste={onPaste}
