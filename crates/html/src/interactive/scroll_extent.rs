@@ -4,6 +4,7 @@ pub(crate) mod classic;
 mod exact_probe;
 pub(crate) use exact_probe::sticky_geometry;
 mod geometry;
+mod grid;
 mod snap;
 use crate::dom::Element;
 use crate::style::computed::Computed;
@@ -19,6 +20,7 @@ use std::{
 pub struct Frame {
     boxes: Rc<RefCell<HashMap<u64, (Rect, Clip)>>>,
     text_boxes: Rc<RefCell<HashMap<u64, Rect>>>,
+    grid_bounds: Rc<Cell<Option<Rect>>>,
     extent: Rc<Cell<Size<Pixels>>>,
     marker: Rc<Cell<bool>>,
     root: Rc<Cell<Option<u64>>>,
@@ -39,6 +41,7 @@ impl Default for Frame {
         Self {
             boxes: Rc::default(),
             text_boxes: Rc::default(),
+            grid_bounds: Rc::default(),
             extent: Rc::new(Cell::new(size(px(0.0), px(0.0)))),
             marker: Rc::new(Cell::new(false)),
             root: Rc::new(Cell::new(None)),
@@ -103,6 +106,7 @@ impl Frame {
     pub(super) fn within<R>(&self, root: Option<&Element>, f: impl FnOnce() -> R) -> R {
         self.boxes.borrow_mut().clear();
         self.text_boxes.borrow_mut().clear();
+        self.grid_bounds.set(None);
         self.snap_areas.borrow_mut().clear();
         self.marker.set(false);
         self.root.set(root.map(|e| e.node_id));

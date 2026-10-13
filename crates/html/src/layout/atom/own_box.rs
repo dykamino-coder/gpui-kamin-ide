@@ -124,8 +124,13 @@ pub(super) fn own_box_atom(
     // (`clip-path-contentBox-1d/1e`). Обёртка сама возвращает
     // элемент как есть, когда группировать нечего.
     Some(grouped(
-        box_.children(blocks(&e.children, &merged, opts))
-            .into_any_element(),
+        box_.children(crate::layout::multicol::gap_rules::decorated_children(
+            e,
+            &merged,
+            opts,
+            || blocks(&e.children, &merged, opts),
+        ))
+        .into_any_element(),
         &e.style,
     ))
 }

@@ -35,7 +35,13 @@ pub(crate) fn image(e: &Element) -> AnyElement {
 /// Только обычный блочный контейнер: у гибкого, сеточного и лунок высота
 /// приходит от раскладки, и подстановка ломает `row-auto-repeat-auto-023`.
 pub(crate) fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
-    let e = &pct_limits_to_px(e, inherited);
+    let mut resolved = pct_limits_to_px(e, inherited);
+    // Replaced boxes resolve viewport units from their raw style, too.
+    resolved.style.viewport_unit_insets = resolved
+        .style
+        .viewport_unit_insets
+        .or(inherited.viewport_unit_insets);
+    let e = &resolved;
     let (Some(Len::Pct(k)), Some(Len::Px(h))) = (e.style.height, inherited.height) else {
         return e.clone();
     };
