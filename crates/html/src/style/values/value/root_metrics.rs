@@ -17,6 +17,8 @@ thread_local! {
     /// разборе ещё нет, окно знает только сборщик дерева. Тогда `rem` доживает
     /// той же единицей окна, умноженной на долю (`vh-em-inherit`: `1rem` =
     /// `100vw`, а не начальные 16). Флаг — `vh` вместо `vw`.
+    /// Семейство корня: база `rcap`/`rch`/`rex`/`ric` (css-values-4 §6.1.2).
+    static ROOT_FAMILY: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
     pub(super) static ROOT_FONT_VIEW: std::cell::Cell<Option<(bool, f32)>> = const { std::cell::Cell::new(None) };
 }
 
@@ -38,6 +40,7 @@ pub fn set_root_metrics(font_px: f32, line_px: f32) {
 /// про все страницы сразу.
 pub fn reset_root_metrics() {
     set_root_metrics(16.0, 19.2);
+    set_root_family("");
     set_root_font_view(None);
 }
 
@@ -47,4 +50,25 @@ pub fn root_font_px() -> f32 {
 
 pub fn root_line_px() -> f32 {
     ROOT_LINE_PX.with(|c| c.get())
+}
+
+/// Записать семейство корня (пустое — шрифт документа).
+pub fn set_root_family(family: &str) {
+    ROOT_FAMILY.with(|f| *f.borrow_mut() = family.to_string());
+}
+
+/// Одна корневая шрифтовая единица в точках: `cap`, `ch`, `ex` или `ic`
+/// шрифта корня его кеглем — те же замеры, что у `cap`/`ch`/`ex`/`ic`
+/// элемента (`resolve_em`).
+pub(super) fn root_font_unit(unit: &str) -> f32 {
+    let size = root_font_px();
+    ROOT_FAMILY.with(|f| {
+        let family = f.borrow();
+        match unit {
+            "cap" => crate::text::metrics::vmetrics_px(&family, size).2,
+            "ch" => crate::text::metrics::ch_ex_px(&family, size).0,
+            "ex" => crate::text::metrics::ch_ex_px(&family, size).1,
+            _ => crate::text::metrics::ic_px(&family, size),
+        }
+    })
 }
