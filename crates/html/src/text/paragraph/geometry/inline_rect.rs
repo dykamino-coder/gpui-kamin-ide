@@ -11,7 +11,8 @@ impl Paragraph {
     pub(crate) fn line_align(&self, i: usize, line: &Line) -> Align {
         let count = self.lines.len();
         let body = self.text[line.range.clone()].trim_end_matches('\n');
-        let last_line = i + 1 == count || body.len() < line.range.len();
+        let truncated = line.clamped && line.range.end < self.text.len();
+        let last_line = !truncated && (i + 1 == count || body.len() < line.range.len());
         // Строка с СОХРАНЁННОЙ табуляцией не растягивается (позиции
         // табуляции обязаны совпасть с нерастянутой строкой), но выключку
         // ПОСЛЕДНЕЙ строки (`text-align-last`) она не получает: к

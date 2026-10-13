@@ -61,6 +61,9 @@ impl Paragraph {
                 .map(|(_, v)| *v)
                 .unwrap_or(self.letter_spacing);
             let visual = placed(word.range.start, word.range.end);
+            let overridden = runs
+                .iter()
+                .any(|r| crate::text::fonts::metric_overrides::has_overrides(&r.font));
             let shaped = if visual.is_some_and(|v| v.1) {
                 // A right-to-left level piece: glyphs in visual order (UAX #9
                 // L2/L4), shaped once under an RLO like `shape`.
@@ -117,7 +120,14 @@ impl Paragraph {
             // строки берёт наибольшие по всей строке — куски разного кегля
             // стоят на одной базовой линии (§10.8). Слово опускается на
             // разницу: у строки из одного шрифта она ровно ноль.
-            let fix = match (line_base, self.base_of(&word.range)) {
+            let word_base = if overridden {
+                Some(f32::from(
+                    (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent,
+                ))
+            } else {
+                self.base_of(&word.range)
+            };
+            let fix = match (line_base, word_base) {
                 (Some(l), Some(w)) => px(l - w),
                 _ => px(0.),
             };
@@ -137,7 +147,7 @@ impl Paragraph {
                     // Align the subtree as one box, preserving its common
                     // baseline (CSS 2.1 section 10.8.1). Centering each word
                     // separately misaligns descendants with different fonts.
-                    let baseline = match (self.base_of(r), self.base_of(&word.range)) {
+                    let baseline = match (self.base_of(r), word_base) {
                         (Some(group), Some(word)) => group - word,
                         _ => 0.0,
                     };

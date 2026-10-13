@@ -8,7 +8,7 @@
 
 use crate::style::computed::{Align, Computed, Gradient};
 use crate::style::values::value::Len;
-use gpui::{Div, InteractiveElement, px, relative};
+use gpui::{Div, InteractiveElement, Styled, px, relative};
 mod contained_intrinsic;
 pub(crate) mod intrinsic_size;
 use crate::style::apply::contained_intrinsic::empty_contained_size;
@@ -171,6 +171,13 @@ pub(crate) mod item_metadata;
 pub fn apply(d: Div, c: &Computed) -> Div {
     let mut d = d;
     d = apply_layout(d, c);
+    // CSS 2.1 §10.8.1: an inline-block's baseline is that of its last in-flow
+    // line box. A float is out of flow, so it never gives the enclosing
+    // inline-block its baseline (Blink `PropagateBaselineFromBlockChild`
+    // ignores floats), whatever row or block wraps it.
+    if c.floated_box || c.float.is_some_and(|f| f != 0) {
+        d.style().no_inline_block_baseline = Some(true);
+    }
     d = apply_box(d, c);
     d = apply_paint(d, c);
     apply_text(d, c)

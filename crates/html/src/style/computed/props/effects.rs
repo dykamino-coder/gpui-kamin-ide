@@ -160,12 +160,14 @@ impl Computed {
             "quotes" => quotes::apply(self, v),
             "content" => {
                 match v {
+                    "inherit" => self.content_inherit = true,
                     // ПУСТАЯ строка — не то же самое, что `none`: коробка
                     // псевдоэлемента создаётся, просто в ней нет знаков. На
                     // этом стоит целый приём эталонов WPT — `::after` с
                     // `content: ""` и `inset: 0` накрывает красное зелёным
                     // (`overflow-wrap-anywhere-001` и родня).
                     "none" | "normal" => {
+                        self.content_inherit = false;
                         self.content = None;
                         self.content_none = Some(v == "none");
                     }
@@ -175,6 +177,7 @@ impl Computed {
                     // показывал слово FAIL.
                     other => {
                         if let Some(list) = parse_content(other) {
+                            self.content_inherit = false;
                             self.content = Some(list);
                         }
                     }

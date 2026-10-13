@@ -22,8 +22,12 @@ impl Paragraph {
             // (Ahem 16px: 14.4 вместо 12.8).
             let ascent = window.text_system().ascent(id, size);
             let descent = window.text_system().descent(id, size);
-            let content = ascent + descent.abs();
-            (line_height - content) / 2.0 + ascent
+            let (ascent, descent) = crate::text::fonts::metric_overrides::extents(
+                &font,
+                f32::from(size),
+                (f32::from(ascent), f32::from(descent).abs()),
+            );
+            (line_height - px(ascent + descent)) / 2.0 + px(ascent)
         });
         match self.lines.first() {
             Some(first) if !self.atom_boxes.is_empty() || !self.box_spans.is_empty() => {

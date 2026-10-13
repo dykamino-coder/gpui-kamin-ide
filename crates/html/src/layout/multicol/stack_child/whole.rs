@@ -70,6 +70,12 @@ pub(super) fn copy_whole_box(
             && let Some(w) = line_col_w.and_then(|cw| nested_box_w(&mc, cw))
         {
             mc.style.width = Some(Len::Px(w));
+        } else if let (Some(Len::Pct(k)), Some(cw)) = (mc.style.width, line_col_w) {
+            // Доля — от внешней колонки (CSS 2.1 §10.2): в точках её ждёт
+            // доля `column-gap` коробки (`column_plan`).
+            mc.style.width = Some(Len::Px(crate::layout::fragment::line_shape::layout_unit(
+                k * cw,
+            )));
         }
         // `height: auto` — высота из меры рядами
         // (`nested_rows_shape`): стопка с рядами

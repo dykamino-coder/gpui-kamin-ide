@@ -64,13 +64,23 @@ impl Paragraph {
         // sits on the line's baseline instead of moving the run's glyphs to
         // a baseline of its own (`text-wrap-balance-line-clamp-002`: a 4rem
         // ellipsis with `line-height: 1rem` dropped the clamped line out).
-        let common_base = if visual.len() > 1 || !suffix.is_empty() {
+        let common_base = if visual.len() > 1
+            || !suffix.is_empty()
+            || runs
+                .iter()
+                .any(|r| crate::text::fonts::metric_overrides::has_overrides(&r.font))
+        {
             self.base_of(range).map(px)
         } else {
             None
         };
         let mut line_base: Option<Pixels> = common_base;
         let mut line_exact = false;
+        let block_mark = self.is_block_mark(suffix);
+        let marker_prefix = block_mark && para.level.is_rtl();
+        if marker_prefix {
+            x += self.suffix_width(suffix, range.start, window);
+        }
         let pieces = visual.clone();
         for run in visual.into_iter() {
             let rtl = levels.get(run.start).is_some_and(|l| l.is_rtl());
@@ -84,11 +94,13 @@ impl Paragraph {
             // прогона (`shape` приклеивает суффикс к последнему куску)
             // отдавало ей шрифт И кегль обрезанного куска: эмодзи-маркер в
             // Ahem не рисовался вовсе (`text-overflow-string-003`), а
-            // «你好 🟢» выходил кеглем 30px (`-013`). Многоточие и знак
-            // переноса остаются вплетёнными: они обязаны сесть на базовую
-            // линию строки (`hyphens-manual-011`).
+            // «你好 🟢» выходил кеглем 30px (`-013`). Блоковый маркер тоже
+            // рисуется отдельно: его isolate не принимает уровень прогона.
+            // Знак переноса остаётся частью слова (`hyphens-manual-011`).
             let own_mark = !suffix.is_empty() && self.overflow_marker.as_deref() == Some(suffix);
-            let (tail, at_start) = if self.wrap.rtl {
+            let (tail, at_start) = if block_mark {
+                ("", false)
+            } else if self.wrap.rtl {
                 (if run.start == range.start { suffix } else { "" }, true)
             } else if own_mark {
                 ("", false)
@@ -195,12 +207,20 @@ impl Paragraph {
             self.flush_decor(window);
         }
         // Строка-замена — за текстом строки, своим шрифтом и кеглем.
-        if !self.wrap.rtl && !suffix.is_empty() && self.overflow_marker.as_deref() == Some(suffix) {
-            let anchor = range.end.saturating_sub(1).max(range.start);
+        if block_mark
+            || (!self.wrap.rtl
+                && !suffix.is_empty()
+                && self.overflow_marker.as_deref() == Some(suffix))
+        {
+            let anchor = if block_mark {
+                range.start
+            } else {
+                range.end.saturating_sub(1).max(range.start)
+            };
             self.paint_suffix(
                 suffix,
                 anchor,
-                point(x, at.y),
+                point(if marker_prefix { at.x } else { x }, at.y),
                 line_base,
                 line_exact,
                 window,

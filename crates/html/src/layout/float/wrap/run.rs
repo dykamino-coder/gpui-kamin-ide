@@ -130,6 +130,7 @@ pub(super) fn gather_floaters(
         let mut floater = next.clone();
         native_vertical::claim_float_inline_size(&mut floater.style, parent, &floater.children);
         floater.style.float = None;
+        floater.style.floated_box = true;
         // ПРОБОВАЛИ И ОТКАТИЛИ: помечать плавающий кусок блочным
         // (`display: block` + `inline = false`), как велит CSS 2.1 §9.7.
         // Замер: css-text 1003 → 998, flexbox 318 → 319 — итог в минус.

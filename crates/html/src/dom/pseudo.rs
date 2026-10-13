@@ -116,7 +116,7 @@ pub(super) fn pseudo_box_named(
         return None;
     }
     let mut style = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars);
-    inherit_counter_decls(&mut style, Some(&me.counter_style));
+    content::inherit_generated(&mut style, Some(me));
     // Псевдоэлемент — ребёнок хозяина: блочный `::before` внутри руби
     // инлайнизируется так же, как элемент (css-ruby-1 §2.2 п.1,
     // `ruby-inlinize-blocks-005`). Ближайший предок — сам хозяин.

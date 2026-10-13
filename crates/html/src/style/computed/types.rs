@@ -42,6 +42,10 @@ pub struct AnimSpec {
     /// `animation-name: a, b` — все имена списка по порядку; пусто, когда имя
     /// одно (тогда работает `name`).
     pub names: Vec<String>,
+    /// CSS Animations 1 fill modes: bit 1 backwards, bit 2 forwards.
+    pub fill: u8,
+    pub iterations: f64,
+    pub reverse: bool,
 }
 
 impl AnimSpec {
@@ -49,16 +53,47 @@ impl AnimSpec {
     /// остановлена: пауза или `animation: a 2000000s; animation-delay:
     /// -1000000s`. Один предикат на разрешение кадров (`dom.rs`) и отрисовку.
     pub fn frozen(&self) -> bool {
-        self.paused || (!self.infinite && self.seconds >= 3600.0 && self.delay <= 0.0)
+        self.paused
+            || (self.seconds == 0.0 && self.delay <= 0.0)
+            || (!self.infinite && self.seconds >= 3600.0 && self.delay <= 0.0)
     }
 
-    /// Доля пути остановленной анимации: `(-delay)/duration`.
-    pub fn frozen_t(&self) -> f32 {
-        if self.seconds > 0.0 {
-            ((-self.delay) / self.seconds).clamp(0.0, 1.0)
+    /// CSS Animations 1: fill phases, iteration boundaries and direction.
+    pub fn progress_at(&self, elapsed: f64) -> Option<f32> {
+        let active = elapsed - f64::from(self.delay);
+        let duration = f64::from(self.seconds).max(0.0);
+        let end = if self.infinite {
+            f64::INFINITY
         } else {
-            0.0
+            duration * self.iterations
+        };
+        if (active < 0.0 && self.fill & 1 == 0) || (active >= end && self.fill & 2 == 0) {
+            return None;
         }
+        let total = if duration > 0.0 {
+            active.max(0.0).min(end) / duration
+        } else {
+            self.iterations
+        };
+        let finished = active >= end && total > 0.0;
+        let iteration = if finished {
+            total.ceil() - 1.0
+        } else {
+            total.floor()
+        };
+        let mut progress = if finished && total.fract() == 0.0 {
+            1.0
+        } else {
+            total.fract()
+        };
+        if self.reverse ^ (self.alternate && iteration.rem_euclid(2.0) == 1.0) {
+            progress = 1.0 - progress;
+        }
+        Some(progress as f32)
+    }
+
+    pub fn frozen_t(&self) -> f32 {
+        self.progress_at(0.0).unwrap_or(0.0)
     }
 }
 

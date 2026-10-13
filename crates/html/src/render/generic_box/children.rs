@@ -116,6 +116,10 @@ pub(crate) fn generic_children(
     ) || matches!(
         merged.overflow_y,
         Some(crate::style::computed::Overflow::Hidden) | Some(crate::style::computed::Overflow::Scroll)
+    ) || matches!(
+        merged.position,
+        Some(crate::style::computed::Position::Absolute)
+            | Some(crate::style::computed::Position::Fixed)
     ) || merged.float.is_some()
         || merged.flow_root == Some(true)
         // Независимый контекст форматирования и без overflow/float/

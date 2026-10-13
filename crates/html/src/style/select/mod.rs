@@ -15,6 +15,8 @@ pub mod matching;
 pub(crate) struct Ancestor {
     /// Computed counter directives follow DOM inheritance, even without a box.
     pub(crate) counter_style: [Option<String>; 3],
+    pub(crate) content_style: Option<Vec<crate::style::computed::ContentItem>>,
+    pub(crate) content_none: Option<bool>,
     pub(crate) tag: String,
     /// Only HTML documents use ASCII case-insensitive names on HTML elements.
     pub(crate) html_attrs: bool,
@@ -133,6 +135,8 @@ pub(super) fn ancestor_of(child: &Handle, spot: Spot) -> Option<Ancestor> {
     };
     Some(Ancestor {
         counter_style: Default::default(),
+        content_style: None,
+        content_none: None,
         tag: local_name(&name.local),
         html_attrs: content::html_attributes(&name.ns),
         id: find("id"),
