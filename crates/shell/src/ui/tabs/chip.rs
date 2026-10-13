@@ -192,8 +192,10 @@ pub(crate) fn chip(
 }
 /// flex-basis чипа (SessionTab.module.css: flex 0 1 180px)
 pub(crate) const CHIP_W: f32 = 180.0;
-/// min-width чипа — до этого сжимаются, дальше overflow-кнопка
-pub(crate) const CHIP_MIN_W: f32 = 44.0;
+/// min-width чипа — до этого сжимаются, дальше overflow-кнопка.
+/// 44 (оригинал) оставлял от метки 1–2 буквы и «…» — владелец попросил
+/// крупнее (2026-10-13): при 120 видно ~8 символов, лишние уходят в список
+pub(crate) const CHIP_MIN_W: f32 = 120.0;
 /// Нетекстовая часть чипа: pl10 + pr6 + leading16 + close18 + 2 гапа по 6
 /// плюс 2 рамки. У СПЯЩЕГО чипа кнопки disconnect нет в DOM вовсе
 /// (`SessionTab.tsx:53`) — там на 24 px больше под метку (ревью ц.19).

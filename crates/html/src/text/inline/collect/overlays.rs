@@ -8,8 +8,21 @@ use gpui::{AnyElement, ParentElement, Styled};
 /// Кусок вне потока в РЯДУ: сам абзац его разместить не может (ряд собирает
 /// раскладка), поэтому работает прежний обход — нулевая распорка на месте
 /// куска и сам элемент в позднем слое, который рисуется от её угла.
-pub(crate) fn overlay_in_row(el: AnyElement) -> AnyElement {
+///
+/// `turned` — ряд лежит в вертикальной строке (`Some(vertical-rl)`): блочная
+/// ось там физическая горизонталь, и гипотетическая коробка §10.3.7 начинается
+/// у блочного начала строки — при `vertical-rl` это ПРАВЫЙ край
+/// (css-writing-modes-4 §7.1; Blink `static_position` с `InsetBias::kEnd`
+/// по физической оси x), а не левый, как у горизонтальной строки.
+pub(crate) fn overlay_in_row(el: AnyElement, turned: Option<bool>) -> AnyElement {
     let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
+    if let Some(rl) = turned {
+        spot.set(crate::layout::positioned::containing_block::Spot {
+            vertical: true,
+            vertical_rl: rl,
+            ..Default::default()
+        });
+    }
     let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false);
     match crate::layout::positioned::containing_block::late_push(spot, el) {
         None => probe,

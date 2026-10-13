@@ -113,8 +113,8 @@ impl RootView {
                 }
             }
             ShellEvent::ToggleProjectCollapse(pid) => {
-                if !self.collapsed_projects.remove(&pid) {
-                    self.collapsed_projects.insert(pid);
+                if !self.expanded_projects.remove(&pid) {
+                    self.expanded_projects.insert(pid);
                 }
             }
             ShellEvent::ActivateSession(id) => {

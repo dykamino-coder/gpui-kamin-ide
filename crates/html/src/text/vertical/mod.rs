@@ -92,6 +92,10 @@ thread_local! {
         const { std::cell::Cell::new(None) };
     /// Сторона поворота этой рамки: `sideways-lr` вертится против часовой.
     pub(crate) static VT_CCW: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// Block-axis phase of the clockwise frame's pre-turn origin: the flat
+    /// content starts at `frame.origin.y + phase`, so that pixel edges rounded
+    /// before the turn land on the physical pixel grid after it.
+    pub(crate) static VT_PHASE: std::cell::Cell<Pixels> = const { std::cell::Cell::new(Pixels::ZERO) };
 }
 
 /// Экранная точка для до-поворотной, если мы внутри повёрнутого абзаца.
@@ -107,6 +111,7 @@ pub(crate) fn vt_map(hole: Bounds<Pixels>, thickness: Pixels) -> Bounds<Pixels> 
     };
     let pre_x = hole.origin.x - vt.origin.x;
     let pre_y = hole.origin.y - vt.origin.y;
+    let phase = VT_PHASE.with(|c| c.get());
     // `sideways-lr` вертится ПРОТИВ часовой (см. `VerticalText::paint`):
     // до-поворотная `(px, py)` от угла рамки становится экранной
     // `(x + py, y + h - px - thickness)` — зеркало обычного случая по обеим
@@ -122,7 +127,7 @@ pub(crate) fn vt_map(hole: Bounds<Pixels>, thickness: Pixels) -> Bounds<Pixels> 
     }
     Bounds {
         origin: gpui::point(
-            vt.origin.x + vt.size.width - pre_y - thickness,
+            vt.origin.x + vt.size.width - (pre_y - phase) - thickness,
             vt.origin.y + pre_x,
         ),
         size: hole.size,

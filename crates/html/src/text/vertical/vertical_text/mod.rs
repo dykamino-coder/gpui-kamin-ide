@@ -11,6 +11,11 @@ use gpui::{
 };
 
 pub struct VerticalText {
+    /// Own layout node: the unrounded box edge anchors the turned content.
+    pub(crate) layout_id: Option<LayoutId>,
+    /// Clockwise turn frame from prepaint: unrounded block extent and the
+    /// pre-turn block-axis phase that keeps pixel snapping physical.
+    pub(crate) turn: Option<(Pixels, Pixels)>,
     pub(crate) child: Option<AnyElement>,
     /// Естественный размер содержимого до поворота.
     pub(crate) natural: gpui::Size<Pixels>,
