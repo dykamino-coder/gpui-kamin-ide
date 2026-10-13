@@ -293,18 +293,24 @@ jobs:
         run: git diff --exit-code -- builtin-extensions/claude-bridge/chat.html builtin-extensions/claude-bridge/tools.html builtin-extensions/claude-bridge/customize.html
 
   rust-windows:
-    name: Windows Rust tests and installer build (no GUI acceptance)
+    name: Windows Rust tests (no GUI acceptance)
     needs: scope
     if: needs.scope.outputs.rust == 'true' || needs.scope.outputs.installer_candidate == 'true'
     runs-on: windows-latest
     timeout-minutes: 150
+    env:
+      # CI never debugs these binaries: Windows PDBs dominated link time and
+      # cache size. Incremental artifacts are useless on a fresh runner.
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_INCREMENTAL: "0"
     steps:
       - name: Describe the Windows CI boundary
         shell: bash
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
           ### Windows CI scope
-          This job runs Rust checks and, when applicable, builds an installer.
+          This job runs Rust checks; the installer is built by a parallel job.
           It does **not** launch KaminIDE or exercise CEF, pointer, keyboard,
           extension-host recovery, or a task-specific Windows runtime scenario.
           A green result cannot satisfy a Windows runtime merge gate in a task card.
@@ -327,8 +333,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: windows-cargo-${{ hashFiles('Cargo.lock') }}
-          restore-keys: windows-cargo-
+          key: windows-cargo-v2-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            windows-cargo-v2-${{ hashFiles('Cargo.lock') }}-
+            windows-cargo-v2-
 
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
@@ -368,8 +376,46 @@ jobs:
           }
       - run: python scripts/check_event_routing.py
 
+      # PR caches are scoped to refs/pull/*/merge and cannot warm sibling PRs.
+      # A trusted main run maintains the default-branch cache all PRs may read.
+      # Saved on every main push (keyed by commit): a cache written once per
+      # Cargo.lock went stale between releases and PRs rebuilt the workspace.
+      - name: Save the shared Cargo cache from main
+        if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: windows-cargo-v2-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+
+  windows-installer:
+    name: Windows installer build (no GUI acceptance)
+    needs: scope
+    if: needs.scope.outputs.installer_candidate == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 150
+    steps:
+      - name: Describe the Windows CI boundary
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          ### Windows installer scope
+          This job builds the installer in parallel with the Rust tests job.
+          It does **not** launch KaminIDE or exercise CEF, pointer, keyboard,
+          extension-host recovery, or a task-specific Windows runtime scenario.
+          A green result cannot satisfy a Windows runtime merge gate in a task card.
+          EOF
+
+      - name: Check out the pull request merge candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
       - name: Set up Node.js for the installer
-        if: needs.scope.outputs.installer_candidate == 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
@@ -377,7 +423,6 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Build the host and runtime payload
-        if: needs.scope.outputs.installer_candidate == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -386,7 +431,6 @@ jobs:
           npm run build:payload
 
       - name: Build the native shell and installer
-        if: needs.scope.outputs.installer_candidate == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -394,7 +438,6 @@ jobs:
           node scripts/build_setup_rust.mjs
 
       - name: Create and verify installer provenance
-        if: needs.scope.outputs.installer_candidate == 'true'
         env:
           BASE_SHA: ${{ needs.scope.outputs.base_sha }}
         shell: bash
@@ -446,7 +489,6 @@ jobs:
           overwrite: true
 
       - name: Summarize the Windows artifact
-        if: needs.scope.outputs.installer_candidate == 'true'
         env:
           ARTIFACT_URL: ${{ steps.release-artifact.outputs.artifact-url || steps.validation-artifact.outputs.artifact-url }}
           ARTIFACT_DIGEST: ${{ steps.release-artifact.outputs.artifact-digest || steps.validation-artifact.outputs.artifact-digest }}
@@ -460,19 +502,6 @@ jobs:
             echo "- archive digest: \`$ARTIFACT_DIGEST\`"
             echo "- [download artifact]($ARTIFACT_URL)"
           } >> "$GITHUB_STEP_SUMMARY"
-
-      # PR caches are scoped to refs/pull/*/merge and cannot warm sibling PRs.
-      # A trusted main run maintains the default-branch cache all PRs may read.
-      - name: Save the shared Cargo cache from main
-        if: success() && steps.cargo-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-        continue-on-error: true
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: windows-cargo-${{ hashFiles('Cargo.lock') }}
 
   release-dry-run:
     name: release pipeline dry run
@@ -572,6 +601,7 @@ jobs:
       - bridge-extension
       - bridge-webview
       - rust-windows
+      - windows-installer
       - release-dry-run
     if: ${{ always() }}
     runs-on: ubuntu-latest
@@ -586,6 +616,7 @@ jobs:
           EXTENSION_RESULT: ${{ needs.bridge-extension.result }}
           WEBVIEW_RESULT: ${{ needs.bridge-webview.result }}
           RUST_RESULT: ${{ needs.rust-windows.result }}
+          INSTALLER_RESULT: ${{ needs.windows-installer.result }}
           RELEASE_RESULT: ${{ needs.release-dry-run.result }}
         shell: bash
         run: |
