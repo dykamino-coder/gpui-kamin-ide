@@ -147,5 +147,9 @@ head, title, meta, link, template { display: none }
     rt:lang(zh-TW), rtc:lang(zh-TW) { font-size: 30% }
     rtc:lang(zh-TW) > rt { font-size: 100% }
     rt:lang(zh), rtc:lang(zh) { ruby-align: center }
+    /* HTML §15.5.14 (rendering, the marquee element): строчно-блочная
+       коробка со срезом; без правила `marquee` оставался строчным и терял
+       `width/height` (`positioned-grid-items-023`: красный квадрат 50%). */
+    marquee { display: inline-block; text-align: initial; overflow: hidden }
     "#
 }
