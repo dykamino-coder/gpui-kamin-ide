@@ -168,8 +168,6 @@ pub enum ShellEvent {
     NewEmptySession,
     /// Коллапс/раскрытие группы проекта (projectId).
     ToggleProjectCollapse(String),
-    /// Показ «N inactive sessions» группы (projectId).
-    ToggleInactive(String),
     /// Активировать сессию (оптимистично: подсветка сразу, RPC в фоне).
     ActivateSession(String),
     /// Пульс перерисовки, пока живёт шторка переключения чата: её грейс,

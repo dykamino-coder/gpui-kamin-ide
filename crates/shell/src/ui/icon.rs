@@ -13,7 +13,6 @@ pub const CHEVRON_DOWN: &str = "\u{eab4}";
 pub const ADD: &str = "\u{ea60}";
 // delete — подключается с ConfirmModal (деструктив требует подтверждения)
 pub const SEARCH: &str = "\u{ea6d}";
-pub const FA_CIRCLE_PLUS: &str = "\u{f055}";
 
 // FontAwesome 7 Free (тот же woff2, что шипит kamin-ide);
 // solid = weight 900 внутри WWS-семейства DirectWrite
