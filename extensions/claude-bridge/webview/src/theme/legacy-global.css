@@ -110,6 +110,11 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-disabled); }
 ::-webkit-scrollbar-corner { background: transparent; }
+/* xterm 5 terminals (Terminal tab, file panel) draw their own VS Code-style
+   scrollbar div instead of a native one; round its thumb like the rest. */
+.xterm .xterm-scrollable-element > .scrollbar > .slider {
+  border-radius: 999px;
+}
 
 /* Also style textarea scrollbar */
 #prompt-input::-webkit-scrollbar { width: 5px; }
@@ -1426,10 +1431,6 @@ select.mcp-input { cursor: pointer; }
 .input-bar.disabled .input-wrapper {
   border-color: var(--bg-surface);
   background: var(--bg-primary);
-}
-.input-bar.disabled textarea {
-  color: var(--text-disabled);
-  cursor: default;
 }
 .input-bar.disabled .send-btn {
   opacity: 0.3;
