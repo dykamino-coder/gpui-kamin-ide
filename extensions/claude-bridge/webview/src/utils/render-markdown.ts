@@ -88,8 +88,12 @@ function extAnchor(url: string, label: string): string {
  *  Метка — символ, которого в уже экранированном тексте быть не может, поэтому
  *  замена не видит ни имён тегов, ни значений атрибутов, но по-прежнему видит
  *  текст ПО ОБЕ стороны от тега. Разбиение по тегам такого не даёт: эмфаза
- *  вокруг готовой ссылки перестала бы работать. */
-const TAG_MARK = String.fromCharCode(0)
+ *  вокруг готовой ссылки перестала бы работать.
+ *
+ *  Метка — `\x01`, а не `\x00`: `\x00` обрамляет заглушки блоков кода
+ *  (`\x00CODEBLOCKn\x00`), и вычистка метки из текста ломала их — вместо
+ *  блока кода в чате выводилось «CODEBLOCK0». */
+const TAG_MARK = String.fromCharCode(1)
 
 function withTagsMasked(html: string, run: (masked: string) => string): string {
   const tags: string[] = []
