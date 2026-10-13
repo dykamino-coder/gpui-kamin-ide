@@ -50,8 +50,12 @@ pub(crate) fn bounds(style: &Style, bounds: Bounds<Pixels>, window: &Window) -> 
         // chain (offset-path ray) put an exact half pixel at 197.4999 and
         // rounded it down while the equivalent plain `rotate()` rounded up
         // (`offset-path-ray-007/020/021`); the quarter-turn path in
-        // `crates/html` snaps the same way.
-        let snap = |v: f32| ((v * 64.0).round() / 64.0 + 0.5).floor();
+        // `crates/html` snaps the same way. The grid truncates like Blink's
+        // `LayoutUnit(float)` (the guard absorbs only that f32 noise): a
+        // `1mm` box ending at 53.498 stays below the half pixel instead of
+        // rounding to 53.5 and growing a row past an image or border edge at
+        // the same position (`max-height-047` at device scale 1).
+        let snap = |v: f32| ((v * 64.0 + 0.05).floor() / 64.0 + 0.5).floor();
         let dx = snap(a * x + b * y + m.translation[0]) - paint.translation[0];
         let dy = snap(c * x + d * y + m.translation[1]) - paint.translation[1];
         point(
