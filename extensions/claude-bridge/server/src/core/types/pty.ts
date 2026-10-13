@@ -266,12 +266,13 @@ export interface SyncPluginData {
 }
 
 export interface SyncUserData {
-  skills: Record<string, string>   // relativePath → fileContent
+  skills: Record<string, string> // relativePath → fileContent
   agents: Record<string, string>
   commands: Record<string, string> // ~/.claude/commands/*.md — custom slash commands
   plugins: Record<string, SyncPluginData>
   settings?: string
   claudeMd?: string
+  agentsMd?: string // ~/.claude/AGENTS.md (applied only without a user CLAUDE.md)
 }
 
 export interface SyncProjectData {
@@ -279,9 +280,11 @@ export interface SyncProjectData {
   rules: Record<string, string>
   agents: Record<string, string>
   commands: Record<string, string> // .claude/commands/*.md
-  settings?: string       // .claude/settings.json (hooks and project config)
-  claudeMd?: string        // root CLAUDE.md
-  dotClaudeMd?: string     // .claude/CLAUDE.md
-  claudeJson?: string      // .claude.json
-  projectPath: string      // for identification
+  settings?: string // .claude/settings.json (hooks and project config)
+  claudeMd?: string // root CLAUDE.md
+  dotClaudeMd?: string // .claude/CLAUDE.md
+  agentsMd?: string // root AGENTS.md (CLI fallback when the project has no CLAUDE.md)
+  dotAgentsMd?: string // .claude/AGENTS.md
+  claudeJson?: string // .claude.json
+  projectPath: string // for identification
 }

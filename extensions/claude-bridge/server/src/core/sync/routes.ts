@@ -346,6 +346,12 @@ export function createSyncRoutes(): Hono {
         else await fsp.rm(path.join(userDir, 'CLAUDE.md'), { force: true })
         debugLog('[sync] User CLAUDE.md synced', { tokenId: hash, present: body.claudeMd !== undefined })
 
+        // Write AGENTS.md — same present/absent mirroring as CLAUDE.md. Both
+        // files are kept; session apply decides which one feeds instructions.
+        if (body.agentsMd !== undefined) await fsp.writeFile(path.join(userDir, 'AGENTS.md'), body.agentsMd, 'utf-8')
+        else await fsp.rm(path.join(userDir, 'AGENTS.md'), { force: true })
+        debugLog('[sync] User AGENTS.md synced', { tokenId: hash, present: body.agentsMd !== undefined })
+
         return c.json({ ok: true })
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err)
@@ -436,6 +442,20 @@ export function createSyncRoutes(): Hono {
           debugLog('[sync] Project .claude/CLAUDE.md synced', { tokenId: hash, project: body.projectPath })
         } else await fsp.rm(path.join(projDir, '.claude', 'CLAUDE.md'), { force: true })
 
+        // Write root AGENTS.md and .claude/AGENTS.md beside the CLAUDE.md pair.
+        if (body.agentsMd !== undefined) await fsp.writeFile(path.join(projDir, 'AGENTS.md'), body.agentsMd, 'utf-8')
+        else await fsp.rm(path.join(projDir, 'AGENTS.md'), { force: true })
+        if (body.dotAgentsMd !== undefined) {
+          await fsp.mkdir(path.join(projDir, '.claude'), { recursive: true })
+          await fsp.writeFile(path.join(projDir, '.claude', 'AGENTS.md'), body.dotAgentsMd, 'utf-8')
+        } else await fsp.rm(path.join(projDir, '.claude', 'AGENTS.md'), { force: true })
+        debugLog('[sync] Project AGENTS.md synced', {
+          tokenId: hash,
+          project: body.projectPath,
+          present: body.agentsMd !== undefined,
+          dotPresent: body.dotAgentsMd !== undefined,
+        })
+
         // Write .claude.json
         if (body.claudeJson !== undefined)
           await fsp.writeFile(path.join(projDir, '.claude.json'), body.claudeJson, 'utf-8')
@@ -469,7 +489,14 @@ export function createSyncRoutes(): Hono {
     const projectsBase = path.join(syncBase, 'projects', hash)
 
     const status: {
-      user: { skills: number; agents: number; commands: number; hasSettings: boolean; hasClaudeMd: boolean } | null
+      user: {
+        skills: number
+        agents: number
+        commands: number
+        hasSettings: boolean
+        hasClaudeMd: boolean
+        hasAgentsMd: boolean
+      } | null
       projects: Array<{
         projectPath: string
         skills: number
@@ -478,6 +505,8 @@ export function createSyncRoutes(): Hono {
         commands: number
         hasClaudeMd: boolean
         hasDotClaudeMd: boolean
+        hasAgentsMd: boolean
+        hasDotAgentsMd: boolean
         hasClaudeJson: boolean
       }>
     } = {
@@ -496,6 +525,7 @@ export function createSyncRoutes(): Hono {
         commands: Object.keys(commands).length,
         hasSettings: fs.existsSync(path.join(userDir, 'settings.json')),
         hasClaudeMd: fs.existsSync(path.join(userDir, 'CLAUDE.md')),
+        hasAgentsMd: fs.existsSync(path.join(userDir, 'AGENTS.md')),
       }
     }
 
@@ -521,6 +551,8 @@ export function createSyncRoutes(): Hono {
             commands: Object.keys(commands).length,
             hasClaudeMd: fs.existsSync(path.join(projDir, 'CLAUDE.md')),
             hasDotClaudeMd: fs.existsSync(path.join(projDir, '.claude', 'CLAUDE.md')),
+            hasAgentsMd: fs.existsSync(path.join(projDir, 'AGENTS.md')),
+            hasDotAgentsMd: fs.existsSync(path.join(projDir, '.claude', 'AGENTS.md')),
             hasClaudeJson: fs.existsSync(path.join(projDir, '.claude.json')),
           })
         }
