@@ -58,6 +58,7 @@ import { buildCliCaBundle } from '../proxy/outbound-tls'
 import { getStreamingSettings } from '../proxy/streaming-settings'
 import { SessionAdmission } from './session-admission'
 import { withSyncSnapshotLock } from '../sync/lock'
+import { closeToolNotificationStream } from './mcp-tool-notify'
 
 // Re-export the per-session MCP-call helpers so callers that historically
 // imported them from session-core/session-manager keep working.
@@ -840,6 +841,9 @@ export function destroySession(sessionId: string, reason: DestroyReason = 'unspe
   session.state = 'exiting'
   session.teardown = { startedAt: Date.now(), timer: null, finalized: false }
   session.jsonlWatcher?.stop()
+  // The exiting CLI must not keep a server→client MCP stream (or a pending
+  // tools/list_changed) alive past its session.
+  closeToolNotificationStream(sessionId)
 
   // Polite kill first; escalate to SIGKILL if the CLI hasn't exited in time
   // (it flushes its JSONL on the way out — a hard kill here is what used to

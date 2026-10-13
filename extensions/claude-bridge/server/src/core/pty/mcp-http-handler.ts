@@ -21,6 +21,7 @@ import { getSessionWs } from './session-ws'
 import { sendToClient } from './session-io'
 import { MCP_TOOLS } from './mcp-tools-defs'
 import { matchesResourceTemplate } from './resource-template'
+import { openToolNotificationStream } from './mcp-tool-notify'
 
 export { MCP_TOOLS } from './mcp-tools-defs'
 
@@ -419,7 +420,10 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
         jsonRpcResponse(body.id, {
           protocolVersion: clientVersion,
           capabilities: {
-            tools: {},
+            // listChanged: the extension's snapshot pushes are announced on the
+            // GET SSE stream (mcp-tool-notify.ts). Resources/prompts have no
+            // change producer, so they deliberately do not claim it.
+            tools: { listChanged: true },
             resources: {},
             prompts: {},
             elicitation: {},
@@ -736,16 +740,35 @@ Key tool capabilities:
 }
 
 /**
- * Handle MCP GET request — SSE event stream (Streamable HTTP spec).
- * Claude Code may attempt to open an SSE stream for server-initiated messages.
- * We don't need server push, so return 405 with session header.
+ * Handle MCP GET request — server→client SSE stream (Streamable HTTP spec).
+ * Claude CLI opens it after `notifications/initialized`; Bridge uses it only
+ * for `notifications/tools/list_changed`. Same per-session bearer as POST, no
+ * stream for a missing/tearing-down session, and one stream per session.
  */
 export function handleMcpGet(c: Context): Response {
   const sessionId = c.req.param('sessionId') ?? ''
-  return new Response(null, {
-    status: 405,
-    statusText: 'Method Not Allowed',
-    headers: { 'Mcp-Session-Id': sessionId },
+  const accept = c.req.header('accept') ?? ''
+  if (!accept.includes('text/event-stream')) {
+    return new Response(null, {
+      status: 405,
+      statusText: 'Method Not Allowed',
+      headers: { 'Mcp-Session-Id': sessionId },
+    })
+  }
+  const session = sessionId ? getSession(sessionId) : undefined
+  if (!session) {
+    return c.json(jsonRpcError(undefined, -32000, `Session ${sessionId} not found`), 404)
+  }
+  if (!timingSafeEqualStr(c.req.header('authorization'), `Bearer ${session.mcpToken}`)) {
+    warnLog('MCP stream auth failed', { sessionId })
+    return c.json(jsonRpcError(undefined, -32000, 'Unauthorized'), 401)
+  }
+  if (session.teardown) {
+    return c.json(jsonRpcError(undefined, -32000, `Session ${sessionId} is shutting down`), 409)
+  }
+  return openToolNotificationStream(sessionId, () => {
+    const current = getSession(sessionId)
+    return current === session && !current.teardown
   })
 }
 
