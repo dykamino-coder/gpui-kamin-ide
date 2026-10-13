@@ -32,6 +32,23 @@
   height: 100%;
 }
 
+/* The console never scrolls (scrollback 0): hide the viewport scrollbar xterm
+   still lays out, so no square track shows next to the TUI. */
+.xtermContainer :global(.xterm-viewport) {
+  overflow-y: hidden !important;
+  scrollbar-width: none;
+}
+.xtermContainer :global(.xterm-viewport)::-webkit-scrollbar {
+  display: none;
+}
+/* xterm 5 draws its OWN scrollbar (VS Code's `.xterm-scrollable-element >
+   .scrollbar > .slider`, a square div), not a native one, so the rounded
+   `::-webkit-scrollbar-thumb` theme rules never reached it. The console has
+   nothing to scroll; hide that bar outright. */
+.xtermContainer :global(.xterm-scrollable-element > .scrollbar) {
+  display: none !important;
+}
+
 /* "Connecting to session…" cover shown until the terminal gets its first
    content (snapshot restore or first PTY chunk) — so a fresh session's attach
    window reads as connecting, not a dead black surface. */

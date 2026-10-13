@@ -100,7 +100,11 @@ export function useTerminal(tabId: string): TerminalRefs {
       cursorStyle: 'block',
       theme: buildTerminalTheme(),
       allowProposedApi: true,
-      scrollback: 5000,
+      // No scrollback (owner, 2026-10-13): the console is a full-screen TUI that
+      // must always fit the panel height and never scroll. Scrollback only kept
+      // stale copies of earlier screens (e.g. the CLI banner twice) behind a
+      // square scrollbar, and FitAddon reserved a scrollbar column for it.
+      scrollback: 0,
     })
 
     const fitAddon = new FitAddon()
