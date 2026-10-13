@@ -36,12 +36,10 @@ pub(crate) fn left_cluster(
         .flex_shrink_0()
         .overflow_hidden()
         .child(probe_area("left-cluster"))
-        // `sidebarVisible || sidebarMode === "customize"`
-        // (`Titlebar.tsx:35`): в режиме Customize кластер остаётся
-        // пиннутым к ширине сайдбара
-        .when(state.sidebar_visible || state.customize_open, |d| {
-            d.w(px(state.sidebar_width))
-        })
+        // Оригинал пиннил кластер к ширине сайдбара (`Titlebar.tsx:35`),
+        // и стрип табов ездил при каждом ресайзе сайдбара. Владелец
+        // (2026-10-13): положение табов от сайдбара не зависит — ширина
+        // всегда `auto`, как у оригинала при скрытом сайдбаре
         .child(
             // .brand: 42×42, лого kaminoid 26px
             div()

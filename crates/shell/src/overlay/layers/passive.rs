@@ -74,21 +74,15 @@ pub(crate) fn add_passive(
             r.sessions.as_ref().and_then(|snap| {
                 snap.projects.iter().find(|pr| pr.id == pid).map(|pr| {
                     let count = snap.sessions.iter().filter(|s| s.project_id == pid).count();
-                    let name = pr
-                        .folder_path
-                        .as_deref()
-                        .map(|f| {
-                            f.replace('\\', "/")
-                                .rsplit('/')
-                                .next()
-                                .unwrap_or(f)
-                                .to_string()
-                        })
-                        .unwrap_or_else(|| "No folder".into());
+                    let folder = pr.folder_path.as_deref();
+                    let name = crate::ui::sessions_list::project_name(folder);
                     (
-                        crate::ui::sessions_list::project_actions_pill(pid, &name, count, tx, p),
-                        // 2 кнопки 24 + gap 2 + p 3×2 + border 1×2
-                        58.0_f32,
+                        crate::ui::sessions_list::project_actions_pill(
+                            pid, &name, folder, count, tx, p,
+                        ),
+                        crate::ui::sessions_list::project_actions_pill_width(
+                            folder.is_some_and(|f| !f.is_empty()),
+                        ),
                     )
                 })
             })
