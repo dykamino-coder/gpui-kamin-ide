@@ -136,7 +136,7 @@ function log(msg: string, ...args: unknown[]) {
 // ---------------------------------------------------------------------------
 
 /**
- * Upload user-level files (~/.claude/skills, agents, settings.json, CLAUDE.md) to bridge.
+ * Upload user-level files (~/.claude/skills, agents, settings.json, CLAUDE.md, AGENTS.md) to bridge.
  * Debounced: skips if synced less than 60s ago.
  */
 async function syncUserDataOnce(serverUrl: string, token: string): Promise<SyncResult> {
@@ -149,15 +149,16 @@ async function syncUserDataOnce(serverUrl: string, token: string): Promise<SyncR
   const hash = tokenHash(token)
   const claudeDir = path.join(os.homedir(), '.claude')
 
-  const [skills, agents, commands, plugins, settings, claudeMd] = await Promise.all([
+  const [skills, agents, commands, plugins, settings, claudeMd, agentsMd] = await Promise.all([
     readEntrypointMd(path.join(claudeDir, 'skills'), 'skills'),
     readEntrypointMd(path.join(claudeDir, 'agents'), 'agents'),
     readEntrypointMd(path.join(claudeDir, 'commands'), 'commands'),
     buildPluginSnapshots(),
     safeReadFile(path.join(claudeDir, 'settings.json')),
     safeReadFile(path.join(claudeDir, 'CLAUDE.md')),
+    safeReadFile(path.join(claudeDir, 'AGENTS.md')),
   ])
-  const data: SyncUserData = { skills, agents, commands, plugins, settings, claudeMd }
+  const data: SyncUserData = { skills, agents, commands, plugins, settings, claudeMd, agentsMd }
 
   const url = `${toHttpUrl(serverUrl)}/api/sync/${hash}/user`
 
@@ -177,7 +178,7 @@ async function syncUserDataOnce(serverUrl: string, token: string): Promise<SyncR
     }
 
     lastUserSync.set(syncKey, now)
-    log(`User data synced (skills: ${Object.keys(data.skills).length}, agents: ${Object.keys(data.agents).length}, commands: ${Object.keys(data.commands).length}, plugins: ${Object.keys(data.plugins).length}, settings: ${!!data.settings}, claudeMd: ${!!data.claudeMd})`)
+    log(`User data synced (skills: ${Object.keys(data.skills).length}, agents: ${Object.keys(data.agents).length}, commands: ${Object.keys(data.commands).length}, plugins: ${Object.keys(data.plugins).length}, settings: ${!!data.settings}, claudeMd: ${!!data.claudeMd}, agentsMd: ${!!data.agentsMd})`)
     return { ok: true }
   } catch (err) {
     const error = `User sync error: ${err instanceof Error ? err.message : String(err)}`
@@ -198,7 +199,7 @@ export function syncUserData(serverUrl: string, token: string): Promise<SyncResu
 }
 
 /**
- * Upload project-level files (.claude/ dir + CLAUDE.md + .claude.json) to bridge.
+ * Upload project-level files (.claude/ dir + CLAUDE.md/AGENTS.md + .claude.json) to bridge.
  * Debounced per project path: skips if synced less than 60s ago.
  */
 async function syncProjectDataOnce(serverUrl: string, token: string, projectPath: string): Promise<SyncResult> {
@@ -212,7 +213,7 @@ async function syncProjectDataOnce(serverUrl: string, token: string, projectPath
   const hash = tokenHash(token)
   const dotClaudeDir = path.join(projectPath, '.claude')
 
-  const [skills, rules, agents, commands, settings, claudeMd, dotClaudeMd, claudeJson] = await Promise.all([
+  const [skills, rules, agents, commands, settings, claudeMd, dotClaudeMd, claudeJson, agentsMd, dotAgentsMd] = await Promise.all([
     readEntrypointMd(path.join(dotClaudeDir, 'skills'), 'skills'),
     readEntrypointMd(path.join(dotClaudeDir, 'rules'), 'commands'),  // rules: flat .md, treat like commands
     readEntrypointMd(path.join(dotClaudeDir, 'agents'), 'agents'),
@@ -221,8 +222,12 @@ async function syncProjectDataOnce(serverUrl: string, token: string, projectPath
     safeReadFile(path.join(projectPath, 'CLAUDE.md')),
     safeReadFile(path.join(dotClaudeDir, 'CLAUDE.md')),
     safeReadFile(path.join(projectPath, '.claude.json')),
+    safeReadFile(path.join(projectPath, 'AGENTS.md')),
+    safeReadFile(path.join(dotClaudeDir, 'AGENTS.md')),
   ])
-  const data: SyncProjectData = { skills, rules, agents, commands, settings, claudeMd, dotClaudeMd, claudeJson, projectPath }
+  const data: SyncProjectData = {
+    skills, rules, agents, commands, settings, claudeMd, dotClaudeMd, claudeJson, agentsMd, dotAgentsMd, projectPath,
+  }
 
   const url = `${toHttpUrl(serverUrl)}/api/sync/${hash}/project`
 
