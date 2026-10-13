@@ -33,6 +33,7 @@ impl Paragraph {
         } = context;
         let line_base = self.base_of(range);
         let mut decor_prev: Option<(usize, Pixels, Pixels, Pixels)> = None;
+        let mut boxes: Vec<(Pixels, Pixels, Pixels)> = Vec::with_capacity(words.len());
         for (wi, word) in words.iter().enumerate() {
             let slice: SharedString = self.text[word.range.clone()].to_string().into();
             // Полоса строчной коробки продолжается сквозь слова (см.
@@ -185,6 +186,7 @@ impl Paragraph {
                     cx,
                 );
             }
+            boxes.push((x, shaped.width, dy));
             self.paint_word_gap(
                 context,
                 word,
@@ -196,6 +198,9 @@ impl Paragraph {
                 window,
                 cx,
             );
+        }
+        if self.wrap.rtl && step > px(0.) {
+            self.paint_rtl_gaps(context, &boxes, window);
         }
         if self.decor_on() {
             self.flush_decor(window);

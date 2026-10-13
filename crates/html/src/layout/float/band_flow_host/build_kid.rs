@@ -187,6 +187,7 @@ pub(super) fn build_band_kid(
         // Таблица — своей веткой `element` ниже: каркас блока её
         // не соберёт.
         let mut merged = inherit(inherited, &copy.style);
+        merged.self_node = copy.node_id;
         merged.margin = crate::style::computed::Sides::default();
         if copy.tag == "img" {
             grouped(image(&copy), &copy.style)

@@ -63,6 +63,15 @@ impl Frame {
         let mut end = [origin[0] + view[0], origin[1] + view[1]];
         let mut start = origin;
         let reversed = crate::interactive::scrollbar_gutter::reversed(c);
+        // CSS Grid §5.3 includes the grid itself, even with no grid items.
+        // Blink GridLayoutAlgorithm sets inflow bounds to the track span.
+        if let Some(rect) = self.grid_bounds.get() {
+            for axis in 0..2 {
+                let shift = f32::from(if axis == 0 { offset.x } else { offset.y });
+                start[axis] = start[axis].min(rect[axis] - shift - padding[axis]);
+                end[axis] = end[axis].max(rect[axis + 2] - shift + padding[axis + 2]);
+            }
+        }
         for node in &tree.children {
             if let Node::Element(e) = node
                 && let Some(rect) = area(e, &boxes, &text_boxes)

@@ -92,6 +92,19 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 // Метка выноса: объёмный контекст и перспектива деда на блок
                 // не действуют (`Computed::hoisted_block`, `transformed`).
                 block.style.hoisted_block = true;
+                // Box splitting does not change style ancestry (CSS 2 §9.2.1.1).
+                // Preserve inherited marker properties before hoisting the block.
+                block.style.list_style_type = block
+                    .style
+                    .list_style_type
+                    .or_else(|| e.style.list_style_type.clone());
+                block.style.list_style_inside =
+                    block.style.list_style_inside.or(e.style.list_style_inside);
+                block.style.no_marker = block.style.no_marker.or(e.style.no_marker);
+                block.style.marker_text = block
+                    .style
+                    .marker_text
+                    .or_else(|| e.style.marker_text.clone());
                 // Сам блок ПОЗИЦИОНИРОВАН: его собственные края нельзя ни
                 // заменить, ни сложить с чужими (у хозяина они бывают в долях,
                 // у блока — в точках). Сдвиг хозяина накладывается ОБЁРТКОЙ:

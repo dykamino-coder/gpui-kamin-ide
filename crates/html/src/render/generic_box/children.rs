@@ -8,7 +8,7 @@ use crate::layout::block::reorder::{orthogonal_vertical_children, resolve_inline
 use crate::layout::block::struts::margin_px;
 use crate::layout::block::vertical_flow_margins;
 use crate::layout::grid::place_named_areas;
-use crate::layout::multicol::gap_rules::gap_rule_spec;
+use crate::layout::multicol::gap_rules::decorated_children;
 use crate::layout::multicol::spanner::multicol_container;
 use crate::layout::positioned::absolute_overflow;
 use crate::layout::replaced::limits::auto_clamp_limit;
@@ -157,25 +157,25 @@ pub(crate) fn generic_children(
     // задан стиль хотя бы одной линейки: начальное `none` означает,
     // что рисовать нечего, и ни одна старая пара сюда не попадает
     // (см. `gap_rule_spec`).
-    let gap_rules = gap_rule_spec(e, &merged, opts);
-    let gap_context = gap_rules
-        .is_some()
-        .then(|| crate::paint::gap_rules::fresh_gap_items(e.node_id ^ opts.doc_salt));
-    let _gap_guard = gap_context
-        .as_ref()
-        .map(|(key, _)| crate::paint::gap_rules::GapGuard::enter(*key));
     // css-gaps-1 §gap-decorations: «Gap decorations are painted just
     // above the border of the container» — ПОД детьми. Слой идёт до
     // них: буфер проб он всё равно читает в `paint`, а prepaint всего
     // дерева у gpui проходит раньше (эталоны `grid-gap-decorations-042`
     // и `flex-033` кладут линейки `z-index: -1`, `008/023` — элементы
     // `z-index: 2`).
-    if let (Some((_, buf)), Some(spec)) = (gap_context, gap_rules) {
-        kids.push(
-            crate::paint::gap_rules::painter::GapRulePainter::new(buf, spec).into_any_element(),
-        );
+    // The viewport scroll tree is built after the outer document ICB
+    // closes. Its padding box still owns the initial containing block
+    // (CSS 2.1 §10.1), including absolute descendants below body margins.
+    let viewport = e.tag == "html-viewport";
+    if viewport {
+        crate::layout::positioned::containing_block::icb_open();
     }
-    kids.extend(blocks(&children, &merged, opts));
+    kids.extend(decorated_children(e, &merged, opts, || {
+        blocks(&children, &merged, opts)
+    }));
+    if viewport {
+        kids.extend(crate::layout::positioned::containing_block::icb_close());
+    }
     if cb_layer {
         kids.extend(crate::layout::positioned::containing_block::cb_close());
     }
