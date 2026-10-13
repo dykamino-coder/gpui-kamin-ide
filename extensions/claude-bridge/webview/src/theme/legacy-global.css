@@ -1427,10 +1427,6 @@ select.mcp-input { cursor: pointer; }
   border-color: var(--bg-surface);
   background: var(--bg-primary);
 }
-.input-bar.disabled textarea {
-  color: var(--text-disabled);
-  cursor: default;
-}
 .input-bar.disabled .send-btn {
   opacity: 0.3;
   cursor: default;

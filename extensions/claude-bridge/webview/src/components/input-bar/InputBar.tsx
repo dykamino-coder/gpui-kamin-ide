@@ -105,8 +105,9 @@ export function InputBar(): JSX.Element {
     const message = send.buildMessage(textareaRef.current)
     if (!message) return
     // Never send into the gap between "session selected" and "session shown", or
-    // while its transcript is still downloading.
-    if (isNotReady) return
+    // while its transcript is still downloading. While the bridge is not
+    // connected the text stays in the box (the textarea remains editable).
+    if (isNotReady || isDisconnected) return
 
     history.push(tabId, message)
     history.reset(tabId)
