@@ -42,6 +42,11 @@ impl RootView {
                             b: 0.,
                             a: 0.,
                         })
+                        // Всё под скримом неактивно: без occlude колесо мыши
+                        // доходило до редактора/списков под модалкой и
+                        // прокручивало их (владелец, 2026-10-13)
+                        .occlude()
+                        .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
                         .on_mouse_down(gpui::MouseButton::Left, move |_, _, _| {
                             let _ = tx.try_send(ShellEvent::CloseInputOverlays);
                         }),
