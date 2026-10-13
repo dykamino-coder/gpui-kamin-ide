@@ -113,8 +113,20 @@ pub(super) fn inherit_lh_units(parent: &Computed, c: &mut Computed) {
     // 1.2 × 16 = 19.2 — ровно то, что видно на снимке), а сплошной
     // перевод единиц в самом `background.rs` уже ЗАМЕРЕН в минус
     // (★ `background.rs:2577`, CSS2 4614 → 4610).
+    // `em` in `background-size`/`background-position` is the element's own
+    // computed font size (css-values-4 §6.1.1); the painter only knows a
+    // 16px fallback (`table-cell-align-002`: `.5em .5em` at 20px).
+    let em = |l: &mut Option<crate::style::values::value::Len>| {
+        if let Some(crate::style::values::value::Len::Em(k)) = *l {
+            *l = Some(crate::style::values::value::Len::Px(k * font));
+        }
+    };
     if let crate::style::computed::BgSize::Fixed(w, h) = &mut c.bg_size {
         fix(w);
         fix(h);
+        em(w);
+        em(h);
     }
+    em(&mut c.bg_pos.x);
+    em(&mut c.bg_pos.y);
 }
