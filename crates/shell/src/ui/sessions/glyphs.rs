@@ -6,4 +6,5 @@
 pub(crate) const EDIT: &str = "\u{ea73}"; // codicon-edit (rename)
 pub(crate) const DISCONNECT: &str = "\u{ead0}"; // codicon-debug-disconnect
 pub(crate) const TRASH: &str = "\u{ea81}"; // codicon-trash
+pub(crate) const FOLDER_OPENED: &str = "\u{eaf7}"; // codicon-folder-opened
 pub(crate) const FA_THUMBTACK: &str = "\u{f08d}"; // fa-thumbtack (pin) — как в оригинале

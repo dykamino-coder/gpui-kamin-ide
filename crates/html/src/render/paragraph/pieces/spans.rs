@@ -30,11 +30,7 @@ pub(crate) fn paragraph_spans(
         .vertical_central_baseline(
             inherited.sideways != Some(true) && inherited.text_sideways != Some(true),
         )
-        .rotated_central(
-            inherited.rotated_line == Some(true)
-                && inherited.sideways != Some(true)
-                && inherited.text_sideways != Some(true),
-        )
+        .rotated_central(rotated_central(inherited))
         .vertical_counter_clockwise(
             inherited.para_vertical == Some(false) && inherited.sideways == Some(true),
         )
@@ -71,7 +67,19 @@ pub(crate) fn paragraph_spans(
             .concat(),
         )
         .shift_spans({
-            let mut v = inline::shift_spans(pieces, biggest, f32::from(line), opts);
+            let mut v = inline::shift_spans(
+                pieces,
+                biggest,
+                f32::from(line),
+                opts,
+                rotated_central(inherited).then(|| {
+                    let family = inherited.font_family.clone().unwrap_or_default();
+                    let size = crate::render::paragraph::own_size(inherited, opts);
+                    let (a, d, _) = crate::text::metrics::vmetrics_px(&family, size);
+                    (a - d) / 2.0
+                }),
+                inherited.vertical_align,
+            );
             v.retain(|(r, _)| !in_edge(edges, r));
             v
         })
@@ -100,4 +108,11 @@ pub(crate) fn paragraph_spans(
         // Линии украшений рисует сам абзац (css-text-decor-3 §2); у
         // повёрнутого — прежний путь набора.
         .decor_spans(inline::decor_spans(pieces, &opts.text))
+}
+
+/// Rotated vertical line set with a central dominant baseline (mixed/upright).
+fn rotated_central(inherited: &Computed) -> bool {
+    inherited.rotated_line == Some(true)
+        && inherited.sideways != Some(true)
+        && inherited.text_sideways != Some(true)
 }

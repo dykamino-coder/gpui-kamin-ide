@@ -47,6 +47,8 @@ pub fn shift_spans(
     base_size: f32,
     line_px: f32,
     opts: &RenderOpts,
+    central: Option<f32>,
+    block_align: Option<crate::style::computed::Align>,
 ) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
     let mut out = Vec::new();
     let mut at = 0usize;
@@ -110,12 +112,13 @@ pub fn shift_spans(
                 // Полулидинг БЫВАЕТ отрицательным: `L = line-height − AD`
                 // (§10.8.1), и при `line-height` меньше кегля коробка куска
                 // выше строки. Зажим нулём убивал ровно этот случай.
-                let alphabetic = style.sideways == Some(true) || style.text_sideways == Some(true);
                 let vertical = style.vertical == Some(true) || style.rotated_line == Some(true);
                 // CSS 2.1 §10.8.1 aligns the subject's own inline box, whose
                 // half-leading comes from its computed line-height. The line's
                 // strut is not that box (Blink inline_box_state.cc:144-150).
-                let own_line = if vertical && alphabetic {
+                // The edge is physical, so this holds for the central
+                // dominant baseline of mixed/upright text too.
+                let own_line = if vertical {
                     match style.line_height {
                         Some(Len::Px(v)) => v,
                         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
@@ -145,10 +148,63 @@ pub fn shift_spans(
             // открывал красный. `super-001` был зелёным случайно: подъём
             // гасила верхняя надбавка строки (`line_padding`).
             .filter(|_| !out_of_flow);
+        let dy = if out_of_flow {
+            dy
+        } else {
+            dominant_shift(style, size, base_size, central, dy, block_align)
+        };
         if let Some(v) = dy {
             out.push((at..end, gpui::px(v)));
         }
         at = end;
     }
     out
+}
+
+/// Central dominant baseline and `vertical-align: middle` for a text run.
+///
+/// `central` is the strut's central-baseline offset above its alphabetic
+/// baseline when the paragraph is a rotated vertical line set with a central
+/// dominant baseline (css-writing-modes-4 §4.2: mixed/upright text). Each run
+/// then aligns its own central baseline to the line's (css-inline-3
+/// §dominant-baseline): `(a - d) / 2` of the run minus that of the strut.
+/// `middle` puts the box midpoint at the parent's baseline raised by half its
+/// x-height (CSS 2.1 §10.8.1; Blink inline_box_state.cc kMiddle: in central
+/// mode the box's own term is zero and the parent baseline is central).
+/// `block_align` is the container's own value (see `edges.rs`).
+/// `text-top`/`text-bottom` already name an absolute edge and keep their
+/// shift.
+fn dominant_shift(
+    style: &crate::style::computed::Computed,
+    size: f32,
+    base_size: f32,
+    central: Option<f32>,
+    dy: Option<f32>,
+    block_align: Option<crate::style::computed::Align>,
+) -> Option<f32> {
+    let family = style.font_family.clone().unwrap_or_default();
+    let own_central = || {
+        let (a, d, _) = crate::text::metrics::vmetrics_px(&family, size);
+        (a - d) / 2.0
+    };
+    // A table cell's own `vertical-align: middle` reaches its text runs
+    // through the merged style; it aligns the cell, not an inline box.
+    if style.vertical_align == Some(crate::style::computed::Align::Center)
+        && style.vertical_align != block_align
+    {
+        let parent = style.vertical_align_base.unwrap_or(base_size);
+        let x_height = crate::text::metrics::ch_ex_px(&family, parent).1;
+        return Some(own_central() - central.unwrap_or(0.0) - x_height / 2.0);
+    }
+    let Some(strut) = central else {
+        return dy;
+    };
+    if style.vertical_align_text.is_some() {
+        return dy;
+    }
+    let offset = own_central() - strut;
+    if offset.abs() < 0.001 {
+        return dy;
+    }
+    Some(dy.unwrap_or(0.0) + offset)
 }

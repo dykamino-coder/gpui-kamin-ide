@@ -120,6 +120,8 @@ impl VerticalText {
                 gpui::AbsoluteLength::Pixels(self.natural.width),
             ));
         }
-        (window.request_layout(style, [], cx), ())
+        let id = window.request_layout(style, [], cx);
+        self.layout_id = Some(id);
+        (id, ())
     }
 }

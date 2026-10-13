@@ -21,9 +21,6 @@ use crate::probe::registry::probe_area;
 
 pub struct TitlebarState {
     pub sidebar_visible: bool,
-    /// Ширина сайдбара: `.leftCluster` пиннится к ней инлайновым стилем
-    /// (`Titlebar.tsx:35`), при скрытом сайдбаре — `auto`.
-    pub sidebar_width: f32,
     /// Глиф темы: moon (dark) / sun (light) / half (contributed).
     pub theme_glyph: &'static str,
     /// Поповер Layout panels открыт (active-подсветка триггера).

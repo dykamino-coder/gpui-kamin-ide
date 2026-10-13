@@ -47,10 +47,9 @@ pub struct RootView {
     pub right_split: f32,
     pub drag: Option<DragState>,
     pub hovered_handle: Option<&'static str>,
-    /// Свёрнутые группы проектов (projectId).
-    pub collapsed_projects: std::collections::HashSet<String>,
-    /// Группы с раскрытым «N inactive» (projectId).
-    pub inactive_open: std::collections::HashSet<String>,
+    /// Раскрытые группы проектов (projectId). Свёрнутая (по умолчанию)
+    /// группа показывает только активные сессии, раскрытая — все.
+    pub expanded_projects: std::collections::HashSet<String>,
     /// Contributed-вебвью по viewId (main/plan/console).
     /// Скрим-затемнение продублировано ВНУТРЬ вебвью (WebView2 поверх
     /// main-окна — нативный скрим их не накрывает): текущее состояние.
