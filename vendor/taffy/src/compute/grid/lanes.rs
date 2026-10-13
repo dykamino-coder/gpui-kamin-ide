@@ -1488,7 +1488,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
         // upgrade; with GPUI every node is positioned, so such candidates are always claimed
         // below this container.
         let mut bubbled = crate::tree::OofCandidates::new();
-        let (content_size_contribution, _, _, _, _) = super::alignment::align_and_position_item(
+        let (content_size_contribution, _, _, _, _, _) = super::alignment::align_and_position_item(
             tree,
             child,
             order,
