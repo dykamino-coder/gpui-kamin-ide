@@ -64,7 +64,12 @@ impl Paragraph {
         // sits on the line's baseline instead of moving the run's glyphs to
         // a baseline of its own (`text-wrap-balance-line-clamp-002`: a 4rem
         // ellipsis with `line-height: 1rem` dropped the clamped line out).
-        let common_base = if visual.len() > 1 || !suffix.is_empty() {
+        let common_base = if visual.len() > 1
+            || !suffix.is_empty()
+            || runs
+                .iter()
+                .any(|r| crate::text::fonts::metric_overrides::has_overrides(&r.font))
+        {
             self.base_of(range).map(px)
         } else {
             None
