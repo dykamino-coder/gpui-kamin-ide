@@ -17,13 +17,41 @@
 // the same commit while a passive effect lands a frame later) — visible as the
 // old text "lingering". A layout effect swaps the value before paint, in lockstep
 // with the rest of the switch.
+//
+// Attached files are part of the draft too (owner, 2026-10-13): `pendingAttachments`
+// holds the ACTIVE session's attachments; on switch the outgoing session's list is
+// stored under its id and the incoming one's is restored, so a file attached in one
+// chat no longer travels to another.
 
 import { useLayoutEffect, useRef, useCallback } from 'preact/hooks'
 import { storage } from '../../lib/storage'
+import { pendingAttachments, type FileAttachment } from '../../signals/ui'
 
 const DRAFT_PREFIX = 'input-draft:'
+const ATTACH_PREFIX = 'input-attachments:'
 const SAVE_DEBOUNCE_MS = 400
 const key = (tabId: string): string => DRAFT_PREFIX + tabId
+const attachKey = (tabId: string): string => ATTACH_PREFIX + tabId
+
+export function loadAttachments(tabId: string): FileAttachment[] {
+  try {
+    const raw = storage.getItem(attachKey(tabId))
+    const list: unknown = raw ? JSON.parse(raw) : []
+    return Array.isArray(list) ? (list as FileAttachment[]) : []
+  } catch {
+    return []
+  }
+}
+
+export function saveAttachments(tabId: string, list: FileAttachment[]): void {
+  try {
+    if (list.length) storage.setItem(attachKey(tabId), JSON.stringify(list))
+    else storage.removeItem(attachKey(tabId))
+  } catch {
+    // Storage full (large pasted images): the in-memory list still works for
+    // this session; only reload persistence is lost.
+  }
+}
 
 interface Args {
   tabId: string | undefined
@@ -47,6 +75,14 @@ export function useInputDraft({ tabId, textareaRef, setHasText }: Args): { clear
       // the restored draft (direct `.value =` doesn't trigger it).
       if (draft) requestAnimationFrame(() => el.dispatchEvent(new Event('input', { bubbles: true })))
     }
+    pendingAttachments.value = loadAttachments(tabId)
+    // Persist every change of this session's attachments (add/remove/send).
+    // `subscribe` fires once immediately with the value just loaded — skip it.
+    let primed = false
+    const unsubscribe = pendingAttachments.subscribe(list => {
+      if (primed) saveAttachments(tabId, list)
+      primed = true
+    })
 
     const flush = (): void => {
       const v = textareaRef.current?.value ?? ''
@@ -60,6 +96,8 @@ export function useInputDraft({ tabId, textareaRef, setHasText }: Args): { clear
     el?.addEventListener('input', onInput)
 
     return () => {
+      unsubscribe()
+      saveAttachments(tabId, pendingAttachments.value)
       el?.removeEventListener('input', onInput)
       if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
       flush() // persist the outgoing tab's draft synchronously on switch/unmount
@@ -68,7 +106,10 @@ export function useInputDraft({ tabId, textareaRef, setHasText }: Args): { clear
 
   const clearDraft = useCallback((): void => {
     if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
-    if (tabId) storage.removeItem(key(tabId))
+    if (tabId) {
+      storage.removeItem(key(tabId))
+      storage.removeItem(attachKey(tabId))
+    }
   }, [tabId])
 
   return { clearDraft }
