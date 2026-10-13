@@ -18,8 +18,10 @@ pub fn overflow_hidden_ids() -> &'static std::sync::Mutex<Vec<String>> {
     S.get_or_init(Default::default)
 }
 /// Оверфлоу-меню (в OVERLAY-окне): список скрытых сессий, клик = активация.
+/// Строка повторяет чип таба (владелец, 2026-10-13): слева пин (по ховеру,
+/// у закреплённых — всегда), справа disconnect у открытых сессий.
 pub fn tabs_overflow_menu(
-    items: &[(String, String, Option<String>)],
+    items: &[Session],
     x: f32,
     y: f32,
     viewport_w: f32,
@@ -49,44 +51,98 @@ pub fn tabs_overflow_menu(
         .gap(px(1.0))
         .overflow_hidden()
         .child(crate::overlay::hit_area());
-    for (id, name, color) in items {
-        let dot = parse_hex(color.as_deref().unwrap_or("#89b4fa"), rgba(p.accent_blue));
+    for s in items {
+        let (id, name) = (&s.id, &s.name);
+        let dot = parse_hex(s.color.as_deref().unwrap_or("#89b4fa"), rgba(p.accent_blue));
+        let group: SharedString = format!("ovm-g-{id}").into();
         let sid = id.clone();
         let item_hover = {
             let mut c = rgba(p.text_primary);
             c.a = 0.10;
             c
         };
-        menu = menu.child(
-            div()
-                .id(SharedString::from(format!("ovm-{id}")))
-                .flex()
-                .items_center()
-                .gap(px(m::SPACE_2))
-                .px(px(m::SPACE_3))
-                .py(px(m::SPACE_2))
-                .rounded(px(m::RADIUS_SM))
-                .text_size(px(m::FS_SM))
-                .text_color(rgba(p.text_primary))
-                .cursor_pointer()
-                .hover(move |st| st.bg(item_hover))
-                .on_mouse_down(gpui::MouseButton::Left, {
-                    let tx = tx.clone();
-                    move |_, _, cx| {
-                        cx.stop_propagation();
-                        let _ = tx.try_send(ShellEvent::ActivateSession(sid.clone()));
-                        let _ = tx.try_send(ShellEvent::ToggleTabsOverflow(0.0, 0.0));
-                    }
-                })
-                .child(div().w(px(8.0)).h(px(8.0)).rounded_full().bg(dot))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w(px(0.))
-                        .overflow_hidden()
-                        .child(div().w_full().truncate().child(name.clone())),
-                ),
-        );
+        let mut row = div()
+            .id(SharedString::from(format!("ovm-{id}")))
+            .group(group.clone())
+            .flex()
+            .items_center()
+            .gap(px(m::SPACE_2))
+            .px(px(m::SPACE_3))
+            .py(px(m::SPACE_2))
+            .rounded(px(m::RADIUS_SM))
+            .text_size(px(m::FS_SM))
+            .text_color(rgba(p.text_primary))
+            .cursor_pointer()
+            .hover(move |st| st.bg(item_hover))
+            .on_mouse_down(gpui::MouseButton::Left, {
+                let tx = tx.clone();
+                move |_, _, cx| {
+                    cx.stop_propagation();
+                    let _ = tx.try_send(ShellEvent::ActivateSession(sid.clone()));
+                    let _ = tx.try_send(ShellEvent::ToggleTabsOverflow(0.0, 0.0));
+                }
+            })
+            // RMB → то же контекст-меню, что у чипа и строки сайдбара;
+            // список закрываем, чтобы меню не легло под него
+            .on_mouse_down(gpui::MouseButton::Right, {
+                let tx = tx.clone();
+                let data = crate::ui::sessions_list::menu_data(s);
+                move |e: &gpui::MouseDownEvent, _, cx| {
+                    cx.stop_propagation();
+                    let _ = tx.try_send(ShellEvent::ToggleTabsOverflow(0.0, 0.0));
+                    let _ = tx.try_send(ShellEvent::OpenSessionMenu(
+                        data.clone(),
+                        f32::from(e.position.x),
+                        f32::from(e.position.y),
+                    ));
+                }
+            })
+            .child(
+                div()
+                    .w(px(16.0))
+                    .h(px(16.0))
+                    .flex_shrink_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(crate::ui::tabs::chip_leading::leading(
+                        s, p, dot, dot, false, false, &group, tx,
+                    )),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w(px(0.))
+                    .overflow_hidden()
+                    .child(div().w_full().truncate().child(name.clone())),
+            );
+        // Спящая (pinned+closed) — призрак, как у чипа
+        if s.pinned && !s.open {
+            row = row.opacity(0.55).text_color(rgba(p.text_muted));
+        }
+        if s.open {
+            let id = id.clone();
+            let tx = tx.clone();
+            row = row.child(crate::ui::tabs::chip_action::chip_action(
+                format!("ovmdc-{id}"),
+                crate::ui::tabs::chip_action::DISCONNECT_GLYPH,
+                "Disconnect (free from memory)",
+                group,
+                p,
+                move || {
+                    let _ = tx.try_send(ShellEvent::LocalSessionClosed(id.clone()));
+                    let id = id.clone();
+                    std::thread::spawn(move || {
+                        if let Some(c) = crate::host_link::client() {
+                            let _ =
+                                c.request("kamin:sessions:deactivate", vec![serde_json::json!(id)]);
+                        }
+                    });
+                },
+                false,
+            ));
+        }
+        menu = menu.child(row);
     }
     menu.into_any_element()
 }
