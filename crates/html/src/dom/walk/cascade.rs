@@ -128,9 +128,9 @@ pub(super) fn cascade_element(
         owner.pseudo = None;
         matches(&owner, me, path, sibs)
     });
-    inherit_counter_decls(&mut style, path.last().map(|p| &p.counter_style));
+    content::inherit_generated(&mut style, path.last());
     apply_value_hint(&mut style, &me);
-    me.counter_style = counter_snapshot(&style);
+    content::snapshot_generated(me, &style);
     crate::style::cascade::vars::clear_current_attrs();
     crate::style::cascade::vars::set_current_sibling(None);
     (style, own_vars, _scheme, shadow)

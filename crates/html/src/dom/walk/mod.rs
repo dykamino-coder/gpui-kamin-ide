@@ -160,7 +160,7 @@ fn walk(
             // inheritance of counter directives) apply right here, before the
             // marker's own content is evaluated (`marker-counter`).
             if let Some(mut m) = marker_layer {
-                inherit_counter_decls(&mut m, Some(&me.counter_style));
+                content::inherit_generated(&mut m, Some(&me));
                 counters.enter_marker();
                 language::pseudo(counters, &m, &me, path);
                 apply_counter_decls(&m, counters, "", &[], &mut false, &|_, _| 0);
