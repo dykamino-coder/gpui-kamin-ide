@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeContextStats, contextLimitForModel, tierForModel } from './session-cost'
+import { computeContextStats, contextLimitForModel, costForUsage, tierForModel } from './session-cost'
 
 // One assistant turn on the 1M Opus tier. `used` = input + cache_read + cache_creation.
 const turn = (msgId: string, inputTok: number, opts: { output?: number; cacheRead?: number } = {}) => ({
@@ -104,5 +104,24 @@ describe('Sonnet 5.5 estimates', () => {
 
   it('uses the native 1M context window for Sonnet 5.5', () => {
     expect(contextLimitForModel('claude-sonnet-5-5')).toBe(1_000_000)
+  })
+})
+
+describe('Haiku 5.5 estimates', () => {
+  it('prices prompts up to 100K at the base rate and longer prompts at the long rate', () => {
+    const tier = tierForModel('claude-haiku-5-5')
+    // 50K input + 10K output: 0.05 * 0.1 + 0.01 * 0.5
+    expect(costForUsage({ input_tokens: 50_000, output_tokens: 10_000 }, tier)).toBeCloseTo(0.01, 6)
+    // 150K prompt (cache read counts toward it): whole request at $0.50/$2.50, reads $0.05
+    expect(
+      costForUsage({ input_tokens: 50_000, cache_read_input_tokens: 100_000, output_tokens: 10_000 }, tier),
+    ).toBeCloseTo(0.05 * 0.5 + 0.1 * 0.05 + 0.01 * 2.5, 6)
+    // Haiku 4.5 logs keep their own flat rate
+    expect(tierForModel('claude-haiku-4-5')).toEqual({ input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 })
+  })
+
+  it('uses the 1M context window for Haiku 5.5 and keeps Haiku 4.5 at 200K', () => {
+    expect(contextLimitForModel('claude-haiku-5-5')).toBe(1_000_000)
+    expect(contextLimitForModel('claude-haiku-4-5')).toBe(200_000)
   })
 })

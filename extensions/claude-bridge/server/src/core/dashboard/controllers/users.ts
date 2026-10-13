@@ -22,8 +22,13 @@ const TIER_5_25: CostTier = { input: 5, output: 25, cacheWrite: 6.25, cacheRead:
 const TIER_4_20: CostTier = { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 }
 const TIER_FABLE_5_1: CostTier = { input: 10, output: 50, cacheWrite: 12.5, cacheRead: 0.25 }
 const TIER_HAIKU: CostTier = { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 }
+// Haiku 5.5 up to a 100K-token prompt. Prompts above 100K cost 5× more, but the
+// dashboard sums tokens per model, not per request, so it uses the base rate
+// (the webview estimate applies the long-prompt rate per request).
+const TIER_HAIKU_5_5: CostTier = { input: 0.1, output: 0.5, cacheWrite: 0.125, cacheRead: 0.01 }
 export function tierForModel(model: string | null | undefined): CostTier {
   const m = (model || '').toLowerCase()
+  if (m.includes('haiku-5')) return TIER_HAIKU_5_5
   if (m.includes('haiku')) return TIER_HAIKU
   if (m.includes('fable-5-1')) return TIER_FABLE_5_1
   if (m.includes('opus-5-5')) return TIER_4_20
