@@ -323,10 +323,11 @@ Workflow использует
 публикует. Ручные Windows и deployment-only gates ниже остаются отдельными и не
 подменяются CI.
 
-Job `Windows Rust tests and installer build (no GUI acceptance)` выполняет
-компиляцию, Rust tests и при необходимости сборку installer на Windows runner.
-Он **не запускает KaminIDE как пользователь** и не проверяет CEF, мышь,
-клавиатуру, focus или восстановление extension-host. Его зелёный статус нельзя
+Jobs `Windows Rust tests (no GUI acceptance)` и `Windows installer build (no
+GUI acceptance)` параллельно выполняют компиляцию с Rust tests и, при
+необходимости, сборку installer на Windows runners. Они **не запускают KaminIDE
+как пользователь** и не проверяют CEF, мышь,
+клавиатуру, focus или восстановление extension-host. Их зелёный статус нельзя
 записывать как прохождение Windows runtime merge gate. `required quality gate`
 подтверждает только применимые автоматические jobs и формат обязательного
 runtime evidence, но не подлинность результата ручного сценария.
