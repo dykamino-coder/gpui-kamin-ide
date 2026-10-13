@@ -125,13 +125,7 @@ pub fn compose_mask_layers(layers: &[MaskLayer], w: u32, h: u32) -> Option<Arc<R
                     let py = ((v * ih as f32) as usize).min(ih - 1);
                     let at4 = (py * iw + px_) * 4;
                     if layer.luminance {
-                        // RenderImage stores straight BGRA; CSS Masking §7.10.1
-                        // multiplies the luminance by its alpha coverage.
-                        (bytes[at4] as f32 * 0.0722
-                            + bytes[at4 + 1] as f32 * 0.7152
-                            + bytes[at4 + 2] as f32 * 0.2126)
-                            * bytes[at4 + 3] as f32
-                            / (255.0 * 255.0)
+                        sample(bytes, at4, true)
                     } else {
                         bytes[at4 + 3] as f32 / 255.0
                     }
@@ -166,11 +160,10 @@ pub fn compose_mask_layers(layers: &[MaskLayer], w: u32, h: u32) -> Option<Arc<R
 
 fn sample(bytes: &[u8], at4: usize, luminance: bool) -> f32 {
     if luminance {
-        (bytes[at4] as f32 * 0.0722
-            + bytes[at4 + 1] as f32 * 0.7152
-            + bytes[at4 + 2] as f32 * 0.2126)
-            * bytes[at4 + 3] as f32
-            / (255.0 * 255.0)
+        // RenderImage stores straight BGRA; CSS Masking §7.10.1 multiplies
+        // the luminance by its alpha coverage.
+        let px = &bytes[at4..at4 + 4];
+        super::mask_luminance::luminance8(px[0], px[1], px[2], px[3]) as f32 / 255.0
     } else {
         bytes[at4 + 3] as f32 / 255.0
     }

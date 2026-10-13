@@ -184,6 +184,13 @@ pub(crate) fn resolve_mask(
         }
         None => (0.0, 0.0),
     };
+    // CSS Masking 1 §7.10.1: luminance is resolved to 8-bit mask values
+    // before sampling, so the compositor only reads alpha.
+    let img = if group.mask_luminance {
+        crate::paint::background::luminance_mask_image(&img)?
+    } else {
+        img
+    };
     Some((
         img,
         mask_size::snap_tile(
@@ -191,8 +198,6 @@ pub(crate) fn resolve_mask(
             (tw, th),
             window.scale_factor(),
         ),
-        ((group.mask_no_repeat.0 as u32)
-            | ((group.mask_no_repeat.1 as u32) << 1)
-            | ((group.mask_luminance as u32) << 2)),
+        ((group.mask_no_repeat.0 as u32) | ((group.mask_no_repeat.1 as u32) << 1)),
     ))
 }
