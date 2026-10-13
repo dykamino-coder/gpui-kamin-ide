@@ -17,6 +17,7 @@
 
 mod font_faces;
 mod loading;
+pub(crate) mod metric_overrides;
 mod sfnt_metrics;
 mod stretch;
 #[cfg(test)]

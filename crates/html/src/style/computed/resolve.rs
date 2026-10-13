@@ -216,6 +216,17 @@ impl Computed {
             out.retain(|(t, _)| *t != tag);
             out.push((tag, value));
         }
+        let slope = if self.oblique == Some(true) {
+            2
+        } else if self.italic == Some(true) {
+            1
+        } else {
+            0
+        };
+        out.extend(crate::text::fonts::metric_overrides::features(
+            self.font_family.as_deref().unwrap_or(""),
+            slope,
+        ));
         out
     }
 }

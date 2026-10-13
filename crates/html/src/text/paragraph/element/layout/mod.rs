@@ -32,9 +32,13 @@ impl Paragraph {
             if let Some((font, size)) = self.strut_run.clone() {
                 let ts = window.text_system();
                 let id = ts.resolve_font(&font);
-                self.strut_box = (
-                    f32::from(ts.ascent(id, size)),
-                    f32::from(ts.descent(id, size)).abs(),
+                self.strut_box = crate::text::fonts::metric_overrides::extents(
+                    &font,
+                    f32::from(size),
+                    (
+                        f32::from(ts.ascent(id, size)),
+                        f32::from(ts.descent(id, size)).abs(),
+                    ),
                 );
             }
         }
