@@ -17,6 +17,7 @@ impl ColumnStack {
         plan_all: Vec<Frag>,
         plan: Vec<Frag>,
     ) {
+        let nested_frag = crate::layout::fragment::effect_fragment::active();
         for f in plan {
             let (c, ry) = self.place(f.col);
             // Срез едет вместе со сдвинутым фрагментом (css-break-3 §5.5):
@@ -52,13 +53,15 @@ impl ColumnStack {
             } else {
                 bounds.size.width
             };
-            let mask = fragment_mask::snap(
-                Bounds {
-                    origin: point(x - spill, y),
-                    size: size(px(col_w) + spill + spill, px(f.h)),
-                },
-                window.scale_factor(),
-            );
+            let k0 = &self.children[f.kid];
+            let (nested_cols, over) = (k0.nested_cols, k0.over);
+            // Таблица режется своими полосами (`repeat`, хвост `slack`).
+            // Таблица (полосы `repeat`, хвост `slack`), ребёнок с мерой по
+            // раскладке копии (`measure`: внутри него своя стопка кладёт куски
+            // в соседние колонки выше верха копии) и стопка внутри фрагмента
+            // внешней фрагментации режутся как прежде.
+            let table_like =
+                k0.repeat.is_some() || k0.slack.is_some() || k0.measure.is_some() || nested_frag;
             let kid = &mut self.children[f.kid];
             // Полосы повтора таблицы — каждая своей маской по своей полосе.
             if let Some(r) = kid.repeat.as_mut() {
@@ -156,6 +159,33 @@ impl ColumnStack {
                     .iter()
                     .any(|g| g.kid == f.kid && g.copy == f.copy + 1);
                 let parent = window.content_mask();
+                // Разрез режет только ВНУТРЕННИЕ края фрагментов: чернильное
+                // переполнение над первым фрагментом и под последним (тень,
+                // контур) видно (css-break-3 §5.4 «slice»: края без разрыва
+                // рисуются как у целой коробки; Blink красит переполнение
+                // фрагмента без обрезки фрагментаинером). Под последним — до
+                // низа колонки: дальше переполнение — поток следующей.
+                let (up, down) = if nested_cols || table_like {
+                    (0.0, 0.0)
+                } else {
+                    (
+                        if f.copy == 0 && f.from <= 0.01 {
+                            f32::from(spill)
+                        } else {
+                            0.0
+                        },
+                        if continued || f.from + f.h < over - 0.01 {
+                            0.0
+                        } else {
+                            (line_h - f.y - f.h).max(0.0)
+                        },
+                    )
+                };
+                let clip = Bounds {
+                    origin: point(x - spill, y - px(up)),
+                    size: size(px(col_w) + spill + spill, px(f.h + up + down)),
+                };
+                let mask = fragment_mask::snap(clip, window.scale_factor());
                 window.with_content_mask(Some(mask), |window| {
                     let cut = f32::from(y) + f.h;
                     let end = if continued && f.foot <= 0.01 {
@@ -177,10 +207,7 @@ impl ColumnStack {
                                 origin: point(x, y),
                                 size: size(px(col_w), px(f.h)),
                             },
-                            clip: Bounds {
-                                origin: point(x - spill, y),
-                                size: size(px(col_w) + spill + spill, px(f.h)),
-                            },
+                            clip,
                         }),
                         || gap_fragment::with(scope, || el.paint(window, cx)),
                     );

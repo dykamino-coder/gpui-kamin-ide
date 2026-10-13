@@ -24,6 +24,11 @@ pub(crate) fn with<R>(scope: Option<Scope>, f: impl FnOnce() -> R) -> R {
     result
 }
 
+/// Краска идёт внутри фрагмента внешней фрагментации.
+pub(crate) fn active() -> bool {
+    ACTIVE.with(|active| active.borrow().is_some())
+}
+
 pub(crate) fn reference_box(bounds: Bounds<Pixels>) -> Option<Bounds<Pixels>> {
     let scope = ACTIVE.with(|active| *active.borrow())?;
     let start = bounds.origin.y.max(scope.fragment.origin.y);
