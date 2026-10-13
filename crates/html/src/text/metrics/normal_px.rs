@@ -33,6 +33,14 @@ pub fn normal_px(fraction: f32, size: f32) -> f32 {
     }
 }
 
+/// The content area (ascent + descent, unrounded, as the glyphs are laid
+/// out) of the font whose normal line fraction is `fraction`, at `size`.
+pub fn content_px(fraction: f32, size: f32) -> Option<f32> {
+    PARTS
+        .with(|p| p.borrow().get(&fraction.to_bits()).copied())
+        .map(|(a, d, _)| (a + d) * size)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
