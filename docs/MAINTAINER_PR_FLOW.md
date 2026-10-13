@@ -350,9 +350,9 @@ Post-merge deployment observation не блокирует merge/release, есл�
 заявляет этот недоступный сценарий проверенным и называет владельца наблюдения.
 
 Перед merge для каждого Change/Fix PR открыть `Acceptance` исходной BR/INC
-карточки и выписать требуемые gates. Зелёный job `Windows Rust tests and
-installer build (no GUI acceptance)` означает только сборку/автотесты; он
-не выполняет сценарий в живом KaminIDE. Если карточка требует Windows runtime
+карточки и выписать требуемые gates. Зелёные jobs `Windows Rust tests (no GUI
+acceptance)` и `Windows installer build (no GUI acceptance)` означают только
+сборку/автотесты; они не выполняют сценарий в живом KaminIDE. Если карточка требует Windows runtime
 merge gate, проверить точный кандидат, сценарий, наблюдаемый результат и
 task-specific evidence из `## Runtime acceptance` PR по
 [CONTRIBUTING.md](../CONTRIBUTING.md#класс-приёмки). CI не может подтвердить
