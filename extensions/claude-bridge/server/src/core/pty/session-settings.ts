@@ -15,7 +15,7 @@ import { mergeAllHooks, rewriteHooksForCli } from '../hooks'
 import { bridgeStatusHookMatchers } from '../hooks/bridge-status-hooks'
 import type { HookMatcher } from '../hooks/types'
 import { BRIDGE_DEFAULT_CLAUDE_MD } from './bridge-default-claude-md'
-import { DISALLOWED_BUILTIN_TOOLS } from './session-env'
+import { getDisallowedBuiltinTools } from './session-env'
 import { replaceSkillsOverlay } from './skills-snapshot'
 
 export { BRIDGE_DEFAULT_CLAUDE_MD } from './bridge-default-claude-md'
@@ -185,7 +185,7 @@ export function writeSessionSettings(
   )
 
   const settings: Record<string, unknown> = {
-    permissions: { deny: DISALLOWED_BUILTIN_TOOLS },
+    permissions: { deny: settingsDenyRules() },
   }
   if (Object.keys(rewrittenHooks).length > 0) {
     settings.hooks = rewrittenHooks
@@ -216,6 +216,19 @@ export function writeSessionSettings(
     mcpUrl,
     settings: path.join(claudeDir, 'settings.json'),
   })
+}
+
+/**
+ * Built-in tools denied through settings.json. Same list as the CLI's
+ * `--disallowedTools` except `Read`: Claude CLI 2.1.296 applies a settings
+ * `Read` deny rule to instruction-file loading, so the session cwd's
+ * CLAUDE.md (synced project instructions, AGENTS.md fallback) was silently
+ * never loaded. A `--disallowedTools Read` CLI rule still removes the native
+ * Read tool but does not block instruction files (verified in Podman with
+ * CLI 2.1.296), so the native tool stays disabled.
+ */
+export function settingsDenyRules(): string[] {
+  return getDisallowedBuiltinTools().filter((tool) => tool !== 'Read')
 }
 
 export function writeSessionClaudeMd(settingsDir: string, userCwd: string): void {

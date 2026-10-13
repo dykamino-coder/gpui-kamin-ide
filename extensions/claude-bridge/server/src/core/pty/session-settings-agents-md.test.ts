@@ -23,7 +23,8 @@ vi.mock('../sync/routes', () => ({
   getProjectSyncDir: () => syncRoots.project,
 }))
 
-import { applySyncData, pickInstructionFile } from './session-settings'
+import { applySyncData, pickInstructionFile, settingsDenyRules } from './session-settings'
+import { getDisallowedBuiltinTools } from './session-env'
 
 const tempDirs: string[] = []
 
@@ -130,5 +131,12 @@ describe('AGENTS.md sync', () => {
     expect(pickInstructionFile(dir, 'CLAUDE.md', 'AGENTS.md')).toEqual({ name: 'AGENTS.md', content: 'fallback' })
     fs.rmSync(path.join(dir, 'AGENTS.md'))
     expect(pickInstructionFile(dir, 'CLAUDE.md', 'AGENTS.md')).toBeNull()
+  })
+
+  it('settings deny keeps every native tool except Read, which only the CLI flag disables', () => {
+    const flag = getDisallowedBuiltinTools()
+    expect(flag).toContain('Read')
+    expect(settingsDenyRules()).not.toContain('Read')
+    expect(settingsDenyRules()).toEqual(flag.filter((t) => t !== 'Read'))
   })
 })
