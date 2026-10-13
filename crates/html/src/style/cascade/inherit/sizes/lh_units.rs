@@ -29,7 +29,7 @@ pub(super) fn inherit_lh_units(parent: &Computed, c: &mut Computed) {
         _ => {
             let f = crate::text::metrics::normal_line(&parent_family);
             if f > 0.0 {
-                f * parent_font
+                crate::text::metrics::normal_px(f, parent_font)
             } else {
                 1.2 * parent_font
             }
@@ -79,7 +79,11 @@ pub(super) fn inherit_lh_units(parent: &Computed, c: &mut Computed) {
         | Some(crate::style::values::value::Len::Pct(k)) => k * font,
         _ => {
             let f = crate::text::metrics::normal_line(&family);
-            if f > 0.0 { f * font } else { 1.2 * font }
+            if f > 0.0 {
+                crate::text::metrics::normal_px(f, font)
+            } else {
+                1.2 * font
+            }
         }
     };
     let fix = |l: &mut Option<crate::style::values::value::Len>| match *l {

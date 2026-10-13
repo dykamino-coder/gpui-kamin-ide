@@ -34,7 +34,11 @@ pub(super) fn normalize_style(
             | Some(crate::style::values::value::Len::Pct(k)) => k * font,
             _ => {
                 let f = crate::text::metrics::normal_line(&family);
-                if f > 0.0 { f * font } else { 1.2 * font }
+                if f > 0.0 {
+                    crate::text::metrics::normal_px(f, font)
+                } else {
+                    1.2 * font
+                }
             }
         };
         crate::style::values::value::set_root_metrics(font, line);

@@ -526,6 +526,12 @@ impl TextSystem {
         self.read_metrics(font_id, |metrics| metrics.descent(font_size))
     }
 
+    /// KaminIDE patch: the font's recommended line gap at the given size, for
+    /// CSS `line-height: normal` (ascent + descent + line gap).
+    pub fn line_gap(&self, font_id: FontId, font_size: Pixels) -> Pixels {
+        self.read_metrics(font_id, |metrics| metrics.line_gap(font_size))
+    }
+
     /// KaminIDE patch: the font's underline position relative to the
     /// baseline (negative below it), for `text-underline-position: from-font`.
     pub fn underline_position(&self, font_id: FontId, font_size: Pixels) -> Pixels {

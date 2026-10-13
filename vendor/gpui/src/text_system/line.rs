@@ -1293,6 +1293,33 @@ fn line_paint_bounds(
     align_width: Option<Pixels>,
     wrap_boundaries: &[WrapBoundary],
 ) -> Bounds<Pixels> {
+    // KaminIDE patch: glyphs sit on the content area (ascent + descent),
+    // centred in the line; with a line height below the content area they
+    // overflow it by the negative half-leading on both sides (CSS 2.1
+    // section 10.8.1). The paint layer must cover that ink, or the bounds
+    // tree orders the glyphs below a box border they actually paint over.
+    let overflow = ((layout.ascent + layout.descent - line_height) / 2.).max(Pixels::ZERO);
+    let mut bounds = line_rows_bounds(
+        origin,
+        layout,
+        line_height,
+        align,
+        align_width,
+        wrap_boundaries,
+    );
+    bounds.origin.y -= overflow;
+    bounds.size.height += overflow * 2.;
+    bounds
+}
+
+fn line_rows_bounds(
+    origin: Point<Pixels>,
+    layout: &LineLayout,
+    line_height: Pixels,
+    align: TextAlign,
+    align_width: Option<Pixels>,
+    wrap_boundaries: &[WrapBoundary],
+) -> Bounds<Pixels> {
     let mut bounds = Bounds::new(
         origin,
         size(
