@@ -1,3 +1,4 @@
+import { setTabUsage } from '../signals/session-usage'
 import { useEffect, useRef } from 'preact/hooks'
 
 import type { KaminBridgeApi } from '../../shared/types'
@@ -555,6 +556,11 @@ export function useBridgeListeners(
       )
     })
 
+    // Live 5h / 7d limits + context fill from the CLI status line.
+    const unsubSessionUsage = bridge.onSessionUsage((tabId: string, usage) => {
+      setTabUsage(tabId, usage)
+    })
+
     const unsubSessionActivity = bridge.onSessionActivity((tabId: string, data) => {
       const d = data as {
         rawTitle?: string; isWorking?: boolean
@@ -772,6 +778,7 @@ export function useBridgeListeners(
       unsubAskUser()
       unsubTreeUpdate()
       unsubSessionTitle()
+      unsubSessionUsage()
       unsubSessionActivity()
       unsubMcpActivity()
       unsubMcpServersChanged()

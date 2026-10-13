@@ -17,6 +17,8 @@ import type { HookMatcher } from '../hooks/types'
 import { BRIDGE_DEFAULT_CLAUDE_MD } from './bridge-default-claude-md'
 import { DISALLOWED_BUILTIN_TOOLS } from './session-env'
 import { replaceSkillsOverlay } from './skills-snapshot'
+import { preModelSwitchAllowMatcher } from './live-switch'
+import { writeStatusLineScript } from './session-statusline'
 
 export { BRIDGE_DEFAULT_CLAUDE_MD } from './bridge-default-claude-md'
 
@@ -28,10 +30,10 @@ export const SESSIONS_BASE = path.join(os.homedir(), '.claude', 'bridge-sessions
  */
 export function sanitizeDirName(userPath: string): string {
   return userPath
-    .replace(/^[A-Za-z]:/, (m) => m.charAt(0))   // C: → C
-    .replace(/[\\/:*?"<>|]+/g, '_')      // unsafe chars → underscore
-    .replace(/_+/g, '_')                 // collapse multiple underscores
-    .replace(/^_|_$/g, '')               // trim leading/trailing underscores
+    .replace(/^[A-Za-z]:/, (m) => m.charAt(0)) // C: → C
+    .replace(/[\\/:*?"<>|]+/g, '_') // unsafe chars → underscore
+    .replace(/_+/g, '_') // collapse multiple underscores
+    .replace(/^_|_$/g, '') // trim leading/trailing underscores
     .slice(0, 80)
 }
 
@@ -52,14 +54,32 @@ export function ensureTrustFlags(settingsDir: string): void {
   let changed = false
 
   // Global onboarding flags
-  if (!claudeJson.hasCompletedOnboarding) { claudeJson.hasCompletedOnboarding = true; changed = true }
-  if (!claudeJson.hasTrustDialogAccepted) { claudeJson.hasTrustDialogAccepted = true; changed = true }
-  if (!claudeJson.hasCompletedProjectOnboarding) { claudeJson.hasCompletedProjectOnboarding = true; changed = true }
+  if (!claudeJson.hasCompletedOnboarding) {
+    claudeJson.hasCompletedOnboarding = true
+    changed = true
+  }
+  if (!claudeJson.hasTrustDialogAccepted) {
+    claudeJson.hasTrustDialogAccepted = true
+    changed = true
+  }
+  if (!claudeJson.hasCompletedProjectOnboarding) {
+    claudeJson.hasCompletedProjectOnboarding = true
+    changed = true
+  }
 
   // Suppress effort level selection dialog
-  if (!claudeJson.effortCalloutDismissed) { claudeJson.effortCalloutDismissed = true; changed = true }
-  if (!claudeJson.effortCalloutV2Dismissed) { claudeJson.effortCalloutV2Dismissed = true; changed = true }
-  if (!claudeJson.numStartups || (claudeJson.numStartups as number) <= 1) { claudeJson.numStartups = 5; changed = true }
+  if (!claudeJson.effortCalloutDismissed) {
+    claudeJson.effortCalloutDismissed = true
+    changed = true
+  }
+  if (!claudeJson.effortCalloutV2Dismissed) {
+    claudeJson.effortCalloutV2Dismissed = true
+    changed = true
+  }
+  if (!claudeJson.numStartups || (claudeJson.numStartups as number) <= 1) {
+    claudeJson.numStartups = 5
+    changed = true
+  }
 
   // Per-project trust for the settingsDir
   if (!claudeJson.projects || typeof claudeJson.projects !== 'object') {
@@ -169,9 +189,16 @@ export function writeSessionSettings(
   const settings: Record<string, unknown> = {
     permissions: { deny: DISALLOWED_BUILTIN_TOOLS },
   }
-  if (Object.keys(rewrittenHooks).length > 0) {
-    settings.hooks = rewrittenHooks
-  }
+  // Bridge-owned PreModelSwitch `allow`: a model picked in the chat UI is
+  // applied live without the CLI's cache-warning dialog in the Console panel
+  // (see live-switch.ts). Appended after user/plugin hooks, which still win
+  // with `ask`/`deny`. Not relayed: it runs in the container and needs no
+  // client round-trip, so it is added after the rewrite.
+  const cliHooks: Record<string, unknown[]> = { ...(rewrittenHooks as Record<string, unknown[]>) }
+  cliHooks.PreModelSwitch = [...(cliHooks.PreModelSwitch ?? []), preModelSwitchAllowMatcher()]
+  settings.hooks = cliHooks
+  // Live subscription limits / context fill for the chat (session-statusline.ts).
+  settings.statusLine = writeStatusLineScript(claudeDir)
   fs.writeFileSync(path.join(claudeDir, 'settings.json'), JSON.stringify(settings, null, 2))
 
   // ─── 3. Local settings → .claude/settings.local.json ───
@@ -189,10 +216,7 @@ export function writeSessionSettings(
       MCP_TOOL_TIMEOUT: '100000000',
     },
   }
-  fs.writeFileSync(
-    path.join(claudeDir, 'settings.local.json'),
-    JSON.stringify(localSettings, null, 2),
-  )
+  fs.writeFileSync(path.join(claudeDir, 'settings.local.json'), JSON.stringify(localSettings, null, 2))
 
   ensureTrustFlags(settingsDir)
 
@@ -259,8 +283,15 @@ export function stripSyncedBlocks(
     const trimmed = line.trim()
     const isOurHeading = headings.includes(trimmed)
     const isOtherHeading = !isOurHeading && /^# [^\s]/.test(trimmed) && !trimmed.endsWith('(synced)')
-    if (isOurHeading) { skipping = true; continue }
-    if (skipping && isOtherHeading) { skipping = false; out.push(line); continue }
+    if (isOurHeading) {
+      skipping = true
+      continue
+    }
+    if (skipping && isOtherHeading) {
+      skipping = false
+      out.push(line)
+      continue
+    }
     if (skipping) continue
     out.push(line)
   }
@@ -280,16 +311,10 @@ export function copyDirRecursive(src: string, dest: string): void {
 
 /** Rebuild the exact effective skills tree for one live or new session.
  * User skills form the base and project skills override matching paths. */
-export function refreshSessionSkills(
-  settingsDir: string,
-  tokenId: string,
-  userCwd: string | undefined,
-): void {
+export function refreshSessionSkills(settingsDir: string, tokenId: string, userCwd: string | undefined): void {
   const destination = path.join(settingsDir, '.claude', 'skills')
   const userSource = path.join(getUserSyncDir(tokenId), 'skills')
-  const projectSource = userCwd
-    ? path.join(getProjectSyncDir(tokenId, userCwd), 'skills')
-    : null
+  const projectSource = userCwd ? path.join(getProjectSyncDir(tokenId, userCwd), 'skills') : null
 
   replaceSkillsOverlay(destination, userSource, projectSource)
   debugLog('[sync] Rebuilt effective session skills', {
@@ -343,7 +368,11 @@ export function applySyncData(settingsDir: string, tokenId: string, userCwd: str
         if (userContent.trim()) {
           const existingRaw = fs.existsSync(sessionClaudeMd) ? fs.readFileSync(sessionClaudeMd, 'utf-8') : ''
           const cleaned = stripSyncedBlocks(existingRaw)
-          fs.writeFileSync(sessionClaudeMd, cleaned.trimEnd() + '\n\n# User Instructions (synced)\n\n' + userContent, 'utf-8')
+          fs.writeFileSync(
+            sessionClaudeMd,
+            cleaned.trimEnd() + '\n\n# User Instructions (synced)\n\n' + userContent,
+            'utf-8',
+          )
           debugLog('[sync] Appended user CLAUDE.md', { tokenId: hash })
         }
       }
@@ -381,7 +410,11 @@ export function applySyncData(settingsDir: string, tokenId: string, userCwd: str
           if (projContent.trim()) {
             const existingRaw = fs.existsSync(sessionClaudeMd) ? fs.readFileSync(sessionClaudeMd, 'utf-8') : ''
             const cleaned = stripSyncedBlocks(existingRaw, { stripUser: false, stripProject: true })
-            fs.writeFileSync(sessionClaudeMd, cleaned.trimEnd() + '\n\n# Project Instructions (synced)\n\n' + projContent, 'utf-8')
+            fs.writeFileSync(
+              sessionClaudeMd,
+              cleaned.trimEnd() + '\n\n# Project Instructions (synced)\n\n' + projContent,
+              'utf-8',
+            )
             debugLog('[sync] Appended project CLAUDE.md', { tokenId: hash, project: userCwd })
           }
         }

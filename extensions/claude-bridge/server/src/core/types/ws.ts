@@ -107,13 +107,13 @@ export interface WsMsgSessionResume {
   transcriptMirrorDir?: string
 }
 
-/** Client requests effort level change (requires PTY restart) */
+/** Client requests effort level change (live `/effort`; PTY restart only as fallback) */
 export interface WsMsgSessionChangeEffort {
   type: 'session:change-effort'
   effort: string
 }
 
-/** Client requests model change (requires PTY restart) */
+/** Client requests model change (live `/model`; PTY restart only as fallback) */
 export interface WsMsgSessionChangeModel {
   type: 'session:change-model'
   model: string

@@ -12,6 +12,7 @@ import path from 'path'
 import { subagentTranscriptPath } from './subagent-transcript-path'
 import { SessionAdmissionError } from './session-admission'
 import { rememberModelSelection } from './model-selection'
+import { armSwitchConfirm, effortCommand, isEffortLevel, isSafeModelId, modelCommand } from './live-switch'
 import { waitForDrain, type DrainOutcome } from './download-backpressure'
 import { fingerprintTranscript, canResume, isRecordBoundary, recordUuidMatches } from './jsonl-fingerprint'
 import { SKIP_LINE_MARKER } from './jsonl-watcher'
@@ -581,6 +582,34 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             sendError(ws, 'Session not found')
             return
           }
+          if (!isEffortLevel(msg.effort)) {
+            sendError(ws, `Unsupported effort level: ${String(msg.effort).slice(0, 32)}`)
+            return
+          }
+          // Live path: `/effort <level>` in the running CLI keeps the PTY, the
+          // console and the warm transcript. The CLI's cache-warning dialog for
+          // this level is confirmed by the responder (live-switch.ts) only if
+          // it actually appears. The restart below stays as the fallback for
+          // empty chats (CLI may still be starting) and a dead PTY.
+          if (session.cliConversationId && !session.isRestarting) {
+            if (writeInput(authenticatedSessionId, effortCommand(msg.effort))) {
+              // Armed right after the write: PTY output arrives on a later
+              // tick, so the dialog cannot slip past the responder.
+              armSwitchConfirm(session, 'effort', msg.effort)
+              session.effort = msg.effort
+              ws.send(
+                JSON.stringify({
+                  type: 'session:model-changed',
+                  sessionId: authenticatedSessionId,
+                  model: session.model,
+                  effort: msg.effort,
+                  inPlace: true,
+                }),
+              )
+              debugLog('Effort changed in place', { sessionId: authenticatedSessionId, effort: msg.effort })
+              return
+            }
+          }
           const operation = beginStartup('effort_restart')
           try {
             const oldSessionId = authenticatedSessionId
@@ -668,12 +697,19 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           // осознанный компромисс). Если CLI сейчас стримит — команда встанет
           // в его очередь и применится после витка. Фоллбэк на рестарт — для
           // пустых сессий (нет беседы) и умершего PTY.
-          if (session.cliConversationId && !session.isRestarting && msg.model) {
+          if (!isSafeModelId(msg.model)) {
+            sendError(ws, 'Unsupported model id')
+            return
+          }
+          if (session.cliConversationId && !session.isRestarting) {
             // Успех объявляется ТОЛЬКО если команда действительно легла в
             // stdin. На неживом PTY запись молча терялась, а плашка уже
             // показывала новую модель (INC-2026-0053) — теперь такой случай
             // уходит на честный перезапуск ниже.
-            if (writeInput(authenticatedSessionId, `\x15/model ${msg.model}\r`)) {
+            if (writeInput(authenticatedSessionId, modelCommand(msg.model))) {
+              // The Bridge-owned PreModelSwitch `allow` hook (session-settings.ts)
+              // skips the CLI's cache-warning dialog; the responder is a safety net.
+              armSwitchConfirm(session, 'model', undefined)
               session.model = msg.model
               // Выбор до первого ответа в JSONL не записан нигде: без него
               // респаун вернул бы прежнюю модель.
