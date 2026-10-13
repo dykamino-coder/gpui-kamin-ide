@@ -2109,8 +2109,19 @@ fn layout_lanes_item(
     } else {
         stack_fit
     };
+    let measured = rows && !stack_block && inherent_stack.is_none() && stack_known.is_none();
     let fit = stack_fit.map(|w| match stack_avail {
-        Some(avail) => w.min(f32_max(avail - stack_margin, 0.0)),
+        Some(avail) => {
+            let room = f32_max(avail - stack_margin, 0.0);
+            // KaminIDE patch: fit-content keeps the min-content floor (see
+            // `lanes_stack_measure::min_width`).
+            if measured && w > room {
+                let min = super::lanes_stack_measure::min_width(tree, node, grid_known, cb, area);
+                w.min(f32_max(min, room))
+            } else {
+                w.min(room)
+            }
+        }
         None => w,
     });
     let stack_known_size = inherent_stack
