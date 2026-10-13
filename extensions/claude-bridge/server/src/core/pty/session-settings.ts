@@ -15,7 +15,7 @@ import { mergeAllHooks, rewriteHooksForCli } from '../hooks'
 import { bridgeStatusHookMatchers } from '../hooks/bridge-status-hooks'
 import type { HookMatcher } from '../hooks/types'
 import { BRIDGE_DEFAULT_CLAUDE_MD } from './bridge-default-claude-md'
-import { DISALLOWED_BUILTIN_TOOLS } from './session-env'
+import { getDisallowedBuiltinTools } from './session-env'
 import { replaceSkillsOverlay } from './skills-snapshot'
 
 export { BRIDGE_DEFAULT_CLAUDE_MD } from './bridge-default-claude-md'
@@ -28,10 +28,10 @@ export const SESSIONS_BASE = path.join(os.homedir(), '.claude', 'bridge-sessions
  */
 export function sanitizeDirName(userPath: string): string {
   return userPath
-    .replace(/^[A-Za-z]:/, (m) => m.charAt(0))   // C: → C
-    .replace(/[\\/:*?"<>|]+/g, '_')      // unsafe chars → underscore
-    .replace(/_+/g, '_')                 // collapse multiple underscores
-    .replace(/^_|_$/g, '')               // trim leading/trailing underscores
+    .replace(/^[A-Za-z]:/, (m) => m.charAt(0)) // C: → C
+    .replace(/[\\/:*?"<>|]+/g, '_') // unsafe chars → underscore
+    .replace(/_+/g, '_') // collapse multiple underscores
+    .replace(/^_|_$/g, '') // trim leading/trailing underscores
     .slice(0, 80)
 }
 
@@ -52,14 +52,32 @@ export function ensureTrustFlags(settingsDir: string): void {
   let changed = false
 
   // Global onboarding flags
-  if (!claudeJson.hasCompletedOnboarding) { claudeJson.hasCompletedOnboarding = true; changed = true }
-  if (!claudeJson.hasTrustDialogAccepted) { claudeJson.hasTrustDialogAccepted = true; changed = true }
-  if (!claudeJson.hasCompletedProjectOnboarding) { claudeJson.hasCompletedProjectOnboarding = true; changed = true }
+  if (!claudeJson.hasCompletedOnboarding) {
+    claudeJson.hasCompletedOnboarding = true
+    changed = true
+  }
+  if (!claudeJson.hasTrustDialogAccepted) {
+    claudeJson.hasTrustDialogAccepted = true
+    changed = true
+  }
+  if (!claudeJson.hasCompletedProjectOnboarding) {
+    claudeJson.hasCompletedProjectOnboarding = true
+    changed = true
+  }
 
   // Suppress effort level selection dialog
-  if (!claudeJson.effortCalloutDismissed) { claudeJson.effortCalloutDismissed = true; changed = true }
-  if (!claudeJson.effortCalloutV2Dismissed) { claudeJson.effortCalloutV2Dismissed = true; changed = true }
-  if (!claudeJson.numStartups || (claudeJson.numStartups as number) <= 1) { claudeJson.numStartups = 5; changed = true }
+  if (!claudeJson.effortCalloutDismissed) {
+    claudeJson.effortCalloutDismissed = true
+    changed = true
+  }
+  if (!claudeJson.effortCalloutV2Dismissed) {
+    claudeJson.effortCalloutV2Dismissed = true
+    changed = true
+  }
+  if (!claudeJson.numStartups || (claudeJson.numStartups as number) <= 1) {
+    claudeJson.numStartups = 5
+    changed = true
+  }
 
   // Per-project trust for the settingsDir
   if (!claudeJson.projects || typeof claudeJson.projects !== 'object') {
@@ -167,7 +185,7 @@ export function writeSessionSettings(
   )
 
   const settings: Record<string, unknown> = {
-    permissions: { deny: DISALLOWED_BUILTIN_TOOLS },
+    permissions: { deny: settingsDenyRules() },
   }
   if (Object.keys(rewrittenHooks).length > 0) {
     settings.hooks = rewrittenHooks
@@ -189,10 +207,7 @@ export function writeSessionSettings(
       MCP_TOOL_TIMEOUT: '100000000',
     },
   }
-  fs.writeFileSync(
-    path.join(claudeDir, 'settings.local.json'),
-    JSON.stringify(localSettings, null, 2),
-  )
+  fs.writeFileSync(path.join(claudeDir, 'settings.local.json'), JSON.stringify(localSettings, null, 2))
 
   ensureTrustFlags(settingsDir)
 
@@ -201,6 +216,19 @@ export function writeSessionSettings(
     mcpUrl,
     settings: path.join(claudeDir, 'settings.json'),
   })
+}
+
+/**
+ * Built-in tools denied through settings.json. Same list as the CLI's
+ * `--disallowedTools` except `Read`: Claude CLI 2.1.296 applies a settings
+ * `Read` deny rule to instruction-file loading, so the session cwd's
+ * CLAUDE.md (synced project instructions, AGENTS.md fallback) was silently
+ * never loaded. A `--disallowedTools Read` CLI rule still removes the native
+ * Read tool but does not block instruction files (verified in Podman with
+ * CLI 2.1.296), so the native tool stays disabled.
+ */
+export function settingsDenyRules(): string[] {
+  return getDisallowedBuiltinTools().filter((tool) => tool !== 'Read')
 }
 
 export function writeSessionClaudeMd(settingsDir: string, userCwd: string): void {
@@ -259,8 +287,15 @@ export function stripSyncedBlocks(
     const trimmed = line.trim()
     const isOurHeading = headings.includes(trimmed)
     const isOtherHeading = !isOurHeading && /^# [^\s]/.test(trimmed) && !trimmed.endsWith('(synced)')
-    if (isOurHeading) { skipping = true; continue }
-    if (skipping && isOtherHeading) { skipping = false; out.push(line); continue }
+    if (isOurHeading) {
+      skipping = true
+      continue
+    }
+    if (skipping && isOtherHeading) {
+      skipping = false
+      out.push(line)
+      continue
+    }
     if (skipping) continue
     out.push(line)
   }
@@ -280,16 +315,10 @@ export function copyDirRecursive(src: string, dest: string): void {
 
 /** Rebuild the exact effective skills tree for one live or new session.
  * User skills form the base and project skills override matching paths. */
-export function refreshSessionSkills(
-  settingsDir: string,
-  tokenId: string,
-  userCwd: string | undefined,
-): void {
+export function refreshSessionSkills(settingsDir: string, tokenId: string, userCwd: string | undefined): void {
   const destination = path.join(settingsDir, '.claude', 'skills')
   const userSource = path.join(getUserSyncDir(tokenId), 'skills')
-  const projectSource = userCwd
-    ? path.join(getProjectSyncDir(tokenId, userCwd), 'skills')
-    : null
+  const projectSource = userCwd ? path.join(getProjectSyncDir(tokenId, userCwd), 'skills') : null
 
   replaceSkillsOverlay(destination, userSource, projectSource)
   debugLog('[sync] Rebuilt effective session skills', {
@@ -299,11 +328,27 @@ export function refreshSessionSkills(
   })
 }
 
+/** Claude CLI instruction precedence for one directory: the primary file
+ *  when it exists (even empty, it still counts as "has CLAUDE.md"),
+ *  otherwise the AGENTS.md fallback. */
+export function pickInstructionFile(
+  dir: string,
+  primary: string,
+  fallback: string,
+): { name: string; content: string } | null {
+  for (const name of [primary, fallback]) {
+    const file = path.join(dir, name)
+    if (fs.existsSync(file)) return { name, content: fs.readFileSync(file, 'utf-8') }
+  }
+  return null
+}
+
 /**
  * Apply per-token synced data (user-level and project-level) to a session's CWD.
  * - User/project skills → exact session-local overlay
  * - User agents/commands → copied into the session-local .claude/
- * - User CLAUDE.md → appended to session CLAUDE.md (idempotent strip+append)
+ * - User CLAUDE.md (or AGENTS.md without one) → appended to session CLAUDE.md (idempotent strip+append)
+ * - Project CLAUDE.md pair, or the AGENTS.md pair when the project has no CLAUDE.md → CLAUDE.md slots
  * - Project files → copied into settingsDir (except .mcp.json and settings.json)
  */
 export function applySyncData(settingsDir: string, tokenId: string, userCwd: string | undefined): void {
@@ -335,16 +380,21 @@ export function applySyncData(settingsDir: string, tokenId: string, userCwd: str
       fs.rmSync(sessionPlugins, { recursive: true, force: true })
       if (fs.existsSync(syncedPlugins)) copyDirRecursive(syncedPlugins, sessionPlugins)
 
-      // Append user CLAUDE.md (idempotent strip + append)
-      const userClaudeMd = path.join(userDir, 'CLAUDE.md')
-      if (fs.existsSync(userClaudeMd)) {
+      // Append user instructions (idempotent strip + append): CLAUDE.md, or
+      // AGENTS.md when the user has no CLAUDE.md (same rule as the project).
+      const userInstructions = pickInstructionFile(userDir, 'CLAUDE.md', 'AGENTS.md')
+      if (userInstructions) {
         const sessionClaudeMd = path.join(settingsDir, 'CLAUDE.md')
-        const userContent = fs.readFileSync(userClaudeMd, 'utf-8')
+        const userContent = userInstructions.content
         if (userContent.trim()) {
           const existingRaw = fs.existsSync(sessionClaudeMd) ? fs.readFileSync(sessionClaudeMd, 'utf-8') : ''
           const cleaned = stripSyncedBlocks(existingRaw)
-          fs.writeFileSync(sessionClaudeMd, cleaned.trimEnd() + '\n\n# User Instructions (synced)\n\n' + userContent, 'utf-8')
-          debugLog('[sync] Appended user CLAUDE.md', { tokenId: hash })
+          fs.writeFileSync(
+            sessionClaudeMd,
+            cleaned.trimEnd() + '\n\n# User Instructions (synced)\n\n' + userContent,
+            'utf-8',
+          )
+          debugLog('[sync] Appended user instructions', { tokenId: hash, source: userInstructions.name })
         }
       }
 
@@ -372,28 +422,60 @@ export function applySyncData(settingsDir: string, tokenId: string, userCwd: str
         copyIfPresent(path.join(projDir, 'agents'), path.join(claudeDir, 'agents'), 'agents')
         copyIfPresent(path.join(projDir, 'commands'), path.join(claudeDir, 'commands'), 'commands')
 
-        // Append project CLAUDE.md to session CLAUDE.md (idempotent — strips
-        // any prior `# Project Instructions (synced)` block first).
-        const projClaudeMd = path.join(projDir, 'CLAUDE.md')
-        if (fs.existsSync(projClaudeMd)) {
-          const sessionClaudeMd = path.join(settingsDir, 'CLAUDE.md')
-          const projContent = fs.readFileSync(projClaudeMd, 'utf-8')
-          if (projContent.trim()) {
-            const existingRaw = fs.existsSync(sessionClaudeMd) ? fs.readFileSync(sessionClaudeMd, 'utf-8') : ''
-            const cleaned = stripSyncedBlocks(existingRaw, { stripUser: false, stripProject: true })
-            fs.writeFileSync(sessionClaudeMd, cleaned.trimEnd() + '\n\n# Project Instructions (synced)\n\n' + projContent, 'utf-8')
-            debugLog('[sync] Appended project CLAUDE.md', { tokenId: hash, project: userCwd })
+        // Project instructions follow Claude CLI's AGENTS.md rule (2.1.277,
+        // default `claude-md-or-agents-md`): a project with no CLAUDE.md of
+        // its own uses AGENTS.md exactly where CLAUDE.md would be. The CLI
+        // cannot apply that rule itself here: its cwd is settingsDir, whose
+        // Bridge-written CLAUDE.md always exists. So Bridge resolves it.
+        const hasProjectClaudeMd =
+          fs.existsSync(path.join(projDir, 'CLAUDE.md')) || fs.existsSync(path.join(projDir, '.claude', 'CLAUDE.md'))
+        const rootName = hasProjectClaudeMd ? 'CLAUDE.md' : 'AGENTS.md'
+        const dotRel = path.join('.claude', rootName)
+
+        // Raw AGENTS.md beside a project CLAUDE.md is kept too: under the
+        // CLI default it is ignored (CLAUDE.md wins), with instructionFiles
+        // `claude-md-and-agents-md` the CLI loads it. In the fallback case the
+        // content already sits in the CLAUDE.md slots, so no raw copy (no
+        // double load).
+        for (const rel of ['AGENTS.md', path.join('.claude', 'AGENTS.md')]) {
+          const dst = path.join(settingsDir, rel)
+          fs.rmSync(dst, { force: true })
+          const src = path.join(projDir, rel)
+          if (hasProjectClaudeMd && fs.existsSync(src)) {
+            fs.mkdirSync(path.dirname(dst), { recursive: true })
+            fs.copyFileSync(src, dst)
+            debugLog('[sync] Mirrored project AGENTS.md beside CLAUDE.md', { tokenId: hash, file: rel })
           }
         }
 
-        // Copy .claude/CLAUDE.md into session's .claude/CLAUDE.md
-        const projDotClaudeMd = path.join(projDir, '.claude', 'CLAUDE.md')
-        if (fs.existsSync(projDotClaudeMd)) {
+        // Append project instructions to session CLAUDE.md (idempotent —
+        // strips any prior `# Project Instructions (synced)` block first).
+        const projRootFile = path.join(projDir, rootName)
+        if (fs.existsSync(projRootFile)) {
+          const sessionClaudeMd = path.join(settingsDir, 'CLAUDE.md')
+          const projContent = fs.readFileSync(projRootFile, 'utf-8')
+          if (projContent.trim()) {
+            const existingRaw = fs.existsSync(sessionClaudeMd) ? fs.readFileSync(sessionClaudeMd, 'utf-8') : ''
+            const cleaned = stripSyncedBlocks(existingRaw, { stripUser: false, stripProject: true })
+            fs.writeFileSync(
+              sessionClaudeMd,
+              cleaned.trimEnd() + '\n\n# Project Instructions (synced)\n\n' + projContent,
+              'utf-8',
+            )
+            debugLog('[sync] Appended project instructions', { tokenId: hash, project: userCwd, source: rootName })
+          }
+        }
+
+        // Copy .claude/CLAUDE.md (or, without any project CLAUDE.md,
+        // .claude/AGENTS.md) into the session's .claude/CLAUDE.md slot.
+        const projDotFile = path.join(projDir, dotRel)
+        if (fs.existsSync(projDotFile)) {
           const target = path.join(claudeDir, 'CLAUDE.md')
-          const content = fs.readFileSync(projDotClaudeMd, 'utf-8')
+          const content = fs.readFileSync(projDotFile, 'utf-8')
           if (content.trim()) {
+            fs.mkdirSync(claudeDir, { recursive: true })
             fs.writeFileSync(target, content, 'utf-8')
-            debugLog('[sync] Copied project .claude/CLAUDE.md', { tokenId: hash, project: userCwd })
+            debugLog('[sync] Copied project .claude instructions', { tokenId: hash, project: userCwd, source: dotRel })
           }
         }
 
