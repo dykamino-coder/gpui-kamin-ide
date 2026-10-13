@@ -169,7 +169,6 @@ impl RootView {
             | ShellEvent::ToggleTabsOverflow { .. }
             | ShellEvent::ActivityClicked { .. }
             | ShellEvent::ToggleSidebar
-            | ShellEvent::ToggleInactive { .. }
             | ShellEvent::OverwriteLayoutPreset { .. }
             | ShellEvent::ExportPreset { .. }
             | ShellEvent::ExportPresets

@@ -1,4 +1,4 @@
-//! Шапка проекта и переключатель неактивных сессий.
+//! Шапка группы проекта.
 //!
 //! Перенесено без изменения поведения (`plan/100-refactor-250.md`).
 
@@ -12,42 +12,6 @@ use kamin_metrics as m;
 use kamin_theme::Palette;
 use smol::channel::Sender;
 
-/// Строка "N inactive sessions" toggle.
-pub(crate) fn inactive_toggle(
-    count: usize,
-    open: bool,
-    id: String,
-    tx: &Sender<ShellEvent>,
-    p: &Palette,
-) -> AnyElement {
-    let hf = rgba(p.text_secondary);
-    let tx = tx.clone();
-    div()
-        .id(SharedString::from(format!("inact-{id}")))
-        .flex()
-        .items_center()
-        .gap(px(6.0))
-        .w_full()
-        .pl(px(18.0))
-        .pr(px(8.0))
-        .py(px(3.0))
-        .text_size(px(m::FS_SM))
-        .text_color(rgba(p.text_disabled))
-        .cursor_pointer()
-        .hover(move |s| s.text_color(hf))
-        .on_mouse_down(gpui::MouseButton::Left, move |_, _, _| {
-            let _ = tx.try_send(ShellEvent::ToggleInactive(id.clone()));
-        })
-        .child(codicon(
-            if open { CHEVRON_DOWN } else { CHEVRON_RIGHT },
-            12.0,
-        ))
-        .child(format!(
-            "{count} inactive session{}",
-            if count == 1 { "" } else { "s" }
-        ))
-        .into_any_element()
-}
 // Компонент дизайн-системы: аргументы — его пропсы.
 #[allow(clippy::too_many_arguments)]
 /// Заголовок группы проекта — 26px, chevron + folder-icon + name + count-badge.
@@ -166,14 +130,26 @@ pub(crate) fn project_header(
                     16.0,
                 )),
         )
-        .child(
+        .child(if folder_path.is_some_and(|f| !f.is_empty()) {
             // Catppuccin folder-иконка ПО ИМЕНИ папки (TreeIcon оригинала:
             // Downloads со стрелкой, test с карандашом и т.д.)
             crate::icon_theme::folder_img(name, !collapsed, false)
                 .flex_shrink_0()
                 .w(px(16.0))
-                .h(px(16.0)),
-        )
+                .h(px(16.0))
+                .into_any_element()
+        } else {
+            // «No folder» — пустой кружок, как у пункта «No folder session»
+            // в меню «+» (решение владельца, 2026-10-13)
+            div()
+                .flex_shrink_0()
+                .w(px(16.0))
+                .flex()
+                .justify_center()
+                .text_color(rgba(p.text_muted))
+                .child(codicon("\u{ebb5}", 16.0)) // codicon-circle-large-outline
+                .into_any_element()
+        })
         .child(
             div()
                 .flex_1()

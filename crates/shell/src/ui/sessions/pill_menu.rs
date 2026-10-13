@@ -5,8 +5,8 @@
 use crate::colors::rgba;
 use crate::colors::tint;
 use crate::host_link::{self, ShellEvent};
-use crate::ui::icon::{ADD, FA_CIRCLE_PLUS, fa};
-use crate::ui::sessions::glyphs::{DISCONNECT, EDIT, TRASH};
+use crate::ui::icon::{ADD, codicon};
+use crate::ui::sessions::glyphs::{DISCONNECT, EDIT, FOLDER_OPENED, TRASH};
 use crate::ui::sessions::pill::{pill_btn, pill_wrap};
 use gpui::prelude::*;
 use gpui::{AnyElement, SharedString, div, px};
@@ -92,9 +92,12 @@ pub fn session_actions_pill(s: &Session, tx: &Sender<ShellEvent>, p: &Palette) -
     ))
     .into_any_element()
 }
-/// Полноширинная action-строка (No folder / New session).
+/// Полноширинная action-строка (New session (folder…) / No folder session).
+/// Иконки и подписи — те же, что в меню «+» титлбара (решение владельца,
+/// 2026-10-13): codicon folder-opened и circle-large-outline.
 pub(crate) fn action_row(
     label: &'static str,
+    glyph: &'static str,
     p: &Palette,
     on_click: impl Fn() + 'static,
 ) -> AnyElement {
@@ -126,7 +129,7 @@ pub(crate) fn action_row(
         .on_mouse_down(gpui::MouseButton::Left, move |_, _, _| on_click())
         .child(
             // `.action:hover > i { color: var(--text-primary) }`
-            fa(FA_CIRCLE_PLUS, 16.0)
+            codicon(glyph, 16.0)
                 .w(px(20.0))
                 .text_color(rgba(p.text_muted))
                 .group_hover(group, move |s| s.text_color(hf)),
@@ -134,16 +137,30 @@ pub(crate) fn action_row(
         .child(label)
         .into_any_element()
 }
-/// Hover-пилюля действий группы проекта: add-session + delete-project.
+/// Ширина пилюли проекта для клампа: кнопки по 24, gap 2, p 3×2, border 1×2.
+pub fn project_actions_pill_width(has_folder: bool) -> f32 {
+    let n = if has_folder { 3.0 } else { 2.0 };
+    n * 24.0 + (n - 1.0) * 2.0 + 8.0
+}
+/// Hover-пилюля действий группы проекта: add-session + reveal-folder (если
+/// у проекта есть папка) + delete-project.
 pub fn project_actions_pill(
     pid: &str,
     name: &str,
+    folder_path: Option<&str>,
     count: usize,
     tx: &Sender<ShellEvent>,
     p: &Palette,
 ) -> AnyElement {
-    pill_wrap(format!("pill-p-{pid}"), p)
-        .child(pill_btn(format!("padd-{pid}"), ADD, "New session here", Some(rgba(p.accent_primary)), false, 14.0, p, {
+    let mut pill = pill_wrap(format!("pill-p-{pid}"), p).child(pill_btn(
+        format!("padd-{pid}"),
+        ADD,
+        "New session here",
+        Some(rgba(p.accent_primary)),
+        false,
+        14.0,
+        p,
+        {
             let pid = pid.to_string();
             move || {
                 let pid = pid.clone();
@@ -153,8 +170,27 @@ pub fn project_actions_pill(
                     }
                 });
             }
-        }))
-        .child(pill_btn(format!("pdel-{pid}"), TRASH, "Delete project + its sessions", Some(rgba(p.accent_red)), true, 14.0, p, {
+        },
+    ));
+    if let Some(folder) = folder_path.filter(|f| !f.is_empty()) {
+        // Открыть папку проекта в Проводнике (решение владельца, 2026-10-13)
+        let win_path = folder.replace('/', "\\");
+        pill = pill.child(pill_btn(
+            format!("pdir-{pid}"),
+            FOLDER_OPENED,
+            "Reveal in File Explorer",
+            None,
+            false,
+            14.0,
+            p,
+            move || {
+                let _ = std::process::Command::new("explorer.exe")
+                    .arg(&win_path)
+                    .spawn();
+            },
+        ));
+    }
+    pill.child(pill_btn(format!("pdel-{pid}"), TRASH, "Delete project + its sessions", Some(rgba(p.accent_red)), true, 14.0, p, {
             let tx = tx.clone();
             let pid = pid.to_string();
             let name = name.to_string();
