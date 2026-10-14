@@ -45,7 +45,7 @@ const HANDOFF_COMPACT_INSTRUCTIONS =
  *  cumulative session cost. Wedged into the chat header so it's always
  *  visible without pulling focus. Click the "Compact" button to pipe a
  *  `/compact` slash command straight to the PTY when context is high. */
-export function SessionStats({ variant = 'strip' }: { variant?: 'strip' | 'pills' } = {}): JSX.Element | null {
+export function SessionStats({ variant = 'strip', meters = true }: { variant?: 'strip' | 'pills'; meters?: boolean } = {}): JSX.Element | null {
   const bridge = useBridge()
 
   const stats = useComputed(() => {
@@ -129,20 +129,21 @@ export function SessionStats({ variant = 'strip' }: { variant?: 'strip' | 'pills
 
   if (variant === 'pills') {
     // Pills for the row under the chat input (UsageLimitsRow): context meter +
-    // tokens, cost, and Compact once the context is in the warn band.
+    // tokens, cost, and Compact once the context is in the warn band. The row
+    // drops the meters (`meters=false`) when the pills do not fit on one line.
     const meterColor = band === 'ok' ? 'var(--accent-green)' : barColor
     const costText = costSettling ? '…' : formatCost(s.cost)
     return (
       <>
         <span data-tooltip={contextTooltip} title={contextTooltip} style={CHIP_STYLE}>
           <span style={CHIP_LABEL_STYLE}>ctx</span>
-          {s.pct !== null && (
+          {meters && s.pct !== null && (
             <span aria-hidden="true" style={METER_TRACK_STYLE}>
               <span style={meterFillStyle(s.pct, meterColor)} />
             </span>
           )}
           {s.pct !== null && (
-            <span style={`color:${pctColor};font-weight:600`}>{s.freshness === 'compact' ? '≈' : ''}{s.pct}%</span>
+            <span style={`color:${meters ? pctColor : meterColor};font-weight:600`}>{s.freshness === 'compact' ? '≈' : ''}{s.pct}%</span>
           )}
           <span style="color:var(--text-disabled)">{contextText}</span>
         </span>
