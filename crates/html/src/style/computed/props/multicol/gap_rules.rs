@@ -27,6 +27,18 @@ pub(super) fn gap_style(t: &str) -> Option<bool> {
     }
 }
 
+/// Line kind of one rule style (css-gaps-1 §color-style-width: styles as
+/// for borders): 1 `dashed`, 2 `dotted`, 3 `double`, 0 the solid-like rest.
+pub(super) fn gap_kind(v: &str) -> Option<u8> {
+    gap_style(v)?;
+    Some(match v.trim().to_ascii_lowercase().as_str() {
+        "dashed" => 1,
+        "dotted" => 2,
+        "double" => 3,
+        _ => 0,
+    })
+}
+
 /// Цвет линейки; `currentcolor` — `None` (цвет текста контейнера).
 pub(super) fn gap_color(t: &str) -> Option<Option<Color>> {
     let t = t.trim();
@@ -176,18 +188,46 @@ impl Computed {
             && split_outside_parens(v)
                 .iter()
                 .any(|t| t.trim().eq_ignore_ascii_case("double"));
+        let kinds = gap_list(v, |e| {
+            let toks = split_outside_parens(e);
+            gap_rule(e).map(|_| toks.iter().find_map(|t| gap_kind(t)).unwrap_or(0))
+        });
         for column in [true, false] {
             if (column && key == "row-rule") || (!column && key == "column-rule") {
                 continue;
             }
             if column {
                 self.column_rule_double = double;
+                self.column_rule_kinds = kinds.clone();
             } else {
                 self.row_rule_double = double;
+                self.row_rule_kinds = kinds.clone();
             }
             self.set_gap_widths(column, &widths);
             self.set_gap_styles(column, &styles);
             self.set_gap_colors(column, &colors);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::style::computed::{Computed, GapList};
+
+    #[test]
+    fn dashed_and_dotted_rule_styles_are_kept_per_axis() {
+        let mut c = Computed::default();
+        c.apply_one("column-rule", "10px dotted pink");
+        c.apply_one("row-rule-style", "dashed");
+        let kind = |l: &Option<GapList<u8>>, k| l.as_ref().and_then(|l| l.at(k, 3));
+        assert_eq!(kind(&c.column_rule_kinds, 0), Some(2));
+        assert_eq!(kind(&c.row_rule_kinds, 0), Some(1));
+        c.apply_one("rule-style", "solid");
+        assert_eq!(kind(&c.column_rule_kinds, 0), Some(0));
+        c.apply_one("column-rule-style", "solid, dotted, double");
+        let got: Vec<_> = (0..3).map(|k| kind(&c.column_rule_kinds, k)).collect();
+        assert_eq!(got, [Some(0), Some(2), Some(3)]);
+        c.apply_one("row-rule", "5px dashed red, repeat(2, blue 1px double)");
+        assert_eq!(kind(&c.row_rule_kinds, 2), Some(3));
     }
 }

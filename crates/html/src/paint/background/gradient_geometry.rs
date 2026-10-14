@@ -51,7 +51,10 @@ impl Geometry {
         let pos = parse_pos_words(position);
         let center = (len_px(pos.x, size.0)?, len_px(pos.y, size.1)?);
         let words = super::split_top(shape);
-        let explicit: Vec<_> = words.iter().filter_map(|w| Len::parse_mixed(w)).collect();
+        let explicit: Vec<_> = words
+            .iter()
+            .filter_map(|w| Len::parse_mixed(w).filter(|l| !l.needs_unit_context()))
+            .collect();
         let circle =
             words.contains(&"circle") || (explicit.len() == 1 && !words.contains(&"ellipse"));
         let radii = if let Some(first) = explicit.first() {

@@ -184,6 +184,11 @@ impl Computed {
                 }
             }
             "accent-color" => self.accent_color = Color::parse(v),
+            "appearance" | "-webkit-appearance" => {
+                if let Some(a) = crate::style::computed::Appearance::parse(v) {
+                    self.appearance = Some(a);
+                }
+            }
 
             _ => self.apply_effects_timing(key, val, v, hit),
         }

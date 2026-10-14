@@ -91,7 +91,12 @@ impl Len {
         // разбираются тем же выражением, что и `calc()` — функцию сравнения
         // понимает `Calc::factor`. Прежде запись падала в `css_number` и
         // объявление роняло: `height: max(calc(100%))` оставляло 0 (`calc-in-max`).
-        if lower.starts_with("min(") || lower.starts_with("max(") || lower.starts_with("clamp(") {
+        // round()/abs()/sin()… на верхнем уровне — тоже выражение (§10.3–§10.8).
+        if lower.starts_with("min(")
+            || lower.starts_with("max(")
+            || lower.starts_with("clamp(")
+            || calc_math::is_math_fn(&lower)
+        {
             return parse_calc(&lower);
         }
         // Имена единиц регистронезависимы (css-values-4 §6: «unit identifiers
@@ -102,6 +107,10 @@ impl Len {
         let s = lower.as_str();
         if let Some(inner) = s.strip_prefix("calc(").and_then(|r| r.strip_suffix(')')) {
             return parse_calc(inner);
+        }
+        // `vmin`/`vi`/`svh`/`cqw`… (css-values-4 §6.1.2, css-conditional-5).
+        if let Some(l) = units::parse_unit(s) {
+            return Some(l);
         }
         for (suffix, unit) in [
             ("vh", Len::Vh as fn(f32) -> Len),
