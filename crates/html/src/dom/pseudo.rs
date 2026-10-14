@@ -42,6 +42,10 @@ pub(super) fn syntax_accepts(syntax: &str, value: &str) -> bool {
 /// разбор стиля отдаёт голый путь. `None` — файла нет: такая картинка коробки
 /// не даёт (Servo `components/layout/replaced.rs:348`).
 pub(crate) fn content_image_src(src: &str) -> Option<String> {
+    if let Some((image, _)) = crate::paint::background::filter_image::parse(src) {
+        content_image_src(&image)?;
+        return Some(src.to_string());
+    }
     if src.starts_with("data:") {
         return Some(src.to_string());
     }

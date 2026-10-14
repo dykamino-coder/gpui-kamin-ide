@@ -66,6 +66,10 @@ impl Computed {
                         // слоем картинки, и градиент туда идёт источником.
                         self.gradient_raw = Some(v.to_string());
                     }
+                } else if crate::paint::background::filter_image::parse(v).is_some() {
+                    // Filter the rendered image, preserving gradient geometry,
+                    // rather than rewriting its stops before interpolation.
+                    self.bg_image = Some(v.trim().to_string());
                 } else if let Some(rest) = v.strip_prefix("filter(") {
                     // `filter(<image>, <filter-list>)` (filter-effects-1 §12):
                     // фильтр применяется К КАРТИНКЕ, не к элементу — цвета

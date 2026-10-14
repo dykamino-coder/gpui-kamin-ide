@@ -120,7 +120,7 @@ impl Paragraph {
         if (k - 1.0).abs() < 0.001 {
             return;
         }
-        remember_fit(self.measure_key(), k);
+        remember_fit(self.fit_key(), k);
         self.scale_by(k);
     }
 
@@ -134,7 +134,7 @@ impl Paragraph {
         if self.fit.is_none() {
             return;
         }
-        let key = self.measure_key();
+        let key = self.fit_key();
         if let Some(k) = FITTED.with(|c| {
             c.borrow()
                 .iter()
@@ -144,6 +144,20 @@ impl Paragraph {
             self.scale_by(k);
         }
         self.fit = None;
+    }
+
+    /// Key of the fitted multiplier: the measure key plus the `text-fit`
+    /// value, so equal paragraphs with different targets do not share one
+    /// multiplier (`text-fit/shrink-per-line-all`: `75%` beside no limit).
+    fn fit_key(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.measure_key().hash(&mut h);
+        if let Some(f) = self.fit {
+            (f.grow, f.shrink, f.per_line, f.all).hash(&mut h);
+            f.target.map(f32::to_bits).hash(&mut h);
+        }
+        h.finish()
     }
 
     /// Помножить всё, что задаёт размер набора.

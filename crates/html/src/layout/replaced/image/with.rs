@@ -60,7 +60,11 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         Ok(value) => return value,
         Err(d) => d,
     };
-    if src.starts_with("data:") || src.starts_with("file:") || src.starts_with('/') {
+    if src.starts_with("data:")
+        || src.starts_with("file:")
+        || src.starts_with('/')
+        || crate::paint::background::filter_image::parse(src).is_some()
+    {
         // Локальный файл отдаётся ПУТЁМ, а не строкой адреса. Строку со схемой
         // `file:` система разбирает как сетевой адрес и уходит его скачивать —
         // ничего не приходит, и картинка молча не рисуется вовсе. Ровно на

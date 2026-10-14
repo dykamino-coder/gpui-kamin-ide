@@ -25,7 +25,10 @@ pub(super) fn paint_tile(
         (source.width.0 as f32, source.height.0 as f32),
         (f32::from(bounds.size.width), f32::from(bounds.size.height)),
         window.current_transformation().rotation_scale,
-        matches!(source_kind, super::Source::Raster(_)),
+        matches!(
+            source_kind,
+            super::Source::Raster(_) | super::Source::Filtered { .. }
+        ),
     );
     if sampling == ImageSampling::Nearest
         && window.current_transformation() == gpui::TransformationMatrix::unit()
@@ -35,7 +38,12 @@ pub(super) fn paint_tile(
     }
     // css-images-3 §image-rendering: a `pixelated` raster is scaled by
     // nearest neighbour; edges still snap like any untransformed tile.
-    if pixelated && matches!(source_kind, super::Source::Raster(_)) {
+    if pixelated
+        && matches!(
+            source_kind,
+            super::Source::Raster(_) | super::Source::Filtered { .. }
+        )
+    {
         let sampling = if window.current_transformation() == gpui::TransformationMatrix::unit() {
             ImageSampling::NearestSnapped
         } else {
@@ -59,7 +67,9 @@ pub(super) fn paint_tile(
         && window.current_transformation() == gpui::TransformationMatrix::unit()
         && matches!(
             source_kind,
-            super::Source::Vector { .. } | super::Source::Raster(_)
+            super::Source::Vector { .. }
+                | super::Source::Raster(_)
+                | super::Source::Filtered { .. }
         ) {
         // CSS Images 3 §image-rendering permits bilinear smooth scaling.
         // Filtering straight RGB darkens an opaque color beside transparent

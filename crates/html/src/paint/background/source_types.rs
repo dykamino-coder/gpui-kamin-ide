@@ -15,6 +15,11 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub enum Source {
     Raster(Arc<RenderImage>),
+    /// Filter after resolving the input image at its concrete object size.
+    Filtered {
+        image: Box<Source>,
+        list: String,
+    },
     Vector {
         markup: String,
         size: Intrinsic,
@@ -57,6 +62,18 @@ impl Source {
         self.raster(tile)
     }
 
+    pub(crate) fn sampled_raster(
+        &self,
+        tile: (f32, f32),
+        pixelated: bool,
+    ) -> Option<Arc<RenderImage>> {
+        if let Source::Filtered { image, list } = self {
+            super::filtered_raster::raster(image, list, tile, pixelated)
+        } else {
+            self.raster(tile)
+        }
+    }
+
     /// Своя величина картинки.
     pub fn intrinsic(&self) -> Intrinsic {
         match self {
@@ -69,6 +86,7 @@ impl Source {
                     ratio: Some(w / h),
                 }
             }
+            Source::Filtered { image, .. } => image.intrinsic(),
             Source::Vector { size, .. } => *size,
             Source::Gradient { .. } | Source::Shape { .. } => Intrinsic {
                 w: None,
@@ -82,6 +100,9 @@ impl Source {
     pub fn raster(&self, tile: (f32, f32)) -> Option<Arc<RenderImage>> {
         match self {
             Source::Raster(image) => Some(image.clone()),
+            Source::Filtered { image, list } => {
+                super::filtered_raster::raster(image, list, tile, false)
+            }
             Source::Vector { markup, .. } => {
                 if let Some(color) = super::flat_vector::color(markup, tile) {
                     return gpui::bgra_bytes_to_image(

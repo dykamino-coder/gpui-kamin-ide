@@ -3,8 +3,8 @@
 //! Filter Effects 1 §13 ("Filter CSS <image> values"): the filter list runs
 //! on the input image and the result keeps the input's dimensions and origin,
 //! so `drop-shadow()` pixels beyond the image are clipped. Filter regions are
-//! sized by the image's concrete size; this module filters at the natural
-//! raster size, which equals the concrete size for unscaled images.
+//! sized by the image's concrete size; callers resolve and scale the input
+//! before applying the list here.
 
 use gpui::RenderImage;
 use std::sync::Arc;
@@ -15,16 +15,26 @@ pub(crate) fn parse(src: &str) -> Option<(String, String)> {
     let inner = &rest[..rest.rfind(')')?];
     let parts = crate::style::css::split_args(inner);
     let image = parts.first()?.trim();
-    if !image.to_ascii_lowercase().starts_with("url(") || parts.len() < 2 {
+    if parts.len() < 2 {
         return None;
     }
-    let url = crate::style::computed::parse_url(image)?;
-    Some((url, parts[1..].join(" ")))
+    let input = if image.to_ascii_lowercase().starts_with("url(") {
+        crate::style::computed::parse_url(image)?
+    } else if crate::style::computed::parse_gradient(image).is_some() {
+        image.to_string()
+    } else {
+        return None;
+    };
+    Some((input, parts[1..].join(" ")))
 }
 
 /// Applies the filter list to a straight-BGRA raster. Unsupported lists
 /// (blurs, a drop shadow mixed with other functions) yield `None`.
-pub(super) fn apply(image: &Arc<RenderImage>, list: &str) -> Option<Arc<RenderImage>> {
+pub(super) fn apply(
+    image: &Arc<RenderImage>,
+    list: &str,
+    scale: (f32, f32),
+) -> Option<Arc<RenderImage>> {
     let mut style = crate::style::computed::Computed::default();
     style.apply_one("filter", list);
     let calls = list.matches('(').count();
@@ -38,7 +48,10 @@ pub(super) fn apply(image: &Arc<RenderImage>, list: &str) -> Option<Arc<RenderIm
         if calls != 1 || shadow.blur > 0.0 {
             return None;
         }
-        let (dx, dy) = (shadow.x.round() as isize, shadow.y.round() as isize);
+        let (dx, dy) = (
+            (shadow.x * scale.0).round() as isize,
+            (shadow.y * scale.1).round() as isize,
+        );
         let c = shadow.color;
         for y in 0..h {
             for x in 0..w {
