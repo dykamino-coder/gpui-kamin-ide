@@ -142,6 +142,10 @@ pub const BROWSER_CSS: &str = r#"
        to the used size (`widget-percentage-height-001`). */
     select, input[type="checkbox" i], input[type="radio" i] { box-sizing: border-box }
     canvas { background: none; border: none }
+    /* HTML §15.5.4: the first summary is the disclosure widget's list item. */
+    details > summary:first-of-type { display: list-item; counter-increment: list-item 0;
+                                      list-style: disclosure-closed inside }
+    details[open] > summary:first-of-type { list-style-type: disclosure-open }
     mark { background: yellow; color: black }
     textarea { background: white; color: black; white-space: pre-wrap;
                overflow-wrap: break-word; border: 1px solid #767676;

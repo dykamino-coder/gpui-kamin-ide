@@ -116,8 +116,11 @@ fn breaks_inside(e: &Element) -> bool {
         .collect();
     let n = kids.len();
     kids.iter().enumerate().any(|(i, k)| {
-        (i > 0 && k.style.break_before_force)
-            || (i + 1 < n && k.style.break_after_force)
+        // A forced break on a nested first/last child reaches the sibling
+        // edge through `edge_break` (css-break-4 §break-propagation):
+        // `<div><div>A</div><div><p break-before>` breaks before the inner div.
+        (i > 0 && crate::layout::fragment::breaks::edge_break(k, false))
+            || (i + 1 < n && crate::layout::fragment::breaks::edge_break(k, true))
             || breaks_inside(k)
     })
 }

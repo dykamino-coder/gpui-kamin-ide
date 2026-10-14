@@ -95,6 +95,8 @@ pub(super) fn is_pseudo_element(name: &str) -> bool {
             | "scroll-marker"
             | "scroll-marker-group"
             | "scroll-button"
+            // HTML §15.5.4: the `<details>` slot box, `dom::walk::details_content`.
+            | "details-content"
     )
 }
 
