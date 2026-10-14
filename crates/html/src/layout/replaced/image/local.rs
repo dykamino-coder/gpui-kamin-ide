@@ -69,6 +69,7 @@ pub(super) fn local_image_source<'a>(
     let local = src
         .strip_prefix("file:///")
         .or_else(|| src.strip_prefix("file://"))
+        .or_else(|| crate::paint::background::filter_image::parse(src).map(|_| src))
         .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
     let key = crate::paint::background::key(local.unwrap_or(src), &e.style);
     let own = crate::paint::background::source(&key).and_then(|s| match s {
