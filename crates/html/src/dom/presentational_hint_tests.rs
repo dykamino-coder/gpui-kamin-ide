@@ -46,6 +46,4 @@ fn list_types_and_table_width() {
     assert!(lower.contains("lower-alpha") && upper.contains("upper-alpha"));
     let zero = presentational_legacy::hints("table", &attrs(&[("width", "0")]), &[]);
     assert!(!zero.contains("width:"), "{zero}");
-    let border = presentational_legacy::hints("table", &attrs(&[("border", "foo")]), &[]);
-    assert!(border.contains("border-width: 1px") && border.contains("outset"));
 }

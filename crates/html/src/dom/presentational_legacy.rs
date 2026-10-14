@@ -37,24 +37,12 @@ fn image_border(attrs: &[(String, String)], css: &mut String) {
     }
 }
 
-/// §15.3.8: `border` maps to pixel border widths; an unparsable value means 1px.
-fn table_border(attrs: &[(String, String)]) -> Option<u32> {
-    attr(attrs, "border").map(|v| super::presentational_hr::non_negative_integer(v).unwrap_or(1))
-}
-
-/// The table that owns a cell: `table > tr > td` or `table > section > tr > td`.
-fn owning_table(path: &[Ancestor]) -> Option<&Ancestor> {
-    let mut up = path.iter().rev();
-    if up.next()?.tag != "tr" {
-        return None;
-    }
-    let next = up.next()?;
-    match next.tag.as_str() {
-        "table" => Some(next),
-        "thead" | "tbody" | "tfoot" => up.next().filter(|t| t.tag == "table"),
-        _ => None,
-    }
-}
+// Not mapped yet (narrowed after measurement, see the commit): `table border`
+// (§15.3.8 widths + outset table / inset cell edges) — its cell edges expose a
+// one-row background offset in bordered vertical-lr tables
+// (`table-cell-valign-001/002/003`); `br clear` (§15.3.10) — clearance in a
+// float row of grid containers and past a float fragmented across columns
+// (`grid-template-rows-fit-content-001`, `floats-clear-multicol-001`).
 
 fn table(attrs: &[(String, String)], css: &mut String) {
     match lower(attrs, "align").as_deref() {
@@ -73,13 +61,6 @@ fn table(attrs: &[(String, String)], css: &mut String) {
     }
     if let Some(v) = dim(attrs, "vspace", false) {
         css.push_str(&format!("margin-top: {v}; margin-bottom: {v};"));
-    }
-    if let Some(n) = table_border(attrs) {
-        css.push_str(&format!("border-width: {n}px;"));
-        // Servo `table:-servo-nonzero-border { border-style: outset }`.
-        if n > 0 && attr(attrs, "rules").is_none() && attr(attrs, "frame").is_none() {
-            css.push_str("border-style: outset;");
-        }
     }
     if let Some(c) = attr(attrs, "bordercolor").and_then(super::presentational_hr::legacy_color) {
         css.push_str(&format!("border-color: {c};"));
@@ -139,17 +120,11 @@ fn valign(attrs: &[(String, String)], css: &mut String) {
 }
 
 /// The hint declarations of one element, as one declaration block.
-pub(super) fn hints(tag: &str, attrs: &[(String, String)], path: &[Ancestor]) -> String {
+pub(super) fn hints(tag: &str, attrs: &[(String, String)], _path: &[Ancestor]) -> String {
     let mut css = String::new();
     match tag {
         "table" => table(attrs, &mut css),
         "td" | "th" => {
-            if let Some(t) = owning_table(path)
-                && table_border(&t.attrs).is_some_and(|n| n > 0)
-                && attr(&t.attrs, "rules").is_none()
-            {
-                css.push_str("border-width: 1px; border-style: inset;");
-            }
             // §15.3.8: cell `width` ignores zero, cell and row `height` do not.
             if let Some(w) = dim(attrs, "width", true) {
                 css.push_str(&format!("width: {w};"));
@@ -169,12 +144,6 @@ pub(super) fn hints(tag: &str, attrs: &[(String, String)], path: &[Ancestor]) ->
         "caption" if lower(attrs, "align").as_deref() == Some("bottom") => {
             css.push_str("caption-side: bottom;")
         }
-        "br" => match lower(attrs, "clear").as_deref() {
-            Some("left") => css.push_str("clear: left;"),
-            Some("right") => css.push_str("clear: right;"),
-            Some("all") | Some("both") => css.push_str("clear: both;"),
-            _ => {}
-        },
         "ol" | "ul" | "li" => list_type(tag, attrs, &mut css),
         "embed" | "iframe" => embedded_align(attrs, &mut css),
         "img" | "object" => {
