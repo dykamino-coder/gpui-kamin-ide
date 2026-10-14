@@ -1448,6 +1448,10 @@ pub type JustifyContent = AlignContent;
 pub enum Display {
     /// The children will follow the block layout algorithm
     Block,
+    /// KaminIDE patch: a block container that establishes a new block formatting context
+    /// (`display: flow-root`, css-display-3 §2.2): its margins never collapse with its
+    /// children's or through it (CSS 2.1 §8.3.1).
+    FlowRoot,
     /// The children will follow the flexbox layout algorithm
     #[default]
     Flex,
@@ -1598,6 +1602,7 @@ impl From<Display> for taffy::style::Display {
     fn from(value: Display) -> Self {
         match value {
             Display::Block => Self::Block,
+            Display::FlowRoot => Self::FlowRoot,
             Display::Flex => Self::Flex,
             Display::Grid => Self::Grid,
             Display::None => Self::None,
