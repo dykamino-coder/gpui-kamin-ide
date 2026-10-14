@@ -4,7 +4,6 @@ use crate::dom::Element;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::replaced::image::image;
 use crate::layout::replaced::{inline_replaced_position, replaced_content};
-use crate::paint::stacking::stacking_context;
 use crate::render::{RenderOpts, inline_abs_paint_last, styled_div_with};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -78,7 +77,8 @@ pub(super) fn replaced_abs_atom(
             }
         };
     }
-    let below_icb = e.style.z_index.is_some_and(|z| z < 0) && !stacking_context(inherited);
+    let below_icb = e.style.z_index.is_some_and(|z| z < 0)
+        && !crate::paint::stacking::nested_context(inherited);
     if x_set
         && y_set
         && !inline_cb

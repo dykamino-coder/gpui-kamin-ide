@@ -34,6 +34,27 @@ pub(crate) fn stacking_context(c: &Computed) -> bool {
             ))
 }
 
+/// Лежит ли ребёнок коробки `parent` внутри НЕКОРНЕВОГО контекста наложения.
+///
+/// CSS 2.1 прил. E: отрицательный `z-index` красится шагом 3 БЛИЖАЙШЕГО
+/// контекста — сразу после его фона и рамки (Blink `PaintLayerPainter`:
+/// `kSelfBlockBackgroundOnly`, затем `kNegativeZOrderChildren`). Если такой
+/// контекст — корень, коробка ложится под весь поток документа, даже под фон
+/// позиционированного без `z-index` родителя (`fixed-pos-stacking-001`).
+/// Корневой элемент (`root_box`) контекст образует всегда, но корневой.
+/// `fixed`/`sticky` образуют контекст и с `z-index: auto` (css-position-3 §3).
+pub(crate) fn nested_context(parent: &Computed) -> bool {
+    parent.sc_ancestor
+        || (!parent.root_box
+            && (stacking_context(parent)
+                || (parent.z_index.is_some() && parent.parent_flex_grid)
+                || matches!(
+                    parent.position,
+                    Some(crate::style::computed::Position::Fixed)
+                        | Some(crate::style::computed::Position::Sticky)
+                )))
+}
+
 /// Есть ли в поддереве смешивание (`mix-blend-mode` ≠ normal).
 ///
 /// Спуск НЕ останавливается на вложенных контекстах наложения: лишняя
