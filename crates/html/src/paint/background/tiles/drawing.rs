@@ -146,7 +146,12 @@ pub(crate) fn draw_tiles(
         ys = ys.into_iter().step_by(k).collect();
         tile = (tile.0 * k as f32, tile.1 * k as f32);
     }
-    let Some(image) = conic::tile(&found, tile, window.scale_factor()) else {
+    let raster = if matches!(found, super::super::Source::Filtered { .. }) {
+        found.sampled_raster(tile, c.image_pixelated == Some(true))
+    } else {
+        conic::tile(&found, tile, window.scale_factor())
+    };
+    let Some(image) = raster else {
         return;
     };
     // Скругление — у ОБЛАСТИ краски (css-backgrounds-3 §5.3: фон режется

@@ -1,6 +1,6 @@
 //! Локальная картинка: источник, путь объектного вида (object-*), вписывание в коробку.
 
-use super::sized_image;
+use super::{content_radii::content_radii, sized_image};
 use crate::dom::Element;
 use crate::layout::replaced::{replaced_content, replaced_holder_ratio};
 use crate::style::values::value::Len;
@@ -51,11 +51,26 @@ pub(super) fn fit_local_image(
         Some((w, h)) => d.w(px(w + sub_w)).h(px(h + sub_h)),
         None => d,
     };
-    if replaced_holder_ratio::apply(&mut d, &e.style, ratio_of(), узкая.is_some()) {
+    let fills_holder = replaced_holder_ratio::apply(&mut d, &e.style, ratio_of(), узкая.is_some());
+    if fills_holder {
         image = image.size_full().object_fit(gpui::ObjectFit::Fill);
     }
-    d.child(replaced_content::position(image, &e.style))
-        .into_any_element()
+    let image = replaced_content::position(image, &e.style);
+    if let Some(source @ crate::paint::background::Source::Filtered { .. }) =
+        crate::paint::background::source(&crate::paint::background::key(
+            local.unwrap_or(src),
+            &e.style,
+        ))
+    {
+        let mut style = e.style.clone();
+        if fills_holder {
+            style.object_fit = Some("fill".into());
+        }
+        return d
+            .child(super::filtered::FilteredImage::new(image, source, style))
+            .into_any_element();
+    }
+    d.child(image).into_any_element()
     // CSS Images 3 §4.5: object-fit initially fills the content box.
     // Intrinsic sizing above already preserves the natural ratio. Applying
     // contain again to the snapped box introduces unintended letterboxing.
@@ -69,10 +84,14 @@ pub(super) fn local_image_source<'a>(
     let local = src
         .strip_prefix("file:///")
         .or_else(|| src.strip_prefix("file://"))
+        .or_else(|| crate::paint::background::filter_image::parse(src).map(|_| src))
         .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
     let key = crate::paint::background::key(local.unwrap_or(src), &e.style);
     let own = crate::paint::background::source(&key).and_then(|s| match s {
         crate::paint::background::Source::Raster(image) => Some(image),
+        filtered @ crate::paint::background::Source::Filtered { .. } => filtered.raster(
+            crate::paint::background::default_size(filtered.intrinsic(), (300.0, 150.0)),
+        ),
         crate::paint::background::Source::Vector { .. }
         | crate::paint::background::Source::Gradient { .. }
         | crate::paint::background::Source::Shape { .. } => None,
@@ -84,6 +103,7 @@ pub(super) fn local_image_source<'a>(
             .is_some_and(|f| matches!(f, "fill" | "contain" | "cover" | "none" | "scale-down"));
     let mut d = d;
     if !wants_pipe
+        && crate::paint::background::filter_image::parse(src).is_none()
         && let Some(image) = super::grid_measured::measured(e, local.unwrap_or(src), &mut d)
     {
         return Err(image);
@@ -219,31 +239,4 @@ pub(super) fn piped_image(
         }
     }
     Err(d)
-}
-
-/// Радиусы углов края содержимого (tl, tr, br, bl) в точках; круговое
-/// приближение — меньшая из двух осей угла.
-fn content_radii(s: &crate::style::computed::Computed) -> [f32; 4] {
-    // A circular image clip would erase the corner-shaped CSS box contour.
-    if s.corner_shaped() {
-        return [0.0; 4];
-    }
-    let v = |l: Option<Len>| match l {
-        Some(Len::Px(x)) => x.max(0.0),
-        _ => 0.0,
-    };
-    let b = s.borders();
-    let (top, right, bottom, left) = (
-        v(b.top) + v(s.padding.top),
-        v(b.right) + v(s.padding.right),
-        v(b.bottom) + v(s.padding.bottom),
-        v(b.left) + v(s.padding.left),
-    );
-    let inner = |r: f32, h: f32, w: f32| (r - h.max(w)).max(0.0);
-    [
-        inner(v(s.radius.tl), left, top),
-        inner(v(s.radius.tr), right, top),
-        inner(v(s.radius.br), right, bottom),
-        inner(v(s.radius.bl), left, bottom),
-    ]
 }
