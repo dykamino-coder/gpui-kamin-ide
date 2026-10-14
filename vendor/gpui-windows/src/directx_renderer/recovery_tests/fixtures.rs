@@ -40,6 +40,7 @@ pub(super) fn renderer(device: &DirectXDevices) -> DirectXRenderer {
         blend_replace: None,
         width: 16,
         height: 16,
+        backdrop: None,
         skip_draws: false,
     }
 }
