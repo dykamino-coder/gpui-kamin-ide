@@ -121,10 +121,17 @@ pub const BROWSER_CSS: &str = r#"
     fieldset { margin-inline: 2px; border: 2px groove; padding: 0.35em 0.75em 0.625em }
     legend { padding-inline: 2px }
     a[href] { color: #0000ee }
+    /* css-overflow-5: a scroll marker behaves like a link (Blink
+       `scroll_marker.css`: `color: -webkit-link; text-decoration: underline`). */
+    *::scroll-marker { color: #0000ee; text-decoration: underline }
     /* `button` — строчный блок (HTML §15.5.2 «expected to render as an
        'inline-block' box»): без вида кнопка шла строчной коробкой, и доля
        высоты картинки внутри не решалась (`intrinsic-percent-replaced-021`). */
     button { display: inline-block; padding: 1px 6px; border-radius: 0 }
+    /* css-overflow-5 §scroll-buttons: `::scroll-button()`s are styled like
+       `<button>` (Blink `scroll_button.css`). */
+    *::scroll-button(*) { display: inline-block; padding: 1px 6px; border-radius: 0;
+                          box-sizing: border-box }
     /* Widget sizes include their border and padding (Blink html.css and
        Gecko forms.css: `select`, check boxes and radio buttons are
        `box-sizing: border-box`): a percentage size must not add the edges

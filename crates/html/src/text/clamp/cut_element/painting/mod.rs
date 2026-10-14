@@ -2,9 +2,11 @@
 
 mod automatic;
 mod counted;
+mod fit;
 
 use super::ClampCut;
 use super::{ClampEntry, clamp_cut, clamp_para, take_para_rows};
+use crate::text::clamp::line_state::CLAMP_EXTENT;
 use crate::text::clamp::{CLAMP_CUTS, CLAMP_PARA};
 use gpui::{App, Bounds, GlobalElementId, InspectorElementId, Pixels, Window};
 
@@ -47,15 +49,17 @@ impl ClampCut {
         let mut rows: Vec<(f32, f32, bool)> = vec![]; // (верх, низ, считается)
         // (верх, низ, заданная высота, нижние рамка+паддинг)
         let mut blocks: Vec<(f32, f32, bool, f32)> = vec![];
+        let fixed = fit::fixed_blocks(&entries);
+        let fit = |e: &ClampEntry| fit::park_overflow(split(e), e, &fixed);
         for e in &entries {
             let y0 = f32::from(e.bounds.origin.y);
             let h = f32::from(e.bounds.size.height);
             if e.line > 0.0 && h > 0.0 {
-                for (a, b) in split(e) {
+                for (a, b) in fit(e) {
                     rows.push((a, b, !e.skip_count));
                 }
             } else if h > 0.0 {
-                blocks.push((y0, y0 + h, e.fixed_height, e.bp_after));
+                blocks.push((y0 - e.bt_before, y0 + h, e.fixed_height, e.bp_after));
             }
         }
         rows.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -132,7 +136,7 @@ impl ClampCut {
                     if h <= 0.0 {
                         return None;
                     }
-                    let rows = split(e);
+                    let rows = fit(e);
                     // Точка `c` уже стоит на СРЕЗАННОМ низу последней
                     // строки — полный низ этой строки ниже на `trim_end`.
                     let k = rows
@@ -141,7 +145,17 @@ impl ClampCut {
                         .count();
                     (k >= 1).then(|| (rows[k - 1].1, seq, k))
                 })
-                .max_by(|a, b| a.0.total_cmp(&b.0))
+                // The clamp point follows the LAST fitting line in box-tree
+                // order: on equal bottoms the later paragraph wins
+                // (`line-clamp-auto-043`: a line beside an earlier block's
+                // overflow).
+                .max_by(|a, b| {
+                    if (a.0 - b.0).abs() <= 0.5 {
+                        a.1.cmp(&b.1)
+                    } else {
+                        a.0.total_cmp(&b.0)
+                    }
+                })
                 // Пустая блочная коробка между последней строкой и точкой
                 // среза: точка — после неё (последняя возможная), и строка
                 // точке уже не предшествует — знака нет (§5.3).
@@ -178,6 +192,22 @@ impl ClampCut {
                         m.remove(&self.key);
                     }
                 }
+            });
+            window.request_animation_frame();
+        }
+        let extent = fit::extent_before_point(cut.zip(para), &entries, &split, top);
+        let prev_extent = crate::text::clamp::clamp_extent(self.key);
+        let moved = match (prev_extent, extent) {
+            (Some(a), Some(b)) => (a - b).abs() > 0.5,
+            (a, b) => a.is_some() != b.is_some(),
+        };
+        if moved {
+            CLAMP_EXTENT.with(|m| {
+                let mut m = m.borrow_mut();
+                match extent {
+                    Some(v) => m.insert(self.key, v),
+                    None => m.remove(&self.key),
+                };
             });
             window.request_animation_frame();
         }

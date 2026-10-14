@@ -82,6 +82,9 @@ impl Computed {
             "column-fill" => self.column_fill_auto = Some(v.trim() == "auto"),
             // `scroll-marker-group: none | [before|after] || [links|tabs]`
             // (css-overflow-5): нужна только сторона, `links`/`tabs` — роль.
+            "scroll-target-group" => {
+                self.scroll_target_group = Some(v.trim().eq_ignore_ascii_case("auto"));
+            }
             "scroll-marker-group" => {
                 let words: Vec<&str> = v.split_whitespace().collect();
                 self.scroll_marker_group = if words.contains(&"before") {

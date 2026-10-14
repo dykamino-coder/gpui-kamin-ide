@@ -52,6 +52,8 @@ pub(super) fn element_ancestor(
             .then_some(sibs.rc)
             .flatten()
             .map(|r| (r.clone(), sibs.pos)),
+        target_group: None,
+        target_current: false,
     };
 
     me

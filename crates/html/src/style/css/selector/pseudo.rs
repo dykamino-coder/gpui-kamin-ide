@@ -25,6 +25,7 @@ pub(super) fn known_pseudo(name: &str) -> bool {
                 | "any-link"
                 | "target"
                 | "target-within"
+                | "target-current"
                 | "root"
                 | "empty"
                 | "scope"
