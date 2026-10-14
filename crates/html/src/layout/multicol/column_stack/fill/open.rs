@@ -88,6 +88,13 @@ pub(super) fn open_kid(
         }
     } else if *first {
         k.mt
+    } else if *prev_mb >= 0.0 && k.mt < 0.0 {
+        // Поля разных знаков: наибольшее положительное плюс наименьшее
+        // отрицательное (CSS 2.1 §8.3.1). Голый `max` отбрасывал
+        // отрицательное поле соседа, и он вставал ниже на всю его величину
+        // (`overflowed-block-with-no-room-after-000`, `table/caption-
+        // margin-001`: `margin-top: -40px` после блока).
+        *prev_mb + k.mt
     } else {
         prev_mb.max(k.mt)
     };

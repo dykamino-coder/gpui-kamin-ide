@@ -39,7 +39,6 @@ pub(crate) fn stack_kids(
     bfc: bool,
 ) -> (Option<(f32, f32, f32)>, f32) {
     let stacked: Option<(f32, f32, f32)>;
-    let inner_h: Vec<f32> = kids.iter().map(|k| k.0).collect();
     // Ряд flex БЕЗ переноса: дети стоят бок о бок, и
     // каждый фрагментируется СВОИМИ точками (Blink
     // `flex_layout_algorithm.cc`: элементу строки
@@ -50,9 +49,13 @@ pub(crate) fn stack_kids(
     // объявлялся монолитом целиком, и разреза не было
     // никогда (`single-line-row-flex-fragmentation-*`).
     if row_nowrap {
-        let tallest = inner_h.iter().copied().fold(0.0f32, f32::max);
+        // Поля элементов flex не схлопываются и сквозь край контейнера не
+        // уходят (css-flexbox-1 §4.2): строка — по внешним краям полей
+        // (`single-line-row-flex-fragmentation-039`: `margin-bottom: 20px`
+        // элемента входит в высоту контейнера).
+        let tallest = kids.iter().map(|k| k.1 + k.0 + k.2).fold(0.0f32, f32::max);
         for k in &kids {
-            let start = top;
+            let start = top + k.1;
             for (need, nf) in &k.3 {
                 cuts.push((start + need, start + nf));
             }
