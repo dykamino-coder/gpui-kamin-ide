@@ -315,12 +315,12 @@ index dd0bdf7..1ce6ce6 100644
 +++ b/src/parser/svgtree/mod.rs
 @@ -6,6 +6,7 @@ use std::num::NonZeroU32;
  use std::str::FromStr;
- 
+
  #[rustfmt::skip] mod names;
 +mod cycles;
  mod parse;
  mod text;
- 
+
 @@ -489,6 +490,7 @@ impl<'a, 'input: 'a> SvgNode<'a, 'input> {
              curr: self.id(),
              is_first: true,
@@ -338,11 +338,11 @@ index dd0bdf7..1ce6ce6 100644
 +    /// looped forever.
 +    visited: Vec<NodeId>,
  }
- 
+
  impl<'a, 'input: 'a> Iterator for HrefIter<'a, 'input> {
 @@ -630,7 +636,10 @@ impl<'a, 'input: 'a> Iterator for HrefIter<'a, 'input> {
          }
- 
+
          if let Some(link) = self.doc.get(self.curr).node_attribute(AId::Href) {
 -            if link.id() == self.curr || link.id() == self.origin {
 +            if link.id() == self.curr
@@ -355,7 +355,7 @@ index dd0bdf7..1ce6ce6 100644
 @@ -639,6 +648,7 @@ impl<'a, 'input: 'a> Iterator for HrefIter<'a, 'input> {
                  return None;
              }
- 
+
 +            self.visited.push(self.curr);
              self.curr = link.id();
              Some(self.doc.get(self.curr))
@@ -367,7 +367,7 @@ index 524654a..6654b1b 100644
 @@ -122,11 +122,11 @@ fn parse<'input>(
      }
      doc.links = links;
- 
+
 -    fix_recursive_patterns(&mut doc);
 -    fix_recursive_links(EId::ClipPath, AId::ClipPath, &mut doc);
 -    fix_recursive_links(EId::Mask, AId::Mask, &mut doc);
@@ -378,7 +378,7 @@ index 524654a..6654b1b 100644
 +    // (fix_recursive_patterns/links/fe_image), which let longer chains
 +    // overflow the stack.
 +    super::cycles::fix_resource_cycles(&mut doc);
- 
+
      Ok(doc)
  }
 @@ -622,19 +622,12 @@ fn parse_svg_use_element<'input>(
@@ -404,13 +404,13 @@ index 524654a..6654b1b 100644
 +    // can reach `use` itself again through nested `use` elements. Upstream
 +    // looked one step deep and otherwise ran into the 1024 depth limit.
 +    let is_recursive = use_reaches_itself(node, link, id_map);
- 
+
      if is_recursive {
          log::warn!(
 @@ -656,6 +649,33 @@ fn parse_svg_use_element<'input>(
      )
  }
- 
+
 +/// Whether expanding `link` (the target of `use_node`) reaches `use_node`
 +/// again, directly or through other `use` targets. Each target is walked once.
 +fn use_reaches_itself<'input>(
