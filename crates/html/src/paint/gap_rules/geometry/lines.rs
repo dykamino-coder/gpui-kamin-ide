@@ -183,44 +183,10 @@ pub(crate) fn line_runs(
         }
         ix += n;
     }
-    // Ленты: поперечный промежуток, к которому примыкает элемент во обе
-    // соседние ленты, идёт сквозь главный промежуток между ними — тот у
-    // этого пересечения перекрыт (Blink `MarkBlockedMainGapSegments`: отрезок
-    // главного промежутка, по обе стороны которого одна и та же запись,
-    // заблокирован). Такие поперечные прогоны соседних лент сливаются в один.
-    if lane_gap.is_some() && lines.len() > 1 {
-        let mut k = 0;
-        while k < crosses.len() {
-            let a = &crosses[k];
-            let lane = lines.iter().position(|&(_, e)| (e - a.r1).abs() <= GAP_EPS);
-            let joined = lane.filter(|&l| l + 1 < lines.len()).and_then(|l| {
-                let (g0, g1) = (lines[l].1, lines[l + 1].0);
-                let spanned = items.iter().any(|i| {
-                    i.spans_a(g0, g1)
-                        && ((i.b1 - a.g0).abs() <= GAP_EPS || (i.b0 - a.g1).abs() <= GAP_EPS)
-                });
-                if !spanned {
-                    return None;
-                }
-                crosses.iter().position(|b| {
-                    (b.r0 - lines[l + 1].0).abs() <= GAP_EPS
-                        && (b.g0 - a.g0).abs() <= GAP_EPS
-                        && (b.g1 - a.g1).abs() <= GAP_EPS
-                })
-            });
-            if let Some(j) = joined {
-                let b = crosses.remove(j);
-                let a = &mut crosses[if j < k { k - 1 } else { k }];
-                a.r1 = b.r1;
-                a.end_edge = b.end_edge;
-                // Слитый прогон может слиться и со следующей лентой.
-                if j < k {
-                    k -= 1;
-                }
-                continue;
-            }
-            k += 1;
-        }
-    }
+    // Ленты: поперечный промежуток всегда остаётся в своей ленте и не
+    // идёт сквозь главный промежуток, даже если соседние ленты выровнены
+    // элементом во несколько лент (WPT css-gaps/grid-lanes
+    // `*-gap-decorations-004/006/010/018/019` после upstream ac7ff49:
+    // поперечные правила режутся по каждой ленте).
     (mains, crosses)
 }
