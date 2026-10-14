@@ -61,12 +61,15 @@ pub fn source(src: &str) -> Option<Source> {
     } else if let Some((url, list)) = super::filter_image::parse(src_plain) {
         // Filter Effects 1 §13 `filter()`: the filtered raster is its own
         // image, keyed by the whole function so each list caches apart.
-        match source(&url) {
-            Some(Source::Raster(image)) => {
-                super::filter_image::apply(&image, &list).map(Source::Raster)
-            }
-            _ => None,
-        }
+        let key = if orient {
+            url
+        } else {
+            format!("exif-none|{url}")
+        };
+        source(&key).map(|image| Source::Filtered {
+            image: Box::new(image),
+            list,
+        })
     } else if src.starts_with("linear-gradient(")
         || src.starts_with("radial-gradient(")
         || src.starts_with("conic-gradient(")

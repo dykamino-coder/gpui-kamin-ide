@@ -21,6 +21,7 @@ pub use fills::paint_area;
 pub(crate) use fills::text_clip_fill;
 pub(crate) use flat_stack::collapse as collapse_flat_stack;
 
+mod filtered_raster;
 mod source_types;
 pub use source_types::Source;
 
@@ -86,6 +87,9 @@ const MAX_TILES: f32 = 2048.0;
 pub fn load(src: &str) -> Option<Arc<RenderImage>> {
     match source(src)? {
         Source::Raster(image) => Some(image),
+        filtered @ Source::Filtered { .. } => {
+            filtered.raster(default_size(filtered.intrinsic(), (300.0, 150.0)))
+        }
         // Своя величина рисунка — то же, что для растра: он растрируется под
         // неё, а нужный размер плитки посчитает вызывающий.
         Source::Vector { markup, size } => {
