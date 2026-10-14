@@ -76,7 +76,11 @@ pub(super) fn shaped_height(
                 // У страниц; колонки не трогаются (отдельный замер).
                 end + if bot > 0.0 && cx.paged { last_mb } else { 0.0 } + bot,
                 mt.max(through),
-                if bot == 0.0 { mb.max(last_mb) } else { mb },
+                if bot == 0.0 && !max_lowers(c, end + bot, top + bot) {
+                    mb.max(last_mb)
+                } else {
+                    mb
+                },
             ),
             // Сетка без заданной высоты: её высоту знают
             // ЯВНЫЕ дорожки рядов (`grid-template-rows:
@@ -177,4 +181,16 @@ pub(super) fn bfc_root(c: &Element) -> bool {
         None | Some(Display::Block) | Some(Display::ListItem)
     ) && !c.inline
         && (crate::render::own_context(c) || c.tag == "fieldset")
+}
+
+/// `max-height` ниже содержимого отделяет нижнее поле последнего ребёнка от
+/// поля коробки (CSS 2.2 §10.7: высота и поля пересчитываются с
+/// ограничением; Blink `block_layout_algorithm.cc:1459-1466` — поле
+/// отделяется, когда итоговый размер отличен от собственного; раскладка —
+/// `margin_height::lowers`). Поле ребёнка наружу не идёт
+/// (`parallel-flow-trailing-margin-001`: `max-height: 0`, поле 80 сдвигало
+/// соседа).
+fn max_lowers(c: &Element, end: f32, edges: f32) -> bool {
+    matches!(c.style.max_height, Some(Len::Px(m))
+        if fragment_size::border_size(m, &c.style, edges) < end - 0.01)
 }
