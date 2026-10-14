@@ -101,6 +101,9 @@ impl Computed {
                             Some(f) => filter_gradient_text(img, &f),
                             None => img.to_string(),
                         });
+                    } else if crate::paint::background::filter_image::parse(v).is_some() {
+                        // `filter(url(…), …)`: the raster loader filters it.
+                        self.bg_image = Some(v.trim().to_string());
                     }
                 } else if gradient_as_raster(v) {
                     // Конический и ПОВТОРЯЮЩИЕСЯ GPU-путь не выражает — они

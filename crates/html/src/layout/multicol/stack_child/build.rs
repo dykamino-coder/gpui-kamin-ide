@@ -220,5 +220,16 @@ pub(super) fn build_copy(
         kids,
         &mut body,
     );
-    transformed(d.children(body).into_any_element(), inner, merged)
+    let el = transformed(d.children(body).into_any_element(), inner, merged);
+    // css-break-3 §5.5: graphical effects apply per fragment; clip-path and
+    // masks go through the same group as on the common block path.
+    if inner.clip_inset.is_some()
+        || inner.clip_shape.is_some()
+        || inner.clip_polygon.is_some()
+        || inner.mask_image.is_some()
+    {
+        crate::paint::effects::grouped::grouped(el, inner)
+    } else {
+        el
+    }
 }
