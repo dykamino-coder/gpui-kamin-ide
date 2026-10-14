@@ -14,7 +14,6 @@ use gpui::{IntoElement, ParentElement};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn build_copy(
-    e: &Element,
     opts: &RenderOpts,
     col_vert: bool,
     col_rl: bool,
@@ -58,7 +57,7 @@ pub(super) fn build_copy(
     let frag_inner = frag.as_ref().map(|f| inherit(merged, &f.style));
     let src: &Element = frag.as_ref().unwrap_or(copy);
     let src_inner: &Computed = frag_inner.as_ref().unwrap_or(inner);
-    let mut kids = copy_kids(e, copy, first, src);
+    let mut kids = copy_kids(copy, first, src);
     let frag_gap_rules = gap_rule_spec(copy, inner, opts);
     let frag_gap_key = frag_gap_rules.as_ref().map(|_| {
         let ix = copy_ix.get();

@@ -36,6 +36,7 @@ pub(super) fn fixed_cb_box(c: &crate::style::computed::Computed) -> bool {
     c.transform.is_some()
         || c.contain_layout == Some(true)
         || c.contain_paint == Some(true)
+        || crate::style::computed::filter_contains_fixed(c)
         || c.will_change & crate::style::computed::wc::CB_FIXED != 0
 }
 

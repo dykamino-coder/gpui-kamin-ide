@@ -184,7 +184,6 @@ pub(super) fn multicol_stack_child(
     let whole = nest_row.is_none() && nested_whole.borrow().contains(&copy.node_id);
     let build = |first: bool, part: usize| {
         build_copy(
-            e,
             opts,
             col_vert,
             col_rl,
