@@ -913,7 +913,17 @@ fn paint_line_background(
     // кладутся глифы (`padding_top + ascent` ниже), поэтому верх полосы
     // совпадает с верхом глифов точно.
     let content_height = if layout.ascent + layout.descent > px(0.) {
-        layout.ascent + layout.descent
+        // KaminIDE patch: a font with a line gap metric spans ascent + descent
+        // + line gap, each rounded to whole pixels as for its normal line
+        // (Blink `SimpleFontData::PlatformInit`), independent of `line-height`.
+        let gap = layout.runs.first().map_or(px(0.), |r| {
+            cx.text_system().line_gap(r.font_id, layout.font_size)
+        });
+        if gap > px(0.01) {
+            layout.ascent.round() + layout.descent.round() + gap.round()
+        } else {
+            layout.ascent + layout.descent
+        }
     } else {
         layout.font_size * 1.16
     };

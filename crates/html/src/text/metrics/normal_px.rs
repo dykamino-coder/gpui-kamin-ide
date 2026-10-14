@@ -33,12 +33,20 @@ pub fn normal_px(fraction: f32, size: f32) -> f32 {
     }
 }
 
-/// The content area (ascent + descent, unrounded, as the glyphs are laid
-/// out) of the font whose normal line fraction is `fraction`, at `size`.
+/// The content area of an inline box's background band for the font whose
+/// normal line fraction is `fraction`, at `size`: ascent + descent as the
+/// glyphs are laid out, or, for a font with a line gap metric, the whole-pixel
+/// normal line (the band GPUI paints, `paint_line_background`).
 pub fn content_px(fraction: f32, size: f32) -> Option<f32> {
     PARTS
         .with(|p| p.borrow().get(&fraction.to_bits()).copied())
-        .map(|(a, d, _)| (a + d) * size)
+        .map(|(a, d, g)| {
+            if g * size > 0.01 {
+                normal_px(fraction, size)
+            } else {
+                (a + d) * size
+            }
+        })
 }
 
 #[cfg(test)]
