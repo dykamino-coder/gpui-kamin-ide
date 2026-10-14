@@ -167,6 +167,7 @@ impl Element for PageStack {
         //    page area СВОЕГО листа (`page-size-004`: `width: 50%` на листе
         //    100px — 50, на листах 320px — 160).
         self.prepaint_pages(bounds, window, cx, g, aw, ah, kids, &geoms, &plan, pages);
+        self.prepaint_canvas(bounds, window, cx, &geoms);
         // Марджин-боксы — после листов: `counter(pages)` знает их число.
         self.margin_els.clear();
         self.prepaint_margins(bounds, window, cx, &geoms, names, pages, tail);

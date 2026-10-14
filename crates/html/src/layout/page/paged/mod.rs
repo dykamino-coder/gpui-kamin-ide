@@ -67,6 +67,7 @@ pub fn render_paged_select(
     // `none` — пустой лист без свойств `@page`, `canvas` — фон `html`/`body`.
     let mut none = false;
     let mut canvas: Option<gpui::Hsla> = None;
+    let mut canvas_img: Option<crate::style::computed::Computed> = None;
     let mut root = opts.root_style();
     let document_counters = page_counters::PageCounters::from_document(nodes);
     crate::interactive::frame::frame_sanitize();
@@ -78,6 +79,7 @@ pub fn render_paged_select(
     resolve_root_page(
         &mut none,
         &mut canvas,
+        &mut canvas_img,
         &mut root,
         &mut nodes,
         &mut left,
@@ -222,5 +224,10 @@ pub fn render_paged_select(
         margin_for,
     )
     .with_select(select)
+    .with_canvas_layer(
+        canvas_img
+            .filter(|_| !none)
+            .map(|l| crate::layout::page::page_stack::canvas_builder(l, root, opts.clone())),
+    )
     .into_any_element()
 }
