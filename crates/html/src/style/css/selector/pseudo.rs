@@ -130,11 +130,9 @@ pub(super) fn pseudo_specificity(pseudo: &str) -> (u32, u32, u32) {
         match name {
             "where" => return (0, 0, 0),
             "is" | "matches" | "any" => {
-                return split_top_level(arg, ',')
-                    .into_iter()
-                    .filter_map(|one| Selector::parse(one.trim()))
-                    .filter(|s| !s.has_pseudo_element())
-                    .map(|s| s.specificity())
+                return crate::style::css::default_ns::is_args(arg)
+                    .iter()
+                    .map(Selector::specificity)
                     .max()
                     .unwrap_or_default();
             }

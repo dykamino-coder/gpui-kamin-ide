@@ -54,6 +54,13 @@ pub(super) fn element_ancestor(
             .map(|r| (r.clone(), sibs.pos)),
         target_group: None,
         target_current: false,
+        empty: crate::style::select::is_empty_node(handle),
+        foreign: match &handle.data {
+            markup5ever_rcdom::NodeData::Element { name, .. } => {
+                &*name.ns != "http://www.w3.org/1999/xhtml"
+            }
+            _ => false,
+        },
     };
 
     me

@@ -54,6 +54,9 @@ fn ancestor_pseudos_hold(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
         if p == "root" {
             return node.tag == "html";
         }
+        if p == "empty" {
+            return node.empty;
+        }
         is_holds(p, node, &path[..at], sibs).unwrap_or(true)
     })
 }
@@ -101,7 +104,7 @@ pub(super) fn matches_compound(sel: &Selector, node: &Ancestor) -> bool {
             && sel.also.iter().all(|p| host_holds(p, node));
     }
     if let Some(t) = &sel.tag
-        && t != &node.tag
+        && !crate::style::css::default_ns::tag_matches(t, &node.tag, node.foreign)
     {
         return false;
     }

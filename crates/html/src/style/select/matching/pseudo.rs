@@ -70,6 +70,9 @@ pub(super) fn pseudo_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs:
     if let Some(ok) = is_holds(pseudo, me, path, sibs) {
         return ok;
     }
+    if pseudo == "empty" {
+        return me.empty;
+    }
     if pseudo == "link" || pseudo == "visited" {
         let Some(href) = &me.href else { return false };
         let visited = href.is_empty() || href.starts_with('#');
@@ -181,10 +184,8 @@ pub(super) fn is_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: Sib
     }
     let arg = arg.strip_suffix(')')?;
     Some(
-        crate::style::css::split_selector_list(arg)
+        crate::style::css::default_ns::is_args(arg)
             .into_iter()
-            .filter_map(|one| Selector::parse(one.trim()))
-            .filter(|s| !s.has_pseudo_element())
             .any(|inner| matches(&inner, me, path, sibs)),
     )
 }
