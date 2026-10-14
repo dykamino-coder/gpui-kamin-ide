@@ -20,6 +20,9 @@ pub struct Sum {
     pub cap: f32,
     pub vh: f32,
     pub vw: f32,
+    /// Единицы окна и контейнера без своего варианта `Len` (`vmin`, `vi`,
+    /// `cqw`…) — индексы `super::units::Ext`, решаются в `fold_viewport`.
+    pub ext: [f32; super::units::EXT_N],
 }
 
 impl Sum {
@@ -69,6 +72,7 @@ impl Sum {
             cap: self.cap * k,
             vh: self.vh * k,
             vw: self.vw * k,
+            ext: self.ext.map(|v| v * k),
         }
     }
 
@@ -85,6 +89,7 @@ impl Sum {
             cap: self.cap + sign * other.cap,
             vh: self.vh + sign * other.vh,
             vw: self.vw + sign * other.vw,
+            ext: std::array::from_fn(|i| self.ext[i] + sign * other.ext[i]),
         }
     }
 
@@ -92,10 +97,7 @@ impl Sum {
     /// ноль в точках. Две и больше природ — `None`: такие доводы `min()`/`max()`
     /// сравнимы только на раскладке.
     pub(super) fn nature(self) -> Option<(u8, f32)> {
-        let f = [
-            self.px, self.pct, self.em, self.ch, self.ex, self.ic, self.cap, self.lh, self.vh,
-            self.vw,
-        ];
+        let f = self.natures();
         let mut alive = f
             .iter()
             .enumerate()
@@ -129,8 +131,9 @@ impl Sum {
         // кегль. Ранний возврат, а НЕ правка веток ниже: те ветки замерены
         // (★ `gap-003-ltr` 0.00 → 4.12), и трогать их из-за новой природы
         // нельзя.
-        if self.cap != 0.0 && self.pct == 0.0 {
-            return Some(Len::Calc(calc_store(self)));
+        // Доля в смеси с ними живёт только через `collapse_mixed`.
+        if self.cap != 0.0 || self.ext.iter().any(|v| *v != 0.0) {
+            return (self.pct == 0.0).then(|| Len::Calc(calc_store(self)));
         }
         let rel = [
             (self.pct, Len::Pct as fn(f32) -> Len),

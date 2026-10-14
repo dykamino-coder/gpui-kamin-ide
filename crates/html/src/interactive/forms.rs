@@ -51,7 +51,16 @@ fn kind(e: &Element) -> String {
 }
 
 fn input(e: &Element, style: &Computed) -> AnyElement {
-    match kind(e).as_str() {
+    let kind = kind(e);
+    // `appearance: none` (css-ui-4 §7.2): a checkbox, radio, range or colour
+    // control loses its native widget and is a primitive box painted from its
+    // CSS alone — no mark, track or swatch, no UA size (Blink
+    // `LayoutTheme::AdjustStyle` skips the theme part for `none`).
+    if style.appearance_none() && matches!(kind.as_str(), "checkbox" | "radio" | "range" | "color")
+    {
+        return apply(div(), style).into_any_element();
+    }
+    match kind.as_str() {
         "checkbox" => toggle(e, style, false),
         "radio" => toggle(e, style, true),
         "button" | "submit" | "reset" => button_like(e, style),

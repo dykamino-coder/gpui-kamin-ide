@@ -98,6 +98,13 @@ impl Selector {
         s
     }
 
+    /// Есть ли псевдоэлемент в предмете селектора: внутри `:is()` такой
+    /// аргумент негоден и прощается (selectors-4 §4.2).
+    pub fn has_pseudo_element(&self) -> bool {
+        self.pseudo.as_deref().is_some_and(is_pseudo_element)
+            || self.also.iter().any(|p| is_pseudo_element(p))
+    }
+
     /// `.card > .title`, `.card .title`, `div.card` — всё сюда.
     pub fn parse(raw: &str) -> Option<Selector> {
         // Разбивка на составные части и комбинаторы МЕЖДУ ними. Внутри скобок
