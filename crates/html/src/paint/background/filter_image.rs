@@ -15,11 +15,17 @@ pub(crate) fn parse(src: &str) -> Option<(String, String)> {
     let inner = &rest[..rest.rfind(')')?];
     let parts = crate::style::css::split_args(inner);
     let image = parts.first()?.trim();
-    if !image.to_ascii_lowercase().starts_with("url(") || parts.len() < 2 {
+    if parts.len() < 2 {
         return None;
     }
-    let url = crate::style::computed::parse_url(image)?;
-    Some((url, parts[1..].join(" ")))
+    let input = if image.to_ascii_lowercase().starts_with("url(") {
+        crate::style::computed::parse_url(image)?
+    } else if crate::style::computed::parse_gradient(image).is_some() {
+        image.to_string()
+    } else {
+        return None;
+    };
+    Some((input, parts[1..].join(" ")))
 }
 
 /// Applies the filter list to a straight-BGRA raster. Unsupported lists

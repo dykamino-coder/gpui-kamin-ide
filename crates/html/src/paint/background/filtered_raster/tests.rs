@@ -48,3 +48,24 @@ fn allocation_limit_preserves_css_shadow_offset() {
             .all(|p| p == [0, 128, 0, 255])
     );
 }
+
+#[test]
+fn radial_input_filters_rendered_samples_without_natural_dimensions() {
+    let source = super::super::source("filter(radial-gradient(red, orange), invert(1))").unwrap();
+    assert!(source.intrinsic().w.is_none());
+    let filtered = source.raster((7.0, 5.0)).unwrap();
+    let original =
+        super::super::gradient_raster::tile("radial-gradient(red, orange)", 7, 5, (7.0, 5.0))
+            .unwrap();
+    for (a, b) in filtered
+        .as_bytes(0)
+        .unwrap()
+        .chunks_exact(4)
+        .zip(original.as_bytes(0).unwrap().chunks_exact(4))
+    {
+        assert_eq!(a[3], b[3]);
+        for c in 0..3 {
+            assert_eq!(a[c], 255 - b[c]);
+        }
+    }
+}

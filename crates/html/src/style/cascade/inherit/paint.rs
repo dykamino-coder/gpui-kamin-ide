@@ -2,6 +2,8 @@
 
 use super::*;
 
+mod gradient_filter;
+
 pub(super) fn inherit_paint(
     parent: &Computed,
     own: &Computed,
@@ -53,6 +55,7 @@ pub(super) fn inherit_paint(
                 stop.0 = f.apply(stop.0);
             }
         }
+        gradient_filter::apply(c, own, f);
         // Растровый градиент (`conic`, `repeating-*`) живёт строкой в
         // `bg_image`: его стопы красятся в самой записи
         // (`filter-function-repeating-*-ref`: `filter: invert(1)` на фоне).

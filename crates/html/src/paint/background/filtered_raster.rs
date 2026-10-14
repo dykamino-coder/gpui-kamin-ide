@@ -24,7 +24,10 @@ pub(super) fn raster(
         tile.0.round().clamp(1.0, 2048.0) as u32,
         tile.1.round().clamp(1.0, 2048.0) as u32,
     );
-    let image = input.sampled_raster(tile, pixelated)?;
+    let image = match input {
+        Source::Gradient { raw } => super::gradient_raster::tile(raw, w, h, tile),
+        _ => input.sampled_raster(tile, pixelated),
+    }?;
     let key = (image.id.0, list.to_string(), w, h, pixelated);
     let cache = CACHE.get_or_init(Default::default);
     if let Some(hit) = cache.lock().ok().and_then(|c| c.get(&key).cloned()) {

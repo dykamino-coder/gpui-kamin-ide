@@ -70,19 +70,19 @@ pub fn source(src: &str) -> Option<Source> {
             image: Box::new(image),
             list,
         })
-    } else if src.starts_with("linear-gradient(")
-        || src.starts_with("radial-gradient(")
-        || src.starts_with("conic-gradient(")
+    } else if src_plain.starts_with("linear-gradient(")
+        || src_plain.starts_with("radial-gradient(")
+        || src_plain.starts_with("conic-gradient(")
         // Повторяющиеся градиенты — те же записи (css-images-3 §4):
         // растеризатор ниже их понимает, а опознание пропускало
         // (`shape-outside-linear-gradient-004`).
-        || src.starts_with("repeating-linear-gradient(")
-        || src.starts_with("repeating-radial-gradient(")
-        || src.starts_with("repeating-conic-gradient(")
-        || src.starts_with("cross-fade(")
+        || src_plain.starts_with("repeating-linear-gradient(")
+        || src_plain.starts_with("repeating-radial-gradient(")
+        || src_plain.starts_with("repeating-conic-gradient(")
+        || src_plain.starts_with("cross-fade(")
     {
         Some(Source::Gradient {
-            raw: src.to_string(),
+            raw: src_plain.to_string(),
         })
     } else {
         // Фрагмент адреса рисунка — его `<view>` (SVG 2 §8.2 «Linking into
