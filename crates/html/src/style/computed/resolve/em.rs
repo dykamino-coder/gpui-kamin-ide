@@ -62,7 +62,15 @@ impl Computed {
             };
             let (ch, ex) = crate::text::metrics::ch_ex_px(&family, own_font);
             let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
-            if let Some(g) = parse_gradient(&px) {
+            if let Some(g) = parse_gradient_with_current(
+                &px,
+                self.color.unwrap_or(Color {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 0.0,
+                    a: 1.0,
+                }),
+            ) {
                 self.gradient = Some(g);
                 if self.gradient_raw.is_some() {
                     self.gradient_raw = Some(px);
