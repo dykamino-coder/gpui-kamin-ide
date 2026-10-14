@@ -5,6 +5,28 @@ use crate::layout::fragment::types::Frag;
 use gpui::{App, Bounds, Pixels, Window, point, px, size};
 
 impl PageStack {
+    /// Маска `m` (page area листа `i` или срез фрагмента), расширенная по оси
+    /// строки до краёв листа. Переполнение ПОТОКА за page area в поля листа
+    /// видно (css-page-3 §page-model: page area — фрагментаинер, режет лишь
+    /// лист): левый свес глифа `A` у края page area срезался, а эталон без
+    /// полей его рисует (`margin-boxes/content-004..013`). Слой `fixed` Blink
+    /// режет по page area (`position-fixed-overflow-print`) — ему эта маска не
+    /// нужна. По оси блока режет срез фрагмента.
+    fn sheet_wide(
+        &self,
+        bounds: Bounds<Pixels>,
+        i: usize,
+        m: gpui::ContentMask<Pixels>,
+    ) -> gpui::ContentMask<Pixels> {
+        let s = self.grid.get().1;
+        let sx = self.sheet_origin(i).0;
+        let w = self.geom(i).size.0;
+        let mut b = m.bounds;
+        b.origin.x = bounds.origin.x + px(sx * s);
+        b.size.width = px(w * s);
+        gpui::ContentMask { bounds: b }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(super) fn paint_sheets(
         &mut self,
@@ -92,6 +114,8 @@ impl PageStack {
                 }
                 .intersect(&page.bounds),
             };
+            // По оси строки — весь лист (`PageStack::sheet_wide`).
+            let mask = self.sheet_wide(bounds, f.col, mask);
             let kid = &mut self.kids[f.kid];
             let el = if f.copy == 0 {
                 &mut kid.el
