@@ -111,6 +111,13 @@ pub(crate) fn parse_content(raw: &str) -> Option<Vec<ContentItem>> {
                 out.push(ContentItem::Attr(name, fallback));
             }
             "url" if args.len() <= 1 => out.push(ContentItem::Image(arg(0).unwrap_or_default())),
+            // CSS Content 3 §2: a single image replaces the element. Keep
+            // filter() intact so its result enters the replaced-image path.
+            "filter"
+                if crate::paint::background::filter_image::parse(&raw[at..=close]).is_some() =>
+            {
+                out.push(ContentItem::Image(raw[at..=close].to_string()));
+            }
             // ПРОБОВАЛИ И ОТКАТИЛИ: принимать `url()` (§12.2 объявляет его
             // действительным) и класть в псевдоэлемент синтетический `<img>`.
             // Проба по 195 парам `generated-content`: флипов ноль, потеряна

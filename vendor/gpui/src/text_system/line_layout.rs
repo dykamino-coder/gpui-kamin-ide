@@ -799,14 +799,27 @@ impl LineLayoutCache {
             // (`index_for_x`) считает по тем же координатам и отдельной
             // правки не требует (план 99)
             if letter_spacing != px(0.) {
+                // KaminIDE patch: cursive scripts (Arabic, Syriac, N'Ko,
+                // Mongolian, Hanifi Rohingya) take no tracking — it would
+                // break their joining (css-text-3 §8.2.1 cursive tracking,
+                // `letter-spacing-cursive-001/002`); other characters, even
+                // spaces between such words, keep it.
                 let mut i = 0usize;
+                let mut shift = px(0.);
                 for run in layout.runs.iter_mut() {
                     for glyph in run.glyphs.iter_mut() {
-                        glyph.position.x += letter_spacing * (i as f32);
+                        glyph.position.x += shift;
+                        let cursive = text
+                            .get(glyph.index..)
+                            .and_then(|t| t.chars().next())
+                            .is_some_and(cursive_script);
+                        if !cursive {
+                            shift += letter_spacing;
+                        }
                         i += 1;
                     }
                 }
-                layout.width += letter_spacing * (i as f32);
+                layout.width += shift;
                 // KaminIDE patch: знак без глифа. Набор выбрасывает
                 // «default ignorable» (U+FEFF и родню) целиком, и трекинг на
                 // нём не даёт ширины ни одному глифу. А для CSS такой знак —
@@ -1197,6 +1210,14 @@ impl AsCacheKeyRef for CacheKeyRef<'_> {
     fn as_cache_key_ref(&self) -> CacheKeyRef<'_> {
         *self
     }
+}
+
+/// KaminIDE patch: characters of cursive (joining) scripts, which take no
+/// letter-spacing (css-text-3 §8.2.1).
+fn cursive_script(c: char) -> bool {
+    matches!(c as u32,
+        0x0600..=0x08FF | 0x1800..=0x18AF
+        | 0xFB50..=0xFDFF | 0xFE70..=0xFEFF | 0x10D00..=0x10D3F)
 }
 
 #[cfg(test)]
