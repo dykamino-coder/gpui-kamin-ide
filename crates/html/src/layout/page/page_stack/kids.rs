@@ -26,6 +26,7 @@ impl PageStack {
                 );
                 let (sx, sy) = self.sheet_origin(p);
                 for (rect, mut el) in layout_margin_boxes(boxes, pg, window, cx) {
+                    let rect = round_rect(rect);
                     el.layout_as_root(
                         size(
                             gpui::AvailableSpace::Definite(px(rect.2.max(0.0))),
@@ -115,5 +116,30 @@ impl PageStack {
             .min()
             .unwrap_or(1);
         (kids, limit)
+    }
+}
+
+/// Прямоугольник марджин-бокса, округлённый как раскладка потока (Taffy
+/// `round_layout`: края — `round`, размер — разность округлённых краёв).
+/// Центрированная коробка на 234.5 рисовалась с 234, а эталон, собранный
+/// потоком (grid/flex), — с 235 (`margin-boxes/auto-margins-003`,
+/// `overconstrained-001`).
+fn round_rect((x, y, w, h): (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
+    let (x0, y0) = (x.round(), y.round());
+    (x0, y0, (x + w).round() - x0, (y + h).round() - y0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::round_rect;
+
+    #[test]
+    fn margin_box_rect_rounds_edges_like_taffy() {
+        assert_eq!(
+            round_rect((234.5, 69.5, 31.0, 31.0)),
+            (235.0, 70.0, 31.0, 31.0)
+        );
+        // Размер — разность округлённых краёв, а не округлённая ширина.
+        assert_eq!(round_rect((10.4, 0.0, 20.2, 5.0)), (10.0, 0.0, 21.0, 5.0));
     }
 }
