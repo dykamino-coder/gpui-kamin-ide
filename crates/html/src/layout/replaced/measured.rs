@@ -4,14 +4,14 @@ use gpui::{
     InspectorElementId, IntoElement, LayoutId, Pixels, Style, Window, point, px, size,
 };
 
-pub(super) struct MeasuredImage {
+pub(super) struct MeasuredReplaced {
     pub(super) image: AnyElement,
     pub(super) style: Style,
     pub(super) natural: gpui::Size<Pixels>,
     pub(super) ratio: Option<f32>,
 }
 
-impl Element for MeasuredImage {
+impl Element for MeasuredReplaced {
     type RequestLayoutState = (LayoutId, LayoutId);
     type PrepaintState = ();
 
@@ -86,7 +86,7 @@ impl Element for MeasuredImage {
     }
 }
 
-impl IntoElement for MeasuredImage {
+impl IntoElement for MeasuredReplaced {
     type Element = Self;
     fn into_element(self) -> Self {
         self
