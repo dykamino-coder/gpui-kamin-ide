@@ -15,7 +15,9 @@ fn supports_selector(args: &str) -> bool {
     if split_top_level(s, ',').len() > 1 {
         return false;
     }
-    let mut s = s.to_string();
+    // `&` — годный простой селектор (css-nesting-1 §3.1; вне правила он
+    // означает `:scope`): `@supports selector(&)` истинно (`supports-rule`).
+    let mut s = s.replace('&', ":scope");
     for known in [
         "::details-content",
         "::picker(select)",

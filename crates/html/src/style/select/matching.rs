@@ -11,7 +11,7 @@ mod nth;
 mod pseudo;
 use compound::{ancestor_holds, matches_compound};
 use nth::{nth_of_form, nth_of_holds, structural};
-use pseudo::{has_slotted_holds, host_holds, is_host_pseudo, lang_matches, pseudo_holds};
+use pseudo::{has_slotted_holds, host_holds, is_holds, is_host_pseudo, lang_matches, pseudo_holds};
 
 /// Сопоставление селектора с узлом и его цепочкой предков.
 ///
@@ -45,6 +45,12 @@ pub(crate) fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Si
                 return false;
             };
             if matches(&inner, me, path, sibs) {
+                return false;
+            }
+            return matches_ignoring_pseudo(sel, me, path, sibs);
+        }
+        if let Some(ok) = is_holds(pseudo, me, path, sibs) {
+            if !ok {
                 return false;
             }
             return matches_ignoring_pseudo(sel, me, path, sibs);

@@ -3,6 +3,7 @@
 use crate::style::css::*;
 use std::collections::HashMap;
 
+mod nesting;
 mod rules;
 use rules::sheet_rules;
 
@@ -175,6 +176,7 @@ pub fn parse_stylesheet_media(css: &str, media: Media) -> Vec<Rule> {
     if top {
         let declared = declared_prefixes(css);
         NS_PREFIXES.with(|n| *n.borrow_mut() = Some(declared));
+        scan_custom_media(css);
     }
     let _scope = NsScope(top);
     sheet_rules(css, media, top)

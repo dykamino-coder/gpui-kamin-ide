@@ -2,6 +2,9 @@
 
 use crate::style::css::*;
 
+mod calc;
+mod custom;
+pub(crate) use custom::scan_custom_media;
 mod features;
 mod query;
 use features::{mq_and, mq_base, mq_or};
@@ -139,6 +142,11 @@ fn mq_operand(raw: &str) -> Option<(f32, f32)> {
 /// Скаляр: длина в точках, разрешение в dppx или голое число.
 fn mq_scalar(raw: &str) -> Option<f32> {
     let s = raw.trim();
+    // `calc()`/`sign()`/… — значение признака может быть любым выражением
+    // (mediaqueries-4 §1.3, `mq-calc-sign-function-*`, `mq-calc-resolution`).
+    if let Some((v, _)) = calc::eval(s) {
+        return Some(v);
+    }
     // Разрешение: `dppx` и его короткая запись `x`. Проверять надо ИМЕННО
     // через разбор остатка: `0px` тоже кончается на `x`, и жадное отрезание
     // давало «0p», разбор которого проваливался, а ранний возврат гасил всю
@@ -197,6 +205,11 @@ impl Media {
     pub fn matches(&self, query: &str) -> bool {
         let q = query.trim();
         let q = q.strip_prefix("@media").unwrap_or(q).trim();
+        // Любой пробельный знак — тот же пробел (css-syntax-3 §4.2
+        // whitespace-token): `and` на отдельной строке
+        // (`mq-negative-range-001/002`) не должен ронять запрос.
+        let q = q.split_whitespace().collect::<Vec<_>>().join(" ");
+        let q = q.as_str();
         // Пустой список запросов равен `all` (mediaqueries-5 §2.1:
         // «An empty media query list evaluates to true»): пробел после
         // `@media` необязателен, и `@media{ ... }` обязано примениться
