@@ -526,6 +526,12 @@ impl TextSystem {
         self.read_metrics(font_id, |metrics| metrics.descent(font_size))
     }
 
+    /// KaminIDE patch: the font's recommended line gap at the given size, for
+    /// CSS `line-height: normal` (ascent + descent + line gap).
+    pub fn line_gap(&self, font_id: FontId, font_size: Pixels) -> Pixels {
+        self.read_metrics(font_id, |metrics| metrics.line_gap(font_size))
+    }
+
     /// KaminIDE patch: the font's underline position relative to the
     /// baseline (negative below it), for `text-underline-position: from-font`.
     pub fn underline_position(&self, font_id: FontId, font_size: Pixels) -> Pixels {
@@ -708,6 +714,7 @@ impl WindowTextSystem {
                 background_color: run.background_color,
                 background_pad: run.background_pad,
                 background_radius: run.background_radius,
+                background_line_gap: run.background_line_gap,
                 background_border: run.background_border,
                 underline: run.underline,
                 strikethrough: run.strikethrough,
@@ -876,6 +883,7 @@ impl WindowTextSystem {
                 background_color: run.background_color,
                 background_pad: run.background_pad,
                 background_radius: run.background_radius,
+                background_line_gap: run.background_line_gap,
                 background_border: run.background_border,
                 underline: run.underline,
                 strikethrough: run.strikethrough,
@@ -973,6 +981,7 @@ impl WindowTextSystem {
                         background_color: run.background_color,
                         background_pad: run.background_pad,
                         background_radius: run.background_radius,
+                        background_line_gap: run.background_line_gap,
                         background_border: run.background_border,
                         underline: run.underline,
                         strikethrough: run.strikethrough,
@@ -1414,6 +1423,11 @@ pub struct TextRun {
     pub background_radius: Pixels,
     /// KaminIDE patch: рамка строчного бокса (цвет, толщина).
     pub background_border: Option<(Hsla, [Pixels; 4])>,
+    /// KaminIDE patch: the inline background band of a font with a line gap
+    /// metric spans ascent + descent + line gap, each rounded to whole pixels
+    /// (the HTML engine's inline box content area). `false` (IDE text) keeps
+    /// the band at ascent + descent.
+    pub background_line_gap: bool,
     /// The underline style (if any)
     pub underline: Option<UnderlineStyle>,
     /// The strikethrough style (if any)

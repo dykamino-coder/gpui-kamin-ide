@@ -63,22 +63,25 @@ pub fn max_font_size(pieces: &[Piece], strut: f32, em_base: f32) -> f32 {
 /// выходила 132 вместо 100, а глиф садился по полулидингу на 16 точек ниже
 /// (§10.8: лидинг тут ноль — содержимое равно `line-height`).
 pub fn max_line_height(pieces: &[Piece], strut: f32, em_base: f32, fraction: f32) -> f32 {
-    pieces.iter().fold(strut * fraction, |acc, p| match p {
-        Piece::Text { style, .. } => {
-            let size = match style.font_size {
-                Some(Len::Px(v)) => v,
-                Some(Len::Em(k)) => k * em_base,
-                _ => strut,
-            };
-            let own = match style.line_height {
-                Some(Len::Px(v)) => v,
-                Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-                _ => size * fraction,
-            };
-            acc.max(own)
-        }
-        Piece::Atom(_) | Piece::Overlay(..) => acc,
-    })
+    pieces.iter().fold(
+        crate::text::metrics::normal_px(fraction, strut),
+        |acc, p| match p {
+            Piece::Text { style, .. } => {
+                let size = match style.font_size {
+                    Some(Len::Px(v)) => v,
+                    Some(Len::Em(k)) => k * em_base,
+                    _ => strut,
+                };
+                let own = match style.line_height {
+                    Some(Len::Px(v)) => v,
+                    Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
+                    _ => crate::text::metrics::normal_px(fraction, size),
+                };
+                acc.max(own)
+            }
+            Piece::Atom(_) | Piece::Overlay(..) => acc,
+        },
+    )
 }
 
 /// Один `StyledText` с прогонами — честный перенос по словам сквозь границы
@@ -186,6 +189,7 @@ pub(super) fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun
             .map(|(c, w)| (c.to_hsla(), w.map(gpui::px))),
         background_pad: style.inline_pad.unwrap_or_default().map(gpui::px),
         background_radius: gpui::px(style.inline_radius.unwrap_or(0.0)),
+        background_line_gap: true,
         underline: style.underline.unwrap_or(false).then(|| UnderlineStyle {
             thickness: gpui::px(1.),
             color: Some(color),

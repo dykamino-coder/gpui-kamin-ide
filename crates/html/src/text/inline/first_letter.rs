@@ -86,8 +86,37 @@ fn letter_style(own: &Computed, style: &Computed) -> Computed {
     letter.font_family = style.font_family.clone().or(own.font_family.clone());
     if let Some(bg) = style.background {
         letter.inline_bg = Some(bg);
+        if style.float.is_some_and(|f| f != 0) {
+            float_band(&mut letter);
+        }
     }
     letter
+}
+
+/// A floated first letter is a block box (CSS 2.1 section 5.12.2): its
+/// background fills the box, as tall as its line height, not only the
+/// glyphs' content area. The letter is painted as an inline piece, so its
+/// band is padded by the half-leading on both sides.
+fn float_band(letter: &mut Computed) {
+    use crate::style::values::value::Len;
+    let Some(Len::Px(size)) = letter.font_size else {
+        return;
+    };
+    let family = letter.font_family.clone().unwrap_or_default();
+    let fraction = crate::text::metrics::normal_line(&family);
+    let line = match letter.line_height {
+        Some(Len::Px(v)) => v,
+        Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
+        _ => crate::text::metrics::normal_px(fraction, size),
+    };
+    let Some(content) = crate::text::metrics::content_px(fraction, size) else {
+        return;
+    };
+    let half = ((line - content) / 2.0).max(0.0);
+    let mut pad = letter.inline_pad.unwrap_or_default();
+    pad[0] += half;
+    pad[2] += half;
+    letter.inline_pad = Some(pad);
 }
 
 /// Unicode categories, rather than script ranges, define first-letter punctuation.
