@@ -298,7 +298,13 @@ fn main() {
             if let Some(view) = view_slot {
                 while let Ok(event) = rx.recv().await {
                     view.update(cx, |v, cx| {
+                        // Имя — до `apply`, который забирает событие: в `[why]`
+                        // видно, какое событие хоста заказало кадр окна.
+                        let event_name = crate::web::diag_event_name::name(&event);
                         let needs_frame = v.apply(event, cx);
+                        if needs_frame {
+                            crate::web::diag_why::tick(event_name);
+                        }
                         // Пропсы компонентов обновляем ЗДЕСЬ, а не в
                         // рендере: `notify` из фазы отрисовки не помечает
                         // окно грязным и нового кадра не заказывает

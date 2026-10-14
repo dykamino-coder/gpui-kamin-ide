@@ -218,6 +218,8 @@ impl<'a, T: 'static> Context<'a, T> {
     }
 
     /// Tell GPUI that this entity has changed and observers of it should be notified.
+    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
+    #[track_caller]
     pub fn notify(&mut self) {
         self.app.notify(self.entity_state.entity_id);
     }

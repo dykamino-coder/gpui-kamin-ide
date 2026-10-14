@@ -20,6 +20,7 @@ mod device_generation;
 mod diag;
 mod diag_activity;
 mod diag_clock;
+pub(crate) mod diag_event_name;
 mod diag_log;
 mod diag_sink;
 pub(crate) mod diag_views;
