@@ -43,9 +43,19 @@ pub(crate) fn measured_layout(
     // Подбирать есть смысл только под ЗАДАННЫЙ размер строки:
     // когда его нет, коробка растёт под текст, и заполнять нечего
     // (иначе кегль улетал в размер окна — `text-fit/writing-mode`).
+    let unfitted = probe.font_size;
     if let Some(w) = known_along {
         probe.apply_fit(w, window);
     }
+    // The fitted paragraph's line height scales with its font size
+    // (css-text-5 text-fit; `scale_by` keeps a fixed `line-height`):
+    // the box height must use it, or the glyphs were painted fitted inside
+    // a box of the unscaled height (`text-fit/grow-consistent`).
+    let line_height = if probe.font_size != unfitted {
+        probe.line_height
+    } else {
+        line_height
+    };
     if vertical {
         probe.run_metrics = probe.measure_runs(window);
     }
