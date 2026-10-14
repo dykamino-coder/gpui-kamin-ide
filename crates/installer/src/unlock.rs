@@ -79,6 +79,40 @@ pub fn first_locked(dir: &Path) -> Option<PathBuf> {
         .find(|p| std::fs::OpenOptions::new().write(true).open(p).is_err())
 }
 
+/// Where a busy file is moved before the new one is written:
+/// `chrome_elf.dll` → `chrome_elf.dll.kamin-old-<pid>-<n>`.
+pub fn aside_path(target: &Path, n: u32) -> PathBuf {
+    let mut name = target.file_name().unwrap_or_default().to_os_string();
+    name.push(format!(".kamin-old-{}-{n}", std::process::id()));
+    target.with_file_name(name)
+}
+
+/// Delete files moved aside by earlier runs (anywhere under `dir`). A file that
+/// a still-dying process maps stays until the next run.
+pub fn remove_aside(dir: &Path) -> usize {
+    let mut removed = 0;
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&d) else {
+            continue;
+        };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.contains(".kamin-old-"))
+                && std::fs::remove_file(&p).is_ok()
+            {
+                removed += 1;
+            }
+        }
+    }
+    removed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,6 +152,26 @@ mod tests {
         assert_eq!(names, vec!["kaminide-gpui.exe".to_string()]);
         assert_eq!(first_locked(&dir), None);
         drop(held);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn moved_aside_files_are_cleaned_up_and_not_probed() {
+        let dir = std::env::temp_dir().join(format!("kamin-unlock-aside-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("runtime")).unwrap();
+        let dll = dir.join("chrome_elf.dll");
+        std::fs::write(&dll, b"new").unwrap();
+        let old = aside_path(&dll, 0);
+        assert!(old.to_string_lossy().contains("chrome_elf.dll.kamin-old-"));
+        std::fs::write(&old, b"old").unwrap();
+        std::fs::write(
+            aside_path(&dir.join("runtime").join("kaminhost.exe"), 1),
+            b"old",
+        )
+        .unwrap();
+        assert_eq!(binaries(&dir).len(), 1);
+        assert_eq!(remove_aside(&dir), 2);
+        assert!(dll.is_file() && !old.exists());
         std::fs::remove_dir_all(&dir).ok();
     }
 }
