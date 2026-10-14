@@ -119,8 +119,9 @@ fn mq_operand(raw: &str) -> Option<(f32, f32)> {
     let body = s
         .strip_prefix("calc(")
         .and_then(|r| r.strip_suffix(')'))
+        .filter(|b| balanced(b))
         .unwrap_or(s);
-    if let Some((a, b)) = body.split_once('/')
+    if let Some((a, b)) = split_top_slash(body)
         && let (Some(a), Some(b)) = (mq_scalar(a), mq_scalar(b))
     {
         // Вырожденное отношение с НУЛЕВЫМ знаменателем — бесконечность.
@@ -149,6 +150,12 @@ fn mq_scalar(raw: &str) -> Option<f32> {
         .and_then(|n| n.trim().parse::<f32>().ok())
     {
         return Some(v);
+    }
+    // Разрешение внутри выражения (`calc(-1dppx * sign(…))`): `dppx` —
+    // каноническая единица <resolution>, арифметика над ней та же, что над
+    // числом (css-values-4 §7.4).
+    if s.contains('(') && s.contains("dppx") {
+        return crate::style::values::value::number(&s.replace("dppx", ""));
     }
     if let Some(n) = s.strip_suffix("dpi") {
         return n.trim().parse::<f32>().ok().map(|v| v / 96.0);
@@ -181,8 +188,32 @@ fn mq_scalar(raw: &str) -> Option<f32> {
                 None
             }
         }
-        _ => s.parse::<f32>().ok(),
+        // Число, в том числе `calc(2 * sign(…))` (css-values-4 §10).
+        _ => crate::style::values::value::number(s),
     }
+}
+
+/// Скобки сбалансированы: `a) / calc(b` — это не тело одного `calc()`.
+fn balanced(s: &str) -> bool {
+    let mut depth = 0i32;
+    s.bytes().all(|c| {
+        depth += i32::from(c == b'(') - i32::from(c == b')');
+        depth >= 0
+    }) && depth == 0
+}
+
+/// `a / b` по косой ВНЕ скобок: `calc(x / y) / calc(z)` делится на две части.
+fn split_top_slash(s: &str) -> Option<(&str, &str)> {
+    let mut depth = 0i32;
+    for (i, c) in s.bytes().enumerate() {
+        match c {
+            b'(' => depth += 1,
+            b')' => depth -= 1,
+            b'/' if depth == 0 => return Some((&s[..i], &s[i + 1..])),
+            _ => {}
+        }
+    }
+    None
 }
 
 impl Media {

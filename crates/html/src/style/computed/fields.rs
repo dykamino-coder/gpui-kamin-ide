@@ -845,6 +845,12 @@ pub struct Computed {
     /// Наследуется вниз, потому что искать его надо ВВЕРХ по дереву, а на
     /// момент раскладки ребёнка предков уже не видно.
     pub ortho_limit: Option<f32>,
+    /// Содержимое ближайшего предка — контейнера запросов размера — по
+    /// физическим осям (ширина, высота): база единиц `cqw`/`cqh`/`cqi`/…
+    /// (css-conditional-5 §container-lengths). Ось без такого контейнера
+    /// (или с неизвестным размером) — `None`, и единица берёт малое окно.
+    /// Наследуется вниз: контейнер ищется ВВЕРХ по дереву.
+    pub cq_box: (Option<f32>, Option<f32>),
     /// Nearest ancestor scrollport, including an indefinite nearest scroller.
     pub(crate) orthogonal_scrollport: Option<[orthogonal::AxisSizes; 2]>,
     /// Used inline measurement contract of an ordinary orthogonal block.
