@@ -189,6 +189,7 @@ pub(super) fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun
             .map(|(c, w)| (c.to_hsla(), w.map(gpui::px))),
         background_pad: style.inline_pad.unwrap_or_default().map(gpui::px),
         background_radius: gpui::px(style.inline_radius.unwrap_or(0.0)),
+        background_line_gap: true,
         underline: style.underline.unwrap_or(false).then(|| UnderlineStyle {
             thickness: gpui::px(1.),
             color: Some(color),

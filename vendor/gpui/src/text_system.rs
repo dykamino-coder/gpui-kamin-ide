@@ -714,6 +714,7 @@ impl WindowTextSystem {
                 background_color: run.background_color,
                 background_pad: run.background_pad,
                 background_radius: run.background_radius,
+                background_line_gap: run.background_line_gap,
                 background_border: run.background_border,
                 underline: run.underline,
                 strikethrough: run.strikethrough,
@@ -882,6 +883,7 @@ impl WindowTextSystem {
                 background_color: run.background_color,
                 background_pad: run.background_pad,
                 background_radius: run.background_radius,
+                background_line_gap: run.background_line_gap,
                 background_border: run.background_border,
                 underline: run.underline,
                 strikethrough: run.strikethrough,
@@ -979,6 +981,7 @@ impl WindowTextSystem {
                         background_color: run.background_color,
                         background_pad: run.background_pad,
                         background_radius: run.background_radius,
+                        background_line_gap: run.background_line_gap,
                         background_border: run.background_border,
                         underline: run.underline,
                         strikethrough: run.strikethrough,
@@ -1420,6 +1423,11 @@ pub struct TextRun {
     pub background_radius: Pixels,
     /// KaminIDE patch: рамка строчного бокса (цвет, толщина).
     pub background_border: Option<(Hsla, [Pixels; 4])>,
+    /// KaminIDE patch: the inline background band of a font with a line gap
+    /// metric spans ascent + descent + line gap, each rounded to whole pixels
+    /// (the HTML engine's inline box content area). `false` (IDE text) keeps
+    /// the band at ascent + descent.
+    pub background_line_gap: bool,
     /// The underline style (if any)
     pub underline: Option<UnderlineStyle>,
     /// The strikethrough style (if any)

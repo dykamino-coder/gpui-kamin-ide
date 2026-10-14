@@ -40,6 +40,9 @@ pub struct DecorationRun {
     /// КУСКАМ строк вместе с фоном: строчная коробка в браузере разрезается
     /// переносом, и рамка каждого куска своя.
     pub background_border: Option<(Hsla, [Pixels; 4])>,
+    /// KaminIDE patch: the background band spans the font's line gap too
+    /// (see [`crate::TextRun::background_line_gap`]).
+    pub background_line_gap: bool,
 
     /// The underline style for this run
     pub underline: Option<UnderlineStyle>,
@@ -916,9 +919,18 @@ fn paint_line_background(
         // KaminIDE patch: a font with a line gap metric spans ascent + descent
         // + line gap, each rounded to whole pixels as for its normal line
         // (Blink `SimpleFontData::PlatformInit`), independent of `line-height`.
-        let gap = layout.runs.first().map_or(px(0.), |r| {
-            cx.text_system().line_gap(r.font_id, layout.font_size)
+        // Only HTML engine runs opt in (`background_line_gap`); IDE text keeps
+        // ascent + descent.
+        let line_gap_band = decoration_runs.iter().any(|r| {
+            r.background_line_gap && (r.background_color.is_some() || r.background_border.is_some())
         });
+        let gap = if line_gap_band {
+            layout.runs.first().map_or(px(0.), |r| {
+                cx.text_system().line_gap(r.font_id, layout.font_size)
+            })
+        } else {
+            px(0.)
+        };
         if gap > px(0.01) {
             layout.ascent.round() + layout.descent.round() + gap.round()
         } else {
@@ -1523,6 +1535,7 @@ mod tests {
                 background_color: None,
                 background_pad: [px(0.); 4],
                 background_radius: px(0.),
+                background_line_gap: false,
                 background_border: None,
                 underline: Some(first_style),
                 strikethrough: None,
@@ -1669,6 +1682,7 @@ mod tests {
                 background_color: None,
                 background_pad: [px(0.); 4],
                 background_radius: px(0.),
+                background_line_gap: false,
                 background_border: None,
                 underline: Some(first_style),
                 strikethrough: None,
@@ -1750,6 +1764,7 @@ mod tests {
                         background_color: None,
                         background_pad: [px(0.); 4],
                         background_radius: px(0.),
+                        background_line_gap: false,
                         background_border: None,
                         underline: Some(style),
                         strikethrough: None,
@@ -2011,6 +2026,7 @@ mod tests {
                     background_color: None,
                     background_pad: [px(0.); 4],
                     background_radius: px(0.),
+                    background_line_gap: false,
                     background_border: None,
                     underline: None,
                     strikethrough: None,
@@ -2021,6 +2037,7 @@ mod tests {
                     background_color: None,
                     background_pad: [px(0.); 4],
                     background_radius: px(0.),
+                    background_line_gap: false,
                     background_border: None,
                     underline: None,
                     strikethrough: None,
@@ -2031,6 +2048,7 @@ mod tests {
                     background_color: None,
                     background_pad: [px(0.); 4],
                     background_radius: px(0.),
+                    background_line_gap: false,
                     background_border: None,
                     underline: None,
                     strikethrough: None,
@@ -2272,6 +2290,7 @@ mod tests {
                 background_color: None,
                 background_pad: [px(0.); 4],
                 background_radius: px(0.),
+                background_line_gap: false,
                 background_border: None,
                 underline: None,
                 strikethrough: None,
@@ -2298,6 +2317,7 @@ mod tests {
                 background_color: Some(black()),
                 background_pad: [px(0.); 4],
                 background_radius: px(0.),
+                background_line_gap: false,
                 background_border: None,
                 underline: None,
                 strikethrough: None,
