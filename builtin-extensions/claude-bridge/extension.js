@@ -41546,6 +41546,11 @@ function handleServerMessage(msg, ctx) {
         description: msg.description
       });
       break;
+    case "session:usage": {
+      const usage = msg.usage;
+      if (usage && typeof usage === "object") ctx.window.webContents.send("session:usage", ctx.tabId, usage);
+      break;
+    }
     case "session:title": {
       const title = msg.title;
       if (title) {
@@ -43105,15 +43110,16 @@ async function syncUserDataOnce(serverUrl, token) {
   }
   const hash = tokenHash(token);
   const claudeDir = import_path8.default.join(import_os5.default.homedir(), ".claude");
-  const [skills, agents, commands6, plugins, settings, claudeMd] = await Promise.all([
+  const [skills, agents, commands6, plugins, settings, claudeMd, agentsMd] = await Promise.all([
     readEntrypointMd(import_path8.default.join(claudeDir, "skills"), "skills"),
     readEntrypointMd(import_path8.default.join(claudeDir, "agents"), "agents"),
     readEntrypointMd(import_path8.default.join(claudeDir, "commands"), "commands"),
     buildPluginSnapshots(),
     safeReadFile(import_path8.default.join(claudeDir, "settings.json")),
-    safeReadFile(import_path8.default.join(claudeDir, "CLAUDE.md"))
+    safeReadFile(import_path8.default.join(claudeDir, "CLAUDE.md")),
+    safeReadFile(import_path8.default.join(claudeDir, "AGENTS.md"))
   ]);
-  const data = { skills, agents, commands: commands6, plugins, settings, claudeMd };
+  const data = { skills, agents, commands: commands6, plugins, settings, claudeMd, agentsMd };
   const url = `${toHttpUrl(serverUrl)}/api/sync/${hash}/user`;
   try {
     const resp = await fetch(url, {
@@ -43129,7 +43135,7 @@ async function syncUserDataOnce(serverUrl, token) {
       return { ok: false, error };
     }
     lastUserSync.set(syncKey, now);
-    log(`User data synced (skills: ${Object.keys(data.skills).length}, agents: ${Object.keys(data.agents).length}, commands: ${Object.keys(data.commands).length}, plugins: ${Object.keys(data.plugins).length}, settings: ${!!data.settings}, claudeMd: ${!!data.claudeMd})`);
+    log(`User data synced (skills: ${Object.keys(data.skills).length}, agents: ${Object.keys(data.agents).length}, commands: ${Object.keys(data.commands).length}, plugins: ${Object.keys(data.plugins).length}, settings: ${!!data.settings}, claudeMd: ${!!data.claudeMd}, agentsMd: ${!!data.agentsMd})`);
     return { ok: true };
   } catch (err) {
     const error = `User sync error: ${err instanceof Error ? err.message : String(err)}`;
@@ -43156,7 +43162,7 @@ async function syncProjectDataOnce(serverUrl, token, projectPath) {
   }
   const hash = tokenHash(token);
   const dotClaudeDir = import_path8.default.join(projectPath, ".claude");
-  const [skills, rules, agents, commands6, settings, claudeMd, dotClaudeMd, claudeJson] = await Promise.all([
+  const [skills, rules, agents, commands6, settings, claudeMd, dotClaudeMd, claudeJson, agentsMd, dotAgentsMd] = await Promise.all([
     readEntrypointMd(import_path8.default.join(dotClaudeDir, "skills"), "skills"),
     readEntrypointMd(import_path8.default.join(dotClaudeDir, "rules"), "commands"),
     // rules: flat .md, treat like commands
@@ -43165,9 +43171,23 @@ async function syncProjectDataOnce(serverUrl, token, projectPath) {
     safeReadFile(import_path8.default.join(dotClaudeDir, "settings.json")),
     safeReadFile(import_path8.default.join(projectPath, "CLAUDE.md")),
     safeReadFile(import_path8.default.join(dotClaudeDir, "CLAUDE.md")),
-    safeReadFile(import_path8.default.join(projectPath, ".claude.json"))
+    safeReadFile(import_path8.default.join(projectPath, ".claude.json")),
+    safeReadFile(import_path8.default.join(projectPath, "AGENTS.md")),
+    safeReadFile(import_path8.default.join(dotClaudeDir, "AGENTS.md"))
   ]);
-  const data = { skills, rules, agents, commands: commands6, settings, claudeMd, dotClaudeMd, claudeJson, projectPath };
+  const data = {
+    skills,
+    rules,
+    agents,
+    commands: commands6,
+    settings,
+    claudeMd,
+    dotClaudeMd,
+    claudeJson,
+    agentsMd,
+    dotAgentsMd,
+    projectPath
+  };
   const url = `${toHttpUrl(serverUrl)}/api/sync/${hash}/project`;
   try {
     const resp = await fetch(url, {

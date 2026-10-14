@@ -92,17 +92,24 @@ impl Paragraph {
         {
             return origin;
         }
-        // Keep the raster origin coherent with an opaque box's snapped fill
-        // (CSS 2.1 section 14.2), without clipping glyph overhang or changing
-        // layout. Pixel-exact glyphs retain their own shared edge grid above.
         // A transparent descendant paints over its ancestor's fill (CSS 2.1
-        // section 14.2). Keep its exact relative position within that fill's
-        // device frame instead of independently snapping every paragraph.
+        // section 14.2): keep its horizontal position within the device
+        // frame of the paragraph's own opaque fill, else of that ancestor
+        // fill, so text in a pixel-snapped box does not drift across glyph
+        // subpixel variants (`position-sticky-table-pixel-rounding`,
+        // `flexbox-baseline-multi-item-horiz-001a`). The baseline row is NOT
+        // taken from the fill: Blink draws glyphs at their fractional layout
+        // baseline and Skia rounds Y on its own (no vertical subpixel
+        // variants), so equal baselines land on one device row whether or
+        // not an ancestor fill was snapped up or down (`multicol-span-all-
+        // children-height-004a`, `box-generation-001` at device scale 1).
         let baseline = origin + self.glyph_nudge + point(px(0.0), base);
-        let background_offset = window
-            .css_text_background_offset(baseline)
-            .or(self.opaque_text_origin.then_some(self.glyph_nudge));
-        let origin = origin - background_offset.unwrap_or_default();
+        let background_offset = self
+            .opaque_text_origin
+            .then_some(self.glyph_nudge)
+            .or_else(|| window.css_text_background_offset(baseline))
+            .unwrap_or_default();
+        let origin = origin - point(background_offset.x, px(0.0));
         // GPUI has no vertical subpixel variants on Windows/Linux; flooring the
         // baseline biases fractional half-leading upward. CSS 2.1 section 10.8.1
         // defines the baseline before rasterization, so preserve it in layout

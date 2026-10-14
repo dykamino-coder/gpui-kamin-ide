@@ -10,6 +10,7 @@ use gpui::{Div, Styled, px};
 mod alignment;
 mod display_axes;
 mod grid_gap;
+mod ratio_constraints;
 mod sizing;
 use alignment::layout_alignment;
 use display_axes::{layout_display, layout_flex_axes};
@@ -17,6 +18,8 @@ use grid_gap::layout_grid_gap;
 use sizing::layout_sizing;
 
 pub(super) fn apply_layout(mut d: Div, c: &Computed) -> Div {
+    let constrained = ratio_constraints::resolve(c);
+    let c = constrained.as_ref().unwrap_or(c);
     // Вертикальная `-webkit-box` с действующим `continue` (`line-clamp`,
     // `-webkit-line-clamp`) вычисляется в `flow-root` (css-overflow-4
     // §line-clamp, «the computed value becomes flow-root and the box

@@ -20,6 +20,8 @@ pub(crate) fn stacking_context(c: &Computed) -> bool {
         || c.preserve_3d == Some(true)
         || c.translate.is_some()
         || c.opacity.is_some_and(|o| o < 1.0)
+        // Compositing 1 §mix-blend-mode: non-normal blending creates a context.
+        || c.blend.is_some_and(|b| b != 0)
         || c.isolate == Some(true)
         || c.filter.is_some()
         || (c.z_index.is_some()

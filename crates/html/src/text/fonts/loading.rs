@@ -71,6 +71,7 @@ pub fn load_faces(css: &str) {
     FACES.with(|f| f.borrow_mut().clear());
     HAS_SPACE.with(|s| s.borrow_mut().clear());
     SIZE_ADJUST.with(|s| s.borrow_mut().clear());
+    super::metric_overrides::clear();
     ROMN.with(|r| r.borrow_mut().clear());
     load_faces_into(css);
 }
@@ -134,6 +135,7 @@ pub(super) fn load_faces_into(css: &str) {
                     .or_default()
                     .push((slope, adjust));
             });
+            super::metric_overrides::register(&name, slope, &block);
             let width = stretch_desc(declaration(&block, "font-stretch").as_deref());
             FACES.with(|f| {
                 f.borrow_mut()

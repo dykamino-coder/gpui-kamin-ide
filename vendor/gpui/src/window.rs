@@ -5801,7 +5801,7 @@ impl Window {
         self.invalidator.debug_assert_paint();
 
         let scale_factor = self.scale_factor();
-        let bounds = bounds.scale(scale_factor);
+        let bounds = self.backdrop_device_bounds(bounds.scale(scale_factor));
         let content_mask = self.content_mask().scale(scale_factor);
         self.next_frame.scene.insert_primitive(PaintSurface {
             order: 0,
@@ -5814,6 +5814,32 @@ impl Window {
             color_matrix: None,
         });
     }
+    /// KaminIDE patch: backdrop surfaces have no transformation of their own
+    /// (they read the frame), so an axis-aligned scale/translate of the
+    /// current transformation is applied to their device bounds here, the
+    /// way quads apply it in the vertex shader (Filter Effects 2
+    /// §backdrop-filter: the filtered region is the transformed border box).
+    fn backdrop_device_bounds(
+        &self,
+        bounds: Bounds<ScaledPixels>,
+    ) -> Bounds<ScaledPixels> {
+        let m = self.current_transformation();
+        let [[a, b], [c, d]] = m.rotation_scale;
+        if m == TransformationMatrix::unit() || b != 0.0 || c != 0.0 || a <= 0.0 || d <= 0.0 {
+            return bounds;
+        }
+        Bounds {
+            origin: point(
+                ScaledPixels(bounds.origin.x.0 * a + m.translation[0]),
+                ScaledPixels(bounds.origin.y.0 * d + m.translation[1]),
+            ),
+            size: size(
+                ScaledPixels(bounds.size.width.0 * a),
+                ScaledPixels(bounds.size.height.0 * d),
+            ),
+        }
+    }
+
 
     /// KaminIDE patch: `backdrop-filter` с цветовыми функциями — матрица 4×5
     /// над подложкой (и размытие, если оно тоже задано). Прозрачность
@@ -5836,7 +5862,7 @@ impl Window {
         self.invalidator.debug_assert_paint();
 
         let scale_factor = self.scale_factor();
-        let bounds = bounds.scale(scale_factor);
+        let bounds = self.backdrop_device_bounds(bounds.scale(scale_factor));
         let content_mask = self.content_mask().scale(scale_factor);
         let opacity = self.element_opacity();
         let surface = PaintSurface {

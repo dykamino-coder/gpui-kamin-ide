@@ -137,9 +137,14 @@ pub(crate) fn box_borders(c: &Computed, out: &mut Vec<AnyElement>) {
                             (h * sf).round().max(1.0) as u32,
                         );
                         let args = spec.trim_start_matches("rrect(").trim_end_matches(')');
-                        if let Some(img) =
-                            crate::paint::background::rasterize_ring(args, pw, ph, sf, colour)
-                        {
+                        if let Some(img) = crate::paint::background::rasterize_ring_at(
+                            args,
+                            pw,
+                            ph,
+                            sf,
+                            colour,
+                            (f32::from(bounds.origin.x), f32::from(bounds.origin.y)),
+                        ) {
                             let _ = window.paint_image_with_sampling(
                                 bounds,
                                 gpui::Corners::default(),

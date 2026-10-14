@@ -75,7 +75,7 @@ fn scan_style(
         .filter(|r| crate::style::select::matching::matches(&r.sel, me, path, sibs))
         .collect();
     let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
-    crate::dom::inherit_counter_decls(&mut style, path.last().map(|p| &p.counter_style));
+    crate::dom::content::inherit_generated(&mut style, path.last());
     crate::dom::apply_value_hint(&mut style, me);
     Some(style)
 }
@@ -98,7 +98,7 @@ fn pseudo_style(
         return None;
     }
     let mut style = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars);
-    crate::dom::inherit_counter_decls(&mut style, Some(&me.counter_style));
+    crate::dom::content::inherit_generated(&mut style, Some(me));
     // Без содержимого коробки нет, а значит нет и счётчиков.
     (crate::dom::host_content(&style, me).is_some() && style.display != Some(Display::None))
         .then_some(style)
@@ -143,7 +143,7 @@ impl Scan<'_> {
             return;
         };
         let mut computed_me = me.clone();
-        computed_me.counter_style = crate::dom::counter_snapshot(&style);
+        crate::dom::content::snapshot_generated(&mut computed_me, &style);
         let me = &computed_me;
         // Узел без коробки счётчиков не трогает (css-lists-3
         // §counters-without-boxes).

@@ -95,7 +95,11 @@ pub(crate) fn layer_route(
         && !fixed
         && e.style.z_index.is_some_and(|z| z < 0)
         && !stacking_context(inherited);
-    let to_icb = !ordered_context
+    // In a flex/grid container the static-position probe is missing, but with
+    // both axes set it is not needed: the containing block of `fixed` (and of an
+    // abspos box without a positioned ancestor) is the ICB, not the grid
+    // (CSS 2.1 §10.1 items 3–4; `positioned-grid-items-019`).
+    let to_icb = (!ordered_context || (x_set && y_set))
         && geometry_layer_ok
         && (fixed || orphan_abs)
         && (e.style.z_index.unwrap_or(0) >= 0 || below_icb)

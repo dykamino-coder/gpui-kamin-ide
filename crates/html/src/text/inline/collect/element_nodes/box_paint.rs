@@ -61,7 +61,8 @@ pub(super) fn element_style(e: &Element, inherited: &Computed) -> (Computed, boo
                 crate::style::values::value::Len::Px(_)
                 | crate::style::values::value::Len::Em(_)
                 | crate::style::values::value::Len::Ch(_)
-                | crate::style::values::value::Len::Ex(_),
+                | crate::style::values::value::Len::Ex(_)
+                | crate::style::values::value::Len::Ic(_),
             ) => crate::text::metrics::spacing_px(l, &family, size),
             _ => 0.0,
         };
@@ -121,7 +122,8 @@ pub(super) fn element_style(e: &Element, inherited: &Computed) -> (Computed, boo
                 crate::style::values::value::Len::Px(_)
                 | crate::style::values::value::Len::Em(_)
                 | crate::style::values::value::Len::Ch(_)
-                | crate::style::values::value::Len::Ex(_),
+                | crate::style::values::value::Len::Ex(_)
+                | crate::style::values::value::Len::Ic(_),
             ) => crate::text::metrics::spacing_px(l, &family, font_px),
             _ => 0.0,
         };

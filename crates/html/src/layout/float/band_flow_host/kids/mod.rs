@@ -9,7 +9,6 @@ use crate::paint::effects::paint_scope::snapshot as defer_depth;
 use crate::render::{RenderOpts, element};
 use crate::style::computed::Computed;
 mod parts;
-pub(super) use parts::band_kid_head;
 pub(super) use parts::band_kid_kind;
 
 /// Дети одного содержащего блока измеряемого хоста. `count` первых
@@ -45,6 +44,9 @@ pub(crate) fn band_kids(
         .iter()
         .any(|n| matches!(n, Node::Element(p) if p.attr("lead-probe") == Some("1")));
     let nowrap = inherited.nowrap == Some(true);
+    let initial_letter = nodes
+        .iter()
+        .any(|n| matches!(n, Node::Element(e) if e.attr("initial-letter").is_some()));
     let mk_build = |p: &Element| -> crate::layout::float::band_flow::Build {
         let p = p.clone();
         let inherited = inherited.clone();
@@ -104,6 +106,15 @@ pub(crate) fn band_kids(
         if c.attr("lead-probe") == Some("1") {
             continue;
         }
+        let mut continued;
+        let c = if initial_letter && c.attr("anon") == Some("1") {
+            // The initial letter already consumed the paragraph's indent.
+            continued = c.clone();
+            continued.style.text_indent = Some(crate::style::values::value::Len::Px(0.0));
+            &continued
+        } else {
+            c
+        };
         let Some(margin) = band_margins(&c.style, em) else {
             continue;
         };
@@ -140,15 +151,6 @@ pub(crate) fn band_kids(
             Some(value) => value,
             None => continue,
         };
-        // Голова анонимного прогона — его первое слово (до первой мягкой
-        // возможности разрыва): по ней план решает, влезает ли ПЕРВАЯ строка
-        // в окно рядом с флоатами (§9.5). min-content всего прогона — самое
-        // длинное слово где-то дальше — опускал прогон под флоат, хотя
-        // первые строки рядом помещались (`shape-image-012-ref`: флоат 100px
-        // в 200px, строки `XXXXX` по 100px рядом, а `XXXXXXXXXX` — ниже).
-        // При `nowrap` и значимых пробелах слово не граница строки — голову
-        // не заводим, мерится весь прогон.
-        let head = band_kid_head(inherited, opts, depth, c, &first_layer);
         let mut node = c.clone();
         if first_layer.is_some() {
             node.first_line = first_layer;
@@ -174,7 +176,6 @@ pub(crate) fn band_kids(
             build,
             nest,
             anon: c.attr("anon") == Some("1"),
-            head,
             lead: if float { lead_for(idx) } else { None },
             lead_base: if float { base_for(idx) } else { None },
             margin_offset: c.style.float_margin_offset.unwrap_or(0.0),

@@ -1601,8 +1601,10 @@ impl DirectXRenderer {
         // размывается. 8 — прежнее умолчание, от него и считаем.
         let strength = (s.blur_radius / 8.0).clamp(0.25, 6.0);
         // Область + поля под радиус размытия, кламп в кадр.
-        let margin: f32 = 24.0 * strength;
-        let margin = margin.min(96.0);
+        // Filter Effects 2 §backdrop-filter: the backdrop is clipped to the
+        // border box; edges are mirrored in the shader (blur_tap), so the
+        // cascade reads no pixels beyond the element.
+        let margin: f32 = 0.0;
         let bx = (s.bounds.origin.x.0 - margin).max(0.0).floor();
         let by = (s.bounds.origin.y.0 - margin).max(0.0).floor();
         let bx1 = (s.bounds.origin.x.0 + s.bounds.size.width.0 + margin)

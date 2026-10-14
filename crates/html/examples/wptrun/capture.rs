@@ -1,5 +1,39 @@
 //! Capture a restored client area without accepting minimized title-bar images.
 
+/// Fence the previous document and count each completed GPU draw only once.
+pub(super) struct CaptureCursor {
+    seq: Option<u64>,
+}
+
+impl CaptureCursor {
+    pub(super) fn new() -> Self {
+        Self {
+            seq: offscreen().then(|| gpui::frame_capture::latest().map_or(0, |f| f.seq)),
+        }
+    }
+
+    fn advance(&mut self, seq: u64) -> bool {
+        let Some(previous) = self.seq else {
+            return true;
+        };
+        if seq <= previous {
+            return false;
+        }
+        self.seq = Some(seq);
+        true
+    }
+
+    pub(super) fn next(&mut self, hwnd: isize) -> Option<(u32, u32, Vec<u8>)> {
+        if self.seq.is_some() {
+            let frame = gpui::frame_capture::latest()?;
+            return self
+                .advance(frame.seq)
+                .then_some((frame.width, frame.height, frame.bgra));
+        }
+        capture(hwnd)
+    }
+}
+
 /// Снимок клиентской области окна: массив байт BGRA и его размеры.
 pub(super) fn capture(hwnd: isize) -> Option<(u32, u32, Vec<u8>)> {
     // `WPT_OFFSCREEN=1`: the frame GPUI itself drew, read back from the GPU
@@ -107,5 +141,22 @@ pub(super) fn park_offscreen(hwnd: isize) {
             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
         );
         let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CaptureCursor;
+
+    #[test]
+    fn only_new_draws_cross_the_document_fence() {
+        let mut cursor = CaptureCursor { seq: Some(41) };
+        assert!(!cursor.advance(41));
+        assert!(!cursor.advance(40));
+        assert!(cursor.advance(42));
+        for _ in 0..120 {
+            assert!(!cursor.advance(42));
+        }
+        assert!(cursor.advance(43));
     }
 }

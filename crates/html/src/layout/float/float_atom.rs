@@ -23,6 +23,8 @@ pub(super) fn band_atom(
         px_margin(&c.style.margin.top).unwrap_or(0.0),
     );
     let mut merged = inherit(inherited, &c.style);
+    // This path bypasses element(); positioned descendants still need the DOM CB key.
+    merged.self_node = c.node_id;
     // CSS 2.1 sections 9.4.2 and 10.6.6: the outer holder already
     // represents the margin box; its contents paint the border box once.
     merged.margin = crate::style::computed::Sides::default();

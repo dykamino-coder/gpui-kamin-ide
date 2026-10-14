@@ -25,7 +25,7 @@ pub(super) fn gradient_angle(a: &str) -> Option<Option<f32>> {
     })
 }
 
-pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
+pub(super) fn parse_gradient(v: &str) -> Option<Gradient> {
     // Повторяющаяся запись отличается от обычной ТОЛЬКО тем, что узор стопов
     // мостится вдоль линии (css-images-3 §3.6): разбор у них общий, а
     // повторение делает растеризатор, заворачивая долю точки.

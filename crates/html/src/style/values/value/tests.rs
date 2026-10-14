@@ -14,6 +14,18 @@ fn lengths() {
 }
 
 #[test]
+fn root_font_units_parse() {
+    // `rch`/`rex`/`ric`/`rcap` — точки по шрифту корня, а не обрывок `1r`
+    // + `ch` (прежде объявление падало целиком).
+    for unit in ["rcap", "rch", "rex", "ric"] {
+        assert!(
+            matches!(Len::parse(&format!("2{unit}")), Some(Len::Px(v)) if v > 0.0),
+            "{unit}"
+        );
+    }
+}
+
+#[test]
 fn colors_hex() {
     assert_eq!(
         Color::parse("#fff"),

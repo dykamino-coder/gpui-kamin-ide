@@ -17,6 +17,7 @@
 
 mod font_faces;
 mod loading;
+pub(crate) mod metric_overrides;
 mod sfnt_metrics;
 mod stretch;
 #[cfg(test)]
@@ -79,6 +80,21 @@ thread_local! {
     static ROMN_BY_SRC: RefCell<HashMap<String, Option<f32>>> = RefCell::new(HashMap::new());
     /// То же по придуманному страницей имени семейства (живёт одну страницу).
     static ROMN: RefCell<HashMap<String, f32>> = RefCell::new(HashMap::new());
+}
+
+/// Тег `cssw`: текст документа просит у gpui подбор веса грани по CSS
+/// (css-fonts-4 §5.2 шаг 4; `gpui-windows` `direct_write/css_weight.rs`).
+/// Шрифты интерфейса IDE его не несут и подбираются как раньше.
+pub const CSS_WEIGHT_TAG: (&str, u32) = ("cssw", 1);
+
+/// Те же возможности шрифта с тегом [`CSS_WEIGHT_TAG`] — для шрифтов замера,
+/// собранных мимо `used_features`.
+pub fn with_css_weight(features: &gpui::FontFeatures) -> gpui::FontFeatures {
+    let mut list = features.tag_value_list().to_vec();
+    if !list.iter().any(|(t, _)| t == CSS_WEIGHT_TAG.0) {
+        list.push((CSS_WEIGHT_TAG.0.to_string(), CSS_WEIGHT_TAG.1));
+    }
+    gpui::FontFeatures(std::sync::Arc::new(list))
 }
 
 /// Загрузчик: получает содержимое файла, отдаёт имя семейства в системе.

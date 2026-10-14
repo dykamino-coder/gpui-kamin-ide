@@ -38,7 +38,7 @@ pub(crate) fn marker(id: u64) -> Option<AnyElement> {
 pub(crate) fn probe(id: u64, c: &Computed) -> Option<AnyElement> {
     let frame = CURRENT.with(|slot| slot.borrow().clone())?;
     if frame.root.get() == Some(id) {
-        return None;
+        return super::grid::probe(frame, c);
     }
     let clip = Clip::new(c);
     let snap = c.snap;

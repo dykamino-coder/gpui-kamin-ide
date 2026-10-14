@@ -8,7 +8,7 @@ use crate::layout::block::reorder::{orthogonal_vertical_children, resolve_inline
 use crate::layout::block::struts::margin_px;
 use crate::layout::block::vertical_flow_margins;
 use crate::layout::grid::place_named_areas;
-use crate::layout::multicol::gap_rules::gap_rule_spec;
+use crate::layout::multicol::gap_rules::decorated_children;
 use crate::layout::multicol::spanner::multicol_container;
 use crate::layout::positioned::absolute_overflow;
 use crate::layout::replaced::limits::auto_clamp_limit;
@@ -116,6 +116,10 @@ pub(crate) fn generic_children(
     ) || matches!(
         merged.overflow_y,
         Some(crate::style::computed::Overflow::Hidden) | Some(crate::style::computed::Overflow::Scroll)
+    ) || matches!(
+        merged.position,
+        Some(crate::style::computed::Position::Absolute)
+            | Some(crate::style::computed::Position::Fixed)
     ) || merged.float.is_some()
         || merged.flow_root == Some(true)
         // Независимый контекст форматирования и без overflow/float/
@@ -137,6 +141,7 @@ pub(crate) fn generic_children(
         // `<fieldset>` — тоже отдельная раскладка
         // (`webkit-line-clamp-027`).
         || e.tag == "fieldset";
+    let clamp_outer = crate::text::clamp::clamp_context();
     let _bfc_guard = (!is_clamp && makes_bfc && crate::text::clamp::clamp_context().is_some())
         .then(crate::text::clamp::ClampGuard::enter_bfc);
     // Проба элемента сетки/гибкого контейнера: пишет свои разложенные
@@ -144,7 +149,17 @@ pub(crate) fn generic_children(
     // ранний `return` не съел запись. Абсолютные дети дорожек не
     // занимают (css-grid-1 §9), а пустой анонимный блок — это
     // распорка лент (`spacer()`), не элемент.
-    child_probes(e, &merged, opts, &mut kids, makes_bfc, is_clamp);
+    // Paragraph numbers of this box's descendants (clamp point, tree order).
+    let clamp_span = crate::text::clamp::open_clamp_span();
+    child_probes(
+        e,
+        &merged,
+        opts,
+        &mut kids,
+        makes_bfc,
+        is_clamp,
+        clamp_span.clone(),
+    );
     // Абсолютный потомок ищет ближайшего позиционированного предка
     // (§10.1), а раскладка под нами знает только непосредственного
     // родителя. Пока строятся дети, открыт слой: коробка, чей родитель
@@ -157,25 +172,26 @@ pub(crate) fn generic_children(
     // задан стиль хотя бы одной линейки: начальное `none` означает,
     // что рисовать нечего, и ни одна старая пара сюда не попадает
     // (см. `gap_rule_spec`).
-    let gap_rules = gap_rule_spec(e, &merged, opts);
-    let gap_buf = gap_rules
-        .is_some()
-        .then(|| crate::paint::gap_rules::gap_items_for(e.node_id ^ opts.doc_salt));
-    let _gap_guard = gap_buf
-        .as_ref()
-        .map(|_| crate::paint::gap_rules::GapGuard::enter(e.node_id ^ opts.doc_salt));
     // css-gaps-1 §gap-decorations: «Gap decorations are painted just
     // above the border of the container» — ПОД детьми. Слой идёт до
     // них: буфер проб он всё равно читает в `paint`, а prepaint всего
     // дерева у gpui проходит раньше (эталоны `grid-gap-decorations-042`
     // и `flex-033` кладут линейки `z-index: -1`, `008/023` — элементы
     // `z-index: 2`).
-    if let (Some(buf), Some(spec)) = (gap_buf, gap_rules) {
-        kids.push(
-            crate::paint::gap_rules::painter::GapRulePainter::new(buf, spec).into_any_element(),
-        );
+    // The viewport scroll tree is built after the outer document ICB
+    // closes. Its padding box still owns the initial containing block
+    // (CSS 2.1 §10.1), including absolute descendants below body margins.
+    let viewport = e.tag == "html-viewport";
+    if viewport {
+        crate::layout::positioned::containing_block::icb_open();
     }
-    kids.extend(blocks(&children, &merged, opts));
+    kids.extend(decorated_children(e, &merged, opts, || {
+        blocks(&children, &merged, opts)
+    }));
+    if viewport {
+        kids.extend(crate::layout::positioned::containing_block::icb_close());
+    }
+    let d = crate::text::clamp::hide_box_after_point(d, clamp_outer, clamp_span, &merged, is_clamp);
     if cb_layer {
         kids.extend(crate::layout::positioned::containing_block::cb_close());
     }

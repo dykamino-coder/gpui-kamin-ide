@@ -230,6 +230,7 @@ export const EVENT: Record<string, string> = {
   onMcpLoading: "mcp:loading",
   onMcpReady: "mcp:ready",
   onSessionTitle: "session:title",
+  onSessionUsage: "session:usage",
   onSessionRestarted: "session-restarted",
   onConsoleReset: "bridge:console-reset",
   onMcpTestLog: "mcp:test-log",

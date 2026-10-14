@@ -351,6 +351,14 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
       })
       break
 
+    case 'session:usage': {
+      // Live limits / context fill parsed server-side from the CLI status
+      // line (session-statusline.ts). Forwarded as-is to the chat webview.
+      const usage = (msg as any).usage
+      if (usage && typeof usage === 'object') ctx.window.webContents.send('session:usage', ctx.tabId, usage)
+      break
+    }
+
     case 'session:title': {
       const title = (msg as any).title as string
       if (title) {

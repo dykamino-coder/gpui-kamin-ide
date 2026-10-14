@@ -37,6 +37,8 @@ impl Computed {
                     // (css-backgrounds-3 §6.1). Запись хранится как есть:
                     // растрирует её загрузчик картинок.
                     image.src = value.to_string();
+                } else if crate::paint::background::filter_image::parse(value).is_some() {
+                    image.src = value.to_string();
                 } else if let Some(url) = parse_url(value) {
                     image.src = url;
                 }
@@ -142,6 +144,7 @@ impl Computed {
             let words = split_outside_parens(head);
             let (urls, rest): (Vec<&String>, Vec<&String>) = words.iter().partition(|w| {
                 w.starts_with("url(")
+                    || w.starts_with("filter(")
                     || w.starts_with("linear-gradient(")
                     || w.starts_with("radial-gradient(")
                     || w.starts_with("conic-gradient(")

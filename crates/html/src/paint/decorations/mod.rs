@@ -63,6 +63,12 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
             .into_any_element(),
         );
     }
+    // Filter Effects 2 §backdrop-filter (Overview.bs:61-66): the filtered
+    // backdrop is drawn first and the element's background, borders and
+    // content on top of it; borders after it stay unfiltered
+    // (`backdrop-filter-with-background-clip-padding-box`).
+    backdrop_matrix(c, &mut out);
+
     // Фоновая картинка идёт первой: она поверх цвета фона и под всем
     // остальным — тот же порядок, что в браузере.
     // Несколько слоёв (css-backgrounds-3 §2.1): плитки каждого слоя своей
@@ -105,8 +111,6 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
         out.push(layer);
     }
     stationary(c, &mut out, start);
-
-    backdrop_matrix(c, &mut out);
 
     gradient_stripes(c, &mut out);
 

@@ -192,7 +192,7 @@ pub fn fallback_len_px(
 
 /// Высота строки при `line-height: normal` — доля кегля по метрикам шрифта.
 pub fn normal_line(family: &str) -> f32 {
-    fractions(family).2
+    crate::text::fonts::metric_overrides::normal_line(family, fractions(family).2)
 }
 
 /// Метрика шрифта в ДОЛЯХ КЕГЛЯ для `font-size-adjust` (css-fonts-5): 0 —

@@ -21,6 +21,7 @@ pub use fills::paint_area;
 pub(crate) use fills::text_clip_fill;
 pub(crate) use flat_stack::collapse as collapse_flat_stack;
 
+mod filtered_raster;
 mod source_types;
 pub use source_types::Source;
 
@@ -37,8 +38,11 @@ pub(crate) use sampling::paint_gradient;
 pub(crate) mod single_corner;
 use crate::paint::background::float_geometry::rrect_of;
 pub use float_geometry::rounded_float;
+pub(crate) mod filter_image;
 mod mask_composite;
+mod mask_luminance;
 pub use mask_composite::{MaskLayer, compose_mask_layers};
+pub(crate) use mask_luminance::luminance_mask_image;
 mod angle;
 mod clip;
 mod conic;
@@ -83,6 +87,9 @@ const MAX_TILES: f32 = 2048.0;
 pub fn load(src: &str) -> Option<Arc<RenderImage>> {
     match source(src)? {
         Source::Raster(image) => Some(image),
+        filtered @ Source::Filtered { .. } => {
+            filtered.raster(default_size(filtered.intrinsic(), (300.0, 150.0)))
+        }
         // Своя величина рисунка — то же, что для растра: он растрируется под
         // неё, а нужный размер плитки посчитает вызывающий.
         Source::Vector { markup, size } => {
@@ -160,22 +167,25 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
     }
     let style = c.clone();
     Some(
-        exact_layer::ExactLayer::new(move |bounds: Bounds<Pixels>, window: &mut gpui::Window| {
-            clip::paint(&style, bounds, window, |style, window| {
-                if style.bg_fixed == Some(true) {
-                    // Плитка меряется и отсчитывается от ОБЛАСТИ ПРОСМОТРА,
-                    // а красится только внутри своей коробки: сдвиг между
-                    // ними держит сам `paint_tiles`.
-                    let view = Bounds {
-                        origin: gpui::point(px(0.0), px(0.0)),
-                        size: window.viewport_size(),
-                    };
-                    paint_tiles(style, view, Some(bounds), window);
-                } else {
-                    paint_area(style, bounds, window);
-                }
-            });
-        })
+        exact_layer::ExactLayer::inset(
+            c.bg_border_insets.unwrap_or([0.0; 4]),
+            move |bounds: Bounds<Pixels>, window: &mut gpui::Window| {
+                clip::paint(&style, bounds, window, |style, window| {
+                    if style.bg_fixed == Some(true) {
+                        // Плитка меряется и отсчитывается от ОБЛАСТИ ПРОСМОТРА,
+                        // а красится только внутри своей коробки: сдвиг между
+                        // ними держит сам `paint_tiles`.
+                        let view = Bounds {
+                            origin: gpui::point(px(0.0), px(0.0)),
+                            size: window.viewport_size(),
+                        };
+                        paint_tiles(style, view, Some(bounds), window);
+                    } else {
+                        paint_area(style, bounds, window);
+                    }
+                });
+            },
+        )
         .into_any_element(),
     )
 }

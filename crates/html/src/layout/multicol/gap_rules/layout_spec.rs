@@ -82,7 +82,7 @@ pub(super) fn gap_rule_layout(
             track_px(merged.grid_rows.as_ref()),
             track_px(merged.grid_tracks.as_ref()),
         ),
-        GapLayout::Lines { .. } => (None, None),
+        GapLayout::Lines { .. } | GapLayout::Multicol => (None, None),
     };
     // В вертикальном письме колонки сетки идут по y — тем же поворотом, что и
     // `gap_x`/`gap_y` строкой выше.
@@ -123,6 +123,17 @@ pub(super) fn gap_rule_layout(
     Some(crate::paint::gap_rules::GapRuleSpec {
         pad,
         lines_extent,
+        flex_line_stretch: !lanes
+            && matches!(
+                merged.align_content,
+                None | Some(crate::style::computed::Justify::Stretch)
+            )
+            && matches!(
+                merged.align_items,
+                None | Some(
+                    crate::style::computed::Align::Start | crate::style::computed::Align::Stretch
+                )
+            ),
         lanes_content_aligned: lanes
             && if crate::dom::lanes_row_dir(merged) {
                 merged.justify_content.is_some()

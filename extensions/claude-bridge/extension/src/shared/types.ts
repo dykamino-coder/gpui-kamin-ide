@@ -1,4 +1,25 @@
 // Server URL and connection state
+export interface SessionUsageWindow {
+  /** `five_hour` | `seven_day` (status-line `rate_limits.*`) */
+  id: string
+  label: string
+  percent: number
+  /** ISO reset time */
+  resetsAt: string
+}
+/** Live subscription limits + context fill from the CLI status line. */
+export interface SessionUsage {
+  windows: SessionUsageWindow[]
+  contextPercent: number | null
+  contextWindowSize: number | null
+  model: string | null
+  effort: string | null
+  observedAt: string
+  /** When a CLI reported the shown 5h/7d windows (may predate this
+   *  session's CLI, which has none before its first model response). */
+  limitsObservedAt?: string | null
+}
+
 export interface ConnectionConfig {
   serverUrl: string
   token: string
@@ -430,6 +451,9 @@ export interface KaminBridgeApi {
 
   // ─── Session Title ─────────────────────────────────
   onSessionTitle(callback: (tabId: string, title: string) => void): () => void
+
+  // ─── Session usage (limits / context) ─────────────
+  onSessionUsage(callback: (tabId: string, usage: SessionUsage) => void): () => void
 
   // ─── Session Tree ──────────────────────────────────
   onTreeUpdate(callback: (tree: TreeNode[]) => void): () => void

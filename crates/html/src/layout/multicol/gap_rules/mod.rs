@@ -5,7 +5,9 @@ use crate::dom::Element;
 use crate::render::RenderOpts;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
+mod children;
 mod layout_spec;
+pub(crate) use children::decorated_children;
 use layout_spec::gap_rule_layout;
 
 /// Пробельный текстовый узел: в подсчёте детей он не участвует.
@@ -136,9 +138,7 @@ pub(super) fn multicol_gap_rule_spec(
     probe.display = Some(Display::Flex);
     let mut spec = gap_rule_spec(e, &probe, opts)?;
     let vertical = spec.vertical;
-    spec.kind = crate::paint::gap_rules::GapLayout::Lines {
-        stacked_vertically: !vertical,
-    };
+    spec.kind = crate::paint::gap_rules::GapLayout::Multicol;
     if let Some(c) = spec.col.as_mut()
         && c.brk == 1
     {

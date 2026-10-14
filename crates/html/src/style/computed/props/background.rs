@@ -53,17 +53,23 @@ impl Computed {
                     self.bg_image = None;
                     self.gradient = None;
                     self.gradient_raw = None;
+                    self.gradient_current = None;
                 } else if v.starts_with("linear-gradient(") || v.starts_with("radial-gradient(") {
                     // Негодная запись роняет ОБЪЯВЛЕНИЕ (§4.2), прежняя
                     // картинка живёт: `linear-gradient(green, green)` и следом
                     // четыре негодных угла обязаны оставить зелёный.
                     if let Some(g) = parse_gradient(v) {
                         self.gradient = Some(g);
+                        self.gradient_current = v.contains("currentcolor").then(|| v.to_string());
                         self.gradient_em = has_font_units(v).then(|| v.to_string());
                         // Сырая запись нужна фону РЯДА таблицы: он рисуется
                         // слоем картинки, и градиент туда идёт источником.
                         self.gradient_raw = Some(v.to_string());
                     }
+                } else if crate::paint::background::filter_image::parse(v).is_some() {
+                    // Filter the rendered image, preserving gradient geometry,
+                    // rather than rewriting its stops before interpolation.
+                    self.bg_image = Some(v.trim().to_string());
                 } else if let Some(rest) = v.strip_prefix("filter(") {
                     // `filter(<image>, <filter-list>)` (filter-effects-1 §12):
                     // фильтр применяется К КАРТИНКЕ, не к элементу — цвета
@@ -99,6 +105,9 @@ impl Computed {
                             Some(f) => filter_gradient_text(img, &f),
                             None => img.to_string(),
                         });
+                    } else if crate::paint::background::filter_image::parse(v).is_some() {
+                        // `filter(url(…), …)`: the raster loader filters it.
+                        self.bg_image = Some(v.trim().to_string());
                     }
                 } else if gradient_as_raster(v) {
                     // Конический и ПОВТОРЯЮЩИЕСЯ GPU-путь не выражает — они
@@ -128,6 +137,7 @@ impl Computed {
                             self.bg_image = Some(v.to_string());
                             self.gradient = None;
                             self.gradient_raw = None;
+                            self.gradient_current = None;
                         }
                         _ => {}
                     }
@@ -150,6 +160,7 @@ impl Computed {
                             self.bg_image = None;
                             self.gradient = None;
                             self.gradient_raw = None;
+                            self.gradient_current = None;
                         }
                         // Негодная запись (отрицательное разрешение числом —
                         // css-values-4 §6.3): объявление не применяется (§4.2).

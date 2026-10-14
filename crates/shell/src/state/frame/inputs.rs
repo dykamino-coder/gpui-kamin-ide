@@ -106,6 +106,8 @@ impl RootView {
         }
         // Скрим внутрь вебвью: div rgba(0,0,0,.5) через evaluate_script —
         // единственный способ затемнить WebView2-чайлды вместе с фоном
+        // Скрим ПЕРЕХВАТЫВАЕТ колесо и клики: с pointer-events:none под
+        // модалкой прокручивался и кликался контент вебвью (владелец, 2026-10-13)
         {
             let dim = self.palette_open
                 || self.sov.quickopen_open
@@ -115,7 +117,7 @@ impl RootView {
             if dim != self.webview_scrim {
                 self.webview_scrim = dim;
                 let js = if dim {
-                    "(function(){if(!window.__kaminScrim){var d=document.createElement('div');d.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2147483647;pointer-events:none';document.documentElement.appendChild(d);window.__kaminScrim=d;}})();"
+                    "(function(){if(!window.__kaminScrim){var d=document.createElement('div');d.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2147483647';var stop=function(e){e.preventDefault();e.stopPropagation();};['wheel','mousedown','mouseup','click','contextmenu'].forEach(function(t){d.addEventListener(t,stop,{passive:false,capture:true});});document.documentElement.appendChild(d);window.__kaminScrim=d;}})();"
                 } else {
                     "(function(){if(window.__kaminScrim){window.__kaminScrim.remove();window.__kaminScrim=null;}})();"
                 };

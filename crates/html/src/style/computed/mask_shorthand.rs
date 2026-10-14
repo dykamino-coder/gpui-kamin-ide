@@ -29,7 +29,11 @@ pub(super) fn apply(style: &mut Computed, value: &str) -> bool {
     let (mut after_slash, mut no_clip) = (false, false);
     for word in &words {
         let t = word.as_str();
-        if t == "none" || t.starts_with("url(") || t.contains("-gradient(") {
+        if t == "none"
+            || t.starts_with("url(")
+            || t.starts_with("filter(")
+            || t.contains("-gradient(")
+        {
             if image.replace(t).is_some() {
                 return false;
             }

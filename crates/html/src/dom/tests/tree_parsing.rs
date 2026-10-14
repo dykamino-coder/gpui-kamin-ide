@@ -2,6 +2,19 @@
 
 use super::*;
 
+#[test]
+fn generated_content_inherits_through_ordinary_elements() {
+    let html = r#"<style>
+        section { content: 'PASS'; }
+        div { content: inherit; }
+        div::after { content: inherit; }
+        span::after { content: inherit; }
+        i::after { content: 'own'; content: inherit; content: none; }
+        b::after { content: inherit; content: 'override'; }
+        </style><section><div></div><span></span><i></i><b></b></section>"#;
+    assert_eq!(pseudo_texts(html), ["PASS", "override"]);
+}
+
 /// Цвета детей по порядку — короткая запись для проверок каскада.
 pub(super) fn child_colors(html: &str) -> Vec<Option<crate::style::values::value::Color>> {
     fn find<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Element> {

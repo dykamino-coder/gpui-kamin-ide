@@ -51,11 +51,12 @@ pub(super) fn animation_frames(
         // стоящее позже); итог — постоянный набор из двух одинаковых
         // кадров (`individual-transform-ordering`: `anim-7, anim-8`).
         if a.frozen() && a.names.len() > 1 {
-            let t = a.frozen_t();
             let mut base = style.clone();
             for name in &a.names {
-                if let Some(track) = resolve(name, &base) {
-                    base = crate::animation::frames::frame_at(&track, t);
+                if let Some(track) = resolve(name, &base)
+                    && let Some(sample) = crate::animation::frames::sample_at(&track, a, 0.0)
+                {
+                    base = sample;
                 }
             }
             return Some(vec![(0.0, base.clone()), (1.0, base)]);

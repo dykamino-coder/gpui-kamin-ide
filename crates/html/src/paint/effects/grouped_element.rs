@@ -150,7 +150,7 @@ impl Grouped {
 /// Голый источник слоя маски: содержимое `url(...)` либо запись градиента.
 fn mask_layer_source(layer: &str) -> Option<String> {
     let t = layer.trim();
-    if t.contains("-gradient(") {
+    if t.contains("-gradient(") || t.starts_with("filter(") {
         return Some(t.to_string());
     }
     if t.starts_with("clipsnap:") || t.starts_with("pathdef:") || t.starts_with("shapedef:") {

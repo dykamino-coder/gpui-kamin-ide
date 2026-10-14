@@ -56,12 +56,29 @@ pub(super) fn shape_mask(raw: &str, b: &ShapeBox, cols: usize, rows: usize) -> O
         let bytes = img.as_bytes(0)?;
         let sz = img.size(0);
         let (iw, ih) = (sz.width.0.max(1) as usize, sz.height.0.max(1) as usize);
+        // A CSS pixel cell covers a block of raster samples (`DENSITY`). Its
+        // first sample alone saw a diagonal edge on one side of the cell but
+        // not its mirror image, so a symmetric polygon got asymmetric
+        // extents (`shape-outside-001`: 20px left, 19px right). Blink's
+        // PolygonShape measures the exact edge over the line band; the
+        // strongest sample in the cell keeps both sides of a partly covered
+        // cell.
         let mut out = vec![0u8; cols * rows];
         for y in 0..rows {
-            let sy = (y * ih / rows).min(ih - 1);
+            let (y0, y1) = (
+                (y * ih / rows).min(ih - 1),
+                ((y + 1) * ih / rows).clamp(1, ih),
+            );
             for x in 0..cols {
-                let sx = (x * iw / cols).min(iw - 1);
-                out[y * cols + x] = bytes[(sy * iw + sx) * 4 + 3];
+                let (x0, x1) = (
+                    (x * iw / cols).min(iw - 1),
+                    ((x + 1) * iw / cols).clamp(1, iw),
+                );
+                out[y * cols + x] = (y0..y1.max(y0 + 1))
+                    .flat_map(|sy| (x0..x1.max(x0 + 1)).map(move |sx| (sy, sx)))
+                    .map(|(sy, sx)| bytes[(sy * iw + sx) * 4 + 3])
+                    .max()
+                    .unwrap_or(0);
             }
         }
         return Some(out);

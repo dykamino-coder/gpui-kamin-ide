@@ -33,6 +33,7 @@ impl Paragraph {
         } = context;
         let line_base = self.base_of(range);
         let mut decor_prev: Option<(usize, Pixels, Pixels, Pixels)> = None;
+        let mut boxes: Vec<(Pixels, Pixels, Pixels)> = Vec::with_capacity(words.len());
         for (wi, word) in words.iter().enumerate() {
             let slice: SharedString = self.text[word.range.clone()].to_string().into();
             // Полоса строчной коробки продолжается сквозь слова (см.
@@ -60,6 +61,9 @@ impl Paragraph {
                 .map(|(_, v)| *v)
                 .unwrap_or(self.letter_spacing);
             let visual = placed(word.range.start, word.range.end);
+            let overridden = runs
+                .iter()
+                .any(|r| crate::text::fonts::metric_overrides::has_overrides(&r.font));
             let shaped = if visual.is_some_and(|v| v.1) {
                 // A right-to-left level piece: glyphs in visual order (UAX #9
                 // L2/L4), shaped once under an RLO like `shape`.
@@ -114,29 +118,15 @@ impl Paragraph {
             // Слово набирается своим вызовом, и `ShapedLine::paint` ставит
             // его базовую линию по СВОИМ подъёму и спуску. Сплошной набор
             // строки берёт наибольшие по всей строке — куски разного кегля
-            // стоят на одной базовой линии (§10.8). Слово опускается на
-            // разницу: у строки из одного шрифта она ровно ноль.
-            let fix = match (line_base, self.base_of(&word.range)) {
-                (Some(l), Some(w)) => px(l - w),
-                _ => px(0.),
+            // стоят на одной базовой линии (§10.8): слово опускается на разницу.
+            let word_base = if overridden {
+                Some(f32::from(
+                    (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent,
+                ))
+            } else {
+                self.base_of(&word.range)
             };
-            // Кусок у края строки: его строчная коробка (высотой своей
-            // `line-height`, глифы по её полулидингу) встаёт верхом на верх
-            // строки или низом на низ (§10.8.1). `shaped.paint` центрирует
-            // глифы в высоте строки абзаца — разница высот делится пополам.
-            let fix = match self
-                .edge_spans
-                .iter()
-                .find(|(r, _, _)| r.contains(&word.range.start))
-            {
-                Some((_, top, h)) => {
-                    let lh = f32::from(self.line_height);
-                    let line_top = -pad.0;
-                    let box_top = if *top { line_top } else { lh + pad.1 - h };
-                    px(box_top + (h - lh) / 2.0)
-                }
-                None => fix,
-            };
+            let fix = self.piece_fix_with(&word.range, word_base, line_base, pad);
             let at = point(x + px(rx), y + dy + px(ry) + fix);
             // Подложка прогона — отдельным вызовом, см. выше. Она — коробка
             // своего строчного элемента и едет его сдвигом, а не сдвигом
@@ -185,6 +175,7 @@ impl Paragraph {
                     cx,
                 );
             }
+            boxes.push((x, shaped.width, dy));
             self.paint_word_gap(
                 context,
                 word,
@@ -197,8 +188,63 @@ impl Paragraph {
                 cx,
             );
         }
+        if self.wrap.rtl && step > px(0.) {
+            self.paint_rtl_gaps(context, &boxes, window);
+        }
         if self.decor_on() {
             self.flush_decor(window);
+        }
+    }
+
+    /// Vertical correction of a separately shaped piece of the line: its own
+    /// baseline is moved onto the line's, or, inside a top/bottom aligned
+    /// inline box, onto that box's edge (CSS 2.1 section 10.8.1). Words and
+    /// the inter-word gaps of the same box share it, so their backgrounds
+    /// form one band.
+    pub(super) fn piece_fix(
+        &self,
+        range: &std::ops::Range<usize>,
+        line_base: Option<f32>,
+        pad: (f32, f32),
+    ) -> Pixels {
+        self.piece_fix_with(range, self.base_of(range), line_base, pad)
+    }
+
+    /// `piece_fix` with the caller's baseline (font metric overrides).
+    pub(super) fn piece_fix_with(
+        &self,
+        range: &std::ops::Range<usize>,
+        piece_base: Option<f32>,
+        line_base: Option<f32>,
+        pad: (f32, f32),
+    ) -> Pixels {
+        let fix = match (line_base, piece_base) {
+            (Some(l), Some(w)) => px(l - w),
+            _ => px(0.),
+        };
+        // Кусок у края строки: его строчная коробка (высотой своей
+        // `line-height`, глифы по её полулидингу) встаёт верхом на верх
+        // строки или низом на низ (§10.8.1). `shaped.paint` центрирует
+        // глифы в высоте строки абзаца — разница высот делится пополам.
+        match self
+            .edge_spans
+            .iter()
+            .find(|(r, _, _)| r.contains(&range.start))
+        {
+            Some((r, top, h)) => {
+                let lh = f32::from(self.line_height);
+                let line_top = -pad.0;
+                let box_top = if *top { line_top } else { lh + pad.1 - h };
+                // Align the subtree as one box, preserving its common
+                // baseline (CSS 2.1 section 10.8.1). Centering each word
+                // separately misaligns descendants with different fonts.
+                let baseline = match (self.base_of(r), piece_base) {
+                    (Some(group), Some(word)) => group - word,
+                    _ => 0.0,
+                };
+                px(box_top + (h - lh) / 2.0 + baseline)
+            }
+            None => fix,
         }
     }
 }

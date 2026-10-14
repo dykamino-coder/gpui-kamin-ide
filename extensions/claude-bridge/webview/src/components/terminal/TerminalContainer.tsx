@@ -8,9 +8,8 @@ import { LoadingCue } from '../common/LoadingCue'
 interface TerminalContainerProps {
   tabId: string
   active: boolean
-  /** Bridge Console tool: inset the xterm host so its scroll thumb sits in a
-   *  right gutter (mirrors the native terminal `.session` insets) instead of
-   *  jammed against the panel edge, where it read as a foreign outer scrollbar. */
+  /** Bridge Console tool: inset the xterm host like the native terminal
+   *  `.session`. The terminal has no scrollback, so no scrollbar gutter. */
   fill?: boolean
 }
 
@@ -47,7 +46,7 @@ export function TerminalContainer({ tabId, active, fill = false }: TerminalConta
       <div
         ref={containerRef as any}
         class={styles.xtermContainer}
-        style={fill ? 'inset:8px 22px 10px 14px;padding:0' : undefined}
+        style={fill ? 'inset:8px 14px 10px 14px;padding:0' : undefined}
       />
       {!hasOutput && (
         <div class={styles.connecting} role="status">

@@ -10,6 +10,16 @@ use std::{collections::HashMap, sync::Mutex};
 /// параметра у `source` нет намеренно: кэш ключуется строкой, и приставка
 /// ключа дешевле, чем переписывание тринадцати мест вызова.
 pub fn key_exif(src: &str, c: &crate::style::computed::Computed) -> String {
+    let gradient = crate::style::computed::resolve_gradient_colors(
+        src,
+        c.color.unwrap_or(crate::style::values::value::Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        }),
+    );
+    let src = gradient.as_ref();
     let resolved = crate::style::computed::parse_image_color(src)
         .and_then(|color| {
             crate::style::values::color_space::resolve_relative(
@@ -58,19 +68,31 @@ pub fn source(src: &str) -> Option<Source> {
         Some(Source::Gradient {
             raw: color_image(color),
         })
-    } else if src.starts_with("linear-gradient(")
-        || src.starts_with("radial-gradient(")
-        || src.starts_with("conic-gradient(")
+    } else if let Some((url, list)) = super::filter_image::parse(src_plain) {
+        // Filter Effects 1 §13 `filter()`: the filtered raster is its own
+        // image, keyed by the whole function so each list caches apart.
+        let key = if orient {
+            url
+        } else {
+            format!("exif-none|{url}")
+        };
+        source(&key).map(|image| Source::Filtered {
+            image: Box::new(image),
+            list,
+        })
+    } else if src_plain.starts_with("linear-gradient(")
+        || src_plain.starts_with("radial-gradient(")
+        || src_plain.starts_with("conic-gradient(")
         // Повторяющиеся градиенты — те же записи (css-images-3 §4):
         // растеризатор ниже их понимает, а опознание пропускало
         // (`shape-outside-linear-gradient-004`).
-        || src.starts_with("repeating-linear-gradient(")
-        || src.starts_with("repeating-radial-gradient(")
-        || src.starts_with("repeating-conic-gradient(")
-        || src.starts_with("cross-fade(")
+        || src_plain.starts_with("repeating-linear-gradient(")
+        || src_plain.starts_with("repeating-radial-gradient(")
+        || src_plain.starts_with("repeating-conic-gradient(")
+        || src_plain.starts_with("cross-fade(")
     {
         Some(Source::Gradient {
-            raw: src.to_string(),
+            raw: src_plain.to_string(),
         })
     } else {
         // Фрагмент адреса рисунка — его `<view>` (SVG 2 §8.2 «Linking into

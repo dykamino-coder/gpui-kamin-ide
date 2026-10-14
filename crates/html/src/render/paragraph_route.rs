@@ -52,6 +52,16 @@ pub(super) fn paragraph_probed(
     // достался бы СЛЕДУЮЩЕМУ абзацу.
     crate::text::clamp::set_para_budget(None);
     let para = with_text_shadow(para, inherited, taken, opts);
+    // A paragraph after the clamp point is hidden for paint once the clip
+    // reveals the overflow of earlier content (css-overflow-4 §5.3).
+    let para = match (ctx, seq) {
+        (Some((key, false)), Some(s)) if crate::text::clamp::hidden_after_point(key, s) => {
+            let mut hidden = div().w_full().child(para);
+            hidden.style().visibility = Some(gpui::Visibility::Hidden);
+            hidden.into_any_element()
+        }
+        _ => para,
+    };
     if let Some((key, skip)) = ctx {
         div()
             .relative()
@@ -64,6 +74,9 @@ pub(super) fn paragraph_probed(
                 0.0,
                 seq,
                 budget,
+                None,
+                0.0,
+                false,
             ))
             .into_any_element()
     } else {

@@ -51,11 +51,6 @@ impl RootView {
                 );
                 self.persist_active_session_layout();
             }
-            ShellEvent::ToggleInactive(pid) => {
-                if !self.inactive_open.remove(&pid) {
-                    self.inactive_open.insert(pid);
-                }
-            }
             ShellEvent::OverwriteLayoutPreset(name) => {
                 let mut presets = crate::layout_store::load_presets();
                 if let Some(pr) = presets.iter_mut().find(|p| p.name == name)

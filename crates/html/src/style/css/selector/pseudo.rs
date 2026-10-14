@@ -25,6 +25,7 @@ pub(super) fn known_pseudo(name: &str) -> bool {
                 | "any-link"
                 | "target"
                 | "target-within"
+                | "target-current"
                 | "root"
                 | "empty"
                 | "scope"
@@ -89,6 +90,7 @@ pub(super) fn is_pseudo_element(name: &str) -> bool {
             | "selection"
             | "backdrop"
             | "file-selector-button"
+            | "-webkit-scrollbar"
             // css-overflow-5: коробки собирает `dom.rs::scroll_marker_pass`.
             | "scroll-marker"
             | "scroll-marker-group"

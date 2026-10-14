@@ -191,7 +191,9 @@ pub(crate) fn finish_element(
                 // the z-order list with 0): `perspective-zero` — a
                 // static transformed box after a `relative` one.
                 || e.style.transform.is_some()
-                || e.style.translate.is_some())
+                || e.style.translate.is_some()
+                // Compositing 1 §mix-blend-mode: paint the new context at level zero.
+                || e.style.blend.is_some_and(|b| b != 0))
             && !e.style.z_index.is_some_and(|z| z > 0 && z_index_applies(&e.style, inherited))
             && !matches!(e.tag.as_str(), "html" | "body")
             && paint_last_ok(e, &nodes[idx + 1..]));

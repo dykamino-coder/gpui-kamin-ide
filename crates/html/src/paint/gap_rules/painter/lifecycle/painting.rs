@@ -23,12 +23,16 @@ pub(super) fn paint_body(
 ) {
     let bounds = prepaint.0;
     let grid_tracks = prepaint.1.take();
-    let items = std::mem::take(&mut *group.items.borrow_mut());
+    let buffer = std::mem::take(&mut *group.items.borrow_mut());
+    let items = buffer.items;
     // A grid's gaps come from its track collection, not from its items
     // (css-gaps-1 §gap-grid; Blink `BuildGridTrackGapData`): an empty
     // grid or subgrid still has gaps to decorate
     // (`subgrid-gap-decorations-012/015/016/017`).
-    if items.is_empty() && !(group.spec.kind == GapLayout::Grid && grid_tracks.is_some()) {
+    if items.is_empty()
+        && buffer.multicol.is_none()
+        && !(group.spec.kind == GapLayout::Grid && grid_tracks.is_some())
+    {
         return;
     }
     let spec = &group.spec;
@@ -68,6 +72,19 @@ pub(super) fn paint_body(
         k => k,
     };
     match kind {
+        GapLayout::Multicol => {
+            if let Some(data) = buffer.multicol {
+                let (columns, rows) = crate::paint::gap_rules::geometry::multicol_runs(&data, spec);
+                for (runs, rule, on_x, main) in [
+                    (columns, spec.col.as_ref(), !spec.vertical, false),
+                    (rows, spec.row.as_ref(), spec.vertical, true),
+                ] {
+                    if let Some(rule) = rule {
+                        layers.extend(runs.into_iter().map(|run| (on_x, run, rule, main)));
+                    }
+                }
+            }
+        }
         GapLayout::Grid => {
             let ix: Vec<GapItem> = items
                 .iter()
@@ -169,6 +186,20 @@ pub(super) fn paint_body(
                 extent,
                 spec.lanes_content_aligned,
                 lane_tracks,
+                spec.flex_line_stretch.then(|| {
+                    let [pt, pr, pb, pl] = spec.pad;
+                    if stacked_vertically {
+                        (
+                            f32::from(bounds.top()) + pt,
+                            f32::from(bounds.bottom()) - pb,
+                        )
+                    } else {
+                        (
+                            f32::from(bounds.left()) + pl,
+                            f32::from(bounds.right()) - pr,
+                        )
+                    }
+                }),
             );
             if let Some(r) = main {
                 for mut run in mains {

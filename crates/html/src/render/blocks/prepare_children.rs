@@ -82,7 +82,7 @@ pub(crate) fn prepare_children(
         // — до разбиения блока в строчном и до схлопывания полей, как это
         // делает и сборщик дерева в браузере.
         crate::render::inline_splits::split_block_in_inline_dir(
-            &hoist_inset_abs(&wrap_anon_tables(nodes)),
+            &hoist_inset_abs(&wrap_anon_tables(nodes), inherited),
             inherited.rtl == Some(true),
         )
     };
