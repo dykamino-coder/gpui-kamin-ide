@@ -5,16 +5,29 @@ import { usageByTab } from '../../signals/session-usage'
 import { formatPercent, usageItems } from '../../lib/usage-format'
 import type { UsageLevel } from '../../lib/usage-format'
 
-const COLOR: Record<UsageLevel, string> = {
-  ok: 'var(--text-muted)',
+const FILL: Record<UsageLevel, string> = {
+  ok: 'var(--accent-green)',
   warn: 'var(--accent-yellow)',
   high: 'var(--accent-red)',
 }
 
+const VALUE: Record<UsageLevel, string> = {
+  ok: 'var(--text-secondary)',
+  warn: 'var(--accent-yellow)',
+  high: 'var(--accent-red)',
+}
+
+const CHIP = `
+  display:inline-flex;align-items:center;gap:6px;min-width:0;
+  height:18px;padding:0 8px;border-radius:999px;box-sizing:border-box;
+  background:color-mix(in srgb, var(--bg-overlay) 55%, transparent);
+  border:1px solid color-mix(in srgb, var(--text-muted) 16%, transparent);
+`
+
 /** Compact row under the chat input: 5-hour and 7-day subscription limits
- *  (% used, time to reset) and context fill, from the CLI status line. Hidden
- *  until the first snapshot (API-key sessions never get `rate_limits`, but
- *  still show context). */
+ *  (% used, time to reset) and context fill, from the CLI status line. Each
+ *  value is a pill with a thin meter coloured by level. Hidden until the first
+ *  snapshot (API-key sessions never get `rate_limits`, but still show context). */
 export function UsageLimitsRow(): JSX.Element | null {
   const tabId = activeTabId.value
   const usage = tabId ? usageByTab.value.get(tabId) : undefined
@@ -33,21 +46,37 @@ export function UsageLimitsRow(): JSX.Element | null {
       class="usage-limits-row"
       data-testid="usage-limits-row"
       style={`
-        display:flex;align-items:center;gap:12px;
-        padding:2px 10px 0;
+        display:flex;align-items:center;gap:6px;
+        padding:5px 10px 0;
         max-width:800px;width:100%;margin:0 auto;box-sizing:border-box;
-        font-size:10px;color:var(--text-muted);
+        font-size:10px;line-height:1;color:var(--text-muted);
         font-family:ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
-        white-space:nowrap;overflow:hidden;opacity:0.85;
+        font-variant-numeric:tabular-nums;
+        white-space:nowrap;overflow:hidden;
       `}
     >
-      {items.map(item => (
-        <span key={item.key} data-tooltip={item.title} title={item.title} style="display:inline-flex;gap:4px;min-width:0">
-          <span style="color:var(--text-disabled)">{item.label}</span>
-          <span style={`color:${COLOR[item.level]}`}>{formatPercent(item.percent)}</span>
-          {item.reset && <span style="overflow:hidden;text-overflow:ellipsis">· {item.reset}</span>}
-        </span>
-      ))}
+      {items.map(item => {
+        const fill = Math.max(0, Math.min(100, item.percent))
+        return (
+          <span key={item.key} data-tooltip={item.title} title={item.title} style={CHIP}>
+            <span style="color:var(--text-muted);letter-spacing:0.04em;text-transform:uppercase;font-size:9px">
+              {item.label}
+            </span>
+            <span
+              aria-hidden="true"
+              style="position:relative;width:34px;height:4px;flex:none;border-radius:2px;overflow:hidden;background:color-mix(in srgb, var(--text-muted) 22%, transparent)"
+            >
+              <span
+                style={`position:absolute;left:0;top:0;bottom:0;width:${fill}%;border-radius:2px;background:${FILL[item.level]};transition:width .4s ease`}
+              />
+            </span>
+            <span style={`color:${VALUE[item.level]};font-weight:600`}>{formatPercent(item.percent)}</span>
+            {item.reset && (
+              <span style="color:var(--text-disabled);overflow:hidden;text-overflow:ellipsis">{item.reset}</span>
+            )}
+          </span>
+        )
+      })}
     </div>
   )
 }
