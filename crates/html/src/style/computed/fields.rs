@@ -1507,4 +1507,6 @@ pub struct Computed {
     pub caret_color: Option<Color>,
     /// `accent-color` флажков и переключателей.
     pub accent_color: Option<Color>,
+    /// `appearance` (css-ui-4 §7.2); `None` is the initial `auto`.
+    pub appearance: Option<crate::style::computed::Appearance>,
 }
