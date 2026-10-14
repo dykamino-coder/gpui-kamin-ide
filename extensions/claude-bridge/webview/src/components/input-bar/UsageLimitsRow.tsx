@@ -4,6 +4,8 @@ import { activeTabId } from '../../signals/tabs'
 import { usageByTab } from '../../signals/session-usage'
 import { formatPercent, usageItems } from '../../lib/usage-format'
 import type { UsageLevel } from '../../lib/usage-format'
+import { SessionStats } from '../chat-header/SessionStats'
+import { CHIP_LABEL_STYLE, CHIP_STYLE, METER_TRACK_STYLE, meterFillStyle } from './usage-chip'
 
 const FILL: Record<UsageLevel, string> = {
   ok: 'var(--accent-green)',
@@ -17,17 +19,11 @@ const VALUE: Record<UsageLevel, string> = {
   high: 'var(--accent-red)',
 }
 
-const CHIP = `
-  display:inline-flex;align-items:center;gap:6px;min-width:0;
-  height:18px;padding:0 8px;border-radius:999px;box-sizing:border-box;
-  background:color-mix(in srgb, var(--bg-overlay) 55%, transparent);
-  border:1px solid color-mix(in srgb, var(--text-muted) 16%, transparent);
-`
-
-/** Compact row under the chat input: 5-hour and 7-day subscription limits
- *  (% used, time to reset) and context fill, from the CLI status line. Each
- *  value is a pill with a thin meter coloured by level. Hidden until the first
- *  snapshot (API-key sessions never get `rate_limits`, but still show context). */
+/** Row under the chat input: 5-hour and 7-day subscription limits (% used,
+ *  time to reset) from the CLI status line, then the session's context fill,
+ *  tokens, cost and the Compact button (SessionStats). Each value is a pill
+ *  with a thin meter coloured by level. API-key sessions never get
+ *  `rate_limits`, so they show only the session pills. */
 export function UsageLimitsRow(): JSX.Element | null {
   const tabId = activeTabId.value
   const usage = tabId ? usageByTab.value.get(tabId) : undefined
@@ -38,15 +34,17 @@ export function UsageLimitsRow(): JSX.Element | null {
     const timer = setInterval(() => setNow(Date.now()), 60_000)
     return () => clearInterval(timer)
   }, [usage])
-  const items = usageItems(usage, now)
-  if (items.length === 0) return null
+  if (!tabId) return null
+  // Context comes from SessionStats (tokens + compact action); the CLI's own
+  // context percentage would only duplicate it.
+  const items = usageItems(usage, now).filter(item => item.key !== 'context')
 
   return (
     <div
       class="usage-limits-row"
       data-testid="usage-limits-row"
       style={`
-        display:flex;align-items:center;gap:6px;
+        display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;
         padding:5px 10px 0;
         max-width:800px;width:100%;margin:0 auto;box-sizing:border-box;
         font-size:10px;line-height:1;color:var(--text-muted);
@@ -55,28 +53,19 @@ export function UsageLimitsRow(): JSX.Element | null {
         white-space:nowrap;overflow:hidden;
       `}
     >
-      {items.map(item => {
-        const fill = Math.max(0, Math.min(100, item.percent))
-        return (
-          <span key={item.key} data-tooltip={item.title} title={item.title} style={CHIP}>
-            <span style="color:var(--text-muted);letter-spacing:0.04em;text-transform:uppercase;font-size:9px">
-              {item.label}
-            </span>
-            <span
-              aria-hidden="true"
-              style="position:relative;width:34px;height:4px;flex:none;border-radius:2px;overflow:hidden;background:color-mix(in srgb, var(--text-muted) 22%, transparent)"
-            >
-              <span
-                style={`position:absolute;left:0;top:0;bottom:0;width:${fill}%;border-radius:2px;background:${FILL[item.level]};transition:width .4s ease`}
-              />
-            </span>
-            <span style={`color:${VALUE[item.level]};font-weight:600`}>{formatPercent(item.percent)}</span>
-            {item.reset && (
-              <span style="color:var(--text-disabled);overflow:hidden;text-overflow:ellipsis">{item.reset}</span>
-            )}
+      {items.map(item => (
+        <span key={item.key} data-tooltip={item.title} title={item.title} style={CHIP_STYLE}>
+          <span style={CHIP_LABEL_STYLE}>{item.label}</span>
+          <span aria-hidden="true" style={METER_TRACK_STYLE}>
+            <span style={meterFillStyle(item.percent, FILL[item.level])} />
           </span>
-        )
-      })}
+          <span style={`color:${VALUE[item.level]};font-weight:600`}>{formatPercent(item.percent)}</span>
+          {item.reset && (
+            <span style="color:var(--text-disabled);overflow:hidden;text-overflow:ellipsis">{item.reset}</span>
+          )}
+        </span>
+      ))}
+      <SessionStats variant="pills" />
     </div>
   )
 }

@@ -6,6 +6,7 @@ import { compactSegments, activeSegmentIdx } from '../../signals/compact-segment
 import { replayProgressByTab } from '../../signals/replay-progress'
 import { useBridge } from '../../hooks/useBridge'
 import { computeContextStats, formatCost } from '../../utils/session-cost'
+import { CHIP_LABEL_STYLE, CHIP_STYLE, METER_TRACK_STYLE, meterFillStyle } from '../input-bar/usage-chip'
 
 // Context pressure bands — reused by color AND by /compact prompt. 70%
 // is the "auto-compact zone" CLI hits by default; we expose a one-click
@@ -44,7 +45,7 @@ const HANDOFF_COMPACT_INSTRUCTIONS =
  *  cumulative session cost. Wedged into the chat header so it's always
  *  visible without pulling focus. Click the "Compact" button to pipe a
  *  `/compact` slash command straight to the PTY when context is high. */
-export function SessionStats(): JSX.Element | null {
+export function SessionStats({ variant = 'strip' }: { variant?: 'strip' | 'pills' } = {}): JSX.Element | null {
   const bridge = useBridge()
 
   const stats = useComputed(() => {
@@ -125,6 +126,47 @@ export function SessionStats(): JSX.Element | null {
     : s.freshness === 'compact'
       ? `Post-compact context ≈ ${formatTokens(s.used!)} / ${formatTokens(s.limit)}; waiting for the next model usage.`
       : `Context: ${formatTokens(s.used!)} / ${formatTokens(s.limit)}`
+
+  if (variant === 'pills') {
+    // Pills for the row under the chat input (UsageLimitsRow): context meter +
+    // tokens, cost, and Compact once the context is in the warn band.
+    const meterColor = band === 'ok' ? 'var(--accent-green)' : barColor
+    const costText = costSettling ? '…' : formatCost(s.cost)
+    return (
+      <>
+        <span data-tooltip={contextTooltip} title={contextTooltip} style={CHIP_STYLE}>
+          <span style={CHIP_LABEL_STYLE}>ctx</span>
+          {s.pct !== null && (
+            <span aria-hidden="true" style={METER_TRACK_STYLE}>
+              <span style={meterFillStyle(s.pct, meterColor)} />
+            </span>
+          )}
+          {s.pct !== null && (
+            <span style={`color:${pctColor};font-weight:600`}>{s.freshness === 'compact' ? '≈' : ''}{s.pct}%</span>
+          )}
+          <span style="color:var(--text-disabled)">{contextText}</span>
+        </span>
+        <span
+          data-tooltip={costSettling ? 'Session cost finalises once history finishes loading' : 'Session cost (estimate)'}
+          title={costSettling ? 'Session cost finalises once history finishes loading' : 'Session cost (estimate)'}
+          style={CHIP_STYLE}
+        >
+          <span style={`color:${costSettling ? 'var(--text-disabled)' : 'var(--text-secondary)'};font-weight:600`}>{costText}</span>
+        </span>
+        {band !== 'ok' && (
+          <button
+            onClick={sendCompact}
+            type="button"
+            title="Compact now with a hand-off summary (steers /compact so a fresh agent can continue) — before auto-compact kicks in"
+            style={`${CHIP_STYLE}cursor:pointer;font:inherit;font-size:9px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:${barColor};border-color:color-mix(in srgb, ${barColor} 60%, transparent);background:color-mix(in srgb, ${barColor} 12%, transparent)`}
+          >
+            <i class="fas fa-compress" style="font-size:9px" />
+            Compact
+          </button>
+        )}
+      </>
+    )
+  }
 
   return (
     <div

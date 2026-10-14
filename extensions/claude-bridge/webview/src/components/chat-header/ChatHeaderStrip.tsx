@@ -2,7 +2,7 @@ import type { JSX } from 'preact'
 import { useBridge } from '../../hooks/useBridge'
 import { tabs, activeTabId } from '../../signals/tabs'
 import { ConnectionStatusBadge } from './ConnectionStatusBadge'
-import { SessionStats } from './SessionStats'
+import { activePlan } from '../../signals/plan'
 import { PlanProgress } from './PlanProgress'
 import { DisconnectButton } from './DisconnectButton'
 import { DiagnosticButton } from './DiagnosticButton'
@@ -33,7 +33,7 @@ export function ChatHeaderStrip(): JSX.Element | null {
       id="chat-header"
       // Two deliberate rows (the `.chat-header` class is already flex-column):
       //  1) connection status (left) + session control buttons (right),
-      //  2) the telemetry — context/cost bar + plan progress — centered.
+      //  2) plan progress, centered (context/cost moved under the input).
       // Splitting the chrome from the telemetry keeps the strip readable when the
       // chat panel is narrow, where a single row used to overflow/clip.
       style="flex-direction:column;align-items:stretch;gap:5px;padding:6px 12px"
@@ -70,10 +70,13 @@ export function ChatHeaderStrip(): JSX.Element | null {
           {connected && <DisconnectButton onClick={() => bridge.disconnectTab(tabId)} />}
         </div>
       </div>
-      <div style="display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px var(--space-3);min-width:0">
-        <SessionStats />
-        <PlanProgress />
-      </div>
+      {/* Context, tokens, cost and Compact live in the row under the chat input
+          (UsageLimitsRow); only the plan progress stays up here, when a plan exists. */}
+      {activePlan.value && (
+        <div style="display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px var(--space-3);min-width:0">
+          <PlanProgress />
+        </div>
+      )}
     </div>
   )
 }
