@@ -17,7 +17,7 @@ pub(super) fn nowrap(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
     })
 }
 
-fn hint(css: &str) -> Option<Rule> {
+pub(super) fn hint(css: &str) -> Option<Rule> {
     Some(Rule {
         sel: Selector::parse("*")?,
         decls: parse_decls(css),
@@ -31,11 +31,17 @@ fn hint(css: &str) -> Option<Rule> {
 
 /// HTML §15.3.8 maps table height to the author presentational-hint origin.
 /// Keep it in the cascade so auto, initial, inherit and authored lengths win.
-pub(super) fn rules(tag: &str, attrs: &[(String, String)]) -> Vec<Rule> {
+pub(super) fn rules(
+    tag: &str,
+    attrs: &[(String, String)],
+    path: &[crate::style::select::Ancestor],
+) -> Vec<Rule> {
     nowrap(tag, attrs)
         .into_iter()
         .chain(table_height(tag, attrs))
         .chain(column_width(tag, attrs))
+        .chain(super::presentational_hr::rule(tag, attrs))
+        .chain(super::presentational_legacy::rule(tag, attrs, path))
         .collect()
 }
 
@@ -68,7 +74,7 @@ fn table_height(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
 
 /// HTML §2.3.4.4 accepts a nonnegative decimal prefix, including zero.
 /// A percent sign must immediately follow that prefix; other suffixes are ignored.
-fn dimension(raw: &str) -> Option<(f32, bool)> {
+pub(super) fn dimension(raw: &str) -> Option<(f32, bool)> {
     let raw = raw.trim_start_matches(['\t', '\n', '\u{c}', '\r', ' ']);
     let bytes = raw.as_bytes();
     let mut end = 0;
@@ -121,7 +127,8 @@ pub(super) fn colors(style: &mut Computed, tag: &str, attrs: &[(String, String)]
         attrs
             .iter()
             .find(|(k, _)| k == name)
-            .and_then(|(_, v)| crate::style::values::value::Color::parse(v.trim()))
+            .and_then(|(_, v)| super::presentational_hr::legacy_color(v))
+            .and_then(|v| crate::style::values::value::Color::parse(&v))
     };
     if matches!(tag, "body" | "table" | "tr" | "td" | "th")
         && style.background.is_none()

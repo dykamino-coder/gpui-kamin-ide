@@ -99,7 +99,11 @@ pub const BROWSER_CSS: &str = r#"
           overflow: visible }
     code, kbd, samp { font-size: 1em }
     small { font-size: 0.83em }
-    hr { height: 0; margin: 0.5em 0; background: none; border: 1px inset gray }
+    /* HTML §15.3.11: `hr { color: gray; border-style: inset; border-width: 1px;
+       margin: 0.5em auto }` — the rule colour is `currentColor`, so the `color`
+       hint recolours it; auto margins centre a narrower `width` hint. */
+    hr { height: auto; margin: 0.5em auto; background: none; color: gray; border-style: inset;
+         border-width: 1px; border-color: currentColor }
     table { margin: 0; border-spacing: 2px }
     /* HTML §15.3.9: row groups center cells unless authored alignment wins. */
     thead, tbody, tfoot, table > tr { vertical-align: middle }
