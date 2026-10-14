@@ -65,7 +65,12 @@ pub(crate) fn child_probes(
                     | Some(Display::InlineGrid)
                     | Some(Display::InlineTable)
             );
-        if !is_clamp && (has_box_style_probe(&e.style) || monolithic) {
+        // A box with a definite height ends where its size says, even when
+        // unstyled: lines overflowing it fit with it (`line-clamp-auto-040`).
+        let sized = e.style.height.is_some()
+            && !skip
+            && matches!(merged.display, None | Some(Display::Block));
+        if !is_clamp && (has_box_style_probe(&e.style) || monolithic || sized) {
             // Нижние рамка и паддинг фрагментированной коробки
             // остаются в потоке (css-overflow-4 §5.3): проба несёт
             // их вместе с границами паддинг-бокса.
