@@ -122,11 +122,11 @@ fn parse<'input>(
     }
     doc.links = links;
 
-    fix_recursive_patterns(&mut doc);
-    fix_recursive_links(EId::ClipPath, AId::ClipPath, &mut doc);
-    fix_recursive_links(EId::Mask, AId::Mask, &mut doc);
-    fix_recursive_links(EId::Filter, AId::Filter, &mut doc);
-    fix_recursive_fe_image(&mut doc);
+    // KaminIDE: one cycle solver over every resource kind and any chain
+    // length replaces upstream's per-kind one/two-step checks
+    // (fix_recursive_patterns/links/fe_image), which let longer chains
+    // overflow the stack.
+    super::cycles::fix_resource_cycles(&mut doc);
 
     Ok(doc)
 }
@@ -622,19 +622,12 @@ fn parse_svg_use_element<'input>(
     // </g>
     //
     // `use1` should be removed.
-    let mut is_recursive = false;
-    for link_child in link
-        .descendants()
-        .skip(1)
-        .filter(|n| n.has_tag_name((SVG_NS, "use")))
-    {
-        if let Some(link2) = resolve_href(link_child, id_map) {
-            if link2 == node || link2 == link {
-                is_recursive = true;
-                break;
-            }
-        }
-    }
+    //
+    // KaminIDE: the check is transitive (any chain length), like Blink's
+    // SVGUseElement cycle check: `use` is skipped when expanding its target
+    // can reach `use` itself again through nested `use` elements. Upstream
+    // looked one step deep and otherwise ran into the 1024 depth limit.
+    let is_recursive = use_reaches_itself(node, link, id_map);
 
     if is_recursive {
         log::warn!(
@@ -654,6 +647,33 @@ fn parse_svg_use_element<'input>(
         doc,
         id_map,
     )
+}
+
+/// Whether expanding `link` (the target of `use_node`) reaches `use_node`
+/// again, directly or through other `use` targets. Each target is walked once.
+fn use_reaches_itself<'input>(
+    use_node: roxmltree::Node<'_, 'input>,
+    link: roxmltree::Node<'_, 'input>,
+    id_map: &HashMap<&str, roxmltree::Node<'_, 'input>>,
+) -> bool {
+    let mut seen = std::collections::HashSet::from([link.id()]);
+    let mut stack = vec![link];
+    while let Some(target) = stack.pop() {
+        for inner in target
+            .descendants()
+            .filter(|n| n.has_tag_name((SVG_NS, "use")))
+        {
+            if inner == use_node {
+                return true;
+            }
+            if let Some(next) = resolve_href(inner, id_map) {
+                if seen.insert(next.id()) {
+                    stack.push(next);
+                }
+            }
+        }
+    }
+    false
 }
 
 fn resolve_css<'a>(
@@ -714,133 +734,5 @@ impl simplecss::Element for XmlNode<'_, '_> {
             // TODO: lang
             _ => false, // Since we are querying a static SVG we can ignore other pseudo-classes.
         }
-    }
-}
-
-fn fix_recursive_patterns(doc: &mut Document) {
-    while let Some(node_id) = find_recursive_pattern(AId::Fill, doc) {
-        let idx = doc.get(node_id).attribute_id(AId::Fill).unwrap();
-        doc.attrs[idx].value = roxmltree::StringStorage::Borrowed("none");
-    }
-
-    while let Some(node_id) = find_recursive_pattern(AId::Stroke, doc) {
-        let idx = doc.get(node_id).attribute_id(AId::Stroke).unwrap();
-        doc.attrs[idx].value = roxmltree::StringStorage::Borrowed("none");
-    }
-}
-
-fn find_recursive_pattern(aid: AId, doc: &mut Document) -> Option<NodeId> {
-    for pattern_node in doc
-        .root()
-        .descendants()
-        .filter(|n| n.tag_name() == Some(EId::Pattern))
-    {
-        for node in pattern_node.descendants() {
-            let value = match node.attribute(aid) {
-                Some(v) => v,
-                None => continue,
-            };
-
-            if let Ok(svgtypes::Paint::FuncIRI(link_id, _)) = svgtypes::Paint::from_str(value) {
-                if link_id == pattern_node.element_id() {
-                    // If a pattern child has a link to the pattern itself
-                    // then we have to replace it with `none`.
-                    // Otherwise we will get endless loop/recursion and stack overflow.
-                    return Some(node.id);
-                } else {
-                    // Check that linked node children doesn't link this pattern.
-                    if let Some(linked_node) = doc.element_by_id(link_id) {
-                        for node2 in linked_node.descendants() {
-                            let value2 = match node2.attribute(aid) {
-                                Some(v) => v,
-                                None => continue,
-                            };
-
-                            if let Ok(svgtypes::Paint::FuncIRI(link_id2, _)) =
-                                svgtypes::Paint::from_str(value2)
-                            {
-                                if link_id2 == pattern_node.element_id() {
-                                    return Some(node2.id);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    None
-}
-
-fn fix_recursive_links(eid: EId, aid: AId, doc: &mut Document) {
-    while let Some(node_id) = find_recursive_link(eid, aid, doc) {
-        let idx = doc.get(node_id).attribute_id(aid).unwrap();
-        doc.attrs[idx].value = roxmltree::StringStorage::Borrowed("none");
-    }
-}
-
-fn find_recursive_link(eid: EId, aid: AId, doc: &Document) -> Option<NodeId> {
-    for node in doc
-        .root()
-        .descendants()
-        .filter(|n| n.tag_name() == Some(eid))
-    {
-        for child in node.descendants() {
-            if let Some(link) = child.node_attribute(aid) {
-                if link == node {
-                    // If an element child has a link to the element itself
-                    // then we have to replace it with `none`.
-                    // Otherwise we will get endless loop/recursion and stack overflow.
-                    return Some(child.id);
-                } else {
-                    // Check that linked node children doesn't link this element.
-                    for node2 in link.descendants() {
-                        if let Some(link2) = node2.node_attribute(aid) {
-                            if link2 == node {
-                                return Some(node2.id);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    None
-}
-
-/// Detects cases like:
-///
-/// ```xml
-/// <filter id="filter1">
-///   <feImage xlink:href="#rect1"/>
-/// </filter>
-/// <rect id="rect1" x="36" y="36" width="120" height="120" fill="green" filter="url(#filter1)"/>
-/// ```
-fn fix_recursive_fe_image(doc: &mut Document) {
-    let mut ids = Vec::new();
-    for fe_node in doc
-        .root()
-        .descendants()
-        .filter(|n| n.tag_name() == Some(EId::FeImage))
-    {
-        if let Some(link) = fe_node.node_attribute(AId::Href) {
-            if let Some(filter_uri) = link.attribute::<&str>(AId::Filter) {
-                let filter_id = fe_node.parent().unwrap().element_id();
-                for func in svgtypes::FilterValueListParser::from(filter_uri).flatten() {
-                    if let svgtypes::FilterValue::Url(url) = func {
-                        if url == filter_id {
-                            ids.push(link.id);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    for id in ids {
-        let idx = doc.get(id).attribute_id(AId::Filter).unwrap();
-        doc.attrs[idx].value = roxmltree::StringStorage::Borrowed("none");
     }
 }

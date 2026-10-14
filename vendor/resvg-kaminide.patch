@@ -6,7 +6,7 @@
 # #1085, наследование gradientTransform/patternTransform через href #1135,
 # dominant-baseline в tspan #1086, bbox нарезанного <image> #1077, ядро
 # feMorphology #1120, RTL/dx/dy #1145 и др.). Вендорены оба крейта:
-# vendor/resvg (с правками ниже) и vendor/usvg (без правок, ровно upstream) —
+# vendor/resvg (с правками ниже) и vendor/usvg (правка 5 ниже, иначе upstream) —
 # resvg из main требует новых вариантов перечислений usvg (BlendMode::PlusLighter,
 # CompositeOperator::Lighter), поэтому крейты двигаются вместе. Раскладка —
 # как у пакета crates.io (нормализованный Cargo.toml, Cargo.toml.orig):
@@ -28,6 +28,15 @@
 # 4. <pattern> (src/path.rs, pattern_quality): при отображении плитки на
 #    устройство 1:1 сэмплирование Nearest вместо Bicubic — без размытия границ
 #    ячеек (WPT css-transforms `svg-matrix-*`).
+# 5. usvg, циклы ссылок на ресурсы (vendor/usvg/src/parser/svgtree/cycles.rs,
+#    parse.rs, mod.rs): upstream ловил петли clip-path/mask/filter/pattern
+#    длиной 1–2 по каждому виду отдельно, а `use` — на один шаг; длинные
+#    цепочки (WPT css-masking `clip-path-recursion-001`) переполняли стек
+#    (0xC0000409), href-цепочки градиентов a→b→c→b зацикливались. Теперь —
+#    один граф по всем видам ресурсов с поиском обратных рёбер в глубину,
+#    как Blink SVGResource::FindCycle (замыкающая ссылка становится `none`),
+#    транзитивная проверка `use` и множество посещённых в HrefIter.
+#    Накатывать: git -C vendor/usvg apply (diff в конце файла).
 #
 # Как накатывать при обновлении вендора: 3-way merge (база — дерево
 # предыдущей upstream-ревизии, ours — vendor/, theirs — новая ревизия), либо
@@ -106,3 +115,461 @@ index c11349a..16b55ea 100644
 +    }
 +}
 +
+
+# --- usvg (правка 5): diff vendor/usvg относительно upstream 77b12f49 ---
+diff --git a/src/parser/svgtree/cycles.rs b/src/parser/svgtree/cycles.rs
+new file mode 100644
+index 0000000..1656478
+--- /dev/null
++++ b/src/parser/svgtree/cycles.rs
+@@ -0,0 +1,186 @@
++// Copyright 2026 the KaminIDE Authors
++// SPDX-License-Identifier: Apache-2.0 OR MIT
++
++//! Resource reference cycle breaking (KaminIDE addition).
++//!
++//! Upstream usvg only detected cycles of length one or two per resource kind
++//! (`fix_recursive_links`/`fix_recursive_patterns`), so a chain like
++//! `clip -> clip2 -> clip0 -> clip` (WPT css-masking `clip-path-recursion-001`)
++//! or a mixed `clipPath -> mask -> clipPath` loop made the converter recurse
++//! until the stack overflowed.
++//!
++//! This follows Blink's `SVGResource::FindCycle` /
++//! `LayoutSVGResourceContainer::FindCycleInResources`: one graph over every
++//! resource kind (clipPath, mask, pattern, filter, marker), a depth-first
++//! search for back-edges starting from the rendered content in document order,
++//! and the reference that closes a cycle is made invalid. usvg models an
++//! invalid reference as `none`, like the upstream fixes did.
++
++use std::collections::HashMap;
++
++use super::{AId, Document, EId, NodeId, SvgNode};
++
++/// Attributes whose `url(#id)` references make the converter descend into
++/// another resource's content.
++const LINK_ATTRS: [AId; 8] = [
++    AId::ClipPath,
++    AId::Mask,
++    AId::Filter,
++    AId::Fill,
++    AId::Stroke,
++    AId::MarkerStart,
++    AId::MarkerMid,
++    AId::MarkerEnd,
++];
++
++fn is_resource(eid: Option<EId>) -> bool {
++    matches!(
++        eid,
++        Some(EId::ClipPath | EId::Mask | EId::Pattern | EId::Filter | EId::Marker)
++    )
++}
++
++/// Every `url(#id)` in an attribute value (a filter list or a paint with a
++/// fallback colour may hold more than one function).
++fn url_ids(value: &str) -> impl Iterator<Item = &str> {
++    value.split("url(").skip(1).filter_map(|rest| {
++        let end = rest.find(')')?;
++        let inner = rest[..end].trim().trim_matches(|c| c == '"' || c == '\'');
++        inner.strip_prefix('#')
++    })
++}
++
++/// A reference held by `holder` in attribute `aid` to resource `target`.
++#[derive(Clone, Copy)]
++struct Edge {
++    holder: NodeId,
++    aid: AId,
++    target: NodeId,
++}
++
++fn node_edges(node: SvgNode, out: &mut Vec<Edge>) {
++    for aid in LINK_ATTRS {
++        let Some(value) = node.attribute::<&str>(aid) else {
++            continue;
++        };
++        for id in url_ids(value) {
++            if let Some(target) = node.document().element_by_id(id) {
++                if is_resource(target.tag_name()) {
++                    out.push(Edge {
++                        holder: node.id,
++                        aid,
++                        target: target.id,
++                    });
++                }
++            }
++        }
++    }
++}
++
++/// `root` and its descendants, skipping nested resources: those are reached
++/// only through a reference (Blink `FindCycleInDescendants`).
++fn subtree_edges(root: SvgNode, out: &mut Vec<Edge>) {
++    let mut stack = vec![root];
++    while let Some(node) = stack.pop() {
++        if node.id != root.id && is_resource(node.tag_name()) {
++            continue;
++        }
++        node_edges(node, out);
++        let mut kids: Vec<_> = node.children().collect();
++        kids.reverse();
++        stack.extend(kids);
++    }
++}
++
++/// References followed while converting resource `res`: its own attributes
++/// (`clip-path` on `<clipPath>`, `mask` on `<mask>`), its content (for a
++/// pattern — the first content in its `href` chain) and, for a filter, the
++/// elements its `feImage` primitives render.
++fn resource_edges(res: SvgNode) -> Vec<Edge> {
++    let mut out = Vec::new();
++    let content = if res.tag_name() == Some(EId::Pattern) {
++        res.href_iter().find(|n| n.has_children()).unwrap_or(res)
++    } else {
++        res
++    };
++    node_edges(res, &mut out);
++    for kid in content.children() {
++        subtree_edges(kid, &mut out);
++    }
++    if res.tag_name() == Some(EId::Filter) {
++        for prim in res.children() {
++            if prim.tag_name() == Some(EId::FeImage) {
++                if let Some(link) = prim.node_attribute(AId::Href) {
++                    if !is_resource(link.tag_name()) {
++                        subtree_edges(link, &mut out);
++                    }
++                }
++            }
++        }
++    }
++    out
++}
++
++#[derive(Clone, Copy, PartialEq)]
++enum Mark {
++    Active,
++    Done,
++}
++
++/// Iterative DFS from `start`; back-edges are collected into `broken`.
++fn visit(
++    doc: &Document,
++    start: NodeId,
++    marks: &mut HashMap<u32, Mark>,
++    broken: &mut Vec<(NodeId, AId)>,
++) {
++    if marks.contains_key(&start.get()) {
++        return;
++    }
++    marks.insert(start.get(), Mark::Active);
++    let mut stack = vec![(start, resource_edges(doc.get(start)), 0usize)];
++    while let Some((res, edges, next)) = stack.last_mut() {
++        let Some(edge) = edges.get(*next).copied() else {
++            marks.insert(res.get(), Mark::Done);
++            stack.pop();
++            continue;
++        };
++        *next += 1;
++        match marks.get(&edge.target.get()) {
++            Some(Mark::Active) => broken.push((edge.holder, edge.aid)),
++            Some(Mark::Done) => {}
++            None => {
++                marks.insert(edge.target.get(), Mark::Active);
++                let target_edges = resource_edges(doc.get(edge.target));
++                stack.push((edge.target, target_edges, 0));
++            }
++        }
++    }
++}
++
++pub(super) fn fix_resource_cycles(doc: &mut Document) {
++    let mut marks = HashMap::new();
++    let mut broken = Vec::new();
++    // Rendered content first, in document order, so the reference that
++    // closes a cycle is the one Blink would invalidate; then resources
++    // referenced only from other resources or not at all.
++    let mut roots = Vec::new();
++    subtree_edges(doc.root(), &mut roots);
++    for edge in roots {
++        visit(doc, edge.target, &mut marks, &mut broken);
++    }
++    let resources: Vec<NodeId> = doc
++        .root()
++        .descendants()
++        .filter(|n| is_resource(n.tag_name()))
++        .map(|n| n.id)
++        .collect();
++    for res in resources {
++        visit(doc, res, &mut marks, &mut broken);
++    }
++    for (holder, aid) in broken {
++        if let Some(idx) = doc.get(holder).attribute_id(aid) {
++            doc.attrs[idx].value = roxmltree::StringStorage::Borrowed("none");
++        }
++    }
++}
+diff --git a/src/parser/svgtree/mod.rs b/src/parser/svgtree/mod.rs
+index dd0bdf7..1ce6ce6 100644
+--- a/src/parser/svgtree/mod.rs
++++ b/src/parser/svgtree/mod.rs
+@@ -6,6 +6,7 @@ use std::num::NonZeroU32;
+ use std::str::FromStr;
+ 
+ #[rustfmt::skip] mod names;
++mod cycles;
+ mod parse;
+ mod text;
+ 
+@@ -489,6 +490,7 @@ impl<'a, 'input: 'a> SvgNode<'a, 'input> {
+             curr: self.id(),
+             is_first: true,
+             is_finished: false,
++            visited: Vec::new(),
+         }
+     }
+ }
+@@ -614,6 +616,10 @@ pub struct HrefIter<'a, 'input: 'a> {
+     curr: NodeId,
+     is_first: bool,
+     is_finished: bool,
++    /// KaminIDE: elements already yielded. Upstream only stopped on a link
++    /// back to the origin or to the current element, so `a -> b -> c -> b`
++    /// looped forever.
++    visited: Vec<NodeId>,
+ }
+ 
+ impl<'a, 'input: 'a> Iterator for HrefIter<'a, 'input> {
+@@ -630,7 +636,10 @@ impl<'a, 'input: 'a> Iterator for HrefIter<'a, 'input> {
+         }
+ 
+         if let Some(link) = self.doc.get(self.curr).node_attribute(AId::Href) {
+-            if link.id() == self.curr || link.id() == self.origin {
++            if link.id() == self.curr
++                || link.id() == self.origin
++                || self.visited.contains(&link.id())
++            {
+                 log::warn!(
+                     "Element '#{}' cannot reference itself via 'xlink:href'.",
+                     self.doc.get(self.origin).element_id()
+@@ -639,6 +648,7 @@ impl<'a, 'input: 'a> Iterator for HrefIter<'a, 'input> {
+                 return None;
+             }
+ 
++            self.visited.push(self.curr);
+             self.curr = link.id();
+             Some(self.doc.get(self.curr))
+         } else {
+diff --git a/src/parser/svgtree/parse.rs b/src/parser/svgtree/parse.rs
+index 524654a..6654b1b 100644
+--- a/src/parser/svgtree/parse.rs
++++ b/src/parser/svgtree/parse.rs
+@@ -122,11 +122,11 @@ fn parse<'input>(
+     }
+     doc.links = links;
+ 
+-    fix_recursive_patterns(&mut doc);
+-    fix_recursive_links(EId::ClipPath, AId::ClipPath, &mut doc);
+-    fix_recursive_links(EId::Mask, AId::Mask, &mut doc);
+-    fix_recursive_links(EId::Filter, AId::Filter, &mut doc);
+-    fix_recursive_fe_image(&mut doc);
++    // KaminIDE: one cycle solver over every resource kind and any chain
++    // length replaces upstream's per-kind one/two-step checks
++    // (fix_recursive_patterns/links/fe_image), which let longer chains
++    // overflow the stack.
++    super::cycles::fix_resource_cycles(&mut doc);
+ 
+     Ok(doc)
+ }
+@@ -622,19 +622,12 @@ fn parse_svg_use_element<'input>(
+     // </g>
+     //
+     // `use1` should be removed.
+-    let mut is_recursive = false;
+-    for link_child in link
+-        .descendants()
+-        .skip(1)
+-        .filter(|n| n.has_tag_name((SVG_NS, "use")))
+-    {
+-        if let Some(link2) = resolve_href(link_child, id_map) {
+-            if link2 == node || link2 == link {
+-                is_recursive = true;
+-                break;
+-            }
+-        }
+-    }
++    //
++    // KaminIDE: the check is transitive (any chain length), like Blink's
++    // SVGUseElement cycle check: `use` is skipped when expanding its target
++    // can reach `use` itself again through nested `use` elements. Upstream
++    // looked one step deep and otherwise ran into the 1024 depth limit.
++    let is_recursive = use_reaches_itself(node, link, id_map);
+ 
+     if is_recursive {
+         log::warn!(
+@@ -656,6 +649,33 @@ fn parse_svg_use_element<'input>(
+     )
+ }
+ 
++/// Whether expanding `link` (the target of `use_node`) reaches `use_node`
++/// again, directly or through other `use` targets. Each target is walked once.
++fn use_reaches_itself<'input>(
++    use_node: roxmltree::Node<'_, 'input>,
++    link: roxmltree::Node<'_, 'input>,
++    id_map: &HashMap<&str, roxmltree::Node<'_, 'input>>,
++) -> bool {
++    let mut seen = std::collections::HashSet::from([link.id()]);
++    let mut stack = vec![link];
++    while let Some(target) = stack.pop() {
++        for inner in target
++            .descendants()
++            .filter(|n| n.has_tag_name((SVG_NS, "use")))
++        {
++            if inner == use_node {
++                return true;
++            }
++            if let Some(next) = resolve_href(inner, id_map) {
++                if seen.insert(next.id()) {
++                    stack.push(next);
++                }
++            }
++        }
++    }
++    false
++}
++
+ fn resolve_css<'a>(
+     xml: &'a roxmltree::Document<'a>,
+     style_sheet: Option<&'a str>,
+@@ -716,131 +736,3 @@ impl simplecss::Element for XmlNode<'_, '_> {
+         }
+     }
+ }
+-
+-fn fix_recursive_patterns(doc: &mut Document) {
+-    while let Some(node_id) = find_recursive_pattern(AId::Fill, doc) {
+-        let idx = doc.get(node_id).attribute_id(AId::Fill).unwrap();
+-        doc.attrs[idx].value = roxmltree::StringStorage::Borrowed("none");
+-    }
+-
+-    while let Some(node_id) = find_recursive_pattern(AId::Stroke, doc) {
+-        let idx = doc.get(node_id).attribute_id(AId::Stroke).unwrap();
+-        doc.attrs[idx].value = roxmltree::StringStorage::Borrowed("none");
+-    }
+-}
+-
+-fn find_recursive_pattern(aid: AId, doc: &mut Document) -> Option<NodeId> {
+-    for pattern_node in doc
+-        .root()
+-        .descendants()
+-        .filter(|n| n.tag_name() == Some(EId::Pattern))
+-    {
+-        for node in pattern_node.descendants() {
+-            let value = match node.attribute(aid) {
+-                Some(v) => v,
+-                None => continue,
+-            };
+-
+-            if let Ok(svgtypes::Paint::FuncIRI(link_id, _)) = svgtypes::Paint::from_str(value) {
+-                if link_id == pattern_node.element_id() {
+-                    // If a pattern child has a link to the pattern itself
+-                    // then we have to replace it with `none`.
+-                    // Otherwise we will get endless loop/recursion and stack overflow.
+-                    return Some(node.id);
+-                } else {
+-                    // Check that linked node children doesn't link this pattern.
+-                    if let Some(linked_node) = doc.element_by_id(link_id) {
+-                        for node2 in linked_node.descendants() {
+-                            let value2 = match node2.attribute(aid) {
+-                                Some(v) => v,
+-                                None => continue,
+-                            };
+-
+-                            if let Ok(svgtypes::Paint::FuncIRI(link_id2, _)) =
+-                                svgtypes::Paint::from_str(value2)
+-                            {
+-                                if link_id2 == pattern_node.element_id() {
+-                                    return Some(node2.id);
+-                                }
+-                            }
+-                        }
+-                    }
+-                }
+-            }
+-        }
+-    }
+-
+-    None
+-}
+-
+-fn fix_recursive_links(eid: EId, aid: AId, doc: &mut Document) {
+-    while let Some(node_id) = find_recursive_link(eid, aid, doc) {
+-        let idx = doc.get(node_id).attribute_id(aid).unwrap();
+-        doc.attrs[idx].value = roxmltree::StringStorage::Borrowed("none");
+-    }
+-}
+-
+-fn find_recursive_link(eid: EId, aid: AId, doc: &Document) -> Option<NodeId> {
+-    for node in doc
+-        .root()
+-        .descendants()
+-        .filter(|n| n.tag_name() == Some(eid))
+-    {
+-        for child in node.descendants() {
+-            if let Some(link) = child.node_attribute(aid) {
+-                if link == node {
+-                    // If an element child has a link to the element itself
+-                    // then we have to replace it with `none`.
+-                    // Otherwise we will get endless loop/recursion and stack overflow.
+-                    return Some(child.id);
+-                } else {
+-                    // Check that linked node children doesn't link this element.
+-                    for node2 in link.descendants() {
+-                        if let Some(link2) = node2.node_attribute(aid) {
+-                            if link2 == node {
+-                                return Some(node2.id);
+-                            }
+-                        }
+-                    }
+-                }
+-            }
+-        }
+-    }
+-
+-    None
+-}
+-
+-/// Detects cases like:
+-///
+-/// ```xml
+-/// <filter id="filter1">
+-///   <feImage xlink:href="#rect1"/>
+-/// </filter>
+-/// <rect id="rect1" x="36" y="36" width="120" height="120" fill="green" filter="url(#filter1)"/>
+-/// ```
+-fn fix_recursive_fe_image(doc: &mut Document) {
+-    let mut ids = Vec::new();
+-    for fe_node in doc
+-        .root()
+-        .descendants()
+-        .filter(|n| n.tag_name() == Some(EId::FeImage))
+-    {
+-        if let Some(link) = fe_node.node_attribute(AId::Href) {
+-            if let Some(filter_uri) = link.attribute::<&str>(AId::Filter) {
+-                let filter_id = fe_node.parent().unwrap().element_id();
+-                for func in svgtypes::FilterValueListParser::from(filter_uri).flatten() {
+-                    if let svgtypes::FilterValue::Url(url) = func {
+-                        if url == filter_id {
+-                            ids.push(link.id);
+-                        }
+-                    }
+-                }
+-            }
+-        }
+-    }
+-
+-    for id in ids {
+-        let idx = doc.get(id).attribute_id(AId::Filter).unwrap();
+-        doc.attrs[idx].value = roxmltree::StringStorage::Borrowed("none");
+-    }
+-}
