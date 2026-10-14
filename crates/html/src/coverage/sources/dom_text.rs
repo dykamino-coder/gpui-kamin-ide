@@ -97,6 +97,7 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../document/canvas_background.rs"),
     include_str!("../../dom/mod.rs"),
     include_str!("../../dom/direction.rs"),
+    include_str!("../../dom/content.rs"),
     include_str!("../../dom/parse_document.rs"),
     include_str!("../../dom/ua_style.rs"),
     include_str!("../../dom/white_space_tests.rs"),

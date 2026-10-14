@@ -1250,6 +1250,9 @@ pub struct Computed {
     /// ПЕРЕД скроллером (`before`), `Some(false)` — после (`after`), `None` —
     /// `none`. Не наследуется.
     pub scroll_marker_group: Option<bool>,
+    /// `scroll-target-group: auto` (css-overflow-5): links inside are scroll
+    /// markers. Not inherited.
+    pub scroll_target_group: Option<bool>,
     /// `column-span: all` — блок растянут на все колонки.
     pub column_span: Option<bool>,
     /// `page: <custom-ident>` — именованная страница (css-page-3 §"Using named
