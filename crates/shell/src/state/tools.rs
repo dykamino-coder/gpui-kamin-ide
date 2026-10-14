@@ -38,6 +38,9 @@ impl RootView {
             0.26,
             0.68,
         );
+        // Радиальный фон тоже зависит от акцентов палитры — без перепечки
+        // после смены темы висели эллипсы прежней (пеклись только в init).
+        self.radial_bg = crate::ui::radial_bg::RadialBg::bake(self.theme.palette());
     }
 
     pub(crate) fn tool_body(

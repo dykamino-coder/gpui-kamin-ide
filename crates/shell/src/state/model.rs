@@ -6,6 +6,7 @@ use crate::host_link::ShellEvent;
 use crate::state::drag::{ChipDrag, DragState, ToolDrag};
 use crate::ui::file_list::TreeState;
 use crate::ui::modal::Modal;
+use crate::ui::radial_bg::RadialBg;
 use gpui::{Entity, FocusHandle};
 use gpui_component::input::InputState;
 use kamin_model::{LayoutSnapshot, SessionsSnapshot};
@@ -266,5 +267,6 @@ pub struct RootView {
     /// Когда началось ожидание вью — секундомер подписи скелета
     /// (`setInterval 1000` оригинала; у нас перерисовка идёт кадрами).
     pub(crate) view_resolve_start: std::collections::HashMap<String, std::time::Instant>,
+    pub(crate) radial_bg: RadialBg,
     pub(crate) tx: smol::channel::Sender<ShellEvent>,
 }
