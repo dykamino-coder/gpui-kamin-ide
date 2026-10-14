@@ -107,7 +107,12 @@ pub(super) fn fill_pieces(
             let nf = k
                 .cuts
                 .iter()
-                .find(|&&(need, _)| (need - a).abs() < 0.01)
+                // Край колонки внутри поля между точкой и продолжением
+                // (`need < a < nf`) — поле примыкает к разрыву и усекается
+                // целиком (css-break-3 §5.2 «truncated»): продолжение — с
+                // `nf`, а не с края (`trailing-child-margin-000`: хвост поля
+                // ребёнка корня контекста не переносится в следующую колонку).
+                .find(|&&(need, nf)| (need - a).abs() < 0.01 || (need < a && a < nf - 0.01))
                 .map(|&(_, nf)| nf)
                 .unwrap_or(a);
             (a, nf)
@@ -189,6 +194,17 @@ pub(super) fn fill_pieces(
             Some(LoopStep::Break) => break,
             Some(LoopStep::Continue) => continue,
             None => {}
+        }
+        // Разрез лёг в поле, и за ним от ребёнка ничего не осталось: поле
+        // на разрыве усечено (css-break-3 §5.2), коробка кончилась в этой
+        // колонке, а поток продолжает следующая с самого верха — пустого
+        // куска нулевой высоты там нет (`trailing-child-margin-000`).
+        if cut.is_some() && from >= flow - 0.01 {
+            *col += 1;
+            *y = 0.0;
+            *placed = *col < not_top;
+            ColumnStack::skip_float(float_hold, col, y, placed);
+            break;
         }
         if copy + 1 >= limit {
             // Копий больше нет — остаток за кадром.

@@ -55,6 +55,18 @@ pub(super) fn shaped_height(
         ),
         Some(None) => return Err(None),
         None => match stacked {
+            // Корень блочного контекста (`display: flow-root`, `overflow` не
+            // `visible`, `fieldset`…) полей детей наружу не пропускает (CSS 2.1
+            // §8.3.1: «margins of elements that establish new block formatting
+            // contexts do not collapse with their in-flow children»): нижнее
+            // поле последнего ребёнка входит в его высоту (§10.6.7). Разрыв
+            // после ребёнка законен, и поле на нём усекается (css-break-3
+            // §5.2) — Blink `block_layout_algorithm.cc` кончает коробку в
+            // этом фрагментаинере (`trailing-child-margin-000/002`).
+            Some((end, _, last_mb)) if bfc_root(c) && bot == 0.0 && last_mb > 0.0 => {
+                cuts.push((end, end + last_mb));
+                (end + last_mb, mt, mb)
+            }
             Some((end, through, last_mb)) => (
                 // Нижнее поле последнего ребёнка при собственном нижнем
                 // отступе/рамке коробки НЕ схлопывается наружу и входит в
@@ -153,4 +165,16 @@ pub(super) fn shaped_height(
         },
     };
     Ok((h, mt, mb))
+}
+
+/// Блочный контейнер — корень своего блочного контекста: поля детей через
+/// его край не схлопываются (CSS 2.1 §8.3.1; `fieldset` — HTML §15.3.13
+/// «establishes a new block formatting context»).
+pub(super) fn bfc_root(c: &Element) -> bool {
+    use crate::style::computed::Display;
+    matches!(
+        c.style.display,
+        None | Some(Display::Block) | Some(Display::ListItem)
+    ) && !c.inline
+        && (crate::render::own_context(c) || c.tag == "fieldset")
 }

@@ -102,6 +102,7 @@ pub(crate) fn measure_rows(
         vec![None; n],
         0.0,
         None,
+        false,
     );
     let y = stacked.map_or(top, |s| s.0);
     let natural = y + bot;

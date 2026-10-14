@@ -36,6 +36,7 @@ pub(crate) fn stack_kids(
     page_kid: Vec<Option<(std::string::String, std::string::String)>>,
     mut oof_reach: f32,
     page_prev: Option<String>,
+    bfc: bool,
 ) -> (Option<(f32, f32, f32)>, f32) {
     let stacked: Option<(f32, f32, f32)>;
     let inner_h: Vec<f32> = kids.iter().map(|k| k.0).collect();
@@ -121,6 +122,7 @@ pub(crate) fn stack_kids(
             blk_prev_cut,
             flex_open_ok,
             flex_chain,
+            bfc,
         );
         // Сцепка, дожившая до последнего элемента, закрывается его низом.
         if let Some(s) = flex_run {
