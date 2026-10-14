@@ -60,6 +60,16 @@ pub(super) fn report() {
     if let Some(line) = line {
         super::diag_sink::emit_line(format!("{line} interval_ms={interval:?}"));
     }
+    // `[dirty]`: строки кода, заказавшие перерисовку окна; `[gpu]`: из чего
+    // складывался кадр — число и площадь примитивов по видам (INC-2026-0001:
+    // без видеокарты цена кадра пропорциональна закрашенной площади).
+    let dirty = gpui::dirty_sources::take_top(10);
+    if !dirty.is_empty() {
+        super::diag_sink::emit_line(format!("[dirty] {dirty:?}"));
+    }
+    if let Some(gpu) = gpui::batch_cost::take_line() {
+        super::diag_sink::emit_line(gpu);
+    }
     super::diag_views::report(now);
 }
 

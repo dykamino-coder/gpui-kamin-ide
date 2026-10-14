@@ -2398,8 +2398,11 @@ impl Window {
     }
 
     /// Mark the window as dirty, scheduling it to be redrawn on the next frame.
+    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
+    #[track_caller]
     pub fn refresh(&mut self) {
         if self.invalidator.not_drawing() {
+            crate::dirty_sources::note("refresh", std::panic::Location::caller());
             self.refreshing = true;
             self.invalidator.set_dirty(true);
         }
@@ -2741,7 +2744,10 @@ impl Window {
     }
 
     /// Schedule the given closure to be run directly after the current frame is rendered.
+    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
+    #[track_caller]
     pub fn on_next_frame(&self, callback: impl FnOnce(&mut Window, &mut App) + 'static) {
+        crate::dirty_sources::note("next-frame", std::panic::Location::caller());
         RefCell::borrow_mut(&self.next_frame_callbacks).push(Box::new(callback));
         self.platform_window.schedule_frame();
         // Next-frame callbacks create frame demand without dirtying the
@@ -2761,6 +2767,8 @@ impl Window {
     /// which automatically respects [`App::reduce_motion`]. When using this
     /// method directly for decorative motion, check [`App::reduce_motion`]
     /// and skip the frame request when it is set.
+    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
+    #[track_caller]
     pub fn request_animation_frame(&self) {
         let entity = self.current_view();
         self.on_next_frame(move |_, cx| cx.notify(entity));
