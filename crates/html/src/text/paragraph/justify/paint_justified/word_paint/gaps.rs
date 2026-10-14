@@ -28,6 +28,7 @@ impl Paragraph {
             bounds,
             dx,
             y,
+            pad,
             placed,
             ..
         } = context;
@@ -79,10 +80,10 @@ impl Paragraph {
                     + dx
                     + placed(gap.start, gap.end)
                         .map_or(self.x_at(segs, gap.start, Edge::Start) - from, |v| v.0);
-                let gap_y = match (line_base, self.base_of(&gap)) {
-                    (Some(l), Some(w)) => y + px(l - w),
-                    _ => y,
-                };
+                // The gap is a piece of the same inline box as the words
+                // around it: it takes their edge alignment too, or its band
+                // steps against theirs (CSS 2.1 sections 10.8.1 and 14.2).
+                let gap_y = y + self.piece_fix(&gap, line_base, pad);
                 self.paint_run_background(&gap_shaped, point(gap_x, gap_y), window, cx);
             }
         }

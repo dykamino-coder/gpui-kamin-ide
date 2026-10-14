@@ -155,7 +155,14 @@ fn field_box(style: &Computed) -> gpui::Div {
     if style.border_color.is_none() {
         d = d.border_color(rgb(BORDER));
     }
-    if style.radius.tl.is_none() {
+    // The rounded native look is part of `appearance: auto`; an author
+    // border or background replaces it with a plain CSS box (CSS UI 4
+    // section 7.2, HTML rendering section 15.5), so its corners stay square.
+    let author_box = style.border_width.top.is_some()
+        || style.border_visible[0].is_some()
+        || style.bg_explicit
+        || style.background.is_some();
+    if style.radius.tl.is_none() && !author_box {
         d = d.rounded(px(4.));
     }
     if style.padding.left.is_none() {

@@ -578,6 +578,8 @@ pub struct Computed {
     /// Сырая запись градиента фона: источник для слоя-картинки там, где
     /// градиент рисуется плиткой (фон ряда таблицы).
     pub gradient_raw: Option<String>,
+    /// Authored currentColor expression, independent of background tiling.
+    pub(crate) gradient_current: Option<String>,
     /// CSS Compositing 1: each image blends with the isolated background stack.
     pub(crate) background_blend: Option<String>,
     /// Resolved opaque, constant background stacks retain their clip regions.

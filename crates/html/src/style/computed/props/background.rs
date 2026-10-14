@@ -53,12 +53,14 @@ impl Computed {
                     self.bg_image = None;
                     self.gradient = None;
                     self.gradient_raw = None;
+                    self.gradient_current = None;
                 } else if v.starts_with("linear-gradient(") || v.starts_with("radial-gradient(") {
                     // Негодная запись роняет ОБЪЯВЛЕНИЕ (§4.2), прежняя
                     // картинка живёт: `linear-gradient(green, green)` и следом
                     // четыре негодных угла обязаны оставить зелёный.
                     if let Some(g) = parse_gradient(v) {
                         self.gradient = Some(g);
+                        self.gradient_current = v.contains("currentcolor").then(|| v.to_string());
                         self.gradient_em = has_font_units(v).then(|| v.to_string());
                         // Сырая запись нужна фону РЯДА таблицы: он рисуется
                         // слоем картинки, и градиент туда идёт источником.
@@ -128,6 +130,7 @@ impl Computed {
                             self.bg_image = Some(v.to_string());
                             self.gradient = None;
                             self.gradient_raw = None;
+                            self.gradient_current = None;
                         }
                         _ => {}
                     }
@@ -150,6 +153,7 @@ impl Computed {
                             self.bg_image = None;
                             self.gradient = None;
                             self.gradient_raw = None;
+                            self.gradient_current = None;
                         }
                         // Негодная запись (отрицательное разрешение числом —
                         // css-values-4 §6.3): объявление не применяется (§4.2).
