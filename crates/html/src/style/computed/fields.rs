@@ -455,6 +455,8 @@ pub struct Computed {
     /// знает, поэтому детей переставляет сам сборщик дерева.
     pub order: Option<i32>,
     pub align_content: Option<Justify>,
+    /// Content baseline preference; false is first, true is last (CSS Align 3 §9).
+    pub align_content_baseline: Option<bool>,
     /// Задано ли `align-content` значением, ОТЛИЧНЫМ от `normal`
     /// (css-align-3 §align-block). Отдельно от `align_content`, потому что
     /// `parse_justify` роняет в `None` два разных случая: `normal`
@@ -929,6 +931,8 @@ pub struct Computed {
     /// переставляются оси выравнивания вертикальной сетки и пишутся биты
     /// базовой по оси x (`apply.rs`).
     pub(crate) parent_grid: u8,
+    /// Grid content baseline alignment requires a coordinated self alignment.
+    pub(crate) parent_grid_align_items: Option<Align>,
     /// Родитель — гибкий контейнер, сетка или лунки: элемент блокифицирован
     /// (css-display-3 §2.7), хотя `display` в стиле остаётся строчным.
     pub(crate) parent_flex_grid: bool,

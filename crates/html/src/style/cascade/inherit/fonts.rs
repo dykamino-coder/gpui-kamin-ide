@@ -107,6 +107,7 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
         _ => 0,
     };
     c.parent_lanes = parent.display == Some(crate::style::computed::Display::GridLanes);
+    c.parent_grid_align_items = parent.align_items;
     c.parent_subgrid = c.parent_grid != 0 && (parent.subgrid_cols || parent.subgrid_rows);
     c.parent_flex_grid = matches!(
         parent.display,

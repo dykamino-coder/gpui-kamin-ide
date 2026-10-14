@@ -75,6 +75,7 @@ pub(crate) fn project_wrapper(style: &mut gpui::StyleRefinement, c: &Computed) {
     super::alignment_axes::abspos_normal(style, c);
     super::alignment_axes::grid_self(style, c);
     super::alignment_axes::project(style, false, grid_mode(c) >= 2);
+    super::grid_content_baseline::apply(style, c);
 }
 
 #[cfg(test)]

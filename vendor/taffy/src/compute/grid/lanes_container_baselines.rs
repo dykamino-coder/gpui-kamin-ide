@@ -3,6 +3,9 @@
 
 use crate::Baselines;
 
+#[path = "lanes_row_baselines.rs"]
+mod row_baselines;
+
 pub(super) fn compute(
     placed: &[super::Placed],
     first_in_track: &[Option<usize>],
@@ -10,13 +13,7 @@ pub(super) fn compute(
     stack_start_inset: f32,
 ) -> Baselines {
     if rows {
-        return Baselines {
-            first: first_in_track.iter().find_map(|&index| index).map(|index| {
-                let item = &placed[index];
-                item.grid_pos + item.baseline.unwrap_or(item.size.height)
-            }),
-            last: None,
-        };
+        return row_baselines::compute(placed);
     }
     let candidates: crate::util::sys::Vec<_> = placed
         .iter()
