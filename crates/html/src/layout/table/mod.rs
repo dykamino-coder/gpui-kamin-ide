@@ -111,6 +111,17 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // Группа — непрерывный кусок рядов с одним `<tbody>`; ряды прямо в
     // таблице (анонимная группа) идут одним куском.
     let (rows_left, cols) = rows_left_and_cols(&rows);
+    // css-tables-3 §table-grid: a cell-less `<col>` keeps its track only with a
+    // definite used width > 0 (Gecko/Blink; `col-definite-*-001`).
+    let definite_cols = crate::layout::table::columns::col_elements(&e.children)
+        .iter()
+        .rposition(|c| {
+            c.is_some_and(|c| {
+                crate::layout::table::columns::definite_col_px(c).is_some_and(|w| w > 0.0)
+            })
+        })
+        .map_or(0, |i| i + 1);
+    let cols = cols.max(u16::try_from(definite_cols).unwrap_or(u16::MAX));
 
     // ОДНА сетка на всю таблицу, а не по сетке на строку. Со строками-сетками
     // ширина колонки считалась внутри строки, и соседние строки расходились —
