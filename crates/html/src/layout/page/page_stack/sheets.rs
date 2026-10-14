@@ -41,54 +41,65 @@ impl PageStack {
     ) {
         // Порядок краски css-page-3 §painting: фон листа → канвас
         // документа (border box листа) → рамки → содержимое.
-        for i in 0..pages {
-            if self.slot(i).is_none() || self.geom(i).turn % 2 == 1 {
-                continue;
-            }
-            let (sx, sy) = self.sheet_origin(i);
-            let g = self.geom(i);
-            window.paint_quad(gpui::fill(rect(sx, sy, g.size.0, g.size.1), g.bg));
-            let bx = sx + g.margin[3];
-            let by = sy + g.margin[0];
-            let bw = (g.size.0 - g.margin[1] - g.margin[3]).max(0.0);
-            let bh = (g.size.1 - g.margin[0] - g.margin[2]).max(0.0);
-            if let Some(c) = g.canvas {
-                // Канвас кроет border box листа (§painting), но не шире
-                // самого листа: при отрицательных полях жёлтый фон тела
-                // вылезал полосами за правый и нижний край.
-                let (cx, cy) = (bx.max(sx), by.max(sy));
-                let cw = ((bx + bw).min(sx + g.size.0) - cx).max(0.0);
-                let ch = ((by + bh).min(sy + g.size.1) - cy).max(0.0);
-                window.paint_quad(gpui::fill(rect(cx, cy, cw, ch), c));
-            }
-            let (t, c) = g.border;
-            if t > 0.0 {
-                for r in [
-                    (bx, by, bw, t),
-                    (bx, by + bh - t, bw, t),
-                    (bx, by, t, bh),
-                    (bx + bw - t, by, t, bh),
-                ] {
-                    window.paint_quad(gpui::fill(rect(r.0, r.1, r.2, r.3), c));
+        // Sheet backgrounds, the canvas and page borders go to the BOTTOM
+        // layer: negative `z-index` content (`Underlay`, CSS 2.1 §9.9 step 3)
+        // also paints there and must land above them (css-page-3 §painting:
+        // page background, canvas, borders, then the root stacking context;
+        // `page-background-001-print-ref`: `<img style="z-index:-1">`).
+        window.paint_bottom_layer(|window| {
+            for i in 0..pages {
+                if self.slot(i).is_none() || self.geom(i).turn % 2 == 1 {
+                    continue;
+                }
+                let (sx, sy) = self.sheet_origin(i);
+                let g = self.geom(i);
+                window.paint_quad(gpui::fill(rect(sx, sy, g.size.0, g.size.1), g.bg));
+                let bx = sx + g.margin[3];
+                let by = sy + g.margin[0];
+                let bw = (g.size.0 - g.margin[1] - g.margin[3]).max(0.0);
+                let bh = (g.size.1 - g.margin[0] - g.margin[2]).max(0.0);
+                if let Some(c) = g.canvas {
+                    // Канвас кроет border box листа (§painting), но не шире
+                    // самого листа: при отрицательных полях жёлтый фон тела
+                    // вылезал полосами за правый и нижний край.
+                    let (cx, cy) = (bx.max(sx), by.max(sy));
+                    let cw = ((bx + bw).min(sx + g.size.0) - cx).max(0.0);
+                    let ch = ((by + bh).min(sy + g.size.1) - cy).max(0.0);
+                    window.paint_quad(gpui::fill(rect(cx, cy, cw, ch), c));
+                }
+                if !self.canvas_els.is_empty() {
+                    let (x, y, w, h) = super::canvas::canvas_rect(&g);
+                    self.paint_canvas(i, rect(sx + x, sy + y, w, h), bounds, s, window, cx);
+                }
+                let (t, c) = g.border;
+                if t > 0.0 {
+                    for r in [
+                        (bx, by, bw, t),
+                        (bx, by + bh - t, bw, t),
+                        (bx, by, t, bh),
+                        (bx + bw - t, by, t, bh),
+                    ] {
+                        window.paint_quad(gpui::fill(rect(r.0, r.1, r.2, r.3), c));
+                    }
+                }
+                // Контур — снаружи рамки со сдвигом, в слое рамок (под
+                // содержимым): `page-box-010` — поле 50, контур 10 со сдвигом
+                // 40 ложится вплотную к краю листа, как рамка эталона.
+                let (ow, off, oc) = g.outline;
+                if ow > 0.0 {
+                    let (ox, oy) = (bx - off - ow, by - off - ow);
+                    let (fw, fh) = (bw + 2.0 * (off + ow), bh + 2.0 * (off + ow));
+                    for r in [
+                        (ox, oy, fw, ow),
+                        (ox, oy + fh - ow, fw, ow),
+                        (ox, oy, ow, fh),
+                        (ox + fw - ow, oy, ow, fh),
+                    ] {
+                        window.paint_quad(gpui::fill(rect(r.0, r.1, r.2, r.3), oc));
+                    }
                 }
             }
-            // Контур — снаружи рамки со сдвигом, в слое рамок (под
-            // содержимым): `page-box-010` — поле 50, контур 10 со сдвигом
-            // 40 ложится вплотную к краю листа, как рамка эталона.
-            let (ow, off, oc) = g.outline;
-            if ow > 0.0 {
-                let (ox, oy) = (bx - off - ow, by - off - ow);
-                let (fw, fh) = (bw + 2.0 * (off + ow), bh + 2.0 * (off + ow));
-                for r in [
-                    (ox, oy, fw, ow),
-                    (ox, oy + fh - ow, fw, ow),
-                    (ox, oy, ow, fh),
-                    (ox + fw - ow, oy, ow, fh),
-                ] {
-                    window.paint_quad(gpui::fill(rect(r.0, r.1, r.2, r.3), oc));
-                }
-            }
-        }
+        });
         // Содержимое — под маской СВОЕГО ФРАГМЕНТА: копия нарисована во
         // всю высоту, видна только полоса `[y, y + h)` этой страницы (вид
         // `slice`, css-break-4 §4; ровно как у `ColumnStack`). Маска по
