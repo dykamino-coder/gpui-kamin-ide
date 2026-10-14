@@ -72,6 +72,11 @@ impl Computed {
     /// Размер окна известен только сборщику дерева, поэтому `vh`/`vw` доживают
     /// до него неразрешёнными — как и `em` до размера шрифта.
     pub fn resolve_viewport(&mut self, viewport: (f32, f32)) {
+        let insets = self.viewport_unit_insets.unwrap_or_default();
+        let viewport = (
+            (viewport.0 - insets[0]).max(0.0),
+            (viewport.1 - insets[1]).max(0.0),
+        );
         let fix = |l: &mut Option<Len>| match *l {
             Some(Len::Vw(k)) => *l = Some(Len::Px(k * viewport.0)),
             Some(Len::Vh(k)) => *l = Some(Len::Px(k * viewport.1)),
@@ -183,6 +188,10 @@ impl Computed {
         // Шаг 2 §7.2 — дескриптор правила `@font-face`, МЛАДШЕ свойств.
         let mut all: Vec<(String, u32)> =
             crate::text::fonts::face_features(self.font_family.as_deref().unwrap_or(""));
+        // Подбор веса грани по CSS (css-fonts-4 §5.2 шаг 4), а не по
+        // расстоянию DirectWrite: свой тег, его читает подбор грани в gpui.
+        let (tag, on) = crate::text::fonts::CSS_WEIGHT_TAG;
+        all.insert(0, (tag.to_string(), on));
         all.extend(self.font_features.iter().cloned());
         all.extend(crate::text::fonts::alternates::resolve(
             self.font_family.as_deref().unwrap_or(""),
@@ -207,6 +216,17 @@ impl Computed {
             out.retain(|(t, _)| *t != tag);
             out.push((tag, value));
         }
+        let slope = if self.oblique == Some(true) {
+            2
+        } else if self.italic == Some(true) {
+            1
+        } else {
+            0
+        };
+        out.extend(crate::text::fonts::metric_overrides::features(
+            self.font_family.as_deref().unwrap_or(""),
+            slope,
+        ));
         out
     }
 }

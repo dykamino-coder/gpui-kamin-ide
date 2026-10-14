@@ -16,6 +16,7 @@ mod payload;
 mod shortcuts;
 mod steps;
 mod ui;
+mod unlock;
 
 use std::path::PathBuf;
 

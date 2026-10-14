@@ -81,6 +81,13 @@ impl Computed {
             self.apply_one("background-image", image);
         } else if gradient_as_raster(v) {
             self.bg_image = Some(v.to_string());
+        } else if let Some(image) = split_outside_parens(v)
+            .into_iter()
+            .find(|t| crate::paint::background::filter_image::parse(t).is_some())
+        {
+            // `filter(url(…), …)` is one image (Filter Effects 1 §13); its
+            // inner url is not the layer's image.
+            self.bg_image = Some(image);
         } else if let Some(url) = parse_url(v) {
             self.bg_image = Some(url);
         }

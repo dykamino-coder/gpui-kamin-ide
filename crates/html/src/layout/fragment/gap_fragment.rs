@@ -1,13 +1,13 @@
-//! Share a column fragment's unused tail with its root grid decoration painter.
+//! Share fragment boundaries with gap painters before resolving decoration insets.
 
-use gpui::{Bounds, ContentMask, Pixels};
+use gpui::{ContentMask, Pixels};
 use std::cell::RefCell;
 
 #[derive(Clone)]
 pub(crate) struct Scope {
-    pub root: Bounds<Pixels>,
     pub parent: ContentMask<Pixels>,
     pub mask: ContentMask<Pixels>,
+    pub start: f32,
     pub cut: f32,
     pub end: f32,
 }

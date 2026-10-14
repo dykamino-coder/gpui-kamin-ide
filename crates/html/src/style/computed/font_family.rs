@@ -48,10 +48,9 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
     // подстановкой недостающего занимается сама система шрифтов.
     // Имя нормализуется до сравнения: неквотированное имя из
     // нескольких слов — это один пробел между ними (§15.3).
-    let norm = |f: &str| {
-        let un = crate::style::css::unescape(f);
-        un.split_whitespace().collect::<Vec<_>>().join(" ")
-    };
+    // Имя в кавычках — СТРОКА, она берётся буквально: `"CSSTest   FamilyName"`
+    // с тремя пробелами не совпадает с `CSSTest FamilyName` (css-fonts-4
+    // §4.2 «spaces are not reduced», `font-family-name-007/008`).
     // Годно ли имя списка как ИМЯ СЕМЕЙСТВА: в кавычках — всегда
     // (даже `"serif"`), без кавычек — если это не родовое слово.
     let usable = |raw: &str| {
@@ -93,7 +92,7 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
         .split(',')
         .map(str::trim)
         .filter(|raw| usable(raw))
-        .map(|raw| norm(raw.trim_matches(is_quote)))
+        .map(family_name)
         .find(|f| available(f));
     if let Some(found) = installed {
         style.font_family = Some(found);
@@ -155,12 +154,19 @@ fn families(value: &str) -> Vec<String> {
                     return family.to_string();
                 }
             }
-            crate::style::css::unescape(name.trim_matches(is_quote))
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ")
+            family_name(name)
         })
         .collect()
+}
+
+/// Имя семейства из элемента списка: строка в кавычках — буквально (только
+/// экранирование), ряд идентификаторов — через один пробел (CSS2 §15.3).
+fn family_name(raw: &str) -> String {
+    let un = crate::style::css::unescape(raw.trim_matches(is_quote));
+    if raw.starts_with(['\'', '"']) {
+        return un;
+    }
+    un.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 pub(crate) fn inherit(target: &mut Computed, own: &Computed, parent: &Computed) {

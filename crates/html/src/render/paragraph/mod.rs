@@ -93,6 +93,7 @@ fn paragraph_routed(
             if first.italic == Some(true) {
                 font.style = gpui::FontStyle::Italic;
             }
+            font.features = crate::text::fonts::with_css_weight(&font.features);
             if let Some(family) = first.font_family.as_ref().filter(|f| !f.is_empty()) {
                 font.family = family.clone().into();
             }
@@ -101,12 +102,20 @@ fn paragraph_routed(
                 Some(Len::Em(k)) => k * size,
                 _ => size,
             };
+            let mut full = String::new();
+            first_line_text::lines(nodes, inherited.preserve_newlines == Some(true), &mut full);
+            let following = full
+                .split('\n')
+                .skip(1)
+                .map(|line| SharedString::from(normalize_for_shadow(line).trim().to_string()))
+                .collect();
             return crate::layout::float::split_flow::FirstLine::new(
                 build,
                 SharedString::from(plain.trim().to_string()),
                 font,
                 measure_size,
                 line,
+                following,
             )
             .into_any_element();
         }

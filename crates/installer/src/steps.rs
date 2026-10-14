@@ -30,7 +30,7 @@ fn quiet(cmd: &str, args: &[&str]) -> Result<i32> {
 /// Команда с подавленным консольным окном — ЕДИНСТВЕННЫЙ способ порождать
 /// процессы в инсталлере (юзер: «много консолей вспыхивало»). reg-query и
 /// tasklist раньше звались напрямую и мигали окнами.
-fn quiet_cmd(cmd: &str, args: &[&str]) -> Command {
+pub(crate) fn quiet_cmd(cmd: &str, args: &[&str]) -> Command {
     #[cfg(windows)]
     use std::os::windows::process::CommandExt as _;
     let mut c = Command::new(cmd);
@@ -173,33 +173,46 @@ fn reg_read(key: &str, value: &str) -> Option<String> {
 pub fn install_with_progress(dir: &Path, version: &str, progress: impl Fn(u8)) -> Result<()> {
     klog("install section start");
     progress(3);
-    for image in ["kaminide-gpui.exe", "kaminhost.exe", "kaminide-web.exe"] {
+    for image in crate::unlock::IMAGES {
         let _ = quiet("taskkill", &["/F", "/IM", image]);
     }
-    klog("taskkill done");
+    // taskkill возвращается раньше, чем процесс выгрузит свои DLL.
+    // 2026-10-14: measured 22.4 s from `taskkill /F` until the last
+    // kaminide-gpui.exe disappeared (CEF/GPU teardown); 20 s was too short and
+    // the install fell back to the old version.
+    let gone = crate::unlock::wait_processes_gone(30);
+    klog(&format!("taskkill done (processes gone: {gone})"));
     remove_legacy_tauri(dir);
     progress(8);
 
-    // Реальное освобождение файлов (DLP держит хэндлы): проба переименования
-    // главного exe, до 20×1с — порт wait_unlock.
-    let main_exe = dir.join("kaminide-gpui.exe");
-    if main_exe.exists() {
-        let probe = dir.join("kaminide-gpui.exe.old");
-        let mut ok = false;
-        for attempt in 1..=20u32 {
-            match std::fs::rename(&main_exe, &probe) {
-                Ok(()) => {
-                    std::fs::rename(&probe, &main_exe).ok();
-                    klog(&format!("unlocked on attempt {attempt}"));
-                    ok = true;
-                    break;
-                }
-                Err(_) => std::thread::sleep(std::time::Duration::from_secs(1)),
-            }
+    let cleaned = crate::unlock::remove_aside(dir);
+    if cleaned > 0 {
+        klog(&format!(
+            "removed {cleaned} files moved aside by an earlier update"
+        ));
+    }
+
+    // Реальное освобождение файлов (DLP держит хэндлы): каждый exe/dll должен
+    // открываться на запись. Переименование главного exe не годится как проба —
+    // Windows разрешает его и у работающего процесса (см. `unlock`).
+    // 2026-10-14 (acceptance 1.0.70): a killed IDE stayed alive > 90 s with
+    // chrome_elf.dll mapped, so waiting can never be enough. Wait a little for
+    // the normal case, then go on: `payload::unpack_to` moves a busy file aside
+    // and writes the new one.
+    let mut locked = None;
+    for attempt in 1..=15u32 {
+        locked = crate::unlock::first_locked(dir);
+        if locked.is_none() {
+            klog(&format!("unlocked on attempt {attempt}"));
+            break;
         }
-        if !ok {
-            bail!("files still locked after 20s");
-        }
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
+    if let Some(p) = locked {
+        klog(&format!(
+            "still locked after 15s, moving busy files aside: {}",
+            p.display()
+        ));
     }
     progress(15);
 
@@ -219,7 +232,15 @@ pub fn install_with_progress(dir: &Path, version: &str, progress: impl Fn(u8)) -
             }
         })
     };
-    let unpacked = crate::payload::unpack_to(dir).context("payload unpack");
+    // Повтор распаковки: антивирус/индексатор может на миг взять свежий файл.
+    // Распаковка идемпотентна — перезаписывает те же файлы.
+    let mut unpacked = crate::payload::unpack_to(dir).context("payload unpack");
+    for retry in 1..=3u32 {
+        let Err(e) = &unpacked else { break };
+        klog(&format!("unpack retry {retry} after: {e:#}"));
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        unpacked = crate::payload::unpack_to(dir).context("payload unpack");
+    }
     ticking.store(false, std::sync::atomic::Ordering::Relaxed);
     let _ = ticker.join();
     unpacked?;

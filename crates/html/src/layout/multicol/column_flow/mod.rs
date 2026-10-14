@@ -76,6 +76,19 @@ fn column_flow_in(
     whole: bool,
     stretch: Option<f32>,
 ) -> Option<AnyElement> {
+    // Позиционированный строчный ребёнок: его содержащий блок — не колонка,
+    // а предок (css-position-3 §containing-block; Blink кладёт OOF во
+    // фрагментаинеры от СВОЕГО содержащего блока,
+    // `OutOfFlowLayoutPart::LayoutFragmentainerDescendants`). Текстовый путь
+    // знает только строки — такой поток идёт стопкой со статическими местами.
+    if e.children.iter().any(|n| {
+        matches!(n, Node::Element(c) if c.inline && matches!(
+            c.style.position,
+            Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
+        ))
+    }) {
+        return None;
+    }
     let all_inline = e.children.iter().all(|n| match n {
         Node::Text(_) => true,
         Node::Element(child) => child.inline && child.style.display.is_none(),

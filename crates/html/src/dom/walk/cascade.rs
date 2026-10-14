@@ -35,6 +35,20 @@ pub(super) fn cascade_element(
     SchemeGuard,
     Option<Rc<crate::dom::shadow::Shadow>>,
 ) {
+    // css-overflow-5 §scroll-target-group: links with a fragment URL inside a
+    // `scroll-target-group: auto` element are its scroll markers. At the
+    // initial scroll position the first target in tree order is current
+    // (Blink `ScrollMarkerGroupData` picks the target nearest the start).
+    if me.tag == "a"
+        && me
+            .href
+            .as_deref()
+            .is_some_and(|h| h.len() > 1 && h.starts_with('#'))
+        && let Some(group) = path.iter().rev().find_map(|a| a.target_group.as_ref())
+        && !group.replace(true)
+    {
+        me.target_current = true;
+    }
     let vars = inherited_vars;
     let inline_decls: Decls = attrs
         .iter()
@@ -120,9 +134,17 @@ pub(super) fn cascade_element(
     let hints = presentational_hints::rules(&tag, &attrs);
     matched.extend(hints.iter());
     let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
-    inherit_counter_decls(&mut style, path.last().map(|p| &p.counter_style));
+    style.custom_scrollbar = rules.iter().any(|rule| {
+        if rule.sel.pseudo.as_deref() != Some("-webkit-scrollbar") {
+            return false;
+        }
+        let mut owner = rule.sel.clone();
+        owner.pseudo = None;
+        matches(&owner, me, path, sibs)
+    });
+    content::inherit_generated(&mut style, path.last());
     apply_value_hint(&mut style, &me);
-    me.counter_style = counter_snapshot(&style);
+    content::snapshot_generated(me, &style);
     crate::style::cascade::vars::clear_current_attrs();
     crate::style::cascade::vars::set_current_sibling(None);
     (style, own_vars, _scheme, shadow)

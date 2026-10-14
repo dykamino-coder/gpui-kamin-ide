@@ -109,17 +109,12 @@ pub(crate) fn add_menus_session(
             .lock()
             .unwrap()
             .clone();
-        let items: Vec<(String, String, Option<String>)> = r
+        let items: Vec<kamin_model::Session> = r
             .sessions
             .as_ref()
             .map(|snap| {
                 ids.iter()
-                    .filter_map(|id| {
-                        snap.sessions
-                            .iter()
-                            .find(|s| &s.id == id)
-                            .map(|s| (s.id.clone(), s.name.clone(), s.color.clone()))
-                    })
+                    .filter_map(|id| snap.sessions.iter().find(|s| &s.id == id).cloned())
                     .collect()
             })
             .unwrap_or_default();

@@ -39,7 +39,8 @@ impl Paragraph {
         let trim = |at: usize| {
             let mut e = at;
             for (i, ch) in self.text[head..at].char_indices().rev() {
-                let kept = matches!(ch, ' ' | '\t') && self.wrap_at(head + i).keep_spaces;
+                let wrap = self.wrap_at(head + i);
+                let kept = hangs(ch) && (wrap.break_spaces || (wrap.keep_spaces && wrap.nowrap));
                 if !kept && ch != '\u{feff}' && (hangs(ch) || zero_width(ch)) {
                     e = head + i;
                 } else {

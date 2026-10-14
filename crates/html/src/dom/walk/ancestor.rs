@@ -25,6 +25,8 @@ pub(super) fn element_ancestor(
         .unwrap_or_default();
     let me = Ancestor {
         counter_style: Default::default(),
+        content_style: None,
+        content_none: None,
         tag: tag.clone(),
         html_attrs,
         id: id.clone(),
@@ -50,6 +52,8 @@ pub(super) fn element_ancestor(
             .then_some(sibs.rc)
             .flatten()
             .map(|r| (r.clone(), sibs.pos)),
+        target_group: None,
+        target_current: false,
     };
 
     me

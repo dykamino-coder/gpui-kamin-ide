@@ -42,6 +42,10 @@ pub(super) fn syntax_accepts(syntax: &str, value: &str) -> bool {
 /// разбор стиля отдаёт голый путь. `None` — файла нет: такая картинка коробки
 /// не даёт (Servo `components/layout/replaced.rs:348`).
 pub(crate) fn content_image_src(src: &str) -> Option<String> {
+    if let Some((image, _)) = crate::paint::background::filter_image::parse(src) {
+        content_image_src(&image)?;
+        return Some(src.to_string());
+    }
     if src.starts_with("data:") {
         return Some(src.to_string());
     }
@@ -116,7 +120,7 @@ pub(super) fn pseudo_box_named(
         return None;
     }
     let mut style = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars);
-    inherit_counter_decls(&mut style, Some(&me.counter_style));
+    content::inherit_generated(&mut style, Some(me));
     // Псевдоэлемент — ребёнок хозяина: блочный `::before` внутри руби
     // инлайнизируется так же, как элемент (css-ruby-1 §2.2 п.1,
     // `ruby-inlinize-blocks-005`). Ближайший предок — сам хозяин.

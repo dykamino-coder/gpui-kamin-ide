@@ -208,12 +208,28 @@ fn compute_container_constants<Tree: LayoutGridContainer>(
         .maybe_clamp(min_size, max_size)
         .maybe_max(padding_border_size);
 
+    // KaminIDE: a content-sized block axis is a max-content constraint (css-grid-2 §12.1 note), so it
+    // stays indefinite for track sizing and max-height only clamps the final container size, as Blink's
+    // grid_layout_algorithm.cc keeps grid_available_size_.block_size indefinite for auto block sizes.
+    // A height the parent measured from this grid's content (`known_dimensions_are_definite` false)
+    // is likewise not a definite size for track sizing.
+    let block_axis_indefinite = preferred_size.height.is_none()
+        && match known_dimensions.height {
+            Some(_) => !inputs.known_dimensions_are_definite.height,
+            None => !matches!(available_space.height, AvailableSpace::Definite(_)),
+        };
     let available_grid_space = Size {
         width: constrained_available_space
             .width
             .map_definite_value(|space| space - content_box_inset.horizontal_axis_sum()),
-        height: constrained_available_space
-            .height
+        height: if block_axis_indefinite {
+            match available_space.height {
+                AvailableSpace::MinContent => AvailableSpace::MinContent,
+                _ => AvailableSpace::MaxContent,
+            }
+        } else {
+            constrained_available_space.height
+        }
             .map_definite_value(|space| space - content_box_inset.vertical_axis_sum()),
     };
 
@@ -1008,6 +1024,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     };
 
     // Position in-flow children (stored in items vector)
+    let mut baseline_x_items: Vec<(u16, Line<Option<f32>>)> = Vec::new();
     for (index, item) in items.iter_mut().enumerate() {
         // Tracks are stored in logical order. KaminIDE: either physical axis may be reversed
         // (RTL columns, writing-mode rows), see `subgrid_flow::area`.
@@ -1026,7 +1043,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
             container_alignment_styles
         };
         #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
-        let (overflow_contribution, y_position, height, first_baseline, last_baseline) =
+        let (overflow_contribution, y_position, height, first_baseline, last_baseline, x_lines) =
             align_and_position_item(
                 tree,
                 item.node,
@@ -1060,6 +1077,9 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
                 &mut item.oof_candidates,
             );
         item.y_position = y_position;
+        if x_lines.start.is_some() {
+            baseline_x_items.push((item.source_order, x_lines));
+        }
         item.height = height;
         item.first_baseline = first_baseline;
         item.last_baseline = last_baseline;
@@ -1311,7 +1331,22 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         container_border_box,
         scrollable_overflow_rect,
         container_baselines,
-        Baselines::NONE,
+        // KaminIDE: vertical content exports physical-x baselines (a vertical table's first
+        // row and last row, in source order), like blocks and flex containers do.
+        if contain.suppresses_baseline() {
+            Baselines::NONE
+        } else {
+            Baselines {
+                first: baseline_x_items
+                    .iter()
+                    .min_by_key(|(order, _)| *order)
+                    .and_then(|(_, l)| l.start),
+                last: baseline_x_items
+                    .iter()
+                    .max_by_key(|(order, _)| *order)
+                    .and_then(|(_, l)| l.end),
+            }
+        },
     );
     output.oof_candidates = oof_candidates;
     output.oof_positioning_area = oof_positioning_area;

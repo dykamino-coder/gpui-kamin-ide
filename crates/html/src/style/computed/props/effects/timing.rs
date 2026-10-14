@@ -1,6 +1,7 @@
 //! Computed::apply_effects, продолжение цепочки: animation*, transition*, resize, filter, contain. Ветви в исходном порядке; не совпавший ключ уходит в apply_effects_containment.
 
 use super::*;
+mod animation_props;
 
 impl Computed {
     #[allow(unused_variables)]
@@ -14,80 +15,14 @@ impl Computed {
             | "animation-direction"
             | "animation-delay"
             | "animation-play-state" => {
-                let mut a = self.animation.clone().unwrap_or(AnimSpec {
-                    name: String::new(),
-                    seconds: 0.0,
-                    infinite: false,
-                    alternate: false,
-                    delay: 0.0,
-                    paused: false,
-                    names: Vec::new(),
-                });
-                // В сокращении второе время — задержка (css-animations §5).
-                let mut times = 0usize;
-                let set_time = |a: &mut AnimSpec, sec: f32, times: &mut usize| match key {
-                    "animation-delay" => a.delay = sec,
-                    "animation-duration" => a.seconds = sec,
-                    _ => {
-                        if *times == 0 {
-                            a.seconds = sec;
-                        } else {
-                            a.delay = sec;
-                        }
-                        *times += 1;
-                    }
-                };
-                for token in v.split_whitespace() {
-                    if let Some(sec) = token.strip_suffix("ms").and_then(|n| n.parse::<f32>().ok())
-                    {
-                        set_time(&mut a, sec / 1000.0, &mut times);
-                    } else if let Some(sec) =
-                        token.strip_suffix('s').and_then(|n| n.parse::<f32>().ok())
-                    {
-                        set_time(&mut a, sec, &mut times);
-                    } else if token == "paused" {
-                        a.paused = true;
-                    } else if token == "infinite" {
-                        a.infinite = true;
-                    } else if token == "alternate" {
-                        a.alternate = true;
-                    } else if token.parse::<f32>().is_err()
-                        && !matches!(
-                            token,
-                            "linear"
-                                | "ease"
-                                | "ease-in"
-                                | "ease-out"
-                                | "ease-in-out"
-                                | "normal"
-                                | "reverse"
-                                | "both"
-                                | "forwards"
-                                | "backwards"
-                                | "running"
-                                | "paused"
-                                | "none"
-                        )
-                    {
-                        a.name = token.to_string();
-                    }
-                }
-                // `animation-name: a, b` — СПИСОК (css-animations-1 §3: при
-                // общем свойстве побеждает имя, стоящее в списке позже). Цикл
-                // выше оставил в `name` последнее имя — одиночный путь прежний;
-                // весь список нужен слоению остановленных анимаций (`dom.rs`).
-                if key == "animation-name" {
-                    let names: Vec<String> = v
-                        .split(',')
-                        .map(|n| n.trim().to_string())
-                        .filter(|n| !n.is_empty() && n != "none")
-                        .collect();
-                    a.names = if names.len() > 1 { names } else { Vec::new() };
-                }
-                // Свойства без имени (`animation-play-state` до сокращения)
-                // копят состояние: имя может прийти следующей декларацией.
-                self.animation = Some(a);
+                self.apply_animation(key, v);
             }
+            "animation-timing-function" => {
+                if let Some(easing) = crate::animation::easing::Easing::parse(v) {
+                    self.animation_easing = Some(easing);
+                }
+            }
+            "animation-fill-mode" => self.apply_animation(key, v),
             "transition" | "transition-duration" => {
                 // Из записи перехода нужна только длительность: какие свойства
                 // меняются, видно по разнице стилей.

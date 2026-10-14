@@ -16,6 +16,8 @@ impl VerticalText {
             col_min: false,
             lr: false,
             first_line: None,
+            layout_id: None,
+            turn: None,
         }
     }
 

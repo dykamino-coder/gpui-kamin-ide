@@ -29,6 +29,8 @@ impl VerticalText {
         // вместо 16×80), и `display: inline` под абсолютом доходит сюда
         // блочным (`line=Some(16)` во всех шести местах документа), поэтому
         // берётся блочный рукав и смещение вдоль строки теряется.
+        // Unrounded width and flat phase of the clockwise turn (`turn_frame`).
+        let (width, phase) = self.turn.unwrap_or((bounds.size.width, Pixels::ZERO));
         let scale_factor = window.scale_factor();
         let dev = |v: Pixels| v.scale(scale_factor);
         // Поворот на четверть по часовой стрелке вокруг левого верхнего угла
@@ -52,17 +54,17 @@ impl VerticalText {
             )
         } else {
             (
-                gpui::point(
-                    dev(bounds.origin.x + bounds.size.width),
-                    dev(bounds.origin.y),
-                ),
+                gpui::point(dev(bounds.origin.x + width), dev(bounds.origin.y)),
                 std::f32::consts::FRAC_PI_2,
             )
         };
         let matrix = gpui::TransformationMatrix::unit()
             .translate(shift)
             .rotate(gpui::Radians(angle))
-            .translate(gpui::point(dev(-bounds.origin.x), dev(-bounds.origin.y)));
+            .translate(gpui::point(
+                dev(-bounds.origin.x),
+                dev(-bounds.origin.y - phase),
+            ));
         let child = self.child.as_mut().unwrap();
         // Свой слой с ПОСЛЕ-поворотными границами: порядок отрисовки сцена
         // считает по границам примитивов, а у повёрнутого текста они

@@ -26,7 +26,6 @@ impl RootView {
             p,
             TitlebarState {
                 sidebar_visible: self.sidebar_visible,
-                sidebar_width: (self.layout.sidebar_width_px as f32).round(),
                 layout_popover_open: self.layout_popover,
                 customize_open: self.cz.customize_open,
                 // sun f185 / moon f186 / circle-half-stroke f042.

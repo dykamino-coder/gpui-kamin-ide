@@ -149,7 +149,11 @@ pub(crate) fn native_paragraph(
         )
         // Счётный режим (`line-clamp: <N>`) берёт предел из стиля;
         // авто-режим — из бюджета, посчитанного по точке среза.
-        .line_clamp(clamp_budget.or_else(|| inherited.clamp_lines().map(|n| n as usize)))
+        .line_clamp(clamp_budget.or_else(|| {
+            (!crate::text::clamp::clamp_context().is_some_and(|(_, skip)| skip))
+                .then(|| inherited.clamp_lines().map(|n| n as usize))
+                .flatten()
+        }))
         .clamp_marked(clamp_budget.is_some())
         .text_ellipsis(
             inherited.ellipsis == Some(true)

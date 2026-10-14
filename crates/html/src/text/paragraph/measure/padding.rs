@@ -223,7 +223,9 @@ impl Paragraph {
             return 0;
         }
         match self.text[start..].chars().next() {
-            Some(ch) if is_opening(ch) => ch.len_utf8(),
+            // css-text-3 9.2 `first`: Ps/Pi/Pf, ASCII quotes and the
+            // IDEOGRAPHIC SPACE U+3000 (`hanging-punctuation-first-002`).
+            Some(ch) if is_opening(ch) || ch == '\u{3000}' => ch.len_utf8(),
             _ => 0,
         }
     }

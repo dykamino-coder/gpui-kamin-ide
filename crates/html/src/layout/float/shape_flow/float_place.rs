@@ -188,12 +188,13 @@ pub(super) fn push_float_holder(
     off: f32,
 ) {
     let mut copy = f.clone();
-    // Сторона и очистка уже прочитаны выше; гасить их надо ДО слияния:
     // у бандового хоста `float` доживает до сюда, а слитый стиль с
     // `float` заводит лишний контекст обрезки.
     copy.style.float = None;
+    copy.style.floated_box = true;
     copy.style.clear = None;
     let mut merged = inherit(inherited, &copy.style);
+    merged.self_node = copy.node_id;
     // Поля кладёт держатель (позиция absolute от края) — на самой
     // коробке они сдвигали бы её обратно (float: right с margin-left
     // вылезал за правый край контейнера). Снимать их надо И СО СЛИТОГО

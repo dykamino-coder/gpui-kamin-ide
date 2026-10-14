@@ -46,3 +46,20 @@ fn space_decides_the_first_available_font() {
     // Негодная запись — дескриптор недействителен, умолчание покрывает всё.
     assert!(range_has_space(Some("мусор")));
 }
+
+#[test]
+fn data_url_source_survives_its_separators() {
+    // `;` и `,` внутри адреса `data:` не режут ни правило, ни список `src`.
+    let css = "@font-face { font-family: 'd'; \
+               src: url(data:font/woff2;charset=utf-8;base64,d09GMg==) format('woff2'); \
+               font-weight: normal }";
+    let block = faces(css);
+    assert_eq!(
+        source(&block[0]).as_deref(),
+        Some("data:font/woff2;charset=utf-8;base64,d09GMg==")
+    );
+    assert_eq!(
+        declaration(&block[0], "font-weight").as_deref(),
+        Some("normal")
+    );
+}

@@ -42,6 +42,7 @@ export type ServerMessage =
     }
   | { type: 'jsonl:subagent-entries'; agentName: string; entries: unknown[]; agentId?: string }
   | { type: 'session:title'; title: string }
+  | { type: 'session:usage'; sessionId: string; usage: unknown }
   | { type: 'session:conversation-id'; sessionId: string; conversationId: string }
   | { type: 'session:activity'; sessionId: string; rawTitle: string; isWorking: boolean }
   | { type: 'jsonl:download-response'; content: string | null; fileName: string | null; error?: string }

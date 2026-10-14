@@ -15,6 +15,8 @@ pub mod matching;
 pub(crate) struct Ancestor {
     /// Computed counter directives follow DOM inheritance, even without a box.
     pub(crate) counter_style: [Option<String>; 3],
+    pub(crate) content_style: Option<Vec<crate::style::computed::ContentItem>>,
+    pub(crate) content_none: Option<bool>,
     pub(crate) tag: String,
     /// Only HTML documents use ASCII case-insensitive names on HTML elements.
     pub(crate) html_attrs: bool,
@@ -43,6 +45,11 @@ pub(crate) struct Ancestor {
     /// span`, Selectors-4 §16.3). У переписи братьев (`census_of`) пусто —
     /// там соседи приходят через `Sibs`.
     pub(crate) peers: Option<(Rc<Vec<Ancestor>>, usize)>,
+    /// `scroll-target-group: auto` on this node: set once a link inside
+    /// became its current scroll marker (css-overflow-5 §scroll-target-group).
+    pub(crate) target_group: Option<Rc<std::cell::Cell<bool>>>,
+    /// This link is the current scroll marker of its group (`:target-current`).
+    pub(crate) target_current: bool,
 }
 
 // Отметки `:has()` текущего документа: адрес узла - хеши аргументов.
@@ -133,6 +140,8 @@ pub(super) fn ancestor_of(child: &Handle, spot: Spot) -> Option<Ancestor> {
     };
     Some(Ancestor {
         counter_style: Default::default(),
+        content_style: None,
+        content_none: None,
         tag: local_name(&name.local),
         html_attrs: content::html_attributes(&name.ns),
         id: find("id"),
@@ -154,6 +163,8 @@ pub(super) fn ancestor_of(child: &Handle, spot: Spot) -> Option<Ancestor> {
         featureless: None,
         slot: slot_of(child),
         peers: None,
+        target_group: None,
+        target_current: false,
     })
 }
 

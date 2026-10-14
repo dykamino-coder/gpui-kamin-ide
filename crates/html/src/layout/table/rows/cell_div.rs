@@ -52,6 +52,18 @@ pub(super) fn cell_box_div(
             bottom: fixup(c.border_width.bottom, cm.border_width.bottom),
             left: fixup(c.border_width.left, cm.border_width.left),
         };
+        // Background size and position in font units — the same rule: the
+        // painter sees no font size on the raw style and used 16px
+        // (`table-cell-align-002`: `.5em` at 20px drew at 8px).
+        c.bg_pos.x = fixup(c.bg_pos.x, cm.bg_pos.x);
+        c.bg_pos.y = fixup(c.bg_pos.y, cm.bg_pos.y);
+        if let (
+            crate::style::computed::BgSize::Fixed(w, h),
+            crate::style::computed::BgSize::Fixed(mw, mh),
+        ) = (c.bg_size, cm.bg_size)
+        {
+            c.bg_size = crate::style::computed::BgSize::Fixed(fixup(w, mw), fixup(h, mh));
+        }
         c
     };
     // Сплошной цвет ячейки сросшейся модели уходит в слой под

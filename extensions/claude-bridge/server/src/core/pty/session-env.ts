@@ -59,7 +59,7 @@ export const DISALLOWED_BUILTIN_TOOLS = new Proxy([] as string[], {
  * Anthropic / Claude-Code feature flags — see inline comments for why
  * each one is set / unset.
  */
-export function buildSessionEnv(sessionId: string, userName: string, effort?: string): Record<string, string> {
+export function buildSessionEnv(sessionId: string, userName: string): Record<string, string> {
   const env = { ...process.env } as Record<string, string>
 
   // Remove Claude Code session markers (avoid nesting)
@@ -73,11 +73,14 @@ export function buildSessionEnv(sessionId: string, userName: string, effort?: st
   // IS_DEMO=1 bypasses the entire pcq() dialog gate function in CLI
   env.IS_DEMO = '1'
 
-  // Pre-set effort level. MUST track the session's chosen effort, not a
-  // hard-coded 'high': with IS_DEMO=1 the CLI reads this env as the authoritative
-  // effort and it OVERRODE the `--effort` flag, so the effort selector silently
-  // did nothing (every session ran 'high'). Now the env + the flag agree.
-  env.CLAUDE_CODE_EFFORT_LEVEL = effort || 'high'
+  // Effort travels ONLY as the `--effort` flag. CLAUDE_CODE_EFFORT_LEVEL pins
+  // the level for the whole process: a live `/effort <level>` is then refused
+  // ("CLAUDE_CODE_EFFORT_LEVEL=… overrides this session"), which forced a PTY
+  // restart for every effort change. Verified on 2.1.296: without the env the
+  // flag sets the starting level (and beats a per-model level saved in
+  // settings), and `/effort` changes it in place. An inherited value from the
+  // server's own environment is dropped for the same reason.
+  delete env.CLAUDE_CODE_EFFORT_LEVEL
 
   // Suppress background API calls that waste quota:
   // - prompt_suggestion: forks context after every assistant turn

@@ -29,6 +29,7 @@ export interface SyncUserData {
   plugins: Record<string, SyncPluginData> // pluginId → namespaced proxy-plugin snapshot
   settings?: string
   claudeMd?: string
+  agentsMd?: string        // ~/.claude/AGENTS.md (applied only without a user CLAUDE.md)
 }
 
 export interface SyncProjectData {
@@ -39,6 +40,8 @@ export interface SyncProjectData {
   settings?: string       // .claude/settings.json (hooks and project config)
   claudeMd?: string        // root CLAUDE.md
   dotClaudeMd?: string     // .claude/CLAUDE.md
+  agentsMd?: string        // root AGENTS.md (CLI fallback when the project has no CLAUDE.md)
+  dotAgentsMd?: string     // .claude/AGENTS.md
   claudeJson?: string      // .claude.json
   projectPath: string      // for identification
 }

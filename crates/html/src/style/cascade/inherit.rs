@@ -47,6 +47,7 @@ fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Compu
     inherit_explicit(parent, own, &mut c);
     inherit_fonts(parent, own, &mut c);
     inherit_text_layout(parent, own, &mut c);
+    c.resolve_gradient_current_color();
     inherit_paint(parent, own, &mut c, paint_filter);
     // `em` считается от размера шрифта — а он известен только здесь, когда
     // наследование уже произошло. Раньше длина переводилась в точки при

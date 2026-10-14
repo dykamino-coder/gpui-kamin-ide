@@ -1,6 +1,6 @@
 //! Кадры анимаций и переходов.
 mod frozen;
-pub(crate) use frozen::bake_frozen;
+pub(crate) use frozen::{bake_frozen, sample_at};
 
 // owner: A
 
@@ -65,7 +65,12 @@ pub(crate) fn frame_at(frames: &[(f32, Computed)], t: f32) -> Computed {
         }
     }
     let span = (next.0 - prev.0).max(0.0001);
-    let k = ((t - prev.0) / span).clamp(0.0, 1.0);
+    let progress = ((t - prev.0) / span).clamp(0.0, 1.0);
+    let k = prev
+        .1
+        .animation_easing
+        .unwrap_or_default()
+        .sample(progress, false);
     let mut out = prev.1.clone();
     let lerp = |a: f32, b: f32| a + (b - a) * k;
     if let (Some(a), Some(b)) = (prev.1.opacity, next.1.opacity) {
@@ -96,6 +101,7 @@ pub(crate) fn frame_at(frames: &[(f32, Computed)], t: f32) -> Computed {
     };
     out.width = len(prev.1.width, next.1.width).or(out.width);
     out.height = len(prev.1.height, next.1.height).or(out.height);
+    out.font_size = len(prev.1.font_size, next.1.font_size).or(out.font_size);
     // Фильтры интерполируются покомпонентно; `none` = нейтральный
     // (filter-effects-1 §Interpolation, css-filters-animation-*).
     if prev.1.filter.is_some() || next.1.filter.is_some() {

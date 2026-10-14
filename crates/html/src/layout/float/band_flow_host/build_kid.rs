@@ -53,6 +53,7 @@ pub(super) fn build_band_kid(
     // самой коробке они сдвинули бы её ещё раз — как у
     // статического хоста.
     copy.style.float = None;
+    copy.style.floated_box = true;
     copy.style.clear = None;
     copy.style.margin = crate::style::computed::Sides::default();
     // Флоат заводит свой контекст форматирования (§9.4.1), а
@@ -187,6 +188,7 @@ pub(super) fn build_band_kid(
         // Таблица — своей веткой `element` ниже: каркас блока её
         // не соберёт.
         let mut merged = inherit(inherited, &copy.style);
+        merged.self_node = copy.node_id;
         merged.margin = crate::style::computed::Sides::default();
         if copy.tag == "img" {
             grouped(image(&copy), &copy.style)

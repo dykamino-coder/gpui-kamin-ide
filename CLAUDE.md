@@ -62,6 +62,10 @@ deliverable к своему snapshot — в `docs/MAINTAINER_PR_FLOW.md`. Нес
   server version, GitHub Release assets и Docker tags.
 - Lockfile обновляется только вследствие изменения зависимостей.
 - Использовать Conventional Commit-заголовок на английском.
+- Описание публичного PR по умолчанию писать на английском; другой язык
+  допустим по явному поручению владельца. Заголовок PR и squash-коммита
+  остаётся английским. Заполнять обязательные разделы и исключения для release
+  и Dependabot по `CONTRIBUTING.md` §5, а не оставлять checklist как результат.
 - Коммит, push и создание PR выполнять только когда это входит в поручение.
 
 ## Приём диагностических материалов
@@ -225,6 +229,9 @@ maintainer сверяет BR/INC backlog в `main` и открытые PR; са�
 - Использовать GitHub PR flow, предпочтительно squash merge с Conventional
   Commit-заголовком. Не сливать при незакрытых review threads или проваленных
   checks; отсутствие checks явно сообщить пользователю.
+- Перед squash проверить конечный заголовок, актуальное описание и зелёные
+  `PR title and description` и `required quality gate`. Проверка формата
+  описания не подтверждает истинность тестов, runtime evidence или closure.
 - После merge сделать `fetch` и проверить, что `origin/main` содержит ожидаемое
   дерево и последующий release commit не перезаписал изменения.
 - Общий реестр и close-out обновлять только после этой проверки. Если merge или

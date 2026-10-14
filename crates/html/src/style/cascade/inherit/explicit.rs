@@ -48,6 +48,7 @@ pub(super) fn inherit_explicit(parent: &Computed, own: &Computed, c: &mut Comput
             c.bg_image = parent.bg_image.clone();
             c.gradient = parent.gradient.clone();
             c.gradient_raw = parent.gradient_raw.clone();
+            c.gradient_current = parent.gradient_current.clone();
         }
         if on(inh::BG_POS) {
             c.bg_pos = parent.bg_pos;
@@ -140,6 +141,7 @@ pub(super) fn inherit_explicit(parent: &Computed, own: &Computed, c: &mut Comput
             c.bg_fixed = parent.bg_fixed;
             c.gradient = parent.gradient.clone();
             c.gradient_raw = parent.gradient_raw.clone();
+            c.gradient_current = parent.gradient_current.clone();
         }
     }
     // Относительный цвет решается ЗДЕСЬ: только теперь известен цвет самого

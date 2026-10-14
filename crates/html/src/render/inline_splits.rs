@@ -53,10 +53,13 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
             };
             nz(b) || nz(p) || nz(m)
         };
-        // Сторона письма известна только своему стилю: при rtl/вертикали
-        // прежнее поведение (пустой кусок пропадает).
+        // Horizontal fragments keep their logical start/end edges in either direction.
         let own_rtl = e.style.rtl.unwrap_or(parent_rtl);
-        let ltr = !own_rtl && e.style.vertical.is_none();
+        let edges = e
+            .style
+            .vertical
+            .is_none()
+            .then_some(if own_rtl { (1, 3) } else { (3, 1) });
         // `first`: кусок до первого блока, `last`: после последнего.
         // Positions in `out` of this element's inline pieces (for edge slicing below).
         let mut hosts: Vec<usize> = vec![];
@@ -65,7 +68,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                      hosts: &mut Vec<usize>,
                      first: bool,
                      last: bool| {
-            flush_inline(piece, out, hosts, first, last, e, ltr, has_edge)
+            flush_inline(piece, out, hosts, first, last, e, edges, has_edge)
         };
         // Split inner ancestors first, then join their inline continuations
         // to this ancestor's fragments on either side of the actual block.
@@ -92,6 +95,19 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 // Метка выноса: объёмный контекст и перспектива деда на блок
                 // не действуют (`Computed::hoisted_block`, `transformed`).
                 block.style.hoisted_block = true;
+                // Box splitting does not change style ancestry (CSS 2 §9.2.1.1).
+                // Preserve inherited marker properties before hoisting the block.
+                block.style.list_style_type = block
+                    .style
+                    .list_style_type
+                    .or_else(|| e.style.list_style_type.clone());
+                block.style.list_style_inside =
+                    block.style.list_style_inside.or(e.style.list_style_inside);
+                block.style.no_marker = block.style.no_marker.or(e.style.no_marker);
+                block.style.marker_text = block
+                    .style
+                    .marker_text
+                    .or_else(|| e.style.marker_text.clone());
                 // Сам блок ПОЗИЦИОНИРОВАН: его собственные края нельзя ни
                 // заменить, ни сложить с чужими (у хозяина они бывают в долях,
                 // у блока — в точках). Сдвиг хозяина накладывается ОБЁРТКОЙ:

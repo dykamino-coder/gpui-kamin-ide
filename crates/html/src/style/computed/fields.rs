@@ -189,6 +189,10 @@ pub struct Computed {
     /// Used classic gutters of the nearest containing block and viewport.
     pub(crate) cb_scroll_insets: ([f32; 4], [f32; 4]),
     pub(crate) icb_scroll_insets: Option<[f32; 4]>,
+    /// Root unconditional gutters reduce viewport units, independently of body overflow.
+    pub(crate) viewport_unit_insets: Option<[f32; 2]>,
+    /// A matching scrollbar pseudo style excludes root viewport-unit reduction.
+    pub(crate) custom_scrollbar: bool,
     pub anchor_seq: u32,
     pub anchor_key: u64,
     /// CSS scrollbar colors, width and forced overflow axes (HTML only).
@@ -574,6 +578,8 @@ pub struct Computed {
     /// Сырая запись градиента фона: источник для слоя-картинки там, где
     /// градиент рисуется плиткой (фон ряда таблицы).
     pub gradient_raw: Option<String>,
+    /// Authored currentColor expression, independent of background tiling.
+    pub(crate) gradient_current: Option<String>,
     /// CSS Compositing 1: each image blends with the isolated background stack.
     pub(crate) background_blend: Option<String>,
     /// Resolved opaque, constant background stacks retain their clip regions.
@@ -723,6 +729,8 @@ pub struct Computed {
     pub text_shadow_none: bool,
     /// `animation` — ссылка на набор кадров.
     pub animation: Option<AnimSpec>,
+    /// Easing also applies when declared on a keyframe.
+    pub animation_easing: Option<crate::animation::easing::Easing>,
     /// `transition` — длительность перехода в секундах.
     pub transition: Option<f32>,
     /// `direction: rtl` — письмо справа налево.
@@ -807,6 +815,9 @@ pub struct Computed {
     pub float: Option<i8>,
     /// Unemitted adjoining margin at the float's source position (CSS 2.1 §9.5.1).
     pub(crate) float_margin_offset: Option<f32>,
+    /// The box is a float whose `float` a float row/host cleared for layout:
+    /// it never gives an enclosing inline-block its baseline (CSS 2.1 §10.8.1).
+    pub(crate) floated_box: bool,
     /// Explicit `clear: inherit`; ordinary `clear` is non-inherited.
     pub(crate) clear_inherit: bool,
     /// `background-attachment: fixed` — плитка считается от области
@@ -993,6 +1004,9 @@ pub struct Computed {
     /// `background-origin`: от какого края коробки отсчитывается фоновая
     /// картинка. `None` — от внутреннего края рамки, как по умолчанию в CSS.
     pub bg_origin: Option<BgClip>,
+    /// Collapsed table borders occupy padding in layout, but remain border
+    /// outsets for background positioning and clipping: top/right/bottom/left.
+    pub(crate) bg_border_insets: Option<[f32; 4]>,
     /// `overflow-clip-margin`: на сколько обрезка отступает НАРУЖУ от коробки.
     /// Узел, чей фон красит КАНВАС (CSS 2.2 §14.2): корневой html, а без
     /// его фона — body. Ставится сборкой документа, не каскадом.
@@ -1038,6 +1052,8 @@ pub struct Computed {
     /// таблице: у неё гибким элементом становится обёртка с подписями
     /// (css-flexbox-1 §4).
     pub(crate) flex_item: bool,
+    /// Physical main axis of the parent flex container, for replaced auto minimums.
+    pub(crate) flex_main_vertical: bool,
     /// Floats of this ordinary block reach nothing after it (`dom::float_tail`):
     /// its float host may use in-flow auto height (CSS 2.1 §10.6.3).
     pub(crate) float_tail: bool,
@@ -1236,6 +1252,9 @@ pub struct Computed {
     /// ПЕРЕД скроллером (`before`), `Some(false)` — после (`after`), `None` —
     /// `none`. Не наследуется.
     pub scroll_marker_group: Option<bool>,
+    /// `scroll-target-group: auto` (css-overflow-5): links inside are scroll
+    /// markers. Not inherited.
+    pub scroll_target_group: Option<bool>,
     /// `column-span: all` — блок растянут на все колонки.
     pub column_span: Option<bool>,
     /// `page: <custom-ident>` — именованная страница (css-page-3 §"Using named
@@ -1397,6 +1416,8 @@ pub struct Computed {
     /// `content` псевдоэлемента — СПИСОК составляющих (css-content-3 §2):
     /// строки, `counter()`, `counters()`, `attr()` в любом порядке.
     pub content: Option<Vec<ContentItem>>,
+    /// Explicit inheritance is resolved along the DOM before pseudo generation.
+    pub(crate) content_inherit: bool,
     /// `quotes` (css-content-3 §4.1): пары кавычек по уровням вложенности.
     /// `None` inherits; `Some(None)` suppresses marks but keeps nesting depth.
     /// `Some(Some(empty))` is explicit auto; nonempty pairs are a custom system.
