@@ -10,6 +10,16 @@ use std::{collections::HashMap, sync::Mutex};
 /// параметра у `source` нет намеренно: кэш ключуется строкой, и приставка
 /// ключа дешевле, чем переписывание тринадцати мест вызова.
 pub fn key_exif(src: &str, c: &crate::style::computed::Computed) -> String {
+    let gradient = crate::style::computed::resolve_gradient_colors(
+        src,
+        c.color.unwrap_or(crate::style::values::value::Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        }),
+    );
+    let src = gradient.as_ref();
     let resolved = crate::style::computed::parse_image_color(src)
         .and_then(|color| {
             crate::style::values::color_space::resolve_relative(

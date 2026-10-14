@@ -3,14 +3,17 @@
 use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
 
+mod current_color;
 mod direction;
 mod image_set;
 mod parse;
+pub(crate) use current_color::{
+    parse_gradient, parse_gradient_with_current, resolve_gradient_colors,
+};
 pub(crate) use direction::corner_angle;
 use direction::gradient_direction;
 pub(super) use image_set::image_set_pick;
 use parse::gradient_angle;
-pub(crate) use parse::parse_gradient;
 
 /// ★ ЗАМЕРЕНО И ОТКАЧЕНО (09.09, v168, `scout-bgimg-2026-09.md` §4
 /// IMG-IMAGE-SET, 2 хунка): выбор кандидата `image-set()` по спеке — отсев по
