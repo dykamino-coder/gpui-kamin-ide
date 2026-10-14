@@ -135,10 +135,15 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
         if !(e.tag == "::after" || e.tag == "::before") {
             continue;
         }
-        e.style.vertical = e.style.vertical.or(own.0);
-        e.style.vertical_rl = e.style.vertical_rl.or(own.1);
-        e.style.rtl = e.style.rtl.or(own.2);
-        e.style.sideways = e.style.sideways.or(own.3);
+        // Ordinary inline text participates in the principal root line (§8.2).
+        // Their text participates in the root's used line orientation; block
+        // pseudo boxes retain the root's original computed writing mode.
+        if !crate::render::inline_level(e) {
+            e.style.vertical = e.style.vertical.or(Some(own.0.unwrap_or(false)));
+            e.style.vertical_rl = e.style.vertical_rl.or(Some(own.1.unwrap_or(false)));
+            e.style.sideways = e.style.sideways.or(Some(own.3.unwrap_or(false)));
+        }
+        e.style.rtl = e.style.rtl.or(Some(own.2.unwrap_or(false)));
     }
     if taken.0 == Some(true) && html.style.height.is_none() && html.style.min_height.is_none() {
         html.style.min_height = Some(crate::style::values::value::Len::Vh(1.0));
