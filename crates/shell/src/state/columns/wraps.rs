@@ -53,12 +53,9 @@ impl RootView {
                 cx.notify();
             }),
             cx.listener(move |this, hovered: &bool, _, cx| {
-                this.hovered_handle = if *hovered {
-                    Some("main-file-handle")
-                } else {
-                    None
-                };
-                cx.notify();
+                if this.hover_handle("main-file-handle", *hovered) {
+                    cx.notify();
+                }
             }),
         )
         .into_any_element();
@@ -89,12 +86,9 @@ impl RootView {
                 cx.notify();
             }),
             cx.listener(move |this, hovered: &bool, _, cx| {
-                this.hovered_handle = if *hovered {
-                    Some("file-right-handle")
-                } else {
-                    None
-                };
-                cx.notify();
+                if this.hover_handle("file-right-handle", *hovered) {
+                    cx.notify();
+                }
             }),
         )
         .into_any_element();
