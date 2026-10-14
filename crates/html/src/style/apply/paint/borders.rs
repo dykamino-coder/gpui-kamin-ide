@@ -20,7 +20,12 @@ pub(crate) fn border_layer(c: &Computed) -> Option<(crate::style::values::value:
         return None;
     }
     // Слой картинки бывает только у этих двух (см. `render::decorations`).
-    if c.bg_image.is_none() && !c.gradient_as_tile() {
+    // `backdrop-filter`: the filtered backdrop is a child layer, so a quad
+    // border would lie under it and get filtered; the element's border
+    // belongs above the backdrop (Filter Effects 2 §backdrop-filter).
+    let backdrop =
+        (c.backdrop_color.is_some() || c.backdrop_ref.is_some()) && !c.backdrop_root_above;
+    if c.bg_image.is_none() && !c.gradient_as_tile() && !backdrop {
         return None;
     }
     // Особые рамки несут свои слои, разные цвета сторон — полосы поверх:
