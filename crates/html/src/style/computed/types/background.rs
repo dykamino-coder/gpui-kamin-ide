@@ -54,7 +54,8 @@ pub fn parse_pos_words(v: &str) -> BgPos {
     // при разборе. Сравниваются РАЗРЕШЁННЫЕ длины, а база доли — свободное
     // место, и при картинке больше коробки она отрицательна: `min(0%, 100%)`
     // там равно 100% (`background-position-calc-minmax-001` ловит именно это).
-    let length = |t: &str| -> Option<Len> { Len::parse_mixed(t) };
+    let length =
+        |t: &str| -> Option<Len> { Len::parse_mixed(t).filter(|l| !l.needs_unit_context()) };
     let is_kw = |t: &str| matches!(t, "left" | "right" | "top" | "bottom" | "center");
     // Список слоёв (`a, b`): здесь — позиция ПЕРВОГО слоя, как и картинка,
     // которую берёт разбор фона.

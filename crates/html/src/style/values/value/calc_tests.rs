@@ -52,7 +52,9 @@ fn calc_sums_many_terms_with_precedence() {
     assert_eq!(Len::parse("calc((2 + 3) * 4px)"), Some(Len::Px(20.0)));
     assert_eq!(Len::parse("calc(-1em * 2)"), Some(Len::Em(-2.0)));
     assert_eq!(Len::parse("calc(2 * 3)"), None);
-    assert_eq!(Len::parse("calc(4px / 0)"), None);
+    // Деление на ноль — бесконечность, зажатая на верхнем уровне
+    // (css-values-4 §10.9, §10.13), а не недействительная запись.
+    assert_eq!(Len::parse("calc(4px / 0)"), Some(Len::Px(33_554_428.0)));
 }
 
 #[test]

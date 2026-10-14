@@ -50,6 +50,13 @@ pub(super) fn select(e: &Element, style: &Computed) -> AnyElement {
             .child(div().text_color(rgb(MUTED)).child(SharedString::from("⌄")))
             .into_any_element();
     }
+    // `appearance: none` drops the drop-down arrow, the native part of the
+    // menulist (css-ui-4 §7.2); the label stays as the box's content.
+    if style.appearance_none() {
+        return field_box(style)
+            .child(SharedString::from(text))
+            .into_any_element();
+    }
     let mut b = field_box(style);
     // Пол `min_h(24)` у поля — для ПУСТОГО списка. С подписью он лишь
     // подменял автоминимум элемента гибкого контейнера (css-flexbox-1 §4.5:

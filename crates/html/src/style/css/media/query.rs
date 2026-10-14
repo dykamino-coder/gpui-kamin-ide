@@ -119,6 +119,10 @@ impl Media {
         if let Some((name, value)) = s.split_once(':') {
             return self.mq_feature(name.trim(), value.trim(), MqCmp::Eq);
         }
+        // `(--имя)` — ссылка на `@custom-media` (mediaqueries-5 §5.1).
+        if s.starts_with("--") {
+            return custom::eval_custom(self, s);
+        }
         // Булева форма `<mf-boolean>`: голое имя истинно, когда значение
         // фичи не «ноль/none» (§2.4.2).
         if !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {

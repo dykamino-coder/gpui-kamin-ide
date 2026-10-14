@@ -3,6 +3,7 @@
 use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
 
+mod container_units;
 mod derived;
 mod em;
 pub(super) mod image_lengths;
@@ -77,6 +78,11 @@ impl Computed {
             (viewport.0 - insets[0]).max(0.0),
             (viewport.1 - insets[1]).max(0.0),
         );
+        let vertical = self.vertical.unwrap_or(false);
+        let container = Some((
+            self.cq_box.0.unwrap_or(viewport.0),
+            self.cq_box.1.unwrap_or(viewport.1),
+        ));
         let fix = |l: &mut Option<Len>| match *l {
             Some(Len::Vw(k)) => *l = Some(Len::Px(k * viewport.0)),
             Some(Len::Vh(k)) => *l = Some(Len::Px(k * viewport.1)),
@@ -86,10 +92,7 @@ impl Computed {
                 // (арена append-only, `resolve_viewport` идёт на каждом
                 // слитом стиле), а `collapse` стёр бы процентную смесь
                 // `calc(50% - 3px)` в `None` уже после разбора.
-                if s.vw != 0.0 || s.vh != 0.0 {
-                    s.px += s.vw * viewport.0 + s.vh * viewport.1;
-                    s.vw = 0.0;
-                    s.vh = 0.0;
+                if s.fold_viewport(viewport, vertical, container) {
                     *l = s.collapse_mixed();
                 }
             }
@@ -103,10 +106,7 @@ impl Computed {
                     Some(Len::Calc(i)) => {
                         let mut s = crate::style::values::value::calc_get(i);
                         // То же, что у размеров: смесь с долей доживает.
-                        if s.vw != 0.0 || s.vh != 0.0 {
-                            s.px += s.vw * viewport.0 + s.vh * viewport.1;
-                            s.vw = 0.0;
-                            s.vh = 0.0;
+                        if s.fold_viewport(viewport, vertical, container) {
                             *one = s.collapse_mixed();
                         }
                     }

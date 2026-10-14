@@ -122,6 +122,23 @@ pub(super) fn pseudo_specificity(pseudo: &str) -> (u32, u32, u32) {
             .max()
             .unwrap_or_default();
     }
+    // `:is()` весит как самый специфичный ГОДНЫЙ аргумент, `:where()` —
+    // ноль (selectors-4 §17).
+    if let Some((name, arg)) = pseudo.split_once('(')
+        && let Some(arg) = arg.strip_suffix(')')
+    {
+        match name {
+            "where" => return (0, 0, 0),
+            "is" | "matches" | "any" => {
+                return crate::style::css::default_ns::is_args(arg)
+                    .iter()
+                    .map(Selector::specificity)
+                    .max()
+                    .unwrap_or_default();
+            }
+            _ => {}
+        }
+    }
     let mut s = (0u32, 1u32, 0u32);
     if let Some((name, arg)) = pseudo.split_once('(')
         && matches!(name, "nth-child" | "nth-last-child")
