@@ -3,6 +3,7 @@
 use super::capture_dump::Shot;
 use super::frame_metrics::{INK_MIN, SEPARATOR, diff, ink, red_pixels};
 use super::links::resolve_links;
+use super::paged::is_paged;
 use super::show::Stage;
 use super::{pixel_compare, reference_result};
 use gpui::AsyncApp;
@@ -22,6 +23,7 @@ pub(super) async fn capture_sides(
     // принимается по устаревшему снимку. В числах это скачок вида
     // 17.45 % → 0.00 % между двумя одинаковыми прогонами.
     let mut blank = None;
+    let test_paged = is_paged(test, &std::fs::read_to_string(test).unwrap_or_default());
     for path in [test, reference] {
         // Разделитель показывается перед КАЖДОЙ стороной, а не один
         // раз на пару. Иначе эталон снимается, пока на экране ещё
@@ -42,12 +44,14 @@ pub(super) async fn capture_sides(
         // эталон печатается тем же носителем): `page-name-001-print`
         // против `page-name-001-ref.html` иначе сравнивал стопку
         // листов с экранным документом.
-        let print = |p: &str| p.contains("-print.") || p.contains("-print-ref");
+        // `class="reftest-paged"` на корне — та же печатная пара (Gecko,
+        // WPT print-reftests.md), см. `paged::is_paged`.
+        let source = std::fs::read_to_string(path).unwrap_or_default();
         kamin_html::css::PRINT_MEDIA.store(
-            print(test) || print(path),
+            test_paged || is_paged(path, &source),
             std::sync::atomic::Ordering::Relaxed,
         );
-        let html = resolve_links(&std::fs::read_to_string(path).unwrap_or_default(), path);
+        let html = resolve_links(&source, path);
         let mut shot = stage.show(cx, html.clone(), blank.clone(), false).await;
         // Страница, не отличившаяся от разделителя, не нарисовалась:
         // повторяем показ, а не записываем пустоту в отчёт.
