@@ -5,6 +5,8 @@
 один общий эталон в `css/CSS2/reference/`, а имя ни о чём не говорит. Читаем
 ссылку.
 
+Читаются `.html`, `.xht`, `.xhtml` и отдельные `.svg` (ссылка `<h:link rel="match">`).
+
 Отсеиваются:
   * тесты со скриптом — стенд их не исполняет;
   * `rel="mismatch"` — сравнение с АНТИ-эталоном, у стенда своя пометка;
@@ -21,6 +23,11 @@ import sys
 LINK = re.compile(r'<link[^>]*\brel\s*=\s*["\']?match["\']?[^>]*>', re.I)
 HREF = re.compile(r'\bhref\s*=\s*["\']([^"\']+)["\']', re.I)
 SCRIPT = re.compile(r'<script\b', re.I)
+# Отдельные `.svg`-тесты ссылаются на эталон XHTML-элементом с префиксом
+# (`<h:link rel="match">`, `<html:link>`) или `<link xmlns="…xhtml">`;
+# скрипт там тоже бывает с префиксом (`<h:script>`, `<svg:script>`).
+SVG_LINK = re.compile(r'<(?:[\w-]+:)?link\b[^>]*\brel\s*=\s*["\']?match["\']?[^>]*>', re.I)
+SVG_SCRIPT = re.compile(r'<(?:[\w-]+:)?script\b', re.I)
 SKIP = ('at-charset', 'character-encoding', 'content-type')
 
 
@@ -28,7 +35,8 @@ def pairs(root):
     out = []
     for dirpath, _, names in os.walk(root):
         for name in sorted(names):
-            if not name.endswith(('.html', '.xht', '.xhtml')):
+            svg = name.endswith('.svg')
+            if not svg and not name.endswith(('.html', '.xht', '.xhtml')):
                 continue
             if name.startswith(SKIP) or '-ref' in name or name.startswith('ref-'):
                 continue
@@ -37,9 +45,9 @@ def pairs(root):
                 text = open(path, encoding='utf-8', errors='replace').read()
             except OSError:
                 continue
-            if SCRIPT.search(text):
+            if (SVG_SCRIPT if svg else SCRIPT).search(text):
                 continue
-            tag = LINK.search(text)
+            tag = (SVG_LINK if svg else LINK).search(text)
             if not tag:
                 continue
             href = HREF.search(tag.group(0))
