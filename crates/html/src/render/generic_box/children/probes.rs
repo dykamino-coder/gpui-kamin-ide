@@ -15,6 +15,7 @@ pub(crate) fn child_probes(
     kids: &mut Vec<AnyElement>,
     makes_bfc: bool,
     is_clamp: bool,
+    span: Option<crate::text::clamp::ClampSpan>,
 ) {
     if let Some(key) = crate::paint::gap_rules::gap_context()
         && !matches!(
@@ -83,6 +84,8 @@ pub(crate) fn child_probes(
                 // (он всегда в конце строки, css-overflow-4 §5.3).
                 None,
                 None,
+                span,
+                side(e.style.borders().top),
             ));
         } else if !is_clamp
             && !skip

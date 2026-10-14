@@ -40,6 +40,12 @@ pub struct ClampEntry {
     /// Пустая поточная блочная коробка (без содержимого): сама по себе —
     /// возможная точка среза МЕЖДУ блоками (css-overflow-4 §5.3).
     pub empty: bool,
+    /// Box probe: paragraph numbers `[first, end)` built inside the box
+    /// (its descendants in box-tree order).
+    pub span: Option<(u32, u32)>,
+    /// Top border of a box probe: the probe measures the padding box, a
+    /// cut above the box goes above its border.
+    pub bt_before: f32,
 }
 
 pub type ClampLines = std::rc::Rc<std::cell::RefCell<Vec<ClampEntry>>>;
@@ -59,6 +65,13 @@ thread_local! {
     /// Абзац в контейнере ровно один — тот, на чьей последней строке
     /// перед точкой среза стоит знак (css-overflow-4 §5.3).
     pub(super) static CLAMP_PARA: std::cell::RefCell<std::collections::HashMap<u64, (u32, usize)>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    /// Low edge (from the container's content top) of the content placed
+    /// BEFORE the clamp point in box-tree order: css-overflow-4 §5.3 hides
+    /// only what follows the clamp point, so lines overflowing an earlier
+    /// fixed-height block stay visible below the cut (Blink hides the
+    /// following boxes for paint instead of clipping the container).
+    pub(super) static CLAMP_EXTENT: std::cell::RefCell<std::collections::HashMap<u64, f32>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
     /// Счётчик абзацев контейнера при ПОСТРОЕНИИ поддерева.
     pub(super) static CLAMP_SEQ: std::cell::RefCell<std::collections::HashMap<u64, u32>> =
@@ -82,6 +95,27 @@ pub fn clamp_next_seq(key: u64) -> u32 {
     })
 }
 
+/// Number the next paragraph of the clamp container would get.
+pub fn clamp_peek_seq(key: u64) -> u32 {
+    CLAMP_SEQ.with(|m| m.borrow().get(&key).copied().unwrap_or(0))
+}
+
+/// Paragraph-number span of a box being built inside a clamp container:
+/// opened before its children, closed after them.
+pub type ClampSpan = std::rc::Rc<std::cell::Cell<(u32, u32)>>;
+
+pub fn open_clamp_span() -> Option<ClampSpan> {
+    let (key, _) = clamp_context()?;
+    let first = clamp_peek_seq(key);
+    Some(std::rc::Rc::new(std::cell::Cell::new((first, u32::MAX))))
+}
+
+pub fn close_clamp_span(span: Option<ClampSpan>) {
+    if let (Some(span), Some((key, _))) = (span, clamp_context()) {
+        span.set((span.get().0, clamp_peek_seq(key)));
+    }
+}
+
 pub fn clamp_cut(key: u64) -> Option<f32> {
     CLAMP_CUTS.with(|m| m.borrow().get(&key).copied())
 }
@@ -92,7 +126,13 @@ pub fn clamp_para(key: u64) -> Option<(u32, usize)> {
     CLAMP_PARA.with(|m| m.borrow().get(&key).copied())
 }
 
+/// Visible extent of the content before the clamp point (see `CLAMP_EXTENT`).
+pub fn clamp_extent(key: u64) -> Option<f32> {
+    CLAMP_EXTENT.with(|m| m.borrow().get(&key).copied())
+}
+
 pub fn forget_clamp_buffers() {
+    CLAMP_EXTENT.with(|m| m.borrow_mut().clear());
     CLAMP_LINES.with(|m| m.borrow_mut().clear());
     CLAMP_CUTS.with(|m| m.borrow_mut().clear());
     CLAMP_STACK.with(|st| st.borrow_mut().clear());
