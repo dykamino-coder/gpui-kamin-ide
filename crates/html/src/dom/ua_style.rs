@@ -106,6 +106,7 @@ head, title, meta, link, template { display: none }
     ins { text-decoration: underline }
     mark { background: #ffe066; color: #1a1c23 }
     button { background: #3d3f51; border: 1px solid #4a4a5a; color: #e6e6ee }
+    *::scroll-button(*) { background: #3d3f51; border: 1px solid #4a4a5a; color: #e6e6ee }
     dd { margin-left: 32px }
     dt { font-weight: 700; margin: 6px 0 2px }
     figure { margin: 8px 0 }
@@ -116,6 +117,7 @@ head, title, meta, link, template { display: none }
     s, del { text-decoration: line-through }
     small { font-size: 11px }
     a[href] { color: #8ab4f8; text-decoration: underline }
+    *::scroll-marker { color: #8ab4f8; text-decoration: underline }
     code, kbd, samp { font-family: monospace; font-size: 12px }
     pre { font-family: monospace; margin: 6px 0; padding: 8px; overflow-x: auto }
     /* Заранее размеченный текст зазоров `text-autospace` не получает: правка

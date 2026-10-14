@@ -24,6 +24,8 @@ pub(crate) fn snapshot_generated(
     node.counter_style = super::counter_snapshot(style);
     node.content_style = style.content.clone();
     node.content_none = style.content_none;
+    node.target_group = (style.scroll_target_group == Some(true))
+        .then(|| std::rc::Rc::new(std::cell::Cell::new(false)));
 }
 
 thread_local! {

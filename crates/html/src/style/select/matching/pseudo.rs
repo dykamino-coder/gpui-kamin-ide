@@ -82,6 +82,9 @@ pub(super) fn pseudo_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs:
             .unwrap_or(false);
         return want.trim().eq_ignore_ascii_case("rtl") == rtl;
     }
+    if pseudo == "target-current" {
+        return me.target_current;
+    }
     if pseudo == "root" {
         return me.tag == "html";
     }

@@ -131,6 +131,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
             crate::text::clamp::clamp_cut(e.node_id).filter(|c| !sized && c.is_finite())
         {
             d = d.max_h(px(cut + mbp_y));
+            crate::text::clamp::extend_clip(d.style(), e.node_id, cut, side(c.padding.bottom));
         }
         // Прячется только содержимое ЗА точкой среза — по блочной оси;
         // оставленные строки по строчной оси переполняют коробку как
@@ -178,6 +179,9 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
             let pad_bottom = side(c.padding.bottom);
             if pad_bottom > 0.0 && d.style().overflow_clip_offset.is_none() {
                 d.style().overflow_clip_offset = Some([0.0, 0.0, -pad_bottom, 0.0]);
+            }
+            if !sized {
+                crate::text::clamp::extend_clip(d.style(), e.node_id, cut, pad_bottom);
             }
         }
     }

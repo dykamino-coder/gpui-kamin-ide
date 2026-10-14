@@ -83,6 +83,12 @@ pub(crate) fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Si
             }
             return matches_ignoring_pseudo(sel, me, path, sibs);
         }
+        if pseudo == "target-current" {
+            if !me.target_current {
+                return false;
+            }
+            return matches_ignoring_pseudo(sel, me, path, sibs);
+        }
         if pseudo == "root" {
             if me.tag != "html" {
                 return false;

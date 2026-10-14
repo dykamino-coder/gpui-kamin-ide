@@ -141,6 +141,7 @@ pub(crate) fn generic_children(
         // `<fieldset>` — тоже отдельная раскладка
         // (`webkit-line-clamp-027`).
         || e.tag == "fieldset";
+    let clamp_outer = crate::text::clamp::clamp_context();
     let _bfc_guard = (!is_clamp && makes_bfc && crate::text::clamp::clamp_context().is_some())
         .then(crate::text::clamp::ClampGuard::enter_bfc);
     // Проба элемента сетки/гибкого контейнера: пишет свои разложенные
@@ -148,7 +149,17 @@ pub(crate) fn generic_children(
     // ранний `return` не съел запись. Абсолютные дети дорожек не
     // занимают (css-grid-1 §9), а пустой анонимный блок — это
     // распорка лент (`spacer()`), не элемент.
-    child_probes(e, &merged, opts, &mut kids, makes_bfc, is_clamp);
+    // Paragraph numbers of this box's descendants (clamp point, tree order).
+    let clamp_span = crate::text::clamp::open_clamp_span();
+    child_probes(
+        e,
+        &merged,
+        opts,
+        &mut kids,
+        makes_bfc,
+        is_clamp,
+        clamp_span.clone(),
+    );
     // Абсолютный потомок ищет ближайшего позиционированного предка
     // (§10.1), а раскладка под нами знает только непосредственного
     // родителя. Пока строятся дети, открыт слой: коробка, чей родитель
@@ -180,6 +191,7 @@ pub(crate) fn generic_children(
     if viewport {
         kids.extend(crate::layout::positioned::containing_block::icb_close());
     }
+    let d = crate::text::clamp::hide_box_after_point(d, clamp_outer, clamp_span, &merged, is_clamp);
     if cb_layer {
         kids.extend(crate::layout::positioned::containing_block::cb_close());
     }
