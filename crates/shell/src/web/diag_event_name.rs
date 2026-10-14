@@ -49,6 +49,8 @@ pub(crate) fn name(event: &ShellEvent) -> &'static str {
         ShellEvent::LocalSessionClosed(..) => "host/LocalSessionClosed",
         ShellEvent::LocalSessionPinned(..) => "host/LocalSessionPinned",
         ShellEvent::MoveToolTo(..) => "host/MoveToolTo",
+        // The variant exists only in debug builds (`host/events.rs`).
+        #[cfg(debug_assertions)]
         ShellEvent::NativeAcceptance(..) => "host/NativeAcceptance",
         ShellEvent::NewEmptySession => "host/NewEmptySession",
         ShellEvent::NewSessionInFolderPrompt => "host/NewSessionInFolderPrompt",
