@@ -112,7 +112,13 @@ pub(crate) fn substitute(
     let mut from = 0;
     for call in calls(raw) {
         result.push_str(&raw[from..call.start]);
-        let replacement = match lookup(&call.name) {
+        // css-variables-2 §3 (resolve a var() function): a first argument
+        // that is not a <custom-property-name> yields the guaranteed-invalid
+        // value, so the fallback (if any) is used.
+        let value = custom_name(&call.name)
+            .then(|| lookup(&call.name))
+            .flatten();
+        let replacement = match value {
             Some(value) => value,
             None => substitute(call.fallback.as_deref()?, lookup)?,
         };
@@ -123,6 +129,12 @@ pub(crate) fn substitute(
     }
     result.push_str(&raw[from..]);
     Some(result)
+}
+
+/// Names arrive with escapes already decoded, so only the dashed prefix is
+/// checked here; any other token sequence simply misses the lookup.
+fn custom_name(name: &str) -> bool {
+    name.starts_with("--") && name != "--"
 }
 
 fn calls(raw: &str) -> Vec<Call> {
