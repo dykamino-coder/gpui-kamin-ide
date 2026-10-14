@@ -30,7 +30,14 @@ impl ColumnStack {
             // Маска — устройство `slice`. Фрагмент `clone` самодостаточен:
             // содержимое режет его внутренняя обёртка (`clone_fragment`), а
             // тень/контур обязаны выходить за колонку (`clone-009`).
-            let split = parts[f.kid] > 1 && self.children[f.kid].clone_dec.is_none();
+            // Единственный кусок, оборванный в усечённом хвостовом поле
+            // (`fill_pieces`: от ребёнка за разрезом осталось одно поле), —
+            // тоже срез: коробка кончается краем колонки.
+            let tail_cut = {
+                let k = &self.children[f.kid];
+                f.from + f.h < k.h - 0.01 && k.cuts.iter().any(|&(_, nf)| nf >= k.h - 0.01)
+            };
+            let split = (parts[f.kid] > 1 || tail_cut) && self.children[f.kid].clone_dec.is_none();
             // Срез `slice` (css-break-3 §4) — поперёк БЛОЧНОЙ оси. Вбок колонка
             // переполнение не режет: css-multicol-1 §8.1 «content that extends
             // outside column boxes visibly overflows and is not clipped to the column
