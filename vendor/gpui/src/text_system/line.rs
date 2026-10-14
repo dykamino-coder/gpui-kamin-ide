@@ -40,6 +40,9 @@ pub struct DecorationRun {
     /// КУСКАМ строк вместе с фоном: строчная коробка в браузере разрезается
     /// переносом, и рамка каждого куска своя.
     pub background_border: Option<(Hsla, [Pixels; 4])>,
+    /// KaminIDE patch: the background band spans the font's line gap too
+    /// (see [`crate::TextRun::background_line_gap`]).
+    pub background_line_gap: bool,
 
     /// The underline style for this run
     pub underline: Option<UnderlineStyle>,
@@ -913,7 +916,26 @@ fn paint_line_background(
     // кладутся глифы (`padding_top + ascent` ниже), поэтому верх полосы
     // совпадает с верхом глифов точно.
     let content_height = if layout.ascent + layout.descent > px(0.) {
-        layout.ascent + layout.descent
+        // KaminIDE patch: a font with a line gap metric spans ascent + descent
+        // + line gap, each rounded to whole pixels as for its normal line
+        // (Blink `SimpleFontData::PlatformInit`), independent of `line-height`.
+        // Only HTML engine runs opt in (`background_line_gap`); IDE text keeps
+        // ascent + descent.
+        let line_gap_band = decoration_runs.iter().any(|r| {
+            r.background_line_gap && (r.background_color.is_some() || r.background_border.is_some())
+        });
+        let gap = if line_gap_band {
+            layout.runs.first().map_or(px(0.), |r| {
+                cx.text_system().line_gap(r.font_id, layout.font_size)
+            })
+        } else {
+            px(0.)
+        };
+        if gap > px(0.01) {
+            layout.ascent.round() + layout.descent.round() + gap.round()
+        } else {
+            layout.ascent + layout.descent
+        }
     } else {
         layout.font_size * 1.16
     };
@@ -1293,6 +1315,33 @@ fn line_paint_bounds(
     align_width: Option<Pixels>,
     wrap_boundaries: &[WrapBoundary],
 ) -> Bounds<Pixels> {
+    // KaminIDE patch: glyphs sit on the content area (ascent + descent),
+    // centred in the line; with a line height below the content area they
+    // overflow it by the negative half-leading on both sides (CSS 2.1
+    // section 10.8.1). The paint layer must cover that ink, or the bounds
+    // tree orders the glyphs below a box border they actually paint over.
+    let overflow = ((layout.ascent + layout.descent - line_height) / 2.).max(Pixels::ZERO);
+    let mut bounds = line_rows_bounds(
+        origin,
+        layout,
+        line_height,
+        align,
+        align_width,
+        wrap_boundaries,
+    );
+    bounds.origin.y -= overflow;
+    bounds.size.height += overflow * 2.;
+    bounds
+}
+
+fn line_rows_bounds(
+    origin: Point<Pixels>,
+    layout: &LineLayout,
+    line_height: Pixels,
+    align: TextAlign,
+    align_width: Option<Pixels>,
+    wrap_boundaries: &[WrapBoundary],
+) -> Bounds<Pixels> {
     let mut bounds = Bounds::new(
         origin,
         size(
@@ -1486,6 +1535,7 @@ mod tests {
                 background_color: None,
                 background_pad: [px(0.); 4],
                 background_radius: px(0.),
+                background_line_gap: false,
                 background_border: None,
                 underline: Some(first_style),
                 strikethrough: None,
@@ -1632,6 +1682,7 @@ mod tests {
                 background_color: None,
                 background_pad: [px(0.); 4],
                 background_radius: px(0.),
+                background_line_gap: false,
                 background_border: None,
                 underline: Some(first_style),
                 strikethrough: None,
@@ -1713,6 +1764,7 @@ mod tests {
                         background_color: None,
                         background_pad: [px(0.); 4],
                         background_radius: px(0.),
+                        background_line_gap: false,
                         background_border: None,
                         underline: Some(style),
                         strikethrough: None,
@@ -1974,6 +2026,7 @@ mod tests {
                     background_color: None,
                     background_pad: [px(0.); 4],
                     background_radius: px(0.),
+                    background_line_gap: false,
                     background_border: None,
                     underline: None,
                     strikethrough: None,
@@ -1984,6 +2037,7 @@ mod tests {
                     background_color: None,
                     background_pad: [px(0.); 4],
                     background_radius: px(0.),
+                    background_line_gap: false,
                     background_border: None,
                     underline: None,
                     strikethrough: None,
@@ -1994,6 +2048,7 @@ mod tests {
                     background_color: None,
                     background_pad: [px(0.); 4],
                     background_radius: px(0.),
+                    background_line_gap: false,
                     background_border: None,
                     underline: None,
                     strikethrough: None,
@@ -2235,6 +2290,7 @@ mod tests {
                 background_color: None,
                 background_pad: [px(0.); 4],
                 background_radius: px(0.),
+                background_line_gap: false,
                 background_border: None,
                 underline: None,
                 strikethrough: None,
@@ -2261,6 +2317,7 @@ mod tests {
                 background_color: Some(black()),
                 background_pad: [px(0.); 4],
                 background_radius: px(0.),
+                background_line_gap: false,
                 background_border: None,
                 underline: None,
                 strikethrough: None,

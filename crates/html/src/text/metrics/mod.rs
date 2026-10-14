@@ -56,6 +56,9 @@ const FALLBACK: (f32, f32, f32, f32) = (0.5, 0.5, 1.2, 1.0);
 /// что подставляет за `font-family: monospace` браузер на этой системе.
 const MONO_FAMILIES: [&str; 3] = ["JetBrains Mono", "Consolas", "Courier New"];
 
+mod normal_px;
+pub use normal_px::{content_px, normal_px};
+
 thread_local! {
     static PROBE: RefCell<Option<Probe>> = const { RefCell::new(None) };
     static CACHE: RefCell<HashMap<String, (f32, f32, f32, f32)>> = RefCell::new(HashMap::new());

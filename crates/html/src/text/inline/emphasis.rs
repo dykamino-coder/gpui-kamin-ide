@@ -30,7 +30,7 @@ pub fn emphasis_spans(
             let line_height = match style.line_height {
                 Some(Len::Px(v)) => v,
                 Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-                _ => normal * size,
+                _ => crate::text::metrics::normal_px(normal, size),
             };
             out.push(crate::text::paragraph::EmphSpan {
                 ruby: crate::text::ruby::layers::current(),

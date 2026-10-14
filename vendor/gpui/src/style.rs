@@ -757,6 +757,7 @@ impl TextStyle {
             // текстовый стиль — здесь их нет.
             background_pad: Default::default(),
             background_radius: Default::default(),
+            background_line_gap: false,
             background_border: None,
             underline: self.underline,
             strikethrough: self.strikethrough,

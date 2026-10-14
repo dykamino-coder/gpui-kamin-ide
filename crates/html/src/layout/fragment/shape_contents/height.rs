@@ -55,6 +55,18 @@ pub(super) fn shaped_height(
         ),
         Some(None) => return Err(None),
         None => match stacked {
+            // Корень блочного контекста (`display: flow-root`, `overflow` не
+            // `visible`, `fieldset`…) полей детей наружу не пропускает (CSS 2.1
+            // §8.3.1: «margins of elements that establish new block formatting
+            // contexts do not collapse with their in-flow children»): нижнее
+            // поле последнего ребёнка входит в его высоту (§10.6.7). Разрыв
+            // после ребёнка законен, и поле на нём усекается (css-break-3
+            // §5.2) — Blink `block_layout_algorithm.cc` кончает коробку в
+            // этом фрагментаинере (`trailing-child-margin-000/002`).
+            Some((end, _, last_mb)) if bfc_root(c) && bot == 0.0 && last_mb > 0.0 => {
+                cuts.push((end, end + last_mb));
+                (end + last_mb, mt, mb)
+            }
             Some((end, through, last_mb)) => (
                 // Нижнее поле последнего ребёнка при собственном нижнем
                 // отступе/рамке коробки НЕ схлопывается наружу и входит в
@@ -64,7 +76,11 @@ pub(super) fn shaped_height(
                 // У страниц; колонки не трогаются (отдельный замер).
                 end + if bot > 0.0 && cx.paged { last_mb } else { 0.0 } + bot,
                 mt.max(through),
-                if bot == 0.0 { mb.max(last_mb) } else { mb },
+                if bot == 0.0 && !max_lowers(c, end + bot, top + bot) {
+                    mb.max(last_mb)
+                } else {
+                    mb
+                },
             ),
             // Сетка без заданной высоты: её высоту знают
             // ЯВНЫЕ дорожки рядов (`grid-template-rows:
@@ -153,4 +169,28 @@ pub(super) fn shaped_height(
         },
     };
     Ok((h, mt, mb))
+}
+
+/// Блочный контейнер — корень своего блочного контекста: поля детей через
+/// его край не схлопываются (CSS 2.1 §8.3.1; `fieldset` — HTML §15.3.13
+/// «establishes a new block formatting context»).
+pub(super) fn bfc_root(c: &Element) -> bool {
+    use crate::style::computed::Display;
+    matches!(
+        c.style.display,
+        None | Some(Display::Block) | Some(Display::ListItem)
+    ) && !c.inline
+        && (crate::render::own_context(c) || c.tag == "fieldset")
+}
+
+/// `max-height` ниже содержимого отделяет нижнее поле последнего ребёнка от
+/// поля коробки (CSS 2.2 §10.7: высота и поля пересчитываются с
+/// ограничением; Blink `block_layout_algorithm.cc:1459-1466` — поле
+/// отделяется, когда итоговый размер отличен от собственного; раскладка —
+/// `margin_height::lowers`). Поле ребёнка наружу не идёт
+/// (`parallel-flow-trailing-margin-001`: `max-height: 0`, поле 80 сдвигало
+/// соседа).
+fn max_lowers(c: &Element, end: f32, edges: f32) -> bool {
+    matches!(c.style.max_height, Some(Len::Px(m))
+        if fragment_size::border_size(m, &c.style, edges) < end - 0.01)
 }
