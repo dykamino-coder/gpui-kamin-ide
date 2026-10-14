@@ -80,7 +80,6 @@ pub(crate) fn name(event: &ShellEvent) -> &'static str {
         ShellEvent::ToastGone(..) => "host/ToastGone",
         ShellEvent::ToggleAppearancePopover => "host/ToggleAppearancePopover",
         ShellEvent::ToggleFindInFiles => "host/ToggleFindInFiles",
-        ShellEvent::ToggleInactive(..) => "host/ToggleInactive",
         ShellEvent::ToggleLayoutFlag(..) => "host/ToggleLayoutFlag",
         ShellEvent::ToggleLayoutPopover => "host/ToggleLayoutPopover",
         ShellEvent::ToggleNewSessionMenu(..) => "host/ToggleNewSessionMenu",
