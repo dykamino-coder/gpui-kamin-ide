@@ -41,6 +41,8 @@ pub(super) fn renderer(device: &DirectXDevices) -> DirectXRenderer {
         width: 16,
         height: 16,
         skip_draws: false,
+        gpu_timer: Default::default(),
+        timing_main: false,
     }
 }
 
