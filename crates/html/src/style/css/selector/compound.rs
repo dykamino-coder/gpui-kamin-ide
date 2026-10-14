@@ -80,7 +80,8 @@ impl Selector {
                     }
                     t.to_string()
                 }
-                None => name,
+                None if name == "*" => name,
+                None => crate::style::css::default_ns::mark_tag(name),
             };
             sel.universal = name == "*";
             if !name.is_empty() && name != "*" {
@@ -159,7 +160,7 @@ impl Selector {
                     {
                         sel.also.push(prev);
                     }
-                    sel.pseudo = Some(unescape(name.trim_start_matches(':')).to_ascii_lowercase())
+                    sel.pseudo = Some(pseudo_name(name.trim_start_matches(':')))
                 }
                 _ => return None,
             }
@@ -167,4 +168,16 @@ impl Selector {
         }
         Some(sel)
     }
+}
+
+/// Имя псевдокласса в нижнем регистре. У `:is()`/`:where()` аргумент —
+/// список селекторов, и его регистр (имена классов) сохраняется как есть.
+fn pseudo_name(raw: &str) -> String {
+    if let Some((head, arg)) = raw.split_once('(') {
+        let head = head.to_ascii_lowercase();
+        if matches!(head.as_str(), "is" | "where" | "matches" | "any") {
+            return format!("{head}({}", crate::style::css::default_ns::mark_arg(arg));
+        }
+    }
+    unescape(raw).to_ascii_lowercase()
 }

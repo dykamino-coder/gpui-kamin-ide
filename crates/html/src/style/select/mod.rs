@@ -50,6 +50,11 @@ pub(crate) struct Ancestor {
     pub(crate) target_group: Option<Rc<std::cell::Cell<bool>>>,
     /// This link is the current scroll marker of its group (`:target-current`).
     pub(crate) target_current: bool,
+    /// Нет детей-элементов и текста (`:empty`, selectors-4 §14.2).
+    pub(crate) empty: bool,
+    /// Элемент вне пространства имён XHTML (SVG, MathML): для `@namespace`
+    /// по умолчанию (css-namespaces-3 §2.2).
+    pub(crate) foreign: bool,
 }
 
 // Отметки `:has()` текущего документа: адрес узла - хеши аргументов.
@@ -165,6 +170,8 @@ pub(super) fn ancestor_of(child: &Handle, spot: Spot) -> Option<Ancestor> {
         peers: None,
         target_group: None,
         target_current: false,
+        empty: is_empty_node(child),
+        foreign: &*name.ns != "http://www.w3.org/1999/xhtml",
     })
 }
 
@@ -203,4 +210,15 @@ pub(crate) fn census_of(children: &[Handle]) -> (Vec<Spot>, Vec<Ancestor>) {
         }
     }
     (spots, all)
+}
+
+/// `:empty` (selectors-4 §14.2): ни детей-элементов, ни текста; комментарии и
+/// инструкции обработки не считаются, а пробельный текст — считается, как в
+/// браузерах (`image-light-dark`: `<div></div>` пуст, `<div><div>` — нет).
+pub(crate) fn is_empty_node(handle: &Handle) -> bool {
+    handle.children.borrow().iter().all(|c| match &c.data {
+        NodeData::Element { .. } => false,
+        NodeData::Text { contents } => contents.borrow().is_empty(),
+        _ => true,
+    })
 }
