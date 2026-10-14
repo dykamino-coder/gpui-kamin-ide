@@ -76,6 +76,7 @@ pub fn clamp_probe(
     clamped: Option<usize>,
     span: Option<super::ClampSpan>,
     bt_before: f32,
+    positioned: bool,
 ) -> AnyElement {
     gpui::canvas(
         move |bounds: Bounds<Pixels>, _, _| {
@@ -90,6 +91,7 @@ pub fn clamp_probe(
                 empty: false,
                 span: span.as_ref().map(|s| s.get()),
                 bt_before,
+                positioned,
             });
         },
         |_, _, _, _| {},
@@ -119,6 +121,7 @@ pub fn clamp_empty_probe(lines: ClampLines) -> AnyElement {
                 empty: true,
                 span: None,
                 bt_before: 0.0,
+                positioned: false,
             });
         },
         |_, _, _, _| {},

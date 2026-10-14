@@ -41,8 +41,8 @@ pub fn hide_box_after_point(
 ) -> gpui::Div {
     use crate::style::computed::{Display, Position};
     use gpui::Styled;
+    super::close_clamp_span(span.clone());
     let first = span.as_ref().map(|s| s.get().0);
-    super::close_clamp_span(span);
     let in_flow = !style.float.is_some_and(|f| f != 0)
         && !matches!(
             style.position,

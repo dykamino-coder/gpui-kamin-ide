@@ -46,6 +46,9 @@ pub struct ClampEntry {
     /// Top border of a box probe: the probe measures the padding box, a
     /// cut above the box goes above its border.
     pub bt_before: f32,
+    /// Absolutely positioned box: not hidden by the clamp (Blink keeps
+    /// out-of-flow boxes painted), its overflow stays visible.
+    pub positioned: bool,
 }
 
 pub type ClampLines = std::rc::Rc<std::cell::RefCell<Vec<ClampEntry>>>;

@@ -76,6 +76,7 @@ pub(super) fn paragraph_probed(
                 budget,
                 None,
                 0.0,
+                false,
             ))
             .into_any_element()
     } else {

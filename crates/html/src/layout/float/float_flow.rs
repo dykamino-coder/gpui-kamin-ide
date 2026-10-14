@@ -173,6 +173,7 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
                 None,
                 None,
                 0.0,
+                false,
             ))
             .into_any_element(),
         _ => flow,

@@ -91,6 +91,10 @@ pub(crate) fn child_probes(
                 None,
                 span,
                 side(e.style.borders().top),
+                matches!(
+                    merged.position,
+                    Some(crate::style::computed::Position::Absolute)
+                ),
             ));
         } else if !is_clamp
             && !skip

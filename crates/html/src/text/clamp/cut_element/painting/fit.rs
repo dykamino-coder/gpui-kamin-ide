@@ -53,6 +53,18 @@ pub(super) fn extent_before_point(
     top: f32,
 ) -> Option<f32> {
     let (_, (s, k)) = point?;
+    // A box right after the clamp paragraph precedes the clamp point only
+    // when that paragraph keeps all its rows (the point is then before the
+    // next line: `line-clamp-with-abspos-023` vs `-021`).
+    let whole = entries
+        .iter()
+        .filter(|e| e.seq == Some(s) && !e.skip_count)
+        .all(|e| split(e).len() <= k);
+    let positioned = entries
+        .iter()
+        .filter(|e| e.positioned)
+        .filter(|e| e.span.is_some_and(|(a, _)| a <= s || (a == s + 1 && whole)))
+        .map(|e| f32::from(e.bounds.origin.y) + f32::from(e.bounds.size.height));
     entries
         .iter()
         .filter(|e| !e.skip_count && e.line > 0.0)
@@ -65,6 +77,7 @@ pub(super) fn extent_before_point(
                 std::cmp::Ordering::Greater => None,
             }
         })
+        .chain(positioned)
         .max_by(|a, b| a.total_cmp(b))
         .map(|b| b - top)
 }
