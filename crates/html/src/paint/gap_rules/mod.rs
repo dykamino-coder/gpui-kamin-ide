@@ -171,6 +171,9 @@ pub struct GapAxisRule {
     /// `double` style: two lines of a third of the width each, the rest a
     /// gap (as the `double` border, Blink `GetDoubleBorderStripeWidths`).
     pub double: bool,
+    /// Line kind per gap: 1 `dashed`, 2 `dotted`, 3 `double`, else solid;
+    /// drawn as the border side of that style (Blink `DrawBoxSide`).
+    pub kinds: crate::style::computed::GapList<u8>,
 }
 
 /// Устройство контейнера для геометрии промежутков.

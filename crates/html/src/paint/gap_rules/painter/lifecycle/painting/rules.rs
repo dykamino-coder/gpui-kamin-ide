@@ -73,6 +73,7 @@ fn paint_rule(
     let Some(colour) = rule.colors.at(run.index, run.count) else {
         return;
     };
+    let kind = rule.kinds.at(run.index, run.count).unwrap_or(0);
     let c = (run.g0 + run.g1) / 2.0;
     // Отрезок вдоль строчной оси (горизонтальный в горизонтальном
     // письме) при `rtl` считает start/end от правого края.
@@ -105,7 +106,7 @@ fn paint_rule(
             size: gpui::size(r - l, b - t),
         };
         let third = (w / 3.0).round();
-        if rule.double && third >= 1.0 {
+        if (kind == 3 || rule.double) && third >= 1.0 {
             // Two lines across the rule's width, each a third of it
             // (rounded like the `double` border in `render.rs`).
             let (a0, a1) = (c - w / 2.0, c + w / 2.0);
@@ -124,6 +125,31 @@ fn paint_rule(
                 };
                 window.paint_quad(gpui::fill(band, colour.to_hsla()));
             }
+            continue;
+        }
+        if kind == 1 || kind == 2 {
+            // Blink paints the rule rect as one border side of the rule's
+            // style (`GapDecorationsPainter::Paint` → `DrawBoxSide`), so the
+            // dashes/dots follow the border pattern along the rule's length.
+            let mut widths = gpui::Edges::<Pixels>::default();
+            if gap_on_x {
+                widths.left = rect.size.width;
+            } else {
+                widths.top = rect.size.height;
+            }
+            let style = if kind == 2 {
+                gpui::BorderStyle::Dotted
+            } else {
+                gpui::BorderStyle::Dashed
+            };
+            window.paint_quad(gpui::quad(
+                rect,
+                gpui::Corners::default(),
+                gpui::transparent_black(),
+                widths,
+                colour.to_hsla(),
+                style,
+            ));
             continue;
         }
         window.paint_quad(gpui::fill(rect, colour.to_hsla()));

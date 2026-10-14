@@ -1342,6 +1342,11 @@ pub struct Computed {
     /// as for borders) — painted as two lines; other styles stay solid.
     pub column_rule_double: bool,
     pub row_rule_double: bool,
+    /// Rule line kinds per gap (§lists): 0 solid-like, 1 `dashed`,
+    /// 2 `dotted`, 3 `double` — painted as the border side of that style
+    /// (Blink `BoxBorderPainter::DrawBoxSide`).
+    pub column_rule_kinds: Option<GapList<u8>>,
+    pub row_rule_kinds: Option<GapList<u8>>,
     pub column_rule_colors: Option<GapList<Option<Color>>>,
     pub row_rule_widths: Option<GapList<Len>>,
     pub row_rule_styles: Option<GapList<bool>>,
@@ -1515,4 +1520,6 @@ pub struct Computed {
     pub caret_color: Option<Color>,
     /// `accent-color` флажков и переключателей.
     pub accent_color: Option<Color>,
+    /// `appearance` (css-ui-4 §7.2); `None` is the initial `auto`.
+    pub appearance: Option<crate::style::computed::Appearance>,
 }

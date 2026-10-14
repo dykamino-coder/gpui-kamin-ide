@@ -160,8 +160,6 @@ pub(super) fn finish_column_stack(
     opts: &RenderOpts,
     col_vert: bool,
     oof_static: Vec<(usize, Element)>,
-    gap_spec: Option<crate::paint::gap_rules::GapRuleSpec>,
-    gap_items: Option<crate::paint::gap_rules::GapItems>,
     oof_spots: Vec<std::rc::Rc<std::cell::Cell<crate::layout::positioned::containing_block::Spot>>>,
     mut d: gpui::Div,
 ) -> AnyElement {
@@ -203,11 +201,6 @@ pub(super) fn finish_column_stack(
             oof_spots[i].clone(),
             element(&oof, &merged, opts),
         ));
-    }
-    if let (Some(buf), Some(spec)) = (gap_items, gap_spec) {
-        d = d.child(
-            crate::paint::gap_rules::painter::GapRulePainter::new(buf, spec).into_any_element(),
-        );
     }
     d.into_any_element()
 }
