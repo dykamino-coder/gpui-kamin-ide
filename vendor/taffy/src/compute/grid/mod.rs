@@ -208,12 +208,28 @@ fn compute_container_constants<Tree: LayoutGridContainer>(
         .maybe_clamp(min_size, max_size)
         .maybe_max(padding_border_size);
 
+    // KaminIDE: a content-sized block axis is a max-content constraint (css-grid-2 §12.1 note), so it
+    // stays indefinite for track sizing and max-height only clamps the final container size, as Blink's
+    // grid_layout_algorithm.cc keeps grid_available_size_.block_size indefinite for auto block sizes.
+    // A height the parent measured from this grid's content (`known_dimensions_are_definite` false)
+    // is likewise not a definite size for track sizing.
+    let block_axis_indefinite = preferred_size.height.is_none()
+        && match known_dimensions.height {
+            Some(_) => !inputs.known_dimensions_are_definite.height,
+            None => !matches!(available_space.height, AvailableSpace::Definite(_)),
+        };
     let available_grid_space = Size {
         width: constrained_available_space
             .width
             .map_definite_value(|space| space - content_box_inset.horizontal_axis_sum()),
-        height: constrained_available_space
-            .height
+        height: if block_axis_indefinite {
+            match available_space.height {
+                AvailableSpace::MinContent => AvailableSpace::MinContent,
+                _ => AvailableSpace::MaxContent,
+            }
+        } else {
+            constrained_available_space.height
+        }
             .map_definite_value(|space| space - content_box_inset.vertical_axis_sum()),
     };
 
