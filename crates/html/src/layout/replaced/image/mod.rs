@@ -10,6 +10,8 @@ mod with;
 pub(crate) use with::image_with;
 mod grid_measured;
 pub(crate) use grid_measured::inherit_item_metadata;
+mod content_radii;
+mod filtered;
 mod local;
 use local::{fit_local_image, local_image_source};
 mod contained;

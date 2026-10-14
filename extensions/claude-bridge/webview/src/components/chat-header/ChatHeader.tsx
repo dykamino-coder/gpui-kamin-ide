@@ -7,7 +7,7 @@ import { SessionIds } from './SessionIds'
 import { DisconnectButton } from './DisconnectButton'
 import { DownloadJsonlButton } from './DownloadJsonlButton'
 import { ToggleServerPathButton } from './ToggleServerPathButton'
-import { SessionStats } from './SessionStats'
+import { activePlan } from '../../signals/plan'
 import { PlanProgress } from './PlanProgress'
 import { ConversationSegmentTabs } from '../jsonl-viewer/ConversationSegmentTabs'
 import { serverPathVisible } from '../../signals/ui'
@@ -80,13 +80,14 @@ export function ChatHeader({
           per-session telemetry below. Self-hides when the session has
           no compactions. */}
       <ConversationSegmentTabs />
-      {/* Row 3 — context-bar metrics (%, tokens, dollars) + plan
-          progress, pinned to the left so the eye scans them as a
-          coherent telemetry strip independent of the title row. */}
-      <div class="chat-header-row" style="justify-content:center;gap:var(--space-3);padding:12px">
-        <SessionStats />
-        <PlanProgress />
-      </div>
+      {/* Row 3 — plan progress (context, tokens, cost and Compact live in the
+          row under the chat input, UsageLimitsRow). Only when a plan
+          exists. */}
+      {activePlan.value && (
+        <div class="chat-header-row" style="justify-content:center;gap:var(--space-3);padding:12px">
+          <PlanProgress />
+        </div>
+      )}
       {serverPathVisible.value && (
         <SessionIds settingsDir={settingsDir} conversationId={conversationId} />
       )}
