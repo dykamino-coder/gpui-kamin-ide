@@ -38,6 +38,7 @@ pub mod file_tree_body;
 pub mod frame;
 pub mod frame_ctx;
 pub mod fs_ops;
+mod handle_hover;
 pub mod handlers;
 pub mod handlers_mouse;
 pub(crate) mod hover_pill;
