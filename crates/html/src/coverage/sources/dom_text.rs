@@ -20,6 +20,7 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../style/cascade/inherit/sizes/lh_units.rs"),
     include_str!("../../style/cascade/inherit/explicit.rs"),
     include_str!("../../style/cascade/inherit/fonts.rs"),
+    include_str!("../../style/cascade/inherit/flow_align.rs"),
     include_str!("../../style/cascade/inherit/text_layout.rs"),
     include_str!("../../style/cascade/inherit/paint.rs"),
     include_str!("../../style/cascade/inherit/decorate.rs"),
