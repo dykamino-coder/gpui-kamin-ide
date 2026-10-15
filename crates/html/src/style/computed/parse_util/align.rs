@@ -43,6 +43,10 @@ pub(in crate::style::computed) fn align_keyword(v: &str) -> Result<Option<Align>
         "start" | "flex-start" | "left" => Some(Align::Start),
         "end" | "flex-end" | "right" => Some(Align::End),
         "self-start" => Some(Align::Start),
+        // Grid lanes flow-relative keywords: resolved against the lanes
+        // direction after the cascade (`cascade::inherit::flow_align`).
+        "flow-start" => Some(Align::Start),
+        "flow-end" => Some(Align::End),
         "self-end" => Some(Align::End),
         "stretch" => Some(Align::Stretch),
         // `first baseline` — обычное выравнивание по базовой линии. `last`
@@ -78,6 +82,8 @@ pub(in crate::style::computed) fn parse_justify(v: &str) -> Option<Justify> {
         // `flexbox_justifycontent-right-002` (8.53) держит не это.
         "start" => Some(Justify::WmStart),
         "end" => Some(Justify::WmEnd),
+        "flow-start" => Some(Justify::WmStart),
+        "flow-end" => Some(Justify::WmEnd),
         "left" => Some(Justify::Left),
         "right" => Some(Justify::Right),
         "space-between" => Some(Justify::Between),

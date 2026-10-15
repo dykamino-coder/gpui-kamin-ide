@@ -534,6 +534,9 @@ pub struct Computed {
     /// место, а не под всё уже уложенное: дыры, оставленные многолуночными
     /// соседями, заполняются следующими элементами.
     pub lanes_dense: bool,
+    /// Alignment properties declared with `flow-start`/`flow-end`, one bit
+    /// per property (`cascade::inherit::flow_align`).
+    pub align_flow: u8,
     /// `display: inline grid-lanes` — контейнер лунок строчного уровня:
     /// ширина по дорожкам, не на всю строку.
     pub lanes_inline: bool,

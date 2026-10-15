@@ -143,6 +143,17 @@ pub(crate) fn line_runs(
                 cross_w,
             })
             .collect();
+        let hidden = match (&lanes, main) {
+            (Some(_), Some(m)) => super::lane_visibility::hidden_lane_segments(
+                items,
+                lines[k],
+                lines[k + 1],
+                &[inner[k].as_slice(), inner[k + 1].as_slice()].concat(),
+                (r0, r1),
+                m.visibility,
+            ),
+            _ => vec![],
+        };
         mains.push(GapRun {
             g0,
             g1,
@@ -150,7 +161,7 @@ pub(crate) fn line_runs(
             r1,
             crossings,
             blocked,
-            hidden: vec![],
+            hidden,
             start_edge: None,
             end_edge: None,
             index: k,
@@ -166,6 +177,13 @@ pub(crate) fn line_runs(
         // beginning of each flex line»), внутри строки — от её логического
         // начала: при `rev_cross` крайний правый (нижний) промежуток первый.
         let n = inner[k].len();
+        // Grid lanes restart the count in every lane: each lane is its own
+        // list of stacking gaps (`column-gap-decorations-list-repeat-*`).
+        let (base, total) = if lane_gap.is_some() {
+            (0, n)
+        } else {
+            (ix, cross_total)
+        };
         for (j, &(lo, hi)) in inner[k].iter().enumerate() {
             crosses.push(GapRun {
                 g0: lo,
@@ -177,8 +195,12 @@ pub(crate) fn line_runs(
                 hidden: vec![],
                 start_edge: before,
                 end_edge: after,
-                index: if rev_cross { ix + n - 1 - j } else { ix + j },
-                count: cross_total.max(1),
+                index: if rev_cross {
+                    base + n - 1 - j
+                } else {
+                    base + j
+                },
+                count: total.max(1),
             });
         }
         ix += n;
