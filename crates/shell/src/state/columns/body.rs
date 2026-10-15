@@ -179,12 +179,9 @@ impl RootView {
                         cx.notify();
                     }),
                     cx.listener(move |this, hovered: &bool, _, cx| {
-                        this.hovered_handle = if *hovered {
-                            Some("sidebar-handle")
-                        } else {
-                            None
-                        };
-                        cx.notify();
+                        if this.hover_handle("sidebar-handle", *hovered) {
+                            cx.notify();
+                        }
                     }),
                 ))
             })

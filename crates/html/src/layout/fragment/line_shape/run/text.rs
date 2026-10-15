@@ -116,21 +116,6 @@ pub(crate) fn trim_amount(s: &Computed, size: f32, lh: f32, start: bool) -> f32 
     let family = s.font_family.clone().unwrap_or_default();
     let (ascent, descent, cap) = crate::text::metrics::vmetrics_px(&family, size);
     let half = (lh - (ascent + descent)) / 2.0;
-    let edge = if start {
-        match s.text_box_over {
-            crate::style::computed::TextEdge::Cap => ascent - cap,
-            crate::style::computed::TextEdge::Ex => {
-                ascent - crate::text::metrics::ch_ex_px(&family, size).1
-            }
-            _ => 0.0,
-        }
-    } else {
-        match s.text_box_under {
-            crate::style::computed::TextEdge::Alphabetic => {
-                descent + crate::text::fonts::alphabetic_em(&family) * size
-            }
-            _ => 0.0,
-        }
-    };
+    let edge = crate::text::text_box::edge_inset(s, &family, size, (ascent, descent, cap), start);
     (half + edge).max(0.0)
 }

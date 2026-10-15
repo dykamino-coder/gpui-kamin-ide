@@ -4,7 +4,7 @@ use crate::style::computed::Computed;
 use crate::style::generated::counters::Counters;
 use std::collections::HashMap;
 
-type Values = HashMap<String, i32>;
+type Values = HashMap<String, i64>;
 
 #[derive(Default)]
 pub(super) struct PageCounters {
@@ -14,7 +14,7 @@ pub(super) struct PageCounters {
     pages: usize,
 }
 
-fn pairs(text: &Option<String>, default: i32) -> Vec<(String, i32)> {
+fn pairs(text: &Option<String>, default: i64) -> Vec<(String, i64)> {
     let Some(text) = text else { return vec![] };
     let mut words = text.split_whitespace().peekable();
     let mut result = Vec::new();
@@ -113,7 +113,7 @@ impl PageCounters {
         let mut values = self.current.clone();
         let mut counters = self.document.clone();
         apply(&mut values, style, &mut counters);
-        values.insert("pages".into(), self.pages as i32);
+        values.insert("pages".into(), self.pages as i64);
         for (name, value) in values {
             counters.obscure(&name, value);
         }

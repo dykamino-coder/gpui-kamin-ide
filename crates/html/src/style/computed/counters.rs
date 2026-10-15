@@ -48,18 +48,18 @@ fn name(raw: &str, reversed: bool) -> Option<String> {
     })
 }
 
-fn integer(raw: &str) -> Option<i32> {
+fn integer(raw: &str) -> Option<i64> {
     let digits = raw.strip_prefix(['+', '-']).unwrap_or(raw);
     if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
         return None;
     }
     Some(
         raw.parse::<i128>()
-            .map(|n| n.clamp(i32::MIN as i128, i32::MAX as i128) as i32)
+            .map(|n| n.clamp(i64::MIN as i128, i64::MAX as i128) as i64)
             .unwrap_or(if raw.starts_with('-') {
-                i32::MIN
+                i64::MIN
             } else {
-                i32::MAX
+                i64::MAX
             }),
     )
 }
@@ -103,7 +103,7 @@ fn normalized(raw: &str, reversed: bool) -> Option<String> {
                 let value = crate::style::values::value::number(&format!("calc({next})"))?;
                 // CSS Values 4 §10.9.2 censors top-level NaN to zero.
                 let value = if value.is_nan() { 0.0 } else { value };
-                out.push(((value + 0.5).floor() as i32).to_string());
+                out.push(((value + 0.5).floor() as i64).to_string());
                 words.next();
             } else if let Some(value) = integer(next) {
                 out.push(value.to_string());

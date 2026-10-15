@@ -65,6 +65,11 @@ impl Computed {
             box_shift: self.box_shift,
             text_fit: self.text_fit,
             hyphen_char: self.hyphen_char.clone(),
+            hyphen_limit_chars: self.hyphen_limit_chars,
+            hyphen_limit_lines: self.hyphen_limit_lines,
+            hyphenate: self.hyphenate,
+            hyphens_auto: self.hyphens_auto,
+            lang: self.lang.clone(),
             // Кусок, собранный из `text_only`, бывает родителем: без базы он
             // отдал бы детям ПОДОГНАННЫЙ кегль, и подгонка накопилась бы.
             font_size_adjust: self.font_size_adjust,

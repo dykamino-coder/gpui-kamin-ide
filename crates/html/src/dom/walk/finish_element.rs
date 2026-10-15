@@ -11,7 +11,7 @@ pub(super) fn finish_element(
     tag: String,
     attrs: Vec<(String, String)>,
     anim: Option<Vec<(f32, Computed)>>,
-    list_item: Option<i32>,
+    list_item: Option<i64>,
     node_id: u64,
     hover: Option<Computed>,
     first_letter: Option<Computed>,
