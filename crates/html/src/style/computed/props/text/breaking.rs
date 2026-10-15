@@ -16,8 +16,10 @@ impl Computed {
             // срезается ПОЛУЛИДИНГ первой и/или последней строки, чтобы край
             // содержимого сел на метрику текста. Свойство НЕ наследуется.
             "text-box-trim" => {
-                self.text_box_trim_start = matches!(v, "trim-start" | "trim-both");
-                self.text_box_trim_end = matches!(v, "trim-end" | "trim-both");
+                if let Some((s, e)) = text_box_values::parse_trim(v) {
+                    self.text_box_trim_start = s;
+                    self.text_box_trim_end = e;
+                }
             }
             // `text-box-edge` (css-inline-3 §4.3): по какой метрике срезать.
             // Первое слово — верхний край, второе — нижний; при одном слове
@@ -26,49 +28,22 @@ impl Computed {
             // `auto` = `text` (начальное `line-fit-edge: leading` читается
             // как `text`).
             "text-box-edge" => {
-                self.text_box_edge_set = true;
-                let mut it = v.split_ascii_whitespace();
-                let over = it.next().unwrap_or("auto");
-                let under = it.next().unwrap_or(over);
-                self.text_box_over = match over {
-                    "cap" => TextEdge::Cap,
-                    "ex" => TextEdge::Ex,
-                    _ => TextEdge::Text,
-                };
-                self.text_box_under = match under {
-                    "alphabetic" => TextEdge::Alphabetic,
-                    _ => TextEdge::Text,
-                };
+                if let Some((over, under)) = text_box_values::parse_edge(v) {
+                    self.text_box_edge_set = true;
+                    self.text_box_over = over;
+                    self.text_box_under = under;
+                }
             }
             // Сокращение `text-box` (css-inline-3 §4.1): без `text-box-trim`
             // подразумевается `trim-both` (НЕ начальное значение), без
             // `text-box-edge` — `auto`. `normal` гасит оба.
             "text-box" => {
-                if v == "normal" {
-                    self.text_box_trim_start = false;
-                    self.text_box_trim_end = false;
-                    self.text_box_over = TextEdge::Text;
-                    self.text_box_under = TextEdge::Text;
+                if let Some(((s, e), (over, under))) = text_box_values::parse_shorthand(v) {
+                    self.text_box_trim_start = s;
+                    self.text_box_trim_end = e;
+                    self.text_box_over = over;
+                    self.text_box_under = under;
                     self.text_box_edge_set = true;
-                } else {
-                    // Без края сокращение ставит `auto` (§4.1) — явно.
-                    self.text_box_over = TextEdge::Text;
-                    self.text_box_under = TextEdge::Text;
-                    self.text_box_edge_set = true;
-                    let trim = v
-                        .split_ascii_whitespace()
-                        .find(|w| w.starts_with("trim-"))
-                        .unwrap_or("trim-both");
-                    self.text_box_trim_start = matches!(trim, "trim-start" | "trim-both");
-                    self.text_box_trim_end = matches!(trim, "trim-end" | "trim-both");
-                    let edge: String = v
-                        .split_ascii_whitespace()
-                        .filter(|w| !w.starts_with("trim-"))
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    if !edge.is_empty() {
-                        self.apply_one("text-box-edge", &edge);
-                    }
                 }
             }
             "hanging-punctuation" => {

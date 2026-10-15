@@ -70,15 +70,20 @@ fn paragraph_routed(
                 Some(Len::Pct(k)) => size * k,
                 _ => crate::text::metrics::normal_px(normal_fraction(&base, opts), size),
             };
+            let base_lh = base.line_height;
             let for_build = first.clone();
             let depth = defer_depth();
+            // Абзац соберётся при раскладке, вне цикла `blocks_flow`: флаги
+            // среза строк (`text::line_trim`) едут с ним.
+            let (trim_owner, trim) = crate::text::line_trim::current();
             let build: crate::layout::float::split_flow::Split =
                 std::rc::Rc::new(move |at, width| {
                     let _depth = DepthScope::enter(depth);
                     let mut styled = base.clone();
                     styled.first_line = None;
-                    let mut para =
-                        paragraph_pieces(&nodes_owned, &styled, &opts_owned, at, &for_build);
+                    let mut para = crate::text::line_trim::scoped(trim_owner, trim, || {
+                        paragraph_pieces(&nodes_owned, &styled, &opts_owned, at, &for_build)
+                    });
                     para = div().w(width).child(para).into_any_element();
                     para
                 });
@@ -102,6 +107,14 @@ fn paragraph_routed(
                 Some(Len::Em(k)) => k * size,
                 _ => size,
             };
+            // Интерлиньяж первой строки: свой у `::first-line` или
+            // унаследованный — числовой пересчитывается от её кегля. Строка
+            // не ниже струта блока: набор абзаца держит и его.
+            let first_lh = match first.line_height.or(base_lh) {
+                Some(Len::Px(v)) => v,
+                Some(Len::Pct(k)) | Some(Len::Em(k)) => k * measure_size,
+                _ => line * measure_size / size.max(1.0),
+            };
             let mut full = String::new();
             first_line_text::lines(nodes, inherited.preserve_newlines == Some(true), &mut full);
             let following = full
@@ -117,6 +130,7 @@ fn paragraph_routed(
                 line,
                 following,
             )
+            .first_height(first_lh.max(line))
             .into_any_element();
         }
     }

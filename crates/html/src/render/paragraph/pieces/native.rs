@@ -201,7 +201,15 @@ pub(crate) fn native_paragraph(
         .tab_stops(inline::tab_stops(&pieces, inherited, &opts.text))
         .overlays(inline::overlays(pieces))
         .atoms(line_atoms)
-        .ruby_trim(inherited.text_box_trim_start, inherited.text_box_trim_end);
+        // Срез строки — только у абзаца, держащего первую/последнюю строку
+        // срезающего контейнера (`text::line_trim`).
+        .ruby_trim(crate::text::line_trim::para(inherited.self_node).unwrap_or(
+            crate::text::line_trim::Trim {
+                start: inherited.text_box_trim_start,
+                end: inherited.text_box_trim_end,
+                over: 0.0,
+            },
+        ));
     let para = if selectable {
         para.selectable(id, opts.selection_color())
     } else {
