@@ -23,6 +23,7 @@ pub(super) fn content_nodes(
                 &[],
                 style.quotes.as_ref(),
                 false,
+                crate::style::generated::counter_style::Context::new(style, Default::default()),
             )));
             run.clear();
         }

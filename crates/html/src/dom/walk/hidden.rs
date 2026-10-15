@@ -23,7 +23,7 @@ pub(super) fn hidden_element(
     counters: &mut crate::style::generated::counters::Counters,
     path: &[Ancestor],
     preserve: bool,
-    reversed_start: &dyn Fn(&str, &mut crate::style::generated::counters::Counters) -> i32,
+    reversed_start: &dyn Fn(&str, &mut crate::style::generated::counters::Counters) -> i64,
     out: &mut Vec<Node>,
 ) {
     // Table columns use an internal non-flow display, but still
