@@ -1,4 +1,5 @@
 //! Геометрия правил промежутков: дорожки и прогоны.
+mod assignment;
 mod multicol;
 pub(super) use multicol::multicol_runs;
 mod flex_lines;

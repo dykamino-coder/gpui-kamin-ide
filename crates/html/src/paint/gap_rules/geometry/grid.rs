@@ -1,5 +1,6 @@
 //! Сегменты правил промежутков сетки с учётом занятых ячеек.
 
+use super::assignment::RuleSlot;
 use super::{Crossing, GAP_EPS, GapItem, GapRun};
 use crate::paint::gap_rules::GapAxisRule;
 use crate::paint::gap_rules::geometry::tracks::gaps_of;
@@ -77,6 +78,7 @@ pub(crate) fn grid_runs(
     tpl_a: Option<&[f32]>,
     tpl_b: Option<&[f32]>,
     abs: Option<(&[(f32, f32)], &[(f32, f32)])>,
+    reverse: (bool, bool),
 ) -> Vec<GapRun> {
     let flipped: Vec<GapItem> = items.iter().map(GapItem::flipped).collect();
     // Дорожки раскладки сильнее всего: это и есть коллекция дорожек сетки
@@ -96,7 +98,15 @@ pub(crate) fn grid_runs(
         && on_lines(ta, items)
         && on_lines(tb, &flipped)
     {
-        return grid_runs_on(items, &flipped, ta.to_vec(), tb.to_vec(), rule, cross);
+        return grid_runs_on(
+            items,
+            &flipped,
+            ta.to_vec(),
+            tb.to_vec(),
+            rule,
+            cross,
+            reverse,
+        );
     }
     // Дорожки шаблона сильнее выведенных из коробок (css-gaps-1 §gap-grid;
     // Blink `BuildGridTrackGapData` строит геометрию из коллекции дорожек).
@@ -108,7 +118,7 @@ pub(crate) fn grid_runs(
     let tb = tpl_b
         .and_then(|t| template_tracks(t, gap_b, &flipped))
         .unwrap_or_else(|| tracks_a(&flipped, gap_b));
-    grid_runs_on(items, &flipped, ta, tb, rule, cross)
+    grid_runs_on(items, &flipped, ta, tb, rule, cross, reverse)
 }
 
 pub(super) fn grid_runs_on(
@@ -118,6 +128,7 @@ pub(super) fn grid_runs_on(
     tb: Vec<(f32, f32)>,
     rule: &GapAxisRule,
     cross: Option<&GapAxisRule>,
+    reverse: (bool, bool),
 ) -> Vec<GapRun> {
     let ga = gaps_of(&ta);
     let gb = gaps_of(&tb);
@@ -144,6 +155,7 @@ pub(super) fn grid_runs_on(
                 .iter()
                 .enumerate()
                 .map(|(j, &(lo, hi))| {
+                    let slot = RuleSlot::new(j, gb.len(), reverse.1);
                     let mut breaks = false;
                     let mut joins = false;
                     for side in sides.iter().flatten() {
@@ -155,13 +167,13 @@ pub(super) fn grid_runs_on(
                         }
                         if let Some(c) = cross
                             && !blocked_here
-                            && c.styles.at(j, gb.len()).unwrap_or(false)
+                            && slot.value(&c.styles).unwrap_or(false)
                             && occupied(flipped, lo, hi, side.0, side.1, c.visibility)
                         {
                             joins = true;
                         }
                     }
-                    let cross_w = cross.and_then(|c| c.widths.at(j, gb.len())).unwrap_or(0.0);
+                    let cross_w = cross.and_then(|c| slot.value(&c.widths)).unwrap_or(0.0);
                     Crossing {
                         lo,
                         hi,
@@ -181,7 +193,7 @@ pub(super) fn grid_runs_on(
                 hidden,
                 start_edge: None,
                 end_edge: None,
-                index: k,
+                index: RuleSlot::new(k, n, reverse.0).index,
                 count: n,
             }
         })
