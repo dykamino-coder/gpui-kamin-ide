@@ -17,6 +17,7 @@ pub mod probe;
 pub mod push;
 pub mod shape_contents;
 mod shape_kids;
+pub(crate) mod static_coordinates;
 pub mod table_bands;
 pub mod types;
 
