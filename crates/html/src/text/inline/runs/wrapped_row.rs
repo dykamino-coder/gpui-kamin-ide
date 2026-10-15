@@ -173,7 +173,11 @@ pub fn as_wrapped_row(
             for p in group {
                 glued = match p {
                     Piece::Atom(el) => glued.child(el),
-                    Piece::Overlay(_, how) if how.cb_marker.is_some() => glued,
+                    Piece::Overlay(_, how)
+                        if how.cb_marker.is_some() || how.box_marker.is_some() =>
+                    {
+                        glued
+                    }
                     Piece::Overlay(el, _) => glued.child(overlay_in_row(el, turned)),
                     Piece::Text { text, style } => glued.child(render_text(text, &style)),
                 };
@@ -187,7 +191,9 @@ pub fn as_wrapped_row(
                     line_empty = false;
                     row.child(el)
                 }
-                Piece::Overlay(_, how) if how.cb_marker.is_some() => row,
+                Piece::Overlay(_, how) if how.cb_marker.is_some() || how.box_marker.is_some() => {
+                    row
+                }
                 Piece::Overlay(el, _) => row.child(overlay_in_row(el, turned)),
                 Piece::Text { text, style } => {
                     // Пробел остаётся при слове: без него слова слиплись бы.

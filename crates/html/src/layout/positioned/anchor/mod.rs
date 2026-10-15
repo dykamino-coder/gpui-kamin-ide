@@ -32,6 +32,8 @@
 
 mod area;
 mod geometry;
+mod inline;
+pub use inline::{prepare_inline_abs, register_inline_anchor, register_inline_cb};
 pub(crate) mod parse;
 pub(crate) mod place;
 mod plan;
@@ -201,3 +203,6 @@ pub struct AnchorPlace {
     key: u64,
     visibility: u8,
 }
+
+#[cfg(test)]
+mod tests;
