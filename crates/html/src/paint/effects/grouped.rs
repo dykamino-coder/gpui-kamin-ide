@@ -2,7 +2,9 @@
 mod bare_clip;
 pub(super) use bare_clip::bare_clip;
 
+mod replaced;
 mod wrapper;
+pub(crate) use replaced::grouped_replaced;
 pub(crate) use wrapper::grouped_wrapper;
 
 // owner: A
@@ -39,6 +41,14 @@ pub(crate) fn rounded_rect_clip(c: &Computed) -> bool {
 /// кадром по формулам CSS (`mix-blend-mode`) и изоляция (`isolation`), где
 /// поддерево обязано сложиться отдельно, прежде чем попасть в кадр.
 pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
+    grouped_with(el, c, None)
+}
+
+pub(super) fn grouped_with(
+    el: AnyElement,
+    c: &Computed,
+    ring_over: Option<(String, crate::style::values::value::Color, [f32; 4])>,
+) -> AnyElement {
     let blur = c.filter.map_or(0.0, |f| f.blur);
     let blend = c.blend.unwrap_or(0);
     // Вершины полигона в `em`/`ex`/`ch`/`vw`/`vh` (css-shapes-1 `polygon()`:
@@ -204,7 +214,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     // смешивания, ни маски, ни обрезки. Такой буфер коробкой не режется
     // (`interact::Grouped::spill`).
     grouped_wrapper(
-        blur, blend, polygon, mask, clip_rect, clip_inset, c, el, bare_round,
+        blur, blend, polygon, mask, clip_rect, clip_inset, c, el, bare_round, ring_over,
     )
 }
 
