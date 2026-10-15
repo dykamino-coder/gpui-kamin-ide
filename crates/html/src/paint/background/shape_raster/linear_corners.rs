@@ -18,7 +18,12 @@ fn corner(rx: f32, ry: f32, k: f32, bx: f32, by: f32) -> Option<Vec<(f32, f32)>>
     None
 }
 
-fn contour(r: &Rrect, w: f32, h: f32, [t, right, b, l]: [f32; 4]) -> Option<Vec<(f32, f32)>> {
+pub(super) fn contour(
+    r: &Rrect,
+    w: f32,
+    h: f32,
+    [t, right, b, l]: [f32; 4],
+) -> Option<Vec<(f32, f32)>> {
     // Curved and bevel corners keep their existing coverage backend.
     if r.corners
         .iter()

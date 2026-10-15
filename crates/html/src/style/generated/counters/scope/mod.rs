@@ -14,7 +14,7 @@ pub(crate) struct Scope {
 impl Counters {
     /// Page and margin contexts obscure the entire document chain of this name.
     /// CSS Paged Media 3 §page-based-counters; Blink GetCounterValues:356-377.
-    pub(crate) fn obscure(&mut self, name: &str, value: i32) {
+    pub(crate) fn obscure(&mut self, name: &str, value: i64) {
         self.stack.remove(name);
         self.reset(name, value);
     }

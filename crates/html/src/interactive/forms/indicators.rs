@@ -4,7 +4,7 @@ use super::{ACCENT, BORDER, FIELD_BG};
 use crate::dom::Element;
 use crate::style::apply::apply;
 use crate::style::computed::Computed;
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px, rgb};
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px, rgb, size};
 
 /// Ползунок: дорожка и заполненная часть по значению.
 pub(super) fn range(e: &Element, style: &Computed) -> AnyElement {
@@ -20,30 +20,26 @@ pub(super) fn range(e: &Element, style: &Computed) -> AnyElement {
     } else {
         0.
     };
-    apply(div(), style)
-        .h(px(16.))
-        .min_w(px(60.))
-        .flex()
-        .items_center()
-        .child(
-            div()
-                .relative()
-                .w_full()
-                .h(px(4.))
-                .rounded(px(2.))
-                .bg(rgb(BORDER))
-                .child(
-                    div()
-                        .absolute()
-                        .left(px(0.))
-                        .top(px(0.))
-                        .h(px(4.))
-                        .w(gpui::relative(frac))
-                        .rounded(px(2.))
-                        .bg(accent),
-                ),
-        )
-        .into_any_element()
+    let mut painted = apply(div(), style).flex().items_center().child(
+        div()
+            .relative()
+            .w_full()
+            .h(px(4.))
+            .rounded(px(2.))
+            .bg(rgb(BORDER))
+            .child(
+                div()
+                    .absolute()
+                    .left(px(0.))
+                    .top(px(0.))
+                    .h(px(4.))
+                    .w(gpui::relative(frac))
+                    .rounded(px(2.))
+                    .bg(accent),
+            ),
+    );
+    painted.style().sizing_keywords = Some(crate::style::apply::intrinsic_size::keywords(style));
+    crate::layout::replaced::natural_control(painted, size(px(60.), px(16.)))
 }
 
 pub(super) fn color_swatch(e: &Element, style: &Computed) -> AnyElement {

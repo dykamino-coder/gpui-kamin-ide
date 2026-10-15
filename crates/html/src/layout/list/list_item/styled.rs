@@ -42,7 +42,11 @@ pub(crate) fn render_with_style(
         // Умолчание тега: у нумерованного перечня десятичный счёт, у
         // списка возможностей — точка.
         let name = kind.unwrap_or_else(|| "disc".to_string());
-        crate::style::generated::counter_style::marker_repr(idx, &name)
+        crate::style::generated::counter_style::marker_repr(
+            idx,
+            &name,
+            crate::style::generated::counter_style::Context::new(merged, Default::default()),
+        )
     };
     // `list-style: none` — на списках верстают навигацию и наборы чипов,
     // и точки там лишние. Своё слово пункта старше слова списка:
