@@ -110,12 +110,11 @@ pub(crate) fn apply_presentational_size(
     // (HTML §15.3.8), а `attr_*` держит соотношение сторон замещаемого и
     // таблице не принадлежит. Без этого `<table width="300">` вовсе не
     // доходил до стиля, и таблица сжималась по содержимому.
+    // Ширина таблицы — намёк каскада (`presentational_legacy`, HTML §15.3.8:
+    // размерное значение, ноль не считается).
     if tag == "table" {
-        let w = style.attr_width.take();
+        style.attr_width = None;
         style.attr_height = None;
-        if matches!(style.width, None | Some(Len::Auto)) {
-            style.width = w;
-        }
         return;
     }
     // Оба атрибута объявлены разметкой — только тогда природное соотношение

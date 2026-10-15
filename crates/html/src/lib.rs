@@ -99,7 +99,11 @@ pub const BROWSER_CSS: &str = r#"
           overflow: visible }
     code, kbd, samp { font-size: 1em }
     small { font-size: 0.83em }
-    hr { height: 0; margin: 0.5em 0; background: none; border: 1px inset gray }
+    /* HTML §15.3.11: `hr { color: gray; border-style: inset; border-width: 1px;
+       margin: 0.5em auto }` — the rule colour is `currentColor`, so the `color`
+       hint recolours it; auto margins centre a narrower `width` hint. */
+    hr { height: auto; margin: 0.5em auto; background: none; color: gray; border-style: inset;
+         border-width: 1px; border-color: currentColor }
     table { margin: 0; border-spacing: 2px }
     /* HTML §15.3.9: row groups center cells unless authored alignment wins. */
     thead, tbody, tfoot, table > tr { vertical-align: middle }
@@ -138,6 +142,10 @@ pub const BROWSER_CSS: &str = r#"
        to the used size (`widget-percentage-height-001`). */
     select, input[type="checkbox" i], input[type="radio" i] { box-sizing: border-box }
     canvas { background: none; border: none }
+    /* HTML §15.5.4: the first summary is the disclosure widget's list item. */
+    details > summary:first-of-type { display: list-item; counter-increment: list-item 0;
+                                      list-style: disclosure-closed inside }
+    details[open] > summary:first-of-type { list-style-type: disclosure-open }
     mark { background: yellow; color: black }
     textarea { background: white; color: black; white-space: pre-wrap;
                overflow-wrap: break-word; border: 1px solid #767676;

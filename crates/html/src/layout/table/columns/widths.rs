@@ -49,6 +49,22 @@ pub(crate) fn push_col_bands(
     }
 }
 
+/// Used absolute width of one `<col>` (CSS 2.1 §10.4 over `px` lengths only).
+pub(crate) fn definite_col_px(el: &Element) -> Option<f32> {
+    let px = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => Some(v),
+        _ => None,
+    };
+    let w = match (px(el.style.width), px(el.style.max_width)) {
+        (Some(v), Some(mx)) => Some(v.min(mx)),
+        (v, _) => v,
+    };
+    match px(el.style.min_width) {
+        Some(mn) => Some(w.map_or(mn, |v| v.max(mn))),
+        None => w,
+    }
+}
+
 pub(crate) fn col_element_widths(
     children: &[Node],
     base_font: f32,
