@@ -90,7 +90,9 @@ impl Element for AnchorPlace {
         let own = geometry::logical_own(*state, bounds, window);
         let (k, p) = self.choose(own, window);
         let plan = &self.plans[k];
-        if plan.area.is_some() {
+        // IMCB нужен и клетке `position-area`, и паре вставок с `anchor()`
+        // при `auto`-размере (`resolve::fill_anchor_pairs`).
+        {
             AREA_NOW.with(|m| m.borrow_mut().insert(self.key, p.imcb));
             CELL_NOW.with(|m| m.borrow_mut().insert(self.key, p.cell));
             let stale = AREA_LAST.with(|m| m.borrow().get(&self.key) != Some(&p.imcb))

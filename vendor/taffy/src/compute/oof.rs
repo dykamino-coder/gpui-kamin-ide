@@ -749,13 +749,7 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
             &mut known_dimensions,
             size_style,
             area_size,
-            Rect {
-                left,
-                right,
-                top,
-                bottom,
-            },
-            margin,
+            stretch_fit_size,
             SizingMode::ContentSize,
         );
         known_dimensions = known_dimensions

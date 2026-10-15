@@ -147,6 +147,7 @@ pub fn overlays(pieces: Vec<Piece>) -> Vec<(usize, AnyElement, OverlayAt)> {
     let mut out = Vec::new();
     // Метки краёв строчных содержащих блоков: `id -> (начало, конец)`.
     let mut marks: Vec<(u32, usize, usize)> = Vec::new();
+    let mut boxes: Vec<(u32, usize)> = Vec::new();
     for p in pieces {
         match p {
             Piece::Text { text, .. } => at += text.len(),
@@ -168,6 +169,30 @@ pub fn overlays(pieces: Vec<Piece>) -> Vec<(usize, AnyElement, OverlayAt)> {
             ) => {
                 if let Some(m) = marks.iter_mut().find(|m| m.0 == id) {
                     m.2 = at;
+                }
+            }
+            Piece::Overlay(
+                _,
+                OverlayAt {
+                    box_marker: Some((id, true)),
+                    ..
+                },
+            ) => boxes.push((id, at)),
+            // Конец строчной коробки-якоря: кусок-носитель её краёв
+            // (`inline_box::carrier`) со сдвигом, накопленным меткой.
+            Piece::Overlay(
+                _,
+                how @ OverlayAt {
+                    box_marker: Some((id, false)),
+                    ..
+                },
+            ) => {
+                if let Some(&(_, s)) = boxes.iter().find(|b| b.0 == id) {
+                    let mut c = crate::text::inline::inline_box::carrier(id, at, s, at);
+                    if let Some(b) = c.2.inline_box.as_mut() {
+                        b.shift = (how.rot_dx, how.rot_dy);
+                    }
+                    out.push(c);
                 }
             }
             Piece::Overlay(el, how) => out.push((at, el, how)),
