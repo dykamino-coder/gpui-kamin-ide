@@ -3,6 +3,7 @@
 mod area;
 pub(super) use area::group_area;
 
+mod content;
 mod contour;
 mod fills;
 mod masks;
@@ -112,11 +113,13 @@ pub(super) fn paint_body(
     } else {
         polygon
     };
+    let contour_box = crate::paint::effects::corner_clip::mask_box(group, _prepaint.1);
+    let mask_prepaint = (_prepaint.0, contour_box);
     let mask = contour_mask
         .as_deref()
         .or(group.mask.as_deref().filter(|_| own_mask))
         .or(poly_mask.as_deref())
-        .and_then(|src| resolve_mask(src, group, bounds, _prepaint, window, sl, st, sr, sb));
+        .and_then(|src| resolve_mask(src, group, bounds, &mask_prepaint, window, sl, st, sr, sb));
     // Коробка окраски (`mask-clip`): вне её маска не красится — элемент
     // там скрыт (mask-size-contain-clip-padding).
     let mask_clip = polygon_clip::intersect(
@@ -177,36 +180,16 @@ pub(super) fn paint_body(
         }
         _ => (area, gpui::Corners::default()),
     };
-    let child = group.child.as_mut().unwrap();
-    window.paint_group(
+    content::paint(
+        group,
+        _prepaint.1,
+        cx,
         area,
         corners,
-        group.blur,
-        group.opacity,
-        group.blend,
         &polygon,
         mask,
         mask_clip,
-        |window| {
-            child.paint(window, cx);
-            if let Some((spec, colour, [t, r, b, l])) = &group.ring_over {
-                let border_box = _prepaint.1;
-                let content = Bounds {
-                    origin: gpui::point(border_box.origin.x + px(*l), border_box.origin.y + px(*t)),
-                    size: gpui::size(
-                        border_box.size.width - px(l + r),
-                        border_box.size.height - px(t + b),
-                    ),
-                };
-                // Непрозрачное кольцо повторно кладётся на всю рамку без
-                // изменений (и закрывает вылезшее за content-box
-                // содержимое); полупрозрачное — только в content-box.
-                let content = if colour.a >= 1.0 { border_box } else { content };
-                window.with_content_mask(Some(gpui::ContentMask { bounds: content }), |w| {
-                    crate::paint::decorations::shaped_ring::paint(spec, *colour, border_box, w)
-                });
-            }
-        },
+        window,
     );
     // Накладка (кольцо `border-shape` над обрезанным содержимым) — после
     // композита, в тот же контекст.

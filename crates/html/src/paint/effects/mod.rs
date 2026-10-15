@@ -2,6 +2,7 @@
 // owner: A
 
 pub(crate) mod containment_paint;
+pub(crate) mod corner_clip;
 pub mod filter;
 pub mod grouped;
 pub mod grouped_element;

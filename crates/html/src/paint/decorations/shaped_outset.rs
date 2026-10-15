@@ -43,7 +43,7 @@ pub(crate) fn shapes_outline(c: &Computed) -> bool {
 }
 
 /// Запись `d` пути со сдвигом на (dx, dy).
-fn moved(p: &Path, dx: f32, dy: f32) -> String {
+pub(crate) fn moved(p: &Path, dx: f32, dy: f32) -> String {
     let m = |(x, y): (f32, f32)| format!("{} {}", x + dx, y + dy);
     let mut d = format!("M{}", m(p.start));
     for s in &p.segs {

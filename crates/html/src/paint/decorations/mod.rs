@@ -27,6 +27,9 @@ pub(crate) mod text_shadows;
 /// Все — абсолютные и вне потока, поэтому на раскладку не влияют и могут
 /// идти первыми детьми.
 pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
+    if crate::paint::effects::corner_clip::insets(c).is_some() {
+        return Vec::new();
+    }
     let mut out: Vec<AnyElement> = vec![];
 
     outer_shadows(c, &mut out);

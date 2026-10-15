@@ -212,5 +212,9 @@ pub(crate) fn grouped_wrapper(
         _ => [0.0; 4],
     };
     wrapper.ring_over = ring_over;
+    wrapper.corner_clip = crate::paint::effects::corner_clip::new(c, wrapper.mask.as_deref());
+    if wrapper.corner_clip.is_some() {
+        wrapper.opacity = c.opacity.unwrap_or(1.0);
+    }
     wrapper.into_any_element()
 }

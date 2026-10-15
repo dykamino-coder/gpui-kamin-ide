@@ -40,6 +40,8 @@ pub struct Grouped {
     /// размер коробки (mask-size auto без своего размера = область,
     /// css-masking §7.4), а он известен только здесь.
     pub mask: Option<String>,
+    /// Separate decoration and overflow contours for shaped corners.
+    pub(crate) corner_clip: Option<super::corner_clip::CornerClip>,
     /// `mask-size`: размер плитки; None — auto (интринзик картинки).
     pub mask_size: Option<(
         crate::style::values::value::Len,
@@ -144,6 +146,7 @@ impl Grouped {
             polygon_evenodd: false,
             poly_expand: [0.0; 4],
             mask: None,
+            corner_clip: None,
             mask_size: None,
             mask_fit: 0,
             mask_no_repeat: (false, false),

@@ -121,7 +121,8 @@ pub(super) fn box_overflow(mut d: Div, c: &Computed) -> Div {
     // (`render::grouped`), а не прямоугольник padding-box: тот срезал бы и
     // кольцо рамки (абсолютный слой с выносом), и углы фигуры шире него
     // (border-shape-overflow-child-clip, -replaced-img/-iframe).
-    let shaped = c.border_shape.is_some();
+    let shaped =
+        c.border_shape.is_some() || crate::paint::effects::corner_clip::insets(c).is_some();
     if !shaped && (c.overflow_x == Some(Overflow::Hidden) || c.overflow_x == Some(Overflow::Scroll))
     {
         d = d.overflow_x_hidden();
