@@ -105,3 +105,29 @@ fn opposite_scoops_are_scaled_apart() {
     assert!(c.radii[0].0 < 80.0 && c.radii[0].0 > 40.0, "{:?}", c.radii);
     assert_eq!(boxed(-1.0, 25.0).constrained().radii, [(25.0, 25.0); 4]);
 }
+
+#[test]
+fn bevel_spread_offsets_edges_and_mitres_to_rect() {
+    // corner-shape-box-shadow-spread-bevel-ref: 80x80, 8px/30px, spread 15.
+    let s = Shaped {
+        rect: (0.0, 0.0, 80.0, 80.0),
+        radii: [(8.0, 30.0); 4],
+        k: [0.0; 4],
+    };
+    let p = offset(&s, [-15.0; 4]).polygon().unwrap();
+    assert_eq!(p.len(), 16, "{p:?}");
+    for q in [
+        (83.524, -15.0),
+        (86.494, -3.865),
+        (94.494, 26.135),
+        (95.0, 28.034),
+    ] {
+        assert!(p.iter().any(|v| near(*v, q)), "{q:?} in {p:?}");
+    }
+    // Сдвиг внутрь — внутренний контур рамки той же толщины.
+    let Inner::Polygon(i) = inner(&s, [5.0; 4]) else {
+        panic!("curved")
+    };
+    let o = offset(&s, [5.0; 4]).polygon().unwrap();
+    assert_eq!(i.len(), o.len());
+}

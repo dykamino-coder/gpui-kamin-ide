@@ -37,6 +37,24 @@ fn shaped(args: &str, bw: f32, bh: f32) -> Option<(Shaped, Rrect)> {
     ))
 }
 
+/// Контур коробки bw×bh, сдвинутый внутрь на t/r/b/l (отрицательные —
+/// наружу): форма тени с разлётом и контура `outline` (css-borders-4
+/// §corner-shaping). Углы только круглые — None (их ведёт скругление).
+pub fn contour_offset(args: &str, bw: f32, bh: f32, insets: [f32; 4]) -> Option<contour::Path> {
+    let r = parse_rrect(args, bw, bh, 1.0)?;
+    let shaped = r
+        .corners
+        .iter()
+        .zip(r.k)
+        .any(|(&(rx, ry), k)| rx > 0.0 && ry > 0.0 && (k - 1.0).abs() > 1e-3);
+    let s = Shaped {
+        rect: (0.0, 0.0, bw, bh),
+        radii: r.corners,
+        k: r.k,
+    };
+    shaped.then(|| contour::offset(&s.constrained(), insets))
+}
+
 /// Внешний контур коробки bw×bh в CSS-точках от её угла.
 pub fn contour_outline(args: &str, bw: f32, bh: f32) -> Option<contour::Path> {
     shaped(args, bw, bh).map(|(s, _)| contour::outer(&s))

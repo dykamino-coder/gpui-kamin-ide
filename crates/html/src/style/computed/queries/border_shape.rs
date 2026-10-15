@@ -142,8 +142,14 @@ impl Computed {
     /// иначе чёрный (как у `render::decorations`); `outline-offset: inset` —
     /// минус толщина. Шрифтовые единицы — своим кеглем.
     pub fn shaped_outline(&self) -> Option<(f32, f32, Color)> {
-        let o = self.outline.as_ref()?;
         self.border_shape.as_ref()?;
+        self.contour_outline_params()
+    }
+
+    /// Толщина, сдвиг и цвет сплошного/`auto`/`double` контура по форме
+    /// (`border-shape` либо `corner-shape`).
+    pub fn contour_outline_params(&self) -> Option<(f32, f32, Color)> {
+        let o = self.outline.as_ref()?;
         if !matches!(o.style, Some(1) | Some(2) | Some(OUTLINE_DOUBLE)) {
             return None;
         }

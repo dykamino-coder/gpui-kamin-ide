@@ -136,6 +136,17 @@ pub(crate) fn grouped_wrapper(
             )
         }));
     }
+    // Резкие тени и контур `corner-shape` — по раздвинутому контуру
+    // (css-borders-4 §corner-shaping), подложкой и накладкой группы.
+    {
+        use crate::paint::decorations::shaped_outset as so;
+        if let Some(layer) = so::shadow_layer(c) {
+            wrapper.under = Some(layer);
+        }
+        wrapper.under_fills = so::shadow_fills(c);
+        wrapper.over_fills = so::outline_layer(c);
+        wrapper.deco_ext = so::reach(c);
+    }
     super::apply_mask_style(&mut wrapper, c);
     // Коробки маски (css-masking §7.10-7.11): сдвиги краёв от border-box
     // внутрь — рамка (padding-box) либо рамка+отступ (content-box).
