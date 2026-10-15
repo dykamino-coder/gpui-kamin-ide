@@ -169,8 +169,11 @@ fn mask_layer_source(layer: &str) -> Option<String> {
 
 /// Содержимое `<mask id>`/`<clipPath id>` из ВНЕШНЕГО файла рисунка
 /// (`mask-image: url(file.svg#id)`): грубый текстовый вырез — дерево
-/// документа рисунка нам нигде больше не нужно.
-fn svg_fragment(path: &str, id: &str) -> Option<String> {
+/// документа рисунка нам нигде больше не нужно. Второе — маскирует ли
+/// определение АЛЬФОЙ: `<clipPath>` режет покрытием, `<mask>` — по своему
+/// `mask-type` (css-masking-1 §7.2 `match-source`, светимость по умолчанию;
+/// `mask-image-1c`: `mask-type="alpha"` у чёрных прямоугольников).
+fn svg_fragment(path: &str, id: &str) -> Option<(String, bool)> {
     let markup = std::fs::read_to_string(path).ok()?;
     for tag in ["mask", "clipPath"] {
         let mut rest = markup.as_str();
@@ -180,7 +183,12 @@ fn svg_fragment(path: &str, id: &str) -> Option<String> {
             let close = format!("</{tag}>");
             let body_end = rest[head_end..].find(&close)? + head_end;
             if head.contains(&format!("id=\"{id}\"")) || head.contains(&format!("id='{id}'")) {
-                return Some(rest[head_end + 1..body_end].to_string());
+                let squeezed: String = head.chars().filter(|c| !c.is_whitespace()).collect();
+                let alpha = tag == "clipPath"
+                    || squeezed.contains("mask-type=\"alpha\"")
+                    || squeezed.contains("mask-type='alpha'")
+                    || squeezed.contains("mask-type:alpha");
+                return Some((rest[head_end + 1..body_end].to_string(), alpha));
             }
             rest = &rest[body_end + close.len()..];
         }

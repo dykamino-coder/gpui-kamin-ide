@@ -3,6 +3,7 @@
 
 pub(crate) mod containment_paint;
 pub mod filter;
+mod filter_region;
 pub mod grouped;
 pub mod grouped_element;
 mod legacy_clip;
