@@ -157,7 +157,7 @@ pub(super) fn grid_runs_on(
                 .map(|(j, &(lo, hi))| {
                     let slot = RuleSlot::new(j, gb.len(), reverse.1);
                     let mut breaks = false;
-                    let mut joins = false;
+                    let mut joins = rule.visibility != 3;
                     for side in sides.iter().flatten() {
                         let blocked_here = flipped
                             .iter()
@@ -167,7 +167,6 @@ pub(super) fn grid_runs_on(
                         }
                         if let Some(c) = cross
                             && !blocked_here
-                            && slot.value(&c.styles).unwrap_or(false)
                             && occupied(flipped, lo, hi, side.0, side.1, c.visibility)
                         {
                             joins = true;
@@ -199,3 +198,6 @@ pub(super) fn grid_runs_on(
         })
         .collect()
 }
+
+#[cfg(test)]
+mod junction_tests;

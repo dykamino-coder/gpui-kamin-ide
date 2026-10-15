@@ -112,9 +112,9 @@ pub(super) struct GapRun {
 
 impl GapRun {
     /// Конец отрезка: положение после отступа из пересекающего зазора к его
-    /// границе, ширина зазора (0 у края и у «висячего» конца без поперечной
-    /// линейки — так считает Blink `GetMaxInsetWidth`), есть ли стык и ширина
-    /// поперечной линейки.
+    /// границе, ширина зазора (0 у внешнего края), тип конца и ширина
+    /// поперечной линейки. У внутреннего cap процентный inset сохраняет
+    /// геометрическую ширину пересекающего зазора.
     pub(crate) fn edge(&self, pos: f32, is_start: bool) -> (f32, f32, bool, f32) {
         if is_start && (pos - self.r0).abs() <= GAP_EPS {
             return match self.start_edge {
@@ -134,12 +134,7 @@ impl GapRun {
             .find(|c| c.lo - GAP_EPS <= pos && pos <= c.hi + GAP_EPS)
         {
             let at = if is_start { c.hi } else { c.lo };
-            return (
-                at,
-                if c.joins { c.hi - c.lo } else { 0.0 },
-                c.joins,
-                c.cross_w,
-            );
+            return (at, c.hi - c.lo, c.joins, c.cross_w);
         }
         (pos, 0.0, false, 0.0)
     }
@@ -150,3 +145,6 @@ pub(super) fn uniq_sorted(mut v: Vec<f32>) -> Vec<f32> {
     v.dedup_by(|x, y| (*x - *y).abs() <= GAP_EPS);
     v
 }
+
+#[cfg(test)]
+mod endpoints_tests;
