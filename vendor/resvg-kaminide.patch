@@ -135,7 +135,7 @@ index 1c87e8a..56e2224 100644
 @@ -627,9 +627,11 @@ fn apply_drop_shadow(
          *p = color.premultiply().to_color_u8();
      }
- 
+
 -    match cs {
 -        usvg::filter::ColorInterpolation::SRGB => shadow_pixmap.into_srgb(),
 -        usvg::filter::ColorInterpolation::LinearRGB => shadow_pixmap.into_linear_rgb(),
@@ -145,7 +145,7 @@ index 1c87e8a..56e2224 100644
 +    if cs == usvg::filter::ColorInterpolation::LinearRGB {
 +        shadow_pixmap.into_linear_rgb();
      }
- 
+
      pixmap.draw_pixmap(
 # --- usvg (правка 5): diff vendor/usvg относительно upstream 77b12f49 ---
 diff --git a/src/parser/svgtree/cycles.rs b/src/parser/svgtree/cycles.rs
@@ -612,7 +612,7 @@ index cd902d1..5fa1f25 100644
 @@ -660,6 +660,10 @@ pub(crate) fn convert_element(node: SvgNode, state: &State, cache: &mut Cache, p
          return;
      }
- 
+
 +    if rendering_disabled(tag_name, node, state) {
 +        return;
 +    }
@@ -623,7 +623,7 @@ index cd902d1..5fa1f25 100644
 @@ -667,6 +671,28 @@ pub(crate) fn convert_element(node: SvgNode, state: &State, cache: &mut Cache, p
      }
  }
- 
+
 +/// KaminIDE: a basic shape or image whose geometry "disables rendering of the
 +/// element" (SVG 2 §10.2-10.6 zero `width`/`height`/`r`/`rx`/`ry`, §9.3 empty or
 +/// absent `d`, §10.7 empty `points`, §12.3 zero image size) is not rendered at
@@ -654,9 +654,9 @@ index 9589554..a14dfdc 100644
 --- a/src/parser/filter.rs
 +++ b/src/parser/filter.rs
 @@ -71,6 +71,24 @@ pub(crate) fn convert(
- 
+
              rect = rect.bbox_transform(object_bbox);
- 
+
 +            // KaminIDE: a filter function has no filter region (Filter Effects 1
 +            // §filter-functions), so the fixed -50%/200% box above cut off shadows
 +            // offset farther than half the object (`svg-shorthand-drop-shadow-001`).
