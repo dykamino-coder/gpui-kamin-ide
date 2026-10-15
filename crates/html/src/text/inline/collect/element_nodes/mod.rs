@@ -200,6 +200,7 @@ pub(super) fn collect_element(
     } else {
         kids
     };
+    let kids = crate::text::inline::inline_box::mark_inline_box(kids, e, &merged);
     out.extend(shift_overlays(
         kids,
         &e.style,

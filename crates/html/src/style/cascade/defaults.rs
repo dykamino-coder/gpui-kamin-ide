@@ -53,6 +53,12 @@ pub(super) fn inherited_property(key: &str) -> bool {
 
 pub(super) fn initial_value(key: &str) -> Option<&'static str> {
     Some(match key {
+        // css-position-3 §insets: начальное значение вставок — `auto`
+        // (`left: unset` в `@position-try` снимает вставку базы).
+        "top" | "right" | "bottom" | "left" | "inset" | "inset-block" | "inset-inline"
+        | "inset-block-start" | "inset-block-end" | "inset-inline-start" | "inset-inline-end" => {
+            "auto"
+        }
         "scroll-snap-type" | "scroll-snap-align" => "none",
         "scroll-padding"
         | "scroll-padding-top"

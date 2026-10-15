@@ -75,6 +75,16 @@ pub(super) fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool
                     ..at
                 },
             ),
+            // Метка строчной коробки-якоря копит сдвиг в `rot_dx/rot_dy`:
+            // рамку считает абзац по месту меток (`spacers::overlays`).
+            Piece::Overlay(el, at) if at.box_marker.is_some() => Piece::Overlay(
+                el,
+                OverlayAt {
+                    rot_dx: at.rot_dx + dx,
+                    rot_dy: at.rot_dy + dy,
+                    ..at
+                },
+            ),
             Piece::Overlay(el, at) if rotated => Piece::Overlay(
                 el,
                 OverlayAt {
