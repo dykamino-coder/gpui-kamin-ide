@@ -60,13 +60,14 @@ impl AnchorPlan {
         } else {
             self.cb_flipped.1
         };
+        let lim = self.overflow_limit(x, cs, ce);
         let pos = settle_axis(
             pos,
             mbox,
             is,
             ie,
-            cs,
-            ce,
+            lim.0,
+            lim.1,
             shift_in,
             start_bias,
             safe,
@@ -141,13 +142,14 @@ impl AnchorPlan {
                 } else {
                     self.cb_flipped.1
                 };
+                let lim = self.overflow_limit(x, cs, ce);
                 settle_axis(
                     (as_ + ae - mbox) / 2.0,
                     mbox,
                     is,
                     ie,
-                    cs,
-                    ce,
+                    lim.0,
+                    lim.1,
                     true,
                     start_bias,
                     safe,
