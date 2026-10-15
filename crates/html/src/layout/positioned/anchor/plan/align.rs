@@ -106,4 +106,27 @@ impl AnchorPlan {
         }
         CB.with(|m| m.borrow().get(&self.cb_node).copied())
     }
+
+    /// Предел переполнения по оси — края, за которые коробку не выпускает
+    /// умолчальное выравнивание при переполнении (css-align-3
+    /// §auto-safety-position). Начальный содержащий блок лежит в
+    /// прокручиваемом окне: в сторону, куда окно прокручивается (низ; правый
+    /// край при ltr, левый при rtl и `vertical-rl`), переполнение остаётся
+    /// досягаемым и предела нет (Blink `out_of_flow_layout_part.cc`
+    /// `CalculateScrollDirection` и `overflow_limit_insets` = «бесконечность»
+    /// по прокручиваемым сторонам). `fixed` вклада в прокрутку не даёт —
+    /// пределы его края.
+    pub(super) fn overflow_limit(&self, x: bool, cs: f32, ce: f32) -> (f32, f32) {
+        if self.fixed || self.cb_node != 0 {
+            return (cs, ce);
+        }
+        if !x {
+            return (cs, f32::INFINITY);
+        }
+        if self.cb_flipped.0 {
+            (f32::NEG_INFINITY, ce)
+        } else {
+            (cs, f32::INFINITY)
+        }
+    }
 }
