@@ -43,3 +43,29 @@ pub(super) fn transform(
         .rotate(Radians(-std::f32::consts::FRAC_PI_2))
         .translate(point(dev(center.x) * -1.0, dev(center.y) * -1.0))
 }
+
+/// `X = cur⁻¹ · CU · cur`: the box above is laid out in the coordinates
+/// already mapped by the enclosing vertical line (`cur`, pushed first).
+/// GPUI nests `with_transformation` as `outer · inner` (css-transforms-1
+/// §transform-rendering: the parent's matrix applies last), so the quarter
+/// turn is conjugated into the line's local space; without an enclosing
+/// transform (`cur` = unit) the matrix is returned untouched.
+pub(super) fn in_local_space(
+    cu: TransformationMatrix,
+    cur: TransformationMatrix,
+) -> TransformationMatrix {
+    if cur == TransformationMatrix::unit() {
+        return cu;
+    }
+    let [[a, b], [c, d]] = cur.rotation_scale;
+    let det = a * d - b * c;
+    if det.abs() < 1e-12 {
+        return cu;
+    }
+    let [tx, ty] = cur.translation;
+    let inv = TransformationMatrix {
+        rotation_scale: [[d / det, -b / det], [-c / det, a / det]],
+        translation: [(b * ty - d * tx) / det, (c * tx - a * ty) / det],
+    };
+    inv.compose(cu).compose(cur)
+}

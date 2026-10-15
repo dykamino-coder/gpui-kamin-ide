@@ -129,7 +129,13 @@ impl Paragraph {
 }
 
 impl Paragraph {
-    /// Чем показывать перенос слова.
+    /// Maximum consecutive lines ending in hyphenation.
+    pub fn hyphen_limit_lines(mut self, limit: Option<usize>) -> Self {
+        self.hyphen_limit_lines = limit.unwrap_or(usize::MAX);
+        self
+    }
+
+    /// Visible mark used at a hyphenation break.
     pub fn hyphen_char(mut self, mark: Option<String>) -> Self {
         if let Some(mark) = mark {
             self.hyphen = SharedString::from(mark);
