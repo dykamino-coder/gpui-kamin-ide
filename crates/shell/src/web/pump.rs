@@ -16,20 +16,27 @@ pub fn start_pump(cx: &mut gpui::App) {
             // Съедаем всё накопившееся: заказ перерисовки нужен ОДИН на кадр,
             // а вью восемь и каждый шлёт свои кадры.
             while wake_rx.try_recv().is_ok() {}
-            super::take_repaint_request();
+            // Кадр окна — только если его заказали (`repaint_requested`).
+            // Доставка сообщений страницам будит насос ради pull'ов и кадра
+            // не заказывает (`wake_pump`, BR-31); раньше флаг читался и
+            // отбрасывался, и каждая такая побудка перерисовывала всё окно:
+            // во время ответов Claude — сотни побудок в секунду (INC-2026-0001).
+            let repaint = super::take_repaint_request();
             // Вытесненные текстуры освобождаем ЗДЕСЬ, между кадрами: внутри
             // отрисовки атлас трогать нельзя.
             cx.update(super::flush_retired);
-            super::diag::refresh();
             // ТОЧЕЧНО, а не `cx.refresh()`. Тот ставит `window.refreshing` и
             // ОТКЛЮЧАЕТ кэш всех вью на кадр (`vendor/gpui/src/view.rs:212`,
             // `window.rs:1386`) — замер показывал «переиграно вью 0» при
             // полностью размеченных компонентах. `notify` помечает грязным
             // только корень, а кэшированные панели переигрываются.
-            if let Some(root) = repaint_target()
-                && root.update(cx, |_, cx| cx.notify()).is_err()
-            {
-                return;
+            if repaint {
+                super::diag::refresh();
+                if let Some(root) = repaint_target()
+                    && root.update(cx, |_, cx| cx.notify()).is_err()
+                {
+                    return;
+                }
             }
             // НЕ ЧАЩЕ ПОЛОВИНЫ КАДРА ДИСПЛЕЯ. Windows отдаёт `WM_PAINT` только когда
             // очередь сообщений окна пуста. Заказывая перерисовку на каждый
