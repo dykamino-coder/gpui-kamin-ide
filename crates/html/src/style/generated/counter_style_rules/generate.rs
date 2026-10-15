@@ -3,15 +3,17 @@
 use super::*;
 
 /// Начальное представление по системе (§cyclic … §additive).
-fn initial(algo: &Algo, v: i64) -> Option<String> {
+fn initial(algo: &Algo, v: i128) -> Option<String> {
     match algo {
         Algo::Builtin(name) => builtin_initial(name, u64::try_from(v).ok()?),
         Algo::Own(sys, syms, add) => {
-            let n = syms.len() as i64;
+            let n = syms.len() as i128;
             match sys {
-                System::Cyclic => Some(syms[(v - 1).rem_euclid(n) as usize].clone()),
+                System::Cyclic => {
+                    Some(syms[(v.rem_euclid(n) + n - 1).rem_euclid(n) as usize].clone())
+                }
                 System::Fixed(first) => {
-                    let i = v.checked_sub(*first)?;
+                    let i = v.checked_sub(i128::from(*first))?;
                     (0..n).contains(&i).then(|| syms[i as usize].clone())
                 }
                 System::Symbolic => {
@@ -88,7 +90,6 @@ fn graphemes(s: &str) -> usize {
 /// §counter-style-generate для стиля `name` (уже нормализованного).
 fn generate(rules: &HashMap<String, Raw>, v: i64, name: &str, depth: usize) -> String {
     let Some(r) = (depth < 16).then(|| resolve(rules, name, 0)).flatten() else {
-        let v = v.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
         return if depth < 16 {
             builtin_repr(v, name)
         } else {
@@ -107,7 +108,7 @@ fn generate(rules: &HashMap<String, Raw>, v: i64, name: &str, depth: usize) -> S
         return fallback(rules);
     }
     let neg = v < 0 && uses_negative(&r.algo);
-    let Some(mut body) = initial(&r.algo, if neg { v.saturating_neg() } else { v }) else {
+    let Some(mut body) = initial(&r.algo, if neg { -i128::from(v) } else { i128::from(v) }) else {
         return fallback(rules);
     };
     if let Some((width, sym)) = &r.pad {
@@ -197,3 +198,7 @@ pub fn custom_marker(v: i64, name: &str) -> Option<String> {
     let body = generate(rules, v, name, 0);
     Some(format!("{}{body}{}", r.prefix, r.suffix))
 }
+
+#[cfg(test)]
+#[path = "generate_tests.rs"]
+mod tests;

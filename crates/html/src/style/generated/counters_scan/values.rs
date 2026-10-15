@@ -1,12 +1,12 @@
 //! Read counter directive values with the property-specific default integer.
 
 /// Value for this name, using the property-specific implicit integer.
-pub(super) fn decl_value(decl: &Option<String>, name: &str, default: i32) -> Option<i32> {
+pub(super) fn decl_value(decl: &Option<String>, name: &str, default: i64) -> Option<i64> {
     let text = decl.as_deref()?;
     let mut it = text.split_whitespace().peekable();
     let mut found = None;
     while let Some(word) = it.next() {
-        let value = match it.peek().and_then(|n| n.parse::<i32>().ok()) {
+        let value = match it.peek().and_then(|n| n.parse::<i64>().ok()) {
             Some(v) => {
                 it.next();
                 v

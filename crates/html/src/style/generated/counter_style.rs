@@ -1,30 +1,10 @@
-//! ★ ЗАМЕР 05.09 (+0/−3) БЫЛ ЛОЖНЫМ: эталоны семьи `css3-counter-styles-*`
-//! рисовались ПУСТЫМИ (не-`li` дети `<ol>` выбрасывались в `render.rs::list`),
-//! и таблицы знаков было не с чем сравнивать. После починки эталона (06.09)
-//! те же таблицы дали +48/−11 на срезе 501 пары — см. `scout-counterstyles-
-//! 2026-09.md`. Все 11 потерь были позиционными CJK; их закрывает
-//! `cjk_positional` ниже (`scout-counterstyles-2026-09b.md`).
-//!
-//! ★ ДИАПАЗОНЫ ВЗЯТЫ ОБЯЗАТЕЛЬНЫЕ, А НЕ РАСШИРЕННЫЕ. Восточноазиатские —
-//! −9999..9999 (css-counter-styles-3 §6.4 «Limited-range Implementation
-//! (required)»), иврит — 1..10999 (§hebrew). Необязательное расширение
-//! (§extended-range-optional до 10^16, иврит до 999999, как в Blink)
-//! ПРОВАЛИВАЕТ эталоны `css3-counter-styles-044/049/054/059/064/073/078/
-//! 083/088/016a`, которые ждут именно резерва; расширенные эталоны лежат
-//! рядом в НЕиспользуемых базой `*-alt-ref.html`. Второе препятствие:
-//! значение счётчика в крейте — `i32` (`counters.rs`), а расширенные тесты
-//! набирают 10^12..10^16.
-//! Представление счётчика знаками: `counter(n, lower-roman)`, маркеры
-//! списков, `counters()`.
-//!
-//! Одна таблица на весь крейт: маркеры списка и генерируемое содержимое
-//! обязаны совпадать знак в знак — раньше римские цифры жили отдельной
-//! копией в отрисовке списков, и `content: counter(c, lower-roman)`
-//! получить их не мог вовсе.
+//! CSS Counter Styles 3: shared representations for counters and list markers.
+//! CJK styles implement the extended range of section 7.1.5.
 
 mod additive_tables;
 mod builtin;
 mod cjk;
+mod cjk_data;
 mod numeric;
 use additive_tables::{ARMENIAN, GEORGIAN, HEBREW, ethiopic};
 pub(super) use builtin::{builtin, builtin_initial, normalize_name};
@@ -33,6 +13,7 @@ pub use numeric::roman;
 use numeric::{
     CJK_DIGITS, EARTHLY_BRANCH, HEAVENLY_STEM, HIRAGANA, HIRAGANA_IROHA, KATAKANA, KATAKANA_IROHA,
     NUMERIC_ZERO, additive, additive_str, alphabetic, alphabetic_of, lower_greek, numeric,
+    numeric_unsigned,
 };
 
 /// Значение счётчика знаками названного стиля.
@@ -40,10 +21,9 @@ use numeric::{
 /// Незнакомый стиль — десятичный (css-counter-styles §counter-style-name:
 /// неизвестное имя ведёт себя как `decimal`). Стили с конечным диапазоном
 /// (римский, алфавитные) вне его тоже падают на десятичный.
-pub fn repr(value: i32, style: &str) -> String {
+pub fn repr(value: i64, style: &str) -> String {
     let style = &*normalize_name(style);
-    if let Some(s) = crate::style::generated::counter_style_rules::custom_repr(value as i64, style)
-    {
+    if let Some(s) = crate::style::generated::counter_style_rules::custom_repr(value, style) {
         return s;
     }
     builtin_repr(value, style)
@@ -51,7 +31,7 @@ pub fn repr(value: i32, style: &str) -> String {
 
 /// Предопределённый стиль (или десятичный для незнакомого имени) без учёта
 /// правил `@counter-style` документа.
-pub(super) fn builtin_repr(value: i32, style: &str) -> String {
+pub(super) fn builtin_repr(value: i64, style: &str) -> String {
     let positive = usize::try_from(value).ok().filter(|n| *n > 0);
     match style {
         "none" => String::new(),
@@ -137,10 +117,7 @@ pub(super) fn builtin_repr(value: i32, style: &str) -> String {
         "georgian" => positive
             .filter(|n| *n <= 19999)
             .map_or_else(|| value.to_string(), |n| additive(n, GEORGIAN)),
-        // Иврит — аддитив с диапазоном 1..10999 (§hebrew). Расширение до
-        // 999999, как в Blink, ПРОВАЛИВАЕТ `css3-counter-styles-016a`: её
-        // эталон ждёт на 11000 десятичный резерв (расширенный вариант лежит
-        // в неиспользуемом базой `-016a-alt-ref.html`).
+        // CSS Counter Styles 3 defines Hebrew as additive in 1..10999.
         "hebrew" => positive
             .filter(|n| *n <= 10999)
             .map_or_else(|| value.to_string(), |n| additive_str(n, HEBREW)),
@@ -195,14 +172,12 @@ pub fn suffix(style: &str) -> &'static str {
 
 /// Готовая строка маркера: представление и суффикс. У `counter()` суффикса
 /// нет по спеке, поэтому он живёт отдельной функцией, а не в `repr`.
-pub fn marker_repr(value: i32, style: &str) -> String {
+pub fn marker_repr(value: i64, style: &str) -> String {
     if style == "none" {
         return String::new();
     }
     let style = &*normalize_name(style);
-    if let Some(s) =
-        crate::style::generated::counter_style_rules::custom_marker(value as i64, style)
-    {
+    if let Some(s) = crate::style::generated::counter_style_rules::custom_marker(value, style) {
         return s;
     }
     let body = repr(value, style);
@@ -211,3 +186,6 @@ pub fn marker_repr(value: i32, style: &str) -> String {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod extended_tests;

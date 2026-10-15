@@ -73,7 +73,7 @@ pub enum Node {
 #[derive(Clone, Debug)]
 pub struct Element {
     /// Номер пункта списка из счётчика `list-item`; `None` — не пункт.
-    pub list_item: Option<i32>,
+    pub list_item: Option<i64>,
     /// Устойчивый номер узла в документе.
     ///
     /// Нужен анимации: GPUI хранит её состояние по идентификатору элемента, а

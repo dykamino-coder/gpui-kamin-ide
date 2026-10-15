@@ -24,7 +24,7 @@ struct Scan<'a> {
     vars: &'a Decls,
     name: &'a str,
     num: i64,
-    last: i32,
+    last: i64,
     done: bool,
     scope_depth: usize,
 }
@@ -114,7 +114,7 @@ impl Scan<'_> {
             return;
         }
         let neg = match decl_value(&style.counter_increment, self.name, 1) {
-            Some(v) => -v,
+            Some(v) => v.saturating_neg(),
             // Неявный шаг пункта у обратного счётчика равен −1, значит его
             // отрицание — плюс единица.
             None if self.name == "list-item" && is_item => 1,
@@ -124,11 +124,11 @@ impl Scan<'_> {
             self.last = neg;
         }
         if let Some(set) = decl_value(&style.counter_set, self.name, 0) {
-            self.num += i64::from(set);
+            self.num = self.num.saturating_add(set);
             self.done = true;
             return;
         }
-        self.num += i64::from(neg);
+        self.num = self.num.saturating_add(neg);
     }
 
     fn node(&mut self, h: &Handle, me: &Ancestor, path: &[Ancestor], sibs: Sibs, root: bool) {
@@ -214,7 +214,7 @@ pub(crate) fn reversed_initial(
     level: &[Handle],
     spots: &[Spot],
     pos: usize,
-) -> i32 {
+) -> i64 {
     let mut scan = Scan {
         rules,
         vars,
@@ -243,5 +243,5 @@ pub(crate) fn reversed_initial(
             }
         }
     }
-    (scan.num + i64::from(scan.last)).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+    scan.num.saturating_add(scan.last)
 }
