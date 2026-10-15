@@ -74,7 +74,7 @@ pub(crate) fn measure_rows(
             row_solids,
             row_forced(row, false),
             row_forced(row, true),
-            0.0,
+            Default::default(),
         ));
         avoid.push((
             row.items.iter().any(|i| edge_avoid(&i.element, false)),
@@ -100,7 +100,7 @@ pub(crate) fn measure_rows(
         vec![false; n],
         vec![(false, false); n],
         vec![None; n],
-        0.0,
+        Default::default(),
         None,
         false,
     );
@@ -127,7 +127,7 @@ pub(crate) fn measure_rows(
         forced,
         solid,
         Some((y, 0.0, 0.0)),
-        0.0,
+        Default::default(),
         h,
         mt,
         mb,

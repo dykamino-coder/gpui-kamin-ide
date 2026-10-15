@@ -12,6 +12,7 @@ pub mod clone;
 pub mod flex_lines;
 pub mod grid_bands;
 pub mod line_shape;
+pub(crate) mod oof_reach;
 pub mod probe;
 pub mod push;
 pub mod shape_contents;
@@ -41,6 +42,8 @@ pub(crate) type Shape = (f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32
 #[derive(Clone, Copy)]
 pub(crate) struct ShapeCx {
     pub(crate) paged: bool,
+    /// Nested fragmentainers and cloned decorations retain their own model.
+    pub(crate) legacy_oof: bool,
     pub(crate) viewport: Option<(f32, f32)>,
     /// Презентационный `cellpadding` таблицы — отступ ЭТОЙ ячейки поверх
     /// умолчания `td { padding: 1px }` (как в `table()`); потомкам не
@@ -64,6 +67,7 @@ pub(crate) struct ShapeCx {
 impl ShapeCx {
     pub(crate) const COLUMNS: ShapeCx = ShapeCx {
         paged: false,
+        legacy_oof: false,
         viewport: None,
         cell_pad: None,
         unclamped: false,
