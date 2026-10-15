@@ -31,7 +31,8 @@ fn shaped(args: &str, bw: f32, bh: f32) -> Option<(Shaped, Rrect)> {
             rect: (0.0, 0.0, bw, bh),
             radii: r.corners,
             k: r.k,
-        },
+        }
+        .constrained(),
         r,
     ))
 }

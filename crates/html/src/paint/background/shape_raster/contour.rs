@@ -9,6 +9,7 @@
 
 mod aligned;
 mod corner;
+mod hull;
 #[cfg(test)]
 mod tests;
 
@@ -57,6 +58,16 @@ fn curvature(k: f32, r: P) -> f32 {
 }
 
 impl Shaped {
+    /// Радиусы, ужатые так, чтобы оболочки диагональных вогнутых углов не
+    /// пересекались (`opposite corner scale factor`).
+    pub fn constrained(mut self) -> Self {
+        let f = hull::opposite_corner_scale(&self.corners());
+        if f < 1.0 {
+            self.radii = self.radii.map(|(x, y)| (x * f, y * f));
+        }
+        self
+    }
+
     /// Углы в порядке обхода TR, BR, BL, TL.
     fn corners(&self) -> [Corner; 4] {
         let (x, y, w, h) = self.rect;

@@ -180,7 +180,26 @@ pub(super) fn paint_body(
         &polygon,
         mask,
         mask_clip,
-        |window| child.paint(window, cx),
+        |window| {
+            child.paint(window, cx);
+            if let Some((spec, colour, [t, r, b, l])) = &group.ring_over {
+                let border_box = _prepaint.1;
+                let content = Bounds {
+                    origin: gpui::point(border_box.origin.x + px(*l), border_box.origin.y + px(*t)),
+                    size: gpui::size(
+                        border_box.size.width - px(l + r),
+                        border_box.size.height - px(t + b),
+                    ),
+                };
+                // Непрозрачное кольцо повторно кладётся на всю рамку без
+                // изменений (и закрывает вылезшее за content-box
+                // содержимое); полупрозрачное — только в content-box.
+                let content = if colour.a >= 1.0 { border_box } else { content };
+                window.with_content_mask(Some(gpui::ContentMask { bounds: content }), |w| {
+                    crate::paint::decorations::shaped_ring::paint(spec, *colour, border_box, w)
+                });
+            }
+        },
     );
     // Накладка (кольцо `border-shape` над обрезанным содержимым) — после
     // композита, в тот же контекст.

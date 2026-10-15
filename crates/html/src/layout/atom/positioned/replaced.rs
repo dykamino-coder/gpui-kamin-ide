@@ -39,7 +39,7 @@ pub(super) fn replaced_abs_atom(
     let holder = styled_div_with(e, merged).child(built).into_any_element();
     // Shape the CSS box before moving it into a deferred positioned layer.
     let holder = if merged.corner_shaped() {
-        crate::paint::effects::grouped::grouped(holder, merged)
+        crate::paint::effects::grouped::grouped_replaced(holder, merged)
     } else {
         holder
     };

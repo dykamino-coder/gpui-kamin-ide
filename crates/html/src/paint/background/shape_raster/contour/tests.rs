@@ -93,3 +93,15 @@ fn mixed_corners_draw_only_the_scoop_as_curves() {
     assert_eq!(clips.len(), 3);
     assert_eq!(cubics(&clips[1].segs), 0);
 }
+
+#[test]
+fn opposite_scoops_are_scaled_apart() {
+    let s = Shaped {
+        rect: (0.0, 0.0, 100.0, 100.0),
+        radii: [(80.0, 80.0), (0.0, 0.0), (80.0, 80.0), (0.0, 0.0)],
+        k: [-1.0; 4],
+    };
+    let c = s.constrained();
+    assert!(c.radii[0].0 < 80.0 && c.radii[0].0 > 40.0, "{:?}", c.radii);
+    assert_eq!(boxed(-1.0, 25.0).constrained().radii, [(25.0, 25.0); 4]);
+}
