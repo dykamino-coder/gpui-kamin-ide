@@ -71,6 +71,24 @@ pub(crate) fn convert(
 
             rect = rect.bbox_transform(object_bbox);
 
+            // KaminIDE: a filter function has no filter region (Filter Effects 1
+            // §filter-functions), so the fixed -50%/200% box above cut off shadows
+            // offset farther than half the object (`svg-shorthand-drop-shadow-001`).
+            // Grow the region to the object box shifted by the shadow offset and
+            // outset by the blur reach (Blink `FEDropShadow::MapEffect`).
+            if let Kind::DropShadow(ref ds) = kind {
+                let (sx, sy) = (4.0 * ds.std_dev_x.get(), 4.0 * ds.std_dev_y.get());
+                let b = object_bbox;
+                if let Some(r) = NonZeroRect::from_ltrb(
+                    rect.left().min(b.left() + ds.dx - sx),
+                    rect.top().min(b.top() + ds.dy - sy),
+                    rect.right().max(b.right() + ds.dx + sx),
+                    rect.bottom().max(b.bottom() + ds.dy + sy),
+                ) {
+                    rect = r;
+                }
+            }
+
             filters.push(Arc::new(Filter {
                 id: cache.gen_filter_id(),
                 rect,
