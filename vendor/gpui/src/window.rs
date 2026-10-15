@@ -71,6 +71,8 @@ mod absolute_transformation;
 mod line_baselines;
 mod css_text_background;
 mod css_fill_transform;
+mod plane3d;
+pub use plane3d::PlaneSpec;
 pub use image_sampling::ImageSampling;
 
 pub use a11y::A11ySubtreeBuilder;
@@ -1223,6 +1225,8 @@ pub struct Window {
     /// рисуется её содержимое: маски детей переводятся ею в координаты окна
     /// (см. `with_content_mask`). None — маски как есть.
     mask_map: Option<TransformationMatrix>,
+    /// KaminIDE patch: open 3D rendering contexts (`paint_plane_context`).
+    pub(crate) plane_contexts: Vec<plane3d::PlaneContext>,
     pub(crate) element_opacity: f32,
     pub(crate) content_mask_stack: Vec<ContentMask<Pixels>>,
     pub(crate) requested_autoscroll: Option<Bounds<Pixels>>,
@@ -2165,6 +2169,7 @@ impl Window {
             transformation_stack: Vec::new(),
             mask_scale: None,
             mask_map: None,
+            plane_contexts: Vec::new(),
             content_mask_stack: Vec::new(),
             element_opacity: 1.0,
             requested_autoscroll: None,
@@ -5813,6 +5818,7 @@ impl Window {
             group: 0,
             opacity: 1.0,
             color_matrix: None,
+            fragment: 0,
         });
     }
     /// KaminIDE patch: backdrop surfaces have no transformation of their own
@@ -5875,6 +5881,7 @@ impl Window {
             group: 0,
             opacity,
             color_matrix: Some(color_matrix),
+            fragment: 0,
         };
         if hoist && self.next_frame.scene.in_group {
             self.next_frame.scene.hoisted_backdrops.push(surface);
@@ -5953,6 +5960,8 @@ impl Window {
             mask_bounds,
             mask_once,
             mask_clip,
+            projection: None,
+            fragments: Vec::new(),
         });
         // Поднятые подложки ложатся ПЕРЕД меткой группы: проход подложки
         // копирует кадр, уже нарисованный под элементом, а буфер группы
@@ -5973,6 +5982,7 @@ impl Window {
             group: index + 1,
             opacity,
             color_matrix: None,
+            fragment: 0,
         });
         result
     }

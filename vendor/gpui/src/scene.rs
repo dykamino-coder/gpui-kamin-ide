@@ -82,6 +82,13 @@ pub struct PaintGroup {
     pub mask_once: u32,
     /// Коробка окраски маски (`mask-clip`) в device px; вне её маска пуста.
     pub mask_clip: Option<[f32; 4]>,
+    /// KaminIDE patch: плоскость объёмного контекста (`Window::paint_plane`)
+    /// — обратная гомография 3×3 (по строкам) «точка кадра → точка буфера»;
+    /// композит берёт выборку буфера в H⁻¹·p (перспективно точно).
+    pub projection: Option<[f32; 9]>,
+    /// KaminIDE patch: куски плоскости после BSP-разреза — свой выпуклый
+    /// многоугольник на каждую метку (`PaintSurface::fragment`).
+    pub fragments: Vec<Vec<Point<ScaledPixels>>>,
 }
 
 #[derive(Default)]
@@ -1260,6 +1267,10 @@ pub struct PaintSurface {
     /// НЕумноженным RGBA (строки R, G, B, A: четыре множителя и сдвиг).
     #[cfg(not(target_os = "macos"))]
     pub color_matrix: Option<[f32; 20]>,
+    /// KaminIDE patch: кусок плоскости (`PaintGroup::fragments`) плюс
+    /// единица; 0 — обрезка многоугольником самой группы.
+    #[cfg(not(target_os = "macos"))]
+    pub fragment: u32,
 }
 
 impl From<PaintSurface> for Primitive {
