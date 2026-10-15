@@ -125,6 +125,14 @@ pub trait FlexboxItemStyle: CoreStyle {
             height: None,
         }
     }
+    /// Explicit intrinsic minima, independently measured by flex layout.
+    #[inline(always)]
+    fn min_size_keywords(&self) -> crate::geometry::Size<Option<crate::style::AvailableSpace>> {
+        crate::geometry::Size {
+            width: None,
+            height: None,
+        }
+    }
 }
 
 use crate::geometry::AbsoluteAxis;
