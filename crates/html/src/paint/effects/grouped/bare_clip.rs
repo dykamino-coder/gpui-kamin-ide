@@ -12,12 +12,10 @@ pub(crate) fn bare_clip(c: &Computed) -> (Option<[Len; 4]>, Option<Len>) {
             _ => 0.0,
         };
         let [t, r, bo, l] = match c.clip_ref {
-            Some(1) => [
-                -s(c.margin.top),
-                -s(c.margin.right),
-                -s(c.margin.bottom),
-                -s(c.margin.left),
-            ],
+            Some(1) => {
+                let m = c.own_margin.unwrap_or(c.margin);
+                [-s(m.top), -s(m.right), -s(m.bottom), -s(m.left)]
+            }
             Some(2) => [s(b.top), s(b.right), s(b.bottom), s(b.left)],
             Some(3) => [
                 s(b.top) + s(c.padding.top),

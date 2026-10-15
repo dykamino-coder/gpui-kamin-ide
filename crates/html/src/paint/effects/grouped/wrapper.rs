@@ -184,12 +184,10 @@ pub(crate) fn grouped_wrapper(
     };
     let b = c.borders();
     wrapper.poly_expand = match c.clip_ref {
-        Some(1) => [
-            side(c.margin.top),
-            side(c.margin.right),
-            side(c.margin.bottom),
-            side(c.margin.left),
-        ],
+        Some(1) => {
+            let m = c.own_margin.unwrap_or(c.margin);
+            [side(m.top), side(m.right), side(m.bottom), side(m.left)]
+        }
         Some(2) => [-side(b.top), -side(b.right), -side(b.bottom), -side(b.left)],
         Some(3) => [
             -(side(b.top) + side(c.padding.top)),
