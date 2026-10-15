@@ -968,6 +968,8 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// `max-content` (css-sizing-3 §3.2). `max_size` cannot hold these
     /// keywords; a flex container measures them for its items.
     pub item_max_size_keywords: Size<Option<AvailableSpace>>,
+    /// Explicit intrinsic min-width/min-height for flex items.
+    pub item_min_size_keywords: Size<Option<AvailableSpace>>,
     /// Is it a compressible replaced element that is not a replaced element (a form control with
     /// an intrinsic size)? <https://drafts.csswg.org/css-sizing-3/#compressible>
     pub item_is_compressible_replaced: bool,
@@ -1216,6 +1218,10 @@ impl<S: CheapCloneStr> Style<S> {
         item_is_table: false,
         item_is_replaced: false,
         item_max_size_keywords: Size {
+            width: None,
+            height: None,
+        },
+        item_min_size_keywords: Size {
             width: None,
             height: None,
         },
@@ -1892,6 +1898,11 @@ impl<S: CheapCloneStr> FlexboxItemStyle for Style<S> {
     fn max_size_keywords(&self) -> Size<Option<AvailableSpace>> {
         self.item_max_size_keywords
     }
+    /// Explicit intrinsic minima, independently measured by flex layout.
+    #[inline(always)]
+    fn min_size_keywords(&self) -> Size<Option<AvailableSpace>> {
+        self.item_min_size_keywords
+    }
 }
 
 #[cfg(feature = "flexbox")]
@@ -1923,6 +1934,11 @@ impl<T: FlexboxItemStyle> FlexboxItemStyle for &'_ T {
     #[inline(always)]
     fn max_size_keywords(&self) -> Size<Option<AvailableSpace>> {
         (*self).max_size_keywords()
+    }
+    /// Explicit intrinsic minima, independently measured by flex layout.
+    #[inline(always)]
+    fn min_size_keywords(&self) -> Size<Option<AvailableSpace>> {
+        (*self).min_size_keywords()
     }
 }
 
@@ -2244,6 +2260,10 @@ mod tests {
             item_is_table: false,
             item_is_replaced: false,
             item_max_size_keywords: Size {
+                width: None,
+                height: None,
+            },
+            item_min_size_keywords: Size {
                 width: None,
                 height: None,
             },

@@ -67,7 +67,7 @@ impl Paragraph {
             strut: (0.0, 0.0, 0.0),
             run_metrics: Vec::new(),
             edge_spans: Vec::new(),
-            ruby_trim: (false, false),
+            ruby_trim: Default::default(),
             emph_spans: Vec::new(),
             decor_spans: Vec::new(),
             decor_pending: Default::default(),
@@ -90,6 +90,7 @@ impl Paragraph {
             fit_line_height_fixed: false,
             tab_stop: tabs::TabStops::uniform(64.0),
             hyphen: SharedString::from("\u{2010}"),
+            hyphen_limit_lines: usize::MAX,
             hyphen_w: std::cell::RefCell::new(Vec::new()),
             overlays: Vec::new(),
         }

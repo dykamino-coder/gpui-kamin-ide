@@ -38,7 +38,10 @@ pub(crate) fn content_limit_swapped(e: &Element) -> Option<Element> {
     let Some(w @ Len::Px(_)) = c.width else {
         return None;
     };
-    if replaced_tag(e)
+    if (c.flex_item
+        && !matches!(c.min_width, Some(Len::FitContent))
+        && !matches!(c.max_width, Some(Len::FitContent)))
+        || replaced_tag(e)
         || e.tag == "table"
         || matches!(c.display, Some(Display::Table) | Some(Display::InlineTable))
     {

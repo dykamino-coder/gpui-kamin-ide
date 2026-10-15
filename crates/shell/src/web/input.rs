@@ -156,6 +156,7 @@ pub(crate) fn mouse_move(id: &str, x: f32, y: f32, mods: u32, leave: bool) {
 
 /// Колесо. Знак и величина — как у gpui, CEF ждёт «пиксели прокрутки».
 pub(crate) fn wheel(id: &str, x: f32, y: f32, dx: f32, dy: f32, mods: u32) {
+    super::frame_rhythm::input("input/wheel"); // прокрутка — кадры без ожидания слота
     let event = MouseEvent {
         x: x.round() as i32,
         y: y.round() as i32,
