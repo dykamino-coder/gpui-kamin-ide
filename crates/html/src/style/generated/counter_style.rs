@@ -5,6 +5,8 @@ mod additive_tables;
 mod builtin;
 mod cjk;
 mod cjk_data;
+mod context;
+pub use context::Context;
 mod numeric;
 use additive_tables::{ARMENIAN, GEORGIAN, HEBREW, ethiopic};
 pub(super) use builtin::{builtin, builtin_initial, normalize_name};
@@ -22,11 +24,23 @@ use numeric::{
 /// неизвестное имя ведёт себя как `decimal`). Стили с конечным диапазоном
 /// (римский, алфавитные) вне его тоже падают на десятичный.
 pub fn repr(value: i64, style: &str) -> String {
+    repr_in(value, style, Context::default())
+}
+
+pub(crate) fn repr_in(value: i64, style: &str, context: Context) -> String {
     let style = &*normalize_name(style);
-    if let Some(s) = crate::style::generated::counter_style_rules::custom_repr(value, style) {
+    if let Some(s) =
+        crate::style::generated::counter_style_rules::custom_repr(value, style, context)
+    {
         return s;
     }
-    builtin_repr(value, style)
+    builtin_repr_in(value, style, context)
+}
+
+pub(super) fn builtin_repr_in(value: i64, style: &str, context: Context) -> String {
+    context
+        .disclosure(style)
+        .map_or_else(|| builtin_repr(value, style), str::to_owned)
 }
 
 /// Предопределённый стиль (или десятичный для незнакомого имени) без учёта
@@ -172,15 +186,17 @@ pub fn suffix(style: &str) -> &'static str {
 
 /// Готовая строка маркера: представление и суффикс. У `counter()` суффикса
 /// нет по спеке, поэтому он живёт отдельной функцией, а не в `repr`.
-pub fn marker_repr(value: i64, style: &str) -> String {
+pub fn marker_repr(value: i64, style: &str, context: Context) -> String {
     if style == "none" {
         return String::new();
     }
     let style = &*normalize_name(style);
-    if let Some(s) = crate::style::generated::counter_style_rules::custom_marker(value, style) {
+    if let Some(s) =
+        crate::style::generated::counter_style_rules::custom_marker(value, style, context)
+    {
         return s;
     }
-    let body = repr(value, style);
+    let body = repr_in(value, style, context);
     format!("{body}{}", suffix(style))
 }
 

@@ -143,7 +143,7 @@ impl Scan<'_> {
             return;
         };
         let mut computed_me = me.clone();
-        crate::dom::content::snapshot_generated(&mut computed_me, &style);
+        crate::dom::content::snapshot_generated(&mut computed_me, &style, path.last());
         let me = &computed_me;
         // Узел без коробки счётчиков не трогает (css-lists-3
         // §counters-without-boxes).
