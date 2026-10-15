@@ -7,6 +7,7 @@
 //! ничего не рисуют.
 
 mod direction;
+mod mathml;
 #[cfg(test)]
 mod nth_child_tests;
 mod parse_document;
