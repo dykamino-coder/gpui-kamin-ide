@@ -125,6 +125,7 @@ impl Computed {
     pub(crate) fn apply_one(&mut self, key: &str, val: &str) {
         self.decl_seq += 1;
         let v = val.trim();
+        inherit::note_flow_align(self, key, v);
         // Общие для всех свойств слова `initial`/`unset`/`revert`. Для
         // НАСЛЕДУЕМОГО свойства это не «оставить как есть»: незаданное поле у
         // нас берётся от родителя, поэтому такое объявление молча наследовало

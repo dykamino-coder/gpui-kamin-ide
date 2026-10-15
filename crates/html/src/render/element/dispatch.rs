@@ -163,7 +163,8 @@ pub(crate) fn dispatch_element(
         // ряд блочного потока.
         "hr" => {
             let d = styled_div_with(e, &merged);
-            if inherited.vertical == Some(true) {
+            // A `width` (CSS or the §15.3.11 hint) keeps its own size.
+            if inherited.vertical == Some(true) || merged.width.is_some() {
                 d.into_any_element()
             } else {
                 d.w_full().into_any_element()

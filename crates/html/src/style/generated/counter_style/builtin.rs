@@ -123,6 +123,8 @@ pub(in crate::style::generated) fn builtin_initial(name: &str, n: u64) -> Option
         "disc" => "•".to_string(),
         "circle" => "◦".to_string(),
         "square" => "▪".to_string(),
+        "disclosure-open" => "▾".to_string(),
+        "disclosure-closed" => "▸".to_string(),
         "lower-roman" => roman(positive?),
         "upper-roman" => roman(positive?).to_uppercase(),
         "lower-alpha" | "lower-latin" => alphabetic(positive?, b'a'),

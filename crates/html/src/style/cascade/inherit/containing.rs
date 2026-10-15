@@ -77,6 +77,7 @@ pub(super) fn inherit_containing(parent: &Computed, own: &Computed, c: &mut Comp
         || parent.preserve_3d == Some(true)
         || parent.contain_layout == Some(true)
         || parent.contain_paint == Some(true)
+        || crate::style::computed::filter_contains_fixed(parent)
         // css-will-change-1 §2.1: блок для `fixed` — и от обещанного свойства
         // (`will-change-fixpos-cb-*`, `-fixedpos-cb-*`).
         || parent.will_change & crate::style::computed::wc::CB_FIXED != 0;

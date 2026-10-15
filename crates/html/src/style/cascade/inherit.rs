@@ -8,6 +8,7 @@ use crate::text::inline::{backdrop_root, bidi_controls, establishes_cb};
 mod containing;
 mod decorate;
 mod explicit;
+mod flow_align;
 mod fonts;
 mod paint;
 mod sizes;
@@ -15,6 +16,7 @@ mod text_layout;
 use containing::inherit_containing;
 use decorate::decorate;
 use explicit::inherit_explicit;
+pub(crate) use flow_align::note as note_flow_align;
 use fonts::inherit_fonts;
 use paint::inherit_paint;
 use sizes::inherit_sizes;
@@ -47,6 +49,7 @@ fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Compu
     inherit_explicit(parent, own, &mut c);
     inherit_fonts(parent, own, &mut c);
     inherit_text_layout(parent, own, &mut c);
+    flow_align::resolve(parent, &mut c);
     c.resolve_gradient_current_color();
     inherit_paint(parent, own, &mut c, paint_filter);
     // `em` считается от размера шрифта — а он известен только здесь, когда

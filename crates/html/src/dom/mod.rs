@@ -11,6 +11,8 @@ mod direction;
 mod nth_child_tests;
 mod parse_document;
 #[cfg(test)]
+mod presentational_hint_tests;
+#[cfg(test)]
 mod presentational_tests;
 #[cfg(test)]
 mod tests;
@@ -34,6 +36,8 @@ mod grid_static_position;
 mod initial_pseudos;
 pub(super) mod language;
 mod presentational_hints;
+mod presentational_hr;
+mod presentational_legacy;
 mod replaced_display;
 mod subgrid_axes;
 mod subgrid_used;

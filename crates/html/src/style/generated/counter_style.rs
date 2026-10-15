@@ -58,6 +58,9 @@ pub(super) fn builtin_repr(value: i32, style: &str) -> String {
         "disc" => "•".to_string(),
         "circle" => "◦".to_string(),
         "square" => "▪".to_string(),
+        // css-counter-styles-3 §6.2: `disclosure-open` ▾, `disclosure-closed` ▸.
+        "disclosure-open" => "▾".to_string(),
+        "disclosure-closed" => "▸".to_string(),
         "decimal-leading-zero" => {
             // Знак остаётся впереди: `-1` — это `-01`.
             let sign = if value < 0 { "-" } else { "" };

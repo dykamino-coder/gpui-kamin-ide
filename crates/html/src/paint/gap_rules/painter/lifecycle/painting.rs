@@ -32,6 +32,10 @@ pub(super) fn paint_body(
     if items.is_empty()
         && buffer.multicol.is_none()
         && !(group.spec.kind == GapLayout::Grid && grid_tracks.is_some())
+        // Grid lanes likewise: main gaps come from the grid-axis tracks
+        // (Blink `GridLanesGapAccumulator::BuildMainGaps`), so empty lanes
+        // still get grid-axis rules.
+        && !(group.spec.lines_extent == 2 && grid_tracks.is_some())
     {
         return;
     }
