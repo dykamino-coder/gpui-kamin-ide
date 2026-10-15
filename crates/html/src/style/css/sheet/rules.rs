@@ -157,6 +157,7 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media) -> bool {
                     sels,
                     decls: list,
                     margins,
+                    layer: layer_of_rules(),
                 });
             }
         }

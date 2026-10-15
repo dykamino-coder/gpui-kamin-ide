@@ -13,7 +13,12 @@
   * кодировки и заголовки ответа (`at-charset`, `character-encoding`,
     `content-type`) — офлайн из файла они бессмысленны.
 
-Запуск: python scripts/wpt_pairs.py <каталог> <файл-списка>
+Печатные (paged) пары помечаются: тест с `-print` в имени или с классом
+`reftest-paged` на корне (WPT docs/writing-tests/print-reftests.md). Стенд
+сам рисует такие пары стопкой страниц (`wptrun/paged.rs`), формат списка тот
+же; `--paged` пишет только их — список целей печатного режима.
+
+Запуск: python scripts/wpt_pairs.py [--paged] <каталог> <файл-списка>
 """
 
 import os
@@ -29,9 +34,16 @@ SCRIPT = re.compile(r'<script\b', re.I)
 SVG_LINK = re.compile(r'<(?:[\w-]+:)?link\b[^>]*\brel\s*=\s*["\']?match["\']?[^>]*>', re.I)
 SVG_SCRIPT = re.compile(r'<(?:[\w-]+:)?script\b', re.I)
 SKIP = ('at-charset', 'character-encoding', 'content-type')
+PAGED_CLASS = re.compile(r'''<html\b[^>]*\bclass\s*=\s*["']?[^"'>]*\breftest-paged\b''', re.I)
 
 
-def pairs(root):
+def is_paged(path, text):
+    """Печатная пара: `-print` в имени теста или `reftest-paged` на корне."""
+    name = os.path.basename(path)
+    return '-print.' in name or '-print-ref' in name or bool(PAGED_CLASS.search(text))
+
+
+def pairs(root, paged_only=False):
     out = []
     for dirpath, _, names in os.walk(root):
         for name in sorted(names):
@@ -62,14 +74,19 @@ def pairs(root):
                 ref = os.path.normpath(os.path.join(wpt_root, h.lstrip('/')))
             else:
                 ref = os.path.normpath(os.path.join(dirpath, h))
+            if paged_only and not is_paged(path, text):
+                continue
             if os.path.exists(ref):
                 out.append((os.path.abspath(path), os.path.abspath(ref)))
     return out
 
 
 if __name__ == '__main__':
-    got = pairs(sys.argv[1])
-    with open(sys.argv[2], 'w', encoding='utf-8') as f:
+    args = sys.argv[1:]
+    paged_only = '--paged' in args
+    args = [a for a in args if a != '--paged']
+    got = pairs(args[0], paged_only)
+    with open(args[1], 'w', encoding='utf-8') as f:
         for test, ref in got:
             f.write(test + '|' + ref + '\n')
-    print(len(got), 'пар в', sys.argv[2])
+    print(len(got), 'пар в', args[1])
