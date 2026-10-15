@@ -4654,13 +4654,14 @@ impl Window {
         transformation: TransformationMatrix,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09, v122, `scout-transforms-2026-09d.md`
-        // шаг 3): порядок `outer·inner` вместо `inner·outer`. css-transforms
-        // +2/−1 (`transform-compound-001`, `transform3d-sorting-002`), но
-        // css-writing-modes −9: весь `text-combine-upright-*` (вертикальный
-        // текст рисуется вложенными `with_transformation`, и наш порядок
-        // подобран под них). Менять только вместе с `lines.rs`/`flow.rs`.
-        let combined = transformation.compose(self.current_transformation());
+        // KaminIDE patch: вложение `outer · inner` (css-transforms-1
+        // §transform-rendering: матрица предка применяется ПОСЛЕ своей; Blink
+        // GeometryMapper перемножает parent·local). Прежний `inner · outer`
+        // ломал вложенные поворот/скос (`transform-compound-001`); вертикальный
+        // `CombinedUpright` переводит свою четверть оборота в локальные точки
+        // строки (`combined_geometry::in_local_space`). При пустом стеке
+        // (`current` = unit) результат побайтно прежний: 1·a + 0·c = a.
+        let combined = self.current_transformation().compose(transformation);
         self.transformation_stack.push(combined);
         // KaminIDE patch: обычное вложение маски не переводит — ни своё, ни
         // унаследованное от `with_transformation_masked` снаружи: вертикальный
@@ -4688,7 +4689,7 @@ impl Window {
         transformation: TransformationMatrix,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        let combined = transformation.compose(self.current_transformation());
+        let combined = self.current_transformation().compose(transformation);
         let r = combined.rotation_scale;
         let keeps_axes = (r[0][1].abs() < 1e-4 && r[1][0].abs() < 1e-4)
             || (r[0][0].abs() < 1e-4 && r[1][1].abs() < 1e-4);

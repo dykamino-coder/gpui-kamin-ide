@@ -118,6 +118,7 @@ impl Element for CombinedUpright {
             self.compress,
             window.scale_factor(),
         );
+        let matrix = combined_geometry::in_local_space(matrix, window.current_transformation());
         let child = self.child.as_mut().unwrap();
         window.with_transformation(matrix, |window| child.paint(window, cx));
     }
