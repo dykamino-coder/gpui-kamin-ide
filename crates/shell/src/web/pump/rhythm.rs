@@ -31,7 +31,7 @@ fn now_ms() -> u64 {
 
 /// Ввод пользователя: в `[why]` под именем `name`, и ближайшие кадры — сразу.
 pub(crate) fn input(name: &'static str) {
-    super::diag_why::tick(name);
+    crate::web::diag_why::tick(name);
     LAST_INPUT.store(now_ms() + 1, Ordering::Relaxed);
 }
 

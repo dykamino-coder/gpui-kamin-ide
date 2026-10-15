@@ -4,6 +4,8 @@
 //! (`multi_threaded_message_loop`, см. `process.rs`). Осталось одно — узнать,
 //! что кадр пришёл, и заказать перерисовку.
 
+pub(crate) mod rhythm;
+
 /// Запустить задачу перерисовки. Зовётся один раз при старте приложения.
 pub fn start_pump(cx: &mut gpui::App) {
     // Ждём сигнал по каналу, а не по таймеру: таймерная задача просыпалась
@@ -33,7 +35,7 @@ pub fn start_pump(cx: &mut gpui::App) {
             if repaint {
                 // Общий ритм (`frame_rhythm`): фоновый кадр — на границе слота,
                 // заказы, пришедшие за ожидание, уходят этим же кадром.
-                let wait = super::frame_rhythm::delay(super::gpu_mode::software_render());
+                let wait = rhythm::delay(super::gpu_mode::software_render());
                 if !wait.is_zero() {
                     bg.timer(wait).await;
                     while wake_rx.try_recv().is_ok() {}
