@@ -2,6 +2,7 @@
 
 use crate::dom::{Element, Node};
 use crate::layout::fragment::grid_bands::{grid_row_forced, grid_row_gaps};
+use crate::layout::fragment::oof_reach::Reach;
 use crate::layout::fragment::probe::forced_opaque;
 use crate::layout::fragment::table_bands::table_box;
 use crate::layout::fragment::{ShapeCx, fragment_size};
@@ -22,17 +23,13 @@ pub(crate) fn finish_shape_cuts(
     mut forced: Vec<f32>,
     mut solid: Vec<(f32, f32)>,
     stacked: Option<(f32, f32, f32)>,
-    oof_reach: f32,
+    oof_reach: Reach,
     h: f32,
     mt: f32,
     mb: f32,
 ) -> Option<(f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>)> {
     let own_h = h;
-    let h = if crate::text::inline::establishes_cb(&c.style) {
-        h.max(oof_reach + bot)
-    } else {
-        h
-    };
+    let h = h.max(oof_reach.finish(c, cx) + bot);
     let h = fragment_size::constrain(h, &c.style, top + bot, cx.viewport, unclamp);
     // Дотяг меняет меру фрагментации, но не размер коробки: сосед в потоке
     // встаёт под КОНЦОМ коробки, а абсолют продолжается параллельным потоком
