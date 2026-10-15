@@ -92,9 +92,10 @@ pub(super) fn toggle(e: &Element, style: &Computed, round: bool) -> AnyElement {
     let accent: gpui::Hsla = super::control_accent(style)
         .map(|c| c.to_hsla())
         .unwrap_or_else(|| native_color(style, SystemColor::AccentColor));
-    let mut mark = apply(div(), style)
-        .w(px(15.))
-        .h(px(15.))
+    let natural = super::metrics::size(if round { "radio" } else { "checkbox" });
+    let mut mark = div()
+        .absolute()
+        .inset_0()
         .flex()
         .flex_shrink_0()
         .items_center()
@@ -123,5 +124,8 @@ pub(super) fn toggle(e: &Element, style: &Computed, round: bool) -> AnyElement {
                 .child(SharedString::from(if round { "•" } else { "✓" })),
         );
     }
-    mark.into_any_element()
+    // Native paint does not add CSS layout borders: a zero-sized control
+    // remains empty, and authored dimensions replace only the UA defaults.
+    let paint = apply(div().relative(), style).overflow_hidden().child(mark);
+    super::intrinsic::control(paint, natural)
 }

@@ -20,9 +20,8 @@ pub(super) fn range(e: &Element, style: &Computed) -> AnyElement {
     } else {
         0.
     };
-    apply(div(), style)
-        .h(px(16.))
-        .min_w(px(60.))
+    let paint = apply(div(), style)
+        .overflow_hidden()
         .flex()
         .items_center()
         .child(
@@ -42,8 +41,8 @@ pub(super) fn range(e: &Element, style: &Computed) -> AnyElement {
                         .rounded(px(2.))
                         .bg(accent),
                 ),
-        )
-        .into_any_element()
+        );
+    super::intrinsic::control(paint, super::metrics::size("range"))
 }
 
 pub(super) fn color_swatch(e: &Element, style: &Computed) -> AnyElement {
@@ -52,15 +51,13 @@ pub(super) fn color_swatch(e: &Element, style: &Computed) -> AnyElement {
         .and_then(crate::style::values::value::Color::parse)
         .map(|c| c.to_hsla());
     let mut d = apply(div(), style)
-        .w(px(28.))
-        .h(px(16.))
         .rounded(px(3.))
         .border_1()
         .border_color(native_color(style, SystemColor::ButtonBorder));
     if let Some(c) = color {
         d = d.bg(c);
     }
-    d.into_any_element()
+    super::intrinsic::control(d, super::metrics::size("color"))
 }
 
 /// Полоса выполнения: `<progress value max>`.

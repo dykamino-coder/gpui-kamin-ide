@@ -10,11 +10,13 @@
 //! поломкой; нарисованное поле честно показывает задуманный вид.
 
 mod indicators;
+mod intrinsic;
 use indicators::color_swatch;
 use indicators::progress;
 use indicators::range;
 
 mod choice;
+mod metrics;
 mod options;
 use choice::select;
 use choice::toggle;
@@ -73,6 +75,8 @@ fn input(e: &Element, style: &Computed) -> AnyElement {
 
 /// Текстовое поле: значение, иначе подсказка приглушённым цветом.
 fn text_field(e: &Element, style: &Computed) -> AnyElement {
+    let used = metrics::text_style(style);
+    let style = &used;
     let (text, muted) = match (e.attr("value"), e.attr("placeholder")) {
         (Some(v), _) if !v.is_empty() => (v.to_string(), false),
         (_, Some(p)) => (p.to_string(), true),
@@ -128,6 +132,11 @@ fn textarea(e: &Element, style: &Computed, opts: &crate::render::RenderOpts) -> 
 
 /// `<input type="button">` — значение лежит в атрибуте, а не в детях.
 fn button_like(e: &Element, style: &Computed) -> AnyElement {
+    if style.appearance == Some(crate::style::computed::Appearance::Base) {
+        return apply(div(), style)
+            .child(SharedString::from(e.attr("value").unwrap_or("").to_owned()))
+            .into_any_element();
+    }
     apply(div(), style)
         .px(px(10.))
         .py(px(4.))
