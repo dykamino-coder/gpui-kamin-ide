@@ -1057,6 +1057,10 @@ impl PlatformWindow for WindowsWindow {
             .render_to_image(scene, self.state.background_appearance.get())
     }
 
+    fn rasterize_scene(&self, scene: &Scene, size: Size<DevicePixels>) -> anyhow::Result<image::RgbaImage> {
+        self.state.renderer.borrow_mut().rasterize_scene(scene, size)
+    }
+
     fn d3d_device_raw(&self) -> Option<*mut std::ffi::c_void> {
         self.state.renderer.borrow().d3d_device_raw()
     }

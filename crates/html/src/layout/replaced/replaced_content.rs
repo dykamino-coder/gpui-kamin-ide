@@ -114,7 +114,12 @@ pub(super) fn position(mut image: gpui::Img, style: &Computed) -> gpui::Img {
 /// mask-image-svg-child-will-change: маска ложится на коробку 200×200 с
 /// рамкой 50). Без рамки и отбивки — голый растр, путь прежний.
 /// `None` — рисунок не разобрался.
-pub(crate) fn svg_replaced(e: &Element, sized: &Element, merged: &Computed) -> Option<AnyElement> {
+pub(crate) fn svg_replaced(
+    e: &Element,
+    sized: &Element,
+    merged: &Computed,
+    opts: &crate::render::RenderOpts,
+) -> Option<AnyElement> {
     let boxed = svg_has_box(merged);
     let inner;
     let sized = if boxed {
@@ -125,7 +130,7 @@ pub(crate) fn svg_replaced(e: &Element, sized: &Element, merged: &Computed) -> O
     } else {
         sized
     };
-    let raster = crate::svg::element(sized);
+    let raster = crate::svg::element_with_html(sized, opts);
     if !boxed {
         return raster;
     }

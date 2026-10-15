@@ -112,7 +112,7 @@ pub(super) fn svg_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
     // коробки — свой, с решёнными шрифтовыми единицами.
     let fitted = crate::svg::size::stretch_fit(&sized, cb_w);
     let shell = sized.style.clone();
-    svg_replaced(&sized, &fitted, &shell).or_else(|| {
+    svg_replaced(&sized, &fitted, &shell, opts).or_else(|| {
         Some(image_with(
             &with_inherited_font(e, inherited),
             Some(atom_base_font(inherited, opts)),

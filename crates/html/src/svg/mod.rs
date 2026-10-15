@@ -21,6 +21,7 @@ use size::size_of;
 
 mod clip;
 mod device_image;
+mod foreign;
 mod masks;
 pub(crate) mod raster;
 pub mod serialize;
@@ -42,6 +43,17 @@ thread_local! {
 }
 
 /// Готовый элемент с рисунком либо `None`, если разобрать не удалось.
+pub(crate) fn element_with_html(
+    e: &Element,
+    opts: &crate::render::RenderOpts,
+) -> Option<AnyElement> {
+    if foreign::contains(e) {
+        foreign::element(e, opts)
+    } else {
+        element(e)
+    }
+}
+
 pub fn element(e: &Element) -> Option<AnyElement> {
     let (w, h) = size_of(e);
     // `overflow: visible` по оси выпускает фигуры за канву (SVG 2 §overflow):

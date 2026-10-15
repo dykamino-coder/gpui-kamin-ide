@@ -49,7 +49,7 @@ pub(super) fn static_position_atom(
                 "svg" => {
                     let mut unpositioned = merged.clone();
                     unpositioned.position = None;
-                    svg_replaced(&copy, &copy, &unpositioned).unwrap_or_else(|| image(&copy))
+                    svg_replaced(&copy, &copy, &unpositioned, opts).unwrap_or_else(|| image(&copy))
                 }
                 _ => image(&copy),
             })

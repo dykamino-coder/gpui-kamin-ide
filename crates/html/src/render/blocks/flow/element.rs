@@ -54,6 +54,8 @@ pub(crate) fn paint_element(
         return;
     }
     if let Some(el) = scrollable(e, inherited, opts) {
+        // The scroll viewport and its bars share the CSS transform of the box.
+        let el = crate::paint::effects::transform::transformed(el, &e.style, inherited);
         out.push(layered(el, &e.style, inherited, layer_ok, under_tf));
         return;
     }
