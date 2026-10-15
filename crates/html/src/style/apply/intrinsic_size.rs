@@ -41,19 +41,25 @@ pub(crate) fn keywords(style: &Computed) -> [Option<CssSizingKeyword>; 2] {
         }),
         _ => None,
     };
+    // css-sizing-4 §4.1: `stretch` is kept as `Len::Pct(1.0)` for the
+    // percentage paths, but the native layout must see the keyword: it fills
+    // the margin box (and, when positioned, the inset-modified containing
+    // block), which no percentage expresses. It does not measure content, so
+    // containment does not affect it.
+    let stretch = |axis: usize| style.stretch_size[axis].then_some(CssSizingKeyword::Stretch);
     // CSS Containment 2 §3.1: apply_box already supplied the empty-box
     // intrinsic size. Native keywords must not measure the real children again.
     [
-        if style.contains_width() {
+        stretch(0).or(if style.contains_width() {
             None
         } else {
             keyword(style.width, style.fit_arg[0])
-        },
-        if style.contains_height() {
+        }),
+        stretch(1).or(if style.contains_height() {
             None
         } else {
             keyword(style.height, None)
-        },
+        }),
     ]
 }
 
