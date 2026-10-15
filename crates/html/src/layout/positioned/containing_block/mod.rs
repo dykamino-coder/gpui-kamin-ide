@@ -113,8 +113,10 @@ thread_local! {
     /// на своём месте, а детём становится этому предку.
     pub(crate) static CB: std::cell::RefCell<Vec<Vec<(SpotCell, AnyElement)>>> =
         const { std::cell::RefCell::new(Vec::new()) };
-    /// Параллельно `CB`: содержит ли коробку слоя и `position: fixed`.
-    pub(crate) static CB_FIXED: std::cell::RefCell<Vec<bool>> = const { std::cell::RefCell::new(Vec::new()) };
+    /// Параллельно `CB`: какие коробки забирает слой — `CB_ABS` (только
+    /// абсолютные), `CB_ABS | CB_FIX` (и `position: fixed`) или `CB_FIX`
+    /// (только фиксированные, см. `cb_open_fixed_only`).
+    pub(crate) static CB_FIXED: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// Открыть слой содержащего блока вокруг детей позиционированной коробки.
@@ -129,14 +131,30 @@ pub fn cb_open() {
 /// промежуточных позиционированных предков (`cb_push_fixed`).
 pub fn cb_open_with(fixed_cb: bool) {
     CB.with(|s| s.borrow_mut().push(Vec::new()));
-    CB_FIXED.with(|s| s.borrow_mut().push(fixed_cb));
+    CB_FIXED.with(|s| {
+        s.borrow_mut()
+            .push(CB_ABS | if fixed_cb { CB_FIX } else { 0 })
+    });
+}
+
+const CB_ABS: u8 = 1;
+const CB_FIX: u8 = 2;
+
+/// Открыть слой, который забирает ТОЛЬКО `position: fixed`: коробка
+/// многоколоночника с трансформом (или `contain: layout|paint`) — содержащий
+/// блок фиксированных потомков (css-transforms-1 §transform-rendering), но
+/// абсолютные потомки копий колонок остаются в своих копиях и режутся по
+/// колонкам (css-position-3 §abspos-breaking).
+pub fn cb_open_fixed_only() {
+    CB.with(|s| s.borrow_mut().push(Vec::new()));
+    CB_FIXED.with(|s| s.borrow_mut().push(CB_FIX));
 }
 
 /// Отдать `position: fixed` слою ближайшего предка, содержащего `fixed`
 /// (не ближайшего позиционированного, CSS 2.1 §10.1 п.3 + css-transforms-1).
 /// Слоя нет — элемент возвращается, рисовать на месте.
 pub fn cb_push_fixed(spot: SpotCell, el: AnyElement) -> Option<AnyElement> {
-    let at = CB_FIXED.with(|f| f.borrow().iter().rposition(|x| *x));
+    let at = CB_FIXED.with(|f| f.borrow().iter().rposition(|x| x & CB_FIX != 0));
     match at {
         Some(i) => CB.with(|s| match s.borrow_mut().get_mut(i) {
             Some(layer) => {
@@ -162,7 +180,11 @@ pub fn cb_close() -> Vec<AnyElement> {
 /// Отдать элемент слою ближайшего содержащего блока. Слоя нет — элемент
 /// возвращается, рисовать на месте.
 pub fn cb_push(spot: SpotCell, el: AnyElement) -> Option<AnyElement> {
-    CB.with(|s| match s.borrow_mut().last_mut() {
+    let at = CB_FIXED.with(|f| f.borrow().iter().rposition(|x| x & CB_ABS != 0));
+    let Some(i) = at else {
+        return Some(el);
+    };
+    CB.with(|s| match s.borrow_mut().get_mut(i) {
         Some(layer) => {
             layer.push((spot, el));
             None

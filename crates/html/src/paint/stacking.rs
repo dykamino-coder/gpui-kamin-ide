@@ -115,6 +115,7 @@ pub(crate) fn fixed_cb_layer_box(c: &Computed) -> bool {
         || c.preserve_3d == Some(true)
         || c.contain_layout == Some(true)
         || c.contain_paint == Some(true)
+        || crate::style::computed::filter_contains_fixed(c)
         || c.will_change & crate::style::computed::wc::CB_FIXED != 0
 }
 

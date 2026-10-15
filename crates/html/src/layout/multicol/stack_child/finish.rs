@@ -32,7 +32,7 @@ pub(super) fn finish_stack_child(
     rel: (f32, f32),
     nest_row: Option<f32>,
     whole: bool,
-    build: impl Fn(bool, usize) -> gpui::AnyElement,
+    build: impl Fn(bool, usize, bool) -> gpui::AnyElement,
 ) -> crate::layout::fragment::types::StackChild {
     let (scrolls, monolith) = copy_monolith(copy, &cuts, nest_row);
     // Высоту меряет раскладка копии (`StackChild::measure`):
