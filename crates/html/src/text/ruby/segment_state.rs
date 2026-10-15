@@ -20,6 +20,7 @@ pub(super) fn fresh() -> RubySegment {
     RubySegment {
         bases: Vec::new(),
         levels: Vec::new(),
+        base_container: None,
     }
 }
 
@@ -70,6 +71,7 @@ pub(super) fn kind_of(n: &Node) -> Kind {
 }
 
 pub(super) fn collect_bases(k: &crate::dom::Element, cur: &mut RubySegment) {
+    cur.base_container = Some(k.style.clone());
     let kids: Vec<Kind> = k.children.iter().map(kind_of).collect();
     let mut inner: RubyUnit = Vec::new();
     for (j, c) in k.children.iter().enumerate() {

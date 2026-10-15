@@ -46,9 +46,7 @@ impl Paragraph {
             } else {
                 line_offset(align, self.wrap.rtl, free_raw) + lead
             };
-            let x = dx + self.x_at(&segs, b.at, Edge::Start)
-                - self.x_at(&segs, line.range.start, Edge::Start)
-                - px(b.shift);
+            let x = dx + self.atom_inline_x(&segs, &line, b.at) - px(b.shift);
             let top = match b.align {
                 AtomAlign::Top => tops[row],
                 AtomAlign::Bottom => tops[row] + lh + p + q - b.h,

@@ -1,6 +1,7 @@
 //! Generated content resolves attributes using the originating element language.
 //! CSS 2.1 section 12.2 and CSS Values 5 #attr-notation use host-language matching.
 
+use crate::style::computed::Computed;
 use std::cell::Cell;
 
 /// CSS2 sections 6.2.1 and 12.2: explicit inheritance follows the DOM,
@@ -20,7 +21,12 @@ pub(crate) fn inherit_generated(
 pub(crate) fn snapshot_generated(
     node: &mut crate::style::select::Ancestor,
     style: &crate::style::computed::Computed,
+    parent: Option<&crate::style::select::Ancestor>,
 ) {
+    node.counter_context = crate::style::generated::counter_style::Context::inherit(
+        style,
+        parent.map(|p| p.counter_context).unwrap_or_default(),
+    );
     node.counter_style = super::counter_snapshot(style);
     node.content_style = style.content.clone();
     node.content_none = style.content_none;
@@ -125,7 +131,8 @@ pub(crate) fn content_text(
     items: &[crate::style::computed::ContentItem],
     counters: &mut crate::style::generated::counters::Counters,
     attrs: &[(String, String)],
-    own_quotes: Option<&Option<Vec<(String, String)>>>,
+    style: &Computed,
+    context: crate::style::generated::counter_style::Context,
     html_attrs: bool,
 ) -> String {
     let Some(items) = resolve_content_attributes(items, attrs, html_attrs) else {
@@ -135,14 +142,14 @@ pub(crate) fn content_text(
     for item in &items {
         match item {
             crate::style::computed::ContentItem::Quote { open, emit } => {
-                text.push_str(&counters.quote(*open, *emit, own_quotes));
+                text.push_str(&counters.quote(*open, *emit, style.quotes.as_ref()));
             }
             crate::style::computed::ContentItem::Str(sv) => text.push_str(sv),
             crate::style::computed::ContentItem::Image(_) => {}
             crate::style::computed::ContentItem::Counter(name, style_name) => {
                 let value = counters.value_of(name);
-                text.push_str(&crate::style::generated::counter_style::repr(
-                    value, style_name,
+                text.push_str(&crate::style::generated::counter_style::repr_in_context(
+                    value, style_name, context,
                 ));
             }
             crate::style::computed::ContentItem::Counters(name, sep, style_name) => {
@@ -151,7 +158,11 @@ pub(crate) fn content_text(
                 let chain: Vec<String> = counters
                     .chain_of(name)
                     .into_iter()
-                    .map(|v| crate::style::generated::counter_style::repr(v, style_name))
+                    .map(|v| {
+                        crate::style::generated::counter_style::repr_in_context(
+                            v, style_name, context,
+                        )
+                    })
                     .collect();
                 text.push_str(&chain.join(sep));
             }

@@ -151,6 +151,7 @@ pub(super) fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
                     out.push(RubySegment {
                         bases: vec![vec![node.clone()]],
                         levels: Vec::new(),
+                        base_container: None,
                     });
                 }
                 // Межбазовый (п.6): своя единица, спаривается по порядку.
@@ -190,6 +191,7 @@ pub(super) fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
                     out.push(RubySegment {
                         bases: vec![vec![node.clone()]],
                         levels: Vec::new(),
+                        base_container: None,
                     });
                 }
                 _ => {}

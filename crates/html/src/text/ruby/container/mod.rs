@@ -69,6 +69,9 @@ pub(crate) fn ruby_container_atom(
         layer_offset::offset(el, layers, under)
     };
     let mut row = div().flex().flex_row().items_baseline().flex_shrink_0();
+    if merged.rtl == Some(true) {
+        row = row.flex_row_reverse();
+    }
     for seg in &segments {
         // Стиль уровня: аннотации внутри `<rtc>` наследуют от него.
         let level_style: Vec<Computed> = seg
@@ -97,6 +100,15 @@ pub(crate) fn ruby_container_atom(
         // Колонки не сжимаются: ширина колонки — по самому широкому
         // из базы и аннотаций (§3.1.1), а не по остатку строки.
         let mut cols = div().flex().flex_row().items_baseline().flex_shrink_0();
+        if seg
+            .base_container
+            .as_ref()
+            .and_then(|s| s.rtl)
+            .or(merged.rtl)
+            == Some(true)
+        {
+            cols = cols.flex_row_reverse();
+        }
         let mut contexts = Vec::new();
         for i in 0..columns {
             let layers = std::rc::Rc::new(crate::text::ruby::layers::Layers::default());

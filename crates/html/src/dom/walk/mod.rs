@@ -165,12 +165,16 @@ fn walk(
                 language::pseudo(counters, &m, &me, path);
                 apply_counter_decls(&m, counters, "", &[], &mut false, &|_, _| 0);
                 if let Some(items) = host_content(&m, &me) {
-                    let quotes = m.quotes.as_ref();
+                    let context = crate::style::generated::counter_style::Context::inherit(
+                        &m,
+                        me.counter_context,
+                    );
                     style.marker_text = Some(content_text(
                         &items,
                         counters,
                         &attrs,
-                        quotes,
+                        &m,
+                        context,
                         me.html_attrs,
                     ));
                     style.no_marker = Some(false);

@@ -25,6 +25,8 @@
 mod additive_tables;
 mod builtin;
 mod cjk;
+mod context;
+pub use context::{Context, marker_in_context, repr_in_context};
 mod numeric;
 use additive_tables::{ARMENIAN, GEORGIAN, HEBREW, ethiopic};
 pub(super) use builtin::{builtin, builtin_initial, normalize_name};
@@ -41,12 +43,7 @@ use numeric::{
 /// неизвестное имя ведёт себя как `decimal`). Стили с конечным диапазоном
 /// (римский, алфавитные) вне его тоже падают на десятичный.
 pub fn repr(value: i32, style: &str) -> String {
-    let style = &*normalize_name(style);
-    if let Some(s) = crate::style::generated::counter_style_rules::custom_repr(value as i64, style)
-    {
-        return s;
-    }
-    builtin_repr(value, style)
+    repr_in_context(value, style, Context::default())
 }
 
 /// Предопределённый стиль (или десятичный для незнакомого имени) без учёта
@@ -193,17 +190,7 @@ pub fn suffix(style: &str) -> &'static str {
 /// Готовая строка маркера: представление и суффикс. У `counter()` суффикса
 /// нет по спеке, поэтому он живёт отдельной функцией, а не в `repr`.
 pub fn marker_repr(value: i32, style: &str) -> String {
-    if style == "none" {
-        return String::new();
-    }
-    let style = &*normalize_name(style);
-    if let Some(s) =
-        crate::style::generated::counter_style_rules::custom_marker(value as i64, style)
-    {
-        return s;
-    }
-    let body = repr(value, style);
-    format!("{body}{}", suffix(style))
+    marker_in_context(value, style, Context::default())
 }
 
 #[cfg(test)]

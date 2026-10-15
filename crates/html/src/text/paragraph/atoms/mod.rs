@@ -2,3 +2,4 @@
 
 mod atom_baselines;
 mod placement;
+mod visual;

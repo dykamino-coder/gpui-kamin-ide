@@ -21,7 +21,8 @@ pub(super) fn content_nodes(
                 run,
                 counters,
                 &[],
-                style.quotes.as_ref(),
+                style,
+                crate::style::generated::counter_style::Context::from_style(style),
                 false,
             )));
             run.clear();

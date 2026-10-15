@@ -40,6 +40,7 @@ struct RubyLevel {
 struct RubySegment {
     pub(crate) bases: Vec<RubyUnit>,
     pub(crate) levels: Vec<RubyLevel>,
+    pub(crate) base_container: Option<Computed>,
 }
 
 /// Пуста ли единица: только схлопываемые пробелы и руби-теги без содержимого.

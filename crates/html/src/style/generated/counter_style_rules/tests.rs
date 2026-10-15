@@ -36,6 +36,7 @@ fn systems_follow_spec() {
                 ],
             ),
             ("d", &[("system", "numeric"), ("symbols", "'0' '1' '2'")]),
+            ("e", &[("system", "extends disclosure-closed")]),
         ],
         || {
             // css-counter-styles-3 §cyclic: index `(value - 1) mod N` with a
@@ -47,6 +48,12 @@ fn systems_follow_spec() {
             assert_eq!(custom_repr(1, "c").unwrap(), "1");
             assert_eq!(custom_repr(5, "c").unwrap(), "ab");
             assert_eq!(custom_repr(-4, "d").unwrap(), "-11");
+            let context = Context {
+                rtl: true,
+                ..Context::default()
+            };
+            assert_eq!(custom_repr_in_context(-5, "e", context).unwrap(), "◂");
+            assert_eq!(custom_marker_in_context(0, "e", context).unwrap(), "◂ ");
         },
     );
 }

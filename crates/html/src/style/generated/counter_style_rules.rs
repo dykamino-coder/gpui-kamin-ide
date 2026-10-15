@@ -19,8 +19,11 @@ mod math;
 mod parse;
 mod resolve;
 mod tokens;
+use super::counter_style::Context;
 use generate::anonymous;
-pub use generate::{custom_marker, custom_repr, valid_symbols_fn};
+pub use generate::{
+    custom_marker_in_context, custom_repr, custom_repr_in_context, valid_symbols_fn,
+};
 use math::{Math, is_math_fn};
 pub use parse::register;
 use resolve::{Algo, in_range, resolve, uses_negative};
