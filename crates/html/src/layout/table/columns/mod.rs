@@ -5,6 +5,7 @@ use crate::dom::{Element, Node};
 use gpui::px;
 mod widths;
 pub(super) use widths::col_element_widths;
+pub(super) use widths::definite_col_px;
 pub(super) use widths::push_col_bands;
 
 /// Дорожки таблицы: все по содержимому, последняя забирает остаток строки.

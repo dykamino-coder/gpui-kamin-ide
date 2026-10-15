@@ -5890,6 +5890,32 @@ impl Window {
         }
     }
 
+    /// KaminIDE patch: группа, видимая СНАРУЖИ многоугольника (до восьми
+    /// вершин) — покрытие `1 − c` того же шейдера, что режет
+    /// `clip-path: polygon()`, поэтому край совпадает с ним бит в бит.
+    pub fn paint_group_outside_polygon<R>(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        polygon: &[Point<Pixels>],
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let result = self.paint_group(
+            bounds,
+            Corners::default(),
+            0.0,
+            1.0,
+            0,
+            polygon,
+            None,
+            None,
+            f,
+        );
+        if let Some(group) = self.next_frame.scene.groups.last_mut() {
+            group.polygon_inverse = true;
+        }
+        result
+    }
+
     /// KaminIDE patch: нарисовать поддерево в отдельный буфер и положить в
     /// кадр целиком.
     ///
@@ -5956,6 +5982,7 @@ impl Window {
             blur_radius: blur_radius * scale_factor,
             blend,
             polygon: polygon.iter().map(|p| p.scale(scale_factor)).collect(),
+            polygon_inverse: false,
             mask,
             mask_bounds,
             mask_once,

@@ -1,0 +1,155 @@
+//! css-gaps-1 §visibility-items for the grid-axis (main) gaps of grid lanes.
+//!
+//! A main gap between lanes `k` and `k + 1` is cut into segments at every
+//! cross gap of either lane (Blink `GridLanesMainGapSegmentWalker::Next`:
+//! segment ends are the cross-gap centres of both adjacent lanes). A side of
+//! a segment is occupied when an item placed in that lane (a spanner counts
+//! in every lane it covers) overlaps the segment along the stacking axis; a
+//! lane that ends early leaves the segments past its last item empty
+//! (`column-gap-decorations-rule-visibility-items-between-005`). Stacking
+//! (cross) gaps are never filtered: the property only applies to grid-axis
+//! rules in grid lanes.
+
+use super::{GAP_EPS, GapItem};
+
+/// Segments `[lo, hi]` of the main gap between `lane0` and `lane1` hidden by
+/// `visibility` (2 `around`, 3 `between`; other values hide nothing).
+/// `cuts` are the cross-gap windows of both lanes, `r0..r1` the rule extent.
+pub(super) fn hidden_lane_segments(
+    items: &[GapItem],
+    lane0: (f32, f32),
+    lane1: (f32, f32),
+    cuts: &[(f32, f32)],
+    r: (f32, f32),
+    visibility: u8,
+) -> Vec<(f32, f32)> {
+    if visibility < 2 || r.1 - r.0 <= GAP_EPS {
+        return vec![];
+    }
+    let mut stops: Vec<f32> = cuts
+        .iter()
+        .map(|&(lo, hi)| (lo + hi) / 2.0)
+        .filter(|&c| c > r.0 + GAP_EPS && c < r.1 - GAP_EPS)
+        .collect();
+    stops.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
+    stops.dedup_by(|x, y| (*x - *y).abs() <= GAP_EPS);
+    let in_lane = |i: &GapItem, (s, e): (f32, f32)| i.a0 < e - GAP_EPS && i.a1 > s + GAP_EPS;
+    let side = |lane: (f32, f32), lo: f32, hi: f32| {
+        items.iter().any(|i| in_lane(i, lane) && i.covers_b(lo, hi))
+    };
+    let mut out = vec![];
+    let mut lo = r.0;
+    for hi in stops.into_iter().chain(std::iter::once(r.1)) {
+        let (before, after) = (side(lane0, lo, hi), side(lane1, lo, hi));
+        let shown = if visibility == 2 {
+            before || after
+        } else {
+            before && after
+        };
+        if !shown {
+            out.push((lo, hi));
+        }
+        lo = hi;
+    }
+    out
+}
+
+/// Part of a main gap blocked by spanner `i` (Blink
+/// `GridLanesGapAccumulator::MarkBlockedMainGapSegments`): a lane entry runs
+/// from the cross-gap centre before the item to the next one (or the rule
+/// end), and a segment is blocked where the spanner is the entry on BOTH
+/// sides — so the empty stretch under a dense-packed spanner stays blocked
+/// up to the next cross gap (`column-gap-decorations-028/029`).
+pub(super) fn lane_entry_block(
+    i: &GapItem,
+    lane0: &[(f32, f32)],
+    lane1: &[(f32, f32)],
+    r: (f32, f32),
+) -> (f32, f32) {
+    let entry = |cuts: &[(f32, f32)]| {
+        let centres = cuts.iter().map(|&(lo, hi)| (lo + hi) / 2.0);
+        let start = centres
+            .clone()
+            .filter(|&c| c <= i.b0 + GAP_EPS)
+            .fold(r.0, f32::max);
+        let end = centres.filter(|&c| c > i.b0 + GAP_EPS).fold(r.1, f32::min);
+        (start.min(i.b0), end.max(i.b1))
+    };
+    let (s0, e0) = entry(lane0);
+    let (s1, e1) = entry(lane1);
+    (s0.max(s1), e0.min(e1))
+}
+
+/// Cross gap of a lane in front of entry `next` (Blink `FinalGutterCenter`:
+/// `ForwardStackingStart() - gap / 2`, the position BEFORE stacking-axis
+/// self-alignment). The forward start is the largest running position of the
+/// lanes the item covers: the end of the entry above it in each lane plus
+/// the gap. Self-alignment only moves an item inside the room in front of the
+/// next spanner, so the box edge can sit further down but never above it
+/// (`column-gap-decorations-022/023/041`).
+pub(super) fn cross_window(
+    next: &GapItem,
+    g: f32,
+    lanes: &[(f32, f32)],
+    items: &[GapItem],
+) -> (f32, f32) {
+    let covers = |i: &GapItem, (s, e): (f32, f32)| i.a0 < e - GAP_EPS && i.a1 > s + GAP_EPS;
+    let mut running = f32::NEG_INFINITY;
+    for &lane in lanes.iter().filter(|&&l| covers(next, l)) {
+        let above = items
+            .iter()
+            .filter(|i| !std::ptr::eq(*i, next) && covers(i, lane) && i.b0 < next.b0 - GAP_EPS)
+            .max_by(|x, y| x.b0.partial_cmp(&y.b0).unwrap_or(std::cmp::Ordering::Equal));
+        if let Some(above) = above {
+            running = running.max(above.b1 + g);
+        }
+    }
+    let start = if running.is_finite() {
+        running
+    } else {
+        next.b0
+    };
+    (start - g, start)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item(a0: f32, a1: f32, b0: f32, b1: f32) -> GapItem {
+        GapItem { a0, a1, b0, b1 }
+    }
+
+    #[test]
+    fn lane_ending_early_hides_tail_segments() {
+        // Lane 0 holds [0,40] and [60,160]; lane 1 holds [0,70] and [90,150].
+        let items = [
+            item(0.0, 60.0, 0.0, 40.0),
+            item(0.0, 60.0, 60.0, 160.0),
+            item(80.0, 140.0, 0.0, 70.0),
+            item(80.0, 140.0, 90.0, 150.0),
+        ];
+        let cuts = [(40.0, 60.0), (70.0, 90.0), (160.0, 180.0)];
+        let hidden =
+            hidden_lane_segments(&items, (0.0, 60.0), (80.0, 140.0), &cuts, (0.0, 300.0), 3);
+        assert_eq!(hidden, vec![(170.0, 300.0)]);
+        let around =
+            hidden_lane_segments(&items, (0.0, 60.0), (80.0, 140.0), &cuts, (0.0, 300.0), 2);
+        assert_eq!(around, vec![(170.0, 300.0)]);
+    }
+
+    #[test]
+    fn empty_lane_hides_whole_gap_and_all_hides_nothing() {
+        let items = [item(0.0, 60.0, 0.0, 60.0)];
+        let hidden = hidden_lane_segments(&items, (0.0, 60.0), (80.0, 140.0), &[], (0.0, 60.0), 3);
+        assert_eq!(hidden, vec![(0.0, 60.0)]);
+        assert!(
+            hidden_lane_segments(&items, (0.0, 60.0), (80.0, 140.0), &[], (0.0, 60.0), 1)
+                .is_empty()
+        );
+        assert!(
+            hidden_lane_segments(&items, (0.0, 60.0), (80.0, 140.0), &[], (0.0, 60.0), 2)
+                .is_empty()
+        );
+    }
+}

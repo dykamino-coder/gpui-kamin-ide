@@ -1671,12 +1671,20 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
             corner = round(corner * 255.0) / 255.0;
         }
         float mask = corner * q.pad;
-        if (q.poly_count >= 3u) {
-            float pd = poly_sdf(q.poly, q.poly_count, input.position.xy);
-            // KaminIDE patch: BSP piece of a 3D plane — cut edges are hard
-            // (viz draws split polygons without edge AA): two pieces meeting
-            // on a cut must not both fade and let the backdrop through.
-            mask *= q.proj[0].w > 0.5 ? (pd <= 0.0 ? 1.0 : 0.0) : saturate(0.5 - pd);
+        // KaminIDE patch: bit 16 of poly_count inverts the polygon clip
+        // (border ring outside the inner contour, 1 - coverage).
+        uint poly_n = q.poly_count & 15u;
+        if (poly_n >= 3u) {
+            float pd = poly_sdf(q.poly, poly_n, input.position.xy);
+            if (q.proj[0].w > 0.5) {
+                // KaminIDE patch: BSP piece of a 3D plane - cut edges are hard
+                // (viz draws split polygons without edge AA): two pieces meeting
+                // on a cut must not both fade and let the backdrop through.
+                mask *= pd <= 0.0 ? 1.0 : 0.0;
+            } else {
+                float poly_cover = saturate(0.5 - pd);
+                mask *= (q.poly_count & 16u) != 0u ? 1.0 - poly_cover : poly_cover;
+            }
         }
         // Маска-изображение: плитка лежит от угла коробки своим размером и
         // повторяется по обеим осям (`mask-repeat: repeat` — начальное

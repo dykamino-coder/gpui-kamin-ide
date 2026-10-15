@@ -79,16 +79,17 @@ pub(in crate::style::generated) fn builtin(name: &str) -> Option<Builtin> {
         "lower-armenian" | "armenian" | "upper-armenian" => Some((1, 9999)),
         "georgian" => Some((1, 19999)),
         "hebrew" => Some((1, 10999)),
+        "cjk-decimal" => Some((0, i64::MAX)),
         "lower-alpha" | "lower-latin" | "upper-alpha" | "upper-latin" | "lower-greek"
         | "hiragana" | "hiragana-iroha" | "katakana" | "katakana-iroha" | "ethiopic-numeric" => {
             Some((1, i64::MAX))
         }
-        _ if cjk.is_some() => Some((-9999, 9999)),
+        _ if cjk.is_some() => Some((-9_999_999_999_999_999, 9_999_999_999_999_999)),
         _ => None,
     };
     let fallback = match name {
         "cjk-earthly-branch" | "cjk-heavenly-stem" => "cjk-decimal",
-        _ if cjk.is_some_and(|t| t.fallback_cjk) => "cjk-decimal",
+        _ if cjk.is_some() => "cjk-decimal",
         _ => "decimal",
     };
     let uses_negative = !matches!(
@@ -116,19 +117,30 @@ pub(in crate::style::generated) fn builtin(name: &str) -> Option<Builtin> {
 /// §counter-style-generate в `counter_style_rules`). `None` — система стиля
 /// значение не представляет (аддитивный ноль, фиксированный вне набора).
 pub(in crate::style::generated) fn builtin_initial(name: &str, n: u64) -> Option<String> {
-    let v = i32::try_from(n).ok()?;
     let positive = usize::try_from(n).ok().filter(|n| *n > 0);
+    // CSS permits a fallback above 60 code points; bound repeated top weights.
+    let top = match name {
+        "lower-roman" | "upper-roman" => Some(1000),
+        "lower-armenian" | "armenian" | "upper-armenian" => Some(9000),
+        "georgian" | "hebrew" => Some(10000),
+        _ => None,
+    };
+    if top.is_some_and(|weight| n / weight > 60) {
+        return None;
+    }
     Some(match name {
         "decimal" | "decimal-leading-zero" => n.to_string(),
         "disc" => "•".to_string(),
         "circle" => "◦".to_string(),
         "square" => "▪".to_string(),
+        "disclosure-open" => "▾".to_string(),
+        "disclosure-closed" => "▸".to_string(),
         "lower-roman" => roman(positive?),
         "upper-roman" => roman(positive?).to_uppercase(),
         "lower-alpha" | "lower-latin" => alphabetic(positive?, b'a'),
         "upper-alpha" | "upper-latin" => alphabetic(positive?, b'A'),
         "lower-greek" => lower_greek(positive?),
-        "cjk-decimal" => numeric(v, &CJK_DIGITS),
+        "cjk-decimal" => numeric_unsigned(n, &CJK_DIGITS),
         "hiragana" | "hiragana-iroha" | "katakana" | "katakana-iroha" => {
             let letters: Vec<char> = match name {
                 "hiragana" => HIRAGANA,
@@ -160,14 +172,14 @@ pub(in crate::style::generated) fn builtin_initial(name: &str, n: u64) -> Option
                 let digits: Vec<char> = (0..10)
                     .filter_map(|d| char::from_u32(*zero as u32 + d))
                     .collect();
-                numeric(v, &digits)
+                numeric_unsigned(n, &digits)
             } else {
                 let t = if name == "cjk-ideographic" {
                     &CJK_STYLES[7].1
                 } else {
                     &CJK_STYLES.iter().find(|(k, _)| *k == name)?.1
                 };
-                if n > 9999 {
+                if n > 9_999_999_999_999_999 {
                     return None;
                 }
                 cjk_positional(n as usize, t)

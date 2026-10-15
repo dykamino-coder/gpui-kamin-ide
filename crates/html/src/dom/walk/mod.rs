@@ -19,6 +19,7 @@ mod cascade;
 use crate::dom::walk::cascade::cascade_element;
 
 mod animation_frames;
+mod details_content;
 mod finish_element;
 mod pseudo_styles;
 mod style_normalization;
@@ -84,6 +85,7 @@ fn walk(
                 cascade_element(&mut me, &attrs, &tag, handle, rules, vars, path, spot, sibs);
             let vars = &own_vars;
             normalize_style(&mut style, &tag, &attrs, path);
+            content::snapshot_generated(&mut me, &style, path.last());
             // Правила с `:hover` собираются отдельным слоем: в базовый стиль
             // им нельзя, иначе элемент выглядел бы всегда наведённым.
             let (hover, first_letter, first_line, marker_layer) =
@@ -172,6 +174,10 @@ fn walk(
                         &attrs,
                         quotes,
                         me.html_attrs,
+                        crate::style::generated::counter_style::Context::new(
+                            &m,
+                            me.counter_context,
+                        ),
                     ));
                     style.no_marker = Some(false);
                 } else if m.content_none == Some(true) {
@@ -205,6 +211,9 @@ fn walk(
                 {
                     c.style.implicit_anchor = Some(*counter);
                 }
+            }
+            if tag == "details" {
+                children = details_content::wrap(children, &attrs, rules, vars, &me, path, sibs);
             }
             let anim = animation_frames(&style, frames, vars);
             finish_element(

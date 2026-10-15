@@ -534,6 +534,9 @@ pub struct Computed {
     /// место, а не под всё уже уложенное: дыры, оставленные многолуночными
     /// соседями, заполняются следующими элементами.
     pub lanes_dense: bool,
+    /// Alignment properties declared with `flow-start`/`flow-end`, one bit
+    /// per property (`cascade::inherit::flow_align`).
+    pub align_flow: u8,
     /// `display: inline grid-lanes` — контейнер лунок строчного уровня:
     /// ширина по дорожкам, не на всю строку.
     pub lanes_inline: bool,
@@ -690,6 +693,10 @@ pub struct Computed {
     pub hyphen_char: Option<String>,
     /// `hyphens: auto` — слогораздел ставит сам движок, а не разметка.
     pub hyphens_auto: Option<bool>,
+    /// Minimum word, prefix and suffix lengths; None components mean auto.
+    pub hyphen_limit_chars: Option<[Option<usize>; 3]>,
+    /// Maximum consecutive hyphenated lines; usize::MAX means no-limit.
+    pub hyphen_limit_lines: Option<usize>,
     /// Язык узла (атрибут `lang`): по нему выбираются образцы слогораздела.
     pub lang: Option<String>,
     /// `vertical-align` внутри строки и ячейки таблицы.

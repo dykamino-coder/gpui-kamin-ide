@@ -157,6 +157,18 @@ pub(crate) mod inh {
 /// would create a stacking context on the element, specifying that property
 /// in will-change must create a stacking context on the element» — и то же
 /// дословно про содержащий блок для `absolute` и для `fixed`.
+/// filter-effects-1 §5 «A computed value of other than none results in the
+/// creation of a containing block for absolute and fixed positioned
+/// descendants»; то же для `backdrop-filter` (filter-effects-2 §3). Blink:
+/// `ComputedStyle::CanContainFixedPositionObjects` (`HasNonInitialFilter`,
+/// `HasNonInitialBackdropFilter`).
+pub(crate) fn filter_contains_fixed(c: &Computed) -> bool {
+    c.filter.is_some()
+        || c.filter_ref.is_some()
+        || c.backdrop_blur.is_some()
+        || c.backdrop_color.is_some()
+}
+
 pub(crate) mod wc {
     /// Содержащий блок для `position: absolute`.
     pub(crate) const CB_ABS: u8 = 1 << 0;

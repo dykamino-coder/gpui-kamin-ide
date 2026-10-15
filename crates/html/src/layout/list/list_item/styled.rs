@@ -42,7 +42,11 @@ pub(crate) fn render_with_style(
         // Умолчание тега: у нумерованного перечня десятичный счёт, у
         // списка возможностей — точка.
         let name = kind.unwrap_or_else(|| "disc".to_string());
-        crate::style::generated::counter_style::marker_repr(idx, &name)
+        crate::style::generated::counter_style::marker_repr(
+            idx,
+            &name,
+            crate::style::generated::counter_style::Context::new(merged, Default::default()),
+        )
     };
     // `list-style: none` — на списках верстают навигацию и наборы чипов,
     // и точки там лишние. Своё слово пункта старше слова списка:
@@ -89,6 +93,16 @@ pub(crate) fn render_with_style(
             tabular_marker(&mut span.style, merged, li.style.marker_layer.as_deref());
             span.style.content = None;
             span.style.marker_layer = None;
+            // css-lists-3 §marker-properties UA rule `::marker { unicode-bidi:
+            // isolate }`: Arabic-Indic digits and the suffix stay one run
+            // (`css3-counter-styles-101`, reference `<bdi>١. </bdi>`).
+            if span.style.bidi_isolate.is_none()
+                && span.style.bidi_embed.is_none()
+                && span.style.bidi_override.is_none()
+                && span.style.bidi_plaintext.is_none()
+            {
+                span.style.bidi_isolate = Some(true);
+            }
             // CSS Pseudo 4 #first-letter-application excludes marker content.
             span.style.first_letter_excluded = true;
             kids.push(Node::Element(span));

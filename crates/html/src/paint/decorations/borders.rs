@@ -94,66 +94,14 @@ pub(crate) fn box_borders(c: &Computed, out: &mut Vec<AnyElement>) {
     // красит (`apply::apply_paint`); слой — цветной растр кольца в
     // border-box, тем же растеризатором, что и маска группы, — контуры
     // совпадают попиксельно. Разные цвета сторон остаются полосами ниже.
-    if c.corner_shaped() {
-        let sides: Vec<_> = c.border_colors.iter().flatten().collect();
-        let uniform = sides
-            .first()
-            .filter(|f| sides.iter().all(|s| s == *f))
-            .map(|f| **f);
-        let mixed = sides.len() > 1 && uniform.is_none();
-        let side_px = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
-        let bw = c.borders();
-        let widths = [
-            side_px(bw.top),
-            side_px(bw.right),
-            side_px(bw.bottom),
-            side_px(bw.left),
-        ];
-        if !mixed && widths.iter().any(|w| *w > 0.0) {
-            // Без цвета рамка красится цветом текста, без него — чёрным
-            // (начальное `border-color: currentColor`).
-            let colour = uniform.or(c.border_color).or(c.color).unwrap_or(
-                crate::style::values::value::Color {
-                    r: 0.0,
-                    g: 0.0,
-                    b: 0.0,
-                    a: 1.0,
-                },
-            );
-            let colour = crate::paint::background::border_paint(c, colour);
-            let spec = crate::paint::background::rrect_spec(c, Some(widths));
+    {
+        if let Some((spec, colour, widths)) = super::shaped_ring::spec(c) {
             let [t, r, b, l] = widths;
             out.push(
                 gpui::canvas(
                     |_, _, _| {},
                     move |bounds, _, window, _| {
-                        let sf = window.scale_factor();
-                        let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-                        let (pw, ph) = (
-                            (w * sf).round().max(1.0) as u32,
-                            (h * sf).round().max(1.0) as u32,
-                        );
-                        let args = spec.trim_start_matches("rrect(").trim_end_matches(')');
-                        if let Some(img) = crate::paint::background::rasterize_ring_at(
-                            args,
-                            pw,
-                            ph,
-                            sf,
-                            colour,
-                            (f32::from(bounds.origin.x), f32::from(bounds.origin.y)),
-                        ) {
-                            let _ = window.paint_image_with_sampling(
-                                bounds,
-                                gpui::Corners::default(),
-                                img,
-                                0,
-                                false,
-                                gpui::ImageSampling::Linear,
-                            );
-                        }
+                        super::shaped_ring::paint(&spec, colour, bounds, window);
                     },
                 )
                 // Абсолютный ребёнок считается от padding-box — кольцо

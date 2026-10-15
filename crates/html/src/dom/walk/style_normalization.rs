@@ -50,7 +50,25 @@ pub(super) fn normalize_style(
         });
     }
     apply_presentational_size(&mut style, &tag, &attrs);
+    resolve_svg_keywords(&mut style, &tag, &attrs);
     promote_auto_ratio(&mut style, &tag);
+    // css-sizing-4 §5.1: `aspect-ratio` applies to all boxes «except inline
+    // boxes and internal ruby or table boxes» (`aspect-ratio/table-element-001`).
+    {
+        use crate::style::computed::Display;
+        let internal_table = match style.display {
+            Some(Display::TableRow | Display::TableRowGroup | Display::TableCell) => true,
+            None => matches!(
+                tag.as_str(),
+                "td" | "th" | "tr" | "thead" | "tbody" | "tfoot" | "col" | "colgroup"
+            ),
+            _ => false,
+        };
+        if internal_table {
+            style.aspect_ratio = None;
+            style.aspect_ratio_auto = None;
+        }
+    }
     presentational_hints::colors(&mut style, &tag, &attrs);
     finish_inline_display(&mut style, &tag, &attrs);
     style.plain_block_box = {
@@ -199,7 +217,11 @@ pub(super) fn normalize_style(
     // родителя нет вовсе: сюда доезжает только собственный каскад.
     // Язык — свойство узла, а не CSS: по нему выбираются образцы
     // слогораздела (`hyphens: auto`).
-    if let Some((_, v)) = attrs.iter().find(|(k, _)| k == "lang") {
+    if let Some((_, v)) = attrs
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("xml:lang"))
+        .or_else(|| attrs.iter().find(|(k, _)| k.eq_ignore_ascii_case("lang")))
+    {
         style.lang = Some(v.clone());
     }
     apply_direction(&mut style, &tag, &attrs);

@@ -49,11 +49,7 @@ pub(crate) fn atom_element(
         && e.style.inline_display != Some(true)
         && let Some(scroll) = crate::interactive::scroll_box::scrollable(e, inherited, opts)
     {
-        // Transformed like any atom (css-transforms-1 §transform-rendering):
-        // the early return skipped the raw atom path's `transformed` wrapper.
-        return Some(crate::paint::effects::transform::transformed(
-            scroll, &e.style, inherited,
-        ));
+        return Some(scroll);
     }
     if let Some(physical) = rotated_atom::physical(e, inherited, opts) {
         return Some(physical);

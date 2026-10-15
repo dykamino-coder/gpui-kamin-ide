@@ -7,9 +7,12 @@
 //! ничего не рисуют.
 
 mod direction;
+mod mathml;
 #[cfg(test)]
 mod nth_child_tests;
 mod parse_document;
+#[cfg(test)]
+mod presentational_hint_tests;
 #[cfg(test)]
 mod presentational_tests;
 #[cfg(test)]
@@ -34,6 +37,8 @@ mod grid_static_position;
 mod initial_pseudos;
 pub(super) mod language;
 mod presentational_hints;
+mod presentational_hr;
+mod presentational_legacy;
 mod replaced_display;
 mod subgrid_axes;
 mod subgrid_used;
@@ -69,7 +74,7 @@ pub enum Node {
 #[derive(Clone, Debug)]
 pub struct Element {
     /// Номер пункта списка из счётчика `list-item`; `None` — не пункт.
-    pub list_item: Option<i32>,
+    pub list_item: Option<i64>,
     /// Устойчивый номер узла в документе.
     ///
     /// Нужен анимации: GPUI хранит её состояние по идентификатору элемента, а

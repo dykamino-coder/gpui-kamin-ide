@@ -1,5 +1,8 @@
 //! This module is a partial implementation of the CSS Grid Level 1 specification
 //! <https://www.w3.org/TR/css-grid-1>
+#[path = "../content_size_limits.rs"]
+mod content_size_limits;
+
 use crate::geometry::{AbsoluteAxis, AbstractAxis, InBothAbsAxis};
 use crate::geometry::{Line, Point, Rect, Size};
 use crate::style::{
@@ -156,16 +159,16 @@ fn compute_container_constants<Tree: LayoutGridContainer>(
         Size::ZERO
     };
 
-    let min_size = style
+    let min_size = content_size_limits::for_measurement(style
         .min_size()
         .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
         .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
-    let max_size = style
+        .maybe_add(box_sizing_adjustment), inputs);
+    let max_size = content_size_limits::for_measurement(style
         .max_size()
         .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
         .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
+        .maybe_add(box_sizing_adjustment), inputs);
     let preferred_size = if inputs.sizing_mode == SizingMode::InherentSize {
         style
             .size()
@@ -1070,6 +1073,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
                 item.baseline_x_flags & 1 != 0,
                 item.margin_trim,
                 direction,
+                Direction::Ltr,
                 container_border_box.width,
                 border,
                 #[cfg(feature = "content_size")]

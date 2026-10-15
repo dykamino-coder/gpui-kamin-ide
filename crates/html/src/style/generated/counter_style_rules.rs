@@ -9,7 +9,7 @@
 //! предопределённых стилей не меняется вовсе.
 
 use crate::style::generated::counter_style::{
-    builtin, builtin_initial, builtin_repr, normalize_name,
+    Context, builtin, builtin_initial, builtin_repr_in, normalize_name,
 };
 use std::collections::HashMap;
 use std::sync::Mutex;

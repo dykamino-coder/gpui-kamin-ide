@@ -87,17 +87,6 @@ pub(super) fn plane_spec(
     rect: (f32, f32, f32, f32),
 ) -> PlaneSpec {
     let o = affine3(outer);
-    let (x0, y0, x1, y1) = rect;
-    let corners = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)].map(|(x, y)| {
-        let row = |i: usize| full[i][0] * x + full[i][1] * y + full[i][3];
-        let (px, py, pz, pw) = (row(0), row(1), row(2), row(3));
-        [
-            o[0][0] * px + o[0][1] * py + o[0][2] * pw,
-            o[1][0] * px + o[1][1] * py + o[1][2] * pw,
-            pz,
-            pw,
-        ]
-    });
     // Centre behind the eye (or edge-on): no tangent map there; paint the
     // content untransformed and let the full homography place what is in
     // front of the eye (perspective-split-by-zero-w). Edge-on maps have no
@@ -124,7 +113,9 @@ pub(super) fn plane_spec(
     PlaneSpec {
         raster,
         projection,
-        corners,
+        full: *full,
+        outer,
+        rect,
         masked: true,
     }
 }
@@ -151,7 +142,7 @@ mod tests {
             (0.0, 0.0, 10.0, 10.0),
         );
         assert!(spec.projection.is_none());
-        assert_eq!(spec.corners[2], [15.0, 10.0, 0.0, 1.0]);
+        assert_eq!(spec.rect, (0.0, 0.0, 10.0, 10.0));
     }
 
     #[test]

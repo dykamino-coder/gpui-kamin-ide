@@ -11,7 +11,7 @@ pub(super) fn finish_element(
     tag: String,
     attrs: Vec<(String, String)>,
     anim: Option<Vec<(f32, Computed)>>,
-    list_item: Option<i32>,
+    list_item: Option<i64>,
     node_id: u64,
     hover: Option<Computed>,
     first_letter: Option<Computed>,
@@ -29,9 +29,17 @@ pub(super) fn finish_element(
     // разбор двунаправленности, но он берёт сторону абзаца, а не
     // куска: строка `1;234;56א;` внутри `<span dir=auto>` выходила
     // слева направо (`empty-span-001`).
-    if attrs
-        .iter()
-        .any(|(k, v)| k == "dir" && v.eq_ignore_ascii_case("auto"))
+    // HTML §4.5.24: `<bdi>` без допустимого `dir` ведёт себя как `dir=auto`
+    // (и по UA-листу §15.3.4 изолирован): «the bdi element … the dir
+    // attribute … defaults to the auto state» (`bdi-neutral-*`).
+    let bdi_auto = tag == "bdi"
+        && !attrs.iter().any(|(k, v)| {
+            k == "dir" && matches!(v.to_ascii_lowercase().as_str(), "ltr" | "rtl" | "auto")
+        });
+    if bdi_auto
+        || attrs
+            .iter()
+            .any(|(k, v)| k == "dir" && v.eq_ignore_ascii_case("auto"))
     {
         // `dir="auto"` в HTML — это `unicode-bidi: plaintext`: сторона
         // решается для КАЖДОГО абзаца между жёсткими разрывами, а не

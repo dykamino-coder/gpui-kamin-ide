@@ -22,6 +22,9 @@ pub struct FirstLine {
     pub(super) font: Font,
     pub(super) font_size: f32,
     pub(super) line_height: f32,
+    /// Высота ПЕРВОЙ строки: её корневая строчная коробка берёт кегль и
+    /// интерлиньяж `::first-line` (css-pseudo-4 §first-line-styling).
+    first_height: Option<f32>,
     pub(super) cut: Rc<Cell<Cut>>,
     pub(super) child: Option<AnyElement>,
 }
@@ -42,9 +45,16 @@ impl FirstLine {
             font,
             font_size,
             line_height,
+            first_height: None,
             cut: Rc::new(Cell::new(Cut::default())),
             child: None,
         }
+    }
+
+    /// Высота первой строки, если `::first-line` её меняет.
+    pub fn first_height(mut self, h: f32) -> Self {
+        self.first_height = Some(h);
+        self
     }
 }
 
@@ -91,6 +101,7 @@ impl Element for FirstLine {
         let font = self.font.clone();
         let font_size = self.font_size;
         let line_height = self.line_height;
+        let first_height = self.first_height;
         let cut = self.cut.clone();
         let layout_id = window.request_measured_layout(
             Style::default(),
@@ -101,6 +112,9 @@ impl Element for FirstLine {
                 });
                 let (at, mut height) =
                     measure_first_line(&text, &font, font_size, line_height, width, window);
+                if let Some(h) = first_height {
+                    height += px(h - line_height);
+                }
                 // The styled first line does not remove subsequent hard lines
                 // from normal flow (CSS 2 section 10.8).
                 for line in &following {

@@ -17,6 +17,7 @@ pub(crate) fn grouped_wrapper(
     c: &Computed,
     el: AnyElement,
     bare_round: Option<Len>,
+    ring_over: Option<(String, crate::style::values::value::Color, [f32; 4])>,
 ) -> AnyElement {
     let pure_isolation = blur <= 0.0
         && blend == 0
@@ -199,5 +200,6 @@ pub(crate) fn grouped_wrapper(
         ],
         _ => [0.0; 4],
     };
+    wrapper.ring_over = ring_over;
     wrapper.into_any_element()
 }

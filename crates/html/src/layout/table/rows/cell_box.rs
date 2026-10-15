@@ -117,7 +117,14 @@ pub(super) fn prepare_cell_box(
         && cell.style.width_from_inline;
     if !table_is_vertical
         && !orthogonal_inline
-        && matches!(cell.style.width, Some(Len::Px(_)) | Some(Len::Pct(_)))
+        // A mixed percentage `calc()` is `auto` for the column (`col_measure`,
+        // Blink `table_layout_utils`: calculated lengths with percentages
+        // are treated as auto); left on the box it widened the table alone
+        // (`calc-width-table-auto-1` row 4).
+        && matches!(
+            cell.style.width,
+            Some(Len::Px(_)) | Some(Len::Pct(_)) | Some(Len::Calc(_))
+        )
     {
         cell.style.width = None;
     }
