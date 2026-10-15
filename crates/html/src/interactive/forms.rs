@@ -15,20 +15,20 @@ use indicators::progress;
 use indicators::range;
 
 mod choice;
+mod options;
 use choice::select;
 use choice::toggle;
 
 use crate::dom::Element;
 use crate::style::apply::apply;
 use crate::style::computed::Computed;
-use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px, rgb};
+use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
 
-/// Цвета «по умолчанию» для элементов формы: документ обычно их не задаёт, а
-/// голая рамка без фона на тёмной теме не читается.
-const BORDER: u32 = 0x4a4a5a;
-const FIELD_BG: u32 = 0x22232e;
-const ACCENT: u32 = 0x3b5bdb;
-const MUTED: u32 = 0x8a90a4;
+use crate::style::values::value::{SystemColor, system_color};
+
+fn native_color(style: &Computed, role: SystemColor) -> gpui::Hsla {
+    system_color(role, style.dark_color_scheme).to_hsla()
+}
 
 /// Отрисовать элемент формы. `None` — тег не относится к формам.
 pub fn element(
@@ -85,12 +85,12 @@ fn text_field(e: &Element, style: &Computed) -> AnyElement {
             .caret_color
             .or(style.color)
             .map(|c| c.to_hsla())
-            .unwrap_or_else(|| rgb(0xd4d4d4).into()))
+            .unwrap_or_else(|| native_color(style, SystemColor::FieldText)))
     });
     field_box(style)
         .child(
             div()
-                .when_muted(muted)
+                .when_muted(muted, style)
                 .child(SharedString::from(text))
                 .into_any_element(),
         )
@@ -112,7 +112,7 @@ fn textarea(e: &Element, style: &Computed, opts: &crate::render::RenderOpts) -> 
     let body = if muted {
         let hint = e.attr("placeholder").unwrap_or("").to_string();
         div()
-            .when_muted(true)
+            .when_muted(true, style)
             .child(SharedString::from(hint))
             .into_any_element()
     } else {
@@ -132,9 +132,9 @@ fn button_like(e: &Element, style: &Computed) -> AnyElement {
         .px(px(10.))
         .py(px(4.))
         .rounded(px(4.))
-        .bg(rgb(FIELD_BG))
+        .bg(native_color(style, SystemColor::ButtonFace))
         .border_1()
-        .border_color(rgb(BORDER))
+        .border_color(native_color(style, SystemColor::ButtonBorder))
         .child(SharedString::from(
             e.attr("value").unwrap_or("Кнопка").to_string(),
         ))
@@ -147,12 +147,15 @@ fn button_like(e: &Element, style: &Computed) -> AnyElement {
 /// Умолчания ставятся ТОЛЬКО там, где документ ничего не сказал: раньше они
 /// шли безусловно и затирали фон, рамку, скругление и отступы из CSS.
 fn field_box(style: &Computed) -> gpui::Div {
+    if style.appearance == Some(crate::style::computed::Appearance::Base) {
+        return apply(div(), style);
+    }
     let mut d = apply(div(), style).flex().items_center().min_h(px(24.));
     // Служебная заливка поля — только когда автор о фоне НЕ говорил:
     // `background: linear-gradient(...)` сбрасывает цвет в прозрачный, и
     // заливка поверх него закрашивала бы страницу под полем.
     if !style.bg_explicit && style.background.is_none() && style.gradient.is_none() {
-        d = d.bg(rgb(FIELD_BG));
+        d = d.bg(native_color(style, SystemColor::Field));
     }
     // «Автор ничего не сказал» — это когда не заданы НИ толщина, НИ рисунок.
     // По `borders()` отличить нельзя: он гасит толщину без рисунка, и
@@ -162,7 +165,7 @@ fn field_box(style: &Computed) -> gpui::Div {
         d = d.border_1();
     }
     if style.border_color.is_none() {
-        d = d.border_color(rgb(BORDER));
+        d = d.border_color(native_color(style, SystemColor::ButtonBorder));
     }
     // The rounded native look is part of `appearance: auto`; an author
     // border or background replaces it with a plain CSS box (CSS UI 4
@@ -185,13 +188,13 @@ fn field_box(style: &Computed) -> gpui::Div {
 
 /// Приглушить текст подсказки — иначе она неотличима от введённого значения.
 trait Muted {
-    fn when_muted(self, muted: bool) -> Self;
+    fn when_muted(self, muted: bool, style: &Computed) -> Self;
 }
 
 impl Muted for gpui::Div {
-    fn when_muted(self, muted: bool) -> Self {
+    fn when_muted(self, muted: bool, style: &Computed) -> Self {
         if muted {
-            self.text_color(rgb(MUTED))
+            self.text_color(native_color(style, SystemColor::GrayText))
         } else {
             self
         }

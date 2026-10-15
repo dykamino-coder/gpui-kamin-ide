@@ -1,10 +1,10 @@
 //! Индикаторы формы и ползунок, отдельно от текстовых полей.
 
-use super::{ACCENT, BORDER, FIELD_BG};
+use super::{SystemColor, native_color};
 use crate::dom::Element;
 use crate::style::apply::apply;
 use crate::style::computed::Computed;
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px, rgb};
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 /// Ползунок: дорожка и заполненная часть по значению.
 pub(super) fn range(e: &Element, style: &Computed) -> AnyElement {
@@ -14,7 +14,7 @@ pub(super) fn range(e: &Element, style: &Computed) -> AnyElement {
     let (min, max, val) = (num("min", 0.), num("max", 100.), num("value", 50.));
     let accent: gpui::Hsla = super::control_accent(style)
         .map(|c| c.to_hsla())
-        .unwrap_or_else(|| rgb(ACCENT).into());
+        .unwrap_or_else(|| native_color(style, SystemColor::AccentColor));
     let frac = if max > min {
         ((val - min) / (max - min)).clamp(0., 1.)
     } else {
@@ -31,7 +31,7 @@ pub(super) fn range(e: &Element, style: &Computed) -> AnyElement {
                 .w_full()
                 .h(px(4.))
                 .rounded(px(2.))
-                .bg(rgb(BORDER))
+                .bg(native_color(style, SystemColor::ButtonBorder))
                 .child(
                     div()
                         .absolute()
@@ -56,7 +56,7 @@ pub(super) fn color_swatch(e: &Element, style: &Computed) -> AnyElement {
         .h(px(16.))
         .rounded(px(3.))
         .border_1()
-        .border_color(rgb(BORDER));
+        .border_color(native_color(style, SystemColor::ButtonBorder));
     if let Some(c) = color {
         d = d.bg(c);
     }
@@ -72,7 +72,7 @@ pub(super) fn progress(e: &Element, style: &Computed) -> AnyElement {
     // Заполненную часть полосы `accent-color` красит так же, как флажок.
     let accent: gpui::Hsla = super::control_accent(style)
         .map(|c| c.to_hsla())
-        .unwrap_or_else(|| rgb(ACCENT).into());
+        .unwrap_or_else(|| native_color(style, SystemColor::AccentColor));
     apply(div(), style)
         .h(px(8.))
         .w_full()
@@ -80,9 +80,9 @@ pub(super) fn progress(e: &Element, style: &Computed) -> AnyElement {
         // нет собственной ширины, и колонка схлопывается вместе с ней.
         .min_w(px(60.))
         .rounded(px(4.))
-        .bg(rgb(FIELD_BG))
+        .bg(native_color(style, SystemColor::Field))
         .border_1()
-        .border_color(rgb(BORDER))
+        .border_color(native_color(style, SystemColor::ButtonBorder))
         .child(
             div()
                 .h_full()

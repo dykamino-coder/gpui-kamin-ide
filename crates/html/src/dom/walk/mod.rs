@@ -16,6 +16,7 @@ mod children;
 use crate::dom::walk::children::collect_children;
 
 mod cascade;
+mod form_appearance;
 use crate::dom::walk::cascade::cascade_element;
 
 mod animation_frames;
