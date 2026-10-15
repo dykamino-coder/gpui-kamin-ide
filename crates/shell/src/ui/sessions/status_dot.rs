@@ -89,6 +89,14 @@ fn working_since(id: &str) -> u64 {
         .or_insert_with(crate::ui::anim_tick::now)
 }
 
+/// Забыть момент старта у сессий, которых больше нет в списке (удалённых).
+pub(crate) fn retain_known<'a>(ids: impl IntoIterator<Item = &'a str>) {
+    let known: std::collections::HashSet<&str> = ids.into_iter().collect();
+    if let Ok(mut map) = WORKING_SINCE.lock() {
+        map.retain(|id, _| known.contains(id.as_str()));
+    }
+}
+
 fn forget_working(id: &str) {
     if let Ok(mut map) = WORKING_SINCE.lock() {
         map.remove(id);

@@ -9,8 +9,8 @@
 //! будит окно к ближайшему такому сроку и спит, когда просьб нет. Шаги считаются
 //! от общих часов, поэтому анимации с кратными шагами меняются в одном кадре.
 
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::thread::Thread;
 use std::time::{Duration, Instant};
 
@@ -18,6 +18,10 @@ use std::time::{Duration, Instant};
 static NEXT_DUE: AtomicU64 = AtomicU64::new(u64::MAX);
 static EPOCH: OnceLock<Instant> = OnceLock::new();
 static TICKER: OnceLock<Thread> = OnceLock::new();
+/// Кэшированные вью, которым нужен кадр на ближайшем шаге: насос помечает
+/// грязным только корень окна, а кэшированная панель без `notify` остаётся на
+/// прошлом кадре (спиннер файлового дерева замирал).
+static SUBSCRIBERS: Mutex<Vec<gpui::EntityId>> = Mutex::new(Vec::new());
 
 fn now_ms() -> u64 {
     EPOCH.get_or_init(Instant::now).elapsed().as_millis() as u64
@@ -31,6 +35,23 @@ pub(crate) fn step(step_ms: u64) -> u64 {
     let now = now_ms();
     want_at((now / step_ms + 1) * step_ms);
     now / step_ms
+}
+
+/// Кэшированный вью `id` рисует ступенчатую анимацию: просит кадр к началу
+/// следующего шага `step_ms` и перерисовку самого вью на ближайшем такте.
+/// Подписка одноразовая — пока анимация нужна, вью повторяет вызов из `render`.
+pub(crate) fn step_for_view(id: gpui::EntityId, step_ms: u64) -> u64 {
+    let n = step(step_ms);
+    let mut subs = SUBSCRIBERS.lock().unwrap_or_else(|e| e.into_inner());
+    if !subs.contains(&id) {
+        subs.push(id);
+    }
+    n
+}
+
+/// Забрать подписанные вью (зовёт насос после тика и уведомляет каждый).
+pub(crate) fn take_view_subscribers() -> Vec<gpui::EntityId> {
+    std::mem::take(&mut *SUBSCRIBERS.lock().unwrap_or_else(|e| e.into_inner()))
 }
 
 /// Миллисекунды общих часов (для «сколько прошло» без нового кадра).
@@ -91,7 +112,7 @@ pub(crate) fn elapsed_label(ms: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::elapsed_label;
+    use super::{elapsed_label, step_for_view, take_view_subscribers};
 
     #[test]
     fn elapsed_label_grows_from_seconds_to_hours() {
@@ -99,5 +120,19 @@ mod tests {
         assert_eq!(elapsed_label(59_999), "59s");
         assert_eq!(elapsed_label(65_000), "1:05");
         assert_eq!(elapsed_label(3_725_000), "1:02:05");
+    }
+
+    #[test]
+    fn view_subscription_is_deduplicated_and_one_shot() {
+        // Единственный тест, трогающий общий реестр: гонок между тестами нет.
+        let a = gpui::EntityId::from(9_001u64);
+        let b = gpui::EntityId::from(9_002u64);
+        step_for_view(a, 120);
+        step_for_view(a, 120);
+        step_for_view(b, 120);
+        let mut got = take_view_subscribers();
+        got.sort_by_key(|id| id.as_u64());
+        assert_eq!(got, vec![a, b]);
+        assert!(take_view_subscribers().is_empty());
     }
 }

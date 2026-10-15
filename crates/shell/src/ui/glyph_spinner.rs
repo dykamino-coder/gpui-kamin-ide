@@ -17,6 +17,13 @@ const STEP_MS: u64 = 120;
 /// Кадр при reduced motion (RDP): статичная звезда без потока кадров.
 const STILL: &str = "✻";
 
+/// Кэшированному вью `id` со спиннером нужен кадр на следующем шаге глифа.
+pub(crate) fn request_frame(id: gpui::EntityId) {
+    if !crate::win_integration::reduce_motion() {
+        crate::ui::anim_tick::step_for_view(id, STEP_MS);
+    }
+}
+
 /// Квадрат `size_px` с текущим глифом цвета `color`.
 pub(crate) fn glyph_spinner(size_px: f32, color: Rgba) -> Div {
     let glyph = if crate::win_integration::reduce_motion() {
