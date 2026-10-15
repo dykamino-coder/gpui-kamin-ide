@@ -37,6 +37,17 @@
 #    как Blink SVGResource::FindCycle (замыкающая ссылка становится `none`),
 #    транзитивная проверка `use` и множество посещённых в HrefIter.
 #    Накатывать: git -C vendor/usvg apply (diff в конце файла).
+# 6. feDropShadow (src/filter/mod.rs, apply_drop_shadow): цвет тени — sRGB;
+#    переводится только для linearRGB. Прежде при sRGB вызывался into_srgb(),
+#    и тень светлела (green 128 -> 188, WPT svg-shorthand-drop-shadow-001).
+# 7. usvg, область функций-фильтров (src/parser/filter.rs): у `drop-shadow()`
+#    область расширяется до коробки, сдвинутой на (dx, dy), с запасом 4σ —
+#    у функции области нет (Filter Effects 1), а −50 %/200 % резала тень.
+# 8. usvg, выключенная отрисовка (src/parser/converter.rs, rendering_disabled):
+#    фигура нулевого размера, пустой `d`/`points`, `<image>` нулевого размера
+#    не создают группу и не несут `filter` (SVG 2 §9-§12;
+#    WPT svg-empty-element-with-filter-001). Пустой `<g filter>` — как прежде.
+#    Правки 6-8 — отдельными diff-блоками после основных, накатывать по порядку.
 #
 # Как накатывать при обновлении вендора: 3-way merge (база — дерево
 # предыдущей upstream-ревизии, ours — vendor/, theirs — новая ревизия), либо
@@ -116,6 +127,26 @@ index c11349a..16b55ea 100644
 +}
 +
 
+# --- resvg (правка 6): поверх блока выше ---
+diff --git a/src/filter/mod.rs b/src/filter/mod.rs
+index 1c87e8a..56e2224 100644
+--- a/src/filter/mod.rs
++++ b/src/filter/mod.rs
+@@ -627,9 +627,11 @@ fn apply_drop_shadow(
+         *p = color.premultiply().to_color_u8();
+     }
+
+-    match cs {
+-        usvg::filter::ColorInterpolation::SRGB => shadow_pixmap.into_srgb(),
+-        usvg::filter::ColorInterpolation::LinearRGB => shadow_pixmap.into_linear_rgb(),
++    // KaminIDE: the shadow colour is an sRGB value; it only needs converting when
++    // the primitive works in linearRGB. `into_srgb()` for sRGB treated it as linear
++    // and lightened it (green 128 -> 188, `svg-shorthand-drop-shadow-001`).
++    if cs == usvg::filter::ColorInterpolation::LinearRGB {
++        shadow_pixmap.into_linear_rgb();
+     }
+
+     pixmap.draw_pixmap(
 # --- usvg (правка 5): diff vendor/usvg относительно upstream 77b12f49 ---
 diff --git a/src/parser/svgtree/cycles.rs b/src/parser/svgtree/cycles.rs
 new file mode 100644
@@ -573,3 +604,77 @@ index 524654a..6654b1b 100644
 -        doc.attrs[idx].value = roxmltree::StringStorage::Borrowed("none");
 -    }
 -}
+# --- usvg (правки 7-8): поверх правки 5 ---
+diff --git a/src/parser/converter.rs b/src/parser/converter.rs
+index cd902d1..5fa1f25 100644
+--- a/src/parser/converter.rs
++++ b/src/parser/converter.rs
+@@ -660,6 +660,10 @@ pub(crate) fn convert_element(node: SvgNode, state: &State, cache: &mut Cache, p
+         return;
+     }
+
++    if rendering_disabled(tag_name, node, state) {
++        return;
++    }
++
+     if let Some(g) = convert_group(node, state, false, cache, parent, &|cache, g| {
+         convert_element_impl(tag_name, node, state, cache, g);
+     }) {
+@@ -667,6 +671,28 @@ pub(crate) fn convert_element(node: SvgNode, state: &State, cache: &mut Cache, p
+     }
+ }
+
++/// KaminIDE: a basic shape or image whose geometry "disables rendering of the
++/// element" (SVG 2 §10.2-10.6 zero `width`/`height`/`r`/`rx`/`ry`, §9.3 empty or
++/// absent `d`, §10.7 empty `points`, §12.3 zero image size) is not rendered at
++/// all: it must not get a group carrying its `filter`, otherwise a filter with
++/// a userSpaceOnUse region (e.g. `feFlood`) paints with no element
++/// (`svg-empty-element-with-filter-001`). An empty `<g>` keeps its filter.
++fn rendering_disabled(tag_name: EId, node: SvgNode, state: &State) -> bool {
++    match tag_name {
++        EId::Rect | EId::Circle | EId::Ellipse => super::shapes::convert(node, state).is_none(),
++        EId::Path => node
++            .attribute::<&str>(AId::D)
++            .is_none_or(|d| d.trim().is_empty() || d.trim() == "none"),
++        EId::Polygon | EId::Polyline => node
++            .attribute::<&str>(AId::Points)
++            .is_none_or(|p| svgtypes::PointsParser::from(p).next().is_none()),
++        EId::Image => [AId::Width, AId::Height]
++            .into_iter()
++            .any(|a| node.attribute::<Length>(a).is_some_and(|l| l.number <= 0.0)),
++        _ => false,
++    }
++}
++
+ #[inline(never)]
+ fn convert_element_impl(
+     tag_name: EId,
+diff --git a/src/parser/filter.rs b/src/parser/filter.rs
+index 9589554..a14dfdc 100644
+--- a/src/parser/filter.rs
++++ b/src/parser/filter.rs
+@@ -71,6 +71,24 @@ pub(crate) fn convert(
+
+             rect = rect.bbox_transform(object_bbox);
+
++            // KaminIDE: a filter function has no filter region (Filter Effects 1
++            // §filter-functions), so the fixed -50%/200% box above cut off shadows
++            // offset farther than half the object (`svg-shorthand-drop-shadow-001`).
++            // Grow the region to the object box shifted by the shadow offset and
++            // outset by the blur reach (Blink `FEDropShadow::MapEffect`).
++            if let Kind::DropShadow(ref ds) = kind {
++                let (sx, sy) = (4.0 * ds.std_dev_x.get(), 4.0 * ds.std_dev_y.get());
++                let b = object_bbox;
++                if let Some(r) = NonZeroRect::from_ltrb(
++                    rect.left().min(b.left() + ds.dx - sx),
++                    rect.top().min(b.top() + ds.dy - sy),
++                    rect.right().max(b.right() + ds.dx + sx),
++                    rect.bottom().max(b.bottom() + ds.dy + sy),
++                ) {
++                    rect = r;
++                }
++            }
++
+             filters.push(Arc::new(Filter {
+                 id: cache.gen_filter_id(),
+                 rect,

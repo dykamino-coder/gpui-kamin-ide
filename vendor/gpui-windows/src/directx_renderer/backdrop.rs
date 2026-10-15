@@ -25,6 +25,19 @@ pub(super) fn opaque_backdrop(scene: &Scene, width: u32, height: u32) -> Option<
         Some(PrimitiveBatch::Quads(range)) if range.start == 0 && !range.is_empty() => {}
         _ => return None,
     }
+    // Буферы групп рисуются ДО кадра, и backdrop-проход внутри группы
+    // (`backdrop-filter` под `clip-path`/`mask`) пишет в сам кадр, а не в
+    // буфер группы. Раньше фоновый квад перекрывал этот след целиком; как
+    // очистка он уже ничего не перекрывает, и след остаётся на экране
+    // (`clip-path-svg-text-backdrop-filter`: инвертированная коробка поверх
+    // страницы вместо пустой маски). Под очисткой такой кадр не живёт.
+    if scene
+        .groups
+        .iter()
+        .any(|g| g.scene.surfaces.iter().any(|s| s.group == 0))
+    {
+        return None;
+    }
     let quad = scene.quads.first()?;
     let color = quad.background.as_solid()?;
     if color.a < 1.0 {
@@ -123,6 +136,38 @@ mod tests {
         for q in [translucent, rounded, bordered, partial, clipped, moved] {
             assert_eq!(opaque_backdrop(&scene_of(vec![q]), W, H), None);
         }
+    }
+
+    #[test]
+    fn backdrop_pass_inside_a_group_keeps_the_background_a_quad() {
+        use gpui::{PaintGroup, PaintSurface};
+        let surface = |group: u32| PaintSurface {
+            order: 0,
+            bounds: rect(8.0, 8.0, 500.0, 300.0),
+            content_mask: ContentMask {
+                bounds: rect(0.0, 0.0, W as f32, H as f32),
+            },
+            corner_radii: Corners::default(),
+            blur_radius: 0.0,
+            group,
+            opacity: 1.0,
+            color_matrix: Some([0.0; 20]),
+        };
+        let with_group = |group: u32| {
+            let mut scene = scene_of(vec![quad(dark())]);
+            let mut inner = Scene::default();
+            inner.insert_primitive(surface(group));
+            inner.finish();
+            scene.groups.push(PaintGroup {
+                scene: inner,
+                ..Default::default()
+            });
+            scene
+        };
+        // A backdrop pass (group 0) draws into the frame before quad 0 would.
+        assert_eq!(opaque_backdrop(&with_group(0), W, H), None);
+        // A nested group mark only composes a buffer: the clear stays valid.
+        assert!(opaque_backdrop(&with_group(1), W, H).is_some());
     }
 
     #[test]

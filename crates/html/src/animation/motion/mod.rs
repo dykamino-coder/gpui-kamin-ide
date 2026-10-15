@@ -41,6 +41,9 @@ use path::sample;
 
 mod curves;
 
+#[cfg(test)]
+mod geometry_tests;
+
 mod ray;
 use ray::angle_rad;
 use ray::ray_css;
@@ -99,7 +102,7 @@ pub fn settle(nodes: &mut [Node]) {
     let mut shapes = std::collections::HashMap::new();
     collect_shapes(nodes, &mut shapes);
     SVG_SHAPES.with(|m| *m.borrow_mut() = shapes);
-    walk(nodes, None);
+    walk(nodes, None, true);
     SVG_SHAPES.with(|m| m.borrow_mut().clear());
 }
 
@@ -111,8 +114,8 @@ thread_local! {
 }
 
 /// Приставить offset-трансформ к авторскому.
-pub fn apply_offset_transform(c: &mut Computed, cb: Option<&Cb>) {
-    let Some(css) = offset_transform_css(c, cb) else {
+pub fn apply_offset_transform(c: &mut Computed, cb: Option<&Cb>, svg_origin: (f32, f32)) {
+    let Some(css) = offset_transform_css(c, cb, svg_origin) else {
         return;
     };
     let author = c.transform.take();
@@ -120,6 +123,26 @@ pub fn apply_offset_transform(c: &mut Computed, cb: Option<&Cb>) {
     if let (Some(off), Some(a)) = (c.transform, author) {
         c.transform = Some(off.then(&a));
     }
+}
+
+/// Отложенный offset-трансформ абсолюта в начальном содержащем блоке: все
+/// опорные коробки — окно `viewport` (css-position-3 §initial containing
+/// block; motion-1 §offset-path: коробки берутся у элемента, устанавливающего
+/// содержащий блок).
+pub fn apply_icb(c: &mut Computed, viewport: (f32, f32)) {
+    if !c.offset_icb || viewport.0 <= 0.0 || viewport.1 <= 0.0 {
+        return;
+    }
+    c.offset_icb = false;
+    let whole = (0.0, 0.0, viewport.0, viewport.1);
+    let g = containing::with_self(
+        Cb {
+            boxes: [whole; 4],
+            ..Cb::default()
+        },
+        c,
+    );
+    apply_offset_transform(c, Some(&g), (0.0, 0.0));
 }
 
 /// Исходные параметры offset-трансформа для расчётов в дочерних модулях.

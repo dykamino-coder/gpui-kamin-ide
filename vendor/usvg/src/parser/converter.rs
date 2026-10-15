@@ -660,10 +660,36 @@ pub(crate) fn convert_element(node: SvgNode, state: &State, cache: &mut Cache, p
         return;
     }
 
+    if rendering_disabled(tag_name, node, state) {
+        return;
+    }
+
     if let Some(g) = convert_group(node, state, false, cache, parent, &|cache, g| {
         convert_element_impl(tag_name, node, state, cache, g);
     }) {
         parent.children.push(Node::Group(Box::new(g)));
+    }
+}
+
+/// KaminIDE: a basic shape or image whose geometry "disables rendering of the
+/// element" (SVG 2 §10.2-10.6 zero `width`/`height`/`r`/`rx`/`ry`, §9.3 empty or
+/// absent `d`, §10.7 empty `points`, §12.3 zero image size) is not rendered at
+/// all: it must not get a group carrying its `filter`, otherwise a filter with
+/// a userSpaceOnUse region (e.g. `feFlood`) paints with no element
+/// (`svg-empty-element-with-filter-001`). An empty `<g>` keeps its filter.
+fn rendering_disabled(tag_name: EId, node: SvgNode, state: &State) -> bool {
+    match tag_name {
+        EId::Rect | EId::Circle | EId::Ellipse => super::shapes::convert(node, state).is_none(),
+        EId::Path => node
+            .attribute::<&str>(AId::D)
+            .is_none_or(|d| d.trim().is_empty() || d.trim() == "none"),
+        EId::Polygon | EId::Polyline => node
+            .attribute::<&str>(AId::Points)
+            .is_none_or(|p| svgtypes::PointsParser::from(p).next().is_none()),
+        EId::Image => [AId::Width, AId::Height]
+            .into_iter()
+            .any(|a| node.attribute::<Length>(a).is_some_and(|l| l.number <= 0.0)),
+        _ => false,
     }
 }
 

@@ -122,6 +122,7 @@ pub(super) fn column_stack_div(
                 })
             }),
         )
+        .with_static_coordinates(crate::layout::fragment::static_coordinates::needed(e))
         .with_axis(col_axis)
         .with_fill_shrink(
             fixed.is_some()

@@ -1,6 +1,9 @@
 //! Fragment geometry collected before painting gap decorations.
 use gpui::{Bounds, Pixels};
 
+mod probe;
+pub use probe::gap_item_probe;
+
 /// Each rendered container instance owns its geometry, including copies of
 /// the same DOM node in separate fragmentainers (CSS Gaps 1 §fragmentation).
 pub fn fresh_gap_items(mut key: u64) -> (u64, super::GapItems) {
@@ -17,6 +20,7 @@ pub fn fresh_gap_items(mut key: u64) -> (u64, super::GapItems) {
 #[derive(Default)]
 pub struct GapBuffer {
     pub items: Vec<Bounds<Pixels>>,
+    pub margins: Vec<[f32; 2]>,
     pub multicol: Option<MulticolGaps>,
 }
 impl std::ops::Deref for GapBuffer {

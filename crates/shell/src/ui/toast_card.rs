@@ -126,7 +126,6 @@ impl Render for ToastView {
                     .border_1()
                     .border_color(accent)
                     .bg(bg)
-                    .shadow(crate::ui::shadows::card_popup())
                     .text_size(px(13.0))
                     .text_color(rgba(p.text_primary))
                     // `.row`

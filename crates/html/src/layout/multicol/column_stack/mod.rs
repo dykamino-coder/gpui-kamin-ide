@@ -49,6 +49,8 @@ pub struct ColumnStack {
     /// всю ширину. Заполняется в `prepaint`, художник забирает в `paint`.
     pub(crate) gap_items: Option<crate::paint::gap_rules::GapItems>,
     pub(crate) plan: std::cell::RefCell<Vec<Frag>>,
+    /// Reuse placement storage while mapping viewport static-position probes.
+    pub(crate) static_places: Option<crate::layout::fragment::static_coordinates::Places>,
     pub(crate) col_w: std::cell::Cell<f32>,
     /// Линии колонок после укладки: `(y, высота)` каждой — линейкам и
     /// смещениям. Колонка `col` стоит в линии `col / count`. Без спаннеров
@@ -107,6 +109,7 @@ impl ColumnStack {
             gap_items,
             intrinsic,
             plan: std::cell::RefCell::new(Vec::new()),
+            static_places: Default::default(),
             col_w: std::cell::Cell::new(0.0),
             lines_plan: std::cell::RefCell::new(Vec::new()),
             spans_plan: std::cell::RefCell::new(Vec::new()),
