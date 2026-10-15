@@ -67,7 +67,7 @@ impl Paragraph {
             strut: (0.0, 0.0, 0.0),
             run_metrics: Vec::new(),
             edge_spans: Vec::new(),
-            ruby_trim: (false, false),
+            ruby_trim: Default::default(),
             emph_spans: Vec::new(),
             decor_spans: Vec::new(),
             decor_pending: Default::default(),

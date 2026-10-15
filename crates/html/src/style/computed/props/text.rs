@@ -5,6 +5,7 @@ use crate::style::values::value::{Color, Len};
 
 mod breaking;
 mod overflow_case;
+mod text_box_values;
 mod vertical_clamp;
 
 impl Computed {

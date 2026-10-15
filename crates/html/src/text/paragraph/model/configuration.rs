@@ -54,8 +54,8 @@ impl Paragraph {
 
 impl Paragraph {
     /// `text-box-trim` блока (см. поле `ruby_trim`).
-    pub fn ruby_trim(mut self, start: bool, end: bool) -> Self {
-        self.ruby_trim = (start, end);
+    pub fn ruby_trim(mut self, t: crate::text::line_trim::Trim) -> Self {
+        self.ruby_trim = t;
         self
     }
 }
