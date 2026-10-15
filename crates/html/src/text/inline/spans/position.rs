@@ -122,9 +122,10 @@ pub fn shift_spans(
                     match style.line_height {
                         Some(Len::Px(v)) => v,
                         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-                        None | Some(Len::Auto) => {
-                            size * crate::text::text_box::normal_fraction(style, opts)
-                        }
+                        None | Some(Len::Auto) => crate::text::metrics::normal_px(
+                            crate::text::text_box::normal_fraction(style, opts),
+                            size,
+                        ),
                         _ => line_px,
                     }
                 } else {

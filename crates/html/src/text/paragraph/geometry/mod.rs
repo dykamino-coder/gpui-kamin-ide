@@ -1,5 +1,6 @@
 //! Геометрия строк: выравнивание, точка знака, коробка строчного блока, rtl-края.
 
+mod inline_box_rect;
 mod inline_rect;
 mod rtl_extent;
 

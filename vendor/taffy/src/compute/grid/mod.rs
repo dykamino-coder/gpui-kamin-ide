@@ -1070,6 +1070,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
                 item.baseline_x_flags & 1 != 0,
                 item.margin_trim,
                 direction,
+                Direction::Ltr,
                 container_border_box.width,
                 border,
                 #[cfg(feature = "content_size")]

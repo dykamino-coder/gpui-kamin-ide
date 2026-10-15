@@ -37,6 +37,8 @@ mod page;
 mod page_box;
 #[path = "wptrun/page_box_values.rs"]
 mod page_box_values;
+#[path = "wptrun/paged.rs"]
+mod paged;
 #[path = "wptrun/pair.rs"]
 mod pair;
 #[path = "wptrun/pixel_compare.rs"]

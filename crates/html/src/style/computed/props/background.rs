@@ -42,6 +42,20 @@ impl Computed {
             // deprecated»), и в корпусе его не просит ни один рефтест —
             // разбираем два ключевых слова.
             "image-orientation" => self.image_orient_none = Some(v.trim() == "none"),
+            // `light-dark(<image>, <image>)` (css-color-5 §light-dark,
+            // `image-light-dark`): вариант по схеме узла.
+            "background-image"
+                if v.get(..11)
+                    .is_some_and(|h| h.eq_ignore_ascii_case("light-dark(")) =>
+            {
+                let inner = v[11..].trim_end();
+                let args = crate::style::css::split_args(inner.strip_suffix(')').unwrap_or(inner));
+                if let [light, dark] = args.as_slice() {
+                    let dark_now = crate::style::values::value::dark_scheme();
+                    let pick = if dark_now { dark.trim() } else { light.trim() };
+                    self.apply_background(key, pick, pick, hit);
+                }
+            }
             "background-image" => {
                 if v == "inherit" {
                     self.inherit_bits |= inh::BG_IMAGE;

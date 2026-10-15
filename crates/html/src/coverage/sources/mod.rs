@@ -28,7 +28,7 @@ const fn concatenate<const N: usize>(groups: &[&[&'static str]]) -> [&'static st
 /// на картинке его нет. Аудит нашёл пять таких. Список ниже — все места, где
 /// стиль превращается в элементы; тест требует, чтобы каждое поле
 /// разрешённого стиля было прочитано хотя бы в одном из них.
-pub(super) const CONSUMERS: &[&str] = &concatenate::<467>(&[
+pub(super) const CONSUMERS: &[&str] = &concatenate::<468>(&[
     dom_text::SOURCES,
     layout_paint::SOURCES,
     layout_flow::SOURCES,

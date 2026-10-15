@@ -127,6 +127,10 @@ pub(super) fn align_and_position_item(
     x_end: bool,
     margin_trim: u8,
     direction: Direction,
+    // KaminIDE patch: the vertical counterpart of `direction`. Grid lanes with a reversed
+    // stacking (or grid) axis place static-position abspos children from the physical bottom
+    // (css-grid-3 §grid-lanes: the static position is reversed with the content).
+    y_direction: Direction,
     container_border_box_width: f32,
     container_border: Rect<f32>,
     #[cfg(feature = "content_size")] container_is_scroll_container: bool,
@@ -671,7 +675,7 @@ pub(super) fn align_and_position_item(
         margin.vertical_components(),
         shims.top,
         shims.bottom,
-        Direction::Ltr,
+        y_direction,
     );
 
     let scrollbar_size = Size {

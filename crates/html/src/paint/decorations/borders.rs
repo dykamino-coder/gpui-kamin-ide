@@ -186,7 +186,9 @@ pub(crate) fn coloured_borders(c: &Computed, out: &mut Vec<AnyElement>) {
     let uniform = sides.len() == 4 && sides.iter().all(|s| *s == sides[0]);
     // При `border-shape` рамка — один слой цветом relevant side (спека:
     // stroke-from-border), прямоугольные полосы сторон ей не нужны.
-    if !sides.is_empty() && !uniform && c.border_shape.is_none() {
+    // A one-colour `double` border is painted whole by its rings.
+    let rings = crate::style::apply::double_border(c).is_some();
+    if !sides.is_empty() && !uniform && !rings && c.border_shape.is_none() {
         let side_px = |l: Option<Len>| match l {
             Some(Len::Px(v)) => v,
             _ => 0.0,
@@ -219,16 +221,30 @@ pub(crate) fn coloured_borders(c: &Computed, out: &mut Vec<AnyElement>) {
             // Абсолютный ребёнок считается от ВНУТРЕННЕГО края рамки,
             // поэтому кольцо накрывается отрицательными отступами ровно на
             // толщину сторон — иначе полоса ложится внутрь содержимого.
-            let strip = div().absolute().bg(colour.to_hsla());
-            out.push(
-                match i {
-                    0 => strip.top(px(-t)).left(px(-l)).right(px(-r)).h(px(w)),
-                    1 => strip.top(px(-t)).right(px(-r)).bottom(px(-b)).w(px(w)),
-                    2 => strip.bottom(px(-b)).left(px(-l)).right(px(-r)).h(px(w)),
-                    _ => strip.top(px(-t)).left(px(-l)).bottom(px(-b)).w(px(w)),
+            let strip = div().absolute();
+            let mut strip = match i {
+                0 => strip.top(px(-t)).left(px(-l)).right(px(-r)).h(px(w)),
+                1 => strip.top(px(-t)).right(px(-r)).bottom(px(-b)).w(px(w)),
+                2 => strip.bottom(px(-b)).left(px(-l)).right(px(-r)).h(px(w)),
+                _ => strip.top(px(-t)).left(px(-l)).bottom(px(-b)).w(px(w)),
+            };
+            // A dotted/dashed side stays patterned (css-backgrounds-3 §4.2).
+            strip = match c.border_side_styles[i] {
+                Some(s @ (7 | 8)) => {
+                    strip = match i {
+                        0 => strip.border_t(px(w)),
+                        1 => strip.border_r(px(w)),
+                        2 => strip.border_b(px(w)),
+                        _ => strip.border_l(px(w)),
+                    }
+                    .border_color(colour.to_hsla());
+                    let pattern = [gpui::BorderStyle::Dotted, gpui::BorderStyle::Dashed];
+                    strip.style().border_style = Some(pattern[usize::from(s == 8)]);
+                    strip
                 }
-                .into_any_element(),
-            );
+                _ => strip.bg(colour.to_hsla()),
+            };
+            out.push(strip.into_any_element());
         }
     }
 }

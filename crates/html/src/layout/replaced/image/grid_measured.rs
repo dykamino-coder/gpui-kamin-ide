@@ -7,8 +7,8 @@ use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Refineable, Styled, StyledImage, px, size};
 
 mod automatic_minimum;
-mod measured_leaf;
-use measured_leaf::MeasuredImage;
+
+use crate::layout::replaced::measured::MeasuredReplaced;
 
 pub(super) fn measured(
     element: &Element,
@@ -137,7 +137,7 @@ pub(super) fn measured(
         image.into_any_element()
     };
     Some(
-        MeasuredImage {
+        MeasuredReplaced {
             image: picture,
             style: native,
             natural: size(px(natural.w?), px(natural.h?)),

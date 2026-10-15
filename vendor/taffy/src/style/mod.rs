@@ -119,6 +119,12 @@ pub trait CoreStyle {
     fn is_block(&self) -> bool {
         false
     }
+    /// KaminIDE patch: `display: flow-root` — a block container that establishes a new block
+    /// formatting context. As a layout root it is sized like a block box.
+    #[inline(always)]
+    fn is_flow_root(&self) -> bool {
+        false
+    }
     /// Is it a compressible replaced element: a replaced element (image, video, canvas, ...) or a
     /// form control with an intrinsic size (`input`, `select`, `textarea`, `meter`, ...)?
     /// Such boxes resolve an `auto` width to their intrinsic size rather than being stretched by
@@ -1350,6 +1356,11 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
         matches!(self.display, Display::Block)
     }
     #[inline(always)]
+    #[cfg(feature = "block_layout")]
+    fn is_flow_root(&self) -> bool {
+        matches!(self.display, Display::FlowRoot)
+    }
+    #[inline(always)]
     fn is_compressible_replaced(&self) -> bool {
         self.item_is_replaced || self.item_is_compressible_replaced
     }
@@ -1502,6 +1513,10 @@ impl<T: CoreStyle> CoreStyle for &'_ T {
     #[inline(always)]
     fn is_block(&self) -> bool {
         (*self).is_block()
+    }
+    #[inline(always)]
+    fn is_flow_root(&self) -> bool {
+        (*self).is_flow_root()
     }
     #[inline(always)]
     fn is_compressible_replaced(&self) -> bool {

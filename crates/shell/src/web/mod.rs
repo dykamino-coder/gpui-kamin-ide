@@ -9,6 +9,7 @@ mod acceptance;
 mod browsers;
 #[cfg(debug_assertions)]
 pub(crate) use acceptance::{acceptance_log, reset_fixture};
+pub(crate) use gpu_mode::software_render;
 mod context_menu;
 mod copy_frame;
 mod cursors;
@@ -19,6 +20,7 @@ mod device_generation;
 mod diag;
 mod diag_activity;
 mod diag_clock;
+pub(crate) mod diag_event_name;
 mod diag_log;
 mod diag_sink;
 pub(crate) mod diag_views;

@@ -130,7 +130,7 @@ pub(super) fn stack_child_of(
     h: f32,
     over: f32,
     rel: (f32, f32),
-    build: impl Fn(bool, usize) -> gpui::AnyElement,
+    build: impl Fn(bool, usize, bool) -> gpui::AnyElement,
     measure: Option<f32>,
     monolith: bool,
     span: bool,
@@ -138,12 +138,12 @@ pub(super) fn stack_child_of(
 ) -> crate::layout::fragment::types::StackChild {
     crate::layout::fragment::types::StackChild {
         measure,
-        el: side_margin_wrap(build(true, 0), copy, col_vert),
+        el: side_margin_wrap(build(true, 0, false), copy, col_vert),
         frags: if span {
             Vec::new()
         } else {
             (1..kid_copies)
-                .map(|i| side_margin_wrap(build(false, i), copy, col_vert))
+                .map(|i| side_margin_wrap(build(false, i, false), copy, col_vert))
                 .collect()
         },
         monolith,
@@ -207,11 +207,11 @@ pub(super) fn stack_child_of(
                     foot,
                     geom,
                     head_els: match head {
-                        Some(_) => (1..kid_copies).map(|i| build(false, i)).collect(),
+                        Some(_) => (1..kid_copies).map(|i| build(false, i, true)).collect(),
                         None => Vec::new(),
                     },
                     foot_els: match foot {
-                        Some(_) => (0..kid_copies).map(|i| build(false, i)).collect(),
+                        Some(_) => (0..kid_copies).map(|i| build(false, i, true)).collect(),
                         None => Vec::new(),
                     },
                 },

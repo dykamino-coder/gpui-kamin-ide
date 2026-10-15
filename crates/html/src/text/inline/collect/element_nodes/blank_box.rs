@@ -76,7 +76,7 @@ pub(super) fn blank_box(
         let line = match merged.line_height {
             Some(Len::Px(v)) => v,
             Some(Len::Em(k)) => k * size,
-            _ => size * crate::text::metrics::normal_line(&family),
+            _ => crate::text::metrics::normal_px(crate::text::metrics::normal_line(&family), size),
         };
         // Коробка стоит на области содержимого: она в середине
         // строки, а полулидинг делит остаток поровну (§10.8).

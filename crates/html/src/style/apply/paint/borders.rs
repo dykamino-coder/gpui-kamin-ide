@@ -121,15 +121,17 @@ pub(crate) fn double_border(
     if !any {
         return None;
     }
-    let sides: Vec<_> = c.border_colors.iter().flatten().collect();
-    let uniform = sides.first().filter(|f| sides.iter().all(|s| s == *f));
-    if !(sides.is_empty() || sides.len() == 4) || (sides.len() > 1 && uniform.is_none()) {
+    // Only the painted sides count: `border-left: 10px double red` colours
+    // one side and leaves the zero-width others unset, and the rings stay
+    // one colour (css-backgrounds-3 §4.2; `flex-gap-decorations-004-ref`).
+    let mut sides = (0..4)
+        .filter(|&i| widths[i] > 0.0)
+        .map(|i| c.border_colors[i].or(c.border_color));
+    let first = sides.next().flatten();
+    if sides.any(|s| s != first) {
         return None;
     }
-    let colour = uniform
-        .copied()
-        .copied()
-        .or(c.border_color)
+    let colour = first
         .or(c.color)
         .unwrap_or(crate::style::values::value::Color {
             r: 0.0,

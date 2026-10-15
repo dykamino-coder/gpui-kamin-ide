@@ -166,6 +166,7 @@ pub fn self_align(a: Align, last: bool) -> gpui::AlignItems {
 
 #[path = "alignment_axes.rs"]
 mod alignment_axes;
+mod grid_content_baseline;
 pub(crate) mod item_metadata;
 
 pub fn apply(d: Div, c: &Computed) -> Div {

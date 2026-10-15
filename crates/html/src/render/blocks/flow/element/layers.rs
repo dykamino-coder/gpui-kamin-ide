@@ -143,7 +143,7 @@ pub(crate) fn finish_element(
     if e.style.z_index.is_some_and(|z| z < 0)
         && e.style.position == Some(crate::style::computed::Position::Relative)
         && e.tag != "body"
-        && !stacking_context(inherited)
+        && !crate::paint::stacking::nested_context(inherited)
     {
         done = crate::paint::effects::underlay::Underlay::new(done).into_any_element();
     }

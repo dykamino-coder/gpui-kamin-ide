@@ -89,7 +89,10 @@ pub fn line_height_spans(
             };
             match px_of {
                 Some(v) => out.push((at..end, gpui::px(v))),
-                None => out.push((at..end, gpui::px(normal * size))),
+                None => out.push((
+                    at..end,
+                    gpui::px(crate::text::metrics::normal_px(normal, size)),
+                )),
             }
         }
         at = end;

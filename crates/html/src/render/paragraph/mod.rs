@@ -68,7 +68,7 @@ fn paragraph_routed(
             let line = match base.line_height {
                 Some(Len::Px(v)) => v,
                 Some(Len::Pct(k)) => size * k,
-                _ => size * normal_fraction(&base, opts),
+                _ => crate::text::metrics::normal_px(normal_fraction(&base, opts), size),
             };
             let for_build = first.clone();
             let depth = defer_depth();

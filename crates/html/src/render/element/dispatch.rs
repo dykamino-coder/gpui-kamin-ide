@@ -42,6 +42,10 @@ pub(crate) fn dispatch_element(
         // его уже несёт, а копия для замещаемой коробки — нет. Без переноса
         // блочная картинка под `body { image-orientation: none }` всё равно
         // разворачивалась по метке EXIF.
+        "canvas" if merged.parent_grid != 0 => {
+            crate::layout::replaced::canvas_grid::render(e, &merged, inherited)
+                .unwrap_or_else(|| generic_box(e, merged, inherited, opts, outer_row))
+        }
         "img" => {
             // Единицы шрифта в размерах БЛОЧНОЙ картинки разрешаются так же,
             // как у строчной (рукав `"img"` в `atom`): `image()` = `image_with(e,
@@ -159,7 +163,8 @@ pub(crate) fn dispatch_element(
         // ряд блочного потока.
         "hr" => {
             let d = styled_div_with(e, &merged);
-            if inherited.vertical == Some(true) {
+            // A `width` (CSS or the §15.3.11 hint) keeps its own size.
+            if inherited.vertical == Some(true) || merged.width.is_some() {
                 d.into_any_element()
             } else {
                 d.w_full().into_any_element()

@@ -58,7 +58,7 @@ pub(crate) fn ruby_container_atom(
         let line = match merged.line_height {
             Some(Len::Px(v)) => v,
             Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-            _ => size * normal_fraction(&merged, opts),
+            _ => crate::text::metrics::normal_px(normal_fraction(&merged, opts), size),
         };
         (line - (asc + desc)) / 2.0
     };

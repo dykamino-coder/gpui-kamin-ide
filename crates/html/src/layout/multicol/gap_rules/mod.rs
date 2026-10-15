@@ -105,6 +105,13 @@ pub(crate) fn gap_rule_spec(
             } else {
                 s.row_rule_double
             },
+            kinds: if column {
+                &s.column_rule_kinds
+            } else {
+                &s.row_rule_kinds
+            }
+            .clone()
+            .unwrap_or(crate::style::computed::GapList::single(0)),
         })
     };
     let col = axis(true);

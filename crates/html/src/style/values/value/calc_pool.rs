@@ -65,10 +65,16 @@ pub fn lerp_len(a: Len, b: Len, k: f32) -> Option<Len> {
 /// `Len::parse` её не берёт: голое число `eval_calc` отбрасывает намеренно.
 pub fn number(s: &str) -> Option<f32> {
     let s = s.trim();
-    if let Some(inner) = s.strip_prefix("calc(").and_then(|r| r.strip_suffix(')')) {
+    let body = s
+        .strip_prefix("calc(")
+        .and_then(|r| r.strip_suffix(')'))
+        // `pow(2, 3)`, `round(2.5)` — числовые функции верхнего уровня.
+        .or_else(|| super::calc_math::is_math_fn(s).then_some(s));
+    if let Some(inner) = body {
         let mut calc = Calc { rest: inner };
         return match calc.expr()? {
-            Val::Num(n) if calc.rest.trim().is_empty() => Some(n),
+            // Верхний уровень: NaN -> 0 (css-values-4 §10.13).
+            Val::Num(n) if calc.rest.trim().is_empty() => Some(if n.is_nan() { 0.0 } else { n }),
             _ => None,
         };
     }

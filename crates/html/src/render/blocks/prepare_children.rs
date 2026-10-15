@@ -56,6 +56,7 @@ pub(crate) fn prepare_children(
         || inherited.transform.is_some()
         || inherited.contain_layout == Some(true)
         || inherited.contain_paint == Some(true)
+        || crate::style::computed::filter_contains_fixed(inherited)
         || inherited.will_change & crate::style::computed::wc::CB_FIXED != 0;
     let ordered_context = matches!(
         inherited.display,

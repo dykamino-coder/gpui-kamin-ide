@@ -19,6 +19,7 @@ mod cascade;
 use crate::dom::walk::cascade::cascade_element;
 
 mod animation_frames;
+mod details_content;
 mod finish_element;
 mod pseudo_styles;
 mod style_normalization;
@@ -205,6 +206,9 @@ fn walk(
                 {
                     c.style.implicit_anchor = Some(*counter);
                 }
+            }
+            if tag == "details" {
+                children = details_content::wrap(children, &attrs, rules, vars, &me, path, sibs);
             }
             let anim = animation_frames(&style, frames, vars);
             finish_element(

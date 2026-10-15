@@ -24,13 +24,16 @@ impl Computed {
             "column-rule-style" | "row-rule-style" | "rule-style" => {
                 if let Some(l) = gap_list(v, gap_style) {
                     let double = v.trim().eq_ignore_ascii_case("double");
+                    let kinds = gap_list(v, super::gap_rules::gap_kind);
                     if key != "row-rule-style" {
                         self.set_gap_styles(true, &l);
                         self.column_rule_double = double;
+                        self.column_rule_kinds = kinds.clone();
                     }
                     if key != "column-rule-style" {
                         self.set_gap_styles(false, &l);
                         self.row_rule_double = double;
+                        self.row_rule_kinds = kinds;
                     }
                 }
             }

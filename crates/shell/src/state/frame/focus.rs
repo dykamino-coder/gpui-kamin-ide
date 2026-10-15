@@ -51,6 +51,7 @@ impl RootView {
                 font_size: None,
                 background_pad: Default::default(),
                 background_radius: Default::default(),
+                background_line_gap: false,
                 background_border: None,
                 underline: None,
                 strikethrough: None,

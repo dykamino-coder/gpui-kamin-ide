@@ -14,6 +14,9 @@ pub(super) fn ancestor_holds(sel: &Selector, path: &[Ancestor], at: usize) -> bo
     if !matches_ancestor_compound(sel, &path[at]) {
         return false;
     }
+    if !ancestor_pseudos_hold(sel, path, at) {
+        return false;
+    }
     if sel.prev.is_some() {
         let Some((all, pos)) = &path[at].peers else {
             return false;
@@ -33,6 +36,31 @@ pub(super) fn ancestor_holds(sel: &Selector, path: &[Ancestor], at: usize) -> bo
 }
 
 /// Продолжение цепочки вверх для `.a .b .c`.
+/// `:root` и `:is()`/`:where()` у НЕ-предметного компаунда: прежде они
+/// пропускались, и `:root > .x` брал любого родителя (`nesting-basic`
+/// test-12), а `:is(.a) .b` — любого предка.
+fn ancestor_pseudos_hold(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
+    let node = &path[at];
+    let sibs = match &node.peers {
+        Some((all, pos)) => Sibs {
+            all: &all[..],
+            pos: *pos,
+            is_elem: true,
+            rc: Some(all),
+        },
+        None => Sibs::EMPTY,
+    };
+    sel.pseudo.iter().chain(sel.also.iter()).all(|p| {
+        if p == "root" {
+            return node.tag == "html";
+        }
+        if p == "empty" {
+            return node.empty;
+        }
+        is_holds(p, node, &path[..at], sibs).unwrap_or(true)
+    })
+}
+
 fn matches_chain(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
     let Some(anc) = &sel.ancestor else {
         return true;
@@ -76,7 +104,7 @@ pub(super) fn matches_compound(sel: &Selector, node: &Ancestor) -> bool {
             && sel.also.iter().all(|p| host_holds(p, node));
     }
     if let Some(t) = &sel.tag
-        && t != &node.tag
+        && !crate::style::css::default_ns::tag_matches(t, &node.tag, node.foreign)
     {
         return false;
     }

@@ -97,11 +97,25 @@ pub(super) fn gap_rule_layout(
     // переворачивает (эталоны `grid-gap-decorations-multi-value-writing-mode`).
     let rtl = merged.rtl == Some(true);
     let sideways_lr = vertical && merged.sideways == Some(true) && merged.vertical_rl != Some(true);
-    let (rev_x, rev_y) = if vertical {
+    let (mut rev_x, mut rev_y) = if vertical {
         (merged.vertical_rl == Some(true), sideways_lr != rtl)
     } else {
         (rtl, false)
     };
+    // Grid lanes count grid-axis gaps from the first track in track order
+    // and stacking-axis gaps from the fill start (css-gaps-1 §lists, Blink
+    // `GridLanesGapAccumulator`): `track-reverse` and `fill-reverse` flip the
+    // logical start of their axis.
+    if lanes && let GapLayout::Lines { stacked_vertically } = kind {
+        let (grid_rev, stack_rev) = (merged.lanes_track_reverse, merged.lanes_fill_reverse);
+        if stacked_vertically {
+            rev_y ^= grid_rev;
+            rev_x ^= stack_rev;
+        } else {
+            rev_x ^= grid_rev;
+            rev_y ^= stack_rev;
+        }
+    }
     // Поля контейнера: художник занимает его паддинг-бокс, а протяжённость
     // главных промежутков строк и лент считается от поля содержимого.
     let pad_px = |l: Option<Len>| match l {
