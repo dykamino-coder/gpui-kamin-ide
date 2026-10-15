@@ -37,12 +37,21 @@ pub(super) fn decorate(parent: &Computed, own: &Computed, c: &mut Computed, own_
             .iter()
             .any(|p| l == *p || l.starts_with(&format!("{p}-")))
     });
+    // Ребёнок flex/grid/lanes-контейнера блокифицирован (css-display-3
+    // §2.7): `inline-block` там уже не атомарная строчная коробка, и линии
+    // идут дальше (Blink `StopPropagateTextDecorations` смотрит display ПОСЛЕ
+    // `AdjustStyleForDisplay`; эталоны `grid-lanes/baseline/*-ref`).
+    let blockified = matches!(
+        parent.display,
+        Some(D::Flex | D::InlineFlex | D::Grid | D::InlineGrid | D::GridLanes)
+    );
     let blocked = matches!(own.position, Some(P::Absolute) | Some(P::Fixed))
         || own.float.is_some_and(|f| f != 0)
-        || matches!(
-            own.display,
-            Some(D::InlineBlock | D::InlineTable | D::InlineFlex | D::InlineGrid)
-        );
+        || (!blockified
+            && matches!(
+                own.display,
+                Some(D::InlineBlock | D::InlineTable | D::InlineFlex | D::InlineGrid)
+            ));
     c.skip_ink = own.skip_ink.or(parent.skip_ink);
     c.skip_spaces = own.skip_spaces.or(parent.skip_spaces);
     c.decors = if blocked {
