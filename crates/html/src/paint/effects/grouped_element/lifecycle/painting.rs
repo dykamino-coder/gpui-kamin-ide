@@ -3,6 +3,7 @@
 mod area;
 pub(super) use area::group_area;
 
+mod contour;
 mod masks;
 pub(super) use masks::resolve_mask;
 
@@ -78,36 +79,41 @@ pub(super) fn paint_body(
     // (bad-mask-image-svg-*).
     // Полигон сверх восьми вершин (предел шейдера) или с `evenodd` —
     // растровой маской-путём в системе коробки (clip-path-polygon-004/005).
-    let poly_mask = if group.mask.is_none() && (polygon.len() > 8 || group.polygon_evenodd) {
-        let d: Vec<String> = polygon
-            .iter()
-            .enumerate()
-            .map(|(i, p)| {
-                format!(
-                    "{}{} {}",
-                    if i == 0 { "M" } else { "L" },
-                    f32::from(p.x - bounds.origin.x),
-                    f32::from(p.y - bounds.origin.y)
-                )
-            })
-            .collect();
-        let rule = if group.polygon_evenodd {
-            "evenodd"
+    // Фигурные углы (`corner-shape`): внешний контур режет группу тем же
+    // путём, что эквивалентный `clip-path` — до восьми вершин шейдером
+    // многоугольника, иначе растром SVG-пути.
+    let (polygon, contour_mask, own_mask) = contour::outer(group, _prepaint.1, polygon);
+    let poly_mask =
+        if (group.mask.is_none() || !own_mask) && (polygon.len() > 8 || group.polygon_evenodd) {
+            let d: Vec<String> = polygon
+                .iter()
+                .enumerate()
+                .map(|(i, p)| {
+                    format!(
+                        "{}{} {}",
+                        if i == 0 { "M" } else { "L" },
+                        f32::from(p.x - bounds.origin.x),
+                        f32::from(p.y - bounds.origin.y)
+                    )
+                })
+                .collect();
+            let rule = if group.polygon_evenodd {
+                "evenodd"
+            } else {
+                "nonzero"
+            };
+            Some(format!("pathdef:{rule}:{} Z", d.join(" ")))
         } else {
-            "nonzero"
+            None
         };
-        Some(format!("pathdef:{rule}:{} Z", d.join(" ")))
-    } else {
-        None
-    };
     let polygon = if poly_mask.is_some() {
         Vec::new()
     } else {
         polygon
     };
-    let mask = group
-        .mask
+    let mask = contour_mask
         .as_deref()
+        .or(group.mask.as_deref().filter(|_| own_mask))
         .or(poly_mask.as_deref())
         .and_then(|src| resolve_mask(src, group, bounds, _prepaint, window, sl, st, sr, sb));
     // Коробка окраски (`mask-clip`): вне её маска не красится — элемент

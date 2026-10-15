@@ -889,7 +889,11 @@ impl DirectXRenderer {
             }
             self.blur
                 .group_poly
-                .push((poly, group.polygon.len().min(8) as u32));
+                .push((
+                    poly,
+                    group.polygon.len().min(8) as u32
+                        | if group.polygon_inverse { 16 } else { 0 },
+                ));
             let mask = group.mask.as_ref().and_then(|img| {
                 let srv = match self.blur.mask_cache.get(&img.id) {
                     Some(srv) => srv.clone(),
