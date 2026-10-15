@@ -82,7 +82,10 @@ pub(crate) fn line_runs(
                 .collect();
             row.sort_by(|x, y| x.b0.partial_cmp(&y.b0).unwrap_or(std::cmp::Ordering::Equal));
             if let Some(g) = lane_gap {
-                return row.windows(2).map(|w| (w[1].b0 - g, w[1].b0)).collect();
+                return row
+                    .windows(2)
+                    .map(|w| super::lane_visibility::cross_window(w[1], g, &lines, items))
+                    .collect();
             }
             row.windows(2)
                 .filter(|w| w[1].b0 - w[0].b1 >= -GAP_EPS)
@@ -123,7 +126,15 @@ pub(crate) fn line_runs(
                 // Элемент flex принадлежит одной строке; касание двух
                 // строк при нулевом gap не блокирует правило между ними.
                 .filter(|i| !flex && i.spans_a(g0, g1))
-                .map(|i| (i.b0, i.b1))
+                .map(|i| match lane_gap {
+                    Some(_) => super::lane_visibility::lane_entry_block(
+                        i,
+                        &inner[k],
+                        &inner[k + 1],
+                        (r0, r1),
+                    ),
+                    None => (i.b0, i.b1),
+                })
                 .collect(),
         );
         let windows = merge(
@@ -139,7 +150,7 @@ pub(crate) fn line_runs(
                 lo,
                 hi,
                 breaks: true,
-                joins: cross.is_some(),
+                joins: cross.is_some() || lane_gap.is_some(),
                 cross_w,
             })
             .collect();

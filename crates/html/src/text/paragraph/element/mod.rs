@@ -1,5 +1,6 @@
 //! impl Element/IntoElement for Paragraph: раскладка, prepaint, отрисовка.
 
+mod inline_anchor;
 mod layout;
 mod painting;
 mod prepaint;
