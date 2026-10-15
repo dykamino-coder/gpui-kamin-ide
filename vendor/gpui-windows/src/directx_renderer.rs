@@ -71,6 +71,9 @@ pub(crate) struct DirectXRenderer {
 
     width: u32,
     height: u32,
+    /// KaminIDE patch: цвет фона окна, которым очищен кадр вместо первого
+    /// квада сцены (`backdrop`); `Some` — этот квад не рисуется.
+    backdrop: Option<[f32; 4]>,
 
     /// Whether we want to skip drwaing due to device lost events.
     ///
@@ -473,6 +476,7 @@ impl DirectXRenderer {
             blend_replace: None,
             width: 1,
             height: 1,
+            backdrop: None,
             skip_draws: false,
         })
     }
@@ -516,6 +520,7 @@ impl DirectXRenderer {
     }
 
     fn pre_draw(&self, clear_color: &[f32; 4]) -> Result<()> {
+        let clear_color = self.backdrop.as_ref().unwrap_or(clear_color);
         let resources = self.resources.as_ref().expect("resources missing");
         let device_context = &self
             .devices
@@ -722,6 +727,7 @@ impl DirectXRenderer {
         background_appearance: WindowBackgroundAppearance,
     ) -> Result<()> {
         self.ensure_drawable_resources()?;
+        self.backdrop = backdrop::opaque_backdrop(scene, self.width, self.height);
         self.pre_draw(&match background_appearance {
             WindowBackgroundAppearance::Opaque => [1.0f32; 4],
             _ => [0.0f32; 4],
@@ -1345,6 +1351,13 @@ impl DirectXRenderer {
     }
 
     fn draw_quads(&mut self, start: usize, len: usize) -> Result<()> {
+        // KaminIDE patch: фон окна уже лёг очисткой кадра (`backdrop`). Буферы
+        // групп очищаются прозрачным — там первый квад рисуется как есть.
+        let (start, len) = if start == 0 && self.backdrop.is_some() && self.group_target.is_none() {
+            (1, len.saturating_sub(1))
+        } else {
+            (start, len)
+        };
         if len == 0 {
             return Ok(());
         }
@@ -3341,6 +3354,7 @@ mod dxgi {
     }
 }
 
+mod backdrop;
 mod recovery;
 mod batch_cost;
 
