@@ -11,6 +11,7 @@ import { setFrameRetentionProvider } from '../lib/host-ready'
 import { jsonlEntriesByTab } from '../signals/jsonl'
 import { mergeInitialTabSnapshot } from '../signals/tab-connection-reconcile'
 import { snd } from '../lib/bridge-transport'
+import { readWithRetry } from '../lib/read-with-retry'
 import { buildRendererIncidentSample, countAgentRetention } from '../lib/renderer-incident-sample'
 import { subagentTileState } from '../signals/agents'
 
@@ -135,14 +136,16 @@ export function useInit(bridge: KaminBridgeApi, role: WebviewRole = 'chat'): voi
     }).catch(() => { /* first run: defaults stand */ })
 
     async function init(): Promise<void> {
+      // Start-up reads are re-asked when a reply is lost (INC-2026-0065): a lost
+      // reply used to keep `initializing` true — the loader — forever.
       // Seed the gate signal first so NoTokenGateModal can decide to render
       // before any tab/jsonl work. If there's no token, the gate appears
       // immediately on top of everything; the rest of init still runs so
       // saved tabs are ready to display once the user unblocks.
-      const config = await bridge.getConfig()
+      const config = await readWithRetry('get-config', () => bridge.getConfig())
       hasToken.value = !!(config.serverUrl && config.token)
 
-      const existingTabs = await bridge.listTabs()
+      const existingTabs = await readWithRetry('tab:list', () => bridge.listTabs())
       const initialTabs = mergeInitialTabSnapshot(tabs.value, existingTabs)
       if (existingTabs.length > 0) {
         tabs.value = initialTabs
@@ -152,13 +155,13 @@ export function useInit(bridge: KaminBridgeApi, role: WebviewRole = 'chat'): voi
       // pinned chips (as ghosts) so they can click to revive sessions.
       // Token mismatch returns [] which naturally resets pinned state.
       try {
-        const persisted = await bridge.restoreTabsState()
+        const persisted = await readWithRetry('tabs:restore-state', () => bridge.restoreTabsState())
         if (Array.isArray(persisted) && persisted.length > 0) {
           applyRestoredState(persisted, initialTabs)
         }
       } catch { /* restore is best-effort */ }
       if (existingTabs.length > 0) {
-        const activeId = await bridge.getActiveTab()
+        const activeId = await readWithRetry('tab:get-active', () => bridge.getActiveTab())
         // Через seq-guard (seq=0 проигрывает ЛЮБОМУ реальному switch): между
         // await'ами init мог прилететь tab:switched, и прямая запись затирала
         // его stale-значением — кадр «не тот чат» после reload (аудит #70 C8).
