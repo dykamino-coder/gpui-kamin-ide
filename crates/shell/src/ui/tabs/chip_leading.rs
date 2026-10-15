@@ -47,7 +47,6 @@ pub(crate) fn leading(
         .child({
             // `.switching .dot` — «дышит» 1→0.25→1 за 1s; анимируется
             // ТОЛЬКО точка, пин остаётся в слоте (ревью ц.19)
-            use gpui::AnimationExt as _;
             let dot = div()
                 .w(px(4.0))
                 .h(px(4.0))
@@ -56,16 +55,12 @@ pub(crate) fn leading(
                 .when(s.pinned, |d| d.invisible())
                 .group_hover(group.clone(), |st| st.invisible());
             // Под RDP «дыхание» точки гонит кадры по сети — статичная точка.
+            // Фаза — с общего медленного такта `anim_tick` (10 кадров окна в
+            // секунду вместо кадра на каждую развёртку).
             if switching && !crate::win_integration::reduce_motion() {
-                dot.with_animation(
-                    "chip-switching-pulse",
-                    gpui::Animation::new(std::time::Duration::from_secs(1)).repeat(),
-                    |d, delta| {
-                        crate::web::diag_why::tick("animation/chip-leading");
-                        d.opacity(1.0 - 0.75 * (std::f32::consts::PI * delta).sin())
-                    },
-                )
-                .into_any_element()
+                crate::web::diag_why::tick("animation/chip-leading");
+                let f = (std::f32::consts::PI * crate::ui::anim_tick::phase(1000)).sin();
+                dot.opacity(1.0 - 0.75 * f).into_any_element()
             } else {
                 dot.into_any_element()
             }

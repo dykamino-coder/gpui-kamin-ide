@@ -2,6 +2,7 @@
 
 pub mod activity;
 pub mod activity_bar;
+pub(crate) mod anim_tick;
 pub mod appearance_frame;
 pub mod appearance_popover;
 pub mod browser_pane;

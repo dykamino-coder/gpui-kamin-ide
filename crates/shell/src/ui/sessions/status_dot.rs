@@ -57,26 +57,24 @@ pub(crate) fn status_dot(s: &Session, is_active: bool, tab_color: Rgba, p: &Pale
     // working: keyframes `bridgeWorkingPulse` 1.1s — opacity 0.5→1→0.5,
     // scale 1→1.5→1. transform в gpui нет, поэтому «масштаб» — абсолютный
     // внутренний кружок в боксе фиксированных 6px: лейаут не дёргается.
-    use gpui::AnimationExt as _;
+    // Фаза — с общего медленного такта (`anim_tick`): 10 кадров окна в
+    // секунду на все точки вместо кадра на каждую развёртку.
+    crate::web::diag_why::tick("animation/status-dot");
+    let f = (std::f32::consts::PI * crate::ui::anim_tick::phase(1100)).sin();
+    let sz = dot_size * (1.0 + 0.5 * f);
+    let off = (dot_size - sz) / 2.0;
     div()
         .flex_shrink_0()
         .relative()
         .w(px(dot_size))
         .h(px(dot_size))
-        .child(dot.absolute().with_animation(
-            SharedString::from(format!("sdot-pulse-{}", s.id)),
-            gpui::Animation::new(std::time::Duration::from_millis(1100)).repeat(),
-            move |d, delta| {
-                crate::web::diag_why::tick("animation/status-dot");
-                let f = (std::f32::consts::PI * delta).sin();
-                let sz = dot_size * (1.0 + 0.5 * f);
-                let off = (dot_size - sz) / 2.0;
-                d.left(px(off))
-                    .top(px(off))
-                    .w(px(sz))
-                    .h(px(sz))
-                    .opacity(0.5 + 0.5 * f)
-            },
-        ))
+        .child(
+            dot.absolute()
+                .left(px(off))
+                .top(px(off))
+                .w(px(sz))
+                .h(px(sz))
+                .opacity(0.5 + 0.5 * f),
+        )
         .into_any_element()
 }

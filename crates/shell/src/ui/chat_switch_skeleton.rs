@@ -1,30 +1,27 @@
 //! Накрывашка переключения сессии (`ChatSwitchSkeleton.tsx` + `.module.css`,
-//! элементы 72/76). Спокойное брендовое ожидание: марка KaminIDE с «дышащим»
-//! свечением над тонкой бегущей полосой — вместо пустой панели.
+//! элементы 72/76). Спокойное брендовое ожидание: марка KaminIDE со
+//! статичным свечением над тонкой бегущей полосой — вместо пустой панели.
+//!
+//! Анимирована только полоса, и та — шагами общего такта `anim_tick`
+//! (10 кадров окна в секунду): каждый шаг любой анимации перерисовывает всё
+//! окно, а «дыхание» свечения и «парение» логотипа держали окно на 60 кадрах
+//! всю загрузку (INC-2026-0001). Свечение застыло на середине прежнего
+//! «дыхания» (непрозрачность 0,75).
 //!
 //! Ограничения gpui и обходы:
-//! - нет `transform: scale` → «дыхание» свечения сделано анимацией РАЗМЕРА
-//!   бокса (94 %→106 % от 150) с сохранением центра;
-//! - нет `translateY` → «парение» логотипа сделано анимацией `top`;
-//! - нет `filter: blur/drop-shadow` → свечение берётся из запечённого спрайта
-//!   `radial_bg::glow_sprite`, тень логотипа не воспроизводится;
+//! - нет `filter: blur/drop-shadow` → свечение собрано из колец, тень
+//!   логотипа не воспроизводится;
 //! - бегунок полосы — абсолютный бокс, чей `left` едет от −100 % до +100 %,
 //!   градиент собран из двух двухстоповых половин (у `linear_gradient` в gpui
 //!   ровно два стопа).
 
 use gpui::prelude::*;
-use gpui::{
-    Animation, AnimationExt as _, AnyElement, SharedString, div, img, linear_color_stop,
-    linear_gradient, px,
-};
+use gpui::{AnyElement, SharedString, div, img, linear_color_stop, linear_gradient, px};
 use kamin_metrics as m;
 use kamin_theme::Palette;
-use std::time::Duration;
 
 use crate::colors::{rgba, tint};
 
-/// `kaminSwitchBreathe` / `kaminSwitchFloat` — 2.4s ease-in-out infinite.
-const BREATHE_MS: u64 = 2400;
 /// `kaminSwitchSweep` — 1.15s ease-in-out infinite.
 const SWEEP_MS: u64 = 1150;
 /// `.brand { width: 96px; height: 96px }`
@@ -37,17 +34,12 @@ const LOGO: f32 = 64.0;
 const BAR_W: f32 = 180.0;
 pub(crate) const BAR_H: f32 = 3.0;
 
-/// Полукруглая синусоида 0→1→0 для «дыхания» и «парения».
-fn wave(delta: f32) -> f32 {
-    (std::f32::consts::PI * delta).sin()
-}
-
 /// Шторка переключения чата — брендовый лоадер с подписью по умолчанию.
 pub fn chat_switch_skeleton(p: &Palette) -> AnyElement {
     brand_loader(p, "Loading conversation…")
 }
 
-/// Единый брендовый лоадер (марка + «дышащее» свечение + бегущая полоса).
+/// Единый брендовый лоадер (марка + свечение + бегущая полоса).
 /// Используется шторкой чата И скелетом загрузки вебвью-панелей — загрузка
 /// везде выглядит одинаково, а не зоопарком разных плейсхолдеров.
 pub fn brand_loader(p: &Palette, caption: &'static str) -> AnyElement {
@@ -98,28 +90,10 @@ pub fn brand_loader(p: &Palette, caption: &'static str) -> AnyElement {
         .h(px(GLOW))
         .left(px((BRAND - GLOW) / 2.0))
         .top(px((BRAND - GLOW) / 2.0));
-    let glow = super::loading_motion::select(
-        reduced,
-        glow,
-        |e| e.into_any_element(),
-        |glow| {
-            glow.with_animation(
-                "chat-switch-breathe",
-                Animation::new(Duration::from_millis(BREATHE_MS))
-                    .repeat()
-                    .with_easing(gpui::ease_in_out),
-                // «Дыхание» — только прозрачностью: кольца позиционированы
-                // фиксированно и с изменением размера контейнера не масштабируются.
-                |d, delta| {
-                    crate::web::diag_why::tick("animation/chat-glow");
-                    d.opacity(0.5 + 0.5 * wave(delta))
-                },
-            )
-            .into_any_element()
-        },
-    );
+    // Середина прежнего «дыхания» 0.5→1→0.5.
+    let glow = glow.opacity(0.75);
 
-    // `.logo` — 64×64, «парит» на 4 px вверх и обратно
+    // `.logo` — 64×64, неподвижен
     let logo = div()
         .absolute()
         .w(px(LOGO))
@@ -131,25 +105,6 @@ pub fn brand_loader(p: &Palette, caption: &'static str) -> AnyElement {
                 .h(px(LOGO)),
         )
         .top(px((BRAND - LOGO) / 2.0));
-    let logo = super::loading_motion::select(
-        reduced,
-        logo,
-        |e| e.into_any_element(),
-        |logo| {
-            logo.with_animation(
-                "chat-switch-float",
-                Animation::new(Duration::from_millis(BREATHE_MS))
-                    .repeat()
-                    .with_easing(gpui::ease_in_out),
-                |d, delta| {
-                    crate::web::diag_why::tick("animation/chat-logo");
-                    d.top(px((BRAND - LOGO) / 2.0 - 4.0 * wave(delta)))
-                },
-            )
-            .into_any_element()
-        },
-    );
-
     // `.barFill`: три стопа (transparent → accent → transparent) двумя половинами
     let sweep = div()
         .absolute()
@@ -168,25 +123,13 @@ pub fn brand_loader(p: &Palette, caption: &'static str) -> AnyElement {
             linear_color_stop(clear, 1.),
         )))
         .left_0();
-    let sweep = super::loading_motion::select(
-        reduced,
-        sweep,
-        |e| e.into_any_element(),
-        |sweep| {
-            sweep
-                .with_animation(
-                    "chat-switch-sweep",
-                    Animation::new(Duration::from_millis(SWEEP_MS))
-                        .repeat()
-                        .with_easing(gpui::ease_in_out),
-                    |d, delta| {
-                        crate::web::diag_why::tick("animation/chat-sweep");
-                        d.left(gpui::relative(-1.0 + 2.0 * delta))
-                    },
-                )
-                .into_any_element()
-        },
-    );
+    let sweep = if reduced {
+        sweep
+    } else {
+        crate::web::diag_why::tick("animation/chat-sweep");
+        let t = gpui::ease_in_out(crate::ui::anim_tick::phase(SWEEP_MS));
+        sweep.left(gpui::relative(-1.0 + 2.0 * t))
+    };
 
     div()
         .absolute()
