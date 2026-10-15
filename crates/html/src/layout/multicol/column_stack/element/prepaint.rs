@@ -80,6 +80,24 @@ impl ColumnStack {
         plan: &[Frag],
         step: f32,
     ) {
+        use crate::layout::fragment::static_coordinates::{Place, StaticCoordinates};
+        let places = self.static_places.clone();
+        if let Some(places) = &places {
+            let mut entries = places.borrow_mut();
+            entries.clear();
+            entries.extend(plan.iter().map(|part| {
+                let (column, row_y) = self.place(part.col);
+                let child = &self.children[part.kid];
+                Place {
+                    kid: part.kid,
+                    from: part.from,
+                    origin: point(
+                        bounds.origin.x + px(column as f32 * step + child.rel.0 + child.par.dx),
+                        bounds.origin.y + px(row_y + part.y + child.rel.1 - part.from),
+                    ),
+                }
+            }));
+        }
         for f in plan {
             // У `clone` копия — САМ фрагмент своей высоты со своими рамками,
             // отбивкой и фоном (`render.rs::clone_fragment`): раскладывать её
@@ -141,6 +159,9 @@ impl ColumnStack {
                 window,
                 cx,
             );
+            let _static_coordinates = places.as_ref().filter(|_| !clone).map(|places| {
+                StaticCoordinates::enter(f.kid, point(x, y - px(f.from)), places.clone())
+            });
             el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
             // Retain the actual root width for fragment decoration bounds.
             kid.laid_w.set(kid.laid_w.get().max(f32::from(laid.width)));

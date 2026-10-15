@@ -27,16 +27,29 @@ thread_local! {
 }
 
 pub(crate) fn carries_abspos(c: &Element, depth: u8) -> bool {
-    depth > 0
-        && c.children.iter().any(|n| match n {
-            Node::Element(k) => {
-                k.style.position == Some(crate::style::computed::Position::Absolute)
-                    || (visible_overflow(&k.style)
-                        && !multicol_container(&k.style)
-                        && carries_abspos(k, depth - 1))
-            }
-            _ => false,
-        })
+    fn walk(c: &Element, depth: u8, fixed_cb: bool) -> bool {
+        depth > 0
+            && c.children.iter().any(|n| match n {
+                Node::Element(k) => {
+                    k.style.position == Some(crate::style::computed::Position::Absolute)
+                        || (fixed_cb
+                            && k.style.position == Some(crate::style::computed::Position::Fixed))
+                        || (visible_overflow(&k.style)
+                            && !multicol_container(&k.style)
+                            && walk(
+                                k,
+                                depth - 1,
+                                fixed_cb || crate::paint::stacking::fixed_cb_layer_box(&k.style),
+                            ))
+                }
+                _ => false,
+            })
+    }
+    walk(
+        c,
+        depth,
+        crate::paint::stacking::fixed_cb_layer_box(&c.style),
+    )
 }
 
 /// Рисуется ли ДАЛЬШЕ по разметке позиционированное содержимое первым
