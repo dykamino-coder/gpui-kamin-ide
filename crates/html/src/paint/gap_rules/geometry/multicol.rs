@@ -1,5 +1,8 @@
 //! Multicol gap geometry follows column boxes, not flex item boundaries.
 //! Blink ColumnGapAccumulator keeps spanner boundaries separate from row gaps.
+mod visibility;
+use visibility::row_visible;
+
 use super::{Crossing, GAP_EPS, GapItem, GapRun};
 use crate::paint::gap_rules::{GapAxisRule, GapRuleSpec, MulticolGaps};
 
@@ -19,7 +22,7 @@ fn run(g0: f32, g1: f32, r0: f32, r1: f32, index: usize, count: usize) -> GapRun
     }
 }
 fn crossing(lo: f32, hi: f32, rule: Option<&GapAxisRule>, index: usize, count: usize) -> Crossing {
-    let joins = rule.is_some_and(|r| r.styles.at(index, count).unwrap_or(false));
+    let joins = true;
     Crossing {
         lo,
         hi,
@@ -65,7 +68,7 @@ pub(crate) fn multicol_runs(data: &MulticolGaps, spec: &GapRuleSpec) -> (Vec<Gap
                 .iter()
                 .any(|s| s.b0 < hi - GAP_EPS && s.b1 > lo + GAP_EPS)
         {
-            gaps.push((lo, hi));
+            gaps.push((lo, hi, pair[0].1, pair[1].1));
         }
     }
     let mut col_runs = vec![];
@@ -90,35 +93,49 @@ pub(crate) fn multicol_runs(data: &MulticolGaps, spec: &GapRuleSpec) -> (Vec<Gap
                     col.hidden.push((row.b0, row.b1));
                 }
             }
-            for (i, &(lo, hi)) in gaps.iter().enumerate() {
+            for (i, &(lo, hi, before, after)) in gaps.iter().enumerate() {
                 let i = if spec.rev_x && spec.vertical {
                     gaps.len() - 1 - i
                 } else {
                     i
                 };
-                col.crossings
-                    .push(crossing(lo, hi, spec.row.as_ref(), i, gaps.len()));
+                let mut cross = crossing(lo, hi, spec.row.as_ref(), i, gaps.len());
+                if matches!(rule.visibility, 0 | 3) {
+                    let vis = spec.row.as_ref().map_or(0, |r| r.visibility);
+                    cross.joins = row_visible(before, after, index, vis)
+                        || row_visible(before, after, index + 1, vis);
+                }
+                col.crossings.push(cross);
             }
             col_runs.push(col);
         }
     }
     let mut row_runs = vec![];
-    if spec.row.is_some() {
-        for (index, &(g0, g1)) in gaps.iter().enumerate() {
+    if let Some(rule) = &spec.row {
+        for (index, &(g0, g1, before, after)) in gaps.iter().enumerate() {
             let logical = if spec.vertical && spec.rev_x {
                 gaps.len() - 1 - index
             } else {
                 index
             };
             let mut row = run(g0, g1, first.a0, first.a1, logical, gaps.len());
+            for (i, col) in columns.iter().enumerate() {
+                if !row_visible(before, after, i, rule.visibility) {
+                    row.hidden.push((col.a0, col.a1));
+                }
+            }
             for (i, pair) in columns.windows(2).enumerate() {
                 let (lo, hi) = if pair[0].a0 < pair[1].a0 {
                     (pair[0].a1, pair[1].a0)
                 } else {
                     (pair[1].a1, pair[0].a0)
                 };
-                row.crossings
-                    .push(crossing(lo, hi, spec.col.as_ref(), i, count));
+                let mut cross = crossing(lo, hi, spec.col.as_ref(), i, count);
+                if rule.visibility == 3 {
+                    let vis = spec.col.as_ref().map_or(0, |r| r.visibility);
+                    cross.joins = visible(before, i, vis) || visible(after, i, vis);
+                }
+                row.crossings.push(cross);
             }
             row_runs.push(row);
         }
