@@ -3,6 +3,8 @@
 use crate::style::css::*;
 use std::collections::HashMap;
 
+pub(crate) mod default_ns;
+mod nesting;
 mod rules;
 use rules::sheet_rules;
 
@@ -96,6 +98,7 @@ impl Drop for NsScope {
     fn drop(&mut self) {
         if self.0 {
             NS_PREFIXES.with(|n| *n.borrow_mut() = None);
+            default_ns::set(None);
         }
     }
 }
@@ -133,6 +136,10 @@ fn declared_prefixes(css: &str) -> std::collections::HashSet<String> {
             break;
         };
         let first = r.split_whitespace().next().unwrap_or("");
+        if first.starts_with('"') || first.starts_with(char::from(39)) || first.starts_with("url(")
+        {
+            default_ns::set(Some(first.contains("1999/xhtml")));
+        }
         if !first.is_empty()
             && !first.starts_with('"')
             && !first.starts_with('\'')
@@ -175,6 +182,7 @@ pub fn parse_stylesheet_media(css: &str, media: Media) -> Vec<Rule> {
     if top {
         let declared = declared_prefixes(css);
         NS_PREFIXES.with(|n| *n.borrow_mut() = Some(declared));
+        scan_custom_media(css);
     }
     let _scope = NsScope(top);
     sheet_rules(css, media, top)

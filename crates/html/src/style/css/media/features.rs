@@ -91,6 +91,9 @@ impl Media {
             "hover" | "any-hover" => "hover",
             "pointer" | "any-pointer" => "fine",
             "color-gamut" => "srgb",
+            // `<noscript>` движок выбрасывает (dom::DROP_TAGS), то есть
+            // ведёт себя как браузер со сценариями (mediaqueries-5 §11.1).
+            "scripting" => "enabled",
             "dynamic-range" | "video-dynamic-range" => "standard",
             "prefers-reduced-motion"
             | "prefers-reduced-transparency"
@@ -127,6 +130,7 @@ fn mq_keywords(name: &str) -> Option<&'static [&'static str]> {
         }
         "prefers-contrast" => &["no-preference", "less", "more", "custom"],
         "forced-colors" => &["none", "active"],
+        "scripting" => &["none", "initial-only", "enabled"],
         _ => return None,
     })
 }

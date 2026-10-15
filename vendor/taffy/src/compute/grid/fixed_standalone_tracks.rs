@@ -102,7 +102,7 @@ pub(super) fn standalone_tracks_with_known<Tree: crate::LayoutPartialTree>(
 mod tests {
     use super::*;
     use crate::style_helpers::*;
-    use crate::{BoxSizing, Display, Style, TaffyTree};
+    use crate::{BoxSizing, Display, Rect, Style, TaffyTree};
 
     fn resolve(style: Style, columns: bool) -> Option<(Vec<f32>, f32)> {
         let mut tree: TaffyTree<()> = TaffyTree::new();

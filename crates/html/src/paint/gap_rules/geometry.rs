@@ -2,6 +2,7 @@
 mod multicol;
 pub(super) use multicol::multicol_runs;
 mod flex_lines;
+mod lane_visibility;
 mod lines;
 pub(super) use lines::line_runs;
 

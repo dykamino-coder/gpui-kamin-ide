@@ -3,7 +3,8 @@
 use super::columns::{intrinsic_column_width, measure_columns};
 use gpui::{
     AnyElement, App, AvailableSpace, Bounds, Element, ElementId, Font, GlobalElementId,
-    InspectorElementId, IntoElement, LayoutId, Pixels, SharedString, Style, Window, px, size,
+    InspectorElementId, IntoElement, LayoutId, Pixels, SharedString, Style, Window, point, px,
+    size,
 };
 use std::rc::Rc;
 
@@ -75,7 +76,7 @@ impl ColumnFlow {
 }
 
 impl Element for ColumnFlow {
-    type RequestLayoutState = ();
+    type RequestLayoutState = LayoutId;
     type PrepaintState = ();
 
     fn id(&self) -> Option<ElementId> {
@@ -92,7 +93,7 @@ impl Element for ColumnFlow {
         _inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
         _cx: &mut App,
-    ) -> (LayoutId, ()) {
+    ) -> (LayoutId, LayoutId) {
         let text = self.text.clone();
         let count = self.count;
         let col_w = self.col_w;
@@ -159,7 +160,7 @@ impl Element for ColumnFlow {
                 (size(width, height), Some(first), Some(last))
             },
         );
-        (layout_id, ())
+        (layout_id, layout_id)
     }
 
     fn prepaint(
@@ -167,7 +168,7 @@ impl Element for ColumnFlow {
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _state: &mut (),
+        state: &mut LayoutId,
         window: &mut Window,
         cx: &mut App,
     ) {
@@ -194,7 +195,14 @@ impl Element for ColumnFlow {
             (b.0.clone(), b.2)
         };
         let mut child = (self.build)(&cuts, used, bounds.size.width);
-        child.layout_as_root(
+        // The columns are a separate layout tree rooted at the host's EXACT
+        // origin: rooting them at the device-rounded bounds dropped the
+        // fractional part of the host's position, so content after a
+        // spanner with fractional margins sat up to half a pixel higher than
+        // the same content in normal flow (`multicol-span-all-006`).
+        let origin = window.layout_origin_unrounded(*state);
+        child.layout_as_root_at(
+            origin,
             size(
                 AvailableSpace::Definite(bounds.size.width),
                 AvailableSpace::MinContent,
@@ -202,7 +210,7 @@ impl Element for ColumnFlow {
             window,
             cx,
         );
-        window.with_absolute_element_offset(bounds.origin, |window| child.prepaint(window, cx));
+        child.prepaint_at(point(px(0.0), px(0.0)), window, cx);
         self.child = Some(child);
     }
 
@@ -211,7 +219,7 @@ impl Element for ColumnFlow {
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut (),
+        _state: &mut LayoutId,
         _prepaint: &mut (),
         window: &mut Window,
         cx: &mut App,

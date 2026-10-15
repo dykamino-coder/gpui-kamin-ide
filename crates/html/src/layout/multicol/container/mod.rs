@@ -4,10 +4,12 @@
 use crate::dom::Element;
 use crate::layout::fragment::Shape;
 use crate::layout::multicol::gap_rules::multicol_gap_rule_spec;
+use crate::paint::gap_rules::painter::GapRulePainter;
+use crate::paint::stacking::fixed_cb_layer_box;
 use crate::render::{RenderOpts, element};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
-use gpui::{AnyElement, ParentElement};
+use gpui::{AnyElement, IntoElement, ParentElement};
 mod kids;
 use kids::{column_kids, stack_children};
 mod clone_plan;
@@ -127,6 +129,16 @@ pub(crate) fn multicol_column_stack(
     // делит его поровну, и высота внешней колонки известна до
     // укладки — `h / cols` (не выше потолка коробки; css-multicol-1
     // §7.1; `multicol-breaking-005`: 300 в трёх колонках по 100).
+    // Коробка многоколоночника — содержащий блок `position: fixed`
+    // (трансформ, `contain: layout|paint`): фиксированный потомок копии
+    // встаёт от НЕЁ, а не от ближайшего позиционированного предка внутри
+    // копии (CSS 2.1 §10.1 п.3, css-transforms-1 §transform-rendering;
+    // Blink `fixedpos_containing_block`, out_of_flow_layout_part.cc).
+    // Слой берёт только `fixed`: абсолюты копий режутся колонками на месте.
+    let fixed_layer = fixed_cb_layer_box(&merged);
+    if fixed_layer {
+        crate::layout::positioned::containing_block::cb_open_fixed_only();
+    }
     let children = stack_children(
         e,
         &merged,
@@ -170,6 +182,9 @@ pub(crate) fn multicol_column_stack(
     // (поперечная ось растягивает высоту), у `vertical-rl` —
     // от ПРАВОГО края (`flex_row_reverse`), там начало
     // блочной оси.
+    // Gap decorations paint under the content (css-gaps-1 §paint, Blink).
+    let painter = gap_items.clone().zip(gap_spec.clone());
+    let d = d.children(painter.map(|(b, s)| GapRulePainter::new(b, s).into_any_element()));
     let mut d = column_stack_div(
         d,
         e,
@@ -189,6 +204,9 @@ pub(crate) fn multicol_column_stack(
         rule,
         children,
     );
+    if fixed_layer {
+        d = d.children(crate::layout::positioned::containing_block::cb_close());
+    }
     // Флоаты — прежним ходом, соседями стопки.
     for oof in &direct_oof {
         d = d.child(element(oof, &merged, opts));
@@ -208,9 +226,7 @@ pub(crate) fn multicol_column_stack(
     // (`single-line-row-flex-fragmentation-019/020`: `height:
     // 50%` без `top`). Пересчитываем в точки заранее, когда
     // высота многоколоночника известна в точках.
-    finish_column_stack(
-        e, merged, opts, col_vert, oof_static, gap_spec, gap_items, oof_spots, d,
-    )
+    finish_column_stack(e, merged, opts, col_vert, oof_static, oof_spots, d)
 }
 
 fn fixed_column_height(

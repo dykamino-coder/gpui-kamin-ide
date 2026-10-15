@@ -18,6 +18,9 @@ pub(crate) fn static_overlay(
     rot_block: bool,
 ) -> Option<inline::Piece> {
     let mut merged = inherit(inherited, &e.style);
+    crate::layout::positioned::anchor::prepare_inline_abs(&mut merged, e, inherited);
+    // Стиль с позицией — для якорного заместителя (`anchor::place`).
+    let positioned = merged.clone();
     merged.position = None;
     merged.abs_static = true;
     // Замещаемый элемент строит своя ветка: дети `<svg>` — не блоки,
@@ -67,6 +70,7 @@ pub(crate) fn static_overlay(
     // `GetStaticPositionInsetBias` переводит его в `InsetBias::kEnd`.
     // Сторону задаёт направление СОДЕРЖАЩЕГО блока, а не собственное
     // письмо коробки (css-writing-modes-4 §7.1, строки 1926-1931).
+    let inner = crate::layout::positioned::anchor::place::place(inner, &positioned, inherited);
     let rotated_rtl = inherited.rtl == Some(true) && inherited.rotated_line == Some(true);
     let inner = if inherited.rtl == Some(true) && !rot_block && !rotated_rtl {
         crate::layout::positioned::containing_block::InlineStartHang::new(inner).into_any_element()

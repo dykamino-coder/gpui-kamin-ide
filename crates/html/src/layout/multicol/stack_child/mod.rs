@@ -182,9 +182,8 @@ pub(super) fn multicol_stack_child(
     // содержимым — вид `slice` css-break-3 §4.
     let copy_ix = std::cell::Cell::new(0usize);
     let whole = nest_row.is_none() && nested_whole.borrow().contains(&copy.node_id);
-    let build = |first: bool, part: usize| {
+    let build = |first: bool, part: usize, band: bool| {
         build_copy(
-            e,
             opts,
             col_vert,
             col_rl,
@@ -202,6 +201,7 @@ pub(super) fn multicol_stack_child(
             whole,
             first,
             part,
+            band,
         )
     };
     // Монолиты (css-break-3 §4.1) — их разрыв

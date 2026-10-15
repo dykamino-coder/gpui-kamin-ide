@@ -88,7 +88,7 @@ pub(crate) fn initial_letter_float(
     let line = match inherited.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * font_px,
-        _ => font_px * normal_fraction(inherited, opts),
+        _ => crate::text::metrics::normal_px(normal_fraction(inherited, opts), font_px),
     };
     // Доля прописной — у шрифта БУКВИЦЫ: слой может сменить семейство.
     let letter_family = first.font_family.clone().unwrap_or_else(|| family.clone());

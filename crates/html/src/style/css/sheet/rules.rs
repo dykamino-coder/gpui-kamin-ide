@@ -78,10 +78,6 @@ pub(super) fn sheet_rules(css: &str, media: Media, top: bool) -> Vec<Rule> {
             }
             continue;
         }
-        let decls = parse_decls(body);
-        if decls.is_empty() {
-            continue;
-        }
         // Список селекторов режется ВНЕ скобок: запятая внутри
         // `:nth-child(2n of #a, #b)` — часть of-списка, а не граница
         // селектора, иначе `#b` становился самостоятельным правилом.
@@ -95,21 +91,26 @@ pub(super) fn sheet_rules(css: &str, media: Media, top: bool) -> Vec<Rule> {
         // `p:first-line.two, p.two {}` не применяется ни к кому. Прежде
         // негодная часть просто выбрасывалась, и правило красило соседа
         // (`c25-pseudo-elmnt-000`).
+        let parts = super::nesting::top_level_parts(&parts);
         let sels: Option<Vec<Selector>> = parts.iter().map(|one| Selector::parse(one)).collect();
         let Some(sels) = sels else { continue };
+        if super::nesting::rule(&parts, body, &media, &mut out, &mut order) {
+            continue;
+        }
+        let decls = parse_decls(body);
+        if decls.is_empty() {
+            continue;
+        }
         for sel in sels {
-            {
-                out.push(Rule {
-                    sel,
-                    decls: decls.clone(),
-                    order,
-                    // Разбор не знает, чья это таблица: происхождение ставит
-                    // тот, кто её подключает (см. `dom.rs`).
-                    origin: 0,
-                    layer: layer_of_rules(),
-                });
-                order += 1;
-            }
+            out.push(Rule {
+                sel,
+                decls: decls.clone(),
+                order,
+                // Происхождение ставит тот, кто подключает таблицу (см. `dom.rs`).
+                origin: 0,
+                layer: layer_of_rules(),
+            });
+            order += 1;
         }
     }
     out
@@ -156,6 +157,7 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media) -> bool {
                     sels,
                     decls: list,
                     margins,
+                    layer: layer_of_rules(),
                 });
             }
         }

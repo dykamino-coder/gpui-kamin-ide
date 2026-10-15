@@ -97,6 +97,19 @@ pub fn glint_surface_wv_holed(p: &Palette, content: AnyElement) -> impl IntoElem
             gpui::canvas(
                 |_, _, _| {},
                 move |bounds, _, window, _| {
+                    // Без видеокарты (WARP) кадр растеризует процессор, и цена
+                    // растёт с площадью: четыре слоя на всю карточку ради
+                    // пикселя кромки стоили ~40 % кадра (INC-2026-0001). Там
+                    // карточка — один квад с однотонной 1px-рамкой.
+                    if crate::web::software_render() {
+                        window.paint_quad(
+                            gpui::fill(bounds, mantle)
+                                .corner_radii(px(m::RADIUS_LG))
+                                .border_widths(px(1.))
+                                .border_color(mid),
+                        );
+                        return;
+                    }
                     // Все зоны composition-вью кадра; режем те, что
                     // пересекают эту карточку (свои зоны), остальные не
                     // пересекутся — сегментация вернёт bounds целиком

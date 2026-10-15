@@ -30,6 +30,7 @@ pub(super) fn layout_grid_gap(mut d: Div, c: &Computed) -> Div {
     // центральный, когда у сетки вертикальное письмо не `sideways` (Blink
     // `parent_grid_font_baseline` = `GetFontBaseline()` сетки).
     d.style().baseline_x_flags = item_metadata::baseline_x_flags(c);
+    grid_content_baseline::apply(d.style(), c);
     if let Some(r) = c.aspect_ratio
         && !ratio_as_auto_min(c)
     {

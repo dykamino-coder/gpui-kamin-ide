@@ -95,6 +95,8 @@ pub(super) fn is_pseudo_element(name: &str) -> bool {
             | "scroll-marker"
             | "scroll-marker-group"
             | "scroll-button"
+            // HTML §15.5.4: the `<details>` slot box, `dom::walk::details_content`.
+            | "details-content"
     )
 }
 
@@ -121,6 +123,23 @@ pub(super) fn pseudo_specificity(pseudo: &str) -> (u32, u32, u32) {
             })
             .max()
             .unwrap_or_default();
+    }
+    // `:is()` весит как самый специфичный ГОДНЫЙ аргумент, `:where()` —
+    // ноль (selectors-4 §17).
+    if let Some((name, arg)) = pseudo.split_once('(')
+        && let Some(arg) = arg.strip_suffix(')')
+    {
+        match name {
+            "where" => return (0, 0, 0),
+            "is" | "matches" | "any" => {
+                return crate::style::css::default_ns::is_args(arg)
+                    .iter()
+                    .map(Selector::specificity)
+                    .max()
+                    .unwrap_or_default();
+            }
+            _ => {}
+        }
     }
     let mut s = (0u32, 1u32, 0u32);
     if let Some((name, arg)) = pseudo.split_once('(')

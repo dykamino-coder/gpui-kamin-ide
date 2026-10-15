@@ -45,6 +45,7 @@ pub(super) fn stack_kid_cuts(
     mut blk_prev_cut: Option<f32>,
     mut flex_open_ok: bool,
     mut flex_chain: bool,
+    bfc: bool,
 ) {
     for (ki, (h, kmt, kmb, kcuts, kforced, ksolid, fb, fa, kreach)) in kids.into_iter().enumerate()
     {
@@ -77,7 +78,9 @@ pub(super) fn stack_kid_cuts(
                 *prev_mb + flex_gap + kmt
             }
         } else if first {
-            if top == 0.0 {
+            // Корень блочного контекста поле первого ребёнка наружу не
+            // пропускает (CSS 2.1 §8.3.1) — оно внутри коробки.
+            if top == 0.0 && !bfc {
                 *through = kmt;
                 0.0
             } else {

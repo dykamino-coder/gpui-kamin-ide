@@ -177,6 +177,13 @@ pub(super) fn layout_display(mut d: Div, c: &Computed) -> Div {
         // Контейнер таблицы собирается отдельной веткой сборки дерева.
         Some(Display::Table) | Some(Display::InlineTable) => {}
         Some(Display::Grid) => d = grid_style(d, c),
+        // `display: flow-root` is a block container that establishes a new
+        // block formatting context (css-display-3 §2.2): the native block
+        // layout must not collapse its children's margins through it
+        // (CSS 2.1 §8.3.1). Blink: `CreatesNewFormattingContext()`.
+        Some(Display::Block) | Some(Display::ListItem) if c.flow_root == Some(true) => {
+            d.style().display = Some(gpui::Display::FlowRoot);
+        }
         // `display: none` отсеивается ещё при разборе дерева: узел не строится.
         _ => {}
     }

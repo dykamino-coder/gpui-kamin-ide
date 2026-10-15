@@ -54,6 +54,8 @@ impl Computed {
             "align-content" => {
                 self.align_inherit &= !ainh::ALIGN_CONTENT;
                 self.align_content = parse_justify(v);
+                self.align_content_baseline = (parse_align(v) == Some(Align::Baseline))
+                    .then(|| v.split_whitespace().any(|word| word == "last"));
                 self.align_content_safe = is_safe(v);
                 // css-align-3 §align-block: ЛЮБОЕ не-`normal` значение делает
                 // блочный контейнер корнем блочного контекста форматирования.

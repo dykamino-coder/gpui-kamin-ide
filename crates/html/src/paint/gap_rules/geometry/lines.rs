@@ -82,7 +82,10 @@ pub(crate) fn line_runs(
                 .collect();
             row.sort_by(|x, y| x.b0.partial_cmp(&y.b0).unwrap_or(std::cmp::Ordering::Equal));
             if let Some(g) = lane_gap {
-                return row.windows(2).map(|w| (w[1].b0 - g, w[1].b0)).collect();
+                return row
+                    .windows(2)
+                    .map(|w| super::lane_visibility::cross_window(w[1], g, &lines, items))
+                    .collect();
             }
             row.windows(2)
                 .filter(|w| w[1].b0 - w[0].b1 >= -GAP_EPS)
@@ -123,7 +126,15 @@ pub(crate) fn line_runs(
                 // Элемент flex принадлежит одной строке; касание двух
                 // строк при нулевом gap не блокирует правило между ними.
                 .filter(|i| !flex && i.spans_a(g0, g1))
-                .map(|i| (i.b0, i.b1))
+                .map(|i| match lane_gap {
+                    Some(_) => super::lane_visibility::lane_entry_block(
+                        i,
+                        &inner[k],
+                        &inner[k + 1],
+                        (r0, r1),
+                    ),
+                    None => (i.b0, i.b1),
+                })
                 .collect(),
         );
         let windows = merge(
@@ -139,10 +150,21 @@ pub(crate) fn line_runs(
                 lo,
                 hi,
                 breaks: true,
-                joins: cross.is_some(),
+                joins: cross.is_some() || lane_gap.is_some(),
                 cross_w,
             })
             .collect();
+        let hidden = match (&lanes, main) {
+            (Some(_), Some(m)) => super::lane_visibility::hidden_lane_segments(
+                items,
+                lines[k],
+                lines[k + 1],
+                &[inner[k].as_slice(), inner[k + 1].as_slice()].concat(),
+                (r0, r1),
+                m.visibility,
+            ),
+            _ => vec![],
+        };
         mains.push(GapRun {
             g0,
             g1,
@@ -150,7 +172,7 @@ pub(crate) fn line_runs(
             r1,
             crossings,
             blocked,
-            hidden: vec![],
+            hidden,
             start_edge: None,
             end_edge: None,
             index: k,
@@ -166,6 +188,13 @@ pub(crate) fn line_runs(
         // beginning of each flex line»), внутри строки — от её логического
         // начала: при `rev_cross` крайний правый (нижний) промежуток первый.
         let n = inner[k].len();
+        // Grid lanes restart the count in every lane: each lane is its own
+        // list of stacking gaps (`column-gap-decorations-list-repeat-*`).
+        let (base, total) = if lane_gap.is_some() {
+            (0, n)
+        } else {
+            (ix, cross_total)
+        };
         for (j, &(lo, hi)) in inner[k].iter().enumerate() {
             crosses.push(GapRun {
                 g0: lo,
@@ -177,50 +206,20 @@ pub(crate) fn line_runs(
                 hidden: vec![],
                 start_edge: before,
                 end_edge: after,
-                index: if rev_cross { ix + n - 1 - j } else { ix + j },
-                count: cross_total.max(1),
+                index: if rev_cross {
+                    base + n - 1 - j
+                } else {
+                    base + j
+                },
+                count: total.max(1),
             });
         }
         ix += n;
     }
-    // Ленты: поперечный промежуток, к которому примыкает элемент во обе
-    // соседние ленты, идёт сквозь главный промежуток между ними — тот у
-    // этого пересечения перекрыт (Blink `MarkBlockedMainGapSegments`: отрезок
-    // главного промежутка, по обе стороны которого одна и та же запись,
-    // заблокирован). Такие поперечные прогоны соседних лент сливаются в один.
-    if lane_gap.is_some() && lines.len() > 1 {
-        let mut k = 0;
-        while k < crosses.len() {
-            let a = &crosses[k];
-            let lane = lines.iter().position(|&(_, e)| (e - a.r1).abs() <= GAP_EPS);
-            let joined = lane.filter(|&l| l + 1 < lines.len()).and_then(|l| {
-                let (g0, g1) = (lines[l].1, lines[l + 1].0);
-                let spanned = items.iter().any(|i| {
-                    i.spans_a(g0, g1)
-                        && ((i.b1 - a.g0).abs() <= GAP_EPS || (i.b0 - a.g1).abs() <= GAP_EPS)
-                });
-                if !spanned {
-                    return None;
-                }
-                crosses.iter().position(|b| {
-                    (b.r0 - lines[l + 1].0).abs() <= GAP_EPS
-                        && (b.g0 - a.g0).abs() <= GAP_EPS
-                        && (b.g1 - a.g1).abs() <= GAP_EPS
-                })
-            });
-            if let Some(j) = joined {
-                let b = crosses.remove(j);
-                let a = &mut crosses[if j < k { k - 1 } else { k }];
-                a.r1 = b.r1;
-                a.end_edge = b.end_edge;
-                // Слитый прогон может слиться и со следующей лентой.
-                if j < k {
-                    k -= 1;
-                }
-                continue;
-            }
-            k += 1;
-        }
-    }
+    // Ленты: поперечный промежуток всегда остаётся в своей ленте и не
+    // идёт сквозь главный промежуток, даже если соседние ленты выровнены
+    // элементом во несколько лент (WPT css-gaps/grid-lanes
+    // `*-gap-decorations-004/006/010/018/019` после upstream ac7ff49:
+    // поперечные правила режутся по каждой ленте).
     (mains, crosses)
 }

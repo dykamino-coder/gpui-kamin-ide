@@ -17,6 +17,7 @@ pub(super) enum Run {
 pub(super) fn resolve_root_page(
     none: &mut bool,
     canvas: &mut Option<gpui::Hsla>,
+    canvas_img: &mut Option<Computed>,
     root: &mut Computed,
     nodes: &mut Vec<Node>,
     left: &mut f32,
@@ -68,6 +69,11 @@ pub(super) fn resolve_root_page(
             if let Some(c) = e.style.background.filter(|c| c.a > 0.0) {
                 *canvas = Some(c.to_hsla());
             }
+            // Gradients and images of the propagated background (CSS 2.1 §14.2)
+            // paint the canvas too, above its colour (`page_stack::canvas`).
+            if let Some(l) = crate::layout::page::page_stack::image_layers(&e.style) {
+                *canvas_img = Some(l);
+            }
             break;
         }
         *left += side(&e.style.margin.left) + side(&b.left) + side(&e.style.padding.left);
@@ -75,6 +81,11 @@ pub(super) fn resolve_root_page(
         *top += side(&e.style.margin.top) + side(&b.top) + side(&e.style.padding.top);
         if let Some(c) = e.style.background.filter(|c| c.a > 0.0) {
             *canvas = Some(c.to_hsla());
+        }
+        // Gradients and images of the propagated background (CSS 2.1 §14.2)
+        // paint the canvas too, above its colour (`page_stack::canvas`).
+        if let Some(l) = crate::layout::page::page_stack::image_layers(&e.style) {
+            *canvas_img = Some(l);
         }
         if let Some(p) = &e.style.page {
             *root_page = p.clone();

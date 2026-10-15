@@ -97,6 +97,13 @@ impl Paragraph {
             let mut placed = std::mem::take(&mut self.overlays);
             let rotated = crate::text::vertical::in_rotated_frame();
             let scale = window.scale_factor().max(0.01);
+            // Строчные якоря и содержащие блоки — до куска внутри них:
+            // носитель краёв стоит в конце коробки, а абсолют — раньше.
+            for (at, _, how) in placed.iter() {
+                if let Some(b) = how.inline_box.filter(|_| !rotated) {
+                    self.register_inline_box(&segs, *at, b, bounds, window);
+                }
+            }
             for (at, el, how) in placed.iter_mut() {
                 // Абсолют от строчного содержащего блока: края считает
                 // раскладка от коробки размером в этот блок (`inline_cb_rect`).

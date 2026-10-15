@@ -59,6 +59,7 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     c.combine_upright = own.combine_upright.or(parent.combine_upright);
     c.rotated_line = own.rotated_line.or(parent.rotated_line);
     c.ortho_limit = own.ortho_limit.or(parent.ortho_limit);
+    c.cq_box = parent.container_box_for_children();
     c.orthogonal_scrollport = parent.orthogonal_scrollport;
     // An absolutely positioned box sizes its inline axis against its own
     // containing block (CSS 2.1 §10.3.7 / §10.6.4 shrink-to-fit), never with
@@ -107,6 +108,7 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
         _ => 0,
     };
     c.parent_lanes = parent.display == Some(crate::style::computed::Display::GridLanes);
+    c.parent_grid_align_items = parent.align_items;
     c.parent_subgrid = c.parent_grid != 0 && (parent.subgrid_cols || parent.subgrid_rows);
     c.parent_flex_grid = matches!(
         parent.display,

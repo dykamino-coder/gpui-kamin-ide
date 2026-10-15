@@ -7,7 +7,7 @@ pub(crate) use holder::inset_holder_box;
 use crate::dom::Element;
 use crate::layout::block::struts::margin_px;
 use crate::layout::positioned::static_position::{static_line_align, static_self_align};
-use crate::paint::stacking::{layered, stacking_context};
+use crate::paint::stacking::layered;
 use crate::render::*;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
@@ -141,15 +141,10 @@ pub(crate) fn static_position_layer(
             // гейта по родителю; `!cb_ancestor` держит правку там,
             // где контекст наверняка корневой (у `fixed-pos-stacking-001`
             // выше стоит `fixed` — он контекст, туда не заходим).
-            let kept = if below
-                && matches!(
-                    inherited.position,
-                    Some(crate::style::computed::Position::Relative)
-                        | Some(crate::style::computed::Position::Absolute)
-                )
-                && !inherited.cb_ancestor
-                && !stacking_context(inherited)
-            {
+            // Ближайший контекст — корневой (`nested_context`), значит
+            // шаг 3 корня: под потоком и под фоном любых предков, в том
+            // числе позиционированных без `z-index` выше родителя.
+            let kept = if below && !crate::paint::stacking::nested_context(inherited) {
                 crate::paint::effects::underlay::Underlay::new(kept).into_any_element()
             } else {
                 kept

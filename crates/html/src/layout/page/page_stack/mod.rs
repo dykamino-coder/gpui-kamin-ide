@@ -3,6 +3,8 @@
 
 use crate::layout::fragment::types::Frag;
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, point, px, size};
+mod canvas;
+pub(crate) use canvas::{CanvasLayerFn, builder as canvas_builder, image_layers};
 mod contents;
 mod element;
 mod kids;
@@ -143,6 +145,9 @@ pub struct PageStack {
     /// Показываемые листы (с нуля, по возрастанию), `None` — все. Печатный
     /// reftest WPT сравнивает только страницы из `<meta name=reftest-pages>`.
     pub(crate) select: Option<Vec<usize>>,
+    /// Image layers of the document canvas and their per-sheet layout.
+    pub(crate) canvas_layer: Option<CanvasLayerFn>,
+    pub(crate) canvas_els: Vec<(usize, AnyElement)>,
 }
 
 impl PageStack {
@@ -168,6 +173,8 @@ impl PageStack {
             pages: std::cell::Cell::new(1),
             grid: std::cell::Cell::new((1, 1.0)),
             select: None,
+            canvas_layer: None,
+            canvas_els: Vec::new(),
         }
     }
 

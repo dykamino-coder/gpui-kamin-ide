@@ -81,13 +81,7 @@ impl Computed {
                     return;
                 }
                 // Каждая строка записи — ряд сетки: `"head head" "side main"`.
-                let rows: Vec<Vec<String>> = v
-                    .split('"')
-                    .map(str::trim)
-                    .filter(|r| !r.is_empty())
-                    .map(|r| r.split_whitespace().map(str::to_string).collect())
-                    .filter(|r: &Vec<String>| !r.is_empty())
-                    .collect();
+                let rows = area_rows(v);
                 self.grid_areas = (!rows.is_empty()).then_some(rows);
             }
             // `grid-area: строка / колонка / конец строки / конец колонки`.
@@ -138,5 +132,44 @@ impl Computed {
             }
             _ => *hit = false,
         }
+    }
+}
+
+/// Ряды `grid-template-areas`: каждая CSS-строка (`"…"` или `'…'`, css-grid-2
+/// §7.3 «<string>+») — ряд, её ячейки разделены пробелами. Одинарные кавычки
+/// прежде не снимались: `'a a a'` давал области `'a`, `a`, `a'`
+/// (`grid-subgridded-to-grid-lanes/line-names/column-line-names-010`).
+fn area_rows(v: &str) -> Vec<Vec<String>> {
+    let mut rows = Vec::new();
+    let mut rest = v.trim_start();
+    while let Some(quote) = rest.chars().next() {
+        if quote != '"' && quote != '\'' {
+            // Не строка — не ряд (`none` и мусор рядов не дают).
+            let skip = rest.find(['"', '\'']).unwrap_or(rest.len());
+            rest = rest[skip..].trim_start();
+            continue;
+        }
+        let len = crate::style::css::skip_string(&rest[1..], quote);
+        let body = rest[1..1 + len]
+            .strip_suffix(quote)
+            .unwrap_or(&rest[1..1 + len]);
+        let row: Vec<String> = body.split_whitespace().map(str::to_string).collect();
+        if !row.is_empty() {
+            rows.push(row);
+        }
+        rest = rest[1 + len..].trim_start();
+    }
+    rows
+}
+
+#[cfg(test)]
+mod tests {
+    use super::area_rows;
+
+    #[test]
+    fn area_rows_accept_both_quote_kinds() {
+        let rows = area_rows("'a a b' \"c . d\"");
+        assert_eq!(rows, vec![vec!["a", "a", "b"], vec!["c", ".", "d"]]);
+        assert!(area_rows("none").is_empty());
     }
 }

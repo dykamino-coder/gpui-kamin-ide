@@ -74,6 +74,7 @@ pub(super) fn shape_from_kids(
             page_kid,
             oof_reach,
             page_prev,
+            super::height::bfc_root(c),
         );
     }
     // Заданная высота — в точках или (для страниц) в единицах окна.

@@ -59,7 +59,11 @@ pub(crate) fn route_pieces(
         }
         let mut opts = opts.clone();
         if biggest != opts.base_size() {
-            opts.text.line_height = gpui::px(biggest * normal_fraction(inherited, &opts)).into();
+            opts.text.line_height = gpui::px(crate::text::metrics::normal_px(
+                normal_fraction(inherited, &opts),
+                biggest,
+            ))
+            .into();
         }
         let opts = &opts;
         // Selection controls handlers, while native text retains its layout and paint.

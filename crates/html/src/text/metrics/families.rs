@@ -75,6 +75,13 @@ pub(super) fn fractions(family: &str) -> (f32, f32, f32, f32) {
         ),
         _ => FALLBACK,
     };
+    if let Some((_, _, line, _)) = measured
+        && line > 0.0
+        && line == out.2
+    {
+        let (a, d, _) = super::vmetrics_px(family, 1.0);
+        super::normal_px::register(line, a, d);
+    }
     CACHE.with(|c| c.borrow_mut().insert(family.to_string(), out));
     out
 }

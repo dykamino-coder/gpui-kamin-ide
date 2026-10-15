@@ -23,6 +23,9 @@ pub struct PageRule {
     /// Вложенные правила марджин-боксов (`@top-left { … }`, css-page-3
     /// §margin-at-rules): имя коробки в нижнем регистре → объявления.
     pub margins: Vec<(String, Vec<(String, String)>)>,
+    /// Путь каскадного слоя правила (как `Rule::layer`; неслойное —
+    /// `[u32::MAX]`): слой старше специфичности (`layers-002..004`).
+    pub layer: Vec<u32>,
 }
 
 /// Шестнадцать марджин-боксов листа (css-page-3 §margin-boxes, Table 1) — по
@@ -152,10 +155,12 @@ pub fn page_margins_in(
         .collect()
 }
 
-/// Номера совпавших с листом правил по возрастанию (специфичность, порядок).
+/// Номера совпавших с листом правил по возрастанию (слой, специфичность,
+/// порядок): css-cascade-5 §cascade-sort — каскадный слой решает раньше
+/// специфичности, и `@page` внутри `@layer` подчиняется ему же.
 fn matching_rules(rules: &[PageRule], index: usize, name: &str, rtl: bool) -> Vec<usize> {
     let right = index.is_multiple_of(2) != rtl;
-    let mut hits: Vec<((u8, u8, u8), usize)> = Vec::new();
+    let mut hits: Vec<((&[u32], (u8, u8, u8)), usize)> = Vec::new();
     for (order, r) in rules.iter().enumerate() {
         let spec = r
             .sels
@@ -170,7 +175,7 @@ fn matching_rules(rules: &[PageRule], index: usize, name: &str, rtl: bool) -> Ve
             .map(|s| (s.name.is_some() as u8, s.first + s.blank, s.left + s.right))
             .max();
         if let Some(sp) = spec {
-            hits.push((sp, order));
+            hits.push(((r.layer.as_slice(), sp), order));
         }
     }
     hits.sort();

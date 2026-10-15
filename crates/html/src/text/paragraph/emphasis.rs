@@ -70,6 +70,7 @@ impl Paragraph {
                 background_color: None,
                 background_pad: Default::default(),
                 background_radius: px(0.),
+                background_line_gap: false,
                 background_border: None,
                 underline: None,
                 strikethrough: None,

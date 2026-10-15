@@ -76,7 +76,7 @@ pub(crate) fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) 
     let lh = match inh.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-        None => size * normal_fraction(&inh, &opts),
+        None => crate::text::metrics::normal_px(normal_fraction(&inh, &opts), size),
         _ => return None,
     };
     if lh <= 0.0 {
