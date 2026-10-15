@@ -1651,8 +1651,12 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
             corner = round(corner * 255.0) / 255.0;
         }
         float mask = corner * q.pad;
-        if (q.poly_count >= 3u) {
-            mask *= saturate(0.5 - poly_sdf(q.poly, q.poly_count, input.position.xy));
+        // KaminIDE patch: bit 16 of poly_count inverts the polygon clip
+        // (border ring outside the inner contour, 1 - coverage).
+        uint poly_n = q.poly_count & 15u;
+        if (poly_n >= 3u) {
+            float poly_cover = saturate(0.5 - poly_sdf(q.poly, poly_n, input.position.xy));
+            mask *= (q.poly_count & 16u) != 0u ? 1.0 - poly_cover : poly_cover;
         }
         // Маска-изображение: плитка лежит от угла коробки своим размером и
         // повторяется по обеим осям (`mask-repeat: repeat` — начальное

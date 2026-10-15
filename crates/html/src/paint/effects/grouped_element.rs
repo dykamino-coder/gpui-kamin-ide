@@ -107,6 +107,11 @@ pub struct Grouped {
     /// рисунок-маска кроет 100×100 CSS-точек (mask-origin-3, mask-clip-2).
     /// Задаёт `svg::masked_layers` через `Computed::mask_user_scale`.
     pub mask_scale: f32,
+    /// Кольцо `corner-shape` НАД содержимым замещаемого элемента (запись,
+    /// цвет, отступы content-box от border-box t/r/b/l): содержимое
+    /// обрезается внутренним контуром (css-borders-4 §corner-shape-rendering),
+    /// поэтому внутри content-box кольцо ложится поверх картинки.
+    pub ring_over: Option<(String, crate::style::values::value::Color, [f32; 4])>,
 }
 
 impl Grouped {
@@ -115,6 +120,7 @@ impl Grouped {
             under: None,
             over: Vec::new(),
             mask_scale: 1.0,
+            ring_over: None,
             child: Some(child),
             blur: 0.0,
             opacity: 1.0,

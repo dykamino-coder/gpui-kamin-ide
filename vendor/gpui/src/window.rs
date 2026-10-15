@@ -4654,13 +4654,14 @@ impl Window {
         transformation: TransformationMatrix,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09, v122, `scout-transforms-2026-09d.md`
-        // шаг 3): порядок `outer·inner` вместо `inner·outer`. css-transforms
-        // +2/−1 (`transform-compound-001`, `transform3d-sorting-002`), но
-        // css-writing-modes −9: весь `text-combine-upright-*` (вертикальный
-        // текст рисуется вложенными `with_transformation`, и наш порядок
-        // подобран под них). Менять только вместе с `lines.rs`/`flow.rs`.
-        let combined = transformation.compose(self.current_transformation());
+        // KaminIDE patch: вложение `outer · inner` (css-transforms-1
+        // §transform-rendering: матрица предка применяется ПОСЛЕ своей; Blink
+        // GeometryMapper перемножает parent·local). Прежний `inner · outer`
+        // ломал вложенные поворот/скос (`transform-compound-001`); вертикальный
+        // `CombinedUpright` переводит свою четверть оборота в локальные точки
+        // строки (`combined_geometry::in_local_space`). При пустом стеке
+        // (`current` = unit) результат побайтно прежний: 1·a + 0·c = a.
+        let combined = self.current_transformation().compose(transformation);
         self.transformation_stack.push(combined);
         // KaminIDE patch: обычное вложение маски не переводит — ни своё, ни
         // унаследованное от `with_transformation_masked` снаружи: вертикальный
@@ -4688,7 +4689,7 @@ impl Window {
         transformation: TransformationMatrix,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        let combined = transformation.compose(self.current_transformation());
+        let combined = self.current_transformation().compose(transformation);
         let r = combined.rotation_scale;
         let keeps_axes = (r[0][1].abs() < 1e-4 && r[1][0].abs() < 1e-4)
             || (r[0][0].abs() < 1e-4 && r[1][1].abs() < 1e-4);
@@ -5882,6 +5883,32 @@ impl Window {
         }
     }
 
+    /// KaminIDE patch: группа, видимая СНАРУЖИ многоугольника (до восьми
+    /// вершин) — покрытие `1 − c` того же шейдера, что режет
+    /// `clip-path: polygon()`, поэтому край совпадает с ним бит в бит.
+    pub fn paint_group_outside_polygon<R>(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        polygon: &[Point<Pixels>],
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let result = self.paint_group(
+            bounds,
+            Corners::default(),
+            0.0,
+            1.0,
+            0,
+            polygon,
+            None,
+            None,
+            f,
+        );
+        if let Some(group) = self.next_frame.scene.groups.last_mut() {
+            group.polygon_inverse = true;
+        }
+        result
+    }
+
     /// KaminIDE patch: нарисовать поддерево в отдельный буфер и положить в
     /// кадр целиком.
     ///
@@ -5948,6 +5975,7 @@ impl Window {
             blur_radius: blur_radius * scale_factor,
             blend,
             polygon: polygon.iter().map(|p| p.scale(scale_factor)).collect(),
+            polygon_inverse: false,
             mask,
             mask_bounds,
             mask_once,

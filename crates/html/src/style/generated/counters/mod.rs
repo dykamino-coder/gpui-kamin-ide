@@ -29,7 +29,7 @@ const PSEUDO_AFTER: u32 = u32::MAX;
 #[derive(Clone, Debug)]
 struct Entry {
     owner: Vec<u32>,
-    value: i32,
+    value: i64,
     /// Счётчик создан как `reversed(имя)`: пункты списка считают ВНИЗ
     /// (css-lists-3 §list-item-counter).
     reversed: bool,
@@ -130,12 +130,12 @@ impl Counters {
     /// `counter-reset` (Blink `CreateCounter`): своя запись заменяет запись
     /// СВОЕГО уровня (сам узел или предыдущий брат) и вкладывается внутрь
     /// записи предка.
-    pub fn reset(&mut self, name: &str, value: i32) {
+    pub fn reset(&mut self, name: &str, value: i64) {
         self.reset_flagged(name, value, false);
     }
 
     /// То же, но с пометкой обратного счёта.
-    pub fn reset_flagged(&mut self, name: &str, value: i32, reversed: bool) {
+    pub fn reset_flagged(&mut self, name: &str, value: i64, reversed: bool) {
         let cur = self.path.clone();
         let st = self.stack.entry(name.to_string()).or_default();
         remove_stale(st, &cur);
@@ -198,7 +198,7 @@ impl Counters {
 
     /// `counter-increment` и `counter-set` (Blink `UpdateCounterValue`):
     /// при пустом стеке счётчик сперва создаётся со значения 0.
-    pub fn update(&mut self, name: &str, delta: i32, is_set: bool) {
+    pub fn update(&mut self, name: &str, delta: i64, is_set: bool) {
         let cur = self.path.clone();
         let st = self.stack.entry(name.to_string()).or_default();
         remove_stale(st, &cur);
@@ -223,7 +223,7 @@ impl Counters {
     }
     /// `counter(имя)`: значение ВНУТРЕННЕГО счётчика; чтение счётчик не
     /// создаёт — пустой стек читается нулём.
-    pub fn value_of(&mut self, name: &str) -> i32 {
+    pub fn value_of(&mut self, name: &str) -> i64 {
         let cur = self.path.clone();
         let Some(st) = self.stack.get_mut(name) else {
             return 0;
@@ -233,7 +233,7 @@ impl Counters {
     }
 
     /// `counters(имя, разделитель)`: вся цепочка от внешнего к внутреннему.
-    pub fn chain_of(&mut self, name: &str) -> Vec<i32> {
+    pub fn chain_of(&mut self, name: &str) -> Vec<i64> {
         let cur = self.path.clone();
         let Some(st) = self.stack.get_mut(name) else {
             return vec![0];
