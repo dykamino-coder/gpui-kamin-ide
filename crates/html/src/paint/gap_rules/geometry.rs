@@ -29,6 +29,8 @@ pub(super) struct GapItem {
     pub(crate) a1: f32,
     pub(crate) b0: f32,
     pub(crate) b1: f32,
+    /// Used trailing margin on the stacking axis; box extents stay unchanged.
+    pub(crate) margin_end: f32,
 }
 
 impl GapItem {
@@ -43,6 +45,7 @@ impl GapItem {
                 a1: x1,
                 b0: y0,
                 b1: y1,
+                margin_end: 0.0,
             }
         } else {
             GapItem {
@@ -50,6 +53,7 @@ impl GapItem {
                 a1: y1,
                 b0: x0,
                 b1: x1,
+                margin_end: 0.0,
             }
         }
     }
@@ -60,6 +64,7 @@ impl GapItem {
             a1: self.b1,
             b0: self.a0,
             b1: self.a1,
+            margin_end: 0.0,
         }
     }
 

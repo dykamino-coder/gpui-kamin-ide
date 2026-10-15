@@ -95,7 +95,15 @@ pub(super) fn paint_body(
             // Ось укладки строк — `a`: главные промежутки лежат по ней.
             let it: Vec<GapItem> = items
                 .iter()
-                .map(|b| GapItem::from_bounds(b, !stacked_vertically))
+                .enumerate()
+                .map(|(index, b)| {
+                    let mut item = GapItem::from_bounds(b, !stacked_vertically);
+                    item.margin_end = buffer
+                        .margins
+                        .get(index)
+                        .map_or(0.0, |m| m[usize::from(!stacked_vertically)]);
+                    item
+                })
                 .collect();
             let (main, cross) = if stacked_vertically {
                 (on_y, on_x)

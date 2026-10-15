@@ -140,6 +140,8 @@ pub(crate) fn line_runs(
                         &inner[k],
                         &inner[k + 1],
                         (r0, r1),
+                        items,
+                        [lines[k], lines[k + 1]],
                     ),
                     None => (i.b0, i.b1),
                 })
