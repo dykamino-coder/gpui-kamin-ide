@@ -1,93 +1,103 @@
-//! Общий медленный такт нативных анимаций (INC-2026-0001).
+//! Общий такт нативных анимаций: кадр — только к смене состояния (INC-2026-0001).
 //!
 //! gpui не перерисовывает часть окна: любой шаг даже 6-пиксельной анимации —
 //! целый кадр окна (~3,8 мс GPU на Intel UHD, ~22 мс на WARP). `with_animation`
 //! заказывает кадр на каждую развёртку, поэтому пульс точки статуса держал окно
-//! на 60 кадрах всё время, пока Claude работает (замер: 126 тиков/с на две
-//! точки). Здесь анимация берёт фазу с часов, округлённых до `STEP_MS`, а кадры
-//! заказывает один поток — раз в шаг, пока хоть одна такая анимация была на
-//! экране в последние два шага. Все медленные анимации делят этот такт, поэтому
-//! сколько бы их ни было, окно перерисовывается не чаще 10 раз в секунду.
+//! на 60 кадрах всё время, пока Claude работает, а мигание курсора терминала —
+//! пока терминал на экране. Здесь анимация дискретна: рендер спрашивает номер
+//! шага (`step`) и тем самым просит кадр к началу следующего шага; один поток
+//! будит окно к ближайшему такому сроку и спит, когда просьб нет. Шаги считаются
+//! от общих часов, поэтому анимации с кратными шагами меняются в одном кадре.
 
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::thread::Thread;
 use std::time::{Duration, Instant};
 
-/// Шаг такта: 10 кадров в секунду.
-const STEP_MS: u64 = 100;
-
+/// Ближайший срок, к которому кому-то нужен кадр (мс от `EPOCH`).
+static NEXT_DUE: AtomicU64 = AtomicU64::new(u64::MAX);
 static EPOCH: OnceLock<Instant> = OnceLock::new();
-/// До какого момента (мс от `EPOCH`) кому-то нужен такт.
-static WANTED_UNTIL: AtomicU64 = AtomicU64::new(0);
-/// Поток такта жив.
-static RUNNING: AtomicBool = AtomicBool::new(false);
+static TICKER: OnceLock<Thread> = OnceLock::new();
 
 fn now_ms() -> u64 {
     EPOCH.get_or_init(Instant::now).elapsed().as_millis() as u64
 }
 
-/// Фаза `0..1` периода `period_ms` по общему такту. Вызов из рендера держит
-/// такт живым ещё два шага: исчезла анимация с экрана — такт затих сам.
-pub(crate) fn phase(period_ms: u64) -> f32 {
+/// Номер текущего шага длиной `step_ms` по общим часам. Вызов из рендера
+/// просит кадр к началу следующего шага: перестала анимация рисоваться —
+/// кадров больше нет.
+pub(crate) fn step(step_ms: u64) -> u64 {
+    let step_ms = step_ms.max(1);
     let now = now_ms();
-    WANTED_UNTIL.fetch_max(now + 2 * STEP_MS, Ordering::Relaxed);
-    ensure_ticker();
-    step_phase(now, period_ms)
+    want_at((now / step_ms + 1) * step_ms);
+    now / step_ms
 }
 
-/// Фаза момента `now`, округлённого вниз до шага такта.
-fn step_phase(now: u64, period_ms: u64) -> f32 {
-    let period = period_ms.max(1);
-    let stepped = now / STEP_MS * STEP_MS;
-    (stepped % period) as f32 / period as f32
+/// Миллисекунды общих часов (для «сколько прошло» без нового кадра).
+pub(crate) fn now() -> u64 {
+    now_ms()
 }
 
-fn ensure_ticker() {
-    if RUNNING
-        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-        .is_err()
-    {
-        return;
+fn want_at(due: u64) {
+    let prev = NEXT_DUE.fetch_min(due, Ordering::AcqRel);
+    if due < prev {
+        ticker().unpark();
     }
-    std::thread::spawn(|| {
-        loop {
-            let now = now_ms();
-            let next = (now / STEP_MS + 1) * STEP_MS;
-            std::thread::sleep(Duration::from_millis(next - now));
-            if now_ms() > WANTED_UNTIL.load(Ordering::Relaxed) {
-                RUNNING.store(false, Ordering::Release);
-                // Анимация могла попросить такт между проверкой и сбросом
-                // флага и не запустить поток (он ещё числился живым).
-                let wanted = now_ms() <= WANTED_UNTIL.load(Ordering::Relaxed);
-                if !wanted
-                    || RUNNING
-                        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-                        .is_err()
-                {
-                    return;
-                }
-            }
+}
+
+fn ticker() -> &'static Thread {
+    TICKER.get_or_init(|| {
+        std::thread::Builder::new()
+            .name("anim-tick".into())
+            .spawn(run)
+            .expect("anim-tick thread")
+            .thread()
+            .clone()
+    })
+}
+
+fn run() {
+    loop {
+        let due = NEXT_DUE.load(Ordering::Acquire);
+        if due == u64::MAX {
+            std::thread::park();
+            continue;
+        }
+        let now = now_ms();
+        if now < due {
+            // Более ранний срок разбудит поток через `unpark`.
+            std::thread::park_timeout(Duration::from_millis(due - now));
+            continue;
+        }
+        if NEXT_DUE
+            .compare_exchange(due, u64::MAX, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
             crate::web::diag_why::tick("animation/tick");
             crate::web::repaint_requested();
         }
-    });
+    }
+}
+
+/// Прошедшее время `ms` для подписи: `9s`, `1:05`, `1:02:05`.
+pub(crate) fn elapsed_label(ms: u64) -> String {
+    let s = ms / 1000;
+    match (s / 3600, s / 60 % 60, s % 60) {
+        (0, 0, sec) => format!("{sec}s"),
+        (0, min, sec) => format!("{min}:{sec:02}"),
+        (h, min, sec) => format!("{h}:{min:02}:{sec:02}"),
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::step_phase;
+    use super::elapsed_label;
 
     #[test]
-    fn phase_moves_only_on_step_boundaries() {
-        assert_eq!(step_phase(0, 1100), 0.0);
-        assert_eq!(step_phase(99, 1100), 0.0);
-        assert_eq!(step_phase(100, 1100), step_phase(199, 1100));
-        assert!(step_phase(200, 1100) > step_phase(100, 1100));
-    }
-
-    #[test]
-    fn phase_wraps_with_the_period() {
-        assert_eq!(step_phase(1100, 1100), 0.0);
-        assert_eq!(step_phase(1200, 1100), step_phase(100, 1100));
+    fn elapsed_label_grows_from_seconds_to_hours() {
+        assert_eq!(elapsed_label(0), "0s");
+        assert_eq!(elapsed_label(59_999), "59s");
+        assert_eq!(elapsed_label(65_000), "1:05");
+        assert_eq!(elapsed_label(3_725_000), "1:02:05");
     }
 }

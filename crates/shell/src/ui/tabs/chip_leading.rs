@@ -55,12 +55,12 @@ pub(crate) fn leading(
                 .when(s.pinned, |d| d.invisible())
                 .group_hover(group.clone(), |st| st.invisible());
             // Под RDP «дыхание» точки гонит кадры по сети — статичная точка.
-            // Фаза — с общего медленного такта `anim_tick` (10 кадров окна в
-            // секунду вместо кадра на каждую развёртку).
+            // Мигание 1 → 0.25 раз в полсекунды по общему такту `anim_tick`:
+            // два кадра окна в секунду вместо кадра на каждую развёртку.
             if switching && !crate::win_integration::reduce_motion() {
                 crate::web::diag_why::tick("animation/chip-leading");
-                let f = (std::f32::consts::PI * crate::ui::anim_tick::phase(1000)).sin();
-                dot.opacity(1.0 - 0.75 * f).into_any_element()
+                let dim = crate::ui::anim_tick::step(500) % 2 == 1;
+                dot.opacity(if dim { 0.25 } else { 1.0 }).into_any_element()
             } else {
                 dot.into_any_element()
             }

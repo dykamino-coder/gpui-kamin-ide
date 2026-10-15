@@ -55,6 +55,7 @@ pub mod find_in_files;
 pub mod fmenu;
 pub mod focus_ring;
 pub mod glint;
+pub(crate) mod glyph_spinner;
 pub mod icon;
 pub mod icons;
 pub mod layout_popover;
@@ -109,5 +110,3 @@ pub mod workspace_symbols;
 pub fn metrics_radius() -> f32 {
     kamin_metrics::RADIUS_MD
 }
-
-mod loading_motion;

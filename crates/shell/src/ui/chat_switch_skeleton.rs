@@ -24,6 +24,8 @@ use crate::colors::{rgba, tint};
 
 /// `kaminSwitchSweep` — 1.15s ease-in-out infinite.
 const SWEEP_MS: u64 = 1150;
+/// Шаг бегунка по общему такту (~10 положений в секунду).
+const SWEEP_STEP_MS: u64 = 100;
 /// `.brand { width: 96px; height: 96px }`
 const BRAND: f32 = 96.0;
 /// `.glow { width: 150px; height: 150px }`
@@ -127,7 +129,8 @@ pub fn brand_loader(p: &Palette, caption: &'static str) -> AnyElement {
         sweep
     } else {
         crate::web::diag_why::tick("animation/chat-sweep");
-        let t = gpui::ease_in_out(crate::ui::anim_tick::phase(SWEEP_MS));
+        let at = crate::ui::anim_tick::step(SWEEP_STEP_MS) * SWEEP_STEP_MS % SWEEP_MS;
+        let t = gpui::ease_in_out(at as f32 / SWEEP_MS as f32);
         sweep.left(gpui::relative(-1.0 + 2.0 * t))
     };
 
