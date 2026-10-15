@@ -25,6 +25,7 @@ mod diag_log;
 mod diag_sink;
 pub(crate) mod diag_views;
 pub(crate) mod diag_why;
+pub(crate) mod frame_rhythm;
 mod element;
 mod frames;
 mod gpu_mode;
