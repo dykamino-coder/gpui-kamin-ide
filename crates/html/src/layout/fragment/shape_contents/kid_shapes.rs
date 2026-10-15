@@ -7,6 +7,7 @@ use crate::layout::fragment::breaks::edge_break;
 use crate::layout::fragment::clone::solid_box;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::line_shape::{basis_sized, inline_content};
+use crate::layout::fragment::oof_reach::Reach;
 use crate::render::out_of_flow;
 use crate::style::values::value::Len;
 
@@ -28,7 +29,7 @@ pub(super) fn kid_shapes(
         Vec<(f32, f32)>,
         bool,
         bool,
-        f32,
+        Reach,
     )>,
 > {
     let inner: Option<Vec<KidShape>> = if depth == 0 || no_descent {
@@ -36,49 +37,20 @@ pub(super) fn kid_shapes(
     } else {
         kids.iter()
             .map(|n| match n {
-                // Абсолют высоты стопке не даёт и разреза
-                // не мешает: нулевая запись, а не отказ
-                // от всей укладки (`out-of-flow-in-
-                // multicolumn-*`, корень A2). Но НУЛЬ в
-                // девятом поле означал бы, что его вовсе
-                // нет во фрагментации, а css-position-3
-                // §abspos-breaking требует обратного: «an
-                // absolutely positioned box is positioned
-                // relative to its containing block ignoring
-                // any fragmentation breaks (as if the flow
-                // were continuous). The box may
-                // subsequently be broken over several
-                // fragmentation containers». Значит
-                // содержащий блок обязан ДОТЯНУТЬСЯ до его
-                // низа — иначе колонок под него не
-                // родится (Blink
-                // `column_layout_algorithm.cc:1125`:
-                // `actual_column_count +=
-                // column_balancing_info.num_new_columns`).
-                // Плавающий сюда не входит: он не
-                // позиционированный, и содержащего блока
-                // собой не задаёт.
+                // Parallel positioned flows do not advance the normal-flow
+                // cursor. Their continuous extent travels to the corresponding
+                // containing block (css-position-3 §abspos-breaking), where it
+                // reserves fragmentainers independently of the block's size.
                 Node::Element(k) if out_of_flow(&k.style) => {
-                    let abs = matches!(
-                        k.style.position,
-                        Some(crate::style::computed::Position::Absolute)
-                    );
-                    let reach = if abs {
-                        // `top: 100vh` у страниц — от page area (эталоны
-                        // `fixedpos-*` ставят копии `top: N00vh`; без этого
-                        // досягаемость нулевая, лист один).
-                        let top = px_or(&k.style.inset.top, false).unwrap_or(0.0);
-                        // Собственная высота абсолюта — той
-                        // же мерой: она уже включает дотяг
-                        // ЕГО внепоточных потомков, и
-                        // цепочка `abs > abs` складывается
-                        // сама (`out-of-flow-in-multicolumn-
-                        // 022/025`).
-                        let own = shape_full(k, depth - 1, cx).map(|s| s.0).unwrap_or(0.0);
-                        (top + own).max(0.0)
-                    } else {
-                        0.0
-                    };
+                    let top = k
+                        .style
+                        .inset
+                        .top
+                        .as_ref()
+                        .filter(|l| !matches!(l, Len::Auto))
+                        .and_then(|_| px_or(&k.style.inset.top, false));
+                    let full = shape_full(k, depth - 1, cx).map(|s| s.0).unwrap_or(0.0);
+                    let reach = Reach::positioned(k, full, top, cx);
                     Some((
                         0.0,
                         0.0,
@@ -114,6 +86,7 @@ pub(super) fn kid_shapes(
                         } else {
                             solid
                         };
+                        let (h, reach) = Reach::child(k, h, cx);
                         (
                             h,
                             mt,
@@ -136,10 +109,8 @@ pub(super) fn kid_shapes(
                             // `target/probe-9g/p-…-016.html` = 0.00).
                             edge_break(k, false),
                             edge_break(k, true),
-                            // Дотяг внепоточных ЭТОГО потомка в
-                            // поток родителя не переходит: у
-                            // него свой содержащий блок.
-                            0.0,
+                            // Own flow size and positioned reach travel separately.
+                            reach,
                         )
                     })
                 }
@@ -159,5 +130,5 @@ pub(super) type KidShape = (
     Vec<(f32, f32)>,
     bool,
     bool,
-    f32,
+    Reach,
 );

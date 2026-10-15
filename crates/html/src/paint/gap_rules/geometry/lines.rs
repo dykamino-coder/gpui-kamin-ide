@@ -1,5 +1,6 @@
 //! Сегменты правил промежутков строк flex и multicol.
 
+use super::assignment::{RuleSlot, assign};
 use super::{Crossing, GAP_EPS, GapItem, GapRun};
 use crate::paint::gap_rules::GapAxisRule;
 use crate::paint::gap_rules::geometry::grid::merge;
@@ -38,7 +39,7 @@ pub(crate) fn line_runs(
     gap_a: Option<f32>,
     main: Option<&GapAxisRule>,
     cross: Option<&GapAxisRule>,
-    rev_cross: bool,
+    reverse: (bool, bool),
     extent: Option<(u8, f32, f32)>,
     content_aligned: bool,
     lanes: Option<(Vec<(f32, f32)>, f32)>,
@@ -109,9 +110,16 @@ pub(crate) fn line_runs(
         }
         _ => {}
     }
-    let cross_total: usize = inner.iter().map(Vec::len).sum();
+    let counts: Vec<_> = inner.iter().map(Vec::len).collect();
+    let slots = assign(&counts, reverse.0, reverse.1, lane_gap.is_some());
     let main_count = lines.len().saturating_sub(1);
-    let main_w = main.and_then(|m| m.widths.first()).unwrap_or(0.0);
+    let main_at = |k| {
+        let slot = RuleSlot::new(k, main_count, reverse.0);
+        (
+            main.and_then(|m| slot.value(&m.styles)).unwrap_or(false),
+            main.and_then(|m| slot.value(&m.widths)).unwrap_or(0.0),
+        )
+    };
     let cross_w = cross.and_then(|c| c.widths.first()).unwrap_or(0.0);
     let mut mains = vec![];
     for k in 0..main_count {
@@ -132,6 +140,8 @@ pub(crate) fn line_runs(
                         &inner[k],
                         &inner[k + 1],
                         (r0, r1),
+                        items,
+                        [lines[k], lines[k + 1]],
                     ),
                     None => (i.b0, i.b1),
                 })
@@ -175,26 +185,20 @@ pub(crate) fn line_runs(
             hidden,
             start_edge: None,
             end_edge: None,
-            index: k,
+            index: RuleSlot::new(k, main_count, reverse.0).index,
             count: main_count,
         });
     }
     let mut crosses = vec![];
-    let mut ix = 0usize;
     for (k, &(s, e)) in lines.iter().enumerate() {
-        let before = (k > 0).then(|| (s - lines[k - 1].1, main.is_some(), main_w));
-        let after = (k + 1 < lines.len()).then(|| (lines[k + 1].0 - e, main.is_some(), main_w));
-        // Счёт сквозной по строкам (§assigning: «does not restart at the
-        // beginning of each flex line»), внутри строки — от её логического
-        // начала: при `rev_cross` крайний правый (нижний) промежуток первый.
-        let n = inner[k].len();
-        // Grid lanes restart the count in every lane: each lane is its own
-        // list of stacking gaps (`column-gap-decorations-list-repeat-*`).
-        let (base, total) = if lane_gap.is_some() {
-            (0, n)
-        } else {
-            (ix, cross_total)
-        };
+        let before = (k > 0).then(|| {
+            let (joins, width) = main_at(k - 1);
+            (s - lines[k - 1].1, joins, width)
+        });
+        let after = (k + 1 < lines.len()).then(|| {
+            let (joins, width) = main_at(k);
+            (lines[k + 1].0 - e, joins, width)
+        });
         for (j, &(lo, hi)) in inner[k].iter().enumerate() {
             crosses.push(GapRun {
                 g0: lo,
@@ -206,15 +210,10 @@ pub(crate) fn line_runs(
                 hidden: vec![],
                 start_edge: before,
                 end_edge: after,
-                index: if rev_cross {
-                    base + n - 1 - j
-                } else {
-                    base + j
-                },
-                count: total.max(1),
+                index: slots[k][j].index,
+                count: slots[k][j].count,
             });
         }
-        ix += n;
     }
     // Ленты: поперечный промежуток всегда остаётся в своей ленте и не
     // идёт сквозь главный промежуток, даже если соседние ленты выровнены

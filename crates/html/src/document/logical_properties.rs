@@ -81,6 +81,10 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
             e.style.vertical_rl = was_rl;
             e.style.rtl = was_rtl;
             e.style.sideways = was_sw;
+            // Physical margins are final here; collapsing rewrites them later.
+            if e.style.clip_ref == Some(1) {
+                e.style.own_margin = Some(e.style.margin);
+            }
             walk(&mut e.children, own);
         }
     }

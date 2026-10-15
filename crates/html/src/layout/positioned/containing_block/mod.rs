@@ -56,6 +56,8 @@ pub struct Spot {
     pub fixed_axes: (bool, bool),
     /// Block-flow layer already supplies the actual CB layout geometry.
     pub preserve_cb_geometry: bool,
+    /// Static coordinates must leave any enclosing fragmentation contexts.
+    pub viewport_static: bool,
     /// Толщина колонки строки в повёрнутом абзаце: на неё отступает экранная
     /// точка дырки от правого края рамки. Ноль — коробка вне поворота.
     pub line_thickness: f32,

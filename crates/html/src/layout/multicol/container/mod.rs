@@ -11,6 +11,7 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement};
 mod kids;
+mod parallel;
 use kids::{column_kids, stack_children};
 mod clone_plan;
 use clone_plan::{clone_plan_of, column_rule_of};
@@ -45,12 +46,7 @@ pub(crate) fn multicol_column_stack(
     nested_whole: std::cell::RefCell<Vec<u64>>,
     measured_kids: std::cell::RefCell<Vec<(u64, f32)>>,
 ) -> AnyElement {
-    // Копий у ребёнка — сколько колонок он может занять: без
-    // рядов ровно `cols` (как прежде), с рядами — по своей
-    // высоте против высоты ряда, с запасом на поля и срезы.
-    // Спаннер между колонками не режется — копий ему не
-    // надо, и в счёт он не входит (`column-height-019`:
-    // спаннер 85px при ряде 5px).
+    // Копии: без рядов `cols`, с рядами — по высоте, исключая спаннеры.
     let copies = match rows {
         Some(r) => {
             let per = r.h.unwrap_or(f32::MAX).max(1.0);
@@ -72,18 +68,9 @@ pub(crate) fn multicol_column_stack(
     // `column-fill: auto` заполняет колонку до БЛОЧНОГО
     // размера коробки — в вертикальном письме это ширина.
     let fixed = fixed_column_height(e, col_vert, col_h, nest_rows);
-    // Рост от вытолкнутых монолитов — распорки в
-    // DOM-клонах до сборки копий (`grow_pushed`).
-    // Многострочный колоночный flex — строками, параллельными
-    // потоками (`split_flex_lines`). Только при заполнении
-    // `column-fill: auto` с заданной высотой и без рядов:
-    // баланс считал бы содержимое по сумме записей, а строки
-    // идут бок о бок.
-    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (01.10): то же при балансе
-    // (`rows.is_none()` без `fixed`) с оценкой баланса по
-    // самой длинной строке группы (`runs_guess`). css-break/
-    // flexbox 319: +0/−2 — `multi-line-row-flex-fragmentation-
-    // 037/038` 0.07 → «красное видно»; балансные 033-035, 048
+    // Распорки монолитов и параллельные flex-строки — только при fixed auto-fill.
+    // Баланс по самой длинной группе был откатан: +0/−2, css-break/flexbox 319,
+    // `multi-line-row-flex-fragmentation-037/038` 0.07 → «красное видно»; 033-035, 048
     // не взяты. Только колонки (без рядов) при балансе — 0/0.
     // Балансу нужен свой подбор высоты по строкам, а не оценка.
     // Строки flex и распорки роста (`grow_pushed`) меряют

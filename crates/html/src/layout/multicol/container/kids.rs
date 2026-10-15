@@ -61,11 +61,17 @@ pub(super) fn column_kids(
             p.clears = c.style.clear.is_some();
         }
     }
-    let kids = if col_vert {
+    let mut kids = if col_vert {
         kids
     } else {
         grow_pushed(kids, cols as usize, fixed, rows, copies, &kid_par)
     };
+    if !col_vert
+        && rows.is_none()
+        && let Some(height) = fixed.filter(|h| *h > 0.01)
+    {
+        super::parallel::grow(&mut kids, height, cols as usize, copies);
+    }
     (kid_parent, kid_starts, kid_par, kids)
 }
 

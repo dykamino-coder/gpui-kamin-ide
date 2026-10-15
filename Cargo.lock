@@ -4025,6 +4025,7 @@ dependencies = [
  "roxmltree 0.21.1",
  "serde_json",
  "smallvec",
+ "svgtypes 0.16.1",
  "unicode-bidi",
  "unicode-linebreak",
  "unicode-properties",
