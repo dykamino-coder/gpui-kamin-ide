@@ -1,4 +1,7 @@
 //! Computes the [flexbox](https://css-tricks.com/snippets/css/a-guide-to-flexbox/) layout algorithm on [`TaffyTree`](crate::TaffyTree) according to the [spec](https://www.w3.org/TR/css-flexbox-1/)
+#[path = "content_size_limits.rs"]
+mod content_size_limits;
+
 use crate::compute::common::alignment::{compute_alignment_offset, resolve_self_alignment_safety};
 #[path = "flex_baseline_x.rs"]
 mod column_baselines;
@@ -6,6 +9,8 @@ mod column_baselines;
 mod containment;
 #[path = "flex_cross_keyword.rs"]
 mod cross_keyword;
+#[path = "flex_intrinsic_limits.rs"]
+mod intrinsic_limits;
 #[path = "flex_intrinsic_floor.rs"]
 mod intrinsic_floor;
 #[path = "flex_main_keyword.rs"]
@@ -357,16 +362,16 @@ pub fn compute_flexbox_layout(
         Size::ZERO
     };
 
-    let min_size = style
+    let min_size = content_size_limits::for_measurement(style
         .min_size()
         .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
         .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
-    let max_size = style
+        .maybe_add(box_sizing_adjustment), inputs);
+    let max_size = content_size_limits::for_measurement(style
         .max_size()
         .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
         .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
+        .maybe_add(box_sizing_adjustment), inputs);
     let clamped_style_size = if inputs.sizing_mode == SizingMode::InherentSize {
         style
             .size()
@@ -584,6 +589,8 @@ fn compute_preliminary(
         parent_size,
         available_space,
     );
+    constants.min_size = content_size_limits::for_measurement(constants.min_size, inputs);
+    constants.max_size = content_size_limits::for_measurement(constants.max_size, inputs);
 
     // Anonymous rows supply their parent's percentage-height basis only when
     // actual percentage-dependent descendants need that transparent basis.
@@ -631,78 +638,7 @@ fn compute_preliminary(
         }
     }
 
-    // KaminIDE patch: `max-width`/`max-height: min-content | max-content` on a
-    // flex item (css-sizing-3 §3.2: as a maximum size the keyword is the box's
-    // min-/max-content size in that axis). `maybe_resolve` treats a keyword as
-    // `none`, so the limit was lost (`flex-item-max-height-min-content`,
-    // `flex-item-max-width-min-content`). The block axis has a single content
-    // size at the item's width: a known width, or the stretched line width of a
-    // column container.
-    for item in flex_items.iter_mut() {
-        let keywords = tree.get_flexbox_child_style(item.node).max_size_keywords();
-        let (kw_w, kw_h) = (keywords.width, keywords.height);
-        if kw_w.is_none() && kw_h.is_none() {
-            continue;
-        }
-        let stretched_width = (constants.is_column
-            && item.align_self.keyword == AlignItemsKeyword::Stretch
-            && !item.margin_is_auto.left
-            && !item.margin_is_auto.right)
-            .then(|| {
-                constants
-                    .node_inner_size
-                    .width
-                    .maybe_sub(item.margin.horizontal_axis_sum())
-            })
-            .flatten();
-        if let Some(space) = kw_w {
-            let width = tree.measure_child_size(
-                item.node,
-                Size {
-                    width: None,
-                    height: item.size.height,
-                },
-                constants.node_inner_size,
-                Size {
-                    width: space,
-                    height: constants
-                        .node_inner_size
-                        .height
-                        .map(AvailableSpace::Definite)
-                        .unwrap_or(AvailableSpace::MaxContent),
-                },
-                SizingMode::ContentSize,
-                crate::geometry::AbsoluteAxis::Horizontal,
-                Line::FALSE,
-            );
-            item.max_size.width = Some(width);
-        }
-        if kw_h.is_some() {
-            let known_width = item.size.width.or(stretched_width).map(|w| {
-                w.maybe_min(item.max_size.width)
-                    .maybe_max(item.min_size.width)
-            });
-            let height = tree.measure_child_size(
-                item.node,
-                Size {
-                    width: known_width,
-                    height: None,
-                },
-                constants.node_inner_size,
-                Size {
-                    width: known_width
-                        .or(constants.node_inner_size.width)
-                        .map(AvailableSpace::Definite)
-                        .unwrap_or(AvailableSpace::MaxContent),
-                    height: AvailableSpace::MaxContent,
-                },
-                SizingMode::ContentSize,
-                crate::geometry::AbsoluteAxis::Vertical,
-                Line::FALSE,
-            );
-            item.max_size.height = Some(height);
-        }
-    }
+    intrinsic_limits::resolve(tree, &constants, &mut flex_items);
 
     // 9.2. Line Length Determination
 
@@ -1789,7 +1725,17 @@ fn determine_flex_base_size(
                 child_known_dimensions,
                 child_parent_size,
                 child_available_space,
-                SizingMode::ContentSize,
+                // A block-axis or wrapped probe still needs its own limits
+                // for line formation and aspect-ratio transfers. Restrict the
+                // unconstrained basis probe to a single-line inline axis.
+                if dir.is_row()
+                    && child.aspect_ratio.is_none()
+                    && tree.get_flexbox_container_style(child.node).flex_wrap() == crate::style::FlexWrap::NoWrap
+                {
+                    SizingMode::IntrinsicSize
+                } else {
+                    SizingMode::ContentSize
+                },
                 dir.main_axis(),
                 Line::FALSE,
             );

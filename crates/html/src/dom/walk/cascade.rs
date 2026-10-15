@@ -59,6 +59,8 @@ pub(super) fn cascade_element(
         .iter()
         .filter(|r| matches(&r.sel, &me, path, sibs))
         .collect();
+    let math_defaults = crate::dom::mathml::defaults(handle, spot.index);
+    matched.extend(math_defaults.iter());
     // Правила `:host`/`:host(S)` из ТЕНИ хоста ложатся на сам хост
     // (css-shadow-1 §3.1; Blink `MatchHostRules`). Хост для них
     // безлик: совпадает только `:host`-компаунд без предков и братьев.
@@ -133,6 +135,8 @@ pub(super) fn cascade_element(
     );
     let hints = presentational_hints::rules(&tag, &attrs, path);
     matched.extend(hints.iter());
+    let math_hints = crate::dom::mathml::hints(handle, attrs);
+    matched.extend(math_hints.iter());
     let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
     style.custom_scrollbar = rules.iter().any(|rule| {
         if rule.sel.pseudo.as_deref() != Some("-webkit-scrollbar") {
@@ -144,7 +148,6 @@ pub(super) fn cascade_element(
     });
     content::inherit_generated(&mut style, path.last());
     apply_value_hint(&mut style, &me);
-    content::snapshot_generated(me, &style);
     crate::style::cascade::vars::clear_current_attrs();
     crate::style::cascade::vars::set_current_sibling(None);
     (style, own_vars, _scheme, shadow)

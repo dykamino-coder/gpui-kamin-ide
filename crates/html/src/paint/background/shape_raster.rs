@@ -6,8 +6,11 @@ pub use ellipse::rasterize_ellipse_px;
 mod shape_parameters;
 pub use shape_parameters::shape_params;
 
+pub mod contour;
 mod linear_corners;
+mod shaped;
 pub use linear_corners::{rasterize_ring_at, rasterize_shape_at};
+pub use shaped::{Ring, contour_outline, contour_ring};
 
 use crate::paint::background::*;
 use gpui::RenderImage;

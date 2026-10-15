@@ -155,10 +155,10 @@ pub(crate) fn paint_3d(
         return;
     };
     // Своя доля для gpui: родитель УЖЕ втолкнул `F_P`, а вложения
-    // складываются как `inner∘outer` (`window.rs:2789`, порядок замерен и
-    // оставлен) — значит втолкнуть надо `G ∘ F_P⁻¹`.
+    // складываются как `outer∘inner` (`Window::with_transformation`) —
+    // значит втолкнуть надо `F_P⁻¹ ∘ G`.
     let flat = match under.and_then(|(_, fp)| invert_affine(fp)) {
-        Some(inv) => flat.compose(inv),
+        Some(inv) => inv.compose(flat),
         None => flat,
     };
     let child = group.child.as_mut().unwrap();
