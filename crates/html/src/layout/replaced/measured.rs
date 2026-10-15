@@ -1,8 +1,38 @@
-//! Measure replaced grid content without fixing its automatic preferred dimensions.
+//! Measure replaced content without fixing its automatic preferred dimensions.
 use gpui::{
     AnyElement, App, AvailableSpace, Bounds, Element, ElementId, GlobalElementId,
-    InspectorElementId, IntoElement, LayoutId, Pixels, Style, Window, point, px, size,
+    InspectorElementId, IntoElement, LayoutId, Pixels, Refineable, Style, Styled, Window, point,
+    px, size,
 };
+
+/// Form controls have natural dimensions, but no natural aspect ratio (CSS Images 3 §2).
+/// Keep that geometry available when intrinsic probes ignore author size constraints.
+pub(crate) fn natural_control(mut painted: gpui::Div, natural: gpui::Size<Pixels>) -> AnyElement {
+    let mut native = Style::default();
+    native.refine(painted.style());
+    let ratio = native.aspect_ratio;
+    // Native decoration is clipped internally; the host keeps its authored overflow.
+    // Putting hidden on the host would erase a flex item's automatic minimum.
+    painted = painted.size_full().overflow_hidden();
+    let inner = painted.style();
+    inner.margin = Default::default();
+    inner.min_size = Default::default();
+    inner.max_size = Default::default();
+    inner.sizing_keywords = None;
+    inner.min_sizing_keywords = None;
+    inner.max_sizing_keywords = None;
+    inner.aspect_ratio = None;
+    inner.content_box = Some(false);
+    inner.position = None;
+    inner.inset = Default::default();
+    MeasuredReplaced {
+        image: painted.into_any_element(),
+        style: native,
+        natural,
+        ratio,
+    }
+    .into_any_element()
+}
 
 pub(super) struct MeasuredReplaced {
     pub(super) image: AnyElement,

@@ -86,6 +86,7 @@ fn walk(
                 cascade_element(&mut me, &attrs, &tag, handle, rules, vars, path, spot, sibs);
             let vars = &own_vars;
             normalize_style(&mut style, &tag, &attrs, path);
+            content::snapshot_generated(&mut me, &style, path.last());
             // Правила с `:hover` собираются отдельным слоем: в базовый стиль
             // им нельзя, иначе элемент выглядел бы всегда наведённым.
             let (hover, first_letter, first_line, marker_layer) =
@@ -174,6 +175,10 @@ fn walk(
                         &attrs,
                         quotes,
                         me.html_attrs,
+                        crate::style::generated::counter_style::Context::new(
+                            &m,
+                            me.counter_context,
+                        ),
                     ));
                     style.no_marker = Some(false);
                 } else if m.content_none == Some(true) {

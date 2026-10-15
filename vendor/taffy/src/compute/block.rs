@@ -1,4 +1,6 @@
 //! Computes the CSS block layout algorithm in the case that the block container being laid out contains only block-level boxes
+#[path = "content_size_limits.rs"]
+mod content_size_limits;
 #[path = "block_keyword_width.rs"]
 mod keyword_width;
 pub use super::block_flow::compute_block_layout;
@@ -428,16 +430,16 @@ pub(super) fn compute_block_layout_normalized(
         Size::ZERO
     };
 
-    let min_size = style
+    let min_size = content_size_limits::for_measurement(style
         .min_size()
         .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
         .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
-    let max_size = style
+        .maybe_add(box_sizing_adjustment), inputs);
+    let max_size = content_size_limits::for_measurement(style
         .max_size()
         .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
         .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
+        .maybe_add(box_sizing_adjustment), inputs);
     let clamped_style_size = if inputs.sizing_mode == SizingMode::InherentSize {
         style
             .size()
@@ -585,16 +587,16 @@ fn compute_inner(
         .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
         .maybe_apply_aspect_ratio(aspect_ratio)
         .maybe_add(box_sizing_adjustment);
-    let min_size = style
+    let min_size = content_size_limits::for_measurement(style
         .min_size()
         .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
         .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
-    let max_size = style
+        .maybe_add(box_sizing_adjustment), inputs);
+    let max_size = content_size_limits::for_measurement(style
         .max_size()
         .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
         .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
+        .maybe_add(box_sizing_adjustment), inputs);
 
     // css-sizing-4: a definite size in one axis transfers through `aspect-ratio`
     // to make the other definite. Deriving it from `known_dimensions` self-gates

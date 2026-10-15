@@ -78,9 +78,9 @@ pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
                 let scale = window.scale_factor();
                 let want_w = (f32::from(bounds.size.width) * scale).round() as i32;
                 let want_h = (f32::from(bounds.size.height) * scale).round() as i32;
-                if (tw - want_w).abs() > 2 || (th - want_h).abs() > 2 {
+                if super::frame_size::mismatch(id, (tw, th), (want_w, want_h), scale) {
                     super::diag::cropped();
-                    super::browsers::nudge(id);
+                    super::frame_size::nudge_if_lost(id);
                     note_mismatch(id);
                 } else {
                     clear_mismatch(id);
@@ -255,10 +255,10 @@ pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
                 // это и есть «фриз с недорастянувшейся текстурой».
                 let want_w = (f32::from(bounds.size.width) * scale).round() as i32;
                 let want_h = (f32::from(bounds.size.height) * scale).round() as i32;
-                let (fw, fh_px) = (isz.width.0, isz.height.0);
-                if (fw - want_w).abs() > 2 || (fh_px - want_h).abs() > 2 {
+                let frame = (isz.width.0, isz.height.0);
+                if super::frame_size::mismatch(id, frame, (want_w, want_h), scale) {
                     super::diag::cropped();
-                    super::browsers::nudge(id);
+                    super::frame_size::nudge_if_lost(id);
                 }
                 window
                     .paint_quad(gpui::fill(bounds, p_bg()).corner_radii(Corners::all(px(radius))));

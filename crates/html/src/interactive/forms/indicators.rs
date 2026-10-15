@@ -20,28 +20,25 @@ pub(super) fn range(e: &Element, style: &Computed) -> AnyElement {
     } else {
         0.
     };
-    let paint = apply(div(), style)
-        .overflow_hidden()
-        .flex()
-        .items_center()
-        .child(
-            div()
-                .relative()
-                .w_full()
-                .h(px(4.))
-                .rounded(px(2.))
-                .bg(native_color(style, SystemColor::ButtonBorder))
-                .child(
-                    div()
-                        .absolute()
-                        .left(px(0.))
-                        .top(px(0.))
-                        .h(px(4.))
-                        .w(gpui::relative(frac))
-                        .rounded(px(2.))
-                        .bg(accent),
-                ),
-        );
+    let mut paint = apply(div(), style).flex().items_center().child(
+        div()
+            .relative()
+            .w_full()
+            .h(px(4.))
+            .rounded(px(2.))
+            .bg(native_color(style, SystemColor::ButtonBorder))
+            .child(
+                div()
+                    .absolute()
+                    .left(px(0.))
+                    .top(px(0.))
+                    .h(px(4.))
+                    .w(gpui::relative(frac))
+                    .rounded(px(2.))
+                    .bg(accent),
+            ),
+    );
+    paint.style().sizing_keywords = Some(crate::style::apply::intrinsic_size::keywords(style));
     super::intrinsic::control(paint, super::metrics::size("range"))
 }
 
