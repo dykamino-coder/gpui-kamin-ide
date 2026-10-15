@@ -21,6 +21,8 @@ pub(super) fn static_position_atom(
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let mut merged = inherit(inherited, &e.style);
+    crate::layout::positioned::anchor::prepare_inline_abs(&mut merged, e, inherited);
+    let positioned = merged.clone();
     // Позиционирование с внутренней коробки СНИМАЕТСЯ. Содержащим блоком
     // ей стала бы нулевая пустышка, а ширина у неё «по содержимому» —
     // в нулевом блоке это ноль, и элемент пропадал вовсе. Без
@@ -96,6 +98,7 @@ pub(super) fn static_position_atom(
         Some(el) => el,
         None => inner.into_any_element(),
     };
+    let inner = crate::layout::positioned::anchor::place::place(inner, &positioned, inherited);
     let taken = if below {
         Some(inner)
     } else {
@@ -117,7 +120,8 @@ pub(super) fn absolute_atom(
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
-    let merged = inherit(inherited, &e.style);
+    let mut merged = inherit(inherited, &e.style);
+    crate::layout::positioned::anchor::prepare_inline_abs(&mut merged, e, inherited);
     // Содержащий блок — позиционированный СТРОЧНЫЙ предок в этом абзаце
     // (CSS 2.1 §10.1 п.4): края по обеим осям считает `lines.rs` от
     // прямоугольника его фрагментов, коробка идёт без пустышки и слоёв.
@@ -158,7 +162,15 @@ pub(super) fn absolute_atom(
     ) {
         return replaced_abs_atom(inherited, e, opts, &merged, inline_cb, stretched);
     }
-    let inner = styled_div_with(e, &merged).children(blocks(&e.children, &merged, opts));
+    // Якорный заместитель прозрачен для раскладки (отдаёт `layout_id`
+    // ребёнка): вставки с `anchor()` раскладка видит нулями, сдвиг — его.
+    let inner = crate::layout::positioned::anchor::place::place(
+        styled_div_with(e, &merged)
+            .children(blocks(&e.children, &merged, opts))
+            .into_any_element(),
+        &merged,
+        inherited,
+    );
     // Незамещаемая коробка с РОВНО ОДНОЙ заданной осью — тем же щупом, что
     // и замещаемая выше: без этого `<span>` с одним краем падал в нулевой
     // держатель, и край считался от него (`abs-pos-non-replaced-vlr-017`:
@@ -181,7 +193,7 @@ pub(super) fn absolute_atom(
         let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false);
         return match crate::layout::positioned::containing_block::late_push(
             spot,
-            inline_abs_paint_last(e, inner.into_any_element()),
+            inline_abs_paint_last(e, inner),
         ) {
             None => Some(probe),
             Some(kept) => {
@@ -192,7 +204,7 @@ pub(super) fn absolute_atom(
         };
     }
     if stretched {
-        return Some(inner.into_any_element());
+        return Some(inner);
     }
     return Some(
         div()
