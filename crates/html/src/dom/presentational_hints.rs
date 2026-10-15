@@ -31,9 +31,14 @@ fn hint(css: &str) -> Option<Rule> {
 
 /// HTML §15.3.8 maps table height to the author presentational-hint origin.
 /// Keep it in the cascade so auto, initial, inherit and authored lengths win.
-pub(super) fn rules(tag: &str, attrs: &[(String, String)]) -> Vec<Rule> {
+pub(super) fn rules(
+    tag: &str,
+    attrs: &[(String, String)],
+    path: &[crate::style::select::Ancestor],
+) -> Vec<Rule> {
     nowrap(tag, attrs)
         .into_iter()
+        .chain(cell_padding(tag, path))
         .chain(table_height(tag, attrs))
         .chain(column_width(tag, attrs))
         .collect()
@@ -52,6 +57,26 @@ fn column_width(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
         "width: {value}{}",
         if percent { "%" } else { "px" }
     ))
+}
+
+/// HTML rendering §15.3.8: `cellpadding` of the nearest table ancestor is a
+/// pixel presentational hint for `padding-*` of td/th (non-negative integer,
+/// §2.3.4.1). In the hint origin it also feeds column measurement, not only
+/// paint. Blink: `HTMLTableElement::CellPadding`; Servo `get_cellpadding`.
+fn cell_padding(tag: &str, path: &[crate::style::select::Ancestor]) -> Option<Rule> {
+    if !matches!(tag, "td" | "th") {
+        return None;
+    }
+    let table = path.iter().rev().find(|a| a.tag == "table")?;
+    let raw = &table
+        .attrs
+        .iter()
+        .find(|(name, _)| name == "cellpadding")?
+        .1;
+    let raw = raw.trim_start_matches(['\t', '\n', '\u{c}', '\r', ' ']);
+    let digits: String = raw.chars().take_while(char::is_ascii_digit).collect();
+    let px: u32 = digits.parse().ok()?;
+    hint(&format!("padding: {px}px"))
 }
 
 fn table_height(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {

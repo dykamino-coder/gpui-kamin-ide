@@ -131,7 +131,7 @@ pub(super) fn cascade_element(
     crate::style::cascade::vars::set_current_sibling(
         (spot.index > 0).then_some((spot.index, spot.total)),
     );
-    let hints = presentational_hints::rules(&tag, &attrs);
+    let hints = presentational_hints::rules(&tag, &attrs, path);
     matched.extend(hints.iter());
     let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
     style.custom_scrollbar = rules.iter().any(|rule| {
