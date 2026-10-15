@@ -137,6 +137,18 @@ impl Computed {
                     _ => 0,
                 });
             }
+            "hyphenate-limit-lines" => {
+                if v == "no-limit" {
+                    self.hyphen_limit_lines = Some(usize::MAX);
+                } else if let Ok(limit) = v.parse::<usize>() {
+                    self.hyphen_limit_lines = Some(limit);
+                }
+            }
+            "hyphenate-limit-chars" => {
+                if let Some(limits) = super::hyphen_limits::parse(v) {
+                    self.hyphen_limit_chars = Some(limits);
+                }
+            }
             "hyphenate-character" => {
                 // Значение — строка в кавычках; `auto` значит «сам знак
                 // переноса».

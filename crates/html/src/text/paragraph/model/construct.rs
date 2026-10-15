@@ -90,6 +90,7 @@ impl Paragraph {
             fit_line_height_fixed: false,
             tab_stop: tabs::TabStops::uniform(64.0),
             hyphen: SharedString::from("\u{2010}"),
+            hyphen_limit_lines: usize::MAX,
             hyphen_w: std::cell::RefCell::new(Vec::new()),
             overlays: Vec::new(),
         }

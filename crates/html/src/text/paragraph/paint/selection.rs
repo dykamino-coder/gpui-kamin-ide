@@ -126,6 +126,7 @@ impl Paragraph {
             fit: self.fit,
             tab_stop: self.tab_stop.clone(),
             hyphen: self.hyphen.clone(),
+            hyphen_limit_lines: self.hyphen_limit_lines,
             hyphen_w: std::cell::RefCell::new(self.hyphen_w.borrow().clone()),
             overlays: Vec::new(),
         };

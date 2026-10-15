@@ -193,6 +193,7 @@ pub(crate) fn native_paragraph(
                 Some(Len::Px(_)) | Some(Len::Em(_)) | Some(Len::Ex(_)) | Some(Len::Ch(_))
             ),
         )
+        .hyphen_limit_lines(inherited.hyphen_limit_lines)
         .hyphen_char(
             crate::render::paragraph::paragraph_style(inherited)
                 .hyphen_char

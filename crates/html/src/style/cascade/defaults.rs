@@ -43,6 +43,9 @@ pub(super) fn inherited_property(key: &str) -> bool {
             | "overflow-wrap"
             | "word-wrap"
             | "hyphens"
+            | "hyphenate-character"
+            | "hyphenate-limit-chars"
+            | "hyphenate-limit-lines"
             | "text-orientation"
             | "border-collapse"
             | "border-spacing"
@@ -94,7 +97,8 @@ pub(super) fn initial_value(key: &str) -> Option<&'static str> {
         "tab-size" => "8",
         "text-align" | "text-align-all" => "start",
         "image-rendering" => "auto",
-        "text-justify" => "auto",
+        "hyphenate-limit-lines" => "no-limit",
+        "text-justify" | "hyphenate-character" | "hyphenate-limit-chars" => "auto",
         "text-combine-upright" => "none",
         "text-indent" => "0",
         "text-orientation" => "mixed",
