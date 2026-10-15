@@ -144,6 +144,12 @@ pub struct Computed {
 
     pub padding: Sides,
     pub margin: Sides,
+    /// The box's own margins as cascaded, kept before block layout rewrites
+    /// `margin` for collapsing (CSS 2.1 §8.3.1). The `margin-box` reference
+    /// box of `clip-path` is the border box outset by THESE margins
+    /// (css-masking-1 §1.3.1.1, Blink `LayoutBox::MarginBoxRect`): a collapsed
+    /// top margin shrank it (`clip-path-polygon-008`). Set only for `margin-box`.
+    pub own_margin: Option<Sides>,
     pub border_width: Sides,
     pub border_color: Option<Color>,
     pub radius: Corners,
