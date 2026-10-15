@@ -5,7 +5,15 @@ use super::{Cb, SVG_SHAPES, flatten, length, origin_shift, ray_css, rotation, sa
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
-pub(super) fn offset_transform_css(c: &Computed, cb: Option<&Cb>) -> Option<String> {
+/// `svg_origin` — левый верх опорной коробки (`fill-box`/`stroke-box`) SVG-фигуры
+/// в пользовательских единицах: путь SVG-элемента живёт в системе
+/// пользовательских координат, а строка `transform` — в системе его опорной
+/// коробки (Blink `TransformHelper`: точка пути минус начало опорной коробки).
+pub(super) fn offset_transform_css(
+    c: &Computed,
+    cb: Option<&Cb>,
+    svg_origin: (f32, f32),
+) -> Option<String> {
     let raw = super::motion_style(c).offset_path.as_deref()?.trim();
     let (func, kind) = split_coord_box(raw);
     // `path()` — единственная запись в СВОЕЙ системе координат: опорной
@@ -20,7 +28,7 @@ pub(super) fn offset_transform_css(c: &Computed, cb: Option<&Cb>) -> Option<Stri
             .trim_matches('\'')
             .trim_matches('"')
             .to_string();
-        return path_css(c, &d, (0.0, 0.0));
+        return path_css(c, &d, (-svg_origin.0, -svg_origin.1));
     }
     if let Some(args) = func.strip_prefix("ray(") {
         return ray_css(c, args.trim_end_matches(')'), cb, cb.map(|g| g.boxes[kind]));
@@ -39,7 +47,7 @@ pub(super) fn offset_transform_css(c: &Computed, cb: Option<&Cb>) -> Option<Stri
             .trim_matches(|q: char| q == '"' || q == '\'');
         let id = raw.rsplit_once('#').map_or(raw, |(_, t)| t);
         let Some(d) = SVG_SHAPES.with(|m| m.borrow().get(id).cloned()) else {
-            return path_css(c, "m 0 0", (0.0, 0.0));
+            return path_css(c, "m 0 0", (-svg_origin.0, -svg_origin.1));
         };
         let g = cb?;
         let rb = g.boxes[kind];

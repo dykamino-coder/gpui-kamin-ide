@@ -761,6 +761,9 @@ pub struct Computed {
     pub offset_anchor: Option<String>,
     /// `offset-position` как записано: `normal | auto | <position>`.
     pub offset_position: Option<String>,
+    /// Offset-трансформ откладывается до отрисовки: содержащий блок элемента —
+    /// начальный (его размер знает только сборщик, `animation::motion`).
+    pub offset_icb: bool,
     /// `backface-visibility: hidden`.
     pub backface_hidden: Option<bool>,
     /// `transform-origin` в долях размера элемента.

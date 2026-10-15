@@ -77,6 +77,19 @@ pub(super) fn blocks_flow(
             crate::layout::positioned::containing_block::late_open();
         }
         if let Node::Element(e) = n {
+            // Отложенный offset-трансформ абсолюта в начальном содержащем
+            // блоке: размер окна известен только здесь (`motion::apply_icb`);
+            // обёртку `transformed()` ниже строят от `e.style`.
+            let patched;
+            let e = if e.style.offset_icb {
+                let mut copy = e.clone();
+                copy.style.resolve_viewport(opts.viewport);
+                crate::animation::motion::apply_icb(&mut copy.style, opts.viewport);
+                patched = copy;
+                &patched
+            } else {
+                e
+            };
             paint_element(
                 e,
                 nodes,
