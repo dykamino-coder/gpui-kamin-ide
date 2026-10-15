@@ -1,6 +1,8 @@
 //! Геометрия правил промежутков: дорожки и прогоны.
 mod assignment;
 mod multicol;
+#[cfg(test)]
+mod span_tests;
 pub(super) use multicol::multicol_runs;
 mod flex_lines;
 mod lane_visibility;
@@ -75,6 +77,10 @@ impl GapItem {
 
     /// Перекрывает ли элемент промежуток `[g0, g1]` (спан через него).
     pub(crate) fn spans_a(&self, g0: f32, g1: f32) -> bool {
+        if g1 - g0 <= GAP_EPS {
+            // Touching a track boundary does not span the zero-sized gutter.
+            return self.a0 < g0 - GAP_EPS && self.a1 > g1 + GAP_EPS;
+        }
         self.a0 <= g0 + GAP_EPS && self.a1 >= g1 - GAP_EPS
     }
 }
