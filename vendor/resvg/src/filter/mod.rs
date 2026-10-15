@@ -627,9 +627,11 @@ fn apply_drop_shadow(
         *p = color.premultiply().to_color_u8();
     }
 
-    match cs {
-        usvg::filter::ColorInterpolation::SRGB => shadow_pixmap.into_srgb(),
-        usvg::filter::ColorInterpolation::LinearRGB => shadow_pixmap.into_linear_rgb(),
+    // KaminIDE: the shadow colour is an sRGB value; it only needs converting when
+    // the primitive works in linearRGB. `into_srgb()` for sRGB treated it as linear
+    // and lightened it (green 128 -> 188, `svg-shorthand-drop-shadow-001`).
+    if cs == usvg::filter::ColorInterpolation::LinearRGB {
+        shadow_pixmap.into_linear_rgb();
     }
 
     pixmap.draw_pixmap(

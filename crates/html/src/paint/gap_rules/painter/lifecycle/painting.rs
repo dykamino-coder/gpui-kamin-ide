@@ -1,10 +1,11 @@
 //! Расчёт и окраска сегментов gap rules.
 
+mod grid;
 mod rules;
 pub(super) use rules::draw_rule;
 
 use crate::paint::gap_rules::geometry::{
-    GAP_EPS, GapItem, GapRun, GridTracks, grid_runs, line_runs, uniq_sorted,
+    GAP_EPS, GapItem, GapRun, GridTracks, line_runs, uniq_sorted,
 };
 use crate::paint::gap_rules::painter::GapRulePainter;
 use crate::paint::gap_rules::{GapAxisRule, GapLayout};
@@ -89,49 +90,20 @@ pub(super) fn paint_body(
                 }
             }
         }
-        GapLayout::Grid => {
-            let ix: Vec<GapItem> = items
-                .iter()
-                .map(|b| GapItem::from_bounds(b, true))
-                .collect();
-            let iy: Vec<GapItem> = items
-                .iter()
-                .map(|b| GapItem::from_bounds(b, false))
-                .collect();
-            // Ось `a` прогона — та, ПОПЕРЁК которой лежит промежуток: у
-            // линеек, стоящих в промежутках по x, дорожки `a` идут по x, а
-            // поперечные `b` — по y; у линеек по y — наоборот.
-            let (tx, ty) = (spec.tracks_x.as_deref(), spec.tracks_y.as_deref());
-            // Дорожки раскладки: в вертикальном письме сетка уже
-            // повёрнута в `apply.rs`, и колонки gpui — физические x.
-            let abs_x = grid_tracks
-                .as_ref()
-                .map(|(c, r)| (c.as_slice(), r.as_slice()));
-            let abs_y = grid_tracks
-                .as_ref()
-                .map(|(c, r)| (r.as_slice(), c.as_slice()));
-            if let Some(r) = on_x {
-                for mut run in grid_runs(&ix, spec.gap_x, spec.gap_y, r, on_y, tx, ty, abs_x) {
-                    if spec.rev_x {
-                        run.index = run.count - 1 - run.index;
-                    }
-                    layers.push((true, run, r, false));
-                }
-            }
-            if let Some(r) = on_y {
-                for mut run in grid_runs(&iy, spec.gap_y, spec.gap_x, r, on_x, ty, tx, abs_y) {
-                    if spec.rev_y {
-                        run.index = run.count - 1 - run.index;
-                    }
-                    layers.push((false, run, r, false));
-                }
-            }
-        }
+        GapLayout::Grid => layers.extend(grid::layers(&items, spec, grid_tracks.as_ref())),
         GapLayout::Lines { stacked_vertically } => {
             // Ось укладки строк — `a`: главные промежутки лежат по ней.
             let it: Vec<GapItem> = items
                 .iter()
-                .map(|b| GapItem::from_bounds(b, !stacked_vertically))
+                .enumerate()
+                .map(|(index, b)| {
+                    let mut item = GapItem::from_bounds(b, !stacked_vertically);
+                    item.margin_end = buffer
+                        .margins
+                        .get(index)
+                        .map_or(0.0, |m| m[usize::from(!stacked_vertically)]);
+                    item
+                })
                 .collect();
             let (main, cross) = if stacked_vertically {
                 (on_y, on_x)
@@ -186,7 +158,7 @@ pub(super) fn paint_body(
                 gap_a,
                 main,
                 cross,
-                rev_cross,
+                (rev_main, rev_cross),
                 extent,
                 spec.lanes_content_aligned,
                 lane_tracks,
@@ -206,10 +178,7 @@ pub(super) fn paint_body(
                 }),
             );
             if let Some(r) = main {
-                for mut run in mains {
-                    if rev_main {
-                        run.index = run.count - 1 - run.index;
-                    }
+                for run in mains {
                     // Lanes: the grid-axis gaps are grid tracks gaps, so
                     // overlap-join reaches the far edge of the stacking
                     // rule, as in grid (`*-inset-overlap-join`).

@@ -91,8 +91,7 @@ pub(crate) fn layer_route(
     // CSS 2.1 §9.9 step 3): in place it was positioned from its
     // parent's box, e.g. a `body` lowered by a collapsed margin
     // (spec-examples `shape-outside-001`: `#failure-container`).
-    let below_icb = orphan_abs
-        && !fixed
+    let below_icb = (orphan_abs || fixed)
         && e.style.z_index.is_some_and(|z| z < 0)
         && !stacking_context(inherited);
     // In a flex/grid container the static-position probe is missing, but with

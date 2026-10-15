@@ -116,6 +116,20 @@ pub(super) fn gap_rule_layout(
             rev_y ^= stack_rev;
         }
     }
+    if !lanes && let GapLayout::Lines { stacked_vertically } = kind {
+        let items = matches!(
+            merged.flex_dir,
+            Some(FlexDir::RowReverse | FlexDir::ColReverse)
+        );
+        let lines = merged.flex_wrap_reverse == Some(true);
+        if stacked_vertically {
+            rev_x ^= items;
+            rev_y ^= lines;
+        } else {
+            rev_x ^= lines;
+            rev_y ^= items;
+        }
+    }
     // Поля контейнера: художник занимает его паддинг-бокс, а протяжённость
     // главных промежутков строк и лент считается от поля содержимого.
     let pad_px = |l: Option<Len>| match l {

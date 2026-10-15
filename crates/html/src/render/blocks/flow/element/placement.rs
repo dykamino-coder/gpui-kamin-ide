@@ -45,6 +45,7 @@ pub(crate) fn place_element(
         spot.set(crate::layout::positioned::containing_block::Spot {
             fixed_axes: (x_set, y_set),
             preserve_cb_geometry: to_cb,
+            viewport_static: to_icb,
             free_margin: (
                 if x_set {
                     0.0
