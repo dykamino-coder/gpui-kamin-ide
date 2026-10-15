@@ -1509,7 +1509,15 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             Rect::ZERO,
             false,
             0,
-            if flow.width {
+            // The static position follows the grid axis' track order and the stacking axis'
+            // fill order: `fill-reverse` starts the stacking axis at its far edge (css-grid-3
+            // grid lanes; WPT `*-grid-lanes-oof-fill-reverse-*`).
+            if flow.width != (rows && lanes.fill_reverse) {
+                Direction::Rtl
+            } else {
+                Direction::Ltr
+            },
+            if flow.height != (!rows && lanes.fill_reverse) {
                 Direction::Rtl
             } else {
                 Direction::Ltr
