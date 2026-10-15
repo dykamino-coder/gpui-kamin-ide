@@ -25,6 +25,7 @@ pub(super) fn element_ancestor(
         .unwrap_or_default();
     let me = Ancestor {
         counter_style: Default::default(),
+        counter_context: Default::default(),
         content_style: None,
         content_none: None,
         tag: tag.clone(),

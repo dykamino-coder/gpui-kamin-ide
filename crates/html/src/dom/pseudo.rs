@@ -149,7 +149,14 @@ pub(super) fn pseudo_box_named(
                  children: &mut Vec<Node>,
                  counters: &mut crate::style::generated::counters::Counters| {
         if !run.is_empty() {
-            let t = content_text(run, counters, attrs, style.quotes.as_ref(), me.html_attrs);
+            let t = content_text(
+                run,
+                counters,
+                attrs,
+                style.quotes.as_ref(),
+                me.html_attrs,
+                crate::style::generated::counter_style::Context::new(&style, me.counter_context),
+            );
             children.push(Node::Text(t));
             run.clear();
         }

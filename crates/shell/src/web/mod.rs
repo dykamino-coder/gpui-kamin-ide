@@ -27,6 +27,7 @@ mod diag_sink;
 pub(crate) mod diag_views;
 pub(crate) mod diag_why;
 mod element;
+mod frame_size;
 mod frames;
 mod gpu_mode;
 mod gpu_texture;

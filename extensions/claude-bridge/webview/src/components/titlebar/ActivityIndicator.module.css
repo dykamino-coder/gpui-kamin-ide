@@ -15,18 +15,34 @@
   display: flex;
 }
 
+/* Glyph spinner: a 14px window over a column of 10 glyphs that moves one
+   glyph per step (~8 frames/s). The host turns every CEF frame into a full
+   window redraw (INC-2026-0001): a smooth ring kept the chat at ~40-50
+   frames/s for the whole Claude turn, and a stepped ring looked jerky.
+   Between steps nothing changes, so Chromium sends no frame. */
 .spinner {
   width: 14px;
   height: 14px;
-  border: 2px solid var(--bg-surface);
-  border-top-color: var(--accent-primary);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  overflow: hidden;
   flex-shrink: 0;
+  color: var(--accent-primary);
+  font-size: 14px;
+  line-height: 14px;
+  text-align: center;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+.frames {
+  display: flex;
+  flex-direction: column;
+  animation: glyph 1.2s steps(10) infinite;
+}
+
+.frames > span {
+  height: 14px;
+}
+
+@keyframes glyph {
+  to { transform: translateY(-140px); }
 }
 
 .text {

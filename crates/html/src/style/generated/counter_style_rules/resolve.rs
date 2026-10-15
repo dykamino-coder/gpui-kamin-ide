@@ -19,7 +19,7 @@ pub(super) struct Resolved {
     pub(super) fallback: String,
 }
 
-fn builtin_resolved(name: &str) -> Resolved {
+pub(super) fn builtin_resolved(name: &str) -> Resolved {
     let b = builtin(name)
         .or_else(|| builtin("decimal"))
         .expect("decimal");

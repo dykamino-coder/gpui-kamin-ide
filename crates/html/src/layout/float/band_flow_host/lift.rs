@@ -177,9 +177,20 @@ pub(crate) fn band_flow_rest_lift(
                     // (`float-no-content-beside-001-ref`: `<span float>` +
                     // `<br>` + длинное слово — прогон целиком съезжал под
                     // флоат вместе с пустой строкой `<br>`, на строку ниже).
+                    // Вертикальный хост: прогон из одних `<br>` не отделяется от
+                    // следующего содержимого. Вертикальные строки не режутся
+                    // вырезами полос по одной, и пустой прогон перед текстом
+                    // мерился блочным размером флоата: весь текст за ним
+                    // вставал ПОСЛЕ буквицы вместо обтекания
+                    // (`initial-letter-sunk-initial-vrl`: `3 2` даёт `<br>`
+                    // осадки сразу за буквицей).
+                    let only_breaks = BAND_WM.with(std::cell::Cell::get) != 0
+                        && run
+                            .iter()
+                            .all(|n| is_blank(n) || matches!(n, Node::Element(e) if e.tag == "br"));
                     let br = c.tag == "br";
                     run.push(n);
-                    if br {
+                    if br && !only_breaks {
                         flush(&mut run, &mut out, cont);
                         cont = true;
                     }

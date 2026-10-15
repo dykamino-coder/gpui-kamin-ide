@@ -14,9 +14,10 @@ pub(crate) const CARD_RADIUS: f32 = 10.0;
 pub(crate) const CARD_GAP: f32 = 6.0;
 /// `body { padding: 2px }` — зазор от края окна под тень.
 pub(crate) const BODY_PAD: f32 = 2.0;
-/// `CARD_OPACITY` / `CARD_HOVER_OPACITY` (`toast-card.ts:17-18`).
-pub(crate) const CARD_ALPHA: f32 = 0.96;
-pub(crate) const CARD_ALPHA_HOVER: f32 = 0.98;
+/// `CARD_OPACITY` / `CARD_HOVER_OPACITY` (`toast-card.ts:17-18`, там 0.96 /
+/// 0.98): карта непрозрачна и без тени, как тосты в окне (INC-2026-0001).
+pub(crate) const CARD_ALPHA: f32 = 1.0;
+pub(crate) const CARD_ALPHA_HOVER: f32 = 1.0;
 pub(crate) const BAR_H: f32 = 2.0;
 pub(crate) const DOT: f32 = 6.0;
 /// Кнопка ряда действий: последняя — `.btn.primary`, прочие — `.btn.ghost`.
