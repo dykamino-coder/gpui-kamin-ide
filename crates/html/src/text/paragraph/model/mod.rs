@@ -87,6 +87,8 @@ pub struct Paragraph {
     pub(super) tab_stop: tabs::TabStops,
     /// Чем показывать перенос слова (`hyphenate-character`).
     pub(super) hyphen: SharedString,
+    /// Consecutive automatic/manual hyphenation limit (CSS Text 4).
+    pub(super) hyphen_limit_lines: usize,
     /// Ширина этого знака — считается при раскладке, где есть окно.
     pub(super) hyphen_w: std::cell::RefCell<Vec<(usize, Pixels)>>,
     /// Куски ВНЕ потока: байтовое место в тексте → элемент. Рисуются поверх

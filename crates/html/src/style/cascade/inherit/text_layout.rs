@@ -99,6 +99,12 @@ pub(super) fn inherit_text_layout(parent: &Computed, own: &Computed, c: &mut Com
     );
     c.keep_all = own.keep_all.or(parent.keep_all);
     c.hyphens_auto = own.hyphens_auto.or(parent.hyphens_auto);
+    c.hyphen_char = own
+        .hyphen_char
+        .clone()
+        .or_else(|| parent.hyphen_char.clone());
+    c.hyphen_limit_chars = own.hyphen_limit_chars.or(parent.hyphen_limit_chars);
+    c.hyphen_limit_lines = own.hyphen_limit_lines.or(parent.hyphen_limit_lines);
     c.lang = own.lang.clone().or(parent.lang.clone());
     c.break_after_spaces = own.break_after_spaces.or(parent.break_after_spaces);
     c.hyphenate = own.hyphenate.or(parent.hyphenate);
