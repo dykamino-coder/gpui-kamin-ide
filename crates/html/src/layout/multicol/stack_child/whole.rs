@@ -1,6 +1,6 @@
 //! Дети копии и цельная коробка копии: вложенный ряд, неразрезаемый ребёнок, таблица.
 
-use super::fixed::{drop_viewport_fixed, fixed_cb_box};
+use super::fixed::{drop_uncontained_oof, drop_viewport_fixed, fixed_cb_box};
 use crate::dom::{Element, Node};
 use crate::layout::fragment::line_shape::nested_box_w;
 use crate::layout::fragment::table_bands::table_box;
@@ -10,7 +10,7 @@ use crate::render::{RenderOpts, element};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
-pub(super) fn copy_kids(copy: &Element, first: bool, src: &Element) -> Vec<Node> {
+pub(super) fn copy_kids(copy: &Element, first: bool, src: &Element, band: bool) -> Vec<Node> {
     let kids: Vec<Node> = if first {
         src.children.clone()
     } else {
@@ -27,6 +27,14 @@ pub(super) fn copy_kids(copy: &Element, first: bool, src: &Element) -> Vec<Node>
             .filter_map(|n| drop_viewport_fixed(n, fixed_cb_root))
             .collect()
     };
+    if band {
+        let fixed = fixed_cb_box(&copy.style);
+        let abs = fixed || crate::text::inline::establishes_cb(&copy.style);
+        return kids
+            .iter()
+            .filter_map(|n| drop_uncontained_oof(n, abs, fixed))
+            .collect();
+    }
     kids
 }
 
