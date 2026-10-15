@@ -54,6 +54,64 @@ pub(super) fn hidden_lane_segments(
     out
 }
 
+/// Part of a main gap blocked by spanner `i` (Blink
+/// `GridLanesGapAccumulator::MarkBlockedMainGapSegments`): a lane entry runs
+/// from the cross-gap centre before the item to the next one (or the rule
+/// end), and a segment is blocked where the spanner is the entry on BOTH
+/// sides — so the empty stretch under a dense-packed spanner stays blocked
+/// up to the next cross gap (`column-gap-decorations-028/029`).
+pub(super) fn lane_entry_block(
+    i: &GapItem,
+    lane0: &[(f32, f32)],
+    lane1: &[(f32, f32)],
+    r: (f32, f32),
+) -> (f32, f32) {
+    let entry = |cuts: &[(f32, f32)]| {
+        let centres = cuts.iter().map(|&(lo, hi)| (lo + hi) / 2.0);
+        let start = centres
+            .clone()
+            .filter(|&c| c <= i.b0 + GAP_EPS)
+            .fold(r.0, f32::max);
+        let end = centres.filter(|&c| c > i.b0 + GAP_EPS).fold(r.1, f32::min);
+        (start.min(i.b0), end.max(i.b1))
+    };
+    let (s0, e0) = entry(lane0);
+    let (s1, e1) = entry(lane1);
+    (s0.max(s1), e0.min(e1))
+}
+
+/// Cross gap of a lane in front of entry `next` (Blink `FinalGutterCenter`:
+/// `ForwardStackingStart() - gap / 2`, the position BEFORE stacking-axis
+/// self-alignment). The forward start is the largest running position of the
+/// lanes the item covers: the end of the entry above it in each lane plus
+/// the gap. Self-alignment only moves an item inside the room in front of the
+/// next spanner, so the box edge can sit further down but never above it
+/// (`column-gap-decorations-022/023/041`).
+pub(super) fn cross_window(
+    next: &GapItem,
+    g: f32,
+    lanes: &[(f32, f32)],
+    items: &[GapItem],
+) -> (f32, f32) {
+    let covers = |i: &GapItem, (s, e): (f32, f32)| i.a0 < e - GAP_EPS && i.a1 > s + GAP_EPS;
+    let mut running = f32::NEG_INFINITY;
+    for &lane in lanes.iter().filter(|&&l| covers(next, l)) {
+        let above = items
+            .iter()
+            .filter(|i| !std::ptr::eq(*i, next) && covers(i, lane) && i.b0 < next.b0 - GAP_EPS)
+            .max_by(|x, y| x.b0.partial_cmp(&y.b0).unwrap_or(std::cmp::Ordering::Equal));
+        if let Some(above) = above {
+            running = running.max(above.b1 + g);
+        }
+    }
+    let start = if running.is_finite() {
+        running
+    } else {
+        next.b0
+    };
+    (start - g, start)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

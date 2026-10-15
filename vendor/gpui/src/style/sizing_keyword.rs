@@ -15,6 +15,8 @@ pub enum CssSizingKeyword {
     FitContentPixels(f32),
     /// Replace available space with a fraction of the containing block.
     FitContentPercent(f32),
+    /// Fill the available space minus margins (css-sizing-4 §4.1 `stretch`).
+    Stretch,
 }
 
 impl CssSizingKeyword {
@@ -25,6 +27,7 @@ impl CssSizingKeyword {
             Self::FitContent => taffy::Dimension::fit_content(),
             Self::FitContentPixels(value) => taffy::Dimension::fit_content_px(value * scale),
             Self::FitContentPercent(value) => taffy::Dimension::fit_content_percent(value),
+            Self::Stretch => taffy::Dimension::stretch(),
         }
     }
 }

@@ -24,6 +24,7 @@ mod containing_block;
 #[cfg(test)]
 mod em_tests;
 mod first_line;
+pub(crate) mod inline_box;
 #[cfg(test)]
 mod tests;
 pub use crate::text::inline::collapse::collapse_across_pieces;
@@ -128,6 +129,13 @@ pub struct OverlayAt {
     /// байтовые края считаются по ГОТОВЫМ кускам (`overlays`) — схлопывание
     /// пробелов на границах кусков идёт уже после сбора.
     pub cb_marker: Option<(u32, bool)>,
+    /// Метка краёв строчной коробки-якоря или строчного содержащего блока
+    /// `(id, начало?)` (`inline_box::mark_inline_box`).
+    pub box_marker: Option<(u32, bool)>,
+    /// Разрешённые края такой коробки (кусок-носитель ставит
+    /// `spacers::overlays` на место конечной метки): `InlineCb::id` — ключ
+    /// в таблице `inline_box`, края — относительно места куска.
+    pub inline_box: Option<InlineCb>,
 }
 
 /// Содержащий блок из фрагментов строчной коробки (CSS 2.1 §10.1 п.4.1;

@@ -210,7 +210,10 @@ pub(super) fn paint_body(
                     if rev_main {
                         run.index = run.count - 1 - run.index;
                     }
-                    layers.push((!stacked_vertically, run, r, true));
+                    // Lanes: the grid-axis gaps are grid tracks gaps, so
+                    // overlap-join reaches the far edge of the stacking
+                    // rule, as in grid (`*-inset-overlap-join`).
+                    layers.push((!stacked_vertically, run, r, spec.lines_extent != 2));
                 }
             }
             if let Some(r) = cross {
