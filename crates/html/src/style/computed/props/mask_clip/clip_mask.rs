@@ -84,7 +84,17 @@ impl Computed {
                 _ => ("nonzero", rest),
             };
             let d = d.trim_matches(|c| c == '"' || c == '\'').replace(',', " ");
-            self.clip_shape = Some(format!("pathdef:{rule}:{d}"));
+            // Ломаная до восьми вершин — та же геометрия, что `polygon()`,
+            // и рисуется тем же шейдером: иначе один контур давал два разных
+            // сглаживания (`corner-shape-*`: фигура коробки идёт
+            // многоугольником, а её эталон пишет `path()`).
+            match line_polygon(&d) {
+                Some(points) if rule == "nonzero" && (3..=8).contains(&points.len()) => {
+                    self.clip_polygon = Some(points);
+                    self.clip_polygon_evenodd = false;
+                }
+                _ => self.clip_shape = Some(format!("pathdef:{rule}:{d}")),
+            }
         }
         // `clip-path: url(#id)` — ссылка на <clipPath>: форма
         // растрируется маской покрытия при отрисовке.
@@ -95,5 +105,54 @@ impl Computed {
             self.clip_shape = Some(format!("clipref:{id}"));
         }
         self.clip_basic_shape(v);
+    }
+}
+
+/// Вершины пути из одних абсолютных `M`/`L` и замыкающего `Z` (одна
+/// фигура); иначе None.
+fn line_polygon(d: &str) -> Option<Vec<(Len, Len)>> {
+    let mut spaced = String::with_capacity(d.len() + 8);
+    for ch in d.chars() {
+        if ch.is_ascii_alphabetic() && !matches!(ch, 'e' | 'E') {
+            spaced.push(' ');
+            spaced.push(ch);
+            spaced.push(' ');
+        } else {
+            spaced.push(ch);
+        }
+    }
+    let mut toks = spaced.split_whitespace();
+    if toks.next()? != "M" {
+        return None;
+    }
+    let mut pts = Vec::new();
+    let mut closed = false;
+    while let Some(t) = toks.next() {
+        if closed {
+            return None;
+        }
+        let x = match t {
+            "L" => toks.next()?,
+            "Z" | "z" => {
+                closed = true;
+                continue;
+            }
+            n => n,
+        };
+        let y = toks.next()?;
+        pts.push((Len::Px(x.parse().ok()?), Len::Px(y.parse().ok()?)));
+    }
+    (!pts.is_empty()).then_some(pts)
+}
+
+#[cfg(test)]
+mod line_polygon_tests {
+    #[test]
+    fn only_absolute_lines_make_a_polygon() {
+        let p = super::line_polygon("M 112 40 L 120 70 L120 90 Z").unwrap();
+        assert_eq!(p.len(), 3);
+        assert!(super::line_polygon("M 0 0 C 1 1 2 2 3 3 Z").is_none());
+        assert!(super::line_polygon("M 0 0 l 5 5 L 1 0 Z").is_none());
+        assert!(super::line_polygon("M 0 0 L 5 5 L 1 0 Z M 9 9 L 8 8 L 7 9 Z").is_none());
     }
 }

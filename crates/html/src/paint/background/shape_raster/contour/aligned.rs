@@ -65,15 +65,17 @@ fn insets(origin: &Corner, target: &Corner, edge_start: f32, edge_end: f32) -> (
     (start, end)
 }
 
-/// `Corner::AlignedToOrigin`: кривая внешнего угла, сдвинутая внутрь.
+/// `Corner::AlignedToOrigin`: кривая внешнего угла, сдвинутая внутрь, и
+/// концы её сдвига ДО продления митрами (наружу они лежат на той же
+/// касательной, что митра).
 pub(crate) fn aligned_to_origin(
     target: &Corner,
     origin: &Corner,
     edge_start: f32,
     edge_end: f32,
-) -> Corner {
+) -> (Corner, P, P) {
     if origin.is_empty() || target == origin {
-        return *target;
+        return (*target, target.start(), target.end());
     }
     let (sr, er) = (len(origin.v2()), len(origin.v3()));
     let (si, ei) = insets(origin, target, edge_start, edge_end);
@@ -110,6 +112,7 @@ pub(crate) fn aligned_to_origin(
     let original_outer = sub(sub(o, scale(n3, ei)), scale(n2, si));
     let mut a_start = add(add(original_outer, scale(n3, er)), scale(sn, si));
     let mut a_end = add(add(original_outer, scale(n2, sr)), scale(en, ei));
+    let (shifted_start, shifted_end) = (a_start, a_end);
     let st = (-sn.1, sn.0);
     let et = (-en.1, en.0);
     if param >= 0.0 && si < 0.0 {
@@ -122,10 +125,18 @@ pub(crate) fn aligned_to_origin(
     let a_outer = sub(a_end, scale(n2, h));
     let a_center = add(a_start, scale(n2, h));
     if param <= -1.0 || param >= 0.0 {
-        return Corner::of_vertices([a_start, a_outer, a_end, a_center], origin.curvature);
+        return (
+            Corner::of_vertices([a_start, a_outer, a_end, a_center], origin.curvature),
+            shifted_start,
+            shifted_end,
+        );
     }
     let ti = line_intersection(a_start, sub(a_start, st), a_end, add(a_end, et)).unwrap_or(a_start);
-    Corner::of_vertices([a_start, ti, a_end, add(a_start, sub(a_end, ti))], ROUND)
+    (
+        Corner::of_vertices([a_start, ti, a_end, add(a_start, sub(a_end, ti))], ROUND),
+        shifted_start,
+        shifted_end,
+    )
 }
 
 /// `CornerClipOutPath` без замыкающей вершины: цепочка от митры начала до
@@ -146,7 +157,7 @@ pub(crate) fn clip_out(
     if param <= 0.0 && (diff == -sr || diff == er) {
         return None;
     }
-    let a = aligned_to_origin(target, origin, edge_start, edge_end);
+    let (a, shifted_start, shifted_end) = aligned_to_origin(target, origin, edge_start, edge_end);
     let (n3, n2) = (norm(origin.v3()), norm(origin.v2()));
     let o = target.outer();
     let original_outer = sub(sub(o, scale(n3, ei)), scale(n2, si));
@@ -169,6 +180,17 @@ pub(crate) fn clip_out(
     let mut segs = Vec::new();
     if let Some(p) = selfx {
         segs.push(Seg::Line(p));
+    } else if param == 0.0 && (si < 0.0 || ei < 0.0) {
+        // Скос наружу: сдвинутый отрезок и его продления митрами лежат на
+        // одной прямой; вершины сдвига остаются в пути, как у Blink-эталонов
+        // (`corner-shape-box-shadow-spread-bevel-ref`).
+        if si < 0.0 {
+            segs.push(Seg::Line(shifted_start));
+        }
+        if ei < 0.0 {
+            segs.push(Seg::Line(shifted_end));
+        }
+        segs.push(Seg::Line(a.end()));
     } else if origin.is_notch() {
         segs.push(Seg::Line(a.center()));
     } else {

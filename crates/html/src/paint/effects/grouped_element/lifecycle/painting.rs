@@ -4,6 +4,7 @@ mod area;
 pub(super) use area::group_area;
 
 mod contour;
+mod fills;
 mod masks;
 pub(super) use masks::resolve_mask;
 
@@ -124,12 +125,18 @@ pub(super) fn paint_body(
     );
     // Подложка (наружные тени `border-shape`) — в текущий контекст ДО
     // композита группы: под буфером и вне его маски, на области выноса.
+    // Слои кроют и вынос теней/контура `corner-shape` (`deco_ext`).
     let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+    let [el, et, er, eb] = group.deco_ext;
+    let (sl, st, sr, sb) = (sl.max(el), st.max(et), sr.max(er), sb.max(eb));
     let (aw, ah) = (bw + sl + sr, bh + st + sb);
     let layer_at = Bounds {
         origin: gpui::point(bounds.origin.x - px(sl), bounds.origin.y - px(st)),
         size: gpui::size(px(aw), px(ah)),
     };
+    if let Some(fills) = group.under_fills.as_ref() {
+        fills::paint_fills(&fills(bw, bh, sl, st, aw, ah), layer_at, window);
+    }
     if let Some(under) = group.under.as_ref()
         && let Some(markup) = under(bw, bh, sl, st, aw, ah)
         && let Some(img) = crate::svg::raster::rasterize(&markup, aw, ah)
@@ -203,6 +210,9 @@ pub(super) fn paint_body(
     );
     // Накладка (кольцо `border-shape` над обрезанным содержимым) — после
     // композита, в тот же контекст.
+    if let Some(fills) = group.over_fills.as_ref() {
+        fills::paint_fills(&fills(bw, bh, sl, st, aw, ah), layer_at, window);
+    }
     for over in &group.over {
         if let Some(markup) = over(bw, bh, sl, st, aw, ah)
             && let Some(img) = crate::svg::raster::rasterize(&markup, aw, ah)

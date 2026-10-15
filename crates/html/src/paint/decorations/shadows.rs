@@ -18,7 +18,11 @@ pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
         // (css-backgrounds-3 §7.1) — как в `apply::shadow_colour`.
         // У `border-shape` тени повторяют фигуру — растром под группой
         // (`grouped`, `Grouped::under`), квад здесь лёг бы прямоугольником.
-        if sh.blur > 0.0 || sh.color.a == 0.0 || c.border_shape.is_some() {
+        if sh.blur > 0.0
+            || sh.color.a == 0.0
+            || c.border_shape.is_some()
+            || super::shaped_outset::shapes_shadows(c)
+        {
             continue;
         }
         let colour = if sh.color.a < 0.0 {
