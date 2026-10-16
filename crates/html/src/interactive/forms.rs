@@ -41,7 +41,7 @@ pub fn element(
     opts: &crate::render::RenderOpts,
 ) -> Option<AnyElement> {
     match e.tag.as_str() {
-        "input" => Some(input(e, style)),
+        "input" => Some(input(e, style, opts)),
         "textarea" => Some(textarea(e, style, opts)),
         "select" => Some(select(e, style)),
         "progress" => Some(progress(e, style)),
@@ -54,15 +54,17 @@ fn kind(e: &Element) -> String {
     e.attr("type").unwrap_or("text").to_ascii_lowercase()
 }
 
-fn input(e: &Element, style: &Computed) -> AnyElement {
+fn input(e: &Element, style: &Computed, opts: &crate::render::RenderOpts) -> AnyElement {
     let kind = kind(e);
     // `appearance: none` (css-ui-4 §7.2): a checkbox, radio, range or colour
     // control loses its native widget and is a primitive box painted from its
-    // CSS alone — no mark, track or swatch, no UA size (Blink
+    // CSS alone, with generated children in ordinary flow, no UA size (Blink
     // `LayoutTheme::AdjustStyle` skips the theme part for `none`).
     if style.appearance_none() && matches!(kind.as_str(), "checkbox" | "radio" | "range" | "color")
     {
-        return apply(div(), style).into_any_element();
+        return apply(div(), style)
+            .children(crate::render::blocks(&e.children, style, opts))
+            .into_any_element();
     }
     match kind.as_str() {
         "checkbox" => toggle(e, style, false),
