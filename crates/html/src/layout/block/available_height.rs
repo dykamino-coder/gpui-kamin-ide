@@ -1,0 +1,101 @@
+//! Definite block heights for embedded viewport percentage resolution (CSS 2 §10.5).
+
+use crate::style::computed::{Computed, Display, Position};
+use crate::style::values::value::Len;
+use std::cell::Cell;
+
+thread_local! {
+    pub(crate) static HEIGHT: Cell<Option<f32>> = const { Cell::new(None) };
+}
+
+pub(crate) struct Guard(Option<f32>);
+
+impl Drop for Guard {
+    fn drop(&mut self) {
+        HEIGHT.set(self.0);
+    }
+}
+
+pub(crate) fn enter(st: &Computed, width: Option<f32>, viewport: f32) -> Guard {
+    let previous = HEIGHT.get();
+    HEIGHT.set(inner(st, previous, width, viewport));
+    Guard(previous)
+}
+
+fn inner(st: &Computed, outer: Option<f32>, width: Option<f32>, viewport: f32) -> Option<f32> {
+    match st.display {
+        Some(Display::Contents) => return outer,
+        None | Some(Display::Block | Display::ListItem | Display::InlineBlock) => {}
+        _ => return None,
+    }
+    if st.vertical == Some(true) || st.column_count.is_some() || st.column_width.is_some() {
+        return None;
+    }
+    let outer = if st.root_box { Some(viewport) } else { outer };
+    let length = |value| match value {
+        Some(Len::Px(v)) => Some(v),
+        Some(Len::Pct(k)) => outer.map(|v| k * v),
+        _ => None,
+    };
+    if matches!(st.height, Some(Len::Pct(_)))
+        && matches!(st.position, Some(Position::Absolute | Position::Fixed))
+    {
+        return None;
+    }
+    let edges = if st.border_box == Some(true) {
+        let side = |value| match value {
+            None | Some(Len::Auto) => Some(0.0),
+            Some(Len::Px(v)) => Some(v),
+            Some(Len::Pct(k)) => width.map(|v| k * v),
+            _ => None,
+        };
+        let b = st.borders();
+        side(st.padding.top)? + side(st.padding.bottom)? + side(b.top)? + side(b.bottom)?
+    } else {
+        0.0
+    };
+    // Auto height stays indefinite even when min-height is definite.
+    let height = (length(st.height)? - edges).max(0.0);
+    let minimum = length(st.min_height)
+        .map(|v| (v - edges).max(0.0))
+        .unwrap_or(0.0);
+    let maximum = length(st.max_height)
+        .map(|v| (v - edges).max(0.0))
+        .unwrap_or(f32::INFINITY);
+    Some(height.min(maximum).max(minimum))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn root_and_descendant_percentages_use_definite_content_height() {
+        let root = Computed {
+            root_box: true,
+            height: Some(Len::Pct(1.0)),
+            ..Computed::default()
+        };
+        let child = Computed {
+            height: Some(Len::Pct(0.5)),
+            ..Computed::default()
+        };
+        assert_eq!(inner(&root, None, Some(800.0), 600.0), Some(600.0));
+        assert_eq!(inner(&child, Some(600.0), Some(800.0), 600.0), Some(300.0));
+        assert_eq!(inner(&child, None, Some(800.0), 600.0), None);
+    }
+
+    #[test]
+    fn border_box_subtracts_edges_but_min_height_does_not_make_auto_definite() {
+        let mut st = Computed {
+            height: Some(Len::Px(100.0)),
+            border_box: Some(true),
+            ..Computed::default()
+        };
+        st.padding.top = Some(Len::Pct(0.1));
+        assert_eq!(inner(&st, None, Some(200.0), 600.0), Some(80.0));
+        st.height = None;
+        st.min_height = Some(Len::Px(100.0));
+        assert_eq!(inner(&st, Some(600.0), Some(200.0), 600.0), None);
+    }
+}

@@ -98,7 +98,7 @@ pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> A
     // читал файл с диска и разбирал вложенный документ дважды за кадр.
     // Неразобранная рамка по-прежнему падает в общий рукав.
     let built_iframe = if e.tag == "iframe" {
-        iframe(e, opts)
+        iframe(e, inherited, opts)
     } else if e.tag == "object" && object_is_document(e) {
         // `<object data="….html">` — тот же вложенный документ, что и рамка
         // (HTML §4.8.7): адрес переносится из `data` в `src`, размеры берутся
@@ -108,7 +108,7 @@ pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> A
         copy.attrs.push(("src".to_string(), url));
         copy.style.width = merged.width;
         copy.style.height = merged.height;
-        iframe(&copy, opts)
+        iframe(&copy, inherited, opts)
     } else {
         None
     };

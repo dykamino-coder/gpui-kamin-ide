@@ -130,7 +130,7 @@ pub(super) fn atom_element_raw(
             copy.attrs.push(("src".to_string(), url));
             if object_is_document(e) {
                 copy.style.resolve_em(atom_base_font(inherited, opts));
-                return iframe(&copy, opts);
+                return iframe(&copy, inherited, opts);
             }
             Some(image_with(
                 &with_inherited_font(&copy, inherited),
@@ -147,7 +147,7 @@ pub(super) fn atom_element_raw(
             ))
         }
         "iframe" => Some(
-            iframe(e, opts)
+            iframe(e, inherited, opts)
                 .unwrap_or_else(|| replaced_content::empty_iframe(e, inherited, opts.viewport)),
         ),
         _ if crate::layout::replaced::media::empty(e) => {
