@@ -287,6 +287,10 @@ pub struct Computed {
     /// §font-style-matching) — от выбранного лица зависит `size-adjust`
     /// (`fonts::size_adjust`, `italic-oblique-fallback`).
     pub oblique: Option<bool>,
+    /// Requested oblique angle in degrees, inherited with font-style.
+    pub font_oblique_angle: Option<f32>,
+    /// Synthesis is allowed for oblique requests, but not italic fallback.
+    pub font_oblique_only: Option<bool>,
     pub underline: Option<bool>,
     pub line_through: Option<bool>,
     pub line_height: Option<Len>,
