@@ -154,7 +154,11 @@ pub(super) fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun
     let color = if style.hidden == Some(true) {
         gpui::hsla(0.0, 0.0, 0.0, 0.0)
     } else {
-        style.color.map(Color::to_hsla).unwrap_or(base.color)
+        style
+            .text_shadow_ink
+            .or(style.color)
+            .map(Color::to_hsla)
+            .unwrap_or(base.color)
     };
     // Кегль куска: без него разный размер в строке собрать в один блок было
     // нельзя (см. `single_block`).

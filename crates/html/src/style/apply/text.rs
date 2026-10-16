@@ -9,20 +9,21 @@ use gpui::{Div, Styled, px, relative};
 /// Открыта наружу для маркера списка: он рисуется отдельной коробкой и
 /// свойства пункта сам не получает.
 pub fn apply_text(mut d: Div, c: &Computed) -> Div {
+    let ink = c.text_shadow_ink.or(c.color);
     // Оформление текста нужно и на блоке: в ветке «строка из кусков» текст
     // рисуется обычными `div`, и подчёркивание, живущее только в прогонах,
     // там пропадало.
     if c.underline == Some(true) {
         d.style().text.underline = Some(gpui::UnderlineStyle {
             thickness: px(1.),
-            color: c.color.map(|col| col.to_hsla()),
+            color: ink.map(|col| col.to_hsla()),
             wavy: false,
         });
     }
     if c.line_through == Some(true) {
         d.style().text.strikethrough = Some(gpui::StrikethroughStyle {
             thickness: px(1.),
-            color: c.color.map(|col| col.to_hsla()),
+            color: ink.map(|col| col.to_hsla()),
         });
     }
     // Возможности шрифта: капитель, старостильные цифры, ширина начертания —
@@ -44,7 +45,7 @@ pub fn apply_text(mut d: Div, c: &Computed) -> Div {
     if !features.is_empty() {
         d.style().text.font_features = Some(gpui::FontFeatures(std::sync::Arc::new(features)));
     }
-    if let Some(col) = c.color {
+    if let Some(col) = ink {
         d = d.text_color(col.to_hsla());
     }
     if let Some(Len::Px(size)) = c.font_size {

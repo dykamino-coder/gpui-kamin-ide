@@ -5,6 +5,8 @@ use crate::style::values::value::{Color, Len};
 
 #[derive(Clone, Debug, Default)]
 pub struct Computed {
+    /// Paint-only fragment ink for a text-shadow mask; decoration records stay intact.
+    pub(crate) text_shadow_ink: Option<Color>,
     /// CSS Scroll Snap: container policy and descendant snap-area geometry.
     pub snap: crate::style::computed::snap::SnapStyle,
     /// Счётчик объявлений этого узла: порядок каскада между логическими и
