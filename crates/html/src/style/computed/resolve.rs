@@ -161,7 +161,10 @@ impl Computed {
         } else {
             0
         };
-        let size_adjust = crate::text::fonts::size_adjust(family, slope);
+        let size_adjust = crate::text::fonts::matching::select(family, self).map_or_else(
+            || crate::text::fonts::size_adjust(family, slope),
+            |f| f.adjust,
+        );
         match self.font_size_adjust {
             Some((metric, want)) if want.is_finite() => {
                 match crate::text::metrics::adjust_aspect(family, metric) {
@@ -187,7 +190,7 @@ impl Computed {
     pub fn used_features(&self) -> Vec<(String, u32)> {
         // Шаг 2 §7.2 — дескриптор правила `@font-face`, МЛАДШЕ свойств.
         let mut all: Vec<(String, u32)> =
-            crate::text::fonts::face_features(self.font_family.as_deref().unwrap_or(""));
+            crate::text::fonts::face_features(self.font_family.as_deref().unwrap_or(""), self);
         // Подбор веса грани по CSS (css-fonts-4 §5.2 шаг 4), а не по
         // расстоянию DirectWrite: свой тег, его читает подбор грани в gpui.
         let (tag, on) = crate::text::fonts::CSS_WEIGHT_TAG;
@@ -203,7 +206,11 @@ impl Computed {
         // `font-variant-ligatures`, младше `font-feature-settings`
         // (`font-feature-resolution-001/002`: `fvl-1 ls-1` — без лигатуры,
         // `ls-1 ffs-1` — с ней).
-        if matches!(self.letter_spacing, Some(Len::Px(v) | Len::Em(v)) if v != 0.0) {
+        if matches!(self.letter_spacing, Some(Len::Px(v) | Len::Em(v)) if v != 0.0)
+            || (self.justify_chars == Some(2)
+                && (self.text_align == Some(TextAlign::Justify)
+                    || self.text_align_last == Some(TextAlign::Justify)))
+        {
             for tag in ["liga", "clig", "dlig", "hlig"] {
                 all.push((tag.to_string(), 0));
             }

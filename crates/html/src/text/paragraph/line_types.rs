@@ -15,6 +15,8 @@ pub struct Wrap {
     pub anywhere: bool,
     /// `word-break: keep-all` — иероглифы не рвутся, только по пробелам.
     pub keep_all: bool,
+    /// Phrase detection falls back to normal; hyphenation is overflow-only.
+    pub auto_phrase: bool,
     /// `overflow-wrap: break-word` — рвать слово, только если иначе не влезает.
     pub break_word: bool,
     /// `overflow-wrap: anywhere` — рвёт слово И при подсчёте размера по

@@ -51,8 +51,8 @@ pub fn alias_stretch(family: &str, want: Option<f32>) -> Option<String> {
     let picked = FACES.with(|f| {
         let faces = f.borrow();
         let list = faces.get(&key)?;
-        let rank = |face: &((f32, f32), String)| -> (u8, f32) {
-            let (lo, hi) = face.0;
+        let rank = |face: &super::matching::Face| -> (u8, f32) {
+            let (lo, hi) = face.width;
             let v = want.clamp(lo, hi);
             if want <= 100.0 {
                 if v <= want {
@@ -70,7 +70,7 @@ pub fn alias_stretch(family: &str, want: Option<f32>) -> Option<String> {
         for face in list {
             let r = rank(face);
             if best.is_none_or(|(_, b)| (r.0, r.1) <= (b.0, b.1)) {
-                best = Some((face.1.as_str(), r));
+                best = Some((face.family.as_str(), r));
             }
         }
         best.map(|(name, _)| name.to_string())

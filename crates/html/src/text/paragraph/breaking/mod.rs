@@ -34,6 +34,7 @@ pub fn wrap_of(c: &crate::style::computed::Computed) -> Wrap {
         break_all: c.break_anywhere == Some(true) && c.break_anywhere_strict != Some(true),
         anywhere: c.break_anywhere_strict == Some(true),
         keep_all: c.keep_all == Some(true),
+        auto_phrase: c.auto_phrase == Some(true),
         break_word: c.break_word == Some(true),
         wrap_anywhere: c.wrap_anywhere == Some(true),
         rtl: c.rtl == Some(true),
@@ -48,11 +49,17 @@ pub fn wrap_of(c: &crate::style::computed::Computed) -> Wrap {
 /// language itself, or a Chinese/Japanese script subtag (BCP 47) even under
 /// another language (`writing-system-line-break-002`: `en-Hrkt`).
 fn cjk_writing(lang: &str) -> bool {
-    lang.starts_with("ja")
-        || lang.starts_with("zh")
-        || lang.split(['-', '_']).skip(1).any(|t| {
-            ["hrkt", "hira", "kana", "jpan", "hani", "hans", "hant"]
-                .iter()
-                .any(|s| t.eq_ignore_ascii_case(s))
-        })
+    let mut subtags = lang.split(['-', '_']);
+    let language = subtags.next().unwrap_or_default();
+    if let Some(script) =
+        subtags.find(|s| s.len() == 4 && s.bytes().all(|b| b.is_ascii_alphabetic()))
+    {
+        return ["hrkt", "hira", "kana", "jpan", "hani", "hans", "hant"]
+            .iter()
+            .any(|s| script.eq_ignore_ascii_case(s));
+    }
+    language.eq_ignore_ascii_case("ja") || language.eq_ignore_ascii_case("zh")
 }
+
+#[cfg(test)]
+mod tests;

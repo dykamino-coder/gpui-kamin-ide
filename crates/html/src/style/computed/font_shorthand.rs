@@ -19,6 +19,7 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
         style.font_weight_step = 0;
         style.italic = None;
         style.oblique = None;
+        style.font_oblique_angle = None;
         style.line_height = None;
         return;
     }
@@ -100,6 +101,7 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
     // `em { font: 1em/1 Ahem }` — курсив UA-листа (`c42-ibx-ht-000`).
     style.italic = Some(false);
     style.oblique = Some(false);
+    style.font_oblique_angle = None;
     style.font_weight = Some(400);
     style.font_weight_step = 0;
     style.font_kerning = Some(2);
