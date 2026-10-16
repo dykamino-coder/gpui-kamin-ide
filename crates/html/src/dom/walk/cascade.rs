@@ -61,6 +61,8 @@ pub(super) fn cascade_element(
         .collect();
     let math_defaults = crate::dom::mathml::defaults(handle, spot.index);
     matched.extend(math_defaults.iter());
+    let slotted = crate::dom::shadow::slotted::rules_of(handle);
+    matched.extend(slotted.iter());
     // Правила `:host`/`:host(S)` из ТЕНИ хоста ложатся на сам хост
     // (css-shadow-1 §3.1; Blink `MatchHostRules`). Хост для них
     // безлик: совпадает только `:host`-компаунд без предков и братьев.

@@ -82,6 +82,7 @@ pub(super) fn is_pseudo_element(name: &str) -> bool {
     matches!(
         head,
         "before"
+            | "slotted"
             | "after"
             | "first-line"
             | "first-letter"
@@ -130,6 +131,10 @@ pub(super) fn pseudo_specificity(pseudo: &str) -> (u32, u32, u32) {
         && let Some(arg) = arg.strip_suffix(')')
     {
         match name {
+            "slotted" => {
+                let s = Selector::parse(arg).map_or((0, 0, 0), |s| s.specificity());
+                return (s.0, s.1, s.2 + 1);
+            }
             "where" => return (0, 0, 0),
             "is" | "matches" | "any" => {
                 return crate::style::css::default_ns::is_args(arg)
