@@ -5,6 +5,7 @@ use crate::text::inline::collect::element_nodes::collect_element;
 
 mod boundary_spacing;
 mod overlays;
+pub(crate) use overlays::to_rotated_frame;
 mod text_nodes;
 use crate::text::inline::collect::boundary_spacing::set_boundary_spacing;
 pub(super) use crate::text::inline::collect::overlays::overlay_in_row;

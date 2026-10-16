@@ -97,7 +97,7 @@ pub(crate) fn native_paragraph(
                 )
             }),
         )
-        .rel_spans(inline::rel_spans(&pieces))
+        .rel_spans(rotate_rel_spans(inline::rel_spans(&pieces), inherited))
         .ruby_justify(
             inherited.ruby_justify == Some(true),
             inherited.ruby_unit,
@@ -214,4 +214,23 @@ pub(crate) fn native_paragraph(
         para.scroll_owner(inherited.self_node).into_any_element(),
         crate::interactive::scroll_extent::projection(inherited.self_node, None),
     )
+}
+
+/// Relative offsets are physical (CSS 2.1 §9.4.3), but a rotated vertical line
+/// is typeset horizontally and turned afterwards (css-writing-modes-4 §7.1),
+/// so the offset must be expressed in the pre-rotation frame: a clockwise turn
+/// sends the line axis (+x) to screen-down and the block axis (+y) to
+/// screen-left; `sideways-lr` turns the other way.
+fn rotate_rel_spans(
+    spans: Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))>,
+    inherited: &crate::style::computed::Computed,
+) -> Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))> {
+    if inherited.rotated_line != Some(true) {
+        return spans;
+    }
+    let turn = |d: (f32, f32)| crate::text::inline::to_rotated_frame(inherited, d);
+    spans
+        .into_iter()
+        .map(|(r, d, b)| (r, turn(d), turn(b)))
+        .collect()
 }

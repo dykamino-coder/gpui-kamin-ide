@@ -60,6 +60,13 @@ pub(super) fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool
     if dx == 0.0 && dy == 0.0 {
         return pieces;
     }
+    // Rotated paragraphs are typeset horizontally and turned afterwards: express
+    // the physical relative offset in the pre-rotation frame, as the text runs do.
+    let (rx, ry) = if rotated {
+        to_rotated_frame(style, (dx, dy))
+    } else {
+        (dx, dy)
+    };
     pieces
         .into_iter()
         .map(|p| match p {
@@ -80,16 +87,16 @@ pub(super) fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool
             Piece::Overlay(el, at) if at.box_marker.is_some() => Piece::Overlay(
                 el,
                 OverlayAt {
-                    rot_dx: at.rot_dx + dx,
-                    rot_dy: at.rot_dy + dy,
+                    rot_dx: at.rot_dx + rx,
+                    rot_dy: at.rot_dy + ry,
                     ..at
                 },
             ),
             Piece::Overlay(el, at) if rotated => Piece::Overlay(
                 el,
                 OverlayAt {
-                    rot_dx: at.rot_dx + dx,
-                    rot_dy: at.rot_dy + dy,
+                    rot_dx: at.rot_dx + rx,
+                    rot_dy: at.rot_dy + ry,
                     ..at
                 },
             ),
@@ -104,4 +111,12 @@ pub(super) fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool
             other => other,
         })
         .collect()
+}
+
+/// Physical offset -> pre-rotation frame of a rotated vertical line: a clockwise
+/// turn sends the line axis (+x) to screen-down and the block axis (+y) to
+/// screen-left; `sideways-lr` turns the other way (css-writing-modes-4 §7.1).
+pub(crate) fn to_rotated_frame(style: &Computed, (dx, dy): (f32, f32)) -> (f32, f32) {
+    let ccw = style.sideways == Some(true) && style.vertical_rl != Some(true);
+    if ccw { (-dy, dx) } else { (dy, -dx) }
 }
