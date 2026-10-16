@@ -112,12 +112,12 @@ pub(crate) fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) ->
     // The row is an adapter for normal block flow, not a CSS flex item.
     // Its own shrink default must not compress the child's used inline size:
     // sizing-orthog-vlr-in-htb-007 measured 306px instead of 394px content.
-    div()
-        .flex()
-        .flex_row()
-        .flex_shrink_0()
-        .child(el)
-        .into_any_element()
+    // The row is only an adapter: the orthogonal box inside exports no baseline
+    // (css-writing-modes-4 §4.3), and a flex row would otherwise synthesize one
+    // from that box's bottom edge for the enclosing inline-block.
+    let mut row = div().flex().flex_row().flex_shrink_0().child(el);
+    row.style().baseline_unavailable = Some(true);
+    row.into_any_element()
 }
 
 /// Знак стоит прямо в вертикальном письме с `text-orientation: mixed`

@@ -25,6 +25,19 @@ pub(super) fn generic_box(
     opts: &RenderOpts,
     outer_row: Option<(f32, f32)>,
 ) -> AnyElement {
+    // css-writing-modes-4 §4.3 / css-align-3 §9.1: an orthogonal flow exports no
+    // baseline to a horizontal block container (Blink skips such children).
+    if merged.vertical == Some(true)
+        && inherited.vertical != Some(true)
+        && !e.inline
+        && crate::render::in_flow(&e.style)
+        && matches!(
+            inherited.display,
+            None | Some(Display::Block | Display::InlineBlock)
+        )
+    {
+        merged.baseline_orthogonal = true;
+    }
     let mut d = styled_div_with(e, &merged);
     let overflow_plan = absolute_overflow::Plan::new(&merged, inherited);
     if let Some(plan) = &overflow_plan {

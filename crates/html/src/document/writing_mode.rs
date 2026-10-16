@@ -113,15 +113,10 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
         && html.style.height.is_none()
         && html.style.min_height.is_none()
     {
-        html.style.min_height = Some(crate::style::values::value::Len::Vh(1.0));
+        html.style.min_height = Some(fill_inline(&html.style));
     }
-    let side_lr = taken.3 == Some(true) && taken.1 != Some(true);
-    if taken.0 == Some(true)
-        && side_lr
-        && html.style.height.is_none()
-        && html.style.min_height.is_none()
-    {
-        html.style.min_height = Some(crate::style::values::value::Len::Vh(1.0));
+    if taken.0 == Some(true) && html.style.height.is_none() && html.style.min_height.is_none() {
+        html.style.min_height = Some(fill_inline(&html.style));
     }
     if taken == own {
         return nodes;
@@ -146,7 +141,7 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
         e.style.rtl = e.style.rtl.or(Some(own.2.unwrap_or(false)));
     }
     if taken.0 == Some(true) && html.style.height.is_none() && html.style.min_height.is_none() {
-        html.style.min_height = Some(crate::style::values::value::Len::Vh(1.0));
+        html.style.min_height = Some(fill_inline(&html.style));
     }
     (
         html.style.vertical,
@@ -155,4 +150,44 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
         html.style.sideways,
     ) = taken;
     nodes
+}
+
+/// CSS Writing Modes 4 §8.2: the principal vertical root's inline size is the
+/// viewport height, and a block-level box fills what is left after its own
+/// margins (CSS 2.1 §10.3.3 applied to the line axis). `100vh` alone ignored
+/// the root's margins/borders/padding and overflowed the window.
+fn fill_inline(style: &crate::style::computed::Computed) -> crate::style::values::value::Len {
+    use crate::style::values::value::Len;
+    let px = |l: Option<Len>| match l {
+        None => Some(0.0),
+        Some(Len::Px(v)) => Some(v),
+        _ => None,
+    };
+    let edge = |m: Option<Len>, b: Option<Len>, bv: Option<bool>, p: Option<Len>| {
+        let border = if bv == Some(true) { px(b)? } else { 0.0 };
+        let inner = if style.border_box == Some(true) {
+            0.0
+        } else {
+            border + px(p)?
+        };
+        Some(px(m)? + inner)
+    };
+    let sum = edge(
+        style.margin.top,
+        style.border_width.top,
+        style.border_visible[0],
+        style.padding.top,
+    )
+    .zip(edge(
+        style.margin.bottom,
+        style.border_width.bottom,
+        style.border_visible[2],
+        style.padding.bottom,
+    ));
+    match sum {
+        Some((a, b)) if a + b > 0.0 => {
+            Len::parse(&format!("calc(100vh - {}px)", a + b)).unwrap_or(Len::Vh(1.0))
+        }
+        _ => Len::Vh(1.0),
+    }
 }
