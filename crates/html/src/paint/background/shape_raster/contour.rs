@@ -10,10 +10,12 @@
 mod aligned;
 mod corner;
 mod hull;
+mod offset;
 #[cfg(test)]
 mod tests;
 
 use corner::{Corner, NOTCH, ROUND, STRAIGHT, add_curved_corner};
+pub use offset::offset;
 
 pub(crate) type P = (f32, f32);
 

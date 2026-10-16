@@ -31,6 +31,7 @@ vi.mock('./incident-diagnostics', () => ({}))
 
 import { BridgeHost } from './bridge-host'
 import { InvokeDiagnostics, type SafeInvokeBoundary } from './invoke-diagnostics'
+import { DeferredReplies } from './deferred-replies'
 
 function actualRouter(postMessage: (frame: any) => Promise<boolean>) {
   const records: SafeInvokeBoundary[] = []
@@ -39,7 +40,7 @@ function actualRouter(postMessage: (frame: any) => Promise<boolean>) {
   observer.attach(source)
   // Exercise the actual router method; constructor's service/network startup is
   // intentionally outside this inert fixture and never touches an owner profile.
-  const host = Object.assign(Object.create(BridgeHost.prototype), { event: { sender: {} }, invokeDiagnostics: observer })
+  const host = Object.assign(Object.create(BridgeHost.prototype), { event: { sender: {} }, invokeDiagnostics: observer, deferredReplies: new DeferredReplies<object>() })
   return { host, source, records, observer }
 }
 describe('BR-24 actual BridgeHost.onMessage route', () => {
@@ -53,8 +54,44 @@ describe('BR-24 actual BridgeHost.onMessage route', () => {
     expect(writes).toBe(1)
     expect(frames).toHaveLength(1)
     expect(frames[0]).toMatchObject({ kind: 'invoke-reply', id: 7, generation: 'synthetic-doc', ok: true })
-    expect(f.records.map(record => record.stage)).toEqual(['host-received', 'handler-resolved', 'reply-false'])
+    expect(f.records.map(record => record.stage)).toEqual(['host-received', 'handler-resolved', 'reply-false', 'reply-deferred'])
     expect(JSON.stringify(f.records)).not.toContain('synthetic-')
+  })
+  it('holds a reply a hidden view refused and sends it once, in order, when the view is shown', async () => {
+    let hidden = true
+    const frames: any[] = []
+    const f = actualRouter(async frame => { if (hidden) return false; frames.push(frame); return true })
+    let writes = 0
+    ipc.invokeHandler.mockImplementation(async () => { writes++; return 'synthetic-result' })
+    ipc.hasHandler.mockReturnValue(true)
+    await f.host.onMessage({ kind: 'invoke', id: 1, channel: 'get-config', generation: 'doc' }, f.source)
+    await f.host.onMessage({ kind: 'invoke', id: 2, channel: 'tab:list', generation: 'doc' }, f.source)
+    expect(frames).toHaveLength(0)
+    hidden = false
+    await f.host.flushDeferredReplies(f.source)
+    expect(frames.map(frame => frame.id)).toEqual([1, 2])
+    expect(frames[0]).toMatchObject({ kind: 'invoke-reply', generation: 'doc', ok: true, result: 'synthetic-result' })
+    expect(writes).toBe(2)
+    // Nothing is left held: a second reveal sends nothing more.
+    await f.host.flushDeferredReplies(f.source)
+    expect(frames).toHaveLength(2)
+    expect(f.records.map(record => record.stage).filter(stage => stage.startsWith('reply-')))
+      .toEqual(['reply-false', 'reply-deferred', 'reply-false', 'reply-deferred', 'reply-flushed', 'reply-flushed'])
+  })
+  it('keeps a held reply for the next reveal when the view refuses it again', async () => {
+    let open = false
+    const frames: any[] = []
+    const f = actualRouter(async frame => { if (!open) return false; frames.push(frame); return true })
+    ipc.invokeHandler.mockResolvedValue(null)
+    ipc.hasHandler.mockReturnValue(true)
+    await f.host.onMessage({ kind: 'invoke', id: 3, channel: 'get-config', generation: 'doc' }, f.source)
+    await f.host.flushDeferredReplies(f.source)
+    expect(frames).toHaveLength(0)
+    open = true
+    await f.host.flushDeferredReplies(f.source)
+    expect(frames.map(frame => frame.id)).toEqual([3])
+    expect(f.records.at(-2)?.stage).toBe('reply-flush-false')
+    expect(f.records.at(-1)?.stage).toBe('reply-flushed')
   })
   it('records handler error and rejected reply independently without leaking either error', async () => {
     const f = actualRouter(async () => { throw new Error('private-send-error') })

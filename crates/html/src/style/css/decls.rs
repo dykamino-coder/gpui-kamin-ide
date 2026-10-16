@@ -2,8 +2,10 @@
 
 use crate::style::css::*;
 
+mod continuation;
 mod lexical;
 mod urls;
+use continuation::join_string_continuations;
 pub(super) use lexical::{ends_with_open_escape, split_top_level, unescape_value};
 pub use lexical::{split_args, unescape};
 use urls::has_bad_url;
@@ -59,7 +61,8 @@ pub fn parse_decls(raw: &str) -> Decls {
         // срезалась с конца, `background: red ! fail` доезжало значением
         // `red ! fail`, а разбор цвета брал из него первое слово и красил
         // (`core-syntax-006`).
-        let val = v.trim();
+        let joined = join_string_continuations(v);
+        let val = joined.trim();
         if let Some(bang) = top_level_bang(val)
             && !val[bang + 1..].trim().eq_ignore_ascii_case("important")
         {

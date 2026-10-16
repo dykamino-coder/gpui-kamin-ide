@@ -12,7 +12,7 @@ impl Transform {
             && self.tr[0][2] == 0.0
             && self.tr[1][1] == 0.0
             && self.tr[1][2] == 0.0
-            && self.m4_pct.iter().all(|r| r[0] == 0.0 && r[1] == 0.0);
+            && self.m4_pct == [[[0.0; 4]; 4]; 2];
         let mut m = self.m4;
         m[0][3] = 0.0;
         m[1][3] = 0.0;
@@ -65,7 +65,7 @@ impl Transform {
             out.push(Self::diag(x, y), NO_SHIFT);
         }
         out.push2(self.lin, self.tr);
-        out.push4(self.m4, self.m4_pct);
+        out.push4_full(self.m4, self.m4_pct);
         Transform {
             lin: out.lin,
             tr: out.tr,

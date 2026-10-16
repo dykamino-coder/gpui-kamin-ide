@@ -18,6 +18,7 @@ mod border_shape;
 mod gradient_stripes;
 mod outline;
 mod shadows;
+pub(crate) mod shaped_outset;
 pub(crate) mod shaped_ring;
 pub(crate) mod text_shadows;
 
@@ -26,6 +27,9 @@ pub(crate) mod text_shadows;
 /// Все — абсолютные и вне потока, поэтому на раскладку не влияют и могут
 /// идти первыми детьми.
 pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
+    if crate::paint::effects::corner_clip::insets(c).is_some() {
+        return Vec::new();
+    }
     let mut out: Vec<AnyElement> = vec![];
 
     outer_shadows(c, &mut out);
