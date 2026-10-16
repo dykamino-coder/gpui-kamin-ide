@@ -127,6 +127,13 @@ pub(super) fn cell_edge_probes(
     // колонка > таблица); в раздельной модели рамки ряда не
     // действуют вовсе (§17.6.1) — сюда попадает только collapse.
     if collapse_cells {
+        // Rowspan is already clipped to its row group by cell_spans.
+        let last_row = (span_rows > 1).then(|| {
+            row_elements
+                .get(row_ix as usize + span_rows as usize - 2)
+                .copied()
+                .unwrap_or(row)
+        });
         d = collapsed_row_edges(
             row,
             col_ix,
@@ -134,6 +141,7 @@ pub(super) fn cell_edge_probes(
             cols,
             row_style,
             inherited,
+            last_row,
             table_edges,
             px_of,
             d,
