@@ -151,11 +151,13 @@ pub(crate) fn dispatch_element(
                 _ => CB_WIDTH.get().filter(|v| *v > 0.0),
             };
             // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`.
-            svg_replaced(e, &crate::svg::size::stretch_fit(e, cb_w), &merged).unwrap_or_else(|| {
-                styled_div_with(e, &merged)
-                    .child(SharedString::from("[рисунок]"))
-                    .into_any_element()
-            })
+            svg_replaced(e, &crate::svg::size::stretch_fit(e, cb_w), &merged, opts).unwrap_or_else(
+                || {
+                    styled_div_with(e, &merged)
+                        .child(SharedString::from("[рисунок]"))
+                        .into_any_element()
+                },
+            )
         }
         // `w_full` — растяжка по СТРОЧНОЙ оси горизонтального родителя. В
         // вертикальном родителе ширина — блочный размер (css-writing-modes-4

@@ -68,6 +68,7 @@ mod prompts;
 mod image_sampling;
 mod natural_image;
 mod absolute_transformation;
+mod scene_capture;
 mod line_baselines;
 mod css_text_background;
 mod css_fill_transform;

@@ -4030,6 +4030,7 @@ dependencies = [
  "unicode-linebreak",
  "unicode-properties",
  "unicode-segmentation",
+ "url",
  "windows 0.62.2",
  "wuff",
 ]
@@ -8504,6 +8505,7 @@ dependencies = [
  "unicode-bidi",
  "unicode-script",
  "unicode-vo",
+ "url",
  "xmlwriter",
 ]
 
