@@ -53,3 +53,22 @@ pub(super) fn set_boundary_spacing(pieces: &mut [Piece], spacing: Option<Len>) {
         style.letter_spacing_after = spacing;
     }
 }
+
+/// Зазор на границе элемента со следующим знаком РОДИТЕЛЯ: величина — у
+/// родителя, самого внутреннего элемента, содержащего эту границу
+/// (css-text-3 §8.2). `normal` у родителя — тоже величина (ноль): без неё
+/// последний знак `<span>` с трекингом сохранял СВОЙ зазор на границе
+/// (`letter-spacing-nesting-001/002`).
+pub(super) fn set_parent_boundary_spacing(pieces: &mut [Piece], parent: Option<Len>) {
+    let last = pieces.iter_mut().rev().find_map(|p| match p {
+        Piece::Text { text, style } if !text.is_empty() && text != SPACER => Some(style),
+        _ => None,
+    });
+    if let Some(style) = last {
+        style.letter_spacing_after = match parent {
+            Some(len) => Some(len),
+            None if style.letter_spacing.is_some() => Some(Len::Px(0.0)),
+            None => None,
+        };
+    }
+}
