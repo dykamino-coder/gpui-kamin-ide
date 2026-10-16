@@ -88,6 +88,7 @@ pub(crate) fn phantom_inline(n: &Node) -> bool {
 /// Строчный ли элемент по своему `display`.
 pub(crate) fn inline_level(e: &Element) -> bool {
     match e.style.display {
+        Some(Display::ListItem) if e.style.inline_display == Some(true) => true,
         Some(Display::InlineBlock) | Some(Display::InlineFlex) | Some(Display::InlineGrid) => true,
         // Строчный контейнер лунок — атом в строке, как inline-grid
         // (grid-lanes-align-content-001: четыре сетки стоят В РЯД).
@@ -130,6 +131,7 @@ pub(crate) fn replaced_tag(e: &Element) -> bool {
 /// лишние 16 точек (в них разметка именно такая).
 pub(crate) fn inline_level_box(e: &Element) -> bool {
     match e.style.display {
+        Some(Display::ListItem) if e.style.inline_display == Some(true) => true,
         // Строчными считаются только НАСТОЯЩИЕ строчные виды. Первый заход
         // писал `Some(_) => true`, и в строчные попадали лунки сетки: CSS2
         // +6, а css-grid −46 (`column-align-items-*`, `*-dense-packing-*`

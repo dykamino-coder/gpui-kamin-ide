@@ -20,19 +20,25 @@ pub fn key_exif(src: &str, c: &crate::style::computed::Computed) -> String {
         }),
     );
     let src = gradient.as_ref();
-    let resolved = crate::style::computed::parse_image_color(src)
-        .and_then(|color| {
-            crate::style::values::color_space::resolve_relative(
-                color,
-                c.color.unwrap_or(crate::style::values::value::Color {
-                    r: 0.0,
-                    g: 0.0,
-                    b: 0.0,
-                    a: 1.0,
-                }),
-            )
+    let resolved = crate::style::computed::image_function::arguments(src).and_then(|image| {
+        let color = crate::style::values::color_space::resolve_relative(
+            image.color?,
+            c.color.unwrap_or(crate::style::values::value::Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            }),
+        )?;
+        let color = color_image(color);
+        Some(match image.raw_url {
+            Some(url) => format!(
+                "image({url}, {})",
+                crate::style::computed::parse_image_color(&color)?
+            ),
+            None => color,
         })
-        .map(color_image);
+    });
     let src = resolved.as_deref().unwrap_or(src);
     if c.image_orient_none == Some(true) {
         format!("exif-none|{src}")
@@ -62,12 +68,19 @@ pub fn source(src: &str) -> Option<Source> {
         Some(Source::Shape {
             raw: shape.to_string(),
         })
-    } else if let Some(color) = crate::style::computed::parse_image_color(src_plain)
-        .and_then(crate::style::values::value::Color::parse)
-    {
-        Some(Source::Gradient {
-            raw: color_image(color),
-        })
+    } else if let Some(image) = crate::style::computed::image_function::arguments(src_plain) {
+        image
+            .url
+            .as_deref()
+            .and_then(|url| load_url(url, orient))
+            .or_else(|| {
+                image
+                    .color
+                    .and_then(crate::style::values::value::Color::parse)
+                    .map(|color| Source::Gradient {
+                        raw: color_image(color),
+                    })
+            })
     } else if let Some((url, list)) = super::filter_image::parse(src_plain) {
         // Filter Effects 1 §13 `filter()`: the filtered raster is its own
         // image, keyed by the whole function so each list caches apart.
@@ -95,21 +108,7 @@ pub fn source(src: &str) -> Option<Source> {
             raw: src_plain.to_string(),
         })
     } else {
-        // Фрагмент адреса рисунка — его `<view>` (SVG 2 §8.2 «Linking into
-        // SVG content»: `file.svg#id` показывает вид с тем `viewBox`): без
-        // разбора путь с `#` не читался вовсе, и фон пропадал
-        // (`background-size-cover-svg-view`, `-contain-svg-view`).
-        let (path, view) = match src_plain.split_once('#') {
-            Some((p, f)) if !src_plain.starts_with("data:") => (p, Some(f)),
-            _ => (src_plain, None),
-        };
-        read_bytes(path)
-            .map(|b| match view {
-                Some(id) => svg_fragment::resolve(b, id),
-                None => b,
-            })
-            .as_deref()
-            .and_then(|b| decode(b, orient))
+        load_url(src_plain, orient)
     };
     if let Ok(mut map) = cache.lock() {
         if map.len() >= CACHE_CAP {
@@ -149,3 +148,25 @@ pub(super) fn raster_color(raw: &str, w: u32, h: u32) -> Option<std::sync::Arc<g
         .collect();
     gpui::bgra_bytes_to_image(w, h, bytes)
 }
+
+fn load_url(src: &str, orient: bool) -> Option<Source> {
+    // Фрагмент адреса рисунка — его `<view>` (SVG 2 §8.2 «Linking into
+    // SVG content»: `file.svg#id` показывает вид с тем `viewBox`): без
+    // разбора путь с `#` не читался вовсе, и фон пропадал
+    // (`background-size-cover-svg-view`, `-contain-svg-view`).
+    let (path, view) = match src.split_once('#') {
+        Some((p, f)) if !src.starts_with("data:") => (p, Some(f)),
+        _ => (src, None),
+    };
+    read_bytes(path)
+        .map(|b| match view {
+            Some(id) => svg_fragment::resolve(b, id),
+            None => b,
+        })
+        .as_deref()
+        .and_then(|b| decode(b, orient))
+}
+
+#[cfg(test)]
+#[path = "image_tests.rs"]
+mod tests;

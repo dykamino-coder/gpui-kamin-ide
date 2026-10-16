@@ -95,13 +95,12 @@ pub(super) fn rule(
     out: &mut Vec<Rule>,
     order: &mut usize,
 ) -> bool {
-    // Раскрытие включает только вложенное ПРАВИЛО СТИЛЯ. Тело, где блоки —
-    // одни at-правила, разбирается прежним путём (CSS 2.1 §4.1.8: at-правило
-    // в блоке объявлений — негодное объявление): иначе хвостовые объявления
-    // `#c { color: green; @media {…} color: red }` (declarations-009).
+    // Nested @supports keeps the parent selector even without nested style rules
+    // (CSS Nesting 1 §2.3). Preserve declaration recovery for other at-rules,
+    // including malformed @media in CSS2 declarations-009.
     let nested = items(body)
         .iter()
-        .any(|i| matches!(i, Item::Block(p, _) if !p.starts_with('@')));
+        .any(|i| matches!(i, Item::Block(p, _) if !p.starts_with('@') || supports_group(p)));
     if nested {
         expand(parts, body, media, out, order);
     }

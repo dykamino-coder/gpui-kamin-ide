@@ -106,6 +106,7 @@ pub fn line_height_spans(
 pub fn decor_spans(pieces: &[Piece], base: &TextStyle) -> Vec<crate::text::paragraph::DecorSpan> {
     use crate::text::paragraph::{DecorItem, DecorSpan};
     let mut out: Vec<DecorSpan> = Vec::new();
+    let mut shadow_inks = Vec::new();
     let mut at = 0usize;
     let mut broken = true;
     for p in pieces {
@@ -144,6 +145,7 @@ pub fn decor_spans(pieces: &[Piece], base: &TextStyle) -> Vec<crate::text::parag
                             }
                         }
                     }
+                    shadow_inks.push(style.text_shadow_ink);
                     out.push(DecorSpan {
                         range: at..end,
                         items,
@@ -168,6 +170,15 @@ pub fn decor_spans(pieces: &[Piece], base: &TextStyle) -> Vec<crate::text::parag
                 && ni.group.start == item.group.start
             {
                 item.group.end = ni.group.end;
+            }
+        }
+    }
+    // Resolve mask ink after decorated groups are identified: a shadow must
+    // preserve the decorating box's geometry across differently colored runs.
+    for (span, ink) in out.iter_mut().zip(shadow_inks) {
+        if let Some(ink) = ink {
+            for item in &mut span.items {
+                item.decor.color = ink;
             }
         }
     }
