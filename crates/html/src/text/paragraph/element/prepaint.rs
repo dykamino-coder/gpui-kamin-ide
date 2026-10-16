@@ -95,6 +95,26 @@ impl Paragraph {
         if !self.overlays.is_empty() {
             let segs = self.measure(window);
             let mut placed = std::mem::take(&mut self.overlays);
+            // End of the text kept by `line-clamp`: an inline containing
+            // block starting at or after it follows the clamp point, and
+            // its absolute boxes are hidden with it (css-overflow-4 §5.3;
+            // `line-clamp-with-abspos-015/017`). One displaced by the
+            // ellipsis counts as after the point too.
+            let clamp_end = self
+                .lines
+                .last()
+                .filter(|l| l.clamped && l.range.end < self.text.len())
+                .map(|l| l.range.end);
+            self.overlay_hidden = placed
+                .iter()
+                .map(|(at, _, how)| {
+                    clamp_end.is_some_and(|end| {
+                        how.cb
+                            .as_ref()
+                            .is_some_and(|cb| (*at as isize + cb.start).max(0) as usize >= end)
+                    })
+                })
+                .collect();
             let rotated = crate::text::vertical::in_rotated_frame();
             let scale = window.scale_factor().max(0.01);
             // Строчные якоря и содержащие блоки — до куска внутри них:

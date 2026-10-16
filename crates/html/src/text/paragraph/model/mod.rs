@@ -96,6 +96,10 @@ pub struct Paragraph {
     /// Третье поле — блочный уровень: коробка встаёт в начало СЛЕДУЮЩЕЙ
     /// строки (см. `inline::Piece::Overlay`).
     pub(super) overlays: Vec<(usize, AnyElement, crate::text::inline::OverlayAt)>,
+    /// Overlay `i` follows the clamp point (css-overflow-4 §5.3): its
+    /// inline containing block starts after the last line kept by
+    /// `line-clamp`, so it is laid out but not painted.
+    pub(super) overlay_hidden: Vec<bool>,
     /// Трекинг (`letter-spacing`): добавка к каждому знаку.
     pub(super) letter_spacing: Pixels,
     /// `word-spacing` — добавка к КАЖДОМУ пробелу. Шейпер о ней не знает,

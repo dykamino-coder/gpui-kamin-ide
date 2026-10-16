@@ -199,8 +199,10 @@ impl Paragraph {
         for slot in self.atoms.iter_mut().filter(|s| !s.hidden) {
             slot.el.paint(window, cx);
         }
-        for (_, el, _) in self.overlays.iter_mut() {
-            el.paint(window, cx);
+        for (i, (_, el, _)) in self.overlays.iter_mut().enumerate() {
+            if !self.overlay_hidden.get(i).copied().unwrap_or(false) {
+                el.paint(window, cx);
+            }
         }
         if let (Some(global), Some(hitbox)) = (id, hitbox.clone()) {
             self.track_selection(global, &segs, bounds, hitbox, window);
