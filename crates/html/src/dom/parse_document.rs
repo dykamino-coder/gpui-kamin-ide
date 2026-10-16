@@ -73,6 +73,18 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     // Лист агента и тема — общие для ВСЕХ областей дерева: каждая тень
     // получает их копию, а правила документа в тень не попадают
     // (css-shadow-1 §3.2: селекторы сопоставляются в своей области).
+    if quirks() {
+        let base = rules.len();
+        for (i, r) in parse_stylesheet_media(super::ua_style::QUIRKS_CSS, media)
+            .into_iter()
+            .enumerate()
+        {
+            rules.push(Rule {
+                order: base + i,
+                ..r
+            });
+        }
+    }
     let agent_rules = rules.clone();
     // Каждый `<style>` — ОТДЕЛЬНАЯ таблица: конец каждой закрывает свои
     // незакрытые конструкции (CSS 2.1 §4.2, `uri-017`). В склейке незакрытая

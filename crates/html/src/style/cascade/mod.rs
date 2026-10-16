@@ -11,6 +11,7 @@ use crate::style::values::value::Color;
 
 pub mod defaults;
 pub mod inherit;
+mod inline_rollback;
 mod pass;
 mod revert;
 pub mod vars;
@@ -34,6 +35,17 @@ impl Computed {
                 b.order,
             ))
         });
+        let inline_rollback = inline_rollback::prepare(matched, inline);
+        let inline = inline_rollback.as_ref().map_or(inline, |(_, d)| d);
+        let rollback_refs: Vec<&Rule> = inline_rollback
+            .iter()
+            .flat_map(|(rules, _)| rules.iter())
+            .collect();
+        let matched = if inline_rollback.is_some() {
+            rollback_refs.as_slice()
+        } else {
+            matched.as_slice()
+        };
         // `revert-layer` (css-cascade-5 §revert-layer) решается ДО прохода:
         // объявления откатываемого слоя (а у важного — и всё между его
         // обычным и важным уровнями) снимаются с копий правил.
@@ -42,7 +54,7 @@ impl Computed {
         let matched: &mut Vec<&crate::style::css::Rule> = &mut if reverted.is_some() {
             owned_refs
         } else {
-            matched.clone()
+            matched.to_vec()
         };
         let mut c = Computed::default();
         // Два прохода по ВСЕМУ каскаду, а не внутри каждого правила: важность
