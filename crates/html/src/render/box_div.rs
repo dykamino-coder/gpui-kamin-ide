@@ -160,7 +160,24 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
             _ => 1.2 * font,
         };
         let cut = crate::text::clamp::clamp_cut(e.node_id).unwrap_or(n as f32 * line);
-        if !sized && cut.is_finite() {
+        // The clamp point only replaces the AUTOMATIC height: a tighter
+        // `max-height` still sizes the box and the kept lines overflow it
+        // (css-overflow-4 §5.3; `webkit-line-clamp-with-max-height`). The
+        // box is border-box here, the style value content-box unless
+        // `box-sizing: border-box`.
+        let style_max = match c.max_height {
+            Some(Len::Px(v)) => Some(v),
+            _ => None,
+        };
+        let style_max = style_max.map(|m| {
+            if c.border_box == Some(true) {
+                m
+            } else {
+                m + mbp_y
+            }
+        });
+        let tighter = style_max.filter(|m| cut.is_finite() && *m < cut + mbp_y);
+        if !sized && cut.is_finite() && tighter.is_none() {
             d = d.max_h(px(cut + mbp_y));
         }
         // Счётный кламп прячет только то, что ЗА точкой среза; сами
@@ -182,6 +199,13 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
             }
             if !sized {
                 crate::text::clamp::extend_clip(d.style(), e.node_id, cut, pad_bottom);
+            }
+            // Lines before the clamp point overflowing a tighter
+            // `max-height` stay visible: the clip edge is the clamp point.
+            if let Some(m) = tighter.filter(|_| !sized) {
+                let reach = cut + mbp_y - pad_bottom - m;
+                let clip = d.style().overflow_clip_offset.get_or_insert([0.0; 4]);
+                clip[2] = clip[2].max(reach);
             }
         }
     }
