@@ -162,7 +162,7 @@ fn walk(
             // before ::before; counter-* declared on ::marker (with DOM
             // inheritance of counter directives) apply right here, before the
             // marker's own content is evaluated (`marker-counter`).
-            if let Some(mut m) = marker_layer {
+            if let Some(mut m) = marker_layer.filter(|_| is_list_item) {
                 content::inherit_generated(&mut m, Some(&me));
                 counters.enter_marker();
                 language::pseudo(counters, &m, &me, path);
