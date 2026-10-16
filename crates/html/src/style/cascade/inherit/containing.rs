@@ -81,6 +81,19 @@ pub(super) fn inherit_containing(parent: &Computed, own: &Computed, c: &mut Comp
         // css-will-change-1 §2.1: блок для `fixed` — и от обещанного свойства
         // (`will-change-fixpos-cb-*`, `-fixedpos-cb-*`).
         || parent.will_change & crate::style::computed::wc::CB_FIXED != 0;
+    // css-transforms-1 §6: «Fixed backgrounds on the root element are affected
+    // by any transform specified for that element. For all other elements that
+    // are effected by a transform (i.e. have a transform applied to them, or to
+    // any of their ancestor elements), a value of fixed for the
+    // background-attachment property is treated as if it had a value of
+    // scroll.» `will-change: transform` promises the same (Blink/Gecko;
+    // `transform-fixed-bg-008.tentative`).
+    c.transformed_ancestor = parent.transformed_ancestor || transformed(parent);
+    if c.bg_fixed == Some(true)
+        && (c.transformed_ancestor || (transformed(own) && !own.root_box && !c.root_box))
+    {
+        c.bg_fixed = Some(false);
+    }
     // `will-change: z-index` — контекст наложения ровно там, где `z-index`
     // действует: у позиционированной коробки и у элемента flex/grid
     // (css-flexbox-1 §5.4, css-grid-2 §6.2) — `-stacking-context-z-index-2/3`;
@@ -193,4 +206,34 @@ pub(super) fn inherit_containing(parent: &Computed, own: &Computed, c: &mut Comp
                         | Some(crate::style::computed::Position::Fixed)
                 ),
             });
+}
+
+/// Has the box a transform of its own (or a promised one)?
+fn transformed(s: &Computed) -> bool {
+    s.transform.is_some()
+        || s.translate.is_some()
+        || s.rotate_prop.is_some()
+        || s.scale_prop.is_some()
+        || s.will_change & crate::style::computed::wc::BOX != 0
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::style::computed::Computed;
+    use crate::style::values::value::Len;
+
+    #[test]
+    fn fixed_background_scrolls_under_a_transform() {
+        let parent = Computed {
+            translate: Some((Len::Px(1.0), Len::Px(0.0))),
+            ..Default::default()
+        };
+        let own = Computed {
+            bg_fixed: Some(true),
+            ..Default::default()
+        };
+        assert_eq!(super::super::inherit(&parent, &own).bg_fixed, Some(false));
+        let plain = super::super::inherit(&Computed::default(), &own);
+        assert_eq!(plain.bg_fixed, Some(true));
+    }
 }
