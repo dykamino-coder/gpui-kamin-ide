@@ -2,6 +2,8 @@
 
 use super::*;
 
+mod structured;
+
 pub(super) fn scale_shadow(sh: &mut Shadow, k: f32) {
     sh.x *= k;
     sh.y *= k;
@@ -112,6 +114,7 @@ pub(super) fn scale_own(c: &mut Computed, k: f32) {
     }
     // `vertical-align: 20px` хранится точками со знаком — тоже длина.
     c.vertical_shift_px = c.vertical_shift_px.map(|v| v * k);
+    structured::scale(c, k);
     // Длины украшений текста (css-text-decor-4): толщина, смещение
     // подчёркивания, отступы концов.
     let dl = |l: &mut crate::style::computed::DecorLen| match l {
