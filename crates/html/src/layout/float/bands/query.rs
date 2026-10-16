@@ -29,7 +29,10 @@ impl FloatBands {
             }
             i += 1;
         }
-        (l, r.max(l))
+        // Opposing exclusions on different bands may leave no common interval.
+        // Preserve crossed edges so even a zero-width BFC must move down
+        // (CSS 2.1 section 9.5; Servo PlacementAmongFloats).
+        (l, r)
     }
 
     /// Ближайшая граница полос строго ниже `y` — следующий кандидат верха
