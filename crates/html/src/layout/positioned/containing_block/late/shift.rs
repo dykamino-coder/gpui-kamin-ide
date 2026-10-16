@@ -16,8 +16,35 @@ pub(crate) fn late_shift(bounds: Bounds<Pixels>, now: Spot) -> gpui::Point<Pixel
         (Some(hole), Some(line)) if now.vertical => {
             gpui::point(hole.origin.x + px(line) - bounds.origin.x, px(0.0))
         }
+        // Horizontal block-level box in a line (Blink `InlineLayoutAlgorithm::
+        // PlaceOutOfFlowObjects`): its static position is the line's start and
+        // the line's TOP when no in-flow content precedes it on the line, the
+        // line's bottom otherwise (`static-inside-inline-001..003`). A probe
+        // in a row of words spans its line (`spot_probe`); a text paragraph
+        // hands its overlay probes the line box (`with_line_box`).
+        // Self-alignment uses the inline parent's static-position
+        // rectangle: zero-thick along the line at the static point, the line
+        // box across it (Blink `AddOutOfFlowInlineChildCandidate`;
+        // `align-self-static-position-003/007`).
         (Some(hole), Some(line)) => {
-            gpui::point(px(0.0), hole.origin.y + px(line) - bounds.origin.y)
+            let (line_top, lh, line_start) = now.line_box.unwrap_or((
+                hole.origin.y,
+                if hole.size.height > px(0.0) {
+                    hole.size.height
+                } else {
+                    px(line)
+                },
+                bounds.origin.x,
+            ));
+            let preceded = now.rtl || hole.origin.x - line_start > px(0.5);
+            let top = line_top + if preceded { lh } else { px(0.0) };
+            match now.self_align.filter(|_| now.line_rect) {
+                Some((kx, ky)) => gpui::point(
+                    -bounds.size.width * kx,
+                    top + (lh - bounds.size.height) * ky - bounds.origin.y,
+                ),
+                None => gpui::point(px(0.0), top - bounds.origin.y),
+            }
         }
         // Static-position rectangle with `justify-self`/`align-self`
         // (`Spot::self_align`, physical fractions): the block strut is the

@@ -116,6 +116,40 @@ pub(crate) fn static_self_align(e: &Element, inherited: &Computed) -> Option<(f3
     Some((kx, kb))
 }
 
+/// Self-alignment fractions `(x, y)` of a block-level absolute box whose
+/// static position lies in a line of an INLINE formatting context: the
+/// static-position rectangle is zero-thick along the line at the static point
+/// and spans the line box across it (css-position-3 §staticpos-rect; Blink
+/// `FragmentBuilder::AddOutOfFlowInlineChildCandidate`, which ignores
+/// `justify-items`/`align-items`). Horizontal ltr only — other modes keep the
+/// previous placement (`None`), as does `normal`/`auto` in both axes.
+pub(crate) fn inline_static_self_align(e: &Element, inherited: &Computed) -> Option<(f32, f32)> {
+    if inherited.vertical == Some(true)
+        || inherited.rotated_line == Some(true)
+        || inherited.rtl == Some(true)
+        || e.style.inline_display == Some(true)
+    {
+        return None;
+    }
+    let anchorless = e.style.position_anchor.is_none()
+        && e.style.position_area.is_none()
+        && e.style.implicit_anchor.is_none();
+    let frac = |a: Option<Align>, last: bool| match a {
+        Some(Align::Center) => Some(0.5),
+        Some(Align::AnchorCenter) if anchorless => Some(0.5),
+        Some(Align::End) => Some(1.0),
+        Some(Align::Baseline) if last => Some(1.0),
+        Some(Align::Start) => Some(0.0),
+        _ => None,
+    };
+    let jx = frac(e.style.justify_self, e.style.justify_self_last);
+    let ky = frac(e.style.align_self, e.style.align_self_last);
+    if jx.is_none() && ky.is_none() {
+        return None;
+    }
+    Some((jx.unwrap_or(0.0), ky.unwrap_or(0.0)))
+}
+
 /// Расходятся ли у ЗАМЕЩАЕМОГО абсолюта два отсчёта края — от внутреннего края
 /// рамки родителя и от его содержимого.
 ///

@@ -101,6 +101,30 @@ pub struct Spot {
     /// в долю `x` свободного места; по блочной он нулевой, и коробка висит от
     /// статической точки на долю `y` своей высоты. `None` — прежний путь.
     pub self_align: Option<(f32, f32)>,
+    /// `self_align` is measured in an INLINE parent's static-position
+    /// rectangle (zero-thick along the line, the line box across it), not in
+    /// the block strut's (`static_position::inline_static_self_align`).
+    pub line_rect: bool,
+    /// The line box `(top, height, start x)` of a probe that a text paragraph
+    /// placed as an overlay in its line (`with_line_box`).
+    pub line_box: Option<(Pixels, Pixels, Pixels)>,
+}
+
+thread_local! {
+    static LINE_BOX: std::cell::Cell<Option<(Pixels, Pixels, Pixels)>> = const { std::cell::Cell::new(None) };
+}
+
+/// Prepaint a static-position probe placed in a text line with that line's
+/// box `(top, height, start x)`; the probe takes it (`take_line_box`).
+pub fn with_line_box<R>(line: (Pixels, Pixels, Pixels), f: impl FnOnce() -> R) -> R {
+    let prev = LINE_BOX.with(|c| c.replace(Some(line)));
+    let out = f();
+    LINE_BOX.with(|c| c.set(prev));
+    out
+}
+
+pub(crate) fn take_line_box() -> Option<(Pixels, Pixels, Pixels)> {
+    LINE_BOX.with(|c| c.take())
 }
 
 pub type SpotCell = std::rc::Rc<std::cell::Cell<Spot>>;

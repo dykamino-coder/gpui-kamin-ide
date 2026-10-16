@@ -16,6 +16,11 @@ pub fn spot_probe(spot: SpotCell, full: bool) -> AnyElement {
         probe = probe.w_0().h_full();
     } else if full {
         probe = probe.w_full();
+    } else if spot.get().next_line.is_some() && !spot.get().vertical {
+        // A block-level box's probe spans its line box: the hole's height is
+        // the line height the static position steps over (`late_shift`).
+        probe = gpui::div().w_0().flex_shrink_0();
+        probe.style().align_self = Some(gpui::AlignItems::Stretch);
     } else {
         // Внутри строки распорка прижимается к её ВЕРХУ: на базовой линии
         // содержимое уезжало бы под строку.
