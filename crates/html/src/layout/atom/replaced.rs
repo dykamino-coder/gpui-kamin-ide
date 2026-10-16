@@ -89,6 +89,9 @@ pub(super) fn img_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
     // (`Computed::resolve_viewport`), и `height: calc(60vh - 6px)` у
     // картинки падал в природный размер (`intrinsic-percent-replaced-009-ref`).
     copy.style.resolve_viewport(opts.viewport);
+    if let Some(doc) = crate::layout::replaced::svg_document_image::render(&copy, opts) {
+        return Some(doc);
+    }
     Some(image_with(&copy, Some(atom_base_font(inherited, opts))))
 }
 
@@ -112,7 +115,7 @@ pub(super) fn svg_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
     // коробки — свой, с решёнными шрифтовыми единицами.
     let fitted = crate::svg::size::stretch_fit(&sized, cb_w);
     let shell = sized.style.clone();
-    svg_replaced(&sized, &fitted, &shell).or_else(|| {
+    svg_replaced(&sized, &fitted, &shell, opts).or_else(|| {
         Some(image_with(
             &with_inherited_font(e, inherited),
             Some(atom_base_font(inherited, opts)),

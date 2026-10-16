@@ -21,6 +21,7 @@ use size::size_of;
 
 mod clip;
 mod device_image;
+mod foreign;
 mod masks;
 pub(crate) mod raster;
 pub mod serialize;
@@ -42,6 +43,17 @@ thread_local! {
 }
 
 /// Готовый элемент с рисунком либо `None`, если разобрать не удалось.
+pub(crate) fn element_with_html(
+    e: &Element,
+    opts: &crate::render::RenderOpts,
+) -> Option<AnyElement> {
+    if foreign::contains(e) {
+        foreign::element(e, opts)
+    } else {
+        element(e)
+    }
+}
+
 /// Опорная коробка фигуры (`fill-box`/`stroke-box`) для motion path.
 pub(crate) fn shape_reference_box(e: &Element, stroke: bool) -> Option<(f32, f32, f32, f32)> {
     clip::reference_box(e, stroke)

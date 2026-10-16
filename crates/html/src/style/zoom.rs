@@ -76,6 +76,15 @@ fn walk(nodes: &mut [Node], parent: Option<&Computed>, parent_eff: f32, carried:
         }
         let mut below = carried;
         remember(&e.style, &mut below);
+        // `<foreignObject>` content is laid out in SVG user units and magnified
+        // with the SVG (its raster scale carries the zoom), so its descendants
+        // start unzoomed. Blink reaches the same used size by zooming them and
+        // putting the inverse into `LayoutSVGForeignObject::
+        // LocalToSVGParentTransform` (`svg-foreignObject-font-size`).
+        if e.tag.eq_ignore_ascii_case("foreignObject") {
+            walk(&mut e.children, Some(&e.style), 1.0, Carried::default());
+            continue;
+        }
         walk(&mut e.children, Some(&e.style), eff, below);
     }
 }

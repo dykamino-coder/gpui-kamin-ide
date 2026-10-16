@@ -35,7 +35,7 @@ pub(super) async fn capture_sides(
         // выжидает все 400 шагов (по 6 с на каждый показ разделителя).
         kamin_html::css::PRINT_MEDIA.store(false, std::sync::atomic::Ordering::Relaxed);
         blank = stage
-            .show(cx, SEPARATOR.into(), None, true)
+            .show(cx, SEPARATOR.into(), None, true, None)
             .await
             .map(|s| s.2);
         // Печатные пары смотрят печатным носителем: `@media print`
@@ -52,7 +52,9 @@ pub(super) async fn capture_sides(
             std::sync::atomic::Ordering::Relaxed,
         );
         let html = resolve_links(&source, path);
-        let mut shot = stage.show(cx, html.clone(), blank.clone(), false).await;
+        let mut shot = stage
+            .show(cx, html.clone(), blank.clone(), false, Some(path))
+            .await;
         // Страница, не отличившаяся от разделителя, не нарисовалась:
         // повторяем показ, а не записываем пустоту в отчёт.
         for _ in 0..2 {
@@ -73,7 +75,9 @@ pub(super) async fn capture_sides(
             if drew || settled_blank {
                 break;
             }
-            shot = stage.show(cx, html.clone(), blank.clone(), false).await;
+            shot = stage
+                .show(cx, html.clone(), blank.clone(), false, Some(path))
+                .await;
         }
         shots.push(shot);
     }

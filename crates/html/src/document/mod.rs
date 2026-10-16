@@ -10,6 +10,7 @@
 //! `render`. Пересборка происходит лишь когда сменилась сама разметка — что
 //! проверяется по хэшу, а не по строке целиком.
 
+mod base_url;
 mod canvas_background;
 mod embedded;
 mod logical_properties;
@@ -40,10 +41,28 @@ pub struct Document {
     root: crate::style::computed::Computed,
     /// Хэш разметки и темы: по нему видно, нужен ли повторный разбор.
     key: u64,
+    base_url: Option<url::Url>,
 }
 
 impl Document {
     pub fn new(html: &str, theme_css: &str) -> Self {
+        Self::build(html, theme_css, None)
+    }
+
+    /// Parse a document with the URL used to resolve its external resources.
+    pub fn new_with_base(html: &str, theme_css: &str, base_uri: &str) -> Self {
+        Self::build(html, theme_css, url::Url::parse(base_uri).ok())
+    }
+
+    /// Parse a local document, resolving relative resources against its source file.
+    pub fn new_with_path(html: &str, theme_css: &str, path: &std::path::Path) -> Self {
+        let base = std::path::absolute(path)
+            .ok()
+            .and_then(|p| url::Url::from_file_path(p).ok());
+        Self::build(html, theme_css, base)
+    }
+
+    fn build(html: &str, theme_css: &str, base_url: Option<url::Url>) -> Self {
         // Свои шрифты страницы грузятся ДО разбора: иначе первый же замер
         // ширины пойдёт по подстановке, а перерисовки под новый шрифт нет.
         crate::text::fonts::load_faces(html);
@@ -51,11 +70,15 @@ impl Document {
         crate::text::paragraph::forget_measures();
         crate::layout::table::paint::forget_row_rects();
         crate::text::vertical::forget_vt_measures();
-        let (nodes, root) = viewport::prepare(crate::dom::parse(html, theme_css));
+        let (mut nodes, root) = viewport::prepare(crate::dom::parse(html, theme_css));
+        if let Some(base) = &base_url {
+            base_url::resolve(&mut nodes, &base_url::document_base(html, base), false);
+        }
         Document {
             nodes,
             root,
-            key: hash_of(html, theme_css),
+            key: base_url::key(html, theme_css, base_url.as_ref()),
+            base_url,
         }
     }
 
@@ -71,11 +94,14 @@ impl Document {
     /// рубеж: пока пришедший кусок не изменил разметку, дерево остаётся тем
     /// же, и кадр стоит ровно столько же, сколько нативный.
     pub fn update(&mut self, html: &str, theme_css: &str) -> bool {
-        let key = hash_of(html, theme_css);
+        let key = base_url::key(html, theme_css, self.base_url.as_ref());
         if key == self.key {
             return false;
         }
-        let (nodes, root) = viewport::prepare(crate::dom::parse(html, theme_css));
+        let (mut nodes, root) = viewport::prepare(crate::dom::parse(html, theme_css));
+        if let Some(base) = &self.base_url {
+            base_url::resolve(&mut nodes, &base_url::document_base(html, base), false);
+        }
         self.nodes = nodes;
         self.root = root;
         self.key = key;

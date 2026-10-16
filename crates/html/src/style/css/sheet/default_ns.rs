@@ -31,10 +31,19 @@ pub(crate) fn tag_matches(want: &str, tag: &str, foreign: bool) -> bool {
     match want.strip_prefix(MARK) {
         Some(rest) => {
             let (ns, name) = rest.split_at(1);
-            (ns == "o") == foreign && name == tag
+            (ns == "o") == foreign && same_name(name, tag)
         }
-        None => want == tag,
+        None => same_name(want, tag),
     }
+}
+
+/// The selector's name is stored lower-cased, while SVG keeps camelCase local
+/// names (`foreignObject`, `clipPath`). Browsers match those against the
+/// selector's source case (selectors-4 §type selectors; Blink keeps both
+/// spellings), so a camelCase element is compared ASCII case-insensitively
+/// here; all-lower-case names keep the exact comparison.
+fn same_name(want: &str, tag: &str) -> bool {
+    want == tag || (tag.bytes().any(|b| b.is_ascii_uppercase()) && want.eq_ignore_ascii_case(tag))
 }
 
 /// Аргумент `:is()`/`:where()` с меткой пространства по умолчанию:
@@ -61,4 +70,14 @@ pub(crate) fn is_args(arg: &str) -> Vec<crate::style::css::Selector> {
         .collect();
     set(saved);
     out
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn lower_cased_selector_matches_camel_case_svg_tag() {
+        assert!(super::tag_matches("foreignobject", "foreignObject", true));
+        assert!(super::tag_matches("div", "div", false));
+        assert!(!super::tag_matches("span", "div", false));
+    }
 }
