@@ -34,7 +34,7 @@ pub(super) fn paragraph_probed(
     // Номер абзаца выдаётся в порядке ПОСТРОЕНИЯ и уезжает в пробу,
     // поэтому сопоставление кадров не зависит от порядка обхода на
     // отрисовке.
-    let ctx = crate::text::clamp::clamp_context();
+    let ctx = crate::text::clamp::clamp_context().filter(|_| crate::text::clamp::para_depth() == 0);
     let seq = ctx.map(|(key, _)| crate::text::clamp::clamp_next_seq(key));
     let budget = match (ctx, seq) {
         (Some((key, _)), Some(s)) => match crate::text::clamp::clamp_para(key) {

@@ -17,6 +17,37 @@ thread_local! {
     pub(super) static PARA_TAG: std::cell::Cell<Option<(u64, u32)>> = const { std::cell::Cell::new(None) };
 }
 
+thread_local! {
+    /// How many atomic inlines are being built around the current point
+    /// of the tree build (see `ParaNest`).
+    static PARA_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// Paragraphs built inside an atomic inline of another paragraph (ruby
+/// bases and annotations, inline-block contents) lie INSIDE a line box of
+/// that paragraph: their own lines are not line boxes of the clamp
+/// container's BFC (css-overflow-4 §5.3), so they get no clamp number, no
+/// probe and no line budget.
+pub struct ParaNest;
+
+impl ParaNest {
+    pub fn enter() -> Self {
+        PARA_DEPTH.with(|d| d.set(d.get() + 1));
+        ParaNest
+    }
+}
+
+impl Drop for ParaNest {
+    fn drop(&mut self) {
+        PARA_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+    }
+}
+
+/// Number of enclosing atomic-inline builds (`ParaNest`).
+pub fn para_depth() -> u32 {
+    PARA_DEPTH.with(std::cell::Cell::get)
+}
+
 pub fn set_para_tag(v: Option<(u64, u32)>) {
     PARA_TAG.with(|c| c.set(v));
 }

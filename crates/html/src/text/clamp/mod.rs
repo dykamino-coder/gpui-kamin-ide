@@ -25,6 +25,7 @@ pub use crate::text::clamp::paragraph_rows::set_para_tag;
 pub use crate::text::clamp::paragraph_rows::take_para_budget;
 use crate::text::clamp::paragraph_rows::take_para_rows;
 pub use crate::text::clamp::paragraph_rows::take_para_tag;
+pub use crate::text::clamp::paragraph_rows::{ParaNest, para_depth};
 
 // owner: A
 
