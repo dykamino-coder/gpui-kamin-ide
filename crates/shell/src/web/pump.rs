@@ -48,6 +48,16 @@ pub fn start_pump(cx: &mut gpui::App) {
                     return;
                 }
             }
+            // Кэшированные вью со ступенчатой анимацией (спиннер дерева)
+            // корень не перерисует: уведомляем их сами.
+            let views = crate::ui::anim_tick::take_view_subscribers();
+            if !views.is_empty() {
+                cx.update(|cx| {
+                    for id in views {
+                        cx.notify(id);
+                    }
+                });
+            }
             // НЕ ЧАЩЕ ПОЛОВИНЫ КАДРА ДИСПЛЕЯ. Windows отдаёт `WM_PAINT` только когда
             // очередь сообщений окна пуста. Заказывая перерисовку на каждый
             // кадр Chromium (до 300 в секунду на восемь вью), мы очередь не
