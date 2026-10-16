@@ -17,6 +17,8 @@ use indicators::range;
 
 mod choice;
 mod metrics;
+mod textarea;
+use textarea::textarea;
 mod options;
 use choice::select;
 use choice::toggle;
@@ -99,34 +101,6 @@ fn text_field(e: &Element, style: &Computed) -> AnyElement {
                 .into_any_element(),
         )
         .children(caret)
-        .into_any_element()
-}
-
-fn textarea(e: &Element, style: &Computed, opts: &crate::render::RenderOpts) -> AnyElement {
-    let mut text = String::new();
-    crate::render::gather_text_public(&e.children, &mut text);
-    let muted = text.trim().is_empty();
-    // Высота — по числу строк, как `rows` в HTML: без этого поле схлопывается
-    // до одной строки и перестаёт быть похожим на себя.
-    let rows: f32 = e.attr("rows").and_then(|r| r.parse().ok()).unwrap_or(3.0);
-    // Содержимое поля — обычный текст, и считать его обязана та же строчная
-    // раскладка, что и весь остальной текст: у поля работают и сохранённые
-    // пробелы, и выключка, и висящий хвост. Пока внутри стоял простой блок,
-    // всё это проходило мимо (`trailing-space-and-text-alignment`).
-    let body = if muted {
-        let hint = e.attr("placeholder").unwrap_or("").to_string();
-        div()
-            .when_muted(true, style)
-            .child(SharedString::from(hint))
-            .into_any_element()
-    } else {
-        crate::render::paragraph_public(&e.children, style, opts)
-    };
-    let _ = text;
-    field_box(style)
-        .min_h(px(rows * 18.0 + 12.0))
-        .items_start()
-        .child(div().w_full().child(body))
         .into_any_element()
 }
 
