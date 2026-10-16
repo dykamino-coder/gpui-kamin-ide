@@ -17,6 +17,8 @@
 
 mod font_faces;
 mod loading;
+pub(crate) mod matching;
+pub(crate) use matching::alias_for;
 pub(crate) mod metric_overrides;
 mod sfnt_metrics;
 mod stretch;
@@ -56,7 +58,7 @@ thread_local! {
     /// `font-stretch` (отрезок процентов) и имя в системе. Одного слота мало:
     /// правил `@font-face` на одно имя бывает много, и выбор между ними ведёт
     /// css-fonts-4 §font-matching, а не «кто объявлен последним».
-    static FACES: RefCell<HashMap<String, Vec<((f32, f32), String)>>> =
+    static FACES: RefCell<HashMap<String, Vec<matching::Face>>> =
         RefCell::new(HashMap::new());
     /// Придуманное имя → есть ли в семействе знак U+0020. Семейство собирают
     /// из нескольких правил (подмножества знаков), и пробел у него есть,
@@ -111,7 +113,13 @@ pub fn alias(family: &str) -> Option<String> {
 }
 
 /// Возможности из дескриптора `font-feature-settings` правила `@font-face`.
-pub fn face_features(family: &str) -> Vec<(String, u32)> {
+pub fn face_features(
+    family: &str,
+    request: &crate::style::computed::Computed,
+) -> Vec<(String, u32)> {
+    if let Some(features) = matching::features(family, request) {
+        return features;
+    }
     FEATURES.with(|f| {
         f.borrow()
             .get(&family.to_ascii_lowercase())

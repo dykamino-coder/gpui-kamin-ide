@@ -121,7 +121,7 @@ impl Paragraph {
             r.start < end
                 && r.end > start
                 && !w.nowrap
-                && (w.break_all || w.anywhere || w.break_word || w.wrap_anywhere)
+                && (w.anywhere || w.break_word || w.wrap_anywhere)
         })
     }
 }

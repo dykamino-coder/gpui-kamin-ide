@@ -7,6 +7,8 @@ use crate::style::values::value::{Color, Len};
 pub struct Computed {
     /// Paint-only fragment ink for a text-shadow mask; decoration records stay intact.
     pub(crate) text_shadow_ink: Option<Color>,
+    /// Winning explicit-inherit longhands, consumed before effective zoom.
+    pub(crate) explicit_inherit: Vec<crate::style::cascade::inherited_value::Property>,
     /// CSS Scroll Snap: container policy and descendant snap-area geometry.
     pub snap: crate::style::computed::snap::SnapStyle,
     /// Счётчик объявлений этого узла: порядок каскада между логическими и
@@ -289,6 +291,10 @@ pub struct Computed {
     /// §font-style-matching) — от выбранного лица зависит `size-adjust`
     /// (`fonts::size_adjust`, `italic-oblique-fallback`).
     pub oblique: Option<bool>,
+    /// Requested oblique angle in degrees, inherited with font-style.
+    pub font_oblique_angle: Option<f32>,
+    /// Synthesis is allowed for oblique requests, but not italic fallback.
+    pub font_oblique_only: Option<bool>,
     pub underline: Option<bool>,
     pub line_through: Option<bool>,
     pub line_height: Option<Len>,
@@ -670,6 +676,8 @@ pub struct Computed {
     /// `word-break: keep-all` — иероглифическое письмо переносится ТОЛЬКО по
     /// пробелам, между знаками разрыв запрещён.
     pub keep_all: Option<bool>,
+    /// `word-break: auto-phrase`: normal fallback with conditional hyphenation.
+    pub auto_phrase: Option<bool>,
     /// `white-space: break-spaces` — сохранённый пробел НЕ свисает за край:
     /// он занимает место в строке, и после каждого такого пробела разрешён
     /// перенос. Отличие от `pre-wrap`, где хвостовые пробелы висят снаружи.

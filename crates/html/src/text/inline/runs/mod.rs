@@ -125,7 +125,7 @@ pub(super) fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun
         // Имя из разметки может быть придуманным (`@font-face`) — система
         // шрифтов знает файл под его собственным именем. Лиц у имени бывает
         // несколько, и нужное выбирает ширина начертания (§font-matching).
-        font.family = crate::text::fonts::alias_stretch(family, style.font_stretch)
+        font.family = crate::text::fonts::alias_for(family, style)
             .unwrap_or_else(|| family.clone())
             .into();
     } else if style.monospace == Some(true) {

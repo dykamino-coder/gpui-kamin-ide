@@ -221,9 +221,11 @@ impl Element for BandFlow {
         window: &mut Window,
         cx: &mut App,
     ) {
-        for el in self.built.iter_mut() {
-            el.paint(window, cx);
-        }
+        crate::paint::decorations::outline_phase::flow(window, cx, |window, cx| {
+            for el in self.built.iter_mut() {
+                el.paint(window, cx);
+            }
+        });
     }
 }
 

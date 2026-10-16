@@ -34,6 +34,8 @@ pub(crate) struct Ancestor {
     /// Отметки `:has()`: хеши аргументов, для которых узел — якорь с
     /// совпадением. Считаются отдельным проходом до обхода (см. `mark_has`).
     pub(crate) has_marks: Vec<u64>,
+    /// Matches searching the host’s own shadow tree, outside :host(...).
+    pub(crate) shadow_has_marks: Vec<u64>,
     /// Хост, увиденный ИЗНУТРИ своей тени: безликий (css-shadow-1 §3.1 —
     /// «the shadow host is featureless»), с ним совпадает только компаунд из
     /// `:host`/`:host()`. `Some` несёт цепочку предков хоста в его СВЕТЛОМ
@@ -167,6 +169,7 @@ pub(super) fn ancestor_of(child: &Handle, spot: Spot) -> Option<Ancestor> {
             _ => None,
         }),
         has_marks: has_marks_of(child),
+        shadow_has_marks: vec![],
         featureless: None,
         slot: slot_of(child),
         peers: None,

@@ -34,8 +34,7 @@ pub fn apply_text(mut d: Div, c: &Computed) -> Div {
         // текст, идущий гpui-раскладкой (не резчиком), набирался подменным
         // системным шрифтом.
         d = d.font_family(
-            crate::text::fonts::alias_stretch(family, c.font_stretch)
-                .unwrap_or_else(|| family.clone()),
+            crate::text::fonts::alias_for(family, c).unwrap_or_else(|| family.clone()),
         );
     }
     if let Some(pct) = c.font_stretch {

@@ -178,6 +178,9 @@ fn pseudo_name(raw: &str) -> String {
         if matches!(head.as_str(), "is" | "where" | "matches" | "any") {
             return format!("{head}({}", crate::style::css::default_ns::mark_arg(arg));
         }
+        if matches!(head.as_str(), "host" | "host-context" | "slotted" | "has") {
+            return format!("{head}({arg}");
+        }
     }
     unescape(raw).to_ascii_lowercase()
 }

@@ -46,6 +46,7 @@ pub(super) fn element_ancestor(
             }
         }),
         has_marks: has_marks_of(handle),
+        shadow_has_marks: vec![],
         featureless: None,
         slot: slot_of(handle),
         peers: sibs

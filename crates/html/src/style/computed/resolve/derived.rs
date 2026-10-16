@@ -21,6 +21,8 @@ impl Computed {
             font_weight_step: self.font_weight_step,
             italic: self.italic,
             oblique: self.oblique,
+            font_oblique_angle: self.font_oblique_angle,
+            font_oblique_only: self.font_oblique_only,
             underline: self.underline,
             line_through: self.line_through,
             line_height: self.line_height,

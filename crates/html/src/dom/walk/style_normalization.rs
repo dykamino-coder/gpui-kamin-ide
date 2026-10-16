@@ -71,6 +71,10 @@ pub(super) fn normalize_style(
     }
     presentational_hints::colors(&mut style, &tag, &attrs);
     finish_inline_display(&mut style, &tag, &attrs);
+    // HTML 15.4.1: audio without controls does not represent a rendered box.
+    if tag == "audio" && !attrs.iter().any(|(name, _)| name == "controls") {
+        style.display = Some(crate::style::computed::Display::None);
+    }
     style.plain_block_box = {
         use crate::style::computed::Display;
         let special = matches!(

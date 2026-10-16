@@ -5,6 +5,10 @@ use crate::text::paragraph::*;
 
 impl Paragraph {
     pub(crate) fn opportunities(&self) -> Vec<Stop> {
+        self.opportunities_with_fallback(false)
+    }
+
+    pub(crate) fn opportunities_with_fallback(&self, hyphenate: bool) -> Vec<Stop> {
         let mut out: Vec<Stop> = Vec::new();
         // Обязательные разрывы есть всегда, даже при `nowrap`.
         for (i, ch) in self.text.char_indices() {
@@ -16,6 +20,15 @@ impl Paragraph {
             }
         }
         self.soft_opportunities(&mut out);
+        // CSS Text 4: auto-phrase suppresses hyphenation for normal layout
+        // and intrinsic sizing, but retains it as an overflow fallback.
+        if !hyphenate {
+            out.retain(|s| {
+                s.mandatory
+                    || !self.wrap_at(s.at.saturating_sub(1)).auto_phrase
+                    || !self.text[..s.at].ends_with(SOFT_HYPHEN)
+            });
+        }
         // `white-space: nowrap`/`pre` гасит МЯГКИЕ точки — но по месту, а не по
         // абзацу целиком: вложенный `<span>` со своим `white-space` переносится
         // внутри неперносимого абзаца и наоборот (`white-space-pre-031`).

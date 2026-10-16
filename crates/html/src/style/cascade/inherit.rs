@@ -42,6 +42,14 @@ pub(crate) fn inherit_unpainted(parent: &Computed, own: &Computed) -> Computed {
 }
 
 fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Computed {
+    let mut resolved;
+    let own = if own.explicit_inherit.is_empty() {
+        own
+    } else {
+        resolved = own.clone();
+        super::inherited_value::resolve(&mut resolved, parent);
+        &resolved
+    };
     let mut c = own.clone();
     c.text_shadow_ink = own.text_shadow_ink.or(parent.text_shadow_ink);
     crate::style::computed::scroll::inherit(parent, &mut c);

@@ -210,3 +210,13 @@ fn place_among_003l() {
     assert_eq!(b.place_among(100.0, 50.0, 0.0), (250.0, 0.0, 150.0));
     assert_eq!(b.place_among(100.0, 50.0, 50.0), (0.0, 75.0, 150.0));
 }
+
+/// A zero-width BFC still needs a common interval across its full height.
+#[test]
+fn opposing_bands_have_no_common_interval() {
+    let mut b = FloatBands::new(400.0);
+    assert_eq!(b.add_float(1, 250.0, 100.0, None), (150.0, 0.0));
+    assert_eq!(b.add_float(-1, 250.0, 100.0, None), (0.0, 100.0));
+    assert_eq!(b.available(0.0, 200.0), (250.0, 150.0));
+    assert_eq!(b.place_among(0.0, 200.0, 0.0), (250.0, 100.0, 150.0));
+}
