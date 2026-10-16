@@ -160,6 +160,23 @@ pub(super) fn kid_copy_count(
                 .min(16)
                 .max(copies)
         }
+        // A grid continues in overflow columns too (css-multicol-1 §8.2:
+        // content that does not fit the column boxes of a fixed-height
+        // multicol creates additional columns in the inline direction); its
+        // fragments are row bands, so the extra copies follow the same plan.
+        Some(per)
+            if rows.is_none()
+                && !span
+                && per > 0.0
+                && visible_overflow(&e.style)
+                && visible_overflow(&copy.style)
+                && matches!(copy.style.display, Some(Display::Grid))
+                && !has_monolith(copy, 4) =>
+        {
+            ((h.max(over) / per).ceil() as usize + 1)
+                .min(16)
+                .max(copies)
+        }
         // Высота неизвестна до раскладки: копий — на
         // переполняющие колонки (css-multicol-1 §8.2).
         Some(per) if measure.is_some() && rows.is_none() && !span && per > 0.0 => {
@@ -167,6 +184,19 @@ pub(super) fn kid_copy_count(
         }
         _ => copies,
     }
+}
+
+/// A monolithic descendant overflows its fragmentainer instead of taking
+/// space in the flow (css-break-3 §4.1), so the unfragmented height no
+/// longer counts the columns the content needs.
+fn has_monolith(c: &Element, depth: u8) -> bool {
+    depth > 0
+        && c.children.iter().any(|n| match n {
+            Node::Element(k) => {
+                crate::layout::fragment::clone::monolith_box(k) || has_monolith(k, depth - 1)
+            }
+            _ => false,
+        })
 }
 
 pub(super) fn copy_monolith(
