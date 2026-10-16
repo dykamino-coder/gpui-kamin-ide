@@ -12,4 +12,5 @@ pub(crate) use measured::natural_control;
 pub(crate) mod replaced_content;
 mod replaced_holder_ratio;
 pub(crate) mod replaced_used_style;
+pub(crate) mod svg_document_image;
 pub(crate) mod svg_percentage_size;

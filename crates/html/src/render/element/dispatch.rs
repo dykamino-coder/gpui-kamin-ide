@@ -75,7 +75,8 @@ pub(crate) fn dispatch_element(
             }
             // Единицы окна — в точки, как у строчной картинки.
             copy.style.resolve_viewport(opts.viewport);
-            image_with(&copy, Some(atom_base_font(inherited, opts)))
+            crate::layout::replaced::svg_document_image::render(&copy, opts)
+                .unwrap_or_else(|| image_with(&copy, Some(atom_base_font(inherited, opts))))
         }
         // Замещаемые с картинкой-источником рисуются как <img>: embed через
         // src, object через data, video через poster (css-images §5:

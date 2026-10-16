@@ -89,6 +89,9 @@ pub(super) fn img_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
     // (`Computed::resolve_viewport`), и `height: calc(60vh - 6px)` у
     // картинки падал в природный размер (`intrinsic-percent-replaced-009-ref`).
     copy.style.resolve_viewport(opts.viewport);
+    if let Some(doc) = crate::layout::replaced::svg_document_image::render(&copy, opts) {
+        return Some(doc);
+    }
     Some(image_with(&copy, Some(atom_base_font(inherited, opts))))
 }
 
