@@ -83,8 +83,14 @@ impl Paragraph {
                 .unwrap_or(head);
         }
         let hyphen = !self.hyphen.is_empty() && shy_at(end);
+        // The block-ellipsis does not contribute to intrinsic sizes: with no
+        // available width (min/max-content measure) the line is as wide as
+        // its text, and the marker later takes room from it at the used
+        // width (`webkit-line-clamp-024`: an inline-box sized to «Line 1»
+        // shows «Line…»).
+        let ell_w = if limit.is_some() { ell } else { px(0.) };
         let width = self.span(&segs, head, end)
-            + ell
+            + ell_w
             + if hyphen {
                 self.hyphen_width(end)
             } else {

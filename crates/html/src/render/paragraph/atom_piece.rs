@@ -37,7 +37,11 @@ pub(crate) fn atom_piece(
     let inherited = parent_style.as_ref().unwrap_or(inherited);
     let saved = inline::atom_parent::suspend();
     let piece = {
-        let _nest = crate::text::clamp::ParaNest::enter();
+        let _nest = if e.style.clamp_lines().is_some() || e.style.clamp_auto == Some(true) {
+            crate::text::clamp::ParaNest::reset()
+        } else {
+            crate::text::clamp::ParaNest::enter()
+        };
         atom_piece_in(e, inherited, opts, flow_text)
     };
     inline::atom_parent::resume(saved);

@@ -192,7 +192,7 @@ pub fn forget_clamp_buffers() {
 }
 
 /// Сторож стека clamp-контекста на время построения поддерева.
-pub struct ClampGuard(pub(crate) bool);
+pub struct ClampGuard(pub(crate) bool, Option<u32>);
 
 impl ClampGuard {
     /// Вход в сам clamp-контейнер.
@@ -204,7 +204,10 @@ impl ClampGuard {
         CLAMP_SEQ.with(|m| {
             m.borrow_mut().insert(key, 0);
         });
-        ClampGuard(true)
+        // A clamp container is its own count root even when it is an
+        // atomic inline of another paragraph (`display: inline-block` /
+        // `-webkit-inline-box`): the atom nesting restarts inside it.
+        ClampGuard(true, Some(super::paragraph_rows::swap_para_depth(0)))
     }
 
     /// Вход в элемент с собственным контекстом форматирования: строки
@@ -220,12 +223,15 @@ impl ClampGuard {
                 _ => false,
             }
         });
-        ClampGuard(pushed)
+        ClampGuard(pushed, None)
     }
 }
 
 impl Drop for ClampGuard {
     fn drop(&mut self) {
+        if let Some(depth) = self.1 {
+            super::paragraph_rows::swap_para_depth(depth);
+        }
         if self.0 {
             CLAMP_STACK.with(|st| {
                 st.borrow_mut().pop();

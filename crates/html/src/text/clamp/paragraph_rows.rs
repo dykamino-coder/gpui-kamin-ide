@@ -28,19 +28,30 @@ thread_local! {
 /// that paragraph: their own lines are not line boxes of the clamp
 /// container's BFC (css-overflow-4 §5.3), so they get no clamp number, no
 /// probe and no line budget.
-pub struct ParaNest;
+pub struct ParaNest(u32);
 
 impl ParaNest {
     pub fn enter() -> Self {
-        PARA_DEPTH.with(|d| d.set(d.get() + 1));
-        ParaNest
+        ParaNest(PARA_DEPTH.with(|d| d.replace(d.get() + 1)))
+    }
+
+    /// An atomic inline that is itself a line-clamp container
+    /// (`-webkit-inline-box`, inline-block with `line-clamp`) counts its
+    /// own lines: the nesting restarts inside it.
+    pub fn reset() -> Self {
+        ParaNest(PARA_DEPTH.with(|d| d.replace(0)))
     }
 }
 
 impl Drop for ParaNest {
     fn drop(&mut self) {
-        PARA_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+        PARA_DEPTH.with(|d| d.set(self.0));
     }
+}
+
+/// Replace the atomic-inline nesting depth, returning the old one.
+pub(super) fn swap_para_depth(v: u32) -> u32 {
+    PARA_DEPTH.with(|d| d.replace(v))
 }
 
 /// Number of enclosing atomic-inline builds (`ParaNest`).
