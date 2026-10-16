@@ -34,7 +34,11 @@ impl Paragraph {
         // Надбавка сверху опускает НАБОР строки: поднятый знак занимает её,
         // а базовая линия остаётся на своём месте относительно кегля.
         let above = |i: usize| -> Pixels { px(pads.get(i).copied().unwrap_or((0.0, 0.0)).0) };
-        self.publish_rows(bounds, count, &step);
+        // Horizontal rows are published at prepaint (`ClampCut` reads them
+        // in this frame's paint); the rotated frame keeps the paint-time path.
+        if self.selection_vertical.is_some() || crate::text::vertical::in_rotated_frame() {
+            self.publish_rows(bounds, count, &step);
+        }
         let mut rev_off = self.reversed_offset(count, &step);
         let mut y = bounds.origin.y + px(rev_off);
         let runs = self.selection_runs(id, window);

@@ -90,6 +90,20 @@ impl Paragraph {
             self.lines = balanced;
         }
         self.place_atoms(*state, window, _cx);
+        // The clamp point of THIS frame needs this frame's rows: `ClampCut`
+        // computes it in paint, and paint order inside the container does
+        // not put every paragraph before it, but prepaint of the whole tree
+        // precedes any paint (css-overflow-4 §5.3; one frame per relayout
+        // step, like Blink's measure-then-relayout pass).
+        if !self.vertical && !crate::text::vertical::in_rotated_frame() {
+            let pads = self.line_padding();
+            let lh = self.line_height;
+            let step = |i: usize| -> Pixels {
+                let (a, b) = pads.get(i).copied().unwrap_or((0.0, 0.0));
+                lh + px(a + b)
+            };
+            self.publish_rows(bounds, self.lines.len(), &step);
+        }
         // Куски вне потока встают на своё место в строке: раскладываются
         // по содержимому и подготавливаются от угла своего знака.
         if !self.overlays.is_empty() {
