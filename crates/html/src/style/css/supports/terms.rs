@@ -86,7 +86,7 @@ pub(super) fn supports_eval_term(term: &str) -> SupTri {
         let Some(open) = term.find('(') else {
             return SupTri::Unknown;
         };
-        let name = term[..open].to_ascii_lowercase();
+        let name = unescape(&term[..open]).to_ascii_lowercase();
         let args = &term[open + 1..term.len().saturating_sub(1)];
         return match name.as_str() {
             "selector" => {
@@ -126,7 +126,13 @@ pub(super) fn supports_eval_term(term: &str) -> SupTri {
                     SupTri::False
                 }
             }
-            "at-rule" => SupTri::False,
+            "at-rule" => {
+                if at_rule::supported(args) {
+                    SupTri::True
+                } else {
+                    SupTri::False
+                }
+            }
             // `not(...)`/`or(...)` и прочие неизвестные функции — это
             // `<general-enclosed>`, а css-conditional-3 §4 говорит о нём
             // дословно: «The result is false». Не «неизвестно»: иначе
