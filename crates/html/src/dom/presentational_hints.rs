@@ -86,6 +86,8 @@ fn foreign_object(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
         return None;
     }
     hint(&css.join("; "))
+}
+
 /// HTML rendering §15.3.4: legacy font colors participate below author CSS.
 fn font_color(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
     if tag != "font" {
