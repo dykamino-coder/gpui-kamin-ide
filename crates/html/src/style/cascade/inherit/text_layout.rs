@@ -92,6 +92,7 @@ pub(super) fn inherit_text_layout(parent: &Computed, own: &Computed, c: &mut Com
     // `image-orientation` наследуется (css-images-3 §5.4, «Inherited: yes»):
     // в наборе его ставят на `body`, а действует он на каждой картинке.
     c.image_orient_none = own.image_orient_none.or(parent.image_orient_none);
+    c.font_oblique_only = own.font_oblique_only.or(parent.font_oblique_only);
     c.font_synth = (
         own.font_synth.0.or(parent.font_synth.0),
         own.font_synth.1.or(parent.font_synth.1),

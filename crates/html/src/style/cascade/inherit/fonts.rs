@@ -24,6 +24,11 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     crate::style::computed::font_weight::inherit(c, parent, own);
     c.italic = own.italic.or(parent.italic);
     c.oblique = own.oblique.or(parent.oblique);
+    c.font_oblique_angle = if own.oblique.is_some() {
+        own.font_oblique_angle
+    } else {
+        parent.font_oblique_angle
+    };
     c.underline = own.underline.or(parent.underline);
     c.line_through = own.line_through.or(parent.line_through);
     // То же для высоты строки: `line-height: 2lh` уже переведён в точки от
