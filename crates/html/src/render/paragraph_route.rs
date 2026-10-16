@@ -72,6 +72,7 @@ pub(super) fn paragraph_probed(
                 skip,
                 false,
                 0.0,
+                crate::text::clamp::BoxEnds::default(),
                 seq,
                 budget,
                 None,

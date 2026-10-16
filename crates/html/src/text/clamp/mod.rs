@@ -5,6 +5,7 @@ pub use crate::text::clamp::extent::{extend_clip, hidden_after_point, hide_box_a
 mod line_state;
 mod paragraph_rows;
 pub use crate::text::clamp::cut_element::ClampCut;
+pub use crate::text::clamp::line_state::BoxEnds;
 pub use crate::text::clamp::line_state::ClampEntry;
 pub use crate::text::clamp::line_state::ClampGuard;
 pub use crate::text::clamp::line_state::ClampLines;

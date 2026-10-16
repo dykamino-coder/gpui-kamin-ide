@@ -39,7 +39,9 @@ pub(super) fn park_overflow(
         return rows;
     };
     rows.into_iter()
-        .map(|(a, b)| if a >= end - 0.5 { (end, end) } else { (a, b) })
+        // A row straddling the box end is overflow of the box too: it ends
+        // where the box does (`line-clamp-auto-063`).
+        .map(|(a, b)| (a.min(end), b.min(end)))
         .collect()
 }
 

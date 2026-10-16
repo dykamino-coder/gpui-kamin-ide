@@ -169,6 +169,7 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
                 skip,
                 false,
                 0.0,
+                crate::text::clamp::BoxEnds::default(),
                 None,
                 None,
                 None,

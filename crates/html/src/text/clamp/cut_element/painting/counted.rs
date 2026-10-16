@@ -8,7 +8,7 @@ impl ClampCut {
         &self,
         mut cut: Option<f32>,
         entries: &[ClampEntry],
-        blocks: &[(f32, f32, bool, f32)],
+        blocks: &[super::ClampBox],
         split: &dyn Fn(&ClampEntry) -> Vec<(f32, f32)>,
     ) -> (Option<f32>, Option<(u32, usize)>, bool) {
         let mut num_para: Option<(u32, usize)> = None;
@@ -53,22 +53,34 @@ impl ClampCut {
                         num_para = Some((seq, k));
                     }
                     by_count = true;
-                    if follows {
+                    // A paragraph that got its line budget and still runs
+                    // past the point cannot clamp itself (the word-row path
+                    // of a paragraph with atomic inlines): the box is cut at
+                    // the point instead (`line-clamp-with-abspos-024`).
+                    let unclamped = own_rest
+                        && entries
+                            .iter()
+                            .any(|e| e.seq == Some(seq) && e.clamped.is_some());
+                    if follows || unclamped {
                         // Коробки, содержащие точку, фрагментированы в ней и
                         // уносят свои нижние рамку и паддинг (§5.3); коробка с
                         // заданной высотой не фрагментируется — видна целиком.
-                        let mut add = 0.0f32;
-                        let mut floor = bottom;
-                        for (y0, y1, fixed, bp) in blocks {
-                            if *y0 < bottom && bottom < *y1 {
-                                if *fixed {
-                                    floor = floor.max(*y1);
-                                } else {
-                                    add += *bp;
-                                }
-                            }
-                        }
-                        cut = Some((bottom + add).max(floor));
+                        // The boxes fragmented at the point are the
+                        // ancestors of its paragraph in box-tree order.
+                        let chain: Vec<&super::ClampBox> = blocks
+                            .iter()
+                            .filter(|b| {
+                                !b.fixed
+                                    && b.y0 < bottom
+                                    && b.span.is_some_and(|(a, z)| (a..z).contains(&seq))
+                            })
+                            .collect();
+                        let floor = blocks
+                            .iter()
+                            .filter(|b| b.fixed && b.y0 < bottom && bottom < b.y1)
+                            .map(|b| b.y1)
+                            .fold(bottom, f32::max);
+                        cut = Some(super::chain_end(bottom, &chain).max(floor));
                     }
                 }
                 // `max-height` теснее N строк — дальше как в авто-режиме.

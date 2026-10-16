@@ -25,6 +25,19 @@ pub struct ClampEntry {
     /// (css-overflow-4 §5.3): на них укорачивается бюджет строк и на них же
     /// удлиняется итоговый срез. Для строчных проб — ноль.
     pub bp_after: f32,
+    /// Bottom margin of a box probe in points: an ancestor fragmented at
+    /// the clamp point keeps its end margin, collapsing with the end
+    /// margins of nested ancestors unless border/padding separates them
+    /// (css-overflow-4 §5.3; Blink `LineClampAncestorChain`).
+    pub end_margin: f32,
+    /// Minimum border-box height of a box probe (`min-height`) from its
+    /// border-box top, 0 when none: fragmented at the clamp point it still
+    /// ends no earlier (Blink clamps the chain size to min/max).
+    pub min_end: f32,
+    /// Box probe with a `max-height`: once its content overflows it, its
+    /// size no longer depends on the content and it is as monolithic as a
+    /// box with a definite height (`line-clamp-auto-044/063`).
+    pub capped: bool,
     /// Порядковый номер абзаца ВНУТРИ клэмп-контейнера, выданный при
     /// построении. `None` — проба коробки, а не абзаца: знак обрыва на
     /// неё не садится. Номер, а не совпадение по геометрии, потому что
@@ -49,6 +62,14 @@ pub struct ClampEntry {
     /// Absolutely positioned box: not hidden by the clamp (Blink keeps
     /// out-of-flow boxes painted), its overflow stays visible.
     pub positioned: bool,
+}
+
+/// End edges of a box probe beyond its padding box (see `ClampEntry`).
+#[derive(Clone, Copy, Default)]
+pub struct BoxEnds {
+    pub margin: f32,
+    pub min_end: f32,
+    pub capped: bool,
 }
 
 pub type ClampLines = std::rc::Rc<std::cell::RefCell<Vec<ClampEntry>>>;

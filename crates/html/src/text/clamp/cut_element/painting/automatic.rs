@@ -7,7 +7,7 @@ impl ClampCut {
         &self,
         mut cut: Option<f32>,
         by_count: bool,
-        blocks: &[(f32, f32, bool, f32)],
+        blocks: &[super::ClampBox],
         rows: &[(f32, f32, bool)],
         trim_end: f32,
     ) -> Option<f32> {
@@ -20,9 +20,17 @@ impl ClampCut {
             // Коробка с ЗАДАННОЙ высотой не фрагментируется: пересечённая
             // точкой среза, она прячется целиком (css-overflow-4 §5.3).
             let mut c2 = c;
-            for (y0, y1, fixed, _) in blocks {
-                if *fixed && *y0 < c2 && c2 < *y1 {
-                    c2 = *y0;
+            // So is a box whose `min-height` alone already passes the
+            // budget: fragmented anywhere inside, it would still end below
+            // it, so the clamp point comes before it (`line-clamp-auto-042`;
+            // Blink clamps the ancestor chain size to min/max).
+            for b in blocks {
+                let monolithic = b.fixed && c2 < b.y1;
+                let too_tall = b.min_end > 0.0
+                    && b.y0 + b.min_end > c2 + 0.5
+                    && !b.inside_fitting_fixed(blocks, c2);
+                if b.y0 < c2 && (monolithic || too_tall) {
+                    c2 = b.y0;
                 }
             }
             // Коробка БЕЗ заданной высоты фрагментируется по последней
@@ -30,12 +38,20 @@ impl ClampCut {
             // бюджет строк на них укорачивается, а итоговый срез — на
             // столько же удлиняется (`line-clamp-auto-019`: 2+14+4×32+14+2
             // = 160 = ровно потолок `max-height: 5lh`).
-            let crossed: Vec<(f32, f32)> = blocks
+            // A box is crossed while its flow end (end border, padding and
+            // margin) does not fit; the end edges of the crossed chain
+            // collapse like Blink's `LineClampAncestorChain`
+            // (`line-clamp-auto-027/030`).
+            let crossed: Vec<&super::ClampBox> = blocks
                 .iter()
-                .filter(|(y0, y1, fixed, _)| !*fixed && *y0 < c2 && c2 < *y1)
-                .map(|(y0, _, _, bp)| (*y0, *bp))
+                .filter(|b| {
+                    !b.fixed
+                        && b.y0 < c2
+                        && c2 < b.flow_end()
+                        && !b.inside_fitting_fixed(blocks, c2)
+                })
                 .collect();
-            let bp: f32 = crossed.iter().map(|(_, bp)| *bp).sum();
+            let bp: f32 = super::chain_extra(&crossed);
             c2 -= bp;
             // Строка, которая влезает только СРЕЗАННОЙ (`text-box-trim:
             // trim-end` — последняя строка перед обрывом срезается), остаётся:
@@ -75,19 +91,19 @@ impl ClampCut {
             };
             match crossed
                 .iter()
-                .filter(|(y0, _)| !holds(*y0))
-                .map(|(y0, _)| *y0)
+                .filter(|b| !holds(b.y0))
+                .map(|b| b.y0)
                 .reduce(f32::min)
             {
                 Some(empty_top) => {
-                    let keep: f32 = crossed
+                    let kept: Vec<&super::ClampBox> = crossed
                         .iter()
-                        .filter(|(y0, _)| holds(*y0) && *y0 < empty_top)
-                        .map(|(_, bp)| *bp)
-                        .sum();
-                    cut = Some(empty_top + keep);
+                        .filter(|b| holds(b.y0) && b.y0 < empty_top)
+                        .copied()
+                        .collect();
+                    cut = Some(empty_top + super::chain_extra(&kept));
                 }
-                None => cut = Some(c2 + bp),
+                None => cut = Some(super::chain_end(c2, &crossed)),
             }
         }
         cut

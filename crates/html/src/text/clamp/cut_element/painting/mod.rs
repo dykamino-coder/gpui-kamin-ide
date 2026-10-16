@@ -10,6 +10,83 @@ use crate::text::clamp::line_state::CLAMP_EXTENT;
 use crate::text::clamp::{CLAMP_CUTS, CLAMP_PARA};
 use gpui::{App, Bounds, GlobalElementId, InspectorElementId, Pixels, Window};
 
+/// A probed block box inside the clamp container, in box-tree preorder.
+#[derive(Debug)]
+pub(crate) struct ClampBox {
+    /// Border-box top and padding-box bottom.
+    pub y0: f32,
+    pub y1: f32,
+    /// Definite height: not fragmented at the clamp point.
+    pub fixed: bool,
+    /// End border + padding and end margin.
+    pub bp: f32,
+    pub margin: f32,
+    /// `min-height` border-box extent from `y0`, 0 when none.
+    pub min_end: f32,
+    /// Paragraph numbers `[first, end)` of its descendants.
+    pub span: Option<(u32, u32)>,
+}
+
+impl ClampBox {
+    /// Inside a monolithic ancestor that ends before `c`: its overflow is
+    /// that ancestor's, parked at the ancestor's end, so the box can
+    /// neither hold nor push the clamp point.
+    pub(super) fn inside_fitting_fixed(&self, all: &[ClampBox], c: f32) -> bool {
+        let Some((a, z)) = self.span else {
+            return false;
+        };
+        all.iter().any(|o| {
+            !std::ptr::eq(o, self)
+                && o.fixed
+                && o.y1 <= c + 0.5
+                && o.y0 <= self.y0
+                && o.span.is_some_and(|(oa, oz)| oa <= a && z <= oz)
+        })
+    }
+
+    /// Lowest edge the box occupies in the flow: padding box, end border
+    /// and padding, end margin.
+    pub(super) fn flow_end(&self) -> f32 {
+        self.y1 + self.bp + self.margin.max(0.0)
+    }
+}
+
+/// Where the clamp container's content ends for a clamp point at `point`
+/// inside the boxes `chain` (fragmented at it), in preorder (outermost
+/// first): end border and padding of each box, `min-height` of each box,
+/// end margins collapsing through boxes without border/padding (css-
+/// overflow-4 §5.3; Blink `LineClampAncestorChain::
+/// InnerFinalLineClampBlockSize`). The clamp container is an independent
+/// BFC, so the margin left over at its end stays inside it.
+pub(super) fn chain_end(point: f32, chain: &[&ClampBox]) -> f32 {
+    chain_end_with(point, chain, true)
+}
+
+/// Space the end edges of `chain` take after the point, `min-height` aside
+/// (the line budget of `line-clamp: auto`).
+pub(super) fn chain_extra(chain: &[&ClampBox]) -> f32 {
+    chain_end_with(0.0, chain, false)
+}
+
+fn chain_end_with(point: f32, chain: &[&ClampBox], min: bool) -> f32 {
+    let (mut y, mut pos, mut neg) = (point, 0.0f32, 0.0f32);
+    for b in chain.iter().rev() {
+        if b.bp > 0.0 {
+            y += pos + neg + b.bp;
+            pos = 0.0;
+            neg = 0.0;
+        }
+        if min && b.min_end > 0.0 && b.y0 + b.min_end > y {
+            y = b.y0 + b.min_end;
+            pos = 0.0;
+            neg = 0.0;
+        }
+        pos = pos.max(b.margin);
+        neg = neg.min(b.margin);
+    }
+    y + pos + neg
+}
+
 impl ClampCut {
     pub(crate) fn paint_impl(
         &mut self,
@@ -25,7 +102,26 @@ impl ClampCut {
         // Пустые коробки — только для выбора знака обрыва (ниже); в строки,
         // блоки и признак «за точкой есть содержимое» они не входят.
         let empties: Vec<ClampEntry> = all_entries.iter().filter(|e| e.empty).cloned().collect();
-        let entries: Vec<ClampEntry> = all_entries.into_iter().filter(|e| !e.empty).collect();
+        let mut entries: Vec<ClampEntry> = all_entries.into_iter().filter(|e| !e.empty).collect();
+        // A `max-height` box whose content overflows it is sized by the
+        // constraint alone: monolithic for the clamp point.
+        let overflowing: Vec<bool> = entries
+            .iter()
+            .map(|b| {
+                b.capped
+                    && b.span.is_some_and(|(a, z)| {
+                        let end = f32::from(b.bounds.origin.y) + f32::from(b.bounds.size.height);
+                        entries.iter().any(|e| {
+                            e.seq.is_some_and(|s| (a..z).contains(&s))
+                                && f32::from(e.bounds.origin.y) + f32::from(e.bounds.size.height)
+                                    > end + 0.5
+                        })
+                    })
+            })
+            .collect();
+        for (e, o) in entries.iter_mut().zip(overflowing) {
+            e.fixed_height |= o;
+        }
         let para_rows = take_para_rows(self.key);
         // Строки текстового вклада: настоящие, если абзац их сообщил и они
         // лежат в его коробке; иначе — высота пробы поровну на строки.
@@ -47,8 +143,7 @@ impl ClampCut {
         let top = f32::from(bounds.origin.y);
         // Строки: у текстового вклада их bounds.height / line штук.
         let mut rows: Vec<(f32, f32, bool)> = vec![]; // (верх, низ, считается)
-        // (верх, низ, заданная высота, нижние рамка+паддинг)
-        let mut blocks: Vec<(f32, f32, bool, f32)> = vec![];
+        let mut blocks: Vec<ClampBox> = vec![];
         let fixed = fit::fixed_blocks(&entries);
         let fit = |e: &ClampEntry| fit::park_overflow(split(e), e, &fixed);
         for e in &entries {
@@ -59,7 +154,15 @@ impl ClampCut {
                     rows.push((a, b, !e.skip_count));
                 }
             } else if h > 0.0 {
-                blocks.push((y0 - e.bt_before, y0 + h, e.fixed_height, e.bp_after));
+                blocks.push(ClampBox {
+                    y0: y0 - e.bt_before,
+                    y1: y0 + h,
+                    fixed: e.fixed_height,
+                    bp: e.bp_after,
+                    margin: e.end_margin,
+                    min_end: e.min_end,
+                    span: e.span,
+                });
             }
         }
         rows.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
