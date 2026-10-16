@@ -1566,4 +1566,6 @@ pub struct Computed {
     pub appearance: Option<crate::style::computed::Appearance>,
     /// Element used color scheme, shared by CSS system colours and native controls.
     pub dark_color_scheme: bool,
+    /// Specified initial color, resolved specially for quirks HTML tables.
+    pub(crate) color_initial: bool,
 }
