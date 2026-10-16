@@ -51,6 +51,7 @@ fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Compu
         &resolved
     };
     let mut c = own.clone();
+    c.text_shadow_ink = own.text_shadow_ink.or(parent.text_shadow_ink);
     crate::style::computed::scroll::inherit(parent, &mut c);
     inherit_containing(parent, own, &mut c);
     inherit_sizes(parent, own, &mut c);

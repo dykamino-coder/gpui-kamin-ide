@@ -5,6 +5,8 @@ use crate::style::values::value::{Color, Len};
 
 #[derive(Clone, Debug, Default)]
 pub struct Computed {
+    /// Paint-only fragment ink for a text-shadow mask; decoration records stay intact.
+    pub(crate) text_shadow_ink: Option<Color>,
     /// Winning explicit-inherit longhands, consumed before effective zoom.
     pub(crate) explicit_inherit: Vec<crate::style::cascade::inherited_value::Property>,
     /// CSS Scroll Snap: container policy and descendant snap-area geometry.
