@@ -159,6 +159,8 @@ head, title, meta, link, template { display: none }
 
 /// HTML rendering, lists: orphan list items use inside markers in quirks mode.
 pub(super) const QUIRKS_CSS: &str = r#"
+/* Quirks Mode §3.12, HTML rendering §tables. */
+table { color: initial }
 li { list-style-position: inside }
 li :is(dir, menu, ol, ul) { list-style-position: outside }
 :is(dir, menu, ol, ul) :is(dir, menu, ol, ul, li) { list-style-position: unset }
