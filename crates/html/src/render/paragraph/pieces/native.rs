@@ -150,7 +150,8 @@ pub(crate) fn native_paragraph(
         // Счётный режим (`line-clamp: <N>`) берёт предел из стиля;
         // авто-режим — из бюджета, посчитанного по точке среза.
         .line_clamp(clamp_budget.or_else(|| {
-            (!crate::text::clamp::clamp_context().is_some_and(|(_, skip)| skip))
+            (!crate::text::clamp::clamp_context().is_some_and(|(_, skip)| skip)
+                && crate::text::clamp::para_depth() == 0)
                 .then(|| inherited.clamp_lines().map(|n| n as usize))
                 .flatten()
         }))

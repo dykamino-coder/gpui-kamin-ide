@@ -129,6 +129,24 @@ impl Computed {
                     None
                 };
             }
+            // Longhand `continue` (css-overflow-4 §5.2): `collapse` makes the
+            // box a line-clamp container clamped by its height when no
+            // `max-lines` is given — `line-clamp: auto` without the
+            // ellipsis, whose own longhand `block-ellipsis` starts at
+            // `none` (`continue-001`). `auto` undoes it.
+            "continue" => match v.trim().to_ascii_lowercase().as_str() {
+                "collapse" => {
+                    self.clamp_auto = Some(true);
+                    self.clamp_legacy = Some(false);
+                    if self.clamp_mark.is_none() {
+                        self.clamp_mark = Some(String::new());
+                    }
+                }
+                "auto" => {
+                    self.clamp_auto = None;
+                }
+                _ => {}
+            },
             "-webkit-line-clamp" => {
                 self.line_clamp = v.trim().parse().ok();
                 self.clamp_auto = None;

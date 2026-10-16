@@ -126,7 +126,12 @@ pub(super) fn inherit_text_layout(parent: &Computed, own: &Computed, c: &mut Com
     c.font_size_adjust = own.font_size_adjust.or(parent.font_size_adjust);
     c.no_select = own.no_select.or(parent.no_select);
     c.pointer_events_none = own.pointer_events_none.or(parent.pointer_events_none);
-    c.line_clamp = own.line_clamp.or(parent.line_clamp);
+    // A `-webkit-box` that is not a block container (no vertical orient)
+    // is no line-clamp container and hands no clamp to its contents
+    // (`line-clamp-029`).
+    c.line_clamp = own
+        .line_clamp
+        .or(parent.line_clamp.filter(|_| parent.clamp_block_container()));
     // `block-ellipsis` наследуется (css-overflow-4 §block-ellipsis).
     c.clamp_mark = own.clamp_mark.clone().or_else(|| parent.clamp_mark.clone());
     c.clamp_legacy = own.clamp_legacy.or(parent.clamp_legacy);

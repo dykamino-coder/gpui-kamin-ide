@@ -23,7 +23,11 @@ pub fn extend_clip(style: &mut gpui::StyleRefinement, key: u64, cut: f32, pad_bo
 /// A paragraph numbered after the clamp paragraph follows the clamp point:
 /// hidden for paint once the clip no longer hides it.
 pub fn hidden_after_point(key: u64, seq: u32) -> bool {
-    revealed_extent(key).is_some() && clamp_para(key).is_some_and(|(s, _)| seq > s)
+    revealed_extent(key).is_some()
+        && match clamp_para(key) {
+            Some((s, _)) => seq > s,
+            None => super::line_state::clamp_next(key).is_some_and(|n| seq >= n),
+        }
 }
 
 /// An in-flow block box whose paragraphs all follow the clamp point is
