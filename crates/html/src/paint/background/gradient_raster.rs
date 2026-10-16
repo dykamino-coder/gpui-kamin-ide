@@ -46,6 +46,7 @@ pub(super) fn raster(
     // CSS Images 3 sections 3.2.3 and 3.4.3: percentages refer to the
     // gradient line, which is the horizontal radius for a radial gradient.
     let stops = resolved_stops(&g, geometry.length());
+    let hsl = crate::style::values::color_space::HslRamp::new(&stops, g.space, g.hue);
     let palette = crate::style::values::color_space::DirectGradient::new(src, stops.len(), g.space);
     let mut bytes = Vec::with_capacity((w * h * 4) as usize);
     for y in 0..h {
@@ -63,10 +64,15 @@ pub(super) fn raster(
             };
             let t = geometry.at(point, css);
             let t = if repeating { wrap_repeat(t, &stops) } else { t };
-            let colour = palette.as_ref().map_or_else(
-                || colour_at(&stops, t, g.space, g.hue),
-                |palette| palette.colour_at(&stops, t, g.hue),
-            );
+            let colour = hsl
+                .as_ref()
+                .and_then(|ramp| ramp.colour_at(t))
+                .unwrap_or_else(|| {
+                    palette.as_ref().map_or_else(
+                        || colour_at(&stops, t, g.space, g.hue),
+                        |palette| palette.colour_at(&stops, t, g.hue),
+                    )
+                });
             // The image upload shader premultiplies straight-alpha samples.
             bytes.extend_from_slice(&[
                 (colour.b * 255.0).round() as u8,
