@@ -18,6 +18,7 @@ mod border_shape;
 mod gradient_stripes;
 mod outline;
 mod shadows;
+pub(crate) mod shaped_ring;
 pub(crate) mod text_shadows;
 
 /// Слои, которые в GPUI выражаются только отдельным элементом.

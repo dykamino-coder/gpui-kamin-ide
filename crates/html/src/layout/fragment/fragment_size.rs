@@ -12,6 +12,13 @@ use crate::style::computed::{Computed, Overflow};
 use crate::style::values::value::Len;
 
 pub(crate) fn shape_full(element: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
+    let cx = ShapeCx {
+        legacy_oof: cx.legacy_oof
+            || element.style.bdb_clone
+            || crate::layout::multicol::spanner::multicol_container(&element.style),
+        ..cx
+    };
+    super::oof_reach::Reach::clear();
     let mut shape = shape_contents(element, depth, cx)?;
     // Table height is a minimum of the row grid (CSS Tables 3), and its
     // specialised measurement already owns that sizing/distribution pass.

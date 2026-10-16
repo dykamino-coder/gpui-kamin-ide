@@ -5,6 +5,7 @@ use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::edge_avoid;
 use crate::layout::fragment::flex_lines::{class_a_box, item_container};
+use crate::layout::fragment::oof_reach::Reach;
 use crate::layout::fragment::shape_kids::stack_kids;
 use crate::layout::page::names::page_names;
 use crate::render::out_of_flow;
@@ -52,7 +53,7 @@ pub(super) fn shape_from_kids(
     // Самый нижний край внепоточных потомков, отсчитанный
     // от верха ЭТОЙ коробки. В поток не входит, высоту
     // соседей не двигает — нужен только фрагментации.
-    let mut oof_reach = 0.0f32;
+    let mut oof_reach = Reach::default();
     if let Some(kids) = inner.filter(|k| !k.is_empty()) {
         (stacked, oof_reach) = stack_kids(
             kids,

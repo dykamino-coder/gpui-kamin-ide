@@ -65,18 +65,26 @@ pub(super) fn lane_entry_block(
     lane0: &[(f32, f32)],
     lane1: &[(f32, f32)],
     r: (f32, f32),
+    items: &[GapItem],
+    lanes: [(f32, f32); 2],
 ) -> (f32, f32) {
-    let entry = |cuts: &[(f32, f32)]| {
-        let centres = cuts.iter().map(|&(lo, hi)| (lo + hi) / 2.0);
-        let start = centres
-            .clone()
-            .filter(|&c| c <= i.b0 + GAP_EPS)
-            .fold(r.0, f32::max);
-        let end = centres.filter(|&c| c > i.b0 + GAP_EPS).fold(r.1, f32::min);
+    let entry = |cuts: &[(f32, f32)], (s, e): (f32, f32)| {
+        let mut row: Vec<_> = items
+            .iter()
+            .filter(|v| v.a0 < e - GAP_EPS && v.a1 > s + GAP_EPS)
+            .collect();
+        row.sort_by(|x, y| x.b0.partial_cmp(&y.b0).unwrap_or(std::cmp::Ordering::Equal));
+        let index = row.iter().position(|v| std::ptr::eq(*v, i)).unwrap_or(0);
+        let centre = |c: &(f32, f32)| (c.0 + c.1) / 2.0;
+        let start = index
+            .checked_sub(1)
+            .and_then(|j| cuts.get(j))
+            .map_or(r.0, centre);
+        let end = cuts.get(index).map_or(r.1, centre);
         (start.min(i.b0), end.max(i.b1))
     };
-    let (s0, e0) = entry(lane0);
-    let (s1, e1) = entry(lane1);
+    let (s0, e0) = entry(lane0, lanes[0]);
+    let (s1, e1) = entry(lane1, lanes[1]);
     (s0.max(s1), e0.min(e1))
 }
 
@@ -101,7 +109,7 @@ pub(super) fn cross_window(
             .filter(|i| !std::ptr::eq(*i, next) && covers(i, lane) && i.b0 < next.b0 - GAP_EPS)
             .max_by(|x, y| x.b0.partial_cmp(&y.b0).unwrap_or(std::cmp::Ordering::Equal));
         if let Some(above) = above {
-            running = running.max(above.b1 + g);
+            running = running.max(above.b1 + above.margin_end + g);
         }
     }
     let start = if running.is_finite() {
@@ -117,7 +125,41 @@ mod tests {
     use super::*;
 
     fn item(a0: f32, a1: f32, b0: f32, b1: f32) -> GapItem {
-        GapItem { a0, a1, b0, b1 }
+        GapItem {
+            a0,
+            a1,
+            b0,
+            b1,
+            margin_end: 0.0,
+        }
+    }
+
+    #[test]
+    fn negative_margins_keep_gutters_attached_to_their_lane_entries() {
+        let mut items = [
+            item(0., 80., 0., 40.),
+            item(120., 200., 0., 45.),
+            item(0., 80., 80., 100.),
+            item(0., 200., 100., 120.),
+            item(0., 80., 120., 160.),
+            item(120., 200., 120., 160.),
+        ];
+        items[2].margin_end = -40.;
+        items[3].margin_end = -40.;
+        let lanes = [(0., 80.), (120., 200.)];
+        assert_eq!(cross_window(&items[3], 40., &lanes, &items), (60., 100.));
+        assert_eq!(cross_window(&items[4], 40., &lanes, &items), (80., 120.));
+        assert_eq!(
+            lane_entry_block(
+                &items[3],
+                &[(40., 80.), (60., 100.), (80., 120.)],
+                &[(60., 100.), (80., 120.)],
+                (0., 160.),
+                &items,
+                lanes
+            ),
+            (80., 120.)
+        );
     }
 
     #[test]

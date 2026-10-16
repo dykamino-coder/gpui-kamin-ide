@@ -50,16 +50,26 @@ function useLiveText(rawText: string, visible: boolean): string {
   return a.rawText.replace(/\(\d+s/, `(${elapsed}s`)
 }
 
+/** Glyph spinner frames, dot → star → dot (the Claude Code spinner idea).
+ *  Discrete shapes read as intended at ~8 frames/s, where a ring turned in
+ *  steps looked jerky and a smooth one redrew the host window every refresh
+ *  (INC-2026-0001). The CSS module steps through them, no JS timer. */
+const GLYPHS = ['·', '✢', '✳', '✶', '✻', '✽', '✻', '✶', '✳', '✢']
+
 export function ActivityIndicator({ visible, text, thinking, color }: ActivityIndicatorProps): JSX.Element {
   const liveText = useLiveText(text, visible)
   // CSS-module class still owns the spinner geometry/animation; we only
-  // override the highlight colour inline so the indicator picks up the
+  // override the glyph colour inline so the indicator picks up the
   // active tab's accent (red/pink/orange/etc.) instead of the always-
   // blue --accent-primary fallback.
-  const spinnerStyle = color ? `border-top-color:${color}` : undefined
+  const spinnerStyle = color ? `color:${color}` : undefined
   return (
     <div class={`${styles.indicator}${visible ? ` ${styles.visible}` : ''}`}>
-      <div class={styles.spinner} style={spinnerStyle} />
+      <span class={styles.spinner} style={spinnerStyle} aria-hidden="true">
+        <span class={styles.frames}>
+          {GLYPHS.map((g, i) => <span key={i}>{g}</span>)}
+        </span>
+      </span>
       <span class={styles.text}>{liveText}</span>
       {thinking && <span class={styles.thinking} data-tooltip={thinking}>· {truncateThinking(thinking)}</span>}
     </div>

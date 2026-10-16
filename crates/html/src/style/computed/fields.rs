@@ -144,6 +144,12 @@ pub struct Computed {
 
     pub padding: Sides,
     pub margin: Sides,
+    /// The box's own margins as cascaded, kept before block layout rewrites
+    /// `margin` for collapsing (CSS 2.1 §8.3.1). The `margin-box` reference
+    /// box of `clip-path` is the border box outset by THESE margins
+    /// (css-masking-1 §1.3.1.1, Blink `LayoutBox::MarginBoxRect`): a collapsed
+    /// top margin shrank it (`clip-path-polygon-008`). Set only for `margin-box`.
+    pub own_margin: Option<Sides>,
     pub border_width: Sides,
     pub border_color: Option<Color>,
     pub radius: Corners,
@@ -698,6 +704,10 @@ pub struct Computed {
     pub hyphen_char: Option<String>,
     /// `hyphens: auto` — слогораздел ставит сам движок, а не разметка.
     pub hyphens_auto: Option<bool>,
+    /// Minimum word, prefix and suffix lengths; None components mean auto.
+    pub hyphen_limit_chars: Option<[Option<usize>; 3]>,
+    /// Maximum consecutive hyphenated lines; usize::MAX means no-limit.
+    pub hyphen_limit_lines: Option<usize>,
     /// Язык узла (атрибут `lang`): по нему выбираются образцы слогораздела.
     pub lang: Option<String>,
     /// `vertical-align` внутри строки и ячейки таблицы.
@@ -766,6 +776,9 @@ pub struct Computed {
     pub offset_anchor: Option<String>,
     /// `offset-position` как записано: `normal | auto | <position>`.
     pub offset_position: Option<String>,
+    /// Offset-трансформ откладывается до отрисовки: содержащий блок элемента —
+    /// начальный (его размер знает только сборщик, `animation::motion`).
+    pub offset_icb: bool,
     /// `backface-visibility: hidden`.
     pub backface_hidden: Option<bool>,
     /// `transform-origin` в долях размера элемента.

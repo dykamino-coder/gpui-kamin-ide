@@ -90,11 +90,10 @@ fn cjk_positional_follows_spec() {
     assert_eq!(repr(-11, "japanese-informal"), "マイナス十一");
     assert_eq!(repr(-11, "korean-hangul-formal"), "마이너스 일십일");
     assert_eq!(repr(-11, "trad-chinese-informal"), "負十一");
-    // Вне −9999..9999: японские и китайские — `cjk-decimal`, корейские —
-    // десятичный (`-049/-073` против `-054/-059/-064`).
-    assert_eq!(repr(10000, "japanese-formal"), "一〇〇〇〇");
-    assert_eq!(repr(10001, "simp-chinese-informal"), "一〇〇〇一");
-    assert_eq!(repr(10000, "korean-hangul-formal"), "10000");
+    // Extended ranges, CSS Counter Styles 3 section 7.1.5.
+    assert_eq!(repr(10000, "japanese-formal"), "壱萬");
+    assert_eq!(repr(10001, "simp-chinese-informal"), "一万零一");
+    assert_eq!(repr(10000, "korean-hangul-formal"), "일만");
     // Наследный синоним.
     assert_eq!(repr(11, "cjk-ideographic"), "十一");
 }

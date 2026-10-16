@@ -44,7 +44,17 @@ impl Paragraph {
         let mut i = 0usize;
         while i < opportunities.len() {
             let Stop { at, mandatory } = opportunities[i];
-            if at <= start {
+            // Once the consecutive-line limit is reached, ignore conditional
+            // opportunities until an ordinary line break resets the count.
+            let limited = self.hyphen_limit_lines != usize::MAX
+                && out.iter().rev().take_while(|line| line.hyphen).count()
+                    >= self.hyphen_limit_lines;
+            if at <= start
+                || (!mandatory
+                    && at < part.end
+                    && limited
+                    && self.text[..at].ends_with(SOFT_HYPHEN))
+            {
                 i += 1;
                 continue;
             }

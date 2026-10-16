@@ -217,7 +217,11 @@ pub(super) fn normalize_style(
     // родителя нет вовсе: сюда доезжает только собственный каскад.
     // Язык — свойство узла, а не CSS: по нему выбираются образцы
     // слогораздела (`hyphens: auto`).
-    if let Some((_, v)) = attrs.iter().find(|(k, _)| k == "lang") {
+    if let Some((_, v)) = attrs
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("xml:lang"))
+        .or_else(|| attrs.iter().find(|(k, _)| k.eq_ignore_ascii_case("lang")))
+    {
         style.lang = Some(v.clone());
     }
     apply_direction(&mut style, &tag, &attrs);

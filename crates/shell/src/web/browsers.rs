@@ -513,27 +513,17 @@ const RESIZE_EVERY: std::time::Duration = std::time::Duration::from_millis(33);
 /// Если размер завис дольше этого — применяем «танец на 1px» (см. [`nudge`]).
 const STUCK_AFTER: std::time::Duration = std::time::Duration::from_millis(250);
 
+/// Состояние запроса размера вью: (ждёт отправки, когда отправлен).
+pub(crate) fn resize_pending(id: &str) -> Option<(bool, std::time::Instant)> {
+    PENDING.lock().ok()?.get(id).copied()
+}
+
 /// Сообщить браузеру новый размер. Зовётся КАЖДЫЙ кадр из отрисовки панели:
 /// сначала запоминаем цель, потом, не чаще `RESIZE_EVERY`, говорим CEF.
 /// Досылка гарантирована: флаг снимается только после отправки, а звать нас
-/// продолжают каждый кадр.
-/// Шаг квантования размера ПОД ДРАГОМ ручки. Каждый `was_resized` — полная
-/// перевёрстка страницы в renderer Chromium (30-150мс на RDP). Слали ~30
-/// команд/с, и каждая ОТМЕНЯЛА незавершённую перевёрстку: CEF не «не
-/// успевал», он бесконечно начинал заново, а кадры приходили чужого размера.
-/// С квантованием за драг уходит 3-4 команды, каждая доводится до конца, и
-/// кадр совпадает с панелью — растягивать нечего.
-const DRAG_STEP_PX: i32 = 32;
-
+/// продолжают каждый кадр. Под драгом размер квантуется (`frame_size`).
 pub(crate) fn resize(id: &str, width: i32, height: i32, scale: f32) {
-    // Точный размер — по отпусканию ручки (драг закончился); под драгом
-    // округляем ВВЕРХ до шага, чтобы кадр был не меньше панели.
-    let (width, height) = if crate::state::drag_flag::is_dragging() {
-        let q = |v: i32| ((v + DRAG_STEP_PX - 1) / DRAG_STEP_PX) * DRAG_STEP_PX;
-        (q(width), q(height))
-    } else {
-        (width, height)
-    };
+    let (width, height) = super::frame_size::for_drag(width, height);
     // Смена МАСШТАБА (не размера) — DPI доехал позже создания браузера
     // (загрузка под RDP): одного was_resized мало, CEF перечитывает scale
     // только по notify_screen_info_changed. Без него страница жила в чужом

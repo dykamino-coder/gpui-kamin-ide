@@ -107,6 +107,11 @@ pub struct Grouped {
     /// рисунок-маска кроет 100×100 CSS-точек (mask-origin-3, mask-clip-2).
     /// Задаёт `svg::masked_layers` через `Computed::mask_user_scale`.
     pub mask_scale: f32,
+    /// Кольцо `corner-shape` НАД содержимым замещаемого элемента (запись,
+    /// цвет, отступы content-box от border-box t/r/b/l): содержимое
+    /// обрезается внутренним контуром (css-borders-4 §corner-shape-rendering),
+    /// поэтому внутри content-box кольцо ложится поверх картинки.
+    pub ring_over: Option<(String, crate::style::values::value::Color, [f32; 4])>,
 }
 
 impl Grouped {
@@ -115,6 +120,7 @@ impl Grouped {
             under: None,
             over: Vec::new(),
             mask_scale: 1.0,
+            ring_over: None,
             child: Some(child),
             blur: 0.0,
             opacity: 1.0,
@@ -169,8 +175,11 @@ fn mask_layer_source(layer: &str) -> Option<String> {
 
 /// Содержимое `<mask id>`/`<clipPath id>` из ВНЕШНЕГО файла рисунка
 /// (`mask-image: url(file.svg#id)`): грубый текстовый вырез — дерево
-/// документа рисунка нам нигде больше не нужно.
-fn svg_fragment(path: &str, id: &str) -> Option<String> {
+/// документа рисунка нам нигде больше не нужно. Второе — маскирует ли
+/// определение АЛЬФОЙ: `<clipPath>` режет покрытием, `<mask>` — по своему
+/// `mask-type` (css-masking-1 §7.2 `match-source`, светимость по умолчанию;
+/// `mask-image-1c`: `mask-type="alpha"` у чёрных прямоугольников).
+fn svg_fragment(path: &str, id: &str) -> Option<(String, bool)> {
     let markup = std::fs::read_to_string(path).ok()?;
     for tag in ["mask", "clipPath"] {
         let mut rest = markup.as_str();
@@ -180,7 +189,12 @@ fn svg_fragment(path: &str, id: &str) -> Option<String> {
             let close = format!("</{tag}>");
             let body_end = rest[head_end..].find(&close)? + head_end;
             if head.contains(&format!("id=\"{id}\"")) || head.contains(&format!("id='{id}'")) {
-                return Some(rest[head_end + 1..body_end].to_string());
+                let squeezed: String = head.chars().filter(|c| !c.is_whitespace()).collect();
+                let alpha = tag == "clipPath"
+                    || squeezed.contains("mask-type=\"alpha\"")
+                    || squeezed.contains("mask-type='alpha'")
+                    || squeezed.contains("mask-type:alpha");
+                return Some((rest[head_end + 1..body_end].to_string(), alpha));
             }
             rest = &rest[body_end + close.len()..];
         }

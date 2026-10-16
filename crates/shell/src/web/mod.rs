@@ -10,6 +10,7 @@ mod browsers;
 #[cfg(debug_assertions)]
 pub(crate) use acceptance::{acceptance_log, reset_fixture};
 pub(crate) use gpu_mode::software_render;
+pub(crate) use pump::rhythm as frame_rhythm;
 mod context_menu;
 mod copy_frame;
 mod cursors;
@@ -26,6 +27,7 @@ mod diag_sink;
 pub(crate) mod diag_views;
 pub(crate) mod diag_why;
 mod element;
+mod frame_size;
 mod frames;
 mod gpu_mode;
 mod gpu_texture;

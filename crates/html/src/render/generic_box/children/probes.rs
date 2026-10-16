@@ -39,6 +39,7 @@ pub(crate) fn child_probes(
         kids.push(crate::paint::gap_rules::gap_item_probe(
             crate::paint::gap_rules::gap_items_for(key),
             [bw(b.top), bw(b.right), bw(b.bottom), bw(b.left)],
+            [bw(merged.margin.right), bw(merged.margin.bottom)],
         ));
     }
     if let Some((key, skip)) = crate::text::clamp::clamp_context() {

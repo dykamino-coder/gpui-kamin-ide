@@ -87,6 +87,8 @@ pub struct Paragraph {
     pub(super) tab_stop: tabs::TabStops,
     /// Чем показывать перенос слова (`hyphenate-character`).
     pub(super) hyphen: SharedString,
+    /// Consecutive automatic/manual hyphenation limit (CSS Text 4).
+    pub(super) hyphen_limit_lines: usize,
     /// Ширина этого знака — считается при раскладке, где есть окно.
     pub(super) hyphen_w: std::cell::RefCell<Vec<(usize, Pixels)>>,
     /// Куски ВНЕ потока: байтовое место в тексте → элемент. Рисуются поверх
@@ -210,7 +212,7 @@ pub struct Paragraph {
     /// первой строки сверху и последней снизу её не растят — срез идёт по краю текста
     /// корневой строчной коробки, и выход аннотации срезался бы всё равно
     /// (css-inline-3 §text-box-trim, `text-box-trim-ruby-start-001`).
-    pub(super) ruby_trim: (bool, bool),
+    pub(super) ruby_trim: crate::text::line_trim::Trim,
     /// Куски со знаком акцента (`text-emphasis`): (отрезок, снизу?, высота
     /// знака). Знак растит строку так же, как аннотация руби
     /// (css-text-decor-3 §5.3 «If emphasis marks … do not fit, the UA must

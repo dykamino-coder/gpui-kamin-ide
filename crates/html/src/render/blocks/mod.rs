@@ -96,7 +96,11 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     // логических осях, перевод в физику при сборке (`band_flow::VERT`).
     // Horizontal float sides are physical (CSS 2.1 §9.5.1); paragraphs
     // handle RTL within those bands. Vertical RTL still needs axis conversion.
-    let vert_host = inherited.vertical == Some(true) && inherited.sideways != Some(true);
+    // `sideways-rl` — тот же план, что `vertical-rl`: line-left — верх
+    // (css-writing-modes-4 §6.3), блоки справа налево. У `sideways-lr`
+    // line-left — низ, и плана для него нет.
+    let vert_host = inherited.vertical == Some(true)
+        && (inherited.sideways != Some(true) || inherited.vertical_rl == Some(true));
     // Вне хоста и там, где у раскладки свой счёт строк и разрывов: под
     // `line-clamp` (точка среза считает строки и флоаты за ней —
     // `line-clamp-with-floats-003/004`, `webkit-line-clamp-025`; отложенный

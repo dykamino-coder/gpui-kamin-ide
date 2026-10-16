@@ -20,7 +20,12 @@ pub(crate) fn inherit_generated(
 pub(crate) fn snapshot_generated(
     node: &mut crate::style::select::Ancestor,
     style: &crate::style::computed::Computed,
+    parent: Option<&crate::style::select::Ancestor>,
 ) {
+    node.counter_context = crate::style::generated::counter_style::Context::new(
+        style,
+        parent.map(|p| p.counter_context).unwrap_or_default(),
+    );
     node.counter_style = super::counter_snapshot(style);
     node.content_style = style.content.clone();
     node.content_none = style.content_none;
@@ -127,6 +132,7 @@ pub(crate) fn content_text(
     attrs: &[(String, String)],
     own_quotes: Option<&Option<Vec<(String, String)>>>,
     html_attrs: bool,
+    context: crate::style::generated::counter_style::Context,
 ) -> String {
     let Some(items) = resolve_content_attributes(items, attrs, html_attrs) else {
         return String::new();
@@ -141,8 +147,8 @@ pub(crate) fn content_text(
             crate::style::computed::ContentItem::Image(_) => {}
             crate::style::computed::ContentItem::Counter(name, style_name) => {
                 let value = counters.value_of(name);
-                text.push_str(&crate::style::generated::counter_style::repr(
-                    value, style_name,
+                text.push_str(&crate::style::generated::counter_style::repr_in(
+                    value, style_name, context,
                 ));
             }
             crate::style::computed::ContentItem::Counters(name, sep, style_name) => {
@@ -151,7 +157,9 @@ pub(crate) fn content_text(
                 let chain: Vec<String> = counters
                     .chain_of(name)
                     .into_iter()
-                    .map(|v| crate::style::generated::counter_style::repr(v, style_name))
+                    .map(|v| {
+                        crate::style::generated::counter_style::repr_in(v, style_name, context)
+                    })
                     .collect();
                 text.push_str(&chain.join(sep));
             }

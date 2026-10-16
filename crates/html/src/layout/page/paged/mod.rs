@@ -111,6 +111,7 @@ pub fn render_paged_select(
     // `resolve_viewport` работает на копии внутри `element()`).
     let shape_cx = ShapeCx {
         paged: true,
+        legacy_oof: false,
         viewport: Some(opts.viewport),
         cell_pad: None,
         unclamped: false,
