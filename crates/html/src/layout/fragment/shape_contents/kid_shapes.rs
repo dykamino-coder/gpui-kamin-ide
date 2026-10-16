@@ -4,7 +4,7 @@ use crate::dom::{Element, Node};
 use crate::layout::float::block_like_float;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::edge_break;
-use crate::layout::fragment::clone::solid_box;
+use crate::layout::fragment::clone::{monolith_box, solid_box};
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::line_shape::{basis_sized, inline_content};
 use crate::layout::fragment::oof_reach::Reach;
@@ -81,7 +81,21 @@ pub(super) fn kid_shapes(
                         // Монолит-потомок — весь диапазон
                         // его высоты; иначе — его собственные
                         // монолиты.
-                        let solid = if solid_box(k) && !(inline_content(k) && !cuts.is_empty()) {
+                        // A flex item whose lines were measured keeps those
+                        // ranges: the rest of its block size fragments, as
+                        // in `flex_lines::row` items (Blink slices a block's
+                        // remaining block-size after its content).
+                        let lines_only = matches!(
+                            c.style.display,
+                            Some(crate::style::computed::Display::Flex)
+                                | Some(crate::style::computed::Display::InlineFlex)
+                        ) && inline_content(k)
+                            && !monolith_box(k)
+                            && !solid.is_empty();
+                        let solid = if solid_box(k)
+                            && !(inline_content(k) && !cuts.is_empty())
+                            && !lines_only
+                        {
                             vec![(0.0, h)]
                         } else {
                             solid
