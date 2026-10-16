@@ -5,9 +5,9 @@ use crate::layout::block::margins::CELL_BFC;
 use crate::paint::effects::transform::transformed;
 use crate::render::{RenderOpts, blocks, styled_div_with};
 use crate::style::cascade::inherit::inherit;
-use crate::style::computed::{Computed, FlexDir};
+use crate::style::computed::Computed;
 use crate::style::values::value::Len;
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 pub(super) fn collect_captions(
     e: &Element,
@@ -110,67 +110,35 @@ pub(super) fn wrap_with_captions(
             } else {
                 None
             };
-            // Основа в РЯДУ: главная ось контейнера — строчная ось обёртки,
-            // и основа, оставленная на столе внутри колонки `wrap`, там не
-            // действует (у колонки это поперечная ось). Переносится на
-            // обёртку вместе с рамкой и отбивкой стола content-box —
-            // css-flexbox-1 §4: «as if the distance between the table wrapper
-            // box's edges and the table box's content edges were all part of
-            // the table box's border+padding area»
-            // (`table-as-item-inflexible-in-row-2`: `flex: 0 0 80px; border:
-            // 10px solid` — стол выходил 20 точек вместо 100).
-            if !matches!(
-                inherited.flex_dir,
-                Some(FlexDir::Col) | Some(FlexDir::ColReverse)
-            ) && let Some(Len::Px(b)) = e.style.flex_basis
+            // Render sizing has already included content-box borders/padding.
+            // Move that resolved inline basis to the wrapper exactly once.
+            if !inherited.flex_main_vertical && matches!(e.style.flex_basis, Some(Len::Px(_))) {
+                w.flex_basis = s.flex_basis.take();
+            } else if inherited.flex_main_vertical
+                && grow == Some(0.0)
+                && shrink == Some(0.0)
+                && matches!(e.style.flex_basis, Some(Len::Px(_)))
             {
-                s.flex_basis = None;
-                let side = |l: Option<Len>| match l {
-                    Some(Len::Px(v)) => v,
-                    _ => 0.0,
-                };
-                let bd = e.style.borders();
-                let edges = if e.style.border_box == Some(true) {
-                    0.0
-                } else {
-                    side(bd.left)
-                        + side(bd.right)
-                        + side(e.style.padding.left)
-                        + side(e.style.padding.right)
-                };
-                w.flex_basis = Some(gpui::Length::Definite(px(b + edges).into()));
+                // A fully inflexible table keeps its definite main size.
+                // Include that size when the wrapper measures its captions.
+                s.size.height = s.flex_basis;
             }
         } else {
             wrap.style().align_self = Some(gpui::AlignItems::FlexStart);
         }
-        // Инлайн-размер ОБЁРТКИ — инлайн-размер САМОГО стола, а не наоборот.
-        // CSS 2.1 §17.4: «The width of the table wrapper box is the border-edge
-        // width of the table grid box inside it … Percentages on 'width' and
-        // 'height' on the table are relative to the table wrapper box's
-        // containing block, NOT the table wrapper box itself» (то же
-        // css-tables-3 §fixup-algorithm). Доля коробки рядов опиралась на
-        // обёртку, а обёртка — гибкий КОРЕНЬ копии фрагмента
-        // (`flow.rs` `layout_as_root`), и taffy тянет по доступному месту
-        // только БЛОЧНЫЙ корень (`vendor/taffy/src/compute/mod.rs:68`
-        // `if style.is_block()`): стол с `inline-size: 100%` и подписью
-        // схлопывался до ширины содержимого — 20 css у
-        // `table-grid-paint-htb-ltr` (две рамки) и 34.4 у `table-row-paint-htb-ltr`
-        // (один `border-spacing`). Blink держит один размер на стол и обёртку:
-        // `table_layout_algorithm.cc:139` `available_size = {table_inline_size,
-        // kIndefiniteSize}` и `:71` `builder.SetAvailableSize(available_size)`.
-        // Берём только точки и долю: `em`/`ch` у обёртки считались бы по ЧУЖОМУ
-        // шрифту (`apply::len_to_gpui` ветка запасных величин), а стол с
-        // `width: auto` обязан остаться сжатым по содержимому (§17.5.2).
-        match if vertical {
+        // CSS 2.1 §17.4: the wrapper uses the table's border-edge inline size.
+        // styled_div_with has resolved box sizing and font units on the grid.
+        let inline_size = if vertical {
             e.style.height
         } else {
             e.style.width
-        } {
-            Some(Len::Px(v)) if vertical => wrap = wrap.h(px(v)),
-            Some(Len::Px(v)) => wrap = wrap.w(px(v)),
-            Some(Len::Pct(v)) if vertical => wrap = wrap.h(gpui::relative(v)),
-            Some(Len::Pct(v)) => wrap = wrap.w(gpui::relative(v)),
-            _ => {}
+        };
+        if matches!(inline_size, Some(Len::Px(_) | Len::Pct(_))) {
+            if vertical {
+                wrap.style().size.height = outer.style().size.height;
+            } else {
+                wrap.style().size.width = outer.style().size.width;
+            }
         }
         // В ряду второй ребёнок сжимался в ноль — каждому своя ширина.
         let own_width = |x: AnyElement| -> AnyElement {
