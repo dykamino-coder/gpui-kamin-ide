@@ -668,6 +668,8 @@ pub struct Computed {
     /// `word-break: keep-all` — иероглифическое письмо переносится ТОЛЬКО по
     /// пробелам, между знаками разрыв запрещён.
     pub keep_all: Option<bool>,
+    /// `word-break: auto-phrase`: normal fallback with conditional hyphenation.
+    pub auto_phrase: Option<bool>,
     /// `white-space: break-spaces` — сохранённый пробел НЕ свисает за край:
     /// он занимает место в строке, и после каждого такого пробела разрешён
     /// перенос. Отличие от `pre-wrap`, где хвостовые пробелы висят снаружи.

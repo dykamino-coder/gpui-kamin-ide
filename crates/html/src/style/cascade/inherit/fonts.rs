@@ -147,6 +147,7 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     c.text_indent_hanging = own.text_indent_hanging.or(parent.text_indent_hanging);
     c.break_anywhere = own.break_anywhere.or(parent.break_anywhere);
     c.break_word = own.break_word.or(parent.break_word);
+    c.auto_phrase = own.auto_phrase.or(parent.auto_phrase);
     c.balance_lines = own.balance_lines.or(parent.balance_lines);
     c.break_anywhere_strict = own.break_anywhere_strict.or(parent.break_anywhere_strict);
     c.line_break_loose = own.line_break_loose.or(parent.line_break_loose);

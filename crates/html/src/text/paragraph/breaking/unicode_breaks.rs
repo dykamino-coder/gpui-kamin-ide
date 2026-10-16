@@ -103,7 +103,10 @@ impl Paragraph {
             replaced = t;
             &replaced
         };
-        if self.spacers.is_empty() {
+        // CSS Text 3 §5.2: break-all tailors letter/number classes to ID,
+        // then applies UAX #14 unchanged (including BA, GL and punctuation).
+        let tailor = self.wrap.break_all || self.spans.iter().any(|(_, w)| w.break_all);
+        if self.spacers.is_empty() && !tailor {
             return unicode_linebreak::linebreaks(text).collect();
         }
         let mut clean = String::with_capacity(text.len());
@@ -115,14 +118,29 @@ impl Paragraph {
                 continue;
             }
             map.push(pending.take().unwrap_or(at));
-            for k in 1..ch.len_utf8() {
-                map.push(at + k);
-            }
-            clean.push(ch);
+            let resolved = if self.wrap_at(at).break_all {
+                break_all_class(ch)
+            } else {
+                ch
+            };
+            // UAX emits only character boundaries. Interior byte entries need
+            // no source correspondence when the tailored UTF-8 length differs.
+            map.extend(std::iter::repeat_n(at, resolved.len_utf8() - 1));
+            clean.push(resolved);
         }
         map.push(self.text.len());
         unicode_linebreak::linebreaks(&clean)
             .map(|(at, kind)| (map.get(at).copied().unwrap_or(self.text.len()), kind))
             .collect()
+    }
+}
+
+/// Feed the ID class to the UAX iterator without altering the shaped text.
+/// AI resolves to AL; Hebrew letters are typographic letter units too.
+pub(super) fn break_all_class(ch: char) -> char {
+    use unicode_linebreak::BreakClass::*;
+    match unicode_linebreak::break_property(ch as u32) {
+        Alphabetic | Numeric | ComplexContext | HebrewLetter | Ambiguous => '一',
+        _ => ch,
     }
 }
