@@ -5,6 +5,7 @@ use svg_metadata::degenerate_viewbox;
 pub(crate) use svg_metadata::svg_root_background;
 pub(super) use svg_metadata::svg_size;
 
+mod jpeg;
 mod orientation;
 use orientation::exif_orientation;
 use orientation::orient_image;
@@ -35,7 +36,11 @@ pub(super) fn decode(bytes: &[u8], orient: bool) -> Option<Source> {
         let size = svg_size(&markup);
         return Some(Source::Vector { markup, size });
     }
-    let image = gpui::raster_bytes_to_image(bytes)?;
+    let image = if bytes.starts_with(&[0xff, 0xd8]) {
+        jpeg::decode(bytes)?
+    } else {
+        gpui::raster_bytes_to_image(bytes)?
+    };
     // Вшитый цветовой профиль (PNG `iCCP`) — часть картинки: её точки заданы
     // в ЕГО пространстве (css-color-4 §12, tagged images).
     let image = match gpui::png_icc_profile(bytes)

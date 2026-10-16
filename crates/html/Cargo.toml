@@ -14,6 +14,8 @@ edition.workspace = true
 
 [dependencies]
 encoding_rs = "0.8.35"
+# Match browser JPEG reconstruction (accurate IDCT and fancy chroma upsampling).
+turbojpeg = { version = "1.4", default-features = false, features = ["cmake"] }
 # XML source ranges preserve SVG markup when resolving URL fragments.
 roxmltree = "0.21.1"
 # SVG fragment parameters use the same grammar as the rasterizer.

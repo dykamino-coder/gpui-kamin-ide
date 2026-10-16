@@ -112,7 +112,11 @@ pub(crate) fn paint_gradient(
     if let Some(geometry) = super::gradient_geometry::Geometry::new(raw, css, gradient.angle_deg) {
         gradient.stops = super::gradient_raster::resolved_stops(&gradient, geometry.length());
     }
-    if gradient.radial
+    // Extended stop ranges lose the visible colour variation in the analytic
+    // shader and expose its dithering. Quantize device-grid samples instead.
+    let extended = gradient.stops.iter().any(|(_, t)| !(0.0..=1.0).contains(t));
+    if extended
+        || gradient.radial
         || raw.starts_with("repeating-")
         || gradient.stops.len() > 4
         || !matches!(
