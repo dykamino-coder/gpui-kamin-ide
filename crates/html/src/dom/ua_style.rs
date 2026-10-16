@@ -132,6 +132,7 @@ head, title, meta, link, template { display: none }
     th { font-weight: 700; padding: 4px 8px; text-align: left }
     td { padding: 4px 8px }
     input, textarea, select { color: FieldText }
+    textarea { font: 13.3333px monospace; overflow: auto }
     button { padding: 4px 10px; border-radius: 4px }
     /* Руби (css-ruby-1, Appendix A.1): скобки `rp` — только для движков без
        руби; аннотация вполовину кегля, одной строкой, без знака акцента.

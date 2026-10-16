@@ -142,6 +142,7 @@ pub(super) fn measured(
             style: native,
             natural: size(px(natural.w?), px(natural.h?)),
             ratio,
+            measure: None,
         }
         .into_any_element(),
     )
