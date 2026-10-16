@@ -56,3 +56,6 @@ fn cjk_writing(lang: &str) -> bool {
                 .any(|s| t.eq_ignore_ascii_case(s))
         })
 }
+
+#[cfg(test)]
+mod tests;
