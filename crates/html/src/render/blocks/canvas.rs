@@ -9,6 +9,9 @@ use crate::style::values::value::Len;
 use gpui::{ParentElement, Styled, div, px};
 
 pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::AnyElement>) {
+    // Pair each root instance with its canvas, including identical iframe documents.
+    let measured =
+        (e.tag == "html").then(|| crate::paint::background::measure_root_box(opts.doc_salt));
     // Фон холста — часть ГРУППЫ КОРНЯ (css-compositing-1
     // §pagebackdrop): фильтр корня красит и его. Слой лежит
     // СОСЕДОМ коробки корня, поэтому единственная точка окраски
@@ -76,6 +79,7 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
             };
             let b = e.style.borders();
             let area = crate::paint::background::RootArea {
+                measured,
                 left: side(e.style.margin.left) + side(b.left),
                 top: side(e.style.margin.top) + side(b.top),
                 right: side(e.style.margin.right) + side(b.right),
@@ -105,7 +109,7 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
                 Some(layers) => {
                     let mut stack = div().absolute().top_0().left_0().right_0().bottom_0();
                     for l in layers.iter().rev() {
-                        if let Some(t) = crate::paint::background::canvas_layer(l, area) {
+                        if let Some(t) = crate::paint::background::canvas_layer(l, area.clone()) {
                             stack = stack.child(t);
                         }
                     }
