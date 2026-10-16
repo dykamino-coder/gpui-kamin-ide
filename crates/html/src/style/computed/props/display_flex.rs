@@ -98,6 +98,19 @@ impl Computed {
                     // Элемент исчезает, дети встают на его место.
                     "contents" => Some(Display::Contents),
                     "list-item" => Some(Display::ListItem),
+                    // CSS Display 3: an inline list item shares its parent's
+                    // inline formatting context; its marker precedes its text.
+                    words
+                        if {
+                            let mut parts: Vec<_> = words.split_whitespace().collect();
+                            parts.sort_unstable();
+                            parts == ["inline", "list-item"]
+                                || parts == ["flow", "inline", "list-item"]
+                        } =>
+                    {
+                        self.inline_display = Some(true);
+                        Some(Display::ListItem)
+                    }
                     // Табличные роли: своей табличной раскладки у нас нет,
                     // но строка — это ряд, ячейка — блок, а сама таблица
                     // ведёт себя как блок. Это ближе к правде, чем ничего.
