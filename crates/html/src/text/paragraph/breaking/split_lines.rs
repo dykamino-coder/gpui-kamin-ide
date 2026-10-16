@@ -57,8 +57,11 @@ impl Paragraph {
                 if Some(i) == clamp_line {
                     continue;
                 }
-                if line.width > limit + px(0.5) && !line.ellipsis {
-                    self.ellipsize(line, limit, &segs, window);
+                // CSS Overflow 3: truncate at the content edge; indentation
+                // changes the space available from the start of this line.
+                let room = limit - line.indent;
+                if line.width > room + px(0.5) && !line.ellipsis {
+                    self.ellipsize(line, room, &segs, window);
                 }
             }
         }
@@ -88,6 +91,10 @@ impl Paragraph {
         // подбором не годится (css-text-4 §5: обрыв — часть последней
         // строки). Прошлый заход мерил ширину строки КАК ЕСТЬ; здесь хвост
         // сперва обрезается, как это делает сам обрыв (`ellipsize`).
+        // clamp_lines may leave an empty final line at the next word's
+        // start. Collapsed trailing spaces are not part of the visible text
+        // that a narrower layout must retain.
+        let end = self.drop_collapsible_tail(0, end);
         let ell = self.suffix_width(self.clamp_str(), 0, window);
         let (mut narrow, mut wide) = (px(0.), limit);
         for _ in 0..12 {

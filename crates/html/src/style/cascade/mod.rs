@@ -11,6 +11,7 @@ use crate::style::values::value::Color;
 
 pub mod defaults;
 pub mod inherit;
+pub(crate) mod inherited_value;
 mod inline_rollback;
 mod pass;
 mod revert;
@@ -170,6 +171,9 @@ impl Computed {
             }
         {
             return self.apply_one(key, start);
+        }
+        if inherited_value::note(self, key, v) {
+            return;
         }
         // Фон — СПИСОК слоёв (css-backgrounds-3 §2.1: «comma-separated list
         // of values … the first value represents the top layer»). Одиночные

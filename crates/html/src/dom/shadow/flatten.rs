@@ -27,6 +27,7 @@ pub(super) fn flatten_slot(
                 flatten_slot(node_key(&s.node), drafts, depth + 1, out);
             } else {
                 out.push(s.anc.clone().map(|anc| FlatCtx {
+                    node: s.node.clone(),
                     anc,
                     path: info.host_path.clone(),
                     all: info.light_all.clone(),
@@ -47,6 +48,7 @@ pub(super) fn flatten_slot(
                     flatten_slot(node_key(kid), drafts, depth + 1, out);
                 } else {
                     out.push(Some(FlatCtx {
+                        node: kid.clone(),
                         anc: all[pos].clone(),
                         path: Rc::new(vec![]),
                         all: all.clone(),
@@ -79,4 +81,5 @@ pub(crate) fn finish_slots(mut drafts: HashMap<usize, SlotInfo>) {
             }
         }
     });
+    super::slotted::register_all();
 }

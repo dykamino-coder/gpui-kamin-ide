@@ -22,6 +22,8 @@ use gpui::AnyElement;
 pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
+    let media_sized = crate::layout::replaced::media::resolve(e, inherited, opts.viewport);
+    let e = media_sized.as_ref().unwrap_or(e);
     // Высота ряда от внешней колонки — только ЭТОМУ элементу (`flow::OUTER_ROW`).
     let outer_row = crate::layout::fragment::types::take_outer_row();
     let mut merged = inherit(inherited, &e.style);

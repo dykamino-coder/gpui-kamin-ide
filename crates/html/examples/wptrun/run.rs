@@ -70,7 +70,7 @@ pub(super) async fn run(cx: &mut AsyncApp, window: AnyWindowHandle, cfg: RunConf
     let mut timing_lines = 0usize;
     for (pair_index, (test, reference)) in pairs.iter().enumerate() {
         let started = std::time::Instant::now();
-        if let Some(why) = out_of_scope(test) {
+        if let Some(why) = out_of_scope(test, reference) {
             report.push_str(&format!("{test}|{reference}|{why}\n"));
             let _ = std::fs::write(report_path.as_str(), &report);
             continue;

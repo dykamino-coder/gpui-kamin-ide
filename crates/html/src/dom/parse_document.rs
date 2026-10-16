@@ -127,25 +127,26 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     // считаются отдельным проходом до обхода.
     let mut has_args_raw: Vec<String> = vec![];
     rules.retain(|r| collect_has_args(&r.sel, &mut has_args_raw));
-    let has_args: Vec<HasArg> = has_args_raw
+    let mut has_args: Vec<HasArg> = has_args_raw
         .iter()
         .filter_map(|a| parse_has_arg(a))
         .collect();
     HAS_MARKS.with(|m| m.borrow_mut().clear());
-    if !has_args.is_empty() {
-        mark_has(&dom.document, &has_args, &mut vec![]);
-    }
     // Тени (`<template shadowrootmode>`): области стилей и распределение
     // слотов считаются ДО обхода, как отметки `:has`; обход читает их по
     // адресу узла. Документ без теней предпроход не платит.
     SHADOWS.with(|m| m.borrow_mut().clear());
     SLOTS.with(|m| m.borrow_mut().clear());
+    super::shadow::slotted::clear();
     let doc = Rc::new(Scope { rules, frames });
     if html.contains("shadowrootmode") {
         let mut drafts: HashMap<usize, SlotInfo> = HashMap::new();
         let top: Vec<Handle> = dom.document.children.borrow().clone();
-        scan_shadows(&top, &mut vec![], &doc, &agent, media, &mut drafts);
+        let prepared = prepare(&dom.document, &agent, media, &mut has_args);
+        scan_shadows(&top, &mut vec![], &doc, &prepared, &has_args, &mut drafts);
         finish_slots(drafts);
+    } else if !has_args.is_empty() {
+        mark_has(&dom.document, &has_args, &mut vec![]);
     }
     let mut counter = 0u64;
     // Счётчики документа: имя → текущее значение. Обход идёт в порядке

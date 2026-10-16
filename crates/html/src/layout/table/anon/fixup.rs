@@ -94,6 +94,10 @@ pub(crate) fn fixup_row_children(row: &Element) -> Vec<Node> {
 }
 
 pub(crate) fn fixup_table_children(children: &[Node]) -> Vec<Node> {
+    fixup_children(children, false)
+}
+
+fn fixup_children(children: &[Node], in_group: bool) -> Vec<Node> {
     let mut out: Vec<Node> = vec![];
     let mut stray: Vec<Node> = vec![];
     fn flush(stray: &mut Vec<Node>, out: &mut Vec<Node>) {
@@ -132,23 +136,21 @@ pub(crate) fn fixup_table_children(children: &[Node]) -> Vec<Node> {
             Node::Element(el) => {
                 // Колоночные элементы — не содержимое: их читают дорожки.
                 // Роль задаётся тегом ИЛИ `display` (§17.2.1).
-                if col_role(el).is_some() {
+                if !in_group && col_role(el).is_some() {
                     continue;
                 }
                 let group = el.style.display == Some(Display::TableRowGroup)
                     || matches!(el.tag.as_str(), "thead" | "tbody" | "tfoot");
-                let row = el.tag == "tr"
-                    || el.style.display == Some(Display::TableRow)
-                    || el.tag == "caption";
+                let row = el.tag == "tr" || el.style.display == Some(Display::TableRow);
                 let is_cap = el.tag == "caption" || el.style.is_caption == Some(true);
-                if group {
+                if group && !in_group {
                     // Группа рядов чинится ИЗНУТРИ тоже: contents и бесхозное
                     // содержимое встречаются и там.
                     flush(&mut stray, &mut out);
                     let mut copy = el.clone();
-                    copy.children = fixup_table_children(&el.children);
+                    copy.children = fixup_children(&el.children, true);
                     out.push(Node::Element(copy));
-                } else if is_cap {
+                } else if is_cap && !in_group {
                     flush(&mut stray, &mut out);
                     out.push(child.clone());
                 } else if row {

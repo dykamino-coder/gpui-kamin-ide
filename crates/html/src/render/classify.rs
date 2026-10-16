@@ -130,7 +130,16 @@ pub(crate) fn in_flow(c: &Computed) -> bool {
 pub(crate) fn replaced_inline(tag: &str) -> bool {
     matches!(
         tag,
-        "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe" | "input" | "br"
+        "img"
+            | "svg"
+            | "canvas"
+            | "video"
+            | "audio"
+            | "embed"
+            | "object"
+            | "iframe"
+            | "input"
+            | "br"
     )
 }
 
