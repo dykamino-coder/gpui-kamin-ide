@@ -96,13 +96,15 @@ impl Counters {
         self.next.truncate(level + 1);
         self.next.push(0);
     }
-
     pub fn leave(&mut self) {
         let mut i = 0;
         while i < self.resets.len() {
             if self.resets[i].0 == self.path {
                 let (_, name) = self.resets.remove(i);
-                self.drop_shadowed_reset(&name);
+                // A marker reset also scopes the following item contents.
+                if self.path.last() != Some(&PSEUDO_MARKER) {
+                    self.drop_shadowed_reset(&name);
+                }
             } else {
                 i += 1;
             }
@@ -110,14 +112,12 @@ impl Counters {
         self.path.pop();
         self.next.truncate(self.path.len() + 1);
     }
-
     /// Войти в псевдоэлемент хозяина: он брат его содержимого.
     pub fn enter_pseudo(&mut self, before: bool) {
         self.path
             .push(if before { PSEUDO_BEFORE } else { PSEUDO_AFTER });
         self.next.push(0);
     }
-
     /// Войти в `::marker`: он первый ребёнок пункта, раньше `::before`
     /// (css-lists-3 §marker-pseudo). Своя область нужна затем, чтобы
     /// `counter-reset` на маркере вкладывался, а не заменял счётчик пункта:

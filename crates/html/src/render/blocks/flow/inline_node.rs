@@ -96,6 +96,7 @@ pub(crate) fn inline_node(
             true
         }
         Node::Element(e) => match e.style.display {
+            Some(Display::ListItem) if e.style.inline_display == Some(true) => !ordered_context,
             // Явно заявленная инлайновая коробка остаётся в строке даже у
             // блочного по природе тега — но НЕ внутри гибкого контейнера
             // или сетки: там каждый ребёнок сам себе элемент раскладки
