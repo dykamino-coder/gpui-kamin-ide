@@ -119,6 +119,29 @@ thread_local! {
     /// абсолютные), `CB_ABS | CB_FIX` (и `position: fixed`) или `CB_FIX`
     /// (только фиксированные, см. `cb_open_fixed_only`).
     pub(crate) static CB_FIXED: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
+    /// Parallel to `CB`: `Some(index)` for a strict layer (`cb_open_strict`),
+    /// which takes only boxes whose NEAREST containing block is its owner —
+    /// the CB-ancestor index of the owner (`Computed::cb_depth` + 1).
+    pub(crate) static CB_STRICT: std::cell::RefCell<Vec<Option<u16>>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// The CB-ancestor index of the nearest containing block of an absolute box
+/// whose parent's computed style is `parent` (see `Computed::cb_depth`).
+pub(crate) fn nearest_cb_index(parent: &crate::style::computed::Computed) -> u16 {
+    parent.cb_depth + u16::from(crate::text::inline::establishes_cb(parent))
+}
+
+/// Open a strict containing-block layer around the children of a box whose
+/// own style is `own`: an absolute descendant whose nearest containing block
+/// is a box without a layer below it (a table part, a positioned inline)
+/// passes this layer by and keeps its previous route.
+pub fn cb_open_strict(own: &crate::style::computed::Computed, fixed_cb: bool) {
+    cb_open_with(fixed_cb);
+    CB_STRICT.with(|s| {
+        if let Some(last) = s.borrow_mut().last_mut() {
+            *last = Some(own.cb_depth + 1);
+        }
+    });
 }
 
 /// Открыть слой содержащего блока вокруг детей позиционированной коробки.
@@ -133,6 +156,7 @@ pub fn cb_open() {
 /// промежуточных позиционированных предков (`cb_push_fixed`).
 pub fn cb_open_with(fixed_cb: bool) {
     CB.with(|s| s.borrow_mut().push(Vec::new()));
+    CB_STRICT.with(|s| s.borrow_mut().push(None));
     CB_FIXED.with(|s| {
         s.borrow_mut()
             .push(CB_ABS | if fixed_cb { CB_FIX } else { 0 })
@@ -149,6 +173,7 @@ const CB_FIX: u8 = 2;
 /// колонкам (css-position-3 §abspos-breaking).
 pub fn cb_open_fixed_only() {
     CB.with(|s| s.borrow_mut().push(Vec::new()));
+    CB_STRICT.with(|s| s.borrow_mut().push(None));
     CB_FIXED.with(|s| s.borrow_mut().push(CB_FIX));
 }
 
@@ -172,6 +197,7 @@ pub fn cb_push_fixed(spot: SpotCell, el: AnyElement) -> Option<AnyElement> {
 /// Забрать накопленное верхним слоем содержащего блока и закрыть его.
 pub fn cb_close() -> Vec<AnyElement> {
     CB_FIXED.with(|s| s.borrow_mut().pop());
+    CB_STRICT.with(|s| s.borrow_mut().pop());
     CB.with(|s| s.borrow_mut().pop())
         .unwrap_or_default()
         .into_iter()
@@ -181,8 +207,15 @@ pub fn cb_close() -> Vec<AnyElement> {
 
 /// Отдать элемент слою ближайшего содержащего блока. Слоя нет — элемент
 /// возвращается, рисовать на месте.
-pub fn cb_push(spot: SpotCell, el: AnyElement) -> Option<AnyElement> {
-    let at = CB_FIXED.with(|f| f.borrow().iter().rposition(|x| x & CB_ABS != 0));
+pub fn cb_push(spot: SpotCell, el: AnyElement, nearest: u16) -> Option<AnyElement> {
+    let at = CB_FIXED.with(|f| {
+        CB_STRICT.with(|s| {
+            let s = s.borrow();
+            f.borrow().iter().enumerate().rposition(|(i, x)| {
+                x & CB_ABS != 0 && s.get(i).copied().flatten().is_none_or(|d| d == nearest)
+            })
+        })
+    });
     let Some(i) = at else {
         return Some(el);
     };

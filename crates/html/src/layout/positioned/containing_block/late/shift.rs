@@ -19,6 +19,21 @@ pub(crate) fn late_shift(bounds: Bounds<Pixels>, now: Spot) -> gpui::Point<Pixel
         (Some(hole), Some(line)) => {
             gpui::point(px(0.0), hole.origin.y + px(line) - bounds.origin.y)
         }
+        // Static-position rectangle with `justify-self`/`align-self`
+        // (`Spot::self_align`, physical fractions): the block strut is the
+        // parent's content box along the inline axis and zero-thick across
+        // it, so one formula serves both writing modes (horizontal: the hole
+        // has no height; vertical: no width). Ahead of the rtl/vertical arms
+        // — `render::static_self_align` already chose the side
+        // (`align-self-static-position-001/002/006/008`,
+        // `justify-self-static-position-001`).
+        (Some(hole), None) if now.block_strut && now.self_align.is_some() => {
+            let (kx, ky) = now.self_align.unwrap_or_default();
+            gpui::point(
+                hole.origin.x + (hole.size.width - bounds.size.width) * kx - bounds.origin.x,
+                hole.origin.y + (hole.size.height - bounds.size.height) * ky - bounds.origin.y,
+            )
+        }
         // Начало строчной оси при письме справа налево — правый край:
         // поперёк потока заместителя уже выровняла обёртка (justify_end /
         // items_end), правится только ось потока строк.
@@ -76,13 +91,6 @@ pub(crate) fn late_shift(bounds: Bounds<Pixels>, now: Spot) -> gpui::Point<Pixel
         // посчитал `render::static_self_align` (при rtl `start` — доля 1,
         // та же формула, что у рукава ниже) (`align-self-static-position-
         // 001/006/008`, `justify-self-static-position-001`).
-        (Some(hole), None) if now.block_strut && now.self_align.is_some() => {
-            let (kx, ky) = now.self_align.unwrap_or_default();
-            gpui::point(
-                hole.origin.x + (hole.size.width - bounds.size.width) * kx - bounds.origin.x,
-                hole.origin.y - bounds.size.height * ky - bounds.origin.y,
-            )
-        }
         (Some(hole), None) if now.rtl && now.block_strut => gpui::point(
             hole.origin.x + hole.size.width * now.line_align.unwrap_or(1.0)
                 - bounds.size.width

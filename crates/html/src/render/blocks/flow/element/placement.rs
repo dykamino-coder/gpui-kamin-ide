@@ -66,6 +66,13 @@ pub(crate) fn place_element(
                 e.tag.as_str(),
                 "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"
             ),
+            // The static-position rectangle and the box's self-alignment in
+            // it (css-position-3 §staticpos-rect, css-align-3 §justify-abspos)
+            // belong to the static position, not to the layer that carries
+            // the box: a CB layer above a non-positioned parent aligns the
+            // same way as the parent's own late layer
+            // (`justify-self-static-position-001`).
+            self_align: crate::layout::positioned::static_position::static_self_align(e, inherited),
             ..Default::default()
         });
         let sent = if to_icb && fixed && PAGED.with(|p| p.get()) {
@@ -116,7 +123,11 @@ pub(crate) fn place_element(
             } else if far_fixed {
                 crate::layout::positioned::containing_block::cb_push_fixed(spot.clone(), built)
             } else {
-                crate::layout::positioned::containing_block::cb_push(spot.clone(), built)
+                crate::layout::positioned::containing_block::cb_push(
+                    spot.clone(),
+                    built,
+                    crate::layout::positioned::containing_block::nearest_cb_index(inherited),
+                )
             }
         };
         match sent {

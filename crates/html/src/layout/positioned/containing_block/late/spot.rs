@@ -22,6 +22,11 @@ pub fn spot_probe(spot: SpotCell, full: bool) -> AnyElement {
         probe = probe.w_0();
         probe.style().align_self = Some(gpui::AlignItems::FlexStart);
     }
+    // The strut only marks where an out-of-flow box would have been: it is
+    // not in-flow content and never gives its container a baseline (CSS 2.1
+    // §10.8.1; an inline-block holding only an abspos aligns by its bottom
+    // margin edge — `align-self-static-position-001-ref`).
+    probe.style().no_inline_block_baseline = Some(true);
     spot_geometry::probe(spot, full, probe.into_any_element())
 }
 
@@ -71,10 +76,9 @@ pub fn spot_place(spot: SpotCell, child: AnyElement) -> AnyElement {
     // распорка с размером двигала бы соседей. Обёртка нулевая, положение
     // целиком считает сдвиг заместителя (LatePlace).
     if now.vertical && now.next_line.is_none() {
-        return gpui::div()
-            .w_0()
-            .h_0()
-            .flex_shrink_0()
+        let mut wrap = gpui::div().w_0().h_0().flex_shrink_0();
+        wrap.style().no_inline_block_baseline = Some(true);
+        return wrap
             .child(LatePlace {
                 child: Some(child),
                 spot,
@@ -93,6 +97,13 @@ pub fn spot_place(spot: SpotCell, child: AnyElement) -> AnyElement {
         gpui::div().w_full().h_0().flex_shrink_0().flex().flex_row()
     };
     wrap = wrap.items_start();
+    // The carrier holds an out-of-flow box: it is not a line box and must not
+    // give its block container a baseline (CSS 2.1 §10.8.1: an inline-block
+    // without in-flow line boxes aligns by its bottom margin edge; Blink
+    // never propagates baselines from OOF children). As a flex row it would
+    // synthesize one from its item (`align-self-static-position-001-ref`:
+    // the first inline-block dropped a whole line).
+    wrap.style().no_inline_block_baseline = Some(true);
     // Начало строчной оси — правый край: при письме справа налево в
     // горизонтальном режиме и при vertical-rl (блочный поток идёт от правого
     // края, css-writing-modes §block-flow). У vertical-lr `direction`
