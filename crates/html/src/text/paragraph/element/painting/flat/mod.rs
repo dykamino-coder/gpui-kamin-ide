@@ -133,7 +133,12 @@ impl Paragraph {
             // text-alignment-rtl-002` 0.02 -> 1.67 (пробел вставал справа от
             // текста и сдвигал его); место в ширине строки они держат.
             let visible = if self.wrap.rtl && !self.wrap.break_spaces {
-                range.start..range.start + trim_hanging(&self.text[range.clone()])
+                range.start..if self.wrap.keep_spaces {
+                    range.start + trim_hanging(&self.text[range.clone()])
+                } else {
+                    // Inline pre spaces keep their measured advance (CSS Lists 3 ::marker).
+                    self.hang_tail(range.start, range.end)
+                }
             } else if !self.wrap.keep_spaces {
                 // Схлопываемый пробел конца строки УДАЛЯЕТСЯ (CSS 2.1 §16.6.1),
                 // а не висит: рисовать его незачем, а подложка `<span>` под ним
