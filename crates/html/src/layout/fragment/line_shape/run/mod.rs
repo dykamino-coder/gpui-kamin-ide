@@ -46,16 +46,18 @@ pub(crate) fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) 
     // первой и последней строки (`-002-ref`: вторая колонка с полулидингом).
     // Сторона решается БЛИЖАЙШЕЙ коробкой со срезом этой стороны
     // (`brk_trim`).
-    let (inh, w, opts, brk_start, brk_end) = LINE_CX.with(|l| {
+    let (inh, w, opts, brk_start, brk_end, item) = LINE_CX.with(|l| {
         let g = l.borrow();
         let cx = g.as_ref()?;
         let f = cx.frames.last()?;
+        let n = cx.frames.len();
         Some((
             f.inh.clone(),
             f.w?,
             cx.opts.clone(),
             brk_trim(&cx.frames, |s| s.text_box_trim_start),
             brk_trim(&cx.frames, |s| s.text_box_trim_end),
+            n >= 2 && cx.frames[n - 2].items != 0,
         ))
     })?;
     if inh.nowrap == Some(true)
@@ -69,8 +71,16 @@ pub(crate) fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) 
         return None;
     }
     let text = line_text(&c.children)?;
+    // A flex or grid item with no specified size up the chain has the
+    // initial `medium` (css-fonts-4 §font-size-prop), as the inline layout
+    // resolves it: its lines bound the solid part of the item, and the rest
+    // of a specified block size fragments (Blink slices a block's remaining
+    // block-size after its content). Block flows keep their own measure
+    // path, whose anonymous boxes (fieldset, button, details) and markers
+    // this measure does not model.
     let size = match inh.font_size {
         Some(Len::Px(v)) if v > 0.0 => v,
+        None if item => opts.base_size(),
         _ => return None,
     };
     let lh = match inh.line_height {
@@ -139,6 +149,16 @@ pub(crate) fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) 
         }
         from = next;
     }
-    solid.push((from, h));
+    // The last line group ends with its lines: a specified height beyond
+    // them is the box's unused block size, which fragments like any empty
+    // block space (css-break-3 §4.4: no line boxes there; Blink slices a
+    // block's remaining block-size after its content).
+    let lines_end = top + (lines as f32 * lh - shift - tail).max(0.0);
+    let last_end = if fixed_h.is_some() && lines_end < h {
+        lines_end.max(from)
+    } else {
+        h
+    };
+    solid.push((from, last_end));
     Some((h, mt, mb, cuts, Vec::new(), solid))
 }
