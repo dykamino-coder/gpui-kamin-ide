@@ -52,16 +52,106 @@ pub(super) fn reftest_pages(html: &str) -> Option<Vec<usize>> {
 /// 0.00, пока трима не было, и стал 25.62, когда трим появился —
 /// эталон без класса остаётся нетримленным. Такая пара — вне
 /// цели, а не зелёная и не красная; рисовать её незачем.
-pub(super) fn out_of_scope(test: &str) -> Option<&'static str> {
-    let head = std::fs::read_to_string(test).unwrap_or_default();
-    let head_lower = head.to_ascii_lowercase();
+/// Владелец (2026-10-16): вне цели ВЕСЬ JavaScript, не только `<script>` в
+/// тесте. Разбор красных integ-30 нашёл 71 такую пару: скрипт в эталоне (26),
+/// обработчики `onload=…` (17; ещё 13 таких были «зелёными» случайно —
+/// обработчик просто не исполнялся), тесты для сервера WPT `.sub.` (14),
+/// вложенные документы со скриптом (7), ручные `-manual` (6).
+pub(super) fn out_of_scope(test: &str, reference: &str) -> Option<&'static str> {
+    let name = std::path::Path::new(test)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    if name.contains(".sub.") {
+        return Some("вне цели: сервер WPT");
+    }
+    if name.contains("-manual.") {
+        return Some("вне цели: ручной тест");
+    }
+    let head_lower = std::fs::read_to_string(test)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
     if head_lower.contains("name=\"variant\"") || head_lower.contains("name='variant'") {
-        Some("вне цели: вариант")
-    } else if head_lower.contains("<script") {
+        return Some("вне цели: вариант");
+    }
+    if let Some(why) = script_use(&head_lower) {
+        return Some(why);
+    }
+    let reference_lower = std::fs::read_to_string(reference)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if script_use(&reference_lower).is_some() {
+        return Some("вне цели: скрипт в эталоне");
+    }
+    let dir = std::path::Path::new(test)
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let scripted_subdocument = subdocument_sources(&head_lower).into_iter().any(|src| {
+        let text = std::fs::read_to_string(dir.join(src)).unwrap_or_default();
+        script_use(&text.to_ascii_lowercase()).is_some()
+    });
+    scripted_subdocument.then_some("вне цели: скрипт во вложенном документе")
+}
+
+/// Исполняемый JavaScript в тексте документа (уже в нижнем регистре).
+fn script_use(lower: &str) -> Option<&'static str> {
+    if lower.contains("<script") {
         Some("вне цели: скрипт")
+    } else if lower.contains("javascript:") {
+        Some("вне цели: javascript-ссылка")
+    } else if has_event_handler(lower) {
+        Some("вне цели: обработчик on*")
     } else {
         None
     }
+}
+
+/// Атрибут-обработчик `on<имя>=` внутри тега (`<body onload="…">`). Текст и
+/// CSS между тегами не смотрим: `online` в тексте — не обработчик.
+fn has_event_handler(lower: &str) -> bool {
+    let bytes = lower.as_bytes();
+    let mut in_tag = false;
+    for (i, &b) in bytes.iter().enumerate() {
+        match b {
+            b'<' => in_tag = true,
+            b'>' => in_tag = false,
+            _ if in_tag && b.is_ascii_whitespace() && bytes[i + 1..].starts_with(b"on") => {
+                let rest = &bytes[i + 3..];
+                let letters = rest.iter().take_while(|c| c.is_ascii_lowercase()).count();
+                let after = rest[letters..].iter().find(|c| !c.is_ascii_whitespace());
+                if letters >= 3 && after == Some(&b'=') {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Источники вложенных документов: `<iframe src>`, `<object data>`, `<embed src>`.
+fn subdocument_sources(lower: &str) -> Vec<&str> {
+    let mut out = vec![];
+    for (tag, attr) in [("<iframe", "src"), ("<object", "data"), ("<embed", "src")] {
+        for chunk in lower.split(tag).skip(1) {
+            let head = &chunk[..chunk.find('>').unwrap_or(chunk.len())];
+            let Some(at) = head.find(&format!("{attr}=")) else {
+                continue;
+            };
+            let value = head[at + attr.len() + 1..].trim_start();
+            let value = match value.chars().next() {
+                Some(q @ ('"' | '\'')) => {
+                    &value[1..value[1..].find(q).map_or(value.len(), |e| e + 1)]
+                }
+                _ => &value[..value.find(char::is_whitespace).unwrap_or(value.len())],
+            };
+            let value = value.split(['#', '?']).next().unwrap_or("");
+            if !value.is_empty() && !value.contains(':') {
+                out.push(value);
+            }
+        }
+    }
+    out
 }
 
 /// Эталоны пары из `<link rel=match|mismatch>` теста.
