@@ -27,6 +27,8 @@ pub(super) fn atom_element_raw(
 ) -> Option<AnyElement> {
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
+    let media_sized = crate::layout::replaced::media::resolve(e, inherited, opts.viewport);
+    let e = media_sized.as_ref().unwrap_or(e);
     // Строчный атом — независимый контекст форматирования: строки внутри
     // `inline-block` в бюджет `line-clamp` не входят (css-overflow-4 §5.3),
     // иначе строка атома считалась ВТОРОЙ поверх строки абзаца
@@ -148,6 +150,9 @@ pub(super) fn atom_element_raw(
             iframe(e, opts)
                 .unwrap_or_else(|| replaced_content::empty_iframe(e, inherited, opts.viewport)),
         ),
+        _ if crate::layout::replaced::media::empty(e) => {
+            Some(crate::layout::replaced::media::render(e))
+        }
         "svg" => svg_atom(inherited, opts, e),
         // Свой бокс (фон, рамка, отступы) означает, что кусок не может быть
         // прогоном текста: прогон не умеет рисовать вокруг себя рамку.
