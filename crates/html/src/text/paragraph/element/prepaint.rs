@@ -166,7 +166,18 @@ impl Paragraph {
                         continue;
                     }
                 }
-                let next = &how.next_line;
+                // An inline-level box after a forced break with nothing after
+                // it: its hypothetical box is alone on the NEXT line, which
+                // the paragraph never formed (CSS 2.1 §10.6.4;
+                // `hypothetical-inline-alone-on-second-line`).
+                let past_break = !rotated
+                    && !self.wrap.rtl
+                    && self.lines.last().is_some_and(|l| *at >= l.range.end)
+                    && self.text.get(..*at).is_some_and(|t| {
+                        t.trim_end_matches([' ', '\u{feff}', '\u{200b}'])
+                            .ends_with('\n')
+                    });
+                let next = &(how.next_line || past_break);
                 let origin = if *next {
                     self.next_line_point(*at, bounds)
                 } else {
@@ -204,7 +215,30 @@ impl Paragraph {
                 } else {
                     origin
                 };
-                el.prepaint_at(origin, window, _cx);
+                if how.line_probe && !rotated {
+                    // The line box height over its inline boxes (CSS 2.1
+                    // §10.8.1), not the paragraph's uniform pitch: an inline
+                    // ancestor's taller `line-height` grows the line.
+                    let row = self
+                        .lines
+                        .iter()
+                        .position(|l| *at < l.range.end)
+                        .unwrap_or(self.lines.len().saturating_sub(1));
+                    let (lh, start) = match self.lines.get(row) {
+                        Some(l) => {
+                            let (a, b) = self.line_extents(&l.range.clone());
+                            let start = self.point_of(&segs, l.range.start, bounds).x;
+                            (px(a + b).max(self.line_height), start)
+                        }
+                        None => (self.line_height, bounds.origin.x),
+                    };
+                    let line = (origin.y, lh, start);
+                    crate::layout::positioned::containing_block::with_line_box(line, || {
+                        el.prepaint_at(origin, window, _cx)
+                    });
+                } else {
+                    el.prepaint_at(origin, window, _cx);
+                }
             }
             self.overlays = placed;
         }

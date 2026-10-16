@@ -18,7 +18,11 @@ pub(crate) fn push(
         return late_push(spot, element);
     }
     if inherited.cb_ancestor || crate::text::inline::establishes_cb(inherited) {
-        cb_push(spot, element)
+        cb_push(
+            spot,
+            element,
+            crate::layout::positioned::containing_block::nearest_cb_index(inherited),
+        )
     } else {
         icb_push(spot, element)
     }

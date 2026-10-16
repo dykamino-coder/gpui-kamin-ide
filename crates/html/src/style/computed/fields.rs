@@ -1176,6 +1176,11 @@ pub struct Computed {
     /// внепоточных потомков (§10.1 п.4). Ставится при наследовании: сам
     /// каскад предков не видит.
     pub(crate) cb_ancestor: bool,
+    /// How many ancestors establish a containing block for absolute
+    /// descendants (`establishes_cb`). An absolute box's nearest CB is the
+    /// ancestor with index `cb_depth + establishes_cb(parent)`; strict CB
+    /// layers (`cb_open_strict`) take only boxes whose nearest CB they are.
+    pub(crate) cb_depth: u16,
     /// Есть ли выше по дереву НЕКОРНЕВОЙ контекст наложения (CSS 2.1 прил. E):
     /// без него отрицательный `z-index` принадлежит корневому контексту и
     /// рисуется под всем его потоком. Ставится при наследовании.
