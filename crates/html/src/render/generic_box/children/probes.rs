@@ -139,6 +139,7 @@ pub(crate) fn child_probes(
                     margin: end_margin,
                     min_end,
                     capped,
+                    node: e.node_id,
                 },
                 // Коробка — не абзац: знак обрыва на неё не садится
                 // (он всегда в конце строки, css-overflow-4 §5.3).
@@ -153,7 +154,16 @@ pub(crate) fn child_probes(
             ));
         } else if !is_clamp
             && !skip
-            && e.children.iter().all(is_blank)
+            // Only out-of-flow children: the box itself is empty and
+            // zero-height in the flow (`line-clamp-with-abspos-023`).
+            && e.children.iter().all(|n| {
+                is_blank(n)
+                    || matches!(n, crate::dom::Node::Element(c) if matches!(
+                        c.style.position,
+                        Some(crate::style::computed::Position::Absolute)
+                            | Some(crate::style::computed::Position::Fixed)
+                    ))
+            })
             && !merged.float.is_some_and(|f| f != 0)
             && !matches!(
                 merged.position,

@@ -6,7 +6,7 @@ mod fit;
 
 use super::ClampCut;
 use super::{ClampEntry, clamp_cut, clamp_para, take_para_rows};
-use crate::text::clamp::line_state::CLAMP_EXTENT;
+use crate::text::clamp::line_state::{CLAMP_BOXES, CLAMP_EXTENT, CLAMP_NEXT};
 use crate::text::clamp::{CLAMP_CUTS, CLAMP_PARA};
 use gpui::{App, Bounds, GlobalElementId, InspectorElementId, Pixels, Window};
 
@@ -23,6 +23,7 @@ pub(crate) struct ClampBox {
     pub margin: f32,
     /// `min-height` border-box extent from `y0`, 0 when none.
     pub min_end: f32,
+    pub node: u64,
     /// Paragraph numbers `[first, end)` of its descendants.
     pub span: Option<(u32, u32)>,
 }
@@ -66,6 +67,47 @@ pub(super) fn chain_end(point: f32, chain: &[&ClampBox]) -> f32 {
 /// (the line budget of `line-clamp: auto`).
 pub(super) fn chain_extra(chain: &[&ClampBox]) -> f32 {
     chain_end_with(0.0, chain, false)
+}
+
+/// Used border-box heights of the boxes of `chain` (see `chain_end`).
+pub(super) fn chain_sizes(point: f32, chain: &[&ClampBox]) -> Vec<(u64, f32)> {
+    (0..chain.len())
+        .map(|i| {
+            let b = chain[i];
+            // The chain from the point up to `b`, margins after `b` aside.
+            let inner = &chain[i + 1..];
+            let mut y = chain_end_with(point, inner, true);
+            // Margins pending below `b` collapse through it unless it has
+            // end border/padding (then they are inside it).
+            if b.bp > 0.0 {
+                y += b.bp;
+            } else {
+                y -= pending_margin(inner);
+            }
+            let y = if b.min_end > 0.0 {
+                y.max(b.y0 + b.min_end)
+            } else {
+                y
+            };
+            (b.node, (y - b.y0).max(0.0))
+        })
+        .filter(|(n, _)| *n != 0)
+        .collect()
+}
+
+/// End margin still collapsing at the end of `chain` (no border/padding
+/// below it).
+fn pending_margin(chain: &[&ClampBox]) -> f32 {
+    let (mut pos, mut neg) = (0.0f32, 0.0f32);
+    for b in chain.iter().rev() {
+        if b.bp > 0.0 {
+            pos = 0.0;
+            neg = 0.0;
+        }
+        pos = pos.max(b.margin);
+        neg = neg.min(b.margin);
+    }
+    pos + neg
 }
 
 fn chain_end_with(point: f32, chain: &[&ClampBox], min: bool) -> f32 {
@@ -161,6 +203,7 @@ impl ClampCut {
                     bp: e.bp_after,
                     margin: e.end_margin,
                     min_end: e.min_end,
+                    node: e.node,
                     span: e.span,
                 });
             }
@@ -179,9 +222,35 @@ impl ClampCut {
         // полями, схлопыванием и заданной высотой предков (Blink: всё за
         // точкой `is_hidden_for_paint`, размер — по видимому); потолок нужен,
         // только когда за точкой есть другое содержимое.
-        let (counted_cut, num_para, by_count) = self.counted_cut(cut, &entries, &blocks, &split);
+        let mut sizes: Vec<(u64, f32)> = vec![];
+        let (counted_cut, num_para, by_count) =
+            self.counted_cut(cut, &entries, &blocks, &split, &mut sizes);
         cut = counted_cut;
         cut = self.automatic_cut(cut, by_count, &blocks, &rows, trim_end);
+        // The boxes fragmented at the point end there too.
+        let mut boxes_moved = false;
+        CLAMP_BOXES.with(|m| {
+            let mut m = m.borrow_mut();
+            let mine: Vec<u64> = blocks.iter().map(|b| b.node).filter(|n| *n != 0).collect();
+            for n in &mine {
+                let now = sizes.iter().find(|(k, _)| k == n).map(|(_, h)| *h);
+                let before = m.get(n).copied();
+                let differs = match (before, now) {
+                    (Some(a), Some(b)) => (a - b).abs() > 0.5,
+                    (a, b) => a.is_some() != b.is_some(),
+                };
+                if differs {
+                    boxes_moved = true;
+                    match now {
+                        Some(h) => m.insert(*n, h),
+                        None => m.remove(n),
+                    };
+                }
+            }
+        });
+        if boxes_moved {
+            window.request_animation_frame();
+        }
         // ★ ЗАМЕРЕНО (10.09, `scout-clampmarker-2026-09c.md`, 21 хунк):
         // срез 416 пар (семья `line-clamp` + схлопывание полей) 259 ->
         // 260. Взяты `line-clamp-auto-003` 1.82 -> 0.00 и `-047`
@@ -262,8 +331,17 @@ impl ClampCut {
                 // Пустая блочная коробка между последней строкой и точкой
                 // среза: точка — после неё (последняя возможная), и строка
                 // точке уже не предшествует — знака нет (§5.3).
-                .filter(|(bottom, _, _)| {
-                    !empties.iter().any(|e| {
+                // Not when that line is where WE cut the paragraph: the
+                // empty box then sits right after the cut only because the
+                // clamped paragraph got shorter, and the point stays in the
+                // paragraph (`line-clamp-with-abspos-021`,
+                // `-with-fixed-pos-016`).
+                .filter(|(bottom, seq, _)| {
+                    seq.is_some_and(|s| {
+                        entries
+                            .iter()
+                            .any(|e| e.seq == Some(s) && e.clamped.is_some())
+                    }) || !empties.iter().any(|e| {
                         let y0 = f32::from(e.bounds.origin.y);
                         e.empty
                             && f32::from(e.bounds.size.height) <= 0.5
@@ -298,7 +376,34 @@ impl ClampCut {
             });
             window.request_animation_frame();
         }
-        let extent = fit::extent_before_point(cut.zip(para), &entries, &split, top);
+        // A clamp point between blocks: the first paragraph after it, so
+        // that what follows is hidden in box-tree order and what precedes
+        // keeps its overflow.
+        let next = cut
+            .filter(|c| para.is_none() && c.is_finite())
+            .and_then(|c| {
+                entries
+                    .iter()
+                    .filter(|e| {
+                        !e.skip_count && e.line > 0.0 && f32::from(e.bounds.origin.y) >= c - 0.5
+                    })
+                    .filter_map(|e| e.seq)
+                    .min()
+            });
+        if crate::text::clamp::line_state::clamp_next(self.key) != next {
+            CLAMP_NEXT.with(|m| {
+                let mut m = m.borrow_mut();
+                match next {
+                    Some(v) => m.insert(self.key, v),
+                    None => m.remove(&self.key),
+                };
+            });
+            window.request_animation_frame();
+        }
+        let extent = match next {
+            Some(n) => fit::extent_before_next(n, &entries, top),
+            None => fit::extent_before_point(cut.zip(para), &entries, &split, top),
+        };
         let prev_extent = crate::text::clamp::clamp_extent(self.key);
         let moved = match (prev_extent, extent) {
             (Some(a), Some(b)) => (a - b).abs() > 0.5,

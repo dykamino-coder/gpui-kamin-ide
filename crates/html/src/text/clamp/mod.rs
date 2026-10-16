@@ -9,6 +9,7 @@ pub use crate::text::clamp::line_state::BoxEnds;
 pub use crate::text::clamp::line_state::ClampEntry;
 pub use crate::text::clamp::line_state::ClampGuard;
 pub use crate::text::clamp::line_state::ClampLines;
+pub use crate::text::clamp::line_state::clamp_box_height;
 pub use crate::text::clamp::line_state::clamp_context;
 pub use crate::text::clamp::line_state::clamp_cut;
 pub use crate::text::clamp::line_state::clamp_extent;

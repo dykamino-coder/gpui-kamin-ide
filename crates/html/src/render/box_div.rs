@@ -111,6 +111,12 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     // заданная `height`/`min-height` остаётся, строки после среза прячет
     // бюджет абзаца (`line-clamp-010`, `webkit-line-clamp-040`).
     let sized = e.style.height.is_some() || e.style.min_height.is_some();
+    // A box fragmented at a line-clamp point ends there (css-overflow-4
+    // §5.3): content after the point no longer sizes it (`line-clamp-024/
+    // 025`: margins of boxes after the point).
+    if !sized && let Some(h) = crate::text::clamp::clamp_box_height(e.node_id) {
+        d = d.max_h(px(h));
+    }
     // В многоколоночнике `continue: collapse` ведёт себя как `auto`
     // (css-overflow-4 §5.2): срез не действует (`line-clamp-039`).
     let multicol = multicol_container(&e.style);

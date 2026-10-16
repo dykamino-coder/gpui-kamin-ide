@@ -10,6 +10,7 @@ impl ClampCut {
         entries: &[ClampEntry],
         blocks: &[super::ClampBox],
         split: &dyn Fn(&ClampEntry) -> Vec<(f32, f32)>,
+        sizes: &mut Vec<(u64, f32)>,
     ) -> (Option<f32>, Option<(u32, usize)>, bool) {
         let mut num_para: Option<(u32, usize)> = None;
         let mut by_count = false;
@@ -81,6 +82,7 @@ impl ClampCut {
                             .map(|b| b.y1)
                             .fold(bottom, f32::max);
                         cut = Some(super::chain_end(bottom, &chain).max(floor));
+                        *sizes = super::chain_sizes(bottom, &chain);
                     }
                 }
                 // `max-height` теснее N строк — дальше как в авто-режиме.

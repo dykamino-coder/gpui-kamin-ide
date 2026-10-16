@@ -38,6 +38,8 @@ pub struct ClampEntry {
     /// size no longer depends on the content and it is as monolithic as a
     /// box with a definite height (`line-clamp-auto-044/063`).
     pub capped: bool,
+    /// Node of a box probe (0 for paragraph probes).
+    pub node: u64,
     /// Порядковый номер абзаца ВНУТРИ клэмп-контейнера, выданный при
     /// построении. `None` — проба коробки, а не абзаца: знак обрыва на
     /// неё не садится. Номер, а не совпадение по геометрии, потому что
@@ -70,6 +72,7 @@ pub struct BoxEnds {
     pub margin: f32,
     pub min_end: f32,
     pub capped: bool,
+    pub node: u64,
 }
 
 pub type ClampLines = std::rc::Rc<std::cell::RefCell<Vec<ClampEntry>>>;
@@ -96,6 +99,15 @@ thread_local! {
     /// fixed-height block stay visible below the cut (Blink hides the
     /// following boxes for paint instead of clipping the container).
     pub(super) static CLAMP_EXTENT: std::cell::RefCell<std::collections::HashMap<u64, f32>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    /// Clamp point BETWEEN blocks (no paragraph carries the ellipsis):
+    /// container key → number of the first paragraph after the point.
+    pub(super) static CLAMP_NEXT: std::cell::RefCell<std::collections::HashMap<u64, u32>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    /// Boxes fragmented at a clamp point: node → used border-box height
+    /// (the content ends at the point; css-overflow-4 §5.3, Blink sizes
+    /// every box of the `LineClampAncestorChain`).
+    pub(super) static CLAMP_BOXES: std::cell::RefCell<std::collections::HashMap<u64, f32>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
     /// Счётчик абзацев контейнера при ПОСТРОЕНИИ поддерева.
     pub(super) static CLAMP_SEQ: std::cell::RefCell<std::collections::HashMap<u64, u32>> =
@@ -150,6 +162,16 @@ pub fn clamp_para(key: u64) -> Option<(u32, usize)> {
     CLAMP_PARA.with(|m| m.borrow().get(&key).copied())
 }
 
+/// Used border-box height of a box fragmented at a clamp point.
+pub fn clamp_box_height(node: u64) -> Option<f32> {
+    CLAMP_BOXES.with(|m| m.borrow().get(&node).copied())
+}
+
+/// First paragraph after a clamp point between blocks (see `CLAMP_NEXT`).
+pub fn clamp_next(key: u64) -> Option<u32> {
+    CLAMP_NEXT.with(|m| m.borrow().get(&key).copied())
+}
+
 /// Visible extent of the content before the clamp point (see `CLAMP_EXTENT`).
 pub fn clamp_extent(key: u64) -> Option<f32> {
     CLAMP_EXTENT.with(|m| m.borrow().get(&key).copied())
@@ -161,6 +183,8 @@ pub fn forget_clamp_buffers() {
     CLAMP_CUTS.with(|m| m.borrow_mut().clear());
     CLAMP_STACK.with(|st| st.borrow_mut().clear());
     CLAMP_PARA.with(|m| m.borrow_mut().clear());
+    CLAMP_NEXT.with(|m| m.borrow_mut().clear());
+    CLAMP_BOXES.with(|m| m.borrow_mut().clear());
     CLAMP_SEQ.with(|m| m.borrow_mut().clear());
     PARA_BUDGET.with(|c| c.set(None));
     PARA_ROWS.with(|m| m.borrow_mut().clear());

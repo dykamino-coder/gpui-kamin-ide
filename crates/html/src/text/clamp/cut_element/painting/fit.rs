@@ -45,6 +45,22 @@ pub(super) fn park_overflow(
         .collect()
 }
 
+/// Low edge (from `top`) of the content before a clamp point between
+/// blocks, `next` being the first paragraph after it: earlier paragraphs
+/// and positioned boxes whose containing block precedes the point keep
+/// their overflow visible (`line-clamp-with-abspos-023`).
+pub(super) fn extent_before_next(next: u32, entries: &[ClampEntry], top: f32) -> Option<f32> {
+    entries
+        .iter()
+        .filter(|e| {
+            (!e.skip_count && e.line > 0.0 && e.seq.is_some_and(|s| s < next))
+                || (e.positioned && e.span.is_some_and(|(a, _)| a < next))
+        })
+        .map(|e| f32::from(e.bounds.origin.y) + f32::from(e.bounds.size.height))
+        .max_by(|a, b| a.total_cmp(b))
+        .map(|b| b - top)
+}
+
 /// Low edge (from `top`) of the content before the clamp point in
 /// box-tree order: paragraphs numbered before the clamp paragraph and the
 /// kept rows of that paragraph keep their own overflow visible.

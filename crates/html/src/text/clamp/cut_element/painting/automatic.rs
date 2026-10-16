@@ -103,6 +103,9 @@ impl ClampCut {
                         .collect();
                     cut = Some(empty_top + super::chain_extra(&kept));
                 }
+                // Crossing is geometric here, and a box sized to the point
+                // would stop crossing it on the next frame: the boxes keep
+                // their size in this mode (`sizes` stays empty).
                 None => cut = Some(super::chain_end(c2, &crossed)),
             }
         }
