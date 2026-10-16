@@ -36,6 +36,13 @@ pub(crate) fn render_with_style(
         .list_style_type
         .clone()
         .or_else(|| inherited.list_style_type.clone());
+    let text_marker_is_none = text_marker.is_none()
+        && li
+            .style
+            .marker_layer
+            .as_deref()
+            .is_none_or(|m| m.content.is_none());
+    let kind_name = kind.clone();
     let marker = if let Some(t) = text_marker {
         t
     } else {
@@ -125,6 +132,13 @@ pub(crate) fn render_with_style(
         mark_style.font_family = Some(opts.text.font_family.to_string());
     }
     tabular_marker(&mut mark_style, merged, li.style.marker_layer.as_deref());
+    // A symbol marker (`disc`, `circle`, `square`, disclosure triangles) is a
+    // painted symbol, not text: tracking does not move or widen it (Blink
+    // `ListMarker::InlineMarginsForOutside` kSymbol offsets from the font
+    // ascent; `marker-letter-spacing-ref-001` keeps the plain bullet).
+    if text_marker_symbol(text_marker_is_none, kind_name.as_deref()) {
+        mark_style.letter_spacing = Some(crate::style::values::value::Len::Px(0.0));
+    }
     let marker = inline::transform_case(&marker, &mark_style);
     // Without line boxes the outside marker is top-aligned to the item, and
     // the item's content height is at least the marker's (csswg-drafts#2417,
@@ -244,4 +258,14 @@ pub(crate) fn inherited_style(e: &Element, parent: &Computed, merged: &mut Compu
     {
         merged.marker_text = parent.marker_text.clone();
     }
+}
+
+/// A generated marker drawn as a symbol rather than as text (css-counter-styles
+/// predefined `disc`, `circle`, `square`, `disclosure-*`; `disc` is the default).
+fn text_marker_symbol(generated: bool, kind: Option<&str>) -> bool {
+    generated
+        && matches!(
+            kind.unwrap_or("disc"),
+            "disc" | "circle" | "square" | "disclosure-open" | "disclosure-closed"
+        )
 }
