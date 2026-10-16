@@ -1,6 +1,7 @@
 //! Tests for dom; split out to keep the owning module within 250 lines.
 
 mod filtered_content;
+mod shadow_selectors;
 mod style_parsing;
 mod tree_parsing;
 use crate::dom::tests::tree_parsing::child_colors;

@@ -80,7 +80,7 @@ impl Paragraph {
     /// Разрешён ли на этом месте аварийный разрыв по знакам.
     pub(crate) fn emergency_ok(&self, at: usize) -> bool {
         let w = self.wrap_at(at);
-        !w.nowrap && (w.break_all || w.anywhere || w.break_word || w.wrap_anywhere)
+        !w.nowrap && (w.anywhere || w.break_word || w.wrap_anywhere)
     }
 }
 

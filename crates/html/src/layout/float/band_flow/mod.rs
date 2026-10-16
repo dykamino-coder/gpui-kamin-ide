@@ -141,6 +141,11 @@ fn frame(kind: Kind, avail: f32, el: AnyElement, tap: Rc<Cell<Option<LayoutId>>>
     } else {
         col
     };
+    let el = if matches!(kind, Kind::Float { .. }) {
+        crate::paint::decorations::outline_phase::scope(el)
+    } else {
+        el
+    };
     col.child(Tap { inner: el, id: tap }).into_any_element()
 }
 

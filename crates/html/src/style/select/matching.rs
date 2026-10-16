@@ -7,6 +7,7 @@ use crate::style::select::has::has_id;
 use crate::style::select::{Ancestor, Sibs, Spot};
 
 mod compound;
+mod featureless;
 mod nth;
 mod pseudo;
 use compound::{ancestor_holds, matches_compound};
@@ -21,7 +22,7 @@ pub(crate) fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Si
     // Безликий хост (изнутри своей тени): предков и братьев у него в этой
     // области нет, совпадает лишь `:host`-компаунд (см. `matches_compound`).
     if me.featureless.is_some() {
-        return sel.ancestor.is_none() && sel.prev.is_none() && matches_compound(sel, me);
+        return featureless::matches_featureless(sel, me).unwrap_or(false);
     }
     if let Some(pseudo) = &sel.pseudo {
         // `:host` вне тени «matches nothing» (css-shadow-1 §3.1).
