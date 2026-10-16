@@ -132,7 +132,18 @@ impl Paragraph {
                         continue;
                     }
                 }
-                let next = &how.next_line;
+                // An inline-level box after a forced break with nothing after
+                // it: its hypothetical box is alone on the NEXT line, which
+                // the paragraph never formed (CSS 2.1 §10.6.4;
+                // `hypothetical-inline-alone-on-second-line`).
+                let past_break = !rotated
+                    && !self.wrap.rtl
+                    && self.lines.last().is_some_and(|l| *at >= l.range.end)
+                    && self.text.get(..*at).is_some_and(|t| {
+                        t.trim_end_matches([' ', '\u{feff}', '\u{200b}'])
+                            .ends_with('\n')
+                    });
+                let next = &(how.next_line || past_break);
                 let origin = if *next {
                     self.next_line_point(*at, bounds)
                 } else {
