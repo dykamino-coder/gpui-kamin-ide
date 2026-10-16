@@ -71,7 +71,16 @@ fn walk(
             let attrs: Vec<(String, String)> = attrs
                 .borrow()
                 .iter()
-                .map(|a| (a.name.local.to_string(), a.value.to_string()))
+                .map(|a| {
+                    let key = if &*a.name.local == "base"
+                        && &*a.name.ns == "http://www.w3.org/XML/1998/namespace"
+                    {
+                        "xml:base".to_owned()
+                    } else {
+                        a.name.local.to_string()
+                    };
+                    (key, a.value.to_string())
+                })
                 .collect();
             let mut me = element_ancestor(
                 handle,
