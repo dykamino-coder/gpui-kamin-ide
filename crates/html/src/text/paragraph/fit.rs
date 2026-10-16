@@ -32,7 +32,12 @@ impl Paragraph {
         };
         let plain =
             |c: char| !word_separator(c) && !invisible(c) && !matches!(c, '\t' | '\n' | '\u{3000}');
-        if !plain(a) || !plain(b) || !cluster_edge(&self.text, at) {
+        // CSS Text 3 §1.4: justification units use extended grapheme
+        // clusters. SA-class dependent vowels are not standalone letters.
+        let unit_edge = unicode_segmentation::GraphemeCursor::new(at, self.text.len(), true)
+            .is_boundary(&self.text, 0)
+            .unwrap_or(false);
+        if !plain(a) || !plain(b) || !cluster_edge(&self.text, at) || !unit_edge {
             return false;
         }
         if self.justify_chars == 1 {
@@ -181,5 +186,25 @@ impl Paragraph {
                 run.font_size = Some(px(f32::from(size) * k));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn justification_preserves_khmer_syllables() {
+        let mut p = Paragraph::new(
+            "សាហា".into(),
+            vec![],
+            px(16.),
+            px(16.),
+            Align::Left,
+            Wrap::default(),
+        );
+        p.justify_chars = 2;
+        assert!(!p.justify_boundary(0, 3));
+        assert!(p.justify_boundary(0, 6));
+        assert!(!p.justify_boundary(0, 9));
     }
 }

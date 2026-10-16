@@ -137,11 +137,26 @@ pub(super) fn load_faces_into(css: &str) {
             });
             super::metric_overrides::register(&name, slope, &block);
             let width = stretch_desc(declaration(&block, "font-stretch").as_deref());
+            let weight =
+                super::matching::range(declaration(&block, "font-weight").as_deref(), 400.0);
+            let (slope, angle) =
+                super::matching::slope(declaration(&block, "font-style").as_deref());
+            let features = declaration(&block, "font-feature-settings")
+                .and_then(|v| crate::style::computed::feature_list(&v))
+                .unwrap_or_default();
             FACES.with(|f| {
                 f.borrow_mut()
                     .entry(name.clone())
                     .or_default()
-                    .push((width, real.clone()));
+                    .push(super::matching::Face {
+                        width,
+                        weight,
+                        slope,
+                        angle,
+                        family: real.clone(),
+                        adjust,
+                        features,
+                    });
             });
             if let Some(list) = declaration(&block, "font-feature-settings")
                 .and_then(|v| crate::style::computed::feature_list(&v))

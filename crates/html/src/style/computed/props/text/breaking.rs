@@ -110,6 +110,7 @@ impl Computed {
                 self.wrap_anywhere = Some(v == "anywhere");
             }
             "word-break" => {
+                self.auto_phrase = Some(v == "auto-phrase");
                 // `break-word` — устаревший псевдоним, и по спецификации он
                 // равен `overflow-wrap: anywhere`, а не `break-word`: разница
                 // в том, что `anywhere` УЧИТЫВАЕТСЯ в размере по минимальному

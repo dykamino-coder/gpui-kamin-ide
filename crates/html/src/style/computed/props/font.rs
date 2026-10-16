@@ -69,7 +69,20 @@ impl Computed {
             }
             "font-weight" => font_weight::apply(self, v),
             "font-style" => {
-                self.italic = Some(v == "italic" || v == "oblique");
+                let mut parts = v.split_whitespace();
+                let kind = parts.next().unwrap_or("");
+                let angle = parts.next().map(crate::text::fonts::matching::angle);
+                if !matches!(kind, "normal" | "italic" | "oblique")
+                    || (kind != "oblique" && angle.is_some())
+                    || angle == Some(None)
+                    || parts.next().is_some()
+                {
+                    return;
+                }
+                self.font_oblique_angle = angle.flatten();
+                // Retain the angle for face selection. The platform currently
+                // synthesizes only the legacy bare oblique request.
+                self.italic = Some(kind == "italic" || (kind == "oblique" && angle.is_none()));
                 // `oblique <angle>` — тоже наклон, а не курсив (css-fonts-4
                 // §font-style-prop): подбор лица различает их.
                 self.oblique = Some(v.starts_with("oblique"));
