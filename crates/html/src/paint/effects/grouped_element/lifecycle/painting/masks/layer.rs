@@ -87,7 +87,12 @@ pub(crate) fn mask_layer(
             true,
         )
     } else {
-        let source = crate::paint::background::source(l)?;
+        let key = if group.mask_orient_none {
+            format!("exif-none|{l}")
+        } else {
+            l.to_string()
+        };
+        let source = crate::paint::background::source(&key)?;
         let (tw, th) = mask_size::tile(
             source.intrinsic(),
             group.mask_scale,
