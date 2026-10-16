@@ -1549,4 +1549,6 @@ pub struct Computed {
     pub accent_color: Option<Color>,
     /// `appearance` (css-ui-4 §7.2); `None` is the initial `auto`.
     pub appearance: Option<crate::style::computed::Appearance>,
+    /// Element used color scheme, shared by CSS system colours and native controls.
+    pub dark_color_scheme: bool,
 }

@@ -138,6 +138,11 @@ pub(super) fn cascade_element(
     let math_hints = crate::dom::mathml::hints(handle, attrs);
     matched.extend(math_hints.iter());
     let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
+    if let Some(basic) = super::form_appearance::rule(&tag, &attrs, &style) {
+        matched.push(&basic);
+        style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
+    }
+    style.dark_color_scheme = crate::style::values::value::dark_scheme();
     style.custom_scrollbar = rules.iter().any(|rule| {
         if rule.sel.pseudo.as_deref() != Some("-webkit-scrollbar") {
             return false;
