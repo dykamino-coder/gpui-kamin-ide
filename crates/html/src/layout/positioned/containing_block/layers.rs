@@ -47,6 +47,9 @@ pub fn icb_close() -> Vec<AnyElement> {
 /// чего затеян вынос. `LatePlace` своей коробки не заводит: он отдаёт
 /// `layout_id` ребёнка.
 pub(super) fn icb_place(spot: SpotCell, child: AnyElement) -> AnyElement {
+    if spot.get().layout_only {
+        return child;
+    }
     LatePlace {
         child: Some(child),
         spot,
