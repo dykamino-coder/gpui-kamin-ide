@@ -134,7 +134,13 @@ pub(crate) fn paint_3d(
         let x0 = f32::from(raw_origin.x) * sf;
         let y0 = f32::from(raw_origin.y) * sf;
         let spec = plane_spec::plane_spec(&full, flat, outer, (x0, y0, x0 + w * sf, y0 + h * sf));
-        let body = |window: &mut Window| window.paint_plane(spec, |window| child.paint(window, cx));
+        let body = |window: &mut Window| {
+            window.paint_plane(spec, |window| {
+                crate::paint::decorations::outline_phase::scoped(window, cx, |window, cx| {
+                    child.paint(window, cx)
+                })
+            })
+        };
         if root_3d {
             window.paint_plane_context(body);
         } else {
@@ -147,5 +153,9 @@ pub(crate) fn paint_3d(
     };
     // Маски детей едут за сплющенной матрицей (как на плоском пути,
     // `Window::with_transformation_masked`).
-    window.with_transformation_masked(flat, |window| child.paint(window, cx));
+    window.with_transformation_masked(flat, |window| {
+        crate::paint::decorations::outline_phase::scoped(window, cx, |window, cx| {
+            child.paint(window, cx)
+        })
+    });
 }

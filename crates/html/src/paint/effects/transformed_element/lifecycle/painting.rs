@@ -20,7 +20,9 @@ pub(super) fn paint_body(
     cx: &mut App,
 ) {
     if group.placed {
-        group.child.as_mut().unwrap().paint(window, cx);
+        crate::paint::decorations::outline_phase::scoped(window, cx, |window, cx| {
+            group.child.as_mut().unwrap().paint(window, cx);
+        });
         return;
     }
     let scale_factor = window.scale_factor();
@@ -189,9 +191,17 @@ pub(super) fn paint_body(
             window,
             |window| {
                 if let Some(exact) = fill_matrix {
-                    window.with_css_fill_transform(exact, |window| child.paint(window, cx));
+                    window.with_css_fill_transform(exact, |window| {
+                        crate::paint::decorations::outline_phase::scoped(
+                            window,
+                            cx,
+                            |window, cx| child.paint(window, cx),
+                        )
+                    });
                 } else {
-                    child.paint(window, cx);
+                    crate::paint::decorations::outline_phase::scoped(window, cx, |window, cx| {
+                        child.paint(window, cx)
+                    });
                 }
             },
         );
