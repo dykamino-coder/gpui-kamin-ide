@@ -68,6 +68,7 @@ pub(crate) fn place_element(
             ),
             ..Default::default()
         });
+        let mut source_paint = None;
         let sent = if to_icb && fixed && PAGED.with(|p| p.get()) {
             // Стопка страниц: фиксированный — в свой слой, по копии
             // на лист без сдвига (`FIXED_LAYER`). Обёртка `LatePlace`
@@ -111,6 +112,21 @@ pub(crate) fn place_element(
             } else {
                 built
             };
+            let built =
+                if crate::layout::positioned::predicates::stays_positioned(&nodes[idx + 1..]) {
+                    let mut state = spot.get();
+                    state.layout_only = true;
+                    spot.set(state);
+                    let (layout, paint) =
+                        crate::layout::positioned::containing_block::split_source_paint(
+                            spot.clone(),
+                            built,
+                        );
+                    source_paint = Some(paint);
+                    layout
+                } else {
+                    built
+                };
             if to_icb {
                 crate::layout::positioned::containing_block::icb_push(spot.clone(), built)
             } else if far_fixed {
@@ -128,6 +144,9 @@ pub(crate) fn place_element(
                     out.push(crate::layout::positioned::containing_block::spot_probe(
                         spot, true,
                     ));
+                }
+                if let Some(paint) = source_paint {
+                    out.push(paint);
                 }
                 return;
             }
