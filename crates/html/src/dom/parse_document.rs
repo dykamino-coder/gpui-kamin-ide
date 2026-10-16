@@ -25,7 +25,7 @@ pub fn parse(html: &str, extra_css: &str) -> Vec<Node> {
 }
 
 /// То же, но с известными условиями окружения для `@media`.
-pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
+pub fn parse_media(html: &str, extra_css: &str, mut media: Media) -> Vec<Node> {
     let _content_document = content::document(html);
     // Правила `@page` — от последнего РАЗОБРАННОГО документа: почистить,
     // чтобы прошлый лист не красил страницу нового. `@position-try` — тот же
@@ -35,7 +35,6 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     let _ = crate::style::css::take_property_rules();
     crate::style::generated::counter_style_rules::reset();
     crate::style::css::reset_layers();
-    crate::style::values::value::set_dark_scheme(false);
     // Корневые метрики (`rem`, `rlh`) — тоже от прошлого документа: у рамки
     // и у страницы свой корень, и чужие четыре точки на кегль испортили бы
     // весь разбор. Пишет их `walk` ниже, на элементе `html`.
@@ -47,6 +46,10 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
         .unwrap_or_else(|_| {
             html5ever::parse_document(RcDom::default(), Default::default()).one("")
         });
+    if let Some(dark) = super::page_scheme::preference(&dom.document, media.dark) {
+        media.dark = dark;
+    }
+    crate::style::values::value::reset_scheme(media.dark);
     // Режим quirks (HTML §13.2.6.4.1, «initial» insertion mode: документ без
     // DOCTYPE). Документ XHTML в quirks не бывает никогда (HTML §2.1, «XML
     // documents … always in no-quirks mode»), а мы разбираем и его HTML-

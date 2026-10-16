@@ -805,6 +805,10 @@ pub struct Computed {
     /// `position: fixed` (css-transforms-1 §transform-rendering: «…for all
     /// of its absolute-position descendants, fixed-position descendants»).
     pub transform_ancestor: bool,
+    /// Transformed ancestor in the strict css-transforms-1 sense (a transform,
+    /// not containment or filters): `background-attachment: fixed` below it
+    /// behaves as `scroll` (css-transforms-1 §6 Transform Rendering Model).
+    pub(crate) transformed_ancestor: bool,
     pub transform_origin_raw: Option<String>,
     /// Точка отсчёта преобразования В ТОЧКАХ по осям — когда записана длиной,
     /// а не долей. Долю из неё делает отрисовка: размер коробки известен там.
@@ -1568,4 +1572,6 @@ pub struct Computed {
     pub dark_color_scheme: bool,
     /// Specified initial color, resolved specially for quirks HTML tables.
     pub(crate) color_initial: bool,
+    /// Preferred scheme exposed by this element to an embedded document.
+    pub embedding_dark_scheme: bool,
 }

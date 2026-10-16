@@ -10,6 +10,7 @@ mod direction;
 mod mathml;
 #[cfg(test)]
 mod nth_child_tests;
+mod page_scheme;
 mod parse_document;
 #[cfg(test)]
 mod presentational_hint_tests;

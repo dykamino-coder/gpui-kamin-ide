@@ -145,7 +145,9 @@ impl Computed {
                 "contain" => self.bg_size = BgSize::Contain,
                 // Привязка и коробки положением НЕ являются: слово
                 // съедается здесь, иначе уедет в разбор положения.
-                "scroll" | "fixed" | "local" | "border-box" | "padding-box" | "content-box" => {}
+                "fixed" => self.bg_fixed = Some(true),
+                "scroll" | "local" => self.bg_fixed = Some(false),
+                "border-box" | "padding-box" | "content-box" => {}
                 t if t.starts_with("url(") => {}
                 // Ключевые слова осей и длины — это положение.
                 "left" | "right" | "top" | "bottom" | "center" => pos.push(token.clone()),

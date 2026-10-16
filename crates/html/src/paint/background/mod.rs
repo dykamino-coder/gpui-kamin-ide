@@ -11,7 +11,9 @@
 //! стоил бы дороже всей остальной отрисовки документа.
 
 mod root_area;
+mod root_box;
 pub use root_area::RootArea;
+pub(crate) use root_box::{capture as measure_root_box, record as record_root_box};
 
 mod fills;
 mod flat_stack;
@@ -147,7 +149,12 @@ pub fn canvas_layer(c: &Computed, area: RootArea) -> Option<AnyElement> {
         gpui::canvas(
             |_, _, _| {},
             move |clip: Bounds<Pixels>, _, window, _| {
-                paint_tiles(&style, area.rect(clip), Some(clip), window);
+                let bounds = if style.bg_fixed == Some(true) {
+                    clip
+                } else {
+                    area.rect(clip)
+                };
+                paint_tiles(&style, bounds, Some(clip), window);
             },
         )
         .absolute()
