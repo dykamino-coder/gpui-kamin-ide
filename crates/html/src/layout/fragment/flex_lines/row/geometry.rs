@@ -3,7 +3,7 @@
 use super::line_layout::collect_lines;
 use crate::dom::Element;
 use crate::layout::fragment::breaks::edge_break;
-use crate::layout::fragment::clone::solid_box;
+use crate::layout::fragment::clone::{monolith_box, solid_box};
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::{Shape, ShapeCx};
 use crate::style::computed::{Align, Display, FlexDir, Justify};
@@ -59,10 +59,7 @@ pub(crate) fn collect_rows(c: &Element, main: f32, depth: u8, cx: ShapeCx) -> Op
             height: 0.0,
         };
         for (source, element) in line {
-            let mut shape = shape_full(&element, depth - 1, cx)?;
-            if solid_box(&element) && shape.3.is_empty() {
-                shape.5 = vec![(0.0, shape.0)];
-            }
+            let shape = item_shape(&element, depth, cx)?;
             row.height = row.height.max(shape.0 + shape.1 + shape.2);
             row.items.push(RowItem {
                 source,
@@ -88,14 +85,25 @@ pub(crate) fn collect_rows(c: &Element, main: f32, depth: u8, cx: ShapeCx) -> Op
                     (target - edges).max(0.0)
                 };
                 s.min_height = Some(Len::Px(minimum.max(px(s.min_height)?)));
-                item.shape = shape_full(&item.element, depth - 1, cx)?;
-                if solid_box(&item.element) && item.shape.3.is_empty() {
-                    item.shape.5 = vec![(0.0, item.shape.0)];
-                }
+                item.shape = item_shape(&item.element, depth, cx)?;
             }
         }
     }
     Some(rows)
+}
+
+/// A monolith (css-break-4 §4.1) is solid over its whole block size. A box
+/// solid only because of its inline content keeps the ranges its line
+/// measure reports (`line_run_shape`: lines and orphans/widows groups), so
+/// the unused part of a specified height stays fragmentable, as Blink
+/// fragments a block's remaining block-size after its last line; unmeasured
+/// lines (no ranges) remain one solid range.
+fn item_shape(element: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
+    let mut shape = shape_full(element, depth - 1, cx)?;
+    if solid_box(element) && shape.3.is_empty() && (monolith_box(element) || shape.5.is_empty()) {
+        shape.5 = vec![(0.0, shape.0)];
+    }
+    Some(shape)
 }
 
 pub(crate) fn row_forced(row: &FlexRow, last: bool) -> bool {
