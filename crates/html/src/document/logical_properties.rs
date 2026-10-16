@@ -94,6 +94,7 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
     // `inline::inherit` (см. ★ перед ней). Идёт после `walk`: логические
     // стороны уже физические. Страницу без `zoom` проход не меняет: у неё ни
     // одного элемента с `zoom`, и ни одна ветка записи не исполняется.
+    crate::style::cascade::inherited_value::settle(&mut nodes);
     crate::style::zoom::resolve(&mut nodes);
     // `z-index: inherit` и `clip: inherit` разбор выражает только разрядом
     // `inherit_bits`, а значение родителя кладёт слияние (`inline::inherit`) —

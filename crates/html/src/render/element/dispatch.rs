@@ -134,6 +134,7 @@ pub(crate) fn dispatch_element(
             copy.attrs.push(("src".to_string(), url));
             image(&copy)
         }
+        _ if crate::layout::replaced::media::empty(e) => crate::layout::replaced::media::render(e),
         // ЗАМЕРЕНО И ОТКАЧЕНО: давать рамке БЕЗ адреса резервную ширину 300
         // точек при `display: block` (§10.3.4 -> §10.3.2). Замерено по срезу
         // из 416 пар семей *image*/*replaced*: приобретено 0, потеряно 1 —

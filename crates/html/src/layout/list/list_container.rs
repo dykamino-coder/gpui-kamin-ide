@@ -12,7 +12,7 @@ pub(crate) fn render(e: &Element, inherited: &Computed, opts: &RenderOpts) -> An
     let mut pending = Vec::new();
     for child in &e.children {
         match child {
-            Node::Element(li) if li.tag == "li" => {
+            Node::Element(li) if li.tag == "li" && !crate::render::real_inline(li) => {
                 rows.extend(blocks(&std::mem::take(&mut pending), inherited, opts));
                 rows.push(list_item::render(li, inherited, opts));
             }

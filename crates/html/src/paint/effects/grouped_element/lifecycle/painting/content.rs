@@ -63,7 +63,9 @@ pub(super) fn paint(
 }
 
 fn child(group: &mut Grouped, border_box: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-    group.child.as_mut().unwrap().paint(window, cx);
+    crate::paint::decorations::outline_phase::scoped(window, cx, |window, cx| {
+        group.child.as_mut().unwrap().paint(window, cx);
+    });
     if let Some((spec, colour, [t, r, b, l])) = &group.ring_over {
         let content = Bounds {
             origin: gpui::point(border_box.origin.x + px(*l), border_box.origin.y + px(*t)),

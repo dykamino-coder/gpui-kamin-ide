@@ -8,7 +8,7 @@ pub(crate) fn measure_font(c: &Computed, opts: &RenderOpts) -> gpui::Font {
     let mut font = opts.text.font();
     font.fallbacks = crate::style::computed::font_family::fallbacks(c, font.fallbacks);
     if let Some(family) = c.font_family.as_ref().filter(|f| !f.is_empty()) {
-        font.family = crate::text::fonts::alias_stretch(family, c.font_stretch)
+        font.family = crate::text::fonts::alias_for(family, c)
             .unwrap_or_else(|| family.clone())
             .into();
     } else if c.monospace == Some(true) {

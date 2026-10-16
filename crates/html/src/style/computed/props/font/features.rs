@@ -15,6 +15,10 @@ impl Computed {
             | "font-synthesis-small-caps" => {
                 // css-fonts-4 §6.5: `auto` разрешает подмену, `none`
                 // запрещает; у сокращения перечислены разрешённые части.
+                if matches!(key, "font-synthesis" | "font-synthesis-style") {
+                    self.font_oblique_only =
+                        Some(key == "font-synthesis-style" && v == "oblique-only");
+                }
                 let allow = |what: &str| match key {
                     "font-synthesis" => v.contains(what),
                     _ => v.trim() != "none",
