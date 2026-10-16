@@ -147,7 +147,7 @@ pub const BROWSER_CSS: &str = r#"
                                       list-style: disclosure-closed inside }
     details[open] > summary:first-of-type { list-style-type: disclosure-open }
     mark { background: yellow; color: black }
-    textarea { background: white; color: black; white-space: pre-wrap;
+    textarea { background: Field; color: FieldText; white-space: pre-wrap;
                overflow-wrap: break-word; border: 1px solid #767676;
                border-radius: 0; padding: 2px; margin: 0 }
 "#;

@@ -1,5 +1,6 @@
 //! Окраска плоского и объёмного преобразования поддерева.
 
+mod plane_spec;
 mod projection;
 pub(super) use projection::paint_3d;
 

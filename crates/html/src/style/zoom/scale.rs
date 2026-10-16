@@ -92,19 +92,7 @@ pub(super) fn scale_own(c: &mut Computed, k: f32) {
     // собственного размера (`translate_pct`, `m4_pct`) уже считаются от
     // домноженной коробки — их множитель лёг бы вторым.
     if let Some(t) = c.transform.as_mut() {
-        t.translate.0 *= k;
-        t.translate.1 *= k;
-        for row in t.tr.iter_mut() {
-            row[0] *= k;
-        }
-        for row in t.m4.iter_mut().take(3) {
-            row[3] *= k;
-        }
-        // `perspective(d)` живёт одной ячейкой m34 = −1/d
-        // (`Computed::perspective4`): расстояние домножается — ячейка делится.
-        if t.m4[3][2] != 0.0 {
-            t.m4[3][2] /= k;
-        }
+        scale_transform(t, k);
     }
     // `perspective` и точки отсчёта преобразования — тоже длины.
     c.perspective = c.perspective.map(|d| d * k);
@@ -140,5 +128,27 @@ pub(super) fn scale_own(c: &mut Computed, k: f32) {
     }
     if let Some(Some(pair)) = c.td_inset.as_mut() {
         pair.iter_mut().for_each(dl);
+    }
+}
+
+/// Длины внутри `transform` под множитель `k`: столбец сдвига ×k, строка w
+/// (перспектива) ÷k — подобие S·M·S⁻¹, S = diag(k, k, k, 1). Нужна и там, где
+/// `transform: inherit` берёт значение родителя уже после прохода зума
+/// (`paint::effects::transform`), с `k = eff_ребёнка / eff_родителя`.
+pub(crate) fn scale_transform(t: &mut crate::style::computed::Transform, k: f32) {
+    t.translate.0 *= k;
+    t.translate.1 *= k;
+    for row in t.tr.iter_mut() {
+        row[0] *= k;
+    }
+    for row in t.m4.iter_mut().take(3) {
+        row[3] *= k;
+    }
+    // `perspective(d)` живёт одной ячейкой m34 = −1/d
+    // (`Computed::perspective4`): расстояние домножается — ячейка делится.
+    // Вся строка w (не только m34): `perspective(d) rotateY(a)` кладёт
+    // долю перспективы и в m41 — подобие S·M·S⁻¹, S = diag(k, k, k, 1).
+    for v in t.m4[3].iter_mut().take(3) {
+        *v /= k;
     }
 }

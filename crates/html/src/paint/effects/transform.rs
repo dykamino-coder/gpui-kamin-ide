@@ -57,13 +57,24 @@ pub(crate) fn transformed_with(
             c
         } else {
             let mut own = c.clone();
+            // Значение родителя уже в его зуме: домножаем на отношение
+            // собственного зума к родительскому (css-viewport-1 §493).
+            let k = c.zoom_eff.unwrap_or(1.0) / parent.zoom_eff.unwrap_or(1.0);
             if bits & inh::TRANSFORM != 0 {
                 own.transform = parent.transform;
+                if let Some(t) = own.transform.as_mut()
+                    && (k - 1.0).abs() > f32::EPSILON
+                {
+                    crate::style::zoom::scale_transform(t, k);
+                }
             }
             if bits & inh::TRANSFORM_ORIGIN != 0 {
                 own.transform_origin = parent.transform_origin;
                 own.transform_origin_px = parent.transform_origin_px;
                 own.transform_origin_z = parent.transform_origin_z;
+                own.transform_origin_px.0 = own.transform_origin_px.0.map(|v| v * k);
+                own.transform_origin_px.1 = own.transform_origin_px.1.map(|v| v * k);
+                own.transform_origin_z = own.transform_origin_z.map(|v| v * k);
             }
             inherited_tf = own;
             &inherited_tf

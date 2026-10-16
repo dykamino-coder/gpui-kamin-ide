@@ -105,8 +105,8 @@ head, title, meta, link, template { display: none }
     del, s { text-decoration: line-through }
     ins { text-decoration: underline }
     mark { background: #ffe066; color: #1a1c23 }
-    button { background: #3d3f51; border: 1px solid #4a4a5a; color: #e6e6ee }
-    *::scroll-button(*) { background: #3d3f51; border: 1px solid #4a4a5a; color: #e6e6ee }
+    button { background: ButtonFace; border: 1px solid ButtonBorder; color: ButtonText }
+    *::scroll-button(*) { background: ButtonFace; border: 1px solid ButtonBorder; color: ButtonText }
     dd { margin-left: 32px }
     dt { font-weight: 700; margin: 6px 0 2px }
     figure { margin: 8px 0 }
@@ -131,6 +131,7 @@ head, title, meta, link, template { display: none }
     table { margin: 6px 0 }
     th { font-weight: 700; padding: 4px 8px; text-align: left }
     td { padding: 4px 8px }
+    input, textarea, select { color: FieldText }
     button { padding: 4px 10px; border-radius: 4px }
     /* Руби (css-ruby-1, Appendix A.1): скобки `rp` — только для движков без
        руби; аннотация вполовину кегля, одной строкой, без знака акцента.

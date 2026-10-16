@@ -38,6 +38,7 @@ use crate::style::values::value::Len;
 mod explicit;
 mod scale;
 use explicit::{explicit, remember};
+pub(crate) use scale::scale_transform;
 use scale::{scale_own, scale_shadow};
 
 /// Наследуемые длины, которые проход несёт вниз В ТОЧКАХ: значение

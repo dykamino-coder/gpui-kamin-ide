@@ -179,6 +179,9 @@ pub fn apply(d: Div, c: &Computed) -> Div {
     if c.floated_box || c.float.is_some_and(|f| f != 0) {
         d.style().no_inline_block_baseline = Some(true);
     }
+    if c.baseline_orthogonal {
+        d.style().baseline_unavailable = Some(true);
+    }
     d = apply_box(d, c);
     d = apply_paint(d, c);
     apply_text(d, c)

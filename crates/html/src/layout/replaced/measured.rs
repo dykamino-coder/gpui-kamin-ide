@@ -11,7 +11,9 @@ pub(crate) fn natural_control(mut painted: gpui::Div, natural: gpui::Size<Pixels
     let mut native = Style::default();
     native.refine(painted.style());
     let ratio = native.aspect_ratio;
-    painted = painted.size_full();
+    // Native decoration is clipped internally; the host keeps its authored overflow.
+    // Putting hidden on the host would erase a flex item's automatic minimum.
+    painted = painted.size_full().overflow_hidden();
     let inner = painted.style();
     inner.margin = Default::default();
     inner.min_size = Default::default();

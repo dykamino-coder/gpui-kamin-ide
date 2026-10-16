@@ -110,6 +110,9 @@ struct BlurScratch {
     /// нулевой размер — без клипа. Живёт отдельно от текстуры: старый
     /// `clip` режет и группу БЕЗ маски-изображения.
     group_clip: Vec<[f32; 4]>,
+    /// KaminIDE patch: гомография плоскости и BSP-куски каждой группы.
+    group_proj: Vec<[[f32; 4]; 3]>,
+    group_frags: Vec<Vec<([[f32; 4]; 4], u32)>>,
     /// Текстуры масок по картинке-источнику: заливать пиксели каждый кадр
     /// незачем, картинка неизменна (`ImageId` уникален на содержимое).
     mask_cache: HashMap<ImageId, [Option<ID3D11ShaderResourceView>; 1]>,
@@ -146,6 +149,23 @@ struct BlurQuad {
     mask_rect: [f32; 4],
     /// Коробка окраски маски: вне её маска пуста; нулевой размер — нет клипа.
     mask_clip: [f32; 4],
+    /// KaminIDE patch: обратная гомография плоскости (точка кадра → точка
+    /// буфера), строки xyz; `proj[2][3] > 0.5` — включена.
+    proj: [[f32; 4]; 3],
+}
+
+/// KaminIDE patch: вершины многоугольника парами (до восьми; больше — без
+/// обрезки) для `BlurQuad::poly`.
+fn pack_poly(points: &[gpui::Point<gpui::ScaledPixels>]) -> ([[f32; 4]; 4], u32) {
+    let mut poly = [[0.0f32; 4]; 4];
+    if points.len() > 8 {
+        return (poly, 0);
+    }
+    for (i, point) in points.iter().enumerate() {
+        poly[i / 2][(i % 2) * 2] = point.x.0;
+        poly[i / 2][(i % 2) * 2 + 1] = point.y.0;
+    }
+    (poly, points.len() as u32)
 }
 
 /// KaminIDE patch: матрица 4×5 подложки в поля `BlurQuad`, свободные в
@@ -299,6 +319,7 @@ fn blur_down_pass(
         poly: [[0.0; 4]; 4],
         mask_rect: [0.0; 4],
         mask_clip: [0.0; 4],
+        proj: [[0.0; 4]; 3],
     };
     pipeline.update_buffer(device, dc, &[quad])?;
     unsafe {
@@ -834,6 +855,8 @@ impl DirectXRenderer {
             self.blur.group_poly.clear();
             self.blur.group_mask.clear();
             self.blur.group_clip.clear();
+            self.blur.group_proj.clear();
+            self.blur.group_frags.clear();
             return Ok(());
         }
         let device = self.dev().device.clone();
@@ -860,6 +883,8 @@ impl DirectXRenderer {
         self.blur.group_poly.clear();
         self.blur.group_mask.clear();
         self.blur.group_clip.clear();
+        self.blur.group_proj.clear();
+        self.blur.group_frags.clear();
         // Кэш текстур масок не растёт без предела: смена страницы рождает
         // новые `ImageId`, старые записи никому не нужны.
         if self.blur.mask_cache.len() > 64 {
@@ -900,6 +925,13 @@ impl DirectXRenderer {
                     group.polygon.len().min(8) as u32
                         | if group.polygon_inverse { 16 } else { 0 },
                 ));
+            self.blur.group_proj.push(match group.projection {
+                Some(h) => [[h[0], h[1], h[2], 0.0], [h[3], h[4], h[5], 0.0], [h[6], h[7], h[8], 1.0]],
+                None => [[0.0; 4]; 3],
+            });
+            self.blur
+                .group_frags
+                .push(group.fragments.iter().map(|f| pack_poly(f)).collect());
             let mask = group.mask.as_ref().and_then(|img| {
                 let srv = match self.blur.mask_cache.get(&img.id) {
                     Some(srv) => srv.clone(),
@@ -995,6 +1027,7 @@ impl DirectXRenderer {
             poly: [[0.0; 4]; 4],
             mask_rect: [0.0; 4],
             mask_clip: [0.0; 4],
+            proj: [[0.0; 4]; 3],
         };
         self.pipelines
             .blur_pipeline
@@ -1716,6 +1749,7 @@ impl DirectXRenderer {
             poly: s.color_matrix.map_or([[0.0; 4]; 4], |m| matrix_rows(&m).0),
             mask_rect: s.color_matrix.map_or([0.0; 4], |m| matrix_rows(&m).1),
             mask_clip: [0.0; 4],
+            proj: [[0.0; 4]; 3],
         };
         self.pipelines
             .blur_pipeline
@@ -1809,6 +1843,7 @@ impl DirectXRenderer {
             poly,
             mask_rect: shift,
             mask_clip: [0.0; 4],
+            proj: [[0.0; 4]; 3],
         };
         self.pipelines
             .blur_pipeline
@@ -1855,6 +1890,27 @@ impl DirectXRenderer {
             .get(s.group as usize - 1)
             .copied()
             .unwrap_or(([[0.0; 4]; 4], 0));
+        // KaminIDE patch: кусок плоскости после BSP-разреза — свой многоугольник.
+        let (poly, poly_count) = match s.fragment {
+            0 => (poly, poly_count),
+            k => self
+                .blur
+                .group_frags
+                .get(s.group as usize - 1)
+                .and_then(|f| f.get(k as usize - 1))
+                .copied()
+                .unwrap_or((poly, poly_count)),
+        };
+        let mut group_proj = self
+            .blur
+            .group_proj
+            .get(s.group as usize - 1)
+            .copied()
+            .unwrap_or([[0.0; 4]; 3]);
+        // Кусок BSP-разреза: края многоугольника жёсткие (см. shaders.hlsl).
+        if s.fragment > 0 {
+            group_proj[0][3] = 1.0;
+        }
         let mask = self
             .blur
             .group_mask
@@ -1943,6 +1999,7 @@ impl DirectXRenderer {
             poly,
             mask_rect,
             mask_clip,
+            proj: group_proj,
         };
         self.pipelines
             .blur_pipeline

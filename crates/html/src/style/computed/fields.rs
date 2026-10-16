@@ -457,6 +457,11 @@ pub struct Computed {
     /// противопоказана (`grid-lanes/.../column-explicit-placement-002`
     /// 0.00 -> 10.02 при общем флаге).
     pub hug_claim: bool,
+    /// Ортогональный (вертикальный) блок в потоке горизонтального блочного
+    /// контейнера: baseline-набор родителя его не берёт (css-writing-modes-4
+    /// §4.3, css-align-3 §9.1 «baseline-export»; Blink пропускает
+    /// ортогональных детей). Ставится сборщиком детей контейнера.
+    pub baseline_orthogonal: bool,
     /// `order`: визуальный порядок в гибкой строке. Раскладка под нами его не
     /// знает, поэтому детей переставляет сам сборщик дерева.
     pub order: Option<i32>,
@@ -1544,4 +1549,6 @@ pub struct Computed {
     pub accent_color: Option<Color>,
     /// `appearance` (css-ui-4 §7.2); `None` is the initial `auto`.
     pub appearance: Option<crate::style::computed::Appearance>,
+    /// Element used color scheme, shared by CSS system colours and native controls.
+    pub dark_color_scheme: bool,
 }
