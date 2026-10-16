@@ -2,6 +2,9 @@
 
 use super::*;
 
+mod rule_widths;
+mod structured;
+
 pub(super) fn scale_shadow(sh: &mut Shadow, k: f32) {
     sh.x *= k;
     sh.y *= k;
@@ -13,6 +16,7 @@ pub(super) fn scale_shadow(sh: &mut Shadow, k: f32) {
 /// и единицы шрифта не трогаются (§493; шрифтовые считаются от уже
 /// домноженного кегля).
 pub(super) fn scale_own(c: &mut Computed, k: f32) {
+    rule_widths::scale(c, k);
     let mul = |l: &mut Option<Len>| match *l {
         Some(Len::Px(v)) => *l = Some(Len::Px(v * k)),
         Some(Len::EmPx(e, add)) => *l = Some(Len::EmPx(e, add * k)),
@@ -39,8 +43,6 @@ pub(super) fn scale_own(c: &mut Computed, k: f32) {
         &mut c.tab_size_len,
         &mut c.column_width,
         &mut c.column_gap,
-        &mut c.column_rule_width,
-        &mut c.row_rule_width,
         &mut c.shape_margin,
     ] {
         mul(l);
@@ -112,6 +114,7 @@ pub(super) fn scale_own(c: &mut Computed, k: f32) {
     }
     // `vertical-align: 20px` хранится точками со знаком — тоже длина.
     c.vertical_shift_px = c.vertical_shift_px.map(|v| v * k);
+    structured::scale(c, k);
     // Длины украшений текста (css-text-decor-4): толщина, смещение
     // подчёркивания, отступы концов.
     let dl = |l: &mut crate::style::computed::DecorLen| match l {
