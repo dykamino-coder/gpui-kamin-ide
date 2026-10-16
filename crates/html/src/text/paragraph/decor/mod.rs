@@ -8,6 +8,7 @@
 mod ink;
 mod paint_decor;
 mod shaped;
+mod visual_inset;
 
 mod skip_spaces;
 

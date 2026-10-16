@@ -1559,4 +1559,6 @@ pub struct Computed {
     pub appearance: Option<crate::style::computed::Appearance>,
     /// Element used color scheme, shared by CSS system colours and native controls.
     pub dark_color_scheme: bool,
+    /// DOM identity of this decorating box; never inherited.
+    pub decor_box: u64,
 }

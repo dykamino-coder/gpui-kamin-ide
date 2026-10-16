@@ -140,13 +140,8 @@ impl Computed {
                     return;
                 }
                 let words = crate::paint::background::split_top(&t);
-                // Смесь доли и точек доживает до отрисовки: доля — от
-                // ширины украшенного прогона (css-text-decor-4 §4.1).
-                let one = |w: &str| match crate::style::values::value::calc_pct_px(w) {
-                    Some((k, p)) if k != 0.0 => Some(DecorLen::Mix(k, p)),
-                    _ => parse_decor_length(w),
-                };
-                let lens: Vec<DecorLen> = words.iter().filter_map(|w| one(w)).collect();
+                let lens: Vec<DecorLen> =
+                    words.iter().filter_map(|w| parse_decor_inset(w)).collect();
                 if lens.len() != words.len() || lens.is_empty() || lens.len() > 2 {
                     return;
                 }
