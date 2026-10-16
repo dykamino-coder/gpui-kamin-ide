@@ -57,3 +57,26 @@ fn loose_hyphens_use_the_tailored_preceding_class() {
         assert!(stops(&p).contains(&2), "{text}");
     }
 }
+
+#[test]
+fn explicit_writing_system_precedes_the_language_default() {
+    for lang in ["ja", "ZH", "ja-Jpan", "en-Hrkt", "ko-Hani"] {
+        assert!(super::cjk_writing(lang), "{lang}");
+    }
+    for lang in ["ja-Hang", "zh-Latn", "ko", "en", "jargon"] {
+        assert!(!super::cjk_writing(lang), "{lang}");
+    }
+}
+
+#[test]
+fn auto_phrase_retains_hyphenation_for_overflow_only() {
+    let mut p = paragraph("ab\u{ad}cd");
+    p.wrap.break_all = false;
+    p.wrap.auto_phrase = true;
+    assert!(stops(&p).is_empty());
+    assert!(
+        p.opportunities_with_fallback(true)
+            .iter()
+            .any(|s| s.at == 4)
+    );
+}
