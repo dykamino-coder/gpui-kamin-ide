@@ -107,7 +107,9 @@ pub(crate) fn generic_children(
     // `auto`, §5.2; `styled_div_with` срез не ставит): без этого гейта
     // бюджет абзаца счётного режима поставил бы «…» (`line-clamp-039`).
     let is_clamp = (e.style.clamp_lines().is_some()
-        || (e.style.clamp_auto == Some(true) && auto_clamp_limit(&merged).is_some()))
+        || (e.style.clamp_auto == Some(true)
+            && e.style.clamp_block_container()
+            && auto_clamp_limit(&merged).is_some()))
         && !multicol_container(&e.style);
     let _clamp_guard = is_clamp.then(|| crate::text::clamp::ClampGuard::enter(e.node_id));
     let makes_bfc = matches!(
