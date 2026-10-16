@@ -1,6 +1,9 @@
 //! `:has()`.
 // owner: B
 
+mod collect;
+pub(crate) use collect::collect_has_args;
+
 use crate::style::css::Selector;
 use crate::style::select::matching::matches;
 use crate::style::select::{Ancestor, Sibs, census_of};
@@ -87,49 +90,6 @@ pub(crate) fn parse_has_arg(arg: &str) -> Option<HasArg> {
     })
 }
 
-/// Собрать строки-аргументы всех `:has()` селектора, включая вложенные в
-/// `:not()` и `of S`. Возвращает false, если встретился НЕдопустимый -
-/// вложенный `:has` (правило целиком недействительно, спека: cannot be
-/// nested).
-pub(crate) fn collect_has_args(sel: &Selector, out: &mut Vec<String>) -> bool {
-    for p in sel.pseudo.iter().chain(sel.also.iter()) {
-        if let Some(rest) = p.strip_prefix("has(").and_then(|r| r.strip_suffix(')')) {
-            if rest.contains("has(") {
-                return false;
-            }
-            if !out.iter().any(|a| a == rest) {
-                out.push(rest.to_string());
-            }
-        } else if let Some(inner) = p.strip_prefix("not(").and_then(|r| r.strip_suffix(')')) {
-            if let Some(s) = Selector::parse(inner)
-                && !collect_has_args(&s, out)
-            {
-                return false;
-            }
-        } else if let Some((_, arg)) = p.split_once('(')
-            && let Some(arg) = arg.strip_suffix(')')
-            && let Some((_, list)) = crate::style::css::nth_of_parts(arg)
-        {
-            for s in &list {
-                if !collect_has_args(s, out) {
-                    return false;
-                }
-            }
-        }
-    }
-    if let Some(a) = &sel.ancestor
-        && !collect_has_args(&a.0, out)
-    {
-        return false;
-    }
-    if let Some(pr) = &sel.prev
-        && !collect_has_args(&pr.0, out)
-    {
-        return false;
-    }
-    true
-}
-
 /// Паспорт якоря с пришитым атрибутом-стражем.
 fn with_sentinel(a: &Ancestor) -> Ancestor {
     let mut out = a.clone();
@@ -213,4 +173,17 @@ pub(crate) fn mark_has(handle: &Handle, args: &[HasArg], path: &mut Vec<Ancestor
         path.pop();
         pos += 1;
     }
+}
+
+/// Relational matches anchored on the host but searching its shadow tree.
+pub(crate) fn shadow_marks(root: &Handle, args: &[HasArg], host: &Ancestor) -> Vec<u64> {
+    let mut path = vec![with_sentinel(host)];
+    args.iter()
+        .filter(|arg| {
+            arg.parts
+                .iter()
+                .any(|(sibling, sel)| !sibling && has_in_subtree(root, sel, &mut path))
+        })
+        .map(|arg| arg.id)
+        .collect()
 }

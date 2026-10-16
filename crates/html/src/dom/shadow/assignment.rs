@@ -126,6 +126,7 @@ pub(super) fn assign_slots(
         drafts.insert(
             key,
             SlotInfo {
+                origin: None,
                 slot,
                 assigned: assigned.remove(&key).unwrap_or_default(),
                 outer: outer.clone(),
