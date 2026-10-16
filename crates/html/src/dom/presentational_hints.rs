@@ -41,9 +41,20 @@ pub(super) fn rules(
         .chain(cell_padding(tag, path))
         .chain(table_height(tag, attrs))
         .chain(column_width(tag, attrs))
+        .chain(font_color(tag, attrs))
         .chain(super::presentational_hr::rule(tag, attrs))
         .chain(super::presentational_legacy::rule(tag, attrs, path))
         .collect()
+}
+
+/// HTML rendering §15.3.4: legacy font colors participate below author CSS.
+fn font_color(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
+    if tag != "font" {
+        return None;
+    }
+    let raw = &attrs.iter().find(|(name, _)| name == "color")?.1;
+    let color = super::presentational_hr::legacy_color(raw)?;
+    hint(&format!("color: {color}"))
 }
 
 /// HTML rendering §15.3.8 maps col/colgroup width into the hint origin.

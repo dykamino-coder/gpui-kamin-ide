@@ -1559,4 +1559,6 @@ pub struct Computed {
     pub appearance: Option<crate::style::computed::Appearance>,
     /// Element used color scheme, shared by CSS system colours and native controls.
     pub dark_color_scheme: bool,
+    /// Preferred scheme exposed by this element to an embedded document.
+    pub embedding_dark_scheme: bool,
 }

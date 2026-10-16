@@ -57,7 +57,11 @@ pub(super) fn policy(nodes: &[Node]) -> Option<Computed> {
     Some(c)
 }
 
-pub(super) fn wrap(nodes: Vec<Node>, policy: Option<Computed>) -> Vec<Node> {
+pub(super) fn wrap(
+    nodes: Vec<Node>,
+    policy: Option<Computed>,
+    canvas: Option<crate::style::values::value::Color>,
+) -> Vec<Node> {
     let Some(c) = policy else { return nodes };
     fn maximum_id(nodes: &[Node]) -> u64 {
         nodes
@@ -77,6 +81,7 @@ pub(super) fn wrap(nodes: Vec<Node>, policy: Option<Computed>) -> Vec<Node> {
         width: Some(Len::Vw(1.0)),
         height: Some(Len::Vh(1.0)),
         border_box: Some(true),
+        background: canvas,
         overflow_x: c.overflow_x,
         overflow_y: c.overflow_y,
         rtl: c.rtl,
@@ -89,12 +94,17 @@ pub(super) fn wrap(nodes: Vec<Node>, policy: Option<Computed>) -> Vec<Node> {
     vec![Node::Element(viewport)]
 }
 
-pub(super) fn prepare_embedded(nodes: Vec<Node>, responsive: bool) -> Vec<Node> {
-    let viewport = policy(&nodes);
+pub(super) fn prepare_embedded(
+    nodes: Vec<Node>,
+    responsive: bool,
+    owner_dark: Option<bool>,
+) -> Vec<Node> {
+    let canvas = canvas_backing(&nodes, owner_dark);
+    let viewport = policy(&nodes).or_else(|| canvas.map(|_| Computed::default()));
     let (nodes, _) = super::unwrap_document(super::mark_canvas_background(super::resolve_logical(
         super::propagate_writing_mode(super::viewport_overflow(nodes)),
     )));
-    let mut nodes = wrap(nodes, viewport);
+    let mut nodes = wrap(nodes, viewport, canvas);
     if responsive
         && let [Node::Element(root)] = nodes.as_mut_slice()
         && root.tag == "html-viewport"
@@ -106,16 +116,37 @@ pub(super) fn prepare_embedded(nodes: Vec<Node>, responsive: bool) -> Vec<Node> 
 
 // Keep document preparation identical for initial, updated, and embedded markup.
 pub(super) fn prepare(nodes: Vec<Node>) -> (Vec<Node>, Computed) {
-    let viewport = policy(&nodes).filter(|c| {
-        c.scroll.colors.flatten().is_some()
-            || c.scroll.forced.into_iter().any(|v| v)
-            || c.scroll.gutter.is_some_and(|v| v != 0)
-    });
+    let canvas = canvas_backing(&nodes, None);
+    let viewport = policy(&nodes)
+        .or_else(|| canvas.map(|_| Computed::default()))
+        .filter(|c| {
+            canvas.is_some()
+                || c.scroll.colors.flatten().is_some()
+                || c.scroll.forced.into_iter().any(|v| v)
+                || c.scroll.gutter.is_some_and(|v| v != 0)
+        });
     let (nodes, root) =
         super::unwrap_document(super::mark_canvas_background(super::resolve_logical(
             super::propagate_writing_mode(super::viewport_overflow(nodes)),
         )));
-    (wrap(nodes, viewport), root)
+    (wrap(nodes, viewport, canvas), root)
+}
+
+fn canvas_backing(
+    nodes: &[Node],
+    owner: Option<bool>,
+) -> Option<crate::style::values::value::Color> {
+    let dark = nodes.iter().find_map(|n| match n {
+        Node::Element(e) if e.tag == "html" => Some(e.style.dark_color_scheme),
+        _ => None,
+    })?;
+    if owner.map_or(!dark, |owner| owner == dark) {
+        return None;
+    }
+    Some(crate::style::values::value::system_color(
+        crate::style::values::value::SystemColor::Canvas,
+        dark,
+    ))
 }
 
 #[cfg(test)]
