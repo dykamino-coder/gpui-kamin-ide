@@ -44,6 +44,18 @@ pub(crate) fn group_area(
         (l + t + r + b > 0.0).then_some((l, t, r, b))
     });
     let (sl, st, sr, sb) = shape_ext.unwrap_or((0.0, 0.0, 0.0, 0.0));
+    let [t, r, b, l] = group.corner_clip.as_ref().map_or([0.0; 4], |c| c.insets);
+    let guard = if group.corner_clip.is_some() {
+        1.0
+    } else {
+        0.0
+    };
+    let (sl, st, sr, sb) = (
+        sl.max(-l + guard),
+        st.max(-t + guard),
+        sr.max(-r + guard),
+        sb.max(-b + guard),
+    );
     // Опорная коробка шире `bounds` (`clip-path: margin-box`, срезы с
     // отрицательными краями): буфер группы кроет и поля, иначе краска
     // там (outline) терялась бы вместе с буфером.

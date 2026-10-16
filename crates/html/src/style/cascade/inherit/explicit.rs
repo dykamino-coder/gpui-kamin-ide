@@ -15,6 +15,13 @@ pub(super) fn inherit_explicit(parent: &Computed, own: &Computed, c: &mut Comput
         if on(inh::Z_INDEX) {
             c.z_index = parent.z_index;
         }
+        if on(inh::CORNER_SHAPE) {
+            c.corner_shape = parent.corner_shape;
+        }
+        if on(inh::RADIUS) {
+            c.radius = parent.radius;
+            c.radius_ell = parent.radius_ell;
+        }
         if own.inherit_bits & (inh::OUTLINE_W | inh::OUTLINE_C | inh::OUTLINE_S | inh::OUTLINE_O)
             != 0
         {

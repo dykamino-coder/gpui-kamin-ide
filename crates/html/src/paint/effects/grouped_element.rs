@@ -40,6 +40,8 @@ pub struct Grouped {
     /// размер коробки (mask-size auto без своего размера = область,
     /// css-masking §7.4), а он известен только здесь.
     pub mask: Option<String>,
+    /// Separate decoration and overflow contours for shaped corners.
+    pub(crate) corner_clip: Option<super::corner_clip::CornerClip>,
     /// `mask-size`: размер плитки; None — auto (интринзик картинки).
     pub mask_size: Option<(
         crate::style::values::value::Len,
@@ -101,6 +103,13 @@ pub struct Grouped {
     /// а рамка лежит снаружи него и поверх обрезанных детей. Колбэк — как у
     /// `under`.
     pub over: Vec<Box<dyn Fn(f32, f32, f32, f32, f32, f32) -> Option<String>>>,
+    /// Вынос слоёв `under`/`over` за border-box (l t r b) сверх области
+    /// группы: тени и контур `corner-shape` лежат снаружи её маски.
+    pub deco_ext: [f32; 4],
+    /// Заливки по пути (маска `pathdef:` × цвет) под и над буфером:
+    /// резкие тени и контур `corner-shape`; колбэк — как у `under`.
+    pub under_fills: Option<FillLayer>,
+    pub over_fills: Option<FillLayer>,
     /// Множитель интринзика плитки маски: у SVG-ребёнка маска живёт в ЕГО
     /// пользовательских единицах (css-masking-1 §7.4 `auto` — размер
     /// картинки в системе координат элемента), и при `viewBox` 50×50
@@ -114,11 +123,18 @@ pub struct Grouped {
     pub ring_over: Option<(String, crate::style::values::value::Color, [f32; 4])>,
 }
 
+/// Слой заливок: записи `pathdef:` в точках слоя и их цвета.
+pub type FillLayer =
+    Box<dyn Fn(f32, f32, f32, f32, f32, f32) -> Vec<(String, crate::style::values::value::Color)>>;
+
 impl Grouped {
     pub fn new(child: AnyElement) -> Self {
         Grouped {
             under: None,
             over: Vec::new(),
+            deco_ext: [0.0; 4],
+            under_fills: None,
+            over_fills: None,
             mask_scale: 1.0,
             ring_over: None,
             child: Some(child),
@@ -130,6 +146,7 @@ impl Grouped {
             polygon_evenodd: false,
             poly_expand: [0.0; 4],
             mask: None,
+            corner_clip: None,
             mask_size: None,
             mask_fit: 0,
             mask_no_repeat: (false, false),

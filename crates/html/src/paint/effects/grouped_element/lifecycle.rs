@@ -52,6 +52,9 @@ impl Element for Grouped {
         // Mask positioning box before device snapping (css-masking-1 §7.7).
         let mask_box =
             mask_geometry::positioning_box(self.mask.as_deref(), bounds, *_state, window);
+        if let Some(clip) = self.corner_clip.as_mut() {
+            clip.prepaint(mask_box, window, cx);
+        }
         (clip_bounds, mask_box)
     }
 

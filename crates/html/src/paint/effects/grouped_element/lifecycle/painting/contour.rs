@@ -29,7 +29,11 @@ pub(super) fn outer(
         f32::from(shape_box.size.width),
         f32::from(shape_box.size.height),
     );
-    let Some(path) = crate::paint::background::contour_outline(spec, bw, bh) else {
+    let path = match group.corner_clip.as_ref() {
+        Some(clip) => crate::paint::background::contour_offset(spec, bw, bh, clip.insets),
+        None => crate::paint::background::contour_outline(spec, bw, bh),
+    };
+    let Some(path) = path else {
         return (polygon, None, true);
     };
     match path.polygon() {
@@ -43,7 +47,17 @@ pub(super) fn outer(
         }
         _ => (
             Vec::new(),
-            Some(format!("pathdef:nonzero:{}", path.svg_d())),
+            Some(if let Some(clip) = &group.corner_clip {
+                let [t, _, _, l] = clip.insets;
+                let d = crate::paint::decorations::shaped_outset::moved(
+                    &path,
+                    (-l).max(0.0) + 1.0,
+                    (-t).max(0.0) + 1.0,
+                );
+                format!("pathdef:nonzero:{d}")
+            } else {
+                format!("pathdef:nonzero:{}", path.svg_d())
+            }),
             false,
         ),
     }

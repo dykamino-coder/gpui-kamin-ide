@@ -150,6 +150,10 @@ pub(crate) mod inh {
     pub(crate) const COLUMN_RULE_C: u32 = 1 << 16;
     /// `row-rule-color: inherit`.
     pub(crate) const ROW_RULE_C: u32 = 1 << 17;
+    /// `corner-shape: inherit` — параметры углов родителя.
+    pub(crate) const CORNER_SHAPE: u32 = 1 << 18;
+    /// `border-radius: inherit` — радиусы углов родителя.
+    pub(crate) const RADIUS: u32 = 1 << 19;
 }
 
 /// Разряды `will_change` (css-will-change-1 §2.1): чего ждать от коробки,

@@ -11,7 +11,7 @@ use borders::paint_border_colors;
 pub(crate) use borders::{border_layer, double_border};
 use shadows::paint_shadows;
 
-pub(super) fn apply_paint(mut d: Div, c: &Computed) -> Div {
+pub(crate) fn apply_paint(mut d: Div, c: &Computed) -> Div {
     d.style().css_border_snap = Some(true);
     // Atomic paint (CSS 2.1 Appendix E step 7.2.1.4 for inline-blocks, step 5
     // for floats; css-flexbox-1 §5.4 and css-grid-1 §9: flex and grid items
@@ -49,7 +49,10 @@ pub(super) fn apply_paint(mut d: Div, c: &Computed) -> Div {
     // Фон, обрезанный внутренним краем (`background-clip`), красит не сама
     // коробка, а отдельный слой внутри неё (`render::clip_layer`): коробка в
     // раскладке красится целиком, вместе с рамкой и полями.
-    if c.color_clip().is_none() && !crate::paint::background::single_corner::eligible(c) {
+    if c.color_clip().is_none()
+        && !crate::paint::background::single_corner::eligible(c)
+        && crate::paint::effects::corner_clip::insets(c).is_none()
+    {
         if let Some(g) = &c.gradient {
             // Градиенту с размером/повтором/позицией нужна механика плитки —
             // его рисует слой-картинка (см. render::decorations), заливка
@@ -71,7 +74,9 @@ pub(super) fn apply_paint(mut d: Div, c: &Computed) -> Div {
     if c.border_dotted == Some(true) {
         d.style().border_style = Some(gpui::BorderStyle::Dotted);
     }
-    if let Some(o) = c.opacity {
+    if let Some(o) = c.opacity
+        && crate::paint::effects::corner_clip::insets(c).is_none()
+    {
         d = d.opacity(o);
     }
     // `visibility: hidden` — элемент занимает своё место, но не рисуется.

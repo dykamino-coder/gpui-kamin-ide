@@ -65,6 +65,16 @@ impl Computed {
                     );
                 }
             }
+            // css-cascade-4 §inherit: значение родителя целиком
+            // (`cascade::inherit::explicit`).
+            "border-radius" | "corner-shape" if v.trim().eq_ignore_ascii_case("inherit") => {
+                use crate::style::computed::inh;
+                self.inherit_bits |= if key == "corner-shape" {
+                    inh::CORNER_SHAPE
+                } else {
+                    inh::RADIUS
+                };
+            }
             "corner-shape" => {
                 if let Some(k) = corner_shape_shorthand(v) {
                     self.corner_shape = Some(k);
