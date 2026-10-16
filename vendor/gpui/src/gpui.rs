@@ -13,6 +13,7 @@ mod arena;
 mod asset_cache;
 mod assets;
 mod bounds_tree;
+mod plane_bsp;
 mod color;
 /// The default colors used by GPUI.
 pub mod colors;

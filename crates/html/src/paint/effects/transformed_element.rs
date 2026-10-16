@@ -26,7 +26,7 @@ pub struct Transformed {
     /// Полная 4×4 элемента и доли размера в её столбце сдвига
     /// (`computed::Transform::m4`/`m4_pct`); `has_3d` — идти по ней.
     pub m4: [[f32; 4]; 4],
-    pub m4_pct: [[f32; 2]; 4],
+    pub m4_pct: [[[f32; 4]; 4]; 2],
     pub has_3d: bool,
     /// `backface-visibility: hidden` — решается по `m4[2][2]` на отрисовке,
     /// коробка держит место.
@@ -144,7 +144,7 @@ impl Transformed {
             lin: [[1.0, 0.0], [0.0, 1.0]],
             tr: [[0.0; 3]; 2],
             m4: crate::style::computed::IDENTITY4,
-            m4_pct: [[0.0; 2]; 4],
+            m4_pct: [[[0.0; 4]; 4]; 2],
             has_3d: false,
             backface_hidden: false,
             fragment_clip_ancestor: false,

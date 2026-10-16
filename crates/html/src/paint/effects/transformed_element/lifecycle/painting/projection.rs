@@ -1,7 +1,8 @@
 //! Проекция и окраска плоскости в объёмном контексте CSS transforms.
 
+use super::plane_spec;
 use crate::paint::effects::transformed_element::{Transformed, flatten_plane, invert_affine};
-use gpui::{AnyElement, App, Pixels, Window};
+use gpui::{App, Pixels, Window};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn paint_3d(
@@ -25,8 +26,13 @@ pub(crate) fn paint_3d(
     // домножал и m44 — `flatten_plane` делила на него всю матрицу, и
     // каждый объёмный элемент сжимался в 1/sf; scout-3d-2026-09b.md §1.)
     let mut own = group.m4;
-    for i in 0..3 {
-        own[i][3] = (own[i][3] + rw * group.m4_pct[i][0] + rh * group.m4_pct[i][1]) * sf;
+    for (i, row) in own.iter_mut().enumerate() {
+        for (j, v) in row.iter_mut().enumerate() {
+            *v += rw * group.m4_pct[0][i][j] + rh * group.m4_pct[1][i][j];
+        }
+    }
+    for row in own.iter_mut().take(3) {
+        row[3] *= sf;
     }
     for j in 0..3 {
         own[3][j] /= sf;
@@ -73,7 +79,26 @@ pub(crate) fn paint_3d(
         (f32::from(raw_origin.x) + w * 0.5) * sf,
         (f32::from(raw_origin.y) + h * 0.5) * sf,
     );
-    let flat = flatten_plane(&full, center);
+    // Centre behind the eye: take the tangent map at the mean of the corners
+    // that are in front of it (w is linear, so that point is in front too),
+    // so the visible part of a plane crossing w = 0 lands in its buffer
+    // (perspective-split-by-zero-w).
+    let flat = flatten_plane(&full, center).or_else(|| {
+        let (x0, y0) = (f32::from(raw_origin.x) * sf, f32::from(raw_origin.y) * sf);
+        let (x1, y1) = (x0 + w * sf, y0 + h * sf);
+        let front: Vec<(f32, f32)> = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+            .into_iter()
+            .filter(|(x, y)| full[3][0] * x + full[3][1] * y + full[3][3] > 1e-3)
+            .collect();
+        if front.is_empty() || front.len() == 4 {
+            return None;
+        }
+        let n = front.len() as f32;
+        let p = front
+            .iter()
+            .fold((0.0, 0.0), |a, b| (a.0 + b.0 / n, a.1 + b.1 / n));
+        flatten_plane(&full, p)
+    });
     // Ячейка для СВОИХ детей — накопленная и своя аффинная доля;
     // наполняется ДО отрисовки детей, как у перспективы (и ради
     // отложенных слоёв абсолютов).
@@ -94,75 +119,33 @@ pub(crate) fn paint_3d(
         });
         frame.set(Some((full, share)));
     }
-    // Plane depth in the 3D rendering context (css-transforms-2
-    // §3d-transform-rendering: planes of one context render by z, not
-    // document order) — z/w of the box centre under the accumulated
-    // matrix; the context root opens the sorting scope.
-    let depth = {
-        let v = [center.0, center.1, 0.0, 1.0];
-        let row = |i: usize| (0..4).map(|k| full[i][k] * v[k]).sum::<f32>();
-        let (z, wv) = (row(2), row(3));
-        if wv.abs() > 1e-6 { z / wv } else { z }
-    };
     let root_3d = group.frame_3d.is_some() && under.is_none();
     let in_context = root_3d || under.is_some();
-    let paint_child = |child: &mut AnyElement,
-                       m: Option<gpui::TransformationMatrix>,
-                       masked: bool,
-                       window: &mut Window,
-                       cx: &mut App| {
-        if in_context {
-            let mut body = |window: &mut Window| {
-                window.paint_depth_plane(depth, |window| match m {
-                    Some(m) if masked => {
-                        window.with_transformation_masked(m, |window| child.paint(window, cx))
-                    }
-                    Some(m) => window.with_transformation(m, |window| child.paint(window, cx)),
-                    None => child.paint(window, cx),
-                })
-            };
-            if root_3d {
-                window.paint_depth_context(body)
-            } else {
-                body(window)
-            }
+    let child = group.child.as_mut().unwrap();
+    // Plane of a 3D rendering context, or a box under true perspective:
+    // painted flat into a buffer and composited through its exact map
+    // (`plane_spec`), planes of one context BSP-sorted and split by gpui.
+    if in_context || plane_spec::is_projective(&full) {
+        let current = window.current_transformation();
+        let outer = match under.and_then(|(_, fp)| invert_affine(fp)) {
+            Some(inv) => current.compose(inv),
+            None => current,
+        };
+        let x0 = f32::from(raw_origin.x) * sf;
+        let y0 = f32::from(raw_origin.y) * sf;
+        let spec = plane_spec::plane_spec(&full, flat, outer, (x0, y0, x0 + w * sf, y0 + h * sf));
+        let body = |window: &mut Window| window.paint_plane(spec, |window| child.paint(window, cx));
+        if root_3d {
+            window.paint_plane_context(body);
         } else {
-            match m {
-                Some(m) if masked => {
-                    window.with_transformation_masked(m, |window| child.paint(window, cx))
-                }
-                Some(m) => window.with_transformation(m, |window| child.paint(window, cx)),
-                None => child.paint(window, cx),
-            }
-        }
-    };
-    // Ребро (`rotateX(90deg)`) — не рисуется, как и прежняя нулевая
-    // высота. Но в объёмном контексте ПОТОМКИ ребром не становятся
-    // (transform3d-preserve3d-011: `rotateX(90)` над `rotateX(90)` =
-    // 180°): краска идёт под единичной долей, а место каждый потомок
-    // назначает себе сам по накопленной.
-    let Some(flat) = flat else {
-        if group.frame_3d.is_some() {
-            let child = group.child.as_mut().unwrap();
-            paint_child(
-                child,
-                Some(gpui::TransformationMatrix::unit()),
-                false,
-                window,
-                cx,
-            );
+            body(window);
         }
         return;
+    }
+    let Some(flat) = flat else {
+        return;
     };
-    // Своя доля для gpui: родитель УЖЕ втолкнул `F_P`, а вложения
-    // складываются как `outer∘inner` (`Window::with_transformation`) —
-    // значит втолкнуть надо `F_P⁻¹ ∘ G`.
-    let flat = match under.and_then(|(_, fp)| invert_affine(fp)) {
-        Some(inv) => inv.compose(flat),
-        None => flat,
-    };
-    let child = group.child.as_mut().unwrap();
     // Маски детей едут за сплющенной матрицей (как на плоском пути,
-    // `Window::with_transformation_masked`); косая — прежнее поведение.
-    paint_child(child, Some(flat), true, window, cx);
+    // `Window::with_transformation_masked`).
+    window.with_transformation_masked(flat, |window| child.paint(window, cx));
 }
