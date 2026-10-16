@@ -120,9 +120,13 @@ pub(super) fn decorations(c: &Computed) -> Vec<AnyElement> {
                 // CSS UI 4 §outline-style, CSS Borders 4 §border-style:
                 // both lines and the gap occupy the specified total width.
                 // Blink core/paint/border_shape_painter.cc:312-326.
-                out.push(ring_at(off + w, third, corner).into_any_element());
+                out.push(super::outline_phase::outline(
+                    ring_at(off + w, third, corner).into_any_element(),
+                ));
                 let inner_corner = (corner - w + third).max(0.0);
-                out.push(ring_at(off + third, third, inner_corner).into_any_element());
+                out.push(super::outline_phase::outline(
+                    ring_at(off + third, third, inner_corner).into_any_element(),
+                ));
                 return out;
             }
             let mut ring = ring_at(off + w, w, corner);
@@ -134,7 +138,7 @@ pub(super) fn decorations(c: &Computed) -> Vec<AnyElement> {
                 Some(4) => ring = ring.border_dashed(),
                 _ => {}
             }
-            out.push(ring.into_any_element());
+            out.push(super::outline_phase::outline(ring.into_any_element()));
         }
     }
     out

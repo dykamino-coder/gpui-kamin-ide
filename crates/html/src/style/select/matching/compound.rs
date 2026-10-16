@@ -11,6 +11,9 @@ use super::*;
 /// (`ch-unit-001`: ширина `div + div span` терялась). Без сохранённых братьев
 /// (обход вне `walk`) — честно не совпадает, как раньше.
 pub(super) fn ancestor_holds(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
+    if path[at].featureless.is_some() {
+        return super::featureless::matches_featureless(sel, &path[at]).unwrap_or(false);
+    }
     if !matches_ancestor_compound(sel, &path[at]) {
         return false;
     }
@@ -89,19 +92,8 @@ fn matches_ancestor_compound(sel: &Selector, node: &Ancestor) -> bool {
 }
 
 pub(super) fn matches_compound(sel: &Selector, node: &Ancestor) -> bool {
-    // Безликий хост: ни тег, ни `*`, ни класс, ни атрибут его не берут —
-    // только `:host`/`:host(S)`, и все псевдоклассы компаунда обязаны быть
-    // такими (`:host:host` — да, `div:host`, `:host.host` — нет;
-    // `selectors/featureless-002`).
     if node.featureless.is_some() {
-        let bare = sel.tag.is_none()
-            && !sel.universal
-            && sel.id.is_none()
-            && sel.classes.is_empty()
-            && sel.attrs.is_empty();
-        return bare
-            && sel.pseudo.as_deref().is_some_and(|p| host_holds(p, node))
-            && sel.also.iter().all(|p| host_holds(p, node));
+        return super::featureless::matches_featureless(sel, node).unwrap_or(false);
     }
     if let Some(t) = &sel.tag
         && !crate::style::css::default_ns::tag_matches(t, &node.tag, node.foreign)

@@ -27,9 +27,9 @@
 //!
 //! Что остаётся шагу 2: природный размер картинок (`render.rs`,
 //! `natural_ratio`), `vw`/`vh` (`Computed::resolve_viewport`), px внутри
-//! `shape-outside`/`clip-path`, `Calc(i)`, SVG, а также ЯВНОЕ наследование
-//! `transform: inherit` / `perspective: inherit` — флагов `*_inherit` для
-//! них в `Computed` пока нет, и `explicit` их не видит.
+//! `shape-outside`/`clip-path`, `Calc(i)` и SVG. Зарегистрированные явные
+//! `inherit` разрешаются до этого прохода по вычисленным значениям родителя;
+//! полученные абсолютные длины масштабируются как собственные.
 
 use crate::dom::Node;
 use crate::style::computed::{Computed, Shadow, Sides};

@@ -5,6 +5,8 @@ use crate::style::values::value::{Color, Len};
 
 #[derive(Clone, Debug, Default)]
 pub struct Computed {
+    /// Winning explicit-inherit longhands, consumed before effective zoom.
+    pub(crate) explicit_inherit: Vec<crate::style::cascade::inherited_value::Property>,
     /// CSS Scroll Snap: container policy and descendant snap-area geometry.
     pub snap: crate::style::computed::snap::SnapStyle,
     /// Счётчик объявлений этого узла: порядок каскада между логическими и

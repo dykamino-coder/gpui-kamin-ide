@@ -17,6 +17,7 @@ mod backdrop;
 mod border_shape;
 mod gradient_stripes;
 mod outline;
+pub(crate) mod outline_phase;
 mod shadows;
 pub(crate) mod shaped_outset;
 pub(crate) mod shaped_ring;
