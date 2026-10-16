@@ -22,6 +22,21 @@ impl Paragraph {
         // не разобрана; подозрение — после схлопывания через границу куска
         // (`collapse_across_pieces`) уцелевший пробел лежит не в том куске,
         // что у браузера.
+        // CSS Text 3 §5.1: preserved spaces own their soft wrap
+        // opportunities, including across the closing bidi isolate.
+        if let Some(i) = left
+            && self.spans[i].1.keep_spaces
+            && self.spans[i].1.nowrap
+            && matches!(
+                self.text[..at]
+                    .chars()
+                    .rev()
+                    .find(|c| !matches!(c, '\u{2069}' | '\u{202c}')),
+                Some(' ' | '\t' | '\u{1680}')
+            )
+        {
+            return true;
+        }
         match (left, right) {
             (Some(a), Some(b)) if a == b => self.spans[a].1.nowrap,
             _ => self.wrap.nowrap,
