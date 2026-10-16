@@ -1574,4 +1574,6 @@ pub struct Computed {
     pub(crate) color_initial: bool,
     /// Preferred scheme exposed by this element to an embedded document.
     pub embedding_dark_scheme: bool,
+    /// DOM identity of this decorating box; never inherited.
+    pub decor_box: u64,
 }
