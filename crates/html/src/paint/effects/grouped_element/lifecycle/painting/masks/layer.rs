@@ -34,11 +34,13 @@ pub(crate) fn mask_layer(
             [0.0, 0.0, bw * sf, bh * sf],
             true,
         )
-    } else if let Some(markup) = l
+    } else if let Some((markup, alpha)) = l
         .rsplit_once('#')
         .filter(|(f, _)| f.ends_with(".svg"))
         .and_then(|(file, frag)| svg_fragment(file, frag))
     {
+        // Явный `mask-mode` главнее типа определения (§7.2), как у svgsnap.
+        let alpha = !group.mask_luminance && (group.mask_alpha_mode || alpha);
         // CSS Masking §7.1: a <mask> reference is distinct
         // from an SVG image URL with an ordinary fragment.
         let markup = markup.replace("clip-rule", "fill-rule");
@@ -48,7 +50,7 @@ pub(crate) fn mask_layer(
         (
             crate::svg::raster::rasterize(&markup, bw, bh)?,
             [0.0, 0.0, bw * sf, bh * sf],
-            true,
+            !alpha,
         )
     } else if let Some(rest) = l.strip_prefix("shapedef:") {
         // Команды `shape()` переводятся в контур `d`

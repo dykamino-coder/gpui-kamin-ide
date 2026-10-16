@@ -1,6 +1,7 @@
 //! Разрезы стопки детей формы: поля, avoid/force, флекс- и блочные цепочки.
 
 use crate::layout::fragment::ShapeCx;
+use crate::layout::fragment::oof_reach::Reach;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn stack_kid_cuts(
@@ -13,7 +14,7 @@ pub(super) fn stack_kid_cuts(
         Vec<(f32, f32)>,
         bool,
         bool,
-        f32,
+        Reach,
     )>,
     top: f32,
     cuts: &mut Vec<(f32, f32)>,
@@ -30,7 +31,7 @@ pub(super) fn stack_kid_cuts(
     line_inner: Vec<bool>,
     blk_avoid: Vec<(bool, bool)>,
     page_kid: Vec<Option<(String, String)>>,
-    oof_reach: &mut f32,
+    oof_reach: &mut Reach,
     mut page_prev: Option<String>,
     y: &mut f32,
     prev_mb: &mut f32,
@@ -52,13 +53,14 @@ pub(super) fn stack_kid_cuts(
         // Внепоточный ребёнок гибкого контейнера элементом не является
         // (css-flexbox-1 §4.1): ни зазора, ни границы элементов. Дотяг
         // его низа фрагментации по-прежнему нужен.
-        if flex_items && oof_kid.get(ki).copied().unwrap_or(false) {
+        if (flex_items || !(cx.paged || cx.legacy_oof)) && oof_kid.get(ki).copied().unwrap_or(false)
+        {
             let origin = if cx.paged && abs_top.get(ki).copied().unwrap_or(false) {
                 0.0
             } else {
                 *y
             };
-            *oof_reach = oof_reach.max(origin + kreach);
+            oof_reach.merge(kreach, origin);
             continue;
         }
         // Сетка: поля рядов не схлопываются ни между собой, ни сквозь
@@ -191,7 +193,7 @@ pub(super) fn stack_kid_cuts(
         } else {
             start
         };
-        *oof_reach = oof_reach.max(origin + kreach);
+        oof_reach.merge(kreach, origin);
         *y = start + h;
         *prev_mb = kmb;
         first = false;

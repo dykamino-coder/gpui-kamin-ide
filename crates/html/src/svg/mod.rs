@@ -54,6 +54,11 @@ pub(crate) fn element_with_html(
     }
 }
 
+/// Опорная коробка фигуры (`fill-box`/`stroke-box`) для motion path.
+pub(crate) fn shape_reference_box(e: &Element, stroke: bool) -> Option<(f32, f32, f32, f32)> {
+    clip::reference_box(e, stroke)
+}
+
 pub fn element(e: &Element) -> Option<AnyElement> {
     let (w, h) = size_of(e);
     // `overflow: visible` по оси выпускает фигуры за канву (SVG 2 §overflow):

@@ -39,7 +39,7 @@ pub(super) fn replaced_abs_atom(
     let holder = styled_div_with(e, merged).child(built).into_any_element();
     // Shape the CSS box before moving it into a deferred positioned layer.
     let holder = if merged.corner_shaped() {
-        crate::paint::effects::grouped::grouped(holder, merged)
+        crate::paint::effects::grouped::grouped_replaced(holder, merged)
     } else {
         holder
     };
@@ -79,11 +79,17 @@ pub(super) fn replaced_abs_atom(
     }
     let below_icb = e.style.z_index.is_some_and(|z| z < 0)
         && !crate::paint::stacking::nested_context(inherited);
+    // Позиционированный предок есть — слой ЕГО содержащего блока
+    // (CSS 2.1 §10.1 п.4): держатель нулевого размера в строке краёв
+    // блока не знает, и `bottom: 0` отсчитывался от верха строки
+    // (`baseline-shift-bottom-ref`: картинка 60×60 вылезала над блоком).
+    // Отрицательный `z-index` у такого предка остаётся на месте.
+    let positioned_cb = inherited.cb_ancestor || crate::text::inline::establishes_cb(inherited);
     if x_set
         && y_set
         && !inline_cb
         && (e.style.z_index.unwrap_or(0) >= 0 || below_icb)
-        && !(inherited.cb_ancestor || crate::text::inline::establishes_cb(inherited))
+        && !(positioned_cb && below_icb)
     {
         let holder: AnyElement = if below_icb {
             crate::paint::effects::underlay::Underlay::new(holder).into_any_element()
@@ -105,8 +111,12 @@ pub(super) fn replaced_abs_atom(
         });
         // Слоя нет — элемент возвращается назад, и рисуем его на
         // месте прежним путём.
-        match crate::layout::positioned::containing_block::icb_push(spot, holder.into_any_element())
-        {
+        let pushed = if positioned_cb {
+            crate::layout::positioned::containing_block::cb_push(spot, holder.into_any_element())
+        } else {
+            crate::layout::positioned::containing_block::icb_push(spot, holder.into_any_element())
+        };
+        match pushed {
             None => {
                 return Some(div().w_0().h_0().flex_shrink_0().into_any_element());
             }

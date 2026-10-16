@@ -1,5 +1,8 @@
 //! Геометрия правил промежутков: дорожки и прогоны.
+mod assignment;
 mod multicol;
+#[cfg(test)]
+mod span_tests;
 pub(super) use multicol::multicol_runs;
 mod flex_lines;
 mod lane_visibility;
@@ -28,6 +31,8 @@ pub(super) struct GapItem {
     pub(crate) a1: f32,
     pub(crate) b0: f32,
     pub(crate) b1: f32,
+    /// Used trailing margin on the stacking axis; box extents stay unchanged.
+    pub(crate) margin_end: f32,
 }
 
 impl GapItem {
@@ -42,6 +47,7 @@ impl GapItem {
                 a1: x1,
                 b0: y0,
                 b1: y1,
+                margin_end: 0.0,
             }
         } else {
             GapItem {
@@ -49,6 +55,7 @@ impl GapItem {
                 a1: y1,
                 b0: x0,
                 b1: x1,
+                margin_end: 0.0,
             }
         }
     }
@@ -59,6 +66,7 @@ impl GapItem {
             a1: self.b1,
             b0: self.a0,
             b1: self.a1,
+            margin_end: 0.0,
         }
     }
 
@@ -69,6 +77,10 @@ impl GapItem {
 
     /// Перекрывает ли элемент промежуток `[g0, g1]` (спан через него).
     pub(crate) fn spans_a(&self, g0: f32, g1: f32) -> bool {
+        if g1 - g0 <= GAP_EPS {
+            // Touching a track boundary does not span the zero-sized gutter.
+            return self.a0 < g0 - GAP_EPS && self.a1 > g1 + GAP_EPS;
+        }
         self.a0 <= g0 + GAP_EPS && self.a1 >= g1 - GAP_EPS
     }
 }
@@ -106,9 +118,9 @@ pub(super) struct GapRun {
 
 impl GapRun {
     /// Конец отрезка: положение после отступа из пересекающего зазора к его
-    /// границе, ширина зазора (0 у края и у «висячего» конца без поперечной
-    /// линейки — так считает Blink `GetMaxInsetWidth`), есть ли стык и ширина
-    /// поперечной линейки.
+    /// границе, ширина зазора (0 у внешнего края), тип конца и ширина
+    /// поперечной линейки. У внутреннего cap процентный inset сохраняет
+    /// геометрическую ширину пересекающего зазора.
     pub(crate) fn edge(&self, pos: f32, is_start: bool) -> (f32, f32, bool, f32) {
         if is_start && (pos - self.r0).abs() <= GAP_EPS {
             return match self.start_edge {
@@ -128,12 +140,7 @@ impl GapRun {
             .find(|c| c.lo - GAP_EPS <= pos && pos <= c.hi + GAP_EPS)
         {
             let at = if is_start { c.hi } else { c.lo };
-            return (
-                at,
-                if c.joins { c.hi - c.lo } else { 0.0 },
-                c.joins,
-                c.cross_w,
-            );
+            return (at, c.hi - c.lo, c.joins, c.cross_w);
         }
         (pos, 0.0, false, 0.0)
     }
@@ -144,3 +151,6 @@ pub(super) fn uniq_sorted(mut v: Vec<f32>) -> Vec<f32> {
     v.dedup_by(|x, y| (*x - *y).abs() <= GAP_EPS);
     v
 }
+
+#[cfg(test)]
+mod endpoints_tests;

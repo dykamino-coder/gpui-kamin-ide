@@ -116,6 +116,11 @@ pub enum TextEdge {
     Ex,
     /// Алфавитная базовая линия (только нижний край).
     Alphabetic,
+    /// Идеографические базовые линии (края em-коробки, css-inline-3
+    /// §text-edges); без таблицы `BASE` — синтез из подъёма и спуска.
+    Ideographic,
+    /// Идеографические линии чернил; без таблицы — как `Ideographic`.
+    IdeographicInk,
 }
 
 /// `border-shape` (css-borders-4 §border-shape): одна фигура — рамка
