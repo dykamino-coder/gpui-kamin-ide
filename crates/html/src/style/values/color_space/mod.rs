@@ -19,6 +19,8 @@ mod direct_gradient;
 pub(crate) use direct_gradient::DirectGradient;
 mod functions;
 mod gradient_stop;
+mod hsl_ramp;
+pub(crate) use hsl_ramp::HslRamp;
 mod icc;
 mod matrices;
 mod mix;
