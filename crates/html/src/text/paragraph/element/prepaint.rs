@@ -90,11 +90,45 @@ impl Paragraph {
             self.lines = balanced;
         }
         self.place_atoms(*state, window, _cx);
+        // The clamp point of THIS frame needs this frame's rows: `ClampCut`
+        // computes it in paint, and paint order inside the container does
+        // not put every paragraph before it, but prepaint of the whole tree
+        // precedes any paint (css-overflow-4 §5.3; one frame per relayout
+        // step, like Blink's measure-then-relayout pass).
+        if !self.vertical && !crate::text::vertical::in_rotated_frame() {
+            let pads = self.line_padding();
+            let lh = self.line_height;
+            let step = |i: usize| -> Pixels {
+                let (a, b) = pads.get(i).copied().unwrap_or((0.0, 0.0));
+                lh + px(a + b)
+            };
+            self.publish_rows(bounds, self.lines.len(), &step);
+        }
         // Куски вне потока встают на своё место в строке: раскладываются
         // по содержимому и подготавливаются от угла своего знака.
         if !self.overlays.is_empty() {
             let segs = self.measure(window);
             let mut placed = std::mem::take(&mut self.overlays);
+            // End of the text kept by `line-clamp`: an inline containing
+            // block starting at or after it follows the clamp point, and
+            // its absolute boxes are hidden with it (css-overflow-4 §5.3;
+            // `line-clamp-with-abspos-015/017`). One displaced by the
+            // ellipsis counts as after the point too.
+            let clamp_end = self
+                .lines
+                .last()
+                .filter(|l| l.clamped && l.range.end < self.text.len())
+                .map(|l| l.range.end);
+            self.overlay_hidden = placed
+                .iter()
+                .map(|(at, _, how)| {
+                    clamp_end.is_some_and(|end| {
+                        how.cb
+                            .as_ref()
+                            .is_some_and(|cb| (*at as isize + cb.start).max(0) as usize >= end)
+                    })
+                })
+                .collect();
             let rotated = crate::text::vertical::in_rotated_frame();
             let scale = window.scale_factor().max(0.01);
             // Строчные якоря и содержащие блоки — до куска внутри них:
