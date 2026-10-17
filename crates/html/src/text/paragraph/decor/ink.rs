@@ -107,37 +107,30 @@ impl Paragraph {
         // Ends: `text-decoration-inset` (css-text-decor-4 §4.1).
         let (mut l, mut r) = (0.0f32, 0.0f32);
         match d.inset {
-            None => {
-                let a = (t / 2.0).clamp(1.0, 2.0);
-                (l, r) = (a, a);
-            }
-            Some([st, en]) if !(inset_zero(st) && inset_zero(en)) => {
+            inset if inset.is_none_or(|[st, en]| !(inset_zero(st) && inset_zero(en))) => {
                 let w = fx1 - fx0;
-                if d.clone {
-                    let prev = s > item.group.start && s > line.start;
-                    let line_end = line.start
-                        + self.text[line.clone()]
-                            .trim_end_matches([' ', 9u8 as char, 10u8 as char])
-                            .len();
-                    let next = e < item.group.end && e < line_end;
-                    if !prev {
-                        l = inset_px(st, w, scale);
-                    }
-                    if !next {
-                        r = inset_px(en, w, scale);
-                    }
+                // CSS Text Decoration 4 §4.1: clone slices the decorating
+                // box at line breaks, never at font/style run boundaries.
+                let group = if d.clone {
+                    item.group.start.max(line.start)..item.group.end.min(line.end)
                 } else {
-                    let segs = segs.get_or_insert_with(|| self.measure(window));
-                    let before = self.decor_width(segs, item.group.start, s) * scale;
-                    let after = self.decor_width(segs, e, item.group.end) * scale;
-                    let total = before + w + after;
-                    l = inset_for_fragment(inset_px(st, total, scale), before);
-                    r = inset_for_fragment(inset_px(en, total, scale), after);
-                }
+                    item.group.clone()
+                };
+                let segs = segs.get_or_insert_with(|| self.measure(window));
+                let (left, right) = self.decor_visual_sides(segs, &group, line, s, e);
+                let (start, end) = if d.rtl { (right, left) } else { (left, right) };
+                let before = (self.decor_width(segs, group.start, line.start) + start) * scale;
+                let after = (self.decor_width(segs, line.end, group.end) + end) * scale;
+                let total = before + w + after;
+                let [st, en] = inset.map_or([(t / 2.0).clamp(1.0, 2.0); 2], |pair| {
+                    pair.map(|v| inset_px(v, total, scale))
+                });
+                l = inset_for_fragment(st, before);
+                r = inset_for_fragment(en, after);
             }
             _ => {}
         }
-        if self.wrap.rtl {
+        if d.rtl {
             std::mem::swap(&mut l, &mut r);
         }
         (l, r)

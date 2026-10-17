@@ -8,6 +8,8 @@ use crate::text::inline::*;
 
 pub(super) fn element_style(e: &Element, inherited: &Computed) -> (Computed, bool) {
     let mut merged = inherit(inherited, &e.style);
+    let viewport = crate::paint::effects::mask::PAINT_VIEWPORT.with(|v| v.get());
+    merged.resolve_decor_inset_viewport(viewport);
     // Относительный сдвиг строчного КОПИТСЯ вниз: вложенные
     // куски двигаются на сумму сдвигов предков.
     // Вставки — из СЛИТОГО стиля: там `em` уже в точках (`resolve_em`), а

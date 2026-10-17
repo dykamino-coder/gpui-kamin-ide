@@ -18,7 +18,9 @@ pub use decor::{
     DECOR_OVER, DECOR_THROUGH, DECOR_UNDER, Decor, DecorFont, DecorLen, DecorStyle, UPOS_FROM_FONT,
     UPOS_LEFT, UPOS_RIGHT, UPOS_UNDER,
 };
-pub(super) use decor::{parse_decor_length, parse_decor_style, parse_decor_thickness};
+pub(super) use decor::{
+    parse_decor_inset, parse_decor_length, parse_decor_style, parse_decor_thickness,
+};
 pub use image::{BorderImage, BorderImageSlice, BorderImageWidth, GradSpace, Gradient, Shadow};
 pub use layout::{Align, AutoFlow, Display, FlexDir, GapInset, GapList, Justify, Placement};
 pub use text::{
