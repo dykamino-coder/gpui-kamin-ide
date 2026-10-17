@@ -1583,4 +1583,8 @@ pub struct Computed {
     pub(crate) flex_line_wraps: bool,
     /// An explicit unsafe overflow position for block content alignment.
     pub align_content_unsafe: bool,
+    /// Definite content inline size (physical height) of a box in vertical flow: the basis of
+    /// inline-axis percentages of its children (`layout::writing_mode::inline_definite`).
+    /// Set by `render::element`; not inherited.
+    pub(crate) inline_definite: Option<f32>,
 }

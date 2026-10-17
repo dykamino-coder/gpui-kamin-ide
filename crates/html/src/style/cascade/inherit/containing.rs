@@ -193,7 +193,19 @@ pub(super) fn inherit_containing(parent: &Computed, own: &Computed, c: &mut Comp
                 // Прежде `.modal {position: fixed; height: stretch}` передавал
                 // ложный признак от `body`, и `height: 100%` цепочки гас
                 // (`intrinsic-height-abspos-stretch-percentage-child`: 25 %).
-                Some(crate::style::values::value::Len::Pct(_)) => {
+                // `calc(100% - 16px)` is a length-percentage: definite exactly when its
+                // percentage basis is (css-values-4 §10.9, CSS 2.1 §10.5).
+                Some(crate::style::values::value::Len::Calc(i))
+                    if crate::style::values::value::calc_get(i)
+                        .pct_px()
+                        .is_some_and(|(pct, _)| pct == 0.0) =>
+                {
+                    true
+                }
+                Some(
+                    crate::style::values::value::Len::Pct(_)
+                    | crate::style::values::value::Len::Calc(_),
+                ) => {
                     parent.cb_height_def
                         || matches!(
                             parent.position,
