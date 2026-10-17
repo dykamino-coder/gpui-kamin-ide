@@ -309,6 +309,9 @@ pub struct Style {
     /// `direction: rtl` (css-flexbox-1 §2 «cross-start … inline-start»).
     /// Выравнивание читает это как `wrap-reverse`, перенос строк — нет.
     pub flex_cross_reverse: bool,
+    /// KaminIDE patch: a flex column emulating a block container takes its baselines from
+    /// the first/last child that has one (taffy `Style::block_baselines`).
+    pub block_baselines: bool,
     /// KaminIDE patch: размеры — `content-box` (CSS `box-sizing`). Обычно
     /// html-слой сам прибавляет отбивки к размеру, но долю отступа он в точки
     /// не переведёт — тогда пересчёт делает раскладка (`taffy::BoxSizing`).
@@ -1089,6 +1092,7 @@ impl Default for Style {
             flex_wrap: FlexWrap::NoWrap,
             flex_balance_lines: 0,
             flex_cross_reverse: false,
+            block_baselines: false,
             content_box: false,
             percent_basis_from_parent: false,
             calc_size: [None; 4],

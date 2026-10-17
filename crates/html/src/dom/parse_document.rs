@@ -184,6 +184,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     subgrid_takes_parent_tracks(&mut out);
     filter_ref_only_empty(&mut out);
     fold_run_ins(&mut out, None);
+    orthogonal_inlines_become_flow_roots(&mut out, (false, false, false), None);
     float_tail::mark(&mut out);
     if quirks() {
         quirks_percent_heights(&mut out, None);

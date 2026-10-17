@@ -38,6 +38,11 @@ pub trait FlexboxContainerStyle: CoreStyle {
     fn flex_cross_reverse(&self) -> bool {
         Style::<Self::CustomIdent>::DEFAULT.flex_cross_reverse
     }
+    /// KaminIDE patch: block-container baselines for a block-emulating column (see `Style`).
+    #[inline(always)]
+    fn block_baselines(&self) -> bool {
+        Style::<Self::CustomIdent>::DEFAULT.block_baselines
+    }
     /// KaminIDE patch: анонимный ряд строки — доли высоты детей решаются от
     /// высоты родителя ряда, а не от самого ряда (CSS 2.1 §10.1).
     #[inline(always)]

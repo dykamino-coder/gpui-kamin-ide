@@ -1033,18 +1033,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         // (RTL columns, writing-mode rows), see `subgrid_flow::area`.
         let grid_area =
             subgrid_flow::area(&columns, &rows, item.column_indexes, item.row_indexes, flow);
-        // KaminIDE patch: `justify-items: baseline` не действует на элемент,
-        // параллельный горизонтальной сетке (см. `GridItem::justify_self`).
-        let item_alignment_styles = if item.baseline_x_flags & 8 != 0
-            && container_alignment_styles.horizontal.keyword == AlignItemsKeyword::Baseline
-        {
-            InBothAbsAxis {
-                horizontal: AlignItems::NORMAL,
-                vertical: container_alignment_styles.vertical,
-            }
-        } else {
-            container_alignment_styles
-        };
+        let item_alignment_styles = container_alignment_styles;
         #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
         let (overflow_contribution, y_position, height, first_baseline, last_baseline, x_lines) =
             align_and_position_item(
