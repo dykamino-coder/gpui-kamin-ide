@@ -853,6 +853,7 @@ impl ToTaffy<taffy::style::Style> for Style {
             baseline_unavailable: self.baseline_unavailable,
             no_inline_block_baseline: self.no_inline_block_baseline,
             table_cell_baseline: self.table_cell_baseline,
+            table_collapsed_tracks: self.table_collapsed_tracks.clone(),
             // KaminIDE patch: базовая по оси x (вертикальное письмо).
             baseline_x_hint: self
                 .baseline_x_hint

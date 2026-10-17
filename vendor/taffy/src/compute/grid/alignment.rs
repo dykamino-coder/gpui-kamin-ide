@@ -122,6 +122,7 @@ pub(super) fn align_and_position_item(
     // Percentage basis for the item's styles. Grid passes the grid area size; grid lanes (css-grid-3) items
     // have the container's content box as their containing block in the stacking axis.
     containing_block_size: Size<f32>,
+    table_cell_axis: Option<crate::geometry::AbstractAxis>,
     container_alignment_styles: InBothAbsAxis<AlignItems>,
     shims: Rect<f32>,
     x_end: bool,
@@ -286,6 +287,13 @@ pub(super) fn align_and_position_item(
         max_size.height = None;
     }
 
+    // A table cell fills its final row area. Authored block sizes constrain
+    // intrinsic row sizing, not the box left after visibility collapse.
+    if let Some(axis) = table_cell_axis.filter(|_| !position.is_out_of_flow()) {
+        inherent_size.set(axis, Some(grid_area_size.get(axis)));
+        min_size.set(axis, Some(0.0));
+        max_size.set(axis, None);
+    }
     // Resolve `normal` alignment (the default if alignment is set on neither the parent or the node itself)
     // Note: if the child has a preferred aspect ratio but neither width or height are set, then the width is stretched
     // and the then height is calculated from the width according the aspect ratio

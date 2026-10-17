@@ -71,7 +71,9 @@ pub(super) fn cell_box_div(
     // заливки, цвет пишет проба. Картинка, градиент, `background-clip`,
     // спрятанная или преобразованная ячейка красятся по-прежнему на
     // месте — для них слой не строится.
+    let collapsed = crate::layout::table::anon::row_collapsed(row, carry.3);
     let bg_layered = paint_layers
+        && !collapsed
         && box_style.bg_clip.is_none()
         && box_style.gradient.is_none()
         && box_style.bg_image.is_none()
@@ -86,6 +88,9 @@ pub(super) fn cell_box_div(
         box_style.background = None;
     }
     let mut d = styled_div_with(cell, &box_style);
+    if collapsed {
+        d.style().opacity = Some(0.0);
+    }
     // Заливка строки И ГРУППЫ строк: своей коробки у них в общей сетке
     // не остаётся, поэтому фон рисуют ячейки. Раньше бралась только
     // строка, и `<tbody style="background">` пропадал молча
@@ -226,5 +231,5 @@ pub(super) fn ortho_cell_box(
             d.style().table_cell_baseline = Some(true);
         }
     }
-    d
+    super::cell_alignment::apply(cm, d)
 }
