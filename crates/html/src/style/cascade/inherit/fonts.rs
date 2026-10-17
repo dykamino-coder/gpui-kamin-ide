@@ -101,10 +101,7 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     c.parent_grid = match parent.display {
         Some(crate::style::computed::Display::Grid)
         | Some(crate::style::computed::Display::InlineGrid) => {
-            match (
-                parent.vertical == Some(true),
-                parent.vertical_rl == Some(true),
-            ) {
+            match (parent.wm().vertical(), parent.wm().block_rl()) {
                 (false, _) => 1,
                 (true, false) => 2,
                 (true, true) => 3,
@@ -165,7 +162,7 @@ fn match_parent_align(parent: &Computed, own: &Computed, c: &mut Computed) {
     if own.text_align_match_parent == 0 || (parent.rtl.is_none() && parent.text_align.is_none()) {
         return;
     }
-    let rtl = parent.rtl == Some(true);
+    let rtl = parent.wm().rtl();
     let resolve = |a: Option<TextAlign>| {
         Some(match a.unwrap_or(TextAlign::Start) {
             TextAlign::Start if rtl => TextAlign::Right,

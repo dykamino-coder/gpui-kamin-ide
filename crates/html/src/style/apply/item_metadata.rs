@@ -22,14 +22,14 @@ pub(super) fn baseline_x_flags(c: &Computed) -> Option<u8> {
             return None;
         }
         let central = c.cb_vertical && !c.cb_sideways && c.text_sideways != Some(true);
-        if c.vertical == Some(true) {
-            return Some(4 | u8::from(c.vertical_rl == Some(true)) | if central { 2 } else { 0 });
+        if c.wm().vertical() {
+            return Some(4 | u8::from(c.wm().block_rl()) | if central { 2 } else { 0 });
         }
         return c
             .cb_vertical
             .then(|| u8::from(c.cb_vertical_rl) | if central { 2 } else { 0 });
     }
-    let vertical = c.vertical == Some(true);
+    let vertical = c.wm().vertical();
     let rl = if c.parent_grid != 0
         && matches!(
             c.position,
@@ -41,7 +41,7 @@ pub(super) fn baseline_x_flags(c: &Computed) -> Option<u8> {
         // No baseline-sharing context: fallback is the item's own self-start.
         super::grid_flow_axes::reversed(c)[0]
     } else if vertical {
-        c.vertical_rl == Some(true)
+        c.wm().block_rl()
     } else {
         parent == 3
     };

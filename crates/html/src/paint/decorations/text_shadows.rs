@@ -58,8 +58,8 @@ pub(crate) fn with_text_shadow(
     let context = ShadowStyle::new(style);
     let block = context.resolved();
     let all_text = nodes.iter().all(|n| matches!(n, Node::Text(_)));
-    let flat = style.vertical != Some(true)
-        && style.rotated_line != Some(true)
+    let flat = !style.wm().vertical()
+        && !style.wm().turned()
         && style.first_line.is_none()
         && style.first_letter.is_none()
         && style.text_emphasis.is_none();

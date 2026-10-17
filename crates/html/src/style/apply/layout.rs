@@ -45,14 +45,14 @@ pub(super) fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // При вертикальном письме оси меняются местами: `row` — это ось СТРОКИ,
     // а она идёт сверху вниз; `column` — ось потока, справа налево
     // (`vertical-rl`) или слева направо (`vertical-lr`).
-    let dir = match (c.flex_dir, c.vertical == Some(true)) {
+    let dir = match (c.flex_dir, c.wm().vertical()) {
         // Ось СТРОКИ при вертикальном письме идёт сверху вниз, а
         // `direction: rtl` разворачивает её снизу вверх — как и в обычном
         // письме он разворачивает строку справа налево
         // (`flexbox-writing-mode-005`).
-        (Some(d), true) => Some(match (d, c.vertical_rl == Some(true)) {
-            (FlexDir::Row, _) if c.rtl == Some(true) => FlexDir::ColReverse,
-            (FlexDir::RowReverse, _) if c.rtl == Some(true) => FlexDir::Col,
+        (Some(d), true) => Some(match (d, c.wm().block_rl()) {
+            (FlexDir::Row, _) if c.wm().rtl() => FlexDir::ColReverse,
+            (FlexDir::RowReverse, _) if c.wm().rtl() => FlexDir::Col,
             (FlexDir::Row, _) => FlexDir::Col,
             (FlexDir::RowReverse, _) => FlexDir::ColReverse,
             (FlexDir::Col, true) => FlexDir::RowReverse,
@@ -66,7 +66,7 @@ pub(super) fn apply_layout(mut d: Div, c: &Computed) -> Div {
         // `None`, контейнер оставался горизонтальным (замерено пробой: ряд в
         // `vertical-rl` против колонки с прижимом вправо — 5.42%).
         (None, true) if matches!(c.display, Some(Display::Flex) | Some(Display::InlineFlex)) => {
-            if c.rtl == Some(true) {
+            if c.wm().rtl() {
                 Some(FlexDir::ColReverse)
             } else {
                 Some(FlexDir::Col)
@@ -78,8 +78,7 @@ pub(super) fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // §block-flow) — вертикальные результаты перевода осей разворачиваются.
     // Горизонтальные (из `column`) не трогаются: ось блока у slr обычная,
     // слева направо.
-    let dir = if c.vertical == Some(true) && c.sideways == Some(true) && c.vertical_rl != Some(true)
-    {
+    let dir = if c.wm().vertical() && c.wm().sideways() && !c.wm().block_rl() {
         dir.map(|d| match d {
             FlexDir::Col => FlexDir::ColReverse,
             FlexDir::ColReverse => FlexDir::Col,
@@ -92,7 +91,7 @@ pub(super) fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // вертикальном он уже учтён в переводе осей выше, и второй раз
     // переворачивать нельзя (`flexbox-writing-mode-005`: колонки в
     // `vertical-rl` шли слева направо).
-    let rtl_row = c.rtl == Some(true) && c.vertical != Some(true);
+    let rtl_row = c.wm().rtl() && !c.wm().vertical();
     d = layout_flex_axes(d, c, dir, rtl_row);
     d = layout_alignment(d, c, dir, rtl_row);
     d = layout_grid_gap(d, c);

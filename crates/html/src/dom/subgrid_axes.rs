@@ -2,7 +2,7 @@
 use crate::style::computed::Computed;
 
 pub(super) fn linked(parent: &Computed, child: &Computed, parent_rows: bool) -> bool {
-    let parallel = parent.vertical.unwrap_or(false) == child.vertical.unwrap_or(false);
+    let parallel = parent.wm().vertical() == child.wm().vertical();
     if parent_rows == parallel {
         child.subgrid_rows
     } else {

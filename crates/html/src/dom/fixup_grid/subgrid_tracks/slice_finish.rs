@@ -118,7 +118,7 @@ pub(crate) fn finish_slice(
         } else {
             child.style.subgrid_rows
         };
-        let vertical_axis = row_dir != parent.vertical.unwrap_or(false);
+        let vertical_axis = row_dir != parent.wm().vertical();
         // ★ ЗАМЕРЕНО И ОТКАЧЕНО (b47ecf2): класть СРЕЗ в скрещенную
         // ось (колонки родителя → `grid_rows` подсетки): +1/−2,
         // ушли `grid-subgridded-to-grid-lanes/track-sizing/

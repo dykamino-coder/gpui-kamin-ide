@@ -2,22 +2,19 @@
 use crate::style::computed::Computed;
 
 pub(super) fn reversed(c: &Computed) -> [bool; 2] {
-    let vertical = c.vertical == Some(true);
-    let sideways = c.sideways == Some(true);
+    let vertical = c.wm().vertical();
+    let sideways = c.wm().sideways();
     // Upright vertical text forces the used direction to LTR; sideways writing ignores orientation.
-    let rtl = c.rtl == Some(true) && !(vertical && !sideways && c.upright == Some(true));
+    let rtl = c.wm().rtl() && !(vertical && !sideways && c.upright == Some(true));
     if vertical {
-        [
-            c.vertical_rl == Some(true),
-            rtl != (sideways && c.vertical_rl != Some(true)),
-        ]
+        [c.wm().block_rl(), rtl != (sideways && !c.wm().block_rl())]
     } else {
         [rtl, false]
     }
 }
 
 pub(super) fn block(c: &Computed) -> [bool; 3] {
-    let vertical = c.vertical == Some(true);
+    let vertical = c.wm().vertical();
     let axes = reversed(c);
     [vertical, vertical && axes[0], axes[usize::from(vertical)]]
 }

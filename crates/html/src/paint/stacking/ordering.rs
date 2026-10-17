@@ -73,7 +73,7 @@ pub(crate) fn by_layer(nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
         let free_inline = !x_set
             && block_only
             && e.style.position == Some(crate::style::computed::Position::Absolute)
-            && e.style.vertical != Some(true);
+            && !e.style.wm().vertical();
         (matches!(
             e.style.position,
             Some(crate::style::computed::Position::Absolute)

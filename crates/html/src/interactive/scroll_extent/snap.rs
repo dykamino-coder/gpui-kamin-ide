@@ -48,7 +48,7 @@ pub(super) fn initial(
         f32::from(bounds.size.height) - border[1] - border[3] - insets[1] - insets[3],
     ];
     let padding = snap_sides(c.snap.padding, view);
-    let vertical = c.vertical == Some(true);
+    let vertical = c.wm().vertical();
     let reverse = super::super::scrollbar_gutter::reversed(c);
     let active = match c.snap.axis {
         1 => [true, false],

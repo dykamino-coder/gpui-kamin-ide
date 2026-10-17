@@ -31,7 +31,7 @@ impl Model {
             model.used[if left { 0 } else { 2 }] = width;
             model.native[if native_left { 0 } else { 2 }] = width;
         }
-        let vertical = c.vertical == Some(true);
+        let vertical = c.wm().vertical();
         let overflow = if vertical { c.overflow_x } else { c.overflow_y };
         if !c.scroll.viewport_root
             && c.scroll.gutter.is_some_and(|v| v != 0)
@@ -127,14 +127,11 @@ pub(crate) fn apply(mut div: Div, c: &Computed) -> Div {
 
 /// Physical axes whose CSS scroll origin is at their far edge.
 pub(crate) fn reversed(c: &Computed) -> [bool; 2] {
-    let vertical = c.vertical == Some(true);
-    let sideways = c.sideways == Some(true);
-    let rtl = c.rtl == Some(true) && !(vertical && !sideways && c.upright == Some(true));
+    let vertical = c.wm().vertical();
+    let sideways = c.wm().sideways();
+    let rtl = c.wm().rtl() && !(vertical && !sideways && c.upright == Some(true));
     if vertical {
-        [
-            c.vertical_rl == Some(true),
-            rtl != (sideways && c.vertical_rl != Some(true)),
-        ]
+        [c.wm().block_rl(), rtl != (sideways && !c.wm().block_rl())]
     } else {
         [rtl, false]
     }
@@ -142,5 +139,5 @@ pub(crate) fn reversed(c: &Computed) -> [bool; 2] {
 
 /// Blink ComputedStyle::ShouldPlaceBlockDirectionScrollbarOnLogicalLeft.
 pub(crate) fn on_left(c: &Computed) -> bool {
-    c.vertical != Some(true) && c.rtl == Some(true)
+    !c.wm().vertical() && c.wm().rtl()
 }

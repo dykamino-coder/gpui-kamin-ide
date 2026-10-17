@@ -40,7 +40,7 @@ pub(super) fn inherit_text_layout(parent: &Computed, own: &Computed, c: &mut Com
     // `apply.rs`: `flex_cross_reverse` / `flip`).
     if c.parent_grid == 0
         && own.align_self_own_axis
-        && own.rtl.or(parent.rtl).unwrap_or(false) != parent.rtl.unwrap_or(false)
+        && own.rtl.or(parent.rtl).unwrap_or(false) != parent.wm().rtl()
     {
         c.align_self = match c.align_self {
             Some(crate::style::computed::Align::Start) => Some(crate::style::computed::Align::End),

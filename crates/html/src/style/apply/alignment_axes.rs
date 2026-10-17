@@ -27,9 +27,9 @@ pub(super) fn abspos_normal(
     // previous placement (`align-self-static-position-004`).
     if c.parent_grid == 0
         && !c.parent_flex_grid
-        && c.vertical != Some(true)
+        && !c.wm().vertical()
         && !c.cb_vertical
-        && c.rotated_line != Some(true)
+        && !c.wm().turned()
     {
         let auto = |l: Option<crate::style::values::value::Len>| {
             matches!(l, None | Some(crate::style::values::value::Len::Auto))

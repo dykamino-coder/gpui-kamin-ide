@@ -80,7 +80,7 @@ impl Computed {
             (viewport.0 - insets[0]).max(0.0),
             (viewport.1 - insets[1]).max(0.0),
         );
-        let vertical = self.vertical.unwrap_or(false);
+        let vertical = self.wm().vertical();
         let container = Some((
             self.cq_box.0.unwrap_or(viewport.0),
             self.cq_box.1.unwrap_or(viewport.1),

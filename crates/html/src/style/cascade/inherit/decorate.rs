@@ -114,7 +114,7 @@ pub(super) fn decorate(parent: &Computed, own: &Computed, c: &mut Computed, own_
             inset,
             clone: own.bdb_clone,
             source: own.decor_box,
-            rtl: c.rtl.unwrap_or(false),
+            rtl: c.wm().rtl(),
             over_lang,
             font: DecorFont {
                 family: c.font_family.clone(),

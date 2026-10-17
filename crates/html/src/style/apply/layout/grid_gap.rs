@@ -19,7 +19,7 @@ pub(super) fn layout_grid_gap(mut d: Div, c: &Computed) -> Div {
     alignment_axes::grid_self(d.style(), c);
     alignment_axes::project(
         d.style(),
-        real_grid && c.vertical == Some(true),
+        real_grid && c.wm().vertical(),
         c.parent_grid >= 2,
     );
     // Биты базовой по оси x для элемента сетки (css-align-3 §9.1; Blink
@@ -41,7 +41,7 @@ pub(super) fn layout_grid_gap(mut d: Div, c: &Computed) -> Div {
         // ПО ГОРИЗОНТАЛИ, `column-gap` — по вертикали. Главную ось выше уже
         // переставили, зазор обязан ехать за ней. Сокращение `gap: 20px`
         // пишет оба поля одинаково и ошибку маскировало.
-        let (down, across) = if c.vertical == Some(true) {
+        let (down, across) = if c.wm().vertical() {
             (col, row)
         } else {
             (row, col)

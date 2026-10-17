@@ -59,16 +59,16 @@ impl Computed {
         // перевод здесь сложился бы с ним в поворот на месте
         // (`table-cell-align-005`, `table-cell-valign-003` — замеренный
         // откат в шапке функции).
-        let vertical = self.vertical == Some(true) && (parent_vertical == Some(true) || !is_cell);
-        let rtl = self.rtl == Some(true);
+        let vertical = self.wm().vertical() && (parent_vertical == Some(true) || !is_cell);
+        let rtl = self.wm().rtl();
         // Стороны (поля/отступы/края) переставляются ПО-НАСТОЯЩЕМУ: блочный
         // поток вертикального письма собирается транспонированным рядом
         // (`flex_row(_reverse)`), а не поворотом — `margin-block` абзаца в
         // vertical-rl обязан лечь горизонтально (wm-propagation-body-*).
         // Размеры остаются без перестановки (замерено дважды, см. выше).
-        let side_vertical = self.vertical == Some(true);
-        let side_rl = self.vertical_rl == Some(true);
-        let side_sw_lr = self.sideways == Some(true) && !side_rl;
+        let side_vertical = self.wm().vertical();
+        let side_rl = self.wm().block_rl();
+        let side_sw_lr = self.wm().sideways() && !side_rl;
         // Логическое значение ПЕРЕКРЫВАЕТ физическое, а не только заполняет
         // пустое. Так вело себя прежнее разложение при разборе (оно писало
         // прямо в физическое поле), и порядок объявлений в правиле от этого
@@ -111,7 +111,7 @@ impl Computed {
             set(&mut self.max_height, logical.max_inline);
             set(&mut self.max_width, logical.max_block);
         } else {
-            if self.vertical == Some(true) && logical.inline_size.is_some() {
+            if self.wm().vertical() && logical.inline_size.is_some() {
                 self.width_from_inline = true;
             }
             set(&mut self.width, logical.inline_size);
