@@ -34,7 +34,8 @@ use calc_pool::fold_simple_calc;
 pub use calc_pool::{
     calc_get, calc_pct_px, calc_reset, calc_store, fold_zero_percentage, lerp_len, number,
 };
-pub use color::{Color, dark_scheme, set_dark_scheme};
+mod scheme;
+pub use color::Color;
 use color_names::named;
 pub use len::Len;
 pub(crate) use len::css_number;
@@ -42,5 +43,9 @@ use root_metrics::{ROOT_FONT_VIEW, root_font_unit};
 pub use root_metrics::{
     reset_root_metrics, root_font_px, root_line_px, set_root_family, set_root_font_view,
     set_root_metrics,
+};
+pub use scheme::{dark_scheme, set_dark_scheme};
+pub(crate) use scheme::{
+    embedding_dark_scheme, reset_scheme, resolve_scheme, restore_scheme, scheme_state,
 };
 pub use units::Ext;

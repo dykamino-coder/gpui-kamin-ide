@@ -5,6 +5,12 @@ use crate::dom::Node;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
+#[derive(Clone, Copy)]
+pub(crate) struct EmbeddingScheme {
+    pub preferred_dark: bool,
+    pub owner_dark: bool,
+}
+
 /// Разбор ВЛОЖЕННОГО документа (`<iframe>`): тот же конвейер, что у
 /// `Document::new`, но БЕЗ сброса буферов замеров и проб — они принадлежат
 /// внешнему документу, и сброс посреди его отрисовки крал его состояние.
@@ -15,7 +21,7 @@ use std::hash::{Hash, Hasher};
 /// §4.8.5), а не внешним окном (`css-page/media-queries-002-print`: рамка
 /// 100x100 и `@media (width: 100px) and (height: 100px)`).
 pub fn parse_embedded(html: &str, theme_css: &str, viewport: (f32, f32)) -> (Vec<Node>, u64) {
-    parse_embedded_sized(html, theme_css, viewport, false, true)
+    parse_embedded_sized(html, theme_css, viewport, false, true, None)
 }
 
 pub(crate) fn parse_embedded_sized(
@@ -24,6 +30,7 @@ pub(crate) fn parse_embedded_sized(
     viewport: (f32, f32),
     responsive: bool,
     scrolling: bool,
+    scheme: Option<EmbeddingScheme>,
 ) -> (Vec<Node>, u64) {
     crate::text::fonts::load_faces_additive(html);
     crate::style::values::color_space::load_profiles(html);
@@ -33,14 +40,18 @@ pub(crate) fn parse_embedded_sized(
     // самой рамки к листам внешнего документа не относятся (css-page-3: page
     // context — только у корневого документа), поэтому пулы возвращаются.
     let outer_rules = crate::style::css::page_rules_snapshot();
-    let media = crate::style::css::Media {
+    let mut media = crate::style::css::Media {
         width: viewport.0,
         height: viewport.1,
         ..crate::style::css::Media::default()
     };
+    if let Some(scheme) = scheme {
+        media.dark = scheme.preferred_dark;
+    }
     let parsed = crate::dom::parse_media(html, theme_css, media);
     *crate::style::css::PAGE_RULES.lock().unwrap() = outer_rules;
-    let mut nodes = super::viewport::prepare_embedded(parsed, responsive);
+    let mut nodes =
+        super::viewport::prepare_embedded(parsed, responsive, scheme.map(|s| s.owner_dark));
     // HTML's embedding policy also applies when responsive sizing is declined.
     if !scrolling
         && let [Node::Element(root)] = nodes.as_mut_slice()
