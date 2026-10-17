@@ -60,7 +60,9 @@ pub(crate) fn collect_rows(c: &Element, main: f32, depth: u8, cx: ShapeCx) -> Op
         };
         for (source, element) in line {
             let shape = item_shape(&element, depth, cx)?;
-            row.height = row.height.max(shape.0 + shape.1 + shape.2);
+            row.height = row
+                .height
+                .max(shape.height + shape.margin_top + shape.margin_bottom);
             row.items.push(RowItem {
                 source,
                 element,
@@ -74,11 +76,12 @@ pub(crate) fn collect_rows(c: &Element, main: f32, depth: u8, cx: ShapeCx) -> Op
             let s = &mut item.element.style;
             if matches!(s.height, None | Some(Len::Auto))
                 && !matches!(s.align_self.or(c.style.align_items), Some(Align::Start))
-                && item.shape.0 + item.shape.1 + item.shape.2 < row.height - 0.01
+                && item.shape.height + item.shape.margin_top + item.shape.margin_bottom
+                    < row.height - 0.01
             {
                 let b = s.borders();
                 let edges = px(s.padding.top)? + px(s.padding.bottom)? + px(b.top)? + px(b.bottom)?;
-                let target = row.height - item.shape.1 - item.shape.2;
+                let target = row.height - item.shape.margin_top - item.shape.margin_bottom;
                 let minimum = if s.border_box == Some(true) {
                     target
                 } else {
@@ -100,8 +103,11 @@ pub(crate) fn collect_rows(c: &Element, main: f32, depth: u8, cx: ShapeCx) -> Op
 /// lines (no ranges) remain one solid range.
 fn item_shape(element: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     let mut shape = shape_full(element, depth - 1, cx)?;
-    if solid_box(element) && shape.3.is_empty() && (monolith_box(element) || shape.5.is_empty()) {
-        shape.5 = vec![(0.0, shape.0)];
+    if solid_box(element)
+        && shape.cuts.is_empty()
+        && (monolith_box(element) || shape.solid.is_empty())
+    {
+        shape.solid = vec![(0.0, shape.height)];
     }
     Some(shape)
 }

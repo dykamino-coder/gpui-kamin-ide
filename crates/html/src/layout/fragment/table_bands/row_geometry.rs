@@ -58,7 +58,7 @@ pub(crate) fn row_geometry<'a>(
             };
             let shape = shape_full(cell, depth.checked_sub(1)?, cx)?;
             if span == 1 {
-                height = height.max(shape.0);
+                height = height.max(shape.height);
             }
             cells.push(CellGeometry {
                 cell,
@@ -80,10 +80,10 @@ pub(crate) fn row_geometry<'a>(
             let expandable = spacing.abs() < 0.01
                 && out[i + 1..i + span]
                     .iter()
-                    .all(|r| r.height <= 0.01 && r.cells.iter().all(|c| c.shape.0 <= 0.01));
+                    .all(|r| r.height <= 0.01 && r.cells.iter().all(|c| c.shape.height <= 0.01));
             out[i].cells[j].expandable = expandable;
             if expandable {
-                out[i].height = out[i].height.max(out[i].cells[j].shape.0);
+                out[i].height = out[i].height.max(out[i].cells[j].shape.height);
             }
         }
     }
@@ -93,7 +93,7 @@ pub(crate) fn row_geometry<'a>(
         for cell in &row.cells {
             let span_height = out[i..i + cell.span].iter().map(|r| r.height).sum::<f32>()
                 + spacing * (cell.span - 1) as f32;
-            if cell.shape.0 > span_height + 0.01 {
+            if cell.shape.height > span_height + 0.01 {
                 return None;
             }
         }

@@ -87,7 +87,7 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
             };
             let start = top + r0 + kmt;
             if a > start - 0.01
-                && a < start + s.0 - 0.01
+                && a < start + s.height - 0.01
                 && let Some(id) = pushed_box_at(k, a - start, depth - 1)
             {
                 return Some(id);
@@ -164,8 +164,12 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
         {
             // Та же база элемента колонки flex, что у `shape_full`.
             let based = basis_sized(c, k);
-            let (h, mt, mb, ..) =
-                shape_full(based.as_ref().unwrap_or(k), depth - 1, ShapeCx::COLUMNS)?;
+            let crate::layout::fragment::Shape {
+                height: h,
+                margin_top: mt,
+                margin_bottom: mb,
+                ..
+            } = shape_full(based.as_ref().unwrap_or(k), depth - 1, ShapeCx::COLUMNS)?;
             (h, mt, mb)
         } else {
             return None;

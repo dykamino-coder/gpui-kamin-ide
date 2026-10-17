@@ -105,9 +105,9 @@ pub(super) fn line_cuts(
         );
         fixed.is_some() && plain && block_visible
     })
-    .filter(|s| s.0 > h + 0.01)
+    .filter(|s| s.height > h + 0.01)
     {
-        Some(s) => (s.0, s.3, s.4, s.5),
+        Some(s) => (s.height, s.cuts, s.forced, s.solid),
         None => (h, cuts, forced, solid),
     };
     (over, cuts, forced, solid)

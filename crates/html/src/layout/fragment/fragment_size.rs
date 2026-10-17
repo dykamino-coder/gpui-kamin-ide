@@ -38,25 +38,25 @@ pub(crate) fn shape_full(element: &Element, depth: u8, cx: ShapeCx) -> Option<Sh
         + resolve(border.top, false)
         + resolve(border.bottom, false);
     let height = constrain(
-        shape.0,
+        shape.height,
         &element.style,
         decoration,
         cx.viewport,
         cx.unclamped,
     );
-    if height < shape.0 {
+    if height < shape.height {
         shape
-            .3
+            .cuts
             .retain(|&(need, _)| need > 0.01 && need < height - 0.01);
         shape
-            .4
+            .forced
             .retain(|&forced| forced > 0.01 && forced < height - 0.01);
-        shape.5.retain(|&(start, _)| start < height - 0.01);
-        for (_, end) in &mut shape.5 {
+        shape.solid.retain(|&(start, _)| start < height - 0.01);
+        for (_, end) in &mut shape.solid {
             *end = end.min(height);
         }
     }
-    shape.0 = height;
+    shape.height = height;
     Some(shape)
 }
 
@@ -138,7 +138,10 @@ mod tests {
             },
             vec![Node::Element(child)],
         );
-        assert_eq!(shape_full(&parent, 4, ShapeCx::COLUMNS).unwrap().0, 160.0);
+        assert_eq!(
+            shape_full(&parent, 4, ShapeCx::COLUMNS).unwrap().height,
+            160.0
+        );
     }
 
     #[test]
@@ -168,9 +171,9 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(used.0, 160.0);
-        assert_eq!(overflow.0, 206.0);
-        assert!(used.5.iter().all(|(_, end)| *end <= used.0));
+        assert_eq!(used.height, 160.0);
+        assert_eq!(overflow.height, 206.0);
+        assert!(used.solid.iter().all(|(_, end)| *end <= used.height));
     }
 
     #[test]
@@ -201,7 +204,7 @@ mod tests {
         let measure = |style: Computed| {
             shape_full(&element(style, Vec::new()), 4, ShapeCx::COLUMNS)
                 .unwrap()
-                .0
+                .height
         };
         let mut style = Computed {
             height: Some(Len::Px(40.0)),

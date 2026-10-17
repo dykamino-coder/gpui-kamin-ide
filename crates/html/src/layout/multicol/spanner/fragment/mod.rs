@@ -120,7 +120,7 @@ pub(super) fn spanner_height_share(c: &Element, bodies: &[Vec<Node>]) -> Option<
             continue;
         }
         let f = spanner_fragment(c, b.clone(), i == 0, false, false, i);
-        let h = shape_full(&f, 4, ShapeCx::COLUMNS)?.0;
+        let h = shape_full(&f, 4, ShapeCx::COLUMNS)?.height;
         let own = (h - if i == 0 { edge } else { 0.0 }).max(0.0);
         let take = own.min(left);
         out.push((own > left + 0.01).then_some(take));

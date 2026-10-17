@@ -37,7 +37,7 @@ pub(super) fn shape_from_kids(
     grid_rows_stack: bool,
     row_gap: f32,
     no_descent: bool,
-) -> Option<(f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>)> {
+) -> Option<crate::layout::fragment::Shape> {
     let inner = kid_shapes(c, depth, &px_or, cx, &kids, flex_col, no_descent);
     let mut cuts: Vec<(f32, f32)> = Vec::new();
     let mut forced: Vec<f32> = Vec::new();

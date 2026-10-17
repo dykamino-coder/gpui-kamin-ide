@@ -53,7 +53,7 @@ pub(crate) fn multicol_column_stack(
             let span = kids
                 .iter()
                 .filter(|(c, _)| c.style.column_span != Some(true))
-                .map(|(_, s)| (s.0 / per).ceil() as usize)
+                .map(|(_, s)| (s.height / per).ceil() as usize)
                 .max()
                 .unwrap_or(0);
             // A spanner can leave a short fragment in every column of the first row.

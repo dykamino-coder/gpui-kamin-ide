@@ -152,7 +152,7 @@ pub(super) fn page_kids_from_groups(
                     ..shape_cx
                 };
                 shape_full(e, 4, cx)
-                    .map(|u| u.0 + pad_top)
+                    .map(|u| u.height + pad_top)
                     .filter(|&u| u > s.0 + 0.01)
             }
             _ => None,

@@ -9,16 +9,12 @@ use crate::style::values::value::Len;
 pub(crate) fn shape_flex_lines(
     row_gap: f32,
     side: impl Fn(&Option<Len>) -> Option<f32>,
-    lines: &mut [Vec<(
-        f32,
-        Element,
-        (f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>),
-    )>],
+    lines: &mut [Vec<(f32, Element, crate::layout::fragment::Shape)>],
 ) -> Option<()> {
     for (li, line) in lines.iter_mut().enumerate() {
         let cross = line
             .iter()
-            .map(|x| x.2.0 + x.2.1 + x.2.2)
+            .map(|x| x.2.height + x.2.margin_top + x.2.margin_bottom)
             .fold(0.0f32, f32::max);
         let (bf, ba) = (
             line.iter().any(|x| edge_break(&x.1, false)),
@@ -31,20 +27,21 @@ pub(crate) fn shape_flex_lines(
         let m = line.len();
         for (ii, (_, e, sh)) in line.iter_mut().enumerate() {
             // `height: auto` тянется на строку — полом.
-            if matches!(e.style.height, None | Some(Len::Auto)) && sh.0 + sh.1 + sh.2 < cross - 0.01
+            if matches!(e.style.height, None | Some(Len::Auto))
+                && sh.height + sh.margin_top + sh.margin_bottom < cross - 0.01
             {
                 let eb = e.style.borders();
                 let edges = side(&e.style.padding.top).unwrap_or(0.0)
                     + side(&e.style.padding.bottom).unwrap_or(0.0)
                     + side(&eb.top).unwrap_or(0.0)
                     + side(&eb.bottom).unwrap_or(0.0);
-                let content = (cross - sh.1 - sh.2 - edges).max(0.0);
+                let content = (cross - sh.margin_top - sh.margin_bottom - edges).max(0.0);
                 e.style.min_height = Some(Len::Px(content));
                 *sh = shape_full(e, 4, ShapeCx::COLUMNS)?;
             }
             // Зазор между строками — к полю элементов следующей строки.
             if li > 0 {
-                sh.1 += row_gap;
+                sh.margin_top += row_gap;
             }
             if ii == 0 {
                 e.style.break_before_force |= bf;

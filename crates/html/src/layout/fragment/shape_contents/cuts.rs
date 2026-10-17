@@ -27,7 +27,7 @@ pub(crate) fn finish_shape_cuts(
     h: f32,
     mt: f32,
     mb: f32,
-) -> Option<(f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>)> {
+) -> Option<crate::layout::fragment::Shape> {
     let own_h = h;
     let h = h.max(oof_reach.finish(c, cx) + bot);
     let h = fragment_size::constrain(h, &c.style, top + bot, cx.viewport, unclamp);
@@ -108,7 +108,14 @@ pub(crate) fn finish_shape_cuts(
         r.1 = r.1.min(h);
     }
     bottom_edge_cuts(bot, &mut solid, stacked, h);
-    Some((h, mt, mb, cuts, forced, solid))
+    Some(crate::layout::fragment::Shape {
+        height: h,
+        margin_top: mt,
+        margin_bottom: mb,
+        cuts,
+        forced,
+        solid,
+    })
 }
 
 pub(super) fn bottom_edge_cuts(

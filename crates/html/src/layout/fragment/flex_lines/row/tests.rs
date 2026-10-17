@@ -52,9 +52,9 @@ fn row_height_is_the_maximum_outer_item_height() {
         vec![item(25.0, 20.0), item(25.0, 80.0), item(25.0, 60.0)],
     );
     let shape = shape_full(&c, 4, ShapeCx::COLUMNS).unwrap();
-    assert_eq!(shape.0, 140.0);
-    assert!(shape.3.contains(&(80.0, 80.0)));
-    assert!(!shape.3.contains(&(20.0, 20.0)));
+    assert_eq!(shape.height, 140.0);
+    assert!(shape.cuts.contains(&(80.0, 80.0)));
+    assert!(!shape.cuts.contains(&(20.0, 20.0)));
 }
 
 #[test]
@@ -64,8 +64,8 @@ fn nested_auto_width_rows_keep_their_break_boundary() {
     second.style.break_before_force = true;
     let c = rows(Some(50.0), vec![first, second]);
     let shape = shape_full(&c, 4, ShapeCx::COLUMNS).unwrap();
-    assert_eq!(shape.0, 200.0);
-    assert_eq!(shape.4, vec![100.0]);
+    assert_eq!(shape.height, 200.0);
+    assert_eq!(shape.forced, vec![100.0]);
 }
 
 #[test]
@@ -75,8 +75,8 @@ fn stretched_avoid_item_is_solid_for_the_whole_row() {
     empty.style.break_inside_avoid = true;
     let c = rows(Some(50.0), vec![item(25.0, 80.0), empty]);
     let shape = shape_full(&c, 4, ShapeCx::COLUMNS).unwrap();
-    assert_eq!(shape.0, 80.0);
-    assert!(shape.5.contains(&(0.0, 80.0)));
+    assert_eq!(shape.height, 80.0);
+    assert!(shape.solid.contains(&(0.0, 80.0)));
 }
 
 #[test]
@@ -84,8 +84,8 @@ fn hypothetical_size_collects_lines_before_shrink() {
     let nested = rows(None, vec![item(50.0, 25.0), item(50.0, 25.0)]);
     let c = rows(Some(50.0), vec![nested, item(0.0, 200.0)]);
     let shape = shape_full(&c, 4, ShapeCx::COLUMNS).unwrap();
-    assert_eq!(shape.0, 250.0);
-    assert!(shape.3.contains(&(50.0, 50.0)));
+    assert_eq!(shape.height, 250.0);
+    assert!(shape.cuts.contains(&(50.0, 50.0)));
 }
 
 #[test]
@@ -102,7 +102,7 @@ fn a_fragmented_row_gap_does_not_expand_the_next_row() {
     let mut c = rows(Some(50.0), vec![item(50.0, 50.0), item(50.0, 50.0)]);
     c.style.gap = Some((Some(Len::Px(100.0)), None));
     let shape = shape_full(&c, 4, ShapeCx::COLUMNS).unwrap();
-    assert!(shape.3.contains(&(50.0, 150.0)));
+    assert!(shape.cuts.contains(&(50.0, 150.0)));
     let lead = item(50.0, 25.0);
     let lead_shape = shape_full(&lead, 4, ShapeCx::COLUMNS).unwrap();
     let grown = crate::layout::fragment::push::grow_pushed(
@@ -113,7 +113,7 @@ fn a_fragmented_row_gap_does_not_expand_the_next_row() {
         3,
         &[Default::default(); 2],
     );
-    assert_eq!(grown[1].1.0, 200.0);
+    assert_eq!(grown[1].1.height, 200.0);
     assert!(
         grown[1]
             .0

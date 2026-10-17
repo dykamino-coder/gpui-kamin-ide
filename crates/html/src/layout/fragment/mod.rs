@@ -33,9 +33,8 @@ mod row_element;
 /// верхнее поле, мера `shape_full`, годны ли его внутренние точки сетке.
 type GridSpot = (usize, usize, f32, Shape, bool);
 
-/// То же плюс смещения принудительных разрывов и диапазоны
-/// монолитов внутри.
-pub(crate) type Shape = (f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>);
+mod shape;
+pub(crate) use shape::Shape;
 
 /// Условия меры: `paged` — стопка страниц (монолитом считается и
 /// `contain: size`, см. `solid_box`); `viewport` — размер области просмотра

@@ -131,11 +131,16 @@ mod tests {
         let mut table = table(vec![block(), block()]);
         table.style.height = Some(Len::Px(200.0));
         let shape = super::super::table_shape(&table, 4, ShapeCx::COLUMNS).unwrap();
-        assert_eq!(shape.0, 200.0);
-        assert!(shape.3.iter().any(|&(need, _)| (need - 100.0).abs() < 0.01));
+        assert_eq!(shape.height, 200.0);
         assert!(
             shape
-                .5
+                .cuts
+                .iter()
+                .any(|&(need, _)| (need - 100.0).abs() < 0.01)
+        );
+        assert!(
+            shape
+                .solid
                 .iter()
                 .any(|&(start, end)| start == 0.0 && end == 100.0)
         );

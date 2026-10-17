@@ -118,7 +118,17 @@ pub(crate) fn split_flex_lines(
                 boxc.style.break_before_avoid = ba && !bf;
                 boxc.style.break_after_force = false;
                 boxc.style.break_after_avoid = false;
-                out.push((boxc, (h, 0.0, 0.0, Vec::new(), Vec::new(), Vec::new())));
+                out.push((
+                    boxc,
+                    crate::layout::fragment::Shape {
+                        height: h,
+                        margin_top: 0.0,
+                        margin_bottom: 0.0,
+                        cuts: Vec::new(),
+                        forced: Vec::new(),
+                        solid: Vec::new(),
+                    },
+                ));
                 par.push(crate::layout::fragment::types::Par {
                     group,
                     group_start: true,

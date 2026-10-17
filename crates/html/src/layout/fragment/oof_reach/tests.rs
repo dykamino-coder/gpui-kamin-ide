@@ -50,7 +50,7 @@ fn positioned_reach_crosses_static_wrappers_without_moving_siblings() {
         vec![Node::Element(wrapper), Node::Element(sibling)],
     );
     let shape = shape_full(&parent, 4, ShapeCx::COLUMNS).unwrap();
-    assert_eq!(shape.0, 200.0);
+    assert_eq!(shape.height, 200.0);
     assert_eq!(
         OOF_OWN.with(|m| m.borrow().get(&parent.node_id).copied()),
         Some((20.0, 200.0))
@@ -83,7 +83,10 @@ fn explicit_top_uses_continuous_containing_block_origin_in_columns() {
         },
         vec![Node::Element(first), Node::Element(abs)],
     );
-    assert_eq!(shape_full(&parent, 4, ShapeCx::COLUMNS).unwrap().0, 200.0);
+    assert_eq!(
+        shape_full(&parent, 4, ShapeCx::COLUMNS).unwrap().height,
+        200.0
+    );
 }
 
 #[test]
@@ -112,5 +115,8 @@ fn contained_fixed_reach_passes_relative_boxes_to_its_own_cb() {
         },
         vec![Node::Element(relative)],
     );
-    assert_eq!(shape_full(&parent, 4, ShapeCx::COLUMNS).unwrap().0, 200.0);
+    assert_eq!(
+        shape_full(&parent, 4, ShapeCx::COLUMNS).unwrap().height,
+        200.0
+    );
 }
