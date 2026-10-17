@@ -131,7 +131,7 @@ pub(super) fn supports_eval_term(term: &str) -> SupTri {
     if split_top_level(inner, ';').len() > 1 {
         return SupTri::False;
     }
-    // Декларация: непустой разбор + дельта на чистом стиле.
+    // Декларация: синтаксис объявления и результат разбора свойства.
     let colons = split_top_level(inner, ':');
     if colons.len() >= 2 {
         // Пользовательское свойство поддержано всегда, если объявление
@@ -201,15 +201,18 @@ pub(super) fn supports_eval_term(term: &str) -> SupTri {
                 (k.clone(), parts.join(&DECL_SEP.to_string()))
             })
             .collect();
-        let mut c = crate::style::computed::Computed::default();
-        c.apply_decls(&clean);
-        // Счётчик порядка объявлений и номера сторон — БУХГАЛТЕРИЯ каскада, а
-        // не значения свойств: они меняются у любого объявления, и без
-        // обнуления «поддержанным» выходило всё подряд, включая
-        // `(color: rainbow)` (`css-supports-005`, `at-supports-009`).
-        c.decl_seq = 0;
-        c.side_seq = Default::default();
-        return if format!("{c:?}") != format!("{:?}", crate::style::computed::Computed::default()) {
+        // CSS Conditional 3 §6.1 tests whether the declaration is accepted,
+        // independently of its resulting value or cascade bookkeeping.
+        let accepted = clean
+            .iter()
+            .filter(|(key, _)| key.as_str() != ORDER_KEY)
+            .any(|(key, value)| {
+                value.split(DECL_SEP).any(|part| {
+                    crate::style::computed::Computed::declaration_result(key, part)
+                        == crate::style::computed::ParseResult::Accepted
+                })
+            });
+        return if accepted {
             SupTri::True
         } else {
             SupTri::False

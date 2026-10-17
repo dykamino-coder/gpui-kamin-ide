@@ -8,6 +8,7 @@ impl Computed {
     pub(crate) fn set_border_style(&mut self, v: &str, side: Option<usize>) {
         let on = border_style(v);
         if let Some(r) = border_style_rank(v) {
+            self.accept_declaration();
             match side {
                 None => self.border_side_styles = [Some(r); 4],
                 Some(i) => self.border_side_styles[i] = Some(r),
@@ -79,6 +80,7 @@ impl Computed {
                 return;
             }
         }
+        self.accept_declaration();
         let mut width = None;
         let mut color = None;
         let mut visible_style = false;

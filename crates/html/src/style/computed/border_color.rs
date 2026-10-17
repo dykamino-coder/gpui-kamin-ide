@@ -10,6 +10,7 @@ impl Computed {
         if !current && color.is_none() {
             return;
         }
+        self.accept_declaration();
         // CSS Backgrounds 3 §4.1: the shorthand sets all four longhands,
         // including sides set by an earlier border or side shorthand.
         self.border_color_is_current = current;

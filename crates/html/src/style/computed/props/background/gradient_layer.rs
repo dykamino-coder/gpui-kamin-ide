@@ -60,7 +60,7 @@ impl Computed {
             }
             tiled |= self.bg_repeat.is_some();
         }
-        self.gradient = parse_gradient(top);
+        self.gradient = record_parsed!(self, parse_gradient(top));
         self.gradient_current = top.contains("currentcolor").then(|| top.to_string());
         self.gradient_em = has_font_units(top).then(|| top.to_string());
         // Corner keywords need the concrete image size (CSS Images 3 §3.1).

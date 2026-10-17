@@ -12,13 +12,13 @@ impl Computed {
             // `pre` сохраняет переводы строк — это не то же самое, что запрет
             // переноса: раньше `pre` помечался как `nowrap`, и текст склеивался
             // в одну строку.
-            "cursor" => self.cursor = Some(v.to_string()),
+            "cursor" => self.cursor = accept_parsed!(self, Some(v.to_string())),
             // Заливка SVG-геометрии: свойство презентации доезжает до
             // разметки при растеризации (SVG 2 §presentation attributes).
-            "fill" => self.svg_fill = Some(v.to_string()),
+            "fill" => self.svg_fill = accept_parsed!(self, Some(v.to_string())),
             // Обводка — то же семейство. Значение уходит в разметку как есть:
             // разбирать цвет здесь незачем, его знает usvg.
-            "stroke" => self.svg_stroke = Some(v.to_string()),
+            "stroke" => self.svg_stroke = accept_parsed!(self, Some(v.to_string())),
             // Вычисленное `stroke-width` — «the absolute length, or percentage»
             // (fill-stroke-3 §stroke-width): `calc()` из точек сворачивается
             // здесь. usvg его не понимает и рисовал толщину по умолчанию 1
@@ -26,22 +26,27 @@ impl Computed {
             // `UnzoomedLength` через `ConvertUnzoomedLength`
             // (css_properties.json5:6150-6159).
             "stroke-width" => {
-                self.svg_stroke_width = Some(match crate::style::values::value::calc_pct_px(v) {
-                    Some((pct, px)) if pct == 0.0 => format!("{px}"),
-                    _ => v.to_string(),
-                });
+                self.svg_stroke_width = accept_parsed!(
+                    self,
+                    Some(match crate::style::values::value::calc_pct_px(v) {
+                        Some((pct, px)) if pct == 0.0 => format!("{px}"),
+                        _ => v.to_string(),
+                    })
+                );
             }
             // `x`/`y` — геометрические СВОЙСТВА фигуры (SVG 2 §Geometry).
             // У HTML-коробки таких свойств нет, поэтому имена свободны, а в
             // разметку они уходят только внутри SVG-поддерева (гейт в svg.rs).
-            "x" => self.svg_x = crate::style::values::value::Len::parse(v),
-            "y" => self.svg_y = crate::style::values::value::Len::parse(v),
+            "x" => self.svg_x = record_parsed!(self, crate::style::values::value::Len::parse(v)),
+            "y" => self.svg_y = record_parsed!(self, crate::style::values::value::Len::parse(v)),
             "cx" | "cy" | "r" | "rx" | "ry" | "d" => {
                 crate::svg::geometry_property(self, key, v);
             }
-            "caption-side" => self.caption_bottom = Some(v.eq_ignore_ascii_case("bottom")),
+            "caption-side" => {
+                self.caption_bottom = accept_parsed!(self, Some(v.eq_ignore_ascii_case("bottom")))
+            }
             "list-style-position" => {
-                self.list_style_inside = Some(v.trim() == "inside");
+                self.list_style_inside = accept_parsed!(self, Some(v.trim() == "inside"));
             }
             "list-style" | "list-style-type" => list_style::apply(self, key, v),
             "backdrop-filter" => {
@@ -49,7 +54,11 @@ impl Computed {
                 // (filter-effects-2 §BackdropFilterProperty): разбор общий,
                 // размытие идёт своим проходом, цветовые функции — матрицей.
                 let mut tmp = Self::default();
+                tmp.declaration_parse = self.declaration_parse;
                 tmp.apply_one("filter", v);
+                if tmp.declaration_parse == ParseResult::Accepted {
+                    self.accept_declaration();
+                }
                 let f = tmp.filter.unwrap_or_else(Filter::neutral);
                 self.backdrop_blur = (f.blur > 0.0).then_some(f.blur);
                 self.backdrop_color = f.color_matrix().map(|_| Filter { blur: 0.0, ..f });
@@ -67,7 +76,7 @@ impl Computed {
             // root»; Blink paint_property_tree_builder.cc:1858-1862
             // `NeedsEffectForViewTransition`).
             "view-transition-name" => {
-                self.vt_name = !v.trim().eq_ignore_ascii_case("none");
+                self.vt_name = accept_parsed!(self, !v.trim().eq_ignore_ascii_case("none"));
             }
             // css-will-change-1 §2.1: обещанное свойство даёт коробке то, что
             // дало бы его неначальное значение, — содержащий блок для
@@ -131,7 +140,7 @@ impl Computed {
                         _ => 0,
                     };
                 }
-                self.will_change = bits;
+                self.will_change = accept_parsed!(self, bits);
                 self.will_change_root = root;
             }
             // Свисающая пунктуация: знак выходит ЗА край коробки, чтобы край
@@ -150,13 +159,13 @@ impl Computed {
                     },
                 };
                 if let Some(k) = k.filter(|k| k.is_finite() && *k >= 0.0) {
-                    self.zoom = Some(if k == 0.0 { 1.0 } else { k });
+                    self.zoom = accept_parsed!(self, Some(if k == 0.0 { 1.0 } else { k }));
                 }
             }
 
             // --- Прочее ------------------------------------------------------
-            "pointer-events" => self.pointer_events_none = Some(v == "none"),
-            "table-layout" => self.table_fixed = Some(v == "fixed"),
+            "pointer-events" => self.pointer_events_none = accept_parsed!(self, Some(v == "none")),
+            "table-layout" => self.table_fixed = accept_parsed!(self, Some(v == "fixed")),
 
             // --- Псевдоэлементы и шрифт ---------------------------------------
             "counter-reset" | "counter-increment" | "counter-set" => counters::apply(self, key, v),
@@ -170,6 +179,7 @@ impl Computed {
                     // `content: ""` и `inset: 0` накрывает красное зелёным
                     // (`overflow-wrap-anywhere-001` и родня).
                     "none" | "normal" => {
+                        self.accept_declaration();
                         self.content_inherit = false;
                         self.content = None;
                         self.content_none = Some(v == "none");
@@ -180,16 +190,17 @@ impl Computed {
                     // показывал слово FAIL.
                     other => {
                         if let Some(list) = parse_content(other) {
+                            self.accept_declaration();
                             self.content_inherit = false;
                             self.content = Some(list);
                         }
                     }
                 }
             }
-            "accent-color" => self.accent_color = Color::parse(v),
+            "accent-color" => self.accent_color = record_parsed!(self, Color::parse(v)),
             "appearance" | "-webkit-appearance" => {
                 if let Some(a) = crate::style::computed::Appearance::parse(v) {
-                    self.appearance = Some(a);
+                    self.appearance = accept_parsed!(self, Some(a));
                 }
             }
 

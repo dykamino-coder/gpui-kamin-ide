@@ -17,6 +17,7 @@ impl Computed {
             // содержимого сел на метрику текста. Свойство НЕ наследуется.
             "text-box-trim" => {
                 if let Some((s, e)) = text_box_values::parse_trim(v) {
+                    self.accept_declaration();
                     self.text_box_trim_start = s;
                     self.text_box_trim_end = e;
                 }
@@ -29,6 +30,7 @@ impl Computed {
             // как `text`).
             "text-box-edge" => {
                 if let Some((over, under)) = text_box_values::parse_edge(v) {
+                    self.accept_declaration();
                     self.text_box_edge_set = true;
                     self.text_box_over = over;
                     self.text_box_under = under;
@@ -39,6 +41,7 @@ impl Computed {
             // `text-box-edge` — `auto`. `normal` гасит оба.
             "text-box" => {
                 if let Some(((s, e), (over, under))) = text_box_values::parse_shorthand(v) {
+                    self.accept_declaration();
                     self.text_box_trim_start = s;
                     self.text_box_trim_end = e;
                     self.text_box_over = over;
@@ -57,13 +60,14 @@ impl Computed {
                         _ => {}
                     }
                 }
-                self.hanging = (h != Hanging::default()).then_some(h);
+                self.hanging = accept_parsed!(self, (h != Hanging::default()).then_some(h));
             }
             // Разрыв ВНУТРИ слова разрешают по-разному, и разница видна на
             // экране. `word-break: break-all` и `line-break: anywhere` рвут
             // слово всегда. А `overflow-wrap` — только когда слово иначе не
             // влезает: короткое сначала целиком уходит на следующую строку.
             "text-autospace" => {
+                self.accept_declaration();
                 // `normal` = оба разряда, `no-autospace` = ни одного.
                 // Разряды могут стоять и по отдельности, и вместе.
                 let (alpha, numeric) = match v {
@@ -78,6 +82,7 @@ impl Computed {
                 self.autospace_numeric = Some(numeric);
             }
             "word-space-transform" => {
+                self.accept_declaration();
                 // Точка переноса показывается пробелом: обычным или
                 // идеографическим (css-text-4). `none` и `auto-phrase`
                 // не показывают ничего.
@@ -101,6 +106,7 @@ impl Computed {
                 );
             }
             "overflow-wrap" | "word-wrap" => {
+                self.accept_declaration();
                 self.break_word = Some(matches!(v, "break-word" | "anywhere"));
                 // `anywhere` отличается от `break-word` ровно одним: он МЕНЯЕТ
                 // размер по минимальному содержимому — слово рвётся и при его
@@ -110,6 +116,7 @@ impl Computed {
                 self.wrap_anywhere = Some(v == "anywhere");
             }
             "word-break" => {
+                self.accept_declaration();
                 self.auto_phrase = Some(v == "auto-phrase");
                 // `break-word` — устаревший псевдоним, и по спецификации он
                 // равен `overflow-wrap: anywhere`, а не `break-word`: разница
@@ -127,6 +134,7 @@ impl Computed {
                 }
             }
             "line-break" => {
+                self.accept_declaration();
                 self.break_anywhere = Some(v == "anywhere");
                 self.break_anywhere_strict = Some(v == "anywhere");
                 // `auto` у Blink ведёт себя строго (`LineBreakStrictness::
@@ -140,17 +148,21 @@ impl Computed {
             }
             "hyphenate-limit-lines" => {
                 if v == "no-limit" {
+                    self.accept_declaration();
                     self.hyphen_limit_lines = Some(usize::MAX);
                 } else if let Ok(limit) = v.parse::<usize>() {
+                    self.accept_declaration();
                     self.hyphen_limit_lines = Some(limit);
                 }
             }
             "hyphenate-limit-chars" => {
                 if let Some(limits) = super::hyphen_limits::parse(v) {
+                    self.accept_declaration();
                     self.hyphen_limit_chars = Some(limits);
                 }
             }
             "hyphenate-character" => {
+                self.accept_declaration();
                 // Значение — строка в кавычках; `auto` значит «сам знак
                 // переноса».
                 self.hyphen_char = Some(if v == "auto" {
@@ -165,6 +177,7 @@ impl Computed {
                 });
             }
             "text-fit" => {
+                self.accept_declaration();
                 self.text_fit = (v != "none").then(|| {
                     let mut f = TextFit {
                         grow: false,
@@ -196,6 +209,7 @@ impl Computed {
                 });
             }
             "text-wrap" | "text-wrap-mode" | "text-wrap-style" => {
+                self.accept_declaration();
                 if matches!(v, "nowrap" | "wrap") {
                     self.nowrap = Some(v == "nowrap");
                 }

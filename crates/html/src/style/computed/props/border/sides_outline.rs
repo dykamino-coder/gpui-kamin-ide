@@ -11,24 +11,44 @@ impl Computed {
         v: &str,
         hit: &mut bool,
     ) {
+        if key.ends_with("-color") && v.eq_ignore_ascii_case("currentcolor") {
+            self.accept_declaration();
+        }
+        if self.declaration_parse != ParseResult::Inactive
+            && key.starts_with("border-")
+            && (key.contains("inline") || key.contains("block"))
+        {
+            let physical = if key.ends_with("-width") {
+                "border-top-width"
+            } else if key.ends_with("-style") {
+                "border-top-style"
+            } else if key.ends_with("-color") {
+                "border-top-color"
+            } else {
+                "border-top"
+            };
+            let result = Self::declaration_result(physical, v);
+            if result == ParseResult::Accepted {
+                self.accept_declaration();
+            }
+        }
         match key {
-            // --- Рамки и обводка --------------------------------------------
-            // Толщина словом (`thin`/`medium`/`thick`) — законное значение;
-            // неразобранное значение НЕ стирает уже заданную толщину.
-            "border-top-width" => self.border_width.top = line_width(v).or(self.border_width.top),
+            "border-top-width" => {
+                self.border_width.top =
+                    record_parsed!(self, line_width(v)).or(self.border_width.top)
+            }
             "border-right-width" => {
-                self.border_width.right = line_width(v).or(self.border_width.right)
+                self.border_width.right =
+                    record_parsed!(self, line_width(v)).or(self.border_width.right)
             }
             "border-bottom-width" => {
-                self.border_width.bottom = line_width(v).or(self.border_width.bottom)
+                self.border_width.bottom =
+                    record_parsed!(self, line_width(v)).or(self.border_width.bottom)
             }
             "border-left-width" => {
-                self.border_width.left = line_width(v).or(self.border_width.left)
+                self.border_width.left =
+                    record_parsed!(self, line_width(v)).or(self.border_width.left)
             }
-            // Логические кромки уходят в логический слой: физическая сторона
-            // известна только после наследования письма (css-logical-1 §4.2;
-            // у `vertical-rl` inline-start — ВЕРХ, разбор же писал влево:
-            // logical-props-001).
             "border-inline" => {
                 let l = self.logical();
                 l.border[1] = Some(v.to_string());
@@ -43,8 +63,6 @@ impl Computed {
             "border-block-end" => self.logical().border[2] = Some(v.to_string()),
             "border-inline-start" => self.logical().border[3] = Some(v.to_string()),
             "border-inline-end" => self.logical().border[1] = Some(v.to_string()),
-            // css-logical-1 §4.3: `border-block-width` и родня — одно или два
-            // значения, начало и конец оси; раздаются своим лонгхендам.
             "border-block-width"
             | "border-block-style"
             | "border-block-color"
@@ -61,8 +79,6 @@ impl Computed {
                 self.apply_one(&format!("border-{axis}-start-{prop}"), a);
                 self.apply_one(&format!("border-{axis}-end-{prop}"), b);
             }
-            // css-logical-1 §4.3: the longhands map to a physical side by the
-            // writing mode, known only after inheritance (`resolve_logical`).
             "border-block-start-color"
             | "border-block-end-color"
             | "border-inline-start-color"
@@ -94,19 +110,23 @@ impl Computed {
                 };
                 self.logical().border_long.push((side, prop, v.to_string()));
             }
-            "border-top-color" => self.border_colors[0] = side_color(v, self.color),
-            "border-right-color" => self.border_colors[1] = side_color(v, self.color),
-            "border-bottom-color" => self.border_colors[2] = side_color(v, self.color),
-            "border-left-color" => self.border_colors[3] = side_color(v, self.color),
+            "border-top-color" => {
+                self.border_colors[0] = record_parsed!(self, side_color(v, self.color))
+            }
+            "border-right-color" => {
+                self.border_colors[1] = record_parsed!(self, side_color(v, self.color))
+            }
+            "border-bottom-color" => {
+                self.border_colors[2] = record_parsed!(self, side_color(v, self.color))
+            }
+            "border-left-color" => {
+                self.border_colors[3] = record_parsed!(self, side_color(v, self.color))
+            }
             "border-top-style" => self.set_border_style(v, Some(0)),
             "border-right-style" => self.set_border_style(v, Some(1)),
             "border-bottom-style" => self.set_border_style(v, Some(2)),
             "border-left-style" => self.set_border_style(v, Some(3)),
             "border-style" => {
-                // От одного до четырёх значений, как у любого сокращения по
-                // сторонам: `border-style: solid none` — рамка сверху и снизу
-                // (css-backgrounds-3 §4.2). Прежде строка сравнивалась целиком,
-                // и любая многозначная запись гасила рамку на всех сторонах.
                 let side = |list: &[&str], i: usize| -> String {
                     let pick = match (list.len(), i) {
                         (1, _) => 0,
@@ -123,8 +143,9 @@ impl Computed {
                 if list.is_empty() {
                     return;
                 }
-                // `dashed` и `dotted` — разные узоры; `double`, `groove` и
-                // прочие рельефные сводятся к сплошной: рельефа в конвейере нет.
+                if list.len() <= 4 && list.iter().all(|v| border_style_rank(v).is_some()) {
+                    self.accept_declaration();
+                }
                 self.border_dashed = Some(side(&list, 0) == "dashed");
                 self.border_dotted = Some(side(&list, 0) == "dotted");
                 let widths = [
@@ -137,15 +158,11 @@ impl Computed {
                     let one = side(&list, i);
                     let on = border_style(&one);
                     self.border_visible[i] = Some(on);
-                    // Ранг рисунка — участник разбора сросшихся кромок
-                    // (§17.6.2.1), и `hidden` там гасит соседей. Сокращение
-                    // его не писало вовсе, поэтому `border-style: hidden` на
-                    // ряде или группе до разбора не доезжал.
+                    // CSS 2.1 §17.6.2.1: hidden wins collapsed border conflicts.
                     if let Some(rank) = border_style_rank(&one) {
                         self.border_side_styles[i] = Some(rank);
                     }
-                    // Свой рисунок рамки делает её видимой: начальная толщина
-                    // `medium` — это 3px, и задавать её отдельно не требуется.
+                    // Initial medium width is 3px when a style makes it visible.
                     if on && w.is_none() {
                         *w = Some(Len::Px(3.0));
                     }
@@ -156,18 +173,17 @@ impl Computed {
             }
             "border-spacing" => {
                 let (a, b) = axis_pair(v);
+                if a.is_some() && b.is_some() {
+                    self.accept_declaration();
+                }
                 self.border_spacing = Some((a, b));
             }
             "outline" => {
-                // `outline: inherit` — вычисленное значение родителя целиком
-                // (§6.2.1): само свойство не наследуется, поэтому копируются
-                // все его части (`outline-002`).
                 if v == "inherit" {
                     self.inherit_bits |= inh::OUTLINE_W | inh::OUTLINE_C | inh::OUTLINE_S;
                     return;
                 }
-                // Умолчание CSS — `medium`, три точки: без него запись
-                // `outline: solid red` не рисовала ничего.
+                // Initial medium width is 3px.
                 let mut o = self.outline.unwrap_or(Outline {
                     width: Some(Len::Px(3.0)),
                     color: None,
@@ -177,20 +193,19 @@ impl Computed {
                 });
                 for token in split_ws_top(v) {
                     if let Some(st) = outline_style_of(token) {
+                        self.accept_declaration();
                         o.style = Some(st);
                     } else if let Some(l) = outline_width_of(token) {
+                        self.accept_declaration();
                         o.width = Some(l);
                     } else if let Some(c) = Color::parse(token) {
+                        self.accept_declaration();
                         o.color = Some(c);
                     }
                 }
                 self.outline = Some(o);
             }
             "outline-width" | "outline-color" | "outline-offset" | "outline-style" => {
-                // `outline-width: inherit` берёт у родителя ТОЛЬКО толщину:
-                // остальные части обводки остаются своими. Разбор слова здесь
-                // не выражается — `outline_width_of("inherit")` даёт `None`, и
-                // толщина пропадала.
                 if v == "inherit" {
                     self.inherit_bits |= match key {
                         "outline-width" => inh::OUTLINE_W,
@@ -202,29 +217,27 @@ impl Computed {
                 }
                 let mut o = self.outline.unwrap_or_default();
                 match key {
-                    // `initial`/`unset` ненаследуемой ширины — `medium`, 3px
-                    // (css-ui-4 §outline-width); слова разбор не знал, ширина
-                    // оставалась пустой, и обводка не рисовалась вовсе
-                    // (`zoom/outline-width-keywords`, коробка `.initial`).
                     "outline-width" if matches!(v, "initial" | "unset") => {
                         o.width = Some(Len::Px(3.0))
                     }
-                    "outline-width" => o.width = outline_width_of(v).or(o.width),
-                    "outline-color" => o.color = Color::parse(v),
-                    "outline-style" => o.style = outline_style_of(v),
-                    // `outline-offset: inset` — «внутрь на толщину»: слово
-                    // уходило в разбор длины, давало `None`, и контур ложился
-                    // СНАРУЖИ коробки (`outline-offset-inset-002` 0.93,
-                    // `-004` 3.31).
+                    "outline-width" => {
+                        o.width = record_parsed!(self, outline_width_of(v)).or(o.width)
+                    }
+                    "outline-color" => o.color = record_parsed!(self, Color::parse(v)),
+                    "outline-style" => o.style = record_parsed!(self, outline_style_of(v)),
+                    // Inset moves the outline inward by its width.
                     _ => {
                         o.inset = v == "inset";
-                        o.offset = if o.inset { None } else { Len::parse(v) };
+                        o.offset = if o.inset {
+                            self.accept_declaration();
+                            None
+                        } else {
+                            record_parsed!(self, Len::parse(v))
+                        };
                     }
                 }
                 self.outline = Some(o);
             }
-            // Картинка вместо рамки. Свойств пять, и каждое дополняет одну и
-            // ту же запись — поэтому разбор общий.
             "border-image"
             | "border-image-source"
             | "border-image-slice"

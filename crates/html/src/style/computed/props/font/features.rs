@@ -13,6 +13,7 @@ impl Computed {
             | "font-synthesis-weight"
             | "font-synthesis-style"
             | "font-synthesis-small-caps" => {
+                self.accept_declaration();
                 // css-fonts-4 §6.5: `auto` разрешает подмену, `none`
                 // запрещает; у сокращения перечислены разрешённые части.
                 if matches!(key, "font-synthesis" | "font-synthesis-style") {
@@ -57,6 +58,7 @@ impl Computed {
                 }
                 // Негодный список роняет объявление целиком (§4.2).
                 if let Some(list) = feature_list(v) {
+                    self.accept_declaration();
                     self.font_settings = Some(list);
                 }
             }
@@ -77,7 +79,7 @@ impl Computed {
                     else {
                         return;
                     };
-                    self.font_alternates = Some(alternates);
+                    self.font_alternates = accept_parsed!(self, Some(alternates));
                 }
                 // Значения разделяются ПРОБЕЛОМ (css-fonts-4 §6); каждое
                 // свойство сперва чистит СВОЮ подгруппу тегов — повтор и
@@ -145,13 +147,20 @@ impl Computed {
                         "ruby" => &[("ruby", 1)],
                         "sub" => &[("subs", 1)],
                         "super" => &[("sups", 1)],
-                        "historical-forms" => &[],
+                        "historical-forms" => {
+                            self.accept_declaration();
+                            &[]
+                        }
                         // `none` выключает лигатуры по умолчанию.
                         "none" => &[("liga", 0), ("clig", 0), ("calt", 0)],
-                        "normal" => &[],
+                        "normal" => {
+                            self.accept_declaration();
+                            &[]
+                        }
                         _ => &[],
                     };
                     for (t, on) in push {
+                        self.accept_declaration();
                         self.font_features.push(((*t).into(), *on));
                     }
                 }

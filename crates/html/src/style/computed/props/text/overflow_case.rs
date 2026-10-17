@@ -63,7 +63,7 @@ impl Computed {
                         marker = None;
                     }
                 }
-                self.ellipsis = Some(on);
+                self.ellipsis = accept_parsed!(self, Some(on));
                 self.overflow_marker = marker;
             }
             // Долгая запись `white-space-collapse` (css-text-4 §3.1) трогает
@@ -72,21 +72,25 @@ impl Computed {
             // сборке текста нет — не трогаем.
             "white-space-collapse" => match v {
                 "collapse" => {
+                    self.accept_declaration();
                     self.keep_spaces = Some(false);
                     self.preserve_newlines = Some(false);
                     self.break_after_spaces = Some(false);
                 }
                 "preserve" => {
+                    self.accept_declaration();
                     self.keep_spaces = Some(true);
                     self.preserve_newlines = Some(true);
                     self.break_after_spaces = Some(false);
                 }
                 "preserve-breaks" => {
+                    self.accept_declaration();
                     self.keep_spaces = Some(false);
                     self.preserve_newlines = Some(true);
                     self.break_after_spaces = Some(false);
                 }
                 "break-spaces" => {
+                    self.accept_declaration();
                     self.keep_spaces = Some(true);
                     self.preserve_newlines = Some(true);
                     self.break_after_spaces = Some(true);
@@ -94,7 +98,7 @@ impl Computed {
                 _ => {}
             },
             "white-space" => white_space::apply(self, v),
-            "word-spacing" => self.word_spacing = Len::parse_spacing(v),
+            "word-spacing" => self.word_spacing = record_parsed!(self, Len::parse_spacing(v)),
             "text-transform" => {
                 // Свойство наследуемое: `inherit` очищает свой слот, иначе
                 // прежнее объявление того же правила его переживало.
@@ -124,6 +128,7 @@ impl Computed {
                     any = true;
                 }
                 if any {
+                    self.accept_declaration();
                     self.text_transform = Some(case.unwrap_or(TextTransform::None));
                     self.text_transform_flags = flags;
                 }

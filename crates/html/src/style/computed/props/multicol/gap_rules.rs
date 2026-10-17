@@ -181,6 +181,7 @@ impl Computed {
         let Some(list) = gap_list(v, gap_rule) else {
             return;
         };
+        self.accept_declaration();
         let widths = list.map(|r| r.0.unwrap_or(Len::Px(3.0)));
         let styles = list.map(|r| r.1.unwrap_or(false));
         let colors = list.map(|r| r.2.flatten());
