@@ -1561,4 +1561,13 @@ pub struct Computed {
     pub appearance: Option<crate::style::computed::Appearance>,
     /// Element used color scheme, shared by CSS system colours and native controls.
     pub dark_color_scheme: bool,
+    /// Namespace identity and the winning MathML inner display type.
+    pub(crate) mathml: bool,
+    pub(crate) math_layout: Option<Display>,
+    pub(crate) math_compact: Option<bool>,
+    pub(crate) math_shift: Option<bool>,
+    pub(crate) math_depth: Option<super::math_style::Depth>,
+    pub(crate) math_level: i32,
+    pub(crate) math_font_size: bool,
+    pub(crate) math_operator_form: Option<u8>,
 }

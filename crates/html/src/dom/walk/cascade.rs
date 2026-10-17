@@ -144,6 +144,14 @@ pub(super) fn cascade_element(
         matched.push(&basic);
         style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
     }
+    style.mathml = crate::dom::mathml::is_mathml(handle);
+    if crate::dom::mathml_routing::enabled(handle) {
+        if let Some(display) = style.math_layout {
+            style.display = Some(display);
+        }
+    } else {
+        style.math_layout = None;
+    }
     style.dark_color_scheme = crate::style::values::value::dark_scheme();
     style.custom_scrollbar = rules.iter().any(|rule| {
         if rule.sel.pseudo.as_deref() != Some("-webkit-scrollbar") {

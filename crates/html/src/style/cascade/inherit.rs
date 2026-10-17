@@ -57,6 +57,7 @@ fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Compu
     inherit_sizes(parent, own, &mut c);
     inherit_explicit(parent, own, &mut c);
     inherit_fonts(parent, own, &mut c);
+    crate::style::computed::math_style::inherit(parent, &mut c);
     inherit_text_layout(parent, own, &mut c);
     flow_align::resolve(parent, &mut c);
     c.resolve_gradient_current_color();

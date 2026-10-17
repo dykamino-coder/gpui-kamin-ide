@@ -16,6 +16,7 @@ pub(super) fn inherited_property(key: &str) -> bool {
             | "font-family"
             | "font-size"
             | "font-style"
+            | "math-style"
             | "font-variant"
             | "font-weight"
             | "font-stretch"
@@ -85,6 +86,8 @@ pub(super) fn initial_value(key: &str) -> Option<&'static str> {
         "font-family" => "serif",
         "font-size" => "medium",
         "font-style" => "normal",
+        // MathML Core §4.2: initial must stop inheriting compact style.
+        "math-style" => "normal",
         "font-variant" => "normal",
         "font-weight" => "normal",
         "letter-spacing" => "normal",
