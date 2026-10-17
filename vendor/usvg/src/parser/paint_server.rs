@@ -54,6 +54,9 @@ fn convert_linear(node: SvgNode, state: &converter::State) -> Option<ServerOrCol
     }
 
     let units = convert_units(node, AId::GradientUnits, Units::ObjectBoundingBox);
+    if is_singular_transform(resolve_attr(node, AId::GradientTransform), AId::GradientTransform) {
+        return None;
+    }
     let transform =
         resolve_attr(node, AId::GradientTransform).resolve_transform(AId::GradientTransform, state);
 
@@ -124,6 +127,9 @@ fn convert_radial(node: SvgNode, state: &converter::State) -> Option<ServerOrCol
     );
     let fx = resolve_number(node, AId::Fx, units, state, Length::new_number(cx as f64));
     let fy = resolve_number(node, AId::Fy, units, state, Length::new_number(cy as f64));
+    if is_singular_transform(resolve_attr(node, AId::GradientTransform), AId::GradientTransform) {
+        return None;
+    }
     let transform =
         resolve_attr(node, AId::GradientTransform).resolve_transform(AId::GradientTransform, state);
 
@@ -167,9 +173,16 @@ fn convert_pattern(
         })
     };
 
+    if resolve_attr(node, AId::ViewBox).viewbox_disables_rendering() {
+        return None;
+    }
+
     let units = convert_units(node, AId::PatternUnits, Units::ObjectBoundingBox);
     let content_units = convert_units(node, AId::PatternContentUnits, Units::UserSpaceOnUse);
 
+    if is_singular_transform(resolve_attr(node, AId::PatternTransform), AId::PatternTransform) {
+        return None;
+    }
     let transform =
         resolve_attr(node, AId::PatternTransform).resolve_transform(AId::PatternTransform, state);
 
@@ -418,7 +431,7 @@ pub(crate) fn resolve_number(
 }
 
 fn resolve_attr<'a, 'input: 'a>(node: SvgNode<'a, 'input>, name: AId) -> SvgNode<'a, 'input> {
-    if node.has_attribute(name) {
+    if is_specified(node, name) {
         return node;
     }
 
@@ -453,7 +466,7 @@ fn resolve_lg_attr<'a, 'input: 'a>(node: SvgNode<'a, 'input>, name: AId) -> SvgN
             | (AId::SpreadMethod, EId::RadialGradient)
             | (AId::GradientTransform, EId::LinearGradient)
             | (AId::GradientTransform, EId::RadialGradient) => {
-                if link.has_attribute(name) {
+                if is_specified(link, name) {
                     return link;
                 }
             }
@@ -488,7 +501,7 @@ fn resolve_rg_attr<'a, 'input>(node: SvgNode<'a, 'input>, name: AId) -> SvgNode<
             | (AId::SpreadMethod, EId::RadialGradient)
             | (AId::GradientTransform, EId::LinearGradient)
             | (AId::GradientTransform, EId::RadialGradient) => {
-                if link.has_attribute(name) {
+                if is_specified(link, name) {
                     return link;
                 }
             }
@@ -513,7 +526,7 @@ fn resolve_pattern_attr<'a, 'input: 'a>(
             break;
         }
 
-        if link.has_attribute(name) {
+        if is_specified(link, name) {
             return link;
         }
     }
@@ -1092,4 +1105,31 @@ impl Paint {
             _ => Units::UserSpaceOnUse,
         }
     }
+}
+
+/// Whether `name` is specified on `node` for `href` inheritance. An empty
+/// `gradientTransform`/`patternTransform` doesn't stop the lookup (WPT
+/// pservers `*-transform-empty-attr`): SVG 2 §14.2.3 inherits only the
+/// attributes the referencing element "does not have defined".
+fn is_specified(node: SvgNode, name: AId) -> bool {
+    match name {
+        AId::GradientTransform | AId::PatternTransform => node
+            .attribute::<&str>(name)
+            .is_some_and(|v| !v.trim().is_empty()),
+        _ => node.has_attribute(name),
+    }
+}
+
+/// A paint server whose `gradientTransform`/`patternTransform` can't be
+/// inverted maps nothing onto the shape: the paint is invalid and the
+/// fallback colour applies (WPT pservers `gradient-transform-01/02`,
+/// `pattern-transform-02`; Blink layout_svg_resource_gradient.cc:127,
+/// layout_svg_resource_pattern.cc:170 build no shader then).
+fn is_singular_transform(node: SvgNode, name: AId) -> bool {
+    node.attribute::<&str>(name)
+        .and_then(|v| svgtypes::Transform::from_str(v).ok())
+        .is_some_and(|t| {
+            let det = t.a * t.d - t.b * t.c;
+            !det.is_finite() || det == 0.0
+        })
 }

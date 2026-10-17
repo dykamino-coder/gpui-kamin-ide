@@ -48,6 +48,19 @@
 #    не создают группу и не несут `filter` (SVG 2 §9-§12;
 #    WPT svg-empty-element-with-filter-001). Пустой `<g filter>` — как прежде.
 #    Правки 6-8 — отдельными diff-блоками после основных, накатывать по порядку.
+# 9. usvg, SVG 2 (src/parser/svgtree/parse/elements.rs, converter.rs, text.rs,
+#    marker.rs, paint_server.rs, use_node.rs): геометрические свойства
+#    cx/cy/r/rx/ry/x/y/width/height/d из CSS перекрывают атрибут на тех
+#    элементах, к которым применимы (не на `svg`, svgwg#1059); `pathLength`
+#    масштабирует штрихи (Blink PathLengthScaleFactor); нулевая ширина/высота
+#    `viewBox` выключает отрисовку корня, вложенного svg, symbol, marker,
+#    pattern (§8.6); пустой gradientTransform/patternTransform не перекрывает
+#    href-наследование; необратимый transform сервера заливки — запасной цвет
+#    (Blink layout_svg_resource_gradient.cc:127). Отдельный diff-блок в конце.
+# 10. usvg (src/parser/use_node.rs, style.rs): `symbol` с `display="none"` через
+#    `use` не рисуется; вьюпорт экземпляра `symbol` — width/height `use`, иначе
+#    собственные width/height символа (SVG 2 §5.6.2); ключевые слова заливки
+#    регистронезависимы (`currentcolor`, CSS Values 4 §2.1). Отдельный блок.
 #
 # Как накатывать при обновлении вендора: 3-way merge (база — дерево
 # предыдущей upstream-ревизии, ours — vendor/, theirs — новая ревизия), либо
@@ -2230,4 +2243,432 @@ index 0000000..1c16399
 +        }
 +    }
 +    false
++}
+diff --git a/src/parser/converter.rs b/src/parser/converter.rs
+index 5fa1f25..bfb67f8 100644
+--- a/src/parser/converter.rs
++++ b/src/parser/converter.rs
+@@ -282,6 +282,22 @@ impl<'a, 'input: 'a> SvgNode<'a, 'input> {
+         self.convert_length(aid, Units::UserSpaceOnUse, state, def)
+     }
+
++    /// SVG 2 §8.6 "The 'viewBox' attribute": a zero width or height
++    /// disables rendering of the element; a negative one only invalidates
++    /// the attribute (`parse_viewbox` then yields `None`).
++    pub fn viewbox_disables_rendering(&self) -> bool {
++        let Some(s) = self.attribute::<&str>(AId::ViewBox) else {
++            return false;
++        };
++        let n: Vec<f64> = s
++            .split(|c: char| c == ',' || c.is_ascii_whitespace())
++            .filter(|t| !t.is_empty())
++            .map(|t| t.parse::<f64>())
++            .collect::<Result<_, _>>()
++            .unwrap_or_default();
++        n.len() == 4 && n[2] >= 0.0 && n[3] >= 0.0 && (n[2] == 0.0 || n[3] == 0.0)
++    }
++
+     pub fn parse_viewbox(&self) -> Option<NonZeroRect> {
+         let vb: svgtypes::ViewBox = self.attribute(AId::ViewBox)?;
+         NonZeroRect::from_xywh(vb.x as f32, vb.y as f32, vb.w as f32, vb.h as f32)
+@@ -457,7 +473,9 @@ pub(crate) fn convert_doc(svg_doc: &svgtree::Document, opt: &Options) -> Result<
+     };
+     let svg_ts = svg.resolve_transform(AId::Transform, &root_state);
+     let root_ts = svg_ts.pre_concat(view_box.to_transform(tree.size()));
+-    if root_ts.is_identity() && background_color.is_none() {
++    if svg.viewbox_disables_rendering() {
++        // Nothing is painted (SVG 2 §8.6).
++    } else if root_ts.is_identity() && background_color.is_none() {
+         convert_children(svg_doc.root(), &state, &mut cache, &mut tree.root);
+     } else {
+         let mut g = Group::empty();
+@@ -974,6 +992,9 @@ fn convert_path(
+     let has_bbox = tiny_skia_path.bounds().width() > 0.0 && tiny_skia_path.bounds().height() > 0.0;
+     let mut fill = super::style::resolve_fill(node, has_bbox, state, cache);
+     let mut stroke = super::style::resolve_stroke(node, has_bbox, state, cache);
++    if let Some(stroke) = stroke.as_mut() {
++        scale_dashes_to_path_length(node, &tiny_skia_path, stroke);
++    }
+     let visibility: Visibility = node.find_attribute(AId::Visibility).unwrap_or_default();
+     let mut visible = visibility == Visibility::Visible;
+     let rendering_mode: ShapeRendering = node
+@@ -1177,3 +1198,32 @@ impl SvgNode<'_, '_> {
+         transform
+     }
+ }
++
++/// `pathLength` (SVG 2 §9.2 "The 'pathLength' attribute"): the author's
++/// path length rescales the dash distances by `computed / author` length,
++/// as Blink `SVGGeometryElement::PathLengthScaleFactor`. A zero author
++/// length is an infinite factor: every positive dash covers the whole path,
++/// so a pattern starting with a positive dash strokes solid.
++fn scale_dashes_to_path_length(node: SvgNode, path: &tiny_skia_path::Path, stroke: &mut Stroke) {
++    let Some(author) = node.attribute::<f32>(AId::PathLength) else {
++        return;
++    };
++    if !author.is_finite() || author < 0.0 || stroke.dasharray.is_none() {
++        return;
++    }
++    let computed = super::text::path_length_with(path, 0.01);
++    if computed <= 0.0 {
++        return;
++    }
++    if author == 0.0 {
++        if stroke.dasharray.as_ref().is_some_and(|d| d[0] > 0.0) {
++            stroke.dasharray = None;
++        }
++        return;
++    }
++    let k = (computed / author as f64) as f32;
++    if let Some(d) = stroke.dasharray.as_mut() {
++        d.iter_mut().for_each(|v| *v *= k);
++    }
++    stroke.dashoffset *= k;
++}
+diff --git a/src/parser/marker.rs b/src/parser/marker.rs
+index dd9ab33..a8f4888 100644
+--- a/src/parser/marker.rs
++++ b/src/parser/marker.rs
+@@ -94,6 +94,9 @@ fn resolve(
+     cache: &mut converter::Cache,
+     parent: &mut Group,
+ ) -> Option<()> {
++    if marker_node.viewbox_disables_rendering() {
++        return None;
++    }
+     let stroke_scale = stroke_scale(shape_node, marker_node, state)?.get();
+
+     let r = convert_rect(marker_node, state)?;
+diff --git a/src/parser/paint_server.rs b/src/parser/paint_server.rs
+index 5d5bc4c..3457a65 100644
+--- a/src/parser/paint_server.rs
++++ b/src/parser/paint_server.rs
+@@ -54,6 +54,9 @@ fn convert_linear(node: SvgNode, state: &converter::State) -> Option<ServerOrCol
+     }
+
+     let units = convert_units(node, AId::GradientUnits, Units::ObjectBoundingBox);
++    if is_singular_transform(resolve_attr(node, AId::GradientTransform), AId::GradientTransform) {
++        return None;
++    }
+     let transform =
+         resolve_attr(node, AId::GradientTransform).resolve_transform(AId::GradientTransform, state);
+
+@@ -124,6 +127,9 @@ fn convert_radial(node: SvgNode, state: &converter::State) -> Option<ServerOrCol
+     );
+     let fx = resolve_number(node, AId::Fx, units, state, Length::new_number(cx as f64));
+     let fy = resolve_number(node, AId::Fy, units, state, Length::new_number(cy as f64));
++    if is_singular_transform(resolve_attr(node, AId::GradientTransform), AId::GradientTransform) {
++        return None;
++    }
+     let transform =
+         resolve_attr(node, AId::GradientTransform).resolve_transform(AId::GradientTransform, state);
+
+@@ -167,9 +173,16 @@ fn convert_pattern(
+         })
+     };
+
++    if resolve_attr(node, AId::ViewBox).viewbox_disables_rendering() {
++        return None;
++    }
++
+     let units = convert_units(node, AId::PatternUnits, Units::ObjectBoundingBox);
+     let content_units = convert_units(node, AId::PatternContentUnits, Units::UserSpaceOnUse);
+
++    if is_singular_transform(resolve_attr(node, AId::PatternTransform), AId::PatternTransform) {
++        return None;
++    }
+     let transform =
+         resolve_attr(node, AId::PatternTransform).resolve_transform(AId::PatternTransform, state);
+
+@@ -418,7 +431,7 @@ pub(crate) fn resolve_number(
+ }
+
+ fn resolve_attr<'a, 'input: 'a>(node: SvgNode<'a, 'input>, name: AId) -> SvgNode<'a, 'input> {
+-    if node.has_attribute(name) {
++    if is_specified(node, name) {
+         return node;
+     }
+
+@@ -453,7 +466,7 @@ fn resolve_lg_attr<'a, 'input: 'a>(node: SvgNode<'a, 'input>, name: AId) -> SvgN
+             | (AId::SpreadMethod, EId::RadialGradient)
+             | (AId::GradientTransform, EId::LinearGradient)
+             | (AId::GradientTransform, EId::RadialGradient) => {
+-                if link.has_attribute(name) {
++                if is_specified(link, name) {
+                     return link;
+                 }
+             }
+@@ -488,7 +501,7 @@ fn resolve_rg_attr<'a, 'input>(node: SvgNode<'a, 'input>, name: AId) -> SvgNode<
+             | (AId::SpreadMethod, EId::RadialGradient)
+             | (AId::GradientTransform, EId::LinearGradient)
+             | (AId::GradientTransform, EId::RadialGradient) => {
+-                if link.has_attribute(name) {
++                if is_specified(link, name) {
+                     return link;
+                 }
+             }
+@@ -513,7 +526,7 @@ fn resolve_pattern_attr<'a, 'input: 'a>(
+             break;
+         }
+
+-        if link.has_attribute(name) {
++        if is_specified(link, name) {
+             return link;
+         }
+     }
+@@ -1093,3 +1106,30 @@ impl Paint {
+         }
+     }
+ }
++
++/// Whether `name` is specified on `node` for `href` inheritance. An empty
++/// `gradientTransform`/`patternTransform` doesn't stop the lookup (WPT
++/// pservers `*-transform-empty-attr`): SVG 2 §14.2.3 inherits only the
++/// attributes the referencing element "does not have defined".
++fn is_specified(node: SvgNode, name: AId) -> bool {
++    match name {
++        AId::GradientTransform | AId::PatternTransform => node
++            .attribute::<&str>(name)
++            .is_some_and(|v| !v.trim().is_empty()),
++        _ => node.has_attribute(name),
++    }
++}
++
++/// A paint server whose `gradientTransform`/`patternTransform` can't be
++/// inverted maps nothing onto the shape: the paint is invalid and the
++/// fallback colour applies (WPT pservers `gradient-transform-01/02`,
++/// `pattern-transform-02`; Blink layout_svg_resource_gradient.cc:127,
++/// layout_svg_resource_pattern.cc:170 build no shader then).
++fn is_singular_transform(node: SvgNode, name: AId) -> bool {
++    node.attribute::<&str>(name)
++        .and_then(|v| svgtypes::Transform::from_str(v).ok())
++        .is_some_and(|t| {
++            let det = t.a * t.d - t.b * t.c;
++            !det.is_finite() || det == 0.0
++        })
++}
+diff --git a/src/parser/svgtree/parse/elements.rs b/src/parser/svgtree/parse/elements.rs
+index 88e89f5..c309a26 100644
+--- a/src/parser/svgtree/parse/elements.rs
++++ b/src/parser/svgtree/parse/elements.rs
+@@ -172,9 +172,15 @@ pub(crate) fn parse_svg_element<'input>(
+                 );
+             }
+         } else if let Some(aid) = AId::from_str(declaration.name) {
+-            // Parse only the presentation attributes.
++            // Parse only the presentation attributes and the SVG 2 geometry
++            // properties of this element.
+             if aid.is_presentation() {
+                 insert_attribute(aid, val, imp);
++            } else if is_geometry_property(tag_name, aid) {
++                match geometry_value(aid, val) {
++                    Some(v) => insert_attribute(aid, &v, imp),
++                    None => insert_attribute(aid, val, imp),
++                }
+             }
+         }
+     };
+@@ -209,3 +215,39 @@ pub(crate) fn parse_svg_element<'input>(
+
+     Ok(node_id)
+ }
++
++/// SVG 2 geometry properties (SVG 2 §9.1-§9.4, §5.1, §12.3; Blink
++/// `SVGRectElement`/`SVGCircleElement`/`SVGEllipseElement`/`SVGUseElement`/
++/// `SVGPathElement` map them to `CSSPropertyID::kX`… `kD`): the CSS cascade
++/// overrides the attribute of the same name, but only on the elements the
++/// property applies to: `x` on `text` stays a list attribute, and `svg` takes
++/// none of them (svgwg#1059; WPT svg/styling `nested-svg-sizing*`).
++fn is_geometry_property(tag: EId, aid: AId) -> bool {
++    match aid {
++        AId::Cx | AId::Cy => matches!(tag, EId::Circle | EId::Ellipse),
++        AId::R => tag == EId::Circle,
++        AId::Rx | AId::Ry => matches!(tag, EId::Rect | EId::Ellipse),
++        AId::X | AId::Y => matches!(tag, EId::Rect | EId::Image | EId::Use),
++        AId::Width | AId::Height => matches!(tag, EId::Rect | EId::Image),
++        AId::D => tag == EId::Path,
++        _ => false,
++    }
++}
++
++/// The attribute form of a geometry property value: `d: path("…")` carries
++/// the path data string, `d: none` is an empty path.
++fn geometry_value(aid: AId, val: &str) -> Option<String> {
++    if aid != AId::D {
++        return None;
++    }
++    let v = val.trim();
++    if v.eq_ignore_ascii_case("none") {
++        return Some(String::new());
++    }
++    let inner = v.strip_prefix("path(")?.strip_suffix(')')?.trim();
++    let inner = inner
++        .strip_prefix('"')
++        .and_then(|s| s.strip_suffix('"'))
++        .or_else(|| inner.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')))?;
++    Some(inner.to_string())
++}
+diff --git a/src/parser/text.rs b/src/parser/text.rs
+index 1cac7a4..9e1ab1a 100644
+--- a/src/parser/text.rs
++++ b/src/parser/text.rs
+@@ -910,6 +910,11 @@ fn convert_writing_mode(text_node: SvgNode) -> WritingMode {
+ }
+
+ fn path_length(path: &tiny_skia_path::Path) -> f64 {
++    path_length_with(path, 0.5)
++}
++
++/// The arc length of `path`, each segment within `accuracy` user units.
++pub(crate) fn path_length_with(path: &tiny_skia_path::Path, accuracy: f64) -> f64 {
+     let mut prev_mx = path.points()[0].x;
+     let mut prev_my = path.points()[0].y;
+     let mut prev_x = prev_mx;
+@@ -955,7 +960,7 @@ fn path_length(path: &tiny_skia_path::Path) -> f64 {
+             }
+         };
+
+-        length += curve.arclen(0.5);
++        length += curve.arclen(accuracy);
+         prev_x = curve.p3.x as f32;
+         prev_y = curve.p3.y as f32;
+     }
+diff --git a/src/parser/use_node.rs b/src/parser/use_node.rs
+index 06560d2..de0d7e0 100644
+--- a/src/parser/use_node.rs
++++ b/src/parser/use_node.rs
+@@ -20,6 +20,9 @@ pub(crate) fn convert(
+         Some(v) => v,
+         None => return,
+     };
++    if child.tag_name() == Some(EId::Symbol) && child.viewbox_disables_rendering() {
++        return;
++    }
+
+     if state.parent_clip_path.is_some() && child.tag_name() == Some(EId::Symbol) {
+         // Ignore `symbol` referenced by `use` inside a `clipPath`.
+@@ -166,6 +169,9 @@ pub(crate) fn convert_svg(
+     cache: &mut converter::Cache,
+     parent: &mut Group,
+ ) {
++    if node.viewbox_disables_rendering() {
++        return;
++    }
+     // We require original transformation to setup 'clipPath'.
+     let mut orig_ts = node.resolve_transform(AId::Transform, state);
+     let mut new_ts = Transform::default();
+diff --git a/src/parser/style.rs b/src/parser/style.rs
+index cefdc5c..3ca7013 100644
+--- a/src/parser/style.rs
++++ b/src/parser/style.rs
+@@ -152,6 +152,7 @@ fn convert_paint(
+     opacity: &mut Opacity,
+     cache: &mut converter::Cache,
+ ) -> Option<(Paint, Option<ContextElement>)> {
++    let value = &*paint_keywords(value);
+     let paint = match svgtypes::Paint::from_str(value) {
+         Ok(v) => v,
+         Err(_) => {
+@@ -294,3 +295,27 @@ fn conv_dasharray(node: SvgNode, state: &converter::State) -> Option<Vec<f32>> {
+
+     Some(list)
+ }
++
++/// `svgtypes` matches paint keywords case-sensitively, but CSS keywords are
++/// ASCII case-insensitive (CSS Values 4 §2.1): `fill="currentcolor"` is
++/// `currentColor` (WPT painting `currentColor-override-pserver-*`).
++fn paint_keywords(value: &str) -> std::borrow::Cow<'_, str> {
++    const KEYWORDS: [&str; 5] = [
++        "none",
++        "inherit",
++        "currentColor",
++        "context-fill",
++        "context-stroke",
++    ];
++    let trimmed = value.trim();
++    // The keyword is the whole value, or the fallback after `url(…)`.
++    let (head, tail) = match trimmed.rfind(')') {
++        Some(i) if trimmed.starts_with("url(") => trimmed.split_at(i + 1),
++        _ => ("", trimmed),
++    };
++    let word = tail.trim();
++    match KEYWORDS.iter().find(|k| k.eq_ignore_ascii_case(word)) {
++        Some(k) if *k != word => std::borrow::Cow::Owned(format!("{head} {k}").trim().to_string()),
++        _ => std::borrow::Cow::Borrowed(value),
++    }
++}
+diff --git a/src/parser/use_node.rs b/src/parser/use_node.rs
+index de0d7e0..f26b5f4 100644
+--- a/src/parser/use_node.rs
++++ b/src/parser/use_node.rs
+@@ -20,7 +20,13 @@ pub(crate) fn convert(
+         Some(v) => v,
+         None => return,
+     };
+-    if child.tag_name() == Some(EId::Symbol) && child.viewbox_disables_rendering() {
++    // A referenced `symbol` with a zero viewBox (SVG 2 §8.6) or an author
++    // `display: none` (the instance keeps the symbol's presentation
++    // attributes; WPT `use-symbol-display-none`) renders nothing.
++    if child.tag_name() == Some(EId::Symbol)
++        && (child.viewbox_disables_rendering()
++            || child.attribute::<&str>(AId::Display) == Some("none"))
++    {
+         return;
+     }
+
+@@ -67,12 +73,16 @@ pub(crate) fn convert(
+
+             let width = if node.has_attribute(AId::Width) {
+                 node.convert_user_length(AId::Width, &use_state, def)
++            } else if child.has_attribute(AId::Width) {
++                child.convert_user_length(AId::Width, &use_state, def)
+             } else {
+                 use_state.view_box.width()
+             };
+
+             let height = if node.has_attribute(AId::Height) {
+                 node.convert_user_length(AId::Height, &use_state, def)
++            } else if child.has_attribute(AId::Height) {
++                child.convert_user_length(AId::Height, &use_state, def)
+             } else {
+                 use_state.view_box.height()
+             };
+@@ -325,7 +335,7 @@ fn get_clip_rect(
+     let (x, y, mut w, mut h) = {
+         let x = use_node.convert_user_length(AId::X, state, Length::zero());
+         let y = use_node.convert_user_length(AId::Y, state, Length::zero());
+-        let (w, h) = use_node_size(use_node, state);
++        let (w, h) = symbol_viewport_size(use_node, symbol_node, state);
+         (x, y, w, h)
+     };
+
+@@ -356,7 +366,7 @@ fn viewbox_transform(
+     linked: SvgNode,
+     state: &converter::State,
+ ) -> Option<Transform> {
+-    let (mut w, mut h) = use_node_size(node, state);
++    let (mut w, mut h) = symbol_viewport_size(node, linked, state);
+
+     if node.tag_name() == Some(EId::Svg) {
+         // If attributes `width` and/or `height` are provided on the `use` element,
+@@ -375,3 +385,20 @@ fn viewbox_transform(
+
+     Some(view_box.to_transform(size))
+ }
++
++/// The viewport of the element a `use` instantiates (SVG 2 §5.6.2 "The 'use'
++/// element"): the `use` width/height when given, else — for a `symbol`,
++/// which SVG 2 gives its own geometry — the symbol's width/height, else 100%.
++fn symbol_viewport_size(node: SvgNode, linked: SvgNode, state: &converter::State) -> (f32, f32) {
++    let def = Length::new(100.0, LengthUnit::Percent);
++    let (mut w, mut h) = use_node_size(node, state);
++    if node.tag_name() == Some(EId::Use) && linked.tag_name() == Some(EId::Symbol) {
++        if !node.has_attribute(AId::Width) && linked.has_attribute(AId::Width) {
++            w = linked.convert_user_length(AId::Width, state, def);
++        }
++        if !node.has_attribute(AId::Height) && linked.has_attribute(AId::Height) {
++            h = linked.convert_user_length(AId::Height, state, def);
++        }
++    }
++    (w, h)
 +}

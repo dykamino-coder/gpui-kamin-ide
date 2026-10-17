@@ -25,6 +25,7 @@ mod foreign;
 mod masks;
 pub(crate) mod raster;
 pub mod serialize;
+pub(crate) use serialize::geometry_property;
 pub(crate) mod size;
 
 /// Во сколько раз растрировать плотнее логического размера: на дробном

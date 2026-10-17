@@ -87,7 +87,7 @@ pub(crate) fn mask_layer(
             true,
         )
     } else {
-        let source = crate::paint::background::source(l)?;
+        let source = group.mask_source(l)?;
         let (tw, th) = mask_size::tile(
             source.intrinsic(),
             group.mask_scale,

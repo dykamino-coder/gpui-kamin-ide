@@ -5,6 +5,10 @@ use crate::style::computed::Computed;
 pub(super) fn sample(e: &Element, frame: &Computed, transforms: bool) -> Element {
     let mut inner = e.clone();
     let style = &mut inner.style;
+    style.margin.top = frame.margin.top.or(style.margin.top);
+    style.margin.right = frame.margin.right.or(style.margin.right);
+    style.margin.bottom = frame.margin.bottom.or(style.margin.bottom);
+    style.margin.left = frame.margin.left.or(style.margin.left);
     if frame.opacity.is_some() {
         style.opacity = frame.opacity;
     }

@@ -12,19 +12,10 @@ use super::stylesheet::{find_url, read_stylesheet, rebase_css_urls};
 /// этого шага половина эталонов WPT рисует подпись `alt` вместо картинки, а
 /// правила из `<link rel=stylesheet>` пропадают целиком.
 pub(super) fn resolve_links(html: &str, path: &str) -> String {
-    // Отдельный `.svg` — СВОЙ документ с корнем `<svg>`: полей тела, как у
-    // HTML, у него нет. Стенд подаёт разметку движку HTML, поэтому корень
-    // кладётся в тело без полей (`svg-script-is-ignored-ref.svg`: квадрат
-    // уезжал на 8px).
-    let svg_doc;
-    let html = if path.to_ascii_lowercase().ends_with(".svg") {
-        svg_doc = format!(
-            "<!DOCTYPE html><html><head><style>html,body{{margin:0;padding:0}}</style></head><body>{html}</body></html>"
-        );
-        svg_doc.as_str()
-    } else {
-        html
-    };
+    // Отдельный `.svg` — XML-документ (`image/svg+xml`): его разбирает
+    // XML-парсер движка (`Document::new_with_path` по расширению), обёртка
+    // в HTML не нужна — HTML-разбор выбивал `<meta>` из `<svg>` (foreign
+    // content), и рисунок после `<metadata>` пропадал.
     let dir = std::path::Path::new(path)
         .parent()
         .map(|p| p.to_path_buf())

@@ -7,11 +7,16 @@
 //! ничего не рисуют.
 
 mod direction;
-mod mathml;
+pub(crate) mod mathml;
+mod mathml_defaults;
+mod mathml_lengths;
+mod mathml_routing;
 #[cfg(test)]
 mod nth_child_tests;
 mod page_scheme;
 mod parse_document;
+pub(crate) mod xml;
+pub use xml::parse_xml;
 #[cfg(test)]
 mod presentational_hint_tests;
 #[cfg(test)]

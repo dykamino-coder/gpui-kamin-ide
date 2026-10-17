@@ -36,6 +36,9 @@ impl Computed {
             // разметку они уходят только внутри SVG-поддерева (гейт в svg.rs).
             "x" => self.svg_x = crate::style::values::value::Len::parse(v),
             "y" => self.svg_y = crate::style::values::value::Len::parse(v),
+            "cx" | "cy" | "r" | "rx" | "ry" | "d" => {
+                crate::svg::geometry_property(self, key, v);
+            }
             "caption-side" => self.caption_bottom = Some(v.eq_ignore_ascii_case("bottom")),
             "list-style-position" => {
                 self.list_style_inside = Some(v.trim() == "inside");

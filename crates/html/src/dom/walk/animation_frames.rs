@@ -13,7 +13,7 @@ pub(super) fn animation_frames(
 ) -> Option<Vec<(f32, Computed)>> {
     // Кадры разрешаются здесь же: к моменту отрисовки таблицы стилей
     // уже нет, а интерполировать нужно готовые стили, а не текст.
-    let anim = style.animation.as_ref().and_then(|a| {
+    let mut anim = style.animation.as_ref().and_then(|a| {
         // Набор `name` поверх стиля `base`.
         let resolve = |name: &str, base: &Computed| -> Option<Vec<(f32, Computed)>> {
             let track = frames.get(name)?;
@@ -63,5 +63,64 @@ pub(super) fn animation_frames(
         }
         resolve(&a.name, &style)
     });
+    if let (Some(resolved), Some(spec)) = (anim.as_mut(), style.animation.as_ref()) {
+        // Frames contain underlying values too. Only animated margins may replace
+        // the node's edges: flow may already have consumed its collapsed margins.
+        let animated = ["margin-top", "margin-right", "margin-bottom", "margin-left"].map(|key| {
+            spec.names
+                .iter()
+                .chain(std::iter::once(&spec.name))
+                .any(|name| {
+                    frames.get(name).is_some_and(|track| {
+                        track.iter().any(|(_, decls)| {
+                            decls.contains_key("margin") || decls.contains_key(key)
+                        })
+                    })
+                })
+        });
+        for (_, frame) in resolved {
+            let margin = &mut frame.margin;
+            for (edge, active) in [
+                &mut margin.top,
+                &mut margin.right,
+                &mut margin.bottom,
+                &mut margin.left,
+            ]
+            .into_iter()
+            .zip(animated)
+            {
+                *edge = active.then_some(edge.unwrap_or(crate::style::values::value::Len::Px(0.0)));
+            }
+        }
+    }
     anim
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::style::values::value::Len;
+
+    #[test]
+    fn only_declared_margin_tracks_replace_normalized_flow_edges() {
+        let mut base = Computed::default();
+        base.apply_one("animation", "a 1s linear");
+        base.apply_one("margin", "12px");
+        for (property, value, expected) in [
+            ("color", "blue", None),
+            ("margin-left", "0px", Some(Len::Px(0.0))),
+            ("margin", "20px", Some(Len::Px(20.0))),
+        ] {
+            let decls = HashMap::from([(property.into(), value.into())]);
+            let tracks = HashMap::from([("a".into(), vec![(0.0, decls.clone()), (1.0, decls)])]);
+            let frames = animation_frames(&base, &tracks, &HashMap::new()).unwrap();
+            for (_, frame) in frames {
+                assert_eq!(frame.margin.left, expected);
+                assert_eq!(
+                    frame.margin.top,
+                    (property == "margin").then_some(Len::Px(20.0))
+                );
+            }
+        }
+    }
 }

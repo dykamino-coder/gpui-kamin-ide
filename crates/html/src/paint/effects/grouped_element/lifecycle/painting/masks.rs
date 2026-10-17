@@ -78,7 +78,7 @@ pub(crate) fn resolve_mask(
     if layers.len() > 1 || referenced || !group.mask_repeat_modes.is_empty() {
         return composite_mask(group, &layers, bounds, bw, bh, ol, ot, window, len);
     }
-    let source = crate::paint::background::source(src)?;
+    let source = group.mask_source(src)?;
     let (img, tw, th) = match &source {
         crate::paint::background::Source::Raster(img) => {
             let (tw, th) = mask_size::tile(
