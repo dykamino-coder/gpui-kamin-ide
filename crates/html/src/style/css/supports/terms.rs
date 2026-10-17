@@ -177,6 +177,11 @@ pub(super) fn supports_eval_term(term: &str) -> SupTri {
         if !attr_prefixes_declared(colons[1]) {
             return SupTri::False;
         }
+        // CSS Conditional 3 §6.1: substitution cannot add an unknown property.
+        let property = unescape(colons[0].trim()).to_ascii_lowercase();
+        if !crate::style::computed::Computed::recognizes_property(&property) {
+            return SupTri::False;
+        }
         // css-variables-1 §3: «If a property contains one or more var()
         // functions, and those functions are syntactically valid, the entire
         // property's grammar must be assumed to be valid at parse time».
