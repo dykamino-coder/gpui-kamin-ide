@@ -1601,4 +1601,8 @@ pub struct Computed {
     pub(crate) math_level: i32,
     pub(crate) math_font_size: bool,
     pub(crate) math_operator_form: Option<u8>,
+    /// SVG 2 geometry properties `cx`, `cy`, `r`, `rx`, `ry`, `d` from the
+    /// cascade, already in attribute syntax (`svg::serialize::geometry`);
+    /// not inherited.
+    pub svg_geometry: Vec<(&'static str, String)>,
 }

@@ -15,6 +15,8 @@ mod mathml_routing;
 mod nth_child_tests;
 mod page_scheme;
 mod parse_document;
+pub(crate) mod xml;
+pub use xml::parse_xml;
 #[cfg(test)]
 mod presentational_hint_tests;
 #[cfg(test)]
