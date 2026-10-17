@@ -15,6 +15,9 @@ mod canvas_background;
 mod embedded;
 mod logical_properties;
 #[cfg(test)]
+mod resource_tests;
+pub(crate) mod resource_url;
+#[cfg(test)]
 mod tests;
 mod viewport;
 mod writing_mode;
@@ -78,16 +81,21 @@ impl Document {
     }
 
     fn build(html: &str, theme_css: &str, base_url: Option<url::Url>, xml: bool) -> Self {
+        let effective_base = if xml {
+            base_url.clone()
+        } else {
+            base_url::document_base(html, base_url.as_ref())
+        };
         // Свои шрифты страницы грузятся ДО разбора: иначе первый же замер
         // ширины пойдёт по подстановке, а перерисовки под новый шрифт нет.
-        crate::text::fonts::load_faces(html);
-        crate::style::values::color_space::load_profiles(html);
+        crate::text::fonts::load_faces_with_base(html, effective_base.as_ref());
+        crate::style::values::color_space::load_profiles_with_base(html, effective_base.as_ref());
         crate::text::paragraph::forget_measures();
         crate::layout::table::paint::forget_row_rects();
         crate::text::vertical::forget_vt_measures();
         let (mut nodes, root) = viewport::prepare(Self::parse_nodes(html, theme_css, xml));
-        if let Some(base) = &base_url {
-            base_url::resolve(&mut nodes, &base_url::document_base(html, base), false);
+        if let Some(base) = &effective_base {
+            base_url::resolve(&mut nodes, base, false);
         }
         Document {
             nodes,
@@ -116,7 +124,14 @@ impl Document {
         }
         let (mut nodes, root) = viewport::prepare(Self::parse_nodes(html, theme_css, self.xml));
         if let Some(base) = &self.base_url {
-            base_url::resolve(&mut nodes, &base_url::document_base(html, base), false);
+            let effective = if self.xml {
+                Some(base.clone())
+            } else {
+                base_url::document_base(html, Some(base))
+            };
+            if let Some(base) = effective {
+                base_url::resolve(&mut nodes, &base, false);
+            }
         }
         self.nodes = nodes;
         self.root = root;

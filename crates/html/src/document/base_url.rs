@@ -3,7 +3,7 @@ use crate::dom::Node;
 use markup5ever_rcdom::{Handle, NodeData};
 use url::Url;
 
-pub(super) fn document_base(html: &str, fallback: &Url) -> Url {
+pub(super) fn document_base(html: &str, fallback: Option<&Url>) -> Option<Url> {
     fn find(node: &Handle) -> Option<String> {
         if let NodeData::Element { name, attrs, .. } = &node.data
             && &*name.local == "base"
@@ -16,8 +16,12 @@ pub(super) fn document_base(html: &str, fallback: &Url) -> Url {
     }
     let dom = crate::dom::input::html(html);
     find(&dom.document)
-        .and_then(|href| fallback.join(&href).ok())
-        .unwrap_or_else(|| fallback.clone())
+        .and_then(|href| {
+            fallback
+                .map_or_else(|| Url::parse(&href), |base| base.join(&href))
+                .ok()
+        })
+        .or_else(|| fallback.cloned())
 }
 
 pub(super) fn resolve(nodes: &mut [Node], base: &Url, svg: bool) {

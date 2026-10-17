@@ -2,6 +2,10 @@
 
 use super::*;
 
+mod resources;
+pub use resources::load_profiles;
+pub(crate) use resources::load_profiles_with_base;
+
 /// Применить вшитый цветовой профиль ICC к готовому образу.
 ///
 /// Понимается матричный профиль RGB (v2): колоранты `rXYZ/gXYZ/bXYZ` и
@@ -75,56 +79,6 @@ pub(crate) fn apply_icc(
 thread_local! {
     pub(super) static PROFILES: std::cell::RefCell<std::collections::HashMap<String, Vec<u8>>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
-}
-
-/// Разобрать правила `@color-profile` страницы и загрузить их файлы.
-///
-/// Путь в `url(...)` берётся как есть: адреса в странице уже разрешены.
-pub fn load_profiles(css: &str) {
-    PROFILES.with(|p| p.borrow_mut().clear());
-    // Комментарии срезаются ДО поиска — как у `@font-face` (fonts::faces).
-    let css = &crate::style::css::strip_comments(css);
-    let lower = css.to_ascii_lowercase();
-    let mut from = 0usize;
-    while let Some(at) = lower[from..].find("@color-profile") {
-        let start = from + at;
-        let Some(open) = css[start..].find('{') else {
-            break;
-        };
-        let name = css[start + "@color-profile".len()..start + open]
-            .trim()
-            .to_string();
-        // Слова `@color-profile` встречаются и в ТЕКСТЕ страницы (заголовок
-        // теста): правилом считается только запись с именем `--…` прямо
-        // перед скобкой.
-        if !name.starts_with("--") || open > 64 {
-            from = start + "@color-profile".len();
-            continue;
-        }
-        let Some(close) = css[start + open..].find('}') else {
-            break;
-        };
-        let block = &css[start + open + 1..start + open + close];
-        from = start + open + close;
-        let Some(src) = block.split(';').find_map(|d| {
-            let (k, v) = d.split_once(':')?;
-            k.trim()
-                .eq_ignore_ascii_case("src")
-                .then(|| v.trim().to_string())
-        }) else {
-            continue;
-        };
-        let Some(path) = crate::style::computed::parse_url(&src) else {
-            continue;
-        };
-        let clean = path.strip_prefix("file:///").unwrap_or(&path);
-        let read = std::fs::read(clean);
-        if let Ok(bytes) = read
-            && name.starts_with("--")
-        {
-            PROFILES.with(|p| p.borrow_mut().insert(name, bytes));
-        }
-    }
 }
 
 /// Прогнать цвет через профиль: кривые -> матрица -> XYZ D50 -> sRGB.

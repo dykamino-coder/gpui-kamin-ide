@@ -1,4 +1,4 @@
-//! Loading for fonts; split out to keep the owning module within 250 lines.
+//! Load font faces, cache decoded sources and register page-local family aliases.
 
 use super::{
     ALIASES, declaration, faces, is_quote, read_font, sfnt_romn_baseline, source, stretch_desc,
@@ -61,9 +61,11 @@ pub(super) fn range_has_space(value: Option<&str>) -> bool {
 
 /// Разобрать правила `@font-face` из таблицы стилей и загрузить шрифты.
 ///
-/// Путь в `url(...)` берётся как есть: страницу до движка доводит стенд, и
-/// адреса в ней уже разрешены в файлы.
 pub fn load_faces(css: &str) {
+    load_faces_with_base(css, None);
+}
+
+pub(crate) fn load_faces_with_base(css: &str, base: Option<&url::Url>) {
     // Имена семейств придумывает страница, и на соседней странице то же имя
     // значит другой файл — поэтому таблица подмены живёт РОВНО одну страницу.
     ALIASES.with(|a| a.borrow_mut().clear());
@@ -74,21 +76,22 @@ pub fn load_faces(css: &str) {
     super::metric_overrides::clear();
     ROMN.with(|r| r.borrow_mut().clear());
     super::math::clear_aliases();
-    load_faces_into(css);
+    load_faces_into(css, base);
 }
 
 /// Дозагрузка БЕЗ сброса подмен: вложенный документ (`<iframe>`) разбирается
 /// посреди отрисовки внешнего — сброс крал бы шрифты хозяина, и весь текст
 /// после рамки падал в подстановочный шрифт.
 pub fn load_faces_additive(css: &str) {
-    load_faces_into(css);
+    load_faces_into(css, None);
 }
 
-pub(super) fn load_faces_into(css: &str) {
+pub(super) fn load_faces_into(css: &str, base: Option<&url::Url>) {
     for block in faces(css) {
         let (Some(family), Some(src)) = (declaration(&block, "font-family"), source(&block)) else {
             continue;
         };
+        let src = crate::document::resource_url::resolve(&src, base);
         let real = LOADED.with(|c| c.borrow().get(&src).cloned());
         let real = match real {
             Some(hit) => hit,

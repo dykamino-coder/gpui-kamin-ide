@@ -34,6 +34,7 @@ use crate::text::fonts::font_faces::source;
 pub use crate::text::fonts::loading::covers_space;
 pub use crate::text::fonts::loading::load_faces;
 pub use crate::text::fonts::loading::load_faces_additive;
+pub(crate) use crate::text::fonts::loading::load_faces_with_base;
 pub use crate::text::fonts::loading::size_adjust;
 pub use crate::text::fonts::sfnt_metrics::sfnt_family;
 use crate::text::fonts::sfnt_metrics::sfnt_romn_baseline;

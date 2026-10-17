@@ -128,12 +128,7 @@ pub(super) fn sfnt_ok(bytes: &[u8]) -> bool {
 pub(super) fn read_font(path: &str) -> Option<Vec<u8>> {
     // Адрес `data:` (RFC 2397) — шрифт в самой таблице; упаковку тогда
     // покажет подпись (ветки ниже без расширения).
-    let bytes = if path.starts_with("data:") {
-        crate::paint::background::read_bytes(path)?
-    } else {
-        let path = path.strip_prefix("file:///").unwrap_or(path);
-        std::fs::read(path).ok()?
-    };
+    let bytes = crate::document::resource_url::read(path)?;
     let path = if path.starts_with("data:") { "" } else { path };
     // Упаковку задаёт АДРЕС, а подпись внутри файла — то, что файл о себе
     // заявляет. Их расхождение — отказ (§4.1 WOFF2): файл `.woff2` с
