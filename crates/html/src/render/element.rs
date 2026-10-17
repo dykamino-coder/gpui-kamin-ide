@@ -78,6 +78,13 @@ pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> A
         }
     }
     merged.resolve_viewport(opts.viewport);
+    crate::layout::writing_mode::inline_definite::resolve_percentages(&mut merged, inherited);
+    merged.inline_definite = crate::layout::writing_mode::inline_definite::own(
+        &merged,
+        inherited,
+        e.tag == "html",
+        opts.viewport.1,
+    );
     crate::animation::motion::apply_icb(&mut merged, opts.viewport);
     let gutters = crate::interactive::scroll_extent::classic::model(e.node_id, &merged);
     merged.scroll.used = gutters.used;

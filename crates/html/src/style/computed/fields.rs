@@ -1575,4 +1575,8 @@ pub struct Computed {
     pub(crate) color_initial: bool,
     /// DOM identity of this decorating box; never inherited.
     pub decor_box: u64,
+    /// Definite content inline size (physical height) of a box in vertical flow: the basis of
+    /// inline-axis percentages of its children (`layout::writing_mode::inline_definite`).
+    /// Set by `render::element`; not inherited.
+    pub(crate) inline_definite: Option<f32>,
 }
