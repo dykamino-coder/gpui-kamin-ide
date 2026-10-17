@@ -4,7 +4,7 @@
 use crate::hooks::IntoHooked;
 use crate::render::paint_rect_minus;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{IntoElement, Styled, div, px};
 
 pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
@@ -71,10 +71,7 @@ pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
         // border-box of the element were opaque»): без выноса на толщину рамки
         // кольцо ложилось ВНУТРЬ неё (`box-shadow-039`: оранжевое на чёрном).
         let bw = c.borders();
-        let side = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let side = px_lossy_zero;
         let (bt, br, bb, bl) = (side(bw.top), side(bw.right), side(bw.bottom), side(bw.left));
         let square = [c.radius.tl, c.radius.tr, c.radius.br, c.radius.bl]
             .iter()
@@ -217,10 +214,7 @@ pub(super) fn inset_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
         // (§5.4, как у `clip_layer`).
         if !c.radius_masked() && c.border_shape.is_none() {
             let bw = c.borders();
-            let side = |l: Option<Len>| match l {
-                Some(Len::Px(v)) => v,
-                _ => 0.0,
-            };
+            let side = px_lossy_zero;
             let pad = |r: Option<Len>, a: Option<Len>, b: Option<Len>| {
                 (crate::style::apply::radius_px(c, r).unwrap_or(0.0) - side(a).max(side(b)))
                     .max(0.0)

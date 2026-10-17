@@ -8,7 +8,7 @@ use crate::layout::fragment::probe::size_monolith;
 use crate::layout::page::paged::visible_overflow;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::px_lossy_zero;
 mod column;
 pub(super) use column::flex_gap_rules;
 use column::flex_lines_of;
@@ -79,10 +79,7 @@ pub(crate) fn split_flex_lines(
             Some(lines) => {
                 group += 1;
                 let pm = inherit(merged, &c.style);
-                let h = match c.style.height {
-                    Some(Len::Px(v)) => v,
-                    _ => 0.0,
-                };
+                let h = px_lossy_zero(c.style.height);
                 // Коробка контейнера — ПЕРВОЙ «строкой» группы: рисуется под
                 // элементами (фон контейнера, `multi-line-column-flex-
                 // fragmentation-033`) и занимает свою высоту, даже когда строки

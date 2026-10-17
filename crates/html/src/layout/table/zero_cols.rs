@@ -3,7 +3,7 @@
 use super::is_cell;
 use crate::dom::{Element, Node};
 use crate::layout::block::containing::CB_WIDTH;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_strict};
 
 pub(super) fn zero_width_cols(
     e: &Element,
@@ -14,10 +14,7 @@ pub(super) fn zero_width_cols(
     let vertical = e.style.vertical == Some(true);
     let axes = super::axes::Axes::new(&e.style);
     let zero_cols: Vec<bool> = {
-        let px_of = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => Some(v),
-            _ => None,
-        };
+        let px_of = px_strict;
         // Ширина стола ДОЛЕЙ решается от содержащего блока: `width: 80%` в
         // шестистах сорока — это 512 (`fixed-table-layout-023`).
         let своя_ширина = match if vertical {

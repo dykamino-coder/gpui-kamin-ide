@@ -3,7 +3,7 @@
 use super::{col_role, col_span};
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_strict};
 use gpui::AnyElement;
 
 /// Полоса слоя на каждую красящую дорожку плюс буфер проб по её индексу.
@@ -49,10 +49,7 @@ pub(crate) fn push_col_bands(
 
 /// Used absolute width of one `<col>` (CSS 2.1 §10.4 over `px` lengths only).
 pub(crate) fn definite_col_px(el: &Element) -> Option<f32> {
-    let px = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    };
+    let px = px_strict;
     let w = match (px(el.style.width), px(el.style.max_width)) {
         (Some(v), Some(mx)) => Some(v.min(mx)),
         (v, _) => v,
@@ -86,10 +83,7 @@ pub(crate) fn col_element_widths(
     // `track_list`, и отдельная пара (пол, потолок) на дорожку — следующий
     // шаг, не этот.
     let used_w = |el: &Element, w: Option<f32>| -> Option<f32> {
-        let len_px = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => Some(v),
-            _ => None,
-        };
+        let len_px = px_strict;
         let capped = match (w, len_px(el.style.max_width)) {
             (Some(v), Some(mx)) => Some(v.min(mx)),
             (v, _) => v,
@@ -150,13 +144,7 @@ pub(crate) fn col_element_widths(
                     // же — иначе `min-width-applies-to-005` и
                     // `max-width-applies-to-005` (группа вместо колонки)
                     // остались бы красными при зелёных `-006`.
-                    let ww = used_w(
-                        el,
-                        match el.style.width {
-                            Some(Len::Px(v)) => Some(v),
-                            _ => None,
-                        },
-                    );
+                    let ww = used_w(el, px_strict(el.style.width));
                     let pp = match el.style.width {
                         Some(Len::Pct(k)) => Some(k),
                         _ => None,

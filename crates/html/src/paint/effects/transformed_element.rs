@@ -79,8 +79,7 @@ pub type RefBox = std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<Pixels>>>>;
 /// детерминированно и одинаково для теста и эталона с той же гомографией
 /// (transform3d-matrix3d-003/-004). `None` — плоскость за глазом или ребром.
 fn flatten_plane(f: &[[f32; 4]; 4], center: (f32, f32)) -> Option<gpui::TransformationMatrix> {
-    const EPS: f32 = 1e-5;
-    if crate::style::computed::det3_plane(f).abs() < EPS {
+    if crate::style::computed::det3_plane(f).abs() < crate::tolerance::PLANE_SINGULAR_EPS {
         return None;
     }
     let (cx, cy) = center;

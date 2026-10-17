@@ -1,6 +1,6 @@
 //! Запросы к полосам: доступная ширина, края, зазор, низ, формы, место среди флоатов.
 
-use super::{EPS, FloatBands};
+use super::{COORD_EPS, FloatBands};
 use crate::layout::float::shapes::FloatShape;
 use std::sync::Arc;
 
@@ -151,7 +151,7 @@ impl FloatBands {
                 }
                 i += 1;
             }
-            if r - l >= w - EPS {
+            if r - l >= w - COORD_EPS {
                 return (l, top, r - l);
             }
             if !bot.is_finite() {

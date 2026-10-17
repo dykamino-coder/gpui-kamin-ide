@@ -4,7 +4,7 @@
 use crate::dom::Node;
 use crate::render::{RenderOpts, out_of_flow};
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_strict};
 use crate::text::line_trim::Trim;
 use crate::text::text_box::{blank_text, text_box_line_style, text_box_trim_px};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
@@ -73,10 +73,7 @@ pub(super) fn para_flags(own: Trim, first: bool, last: bool) -> Trim {
 fn first_line_root(line_style: &Computed) -> Computed {
     let mut c = line_style.clone();
     if let Some(fl) = line_style.first_line.as_deref() {
-        let base = match line_style.font_size {
-            Some(Len::Px(v)) => Some(v),
-            _ => None,
-        };
+        let base = px_strict(line_style.font_size);
         c.font_size = match (fl.font_size, base) {
             (Some(Len::Em(k)), Some(b)) | (Some(Len::Pct(k)), Some(b)) => Some(Len::Px(k * b)),
             (Some(v), _) => Some(v),

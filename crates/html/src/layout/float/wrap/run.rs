@@ -56,7 +56,7 @@ pub(super) fn strut_for_next(
     // `-009` и `nested-clearance-new-formatting-context` — все три
     // потери держит распорка `0 × остаток поля`, прошедшая гейт
     // `covered_flow_tail`, потому что ширины у неё нет, а
-    // `px_of2(None) = 0`).
+    // `px_missing_zero(None) = 0`).
     let mut clearance_strut = false;
     clearance_before_next(
         cb_top_open,

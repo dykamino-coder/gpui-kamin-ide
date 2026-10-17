@@ -10,7 +10,7 @@ use crate::render::{
 };
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_strict};
 use crate::text::text_box::normal_fraction;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 
@@ -67,10 +67,7 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
     } else {
         return plain_row(&row.children);
     };
-    let px_of = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    };
+    let px_of = px_strict;
     let (Some(fw), Some(fh)) = (px_of(floater.style.width), px_of(floater.style.height)) else {
         return plain_row(&row.children);
     };

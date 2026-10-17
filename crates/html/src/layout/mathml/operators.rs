@@ -1,4 +1,5 @@
 //! MathML Core operator dictionary and explicit operator properties.
+use crate::style::values::value::px_strict;
 use crate::{
     dom::{Element, Node},
     render::RenderOpts,
@@ -105,7 +106,7 @@ pub(super) fn operator(e: &Element, style: &Computed, opts: &RenderOpts) -> Oper
             _ => {}
         }
     }
-    let size = super::parameters::px_value(style.font_size).unwrap_or(opts.base_size());
+    let size = px_strict(style.font_size).unwrap_or(opts.base_size());
     let spacing = |name, v| {
         e.attr(name)
             .and_then(|v| super::parameters::length_px(v, style, opts))

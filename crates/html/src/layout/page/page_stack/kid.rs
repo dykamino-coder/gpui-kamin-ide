@@ -1,5 +1,6 @@
 //! Page-stack content and repeated table band copies.
 
+use crate::tolerance::COORD_EPS;
 use gpui::AnyElement;
 
 impl PageKid {
@@ -13,7 +14,7 @@ impl PageKid {
         let Some(r) = self.repeat.as_mut() else {
             return;
         };
-        if f.head > 0.01
+        if f.head > COORD_EPS
             && f.copy > 0
             && let Some(el) = r.head_els.get_mut(f.copy - 1)
         {
@@ -24,7 +25,7 @@ impl PageKid {
                 |window| el.paint(window, cx),
             );
         }
-        if f.foot > 0.01
+        if f.foot > COORD_EPS
             && let Some((_, bh)) = r.foot
             && let Some(el) = r.foot_els.get_mut(f.copy)
         {

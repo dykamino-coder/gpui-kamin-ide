@@ -20,10 +20,11 @@ use crate::dom::{Element, Node};
 use crate::render::RenderOpts;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
+use crate::style::values::value::px_strict;
 use content::Content;
 use geometry::Metrics;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled};
-use parameters::{Kind, length_px, px_value};
+use parameters::{Kind, length_px};
 
 pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
     build(e, inherited, opts, None)
@@ -55,9 +56,9 @@ fn build(
         (
             vec![],
             Kind::Space(Metrics {
-                width: px_value(style.width).unwrap_or(0.0).max(0.0),
+                width: px_strict(style.width).unwrap_or(0.0).max(0.0),
                 ascent,
-                descent: px_value(style.height).unwrap_or(0.0).max(0.0) - ascent,
+                descent: px_strict(style.height).unwrap_or(0.0).max(0.0) - ascent,
             }),
         )
     } else if token {
@@ -119,15 +120,15 @@ fn build(
         operator,
         kind,
         rtl: style.rtl == Some(true),
-        width: px_value(style.width),
-        height: px_value(style.height),
+        width: px_strict(style.width),
+        height: px_strict(style.height),
         offsets: vec![],
         margins,
         roots: vec![],
         rule: None,
         color: style.color.map_or(opts.text.color, |c| c.to_hsla()),
         font: crate::text::inline::strut_font(&style, &opts.text),
-        font_size: px_value(style.font_size).unwrap_or(opts.base_size()),
+        font_size: px_strict(style.font_size).unwrap_or(opts.base_size()),
         glyph: None,
         glyph_offset: (0.0, 0.0),
     };
@@ -152,5 +153,5 @@ fn margins_px(child: &Computed, opts: &RenderOpts) -> [f32; 4] {
     let mut child = child.clone();
     child.resolve_viewport(opts.viewport);
     let m = &child.margin;
-    [m.top, m.right, m.bottom, m.left].map(|side| px_value(side).unwrap_or(0.0))
+    [m.top, m.right, m.bottom, m.left].map(|side| px_strict(side).unwrap_or(0.0))
 }

@@ -4,7 +4,7 @@
 
 use crate::hooks::IntoHooked;
 use crate::style::computed::{Computed, Overflow};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, App, Bounds, IntoElement, ParentElement, Pixels, Styled, Window, div, px};
 
 pub(crate) struct CornerClip {
@@ -13,10 +13,7 @@ pub(crate) struct CornerClip {
 }
 
 fn side(v: Option<Len>) -> f32 {
-    match v {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    }
+    px_lossy_zero(v)
 }
 
 /// Signed offsets from the border contour; scrolling boxes keep their own clip.

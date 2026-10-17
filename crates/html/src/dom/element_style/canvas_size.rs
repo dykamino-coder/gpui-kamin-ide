@@ -1,15 +1,13 @@
 //! Coerced natural canvas sizes and intrinsic constraints (CSS Sizing 3/4).
 
+use crate::style::values::value::px_strict;
 use crate::style::{computed::Computed, values::value::Len};
 
 pub(super) fn resolve(s: &mut Computed) {
     if s.contains_width() || s.contains_height() {
         return;
     }
-    let px = |v| match v {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    };
+    let px = |v| px_strict(v);
     let intrinsic = |v| matches!(v, Some(Len::MinContent | Len::MaxContent | Len::FitContent));
     let ratio = s.aspect_ratio.filter(|r| r.is_finite() && *r > 0.0);
     let edges = s.borders();

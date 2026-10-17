@@ -2,6 +2,7 @@
 
 use super::{Muted, field_box};
 mod content;
+use crate::style::computed::FontCx;
 use crate::{dom::Element, style::computed::Computed, style::values::value::Len};
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 
@@ -60,7 +61,7 @@ fn natural(e: &Element, c: &Computed) -> [f32; 2] {
     let (ch, _) = crate::text::metrics::ch_ex_px(family, font);
     let line = c
         .line_height
-        .and_then(|v| crate::text::metrics::fallback_len_px(v, family, font))
+        .and_then(|v| v.to_px(None, FontCx::new(family, font)))
         .unwrap_or_else(|| {
             crate::text::metrics::normal_px(crate::text::metrics::normal_line(family), font)
         });

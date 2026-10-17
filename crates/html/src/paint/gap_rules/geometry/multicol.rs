@@ -3,7 +3,7 @@
 mod visibility;
 use visibility::row_visible;
 
-use super::{Crossing, GAP_EPS, GapItem, GapRun};
+use super::{Crossing, GAP_RULE_EPS, GapItem, GapRun};
 use crate::paint::gap_rules::{GapAxisRule, GapRuleSpec, MulticolGaps};
 
 fn run(g0: f32, g1: f32, r0: f32, r1: f32, index: usize, count: usize) -> GapRun {
@@ -63,10 +63,10 @@ pub(crate) fn multicol_runs(data: &MulticolGaps, spec: &GapRuleSpec) -> (Vec<Gap
     let mut gaps = vec![];
     for pair in rows.windows(2) {
         let (lo, hi) = (pair[0].0.b1, pair[1].0.b0);
-        if hi > lo + GAP_EPS
+        if hi > lo + GAP_RULE_EPS
             && !spans
                 .iter()
-                .any(|s| s.b0 < hi - GAP_EPS && s.b1 > lo + GAP_EPS)
+                .any(|s| s.b0 < hi - GAP_RULE_EPS && s.b1 > lo + GAP_RULE_EPS)
         {
             gaps.push((lo, hi, pair[0].1, pair[1].1));
         }

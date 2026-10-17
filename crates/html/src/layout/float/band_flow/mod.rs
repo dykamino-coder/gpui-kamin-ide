@@ -117,8 +117,7 @@ struct Plan {
     slots: Vec<Slot>,
 }
 
-/// Допуск сравнения точек — тот же, что у `bands.rs`.
-const EPS: f32 = 0.01;
+pub(super) use crate::tolerance::COORD_EPS;
 
 /// Отображение ребёнка в пробе: тот же самый каркас, что и в `prepaint`,
 /// иначе проба и итог разойдутся.

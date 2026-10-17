@@ -17,7 +17,7 @@ use crate::dom::{Element, Node};
 use crate::layout::fragment::clone::monolith_box;
 use crate::render::{is_blank, out_of_flow};
 use crate::style::computed::Display;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_auto_zero};
 mod gate;
 pub(crate) use gate::gate;
 mod apply;
@@ -48,14 +48,6 @@ pub(crate) enum Cand {
     /// earlier breakpoint before `prev` has the better appeal (css-break-3
     /// §4.4 rule 3; Blink `EarlyBreak`, `kBreakAppealViolatingBreakAvoid`).
     Avoid { prev: u64 },
-}
-
-fn px_or_zero(l: &Option<Len>) -> Option<f32> {
-    match l {
-        None | Some(Len::Auto) => Some(0.0),
-        Some(Len::Px(v)) => Some(*v),
-        _ => None,
-    }
 }
 
 fn row_flex(s: &crate::style::computed::Computed) -> bool {
@@ -196,7 +188,7 @@ fn walk(p: &Element, depth: u8, out: &mut Vec<(u64, Cand)>) -> Option<()> {
             out.push((
                 k.node_id,
                 Cand::Forced {
-                    mt: px_or_zero(&k.style.margin.top)?,
+                    mt: px_auto_zero(k.style.margin.top)?,
                 },
             ));
         }
