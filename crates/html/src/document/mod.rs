@@ -19,6 +19,8 @@ mod resource_tests;
 pub(crate) mod resource_url;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod update_tests;
 mod viewport;
 mod writing_mode;
 use crate::document::canvas_background::any_containment;
@@ -124,20 +126,7 @@ impl Document {
         if key == self.key {
             return false;
         }
-        let (mut nodes, root) = viewport::prepare(Self::parse_nodes(html, theme_css, self.xml));
-        if let Some(base) = &self.base_url {
-            let effective = if self.xml {
-                Some(base.clone())
-            } else {
-                base_url::document_base(html, Some(base))
-            };
-            if let Some(base) = effective {
-                base_url::resolve(&mut nodes, &base, false);
-            }
-        }
-        self.nodes = nodes;
-        self.root = root;
-        self.key = key;
+        *self = Self::build(html, theme_css, self.base_url.clone(), self.xml);
         true
     }
 
