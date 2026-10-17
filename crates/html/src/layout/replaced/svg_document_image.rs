@@ -57,9 +57,9 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     sub.viewport = (w, h);
     sub.doc_salt = salt;
     IFRAME_DEPTH.with(|d| d.set(d.get() + 1));
-    crate::layout::positioned::containing_block::icb_open();
+    let icb_layer = crate::layout::positioned::layer_scope::LayerScope::icb();
     let mut kids = blocks(&nodes, &sub.root_style(), &sub);
-    kids.extend(crate::layout::positioned::containing_block::icb_close());
+    kids.extend(icb_layer.finish());
     IFRAME_DEPTH.with(|d| d.set(d.get() - 1));
     crate::style::select::QUIRKS.with(|q| q.set(outer_quirks));
     Some(

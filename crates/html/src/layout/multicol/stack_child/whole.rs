@@ -92,9 +92,8 @@ pub(super) fn copy_whole_box(
             mc.style.border_box = None;
         }
         drop(frag_gap_guard.take());
-        crate::layout::fragment::types::set_outer_row(Some((hh, nest_phase_k)));
+        let _outer_row = crate::layout::fragment::types::OuterRow::enter(Some((hh, nest_phase_k)));
         let el = element(&mc, merged, opts);
-        crate::layout::fragment::types::set_outer_row(None);
         return Some(el);
     }
     if whole {

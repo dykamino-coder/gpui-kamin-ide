@@ -29,7 +29,7 @@ impl Drop for StackScope {
 
 thread_local! {
     /// Высота ряда вложенного многоколоночника, заданная ВНЕШНЕЙ колонкой
-    /// (`set_outer_row` → `take_outer_row` первой строкой `render::element`).
+    /// (`OuterRow::enter` → `take_outer_row` первой строкой `render::element`).
     static OUTER_ROW: std::cell::Cell<Option<(f32, f32)>> = const { std::cell::Cell::new(None) };
     /// Сколько первых колонок укладки стоят НЕ с верха фрагментаинера (первый
     /// ряд вложенного многоколоночника, начатого ниже верха внешней колонки):
@@ -59,8 +59,19 @@ impl Drop for NotTop {
     }
 }
 
-pub fn set_outer_row(h: Option<(f32, f32)>) {
-    OUTER_ROW.with(|r| r.set(h));
+/// Scoped one-shot handoff to the next element; restores an enclosing handoff.
+pub(crate) struct OuterRow(Option<(f32, f32)>);
+
+impl OuterRow {
+    pub(crate) fn enter(h: Option<(f32, f32)>) -> Self {
+        Self(OUTER_ROW.with(|r| r.replace(h)))
+    }
+}
+
+impl Drop for OuterRow {
+    fn drop(&mut self) {
+        OUTER_ROW.with(|r| r.set(self.0));
+    }
 }
 
 /// Забрать переданную высоту (одноразово).
@@ -129,5 +140,34 @@ pub fn axis_box(
             origin: point(origin.x + px(block - bo - be), origin.y + px(io)),
             size: size(px(be), px(ie)),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn outer_row_is_consumed_once_and_restores_nested_handoff() {
+        let _outer = OuterRow::enter(Some((120.0, 0.0)));
+        {
+            let _inner = OuterRow::enter(Some((60.0, 0.5)));
+            assert_eq!(take_outer_row(), Some((60.0, 0.5)));
+            assert_eq!(take_outer_row(), None);
+        }
+        assert_eq!(take_outer_row(), Some((120.0, 0.0)));
+    }
+
+    #[test]
+    fn outer_row_restores_handoff_after_unwind() {
+        let _outer = OuterRow::enter(Some((120.0, 0.0)));
+        assert!(
+            std::panic::catch_unwind(|| {
+                let _inner = OuterRow::enter(Some((60.0, 0.5)));
+                panic!("render failed");
+            })
+            .is_err()
+        );
+        assert_eq!(take_outer_row(), Some((120.0, 0.0)));
     }
 }
