@@ -112,19 +112,32 @@ pub(crate) fn resolve(
     {
         style.orthogonal_scrollport = Some([axis(style, false), own]);
     }
+    // Margins keep font-relative units until layout (`resolve_em` covers sizes
+    // only); `margin: 2em 0 4em` must still shrink the fallback (§7.3.1 uses the
+    // available space for the box's MARGIN box).
+    let em = px(style.font_size).unwrap_or(16.0);
     let margin = |value| match value {
         Some(Len::Pct(k)) => axis(parent, false).size.unwrap_or(0.0) * k,
+        Some(Len::Em(k)) => k * em,
         other => px(other).unwrap_or(0.0),
     };
-    let margins = margin(style.margin.top) + margin(style.margin.bottom);
+    // Collapsing may move these margins onto an ancestor, but they still take
+    // their room out of the stretch-fit inline size.
+    let authored = style.own_margin.unwrap_or(style.margin);
+    let margins = margin(authored.top) + margin(authored.bottom);
+    // A definite containing block size IS the available inline space; the
+    // fallback (smallest of max size, scrollport and ICB) only stands in for an
+    // indefinite one (css-writing-modes-4 §7.3.1, `available-size-020`: a
+    // `height: 120vh` parent is not capped by the ICB).
+    let space = basis;
     style.orthogonal_inline = Some(InlineConstraint {
-        available: (fallback - own_edges - margins).max(0.0),
+        available: (space - own_edges - margins).max(0.0),
         fixed: own.size,
         min: own.min,
         max: own.max,
     });
     // A wrapping cap is not a percentage basis or a used inline size.
-    style.ortho_limit = own.size.or(Some((fallback - own_edges - margins).max(0.0)));
+    style.ortho_limit = own.size.or(Some((space - own_edges - margins).max(0.0)));
 }
 
 #[cfg(test)]

@@ -1502,6 +1502,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
                 width: grid_area.right - grid_area.left,
                 height: grid_area.bottom - grid_area.top,
             },
+            None,
             InBothAbsAxis {
                 horizontal: container_align.horizontal.unwrap_or(AlignItems::NORMAL),
                 vertical: container_align.vertical.unwrap_or(AlignItems::NORMAL),

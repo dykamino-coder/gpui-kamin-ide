@@ -21,6 +21,7 @@ pub(crate) fn ordered_element(
         inherited.display,
         Some(Display::Flex) | Some(Display::InlineFlex)
     );
+    e.style.flex_line_wraps = e.style.flex_item && inherited.flex_wrap == Some(true);
     e.style.flex_main_vertical =
         matches!(inherited.flex_dir, Some(FlexDir::Col | FlexDir::ColReverse))
             != (inherited.vertical == Some(true));

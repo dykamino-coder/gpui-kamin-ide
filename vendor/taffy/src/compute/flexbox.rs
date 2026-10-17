@@ -120,6 +120,9 @@ struct FlexItem {
     last_baseline_from_end: f32,
     /// Last y baseline after final physical placement, from container top.
     last_baseline_pos: f32,
+    /// KaminIDE: the item's own layout exported a first / last y baseline (not synthesized).
+    has_first_baseline: bool,
+    has_last_baseline: bool,
     /// KaminIDE: the item exports no baseline to an enclosing `inline-block`
     /// (a table or table wrapper; `LayoutOutput::inline_block_last_y`).
     no_inline_block_baseline: bool,
@@ -198,6 +201,8 @@ struct AlgoConstants {
     is_column: bool,
     /// Is wrapping enabled (in either direction)
     is_wrap: bool,
+    /// KaminIDE: block-container baselines (`Style::block_baselines`), column containers only
+    block_baselines: bool,
     /// Is the wrap direction inverted
     is_wrap_reverse: bool,
     /// Physical sides trimmed before flexible lengths are resolved.
@@ -871,6 +876,15 @@ fn compute_preliminary(
         flex_lines.first()
     };
     let first_vertical_baseline = first_line.and_then(|line| {
+        if constants.block_baselines {
+            // CSS 2.1 10.8.1 / css-align-3 9.1: a block container's first baseline is that
+            // of its first in-flow child that has one; children without one are skipped.
+            return line
+                .items
+                .iter()
+                .find(|child| child.has_first_baseline)
+                .map(|child| child.baseline);
+        }
         if constants.is_column {
             // For column containers the baseline is generated from the startmost item in the line,
             // which for reverse-direction containers is the last item in flex order.
@@ -898,6 +912,14 @@ fn compute_preliminary(
         flex_lines.last()
     };
     let last_vertical_baseline = last_line.and_then(|line| {
+        if constants.block_baselines {
+            return line
+                .items
+                .iter()
+                .rev()
+                .find(|child| child.has_last_baseline)
+                .map(|child| child.last_baseline_pos);
+        }
         if constants.is_column {
             let child = if constants.dir.is_reverse() {
                 line.items.first()
@@ -1096,6 +1118,7 @@ fn compute_constants(
         is_row,
         is_column,
         is_wrap,
+        block_baselines: is_column && style.block_baselines(),
         is_wrap_reverse,
         margin_trim: style.margin_trim(),
         #[cfg(feature = "flexbox_balance")]
@@ -1316,6 +1339,8 @@ fn generate_anonymous_flex_items(
                 baseline: 0.0,
                 last_baseline_from_end: 0.0,
                 last_baseline_pos: 0.0,
+                has_first_baseline: false,
+                has_last_baseline: false,
                 no_inline_block_baseline: false,
                 hides_inline_block_baseline: false,
                 inline_block_last_pos: None,
@@ -3814,6 +3839,8 @@ fn calculate_flex_item(
         last_y
     };
     item.last_baseline_pos = baseline_origin_y + last_y;
+    item.has_first_baseline = layout_output.baselines.first.is_some();
+    item.has_last_baseline = layout_output.last_or_first_y().is_some();
     // Only an item that HAS a baseline but hides it from inline-blocks counts:
     // an item without any baseline still synthesizes one in the flex container.
     item.no_inline_block_baseline = layout_output.inline_block_last_y == Some(None)

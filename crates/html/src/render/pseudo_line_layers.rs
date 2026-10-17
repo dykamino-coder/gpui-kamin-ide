@@ -9,10 +9,13 @@ use crate::style::values::value::Len;
 /// their contents with the same layers as the ordinary block path.
 pub(crate) fn install(element: &Element, merged: &mut Computed) {
     install_first_letter(element, merged);
-    merged.first_line = element
-        .first_line
-        .as_ref()
-        .map(|l| resolve(l, merged.font_size));
+    merged.first_line = element.first_line.as_ref().map(|layer| {
+        // CSS Pseudo 4 §2.1.3: inherit the block's computed values,
+        // then cascade the pseudo's own declarations. Its old snapshot
+        // still contains the block's specified em font size.
+        let own = element.style.first_line_own.as_deref().unwrap_or(layer);
+        Box::new(crate::style::cascade::inherit::inherit(merged, own))
+    });
 }
 
 pub(crate) fn install_first_letter(element: &Element, merged: &mut Computed) {

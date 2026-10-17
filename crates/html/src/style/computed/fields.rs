@@ -1576,4 +1576,11 @@ pub struct Computed {
     pub(crate) color_initial: bool,
     /// DOM identity of this decorating box; never inherited.
     pub decor_box: u64,
+    /// Flex item of a MULTI-line flex container (`flex-wrap` other than `nowrap`):
+    /// its line's cross size comes from the items' hypothetical sizes, so an
+    /// orthogonal item cannot take its inline size from the line. Set with
+    /// `flex_item` by `render::blocks`; not inherited.
+    pub(crate) flex_line_wraps: bool,
+    /// An explicit unsafe overflow position for block content alignment.
+    pub align_content_unsafe: bool,
 }

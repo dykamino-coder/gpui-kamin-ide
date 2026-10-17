@@ -57,6 +57,7 @@ impl Computed {
                 self.align_content_baseline = (parse_align(v) == Some(Align::Baseline))
                     .then(|| v.split_whitespace().any(|word| word == "last"));
                 self.align_content_safe = is_safe(v);
+                self.align_content_unsafe = v.split_whitespace().any(|word| word == "unsafe");
                 // css-align-3 §align-block: ЛЮБОЕ не-`normal` значение делает
                 // блочный контейнер корнем блочного контекста форматирования.
                 // `parse_justify` этого не покажет: `baseline`/`first`/`last`

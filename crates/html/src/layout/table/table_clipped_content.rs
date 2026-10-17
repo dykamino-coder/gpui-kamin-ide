@@ -13,5 +13,6 @@ pub(super) fn wrap(cell: &mut Div, contents: Vec<AnyElement>) -> AnyElement {
     inner.flex_direction = outer.flex_direction;
     inner.align_items = outer.align_items;
     inner.justify_content = outer.justify_content;
+    inner.safe_alignment = outer.safe_alignment;
     clip.children(contents).into_any_element()
 }

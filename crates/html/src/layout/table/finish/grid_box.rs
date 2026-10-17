@@ -69,7 +69,7 @@ pub(super) fn table_grid_box(
             .collect()
     });
 
-    if e.style.vertical == Some(true) {
+    let mut grid = if e.style.vertical == Some(true) {
         // Ряд таблицы — КОЛОНКА сетки: заполнение идёт сверху вниз, ряд за
         // рядом поперёк (css-writing-modes-3 §8, table-progression-*).
         let mut g = div().grid().grid_template_rows(tracks);
@@ -100,7 +100,9 @@ pub(super) fn table_grid_box(
             g = g.flex_grow_1();
         }
         g
-    }
+    };
+    grid.style().table_collapsed_tracks = collapsed_tracks(e);
+    grid
 }
 
 pub(super) fn paint_table_border(
@@ -166,4 +168,56 @@ pub(super) fn paint_table_border(
         ));
     }
     outer
+}
+
+fn collapsed_tracks(e: &Element) -> Option<(bool, Vec<u16>)> {
+    // CSS 2.2 section 17.2.1: anonymous rows precede track indexing.
+    // Keep the same normalization and header/footer order as table().
+    let fixed = crate::layout::table::anon::fixup_table_children(&e.children);
+    let fixed = crate::layout::table::setup::table_rows_fixed(fixed);
+    let mut logical_rows = Vec::new();
+    crate::layout::table::anon::collect_rows(
+        &fixed,
+        Some(e),
+        (0.0, 0.0, None, None),
+        &mut logical_rows,
+    );
+    let collapsed: Vec<u16> = logical_rows
+        .iter()
+        .enumerate()
+        .filter_map(|(i, (row, carry))| {
+            let collapse = crate::layout::table::anon::row_collapsed(row, carry.3);
+            collapse.then_some(
+                if e.style.vertical == Some(true) && e.style.vertical_rl == Some(true) {
+                    (logical_rows.len() - i - 1) as u16
+                } else {
+                    i as u16
+                },
+            )
+        })
+        .collect();
+    (!collapsed.is_empty()).then_some((e.style.vertical == Some(true), collapsed))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::table::anon::anon_element;
+
+    #[test]
+    fn collapse_indices_follow_anonymous_rows_and_group_order() {
+        let block = anon_element("div", vec![Node::Element(anon_element("td", vec![]))]);
+        let mut group = anon_element("tbody", vec![Node::Element(block)]);
+        group.style.collapsed = Some(true);
+        group.node_id = 1;
+        let mut header = anon_element("thead", vec![Node::Element(anon_element("tr", vec![]))]);
+        header.node_id = 2;
+        let mut table = anon_element("table", vec![Node::Element(group)]);
+        assert_eq!(collapsed_tracks(&table), Some((false, vec![0])));
+        table.children.push(Node::Element(header));
+        assert_eq!(collapsed_tracks(&table), Some((false, vec![1])));
+        table.style.vertical = Some(true);
+        table.style.vertical_rl = Some(true);
+        assert_eq!(collapsed_tracks(&table), Some((true, vec![0])));
+    }
 }

@@ -35,7 +35,7 @@ pub(crate) fn physical(
     if !HAS_TEXT_TURN.with(|cell| cell.get())
         || flow.rotated_line != Some(true)
         || e.style.inline_display == Some(true)
-        || !matches!(
+        || !(matches!(
             e.style.display,
             Some(
                 Display::InlineBlock
@@ -43,7 +43,7 @@ pub(crate) fn physical(
                     | Display::InlineGrid
                     | Display::InlineTable
             )
-        )
+        ) || physical_replaced(e))
         || matches!(
             e.style.position,
             Some(
@@ -63,11 +63,25 @@ pub(crate) fn physical(
         crate::layout::atom::pct_resolved_against_block(e, flow).unwrap_or_else(|| e.clone());
     let margins = margin(&child.style, flow);
     child.style.margin = Sides::default();
+    // The atom is its own layout root inside the counter-rotation, where a
+    // relative offset has nothing to shift against. Offsets are physical
+    // (CSS 2.1 §9.4.3), so they move the wrapper in the turned line's frame.
+    let (dx, dy) = crate::layout::positioned::relative::relative_shift(&child, None);
+    if (dx, dy) != (0.0, 0.0) {
+        child.style.inset = Default::default();
+    }
+    let (sx, sy) = crate::text::inline::to_rotated_frame(flow, (dx, dy));
     let central = flow.sideways != Some(true) && flow.text_sideways != Some(true);
-    let ccw = flow.sideways == Some(true) && flow.vertical_rl != Some(true);
+    let ccw = crate::style::computed::writing_mode::WritingMode::of_line(flow).line_turn()
+        == crate::style::computed::writing_mode::Turn::CounterClockwise;
     let physical = crate::render::element(&child, &context, opts);
+    let mut wrapper =
+        crate::style::apply::margins(gpui::div().flex().flex_col().flex_shrink_0(), &margins);
+    if (sx, sy) != (0.0, 0.0) {
+        wrapper = wrapper.relative().left(gpui::px(sx)).top(gpui::px(sy));
+    }
     Some(
-        crate::style::apply::margins(gpui::div().flex().flex_col().flex_shrink_0(), &margins)
+        wrapper
             .child(
                 crate::layout::writing_mode::physical_atomic::PhysicalAtomic::new(
                     physical, ccw, central,
@@ -75,6 +89,16 @@ pub(crate) fn physical(
             )
             .into_any_element(),
     )
+}
+
+/// Replaced content is never turned by a vertical writing mode (css-writing-modes-4 §7.4:
+/// only typographic character units are rotated); in the turned paragraph it is laid out
+/// in its physical size and counter-rotated like any other atomic inline.
+fn physical_replaced(e: &Element) -> bool {
+    matches!(
+        e.tag.as_str(),
+        "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe"
+    ) && e.style.display.is_none()
 }
 
 pub(crate) fn resolved(e: &Element, flow: &Computed) -> Option<Element> {

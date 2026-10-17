@@ -207,18 +207,12 @@ impl GridItem {
                 style.align_self().unwrap_or(parent_align_items)
             },
             table_cell_baseline: style.table_cell_baseline(),
-            // Parallel items do not inherit the parent's first x-baseline group.
-            // An explicit self value always wins; preserve its safety modifier.
-            justify_self: match style.justify_self() {
-                Some(own) => own,
-                // Upstream #1254: the non-inherited fallback is the first-class `normal`.
-                None if parent_justify_items.keyword == AlignItemsKeyword::Baseline
-                    && style.baseline_x_flags() & 8 != 0 =>
-                {
-                    AlignItems::NORMAL
-                }
-                None => parent_justify_items,
-            },
+            // KaminIDE: items parallel to a horizontal grid join its x-baseline
+            // groups too, with a baseline synthesized from their border box (Blink
+            // grid_item.cc DetermineBaselineWritingMode: a parallel item's column
+            // baseline uses the orthogonal writing mode; SetAlignmentFallback keeps
+            // it participating). An explicit self value always wins.
+            justify_self: style.justify_self().unwrap_or(parent_justify_items),
             baseline: None,
             baseline_shim: 0.0,
             baseline_shim_end: 0.0,

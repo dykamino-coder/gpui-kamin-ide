@@ -95,6 +95,7 @@ pub(super) fn cell_contents(
     // (`cell_columns::column_flow_children`, css-multicol-1 §2).
     let flow = super::cell_columns::column_flow_children(cell);
     let inside = blocks(flow.as_deref().unwrap_or(&cell.children), &cm, opts);
+    let inside = super::cell_alignment::subject(&cm, inside);
     CELL_BFC.with(|c| c.set(false));
     // Обрезанная ячейка не расталкивает колонки: её минимальный
     // вклад в дорожки НУЛЕВОЙ (css-sizing: automatic minimum при

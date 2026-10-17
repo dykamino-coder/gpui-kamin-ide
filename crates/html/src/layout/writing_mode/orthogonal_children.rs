@@ -35,9 +35,9 @@ pub(crate) fn orthogonal_children(
             && ch.style.align_self.is_none()
             && !ch.style.float.is_some_and(|side| side != 0)
         {
-            let from_bottom = (container.sideways == Some(true)
-                && container.vertical_rl != Some(true))
-                != (container.rtl == Some(true));
+            // The child stands at the container's inline-start (§6.4).
+            let from_bottom =
+                container.wm().inline_start() == crate::style::computed::writing_mode::Side::Bottom;
             ch.style.align_self = Some(if from_bottom {
                 Align::End
             } else {

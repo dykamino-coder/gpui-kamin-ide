@@ -6,6 +6,7 @@ pub(super) use vertical::vertical_paragraph;
 mod alignment;
 pub(super) use alignment::atom_line_align;
 
+mod first_line_box;
 mod metrics;
 pub(super) use metrics::atoms_fit_line;
 pub(super) use metrics::flow_metrics;
@@ -67,9 +68,10 @@ fn paragraph_routed(
             };
             let line = match base.line_height {
                 Some(Len::Px(v)) => v,
-                Some(Len::Pct(k)) => size * k,
+                Some(Len::Pct(k)) | Some(Len::Em(k)) => size * k,
                 _ => crate::text::metrics::normal_px(normal_fraction(&base, opts), size),
             };
+            let normal_font = crate::text::inline::strut_font(&base, &opts.text);
             let base_lh = base.line_height;
             let for_build = first.clone();
             let depth = defer_depth();
@@ -80,7 +82,7 @@ fn paragraph_routed(
                 std::rc::Rc::new(move |at, width| {
                     let _depth = DepthScope::enter(depth);
                     let mut styled = base.clone();
-                    styled.first_line = None;
+                    styled.first_line = Some(for_build.clone());
                     let mut para = crate::text::line_trim::scoped(trim_owner, trim, || {
                         paragraph_pieces(&nodes_owned, &styled, &opts_owned, at, &for_build)
                     });
@@ -90,26 +92,16 @@ fn paragraph_routed(
             // Мерить надо ТЕМ начертанием, каким строка и будет набрана:
             // жирная первая строка занимает больше места, и разрез по
             // обычному шрифту не помещался бы в неё целиком.
-            let mut font = opts.text.font();
-            font.fallbacks = crate::style::computed::font_family::fallbacks(&first, font.fallbacks);
-            if let Some(w) = first.font_weight {
-                font.weight = gpui::FontWeight(w as f32);
-            }
-            if first.italic == Some(true) {
-                font.style = gpui::FontStyle::Italic;
-            }
-            font.features = crate::text::fonts::with_css_weight(&font.features);
-            if let Some(family) = first.font_family.as_ref().filter(|f| !f.is_empty()) {
-                font.family = family.clone().into();
-            }
+            let font = crate::text::inline::strut_font(&first, &opts.text);
             let measure_size = match first.font_size {
                 Some(Len::Px(v)) => v,
                 Some(Len::Em(k)) => k * size,
                 _ => size,
             };
             // Интерлиньяж первой строки: свой у `::first-line` или
-            // унаследованный — числовой пересчитывается от её кегля. Строка
-            // не ниже струта блока: набор абзаца держит и его.
+            // унаследованный — числовой пересчитывается от её кегля.
+            // The root inline inherits this strut, including a smaller height
+            // (css-pseudo-4 §first-line-styling).
             let first_lh = match first.line_height.or(base_lh) {
                 Some(Len::Px(v)) => v,
                 Some(Len::Pct(k)) | Some(Len::Em(k)) => k * measure_size,
@@ -129,8 +121,9 @@ fn paragraph_routed(
                 measure_size,
                 line,
                 following,
+                (normal_font, size),
             )
-            .first_height(first_lh.max(line))
+            .first_height(first_lh)
             .into_any_element();
         }
     }

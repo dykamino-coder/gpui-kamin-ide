@@ -309,6 +309,9 @@ pub struct Style {
     /// `direction: rtl` (css-flexbox-1 §2 «cross-start … inline-start»).
     /// Выравнивание читает это как `wrap-reverse`, перенос строк — нет.
     pub flex_cross_reverse: bool,
+    /// KaminIDE patch: a flex column emulating a block container takes its baselines from
+    /// the first/last child that has one (taffy `Style::block_baselines`).
+    pub block_baselines: bool,
     /// KaminIDE patch: размеры — `content-box` (CSS `box-sizing`). Обычно
     /// html-слой сам прибавляет отбивки к размеру, но долю отступа он в точки
     /// не переведёт — тогда пересчёт делает раскладка (`taffy::BoxSizing`).
@@ -336,6 +339,8 @@ pub struct Style {
     /// `Style::table_cell_baseline`): the row aligns its content by the
     /// baseline, the cell box still fills the row.
     pub table_cell_baseline: bool,
+    /// Table rows to collapse after intrinsic sizing; true selects physical columns.
+    pub table_collapsed_tracks: Option<(bool, Vec<u16>)>,
     /// KaminIDE patch: собственная базовая линия по оси x (повёрнутый
     /// вертикальный абзац): смещение и «от правого края».
     pub baseline_x_hint: Option<(f32, bool)>,
@@ -1089,6 +1094,7 @@ impl Default for Style {
             flex_wrap: FlexWrap::NoWrap,
             flex_balance_lines: 0,
             flex_cross_reverse: false,
+            block_baselines: false,
             content_box: false,
             percent_basis_from_parent: false,
             calc_size: [None; 4],
@@ -1097,6 +1103,7 @@ impl Default for Style {
             baseline_unavailable: false,
             no_inline_block_baseline: false,
             table_cell_baseline: false,
+            table_collapsed_tracks: None,
             baseline_x_hint: None,
             baseline_x_flags: 0,
             margin_trim: 0,

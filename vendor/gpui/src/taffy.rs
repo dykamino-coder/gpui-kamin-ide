@@ -818,6 +818,7 @@ impl ToTaffy<taffy::style::Style> for Style {
             flex_line_count: self.flex_balance_lines.max(1),
             // KaminIDE patch: обратная поперечная ось однострочного контейнера.
             flex_cross_reverse: self.flex_cross_reverse,
+            block_baselines: self.block_baselines,
             // KaminIDE patch: `box-sizing: content-box` силами раскладки.
             box_sizing: if self.content_box {
                 taffy::style::BoxSizing::ContentBox
@@ -853,6 +854,7 @@ impl ToTaffy<taffy::style::Style> for Style {
             baseline_unavailable: self.baseline_unavailable,
             no_inline_block_baseline: self.no_inline_block_baseline,
             table_cell_baseline: self.table_cell_baseline,
+            table_collapsed_tracks: self.table_collapsed_tracks.clone(),
             // KaminIDE patch: базовая по оси x (вертикальное письмо).
             baseline_x_hint: self
                 .baseline_x_hint

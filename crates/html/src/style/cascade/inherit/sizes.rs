@@ -116,6 +116,7 @@ pub(super) fn inherit_sizes(parent: &Computed, own: &Computed, c: &mut Computed)
             c.align_content = parent.align_content;
             c.align_content_baseline = parent.align_content_baseline;
             c.align_content_safe = parent.align_content_safe;
+            c.align_content_unsafe = parent.align_content_unsafe;
             c.align_content_block = parent.align_content_block;
         }
         if on(ainh::JUSTIFY_CONTENT) {
