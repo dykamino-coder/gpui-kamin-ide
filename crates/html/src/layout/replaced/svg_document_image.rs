@@ -52,7 +52,7 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         false,
         None,
     );
-    let scope = embedded.state.enter();
+    let scope = embedded.state.enter_frame();
     let nodes = embedded.nodes;
     let mut sub = opts.clone();
     sub.viewport = (w, h);

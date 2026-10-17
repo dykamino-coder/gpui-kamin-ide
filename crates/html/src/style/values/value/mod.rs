@@ -27,12 +27,12 @@ mod len;
 mod len_parse;
 mod root_metrics;
 mod units;
-pub use anchor::{AnchorFn, AnchorSide, AnchorSize, anchor_get, anchor_store};
+pub use anchor::{AnchorFn, AnchorId, AnchorSide, AnchorSize, anchor_get, anchor_store};
 use anchor::{parse_anchor, parse_anchor_calc, parse_anchor_minmax};
 use calc::{Calc, Val, eval_calc, parse_calc};
 use calc_pool::fold_simple_calc;
 pub use calc_pool::{
-    calc_get, calc_pct_px, calc_reset, calc_store, fold_zero_percentage, lerp_len, number,
+    CalcId, calc_get, calc_pct_px, calc_store, fold_zero_percentage, lerp_len, number,
 };
 mod scheme;
 pub use color::Color;

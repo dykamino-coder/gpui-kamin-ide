@@ -1,16 +1,14 @@
-//! Пул выражений calc() (Len::Calc хранит индекс), свёртка простых сумм, интерполяция и числа.
+//! Суммы calc() в арене документа (Len::Calc хранит ручку), свёртка простых сумм, интерполяция и числа.
 
 use super::*;
 
-/// Арена смешанных сумм `calc()`: `Len` несёт индекс, не тело. Арена
-/// append-only и копеечная (смеси редки); чистится вместе с документом
-/// (`calc_reset` на входе разбора) — старые индексы умирают с его деревом.
-static CALC_POOL: std::sync::Mutex<Vec<Sum>> = std::sync::Mutex::new(Vec::new());
+/// Ручка смешанной суммы `calc()` (`Len::Calc`): тело живёт в арене
+/// документа (`document::state::arena`) и освобождается вместе с ним.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct CalcId(crate::document::state::ArenaKey);
 
-pub fn calc_store(s: Sum) -> u32 {
-    let mut pool = CALC_POOL.lock().unwrap();
-    pool.push(s);
-    (pool.len() - 1) as u32
+pub fn calc_store(s: Sum) -> CalcId {
+    CalcId(crate::document::state::store(|d| &d.calc, s))
 }
 
 /// Margins and padding resolve percentages against the containing block's
@@ -37,17 +35,10 @@ pub fn fold_zero_percentage(l: Option<Len>) -> Option<Len> {
     }
 }
 
-pub fn calc_get(i: u32) -> Sum {
-    CALC_POOL
-        .lock()
-        .unwrap()
-        .get(i as usize)
-        .copied()
-        .unwrap_or_default()
-}
-
-pub fn calc_reset() {
-    CALC_POOL.lock().unwrap().clear();
+/// Сумма по ручке. Чужая или устаревшая ручка — ошибка связи
+/// (`debug_assert` в арене); запасное значение — нулевая сумма, явно.
+pub fn calc_get(i: CalcId) -> Sum {
+    crate::document::state::load(|d| &d.calc, i.0).unwrap_or_default()
 }
 
 /// Интерполяция длин РАЗНЫХ природ покомпонентно, как `calc()` (css-values-4
@@ -84,8 +75,8 @@ pub fn number(s: &str) -> Option<f32> {
 /// `calc()` из долей и точек — парой `(доля, точки)`, БЕЗ записи в арену.
 ///
 /// Для потребителей на отрисовке (`shape()`, центр `circle()`/`ellipse()`):
-/// они зовутся каждый кадр, а арена `CALC_POOL` чистится только вместе с
-/// документом — `parse_mixed` копил бы по записи на кадр. Любая другая
+/// они зовутся каждый кадр, и `parse_mixed` копил бы по записи на кадр в
+/// области кадра документа. Любая другая
 /// природа (`em`, `vw`…) — `None`.
 pub fn calc_pct_px(raw: &str) -> Option<(f32, f32)> {
     let inner = raw.trim().strip_prefix("calc(")?.strip_suffix(')')?;

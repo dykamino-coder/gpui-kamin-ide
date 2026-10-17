@@ -80,3 +80,52 @@ fn medium_belongs_to_the_document() {
     let _scope = screen.enter();
     assert_eq!(root_font_px(), 16.0);
 }
+
+fn calc_of(doc: &std::rc::Rc<super::DocState>, px: f32) -> crate::style::values::value::CalcId {
+    use crate::style::values::value::{Sum, calc_store};
+    let _scope = doc.enter();
+    calc_store(Sum {
+        px,
+        pct: 0.5,
+        has_percentage: true,
+        ..Sum::default()
+    })
+}
+
+#[test]
+fn calc_handles_belong_to_their_document() {
+    use crate::style::values::value::calc_get;
+    let a = super::DocState::new(Default::default());
+    let b = super::DocState::new(Default::default());
+    let (ha, hb) = (calc_of(&a, 1.0), calc_of(&b, 2.0));
+    assert_ne!(ha, hb);
+    // Чужая ручка находит своего владельца и вне его области.
+    let _scope = b.enter();
+    assert_eq!(calc_get(ha).px, 1.0);
+    assert_eq!(calc_get(hb).px, 2.0);
+}
+
+#[test]
+#[cfg_attr(debug_assertions, should_panic(expected = "ручка арены без записи"))]
+fn calc_arena_is_freed_with_its_document() {
+    use crate::style::values::value::calc_get;
+    let a = super::DocState::new(Default::default());
+    let h = calc_of(&a, 1.0);
+    drop(a);
+    assert_eq!(calc_get(h).px, 0.0, "explicit fallback in release");
+}
+
+#[test]
+#[cfg_attr(debug_assertions, should_panic(expected = "ручка арены без записи"))]
+fn frame_region_is_reset_after_paint() {
+    use crate::style::values::value::{Sum, calc_get, calc_store};
+    let a = super::DocState::new(Default::default());
+    let h = {
+        let _scope = a.enter_frame();
+        calc_store(Sum::default())
+    };
+    a.painted.set(true);
+    a.begin_frame();
+    let _scope = a.enter_frame();
+    calc_get(h);
+}

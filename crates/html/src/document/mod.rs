@@ -170,7 +170,8 @@ impl Document {
     /// Сделать документ текущим до конца жизни guard'а: в этой области
     /// хост вызывает `render::*` по `nodes()` и разбирает значения листа.
     pub fn enter(&self) -> DocScope {
-        self.state.enter()
+        self.state.begin_frame();
+        self.state.enter_frame()
     }
 
     /// Обернуть элемент, собранный в области документа, чтобы раскладка,

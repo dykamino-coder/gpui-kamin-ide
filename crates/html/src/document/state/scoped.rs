@@ -48,7 +48,7 @@ impl Element for Scoped {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, ()) {
-        let _scope = self.state.enter();
+        let _scope = self.state.enter_frame();
         (self.child.request_layout(window, cx), ())
     }
 
@@ -61,7 +61,7 @@ impl Element for Scoped {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let _scope = self.state.enter();
+        let _scope = self.state.enter_frame();
         self.child.prepaint(window, cx);
     }
 
@@ -75,8 +75,9 @@ impl Element for Scoped {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let _scope = self.state.enter();
+        let _scope = self.state.enter_frame();
         self.child.paint(window, cx);
+        self.state.painted.set(true);
     }
 }
 

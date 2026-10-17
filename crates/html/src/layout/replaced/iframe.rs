@@ -168,7 +168,7 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
     );
     // Верхний уровень вложенного документа проходит те же ортогональные
     // поправки, что и дети контейнера.
-    let scope = embedded.state.enter();
+    let scope = embedded.state.enter_frame();
     let nodes = orthogonal_vertical_children(embedded.nodes, &Computed::default());
 
     let mut sub = opts.clone();
