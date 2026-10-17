@@ -31,7 +31,6 @@ use convert::{
 use functions::color_fn;
 pub(crate) use functions::resolve_relative;
 pub(crate) use icc::apply_icc;
-pub use icc::load_profiles;
 pub(crate) use icc::load_profiles_sheets;
 use icc::{PROFILES, icc_to_srgb};
 use matrices::{

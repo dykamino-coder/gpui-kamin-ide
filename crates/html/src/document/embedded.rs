@@ -20,10 +20,6 @@ pub(crate) struct EmbeddingScheme {
 /// the targeted display area»; у рамки свой контекст просмотра, HTML
 /// §4.8.5), а не внешним окном (`css-page/media-queries-002-print`: рамка
 /// 100x100 и `@media (width: 100px) and (height: 100px)`).
-pub fn parse_embedded(html: &str, theme_css: &str, viewport: (f32, f32)) -> (Vec<Node>, u64) {
-    parse_embedded_sized(html, theme_css, viewport, false, true, None)
-}
-
 pub(crate) fn parse_embedded_sized(
     html: &str,
     theme_css: &str,

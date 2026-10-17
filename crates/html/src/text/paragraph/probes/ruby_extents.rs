@@ -112,10 +112,6 @@ pub fn collect_ruby_extents<T>(build: impl FnOnce() -> T) -> (T, RubyExtents) {
 /// spacing … so that the ruby annotation fits» — строка растёт ровно на то,
 /// чем аннотация выходит за её коробку (Blink `ruby_utils.cc`
 /// `ComputeAnnotationOverflow`). Без сбора — сам элемент как есть.
-pub fn ruby_extent(el: AnyElement, under: bool, inset: f32) -> AnyElement {
-    ruby_layer(el, under, inset, &[])
-}
-
 pub(crate) fn ruby_layer(
     el: AnyElement,
     under: bool,

@@ -3,7 +3,6 @@
 use super::*;
 
 mod resources;
-pub use resources::load_profiles;
 pub(crate) use resources::load_profiles_sheets;
 
 /// Применить вшитый цветовой профиль ICC к готовому образу.

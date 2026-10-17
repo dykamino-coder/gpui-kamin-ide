@@ -22,16 +22,6 @@ pub use stack_child::Repeat;
 pub use stack_child::RepeatGeom;
 pub use stack_child::StackChild;
 
-/// Полоса выреза: на строках, пересекающих [y0, y1), начало (или конец)
-/// строки занято на `left`/`right` точек.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct ExBand {
-    pub y0: f32,
-    pub y1: f32,
-    pub left: f32,
-    pub right: f32,
-}
-
 /// Ребёнок потока: элемент и его известный размер.
 pub struct FlowChild {
     pub el: AnyElement,

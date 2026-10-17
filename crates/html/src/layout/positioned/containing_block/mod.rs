@@ -172,11 +172,6 @@ pub fn cb_open_strict(own: &crate::style::computed::Computed, fixed_cb: bool) {
     });
 }
 
-/// Открыть слой содержащего блока вокруг детей позиционированной коробки.
-pub fn cb_open() {
-    cb_open_with(false);
-}
-
 /// Открыть слой содержащего блока; `fixed_cb` — коробка содержит и
 /// `position: fixed` (трансформ, `contain: layout|paint`, css-transforms-1
 /// §transform-rendering: «establishes a containing block for all

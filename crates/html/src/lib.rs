@@ -32,20 +32,13 @@ pub mod svg;
 pub use style::values::value;
 
 // Доменные модули (рефакторинг монолитов: перенос по доменам).
-#[doc(hidden)]
-pub mod animation;
-#[doc(hidden)]
-pub mod document;
-#[doc(hidden)]
-pub mod interactive;
-#[doc(hidden)]
-pub mod layout;
-#[doc(hidden)]
-pub mod paint;
-#[doc(hidden)]
-pub mod style;
-#[doc(hidden)]
-pub mod text;
+pub(crate) mod animation;
+pub(crate) mod document;
+pub(crate) mod interactive;
+pub(crate) mod layout;
+pub(crate) mod paint;
+pub(crate) mod style;
+pub(crate) mod text;
 
 /// Умолчания тегов, как в браузере, — для тех, кто рисует СТРАНИЦУ.
 ///
