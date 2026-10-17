@@ -12,7 +12,7 @@ use crate::style::generated::counter_style::{
     Context, builtin, builtin_initial, builtin_repr_in, normalize_name,
 };
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 mod generate;
 mod math;
@@ -54,8 +54,14 @@ struct Raw {
 
 static RULES: Mutex<Option<HashMap<String, Raw>>> = Mutex::new(None);
 
+fn registry<T>(value: &Mutex<T>) -> MutexGuard<'_, T> {
+    value
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 pub fn reset() {
-    RULES.lock().unwrap().take();
+    registry(&RULES).take();
 }
 
 #[cfg(test)]

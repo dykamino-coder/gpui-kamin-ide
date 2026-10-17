@@ -143,17 +143,16 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media) -> bool {
             .collect();
         if !decls.is_empty() || !margins.is_empty() {
             // Объявления листа — В ПОРЯДКЕ ЗАПИСИ, повтор свойства —
-            // отдельной парой на своём месте. Словарь `Decls` порядка не
-            // помнит (случайный `RandomState` на процесс), повтор
-            // склеивает через `DECL_SEP`, а `page_box` стенда применяет
-            // пары по очереди: `margin: 0; margin-top: 20vw`
+            // отдельной парой на своём месте: `Decls` склеивает повторы
+            // через `DECL_SEP`, а `page_box` применяет пары по очереди:
+            // `margin: 0; margin-top: 20vw`
             // (`page-size-016`) давал разный лист от прогона к прогону,
             // а `margin: 13px; margin: inherit` (`page-margin-006`) —
             // значение «13px\u{1}inherit», которое не разбиралось вовсе.
-            // Служебный `ORDER_KEY` в пул больше не попадает.
             let list = ordered_decls(&decls);
             if let Some(sels) = parse_page_selectors(&head[5..]) {
-                PAGE_RULES.lock().unwrap().push(PageRule {
+                let mut pages = PAGE_RULES.lock().unwrap_or_else(|error| error.into_inner());
+                pages.push(PageRule {
                     sels,
                     decls: list,
                     margins,

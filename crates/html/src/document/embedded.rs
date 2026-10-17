@@ -49,7 +49,9 @@ pub(crate) fn parse_embedded_sized(
         media.dark = scheme.preferred_dark;
     }
     let parsed = crate::dom::parse_media(html, theme_css, media);
-    *crate::style::css::PAGE_RULES.lock().unwrap() = outer_rules;
+    *crate::style::css::PAGE_RULES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = outer_rules;
     let mut nodes =
         super::viewport::prepare_embedded(parsed, responsive, scheme.map(|s| s.owner_dark));
     // HTML's embedding policy also applies when responsive sizing is declined.

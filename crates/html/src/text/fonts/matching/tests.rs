@@ -21,6 +21,26 @@ fn chosen(faces: Vec<Face>, request: Computed) -> String {
 }
 
 #[test]
+fn non_finite_request_has_a_total_order_and_equal_faces_keep_last() {
+    for stretch in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        let request = Computed {
+            font_stretch: Some(stretch),
+            ..Default::default()
+        };
+        assert_eq!(
+            chosen(
+                vec![
+                    face("first", 100., 400., 0, 0.),
+                    face("last", 100., 400., 0, 0.)
+                ],
+                request
+            ),
+            "last"
+        );
+    }
+}
+
+#[test]
 fn width_precedes_style_and_weight() {
     let request = Computed {
         font_stretch: Some(90.0),
