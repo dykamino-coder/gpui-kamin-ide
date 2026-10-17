@@ -14,7 +14,7 @@ use crate::render::{
 };
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_strict};
 
 /// Прогон-продолжение после `<br>` (`cont`, `band_flow_rest`): его первая
 /// строка — не первая строка абзаца, и `text-indent` её не сдвигает
@@ -102,10 +102,7 @@ pub(super) fn band_nest(
     Some(crate::layout::float::band_flow::Nest {
         kids,
         inset: band_inset(c, em)?,
-        height: match c.style.height {
-            Some(Len::Px(v)) => Some(v),
-            _ => None,
-        },
+        height: px_strict(c.style.height),
         width: band_dimensions::content_width(&c.style, em),
     })
 }

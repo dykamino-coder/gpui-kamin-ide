@@ -2,14 +2,7 @@
 use crate::layout::block::ratio_basis;
 use crate::style::computed::orthogonal::{AxisSizes, InlineConstraint, available};
 use crate::style::computed::{Computed, Display, Overflow, Position};
-use crate::style::values::value::Len;
-
-fn px(value: Option<Len>) -> Option<f32> {
-    match value {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    }
-}
+use crate::style::values::value::{Len, px_strict};
 
 pub(crate) fn edges(style: &Computed, vertical: bool) -> f32 {
     let b = style.borders();
@@ -18,7 +11,7 @@ pub(crate) fn edges(style: &Computed, vertical: bool) -> f32 {
     } else {
         [b.left, b.right, style.padding.left, style.padding.right]
     };
-    sides.into_iter().filter_map(px).sum()
+    sides.into_iter().filter_map(px_strict).sum()
 }
 
 pub(crate) fn axis(style: &Computed, vertical: bool) -> AxisSizes {
@@ -37,7 +30,7 @@ pub(crate) fn axis(style: &Computed, vertical: bool) -> AxisSizes {
     } else {
         style.scroll.used[0] + style.scroll.used[2]
     };
-    let inner = |value| px(value).map(|v| (v - adjustment - gutters).max(0.0));
+    let inner = |value| px_strict(value).map(|v| (v - adjustment - gutters).max(0.0));
     AxisSizes {
         size: inner(size),
         min: inner(min),
@@ -115,11 +108,11 @@ pub(crate) fn resolve(
     // Margins keep font-relative units until layout (`resolve_em` covers sizes
     // only); `margin: 2em 0 4em` must still shrink the fallback (§7.3.1 uses the
     // available space for the box's MARGIN box).
-    let em = px(style.font_size).unwrap_or(16.0);
+    let em = px_strict(style.font_size).unwrap_or(16.0);
     let margin = |value| match value {
         Some(Len::Pct(k)) => axis(parent, false).size.unwrap_or(0.0) * k,
         Some(Len::Em(k)) => k * em,
-        other => px(other).unwrap_or(0.0),
+        other => px_strict(other).unwrap_or(0.0),
     };
     // Collapsing may move these margins onto an ancestor, but they still take
     // their room out of the stretch-fit inline size.

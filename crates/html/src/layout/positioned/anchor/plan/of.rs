@@ -5,7 +5,7 @@ use super::super::settle::default_anchor_of;
 use super::super::{AnchorPlan, SidePlan};
 use super::flipped;
 use crate::style::computed::{Align, Computed, Position};
-use crate::style::values::value::{Len, anchor_get};
+use crate::style::values::value::{Len, anchor_get, px_lossy_zero};
 
 impl AnchorPlan {
     /// План есть у абсолюта хотя бы с одной `anchor()`-вставкой, с
@@ -22,10 +22,7 @@ impl AnchorPlan {
         ) {
             return None;
         }
-        let m = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let m = px_lossy_zero;
         let margin = [
             m(own.margin.top),
             m(own.margin.right),

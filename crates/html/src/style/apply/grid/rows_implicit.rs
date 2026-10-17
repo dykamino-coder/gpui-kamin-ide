@@ -1,6 +1,7 @@
 //! grid_style, этапы рядов и неявной сетки: repeat() по оси рядов, inline-grid, неявные дорожки grid-auto-*, лунки, grid-auto-flow, subgrid.
 
 use super::*;
+use crate::style::values::value::px_lossy_zero;
 
 pub(super) fn grid_implicit(mut d: Div, c: &Computed, flip: bool) -> Div {
     // Неявные дорожки: элементов больше, чем описано — их размер задаёт
@@ -184,10 +185,7 @@ pub(super) fn grid_rows_repeat(mut d: Div, c: &Computed, flip: bool) -> Div {
             _ => None,
         });
         if let Some(mut total) = all_px.filter(|t| *t > 0.0) {
-            let px_of = |l: Option<Len>| match l {
-                Some(Len::Px(v)) => v,
-                _ => 0.0,
-            };
+            let px_of = px_lossy_zero;
             let b = c.borders();
             total += px_of(c.column_gap) * (tracks.len().saturating_sub(1)) as f32
                 + px_of(c.padding.left)

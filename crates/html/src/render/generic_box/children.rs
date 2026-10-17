@@ -17,7 +17,7 @@ use crate::layout::writing_mode::vertical_hug;
 use crate::paint::stacking::fixed_cb_layer_box;
 use crate::render::*;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::px_lossy_zero;
 use crate::text::text_box::text_box_trim_px;
 use gpui::{AnyElement, IntoElement, ParentElement};
 
@@ -202,10 +202,7 @@ pub(crate) fn generic_children(
         // border-box` из `max-height` вычитаются вертикальные рамки и
         // паддинги (`line-clamp-auto-003`: 138 − 2×(1+4) = 128).
         let bb_y = if merged.border_box == Some(true) {
-            let side = |l: Option<Len>| match l {
-                Some(Len::Px(v)) => v,
-                _ => 0.0,
-            };
+            let side = px_lossy_zero;
             let bw = merged.borders();
             side(bw.top) + side(bw.bottom) + side(merged.padding.top) + side(merged.padding.bottom)
         } else {

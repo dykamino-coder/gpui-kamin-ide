@@ -14,15 +14,6 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::AnyElement;
 
-/// Точки стороны коробки: только явный `px` (None непроходной).
-pub(crate) fn px_of2(l: &Option<Len>) -> Option<f32> {
-    match l {
-        None => Some(0.0),
-        Some(Len::Px(v)) => Some(*v),
-        _ => None,
-    }
-}
-
 /// `inset()`/`rect()`/`xywh()` with a `round` radius in points: the group
 /// buffer rounds the clip rectangle (css-shapes-1 §basic-shape-rect);
 /// percentages resolve against the reference box at paint time.

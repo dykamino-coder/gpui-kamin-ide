@@ -1,7 +1,7 @@
 //! Subgrid geometry for fixup_grid; split out to keep the owning module within 250 lines.
 
 use crate::style::computed::{Computed, Position};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 
 /// Ребёнок гибкого контейнера или сетки не плавает и не очищает.
 ///
@@ -88,10 +88,7 @@ pub(super) fn subgrid_gap_slice(
     own: Option<Len>,
 ) {
     use crate::style::computed::{Track, TrackSize};
-    let px = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let px = px_lossy_zero;
     let d = px(parent) - px(own);
     let n = slice.len();
     if d == 0.0 || n < 2 {

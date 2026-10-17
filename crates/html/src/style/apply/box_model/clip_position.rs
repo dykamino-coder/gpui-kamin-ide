@@ -1,6 +1,7 @@
 //! apply_box, этап после полей и рамок: обрезка по clip-path circle(), contain: layout/paint, вид позиционирования (sticky выходит сразу); дальше — box_overflow.
 
 use super::*;
+use crate::style::values::value::px_lossy_zero;
 
 pub(super) fn box_clip_position(mut d: Div, c: &Computed) -> Div {
     // `clip-path: circle()` — обрезка содержимого по кругу. Прямоугольная
@@ -30,10 +31,7 @@ pub(super) fn box_clip_position(mut d: Div, c: &Computed) -> Div {
         };
         // Обрезка НЕ отменяет собственное скругление: берётся более сильное
         // из двух, иначе `border-radius` рядом с `clip-path` пропадал.
-        let own = match c.radius.tl {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let own = px_lossy_zero(c.radius.tl);
         d = d.rounded(px(radius.max(own))).overflow_hidden();
     }
     // `contain: paint` — содержимое не выходит за коробку.

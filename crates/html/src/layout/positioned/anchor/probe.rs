@@ -11,7 +11,7 @@ use crate::layout::positioned::anchor::NAMED;
 use crate::layout::positioned::anchor::NAMED_SEQ;
 use crate::layout::positioned::anchor::USED_LAST;
 use crate::style::computed::{Computed, PositionAnchor};
-use crate::style::values::value::Len;
+use crate::style::values::value::px_lossy_zero;
 use gpui::{AnyElement, App, Bounds, IntoElement, Pixels, Styled, Window, px};
 
 /// Ключ коробки в реестрах между кадрами: `node_id`; у псевдоэлемента он 0 —
@@ -58,10 +58,7 @@ pub fn probe_for(e: &crate::dom::Element, c: &Computed, hidden: bool) -> Option<
     // CSS Anchor Positioning 1 resolves logical border-box edges before snapping.
     // The absolute probe covers the padding box; expand it by the CSS borders.
     // The containing-block record remains the padding box (CSS 2.1 section 10.1).
-    let bw = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let bw = px_lossy_zero;
     let b = e.style.borders();
     let border = [bw(b.top), bw(b.right), bw(b.bottom), bw(b.left)];
     Some(

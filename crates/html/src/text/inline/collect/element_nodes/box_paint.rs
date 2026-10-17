@@ -3,7 +3,7 @@
 use crate::dom::Element;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
-use crate::style::values::value::{Color, Len};
+use crate::style::values::value::{Color, Len, px_lossy_zero};
 use crate::text::inline::*;
 
 pub(super) fn element_style(e: &Element, inherited: &Computed) -> (Computed, bool) {
@@ -16,10 +16,7 @@ pub(super) fn element_style(e: &Element, inherited: &Computed) -> (Computed, boo
     // в собственном стиле `left: -6em` читался нулём, и вложенный
     // относительный кусок не сдвигался (`position-relative-033`).
     let own_rel = if e.style.position == Some(crate::style::computed::Position::Relative) {
-        let px_of = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let px_of = px_lossy_zero;
         let i = &merged.inset;
         (
             px_of(i.left) - px_of(i.right),
