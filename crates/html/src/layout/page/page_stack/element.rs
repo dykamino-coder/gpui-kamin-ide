@@ -1,32 +1,16 @@
 //! PageStack как элемент gpui: раскладка листов (prepaint) и их краска (paint).
 
 use super::{PageGeom, PageStack};
+use crate::hooks::Hooks;
 use crate::layout::fragment::types::Frag;
 use crate::layout::multicol::column_stack::ColumnStack;
-use gpui::{
-    App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, LayoutId, Pixels, Window,
-    point, px, size,
-};
+use gpui::{App, Bounds, LayoutId, Pixels, Window, point, px, size};
 
-impl Element for PageStack {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
+impl Hooks for PageStack {
+    type Layout = ();
+    type Prepaint = ();
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
         // Стопка занимает РОДИТЕЛЯ целиком (окно стенда): число страниц
         // становится известно только после меры детей в `prepaint`, а размер
         // листов подгоняется масштабом, не размером стопки. Измеряемая
@@ -42,13 +26,11 @@ impl Element for PageStack {
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _state: &mut (),
+        _state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> Self::Prepaint {
         // Первый лист — по имени первой коробки (css-page-3 §using-named-pages,
         // п. 3: «the first page … is given the start page value of the root»):
         // его page area — начальный содержащий блок и ширина меры.
@@ -191,11 +173,9 @@ impl Element for PageStack {
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
+        _state: &mut Self::Layout,
+        _prepaint: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {

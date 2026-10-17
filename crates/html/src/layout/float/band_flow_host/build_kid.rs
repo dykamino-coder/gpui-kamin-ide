@@ -1,6 +1,7 @@
 //! Построитель ребёнка полос: раскладка узла при заданной ширине и вырезах.
 
 use crate::dom::{Element, Node};
+use crate::hooks::IntoHooked;
 use crate::layout::block::containing::{AVAIL_W, AvailWGuard, CB_WIDTH, scopeguard_cb};
 use crate::layout::float::band_nest::cont_indent;
 use crate::layout::float::float_atom::band_atom;
@@ -160,7 +161,7 @@ pub(super) fn build_band_kid(
             shapes,
             inherited.rtl == Some(true),
         )
-        .into_any_element();
+        .hooked();
     }
     // Замещаемый флоат, кроме `<img>` (`embed`, `object`,
     // `video`…), — своей веткой `element` ниже: каркас блока со

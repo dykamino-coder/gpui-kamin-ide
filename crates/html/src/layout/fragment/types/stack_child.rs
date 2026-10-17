@@ -1,16 +1,7 @@
 //! Ребёнок стопки фрагментов (StackChild) и повторяемые заголовки/подвалы (Repeat, RepeatGeom).
 
-use super::FlowRow;
 use super::rows::Par;
-use gpui::{AnyElement, IntoElement};
-
-impl IntoElement for FlowRow {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
-    }
-}
+use gpui::AnyElement;
 
 /// Ребёнок колонок: элемент, высота коробки и вертикальные поля
 /// (схлопываются между соседями по правилам потока).

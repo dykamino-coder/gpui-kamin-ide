@@ -138,7 +138,11 @@ fn build(
         outer.style().flex_direction = Some(gpui::FlexDirection::Row);
         outer.style().justify_content = Some(gpui::JustifyContent::Center);
     }
-    Some(outer.child(content).into_any_element())
+    Some(
+        outer
+            .child(crate::hooks::IntoHooked::into_hooked(content))
+            .into_any_element(),
+    )
 }
 
 /// Core §3.1.2: child margins enlarge its box metrics and shift its border box.

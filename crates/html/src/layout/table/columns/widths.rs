@@ -2,8 +2,9 @@
 
 use super::{col_role, col_span};
 use crate::dom::{Element, Node};
+use crate::hooks::IntoHooked;
 use crate::style::values::value::Len;
-use gpui::{AnyElement, IntoElement};
+use gpui::AnyElement;
 
 /// Полоса слоя на каждую красящую дорожку плюс буфер проб по её индексу.
 ///
@@ -41,10 +42,7 @@ pub(crate) fn push_col_bands(
             if band_style.bg_image.is_none() {
                 band_style.bg_image = band_style.gradient_raw.clone();
             }
-            cells.push(
-                crate::layout::table::paint::CellsClipped::new(rects, band_style)
-                    .into_any_element(),
-            );
+            cells.push(crate::layout::table::paint::CellsClipped::new(rects, band_style).hooked());
         }
     }
 }

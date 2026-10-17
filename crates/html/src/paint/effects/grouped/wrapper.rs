@@ -1,10 +1,11 @@
 //! Настройка состояния Grouped после вычисления геометрии клипа.
 
 use super::rounded_rect_clip;
+use crate::hooks::IntoHooked;
 use crate::paint::effects::mask::mask_geometry;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
-use gpui::{AnyElement, IntoElement};
+use gpui::AnyElement;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn grouped_wrapper(
@@ -214,5 +215,5 @@ pub(crate) fn grouped_wrapper(
     if wrapper.corner_clip.is_some() {
         wrapper.opacity = c.opacity.unwrap_or(1.0);
     }
-    wrapper.into_any_element()
+    wrapper.hooked()
 }

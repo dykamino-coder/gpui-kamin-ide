@@ -29,6 +29,7 @@
 )]
 
 pub mod coverage;
+pub(crate) mod hooks;
 pub use style::css;
 pub mod dom;
 pub use dom::encoding;

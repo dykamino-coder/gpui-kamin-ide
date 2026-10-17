@@ -1,10 +1,8 @@
 //! Фильтры.
 // owner: A
 
-use gpui::{
-    App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
-    Pixels, Window, px,
-};
+use crate::hooks::Hooks;
+use gpui::{App, Bounds, LayoutId, Pixels, Window, px};
 
 /// Слой `filter: url(#id)`: SVG с прямоугольником цвета фона под этим
 /// фильтром, растрированный resvg по размеру коробки. Холст вдвое больше
@@ -17,13 +15,6 @@ pub struct FilterLayer {
     pub fill: String,
 }
 
-impl IntoElement for FilterLayer {
-    type Element = Self;
-    fn into_element(self) -> Self {
-        self
-    }
-}
-
 thread_local! {
     /// Растры слоёв фильтра по (разметка, размер): кадр за кадром одно и то же.
     static FILTER_RASTERS: std::cell::RefCell<
@@ -31,25 +22,11 @@ thread_local! {
     > = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
-impl Element for FilterLayer {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
+impl Hooks for FilterLayer {
+    type Layout = ();
+    type Prepaint = ();
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
         let mut style = gpui::Style::default();
         style.position = gpui::Position::Absolute;
         style.inset = gpui::Edges {
@@ -63,22 +40,18 @@ impl Element for FilterLayer {
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut (),
+        _state: &mut Self::Layout,
         _window: &mut Window,
         _cx: &mut App,
-    ) {
+    ) -> Self::Prepaint {
     }
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
+        _state: &mut Self::Layout,
+        _prepaint: &mut Self::Prepaint,
         window: &mut Window,
         _cx: &mut App,
     ) {

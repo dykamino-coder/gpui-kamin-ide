@@ -1,9 +1,7 @@
 //! Висячий начальный край строки (InlineStartHang) для позднего размещения.
 
-use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Window, px,
-};
+use crate::hooks::Wrap;
+use gpui::{AnyElement, App, Bounds, Pixels, Window, px};
 
 /// Коробка, повешенная на точку своим строчным НАЧАЛОМ.
 ///
@@ -24,70 +22,23 @@ use gpui::{
 /// РАМОЧНОЙ коробки, а не отбивочной. Обе стороны считаются одинаково, и
 /// разница проявилась бы только у абсолюта с ненулевым боковым полем.
 pub struct InlineStartHang {
-    pub(crate) child: Option<AnyElement>,
+    pub(crate) child: AnyElement,
 }
 
 impl InlineStartHang {
     pub fn new(child: AnyElement) -> Self {
-        Self { child: Some(child) }
+        Self { child }
     }
 }
 
-impl Element for InlineStartHang {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
-
-    fn id(&self) -> Option<ElementId> {
-        None
+impl Wrap for InlineStartHang {
+    fn child(&mut self) -> &mut AnyElement {
+        &mut self.child
     }
 
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
-        let layout_id = self.child.as_mut().unwrap().request_layout(window, cx);
-        (layout_id, ())
-    }
-
-    fn prepaint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        _state: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        let child = self.child.as_mut().unwrap();
+    fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        let child = &mut self.child;
         let shift = gpui::point(px(0.0) - bounds.size.width, px(0.0));
         window.with_exact_element_offset(shift, |window| child.prepaint(window, cx));
-    }
-
-    fn paint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        _bounds: Bounds<Pixels>,
-        _request: &mut (),
-        _prepaint: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        self.child.as_mut().unwrap().paint(window, cx);
-    }
-}
-
-impl IntoElement for InlineStartHang {
-    type Element = Self;
-
-    fn into_element(self) -> Self {
-        self
     }
 }

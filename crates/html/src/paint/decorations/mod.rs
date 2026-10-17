@@ -5,13 +5,14 @@ pub(super) use borders::coloured_borders;
 
 // owner: A
 
+use crate::hooks::IntoHooked;
 use crate::paint::decorations::backdrop::backdrop_matrix;
 use crate::paint::decorations::border_shape::border_shape_layer;
 use crate::paint::decorations::gradient_stripes::gradient_stripes;
 use crate::paint::decorations::shadows::{inset_shadows, outer_shadows};
 use crate::paint::effects::mask::mask_def;
 use crate::style::computed::Computed;
-use gpui::{AnyElement, IntoElement};
+use gpui::AnyElement;
 
 mod backdrop;
 mod border_shape;
@@ -66,7 +67,7 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
                 id: id.to_string(),
                 fill,
             }
-            .into_any_element(),
+            .hooked(),
         );
     }
     // Filter Effects 2 §backdrop-filter (Overview.bs:61-66): the filtered

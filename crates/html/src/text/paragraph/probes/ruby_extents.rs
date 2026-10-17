@@ -1,7 +1,8 @@
 //! Ruby extents for probes; split out to keep the owning module within 250 lines.
 
 use super::LayoutTap;
-use gpui::{AnyElement, IntoElement, LayoutId};
+use crate::hooks::IntoHooked;
+use gpui::{AnyElement, LayoutId};
 
 /// Узлы стопок аннотаций одного руби: (под базой?, полулидинг базы, узел).
 /// Полулидинг вычитается: стопка стоит на краю коробки строки базы, а
@@ -137,5 +138,5 @@ pub(crate) fn ruby_layer(
     if !collecting && layers.is_empty() {
         return el;
     }
-    LayoutTap { child: el, slot }.into_any_element()
+    LayoutTap { child: el, slot }.hooked()
 }

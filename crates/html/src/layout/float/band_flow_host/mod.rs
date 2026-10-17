@@ -2,13 +2,14 @@
 // owner: A
 
 use crate::dom::{Element, Node};
+use crate::hooks::IntoHooked;
 use crate::layout::float::band_clearance::supported as band_clear_supported;
 use crate::layout::float::band_host::band_margins;
 use crate::layout::float::band_measured::has_ruby;
 use crate::render::{RenderOpts, block_level_in_flow, own_context, replaced_tag};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
-use gpui::{AnyElement, IntoElement};
+use gpui::AnyElement;
 mod lift;
 pub(super) use lift::band_flow_rest_lift;
 use lift::flow_interior_plain;
@@ -155,9 +156,8 @@ pub(super) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpt
     );
     let flow = crate::layout::float::band_flow::BandFlow::new(kids, !e.marks.inflow_height);
     if inherited.vertical == Some(true) {
-        flow.vertical(inherited.vertical_rl == Some(true))
-            .into_any_element()
+        flow.vertical(inherited.vertical_rl == Some(true)).hooked()
     } else {
-        flow.into_any_element()
+        flow.hooked()
     }
 }

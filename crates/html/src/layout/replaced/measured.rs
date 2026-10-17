@@ -1,8 +1,9 @@
 //! Measure replaced content without fixing its automatic preferred dimensions.
+
+use crate::hooks::{Hooks, IntoHooked};
 use gpui::{
-    AnyElement, App, AvailableSpace, Bounds, Element, ElementId, GlobalElementId,
-    InspectorElementId, IntoElement, LayoutId, Pixels, Refineable, Style, Styled, Window, point,
-    px, size,
+    AnyElement, App, AvailableSpace, Bounds, IntoElement, LayoutId, Pixels, Refineable, Style,
+    Styled, Window, point, px, size,
 };
 
 pub(crate) type ControlMeasure = std::rc::Rc<
@@ -52,7 +53,7 @@ pub(crate) fn natural_control_with(
         ratio,
         measure,
     }
-    .into_any_element()
+    .hooked()
 }
 
 pub(super) struct MeasuredReplaced {
@@ -63,24 +64,11 @@ pub(super) struct MeasuredReplaced {
     pub(super) measure: Option<ControlMeasure>,
 }
 
-impl Element for MeasuredReplaced {
-    type RequestLayoutState = (LayoutId, LayoutId);
-    type PrepaintState = ();
+impl Hooks for MeasuredReplaced {
+    type Layout = (LayoutId, LayoutId);
+    type Prepaint = ();
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, Self::RequestLayoutState) {
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
         let picture = self.image.request_layout(window, cx);
         let natural = self.natural;
         let ratio = self.ratio;
@@ -110,13 +98,11 @@ impl Element for MeasuredReplaced {
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        state: &mut Self::RequestLayoutState,
+        state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> Self::Prepaint {
         // Reconstruct the decoration from CSS dimensions, before pixel snapping.
         // Using snapped bounds enlarges a 34px box to 34.4px at scale 1.25,
         // making its percentage-painted content overlap a dotted border.
@@ -136,21 +122,12 @@ impl Element for MeasuredReplaced {
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut Self::RequestLayoutState,
-        _prepaint: &mut (),
+        _state: &mut Self::Layout,
+        _prepaint: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {
         self.image.paint(window, cx);
-    }
-}
-
-impl IntoElement for MeasuredReplaced {
-    type Element = Self;
-    fn into_element(self) -> Self {
-        self
     }
 }

@@ -4,6 +4,7 @@ mod probes;
 pub(super) use probes::child_probes;
 
 use crate::dom::Element;
+use crate::hooks::IntoHooked;
 use crate::layout::block::reorder::{orthogonal_vertical_children, resolve_inline_pct};
 use crate::layout::block::struts::margin_px;
 use crate::layout::block::vertical_flow_margins;
@@ -236,7 +237,7 @@ pub(crate) fn generic_children(
                 max_h,
             )
             .trim_end(clamp_trim)
-            .into_any_element(),
+            .hooked(),
         );
     }
     // Абсолют с `anchor()`-вставками: раскладка поставила его к краю

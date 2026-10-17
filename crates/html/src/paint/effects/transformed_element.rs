@@ -3,10 +3,10 @@
 
 mod lifecycle;
 
-use gpui::{AnyElement, IntoElement, Pixels};
+use gpui::{AnyElement, Pixels};
 
 pub struct Transformed {
-    pub(crate) child: Option<AnyElement>,
+    pub(crate) child: AnyElement,
     /// Поворот в радианах, масштаб по осям, сдвиг в точках.
     pub rotate: f32,
     /// Скос по осям в радианах (`transform: skew`).
@@ -133,7 +133,7 @@ fn invert_affine(m: [[f32; 3]; 2]) -> Option<gpui::TransformationMatrix> {
 impl Transformed {
     pub fn new(child: AnyElement) -> Self {
         Transformed {
-            child: Some(child),
+            child,
             rotate: 0.0,
             skew: (0.0, 0.0),
             scale: (1.0, 1.0),
@@ -172,13 +172,5 @@ impl Transformed {
         let sx = self.tr[0][0] + w * self.tr[0][1] + h * self.tr[0][2];
         let sy = self.tr[1][0] + w * self.tr[1][1] + h * self.tr[1][2];
         (id && sx.is_finite() && sy.is_finite()).then_some((sx, sy))
-    }
-}
-
-impl IntoElement for Transformed {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
     }
 }
