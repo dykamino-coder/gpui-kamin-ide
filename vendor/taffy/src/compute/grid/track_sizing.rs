@@ -656,9 +656,28 @@ fn resolve_item_baseline_groups(
                     .margin
                     .right
                     .resolve_or_zero(Some(column_width), |val, basis| tree.calc(val, basis));
+            // KaminIDE patch: the inline size is the one final layout uses — a
+            // stretched (`justify-self: normal/stretch`) auto-width item fills
+            // its area. Blink measures with the area as available inline size
+            // and the item's column auto behaviour (`CreateConstraintSpace`,
+            // `SetInlineAutoBehavior`); an unknown width left percentage
+            // descendants unresolved and the baseline at 0
+            // (`grid-self-baseline-008`: canvases at `width: 100%`).
+            let stretched_width = item
+                .known_dimensions(
+                    tree,
+                    Size {
+                        width: Some(column_width),
+                        height: None,
+                    },
+                )
+                .width;
             let measured_size_and_baselines = tree.perform_child_layout(
                 item.node,
-                Size::NONE,
+                Size {
+                    width: stretched_width,
+                    height: None,
+                },
                 Size {
                     width: Some(column_width),
                     height: inner_node_size.height,
