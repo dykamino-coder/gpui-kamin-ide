@@ -4,6 +4,7 @@ use crate::dom::{Element, Node};
 use crate::render::is_blank;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
+use crate::tolerance::COORD_EPS;
 
 pub(crate) fn block_floats(
     ge: &Element,
@@ -27,7 +28,7 @@ fn floats_in(
     // соседом стопки одним куском).
     let zero_m = |l: &Option<Len>| match l {
         None => true,
-        Some(Len::Px(v)) => v.abs() < 0.01,
+        Some(Len::Px(v)) => v.abs() < COORD_EPS,
         _ => false,
     };
     // Во всю ширину — `width: 100%` или точечная ширина не уже колонки.
@@ -36,7 +37,7 @@ fn floats_in(
     // лежит под флоатом, CSS 2.1 §9.5), а стопка поставила бы его ниже
     // (`spanner-in-child-after-parallel-flow-001`: флоат 50px в колонке
     // 50px, дальше только пустой обломок предка спаннера).
-    let wide_px = |c: &Element| matches!((c.style.width, col_w), (Some(Len::Px(w)), Some(cw)) if cw > 0.0 && w >= cw - 0.01);
+    let wide_px = |c: &Element| matches!((c.style.width, col_w), (Some(Len::Px(w)), Some(cw)) if cw > 0.0 && w >= cw - COORD_EPS);
     let inert = |n: &Node| match n {
         Node::Text(_) => is_blank(n),
         Node::Element(k) => {
@@ -115,7 +116,7 @@ fn plain_wrapper(c: &Element, positioned: &dyn Fn(&Computed) -> bool) -> bool {
     let s = &c.style;
     let none = |l: &Option<Len>| match l {
         None => true,
-        Some(Len::Px(v)) => v.abs() < 0.01,
+        Some(Len::Px(v)) => v.abs() < COORD_EPS,
         _ => false,
     };
     let b = s.borders();

@@ -2,7 +2,7 @@
 
 use super::flow_kid::intrinsic_width;
 use super::kid::{Kid, Kind};
-use super::{EPS, Plan, Slot, flatten, frame, plan, with_vert};
+use super::{COORD_EPS, Plan, Slot, flatten, frame, plan, with_vert};
 use gpui::{
     AnyElement, App, AvailableSpace, Bounds, Element, ElementId, GlobalElementId,
     InspectorElementId, IntoElement, LayoutId, Pixels, Window, div, point, prelude::*, px, size,
@@ -102,7 +102,7 @@ impl Element for BandFlow {
                     }),
                 };
                 if let Some(p) = cache.borrow().as_ref()
-                    && (p.width - cb).abs() < EPS
+                    && (p.width - cb).abs() < COORD_EPS
                 {
                     return phys(cb, p.height);
                 }
@@ -141,7 +141,7 @@ impl Element for BandFlow {
             .plan
             .borrow()
             .as_ref()
-            .filter(|p| (p.width - cb).abs() < EPS)
+            .filter(|p| (p.width - cb).abs() < COORD_EPS)
             .cloned();
         let p = match cached {
             Some(p) => p,

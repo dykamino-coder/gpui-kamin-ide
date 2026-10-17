@@ -11,7 +11,7 @@
 
 use super::Cand;
 
-const EPS: f32 = 0.5;
+use crate::tolerance::FRAGMENT_FIT_EPS;
 
 /// Laid-out border box of a candidate.
 #[derive(Clone, Copy, Debug)]
@@ -32,7 +32,7 @@ fn next_boundary(y: f32, h: f32, y0: f32) -> f32 {
 /// top of a fragmentainer).
 fn at_start(y: f32, h: f32, y0: f32) -> bool {
     let r = (y + y0).rem_euclid(h);
-    r < EPS || h - r < EPS
+    r < FRAGMENT_FIT_EPS || h - r < FRAGMENT_FIT_EPS
 }
 
 /// The first violated candidate in document order and the strut change that
@@ -48,20 +48,20 @@ pub(crate) fn first_violation(geoms: &[Geom], h: f32, y0: f32) -> Option<(u64, f
                 let edge = g.top - mt;
                 // The pushed box starts a fragmentainer; its preserved margin
                 // follows the break.
-                if edge > EPS && !at_start(edge, h, y0) {
+                if edge > FRAGMENT_FIT_EPS && !at_start(edge, h, y0) {
                     let b = next_boundary(edge, h, y0);
                     return Some((g.id, b - edge, g.bottom - g.top));
                 }
             }
             Cand::Item | Cand::Gap { .. } => {}
             Cand::Avoid { prev } => {
-                if g.top < EPS || !at_start(g.top, h, y0) {
+                if g.top < FRAGMENT_FIT_EPS || !at_start(g.top, h, y0) {
                     continue;
                 }
                 // Break before the previous box instead, unless that one
                 // already starts its fragmentainer (no progress then).
                 if let Some(p) = geoms.iter().find(|x| x.id == prev)
-                    && p.top < g.top - EPS
+                    && p.top < g.top - FRAGMENT_FIT_EPS
                     && !at_start(p.top, h, y0)
                 {
                     return Some((prev, g.top - p.top, p.bottom - p.top));
@@ -69,14 +69,14 @@ pub(crate) fn first_violation(geoms: &[Geom], h: f32, y0: f32) -> Option<(u64, f
             }
             Cand::Mono { soft } => {
                 let tall = g.bottom - g.top;
-                if soft && tall > h + EPS {
+                if soft && tall > h + FRAGMENT_FIT_EPS {
                     continue;
                 }
                 if at_start(g.top, h, y0) {
                     continue;
                 }
                 let b = next_boundary(g.top, h, y0);
-                if g.bottom > b + EPS {
+                if g.bottom > b + FRAGMENT_FIT_EPS {
                     return Some((g.id, b - g.top, tall));
                 }
             }
@@ -113,18 +113,18 @@ pub(crate) fn gap_violation(geoms: &[Geom], h: f32, y0: f32) -> Option<GapMove> 
             .collect();
         let mut tops: Vec<f32> = items.iter().map(|x| x.1).collect();
         tops.sort_by(f32::total_cmp);
-        tops.dedup_by(|a, b| (*a - *b).abs() < EPS);
+        tops.dedup_by(|a, b| (*a - *b).abs() < FRAGMENT_FIT_EPS);
         let gap = items[0].3;
         for n in 1..tops.len() {
             let t = tops[n];
             // End of the previous row: its tallest item.
             let prev_end = items
                 .iter()
-                .filter(|x| (x.1 - tops[n - 1]).abs() < EPS)
+                .filter(|x| (x.1 - tops[n - 1]).abs() < FRAGMENT_FIT_EPS)
                 .map(|x| x.2)
                 .fold(f32::MIN, f32::max);
             // Already truncated (or no full gap before the row).
-            if t < prev_end + gap - EPS {
+            if t < prev_end + gap - FRAGMENT_FIT_EPS {
                 continue;
             }
             // The first boundary at or after the start of the gap.
@@ -133,15 +133,15 @@ pub(crate) fn gap_violation(geoms: &[Geom], h: f32, y0: f32) -> Option<GapMove> 
             } else {
                 next_boundary(prev_end, h, y0)
             };
-            if b < t - EPS {
+            if b < t - FRAGMENT_FIT_EPS {
                 let ids = items
                     .iter()
-                    .filter(|x| (x.1 - t).abs() < EPS)
+                    .filter(|x| (x.1 - t).abs() < FRAGMENT_FIT_EPS)
                     .map(|x| x.0)
                     .collect();
                 let later = items
                     .iter()
-                    .filter(|x| x.1 > tops[0] + EPS)
+                    .filter(|x| x.1 > tops[0] + FRAGMENT_FIT_EPS)
                     .map(|x| x.0)
                     .collect();
                 return Some((ids, b - t, later, gap));

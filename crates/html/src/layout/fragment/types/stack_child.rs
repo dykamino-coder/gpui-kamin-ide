@@ -2,6 +2,7 @@
 
 use super::FlowRow;
 use super::rows::Par;
+use crate::tolerance::COORD_EPS;
 use gpui::{AnyElement, IntoElement};
 
 impl IntoElement for FlowRow {
@@ -171,7 +172,7 @@ pub struct RepeatGeom {
 impl RepeatGeom {
     /// Полоса шапки у фрагмента-продолжения, начатого с `from`.
     pub(crate) fn head_at(&self, from: f32) -> f32 {
-        if self.head > 0.0 && from >= self.head_end - 0.01 && from < self.box_end - 0.01 {
+        if self.head > 0.0 && from >= self.head_end - COORD_EPS && from < self.box_end - COORD_EPS {
             self.head
         } else {
             0.0
@@ -181,9 +182,9 @@ impl RepeatGeom {
     /// Место под подвал у фрагмента с `from`, которому доступно `room`.
     pub(crate) fn foot_for(&self, from: f32, room: f32) -> f32 {
         if self.foot > 0.0
-            && from < self.foot_at - 0.01
-            && from + room > self.box_top + 0.01
-            && from + room < self.foot_end - 0.01
+            && from < self.foot_at - COORD_EPS
+            && from + room > self.box_top + COORD_EPS
+            && from + room < self.foot_end - COORD_EPS
         {
             self.foot
         } else {
