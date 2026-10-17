@@ -13,6 +13,7 @@ pub mod flex_lines;
 pub mod grid_bands;
 pub mod line_shape;
 pub(crate) mod oof_reach;
+pub(crate) mod paginate;
 pub mod probe;
 pub mod push;
 pub mod shape_contents;

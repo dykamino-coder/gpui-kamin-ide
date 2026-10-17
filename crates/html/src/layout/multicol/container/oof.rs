@@ -62,6 +62,7 @@ pub(super) fn place_oof_statics(
             par: crate::layout::fragment::types::Par::default(),
             slack: None,
             laid_w: Default::default(),
+            paginate: None,
             positioned: false,
         };
         // Номер — среди ДЕТЕЙ ДО раскрытия строк flex (`split_flex_lines`).

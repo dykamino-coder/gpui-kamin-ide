@@ -129,7 +129,8 @@ pub(super) fn grow(kids: &mut [(Element, Shape)], h: f32, count: usize, copies: 
     for (c, s) in kids {
         let own = measure(c).map_or(s.0, |(_, own)| own);
         let start = cursor + previous.max(s.1);
-        if walk(c, start, h, count, copies)
+        if c.attr(crate::layout::fragment::paginate::MARK).is_none()
+            && walk(c, start, h, count, copies)
             && let Some(next) = shape_full(c, 4, ShapeCx::COLUMNS)
         {
             *s = (next.0, s.1, s.2, next.3, next.4, next.5);
