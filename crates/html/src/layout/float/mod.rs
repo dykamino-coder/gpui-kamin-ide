@@ -22,6 +22,7 @@ mod float_clear_scope;
 pub mod float_flow;
 pub mod initial_letter;
 pub(super) mod inline_floats;
+pub(crate) mod outside_block;
 pub(crate) mod rounded_box;
 pub mod shape_flow;
 pub(crate) mod shapes;

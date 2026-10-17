@@ -72,6 +72,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn html_dimension_integer_prefix_and_defaults() {
+        for (raw, expected) in [
+            ("100px", 100.0),
+            ("100%", 100.0),
+            (" +12.5", 12.0),
+            ("-0tail", 0.0),
+            ("-1", 300.0),
+            ("2147483648", 300.0),
+        ] {
+            let mut s = Computed::default();
+            super::super::presentational_size::apply_presentational_size(
+                &mut s,
+                "canvas",
+                &[("width".into(), raw.into())],
+            );
+            assert!(
+                matches!(s.attr_width, Some(Len::Px(v)) if v == expected),
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
     fn coerced_natural_size_uses_asymmetric_border_box_edges() {
         let mut s = Computed {
             attr_width: Some(Len::Px(40.0)),

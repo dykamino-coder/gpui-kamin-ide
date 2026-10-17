@@ -93,13 +93,20 @@ pub(crate) fn apply_presentational_size(
         return;
     }
     let value = |name: &str| {
-        attrs
-            .iter()
-            .find(|(k, _)| k == name)
-            .and_then(|(_, v)| match v.strip_suffix('%') {
-                Some(pct) => pct.trim().parse::<f32>().ok().map(|p| Len::Pct(p / 100.0)),
-                None => v.trim().parse::<f32>().ok().map(Len::Px),
-            })
+        attrs.iter().find(|(k, _)| k == name).and_then(|(_, v)| {
+            if tag == "canvas" {
+                // HTML canvas dimensions use a non-negative integer prefix,
+                // not CSS lengths ("100px" and "100%" both mean 100).
+                crate::dom::presentational_hr::non_negative_integer(v)
+                    .filter(|n| *n <= i32::MAX as u32)
+                    .map(|n| Len::Px(n as f32))
+            } else {
+                match v.strip_suffix('%') {
+                    Some(pct) => pct.trim().parse::<f32>().ok().map(|p| Len::Pct(p / 100.0)),
+                    None => v.trim().parse::<f32>().ok().map(Len::Px),
+                }
+            }
+        })
     };
     style.attr_width = value("width");
     style.attr_height = value("height");
