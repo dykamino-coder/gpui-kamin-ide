@@ -2,59 +2,34 @@
 //! subtree is serialized for the rasterizer.
 //!
 //! A synthesized id must not equal, and no author reference may point to, any
-//! id the author wrote. The prefix is chosen per serialized document: the
-//! base prefix grows until no attribute value or text in the subtree contains
-//! it, so no author id or `url(#…)`/`href` reference can name a synthesized
-//! definition.
+//! id the author wrote. The prefix is chosen once per serialized document and
+//! passed down the serializer: the base prefix grows until no attribute value
+//! or text in the document contains it, so no author id or `url(#…)`/`href`
+//! reference can name a synthesized definition.
 
 use crate::dom::{Element, Node};
-use std::cell::RefCell;
 
 const BASE: &str = "kamin-clip";
 
-thread_local! {
-    /// Prefix of the document being serialized; `None` outside a scope.
-    static PREFIX: RefCell<Option<String>> = const { RefCell::new(None) };
+/// Id namespace of one serialized SVG document.
+pub(crate) struct ClipIds {
+    prefix: String,
 }
 
-/// One serialized SVG document. Nested scopes reuse the outer prefix.
-pub(crate) struct ClipScope {
-    owner: bool,
-}
-
-impl ClipScope {
-    pub(crate) fn enter(root: &Element) -> ClipScope {
-        if PREFIX.with(|p| p.borrow().is_some()) {
-            return ClipScope { owner: false };
+impl ClipIds {
+    /// Namespace free of every string the author wrote under `root`.
+    pub(crate) fn for_document(root: &Element) -> ClipIds {
+        let mut prefix = BASE.to_string();
+        while mentions(root, &prefix) {
+            prefix.push('_');
         }
-        let prefix = free_prefix(root);
-        PREFIX.with(|p| *p.borrow_mut() = Some(prefix));
-        ClipScope { owner: true }
+        ClipIds { prefix }
     }
-}
 
-impl Drop for ClipScope {
-    fn drop(&mut self) {
-        if self.owner {
-            PREFIX.with(|p| *p.borrow_mut() = None);
-        }
+    /// Id of a synthesized definition with content hash `hash`.
+    pub(super) fn id(&self, hash: u64) -> String {
+        format!("{}-{hash:x}", self.prefix)
     }
-}
-
-/// Id of a synthesized definition with content hash `hash`.
-pub(super) fn clip_id(hash: u64) -> String {
-    PREFIX.with(|p| match p.borrow().as_deref() {
-        Some(prefix) => format!("{prefix}-{hash:x}"),
-        None => format!("{BASE}-{hash:x}"),
-    })
-}
-
-fn free_prefix(root: &Element) -> String {
-    let mut prefix = BASE.to_string();
-    while mentions(root, &prefix) {
-        prefix.push('_');
-    }
-    prefix
 }
 
 fn mentions(e: &Element, needle: &str) -> bool {
@@ -90,33 +65,22 @@ mod tests {
     }
 
     #[test]
-    fn synthesized_ids_avoid_author_ids_and_references() {
-        let id = {
-            let _scope = ClipScope::enter(&el(vec![], vec![]));
-            clip_id(0xab)
-        };
-        let author = el(
-            vec![("id", id.as_str())],
-            vec![Node::Element(el(
-                vec![("clip-path", "url(#kamin-clip_-ab)")],
-                vec![],
-            ))],
-        );
-        let _scope = ClipScope::enter(&author);
-        let fresh = clip_id(0xab);
-        assert!(!fresh.starts_with("kamin-clip-") && !fresh.starts_with("kamin-clip_-"));
-        assert!(!mentions(&author, &fresh));
+    fn plain_document_keeps_the_base_prefix() {
+        let ids = ClipIds::for_document(&el(vec![("id", "a")], vec![]));
+        assert_eq!(ids.id(0xab), "kamin-clip-ab");
     }
 
     #[test]
-    fn nested_scope_keeps_the_document_prefix() {
-        let root = el(vec![("id", "kamin-clip-1")], vec![]);
-        let _outer = ClipScope::enter(&root);
-        let outer = clip_id(1);
-        {
-            let _inner = ClipScope::enter(&el(vec![], vec![]));
-            assert_eq!(clip_id(1), outer);
-        }
-        assert_eq!(clip_id(1), outer);
+    fn synthesized_ids_avoid_author_ids_and_references() {
+        let author = el(
+            vec![("id", "kamin-clip-ab")],
+            vec![Node::Element(el(
+                vec![("clip-path", "url(#kamin-clip_-ab)")],
+                vec![Node::Text("kamin-clip__".into())],
+            ))],
+        );
+        let fresh = ClipIds::for_document(&author).id(0xab);
+        assert_eq!(fresh, "kamin-clip___-ab");
+        assert!(!mentions(&author, &fresh));
     }
 }
