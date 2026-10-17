@@ -91,7 +91,6 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../svg/mod.rs"),
     include_str!("../../interactive/scroll.rs"),
     include_str!("../../document/mod.rs"),
-    include_str!("../../document/tests.rs"),
     include_str!("../../document/embedded.rs"),
     include_str!("../../document/logical_properties.rs"),
     include_str!("../../document/writing_mode.rs"),

@@ -18,10 +18,74 @@
 mod field_audit;
 mod properties;
 #[cfg(test)]
-mod report;
+mod report {
+    //! CSS coverage report checks.
+
+    use super::*;
+
+    #[test]
+    fn print_coverage() {
+        let total = PROPERTIES.len();
+        let mapped = PROPERTIES
+            .iter()
+            .filter(|p| p.support == Support::Mapped)
+            .count();
+        let noop = PROPERTIES
+            .iter()
+            .filter(|p| matches!(p.support, Support::NoOp(_)))
+            .count();
+        let partial = PROPERTIES
+            .iter()
+            .filter(|p| matches!(p.support, Support::Partial(_)))
+            .count();
+        println!(
+            "ПОКРЫТИЕ: всего {total}, полностью {mapped}, частично {partial}, пустышек {noop}, \
+             невозможно {}, итого {:.1}%",
+            total - mapped - noop - partial,
+            mapped_pct()
+        );
+    }
+}
 mod sources;
 #[cfg(test)]
-mod tests;
+mod tests {
+    //! CSS coverage tests checks.
+
+    use super::*;
+
+    #[test]
+    fn no_field_is_written_and_never_read() {
+        let dead = dead_fields();
+        assert!(
+            dead.is_empty(),
+            "поля разрешённого стиля никто не читает — свойство числится              поддержанным, но на картинке его нет: {dead:?}"
+        );
+    }
+
+    #[test]
+    fn every_mapped_property_reaches_the_style() {
+        let broken = broken_promises();
+        assert!(
+            broken.is_empty(),
+            "помечены перенесёнными, но разбор ничего не меняет: {broken:?}"
+        );
+    }
+
+    #[test]
+    fn the_registry_has_no_duplicates() {
+        let mut names: Vec<&str> = PROPERTIES.iter().map(|p| p.name).collect();
+        names.sort_unstable();
+        let before = names.len();
+        names.dedup();
+        assert_eq!(before, names.len(), "свойство перечислено дважды");
+    }
+
+    #[test]
+    fn coverage_does_not_regress() {
+        let pct = mapped_pct();
+        assert!(pct >= 80.0, "покрытие упало до {pct:.1}%");
+    }
+}
 pub use field_audit::dead_fields;
 pub use properties::PROPERTIES;
 
