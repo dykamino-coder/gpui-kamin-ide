@@ -95,6 +95,7 @@ pub(crate) fn render(e: &Element, merged: &Computed, parent: &Computed) -> Optio
             style: native,
             natural: size(px(w), px(h)),
             ratio: Some(ratio),
+            measure: None,
         }
         .into_any_element(),
     )

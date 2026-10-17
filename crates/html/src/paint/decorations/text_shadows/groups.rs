@@ -1,0 +1,74 @@
+//! Fragment-local shadow lists retain currentColor until the fragment is known.
+
+use super::atomic;
+use crate::dom::{Element, Node};
+use crate::style::computed::{Computed, Shadow};
+use crate::style::values::value::Color;
+
+pub(super) struct ShadowStyle {
+    color: Color,
+    list: Vec<Shadow>,
+}
+
+impl ShadowStyle {
+    pub(super) fn new(style: &Computed) -> Self {
+        Self {
+            color: style.color.unwrap_or(Color {
+                r: 0.,
+                g: 0.,
+                b: 0.,
+                a: 1.,
+            }),
+            list: raw_list(style),
+        }
+    }
+
+    pub(super) fn child(&self, e: &Element) -> Self {
+        Self {
+            color: e.style.color.unwrap_or(self.color),
+            list: if e.style.text_shadow_none {
+                Vec::new()
+            } else if e.style.text_shadow.is_some() {
+                raw_list(&e.style)
+            } else {
+                self.list.clone()
+            },
+        }
+    }
+
+    pub(super) fn resolved(&self) -> Vec<Shadow> {
+        self.list
+            .iter()
+            .copied()
+            .map(|mut shadow| {
+                if shadow.color.a < 0.0 {
+                    shadow.color = self.color;
+                }
+                shadow
+            })
+            .collect()
+    }
+}
+
+fn raw_list(style: &Computed) -> Vec<Shadow> {
+    style
+        .text_shadow
+        .into_iter()
+        .chain(style.text_shadow_rest.iter().copied())
+        .collect()
+}
+
+pub(super) fn collect_groups(nodes: &[Node], current: &ShadowStyle, out: &mut Vec<Vec<Shadow>>) {
+    let resolved = current.resolved();
+    for node in nodes {
+        match node {
+            Node::Text(text) => {
+                if !resolved.is_empty() && !text.trim().is_empty() && !out.contains(&resolved) {
+                    out.push(resolved.clone());
+                }
+            }
+            Node::Element(e) if !atomic(e) => collect_groups(&e.children, &current.child(e), out),
+            Node::Element(_) => {}
+        }
+    }
+}

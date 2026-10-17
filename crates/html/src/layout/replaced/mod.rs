@@ -8,7 +8,7 @@ pub(super) mod inline_replaced_position;
 pub mod limits;
 mod measured;
 pub(crate) mod media;
-pub(crate) use measured::natural_control;
+pub(crate) use measured::{ControlMeasure, natural_control, natural_control_with};
 pub(crate) mod replaced_content;
 mod replaced_holder_ratio;
 pub(crate) mod replaced_used_style;

@@ -39,3 +39,20 @@ fn nesting_versus_replacement() {
     c.reset("n", 9);
     assert_eq!(c.chain_of("n"), vec![1, 9], "брат заменил запись брата");
 }
+
+#[test]
+fn marker_reset_reaches_contents_but_not_next_item() {
+    let mut c = Counters::default();
+    c.enter();
+    c.reset("n", 10);
+    c.enter();
+    c.enter_marker();
+    c.reset("n", 1);
+    c.leave();
+    c.enter_pseudo(false);
+    assert_eq!(c.chain_of("n"), vec![10, 1]);
+    c.leave();
+    c.leave();
+    c.enter();
+    assert_eq!(c.chain_of("n"), vec![10]);
+}

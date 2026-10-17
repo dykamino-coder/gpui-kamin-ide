@@ -70,7 +70,7 @@ pub(in crate::style::computed) fn background_shorthand_valid(v: &str) -> bool {
                 | "center"
         ) || Len::parse(t).is_some()
             || Color::parse(t).is_some()
-            || parse_image_color(t).is_some();
+            || image_function::arguments(t).is_some();
         if !known {
             return false;
         }

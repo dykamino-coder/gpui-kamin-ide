@@ -5,9 +5,11 @@ pub use crate::text::clamp::extent::{extend_clip, hidden_after_point, hide_box_a
 mod line_state;
 mod paragraph_rows;
 pub use crate::text::clamp::cut_element::ClampCut;
+pub use crate::text::clamp::line_state::BoxEnds;
 pub use crate::text::clamp::line_state::ClampEntry;
 pub use crate::text::clamp::line_state::ClampGuard;
 pub use crate::text::clamp::line_state::ClampLines;
+pub use crate::text::clamp::line_state::clamp_box_height;
 pub use crate::text::clamp::line_state::clamp_context;
 pub use crate::text::clamp::line_state::clamp_cut;
 pub use crate::text::clamp::line_state::clamp_extent;
@@ -24,6 +26,7 @@ pub use crate::text::clamp::paragraph_rows::set_para_tag;
 pub use crate::text::clamp::paragraph_rows::take_para_budget;
 use crate::text::clamp::paragraph_rows::take_para_rows;
 pub use crate::text::clamp::paragraph_rows::take_para_tag;
+pub use crate::text::clamp::paragraph_rows::{ParaNest, para_depth};
 
 // owner: A
 
