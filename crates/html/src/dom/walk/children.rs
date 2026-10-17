@@ -1,4 +1,4 @@
-//! Children for walk; split out to keep the owning module within 250 lines.
+//! Collect rendered children, shadow content and generated scroll controls.
 
 use super::{walk, walk_children};
 use crate::dom::*;
@@ -24,7 +24,7 @@ pub(super) fn collect_children(
     style: &Computed,
     shadow: &Option<Rc<crate::dom::shadow::Shadow>>,
     preserve: bool,
-    tag: &String,
+    tag: &str,
     attrs: &[(String, String)],
 ) -> (Vec<Node>, ScrollPseudos) {
     let mut path2 = path.to_vec();
@@ -136,7 +136,7 @@ pub(super) fn collect_children(
     // `display: table-column` с красным фоном ВНУТРИ ряда и требует
     // «no red». Без этой отсечки такой узел уехал бы в анонимную
     // ячейку и покрасился.
-    let holds_columns = matches!(tag.as_str(), "table" | "colgroup")
+    let holds_columns = matches!(tag, "table" | "colgroup")
         || style.col_role == Some(1)
         || matches!(
             style.display,

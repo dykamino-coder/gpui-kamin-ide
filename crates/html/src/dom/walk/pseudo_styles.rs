@@ -1,4 +1,4 @@
-//! Pseudo styles for walk; split out to keep the owning module within 250 lines.
+//! Cascade generated pseudo-elements and derive their inherited styles.
 
 use super::initial_pseudos;
 use crate::style::computed::{Computed, Display};
@@ -10,7 +10,7 @@ use crate::style::select::{Ancestor, Sibs};
 #[allow(clippy::needless_borrow)]
 pub(super) fn pseudo_styles(
     style: &mut Computed,
-    tag: &String,
+    tag: &str,
     rules: &[Rule],
     vars: &Decls,
     me: &Ancestor,
