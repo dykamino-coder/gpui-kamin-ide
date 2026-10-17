@@ -42,6 +42,8 @@ impl Paragraph {
                 );
             }
         }
+        self.measure_first_strut(window);
+        let first_strut = self.first_strut.clone();
         let atom_boxes = self.atom_boxes.clone();
         let edge_spans = self.edge_spans.clone();
         let ruby_trim = self.ruby_trim;
@@ -135,6 +137,7 @@ impl Paragraph {
                 probe.emph_spans = emph_spans.clone();
                 probe.box_spans = box_spans.clone();
                 probe.strut_box = strut_box;
+                probe.first_strut = first_strut.clone();
                 probe.run_metrics = run_metrics.clone();
                 probe.strut = strut;
                 probe.spacers = spacers.clone();
