@@ -16,7 +16,7 @@ use indicators::progress;
 use indicators::range;
 
 mod choice;
-mod metrics;
+use crate::style::ua::forms as metrics;
 mod textarea;
 use textarea::textarea;
 mod options;

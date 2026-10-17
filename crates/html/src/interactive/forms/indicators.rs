@@ -39,7 +39,7 @@ pub(super) fn range(e: &Element, style: &Computed) -> AnyElement {
             ),
     );
     paint.style().sizing_keywords = Some(crate::style::apply::intrinsic_size::keywords(style));
-    super::intrinsic::control(paint, super::metrics::size("range"))
+    super::intrinsic::control(paint, crate::style::ua::forms::size("range"))
 }
 
 pub(super) fn color_swatch(e: &Element, style: &Computed) -> AnyElement {
@@ -54,7 +54,7 @@ pub(super) fn color_swatch(e: &Element, style: &Computed) -> AnyElement {
     if let Some(c) = color {
         d = d.bg(c);
     }
-    super::intrinsic::control(d, super::metrics::size("color"))
+    super::intrinsic::control(d, crate::style::ua::forms::size("color"))
 }
 
 /// Полоса выполнения: `<progress value max>`.

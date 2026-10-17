@@ -92,7 +92,7 @@ pub(super) fn toggle(e: &Element, style: &Computed, round: bool) -> AnyElement {
     let accent: gpui::Hsla = super::control_accent(style)
         .map(|c| c.to_hsla())
         .unwrap_or_else(|| native_color(style, SystemColor::AccentColor));
-    let natural = super::metrics::size(if round { "radio" } else { "checkbox" });
+    let natural = crate::style::ua::forms::size(if round { "radio" } else { "checkbox" });
     let mut mark = div()
         .absolute()
         .inset_0()

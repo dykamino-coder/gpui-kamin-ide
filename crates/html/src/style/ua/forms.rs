@@ -11,14 +11,14 @@ const SIZES: [(&str, [f32; 2]); 4] = [
     ("color", [50., 27.]),
 ];
 
-pub(super) fn size(kind: &str) -> [f32; 2] {
+pub(crate) fn size(kind: &str) -> [f32; 2] {
     SIZES.iter().find(|(name, _)| *name == kind).unwrap().1
 }
 
 /// HTML rendering: text entry widgets cannot use a line-height below normal,
 /// including when appearance is none. Resolve normal on both paths, so it
 /// cannot accidentally inherit a shorter GPUI line-height from a wrapper.
-pub(super) fn text_style(style: &Computed) -> Computed {
+pub(crate) fn text_style(style: &Computed) -> Computed {
     let mut c = style.clone();
     let font = match c.font_size {
         Some(Len::Px(v)) => v,
