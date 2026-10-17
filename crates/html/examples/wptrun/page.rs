@@ -44,9 +44,7 @@ impl Render for Page {
         // лист, а КРОП снимка: `ink()` при разной длине кадра и разделителя
         // возвращал `usize::MAX`, вердикт умножал его на 8 — переполнение в
         // debug-сборке роняло задачу стенда. Кропа больше нет.
-        let page = (kamin_html::css::PRINT_MEDIA.load(std::sync::atomic::Ordering::Relaxed)
-            && std::env::var_os("WPT_NO_PAGE").is_none())
-        .then(|| {
+        let page = (self.doc.is_print() && std::env::var_os("WPT_NO_PAGE").is_none()).then(|| {
             // Лист — по своему номеру и имени страницы: каскад `@page`
             // (`:first`, `:left`/`:right`, имена; специфичность (f, g, h),
             // css-page-3 §cascading-and-page-context) решает
@@ -130,7 +128,7 @@ impl Render for Page {
             eprintln!(
                 "VIEWPORT {:?} print={} page={:?}",
                 opts.viewport,
-                kamin_html::css::PRINT_MEDIA.load(std::sync::atomic::Ordering::Relaxed),
+                self.doc.is_print(),
                 page.as_ref().map(|p| (p.0.size, p.0.area, p.0.margin))
             );
         }

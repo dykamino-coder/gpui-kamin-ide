@@ -1,4 +1,4 @@
-//! Медиазапросы: Media, сравнения диапазонов, PRINT_MEDIA.
+//! Медиазапросы: Media (носитель задаёт документ), сравнения диапазонов.
 
 use crate::style::css::*;
 
@@ -24,13 +24,17 @@ pub struct Media {
     pub print: bool,
 }
 
-/// Носитель по умолчанию — печать? Ставит стенд для `*-print`-тестов;
-/// приложение всегда экран.
-pub static PRINT_MEDIA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
+/// Экран: носитель приложения и документа без явного носителя.
 impl Default for Media {
     fn default() -> Self {
-        let print = PRINT_MEDIA.load(std::sync::atomic::Ordering::Relaxed);
+        Media::for_medium(false)
+    }
+}
+
+impl Media {
+    /// Условия носителя: экран или печать (`Document::new_media`; стенд
+    /// ставит печать `*-print`-тестам).
+    pub fn for_medium(print: bool) -> Self {
         // Печатный носитель меряется ЛИСТОМ, а не окном (mediaqueries-4
         // §width: «For paged media, this is the width of the page box»).
         // Лист WPT по умолчанию — 5in x 3in = 480x288, и `@page { size }`

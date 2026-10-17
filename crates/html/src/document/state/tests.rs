@@ -66,3 +66,17 @@ fn detached_parse_leaves_documents_alone() {
     assert!(try_rule("--a").is_some());
     assert!(try_rule("--b").is_none());
 }
+
+#[test]
+fn medium_belongs_to_the_document() {
+    const P: &str = "<!doctype html><style>@media print { html { font-size: 30px } }</style>";
+    let print = Document::new_media(P, "", true);
+    let screen = Document::new(P, "");
+    assert!(print.is_print() && !screen.is_print());
+    {
+        let _scope = print.enter();
+        assert_eq!(root_font_px(), 30.0);
+    }
+    let _scope = screen.enter();
+    assert_eq!(root_font_px(), 16.0);
+}

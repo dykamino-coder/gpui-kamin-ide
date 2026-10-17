@@ -46,10 +46,12 @@ pub(crate) fn parse_embedded_sized(
     scrolling: bool,
     scheme: Option<EmbeddingScheme>,
 ) -> Embedded {
-    crate::text::fonts::load_faces_additive(html);
+    // Носитель у рамки — внешнего документа (печать печатает и рамку).
+    let print = crate::document::state::current().media().print;
     let mut media = crate::style::css::Media {
         width: viewport.0,
         height: viewport.1,
+        print,
         ..crate::style::css::Media::default()
     };
     if let Some(scheme) = scheme {
@@ -57,6 +59,7 @@ pub(crate) fn parse_embedded_sized(
     }
     let state = DocState::new(media);
     let _scope = state.enter();
+    crate::text::fonts::load_faces_additive(html);
     crate::style::values::color_space::load_profiles(html);
     let parsed = crate::dom::parse_current(html, theme_css, media);
     let mut nodes =

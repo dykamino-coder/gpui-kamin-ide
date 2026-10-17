@@ -36,7 +36,7 @@ pub(super) fn faces(css: &str) -> Vec<String> {
         if crate::style::css::in_false_group(
             &css[base..],
             start - base,
-            crate::style::css::Media::default(),
+            crate::document::state::current().media(),
         ) {
             continue;
         }

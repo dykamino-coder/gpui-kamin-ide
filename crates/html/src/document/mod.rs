@@ -33,6 +33,7 @@ use crate::document::writing_mode::propagate_writing_mode;
 mod box_style;
 
 use crate::dom::Node;
+use crate::style::css::Media;
 use state::{DocScope, DocState, Scoped};
 use std::rc::Rc;
 
@@ -54,35 +55,63 @@ pub struct Document {
 
 impl Document {
     pub fn new(html: &str, theme_css: &str) -> Self {
-        Self::build(html, theme_css, None, false)
+        Self::new_media(html, theme_css, false)
+    }
+
+    /// Parse a document for the screen (`print == false`) or the print
+    /// medium (`@media print` matches, viewport = the 5in x 3in page box).
+    /// The medium belongs to the view showing the document (Blink
+    /// `LocalFrameView::MediaType`), so the host passes it here.
+    pub fn new_media(html: &str, theme_css: &str, print: bool) -> Self {
+        Self::build(html, theme_css, None, false, Media::for_medium(print))
     }
 
     /// Parse a document with the URL used to resolve its external resources.
     pub fn new_with_base(html: &str, theme_css: &str, base_uri: &str) -> Self {
-        Self::build(html, theme_css, url::Url::parse(base_uri).ok(), false)
+        Self::build(
+            html,
+            theme_css,
+            url::Url::parse(base_uri).ok(),
+            false,
+            Media::default(),
+        )
     }
 
     /// Parse a local document, resolving relative resources against its source file.
     /// A `.svg` file is `image/svg+xml` (the file URL's type comes from its
     /// extension) and is parsed as an XML document.
     pub fn new_with_path(html: &str, theme_css: &str, path: &std::path::Path) -> Self {
+        Self::new_with_path_media(html, theme_css, path, false)
+    }
+
+    /// `new_with_path` for the screen or the print medium (`new_media`).
+    pub fn new_with_path_media(
+        html: &str,
+        theme_css: &str,
+        path: &std::path::Path,
+        print: bool,
+    ) -> Self {
         let base = std::path::absolute(path)
             .ok()
             .and_then(|p| url::Url::from_file_path(p).ok());
         let xml = path
             .extension()
             .is_some_and(|e| e.eq_ignore_ascii_case("svg"));
-        Self::build(html, theme_css, base, xml)
+        Self::build(html, theme_css, base, xml, Media::for_medium(print))
     }
 
-    fn build(html: &str, theme_css: &str, base_url: Option<url::Url>, xml: bool) -> Self {
-        // Свои шрифты страницы грузятся ДО разбора: иначе первый же замер
-        // ширины пойдёт по подстановке, а перерисовки под новый шрифт нет.
-        crate::text::fonts::load_faces(html);
+    fn build(
+        html: &str,
+        theme_css: &str,
+        base_url: Option<url::Url>,
+        xml: bool,
+        media: Media,
+    ) -> Self {
         crate::text::paragraph::forget_measures();
         crate::layout::table::paint::forget_row_rects();
         crate::text::vertical::forget_vt_measures();
-        let (state, nodes, root) = parse_document(html, theme_css, base_url.as_ref(), xml);
+        let (state, nodes, root) =
+            parse_document(html, theme_css, base_url.as_ref(), xml, media, true);
         Document {
             state,
             nodes,
@@ -109,13 +138,24 @@ impl Document {
         if key == self.key {
             return false;
         }
-        let (state, nodes, root) =
-            parse_document(html, theme_css, self.base_url.as_ref(), self.xml);
+        let (state, nodes, root) = parse_document(
+            html,
+            theme_css,
+            self.base_url.as_ref(),
+            self.xml,
+            self.state.media(),
+            false,
+        );
         self.state = state;
         self.nodes = nodes;
         self.root = root;
         self.key = key;
         true
+    }
+
+    /// Документ разобран для печатного носителя (`new_media`).
+    pub fn is_print(&self) -> bool {
+        self.state.media().print
     }
 
     /// Хэш содержимого — соль для `RenderOpts::doc_salt`.
@@ -183,17 +223,25 @@ impl Document {
     }
 }
 
-/// Разбор в СВЕЖЕЕ состояние документа: `@color-profile`, разметка (XML —
-/// своим разборщиком, `dom::xml`), правка адресов. Шрифты страницы (`load_faces`) — процессный реестр гарнитур.
+/// Разбор в СВЕЖЕЕ состояние документа носителем `media`: шрифты страницы
+/// (`fonts`; `@font-face` под `@media` решает носитель документа),
+/// `@color-profile`, разметка (XML — своим разборщиком, `dom::xml`), правка
+/// адресов.
 fn parse_document(
     html: &str,
     theme_css: &str,
     base_url: Option<&url::Url>,
     xml: bool,
+    media: Media,
+    fonts: bool,
 ) -> (Rc<DocState>, Vec<Node>, crate::style::computed::Computed) {
-    let media = crate::style::css::Media::default();
     let state = DocState::new(media);
     let _scope = state.enter();
+    // Свои шрифты страницы грузятся ДО разбора: иначе первый же замер
+    // ширины пойдёт по подстановке, а перерисовки под новый шрифт нет.
+    if fonts {
+        crate::text::fonts::load_faces(html);
+    }
     crate::style::values::color_space::load_profiles(html);
     let (mut nodes, root) = viewport::prepare(if xml {
         crate::dom::parse_current_xml(html, theme_css, media)
