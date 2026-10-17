@@ -137,16 +137,15 @@ impl Document {
     /// GPUI считается заново каждый кадр, поэтому длинный документ обязан
     /// рисоваться по видимым блокам, а не целиком.
     pub fn node_count(&self) -> usize {
-        fn walk(nodes: &[Node]) -> usize {
-            nodes
-                .iter()
-                .map(|n| match n {
-                    Node::Text(_) => 1,
-                    Node::Element(e) => 1 + walk(&e.children),
-                })
-                .sum()
+        let mut pending: Vec<&Node> = self.nodes.iter().collect();
+        let mut count = 0;
+        while let Some(node) = pending.pop() {
+            count += 1;
+            if let Node::Element(element) = node {
+                pending.extend(&element.children);
+            }
         }
-        walk(&self.nodes)
+        count
     }
 
     /// Блоки верхнего уровня — единица виртуализации: их можно раздать в

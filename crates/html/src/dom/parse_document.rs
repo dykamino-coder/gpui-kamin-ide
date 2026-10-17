@@ -1,4 +1,4 @@
-//! Parse document for dom; split out to keep the owning module within 250 lines.
+//! Parse HTML/XML into styled nodes, collecting stylesheet and shadow scopes before conversion.
 
 use super::{Node, user_agent_css};
 use super::{content, float_tail, grid_static_position, subgrid_used};
@@ -11,8 +11,7 @@ use crate::dom::xhtml::*;
 use crate::style::css::{Decls, Media, Rule, parse_keyframes, parse_stylesheet_media};
 use crate::style::select::has::{HAS_MARKS, HasArg, collect_has_args, mark_has, parse_has_arg};
 use crate::style::select::{QUIRKS, quirks};
-use html5ever::tendril::TendrilSink;
-use markup5ever_rcdom::{Handle, NodeData, RcDom};
+use markup5ever_rcdom::{Handle, NodeData};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -49,12 +48,7 @@ pub fn parse_media(html: &str, extra_css: &str, mut media: Media) -> Vec<Node> {
     let dom = if xml {
         super::xml::xml_dom(&html)
     } else {
-        html5ever::parse_document(RcDom::default(), Default::default())
-            .from_utf8()
-            .read_from(&mut html.as_bytes())
-            .unwrap_or_else(|_| {
-                html5ever::parse_document(RcDom::default(), Default::default()).one("")
-            })
+        super::input::html(&html)
     };
     if let Some(dark) = super::page_scheme::preference(&dom.document, media.dark) {
         media.dark = dark;

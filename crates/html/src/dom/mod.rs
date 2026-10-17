@@ -7,6 +7,7 @@
 //! ничего не рисуют.
 
 mod direction;
+pub(crate) mod input;
 pub(crate) mod mathml;
 mod mathml_defaults;
 mod mathml_lengths;
