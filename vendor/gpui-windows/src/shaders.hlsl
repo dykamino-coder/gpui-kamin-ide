@@ -1722,6 +1722,11 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
         // НЕумноженным цветом, поэтому обе стороны сначала делятся на свою
         // прозрачность, а результат умножается обратно уже целиком.
         float4 dst = t_backdrop.Sample(s_sprite, input.uv);
+        // Compositing 2 §9.1.15: plus-lighter adds premultiplied RGBA.
+        // This Porter-Duff operator does not use the source-over blend formula.
+        if (q.blend_mode == 16u) {
+            return saturate(src + dst);
+        }
         float3 cs = src.a > 0.0 ? src.rgb / src.a : float3(0.0, 0.0, 0.0);
         float3 cb = dst.a > 0.0 ? dst.rgb / dst.a : float3(0.0, 0.0, 0.0);
         float3 mixed;
