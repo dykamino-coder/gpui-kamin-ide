@@ -19,11 +19,17 @@ impl PageStack {
         m: gpui::ContentMask<Pixels>,
     ) -> gpui::ContentMask<Pixels> {
         let s = self.grid.get().1;
-        let sx = self.sheet_origin(i).0;
-        let w = self.geom(i).size.0;
+        let (sx, sy) = self.sheet_origin(i);
+        let (w, h) = self.geom(i).size;
         let mut b = m.bounds;
-        b.origin.x = bounds.origin.x + px(sx * s);
-        b.size.width = px(w * s);
+        // The inline axis of a vertical root is y (`page_stack/axis.rs`).
+        if self.axis.is_vertical() {
+            b.origin.y = bounds.origin.y + px(sy * s);
+            b.size.height = px(h * s);
+        } else {
+            b.origin.x = bounds.origin.x + px(sx * s);
+            b.size.width = px(w * s);
+        }
         gpui::ContentMask { bounds: b }
     }
 
@@ -115,13 +121,28 @@ impl PageStack {
             let (sx, sy) = self.sheet_origin(f.col);
             let g = self.geom(f.col);
             let (ax, ay) = g.area_origin();
+            let (x, y, w, h) = if self.axis.is_vertical() {
+                // The last fragment of a box shows its block-end overflow up to
+                // the page area's end (overflow is visible, css-overflow-3 §2;
+                // `block-001-wm-vrl`: a negative block-end margin shrinks the
+                // margin box under the border box).
+                let last = !plan.iter().any(|o| o.kid == f.kid && o.copy == f.copy + 1);
+                let end = if last {
+                    (self.area_logical(&g).1 - f.y).max(f.h)
+                } else {
+                    f.h
+                };
+                self.area_slice(&g, f.y, end)
+            } else {
+                (ax, ay + f.y, g.area.0, f.h)
+            };
             let mask = gpui::ContentMask {
                 bounds: Bounds {
                     origin: point(
-                        bounds.origin.x + px((sx + ax) * s),
-                        bounds.origin.y + px((sy + ay + f.y) * s),
+                        bounds.origin.x + px((sx + x) * s),
+                        bounds.origin.y + px((sy + y) * s),
                     ),
-                    size: size(px(g.area.0 * s), px(f.h * s)),
+                    size: size(px(w * s), px(h * s)),
                 }
                 .intersect(&page.bounds),
             };

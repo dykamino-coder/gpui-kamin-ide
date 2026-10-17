@@ -61,26 +61,39 @@ impl Computed {
                 self.apply_one(&format!("border-{axis}-start-{prop}"), a);
                 self.apply_one(&format!("border-{axis}-end-{prop}"), b);
             }
-            "border-block-start-color" => self.border_colors[0] = side_color(v, self.color),
-            "border-block-end-color" => self.border_colors[2] = side_color(v, self.color),
-            "border-inline-start-color" => self.border_colors[3] = side_color(v, self.color),
-            "border-inline-end-color" => self.border_colors[1] = side_color(v, self.color),
-            "border-block-start-width" => {
-                self.border_width.top = line_width(v).or(self.border_width.top)
+            // css-logical-1 §4.3: the longhands map to a physical side by the
+            // writing mode, known only after inheritance (`resolve_logical`).
+            "border-block-start-color"
+            | "border-block-end-color"
+            | "border-inline-start-color"
+            | "border-inline-end-color"
+            | "border-block-start-width"
+            | "border-block-end-width"
+            | "border-inline-start-width"
+            | "border-inline-end-width"
+            | "border-block-start-style"
+            | "border-block-end-style"
+            | "border-inline-start-style"
+            | "border-inline-end-style" => {
+                let rest = &key["border-".len()..];
+                let (side, prop) = if let Some(p) = rest.strip_prefix("block-start-") {
+                    (0u8, p)
+                } else if let Some(p) = rest.strip_prefix("inline-end-") {
+                    (1, p)
+                } else if let Some(p) = rest.strip_prefix("block-end-") {
+                    (2, p)
+                } else if let Some(p) = rest.strip_prefix("inline-start-") {
+                    (3, p)
+                } else {
+                    return;
+                };
+                let prop: &'static str = match prop {
+                    "color" => "color",
+                    "width" => "width",
+                    _ => "style",
+                };
+                self.logical().border_long.push((side, prop, v.to_string()));
             }
-            "border-block-end-width" => {
-                self.border_width.bottom = line_width(v).or(self.border_width.bottom)
-            }
-            "border-inline-start-width" => {
-                self.border_width.left = line_width(v).or(self.border_width.left)
-            }
-            "border-inline-end-width" => {
-                self.border_width.right = line_width(v).or(self.border_width.right)
-            }
-            "border-block-start-style" => self.set_border_style(v, Some(0)),
-            "border-block-end-style" => self.set_border_style(v, Some(2)),
-            "border-inline-start-style" => self.set_border_style(v, Some(3)),
-            "border-inline-end-style" => self.set_border_style(v, Some(1)),
             "border-top-color" => self.border_colors[0] = side_color(v, self.color),
             "border-right-color" => self.border_colors[1] = side_color(v, self.color),
             "border-bottom-color" => self.border_colors[2] = side_color(v, self.color),

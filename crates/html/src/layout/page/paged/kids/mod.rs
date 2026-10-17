@@ -33,6 +33,7 @@ pub(super) fn page_kids_from_groups(
     layer: impl Fn(Vec<AnyElement>) -> Vec<AnyElement>,
     floated: impl Fn(&Node) -> bool,
     groups: Vec<Vec<Node>>,
+    vertical: Option<bool>,
 ) {
     for group in &groups {
         let n = &group[0];
@@ -46,6 +47,7 @@ pub(super) fn page_kids_from_groups(
         {
             *icb_reach = icb_reach.max(oof_reach(e, shape_cx));
         }
+        let first_kid = first;
         let pad_top = if first { top } else { 0.0 };
         first = false;
         let build = |slot: &mut Vec<AnyElement>, fixed_slot: &mut Vec<AnyElement>| {
@@ -53,7 +55,25 @@ pub(super) fn page_kids_from_groups(
             FIXED_LAYER.with(|f| f.borrow_mut().clear());
             // Оставленная обёртка (`html`/`body`) с долей высоты считает её от
             // page area — содержащего блока корня (css-page-3 §page-model).
-            let mut wrap = div().pl(px(left)).pr(px(right)).pt(px(pad_top));
+            // A vertical root (`Some(rl)`) flows blocks along x like a
+            // vertical block (`render/generic_box.rs`): row, reversed for
+            // `vertical-rl`. Its inline-start (top) edge repeats on every
+            // page; the block-start edge (right for `rl`, left for `lr`)
+            // shows on the first page only (css-break-3 §5.4 slice).
+            let mut wrap = match vertical {
+                Some(rl) => {
+                    // Inline size: the page area's height (a block's `auto`
+                    // inline size fills its containing block, CSS 2.1 §10.3.3).
+                    let d = div().flex().h(px(ah)).pt(px(top));
+                    match (rl, first_kid) {
+                        (true, true) => d.flex_row_reverse().pr(px(right)),
+                        (true, false) => d.flex_row_reverse(),
+                        (false, true) => d.flex_row().pl(px(left)),
+                        (false, false) => d.flex_row(),
+                    }
+                }
+                None => div().pl(px(left)).pr(px(right)).pt(px(pad_top)),
+            };
             if let [Node::Element(r)] = group.as_slice()
                 && matches!(r.tag.as_str(), "html" | "body")
                 && matches!(r.style.height, Some(Len::Pct(_)))
@@ -101,7 +121,12 @@ pub(super) fn page_kids_from_groups(
         // резалась срезом по краю сквозь абзац вместо точки класса A между
         // абзацами ячейки (`float-page-break-inside-avoid-1-print` против
         // эталона с обычной таблицей), а ветка `h + mb` ниже была мёртвой.
-        let (margins, shape) = group_shape(root, shape_cx, group, n, pad_top);
+        // The subtree measure is physical (heights): a vertical root has no
+        // class-A cut list yet and its kids are sliced at the page edge.
+        let (margins, shape) = match vertical {
+            Some(_) => ((0.0, 0.0, 0.0), None),
+            None => group_shape(root, shape_cx, group, n, pad_top),
+        };
         // Монолит выше листа решается в `fill` (правило «сначала перенос,
         // потом разрыв внутри»): здесь мера считается и для него — точки
         // класса A нужны, когда он окажется с верха страницы.

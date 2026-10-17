@@ -61,7 +61,7 @@ impl Element for PageStack {
         let (aw, ah) = (g.area.0.max(1.0), g.area.1.max(1.0));
         // 1. Мера: ширина — page area, высота — по содержимому. Поля детей
         //    — из меры (`PageKid::mt/mb`), у измеренных без меры они внутри обёртки.
-        let (kids, limit) = self.page_kids(window, cx, aw);
+        let (kids, limit) = self.page_kids(window, cx, self.area_logical(&g).0.max(1.0));
         // Листы бывают РАЗНЫЕ (`@page :first { size }`, `@page <имя>`), и
         // высота page area решает разрезы, а имя листа — от первой коробки на
         // нём, то есть от тех же разрезов. Укладка повторяется, пока имена
@@ -93,13 +93,11 @@ impl Element for PageStack {
         for _ in 0..4 {
             let tail = names.last().cloned().unwrap_or_default();
             let at = |c: usize| -> f32 {
-                geoms
+                let g = geoms
                     .get(c)
                     .copied()
-                    .unwrap_or_else(|| (self.geom_for)(c, &tail))
-                    .area
-                    .1
-                    .max(1.0)
+                    .unwrap_or_else(|| (self.geom_for)(c, &tail));
+                self.area_logical(&g).1.max(1.0)
             };
             let (pages, _, plan) = ColumnStack::fill_at(&kids, &at, limit, true);
             let new_names = names_of(&plan, pages);

@@ -55,18 +55,28 @@ impl PageStack {
         cx: &mut App,
         aw: f32,
     ) -> (Vec<Kid>, usize) {
+        let vertical = self.axis.is_vertical();
         let kids: Vec<Kid> = self
             .kids
             .iter_mut()
             .map(|k| {
-                let sz = k.el.layout_as_root(
-                    size(
-                        gpui::AvailableSpace::Definite(px(aw)),
-                        gpui::AvailableSpace::MaxContent,
-                    ),
-                    window,
-                    cx,
+                // `aw` is the INLINE size of the page area; a vertical root
+                // measures its block size along x (`page_stack/axis.rs`).
+                let (fixed, free) = (
+                    gpui::AvailableSpace::Definite(px(aw)),
+                    gpui::AvailableSpace::MaxContent,
                 );
+                let space = if vertical {
+                    size(free, fixed)
+                } else {
+                    size(fixed, free)
+                };
+                let sz = k.el.layout_as_root(space, window, cx);
+                let sz = if vertical {
+                    size(sz.height, sz.width)
+                } else {
+                    sz
+                };
                 // Мера поддерева даёт точки разреза внутри ребёнка; без неё
                 // ребёнок — цельный кусок измеренной высоты.
                 let (h, cuts, forced, solid) = match &k.shape {

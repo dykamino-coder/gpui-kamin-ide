@@ -25,8 +25,15 @@ impl PageStack {
             let (ax, ay) = pg.area_origin();
             let aw = pg.area.0.max(1.0);
             let full_h = kids[f.kid].h;
+            let inner_top = self.kids[f.kid].inner_top;
+            // The copy is laid out WHOLE and shifted onto its slice; physical
+            // box by the root's block axis (`page_stack/axis.rs`).
+            let (x, y, w, h) = if self.axis.is_vertical() {
+                self.area_slice(&pg, f.y - f.from, full_h)
+            } else {
+                (ax, ay + f.y - f.from - inner_top, aw, full_h)
+            };
             let kid = &mut self.kids[f.kid];
-            let inner_top = kid.inner_top;
             let el = if f.copy == 0 {
                 &mut kid.el
             } else {
@@ -37,17 +44,14 @@ impl PageStack {
             };
             el.layout_as_root(
                 size(
-                    gpui::AvailableSpace::Definite(px(aw)),
-                    gpui::AvailableSpace::Definite(px(full_h)),
+                    gpui::AvailableSpace::Definite(px(w)),
+                    gpui::AvailableSpace::Definite(px(h)),
                 ),
                 window,
                 cx,
             );
             el.prepaint_at(
-                point(
-                    bounds.origin.x + px(sx + ax),
-                    bounds.origin.y + px(sy + ay + f.y - f.from - inner_top),
-                ),
+                point(bounds.origin.x + px(sx + x), bounds.origin.y + px(sy + y)),
                 window,
                 cx,
             );

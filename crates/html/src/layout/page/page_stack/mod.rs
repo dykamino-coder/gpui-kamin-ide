@@ -5,6 +5,7 @@ use crate::layout::fragment::types::Frag;
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, point, px, size};
 mod canvas;
 pub(crate) use canvas::{CanvasLayerFn, builder as canvas_builder, image_layers};
+mod axis;
 mod contents;
 mod element;
 mod kids;
@@ -116,7 +117,6 @@ pub struct PageStack {
     /// Геометрия КАЖДОГО листа, итог `prepaint` (листы бывают разные:
     /// `@page :first { size }`, именные страницы).
     pub(crate) geoms: std::cell::RefCell<Vec<PageGeom>>,
-    /// Ячейка сетки листов — наибольший лист.
     pub(crate) cell: std::cell::Cell<(f32, f32)>,
     /// Марджин-боксы: построитель и итог раскладки `(лист, элемент)`.
     pub(crate) margin_for: Option<MarginFn>,
@@ -140,7 +140,6 @@ pub struct PageStack {
     pub(crate) fixed: Vec<Vec<AnyElement>>,
     pub(crate) plan: std::cell::RefCell<Vec<Frag>>,
     pub(crate) pages: std::cell::Cell<usize>,
-    /// Листов в ряду и масштаб стопки.
     pub(crate) grid: std::cell::Cell<(usize, f32)>,
     /// Показываемые листы (с нуля, по возрастанию), `None` — все. Печатный
     /// reftest WPT сравнивает только страницы из `<meta name=reftest-pages>`.
@@ -148,6 +147,8 @@ pub struct PageStack {
     /// Image layers of the document canvas and their per-sheet layout.
     pub(crate) canvas_layer: Option<CanvasLayerFn>,
     pub(crate) canvas_els: Vec<(usize, AnyElement)>,
+    /// Block axis of the root writing mode (`page_stack/axis.rs`).
+    pub(crate) axis: crate::layout::fragment::types::StackAxis,
 }
 
 impl PageStack {
@@ -175,10 +176,10 @@ impl PageStack {
             select: None,
             canvas_layer: None,
             canvas_els: Vec::new(),
+            axis: crate::layout::fragment::types::StackAxis::Horizontal,
         }
     }
 
-    /// Показать только листы `select` (номера с нуля).
     pub fn with_select(mut self, select: Option<Vec<usize>>) -> Self {
         self.select = select;
         self
