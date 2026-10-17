@@ -16,6 +16,11 @@ pub(super) fn own_box_atom(
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let mut merged = inherit(inherited, &e.style);
+    // Viewport units resolve against the viewport (css-values-4 §6.1.2), as in
+    // `element()`: the atom path skipped it and `height: 350vh` on an
+    // `inline-block` with `vertical-align: top` collapsed to its content
+    // (`monolithic-overflow-014/015-print`).
+    merged.resolve_viewport(opts.viewport);
     // CSS 2 sections 5.12.1-5.12.2 include inline-block containers,
     // but not ordinary inline boxes, in the pseudo-line scope.
     if e.style.display == Some(Display::InlineBlock) && e.style.inline_display != Some(true) {

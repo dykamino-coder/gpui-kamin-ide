@@ -19,6 +19,20 @@ impl PageStack {
         plan: &Vec<Frag>,
         pages: usize,
     ) {
+        // ICB and `fixed` layers are laid out BEFORE the kid copies prepaint:
+        // an abspos split by `source_paint::split` keeps its layout half in a
+        // layer and prepaints from its source-order half inside the kid
+        // (CSS 2.1 Appendix E), so the layer's layout must exist by then
+        // (`transform-023-print` aborted with "must call request_layout
+        // before prepaint"). Every copy is laid out: copy `c` of a kid pairs
+        // with layer copy `c`, wherever the kid lands.
+        let space = size(
+            gpui::AvailableSpace::Definite(px(aw)),
+            gpui::AvailableSpace::Definite(px(ah)),
+        );
+        for el in self.icb.iter_mut().chain(self.fixed.iter_mut()).flatten() {
+            el.layout_as_root(space, window, cx);
+        }
         for f in plan {
             let (sx, sy) = self.sheet_origin(f.col);
             let pg = geoms.get(f.col).copied().unwrap_or(g);
@@ -63,14 +77,6 @@ impl PageStack {
             let (ax, ay) = geoms[p].area_origin();
             let lift = p as f32 * ah;
             for el in &mut self.icb[p] {
-                el.layout_as_root(
-                    size(
-                        gpui::AvailableSpace::Definite(px(aw)),
-                        gpui::AvailableSpace::Definite(px(ah)),
-                    ),
-                    window,
-                    cx,
-                );
                 el.prepaint_at(
                     point(
                         bounds.origin.x + px(sx + ax),
@@ -91,14 +97,6 @@ impl PageStack {
             // при листе 400 — за краем, на листах 500 — в правом нижнем углу).
             let (ax, ay) = geoms[p].area_origin();
             for el in &mut self.fixed[p] {
-                el.layout_as_root(
-                    size(
-                        gpui::AvailableSpace::Definite(px(aw)),
-                        gpui::AvailableSpace::Definite(px(ah)),
-                    ),
-                    window,
-                    cx,
-                );
                 el.prepaint_at(
                     point(bounds.origin.x + px(sx + ax), bounds.origin.y + px(sy + ay)),
                     window,
