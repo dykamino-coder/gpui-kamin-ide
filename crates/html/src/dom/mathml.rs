@@ -1,5 +1,6 @@
-//! MathML Core В§2.1.5 and В§3.8: namespace-aware cascade defaults and hints.
+//! MathML Core: namespace-aware cascade defaults and presentation hints.
 
+pub(crate) use super::mathml_lengths::length;
 use crate::style::css::{Rule, Selector, parse_decls};
 use markup5ever_rcdom::{Handle, NodeData};
 
@@ -30,6 +31,37 @@ pub(super) fn hints(handle: &Handle, attrs: &[(String, String)]) -> Vec<Rule> {
         };
         rule.decls.insert(property.to_string(), value.clone());
     }
+    if super::mathml_routing::enabled(handle)
+        && let NodeData::Element { name, .. } = &handle.data
+    {
+        if &*name.local == "mspace" {
+            rule.decls.extend(super::mathml_lengths::hints(attrs));
+        } else if &*name.local == "mpadded"
+            && let Some((_, value)) = attrs
+                .iter()
+                .find(|(k, v)| k == "width" && length(v).is_some())
+        {
+            rule.decls.insert("width".into(), value.clone());
+        }
+    }
+    for (name, value) in attrs
+        .iter()
+        .filter(|_| super::mathml_routing::enabled(handle))
+    {
+        if name == "displaystyle" && matches!(value.as_str(), "true" | "false") {
+            rule.decls.insert(
+                "math-style".into(),
+                if value == "true" { "normal" } else { "compact" }.into(),
+            );
+        } else if name == "scriptlevel" && value.parse::<i32>().is_ok() {
+            let depth = if value.starts_with(['+', '-']) {
+                format!("add({value})")
+            } else {
+                value.clone()
+            };
+            rule.decls.insert("math-depth".into(), depth);
+        }
+    }
     vec![rule]
 }
 
@@ -48,25 +80,7 @@ fn valid_size(value: &str) -> bool {
         | Len::Ex(v) | Len::Ch(v) | Len::Ic(v) | Len::Lh(v) | Len::Vw(v) | Len::Vh(v)) if v >= 0.0)
 }
 
-/// UA visibility is resolved before tree construction, and remains overridable
-/// by author CSS. Unlike deleting alternatives, this preserves the cascade.
-pub(super) fn defaults(handle: &Handle, index: usize) -> Vec<Rule> {
-    let parent = handle.parent.take();
-    let hides = index > 1 && parent.as_ref().and_then(std::rc::Weak::upgrade)
-        .is_some_and(|parent| is_mathml(&parent) && matches!(&parent.data,
-            NodeData::Element { name, .. } if matches!(name.local.as_ref(), "semantics" | "maction")));
-    handle.parent.set(parent);
-    if !hides {
-        return vec![];
-    }
-    vec![Rule {
-        sel: Selector::parse("semantics > :not(:first-child)").expect("UA selector"),
-        decls: parse_decls("display: none"),
-        order: usize::MAX,
-        origin: 0,
-        layer: vec![],
-    }]
-}
+pub(super) use super::mathml_defaults::defaults;
 
 #[cfg(test)]
 mod tests {

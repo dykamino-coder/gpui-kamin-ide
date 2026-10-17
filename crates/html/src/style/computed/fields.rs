@@ -1583,4 +1583,13 @@ pub struct Computed {
     pub(crate) flex_line_wraps: bool,
     /// An explicit unsafe overflow position for block content alignment.
     pub align_content_unsafe: bool,
+    /// Namespace identity and the winning MathML inner display type.
+    pub(crate) mathml: bool,
+    pub(crate) math_layout: Option<Display>,
+    pub(crate) math_compact: Option<bool>,
+    pub(crate) math_shift: Option<bool>,
+    pub(crate) math_depth: Option<super::math_style::Depth>,
+    pub(crate) math_level: i32,
+    pub(crate) math_font_size: bool,
+    pub(crate) math_operator_form: Option<u8>,
 }

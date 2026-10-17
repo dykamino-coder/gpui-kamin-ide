@@ -31,6 +31,21 @@ pub(crate) fn font_extents(font: &gpui::Font, size: f32) -> (f32, f32) {
     })
 }
 
+/// MathML fallback constants use the math face's x-height and rule thickness.
+pub(crate) fn math_metrics(font: &gpui::Font, size: f32) -> (f32, f32) {
+    FONT_SYSTEM.with(|cell| {
+        if let Some(system) = cell.borrow().as_ref() {
+            let id = system.resolve_font(font);
+            (
+                f32::from(system.x_height(id, gpui::px(size))),
+                f32::from(system.underline_thickness(id, gpui::px(size))),
+            )
+        } else {
+            (size / 2.0, 0.0)
+        }
+    })
+}
+
 /// Поставить щуп поверх системы шрифтов GPUI.
 ///
 /// Вызывается один раз при старте приложения, ПОСЛЕ регистрации своих
