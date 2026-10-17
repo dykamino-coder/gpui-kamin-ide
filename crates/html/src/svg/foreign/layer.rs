@@ -56,6 +56,7 @@ pub(super) fn prepare(
             let mut html = e.clone();
             html.tag = "div".into();
             html.attrs.clear();
+            html.marks = Default::default();
             html.style = merged;
             html.style.width = Some(Len::Px(w));
             html.style.height = Some(Len::Px(h));

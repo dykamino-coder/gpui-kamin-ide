@@ -111,7 +111,9 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
                 vec![Node::Element(column_el), Node::Element(floater.clone())]
             };
             let mut top = row_node.clone();
+            // An ordinary flex row now: no second pass through `float_flow`.
             top.tag = "div".into();
+            top.marks.float_row = false;
             top.children = row_children;
             let mut all = vec![Node::Element(top)];
             all.extend(below);
