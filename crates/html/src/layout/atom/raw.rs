@@ -81,6 +81,9 @@ pub(super) fn atom_element_raw(
     ) {
         return absolute_atom(inherited, e, opts);
     }
+    if let Some(math) = crate::layout::mathml::element(e, inherited, opts) {
+        return Some(crate::paint::effects::grouped::grouped(math, &e.style));
+    }
     // Многоколоночная коробка В СТРОКЕ (`inline-block` с `column-count`) —
     // такой же случай, как строчная таблица ниже: своя раскладка живёт в
     // блочном пути, а сюда приходил голый `blocks()`, и колонок не

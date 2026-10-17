@@ -1592,4 +1592,13 @@ pub struct Computed {
     /// A piece of a float-band host (`layout::float::band_flow_host`): the host resolves its
     /// percentages against the band layout and places it; not inherited.
     pub(crate) band_kid: bool,
+    /// Namespace identity and the winning MathML inner display type.
+    pub(crate) mathml: bool,
+    pub(crate) math_layout: Option<Display>,
+    pub(crate) math_compact: Option<bool>,
+    pub(crate) math_shift: Option<bool>,
+    pub(crate) math_depth: Option<super::math_style::Depth>,
+    pub(crate) math_level: i32,
+    pub(crate) math_font_size: bool,
+    pub(crate) math_operator_form: Option<u8>,
 }

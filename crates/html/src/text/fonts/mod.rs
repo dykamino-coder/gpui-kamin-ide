@@ -18,6 +18,7 @@
 mod font_faces;
 mod loading;
 pub(crate) mod matching;
+pub(crate) mod math;
 pub(crate) use matching::alias_for;
 pub(crate) mod metric_overrides;
 mod sfnt_metrics;
