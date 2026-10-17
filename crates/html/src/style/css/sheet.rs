@@ -8,6 +8,11 @@ mod nesting;
 mod rules;
 use rules::sheet_rules;
 
+/// Normalize nesting selectors through the same path as top-level style rules.
+pub(super) fn selector_for_supports(selector: &str) -> String {
+    nesting::top_level_parts(&[selector]).remove(0)
+}
+
 thread_local! {
     /// Реестр слоёв документа: полное имя → путь индексов (порядок —
     /// по ПЕРВОМУ объявлению, css-cascade-5 §6.4.3).

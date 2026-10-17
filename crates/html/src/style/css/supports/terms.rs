@@ -6,35 +6,13 @@ use super::*;
 /// ОДИН сложный селектор — список через запятую ложен (`at-supports-selector-004`);
 /// внутри `:is()/:where()/:has()/:not()` прощающего разбора при проверке нет —
 /// неизвестная часть роняет всё (`…-detecting-invalid-in-logical-combinations`).
-/// Псевдоэлементы, которые Blink знает, а наш каскад не исполняет
-/// (`::details-content`, `::picker(select)`, `::picker-icon`,
-/// `::-webkit-slider-thumb`), для ПРОВЕРКИ снимаются; в `known_pseudo` их не
-/// вносим — иначе правила с ними начали бы применяться к самой коробке.
+/// Capabilities come from the actual selector parser and nesting normalization.
 fn supports_selector(args: &str) -> bool {
     let s = args.trim();
     if split_top_level(s, ',').len() > 1 {
         return false;
     }
-    // `&` — годный простой селектор (css-nesting-1 §3.1; вне правила он
-    // означает `:scope`): `@supports selector(&)` истинно (`supports-rule`).
-    let mut s = s.replace('&', ":scope");
-    for known in [
-        "::details-content",
-        "::picker(select)",
-        "::picker-icon",
-        "::-webkit-slider-thumb",
-        "::-webkit-slider-runnable-track",
-    ] {
-        s = s.replace(known, "");
-    }
-    // Неизвестные вендорные псевдо — не поддержаны (`::-webkit-asdf`).
-    if s.contains("::-webkit-") || s.contains(":-webkit-") {
-        return false;
-    }
-    // Снятый псевдоэлемент мог стоять один: `::picker-icon` → пусто.
-    if s.trim().is_empty() || s.ends_with(|ch: char| ch.is_whitespace() || "+>~".contains(ch)) {
-        s.push('*');
-    }
+    let s = super::super::sheet::selector_for_supports(s);
     selector_strict(&s)
 }
 

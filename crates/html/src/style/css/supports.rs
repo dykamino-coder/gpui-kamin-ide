@@ -5,6 +5,8 @@ use crate::style::css::*;
 mod at_rule;
 #[cfg(test)]
 mod property_tests;
+#[cfg(test)]
+mod selector_tests;
 mod terms;
 use terms::supports_eval_term;
 
