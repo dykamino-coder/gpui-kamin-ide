@@ -63,7 +63,15 @@ pub(crate) fn refusal(c: &Element, col_w: Option<f32>, auto_fill: bool) -> Optio
     }
     match candidates(c) {
         None => Some("subtree"),
-        Some(v) if !v.iter().any(|x| x.1 != super::Cand::Item) && !super::avoid_row(c) => {
+        // Row gaps alone keep the old path: this path paints gap decorations
+        // half a gap low (css-gaps flex-gap-decorations-fragmentation-023/024/
+        // 031), and a test with rules must take the same path as its ref.
+        Some(v)
+            if !v
+                .iter()
+                .any(|x| !matches!(x.1, super::Cand::Item | super::Cand::Gap { .. }))
+                && !super::avoid_row(c) =>
+        {
             Some("no-cand")
         }
         Some(_) => None,

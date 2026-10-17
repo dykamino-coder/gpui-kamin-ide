@@ -66,7 +66,7 @@ impl ColumnStack {
                     match g.cand {
                         Cand::Forced { mt } => c.forced.push(g.top - mt),
                         Cand::Mono { .. } => c.solid.push((g.top, g.bottom)),
-                        Cand::Item | Cand::Gap { .. } => {}
+                        Cand::Item | Cand::Gap { .. } | Cand::Avoid { .. } => {}
                     }
                 }
                 c.forced.sort_by(f32::total_cmp);

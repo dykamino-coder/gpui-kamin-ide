@@ -54,6 +54,19 @@ pub(crate) fn first_violation(geoms: &[Geom], h: f32, y0: f32) -> Option<(u64, f
                 }
             }
             Cand::Item | Cand::Gap { .. } => {}
+            Cand::Avoid { prev } => {
+                if g.top < EPS || !at_start(g.top, h, y0) {
+                    continue;
+                }
+                // Break before the previous box instead, unless that one
+                // already starts its fragmentainer (no progress then).
+                if let Some(p) = geoms.iter().find(|x| x.id == prev)
+                    && p.top < g.top - EPS
+                    && !at_start(p.top, h, y0)
+                {
+                    return Some((prev, g.top - p.top, p.bottom - p.top));
+                }
+            }
             Cand::Mono { soft } => {
                 let tall = g.bottom - g.top;
                 if soft && tall > h + EPS {
@@ -180,5 +193,47 @@ mod tests {
             ..g[0]
         }];
         assert!(first_violation(&done, 100.0, 0.0).is_none());
+    }
+
+    fn gapped(id: u64, top: f32) -> Geom {
+        Geom {
+            id,
+            cand: Cand::Gap {
+                gap: 100.0,
+                parent: 9,
+            },
+            top,
+            bottom: top + 50.0,
+        }
+    }
+
+    #[test]
+    fn truncates_row_gap_across_boundary() {
+        // Rows 0..50 and 150..200, gap 100 across the boundary at 100.
+        let g = [gapped(1, 0.0), gapped(2, 150.0)];
+        let (ids, delta, later, gap) = gap_violation(&g, 100.0, 0.0).unwrap();
+        assert_eq!((ids, delta, later, gap), (vec![2], -50.0, vec![2], 100.0));
+        // Already truncated: the row starts at the boundary.
+        assert!(gap_violation(&[gapped(1, 0.0), gapped(2, 100.0)], 100.0, 0.0).is_none());
+    }
+
+    #[test]
+    fn avoided_edge_breaks_before_previous_box() {
+        let prev = Geom {
+            id: 1,
+            cand: Cand::Item,
+            top: 50.0,
+            bottom: 100.0,
+        };
+        let next = Geom {
+            id: 2,
+            cand: Cand::Avoid { prev: 1 },
+            top: 100.0,
+            bottom: 400.0,
+        };
+        assert_eq!(
+            first_violation(&[prev, next], 100.0, 0.0).map(|v| (v.0, v.1)),
+            Some((1, 50.0))
+        );
     }
 }

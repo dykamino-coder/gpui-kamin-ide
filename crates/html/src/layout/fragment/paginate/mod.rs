@@ -47,6 +47,11 @@ pub(crate) enum Cand {
     /// gap adjoining a break is truncated (Blink
     /// `UpdateOffsetAdjustmentForSuppressedRowGap`).
     Gap { gap: f32, parent: u64 },
+    /// `break-before: avoid` on this box (or `break-after: avoid` on `prev`):
+    /// a fragmentainer boundary right at this edge violates it, and the
+    /// earlier breakpoint before `prev` has the better appeal (css-break-3
+    /// §4.4 rule 3; Blink `EarlyBreak`, `kBreakAppealViolatingBreakAvoid`).
+    Avoid { prev: u64 },
 }
 
 fn px_or_zero(l: &Option<Len>) -> Option<f32> {
@@ -69,7 +74,12 @@ fn row_flex(s: &crate::style::computed::Computed) -> bool {
 /// The px `row-gap` of a wrapping flex row.
 pub(crate) fn row_gap(s: &crate::style::computed::Computed) -> Option<f32> {
     match s.gap {
-        Some((Some(Len::Px(g)), _)) if g > 0.0 && row_flex(s) && s.flex_wrap == Some(true) => {
+        Some((Some(Len::Px(g)), _))
+            if g > 0.0
+                && row_flex(s)
+                && s.flex_wrap == Some(true)
+                && s.flex_wrap_reverse != Some(true) =>
+        {
             Some(g)
         }
         _ => None,
@@ -120,6 +130,7 @@ fn walk(p: &Element, depth: u8, out: &mut Vec<(u64, Cand)>) -> Option<()> {
         return None;
     }
     let mut force_next = false;
+    let mut prev: Option<(u64, bool)> = None;
     for n in p.children.iter().filter(|n| !is_blank(n)) {
         let Node::Element(k) = n else { return None };
         if out_of_flow(&k.style) {
@@ -152,6 +163,13 @@ fn walk(p: &Element, depth: u8, out: &mut Vec<(u64, Cand)>) -> Option<()> {
         }
         // Breaks propagate from the first/last child to the box edge
         // (css-break-3 §3.1 «break propagation»).
+        if let Some((pid, avoid_after)) = prev
+            && (avoid_after || k.style.break_before_avoid)
+        {
+            out.push((pid, Cand::Item));
+            out.push((k.node_id, Cand::Avoid { prev: pid }));
+        }
+        prev = Some((k.node_id, k.style.break_after_avoid));
         let edge = crate::layout::fragment::breaks::edge_break;
         let forced = force_next || edge(k, false);
         force_next = edge(k, true);
