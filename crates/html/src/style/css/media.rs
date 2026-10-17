@@ -24,7 +24,6 @@ pub struct Media {
     pub print: bool,
 }
 
-/// Экран: носитель приложения и документа без явного носителя.
 impl Default for Media {
     fn default() -> Self {
         Media::for_medium(false)
@@ -32,14 +31,11 @@ impl Default for Media {
 }
 
 impl Media {
-    /// Условия носителя: экран или печать (`Document::new_media`; стенд
-    /// ставит печать `*-print`-тестам).
+    /// Экран или печать (`Document::new_media`; печать — `*-print`-тесты).
     pub fn for_medium(print: bool) -> Self {
-        // Печатный носитель меряется ЛИСТОМ, а не окном (mediaqueries-4
-        // §width: «For paged media, this is the width of the page box»).
-        // Лист WPT по умолчанию — 5in x 3in = 480x288, и `@page { size }`
-        // запрос не меняет (csswg#5437; `media-queries-001-print`: запрос
-        // 4in..5in x 2in..3in при `@page { size: 10in }` обязан сработать).
+        // Печать меряется ЛИСТОМ (mediaqueries-4 §width: «the width of the page
+        // box»): лист WPT 5in x 3in = 480x288, `@page { size }` запрос не меняет
+        // (csswg#5437; `media-queries-001-print` при `size: 10in`).
         let (width, height) = if print {
             (480.0, 288.0)
         } else {
