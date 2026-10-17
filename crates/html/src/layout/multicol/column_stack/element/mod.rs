@@ -1,46 +1,28 @@
 //! `impl Element` для `ColumnStack`.
 // owner: A
 
+use crate::hooks::Hooks;
 use crate::layout::fragment::types::{Frag, Kid, RepeatGeom};
 use crate::layout::multicol::column_stack::ColumnStack;
-use gpui::{
-    App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, LayoutId, Pixels, Window,
-    point, px, size,
-};
+use gpui::{App, Bounds, LayoutId, Pixels, Window, point, px, size};
 mod paint;
 mod prepaint;
 
-impl Element for ColumnStack {
-    type RequestLayoutState = LayoutId;
-    type PrepaintState = Bounds<Pixels>;
+impl Hooks for ColumnStack {
+    type Layout = LayoutId;
+    type Prepaint = Bounds<Pixels>;
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, LayoutId) {
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
         self.request_column_layout(window, cx)
     }
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        state: &mut LayoutId,
+        state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
-    ) -> Bounds<Pixels> {
+    ) -> Self::Prepaint {
         if self.axis.is_vertical() {
             self.prepaint_axis(bounds, window, cx);
             return bounds;
@@ -107,11 +89,9 @@ impl Element for ColumnStack {
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _state: &mut LayoutId,
-        prepaint: &mut Bounds<Pixels>,
+        _state: &mut Self::Layout,
+        prepaint: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {

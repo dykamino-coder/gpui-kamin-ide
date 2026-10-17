@@ -1,9 +1,7 @@
 //! Tap: обёртка ребёнка, сообщающая его итоговые границы раскладке полос.
 
-use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Window,
-};
+use crate::hooks::Hooks;
+use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -14,25 +12,11 @@ pub(super) struct Tap {
     pub(super) id: Rc<Cell<Option<LayoutId>>>,
 }
 
-impl Element for Tap {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
+impl Hooks for Tap {
+    type Layout = ();
+    type Prepaint = ();
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
         let id = self.inner.request_layout(window, cx);
         self.id.set(Some(id));
         (id, ())
@@ -40,34 +24,22 @@ impl Element for Tap {
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut (),
+        _state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> Self::Prepaint {
         self.inner.prepaint(window, cx);
     }
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
+        _state: &mut Self::Layout,
+        _prepaint: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {
         self.inner.paint(window, cx);
-    }
-}
-
-impl IntoElement for Tap {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
     }
 }

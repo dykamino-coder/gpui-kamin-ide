@@ -11,13 +11,11 @@ pub(super) use masks::resolve_mask;
 
 use crate::paint::effects::grouped_element::{Grouped, mask_layer_source};
 use crate::paint::effects::{polygon_clip, rectangular_clip};
-use gpui::{App, Bounds, GlobalElementId, InspectorElementId, LayoutId, Pixels, Window, px};
+use gpui::{App, Bounds, LayoutId, Pixels, Window, px};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn paint_body(
     group: &mut Grouped,
-    _id: Option<&GlobalElementId>,
-    _inspector_id: Option<&InspectorElementId>,
     bounds: Bounds<Pixels>,
     _state: &mut LayoutId,
     _prepaint: &mut (Bounds<Pixels>, Bounds<Pixels>),

@@ -1,6 +1,7 @@
 //! Внешние и внутренние резкие тени коробки (css-backgrounds-3 §7.1).
 // owner: A
 
+use crate::hooks::IntoHooked;
 use crate::render::paint_rect_minus;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -108,7 +109,7 @@ pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
                         );
                     },
                 )
-                .into_any_element(),
+                .hooked(),
             );
             continue;
         }
@@ -195,7 +196,7 @@ pub(super) fn inset_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
                         paint_rect_minus(window, (pl, pt, pr, pb), hole, fill);
                     },
                 )
-                .into_any_element(),
+                .hooked(),
             );
             continue;
         }

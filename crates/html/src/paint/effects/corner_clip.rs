@@ -2,6 +2,7 @@
 //! Blink adjusts its inner contour by reference-box offsets and overflow-clip-margin;
 //! keeping decorations separate also preserves their paint outside an inset overflow clip.
 
+use crate::hooks::IntoHooked;
 use crate::style::computed::{Computed, Overflow};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, App, Bounds, IntoElement, ParentElement, Pixels, Styled, Window, div, px};
@@ -71,7 +72,7 @@ pub(crate) fn new(c: &Computed, mask: Option<&str>) -> Option<CornerClip> {
     decoration.mask = Some(mask.to_string());
     Some(CornerClip {
         insets,
-        decoration: decoration.into_any_element(),
+        decoration: decoration.hooked(),
     })
 }
 

@@ -145,13 +145,15 @@ pub(crate) fn finish_element(
         && e.tag != "body"
         && !crate::paint::stacking::nested_context(inherited)
     {
-        done = crate::paint::effects::underlay::Underlay::new(done).into_any_element();
+        done =
+            crate::hooks::IntoHooked::hooked(crate::paint::effects::underlay::Underlay::new(done));
     }
     // Абсолют с `z-index < 0`, оставленный на месте (`below_cb_axis`):
     // краска — шаг 3 корневого контекста, под потоком родителя, как и
     // у держателя на распорке выше.
     if below_cb_axis {
-        done = crate::paint::effects::underlay::Underlay::new(done).into_any_element();
+        done =
+            crate::hooks::IntoHooked::hooked(crate::paint::effects::underlay::Underlay::new(done));
     }
     // Позиционированный блок с `z-index: auto | 0` рисуется на шаге 8
     // приложения E CSS 2.1 — ПОСЛЕ блоков и строк потока, — а у нас

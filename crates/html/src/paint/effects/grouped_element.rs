@@ -3,7 +3,7 @@
 
 mod lifecycle;
 
-use gpui::{AnyElement, IntoElement};
+use gpui::AnyElement;
 
 /// Сетка таблицы, у которой ширины колонок считаются по содержимому.
 ///
@@ -14,7 +14,7 @@ use gpui::{AnyElement, IntoElement};
 /// смешаться до размытия. Патч gpui рисует детей в свой буфер и кладёт его в
 /// кадр уже размытым.
 pub struct Grouped {
-    pub(crate) child: Option<AnyElement>,
+    pub(crate) child: AnyElement,
     /// Радиус размытия в точках; 0 — только сборка в буфер.
     pub blur: f32,
     /// Прозрачность группы целиком.
@@ -137,7 +137,7 @@ impl Grouped {
             over_fills: None,
             mask_scale: 1.0,
             ring_over: None,
-            child: Some(child),
+            child,
             blur: 0.0,
             opacity: 1.0,
             blend: 0,
@@ -247,12 +247,4 @@ fn rasterize_mask_def(
         w,
         h,
     )
-}
-
-impl IntoElement for Grouped {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
-    }
 }

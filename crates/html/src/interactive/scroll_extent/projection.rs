@@ -1,11 +1,10 @@
 //! CSS Overflow 3 §2.3: project negative-origin scrolling onto GPUI's negative offsets.
 //! Reverse axes move content toward the physical end; preserve normal overflow geometry.
+
 use super::{CURRENT, exact_probe::sticky_geometry};
+use crate::hooks::{IntoHooked, Wrap};
 use crate::style::computed::{Computed, Position};
-use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, ScrollHandle, Window, point, px,
-};
+use gpui::{AnyElement, App, Bounds, Pixels, ScrollHandle, Window, point, px};
 pub(crate) struct Projection {
     handle: ScrollHandle,
     reverse: [bool; 2],
@@ -29,7 +28,7 @@ pub(crate) fn projection(parent: u64, c: Option<&Computed>) -> Option<Projection
 }
 pub(crate) fn project(child: AnyElement, projection: Option<Projection>) -> AnyElement {
     match projection {
-        Some(projection) => Projected { child, projection }.into_any_element(),
+        Some(projection) => Projected { child, projection }.hooked(),
         None => child,
     }
 }
@@ -37,39 +36,12 @@ struct Projected {
     child: AnyElement,
     projection: Projection,
 }
-impl IntoElement for Projected {
-    type Element = Self;
-    fn into_element(self) -> Self {
-        self
+impl Wrap for Projected {
+    fn child(&mut self) -> &mut AnyElement {
+        &mut self.child
     }
-}
-impl Element for Projected {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-    fn request_layout(
-        &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
-        (self.child.request_layout(window, cx), ())
-    }
-    fn prepaint(
-        &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
-        _: Bounds<Pixels>,
-        _: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
+
+    fn prepaint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let native = self.projection.handle.offset();
         let shift = point(
             if self.projection.reverse[0] {
@@ -86,18 +58,6 @@ impl Element for Projected {
         sticky_geometry(shift, || {
             window.with_exact_element_offset(shift, |window| self.child.prepaint(window, cx))
         });
-    }
-    fn paint(
-        &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
-        _: Bounds<Pixels>,
-        _: &mut (),
-        _: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        self.child.paint(window, cx);
     }
 }
 

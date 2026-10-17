@@ -146,7 +146,11 @@ fn frame(kind: Kind, avail: f32, el: AnyElement, tap: Rc<Cell<Option<LayoutId>>>
     } else {
         el
     };
-    col.child(Tap { inner: el, id: tap }).into_any_element()
+    col.child(crate::hooks::IntoHooked::into_hooked(Tap {
+        inner: el,
+        id: tap,
+    }))
+    .into_any_element()
 }
 
 /// План раскладки при ширине контекста `cb`: позиции всех детей и высота.

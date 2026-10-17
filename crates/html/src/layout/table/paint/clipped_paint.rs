@@ -1,30 +1,15 @@
 //! Отрисовка полосы ряда/группы, обрезанной ячейками: тени, контур и слой фона (gpui Element).
 
 use super::{BAND_WAIT_FRAMES, CellsClipped};
+use crate::hooks::Hooks;
 use crate::layout::table::paint::BAND_RETRIES;
-use gpui::{
-    App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, LayoutId, Pixels, Window,
-};
+use gpui::{App, Bounds, LayoutId, Pixels, Window};
 
-impl Element for CellsClipped {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
+impl Hooks for CellsClipped {
+    type Layout = ();
+    type Prepaint = ();
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
         let mut style = gpui::Style::default();
         // Оверлей вне потока: раскладку таблицы полоса не трогает.
         style.position = gpui::Position::Absolute;
@@ -33,22 +18,18 @@ impl Element for CellsClipped {
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut (),
+        _state: &mut Self::Layout,
         _window: &mut Window,
         _cx: &mut App,
-    ) {
+    ) -> Self::Prepaint {
     }
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
+        _state: &mut Self::Layout,
+        _prepaint: &mut Self::Prepaint,
         window: &mut Window,
         _cx: &mut App,
     ) {

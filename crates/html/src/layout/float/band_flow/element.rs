@@ -3,9 +3,10 @@
 use super::flow_kid::intrinsic_width;
 use super::kid::{Kid, Kind};
 use super::{EPS, Plan, Slot, flatten, frame, plan, with_vert};
+use crate::hooks::Hooks;
 use gpui::{
-    AnyElement, App, AvailableSpace, Bounds, Element, ElementId, GlobalElementId,
-    InspectorElementId, IntoElement, LayoutId, Pixels, Window, div, point, prelude::*, px, size,
+    AnyElement, App, AvailableSpace, Bounds, IntoElement, LayoutId, Pixels, Window, div, point,
+    prelude::*, px, size,
 };
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -37,25 +38,11 @@ impl BandFlow {
     }
 }
 
-impl Element for BandFlow {
-    type RequestLayoutState = LayoutId;
-    type PrepaintState = ();
+impl Hooks for BandFlow {
+    type Layout = LayoutId;
+    type Prepaint = ();
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        _cx: &mut App,
-    ) -> (LayoutId, LayoutId) {
+    fn request_layout(&mut self, window: &mut Window, _cx: &mut App) -> (LayoutId, Self::Layout) {
         let kids = self.kids.clone();
         let cache = self.plan.clone();
         let mut style = gpui::Style::default();
@@ -118,13 +105,11 @@ impl Element for BandFlow {
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        state: &mut LayoutId,
+        state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> Self::Prepaint {
         let _ = bounds;
         // Отдельное дерево сохраняет точное начало хоста. Коробки и текст
         // округляются от общего абсолютного места, без переноса дробной
@@ -213,11 +198,9 @@ impl Element for BandFlow {
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut LayoutId,
-        _prepaint: &mut (),
+        _state: &mut Self::Layout,
+        _prepaint: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {
@@ -226,13 +209,5 @@ impl Element for BandFlow {
                 el.paint(window, cx);
             }
         });
-    }
-}
-
-impl IntoElement for BandFlow {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
     }
 }

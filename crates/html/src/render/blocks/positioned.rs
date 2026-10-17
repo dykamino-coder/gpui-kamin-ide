@@ -145,7 +145,9 @@ pub(crate) fn static_position_layer(
             // шаг 3 корня: под потоком и под фоном любых предков, в том
             // числе позиционированных без `z-index` выше родителя.
             let kept = if below && !crate::paint::stacking::nested_context(inherited) {
-                crate::paint::effects::underlay::Underlay::new(kept).into_any_element()
+                crate::hooks::IntoHooked::hooked(crate::paint::effects::underlay::Underlay::new(
+                    kept,
+                ))
             } else {
                 kept
             };

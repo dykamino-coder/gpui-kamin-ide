@@ -17,6 +17,7 @@ pub(crate) use root_box::{capture as measure_root_box, record as record_root_box
 
 mod fills;
 mod flat_stack;
+use crate::hooks::IntoHooked;
 use fills::border_area_fill;
 pub(crate) use fills::border_paint;
 pub use fills::paint_area;
@@ -193,7 +194,7 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                 });
             },
         )
-        .into_any_element(),
+        .hooked(),
     )
 }
 

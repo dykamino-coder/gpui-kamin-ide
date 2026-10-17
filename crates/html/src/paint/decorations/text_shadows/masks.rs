@@ -2,6 +2,7 @@
 
 use super::{ShadowStyle, atomic};
 use crate::dom::Node;
+use crate::hooks::IntoHooked;
 use crate::render::{RenderOpts, paragraph};
 use crate::style::computed::{Computed, Shadow};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
@@ -38,7 +39,7 @@ pub(super) fn masked_layer(
     let copy = if shadow.blur > 0.5 {
         let mut g = crate::paint::effects::grouped_element::Grouped::new(copy);
         g.blur = shadow.blur * 0.5;
-        g.into_any_element()
+        g.hooked()
     } else {
         copy
     };

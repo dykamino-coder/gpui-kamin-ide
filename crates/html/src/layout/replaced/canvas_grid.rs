@@ -2,6 +2,7 @@
 //! CSS Sizing 3 §5.2.1 separates intrinsic contributions from used sizes.
 
 use crate::dom::Element;
+use crate::hooks::IntoHooked;
 use crate::render::styled_div_with;
 use crate::style::{computed::Computed, values::value::Len};
 use gpui::{AnyElement, IntoElement, Refineable, Styled, px, size};
@@ -97,6 +98,6 @@ pub(crate) fn render(e: &Element, merged: &Computed, parent: &Computed) -> Optio
             ratio: Some(ratio),
             measure: None,
         }
-        .into_any_element(),
+        .hooked(),
     )
 }

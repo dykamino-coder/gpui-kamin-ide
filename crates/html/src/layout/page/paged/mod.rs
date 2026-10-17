@@ -2,6 +2,7 @@
 // owner: A
 
 use crate::dom::Node;
+use crate::hooks::IntoHooked;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::flex_lines::inline_display;
 use crate::layout::fragment::types::StackAxis;
@@ -234,5 +235,5 @@ pub fn render_paged_select(
             .filter(|_| !none)
             .map(|l| crate::layout::page::page_stack::canvas_builder(l, root, opts.clone())),
     )
-    .into_any_element()
+    .hooked()
 }
