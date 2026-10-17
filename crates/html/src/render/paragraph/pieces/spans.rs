@@ -59,13 +59,22 @@ pub(crate) fn paragraph_spans(
         .word_spans(inline::word_spans(pieces, biggest))
         // Автозазоры идут ПЕРВЫМИ: поиск диапазона берёт первое
         // попадание, и зазор обязан перебить трекинг всего куска.
-        .letter_spans(
-            [
-                inline::autospace_spans(pieces, biggest),
-                inline::letter_spans(pieces, biggest),
-            ]
-            .concat(),
-        )
+        .letter_spans({
+            let auto = inline::autospace_spans(pieces, biggest);
+            let letters = inline::letter_spans(pieces, biggest);
+            // Gaps re-paired by bidi reordering go first (first match wins).
+            // They replace tracking only: an autospace gap stays in charge.
+            let mut bidi = inline::bidi_letter_spans(
+                pieces,
+                inherited.rtl == Some(true),
+                inline::block_letter_spacing(inherited, biggest),
+                &letters,
+            );
+            bidi.retain(|(r, _)| !auto.iter().any(|(a, _)| a.contains(&r.start)));
+            bidi.extend(auto);
+            bidi.extend(letters);
+            bidi
+        })
         .shift_spans({
             let mut v = inline::shift_spans(
                 pieces,

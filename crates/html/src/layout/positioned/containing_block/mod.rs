@@ -8,6 +8,8 @@ pub use late::spot_place;
 pub use late::spot_probe;
 mod hang;
 pub use hang::InlineStartHang;
+mod source_paint;
+pub(crate) use source_paint::split as split_source_paint;
 mod layers;
 pub(crate) use layers::ICB;
 pub(crate) use layers::LATE;
@@ -56,6 +58,8 @@ pub struct Spot {
     pub fixed_axes: (bool, bool),
     /// Block-flow layer already supplies the actual CB layout geometry.
     pub preserve_cb_geometry: bool,
+    /// Geometry-only proxy; prepaint and paint stay at the source position.
+    pub layout_only: bool,
     /// Static coordinates must leave any enclosing fragmentation contexts.
     pub viewport_static: bool,
     /// Толщина колонки строки в повёрнутом абзаце: на неё отступает экранная
@@ -101,6 +105,30 @@ pub struct Spot {
     /// в долю `x` свободного места; по блочной он нулевой, и коробка висит от
     /// статической точки на долю `y` своей высоты. `None` — прежний путь.
     pub self_align: Option<(f32, f32)>,
+    /// `self_align` is measured in an INLINE parent's static-position
+    /// rectangle (zero-thick along the line, the line box across it), not in
+    /// the block strut's (`static_position::inline_static_self_align`).
+    pub line_rect: bool,
+    /// The line box `(top, height, start x)` of a probe that a text paragraph
+    /// placed as an overlay in its line (`with_line_box`).
+    pub line_box: Option<(Pixels, Pixels, Pixels)>,
+}
+
+thread_local! {
+    static LINE_BOX: std::cell::Cell<Option<(Pixels, Pixels, Pixels)>> = const { std::cell::Cell::new(None) };
+}
+
+/// Prepaint a static-position probe placed in a text line with that line's
+/// box `(top, height, start x)`; the probe takes it (`take_line_box`).
+pub fn with_line_box<R>(line: (Pixels, Pixels, Pixels), f: impl FnOnce() -> R) -> R {
+    let prev = LINE_BOX.with(|c| c.replace(Some(line)));
+    let out = f();
+    LINE_BOX.with(|c| c.set(prev));
+    out
+}
+
+pub(crate) fn take_line_box() -> Option<(Pixels, Pixels, Pixels)> {
+    LINE_BOX.with(|c| c.take())
 }
 
 pub type SpotCell = std::rc::Rc<std::cell::Cell<Spot>>;
@@ -119,6 +147,29 @@ thread_local! {
     /// абсолютные), `CB_ABS | CB_FIX` (и `position: fixed`) или `CB_FIX`
     /// (только фиксированные, см. `cb_open_fixed_only`).
     pub(crate) static CB_FIXED: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
+    /// Parallel to `CB`: `Some(index)` for a strict layer (`cb_open_strict`),
+    /// which takes only boxes whose NEAREST containing block is its owner —
+    /// the CB-ancestor index of the owner (`Computed::cb_depth` + 1).
+    pub(crate) static CB_STRICT: std::cell::RefCell<Vec<Option<u16>>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// The CB-ancestor index of the nearest containing block of an absolute box
+/// whose parent's computed style is `parent` (see `Computed::cb_depth`).
+pub(crate) fn nearest_cb_index(parent: &crate::style::computed::Computed) -> u16 {
+    parent.cb_depth + u16::from(crate::text::inline::establishes_cb(parent))
+}
+
+/// Open a strict containing-block layer around the children of a box whose
+/// own style is `own`: an absolute descendant whose nearest containing block
+/// is a box without a layer below it (a table part, a positioned inline)
+/// passes this layer by and keeps its previous route.
+pub fn cb_open_strict(own: &crate::style::computed::Computed, fixed_cb: bool) {
+    cb_open_with(fixed_cb);
+    CB_STRICT.with(|s| {
+        if let Some(last) = s.borrow_mut().last_mut() {
+            *last = Some(own.cb_depth + 1);
+        }
+    });
 }
 
 /// Открыть слой содержащего блока вокруг детей позиционированной коробки.
@@ -133,10 +184,17 @@ pub fn cb_open() {
 /// промежуточных позиционированных предков (`cb_push_fixed`).
 pub fn cb_open_with(fixed_cb: bool) {
     CB.with(|s| s.borrow_mut().push(Vec::new()));
+    CB_STRICT.with(|s| s.borrow_mut().push(None));
     CB_FIXED.with(|s| {
         s.borrow_mut()
             .push(CB_ABS | if fixed_cb { CB_FIX } else { 0 })
     });
+}
+
+/// Is a containing-block layer available for this positioned box?
+pub(crate) fn cb_active(fixed: bool) -> bool {
+    let mask = if fixed { CB_FIX } else { CB_ABS };
+    CB_FIXED.with(|flags| flags.borrow().iter().any(|f| f & mask != 0))
 }
 
 const CB_ABS: u8 = 1;
@@ -149,6 +207,7 @@ const CB_FIX: u8 = 2;
 /// колонкам (css-position-3 §abspos-breaking).
 pub fn cb_open_fixed_only() {
     CB.with(|s| s.borrow_mut().push(Vec::new()));
+    CB_STRICT.with(|s| s.borrow_mut().push(None));
     CB_FIXED.with(|s| s.borrow_mut().push(CB_FIX));
 }
 
@@ -172,6 +231,7 @@ pub fn cb_push_fixed(spot: SpotCell, el: AnyElement) -> Option<AnyElement> {
 /// Забрать накопленное верхним слоем содержащего блока и закрыть его.
 pub fn cb_close() -> Vec<AnyElement> {
     CB_FIXED.with(|s| s.borrow_mut().pop());
+    CB_STRICT.with(|s| s.borrow_mut().pop());
     CB.with(|s| s.borrow_mut().pop())
         .unwrap_or_default()
         .into_iter()
@@ -181,8 +241,15 @@ pub fn cb_close() -> Vec<AnyElement> {
 
 /// Отдать элемент слою ближайшего содержащего блока. Слоя нет — элемент
 /// возвращается, рисовать на месте.
-pub fn cb_push(spot: SpotCell, el: AnyElement) -> Option<AnyElement> {
-    let at = CB_FIXED.with(|f| f.borrow().iter().rposition(|x| x & CB_ABS != 0));
+pub fn cb_push(spot: SpotCell, el: AnyElement, nearest: u16) -> Option<AnyElement> {
+    let at = CB_FIXED.with(|f| {
+        CB_STRICT.with(|s| {
+            let s = s.borrow();
+            f.borrow().iter().enumerate().rposition(|(i, x)| {
+                x & CB_ABS != 0 && s.get(i).copied().flatten().is_none_or(|d| d == nearest)
+            })
+        })
+    });
     let Some(i) = at else {
         return Some(el);
     };

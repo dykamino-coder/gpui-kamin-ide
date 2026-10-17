@@ -66,8 +66,16 @@ pub(crate) fn place_element(
                 e.tag.as_str(),
                 "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"
             ),
+            // The static-position rectangle and the box's self-alignment in
+            // it (css-position-3 §staticpos-rect, css-align-3 §justify-abspos)
+            // belong to the static position, not to the layer that carries
+            // the box: a CB layer above a non-positioned parent aligns the
+            // same way as the parent's own late layer
+            // (`justify-self-static-position-001`).
+            self_align: crate::layout::positioned::static_position::static_self_align(e, inherited),
             ..Default::default()
         });
+        let mut source_paint = None;
         let sent = if to_icb && fixed && PAGED.with(|p| p.get()) {
             // Стопка страниц: фиксированный — в свой слой, по копии
             // на лист без сдвига (`FIXED_LAYER`). Обёртка `LatePlace`
@@ -111,12 +119,31 @@ pub(crate) fn place_element(
             } else {
                 built
             };
+            let built =
+                if crate::layout::positioned::predicates::stays_positioned(&nodes[idx + 1..]) {
+                    let mut state = spot.get();
+                    state.layout_only = true;
+                    spot.set(state);
+                    let (layout, paint) =
+                        crate::layout::positioned::containing_block::split_source_paint(
+                            spot.clone(),
+                            built,
+                        );
+                    source_paint = Some(paint);
+                    layout
+                } else {
+                    built
+                };
             if to_icb {
                 crate::layout::positioned::containing_block::icb_push(spot.clone(), built)
             } else if far_fixed {
                 crate::layout::positioned::containing_block::cb_push_fixed(spot.clone(), built)
             } else {
-                crate::layout::positioned::containing_block::cb_push(spot.clone(), built)
+                crate::layout::positioned::containing_block::cb_push(
+                    spot.clone(),
+                    built,
+                    crate::layout::positioned::containing_block::nearest_cb_index(inherited),
+                )
             }
         };
         match sent {
@@ -128,6 +155,9 @@ pub(crate) fn place_element(
                     out.push(crate::layout::positioned::containing_block::spot_probe(
                         spot, true,
                     ));
+                }
+                if let Some(paint) = source_paint {
+                    out.push(paint);
                 }
                 return;
             }

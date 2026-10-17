@@ -72,7 +72,16 @@ fn walk(
             let attrs: Vec<(String, String)> = attrs
                 .borrow()
                 .iter()
-                .map(|a| (a.name.local.to_string(), a.value.to_string()))
+                .map(|a| {
+                    let key = if &*a.name.local == "base"
+                        && &*a.name.ns == "http://www.w3.org/XML/1998/namespace"
+                    {
+                        "xml:base".to_owned()
+                    } else {
+                        a.name.local.to_string()
+                    };
+                    (key, a.value.to_string())
+                })
                 .collect();
             let mut me = element_ancestor(
                 handle,
@@ -162,7 +171,7 @@ fn walk(
             // before ::before; counter-* declared on ::marker (with DOM
             // inheritance of counter directives) apply right here, before the
             // marker's own content is evaluated (`marker-counter`).
-            if let Some(mut m) = marker_layer {
+            if let Some(mut m) = marker_layer.filter(|_| is_list_item) {
                 content::inherit_generated(&mut m, Some(&me));
                 counters.enter_marker();
                 language::pseudo(counters, &m, &me, path);

@@ -4,6 +4,7 @@ use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
 
 mod container_units;
+mod decor_inset;
 mod derived;
 mod em;
 pub(super) mod image_lengths;
@@ -73,6 +74,7 @@ impl Computed {
     /// Размер окна известен только сборщику дерева, поэтому `vh`/`vw` доживают
     /// до него неразрешёнными — как и `em` до размера шрифта.
     pub fn resolve_viewport(&mut self, viewport: (f32, f32)) {
+        self.resolve_decor_inset_viewport(viewport);
         let insets = self.viewport_unit_insets.unwrap_or_default();
         let viewport = (
             (viewport.0 - insets[0]).max(0.0),

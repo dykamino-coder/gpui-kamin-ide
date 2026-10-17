@@ -19,6 +19,28 @@ pub(super) fn abspos_normal(
     if c.justify_self_normal {
         style.justify_self = Some(gpui::AlignSelf::Start);
     }
+    // Outside flex and grid, an axis with both insets `auto` aligns in the
+    // static-position rectangle (css-position-3 §staticpos-rect), which only
+    // the static-position probe knows (`late_shift`); the layout engine would
+    // align it in the containing block instead. Leave that axis unaligned.
+    // Horizontal writing only: vertical static positions keep their
+    // previous placement (`align-self-static-position-004`).
+    if c.parent_grid == 0
+        && !c.parent_flex_grid
+        && c.vertical != Some(true)
+        && !c.cb_vertical
+        && c.rotated_line != Some(true)
+    {
+        let auto = |l: Option<crate::style::values::value::Len>| {
+            matches!(l, None | Some(crate::style::values::value::Len::Auto))
+        };
+        if auto(c.inset.left) && auto(c.inset.right) {
+            style.justify_self = None;
+        }
+        if auto(c.inset.top) && auto(c.inset.bottom) {
+            style.align_self = None;
+        }
+    }
 }
 
 pub(super) fn project(style: &mut gpui::StyleRefinement, container: bool, parent: bool) {

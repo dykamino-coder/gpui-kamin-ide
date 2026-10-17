@@ -5,6 +5,8 @@ use crate::style::values::value::{Color, Len};
 
 #[derive(Clone, Debug, Default)]
 pub struct Computed {
+    /// Paint-only fragment ink for a text-shadow mask; decoration records stay intact.
+    pub(crate) text_shadow_ink: Option<Color>,
     /// Winning explicit-inherit longhands, consumed before effective zoom.
     pub(crate) explicit_inherit: Vec<crate::style::cascade::inherited_value::Property>,
     /// CSS Scroll Snap: container policy and descendant snap-area geometry.
@@ -1174,6 +1176,11 @@ pub struct Computed {
     /// внепоточных потомков (§10.1 п.4). Ставится при наследовании: сам
     /// каскад предков не видит.
     pub(crate) cb_ancestor: bool,
+    /// How many ancestors establish a containing block for absolute
+    /// descendants (`establishes_cb`). An absolute box's nearest CB is the
+    /// ancestor with index `cb_depth + establishes_cb(parent)`; strict CB
+    /// layers (`cb_open_strict`) take only boxes whose nearest CB they are.
+    pub(crate) cb_depth: u16,
     /// Есть ли выше по дереву НЕКОРНЕВОЙ контекст наложения (CSS 2.1 прил. E):
     /// без него отрицательный `z-index` принадлежит корневому контексту и
     /// рисуется под всем его потоком. Ставится при наследовании.
@@ -1564,4 +1571,8 @@ pub struct Computed {
     /// orthogonal item cannot take its inline size from the line. Set with
     /// `flex_item` by `render::blocks`; not inherited.
     pub(crate) flex_line_wraps: bool,
+    /// Specified initial color, resolved specially for quirks HTML tables.
+    pub(crate) color_initial: bool,
+    /// DOM identity of this decorating box; never inherited.
+    pub decor_box: u64,
 }

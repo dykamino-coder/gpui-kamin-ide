@@ -17,6 +17,7 @@ mod font_shorthand;
 pub(super) mod font_weight;
 mod gradient_paint;
 mod image_color;
+pub(crate) mod image_function;
 mod radius_mask;
 mod radius_parse;
 mod text_indent;

@@ -137,6 +137,9 @@ pub struct OverlayAt {
     /// `spacers::overlays` на место конечной метки): `InlineCb::id` — ключ
     /// в таблице `inline_box`, края — относительно места куска.
     pub inline_box: Option<InlineCb>,
+    /// The piece is a static-position probe of an absolute box with one
+    /// inset axis (`absolute_atom`): its prepaint gets the line box.
+    pub line_probe: bool,
 }
 
 /// Содержащий блок из фрагментов строчной коробки (CSS 2.1 §10.1 п.4.1;

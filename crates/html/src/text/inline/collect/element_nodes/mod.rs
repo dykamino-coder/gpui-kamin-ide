@@ -1,5 +1,6 @@
 //! Element nodes for collect; split out to keep the owning module within 250 lines.
 
+mod list_item;
 mod special_nodes;
 use special_nodes::special_node;
 
@@ -9,12 +10,11 @@ use crate::text::inline::collect::element_nodes::blank_box::blank_box;
 mod box_paint;
 use crate::text::inline::collect::element_nodes::box_paint::element_style;
 
-use super::collect_with_empty_metrics;
 use crate::dom::Element;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::inline::collect::boundary_spacing::boundary_gap_after_box;
-use crate::text::inline::collect::boundary_spacing::set_boundary_spacing;
+use crate::text::inline::collect::boundary_spacing::set_parent_boundary_spacing;
 use crate::text::inline::collect::overlays::shift_overlays;
 use crate::text::inline::*;
 
@@ -192,7 +192,7 @@ pub(super) fn collect_element(
         INLINE_CB_DEPTH.with(|d| d.set(d.get() + 1));
     }
     crate::text::inline::atom_parent::open(&e.style, inherited);
-    let kids = collect_with_empty_metrics(&e.children, &merged, atom, has_text, case);
+    let kids = list_item::children(e, &merged, atom, has_text, case);
     crate::text::inline::atom_parent::close();
     let kids = if cb_here {
         INLINE_CB_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
@@ -237,5 +237,5 @@ pub(super) fn collect_element(
     // того, что идёт следом, лежит ВНУТРИ текущего узла — значит,
     // и величина его отсюда (css-text-3 §8.2). Ставится всегда, а
     // снимается ниже с последнего куска: за ним границы уже нет.
-    set_boundary_spacing(&mut out[from..], inherited.letter_spacing);
+    set_parent_boundary_spacing(&mut out[from..], inherited.letter_spacing);
 }

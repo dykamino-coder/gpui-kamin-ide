@@ -22,6 +22,16 @@ pub(super) fn wrap_lone_float(
         {
             let mut lone = floaters.remove(0);
             lone.style.flex_shrink = None;
+            // CSS 2.1 10.6.3 in the physical block axis: floats do not
+            // enlarge an ordinary auto-size block. float_tail proves no
+            // enclosing BFC needs this excluded contribution afterwards.
+            if parent.vertical == Some(true)
+                && parent.float_tail
+                && matches!(parent.width, None | Some(Len::Auto))
+                && lone.style.vertical == Some(false)
+            {
+                lone.attrs.push(("kamin-outside-block".into(), "1".into()));
+            }
             // ПРОБОВАЛИ И ОТКАТИЛИ: заодно делать строчный по природе тег
             // блочным при `float: right` (обещание комментария ниже, кода
             // не было). Замерено: приобретено 4, потеряно 5 —

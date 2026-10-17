@@ -1,10 +1,12 @@
 //! Прогоны по кускам: перенос, сдвиги, высота строки, интервалы, оформление, слова, автопробелы.
 
 mod autospace;
+mod bidi_spacing;
 mod position;
 mod spacing;
 pub use crate::text::inline::spans::autospace::autospace_spans;
 pub(super) use crate::text::inline::spans::autospace::ideographic;
+pub use crate::text::inline::spans::bidi_spacing::{bidi_letter_spans, block_letter_spacing};
 pub use crate::text::inline::spans::position::rel_spans;
 pub use crate::text::inline::spans::position::shift_spans;
 pub use crate::text::inline::spans::spacing::letter_spans;
@@ -106,6 +108,7 @@ pub fn line_height_spans(
 pub fn decor_spans(pieces: &[Piece], base: &TextStyle) -> Vec<crate::text::paragraph::DecorSpan> {
     use crate::text::paragraph::{DecorItem, DecorSpan};
     let mut out: Vec<DecorSpan> = Vec::new();
+    let mut shadow_inks = Vec::new();
     let mut at = 0usize;
     let mut broken = true;
     for p in pieces {
@@ -144,6 +147,7 @@ pub fn decor_spans(pieces: &[Piece], base: &TextStyle) -> Vec<crate::text::parag
                             }
                         }
                     }
+                    shadow_inks.push(style.text_shadow_ink);
                     out.push(DecorSpan {
                         range: at..end,
                         items,
@@ -168,6 +172,15 @@ pub fn decor_spans(pieces: &[Piece], base: &TextStyle) -> Vec<crate::text::parag
                 && ni.group.start == item.group.start
             {
                 item.group.end = ni.group.end;
+            }
+        }
+    }
+    // Resolve mask ink after decorated groups are identified: a shadow must
+    // preserve the decorating box's geometry across differently colored runs.
+    for (span, ink) in out.iter_mut().zip(shadow_inks) {
+        if let Some(ink) = ink {
+            for item in &mut span.items {
+                item.decor.color = ink;
             }
         }
     }

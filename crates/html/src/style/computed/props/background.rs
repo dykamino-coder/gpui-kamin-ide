@@ -130,31 +130,12 @@ impl Computed {
                     // `background::source` эти записи опознаёт с самого
                     // начала — до `Computed` они просто не доезжали).
                     self.bg_image = Some(v.to_string());
-                } else if let Some(rest) = v.strip_prefix("image(") {
-                    // `image(<url>? , <color>?)` (css-images-4 §2.4): цвет —
-                    // запасной слой; сплошная заливка выражается градиентом
-                    // из одного цвета.
-                    let inner = rest.rfind(')').map(|i| &rest[..i]).unwrap_or(rest);
-                    let mut url = None;
-                    for part in crate::style::css::split_args(inner) {
-                        let part = part.trim();
-                        if let Some(u) = parse_url(part) {
-                            url = Some(u);
-                        }
-                    }
-                    match url {
-                        Some(u) => self.bg_image = Some(u),
-                        None if parse_image_color(v).is_some() => {
-                            // A color image has no natural dimensions (CSS Images 4
-                            // §2.3). Keep it in the image layer, including currentColor
-                            // until the element's text color has been resolved.
-                            self.bg_image = Some(v.to_string());
-                            self.gradient = None;
-                            self.gradient_raw = None;
-                            self.gradient_current = None;
-                        }
-                        _ => {}
-                    }
+                } else if image_function::arguments(v).is_some() {
+                    // Keep fallback and currentColor until loading and inheritance.
+                    self.bg_image = Some(v.to_string());
+                    self.gradient = None;
+                    self.gradient_raw = None;
+                    self.gradient_current = None;
                 } else if let Some(rest) = v
                     .strip_prefix("image-set(")
                     .or_else(|| v.strip_prefix("-webkit-image-set("))

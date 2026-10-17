@@ -17,6 +17,8 @@ use indicators::range;
 
 mod choice;
 mod metrics;
+mod textarea;
+use textarea::textarea;
 mod options;
 use choice::select;
 use choice::toggle;
@@ -39,7 +41,7 @@ pub fn element(
     opts: &crate::render::RenderOpts,
 ) -> Option<AnyElement> {
     match e.tag.as_str() {
-        "input" => Some(input(e, style)),
+        "input" => Some(input(e, style, opts)),
         "textarea" => Some(textarea(e, style, opts)),
         "select" => Some(select(e, style)),
         "progress" => Some(progress(e, style)),
@@ -52,15 +54,17 @@ fn kind(e: &Element) -> String {
     e.attr("type").unwrap_or("text").to_ascii_lowercase()
 }
 
-fn input(e: &Element, style: &Computed) -> AnyElement {
+fn input(e: &Element, style: &Computed, opts: &crate::render::RenderOpts) -> AnyElement {
     let kind = kind(e);
     // `appearance: none` (css-ui-4 §7.2): a checkbox, radio, range or colour
     // control loses its native widget and is a primitive box painted from its
-    // CSS alone — no mark, track or swatch, no UA size (Blink
+    // CSS alone, with generated children in ordinary flow, no UA size (Blink
     // `LayoutTheme::AdjustStyle` skips the theme part for `none`).
     if style.appearance_none() && matches!(kind.as_str(), "checkbox" | "radio" | "range" | "color")
     {
-        return apply(div(), style).into_any_element();
+        return apply(div(), style)
+            .children(crate::render::blocks(&e.children, style, opts))
+            .into_any_element();
     }
     match kind.as_str() {
         "checkbox" => toggle(e, style, false),
@@ -99,34 +103,6 @@ fn text_field(e: &Element, style: &Computed) -> AnyElement {
                 .into_any_element(),
         )
         .children(caret)
-        .into_any_element()
-}
-
-fn textarea(e: &Element, style: &Computed, opts: &crate::render::RenderOpts) -> AnyElement {
-    let mut text = String::new();
-    crate::render::gather_text_public(&e.children, &mut text);
-    let muted = text.trim().is_empty();
-    // Высота — по числу строк, как `rows` в HTML: без этого поле схлопывается
-    // до одной строки и перестаёт быть похожим на себя.
-    let rows: f32 = e.attr("rows").and_then(|r| r.parse().ok()).unwrap_or(3.0);
-    // Содержимое поля — обычный текст, и считать его обязана та же строчная
-    // раскладка, что и весь остальной текст: у поля работают и сохранённые
-    // пробелы, и выключка, и висящий хвост. Пока внутри стоял простой блок,
-    // всё это проходило мимо (`trailing-space-and-text-alignment`).
-    let body = if muted {
-        let hint = e.attr("placeholder").unwrap_or("").to_string();
-        div()
-            .when_muted(true, style)
-            .child(SharedString::from(hint))
-            .into_any_element()
-    } else {
-        crate::render::paragraph_public(&e.children, style, opts)
-    };
-    let _ = text;
-    field_box(style)
-        .min_h(px(rows * 18.0 + 12.0))
-        .items_start()
-        .child(div().w_full().child(body))
         .into_any_element()
 }
 

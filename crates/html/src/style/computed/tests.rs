@@ -5,6 +5,7 @@ use crate::style::css::Decls;
 use crate::style::css::parse_decls;
 
 mod cascade;
+mod decor_inset;
 
 fn computed(css: &str) -> Computed {
     let mut c = Computed::default();
