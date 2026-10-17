@@ -52,40 +52,27 @@ pub(crate) fn vertical_paragraph(
     // такого поворота первая горизонтальная строка САМА оказывается левой
     // колонкой. Подавать строки снизу вверх тут — второй разворот,
     // ровно он и давал 180° (`block-flow-direction-slr-043` 32.20).
-    let ccw_line = inherited.sideways == Some(true) && inherited.vertical_rl != Some(true);
-    if inherited.vertical_rl != Some(true) && !ccw_line {
+    let wm = inherited.wm();
+    let ccw_line = wm.line_turn() == crate::style::computed::writing_mode::Turn::CounterClockwise;
+    if wm.lines_reversed() {
         horizontal.lines_reversed = Some(true);
     }
-    // Поворот — приём отрисовки ТЕКСТА. Замещаемое содержимое (картинка,
-    // элемент формы) вертикальное письмо не поворачивает никогда: абзац
-    // из одной картинки обязан выглядеть так же, как в горизонтальном
-    // письме (`wm-propagation-body-*`: подпись теста — рисунок, и он
-    // ложился боком).
+    // Replaced and atomic inlines are counter-rotated inside the turned line
+    // (`rotated_atom::physical`), so a line of atoms only is turned like any
+    // other: its atoms advance along the vertical inline axis and wrap at the
+    // box's inline size (css-writing-modes-4 §6.4 Abstract-Physical Mapping).
     let mut plain = String::new();
     gather_text(nodes, &mut plain);
     // Неразрывный пробел — ТЕКСТ: он даёт строку и её толщину
-    // (`<td>&nbsp;</td>` в вертикальном ряду, ch-units-vrl-005), а
-    // `trim()` съедал его как юникод-пробел, и абзац уходил
-    // горизонтальным путём шириной в один пробел.
-    if plain.trim().is_empty() && !plain.contains('\u{a0}') {
-        // Pure-atom paragraphs paint physical boxes without a text transform.
+    // (`<td>&nbsp;</td>` в вертикальном ряду, ch-units-vrl-005).
+    if plain.trim().is_empty() && !plain.contains('\u{a0}') && !turned_atom_line(nodes, inherited) {
+        // A single atom cannot wrap, and an orthogonal box with an automatic
+        // inline size gets its line length from the parent's layout, which the
+        // turned paragraph cannot query; both keep the physical row.
         let para = rotated_atom::without_text_turn(|| paragraph(nodes, &horizontal, opts));
-        // Строка из одних атомов (картинка, пустая строчная коробка) идёт
-        // горизонтальным путём и ложится у ВЕРХНЕГО края коробки абзаца.
-        // Верно это, только пока inline-start — верх. Таблица
-        // Abstract-Physical Mapping (css-writing-modes-4,
-        // Overview.bs:1877-1888) даёт `sideways-lr` line-left = НИЗ, а
-        // `direction: rtl` ставит inline-start на line-right
-        // (Overview.bs:1673-1675) — у `vertical-*`/`sideways-rl` это тоже
-        // НИЗ. Повёрнутый текст это уже знает (`VerticalText::ccw`), а
-        // безтекстовая ветка — нет: подпись-картинка стояла у верха
-        // (`wm-propagation-body-035/039/043/051`,
-        // `block-flow-direction-slr-066`; при rtl —
-        // `overconstrained-rel-pos-rtl-*`). Коробка абзаца растянута по
-        // строчной оси рядом блочного потока, и колонка с прижимом к
-        // концу ставит ряд к её низу; строки-опоры у ряда из одних атомов
-        // нет (`inline::as_wrapped_row`), поэтому низ картинки ложится
-        // ровно на низ коробки.
+        // The row sits at the box's inline-start, which is the BOTTOM for
+        // `sideways-lr` and for `direction: rtl` (§6.4 Abstract-Physical
+        // Mapping: `wm-propagation-body-035`, `overconstrained-rel-pos-rtl-*`).
         let from_bottom = ccw_line != (inherited.rtl == Some(true));
         if from_bottom && nodes.iter().any(|n| matches!(n, Node::Element(_))) {
             return div()
@@ -97,6 +84,10 @@ pub(crate) fn vertical_paragraph(
         }
         return para;
     }
+    // A line of atoms only in a box whose inline size its parent decides
+    // (stretch, track) wraps at the length prepaint lays it out with
+    // (`VerticalText::prepaint`), not at a fixed fallback width.
+    let atom_line = plain.trim().is_empty() && !plain.contains('\u{a0}');
     let mut flow = horizontal.clone();
     flow.para_vertical = Some(inherited.vertical_rl == Some(true));
     let fallback = inherited.ortho_limit.unwrap_or(opts.viewport.1);
@@ -160,7 +151,7 @@ pub(crate) fn vertical_paragraph(
         } else {
             inner
         }
-    } else if free_inline || col_min {
+    } else if free_inline || col_min || (atom_line && !style_definite_inline(inherited)) {
         div().max_w(px(limit)).child(inner).into_any_element()
     } else {
         div().w(px(limit)).child(inner).into_any_element()
@@ -179,7 +170,7 @@ pub(crate) fn vertical_paragraph(
     let central = inherited.sideways != Some(true) && inherited.text_sideways != Some(true);
     let vt = crate::text::vertical::VerticalText::new(inner)
         .counter_clockwise(ccw_line)
-        .lines_left_first(inherited.vertical_rl != Some(true) && !ccw_line)
+        .lines_left_first(wm.lines_reversed())
         .first_line(measure_font(inherited, opts), px(em), lh, central)
         // Замер по МИНИМАЛЬНОМУ содержимому: заявленная высота повёрнутой
         // коробки становится вкладом ячейки в дорожку её колонки
@@ -213,4 +204,25 @@ pub(crate) fn vertical_paragraph(
         vt
     };
     vt.into_any_element()
+}
+
+/// Several atoms share a vertical line and wrap along the inline (physical vertical)
+/// axis when its length is known: the box continues its parent's writing mode, its
+/// inline size is authored, or a single-line flex/grid container decides it (the
+/// turned line then wraps at the length prepaint lays it out with).
+fn turned_atom_line(nodes: &[Node], style: &Computed) -> bool {
+    let atoms = nodes
+        .iter()
+        .filter(|n| matches!(n, Node::Element(_)))
+        .count();
+    let wm = crate::style::computed::writing_mode::WritingMode::containing_block(style);
+    let parallel = !style.wm().is_orthogonal_to(wm);
+    atoms >= 2
+        && (parallel
+            || style_definite_inline(style)
+            || ((style.flex_item || style.parent_flex_grid) && !style.flex_line_wraps))
+}
+
+fn style_definite_inline(style: &Computed) -> bool {
+    matches!(style.height, Some(Len::Px(_)) | Some(Len::Pct(_)))
 }

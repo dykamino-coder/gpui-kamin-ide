@@ -43,18 +43,20 @@ pub(crate) fn absorb_margin(e: &mut Element, tail_side: bool, reverse: bool) -> 
                     c.style.position,
                     Some(crate::style::computed::Position::Absolute)
                         | Some(crate::style::computed::Position::Fixed)
-                ) && c.style.display.is_none()
-                    // Схлопка живёт в ОДНОМ потоке: ребёнок со своим
-                    // письмом заводит другой и границу запечатывает.
-                    && c.style.vertical.is_none()
-                    && c.style.vertical_rl.is_none() =>
+                ) && c.style.display.is_none() =>
             {
                 Some(c)
             }
             _ => None,
         });
         if tail_side { it.last() } else { it.next() }
-    };
+    }
+    // Схлопка живёт в ОДНОМ потоке: ребёнок со своим письмом заводит другой
+    // и границу запечатывает. He still is the EDGE child: skipping him made
+    // an earlier sibling's end margin the parent's and dropped it from
+    // between the two (`available-size-020`: an orthogonal `article` after a
+    // `p` lost the `p`'s block-end margin).
+    .filter(|c| c.style.vertical.is_none() && c.style.vertical_rl.is_none());
     match edge_child {
         Some(c) => {
             let inner = absorb_margin(c, tail_side, reverse);

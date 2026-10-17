@@ -82,7 +82,11 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
             e.style.rtl = was_rtl;
             e.style.sideways = was_sw;
             // Physical margins are final here; collapsing rewrites them later.
-            if e.style.clip_ref == Some(1) {
+            // An orthogonal flow root keeps them too: its inline size is the
+            // fallback available space minus its own inline-axis margins
+            // (css-writing-modes-4 §7.3), which collapsing may hoist away.
+            let orthogonal = own.0.unwrap_or(false) != mode.0.unwrap_or(false);
+            if e.style.clip_ref == Some(1) || orthogonal {
                 e.style.own_margin = Some(e.style.margin);
             }
             walk(&mut e.children, own);
