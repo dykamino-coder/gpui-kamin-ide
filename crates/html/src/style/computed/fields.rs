@@ -1585,4 +1585,24 @@ pub struct Computed {
     pub align_content_unsafe: bool,
     /// Generated inline controls have no bytes in first-line source offsets.
     pub inline_control: bool,
+    /// Definite content inline size (physical height) of a box in vertical flow: the basis of
+    /// inline-axis percentages of its children (`layout::writing_mode::inline_definite`).
+    /// Set by `render::element`; not inherited.
+    pub(crate) inline_definite: Option<f32>,
+    /// A piece of a float-band host (`layout::float::band_flow_host`): the host resolves its
+    /// percentages against the band layout and places it; not inherited.
+    pub(crate) band_kid: bool,
+    /// Namespace identity and the winning MathML inner display type.
+    pub(crate) mathml: bool,
+    pub(crate) math_layout: Option<Display>,
+    pub(crate) math_compact: Option<bool>,
+    pub(crate) math_shift: Option<bool>,
+    pub(crate) math_depth: Option<super::math_style::Depth>,
+    pub(crate) math_level: i32,
+    pub(crate) math_font_size: bool,
+    pub(crate) math_operator_form: Option<u8>,
+    /// SVG 2 geometry properties `cx`, `cy`, `r`, `rx`, `ry`, `d` from the
+    /// cascade, already in attribute syntax (`svg::serialize::geometry`);
+    /// not inherited.
+    pub svg_geometry: Vec<(&'static str, String)>,
 }

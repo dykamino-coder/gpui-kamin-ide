@@ -86,6 +86,13 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
     let gutters = crate::interactive::scroll_extent::classic::model(e.node_id, &merged);
     merged.scroll.used = gutters.used;
     merged.scroll.native = gutters.native;
+    crate::layout::writing_mode::inline_definite::resolve_percentages(&mut merged, inherited);
+    merged.inline_definite = crate::layout::writing_mode::inline_definite::own(
+        &merged,
+        inherited,
+        e.tag == "html",
+        opts.viewport.1,
+    );
     if e.tag == "html-viewport" {
         merged.icb_scroll_insets = Some(gutters.used);
     }

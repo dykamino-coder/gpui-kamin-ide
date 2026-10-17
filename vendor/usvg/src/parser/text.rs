@@ -910,6 +910,11 @@ fn convert_writing_mode(text_node: SvgNode) -> WritingMode {
 }
 
 fn path_length(path: &tiny_skia_path::Path) -> f64 {
+    path_length_with(path, 0.5)
+}
+
+/// The arc length of `path`, each segment within `accuracy` user units.
+pub(crate) fn path_length_with(path: &tiny_skia_path::Path, accuracy: f64) -> f64 {
     let mut prev_mx = path.points()[0].x;
     let mut prev_my = path.points()[0].y;
     let mut prev_x = prev_mx;
@@ -955,7 +960,7 @@ fn path_length(path: &tiny_skia_path::Path) -> f64 {
             }
         };
 
-        length += curve.arclen(0.5);
+        length += curve.arclen(accuracy);
         prev_x = curve.p3.x as f32;
         prev_y = curve.p3.y as f32;
     }

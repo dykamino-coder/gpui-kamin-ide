@@ -39,13 +39,23 @@ pub fn parse_media(html: &str, extra_css: &str, mut media: Media) -> Vec<Node> {
     // и у страницы свой корень, и чужие четыре точки на кегль испортили бы
     // весь разбор. Пишет их `walk` ниже, на элементе `html`.
     crate::style::values::value::reset_root_metrics();
-    let html = expand_xhtml_self_closing(html);
-    let dom = html5ever::parse_document(RcDom::default(), Default::default())
-        .from_utf8()
-        .read_from(&mut html.as_bytes())
-        .unwrap_or_else(|_| {
-            html5ever::parse_document(RcDom::default(), Default::default()).one("")
-        });
+    // XML document (`super::xml`): XML parser, no HTML tree-builder fixups.
+    let xml = super::xml::is_xml();
+    let html = if xml {
+        std::borrow::Cow::Borrowed(html)
+    } else {
+        expand_xhtml_self_closing(html)
+    };
+    let dom = if xml {
+        super::xml::xml_dom(&html)
+    } else {
+        html5ever::parse_document(RcDom::default(), Default::default())
+            .from_utf8()
+            .read_from(&mut html.as_bytes())
+            .unwrap_or_else(|_| {
+                html5ever::parse_document(RcDom::default(), Default::default()).one("")
+            })
+    };
     if let Some(dark) = super::page_scheme::preference(&dom.document, media.dark) {
         media.dark = dark;
     }

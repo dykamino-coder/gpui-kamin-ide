@@ -7,6 +7,7 @@ pub mod float;
 pub mod fragment;
 pub mod grid;
 pub mod list;
+pub(crate) mod mathml;
 pub mod multicol;
 pub mod page;
 pub mod positioned;

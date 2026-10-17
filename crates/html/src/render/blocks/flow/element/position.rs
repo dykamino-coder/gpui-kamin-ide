@@ -6,7 +6,6 @@ use crate::interactive::sticky::sticky_wrap;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::writing_mode::vertical_hug;
 use crate::paint::effects::grouped::grouped;
-use crate::paint::effects::transform::transformed;
 use crate::paint::stacking::{blends_inside, stacking_context};
 use crate::render::blocks::flow::BelowRun;
 use crate::render::*;
@@ -93,15 +92,9 @@ pub(crate) fn position_element(
         // `PaintLayer::HasNonIsolatedDescendantWithBlendMode`.
         let mut iso = e.style.clone();
         iso.isolate = Some(true);
-        grouped(
-            transformed(animated(e, inherited, opts), &e.style, inherited),
-            &iso,
-        )
+        grouped(animated(e, inherited, opts), &iso)
     } else {
-        grouped(
-            transformed(animated(e, inherited, opts), &e.style, inherited),
-            &e.style,
-        )
+        grouped(animated(e, inherited, opts), &e.style)
     };
     let built = if e.style.root_box && e.style.canvas_bg {
         crate::paint::background::record_root_box(built, opts.doc_salt, &e.style, opts.base_size())
