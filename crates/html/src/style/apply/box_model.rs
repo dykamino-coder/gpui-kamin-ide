@@ -7,6 +7,7 @@ use gpui::{Div, Styled, px};
 
 mod clip_position;
 mod overflow_inset;
+use crate::style::computed::FontCx;
 use clip_position::box_clip_position;
 use overflow_inset::box_overflow;
 
@@ -190,7 +191,7 @@ pub(crate) fn radius_px(c: &Computed, l: Option<Len>) -> Option<f32> {
         Len::Pct(p) if base.is_nan() => Some(9999.0 * p.min(1.0)),
         Len::Pct(p) => Some(base * p),
         // Шрифтовые единицы — от запасного кегля, единой точкой.
-        l => crate::text::metrics::fallback_len_px(l, "", 16.0),
+        l => l.to_px(None, FontCx::FALLBACK),
     }
 }
 

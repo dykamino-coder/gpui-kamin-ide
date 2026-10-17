@@ -11,6 +11,7 @@ pub(crate) use wrapper::grouped_wrapper;
 
 use crate::paint::effects::mask::{PAINT_VIEWPORT, resolve_mask_refs};
 use crate::style::computed::Computed;
+use crate::style::computed::FontCx;
 use crate::style::values::value::Len;
 use gpui::AnyElement;
 
@@ -60,9 +61,7 @@ pub(super) fn grouped_with(
             Len::Px(_) | Len::Pct(_) => l,
             Len::Vw(k) => Len::Px(k * poly_vp.0),
             Len::Vh(k) => Len::Px(k * poly_vp.1),
-            other => crate::text::metrics::fallback_len_px(other, &poly_family, poly_font)
-                .map(Len::Px)
-                .unwrap_or(other),
+            other => other.font_units_to_px(FontCx::new(&poly_family, poly_font)),
         }
     };
     let polygon_px: Vec<(Len, Len)> = c

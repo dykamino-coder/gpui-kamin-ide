@@ -6,6 +6,7 @@ use crate::layout::replaced::limits::atom_base_font;
 use crate::paint::stacking::stacking_context;
 use crate::render::{RenderOpts, inline_level_box};
 use crate::style::computed::Computed;
+use crate::style::computed::FontCx;
 use crate::style::values::value::Len;
 
 pub(super) fn border_spacing_of(
@@ -95,7 +96,7 @@ pub(super) fn table_spacing(
             let px_of = |l: Option<Len>| match l {
                 Some(Len::Px(v)) => v,
                 Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_) | Len::Ic(_))) => {
-                    crate::text::metrics::fallback_len_px(l, "", em).unwrap_or(0.0)
+                    l.to_px(None, FontCx::with_font_px(em)).unwrap_or(0.0)
                 }
                 _ => 0.0,
             };
