@@ -3,8 +3,7 @@
 
 use gpui::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, Hitbox, InspectorElementId,
-    IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
-    Window, px,
+    IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, Window, px,
 };
 use std::rc::Rc;
 
@@ -164,17 +163,7 @@ impl Element for Resizable {
                 window.refresh();
             });
 
-            let up = st.clone();
-            window.on_mouse_event(move |_e: &MouseUpEvent, phase, _window, _cx| {
-                if !phase.bubble() {
-                    return;
-                }
-                let mut s = up.get();
-                if s.dragging {
-                    s.dragging = false;
-                    up.set(s);
-                }
-            });
+            super::drag::release_on_mouse_up(st.clone(), |s| &mut s.dragging, window);
 
             ((), st.get())
         });

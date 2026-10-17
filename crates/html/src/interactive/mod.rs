@@ -17,4 +17,5 @@ pub(crate) mod scrollbar_gutter;
 
 pub(crate) mod selection;
 
+mod drag;
 pub(crate) mod hitbox;

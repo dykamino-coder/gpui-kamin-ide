@@ -1,8 +1,8 @@
 //! Общие прогоны и состояние выделения текста мышью.
 
 use gpui::{
-    GlobalElementId, Hsla, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
-    Point, TextRun, Window,
+    GlobalElementId, Hsla, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, Point, TextRun,
+    Window,
 };
 
 /// Границы выделения в байтах и состояние перетаскивания между кадрами.
@@ -90,17 +90,7 @@ pub(crate) fn track_selection(
             }
         });
 
-        let up = st.clone();
-        window.on_mouse_event(move |_e: &MouseUpEvent, phase, _window, _cx| {
-            if !phase.bubble() {
-                return;
-            }
-            let mut s = up.get();
-            if s.dragging {
-                s.dragging = false;
-                up.set(s);
-            }
-        });
+        super::drag::release_on_mouse_up(st.clone(), |s| &mut s.dragging, window);
 
         ((), st.get())
     });
