@@ -15,7 +15,12 @@ mod tests;
 /// Проход идёт после каскада и после распространения письма с `<body>` —
 /// то есть в единственной точке, где письмо узла уже окончательно.
 pub(super) fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
-    fn walk(nodes: &mut [Node], mode: (Option<bool>, Option<bool>, Option<bool>, Option<bool>)) {
+    type Mode = (
+        Option<crate::style::computed::writing_mode::WritingModeKw>,
+        Option<crate::style::computed::writing_mode::WritingModeKw>,
+        Option<bool>,
+    );
+    fn walk(nodes: &mut [Node], mode: Mode) {
         for n in nodes.iter_mut() {
             let Node::Element(e) = n else { continue };
             // Письмо и направление наследуются; свои значения сильнее.
@@ -27,28 +32,20 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
             // края на верхний (эталон `initial-letter-block-position-
             // margins-slr-ref` ставил `margin-inline-start: 15px` сверху).
             let own = (
-                e.style.vertical.or(mode.0),
-                e.style.vertical_rl.or(mode.1),
+                e.style.writing_mode.or(mode.0),
+                e.style.flat_mode.or(mode.1),
                 e.style.rtl.or(mode.2),
-                e.style.sideways.or(mode.3),
             );
-            let (was_v, was_rl, was_rtl, was_sw) = (
-                e.style.vertical,
-                e.style.vertical_rl,
-                e.style.rtl,
-                e.style.sideways,
-            );
-            e.style.vertical = own.0;
-            e.style.vertical_rl = own.1;
-            e.style.rtl = own.2;
-            e.style.sideways = own.3;
+            let parent_vertical = mode.0.map(|m| m.is_vertical());
+            let was = (e.style.writing_mode, e.style.flat_mode, e.style.rtl);
+            (e.style.writing_mode, e.style.flat_mode, e.style.rtl) = own;
             // Табличность ячейки на этом шаге держится ТЕГОМ:
             // `Display::TableCell` приходит только из авторского CSS
             // (замеренный откат в шапке `resolve_logical`), поэтому
             // проверяются оба признака.
             let is_cell = matches!(e.tag.as_str(), "td" | "th")
                 || e.style.display == Some(crate::style::computed::Display::TableCell);
-            e.style.resolve_logical(mode.0, is_cell);
+            e.style.resolve_logical(parent_vertical, is_cell);
             // Слои `:hover`, `::first-letter` и `::first-line` — ТЕМ ЖЕ
             // проходом. Слой собирается копией стиля элемента ДО этого
             // прохода (`dom.rs:2473 layer()`), поэтому логические стороны
@@ -65,37 +62,28 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
             .into_iter()
             .flatten()
             {
-                let (lv, lrl, lrtl, lsw) =
-                    (layer.vertical, layer.vertical_rl, layer.rtl, layer.sideways);
-                layer.vertical = own.0;
-                layer.vertical_rl = own.1;
-                layer.rtl = own.2;
-                layer.sideways = own.3;
-                layer.resolve_logical(mode.0, is_cell);
-                layer.vertical = lv;
-                layer.vertical_rl = lrl;
-                layer.rtl = lrtl;
-                layer.sideways = lsw;
+                let kept = (layer.writing_mode, layer.flat_mode, layer.rtl);
+                (layer.writing_mode, layer.flat_mode, layer.rtl) = own;
+                layer.resolve_logical(parent_vertical, is_cell);
+                (layer.writing_mode, layer.flat_mode, layer.rtl) = kept;
             }
             // Унаследованное обратно снимается: наследованием занимается
             // сборщик дерева, и оставленное здесь значение завело бы узлу
             // собственную коробку (см. `has_box_style`).
-            e.style.vertical = was_v;
-            e.style.vertical_rl = was_rl;
-            e.style.rtl = was_rtl;
-            e.style.sideways = was_sw;
+            (e.style.writing_mode, e.style.flat_mode, e.style.rtl) = was;
             // Physical margins are final here; collapsing rewrites them later.
             // An orthogonal flow root keeps them too: its inline size is the
             // fallback available space minus its own inline-axis margins
             // (css-writing-modes-4 §7.3), which collapsing may hoist away.
-            let orthogonal = own.0.unwrap_or(false) != mode.0.unwrap_or(false);
+            let orthogonal =
+                own.0.is_some_and(|m| m.is_vertical()) != parent_vertical.unwrap_or(false);
             if e.style.clip_ref == Some(1) || orthogonal {
                 e.style.own_margin = Some(e.style.margin);
             }
             walk(&mut e.children, own);
         }
     }
-    walk(&mut nodes, (None, None, None, None));
+    walk(&mut nodes, (None, None, None));
     // `zoom` (css-viewport-1): длины под зумом домножаются ЗДЕСЬ, отдельным
     // проходом по собственным стилям — до слияния и до раскладки, а не в
     // `inline::inherit` (см. ★ перед ней). Идёт после `walk`: логические

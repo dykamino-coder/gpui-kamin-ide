@@ -58,11 +58,10 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     // Направление письма наследуется: `writing-mode` ставят на `body`, а ось
     // потока обязана смениться у КАЖДОГО вложенного блока — иначе вертикально
     // становится только сам `body`, а его дети снова текут вниз.
-    c.vertical = own.vertical.or(parent.vertical);
-    c.vertical_rl = own.vertical_rl.or(parent.vertical_rl);
-    c.sideways = own.sideways.or(parent.sideways);
+    c.writing_mode = own.writing_mode.or(parent.writing_mode);
+    c.flat_mode = own.flat_mode.or(parent.flat_mode);
     c.combine_upright = own.combine_upright.or(parent.combine_upright);
-    c.rotated_line = own.rotated_line.or(parent.rotated_line);
+    c.turned_line = own.turned_line || parent.turned_line;
     c.ortho_limit = own.ortho_limit.or(parent.ortho_limit);
     c.cq_box = parent.container_box_for_children();
     c.orthogonal_scrollport = parent.orthogonal_scrollport;

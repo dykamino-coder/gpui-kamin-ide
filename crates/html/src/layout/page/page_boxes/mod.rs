@@ -89,11 +89,10 @@ fn page_margin_boxes(
         let resolved = inherit(&ctx_style, &own);
         // CSS Logical 1 §4: generated margin boxes also map logical properties
         // through their own computed writing mode, after page-context inheritance.
-        own.vertical = resolved.vertical;
-        own.vertical_rl = resolved.vertical_rl;
-        own.sideways = resolved.sideways;
+        own.writing_mode = resolved.writing_mode;
+        own.flat_mode = resolved.flat_mode;
         own.rtl = resolved.rtl;
-        own.resolve_logical(ctx_style.vertical, false);
+        own.resolve_logical(ctx_style.vertical_decl(), false);
         let fs = match resolved.font_size {
             Some(Len::Px(v)) => v,
             _ => 16.0,

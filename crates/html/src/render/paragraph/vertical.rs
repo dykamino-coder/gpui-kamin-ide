@@ -39,10 +39,11 @@ pub(crate) fn vertical_paragraph(
         return upright_paragraph(nodes, inherited, opts);
     }
     let mut horizontal = inherited.clone();
-    horizontal.vertical = None;
+    horizontal.flat_mode = horizontal.flow_mode();
+    horizontal.writing_mode = None;
     // Пометка для `text-combine-upright`: кускам внутри повёрнутого
     // абзаца нужен контр-поворот (см. atom-ветку ниже).
-    horizontal.rotated_line = Some(true);
+    horizontal.turned_line = true;
     // `vertical-lr`: колонки идут слева направо — строки подаются снизу
     // вверх, чтобы после поворота ПО ЧАСОВОЙ первая оказалась левой (у
     // vertical-rl порядок родной: первая строка правой колонкой).

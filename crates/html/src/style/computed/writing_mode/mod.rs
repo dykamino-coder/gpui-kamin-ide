@@ -15,6 +15,9 @@
 //! (`block_rl()`, `sideways()`), and records whether the box sits in a turned line (`turned()`).
 use super::Computed;
 
+mod keyword;
+pub(crate) use keyword::WritingModeKw;
+
 /// How a horizontally typeset line is turned to become the vertical line.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Turn {
@@ -47,7 +50,7 @@ impl Side {
 
 /// The used writing mode and inline base direction of a box.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct WritingMode {
+pub struct WritingMode {
     vertical: bool,
     /// Block flow right-to-left (`vertical-rl`, `sideways-rl`), also when laid flat.
     rl: bool,
@@ -71,11 +74,12 @@ impl WritingMode {
     }
 
     pub(crate) fn of(style: &Computed) -> Self {
+        let flow = style.writing_mode.or(style.flat_mode).unwrap_or_default();
         Self {
-            vertical: style.vertical == Some(true),
-            rl: style.vertical_rl == Some(true),
-            sideways: style.sideways == Some(true),
-            turned: style.rotated_line == Some(true),
+            vertical: style.writing_mode.is_some_and(WritingModeKw::is_vertical),
+            rl: flow.is_rl(),
+            sideways: flow.is_sideways(),
+            turned: style.turned_line,
             rtl: style.rtl == Some(true),
         }
     }
@@ -93,12 +97,12 @@ impl WritingMode {
 
     /// Laid out vertically in the current coordinate space: a vertical mode, except inside a
     /// laid-flat clone where the box did not declare its own mode.
-    pub(crate) fn vertical(self) -> bool {
+    pub fn vertical(self) -> bool {
         self.vertical
     }
 
     /// The writing mode's block flow goes right-to-left (`vertical-rl`, `sideways-rl`).
-    pub(crate) fn block_rl(self) -> bool {
+    pub fn block_rl(self) -> bool {
         self.rl
     }
 
@@ -113,7 +117,7 @@ impl WritingMode {
     }
 
     /// `direction: rtl`.
-    pub(crate) fn rtl(self) -> bool {
+    pub fn rtl(self) -> bool {
         self.rtl
     }
 
@@ -167,8 +171,30 @@ impl WritingMode {
 
 impl Computed {
     /// The one way to read this style's writing mode and direction.
-    pub(crate) fn wm(&self) -> WritingMode {
+    pub fn wm(&self) -> WritingMode {
         WritingMode::of(self)
+    }
+
+    /// The `writing-mode` this style typesets with, declared or laid flat (`None`: not
+    /// declared anywhere up the merge chain).
+    pub(crate) fn flow_mode(&self) -> Option<WritingModeKw> {
+        self.writing_mode.or(self.flat_mode)
+    }
+
+    /// Whether a `writing-mode` applies to this style and is vertical (`None`: none declared
+    /// on the own style, or up the merge chain of a merged one).
+    pub(crate) fn vertical_decl(&self) -> Option<bool> {
+        self.writing_mode.map(WritingModeKw::is_vertical)
+    }
+
+    /// Like `vertical_decl`, for the block flow of the mode typeset (laid flat included).
+    pub(crate) fn rl_decl(&self) -> Option<bool> {
+        self.flow_mode().map(WritingModeKw::is_rl)
+    }
+
+    /// Like `rl_decl`, for `sideways-*`.
+    pub(crate) fn sideways_decl(&self) -> Option<bool> {
+        self.flow_mode().map(WritingModeKw::is_sideways)
     }
 }
 

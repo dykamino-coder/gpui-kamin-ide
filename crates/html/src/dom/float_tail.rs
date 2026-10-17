@@ -48,7 +48,7 @@ fn descend(parent: &mut crate::dom::Element, vertical: bool) {
     let Node::Element(child) = &mut parent.children[last] else {
         return;
     };
-    let child_vertical = child.style.vertical.unwrap_or(vertical);
+    let child_vertical = child.style.vertical_decl().unwrap_or(vertical);
     // Writing Modes 3 §3.2: a box orthogonal to its parent establishes an
     // independent formatting context, as do flex and grid items.
     if item_parent

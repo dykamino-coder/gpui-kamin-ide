@@ -222,7 +222,11 @@ mod tests {
             wrapper_width_keyword(&style),
             Some(CssSizingKeyword::MaxContent)
         );
-        style.vertical = Some(true);
+        style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true,
+            style.wm().block_rl(),
+            style.wm().sideways(),
+        ));
         assert_eq!(wrapper_width_keyword(&style), None);
     }
 }

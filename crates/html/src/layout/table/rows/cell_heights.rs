@@ -23,7 +23,7 @@ pub(super) fn resolve_cell_heights(
         // расхождение путей резолва div-эмуляции, вернуться при
         // унификации resolve_em).
         let upright = row.style.upright.or(inherited.upright) == Some(true);
-        let vertical = row.style.vertical.or(inherited.vertical) == Some(true);
+        let vertical = row.style.vertical_decl().or(inherited.vertical_decl()) == Some(true);
         let base = match inherited.font_size {
             Some(Len::Px(v)) => v,
             _ => opts.base_size(),
@@ -75,9 +75,9 @@ pub(super) fn resolve_cell_heights(
     // line-height 100).
     if cell
         .style
-        .vertical
-        .or(row.style.vertical)
-        .or(inherited.vertical)
+        .vertical_decl()
+        .or(row.style.vertical_decl())
+        .or(inherited.vertical_decl())
         == Some(true)
         && cell.style.min_width.is_none()
         && cell.style.width.is_none()

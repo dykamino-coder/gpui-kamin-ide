@@ -38,7 +38,9 @@ mod tests {
     #[test]
     fn vertical_intrinsic_modes_use_text_contributions_without_viewport_clamping() {
         let mut style = Computed {
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             ..Computed::default()
         };
         for (height, expected) in [
@@ -59,16 +61,23 @@ mod tests {
     #[test]
     fn auto_fixed_horizontal_and_containment_do_not_claim_text_intrinsics() {
         let mut style = Computed {
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             ..Computed::default()
         };
         assert!(constraint(&style, 600.0).is_none());
         style.height = Some(Len::Px(100.0));
         assert!(constraint(&style, 600.0).is_none());
         style.height = Some(Len::MinContent);
-        style.vertical = None;
+        style.flat_mode = style.flow_mode();
+        style.writing_mode = None;
         assert!(constraint(&style, 600.0).is_none());
-        style.vertical = Some(true);
+        style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true,
+            style.wm().block_rl(),
+            style.wm().sideways(),
+        ));
         style.contain_size = Some(true);
         assert!(constraint(&style, 600.0).is_none());
     }

@@ -40,8 +40,14 @@ pub(super) fn policy(nodes: &[Node]) -> Option<Computed> {
     }) {
         let body_style = crate::style::cascade::inherit::inherit_unpainted(&c, &body.style);
         c.rtl = body_style.rtl;
-        c.vertical = body_style.vertical;
-        c.vertical_rl = body_style.vertical_rl;
+        // The viewport takes the block flow of the body's mode, not `sideways`.
+        c.writing_mode = body_style.writing_mode.map(|m| {
+            crate::style::computed::writing_mode::WritingModeKw::new(
+                m.is_vertical(),
+                m.is_rl(),
+                false,
+            )
+        });
         if visible(c.overflow_x)
             && visible(c.overflow_y)
             && !matches!(body.style.display, Some(Display::None | Display::Contents))
@@ -85,8 +91,7 @@ pub(super) fn wrap(
         overflow_x: c.overflow_x,
         overflow_y: c.overflow_y,
         rtl: c.rtl,
-        vertical: c.vertical,
-        vertical_rl: c.vertical_rl,
+        writing_mode: c.writing_mode,
         scroll: c.scroll,
         viewport_unit_insets: c.viewport_unit_insets,
         ..Computed::default()

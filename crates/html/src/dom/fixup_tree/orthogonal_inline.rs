@@ -32,8 +32,8 @@ pub(crate) fn orthogonal_inlines_become_flow_roots(
     for node in nodes.iter_mut() {
         let Node::Element(e) = node else { continue };
         let st = &mut e.style;
-        // `writing-mode` sets all three fields together; it is inherited.
-        let mode = match st.vertical {
+        // `writing-mode` is inherited.
+        let mode = match st.vertical_decl() {
             Some(vertical) => (vertical, st.wm().block_rl(), st.wm().sideways()),
             None => parent,
         };

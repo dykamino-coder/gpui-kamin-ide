@@ -34,7 +34,9 @@ mod tests {
     fn free_absolute_inline_size_uses_intrinsics_instead_of_zero() {
         let style = Computed {
             position: Some(Position::Absolute),
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             ..Computed::default()
         };
         let c = constraint(&style, 600.0).unwrap();
@@ -52,7 +54,9 @@ mod tests {
     fn two_auto_size_insets_and_parent_layout_keep_their_contracts() {
         let mut style = Computed {
             position: Some(Position::Absolute),
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             ..Computed::default()
         };
         style.height = Some(Len::Px(200.0));
@@ -74,7 +78,9 @@ mod tests {
     fn definite_absolute_inline_size_replaces_fallback_before_alignment() {
         let mut style = Computed {
             position: Some(Position::Absolute),
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             rtl: Some(true),
             height: Some(Len::Px(80.0)),
             ..Computed::default()

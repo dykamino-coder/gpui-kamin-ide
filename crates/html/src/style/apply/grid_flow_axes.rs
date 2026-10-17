@@ -37,9 +37,9 @@ mod tests {
             (true, true, true, false, [true, false]),
         ] {
             let c = Computed {
-                vertical: Some(vertical),
-                vertical_rl: Some(rl),
-                sideways: Some(sideways),
+                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                    vertical, rl, sideways,
+                )),
                 rtl: Some(rtl),
                 ..Computed::default()
             };
@@ -58,18 +58,23 @@ mod tests {
     #[test]
     fn upright_uses_ltr_only_in_vertical_writing() {
         let mut c = Computed {
-            vertical: Some(true),
-            vertical_rl: Some(false),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             rtl: Some(true),
             upright: Some(true),
             ..Computed::default()
         };
         assert_eq!(reversed(&c), [false, false]);
-        c.vertical = Some(false);
+        c.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            false,
+            c.wm().block_rl(),
+            c.wm().sideways(),
+        ));
         assert_eq!(reversed(&c), [true, false]);
-        c.vertical = Some(true);
-        c.sideways = Some(true);
-        c.vertical_rl = Some(true);
+        c.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true, true, true,
+        ));
         assert_eq!(reversed(&c), [true, true]);
     }
 }

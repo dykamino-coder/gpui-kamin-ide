@@ -28,7 +28,7 @@ pub(super) fn wrap_lone_float(
             if parent.wm().vertical()
                 && parent.float_tail
                 && matches!(parent.width, None | Some(Len::Auto))
-                && lone.style.vertical == Some(false)
+                && lone.style.vertical_decl() == Some(false)
             {
                 lone.attrs.push(("kamin-outside-block".into(), "1".into()));
             }

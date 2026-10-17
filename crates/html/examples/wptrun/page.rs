@@ -82,11 +82,8 @@ impl Render for Page {
                     _ => None,
                 })
                 .map(|e| {
-                    (
-                        e.style.vertical == Some(true),
-                        e.style.vertical_rl == Some(true),
-                        e.style.rtl == Some(true),
-                    )
+                    let wm = e.style.wm();
+                    (wm.vertical(), wm.block_rl(), wm.rtl())
                 })
                 .unwrap_or((false, false, false));
             let rtl = root_wm.2;

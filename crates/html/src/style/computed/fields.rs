@@ -864,19 +864,9 @@ pub struct Computed {
     /// -1 слева, 1 справа, 0 с обеих. Стороны различаются, потому что
     /// `clear: left` мимо правого флоата проходит насквозь (CSS 2.1 §9.5.2).
     pub clear: Option<i8>,
-    /// `writing-mode`: вертикальное письмо — блоки идут по горизонтали.
-    pub vertical: Option<bool>,
-    /// `writing-mode: vertical-rl` — блоки идут справа налево.
-    pub vertical_rl: Option<bool>,
-    /// `writing-mode: sideways-*`: глифы повёрнуты, а у `sideways-lr` строка
-    /// идёт СНИЗУ вверх — содержимое прижимается к нижнему краю.
-    pub sideways: Option<bool>,
     /// `text-combine-upright`: сколько знаков сжимается в один кегль
     /// (0 — `all`, 2..=4 — `digits N`). Наследуется.
     pub combine_upright: Option<u8>,
-    /// Служебное: абзац собран для ПОВЁРНУТОЙ отрисовки вертикального
-    /// письма — местам с `text-combine-upright` нужен контр-поворот.
-    pub rotated_line: Option<bool>,
     /// Ограничение ОРТОГОНАЛЬНОГО потока: определённый размер ближайшего
     /// предка-контейнера прокрутки по оси потока (CSS Writing Modes §7.3).
     /// Наследуется вниз, потому что искать его надо ВВЕРХ по дереву, а на
@@ -1605,4 +1595,13 @@ pub struct Computed {
     /// cascade, already in attribute syntax (`svg::serialize::geometry`);
     /// not inherited.
     pub svg_geometry: Vec<(&'static str, String)>,
+    /// `writing-mode` (css-writing-modes-4 §3.1): declared on the own style, inherited in
+    /// the merged one; `None` = not declared. Read through `Computed::wm()`.
+    pub(crate) writing_mode: Option<super::writing_mode::WritingModeKw>,
+    /// Rotation model: the vertical mode whose lines this horizontal clone typesets laid
+    /// flat (turned paragraph, upright stack). Inherited; read through `Computed::wm()`.
+    pub(crate) flat_mode: Option<super::writing_mode::WritingModeKw>,
+    /// Rotation model: inside the horizontal clone of a turned vertical paragraph
+    /// (`text-combine-upright` and atoms need a counter-rotation). Inherited.
+    pub(crate) turned_line: bool,
 }

@@ -51,8 +51,8 @@ pub(crate) fn transparent(e: &Element) -> bool {
         && s.vertical_align.is_none()
         && s.vertical_shift.is_none()
         && s.vertical_shift_len.is_none()
-        && s.vertical.is_none()
-        && s.rotated_line.is_none()
+        && s.writing_mode.is_none()
+        && !s.turned_line
         && s.rtl.is_none()
 }
 

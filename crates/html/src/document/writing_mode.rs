@@ -57,18 +57,11 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
     // собственное письмо корня (contain-body-{w-m,t-o}-001..004).
     let body_contained = any_containment(body);
     let taken = if body_contained {
-        (
-            html.style.vertical,
-            html.style.vertical_rl,
-            html.style.rtl,
-            html.style.sideways,
-        )
+        (html.style.writing_mode, html.style.rtl)
     } else {
         (
-            body.style.vertical.or(html.style.vertical),
-            body.style.vertical_rl.or(html.style.vertical_rl),
+            body.style.writing_mode.or(html.style.writing_mode),
             body.style.rtl.or(html.style.rtl),
-            body.style.sideways.or(html.style.sideways),
         )
     };
     // Та же пометка, что и при обособлении корня: письмо тела осталось при
@@ -85,12 +78,8 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
             }
         }
     }
-    let own = (
-        html.style.vertical,
-        html.style.vertical_rl,
-        html.style.rtl,
-        html.style.sideways,
-    );
+    let own = (html.style.writing_mode, html.style.rtl);
+    let taken_vertical = taken.0.is_some_and(|m| m.is_vertical());
     // Главное вертикальное письмо: строчная ось корня занимает всё окно
     // (§8.2) — И при письме, заданном на самом `<html>` (taken == own):
     // эталон wm-propagation-047 ставит sideways-lr на корень, и без 100vh
@@ -101,21 +90,24 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
     // Корень vertical-rl прижат к ПРАВОМУ краю окна (§8.2): якорь самим
     // стилем; корню с фоном-картинкой не ставится — гасил canvas-слой
     // (замерено на background-size-document-root-vrl-*).
-    if taken.1 == Some(true) && html.style.align_self.is_none() && html.style.bg_image.is_none() {
+    if taken.0.is_some_and(|m| m.is_rl())
+        && html.style.align_self.is_none()
+        && html.style.bg_image.is_none()
+    {
         html.style.align_self = Some(crate::style::computed::Align::End);
     }
     // Вертикальный корень с ФОНОМ-КАРТИНКОЙ: без минимума высоты его
     // коробка при пустом теле нулевая, и краске негде лечь
     // (background-size-document-root-vrl-*). Обычным вертикальным корням
     // минимум не ставится — терялась скроллер-структура (av-size-022/023).
-    if taken.0 == Some(true)
+    if taken_vertical
         && html.style.bg_image.is_some()
         && html.style.height.is_none()
         && html.style.min_height.is_none()
     {
         html.style.min_height = Some(fill_inline(&html.style));
     }
-    if taken.0 == Some(true) && html.style.height.is_none() && html.style.min_height.is_none() {
+    if taken_vertical && html.style.height.is_none() && html.style.min_height.is_none() {
         html.style.min_height = Some(fill_inline(&html.style));
     }
     if taken == own {
@@ -134,21 +126,14 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
         // Their text participates in the root's used line orientation; block
         // pseudo boxes retain the root's original computed writing mode.
         if !crate::render::inline_level(e) {
-            e.style.vertical = e.style.vertical.or(Some(own.0.unwrap_or(false)));
-            e.style.vertical_rl = e.style.vertical_rl.or(Some(own.1.unwrap_or(false)));
-            e.style.sideways = e.style.sideways.or(Some(own.3.unwrap_or(false)));
+            e.style.writing_mode = e.style.writing_mode.or(Some(own.0.unwrap_or_default()));
         }
-        e.style.rtl = e.style.rtl.or(Some(own.2.unwrap_or(false)));
+        e.style.rtl = e.style.rtl.or(Some(own.1.unwrap_or(false)));
     }
-    if taken.0 == Some(true) && html.style.height.is_none() && html.style.min_height.is_none() {
+    if taken_vertical && html.style.height.is_none() && html.style.min_height.is_none() {
         html.style.min_height = Some(fill_inline(&html.style));
     }
-    (
-        html.style.vertical,
-        html.style.vertical_rl,
-        html.style.rtl,
-        html.style.sideways,
-    ) = taken;
+    (html.style.writing_mode, html.style.rtl) = taken;
     nodes
 }
 

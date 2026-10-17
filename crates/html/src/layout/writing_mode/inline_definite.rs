@@ -147,7 +147,9 @@ mod tests {
 
     fn vertical() -> Computed {
         Computed {
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             ..Computed::default()
         }
     }

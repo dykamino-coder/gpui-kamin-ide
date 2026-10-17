@@ -133,7 +133,8 @@ pub(super) fn upright_central(
     let lane = over + under;
     let items = stack.glyphs.into_iter().map(|g| {
         let mut style = g.style;
-        style.vertical = None;
+        style.flat_mode = style.flow_mode();
+        style.writing_mode = None;
         style.upright_stack = true;
         style.line_height = Some(Len::Px(g.size));
         style.text_align = Some(TextAlign::Center);

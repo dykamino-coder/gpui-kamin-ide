@@ -23,7 +23,7 @@ pub(crate) fn claim_float_inline_size(
     }) {
         return;
     }
-    if style.vertical.or(parent.vertical) == Some(true)
+    if style.vertical_decl().or(parent.vertical_decl()) == Some(true)
         && matches!(style.height, None | Some(Len::Auto))
     {
         // The float's automatic orthogonal inline size is fit-content. Resolve
@@ -96,7 +96,9 @@ mod tests {
     #[test]
     fn float_claim_follows_own_writing_mode_and_preserves_definite_inline_sizes() {
         let parent = Computed {
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             ..Computed::default()
         };
         let mut child = Computed::default();
@@ -104,7 +106,9 @@ mod tests {
         assert!(child.hug_inline && child.hug_claim);
         assert_eq!(child.height, Some(Len::FitContent));
         let mut horizontal = Computed {
-            vertical: Some(false),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                false, false, false,
+            )),
             ..Computed::default()
         };
         claim_float_inline_size(&mut horizontal, &parent, &[]);
@@ -120,7 +124,9 @@ mod tests {
     #[test]
     fn auto_shrink_to_fit_claim_uses_real_intrinsics_and_own_limits() {
         let style = Computed {
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             hug_inline: true,
             min_height: Some(Len::Px(80.0)),
             max_height: Some(Len::Px(250.0)),
@@ -135,7 +141,9 @@ mod tests {
     #[test]
     fn authored_inline_size_remains_definite_without_an_orthogonal_boundary() {
         let style = Computed {
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             display: Some(crate::style::computed::Display::InlineBlock),
             height: Some(Len::Px(160.0)),
             ..Computed::default()
@@ -151,7 +159,9 @@ mod tests {
     #[test]
     fn parallel_table_track_keeps_min_content_and_own_limits() {
         let mut style = Computed {
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             ortho_col: true,
             ortho_limit: Some(200.0),
             min_height: Some(Len::Px(40.0)),
@@ -171,7 +181,9 @@ mod tests {
     #[test]
     fn ordinary_intrinsic_height_does_not_become_a_table_minimum() {
         let style = Computed {
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             height: Some(Len::MaxContent),
             ..Computed::default()
         };

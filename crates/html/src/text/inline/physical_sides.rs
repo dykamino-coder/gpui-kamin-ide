@@ -52,9 +52,10 @@ mod tests {
 
     fn flow(rotated: bool, ccw: bool) -> Computed {
         Computed {
-            rotated_line: Some(rotated),
-            sideways: Some(ccw),
-            vertical_rl: Some(!ccw),
+            flat_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, !ccw, ccw,
+            )),
+            turned_line: rotated,
             ..Computed::default()
         }
     }

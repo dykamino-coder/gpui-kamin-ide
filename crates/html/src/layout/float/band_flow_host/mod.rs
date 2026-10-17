@@ -89,8 +89,8 @@ pub(super) fn band_orthogonal(c: &Computed) -> bool {
     // Письмо наследуется: незаданное у коробки — письмо содержащего блока,
     // ортогональна только коробка, ЗАДАВШАЯ другое.
     let wm = BAND_WM.with(std::cell::Cell::get);
-    c.vertical.is_some_and(|v| v != (wm != 0))
-        || (c.wm().vertical() && c.vertical_rl.is_some_and(|r| r != (wm == 1)))
+    c.vertical_decl().is_some_and(|v| v != (wm != 0))
+        || (c.wm().vertical() && c.rl_decl().is_some_and(|r| r != (wm == 1)))
 }
 
 /// Есть ли в поддереве непустой текст.

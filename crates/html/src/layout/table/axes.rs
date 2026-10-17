@@ -49,24 +49,21 @@ impl Axes {
 pub(super) fn inherited(e: &Element, parent: &Computed) -> Option<Element> {
     let style = crate::style::cascade::inherit::inherit(parent, &e.style);
     if (
-        e.style.vertical,
-        e.style.vertical_rl,
-        e.style.sideways,
+        e.style.writing_mode,
+        e.style.flat_mode,
         e.style.rtl,
         e.style.upright,
     ) == (
-        style.vertical,
-        style.vertical_rl,
-        style.sideways,
+        style.writing_mode,
+        style.flat_mode,
         style.rtl,
         style.upright,
     ) {
         return None;
     }
     let mut copy = e.clone();
-    copy.style.vertical = style.vertical;
-    copy.style.vertical_rl = style.vertical_rl;
-    copy.style.sideways = style.sideways;
+    copy.style.writing_mode = style.writing_mode;
+    copy.style.flat_mode = style.flat_mode;
     copy.style.rtl = style.rtl;
     copy.style.upright = style.upright;
     Some(copy)
@@ -86,9 +83,9 @@ mod tests {
             (true, true, false, true, [1, 0, 3, 2]),
         ] {
             let axes = Axes::new(&Computed {
-                vertical: Some(vertical),
-                vertical_rl: Some(rl),
-                sideways: Some(sideways),
+                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                    vertical, rl, sideways,
+                )),
                 rtl: Some(rtl),
                 ..Computed::default()
             });

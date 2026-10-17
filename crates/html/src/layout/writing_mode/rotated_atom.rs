@@ -55,8 +55,12 @@ pub(crate) fn physical(
         return None;
     }
     let mut context = flow.clone();
-    context.vertical = Some(true);
-    context.rotated_line = None;
+    context.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+        true,
+        context.wm().block_rl(),
+        context.wm().sideways(),
+    ));
+    context.turned_line = false;
     context.lines_reversed = None;
     context.para_vertical = None;
     let mut child =

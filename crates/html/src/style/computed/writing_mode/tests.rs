@@ -24,8 +24,10 @@ fn inline_start_follows_line_left_and_direction() {
 #[test]
 fn turned_line_clone_keeps_its_vertical_mode() {
     let clone = Computed {
-        rotated_line: Some(true),
-        sideways: Some(true),
+        flat_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true, false, true,
+        )),
+        turned_line: true,
         ..Computed::default()
     };
     assert!(clone.wm().turned() && clone.wm().sideways());
@@ -52,14 +54,17 @@ fn turn_and_line_order_follow_the_abstract_physical_mapping() {
 #[test]
 fn laid_flat_clone_keeps_block_flow_but_is_not_vertical() {
     let flat = Computed {
-        vertical_rl: Some(true),
-        sideways: Some(true),
+        flat_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true, true, true,
+        )),
         ..Computed::default()
     };
     let wm = flat.wm();
     assert!(!wm.vertical() && wm.block_rl() && wm.sideways());
     let child = Computed {
-        vertical: Some(true),
+        writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true, false, false,
+        )),
         cb_vertical: false,
         ..Computed::default()
     };

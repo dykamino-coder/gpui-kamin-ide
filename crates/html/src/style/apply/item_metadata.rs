@@ -93,9 +93,9 @@ mod tests {
         ] {
             let parent = Computed {
                 display: Some(Display::Flex),
-                vertical: Some(true),
-                vertical_rl: Some(rl),
-                sideways: Some(sideways),
+                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                    true, rl, sideways,
+                )),
                 ..Computed::default()
             };
             let effective = crate::style::cascade::inherit::inherit(&parent, &Computed::default());
@@ -116,13 +116,15 @@ mod tests {
         ] {
             let parent = Computed {
                 display: Some(Display::Flex),
-                vertical: Some(true),
-                vertical_rl: Some(rl),
-                sideways: Some(sideways),
+                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                    true, rl, sideways,
+                )),
                 ..Computed::default()
             };
             let own = Computed {
-                vertical: Some(false),
+                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                    false, false, false,
+                )),
                 text_sideways: Some(false),
                 ..Computed::default()
             };
@@ -142,8 +144,9 @@ mod tests {
         };
         for (rl, flags) in [(false, 4), (true, 5)] {
             let own = Computed {
-                vertical: Some(true),
-                vertical_rl: Some(rl),
+                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                    true, rl, false,
+                )),
                 ..Computed::default()
             };
             let effective = crate::style::cascade::inherit::inherit(&parent, &own);
@@ -170,8 +173,9 @@ mod tests {
             ..Computed::default()
         };
         let own = Computed {
-            vertical: Some(true),
-            vertical_rl: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, true, false,
+            )),
             justify_self: Some(Align::Baseline),
             justify_self_last: true,
             ..Computed::default()

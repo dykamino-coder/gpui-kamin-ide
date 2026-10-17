@@ -102,7 +102,7 @@ pub(crate) fn item_sizing(
     if matches!(
         inherited.display,
         Some(Display::Flex) | Some(Display::InlineFlex)
-    ) && inherited.vertical.is_none()
+    ) && inherited.writing_mode.is_none()
         && e.style.border_box != Some(true)
         && let Some(Len::Px(b)) = e.style.flex_basis
     {
@@ -142,7 +142,7 @@ pub(crate) fn item_sizing(
             Some(Display::Grid) | Some(Display::InlineGrid)
         )
         && !positioned_out
-        && inherited.vertical.is_none()
+        && inherited.writing_mode.is_none()
     {
         let auto_w = matches!(e.style.width, None | Some(Len::Auto));
         let auto_h = matches!(e.style.height, None | Some(Len::Auto));

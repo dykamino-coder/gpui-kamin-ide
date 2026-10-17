@@ -214,8 +214,11 @@ mod tests {
         assert_eq!(collapsed_tracks(&table), Some((false, vec![0])));
         table.children.push(Node::Element(header));
         assert_eq!(collapsed_tracks(&table), Some((false, vec![1])));
-        table.style.vertical = Some(true);
-        table.style.vertical_rl = Some(true);
+        table.style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true,
+            true,
+            table.style.wm().sideways(),
+        ));
         assert_eq!(collapsed_tracks(&table), Some((true, vec![0])));
     }
 }

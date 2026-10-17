@@ -127,7 +127,7 @@ fn atom_piece_in(
     // обязано стоять прямо (эмуляция tcy в эталонах compression-*).
     if inherited.wm().turned()
         && e.style.display == Some(Display::InlineBlock)
-        && e.style.vertical == Some(false)
+        && e.style.vertical_decl() == Some(false)
     {
         // An orthogonal atomic inline keeps its physical box and own writing
         // mode (css-writing-modes-4 §4.3); the line synthesizes its baseline
@@ -141,7 +141,7 @@ fn atom_piece_in(
             return Some(inline::Piece::Atom(physical));
         }
         let mut merged = inherit(inherited, &e.style);
-        merged.rotated_line = None;
+        merged.turned_line = false;
         let em = match merged.width {
             Some(Len::Px(v)) => v,
             _ => match merged.font_size {
@@ -209,7 +209,7 @@ fn atom_piece_in(
     // `vertical` cleared. Carry the writing mode on the box itself.
     let vertical_abs;
     let e = if (inherited.wm().turned() || inherited.upright_stack)
-        && e.style.vertical.is_none()
+        && e.style.writing_mode.is_none()
         && matches!(
             e.style.position,
             Some(crate::style::computed::Position::Absolute)
@@ -219,9 +219,11 @@ fn atom_piece_in(
         && !replaced_tag(e)
     {
         let mut copy = e.clone();
-        copy.style.vertical = Some(true);
-        copy.style.vertical_rl = Some(inherited.wm().block_rl());
-        copy.style.sideways = Some(inherited.wm().sideways());
+        copy.style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true,
+            inherited.wm().block_rl(),
+            inherited.wm().sideways(),
+        ));
         vertical_abs = copy;
         &vertical_abs
     } else {

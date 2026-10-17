@@ -42,7 +42,8 @@ pub(crate) fn upright_paragraph(
         return stack;
     }
     let mut stack = inherited.clone();
-    stack.vertical = None;
+    stack.flat_mode = stack.flow_mode();
+    stack.writing_mode = None;
     stack.upright_stack = true;
     stack.break_word = Some(true);
     let em = match stack.font_size {

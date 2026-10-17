@@ -173,14 +173,18 @@ mod tests {
         use crate::layout::writing_mode::native_vertical;
         use crate::layout::writing_mode::orthogonal_inline::resolve;
         let mut container = Computed {
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             display: Some(Display::InlineBlock),
             height: Some(Len::Px(160.0)),
             ortho_limit: Some(160.0),
             ..Computed::default()
         };
         let mut child = Computed {
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             display: Some(Display::Block),
             ..bordered()
         };
@@ -202,14 +206,18 @@ mod tests {
         use crate::layout::writing_mode::native_vertical;
         use crate::layout::writing_mode::orthogonal_inline::resolve;
         let mut cell = Computed {
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             display: Some(Display::TableCell),
             height: Some(Len::Px(180.0)),
             ortho_limit: Some(180.0),
             ..Computed::default()
         };
         let mut child = Computed {
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             ..bordered()
         };
         resolve(&mut child, &cell, (800.0, 600.0), false);
