@@ -144,6 +144,21 @@ impl PageStack {
             // По оси строки — весь лист (`PageStack::sheet_wide`).
             let mask = self.sheet_wide(bounds, f.col, mask);
             let kid = &mut self.kids[f.kid];
+            window.with_mask_scale(bounds.origin, s, |window| {
+                kid.paint_sections(
+                    &f,
+                    |top, h| {
+                        rect(sx + ax, sy + ay + f.y + top, g.area.0, h).intersect(&rect(
+                            sx + ax,
+                            sy + ay,
+                            g.area.0,
+                            g.area.1,
+                        ))
+                    },
+                    window,
+                    cx,
+                );
+            });
             let el = if f.copy == 0 {
                 &mut kid.el
             } else {

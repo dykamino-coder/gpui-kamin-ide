@@ -1,5 +1,4 @@
 //! Элемент стопки страниц `PageStack`.
-// owner: A
 
 use crate::layout::fragment::types::Frag;
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, point, px, size};
@@ -54,37 +53,8 @@ impl PageGeom {
     }
 }
 
-/// Блок верхнего уровня документа в стопке страниц. Высота заранее НЕ
-/// известна и меряется раскладкой (`layout_as_root`) в `prepaint` — так в
-/// стопку попадает и голый текст, которого укладка колонок не видит.
-pub struct PageKid {
-    pub el: AnyElement,
-    /// Копии на случай разреза между страницами (см. `StackChild::frags`).
-    pub frags: Vec<AnyElement>,
-    /// Монолит (css-break-4 §4.1 плюс `contain: size`, как Blink `IsMonolithic`).
-    pub monolith: bool,
-    /// Принудительный разрыв страницы перед/после (css-break-4 §3.1), включая
-    /// смену имени страницы (css-page-3 §"Using named pages", п. 4).
-    pub force_before: bool,
-    pub force_after: bool,
-    /// Мера поддерева от `render::shape_full` (css-break-4 §possible-breaks):
-    /// высота, точки разреза `(need, from)`, принудительные разрывы и монолиты
-    /// — как у `StackChild`; `None` — высота измеренная, разрезов нет.
-    pub shape: Option<(f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>)>,
-    /// Имя страницы, с которого коробка начинается (css-page-3 §using-named-pages:
-    /// start value), `""` — без имени. Лист, на котором коробка — первая, берёт
-    /// это имя для своего `@page <имя>` (`PageStack::geom_for`).
-    pub page: String,
-    /// Поля коробки для укладки (схлопываются с соседями в `fill`) и смещение
-    /// её border box внутри элемента — на него копия поднимается.
-    pub mt: f32,
-    pub mb: f32,
-    pub inner_top: f32,
-    /// Flow extent with visible overflow: reserves pages (Blink `ReserveSpaceForMonolithicOverflow`).
-    pub reach: Option<f32>,
-    /// Block size used by the plan (`prepaint`): fragments reaching it show overflow.
-    pub end: std::cell::Cell<f32>,
-}
+mod kid;
+pub use kid::PageKid;
 
 /// Геометрия листа по его номеру (с нуля) и имени страницы: каскад
 /// `@page` (`:first`, `:left`/`:right`, имена) решает стенд.

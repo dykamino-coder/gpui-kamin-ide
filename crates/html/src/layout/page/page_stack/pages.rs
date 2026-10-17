@@ -48,6 +48,34 @@ impl PageStack {
                 (ax, ay + f.y - f.from - inner_top, aw, full_h)
             };
             let kid = &mut self.kids[f.kid];
+            if let Some(r) = kid.repeat.as_mut() {
+                let mut band = |el: Option<&mut gpui::AnyElement>, at: f32| {
+                    if let Some(el) = el {
+                        el.layout_as_root(
+                            size(
+                                gpui::AvailableSpace::Definite(px(w)),
+                                gpui::AvailableSpace::Definite(px(h)),
+                            ),
+                            window,
+                            cx,
+                        );
+                        el.prepaint_at(
+                            point(
+                                bounds.origin.x + px(sx + ax),
+                                bounds.origin.y + px(sy + ay + f.y + at - inner_top),
+                            ),
+                            window,
+                            cx,
+                        );
+                    }
+                };
+                if let Some((src, _)) = r.head.filter(|_| f.head > 0.01 && f.copy > 0) {
+                    band(r.head_els.get_mut(f.copy - 1), -f.head - src);
+                }
+                if let Some((src, bh)) = r.foot.filter(|_| f.foot > 0.01) {
+                    band(r.foot_els.get_mut(f.copy), f.h + f.foot - bh - src);
+                }
+            }
             let el = if f.copy == 0 {
                 &mut kid.el
             } else {
