@@ -17,7 +17,7 @@ pub(super) fn shape_host_div(
 ) -> gpui::Div {
     if inherited.vertical_rl == Some(true) || vert_lr {
         div().relative()
-    } else if e.attr("inflow-height") != Some("1") && bands.bottom(None) > 0.0 {
+    } else if !e.marks.inflow_height && bands.bottom(None) > 0.0 {
         // ★ ЗАМЕРЕНО И ОТКАЧЕНО: гейтить охват флоатов признаком «коробка
         // образует свой контекст форматирования», как это делают Blink
         // (`block_layout_algorithm.cc`: `IsNewFormattingContext()`) и Servo
@@ -142,7 +142,7 @@ pub(super) fn band_host_flow(
         // §10.6.7 плюс собственная высота потока: держатели абсолютные и сами
         // хост не растят. `min_h` переопределяет поставленный на `:5129` —
         // это и нужно, там учтены только флоаты.
-        let bottom = if e.attr("inflow-height") == Some("1") {
+        let bottom = if e.marks.inflow_height {
             y
         } else {
             bands.bottom(None).max(y)

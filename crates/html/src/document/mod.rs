@@ -15,7 +15,12 @@ mod canvas_background;
 mod embedded;
 mod logical_properties;
 #[cfg(test)]
+mod resource_tests;
+pub(crate) mod resource_url;
+#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod update_tests;
 mod viewport;
 mod writing_mode;
 use crate::document::canvas_background::any_containment;
@@ -78,16 +83,23 @@ impl Document {
     }
 
     fn build(html: &str, theme_css: &str, base_url: Option<url::Url>, xml: bool) -> Self {
+        let effective_base = if xml {
+            base_url.clone()
+        } else {
+            base_url::document_base(html, base_url.as_ref())
+        };
         // Свои шрифты страницы грузятся ДО разбора: иначе первый же замер
         // ширины пойдёт по подстановке, а перерисовки под новый шрифт нет.
-        crate::text::fonts::load_faces(html);
-        crate::style::values::color_space::load_profiles(html);
+        let mut sheets = vec![theme_css.to_string()];
+        sheets.extend(crate::dom::style_sources::collect(html, xml));
+        crate::text::fonts::load_faces_sheets(&sheets, effective_base.as_ref());
+        crate::style::values::color_space::load_profiles_sheets(&sheets, effective_base.as_ref());
         crate::text::paragraph::forget_measures();
         crate::layout::table::paint::forget_row_rects();
         crate::text::vertical::forget_vt_measures();
         let (mut nodes, root) = viewport::prepare(Self::parse_nodes(html, theme_css, xml));
-        if let Some(base) = &base_url {
-            base_url::resolve(&mut nodes, &base_url::document_base(html, base), false);
+        if let Some(base) = &effective_base {
+            base_url::resolve(&mut nodes, base, false);
         }
         Document {
             nodes,
@@ -114,13 +126,7 @@ impl Document {
         if key == self.key {
             return false;
         }
-        let (mut nodes, root) = viewport::prepare(Self::parse_nodes(html, theme_css, self.xml));
-        if let Some(base) = &self.base_url {
-            base_url::resolve(&mut nodes, &base_url::document_base(html, base), false);
-        }
-        self.nodes = nodes;
-        self.root = root;
-        self.key = key;
+        *self = Self::build(html, theme_css, self.base_url.clone(), self.xml);
         true
     }
 
@@ -137,16 +143,15 @@ impl Document {
     /// GPUI считается заново каждый кадр, поэтому длинный документ обязан
     /// рисоваться по видимым блокам, а не целиком.
     pub fn node_count(&self) -> usize {
-        fn walk(nodes: &[Node]) -> usize {
-            nodes
-                .iter()
-                .map(|n| match n {
-                    Node::Text(_) => 1,
-                    Node::Element(e) => 1 + walk(&e.children),
-                })
-                .sum()
+        let mut pending: Vec<&Node> = self.nodes.iter().collect();
+        let mut count = 0;
+        while let Some(node) = pending.pop() {
+            count += 1;
+            if let Node::Element(element) = node {
+                pending.extend(&element.children);
+            }
         }
-        walk(&self.nodes)
+        count
     }
 
     /// Блоки верхнего уровня — единица виртуализации: их можно раздать в

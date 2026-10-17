@@ -1,0 +1,47 @@
+//! Updates run the same resource and cache lifecycle as an initial document build.
+
+use super::Document;
+use crate::text::fonts;
+
+#[test]
+fn update_reloads_resources_and_matches_a_fresh_document() {
+    fonts::install_loader(|bytes| Some(format!("UpdateFont{}", bytes.last().unwrap())));
+    let old = "<style>@font-face {font-family: OldUpdate;\
+        src: url(data:font/ttf;base64,AAEAADE=)}</style><p>old</p>";
+    let new = "<style>@font-face {font-family: NewUpdate;\
+        src: url(data:font/ttf;base64,AAEAADI=)}</style><p>new</p>";
+    let mut updated = Document::new_with_base(old, "", "file:///tests/page.html");
+    assert_eq!(fonts::alias("OldUpdate").as_deref(), Some("UpdateFont49"));
+    let old_salt = updated.salt();
+    assert!(updated.update(new, "p {color: red}"));
+    assert_ne!(old_salt, updated.salt());
+    assert_eq!(fonts::alias("OldUpdate"), None);
+    assert_eq!(fonts::alias("NewUpdate").as_deref(), Some("UpdateFont50"));
+    let fresh = Document::new_with_base(new, "p {color: red}", "file:///tests/page.html");
+    assert_eq!(updated.salt(), fresh.salt());
+    assert_eq!(updated.node_count(), fresh.node_count());
+    assert_eq!(
+        format!("{:?}", updated.nodes()),
+        format!("{:?}", fresh.nodes())
+    );
+    assert_eq!(
+        format!("{:?}", updated.root_style()),
+        format!("{:?}", fresh.root_style())
+    );
+    let nodes = updated.nodes().as_ptr();
+    assert!(!updated.update(new, "p {color: red}"));
+    assert_eq!(nodes, updated.nodes().as_ptr());
+}
+
+#[test]
+fn update_preserves_xml_parsing() {
+    let mut doc = Document::new_with_path(
+        "<svg xmlns='http://www.w3.org/2000/svg'><g/></svg>",
+        "",
+        std::path::Path::new("update.svg"),
+    );
+    let new = "<svg xmlns='http://www.w3.org/2000/svg'><metadata/><g/></svg>";
+    assert!(doc.update(new, ""));
+    let fresh = Document::new_with_path(new, "", std::path::Path::new("update.svg"));
+    assert_eq!(format!("{:?}", doc.nodes()), format!("{:?}", fresh.nodes()));
+}

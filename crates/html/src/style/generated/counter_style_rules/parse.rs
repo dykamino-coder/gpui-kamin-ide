@@ -171,9 +171,7 @@ pub fn register(name: &str, descs: &[(String, Vec<String>)]) {
     if !valid {
         return;
     }
-    RULES
-        .lock()
-        .unwrap()
+    registry(&RULES)
         .get_or_insert_with(HashMap::new)
         .insert(name, raw);
 }

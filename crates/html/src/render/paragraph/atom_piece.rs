@@ -9,6 +9,7 @@ pub(super) use decoration::decorate_atom;
 
 use crate::animation::frames::bake_frozen;
 use crate::dom::Element;
+use crate::hooks::IntoHooked;
 use crate::layout::atom::atom_element;
 use crate::layout::positioned::static_position::at_static_position;
 use crate::layout::replaced::{replaced_content, svg_percentage_size};
@@ -154,7 +155,7 @@ fn atom_piece_in(
             .children(blocks(&e.children, &merged, opts))
             .into_any_element();
         return Some(inline::Piece::Atom(
-            crate::text::vertical::CombinedUpright::upright_box(inner, em).into_any_element(),
+            crate::text::vertical::CombinedUpright::upright_box(inner, em).hooked(),
         ));
     }
     if let Some(piece) = combined_text::piece(e, inherited, opts) {

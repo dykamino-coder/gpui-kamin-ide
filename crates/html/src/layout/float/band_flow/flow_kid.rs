@@ -1,7 +1,7 @@
 //! Блок потока в полосах (place_flow) и внутренняя ширина последовательности.
 
 use super::kid::{Kid, Kind};
-use super::{EPS, Slot, clearance, intrinsic, probe};
+use super::{COORD_EPS, Slot, clearance, intrinsic, probe};
 use crate::layout::float::bands::FloatBands;
 use gpui::{App, Window};
 
@@ -35,7 +35,7 @@ pub(super) fn place_flow(
         kid.clear,
         *y,
         mt,
-        kid.start_open && adjoining0 && (*y - y0).abs() < EPS,
+        kid.start_open && adjoining0 && (*y - y0).abs() < COORD_EPS,
     );
     let avail = (cbw - ml - mr).max(0.0);
     // CSS 2.1 §9.5: the line breaker moves individual lines below floats.

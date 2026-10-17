@@ -3,7 +3,7 @@
 
 use crate::dom::Element;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::ParentElement;
 mod columns;
 mod rows;
@@ -84,10 +84,7 @@ pub(super) fn collapsed_cell_edge(
         let base = match own {
             Some(Len::Px(v)) => v,
             None => 0.0,
-            Some(_) => match merged {
-                Some(Len::Px(v)) => v,
-                _ => 0.0,
-            },
+            Some(_) => px_lossy_zero(merged),
         };
         Some(Len::Px(base + win[i] / 2.0))
     };

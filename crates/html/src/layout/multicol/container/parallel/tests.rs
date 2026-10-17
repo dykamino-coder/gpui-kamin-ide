@@ -6,6 +6,7 @@ use crate::style::computed::Computed;
 fn element(style: Computed, children: Vec<Node>) -> Element {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(10_000);
     Element {
+        marks: Default::default(),
         node_id: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         tag: "div".into(),
         style,

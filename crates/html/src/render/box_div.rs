@@ -16,7 +16,7 @@ use crate::paint::effects::mask::mask_def;
 use crate::render::*;
 use crate::style::apply::{apply, apply_hover};
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero, px_strict};
 use gpui::{ParentElement, Styled, div, px};
 
 /// Базовый стиль элемента плюс слой наведения и дорисовка того, чего в
@@ -126,10 +126,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     // вертикальных паддингов и рамок самого контейнера коробка выходила ниже
     // на их сумму и резала последнюю строку (`line-clamp-auto-002`: 128
     // вместо 1+4+128+4+1 = 138).
-    let side = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let side = px_lossy_zero;
     let bw = c.borders();
     let mbp_y = side(bw.top) + side(bw.bottom) + side(c.padding.top) + side(c.padding.bottom);
     if !multicol && e.style.clamp_auto == Some(true) && auto_clamp_limit(c).is_some() {
@@ -171,10 +168,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
         // (css-overflow-4 §5.3; `webkit-line-clamp-with-max-height`). The
         // box is border-box here, the style value content-box unless
         // `box-sizing: border-box`.
-        let style_max = match c.max_height {
-            Some(Len::Px(v)) => Some(v),
-            _ => None,
-        };
+        let style_max = px_strict(c.max_height);
         let style_max = style_max.map(|m| {
             if c.border_box == Some(true) {
                 m

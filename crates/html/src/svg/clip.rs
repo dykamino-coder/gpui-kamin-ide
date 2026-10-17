@@ -1,6 +1,8 @@
 //! CSS `clip-path` на детях `<svg>`: синтез `<clipPath>` и опорные коробки фигур.
 
+mod ids;
 mod reference;
+pub(crate) use ids::ClipIds;
 pub(super) use reference::reference_box;
 pub(super) use reference::shape_box;
 pub(super) use reference::translate_only;
@@ -111,7 +113,7 @@ fn clip_body(
 /// `svg-clip-path-ellipse-offset` 0.82, `clip-path-viewBox-1a/1b` 2.19/6.72;
 /// близнецы `*-borderBox-1b`, `*-strokeBox-1b/1c` и родня держались под
 /// порогом случайно — 0.47-0.49).
-pub(super) fn synth_clip(e: &Element, out: &mut String) -> Option<String> {
+pub(super) fn synth_clip(e: &Element, out: &mut String, ids: &ClipIds) -> Option<String> {
     if e.tag.eq_ignore_ascii_case("svg") || IN_CLIP.with(|c| c.get()) {
         return None;
     }
@@ -152,7 +154,7 @@ pub(super) fn synth_clip(e: &Element, out: &mut String) -> Option<String> {
     let body = clip_body(c, rb)?;
     let mut hasher = DefaultHasher::new();
     body.hash(&mut hasher);
-    let id = format!("kamin-clip-{:x}", hasher.finish());
+    let id = ids.id(hasher.finish());
     out.push_str(&format!(
         "<clipPath id=\"{id}\" clipPathUnits=\"userSpaceOnUse\">{body}</clipPath>"
     ));

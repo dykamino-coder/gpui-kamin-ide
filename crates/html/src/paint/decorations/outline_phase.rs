@@ -1,9 +1,7 @@
 //! CSS2 Appendix E: postpone outlines until the current paint phase finishes.
 
-use gpui::{
-    AnyElement, App, Bounds, ContentMask, Element, ElementId, GlobalElementId, InspectorElementId,
-    IntoElement, LayoutId, Pixels, Window,
-};
+use crate::hooks::{IntoHooked, Wrap};
+use gpui::{AnyElement, App, Bounds, ContentMask, IntoElement, Pixels, Window};
 use std::cell::RefCell;
 
 type Outline = (AnyElement, ContentMask<Pixels>);
@@ -42,28 +40,28 @@ pub(crate) fn scoped(window: &mut Window, cx: &mut App, f: impl FnOnce(&mut Wind
 
 pub(crate) fn outline(child: AnyElement) -> AnyElement {
     Phase {
-        child: Some(child),
+        child,
         mode: Mode::Outline,
     }
-    .into_any_element()
+    .hooked()
 }
 
 pub(crate) fn scope(child: AnyElement) -> AnyElement {
     Phase {
-        child: Some(child),
+        child,
         mode: Mode::Scope,
     }
-    .into_any_element()
+    .hooked()
 }
 
 /// Native opacity is applied by Div while painting its descendants. Keep
 /// their outlines in-band rather than replaying outside that opacity scope.
 pub(crate) fn in_band(child: AnyElement) -> AnyElement {
     Phase {
-        child: Some(child),
+        child,
         mode: Mode::InBand,
     }
-    .into_any_element()
+    .hooked()
 }
 
 pub(crate) fn context(child: AnyElement, c: &crate::style::computed::Computed) -> AnyElement {
@@ -80,71 +78,36 @@ enum Mode {
     InBand,
 }
 struct Phase {
-    child: Option<AnyElement>,
+    child: AnyElement,
     mode: Mode,
 }
-impl IntoElement for Phase {
-    type Element = Self;
-    fn into_element(self) -> Self {
-        self
+impl Wrap for Phase {
+    fn child(&mut self) -> &mut AnyElement {
+        &mut self.child
     }
-}
-impl Element for Phase {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-    fn request_layout(
-        &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
-        (self.child.as_mut().unwrap().request_layout(window, cx), ())
-    }
-    fn prepaint(
-        &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
-        _: Bounds<Pixels>,
-        _: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        self.child.as_mut().unwrap().prepaint(window, cx);
-    }
-    fn paint(
-        &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
-        _: Bounds<Pixels>,
-        _: &mut (),
-        _: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
+
+    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         match self.mode {
             Mode::Outline => {
-                PHASES.with(|phases| {
-                    if let Some(Some(outlines)) = phases.borrow_mut().last_mut() {
-                        outlines.push((self.child.take().unwrap(), window.content_mask()));
+                // Inside an outline scope the laid-out child moves to the deferred outline
+                // pass (an unlaid `Empty` takes its place and is never painted).
+                let deferred = PHASES.with(|phases| match phases.borrow_mut().last_mut() {
+                    Some(Some(outlines)) => {
+                        let child =
+                            std::mem::replace(&mut self.child, gpui::Empty.into_any_element());
+                        outlines.push((child, window.content_mask()));
+                        true
                     }
+                    _ => false,
                 });
-                if let Some(child) = self.child.as_mut() {
-                    child.paint(window, cx);
+                if !deferred {
+                    self.child.paint(window, cx);
                 }
             }
-            Mode::Scope => scoped(window, cx, |window, cx| {
-                self.child.as_mut().unwrap().paint(window, cx)
-            }),
+            Mode::Scope => scoped(window, cx, |window, cx| self.child.paint(window, cx)),
             Mode::InBand => {
                 PHASES.with(|phases| phases.borrow_mut().push(None));
-                self.child.as_mut().unwrap().paint(window, cx);
+                self.child.paint(window, cx);
                 let _ = PHASES.with(|phases| phases.borrow_mut().pop());
             }
         }

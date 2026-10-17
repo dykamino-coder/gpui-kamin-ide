@@ -2,7 +2,7 @@
 use crate::layout::writing_mode::orthogonal_inline::{axis, edges};
 use crate::style::computed::orthogonal::{AxisSizes, InlineConstraint};
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 
 pub(crate) fn normal_block_flow(child: &Computed, parent: &Computed) -> bool {
     parent.vertical != Some(true)
@@ -79,10 +79,7 @@ pub(super) fn inherit(style: &mut Computed, mut parent: InlineConstraint) -> Inl
         };
     }
     if let Some(size) = used_parent {
-        let margin = |value| match value {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let margin = |value| px_lossy_zero(value);
         let content =
             (size - edges(style, true) - margin(style.margin.top) - margin(style.margin.bottom))
                 .max(0.0);

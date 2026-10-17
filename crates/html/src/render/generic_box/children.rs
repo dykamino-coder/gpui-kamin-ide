@@ -1,9 +1,11 @@
 //! Сборка детей общей коробки: ортогональные оси, clamp и контексты окраски.
 
+mod formatting_context;
 mod probes;
 pub(super) use probes::child_probes;
 
 use crate::dom::Element;
+use crate::hooks::IntoHooked;
 use crate::layout::block::reorder::{orthogonal_vertical_children, resolve_inline_pct};
 use crate::layout::block::struts::margin_px;
 use crate::layout::block::vertical_flow_margins;
@@ -16,8 +18,8 @@ use crate::layout::writing_mode::orthogonal_children::orthogonal_children;
 use crate::layout::writing_mode::vertical_hug;
 use crate::paint::stacking::fixed_cb_layer_box;
 use crate::render::*;
-use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::computed::Computed;
+use crate::style::values::value::px_lossy_zero;
 use crate::text::text_box::text_box_trim_px;
 use gpui::{AnyElement, IntoElement, ParentElement};
 
@@ -30,6 +32,7 @@ pub(crate) fn generic_children(
     opts: &RenderOpts,
     overflow_plan: Option<absolute_overflow::Plan>,
 ) -> AnyElement {
+    let makes_bfc = formatting_context::independent(&merged, &e.tag);
     let children = match &e.style.grid_areas {
         Some(areas) => place_named_areas(areas, e.children.clone()),
         None => e.children.clone(),
@@ -56,22 +59,7 @@ pub(crate) fn generic_children(
             // схлопывает своё поле с детьми (CSS2 §8.3.1, css-writing-
             // modes-4 §7.4): `margin-collapse-vlr-017`/`vrl-016`
             // (`overflow: hidden`, v100: 0.00 → «красное видно»).
-            let bfc = !matches!(
-                e.style.overflow_x,
-                None | Some(crate::style::computed::Overflow::Visible)
-            ) || !matches!(
-                e.style.overflow_y,
-                None | Some(crate::style::computed::Overflow::Visible)
-            ) || e.style.float.is_some()
-                || e.style.display.is_some()
-                || e.style.flow_root == Some(true)
-                // css-align-3 §align-block — тот же список, что и в
-                // `own_context`: своё поле такая коробка с полем
-                // первого ребёнка не схлопывает.
-                || e.style.align_content_block
-                || e.style.contain_layout == Some(true)
-                || e.style.contain_paint == Some(true);
-            let sealed = bfc
+            let sealed = makes_bfc
                 || margin_px(border, &e.style).unwrap_or(0.0) > 0.0
                 || margin_px(pad, &e.style).unwrap_or(0.0) > 0.0;
             if sealed {
@@ -112,37 +100,6 @@ pub(crate) fn generic_children(
             && auto_clamp_limit(&merged).is_some()))
         && !multicol_container(&e.style);
     let _clamp_guard = is_clamp.then(|| crate::text::clamp::ClampGuard::enter(e.node_id));
-    let makes_bfc = matches!(
-        merged.overflow_x,
-        Some(crate::style::computed::Overflow::Hidden) | Some(crate::style::computed::Overflow::Scroll)
-    ) || matches!(
-        merged.overflow_y,
-        Some(crate::style::computed::Overflow::Hidden) | Some(crate::style::computed::Overflow::Scroll)
-    ) || matches!(
-        merged.position,
-        Some(crate::style::computed::Position::Absolute)
-            | Some(crate::style::computed::Position::Fixed)
-    ) || merged.float.is_some()
-        || merged.flow_root == Some(true)
-        // Независимый контекст форматирования и без overflow/float/
-        // flow-root: гибкий контейнер, сетка, таблица — своя
-        // раскладка по определению, и строки внутри в бюджет
-        // `line-clamp` не входят (css-overflow-4: «skip lines in
-        // independent formatting contexts»; `webkit-line-clamp-012/013`).
-        || matches!(
-            merged.display,
-            Some(Display::Flex)
-                | Some(Display::InlineFlex)
-                | Some(Display::Grid)
-                | Some(Display::InlineGrid)
-                | Some(Display::GridLanes)
-                | Some(Display::Table)
-                | Some(Display::InlineTable)
-                | Some(Display::TableCell)
-        )
-        // `<fieldset>` — тоже отдельная раскладка
-        // (`webkit-line-clamp-027`).
-        || e.tag == "fieldset";
     let clamp_outer = crate::text::clamp::clamp_context();
     let _bfc_guard = (!is_clamp && makes_bfc && crate::text::clamp::clamp_context().is_some())
         .then(crate::text::clamp::ClampGuard::enter_bfc);
@@ -202,10 +159,7 @@ pub(crate) fn generic_children(
         // border-box` из `max-height` вычитаются вертикальные рамки и
         // паддинги (`line-clamp-auto-003`: 138 − 2×(1+4) = 128).
         let bb_y = if merged.border_box == Some(true) {
-            let side = |l: Option<Len>| match l {
-                Some(Len::Px(v)) => v,
-                _ => 0.0,
-            };
+            let side = px_lossy_zero;
             let bw = merged.borders();
             side(bw.top) + side(bw.bottom) + side(merged.padding.top) + side(merged.padding.bottom)
         } else {
@@ -236,7 +190,7 @@ pub(crate) fn generic_children(
                 max_h,
             )
             .trim_end(clamp_trim)
-            .into_any_element(),
+            .hooked(),
         );
     }
     // Абсолют с `anchor()`-вставками: раскладка поставила его к краю

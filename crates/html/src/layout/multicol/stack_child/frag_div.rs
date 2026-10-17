@@ -1,11 +1,12 @@
 //! Div фрагмента копии: стиль, ширина колонки, линейки промежутков.
 
 use crate::dom::{Element, Node};
+use crate::hooks::IntoHooked;
 use crate::layout::fragment::grid_bands::grid_rows_px;
 use crate::render::styled_div_with;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
-use gpui::{IntoElement, Styled, px};
+use gpui::{Styled, px};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn frag_box_div(
@@ -133,7 +134,7 @@ pub(super) fn frag_box_div(
                 crate::paint::gap_rules::gap_items_for(key),
                 spec,
             )
-            .into_any_element(),
+            .hooked(),
         );
     }
     d

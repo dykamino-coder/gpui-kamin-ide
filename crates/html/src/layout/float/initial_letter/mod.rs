@@ -18,7 +18,7 @@ pub(super) use leading::split_leading_float;
 /// пишут её плавающим блоком (`initial-letter-drop-initial-ref`: `float:
 /// left; width: 80px; height: 80px; margin-top: 2px` при `font: 20px/24px
 /// Ahem` и `initial-letter: 3`), и наше обтекание (`wrap_floats` →
-/// `kamin-float` → `float_flow`) такой узел уже ведёт — поэтому буквица
+/// ряд `Marks::float_row` → `float_flow`) такой узел уже ведёт — поэтому буквица
 /// расшивается в синтетический флоат ДО `wrap_floats`, и обе стороны пары
 /// идут одним путём.
 ///
@@ -190,6 +190,7 @@ pub(crate) fn initial_letter_float(
     );
     let synthetic = |tag: &str, style: Computed, children: Vec<Node>, inline: bool| {
         Node::Element(Element {
+            marks: Default::default(),
             list_item: None,
             node_id: 0,
             anim: None,

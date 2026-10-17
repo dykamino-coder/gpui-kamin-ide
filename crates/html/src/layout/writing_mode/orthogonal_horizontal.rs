@@ -3,7 +3,7 @@ use crate::dom::Element;
 use crate::layout::writing_mode::{native_intrinsic, orthogonal_inline};
 use crate::style::computed::orthogonal::available;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 
 pub(super) fn size_auto(child: &mut Element, container: &Computed, icb_width: f32) -> bool {
     // This fallback sizes ordinary blocks; grid and flex own their item sizing.
@@ -23,10 +23,7 @@ pub(super) fn size_auto(child: &mut Element, container: &Computed, icb_width: f3
         container.orthogonal_scrollport.map(|axes| axes[0]),
         icb_width,
     );
-    let px = |value| match value {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let px = |value| px_lossy_zero(value);
     let outer = fallback - px(child.style.margin.left) - px(child.style.margin.right);
     let adjustment = if child.style.border_box == Some(true) {
         0.0

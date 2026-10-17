@@ -1,10 +1,8 @@
 //! Проба прямоугольника ячейки: копит границы ячеек кадра для полос рядов и колонок.
 
 use super::RowRects;
-use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Styled, Window, px,
-};
+use crate::hooks::{Hooks, IntoHooked};
+use gpui::{AnyElement, App, Bounds, IntoElement, LayoutId, Pixels, Styled, Window, px};
 
 /// Проба ячейки: канвас, записывающий свои границы для фона ряда.
 ///
@@ -20,20 +18,18 @@ pub fn cell_rect_probe(
     border: [f32; 4],
 ) -> AnyElement {
     CellProbe {
-        child: Some(
-            gpui::div()
-                .absolute()
-                .top_0()
-                .left_0()
-                .size_full()
-                .into_any_element(),
-        ),
+        child: gpui::div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .into_any_element(),
         rects,
         exact,
         shift,
         border,
     }
-    .into_any_element()
+    .hooked()
 }
 
 /// Проба ячейки (`cell_rect_probe`): записывает и округлённый прямоугольник
@@ -42,7 +38,7 @@ pub fn cell_rect_probe(
 /// рамки при 1.25 сдвигали его на 0.2px, и плитка `top right` у tbody
 /// вставала на точку правее эталона (`background-position-applies-to-001a`).
 pub(super) struct CellProbe {
-    pub(crate) child: Option<AnyElement>,
+    pub(crate) child: AnyElement,
     pub(crate) rects: RowRects,
     pub(crate) exact: bool,
     pub(crate) shift: (f32, f32),
@@ -67,38 +63,22 @@ impl CellProbe {
     }
 }
 
-impl Element for CellProbe {
-    type RequestLayoutState = LayoutId;
-    type PrepaintState = ();
+impl Hooks for CellProbe {
+    type Layout = LayoutId;
+    type Prepaint = ();
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, LayoutId) {
-        let layout_id = self.child.as_mut().unwrap().request_layout(window, cx);
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
+        let layout_id = self.child.request_layout(window, cx);
         (layout_id, layout_id)
     }
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        layout_id: &mut LayoutId,
+        layout_id: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> Self::Prepaint {
         // Запись В PREPAINT: подготовка ВСЕХ элементов идёт до отрисовки,
         // и полоса фона читает прямоугольники СВОЕГО кадра — с записью в
         // paint она рисовала прошлый кадр и мигала на каждой смене раскладки.
@@ -121,27 +101,17 @@ impl Element for CellProbe {
         self.rects
             .borrow_mut()
             .push((self.outer(bounds), self.exact, self.outer(unrounded)));
-        self.child.as_mut().unwrap().prepaint(window, cx);
+        self.child.prepaint(window, cx);
     }
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut LayoutId,
-        _prepaint: &mut (),
+        _state: &mut Self::Layout,
+        _prepaint: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {
-        self.child.as_mut().unwrap().paint(window, cx);
-    }
-}
-
-impl IntoElement for CellProbe {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
+        self.child.paint(window, cx);
     }
 }
