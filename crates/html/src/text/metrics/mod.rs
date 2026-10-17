@@ -17,8 +17,8 @@ pub use crate::text::metrics::families::font_installed;
 pub use crate::text::metrics::families::fonts_known;
 use crate::text::metrics::families::fractions;
 pub use crate::text::metrics::families::set_doc_family;
-pub(crate) use crate::text::metrics::text_system::font_extents;
 pub use crate::text::metrics::text_system::use_text_system;
+pub(crate) use crate::text::metrics::text_system::{font_extents, math_metrics};
 
 mod spacing;
 pub use crate::text::metrics::spacing::spacing_px;

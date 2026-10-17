@@ -73,6 +73,7 @@ pub fn load_faces(css: &str) {
     SIZE_ADJUST.with(|s| s.borrow_mut().clear());
     super::metric_overrides::clear();
     ROMN.with(|r| r.borrow_mut().clear());
+    super::math::clear_aliases();
     load_faces_into(css);
 }
 
@@ -93,6 +94,7 @@ pub(super) fn load_faces_into(css: &str) {
             Some(hit) => hit,
             None => {
                 let loaded = read_font(&src).and_then(|bytes| {
+                    super::math::remember(&src, &bytes);
                     let romn = sfnt_romn_baseline(&bytes);
                     ROMN_BY_SRC.with(|m| m.borrow_mut().insert(src.clone(), romn));
                     LOADER.with(|l| l.borrow().as_ref().and_then(|load| load(bytes)))
@@ -102,6 +104,7 @@ pub(super) fn load_faces_into(css: &str) {
             }
         };
         if let Some(real) = real {
+            super::math::register(&src, &real);
             let name = family.trim_matches(is_quote).to_ascii_lowercase();
             if let Some(Some(v)) = ROMN_BY_SRC.with(|m| m.borrow().get(&src).copied()) {
                 ROMN.with(|r| r.borrow_mut().insert(name.clone(), v));

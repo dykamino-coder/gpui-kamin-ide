@@ -42,27 +42,42 @@ pub struct Document {
     /// Хэш разметки и темы: по нему видно, нужен ли повторный разбор.
     key: u64,
     base_url: Option<url::Url>,
+    /// An XML document (`image/svg+xml`, `crate::dom::xml`).
+    xml: bool,
 }
 
 impl Document {
     pub fn new(html: &str, theme_css: &str) -> Self {
-        Self::build(html, theme_css, None)
+        Self::build(html, theme_css, None, false)
     }
 
     /// Parse a document with the URL used to resolve its external resources.
     pub fn new_with_base(html: &str, theme_css: &str, base_uri: &str) -> Self {
-        Self::build(html, theme_css, url::Url::parse(base_uri).ok())
+        Self::build(html, theme_css, url::Url::parse(base_uri).ok(), false)
     }
 
     /// Parse a local document, resolving relative resources against its source file.
+    /// A `.svg` file is `image/svg+xml` (the file URL's type comes from its
+    /// extension) and is parsed as an XML document.
     pub fn new_with_path(html: &str, theme_css: &str, path: &std::path::Path) -> Self {
         let base = std::path::absolute(path)
             .ok()
             .and_then(|p| url::Url::from_file_path(p).ok());
-        Self::build(html, theme_css, base)
+        let xml = path
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("svg"));
+        Self::build(html, theme_css, base, xml)
     }
 
-    fn build(html: &str, theme_css: &str, base_url: Option<url::Url>) -> Self {
+    fn parse_nodes(html: &str, theme_css: &str, xml: bool) -> Vec<Node> {
+        if xml {
+            crate::dom::parse_xml(html, theme_css)
+        } else {
+            crate::dom::parse(html, theme_css)
+        }
+    }
+
+    fn build(html: &str, theme_css: &str, base_url: Option<url::Url>, xml: bool) -> Self {
         // Свои шрифты страницы грузятся ДО разбора: иначе первый же замер
         // ширины пойдёт по подстановке, а перерисовки под новый шрифт нет.
         crate::text::fonts::load_faces(html);
@@ -70,7 +85,7 @@ impl Document {
         crate::text::paragraph::forget_measures();
         crate::layout::table::paint::forget_row_rects();
         crate::text::vertical::forget_vt_measures();
-        let (mut nodes, root) = viewport::prepare(crate::dom::parse(html, theme_css));
+        let (mut nodes, root) = viewport::prepare(Self::parse_nodes(html, theme_css, xml));
         if let Some(base) = &base_url {
             base_url::resolve(&mut nodes, &base_url::document_base(html, base), false);
         }
@@ -79,6 +94,7 @@ impl Document {
             root,
             key: base_url::key(html, theme_css, base_url.as_ref()),
             base_url,
+            xml,
         }
     }
 
@@ -98,7 +114,7 @@ impl Document {
         if key == self.key {
             return false;
         }
-        let (mut nodes, root) = viewport::prepare(crate::dom::parse(html, theme_css));
+        let (mut nodes, root) = viewport::prepare(Self::parse_nodes(html, theme_css, self.xml));
         if let Some(base) = &self.base_url {
             base_url::resolve(&mut nodes, &base_url::document_base(html, base), false);
         }

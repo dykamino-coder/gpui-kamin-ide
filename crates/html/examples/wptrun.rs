@@ -1,5 +1,7 @@
 //! Прогон reftest-ов WPT: тест и эталон рисуются НАШИМ движком, снимки
 //! сравниваются между собой.
+//! `WPT_ANIMATION_FRAMES=0,125,500,1000` compares animated pairs at every listed
+//! millisecond time; without it the ordinary single-capture protocol is unchanged.
 //!
 //!     cargo run --example wptrun -- <список.txt> [ширина] [высота]
 //!
@@ -15,6 +17,8 @@
 // The runner is configured through WPT_* environment variables (see clippy.toml).
 #![allow(clippy::disallowed_methods)]
 
+#[path = "wptrun/animation_frames.rs"]
+mod animation_frames;
 #[path = "wptrun/capture.rs"]
 mod capture;
 #[path = "wptrun/capture_dump.rs"]

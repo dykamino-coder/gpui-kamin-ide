@@ -20,6 +20,15 @@ pub(crate) fn convert(
         Some(v) => v,
         None => return,
     };
+    // A referenced `symbol` with a zero viewBox (SVG 2 §8.6) or an author
+    // `display: none` (the instance keeps the symbol's presentation
+    // attributes; WPT `use-symbol-display-none`) renders nothing.
+    if child.tag_name() == Some(EId::Symbol)
+        && (child.viewbox_disables_rendering()
+            || child.attribute::<&str>(AId::Display) == Some("none"))
+    {
+        return;
+    }
 
     if state.parent_clip_path.is_some() && child.tag_name() == Some(EId::Symbol) {
         // Ignore `symbol` referenced by `use` inside a `clipPath`.
@@ -64,12 +73,16 @@ pub(crate) fn convert(
 
             let width = if node.has_attribute(AId::Width) {
                 node.convert_user_length(AId::Width, &use_state, def)
+            } else if child.has_attribute(AId::Width) {
+                child.convert_user_length(AId::Width, &use_state, def)
             } else {
                 use_state.view_box.width()
             };
 
             let height = if node.has_attribute(AId::Height) {
                 node.convert_user_length(AId::Height, &use_state, def)
+            } else if child.has_attribute(AId::Height) {
+                child.convert_user_length(AId::Height, &use_state, def)
             } else {
                 use_state.view_box.height()
             };
@@ -166,6 +179,9 @@ pub(crate) fn convert_svg(
     cache: &mut converter::Cache,
     parent: &mut Group,
 ) {
+    if node.viewbox_disables_rendering() {
+        return;
+    }
     // We require original transformation to setup 'clipPath'.
     let mut orig_ts = node.resolve_transform(AId::Transform, state);
     let mut new_ts = Transform::default();
@@ -319,7 +335,7 @@ fn get_clip_rect(
     let (x, y, mut w, mut h) = {
         let x = use_node.convert_user_length(AId::X, state, Length::zero());
         let y = use_node.convert_user_length(AId::Y, state, Length::zero());
-        let (w, h) = use_node_size(use_node, state);
+        let (w, h) = symbol_viewport_size(use_node, symbol_node, state);
         (x, y, w, h)
     };
 
@@ -350,7 +366,7 @@ fn viewbox_transform(
     linked: SvgNode,
     state: &converter::State,
 ) -> Option<Transform> {
-    let (mut w, mut h) = use_node_size(node, state);
+    let (mut w, mut h) = symbol_viewport_size(node, linked, state);
 
     if node.tag_name() == Some(EId::Svg) {
         // If attributes `width` and/or `height` are provided on the `use` element,
@@ -368,4 +384,21 @@ fn viewbox_transform(
     let view_box = ViewBox { rect, aspect };
 
     Some(view_box.to_transform(size))
+}
+
+/// The viewport of the element a `use` instantiates (SVG 2 §5.6.2 "The 'use'
+/// element"): the `use` width/height when given, else — for a `symbol`,
+/// which SVG 2 gives its own geometry — the symbol's width/height, else 100%.
+fn symbol_viewport_size(node: SvgNode, linked: SvgNode, state: &converter::State) -> (f32, f32) {
+    let def = Length::new(100.0, LengthUnit::Percent);
+    let (mut w, mut h) = use_node_size(node, state);
+    if node.tag_name() == Some(EId::Use) && linked.tag_name() == Some(EId::Symbol) {
+        if !node.has_attribute(AId::Width) && linked.has_attribute(AId::Width) {
+            w = linked.convert_user_length(AId::Width, state, def);
+        }
+        if !node.has_attribute(AId::Height) && linked.has_attribute(AId::Height) {
+            h = linked.convert_user_length(AId::Height, state, def);
+        }
+    }
+    (w, h)
 }

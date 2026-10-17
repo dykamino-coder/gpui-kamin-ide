@@ -282,6 +282,22 @@ impl<'a, 'input: 'a> SvgNode<'a, 'input> {
         self.convert_length(aid, Units::UserSpaceOnUse, state, def)
     }
 
+    /// SVG 2 §8.6 "The 'viewBox' attribute": a zero width or height
+    /// disables rendering of the element; a negative one only invalidates
+    /// the attribute (`parse_viewbox` then yields `None`).
+    pub fn viewbox_disables_rendering(&self) -> bool {
+        let Some(s) = self.attribute::<&str>(AId::ViewBox) else {
+            return false;
+        };
+        let n: Vec<f64> = s
+            .split(|c: char| c == ',' || c.is_ascii_whitespace())
+            .filter(|t| !t.is_empty())
+            .map(|t| t.parse::<f64>())
+            .collect::<Result<_, _>>()
+            .unwrap_or_default();
+        n.len() == 4 && n[2] >= 0.0 && n[3] >= 0.0 && (n[2] == 0.0 || n[3] == 0.0)
+    }
+
     pub fn parse_viewbox(&self) -> Option<NonZeroRect> {
         let vb: svgtypes::ViewBox = self.attribute(AId::ViewBox)?;
         NonZeroRect::from_xywh(vb.x as f32, vb.y as f32, vb.w as f32, vb.h as f32)
@@ -457,7 +473,9 @@ pub(crate) fn convert_doc(svg_doc: &svgtree::Document, opt: &Options) -> Result<
     };
     let svg_ts = svg.resolve_transform(AId::Transform, &root_state);
     let root_ts = svg_ts.pre_concat(view_box.to_transform(tree.size()));
-    if root_ts.is_identity() && background_color.is_none() {
+    if svg.viewbox_disables_rendering() {
+        // Nothing is painted (SVG 2 §8.6).
+    } else if root_ts.is_identity() && background_color.is_none() {
         convert_children(svg_doc.root(), &state, &mut cache, &mut tree.root);
     } else {
         let mut g = Group::empty();
@@ -974,6 +992,9 @@ fn convert_path(
     let has_bbox = tiny_skia_path.bounds().width() > 0.0 && tiny_skia_path.bounds().height() > 0.0;
     let mut fill = super::style::resolve_fill(node, has_bbox, state, cache);
     let mut stroke = super::style::resolve_stroke(node, has_bbox, state, cache);
+    if let Some(stroke) = stroke.as_mut() {
+        scale_dashes_to_path_length(node, &tiny_skia_path, stroke);
+    }
     let visibility: Visibility = node.find_attribute(AId::Visibility).unwrap_or_default();
     let mut visible = visibility == Visibility::Visible;
     let rendering_mode: ShapeRendering = node
@@ -1176,4 +1197,33 @@ impl SvgNode<'_, '_> {
 
         transform
     }
+}
+
+/// `pathLength` (SVG 2 §9.2 "The 'pathLength' attribute"): the author's
+/// path length rescales the dash distances by `computed / author` length,
+/// as Blink `SVGGeometryElement::PathLengthScaleFactor`. A zero author
+/// length is an infinite factor: every positive dash covers the whole path,
+/// so a pattern starting with a positive dash strokes solid.
+fn scale_dashes_to_path_length(node: SvgNode, path: &tiny_skia_path::Path, stroke: &mut Stroke) {
+    let Some(author) = node.attribute::<f32>(AId::PathLength) else {
+        return;
+    };
+    if !author.is_finite() || author < 0.0 || stroke.dasharray.is_none() {
+        return;
+    }
+    let computed = super::text::path_length_with(path, 0.01);
+    if computed <= 0.0 {
+        return;
+    }
+    if author == 0.0 {
+        if stroke.dasharray.as_ref().is_some_and(|d| d[0] > 0.0) {
+            stroke.dasharray = None;
+        }
+        return;
+    }
+    let k = (computed / author as f64) as f32;
+    if let Some(d) = stroke.dasharray.as_mut() {
+        d.iter_mut().for_each(|v| *v *= k);
+    }
+    stroke.dashoffset *= k;
 }

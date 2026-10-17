@@ -2,6 +2,9 @@
 
 use crate::dom::Node;
 
+#[cfg(test)]
+mod tests;
+
 /// Разложить логические стороны и размеры по физическим — по всему дереву.
 ///
 /// Какая сторона логического начала физическая, знает только письмо, а оно
@@ -109,6 +112,7 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
     // ничего (`clip-102`). CSS 2.1 §6.2.1: «the property takes the same
     // computed value as the property for the element's parent».
     settle_explicit_inherit(&mut nodes, None);
+    settle_mask_orientation(&mut nodes, None);
     // Якорные вставки, которым не разрешиться никогда (нет имени и якоря
     // по умолчанию; имя, которого в документе нет), сводятся к запасному
     // значению или к `auto` ЗДЕСЬ — сборщик дерева выбирает статическую
@@ -151,5 +155,19 @@ pub(super) fn settle_explicit_inherit(
             }
         }
         settle_explicit_inherit(&mut e.children, Some(&e.style));
+    }
+}
+
+/// CSS Images 3 §5.1: image-orientation inherits for decorative images too.
+/// Mask grouping consumes the element style before the render-time merge, so
+/// resolve this inherited input here, without giving unstyled ancestors a box.
+fn settle_mask_orientation(nodes: &mut [Node], parent: Option<bool>) {
+    for node in nodes {
+        let Node::Element(e) = node else { continue };
+        let orientation = e.style.image_orient_none.or(parent);
+        if e.style.mask_image.is_some() {
+            e.style.image_orient_none = orientation;
+        }
+        settle_mask_orientation(&mut e.children, orientation);
     }
 }
