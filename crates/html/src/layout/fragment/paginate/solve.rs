@@ -53,7 +53,7 @@ pub(crate) fn first_violation(geoms: &[Geom], h: f32, y0: f32) -> Option<(u64, f
                     return Some((g.id, b - edge, g.bottom - g.top));
                 }
             }
-            Cand::Item => {}
+            Cand::Item | Cand::Gap { .. } => {}
             Cand::Mono { soft } => {
                 let tall = g.bottom - g.top;
                 if soft && tall > h + EPS {
@@ -66,6 +66,72 @@ pub(crate) fn first_violation(geoms: &[Geom], h: f32, y0: f32) -> Option<(u64, f
                 if g.bottom > b + EPS {
                     return Some((g.id, b - g.top, tall));
                 }
+            }
+        }
+    }
+    None
+}
+
+/// The first flex row whose preceding `row-gap` adjoins a fragmentainer
+/// boundary: the row moves up to the boundary (`delta < 0`), the gap is
+/// truncated. Returns the row's items, the move, the items of every row
+/// after the first and the gap.
+pub(crate) type GapMove = (Vec<u64>, f32, Vec<u64>, f32);
+
+pub(crate) fn gap_violation(geoms: &[Geom], h: f32, y0: f32) -> Option<GapMove> {
+    if h < 1.0 {
+        return None;
+    }
+    let mut parents: Vec<u64> = Vec::new();
+    for g in geoms {
+        if let Cand::Gap { parent, .. } = g.cand
+            && !parents.contains(&parent)
+        {
+            parents.push(parent);
+        }
+    }
+    for parent in parents {
+        let items: Vec<(u64, f32, f32, f32)> = geoms
+            .iter()
+            .filter_map(|g| match g.cand {
+                Cand::Gap { gap, parent: p } if p == parent => Some((g.id, g.top, g.bottom, gap)),
+                _ => None,
+            })
+            .collect();
+        let mut tops: Vec<f32> = items.iter().map(|x| x.1).collect();
+        tops.sort_by(f32::total_cmp);
+        tops.dedup_by(|a, b| (*a - *b).abs() < EPS);
+        let gap = items[0].3;
+        for n in 1..tops.len() {
+            let t = tops[n];
+            // End of the previous row: its tallest item.
+            let prev_end = items
+                .iter()
+                .filter(|x| (x.1 - tops[n - 1]).abs() < EPS)
+                .map(|x| x.2)
+                .fold(f32::MIN, f32::max);
+            // Already truncated (or no full gap before the row).
+            if t < prev_end + gap - EPS {
+                continue;
+            }
+            // The first boundary at or after the start of the gap.
+            let b = if at_start(prev_end, h, y0) {
+                prev_end
+            } else {
+                next_boundary(prev_end, h, y0)
+            };
+            if b < t - EPS {
+                let ids = items
+                    .iter()
+                    .filter(|x| (x.1 - t).abs() < EPS)
+                    .map(|x| x.0)
+                    .collect();
+                let later = items
+                    .iter()
+                    .filter(|x| x.1 > tops[0] + EPS)
+                    .map(|x| x.0)
+                    .collect();
+                return Some((ids, b - t, later, gap));
             }
         }
     }

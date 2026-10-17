@@ -16,7 +16,6 @@ pub(super) fn paginate_of(
     line_col_w: Option<f32>,
     merged: &Computed,
     copy: &Element,
-    inner: &Computed,
 ) -> Option<Paginate> {
     if col_vert || copy.attr(MARK).is_none() {
         return None;
@@ -24,7 +23,7 @@ pub(super) fn paginate_of(
     let cands = candidates(copy)?;
     let avoid_root = avoid_row(copy);
     let ids: Vec<u64> = cands.iter().map(|c| c.0).collect();
-    let (opts, merged, copy, inner) = (opts.clone(), merged.clone(), copy.clone(), inner.clone());
+    let (opts, merged, copy) = (opts.clone(), merged.clone(), copy.clone());
     Some(Paginate {
         avoid_root,
         cands,
@@ -33,6 +32,9 @@ pub(super) fn paginate_of(
             if !apply(&mut c2, struts) {
                 return None;
             }
+            // The root's own style may carry struts too (row gaps).
+            let mut inner = crate::style::cascade::inherit::inherit(&merged, &c2.style);
+            inner.fragment_clip_ancestor = false;
             watch::building(&ids, || {
                 let copy_ix = std::cell::Cell::new(0usize);
                 let b = |first: bool, part: usize| {

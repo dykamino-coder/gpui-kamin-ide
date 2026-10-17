@@ -19,7 +19,8 @@ pub(crate) fn refusal(c: &Element, col_w: Option<f32>, auto_fill: bool) -> Optio
     // `UpdateOffsetAdjustmentForSuppressedRowGap`); struts do not model that.
     fn gapped(e: &Element, depth: u8) -> bool {
         (matches!(e.style.display, Some(Display::Flex) | Some(Display::Grid))
-            && e.style.gap.is_some())
+            && e.style.gap.is_some()
+            && super::row_gap(&e.style).is_none())
             || (depth > 0
                 && e.children.iter().any(
                     |n| matches!(n, Node::Element(k) if !monolith_box(k) && gapped(k, depth - 1)),

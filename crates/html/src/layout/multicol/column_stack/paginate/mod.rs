@@ -9,11 +9,12 @@
 //! `column_layout_algorithm.cc` `CalculateBalancedColumnBlockSize` +
 //! `minimal_space_shortage`).
 
-use crate::layout::fragment::paginate::solve::{Geom, first_violation};
-use crate::layout::fragment::paginate::{Cand, Paginate, Strut, Struts, watch};
+use crate::layout::fragment::paginate::solve::{first_violation, gap_violation};
+use crate::layout::fragment::paginate::{Cand, Strut, Struts};
 use crate::layout::multicol::column_stack::ColumnStack;
-use gpui::{App, AvailableSpace, Window, px, size};
+use gpui::{App, Window};
 
+mod frame;
 mod saved;
 use saved::Saved;
 
@@ -30,73 +31,6 @@ impl ColumnStack {
                 self.paginate_one(i, window, cx);
             }
         }
-    }
-
-    /// Column height and the child's offset in its first column, plus the
-    /// number of columns the plan uses.
-    fn frame_of(&self, i: usize) -> (f32, f32, usize) {
-        let kids = self.kid_geoms();
-        let (h, lines, plan, _) = self.balance(&kids);
-        let colh = self
-            .fixed_height
-            .or(self.forced_h)
-            .or(lines.first().map(|l| l.1))
-            .unwrap_or(h);
-        let y0 = plan
-            .iter()
-            .find(|f| f.kid == i && f.copy == 0)
-            .map_or(0.0, |f| f.y);
-        // Every child's content must be placed within the columns.
-        let fits = kids.iter().enumerate().all(|(k, kid)| {
-            kid.span
-                || kid.h.max(kid.over) < 0.5
-                || plan
-                    .iter()
-                    .filter(|f| f.kid == k)
-                    .map(|f| f.from + f.h)
-                    .fold(0.0f32, f32::max)
-                    >= kid.h.max(kid.over) - 0.5
-        });
-        let used = plan.iter().map(|f| f.col + 1).max().unwrap_or(1);
-        (colh, y0, if fits { used } else { usize::MAX })
-    }
-
-    /// Rebuild with `struts`, lay the main copy out, read candidate boxes.
-    fn lay_out(
-        &mut self,
-        i: usize,
-        p: &Paginate,
-        n: usize,
-        struts: &Struts,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Option<Vec<Geom>> {
-        let w = self.children[i].measure?;
-        let (el, frags) = (p.rebuild)(struts, n)?;
-        let c = &mut self.children[i];
-        c.el = el;
-        c.frags = frags;
-        watch::reset();
-        let (sz, content) = c.el.layout_as_root_with_content(
-            size(AvailableSpace::Definite(px(w)), AvailableSpace::MaxContent),
-            window,
-            cx,
-        );
-        c.h = f32::from(sz.height);
-        c.over = c.h.max(f32::from(content.height));
-        let mut geoms = Vec::with_capacity(p.cands.len());
-        for &(id, cand) in &p.cands {
-            let lid = watch::seen(id)?;
-            let o = window.layout_origin_unrounded(lid);
-            let s = window.layout_size_unrounded(lid);
-            geoms.push(Geom {
-                id,
-                cand,
-                top: f32::from(o.y),
-                bottom: f32::from(o.y + s.height),
-            });
-        }
-        Some(geoms)
     }
 
     fn paginate_one(&mut self, i: usize, window: &mut Window, cx: &mut App) {
@@ -132,7 +66,7 @@ impl ColumnStack {
                     match g.cand {
                         Cand::Forced { mt } => c.forced.push(g.top - mt),
                         Cand::Mono { .. } => c.solid.push((g.top, g.bottom)),
-                        Cand::Item => {}
+                        Cand::Item | Cand::Gap { .. } => {}
                     }
                 }
                 c.forced.sort_by(f32::total_cmp);
@@ -148,6 +82,7 @@ impl ColumnStack {
                     (
                         g.id,
                         Strut {
+                            gap: 0.0,
                             by: 0.0,
                             size: g.bottom - g.top,
                         },
@@ -173,7 +108,39 @@ impl ColumnStack {
                     };
                     let (h, y0, _) = self.frame_of(i);
                     let Some((id, delta, tall)) = first_violation(&geoms, h, y0) else {
-                        break;
+                        // Truncate a row gap adjoining a break.
+                        let Some((ids, delta, later, gap)) = gap_violation(&geoms, h, y0) else {
+                            break;
+                        };
+                        for id in later {
+                            let size = geoms
+                                .iter()
+                                .find(|g| g.id == id)
+                                .map_or(0.0, |g| g.bottom - g.top);
+                            struts
+                                .entry(id)
+                                .or_insert(Strut {
+                                    by: 0.0,
+                                    size,
+                                    gap: 0.0,
+                                })
+                                .gap = gap;
+                        }
+                        for id in ids {
+                            let size = geoms
+                                .iter()
+                                .find(|g| g.id == id)
+                                .map_or(0.0, |g| g.bottom - g.top);
+                            struts
+                                .entry(id)
+                                .or_insert(Strut {
+                                    by: 0.0,
+                                    size,
+                                    gap: 0.0,
+                                })
+                                .by += delta;
+                        }
+                        continue;
                     };
                     // A monolith pushed past a boundary would have fitted a
                     // column taller by what it overhangs it.
@@ -185,7 +152,11 @@ impl ColumnStack {
                         .iter()
                         .find(|g| g.id == id)
                         .map_or(0.0, |g| g.bottom - g.top);
-                    let s = struts.entry(id).or_insert(Strut { by: 0.0, size });
+                    let s = struts.entry(id).or_insert(Strut {
+                        by: 0.0,
+                        size,
+                        gap: 0.0,
+                    });
                     s.by = (s.by + delta).max(0.0);
                 }
                 if !balanced {

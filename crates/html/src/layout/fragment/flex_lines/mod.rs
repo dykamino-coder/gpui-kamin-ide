@@ -47,9 +47,9 @@ use items::{constrained_inside, row_item_width};
 /// дети — блочные элементы в потоке без `flex-grow`, `flex-basis`,
 /// `align-self`, боковых полей и отбивок, ширина в точках либо пустой
 /// `auto`. Иначе контейнер идёт прежним путём.
-/// Whether `split_flex_lines` opens `c` into its lines (parallel flows).
+/// Whether `split_flex_lines` opens the column flex `c` into its lines.
 pub(crate) fn explodes(c: &Element, col_w: Option<f32>) -> bool {
-    flex_lines_of(c, col_w).is_some() || flex_row_lines_of(c, col_w).is_some()
+    flex_lines_of(c, col_w).is_some()
 }
 
 pub(crate) fn split_flex_lines(

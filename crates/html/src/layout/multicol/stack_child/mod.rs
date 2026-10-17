@@ -219,7 +219,7 @@ pub(super) fn multicol_stack_child(
     // §4.1 «scroll containers»); `hidden`/`clip` —
     // обрезка, не прокрутка, и режется как блок
     // (корень A4).
-    let paginate = paginate::paginate_of(opts, col_vert, col_rl, line_col_w, merged, &copy, &inner);
+    let paginate = paginate::paginate_of(opts, col_vert, col_rl, line_col_w, merged, &copy);
     let mut child = finish_stack_child(
         ix,
         mt,

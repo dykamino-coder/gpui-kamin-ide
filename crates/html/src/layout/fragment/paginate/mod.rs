@@ -43,6 +43,10 @@ pub(crate) enum Cand {
     /// `GiveItemsFinalPositionAndSizeForFragmentation`), so a strut among
     /// its siblings must not shrink or grow it.
     Item,
+    /// Item of a wrapping flex row whose rows are separated by `row-gap`: a
+    /// gap adjoining a break is truncated (Blink
+    /// `UpdateOffsetAdjustmentForSuppressedRowGap`).
+    Gap { gap: f32, parent: u64 },
 }
 
 fn px_or_zero(l: &Option<Len>) -> Option<f32> {
@@ -60,6 +64,16 @@ fn row_flex(s: &crate::style::computed::Computed) -> bool {
             s.flex_dir,
             None | Some(FlexDir::Row) | Some(FlexDir::RowReverse)
         )
+}
+
+/// The px `row-gap` of a wrapping flex row.
+pub(crate) fn row_gap(s: &crate::style::computed::Computed) -> Option<f32> {
+    match s.gap {
+        Some((Some(Len::Px(g)), _)) if g > 0.0 && row_flex(s) && s.flex_wrap == Some(true) => {
+            Some(g)
+        }
+        _ => None,
+    }
 }
 
 fn column_flex(s: &crate::style::computed::Computed) -> bool {
@@ -126,6 +140,15 @@ fn walk(p: &Element, depth: u8, out: &mut Vec<(u64, Cand)>) -> Option<()> {
         }
         if column_flex(&p.style) {
             out.push((k.node_id, Cand::Item));
+        }
+        if let Some(gap) = row_gap(&p.style) {
+            out.push((
+                k.node_id,
+                Cand::Gap {
+                    gap,
+                    parent: p.node_id,
+                },
+            ));
         }
         // Breaks propagate from the first/last child to the box edge
         // (css-break-3 §3.1 «break propagation»).

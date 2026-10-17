@@ -13,6 +13,9 @@ use std::collections::HashMap;
 pub(crate) struct Strut {
     pub(crate) by: f32,
     pub(crate) size: f32,
+    /// The flex row gap before this item's row, carried as its margin so
+    /// that one row's gap can be truncated (`row-gap` is one value).
+    pub(crate) gap: f32,
 }
 
 /// Struts by `node_id`.
@@ -61,6 +64,13 @@ pub(crate) fn apply(c: &mut Element, struts: &Struts) -> bool {
     let column = column_flex(&c.style);
     let can_shrink_box = matches!(c.style.height, Some(Len::Px(_)));
     let moved = column && inner_by(c, struts) > 0.0;
+    // Row gaps carried by the items' margins (`Strut::gap`).
+    let gap_rows = c.children.iter().any(
+        |n| matches!(n, Node::Element(k) if struts.get(&k.node_id).is_some_and(|s| s.gap > 0.0)),
+    );
+    if gap_rows && let Some((_, col)) = c.style.gap {
+        c.style.gap = Some((Some(Len::Px(0.0)), col));
+    }
     let mut i = 0;
     while i < c.children.len() {
         let mut spacer = None;
@@ -92,7 +102,13 @@ pub(crate) fn apply(c: &mut Element, struts: &Struts) -> bool {
                     k.style.flex_shrink = Some(0.0);
                 }
             }
-            if let Some(&st) = struts.get(&k.node_id).filter(|s| s.by > 0.0) {
+            if let Some(&st) = struts.get(&k.node_id).filter(|s| s.gap > 0.0 && gap_rows) {
+                let Some(m) = px_or_zero(&k.style.margin.top) else {
+                    return false;
+                };
+                k.style.margin.top = Some(Len::Px(m + st.gap));
+            }
+            if let Some(&st) = struts.get(&k.node_id).filter(|s| s.by != 0.0) {
                 if as_margin {
                     let Some(m) = px_or_zero(&k.style.margin.top) else {
                         return false;
@@ -104,7 +120,7 @@ pub(crate) fn apply(c: &mut Element, struts: &Struts) -> bool {
                         };
                         k.style.height = Some(Len::Px(h.max(0.0)));
                     }
-                } else {
+                } else if st.by > 0.0 {
                     spacer = Some(spacer_box(k.node_id, st.by));
                 }
             }
