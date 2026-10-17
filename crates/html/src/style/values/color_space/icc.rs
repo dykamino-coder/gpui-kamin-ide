@@ -69,19 +69,23 @@ pub(crate) fn apply_icc(
     gpui::bgra_bytes_to_image(w, h, out)
 }
 
-// Реестр профилей `@color-profile`: имя (`--foo`) — байты ICC.
-//
-// Живёт одну страницу, как и подмена шрифтов: имена придумывает страница.
-thread_local! {
-    pub(super) static PROFILES: std::cell::RefCell<std::collections::HashMap<String, Vec<u8>>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
+/// Профиль `@color-profile` текущего документа по имени (`--foo`): имена
+/// придумывает страница, реестр — её (`document::state`).
+pub(super) fn profile(name: &str) -> Option<Vec<u8>> {
+    crate::document::state::current()
+        .profiles
+        .borrow()
+        .get(name)
+        .cloned()
 }
 
-/// Разобрать правила `@color-profile` страницы и загрузить их файлы.
+/// Разобрать правила `@color-profile` страницы в реестр текущего документа
+/// и загрузить их файлы.
 ///
 /// Путь в `url(...)` берётся как есть: адреса в странице уже разрешены.
 pub fn load_profiles(css: &str) {
-    PROFILES.with(|p| p.borrow_mut().clear());
+    let doc = crate::document::state::current();
+    doc.profiles.borrow_mut().clear();
     // Комментарии срезаются ДО поиска — как у `@font-face` (fonts::faces).
     let css = &crate::style::css::strip_comments(css);
     let lower = css.to_ascii_lowercase();
@@ -122,7 +126,7 @@ pub fn load_profiles(css: &str) {
         if let Ok(bytes) = read
             && name.starts_with("--")
         {
-            PROFILES.with(|p| p.borrow_mut().insert(name, bytes));
+            doc.profiles.borrow_mut().insert(name, bytes);
         }
     }
 }

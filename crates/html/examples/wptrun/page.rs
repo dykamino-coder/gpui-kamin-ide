@@ -2,7 +2,7 @@
 
 use super::page_box::{PageBoxFn, page_box};
 use gpui::{Context, IntoElement, ParentElement, Render, Styled, Window, div, px, rgb};
-use kamin_html::{Document, RenderOpts, render};
+use kamin_html::{Document, RenderOpts};
 use std::rc::Rc;
 
 pub(super) struct Page {
@@ -23,6 +23,9 @@ impl Render for Page {
         // показал 1041 → 1006 по css-text. Метрики системной подстановки
         // (кана в 0.82 кегля) совпадают с эталонами чаще, чем `MS Gothic`.
         text.font_size = px(16.).into();
+        // Правила и значения листа (`Len::parse` в `page_box`) читаются в
+        // области документа: `@page` — его правила, а не процесса.
+        let _scope = self.doc.enter();
         // Печатная пара: страница WPT по умолчанию 5in x 3in = 480x288
         // точек; `@page` может задать size/margin/фон/рамку. Область
         // просмотра документа = page area (css-page-3 §page-model).
@@ -50,7 +53,7 @@ impl Render for Page {
             // `css::page_decls_in`. `margin: inherit` — от корневого элемента
             // (§page-properties: «The page context inherits from the root
             // element»; `page-margin-006`).
-            let rules = kamin_html::css::page_rules_snapshot();
+            let rules = self.doc.page_rules();
             let root_margin = self
                 .doc
                 .nodes()
@@ -99,7 +102,7 @@ impl Render for Page {
                 )
             });
             let margins: kamin_html::render::PageMarginDeclsFn = {
-                let rules = kamin_html::css::page_rules_snapshot();
+                let rules = self.doc.page_rules();
                 std::rc::Rc::new(move |i, name: &str| {
                     (
                         kamin_html::css::page_decls_in(&rules, i, name, rtl),
@@ -163,10 +166,10 @@ impl Render for Page {
                 .bg(rgb(0xffffff))
                 .text_size(px(16.))
                 .font_family(opts.text.font_family.clone())
-                .child(stack)
+                .child(self.doc.scoped(stack))
                 .into_any_element();
         }
-        let children = render(self.doc.nodes(), &opts);
+        let children = self.doc.render(&opts);
         if std::env::var("HTML_VIEWPORT").is_ok() {
             eprintln!("BUILT {} детей", children.len());
         }

@@ -32,7 +32,7 @@ use functions::color_fn;
 pub(crate) use functions::resolve_relative;
 pub(crate) use icc::apply_icc;
 pub use icc::load_profiles;
-use icc::{PROFILES, icc_to_srgb};
+use icc::{icc_to_srgb, profile};
 use matrices::{
     A98_TO_XYZ, D50, D50_TO_D65, D65_TO_D50, LINEAR_SRGB_TO_XYZ, P3_TO_XYZ, PROPHOTO_TO_XYZ,
     REC2020_TO_XYZ, XYZ_TO_LINEAR_SRGB, mul, srgb_gamma, srgb_linear,

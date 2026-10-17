@@ -15,7 +15,7 @@ use gpui::{
     AppContext as _, Bounds, Context, Entity, IntoElement, ParentElement, Render, Styled, Window,
     WindowBounds, WindowOptions, div, px, rgb, size,
 };
-use kamin_html::{Document, RenderOpts, render_block, scroll::scroll_area};
+use kamin_html::{Document, RenderOpts, scroll::scroll_area};
 use std::rc::Rc;
 
 const INK: u32 = 0xe6e6ee;
@@ -227,7 +227,7 @@ impl Render for Demo {
                 (0..self.doc.top_level_blocks()).filter_map(|ix| {
                     // Блоки собираются по одному — той же функцией, которой их
                     // берёт виртуализованный список в реальном приложении.
-                    render_block(self.doc.nodes(), ix, &opts)
+                    self.doc.render_block(ix, &opts)
                 }),
             ))
             .child(

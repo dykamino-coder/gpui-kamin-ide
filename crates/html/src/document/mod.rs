@@ -14,6 +14,7 @@ mod base_url;
 mod canvas_background;
 mod embedded;
 mod logical_properties;
+pub mod state;
 #[cfg(test)]
 mod tests;
 mod viewport;
@@ -23,8 +24,8 @@ use crate::document::canvas_background::any_side;
 use crate::document::canvas_background::mark_canvas_background;
 use crate::document::canvas_background::viewport_overflow;
 use crate::document::embedded::hash_of;
-pub use crate::document::embedded::parse_embedded;
 use crate::document::embedded::unwrap_document;
+pub use crate::document::embedded::{Embedded, parse_embedded};
 pub(crate) use crate::document::embedded::{EmbeddingScheme, parse_embedded_sized};
 use crate::document::logical_properties::resolve_logical;
 use crate::document::writing_mode::propagate_writing_mode;
@@ -32,9 +33,14 @@ use crate::document::writing_mode::propagate_writing_mode;
 mod box_style;
 
 use crate::dom::Node;
+use state::{DocScope, DocState, Scoped};
+use std::rc::Rc;
 
 /// Документ, разобранный один раз.
 pub struct Document {
+    /// Правила, метрики корня и режим документа (`state`): живут вместе с
+    /// деревом и подменяются вместе с ним на `update`.
+    state: Rc<DocState>,
     nodes: Vec<Node>,
     /// Текстовый стиль `body`: им набирается текст верхнего уровня, у
     /// которого своего элемента нет.
@@ -69,27 +75,16 @@ impl Document {
         Self::build(html, theme_css, base, xml)
     }
 
-    fn parse_nodes(html: &str, theme_css: &str, xml: bool) -> Vec<Node> {
-        if xml {
-            crate::dom::parse_xml(html, theme_css)
-        } else {
-            crate::dom::parse(html, theme_css)
-        }
-    }
-
     fn build(html: &str, theme_css: &str, base_url: Option<url::Url>, xml: bool) -> Self {
         // Свои шрифты страницы грузятся ДО разбора: иначе первый же замер
         // ширины пойдёт по подстановке, а перерисовки под новый шрифт нет.
         crate::text::fonts::load_faces(html);
-        crate::style::values::color_space::load_profiles(html);
         crate::text::paragraph::forget_measures();
         crate::layout::table::paint::forget_row_rects();
         crate::text::vertical::forget_vt_measures();
-        let (mut nodes, root) = viewport::prepare(Self::parse_nodes(html, theme_css, xml));
-        if let Some(base) = &base_url {
-            base_url::resolve(&mut nodes, &base_url::document_base(html, base), false);
-        }
+        let (state, nodes, root) = parse_document(html, theme_css, base_url.as_ref(), xml);
         Document {
+            state,
             nodes,
             root,
             key: base_url::key(html, theme_css, base_url.as_ref()),
@@ -114,10 +109,9 @@ impl Document {
         if key == self.key {
             return false;
         }
-        let (mut nodes, root) = viewport::prepare(Self::parse_nodes(html, theme_css, self.xml));
-        if let Some(base) = &self.base_url {
-            base_url::resolve(&mut nodes, &base_url::document_base(html, base), false);
-        }
+        let (state, nodes, root) =
+            parse_document(html, theme_css, self.base_url.as_ref(), self.xml);
+        self.state = state;
         self.nodes = nodes;
         self.root = root;
         self.key = key;
@@ -131,6 +125,39 @@ impl Document {
 
     pub fn nodes(&self) -> &[Node] {
         &self.nodes
+    }
+
+    /// Сделать документ текущим до конца жизни guard'а: в этой области
+    /// хост вызывает `render::*` по `nodes()` и разбирает значения листа.
+    pub fn enter(&self) -> DocScope {
+        self.state.enter()
+    }
+
+    /// Обернуть элемент, собранный в области документа, чтобы раскладка,
+    /// подготовка и краска его поддерева шли в той же области.
+    pub fn scoped(&self, element: gpui::AnyElement) -> gpui::AnyElement {
+        Scoped::wrap(&self.state, element)
+    }
+
+    /// Собрать кадр всего документа (`render::render` в его области).
+    pub fn render(&self, opts: &crate::RenderOpts) -> Vec<gpui::AnyElement> {
+        let _scope = self.enter();
+        crate::render::render(&self.nodes, opts)
+            .into_iter()
+            .map(|e| self.scoped(e))
+            .collect()
+    }
+
+    /// Собрать один блок верхнего уровня (`render::render_block`).
+    pub fn render_block(&self, index: usize, opts: &crate::RenderOpts) -> Option<gpui::AnyElement> {
+        let _scope = self.enter();
+        crate::render::render_block(&self.nodes, index, opts).map(|e| self.scoped(e))
+    }
+
+    /// Правила `@page` документа — по ним хост строит листы
+    /// (`css::page_decls_in`, `css::page_margins_in`).
+    pub fn page_rules(&self) -> Vec<crate::style::css::PageRule> {
+        self.state.page_rules()
     }
 
     /// Сколько узлов в документе — для решения о виртуализации: раскладка в
@@ -154,4 +181,28 @@ impl Document {
     pub fn top_level_blocks(&self) -> usize {
         self.nodes.len()
     }
+}
+
+/// Разбор в СВЕЖЕЕ состояние документа: `@color-profile`, разметка (XML —
+/// своим разборщиком, `dom::xml`), правка адресов. Шрифты страницы (`load_faces`) — процессный реестр гарнитур.
+fn parse_document(
+    html: &str,
+    theme_css: &str,
+    base_url: Option<&url::Url>,
+    xml: bool,
+) -> (Rc<DocState>, Vec<Node>, crate::style::computed::Computed) {
+    let media = crate::style::css::Media::default();
+    let state = DocState::new(media);
+    let _scope = state.enter();
+    crate::style::values::color_space::load_profiles(html);
+    let (mut nodes, root) = viewport::prepare(if xml {
+        crate::dom::parse_current_xml(html, theme_css, media)
+    } else {
+        crate::dom::parse_current(html, theme_css, media)
+    });
+    if let Some(base) = base_url {
+        base_url::resolve(&mut nodes, &base_url::document_base(html, base), false);
+    }
+    drop(_scope);
+    (state, nodes, root)
 }

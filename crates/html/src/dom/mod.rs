@@ -16,6 +16,7 @@ mod nth_child_tests;
 mod page_scheme;
 mod parse_document;
 pub(crate) mod xml;
+pub(crate) use xml::parse_current_xml;
 pub use xml::parse_xml;
 #[cfg(test)]
 mod presentational_hint_tests;
@@ -31,6 +32,7 @@ use crate::dom::direction::first_strong;
 use crate::dom::direction::squeeze_parens;
 use crate::dom::parse_document::collect_style_tags;
 pub use crate::dom::parse_document::parse;
+pub(crate) use crate::dom::parse_document::parse_current;
 pub use crate::dom::parse_document::parse_media;
 use crate::dom::ua_style::BLOCK_TAGS;
 use crate::dom::ua_style::user_agent_css;

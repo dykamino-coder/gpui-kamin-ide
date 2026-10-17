@@ -44,8 +44,7 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     let html = format!(
         "<!DOCTYPE html><html><head><style>html,body{{margin:0;padding:0}}</style></head><body>{markup}</body></html>"
     );
-    let outer_quirks = crate::style::select::quirks();
-    let (nodes, salt) = crate::document::parse_embedded_sized(
+    let embedded = crate::document::parse_embedded_sized(
         &html,
         crate::BROWSER_CSS,
         (w, h),
@@ -53,15 +52,20 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         false,
         None,
     );
+    let scope = embedded.state.enter();
+    let nodes = embedded.nodes;
     let mut sub = opts.clone();
     sub.viewport = (w, h);
-    sub.doc_salt = salt;
+    sub.doc_salt = embedded.salt;
     IFRAME_DEPTH.with(|d| d.set(d.get() + 1));
     crate::layout::positioned::containing_block::icb_open();
     let mut kids = blocks(&nodes, &sub.root_style(), &sub);
     kids.extend(crate::layout::positioned::containing_block::icb_close());
     IFRAME_DEPTH.with(|d| d.set(d.get() - 1));
-    crate::style::select::QUIRKS.with(|q| q.set(outer_quirks));
+    drop(scope);
+    let kids = kids
+        .into_iter()
+        .map(|k| crate::document::state::Scoped::wrap(&embedded.state, k));
     Some(
         styled_div(e)
             .w(px(w))
