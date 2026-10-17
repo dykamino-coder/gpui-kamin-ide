@@ -29,7 +29,7 @@
 )]
 
 #[cfg(test)]
-mod coverage;
+pub mod coverage;
 pub use style::css;
 pub mod dom;
 pub use dom::encoding;
