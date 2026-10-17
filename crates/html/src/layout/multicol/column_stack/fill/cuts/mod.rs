@@ -4,7 +4,11 @@ use super::pieces::LoopStep;
 use crate::layout::fragment::types::{Frag, Kid};
 use crate::layout::multicol::column_stack::ColumnStack;
 mod at;
+mod fragment;
+#[cfg(test)]
+mod tests;
 pub(super) use at::cut_at;
+use fragment::FragmentAt;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn forced_or_fits(
@@ -28,6 +32,7 @@ pub(super) fn forced_or_fits(
     ft: impl Fn(f32) -> f32,
     forced: Option<f32>,
 ) -> Option<LoopStep> {
+    let at = FragmentAt::new(kid, *copy, *col, *cur, *from, hd);
     if let Some(f) = forced {
         let nf = k
             .cuts
@@ -35,16 +40,7 @@ pub(super) fn forced_or_fits(
             .find(|&&(need, _)| (need - f).abs() < 0.01)
             .map(|&(_, nf)| nf)
             .unwrap_or(f);
-        out.push(Frag {
-            kid,
-            copy: *copy,
-            col: *col,
-            y: *cur,
-            from: *from,
-            h: f - *from,
-            head: hd,
-            foot: ft(f - *from),
-        });
+        at.emit(out, f - *from, ft(f - *from));
         *from = nf;
         if *copy + 1 >= limit {
             *y = target;
@@ -59,16 +55,7 @@ pub(super) fn forced_or_fits(
         return Some(LoopStep::Continue);
     }
     if rest <= room_all + 0.01 {
-        out.push(Frag {
-            kid,
-            copy: *copy,
-            col: *col,
-            y: *cur,
-            from: *from,
-            h: rest,
-            head: hd,
-            foot: 0.0,
-        });
+        at.emit(out, rest, 0.0);
         *y = *cur + rest;
         *placed = true;
         return Some(LoopStep::Break);
@@ -98,18 +85,10 @@ pub(super) fn place_cut(
     mono: bool,
     cut: Option<(f32, f32)>,
 ) -> Option<LoopStep> {
+    let at = FragmentAt::new(kid, copy, *col, *cur, *from, hd);
     match cut {
         Some((need, nf)) => {
-            out.push(Frag {
-                kid,
-                copy,
-                col: *col,
-                y: *cur,
-                from: *from,
-                h: (need - *from).max(0.0),
-                head: hd,
-                foot: ft((need - *from).max(0.0)),
-            });
+            at.emit(out, (need - *from).max(0.0), ft((need - *from).max(0.0)));
             *from = nf;
         }
         None if !mono
@@ -123,16 +102,7 @@ pub(super) fn place_cut(
             // (верхняя рамка/отбивка, Blink «avoid breaking inside
             // block-start border») из непустой колонки не режет: ребёнок
             // уходит в следующую целиком (ветка ниже).
-            out.push(Frag {
-                kid,
-                copy,
-                col: *col,
-                y: *cur,
-                from: *from,
-                h: room,
-                head: hd,
-                foot: ft(room),
-            });
+            at.emit(out, room, ft(room));
             *from += room;
         }
         None if paged && *placed && *cur > target + 0.01 => {
@@ -158,10 +128,7 @@ pub(super) fn place_cut(
         None if *placed && (*cur > 0.01 || paged) => {
             // Из непустой колонки — в следующую целиком; поле на
             // границе колонки съедается.
-            *col += 1;
-            *cur = 0.0;
-            *placed = *col < not_top;
-            ColumnStack::skip_float(float_hold, col, cur, placed);
+            next_column(col, cur, placed, not_top, float_hold);
             return Some(LoopStep::Continue);
         }
         // Одно поле ребёнка (ни куска содержимого) уже ушло за край
@@ -173,38 +140,17 @@ pub(super) fn place_cut(
         // не содержимое, правило «хоть что-то в каждом
         // фрагментаинере» его не держит.
         None if !*placed && !paged && *from <= 0.01 && *cur > target + 0.01 => {
-            *col += 1;
-            *cur = 0.0;
-            *placed = *col < not_top;
-            ColumnStack::skip_float(float_hold, col, cur, placed);
+            next_column(col, cur, placed, not_top, float_hold);
             return Some(LoopStep::Continue);
         }
         None if !mono && rest > target + 0.01 && room > 0.01 => {
-            out.push(Frag {
-                kid,
-                copy,
-                col: *col,
-                y: *cur,
-                from: *from,
-                h: room,
-                head: hd,
-                foot: ft(room),
-            });
+            at.emit(out, room, ft(room));
             *from += room;
         }
         None => {
             // Монолит с верха пустой колонки: остаётся и
             // переполняет.
-            out.push(Frag {
-                kid,
-                copy,
-                col: *col,
-                y: *cur,
-                from: *from,
-                h: rest,
-                head: hd,
-                foot: 0.0,
-            });
+            at.emit(out, rest, 0.0);
             *y = *cur + rest;
             *placed = true;
             return Some(LoopStep::Break);
@@ -219,4 +165,17 @@ fn edge_held(k: &Kid, edge: f32) -> bool {
     k.solid
         .iter()
         .any(|&(a, b)| a < edge - 0.01 && edge < b - 0.01)
+}
+
+fn next_column(
+    col: &mut usize,
+    cur: &mut f32,
+    placed: &mut bool,
+    not_top: usize,
+    float_hold: &mut Option<(usize, usize, f32)>,
+) {
+    *col += 1;
+    *cur = 0.0;
+    *placed = *col < not_top;
+    ColumnStack::skip_float(float_hold, col, cur, placed);
 }
