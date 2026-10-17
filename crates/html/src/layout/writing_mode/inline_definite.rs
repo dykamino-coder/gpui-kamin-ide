@@ -8,7 +8,7 @@
 //! Servo `containing_block.size.inline`). taffy resolves these percentages against the PHYSICAL
 //! width and treats a stretched height as indefinite, so they are resolved here, once the parent's
 //! content inline size is known.
-use crate::style::computed::{Computed, Display, Position, Sides};
+use crate::style::computed::{Computed, Display, Overflow, Position, Sides};
 use crate::style::values::value::Len;
 
 fn px(value: Option<Len>) -> Option<f32> {
@@ -58,6 +58,15 @@ pub(crate) fn own(style: &Computed, parent: &Computed, root: bool, icb_height: f
         return None;
     }
     let b = style.borders();
+    // A scroll container's scrollbars are only known after a layout pass, so its
+    // content inline size is left to the layout engine.
+    if style.scroller
+        || [style.overflow_x, style.overflow_y]
+            .into_iter()
+            .any(|o| matches!(o, Some(Overflow::Scroll | Overflow::Hidden)))
+    {
+        return None;
+    }
     let edges = px(b.top)? + px(b.bottom)? + px(style.padding.top)? + px(style.padding.bottom)?;
     match style.height {
         Some(Len::Px(h)) => {
@@ -87,10 +96,41 @@ pub(crate) fn own(style: &Computed, parent: &Computed, root: bool, icb_height: f
     } else if parent.vertical == Some(true) {
         parent.inline_definite
     } else {
-        None
+        stretched_flex_item(style, parent)
     }?;
     let margins = px(style.margin.top)? + px(style.margin.bottom)?;
     Some((space - margins - edges).max(0.0))
+}
+
+/// A stretched item of a horizontal single-line flex row with a definite height: its
+/// physical height is definite (css-flexbox-1 §9.8 item 11, Blink
+/// `IsStretchedAlongBlockAxis`), and for a vertical item that is its inline size.
+fn stretched_flex_item(style: &Computed, parent: &Computed) -> Option<f32> {
+    use crate::style::computed::{Align, FlexDir};
+    let row = matches!(parent.display, Some(Display::Flex | Display::InlineFlex))
+        && matches!(
+            parent.flex_dir,
+            None | Some(FlexDir::Row | FlexDir::RowReverse)
+        )
+        && parent.flex_wrap != Some(true);
+    let stretch = |a: Option<Align>| matches!(a, None | Some(Align::Stretch));
+    if !row
+        || !stretch(style.align_self)
+        || !stretch(parent.align_items)
+        || parent.contains_height()
+    {
+        return None;
+    }
+    let Some(Len::Px(height)) = parent.height else {
+        return None;
+    };
+    let pb = parent.borders();
+    let parent_edges = if parent.border_box == Some(true) {
+        px(pb.top)? + px(pb.bottom)? + px(parent.padding.top)? + px(parent.padding.bottom)?
+    } else {
+        0.0
+    };
+    Some(height - parent_edges)
 }
 
 #[cfg(test)]
@@ -133,5 +173,19 @@ mod tests {
         abs.height = Some(Len::Pct(0.25));
         resolve_percentages(&mut abs, &parent);
         assert_eq!(abs.height, Some(Len::Pct(0.25)));
+    }
+
+    #[test]
+    fn a_stretched_vertical_flex_item_takes_the_row_height() {
+        let row = Computed {
+            display: Some(Display::Flex),
+            height: Some(Len::Px(100.0)),
+            ..Computed::default()
+        };
+        let mut item = vertical();
+        item.margin.top = Some(Len::Px(4.0));
+        assert_eq!(own(&item, &row, false, 600.0), Some(96.0));
+        item.overflow_y = Some(Overflow::Scroll);
+        assert_eq!(own(&item, &row, false, 600.0), None);
     }
 }
