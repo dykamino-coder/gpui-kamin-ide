@@ -25,7 +25,8 @@ pub use text::fonts;
 pub use text::metrics;
 pub mod render;
 pub use interactive::scroll;
-#[doc(hidden)]
+/// Static scrollbar capture control for the `wptrun` example (`wpt-harness` feature).
+#[cfg(feature = "wpt-harness")]
 pub use interactive::scrollbars::theme::set_scrollbar_capture_mode;
 pub use interactive::select;
 pub mod svg;
