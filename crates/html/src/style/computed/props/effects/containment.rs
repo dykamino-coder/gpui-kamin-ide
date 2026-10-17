@@ -150,6 +150,7 @@ impl Computed {
                     "saturation" => Some(13),
                     "color" => Some(14),
                     "luminosity" => Some(15),
+                    "plus-lighter" => Some(16),
                     _ => Some(0),
                 }
             }
