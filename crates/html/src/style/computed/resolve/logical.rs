@@ -195,5 +195,10 @@ impl Computed {
                 self.apply_border_shorthand(v, Some(side as usize));
             }
         }
+        let phys = [b_start, i_end, b_end, i_start];
+        for (side, prop, v) in &logical.border_long {
+            let name = ["top", "right", "bottom", "left"][phys[*side as usize] as usize];
+            self.apply_one(&format!("border-{name}-{prop}"), v);
+        }
     }
 }

@@ -1,0 +1,73 @@
+//! Page-stack content and repeated table band copies.
+
+use gpui::AnyElement;
+
+impl PageKid {
+    pub(super) fn paint_sections(
+        &mut self,
+        f: &crate::layout::fragment::types::Frag,
+        band: impl Fn(f32, f32) -> gpui::Bounds<gpui::Pixels>,
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) {
+        let Some(r) = self.repeat.as_mut() else {
+            return;
+        };
+        if f.head > 0.01
+            && f.copy > 0
+            && let Some(el) = r.head_els.get_mut(f.copy - 1)
+        {
+            window.with_content_mask(
+                Some(gpui::ContentMask {
+                    bounds: band(-f.head, f.head),
+                }),
+                |window| el.paint(window, cx),
+            );
+        }
+        if f.foot > 0.01
+            && let Some((_, bh)) = r.foot
+            && let Some(el) = r.foot_els.get_mut(f.copy)
+        {
+            window.with_content_mask(
+                Some(gpui::ContentMask {
+                    bounds: band(f.h + f.foot - bh, bh),
+                }),
+                |window| el.paint(window, cx),
+            );
+        }
+    }
+}
+
+/// Блок верхнего уровня документа в стопке страниц. Высота заранее НЕ
+/// известна и меряется раскладкой (`layout_as_root`) в `prepaint` — так в
+/// стопку попадает и голый текст, которого укладка колонок не видит.
+pub struct PageKid {
+    pub el: AnyElement,
+    /// Repeated table sections reserved by the common fragmentation planner.
+    pub repeat: Option<crate::layout::fragment::types::Repeat>,
+    /// Копии на случай разреза между страницами (см. `StackChild::frags`).
+    pub frags: Vec<AnyElement>,
+    /// Монолит (css-break-4 §4.1 плюс `contain: size`, как Blink `IsMonolithic`).
+    pub monolith: bool,
+    /// Принудительный разрыв страницы перед/после (css-break-4 §3.1), включая
+    /// смену имени страницы (css-page-3 §"Using named pages", п. 4).
+    pub force_before: bool,
+    pub force_after: bool,
+    /// Мера поддерева от `render::shape_full` (css-break-4 §possible-breaks):
+    /// высота, точки разреза `(need, from)`, принудительные разрывы и монолиты
+    /// — как у `StackChild`; `None` — высота измеренная, разрезов нет.
+    pub shape: Option<(f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>)>,
+    /// Имя страницы, с которого коробка начинается (css-page-3 §using-named-pages:
+    /// start value), `""` — без имени. Лист, на котором коробка — первая, берёт
+    /// это имя для своего `@page <имя>` (`PageStack::geom_for`).
+    pub page: String,
+    /// Поля коробки для укладки (схлопываются с соседями в `fill`) и смещение
+    /// её border box внутри элемента — на него копия поднимается.
+    pub mt: f32,
+    pub mb: f32,
+    pub inner_top: f32,
+    /// Flow extent with visible overflow: reserves pages (Blink `ReserveSpaceForMonolithicOverflow`).
+    pub reach: Option<f32>,
+    /// Block size used by the plan (`prepaint`): fragments reaching it show overflow.
+    pub end: std::cell::Cell<f32>,
+}

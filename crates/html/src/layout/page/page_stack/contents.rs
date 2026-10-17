@@ -84,6 +84,12 @@ impl PageStack {
                         bounds: rect(sx + ax, sy + ay + f.y, g.area.0, f.h).intersect(&area),
                     };
                     let kid = &mut self.kids[f.kid];
+                    kid.paint_sections(
+                        &f,
+                        |top, h| rect(sx + ax, sy + ay + f.y + top, g.area.0, h).intersect(&area),
+                        window,
+                        cx,
+                    );
                     let el = if f.copy == 0 {
                         &mut kid.el
                     } else {

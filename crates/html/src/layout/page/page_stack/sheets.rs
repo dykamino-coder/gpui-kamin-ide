@@ -19,11 +19,17 @@ impl PageStack {
         m: gpui::ContentMask<Pixels>,
     ) -> gpui::ContentMask<Pixels> {
         let s = self.grid.get().1;
-        let sx = self.sheet_origin(i).0;
-        let w = self.geom(i).size.0;
+        let (sx, sy) = self.sheet_origin(i);
+        let (w, h) = self.geom(i).size;
         let mut b = m.bounds;
-        b.origin.x = bounds.origin.x + px(sx * s);
-        b.size.width = px(w * s);
+        // The inline axis of a vertical root is y (`page_stack/axis.rs`).
+        if self.axis.is_vertical() {
+            b.origin.y = bounds.origin.y + px(sy * s);
+            b.size.height = px(h * s);
+        } else {
+            b.origin.x = bounds.origin.x + px(sx * s);
+            b.size.width = px(w * s);
+        }
         gpui::ContentMask { bounds: b }
     }
 
@@ -115,19 +121,47 @@ impl PageStack {
             let (sx, sy) = self.sheet_origin(f.col);
             let g = self.geom(f.col);
             let (ax, ay) = g.area_origin();
+            // The fragment that ends its box shows the box's block-end
+            // overflow up to the page area's end (overflow is visible,
+            // css-overflow-3 §2; `block-001-wm-vrl`: a negative block-end
+            // margin shrinks the margin box under the border box).
+            let ext = self.mask_extent(&g, &f);
+            let (x, y, w, h) = if self.axis.is_vertical() {
+                self.area_slice(&g, f.y, ext)
+            } else {
+                (ax, ay + f.y, g.area.0, ext)
+            };
             let mask = gpui::ContentMask {
                 bounds: Bounds {
                     origin: point(
-                        bounds.origin.x + px((sx + ax) * s),
-                        bounds.origin.y + px((sy + ay + f.y) * s),
+                        bounds.origin.x + px((sx + x) * s),
+                        bounds.origin.y + px((sy + y) * s),
                     ),
-                    size: size(px(g.area.0 * s), px(f.h * s)),
+                    size: size(px(w * s), px(h * s)),
                 }
                 .intersect(&page.bounds),
             };
             // По оси строки — весь лист (`PageStack::sheet_wide`).
             let mask = self.sheet_wide(bounds, f.col, mask);
+            // Clip and painted box edges share the device-pixel grid.
+            let mask =
+                crate::layout::fragment::fragment_mask::snap(mask.bounds, window.scale_factor());
             let kid = &mut self.kids[f.kid];
+            window.with_mask_scale(bounds.origin, s, |window| {
+                kid.paint_sections(
+                    &f,
+                    |top, h| {
+                        rect(sx + ax, sy + ay + f.y + top, g.area.0, h).intersect(&rect(
+                            sx + ax,
+                            sy + ay,
+                            g.area.0,
+                            g.area.1,
+                        ))
+                    },
+                    window,
+                    cx,
+                );
+            });
             let el = if f.copy == 0 {
                 &mut kid.el
             } else {
