@@ -1579,4 +1579,7 @@ pub struct Computed {
     /// inline-axis percentages of its children (`layout::writing_mode::inline_definite`).
     /// Set by `render::element`; not inherited.
     pub(crate) inline_definite: Option<f32>,
+    /// A piece of a float-band host (`layout::float::band_flow_host`): the host resolves its
+    /// percentages against the band layout and places it; not inherited.
+    pub(crate) band_kid: bool,
 }

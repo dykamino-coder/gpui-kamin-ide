@@ -31,6 +31,14 @@ pub(crate) fn resolve_percentages(style: &mut Computed, parent: &Computed) {
     if parent.vertical != Some(true) || out_of_flow(style) {
         return;
     }
+    // A float-band piece (`band_flow_host::build_kid`) is laid out in a frame as large as its
+    // band window, and the host resolves its percentages against the containing block
+    // itself (CSS 2.1 §10.2, §10.5); resolving them here as well put the piece's inline
+    // size out of step with the host's measure (`slr-alongside-vlr-floats`: the BFC beside
+    // the floats was placed in its window but painted under the first float).
+    if style.band_kid {
+        return;
+    }
     let at = |value: &mut Option<Len>| {
         if let Some(Len::Pct(k)) = *value {
             *value = Some(Len::Px(k * cb));
