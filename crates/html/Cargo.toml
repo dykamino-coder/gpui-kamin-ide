@@ -19,6 +19,8 @@ encoding_rs = "0.8.35"
 roxmltree = "0.21.1"
 # SVG fragment parameters use the same grammar as the rasterizer.
 svgtypes = "0.16.1"
+# Read OpenType MATH variants and assemblies without native dependencies.
+ttf-parser = "0.25.1"
 # Распаковка шрифтов в упаковках `woff` и `woff2` (правило `@font-face`):
 # у второй сверх сжатия ещё и перестроение таблицы глифов, руками её не брать.
 wuff = { version = "0.2.8", features = ["z", "brotli"] }

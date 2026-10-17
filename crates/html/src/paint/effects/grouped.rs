@@ -229,6 +229,7 @@ pub(super) fn apply_mask_style(
     wrapper.mask_repeat_modes = c.mask_repeat_modes.clone().unwrap_or_default();
     wrapper.mask_luminance = c.mask_luminance == Some(true);
     wrapper.mask_alpha_mode = c.mask_alpha_mode == Some(true);
+    wrapper.mask_orient_none = c.image_orient_none == Some(true);
     wrapper.mask_pos = c.mask_pos;
     wrapper.mask_pos_far = c.mask_pos_far;
     wrapper.mask_pos_list = c.mask_pos_list.clone().unwrap_or_default();

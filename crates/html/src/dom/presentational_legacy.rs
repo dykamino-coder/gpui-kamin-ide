@@ -119,9 +119,42 @@ fn valign(attrs: &[(String, String)], css: &mut String) {
     }
 }
 
+/// HTML §15.3.3: `align` of block/table-part elements maps to `text-align`
+/// (centering of block descendants is not mapped).
+fn text_align(tag: &str, attrs: &[(String, String)], css: &mut String) {
+    let value = match lower(attrs, "align").as_deref() {
+        Some("left") => "left",
+        Some("right") => "right",
+        Some("justify") => "justify",
+        Some("center") | Some("middle") if tag != "p" && !tag.starts_with('h') => "center",
+        Some("center") => "center",
+        _ => return,
+    };
+    css.push_str(&format!("text-align: {value};"));
+}
+
 /// The hint declarations of one element, as one declaration block.
 pub(super) fn hints(tag: &str, attrs: &[(String, String)], _path: &[Ancestor]) -> String {
     let mut css = String::new();
+    if matches!(
+        tag,
+        "div"
+            | "thead"
+            | "tbody"
+            | "tfoot"
+            | "tr"
+            | "td"
+            | "th"
+            | "p"
+            | "h1"
+            | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6"
+    ) {
+        text_align(tag, attrs, &mut css);
+    }
     match tag {
         "table" => table(attrs, &mut css),
         "td" | "th" => {

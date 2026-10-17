@@ -21,7 +21,20 @@ pub(crate) fn children(
     ) {
         children
     } else {
-        crate::layout::block::margins::collapse_flow_margins(children, reverse, lead)
+        // `em` margins resolve against the children's font size, which falls
+        // back to this container's (CSS 2.1 §15.7), as on the horizontal path
+        // (`render::blocks::prepare_children`); the collapse step runs before
+        // the children's styles are inherited (`clearance-calculations-vrl-002`:
+        // `margin-right: 4em` at 20px collapsed as 64px).
+        use crate::layout::block::margins::COLLAPSE_FONT_PX;
+        let base = match parent.font_size {
+            Some(crate::style::values::value::Len::Px(v)) => v,
+            _ => COLLAPSE_FONT_PX.with(std::cell::Cell::get),
+        };
+        let prev = COLLAPSE_FONT_PX.with(|c| c.replace(base));
+        let out = crate::layout::block::margins::collapse_flow_margins(children, reverse, lead);
+        COLLAPSE_FONT_PX.with(|c| c.set(prev));
+        out
     }
 }
 

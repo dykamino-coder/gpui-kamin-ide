@@ -172,9 +172,15 @@ pub(crate) fn parse_svg_element<'input>(
                 );
             }
         } else if let Some(aid) = AId::from_str(declaration.name) {
-            // Parse only the presentation attributes.
+            // Parse only the presentation attributes and the SVG 2 geometry
+            // properties of this element.
             if aid.is_presentation() {
                 insert_attribute(aid, val, imp);
+            } else if is_geometry_property(tag_name, aid) {
+                match geometry_value(aid, val) {
+                    Some(v) => insert_attribute(aid, &v, imp),
+                    None => insert_attribute(aid, val, imp),
+                }
             }
         }
     };
@@ -208,4 +214,40 @@ pub(crate) fn parse_svg_element<'input>(
     );
 
     Ok(node_id)
+}
+
+/// SVG 2 geometry properties (SVG 2 §9.1-§9.4, §5.1, §12.3; Blink
+/// `SVGRectElement`/`SVGCircleElement`/`SVGEllipseElement`/`SVGUseElement`/
+/// `SVGPathElement` map them to `CSSPropertyID::kX`… `kD`): the CSS cascade
+/// overrides the attribute of the same name, but only on the elements the
+/// property applies to: `x` on `text` stays a list attribute, and `svg` takes
+/// none of them (svgwg#1059; WPT svg/styling `nested-svg-sizing*`).
+fn is_geometry_property(tag: EId, aid: AId) -> bool {
+    match aid {
+        AId::Cx | AId::Cy => matches!(tag, EId::Circle | EId::Ellipse),
+        AId::R => tag == EId::Circle,
+        AId::Rx | AId::Ry => matches!(tag, EId::Rect | EId::Ellipse),
+        AId::X | AId::Y => matches!(tag, EId::Rect | EId::Image | EId::Use),
+        AId::Width | AId::Height => matches!(tag, EId::Rect | EId::Image),
+        AId::D => tag == EId::Path,
+        _ => false,
+    }
+}
+
+/// The attribute form of a geometry property value: `d: path("…")` carries
+/// the path data string, `d: none` is an empty path.
+fn geometry_value(aid: AId, val: &str) -> Option<String> {
+    if aid != AId::D {
+        return None;
+    }
+    let v = val.trim();
+    if v.eq_ignore_ascii_case("none") {
+        return Some(String::new());
+    }
+    let inner = v.strip_prefix("path(")?.strip_suffix(')')?.trim();
+    let inner = inner
+        .strip_prefix('"')
+        .and_then(|s| s.strip_suffix('"'))
+        .or_else(|| inner.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')))?;
+    Some(inner.to_string())
 }

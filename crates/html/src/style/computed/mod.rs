@@ -6,6 +6,7 @@
 //! поддержано, поля нет — свойство игнорируется осознанно, а не потеряно.
 
 mod appearance;
+pub(crate) mod math_style;
 pub use appearance::Appearance;
 mod background_position;
 mod bidi_properties;

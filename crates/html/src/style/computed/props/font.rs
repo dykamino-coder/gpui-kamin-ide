@@ -10,7 +10,28 @@ impl Computed {
     #[allow(unused_variables)]
     pub(crate) fn apply_font(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
         match key {
+            "math-style" => {
+                if matches!(v, "normal" | "compact") {
+                    self.math_compact = Some(v == "compact");
+                }
+            }
+            "math-shift" => {
+                if matches!(v, "normal" | "compact") {
+                    self.math_shift = Some(v == "compact");
+                }
+            }
+            "math-depth" => {
+                if let Some(depth) = super::super::math_style::depth(v) {
+                    self.math_depth = Some(depth);
+                }
+            }
             "font-size" => {
+                if v == "math" {
+                    self.math_font_size = true;
+                    self.font_size = None;
+                    return;
+                }
+                self.math_font_size = false;
                 // Отрицательный кегль и неразборная запись делают объявление
                 // НЕВАЛИДНЫМ (§4.2, §15.7): прежнее значение остаётся, а не
                 // стирается в `None` (`c526-font-sz-003`: `-0.5in`).

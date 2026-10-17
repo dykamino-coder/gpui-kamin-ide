@@ -9,7 +9,7 @@ use crate::style::computed::{AnimSpec, Computed};
 /// кадр `(-delay)/duration` подставляется прямо в стиль, и дальше работает
 /// весь обычный конвейер. `transforms` — нести ли и `rotate`/`scale`/
 /// `transform`: их матрицу строит `transformed()` СНАРУЖИ элемента, от стиля,
-/// который ему передан. Блочный путь (`transformed(animated(e), &e.style)`)
+/// который ему передан. Остановленный блочный путь пока
 /// их не берёт: `!important` у нас кадры не перекрывает, а обязан
 /// (css-cascade-5 §cascade-origin) — `translation-animation-on-important-
 /// property` с `transform: none !important` уехала бы на середину пути.

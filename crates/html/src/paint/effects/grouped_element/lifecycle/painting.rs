@@ -54,7 +54,7 @@ pub(super) fn paint_body(
         if !layers.is_empty()
             && layers
                 .iter()
-                .all(|l| plain(l) && crate::paint::background::source(l).is_none())
+                .all(|l| plain(l) && group.mask_source(l).is_none())
         {
             return;
         }
