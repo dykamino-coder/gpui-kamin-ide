@@ -9,9 +9,11 @@ use crate::style::computed::{
 use crate::style::css::{Decls, Rule};
 use crate::style::values::value::Color;
 
+mod color_initial;
 pub mod defaults;
 pub mod inherit;
 pub(crate) mod inherited_value;
+mod inline_rollback;
 mod pass;
 mod revert;
 pub mod vars;
@@ -35,6 +37,17 @@ impl Computed {
                 b.order,
             ))
         });
+        let inline_rollback = inline_rollback::prepare(matched, inline);
+        let inline = inline_rollback.as_ref().map_or(inline, |(_, d)| d);
+        let rollback_refs: Vec<&Rule> = inline_rollback
+            .iter()
+            .flat_map(|(rules, _)| rules.iter())
+            .collect();
+        let matched = if inline_rollback.is_some() {
+            rollback_refs.as_slice()
+        } else {
+            matched.as_slice()
+        };
         // `revert-layer` (css-cascade-5 §revert-layer) решается ДО прохода:
         // объявления откатываемого слоя (а у важного — и всё между его
         // обычным и важным уровнями) снимаются с копий правил.
@@ -43,7 +56,7 @@ impl Computed {
         let matched: &mut Vec<&crate::style::css::Rule> = &mut if reverted.is_some() {
             owned_refs
         } else {
-            matched.clone()
+            matched.to_vec()
         };
         let mut c = Computed::default();
         // Два прохода по ВСЕМУ каскаду, а не внутри каждого правила: важность
@@ -127,6 +140,9 @@ impl Computed {
         self.decl_seq += 1;
         let v = val.trim();
         inherit::note_flow_align(self, key, v);
+        if color_initial::apply(self, key, v) {
+            return;
+        }
         // Общие для всех свойств слова `initial`/`unset`/`revert`. Для
         // НАСЛЕДУЕМОГО свойства это не «оставить как есть»: незаданное поле у
         // нас берётся от родителя, поэтому такое объявление молча наследовало

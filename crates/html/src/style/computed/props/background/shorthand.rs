@@ -76,7 +76,7 @@ impl Computed {
         let v = top;
         if let Some(image) = split_outside_parens(v)
             .iter()
-            .find(|t| parse_image_color(t).is_some())
+            .find(|t| image_function::arguments(t).is_some())
         {
             self.apply_one("background-image", image);
         } else if gradient_as_raster(v) {

@@ -2,6 +2,7 @@
 
 use crate::style::css::*;
 
+mod at_rule;
 mod terms;
 use terms::supports_eval_term;
 
@@ -93,33 +94,18 @@ fn supports_condition(s: &str) -> Option<SupTri> {
 /// Один терм: скобочная группа либо функция `имя(...)`; возврат — тело
 /// терма (со скобками функции внутри среза) и хвост после него.
 fn supports_take_term(s: &str) -> Option<(&str, &str)> {
-    let bytes = s.as_bytes();
-    // Функция: идентификатор вплотную к скобке.
-    let mut name_end = 0;
-    while name_end < bytes.len()
-        && (bytes[name_end].is_ascii_alphanumeric() || bytes[name_end] == b'-')
-    {
-        name_end += 1;
-    }
-    let open = if name_end < bytes.len() && bytes[name_end] == b'(' {
-        name_end
-    } else if bytes.first() == Some(&b'(') {
-        0
-    } else {
+    let open = s.find('(')?;
+    if open != 0 && !selector_tokens::ident(&s[..open]) {
         return None;
-    };
-    let mut depth = 0usize;
-    for (i, &b) in bytes.iter().enumerate().skip(open) {
-        match b {
-            b'(' => depth += 1,
-            b')' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some((&s[..i + 1], &s[i + 1..]));
-                }
-            }
-            _ => {}
-        }
     }
-    None
+    let close = open + find_matching(&s[open..])?;
+    Some((&s[..=close], &s[close + 1..]))
+}
+
+/// A nested supports group starts with the complete at-keyword token.
+pub(super) fn supports_group(prelude: &str) -> bool {
+    prelude
+        .get(..9)
+        .is_some_and(|head| head.eq_ignore_ascii_case("@supports"))
+        && prelude[9..].starts_with(|c: char| c == '(' || c.is_ascii_whitespace())
 }

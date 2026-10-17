@@ -1,7 +1,7 @@
 //! Сброс состояния кадра.
 // owner: A
 
-use crate::layout::positioned::containing_block::{CB, CB_FIXED, ICB, LATE};
+use crate::layout::positioned::containing_block::{CB, CB_FIXED, CB_STRICT, ICB, LATE};
 use crate::text::vertical::{VT_FRAME, VT_SEQ};
 
 pub fn frame_sanitize() {
@@ -18,6 +18,7 @@ pub fn frame_sanitize() {
     ICB.with(|s| s.borrow_mut().clear());
     CB.with(|s| s.borrow_mut().clear());
     CB_FIXED.with(|s| s.borrow_mut().clear());
+    CB_STRICT.with(|s| s.borrow_mut().clear());
     // Реестр якорей — расходник кадра того же рода: пишется на подготовке,
     // читается там же, к следующей сборке дерева обязан быть пуст.
     crate::layout::positioned::anchor::reset();

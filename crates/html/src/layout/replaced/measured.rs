@@ -5,9 +5,26 @@ use gpui::{
     px, size,
 };
 
+pub(crate) type ControlMeasure = std::rc::Rc<
+    dyn Fn(
+        gpui::Size<Option<Pixels>>,
+        gpui::Size<AvailableSpace>,
+        &mut Window,
+        &mut App,
+    ) -> gpui::Size<Pixels>,
+>;
+
 /// Form controls have natural dimensions, but no natural aspect ratio (CSS Images 3 §2).
 /// Keep that geometry available when intrinsic probes ignore author size constraints.
-pub(crate) fn natural_control(mut painted: gpui::Div, natural: gpui::Size<Pixels>) -> AnyElement {
+pub(crate) fn natural_control(painted: gpui::Div, natural: gpui::Size<Pixels>) -> AnyElement {
+    natural_control_with(painted, natural, None)
+}
+
+pub(crate) fn natural_control_with(
+    mut painted: gpui::Div,
+    natural: gpui::Size<Pixels>,
+    measure: Option<ControlMeasure>,
+) -> AnyElement {
     let mut native = Style::default();
     native.refine(painted.style());
     let ratio = native.aspect_ratio;
@@ -23,6 +40,9 @@ pub(crate) fn natural_control(mut painted: gpui::Div, natural: gpui::Size<Pixels
     inner.max_sizing_keywords = None;
     inner.aspect_ratio = None;
     inner.content_box = Some(false);
+    inner.flex_basis = None;
+    inner.flex_grow = None;
+    inner.flex_shrink = None;
     inner.position = None;
     inner.inset = Default::default();
     MeasuredReplaced {
@@ -30,6 +50,7 @@ pub(crate) fn natural_control(mut painted: gpui::Div, natural: gpui::Size<Pixels
         style: native,
         natural,
         ratio,
+        measure,
     }
     .into_any_element()
 }
@@ -39,6 +60,7 @@ pub(super) struct MeasuredReplaced {
     pub(super) style: Style,
     pub(super) natural: gpui::Size<Pixels>,
     pub(super) ratio: Option<f32>,
+    pub(super) measure: Option<ControlMeasure>,
 }
 
 impl Element for MeasuredReplaced {
@@ -62,8 +84,17 @@ impl Element for MeasuredReplaced {
         let picture = self.image.request_layout(window, cx);
         let natural = self.natural;
         let ratio = self.ratio;
-        let layout =
-            window.request_measured_layout(self.style.clone(), move |known, _, _, _| {
+        let measure = self.measure.clone();
+        let layout = window.request_measured_layout(
+            self.style.clone(),
+            move |known, available, window, cx| {
+                let natural = if known.width.is_some() && known.height.is_some() {
+                    natural
+                } else {
+                    measure
+                        .as_ref()
+                        .map_or(natural, |f| f(known, available, window, cx))
+                };
                 match (known.width, known.height, ratio) {
                     (Some(w), Some(h), _) => size(w, h),
                     (Some(w), None, Some(r)) => size(w, px(f32::from(w) / r)),
@@ -72,7 +103,8 @@ impl Element for MeasuredReplaced {
                     (None, Some(h), None) => size(natural.width, h),
                     (None, None, _) => natural,
                 }
-            });
+            },
+        );
         (layout, (picture, layout))
     }
 

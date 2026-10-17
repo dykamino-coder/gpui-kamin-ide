@@ -123,14 +123,32 @@ pub(super) fn own_box_atom(
     // мимо, и `clip-path` на `inline-block` не резал ничего
     // (`clip-path-contentBox-1d/1e`). Обёртка сама возвращает
     // элемент как есть, когда группировать нечего.
-    Some(grouped(
-        box_.children(crate::layout::multicol::gap_rules::decorated_children(
-            e,
+    // An atomic inline (`inline-block` and kin) is a block container: when it
+    // is positioned (or otherwise a containing block) its padding box is the
+    // containing block of absolute descendants (CSS 2.1 §10.1 item 4), so
+    // grandchildren must leave their non-positioned parent block for this
+    // box's layer, as on the generic block path (`generic_box/children.rs`).
+    // Without the layer the box resolved its insets against its parent
+    // (`justify-self-static-position-001-ref`: `left: 20px` from the inner
+    // block's padding edge, 5px off). Genuine inline boxes stay excluded
+    // (see the measurement above).
+    // Only `inline-block`: table parts reach this path too, and their
+    // absolute children keep the table's own handling
+    // (`position-relative-table-*-absolute-child`).
+    let cb_layer = e.style.display == Some(Display::InlineBlock)
+        && !genuine_inline
+        && crate::text::inline::establishes_cb(&merged);
+    if cb_layer {
+        crate::layout::positioned::containing_block::cb_open_strict(
             &merged,
-            opts,
-            || blocks(&e.children, &merged, opts),
-        ))
-        .into_any_element(),
-        &e.style,
-    ))
+            crate::paint::stacking::fixed_cb_layer_box(&merged),
+        );
+    }
+    let mut kids = crate::layout::multicol::gap_rules::decorated_children(e, &merged, opts, || {
+        blocks(&e.children, &merged, opts)
+    });
+    if cb_layer {
+        kids.extend(crate::layout::positioned::containing_block::cb_close());
+    }
+    Some(grouped(box_.children(kids).into_any_element(), &e.style))
 }

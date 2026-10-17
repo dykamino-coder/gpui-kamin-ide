@@ -29,6 +29,12 @@ pub(super) fn inherit_sizes(parent: &Computed, own: &Computed, c: &mut Computed)
         {
             c.height = Some(L::Px(k * base));
         }
+        // Only block containers and table wrappers transmit an indefinite
+        // percentage basis. Flex/grid containers stop the quirks ancestor walk.
+        let blockish = matches!(
+            own.display,
+            None | Some(D::Block | D::InlineBlock | D::ListItem)
+        );
         c.quirk_pct_base = match c.height {
             Some(L::Px(h)) => Some(h),
             // Доля от определённого блока — тоже опора: флоат `height: 50%`
@@ -38,7 +44,7 @@ pub(super) fn inherit_sizes(parent: &Computed, own: &Computed, c: &mut Computed)
                 Some(L::Px(h)) => Some(k * h),
                 _ => parent.quirk_pct_base.map(|b| k * b),
             },
-            None | Some(L::Auto) if !out_of_flow && !tabular && !c.root_box => {
+            None | Some(L::Auto) if blockish && !out_of_flow && !tabular && !c.root_box => {
                 parent.quirk_pct_base
             }
             _ => None,

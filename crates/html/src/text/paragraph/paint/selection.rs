@@ -129,6 +129,7 @@ impl Paragraph {
             hyphen_limit_lines: self.hyphen_limit_lines,
             hyphen_w: std::cell::RefCell::new(self.hyphen_w.borrow().clone()),
             overlays: Vec::new(),
+            overlay_hidden: Vec::new(),
         };
         let segs = segs.to_vec();
         window.with_element_state::<Selection, _>(global, |state, window| {

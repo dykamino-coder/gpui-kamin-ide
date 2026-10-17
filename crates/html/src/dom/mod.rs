@@ -16,6 +16,7 @@ mod parse_document;
 mod presentational_hint_tests;
 #[cfg(test)]
 mod presentational_tests;
+mod quirks_color;
 #[cfg(test)]
 mod tests;
 mod ua_style;

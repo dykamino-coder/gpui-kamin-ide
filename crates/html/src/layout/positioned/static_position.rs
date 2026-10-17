@@ -55,7 +55,80 @@ pub(crate) fn static_line_align(e: &Element, inherited: &Computed) -> Option<f32
 /// якоря — как `center` (css-anchor-position-1 §anchor-center), с якорем его
 /// ведёт `anchor::AnchorPlace`, и сюда он не берётся.
 pub(crate) fn static_self_align(e: &Element, inherited: &Computed) -> Option<(f32, f32)> {
-    if inherited.vertical == Some(true) || e.style.inline_display == Some(true) {
+    if e.style.inline_display == Some(true) {
+        return None;
+    }
+    let anchorless = e.style.position_anchor.is_none()
+        && e.style.position_area.is_none()
+        && e.style.implicit_anchor.is_none();
+    let frac = |a: Option<Align>, last: bool| match a {
+        Some(Align::Center) => Some(0.5),
+        Some(Align::AnchorCenter) if anchorless => Some(0.5),
+        Some(Align::End) => Some(1.0),
+        Some(Align::Baseline) if last => Some(1.0),
+        Some(Align::Start) => Some(0.0),
+        _ => None,
+    };
+    // `justify-self: auto` takes the parent's `justify-items` (css-align-3
+    // §6.1; Blink `InlineStaticPositionEdge` with the block parent's style
+    // as `justify_items_style`); `align-items` does not apply in block
+    // layout, so `align-self: auto` stays `normal`
+    // (`align-items-static-position-001`).
+    let jx = match e.style.justify_self {
+        None if !e.style.justify_self_normal => {
+            frac(inherited.justify_items, inherited.justify_items_last)
+        }
+        own => frac(own, e.style.justify_self_last),
+    };
+    let ky = frac(e.style.align_self, e.style.align_self_last);
+    if jx.is_none() && ky.is_none() {
+        return None;
+    }
+    // Строчная ось: `start`/`end` — по письму родителя, `self-*` — по своему
+    // (свой `direction` на этом шаге ещё не унаследован — берём родительский).
+    let rtl = if e.style.justify_self_own_axis {
+        e.style.rtl.or(inherited.rtl)
+    } else {
+        inherited.rtl
+    } == Some(true);
+    let kx = match jx {
+        Some(k) if rtl => 1.0 - k,
+        Some(k) => k,
+        None if rtl => 1.0,
+        None => 0.0,
+    };
+    let kb = ky.unwrap_or(0.0);
+    // Vertical parent: the inline axis is vertical, the block axis horizontal
+    // and its start is the right edge in `vertical-rl`. The fractions stay
+    // PHYSICAL (x, y): the static-position rectangle is the parent's content
+    // box in the inline axis and zero-thickness at the static point in the
+    // block axis, whatever the writing mode (Blink
+    // `BlockLayoutAlgorithm::HandleOutOfFlowPositioned` works in logical
+    // offsets; `align-self-static-position-002`).
+    if inherited.vertical == Some(true) {
+        let kb = if inherited.vertical_rl == Some(true) {
+            1.0 - kb
+        } else {
+            kb
+        };
+        return Some((kb, kx));
+    }
+    Some((kx, kb))
+}
+
+/// Self-alignment fractions `(x, y)` of a block-level absolute box whose
+/// static position lies in a line of an INLINE formatting context: the
+/// static-position rectangle is zero-thick along the line at the static point
+/// and spans the line box across it (css-position-3 §staticpos-rect; Blink
+/// `FragmentBuilder::AddOutOfFlowInlineChildCandidate`, which ignores
+/// `justify-items`/`align-items`). Horizontal ltr only — other modes keep the
+/// previous placement (`None`), as does `normal`/`auto` in both axes.
+pub(crate) fn inline_static_self_align(e: &Element, inherited: &Computed) -> Option<(f32, f32)> {
+    if inherited.vertical == Some(true)
+        || inherited.rotated_line == Some(true)
+        || inherited.rtl == Some(true)
+        || e.style.inline_display == Some(true)
+    {
         return None;
     }
     let anchorless = e.style.position_anchor.is_none()
@@ -74,20 +147,7 @@ pub(crate) fn static_self_align(e: &Element, inherited: &Computed) -> Option<(f3
     if jx.is_none() && ky.is_none() {
         return None;
     }
-    // Строчная ось: `start`/`end` — по письму родителя, `self-*` — по своему
-    // (свой `direction` на этом шаге ещё не унаследован — берём родительский).
-    let rtl = if e.style.justify_self_own_axis {
-        e.style.rtl.or(inherited.rtl)
-    } else {
-        inherited.rtl
-    } == Some(true);
-    let kx = match jx {
-        Some(k) if rtl => 1.0 - k,
-        Some(k) => k,
-        None if rtl => 1.0,
-        None => 0.0,
-    };
-    Some((kx, ky.unwrap_or(0.0)))
+    Some((jx.unwrap_or(0.0), ky.unwrap_or(0.0)))
 }
 
 /// Расходятся ли у ЗАМЕЩАЕМОГО абсолюта два отсчёта края — от внутреннего края
