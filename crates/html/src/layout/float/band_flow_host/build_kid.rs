@@ -120,17 +120,11 @@ pub(super) fn build_band_kid(
     let child_vertical = copy.style.vertical.unwrap_or(vertical);
     let same_writing_mode = child_vertical == vertical
         && (!vertical
-            || copy
-                .style
-                .vertical_rl
-                .unwrap_or(inherited.vertical_rl == Some(true))
-                == (inherited.vertical_rl == Some(true)))
+            || copy.style.vertical_rl.unwrap_or(inherited.wm().block_rl())
+                == (inherited.wm().block_rl()))
         && (!vertical
-            || copy
-                .style
-                .sideways
-                .unwrap_or(inherited.sideways == Some(true))
-                == (inherited.sideways == Some(true)));
+            || copy.style.sideways.unwrap_or(inherited.wm().sideways())
+                == (inherited.wm().sideways()));
     if shapes.is_some() && same_writing_mode {
         copy.style.flow_shapes = shapes;
     }
@@ -154,12 +148,8 @@ pub(super) fn build_band_kid(
             .flow_shapes
             .clone()
             .unwrap_or_else(|| std::sync::Arc::new((Vec::new(), Vec::new())));
-        return crate::layout::fragment::types::FlowRow::new(
-            atoms,
-            shapes,
-            inherited.rtl == Some(true),
-        )
-        .into_any_element();
+        return crate::layout::fragment::types::FlowRow::new(atoms, shapes, inherited.wm().rtl())
+            .into_any_element();
     }
     // Замещаемый флоат, кроме `<img>` (`embed`, `object`,
     // `video`…), — своей веткой `element` ниже: каркас блока со

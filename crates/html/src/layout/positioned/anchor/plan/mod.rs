@@ -15,13 +15,9 @@ mod of;
 /// Как `IsFlippedX`/`IsFlippedY` у Blink: x перевёрнут при горизонтальном
 /// rtl и при vertical-rl, y — при вертикальном письме с `direction: rtl`.
 pub(super) fn flipped(c: &Computed) -> (bool, bool) {
-    let vertical = c.vertical == Some(true);
-    let rtl = c.rtl == Some(true);
-    let x = if vertical {
-        c.vertical_rl == Some(true)
-    } else {
-        rtl
-    };
+    let vertical = c.wm().vertical();
+    let rtl = c.wm().rtl();
+    let x = if vertical { c.wm().block_rl() } else { rtl };
     (x, vertical && rtl)
 }
 

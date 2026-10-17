@@ -142,7 +142,7 @@ fn page_margin_boxes(
         let opts = opts.clone();
         let ctx_style = ctx_style.clone();
         let intrinsic = [own.width, own.height];
-        let vertical = resolved.vertical == Some(true);
+        let vertical = resolved.wm().vertical();
         let build = move |size: Option<(f32, f32)>, inline: Option<Len>| -> AnyElement {
             let mut st = own.clone();
             for (k, v) in [

@@ -92,7 +92,7 @@ pub fn render_paged_select(
     fill_used_page(&mut nodes, &root_page);
     // Обёртка в ином режиме письма — ортогональный поток, монолит (css-break-3
     // §4.1): снимать её нельзя, и у вертикального корня обёртки не снимаются.
-    if root.vertical != Some(true) {
+    if !root.wm().vertical() {
         hoist_named_wrappers(&mut nodes);
     }
     let geom_for: crate::layout::page::page_stack::PageGeomFn =

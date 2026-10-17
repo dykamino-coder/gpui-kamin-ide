@@ -21,7 +21,7 @@ pub(crate) fn render(e: &DomElement, inherited: &Computed, opts: &RenderOpts) ->
         child,
         root: None,
         physical: Default::default(),
-        block_rl: inherited.vertical_rl == Some(true),
+        block_rl: inherited.wm().block_rl(),
         align: e.style.align_self,
     }
     .into_any_element()

@@ -148,7 +148,7 @@ pub(super) fn push_empty_row_track(
     // (20+2 против 10+12). Заглушка на всю ширину ставится только когда
     // ряд не накрыт охватом сверху — иначе авторазмещение унесло бы её
     // в следующий ряд.
-    if e.style.vertical != Some(true)
+    if !e.style.wm().vertical()
         && !row
             .children
             .iter()
@@ -158,7 +158,7 @@ pub(super) fn push_empty_row_track(
         && h > 0.0
     {
         let mut ph = div().h(px(h)).col_span(cols);
-        if e.style.vertical != Some(true) {
+        if !e.style.wm().vertical() {
             ph = ph.col_start(1).row_start(row_ix);
         }
         cells.push(ph.into_any_element());
@@ -182,7 +182,7 @@ pub(super) fn cell_cascaded_style(e: &Element, row_style: &Computed, cell: &Elem
     // element): стопка глифов переносится на следующую колонку по
     // нему (table-cell-002: td vertical-rl с max-height 100 —
     // зелёный квадрат из двух колонок).
-    if cell.style.vertical == Some(true)
+    if cell.style.wm().vertical()
         && cm.ortho_limit.is_none()
         && let Some(Len::Px(h)) = cell.style.height.or(cell.style.max_height)
     {
@@ -208,7 +208,7 @@ pub(super) fn cell_cascaded_style(e: &Element, row_style: &Computed, cell: &Elem
     // (`anon_element("table", …)`, стиль `Computed::default()`)
     // `e.style.vertical` пуст, поэтому семья `line-box-direction-*`
     // гейтом не задевается.
-    if e.style.vertical == Some(true) && cm.ortho_limit.is_some() {
+    if e.style.wm().vertical() && cm.ortho_limit.is_some() {
         cm.ortho_col = true;
     }
     cm

@@ -12,7 +12,7 @@ pub(super) fn gap_rule_layout(
     col: Option<crate::paint::gap_rules::GapAxisRule>,
     row: Option<crate::paint::gap_rules::GapAxisRule>,
 ) -> Option<crate::paint::gap_rules::GapRuleSpec> {
-    let vertical = merged.vertical == Some(true);
+    let vertical = merged.wm().vertical();
     // Лунки идут путём сетки (`dom::lanes_to_grid`: `display: grid` с
     // пометкой `lanes_taffy`), но промежутки у них — ленты: главные между
     // лентами через всё поле содержимого, поперечные — между элементами
@@ -95,10 +95,10 @@ pub(super) fn gap_rule_layout(
     // справа налево при `rtl`; в вертикальном ряды (x) — справа налево при
     // `*-rl`, колонки (y) — снизу вверх при `sideways-lr`, и `rtl` это
     // переворачивает (эталоны `grid-gap-decorations-multi-value-writing-mode`).
-    let rtl = merged.rtl == Some(true);
-    let sideways_lr = vertical && merged.sideways == Some(true) && merged.vertical_rl != Some(true);
+    let rtl = merged.wm().rtl();
+    let sideways_lr = vertical && merged.wm().sideways() && !merged.wm().block_rl();
     let (mut rev_x, mut rev_y) = if vertical {
-        (merged.vertical_rl == Some(true), sideways_lr != rtl)
+        (merged.wm().block_rl(), sideways_lr != rtl)
     } else {
         (rtl, false)
     };
@@ -174,7 +174,7 @@ pub(super) fn gap_rule_layout(
         row,
         kind,
         vertical,
-        rtl: merged.rtl == Some(true),
+        rtl: merged.wm().rtl(),
         column_over_row: s.rule_column_over_row == Some(true),
         gap_x,
         gap_y,

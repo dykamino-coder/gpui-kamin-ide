@@ -171,7 +171,7 @@ pub(crate) fn resolve_inline_pct(
         if ch.inline || !in_flow(&ch.style) {
             continue;
         }
-        if !vertical && ch.style.vertical != Some(true) {
+        if !vertical && !ch.style.wm().vertical() {
             continue;
         }
         let s = &mut ch.style;

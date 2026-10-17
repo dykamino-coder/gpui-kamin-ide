@@ -172,10 +172,7 @@ pub(super) fn band_float_m(next: &Element, em: f32) -> Option<()> {
         // (Writing Modes 4 §7.3), затем полосы размещают физическую коробку
         // в осях хоста. Горизонтальному ортогональному тексту ещё нужен
         // fallback доступного строчного размера, поэтому он остаётся в ряду.
-        if band_orthogonal(&next.style)
-            && subtree_has_text(next)
-            && next.style.vertical != Some(true)
-        {
+        if band_orthogonal(&next.style) && subtree_has_text(next) && !next.style.wm().vertical() {
             return None;
         }
         // Флоат с трансформацией — на прежнем пути: трансформацию даёт

@@ -158,7 +158,7 @@ fn zero_inflow(e: &Element, inherited: &Computed) -> bool {
         return false;
     }
     let merged = inherit(inherited, &e.style);
-    merged.vertical != Some(true) && e.children.iter().all(|node| zero_child(node, &merged))
+    !merged.wm().vertical() && e.children.iter().all(|node| zero_child(node, &merged))
 }
 
 fn zero_child(node: &Node, inherited: &Computed) -> bool {
@@ -180,7 +180,7 @@ fn zero_child(node: &Node, inherited: &Computed) -> bool {
     }
     let b = e.style.borders();
     let merged = inherit(inherited, &e.style);
-    merged.vertical != Some(true)
+    !merged.wm().vertical()
         && !inline_level_box(e)
         && matches!(e.style.display, None | Some(Display::Block))
         && e.list_item.is_none()
@@ -231,7 +231,7 @@ pub(crate) fn zero_float_blocks(nodes: &mut [Node], inherited: &Computed) {
 /// (CSS 2.1 §10.5). Only the native box receives the proven used height.
 pub(crate) fn used_style(e: &Element, style: &Computed) -> Option<Computed> {
     if e.attr("auto-zero-height") != Some("1")
-        || style.vertical == Some(true)
+        || style.wm().vertical()
         || !matches!(style.height, None | Some(Len::Auto))
     {
         return None;

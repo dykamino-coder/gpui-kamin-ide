@@ -37,7 +37,7 @@ pub(crate) fn parallel_items_inside(c: &Element, depth: u8) -> bool {
     // `monolithic-overflow-003/004.tentative` во flex и сетке).
     let stacked = (c.style.display == Some(Display::Flex)
         && c.style.webkit_box != Some(true)
-        && c.style.vertical != Some(true)
+        && !c.style.wm().vertical()
         && matches!(
             c.style.flex_dir,
             Some(crate::style::computed::FlexDir::Col)

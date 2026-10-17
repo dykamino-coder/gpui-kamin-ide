@@ -105,7 +105,7 @@ pub(super) fn place_shape_float(
         // которую несёт хост (`shape-outside-linear-gradient-012`:
         // `shape-margin: 25%` у блока 100×200 — 25, а не 50).
         Some(Len::Pct(p)) => {
-            let vertical = inherited.vertical_rl == Some(true) || vert_lr;
+            let vertical = inherited.wm().block_rl() || vert_lr;
             match e.style.height {
                 Some(Len::Px(h)) if vertical => p * h,
                 _ => p * cb_w,
@@ -119,7 +119,7 @@ pub(super) fn place_shape_float(
     // line-right = низ (css-writing-modes-4 §6.3). Ни `FloatShape::
     // Ellipse`, ни строчный `Profile` этого не выражают, поэтому здесь
     // ВСЕ фигуры идут одним растровым путём и режутся столбцами.
-    let vert_rl = inherited.vertical_rl == Some(true) || vert_lr;
+    let vert_rl = inherited.wm().block_rl() || vert_lr;
     let shape = float_shape_of(
         vert_lr,
         line_left_bottom,
@@ -226,7 +226,7 @@ pub(super) fn push_float_holder(
             &copy.style,
         )
     };
-    let holder = if inherited.vertical_rl == Some(true) || vert_lr {
+    let holder = if inherited.wm().block_rl() || vert_lr {
         // Вертикальное письмо: блок-старт — ПРАВЫЙ край, колонки
         // флоатов идут влево; инлайн-старт — верх, а у float:right
         // (line-right) — НИЗ (css-writing-modes §7,

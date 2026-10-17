@@ -20,7 +20,7 @@ use crate::style::values::value::Len;
 /// тоже `None` — распорки нет, поведение прежнее.
 pub(super) fn pushed_cell_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
     if depth == 0
-        || c.style.vertical == Some(true)
+        || c.style.wm().vertical()
         || c.style.border_collapse == Some(true)
         || c.style.height.is_some()
         || c.style.min_height.is_some()

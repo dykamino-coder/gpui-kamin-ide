@@ -8,7 +8,7 @@ pub(super) fn constraint(
     style: &Computed,
     available: f32,
 ) -> Option<(InlineKeyword, InlineConstraint)> {
-    if style.vertical != Some(true) || style.contains_height() {
+    if !style.wm().vertical() || style.contains_height() {
         return None;
     }
     let keyword = match style.height {

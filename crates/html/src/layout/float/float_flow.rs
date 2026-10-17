@@ -33,7 +33,7 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
     // `flexbox-align-self-vert-rtl-*-ref`). Письмо снимается только с самой
     // коробки ряда — дети наследуют прежнее `merged`.
     let mut row_layout = merged.clone();
-    if row_layout.vertical != Some(true) {
+    if !row_layout.wm().vertical() {
         row_layout.rtl = Some(false);
     }
     let plain_row = |nodes: &[Node]| -> AnyElement {

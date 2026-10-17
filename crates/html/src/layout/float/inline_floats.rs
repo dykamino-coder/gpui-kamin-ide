@@ -6,7 +6,7 @@ use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 
 pub(super) fn lift(nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
-    if parent.vertical == Some(true) {
+    if parent.wm().vertical() {
         return nodes;
     }
     nodes
@@ -137,7 +137,7 @@ fn split(node: Node, parent: &Computed) -> Vec<Node> {
 /// (`orthogonal-writing-mode-float-in-inline`).
 fn floated(node: &Node) -> bool {
     matches!(node, Node::Element(e) if e.style.float.is_some_and(|f| f != 0)
-        && e.style.vertical != Some(true))
+        && !e.style.wm().vertical())
 }
 
 fn contains_float(node: &Node) -> bool {

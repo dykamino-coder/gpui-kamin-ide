@@ -156,7 +156,7 @@ pub(super) fn kid_break_flags(
     // `wrap-reverse` кладёт строки с другого края, а стопка — в порядке DOM
     // (`multi-line-row-flex-fragmentation-050`).
     let avoid_chains = flex_items
-        && c.style.vertical != Some(true)
+        && !c.style.wm().vertical()
         && matches!(
             c.style.flex_dir,
             None | Some(crate::style::computed::FlexDir::Row)

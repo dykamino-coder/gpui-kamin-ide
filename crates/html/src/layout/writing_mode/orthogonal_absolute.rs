@@ -8,7 +8,7 @@ pub(super) fn constraint(style: &Computed, available: f32) -> Option<InlineConst
     let positioned =
         matches!(style.position, Some(Position::Absolute | Position::Fixed)) || style.abs_static;
     let definite = |value| !matches!(value, None | Some(Len::Auto));
-    if !positioned || style.vertical != Some(true) || style.ortho_col || style.parent_flex_grid {
+    if !positioned || !style.wm().vertical() || style.ortho_col || style.parent_flex_grid {
         return None;
     }
     let own = crate::layout::writing_mode::orthogonal_inline::axis(style, true);

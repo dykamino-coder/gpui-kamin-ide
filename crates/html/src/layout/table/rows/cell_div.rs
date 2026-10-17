@@ -169,10 +169,10 @@ pub(super) fn ortho_cell_box(
     // `table_layout_utils.cc:218`:
     // `ConstraintSpaceBuilder(table_writing_direction.GetWritingMode(),
     //                         cell_writing_direction, /* is_new_fc */ true)`.
-    let ortho_cell = cm.vertical == Some(true) && e.style.vertical != Some(true);
+    let ortho_cell = cm.wm().vertical() && !e.style.wm().vertical();
     let mut d = if ortho_cell {
         let d = d.flex();
-        if cm.vertical_rl == Some(true) {
+        if cm.wm().block_rl() {
             d.flex_row_reverse()
         } else {
             d.flex_row()
@@ -189,7 +189,7 @@ pub(super) fn ortho_cell_box(
         use crate::style::computed::TextAlign;
         // `start`/`end` — края СТРОКИ: вертикальная строка идёт
         // сверху вниз, `dir=rtl` разворачивает её снизу вверх.
-        let rtl = cm.rtl == Some(true);
+        let rtl = cm.wm().rtl();
         d = match cm.text_align {
             Some(TextAlign::Right) => d.items_end(),
             Some(TextAlign::Center) => d.items_center(),
@@ -227,7 +227,7 @@ pub(super) fn ortho_cell_box(
         } else {
             None
         });
-        if own_va == Some(Align::Baseline) && e.style.vertical != Some(true) {
+        if own_va == Some(Align::Baseline) && !e.style.wm().vertical() {
             d.style().table_cell_baseline = Some(true);
         }
     }

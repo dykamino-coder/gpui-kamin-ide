@@ -5,7 +5,7 @@ use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 
 pub(crate) fn normal_block_flow(child: &Computed, parent: &Computed) -> bool {
-    parent.vertical != Some(true)
+    !parent.wm().vertical()
         && matches!(parent.display, None | Some(Display::Block))
         && matches!(child.display, None | Some(Display::Block))
 }
@@ -15,7 +15,7 @@ pub(super) fn containing_inline(parent: &Computed) -> Option<InlineConstraint> {
     // size even while the parent's block size is being probed intrinsically.
     // Inline-blocks and table-cell flow roots also establish this containing
     // block; a wrapping fallback alone must not become a definite size.
-    if parent.vertical == Some(true)
+    if parent.wm().vertical()
         && matches!(
             parent.display,
             None | Some(

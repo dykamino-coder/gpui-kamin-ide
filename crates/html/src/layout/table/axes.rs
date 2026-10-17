@@ -9,8 +9,8 @@ pub(super) struct Axes([usize; 4]);
 impl Axes {
     /// Block start, inline end, block end, inline start, in physical side indices.
     pub(super) fn new(style: &Computed) -> Self {
-        let mut sides = if style.vertical == Some(true) {
-            if style.vertical_rl == Some(true) {
+        let mut sides = if style.wm().vertical() {
+            if style.wm().block_rl() {
                 [1, 2, 3, 0]
             } else {
                 [3, 2, 1, 0]
@@ -18,12 +18,8 @@ impl Axes {
         } else {
             [0, 1, 2, 3]
         };
-        let upwards = style.vertical == Some(true)
-            && style.sideways == Some(true)
-            && style.vertical_rl != Some(true);
-        if (style.rtl == Some(true)
-            && (style.vertical != Some(true) || style.upright != Some(true)))
-            != upwards
+        let upwards = style.wm().vertical() && style.wm().sideways() && !style.wm().block_rl();
+        if (style.wm().rtl() && (!style.wm().vertical() || style.upright != Some(true))) != upwards
         {
             sides.swap(1, 3);
         }

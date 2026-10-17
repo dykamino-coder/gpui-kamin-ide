@@ -45,9 +45,9 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
     // `vertical-lr`/`sideways-lr`: та же вертикаль, но блок-старт — ЛЕВЫЙ
     // край (css-writing-modes-4 §2.1). У `sideways-lr` к тому же line-left —
     // НИЗ (§6.3): `float: left` прижимается к низу, и вырез меряется от него.
-    let vert_lr = inherited.vertical == Some(true) && inherited.vertical_rl != Some(true);
-    let line_left_bottom = vert_lr && inherited.sideways == Some(true);
-    let wall = if cb_w > 0.0 && inherited.vertical_rl != Some(true) && !vert_lr {
+    let vert_lr = inherited.wm().vertical() && !inherited.wm().block_rl();
+    let line_left_bottom = vert_lr && inherited.wm().sideways();
+    let wall = if cb_w > 0.0 && !inherited.wm().block_rl() && !vert_lr {
         cb_w
     } else {
         NO_WALL

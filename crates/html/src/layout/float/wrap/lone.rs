@@ -25,7 +25,7 @@ pub(super) fn wrap_lone_float(
             // CSS 2.1 10.6.3 in the physical block axis: floats do not
             // enlarge an ordinary auto-size block. float_tail proves no
             // enclosing BFC needs this excluded contribution afterwards.
-            if parent.vertical == Some(true)
+            if parent.wm().vertical()
                 && parent.float_tail
                 && matches!(parent.width, None | Some(Len::Auto))
                 && lone.style.vertical == Some(false)
@@ -152,9 +152,8 @@ pub(super) fn wrap_lone_float(
             }
             // `sideways-lr`: line-left — НИЗ (css-writing-modes-4 §6.3),
             // и `float: left` прижимается к нижнему краю колонки.
-            let line_left_bottom = parent.vertical == Some(true)
-                && parent.vertical_rl != Some(true)
-                && parent.sideways == Some(true);
+            let line_left_bottom =
+                parent.wm().vertical() && !parent.wm().block_rl() && parent.wm().sideways();
             lone.style.align_self = Some(if (side < 0) != line_left_bottom {
                 Align::Start
             } else {

@@ -150,7 +150,7 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
                 | Some(crate::style::computed::FlexDir::RowReverse)
         ) && c.style.flex_wrap != Some(true));
     let flex_col = flex_items
-        && c.style.vertical != Some(true)
+        && !c.style.wm().vertical()
         && c.style.flex_wrap != Some(true)
         && matches!(
             c.style.flex_dir,
@@ -158,7 +158,7 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
                 | Some(crate::style::computed::FlexDir::ColReverse)
         );
     let flex_gap = match c.style.gap {
-        Some((Some(Len::Px(v)), _)) if flex_items && c.style.vertical != Some(true) => v.max(0.0),
+        Some((Some(Len::Px(v)), _)) if flex_items && !c.style.wm().vertical() => v.max(0.0),
         _ => 0.0,
     };
     if flex_items {

@@ -134,7 +134,7 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
     ) && c.style.webkit_box != Some(true)
         && !row_nowrap;
     let flex_gap = match c.style.gap {
-        Some((Some(Len::Px(v)), _)) if flex_items && c.style.vertical != Some(true) => v.max(0.0),
+        Some((Some(Len::Px(v)), _)) if flex_items && !c.style.wm().vertical() => v.max(0.0),
         _ => 0.0,
     };
     let mut items: Vec<&Node> = c.children.iter().filter(|n| !is_blank(n)).collect();

@@ -40,7 +40,7 @@ mod vertical_intrinsic;
 /// the available inline space is infinite» — у элемента сетки и гибкого
 /// элемента место определённое, и подбирать нечего.
 pub(crate) fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) -> AnyElement {
-    let starts_here = e.style.vertical == Some(true) && inherited.vertical != Some(true);
+    let starts_here = e.style.wm().vertical() && !inherited.wm().vertical();
     if !starts_here || e.style.width.is_some() {
         return el;
     }

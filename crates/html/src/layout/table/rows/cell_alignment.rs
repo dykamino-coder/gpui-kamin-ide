@@ -23,9 +23,9 @@ pub(super) fn apply(cm: &Computed, mut cell: Div) -> Div {
         let style = cell.style();
         style.justify_content = Some(alignment);
         style.table_cell_baseline =
-            Some(cm.align_content_baseline == Some(false) && cm.vertical != Some(true));
-        style.flex_direction = Some(if cm.vertical == Some(true) {
-            if cm.vertical_rl == Some(true) {
+            Some(cm.align_content_baseline == Some(false) && !cm.wm().vertical());
+        style.flex_direction = Some(if cm.wm().vertical() {
+            if cm.wm().block_rl() {
                 gpui::FlexDirection::RowReverse
             } else {
                 gpui::FlexDirection::Row
@@ -47,8 +47,8 @@ pub(super) fn subject(cm: &Computed, contents: Vec<gpui::AnyElement>) -> Vec<gpu
         return contents;
     }
     let mut subject = div().flex().flex_shrink_0();
-    subject = if cm.vertical == Some(true) {
-        if cm.vertical_rl == Some(true) {
+    subject = if cm.wm().vertical() {
+        if cm.wm().block_rl() {
             subject.flex_row_reverse()
         } else {
             subject.flex_row()

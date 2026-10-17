@@ -39,8 +39,8 @@ pub(crate) fn row_container(c: &Element) -> bool {
         // original height. Leave that to its existing placement path.
         && matches!(s.height, None | Some(Len::Auto))
         && s.flex_balance != Some(true)
-        && s.vertical != Some(true)
-        && s.rtl != Some(true)
+        && !s.wm().vertical()
+        && !s.wm().rtl()
         && matches!(
             s.align_items,
             None | Some(Align::Stretch) | Some(Align::Start)

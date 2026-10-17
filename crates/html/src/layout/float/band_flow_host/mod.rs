@@ -90,7 +90,7 @@ pub(super) fn band_orthogonal(c: &Computed) -> bool {
     // ортогональна только коробка, ЗАДАВШАЯ другое.
     let wm = BAND_WM.with(std::cell::Cell::get);
     c.vertical.is_some_and(|v| v != (wm != 0))
-        || (c.vertical == Some(true) && c.vertical_rl.is_some_and(|r| r != (wm == 1)))
+        || (c.wm().vertical() && c.vertical_rl.is_some_and(|r| r != (wm == 1)))
 }
 
 /// Есть ли в поддереве непустой текст.
@@ -158,9 +158,8 @@ pub(super) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpt
     );
     let flow =
         crate::layout::float::band_flow::BandFlow::new(kids, e.attr("inflow-height") != Some("1"));
-    if inherited.vertical == Some(true) {
-        flow.vertical(inherited.vertical_rl == Some(true))
-            .into_any_element()
+    if inherited.wm().vertical() {
+        flow.vertical(inherited.wm().block_rl()).into_any_element()
     } else {
         flow.into_any_element()
     }

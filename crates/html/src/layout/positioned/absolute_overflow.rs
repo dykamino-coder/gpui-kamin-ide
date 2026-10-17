@@ -92,7 +92,7 @@ impl Plan {
             return None;
         }
         let column = matches!(parent.flex_dir, Some(FlexDir::Col | FlexDir::ColReverse));
-        let vertical = parent.vertical == Some(true);
+        let vertical = parent.wm().vertical();
         let horizontal = column != vertical;
         let (inset, margin) = if horizontal {
             (
@@ -113,9 +113,9 @@ impl Plan {
             return None;
         }
         let from_end = if column {
-            parent.rtl == Some(true)
+            parent.wm().rtl()
         } else {
-            vertical && parent.vertical_rl == Some(true)
+            vertical && parent.wm().block_rl()
         };
         Some(Self {
             flex: parent.self_node,

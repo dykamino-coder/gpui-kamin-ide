@@ -136,8 +136,8 @@ pub(super) fn group_runs(
 /// direction the page stack fragments in; `None` — horizontal.
 pub(super) fn root_axis(root: &Computed) -> Option<crate::layout::fragment::types::StackAxis> {
     use crate::layout::fragment::types::StackAxis;
-    (root.vertical == Some(true)).then(|| {
-        if root.vertical_rl == Some(true) {
+    (root.wm().vertical()).then(|| {
+        if root.wm().block_rl() {
             StackAxis::VerticalRl
         } else {
             StackAxis::VerticalLr

@@ -20,11 +20,10 @@ pub(crate) fn pct_resolved_for_wrapper(e: &Element, inherited: &Computed) -> Opt
 /// блоком стоит наша служебная обёртка (сетка `content_sized`, строка
 /// абзаца у `inline-block`), и раскладка решала бы долю от неё.
 pub(crate) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> Option<Element> {
-    if replaced_tag(e) || e.style.vertical == Some(true) {
+    if replaced_tag(e) || e.style.wm().vertical() {
         return None;
     }
-    if !matches!(inherited.display, None | Some(Display::Block)) || inherited.vertical == Some(true)
-    {
+    if !matches!(inherited.display, None | Some(Display::Block)) || inherited.wm().vertical() {
         return None;
     }
     let px_of = |l: Option<Len>| match l {
