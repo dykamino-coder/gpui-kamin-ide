@@ -54,7 +54,7 @@ pub(super) fn render(li: &Element, inherited: &Computed, opts: &RenderOpts) -> A
     ) || (li.style.display == Some(Display::InlineBlock)
         && li.style.inline_display != Some(true))
     {
-        crate::render::pseudo_line_layers::install_first_letter(li, &mut merged);
+        crate::render::pseudo_line_layers::install(li, &mut merged);
     }
     render_with_style(li, inherited, &merged, opts)
 }

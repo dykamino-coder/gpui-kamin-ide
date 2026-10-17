@@ -1587,4 +1587,6 @@ pub struct Computed {
     /// inline-axis percentages of its children (`layout::writing_mode::inline_definite`).
     /// Set by `render::element`; not inherited.
     pub(crate) inline_definite: Option<f32>,
+    /// Generated inline controls have no bytes in first-line source offsets.
+    pub inline_control: bool,
 }
