@@ -181,7 +181,10 @@ pub(super) fn collect_element(
     if let Some(mark) = open {
         out.push(Piece::Text {
             text: mark.to_string(),
-            style: merged.clone(),
+            style: Computed {
+                inline_control: true,
+                ..merged.clone()
+            },
         });
     }
     // Относительный сдвиг строчного куска несёт и его потомков вне
@@ -209,7 +212,10 @@ pub(super) fn collect_element(
     if let Some(mark) = close {
         out.push(Piece::Text {
             text: mark.to_string(),
-            style: merged.clone(),
+            style: Computed {
+                inline_control: true,
+                ..merged.clone()
+            },
         });
     }
     if box_id != 0 {

@@ -1570,4 +1570,6 @@ pub struct Computed {
     pub(crate) color_initial: bool,
     /// DOM identity of this decorating box; never inherited.
     pub decor_box: u64,
+    /// Generated inline controls have no bytes in first-line source offsets.
+    pub inline_control: bool,
 }
