@@ -32,6 +32,7 @@ pub(crate) mod orthogonal;
 mod quotes;
 mod size_range;
 mod tab_size;
+pub(crate) mod writing_mode;
 pub(crate) use content_functions::parse_content;
 mod outline_style;
 use crate::style::computed::outline_style::parse as outline_style_of;
