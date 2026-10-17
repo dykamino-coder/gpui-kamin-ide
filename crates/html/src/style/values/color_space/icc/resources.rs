@@ -7,41 +7,28 @@ pub fn load_profiles(css: &str) {
 }
 
 pub(crate) fn load_profiles_with_base(css: &str, base: Option<&url::Url>) {
+    load_profiles_sheets(&[css.to_string()], base);
+}
+
+pub(crate) fn load_profiles_sheets(sheets: &[String], base: Option<&url::Url>) {
     PROFILES.with(|p| p.borrow_mut().clear());
-    let css = &crate::style::css::strip_comments(css);
-    let lower = css.to_ascii_lowercase();
-    let mut from = 0usize;
-    while let Some(at) = lower[from..].find("@color-profile") {
-        let start = from + at;
-        let Some(open) = css[start..].find('{') else {
-            break;
-        };
-        let name = css[start + "@color-profile".len()..start + open]
-            .trim()
-            .to_string();
-        if !name.starts_with("--") || open > 64 {
-            from = start + "@color-profile".len();
-            continue;
-        }
-        let Some(close) = css[start + open..].find('}') else {
-            break;
-        };
-        let block = &css[start + open + 1..start + open + close];
-        from = start + open + close;
-        let Some(src) = block.split(';').find_map(|d| {
-            let (k, v) = d.split_once(':')?;
-            k.trim()
-                .eq_ignore_ascii_case("src")
-                .then(|| v.trim().to_string())
-        }) else {
-            continue;
-        };
-        let Some(path) = crate::style::computed::parse_url(&src) else {
-            continue;
-        };
-        let path = crate::document::resource_url::resolve(&path, base);
-        if let Some(bytes) = crate::document::resource_url::read(&path) {
-            PROFILES.with(|p| p.borrow_mut().insert(name, bytes));
+    for css in sheets {
+        for rule in
+            crate::style::css::resource_rules::resources(css, crate::style::css::Media::default())
+        {
+            if rule.name != "color-profile" {
+                continue;
+            }
+            let Some(src) = crate::style::css::resource_rules::descriptor(&rule.body, "src") else {
+                continue;
+            };
+            let Some(path) = crate::style::computed::parse_url(&src) else {
+                continue;
+            };
+            let path = crate::document::resource_url::resolve(&path, base);
+            if let Some(bytes) = crate::document::resource_url::read(&path) {
+                PROFILES.with(|p| p.borrow_mut().insert(rule.prelude, bytes));
+            }
         }
     }
 }

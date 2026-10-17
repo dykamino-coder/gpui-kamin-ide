@@ -34,3 +34,25 @@ fn absolute_html_base_works_without_a_source_url() {
         Some("file:///tests/assets/")
     );
 }
+
+#[test]
+fn resources_come_from_stylesheets_instead_of_markup_substrings() {
+    fonts::install_loader(|_| Some("ParsedResourceFont".to_string()));
+    let face = "@font-face {font-family: RealResource; src: url(data:font/ttf;base64,AAEAAHJlc291cmNlLVMxNA==)}";
+    let fake = face.replace("RealResource", "FakeResource");
+    let html = format!(
+        "<!-- {fake} --><script>{fake}</script><p>{fake}</p>\
+        <template><style>{fake}</style></template><style>{face}</style>"
+    );
+    let theme = face.replace("RealResource", "ThemeResource");
+    let _doc = Document::new(&html, &theme);
+    assert_eq!(
+        fonts::alias("RealResource").as_deref(),
+        Some("ParsedResourceFont")
+    );
+    assert_eq!(
+        fonts::alias("ThemeResource").as_deref(),
+        Some("ParsedResourceFont")
+    );
+    assert_eq!(fonts::alias("FakeResource"), None);
+}

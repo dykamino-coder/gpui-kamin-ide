@@ -86,6 +86,13 @@ pub fn load_faces_additive(css: &str) {
     load_faces_into(css, None);
 }
 
+pub(crate) fn load_faces_sheets(sheets: &[String], base: Option<&url::Url>) {
+    load_faces_with_base("", base);
+    for css in sheets {
+        load_faces_into(css, base);
+    }
+}
+
 pub(super) fn load_faces_into(css: &str, base: Option<&url::Url>) {
     for block in faces(css) {
         let (Some(family), Some(src)) = (declaration(&block, "font-family"), source(&block)) else {

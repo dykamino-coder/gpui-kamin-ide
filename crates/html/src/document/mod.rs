@@ -88,8 +88,10 @@ impl Document {
         };
         // Свои шрифты страницы грузятся ДО разбора: иначе первый же замер
         // ширины пойдёт по подстановке, а перерисовки под новый шрифт нет.
-        crate::text::fonts::load_faces_with_base(html, effective_base.as_ref());
-        crate::style::values::color_space::load_profiles_with_base(html, effective_base.as_ref());
+        let mut sheets = vec![theme_css.to_string()];
+        sheets.extend(crate::dom::style_sources::collect(html, xml));
+        crate::text::fonts::load_faces_sheets(&sheets, effective_base.as_ref());
+        crate::style::values::color_space::load_profiles_sheets(&sheets, effective_base.as_ref());
         crate::text::paragraph::forget_measures();
         crate::layout::table::paint::forget_row_rects();
         crate::text::vertical::forget_vt_measures();
