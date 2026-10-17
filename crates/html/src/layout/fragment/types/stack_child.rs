@@ -117,6 +117,9 @@ pub struct StackChild {
     pub slack: Option<gpui::Hsla>,
     /// Ширина разложенной копии (для `slack`), ставится в `prepaint`.
     pub laid_w: std::cell::Cell<f32>,
+    /// Paginated by its own layout (`fragment::paginate`): the stack lays the
+    /// copy out against the fragmentainer grid and rebuilds it with struts.
+    pub paginate: Option<crate::layout::fragment::paginate::Paginate>,
 }
 
 /// Повтор секций таблицы во фрагментах. Фрагмент в нашей модели — СРЕЗ одной

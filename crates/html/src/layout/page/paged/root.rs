@@ -131,3 +131,16 @@ pub(super) fn group_runs(
         };
     }
 }
+
+/// Block axis of the root writing mode (css-writing-modes-4 §3.1): the
+/// direction the page stack fragments in; `None` — horizontal.
+pub(super) fn root_axis(root: &Computed) -> Option<crate::layout::fragment::types::StackAxis> {
+    use crate::layout::fragment::types::StackAxis;
+    (root.vertical == Some(true)).then(|| {
+        if root.vertical_rl == Some(true) {
+            StackAxis::VerticalRl
+        } else {
+            StackAxis::VerticalLr
+        }
+    })
+}

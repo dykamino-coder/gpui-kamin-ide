@@ -151,6 +151,10 @@ pub(crate) fn prepare_children(
                 }
                 Node::Element(mut e)
                     if in_flow(&e.style)
+                        // Orthogonal auto block size fits content; its margins
+                        // position it in the containing block (WM 4 section 7.3).
+                        && (e.style.vertical.or(inherited.vertical) == Some(true))
+                            == (inherited.vertical == Some(true))
                         && matches!(e.style.width, None | Some(Len::Auto))
                         && (e.style.margin.left == Some(Len::Auto)
                             || e.style.margin.right == Some(Len::Auto)) =>

@@ -82,8 +82,16 @@ pub(crate) fn repeat_bands(
     rows: Option<crate::layout::fragment::types::Rows>,
 ) -> Option<RepeatSpec> {
     let per = fixed.filter(|_| rows.is_none() && table_box(c))?;
+    repeat_bands_in(c, per, ShapeCx::COLUMNS)
+}
+
+/// Known page and column fragmentainers share the repeat reservation algorithm.
+pub(crate) fn repeat_bands_in(c: &Element, per: f32, cx: ShapeCx) -> Option<RepeatSpec> {
+    if !table_box(c) {
+        return None;
+    }
     let mut b = TableBands::default();
-    table_shape_bands(c, 4, ShapeCx::COLUMNS, &mut b)?;
+    table_shape_bands(c, 4, cx, &mut b)?;
     let max = per / 4.0;
     let head = b
         .head

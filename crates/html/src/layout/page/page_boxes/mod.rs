@@ -87,6 +87,13 @@ fn page_margin_boxes(
         }
         page_counters::resolve(&mut own, &ctx_own);
         let resolved = inherit(&ctx_style, &own);
+        // CSS Logical 1 §4: generated margin boxes also map logical properties
+        // through their own computed writing mode, after page-context inheritance.
+        own.vertical = resolved.vertical;
+        own.vertical_rl = resolved.vertical_rl;
+        own.sideways = resolved.sideways;
+        own.rtl = resolved.rtl;
+        own.resolve_logical(ctx_style.vertical, false);
         let fs = match resolved.font_size {
             Some(Len::Px(v)) => v,
             _ => 16.0,
@@ -135,7 +142,8 @@ fn page_margin_boxes(
         let opts = opts.clone();
         let ctx_style = ctx_style.clone();
         let intrinsic = [own.width, own.height];
-        let build = move |size: Option<(f32, f32)>| -> AnyElement {
+        let vertical = resolved.vertical == Some(true);
+        let build = move |size: Option<(f32, f32)>, inline: Option<Len>| -> AnyElement {
             let mut st = own.clone();
             for (k, v) in [
                 ("padding-top", format!("{}px", pad[0])),
@@ -175,7 +183,10 @@ fn page_margin_boxes(
                 tag: "div".to_string(),
                 inline: false,
                 node_id: 0,
-                style: Computed::default(),
+                style: Computed {
+                    height: inline,
+                    ..Computed::default()
+                },
                 hover: None,
                 first_letter: None,
                 first_line: None,
@@ -197,11 +208,13 @@ fn page_margin_boxes(
                 div().children(els).into_any_element()
             }
         };
-        let probe = build(None);
+        let build = std::rc::Rc::new(build);
+        let measure = build.clone();
         out.push(crate::layout::page::page_stack::MarginBox {
             place,
-            make: std::rc::Rc::new(move |w, h| build(Some((w, h)))),
-            probe,
+            make: std::rc::Rc::new(move |w, h| build(Some((w, h)), None)),
+            probe: std::rc::Rc::new(move |inline| measure(None, inline)),
+            vertical,
             w,
             h,
             intrinsic,

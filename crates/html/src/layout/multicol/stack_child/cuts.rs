@@ -196,6 +196,7 @@ pub(super) fn stack_child_of(
             None
         },
         laid_w: Default::default(),
+        paginate: None,
         // Повтор шапки/подвала таблицы — полосы своими
         // копиями (`flow::Repeat`); та же мера, что у
         // щупов (`repeat_leads`).

@@ -9,3 +9,5 @@ pub mod predicates;
 pub mod relative;
 mod spot_geometry;
 pub mod static_position;
+
+pub(crate) mod repeat;

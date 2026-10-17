@@ -4,6 +4,7 @@
 use crate::dom::Node;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::flex_lines::inline_display;
+use crate::layout::fragment::types::StackAxis;
 use crate::layout::page::names::{
     PageMarginDeclsFn, fill_used_page, first_kid_page_name, hoist_named_wrappers,
 };
@@ -19,6 +20,7 @@ mod root;
 use root::{Run, group_runs, resolve_root_page};
 mod overflow;
 pub(crate) use overflow::visible_overflow;
+use root::root_axis;
 
 /// Копий ребёнка в стопке страниц — потолок числа страниц, на которые может
 /// растянуться один блок верхнего уровня (в `css-page` не больше шести).
@@ -210,6 +212,7 @@ pub fn render_paged_select(
         layer,
         floated,
         groups,
+        root_axis(&root).map(|a| a == StackAxis::VerticalRl),
     );
     PAGED.with(|p| p.set(false));
     // Марджин-боксы: наследуют от контекста страницы, а тот — от корня
@@ -225,6 +228,7 @@ pub fn render_paged_select(
         margin_for,
     )
     .with_select(select)
+    .with_axis(root_axis(&root).unwrap_or(StackAxis::Horizontal))
     .with_canvas_layer(
         canvas_img
             .filter(|_| !none)

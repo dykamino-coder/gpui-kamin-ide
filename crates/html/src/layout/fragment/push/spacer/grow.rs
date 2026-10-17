@@ -95,6 +95,9 @@ pub(crate) fn grow_pushed(
         let mut changed = false;
         for (kid, at, grow, forced) in grows {
             let c = &mut kids[kid].0;
+            if c.attr(crate::layout::fragment::paginate::MARK).is_some() {
+                continue;
+            }
             // Ряд в точках, вытолкнутый целиком: растёт ПРЕДЫДУЩАЯ дорожка.
             if grow_grid_track(c, at, grow)
                 || (!forced && super::super::row::grow_row_at(c, at, grow))
