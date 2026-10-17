@@ -128,6 +128,7 @@ pub(crate) fn split_flex_lines(
                     avoid_only: false,
                     float: false,
                     clears: false,
+                    rtl_root_in_ltr: false,
                 });
                 parent.push(None);
                 let n_lines = lines.len();
@@ -153,6 +154,7 @@ pub(crate) fn split_flex_lines(
                             avoid_only,
                             float: false,
                             clears: false,
+                            rtl_root_in_ltr: false,
                         });
                         parent.push(Some(pm.clone()));
                     }
@@ -185,6 +187,7 @@ pub(crate) fn split_flex_lines(
                                 avoid_only,
                                 float: false,
                                 clears: false,
+                                rtl_root_in_ltr: false,
                             });
                             parent.push(Some(pm.clone()));
                         }

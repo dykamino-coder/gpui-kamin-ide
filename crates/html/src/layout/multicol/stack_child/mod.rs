@@ -244,5 +244,13 @@ pub(super) fn multicol_stack_child(
         build,
     );
     child.paginate = paginate;
+    // CSS 2.1 §10.3.3: у переопределённых полей отбрасывается конец по
+    // направлению СОДЕРЖАЩЕГО блока, и в ltr-колонке rtl-коробка стоит у
+    // левого края (Blink `ComputeMarginsFor` по стилю контейнера).
+    child.par.rtl_root_in_ltr = !col_vert
+        && merged.rtl != Some(true)
+        && merged.vertical != Some(true)
+        && copy.style.rtl == Some(true)
+        && copy.style.vertical != Some(true);
     child
 }

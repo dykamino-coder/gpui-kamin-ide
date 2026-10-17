@@ -150,15 +150,18 @@ impl ColumnStack {
             // Копия раскладывается ЦЕЛИКОМ и поднимается на срез: видимой её
             // часть делает маска в отрисовке. Иначе половина коробки просто
             // сжалась бы, а не продолжилась в следующей колонке.
-            let laid = el.layout_as_root_at(
-                point(x, if clone { y } else { y - px(f.from) }),
-                size(
-                    gpui::AvailableSpace::Definite(px(col_w)),
-                    gpui::AvailableSpace::Definite(px(full_h)),
-                ),
-                window,
-                cx,
+            let at = point(x, if clone { y } else { y - px(f.from) });
+            let avail = size(
+                gpui::AvailableSpace::Definite(px(col_w)),
+                gpui::AvailableSpace::Definite(px(full_h)),
             );
+            let mut laid = el.layout_as_root_at(at, avail, window, cx);
+            // Корень rtl taffy ставит у правого края колонки; содержащий
+            // блок ltr — вернуть к левому (`Par::rtl_root_in_ltr`).
+            if kid.par.rtl_root_in_ltr && f32::from(laid.width) < col_w {
+                let back = px(col_w - f32::from(laid.width));
+                laid = el.layout_as_root_at(point(at.x - back, at.y), avail, window, cx);
+            }
             let _static_coordinates = places.as_ref().filter(|_| !clone).map(|places| {
                 StaticCoordinates::enter(f.kid, point(x, y - px(f.from)), places.clone())
             });
