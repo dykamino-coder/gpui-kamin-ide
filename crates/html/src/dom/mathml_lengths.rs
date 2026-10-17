@@ -29,7 +29,7 @@ pub(crate) fn length(raw: &str) -> Option<Len> {
         return None;
     }
     let value = Len::parse(raw)?;
-    matches!(
+    (matches!(
         value,
         Len::Px(_)
             | Len::Em(_)
@@ -41,7 +41,9 @@ pub(crate) fn length(raw: &str) -> Option<Len> {
             | Len::Vh(_)
             | Len::EmPx(..)
             | Len::LhPx(..)
-    )
+    ) || (matches!(value, Len::Calc(_)) && !raw.contains('(')))
+    // A plain font-relative unit such as `cap` is stored as a calc sum; the
+    // calc() function itself is not a MathML length.
     .then_some(value)
 }
 
