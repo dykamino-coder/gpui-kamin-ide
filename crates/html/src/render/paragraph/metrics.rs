@@ -53,6 +53,8 @@ pub(crate) fn flow_metrics(
 /// Прежде высота строки на ВЕСЬ абзац бралась по самому крупному куску
 /// (`max_line_height`, `k × biggest`): одна крупная буква растила все строки,
 /// а базовая линия мелкого текста в строке с крупным стояла посередине.
+// Each span carries a text range, a baseline offset and a two-axis displacement.
+#[allow(clippy::type_complexity)]
 pub(crate) fn line_box_spans(
     pieces: &[inline::Piece],
     edges: &[(std::ops::Range<usize>, bool, f32)],
@@ -131,7 +133,7 @@ pub(crate) fn atoms_fit_line(inherited: &Computed, ruby: bool) -> bool {
         // the end of the paragraph box (`paragraph_routed`, pure-atom
         // branch); a line box would add the strut's descent below the atoms
         // (`wm-propagation-body-035`: the caption image rose by the descent).
-        && !(inherited.rotated_line == Some(true) && !rotated_atom::text_turn())
+        && (inherited.rotated_line != Some(true) || rotated_atom::text_turn())
         && (ruby || inherited.rtl != Some(true))
         && inherited.no_select != Some(true)
         && inherited.pointer_events_none != Some(true)

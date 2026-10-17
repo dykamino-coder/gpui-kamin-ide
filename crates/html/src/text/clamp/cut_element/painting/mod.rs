@@ -130,6 +130,8 @@ fn chain_end_with(point: f32, chain: &[&ClampBox], min: bool) -> f32 {
 }
 
 impl ClampCut {
+    // Keep the extracted GPUI Element paint signature intact.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn paint_impl(
         &mut self,
         _id: Option<&GlobalElementId>,

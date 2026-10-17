@@ -70,8 +70,10 @@ pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32) -> bool {
         {
             k.style.margin.bottom = None;
         }
-        let mut style = crate::style::computed::Computed::default();
-        style.height = Some(Len::Px(grow));
+        let mut style = crate::style::computed::Computed {
+            height: Some(Len::Px(grow)),
+            ..Default::default()
+        };
         style.margin.bottom = prev_mb;
         // Распорка в гибком хозяине — сама элемент: при переносе по строкам
         // она обязана занять СВОЮ строку (иначе встаёт рядом с предыдущим

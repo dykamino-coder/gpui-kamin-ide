@@ -180,7 +180,7 @@ pub(super) fn kid_copy_count(
         // Высота неизвестна до раскладки: копий — на
         // переполняющие колонки (css-multicol-1 §8.2).
         Some(per) if measure.is_some() && rows.is_none() && !span && per > 0.0 => {
-            copies.max(8).min(16)
+            copies.clamp(8, 16)
         }
         _ => copies,
     }

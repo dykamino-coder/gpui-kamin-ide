@@ -202,11 +202,13 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
         || e.style.clip_inset.is_some()
         || e.style.clip_xywh.is_some()
     {
-        let mut clip = Computed::default();
-        clip.clip_polygon = e.style.clip_polygon.clone();
-        clip.clip_shape = e.style.clip_shape.clone();
-        clip.clip_inset = e.style.clip_inset;
-        clip.clip_xywh = e.style.clip_xywh;
+        let clip = Computed {
+            clip_polygon: e.style.clip_polygon.clone(),
+            clip_shape: e.style.clip_shape.clone(),
+            clip_inset: e.style.clip_inset,
+            clip_xywh: e.style.clip_xywh,
+            ..Default::default()
+        };
         layer = grouped(
             div()
                 .absolute()

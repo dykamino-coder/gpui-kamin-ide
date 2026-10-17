@@ -52,8 +52,10 @@ impl Element for EdgePainter {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, ()) {
-        let mut style = gpui::Style::default();
-        style.position = gpui::Position::Absolute;
+        let style = gpui::Style {
+            position: gpui::Position::Absolute,
+            ..Default::default()
+        };
         (window.request_layout(style, [], cx), ())
     }
 

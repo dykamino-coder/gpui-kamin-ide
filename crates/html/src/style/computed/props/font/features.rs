@@ -108,9 +108,8 @@ impl Computed {
                     _ => &[CAPS, NUMERIC, LIGA, EAST, POS, ALT],
                 };
                 self.font_features.retain(|(t, _)| {
-                    !groups.iter().any(|g| g.contains(&t.as_str()))
-                        && !(matches!(key, "font-variant" | "font-variant-alternates")
-                            && alt_tag(t))
+                    !(groups.iter().any(|g| g.contains(&t.as_str()))
+                        || matches!(key, "font-variant" | "font-variant-alternates") && alt_tag(t))
                 });
                 for token in v.split_whitespace() {
                     let push: &[(&str, u32)] = match token {

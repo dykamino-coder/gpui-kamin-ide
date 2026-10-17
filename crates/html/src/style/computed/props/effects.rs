@@ -29,7 +29,7 @@ impl Computed {
                 self.svg_stroke_width = accept_parsed!(
                     self,
                     Some(match crate::style::values::value::calc_pct_px(v) {
-                        Some((pct, px)) if pct == 0.0 => format!("{px}"),
+                        Some((0.0, px)) => format!("{px}"),
                         _ => v.to_string(),
                     })
                 );
@@ -53,8 +53,10 @@ impl Computed {
                 // Тот же `<filter-value-list>`, что у `filter`
                 // (filter-effects-2 §BackdropFilterProperty): разбор общий,
                 // размытие идёт своим проходом, цветовые функции — матрицей.
-                let mut tmp = Self::default();
-                tmp.declaration_parse = self.declaration_parse;
+                let mut tmp = Self {
+                    declaration_parse: self.declaration_parse,
+                    ..Default::default()
+                };
                 tmp.apply_one("filter", v);
                 if tmp.declaration_parse == ParseResult::Accepted {
                     self.accept_declaration();

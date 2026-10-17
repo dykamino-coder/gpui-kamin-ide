@@ -111,10 +111,12 @@ pub(super) fn finish_table_outer(
     // Вторая половина §17.4: сама обёртка. Гибкий ряд возвращает сетке сжатие
     // по содержимому — тот же приём, что у корневого стола ниже.
     if split_wrapper {
-        let mut wrap = Computed::default();
-        wrap.position = e.style.position;
-        wrap.inset = e.style.inset;
-        wrap.z_index = e.style.z_index;
+        let wrap = Computed {
+            position: e.style.position,
+            inset: e.style.inset,
+            z_index: e.style.z_index,
+            ..Default::default()
+        };
         let mut wrap = crate::style::apply::apply(div(), &wrap).flex().flex_row();
         wrap.style().no_inline_block_baseline = Some(true);
         return wrap.child(outer).into_any_element();

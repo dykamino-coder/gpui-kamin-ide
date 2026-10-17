@@ -49,7 +49,7 @@ pub(crate) fn band_host(
         let Node::Element(next) = &nodes[j] else {
             break;
         };
-        if !next.style.float.is_some_and(|f| f != 0) {
+        if next.style.float.is_none_or(|f| f == 0) {
             break;
         }
         // Размер флоата обязан быть в точках: полосы ничего не мерят, а

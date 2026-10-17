@@ -75,6 +75,8 @@ pub(crate) use crate::dom::pseudo::*;
 
 /// Узел документа: либо текст, либо элемент со своими детьми.
 #[derive(Clone, Debug)]
+// Nodes keep elements inline; boxing would change the public tree representation.
+#[allow(clippy::large_enum_variant)]
 pub enum Node {
     Text(String),
     Element(Element),

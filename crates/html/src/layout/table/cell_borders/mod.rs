@@ -11,6 +11,8 @@ pub(super) use columns::collapsed_col_edges;
 pub(super) use columns::collapsed_colgroup_edges;
 pub(super) use rows::collapsed_row_edges;
 
+// Border conflict resolution keeps style, color and width in the winning edge.
+#[allow(clippy::type_complexity)]
 pub(super) fn collapsed_cell_edge(
     cell: &mut Element,
     cm: &Computed,

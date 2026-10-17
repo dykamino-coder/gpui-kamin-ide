@@ -107,7 +107,7 @@ pub(crate) fn dispatch_element(
         // бандовый хост (`flow-root`) — там размер считает свой путь
         // (замерено: `float-replaced-height-005/007` 0.00 → «красное видно»).
         "iframe"
-            if !e.style.float.is_some_and(|f| f != 0)
+            if e.style.float.is_none_or(|f| f == 0)
                 && matches!(inherited.display, None | Some(Display::Block))
                 && e.style.flow_root != Some(true)
                 && !matches!(

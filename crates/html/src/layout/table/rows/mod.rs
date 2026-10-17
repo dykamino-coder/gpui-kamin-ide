@@ -22,6 +22,8 @@ mod emit;
 use cell::table_cell;
 
 #[allow(clippy::too_many_arguments, clippy::unnecessary_cast)]
+// Rows carry their elements and associated row/column band records.
+#[allow(clippy::type_complexity)]
 pub(super) fn table_rows(
     rows: Vec<(
         &Element,

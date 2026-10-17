@@ -8,6 +8,8 @@
 /// важные в L и в слоях после него (у важных они слабее) и обычные в L и
 /// после него. `all: revert-layer` откатывает каждое свойство, чьё
 /// объявление в том же слое стоит до него. `None` — откатывать нечего.
+// Reversion uses the same property-application callback as ordinary cascading.
+#[allow(clippy::type_complexity)]
 pub(super) fn revert_layers(
     matched: &[&crate::style::css::Rule],
 ) -> Option<Vec<crate::style::css::Rule>> {

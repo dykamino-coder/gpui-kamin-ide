@@ -25,7 +25,7 @@ pub(crate) fn transparent(e: &Element) -> bool {
         // css-ruby-1 §2: ruby boxes pair bases with annotations; splitting
         // them around a float would break that pairing.
         && !matches!(e.tag.as_str(), "ruby" | "rb" | "rbc" | "rt" | "rtc" | "rp")
-        && !s.float.is_some_and(|f| f != 0)
+        && s.float.is_none_or(|f| f == 0)
         && s.clear.is_none()
         && s.position.is_none()
         && e.hover.is_none()

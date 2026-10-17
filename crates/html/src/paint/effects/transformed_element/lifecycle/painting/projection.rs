@@ -5,6 +5,8 @@ use crate::paint::effects::transformed_element::{Transformed, flatten_plane, inv
 use gpui::{App, Pixels, Window};
 
 #[allow(clippy::too_many_arguments)]
+// Coordinate indices address corresponding entries in the projection matrices.
+#[allow(clippy::needless_range_loop)]
 pub(crate) fn paint_3d(
     group: &mut Transformed,
     scale_factor: f32,

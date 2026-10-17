@@ -5,6 +5,8 @@ use crate::dom::*;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
+// The slice carries both parent track geometry and child cascade state.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn finish_slice(
     child: &mut Element,
     parent: &Computed,

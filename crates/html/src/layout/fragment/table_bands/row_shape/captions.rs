@@ -7,6 +7,8 @@ use crate::layout::fragment::clone::solid_box;
 use crate::layout::fragment::fragment_size::shape_full;
 
 #[allow(clippy::too_many_arguments)]
+// Caption slots carry their offsets and fragmentation flags together.
+#[allow(clippy::type_complexity)]
 pub(crate) fn caption_slots_shape(
     depth: u8,
     cx: ShapeCx,

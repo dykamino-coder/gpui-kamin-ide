@@ -74,9 +74,8 @@ impl Computed {
                     || self.gradient_em.is_some()
                     || g.radial
                     || g.stops_raw.iter().any(|(_, _, px)| px.is_some())
-                    || (!g.radial
-                        && (!matches!(g.space, GradSpace::Srgb | GradSpace::Oklab)
-                            || corner_angle(top, (1.0, 1.0)).is_some()))
+                    || !matches!(g.space, GradSpace::Srgb | GradSpace::Oklab)
+                    || corner_angle(top, (1.0, 1.0)).is_some()
             })
             .map(|_| top.to_string());
         // Цвет ищется в НИЖНЕМ слое (он один его допускает);

@@ -56,8 +56,10 @@ impl Element for GapItemProbe {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, LayoutId) {
-        let mut style = gpui::Style::default();
-        style.position = gpui::Position::Absolute;
+        let mut style = gpui::Style {
+            position: gpui::Position::Absolute,
+            ..Default::default()
+        };
         style.inset.top = px(0.0).into();
         style.inset.left = px(0.0).into();
         style.size.width = gpui::relative(1.0).into();

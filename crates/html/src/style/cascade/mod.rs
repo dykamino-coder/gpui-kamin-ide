@@ -215,6 +215,8 @@ impl Computed {
         Self::default().apply_property(key, "", "")
     }
 
+    // The temporary cascade callback borrows the current property and variable state.
+    #[allow(clippy::type_complexity)]
     fn apply_property(&mut self, key: &str, val: &str, v: &str) -> bool {
         let groups: [fn(&mut Self, &str, &str, &str, &mut bool); 14] = [
             Self::apply_scroll,

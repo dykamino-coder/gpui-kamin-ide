@@ -95,7 +95,7 @@ pub(crate) fn bfc_no_fit(n: &Element, float_min_w: f32) -> bool {
             _ => None,
         }
     };
-    !(n.inline && !inline_marked_block(n))
+    (!n.inline || inline_marked_block(n))
         && in_flow(&n.style)
         && matches!(
             n.style.display,

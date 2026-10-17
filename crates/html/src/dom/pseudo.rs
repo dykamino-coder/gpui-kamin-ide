@@ -69,6 +69,8 @@ pub(crate) fn content_image_src(src: &str) -> Option<String> {
 // исполнение `counter-*` слоя в собственном сегменте маркера и снятие
 // маркера у пункта с чужим `display`. Разбор — `target/scout-markers-
 // 2026-09b.md` §1.
+// Pseudo boxes need the originating cascade, counters and generated-content state.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn pseudo_box(
     rules: &[Rule],
     vars: &Decls,

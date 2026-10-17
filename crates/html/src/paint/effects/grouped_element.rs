@@ -15,6 +15,8 @@ use gpui::{AnyElement, IntoElement};
 /// примитив по отдельности — не то же самое, края внутри группы обязаны
 /// смешаться до размытия. Патч gpui рисует детей в свой буфер и кладёт его в
 /// кадр уже размытым.
+// Each group stores its paint callbacks with their captured geometry.
+#[allow(clippy::type_complexity)]
 pub struct Grouped {
     pub(crate) child: Option<AnyElement>,
     /// Радиус размытия в точках; 0 — только сборка в буфер.

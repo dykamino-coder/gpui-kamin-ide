@@ -4,6 +4,8 @@ use super::VerticalText;
 use gpui::{App, Bounds, GlobalElementId, InspectorElementId, Pixels, Window};
 
 impl VerticalText {
+    // Keep the extracted GPUI Element paint signature intact.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn paint_impl(
         &mut self,
         _id: Option<&GlobalElementId>,

@@ -25,9 +25,11 @@ impl Element for CellsClipped {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, ()) {
-        let mut style = gpui::Style::default();
         // Оверлей вне потока: раскладку таблицы полоса не трогает.
-        style.position = gpui::Position::Absolute;
+        let style = gpui::Style {
+            position: gpui::Position::Absolute,
+            ..Default::default()
+        };
         (window.request_layout(style, [], cx), ())
     }
 
@@ -42,6 +44,8 @@ impl Element for CellsClipped {
     ) {
     }
 
+    // Border decoration records pair each edge's color and geometry.
+    #[allow(clippy::type_complexity)]
     fn paint(
         &mut self,
         _id: Option<&GlobalElementId>,

@@ -7,6 +7,8 @@ use gpui::{AnyElement, IntoElement, LayoutId};
 /// Полулидинг вычитается: стопка стоит на краю коробки строки базы, а
 /// аннотация в браузере — на краю её СОДЕРЖИМОГО.
 #[derive(Default)]
+// Ruby extents retain annotation geometry keyed by the corresponding base span.
+#[allow(clippy::type_complexity)]
 pub struct RubyExtents {
     pub levels: Vec<(bool, f32, std::rc::Rc<std::cell::Cell<Option<LayoutId>>>)>,
     pub(crate) nested: Vec<Vec<crate::text::ruby::layers::LayerAttachment>>,

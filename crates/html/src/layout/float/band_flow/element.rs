@@ -58,7 +58,10 @@ impl Element for BandFlow {
     ) -> (LayoutId, LayoutId) {
         let kids = self.kids.clone();
         let cache = self.plan.clone();
-        let mut style = gpui::Style::default();
+        let style = gpui::Style {
+            flex_shrink: 0.0,
+            ..Default::default()
+        };
         // Auto inline size stretches when layout supplies known.width; float,
         // inline-block and cell hosts use their children's shrink-to-fit sizes
         // (CSS 2.1 §10.3.5). A percentage width would instead fill all available
@@ -66,7 +69,6 @@ impl Element for BandFlow {
         // letter-spacing-206-ref must fit its widest floated paragraph.
         // Height follows the owner's float-containment policy independently
         // of this inline-size calculation (§§10.6.3, 10.6.7).
-        style.flex_shrink = 0.0;
         let (vert, contain_floats) = (self.vert, self.contain_floats);
         let id = window.request_measured_layout(style, move |known, available, window, cx| {
             with_vert(vert, || {
