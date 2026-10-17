@@ -1082,6 +1082,11 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// Выравнивание читает это как `wrap-reverse`, перенос строк — нет.
     #[cfg(feature = "flexbox")]
     pub flex_cross_reverse: bool,
+    /// KaminIDE patch: a column flex container that emulates a block container. Its
+    /// first/last baselines come from the first/last item that has one (CSS 2.1 10.8.1,
+    /// css-align-3 9.1 block containers), not a baseline synthesized from an item edge.
+    #[cfg(feature = "flexbox")]
+    pub block_baselines: bool,
     /// KaminIDE patch: анонимный ряд строки — доли высоты детей решаются от
     /// высоты родителя ряда (CSS 2.1 §10.1: строка не содержащий блок).
     #[cfg(feature = "flexbox")]
@@ -1282,6 +1287,8 @@ impl<S: CheapCloneStr> Style<S> {
         flex_balance_lines: 0,
         #[cfg(feature = "flexbox")]
         flex_cross_reverse: false,
+        #[cfg(feature = "flexbox")]
+        block_baselines: false,
         percent_basis_from_parent: false,
         #[cfg(any(feature = "flexbox", feature = "grid"))]
         margin_trim: 0,
@@ -1798,6 +1805,10 @@ impl<S: CheapCloneStr> FlexboxContainerStyle for Style<S> {
         self.flex_cross_reverse
     }
     #[inline(always)]
+    fn block_baselines(&self) -> bool {
+        self.block_baselines
+    }
+    #[inline(always)]
     fn percent_basis_from_parent(&self) -> bool {
         self.percent_basis_from_parent
     }
@@ -1845,6 +1856,10 @@ impl<T: FlexboxContainerStyle> FlexboxContainerStyle for &'_ T {
     #[inline(always)]
     fn flex_cross_reverse(&self) -> bool {
         (*self).flex_cross_reverse()
+    }
+    #[inline(always)]
+    fn block_baselines(&self) -> bool {
+        (*self).block_baselines()
     }
     #[inline(always)]
     fn percent_basis_from_parent(&self) -> bool {
@@ -2238,6 +2253,8 @@ mod tests {
             flex_balance_lines: 0,
             #[cfg(feature = "flexbox")]
             flex_cross_reverse: false,
+            #[cfg(feature = "flexbox")]
+            block_baselines: false,
             percent_basis_from_parent: false,
             #[cfg(any(feature = "flexbox", feature = "grid"))]
             margin_trim: 0,
