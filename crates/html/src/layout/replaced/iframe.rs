@@ -67,21 +67,44 @@ pub(crate) fn object_is_document(e: &Element) -> bool {
         .any(|ext| path.ends_with(ext))
 }
 
-pub(crate) fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
-    let src = e.attr("src")?;
-    let path = src
-        .strip_prefix("file:///")
-        .or_else(|| src.strip_prefix("file://"))?;
+pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
     if IFRAME_DEPTH.with(|d| d.get()) >= 3 {
         return None;
     }
-    let html = std::fs::read_to_string(path).ok()?;
-    // Относительные адреса ВНУТРИ вложенного документа считаются от его
-    // папки: движок путей не разрешает, поэтому база приклеивается текстом.
-    let html = match std::path::Path::new(path).parent() {
-        Some(dir) => resolve_embedded_urls(&html, dir),
-        None => html,
+    // HTML: the presence of srcdoc (even empty) takes precedence over src.
+    let html = if let Some(html) = e.attr("srcdoc") {
+        html.to_owned()
+    } else {
+        let src = e.attr("src")?;
+        let path = src
+            .strip_prefix("file:///")
+            .or_else(|| src.strip_prefix("file://"))?;
+        let html = std::fs::read_to_string(path).ok()?;
+        match std::path::Path::new(path).parent() {
+            Some(dir) => resolve_embedded_urls(&html, dir),
+            None => html,
+        }
     };
+    // Resolve against the containing block, before sizing the child viewport.
+    let mut resolved = super::image::pct_height_to_px(e, inherited);
+    resolved.style.resolve_viewport(opts.viewport);
+    let in_flow = !matches!(
+        e.style.position,
+        Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
+    );
+    if in_flow
+        && let Some(Len::Pct(k)) = resolved.style.width
+        && let Some(width) = crate::layout::block::containing::AVAIL_W.with(|v| v.get())
+    {
+        resolved.style.width = Some(Len::Px(k * width));
+    }
+    if in_flow
+        && let Some(Len::Pct(k)) = resolved.style.height
+        && let Some(height) = crate::layout::block::available_height::HEIGHT.with(|v| v.get())
+    {
+        resolved.style.height = Some(Len::Px(k * height));
+    }
+    let e = &resolved;
     let attr_len = |k: &str| e.attr(k).and_then(|v| v.parse::<f32>().ok());
     // Размер: CSS сильнее атрибутов; умолчание — 300×150 (CSS 2.2 §замещаемые).
     // Рамка и отбивка лежат СНАРУЖИ размера содержимого (CSS 2.1 §10.3.2,
@@ -139,6 +162,10 @@ pub(crate) fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         responsive,
         !e.attr("scrolling")
             .is_some_and(|v| v.eq_ignore_ascii_case("no")),
+        Some(crate::document::EmbeddingScheme {
+            preferred_dark: st.embedding_dark_scheme,
+            owner_dark: st.dark_color_scheme,
+        }),
     );
     // Верхний уровень вложенного документа проходит те же ортогональные
     // поправки, что и дети контейнера.
@@ -160,7 +187,10 @@ pub(crate) fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     crate::style::select::QUIRKS.with(|q| q.set(outer_quirks));
     Some(
         {
-            let frame = styled_div(e).w(px(outer_w));
+            let mut frame = styled_div(e).w(px(outer_w));
+            // CSS 2.2 §10.8.1 / CSS Inline 3 §A.3: a replaced iframe has no
+            // baseline from its embedded document; synthesize from its own box.
+            frame.style().baseline_unavailable = Some(true);
             // css-sizing-4 §frame-sizing: высота по содержимому, когда
             // вложенный документ согласился и автор высоту не задал.
             if responsive {

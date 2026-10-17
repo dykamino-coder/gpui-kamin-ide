@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-pub(super) mod selector_tokens;
+pub(crate) mod selector_tokens;
 mod stylesheet_tokens;
 use crate::style::css::stylesheet_tokens::find_matching;
 pub(crate) use stylesheet_tokens::next_piece;

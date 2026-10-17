@@ -9,11 +9,11 @@ use crate::style::select::{Ancestor, Sibs, Spot};
 use markup5ever_rcdom::Handle;
 use std::rc::Rc;
 
-pub(crate) struct SchemeGuard(bool);
+pub(crate) struct SchemeGuard((bool, bool));
 
 impl Drop for SchemeGuard {
     fn drop(&mut self) {
-        crate::style::values::value::set_dark_scheme(self.0);
+        crate::style::values::value::restore_scheme(self.0);
     }
 }
 
@@ -95,9 +95,8 @@ pub(super) fn cascade_element(
     let vars = &own_vars;
     // Используемая схема цвета (css-color-adjust-1 §color-scheme-prop):
     // своё `color-scheme` — последнее по каскаду, иначе родительская
-    // (свойство наследуемое). Тёмная — когда названа только `dark`:
-    // при `light dark` берётся предпочтение пользователя, у стенда
-    // светлое. Держится на время узла и его потомков.
+    // (свойство наследуемое). При `light dark` берётся предпочтение
+    // текущего документа, включая схему embedding element. Держится на время узла и его потомков.
     let scheme = {
         let mut by_cascade: Vec<&&Rule> = matched.iter().collect();
         by_cascade.sort_by(|a, b| {
@@ -119,15 +118,9 @@ pub(super) fn cascade_element(
         }
         last
     };
-    let parent_dark = crate::style::values::value::dark_scheme();
-    let _scheme = SchemeGuard(parent_dark);
+    let _scheme = SchemeGuard(crate::style::values::value::scheme_state());
     if let Some(v) = scheme {
-        let low = v.to_ascii_lowercase();
-        let words: Vec<&str> = low.split_whitespace().collect();
-        let dark = words.contains(&"dark") && !words.contains(&"light");
-        if !low.contains("inherit") {
-            crate::style::values::value::set_dark_scheme(dark);
-        }
+        crate::style::values::value::resolve_scheme(&v);
     }
     // Типизированный `attr()` читает атрибуты ЭТОГО элемента
     // (css-values-5 §7.7): слот ставится только на время его каскада.
@@ -145,6 +138,7 @@ pub(super) fn cascade_element(
         style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
     }
     style.dark_color_scheme = crate::style::values::value::dark_scheme();
+    style.embedding_dark_scheme = crate::style::values::value::embedding_dark_scheme();
     style.custom_scrollbar = rules.iter().any(|rule| {
         if rule.sel.pseudo.as_deref() != Some("-webkit-scrollbar") {
             return false;
