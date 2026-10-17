@@ -19,13 +19,35 @@ pub(crate) enum Turn {
     CounterClockwise,
 }
 
-/// The used writing mode of a box.
+/// A physical box side.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Side {
+    Top,
+    Right,
+    Bottom,
+    Left,
+}
+
+impl Side {
+    pub(crate) fn opposite(self) -> Self {
+        match self {
+            Side::Top => Side::Bottom,
+            Side::Bottom => Side::Top,
+            Side::Left => Side::Right,
+            Side::Right => Side::Left,
+        }
+    }
+}
+
+/// The used writing mode and inline base direction of a box.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct WritingMode {
     pub vertical: bool,
     /// Block flow right-to-left (`vertical-rl`, `sideways-rl`).
     pub rl: bool,
     pub sideways: bool,
+    /// `direction: rtl`.
+    pub rtl: bool,
 }
 
 impl WritingMode {
@@ -35,6 +57,20 @@ impl WritingMode {
             vertical,
             rl: vertical && style.vertical_rl == Some(true),
             sideways: vertical && style.sideways == Some(true),
+            rtl: style.rtl == Some(true),
+        }
+    }
+
+    /// The writing mode of a line inside the turned paragraph, whose horizontal
+    /// typesetting clone clears `vertical` and keeps `rotated_line`
+    /// (`render/paragraph/vertical.rs`).
+    pub(crate) fn of_line(style: &Computed) -> Self {
+        let vertical = style.vertical == Some(true) || style.rotated_line == Some(true);
+        Self {
+            vertical,
+            rl: vertical && style.vertical_rl == Some(true),
+            sideways: vertical && style.sideways == Some(true),
+            rtl: style.rtl == Some(true),
         }
     }
 
@@ -45,6 +81,7 @@ impl WritingMode {
             vertical: style.cb_vertical,
             rl: style.cb_vertical && style.cb_vertical_rl,
             sideways: style.cb_vertical && style.cb_sideways,
+            rtl: style.cb_rtl,
         }
     }
 
@@ -69,6 +106,22 @@ impl WritingMode {
     pub(crate) fn lines_reversed(self) -> bool {
         self.line_turn() == Turn::Clockwise && !self.rl
     }
+
+    /// §6.4: line-left is the left edge in horizontal modes, the top after a clockwise
+    /// turn and the bottom after a counter-clockwise one.
+    pub(crate) fn line_left(self) -> Side {
+        match self.line_turn() {
+            Turn::None => Side::Left,
+            Turn::Clockwise => Side::Top,
+            Turn::CounterClockwise => Side::Bottom,
+        }
+    }
+
+    /// Inline-start is line-left for `ltr` and line-right for `rtl` (§2.1, §6.4).
+    pub(crate) fn inline_start(self) -> Side {
+        let left = self.line_left();
+        if self.rtl { left.opposite() } else { left }
+    }
 }
 
 impl Computed {
@@ -86,7 +139,38 @@ mod tests {
             vertical,
             rl,
             sideways,
+            rtl: false,
         }
+    }
+
+    #[test]
+    fn inline_start_follows_line_left_and_direction() {
+        // (mode, inline-start ltr, inline-start rtl)
+        let rows = [
+            (mode(false, false, false), Side::Left, Side::Right),
+            (mode(true, true, false), Side::Top, Side::Bottom),
+            (mode(true, false, false), Side::Top, Side::Bottom),
+            (mode(true, true, true), Side::Top, Side::Bottom),
+            (mode(true, false, true), Side::Bottom, Side::Top),
+        ];
+        for (m, ltr, rtl) in rows {
+            assert_eq!(m.inline_start(), ltr, "{m:?}");
+            assert_eq!(WritingMode { rtl: true, ..m }.inline_start(), rtl, "{m:?}");
+        }
+    }
+
+    #[test]
+    fn turned_line_clone_keeps_its_vertical_mode() {
+        let clone = Computed {
+            rotated_line: Some(true),
+            sideways: Some(true),
+            ..Computed::default()
+        };
+        assert_eq!(
+            WritingMode::of_line(&clone).line_turn(),
+            Turn::CounterClockwise
+        );
+        assert_eq!(clone.wm().line_turn(), Turn::None);
     }
 
     #[test]

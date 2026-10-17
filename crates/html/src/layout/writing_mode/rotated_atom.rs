@@ -72,7 +72,8 @@ pub(crate) fn physical(
     }
     let (sx, sy) = crate::text::inline::to_rotated_frame(flow, (dx, dy));
     let central = flow.sideways != Some(true) && flow.text_sideways != Some(true);
-    let ccw = flow.sideways == Some(true) && flow.vertical_rl != Some(true);
+    let ccw = crate::style::computed::writing_mode::WritingMode::of_line(flow).line_turn()
+        == crate::style::computed::writing_mode::Turn::CounterClockwise;
     let physical = crate::render::element(&child, &context, opts);
     let mut wrapper =
         crate::style::apply::margins(gpui::div().flex().flex_col().flex_shrink_0(), &margins);
