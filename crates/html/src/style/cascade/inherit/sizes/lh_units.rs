@@ -113,7 +113,7 @@ pub(super) fn inherit_lh_units(parent: &Computed, c: &mut Computed) {
     }
     // `background-size: 100px 1lh` — та же единица и та же база
     // (`lh-unit-same-element-*`). Чинится ЗДЕСЬ, а не в `background.rs`:
-    // там доступен только запасной кегль 16 (`fallback_len_px` даёт
+    // там доступен только запасной кегль 16 (`FontCx::FALLBACK` даёт
     // 1.2 × 16 = 19.2 — ровно то, что видно на снимке), а сплошной
     // перевод единиц в самом `background.rs` уже ЗАМЕРЕН в минус
     // (★ `background.rs:2577`, CSS2 4614 → 4610).
