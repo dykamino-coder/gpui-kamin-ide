@@ -240,7 +240,7 @@ pub struct Paragraph {
     pub(super) strut_run: Option<(gpui::Font, Pixels)>,
     /// Подъём и спуск струта в точках (меряются в `request_layout`).
     pub(super) strut_box: (f32, f32),
-    /// Границы строк в байтах — считаются на замере, переиспользуются на
-    /// отрисовке.
+    pub(super) first_strut: Option<super::first_line::Strut>,
+    /// Границы строк в байтах для замера и отрисовки.
     pub(super) lines: Vec<Line>,
 }

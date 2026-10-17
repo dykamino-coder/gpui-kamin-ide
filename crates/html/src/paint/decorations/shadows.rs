@@ -79,13 +79,8 @@ pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
             .iter()
             .all(|r| matches!(r, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0))));
         if square && c.radius_ell.is_none() && c.corner_shape.is_none() {
-            // A square sharp shadow is «the shadow rect minus the border box»
-            // (css-backgrounds-3 §7.1) — up to four plain rectangles. They are
-            // painted as FILLS, the same primitive as a box background, so a
-            // translucent shadow blends exactly like the equivalent colored
-            // box (`box-shadow-039`: the border-ring primitive gave 128 where
-            // a 50% fill gives 127), and any offset larger than the spread is
-            // covered too.
+            // CSS Backgrounds 3 §7.1: shadow rect minus border box. Plain fills
+            // preserve translucent blending and offsets larger than spread.
             let (dx, dy) = (sh.x, sh.y);
             let fill = colour.to_hsla();
             out.push(
@@ -103,7 +98,14 @@ pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
                         let (br, bb) = (f32::from(r.right()), f32::from(r.bottom()));
                         let (rl, rt) = (bl + dx - spread, bt + dy - spread);
                         let (rr, rb) = (br + dx + spread, bb + dy + spread);
-                        paint_rect_minus(window, (rl, rt, rr, rb), (bl, bt, br, bb), fill);
+                        crate::layout::fragment::effect_fragment::paint_shadow(
+                            r,
+                            (px(rt), px(rb)),
+                            window,
+                            |window| {
+                                paint_rect_minus(window, (rl, rt, rr, rb), (bl, bt, br, bb), fill);
+                            },
+                        );
                     },
                 )
                 .into_any_element(),

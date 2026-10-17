@@ -74,6 +74,7 @@ impl Paragraph {
             box_spans: Vec::new(),
             strut_run: None,
             strut_box: (0.0, 0.0),
+            first_strut: None,
             lines: Vec::new(),
             clamp: None,
             clamp_force: false,

@@ -76,6 +76,7 @@ impl Paragraph {
             box_spans: self.box_spans.clone(),
             strut_run: None,
             strut_box: self.strut_box,
+            first_strut: self.first_strut.clone(),
             ortho_limit: self.ortho_limit,
             runs: Vec::new(),
             font_size: self.font_size,

@@ -69,6 +69,7 @@ pub(super) mod geometry;
 pub use crate::text::paragraph::geometry::*;
 mod atoms;
 mod clamp;
+mod first_line;
 mod fit;
 pub(super) mod paint;
 use crate::text::paragraph::paint::*;

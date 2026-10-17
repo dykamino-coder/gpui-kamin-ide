@@ -19,6 +19,7 @@ pub struct FirstLine {
     pub(super) build: Split,
     pub(super) text: SharedString,
     following: Vec<SharedString>,
+    normal: (Font, f32),
     pub(super) font: Font,
     pub(super) font_size: f32,
     pub(super) line_height: f32,
@@ -37,11 +38,13 @@ impl FirstLine {
         font_size: f32,
         line_height: f32,
         following: Vec<SharedString>,
+        normal: (Font, f32),
     ) -> Self {
         FirstLine {
             build,
             text,
             following,
+            normal,
             font,
             font_size,
             line_height,
@@ -102,6 +105,7 @@ impl Element for FirstLine {
         let font_size = self.font_size;
         let line_height = self.line_height;
         let first_height = self.first_height;
+        let normal = self.normal.clone();
         let cut = self.cut.clone();
         let layout_id = window.request_measured_layout(
             Style::default(),
@@ -110,16 +114,29 @@ impl Element for FirstLine {
                     AvailableSpace::Definite(w) => w,
                     _ => window.viewport_size().width,
                 });
-                let (at, mut height) =
+                let (at, _) =
                     measure_first_line(&text, &font, font_size, line_height, width, window);
-                if let Some(h) = first_height {
-                    height += px(h - line_height);
+                let mut height = px(first_height.unwrap_or(line_height));
+                // Only the first formatted line uses the pseudo's font.
+                // Reshape its remainder with the ordinary font (CSS Pseudo 4
+                // §first-line-inheritance), including its different wraps.
+                let remainder = text[at..].trim_start();
+                if !remainder.is_empty() {
+                    height += measure_first_line(
+                        remainder,
+                        &normal.0,
+                        normal.1,
+                        line_height,
+                        width,
+                        window,
+                    )
+                    .1;
                 }
                 // The styled first line does not remove subsequent hard lines
                 // from normal flow (CSS 2 section 10.8).
                 for line in &following {
                     height +=
-                        measure_first_line(line, &font, font_size, line_height, width, window).1;
+                        measure_first_line(line, &normal.0, normal.1, line_height, width, window).1;
                 }
                 cut.set(Cut { at, width });
                 size(width, height)

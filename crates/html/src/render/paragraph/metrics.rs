@@ -81,7 +81,7 @@ pub(crate) fn line_box_spans(
         _ => return None,
     };
     let mut out: Vec<(std::ops::Range<usize>, f32)> = Vec::new();
-    let mut mixed = false;
+    let mut mixed = inherited.first_line.is_some();
     let mut at = 0usize;
     for p in pieces {
         let inline::Piece::Text { text, style } = p else {

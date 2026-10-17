@@ -40,11 +40,8 @@ pub(crate) fn native_paragraph(
     // Кегль абзаца — самый крупный кусок в нём: строка растёт под него,
     // и от него же считается высота строки в долях.
     //
-    // ПРОБОВАЛИ И ОТКАТИЛИ: считать долю от кегля САМОГО блока
-    // (струт §10.8), раз крупный кусок теперь растит строку каналом
-    // `lh_spans`. Замерено: приобретено 4, потеряно 4 — три пары
-    // `*-applies-to-008` уходят с 0.02 на 0.67. Возвращать вместе с
-    // разбором `vertical-align: top/bottom` на тексте.
+    // Per-run boxes below retain the block strut without changing this
+    // legacy fallback (`*-applies-to-008`).
     // Куски у края строки в её струт не входят (§10.8.1): у
     // `vertical-align-121` строка из 30px текста и прижатого вверх
     // 60px куска — это 30px струта плюс вылет куска вниз, а не 60px
@@ -212,6 +209,7 @@ pub(crate) fn native_paragraph(
                 over: 0.0,
             },
         ));
+    let para = super::super::first_line_box::configure(para, inherited, opts);
     let para = if selectable {
         para.selectable(id, opts.selection_color())
     } else {
