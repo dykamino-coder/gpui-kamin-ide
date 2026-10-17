@@ -16,6 +16,8 @@ pub(super) struct Content {
     pub height: Option<f32>,
     pub rtl: bool,
     pub offsets: Vec<(f32, f32)>,
+    /// Physical `[top, right, bottom, left]` margins of each child.
+    pub margins: Vec<[f32; 4]>,
     pub roots: Vec<LayoutId>,
     pub rule: arrangement::Rule,
     pub color: gpui::Hsla,
@@ -60,6 +62,12 @@ impl Element for Content {
                 window,
                 cx,
             );
+            let margins = (self.margins.len() == children.len()).then_some(&self.margins);
+            for (m, [t, r, b, l]) in children.iter_mut().zip(margins.into_iter().flatten()) {
+                m.width += l + r;
+                m.ascent += t;
+                m.descent += b;
+            }
             if let Some((ch, target)) = self.operator {
                 self.glyph = super::glyph::Plan::new(
                     &self.font,
@@ -100,6 +108,12 @@ impl Element for Content {
                 self.glyph_offset = offsets.first().copied().unwrap_or_default();
             }
             self.offsets = offsets;
+            if self.margins.len() == self.offsets.len() {
+                for ((x, y), [t, _, _, l]) in self.offsets.iter_mut().zip(&self.margins) {
+                    *x += l;
+                    *y += t;
+                }
+            }
             self.rule = rule;
             metrics
         };
@@ -127,7 +141,8 @@ impl Element for Content {
         window: &mut Window,
         cx: &mut App,
     ) -> gpui::Point<Pixels> {
-        let origin = window.layout_exact(*state).0 + window.element_offset();
+        // Absolute unrounded origin: `layout_exact` is relative to the parent.
+        let origin = window.layout_origin_unrounded(*state);
         for ((child, root), (x, y)) in self.children.iter_mut().zip(&self.roots).zip(&self.offsets)
         {
             window.set_layout_root_origin(*root, origin + point(px(*x), px(*y)));

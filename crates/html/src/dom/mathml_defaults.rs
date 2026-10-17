@@ -83,6 +83,19 @@ pub(super) fn defaults(handle: &Handle, index: usize) -> Vec<Rule> {
             layer: vec![],
         });
     }
+    // Core §4.1 UA sheet (Blink mathml.css:82): single-character identifiers
+    // are italic by default; independent of the formatting context.
+    if is_mathml(handle)
+        && matches!(&handle.data, NodeData::Element { name, .. } if &*name.local == "mi")
+    {
+        rules.push(Rule {
+            sel: Selector::parse("*").expect("UA selector"),
+            decls: parse_decls("text-transform: math-auto"),
+            order: 0,
+            origin: 0,
+            layer: vec![],
+        });
+    }
     if hides {
         rules.push(Rule {
             sel: Selector::parse("semantics > :not(:first-child)").expect("UA selector"),

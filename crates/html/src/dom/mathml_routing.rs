@@ -5,7 +5,19 @@
 use super::mathml::is_mathml;
 use markup5ever_rcdom::{Handle, NodeData};
 
-const CONSTRUCTS: &[&str] = &["mspace", "mpadded", "mfrac"];
+const CONSTRUCTS: &[&str] = &[
+    "mspace",
+    "mpadded",
+    "mfrac",
+    "mstyle",
+    "mphantom",
+    "msub",
+    "msup",
+    "msubsup",
+    "munder",
+    "mover",
+    "munderover",
+];
 
 pub(super) fn enabled(handle: &Handle) -> bool {
     if !is_mathml(handle) {

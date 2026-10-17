@@ -27,6 +27,14 @@ pub(super) fn hints(handle: &Handle, attrs: &[(String, String)]) -> Vec<Rule> {
             "mathcolor" if valid_color(value) => "color",
             "mathbackground" if valid_color(value) => "background-color",
             "mathsize" if valid_size(value) => "font-size",
+            // Core §3.2.1.1: only `normal` on <mi> is mapped (to text-transform: none).
+            "mathvariant"
+                if value.eq_ignore_ascii_case("normal")
+                    && matches!(&handle.data, NodeData::Element { name, .. } if &*name.local == "mi") =>
+            {
+                rule.decls.insert("text-transform".into(), "none".into());
+                continue;
+            }
             _ => continue,
         };
         rule.decls.insert(property.to_string(), value.clone());

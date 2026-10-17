@@ -44,6 +44,7 @@ fn build(
         "mi" | "mn" | "mo" | "ms" | "mtext" | "annotation" | "annotation-xml"
     );
     let mut factories = Vec::new();
+    let mut margins = Vec::new();
     let mut operator = None;
     let (children, kind) = if e.tag == "mspace" {
         let ascent = e
@@ -102,6 +103,7 @@ fn build(
                             });
                             (op.flags, factory)
                         }));
+                        margins.push(margins_px(&inherit(&style, &child.style), opts));
                         let forwarded = if core.is_some() { target } else { None };
                         Some(build(child, &style, opts, forwarded).unwrap_or_else(|| {
                             crate::render::element::element(child, &style, opts)
@@ -120,6 +122,7 @@ fn build(
         width: px_value(style.width),
         height: px_value(style.height),
         offsets: vec![],
+        margins,
         roots: vec![],
         rule: None,
         color: style.color.map_or(opts.text.color, |c| c.to_hsla()),
@@ -136,4 +139,14 @@ fn build(
         outer.style().justify_content = Some(gpui::JustifyContent::Center);
     }
     Some(outer.child(content).into_any_element())
+}
+
+/// Core §3.1.2: child margins enlarge its box metrics and shift its border box.
+/// Layout roots ignore their own margins, so they come from the computed style
+/// as `[top, right, bottom, left]`.
+fn margins_px(child: &Computed, opts: &RenderOpts) -> [f32; 4] {
+    let mut child = child.clone();
+    child.resolve_viewport(opts.viewport);
+    let m = &child.margin;
+    [m.top, m.right, m.bottom, m.left].map(|side| px_value(side).unwrap_or(0.0))
 }
