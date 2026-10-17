@@ -49,6 +49,46 @@ pub(crate) fn reference_box(bounds: Bounds<Pixels>) -> Option<Bounds<Pixels>> {
     })
 }
 
+/// CSS Break 3 §5.4: slice the continuous shadow at internal fragment edges,
+/// retaining its ink overflow at the box's genuine outer edges.
+pub(crate) fn paint_shadow<R>(
+    bounds: Bounds<Pixels>,
+    ink: (Pixels, Pixels),
+    window: &mut Window,
+    f: impl FnOnce(&mut Window) -> R,
+) -> R {
+    let Some(scope) = ACTIVE.with(|active| *active.borrow()) else {
+        return f(window);
+    };
+    let current = window.content_mask().bounds;
+    let initial = super::fragment_mask::snap(scope.clip, window.scale_factor())
+        .bounds
+        .intersect(&scope.parent.bounds);
+    // A CSS ancestor's overflow clip still clips the shadow.
+    if current != initial {
+        return f(window);
+    }
+    let mut top = current.top();
+    let mut bottom = current.bottom();
+    if bounds.top() >= scope.fragment.top() - px(0.01) {
+        top = top.min(ink.0);
+    }
+    if bounds.bottom() <= scope.fragment.bottom() + px(0.01) {
+        bottom = bottom.max(ink.1);
+    }
+    let clip = Bounds {
+        origin: point(current.left(), top),
+        size: size(current.size.width, bottom - top),
+    };
+    let mask = super::fragment_mask::snap(clip, window.scale_factor());
+    window.with_content_mask_replaced(
+        ContentMask {
+            bounds: mask.bounds.intersect(&scope.parent.bounds),
+        },
+        f,
+    )
+}
+
 pub(crate) fn paint<R>(
     matrix: TransformationMatrix,
     clip_matrix: TransformationMatrix,
