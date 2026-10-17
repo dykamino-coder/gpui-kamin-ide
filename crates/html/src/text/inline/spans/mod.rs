@@ -1,10 +1,12 @@
 //! Прогоны по кускам: перенос, сдвиги, высота строки, интервалы, оформление, слова, автопробелы.
 
 mod autospace;
+mod bidi_spacing;
 mod position;
 mod spacing;
 pub use crate::text::inline::spans::autospace::autospace_spans;
 pub(super) use crate::text::inline::spans::autospace::ideographic;
+pub use crate::text::inline::spans::bidi_spacing::{bidi_letter_spans, block_letter_spacing};
 pub use crate::text::inline::spans::position::rel_spans;
 pub use crate::text::inline::spans::position::shift_spans;
 pub use crate::text::inline::spans::spacing::letter_spans;

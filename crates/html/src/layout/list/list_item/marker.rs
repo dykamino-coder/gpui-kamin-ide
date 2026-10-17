@@ -29,6 +29,15 @@ pub(crate) fn resolve(li: &Element, inherited: &Computed, merged: &Computed) -> 
         .list_style_type
         .clone()
         .or_else(|| inherited.list_style_type.clone());
+    let symbol = text_marker_symbol(
+        text_marker.is_none()
+            && li
+                .style
+                .marker_layer
+                .as_deref()
+                .is_none_or(|m| m.content.is_none()),
+        kind.as_deref(),
+    );
     let marker = if let Some(t) = text_marker {
         t
     } else {
@@ -55,7 +64,14 @@ pub(crate) fn resolve(li: &Element, inherited: &Computed, merged: &Computed) -> 
     // и свёртка `content: none` в тесте разводила стороны ЕЩЁ дальше.
     let no_marker = li.style.no_marker.or(inherited.no_marker) == Some(true)
         || !matches!(li.style.display, None | Some(Display::ListItem));
-    let style = li.style.marker_layer.as_deref().map(|m| inherit(merged, m));
+    let mut style = li.style.marker_layer.as_deref().map(|m| inherit(merged, m));
+    // CSS Lists 3 marker-properties: an outside generated symbol has no
+    // tracking advance (Blink list_marker.cc:391,407, InlineMarginsForOutside).
+    // Preserve text markers and the inside-marker text flow from #355.
+    if symbol && merged.list_style_inside != Some(true) {
+        style.get_or_insert_with(|| merged.clone()).letter_spacing =
+            Some(crate::style::values::value::Len::Px(0.0));
+    }
     (!no_marker).then_some(Marker {
         text: marker,
         style,
@@ -86,4 +102,14 @@ pub(crate) fn node(li: &Element, merged: &Computed, marker: Marker) -> Node {
     // CSS Pseudo 4 #first-letter-application excludes marker content.
     span.style.first_letter_excluded = true;
     Node::Element(span)
+}
+
+/// A generated marker drawn as a symbol rather than as text (css-counter-styles
+/// predefined `disc`, `circle`, `square`, `disclosure-*`; `disc` is the default).
+fn text_marker_symbol(generated: bool, kind: Option<&str>) -> bool {
+    generated
+        && matches!(
+            kind.unwrap_or("disc"),
+            "disc" | "circle" | "square" | "disclosure-open" | "disclosure-closed"
+        )
 }

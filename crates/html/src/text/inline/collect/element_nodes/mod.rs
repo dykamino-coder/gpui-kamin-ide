@@ -14,7 +14,7 @@ use crate::dom::Element;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::inline::collect::boundary_spacing::boundary_gap_after_box;
-use crate::text::inline::collect::boundary_spacing::set_boundary_spacing;
+use crate::text::inline::collect::boundary_spacing::set_parent_boundary_spacing;
 use crate::text::inline::collect::overlays::shift_overlays;
 use crate::text::inline::*;
 
@@ -237,5 +237,5 @@ pub(super) fn collect_element(
     // того, что идёт следом, лежит ВНУТРИ текущего узла — значит,
     // и величина его отсюда (css-text-3 §8.2). Ставится всегда, а
     // снимается ниже с последнего куска: за ним границы уже нет.
-    set_boundary_spacing(&mut out[from..], inherited.letter_spacing);
+    set_parent_boundary_spacing(&mut out[from..], inherited.letter_spacing);
 }

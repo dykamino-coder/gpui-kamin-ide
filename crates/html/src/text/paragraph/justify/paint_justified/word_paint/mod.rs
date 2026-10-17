@@ -64,7 +64,7 @@ impl Paragraph {
             let overridden = runs
                 .iter()
                 .any(|r| crate::text::fonts::metric_overrides::has_overrides(&r.font));
-            let shaped = if visual.is_some_and(|v| v.1) {
+            let shaped = if visual.map_or(self.wrap.rtl, |v| v.1) {
                 // A right-to-left level piece: glyphs in visual order (UAX #9
                 // L2/L4), shaped once under an RLO like `shape`.
                 let mut runs = runs;
