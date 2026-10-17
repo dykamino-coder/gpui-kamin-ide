@@ -1,3 +1,4 @@
+//! SVG resource parsing and typed-tree conversion.
 // Copyright 2018 the Resvg Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
@@ -170,7 +171,8 @@ impl crate::Tree {
 
     /// Parses `Tree` from `roxmltree::Document`.
     pub fn from_xmltree(doc: &roxmltree::Document, opt: &Options) -> Result<Self, Error> {
-        let doc = svgtree::Document::parse_tree(doc, opt.style_sheet.as_deref())?;
+        let mut doc = svgtree::Document::parse_tree(doc, opt.style_sheet.as_deref())?;
+        doc.import_external(opt);
         self::converter::convert_doc(&doc, opt)
     }
 }

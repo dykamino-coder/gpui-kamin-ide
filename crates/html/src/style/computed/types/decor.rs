@@ -77,6 +77,27 @@ pub struct Decor {
     /// письме подчёркивание по умолчанию справа (Blink
     /// `ResolveUnderlinePosition`, css-text-decor-3 §default-stylesheet).
     pub over_lang: bool,
+    /// Identity and inline direction of the decorating box, not a text run.
+    pub source: u64,
+    pub rtl: bool,
+}
+
+/// Preserve percentages independently of font-relative lengths. Sizing
+/// keywords and anchor functions are outside <length-percentage>.
+pub(in crate::style::computed) fn parse_decor_inset(t: &str) -> Option<DecorLen> {
+    if matches!(t, "stretch" | "-webkit-fill-available" | "-moz-available")
+        || crate::style::values::value::css_number(t).is_some_and(|v| v != 0.0)
+    {
+        return None;
+    }
+    Some(match Len::parse_mixed(t)? {
+        Len::Px(v) => DecorLen::Px(v),
+        Len::Pct(k) => DecorLen::Pct(k),
+        Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent | Len::Anchor(_) => {
+            return None;
+        }
+        other => DecorLen::Raw(other),
+    })
 }
 
 pub(in crate::style::computed) fn parse_decor_style(t: &str) -> Option<DecorStyle> {

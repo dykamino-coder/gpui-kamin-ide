@@ -106,6 +106,7 @@ pub(super) fn finish_element(
     let children = wrap_misparented_ruby(children, ruby_parent);
     let inline = INLINE_TAGS.contains(&tag.as_str()) || !BLOCK_TAGS.contains(&tag.as_str());
     style.block_tag = !inline;
+    style.decor_box = node_id;
     // Замена элемента (css-content-3 §content-property: «a single
     // <image>» на самом элементе): коробка становится замещаемой
     // картинкой, содержимое не рисуется. Уровень коробки остаётся от

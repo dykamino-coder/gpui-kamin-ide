@@ -185,3 +185,6 @@ fn filter_fe_image_cycle_through_a_group_does_not_overflow() {
         <g id="g"><rect width="50" height="50" filter="url(#f)"/></g>"##);
     assert!(rasterize(&m, 200.0, 100.0).is_some());
 }
+
+#[path = "tests/external.rs"]
+mod external;

@@ -33,7 +33,7 @@ pub(crate) fn static_overlay(
         let mut copy = e.clone();
         copy.style.image_orient_none = merged.image_orient_none;
         copy.style.position = None;
-        crate::svg::element(&copy).unwrap_or_else(|| image(&copy))
+        crate::svg::element_with_html(&copy, opts).unwrap_or_else(|| image(&copy))
     } else if e.tag == "img" {
         let mut copy = e.clone();
         copy.style.image_orient_none = merged.image_orient_none;

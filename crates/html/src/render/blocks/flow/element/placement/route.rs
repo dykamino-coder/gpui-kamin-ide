@@ -102,7 +102,9 @@ pub(crate) fn layer_route(
         && geometry_layer_ok
         && (fixed || orphan_abs)
         && (e.style.z_index.unwrap_or(0) >= 0 || below_icb)
-        && !stays_positioned(&nodes[idx + 1..]);
+        && (!stays_positioned(&nodes[idx + 1..])
+            || crate::layout::positioned::containing_block::icb_active()
+                && !(fixed && PAGED.with(|p| p.get())));
     // В гибком контейнере и сетке слой содержащего блока закрыт: там
     // нет щупа статической позиции. Но при ОБЕИХ заданных осях щуп и не
     // нужен (CSS 2.1 §10.1 п.4 — содержащий блок ближайший
@@ -114,6 +116,7 @@ pub(crate) fn layer_route(
         && geometry_layer_ok
         && far_abs
         && e.style.z_index.unwrap_or(0) >= 0
-        && !stays_positioned(&nodes[idx + 1..]);
+        && (!stays_positioned(&nodes[idx + 1..])
+            || crate::layout::positioned::containing_block::cb_active(far_fixed));
     (x_set, y_set, fixed, below_icb, to_icb, to_cb, far_fixed)
 }
