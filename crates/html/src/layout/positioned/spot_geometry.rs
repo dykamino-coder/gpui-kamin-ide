@@ -64,6 +64,9 @@ impl Element for Probe {
         let mut now = self.spot.get();
         now.rotated = VT_FRAME.with(|frame| frame.get()).is_some();
         now.block_strut = self.full;
+        if !self.full {
+            now.line_box = crate::layout::positioned::containing_block::take_line_box();
+        }
         let hole = vt_map(bounds, px(now.line_thickness));
         now.hole = Some(if now.viewport_static {
             crate::layout::fragment::static_coordinates::map(hole)

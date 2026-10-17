@@ -9,6 +9,7 @@ use crate::style::computed::{
 use crate::style::css::{Decls, Rule};
 use crate::style::values::value::Color;
 
+mod color_initial;
 pub mod defaults;
 pub mod inherit;
 pub(crate) mod inherited_value;
@@ -139,6 +140,9 @@ impl Computed {
         self.decl_seq += 1;
         let v = val.trim();
         inherit::note_flow_align(self, key, v);
+        if color_initial::apply(self, key, v) {
+            return;
+        }
         // Общие для всех свойств слова `initial`/`unset`/`revert`. Для
         // НАСЛЕДУЕМОГО свойства это не «оставить как есть»: незаданное поле у
         // нас берётся от родителя, поэтому такое объявление молча наследовало

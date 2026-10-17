@@ -112,7 +112,11 @@ pub(super) fn replaced_abs_atom(
         // Слоя нет — элемент возвращается назад, и рисуем его на
         // месте прежним путём.
         let pushed = if positioned_cb {
-            crate::layout::positioned::containing_block::cb_push(spot, holder.into_any_element())
+            crate::layout::positioned::containing_block::cb_push(
+                spot,
+                holder.into_any_element(),
+                crate::layout::positioned::containing_block::nearest_cb_index(inherited),
+            )
         } else {
             crate::layout::positioned::containing_block::icb_push(spot, holder.into_any_element())
         };
