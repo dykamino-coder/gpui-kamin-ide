@@ -26,6 +26,10 @@ impl ColumnStack {
             let (_, _, slots) = Self::fill_avoiding(kids, &|_| h, limit, false);
             return (h, slots);
         }
+        if let Some(h) = self.forced_h {
+            let (_, _, slots) = Self::fill(kids, h, limit, false);
+            return (h, slots);
+        }
         // Нижнее поле ПОСЛЕДНЕГО ребёнка не примыкает к разрыву — многоколоночник
         // свой контекст форматирования (CSS 2.1 §8.3.1), и поле остаётся в
         // содержимом последней колонки: балансу оно нужно так же, как высота

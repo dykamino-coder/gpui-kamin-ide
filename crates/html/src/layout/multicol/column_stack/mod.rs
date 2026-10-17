@@ -12,6 +12,7 @@ pub mod balance;
 pub mod element;
 pub mod fill;
 mod gap_geometry;
+mod paginate;
 
 pub struct ColumnStack {
     pub(crate) children: Vec<StackChild>,
@@ -28,6 +29,9 @@ pub struct ColumnStack {
     pub(crate) row_phase: f32,
     /// `column-fill: auto` + заданная высота: заполнение без баланса.
     pub(crate) fixed_height: Option<f32>,
+    /// Balanced column height chosen by the pagination of a child laid out
+    /// against the fragmentainer grid (`paginate`); `None` — ordinary balance.
+    pub(crate) forced_h: Option<f32>,
     /// `fixed_height` пришёл из `max-height` при авто-высоте: колонки
     /// заполняются до него, а коробка — по самой высокой занятой колонке
     /// (Blink `ConstrainColumnBlockSize`; `columnfill-auto-max-height-003`).
@@ -99,6 +103,7 @@ impl ColumnStack {
             count: count.max(1),
             gap,
             fixed_height,
+            forced_h: None,
             fill_shrink: false,
             rule,
             rule_to: None,

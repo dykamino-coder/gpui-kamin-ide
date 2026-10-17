@@ -47,6 +47,11 @@ use items::{constrained_inside, row_item_width};
 /// дети — блочные элементы в потоке без `flex-grow`, `flex-basis`,
 /// `align-self`, боковых полей и отбивок, ширина в точках либо пустой
 /// `auto`. Иначе контейнер идёт прежним путём.
+/// Whether `split_flex_lines` opens `c` into its lines (parallel flows).
+pub(crate) fn explodes(c: &Element, col_w: Option<f32>) -> bool {
+    flex_lines_of(c, col_w).is_some() || flex_row_lines_of(c, col_w).is_some()
+}
+
 pub(crate) fn split_flex_lines(
     kids: Vec<(Element, Shape)>,
     col_w: Option<f32>,
@@ -64,6 +69,12 @@ pub(crate) fn split_flex_lines(
     let mut starts: Vec<usize> = Vec::with_capacity(kids.len() + 1);
     for (c, s) in kids {
         starts.push(out.len());
+        if c.attr(crate::layout::fragment::paginate::MARK).is_some() {
+            out.push((c, s));
+            par.push(crate::layout::fragment::types::Par::default());
+            parent.push(None);
+            continue;
+        }
         match flex_lines_of(&c, col_w) {
             Some(lines) => {
                 group += 1;

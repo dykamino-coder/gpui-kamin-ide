@@ -20,6 +20,10 @@ use gpui::AnyElement;
 
 /// Блочный элемент.
 pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+    crate::layout::fragment::paginate::watch::wrap(e.node_id, element_inner(e, inherited, opts))
+}
+
+fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
     let media_sized = crate::layout::replaced::media::resolve(e, inherited, opts.viewport);

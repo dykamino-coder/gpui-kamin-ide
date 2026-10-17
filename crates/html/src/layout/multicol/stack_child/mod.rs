@@ -21,6 +21,7 @@ use build::build_copy;
 mod whole;
 use whole::{copy_kids, copy_whole_box};
 mod frag_div;
+mod paginate;
 use frag_div::frag_box_div;
 
 #[allow(clippy::too_many_arguments, clippy::needless_borrow)]
@@ -218,7 +219,8 @@ pub(super) fn multicol_stack_child(
     // §4.1 «scroll containers»); `hidden`/`clip` —
     // обрезка, не прокрутка, и режется как блок
     // (корень A4).
-    finish_stack_child(
+    let paginate = paginate::paginate_of(opts, col_vert, col_rl, line_col_w, merged, &copy, &inner);
+    let mut child = finish_stack_child(
         ix,
         mt,
         mb,
@@ -240,5 +242,7 @@ pub(super) fn multicol_stack_child(
         nest_row,
         whole,
         build,
-    )
+    );
+    child.paginate = paginate;
+    child
 }
