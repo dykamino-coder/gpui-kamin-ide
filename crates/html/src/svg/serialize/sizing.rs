@@ -19,6 +19,7 @@ pub(crate) fn serialize_sized(e: &Element, w: f32, h: f32, nx: f32, ny: f32) -> 
     } else {
         e
     };
+    let _ids = crate::svg::ClipScope::enter(e);
     let mut out = String::new();
     // Канва с запасом влево/вверх (`nx`, `ny` — переполнение в минус).
     let (cw, ch) = (w + nx, h + ny);

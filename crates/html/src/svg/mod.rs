@@ -20,6 +20,7 @@ use serialize::serialize_sized;
 use size::size_of;
 
 mod clip;
+pub(crate) use clip::ClipScope;
 mod device_image;
 mod foreign;
 mod masks;

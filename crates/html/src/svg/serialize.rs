@@ -39,6 +39,8 @@ pub fn serialize(e: &Element) -> String {
 }
 
 pub(crate) fn write_element(e: &Element, out: &mut String) {
+    // The outermost element written is the document of synthesized ids.
+    let _ids = super::ClipScope::enter(e);
     // Синтезированный `<clipPath>` пишется ПЕРЕД элементом (см. `synth_clip`).
     let clip_id = synth_clip(e, out);
     out.push('<');

@@ -219,6 +219,7 @@ pub(crate) fn collect_mask_defs(nodes: &[Node]) {
                 && let Some(id) = e.attr("id")
             {
                 let mut markup = String::new();
+                let _ids = crate::svg::ClipScope::enter(e);
                 for c in &e.children {
                     if let Node::Element(el) = c {
                         crate::svg::serialize::write_element(el, &mut markup);
