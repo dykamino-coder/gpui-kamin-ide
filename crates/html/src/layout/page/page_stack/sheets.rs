@@ -143,6 +143,9 @@ impl PageStack {
             };
             // По оси строки — весь лист (`PageStack::sheet_wide`).
             let mask = self.sheet_wide(bounds, f.col, mask);
+            // Clip and painted box edges share the device-pixel grid.
+            let mask =
+                crate::layout::fragment::fragment_mask::snap(mask.bounds, window.scale_factor());
             let kid = &mut self.kids[f.kid];
             window.with_mask_scale(bounds.origin, s, |window| {
                 kid.paint_sections(
