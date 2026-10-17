@@ -35,13 +35,13 @@ pub(crate) fn generic_children(
         None => e.children.clone(),
     };
     // Resolve physical margins before preparing the vertical formatting context.
-    let children = if merged.vertical == Some(true) {
+    let children = if merged.wm().vertical() {
         // Поле самого контейнера по ведущей стороне оси потока —
         // для схлопывания с первым ребёнком (§8.3.1). Ведущая
         // сторона: левая у `vertical-lr`/`sideways-*`, правая у
         // `vertical-rl`. Открыта, если там нет ни рамки, ни
         // внутреннего отступа; у корня поля не схлопываются вовсе.
-        let reverse = merged.vertical_rl == Some(true);
+        let reverse = merged.wm().block_rl();
         let lead_margin = if e.tag == "html" {
             None
         } else {

@@ -86,9 +86,9 @@ pub(crate) fn atom_line_align(
     // baseline. Обратная ортогональность требует адаптера повёрнутой строки:
     // обычный атом и text-combine там пока идут общим прежним путём.
     let orthogonal_block = st.display == Some(Display::InlineBlock)
-        && st.vertical == Some(true)
-        && inherited.vertical != Some(true)
-        && inherited.rotated_line != Some(true);
+        && st.wm().vertical()
+        && !inherited.wm().vertical()
+        && !inherited.wm().turned();
     if (st.vertical.is_some() && !box_layout(st) && !orthogonal_block)
         || has_vertical(&e.children, box_layout(st))
     {

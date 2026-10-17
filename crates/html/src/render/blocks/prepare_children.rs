@@ -84,7 +84,7 @@ pub(crate) fn prepare_children(
         // делает и сборщик дерева в браузере.
         crate::render::inline_splits::split_block_in_inline_dir(
             &hoist_inset_abs(&wrap_anon_tables(nodes), inherited),
-            inherited.rtl == Some(true),
+            inherited.wm().rtl(),
         )
     };
     // ★ ЗАМЕРЕНО И ОТКАЧЕНО (08.09, v158, `scout-flex-2026-09e.md` патч №1):
@@ -120,7 +120,7 @@ pub(crate) fn prepare_children(
                 Node::Element(mut e)
                     if in_flow(&e.style)
                         && !inline_level_box(&e)
-                        && inherited.vertical != Some(true)
+                        && !inherited.wm().vertical()
                         && matches!(
                             e.style.justify_self,
                             Some(Align::Start) | Some(Align::Center) | Some(Align::End)
@@ -135,7 +135,7 @@ pub(crate) fn prepare_children(
                         e.style.width = Some(Len::FitContent);
                     }
                     if !auto(e.style.margin.left) && !auto(e.style.margin.right) {
-                        let rtl = inherited.rtl == Some(true);
+                        let rtl = inherited.wm().rtl();
                         match (e.style.justify_self, rtl) {
                             (Some(Align::Center), _) => {
                                 e.style.margin.left = Some(Len::Auto);
@@ -154,7 +154,7 @@ pub(crate) fn prepare_children(
                         // Orthogonal auto block size fits content; its margins
                         // position it in the containing block (WM 4 section 7.3).
                         && (e.style.vertical.or(inherited.vertical) == Some(true))
-                            == (inherited.vertical == Some(true))
+                            == (inherited.wm().vertical())
                         && matches!(e.style.width, None | Some(Len::Auto))
                         && (e.style.margin.left == Some(Len::Auto)
                             || e.style.margin.right == Some(Len::Auto)) =>

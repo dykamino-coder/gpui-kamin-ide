@@ -65,7 +65,7 @@ pub fn align_of(a: Option<crate::style::computed::TextAlign>) -> Align {
 
 /// Выключка абзаца с разворотом логических краёв по стороне письма.
 pub fn align_for(c: &crate::style::computed::Computed) -> Align {
-    let rtl = c.rtl == Some(true);
+    let rtl = c.wm().rtl();
     let value = c
         .text_align
         .unwrap_or(crate::style::computed::TextAlign::Start)

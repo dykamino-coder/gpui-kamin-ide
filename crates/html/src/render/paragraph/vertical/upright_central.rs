@@ -114,7 +114,7 @@ pub(super) fn upright_central(
     inherited: &Computed,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
-    if inherited.rtl == Some(true) {
+    if inherited.wm().rtl() {
         return None;
     }
     let em = own_size(inherited, opts);

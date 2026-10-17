@@ -42,7 +42,7 @@ pub(crate) fn flow_children(
                     // правому краю и вылезает влево (csswg-drafts#5572);
                     // только горизонтальное письмо — в вертикали cross-ось
                     // иная (abs-pos-border-offset-001/002).
-                    if inherited.rtl == Some(true)
+                    if inherited.wm().rtl()
                         && inherited.vertical_rl.is_none()
                         && e.style.width.is_some()
                         && e.style.align_self.is_none()

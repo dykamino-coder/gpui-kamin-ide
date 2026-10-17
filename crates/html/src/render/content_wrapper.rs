@@ -8,7 +8,7 @@ use crate::style::values::value::Len;
 use gpui::{AnyElement, CssSizingKeyword, IntoElement, ParentElement, Styled, div, px};
 
 fn wrapper_width_keyword(style: &Computed) -> Option<CssSizingKeyword> {
-    if style.vertical == Some(true) || style.contains_width() {
+    if style.wm().vertical() || style.contains_width() {
         return None;
     }
     match style.width {
@@ -110,7 +110,7 @@ pub(crate) fn content_sized(
     // taffy её не решает и меряет обёртку содержимым, как велит §5.2.1
     // (`fit-content-length-percentage-011/012/014`). Это НЕ пара «max-width =
     // N» из отката в `value.rs`: там довод был потолком, здесь — место.
-    if matches!(c.width, Some(Len::FitContent)) && c.vertical != Some(true) {
+    if matches!(c.width, Some(Len::FitContent)) && !c.wm().vertical() {
         match c.fit_arg[0] {
             Some(Len::Px(v)) => wrap = wrap.w(px(v)),
             Some(Len::Pct(k)) => wrap = wrap.w(gpui::relative(k)),
@@ -172,7 +172,7 @@ pub(crate) fn content_sized(
     // (column-fill-reverse-justify-items-001). В вертикальном письме
     // align-self несёт ось самого движка — перенос ломал ортогональные
     // потоки (three-levels-of-orthogonal-flows).
-    if let Some(a) = c.align_self.filter(|_| c.vertical != Some(true)) {
+    if let Some(a) = c.align_self.filter(|_| !c.wm().vertical()) {
         // `anchor-center` без якоря ведёт себя как `center` (css-anchor-position-1 §5.2).
         wrap.style().align_self = Some(crate::style::apply::self_align(a, c.align_self_last));
     }

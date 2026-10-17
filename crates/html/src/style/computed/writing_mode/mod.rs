@@ -1,0 +1,176 @@
+//! The writing mode of a box as ONE value, and the one logical↔physical side mapping
+//! (css-writing-modes-4 §3.1 `writing-mode`, §2.1 `direction`, §6.4 Abstract-Physical Mapping).
+//!
+//! Every reader asks `Computed::wm()`; nothing else decodes the stored properties. The combined
+//! value follows Blink's `ComputedStyle::GetWritingDirection()` (`core/style/computed_style.h`)
+//! and Servo's `WritingMode` (`style/logical_geometry.rs`): writing-mode + direction in one copy
+//! type with queries.
+//!
+//! Layout here is physical (GPUI/taffy boxes) and vertical text uses a rotation model: a vertical
+//! paragraph is typeset by a horizontal clone of its style that is then turned
+//! (`render/paragraph/vertical.rs`), and an upright stack is laid out the same way. Inside such a
+//! clone the box is laid out horizontally ("laid flat") while its writing mode — block flow
+//! direction and `sideways` — is still that of the paragraph. So the value distinguishes
+//! `vertical()` (laid out vertically in the current coordinate space) from the mode's block flow
+//! (`block_rl()`, `sideways()`), and records whether the box sits in a turned line (`turned()`).
+use super::Computed;
+
+/// How a horizontally typeset line is turned to become the vertical line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Turn {
+    None,
+    /// `vertical-*`, `sideways-rl`: line-left = top, line-over = right.
+    Clockwise,
+    /// `sideways-lr`: line-left = bottom, line-over = left.
+    CounterClockwise,
+}
+
+/// A physical box side.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Side {
+    Top,
+    Right,
+    Bottom,
+    Left,
+}
+
+impl Side {
+    pub(crate) fn opposite(self) -> Self {
+        match self {
+            Side::Top => Side::Bottom,
+            Side::Bottom => Side::Top,
+            Side::Left => Side::Right,
+            Side::Right => Side::Left,
+        }
+    }
+}
+
+/// The used writing mode and inline base direction of a box.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct WritingMode {
+    vertical: bool,
+    /// Block flow right-to-left (`vertical-rl`, `sideways-rl`), also when laid flat.
+    rl: bool,
+    /// `sideways-*`, also when laid flat.
+    sideways: bool,
+    /// Inside the horizontal clone of a turned vertical paragraph.
+    turned: bool,
+    rtl: bool,
+}
+
+impl WritingMode {
+    /// A box laid out in `writing-mode` `vertical`/`rl`/`sideways` with the given direction.
+    pub(crate) fn new(vertical: bool, rl: bool, sideways: bool, rtl: bool) -> Self {
+        Self {
+            vertical,
+            rl: vertical && rl,
+            sideways: vertical && sideways,
+            turned: false,
+            rtl,
+        }
+    }
+
+    pub(crate) fn of(style: &Computed) -> Self {
+        Self {
+            vertical: style.vertical == Some(true),
+            rl: style.vertical_rl == Some(true),
+            sideways: style.sideways == Some(true),
+            turned: style.rotated_line == Some(true),
+            rtl: style.rtl == Some(true),
+        }
+    }
+
+    /// The writing mode of the box's containing block, recorded at inheritance
+    /// (`cascade/inherit/containing.rs`).
+    pub(crate) fn containing_block(style: &Computed) -> Self {
+        Self::new(
+            style.cb_vertical,
+            style.cb_vertical_rl,
+            style.cb_sideways,
+            style.cb_rtl,
+        )
+    }
+
+    /// Laid out vertically in the current coordinate space: a vertical mode, except inside a
+    /// laid-flat clone where the box did not declare its own mode.
+    pub(crate) fn vertical(self) -> bool {
+        self.vertical
+    }
+
+    /// The writing mode's block flow goes right-to-left (`vertical-rl`, `sideways-rl`).
+    pub(crate) fn block_rl(self) -> bool {
+        self.rl
+    }
+
+    /// `sideways-rl` / `sideways-lr`.
+    pub(crate) fn sideways(self) -> bool {
+        self.sideways
+    }
+
+    /// The box sits in a turned vertical line (rotation model).
+    pub(crate) fn turned(self) -> bool {
+        self.turned
+    }
+
+    /// `direction: rtl`.
+    pub(crate) fn rtl(self) -> bool {
+        self.rtl
+    }
+
+    /// The writing mode of the LINE the box sits in: a turned line is vertical even though
+    /// its clone is laid flat.
+    pub(crate) fn line(self) -> Self {
+        Self {
+            vertical: self.vertical || self.turned,
+            ..self
+        }
+    }
+
+    /// Writing modes are orthogonal when their block axes are perpendicular
+    /// (§7.1; Blink `IsParallelWritingMode`).
+    pub(crate) fn is_orthogonal_to(self, other: Self) -> bool {
+        self.vertical != other.vertical
+    }
+
+    /// The rotation of the turned-paragraph pipeline (§6.4 line-left / line-over).
+    pub(crate) fn line_turn(self) -> Turn {
+        match (self.vertical, self.sideways && !self.rl) {
+            (false, _) => Turn::None,
+            (true, false) => Turn::Clockwise,
+            (true, true) => Turn::CounterClockwise,
+        }
+    }
+
+    /// After a clockwise turn the first horizontal line becomes the RIGHT column; for
+    /// `vertical-lr` (block-start = left) the lines are fed bottom-up so the first one lands
+    /// on the left. `sideways-lr` turns counter-clockwise and needs no reversal.
+    pub(crate) fn lines_reversed(self) -> bool {
+        self.line_turn() == Turn::Clockwise && !self.rl
+    }
+
+    /// §6.4: line-left is the left edge in horizontal modes, the top after a clockwise
+    /// turn and the bottom after a counter-clockwise one.
+    pub(crate) fn line_left(self) -> Side {
+        match self.line_turn() {
+            Turn::None => Side::Left,
+            Turn::Clockwise => Side::Top,
+            Turn::CounterClockwise => Side::Bottom,
+        }
+    }
+
+    /// Inline-start is line-left for `ltr` and line-right for `rtl` (§2.1, §6.4).
+    pub(crate) fn inline_start(self) -> Side {
+        let left = self.line_left();
+        if self.rtl { left.opposite() } else { left }
+    }
+}
+
+impl Computed {
+    /// The one way to read this style's writing mode and direction.
+    pub(crate) fn wm(&self) -> WritingMode {
+        WritingMode::of(self)
+    }
+}
+
+#[cfg(test)]
+mod tests;

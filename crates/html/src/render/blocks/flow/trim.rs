@@ -145,8 +145,8 @@ pub(super) fn apply(
     inherited: &Computed,
     opts: &RenderOpts,
 ) {
-    let vertical = inherited.vertical == Some(true);
-    let rl = inherited.vertical_rl == Some(true);
+    let vertical = inherited.wm().vertical();
+    let rl = inherited.wm().block_rl();
     if inherited.text_box_trim_start
         && let Some((line_style, _)) =
             text_box_line_style(nodes, inherited, true, inherited.self_node)

@@ -58,10 +58,10 @@ pub(crate) fn place_element(
                     margin_px(e.style.margin.top, &e.style).unwrap_or(0.0)
                 },
             ),
-            rtl: inherited.rtl == Some(true),
-            vertical: inherited.vertical == Some(true),
-            vertical_rl: inherited.vertical_rl == Some(true),
-            own_vertical: e.style.vertical == Some(true),
+            rtl: inherited.wm().rtl(),
+            vertical: inherited.wm().vertical(),
+            vertical_rl: inherited.wm().block_rl(),
+            own_vertical: e.style.wm().vertical(),
             replaced: matches!(
                 e.tag.as_str(),
                 "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"

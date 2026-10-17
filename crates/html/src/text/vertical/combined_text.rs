@@ -14,10 +14,7 @@ pub(crate) fn piece(
     inherited: &Computed,
     opts: &RenderOpts,
 ) -> Option<inline::Piece> {
-    if inherited.rotated_line != Some(true)
-        || inherited.sideways == Some(true)
-        || element.style.display.is_some()
-    {
+    if !inherited.wm().turned() || inherited.wm().sideways() || element.style.display.is_some() {
         return None;
     }
     let mut merged = inherit(inherited, &element.style);

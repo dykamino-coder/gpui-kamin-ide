@@ -176,7 +176,7 @@ pub(crate) fn paint_element(
     // содержимому; её левый край пишется на подготовке тела.
     let record_root = e.tag == "body"
         && inherited.canvas_bg
-        && inherited.vertical_rl == Some(true)
+        && inherited.wm().block_rl()
         && !matches!(inherited.width, Some(Len::Px(_)));
     let canvas_stripped;
     let e = if canvas_paint {

@@ -51,8 +51,8 @@ pub(crate) fn column_plan(e: &Element, merged: &Computed, opts: &RenderOpts) -> 
     // разложены в физические `height`/`width` ещё в каскаде, поэтому
     // строчный размер коробки здесь — `height`, блочный — `width`.
     // `direction: rtl` в вертикали (колонки снизу вверх) — прежним путём.
-    let col_rl = merged.vertical_rl == Some(true);
-    let col_axis = if merged.vertical == Some(true) && merged.rtl != Some(true) {
+    let col_rl = merged.wm().block_rl();
+    let col_axis = if merged.wm().vertical() && !merged.wm().rtl() {
         if col_rl {
             crate::layout::fragment::types::StackAxis::VerticalRl
         } else {

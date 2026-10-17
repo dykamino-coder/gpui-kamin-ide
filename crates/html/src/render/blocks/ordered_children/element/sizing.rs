@@ -47,7 +47,7 @@ pub(crate) fn item_sizing(
         // (`replaced-alignment-with-aspect-ratio-001/002`).
         // Вертикальную сетку не трогаем: оси там переставлены.
         let both_attrs = e.style.attr_sized.0 && e.style.attr_sized.1;
-        let transfer = both_attrs && sx != sy && inherited.vertical != Some(true);
+        let transfer = both_attrs && sx != sy && !inherited.wm().vertical();
         let free_x = e.style.attr_sized.0 && (sx || !e.style.attr_sized.1 || transfer);
         let free_y = e.style.attr_sized.1 && (sy || !e.style.attr_sized.0 || transfer);
         if free_x || free_y {

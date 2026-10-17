@@ -33,9 +33,9 @@ pub(crate) fn finish_element(
         && y_set
         && !x_set
         && !e.inline
-        && inherited.rtl != Some(true)
-        && inherited.vertical != Some(true)
-        && e.style.vertical != Some(true)
+        && !inherited.wm().rtl()
+        && !inherited.wm().vertical()
+        && !e.style.wm().vertical()
         && matches!(
             inherited.position,
             Some(crate::style::computed::Position::Relative)
@@ -102,9 +102,7 @@ pub(crate) fn finish_element(
     // остаётся обычным блоком в потоке горизонтального корня и к
     // правому краю окна не жмётся
     // (contain-body-w-m-001..004, contain-html-w-m-001..004).
-    if matches!(e.tag.as_str(), "html" | "body")
-        && e.style.vertical_rl == Some(true)
-        && !e.style.wm_contained
+    if matches!(e.tag.as_str(), "html" | "body") && e.style.wm().block_rl() && !e.style.wm_contained
     {
         if e.style.bg_image.is_none() {
             done = div()
