@@ -8,6 +8,7 @@
 //! boxes with `axis_box` (Blink `WritingModeConverter::ToPhysical`).
 
 use super::{PageGeom, PageStack};
+use crate::layout::fragment::types::Frag;
 use crate::layout::fragment::types::{StackAxis, axis_box};
 use gpui::{Bounds, Pixels, point, px};
 
@@ -41,5 +42,59 @@ impl PageStack {
             f32::from(b.size.width),
             f32::from(b.size.height),
         )
+    }
+
+    /// Visible overflow past a box's last fragment continues on the next pages
+    /// (css-overflow-3 §2, css-break-3 §2.1 parallel overflow): one more
+    /// copy per page up to the box's reach (`PageKid::reach`), shifted like a
+    /// continuous flow. Blink paints such overflow from the monolithic
+    /// fragment on every page it reaches.
+    pub(crate) fn spill_overflow(&self, plan: &mut Vec<Frag>, pages: usize, block: f32) {
+        for (k, kid) in self.kids.iter().enumerate() {
+            let Some(reach) = kid.reach else {
+                continue;
+            };
+            let Some(last) = plan
+                .iter()
+                .filter(|f| f.kid == k)
+                .max_by_key(|f| f.copy)
+                .copied()
+            else {
+                continue;
+            };
+            // Kid coordinate at the top of the last fragment's page.
+            let top = last.from - last.y;
+            let mut copy = last.copy;
+            let mut col = last.col + 1;
+            while col < pages && copy < kid.frags.len() {
+                let from = top + (col - last.col) as f32 * block;
+                if from >= reach - 0.01 {
+                    break;
+                }
+                copy += 1;
+                plan.push(Frag {
+                    kid: k,
+                    copy,
+                    col,
+                    y: 0.0,
+                    from,
+                    h: block,
+                    head: 0.0,
+                    foot: 0.0,
+                });
+                col += 1;
+            }
+        }
+    }
+
+    /// Mask extent of fragment `f` along the block axis: a fragment that ends
+    /// its box shows the box's overflow up to the page area's end.
+    pub(crate) fn mask_extent(&self, g: &PageGeom, f: &Frag) -> f32 {
+        let end = self.kids.get(f.kid).map_or(f32::MAX, |k| k.end.get());
+        if f.from + f.h >= end - 0.01 {
+            (self.area_logical(g).1 - f.y).max(f.h)
+        } else {
+            f.h
+        }
     }
 }

@@ -62,6 +62,9 @@ impl Element for PageStack {
         // 1. Мера: ширина — page area, высота — по содержимому. Поля детей
         //    — из меры (`PageKid::mt/mb`), у измеренных без меры они внутри обёртки.
         let (kids, limit) = self.page_kids(window, cx, self.area_logical(&g).0.max(1.0));
+        for (pk, k) in self.kids.iter().zip(&kids) {
+            pk.end.set(k.h);
+        }
         // Листы бывают РАЗНЫЕ (`@page :first { size }`, `@page <имя>`), и
         // высота page area решает разрезы, а имя листа — от первой коробки на
         // нём, то есть от тех же разрезов. Укладка повторяется, пока имена
@@ -113,7 +116,7 @@ impl Element for PageStack {
                 break;
             }
         }
-        let (pages, plan) = result.unwrap_or_default();
+        let (pages, mut plan) = result.unwrap_or_default();
         // Абсолюты корня добавляют листы, пока не кончится их досягаемость
         // (Blink: «If overflowed by monolithic overflow, we need more pages»,
         // box_fragment_builder.h). Потолок — число копий слоя.
@@ -122,7 +125,20 @@ impl Element for PageStack {
         } else {
             ((self.icb_reach / ah).ceil().max(0.0) as usize).min(self.icb.len())
         };
-        let pages = pages.max(icb_pages).max(1);
+        // Monolithic overflow reserves pages past the box (`PageKid::reach`).
+        let block = self.area_logical(&g).1.max(1.0);
+        let reach_pages = plan
+            .iter()
+            .filter(|f| f.copy == 0)
+            .filter_map(|f| {
+                let r = self.kids[f.kid].reach?;
+                Some(f.col + ((f.y + r) / block - 0.01).ceil().max(1.0) as usize)
+            })
+            .max()
+            .unwrap_or(0)
+            .min(self.kids.first().map_or(1, |k| k.frags.len() + 1));
+        let pages = pages.max(icb_pages).max(reach_pages).max(1);
+        self.spill_overflow(&mut plan, pages, block);
         // Листы сверх плана (досягаемость абсолютов) — с именем последнего.
         let tail = names.last().cloned().unwrap_or_default();
         while geoms.len() < pages {

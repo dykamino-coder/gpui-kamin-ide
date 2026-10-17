@@ -121,20 +121,15 @@ impl PageStack {
             let (sx, sy) = self.sheet_origin(f.col);
             let g = self.geom(f.col);
             let (ax, ay) = g.area_origin();
+            // The fragment that ends its box shows the box's block-end
+            // overflow up to the page area's end (overflow is visible,
+            // css-overflow-3 §2; `block-001-wm-vrl`: a negative block-end
+            // margin shrinks the margin box under the border box).
+            let ext = self.mask_extent(&g, &f);
             let (x, y, w, h) = if self.axis.is_vertical() {
-                // The last fragment of a box shows its block-end overflow up to
-                // the page area's end (overflow is visible, css-overflow-3 §2;
-                // `block-001-wm-vrl`: a negative block-end margin shrinks the
-                // margin box under the border box).
-                let last = !plan.iter().any(|o| o.kid == f.kid && o.copy == f.copy + 1);
-                let end = if last {
-                    (self.area_logical(&g).1 - f.y).max(f.h)
-                } else {
-                    f.h
-                };
-                self.area_slice(&g, f.y, end)
+                self.area_slice(&g, f.y, ext)
             } else {
-                (ax, ay + f.y, g.area.0, f.h)
+                (ax, ay + f.y, g.area.0, ext)
             };
             let mask = gpui::ContentMask {
                 bounds: Bounds {

@@ -68,10 +68,8 @@ pub struct PageKid {
     pub force_before: bool,
     pub force_after: bool,
     /// Мера поддерева от `render::shape_full` (css-break-4 §possible-breaks):
-    /// высота в точках, точки законного разреза `(need, from)`, смещения
-    /// принудительных разрывов и монолитные диапазоны — как у `StackChild`.
-    /// `None` — высота не известна заранее, берётся измеренная, разрезов
-    /// внутри нет.
+    /// высота, точки разреза `(need, from)`, принудительные разрывы и монолиты
+    /// — как у `StackChild`; `None` — высота измеренная, разрезов нет.
     pub shape: Option<(f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>)>,
     /// Имя страницы, с которого коробка начинается (css-page-3 §using-named-pages:
     /// start value), `""` — без имени. Лист, на котором коробка — первая, берёт
@@ -82,6 +80,10 @@ pub struct PageKid {
     pub mt: f32,
     pub mb: f32,
     pub inner_top: f32,
+    /// Flow extent with visible overflow: reserves pages (Blink `ReserveSpaceForMonolithicOverflow`).
+    pub reach: Option<f32>,
+    /// Block size used by the plan (`prepaint`): fragments reaching it show overflow.
+    pub end: std::cell::Cell<f32>,
 }
 
 /// Геометрия листа по его номеру (с нуля) и имени страницы: каскад
@@ -133,10 +135,8 @@ pub struct PageStack {
     /// монолитов, как Blink `ReserveSpaceForMonolithicOverflow`): листов не
     /// меньше, чем нужно, чтобы её показать.
     pub(crate) icb_reach: f32,
-    /// Слой `position: fixed` — по копии на страницу БЕЗ сдвига: содержащий
-    /// блок фиксированного — page area каждого листа (Blink `IsMonolithic`:
-    /// «IsFixedPositioned() && GetDocument().Printing()» — монолит, повторяемый
-    /// на каждой странице; `fixedpos-007..009`).
+    /// Слой `position: fixed` — по копии на страницу БЕЗ сдвига (Blink
+    /// `IsMonolithic`: fixed при печати повторяется на каждой странице).
     pub(crate) fixed: Vec<Vec<AnyElement>>,
     pub(crate) plan: std::cell::RefCell<Vec<Frag>>,
     pub(crate) pages: std::cell::Cell<usize>,

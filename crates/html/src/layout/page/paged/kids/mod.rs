@@ -5,8 +5,10 @@ use crate::dom::Node;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::{edge_break, oof_reach, page_monolith};
 use crate::layout::fragment::flex_lines::{class_a_box, inline_display};
+use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::page::names::page_names;
 use crate::layout::page::paged::FIXED_LAYER;
+use crate::layout::page::paged::visible_overflow;
 use crate::render::{RenderOpts, blocks, is_blank, out_of_flow};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
@@ -130,7 +132,24 @@ pub(super) fn page_kids_from_groups(
         // Монолит выше листа решается в `fill` (правило «сначала перенос,
         // потом разрыв внутри»): здесь мера считается и для него — точки
         // класса A нужны, когда он окажется с верха страницы.
+        // Visible overflow past the box (unclamped flow measure) reserves
+        // pages after it (css-break-3 §2.1 parallel overflow; Blink
+        // `ReserveSpaceForMonolithicOverflow`, `monolithic-overflow-026`).
+        let reach = match (n, &shape) {
+            (Node::Element(e), Some(s)) if vertical.is_none() && visible_overflow(&e.style) => {
+                let cx = ShapeCx {
+                    unclamped: true,
+                    ..shape_cx
+                };
+                shape_full(e, 4, cx)
+                    .map(|u| u.0 + pad_top)
+                    .filter(|&u| u > s.0 + 0.01)
+            }
+            _ => None,
+        };
         kids.push(crate::layout::page::page_stack::PageKid {
+            reach,
+            end: Default::default(),
             el,
             frags,
             monolith,
