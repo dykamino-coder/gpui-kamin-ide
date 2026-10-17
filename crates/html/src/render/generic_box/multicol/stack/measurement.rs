@@ -29,6 +29,7 @@ pub(crate) fn measure_children(
     col_vert: bool,
     col_rl: bool,
     measure_ok: bool,
+    pag_ok: bool,
 ) -> Option<Vec<(Element, Shape)>> {
     ge.children
         .iter()
@@ -96,6 +97,31 @@ pub(crate) fn measure_children(
                 let (mt, mb) = (m(&c.style.margin.top)?, m(&c.style.margin.bottom)?);
                 nested_whole.borrow_mut().push(c.node_id);
                 measured_kids.borrow_mut().push((c.node_id, w));
+                Some((c, (0.0, mt, mb, Vec::new(), Vec::new(), Vec::new())))
+            }
+            // Pagination by the child's own layout (`fragment::paginate`):
+            // break decisions on the laid-out copy, not on this estimate.
+            Node::Element(c)
+                if pag_ok
+                    && line_col_w.is_some()
+                    && crate::layout::fragment::paginate::gate(
+                        c,
+                        line_col_w,
+                        merged.column_fill_auto == Some(true),
+                    ) =>
+            {
+                let mut c = resolved_lengths(c, merged);
+                let m = |l: &Option<Len>| match l {
+                    Some(Len::Px(v)) => Some(*v),
+                    None | Some(Len::Auto) => Some(0.0),
+                    _ => None,
+                };
+                let (mt, mb) = (m(&c.style.margin.top)?, m(&c.style.margin.bottom)?);
+                c.attrs.push((
+                    crate::layout::fragment::paginate::MARK.into(),
+                    String::new(),
+                ));
+                measured_kids.borrow_mut().push((c.node_id, line_col_w?));
                 Some((c, (0.0, mt, mb, Vec::new(), Vec::new(), Vec::new())))
             }
             // `position: relative` укладке не мешает — сдвиг

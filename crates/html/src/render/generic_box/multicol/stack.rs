@@ -146,6 +146,16 @@ pub(crate) fn stack_box(
         && nest_rows.is_none()
         && !col_vert
         && (col_h.is_some() || matches!(e.style.height, Some(Len::Px(_))));
+    // Layout-driven pagination (`fragment::paginate`): one line of columns,
+    // no spanners, horizontal writing.
+    let pag_ok = !crate::layout::fragment::types::in_stack()
+        && rows.is_none_or(|r| r.cap)
+        && nest_rows.is_none()
+        && !col_vert
+        && !ge
+            .children
+            .iter()
+            .any(|n| matches!(n, Node::Element(c) if c.style.column_span == Some(true)));
     let last_flow = ge
         .children
         .iter()
@@ -168,6 +178,7 @@ pub(crate) fn stack_box(
             col_vert,
             col_rl,
             measure_ok,
+            pag_ok,
         )
     });
     if let Some(kids) = stackable.filter(|k| !k.is_empty()) {

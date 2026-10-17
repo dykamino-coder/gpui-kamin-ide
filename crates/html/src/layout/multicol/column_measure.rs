@@ -33,6 +33,7 @@ impl ColumnStack {
                 }
             }
         }
+        self.paginate_children(window, cx);
         let heights: Vec<Kid> = self
             .children
             .iter()
@@ -64,6 +65,7 @@ impl ColumnStack {
         let copies = self.copies;
         let axis = self.axis;
         let row_phase = self.row_phase;
+        let forced_h = self.forced_h;
         // Внутренние размеры многоколоночного контейнера. Спека их не
         // определяет (css-multicol-1 §3.4: «This specification does not
         // define how U is calculated»), единственное письменное определение —
@@ -157,6 +159,7 @@ impl ColumnStack {
                         axis,
                         row_phase,
                         fixed_height: fixed,
+                        forced_h,
                         fill_shrink,
                         rule: None,
                         rule_to: None,
@@ -189,6 +192,7 @@ impl ColumnStack {
                     axis,
                     row_phase,
                     fixed_height: fixed,
+                    forced_h,
                     fill_shrink,
                     rule: None,
                     rule_to: None,
