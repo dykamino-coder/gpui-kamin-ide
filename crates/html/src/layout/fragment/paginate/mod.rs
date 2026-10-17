@@ -18,9 +18,10 @@ use crate::layout::fragment::clone::monolith_box;
 use crate::render::{is_blank, out_of_flow};
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
-use std::collections::HashMap;
 mod gate;
 pub(crate) use gate::gate;
+mod apply;
+pub(crate) use apply::{Strut, Struts, apply};
 pub(crate) mod solve;
 pub(crate) mod watch;
 
@@ -37,6 +38,11 @@ pub(crate) enum Cand {
     /// Forced break before the box (css-break-4 §3.1); `mt` — its margin,
     /// preserved after a forced break (§5.2).
     Forced { mt: f32 },
+    /// Item of a column flex container: never breaks by itself; its main
+    /// size is fixed before fragmentation (css-flexbox-1 §12, Blink
+    /// `GiveItemsFinalPositionAndSizeForFragmentation`), so a strut among
+    /// its siblings must not shrink or grow it.
+    Item,
 }
 
 fn px_or_zero(l: &Option<Len>) -> Option<f32> {
@@ -56,6 +62,12 @@ fn row_flex(s: &crate::style::computed::Computed) -> bool {
         )
 }
 
+fn column_flex(s: &crate::style::computed::Computed) -> bool {
+    use crate::style::computed::FlexDir;
+    matches!(s.display, Some(Display::Flex) | Some(Display::InlineFlex))
+        && matches!(s.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse))
+}
+
 fn layout_parent(s: &crate::style::computed::Computed) -> bool {
     matches!(
         s.display,
@@ -70,6 +82,23 @@ pub(crate) fn candidates(c: &Element) -> Option<Vec<(u64, Cand)>> {
     let mut out = Vec::new();
     walk(c, 8, &mut out)?;
     Some(out)
+}
+
+/// A single-line flex row with a `break-inside: avoid` item: breaking inside
+/// the item breaks inside the row, and the earlier breakpoint before the row
+/// has the better appeal (css-break-3 §4.4 rule 3; Blink break appeal
+/// `kBreakAppealViolatingBreakAvoid` vs the row's `EarlyBreak`), so the row
+/// is avoided as a whole.
+pub(crate) fn avoid_row(p: &Element) -> bool {
+    row_flex(&p.style)
+        && p.style.flex_wrap != Some(true)
+        && p.children.iter().any(|n| {
+            matches!(n, Node::Element(k)
+                if !out_of_flow(&k.style)
+                    && k.style.break_inside_avoid
+                    && !crate::layout::fragment::probe::size_monolith(k)
+                    && crate::layout::page::paged::visible_overflow(&k.style))
+        })
 }
 
 fn walk(p: &Element, depth: u8, out: &mut Vec<(u64, Cand)>) -> Option<()> {
@@ -95,8 +124,14 @@ fn walk(p: &Element, depth: u8, out: &mut Vec<(u64, Cand)>) -> Option<()> {
         {
             return None;
         }
-        let forced = force_next || k.style.break_before_force;
-        force_next = k.style.break_after_force;
+        if column_flex(&p.style) {
+            out.push((k.node_id, Cand::Item));
+        }
+        // Breaks propagate from the first/last child to the box edge
+        // (css-break-3 §3.1 «break propagation»).
+        let edge = crate::layout::fragment::breaks::edge_break;
+        let forced = force_next || edge(k, false);
+        force_next = edge(k, true);
         // A forced break before an item of a flex row breaks the whole row
         // (Blink `row_break_between`), not just the item; clipped overflow is
         // not part of the flow thread.
@@ -104,6 +139,10 @@ fn walk(p: &Element, depth: u8, out: &mut Vec<(u64, Cand)>) -> Option<()> {
             || (!crate::layout::page::paged::visible_overflow(&k.style) && !monolith_box(k))
         {
             return None;
+        }
+        if avoid_row(k) {
+            out.push((k.node_id, Cand::Mono { soft: true }));
+            continue;
         }
         if monolith_box(k) {
             out.push((
@@ -129,70 +168,17 @@ fn walk(p: &Element, depth: u8, out: &mut Vec<(u64, Cand)>) -> Option<()> {
     Some(())
 }
 
-/// Apply pagination struts (`node_id → px`) to a copy of the DOM: a block
-/// parent gets an empty spacer box before the pushed box; a flex or grid item
-/// gets the strut added to its block-start margin, so the line or track grows
-/// with it. Returns `false` when a strut cannot be expressed.
-pub(crate) fn apply(c: &mut Element, struts: &HashMap<u64, f32>) -> bool {
-    if struts.is_empty() {
-        return true;
-    }
-    let as_margin = layout_parent(&c.style);
-    let mut i = 0;
-    while i < c.children.len() {
-        let mut spacer = None;
-        if let Node::Element(k) = &mut c.children[i] {
-            if let Some(&s) = struts.get(&k.node_id).filter(|s| **s > 0.0) {
-                if as_margin {
-                    let Some(m) = px_or_zero(&k.style.margin.top) else {
-                        return false;
-                    };
-                    k.style.margin.top = Some(Len::Px(m + s));
-                } else {
-                    spacer = Some(spacer_box(k.node_id, s));
-                }
-            }
-            if !apply(k, struts) {
-                return false;
-            }
-        }
-        if let Some(sp) = spacer {
-            c.children.insert(i, Node::Element(sp));
-            i += 1;
-        }
-        i += 1;
-    }
-    true
-}
-
-fn spacer_box(id: u64, h: f32) -> Element {
-    Element {
-        list_item: None,
-        node_id: id ^ 0x5041_4749_4E41_5445,
-        anim: None,
-        tag: "div".to_string(),
-        style: crate::style::computed::Computed {
-            display: Some(Display::Block),
-            height: Some(Len::Px(h)),
-            ..Default::default()
-        },
-        hover: None,
-        first_letter: None,
-        first_line: None,
-        children: Vec::new(),
-        attrs: Vec::new(),
-        inline: false,
-    }
-}
-
 /// Rebuild of a paginated child's copies with a strut map: `(main, extra
 /// copies)` for `n` copies in all, or `None` when the struts cannot be
 /// expressed.
 pub(crate) type Rebuild =
-    dyn Fn(&HashMap<u64, f32>, usize) -> Option<(gpui::AnyElement, Vec<gpui::AnyElement>)>;
+    dyn Fn(&Struts, usize) -> Option<(gpui::AnyElement, Vec<gpui::AnyElement>)>;
 
 /// A stack child paginated by its own layout (see the module docs).
 pub struct Paginate {
+    /// The child itself is an avoided row (`avoid_row`): it is placed as a
+    /// `break-inside: avoid` box by the stack.
+    pub(crate) avoid_root: bool,
     pub(crate) cands: Vec<(u64, Cand)>,
     pub(crate) rebuild: Box<Rebuild>,
 }

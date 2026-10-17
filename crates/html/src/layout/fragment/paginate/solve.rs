@@ -53,6 +53,7 @@ pub(crate) fn first_violation(geoms: &[Geom], h: f32, y0: f32) -> Option<(u64, f
                     return Some((g.id, b - edge, g.bottom - g.top));
                 }
             }
+            Cand::Item => {}
             Cand::Mono { soft } => {
                 let tall = g.bottom - g.top;
                 if soft && tall > h + EPS {

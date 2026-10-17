@@ -3,7 +3,7 @@
 use super::build::build_copy;
 use crate::dom::Element;
 use crate::layout::fragment::line_shape::side_margin_wrap;
-use crate::layout::fragment::paginate::{MARK, Paginate, apply, candidates, watch};
+use crate::layout::fragment::paginate::{MARK, Paginate, apply, avoid_row, candidates, watch};
 use crate::render::RenderOpts;
 use crate::style::computed::Computed;
 
@@ -22,9 +22,11 @@ pub(super) fn paginate_of(
         return None;
     }
     let cands = candidates(copy)?;
+    let avoid_root = avoid_row(copy);
     let ids: Vec<u64> = cands.iter().map(|c| c.0).collect();
     let (opts, merged, copy, inner) = (opts.clone(), merged.clone(), copy.clone(), inner.clone());
     Some(Paginate {
+        avoid_root,
         cands,
         rebuild: Box::new(move |struts, n| {
             let mut c2 = copy.clone();

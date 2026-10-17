@@ -149,7 +149,7 @@ pub(crate) fn stack_box(
     // Layout-driven pagination (`fragment::paginate`): one line of columns,
     // no spanners, horizontal writing.
     let pag_ok = !crate::layout::fragment::types::in_stack()
-        && rows.is_none()
+        && rows.is_none_or(|r| r.cap)
         && nest_rows.is_none()
         && !col_vert
         && !ge

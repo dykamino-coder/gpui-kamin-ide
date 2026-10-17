@@ -62,7 +62,9 @@ pub(crate) fn refusal(c: &Element, col_w: Option<f32>, auto_fill: bool) -> Optio
     }
     match candidates(c) {
         None => Some("subtree"),
-        Some(v) if v.is_empty() => Some("no-cand"),
+        Some(v) if !v.iter().any(|x| x.1 != super::Cand::Item) && !super::avoid_row(c) => {
+            Some("no-cand")
+        }
         Some(_) => None,
     }
 }

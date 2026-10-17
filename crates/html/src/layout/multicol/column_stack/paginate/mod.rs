@@ -10,17 +10,19 @@
 //! `minimal_space_shortage`).
 
 use crate::layout::fragment::paginate::solve::{Geom, first_violation};
-use crate::layout::fragment::paginate::{Paginate, watch};
+use crate::layout::fragment::paginate::{Cand, Paginate, Strut, Struts, watch};
 use crate::layout::multicol::column_stack::ColumnStack;
 use gpui::{App, AvailableSpace, Window, px, size};
-use std::collections::HashMap;
+
+mod saved;
+use saved::Saved;
 
 const INNER: usize = 24;
 const OUTER: usize = 12;
 
 impl ColumnStack {
     pub(crate) fn paginate_children(&mut self, window: &mut Window, cx: &mut App) {
-        if self.rows.is_some() || self.axis.is_vertical() {
+        if self.rows.is_some_and(|r| !r.cap) || self.axis.is_vertical() {
             return;
         }
         for i in 0..self.children.len() {
@@ -47,13 +49,13 @@ impl ColumnStack {
         // Every child's content must be placed within the columns.
         let fits = kids.iter().enumerate().all(|(k, kid)| {
             kid.span
-                || kid.h < 0.5
+                || kid.h.max(kid.over) < 0.5
                 || plan
                     .iter()
                     .filter(|f| f.kid == k)
                     .map(|f| f.from + f.h)
                     .fold(0.0f32, f32::max)
-                    >= kid.h - 0.5
+                    >= kid.h.max(kid.over) - 0.5
         });
         let used = plan.iter().map(|f| f.col + 1).max().unwrap_or(1);
         (colh, y0, if fits { used } else { usize::MAX })
@@ -64,12 +66,12 @@ impl ColumnStack {
         &mut self,
         i: usize,
         p: &Paginate,
-        struts: &HashMap<u64, f32>,
+        n: usize,
+        struts: &Struts,
         window: &mut Window,
         cx: &mut App,
     ) -> Option<Vec<Geom>> {
         let w = self.children[i].measure?;
-        let n = self.children[i].frags.len() + 1;
         let (el, frags) = (p.rebuild)(struts, n)?;
         let c = &mut self.children[i];
         c.el = el;
@@ -101,6 +103,9 @@ impl ColumnStack {
         let Some(p) = self.children[i].paginate.take() else {
             return;
         };
+        // The shape-estimate record, restored when pagination fails.
+        let n = self.children[i].frags.len() + 1;
+        let saved = Saved::take(&mut self.children[i]);
         // The flow thread is cut at the column edges: estimated break points
         // of the shape pass do not apply to the laid-out copy.
         {
@@ -108,24 +113,62 @@ impl ColumnStack {
             c.cuts.clear();
             c.forced.clear();
             c.solid.clear();
-            c.monolith = false;
+            c.monolith = p.avoid_root;
+            c.par.avoid_only = p.avoid_root;
             c.overflow_top = false;
         }
         let balanced = self.fixed_height.is_none();
-        let mut struts: HashMap<u64, f32> = HashMap::new();
+        let mut struts: Struts = Struts::new();
         let ok = 'solve: {
-            if self.lay_out(i, &p, &struts, window, cx).is_none() {
+            let Some(geoms) = self.lay_out(i, &p, n, &struts, window, cx) else {
                 break 'solve false;
+            };
+            // First guess: the ordinary balance told where the unfragmented
+            // copy has forced breaks and unbreakable ranges (legacy content
+            // runs, Blink `ColumnBalancer`), so it starts from the tallest run.
+            {
+                let c = &mut self.children[i];
+                for g in &geoms {
+                    match g.cand {
+                        Cand::Forced { mt } => c.forced.push(g.top - mt),
+                        Cand::Mono { .. } => c.solid.push((g.top, g.bottom)),
+                        Cand::Item => {}
+                    }
+                }
+                c.forced.sort_by(f32::total_cmp);
             }
+            // Runs end at the end of the parallel flow, not of the box.
+            let own = self.children[i].h;
+            self.children[i].h = own.max(self.children[i].over);
+            // Main sizes of column-flex items before fragmentation.
+            let frozen: Struts = geoms
+                .iter()
+                .filter(|g| g.cand == Cand::Item)
+                .map(|g| {
+                    (
+                        g.id,
+                        Strut {
+                            by: 0.0,
+                            size: g.bottom - g.top,
+                        },
+                    )
+                })
+                .collect();
             let (mut colh, _, _) = self.frame_of(i);
+            {
+                let c = &mut self.children[i];
+                c.h = own;
+                c.forced.clear();
+                c.solid.clear();
+            }
             for _ in 0..OUTER {
                 if balanced {
                     self.forced_h = Some(colh);
                 }
-                struts.clear();
+                struts = frozen.clone();
                 let mut shortage = f32::MAX;
                 for _ in 0..INNER {
-                    let Some(geoms) = self.lay_out(i, &p, &struts, window, cx) else {
+                    let Some(geoms) = self.lay_out(i, &p, n, &struts, window, cx) else {
                         break 'solve false;
                     };
                     let (h, y0, _) = self.frame_of(i);
@@ -138,8 +181,12 @@ impl ColumnStack {
                     if need > 0.01 {
                         shortage = shortage.min(need);
                     }
-                    let s = struts.entry(id).or_insert(0.0);
-                    *s = (*s + delta).max(0.0);
+                    let size = geoms
+                        .iter()
+                        .find(|g| g.id == id)
+                        .map_or(0.0, |g| g.bottom - g.top);
+                    let s = struts.entry(id).or_insert(Strut { by: 0.0, size });
+                    s.by = (s.by + delta).max(0.0);
                 }
                 if !balanced {
                     break;
@@ -152,18 +199,29 @@ impl ColumnStack {
                 // minimal shortage (at least the overflow spread over them).
                 let end = y0 + self.children[i].h.max(self.children[i].over);
                 let spread = ((end - h * self.count as f32) / self.count as f32).max(0.5);
-                colh = h + if shortage < f32::MAX {
+                // Never taller than the container allows (Blink
+                // `ConstrainColumnBlockSize`); the rest overflows. `rule_to` is
+                // the content block size of a definite-height container.
+                let cap = self
+                    .rows
+                    .and_then(|r| r.h)
+                    .or(self.rule_to)
+                    .unwrap_or(f32::MAX);
+                if h >= cap - 0.01 {
+                    break;
+                }
+                let step = if shortage < f32::MAX {
                     shortage
                 } else {
                     spread
                 };
+                colh = (h + step).min(cap);
             }
             true
         };
         if !ok {
             self.forced_h = None;
-            struts.clear();
-            let _ = self.lay_out(i, &p, &struts, window, cx);
+            saved.restore(&mut self.children[i]);
         }
         self.children[i].paginate = Some(p);
     }
