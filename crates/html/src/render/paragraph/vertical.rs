@@ -84,6 +84,10 @@ pub(crate) fn vertical_paragraph(
         }
         return para;
     }
+    // A line of atoms only in a box whose inline size its parent decides
+    // (stretch, track) wraps at the length prepaint lays it out with
+    // (`VerticalText::prepaint`), not at a fixed fallback width.
+    let atom_line = plain.trim().is_empty() && !plain.contains('\u{a0}');
     let mut flow = horizontal.clone();
     flow.para_vertical = Some(inherited.vertical_rl == Some(true));
     let fallback = inherited.ortho_limit.unwrap_or(opts.viewport.1);
@@ -147,7 +151,7 @@ pub(crate) fn vertical_paragraph(
         } else {
             inner
         }
-    } else if free_inline || col_min {
+    } else if free_inline || col_min || (atom_line && !style_definite_inline(inherited)) {
         div().max_w(px(limit)).child(inner).into_any_element()
     } else {
         div().w(px(limit)).child(inner).into_any_element()
@@ -203,8 +207,9 @@ pub(crate) fn vertical_paragraph(
 }
 
 /// Several atoms share a vertical line and wrap along the inline (physical vertical)
-/// axis when that axis is known here: the box continues its parent's writing mode,
-/// or its inline size is authored.
+/// axis when its length is known: the box continues its parent's writing mode, its
+/// inline size is authored, or a single-line flex/grid container decides it (the
+/// turned line then wraps at the length prepaint lays it out with).
 fn turned_atom_line(nodes: &[Node], style: &Computed) -> bool {
     let atoms = nodes
         .iter()
@@ -212,5 +217,12 @@ fn turned_atom_line(nodes: &[Node], style: &Computed) -> bool {
         .count();
     let wm = crate::style::computed::writing_mode::WritingMode::containing_block(style);
     let parallel = !style.wm().is_orthogonal_to(wm);
-    atoms >= 2 && (parallel || matches!(style.height, Some(Len::Px(_)) | Some(Len::Pct(_))))
+    atoms >= 2
+        && (parallel
+            || style_definite_inline(style)
+            || ((style.flex_item || style.parent_flex_grid) && !style.flex_line_wraps))
+}
+
+fn style_definite_inline(style: &Computed) -> bool {
+    matches!(style.height, Some(Len::Px(_)) | Some(Len::Pct(_)))
 }

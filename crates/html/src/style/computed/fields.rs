@@ -1559,4 +1559,9 @@ pub struct Computed {
     pub appearance: Option<crate::style::computed::Appearance>,
     /// Element used color scheme, shared by CSS system colours and native controls.
     pub dark_color_scheme: bool,
+    /// Flex item of a MULTI-line flex container (`flex-wrap` other than `nowrap`):
+    /// its line's cross size comes from the items' hypothetical sizes, so an
+    /// orthogonal item cannot take its inline size from the line. Set with
+    /// `flex_item` by `render::blocks`; not inherited.
+    pub(crate) flex_line_wraps: bool,
 }
