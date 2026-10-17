@@ -28,7 +28,7 @@ pub(super) fn abspos_normal(
     if c.parent_grid == 0
         && !c.parent_flex_grid
         && !c.wm().vertical()
-        && !c.cb_vertical
+        && !c.cb_wm.vertical()
         && !c.wm().turned()
     {
         let auto = |l: Option<crate::style::values::value::Len>| {
@@ -72,7 +72,7 @@ pub(super) fn grid_self(style: &mut gpui::StyleRefinement, c: &crate::style::com
         return;
     }
     let vertical = c.parent_grid >= 2;
-    let parent_x_end = c.parent_grid == 3 || (!vertical && c.cb_rtl);
+    let parent_x_end = c.parent_grid == 3 || (!vertical && c.cb_wm.rtl());
     let own = super::grid_flow_axes::reversed(c);
     let (align_axis, justify_axis) = if vertical { (0, 1) } else { (1, 0) };
     let mirror = |value: &mut Option<gpui::AlignSelf>, flip: bool| {
@@ -101,7 +101,7 @@ pub(super) fn grid_self(style: &mut gpui::StyleRefinement, c: &crate::style::com
     }
     if let Some(right) = c.justify_self_physical {
         let end = if vertical {
-            right != (c.cb_sideways && !c.cb_vertical_rl)
+            right != (c.cb_wm.sideways() && !c.cb_wm.block_rl())
         } else {
             right != parent_x_end
         };

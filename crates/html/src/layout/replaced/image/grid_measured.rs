@@ -159,10 +159,7 @@ pub(crate) fn inherit_item_metadata(style: &mut Computed, merged: &Computed, par
         return;
     }
     style.rtl = merged.rtl;
-    style.cb_vertical = merged.cb_vertical;
-    style.cb_vertical_rl = merged.cb_vertical_rl;
-    style.cb_sideways = merged.cb_sideways;
-    style.cb_rtl = merged.cb_rtl;
+    style.cb_wm = merged.cb_wm;
     if merged.align_self.is_none() {
         style.align_self = parent.align_items;
         style.align_self_last = parent.align_items_last;

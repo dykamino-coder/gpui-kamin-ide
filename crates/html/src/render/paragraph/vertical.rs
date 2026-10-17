@@ -216,7 +216,7 @@ fn turned_atom_line(nodes: &[Node], style: &Computed) -> bool {
         .iter()
         .filter(|n| matches!(n, Node::Element(_)))
         .count();
-    let wm = crate::style::computed::writing_mode::WritingMode::containing_block(style);
+    let wm = style.cb_wm;
     let parallel = !style.wm().is_orthogonal_to(wm);
     atoms >= 2
         && (parallel

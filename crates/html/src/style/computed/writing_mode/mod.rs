@@ -63,6 +63,7 @@ pub struct WritingMode {
 
 impl WritingMode {
     /// A box laid out in `writing-mode` `vertical`/`rl`/`sideways` with the given direction.
+    #[cfg(test)]
     pub(crate) fn new(vertical: bool, rl: bool, sideways: bool, rtl: bool) -> Self {
         Self {
             vertical,
@@ -82,17 +83,6 @@ impl WritingMode {
             turned: style.turned_line,
             rtl: style.rtl == Some(true),
         }
-    }
-
-    /// The writing mode of the box's containing block, recorded at inheritance
-    /// (`cascade/inherit/containing.rs`).
-    pub(crate) fn containing_block(style: &Computed) -> Self {
-        Self::new(
-            style.cb_vertical,
-            style.cb_vertical_rl,
-            style.cb_sideways,
-            style.cb_rtl,
-        )
     }
 
     /// Laid out vertically in the current coordinate space: a vertical mode, except inside a

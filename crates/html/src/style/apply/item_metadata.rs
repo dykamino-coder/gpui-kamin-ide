@@ -5,7 +5,7 @@ fn grid_mode(c: &Computed) -> u8 {
     if c.parent_grid != 0 {
         c.parent_grid
     } else if c.parent_lanes {
-        match (c.cb_vertical, c.cb_vertical_rl) {
+        match (c.cb_wm.vertical(), c.cb_wm.block_rl()) {
             (false, _) => 1,
             (true, false) => 2,
             (true, true) => 3,
@@ -21,13 +21,14 @@ pub(super) fn baseline_x_flags(c: &Computed) -> Option<u8> {
         if !c.parent_flex_grid {
             return None;
         }
-        let central = c.cb_vertical && !c.cb_sideways && c.text_sideways != Some(true);
+        let central = c.cb_wm.vertical() && !c.cb_wm.sideways() && c.text_sideways != Some(true);
         if c.wm().vertical() {
             return Some(4 | u8::from(c.wm().block_rl()) | if central { 2 } else { 0 });
         }
         return c
-            .cb_vertical
-            .then(|| u8::from(c.cb_vertical_rl) | if central { 2 } else { 0 });
+            .cb_wm
+            .vertical()
+            .then(|| u8::from(c.cb_wm.block_rl()) | if central { 2 } else { 0 });
     }
     let vertical = c.wm().vertical();
     let rl = if c.parent_grid != 0
@@ -46,7 +47,7 @@ pub(super) fn baseline_x_flags(c: &Computed) -> Option<u8> {
         parent == 3
     };
     let mut bits = u8::from(rl);
-    if parent >= 2 && !c.cb_sideways && c.text_sideways != Some(true) {
+    if parent >= 2 && !c.cb_wm.sideways() && c.text_sideways != Some(true) {
         bits |= 2;
     }
     if vertical {

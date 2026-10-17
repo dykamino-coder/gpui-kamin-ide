@@ -65,12 +65,7 @@ fn laid_flat_clone_keeps_block_flow_but_is_not_vertical() {
         writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
             true, false, false,
         )),
-        cb_vertical: false,
         ..Computed::default()
     };
-    assert!(
-        child
-            .wm()
-            .is_orthogonal_to(WritingMode::containing_block(&child))
-    );
+    assert!(child.wm().is_orthogonal_to(child.cb_wm));
 }

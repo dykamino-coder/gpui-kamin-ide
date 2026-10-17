@@ -262,17 +262,6 @@ pub struct Computed {
     pub(crate) height_inherit: bool,
     /// То же у пределов: `min-width`, `min-height`, `max-width`, `max-height`.
     pub(crate) minmax_inherit: [bool; 4],
-    /// Сторона письма СОДЕРЖАЩЕГО БЛОКА: избыточный край выбирается по ней,
-    /// а не по своей (§9.4.3). Ставится при наследовании.
-    pub(crate) cb_rtl: bool,
-    /// Письмо СОДЕРЖАЩЕГО БЛОКА: вертикальное ли (в том числе повёрнутый
-    /// абзац, чей стиль собран горизонтальным клоном с `rotated_line`), идут ли
-    /// блоки справа налево, `sideways-*` ли. По ним у переопределённой оси
-    /// абсолюта выбирается отбрасываемый край (css-writing-modes-4 §7.1).
-    /// Ставится при наследовании, как `cb_rtl`.
-    pub(crate) cb_vertical: bool,
-    pub(crate) cb_vertical_rl: bool,
-    pub(crate) cb_sideways: bool,
     /// top/right/bottom/left.
     pub(crate) inset_inherit: [bool; 4],
     pub gradient: Option<Gradient>,
@@ -1604,4 +1593,8 @@ pub struct Computed {
     /// Rotation model: inside the horizontal clone of a turned vertical paragraph
     /// (`text-combine-upright` and atoms need a counter-rotation). Inherited.
     pub(crate) turned_line: bool,
+    /// The writing mode of the containing block (the parent's line mode: a turned
+    /// paragraph counts as vertical). Set at inheritance; the overflowing inset and
+    /// alignment edges follow it (css-writing-modes-4 §7.1, CSS 2.1 §9.4.3).
+    pub(crate) cb_wm: super::writing_mode::WritingMode,
 }
