@@ -73,6 +73,18 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     // Лист агента и тема — общие для ВСЕХ областей дерева: каждая тень
     // получает их копию, а правила документа в тень не попадают
     // (css-shadow-1 §3.2: селекторы сопоставляются в своей области).
+    if quirks() {
+        let base = rules.len();
+        for (i, r) in parse_stylesheet_media(super::ua_style::QUIRKS_CSS, media)
+            .into_iter()
+            .enumerate()
+        {
+            rules.push(Rule {
+                order: base + i,
+                ..r
+            });
+        }
+    }
     let agent_rules = rules.clone();
     // Каждый `<style>` — ОТДЕЛЬНАЯ таблица: конец каждой закрывает свои
     // незакрытые конструкции (CSS 2.1 §4.2, `uri-017`). В склейке незакрытая
@@ -153,6 +165,9 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     );
     // ПЕРВЫМ проходом: табличная починка и подъёмы ниже читают `display`.
     resolve_display_inherit(&mut out, (None, None, None, None, None));
+    if quirks() {
+        super::quirks_color::resolve(&mut out);
+    }
     resolve_rule_color_inherit(&mut out, &RuleColors::default());
     // Anonymous inline-table around orphan table boxes inside inline boxes
     // (CSS 2.1 §17.2.1 step 3); block parents are fixed up by `blocks()`.

@@ -34,7 +34,11 @@ impl Paragraph {
         // Надбавка сверху опускает НАБОР строки: поднятый знак занимает её,
         // а базовая линия остаётся на своём месте относительно кегля.
         let above = |i: usize| -> Pixels { px(pads.get(i).copied().unwrap_or((0.0, 0.0)).0) };
-        self.publish_rows(bounds, count, &step);
+        // Horizontal rows are published at prepaint (`ClampCut` reads them
+        // in this frame's paint); the rotated frame keeps the paint-time path.
+        if self.selection_vertical.is_some() || crate::text::vertical::in_rotated_frame() {
+            self.publish_rows(bounds, count, &step);
+        }
         let mut rev_off = self.reversed_offset(count, &step);
         let mut y = bounds.origin.y + px(rev_off);
         let runs = self.selection_runs(id, window);
@@ -133,7 +137,12 @@ impl Paragraph {
             // text-alignment-rtl-002` 0.02 -> 1.67 (пробел вставал справа от
             // текста и сдвигал его); место в ширине строки они держат.
             let visible = if self.wrap.rtl && !self.wrap.break_spaces {
-                range.start..range.start + trim_hanging(&self.text[range.clone()])
+                range.start..if self.wrap.keep_spaces {
+                    range.start + trim_hanging(&self.text[range.clone()])
+                } else {
+                    // Inline pre spaces keep their measured advance (CSS Lists 3 ::marker).
+                    self.hang_tail(range.start, range.end)
+                }
             } else if !self.wrap.keep_spaces {
                 // Схлопываемый пробел конца строки УДАЛЯЕТСЯ (CSS 2.1 §16.6.1),
                 // а не висит: рисовать его незачем, а подложка `<span>` под ним
@@ -199,8 +208,10 @@ impl Paragraph {
         for slot in self.atoms.iter_mut().filter(|s| !s.hidden) {
             slot.el.paint(window, cx);
         }
-        for (_, el, _) in self.overlays.iter_mut() {
-            el.paint(window, cx);
+        for (i, (_, el, _)) in self.overlays.iter_mut().enumerate() {
+            if !self.overlay_hidden.get(i).copied().unwrap_or(false) {
+                el.paint(window, cx);
+            }
         }
         if let (Some(global), Some(hitbox)) = (id, hitbox.clone()) {
             self.track_selection(global, &segs, bounds, hitbox, window);

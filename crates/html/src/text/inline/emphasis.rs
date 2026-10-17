@@ -1,6 +1,7 @@
 //! Build emphasis spans with their line geometry and clipped background fill.
 
 use super::Piece;
+use crate::style::values::value::Color;
 use crate::style::values::value::Len;
 
 /// Куски со знаком акцента. Знак набирается в половину кегля своей базы
@@ -73,11 +74,13 @@ pub fn emphasis_spans(
                 // geometry regardless of the mark's foreground transparency.
                 // CurrentColor already carries the composited text fill;
                 // explicit emphasis colors need the same composition here.
-                color: style.emphasis_color.map(|color| {
-                    style
-                        .text_clip_fill
-                        .map_or(color, |fill| crate::paint::background::over(color, fill))
-                        .to_hsla()
+                color: style.text_shadow_ink.map(Color::to_hsla).or_else(|| {
+                    style.emphasis_color.map(|color| {
+                        style
+                            .text_clip_fill
+                            .map_or(color, |fill| crate::paint::background::over(color, fill))
+                            .to_hsla()
+                    })
                 }),
             });
         }

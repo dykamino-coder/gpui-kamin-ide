@@ -2,10 +2,8 @@
 
 use super::{shrink0, tabular_marker};
 use crate::dom::{Element, Node};
-use crate::layout::table::anon::anon_element;
 use crate::render::{RenderOpts, blocks, styled_div_with};
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::Computed;
 use crate::text::inline;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 
@@ -15,68 +13,9 @@ pub(crate) fn render_with_style(
     merged: &Computed,
     opts: &RenderOpts,
 ) -> AnyElement {
-    // Номер пункта считает ОБЩИЙ счётчик `list-item` (css-lists-3
-    // §list-item-counter): он один знает и `<ol start>`, и `<li value>`,
-    // и вложенные списки. Своей нумерации у отрисовки больше нет.
-    let idx = li.list_item.unwrap_or(0);
-    // Вид маркера задаёт документ; без указания — умолчание тега.
-    // Строковый маркер берётся дословно и без суффикса-точки.
-    let text_marker = li.style.marker_text.clone().or_else(|| {
-        (li.style.list_style_type.is_none()
-            && li.style.no_marker.is_none()
-            && inherited
-                .marker_layer
-                .as_deref()
-                .is_none_or(|m| m.content.is_none()))
-        .then(|| inherited.marker_text.clone())
-        .flatten()
-    });
-    let kind = li
-        .style
-        .list_style_type
-        .clone()
-        .or_else(|| inherited.list_style_type.clone());
-    let text_marker_is_none = text_marker.is_none()
-        && li
-            .style
-            .marker_layer
-            .as_deref()
-            .is_none_or(|m| m.content.is_none());
-    let kind_name = kind.clone();
-    let marker = if let Some(t) = text_marker {
-        t
-    } else {
-        // Умолчание тега: у нумерованного перечня десятичный счёт, у
-        // списка возможностей — точка.
-        let name = kind.unwrap_or_else(|| "disc".to_string());
-        crate::style::generated::counter_style::marker_repr(
-            idx,
-            &name,
-            crate::style::generated::counter_style::Context::new(merged, Default::default()),
-        )
-    };
-    // `list-style: none` — на списках верстают навигацию и наборы чипов,
-    // и точки там лишние. Своё слово пункта старше слова списка:
-    // `list-style-type` наследуемое, и `<ul style="list-style-type:
-    // none">` не гасит `li::marker { content }` (`marker-content-012`).
-    //
-    // Чужой `display` на пункте снимает с него признак пункта, а с ним и
-    // маркер (css-display-3: `list-item` есть только у `display:
-    // list-item`; css-pseudo-4 §marker-pseudo: «the computed value of
-    // 'display' on ::marker always loses any list-item aspect» — обратное
-    // верно тем более). Без этого эталон `marker-content-019-ref`
-    // (`li { display: block }`) рисовал у нас полный набор `1. 2. 3. 4.`,
-    // и свёртка `content: none` в тесте разводила стороны ЕЩЁ дальше.
-    let no_marker = li.style.no_marker.or(inherited.no_marker) == Some(true)
-        || !matches!(li.style.display, None | Some(Display::ListItem));
-    // Слой `::marker` поверх стиля пункта — им набирается сам маркер
-    // (css-lists-3 §marker-properties: «All properties can be set on a
-    // ::marker … and will have a computed value which will then inherit
-    // to its text content»). Коробочные свойства слоя (`padding`,
-    // `width`, `background`) на маркер не идут — `apply_text` их не
-    // читает, и это ровно то, чего требует «only the following CSS
-    // properties actually apply to a marker box».
-    let marker_style = li.style.marker_layer.as_deref().map(|m| inherit(merged, m));
+    let resolved = super::marker::resolve(li, inherited, merged);
+    let no_marker = resolved.is_none();
+    let (marker, marker_style) = resolved.map(|m| (m.text, m.style)).unwrap_or_default();
     // `inside`: маркер — ПЕРВЫЙ инлайновый кусок содержимого пункта
     // (css-lists-3 §4), поэтому он просто дописывается текстом в начало.
     // Своей колонки при этом нет, и текст пункта начинается там же, где
@@ -85,34 +24,14 @@ pub(crate) fn render_with_style(
     if inside {
         let mut kids: Vec<Node> = Vec::with_capacity(li.children.len() + 1);
         if !no_marker {
-            // Со слоем `::marker` знаки идут анонимным строчным куском
-            // со стилем слоя: голым текстом они брали бы у пункта и
-            // регистр, и разрядку, и цвет. Внутри маркер — именно
-            // строчная коробка перед содержимым (css-lists-3
-            // §list-style-position, `inside`), и эталон
-            // `marker-unicode-bidi-default-ref` собран буквально так —
-            // `<span class="marker">` перед текстом пункта.
-            // Mark every marker run, including the default marker, so the
-            // first-letter selector starts in the principal content.
-            let mut span = anon_element("::marker", vec![Node::Text(marker)]);
-            span.inline = true;
-            span.style = marker_style.clone().unwrap_or_default();
-            tabular_marker(&mut span.style, merged, li.style.marker_layer.as_deref());
-            span.style.content = None;
-            span.style.marker_layer = None;
-            // css-lists-3 §marker-properties UA rule `::marker { unicode-bidi:
-            // isolate }`: Arabic-Indic digits and the suffix stay one run
-            // (`css3-counter-styles-101`, reference `<bdi>١. </bdi>`).
-            if span.style.bidi_isolate.is_none()
-                && span.style.bidi_embed.is_none()
-                && span.style.bidi_override.is_none()
-                && span.style.bidi_plaintext.is_none()
-            {
-                span.style.bidi_isolate = Some(true);
-            }
-            // CSS Pseudo 4 #first-letter-application excludes marker content.
-            span.style.first_letter_excluded = true;
-            kids.push(Node::Element(span));
+            kids.push(super::marker::node(
+                li,
+                merged,
+                super::marker::Marker {
+                    text: marker,
+                    style: marker_style,
+                },
+            ));
         }
         kids.extend(li.children.iter().cloned());
         return shrink0(styled_div_with(li, merged), li, inherited)
@@ -132,13 +51,6 @@ pub(crate) fn render_with_style(
         mark_style.font_family = Some(opts.text.font_family.to_string());
     }
     tabular_marker(&mut mark_style, merged, li.style.marker_layer.as_deref());
-    // A symbol marker (`disc`, `circle`, `square`, disclosure triangles) is a
-    // painted symbol, not text: tracking does not move or widen it (Blink
-    // `ListMarker::InlineMarginsForOutside` kSymbol offsets from the font
-    // ascent; `marker-letter-spacing-ref-001` keeps the plain bullet).
-    if text_marker_symbol(text_marker_is_none, kind_name.as_deref()) {
-        mark_style.letter_spacing = Some(crate::style::values::value::Len::Px(0.0));
-    }
     let marker = inline::transform_case(&marker, &mark_style);
     // Without line boxes the outside marker is top-aligned to the item, and
     // the item's content height is at least the marker's (csswg-drafts#2417,
@@ -258,14 +170,4 @@ pub(crate) fn inherited_style(e: &Element, parent: &Computed, merged: &mut Compu
     {
         merged.marker_text = parent.marker_text.clone();
     }
-}
-
-/// A generated marker drawn as a symbol rather than as text (css-counter-styles
-/// predefined `disc`, `circle`, `square`, `disclosure-*`; `disc` is the default).
-fn text_marker_symbol(generated: bool, kind: Option<&str>) -> bool {
-    generated
-        && matches!(
-            kind.unwrap_or("disc"),
-            "disc" | "circle" | "square" | "disclosure-open" | "disclosure-closed"
-        )
 }

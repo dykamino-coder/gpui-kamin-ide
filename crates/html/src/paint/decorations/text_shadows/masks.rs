@@ -1,6 +1,6 @@
 //! Маски цветовых групп для составных текстовых теней.
 
-use super::{atomic, effective};
+use super::{ShadowStyle, atomic};
 use crate::dom::Node;
 use crate::render::{RenderOpts, paragraph};
 use crate::style::computed::{Computed, Shadow};
@@ -21,24 +21,19 @@ pub(super) fn transparent() -> crate::style::values::value::Color {
 pub(super) fn masked_layer(
     group: &[Shadow],
     shadow: &Shadow,
-    block: &[Shadow],
+    block: &ShadowStyle,
     nodes: &[Node],
     style: &Computed,
     opts: &RenderOpts,
 ) -> AnyElement {
-    let on = block == group;
+    let on = block.resolved() == group;
     let ink = if on { shadow.color } else { transparent() };
     let mut mask = style.clone();
-    mask.color = Some(ink);
-    mask.td_color = Some(ink);
-    mask.emphasis_color = Some(ink);
-    for decor in &mut mask.decors {
-        decor.color = ink;
-    }
+    mask.text_shadow_ink = Some(ink);
     mask.text_shadow = None;
     mask.text_shadow_rest.clear();
     mask.text_shadow_raw = None;
-    let masked = mask_nodes(nodes, block, &style.decors, &mask.decors, group, shadow);
+    let masked = mask_nodes(nodes, block, group, shadow);
     let copy = paragraph(&masked, &mask, opts);
     let copy = if shadow.blur > 0.5 {
         let mut g = crate::paint::effects::grouped_element::Grouped::new(copy);
@@ -58,9 +53,7 @@ pub(super) fn masked_layer(
 
 pub(super) fn mask_nodes(
     nodes: &[Node],
-    parent: &[Shadow],
-    parent_decors: &[crate::style::computed::Decor],
-    parent_masked: &[crate::style::computed::Decor],
+    parent: &ShadowStyle,
     group: &[Shadow],
     shadow: &Shadow,
 ) -> Vec<Node> {
@@ -74,26 +67,14 @@ pub(super) fn mask_nodes(
                     e.style.hidden = Some(true);
                     return Node::Element(e);
                 }
-                let list = effective(&e, parent);
-                let ink = if list.as_slice() == group {
+                let list = parent.child(&e);
+                let ink = if list.resolved() == group {
                     shadow.color
                 } else {
                     transparent()
                 };
-                let own_decors = e.style.decors.clone();
                 let s = &mut e.style;
-                s.color = Some(ink);
-                s.td_color = Some(ink);
-                s.emphasis_color = Some(ink);
-                // Украшения предков красит тень предка: ведущие записи,
-                // совпадающие с родительскими, берут маску родителя.
-                for (i, decor) in s.decors.iter_mut().enumerate() {
-                    decor.color = if i < parent_decors.len() && parent_decors[i] == own_decors[i] {
-                        parent_masked.get(i).map_or(ink, |d| d.color)
-                    } else {
-                        ink
-                    };
-                }
+                s.text_shadow_ink = Some(ink);
                 s.background = None;
                 s.bg_image = None;
                 s.shadows.clear();
@@ -103,13 +84,7 @@ pub(super) fn mask_nodes(
                 s.text_shadow = None;
                 s.text_shadow_rest.clear();
                 s.text_shadow_raw = None;
-                let masked_decors = e.style.decors.clone();
-                let (own, masked) = if own_decors.is_empty() {
-                    (parent_decors.to_vec(), parent_masked.to_vec())
-                } else {
-                    (own_decors, masked_decors)
-                };
-                e.children = mask_nodes(&e.children, &list, &own, &masked, group, shadow);
+                e.children = mask_nodes(&e.children, &list, group, shadow);
                 Node::Element(e)
             }
         })

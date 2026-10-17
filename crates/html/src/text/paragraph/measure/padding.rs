@@ -27,6 +27,13 @@ impl Paragraph {
             .iter()
             .enumerate()
             .map(|(line_no, line)| {
+                // The block-ellipsis displaced the whole line: it holds a
+                // strut of the root inline box and the ellipsis only, no
+                // box of the inlines open there (css-overflow-4
+                // §block-ellipsis; `block-ellipsis-036`, `-quirk-002`).
+                if line.clamped && self.text[line.range.clone()].trim().is_empty() {
+                    return (0.0, 0.0);
+                }
                 let (mut above, mut below) = (0.0f32, 0.0f32);
                 let boxes = !self.box_spans.is_empty() && self.run_metrics.len() == self.runs.len();
                 if boxes {

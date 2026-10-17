@@ -13,6 +13,15 @@ impl Computed {
         let legacy_ok = self.webkit_box == Some(true) && self.webkit_box_vertical == Some(true);
         self.line_clamp
             .filter(|_| self.clamp_legacy != Some(true) || legacy_ok)
+            .filter(|_| self.clamp_block_container())
+    }
+
+    /// `line-clamp` applies to block containers only (css-overflow-4
+    /// §5.1). `display: -webkit-box` is one only with `-webkit-box-orient:
+    /// vertical`; otherwise it lays its children out like a flex row
+    /// (`line-clamp-029`).
+    pub fn clamp_block_container(&self) -> bool {
+        self.webkit_box != Some(true) || self.webkit_box_vertical == Some(true)
     }
 
     /// Тени `box-shadow` с решённым цветом: без своего цвета — цвет текста

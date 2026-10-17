@@ -5,6 +5,7 @@ use crate::render::RenderOpts;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use gpui::{AnyElement, Styled};
+pub(crate) mod marker;
 mod styled;
 pub(crate) use styled::inherited_style;
 pub(crate) use styled::render_with_style;

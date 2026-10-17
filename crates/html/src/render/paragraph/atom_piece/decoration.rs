@@ -117,6 +117,13 @@ pub(crate) fn decorate_atom(
             el,
             inline::OverlayAt {
                 edges: abs_cb,
+                line_probe: !abs_cb
+                    && (crate::layout::positioned::predicates::edge_set(e.style.inset.left)
+                        || crate::layout::positioned::predicates::edge_set(e.style.inset.right))
+                        != (crate::layout::positioned::predicates::edge_set(e.style.inset.top)
+                            || crate::layout::positioned::predicates::edge_set(
+                                e.style.inset.bottom,
+                            )),
                 ..Default::default()
             },
         );

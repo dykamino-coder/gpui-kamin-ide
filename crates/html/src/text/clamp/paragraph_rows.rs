@@ -17,6 +17,48 @@ thread_local! {
     pub(super) static PARA_TAG: std::cell::Cell<Option<(u64, u32)>> = const { std::cell::Cell::new(None) };
 }
 
+thread_local! {
+    /// How many atomic inlines are being built around the current point
+    /// of the tree build (see `ParaNest`).
+    static PARA_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// Paragraphs built inside an atomic inline of another paragraph (ruby
+/// bases and annotations, inline-block contents) lie INSIDE a line box of
+/// that paragraph: their own lines are not line boxes of the clamp
+/// container's BFC (css-overflow-4 §5.3), so they get no clamp number, no
+/// probe and no line budget.
+pub struct ParaNest(u32);
+
+impl ParaNest {
+    pub fn enter() -> Self {
+        ParaNest(PARA_DEPTH.with(|d| d.replace(d.get() + 1)))
+    }
+
+    /// An atomic inline that is itself a line-clamp container
+    /// (`-webkit-inline-box`, inline-block with `line-clamp`) counts its
+    /// own lines: the nesting restarts inside it.
+    pub fn reset() -> Self {
+        ParaNest(PARA_DEPTH.with(|d| d.replace(0)))
+    }
+}
+
+impl Drop for ParaNest {
+    fn drop(&mut self) {
+        PARA_DEPTH.with(|d| d.set(self.0));
+    }
+}
+
+/// Replace the atomic-inline nesting depth, returning the old one.
+pub(super) fn swap_para_depth(v: u32) -> u32 {
+    PARA_DEPTH.with(|d| d.replace(v))
+}
+
+/// Number of enclosing atomic-inline builds (`ParaNest`).
+pub fn para_depth() -> u32 {
+    PARA_DEPTH.with(std::cell::Cell::get)
+}
+
 pub fn set_para_tag(v: Option<(u64, u32)>) {
     PARA_TAG.with(|c| c.set(v));
 }
@@ -72,6 +114,7 @@ pub fn clamp_probe(
     skip_count: bool,
     fixed_height: bool,
     bp_after: f32,
+    ends: super::line_state::BoxEnds,
     seq: Option<u32>,
     clamped: Option<usize>,
     span: Option<super::ClampSpan>,
@@ -86,6 +129,10 @@ pub fn clamp_probe(
                 skip_count,
                 fixed_height,
                 bp_after,
+                end_margin: ends.margin,
+                min_end: ends.min_end,
+                capped: ends.capped,
+                node: ends.node,
                 seq,
                 clamped,
                 empty: false,
@@ -116,6 +163,10 @@ pub fn clamp_empty_probe(lines: ClampLines) -> AnyElement {
                 skip_count: false,
                 fixed_height: false,
                 bp_after: 0.0,
+                end_margin: 0.0,
+                min_end: 0.0,
+                capped: false,
+                node: 0,
                 seq: None,
                 clamped: None,
                 empty: true,

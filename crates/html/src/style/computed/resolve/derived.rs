@@ -6,6 +6,7 @@ impl Computed {
     pub fn text_only(&self) -> Computed {
         Computed {
             color: self.color,
+            text_shadow_ink: self.text_shadow_ink,
             // Видимость — свойство ТЕКСТА тоже: скрытый кусок держит место, но
             // не красится, а запасная ветка «строка из слов» флаг теряла.
             hidden: self.hidden,
