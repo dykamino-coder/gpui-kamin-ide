@@ -98,7 +98,8 @@ pub struct MarginBox {
     /// Элемент коробки по её border box (ширина, высота) — строится после
     /// раскладки, с размером в точках.
     pub make: std::rc::Rc<dyn Fn(f32, f32) -> AnyElement>,
-    pub probe: AnyElement,
+    pub probe: std::rc::Rc<dyn Fn(Option<crate::style::values::value::Len>) -> AnyElement>,
+    pub vertical: bool,
     pub w: Option<f32>,
     pub h: Option<f32>,
     pub intrinsic: [Option<crate::style::values::value::Len>; 2],
