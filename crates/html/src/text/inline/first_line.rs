@@ -4,6 +4,9 @@ use super::Piece;
 use super::first_line_background;
 use crate::style::computed::Computed;
 
+#[cfg(test)]
+mod tests;
+
 /// Одеть первые `at` байт абзаца в стиль первой строки (`::first-line`).
 ///
 /// Длину первой строки считает замер: до переноса она неизвестна.
@@ -19,6 +22,7 @@ pub fn style_first_line(
     let mut seen = 0usize;
     for p in pieces {
         match p {
+            Piece::Text { style: ref own, .. } if own.inline_control => out.push(p),
             Piece::Text { text, style: own } if seen < at => {
                 let dress = |base: &Computed| {
                     let mut c = base.clone();

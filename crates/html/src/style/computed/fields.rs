@@ -1583,4 +1583,6 @@ pub struct Computed {
     pub(crate) flex_line_wraps: bool,
     /// An explicit unsafe overflow position for block content alignment.
     pub align_content_unsafe: bool,
+    /// Generated inline controls have no bytes in first-line source offsets.
+    pub inline_control: bool,
 }
