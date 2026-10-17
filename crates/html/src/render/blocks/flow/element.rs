@@ -49,7 +49,7 @@ pub(crate) fn paint_element(
         stacking_context(&e.style),
     );
     // Ряд обтекания: текст рядом с плавающим блоком и остаток под ним.
-    if e.tag == "kamin-float" {
+    if e.marks.float_row {
         out.push(letter_scope.flow(&e.children, inherited, |s| float_flow(e, s, opts)));
         return;
     }

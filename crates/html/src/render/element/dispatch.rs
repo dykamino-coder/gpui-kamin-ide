@@ -175,7 +175,7 @@ pub(crate) fn dispatch_element(
             }
         }
         // Синтетический узел обтекания формой (см. wrap_floats).
-        "shape-flow" => shape_flow(e, &merged, opts),
+        _ if e.marks.shape_flow.is_some() => shape_flow(e, &merged, opts),
         // Табличная раскладка включается и стилем: `display: table` на
         // контейнере значит ровно то же, что тег.
         // Лунки идут путём сетки taffy (`dom::lanes_as_grid`); сюда доходит

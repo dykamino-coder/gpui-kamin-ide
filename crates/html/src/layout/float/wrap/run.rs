@@ -212,6 +212,7 @@ pub(super) fn clearance_before_next(
         let adjoining = cb_top_open && out.iter().all(is_blank) && rest.iter().all(is_blank);
         if !adjoining && laid_out {
             rest.push(Node::Element(Element {
+                marks: Default::default(),
                 list_item: None,
                 node_id: 0,
                 anim: None,

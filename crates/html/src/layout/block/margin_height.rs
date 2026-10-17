@@ -222,7 +222,7 @@ pub(crate) fn zero_float_blocks(nodes: &mut [Node], inherited: &Computed) {
         // Our float host carries floats to later boxes and to the formatting
         // root only through this block's height (see `dom::float_tail`).
         if has_float && e.style.float_tail && zero_inflow(e, inherited) {
-            e.attrs.push(("auto-zero-height".into(), "1".into()));
+            e.marks.auto_zero_height = true;
         }
     }
 }
@@ -230,7 +230,7 @@ pub(crate) fn zero_float_blocks(nodes: &mut [Node], inherited: &Computed) {
 /// Keep the computed height auto: percentages still need an indefinite basis
 /// (CSS 2.1 §10.5). Only the native box receives the proven used height.
 pub(crate) fn used_style(e: &Element, style: &Computed) -> Option<Computed> {
-    if e.attr("auto-zero-height") != Some("1")
+    if !e.marks.auto_zero_height
         || style.vertical == Some(true)
         || !matches!(style.height, None | Some(Len::Auto))
     {

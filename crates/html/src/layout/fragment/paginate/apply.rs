@@ -139,6 +139,7 @@ pub(crate) fn apply(c: &mut Element, struts: &Struts) -> bool {
 
 fn spacer_box(id: u64, h: f32) -> Element {
     Element {
+        marks: Default::default(),
         list_item: None,
         node_id: id ^ 0x5041_4749_4E41_5445,
         anim: None,

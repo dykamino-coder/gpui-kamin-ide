@@ -139,7 +139,7 @@ pub(super) fn build_band_kid(
             copy.style.display,
             Some(Display::Table) | Some(Display::InlineTable)
         );
-    if copy.attr("atoms") == Some("1") {
+    if copy.marks.atoms {
         // Прогон атомов: `FlowRow` режет строки вырезами полос.
         let atoms: Vec<crate::layout::fragment::types::FlowChild> = copy
             .children

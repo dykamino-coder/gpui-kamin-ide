@@ -175,6 +175,7 @@ pub(super) fn scroll_marker_pass(
         gstyle.contain_size = Some(true);
     }
     let group = Element {
+        marks: Default::default(),
         list_item: None,
         node_id: 0,
         anim: None,

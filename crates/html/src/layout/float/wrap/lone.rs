@@ -30,7 +30,7 @@ pub(super) fn wrap_lone_float(
                 && matches!(parent.width, None | Some(Len::Auto))
                 && lone.style.vertical == Some(false)
             {
-                lone.attrs.push(("kamin-outside-block".into(), "1".into()));
+                lone.marks.outside_block = true;
             }
             // ПРОБОВАЛИ И ОТКАТИЛИ: заодно делать строчный по природе тег
             // блочным при `float: right` (обещание комментария ниже, кода
@@ -105,6 +105,7 @@ pub(super) fn wrap_lone_float(
                 let mut children = vec![Node::Element(lone)];
                 children.extend(row);
                 out.push(Node::Element(Element {
+                    marks: Default::default(),
                     list_item: None,
                     node_id: 0,
                     anim: None,
@@ -130,6 +131,7 @@ pub(super) fn wrap_lone_float(
                 lone.style.margin.left = Some(Len::Auto);
                 row.push(Node::Element(lone));
                 out.push(Node::Element(Element {
+                    marks: Default::default(),
                     list_item: None,
                     node_id: 0,
                     anim: None,

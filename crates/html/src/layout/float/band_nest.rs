@@ -22,7 +22,7 @@ use crate::style::values::value::Len;
 /// принудительного разрыва) и `hanging` (сдвигает все, кроме первой) — там
 /// отступ остаётся унаследованным.
 pub(super) fn cont_indent(e: &mut Element, inherited: &Computed) {
-    if e.attr("cont") == Some("1")
+    if e.marks.cont
         && inherited.text_indent_each_line != Some(true)
         && inherited.text_indent_hanging != Some(true)
     {

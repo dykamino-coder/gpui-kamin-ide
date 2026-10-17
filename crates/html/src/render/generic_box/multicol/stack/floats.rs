@@ -98,7 +98,7 @@ fn floats_in(
                 if *f {
                     c.style.float = None;
                     c.style.clear = None;
-                    c.attrs.push(("kamin-float-block".into(), "1".into()));
+                    c.marks.float_block = true;
                 } else if let Some(w) = w {
                     *c = w;
                 }

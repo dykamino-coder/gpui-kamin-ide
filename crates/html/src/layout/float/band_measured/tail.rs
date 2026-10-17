@@ -45,8 +45,17 @@ pub(super) fn band_host_m_tail(
                 Some(p) => (Some(pre[..p].to_vec()), pre[p..].to_vec()),
                 None => (None, pre),
             };
-            let probe = |children: Vec<Node>, key: &str| {
+            let probe = |children: Vec<Node>, base: bool| {
                 Node::Element(Element {
+                    marks: crate::dom::Marks {
+                        anon: true,
+                        lead: Some(crate::dom::LeadProbe {
+                            base,
+                            from: a,
+                            to: b,
+                        }),
+                        ..Default::default()
+                    },
                     list_item: None,
                     node_id: 0,
                     anim: None,
@@ -56,17 +65,13 @@ pub(super) fn band_host_m_tail(
                     first_letter: None,
                     first_line: None,
                     children,
-                    attrs: vec![
-                        ("anon".into(), "1".into()),
-                        ("lead-probe".into(), "1".into()),
-                        (key.into(), format!("{a}-{b}")),
-                    ],
+                    attrs: Vec::new(),
                     inline: false,
                 })
             };
-            let mut v = vec![probe(line, "lead-for")];
+            let mut v = vec![probe(line, false)];
             if let Some(base) = base {
-                v.push(probe(base, "lead-base"));
+                v.push(probe(base, true));
             }
             v
         })
@@ -81,9 +86,7 @@ pub(super) fn band_host_m_tail(
     let rest = band_flow_rest_lift(rest, em, Some(&mut lifted))?;
     // С содержимым перед флоатом первый кусок хвоста — его прогон: иначе
     // флоат не на той строке.
-    if lead_probe.is_some()
-        && !matches!(rest.first(), Some(Node::Element(c)) if c.attr("anon") == Some("1"))
-    {
+    if lead_probe.is_some() && !matches!(rest.first(), Some(Node::Element(c)) if c.marks.anon) {
         return None;
     }
     // Блок потока или строчный прогон в хвосте (не кусок своего контекста).
@@ -109,6 +112,20 @@ pub(super) fn band_host_m_tail(
         return None;
     }
     let mut host = Element {
+        // Высота и ширина содержащего блока (`BAND_CBH`/`BAND_CBW`):
+        // `shape-flow` своих нет. Путь `Measured`: `shape_flow` отдаёт хост
+        // `band_flow`.
+        marks: crate::dom::Marks {
+            shape_flow: Some(crate::dom::ShapeFlow {
+                count: floaters.len(),
+                em: Some(em),
+                cbh: BAND_CBH.with(std::cell::Cell::get),
+                cbw: BAND_CBW.with(std::cell::Cell::get),
+                bands: Some(crate::dom::BandPath::Measured),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
         list_item: None,
         node_id: 0,
         anim: None,
@@ -118,26 +135,7 @@ pub(super) fn band_host_m_tail(
         first_letter: None,
         first_line: None,
         children: Vec::new(),
-        attrs: vec![
-            ("count".into(), floaters.len().to_string()),
-            ("em".into(), em.to_string()),
-            // Высота содержащего блока (`BAND_CBH`): `shape-flow` своей нет.
-            (
-                "cbh".into(),
-                BAND_CBH
-                    .with(std::cell::Cell::get)
-                    .map_or(String::new(), |v| v.to_string()),
-            ),
-            // И ширина (`BAND_CBW`) — блочный размер в вертикальном письме.
-            (
-                "cbw".into(),
-                BAND_CBW
-                    .with(std::cell::Cell::get)
-                    .map_or(String::new(), |v| v.to_string()),
-            ),
-            // Метка измеряемого хоста: `shape_flow` отдаёт его `band_flow`.
-            ("bands".into(), "m".into()),
-        ],
+        attrs: Vec::new(),
         inline: false,
     };
     host.children = floaters.into_iter().map(Node::Element).collect();

@@ -13,9 +13,7 @@ use std::{cell::Cell, rc::Rc};
 
 pub(crate) fn render(e: &DomElement, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let mut inner = e.clone();
-    inner
-        .attrs
-        .retain(|(name, _)| name != "kamin-outside-block");
+    inner.marks.outside_block = false;
     let child = crate::render::element(&inner, inherited, opts);
     OutsideBlock {
         child,

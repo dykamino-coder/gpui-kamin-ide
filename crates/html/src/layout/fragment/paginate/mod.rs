@@ -25,10 +25,6 @@ pub(crate) use apply::{Strut, Struts, apply};
 pub(crate) mod solve;
 pub(crate) mod watch;
 
-/// Attribute marking a stack child that takes this path (set by the measure
-/// pass of the multicol container, read by the stack construction).
-pub(crate) const MARK: &str = "kamin-paginate";
-
 /// A break opportunity whose position is decided on the laid-out copy.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Cand {

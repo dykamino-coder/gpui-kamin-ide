@@ -94,6 +94,7 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
             let mut side = column_style.clone();
             side.display = Some(Display::Block);
             let column_el = Element {
+                marks: Default::default(),
                 list_item: None,
                 node_id: 0,
                 anim: None,

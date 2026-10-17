@@ -32,7 +32,7 @@ pub(crate) fn band_kid_kind(
             } else {
                 matches!(c.style.width, None | Some(Len::Auto))
             },
-            letter: c.attr("initial-letter") == Some("1"),
+            letter: c.marks.initial_letter,
         }
     } else {
         match band_piece_m(n, em) {
@@ -41,7 +41,7 @@ pub(crate) fn band_kid_kind(
                 table: c.tag == "table" || matches!(c.style.display, Some(Display::Table)),
             },
             Some(false) => Kind::Strut(px_margin_box(&c.style).map_or(0.0, |(_, h)| h)),
-            None if c.attr("anon") == Some("1") || band_flow_block(c, em) => Kind::Flow,
+            None if c.marks.anon || band_flow_block(c, em) => Kind::Flow,
             None => match band_nest(c, inherited, opts, em) {
                 Some(nn) => {
                     *nest = Some(nn);

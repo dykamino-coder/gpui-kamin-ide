@@ -42,11 +42,11 @@ pub(crate) fn band_kids(
     // `float-nowrap-1`: флоат после всей строки).
     let has_lead = nodes
         .iter()
-        .any(|n| matches!(n, Node::Element(p) if p.attr("lead-probe") == Some("1")));
+        .any(|n| matches!(n, Node::Element(p) if p.marks.lead.is_some()));
     let nowrap = inherited.nowrap == Some(true);
     let initial_letter = nodes
         .iter()
-        .any(|n| matches!(n, Node::Element(e) if e.attr("initial-letter").is_some()));
+        .any(|n| matches!(n, Node::Element(e) if e.marks.initial_letter));
     let mk_build = |p: &Element| -> crate::layout::float::band_flow::Build {
         let p = p.clone();
         let inherited = inherited.clone();
@@ -60,30 +60,26 @@ pub(crate) fn band_kids(
     let nowrap_probe: Option<crate::layout::float::band_flow::Build> = (nowrap && has_lead)
         .then(|| {
             nodes.iter().find_map(|n| match n {
-                Node::Element(p)
-                    if p.attr("anon") == Some("1") && p.attr("lead-probe").is_none() =>
-                {
-                    Some(mk_build(p))
-                }
+                Node::Element(p) if p.marks.anon && p.marks.lead.is_none() => Some(mk_build(p)),
                 _ => None,
             })
         })
         .flatten();
     // Щупы по номерам флоатов (`lead-for`/`lead-base` = «a-b»).
-    let probes_of = |key: &str| -> Vec<(usize, usize, crate::layout::float::band_flow::Build)> {
+    let probes_of = |base: bool| -> Vec<(usize, usize, crate::layout::float::band_flow::Build)> {
         nodes
             .iter()
             .filter_map(|n| match n {
-                Node::Element(p) if p.attr("lead-probe") == Some("1") => {
-                    let (a, b) = p.attr(key)?.split_once('-')?;
-                    Some((a.parse().ok()?, b.parse().ok()?, mk_build(p)))
+                Node::Element(p) => {
+                    let lead = p.marks.lead.filter(|l| l.base == base)?;
+                    Some((lead.from, lead.to, mk_build(p)))
                 }
                 _ => None,
             })
             .collect()
     };
-    let lead_probes = probes_of("lead-for");
-    let base_probes = probes_of("lead-base");
+    let lead_probes = probes_of(false);
+    let base_probes = probes_of(true);
     let base_for = |idx: usize| -> Option<crate::layout::float::band_flow::Build> {
         base_probes
             .iter()
@@ -103,11 +99,11 @@ pub(crate) fn band_kids(
         let Node::Element(c) = n else {
             continue;
         };
-        if c.attr("lead-probe") == Some("1") {
+        if c.marks.lead.is_some() {
             continue;
         }
         let mut continued;
-        let c = if initial_letter && c.attr("anon") == Some("1") {
+        let c = if initial_letter && c.marks.anon {
             // The initial letter already consumed the paragraph's indent.
             continued = c.clone();
             continued.style.text_indent = Some(crate::style::values::value::Len::Px(0.0));
@@ -136,8 +132,7 @@ pub(crate) fn band_kids(
         // у самого узла), и первая строка хоста теряла свой кегль
         // (`below-float3`: `::first-line { font-size: 50px }` у `x` под
         // флоатом). Первый прогон получает слой хоста.
-        let first_line =
-            !float && !seen_inflow && c.attr("anon") == Some("1") && c.attr("cont").is_none();
+        let first_line = !float && !seen_inflow && c.marks.anon && !c.marks.cont;
         if !float && band_piece_m(n, em) != Some(false) {
             seen_inflow = true;
         }
@@ -175,7 +170,7 @@ pub(crate) fn band_kids(
             margin,
             build,
             nest,
-            anon: c.attr("anon") == Some("1"),
+            anon: c.marks.anon,
             lead: if float { lead_for(idx) } else { None },
             lead_base: if float { base_for(idx) } else { None },
             margin_offset: c.style.float_margin_offset.unwrap_or(0.0),
