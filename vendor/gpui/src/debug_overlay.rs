@@ -225,6 +225,8 @@ fn solid_quad(
         border_color: transparent_black(),
         corner_radii: Corners::default(),
         border_widths: Edges::default(),
+        // KaminIDE patch: overlay geometry is already in device coordinates.
+        transformation: Default::default(),
     }
 }
 
