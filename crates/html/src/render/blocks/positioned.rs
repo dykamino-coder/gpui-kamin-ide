@@ -52,6 +52,9 @@ pub(crate) fn static_position_layer(
         rtl: inherited.rtl == Some(true),
         vertical: inherited.vertical == Some(true),
         vertical_rl: inherited.vertical_rl == Some(true),
+        // Auto insets choose a static coordinate, not a zero-sized CB
+        // (CSS 2.1 §10.1/§10.3.7). Keep its logical inline space.
+        preserve_cb_geometry: inherited.vertical == Some(true),
         own_vertical: e.style.vertical == Some(true),
         replaced: matches!(
             e.tag.as_str(),

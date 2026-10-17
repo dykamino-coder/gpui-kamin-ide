@@ -133,6 +133,9 @@ pub(super) fn collect_element(
     };
     let edge = |mut style: Computed, leading: bool| {
         style.spacer_edge = Some((box_id, leading != own_rtl, own_rtl));
+        // CSS Text Decoration 4 §2: skip this decorating box's own
+        // margin/border/padding, while retaining ancestor decorations.
+        style.decors.retain(|d| d.source != e.style.decor_box);
         style
     };
     if mlead != 0.0 {

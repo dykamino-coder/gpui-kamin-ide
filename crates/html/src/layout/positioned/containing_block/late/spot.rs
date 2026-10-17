@@ -51,9 +51,8 @@ pub fn spot_place(spot: SpotCell, child: AnyElement) -> AnyElement {
     // Auto insets select a static position, not a different containing block
     // (CSS Position 3 §2.1/§3.5). Ordinary abspos percentages still resolve
     // against that block; the zero-height wrapper would resolve height to zero.
-    if !now.vertical
-        && ((now.fixed_axes != (false, false) && (now.own_vertical || !now.replaced))
-            || (now.preserve_cb_geometry && !now.replaced))
+    if (!now.vertical && now.fixed_axes != (false, false) && (now.own_vertical || !now.replaced))
+        || (now.preserve_cb_geometry && !now.replaced)
     {
         return LatePlace {
             child: Some(child),
