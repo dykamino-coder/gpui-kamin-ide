@@ -2,9 +2,9 @@
 // owner: A
 
 use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior,
-    InspectorElementId, IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, Pixels, Window, px,
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, Hitbox, InspectorElementId,
+    IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
+    Window, px,
 };
 use std::rc::Rc;
 
@@ -88,7 +88,6 @@ impl Element for Resizable {
         window: &mut Window,
         cx: &mut App,
     ) -> Hitbox {
-        child.prepaint(window, cx);
         // Область попадания — только уголок: остальная площадь элемента
         // обязана оставаться кликабельной как обычно.
         let grip = Bounds {
@@ -98,7 +97,7 @@ impl Element for Resizable {
             ),
             size: gpui::size(px(GRIP), px(GRIP)),
         };
-        window.insert_hitbox(grip, HitboxBehavior::Normal)
+        crate::interactive::hitbox::prepaint_hitbox(child, grip, window, cx)
     }
 
     fn paint(
