@@ -10,8 +10,11 @@ mod sizing;
 pub(super) use sizing::serialize_sized;
 
 mod filters;
+
+mod geometry;
 use filters::subtree_has;
 use filters::untaint_filters;
+pub(crate) use geometry::geometry_property;
 
 use super::clip::synth_clip;
 use super::size::{size_of, view_box_ratio};
@@ -46,6 +49,7 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
     // доли — от fill-box (атрибуты width/height фигуры).
     let (combined, attr_bad) = element_transform(e);
     write_attributes(e, out, &combined, &clip_id, attr_bad);
+    geometry::write_geometry(e, out);
     if let Some(t) = &combined {
         out.push_str(" transform=\"");
         escape_attr(t, out);

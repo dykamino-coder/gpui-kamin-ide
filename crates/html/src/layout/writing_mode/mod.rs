@@ -6,6 +6,7 @@ use crate::render::in_flow;
 use crate::style::computed::{Computed, Display};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
+pub(crate) mod inline_definite;
 pub(crate) mod native_intrinsic;
 pub(crate) mod native_vertical;
 mod orthogonal_absolute;

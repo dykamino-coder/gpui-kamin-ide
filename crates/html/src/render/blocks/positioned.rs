@@ -48,10 +48,18 @@ pub(crate) fn static_position_layer(
     // там его место — поверх всего.
     let below = e.style.z_index.is_some_and(|z| z < 0);
     let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
+    // In a vertical parent the flag means "inline-start is the bottom":
+    // `direction: rtl` of `vertical-*`, `ltr` of `sideways-lr` (§6.4).
+    let wm = inherited.wm();
+    let rtl = if wm.vertical() {
+        wm.inline_start() == crate::style::computed::writing_mode::Side::Bottom
+    } else {
+        wm.rtl()
+    };
     spot.set(crate::layout::positioned::containing_block::Spot {
-        rtl: inherited.wm().rtl(),
-        vertical: inherited.wm().vertical(),
-        vertical_rl: inherited.wm().block_rl(),
+        rtl,
+        vertical: wm.vertical(),
+        vertical_rl: wm.block_rl(),
         own_vertical: e.style.wm().vertical(),
         replaced: matches!(
             e.tag.as_str(),

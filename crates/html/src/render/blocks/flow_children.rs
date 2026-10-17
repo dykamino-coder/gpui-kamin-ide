@@ -42,8 +42,13 @@ pub(crate) fn flow_children(
                     // правому краю и вылезает влево (csswg-drafts#5572);
                     // только горизонтальное письмо — в вертикали cross-ось
                     // иная (abs-pos-border-offset-001/002).
+                    // Horizontal flow only (in vertical flow the cross axis is the
+                    // other one). The flag is read through `WritingMode`: a
+                    // `horizontal-tb` box under a vertical ancestor still
+                    // carries the inherited `vertical_rl` value, which kept
+                    // the rule off (`abs-pos-vlr-border-001-ref`).
                     if inherited.wm().rtl()
-                        && inherited.vertical_rl.is_none()
+                        && !inherited.wm().vertical()
                         && e.style.width.is_some()
                         && e.style.align_self.is_none()
                         // Блочный по ВЫЧИСЛЕННОМУ `display`, а не по тегу:

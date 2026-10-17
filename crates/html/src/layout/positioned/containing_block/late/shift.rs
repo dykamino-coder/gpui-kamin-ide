@@ -73,7 +73,18 @@ pub(crate) fn late_shift(bounds: Bounds<Pixels>, now: Spot) -> gpui::Point<Pixel
             } else {
                 hole.origin.x
             };
-            gpui::point(x - bounds.origin.x, hole.origin.y - bounds.origin.y)
+            // `direction: rtl` turns the vertical inline axis bottom-to-top
+            // (css-writing-modes-4 §6.4): the block strut spans the parent's
+            // content box along it, and the box hangs from its BOTTOM end by
+            // its inline-start (bottom) edge (Blink `absolute_utils.cc`
+            // `GetStaticPositionInsetBias` → `InsetBias::kEnd`;
+            // `abs-pos-border-offset-001`).
+            let y = if now.rtl && now.block_strut {
+                hole.origin.y + hole.size.height - bounds.size.height
+            } else {
+                hole.origin.y
+            };
+            gpui::point(x - bounds.origin.x, y - bounds.origin.y)
         }
         // Письмо справа налево: заместитель вешается ПРАВЫМ краем на
         // начало строчной оси (CSS 2.1 §10.3.7: статическая позиция в rtl

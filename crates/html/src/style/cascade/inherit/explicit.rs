@@ -50,6 +50,7 @@ pub(super) fn inherit_explicit(parent: &Computed, own: &Computed, c: &mut Comput
         if on(inh::DISPLAY) {
             c.display = parent.display;
             c.inline_display = parent.inline_display;
+            c.math_layout = parent.math_layout;
         }
         if on(inh::BG_IMAGE) {
             c.bg_image = parent.bg_image.clone();

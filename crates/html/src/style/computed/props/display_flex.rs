@@ -27,6 +27,11 @@ impl Computed {
                     return;
                 }
                 self.inline_display = None;
+                self.math_layout = match v {
+                    "math" | "inline math" => Some(Display::InlineBlock),
+                    "block math" => Some(Display::Block),
+                    _ => None,
+                };
                 // Каскад мог поставить группу выше по важности, а ниже —
                 // обычный блок: метка рода не переживает своё значение.
                 self.row_group_kind = None;

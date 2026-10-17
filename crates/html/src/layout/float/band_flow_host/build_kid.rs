@@ -54,6 +54,7 @@ pub(super) fn build_band_kid(
     // статического хоста.
     copy.style.float = None;
     copy.style.floated_box = true;
+    copy.style.band_kid = true;
     copy.style.clear = None;
     copy.style.margin = crate::style::computed::Sides::default();
     // Флоат заводит свой контекст форматирования (§9.4.1), а

@@ -26,6 +26,9 @@ pub(crate) fn dispatch_element(
     outer_row: Option<(f32, f32)>,
     mut built_iframe: Option<AnyElement>,
 ) -> AnyElement {
+    if let Some(math) = crate::layout::mathml::element(e, inherited, opts) {
+        return math;
+    }
     match e.tag.as_str() {
         // CSS Lists 3 §2: a block list item generates its own marker even
         // when its parent is an ordinary block rather than a list container.
