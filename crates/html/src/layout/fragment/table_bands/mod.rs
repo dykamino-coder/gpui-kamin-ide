@@ -4,6 +4,7 @@
 use crate::dom::Element;
 use crate::layout::fragment::{Shape, ShapeCx};
 use crate::style::computed::Display;
+pub(crate) mod parts;
 mod row_geometry;
 pub(crate) use row_geometry::row_geometry;
 mod row_cuts;
