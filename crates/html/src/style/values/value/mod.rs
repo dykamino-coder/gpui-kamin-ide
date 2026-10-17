@@ -20,6 +20,7 @@ mod calc_math;
 mod calc_pool;
 mod color;
 mod color_channels;
+mod color_hsl;
 mod color_names;
 mod system_colors;
 pub use system_colors::{SystemColor, system_color};

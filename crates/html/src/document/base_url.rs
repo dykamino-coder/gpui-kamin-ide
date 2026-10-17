@@ -1,10 +1,9 @@
 //! Base URLs resolve resource links once, while DOM selectors still see authored values.
 use crate::dom::Node;
-use html5ever::{parse_document, tendril::TendrilSink};
-use markup5ever_rcdom::{Handle, NodeData, RcDom};
+use markup5ever_rcdom::{Handle, NodeData};
 use url::Url;
 
-pub(super) fn document_base(html: &str, fallback: &Url) -> Url {
+pub(super) fn document_base(html: &str, fallback: Option<&Url>) -> Option<Url> {
     fn find(node: &Handle) -> Option<String> {
         if let NodeData::Element { name, attrs, .. } = &node.data
             && &*name.local == "base"
@@ -15,10 +14,14 @@ pub(super) fn document_base(html: &str, fallback: &Url) -> Url {
         }
         node.children.borrow().iter().find_map(find)
     }
-    let dom = parse_document(RcDom::default(), Default::default()).one(html);
+    let dom = crate::dom::input::html(html);
     find(&dom.document)
-        .and_then(|href| fallback.join(&href).ok())
-        .unwrap_or_else(|| fallback.clone())
+        .and_then(|href| {
+            fallback
+                .map_or_else(|| Url::parse(&href), |base| base.join(&href))
+                .ok()
+        })
+        .or_else(|| fallback.cloned())
 }
 
 pub(super) fn resolve(nodes: &mut [Node], base: &Url, svg: bool) {

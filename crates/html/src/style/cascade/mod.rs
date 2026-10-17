@@ -206,8 +206,15 @@ impl Computed {
                 self.bg_lists.set(prop, v.to_string());
             }
         }
-        // Свойства разнесены по группам (`props/*`): у каждого ключа ровно одна группа,
-        // ветви внутри группы идут в исходном порядке.
+        self.apply_property(key, val, v);
+    }
+
+    /// Query the actual property dispatcher, including delegated property groups.
+    pub(crate) fn recognizes_property(key: &str) -> bool {
+        Self::default().apply_property(key, "", "")
+    }
+
+    fn apply_property(&mut self, key: &str, val: &str, v: &str) -> bool {
         let groups: [fn(&mut Self, &str, &str, &str, &mut bool); 14] = [
             Self::apply_scroll,
             Self::apply_display_flex,
@@ -228,8 +235,9 @@ impl Computed {
             let mut hit = true;
             group(self, key, val, v, &mut hit);
             if hit {
-                return;
+                return true;
             }
         }
+        false
     }
 }

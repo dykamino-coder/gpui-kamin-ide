@@ -7,6 +7,7 @@
 //! ничего не рисуют.
 
 mod direction;
+pub(crate) mod input;
 pub(crate) mod mathml;
 mod mathml_defaults;
 mod mathml_lengths;
@@ -15,6 +16,7 @@ mod mathml_routing;
 mod nth_child_tests;
 mod page_scheme;
 mod parse_document;
+pub(crate) mod style_sources;
 pub(crate) mod xml;
 pub use xml::parse_xml;
 #[cfg(test)]

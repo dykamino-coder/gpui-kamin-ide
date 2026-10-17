@@ -1,4 +1,4 @@
-//! Embedded for document; split out to keep the owning module within 250 lines.
+//! Prepare embedded documents while preserving their owner's page rules and caches.
 
 use crate::document::box_style::has_box_style;
 use crate::dom::Node;
@@ -32,8 +32,12 @@ pub(crate) fn parse_embedded_sized(
     scrolling: bool,
     scheme: Option<EmbeddingScheme>,
 ) -> (Vec<Node>, u64) {
-    crate::text::fonts::load_faces_additive(html);
-    crate::style::values::color_space::load_profiles(html);
+    let mut sheets = vec![theme_css.to_string()];
+    sheets.extend(crate::dom::style_sources::collect(html, false));
+    for css in &sheets {
+        crate::text::fonts::load_faces_additive(css);
+    }
+    crate::style::values::color_space::load_profiles_sheets(&sheets, None);
     // Пулы `@page` ВНЕШНЕГО документа: `parse_media` начинает с их очистки
     // (`take_page_decls`), а рамка разбирается на КАЖДОМ кадре — лист
     // печатной пары со второго кадра терял size/margin/фон. Правила `@page`
@@ -49,7 +53,9 @@ pub(crate) fn parse_embedded_sized(
         media.dark = scheme.preferred_dark;
     }
     let parsed = crate::dom::parse_media(html, theme_css, media);
-    *crate::style::css::PAGE_RULES.lock().unwrap() = outer_rules;
+    *crate::style::css::PAGE_RULES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = outer_rules;
     let mut nodes =
         super::viewport::prepare_embedded(parsed, responsive, scheme.map(|s| s.owner_dark));
     // HTML's embedding policy also applies when responsive sizing is declined.
