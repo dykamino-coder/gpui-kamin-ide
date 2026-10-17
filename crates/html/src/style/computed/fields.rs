@@ -1575,4 +1575,6 @@ pub struct Computed {
     /// orthogonal item cannot take its inline size from the line. Set with
     /// `flex_item` by `render::blocks`; not inherited.
     pub(crate) flex_line_wraps: bool,
+    /// An explicit unsafe overflow position for block content alignment.
+    pub align_content_unsafe: bool,
 }

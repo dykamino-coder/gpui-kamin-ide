@@ -81,31 +81,35 @@ pub(super) fn emit_cell(
     }
     *col_ix += span_cols as usize;
     let (inside, d) = cell_contents(opts, e, cm, spans_collapsed, clipped, cell, d);
-    let d = cell_edge_probes(
-        row_ix,
-        group_of,
-        cols,
-        collapse_cells,
-        row_elements,
-        table_edges,
-        col_rects,
-        col_els,
-        grp_rects,
-        grp_els,
-        rules_groups,
-        px_of,
-        row,
-        row_rects,
-        grp_band,
-        inherited,
-        row_style,
-        *col_ix,
-        span_cols,
-        span_rows,
-        cell_edge,
-        cell,
-        d,
-    );
+    let d = if crate::layout::table::anon::row_collapsed(row, carry.3) {
+        d
+    } else {
+        cell_edge_probes(
+            row_ix,
+            group_of,
+            cols,
+            collapse_cells,
+            row_elements,
+            table_edges,
+            col_rects,
+            col_els,
+            grp_rects,
+            grp_els,
+            rules_groups,
+            px_of,
+            row,
+            row_rects,
+            grp_band,
+            inherited,
+            row_style,
+            *col_ix,
+            span_cols,
+            span_rows,
+            cell_edge,
+            cell,
+            d,
+        )
+    };
     // `transform` ячейки, ряда и группы рядов (css-transforms-1
     // §transformable-element: «table-row-group, table-header-group,
     // table-footer-group, table-row, table-column-group,

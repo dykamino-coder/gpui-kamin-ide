@@ -285,6 +285,10 @@ pub trait CoreStyle {
     fn table_cell_baseline(&self) -> bool {
         false
     }
+    /// Rows remain in the logical table until sizing has finished.
+    fn table_collapsed_tracks(&self) -> Option<(bool, &[u16])> {
+        None
+    }
     /// KaminIDE patch: раскладка ЛУНКАМИ (css-grid-3 «grid lanes»): сетка
     /// с дорожками только по ОДНОЙ оси. `None` — обычная сетка.
     #[cfg(feature = "grid")]
@@ -1118,6 +1122,8 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// content moves down by the baseline shim (see `set_content_shift`).
     #[cfg_attr(feature = "serde", serde(default))]
     pub table_cell_baseline: bool,
+    /// Table rows collapsed after intrinsic track sizing (physical columns when true).
+    pub table_collapsed_tracks: Option<(bool, Vec<u16>)>,
     /// KaminIDE patch: собственная базовая линия по оси x у узла без своей
     /// раскладки текста (повёрнутый вертикальный абзац движка): смещение и
     /// флаг «от правого края» — у `vertical-rl` первая строка справа, и
@@ -1298,6 +1304,7 @@ impl<S: CheapCloneStr> Style<S> {
         baseline_unavailable: false,
         no_inline_block_baseline: false,
         table_cell_baseline: false,
+        table_collapsed_tracks: None,
         baseline_x_hint: None,
         baseline_x_flags: 0,
         #[cfg(feature = "grid")]
@@ -1469,6 +1476,9 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
     fn table_cell_baseline(&self) -> bool {
         self.table_cell_baseline
     }
+    fn table_collapsed_tracks(&self) -> Option<(bool, &[u16])> {
+        self.table_collapsed_tracks.as_ref().map(|(axis, tracks)| (*axis, tracks.as_slice()))
+    }
     #[cfg(feature = "grid")]
     #[inline(always)]
     fn subgrid(&self) -> u8 {
@@ -1630,6 +1640,9 @@ impl<T: CoreStyle> CoreStyle for &'_ T {
     #[inline(always)]
     fn table_cell_baseline(&self) -> bool {
         (*self).table_cell_baseline()
+    }
+    fn table_collapsed_tracks(&self) -> Option<(bool, &[u16])> {
+        (*self).table_collapsed_tracks()
     }
     #[cfg(feature = "grid")]
     #[inline(always)]
@@ -2264,6 +2277,7 @@ mod tests {
             baseline_unavailable: false,
             no_inline_block_baseline: false,
             table_cell_baseline: false,
+            table_collapsed_tracks: None,
             baseline_x_hint: None,
             baseline_x_flags: 0,
             #[cfg(feature = "grid")]

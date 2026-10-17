@@ -75,10 +75,12 @@ pub(super) fn row_band_probes(
     // ЯЧЕЙКАХ, непрерывно от начала ряда, зазоры остаются чистыми.
     // Полоса на весь ряд несёт слой фона, но обрезает его прямоугольниками
     // ячеек, снятыми пробами прошлого кадра.
-    let row_rects: Option<crate::layout::table::paint::RowRects> = (row.style.bg_image.is_some()
-        || row.style.gradient_raw.is_some()
-        || !row.style.shadows.is_empty())
-    .then(|| crate::layout::table::paint::row_rects_for(row.node_id ^ opts.doc_salt));
+    let row_rects: Option<crate::layout::table::paint::RowRects> =
+        (!crate::layout::table::anon::row_collapsed(row, carry.3)
+            && (row.style.bg_image.is_some()
+                || row.style.gradient_raw.is_some()
+                || !row.style.shadows.is_empty()))
+        .then(|| crate::layout::table::paint::row_rects_for(row.node_id ^ opts.doc_salt));
     if let Some(rects) = &row_rects {
         // Градиент ряда идёт слоем-картинкой: источник понимает записи
         // `linear-gradient(...)` и растрирует их сам.
@@ -101,10 +103,11 @@ pub(super) fn row_band_probes(
     // полоса уже считает (`visibility-collapse-border-spacing-001`:
     // `tbody { outline: 10px }` не рисовался вовсе).
     let grp_band: Option<crate::layout::table::paint::RowRects> = carry.3.and_then(|g| {
-        (g.style.bg_image.is_some()
-            || g.style.gradient_raw.is_some()
-            || !g.style.shadows.is_empty()
-            || g.style.outline.is_some())
+        (g.style.collapsed != Some(true)
+            && (g.style.bg_image.is_some()
+                || g.style.gradient_raw.is_some()
+                || !g.style.shadows.is_empty()
+                || g.style.outline.is_some()))
         .then(|| crate::layout::table::paint::row_rects_for(g.node_id ^ opts.doc_salt))
     });
     if let (Some(rects), Some(g)) = (&grp_band, carry.3)

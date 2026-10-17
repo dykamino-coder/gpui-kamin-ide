@@ -339,6 +339,8 @@ pub struct Style {
     /// `Style::table_cell_baseline`): the row aligns its content by the
     /// baseline, the cell box still fills the row.
     pub table_cell_baseline: bool,
+    /// Table rows to collapse after intrinsic sizing; true selects physical columns.
+    pub table_collapsed_tracks: Option<(bool, Vec<u16>)>,
     /// KaminIDE patch: собственная базовая линия по оси x (повёрнутый
     /// вертикальный абзац): смещение и «от правого края».
     pub baseline_x_hint: Option<(f32, bool)>,
@@ -1101,6 +1103,7 @@ impl Default for Style {
             baseline_unavailable: false,
             no_inline_block_baseline: false,
             table_cell_baseline: false,
+            table_collapsed_tracks: None,
             baseline_x_hint: None,
             baseline_x_flags: 0,
             margin_trim: 0,

@@ -10,6 +10,7 @@ use gpui::AnyElement;
 mod row_setup;
 use row_setup::{push_empty_row_track, row_band_probes};
 mod cell;
+mod cell_alignment;
 mod cell_box;
 mod cell_columns;
 mod cell_div;
