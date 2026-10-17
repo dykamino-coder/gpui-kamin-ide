@@ -152,6 +152,7 @@ fn convert_paint(
     opacity: &mut Opacity,
     cache: &mut converter::Cache,
 ) -> Option<(Paint, Option<ContextElement>)> {
+    let value = &*paint_keywords(value);
     let paint = match svgtypes::Paint::from_str(value) {
         Ok(v) => v,
         Err(_) => {
@@ -293,4 +294,28 @@ fn conv_dasharray(node: SvgNode, state: &converter::State) -> Option<Vec<f32>> {
     }
 
     Some(list)
+}
+
+/// `svgtypes` matches paint keywords case-sensitively, but CSS keywords are
+/// ASCII case-insensitive (CSS Values 4 §2.1): `fill="currentcolor"` is
+/// `currentColor` (WPT painting `currentColor-override-pserver-*`).
+fn paint_keywords(value: &str) -> std::borrow::Cow<'_, str> {
+    const KEYWORDS: [&str; 5] = [
+        "none",
+        "inherit",
+        "currentColor",
+        "context-fill",
+        "context-stroke",
+    ];
+    let trimmed = value.trim();
+    // The keyword is the whole value, or the fallback after `url(…)`.
+    let (head, tail) = match trimmed.rfind(')') {
+        Some(i) if trimmed.starts_with("url(") => trimmed.split_at(i + 1),
+        _ => ("", trimmed),
+    };
+    let word = tail.trim();
+    match KEYWORDS.iter().find(|k| k.eq_ignore_ascii_case(word)) {
+        Some(k) if *k != word => std::borrow::Cow::Owned(format!("{head} {k}").trim().to_string()),
+        _ => std::borrow::Cow::Borrowed(value),
+    }
 }

@@ -57,6 +57,10 @@
 #    pattern (§8.6); пустой gradientTransform/patternTransform не перекрывает
 #    href-наследование; необратимый transform сервера заливки — запасной цвет
 #    (Blink layout_svg_resource_gradient.cc:127). Отдельный diff-блок в конце.
+# 10. usvg (src/parser/use_node.rs, style.rs): `symbol` с `display="none"` через
+#    `use` не рисуется; вьюпорт экземпляра `symbol` — width/height `use`, иначе
+#    собственные width/height символа (SVG 2 §5.6.2); ключевые слова заливки
+#    регистронезависимы (`currentcolor`, CSS Values 4 §2.1). Отдельный блок.
 #
 # Как накатывать при обновлении вендора: 3-way merge (база — дерево
 # предыдущей upstream-ревизии, ours — vendor/, theirs — новая ревизия), либо
@@ -2553,3 +2557,118 @@ index 06560d2..de0d7e0 100644
      // We require original transformation to setup 'clipPath'.
      let mut orig_ts = node.resolve_transform(AId::Transform, state);
      let mut new_ts = Transform::default();
+diff --git a/src/parser/style.rs b/src/parser/style.rs
+index cefdc5c..3ca7013 100644
+--- a/src/parser/style.rs
++++ b/src/parser/style.rs
+@@ -152,6 +152,7 @@ fn convert_paint(
+     opacity: &mut Opacity,
+     cache: &mut converter::Cache,
+ ) -> Option<(Paint, Option<ContextElement>)> {
++    let value = &*paint_keywords(value);
+     let paint = match svgtypes::Paint::from_str(value) {
+         Ok(v) => v,
+         Err(_) => {
+@@ -294,3 +295,27 @@ fn conv_dasharray(node: SvgNode, state: &converter::State) -> Option<Vec<f32>> {
+
+     Some(list)
+ }
++
++/// `svgtypes` matches paint keywords case-sensitively, but CSS keywords are
++/// ASCII case-insensitive (CSS Values 4 §2.1): `fill="currentcolor"` is
++/// `currentColor` (WPT painting `currentColor-override-pserver-*`).
++fn paint_keywords(value: &str) -> std::borrow::Cow<'_, str> {
++    const KEYWORDS: [&str; 5] = [
++        "none",
++        "inherit",
++        "currentColor",
++        "context-fill",
++        "context-stroke",
++    ];
++    let trimmed = value.trim();
++    // The keyword is the whole value, or the fallback after `url(…)`.
++    let (head, tail) = match trimmed.rfind(')') {
++        Some(i) if trimmed.starts_with("url(") => trimmed.split_at(i + 1),
++        _ => ("", trimmed),
++    };
++    let word = tail.trim();
++    match KEYWORDS.iter().find(|k| k.eq_ignore_ascii_case(word)) {
++        Some(k) if *k != word => std::borrow::Cow::Owned(format!("{head} {k}").trim().to_string()),
++        _ => std::borrow::Cow::Borrowed(value),
++    }
++}
+diff --git a/src/parser/use_node.rs b/src/parser/use_node.rs
+index de0d7e0..f26b5f4 100644
+--- a/src/parser/use_node.rs
++++ b/src/parser/use_node.rs
+@@ -20,7 +20,13 @@ pub(crate) fn convert(
+         Some(v) => v,
+         None => return,
+     };
+-    if child.tag_name() == Some(EId::Symbol) && child.viewbox_disables_rendering() {
++    // A referenced `symbol` with a zero viewBox (SVG 2 §8.6) or an author
++    // `display: none` (the instance keeps the symbol's presentation
++    // attributes; WPT `use-symbol-display-none`) renders nothing.
++    if child.tag_name() == Some(EId::Symbol)
++        && (child.viewbox_disables_rendering()
++            || child.attribute::<&str>(AId::Display) == Some("none"))
++    {
+         return;
+     }
+
+@@ -67,12 +73,16 @@ pub(crate) fn convert(
+
+             let width = if node.has_attribute(AId::Width) {
+                 node.convert_user_length(AId::Width, &use_state, def)
++            } else if child.has_attribute(AId::Width) {
++                child.convert_user_length(AId::Width, &use_state, def)
+             } else {
+                 use_state.view_box.width()
+             };
+
+             let height = if node.has_attribute(AId::Height) {
+                 node.convert_user_length(AId::Height, &use_state, def)
++            } else if child.has_attribute(AId::Height) {
++                child.convert_user_length(AId::Height, &use_state, def)
+             } else {
+                 use_state.view_box.height()
+             };
+@@ -325,7 +335,7 @@ fn get_clip_rect(
+     let (x, y, mut w, mut h) = {
+         let x = use_node.convert_user_length(AId::X, state, Length::zero());
+         let y = use_node.convert_user_length(AId::Y, state, Length::zero());
+-        let (w, h) = use_node_size(use_node, state);
++        let (w, h) = symbol_viewport_size(use_node, symbol_node, state);
+         (x, y, w, h)
+     };
+
+@@ -356,7 +366,7 @@ fn viewbox_transform(
+     linked: SvgNode,
+     state: &converter::State,
+ ) -> Option<Transform> {
+-    let (mut w, mut h) = use_node_size(node, state);
++    let (mut w, mut h) = symbol_viewport_size(node, linked, state);
+
+     if node.tag_name() == Some(EId::Svg) {
+         // If attributes `width` and/or `height` are provided on the `use` element,
+@@ -375,3 +385,20 @@ fn viewbox_transform(
+
+     Some(view_box.to_transform(size))
+ }
++
++/// The viewport of the element a `use` instantiates (SVG 2 §5.6.2 "The 'use'
++/// element"): the `use` width/height when given, else — for a `symbol`,
++/// which SVG 2 gives its own geometry — the symbol's width/height, else 100%.
++fn symbol_viewport_size(node: SvgNode, linked: SvgNode, state: &converter::State) -> (f32, f32) {
++    let def = Length::new(100.0, LengthUnit::Percent);
++    let (mut w, mut h) = use_node_size(node, state);
++    if node.tag_name() == Some(EId::Use) && linked.tag_name() == Some(EId::Symbol) {
++        if !node.has_attribute(AId::Width) && linked.has_attribute(AId::Width) {
++            w = linked.convert_user_length(AId::Width, state, def);
++        }
++        if !node.has_attribute(AId::Height) && linked.has_attribute(AId::Height) {
++            h = linked.convert_user_length(AId::Height, state, def);
++        }
++    }
++    (w, h)
++}
