@@ -182,20 +182,3 @@ impl Color {
         color_channels::rgb(inner)
     }
 }
-
-thread_local! {
-    /// Используемая схема цвета узла, чей каскад идёт сейчас (css-color-adjust-1
-    /// §color-scheme-prop): по ней `light-dark()` выбирает вариант. Ставит
-    /// обход дерева (`dom::walk`) на время узла и его потомков.
-    static DARK_SCHEME: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-/// Тёмная ли схема у текущего узла.
-pub fn dark_scheme() -> bool {
-    DARK_SCHEME.with(|c| c.get())
-}
-
-/// Поставить схему текущего узла; возвращает прежнюю.
-pub fn set_dark_scheme(dark: bool) -> bool {
-    DARK_SCHEME.with(|c| c.replace(dark))
-}

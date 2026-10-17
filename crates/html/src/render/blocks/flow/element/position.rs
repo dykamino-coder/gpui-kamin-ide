@@ -103,6 +103,11 @@ pub(crate) fn position_element(
             &e.style,
         )
     };
+    let built = if e.style.root_box && e.style.canvas_bg {
+        crate::paint::background::record_root_box(built, opts.doc_salt, &e.style, opts.base_size())
+    } else {
+        built
+    };
     let built = vertical_hug(built, e, inherited);
     let built = sticky_wrap(built, &e.style, frame, layer_ok);
     // Таблица сжимается по содержимому (§17.5.2.2), и выражено это у

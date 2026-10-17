@@ -54,6 +54,8 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     let _cb_guard = scopeguard_cb(cb_prev);
     // Доступная ширина блочных детей этого уровня (см. `AVAIL_W`).
     let avail_prev = AVAIL_W.get();
+    let _height_guard =
+        crate::layout::block::available_height::enter(inherited, avail_prev, opts.viewport.1);
     AVAIL_W.set(available_width::inner(inherited, avail_prev));
     let _avail_guard = AvailWGuard(avail_prev);
     // `content-visibility: hidden`: содержимое пропускается целиком

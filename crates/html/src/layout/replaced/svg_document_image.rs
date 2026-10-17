@@ -45,8 +45,14 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         "<!DOCTYPE html><html><head><style>html,body{{margin:0;padding:0}}</style></head><body>{markup}</body></html>"
     );
     let outer_quirks = crate::style::select::quirks();
-    let (nodes, salt) =
-        crate::document::parse_embedded_sized(&html, crate::BROWSER_CSS, (w, h), false, false);
+    let (nodes, salt) = crate::document::parse_embedded_sized(
+        &html,
+        crate::BROWSER_CSS,
+        (w, h),
+        false,
+        false,
+        None,
+    );
     let mut sub = opts.clone();
     sub.viewport = (w, h);
     sub.doc_salt = salt;

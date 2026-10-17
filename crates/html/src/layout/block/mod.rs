@@ -1,6 +1,7 @@
 //! Блочный поток: схлопывание полей, струны, переупорядочение, ширина содержащего блока.
 // owner: A
 
+pub(crate) mod available_height;
 pub(crate) mod available_width;
 pub mod containing;
 mod margin_edges;
