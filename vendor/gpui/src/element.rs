@@ -729,6 +729,7 @@ impl AnyElement {
                 || inner.is::<crate::PaintLast>()
                 || inner.is::<crate::PaintInline>()
                 || inner.is::<crate::PaintCollect>()
+                || inner.is::<crate::ContextScope>()
                 // A nested `AnyElement` is a plain holder: its own `paint`
                 // repeats this check for the element inside.
                 || inner.is::<AnyElement>();
