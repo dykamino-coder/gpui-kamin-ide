@@ -8,6 +8,8 @@ pub use late::spot_place;
 pub use late::spot_probe;
 mod hang;
 pub use hang::InlineStartHang;
+mod source_paint;
+pub(crate) use source_paint::split as split_source_paint;
 mod layers;
 pub(crate) use layers::ICB;
 pub(crate) use layers::LATE;
@@ -56,6 +58,8 @@ pub struct Spot {
     pub fixed_axes: (bool, bool),
     /// Block-flow layer already supplies the actual CB layout geometry.
     pub preserve_cb_geometry: bool,
+    /// Geometry-only proxy; prepaint and paint stay at the source position.
+    pub layout_only: bool,
     /// Static coordinates must leave any enclosing fragmentation contexts.
     pub viewport_static: bool,
     /// Толщина колонки строки в повёрнутом абзаце: на неё отступает экранная
@@ -185,6 +189,12 @@ pub fn cb_open_with(fixed_cb: bool) {
         s.borrow_mut()
             .push(CB_ABS | if fixed_cb { CB_FIX } else { 0 })
     });
+}
+
+/// Is a containing-block layer available for this positioned box?
+pub(crate) fn cb_active(fixed: bool) -> bool {
+    let mask = if fixed { CB_FIX } else { CB_ABS };
+    CB_FIXED.with(|flags| flags.borrow().iter().any(|f| f & mask != 0))
 }
 
 const CB_ABS: u8 = 1;

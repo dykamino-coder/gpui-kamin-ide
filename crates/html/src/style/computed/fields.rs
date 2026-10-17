@@ -1568,4 +1568,6 @@ pub struct Computed {
     pub dark_color_scheme: bool,
     /// Specified initial color, resolved specially for quirks HTML tables.
     pub(crate) color_initial: bool,
+    /// DOM identity of this decorating box; never inherited.
+    pub decor_box: u64,
 }

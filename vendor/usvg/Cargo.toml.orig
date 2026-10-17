@@ -18,6 +18,7 @@ name = "usvg"
 required-features = ["svgz", "text", "system-fonts", "memmap-fonts", "writer"]
 
 [dependencies]
+url = "2"
 base64 = { version = "0.23", optional = true } # for embedded images
 log = "0.4"
 pico-args = { version = "0.5", features = ["eq-separator"] }

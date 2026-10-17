@@ -38,13 +38,19 @@ impl Stage {
         html: String,
         prev: Option<Vec<u8>>,
         want_flat: bool,
+        source: Option<&str>,
     ) -> Option<Shot> {
         let (window, hwnd, note) = (self.window, self.hwnd, &self.trace);
         let mut captures = CaptureCursor::new();
         let _ = cx.update_window(window, |view, window, cx| {
             if let Ok(page) = view.downcast::<Page>() {
                 page.update(cx, |page, cx| {
-                    page.doc = Rc::new(Document::new(&html, BROWSER_CSS));
+                    page.doc = Rc::new(match source {
+                        Some(path) => {
+                            Document::new_with_path(&html, BROWSER_CSS, std::path::Path::new(path))
+                        }
+                        None => Document::new(&html, BROWSER_CSS),
+                    });
                     page.select = reftest_pages(&html);
                     cx.notify();
                 });

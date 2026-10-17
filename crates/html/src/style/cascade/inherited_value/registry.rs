@@ -98,6 +98,7 @@ properties! {
     ZIndex: "z-index" => [z_index];
     VerticalAlign: "vertical-align" => [vertical_align, vertical_align_text, vertical_shift, vertical_shift_pct, vertical_shift_px, vertical_shift_len];
     DecorationThickness: "text-decoration-thickness" => [td_thickness];
+    DecorationInset: "text-decoration-inset" => [td_inset];
     BorderSpacing: "border-spacing" => [border_spacing];
     TopLeftRadius: "border-top-left-radius" => [radius.tl];
     TopRightRadius: "border-top-right-radius" => [radius.tr];

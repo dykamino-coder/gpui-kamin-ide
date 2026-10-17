@@ -75,7 +75,8 @@ pub(crate) fn dispatch_element(
             }
             // Единицы окна — в точки, как у строчной картинки.
             copy.style.resolve_viewport(opts.viewport);
-            image_with(&copy, Some(atom_base_font(inherited, opts)))
+            crate::layout::replaced::svg_document_image::render(&copy, opts)
+                .unwrap_or_else(|| image_with(&copy, Some(atom_base_font(inherited, opts))))
         }
         // Замещаемые с картинкой-источником рисуются как <img>: embed через
         // src, object через data, video через poster (css-images §5:
@@ -151,11 +152,13 @@ pub(crate) fn dispatch_element(
                 _ => CB_WIDTH.get().filter(|v| *v > 0.0),
             };
             // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`.
-            svg_replaced(e, &crate::svg::size::stretch_fit(e, cb_w), &merged).unwrap_or_else(|| {
-                styled_div_with(e, &merged)
-                    .child(SharedString::from("[рисунок]"))
-                    .into_any_element()
-            })
+            svg_replaced(e, &crate::svg::size::stretch_fit(e, cb_w), &merged, opts).unwrap_or_else(
+                || {
+                    styled_div_with(e, &merged)
+                        .child(SharedString::from("[рисунок]"))
+                        .into_any_element()
+                },
+            )
         }
         // `w_full` — растяжка по СТРОЧНОЙ оси горизонтального родителя. В
         // вертикальном родителе ширина — блочный размер (css-writing-modes-4

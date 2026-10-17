@@ -99,9 +99,9 @@ pub(super) fn decorate(parent: &Computed, own: &Computed, c: &mut Computed, own_
             DecorLen::Px(v) => DecorLen::Px(v),
             _ => DecorLen::Auto,
         };
-        let inset = match own.td_inset {
+        let inset = match c.td_inset {
             Some(None) => None,
-            Some(Some(pair)) => Some(pair.map(resolve)),
+            Some(Some(pair)) => Some(pair),
             None => Some([DecorLen::Px(0.0); 2]),
         };
         let d = Decor {
@@ -113,6 +113,8 @@ pub(super) fn decorate(parent: &Computed, own: &Computed, c: &mut Computed, own_
             position: c.underline_pos.unwrap_or(0),
             inset,
             clone: own.bdb_clone,
+            source: own.decor_box,
+            rtl: c.rtl.unwrap_or(false),
             over_lang,
             font: DecorFont {
                 family: c.font_family.clone(),

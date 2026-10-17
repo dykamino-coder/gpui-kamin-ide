@@ -54,11 +54,8 @@ pub(crate) fn paint_element(
         return;
     }
     if let Some(el) = scrollable(e, inherited, opts) {
-        // A scroll container is transformed like any box (css-transforms-1
-        // §transform-rendering): its own `transform`, backface and plane in
-        // the parent's 3D rendering context (css-transforms-2 §3d-transform-
-        // rendering) — the early return skipped `position_element`'s wrapper,
-        // so `rotateY(180deg)` / `translateZ` on `overflow: scroll` did nothing.
+        // CSS Transforms 1: transform the viewport and its bars together;
+        // preserve the parent 3D context, backface and plane as for other boxes.
         let el = crate::paint::effects::transform::transformed(el, &e.style, inherited);
         out.push(layered(el, &e.style, inherited, layer_ok, under_tf));
         return;

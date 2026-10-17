@@ -20,6 +20,9 @@ use gpui::AnyElement;
 
 /// Блочный элемент.
 pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+    if e.attr("kamin-outside-block") == Some("1") {
+        return crate::layout::float::outside_block::render(e, inherited, opts);
+    }
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
     let media_sized = crate::layout::replaced::media::resolve(e, inherited, opts.viewport);
