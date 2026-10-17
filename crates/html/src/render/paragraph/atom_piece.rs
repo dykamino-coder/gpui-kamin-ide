@@ -130,6 +130,17 @@ fn atom_piece_in(
         && e.style.display == Some(Display::InlineBlock)
         && e.style.vertical == Some(false)
     {
+        // An orthogonal atomic inline keeps its physical box and own writing
+        // mode (css-writing-modes-4 §4.3); the line synthesizes its baseline
+        // from the box's line-under edge, or its centre for a central
+        // baseline (css-align-3 §9.1; Blink LogicalBoxFragment synthesis).
+        // Measured against Chrome for alphabetic (sideways) lines only; a
+        // central-baseline line keeps the tcy emulation below
+        // (text-combine-upright-compression-007 moved its CJK glyphs).
+        let alphabetic = inherited.sideways == Some(true) || inherited.text_sideways == Some(true);
+        if alphabetic && let Some(physical) = rotated_atom::physical(e, inherited, opts) {
+            return Some(inline::Piece::Atom(physical));
+        }
         let mut merged = inherit(inherited, &e.style);
         merged.rotated_line = None;
         let em = match merged.width {
