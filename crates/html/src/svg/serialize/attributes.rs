@@ -23,6 +23,11 @@ pub(crate) fn write_attributes(
         if k == "transform-origin" {
             continue;
         }
+        // A cascaded geometry property replaces its presentation attribute
+        // (`super::geometry`).
+        if super::geometry::css_value(e, k).is_some() {
+            continue;
+        }
         if k == "transform" && attr_bad {
             continue;
         }

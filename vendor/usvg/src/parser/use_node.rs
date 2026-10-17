@@ -20,6 +20,9 @@ pub(crate) fn convert(
         Some(v) => v,
         None => return,
     };
+    if child.tag_name() == Some(EId::Symbol) && child.viewbox_disables_rendering() {
+        return;
+    }
 
     if state.parent_clip_path.is_some() && child.tag_name() == Some(EId::Symbol) {
         // Ignore `symbol` referenced by `use` inside a `clipPath`.
@@ -166,6 +169,9 @@ pub(crate) fn convert_svg(
     cache: &mut converter::Cache,
     parent: &mut Group,
 ) {
+    if node.viewbox_disables_rendering() {
+        return;
+    }
     // We require original transformation to setup 'clipPath'.
     let mut orig_ts = node.resolve_transform(AId::Transform, state);
     let mut new_ts = Transform::default();

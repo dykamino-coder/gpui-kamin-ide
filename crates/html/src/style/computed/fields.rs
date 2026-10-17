@@ -1583,4 +1583,8 @@ pub struct Computed {
     pub(crate) flex_line_wraps: bool,
     /// An explicit unsafe overflow position for block content alignment.
     pub align_content_unsafe: bool,
+    /// SVG 2 geometry properties `cx`, `cy`, `r`, `rx`, `ry`, `d` from the
+    /// cascade, already in attribute syntax (`svg::serialize::geometry`);
+    /// not inherited.
+    pub svg_geometry: Vec<(&'static str, String)>,
 }
