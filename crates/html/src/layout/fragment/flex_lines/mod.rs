@@ -10,6 +10,7 @@ use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 mod column;
+mod common;
 pub(super) use column::flex_gap_rules;
 use column::flex_lines_of;
 mod row;
