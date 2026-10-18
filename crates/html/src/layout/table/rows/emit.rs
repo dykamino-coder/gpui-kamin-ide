@@ -66,6 +66,7 @@ pub(super) fn emit_cell(
     )>,
     cell: &Element,
 ) {
+    let vcx = opts.cx.vcx();
     let d = cell_box_div(
         paint_layers,
         cell_bgs,
@@ -119,6 +120,7 @@ pub(super) fn emit_cell(
             cell_edge,
             cell,
             d,
+            vcx,
         )
     };
     // `transform` ячейки, ряда и группы рядов (css-transforms-1

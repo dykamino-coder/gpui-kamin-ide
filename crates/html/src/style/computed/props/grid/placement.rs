@@ -1,16 +1,24 @@
 //! Computed::apply_grid, хвост цепочки: grid-template-rows, grid-auto-*, размещение grid-row/column, grid-template-areas, grid-area. Ветви в исходном порядке после первых ветвей apply_grid.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
     #[allow(unused_variables)]
-    pub(super) fn apply_grid_placement(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_grid_placement(
+        &mut self,
+        key: &str,
+        val: &str,
+        v: &str,
+        hit: &mut bool,
+        vcx: ValueCx<'_>,
+    ) {
         match key {
             "grid-template-rows" => {
                 self.subgrid_rows = v.contains("subgrid");
                 self.subgrid = self.subgrid_cols || self.subgrid_rows;
                 self.grid_row_line_names = parse_line_names(v);
-                self.grid_rows = record_parsed!(self, parse_tracks(v));
+                self.grid_rows = record_parsed!(self, parse_tracks(v, vcx));
                 if self.subgrid_rows || v == "none" {
                     self.accept_declaration();
                 }
@@ -20,7 +28,7 @@ impl Computed {
                 // и раскладка их циклит. Пока бралась первая, вторая колонка
                 // получала ширину первой (`grid-support-grid-auto-columns-
                 // rows-002`, `grid-floats-no-intrude-002`).
-                let all = record_parsed!(self, parse_tracks(v)).unwrap_or_default();
+                let all = record_parsed!(self, parse_tracks(v, vcx)).unwrap_or_default();
                 self.grid_auto_cols_list = if all.len() > 1 {
                     all.clone()
                 } else {
@@ -29,7 +37,7 @@ impl Computed {
                 self.grid_auto_cols = all.into_iter().next();
             }
             "grid-auto-rows" => {
-                let all = record_parsed!(self, parse_tracks(v)).unwrap_or_default();
+                let all = record_parsed!(self, parse_tracks(v, vcx)).unwrap_or_default();
                 self.grid_auto_rows_list = if all.len() > 1 {
                     all.clone()
                 } else {

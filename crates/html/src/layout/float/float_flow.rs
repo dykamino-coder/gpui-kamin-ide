@@ -22,10 +22,11 @@ use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 /// плавающего блока не заданы явно, резать нечем — тогда ряд остаётся прежним:
 /// две колонки до конца абзаца.
 pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+    let vcx = opts.cx.vcx();
     // Ряд без разреза — прежнее поведение: две колонки до конца абзаца.
     // Стиль берётся СЛИТЫЙ: у ряда своя раскладка, и без неё дети встают
     // друг под другом вместо колонок.
-    let merged = inherit(inherited, &row.style);
+    let merged = inherit(inherited, &row.style, vcx);
     // Ряд обтекания ФИЗИЧЕСКИЙ: левые флоаты собраны в начало, правые — в
     // конец (сборка `float_runs`), а `float: left/right` от письма не
     // зависят (CSS 2.1 §9.5.1). Унаследованное `direction: rtl` разворачивало

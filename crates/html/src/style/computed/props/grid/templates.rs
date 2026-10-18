@@ -1,10 +1,18 @@
 //! Computed::apply_grid, продолжение цепочки: сокращения grid/grid-template, grid-lanes, пороги лунок, grid-*-gap. Ветви в исходном порядке; не совпавший ключ уходит в apply_grid_placement.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
     #[allow(unused_variables)]
-    pub(super) fn apply_grid_templates(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_grid_templates(
+        &mut self,
+        key: &str,
+        val: &str,
+        v: &str,
+        hit: &mut bool,
+        vcx: ValueCx<'_>,
+    ) {
         match key {
             // ★ ЗАМЕРЕНО И ОТКАЧЕНО: ИМЕНА ЛИНИЙ целиком (план — в
             // `target/scout-linenames.md`, шаги A1-A3). Написано и работало:
@@ -34,7 +42,7 @@ impl Computed {
                 self.subgrid = self.subgrid_cols || self.subgrid_rows;
                 self.grid_col_line_names = parse_line_names(v);
                 self.grid_cols = count_tracks(v);
-                self.grid_tracks = record_parsed!(self, parse_tracks(v));
+                self.grid_tracks = record_parsed!(self, parse_tracks(v, vcx));
                 if self.subgrid_cols || v == "none" {
                     self.accept_declaration();
                 }
@@ -60,8 +68,8 @@ impl Computed {
                         } else {
                             AutoFlow::Row
                         });
-                        self.apply_one("grid-auto-rows", strip_auto_flow(rows));
-                        self.apply_one("grid-template-columns", cols);
+                        self.apply_one("grid-auto-rows", strip_auto_flow(rows), vcx);
+                        self.apply_one("grid-template-columns", cols, vcx);
                     }
                     (_, true) => {
                         self.grid_auto_flow = Some(if cols.contains("dense") {
@@ -69,13 +77,13 @@ impl Computed {
                         } else {
                             AutoFlow::Col
                         });
-                        self.apply_one("grid-template-rows", rows);
-                        self.apply_one("grid-auto-columns", strip_auto_flow(cols));
+                        self.apply_one("grid-template-rows", rows, vcx);
+                        self.apply_one("grid-auto-columns", strip_auto_flow(cols), vcx);
                     }
                     _ => {
-                        self.apply_one("grid-template-rows", rows);
+                        self.apply_one("grid-template-rows", rows, vcx);
                         if !cols.is_empty() {
-                            self.apply_one("grid-template-columns", cols);
+                            self.apply_one("grid-template-columns", cols, vcx);
                         }
                     }
                 }
@@ -94,7 +102,7 @@ impl Computed {
                     match v.trim() {
                         "normal" => None,
                         "infinite" => Some(Len::Px(f32::INFINITY)),
-                        t => Len::parse(t),
+                        t => Len::parse(t, vcx),
                     }
                 );
                 if v == "normal" {
@@ -110,10 +118,10 @@ impl Computed {
                 self.lanes_fill_reverse = v.split_whitespace().any(|w| w == "fill-reverse");
                 self.lanes_track_reverse = v.split_whitespace().any(|w| w == "track-reverse");
             }
-            "grid-gap" => self.apply_one("gap", v),
-            "grid-row-gap" => self.apply_one("row-gap", v),
-            "grid-column-gap" => self.apply_one("column-gap", v),
-            _ => self.apply_grid_placement(key, val, v, hit),
+            "grid-gap" => self.apply_one("gap", v, vcx),
+            "grid-row-gap" => self.apply_one("row-gap", v, vcx),
+            "grid-column-gap" => self.apply_one("column-gap", v, vcx),
+            _ => self.apply_grid_placement(key, val, v, hit, vcx),
         }
     }
 }

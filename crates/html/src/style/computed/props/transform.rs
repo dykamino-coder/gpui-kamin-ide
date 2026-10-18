@@ -1,5 +1,6 @@
 //! Computed::apply_one: transform*, translate/rotate/scale, perspective*, offset-*.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::Len;
 
@@ -11,13 +12,26 @@ use functions_3d::transform_function_3d;
 
 impl Computed {
     #[allow(unused_variables)]
-    pub(crate) fn apply_transform(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_transform(
+        &mut self,
+        key: &str,
+        val: &str,
+        v: &str,
+        hit: &mut bool,
+        vcx: ValueCx<'_>,
+    ) {
         match key {
             // --- Сдвиг и тень текста ------------------------------------------
             "translate" => {
                 let mut it = v.split_whitespace();
-                let x = it.next().and_then(Len::parse).unwrap_or(Len::Px(0.0));
-                let y = it.next().and_then(Len::parse).unwrap_or(Len::Px(0.0));
+                let x = it
+                    .next()
+                    .and_then(|s| Len::parse(s, vcx))
+                    .unwrap_or(Len::Px(0.0));
+                let y = it
+                    .next()
+                    .and_then(|s| Len::parse(s, vcx))
+                    .unwrap_or(Len::Px(0.0));
                 self.translate = accept_parsed!(self, Some((x, y)));
             }
 
@@ -33,7 +47,7 @@ impl Computed {
             // индексом арены — доля решается длиной пути во втором проходе
             // (`motion::path_css`; offset-path-shape-xywh-002).
             "offset-distance" => {
-                self.offset_distance = record_parsed!(self, Len::parse_mixed(v.trim()))
+                self.offset_distance = record_parsed!(self, Len::parse_mixed(v.trim(), vcx))
             }
             "offset-rotate" => {
                 self.offset_rotate = accept_parsed!(self, Some(v.trim().to_string()))
@@ -141,7 +155,7 @@ impl Computed {
                     self.transform = accept_parsed!(self, Some(t));
                 }
             }
-            _ => self.apply_transform_individual(key, val, v, hit),
+            _ => self.apply_transform_individual(key, val, v, hit, vcx),
         }
     }
 }

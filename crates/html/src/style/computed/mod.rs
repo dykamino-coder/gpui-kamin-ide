@@ -5,6 +5,7 @@
 //! Во-вторых, ровно она задаёт границу охвата: поле есть — свойство
 //! поддержано, поля нет — свойство игнорируется осознанно, а не потеряно.
 
+use crate::document::state::ValueCx;
 #[macro_use]
 mod declaration_parse;
 pub(crate) use declaration_parse::ParseResult;
@@ -78,13 +79,13 @@ pub struct Sides {
 impl Sides {
     /// Раскрытие сокращённой записи: 1 значение — все стороны, 2 — верт/гориз,
     /// 3 — верх/гориз/низ, 4 — по часовой.
-    pub(crate) fn shorthand(raw: &str) -> Sides {
+    pub(crate) fn shorthand(raw: &str, vcx: ValueCx<'_>) -> Sides {
         // Разрез — по пробелам ВНЕ скобок: `calc(10px + 1%) 0 0 0` — четыре
         // значения, а не шесть обрывков (`calc-margin-block-1`). Смесь с долей
         // доживает индексом (`parse_mixed`) — раскладка складывает её сама.
         let v: Vec<Option<Len>> = split_outside_parens(raw)
             .iter()
-            .map(|t| Len::parse_mixed(t))
+            .map(|t| Len::parse_mixed(t, vcx))
             .collect();
         match v.len() {
             1 => Sides {

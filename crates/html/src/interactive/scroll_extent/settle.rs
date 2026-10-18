@@ -1,6 +1,8 @@
 //! Resolve physical CSS scroll ranges, including far-edge origins.
+
 use super::geometry::{sides, union};
 use super::*;
+use crate::document::state::ValueCx;
 use crate::dom::Node;
 use gpui::ScrollHandle;
 impl Frame {
@@ -11,6 +13,7 @@ impl Frame {
         handle: &ScrollHandle,
         bounds: Bounds<Pixels>,
         sticky: Option<&super::exact_probe::StickyShift>,
+        vcx: ValueCx<'_>,
     ) -> bool {
         if !self.marker.get() {
             return false;
@@ -165,6 +168,7 @@ impl Frame {
                 snap_bounds,
                 self.insets.get(),
                 self.range.get(),
+                vcx,
             );
         }
         false

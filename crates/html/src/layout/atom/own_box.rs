@@ -15,16 +15,17 @@ pub(super) fn own_box_atom(
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
-    let mut merged = inherit(inherited, &e.style);
+    let vcx = opts.cx.vcx();
+    let mut merged = inherit(inherited, &e.style, vcx);
     // Viewport units resolve against the viewport (css-values-4 §6.1.2), as in
     // `element()`: the atom path skipped it and `height: 350vh` on an
     // `inline-block` with `vertical-align: top` collapsed to its content
     // (`monolithic-overflow-014/015-print`).
-    merged.resolve_viewport(opts.viewport);
+    merged.resolve_viewport(opts.viewport, vcx);
     // CSS 2 sections 5.12.1-5.12.2 include inline-block containers,
     // but not ordinary inline boxes, in the pseudo-line scope.
     if e.style.display == Some(Display::InlineBlock) && e.style.inline_display != Some(true) {
-        pseudo_line_layers::install(e, &mut merged);
+        pseudo_line_layers::install(e, &mut merged, vcx);
     }
     let mut box_ = styled_div_with(e, &merged, &opts.cx);
     // Writing Modes 4 §4.3: orthogonal content has no baseline in the line's
@@ -154,5 +155,9 @@ pub(super) fn own_box_atom(
     if cb_layer {
         kids.extend(opts.cx.positioning.cb_close());
     }
-    Some(grouped(box_.children(kids).into_any_element(), &e.style))
+    Some(grouped(
+        box_.children(kids).into_any_element(),
+        &e.style,
+        vcx,
+    ))
 }

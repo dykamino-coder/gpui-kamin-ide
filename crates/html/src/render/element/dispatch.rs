@@ -25,6 +25,7 @@ pub(crate) fn dispatch_element(
     outer_row: Option<(f32, f32)>,
     mut built_iframe: Option<AnyElement>,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     if let Some(math) = crate::layout::mathml::element(e, inherited, opts) {
         return math;
     }
@@ -76,7 +77,7 @@ pub(crate) fn dispatch_element(
                 copy.style.cb_height_def = merged.cb_height_def;
             }
             // Единицы окна — в точки, как у строчной картинки.
-            copy.style.resolve_viewport(opts.viewport);
+            copy.style.resolve_viewport(opts.viewport, vcx);
             crate::layout::replaced::svg_document_image::render(&copy, opts).unwrap_or_else(|| {
                 image_with(&copy, Some(atom_base_font(inherited, opts)), &opts.cx)
             })

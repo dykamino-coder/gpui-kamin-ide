@@ -10,6 +10,7 @@
 //! Числа матриц — из спецификации (CSS Color 4, приложение о преобразованиях).
 //! Менять их «на глаз» нельзя: они согласованы между собой и с точками белого.
 
+use crate::document::state::ValueCx;
 pub(crate) use gradient_stop::{
     colour_at as gradient_colour_at, out_of_gamut, parse as interpolation_color,
 };
@@ -70,7 +71,7 @@ fn number(raw: &str, base: f32) -> Option<f32> {
 }
 
 /// Разобрать одну из записей CSS Color 4. `None` — запись не наша.
-pub fn parse(raw: &str) -> Option<(f32, f32, f32, f32)> {
+pub fn parse(raw: &str, vcx: ValueCx<'_>) -> Option<(f32, f32, f32, f32)> {
     let text = raw.trim();
     let lower = text.to_ascii_lowercase();
     let inner = |name: &str| -> Option<&str> {
@@ -84,7 +85,7 @@ pub fn parse(raw: &str) -> Option<(f32, f32, f32, f32)> {
     // `contrast-color()` — чёрный или белый, что контрастнее к данному цвету
     // (css-color-5 §3): сравниваются отношения контраста к обоим.
     if let Some(body) = inner("contrast-color") {
-        let c = crate::style::values::value::Color::parse(body)?;
+        let c = crate::style::values::value::Color::parse(body, vcx)?;
         let y = 0.2126 * srgb_linear(c.r) + 0.7152 * srgb_linear(c.g) + 0.0722 * srgb_linear(c.b);
         let against_white = 1.05 / (y + 0.05);
         let against_black = (y + 0.05) / 0.05;
@@ -107,10 +108,10 @@ pub fn parse(raw: &str) -> Option<(f32, f32, f32, f32)> {
         return lch(body, true);
     }
     if let Some(body) = inner("color") {
-        return color_fn(body);
+        return color_fn(body, vcx);
     }
     if let Some(body) = inner("color-mix") {
-        return color_mix(body);
+        return color_mix(body, vcx);
     }
     None
 }

@@ -1,15 +1,20 @@
 //! Box paint for element_nodes; split out to keep the owning module within 250 lines.
 
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Color, Len, px_lossy_zero};
 use crate::text::inline::*;
 
-pub(super) fn element_style(e: &Element, inherited: &Computed) -> (Computed, bool) {
-    let mut merged = inherit(inherited, &e.style);
+pub(super) fn element_style(
+    e: &Element,
+    inherited: &Computed,
+    vcx: ValueCx<'_>,
+) -> (Computed, bool) {
+    let mut merged = inherit(inherited, &e.style, vcx);
     let viewport = crate::paint::effects::mask::PAINT_VIEWPORT.with(|v| v.get());
-    merged.resolve_decor_inset_viewport(viewport);
+    merged.resolve_decor_inset_viewport(viewport, vcx);
     // Относительный сдвиг строчного КОПИТСЯ вниз: вложенные
     // куски двигаются на сумму сдвигов предков.
     // Вставки — из СЛИТОГО стиля: там `em` уже в точках (`resolve_em`), а

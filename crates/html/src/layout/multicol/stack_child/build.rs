@@ -33,6 +33,7 @@ pub(super) fn build_copy(
     part: usize,
     band: bool,
 ) -> gpui::AnyElement {
+    let vcx = opts.cx.vcx();
     // `box-decoration-break: clone`: копия — САМ
     // фрагмент (`clone_fragment`), и корень, и
     // наследуемый стиль берутся у НЕГО. ★ Откат
@@ -55,7 +56,7 @@ pub(super) fn build_copy(
         }
         _ => None,
     };
-    let frag_inner = frag.as_ref().map(|f| inherit(merged, &f.style));
+    let frag_inner = frag.as_ref().map(|f| inherit(merged, &f.style, vcx));
     let src: &Element = frag.as_ref().unwrap_or(copy);
     let src_inner: &Computed = frag_inner.as_ref().unwrap_or(inner);
     let mut kids = copy_kids(copy, first, src, band);
@@ -229,7 +230,7 @@ pub(super) fn build_copy(
         || inner.clip_polygon.is_some()
         || inner.mask_image.is_some()
     {
-        crate::paint::effects::grouped::grouped(el, inner)
+        crate::paint::effects::grouped::grouped(el, inner, vcx)
     } else {
         el
     }

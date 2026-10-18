@@ -29,6 +29,7 @@ pub(super) fn blocks_flow(
     below_run_start: usize,
     below_zs: Vec<i32>,
 ) -> Vec<AnyElement> {
+    let vcx = opts.cx.vcx();
     // Запросы среза строк (`text::line_trim`): свой контейнер адресует их
     // владельцам строк до раскладки детей, а сам забирает адресованные ему.
     let owner = inherited.self_node;
@@ -111,8 +112,8 @@ pub(super) fn blocks_flow(
             let patched;
             let e = if e.style.offset_icb {
                 let mut copy = e.clone();
-                copy.style.resolve_viewport(opts.viewport);
-                crate::animation::motion::apply_icb(&mut copy.style, opts.viewport);
+                copy.style.resolve_viewport(opts.viewport, vcx);
+                crate::animation::motion::apply_icb(&mut copy.style, opts.viewport, vcx);
                 patched = copy;
                 &patched
             } else {

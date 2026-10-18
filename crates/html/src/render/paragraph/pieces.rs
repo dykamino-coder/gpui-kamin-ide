@@ -29,6 +29,7 @@ pub(crate) fn paragraph_pieces_routed(
     first_line: &Computed,
     native_request: Option<&native_paragraph_route::Request<'_>>,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     // Бюджет строк знака обрыва (авто-режим) забирается РАЗОМ, до сборки
     // кусков: куски строят вложенные абзацы (`inline-block`, `<svg>`), и
     // чужой бюджет им доставаться не должен.
@@ -150,7 +151,7 @@ pub(crate) fn paragraph_pieces_routed(
     // `calc(50% - 3px)` несёт обе части разом: `Paragraph` складывает
     // `px + pct × ширина строки` сам (`lines.rs`, css-text-3 §2.1).
     let mixed = match inherited.text_indent {
-        Some(Len::Calc(i)) => crate::style::values::value::calc_get(i).pct_px(),
+        Some(Len::Calc(i)) => crate::style::values::value::calc_get(i, vcx).pct_px(),
         _ => None,
     };
     let indent = crate::text::paragraph::Indent {

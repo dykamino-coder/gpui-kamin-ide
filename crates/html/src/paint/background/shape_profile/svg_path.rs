@@ -1,10 +1,15 @@
 //! Преобразование CSS-формы в SVG path для профиля обтекания.
 
 use super::ShapeBox;
+use crate::document::state::ValueCx;
 use crate::paint::background::*;
 
 /// Контур для SVG-растеризатора: polygon / path / shape.
-pub(crate) fn svg_path_of(raw: &str, b: &ShapeBox) -> Option<(String, &'static str)> {
+pub(crate) fn svg_path_of(
+    raw: &str,
+    b: &ShapeBox,
+    vcx: ValueCx<'_>,
+) -> Option<(String, &'static str)> {
     let raw = raw.trim();
     // Функция может идти ПОСЛЕ слова-коробки: `padding-box polygon(...)`.
     if let Some(at) = raw.find("polygon(") {
@@ -22,7 +27,7 @@ pub(crate) fn svg_path_of(raw: &str, b: &ShapeBox) -> Option<(String, &'static s
                 pts_src = rest.trim_start().trim_start_matches(',');
             }
             let len_px = |t: &str, base: f32| -> f32 {
-                match crate::style::values::value::Len::parse(t) {
+                match crate::style::values::value::Len::parse(t, vcx) {
                     Some(crate::style::values::value::Len::Px(v)) => v,
                     Some(crate::style::values::value::Len::Pct(k)) => k * base,
                     _ => 0.0,
@@ -81,7 +86,7 @@ pub(crate) fn svg_path_of(raw: &str, b: &ShapeBox) -> Option<(String, &'static s
             .map(|(a, _)| a)
             .unwrap_or(&raw[at + 6..]);
         {
-            let d = shape_to_path(&inner.replace(',', ";"), b.rw, b.rh)?;
+            let d = shape_to_path(&inner.replace(',', ";"), b.rw, b.rh, vcx)?;
             return Some((d, "nonzero"));
         }
     }

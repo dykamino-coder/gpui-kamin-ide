@@ -1,5 +1,6 @@
 //! CSS `clip-path` на детях `<svg>`: синтез `<clipPath>` и опорные коробки фигур.
 
+use crate::document::state::ValueCx;
 mod ids;
 mod reference;
 pub(crate) use ids::ClipIds;
@@ -36,6 +37,7 @@ fn func_end(s: &str) -> Option<usize> {
 fn clip_body(
     c: &crate::style::computed::Computed,
     (bx, by, bw, bh): (f32, f32, f32, f32),
+    vcx: ValueCx<'_>,
 ) -> Option<String> {
     use crate::style::values::value::Len;
     let at = |l: Len, side: f32| match l {
@@ -80,7 +82,7 @@ fn clip_body(
         }
         // Хвост после функции — слово коробки (`… view-box`): отрезается.
         let func = &raw[..func_end(raw)?];
-        let (cx, cy, rx, ry) = crate::paint::background::shape_params(func, bw, bh, 1.0)?;
+        let (cx, cy, rx, ry) = crate::paint::background::shape_params(func, bw, bh, 1.0, vcx)?;
         return Some(format!(
             "<ellipse cx=\"{}\" cy=\"{}\" rx=\"{rx}\" ry=\"{ry}\"/>",
             bx + cx,
@@ -92,7 +94,10 @@ fn clip_body(
         (rule, d.to_string())
     } else if let Some(rest) = spec.strip_prefix("shapedef:") {
         let (rule, body) = rest.split_once(':')?;
-        (rule, crate::paint::background::shape_to_path(body, bw, bh)?)
+        (
+            rule,
+            crate::paint::background::shape_to_path(body, bw, bh, vcx)?,
+        )
     } else {
         return None;
     };
@@ -113,7 +118,12 @@ fn clip_body(
 /// `svg-clip-path-ellipse-offset` 0.82, `clip-path-viewBox-1a/1b` 2.19/6.72;
 /// близнецы `*-borderBox-1b`, `*-strokeBox-1b/1c` и родня держались под
 /// порогом случайно — 0.47-0.49).
-pub(super) fn synth_clip(e: &Element, out: &mut String, ids: &ClipIds) -> Option<String> {
+pub(super) fn synth_clip(
+    e: &Element,
+    out: &mut String,
+    ids: &ClipIds,
+    vcx: ValueCx<'_>,
+) -> Option<String> {
     if e.tag.eq_ignore_ascii_case("svg") || IN_CLIP.with(|c| c.get()) {
         return None;
     }
@@ -135,7 +145,7 @@ pub(super) fn synth_clip(e: &Element, out: &mut String, ids: &ClipIds) -> Option
             .attr("clip-path")
             .filter(|v| !v.trim_start().starts_with("url("))?;
         let mut fresh = crate::style::computed::Computed::default();
-        fresh.apply_one("clip-path", raw);
+        fresh.apply_one("clip-path", raw, vcx);
         parsed = fresh;
         (&parsed, raw.contains("view-box"))
     };
@@ -151,7 +161,7 @@ pub(super) fn synth_clip(e: &Element, out: &mut String, ids: &ClipIds) -> Option
     } else {
         shape_box(e, !matches!(c.clip_ref, Some(2) | Some(3)))?
     };
-    let body = clip_body(c, rb)?;
+    let body = clip_body(c, rb, vcx)?;
     let mut hasher = DefaultHasher::new();
     body.hash(&mut hasher);
     let id = ids.id(hasher.finish());

@@ -39,6 +39,7 @@ pub(crate) fn paint_element(
     out: &mut Vec<AnyElement>,
     below: &mut BelowRun,
 ) {
+    let vcx = opts.cx.vcx();
     // Ключ краски шага 8 — до сборки детей (см. `next_paint_key`).
     let paint_key = opts.cx.next_paint_key();
     // CSS2 Appendix E: descendants paint within their nearest stacking context.
@@ -73,7 +74,7 @@ pub(crate) fn paint_element(
     // `display: contents` — своей коробки у элемента нет: дети
     // становятся детьми родителя, и стиль самого элемента исчезает.
     if e.style.display == Some(Display::Contents) {
-        let mut merged = inherit(inherited, &e.style);
+        let mut merged = inherit(inherited, &e.style, vcx);
         // Своей коробки нет — значит и объёмный контекст она не
         // обрывает: дети берут ячейки ДЕДА (css-display-3
         // §box-generation; transform3d-preserve3d-014 — `rotateX(90)`

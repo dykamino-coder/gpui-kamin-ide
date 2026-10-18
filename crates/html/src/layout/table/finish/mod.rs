@@ -46,6 +46,7 @@ pub(super) fn table_finish(
     have_rows: bool,
     px_of: impl Fn(Option<Len>) -> f32,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     let mut grid_children = under;
     if paint_layers {
         grid_children
@@ -96,7 +97,7 @@ pub(super) fn table_finish(
     // `percentage-sizing-of-table-cell-children-004` («красное видно»),
     // `subpixel-table-cell-height-001`. Ряд без заданной высоты обязан
     // остаться авто-дорожкой ТОЛЬКО в контексте, где стол не растянут.
-    let grid_box = table_grid_box(e, inherited, row_elements, tracks, table_tall);
+    let grid_box = table_grid_box(e, inherited, row_elements, tracks, table_tall, vcx);
     // Сросшиеся рамки: у таблицы нет паддинга, а кромка между её рамкой и
     // краевыми ячейками одна — ячейки накрывают ВНУТРЕННЮЮ ПОЛОВИНУ рамки
     // (CSS 2.1 §17.6.2). Рамка при этом рисуется ПОВЕРХ фонов ячеек, как и
@@ -230,5 +231,6 @@ pub(super) fn table_finish(
         root_table,
         outer,
         shrink_wrap,
+        vcx,
     )
 }

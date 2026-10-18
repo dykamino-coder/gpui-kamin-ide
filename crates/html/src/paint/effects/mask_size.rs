@@ -1,4 +1,6 @@
 //! Resolve mask image sizes with the CSS background image sizing algorithm.
+
+use crate::document::state::ValueCx;
 use crate::paint::background::{Intrinsic, tile_size};
 use crate::style::computed::BgSize;
 use crate::style::values::value::Len;
@@ -25,6 +27,7 @@ pub(super) fn tile(
     area: (f32, f32),
     size: Option<(Len, Len)>,
     fit: u8,
+    vcx: ValueCx<'_>,
 ) -> (f32, f32) {
     let intrinsic = Intrinsic {
         w: intrinsic.w.map(|w| w * scale),
@@ -37,7 +40,7 @@ pub(super) fn tile(
         _ => size.map_or(BgSize::Auto, |(w, h)| BgSize::Fixed(Some(w), Some(h))),
     };
     // CSS Masking §7.8 defines mask-size through CSS Backgrounds §3.9.
-    tile_size(intrinsic, area, size)
+    tile_size(intrinsic, area, size, vcx)
 }
 
 /// `round` (css-backgrounds-3 §3.4, via css-masking-1 §7.6): the tile is

@@ -1,9 +1,10 @@
 //! Computed lengths for text-decoration-inset (CSS Text Decoration 4 §4.1).
 
+use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, DecorLen};
 use crate::style::values::value::{Len, calc_get};
 
-fn map_length(value: DecorLen, fix: impl Fn(&mut Option<Len>)) -> DecorLen {
+fn map_length(value: DecorLen, fix: impl Fn(&mut Option<Len>), vcx: ValueCx<'_>) -> DecorLen {
     let DecorLen::Raw(raw) = value else {
         return value;
     };
@@ -12,7 +13,7 @@ fn map_length(value: DecorLen, fix: impl Fn(&mut Option<Len>)) -> DecorLen {
     match length.unwrap_or(raw) {
         Len::Px(v) => DecorLen::Px(v),
         Len::Pct(v) => DecorLen::Pct(v),
-        Len::Calc(i) => calc_get(i)
+        Len::Calc(i) => calc_get(i, vcx)
             .pct_px()
             .map_or(DecorLen::Raw(Len::Calc(i)), |(pct, px)| {
                 DecorLen::Mix(pct, px)
@@ -27,6 +28,7 @@ impl Computed {
         fix: impl Fn(&mut Option<Len>),
         family: &str,
         font: f32,
+        vcx: ValueCx<'_>,
     ) {
         let line = match self.line_height {
             Some(Len::Px(v)) => v,
@@ -42,29 +44,33 @@ impl Computed {
         };
         if let Some(Some(pair)) = &mut self.td_inset {
             for value in pair {
-                *value = map_length(*value, |length| {
-                    fix(length);
-                    match *length {
-                        Some(Len::Lh(k)) => *length = Some(Len::Px(k * line)),
-                        Some(Len::LhPx(k, p)) => *length = Some(Len::Px(k * line + p)),
-                        Some(Len::Calc(i)) => {
-                            let mut sum = calc_get(i);
-                            if sum.lh != 0.0 {
-                                sum.px += sum.lh * line;
-                                sum.lh = 0.0;
-                                *length = sum.collapse_mixed();
+                *value = map_length(
+                    *value,
+                    |length| {
+                        fix(length);
+                        match *length {
+                            Some(Len::Lh(k)) => *length = Some(Len::Px(k * line)),
+                            Some(Len::LhPx(k, p)) => *length = Some(Len::Px(k * line + p)),
+                            Some(Len::Calc(i)) => {
+                                let mut sum = calc_get(i, vcx);
+                                if sum.lh != 0.0 {
+                                    sum.px += sum.lh * line;
+                                    sum.lh = 0.0;
+                                    *length = sum.collapse_mixed(vcx);
+                                }
                             }
+                            _ => {}
                         }
-                        _ => {}
-                    }
-                });
+                    },
+                    vcx,
+                );
             }
         }
     }
 
     /// Inline collection has no general viewport-resolution pass. Only the
     /// decoration's outstanding viewport terms are resolved there.
-    pub(crate) fn resolve_decor_inset_viewport(&mut self, viewport: (f32, f32)) {
+    pub(crate) fn resolve_decor_inset_viewport(&mut self, viewport: (f32, f32), vcx: ValueCx<'_>) {
         let insets = self.viewport_unit_insets.unwrap_or_default();
         let viewport = (
             (viewport.0 - insets[0]).max(0.0),
@@ -79,22 +85,22 @@ impl Computed {
             Some(Len::Vw(k)) => *length = Some(Len::Px(k * viewport.0)),
             Some(Len::Vh(k)) => *length = Some(Len::Px(k * viewport.1)),
             Some(Len::Calc(i)) => {
-                let mut sum = calc_get(i);
+                let mut sum = calc_get(i, vcx);
                 if sum.fold_viewport(viewport, vertical, container) {
-                    *length = sum.collapse_mixed();
+                    *length = sum.collapse_mixed(vcx);
                 }
             }
             _ => {}
         };
         if let Some(Some(pair)) = &mut self.td_inset {
             for value in pair {
-                *value = map_length(*value, fix);
+                *value = map_length(*value, fix, vcx);
             }
         }
         for decor in &mut self.decors {
             if let Some(pair) = &mut decor.inset {
                 for value in pair {
-                    *value = map_length(*value, fix);
+                    *value = map_length(*value, fix, vcx);
                 }
             }
         }

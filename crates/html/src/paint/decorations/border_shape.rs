@@ -1,11 +1,14 @@
 //! Рамка `border-shape` (css-borders-4 §border-shape) растровым слоем.
+
+use crate::document::state::ValueCx;
 // owner: A
 
 use crate::style::computed::Computed;
 use crate::style::values::value::px_lossy_zero;
 use gpui::{IntoElement, Styled, px};
 
-pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
+pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx: ValueCx<'_>) {
+    let values = vcx.keep();
     // Рамка `border-shape` (css-borders-4 §border-shape): одна фигура — SVG-
     // обводка толщиной «relevant side» по центру контура, две — заливка между
     // внешней и внутренней. Квад цвета не получает (`apply::apply_paint`),
@@ -14,7 +17,7 @@ pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>) 
     // контур, что у маски группы (`background::border_shape_path`).
     if let Some(bs) = c.border_shape.clone() {
         let (stroke, colour) = c.border_shape_stroke();
-        let colour = crate::paint::background::border_paint(c, colour);
+        let colour = crate::paint::background::border_paint(c, colour, vcx);
         let outer_out = c.geometry_outsets(bs.outer_box);
         let inner = bs.inner.clone().map(|(s, k)| (s, c.geometry_outsets(k)));
         let ext = c.border_shape_ext();
@@ -35,10 +38,12 @@ pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>) 
         let inset = c.resolved_shadows(true);
         if inset.iter().any(|(_, k)| k.a > 0.0) {
             let (bs, outer_out, inner) = (bs.clone(), outer_out, inner.clone());
+            let values = values.clone();
             out.push(
                 gpui::canvas(
                     |_, _, _| {},
                     move |bounds, _, window, _| {
+                        let vcx = values.vcx();
                         let (cw, ch) =
                             (f32::from(bounds.size.width), f32::from(bounds.size.height));
                         let (bw, bh) = (cw - ext[3] - ext[1], ch - ext[0] - ext[2]);
@@ -54,6 +59,7 @@ pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>) 
                             ext[0],
                             cw,
                             ch,
+                            vcx,
                         );
                         if let Some(markup) = markup
                             && let Some(img) = crate::svg::raster::rasterize(&markup, cw, ch)
@@ -80,10 +86,12 @@ pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>) 
         // При обрезке переполнения кольцо уходит НАД буфер группы
         // (`grouped` → `Grouped::over`): здесь оно легло бы под детей.
         if (inner.is_some() || stroke > 0.0) && colour.a > 0.0 && !c.border_shape_clips() {
+            let values = values.clone();
             out.push(
                 gpui::canvas(
                     |_, _, _| {},
                     move |bounds, _, window, _| {
+                        let vcx = values.vcx();
                         let (cw, ch) =
                             (f32::from(bounds.size.width), f32::from(bounds.size.height));
                         let (bw, bh) = (cw - ext[3] - ext[1], ch - ext[0] - ext[2]);
@@ -98,6 +106,7 @@ pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>) 
                             ext[0],
                             cw,
                             ch,
+                            vcx,
                         );
                         if let Some(markup) = markup
                             && let Some(img) = crate::svg::raster::rasterize(&markup, cw, ch)

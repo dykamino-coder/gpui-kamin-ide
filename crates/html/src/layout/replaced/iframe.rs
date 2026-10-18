@@ -63,6 +63,7 @@ pub(crate) fn object_is_document(e: &Element) -> bool {
 }
 
 pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
+    let vcx = opts.cx.vcx();
     // Глубина вложенных документов — от циклических рамок.
     if opts.cx.frame_depth >= 3 {
         return None;
@@ -83,7 +84,7 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
     };
     // Resolve against the containing block, before sizing the child viewport.
     let mut resolved = super::image::pct_height_to_px(e, inherited);
-    resolved.style.resolve_viewport(opts.viewport);
+    resolved.style.resolve_viewport(opts.viewport, vcx);
     let in_flow = !matches!(
         e.style.position,
         Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
@@ -200,14 +201,13 @@ pub(crate) fn build_embedded(
     opts: &RenderOpts,
     prepare: impl FnOnce(Vec<crate::dom::Node>) -> Vec<crate::dom::Node>,
 ) -> Vec<AnyElement> {
-    let scope = embedded.state.enter_frame();
     let nodes = prepare(embedded.nodes);
     let mut sub = opts.clone();
     sub.viewport = viewport;
     sub.doc_salt = embedded.salt;
     sub.cx.positioning = Default::default();
     sub.cx.frame_depth += 1;
-    sub.cx.doc = Some(embedded.state.clone());
+    sub.cx.doc = crate::layout::cx::BuildDoc(embedded.state.clone());
     // Свой слой ICB на вложенный документ: его абсолюты без позиционированного
     // предка держатся ЕГО начального содержащего блока — области просмотра
     // рамки, а не внешней страницы (HTML §4.8.5 «nested browsing context»;
@@ -216,7 +216,6 @@ pub(crate) fn build_embedded(
     sub.cx.positioning.icb_open();
     let mut kids = blocks(&nodes, &sub.root_style(), &sub);
     kids.extend(sub.cx.positioning.icb_close());
-    drop(scope);
     kids.into_iter()
         .map(|k| crate::document::state::Scoped::wrap(&embedded.state, k))
         .collect()

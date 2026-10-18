@@ -12,6 +12,7 @@
 //! * `Impossible` — примитива в GPUI нет, перенести невозможно. Причина
 //!   обязательна и попадает в документацию.
 
+use crate::document::state::ValueCx;
 mod field_audit;
 mod properties;
 #[cfg(test)]
@@ -68,14 +69,14 @@ pub fn mapped_pct() -> f32 {
 }
 
 /// Свойства, которые обещаны как перенесённые, но стиль не меняют.
-pub fn broken_promises() -> Vec<&'static str> {
+pub fn broken_promises(vcx: ValueCx<'_>) -> Vec<&'static str> {
     PROPERTIES
         .iter()
         .filter(|p| matches!(p.support, Support::Mapped | Support::Partial(_)))
         .filter(|p| {
             let decls = parse_decls(&format!("{}: {}", p.name, p.sample));
             let mut c = Computed::default();
-            c.apply_decls(&decls);
+            c.apply_decls(&decls, vcx);
             format!("{c:?}") == format!("{:?}", Computed::default())
         })
         .map(|p| p.name)

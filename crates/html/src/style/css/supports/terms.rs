@@ -1,6 +1,7 @@
 //! Термы @supports: (свойство: значение), selector() со строгим разбором, прочие функции; трёхзначный результат.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// `selector(<complex-selector>)` (css-conditional-4 §at-supports-ext):
 /// ОДИН сложный селектор — список через запятую ложен (`at-supports-selector-004`);
@@ -57,7 +58,7 @@ fn selector_strict(s: &str, cx: &SelectorCx) -> bool {
     true
 }
 
-pub(super) fn supports_eval_term(term: &str, cx: &SelectorCx) -> SupTri {
+pub(super) fn supports_eval_term(term: &str, cx: &SelectorCx, vcx: ValueCx<'_>) -> SupTri {
     let term = term.trim();
     // Функция `имя(...)`.
     if !term.starts_with('(') {
@@ -121,7 +122,7 @@ pub(super) fn supports_eval_term(term: &str, cx: &SelectorCx) -> SupTri {
     }
     let inner = &term[1..term.len() - 1];
     // Скобки вокруг условия.
-    if let Some(t) = supports_condition(inner, cx) {
+    if let Some(t) = supports_condition(inner, cx, vcx) {
         return t;
     }
     // Точка с запятой внутри скобок: `<declaration>` её не содержит
@@ -157,7 +158,7 @@ pub(super) fn supports_eval_term(term: &str, cx: &SelectorCx) -> SupTri {
         }
         // CSS Conditional 3 §6.1: substitution cannot add an unknown property.
         let property = unescape(colons[0].trim()).to_ascii_lowercase();
-        if !crate::style::computed::Computed::recognizes_property(&property) {
+        if !crate::style::computed::Computed::recognizes_property(&property, vcx) {
             return SupTri::False;
         }
         // css-variables-1 §3: «If a property contains one or more var()
@@ -208,7 +209,7 @@ pub(super) fn supports_eval_term(term: &str, cx: &SelectorCx) -> SupTri {
             .filter(|(key, _)| key.as_str() != ORDER_KEY)
             .any(|(key, value)| {
                 value.split(DECL_SEP).any(|part| {
-                    crate::style::computed::Computed::declaration_result(key, part)
+                    crate::style::computed::Computed::declaration_result(key, part, vcx)
                         == crate::style::computed::ParseResult::Accepted
                 })
             });

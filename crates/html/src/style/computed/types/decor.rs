@@ -1,6 +1,7 @@
 //! Типы оформления текста: линии, положение подчёркивания, стиль/толщина/смещение и их разбор.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// Линии украшения (css-text-decor-3 §2.1 `text-decoration-line`).
 pub const DECOR_UNDER: u8 = 1;
@@ -84,13 +85,13 @@ pub struct Decor {
 
 /// Preserve percentages independently of font-relative lengths. Sizing
 /// keywords and anchor functions are outside <length-percentage>.
-pub(in crate::style::computed) fn parse_decor_inset(t: &str) -> Option<DecorLen> {
+pub(in crate::style::computed) fn parse_decor_inset(t: &str, vcx: ValueCx<'_>) -> Option<DecorLen> {
     if matches!(t, "stretch" | "-webkit-fill-available" | "-moz-available")
         || crate::style::values::value::css_number(t).is_some_and(|v| v != 0.0)
     {
         return None;
     }
-    Some(match Len::parse_mixed(t)? {
+    Some(match Len::parse_mixed(t, vcx)? {
         Len::Px(v) => DecorLen::Px(v),
         Len::Pct(k) => DecorLen::Pct(k),
         Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent | Len::Anchor(_) => {
@@ -112,11 +113,14 @@ pub(in crate::style::computed) fn parse_decor_style(t: &str) -> Option<DecorStyl
 }
 
 /// `<length-percentage>` украшения (толщина, смещение, отступ концов).
-pub(in crate::style::computed) fn parse_decor_length(t: &str) -> Option<DecorLen> {
+pub(in crate::style::computed) fn parse_decor_length(
+    t: &str,
+    vcx: ValueCx<'_>,
+) -> Option<DecorLen> {
     if t == "auto" || t == "normal" {
         return None;
     }
-    let l = Len::parse_spacing(t)?;
+    let l = Len::parse_spacing(t, vcx)?;
     Some(match l {
         Len::Px(v) => DecorLen::Px(v),
         Len::Pct(k) => DecorLen::Pct(k),
@@ -127,13 +131,16 @@ pub(in crate::style::computed) fn parse_decor_length(t: &str) -> Option<DecorLen
 
 /// `text-decoration-thickness`: `auto | from-font | <length-percentage> |
 /// <line-width>` (css-text-decor-4 §2.4).
-pub(in crate::style::computed) fn parse_decor_thickness(t: &str) -> Option<DecorLen> {
+pub(in crate::style::computed) fn parse_decor_thickness(
+    t: &str,
+    vcx: ValueCx<'_>,
+) -> Option<DecorLen> {
     Some(match t {
         "auto" => DecorLen::Auto,
         "from-font" => DecorLen::FromFont,
         "thin" => DecorLen::Px(1.0),
         "medium" => DecorLen::Px(3.0),
         "thick" => DecorLen::Px(5.0),
-        _ => parse_decor_length(t)?,
+        _ => parse_decor_length(t, vcx)?,
     })
 }

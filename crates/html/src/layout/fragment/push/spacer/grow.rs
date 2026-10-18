@@ -3,6 +3,7 @@
 use super::super::cell::grow_before;
 use super::super::pushed_box_at;
 use super::spacer_before;
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::{clone_dec, solid_box};
@@ -39,6 +40,7 @@ pub(crate) fn grow_pushed(
     rows: Option<crate::layout::fragment::types::Rows>,
     copies: usize,
     par: &[crate::layout::fragment::types::Par],
+    vcx: ValueCx<'_>,
 ) -> Vec<(Element, Shape)> {
     for _ in 0..6 {
         let probe: Vec<crate::layout::fragment::types::Kid> = kids
@@ -53,13 +55,13 @@ pub(crate) fn grow_pushed(
                 cuts: s.3.clone(),
                 // Щуп обязан видеть ровно то же, что стопка (Х6), иначе
                 // распорки лягут по другому плану, чем укладка.
-                force_before: edge_break(c, false),
-                force_after: edge_break(c, true),
+                force_before: edge_break(c, false, vcx),
+                force_after: edge_break(c, true, vcx),
                 // Щуп обязан видеть ровно то же, что стопка (Х6): без
                 // запретов `growths` считал бы распорки по ДРУГОМУ плану,
                 // чем укладка после отступа.
-                avoid_before: edge_avoid(c, false),
-                avoid_after: edge_avoid(c, true),
+                avoid_before: edge_avoid(c, false, vcx),
+                avoid_after: edge_avoid(c, true, vcx),
                 forced: s.4.clone(),
                 solid: s.5.clone(),
                 span: c.style.column_span == Some(true) && !c.inline,
@@ -75,8 +77,10 @@ pub(crate) fn grow_pushed(
                 clone_dec: clone_dec(c),
                 // Тот же предикат, что у `StackChild` в сборке стопки: иначе
                 // распорки легли бы по другому плану, чем укладка.
-                overflow_top: fixed.is_some() && rows.is_none() && !parallel_items_inside(c, 4),
-                repeat: repeat_leads(c, fixed, rows),
+                overflow_top: fixed.is_some()
+                    && rows.is_none()
+                    && !parallel_items_inside(c, 4, vcx),
+                repeat: repeat_leads(c, fixed, rows, vcx),
                 par: par.get(i).copied().unwrap_or_default(),
             })
             .collect();
@@ -99,28 +103,28 @@ pub(crate) fn grow_pushed(
             }
             // Ряд в точках, вытолкнутый целиком: растёт ПРЕДЫДУЩАЯ дорожка.
             if grow_grid_track(c, at, grow)
-                || (!forced && super::super::row::grow_row_at(c, at, grow))
+                || (!forced && super::super::row::grow_row_at(c, at, grow, vcx))
             {
-                if let Some(s) = shape_full(c, 4, ShapeCx::COLUMNS) {
+                if let Some(s) = shape_full(c, 4, ShapeCx::COLUMNS, vcx) {
                     kids[kid].1 = keep_par_margins(s, &kids[kid].1, par.get(kid));
                     changed = true;
                 }
                 continue;
             }
-            let found = pushed_box_at(c, at, 4, forced);
+            let found = pushed_box_at(c, at, 4, forced, vcx);
             let Some(id) = found else {
                 continue;
             };
             // Монолит двигает поле, принудительный разрыв — коробка (Х3).
             let moved = if forced {
-                spacer_before(c, id, grow)
+                spacer_before(c, id, grow, vcx)
             } else {
                 grow_before(c, id, grow)
             };
             if !moved {
                 continue;
             }
-            if let Some(s) = shape_full(c, 4, ShapeCx::COLUMNS) {
+            if let Some(s) = shape_full(c, 4, ShapeCx::COLUMNS, vcx) {
                 kids[kid].1 = keep_par_margins(s, &kids[kid].1, par.get(kid));
                 changed = true;
             }

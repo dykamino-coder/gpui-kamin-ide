@@ -1,5 +1,6 @@
 //! Разрешение изображения маски группы и размещение её плитки.
 
+use crate::document::state::ValueCx;
 mod composite;
 pub(super) use composite::composite_mask;
 
@@ -21,6 +22,7 @@ pub(crate) fn resolve_mask(
     st: f32,
     sr: f32,
     sb: f32,
+    vcx: ValueCx<'_>,
 ) -> Option<(std::sync::Arc<gpui::RenderImage>, Bounds<Pixels>, u32)> {
     // `border-shape` (css-borders-4): маска — внешний контур рамки,
     // SVG-растр на РАСШИРЕННУЮ область (обводка выходит за
@@ -28,7 +30,8 @@ pub(crate) fn resolve_mask(
     if let Some(spec) = src.strip_prefix("bordershape:") {
         let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
         let (aw, ah) = (bw + sl + sr, bh + st + sb);
-        let markup = crate::paint::background::border_shape_mask_svg(spec, bw, bh, sl, st, aw, ah)?;
+        let markup =
+            crate::paint::background::border_shape_mask_svg(spec, bw, bh, sl, st, aw, ah, vcx)?;
         let img = crate::svg::raster::rasterize(&markup, aw, ah)?;
         return Some((
             img,
@@ -76,9 +79,9 @@ pub(crate) fn resolve_mask(
             || (l.contains('#') && l.contains(".svg"))
     });
     if layers.len() > 1 || referenced || !group.mask_repeat_modes.is_empty() {
-        return composite_mask(group, &layers, bounds, bw, bh, ol, ot, window, len);
+        return composite_mask(group, &layers, bounds, bw, bh, ol, ot, window, len, vcx);
     }
-    let source = group.mask_source(src)?;
+    let source = group.mask_source(src, vcx)?;
     let (img, tw, th) = match &source {
         crate::paint::background::Source::Raster(img) => {
             let (tw, th) = mask_size::tile(
@@ -87,6 +90,7 @@ pub(crate) fn resolve_mask(
                 (bw, bh),
                 group.mask_size,
                 group.mask_fit,
+                vcx,
             );
             (img.clone(), tw, th)
         }
@@ -97,6 +101,7 @@ pub(crate) fn resolve_mask(
                 (bw, bh),
                 group.mask_size,
                 group.mask_fit,
+                vcx,
             );
             // Растр — в физических точках окна: маска в CSS-точках
             // растягивалась при композите и мылила край формы
@@ -120,7 +125,7 @@ pub(crate) fn resolve_mask(
                     let [pt, pr, pb, pl] = group.poly_expand;
                     let (rw, rh) = ((bw + pl + pr).max(1.0), (bh + pt + pb).max(1.0));
                     let (cx0, cy0, rx, ry) =
-                        crate::paint::background::shape_params(raw, rw, rh, 1.0)?;
+                        crate::paint::background::shape_params(raw, rw, rh, 1.0, vcx)?;
                     let (cx, cy) = (cx0 - pl, cy0 - pt);
                     let (aw, ah) = (bw + sl + sr, bh + st + sb);
                     let img = crate::paint::background::rasterize_ellipse_px(
@@ -150,6 +155,7 @@ pub(crate) fn resolve_mask(
                         (th * sf).round().max(1.0) as u32,
                         sf,
                         (f32::from(bounds.origin.x), f32::from(bounds.origin.y)),
+                        vcx,
                     )?
                 }
                 // Рисунок со СВОИМ размером растрируется в нём:
@@ -161,7 +167,7 @@ pub(crate) fn resolve_mask(
                 // чёткость даёт плотность растеризатора).
                 // Плитка в CSS-точках; рисунок масштабирует
                 // with_viewport (viewBox из своих размеров).
-                _ => source.mask_raster((tw, th), sf)?,
+                _ => source.mask_raster((tw, th), sf, vcx)?,
             };
             (img, tw, th)
         }

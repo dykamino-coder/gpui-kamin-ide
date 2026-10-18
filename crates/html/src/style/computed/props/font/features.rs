@@ -1,14 +1,22 @@
 //! Computed::apply_font, продолжение цепочки: font-synthesis, font-kerning, font-feature-settings, font-variant*. Ветви в исходном порядке; не совпавший ключ уходит в apply_font_metrics.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
     #[allow(unused_variables)]
-    pub(super) fn apply_font_features(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_font_features(
+        &mut self,
+        key: &str,
+        val: &str,
+        v: &str,
+        hit: &mut bool,
+        vcx: ValueCx<'_>,
+    ) {
         match key {
             // --- Текст -------------------------------------------------------
             // `font: [начертание] [вес] размер[/интерлиньяж] семейство`.
-            "font" => font_shorthand::apply(self, v),
+            "font" => font_shorthand::apply(self, v, vcx),
             "font-synthesis"
             | "font-synthesis-weight"
             | "font-synthesis-style"
@@ -164,7 +172,7 @@ impl Computed {
                     }
                 }
             }
-            _ => self.apply_font_metrics(key, val, v, hit),
+            _ => self.apply_font_metrics(key, val, v, hit, vcx),
         }
     }
 }

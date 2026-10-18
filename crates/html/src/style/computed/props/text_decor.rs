@@ -1,12 +1,20 @@
 //! Computed::apply_one: text-decoration*, text-underline-*, text-emphasis*, text-shadow, ruby-*.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::Color;
 mod emphasis_ruby;
 
 impl Computed {
     #[allow(unused_variables)]
-    pub(crate) fn apply_text_decor(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_text_decor(
+        &mut self,
+        key: &str,
+        val: &str,
+        v: &str,
+        hit: &mut bool,
+        vcx: ValueCx<'_>,
+    ) {
         match key {
             "text-decoration" | "text-decoration-line" | "-webkit-text-decoration-line" => {
                 // css-text-decor-4 §2: сокращение — `<line> || <style> ||
@@ -39,11 +47,11 @@ impl Computed {
                             style = parse_decor_style(t)
                         }
                         "currentcolor" if color.is_none() && !current => current = true,
-                        _ if color.is_none() && !current && Color::parse(t).is_some() => {
-                            color = Color::parse(t)
+                        _ if color.is_none() && !current && Color::parse(t, vcx).is_some() => {
+                            color = Color::parse(t, vcx)
                         }
-                        _ if thick.is_none() && parse_decor_thickness(t).is_some() => {
-                            thick = parse_decor_thickness(t)
+                        _ if thick.is_none() && parse_decor_thickness(t, vcx).is_some() => {
+                            thick = parse_decor_thickness(t, vcx)
                         }
                         _ => return,
                     }
@@ -68,13 +76,13 @@ impl Computed {
                 if t.eq_ignore_ascii_case("currentcolor") {
                     self.accept_declaration();
                     self.td_color = None;
-                } else if let Some(c) = Color::parse(t) {
+                } else if let Some(c) = Color::parse(t, vcx) {
                     self.accept_declaration();
                     self.td_color = Some(c);
                 }
             }
             "text-decoration-thickness" => {
-                if let Some(t) = parse_decor_thickness(&v.trim().to_ascii_lowercase()) {
+                if let Some(t) = parse_decor_thickness(&v.trim().to_ascii_lowercase(), vcx) {
                     self.accept_declaration();
                     self.td_thickness = Some(t);
                 }
@@ -84,7 +92,7 @@ impl Computed {
                 if t == "auto" {
                     self.accept_declaration();
                     self.underline_offset = Some(DecorLen::Auto);
-                } else if let Some(l) = parse_decor_length(&t) {
+                } else if let Some(l) = parse_decor_length(&t, vcx) {
                     self.accept_declaration();
                     self.underline_offset = Some(l);
                 }
@@ -154,8 +162,10 @@ impl Computed {
                     return;
                 }
                 let words = crate::paint::background::split_top(&t);
-                let lens: Vec<DecorLen> =
-                    words.iter().filter_map(|w| parse_decor_inset(w)).collect();
+                let lens: Vec<DecorLen> = words
+                    .iter()
+                    .filter_map(|w| parse_decor_inset(w, vcx))
+                    .collect();
                 if lens.len() != words.len() || lens.is_empty() || lens.len() > 2 {
                     return;
                 }
@@ -164,7 +174,7 @@ impl Computed {
                     Some(Some([lens[0], *lens.get(1).unwrap_or(&lens[0])]))
                 );
             }
-            _ => self.apply_text_decor_emphasis_ruby(key, val, v, hit),
+            _ => self.apply_text_decor_emphasis_ruby(key, val, v, hit, vcx),
         }
     }
 }

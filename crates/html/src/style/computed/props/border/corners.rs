@@ -1,10 +1,18 @@
 //! Computed::apply_border, продолжение цепочки: border-shape, corner-shape*, corner-*-shape, радиусы углов. Ветви в исходном порядке; не совпавший ключ уходит в apply_border_sides_outline.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
     #[allow(unused_variables)]
-    pub(super) fn apply_border_corners(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_border_corners(
+        &mut self,
+        key: &str,
+        val: &str,
+        v: &str,
+        hit: &mut bool,
+        vcx: ValueCx<'_>,
+    ) {
         match key {
             // `border-shape` (css-borders-4 §border-shape): `none` либо одна-две
             // базовые фигуры, каждая с необязательной опорной коробкой ПОСЛЕ
@@ -37,7 +45,7 @@ impl Computed {
                     for tok in part.split_whitespace() {
                         if corner_shape_param(tok).is_some() {
                             shape = Some(tok);
-                        } else if Len::parse(tok).is_some() {
+                        } else if Len::parse(tok, vcx).is_some() {
                             lens.push(tok);
                         } else {
                             return;
@@ -60,10 +68,11 @@ impl Computed {
                     } else {
                         lens.join(" ")
                     };
-                    self.apply_one(&format!("border-{}-radius", NAMES[slot]), &radius);
+                    self.apply_one(&format!("border-{}-radius", NAMES[slot]), &radius, vcx);
                     self.apply_one(
                         &format!("corner-{}-shape", NAMES[slot]),
                         shape.unwrap_or("round"),
+                        vcx,
                     );
                 }
             }
@@ -162,16 +171,16 @@ impl Computed {
                     "border-bottom-right-radius",
                     "border-bottom-left-radius",
                 ];
-                self.apply_one(LONG[a], first);
-                self.apply_one(LONG[b], second);
+                self.apply_one(LONG[a], first, vcx);
+                self.apply_one(LONG[b], second, vcx);
             }
-            "border-radius" => self.apply_radius_shorthand(v),
+            "border-radius" => self.apply_radius_shorthand(v, vcx),
             "border-top-left-radius"
             | "border-top-right-radius"
             | "border-bottom-right-radius"
-            | "border-bottom-left-radius" => self.apply_radius_corner(key, v),
+            | "border-bottom-left-radius" => self.apply_radius_corner(key, v, vcx),
 
-            _ => self.apply_border_sides_outline(key, val, v, hit),
+            _ => self.apply_border_sides_outline(key, val, v, hit, vcx),
         }
     }
 }

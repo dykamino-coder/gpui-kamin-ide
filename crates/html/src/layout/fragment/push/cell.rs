@@ -1,6 +1,7 @@
 //! Перенос ячейки таблицы и рост перед перенесённой коробкой.
 
 use super::pushed_box_at;
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::table_bands::row_geometry;
@@ -18,7 +19,13 @@ use crate::style::values::value::Len;
 /// `shape_full(cell)` распорка ложится в `lead`). Охваты и высоты строк
 /// берутся из общей `row_geometry`. Подпись, сросшиеся рамки и заданная высота здесь
 /// тоже `None` — распорки нет, поведение прежнее.
-pub(super) fn pushed_cell_at(c: &Element, a: f32, depth: u8, forced: bool) -> Option<u64> {
+pub(super) fn pushed_cell_at(
+    c: &Element,
+    a: f32,
+    depth: u8,
+    forced: bool,
+    vcx: ValueCx<'_>,
+) -> Option<u64> {
     if depth == 0
         || c.style.wm().vertical()
         || c.style.border_collapse == Some(true)
@@ -60,7 +67,7 @@ pub(super) fn pushed_cell_at(c: &Element, a: f32, depth: u8, forced: bool) -> Op
     // `table_shape` посчитает точки по анонимным рядам, а `pushed_cell_at` на
     // тех же детях вернёт `None`, и распорка роста (`grow_pushed`) не найдёт
     // коробку, которую надо дотянуть до низа колонки.
-    let fixed = fixup_table_children(&c.children);
+    let fixed = fixup_table_children(&c.children, vcx);
     let mut parts: Vec<(u8, &Element)> = Vec::new();
     let (mut head, mut foot) = (false, false);
     for n in fixed.iter().filter(|n| !is_blank(n)) {
@@ -99,7 +106,7 @@ pub(super) fn pushed_cell_at(c: &Element, a: f32, depth: u8, forced: bool) -> Op
             }
         }
     }
-    let geometry = row_geometry(&rows, depth, cell_cx, spacing)?;
+    let geometry = row_geometry(&rows, depth, cell_cx, spacing, vcx)?;
     let mut y = top;
     for row in geometry {
         let start = y + spacing;
@@ -108,7 +115,7 @@ pub(super) fn pushed_cell_at(c: &Element, a: f32, depth: u8, forced: bool) -> Op
                 .cells
                 .iter()
                 .filter(|cell| cell.expandable)
-                .find_map(|cell| pushed_box_at(cell.cell, a - start, depth - 1, forced));
+                .find_map(|cell| pushed_box_at(cell.cell, a - start, depth - 1, forced, vcx));
         }
         y = start + row.height;
     }

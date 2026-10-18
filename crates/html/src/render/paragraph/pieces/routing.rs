@@ -26,6 +26,7 @@ pub(crate) fn route_pieces(
         crate::text::paragraph::RubyExtents,
     )>,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     let edges = edge_pieces(&pieces, inherited, opts);
     if inline::single_block(&pieces, opts.base_size())
         && let Some((text, runs)) = inline::text_and_runs(&pieces, &opts.text)
@@ -132,7 +133,7 @@ pub(crate) fn route_pieces(
         };
         // На кусок текста идут ТОЛЬКО текстовые свойства: фон, отступы и
         // рамка принадлежат абзацу целиком, а не каждому его слову.
-        let d = apply(div(), &style.text_only())
+        let d = apply(div(), &style.text_only(), vcx)
             .max_w_full()
             .child(SharedString::from(t.clone()));
         d.into_any_element()
@@ -153,7 +154,7 @@ pub(crate) fn route_pieces(
             Some(Len::Px(v)) => v,
             // Ряд из слов долю и прежде не применял (`Pct` идёт нулём); у
             // смеси берутся хотя бы точки — как у чистых точек.
-            Some(Len::Calc(i)) => crate::style::values::value::calc_get(i)
+            Some(Len::Calc(i)) => crate::style::values::value::calc_get(i, vcx)
                 .pct_px()
                 .map_or(0.0, |(_, px)| px),
             _ => 0.0,

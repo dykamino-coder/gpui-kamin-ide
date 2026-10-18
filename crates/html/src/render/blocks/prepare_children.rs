@@ -20,6 +20,7 @@ pub(crate) fn prepare_children(
     opts: &RenderOpts,
     _cell_bfc: bool,
 ) -> (Vec<Node>, bool, bool) {
+    let vcx = opts.cx.vcx();
     let stripped: Vec<Node>;
     let nodes = if nodes.iter().any(
         |n| matches!(n, Node::Element(e) if e.style.skip_content == Some(true) && !e.children.is_empty()),
@@ -83,7 +84,7 @@ pub(crate) fn prepare_children(
         // — до разбиения блока в строчном и до схлопывания полей, как это
         // делает и сборщик дерева в браузере.
         crate::render::inline_splits::split_block_in_inline_dir(
-            &hoist_inset_abs(&wrap_anon_tables(nodes), inherited),
+            &hoist_inset_abs(&wrap_anon_tables(nodes), inherited, vcx),
             inherited.wm().rtl(),
         )
     };
@@ -191,7 +192,7 @@ pub(crate) fn prepare_children(
         // Определённость высоты блока для ДОЛЕЙ высоты детей — тем же
         // предикатом, что у слитого стиля (`inline::inherit`): он зависит
         // только от родителя, а сырой стиль ребёнка признака ещё не несёт.
-        let cb_h_def = inherit(inherited, &Computed::default()).cb_height_def;
+        let cb_h_def = inherit(inherited, &Computed::default(), vcx).cb_height_def;
         let prev_h = COLLAPSE_CB_HEIGHT_DEF.with(|c| c.replace(cb_h_def));
         let mut out = collapse_margins(
             nodes,
@@ -202,7 +203,7 @@ pub(crate) fn prepare_children(
             ),
             opts.cx.cb_width,
         );
-        margin_height::zero_float_blocks(&mut out, inherited);
+        margin_height::zero_float_blocks(&mut out, inherited, vcx);
         COLLAPSE_FONT_PX.with(|c| c.set(prev));
         COLLAPSE_CB_WIDTH_PX.with(|c| c.set(prev_w));
         COLLAPSE_CB_HEIGHT_DEF.with(|c| c.set(prev_h));

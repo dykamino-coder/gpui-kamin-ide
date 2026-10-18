@@ -1,5 +1,7 @@
 //! CSS Scrollbars 1 styling, owned by HTML.
+
 use super::{Computed, split_outside_parens};
+use crate::document::state::ValueCx;
 use crate::style::values::value::Color;
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -28,7 +30,14 @@ impl ScrollStyle {
 }
 
 impl Computed {
-    pub(crate) fn apply_scroll(&mut self, key: &str, _: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_scroll(
+        &mut self,
+        key: &str,
+        _: &str,
+        v: &str,
+        hit: &mut bool,
+        vcx: ValueCx<'_>,
+    ) {
         match key {
             "scrollbar-gutter" => {
                 let parts: Vec<_> = v.split_whitespace().collect();
@@ -86,7 +95,7 @@ impl Computed {
                             if current {
                                 Some(Color::default())
                             } else {
-                                Color::parse(part)
+                                Color::parse(part, vcx)
                             }
                         };
                         if let (Some(a), Some(b)) =
@@ -99,7 +108,7 @@ impl Computed {
                     }
                 }
             }
-            _ => self.apply_snap(key, v, hit),
+            _ => self.apply_snap(key, v, hit, vcx),
         }
     }
 }

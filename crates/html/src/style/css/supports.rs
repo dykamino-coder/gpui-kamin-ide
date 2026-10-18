@@ -1,5 +1,6 @@
 //! @supports: условия, селекторы, трёхзначная логика.
 
+use crate::document::state::ValueCx;
 use crate::style::css::*;
 
 mod at_rule;
@@ -18,14 +19,17 @@ use terms::supports_eval_term;
 /// ложь и не истина, а «неизвестно»; на верхнем уровне неизвестное и
 /// невалидное равнозначны лжи. Поддержку декларации сообщает разборщик
 /// свойства явно, в том числе для значений, совпадающих с начальным стилем.
-pub(super) fn supports(condition: &str) -> bool {
-    supports_in(condition, &SelectorCx::default())
+pub(super) fn supports(condition: &str, vcx: ValueCx<'_>) -> bool {
+    supports_in(condition, &SelectorCx::default(), vcx)
 }
 
 /// `supports` inside a stylesheet: `selector()` and `attr(ns|…)` see the
 /// sheet's `@namespace` prologue.
-pub(super) fn supports_in(condition: &str, cx: &SelectorCx) -> bool {
-    matches!(supports_condition(condition.trim(), cx), Some(SupTri::True))
+pub(super) fn supports_in(condition: &str, cx: &SelectorCx, vcx: ValueCx<'_>) -> bool {
+    matches!(
+        supports_condition(condition.trim(), cx, vcx),
+        Some(SupTri::True)
+    )
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -45,7 +49,7 @@ pub(super) fn sup_not(t: SupTri) -> SupTri {
 
 /// `not <терм>` | `<терм> (and <терм>)*` | `<терм> (or <терм>)*` — уровни
 /// не смешиваются: `a and b or c` недействительно целиком.
-fn supports_condition(s: &str, cx: &SelectorCx) -> Option<SupTri> {
+fn supports_condition(s: &str, cx: &SelectorCx, vcx: ValueCx<'_>) -> Option<SupTri> {
     let s = s.trim();
     // `not` — слово: слитное `not(` лексится функцией и уходит в терм.
     if let Some(rest) = s.strip_prefix("not")
@@ -56,10 +60,10 @@ fn supports_condition(s: &str, cx: &SelectorCx) -> Option<SupTri> {
         if !tail.trim().is_empty() {
             return None;
         }
-        return Some(sup_not(supports_eval_term(term, cx)));
+        return Some(sup_not(supports_eval_term(term, cx, vcx)));
     }
     let (term, mut rest) = supports_take_term(s)?;
-    let mut acc = supports_eval_term(term, cx);
+    let mut acc = supports_eval_term(term, cx, vcx);
     let mut op: Option<&str> = None;
     loop {
         let r = rest.trim_start();
@@ -89,7 +93,7 @@ fn supports_condition(s: &str, cx: &SelectorCx) -> Option<SupTri> {
             op = Some(word);
         }
         let (term, tail) = supports_take_term(rest.trim_start())?;
-        let v = supports_eval_term(term, cx);
+        let v = supports_eval_term(term, cx, vcx);
         acc = match (word, acc, v) {
             ("and", SupTri::True, SupTri::True) => SupTri::True,
             ("and", SupTri::False, _) | ("and", _, SupTri::False) => SupTri::False,

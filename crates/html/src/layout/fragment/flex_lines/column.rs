@@ -1,5 +1,6 @@
 //! Флекс-строки колонки (flex_lines_of) и правила промежутков.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::{Shape, ShapeCx};
@@ -14,6 +15,7 @@ use crate::style::values::value::Len;
 pub(super) fn flex_lines_of(
     c: &Element,
     col_w: Option<f32>,
+    vcx: ValueCx<'_>,
 ) -> Option<Vec<(f32, Vec<(Element, Shape)>)>> {
     use crate::style::computed::FlexDir;
     if flex_gap_rules(&c.style) {
@@ -116,7 +118,7 @@ pub(super) fn flex_lines_of(
     // Мера и внешний поперечный размер элемента; `None` у ширины — `auto`.
     let mut measured: Vec<(Element, Shape, Option<f32>)> = Vec::with_capacity(items.len());
     for k in items {
-        let sh = shape_full(k, 4, ShapeCx::COLUMNS)?;
+        let sh = shape_full(k, 4, ShapeCx::COLUMNS, vcx)?;
         let kb = k.style.borders();
         let side = |l: &Option<Len>| match l {
             None => Some(0.0),

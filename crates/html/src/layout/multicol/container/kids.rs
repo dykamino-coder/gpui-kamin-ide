@@ -1,5 +1,6 @@
 //! Дети стопки колонок: копии детей при заданной высоте и элементы StackChild.
 
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::fragment::breaks::edge_break;
 use crate::layout::fragment::flex_lines::split_flex_lines;
@@ -25,6 +26,7 @@ pub(super) fn column_kids(
     rows: Option<crate::layout::fragment::types::Rows>,
     copies: usize,
     fixed: Option<f32>,
+    vcx: ValueCx<'_>,
 ) -> (
     Vec<Option<Computed>>,
     Vec<usize>,
@@ -42,7 +44,7 @@ pub(super) fn column_kids(
             }
             _ => None,
         };
-        split_flex_lines(kids, col_w, merged)
+        split_flex_lines(kids, col_w, merged, vcx)
     } else {
         let n = kids.len();
         (
@@ -66,13 +68,13 @@ pub(super) fn column_kids(
     let mut kids = if col_vert {
         kids
     } else {
-        grow_pushed(kids, cols as usize, fixed, rows, copies, &kid_par)
+        grow_pushed(kids, cols as usize, fixed, rows, copies, &kid_par, vcx)
     };
     if !col_vert
         && rows.is_none()
         && let Some(height) = fixed.filter(|h| *h > 0.01)
     {
-        super::parallel::grow(&mut kids, height, cols as usize, copies);
+        super::parallel::grow(&mut kids, height, cols as usize, copies, vcx);
     }
     (kid_parent, kid_starts, kid_par, kids)
 }
@@ -102,6 +104,7 @@ pub(super) fn stack_children(
     )>,
     clone_plan: Vec<Vec<(f32, f32)>>,
 ) -> Vec<crate::layout::fragment::types::StackChild> {
+    let vcx = opts.cx.vcx();
     let balanced_frag: Option<f32> =
         (fixed.is_none() && rows.is_none_or(|r| r.cap) && cols > 1 && kids.len() == 1)
             .then(|| {
@@ -125,8 +128,8 @@ pub(super) fn stack_children(
             let lead = if i == 0 { s.1 } else { prev_mb.max(s.1) };
             let hh = fixed_nest.unwrap_or(0.0);
             v.push((ok && fixed_nest.is_some() && y + lead < hh - 0.01).then_some(y + lead));
-            if edge_break(c, false)
-                || edge_break(c, true)
+            if edge_break(c, false, vcx)
+                || edge_break(c, true, vcx)
                 || kid_par.get(i).is_some_and(|p| p.group != 0)
                 || y + lead + s.0 > hh + 0.01
             {

@@ -59,10 +59,11 @@ fn atom_piece_in(
     in_inline_cb: bool,
     ruby: &AtomRuby,
 ) -> Option<inline::Piece> {
+    let vcx = opts.cx.vcx();
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
     let media_sized =
-        crate::layout::replaced::media::resolve(e, inherited, opts.viewport, opts.cx.avail_w);
+        crate::layout::replaced::media::resolve(e, inherited, opts.viewport, opts.cx.avail_w, vcx);
     let e = media_sized.as_ref().unwrap_or(e);
     // CSS 2.1 sections 10.3.8/10.6.5 use the replaced default size
     // before solving absolute insets; an empty frame is still replaced.
@@ -74,9 +75,7 @@ fn atom_piece_in(
                     | crate::style::computed::Position::Fixed
             )
         ))
-    .then(|| {
-        replaced_content::empty_iframe_size(e, inherited, opts.viewport, opts.cx.doc().quirks())
-    });
+    .then(|| replaced_content::empty_iframe_size(e, inherited, opts.viewport, vcx));
     let e = iframe_sized.as_ref().unwrap_or(e);
     // Абсолютный элемент на статической позиции ВНУТРИ строки — кусок вне
     // потока: место в строке он не занимает, поэтому абзац остаётся
@@ -147,7 +146,7 @@ fn atom_piece_in(
         if alphabetic && let Some(physical) = rotated_atom::physical(e, inherited, opts) {
             return Some(inline::Piece::Atom(physical));
         }
-        let mut merged = inherit(inherited, &e.style);
+        let mut merged = inherit(inherited, &e.style, vcx);
         merged.turned_line = false;
         let em = match merged.width {
             Some(Len::Px(v)) => v,
@@ -173,7 +172,7 @@ fn atom_piece_in(
     // `inline-block` под `animation-delay: -500000s`) не доходил ни до
     // сдвига, ни до матрицы (css-transforms-1 §transformable-element).
     let frozen_atom;
-    let e = match bake_frozen(e, true) {
+    let e = match bake_frozen(e, true, vcx) {
         Some(b) => {
             frozen_atom = b;
             &frozen_atom
@@ -246,5 +245,5 @@ fn atom_piece_in(
     let opts = &*atom_cx::atom_opts(opts, ruby, &line_box, &offer);
     let built = atom_element(e, inherited, opts);
     let abs_cb = offer.as_ref().is_some_and(|o| o.taken());
-    built.map(|el| decorate_atom(el, e, inherited, original_margin, abs_cb, line_box))
+    built.map(|el| decorate_atom(el, e, inherited, original_margin, abs_cb, line_box, vcx))
 }

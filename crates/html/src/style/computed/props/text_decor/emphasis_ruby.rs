@@ -1,6 +1,7 @@
 //! Computed::apply_text_decor, хвост цепочки: text-emphasis*, ruby-*, text-shadow. Ветви в исходном порядке после text-decoration*.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
     #[allow(unused_variables)]
@@ -10,6 +11,7 @@ impl Computed {
         val: &str,
         v: &str,
         hit: &mut bool,
+        vcx: ValueCx<'_>,
     ) {
         match key {
             "text-emphasis"
@@ -31,7 +33,7 @@ impl Computed {
                     if t.eq_ignore_ascii_case("currentcolor") {
                         self.accept_declaration();
                         self.emphasis_color = None;
-                    } else if let Some(c) = Color::parse(t) {
+                    } else if let Some(c) = Color::parse(t, vcx) {
                         self.accept_declaration();
                         self.emphasis_color = Some(c);
                     }
@@ -57,7 +59,7 @@ impl Computed {
                                     | "double-circle"
                                     | "triangle"
                                     | "sesame"
-                            ) && let Some(c) = Color::parse(w)
+                            ) && let Some(c) = Color::parse(w, vcx)
                             {
                                 self.emphasis_color = Some(c);
                             } else {
@@ -165,7 +167,7 @@ impl Computed {
             "text-shadow" => {
                 self.text_shadow_raw = None;
                 self.text_shadow_none = v.trim().eq_ignore_ascii_case("none");
-                let mut list = parse_shadows(v).into_iter();
+                let mut list = parse_shadows(v, vcx).into_iter();
                 self.text_shadow = record_parsed!(self, list.next());
                 if self.text_shadow_none {
                     self.accept_declaration();

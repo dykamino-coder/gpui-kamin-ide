@@ -1,5 +1,6 @@
 //! Растр и укладка отдельного слоя составной маски.
 
+use crate::document::state::ValueCx;
 use crate::paint::effects::grouped_element::{Grouped, rasterize_mask_def, svg_fragment};
 use crate::paint::effects::mask_size;
 
@@ -13,6 +14,7 @@ pub(crate) fn mask_layer(
     sf: f32,
     pos_of: &impl Fn(usize, f32, f32) -> (f32, f32),
     repeat_of: &impl Fn(usize) -> (bool, bool),
+    vcx: ValueCx<'_>,
 ) -> Option<crate::paint::background::MaskLayer> {
     let mut space_gap = (0.0, 0.0);
     let mut space_once = (false, false);
@@ -64,7 +66,7 @@ pub(crate) fn mask_layer(
             (bw + el + group.poly_expand[1]).max(1.0),
             (bh + et + group.poly_expand[2]).max(1.0),
         );
-        let d = crate::paint::background::shape_to_path(body, fw2, fh2)?;
+        let d = crate::paint::background::shape_to_path(body, fw2, fh2, vcx)?;
         let (dx, dy) = (-el, -et);
         let markup = format!(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="{bw}" height="{bh}"><g transform="translate({dx} {dy})"><path fill="#ffffff" fill-rule="{rule}" d="{d}"/></g></svg>"##
@@ -87,13 +89,14 @@ pub(crate) fn mask_layer(
             true,
         )
     } else {
-        let source = group.mask_source(l)?;
+        let source = group.mask_source(l, vcx)?;
         let (tw, th) = mask_size::tile(
             source.intrinsic(),
             group.mask_scale,
             (bw, bh),
             group.mask_size,
             group.mask_fit,
+            vcx,
         );
         let modes = group.mask_repeat_modes.as_slice();
         let (mx, my) = if modes.is_empty() {
@@ -115,7 +118,7 @@ pub(crate) fn mask_layer(
         space_gap = (gx * sf, gy * sf);
         space_once = (nx, ny);
         (
-            source.mask_raster((tw, th), sf)?,
+            source.mask_raster((tw, th), sf, vcx)?,
             [ox * sf, oy * sf, tw * sf, th * sf],
             false,
         )

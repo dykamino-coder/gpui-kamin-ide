@@ -1,9 +1,10 @@
 //! Resolve text indentation while preserving an explicit inheritance request.
 
 use super::{Computed, split_outside_parens};
+use crate::document::state::ValueCx;
 use crate::style::values::value::Len;
 
-pub(super) fn apply(style: &mut Computed, value: &str) {
+pub(super) fn apply(style: &mut Computed, value: &str, vcx: ValueCx<'_>) {
     // CSS Cascade §7.3.2: inherit overrides an earlier specified value.
     // Unset fields are resolved from the parent by inline::inherit.
     if value.eq_ignore_ascii_case("inherit") {
@@ -21,7 +22,7 @@ pub(super) fn apply(style: &mut Computed, value: &str) {
             "hanging" => hang = true,
             len => {
                 style.text_indent =
-                    record_parsed!(style, Len::parse_mixed(len)).or(style.text_indent)
+                    record_parsed!(style, Len::parse_mixed(len, vcx)).or(style.text_indent)
             }
         }
     }

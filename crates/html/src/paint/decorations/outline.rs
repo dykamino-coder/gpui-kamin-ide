@@ -1,10 +1,11 @@
 //! Outline rings outside the border box, without changing layout.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, OUTLINE_DOUBLE};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, Styled, div, px};
 
-pub(super) fn decorations(c: &Computed) -> Vec<AnyElement> {
+pub(super) fn decorations(c: &Computed, vcx: ValueCx<'_>) -> Vec<AnyElement> {
     let mut out = Vec::new();
     // `outline`: рамка ВНЕ коробки и без влияния на раскладку — отдельный
     // абсолютный слой с отрицательным отступом ровно на её толщину.
@@ -12,7 +13,7 @@ pub(super) fn decorations(c: &Computed) -> Vec<AnyElement> {
     // (`grouped` → `Grouped::over`, `Computed::shaped_outline`).
     if let Some(o) = c
         .outline
-        .filter(|_| c.shaped_outline().is_none() && !super::shaped_outset::shapes_outline(c))
+        .filter(|_| c.shaped_outline().is_none() && !super::shaped_outset::shapes_outline(c, vcx))
     {
         // Шрифтовые единицы ширины и сдвига решаются своим кеглем.
         let em = match c.font_size {
@@ -80,7 +81,7 @@ pub(super) fn decorations(c: &Computed) -> Vec<AnyElement> {
             // Угол контура повторяет угол коробки, раздвинутый сдвигом и
             // толщиной (css-ui-4 §outline): доля решается так же, как у
             // рамки, — прежде она читалась нулём (`outline-005`).
-            let corner = crate::style::apply::radius_px(c, c.radius.tl)
+            let corner = crate::style::apply::radius_px(c, c.radius.tl, vcx)
                 .filter(|v| *v > 0.0)
                 .map_or(0.0, |v| v + off + w);
             // Абсолютный ребёнок отсчитывается от padding-box (CSS 2.1

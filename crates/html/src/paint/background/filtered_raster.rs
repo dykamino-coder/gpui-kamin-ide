@@ -1,6 +1,7 @@
 //! Resolve CSS Images 3 concrete object size before applying Filter Effects 1 §13.
 
 use super::Source;
+use crate::document::state::ValueCx;
 use gpui::RenderImage;
 use std::{
     collections::HashMap,
@@ -16,6 +17,7 @@ pub(super) fn raster(
     list: &str,
     tile: (f32, f32),
     pixelated: bool,
+    vcx: ValueCx<'_>,
 ) -> Option<Arc<RenderImage>> {
     if tile.0 <= 0.0 || tile.1 <= 0.0 {
         return None;
@@ -25,8 +27,8 @@ pub(super) fn raster(
         tile.1.round().clamp(1.0, 2048.0) as u32,
     );
     let image = match input {
-        Source::Gradient { raw } => super::gradient_raster::tile(raw, w, h, tile),
-        _ => input.sampled_raster(tile, pixelated),
+        Source::Gradient { raw } => super::gradient_raster::tile(raw, w, h, tile, vcx),
+        _ => input.sampled_raster(tile, pixelated, vcx),
     }?;
     let key = (image.id.0, list.to_string(), w, h, pixelated);
     let cache = CACHE.get_or_init(Default::default);
@@ -40,7 +42,8 @@ pub(super) fn raster(
     let integral =
         iw > 0 && ih > 0 && w >= iw && h >= ih && w.is_multiple_of(iw) && h.is_multiple_of(ih);
     let resized = resize(&image, w, h, pixelated || integral)?;
-    let result = super::filter_image::apply(&resized, list, (w as f32 / tile.0, h as f32 / tile.1));
+    let result =
+        super::filter_image::apply(&resized, list, (w as f32 / tile.0, h as f32 / tile.1), vcx);
     if let Ok(mut cache) = cache.lock() {
         if cache.len() >= 32 {
             cache.clear();

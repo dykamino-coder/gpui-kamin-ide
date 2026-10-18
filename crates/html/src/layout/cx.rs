@@ -8,6 +8,7 @@
 //!
 //! [`RenderOpts::cx`]: crate::render::RenderOpts::cx
 
+use crate::document::state::ValueCx;
 use crate::layout::positioned::containing_block::Positioning;
 use crate::render::RenderOpts;
 use std::rc::Rc;
@@ -76,18 +77,35 @@ pub struct LayoutCx {
     /// (the line grows by them); `None` inside — collection closed.
     pub(crate) ruby_extents:
         Option<std::rc::Rc<std::cell::RefCell<Option<crate::text::paragraph::RubyExtents>>>>,
-    /// The document being built: its quirks mode, `@position-try` rules and
-    /// medium. Set by `Document::render` and for each nested document.
-    pub(crate) doc: Option<Rc<crate::document::state::DocState>>,
+    /// The document being built: its quirks mode, `@position-try` rules,
+    /// medium and the arenas of its `calc()`/`anchor()` values. Set by
+    /// `Document::render` and for each nested document.
+    pub(crate) doc: BuildDoc,
+}
+
+/// The document of a build. `Default` is an empty document: a host builds a
+/// `Document`'s nodes through `Document::render`, which sets its own.
+#[derive(Clone)]
+pub(crate) struct BuildDoc(pub(crate) Rc<crate::document::state::DocState>);
+
+impl Default for BuildDoc {
+    fn default() -> Self {
+        BuildDoc(crate::document::state::DocState::new(
+            crate::style::css::Media::default(),
+        ))
+    }
 }
 
 impl LayoutCx {
-    /// The document being built; a host that calls `render::render` without a
-    /// `Document` builds in the document its scope made current.
-    pub(crate) fn doc(&self) -> Rc<crate::document::state::DocState> {
-        self.doc
-            .clone()
-            .unwrap_or_else(crate::document::state::current)
+    /// The document being built.
+    pub(crate) fn doc(&self) -> &Rc<crate::document::state::DocState> {
+        &self.doc.0
+    }
+
+    /// Values of the build: `calc()`/`anchor()` bodies parsed while building
+    /// the frame go to the document's frame arena.
+    pub(crate) fn vcx(&self) -> ValueCx<'_> {
+        self.doc.0.frame_values()
     }
 
     /// The next step-8 paint key: taken on entering an element, before its

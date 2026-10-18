@@ -22,6 +22,8 @@ pub(super) fn paint_body(
     window: &mut Window,
     cx: &mut App,
 ) {
+    let values = group.values.clone();
+    let vcx = values.vcx();
     // Слой маски-картинки, которая НЕ загрузилась (файла нет, формат не
     // читается), — «image layer of transparent black» (css-masking-1
     // §7.1). Все слои такие — элемент скрыт целиком (`mask-image-4a`:
@@ -52,7 +54,7 @@ pub(super) fn paint_body(
         if !layers.is_empty()
             && layers
                 .iter()
-                .all(|l| plain(l) && group.mask_source(l).is_none())
+                .all(|l| plain(l) && group.mask_source(l, vcx).is_none())
         {
             return;
         }
@@ -60,7 +62,7 @@ pub(super) fn paint_body(
     // Размытая картинка выходит за края элемента — в браузере тоже.
     // Вчетверо шире радиуса: маска композита обязана лежать там, где
     // размытая картинка уже сошла на нет, иначе край режется прямоугольником.
-    let (area, (sl, st, sr, sb)) = group_area(group, bounds, window);
+    let (area, (sl, st, sr, sb)) = group_area(group, bounds, window, vcx);
     // Вершины считаются от ОПОРНОЙ коробки формы (bounds ± края:
     // margin-box шире, content-box уже); проценты — доли её сторон,
     // точки — как есть (clip-path-polygon-008).
@@ -117,7 +119,20 @@ pub(super) fn paint_body(
         .as_deref()
         .or(group.mask.as_deref().filter(|_| own_mask))
         .or(poly_mask.as_deref())
-        .and_then(|src| resolve_mask(src, group, bounds, &mask_prepaint, window, sl, st, sr, sb));
+        .and_then(|src| {
+            resolve_mask(
+                src,
+                group,
+                bounds,
+                &mask_prepaint,
+                window,
+                sl,
+                st,
+                sr,
+                sb,
+                vcx,
+            )
+        });
     // Коробка окраски (`mask-clip`): вне её маска не красится — элемент
     // там скрыт (mask-size-contain-clip-padding).
     let mask_clip = polygon_clip::intersect(
@@ -136,7 +151,7 @@ pub(super) fn paint_body(
         size: gpui::size(px(aw), px(ah)),
     };
     if let Some(fills) = group.under_fills.as_ref() {
-        fills::paint_fills(&fills(bw, bh, sl, st, aw, ah), layer_at, window);
+        fills::paint_fills(&fills(bw, bh, sl, st, aw, ah), layer_at, window, vcx);
     }
     if let Some(under) = group.under.as_ref()
         && let Some(markup) = under(bw, bh, sl, st, aw, ah)
@@ -192,7 +207,7 @@ pub(super) fn paint_body(
     // Накладка (кольцо `border-shape` над обрезанным содержимым) — после
     // композита, в тот же контекст.
     if let Some(fills) = group.over_fills.as_ref() {
-        fills::paint_fills(&fills(bw, bh, sl, st, aw, ah), layer_at, window);
+        fills::paint_fills(&fills(bw, bh, sl, st, aw, ah), layer_at, window, vcx);
     }
     for over in &group.over {
         if let Some(markup) = over(bw, bh, sl, st, aw, ah)

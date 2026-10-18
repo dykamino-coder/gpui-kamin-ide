@@ -1,10 +1,18 @@
 //! Computed::apply_display_flex, хвост цепочки: gap, row-gap/column-gap, order, flex-flow, align-content, justify-items/self, place-*. Ветви в исходном порядке после apply_flex_items.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
     #[allow(unused_variables)]
-    pub(super) fn apply_gap_place(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_gap_place(
+        &mut self,
+        key: &str,
+        val: &str,
+        v: &str,
+        hit: &mut bool,
+        vcx: ValueCx<'_>,
+    ) {
         match key {
             "gap" => {
                 // Куски — по пробелам ВНЕ скобок: `calc(15% + 7px) calc(10px +
@@ -13,7 +21,8 @@ impl Computed {
                 // индексом (`parse_mixed`): зазор разрешает её от своей стороны
                 // контент-бокса в `apply.rs` (css-gaps-1 §gap-percent).
                 let tokens = split_outside_parens(v);
-                let parts: Vec<Option<Len>> = tokens.iter().map(|t| Len::parse_mixed(t)).collect();
+                let parts: Vec<Option<Len>> =
+                    tokens.iter().map(|t| Len::parse_mixed(t, vcx)).collect();
                 if (1..=2).contains(&parts.len()) && parts.iter().all(Option::is_some) {
                     self.accept_declaration();
                 }
@@ -31,12 +40,12 @@ impl Computed {
                 // Многоколоночнику — прежний разбор без смеси: его зазор долю
                 // с точками не читает.
                 if parts.len() == 1 || parts.len() == 2 {
-                    self.column_gap = Len::parse(&tokens[tokens.len() - 1]);
+                    self.column_gap = Len::parse(&tokens[tokens.len() - 1], vcx);
                 }
             }
             "row-gap" => {
                 self.gap = Some((
-                    record_parsed!(self, Len::parse(v)),
+                    record_parsed!(self, Len::parse(v, vcx)),
                     self.gap.and_then(|g| g.1),
                 ))
             }
@@ -45,8 +54,8 @@ impl Computed {
             // колонками. Пишем в оба поля, читает нужное та раскладка, которая
             // включена.
             "column-gap" => {
-                self.gap = Some((self.gap.and_then(|g| g.0), Len::parse(v)));
-                self.column_gap = record_parsed!(self, Len::parse(v));
+                self.gap = Some((self.gap.and_then(|g| g.0), Len::parse(v, vcx)));
+                self.column_gap = record_parsed!(self, Len::parse(v, vcx));
             }
             "order" => self.order = record_parsed!(self, v.parse().ok()),
             "flex-flow" => {
@@ -56,7 +65,7 @@ impl Computed {
                     } else {
                         "flex-direction"
                     };
-                    self.apply_one(prop, token);
+                    self.apply_one(prop, token, vcx);
                 }
             }
             "align-content" => {
@@ -120,8 +129,8 @@ impl Computed {
                     "place-content" => ("align-content", "justify-content"),
                     _ => ("align-self", "justify-self"),
                 };
-                self.apply_one(cross, a);
-                self.apply_one(main, b);
+                self.apply_one(cross, a, vcx);
+                self.apply_one(main, b, vcx);
             }
             _ => *hit = false,
         }

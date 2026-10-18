@@ -1,12 +1,19 @@
 //! Pure system arithmetic and descriptor ordering at full counter width.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 fn initial(algo: &Algo, v: i128) -> Option<String> {
     super::initial(algo, v, Context::default())
 }
-fn generate(rules: &HashMap<String, Raw>, v: i64, name: &str, depth: usize) -> String {
-    super::generate(rules, v, name, depth, Context::default())
+fn generate(
+    rules: &HashMap<String, Raw>,
+    v: i64,
+    name: &str,
+    depth: usize,
+    vcx: ValueCx<'_>,
+) -> String {
+    super::generate(rules, v, name, depth, Context::default(), vcx)
 }
 
 #[test]
@@ -52,6 +59,8 @@ fn systems_cover_negative_fixed_and_full_width_values() {
 
 #[test]
 fn descriptors_apply_range_then_padding_then_negative() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let mut rules = HashMap::new();
     rules.insert(
         "n".into(),
@@ -65,8 +74,8 @@ fn descriptors_apply_range_then_padding_then_negative() {
             ..Raw::default()
         },
     );
-    assert_eq!(generate(&rules, -12, "n", 0), "<012>");
-    assert_eq!(generate(&rules, 21, "n", 0), "u");
+    assert_eq!(generate(&rules, -12, "n", 0, vcx), "<012>");
+    assert_eq!(generate(&rules, 21, "n", 0, vcx), "u");
     rules.insert(
         "arabic".into(),
         Raw {
@@ -75,13 +84,15 @@ fn descriptors_apply_range_then_padding_then_negative() {
         },
     );
     assert_eq!(
-        generate(&rules, i64::MIN, "arabic", 0),
+        generate(&rules, i64::MIN, "arabic", 0, vcx),
         "-٩٢٢٣٣٧٢٠٣٦٨٥٤٧٧٥٨٠٨"
     );
 }
 
 #[test]
 fn disclosure_context_survives_extends_and_fallback() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let mut rules = HashMap::new();
     rules.insert(
         "alias".into(),
@@ -104,20 +115,22 @@ fn disclosure_context_survives_extends_and_fallback() {
         ..Default::default()
     };
     let rtl = Context::new(&style, Context::default());
-    assert_eq!(super::generate(&rules, 2, "alias", 0, rtl), "◂");
-    assert_eq!(super::generate(&rules, 2, "limited", 0, rtl), "◂");
+    assert_eq!(super::generate(&rules, 2, "alias", 0, rtl, vcx), "◂");
+    assert_eq!(super::generate(&rules, 2, "limited", 0, rtl, vcx), "◂");
     style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
         true,
         style.wm().block_rl(),
         style.wm().sideways(),
     ));
     let vertical = Context::new(&style, Context::default());
-    assert_eq!(super::generate(&rules, 2, "limited", 0, vertical), "▴");
-    assert_eq!(super::generate(&rules, -2, "alias", 0, vertical), "▴");
+    assert_eq!(super::generate(&rules, 2, "limited", 0, vertical, vcx), "▴");
+    assert_eq!(super::generate(&rules, -2, "alias", 0, vertical, vcx), "▴");
 }
 
 #[test]
 fn extended_builtin_cyclic_styles_accept_negative_values() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     for (name, expected) in [("disc", "•"), ("circle", "◦"), ("square", "▪")] {
         let rules = HashMap::from([(
             "alias".into(),
@@ -126,13 +139,15 @@ fn extended_builtin_cyclic_styles_accept_negative_values() {
                 ..Raw::default()
             },
         )]);
-        assert_eq!(generate(&rules, i64::MIN, "alias", 0), expected);
-        assert_eq!(generate(&rules, 0, "alias", 0), expected);
+        assert_eq!(generate(&rules, i64::MIN, "alias", 0, vcx), expected);
+        assert_eq!(generate(&rules, 0, "alias", 0, vcx), expected);
     }
 }
 
 #[test]
 fn builtin_fallback_keeps_document_style_overrides() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let rules = HashMap::from([
         (
             "limited".into(),
@@ -152,7 +167,7 @@ fn builtin_fallback_keeps_document_style_overrides() {
             },
         ),
     ]);
-    assert_eq!(generate(&rules, 12, "limited", 0), "亥");
-    assert_eq!(generate(&rules, 13, "limited", 0), "iioi");
-    assert_eq!(generate(&rules, -13, "limited", 0), "-iioi");
+    assert_eq!(generate(&rules, 12, "limited", 0, vcx), "亥");
+    assert_eq!(generate(&rules, 13, "limited", 0, vcx), "iioi");
+    assert_eq!(generate(&rules, -13, "limited", 0, vcx), "-iioi");
 }

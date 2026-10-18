@@ -33,6 +33,7 @@ pub(crate) fn generic_children(
     opts: &RenderOpts,
     overflow_plan: Option<absolute_overflow::Plan>,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     let makes_bfc = formatting_context::independent(&merged, &e.tag);
     let children = if let Some(children) = super::child_borrow::borrowed(e, &merged) {
         Cow::Borrowed(children)
@@ -206,8 +207,8 @@ pub(crate) fn generic_children(
     // коробка возвращается как есть.
     let child = d.children(kids).into_any_element();
     let child = match overflow_plan {
-        Some(plan) => plan.wrap(child),
+        Some(plan) => plan.wrap(child, vcx),
         None => child,
     };
-    crate::layout::positioned::anchor::place::place(child, &merged, inherited, &opts.cx.doc())
+    crate::layout::positioned::anchor::place::place(child, &merged, inherited, vcx)
 }

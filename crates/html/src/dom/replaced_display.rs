@@ -32,6 +32,8 @@ mod tests {
 
     #[test]
     fn internal_roles_are_cleared_before_anonymous_fixup() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         for value in [
             "table-cell",
             "table-row",
@@ -43,7 +45,7 @@ mod tests {
             "table-caption",
         ] {
             let mut style = Computed::default();
-            style.apply_one("display", value);
+            style.apply_one("display", value, vcx);
             normalize(&mut style, "img", &[]);
             assert_eq!(style.display, None, "{value}");
             assert_eq!(style.col_role, None, "{value}");
@@ -54,22 +56,26 @@ mod tests {
 
     #[test]
     fn non_replaced_table_cells_and_authored_none_keep_their_roles() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut style = Computed::default();
-        style.apply_one("display", "table-cell");
+        style.apply_one("display", "table-cell", vcx);
         normalize(&mut style, "span", &[]);
         assert_eq!(style.display, Some(Display::TableCell));
         normalize(&mut style, "object", &[]);
         assert_eq!(style.display, Some(Display::TableCell));
-        style.apply_one("display", "none");
+        style.apply_one("display", "none", vcx);
         normalize(&mut style, "img", &[]);
         assert_eq!(style.display, Some(Display::None));
     }
 
     #[test]
     fn out_of_flow_replaced_boxes_keep_their_blockified_display() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         for position in [None, Some(Position::Absolute), Some(Position::Fixed)] {
             let mut style = Computed::default();
-            style.apply_one("display", "table-cell");
+            style.apply_one("display", "table-cell", vcx);
             style.position = position;
             style.float = position.is_none().then_some(-1);
             normalize(&mut style, "img", &[]);

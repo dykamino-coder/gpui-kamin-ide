@@ -1,4 +1,6 @@
 //! Кадры анимаций и переходов.
+
+use crate::document::state::ValueCx;
 mod frozen;
 pub(crate) use frozen::{bake_frozen, sample_at};
 
@@ -50,7 +52,7 @@ pub(crate) fn transitioned(
 /// Интерполяция стиля между кадрами анимации.
 ///
 /// Sampled layout properties rebuild the formatting node in `animation_live`.
-pub(crate) fn frame_at(frames: &[(f32, Computed)], t: f32) -> Computed {
+pub(crate) fn frame_at(frames: &[(f32, Computed)], t: f32, vcx: ValueCx<'_>) -> Computed {
     let t = t.clamp(0.0, 1.0);
     let mut prev = &frames[0];
     let mut next = &frames[frames.len() - 1];
@@ -93,7 +95,7 @@ pub(crate) fn frame_at(frames: &[(f32, Computed)], t: f32) -> Computed {
             (Len::Pct(x), Len::Pct(y)) => Some(Len::Pct(lerp(x, y))),
             // Разные природы (`0px → 200vw`, `0% → 200vw`) — покомпонентно,
             // как `calc()`; несводимая смесь — ближайший кадр.
-            (x, y) => Some(crate::style::values::value::lerp_len(x, y, k).unwrap_or(x)),
+            (x, y) => Some(crate::style::values::value::lerp_len(x, y, k, vcx).unwrap_or(x)),
         }
     };
     out.width = len(prev.1.width, next.1.width).or(out.width);

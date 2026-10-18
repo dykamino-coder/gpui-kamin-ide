@@ -1,10 +1,18 @@
 //! Computed::apply_font, хвост цепочки: font-size-adjust, font-stretch, caret-color. Ветви в исходном порядке после font-size..font-variant.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
     #[allow(unused_variables)]
-    pub(super) fn apply_font_metrics(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_font_metrics(
+        &mut self,
+        key: &str,
+        val: &str,
+        v: &str,
+        hit: &mut bool,
+        vcx: ValueCx<'_>,
+    ) {
         match key {
             "font-size-adjust" => {
                 // css-fonts-5 §font-size-adjust:
@@ -39,7 +47,7 @@ impl Computed {
                 let want = if number == "from-font" {
                     f32::NAN
                 } else {
-                    match crate::style::values::value::number(number) {
+                    match crate::style::values::value::number(number, vcx) {
                         Some(k) if k >= 0.0 => k,
                         _ => return,
                     }
@@ -65,7 +73,7 @@ impl Computed {
                                 .iter()
                                 .any(|f| other.starts_with(f)) =>
                     {
-                        match Len::parse(other) {
+                        match Len::parse(other, vcx) {
                             Some(Len::Pct(p)) if p.is_finite() && p >= 0.0 => Some(p * 100.0),
                             _ => None,
                         }
@@ -76,7 +84,7 @@ impl Computed {
                     self.font_stretch = accept_parsed!(self, Some(pct));
                 }
             }
-            "caret-color" => self.caret_color = record_parsed!(self, Color::parse(v)),
+            "caret-color" => self.caret_color = record_parsed!(self, Color::parse(v, vcx)),
             _ => *hit = false,
         }
     }
@@ -88,6 +96,8 @@ mod tests {
 
     #[test]
     fn stretch_preserves_fractional_percentages_and_keywords() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         for (value, expected) in [
             ("extra-condensed", 62.5),
             ("semi-condensed", 87.5),
@@ -97,15 +107,18 @@ mod tests {
             ("calc(50% + 25%)", 75.),
         ] {
             let mut c = Computed::default();
-            c.apply_decls(&crate::style::css::parse_decls(&format!(
-                "font-stretch: {value}"
-            )));
+            c.apply_decls(
+                &crate::style::css::parse_decls(&format!("font-stretch: {value}")),
+                vcx,
+            );
             assert_eq!(c.font_stretch, Some(expected), "{value}");
         }
     }
 
     #[test]
     fn invalid_stretch_preserves_previous_declaration() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         for value in [
             "123",
             "0",
@@ -118,9 +131,12 @@ mod tests {
             "87.5% extra",
         ] {
             let mut c = Computed::default();
-            c.apply_decls(&crate::style::css::parse_decls(&format!(
-                "font-stretch: 75%; font-stretch: {value}"
-            )));
+            c.apply_decls(
+                &crate::style::css::parse_decls(&format!(
+                    "font-stretch: 75%; font-stretch: {value}"
+                )),
+                vcx,
+            );
             assert_eq!(c.font_stretch, Some(75.), "{value}");
         }
     }

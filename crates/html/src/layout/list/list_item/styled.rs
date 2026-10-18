@@ -13,7 +13,8 @@ pub(crate) fn render_with_style(
     merged: &Computed,
     opts: &RenderOpts,
 ) -> AnyElement {
-    let resolved = super::marker::resolve(li, inherited, merged);
+    let vcx = opts.cx.vcx();
+    let resolved = super::marker::resolve(li, inherited, merged, vcx);
     let no_marker = resolved.is_none();
     let (marker, marker_style) = resolved.map(|m| (m.text, m.style)).unwrap_or_default();
     // `inside`: маркер — ПЕРВЫЙ инлайновый кусок содержимого пункта
@@ -58,7 +59,7 @@ pub(crate) fn render_with_style(
     // item with no content gets a hidden zero-width copy of the marker line.
     let empty = li.children.iter().all(crate::render::is_blank);
     let strut = (!no_marker && empty).then(|| {
-        let mut d = crate::style::apply::apply_text(div(), &mark_style)
+        let mut d = crate::style::apply::apply_text(div(), &mark_style, vcx)
             .w_0()
             .whitespace_nowrap()
             .child(SharedString::from(marker.clone()));
@@ -87,7 +88,7 @@ pub(crate) fn render_with_style(
             // левым краем (`list-style-type-string-003`: строка
             // маркера уходила за левый край окна).
             {
-                let m = crate::style::apply::apply_text(div(), &mark_style)
+                let m = crate::style::apply::apply_text(div(), &mark_style, vcx)
                     .absolute()
                     .top_0();
                 // An outside marker sits outside the item's principal BORDER

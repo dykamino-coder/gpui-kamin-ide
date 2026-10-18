@@ -11,11 +11,13 @@ pub(super) fn children(
     has_text: bool,
     cx: &mut CollectCx,
 ) -> Vec<Piece> {
+    let doc = cx.layout.doc().clone();
+    let vcx = doc.frame_values();
     // CSS Lists 3: outside computes to inside for an inline list item.
     if e.style.inline_display == Some(true)
         && e.style.display == Some(crate::style::computed::Display::ListItem)
         && let Some(marker) =
-            crate::layout::list::list_item::marker::inline_marker(e, merged, merged)
+            crate::layout::list::list_item::marker::inline_marker(e, merged, merged, vcx)
     {
         let mut nodes = Vec::with_capacity(e.children.len() + 1);
         nodes.push(marker);

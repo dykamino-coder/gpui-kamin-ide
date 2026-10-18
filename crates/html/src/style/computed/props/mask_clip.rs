@@ -1,5 +1,6 @@
 //! Computed::apply_one: mask*, clip, clip-path, shape-*.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::Len;
 
@@ -9,7 +10,14 @@ mod mask_layers;
 
 impl Computed {
     #[allow(unused_variables)]
-    pub(crate) fn apply_mask_clip(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_mask_clip(
+        &mut self,
+        key: &str,
+        val: &str,
+        v: &str,
+        hit: &mut bool,
+        vcx: ValueCx<'_>,
+    ) {
         match key {
             // `will-change` (css-will-change-1 §2.1) разбирается ОДНОЙ армой
             // рядом с `backdrop-filter`: вторая арма того же ключа в этом
@@ -21,7 +29,7 @@ impl Computed {
                     self.shape_outside = Some(t.to_string());
                 }
             }
-            "shape-margin" => self.shape_margin = record_parsed!(self, Len::parse(v.trim())),
+            "shape-margin" => self.shape_margin = record_parsed!(self, Len::parse(v.trim(), vcx)),
             "shape-image-threshold" => {
                 self.shape_threshold = record_parsed!(
                     self,
@@ -61,7 +69,7 @@ impl Computed {
                             // как `auto` (`visufx/clip-076…102`). Кегель на
                             // этом шаге ещё не известен, поэтому ненулевые
                             // относительные единицы по-прежнему мимо.
-                            _ => match Len::parse(t) {
+                            _ => match Len::parse(t, vcx) {
                                 Some(Len::Px(v)) => Some(v),
                                 Some(
                                     Len::Em(v)
@@ -83,14 +91,14 @@ impl Computed {
                         ]);
                         let raw = |t: &str| match t {
                             "auto" => None,
-                            _ => Len::parse(t),
+                            _ => Len::parse(t, vcx),
                         };
                         self.clip_len =
                             Some([raw(parts[0]), raw(parts[1]), raw(parts[2]), raw(parts[3])]);
                     }
                 }
             }
-            "mask-size" | "-webkit-mask-size" => mask_size::apply(self, v),
+            "mask-size" | "-webkit-mask-size" => mask_size::apply(self, v, vcx),
             "mask-mode" => {
                 self.accept_declaration();
                 self.mask_luminance = Some(v.trim() == "luminance");
@@ -110,7 +118,7 @@ impl Computed {
                         .collect(),
                 );
             }
-            _ => self.apply_mask_layers(key, val, v, hit),
+            _ => self.apply_mask_layers(key, val, v, hit, vcx),
         }
     }
 }

@@ -21,9 +21,9 @@ pub(super) fn static_position_atom(
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
-    let mut merged = inherit(inherited, &e.style);
-    let doc = opts.cx.doc();
-    anchor::prepare_inline_abs(&mut merged, e, inherited, &doc);
+    let vcx = opts.cx.vcx();
+    let mut merged = inherit(inherited, &e.style, vcx);
+    anchor::prepare_inline_abs(&mut merged, e, inherited, vcx);
     let positioned = merged.clone();
     // Позиционирование с внутренней коробки СНИМАЕТСЯ. Содержащим блоком
     // ей стала бы нулевая пустышка, а ширина у неё «по содержимому» —
@@ -96,11 +96,13 @@ pub(super) fn static_position_atom(
         opts.cx.line_box.clone(),
     );
     let inner = match replaced {
-        Some(el) if merged.corner_shaped() => crate::paint::effects::grouped::grouped(el, &merged),
+        Some(el) if merged.corner_shaped() => {
+            crate::paint::effects::grouped::grouped(el, &merged, vcx)
+        }
         Some(el) => el,
         None => inner.into_any_element(),
     };
-    let inner = anchor::place::place(inner, &positioned, inherited, &doc);
+    let inner = anchor::place::place(inner, &positioned, inherited, vcx);
     let taken = if below {
         Some(inner)
     } else {
@@ -122,9 +124,9 @@ pub(super) fn absolute_atom(
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
-    let mut merged = inherit(inherited, &e.style);
-    let doc = opts.cx.doc();
-    anchor::prepare_inline_abs(&mut merged, e, inherited, &doc);
+    let vcx = opts.cx.vcx();
+    let mut merged = inherit(inherited, &e.style, vcx);
+    anchor::prepare_inline_abs(&mut merged, e, inherited, vcx);
     // Содержащий блок — позиционированный СТРОЧНЫЙ предок в этом абзаце
     // (CSS 2.1 §10.1 п.4): края по обеим осям считает `lines.rs` от
     // прямоугольника его фрагментов, коробка идёт без пустышки и слоёв.
@@ -174,7 +176,7 @@ pub(super) fn absolute_atom(
             .into_any_element(),
         &merged,
         inherited,
-        &doc,
+        vcx,
     );
     // Незамещаемая коробка с РОВНО ОДНОЙ заданной осью — тем же щупом, что
     // и замещаемая выше: без этого `<span>` с одним краем падал в нулевой

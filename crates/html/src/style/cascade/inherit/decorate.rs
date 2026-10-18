@@ -1,6 +1,7 @@
 //! Оформление текста при наследовании: линии text-decoration, их цвет, толщина и смещение, распространение на потомков.
 
 use super::*;
+use crate::document::state::ValueCx;
 use crate::style::computed::FontCx;
 
 /// Украшения текста (css-text-decor-3 §2.1): линии не наследуются, а
@@ -8,7 +9,13 @@ use crate::style::computed::FontCx;
 /// (`inline-block`, `inline-table`…) и вынесенных из потока (флоаты,
 /// абсолюты); цвет, рисунок, толщина и метрики — от украшающей коробки.
 /// `display: contents` коробки не даёт и своих линий не кладёт.
-pub(super) fn decorate(parent: &Computed, own: &Computed, c: &mut Computed, own_px: f32) {
+pub(super) fn decorate(
+    parent: &Computed,
+    own: &Computed,
+    c: &mut Computed,
+    own_px: f32,
+    vcx: ValueCx<'_>,
+) {
     use crate::style::computed::Display as D;
     use crate::style::computed::Position as P;
     use crate::style::computed::{DECOR_THROUGH, DECOR_UNDER, Decor, DecorFont, DecorLen};
@@ -23,7 +30,7 @@ pub(super) fn decorate(parent: &Computed, own: &Computed, c: &mut Computed, own_
     });
     let resolve = |l: DecorLen| match l {
         DecorLen::Raw(raw) => raw
-            .to_px(None, FontCx::new(&family, own_px))
+            .to_px(None, FontCx::new(&family, own_px), vcx)
             .map_or(DecorLen::Auto, DecorLen::Px),
         other => other,
     };

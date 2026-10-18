@@ -1,11 +1,13 @@
 //! Плитки фона: размер, начало, раскладка и отрисовка (paint_tiles).
 
+use crate::document::state::ValueCx;
 mod geometry;
 pub(super) use geometry::len_px;
 use geometry::origin;
 pub(super) use geometry::rounded;
 pub(crate) use geometry::tile_size;
 
+mod area_corners;
 mod drawing;
 pub(super) use drawing::draw_tiles;
 
@@ -27,6 +29,7 @@ pub fn paint_tiles(
     bounds: Bounds<Pixels>,
     canvas: Option<Bounds<Pixels>>,
     window: &mut gpui::Window,
+    vcx: ValueCx<'_>,
 ) {
     let Some(src) = c.bg_image.clone() else {
         return;
@@ -97,7 +100,7 @@ pub fn paint_tiles(
     // картинки с разным природным размером, и ключ обязан их различать
     // (`image-orientation-none-content-images`: четыре `<img>` с
     // `background-image` под `image-orientation: none`).
-    let Some(found) = source(&key_exif(&src, c)) else {
+    let Some(found) = source(&key_exif(&src, c, vcx), vcx) else {
         return;
     };
     // Область ПОКРАСКИ (`background-clip`, css-backgrounds-3 §3.7): плитки
@@ -168,6 +171,6 @@ pub fn paint_tiles(
     // знает (`exact_layer`); краска режется округлённой (`paint_box` выше).
     draw_tiles(
         c, bounds, canvas, window, inset, found, paint_box, size, repeat, pos, fixed_area, border,
-        px_of,
+        px_of, vcx,
     );
 }

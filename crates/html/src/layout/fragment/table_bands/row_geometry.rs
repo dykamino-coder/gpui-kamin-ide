@@ -4,6 +4,7 @@
 //! table_row_layout_algorithm.cc:112-118; spans over other non-empty
 //! rows keep their independently sized row tracks.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::{Shape, ShapeCx};
@@ -32,6 +33,7 @@ pub(crate) fn row_geometry<'a>(
     depth: u8,
     cx: ShapeCx,
     spacing: f32,
+    vcx: ValueCx<'_>,
 ) -> Option<Vec<RowGeometry<'a>>> {
     let mut out = Vec::with_capacity(rows.len());
     for (i, &(group, row)) in rows.iter().enumerate() {
@@ -57,7 +59,7 @@ pub(crate) fn row_geometry<'a>(
                 Some(n) => n.clamp(1, left),
                 None => 1,
             };
-            let shape = shape_full(cell, depth.checked_sub(1)?, cx)?;
+            let shape = shape_full(cell, depth.checked_sub(1)?, cx, vcx)?;
             if span == 1 {
                 height = height.max(shape.0);
             }

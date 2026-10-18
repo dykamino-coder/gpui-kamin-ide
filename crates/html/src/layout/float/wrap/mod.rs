@@ -1,4 +1,6 @@
 //! Обтекание флоатов: `wrap_floats` и хвост потока.
+
+use crate::document::state::ValueCx;
 // owner: A
 
 use std::ops::ControlFlow;
@@ -40,13 +42,14 @@ pub(crate) fn wrap_floats(
     // Ширина содержащего блока в точках (`LayoutCx::cb_width`) — для
     // `bfc_no_fit`.
     cb_px: Option<f32>,
+    vcx: ValueCx<'_>,
 ) -> Vec<Node> {
     let cb_width = parent.width;
     // `clear: inherit` — сторона родителя (`clear-005`: `clear: left` на
     // контейнере и `inherit` на ребёнке). Разрешается здесь: своего
     // наследования у ненаследуемого свойства нет, а родительский стиль есть
     // только у вызывающего.
-    let mut nodes = prepare_float_nodes(nodes, parent, cb_top_open, cb_px);
+    let mut nodes = prepare_float_nodes(nodes, parent, cb_top_open, cb_px, vcx);
     if let Some(value) = unfloated_flow(cb_top_open, em, measured_ok, parent_bfc, &mut nodes, cb_px)
     {
         return value;

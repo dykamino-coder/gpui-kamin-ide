@@ -1,6 +1,7 @@
 //! Growth searches use the same flex-row offsets as the shape pass.
 
 use super::pushed_box_at;
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::flex_lines::row_geometry::{collect_rows, row_container};
@@ -8,11 +9,17 @@ use crate::layout::fragment::flex_lines::row_main_size;
 use crate::style::values::value::Len;
 use crate::style::values::value::px_auto_zero;
 
-pub(super) fn pushed_row_at(c: &Element, at: f32, depth: u8, forced: bool) -> Option<Option<u64>> {
+pub(super) fn pushed_row_at(
+    c: &Element,
+    at: f32,
+    depth: u8,
+    forced: bool,
+    vcx: ValueCx<'_>,
+) -> Option<Option<u64>> {
     if !row_container(c) {
         return None;
     }
-    let rows = collect_rows(c, row_main_size(c)?, depth, ShapeCx::COLUMNS)?;
+    let rows = collect_rows(c, row_main_size(c)?, depth, ShapeCx::COLUMNS, vcx)?;
     let top = px_auto_zero(c.style.padding.top)? + px_auto_zero(c.style.borders().top)?;
     let gap = px_auto_zero(c.style.gap.and_then(|g| g.0))?.max(0.0);
     let mut y = top;
@@ -30,7 +37,7 @@ pub(super) fn pushed_row_at(c: &Element, at: f32, depth: u8, forced: bool) -> Op
             let start = y + item.shape.1;
             if at > start - 0.01
                 && at < start + item.shape.0 - 0.01
-                && let Some(id) = pushed_box_at(&item.element, at - start, depth - 1, forced)
+                && let Some(id) = pushed_box_at(&item.element, at - start, depth - 1, forced, vcx)
             {
                 return Some(Some(id));
             }
@@ -40,9 +47,10 @@ pub(super) fn pushed_row_at(c: &Element, at: f32, depth: u8, forced: bool) -> Op
     Some(None)
 }
 
-pub(crate) fn grow_row_at(c: &mut Element, at: f32, grow: f32) -> bool {
-    let _frame = crate::layout::fragment::LineScope::enter(c);
-    let Some(rows) = row_main_size(c).and_then(|main| collect_rows(c, main, 4, ShapeCx::COLUMNS))
+pub(crate) fn grow_row_at(c: &mut Element, at: f32, grow: f32, vcx: ValueCx<'_>) -> bool {
+    let _frame = crate::layout::fragment::LineScope::enter(c, vcx);
+    let Some(rows) =
+        row_main_size(c).and_then(|main| collect_rows(c, main, 4, ShapeCx::COLUMNS, vcx))
     else {
         return false;
     };

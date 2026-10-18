@@ -3,6 +3,7 @@
 use super::TableBands;
 use super::row_cuts::{RowRef, row_avoid, row_force};
 use super::row_shape::row_band_shape;
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::{Shape, ShapeCx};
 use crate::layout::table::anon::fixup_table_children;
@@ -15,6 +16,7 @@ pub(super) fn table_shape_bands(
     depth: u8,
     cx: ShapeCx,
     bands: &mut TableBands,
+    vcx: ValueCx<'_>,
 ) -> Option<Shape> {
     let px_of = |l: &Option<Len>| match l {
         None => Some(0.0),
@@ -87,7 +89,7 @@ pub(super) fn table_shape_bands(
     // (`table-border-000` 6.25 — зелёное до y=566 при коробке до y=191,
     // `table-cell-border-001` 2.08, `overflow-scroll-row`).
     // `fixed` объявлен ДО `parts`: `parts` держит ссылки внутрь него.
-    let fixed = fixup_table_children(&c.children);
+    let fixed = fixup_table_children(&c.children, vcx);
     // Подпись — НЕ ряд и не группа: она живёт в анонимной ОБЁРТКЕ таблицы, а
     // не в коробке рядов (css-tables-3 §terminology: table wrapper box —
     // «A block container box generated around table grid boxes to account for
@@ -148,10 +150,10 @@ pub(super) fn table_shape_bands(
                 row: e,
                 group: gi,
                 avoid: false,
-                fb: row_force(e, false),
-                fa: row_force(e, true),
-                ab: row_avoid(e, false),
-                aa: row_avoid(e, true),
+                fb: row_force(e, false, vcx),
+                fa: row_force(e, true, vcx),
+                ab: row_avoid(e, false, vcx),
+                aa: row_avoid(e, true, vcx),
             });
             continue;
         }
@@ -170,14 +172,14 @@ pub(super) fn table_shape_bands(
                 row: r,
                 group: gi,
                 avoid: e.style.break_inside_avoid,
-                fb: row_force(r, false) || (i == 0 && e.style.break_before_force),
-                fa: row_force(r, true) || (i == last && e.style.break_after_force),
+                fb: row_force(r, false, vcx) || (i == 0 && e.style.break_before_force),
+                fa: row_force(r, true, vcx) || (i == last && e.style.break_after_force),
                 // Край ГРУППЫ — тот же перенос, что у принудительных выше:
                 // `break-before: avoid` группы действует на её ПЕРВОМ ряду,
                 // `break-after: avoid` — на ПОСЛЕДНЕМ (css-break-4 §break-between,
                 // «Applies to: … table row groups, table rows»).
-                ab: row_avoid(r, false) || (i == 0 && e.style.break_before_avoid),
-                aa: row_avoid(r, true) || (i == last && e.style.break_after_avoid),
+                ab: row_avoid(r, false, vcx) || (i == 0 && e.style.break_before_avoid),
+                aa: row_avoid(r, true, vcx) || (i == last && e.style.break_after_avoid),
             });
         }
     }
@@ -200,6 +202,6 @@ pub(super) fn table_shape_bands(
     }
     row_band_shape(
         c, depth, cx, bands, spec_h, spec_min_h, mt, mb, top, bot, spacing, cell_cx, caps_top,
-        caps_bot, parts, rows,
+        caps_bot, parts, rows, vcx,
     )
 }

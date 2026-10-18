@@ -1,5 +1,6 @@
 //! SVG-маски контура и кольца рамки.
 
+use crate::document::state::ValueCx;
 use crate::paint::background::shape_path::border_geometry::miter_limit;
 use crate::paint::background::*;
 
@@ -10,6 +11,7 @@ use crate::paint::background::*;
 /// фигуры. Одна фигура — контур ПЛЮС его обводка толщиной рамки (Blink
 /// `BorderShapePainter::OuterPath` = shape ∪ stroke: фон и содержимое видны
 /// под всем кольцом); две — внешняя фигура как есть (обводка 0).
+#[allow(clippy::too_many_arguments)]
 pub fn border_shape_mask_svg(
     spec: &str,
     bw: f32,
@@ -18,6 +20,7 @@ pub fn border_shape_mask_svg(
     dy: f32,
     cw: f32,
     ch: f32,
+    vcx: ValueCx<'_>,
 ) -> Option<String> {
     let (head, raw) = spec.split_once(':')?;
     let v: Vec<f32> = head
@@ -29,7 +32,7 @@ pub fn border_shape_mask_svg(
     }
     let (ot, or_, ob, ol, stroke) = (v[0], v[1], v[2], v[3], v[4]);
     let (rw, rh) = ((bw + ol + or_).max(0.0), (bh + ot + ob).max(0.0));
-    let (d, rule) = border_shape_path(raw, rw, rh)?;
+    let (d, rule) = border_shape_path(raw, rw, rh, vcx)?;
     let path = if d.is_empty() {
         String::new()
     } else if stroke < 0.0 {
@@ -81,6 +84,7 @@ pub fn border_shape_ring_svg(
     dy: f32,
     cw: f32,
     ch: f32,
+    vcx: ValueCx<'_>,
 ) -> Option<String> {
     let rgb = format!(
         "rgb({},{},{})",
@@ -89,7 +93,7 @@ pub fn border_shape_ring_svg(
         (colour.b * 255.0).round()
     );
     let place = |(raw, [t, r, b, l]): (&str, [f32; 4])| -> Option<(String, String, &'static str)> {
-        let (d, rule) = border_shape_path(raw, (bw + l + r).max(0.0), (bh + t + b).max(0.0))?;
+        let (d, rule) = border_shape_path(raw, (bw + l + r).max(0.0), (bh + t + b).max(0.0), vcx)?;
         Some((format!("translate({} {})", dx - l, dy - t), d, rule))
     };
     let (tr_o, d_o, rule_o) = place(outer)?;

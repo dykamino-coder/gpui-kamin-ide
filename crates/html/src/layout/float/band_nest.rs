@@ -92,13 +92,14 @@ pub(super) fn band_nest(
     opts: &RenderOpts,
     em: f32,
 ) -> Option<crate::layout::float::band_flow::Nest> {
+    let vcx = opts.cx.vcx();
     if !band_nest_block(c, em) {
         return None;
     }
     let inner_em = band_em(&c.style, em)?;
     let cb = opts.cx.cb_width;
     let seq = band_seq(collapse_margins(&c.children, false, cb), inner_em, cb)?;
-    let merged = inherit(inherited, &c.style);
+    let merged = inherit(inherited, &c.style, vcx);
     let kids = band_kids(&seq, 0, &merged, opts, inner_em, top_edge_open(c));
     Some(crate::layout::float::band_flow::Nest {
         kids,

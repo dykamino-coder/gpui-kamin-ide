@@ -1,10 +1,18 @@
 //! Computed::apply_box_model, продолжение цепочки: padding-* по сторонам и margin*. Ветви в исходном порядке; не совпавший ключ уходит в apply_box_model_logical.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
     #[allow(unused_variables)]
-    pub(super) fn apply_box_model_sides(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_box_model_sides(
+        &mut self,
+        key: &str,
+        val: &str,
+        v: &str,
+        hit: &mut bool,
+        vcx: ValueCx<'_>,
+    ) {
         match key {
             "padding-top" => {
                 // `inherit` разбором не выражается: слово копирует вычисленное
@@ -17,14 +25,14 @@ impl Computed {
                 // Отрицательный внутренний отступ невалиден (§8.4) — слот
                 // не трогается (ref-no-vert-space-between и родня).
                 if matches!(
-                    Len::parse(v),
+                    Len::parse(v, vcx),
                     Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if n < 0.0
                 ) {
                     return;
                 }
                 self.padding.top = record_parsed!(
                     self,
-                    crate::style::values::value::fold_zero_percentage(Len::parse(v))
+                    crate::style::values::value::fold_zero_percentage(Len::parse(v, vcx), vcx)
                 );
                 self.side_seq.padding[0] = self.decl_seq;
             }
@@ -39,14 +47,14 @@ impl Computed {
                 // Отрицательный внутренний отступ невалиден (§8.4) — слот
                 // не трогается (ref-no-vert-space-between и родня).
                 if matches!(
-                    Len::parse(v),
+                    Len::parse(v, vcx),
                     Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if n < 0.0
                 ) {
                     return;
                 }
                 self.padding.right = record_parsed!(
                     self,
-                    crate::style::values::value::fold_zero_percentage(Len::parse(v))
+                    crate::style::values::value::fold_zero_percentage(Len::parse(v, vcx), vcx)
                 );
                 self.side_seq.padding[1] = self.decl_seq;
             }
@@ -61,14 +69,14 @@ impl Computed {
                 // Отрицательный внутренний отступ невалиден (§8.4) — слот
                 // не трогается (ref-no-vert-space-between и родня).
                 if matches!(
-                    Len::parse(v),
+                    Len::parse(v, vcx),
                     Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if n < 0.0
                 ) {
                     return;
                 }
                 self.padding.bottom = record_parsed!(
                     self,
-                    crate::style::values::value::fold_zero_percentage(Len::parse(v))
+                    crate::style::values::value::fold_zero_percentage(Len::parse(v, vcx), vcx)
                 );
                 self.side_seq.padding[2] = self.decl_seq;
             }
@@ -83,14 +91,14 @@ impl Computed {
                 // Отрицательный внутренний отступ невалиден (§8.4) — слот
                 // не трогается (ref-no-vert-space-between и родня).
                 if matches!(
-                    Len::parse(v),
+                    Len::parse(v, vcx),
                     Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if n < 0.0
                 ) {
                     return;
                 }
                 self.padding.left = record_parsed!(
                     self,
-                    crate::style::values::value::fold_zero_percentage(Len::parse(v))
+                    crate::style::values::value::fold_zero_percentage(Len::parse(v, vcx), vcx)
                 );
                 self.side_seq.padding[3] = self.decl_seq;
             }
@@ -105,7 +113,7 @@ impl Computed {
                     self.margin_inherit = [true; 4];
                     return;
                 }
-                self.margin = Sides::shorthand(v);
+                self.margin = Sides::shorthand(v, vcx);
                 if self.margin.top.is_some()
                     && self.margin.right.is_some()
                     && self.margin.bottom.is_some()
@@ -120,7 +128,7 @@ impl Computed {
                     self.margin_inherit[0] = true;
                     return;
                 }
-                self.margin.top = record_parsed!(self, Len::parse(v));
+                self.margin.top = record_parsed!(self, Len::parse(v, vcx));
                 self.side_seq.margin[0] = self.decl_seq;
             }
             "margin-right" => {
@@ -134,7 +142,10 @@ impl Computed {
                 // — по-прежнему `parse`: смесь там закрыла бы схлопывание.
                 self.margin.right = record_parsed!(
                     self,
-                    crate::style::values::value::fold_zero_percentage(Len::parse_mixed(v))
+                    crate::style::values::value::fold_zero_percentage(
+                        Len::parse_mixed(v, vcx),
+                        vcx
+                    )
                 );
                 self.side_seq.margin[1] = self.decl_seq;
             }
@@ -143,7 +154,7 @@ impl Computed {
                     self.margin_inherit[2] = true;
                     return;
                 }
-                self.margin.bottom = record_parsed!(self, Len::parse(v));
+                self.margin.bottom = record_parsed!(self, Len::parse(v, vcx));
                 self.side_seq.margin[2] = self.decl_seq;
             }
             "margin-left" => {
@@ -154,12 +165,15 @@ impl Computed {
                 // Смесь «доля ± точки» доживает (см. `margin-right`).
                 self.margin.left = record_parsed!(
                     self,
-                    crate::style::values::value::fold_zero_percentage(Len::parse_mixed(v))
+                    crate::style::values::value::fold_zero_percentage(
+                        Len::parse_mixed(v, vcx),
+                        vcx
+                    )
                 );
                 self.side_seq.margin[3] = self.decl_seq;
             }
 
-            _ => self.apply_box_model_logical(key, val, v, hit),
+            _ => self.apply_box_model_logical(key, val, v, hit, vcx),
         }
     }
 }

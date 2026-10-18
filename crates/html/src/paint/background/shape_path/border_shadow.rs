@@ -1,5 +1,6 @@
 //! SVG-тень контура рамки, вынесенная из построения пути.
 
+use crate::document::state::ValueCx;
 use crate::paint::background::shape_path::border_geometry::miter_limit;
 use crate::paint::background::*;
 
@@ -43,9 +44,10 @@ pub fn border_shape_shadow_svg(
     dy: f32,
     cw: f32,
     ch: f32,
+    vcx: ValueCx<'_>,
 ) -> Option<String> {
     let place = |(raw, [t, r, b, l]): (&str, [f32; 4])| -> Option<(String, String, &'static str)> {
-        let (d, rule) = border_shape_path(raw, (bw + l + r).max(0.0), (bh + t + b).max(0.0))?;
+        let (d, rule) = border_shape_path(raw, (bw + l + r).max(0.0), (bh + t + b).max(0.0), vcx)?;
         Some((format!("translate({} {})", dx - l, dy - t), d, rule))
     };
     let (tr_o, d_o, rule_o) = place(outer)?;

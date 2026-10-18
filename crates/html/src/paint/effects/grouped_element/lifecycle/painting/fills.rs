@@ -4,6 +4,7 @@
 //! эквивалентной обрезкой до единицы канала.
 
 use super::masks::resolve_mask;
+use crate::document::state::ValueCx;
 use crate::paint::effects::grouped_element::Grouped;
 use crate::style::values::value::Color;
 use gpui::{Bounds, IntoElement, Pixels, Window};
@@ -12,12 +13,17 @@ use gpui::{Bounds, IntoElement, Pixels, Window};
 type Fill = (String, Color);
 
 /// Рисует заливки снизу вверх в области `layer_at`.
-pub(super) fn paint_fills(fills: &[Fill], layer_at: Bounds<Pixels>, window: &mut Window) {
+pub(super) fn paint_fills(
+    fills: &[Fill],
+    layer_at: Bounds<Pixels>,
+    window: &mut Window,
+    vcx: ValueCx<'_>,
+) {
     if fills.is_empty() {
         return;
     }
     // Маска разрешается как у группы без своих настроек маски.
-    let probe = Grouped::new(gpui::div().into_any_element());
+    let probe = Grouped::new(gpui::div().into_any_element(), vcx);
     for (src, colour) in fills {
         let Some(mask) = resolve_mask(
             src,
@@ -29,6 +35,7 @@ pub(super) fn paint_fills(fills: &[Fill], layer_at: Bounds<Pixels>, window: &mut
             0.0,
             0.0,
             0.0,
+            vcx,
         ) else {
             continue;
         };

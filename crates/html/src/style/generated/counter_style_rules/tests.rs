@@ -1,10 +1,10 @@
 //! Тесты правил @counter-style: разбор дескрипторов, системы, запасные стили.
 
 use super::*;
+use crate::document::state::ValueCx;
 
-fn with(css: &[(&str, &[(&str, &str)])], f: impl FnOnce()) {
+fn with(css: &[(&str, &[(&str, &str)])], f: impl FnOnce(ValueCx<'_>)) {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-    let _scope = doc.enter();
     for (name, descs) in css {
         let d: Vec<(String, Vec<String>)> = descs
             .iter()
@@ -12,7 +12,7 @@ fn with(css: &[(&str, &[(&str, &str)])], f: impl FnOnce()) {
             .collect();
         register(&doc, name, &d);
     }
-    f();
+    f(doc.values());
 }
 
 #[test]
@@ -37,19 +37,25 @@ fn systems_follow_spec() {
             ),
             ("d", &[("system", "numeric"), ("symbols", "'0' '1' '2'")]),
         ],
-        || {
+        |vcx| {
             // css-counter-styles-3 §cyclic: index `(value - 1) mod N` with a
             // non-negative modulo, so -2 with two symbols is index 1.
             assert_eq!(
-                custom_repr(-2, "a", Context::default()).unwrap(),
+                custom_repr(-2, "a", Context::default(), vcx).unwrap(),
                 "\u{2021}"
             );
-            assert_eq!(custom_repr(-1, "b", Context::default()).unwrap(), "-*I");
-            assert_eq!(custom_repr(0, "b", Context::default()).unwrap(), "0");
-            assert_eq!(custom_repr(6, "b", Context::default()).unwrap(), "6");
-            assert_eq!(custom_repr(1, "c", Context::default()).unwrap(), "1");
-            assert_eq!(custom_repr(5, "c", Context::default()).unwrap(), "ab");
-            assert_eq!(custom_repr(-4, "d", Context::default()).unwrap(), "-11");
+            assert_eq!(
+                custom_repr(-1, "b", Context::default(), vcx).unwrap(),
+                "-*I"
+            );
+            assert_eq!(custom_repr(0, "b", Context::default(), vcx).unwrap(), "0");
+            assert_eq!(custom_repr(6, "b", Context::default(), vcx).unwrap(), "6");
+            assert_eq!(custom_repr(1, "c", Context::default(), vcx).unwrap(), "1");
+            assert_eq!(custom_repr(5, "c", Context::default(), vcx).unwrap(), "ab");
+            assert_eq!(
+                custom_repr(-4, "d", Context::default(), vcx).unwrap(),
+                "-11"
+            );
         },
     );
 }

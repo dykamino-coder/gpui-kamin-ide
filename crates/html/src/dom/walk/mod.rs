@@ -56,6 +56,7 @@ fn walk(
     level_pos: usize,
     out: &mut Vec<Node>,
 ) {
+    let vcx = tree.doc.values();
     match &handle.data {
         NodeData::Text { contents } => {
             walk_text(
@@ -85,12 +86,12 @@ fn walk(
                 &mut me, &attrs, &tag, handle, tree, rules, vars, path, spot, sibs,
             );
             let vars = &own_vars;
-            normalize_style(&mut style, &tag, &attrs, path, &tree.doc);
+            normalize_style(&mut style, &tag, &attrs, path, vcx);
             content::snapshot_generated(&mut me, &style, path.last());
             // Правила с `:hover` собираются отдельным слоем: в базовый стиль
             // им нельзя, иначе элемент выглядел бы всегда наведённым.
             let (hover, first_letter, first_line, marker_layer) =
-                pseudo_styles(&mut style, &tag, rules, vars, &me, path, sibs);
+                pseudo_styles(&mut style, &tag, rules, vars, &me, path, sibs, vcx);
             // Обратный счётчик без числа: начальное значение — итог
             // предварительного обхода области (css-lists-3
             // §instantiating-counters). Считается ЗДЕСЬ, до применения
@@ -168,7 +169,7 @@ fn walk(
                 counters.enter_marker();
                 language::pseudo(counters, &m, &me, path);
                 apply_counter_decls(&m, counters, "", &[], &mut false, &|_, _| 0);
-                if let Some(items) = host_content(&m, &me) {
+                if let Some(items) = host_content(&m, &me, vcx) {
                     let quotes = m.quotes.as_ref();
                     style.marker_text = Some(content_text(
                         &items,
@@ -180,6 +181,7 @@ fn walk(
                             &m,
                             me.counter_context,
                         ),
+                        vcx,
                     ));
                     style.no_marker = Some(false);
                 } else if m.content_none == Some(true) {
@@ -215,9 +217,10 @@ fn walk(
                 }
             }
             if tag == "details" {
-                children = details_content::wrap(children, &attrs, rules, vars, &me, path, sibs);
+                children =
+                    details_content::wrap(children, &attrs, rules, vars, &me, path, sibs, vcx);
             }
-            let anim = animation_frames(&style, frames, vars);
+            let anim = animation_frames(&style, frames, vars, vcx);
             finish_element(
                 style,
                 children,
@@ -231,6 +234,7 @@ fn walk(
                 first_line,
                 scroll_pseudos,
                 out,
+                vcx,
             );
         }
         _ => walk_children(

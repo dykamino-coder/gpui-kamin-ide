@@ -17,6 +17,7 @@ pub(crate) fn scrollable(
     inherited: &Computed,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
+    let vcx = opts.cx.vcx();
     if e.style.scroller || e.tag == "frameset" || crate::render::real_inline(e) {
         return None;
     }
@@ -29,7 +30,7 @@ pub(crate) fn scrollable(
     {
         return None;
     }
-    let scroll_style = crate::style::cascade::inherit::inherit(inherited, &e.style);
+    let scroll_style = crate::style::cascade::inherit::inherit(inherited, &e.style, vcx);
     let snap = scroll_style.snap.axis != 0;
     let horizontal = scroll_style.overflow_x == Some(Overflow::Scroll)
         || snap && scroll_style.overflow_x == Some(Overflow::Hidden);
@@ -61,6 +62,7 @@ pub(crate) fn scrollable(
     let depth = defer_depth();
     let build = std::rc::Rc::new(
         move |handle: &gpui::ScrollHandle, h: bool, v: bool| -> AnyElement {
+            let vcx = opts.cx.vcx();
             let _depth = DepthScope::enter(depth);
             // Keep CSS overflow on the native box; `scroller` only prevents
             // recursive adapters while its ScrollHandle is attached.
@@ -114,7 +116,7 @@ pub(crate) fn scrollable(
                 return built;
             }
             use gpui::{InteractiveElement, StatefulInteractiveElement};
-            let mut d = crate::style::apply::margins(div(), &outer_margin)
+            let mut d = crate::style::apply::margins(div(), &outer_margin, vcx)
                 .id(gpui::ElementId::Integer(node.node_id + 1))
                 .track_scroll(handle)
                 .child(built);
@@ -145,7 +147,7 @@ pub(crate) fn scrollable(
             // ширины не резала ничего (`white-space-pre-wrap-trailing-spaces-
             // 021`: висящие пробелы `overflow: auto`-коробки шириной в `ch`
             // выходили за её край).
-            let sized = crate::style::cascade::inherit::inherit(&inherited, &inner.style);
+            let sized = crate::style::cascade::inherit::inherit(&inherited, &inner.style, vcx);
             if h && let Some(Len::Px(w)) = sized.width {
                 let side = |l: Option<Len>| match l {
                     None | Some(Len::Auto) => Some(0.0),
@@ -190,6 +192,7 @@ pub(crate) fn scrollable(
             horizontal,
             vertical,
             build,
+            vcx,
         )
         .with_style(scroll_style)
         .with_tree(e)

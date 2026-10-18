@@ -47,14 +47,15 @@ fn tabular_marker(style: &mut Computed, item: &Computed, layer: Option<&Computed
 }
 
 pub(super) fn render(li: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    let mut merged = inherit(inherited, &li.style);
+    let vcx = opts.cx.vcx();
+    let mut merged = inherit(inherited, &li.style, vcx);
     if matches!(
         li.style.display,
         None | Some(Display::Block | Display::ListItem | Display::TableCell)
     ) || (li.style.display == Some(Display::InlineBlock)
         && li.style.inline_display != Some(true))
     {
-        crate::render::pseudo_line_layers::install(li, &mut merged);
+        crate::render::pseudo_line_layers::install(li, &mut merged, vcx);
     }
     render_with_style(li, inherited, &merged, opts)
 }

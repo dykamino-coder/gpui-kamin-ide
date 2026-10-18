@@ -60,12 +60,6 @@ pub(crate) struct Ancestor {
     pub(crate) foreign: bool,
 }
 
-/// Режим quirks текущего документа (ставит его разбор; у рамки свой
-/// документ — `document::state`).
-pub(crate) fn quirks() -> bool {
-    crate::document::state::current().quirks.get()
-}
-
 /// Место элемента среди соседей — по нему считаются структурные псевдоклассы.
 #[derive(Clone, Copy, Default)]
 pub(crate) struct Spot {

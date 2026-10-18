@@ -5,6 +5,7 @@ use super::{
     AREA_LAST, AREA_NOW, AnchorPlace, AnchorPlan, CELL_LAST, CELL_NOW, CHOSEN, USED_LAST, geometry,
     reframe_if_stale, request_rebuild,
 };
+use crate::document::state::ValueCx;
 use crate::hooks::{Hooks, IntoHooked};
 use crate::style::computed::Computed;
 
@@ -18,29 +19,24 @@ use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, px};
 /// одному на элемент списка: правило `@position-try` накладывается на копию
 /// базы, `<position-area>` подменяет область, тактика переворачивает
 /// готовый план. Правило без определения — «does nothing»: варианта нет.
-pub fn place(
-    el: AnyElement,
-    own: &Computed,
-    inherited: &Computed,
-    doc: &crate::document::state::DocState,
-) -> AnyElement {
+pub fn place(el: AnyElement, own: &Computed, inherited: &Computed, vcx: ValueCx<'_>) -> AnyElement {
     let base = own.try_base.as_deref().unwrap_or(own);
-    let Some(first) = AnchorPlan::of(base, inherited) else {
+    let Some(first) = AnchorPlan::of(base, inherited, vcx) else {
         return el;
     };
     let mut plans = vec![first];
     for fb in &base.position_try_fallbacks {
         let mut c = base.clone();
         if let Some(n) = &fb.name {
-            let Some(decls) = doc.try_rule(n) else {
+            let Some(decls) = vcx.doc.try_rule(n) else {
                 continue;
             };
-            c.apply_decls(&decls);
+            c.apply_decls(&decls, vcx);
         }
         if let Some(area) = fb.area {
             c.position_area = Some(area);
         }
-        let Some(mut p) = AnchorPlan::of(&c, inherited) else {
+        let Some(mut p) = AnchorPlan::of(&c, inherited, vcx) else {
             continue;
         };
         p.apply_tactics(fb.tactics);
@@ -52,6 +48,7 @@ pub fn place(
         order: base.position_try_order,
         key: own.anchor_key,
         visibility: own.position_visibility,
+        values: vcx.keep(),
     }
     .hooked()
 }
@@ -75,7 +72,7 @@ impl Hooks for AnchorPlace {
         cx: &mut App,
     ) -> Self::Prepaint {
         let own = geometry::logical_own(*state, bounds, window);
-        let (k, p) = self.choose(own, window);
+        let (k, p) = self.choose(own, window, self.values.vcx());
         let plan = &self.plans[k];
         // IMCB нужен и клетке `position-area`, и паре вставок с `anchor()`
         // при `auto`-размере (`resolve::fill_anchor_pairs`).

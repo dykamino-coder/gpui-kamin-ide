@@ -15,11 +15,12 @@ pub(super) fn collect_captions(
     caps_top: &mut Vec<AnyElement>,
     caps_bot: &mut Vec<AnyElement>,
 ) {
+    let vcx = opts.cx.vcx();
     for c in &e.children {
         if let Node::Element(cap) = c
             && (cap.tag == "caption" || cap.style.is_caption == Some(true))
         {
-            let cm = inherit(inherited, &cap.style);
+            let cm = inherit(inherited, &cap.style, vcx);
             // Сторона — с самого заголовка, при пустоте — от таблицы
             // (наследование caption-side).
             let cap_side_bottom = cap.style.caption_bottom.or(e.style.caption_bottom) == Some(true);

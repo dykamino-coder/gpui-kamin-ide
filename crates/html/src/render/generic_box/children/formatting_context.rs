@@ -38,14 +38,16 @@ mod tests {
     use super::*;
     use crate::style::css::parse_decls;
 
-    fn context(css: &str) -> bool {
+    fn context(css: &str, vcx: crate::document::state::ValueCx<'_>) -> bool {
         let mut style = Computed::default();
-        style.apply_decls(&parse_decls(css));
+        style.apply_decls(&parse_decls(css), vcx);
         independent(&style, "div")
     }
 
     #[test]
     fn ordinary_flow_and_clip_do_not_establish_contexts() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         for css in [
             "",
             "display: block",
@@ -56,12 +58,14 @@ mod tests {
             "overflow: clip",
             "position: relative",
         ] {
-            assert!(!context(css), "{css}");
+            assert!(!context(css, vcx), "{css}");
         }
     }
 
     #[test]
     fn independent_context_families_share_one_predicate() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         for css in [
             "display: flow-root",
             "display: inline-block",
@@ -83,7 +87,7 @@ mod tests {
             "column-width: 30px",
             "column-span: all",
         ] {
-            assert!(context(css), "{css}");
+            assert!(context(css, vcx), "{css}");
         }
         assert!(independent(&Computed::default(), "fieldset"));
         assert!(independent(

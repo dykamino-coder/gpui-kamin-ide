@@ -1,6 +1,7 @@
 //! Discover declarative shadow roots, build their stylesheet scopes and assign slots.
 
 use super::{Scope, SlotInfo, Slotted, attr_of, is_slot};
+use crate::document::state::ValueCx;
 use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::dom::*;
 use crate::style::css::{LayerRegistry, Media, Rule, parse_document_sheet};
@@ -44,7 +45,7 @@ pub(super) fn shadow_scope(
     agent: &Scope,
     media: Media,
     layers: &mut LayerRegistry,
-    doc: &crate::document::state::DocState,
+    vcx: ValueCx<'_>,
 ) -> (Rc<Scope>, Vec<HasArg>) {
     let mut rules = agent.rules.clone();
     let mut frames = agent.frames.clone();
@@ -52,7 +53,7 @@ pub(super) fn shadow_scope(
     collect_style_tags(root, &mut sheets);
     for css in &sheets {
         let base = rules.len();
-        for (i, r) in parse_document_sheet(css, media, layers, doc)
+        for (i, r) in parse_document_sheet(css, media, layers, vcx)
             .into_iter()
             .enumerate()
         {
@@ -62,7 +63,7 @@ pub(super) fn shadow_scope(
                 ..r
             });
         }
-        frames.extend(crate::style::css::parse_keyframes_in(css, Some(media)));
+        frames.extend(crate::style::css::parse_keyframes_in(css, Some(media), vcx));
     }
     let mut raw: Vec<String> = vec![];
     rules.retain(|r| collect_has_args(&r.sel, &mut raw));

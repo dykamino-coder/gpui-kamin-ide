@@ -1,5 +1,6 @@
 //! Растр слоёв-изображений: cross-fade, градиенты, раскладка стопов.
 
+use crate::document::state::ValueCx;
 use crate::paint::background::*;
 use gpui::RenderImage;
 use std::sync::Arc;
@@ -70,7 +71,12 @@ pub(super) fn with_viewport(markup: &str, tile: (f32, f32)) -> String {
 /// ближайшей точкой.
 // Pixel channel indices address the source and accumulator buffers together.
 #[allow(clippy::needless_range_loop)]
-pub(super) fn rasterize_cross_fade(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
+pub(super) fn rasterize_cross_fade(
+    src: &str,
+    w: u32,
+    h: u32,
+    vcx: ValueCx<'_>,
+) -> Option<Arc<RenderImage>> {
     let inner = src.strip_prefix("cross-fade(")?;
     let inner = &inner[..inner.rfind(')')?];
     let n = (w * h) as usize;
@@ -89,6 +95,7 @@ pub(super) fn rasterize_cross_fade(src: &str, w: u32, h: u32) -> Option<Arc<Rend
             img.strip_prefix("image(")
                 .and_then(|t| t.strip_suffix(')'))
                 .unwrap_or(img),
+            vcx,
         );
         let buf = if let Some(c) = colour {
             let px = [
@@ -100,10 +107,10 @@ pub(super) fn rasterize_cross_fade(src: &str, w: u32, h: u32) -> Option<Arc<Rend
             px.iter().copied().cycle().take(n * 4).collect()
         } else {
             let image = if img.contains("gradient(") {
-                rasterize_gradient(img, w, h)?
+                rasterize_gradient(img, w, h, vcx)?
             } else {
                 let url = crate::style::computed::parse_url(img)?;
-                source(&url)?.raster((w as f32, h as f32))?
+                source(&url, vcx)?.raster((w as f32, h as f32), vcx)?
             };
             let size = image.size(0);
             let (iw, ih) = (size.width.0.max(1) as u32, size.height.0.max(1) as u32);
@@ -163,22 +170,27 @@ pub(super) fn rasterize_cross_fade(src: &str, w: u32, h: u32) -> Option<Arc<Rend
     gpui::bgra_bytes_to_image(w, h, out)
 }
 
-pub(super) fn rasterize_gradient(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
-    if crate::style::computed::parse_image_color(src).is_some() {
-        return sources::raster_color(src, w, h);
+pub(super) fn rasterize_gradient(
+    src: &str,
+    w: u32,
+    h: u32,
+    vcx: ValueCx<'_>,
+) -> Option<Arc<RenderImage>> {
+    if crate::style::computed::parse_image_color(src, vcx).is_some() {
+        return sources::raster_color(src, w, h, vcx);
     }
     if src.starts_with("cross-fade(") {
-        return rasterize_cross_fade(src, w, h);
+        return rasterize_cross_fade(src, w, h, vcx);
     }
     if conic::is_conic(src) {
-        return conic::rasterize(src, (w as f32, h as f32), 1.0);
+        return conic::rasterize(src, (w as f32, h as f32), 1.0, vcx);
     }
-    gradient_raster::raster(src, w, h, (w as f32, h as f32), false)
+    gradient_raster::raster(src, w, h, (w as f32, h as f32), false, vcx)
 }
 
 /// Угол позиции стопа в долях оборота: `90deg`, `25%`, `0.25turn`, голый `0`.
-pub(super) fn angle_fraction(token: &str) -> Option<f32> {
-    angle::fraction(token)
+pub(super) fn angle_fraction(token: &str, vcx: ValueCx<'_>) -> Option<f32> {
+    angle::fraction(token, vcx)
 }
 
 /// Расставить позиции стопов по правилам css-images: крайние без позиции — на

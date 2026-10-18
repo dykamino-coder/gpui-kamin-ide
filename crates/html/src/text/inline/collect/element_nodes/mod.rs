@@ -29,6 +29,8 @@ pub(super) fn collect_element(
     gap_at: &mut Option<usize>,
     from: usize,
 ) {
+    let doc = cx.layout.doc().clone();
+    let vcx = doc.frame_values();
     if special_node(e, inherited, atom, has_text, cx, out) {
         return;
     }
@@ -75,7 +77,7 @@ pub(super) fn collect_element(
         }
         return;
     }
-    let (mut merged, painted_bg) = element_style(e, inherited);
+    let (mut merged, painted_bg) = element_style(e, inherited, vcx);
     let atomic = matches!(
         e.style.display,
         Some(crate::style::computed::Display::InlineBlock)
@@ -193,7 +195,7 @@ pub(super) fn collect_element(
     if cb_here {
         cx.inline_cb_depth += 1;
     }
-    crate::text::inline::atom_parent::open(&mut cx.inline_parents, &e.style, inherited);
+    crate::text::inline::atom_parent::open(&mut cx.inline_parents, &e.style, inherited, vcx);
     let kids = list_item::children(e, &merged, atom, has_text, cx);
     cx.inline_parents.pop();
     let kids = if cb_here {

@@ -28,6 +28,7 @@ pub(crate) fn finish_element(
     record_root: bool,
     opts: &RenderOpts,
 ) {
+    let vcx = opts.cx.vcx();
     let below_cb_axis = e.style.position == Some(crate::style::computed::Position::Absolute)
         && e.style.z_index.is_some_and(|z| z < 0)
         && y_set
@@ -79,7 +80,7 @@ pub(crate) fn finish_element(
     // Замещаемому дорожка по содержимому не нужна: его размер по
     // ключевому слову — природный, считается в `image_with`.
     let layered_built = layered(built, &e.style, inherited, layer_ok, under_tf);
-    let mut done = content_wrapper::for_element(layered_built, e, inherited, placement);
+    let mut done = content_wrapper::for_element(layered_built, e, inherited, placement, vcx);
     // Тело под корнем-донором фона холста при `vertical-rl`: записать
     // левый край коробки корня для отрисовки холста (см. `canvas_paint`).
     // Корень по содержимому = margin-box тела плюс рамка и отбивка

@@ -1,6 +1,7 @@
 //! Computed::apply_text, хвост цепочки: vertical-align/baseline-shift, line-clamp, block-ellipsis, writing-mode, text-orientation, hyphens, tab-size. Ветви в исходном порядке после apply_text_breaking.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
     #[allow(unused_variables)]
@@ -10,11 +11,12 @@ impl Computed {
         val: &str,
         v: &str,
         hit: &mut bool,
+        vcx: ValueCx<'_>,
     ) {
         match key {
             // CSS Inline 3 §5.2.2: shared alignment grammar; center is middle.
             "vertical-align" | "baseline-shift" => {
-                if Len::parse(v).is_some()
+                if Len::parse(v, vcx).is_some()
                     || matches!(
                         v,
                         "baseline"
@@ -35,7 +37,7 @@ impl Computed {
                 self.vertical_shift = match v {
                     "super" => Some(-1.0 / 3.0),
                     "sub" => Some(1.0 / 5.0),
-                    other => match Len::parse(other) {
+                    other => match Len::parse(other, vcx) {
                         // Positive shifts move upward, opposite our y axis.
                         Some(Len::Pct(k)) => {
                             // Процент — доля `line-height`, и считается он
@@ -48,7 +50,7 @@ impl Computed {
                     },
                 };
                 // Font metrics arrive after inheritance; retain relative units.
-                match Len::parse(v) {
+                match Len::parse(v, vcx) {
                     // Точки не зависят ни от чего — сразу в поле.
                     Some(Len::Px(px)) => self.vertical_shift_px = (px != 0.0).then_some(-px),
                     // Единицы шрифта ждут набора: у строчного своих метрик
@@ -197,7 +199,7 @@ impl Computed {
             // CSS Rhythm 1 §2: a step establishes an independent formatting
             // context even while rhythm layout itself is unimplemented.
             "block-step-size" => {
-                if v == "none" || v == "auto" || Len::parse(v).is_some() {
+                if v == "none" || v == "auto" || Len::parse(v, vcx).is_some() {
                     self.accept_declaration();
                 }
                 if v != "none" && v != "auto" {
@@ -240,7 +242,7 @@ impl Computed {
                 // флагом `auto` и `manual` вели себя одинаково.
                 self.hyphens_auto = Some(v == "auto");
             }
-            "tab-size" => tab_size::apply(self, v),
+            "tab-size" => tab_size::apply(self, v, vcx),
             _ => *hit = false,
         }
     }

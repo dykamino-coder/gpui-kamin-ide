@@ -4,6 +4,7 @@
 //! the table's display role. Anonymous table fixup must precede this decision.
 
 use super::table_box;
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::table::anon::fixup_table_children;
 use crate::render::is_blank;
@@ -13,11 +14,12 @@ pub(crate) fn serial_table_parallel(
     table: &Element,
     depth: u8,
     parallel: impl Fn(&Element, u8) -> bool,
+    vcx: ValueCx<'_>,
 ) -> Option<bool> {
     if depth == 0 || !table_box(table) {
         return None;
     }
-    let fixed = fixup_table_children(&table.children);
+    let fixed = fixup_table_children(&table.children, vcx);
     let mut rows = Vec::new();
     let mut nested = false;
     for n in fixed.iter().filter(|n| !is_blank(n)) {

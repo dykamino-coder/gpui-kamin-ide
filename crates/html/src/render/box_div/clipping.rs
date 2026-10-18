@@ -60,10 +60,11 @@ pub(crate) fn paint_rect_minus(
 /// вместо него всю коробку — заметно хуже, чем не красить (тесты на него
 /// прямо пишут «no red» про залитый прямоугольник).
 pub(crate) fn clip_layer(c: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
+    let vcx = opts.cx.vcx();
     if crate::paint::background::single_corner::eligible(c) {
         return None;
     }
-    let clip = c.color_clip()?;
+    let clip = c.color_clip(vcx)?;
     if c.gradient.is_none() && c.background.is_none() {
         return None;
     }

@@ -1,14 +1,15 @@
 //! Разбор размеров: fit-content(), calc-size(), view-box, назначение размера, flex-коэффициенты.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// Довод `fit-content(<length-percentage>)` (css-sizing-3 §4.1): только
 /// точки или доля, неотрицательные. Прочее (`em`, `calc`) — `None`, и
 /// значение ведёт себя, как прежде, голым `fit-content`.
-pub(in crate::style::computed) fn fit_content_arg(v: &str) -> Option<Len> {
+pub(in crate::style::computed) fn fit_content_arg(v: &str, vcx: ValueCx<'_>) -> Option<Len> {
     let lower = v.trim().to_ascii_lowercase();
     let arg = lower.strip_prefix("fit-content(")?.strip_suffix(')')?;
-    match Len::parse(arg) {
+    match Len::parse(arg, vcx) {
         Some(l @ (Len::Px(n) | Len::Pct(n))) if n >= 0.0 => Some(l),
         _ => None,
     }
@@ -96,7 +97,10 @@ pub(in crate::style::computed) fn calc_size_arg(v: &str) -> Option<CalcSize> {
 
 /// `xywh()` (css-images-4 §object-view-box; css-shapes-1 §basic-shape-rect).
 /// Длины — точки или доли; `inset` с 1-3 значениями раскрывается как поля.
-pub(in crate::style::computed) fn parse_view_box(v: &str) -> Option<(u8, [Len; 4])> {
+pub(in crate::style::computed) fn parse_view_box(
+    v: &str,
+    vcx: ValueCx<'_>,
+) -> Option<(u8, [Len; 4])> {
     let v = v.trim();
     let (kind, inner) = if let Some(r) = v.strip_prefix("inset(") {
         (0u8, r)
@@ -110,7 +114,7 @@ pub(in crate::style::computed) fn parse_view_box(v: &str) -> Option<(u8, [Len; 4
     let inner = inner.strip_suffix(')')?;
     let parts: Vec<Len> = inner
         .split_whitespace()
-        .map(|t| match Len::parse(t) {
+        .map(|t| match Len::parse(t, vcx) {
             Some(l @ (Len::Px(_) | Len::Pct(_))) => Some(l),
             _ => None,
         })
@@ -125,11 +129,11 @@ pub(in crate::style::computed) fn parse_view_box(v: &str) -> Option<(u8, [Len; 4
     Some((kind, four))
 }
 
-pub(in crate::style::computed) fn assign_size(slot: &mut Option<Len>, v: &str) {
+pub(in crate::style::computed) fn assign_size(slot: &mut Option<Len>, v: &str, vcx: ValueCx<'_>) {
     // Смесь «доля ± точки» доживает индексом (`parse_mixed`): раскладка
     // складывает её сама (`DefiniteLength::Calc`, css-values-4 §10.9).
     // Прежде `calc(50% - 3px)` роняло объявление (`calc-width-block-1`).
-    let parsed = size_range::parse(v);
+    let parsed = size_range::parse(v, vcx);
     // `none` снимает предел (§10.4) — слот гаснет по праву. Прочая
     // неразборная запись объявление роняет: слот сохраняет прежнее значение,
     // а не гаснет (§4.2).
@@ -147,8 +151,8 @@ pub(in crate::style::computed) fn assign_size(slot: &mut Option<Len>, v: &str) {
 /// наибольшее представимое: здесь — конечное большое, чтобы сумма
 /// множителей и доли свободного места не уходили в бесконечность и `NaN`
 /// (`flex-grow-009`: `flex: calc(infinity) 0 0px` забирает всё место).
-pub(in crate::style::computed) fn flex_factor(v: &str) -> Option<f32> {
-    let g = crate::style::values::value::number(v)?;
+pub(in crate::style::computed) fn flex_factor(v: &str, vcx: ValueCx<'_>) -> Option<f32> {
+    let g = crate::style::values::value::number(v, vcx)?;
     if g.is_nan() || g < 0.0 {
         return None;
     }

@@ -65,12 +65,14 @@ mod tests {
 
     #[test]
     fn prefixed_alias_and_invalid_values() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut c = Computed::default();
-        c.apply_one("-webkit-appearance", "none");
+        c.apply_one("-webkit-appearance", "none", vcx);
         assert!(c.appearance_none());
-        c.apply_one("appearance", "junk");
+        c.apply_one("appearance", "junk", vcx);
         assert!(c.appearance_none(), "invalid value keeps the previous one");
-        c.apply_one("appearance", "auto");
+        c.apply_one("appearance", "auto", vcx);
         assert_eq!(c.appearance, Some(Appearance::Auto));
         assert!(!c.appearance_none());
     }

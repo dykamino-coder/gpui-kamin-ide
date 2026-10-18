@@ -1,10 +1,18 @@
 //! Computed::apply_display_flex, продолжение цепочки: flex-wrap, flex-*, flex-basis, align-self/align-items. Ветви в исходном порядке; не совпавший ключ уходит в apply_gap_place.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
     #[allow(unused_variables)]
-    pub(super) fn apply_flex_items(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_flex_items(
+        &mut self,
+        key: &str,
+        val: &str,
+        v: &str,
+        hit: &mut bool,
+        vcx: ValueCx<'_>,
+    ) {
         match key {
             "flex-wrap" => {
                 // css-flexbox-2 §5.2: `nowrap | [ wrap | wrap-reverse ] || balance`;
@@ -48,12 +56,12 @@ impl Computed {
             // values are not allowed») — объявление отбрасывается целиком
             // (`flex-shrink-002`, `flex-basis-004`).
             "flex-grow" => {
-                if let Some(g) = flex_factor(v) {
+                if let Some(g) = flex_factor(v, vcx) {
                     self.flex_grow = accept_parsed!(self, Some(g));
                 }
             }
             "flex-shrink" => {
-                if let Some(g) = flex_factor(v) {
+                if let Some(g) = flex_factor(v, vcx) {
                     self.flex_shrink = accept_parsed!(self, Some(g));
                 }
             }
@@ -85,7 +93,7 @@ impl Computed {
                     // двух числах оставалась `auto`, и `flex: 0 1` держал
                     // ширину элемента вместо нуля.
                     let parts: Vec<&str> = v.split_whitespace().collect();
-                    let number = |t: &str| flex_factor(t);
+                    let number = |t: &str| flex_factor(t, vcx);
                     match parts.as_slice() {
                         [one] => match number(one) {
                             Some(g) => {
@@ -96,7 +104,7 @@ impl Computed {
                             None => {
                                 self.flex_grow = Some(1.0);
                                 self.flex_shrink = Some(1.0);
-                                self.flex_basis = Len::parse(one);
+                                self.flex_basis = Len::parse(one, vcx);
                             }
                         },
                         [a, b] => {
@@ -108,7 +116,7 @@ impl Computed {
                                 }
                                 None => {
                                     self.flex_shrink = Some(1.0);
-                                    self.flex_basis = Len::parse(b);
+                                    self.flex_basis = Len::parse(b, vcx);
                                 }
                             }
                         }
@@ -116,7 +124,8 @@ impl Computed {
                             // Безразмерная основа кроме нуля делает ВСЁ
                             // объявление невалидным (`flex: 0 0 4` не
                             // применяется вовсе, flexbox_flex-*-unitless-basis).
-                            if crate::style::values::value::number(c).is_some_and(|n| n != 0.0) {
+                            if crate::style::values::value::number(c, vcx).is_some_and(|n| n != 0.0)
+                            {
                                 return;
                             }
                             self.flex_grow = number(a);
@@ -131,7 +140,7 @@ impl Computed {
                                 self.flex_basis = Some(Len::Auto);
                                 self.basis_content = Some(true);
                             } else {
-                                self.flex_basis = Len::parse(c);
+                                self.flex_basis = Len::parse(c, vcx);
                             }
                         }
                         _ => {}
@@ -150,7 +159,7 @@ impl Computed {
                 self.basis_content = Some(true);
             }
             "flex-basis" => {
-                if let Some(l) = Len::parse(v)
+                if let Some(l) = Len::parse(v, vcx)
                     && !matches!(l, Len::Px(x) | Len::Pct(x) if x < 0.0)
                 {
                     self.flex_basis = accept_parsed!(self, Some(l));
@@ -211,7 +220,7 @@ impl Computed {
                 }
                 self.justify_content_safe = is_safe(v);
             }
-            _ => self.apply_gap_place(key, val, v, hit),
+            _ => self.apply_gap_place(key, val, v, hit, vcx),
         }
     }
 }

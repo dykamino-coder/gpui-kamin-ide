@@ -1,7 +1,8 @@
 //! Разбор документа: html5ever -> каскад -> дерево `Node` с вычисленными
-//! стилями и поправками дерева. Правила и метрики документа пишутся в
-//! состояние текущего документа (`document::state`).
+//! стилями и поправками дерева. Правила, метрики и арены значений пишутся в
+//! состояние переданного документа (`document::state`).
 
+use super::Parsed;
 use super::style_sources::collect_style_tags;
 use super::{Node, user_agent_css};
 use super::{content, float_tail, grid_static_position, subgrid_used};
@@ -22,19 +23,18 @@ use std::rc::Rc;
 ///
 /// `extra_css` — таблица уровня приложения (тема чата), применяется до
 /// `<style>` документа и до `style=""`.
-pub fn parse(html: &str, extra_css: &str) -> Vec<Node> {
+pub fn parse(html: &str, extra_css: &str) -> Parsed {
     parse_media(html, extra_css, Media::default())
 }
 
 /// То же, но с известными условиями окружения для `@media`.
 ///
-/// Разбор без `Document`: правила и метрики ложатся в отсоединённый
-/// документ потока (`document::state`), который этот вызов очищает, — для
-/// тестов и инструментов. `Document` разбирает в своё состояние.
-pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
-    let doc = crate::document::state::detached_for_parse(media);
-    let _scope = doc.enter();
-    parse_current(html, extra_css, media, &doc)
+/// Разбор без `Document` (тесты, инструменты): правила, метрики и арены
+/// значений ложатся в свежий документ, который возвращается вместе с узлами.
+pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Parsed {
+    let doc = crate::document::state::DocState::new(media);
+    let nodes = parse_current(html, extra_css, media, &doc);
+    Parsed { nodes, doc }
 }
 
 /// Разобрать в СВЕЖЕЕ состояние текущего документа: область открыта
@@ -45,6 +45,7 @@ pub(crate) fn parse_current(
     mut media: Media,
     doc: &Rc<crate::document::state::DocState>,
 ) -> Vec<Node> {
+    let vcx = doc.values();
     let _content_document = content::document(html);
     // `@font-feature-values` — от прошлого разбора (слои `@layer` — свои у
     // разбора, `LayerRegistry` ниже).
@@ -77,9 +78,9 @@ pub(crate) fn parse_current(
     // Правила: сначала умолчания тегов, затем тема, затем <style> документа.
     // Каскадные слои у всех таблиц документа общие (css-cascade-5 §6.4.3).
     let mut layers = LayerRegistry::default();
-    let mut rules = parse_document_sheet(user_agent_css(), media, &mut layers, doc);
+    let mut rules = parse_document_sheet(user_agent_css(), media, &mut layers, vcx);
     let base = rules.len();
-    for (i, r) in parse_document_sheet(extra_css, media, &mut layers, doc)
+    for (i, r) in parse_document_sheet(extra_css, media, &mut layers, vcx)
         .into_iter()
         .enumerate()
     {
@@ -93,7 +94,7 @@ pub(crate) fn parse_current(
     // (css-shadow-1 §3.2: селекторы сопоставляются в своей области).
     if doc.quirks() {
         let base = rules.len();
-        for (i, r) in parse_document_sheet(super::ua_style::QUIRKS_CSS, media, &mut layers, doc)
+        for (i, r) in parse_document_sheet(super::ua_style::QUIRKS_CSS, media, &mut layers, vcx)
             .into_iter()
             .enumerate()
         {
@@ -111,7 +112,7 @@ pub(crate) fn parse_current(
     collect_style_tags(&dom.document, &mut sheets);
     for css in &sheets {
         let base = rules.len();
-        for (i, r) in parse_document_sheet(css, media, &mut layers, doc)
+        for (i, r) in parse_document_sheet(css, media, &mut layers, vcx)
             .into_iter()
             .enumerate()
         {
@@ -134,14 +135,14 @@ pub(crate) fn parse_current(
 
     let mut out = vec![];
     // Наборы кадров собираются из тех же источников, что и правила.
-    let mut frames = parse_keyframes(user_agent_css());
-    frames.extend(parse_keyframes(extra_css));
+    let mut frames = parse_keyframes(user_agent_css(), vcx);
+    frames.extend(parse_keyframes(extra_css, vcx));
     let agent = Scope {
         rules: agent_rules,
         frames: frames.clone(),
     };
     for css in &sheets {
-        frames.extend(crate::style::css::parse_keyframes_in(css, Some(media)));
+        frames.extend(crate::style::css::parse_keyframes_in(css, Some(media), vcx));
     }
     // `:has()`: аргументы собираются со всех селекторов, правила с
     // вложенным `:has` выкидываются (спека: cannot be nested), отметки
@@ -200,7 +201,7 @@ pub(crate) fn parse_current(
     // ПЕРВЫМ проходом: табличная починка и подъёмы ниже читают `display`.
     resolve_display_inherit(&mut out, (None, None, None, None, None));
     if tree.doc.quirks() {
-        super::quirks_color::resolve(&mut out);
+        super::quirks_color::resolve(&mut out, vcx);
     }
     resolve_rule_color_inherit(&mut out, &RuleColors::default());
     // Anonymous inline-table around orphan table boxes inside inline boxes

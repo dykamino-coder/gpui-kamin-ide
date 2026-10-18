@@ -6,11 +6,12 @@
 //! sized by the image's concrete size; callers resolve and scale the input
 //! before applying the list here.
 
+use crate::document::state::ValueCx;
 use gpui::RenderImage;
 use std::sync::Arc;
 
 /// Splits `filter(url(x), list)` into the decoded url and the filter list.
-pub(crate) fn parse(src: &str) -> Option<(String, String)> {
+pub(crate) fn parse(src: &str, vcx: ValueCx<'_>) -> Option<(String, String)> {
     let rest = src.trim().strip_prefix("filter(")?;
     let inner = &rest[..rest.rfind(')')?];
     let parts = crate::style::css::split_args(inner);
@@ -20,7 +21,7 @@ pub(crate) fn parse(src: &str) -> Option<(String, String)> {
     }
     let input = if image.to_ascii_lowercase().starts_with("url(") {
         crate::style::computed::parse_url(image)?
-    } else if crate::style::computed::parse_gradient(image).is_some() {
+    } else if crate::style::computed::parse_gradient(image, vcx).is_some() {
         image.to_string()
     } else {
         return None;
@@ -34,9 +35,10 @@ pub(super) fn apply(
     image: &Arc<RenderImage>,
     list: &str,
     scale: (f32, f32),
+    vcx: ValueCx<'_>,
 ) -> Option<Arc<RenderImage>> {
     let mut style = crate::style::computed::Computed::default();
-    style.apply_one("filter", list);
+    style.apply_one("filter", list, vcx);
     let calls = list.matches('(').count();
     let size = image.size(0);
     let (w, h) = (size.width.0.max(0) as usize, size.height.0.max(0) as usize);

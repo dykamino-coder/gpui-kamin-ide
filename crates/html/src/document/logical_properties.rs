@@ -1,6 +1,7 @@
 //! Document pass after the cascade: logical properties onto physical sides by the inherited
 //! writing mode, then the passes that need physical sides (zoom, explicit `inherit`, anchors, motion).
 
+use crate::document::state::ValueCx;
 use crate::dom::Node;
 
 #[cfg(test)]
@@ -15,9 +16,9 @@ mod tests;
 ///
 /// Проход идёт после каскада и после распространения письма с `<body>` —
 /// то есть в единственной точке, где письмо узла уже окончательно.
-pub(super) fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
+pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Node> {
     use crate::style::computed::writing_mode::WritingProps;
-    fn walk(nodes: &mut [Node], parent: WritingProps) {
+    fn walk(nodes: &mut [Node], parent: WritingProps, vcx: ValueCx<'_>) {
         for n in nodes.iter_mut() {
             let Node::Element(e) = n else { continue };
             // `writing-mode` and `direction` are inherited (css-writing-modes-4 §3.1, §2.1):
@@ -30,7 +31,7 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
             // only from author CSS at this stage.
             let is_cell = matches!(e.tag.as_str(), "td" | "th")
                 || e.style.display == Some(crate::style::computed::Display::TableCell);
-            e.style.resolve_logical(wm, parent_vertical, is_cell);
+            e.style.resolve_logical(wm, parent_vertical, is_cell, vcx);
             // `:hover`, `::first-letter` and `::first-line` layers are copies of the
             // element style made before this pass, so they map with the element's mode
             // (`::first-letter { margin-block-start }` reaches the initial letter).
@@ -42,7 +43,7 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
             .into_iter()
             .flatten()
             {
-                layer.resolve_logical(wm, parent_vertical, is_cell);
+                layer.resolve_logical(wm, parent_vertical, is_cell, vcx);
             }
             // Physical margins are final here; collapsing rewrites them later.
             // An orthogonal flow root keeps them too: its inline size is the
@@ -51,16 +52,16 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
             if e.style.clip_ref == Some(1) || wm.vertical() != parent_vertical {
                 e.style.own_margin = Some(e.style.margin);
             }
-            walk(&mut e.children, props);
+            walk(&mut e.children, props, vcx);
         }
     }
-    walk(&mut nodes, WritingProps::default());
+    walk(&mut nodes, WritingProps::default(), vcx);
     // `zoom` (css-viewport-1): длины под зумом домножаются ЗДЕСЬ, отдельным
     // проходом по собственным стилям — до слияния и до раскладки, а не в
     // `inline::inherit` (см. ★ перед ней). Идёт после `walk`: логические
     // стороны уже физические. Страницу без `zoom` проход не меняет: у неё ни
     // одного элемента с `zoom`, и ни одна ветка записи не исполняется.
-    crate::style::cascade::inherited_value::settle(&mut nodes);
+    crate::style::cascade::inherited_value::settle(&mut nodes, vcx);
     crate::style::zoom::resolve(&mut nodes);
     // `z-index: inherit` и `clip: inherit` разбор выражает только разрядом
     // `inherit_bits`, а значение родителя кладёт слияние (`inline::inherit`) —
@@ -77,11 +78,11 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
     // значению или к `auto` ЗДЕСЬ — сборщик дерева выбирает статическую
     // позицию по `edge_set`, а логические вставки к этому шагу уже легли на
     // физические стороны (`Computed::resolve_logical` выше).
-    crate::layout::positioned::anchor::settle::settle_static(&mut nodes);
+    crate::layout::positioned::anchor::settle::settle_static(&mut nodes, vcx);
     // motion-1: offset-трансформ — вторым проходом по СОБРАННОМУ дереву, где у
     // каждой коробки есть родитель. Идёт после `zoom::resolve` (длины уже
     // домножены) и после `resolve_logical` (стороны уже физические).
-    crate::animation::motion::settle(&mut nodes);
+    crate::animation::motion::settle(&mut nodes, vcx);
     nodes
 }
 

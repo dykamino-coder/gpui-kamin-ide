@@ -1,5 +1,6 @@
 //! Computed::apply_one: font*, font-variant/feature/synthesis/size-adjust/stretch/kerning.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
 
@@ -8,7 +9,14 @@ mod metrics;
 
 impl Computed {
     #[allow(unused_variables)]
-    pub(crate) fn apply_font(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_font(
+        &mut self,
+        key: &str,
+        val: &str,
+        v: &str,
+        hit: &mut bool,
+        vcx: ValueCx<'_>,
+    ) {
         match key {
             "math-style" => {
                 if matches!(v, "normal" | "compact") {
@@ -82,7 +90,7 @@ impl Computed {
                     };
                     return;
                 }
-                self.font_size = match Len::parse(v) {
+                self.font_size = match Len::parse(v, vcx) {
                     Some(l) if neg(&l) => self.font_size,
                     other => {
                         self.font_size_step = 0;
@@ -112,7 +120,7 @@ impl Computed {
             }
             "font-family" => font_family::apply(self, v),
 
-            _ => self.apply_font_features(key, val, v, hit),
+            _ => self.apply_font_features(key, val, v, hit, vcx),
         }
     }
 }

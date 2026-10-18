@@ -38,6 +38,7 @@ pub(super) fn cascade_element(
     SchemeGuard,
     Option<Rc<crate::dom::shadow::Shadow>>,
 ) {
+    let vcx = tree.doc.values();
     // css-overflow-5 §scroll-target-group: links with a fragment URL inside a
     // `scroll-target-group: auto` element are its scroll markers. At the
     // initial scroll position the first target in tree order is current
@@ -91,10 +92,12 @@ pub(super) fn cascade_element(
         &inline_decls,
         vars,
         &registered,
-        syntax_accepts,
+        |s, v| syntax_accepts(s, v, vcx),
     );
     let own_vars =
-        crate::style::css::variable_values::compute(&cascaded, vars, &registered, syntax_accepts);
+        crate::style::css::variable_values::compute(&cascaded, vars, &registered, |s, v| {
+            syntax_accepts(s, v, vcx)
+        });
     let vars = &own_vars;
     // Используемая схема цвета (css-color-adjust-1 §color-scheme-prop):
     // своё `color-scheme` — последнее по каскаду, иначе родительская
@@ -131,14 +134,14 @@ pub(super) fn cascade_element(
         attrs,
         sibling: (spot.index > 0).then_some((spot.index, spot.total)),
     };
-    let hints = presentational_hints::rules(&tag, &attrs, path, tree.doc.quirks());
+    let hints = presentational_hints::rules(&tag, &attrs, path, vcx);
     matched.extend(hints.iter());
-    let math_hints = crate::dom::mathml::hints(handle, attrs);
+    let math_hints = crate::dom::mathml::hints(handle, attrs, vcx);
     matched.extend(math_hints.iter());
-    let mut style = Computed::resolve_in(&mut matched, &inline_decls, vars, element);
+    let mut style = Computed::resolve_in(&mut matched, &inline_decls, vars, element, vcx);
     if let Some(basic) = super::form_appearance::rule(&tag, &attrs, &style) {
         matched.push(&basic);
-        style = Computed::resolve_in(&mut matched, &inline_decls, vars, element);
+        style = Computed::resolve_in(&mut matched, &inline_decls, vars, element, vcx);
     }
     style.mathml = crate::dom::mathml::is_mathml(handle);
     if crate::dom::mathml_routing::enabled(handle) {

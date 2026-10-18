@@ -1,4 +1,6 @@
 //! Наследование стиля.
+
+use crate::document::state::ValueCx;
 // owner: B
 
 use crate::style::computed::{Computed, TextAlign};
@@ -31,37 +33,42 @@ use text_layout::inherit_text_layout;
 // сломались одинаково. Гейт `zoom_eff != 1.0` не удержал: домножение
 // задело общий путь длин. Возвращаться только через отдельный проход после
 // каскада, а не через самую горячую функцию крейта.
-pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
-    inherit_stage(parent, own, true)
+pub fn inherit(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Computed {
+    inherit_stage(parent, own, true, vcx)
 }
 
 /// Document preparation propagates style; Filter Effects 1 §5 applies colors
 /// only when the renderer builds the element, never while removing wrappers.
-pub(crate) fn inherit_unpainted(parent: &Computed, own: &Computed) -> Computed {
-    inherit_stage(parent, own, false)
+pub(crate) fn inherit_unpainted(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Computed {
+    inherit_stage(parent, own, false, vcx)
 }
 
-fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Computed {
+fn inherit_stage(
+    parent: &Computed,
+    own: &Computed,
+    paint_filter: bool,
+    vcx: ValueCx<'_>,
+) -> Computed {
     let mut resolved;
     let own = if own.explicit_inherit.is_empty() {
         own
     } else {
         resolved = own.clone();
-        super::inherited_value::resolve(&mut resolved, parent);
+        super::inherited_value::resolve(&mut resolved, parent, vcx);
         &resolved
     };
     let mut c = own.clone();
     c.text_shadow_ink = own.text_shadow_ink.or(parent.text_shadow_ink);
     crate::style::computed::scroll::inherit(parent, &mut c);
-    inherit_containing(parent, own, &mut c);
-    inherit_sizes(parent, own, &mut c);
-    inherit_explicit(parent, own, &mut c);
+    inherit_containing(parent, own, &mut c, vcx);
+    inherit_sizes(parent, own, &mut c, vcx);
+    inherit_explicit(parent, own, &mut c, vcx);
     inherit_fonts(parent, own, &mut c);
     crate::style::computed::math_style::inherit(parent, &mut c);
     inherit_text_layout(parent, own, &mut c);
     flow_align::resolve(parent, &mut c);
-    c.resolve_gradient_current_color();
-    inherit_paint(parent, own, &mut c, paint_filter);
+    c.resolve_gradient_current_color(vcx);
+    inherit_paint(parent, own, &mut c, paint_filter, vcx);
     // `em` считается от размера шрифта — а он известен только здесь, когда
     // наследование уже произошло. Раньше длина переводилась в точки при
     // разборе, по постоянным 16 точкам, и вложенные кегли не перемножались.
@@ -92,7 +99,7 @@ fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Compu
     if let Some(Len::Pct(k)) = c.font_size {
         c.font_size = Some(Len::Px(k * parent_px));
     }
-    c.resolve_em(parent_px);
+    c.resolve_em(parent_px, vcx);
     // Цвет рамки по умолчанию — ЦВЕТ ТЕКСТА: `border: solid 1px` без цвета
     // рисуется в браузере чёрной рамкой, а у нас не рисовалась вовсе —
     // коробка выходила без рамки, и эталоны переносов выглядели сломанными.
@@ -150,6 +157,6 @@ fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Compu
         None if own.tab_size.is_some() => None,
         None => parent.tab_size_len,
     };
-    decorate(parent, own, &mut c, own_px);
+    decorate(parent, own, &mut c, own_px, vcx);
     c
 }

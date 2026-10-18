@@ -91,6 +91,8 @@ mod tests {
     use gpui::size;
     #[test]
     fn negative_origin_projection_stays_inside_its_containing_scrollport() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut root = anon_element("div", vec![]);
         root.node_id = 7;
         let frame = Frame::default();
@@ -109,6 +111,7 @@ mod tests {
                     position: Some(Position::Absolute),
                     ..Computed::default()
                 },
+                vcx,
             );
             assert!(projection(7, Some(&absolute), None).is_some());
             let fixed = crate::style::cascade::inherit::inherit(
@@ -117,6 +120,7 @@ mod tests {
                     position: Some(Position::Fixed),
                     ..Computed::default()
                 },
+                vcx,
             );
             assert!(projection(7, Some(&fixed), None).is_none());
             assert!(projection(8, None, None).is_none());
@@ -124,6 +128,8 @@ mod tests {
     }
     #[test]
     fn ancestor_projection_does_not_create_overflow_in_a_nested_scrollport() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut child = anon_element("div", vec![]);
         child.node_id = 8;
         let mut root = anon_element("div", vec![Node::Element(child)]);
@@ -155,6 +161,7 @@ mod tests {
                     &handle,
                     Bounds::new(point(px(120.0), px(0.0)), size(px(50.0), px(50.0))),
                     Some(&link),
+                    vcx,
                 );
             });
             assert_eq!(frame.range(), [0.0; 2]);

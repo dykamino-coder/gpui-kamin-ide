@@ -11,6 +11,7 @@
 //! увеличенным и сдвинутым так, чтобы нужный кусок лёг ровно в своё место, а
 //! всё остальное срезала маска куска.
 
+use crate::document::state::ValueCx;
 mod gradient;
 mod grid;
 mod tiling;
@@ -23,7 +24,8 @@ use crate::paint::border_image::sampling::{destination_bounds, paint_slice};
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled, px};
 
 /// Слой рамки-картинки поверх коробки.
-pub fn layer(c: &Computed) -> Option<AnyElement> {
+pub fn layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
+    let values = vcx.keep();
     let image = c.border_image.clone().filter(|bi| !bi.src.is_empty())?;
     let family = c.font_family.clone().unwrap_or_default();
     let size = match c.font_size {
@@ -45,13 +47,14 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
     // `image-orientation` действует и на рамку-картинку (css-images-3 §5.4,
     // «Applies to: all elements»). Ключ строится ДО замыкания: в него уезжает
     // готовая строка, а не стиль.
-    let src = crate::paint::background::key_exif(&image.src, c);
+    let src = crate::paint::background::key_exif(&image.src, c, vcx);
     let pixelated = c.image_pixelated == Some(true);
     Some(
         gpui::canvas_with_unrounded_bounds(
             |_, _, _| {},
             move |bounds: Bounds<Pixels>, _, window, _| {
-                let Some(found) = crate::paint::background::source(&src) else {
+                let vcx = values.vcx();
+                let Some(found) = crate::paint::background::source(&src, vcx) else {
                     return;
                 };
                 let area = Bounds {
@@ -66,7 +69,7 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                 };
                 let grid = grid::Grid::new(&image, &found, area, base);
                 let (iw, ih) = grid.image;
-                let Some(raster) = found.raster((iw, ih)) else {
+                let Some(raster) = found.raster((iw, ih), vcx) else {
                     return;
                 };
                 let (cols, rows) = (grid.cols, grid.rows);
@@ -134,6 +137,7 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                                         (iw, ih),
                                         (sx, sy, sw, sh),
                                         cell,
+                                        vcx,
                                     ) {
                                         return;
                                     }

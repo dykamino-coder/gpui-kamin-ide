@@ -1,6 +1,7 @@
 //! Flex rows expose parallel item cuts and sequential row boundaries.
 
 use super::geometry::{collect_rows, row_container, row_forced};
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::fragment::breaks::edge_avoid;
 use crate::layout::fragment::oof_reach::Measure;
@@ -43,12 +44,13 @@ pub(crate) fn measure_rows(
     bot: f32,
     mt: f32,
     mb: f32,
+    vcx: ValueCx<'_>,
 ) -> Option<Measure> {
     if !row_container(c) {
         return None;
     }
     let main = main_size(c)?;
-    let rows = collect_rows(c, main, depth, cx)?;
+    let rows = collect_rows(c, main, depth, cx, vcx)?;
     let gap = px_auto_zero(c.style.gap.and_then(|g| g.0))?.max(0.0);
     let mut cuts = Vec::new();
     let mut forced = Vec::new();
@@ -75,13 +77,13 @@ pub(crate) fn measure_rows(
             row_cuts,
             row_forces,
             row_solids,
-            row_forced(row, false),
-            row_forced(row, true),
+            row_forced(row, false, vcx),
+            row_forced(row, true, vcx),
             Default::default(),
         ));
         avoid.push((
-            row.items.iter().any(|i| edge_avoid(&i.element, false)),
-            row.items.iter().any(|i| edge_avoid(&i.element, true)),
+            row.items.iter().any(|i| edge_avoid(&i.element, false, vcx)),
+            row.items.iter().any(|i| edge_avoid(&i.element, true, vcx)),
         ));
     }
     let n = rows.len();
@@ -134,5 +136,6 @@ pub(crate) fn measure_rows(
         h,
         mt,
         mb,
+        vcx,
     )
 }

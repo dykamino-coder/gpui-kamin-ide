@@ -14,6 +14,8 @@ pub(super) fn special_node(
     cx: &mut CollectCx,
     out: &mut Vec<Piece>,
 ) -> bool {
+    let doc = cx.layout.doc().clone();
+    let vcx = doc.frame_values();
     // `display: contents` on `<br>`/`<wbr>` behaves as
     // `display: none` (css-display-3 §B «Unusual Elements»): no
     // line break, no break opportunity
@@ -60,7 +62,7 @@ pub(super) fn special_node(
     // `<span>`, и рамка рисовалась прогоном
     // (`display-contents-inline-001` «красное видно»).
     if e.style.display == Some(crate::style::computed::Display::Contents) {
-        let merged = inherit(inherited, &e.style);
+        let merged = inherit(inherited, &e.style, vcx);
         out.extend(collect_with_empty_metrics(
             &e.children,
             &merged,

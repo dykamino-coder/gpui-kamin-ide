@@ -1,5 +1,6 @@
 //! Recognize dimensionless color images independently of URL fallback.
 
-pub(crate) fn parse(raw: &str) -> Option<&str> {
-    super::image_function::color_only(raw)
+use crate::document::state::ValueCx;
+pub(crate) fn parse<'a>(raw: &'a str, vcx: ValueCx<'_>) -> Option<&'a str> {
+    super::image_function::color_only(raw, vcx)
 }

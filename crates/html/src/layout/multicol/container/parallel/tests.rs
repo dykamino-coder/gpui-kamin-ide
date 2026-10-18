@@ -55,26 +55,30 @@ fn containing_block() -> Element {
 
 #[test]
 fn bottom_position_is_resolved_before_auto_height_grows() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let mut cb = containing_block();
-    assert!(walk(&mut cb, 0.0, 100.0, 2, 4));
+    assert!(walk(&mut cb, 0.0, 100.0, 2, 4, vcx));
     let Node::Element(abs) = &cb.children[0] else {
         panic!()
     };
     assert_eq!(abs.style.inset.top, Some(Len::Px(0.0)));
-    assert_eq!(measure(abs).unwrap().0.0, 200.0);
-    let (shape, own) = measure(&cb).unwrap();
+    assert_eq!(measure(abs, vcx).unwrap().0.0, 200.0);
+    let (shape, own) = measure(&cb, vcx).unwrap();
     assert_eq!(shape.0, 200.0);
     assert_eq!(own, 190.0);
 }
 
 #[test]
 fn independent_breaks_use_the_containing_blocks_fragmentainer_phase() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let mut cb = containing_block();
-    assert!(walk(&mut cb, 80.0, 100.0, 2, 4));
+    assert!(walk(&mut cb, 80.0, 100.0, 2, 4, vcx));
     let Node::Element(abs) = &cb.children[0] else {
         panic!()
     };
     assert_eq!(abs.style.inset.top, Some(Len::Px(0.0)));
-    assert_eq!(measure(abs).unwrap().0.0, 220.0);
-    assert_eq!(measure(&cb).unwrap().1, 190.0);
+    assert_eq!(measure(abs, vcx).unwrap().0.0, 220.0);
+    assert_eq!(measure(&cb, vcx).unwrap().1, 190.0);
 }

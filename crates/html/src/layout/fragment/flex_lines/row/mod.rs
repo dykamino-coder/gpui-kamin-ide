@@ -2,6 +2,7 @@
 
 use super::column::flex_gap_rules;
 use super::{constrained_inside, row_item_width};
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::{Shape, ShapeCx};
@@ -38,6 +39,7 @@ pub(super) use shape::shape_flex_lines;
 pub(super) fn flex_row_lines_of(
     c: &Element,
     col_w: Option<f32>,
+    vcx: ValueCx<'_>,
 ) -> Option<Vec<Vec<(f32, Element, Shape)>>> {
     if flex_gap_rules(&c.style) {
         return None;
@@ -139,7 +141,7 @@ pub(super) fn flex_row_lines_of(
                 + side(&kb.left)?
                 + side(&kb.right)?
         };
-        let sh = shape_full(k, 4, ShapeCx::COLUMNS)?;
+        let sh = shape_full(k, 4, ShapeCx::COLUMNS, vcx)?;
         match lines.last_mut() {
             Some(line) if used + col_gap + w <= main + 0.01 => {
                 single = false;
@@ -155,7 +157,7 @@ pub(super) fn flex_row_lines_of(
     if (single || widened) && (risky || lines.iter().flatten().any(|x| !x.2.4.is_empty())) {
         return None;
     }
-    shape_flex_lines(row_gap, side, &mut lines)?;
+    shape_flex_lines(row_gap, side, &mut lines, vcx)?;
     Some(lines)
 }
 

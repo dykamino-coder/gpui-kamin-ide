@@ -1,5 +1,6 @@
 //! Computed::apply_one: display, flex*, align-*/justify-*/place-*, gap, order.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::Len;
 mod flex_items;
@@ -7,7 +8,14 @@ mod gap_place;
 
 impl Computed {
     #[allow(unused_variables)]
-    pub(crate) fn apply_display_flex(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_display_flex(
+        &mut self,
+        key: &str,
+        val: &str,
+        v: &str,
+        hit: &mut bool,
+        vcx: ValueCx<'_>,
+    ) {
         match key {
             "display"
                 if v.trim().eq_ignore_ascii_case("-webkit-box")
@@ -204,7 +212,7 @@ impl Computed {
                 )
                 .or(self.flex_dir)
             }
-            _ => self.apply_flex_items(key, val, v, hit),
+            _ => self.apply_flex_items(key, val, v, hit, vcx),
         }
     }
 }

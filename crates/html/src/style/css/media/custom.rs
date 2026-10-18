@@ -1,6 +1,7 @@
 //! `@custom-media` (mediaqueries-5 §5.1): имена-псевдонимы запросов, собранные из таблицы и подставляемые в `(--имя)`.
 
 use super::*;
+use crate::document::state::ValueCx;
 use std::collections::HashMap;
 
 /// Псевдонимы таблицы `css` — `@custom-media --имя <запрос>;` верхнего
@@ -27,7 +28,12 @@ pub(crate) fn custom_media_of(css: &str) -> HashMap<String, String> {
 /// Значение `(--имя)`: неизвестное имя — ложь (§5.1 «evaluates to false»).
 /// Глубина подстановки ограничена: циклическая ссылка не уходит в
 /// бесконечность (§5.1 «cyclic … are invalid» — результатом служит ложь).
-pub(super) fn eval_custom(media: &Media, name: &str, custom: CustomMedia) -> SupTri {
+pub(super) fn eval_custom(
+    media: &Media,
+    name: &str,
+    custom: CustomMedia,
+    vcx: ValueCx<'_>,
+) -> SupTri {
     let Some(query) = custom.aliases.and_then(|a| a.get(name)) else {
         return SupTri::False;
     };
@@ -40,6 +46,7 @@ pub(super) fn eval_custom(media: &Media, name: &str, custom: CustomMedia) -> Sup
                 depth: custom.depth + 1,
                 ..custom
             },
+            vcx,
         ),
         _ => false,
     };

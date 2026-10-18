@@ -204,19 +204,21 @@ fn parse_document(
     media: Media,
 ) -> (Rc<DocState>, Vec<Node>, crate::style::computed::Computed) {
     let state = DocState::new(media);
-    let _scope = state.enter();
+    let vcx = state.values();
     let mut sheets = vec![theme_css.to_string()];
     sheets.extend(crate::dom::style_sources::collect(html, xml));
-    crate::text::fonts::load_faces_sheets(&sheets, base);
-    crate::style::values::color_space::load_profiles_sheets(&state, &sheets, base);
-    let (mut nodes, root) = viewport::prepare(if xml {
-        crate::dom::parse_current_xml(html, theme_css, media, &state)
-    } else {
-        crate::dom::parse_current(html, theme_css, media, &state)
-    });
+    crate::text::fonts::load_faces_sheets(&sheets, base, vcx);
+    crate::style::values::color_space::load_profiles_sheets(&sheets, base, vcx);
+    let (mut nodes, root) = viewport::prepare(
+        if xml {
+            crate::dom::parse_current_xml(html, theme_css, media, &state)
+        } else {
+            crate::dom::parse_current(html, theme_css, media, &state)
+        },
+        vcx,
+    );
     if let Some(base) = base {
         base_url::resolve(&mut nodes, base, false);
     }
-    drop(_scope);
     (state, nodes, root)
 }

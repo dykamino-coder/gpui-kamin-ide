@@ -1,5 +1,6 @@
 //! SVG-outline контура рамки, отдельно от заливок и теней.
 
+use crate::document::state::ValueCx;
 use crate::paint::background::shape_path::border_geometry::miter_limit;
 use crate::paint::background::*;
 
@@ -27,12 +28,13 @@ pub fn border_shape_outline_svg(
     dy: f32,
     cw: f32,
     ch: f32,
+    vcx: ValueCx<'_>,
 ) -> Option<String> {
     if width <= 0.0 {
         return None;
     }
     let (raw, [t, r, b, l]) = outer;
-    let (d, rule) = border_shape_path(raw, (bw + l + r).max(0.0), (bh + t + b).max(0.0))?;
+    let (d, rule) = border_shape_path(raw, (bw + l + r).max(0.0), (bh + t + b).max(0.0), vcx)?;
     if d.is_empty() {
         return None;
     }

@@ -31,6 +31,7 @@ pub(crate) fn physical(
     flow: &Computed,
     opts: &crate::render::RenderOpts,
 ) -> Option<gpui::AnyElement> {
+    let vcx = opts.cx.vcx();
     // Atomic formatting contexts keep physical dimensions and their own
     // writing mode, including an explicitly orthogonal mode. Only the
     // enclosing paragraph's text is turned (CSS Writing Modes 4, section 4.3).
@@ -82,7 +83,7 @@ pub(crate) fn physical(
         == crate::style::computed::writing_mode::Turn::CounterClockwise;
     let physical = crate::render::element(&child, &context, opts);
     let mut wrapper =
-        crate::style::apply::margins(gpui::div().flex().flex_col().flex_shrink_0(), &margins);
+        crate::style::apply::margins(gpui::div().flex().flex_col().flex_shrink_0(), &margins, vcx);
     if (sx, sy) != (0.0, 0.0) {
         wrapper = wrapper.relative().left(gpui::px(sx)).top(gpui::px(sy));
     }

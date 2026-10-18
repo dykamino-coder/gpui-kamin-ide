@@ -7,6 +7,7 @@
 //! накладкой НАД ним (`Grouped::over`); прежние скруглённые кольца
 //! (`shadows`, `outline`) у такой коробки не ставятся.
 
+use crate::document::state::ValueCx;
 use crate::paint::background::contour::{Path, Seg};
 use crate::paint::background::{contour_offset, rrect_spec};
 use crate::paint::effects::grouped_element::FillLayer;
@@ -18,24 +19,24 @@ pub(crate) type Layer = Box<dyn Fn(f32, f32, f32, f32, f32, f32) -> Option<Strin
 
 /// Аргументы `rrect(...)` коробки с фигурными углами; None — углы круглые
 /// или форму задаёт `border-shape`.
-fn args(c: &Computed) -> Option<String> {
+fn args(c: &Computed, vcx: ValueCx<'_>) -> Option<String> {
     if !c.corner_shaped() || c.border_shape.is_some() {
         return None;
     }
-    let s = rrect_spec(c, None);
+    let s = rrect_spec(c, None, vcx);
     let inner = s.strip_prefix("rrect(")?.strip_suffix(')')?;
     Some(inner.to_string())
 }
 
 /// Тени без размытия идут по контуру (`outer_shadows` их пропускает).
-pub(crate) fn shapes_shadows(c: &Computed) -> bool {
-    args(c).is_some()
+pub(crate) fn shapes_shadows(c: &Computed, vcx: ValueCx<'_>) -> bool {
+    args(c, vcx).is_some()
 }
 
 /// Контур `outline` идёт по форме (`outline::decorations` его пропускает):
 /// сплошной и двойной; `auto` остаётся кольцом фокуса.
-pub(crate) fn shapes_outline(c: &Computed) -> bool {
-    args(c).is_some()
+pub(crate) fn shapes_outline(c: &Computed, vcx: ValueCx<'_>) -> bool {
+    args(c, vcx).is_some()
         && c.outline
             .as_ref()
             .is_some_and(|o| matches!(o.style, Some(1) | Some(OUTLINE_DOUBLE)))
@@ -71,9 +72,9 @@ fn svg(aw: f32, ah: f32, body: &str) -> String {
 
 /// Вынос слоёв за border-box (l t r b): разлёт со смещением теней и
 /// сдвиг с толщиной контура, с запасом в точку под сглаживание.
-pub(crate) fn reach(c: &Computed) -> [f32; 4] {
+pub(crate) fn reach(c: &Computed, vcx: ValueCx<'_>) -> [f32; 4] {
     let mut e = [0.0f32; 4];
-    if shapes_shadows(c) {
+    if shapes_shadows(c, vcx) {
         for (sh, _) in c.resolved_shadows(false) {
             let s = sh.spread.max(0.0) + 1.0;
             e[0] = e[0].max(s - sh.x);
@@ -82,7 +83,7 @@ pub(crate) fn reach(c: &Computed) -> [f32; 4] {
             e[3] = e[3].max(s + sh.y);
         }
     }
-    if shapes_outline(c)
+    if shapes_outline(c, vcx)
         && let Some((w, off, _)) = c.contour_outline_params()
     {
         let r = (off + w).max(0.0) + 1.0;
@@ -96,8 +97,8 @@ pub(crate) fn reach(c: &Computed) -> [f32; 4] {
 /// непрозрачном фоне вырез не нужен — фон его кроет (Blink
 /// `PaintNormalBoxShadow`: у непрозрачной коробки вырез ужат на точку), и
 /// край фигуры ложится на тень, как у эталонов «тень, затем коробка».
-pub(crate) fn shadow_layer(c: &Computed) -> Option<Layer> {
-    let args = args(c)?;
+pub(crate) fn shadow_layer(c: &Computed, vcx: ValueCx<'_>) -> Option<Layer> {
+    let args = args(c, vcx)?;
     let shadows: Vec<_> = c
         .resolved_shadows(false)
         .into_iter()
@@ -139,8 +140,8 @@ fn opaque_background(c: &Computed) -> bool {
 /// Резкие тени при непрозрачном фоне — заливками по пути под буфером
 /// (`Grouped::under_fills`): вырез под коробкой не нужен, а край ложится
 /// так же, как у `div` с фоном и `clip-path: path()`.
-pub(crate) fn shadow_fills(c: &Computed) -> Option<FillLayer> {
-    let args = args(c)?;
+pub(crate) fn shadow_fills(c: &Computed, vcx: ValueCx<'_>) -> Option<FillLayer> {
+    let args = args(c, vcx)?;
     let shadows: Vec<_> = c
         .resolved_shadows(false)
         .into_iter()
@@ -166,11 +167,11 @@ pub(crate) fn shadow_fills(c: &Computed) -> Option<FillLayer> {
 
 /// Накладка контура: полоса между контурами, раздвинутыми на сдвиг и на
 /// сдвиг с толщиной (css-ui-4 §outline; у `double` — две полосы по трети).
-pub(crate) fn outline_layer(c: &Computed) -> Option<FillLayer> {
-    if !shapes_outline(c) {
+pub(crate) fn outline_layer(c: &Computed, vcx: ValueCx<'_>) -> Option<FillLayer> {
+    if !shapes_outline(c, vcx) {
         return None;
     }
-    let args = args(c)?;
+    let args = args(c, vcx)?;
     let (w, off, colour) = c.contour_outline_params()?;
     if colour.a <= 0.0 {
         return None;

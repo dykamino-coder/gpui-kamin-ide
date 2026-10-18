@@ -10,6 +10,7 @@
 //! style="display:inline-block">b</span></b>` терял полужирный у «b»
 //! (`run-in-contains-inline-block-001`).
 
+use crate::document::state::ValueCx;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 
@@ -25,8 +26,8 @@ pub struct AtomCx {
 
 /// Open an inline ancestor on the collection's stack: its style inherits from
 /// the top of the stack (or from `base`, the paragraph's style, when empty).
-pub(crate) fn open(stack: &mut Vec<Computed>, own: &Computed, base: &Computed) {
+pub(crate) fn open(stack: &mut Vec<Computed>, own: &Computed, base: &Computed, vcx: ValueCx<'_>) {
     let parent = stack.last().unwrap_or(base);
-    let style = inherit(parent, own);
+    let style = inherit(parent, own, vcx);
     stack.push(style);
 }

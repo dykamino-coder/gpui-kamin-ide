@@ -1,5 +1,6 @@
 //! Таблица стилей: правила, каскадные слои, пространства имён.
 
+use crate::document::state::ValueCx;
 use crate::style::css::*;
 
 pub(crate) mod default_ns;
@@ -85,11 +86,11 @@ pub(super) fn attr_prefixes_declared(v: &str, cx: &SelectorCx) -> bool {
 }
 
 /// То же, но с известными условиями окружения. Таблица разбирается сама по
-/// себе — со своим реестром слоёв; таблицы документа делят его
-/// (`parse_document_sheet`).
+/// себе — со своим реестром слоёв и своим документом для at-правил; таблицы
+/// документа делят его (`parse_document_sheet`).
 pub fn parse_stylesheet_media(css: &str, media: Media) -> Vec<Rule> {
-    let doc = crate::document::state::current();
-    parse_document_sheet(css, media, &mut LayerRegistry::default(), &doc)
+    let doc = crate::document::state::DocState::new(media);
+    parse_document_sheet(css, media, &mut LayerRegistry::default(), doc.values())
 }
 
 /// Таблица документа: слои — в общем реестре `layers`, пролог `@namespace`
@@ -99,11 +100,11 @@ pub(crate) fn parse_document_sheet(
     css: &str,
     media: Media,
     layers: &mut LayerRegistry,
-    doc: &crate::document::state::DocState,
+    vcx: ValueCx<'_>,
 ) -> Vec<Rule> {
     let (prefixes, default_ns) = declared_prefixes(css);
     let mut cx = SheetCx {
-        doc,
+        doc: vcx.doc,
         layers,
         layer_now: (String::new(), Vec::new()),
         selectors: SelectorCx {

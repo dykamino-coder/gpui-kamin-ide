@@ -9,6 +9,7 @@ use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled};
 
 pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> AnyElement {
+    let vcx = cx.vcx();
     // Ключевое слово содержимого в оси замещаемого — его природный (или
     // перенесённый через соотношение) размер, то есть `auto` (css-sizing-3
     // §5.1: «When the box has a preferred aspect ratio, size constraints in
@@ -26,7 +27,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
     let resolved;
     let e = if let Some(base) = base_font {
         let mut copy = e.clone();
-        copy.style.resolve_em(base);
+        copy.style.resolve_em(base, vcx);
         resolved = copy;
         &resolved
     } else {
@@ -63,13 +64,13 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
     if src.starts_with("data:")
         || src.starts_with("file:")
         || src.starts_with('/')
-        || crate::paint::background::filter_image::parse(src).is_some()
+        || crate::paint::background::filter_image::parse(src, vcx).is_some()
     {
         // Локальный файл отдаётся ПУТЁМ, а не строкой адреса. Строку со схемой
         // `file:` система разбирает как сетевой адрес и уходит его скачивать —
         // ничего не приходит, и картинка молча не рисуется вовсе. Ровно на
         // этом эталоны из одних картинок выходили пустой страницей.
-        let (local, d, image) = match local_image_source(src, e, d) {
+        let (local, d, image) = match local_image_source(src, e, d, vcx) {
             Ok(value) => value,
             Err(value) => return value,
         };
@@ -86,7 +87,8 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
         // сами в конечный размер; фон канвы (`style="background:…"` корня) —
         // CSS-слой, не SVG-контент, растеризатор его тоже не рисует.
         let vector: Option<String> = crate::paint::background::source(
-            &crate::paint::background::key(local.unwrap_or(src), &e.style),
+            &crate::paint::background::key(local.unwrap_or(src), &e.style, vcx),
+            vcx,
         )
         .and_then(|s| match s {
             crate::paint::background::Source::Vector { markup, .. } => Some(markup),
@@ -98,7 +100,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
                 Some(r) => gpui::img(r),
                 None => old,
             };
-            if let Some(c) = crate::paint::background::svg_root_background(m) {
+            if let Some(c) = crate::paint::background::svg_root_background(m, vcx) {
                 out = out.bg(gpui::Rgba {
                     r: c.r,
                     g: c.g,
@@ -167,10 +169,10 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
         // изменили, коробка обязана ужаться вместе с рисунком.
         let узкая: Option<(f32, f32)> = None;
         let natural_ratio = || {
-            crate::paint::background::source(&crate::paint::background::key(
-                local.unwrap_or(src),
-                &e.style,
-            ))
+            crate::paint::background::source(
+                &crate::paint::background::key(local.unwrap_or(src), &e.style, vcx),
+                vcx,
+            )
             .map(|s| s.intrinsic())
             .and_then(|i| {
                 i.ratio.or(match (i.w, i.h) {
@@ -209,6 +211,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
             ratio_of,
             transfer,
             cx.cb_width,
+            vcx,
         );
     }
     // Картинки БЕЗ АДРЕСА вовсе (`<img>` без `src`) не существует: коробки

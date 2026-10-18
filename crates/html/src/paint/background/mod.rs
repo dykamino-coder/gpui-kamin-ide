@@ -10,6 +10,7 @@
 //! Образ декодируется один раз и лежит в кэше: разбор PNG на каждом кадре
 //! стоил бы дороже всей остальной отрисовки документа.
 
+use crate::document::state::ValueCx;
 mod root_area;
 mod root_box;
 pub use root_area::RootArea;
@@ -87,11 +88,11 @@ const MAX_TILES: f32 = 2048.0;
 ///
 /// Сеть не трогаем по тем же причинам, что и в элементе-картинке: документ
 /// рисуется в чате, где загрузка чужих адресов недопустима.
-pub fn load(src: &str) -> Option<Arc<RenderImage>> {
-    match source(src)? {
+pub fn load(src: &str, vcx: ValueCx<'_>) -> Option<Arc<RenderImage>> {
+    match source(src, vcx)? {
         Source::Raster(image) => Some(image),
         filtered @ Source::Filtered { .. } => {
-            filtered.raster(default_size(filtered.intrinsic(), (300.0, 150.0)))
+            filtered.raster(default_size(filtered.intrinsic(), (300.0, 150.0)), vcx)
         }
         // Своя величина рисунка — то же, что для растра: он растрируется под
         // неё, а нужный размер плитки посчитает вызывающий.
@@ -99,8 +100,8 @@ pub fn load(src: &str) -> Option<Arc<RenderImage>> {
             let (w, h) = default_size(size, (300.0, 150.0));
             crate::svg::raster::rasterize(&markup, w, h)
         }
-        Source::Gradient { raw } => rasterize_gradient(&raw, 300, 150),
-        Source::Shape { raw } => rasterize_shape(&raw, 300, 150, 1.0),
+        Source::Gradient { raw } => rasterize_gradient(&raw, 300, 150, vcx),
+        Source::Shape { raw } => rasterize_shape(&raw, 300, 150, 1.0, vcx),
     }
 }
 
@@ -112,8 +113,8 @@ pub fn load(src: &str) -> Option<Arc<RenderImage>> {
 /// SVG заводилась 200×200 (`shape-image-002`: вырез на всю ширину
 /// контейнера, `-017`: контейнер вдвое выше). У растра величина и есть его
 /// точки — там ничего не меняется.
-pub fn intrinsic_px(src: &str) -> Option<(f32, f32)> {
-    Some(default_size(source(src)?.intrinsic(), (300.0, 150.0)))
+pub fn intrinsic_px(src: &str, vcx: ValueCx<'_>) -> Option<(f32, f32)> {
+    Some(default_size(source(src, vcx)?.intrinsic(), (300.0, 150.0)))
 }
 
 /// Разбить запись по пробелам ВЕРХНЕГО уровня: `calc(10px + 15%)` — один
@@ -143,19 +144,21 @@ pub(crate) fn split_top(s: &str) -> Vec<&str> {
 }
 
 /// Слой фона КАНВАСА: плитки меряются коробкой корня, а красят весь холст.
-pub fn canvas_layer(c: &Computed, area: RootArea) -> Option<AnyElement> {
+pub fn canvas_layer(c: &Computed, area: RootArea, vcx: ValueCx<'_>) -> Option<AnyElement> {
+    let values = vcx.keep();
     c.bg_image.as_ref()?;
     let style = c.clone();
     Some(
         gpui::canvas(
             |_, _, _| {},
             move |clip: Bounds<Pixels>, _, window, _| {
+                let vcx = values.vcx();
                 let bounds = if style.bg_fixed == Some(true) {
                     clip
                 } else {
                     area.rect(clip)
                 };
-                paint_tiles(&style, bounds, Some(clip), window);
+                paint_tiles(&style, bounds, Some(clip), window, vcx);
             },
         )
         .absolute()
@@ -166,11 +169,12 @@ pub fn canvas_layer(c: &Computed, area: RootArea) -> Option<AnyElement> {
     )
 }
 
-pub fn layer(c: &Computed) -> Option<AnyElement> {
+pub fn layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
+    let values = vcx.keep();
     c.bg_image.as_ref()?;
     // Одноцветный фон `border-area` несёт краска рамки (`border_paint`):
     // плитки легли бы на всю коробку.
-    if border_area_fill(c).is_some() {
+    if border_area_fill(c, vcx).is_some() {
         return None;
     }
     let style = c.clone();
@@ -178,6 +182,7 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
         exact_layer::ExactLayer::inset(
             c.bg_border_insets.unwrap_or([0.0; 4]),
             move |bounds: Bounds<Pixels>, window: &mut gpui::Window| {
+                let vcx = values.vcx();
                 clip::paint(&style, bounds, window, |style, window| {
                     if style.bg_fixed == Some(true) {
                         // Плитка меряется и отсчитывается от ОБЛАСТИ ПРОСМОТРА,
@@ -187,9 +192,9 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                             origin: gpui::point(px(0.0), px(0.0)),
                             size: window.viewport_size(),
                         };
-                        paint_tiles(style, view, Some(bounds), window);
+                        paint_tiles(style, view, Some(bounds), window, vcx);
                     } else {
-                        paint_area(style, bounds, window);
+                        paint_area(style, bounds, window, vcx);
                     }
                 });
             },

@@ -1,9 +1,10 @@
 //! Apply color filters after sampling a single gradient, preserving its geometry.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, Filter};
 
-pub(super) fn apply(c: &mut Computed, own: &Computed, f: Filter) {
-    if own.gradient.is_none() || c.bg_layers().is_some() || f.color_matrix().is_none() {
+pub(super) fn apply(c: &mut Computed, own: &Computed, f: Filter, vcx: ValueCx<'_>) {
+    if own.gradient.is_none() || c.bg_layers(vcx).is_some() || f.color_matrix().is_none() {
         return;
     }
     let Some(raw) = c.gradient_raw.as_deref() else {
@@ -33,26 +34,30 @@ mod tests {
 
     #[test]
     fn element_filter_reaches_radial_samples() {
-        compare_samples("radial-gradient(red, orange)");
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        compare_samples("radial-gradient(red, orange)", vcx);
     }
 
     #[test]
     fn element_filter_reaches_linear_samples() {
-        compare_samples("linear-gradient(red, orange)");
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        compare_samples("linear-gradient(red, orange)", vcx);
     }
 
-    fn compare_samples(raw: &str) {
+    fn compare_samples(raw: &str, vcx: crate::document::state::ValueCx<'_>) {
         let mut own = Computed::default();
-        own.apply_one("background-image", raw);
-        own.apply_one("filter", "invert(1)");
-        let rendered = crate::style::cascade::inherit::inherit(&Computed::default(), &own);
-        let image = crate::paint::background::source(rendered.bg_image.as_deref().unwrap())
+        own.apply_one("background-image", raw, vcx);
+        own.apply_one("filter", "invert(1)", vcx);
+        let rendered = crate::style::cascade::inherit::inherit(&Computed::default(), &own, vcx);
+        let image = crate::paint::background::source(rendered.bg_image.as_deref().unwrap(), vcx)
             .unwrap()
-            .raster((7.0, 5.0))
+            .raster((7.0, 5.0), vcx)
             .unwrap();
-        let expected = crate::paint::background::source(&format!("filter({raw}, invert(1))"))
+        let expected = crate::paint::background::source(&format!("filter({raw}, invert(1))"), vcx)
             .unwrap()
-            .raster((7.0, 5.0))
+            .raster((7.0, 5.0), vcx)
             .unwrap();
         assert_eq!(image.as_bytes(0), expected.as_bytes(0));
         assert!(rendered.gradient.is_none());

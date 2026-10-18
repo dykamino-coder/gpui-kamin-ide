@@ -25,7 +25,7 @@ pub(crate) fn is_xml() -> bool {
 }
 
 /// Parse `markup` as an XML document with the full cascade of `parse`.
-pub fn parse_xml(markup: &str, extra_css: &str) -> Vec<super::Node> {
+pub fn parse_xml(markup: &str, extra_css: &str) -> super::Parsed {
     XML.with(|x| x.set(true));
     let nodes = super::parse(markup, extra_css);
     XML.with(|x| x.set(false));

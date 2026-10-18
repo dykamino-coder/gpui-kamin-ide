@@ -5,9 +5,11 @@ use super::*;
 
 #[test]
 fn face_rule_gives_family_and_file() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let css = "@font-face { font-family: 'мой'; src: url('/f/a.woff2') format('woff2'), \
                    url('/f/a.woff') format('woff') } p { color: red }";
-    let block = faces(css);
+    let block = faces(css, vcx);
     assert_eq!(block.len(), 1);
     assert_eq!(
         declaration(&block[0], "font-family").as_deref(),
@@ -19,8 +21,10 @@ fn face_rule_gives_family_and_file() {
 
 #[test]
 fn only_font_face_blocks_are_taken() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let css = "p { font-family: 'нет' } @font-face { font-family: 'да'; src: url(a.ttf) }";
-    let block = faces(css);
+    let block = faces(css, vcx);
     assert_eq!(block.len(), 1);
     assert_eq!(
         declaration(&block[0], "font-family").as_deref(),
@@ -49,11 +53,13 @@ fn space_decides_the_first_available_font() {
 
 #[test]
 fn data_url_source_survives_its_separators() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     // `;` и `,` внутри адреса `data:` не режут ни правило, ни список `src`.
     let css = "@font-face { font-family: 'd'; \
                src: url(data:font/woff2;charset=utf-8;base64,d09GMg==) format('woff2'); \
                font-weight: normal }";
-    let block = faces(css);
+    let block = faces(css, vcx);
     assert_eq!(
         source(&block[0]).as_deref(),
         Some("data:font/woff2;charset=utf-8;base64,d09GMg==")

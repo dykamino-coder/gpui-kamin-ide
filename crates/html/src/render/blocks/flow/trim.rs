@@ -17,6 +17,7 @@ pub(super) fn register(
     opts: &RenderOpts,
     ordered_context: bool,
 ) -> Vec<TrimRequest> {
+    let vcx = opts.cx.vcx();
     let mut req = vec![];
     if ordered_context {
         return req;
@@ -29,7 +30,7 @@ pub(super) fn register(
             continue;
         }
         if let Some((line_style, owner)) =
-            text_box_line_style(nodes, inherited, start, inherited.self_node)
+            text_box_line_style(nodes, inherited, start, inherited.self_node, vcx)
         {
             let over = if start {
                 root_top(&first_line_root(&line_style), opts) - root_top(&line_style, opts)
@@ -120,11 +121,12 @@ pub(super) fn apply(
     inherited: &Computed,
     opts: &RenderOpts,
 ) {
+    let vcx = opts.cx.vcx();
     let vertical = inherited.wm().vertical();
     let rl = inherited.wm().block_rl();
     if inherited.text_box_trim_start
         && let Some((line_style, _)) =
-            text_box_line_style(nodes, inherited, true, inherited.self_node)
+            text_box_line_style(nodes, inherited, true, inherited.self_node, vcx)
     {
         let trim = text_box_trim_px(&first_line_root(&line_style), true, opts);
         if trim > 0.0 {
@@ -142,7 +144,7 @@ pub(super) fn apply(
     }
     if inherited.text_box_trim_end
         && let Some((line_style, _)) =
-            text_box_line_style(nodes, inherited, false, inherited.self_node)
+            text_box_line_style(nodes, inherited, false, inherited.self_node, vcx)
     {
         let trim = text_box_trim_px(&line_style, false, opts);
         if trim > 0.0 {

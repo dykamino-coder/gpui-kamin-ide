@@ -1,5 +1,6 @@
 //! Форма группы корневых узлов на листе: поля и вырезы.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::fragment_size::shape_full;
@@ -14,6 +15,7 @@ pub(crate) fn group_shape(
     group: &[Node],
     n: &Node,
     pad_top: f32,
+    vcx: ValueCx<'_>,
 ) -> (
     (f32, f32, f32),
     Option<(f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>)>,
@@ -38,7 +40,7 @@ pub(crate) fn group_shape(
     let shape = match n {
         _ if group.iter().filter(|g| !is_blank(g)).count() > 1 => None,
         Node::Element(e) if !e.inline && !positioned(e) => {
-            shape_full(e, 4, shape_cx).map(|(h, mt, mb, mut cuts, mut forced, mut solid)| {
+            shape_full(e, 4, shape_cx, vcx).map(|(h, mt, mb, mut cuts, mut forced, mut solid)| {
                 let floated = e.style.float.unwrap_or(0) != 0;
                 // Письмо — своё или унаследованное от корня (`html, body {
                 // writing-mode }` снимаются выше, свой стиль ребёнка его не

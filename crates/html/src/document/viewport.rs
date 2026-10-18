@@ -1,10 +1,12 @@
 //! HTML viewport scroll ownership (CSS Overflow 3 §3.3, Scrollbars 1 §2).
 //! Colors come from the root; body overflow propagates through an uncontained root.
+
+use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::style::computed::{Computed, Display, Overflow};
 use crate::style::values::value::Len;
 
-pub(super) fn policy(nodes: &[Node]) -> Option<Computed> {
+pub(super) fn policy(nodes: &[Node], vcx: ValueCx<'_>) -> Option<Computed> {
     let root = nodes.iter().find_map(|node| match node {
         Node::Element(e) if e.tag == "html" => Some(e),
         _ => None,
@@ -13,7 +15,7 @@ pub(super) fn policy(nodes: &[Node]) -> Option<Computed> {
         return None;
     }
     let mut c =
-        crate::style::cascade::inherit::inherit_unpainted(&Computed::default(), &root.style);
+        crate::style::cascade::inherit::inherit_unpainted(&Computed::default(), &root.style, vcx);
     // This is a computed viewport policy, not another currentColor declaration.
     c.scroll.current = [false; 2];
     c.scroll.inherit_width = false;
@@ -38,7 +40,7 @@ pub(super) fn policy(nodes: &[Node]) -> Option<Computed> {
         Node::Element(e) if e.tag == "body" => Some(e),
         _ => None,
     }) {
-        let body_style = crate::style::cascade::inherit::inherit_unpainted(&c, &body.style);
+        let body_style = crate::style::cascade::inherit::inherit_unpainted(&c, &body.style, vcx);
         c.rtl = body_style.rtl;
         // The viewport takes the block flow of the body's mode, not `sideways`.
         c.writing_mode = body_style.writing_mode.map(|m| {
@@ -104,12 +106,17 @@ pub(super) fn prepare_embedded(
     nodes: Vec<Node>,
     responsive: bool,
     owner_dark: Option<bool>,
+    vcx: ValueCx<'_>,
 ) -> Vec<Node> {
     let canvas = canvas_backing(&nodes, owner_dark);
-    let viewport = policy(&nodes).or_else(|| canvas.map(|_| Computed::default()));
-    let (nodes, _) = super::unwrap_document(super::mark_canvas_background(super::resolve_logical(
-        super::propagate_writing_mode(super::viewport_overflow(nodes)),
-    )));
+    let viewport = policy(&nodes, vcx).or_else(|| canvas.map(|_| Computed::default()));
+    let (nodes, _) = super::unwrap_document(
+        super::mark_canvas_background(super::resolve_logical(
+            super::propagate_writing_mode(super::viewport_overflow(nodes), vcx),
+            vcx,
+        )),
+        vcx,
+    );
     let mut nodes = wrap(nodes, viewport, canvas);
     if responsive
         && let [Node::Element(root)] = nodes.as_mut_slice()
@@ -121,9 +128,9 @@ pub(super) fn prepare_embedded(
 }
 
 // Keep document preparation identical for initial, updated, and embedded markup.
-pub(super) fn prepare(nodes: Vec<Node>) -> (Vec<Node>, Computed) {
+pub(super) fn prepare(nodes: Vec<Node>, vcx: ValueCx<'_>) -> (Vec<Node>, Computed) {
     let canvas = canvas_backing(&nodes, None);
-    let viewport = policy(&nodes)
+    let viewport = policy(&nodes, vcx)
         .or_else(|| canvas.map(|_| Computed::default()))
         .filter(|c| {
             canvas.is_some()
@@ -131,10 +138,13 @@ pub(super) fn prepare(nodes: Vec<Node>) -> (Vec<Node>, Computed) {
                 || c.scroll.forced.into_iter().any(|v| v)
                 || c.scroll.gutter.is_some_and(|v| v != 0)
         });
-    let (nodes, root) =
-        super::unwrap_document(super::mark_canvas_background(super::resolve_logical(
-            super::propagate_writing_mode(super::viewport_overflow(nodes)),
-        )));
+    let (nodes, root) = super::unwrap_document(
+        super::mark_canvas_background(super::resolve_logical(
+            super::propagate_writing_mode(super::viewport_overflow(nodes), vcx),
+            vcx,
+        )),
+        vcx,
+    );
     (wrap(nodes, viewport, canvas), root)
 }
 

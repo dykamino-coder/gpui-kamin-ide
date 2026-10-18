@@ -130,6 +130,7 @@ pub(super) fn expand(
     out: &mut Vec<Rule>,
     order: &mut usize,
 ) {
+    let vcx = cx.doc.values();
     for item in items(body) {
         match item {
             Item::Decls(text) => {
@@ -156,9 +157,9 @@ pub(super) fn expand(
                 // тело правила стиля с тем же родителем.
                 let name = prelude.to_ascii_lowercase();
                 let holds = if name.starts_with("@media") {
-                    media.matches_in(&name, cx.custom())
+                    media.matches_in(&name, cx.custom(), vcx)
                 } else if name.starts_with("@supports") {
-                    supports_in(&prelude[9..], &cx.selectors)
+                    supports_in(&prelude[9..], &cx.selectors, vcx)
                 } else {
                     name.starts_with("@layer")
                 };

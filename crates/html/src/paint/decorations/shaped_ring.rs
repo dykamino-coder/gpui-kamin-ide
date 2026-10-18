@@ -4,6 +4,7 @@
 //! обрезка группы многоугольником (шейдер `clip-path: polygon()`), прочее —
 //! цветной растр; углы только с выемками по осям — прежний `linear_corners`.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Color, px_lossy_zero};
 use gpui::{Bounds, Pixels, Window, px};
@@ -53,7 +54,7 @@ pub(crate) fn paint(spec: &str, colour: Color, bounds: Bounds<Pixels>, window: &
 
 /// Запись кольца, его цвет и толщины t/r/b/l; None — углы не фигурные,
 /// рамки нет или стороны разного цвета (они остаются полосами).
-pub(crate) fn spec(c: &Computed) -> Option<(String, Color, [f32; 4])> {
+pub(crate) fn spec(c: &Computed, vcx: ValueCx<'_>) -> Option<(String, Color, [f32; 4])> {
     if !c.corner_shaped() {
         return None;
     }
@@ -82,9 +83,9 @@ pub(crate) fn spec(c: &Computed) -> Option<(String, Color, [f32; 4])> {
         b: 0.0,
         a: 1.0,
     });
-    let colour = crate::paint::background::border_paint(c, colour);
+    let colour = crate::paint::background::border_paint(c, colour, vcx);
     Some((
-        crate::paint::background::rrect_spec(c, Some(widths)),
+        crate::paint::background::rrect_spec(c, Some(widths), vcx),
         colour,
         widths,
     ))

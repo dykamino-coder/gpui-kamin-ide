@@ -1,5 +1,6 @@
 //! Коробка: поля, отступы, рамки по сторонам, скругления (apply_box).
 
+use crate::document::state::ValueCx;
 use crate::style::apply::*;
 use crate::style::computed::{Computed, Display, Overflow, Position, Sides};
 use crate::style::values::value::{Len, px_lossy_zero};
@@ -11,7 +12,7 @@ use crate::style::computed::FontCx;
 use clip_position::box_clip_position;
 use overflow_inset::box_overflow;
 
-pub(super) fn apply_box(mut d: Div, c: &Computed) -> Div {
+pub(super) fn apply_box(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     contained_intrinsic::apply(&mut d, c);
     // `contain: size`: коробка меряется как пустая — рост от содержимого
     // подменяется `contain-intrinsic-size` (или нулём). Подмена касается
@@ -99,11 +100,11 @@ pub(super) fn apply_box(mut d: Div, c: &Computed) -> Div {
         let pad = side(c.padding.left) + side(c.padding.right) + side(b.left) + side(b.right);
         d = d.min_w(px(c.contain_intrinsic.0.unwrap_or(0.0) + pad));
     }
-    d = apply_sides(d, &c.padding, SideKind::Padding);
-    d = apply_sides(d, &c.margin, SideKind::Margin);
-    d = apply_sides(d, &c.borders(), SideKind::Border);
-    d = apply_radius(d, c);
-    box_clip_position(d, c)
+    d = apply_sides(d, &c.padding, SideKind::Padding, vcx);
+    d = apply_sides(d, &c.margin, SideKind::Margin, vcx);
+    d = apply_sides(d, &c.borders(), SideKind::Border, vcx);
+    d = apply_radius(d, c, vcx);
+    box_clip_position(d, c, vcx)
 }
 
 /// Наружные отступы отдельно от остального стиля.
@@ -111,8 +112,8 @@ pub(super) fn apply_box(mut d: Div, c: &Computed) -> Div {
 /// Нужно ленте прокрутки: её видимая область — это коробка БЕЗ наружных
 /// отступов, и когда отступ оставался на прокручиваемом узле, лента считала
 /// его своей высотой и показывала лишнее.
-pub fn margins(d: Div, s: &Sides) -> Div {
-    apply_sides(d, s, SideKind::Margin)
+pub fn margins(d: Div, s: &Sides, vcx: ValueCx<'_>) -> Div {
+    apply_sides(d, s, SideKind::Margin, vcx)
 }
 
 enum SideKind {
@@ -121,7 +122,7 @@ enum SideKind {
     Border,
 }
 
-fn apply_sides(mut d: Div, s: &Sides, kind: SideKind) -> Div {
+fn apply_sides(mut d: Div, s: &Sides, kind: SideKind, vcx: ValueCx<'_>) -> Div {
     for (val, side) in [(s.top, 0u8), (s.right, 1), (s.bottom, 2), (s.left, 3)] {
         let Some(l) = val else { continue };
         // `margin: auto` — это центрирование блока, а не «нет значения».
@@ -137,7 +138,7 @@ fn apply_sides(mut d: Div, s: &Sides, kind: SideKind) -> Div {
             }
             continue;
         }
-        let g = len_to_gpui(l);
+        let g = len_to_gpui(l, vcx);
         d = match (&kind, side) {
             (SideKind::Padding, 0) => d.pt(g),
             (SideKind::Padding, 1) => d.pr(g),
@@ -173,7 +174,7 @@ fn apply_sides(mut d: Div, s: &Sides, kind: SideKind) -> Div {
 /// border-radius:100% 0 0 0`) давала радиус 20 вместо 100. Без заданного
 /// размера берётся заведомо большое значение — растеризатор обрежет его
 /// половиной меньшей стороны, что и даёт круг.
-pub(crate) fn radius_px(c: &Computed, l: Option<Len>) -> Option<f32> {
+pub(crate) fn radius_px(c: &Computed, l: Option<Len>, vcx: ValueCx<'_>) -> Option<f32> {
     let px_len = px_lossy_zero;
     let b = c.borders();
     let extra_w =
@@ -191,21 +192,21 @@ pub(crate) fn radius_px(c: &Computed, l: Option<Len>) -> Option<f32> {
         Len::Pct(p) if base.is_nan() => Some(9999.0 * p.min(1.0)),
         Len::Pct(p) => Some(base * p),
         // Шрифтовые единицы — от запасного кегля, единой точкой.
-        l => l.to_px(None, FontCx::FALLBACK),
+        l => l.to_px(None, FontCx::FALLBACK, vcx),
     }
 }
 
-fn apply_radius(mut d: Div, c: &Computed) -> Div {
+fn apply_radius(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     // Эллиптические углы и большой неоднородный радиус режет альфа-маска
     // буфера группы; круглое скругление сверху обрезало бы форму вторым
     // лезвием (см. `Computed::radius_masked`).
     // `border-shape` не совместим с `border-radius`: радиус — «as if it was
     // set to 0» (css-borders-4 §border-shape-radius-interaction).
-    if c.radius_masked() || c.border_shape.is_some() {
+    if c.radius_masked(vcx) || c.border_shape.is_some() {
         return d;
     }
     let r = &c.radius;
-    let resolve = |l: Option<Len>| radius_px(c, l);
+    let resolve = |l: Option<Len>| radius_px(c, l, vcx);
     for (val, corner) in [(r.tl, 0u8), (r.tr, 1), (r.br, 2), (r.bl, 3)] {
         let Some(v) = resolve(val) else { continue };
         d = match corner {

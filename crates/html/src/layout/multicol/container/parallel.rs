@@ -3,6 +3,7 @@
 //! Resolve the original containing-block position before inserting fragmentation
 //! space. Growing an auto-sized abspos must not resolve its bottom inset again.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::oof_reach::Measure;
@@ -14,8 +15,8 @@ use crate::style::computed::{Display, Position};
 use crate::style::values::value::Len;
 use crate::text::inline::establishes_cb;
 
-fn measure(c: &Element) -> Option<(Shape, f32)> {
-    let m = crate::layout::fragment::fragment_size::measure(c, 4, ShapeCx::COLUMNS)?;
+fn measure(c: &Element, vcx: ValueCx<'_>) -> Option<(Shape, f32)> {
+    let m = crate::layout::fragment::fragment_size::measure(c, 4, ShapeCx::COLUMNS, vcx)?;
     let own = Measure::own_size(m.own, m.shape.0);
     Some((m.shape, own))
 }
@@ -39,6 +40,7 @@ fn block(c: &Element) -> bool {
         && zero(border.bottom)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn positioned(
     c: &mut Element,
     cb_height: f32,
@@ -47,6 +49,7 @@ fn positioned(
     h: f32,
     count: usize,
     copies: usize,
+    vcx: ValueCx<'_>,
 ) -> bool {
     if c.style.position != Some(Position::Absolute)
         || !block(c)
@@ -56,7 +59,7 @@ fn positioned(
     {
         return false;
     }
-    let Some((s, _)) = measure(c) else {
+    let Some((s, _)) = measure(c, vcx) else {
         return false;
     };
     if s.3.is_empty() || (s.4.is_empty() && s.5.is_empty()) {
@@ -78,7 +81,15 @@ fn positioned(
     let mut shape = s.clone();
     shape.1 = phase;
     let planned = copies.max(((phase + s.0) / h).ceil() as usize + count);
-    let mut grown = grow_pushed(vec![(probe, shape)], count, Some(h), None, planned, &[]);
+    let mut grown = grow_pushed(
+        vec![(probe, shape)],
+        count,
+        Some(h),
+        None,
+        planned,
+        &[],
+        vcx,
+    );
     let (mut probe, after) = grown.remove(0);
     if after.0 <= s.0 + 0.01 {
         return false;
@@ -90,11 +101,18 @@ fn positioned(
     true
 }
 
-fn walk(c: &mut Element, origin: f32, h: f32, count: usize, copies: usize) -> bool {
+fn walk(
+    c: &mut Element,
+    origin: f32,
+    h: f32,
+    count: usize,
+    copies: usize,
+    vcx: ValueCx<'_>,
+) -> bool {
     if !block(c) {
         return false;
     }
-    let Some((_, own)) = measure(c) else {
+    let Some((_, own)) = measure(c, vcx) else {
         return false;
     };
     let cb = establishes_cb(&c.style);
@@ -104,29 +122,35 @@ fn walk(c: &mut Element, origin: f32, h: f32, count: usize, copies: usize) -> bo
         let Node::Element(k) = n else { continue };
         if out_of_flow(&k.style) {
             if cb {
-                changed |= positioned(k, own, cursor, origin, h, count, copies);
+                changed |= positioned(k, own, cursor, origin, h, count, copies, vcx);
             }
             continue;
         }
-        let Some((s, height)) = measure(k) else {
+        let Some((s, height)) = measure(k, vcx) else {
             continue;
         };
         let start = cursor + previous.max(s.1);
-        changed |= walk(k, origin + start, h, count, copies);
+        changed |= walk(k, origin + start, h, count, copies, vcx);
         cursor = start + height;
         previous = s.2;
     }
     changed
 }
 
-pub(super) fn grow(kids: &mut [(Element, Shape)], h: f32, count: usize, copies: usize) {
+pub(super) fn grow(
+    kids: &mut [(Element, Shape)],
+    h: f32,
+    count: usize,
+    copies: usize,
+    vcx: ValueCx<'_>,
+) {
     let (mut cursor, mut previous) = (0.0f32, 0.0f32);
     for (c, s) in kids {
-        let own = measure(c).map_or(s.0, |(_, own)| own);
+        let own = measure(c, vcx).map_or(s.0, |(_, own)| own);
         let start = cursor + previous.max(s.1);
         if !c.marks.paginate
-            && walk(c, start, h, count, copies)
-            && let Some(next) = shape_full(c, 4, ShapeCx::COLUMNS)
+            && walk(c, start, h, count, copies, vcx)
+            && let Some(next) = shape_full(c, 4, ShapeCx::COLUMNS, vcx)
         {
             *s = (next.0, s.1, s.2, next.3, next.4, next.5);
         }

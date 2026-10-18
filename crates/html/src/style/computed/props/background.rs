@@ -1,5 +1,6 @@
 //! Computed::apply_one: background*, box-shadow, object-*, image-orientation.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
 
@@ -9,12 +10,21 @@ mod shorthand;
 
 impl Computed {
     #[allow(unused_variables)]
-    pub(crate) fn apply_background(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_background(
+        &mut self,
+        key: &str,
+        val: &str,
+        v: &str,
+        hit: &mut bool,
+        vcx: ValueCx<'_>,
+    ) {
         match key {
             // Сокращение несёт всё сразу: `background: #fff url(a.png) no-repeat`
             // — и цвет, и картинку, и режим повтора. Раньше побеждало что-то
             // одно, и картинка терялась при заданном цвете.
-            "background" | "background-color" => self.apply_background_shorthand(key, val, v, hit),
+            "background" | "background-color" => {
+                self.apply_background_shorthand(key, val, v, hit, vcx)
+            }
             "box-shadow" if has_font_units(v) => {
                 self.shadow_raw = accept_parsed!(self, Some(v.to_string()))
             }
@@ -28,15 +38,15 @@ impl Computed {
                 // запись просто не рисовалась.
                 // Негодная запись ОТБРАСЫВАЕТСЯ целиком, прежняя тень живёт
                 // (§7.1 `none | <shadow>#`; `box-shadow-invalid-001`).
-                if !box_shadow_valid(v) {
+                if !box_shadow_valid(v, vcx) {
                     return;
                 }
                 self.accept_declaration();
                 let (inset, outer): (Vec<&str>, Vec<&str>) = crate::style::css::split_args(v)
                     .into_iter()
                     .partition(|one| one.contains("inset"));
-                self.shadows = parse_shadows(&outer.join(","));
-                self.inset_shadows = parse_shadows(&inset.join(",").replace("inset", " "));
+                self.shadows = parse_shadows(&outer.join(","), vcx);
+                self.inset_shadows = parse_shadows(&inset.join(",").replace("inset", " "), vcx);
             }
             "object-fit" => self.object_fit = accept_parsed!(self, Some(v.to_string())),
             // `image-orientation` (css-images-3 §5.4): `from-image | none |
@@ -58,7 +68,7 @@ impl Computed {
                 if let [light, dark] = args.as_slice() {
                     let dark_now = crate::style::values::value::dark_scheme();
                     let pick = if dark_now { dark.trim() } else { light.trim() };
-                    self.apply_background(key, pick, pick, hit);
+                    self.apply_background(key, pick, pick, hit, vcx);
                 }
             }
             "background-image" => {
@@ -78,7 +88,7 @@ impl Computed {
                     // Негодная запись роняет ОБЪЯВЛЕНИЕ (§4.2), прежняя
                     // картинка живёт: `linear-gradient(green, green)` и следом
                     // четыре негодных угла обязаны оставить зелёный.
-                    if let Some(g) = parse_gradient(v) {
+                    if let Some(g) = parse_gradient(v, vcx) {
                         self.gradient = accept_parsed!(self, Some(g));
                         self.gradient_current = v.contains("currentcolor").then(|| v.to_string());
                         self.gradient_em = has_font_units(v).then(|| v.to_string());
@@ -86,7 +96,7 @@ impl Computed {
                         // слоем картинки, и градиент туда идёт источником.
                         self.gradient_raw = Some(v.to_string());
                     }
-                } else if crate::paint::background::filter_image::parse(v).is_some() {
+                } else if crate::paint::background::filter_image::parse(v, vcx).is_some() {
                     // Filter the rendered image, preserving gradient geometry,
                     // rather than rewriting its stops before interpolation.
                     self.bg_image = accept_parsed!(self, Some(v.trim().to_string()));
@@ -99,10 +109,10 @@ impl Computed {
                     if let Some(img) = parts.first().map(|p| p.trim())
                         && (img.starts_with("linear-gradient(")
                             || img.starts_with("radial-gradient("))
-                        && let Some(mut g) = parse_gradient(img)
+                        && let Some(mut g) = parse_gradient(img, vcx)
                     {
                         let mut tmp = Self::default();
-                        tmp.apply_one("filter", &parts[1..].join(" "));
+                        tmp.apply_one("filter", &parts[1..].join(" "), vcx);
                         if let Some(f) = tmp.filter {
                             g.from = f.apply(g.from);
                             g.to = f.apply(g.to);
@@ -120,15 +130,15 @@ impl Computed {
                         // пересчитанные цвета (filter-effects-1 §12
                         // `filter()`: фильтр применяется к КАРТИНКЕ).
                         let mut tmp = Self::default();
-                        tmp.apply_one("filter", &parts[1..].join(" "));
+                        tmp.apply_one("filter", &parts[1..].join(" "), vcx);
                         self.bg_image = accept_parsed!(
                             self,
                             Some(match tmp.filter {
-                                Some(f) => filter_gradient_text(img, &f),
+                                Some(f) => filter_gradient_text(img, &f, vcx),
                                 None => img.to_string(),
                             })
                         );
-                    } else if crate::paint::background::filter_image::parse(v).is_some() {
+                    } else if crate::paint::background::filter_image::parse(v, vcx).is_some() {
                         // `filter(url(…), …)`: the raster loader filters it.
                         self.bg_image = accept_parsed!(self, Some(v.trim().to_string()));
                     }
@@ -139,7 +149,7 @@ impl Computed {
                     // `background::source` эти записи опознаёт с самого
                     // начала — до `Computed` они просто не доезжали).
                     self.bg_image = accept_parsed!(self, Some(v.to_string()));
-                } else if image_function::arguments(v).is_some() {
+                } else if image_function::arguments(v, vcx).is_some() {
                     // Keep fallback and currentColor until loading and inheritance.
                     self.bg_image = accept_parsed!(self, Some(v.to_string()));
                     self.gradient = None;
@@ -150,14 +160,14 @@ impl Computed {
                     .or_else(|| v.strip_prefix("-webkit-image-set("))
                 {
                     let inner = rest.rfind(')').map(|i| &rest[..i]).unwrap_or(rest);
-                    match image_set_pick(inner) {
+                    match image_set_pick(inner, vcx) {
                         // Функция ПРЕДСТАВЛЯЕТ выбранный `<image>` (§2.5,
                         // шаг 4): он разбирается тем же кодом, что без
                         // обёртки, — адрес, градиент, конический, повтор.
                         // Кандидат приходит СЫРОЙ записью (`url(...)`): голый
                         // путь ни одна ветка не принимает, и прошлый заход
                         // (09.09, +9/−17) терял на этом все адреса.
-                        Some(Some(chosen)) => self.apply_one("background-image", &chosen),
+                        Some(Some(chosen)) => self.apply_one("background-image", &chosen, vcx),
                         // Годная запись без пригодных кандидатов — «invalid
                         // image» (шаг 3): слой ГАСНЕТ, прежний не выживает.
                         Some(None) => {
@@ -180,7 +190,7 @@ impl Computed {
                 }
             }
 
-            _ => self.apply_background_layers(key, val, v, hit),
+            _ => self.apply_background_layers(key, val, v, hit, vcx),
         }
     }
 }

@@ -1,5 +1,6 @@
 //! Раскладка: display/flex/позиционирование/размеры (apply_layout).
 
+use crate::document::state::ValueCx;
 use crate::style::apply::*;
 use crate::style::computed::{
     Align, Computed, Display, FlexDir, Justify, Overflow, Placement, Position,
@@ -17,7 +18,7 @@ use display_axes::{layout_display, layout_flex_axes};
 use grid_gap::layout_grid_gap;
 use sizing::layout_sizing;
 
-pub(super) fn apply_layout(mut d: Div, c: &Computed) -> Div {
+pub(super) fn apply_layout(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     let constrained = ratio_constraints::resolve(c);
     let c = constrained.as_ref().unwrap_or(c);
     // Вертикальная `-webkit-box` с действующим `continue` (`line-clamp`,
@@ -93,8 +94,8 @@ pub(super) fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // `vertical-rl` шли слева направо).
     let rtl_row = c.wm().rtl() && !c.wm().vertical();
     d = layout_flex_axes(d, c, dir, rtl_row);
-    d = layout_alignment(d, c, dir, rtl_row);
-    d = layout_grid_gap(d, c);
+    d = layout_alignment(d, c, dir, rtl_row, vcx);
+    d = layout_grid_gap(d, c, vcx);
 
     // Движок раскладки всегда трактует размер как `border-box`, а CSS по
     // умолчанию — как `content-box`: заданная ширина не включает отступы и
@@ -127,7 +128,7 @@ pub(super) fn apply_layout(mut d: Div, c: &Computed) -> Div {
     let pad_x = extra(&[c.padding.left, c.padding.right, bw.left, bw.right]);
     let pad_y = extra(&[c.padding.top, c.padding.bottom, bw.top, bw.bottom]);
 
-    d = layout_sizing(d, c, pad_x, pad_y);
+    d = layout_sizing(d, c, pad_x, pad_y, vcx);
     d
 }
 

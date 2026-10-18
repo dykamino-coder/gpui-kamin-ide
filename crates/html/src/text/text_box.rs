@@ -1,4 +1,6 @@
 //! `text-box`, высота строки, пустой текст.
+
+use crate::document::state::ValueCx;
 // owner: A
 
 use crate::dom::Node;
@@ -30,6 +32,7 @@ pub(crate) fn text_box_line_style(
     inherited: &Computed,
     start: bool,
     owner: u64,
+    vcx: ValueCx<'_>,
 ) -> Option<(Computed, u64)> {
     let has_block = nodes.iter().any(breaks_inline);
     let order: Vec<&Node> = if start {
@@ -48,7 +51,13 @@ pub(crate) fn text_box_line_style(
             continue;
         }
         if e.style.display == Some(Display::Contents) {
-            return text_box_line_style(&e.children, &inherit(inherited, &e.style), start, owner);
+            return text_box_line_style(
+                &e.children,
+                &inherit(inherited, &e.style, vcx),
+                start,
+                owner,
+                vcx,
+            );
         }
         if breaks_inline(n) {
             // Через гибкий, сеточный и табличный контекст свойство не
@@ -62,7 +71,7 @@ pub(crate) fn text_box_line_style(
             ) {
                 return None;
             }
-            let merged = inherit(inherited, &e.style);
+            let merged = inherit(inherited, &e.style, vcx);
             let px_of = px_lossy_zero;
             let bs = merged.borders();
             let blocked = if start {
@@ -87,11 +96,11 @@ pub(crate) fn text_box_line_style(
             if own_trim {
                 return None;
             }
-            return text_box_line_style(&e.children, &merged, start, e.node_id);
+            return text_box_line_style(&e.children, &merged, start, e.node_id, vcx);
         }
         // Блок-в-строчном: оболочка прозрачна, строка — внутри блока.
         if real_inline(e) && contains_block(&e.children) {
-            return text_box_line_style(&e.children, inherited, start, owner);
+            return text_box_line_style(&e.children, inherited, start, owner, vcx);
         }
         // Строчное содержимое. Без блочных братьев это весь контекст
         // форматирования; с ними — анонимная коробка из прогона до блока,

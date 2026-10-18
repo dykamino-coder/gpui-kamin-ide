@@ -35,6 +35,7 @@ pub(super) fn build_band_kid(
     >,
     height: Option<f32>,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     let _depth = DepthScope::enter(depth);
     // Ширина содержащего блока — та, что намерил хост: замещаемым
     // без размеров (§10.3.2) и долям внутри (`LayoutCx::cb_width`), блочным
@@ -179,17 +180,18 @@ pub(super) fn build_band_kid(
         // же путём, что у статического хоста (`shape_flow`).
         // Таблица — своей веткой `element` ниже: каркас блока её
         // не соберёт.
-        let mut merged = inherit(inherited, &copy.style);
+        let mut merged = inherit(inherited, &copy.style, vcx);
         merged.self_node = copy.node_id;
         merged.margin = crate::style::computed::Sides::default();
         if copy.tag == "img" {
-            grouped(image(&copy, &opts.cx), &copy.style)
+            grouped(image(&copy, &opts.cx), &copy.style, vcx)
         } else {
             grouped(
                 styled_div_with(&copy, &merged, &opts.cx)
                     .children(blocks(&copy.children, &merged, opts))
                     .into_any_element(),
                 &copy.style,
+                vcx,
             )
         }
     } else {
@@ -204,9 +206,9 @@ pub(super) fn build_band_kid(
         // ничего (`shape-outside-circle-048-ref`: флоат целым
         // прямоугольником при абсолютах с вставками по обеим осям).
         if float {
-            grouped(el, &copy.style)
+            grouped(el, &copy.style, vcx)
         } else {
-            content_wrapper::for_element(el, &copy, inherited, (None, None))
+            content_wrapper::for_element(el, &copy, inherited, (None, None), vcx)
         }
     }
 }

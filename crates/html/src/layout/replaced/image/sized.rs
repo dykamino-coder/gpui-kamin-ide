@@ -1,6 +1,7 @@
 //! Размеры картинки по заданным ширине/высоте и соотношению сторон.
 
 use super::auto_sized_image;
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::style::values::value::Len;
 use gpui::{Styled, StyledImage, px};
@@ -22,6 +23,7 @@ pub(super) fn sized_image(
     ratio_of: impl Fn() -> Option<f32>,
     transfer: impl Fn(f32, f32, bool) -> f32,
     cb_width: Option<f32>,
+    vcx: ValueCx<'_>,
 ) -> gpui::Img {
     if let (Some(Len::Px(w)), Some(Len::Px(h))) = (e.style.width, e.style.height) {
         image = vectorize(image, (w - sub_w).max(1.0), (h - sub_h).max(1.0));
@@ -44,10 +46,10 @@ pub(super) fn sized_image(
         let cw = limit((w - sub_w).max(0.0), clamp(e.style.min_width, sub_w), max_w);
         let ch = match ratio_of() {
             Some(r) if r > 0.0 => transfer(cw, r, true),
-            _ => crate::paint::background::source(&crate::paint::background::key(
-                local.unwrap_or(src),
-                &e.style,
-            ))
+            _ => crate::paint::background::source(
+                &crate::paint::background::key(local.unwrap_or(src), &e.style, vcx),
+                vcx,
+            )
             .and_then(|s| s.intrinsic().h)
             .unwrap_or(150.0),
         };
@@ -91,10 +93,10 @@ pub(super) fn sized_image(
         );
         let cw = match ratio_of() {
             Some(r) if r > 0.0 => transfer(ch, r, false),
-            _ => crate::paint::background::source(&crate::paint::background::key(
-                local.unwrap_or(src),
-                &e.style,
-            ))
+            _ => crate::paint::background::source(
+                &crate::paint::background::key(local.unwrap_or(src), &e.style, vcx),
+                vcx,
+            )
             .and_then(|s| s.intrinsic().w)
             .unwrap_or(300.0),
         };
@@ -154,6 +156,7 @@ pub(super) fn sized_image(
     {
         image = auto_sized_image(
             src, e, local, image, vectorize, sub_w, sub_h, clamp, max_w, max_h, limit, cb_width,
+            vcx,
         );
     }
     image

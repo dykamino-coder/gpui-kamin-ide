@@ -1,4 +1,6 @@
 //! `var()`, `attr()`, `sibling-index()`.
+
+use crate::document::state::ValueCx;
 // owner: B
 
 use crate::style::computed::top_level_comma;
@@ -85,7 +87,7 @@ fn attr_value(name: &str, attrs: &[(String, String)]) -> Option<String> {
 }
 
 /// Значение атрибута под типом `attr()`; `None` — не разбирается этим типом.
-fn attr_cast(value: &str, ty: &str) -> Option<String> {
+fn attr_cast(value: &str, ty: &str, vcx: ValueCx<'_>) -> Option<String> {
     let v = value.trim();
     let ty: String = ty
         .chars()
@@ -94,7 +96,7 @@ fn attr_cast(value: &str, ty: &str) -> Option<String> {
         .to_ascii_lowercase();
     // `<length>`: голое число длиной не бывает, кроме нуля (css-values-4
     // §6.1); `Len::parse` принимает его точками — отсекаем здесь.
-    let length = |v: &str| match Len::parse(v) {
+    let length = |v: &str| match Len::parse(v, vcx) {
         Some(Len::Px(n)) if v.parse::<f32>().is_ok() => (n == 0.0).then(|| v.to_string()),
         Some(
             Len::Pct(_)
@@ -122,7 +124,7 @@ fn attr_cast(value: &str, ty: &str) -> Option<String> {
         "type(<length-percentage>)" => length(v).or_else(|| percentage(v)),
         "type(<number>)" | "number" => v.parse::<f32>().ok().map(|_| v.to_string()),
         "type(<integer>)" => v.parse::<i64>().ok().map(|_| v.to_string()),
-        "type(<color>)" => Color::parse(v).map(|_| v.to_string()),
+        "type(<color>)" => Color::parse(v, vcx).map(|_| v.to_string()),
         // `attr(x px)` — число из атрибута с единицей из записи.
         unit if !unit.is_empty()
             && (unit == "%" || unit.chars().all(|c| c.is_ascii_alphabetic())) =>
@@ -138,7 +140,7 @@ fn attr_cast(value: &str, ty: &str) -> Option<String> {
 /// (`attr(x)` — строка) остаётся как есть: её разбирают `content` и счётчики.
 /// Негодный атрибут без запаса делает объявление недействительным на
 /// вычислении — значение становится `unset`.
-pub(super) fn resolve_attrs(key: &str, value: &str, cx: CascadeCx) -> String {
+pub(super) fn resolve_attrs(key: &str, value: &str, cx: CascadeCx, vcx: ValueCx<'_>) -> String {
     if key == "content"
         || !value
             .as_bytes()
@@ -177,7 +179,7 @@ pub(super) fn resolve_attrs(key: &str, value: &str, cx: CascadeCx) -> String {
             out.push_str(&rest[at..at + 5 + close + 1]);
         } else {
             match (
-                attr_value(name, cx.attrs).and_then(|v| attr_cast(&v, ty)),
+                attr_value(name, cx.attrs).and_then(|v| attr_cast(&v, ty, vcx)),
                 fallback,
             ) {
                 (Some(v), _) => out.push_str(&v),

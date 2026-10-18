@@ -1,6 +1,7 @@
 //! CSS Counter Styles 3: shared representations for counters and list markers.
 //! CJK styles implement the extended range of section 7.1.5.
 
+use crate::document::state::ValueCx;
 mod additive_tables;
 mod builtin;
 mod cjk;
@@ -23,29 +24,34 @@ use numeric::{
 /// Незнакомый стиль — десятичный (css-counter-styles §counter-style-name:
 /// неизвестное имя ведёт себя как `decimal`). Стили с конечным диапазоном
 /// (римский, алфавитные) вне его тоже падают на десятичный.
-pub fn repr(value: i64, style: &str) -> String {
-    repr_in(value, style, Context::default())
+pub fn repr(value: i64, style: &str, vcx: ValueCx<'_>) -> String {
+    repr_in(value, style, Context::default(), vcx)
 }
 
-pub(crate) fn repr_in(value: i64, style: &str, context: Context) -> String {
+pub(crate) fn repr_in(value: i64, style: &str, context: Context, vcx: ValueCx<'_>) -> String {
     let style = &*normalize_name(style);
     if let Some(s) =
-        crate::style::generated::counter_style_rules::custom_repr(value, style, context)
+        crate::style::generated::counter_style_rules::custom_repr(value, style, context, vcx)
     {
         return s;
     }
-    builtin_repr_in(value, style, context)
+    builtin_repr_in(value, style, context, vcx)
 }
 
-pub(super) fn builtin_repr_in(value: i64, style: &str, context: Context) -> String {
+pub(super) fn builtin_repr_in(
+    value: i64,
+    style: &str,
+    context: Context,
+    vcx: ValueCx<'_>,
+) -> String {
     context
         .disclosure(style)
-        .map_or_else(|| builtin_repr(value, style), str::to_owned)
+        .map_or_else(|| builtin_repr(value, style, vcx), str::to_owned)
 }
 
 /// Предопределённый стиль (или десятичный для незнакомого имени) без учёта
 /// правил `@counter-style` документа.
-pub(super) fn builtin_repr(value: i64, style: &str) -> String {
+pub(super) fn builtin_repr(value: i64, style: &str, vcx: ValueCx<'_>) -> String {
     let positive = usize::try_from(value).ok().filter(|n| *n > 0);
     match style {
         "none" => String::new(),
@@ -114,7 +120,7 @@ pub(super) fn builtin_repr(value: i64, style: &str) -> String {
             .chars()
             .collect();
             positive.filter(|n| *n <= letters.len()).map_or_else(
-                || repr(value, "cjk-decimal"),
+                || repr(value, "cjk-decimal", vcx),
                 |n| letters[n - 1].to_string(),
             )
         }
@@ -186,17 +192,17 @@ pub fn suffix(style: &str) -> &'static str {
 
 /// Готовая строка маркера: представление и суффикс. У `counter()` суффикса
 /// нет по спеке, поэтому он живёт отдельной функцией, а не в `repr`.
-pub fn marker_repr(value: i64, style: &str, context: Context) -> String {
+pub fn marker_repr(value: i64, style: &str, context: Context, vcx: ValueCx<'_>) -> String {
     if style == "none" {
         return String::new();
     }
     let style = &*normalize_name(style);
     if let Some(s) =
-        crate::style::generated::counter_style_rules::custom_marker(value, style, context)
+        crate::style::generated::counter_style_rules::custom_marker(value, style, context, vcx)
     {
         return s;
     }
-    let body = repr_in(value, style, context);
+    let body = repr_in(value, style, context, vcx);
     format!("{body}{}", suffix(style))
 }
 

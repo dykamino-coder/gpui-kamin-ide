@@ -3,6 +3,8 @@
 use super::*;
 #[test]
 fn concrete_size_keeps_shadow_lengths_in_css_pixels() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let original = gpui::bgra_bytes_to_image(2, 1, vec![0, 128, 0, 255, 0, 0, 0, 0]).unwrap();
     let input = Source::Raster(original);
     let filtered = Source::Filtered {
@@ -10,7 +12,7 @@ fn concrete_size_keeps_shadow_lengths_in_css_pixels() {
         list: "drop-shadow(5px 0 0 green)".into(),
     };
     assert_eq!(filtered.intrinsic().w, Some(2.0));
-    let result = filtered.sampled_raster((10.0, 10.0), true).unwrap();
+    let result = filtered.sampled_raster((10.0, 10.0), true, vcx).unwrap();
     assert!(
         result
             .as_bytes(0)
@@ -30,6 +32,8 @@ fn smooth_scaling_preserves_color_beside_transparency() {
 
 #[test]
 fn allocation_limit_preserves_css_shadow_offset() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let original = gpui::bgra_bytes_to_image(2, 1, vec![0, 128, 0, 255, 0, 0, 0, 0]).unwrap();
     let input = Source::Raster(original);
     let result = raster(
@@ -37,6 +41,7 @@ fn allocation_limit_preserves_css_shadow_offset() {
         "drop-shadow(1500px 0 0 green)",
         (3000.0, 10.0),
         false,
+        vcx,
     )
     .unwrap();
     assert_eq!(result.size(0).width.0, 2048);
@@ -51,11 +56,14 @@ fn allocation_limit_preserves_css_shadow_offset() {
 
 #[test]
 fn radial_input_filters_rendered_samples_without_natural_dimensions() {
-    let source = super::super::source("filter(radial-gradient(red, orange), invert(1))").unwrap();
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
+    let source =
+        super::super::source("filter(radial-gradient(red, orange), invert(1))", vcx).unwrap();
     assert!(source.intrinsic().w.is_none());
-    let filtered = source.raster((7.0, 5.0)).unwrap();
+    let filtered = source.raster((7.0, 5.0), vcx).unwrap();
     let original =
-        super::super::gradient_raster::tile("radial-gradient(red, orange)", 7, 5, (7.0, 5.0))
+        super::super::gradient_raster::tile("radial-gradient(red, orange)", 7, 5, (7.0, 5.0), vcx)
             .unwrap();
     for (a, b) in filtered
         .as_bytes(0)

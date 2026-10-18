@@ -1,5 +1,6 @@
 //! Подготовка обтекания: узлы с поднятыми флоатами, ранний выход без флоатов, бандовый хост пробега.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::float_only_wrapper;
 use crate::layout::float::band_flow_host::BAND_FL;
@@ -51,8 +52,9 @@ pub(super) fn prepare_float_nodes(
     parent: &Computed,
     cb_top_open: bool,
     cb_px: Option<f32>,
+    vcx: ValueCx<'_>,
 ) -> Vec<Node> {
-    let nodes = inline_floats::lift(float_clear_scope::used(nodes, parent), parent);
+    let nodes = inline_floats::lift(float_clear_scope::used(nodes, parent), parent, vcx);
     // Флоат, записанный ВНУТРИ строчной коробки, принадлежит не ей, а
     // ближайшему блочному предку (§10.1, §9.5.1 п.1). Строчная обёртка, в
     // которой кроме флоата ничего нет, снимается ЗДЕСЬ — ДО проверки

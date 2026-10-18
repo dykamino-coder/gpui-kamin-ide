@@ -1,5 +1,6 @@
 //! Finish element for walk; split out to keep the owning module within 250 lines.
 
+use crate::document::state::ValueCx;
 use crate::dom::*;
 use crate::style::computed::{Computed, Display};
 
@@ -18,6 +19,7 @@ pub(super) fn finish_element(
     first_line: Option<Computed>,
     scroll_pseudos: ScrollPseudos,
     out: &mut Vec<Node>,
+    vcx: ValueCx<'_>,
 ) {
     let ruby_parent = ruby_box_role(&tag, &style);
     if ruby_parent.is_some() {
@@ -116,13 +118,16 @@ pub(super) fn finish_element(
     // замены не делает (Servo `replaced.rs:348`: `None` при ошибке).
     let (tag, children, attrs) = match style.content.as_deref() {
         Some([crate::style::computed::ContentItem::Image(src)])
-            if tag != "html" && content_image_src(src).is_some() =>
+            if tag != "html" && content_image_src(src, vcx).is_some() =>
         {
             let mut attrs: Vec<(String, String)> = attrs
                 .into_iter()
                 .filter(|(k, _)| k != "src" && k != "srcset")
                 .collect();
-            attrs.push(("src".into(), content_image_src(src).unwrap_or_default()));
+            attrs.push((
+                "src".into(),
+                content_image_src(src, vcx).unwrap_or_default(),
+            ));
             ("img".to_string(), vec![], attrs)
         }
         _ => (tag, children, attrs),

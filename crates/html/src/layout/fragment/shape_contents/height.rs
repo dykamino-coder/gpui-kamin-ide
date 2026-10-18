@@ -1,5 +1,6 @@
 //! Высота коробки по формам детей и её поля.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::clone::solid_box;
 use crate::layout::fragment::grid_bands::{grid_auto_row_bands, grid_rows_px};
@@ -24,6 +25,7 @@ pub(super) fn shaped_height(
     forced: &mut Vec<f32>,
     solid: &mut Vec<(f32, f32)>,
     stacked: Option<(f32, f32, f32)>,
+    vcx: ValueCx<'_>,
 ) -> Result<(f32, f32, f32), Option<(f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>)>> {
     let (h, mt, mb) = match c
         .style
@@ -118,7 +120,7 @@ pub(super) fn shaped_height(
                 // `grid_layout_algorithm.cc:370`
                 // `Rows().CalculateSetSpanSize()`). Точек разреза эта ветка
                 // не добавляет — см. `grid_auto_row_bands`.
-                None => match grid_auto_row_bands(c, depth, cx) {
+                None => match grid_auto_row_bands(c, depth, cx, vcx) {
                     Some((b, spots)) => {
                         // Элементы ряда — параллельные потоки (css-break-3 §3;
                         // Blink `PlaceGridItems`: у каждого свой break token):

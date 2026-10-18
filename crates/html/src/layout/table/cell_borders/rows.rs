@@ -1,6 +1,7 @@
 //! Row border candidates meet a spanning cell at its logical grid endpoints.
 //! CSS 2.1 §17.6.2.1; Blink TableBorders::ComputeTableBorders marks each row separately.
 
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
@@ -19,6 +20,7 @@ pub(crate) fn collapsed_row_edges(
     table_edges: &std::rc::Rc<std::cell::RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
     px_of: &impl Fn(Option<Len>) -> f32,
     mut d: gpui::Div,
+    vcx: ValueCx<'_>,
 ) -> gpui::Div {
     let axes = super::super::axes::Axes::new(table_style);
     let first = [
@@ -49,7 +51,7 @@ pub(crate) fn collapsed_row_edges(
         let computed = if std::ptr::eq(source, row) {
             row_style
         } else {
-            end_style = inherit(table_style, &source.style);
+            end_style = inherit(table_style, &source.style, vcx);
             &end_style
         };
         let black = crate::style::values::value::Color {

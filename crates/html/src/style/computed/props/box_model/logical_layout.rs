@@ -1,6 +1,7 @@
 //! Computed::apply_box_model, хвост цепочки: логические размеры и поля, раскладочные свойства (aspect-ratio, frame-sizing). Ветви в исходном порядке после физических размеров и полей.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
     #[allow(unused_variables)]
@@ -10,6 +11,7 @@ impl Computed {
         val: &str,
         v: &str,
         hit: &mut bool,
+        vcx: ValueCx<'_>,
     ) {
         if self.declaration_parse != ParseResult::Inactive
             && matches!(
@@ -23,7 +25,7 @@ impl Computed {
             )
         {
             let mut parsed = None;
-            assign_size(&mut parsed, v);
+            assign_size(&mut parsed, v, vcx);
             self.note_parsed(&parsed);
             if v == "none" {
                 self.accept_declaration();
@@ -38,15 +40,15 @@ impl Computed {
             // раскладки (css-logical-1 §4.1 — те же значения, что у
             // `width`). Прежде `Len::parse` роняло `calc(100% - 20px)` в
             // ничто (`css-break/table/table-row-paint-htb-ltr-ref`).
-            "inline-size" => assign_size(&mut self.logical().inline_size, v),
-            "block-size" => assign_size(&mut self.logical().block_size, v),
-            "min-inline-size" => assign_size(&mut self.logical().min_inline, v),
-            "min-block-size" => assign_size(&mut self.logical().min_block, v),
-            "max-inline-size" => assign_size(&mut self.logical().max_inline, v),
-            "max-block-size" => assign_size(&mut self.logical().max_block, v),
+            "inline-size" => assign_size(&mut self.logical().inline_size, v, vcx),
+            "block-size" => assign_size(&mut self.logical().block_size, v, vcx),
+            "min-inline-size" => assign_size(&mut self.logical().min_inline, v, vcx),
+            "min-block-size" => assign_size(&mut self.logical().min_block, v, vcx),
+            "max-inline-size" => assign_size(&mut self.logical().max_inline, v, vcx),
+            "max-block-size" => assign_size(&mut self.logical().max_block, v, vcx),
             "padding-inline" | "padding-block" | "margin-inline" | "margin-block"
             | "inset-inline" | "inset-block" => {
-                let (a, b) = axis_pair(v);
+                let (a, b) = axis_pair(v, vcx);
                 if a.is_some() && b.is_some() {
                     self.accept_declaration();
                 }
@@ -84,7 +86,7 @@ impl Computed {
             | "inset-block-start"
             | "inset-block-end" => {
                 let seq = self.decl_seq;
-                let parsed = record_parsed!(self, Len::parse(v));
+                let parsed = record_parsed!(self, Len::parse(v, vcx));
                 let logical = self.logical();
                 let target = if key.starts_with("padding") {
                     &mut logical.padding

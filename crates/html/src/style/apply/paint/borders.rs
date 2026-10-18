@@ -1,6 +1,7 @@
 //! Слои рамки для apply_paint: обычная рамка стороны и двойная (double) двумя полосами.
 
 use super::*;
+use crate::document::state::ValueCx;
 use crate::style::values::value::px_lossy_zero;
 
 /// Рамка ПОВЕРХ слоя картинки: цвет и толщины сторон, если рамку надо
@@ -15,9 +16,12 @@ use crate::style::values::value::px_lossy_zero;
 /// `PaintFillLayers` → `PaintBorder`. Сплошную непрозрачную рамку
 /// `paint_tiles` и раньше обходил ужатием области краски — слой делает то же
 /// для любой рамки. `None` — рисовать по-старому.
-pub(crate) fn border_layer(c: &Computed) -> Option<(crate::style::values::value::Color, [f32; 4])> {
+pub(crate) fn border_layer(
+    c: &Computed,
+    vcx: ValueCx<'_>,
+) -> Option<(crate::style::values::value::Color, [f32; 4])> {
     // Рамку `double` рисуют кольца (`double_border`) — поверх плиток и так.
-    if double_border(c).is_some() {
+    if double_border(c, vcx).is_some() {
         return None;
     }
     // Слой картинки бывает только у этих двух (см. `render::decorations`).
@@ -77,7 +81,10 @@ pub(crate) fn border_layer(c: &Computed) -> Option<(crate::style::values::value:
             b: 0.0,
             a: 1.0,
         });
-    Some((crate::paint::background::border_paint(c, colour), widths))
+    Some((
+        crate::paint::background::border_paint(c, colour, vcx),
+        widths,
+    ))
 }
 
 /// Рамка `double` (css-backgrounds-3 §4.2): «two parallel solid lines with
@@ -88,6 +95,7 @@ pub(crate) fn border_layer(c: &Computed) -> Option<(crate::style::values::value:
 /// цвет у сторон один (иначе поверх легли бы полосы сторон).
 pub(crate) fn double_border(
     c: &Computed,
+    vcx: ValueCx<'_>,
 ) -> Option<(crate::style::values::value::Color, [f32; 4])> {
     if c.border_image.as_ref().is_some_and(|bi| !bi.src.is_empty())
         || c.corner_shaped()
@@ -134,10 +142,13 @@ pub(crate) fn double_border(
             b: 0.0,
             a: 1.0,
         });
-    Some((crate::paint::background::border_paint(c, colour), widths))
+    Some((
+        crate::paint::background::border_paint(c, colour, vcx),
+        widths,
+    ))
 }
 
-pub(super) fn paint_border_colors(mut d: Div, c: &Computed) -> Div {
+pub(super) fn paint_border_colors(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     // Цвет рамки: единый — прямо в стиль. Разные цвета сторон рисуются
     // полосами в сборщике дерева: у GPUI цвет рамки один на элемент.
     // Рамка-картинка рисуется ВМЕСТО обычной рамки (css-backgrounds-3 §6):
@@ -192,11 +203,11 @@ pub(super) fn paint_border_colors(mut d: Div, c: &Computed) -> Div {
         && !strips
         && !c.corner_shaped()
         && c.border_shape.is_none()
-        && border_layer(c).is_none()
-        && double_border(c).is_none()
+        && border_layer(c, vcx).is_none()
+        && double_border(c, vcx).is_none()
         && let Some(bc) = uniform.copied().copied().or(c.border_color).or(current)
     {
-        d = d.border_color(crate::paint::background::border_paint(c, bc).to_hsla());
+        d = d.border_color(crate::paint::background::border_paint(c, bc, vcx).to_hsla());
     }
     d
 }

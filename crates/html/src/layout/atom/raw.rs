@@ -25,10 +25,11 @@ pub(super) fn atom_element_raw(
     inherited: &Computed,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
+    let vcx = opts.cx.vcx();
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
     let media_sized =
-        crate::layout::replaced::media::resolve(e, inherited, opts.viewport, opts.cx.avail_w);
+        crate::layout::replaced::media::resolve(e, inherited, opts.viewport, opts.cx.avail_w, vcx);
     let e = media_sized.as_ref().unwrap_or(e);
     // Строчный атом — независимый контекст форматирования: строки внутри
     // `inline-block` в бюджет `line-clamp` не входят (css-overflow-4 §5.3),
@@ -48,7 +49,9 @@ pub(super) fn atom_element_raw(
     // Элементу формы нужен СЛИТЫЙ стиль: в своём у него единицы шрифта ещё не
     // разрешены (`width: 3ch` считался бы по базовому кеглю, а не по своему),
     // да и наследуемое до поля иначе не доходит.
-    if let Some(el) = crate::interactive::forms::element(e, &inherit(inherited, &e.style), opts) {
+    if let Some(el) =
+        crate::interactive::forms::element(e, &inherit(inherited, &e.style, vcx), opts)
+    {
         // Трансформы поля формы шли МИМО обёртки: инпуты стояли ровно, а
         // эталон сдвигал (transform-input-001..019).
         return Some(transformed(el, &e.style, inherited));
@@ -83,7 +86,7 @@ pub(super) fn atom_element_raw(
         return absolute_atom(inherited, e, opts);
     }
     if let Some(math) = crate::layout::mathml::element(e, inherited, opts) {
-        return Some(crate::paint::effects::grouped::grouped(math, &e.style));
+        return Some(crate::paint::effects::grouped::grouped(math, &e.style, vcx));
     }
     // Многоколоночная коробка В СТРОКЕ (`inline-block` с `column-count`) —
     // такой же случай, как строчная таблица ниже: своя раскладка живёт в
@@ -134,7 +137,7 @@ pub(super) fn atom_element_raw(
             let url = e.attr("data").unwrap_or_default().to_string();
             copy.attrs.push(("src".to_string(), url));
             if object_is_document(e) {
-                copy.style.resolve_em(atom_base_font(inherited, opts));
+                copy.style.resolve_em(atom_base_font(inherited, opts), vcx);
                 return iframe(&copy, inherited, opts);
             }
             Some(image_with(
@@ -231,7 +234,7 @@ pub(super) fn atom_element_raw(
     // CSS Borders 4 shapes replaced content together with its CSS box.
     built.map(|el| {
         if crate::render::replaced_tag(e) && e.style.corner_shaped() {
-            grouped_replaced(el, &e.style)
+            grouped_replaced(el, &e.style, vcx)
         } else {
             el
         }

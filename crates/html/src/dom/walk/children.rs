@@ -29,13 +29,16 @@ pub(super) fn collect_children(
     tag: &str,
     attrs: &[(String, String)],
 ) -> (Vec<Node>, ScrollPseudos) {
+    let vcx = tree.doc.values();
     let mut children = vec![];
     // Псевдоэлементы: коробка появляется, только если у правила есть
     // `content`. Значками, стрелками и разделителями в вёрстке
     // занимаются именно они, и без них разметка теряет часть смысла.
     // `::before` строится ДО детей, `::after` — после: счётчики они
     // видят в том же порядке, что и браузер (css-lists §counters).
-    if let Some(el) = pseudo_box(rules, vars, counters, &me, path, sibs, "before", &attrs) {
+    if let Some(el) = pseudo_box(
+        rules, vars, counters, &me, path, sibs, "before", &attrs, vcx,
+    ) {
         children.push(Node::Element(el));
     }
     let keep = style.preserve_newlines.unwrap_or(preserve);
@@ -104,7 +107,7 @@ pub(super) fn collect_children(
         );
         path.pop();
     }
-    if let Some(el) = pseudo_box(rules, vars, counters, &me, path, sibs, "after", &attrs) {
+    if let Some(el) = pseudo_box(rules, vars, counters, &me, path, sibs, "after", &attrs, vcx) {
         children.push(Node::Element(el));
     }
     // css-overflow-5: скроллер со `scroll-marker-group` собирает
@@ -123,6 +126,7 @@ pub(super) fn collect_children(
         &style,
         &attrs,
         &mut children,
+        vcx,
     );
     if let Some(el) = pseudo_box(
         rules,
@@ -133,6 +137,7 @@ pub(super) fn collect_children(
         sibs,
         "scroll-marker",
         &attrs,
+        vcx,
     ) {
         children.push(Node::Element(el));
     }

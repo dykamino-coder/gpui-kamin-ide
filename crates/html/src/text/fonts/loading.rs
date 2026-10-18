@@ -4,6 +4,7 @@ use super::{
     ALIASES, declaration, faces, is_quote, read_font, sfnt_romn_baseline, source, stretch_desc,
 };
 use super::{FACES, FEATURES, HAS_SPACE, LOADED, LOADER, ROMN, ROMN_BY_SRC, SIZE_ADJUST};
+use crate::document::state::ValueCx;
 
 /// Есть ли в семействе знак пробела (U+0020).
 ///
@@ -61,11 +62,11 @@ pub(super) fn range_has_space(value: Option<&str>) -> bool {
 
 /// Разобрать правила `@font-face` из таблицы стилей и загрузить шрифты.
 ///
-pub fn load_faces(css: &str) {
-    load_faces_with_base(css, None);
+pub fn load_faces(css: &str, vcx: ValueCx<'_>) {
+    load_faces_with_base(css, None, vcx);
 }
 
-pub(crate) fn load_faces_with_base(css: &str, base: Option<&url::Url>) {
+pub(crate) fn load_faces_with_base(css: &str, base: Option<&url::Url>, vcx: ValueCx<'_>) {
     // Имена семейств придумывает страница, и на соседней странице то же имя
     // значит другой файл — поэтому таблица подмены живёт РОВНО одну страницу.
     ALIASES.with(|a| a.borrow_mut().clear());
@@ -76,25 +77,25 @@ pub(crate) fn load_faces_with_base(css: &str, base: Option<&url::Url>) {
     super::metric_overrides::clear();
     ROMN.with(|r| r.borrow_mut().clear());
     super::math::clear_aliases();
-    load_faces_into(css, base);
+    load_faces_into(css, base, vcx);
 }
 
 /// Дозагрузка БЕЗ сброса подмен: вложенный документ (`<iframe>`) разбирается
 /// посреди отрисовки внешнего — сброс крал бы шрифты хозяина, и весь текст
 /// после рамки падал в подстановочный шрифт.
-pub fn load_faces_additive(css: &str) {
-    load_faces_into(css, None);
+pub fn load_faces_additive(css: &str, vcx: ValueCx<'_>) {
+    load_faces_into(css, None, vcx);
 }
 
-pub(crate) fn load_faces_sheets(sheets: &[String], base: Option<&url::Url>) {
-    load_faces_with_base("", base);
+pub(crate) fn load_faces_sheets(sheets: &[String], base: Option<&url::Url>, vcx: ValueCx<'_>) {
+    load_faces_with_base("", base, vcx);
     for css in sheets {
-        load_faces_into(css, base);
+        load_faces_into(css, base, vcx);
     }
 }
 
-pub(super) fn load_faces_into(css: &str, base: Option<&url::Url>) {
-    for block in faces(css) {
+pub(super) fn load_faces_into(css: &str, base: Option<&url::Url>, vcx: ValueCx<'_>) {
+    for block in faces(css, vcx) {
         let (Some(family), Some(src)) = (declaration(&block, "font-family"), source(&block)) else {
             continue;
         };

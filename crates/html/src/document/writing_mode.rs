@@ -1,9 +1,10 @@
 //! §8.2 principal writing mode: the root box takes the body's writing mode (used value only), and the vertical root fills the viewport along its inline axis.
 
 use super::any_containment;
+use crate::document::state::ValueCx;
 use crate::dom::Node;
 
-pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
+pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Node> {
     let [Node::Element(html)] = nodes.as_mut_slice() else {
         return nodes;
     };
@@ -105,10 +106,10 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
         && html.style.height.is_none()
         && html.style.min_height.is_none()
     {
-        html.style.min_height = Some(fill_inline(&html.style));
+        html.style.min_height = Some(fill_inline(&html.style, vcx));
     }
     if taken_vertical && html.style.height.is_none() && html.style.min_height.is_none() {
-        html.style.min_height = Some(fill_inline(&html.style));
+        html.style.min_height = Some(fill_inline(&html.style, vcx));
     }
     if taken == own {
         return nodes;
@@ -131,7 +132,7 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
         e.style.rtl = e.style.rtl.or(Some(own.1.unwrap_or(false)));
     }
     if taken_vertical && html.style.height.is_none() && html.style.min_height.is_none() {
-        html.style.min_height = Some(fill_inline(&html.style));
+        html.style.min_height = Some(fill_inline(&html.style, vcx));
     }
     (html.style.writing_mode, html.style.rtl) = taken;
     nodes
@@ -141,7 +142,10 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
 /// viewport height, and a block-level box fills what is left after its own
 /// margins (CSS 2.1 §10.3.3 applied to the line axis). `100vh` alone ignored
 /// the root's margins/borders/padding and overflowed the window.
-fn fill_inline(style: &crate::style::computed::Computed) -> crate::style::values::value::Len {
+fn fill_inline(
+    style: &crate::style::computed::Computed,
+    vcx: ValueCx<'_>,
+) -> crate::style::values::value::Len {
     use crate::style::values::value::Len;
     let px = |l: Option<Len>| match l {
         None => Some(0.0),
@@ -171,7 +175,7 @@ fn fill_inline(style: &crate::style::computed::Computed) -> crate::style::values
     ));
     match sum {
         Some((a, b)) if a + b > 0.0 => {
-            Len::parse(&format!("calc(100vh - {}px)", a + b)).unwrap_or(Len::Vh(1.0))
+            Len::parse(&format!("calc(100vh - {}px)", a + b), vcx).unwrap_or(Len::Vh(1.0))
         }
         _ => Len::Vh(1.0),
     }

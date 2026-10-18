@@ -1,5 +1,7 @@
 //! CSS Scroll Snap 1: non-inherited snap type, alignment, snapport and snap area.
+
 use super::{Computed, Sides, split_outside_parens};
+use crate::document::state::ValueCx;
 use crate::style::values::value::Len;
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -16,7 +18,7 @@ pub struct SnapStyle {
 }
 
 impl Computed {
-    pub(crate) fn apply_snap(&mut self, key: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_snap(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
         let bit = match key {
             "scroll-snap-type" => 1,
             "scroll-snap-align" => 2,
@@ -103,7 +105,7 @@ impl Computed {
                         if padding && s == "auto" {
                             Some(Len::Auto)
                         } else {
-                            Len::parse_mixed(s).filter(|l| match *l {
+                            Len::parse_mixed(s, vcx).filter(|l| match *l {
                                 Len::Px(n)
                                 | Len::Em(n)
                                 | Len::Ch(n)
@@ -115,7 +117,8 @@ impl Computed {
                                 Len::Pct(n) => padding && n >= 0.0,
                                 Len::Calc(i) => {
                                     padding
-                                        || !crate::style::values::value::calc_get(i).has_percentage
+                                        || !crate::style::values::value::calc_get(i, vcx)
+                                            .has_percentage
                                 }
                                 Len::EmPx(_, _) | Len::LhPx(_, _) => true,
                                 _ => false,
@@ -125,7 +128,7 @@ impl Computed {
                     .collect();
                 let Some(lengths) = lengths else { return };
                 match key.strip_prefix(prefix).unwrap_or("") {
-                    "" if (1..=4).contains(&lengths.len()) => *sides = Sides::shorthand(v),
+                    "" if (1..=4).contains(&lengths.len()) => *sides = Sides::shorthand(v, vcx),
                     "-top" if lengths.len() == 1 => sides.top = Some(lengths[0]),
                     "-right" if lengths.len() == 1 => sides.right = Some(lengths[0]),
                     "-bottom" if lengths.len() == 1 => sides.bottom = Some(lengths[0]),

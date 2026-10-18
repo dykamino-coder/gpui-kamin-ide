@@ -1,4 +1,6 @@
 //! Элемент `ScrollArea`.
+
+use crate::document::state::ValueCx;
 // owner: A
 
 use gpui::{
@@ -26,11 +28,20 @@ pub struct ScrollArea {
     /// scrollport are recorded without those paint-time shifts.
     sticky: Option<crate::interactive::scroll_extent::StickyShift>,
     pub(crate) build: ScrollBuilder,
+    /// Values of the document the area's style lengths come from.
+    values: crate::document::state::ValueDoc,
 }
 
 impl ScrollArea {
-    pub fn new(id: ElementId, horizontal: bool, vertical: bool, build: ScrollBuilder) -> Self {
+    pub fn new(
+        id: ElementId,
+        horizontal: bool,
+        vertical: bool,
+        build: ScrollBuilder,
+        vcx: ValueCx<'_>,
+    ) -> Self {
         ScrollArea {
+            values: vcx.keep(),
             id,
             horizontal,
             vertical,
@@ -178,6 +189,7 @@ impl Element for ScrollArea {
                 &child.1,
                 paint_bounds,
                 self.sticky.as_ref(),
+                self.values.vcx(),
             )
         {
             // Invalidation during prepaint is ignored by GPUI. Rebuild after

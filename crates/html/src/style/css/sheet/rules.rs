@@ -118,9 +118,10 @@ pub(super) fn sheet_rules(css: &str, media: Media, top: bool, cx: &mut SheetCx) 
 /// (`true`) у подошедших `@media`/`@supports` и у `@layer`/`@scope`; `@font-feature-values`,
 /// `@page`, `@property`, `@counter-style`, `@position-try` обрабатываются здесь же и дают `false`.
 fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media, cx: &SheetCx) -> bool {
+    let vcx = cx.doc.values();
     let layer_of_rules = || cx.layer_of_rules();
     if name.starts_with("@media") {
-        media.matches_in(name, cx.custom())
+        media.matches_in(name, cx.custom(), vcx)
     } else if name
         .strip_prefix("@font-feature-values")
         .is_some_and(|s| s.starts_with(char::is_whitespace))
@@ -227,7 +228,7 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media, cx: &SheetCx
     } else if name.starts_with("@supports") {
         // Условию нужен ОРИГИНАЛ: лоуеркейс головы ломал значения
         // (`(font-family: "Foo")`); имя правила — ASCII, срез безопасен.
-        supports_in(&head[9..], &cx.selectors)
+        supports_in(&head[9..], &cx.selectors, vcx)
     } else {
         // Слой — прозрачная обёртка: внутри обычные правила, и вся
         // разница в приоритете, которого у нас пока нет. Отбрасывая

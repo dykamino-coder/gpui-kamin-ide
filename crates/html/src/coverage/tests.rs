@@ -13,7 +13,9 @@ fn no_field_is_written_and_never_read() {
 
 #[test]
 fn every_mapped_property_reaches_the_style() {
-    let broken = broken_promises();
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
+    let broken = broken_promises(vcx);
     assert!(
         broken.is_empty(),
         "помечены перенесёнными, но разбор ничего не меняет: {broken:?}"

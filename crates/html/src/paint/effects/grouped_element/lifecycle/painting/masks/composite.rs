@@ -1,6 +1,7 @@
 //! Составление полотна многослойной маски на сетке устройства.
 
 use super::mask_layer;
+use crate::document::state::ValueCx;
 use crate::paint::effects::grouped_element::Grouped;
 use gpui::{Bounds, Pixels, Window, px};
 
@@ -15,6 +16,7 @@ pub(crate) fn composite_mask(
     ot: f32,
     window: &mut Window,
     len: impl Fn(crate::style::values::value::Len, f32, f32) -> f32,
+    vcx: ValueCx<'_>,
 ) -> Option<(std::sync::Arc<gpui::RenderImage>, Bounds<Pixels>, u32)> {
     let sf = window.scale_factor();
     let (cw, ch) = (
@@ -59,7 +61,7 @@ pub(crate) fn composite_mask(
     let built: Vec<crate::paint::background::MaskLayer> = layers
         .iter()
         .enumerate()
-        .filter_map(|(i, l)| mask_layer(i, l, group, bw, bh, sf, &pos_of, &repeat_of))
+        .filter_map(|(i, l)| mask_layer(i, l, group, bw, bh, sf, &pos_of, &repeat_of, vcx))
         .collect();
     // Snapped tiles need a canvas on the device grid: its origin
     // rounds, and the tiles keep their exact device positions.

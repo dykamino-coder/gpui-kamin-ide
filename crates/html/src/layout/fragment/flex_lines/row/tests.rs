@@ -48,11 +48,13 @@ fn rows(width: Option<f32>, children: Vec<Element>) -> Element {
 
 #[test]
 fn row_height_is_the_maximum_outer_item_height() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let c = rows(
         Some(50.0),
         vec![item(25.0, 20.0), item(25.0, 80.0), item(25.0, 60.0)],
     );
-    let shape = shape_full(&c, 4, ShapeCx::COLUMNS).unwrap();
+    let shape = shape_full(&c, 4, ShapeCx::COLUMNS, vcx).unwrap();
     assert_eq!(shape.0, 140.0);
     assert!(shape.3.contains(&(80.0, 80.0)));
     assert!(!shape.3.contains(&(20.0, 20.0)));
@@ -60,52 +62,62 @@ fn row_height_is_the_maximum_outer_item_height() {
 
 #[test]
 fn nested_auto_width_rows_keep_their_break_boundary() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let first = rows(None, vec![item(25.0, 100.0), item(25.0, 100.0)]);
     let mut second = first.clone();
     second.style.break_before_force = true;
     let c = rows(Some(50.0), vec![first, second]);
-    let shape = shape_full(&c, 4, ShapeCx::COLUMNS).unwrap();
+    let shape = shape_full(&c, 4, ShapeCx::COLUMNS, vcx).unwrap();
     assert_eq!(shape.0, 200.0);
     assert_eq!(shape.4, vec![100.0]);
 }
 
 #[test]
 fn stretched_avoid_item_is_solid_for_the_whole_row() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let mut empty = item(25.0, 0.0);
     empty.style.height = None;
     empty.style.break_inside_avoid = true;
     let c = rows(Some(50.0), vec![item(25.0, 80.0), empty]);
-    let shape = shape_full(&c, 4, ShapeCx::COLUMNS).unwrap();
+    let shape = shape_full(&c, 4, ShapeCx::COLUMNS, vcx).unwrap();
     assert_eq!(shape.0, 80.0);
     assert!(shape.5.contains(&(0.0, 80.0)));
 }
 
 #[test]
 fn hypothetical_size_collects_lines_before_shrink() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let nested = rows(None, vec![item(50.0, 25.0), item(50.0, 25.0)]);
     let c = rows(Some(50.0), vec![nested, item(0.0, 200.0)]);
-    let shape = shape_full(&c, 4, ShapeCx::COLUMNS).unwrap();
+    let shape = shape_full(&c, 4, ShapeCx::COLUMNS, vcx).unwrap();
     assert_eq!(shape.0, 250.0);
     assert!(shape.3.contains(&(50.0, 50.0)));
 }
 
 #[test]
 fn break_before_on_the_second_item_of_the_first_row_reaches_the_container() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let mut second = item(25.0, 25.0);
     second.style.break_before_force = true;
     let c = rows(Some(50.0), vec![item(25.0, 25.0), second, item(50.0, 25.0)]);
-    assert!(crate::layout::fragment::breaks::edge_break(&c, false));
-    assert!(!crate::layout::fragment::breaks::edge_break(&c, true));
+    assert!(crate::layout::fragment::breaks::edge_break(&c, false, vcx));
+    assert!(!crate::layout::fragment::breaks::edge_break(&c, true, vcx));
 }
 
 #[test]
 fn a_fragmented_row_gap_does_not_expand_the_next_row() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let mut c = rows(Some(50.0), vec![item(50.0, 50.0), item(50.0, 50.0)]);
     c.style.gap = Some((Some(Len::Px(100.0)), None));
-    let shape = shape_full(&c, 4, ShapeCx::COLUMNS).unwrap();
+    let shape = shape_full(&c, 4, ShapeCx::COLUMNS, vcx).unwrap();
     assert!(shape.3.contains(&(50.0, 150.0)));
     let lead = item(50.0, 25.0);
-    let lead_shape = shape_full(&lead, 4, ShapeCx::COLUMNS).unwrap();
+    let lead_shape = shape_full(&lead, 4, ShapeCx::COLUMNS, vcx).unwrap();
     let grown = crate::layout::fragment::push::grow_pushed(
         vec![(lead, lead_shape), (c, shape)],
         3,
@@ -113,6 +125,7 @@ fn a_fragmented_row_gap_does_not_expand_the_next_row() {
         None,
         3,
         &[Default::default(); 2],
+        vcx,
     );
     assert_eq!(grown[1].1.0, 200.0);
     assert!(

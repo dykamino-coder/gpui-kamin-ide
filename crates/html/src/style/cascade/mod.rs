@@ -1,4 +1,6 @@
 //! Каскад: разрешение, применение объявлений, слои.
+
+use crate::document::state::ValueCx;
 // owner: B
 
 use crate::style::cascade::defaults::{inherited_property, initial_value};
@@ -21,13 +23,18 @@ use revert::{is_important, revert_layers, strip_important};
 
 impl Computed {
     /// Собрать стиль узла: правила таблицы (по специфичности), затем `style=""`.
-    pub fn resolve(matched: &mut Vec<&Rule>, inline: &Decls) -> Computed {
-        Computed::resolve_with_vars(matched, inline, &Decls::new())
+    pub fn resolve(matched: &mut Vec<&Rule>, inline: &Decls, vcx: ValueCx<'_>) -> Computed {
+        Computed::resolve_with_vars(matched, inline, &Decls::new(), vcx)
     }
 
     /// То же с переменными темы.
-    pub fn resolve_with_vars(matched: &mut Vec<&Rule>, inline: &Decls, vars: &Decls) -> Computed {
-        Computed::resolve_in(matched, inline, vars, CascadeCx::NONE)
+    pub fn resolve_with_vars(
+        matched: &mut Vec<&Rule>,
+        inline: &Decls,
+        vars: &Decls,
+        vcx: ValueCx<'_>,
+    ) -> Computed {
+        Computed::resolve_in(matched, inline, vars, CascadeCx::NONE, vcx)
     }
 
     /// То же для элемента `cx`: его атрибуты и место среди братьев видят
@@ -37,6 +44,7 @@ impl Computed {
         inline: &Decls,
         vars: &Decls,
         cx: CascadeCx,
+        vcx: ValueCx<'_>,
     ) -> Computed {
         // Слой старше специфичности (css-cascade-5 §6.4): у обычных
         // объявлений поздний слой сильнее, у важных — ранний.
@@ -76,9 +84,9 @@ impl Computed {
         // позднего. Пока проходы шли внутри правила, `!important` действовал
         // только против соседей по тому же блоку.
         for rule in matched.iter() {
-            c.apply_pass(&rule.decls, vars, false, cx);
+            c.apply_pass(&rule.decls, vars, false, cx, vcx);
         }
-        c.apply_pass(inline, vars, false, cx);
+        c.apply_pass(inline, vars, false, cx, vcx);
         // Важные идут в ОБРАТНОМ порядке происхождений: важное правило агента
         // старше важного авторского (§6.4.4), поэтому применяется последним.
         let mut important: Vec<&&Rule> = matched.iter().collect();
@@ -97,9 +105,9 @@ impl Computed {
                 ))
         });
         for rule in important {
-            c.apply_pass(&rule.decls, vars, true, cx);
+            c.apply_pass(&rule.decls, vars, true, cx, vcx);
         }
-        c.apply_pass(inline, vars, true, cx);
+        c.apply_pass(inline, vars, true, cx, vcx);
         // `currentColor` в рамке и фоне значит «цвет текста этого элемента» —
         // подставляем уже после того, как цвет стал известен.
         if c.border_color_is_current {
@@ -115,11 +123,11 @@ impl Computed {
 
     // `pub(crate)`: `motion` синтезирует строку `transform` и кормит её тем же
     // разборщиком — отдельного конвейера под offset-трансформ нет.
-    pub(crate) fn apply_one(&mut self, key: &str, val: &str) {
+    pub(crate) fn apply_one(&mut self, key: &str, val: &str, vcx: ValueCx<'_>) {
         self.decl_seq += 1;
         let v = val.trim();
         inherit::note_flow_align(self, key, v);
-        if color_initial::apply(self, key, v) {
+        if color_initial::apply(self, key, v, vcx) {
             return;
         }
         // Общие для всех свойств слова `initial`/`unset`/`revert`. Для
@@ -132,12 +140,12 @@ impl Computed {
         // начальное значение, и `color: unset` давал чёрный вместо цвета
         // родителя (`unset-val-001`).
         if v == "unset" && inherited_property(key) {
-            return self.apply_one(key, "inherit");
+            return self.apply_one(key, "inherit", vcx);
         }
         if matches!(v, "initial" | "unset" | "revert" | "revert-layer")
             && let Some(start) = initial_value(key)
         {
-            return self.apply_one(key, start);
+            return self.apply_one(key, start, vcx);
         }
         // Начальные значения, которые годятся ТОЛЬКО для `initial`/`unset`:
         // `revert` у автора откатывает к таблице агента, а там у `div`
@@ -153,9 +161,9 @@ impl Computed {
                 _ => None,
             }
         {
-            return self.apply_one(key, start);
+            return self.apply_one(key, start, vcx);
         }
-        if inherited_value::note(self, key, v) {
+        if inherited_value::note(self, key, v, vcx) {
             return;
         }
         // Фон — СПИСОК слоёв (css-backgrounds-3 §2.1: «comma-separated list
@@ -178,25 +186,25 @@ impl Computed {
                     // Верхний слой — обычным разбором; список кладётся ПОСЛЕ:
                     // вложенный вызов того же свойства его бы снял.
                     let first = background_layers(v)[0].to_string();
-                    self.apply_one(key, &first);
+                    self.apply_one(key, &first, vcx);
                     self.bg_lists.set(prop, v.to_string());
                     return;
                 }
                 self.bg_lists.set(prop, v.to_string());
             }
         }
-        self.apply_property(key, val, v);
+        self.apply_property(key, val, v, vcx);
     }
 
     /// Query the actual property dispatcher, including delegated property groups.
-    pub(crate) fn recognizes_property(key: &str) -> bool {
-        Self::default().apply_property(key, "", "")
+    pub(crate) fn recognizes_property(key: &str, vcx: ValueCx<'_>) -> bool {
+        Self::default().apply_property(key, "", "", vcx)
     }
 
     // The temporary cascade callback borrows the current property and variable state.
     #[allow(clippy::type_complexity)]
-    fn apply_property(&mut self, key: &str, val: &str, v: &str) -> bool {
-        let groups: [fn(&mut Self, &str, &str, &str, &mut bool); 14] = [
+    fn apply_property(&mut self, key: &str, val: &str, v: &str, vcx: ValueCx<'_>) -> bool {
+        let groups: [fn(&mut Self, &str, &str, &str, &mut bool, ValueCx<'_>); 14] = [
             Self::apply_scroll,
             Self::apply_display_flex,
             Self::apply_grid,
@@ -214,7 +222,7 @@ impl Computed {
         ];
         for group in groups {
             let mut hit = true;
-            group(self, key, val, v, &mut hit);
+            group(self, key, val, v, &mut hit, vcx);
             if hit {
                 return true;
             }

@@ -25,11 +25,12 @@ use crate::style::computed::{Computed, Display};
 /// НЕПОСРЕДСТВЕННЫЕ дети ленты и только при ОБЕИХ заданных осях (по свободной
 /// оси место сообщает щуп, а он остался бы в замыкании).
 pub(super) fn hoist_from_scroll(e: &mut Element, inherited: &Computed, opts: &RenderOpts) {
+    let vcx = opts.cx.vcx();
     use crate::style::computed::Position;
     if !opts.cx.positioning.icb_active() || inside_deferred() {
         return;
     }
-    let merged = crate::style::cascade::inherit::inherit(inherited, &e.style);
+    let merged = crate::style::cascade::inherit::inherit(inherited, &e.style, vcx);
     // Лента внутри позиционированного предка не выносит ничего: у её потомков
     // содержащий блок есть.
     if merged.cb_ancestor || crate::text::inline::establishes_cb(&merged) {

@@ -19,6 +19,7 @@ pub(super) fn replaced_abs_atom(
     inline_cb: bool,
     stretched: bool,
 ) -> Option<AnyElement> {
+    let vcx = opts.cx.vcx();
     let mut copy = e.clone();
     copy.style.image_orient_none = merged.image_orient_none;
     copy.style.position = None;
@@ -42,7 +43,7 @@ pub(super) fn replaced_abs_atom(
         .into_any_element();
     // Shape the CSS box before moving it into a deferred positioned layer.
     let holder = if merged.corner_shaped() {
-        crate::paint::effects::grouped::grouped_replaced(holder, merged)
+        crate::paint::effects::grouped::grouped_replaced(holder, merged, vcx)
     } else {
         holder
     };

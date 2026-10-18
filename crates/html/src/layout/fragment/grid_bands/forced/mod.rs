@@ -1,6 +1,7 @@
 //! Принудительные разрывы рядов сетки, стопка сетки и рост дорожки.
 
 use super::grid_px_row_bands;
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::breaks::edge_break;
 use crate::layout::fragment::probe::size_monolith;
@@ -30,7 +31,7 @@ pub(crate) use stack::grow_grid_track;
 /// по колонкам, `grid-column: N / span M` занимает M колонок и при
 /// необходимости пинает курсор вперёд; не влезающий в остаток ряда элемент
 /// начинает новый ряд. Любая непонятная форма — пустой список, а не догадка.
-pub(crate) fn grid_row_forced(c: &Element) -> (Vec<f32>, Vec<(f32, f32)>) {
+pub(crate) fn grid_row_forced(c: &Element, vcx: ValueCx<'_>) -> (Vec<f32>, Vec<(f32, f32)>) {
     use crate::style::computed::{AutoFlow, Placement};
     let s = &c.style;
     if matches!(
@@ -149,10 +150,10 @@ pub(crate) fn grid_row_forced(c: &Element) -> (Vec<f32>, Vec<(f32, f32)>) {
             }
             break;
         }
-        if r > 0 && edge_break(k, false) {
+        if r > 0 && edge_break(k, false, vcx) {
             out.push(bands[r].0);
         }
-        if r + 1 < bands.len() && edge_break(k, true) {
+        if r + 1 < bands.len() && edge_break(k, true, vcx) {
             out.push(bands[r + 1].0);
         }
         if r > 0 && (k.style.break_inside_avoid || size_monolith(k)) {

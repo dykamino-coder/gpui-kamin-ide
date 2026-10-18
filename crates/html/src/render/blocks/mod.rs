@@ -40,6 +40,7 @@ pub(crate) use crate::render::blocks::positioned::*;
 // линии, а эталоны семьи считают её по-своему. Возвращать вместе с
 // настоящей надстрочной аннотацией (сдвиг базовой линии без атома).
 pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyElement> {
+    let vcx = opts.cx.vcx();
     // Only the cell's own content list is the BFC root's (see `LayoutCx::cell_bfc`).
     let cell_bfc = opts.cx.cell_bfc;
     // Контекст детей этого уровня: ширина содержащего блока, доступные
@@ -143,6 +144,7 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
             own_context_style(inherited) || inherited.flex_item,
             cell_bfc,
             opts.cx.cb_width,
+            vcx,
         ),
         flex_ctx,
     );

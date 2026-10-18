@@ -66,6 +66,7 @@ pub(super) fn band_host_flow(
     mut host: gpui::Div,
     band_host: bool,
 ) -> Result<AnyElement, gpui::Div> {
+    let vcx = opts.cx.vcx();
     if band_host
         && !inherited.wm().block_rl()
         && !vert_lr
@@ -132,7 +133,7 @@ pub(super) fn band_host_flow(
             // Поля кладёт держатель — на самой коробке они сдвинули бы её
             // ещё раз (та же причина, что у флоатов, `:5092-5095`).
             inner.style.margin = crate::style::computed::Sides::default();
-            let mut merged = inherit(inherited, &c.style);
+            let mut merged = inherit(inherited, &c.style, vcx);
             merged.self_node = c.node_id;
             let built = styled_div_with(&inner, &merged, &opts.cx)
                 .children(blocks(&inner.children, &merged, opts))

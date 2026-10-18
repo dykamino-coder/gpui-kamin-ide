@@ -24,9 +24,11 @@ fn row(children: Vec<Node>) -> Element {
 
 #[test]
 fn clipped_span_uses_the_remaining_rows_in_its_group() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let a = row(vec![cell(170.0, "2")]);
     let b = row(vec![cell(20.0, "1")]);
-    let g = row_geometry(&[(0, &a), (1, &b)], 4, ShapeCx::COLUMNS, 0.0).unwrap();
+    let g = row_geometry(&[(0, &a), (1, &b)], 4, ShapeCx::COLUMNS, 0.0, vcx).unwrap();
     assert_eq!(g[0].height, 170.0);
     assert_eq!(g[0].cells[0].span, 1);
     assert!(g[0].cells[0].expandable);
@@ -35,9 +37,11 @@ fn clipped_span_uses_the_remaining_rows_in_its_group() {
 
 #[test]
 fn spanning_cell_growth_encompasses_only_its_originating_nonempty_row() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let a = row(vec![cell(180.0, "1"), cell(200.0, "2")]);
     let b = row(vec![cell(0.0, "1")]);
-    let g = row_geometry(&[(0, &a), (0, &b)], 4, ShapeCx::COLUMNS, 0.0).unwrap();
+    let g = row_geometry(&[(0, &a), (0, &b)], 4, ShapeCx::COLUMNS, 0.0, vcx).unwrap();
     assert_eq!(g[0].height, 200.0);
     assert_eq!(g[1].height, 0.0);
     assert!(g[0].cells[1].expandable);
@@ -45,9 +49,11 @@ fn spanning_cell_growth_encompasses_only_its_originating_nonempty_row() {
 
 #[test]
 fn spanning_populated_rows_keeps_independent_track_sizes() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let a = row(vec![cell(180.0, "1"), cell(170.0, "0")]);
     let b = row(vec![cell(20.0, "1")]);
-    let g = row_geometry(&[(0, &a), (0, &b)], 4, ShapeCx::COLUMNS, 0.0).unwrap();
+    let g = row_geometry(&[(0, &a), (0, &b)], 4, ShapeCx::COLUMNS, 0.0, vcx).unwrap();
     assert_eq!(g[0].height, 180.0);
     assert_eq!(g[1].height, 20.0);
     assert_eq!(g[0].cells[1].span, 2);

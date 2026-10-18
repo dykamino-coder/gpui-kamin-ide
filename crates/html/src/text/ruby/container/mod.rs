@@ -22,7 +22,8 @@ pub(crate) fn ruby_container_atom(
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
-    let mut merged = inherit(inherited, &e.style);
+    let vcx = opts.cx.vcx();
+    let mut merged = inherit(inherited, &e.style, vcx);
     let segments = ruby_segments(&e.children);
     // Без хотя бы одной непустой аннотации руби — обычный строчный
     // (`ruby-line-breaking-001`: `<rtc><rt>` пустой; `ruby-intrinsic-isize-*`).
@@ -81,7 +82,7 @@ pub(crate) fn ruby_container_atom(
             .iter()
             .map(|l| {
                 let mut style = match &l.container {
-                    Some(c) => inherit(&merged, c),
+                    Some(c) => inherit(&merged, c, vcx),
                     None => merged.clone(),
                 };
                 // Decorations propagated to a ruby container apply to bases.

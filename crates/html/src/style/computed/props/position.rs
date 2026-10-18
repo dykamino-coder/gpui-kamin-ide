@@ -1,5 +1,7 @@
 //! Computed::apply_one: position, anchor*, inset/top..., z-index, overflow*, float, clear, opacity, visibility.
 
+use crate::document::state::ValueCx;
+mod z_index;
 use crate::layout::positioned::anchor::parse::{
     parse_area, parse_try_fallbacks, parse_try_order, parse_visibility,
 };
@@ -8,7 +10,14 @@ use crate::style::values::value::Len;
 
 impl Computed {
     #[allow(unused_variables)]
-    pub(crate) fn apply_position(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_position(
+        &mut self,
+        key: &str,
+        val: &str,
+        v: &str,
+        hit: &mut bool,
+        vcx: ValueCx<'_>,
+    ) {
         match key {
             "position" => {
                 self.position = record_parsed!(
@@ -101,7 +110,10 @@ impl Computed {
                 self.position_visibility = accept_parsed!(self, parse_visibility(v));
             }
             "top" | "right" | "bottom" | "left" => {
-                let parsed = record_parsed!(self, Len::parse(v).or_else(|| Len::parse_mixed(v)));
+                let parsed = record_parsed!(
+                    self,
+                    Len::parse(v, vcx).or_else(|| Len::parse_mixed(v, vcx))
+                );
                 let (side, slot) = match key {
                     "top" => (0, &mut self.inset.top),
                     "right" => (1, &mut self.inset.right),
@@ -114,7 +126,7 @@ impl Computed {
                 self.side_seq.inset[side] = self.decl_seq;
             }
             "inset" => {
-                self.inset = Sides::shorthand(v);
+                self.inset = Sides::shorthand(v, vcx);
                 if self.inset.top.is_some()
                     && self.inset.right.is_some()
                     && self.inset.bottom.is_some()
@@ -173,7 +185,7 @@ impl Computed {
                             // (css-overflow-4 §overflow-clip-margin:
                             // «Negative values indicate insets»), а не
                             // негодное объявление.
-                            if let Some(Len::Px(px)) = Len::parse(t) {
+                            if let Some(Len::Px(px)) = Len::parse(t, vcx) {
                                 margin = Some(px);
                             }
                         }
@@ -193,31 +205,7 @@ impl Computed {
                     self.inherit_bits |= inh::Z_INDEX;
                     return;
                 }
-                // Целое за пределами i32 КЛАМПИТСЯ, а не падает в auto
-                // (z-index-001: -2147483649 обязан остаться меньше -100).
-                self.z_index = record_parsed!(
-                    self,
-                    v.parse::<i64>()
-                        .ok()
-                        .map(|n| n.clamp(i32::MIN as i64, i32::MAX as i64) as i32)
-                        // `<integer>` from a math function (css-values-4 §10.9):
-                        // rounded to the nearest integer, halves toward +∞
-                        // (`calc-positive-fraction-001`: `calc(3 / 2)` → 2).
-                        .or_else(|| {
-                            (!v.trim_start()
-                                .starts_with(|c: char| c.is_ascii_digit() || c == '-' || c == '+'))
-                            .then(|| crate::style::values::value::number(v))
-                            .flatten()
-                            .map(|x| {
-                                let r = if x.is_nan() {
-                                    0.0
-                                } else {
-                                    (x as f64 + 0.5).floor()
-                                };
-                                r.clamp(i32::MIN as f64, i32::MAX as f64) as i32
-                            })
-                        })
-                );
+                self.z_index = record_parsed!(self, z_index::integer(v, vcx));
                 if v == "auto" {
                     self.accept_declaration();
                 }

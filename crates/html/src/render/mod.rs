@@ -76,7 +76,8 @@ pub struct RenderOpts {
     /// построенному дереву. Ноль допустим, пока документ один.
     pub doc_salt: u64,
     /// Контекст раскладки поддерева (`LayoutCx`): его задаёт коробка для
-    /// коробок внутри. Хост передаёт `LayoutCx::default()`.
+    /// коробок внутри. Хост передаёт `LayoutCx::default()`, а документ свой
+    /// ставит `Document::render` (`Document::frame_opts`).
     pub cx: crate::layout::cx::LayoutCx,
     /// Контекст фрагментации сборки: его ставит код, строящий фрагменты
     /// (копии детей стопки колонок, вложенный многоколоночник рядами), а
@@ -113,12 +114,13 @@ impl RenderOpts {
 }
 
 pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
+    let vcx = opts.cx.vcx();
     let stripped = without_inert_clear(nodes);
     let nodes: &[Node] = stripped.as_deref().unwrap_or(nodes);
     crate::text::metrics::set_doc_family(&opts.text.font_family);
     let root = opts.root_style();
     crate::interactive::frame::frame_sanitize();
-    collect_mask_defs(nodes);
+    collect_mask_defs(nodes, vcx);
     // Корень документа получает ширину области просмотра: от неё цепочка
     // `LayoutCx::avail_w` вычитает поля/рамки/отступы `html` и `body`.
     // Слои содержащих блоков — свои у каждой сборки документа.
@@ -161,9 +163,10 @@ pub(crate) type Unkeyed = (std::collections::HashMap<u64, usize>, Option<usize>)
 /// не стоит ничего: ни раскладки, ни отрисовки. Это то же ухищрение, которым
 /// держится дерево файлов и чат.
 pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<AnyElement> {
+    let vcx = opts.cx.vcx();
     let node = nodes.get(index)?;
     crate::interactive::frame::frame_sanitize();
-    collect_mask_defs(nodes);
+    collect_mask_defs(nodes, vcx);
     let root = opts.root_style();
     // Слой ICB закрывается на блок ленты: дальше своего блока внепоточный
     // элемент всё равно не уедет, а без слоя он остался бы на месте.
