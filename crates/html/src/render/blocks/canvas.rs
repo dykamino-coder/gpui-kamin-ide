@@ -106,7 +106,7 @@ pub(crate) fn canvas_layer(
                 // содержимому у правого края (css-writing-modes-4
                 // §7, auto block-size): левый край его коробки
                 // пишет обёртка тела ниже при подготовке.
-                left_key: (e.style.vertical_rl == Some(true)).then_some(opts.doc_salt),
+                measured_left: e.style.vertical_rl == Some(true),
             };
             match &canvas_layers {
                 // Снизу вверх, каждый слой — своей плиткой от

@@ -20,12 +20,12 @@ pub struct RootArea {
     pub height: Option<f32>,
     /// `vertical-rl`: заданная ширина отмеряется от ПРАВОГО края холста.
     pub from_right: bool,
-    /// Ключ замера левого края padding-box корня (`interact::root_left_prev`):
+    /// Read the measured left edge of the root's padding box (`DocState::root_left`):
     /// корень `vertical-rl` без заданной ширины — по содержимому и прижат
     /// вправо, его край известен только после раскладки. Читается при
     /// ОТРИСОВКЕ: подготовка тела (`interact::RecordRootLeft`) идёт раньше
     /// отрисовки холста в том же кадре.
-    pub left_key: Option<u64>,
+    pub measured_left: bool,
 }
 
 impl RootArea {
@@ -36,10 +36,9 @@ impl RootArea {
         let (cw, ch) = (f32::from(clip.size.width), f32::from(clip.size.height));
         let w = self.width.unwrap_or(cw - self.left - self.right).max(0.0);
         let h = self.height.unwrap_or(ch - self.top - self.bottom).max(0.0);
-        let left_abs = self
-            .left_key
-            .filter(|_| self.width.is_none())
-            .and_then(crate::text::vertical::root_left_prev)
+        let left_abs = (self.measured_left && self.width.is_none())
+            .then(|| crate::document::state::current().root_left.get())
+            .flatten()
             .map(|l| l - f32::from(clip.origin.x));
         let (x, w) = match left_abs {
             Some(l) => (l, (cw - l - self.right).max(0.0)),

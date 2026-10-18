@@ -4,7 +4,6 @@ mod root_left;
 mod vertical_text;
 pub use crate::text::vertical::combined_upright::CombinedUpright;
 pub use crate::text::vertical::root_left::record_root_left;
-pub use crate::text::vertical::root_left::root_left_prev;
 pub use crate::text::vertical::vertical_text::VerticalText;
 
 // owner: A
@@ -29,14 +28,6 @@ thread_local! {
     /// детерминирован — порядковый номер вхождения стабилен между кадрами.
     pub(crate) static VT_SEQ: std::cell::RefCell<std::collections::HashMap<u64, u64>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
-    /// Замер ЛЕВОГО края коробки корня (ключ — соль документа): фон холста
-    /// позиционируется от коробки корня (CSS 2.2 §14.2), а она при
-    /// `vertical-rl` по содержимому и прижата к правому краю окна — её край
-    /// известен только после раскладки. Пишет подготовка тела, читает
-    /// отрисовка холста того же кадра (подготовка всего дерева идёт раньше
-    /// отрисовки); прошлое значение — запасное.
-    static ROOT_LEFT: std::cell::RefCell<std::collections::HashMap<u64, f32>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
 /// Санитария начала кадра (`render`/`render_block`): счётчик вхождений
@@ -47,7 +38,6 @@ thread_local! {
 /// ключи солятся документом, но мусор копился бы бесконечно.
 pub fn forget_vt_measures() {
     VT_MEASURED.with(|c| c.borrow_mut().clear());
-    ROOT_LEFT.with(|c| c.borrow_mut().clear());
     // Рамка повёрнутого абзаца живёт только на время его подготовки; если
     // подготовка оборвалась паникой, `set(prev)` не выполнится, и рамка
     // протекла бы в следующие страницы — щупы горизонтальных абсолютов
