@@ -14,7 +14,7 @@ impl Element {
     ) -> Self {
         Self {
             tag: tag.into(),
-            style,
+            style: style.into(),
             children,
             inline,
             marks,

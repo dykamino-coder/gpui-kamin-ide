@@ -10,6 +10,7 @@ impl Computed {
             // view-box = border-box; у SVG-ребёнка их считает
             // `svg::masked_layers` (mask-clip-2, mask-origin-3).
             "mask-origin" | "-webkit-mask-origin" => {
+                self.accept_declaration();
                 self.mask_origin = match v.trim() {
                     "padding-box" => Some(2),
                     "content-box" => Some(3),
@@ -20,6 +21,7 @@ impl Computed {
                 }
             }
             "mask-clip" | "-webkit-mask-clip" => {
+                self.accept_declaration();
                 self.mask_clip = match v.trim() {
                     "padding-box" => Some(2),
                     "content-box" => Some(3),
@@ -31,6 +33,7 @@ impl Computed {
                 }
             }
             "mask-repeat" | "-webkit-mask-repeat" => {
+                self.accept_declaration();
                 // Пооосно (css-backgrounds §3.4): `repeat-x` = repeat по x,
                 // одна плитка по y; два слова — оси по порядку.
                 //
@@ -122,6 +125,7 @@ impl Computed {
                     .filter_map(|l| one(l))
                     .collect();
                 if let Some((x, y, fx, fy)) = list.first().copied() {
+                    self.accept_declaration();
                     self.mask_pos = Some((x, y));
                     self.mask_pos_far = (fx, fy);
                 }

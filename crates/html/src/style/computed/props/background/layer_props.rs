@@ -26,7 +26,7 @@ impl Computed {
                         | "luminosity"
                         | "inherit"
                 ) {
-                    self.background_blend = Some(v.to_string());
+                    self.background_blend = accept_parsed!(self, Some(v.to_string()));
                 } else if matches!(v, "initial" | "unset" | "revert" | "revert-layer") {
                     self.background_blend = None;
                 }
@@ -47,16 +47,19 @@ impl Computed {
                     _ => None,
                 };
                 let mut it = v.split_whitespace();
-                self.bg_repeat = match (it.next(), it.next()) {
-                    (Some("repeat-x"), None) => Some(BgRepeat::RepeatX),
-                    (Some("repeat-y"), None) => Some(BgRepeat::RepeatY),
-                    (Some(x), Some(y)) => match (word(x), word(y)) {
-                        (Some(x), Some(y)) => Some(BgRepeat::Axes(x, y)),
+                self.bg_repeat = record_parsed!(
+                    self,
+                    match (it.next(), it.next()) {
+                        (Some("repeat-x"), None) => Some(BgRepeat::RepeatX),
+                        (Some("repeat-y"), None) => Some(BgRepeat::RepeatY),
+                        (Some(x), Some(y)) => match (word(x), word(y)) {
+                            (Some(x), Some(y)) => Some(BgRepeat::Axes(x, y)),
+                            _ => None,
+                        },
+                        (Some(x), None) => word(x).map(|t| BgRepeat::Axes(t, t)),
                         _ => None,
-                    },
-                    (Some(x), None) => word(x).map(|t| BgRepeat::Axes(t, t)),
-                    _ => None,
-                }
+                    }
+                )
             }
             // Область покраски фона. `border-box` — умолчание, поэтому оно
             // же и сбрасывает признак: свойство наследуемым не является, но
@@ -73,25 +76,37 @@ impl Computed {
                 self.inherit_bits |= inh::BG_SIZE;
             }
             "background-origin" => {
-                self.bg_origin = match v.trim() {
-                    "border-box" => Some(BgClip::BorderBox),
-                    "content-box" => Some(BgClip::ContentBox),
-                    _ => None,
+                self.bg_origin = record_parsed!(
+                    self,
+                    match v.trim() {
+                        "border-box" => Some(BgClip::BorderBox),
+                        "content-box" => Some(BgClip::ContentBox),
+                        _ => None,
+                    }
+                );
+                if v.trim() == "padding-box" {
+                    self.accept_declaration();
                 }
             }
             "background-clip" | "-webkit-background-clip" => {
-                self.bg_clip = match v.trim() {
-                    "padding-box" => Some(BgClip::PaddingBox),
-                    "content-box" => Some(BgClip::ContentBox),
-                    "text" => Some(BgClip::Text),
-                    "border-area" => Some(BgClip::BorderArea),
-                    _ => None,
+                self.bg_clip = record_parsed!(
+                    self,
+                    match v.trim() {
+                        "padding-box" => Some(BgClip::PaddingBox),
+                        "content-box" => Some(BgClip::ContentBox),
+                        "text" => Some(BgClip::Text),
+                        "border-area" => Some(BgClip::BorderArea),
+                        _ => None,
+                    }
+                );
+                if v.trim() == "border-box" {
+                    self.accept_declaration();
                 }
             }
             "background-size" => {
                 self.bg_size = match v {
-                    "cover" => BgSize::Cover,
-                    "contain" => BgSize::Contain,
+                    "cover" => accept_parsed!(self, BgSize::Cover),
+                    "contain" => accept_parsed!(self, BgSize::Contain),
                     _ => {
                         // Отрицательная длина делает декларацию невалидной
                         // целиком (css-backgrounds-3 §3.9) — размер не трогать.
@@ -106,6 +121,9 @@ impl Computed {
                         let h = it.next().and_then(Len::parse_mixed);
                         if neg(&w) || neg(&h) {
                             return;
+                        }
+                        if w.is_some() || h.is_some() || v == "auto" {
+                            self.accept_declaration();
                         }
                         if w.is_none() && h.is_none() {
                             BgSize::Auto
@@ -125,10 +143,13 @@ impl Computed {
             // `object-position` — та же грамматика, но для замещаемого
             // содержимого (css-images-3 §5.2).
             "object-view-box" => {
-                self.object_view_box = parse_view_box(v);
+                self.object_view_box = record_parsed!(self, parse_view_box(v));
+                if v == "none" {
+                    self.accept_declaration();
+                }
             }
             "object-position" => {
-                self.object_position = Some(parse_pos_words(v));
+                self.object_position = accept_parsed!(self, Some(parse_pos_words(v)));
             }
             // Пооосевые продольные свойства (css-backgrounds-4 §4.1):
             // одна ось, вторая не трогается.
@@ -139,13 +160,14 @@ impl Computed {
                     "right" | "bottom" => Some(Len::Pct(1.0)),
                     other => Len::parse(other),
                 };
+                self.note_parsed(&val);
                 self.set_background_position_axis(usize::from(key.ends_with("-y")), v, val);
             }
             "background-attachment" => {
                 // `fixed` привязывает плитку к ОБЛАСТИ ПРОСМОТРА: считается
                 // она от окна, а красится всё равно только внутри коробки
                 // (css-backgrounds-3 §3.10).
-                self.bg_fixed = Some(v.eq_ignore_ascii_case("fixed"));
+                self.bg_fixed = accept_parsed!(self, Some(v.eq_ignore_ascii_case("fixed")));
             }
             _ => *hit = false,
         }

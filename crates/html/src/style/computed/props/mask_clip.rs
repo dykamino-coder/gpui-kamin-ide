@@ -14,18 +14,25 @@ impl Computed {
             // рядом с `backdrop-filter`: вторая арма того же ключа в этом
             // `match` недостижима.
             "shape-outside" => {
+                self.accept_declaration();
                 let t = v.trim();
                 if t != "none" {
                     self.shape_outside = Some(t.to_string());
                 }
             }
-            "shape-margin" => self.shape_margin = Len::parse(v.trim()),
+            "shape-margin" => self.shape_margin = record_parsed!(self, Len::parse(v.trim())),
             "shape-image-threshold" => {
-                self.shape_threshold = v.trim().parse::<f32>().ok().map(|t| t.clamp(0.0, 1.0));
+                self.shape_threshold = record_parsed!(
+                    self,
+                    v.trim().parse::<f32>().ok().map(|t| t.clamp(0.0, 1.0))
+                );
             }
             // Устаревшее `clip` (CSS 2.1): rect с запятыми или пробелами;
             // `auto` в позиции — соответствующий край коробки.
             "clip" => {
+                if v == "auto" {
+                    self.accept_declaration();
+                }
                 if v == "inherit" {
                     self.inherit_bits |= inh::CLIP;
                     return;
@@ -45,6 +52,7 @@ impl Computed {
                         .filter(|t| !t.is_empty())
                         .collect();
                     if parts.len() == 4 {
+                        self.accept_declaration();
                         let side = |t: &str| match t {
                             "auto" => None,
                             // Нулевая длина есть ноль в любой единице, и
@@ -83,11 +91,13 @@ impl Computed {
             }
             "mask-size" | "-webkit-mask-size" => mask_size::apply(self, v),
             "mask-mode" => {
+                self.accept_declaration();
                 self.mask_luminance = Some(v.trim() == "luminance");
                 self.mask_alpha_mode = Some(v.trim() == "alpha");
             }
-            "mask-type" => self.mask_type_alpha = Some(v.trim() == "alpha"),
+            "mask-type" => self.mask_type_alpha = accept_parsed!(self, Some(v.trim() == "alpha")),
             "mask-composite" | "-webkit-mask-composite" => {
+                self.accept_declaration();
                 self.mask_composite = Some(
                     v.split(',')
                         .map(|t| match t.trim() {

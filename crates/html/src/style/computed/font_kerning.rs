@@ -11,7 +11,7 @@ impl Computed {
             "inherit" | "unset" => None,
             _ => return,
         };
-        self.font_kerning = value;
+        self.font_kerning = accept_parsed!(self, value);
     }
 
     pub(super) fn add_kerning_feature(&self, features: &mut Vec<(String, u32)>) {

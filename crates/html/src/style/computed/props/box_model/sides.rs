@@ -20,6 +20,13 @@ impl Computed {
                     return;
                 }
                 self.margin = Sides::shorthand(v);
+                if self.margin.top.is_some()
+                    && self.margin.right.is_some()
+                    && self.margin.bottom.is_some()
+                    && self.margin.left.is_some()
+                {
+                    self.accept_declaration();
+                }
                 self.side_seq.margin = [self.decl_seq; 4];
             }
             "margin-top" => {
@@ -27,7 +34,7 @@ impl Computed {
                     self.margin_inherit[0] = true;
                     return;
                 }
-                self.margin.top = Len::parse(v);
+                self.margin.top = record_parsed!(self, Len::parse(v));
                 self.side_seq.margin[0] = self.decl_seq;
             }
             "margin-right" => {
@@ -39,8 +46,10 @@ impl Computed {
                 // её сама (css-values-4 §10.9), а вклад решает долю от нуля
                 // (css-sizing-3 §5.2.1, `calc-margins-*`). Вертикальные поля
                 // — по-прежнему `parse`: смесь там закрыла бы схлопывание.
-                self.margin.right =
-                    crate::style::values::value::fold_zero_percentage(Len::parse_mixed(v));
+                self.margin.right = record_parsed!(
+                    self,
+                    crate::style::values::value::fold_zero_percentage(Len::parse_mixed(v))
+                );
                 self.side_seq.margin[1] = self.decl_seq;
             }
             "margin-bottom" => {
@@ -48,7 +57,7 @@ impl Computed {
                     self.margin_inherit[2] = true;
                     return;
                 }
-                self.margin.bottom = Len::parse(v);
+                self.margin.bottom = record_parsed!(self, Len::parse(v));
                 self.side_seq.margin[2] = self.decl_seq;
             }
             "margin-left" => {
@@ -57,8 +66,10 @@ impl Computed {
                     return;
                 }
                 // Смесь «доля ± точки» доживает (см. `margin-right`).
-                self.margin.left =
-                    crate::style::values::value::fold_zero_percentage(Len::parse_mixed(v));
+                self.margin.left = record_parsed!(
+                    self,
+                    crate::style::values::value::fold_zero_percentage(Len::parse_mixed(v))
+                );
                 self.side_seq.margin[3] = self.decl_seq;
             }
 
@@ -67,11 +78,11 @@ impl Computed {
     }
 
     fn apply_padding_side(&mut self, key: &str, value: &str) {
-        let (index, slot) = match key {
-            "padding-top" => (0, &mut self.padding.top),
-            "padding-right" => (1, &mut self.padding.right),
-            "padding-bottom" => (2, &mut self.padding.bottom),
-            "padding-left" => (3, &mut self.padding.left),
+        let index = match key {
+            "padding-top" => 0,
+            "padding-right" => 1,
+            "padding-bottom" => 2,
+            "padding-left" => 3,
             _ => return,
         };
         // CSS 2.1 §6.2.1: inherit copies the parent's computed side.
@@ -86,7 +97,16 @@ impl Computed {
         ) {
             return;
         }
-        *slot = crate::style::values::value::fold_zero_percentage(Len::parse(value));
+        let parsed = record_parsed!(
+            self,
+            crate::style::values::value::fold_zero_percentage(Len::parse(value))
+        );
+        match index {
+            0 => self.padding.top = parsed,
+            1 => self.padding.right = parsed,
+            2 => self.padding.bottom = parsed,
+            _ => self.padding.left = parsed,
+        }
         self.side_seq.padding[index] = self.decl_seq;
     }
 }

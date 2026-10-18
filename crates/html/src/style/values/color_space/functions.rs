@@ -68,8 +68,7 @@ pub(super) fn color_fn(body: &str) -> Option<(f32, f32, f32, f32)> {
         "xyz-d50" => mul(D50_TO_D65, c),
         // Своё пространство из `@color-profile --имя { src: url(…) }`.
         custom if custom.starts_with("--") => {
-            let profile = PROFILES.with(|p| p.borrow().get(custom).cloned());
-            let profile = profile?;
+            let profile = profile(custom)?;
             let (r, g, b) = icc_to_srgb(&profile, c)?;
             return Some((r, g, b, a));
         }

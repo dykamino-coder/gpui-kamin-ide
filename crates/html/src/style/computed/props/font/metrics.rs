@@ -18,7 +18,7 @@ impl Computed {
                     return;
                 }
                 if lower == "none" || lower == "initial" {
-                    self.font_size_adjust = Some((u8::MAX, 0.0));
+                    self.font_size_adjust = accept_parsed!(self, Some((u8::MAX, 0.0)));
                     return;
                 }
                 let toks = split_outside_parens(&lower);
@@ -43,7 +43,7 @@ impl Computed {
                         _ => return,
                     }
                 };
-                self.font_size_adjust = Some((metric, want));
+                self.font_size_adjust = accept_parsed!(self, Some((metric, want)));
             }
             "font-stretch" => {
                 // CSS Fonts 4 §2.3: exact keyword percentages or a
@@ -72,10 +72,10 @@ impl Computed {
                     _ => None,
                 };
                 if let Some(pct) = pct {
-                    self.font_stretch = Some(pct);
+                    self.font_stretch = accept_parsed!(self, Some(pct));
                 }
             }
-            "caret-color" => self.caret_color = Color::parse(v),
+            "caret-color" => self.caret_color = record_parsed!(self, Color::parse(v)),
             _ => *hit = false,
         }
     }

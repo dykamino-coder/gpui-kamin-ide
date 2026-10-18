@@ -50,6 +50,9 @@ impl Computed {
                         .parse::<f32>()
                         .is_ok();
                 self.rotate_prop = angle_only.then_some(t.rotate_rad);
+                if angle_only || v == "none" {
+                    self.accept_declaration();
+                }
             }
             "scale" => {
                 let mut t = self.transform.unwrap_or_default();
@@ -62,6 +65,9 @@ impl Computed {
                     })
                     .collect();
                 let x = nums.first().copied().unwrap_or(1.0);
+                if !nums.is_empty() || v == "none" {
+                    self.accept_declaration();
+                }
                 t.scale = (x, nums.get(1).copied().unwrap_or(x));
                 self.transform = Some(t);
                 // …и отдельным полем для матрицы отрисовки (css-transforms-2
@@ -122,7 +128,8 @@ impl Computed {
                 let first = xs.or_else(|| free.next()).unwrap_or("center");
                 let second = ys.or_else(|| free.next()).unwrap_or("center");
                 self.transform_origin_px = (px_axis(first), px_axis(second));
-                self.transform_origin = Some((axis(first, 0.5), axis(second, 0.5)));
+                self.transform_origin =
+                    accept_parsed!(self, Some((axis(first, 0.5), axis(second, 0.5))));
                 // Третье значение — только <length>, z точки отсчёта
                 // (css-transforms-2 §transform-origin); видна лишь объёмному
                 // пути (transform3d-translate3d-001: `0 0 0` против эталона

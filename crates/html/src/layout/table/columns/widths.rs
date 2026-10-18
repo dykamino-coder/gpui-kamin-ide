@@ -38,7 +38,7 @@ pub(crate) fn push_col_bands(
         rects_by_col[i] = Some(rects.clone());
         if !seen.contains(&el.node_id) {
             seen.push(el.node_id);
-            let mut band_style = el.style.clone();
+            let mut band_style = (*el.style).clone();
             if band_style.bg_image.is_none() {
                 band_style.bg_image = band_style.gradient_raw.clone();
             }

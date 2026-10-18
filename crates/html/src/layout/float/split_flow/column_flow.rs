@@ -8,6 +8,8 @@ use gpui::{
 };
 use std::rc::Rc;
 
+type ColumnBuilder = Rc<dyn Fn(&[usize], usize, Pixels) -> AnyElement>;
+
 /// Многоколоночный поток: текст режется на колонки по строкам.
 ///
 /// Сетка из детей давала то же расположение только когда детей много: один
@@ -16,7 +18,7 @@ use std::rc::Rc;
 /// следующую. Где кончается строка, знает перенос, а он зависит от ширины
 /// колонки: значит, снова замер.
 pub struct ColumnFlow {
-    pub(super) build: Rc<dyn Fn(&[usize], usize, Pixels) -> AnyElement>,
+    pub(super) build: ColumnBuilder,
     pub(super) text: SharedString,
     pub(super) count: Option<usize>,
     pub(super) col_w: Option<f32>,
@@ -38,7 +40,7 @@ pub struct ColumnFlow {
 impl ColumnFlow {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        build: Rc<dyn Fn(&[usize], usize, Pixels) -> AnyElement>,
+        build: ColumnBuilder,
         text: SharedString,
         count: Option<usize>,
         col_w: Option<f32>,

@@ -4,6 +4,24 @@ use super::*;
 
 impl Computed {
     pub(super) fn apply_box_model_logical(&mut self, key: &str, v: &str, hit: &mut bool) {
+        if self.declaration_parse != ParseResult::Inactive
+            && matches!(
+                key,
+                "inline-size"
+                    | "block-size"
+                    | "min-inline-size"
+                    | "min-block-size"
+                    | "max-inline-size"
+                    | "max-block-size"
+            )
+        {
+            let mut parsed = None;
+            assign_size(&mut parsed, v);
+            self.note_parsed(&parsed);
+            if v == "none" {
+                self.accept_declaration();
+            }
+        }
         match key {
             // --- Логические свойства ---------------------------------------
             // Письмо у нас только слева направо и сверху вниз, поэтому
@@ -22,6 +40,9 @@ impl Computed {
             "padding-inline" | "padding-block" | "margin-inline" | "margin-block"
             | "inset-inline" | "inset-block" => {
                 let (a, b) = axis_pair(v);
+                if a.is_some() && b.is_some() {
+                    self.accept_declaration();
+                }
                 let block = key.ends_with("block");
                 let which = key.split('-').next().unwrap_or("").to_string();
                 let seq = self.decl_seq;
@@ -56,7 +77,7 @@ impl Computed {
             | "inset-block-start"
             | "inset-block-end" => {
                 let seq = self.decl_seq;
-                let parsed = Len::parse(v);
+                let parsed = record_parsed!(self, Len::parse(v));
                 let logical = self.logical();
                 let target = if key.starts_with("padding") {
                     &mut logical.padding
@@ -106,6 +127,10 @@ impl Computed {
                 // соотношение 0, и коробка `width: 100px` получала бесконечную
                 // высоту (`zero-or-infinity-001`).
                 .filter(|r: &f32| r.is_finite() && *r > 0.0);
+                self.note_parsed(&ratio);
+                if v == "auto" {
+                    self.accept_declaration();
+                }
                 if v.split_whitespace().any(|t| t.eq_ignore_ascii_case("auto")) {
                     self.aspect_ratio_auto = ratio;
                     self.aspect_ratio = None;
@@ -115,8 +140,10 @@ impl Computed {
                 }
             }
             "frame-sizing" => {
-                self.frame_sizing_height =
-                    matches!(v.trim().to_ascii_lowercase().as_str(), "content-height");
+                self.frame_sizing_height = accept_parsed!(
+                    self,
+                    matches!(v.trim().to_ascii_lowercase().as_str(), "content-height")
+                );
             }
             _ => *hit = false,
         }

@@ -11,21 +11,22 @@ impl Computed {
         match key {
             "math-style" => {
                 if matches!(v, "normal" | "compact") {
-                    self.math_compact = Some(v == "compact");
+                    self.math_compact = accept_parsed!(self, Some(v == "compact"));
                 }
             }
             "math-shift" => {
                 if matches!(v, "normal" | "compact") {
-                    self.math_shift = Some(v == "compact");
+                    self.math_shift = accept_parsed!(self, Some(v == "compact"));
                 }
             }
             "math-depth" => {
                 if let Some(depth) = super::super::math_style::depth(v) {
-                    self.math_depth = Some(depth);
+                    self.math_depth = accept_parsed!(self, Some(depth));
                 }
             }
             "font-size" => {
                 if v == "math" {
+                    self.accept_declaration();
                     self.math_font_size = true;
                     self.font_size = None;
                     return;
@@ -65,6 +66,7 @@ impl Computed {
                     _ => None,
                 };
                 if let Some(l) = word {
+                    self.accept_declaration();
                     self.font_size = Some(l);
                     // `larger`/`smaller` шагают по ТАБЛИЦЕ (§15.7: «if the
                     // parent element has font size 'medium', then 'larger'
@@ -83,7 +85,7 @@ impl Computed {
                     Some(l) if neg(&l) => self.font_size,
                     other => {
                         self.font_size_step = 0;
-                        other
+                        record_parsed!(self, other)
                     }
                 };
             }
@@ -99,7 +101,7 @@ impl Computed {
                 {
                     return;
                 }
-                self.font_oblique_angle = angle.flatten();
+                self.font_oblique_angle = accept_parsed!(self, angle.flatten());
                 // Retain the angle for face selection. The platform currently
                 // synthesizes only the legacy bare oblique request.
                 self.italic = Some(kind == "italic" || (kind == "oblique" && angle.is_none()));

@@ -14,7 +14,6 @@
 //! сегменты (они настоящие братья содержимого хозяина).
 
 use std::collections::HashMap;
-
 mod scope;
 
 /// Сегмент пути для `::marker`: маркер — ПЕРВЫЙ ребёнок пункта, до
@@ -37,6 +36,8 @@ struct Entry {
 
 /// Счётчики документа и адрес текущего узла в дереве коробок.
 #[derive(Default, Clone)]
+// Quote overrides pair the owning DOM path with optional opening/closing pairs.
+#[allow(clippy::type_complexity)]
 pub struct Counters {
     stack: HashMap<String, Vec<Entry>>,
     /// Active style-containment roots; their own directives stay outside.
@@ -81,7 +82,6 @@ fn remove_stale(st: &mut Vec<Entry>, cur: &[u32]) {
         st.pop();
     }
 }
-
 impl Counters {
     /// Войти в коробку: занять следующий номер на своём уровне.
     pub fn enter(&mut self) {

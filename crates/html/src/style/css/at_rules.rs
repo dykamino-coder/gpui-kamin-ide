@@ -49,14 +49,14 @@ pub const MARGIN_BOXES: [&str; 16] = [
     "left-top",
 ];
 
-/// Все правила `@page` документа в порядке появления — с псевдоклассами и
-/// именами. Из них `page_decls_for` собирает объявления конкретного листа.
-pub static PAGE_RULES: std::sync::Mutex<Vec<PageRule>> = std::sync::Mutex::new(Vec::new());
-
-/// Снимок без очистки: рендер зовётся на каждом кадре, а правила должны
-/// пережить все кадры документа (очистка — на разборе следующего).
-pub fn page_rules_snapshot() -> Vec<PageRule> {
-    PAGE_RULES.lock().unwrap().clone()
+/// Дописать правило `@page` в реестр текущего документа: правила хранятся
+/// в порядке появления, с псевдоклассами и именами; хост забирает их
+/// `Document::page_rules` и собирает объявления листа `page_decls_in`.
+pub(crate) fn push_page_rule(rule: PageRule) {
+    crate::document::state::current()
+        .page_rules
+        .borrow_mut()
+        .push(rule);
 }
 
 /// Голова `@page` → список селекторов; `None` — голова неверна, и правило
@@ -103,18 +103,13 @@ pub(super) fn parse_page_selectors(head: &str) -> Option<Vec<PageSel>> {
 }
 
 /// Объявления листа `index` (с нуля) с именем типа `name` (`""` — без
-/// имени): каскад css-page-3 §cascading-and-page-context. Совпавшие правила
+/// имени) по правилам документа: каскад css-page-3 §cascading-and-page-context. Совпавшие правила
 /// идут по возрастанию специфичности (f, g, h) — f: имя типа, g: `:first` и
 /// `:blank`, h: `:left` и `:right`, — при равной по порядку записи; объявления
 /// сливаются в этом порядке, последнее побеждает. Левые/правые — по
 /// направлению прогрессии страниц: при ltr первый лист ПРАВЫЙ
 /// (§page-selectors: «if the root element's direction is ltr, then the first
 /// page is a right page»), при rtl — левый.
-pub fn page_decls_for(index: usize, name: &str, rtl: bool) -> Vec<(String, String)> {
-    page_decls_in(&PAGE_RULES.lock().unwrap(), index, name, rtl)
-}
-
-/// То же по снимку правил (`page_rules_snapshot`).
 pub fn page_decls_in(
     rules: &[PageRule],
     index: usize,
@@ -182,19 +177,16 @@ fn matching_rules(rules: &[PageRule], index: usize, name: &str, rtl: bool) -> Ve
     hits.into_iter().map(|(_, i)| i).collect()
 }
 
-/// Забрать правила `@page` прошлого документа (чистка перед разбором
-/// следующего, `dom::parse_media`).
-pub fn take_page_decls() -> Vec<PageRule> {
-    std::mem::take(&mut PAGE_RULES.lock().unwrap())
-}
-
-/// Правила `@position-try <dashed-ident> { … }` документа (css-anchor-position-1
-/// §fallback-rule): имя → объявления. Тот же пул, что `PAGE_RULES`: копится
-/// при разборе листов, чистится на разборе следующего документа
-/// (`take_try_rules`), читается на сборке кадра (`anchor::place`). Повтор
+/// Записать правило `@position-try <dashed-ident> { … }`
+/// (css-anchor-position-1 §fallback-rule) в реестр текущего документа:
+/// имя → объявления, читается на сборке кадра (`anchor::place`). Повтор
 /// имени перекрывает — «the last one in document order wins».
-pub static TRY_RULES: std::sync::Mutex<Option<HashMap<String, Decls>>> =
-    std::sync::Mutex::new(None);
+pub(crate) fn insert_try_rule(name: &str, decls: Decls) {
+    crate::document::state::current()
+        .try_rules
+        .borrow_mut()
+        .insert(name.to_string(), decls);
+}
 
 /// Зарегистрированное свойство `@property` (css-properties-values-api-1 §3):
 /// синтаксис, наследуется ли, начальное значение.
@@ -205,24 +197,31 @@ pub struct Registered {
     pub initial: Option<String>,
 }
 
-/// Реестр `@property` последнего разобранного документа.
-pub static PROPERTY_RULES: std::sync::Mutex<Option<HashMap<String, Registered>>> =
-    std::sync::Mutex::new(None);
-
-pub fn take_property_rules() -> HashMap<String, Registered> {
-    PROPERTY_RULES.lock().unwrap().take().unwrap_or_default()
+/// Зарегистрировать `@property` в текущем документе; первая действительная
+/// регистрация имени остаётся.
+pub(crate) fn register_property(name: &str, reg: Registered) {
+    crate::document::state::current()
+        .property_rules
+        .borrow_mut()
+        .entry(name.to_string())
+        .or_insert(reg);
 }
 
-/// Копия реестра `@property` — его читает сборка переменных узла.
+/// Копия реестра `@property` текущего документа — его читает сборка
+/// переменных узла.
 pub fn property_rules() -> HashMap<String, Registered> {
-    PROPERTY_RULES.lock().unwrap().clone().unwrap_or_default()
+    crate::document::state::current()
+        .property_rules
+        .borrow()
+        .clone()
 }
 
-pub fn take_try_rules() -> HashMap<String, Decls> {
-    TRY_RULES.lock().unwrap().take().unwrap_or_default()
-}
-
-/// Объявления правила `@position-try` по имени (`--x`), копией.
+/// Объявления правила `@position-try` текущего документа по имени (`--x`),
+/// копией.
 pub fn try_rule(name: &str) -> Option<Decls> {
-    TRY_RULES.lock().unwrap().as_ref()?.get(name).cloned()
+    crate::document::state::current()
+        .try_rules
+        .borrow()
+        .get(name)
+        .cloned()
 }

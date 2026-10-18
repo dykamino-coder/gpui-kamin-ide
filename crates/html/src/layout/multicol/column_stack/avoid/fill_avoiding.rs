@@ -108,7 +108,7 @@ impl ColumnStack {
             // Метка только назад — иначе цикл вечен, а план качается. Поток,
             // где отступать некуда, больше не трогается.
             let next = match Self::retreat_to(kids, bad) {
-                Some(n) if !prev.is_some_and(|m| n >= m) => n,
+                Some(n) if prev.is_none_or(|m| n < m) => n,
                 _ if flow == usize::MAX => return best,
                 _ => {
                     stuck.push(flow);

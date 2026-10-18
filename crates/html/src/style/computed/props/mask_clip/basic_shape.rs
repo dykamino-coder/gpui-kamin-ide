@@ -51,6 +51,7 @@ impl Computed {
                 })
                 .collect();
             if points.len() >= 3 {
+                self.accept_declaration();
                 self.clip_polygon = Some(points);
                 self.clip_polygon_evenodd = rule == "evenodd";
             }
@@ -67,7 +68,7 @@ impl Computed {
             // вместо вписанного круга. `shape_params` с пустым списком
             // радиусов даёт ровно `closest-side` (css-shapes-1
             // §3.1.1.3) от border-box — то, что и требуется.
-            self.clip_shape = Some(format!("shape:{}", v.trim()));
+            self.clip_shape = accept_parsed!(self, Some(format!("shape:{}", v.trim())));
         } else if let Some(rest) = v.strip_prefix("rect(") {
             // Края видимой области (css-shapes-1 §basic-shape):
             // top/right/bottom/left от верхнего-левого угла, auto —
@@ -79,6 +80,7 @@ impl Computed {
                 .map(|t| if t == "auto" { None } else { Len::parse(t) })
                 .collect();
             if vals.len() == 4 {
+                self.accept_declaration();
                 self.clip_edges = Some([vals[0], vals[1], vals[2], vals[3]]);
                 self.clip_round_len = inner.split("round").nth(1).and_then(uniform_round);
                 self.clip_round = inner
@@ -99,6 +101,7 @@ impl Computed {
                 .filter_map(Len::parse)
                 .collect();
             if vals.len() == 4 {
+                self.accept_declaration();
                 self.clip_xywh = Some([vals[0], vals[1], vals[2], vals[3]]);
                 self.clip_round_len = inner.split("round").nth(1).and_then(uniform_round);
                 self.clip_round = inner
@@ -134,6 +137,7 @@ impl Computed {
                 }
             };
             if !vals.is_empty() {
+                self.accept_declaration();
                 self.clip_inset = Some([pick(0), pick(1), pick(2), pick(3)]);
             }
             let inner = rest.trim_end_matches(')');

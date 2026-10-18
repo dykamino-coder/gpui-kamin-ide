@@ -81,7 +81,7 @@ pub(super) fn blocks_flow(
         // у него своя сортировка прогона (`below_run_*`).
         if let Node::Element(e) = n
             && crate::layout::positioned::containing_block::late_pending()
-            && !e.style.z_index.is_some_and(|z| z < 0)
+            && e.style.z_index.is_none_or(|z| z >= 0)
             && matches!(
                 e.style.position,
                 Some(crate::style::computed::Position::Relative)

@@ -22,7 +22,7 @@ pub(super) fn apply(style: &mut Computed, value: &str) {
             (Some(weight), 0)
         }
     };
-    style.font_weight = weight;
+    style.font_weight = accept_parsed!(style, weight);
     style.font_weight_step = step;
 }
 

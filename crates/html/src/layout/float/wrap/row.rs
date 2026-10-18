@@ -86,7 +86,8 @@ pub(super) fn push_float_row(
             flex_shrink: Some(1.0),
             min_width: (!хвост_с_полями).then_some(Len::Px(0.0)),
             ..Computed::default()
-        },
+        }
+        .into(),
         hover: None,
         first_letter: None,
         first_line: None,
@@ -147,7 +148,8 @@ pub(super) fn push_float_row(
             // (CSS 2.1 §9.5.1): ряд обязан переносить.
             flex_wrap: Some(true),
             ..Computed::default()
-        },
+        }
+        .into(),
         hover: None,
         first_letter: None,
         first_line: None,

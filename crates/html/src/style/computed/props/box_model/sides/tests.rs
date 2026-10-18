@@ -50,3 +50,23 @@ fn negative_longhands_keep_the_previous_side_and_sequence() {
         assert_eq!(style.side_seq.padding, order);
     }
 }
+
+#[test]
+fn every_padding_longhand_reports_its_parse_result() {
+    for key in KEYS {
+        for value in ["7px", "25%", "0%", "inherit"] {
+            assert_eq!(
+                Computed::declaration_result(key, value),
+                ParseResult::Accepted,
+                "{key}: {value}"
+            );
+        }
+        for value in ["-1px", "-1%", "-1em", "-1ex", "-1ch", "invalid"] {
+            assert_eq!(
+                Computed::declaration_result(key, value),
+                ParseResult::Invalid,
+                "{key}: {value}"
+            );
+        }
+    }
+}

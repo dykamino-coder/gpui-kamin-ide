@@ -27,13 +27,15 @@ impl Hooks for FilterLayer {
     type Prepaint = ();
 
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
-        let mut style = gpui::Style::default();
-        style.position = gpui::Position::Absolute;
-        style.inset = gpui::Edges {
-            top: gpui::px(0.0).into(),
-            right: gpui::px(0.0).into(),
-            bottom: gpui::px(0.0).into(),
-            left: gpui::px(0.0).into(),
+        let style = gpui::Style {
+            position: gpui::Position::Absolute,
+            inset: gpui::Edges {
+                top: gpui::px(0.0).into(),
+                right: gpui::px(0.0).into(),
+                bottom: gpui::px(0.0).into(),
+                left: gpui::px(0.0).into(),
+            },
+            ..Default::default()
         };
         (window.request_layout(style, [], cx), ())
     }

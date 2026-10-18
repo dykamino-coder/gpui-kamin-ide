@@ -3,7 +3,8 @@
 //! сырой до `Computed::bg_layers` — слой разбирается тем же путём, что и
 //! одиночное объявление, иначе два разбора разошлись бы.
 
-use super::*;
+#[cfg(test)]
+use super::background_layers;
 
 /// Фоновое свойство, значение которого — список слоёв через запятую.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -20,6 +21,7 @@ pub enum BgListProp {
 }
 
 impl BgListProp {
+    #[cfg(test)]
     pub const ALL: [BgListProp; 9] = [
         BgListProp::BlendMode,
         BgListProp::Shorthand,
@@ -106,6 +108,7 @@ impl BgLists {
     }
 
     /// Слои списка свойства (`background_layers`), если список задан.
+    #[cfg(test)]
     pub fn layers(&self, prop: BgListProp) -> Option<Vec<&str>> {
         self.get(prop).map(background_layers)
     }

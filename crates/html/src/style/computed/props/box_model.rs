@@ -8,8 +8,25 @@ mod sides;
 
 impl Computed {
     pub(crate) fn apply_box_model(&mut self, key: &str, v: &str, hit: &mut bool) {
+        if self.declaration_parse != ParseResult::Inactive
+            && matches!(
+                key,
+                "width" | "height" | "min-width" | "min-height" | "max-width" | "max-height"
+            )
+        {
+            let mut parsed = None;
+            assign_size(&mut parsed, v);
+            if parsed.is_some()
+                || calc_size_arg(v).is_some()
+                || stretch_keyword(v)
+                || fit_content_arg(v).is_some()
+                || v == "none"
+            {
+                self.accept_declaration();
+            }
+        }
         match key {
-            "box-sizing" => self.border_box = Some(v == "border-box"),
+            "box-sizing" => self.border_box = accept_parsed!(self, Some(v == "border-box")),
 
             // Отрицательная длина делает объявление размера невалидным
             // (CSS 2.1 §10): `max-height: -1px` доезжал до раскладки и
@@ -96,6 +113,13 @@ impl Computed {
                     return;
                 }
                 self.padding = parsed;
+                if self.padding.top.is_some()
+                    && self.padding.right.is_some()
+                    && self.padding.bottom.is_some()
+                    && self.padding.left.is_some()
+                {
+                    self.accept_declaration();
+                }
                 // Спор с логическими сторонами решает порядок объявлений.
                 self.side_seq.padding = [self.decl_seq; 4];
             }

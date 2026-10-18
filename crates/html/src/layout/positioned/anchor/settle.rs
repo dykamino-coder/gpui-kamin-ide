@@ -82,7 +82,7 @@ fn settle_len(l: Option<Len>, has_default: bool, known: &HashSet<String>) -> Opt
         };
         let f = anchor_get(i)?;
         // У `min()`/`max()` разрешимы должны быть ВСЕ доводы.
-        let resolvable = std::iter::once(&f)
+        let resolvable = std::iter::once(&*f)
             .chain(f.alts.iter())
             .all(|g| match &g.name {
                 Some(n) => known.contains(n),

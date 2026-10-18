@@ -26,7 +26,7 @@ impl Computed {
                 wrap |= modes > 0 || balance > 0;
                 if valid && modes <= 1 && balance <= 1 && (!nowrap || (modes == 0 && balance == 0))
                 {
-                    self.flex_wrap = Some(wrap);
+                    self.flex_wrap = accept_parsed!(self, Some(wrap));
                     // Обратный перенос кладёт строки с другого края: одна строка
                     // в контейнере уезжает вниз, а не остаётся вверху.
                     self.flex_wrap_reverse = Some(reverse);
@@ -39,7 +39,8 @@ impl Computed {
                 if let Ok(n) = v.trim().parse::<u32>()
                     && n >= 1
                 {
-                    self.flex_line_count = Some(n.min(u32::from(u16::MAX)) as u16);
+                    self.flex_line_count =
+                        accept_parsed!(self, Some(n.min(u32::from(u16::MAX)) as u16));
                 }
             }
             // Отрицательные значения невалидны (css-flexbox-1 §7.2: «Negative
@@ -47,12 +48,12 @@ impl Computed {
             // (`flex-shrink-002`, `flex-basis-004`).
             "flex-grow" => {
                 if let Some(g) = flex_factor(v) {
-                    self.flex_grow = Some(g);
+                    self.flex_grow = accept_parsed!(self, Some(g));
                 }
             }
             "flex-shrink" => {
                 if let Some(g) = flex_factor(v) {
-                    self.flex_shrink = Some(g);
+                    self.flex_shrink = accept_parsed!(self, Some(g));
                 }
             }
             // `flex: 1` — сокращение для grow/shrink/basis; берём первое число.
@@ -63,17 +64,17 @@ impl Computed {
                 "auto" => {
                     self.flex_grow = Some(1.0);
                     self.flex_shrink = Some(1.0);
-                    self.flex_basis = Some(Len::Auto);
+                    self.flex_basis = accept_parsed!(self, Some(Len::Auto));
                 }
                 "none" => {
                     self.flex_grow = Some(0.0);
                     self.flex_shrink = Some(0.0);
-                    self.flex_basis = Some(Len::Auto);
+                    self.flex_basis = accept_parsed!(self, Some(Len::Auto));
                 }
                 "initial" => {
                     self.flex_grow = Some(0.0);
                     self.flex_shrink = Some(1.0);
-                    self.flex_basis = Some(Len::Auto);
+                    self.flex_basis = accept_parsed!(self, Some(Len::Auto));
                 }
                 _ => {
                     // Опущенные части сокращения берут НЕ начальные значения
@@ -134,17 +135,24 @@ impl Computed {
                         }
                         _ => {}
                     }
+                    if (1..=3).contains(&parts.len())
+                        && self.flex_grow.is_some()
+                        && self.flex_shrink.is_some()
+                        && self.flex_basis.is_some()
+                    {
+                        self.accept_declaration();
+                    }
                 }
             },
             "flex-basis" if v == "content" => {
-                self.flex_basis = Some(Len::Auto);
+                self.flex_basis = accept_parsed!(self, Some(Len::Auto));
                 self.basis_content = Some(true);
             }
             "flex-basis" => {
                 if let Some(l) = Len::parse(v)
                     && !matches!(l, Len::Px(x) | Len::Pct(x) if x < 0.0)
                 {
-                    self.flex_basis = Some(l);
+                    self.flex_basis = accept_parsed!(self, Some(l));
                 }
             }
             "align-self" if v.trim() == "inherit" => {
@@ -172,7 +180,7 @@ impl Computed {
                 if !matches!(last, Some("left") | Some("right"))
                     && let Ok(a) = align_keyword(v)
                 {
-                    self.align_self = a;
+                    self.align_self = accept_parsed!(self, a);
                     self.align_self_decl = Some(a);
                     self.align_self_inherit = false;
                     self.align_self_safe = is_safe(v);
@@ -186,7 +194,7 @@ impl Computed {
             "align-items" => {
                 self.align_inherit &= !ainh::ALIGN_ITEMS;
                 if let Ok(a) = align_keyword(v) {
-                    self.align_items = a;
+                    self.align_items = accept_parsed!(self, a);
                     self.align_items_safe = is_safe(v);
                     self.align_items_last = v.split_whitespace().any(|w| w == "last");
                 }
@@ -196,7 +204,10 @@ impl Computed {
             // браузером на 27 точек (поймано сравнением).
             "justify-content" => {
                 self.align_inherit &= !ainh::JUSTIFY_CONTENT;
-                self.justify_content = parse_justify(v);
+                self.justify_content = record_parsed!(self, parse_justify(v));
+                if v == "normal" {
+                    self.accept_declaration();
+                }
                 self.justify_content_safe = is_safe(v);
             }
             _ => self.apply_gap_place(key, v, hit),

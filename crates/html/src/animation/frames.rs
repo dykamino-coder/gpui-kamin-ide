@@ -30,7 +30,7 @@ pub(crate) fn transitioned(
     let build = std::rc::Rc::new(move |k: f32| {
         let _depth = DepthScope::enter(depth);
         let mut mixed = node.clone();
-        mixed.style = node.style.blend(&hover, k);
+        mixed.style = node.style.blend(&hover, k).into();
         // Слой наведения снят: его роль уже сыграла доля перехода, иначе
         // стиль прыгнул бы поверх плавного.
         mixed.hover = None;

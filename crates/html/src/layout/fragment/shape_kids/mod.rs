@@ -7,6 +7,8 @@ mod cuts;
 use cuts::stack_kid_cuts;
 
 #[allow(clippy::too_many_arguments)]
+// Stacked child records include their geometry and break flags.
+#[allow(clippy::type_complexity)]
 pub(crate) fn stack_kids(
     kids: Vec<(
         f32,

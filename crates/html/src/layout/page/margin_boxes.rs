@@ -9,6 +9,8 @@ use gpui::{AnyElement, App, AvailableSpace, Window};
 /// box каждой коробки в точках листа и её элемент. Мера — по содержимому
 /// (`probe`): главная ось стороны верха/низа — min/max-content ширина, боковых
 /// — высота при уже решённой ширине (Blink `EdgeMarginNodePreferredSize`).
+// Margin boxes share the page's geometry and generated-content callbacks.
+#[allow(clippy::type_complexity)]
 pub(super) fn layout_margin_boxes(
     boxes: Vec<MarginBox>,
     g: &PageGeom,

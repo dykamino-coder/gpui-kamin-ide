@@ -27,6 +27,7 @@ impl Computed {
         // `textarea-pre-wrap-*` уходили 0.00 → 0.76).
         // Негодное объявление не сбрасывает ничего (§4.1.7).
         if key == "background" && background_shorthand_valid(v) {
+            self.accept_declaration();
             self.background = None;
             self.background_rcs = None;
         }
@@ -43,7 +44,7 @@ impl Computed {
                 || low.contains("(from ")
                 || (low.starts_with("color-mix(") && low.contains("currentcolor")))
         {
-            self.background_rcs = Some(v.to_string());
+            self.background_rcs = accept_parsed!(self, Some(v.to_string()));
             return;
         }
         // Фон — СПИСОК слоёв через запятую (css-backgrounds-3 §3.10):
@@ -147,7 +148,7 @@ impl Computed {
                 t if Self::background_position_length(t) => pos.push(token.clone()),
                 t => {
                     if let Some(c) = Color::parse(t) {
-                        self.background = Some(c);
+                        self.background = accept_parsed!(self, Some(c));
                     }
                 }
             }

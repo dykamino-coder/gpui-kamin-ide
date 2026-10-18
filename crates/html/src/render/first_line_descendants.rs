@@ -32,7 +32,7 @@ pub(super) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
                     && e.first_line.is_none() =>
             {
                 e.style.first_line_own = Some(Box::new(first.clone()));
-                e.first_line = Some(first.clone());
+                e.first_line = Some(first.clone().into());
             }
             _ => {}
         }

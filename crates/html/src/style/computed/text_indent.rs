@@ -19,7 +19,10 @@ pub(super) fn apply(style: &mut Computed, value: &str) {
         match word.to_ascii_lowercase().as_str() {
             "each-line" => each = true,
             "hanging" => hang = true,
-            len => style.text_indent = Len::parse_mixed(len).or(style.text_indent),
+            len => {
+                style.text_indent =
+                    record_parsed!(style, Len::parse_mixed(len)).or(style.text_indent)
+            }
         }
     }
     style.text_indent_each_line = each.then_some(true);

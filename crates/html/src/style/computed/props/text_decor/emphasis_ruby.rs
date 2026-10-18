@@ -13,6 +13,7 @@ impl Computed {
                 // заливка) или строкой; `none` его снимает. Цвет знака —
                 // свой (`emphasis_color`), по умолчанию цвет текста.
                 if key == "text-emphasis-position" {
+                    self.accept_declaration();
                     self.emphasis_position_auto = Some(v.trim() == "auto");
                     self.emphasis_under = v.split_whitespace().any(|w| w == "under");
                     self.emphasis_left = v.split_whitespace().any(|w| w == "left");
@@ -21,8 +22,10 @@ impl Computed {
                 if key == "text-emphasis-color" {
                     let t = v.trim();
                     if t.eq_ignore_ascii_case("currentcolor") {
+                        self.accept_declaration();
                         self.emphasis_color = None;
                     } else if let Some(c) = Color::parse(t) {
+                        self.accept_declaration();
                         self.emphasis_color = Some(c);
                     }
                     return;
@@ -61,12 +64,14 @@ impl Computed {
                 let joined = style_words.join(" ");
                 let v = joined.as_str();
                 if v == "none" || v.is_empty() {
+                    self.accept_declaration();
                     self.text_emphasis = Some(String::new());
                     return;
                 }
                 // Строка в кавычках — первый её знак (§5.1: «only the first
                 // character is used»).
                 if let Some(q) = v.chars().next().filter(|c| *c == '"' || *c == '\'') {
+                    self.accept_declaration();
                     let body =
                         crate::style::computed::parse_util::unescape_content(v.trim_matches(q));
                     self.text_emphasis = Some(
@@ -97,32 +102,44 @@ impl Computed {
                     ("sesame", false) => '\u{FE45}',
                     _ => '\u{FE46}',
                 };
-                self.text_emphasis = Some(mark.to_string());
+                self.text_emphasis = accept_parsed!(self, Some(mark.to_string()));
             }
             "ruby-position" => {
+                self.accept_declaration();
                 // css-ruby-1 §4.1: `under` — под базой; `over`, `alternate`
                 // (первый уровень) и `inter-character` (в горизонтали — пока
                 // как `over`) — над ней.
                 self.ruby_under = Some(v.split_whitespace().any(|w| w == "under"));
             }
             "ruby-align" => {
-                self.ruby_align = match v.trim() {
-                    "start" => Some(RubyAlign::Start),
-                    "center" => Some(RubyAlign::Center),
-                    "space-between" => Some(RubyAlign::SpaceBetween),
-                    "space-around" => Some(RubyAlign::SpaceAround),
-                    _ => self.ruby_align,
-                };
+                self.ruby_align = record_parsed!(
+                    self,
+                    match v.trim() {
+                        "start" => Some(RubyAlign::Start),
+                        "center" => Some(RubyAlign::Center),
+                        "space-between" => Some(RubyAlign::SpaceBetween),
+                        "space-around" => Some(RubyAlign::SpaceAround),
+                        _ => None,
+                    }
+                )
+                .or(self.ruby_align);
             }
             "ruby-overhang" => {
-                self.ruby_overhang = match v.trim() {
-                    "auto" => Some(RubyOverhang::Auto),
-                    "none" => Some(RubyOverhang::None),
-                    "spaces" => Some(RubyOverhang::Spaces),
-                    _ => self.ruby_overhang,
-                };
+                self.ruby_overhang = record_parsed!(
+                    self,
+                    match v.trim() {
+                        "auto" => Some(RubyOverhang::Auto),
+                        "none" => Some(RubyOverhang::None),
+                        "spaces" => Some(RubyOverhang::Spaces),
+                        _ => None,
+                    }
+                )
+                .or(self.ruby_overhang);
             }
             "ruby-merge" => {
+                if matches!(v, "separate" | "merge" | "auto") {
+                    self.accept_declaration();
+                }
                 self.ruby_merge = match v {
                     "separate" | "initial" => Some(0),
                     "merge" => Some(1),
@@ -135,12 +152,17 @@ impl Computed {
             // `parse_shadows` такую тень пропускает, и `1em 0em purple` у
             // эталона `box-shadow-multiple-001-ref` пропадала, пока тест после
             // `shadow_raw` уже рисовал свою `box-shadow` в `em` (0.08 → 6.25).
-            "text-shadow" if has_font_units(v) => self.text_shadow_raw = Some(v.to_string()),
+            "text-shadow" if has_font_units(v) => {
+                self.text_shadow_raw = accept_parsed!(self, Some(v.to_string()))
+            }
             "text-shadow" => {
                 self.text_shadow_raw = None;
                 self.text_shadow_none = v.trim().eq_ignore_ascii_case("none");
                 let mut list = parse_shadows(v).into_iter();
-                self.text_shadow = list.next();
+                self.text_shadow = record_parsed!(self, list.next());
+                if self.text_shadow_none {
+                    self.accept_declaration();
+                }
                 self.text_shadow_rest = list.collect();
             }
             _ => *hit = false,

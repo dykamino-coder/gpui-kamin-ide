@@ -33,7 +33,10 @@ impl Computed {
                 self.subgrid = self.subgrid_cols || self.subgrid_rows;
                 self.grid_col_line_names = parse_line_names(v);
                 self.grid_cols = count_tracks(v);
-                self.grid_tracks = parse_tracks(v);
+                self.grid_tracks = record_parsed!(self, parse_tracks(v));
+                if self.subgrid_cols || v == "none" {
+                    self.accept_declaration();
+                }
             }
             // `grid: <ряды> / <колонки>` и `grid-template: <ряды> / <колонки>`
             // — самая частая короткая запись сетки в тестах и в вёрстке.
@@ -79,22 +82,29 @@ impl Computed {
             // Значение бывает составным: `row fill-reverse`, `column
             // track-reverse`. Сверка со строкой ЦЕЛИКОМ путала ось на каждом
             // таком тесте.
-            "grid-lanes-pack" => self.lanes_dense = v.contains("dense"),
+            "grid-lanes-pack" => self.lanes_dense = accept_parsed!(self, v.contains("dense")),
             // Порог «равенства» лунок при авто-выборе (css-grid-3): лунки с
             // разницей заполнения меньше порога считаются равными и берутся в
             // ПОРЯДКЕ ДОКУМЕНТА. `normal` (дефолт!) = 1em, `infinite` —
             // строгий порядок укладки безотносительно высот.
             "flow-tolerance" | "item-tolerance" => {
-                self.lanes_tolerance = match v.trim() {
-                    "normal" => None,
-                    "infinite" => Some(Len::Px(f32::INFINITY)),
-                    t => Len::parse(t),
-                };
+                self.lanes_tolerance = record_parsed!(
+                    self,
+                    match v.trim() {
+                        "normal" => None,
+                        "infinite" => Some(Len::Px(f32::INFINITY)),
+                        t => Len::parse(t),
+                    }
+                );
+                if v == "normal" {
+                    self.accept_declaration();
+                }
             }
             // Первая часть — ось лунок, дальше — реверсы: `fill-reverse`
             // заполняет лунки с другого конца, `track-reverse` перечисляет
             // сами лунки в обратном порядке (css-grid-3).
             "grid-lanes-direction" => {
+                self.accept_declaration();
                 self.lanes_row = Some(v.split_whitespace().next() == Some("row"));
                 self.lanes_fill_reverse = v.split_whitespace().any(|w| w == "fill-reverse");
                 self.lanes_track_reverse = v.split_whitespace().any(|w| w == "track-reverse");

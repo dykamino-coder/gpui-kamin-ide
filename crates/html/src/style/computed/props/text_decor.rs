@@ -47,7 +47,7 @@ impl Computed {
                         _ => return,
                     }
                 }
-                self.td_lines = Some(lines);
+                self.td_lines = accept_parsed!(self, Some(lines));
                 if short {
                     self.td_style = style;
                     self.td_color = color;
@@ -58,27 +58,33 @@ impl Computed {
             }
             "text-decoration-style" | "-webkit-text-decoration-style" => {
                 if let Some(s) = parse_decor_style(&v.trim().to_ascii_lowercase()) {
+                    self.accept_declaration();
                     self.td_style = Some(s);
                 }
             }
             "text-decoration-color" | "-webkit-text-decoration-color" => {
                 let t = v.trim();
                 if t.eq_ignore_ascii_case("currentcolor") {
+                    self.accept_declaration();
                     self.td_color = None;
                 } else if let Some(c) = Color::parse(t) {
+                    self.accept_declaration();
                     self.td_color = Some(c);
                 }
             }
             "text-decoration-thickness" => {
                 if let Some(t) = parse_decor_thickness(&v.trim().to_ascii_lowercase()) {
+                    self.accept_declaration();
                     self.td_thickness = Some(t);
                 }
             }
             "text-underline-offset" => {
                 let t = v.trim().to_ascii_lowercase();
                 if t == "auto" {
+                    self.accept_declaration();
                     self.underline_offset = Some(DecorLen::Auto);
                 } else if let Some(l) = parse_decor_length(&t) {
+                    self.accept_declaration();
                     self.underline_offset = Some(l);
                 }
             }
@@ -109,32 +115,40 @@ impl Computed {
                     _ => false,
                 };
                 if ok {
+                    self.accept_declaration();
                     self.underline_pos = Some(bits);
                 }
             }
             "text-decoration-skip-spaces" => {
                 let t = v.trim().to_ascii_lowercase();
                 let words: Vec<&str> = t.split_whitespace().collect();
-                self.skip_spaces = match words.as_slice() {
-                    ["none"] => Some(0),
-                    ["all"] => Some(4),
-                    ["start"] => Some(1),
-                    ["end"] => Some(2),
-                    ["start", "end"] | ["end", "start"] => Some(3),
-                    _ => return,
-                };
+                self.skip_spaces = accept_parsed!(
+                    self,
+                    match words.as_slice() {
+                        ["none"] => Some(0),
+                        ["all"] => Some(4),
+                        ["start"] => Some(1),
+                        ["end"] => Some(2),
+                        ["start", "end"] | ["end", "start"] => Some(3),
+                        _ => return,
+                    }
+                );
             }
             "text-decoration-skip-ink" => {
-                self.skip_ink = match v.trim().to_ascii_lowercase().as_str() {
-                    "none" => Some(0),
-                    "auto" => Some(1),
-                    "all" => Some(2),
-                    _ => return,
-                };
+                self.skip_ink = accept_parsed!(
+                    self,
+                    match v.trim().to_ascii_lowercase().as_str() {
+                        "none" => Some(0),
+                        "auto" => Some(1),
+                        "all" => Some(2),
+                        _ => return,
+                    }
+                );
             }
             "text-decoration-inset" => {
                 let t = v.trim().to_ascii_lowercase();
                 if t == "auto" {
+                    self.accept_declaration();
                     self.td_inset = Some(None);
                     return;
                 }
@@ -144,7 +158,10 @@ impl Computed {
                 if lens.len() != words.len() || lens.is_empty() || lens.len() > 2 {
                     return;
                 }
-                self.td_inset = Some(Some([lens[0], *lens.get(1).unwrap_or(&lens[0])]));
+                self.td_inset = accept_parsed!(
+                    self,
+                    Some(Some([lens[0], *lens.get(1).unwrap_or(&lens[0])]))
+                );
             }
             _ => self.apply_text_decor_emphasis_ruby(key, v, hit),
         }
