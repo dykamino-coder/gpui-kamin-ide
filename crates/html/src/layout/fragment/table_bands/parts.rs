@@ -86,6 +86,7 @@ mod tests {
 
     fn element(tag: &str) -> Element {
         Element {
+            marks: Default::default(),
             tag: tag.into(),
             style: Default::default(),
             children: Vec::new(),

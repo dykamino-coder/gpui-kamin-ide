@@ -159,7 +159,14 @@ pub(crate) fn select(family: &str, request: &Computed) -> Option<Face> {
         faces
             .iter()
             .rev()
-            .min_by(|a, b| rank(a).partial_cmp(&rank(b)).unwrap())
+            .min_by(|a, b| {
+                rank(a)
+                    .into_iter()
+                    .zip(rank(b))
+                    .map(|(a, b)| a.0.cmp(&b.0).then_with(|| a.1.total_cmp(&b.1)))
+                    .find(|order| !order.is_eq())
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .cloned()
     })
 }

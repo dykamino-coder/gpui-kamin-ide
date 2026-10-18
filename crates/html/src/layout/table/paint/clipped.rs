@@ -1,7 +1,7 @@
 //! Полоса фона ряда/группы, обрезанная прямоугольниками ячеек (CellsClipped).
 
 use super::RowRects;
-use gpui::{Bounds, IntoElement, Pixels, Window};
+use gpui::{Bounds, Pixels, Window};
 
 pub struct CellsClipped {
     pub(crate) style: crate::style::computed::Computed,
@@ -111,13 +111,5 @@ impl CellsClipped {
                 window.paint_quad(quad);
             }
         }
-    }
-}
-
-impl IntoElement for CellsClipped {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
     }
 }

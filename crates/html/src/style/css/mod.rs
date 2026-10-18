@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 
+pub(crate) mod resource_rules;
 pub(crate) mod selector_tokens;
 mod stylesheet_tokens;
 use crate::style::css::stylesheet_tokens::find_matching;
@@ -23,6 +24,7 @@ pub(crate) mod variable_values;
 pub use crate::style::css::selector::*;
 pub(super) mod decls;
 pub use crate::style::css::decls::*;
+pub(crate) use decls::split_top_level;
 pub(super) mod sheet;
 pub use crate::style::css::sheet::*;
 mod media;

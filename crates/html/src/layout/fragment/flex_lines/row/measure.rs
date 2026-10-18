@@ -1,12 +1,12 @@
 //! Flex rows expose parallel item cuts and sequential row boundaries.
 
-use super::geometry::{collect_rows, px, row_container, row_forced};
+use super::geometry::{collect_rows, row_container, row_forced};
 use crate::dom::Element;
 use crate::layout::fragment::breaks::edge_avoid;
 use crate::layout::fragment::shape_contents::finish_row_shape;
 use crate::layout::fragment::shape_kids::stack_kids;
 use crate::layout::fragment::{LINE_CX, Shape, ShapeCx};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_auto_zero};
 pub(crate) fn main_size(c: &Element) -> Option<f32> {
     LINE_CX
         .with(|cx| {
@@ -20,8 +20,10 @@ pub(crate) fn main_size(c: &Element) -> Option<f32> {
                 return None;
             };
             let b = c.style.borders();
-            let edges =
-                px(c.style.padding.left)? + px(c.style.padding.right)? + px(b.left)? + px(b.right)?;
+            let edges = px_auto_zero(c.style.padding.left)?
+                + px_auto_zero(c.style.padding.right)?
+                + px_auto_zero(b.left)?
+                + px_auto_zero(b.right)?;
             Some(if c.style.border_box == Some(true) {
                 (w - edges).max(0.0)
             } else {
@@ -46,7 +48,7 @@ pub(crate) fn measure_rows(
     }
     let main = main_size(c)?;
     let rows = collect_rows(c, main, depth, cx)?;
-    let gap = px(c.style.gap.and_then(|g| g.0))?.max(0.0);
+    let gap = px_auto_zero(c.style.gap.and_then(|g| g.0))?.max(0.0);
     let mut cuts = Vec::new();
     let mut forced = Vec::new();
     let mut solid = Vec::new();

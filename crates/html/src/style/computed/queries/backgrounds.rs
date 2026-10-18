@@ -18,10 +18,10 @@ impl Computed {
     /// (`background-color-clip`: two `none` layers, clip list
     /// `border-box, content-box, border-box` → `content-box`).
     pub(crate) fn color_clip(&self) -> Option<BgClip> {
-        let Some((_, clips)) = self.bg_lists.iter().find(|(k, _)| k == "background-clip") else {
+        let Some(clips) = self.bg_lists.get(BgListProp::Clip) else {
             return self.bg_clip;
         };
-        let Some((_, images)) = self.bg_lists.iter().find(|(k, _)| k == "background-image") else {
+        let Some(images) = self.bg_lists.get(BgListProp::Image) else {
             return self.bg_clip;
         };
         let n = background_layers(images).len();
@@ -35,16 +35,8 @@ impl Computed {
     }
 
     pub(crate) fn bg_layers(&self) -> Option<Vec<Computed>> {
-        let short = self
-            .bg_lists
-            .iter()
-            .find(|(k, _)| k == "background")
-            .map(|(_, v)| v.clone());
-        let image = self
-            .bg_lists
-            .iter()
-            .find(|(k, _)| k == "background-image")
-            .map(|(_, v)| v.clone());
+        let short = self.bg_lists.get(BgListProp::Shorthand).map(str::to_string);
+        let image = self.bg_lists.get(BgListProp::Image).map(str::to_string);
         let images: Vec<String> = match (&image, &short) {
             (Some(v), _) | (None, Some(v)) => background_layers(v)
                 .into_iter()
@@ -96,9 +88,13 @@ impl Computed {
                 c.apply_one("background", &px_of(layers[i % layers.len()]));
                 c.background = None;
             }
-            for (k, v) in self.bg_lists.iter().filter(|(k, _)| k != "background") {
+            for (k, v) in self
+                .bg_lists
+                .iter()
+                .filter(|(k, _)| *k != BgListProp::Shorthand)
+            {
                 let layers = background_layers(v);
-                c.apply_one(k, &px_of(layers[i % layers.len()]));
+                c.apply_one(k.key(), &px_of(layers[i % layers.len()]));
             }
             c.bg_lists.clear();
             // Градиент слоя — плиткой: источником идёт сама функция

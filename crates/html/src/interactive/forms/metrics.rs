@@ -1,18 +1,23 @@
 //! Native control metrics, independent of the embedding application's UI.
 
 use crate::style::computed::Computed;
+use crate::style::computed::FontCx;
 use crate::style::values::value::Len;
 
 // Blink html.css / LayoutThemeDefault and WebThemeEngine on Windows.
-const SIZES: [(&str, [f32; 2]); 4] = [
-    ("checkbox", [13., 13.]),
-    ("radio", [13., 13.]),
-    ("range", [129., 16.]),
-    ("color", [50., 27.]),
-];
+pub(super) enum ControlKind {
+    Checkbox,
+    Radio,
+    Range,
+    Color,
+}
 
-pub(super) fn size(kind: &str) -> [f32; 2] {
-    SIZES.iter().find(|(name, _)| *name == kind).unwrap().1
+pub(super) fn size(kind: ControlKind) -> [f32; 2] {
+    match kind {
+        ControlKind::Checkbox | ControlKind::Radio => [13., 13.],
+        ControlKind::Range => [129., 16.],
+        ControlKind::Color => [50., 27.],
+    }
 }
 
 /// HTML rendering: text entry widgets cannot use a line-height below normal,
@@ -28,7 +33,7 @@ pub(super) fn text_style(style: &Computed) -> Computed {
     let normal = crate::text::metrics::normal_px(crate::text::metrics::normal_line(family), font);
     let line = c
         .line_height
-        .and_then(|l| crate::text::metrics::fallback_len_px(l, family, font))
+        .and_then(|l| l.to_px(None, FontCx::new(family, font)))
         .unwrap_or(normal);
     c.line_height = Some(Len::Px(line.max(normal)));
     c
@@ -40,10 +45,10 @@ mod tests {
 
     #[test]
     fn native_metrics_use_browser_defaults() {
-        assert_eq!(size("checkbox"), [13., 13.]);
-        assert_eq!(size("radio"), size("checkbox"));
-        assert_eq!(size("range"), [129., 16.]);
-        assert_eq!(size("color"), [50., 27.]);
+        assert_eq!(size(ControlKind::Checkbox), [13., 13.]);
+        assert_eq!(size(ControlKind::Radio), size(ControlKind::Checkbox));
+        assert_eq!(size(ControlKind::Range), [129., 16.]);
+        assert_eq!(size(ControlKind::Color), [50., 27.]);
     }
 
     #[test]

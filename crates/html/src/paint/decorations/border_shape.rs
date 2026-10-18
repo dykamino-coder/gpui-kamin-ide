@@ -2,7 +2,7 @@
 // owner: A
 
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::px_lossy_zero;
 use gpui::{IntoElement, Styled, px};
 
 pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
@@ -18,10 +18,7 @@ pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>) 
         let outer_out = c.geometry_outsets(bs.outer_box);
         let inner = bs.inner.clone().map(|(s, k)| (s, c.geometry_outsets(k)));
         let ext = c.border_shape_ext();
-        let side_px = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let side_px = px_lossy_zero;
         let w = c.borders();
         let [t, r, b, l] = [
             side_px(w.top),

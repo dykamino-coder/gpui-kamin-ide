@@ -5,7 +5,7 @@ mod flatten;
 mod prepare;
 pub(crate) mod slotted;
 use crate::dom::shadow::assignment::assign_slots;
-use crate::dom::shadow::assignment::declarative_shadow;
+pub(super) use crate::dom::shadow::assignment::declarative_shadow;
 pub(super) use crate::dom::shadow::flatten::finish_slots;
 pub(super) use prepare::prepare;
 

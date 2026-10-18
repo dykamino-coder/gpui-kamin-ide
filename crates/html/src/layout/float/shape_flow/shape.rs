@@ -1,6 +1,7 @@
 //! Форма выреза флоата (shape-outside): коробки, отступ формы, многоугольник.
 
 use crate::dom::Element;
+use crate::tolerance::COORD_EPS;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn float_shape_of(
@@ -51,8 +52,8 @@ pub(super) fn float_shape_of(
                 // оси зажат [0, mw] — как растровый путь
                 // (`background::shape_profile`). Лежащий внутри — прежней
                 // аналитикой, ни на сотую не меняется.
-                const EPS: f32 = 0.01;
-                let spills = cy - ry < -EPS || cy + ry > mh + EPS || cx + rx > mw + EPS;
+                let spills =
+                    cy - ry < -COORD_EPS || cy + ry > mh + COORD_EPS || cx + rx > mw + COORD_EPS;
                 if spills {
                     let rows = mh.ceil().max(1.0) as usize;
                     let ext: Vec<f32> = (0..rows)

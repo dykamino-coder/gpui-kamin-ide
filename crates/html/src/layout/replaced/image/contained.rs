@@ -2,7 +2,7 @@
 
 use super::with::image_with;
 use crate::dom::Element;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, StyledImage, px};
 
 #[allow(clippy::result_large_err)]
@@ -13,10 +13,7 @@ pub(super) fn contained_image(
     d: gpui::Div,
 ) -> Result<AnyElement, gpui::Div> {
     if e.style.contains_width() || e.style.contains_height() {
-        let side = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let side = px_lossy_zero;
         let b = e.style.borders();
         let pad_x =
             side(e.style.padding.left) + side(e.style.padding.right) + side(b.left) + side(b.right);

@@ -1,8 +1,9 @@
 //! Measure atomic descendants in physical coordinates and cancel only the enclosing text turn.
 //! Independent native snapshots avoid nested access to the window's borrowed layout engine.
+
+use crate::hooks::Wrap;
 use gpui::{
-    AnyElement, App, AvailableSpace, Bounds, Element, ElementId, GlobalElementId,
-    InspectorElementId, IntoElement, LayoutId, MeasuredContent, Pixels, Style,
+    AnyElement, App, AvailableSpace, Bounds, LayoutId, MeasuredContent, Pixels, Style,
     TransformationMatrix, Window, point, px, size,
 };
 
@@ -31,28 +32,17 @@ fn flat_baseline(width: Pixels, baseline: Option<Pixels>, ccw: bool, central: bo
     if ccw { physical } else { width - physical }
 }
 
-impl Element for PhysicalAtomic {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
+impl Wrap for PhysicalAtomic {
+    fn child(&mut self) -> &mut AnyElement {
+        &mut self.child
     }
 
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
         let root = self.child.request_layout(window, cx);
         self.root = Some(root);
         let mut snapshot = window.snapshot_layout_measurement(root);
         let (ccw, central) = (self.ccw, self.central);
-        let id = window.request_measured_layout_with_physical_baselines(
+        window.request_measured_layout_with_physical_baselines(
             Style::default(),
             move |known, available, window, cx| {
                 let physical = snapshot.measure_physical_baselines(
@@ -83,19 +73,10 @@ impl Element for PhysicalAtomic {
                     ..MeasuredContent::new(size(physical.size.height, physical.size.width))
                 }
             },
-        );
-        (id, ())
+        )
     }
 
-    fn prepaint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        _state: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
+    fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let root = self.root.expect("physical child requested layout");
         window.compute_layout(
             root,
@@ -114,24 +95,8 @@ impl Element for PhysicalAtomic {
         });
     }
 
-    fn paint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        _bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
+    fn paint(&mut self, _bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         window.with_transformation_masked(self.inverse_text, |window| self.child.paint(window, cx));
-    }
-}
-
-impl IntoElement for PhysicalAtomic {
-    type Element = Self;
-    fn into_element(self) -> Self {
-        self
     }
 }
 

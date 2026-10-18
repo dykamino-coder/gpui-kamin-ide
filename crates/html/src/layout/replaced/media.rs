@@ -4,7 +4,7 @@ use crate::dom::Element;
 use crate::layout::block::containing::AVAIL_W;
 use crate::layout::replaced::{image, limits::css2_replaced_limits, replaced_used_style};
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_strict};
 use gpui::AnyElement;
 
 pub(crate) fn empty(e: &Element) -> bool {
@@ -49,10 +49,7 @@ pub(crate) fn resolve(e: &Element, inherited: &Computed, viewport: (f32, f32)) -
         .filter(|r| r.is_finite() && *r > 0.0);
     let auto = |v| matches!(v, None | Some(Len::Auto));
     let (aw, ah) = (auto(s.width), auto(s.height));
-    let px = |v| match v {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    };
+    let px = |v| px_strict(v);
     let clamp = |v: f32, lo: Option<Len>, hi: Option<Len>| {
         v.min(px(hi).unwrap_or(f32::INFINITY))
             .max(px(lo).unwrap_or(0.0))

@@ -6,13 +6,11 @@ pub(super) use projection::paint_3d;
 
 use crate::paint::effects::transform_geometry::quarter_turn;
 use crate::paint::effects::transformed_element::Transformed;
-use gpui::{App, Bounds, GlobalElementId, InspectorElementId, LayoutId, Pixels, Window, px};
+use gpui::{App, Bounds, LayoutId, Pixels, Window, px};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn paint_body(
     group: &mut Transformed,
-    _id: Option<&GlobalElementId>,
-    _inspector_id: Option<&InspectorElementId>,
     bounds: Bounds<Pixels>,
     layout_id: &mut LayoutId,
     _prepaint: &mut (),
@@ -21,7 +19,7 @@ pub(super) fn paint_body(
 ) {
     if group.placed {
         crate::paint::decorations::outline_phase::scoped(window, cx, |window, cx| {
-            group.child.as_mut().unwrap().paint(window, cx);
+            group.child.paint(window, cx);
         });
         return;
     }
@@ -183,7 +181,7 @@ pub(super) fn paint_body(
             matrix.translation[0] += snap(exact.0) - cur.0;
             matrix.translation[1] += snap(exact.1) - cur.1;
         }
-        let child = group.child.as_mut().unwrap();
+        let child = &mut group.child;
         crate::layout::fragment::effect_fragment::paint(
             matrix,
             fill_matrix.unwrap_or(matrix),

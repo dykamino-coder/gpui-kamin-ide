@@ -177,14 +177,14 @@ pub(crate) fn layered(
                 cell: cell.clone(),
                 child: el,
             };
-            let deferred = gpui::deferred(inner)
+            let deferred = gpui::deferred(crate::hooks::IntoHooked::into_hooked(inner))
                 .with_priority(z as usize)
                 .into_any_element();
-            crate::paint::effects::mask::element::MaskKeep {
+            let keep = crate::paint::effects::mask::element::MaskKeep {
                 cell,
                 child: deferred,
-            }
-            .into_any_element()
+            };
+            crate::hooks::IntoHooked::hooked(keep)
         }
         // ПРОБОВАЛИ И ОТКАТИЛИ: откладывать ЛЮБОЙ абсолютный элемент, чтобы
         // он рисовался поверх соседей (CSS 2.1 §9.9, шаг 8). На пробе помогло

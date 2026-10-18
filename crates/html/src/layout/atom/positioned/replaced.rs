@@ -1,6 +1,7 @@
 //! Абсолютный замещаемый атом: держатель, слой ICB и статическое место.
 
 use crate::dom::Element;
+use crate::hooks::IntoHooked;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::replaced::image::image;
 use crate::layout::replaced::{inline_replaced_position, replaced_content};
@@ -92,7 +93,7 @@ pub(super) fn replaced_abs_atom(
         && !(positioned_cb && below_icb)
     {
         let holder: AnyElement = if below_icb {
-            crate::paint::effects::underlay::Underlay::new(holder).into_any_element()
+            crate::paint::effects::underlay::Underlay::new(holder).hooked()
         } else {
             holder
         };

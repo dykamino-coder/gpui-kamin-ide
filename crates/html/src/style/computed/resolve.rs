@@ -7,6 +7,8 @@ mod container_units;
 mod decor_inset;
 mod derived;
 mod em;
+mod len_px;
+pub use len_px::FontCx;
 pub(super) mod image_lengths;
 mod logical;
 

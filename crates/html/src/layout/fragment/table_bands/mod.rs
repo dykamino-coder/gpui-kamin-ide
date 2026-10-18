@@ -13,6 +13,7 @@ use row_cuts::{RowRef, table_row_cuts};
 mod shape_bands;
 use shape_bands::table_shape_bands;
 mod serial;
+use crate::tolerance::COORD_EPS;
 pub(crate) use serial::serial_table_parallel;
 
 /// Табличная коробка — по тегу или по `display`.
@@ -96,11 +97,11 @@ pub(crate) fn repeat_bands_in(c: &Element, per: f32, cx: ShapeCx) -> Option<Repe
     let max = per / 4.0;
     let head = b
         .head
-        .filter(|&(_, h)| b.head_avoid && h > 0.01 && h <= max + 0.01)
+        .filter(|&(_, h)| b.head_avoid && h > COORD_EPS && h <= max + COORD_EPS)
         .map(|(at, h)| (at, h + b.spacing));
     let foot = b
         .foot
-        .filter(|&(_, h)| b.foot_avoid && h > 0.01 && h <= max + 0.01)
+        .filter(|&(_, h)| b.foot_avoid && h > COORD_EPS && h <= max + COORD_EPS)
         .map(|(at, h)| (at - b.spacing, h + b.spacing));
     if head.is_none() && foot.is_none() {
         return None;

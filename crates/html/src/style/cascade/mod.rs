@@ -4,7 +4,7 @@
 use crate::style::cascade::defaults::{inherited_property, initial_value};
 use crate::style::cascade::vars::{resolve_attrs, resolve_sibling, resolve_vars};
 use crate::style::computed::{
-    BG_LIST_KEYS, Computed, background_layers, font_members, top_level_comma,
+    BgListProp, Computed, background_layers, font_members, top_level_comma,
 };
 use crate::style::css::{Decls, Rule};
 use crate::style::values::value::Color;
@@ -184,31 +184,37 @@ impl Computed {
         // поля стиля несут верхний слой, а список целиком хранится сырым —
         // по нему рисуются все слои (`Computed::bg_layers`). Запись без
         // запятой список своего свойства снимает; сокращение — все.
-        if BG_LIST_KEYS.contains(&key) {
-            if key == "background-blend-mode" && !crate::style::computed::background_blend_valid(v)
-            {
+        if let Some(prop) = BgListProp::from_key(key) {
+            if prop == BgListProp::BlendMode && !crate::style::computed::background_blend_valid(v) {
                 return;
             }
-            if key == "background" {
+            if prop == BgListProp::Shorthand {
                 // background-blend-mode is not a background shorthand member.
-                self.bg_lists.retain(|(k, _)| k == "background-blend-mode");
+                self.bg_lists.retain(|k| k == BgListProp::BlendMode);
             } else {
-                self.bg_lists.retain(|(k, _)| k != key);
+                self.bg_lists.remove(prop);
             }
             if top_level_comma(v).is_some() {
-                if key != "background" {
+                if prop != BgListProp::Shorthand {
                     // Верхний слой — обычным разбором; список кладётся ПОСЛЕ:
                     // вложенный вызов того же свойства его бы снял.
                     let first = background_layers(v)[0].to_string();
                     self.apply_one(key, &first);
-                    self.bg_lists.push((key.to_string(), v.to_string()));
+                    self.bg_lists.set(prop, v.to_string());
                     return;
                 }
-                self.bg_lists.push((key.to_string(), v.to_string()));
+                self.bg_lists.set(prop, v.to_string());
             }
         }
-        // Свойства разнесены по группам (`props/*`): у каждого ключа ровно одна группа,
-        // ветви внутри группы идут в исходном порядке.
+        self.apply_property(key, val, v);
+    }
+
+    /// Query the actual property dispatcher, including delegated property groups.
+    pub(crate) fn recognizes_property(key: &str) -> bool {
+        Self::default().apply_property(key, "", "")
+    }
+
+    fn apply_property(&mut self, key: &str, val: &str, v: &str) -> bool {
         let groups: [fn(&mut Self, &str, &str, &str, &mut bool); 14] = [
             Self::apply_scroll,
             Self::apply_display_flex,
@@ -229,8 +235,9 @@ impl Computed {
             let mut hit = true;
             group(self, key, val, v, &mut hit);
             if hit {
-                return;
+                return true;
             }
         }
+        false
     }
 }

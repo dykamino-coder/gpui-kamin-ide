@@ -1,12 +1,12 @@
 //! Collect lines by hypothetical sizes before resolving an oversized item's shrink.
 
 use super::super::items::row_item_width;
-use super::geometry::{px, row_container};
+use super::geometry::row_container;
 use super::intrinsic::intrinsic_main;
 use crate::dom::{Element, Node};
 use crate::render::{is_blank, out_of_flow};
 use crate::style::computed::Align;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_auto_zero};
 
 pub(super) type Lines = Vec<Vec<(usize, Element)>>;
 
@@ -14,7 +14,7 @@ pub(super) fn collect_lines(c: &Element, main: f32, depth: u8) -> Option<Lines> 
     if depth == 0 || !row_container(c) || main <= 0.0 {
         return None;
     }
-    let gap = px(c.style.gap.and_then(|g| g.1))?.max(0.0);
+    let gap = px_auto_zero(c.style.gap.and_then(|g| g.1))?.max(0.0);
     let mut items = Vec::new();
     for (source, n) in c.children.iter().enumerate().filter(|(_, n)| !is_blank(n)) {
         let Node::Element(k) = n else { return None };
@@ -55,9 +55,12 @@ pub(super) fn collect_lines(c: &Element, main: f32, depth: u8) -> Option<Lines> 
         let edges = if s.border_box == Some(true) {
             0.0
         } else {
-            px(s.padding.left)? + px(s.padding.right)? + px(b.left)? + px(b.right)?
-        } + px(s.margin.left)?
-            + px(s.margin.right)?;
+            px_auto_zero(s.padding.left)?
+                + px_auto_zero(s.padding.right)?
+                + px_auto_zero(b.left)?
+                + px_auto_zero(b.right)?
+        } + px_auto_zero(s.margin.left)?
+            + px_auto_zero(s.margin.right)?;
         let outer = hypothetical + edges;
         let actual = if outer > main + 0.01 {
             // This item necessarily occupies a line alone. Its known intrinsic

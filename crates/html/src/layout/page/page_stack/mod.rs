@@ -1,7 +1,7 @@
 //! Элемент стопки страниц `PageStack`.
 
 use crate::layout::fragment::types::Frag;
-use gpui::{AnyElement, Bounds, IntoElement, Pixels, point, px, size};
+use gpui::{AnyElement, Bounds, Pixels, point, px, size};
 mod canvas;
 pub(crate) use canvas::{CanvasLayerFn, builder as canvas_builder, image_layers};
 mod axis;
@@ -209,13 +209,5 @@ impl PageStack {
         gpui::ContentMask {
             bounds: area.intersect(&sheet),
         }
-    }
-}
-
-impl IntoElement for PageStack {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
     }
 }

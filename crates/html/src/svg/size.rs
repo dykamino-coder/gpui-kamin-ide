@@ -1,6 +1,7 @@
 //! Размер рисунка: атрибуты, `viewBox`, замещаемый размер по умолчанию, вписывание в пределы.
 
 use crate::dom::Element;
+use crate::style::values::value::px_strict;
 
 /// Размер рисунка в логических пикселях: из атрибутов, иначе из `viewBox`.
 pub fn size_of(e: &Element) -> (f32, f32) {
@@ -146,10 +147,7 @@ pub(super) fn view_box_ratio(e: &Element) -> Option<(f32, f32)> {
 /// Возвращает копию с обеими сторонами в точках — их и возьмёт `size_of`.
 pub fn stretch_fit(e: &Element, cb_width: Option<f32>) -> Element {
     use crate::style::values::value::Len;
-    let px = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    };
+    let px = px_strict;
     let attr_num = |name: &str| -> bool {
         e.attr(name)
             .and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok())

@@ -21,8 +21,7 @@ pub(super) use tracks::uncollapsed;
 
 use gpui::{Bounds, Pixels};
 
-/// Допуск сравнения координат раскладки.
-pub(super) const GAP_EPS: f32 = 0.35;
+pub(super) use crate::tolerance::GAP_RULE_EPS;
 
 /// Элемент в осях `a` — поперёк промежутка, `b` — вдоль линейки.
 #[derive(Clone, Copy, Debug)]
@@ -72,16 +71,16 @@ impl GapItem {
 
     /// Заходит ли элемент в участок `[lo, hi]` вдоль линейки.
     pub(crate) fn covers_b(&self, lo: f32, hi: f32) -> bool {
-        self.b0 < hi - GAP_EPS && self.b1 > lo + GAP_EPS
+        self.b0 < hi - GAP_RULE_EPS && self.b1 > lo + GAP_RULE_EPS
     }
 
     /// Перекрывает ли элемент промежуток `[g0, g1]` (спан через него).
     pub(crate) fn spans_a(&self, g0: f32, g1: f32) -> bool {
-        if g1 - g0 <= GAP_EPS {
+        if g1 - g0 <= GAP_RULE_EPS {
             // Touching a track boundary does not span the zero-sized gutter.
-            return self.a0 < g0 - GAP_EPS && self.a1 > g1 + GAP_EPS;
+            return self.a0 < g0 - GAP_RULE_EPS && self.a1 > g1 + GAP_RULE_EPS;
         }
-        self.a0 <= g0 + GAP_EPS && self.a1 >= g1 - GAP_EPS
+        self.a0 <= g0 + GAP_RULE_EPS && self.a1 >= g1 - GAP_RULE_EPS
     }
 }
 
@@ -122,13 +121,13 @@ impl GapRun {
     /// поперечной линейки. У внутреннего cap процентный inset сохраняет
     /// геометрическую ширину пересекающего зазора.
     pub(crate) fn edge(&self, pos: f32, is_start: bool) -> (f32, f32, bool, f32) {
-        if is_start && (pos - self.r0).abs() <= GAP_EPS {
+        if is_start && (pos - self.r0).abs() <= GAP_RULE_EPS {
             return match self.start_edge {
                 Some((cw, joins, dw)) => (self.r0, if joins { cw } else { 0.0 }, joins, dw),
                 None => (self.r0, 0.0, false, 0.0),
             };
         }
-        if !is_start && (pos - self.r1).abs() <= GAP_EPS {
+        if !is_start && (pos - self.r1).abs() <= GAP_RULE_EPS {
             return match self.end_edge {
                 Some((cw, joins, dw)) => (self.r1, if joins { cw } else { 0.0 }, joins, dw),
                 None => (self.r1, 0.0, false, 0.0),
@@ -137,7 +136,7 @@ impl GapRun {
         if let Some(c) = self
             .crossings
             .iter()
-            .find(|c| c.lo - GAP_EPS <= pos && pos <= c.hi + GAP_EPS)
+            .find(|c| c.lo - GAP_RULE_EPS <= pos && pos <= c.hi + GAP_RULE_EPS)
         {
             let at = if is_start { c.hi } else { c.lo };
             return (at, c.hi - c.lo, c.joins, c.cross_w);
@@ -148,7 +147,7 @@ impl GapRun {
 
 pub(super) fn uniq_sorted(mut v: Vec<f32>) -> Vec<f32> {
     v.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
-    v.dedup_by(|x, y| (*x - *y).abs() <= GAP_EPS);
+    v.dedup_by(|x, y| (*x - *y).abs() <= GAP_RULE_EPS);
     v
 }
 

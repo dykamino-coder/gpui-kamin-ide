@@ -5,7 +5,7 @@ use crate::dom::Element;
 use crate::layout::block::containing::AVAIL_W;
 use crate::layout::replaced::replaced_used_style;
 use crate::render::styled_div;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled};
 
 pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
@@ -110,10 +110,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         };
         // Контентная поправка: при `box-sizing: border-box` названный размер
         // или предел включает паддинг и рамку — рисунку остаётся остальное.
-        let side = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let side = px_lossy_zero;
         let (sub_w, sub_h) = if e.style.border_box == Some(true) {
             let b = e.style.borders();
             (

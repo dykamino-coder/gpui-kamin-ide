@@ -1,4 +1,4 @@
-//! Assignment for shadow; split out to keep the owning module within 250 lines.
+//! Discover declarative shadow roots, build their stylesheet scopes and assign slots.
 
 use super::{Scope, SlotInfo, Slotted, attr_of, is_slot, node_key};
 use crate::dom::*;
@@ -13,7 +13,7 @@ use std::rc::Rc;
 /// shadowrootmode="open|closed">` (HTML §13.2.6.4.4: второй такой шаблон к
 /// хосту не крепится и остаётся обычным `<template>`). Возвращает сам
 /// шаблон (его надо вычесть из светлых детей) и содержимое — корень тени.
-pub(super) fn declarative_shadow(host: &Handle) -> Option<(Handle, Handle)> {
+pub(in crate::dom) fn declarative_shadow(host: &Handle) -> Option<(Handle, Handle)> {
     host.children.borrow().iter().find_map(|child| {
         let NodeData::Element {
             name,

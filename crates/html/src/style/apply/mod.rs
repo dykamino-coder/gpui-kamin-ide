@@ -26,6 +26,7 @@ pub(super) mod paint;
 pub(crate) use crate::style::apply::paint::*;
 mod text;
 pub use crate::style::apply::text::*;
+use crate::style::computed::FontCx;
 
 /// Ширина/высота/отступ: доля родителя или пиксели.
 pub(crate) fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
@@ -40,9 +41,7 @@ pub(crate) fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
         | Len::Ic(_)
         | Len::Ex(_)
         | Len::Lh(_)
-        | Len::LhPx(..)) => {
-            px(crate::text::metrics::fallback_len_px(l, "", 16.0).unwrap_or(0.0)).into()
-        }
+        | Len::LhPx(..)) => px(l.to_px(None, FontCx::FALLBACK).unwrap_or(0.0)).into(),
         // Единицы окна разрешает сборщик дерева; сюда они доходят только у
         // узлов вне его — доля родителя ближе всего по смыслу.
         Len::Vw(k) | Len::Vh(k) => relative(k),

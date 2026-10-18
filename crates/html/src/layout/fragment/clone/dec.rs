@@ -111,6 +111,7 @@ pub(crate) fn clone_fragment(
     body.anim = None;
     body.list_item = None;
     let clip_box = Element {
+        marks: Default::default(),
         list_item: None,
         node_id: c.node_id ^ 0x0BDB_C10E_0000_0001,
         anim: None,

@@ -38,9 +38,15 @@ pub fn serialize(e: &Element) -> String {
     out
 }
 
+/// Writes `e` as its own document of synthesized ids.
 pub(crate) fn write_element(e: &Element, out: &mut String) {
+    write_in(e, out, &super::ClipIds::for_document(e));
+}
+
+/// Writes `e` inside a document whose synthesized ids come from `ids`.
+pub(crate) fn write_in(e: &Element, out: &mut String, ids: &super::ClipIds) {
     // Синтезированный `<clipPath>` пишется ПЕРЕД элементом (см. `synth_clip`).
-    let clip_id = synth_clip(e, out);
+    let clip_id = synth_clip(e, out, ids);
     out.push('<');
     out.push_str(&e.tag);
     // `transform-origin` растеризатор не знает — точка отсчёта
@@ -81,7 +87,7 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
     for child in &e.children {
         match child {
             Node::Text(t) => escape_text(t, out),
-            Node::Element(el) => write_element(el, out),
+            Node::Element(el) => write_in(el, out, ids),
         }
     }
     IN_CLIP.with(|c| c.set(prev_clip));

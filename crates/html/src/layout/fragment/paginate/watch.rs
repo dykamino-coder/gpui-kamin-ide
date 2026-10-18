@@ -5,10 +5,8 @@
 //! in the watch set (only while a paginated copy is being built); the wrapper
 //! returns the inner layout node as its own, so taffy sees the same tree.
 
-use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Window,
-};
+use crate::hooks::{Hooks, IntoHooked};
+use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
@@ -29,7 +27,7 @@ pub(crate) fn building<T>(ids: &[u64], f: impl FnOnce() -> T) -> T {
 pub(crate) fn wrap(id: u64, el: AnyElement) -> AnyElement {
     let on = WATCH.with(|w| w.borrow().as_ref().is_some_and(|s| s.contains(&id)));
     if on {
-        Watch { id, inner: el }.into_any_element()
+        Watch { id, inner: el }.hooked()
     } else {
         el
     }
@@ -50,25 +48,11 @@ struct Watch {
     inner: AnyElement,
 }
 
-impl Element for Watch {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
+impl Hooks for Watch {
+    type Layout = ();
+    type Prepaint = ();
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
         let lid = self.inner.request_layout(window, cx);
         SEEN.with(|s| s.borrow_mut().insert(self.id, lid));
         (lid, ())
@@ -76,34 +60,22 @@ impl Element for Watch {
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut (),
+        _state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> Self::Prepaint {
         self.inner.prepaint(window, cx);
     }
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
+        _state: &mut Self::Layout,
+        _prepaint: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {
         self.inner.paint(window, cx);
-    }
-}
-
-impl IntoElement for Watch {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
     }
 }

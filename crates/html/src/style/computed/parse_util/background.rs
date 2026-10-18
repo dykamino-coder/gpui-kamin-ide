@@ -78,19 +78,6 @@ pub(in crate::style::computed) fn background_shorthand_valid(v: &str) -> bool {
     any
 }
 
-/// Фоновые свойства со списком слоёв (css-backgrounds-3 §2.1).
-pub(crate) const BG_LIST_KEYS: [&str; 9] = [
-    "background-blend-mode",
-    "background",
-    "background-image",
-    "background-size",
-    "background-position",
-    "background-repeat",
-    "background-origin",
-    "background-clip",
-    "background-attachment",
-];
-
 /// Validate the complete blend list before the cascade stores its first value.
 pub(crate) fn background_blend_valid(raw: &str) -> bool {
     if matches!(
