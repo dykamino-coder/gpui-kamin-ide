@@ -36,9 +36,14 @@ impl TaffyLayoutEngine {
             Size<Option<Pixels>>, Size<AvailableSpace>, &mut Window, &mut App,
         ) -> MeasuredContent + 'static,
     ) -> LayoutId {
+        // KaminIDE: `calc()` pairs of this style belong to this tree (`kamin_calc`).
+        let taffy_style = {
+            let _calc = self.taffy.calc_scope();
+            style.to_taffy(rem_size, scale_factor)
+        };
         self.taffy
             .new_leaf_with_context(
-                style.to_taffy(rem_size, scale_factor),
+                taffy_style,
                 NodeContext {
                     measure: std::rc::Rc::new(std::cell::RefCell::new(StackSafe::new(Box::new(
                         measure,

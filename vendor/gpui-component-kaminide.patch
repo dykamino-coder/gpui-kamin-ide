@@ -1,4 +1,4 @@
-# KaminIDE patches — gpui-component 0.7.1
+# KaminIDE patches — gpui-component 0.7.1 (longbridge/gpui-kit 87d10ae5e1299d1be18670a37570c5402f952e34)
 #
 # 1. Highlighter: cache captures within one budget (including empty results), resolving styles afresh so mutable/reused resolvers cannot return stale colors.
 # 2. Tests: retain exact upstream fixtures so published-crate tests do not depend on the original monorepo layout.

@@ -5,6 +5,7 @@ import argparse
 import base64
 import difflib
 import hashlib
+import json
 from pathlib import Path
 import subprocess
 import tempfile
@@ -12,16 +13,22 @@ import zlib
 
 ROOT = Path(__file__).resolve().parent.parent
 PINS = {
-    "gpui": "gpui-pre 0.3.8 (zed 279fe07)",
-    "gpui-windows": "gpui-pre-windows 0.3.8 (zed 279fe07)",
-    "gpui-base": "gpui-base 0.7.1",
-    "gpui-component": "gpui-component 0.7.1",
-    "taffy": "taffy 0.14.0",
+    "gpui": "gpui-pre 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)",
+    "gpui-windows": "gpui-pre-windows 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)",
+    "gpui-base": "gpui-base 0.7.1 (longbridge/gpui-kit 87d10ae5e1299d1be18670a37570c5402f952e34)",
+    "gpui-component": "gpui-component 0.7.1 (longbridge/gpui-kit 87d10ae5e1299d1be18670a37570c5402f952e34)",
+    "taffy": "taffy 0.14.0 (DioxusLabs/taffy 2d936b7701f64b0fe95e50f1bfdcfc65a9f88f6f, cargo package)",
     "html5ever": "html5ever 0.40.1",
     "markup5ever_rcdom": "markup5ever_rcdom 0.39.0+unofficial",
     "resvg": "resvg 0.48.1 + src at linebender/resvg 77b12f4951a7b75d759c42e8c9497cff7c839c3c",
     "usvg": "usvg 0.48.1 + src at linebender/resvg 77b12f4951a7b75d759c42e8c9497cff7c839c3c",
 }
+PACKAGE_REVISIONS = {
+    "gpui-base": "87d10ae5e1299d1be18670a37570c5402f952e34",
+    "gpui-component": "87d10ae5e1299d1be18670a37570c5402f952e34",
+    "taffy": "2d936b7701f64b0fe95e50f1bfdcfc65a9f88f6f",
+}
+
 FIXES = {
     "gpui": [
         "CSS layout: pass measured baselines and intrinsic image sizes into Taffy so flex/grid sizing and alignment use text/image metrics.",
@@ -138,6 +145,11 @@ def is_binary(data):
         return True
 
 
+def has_trailing_whitespace(data):
+    # Preserve upstream bytes without introducing whitespace errors into the patch file.
+    return any(line.endswith((b" ", b"\t")) for line in data.splitlines())
+
+
 def render(name, before, after):
     lines = [f"# KaminIDE patches — {PINS[name]}\n", "#\n"]
     lines += [f"# {i}. {reason}\n" for i, reason in enumerate(FIXES[name], 1)]
@@ -156,7 +168,7 @@ def render(name, before, after):
         old_id = blob_id(old) if rel in before else "0" * 40
         new_id = blob_id(new) if rel in after else "0" * 40
         lines.append(f"index {old_id}..{new_id}\n")
-        if is_binary(old) or is_binary(new):
+        if is_binary(old) or is_binary(new) or has_trailing_whitespace(old) or has_trailing_whitespace(new):
             lines += ["GIT binary patch\n", binary_literal(new), binary_literal(old)]
             continue
         delta = difflib.unified_diff(
@@ -192,6 +204,12 @@ def main():
     parser.add_argument("--scratch", type=Path, help="parent for disposable verification directory")
     parser.add_argument("--check", action="store_true", help="verify without overwriting the patch")
     args = parser.parse_args()
+    revision = PACKAGE_REVISIONS.get(args.crate)
+    if revision:
+        info = args.upstream / ".cargo_vcs_info.json"
+        actual = json.loads(info.read_text(encoding="utf-8"))["git"]["sha1"]
+        if actual != revision:
+            raise SystemExit(f"Wrong upstream revision: expected {revision}, got {actual}")
     before, after = upstream_files(args.upstream), vendor_files(args.crate)
     patch = render(args.crate, before, after)
     round_trip(args.crate, before, after, patch, args.scratch)
@@ -206,4 +224,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

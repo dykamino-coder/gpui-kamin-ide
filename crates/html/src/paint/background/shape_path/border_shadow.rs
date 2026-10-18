@@ -6,6 +6,7 @@ use crate::svg::path_scene::*;
 /// css-borders-4 border-shape-shadow-interaction: expand/contract the caster,
 /// blur at sigma=blur/2, then cut the border. Ordered mask paints preserve
 /// coverage at overlapping fill/stroke edges and translucent shadow colors.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn border_shape_shadow_scene(
     outer: (&str, [f32; 4]),
     inner: Option<(&str, [f32; 4])>,

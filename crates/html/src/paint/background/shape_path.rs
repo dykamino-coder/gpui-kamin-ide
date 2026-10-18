@@ -12,7 +12,6 @@ pub(crate) use border_masks::border_shape_mask_scene;
 pub(crate) use border_masks::border_shape_ring_scene;
 
 mod border_geometry;
-pub use border_geometry::border_shape_path;
 pub use border_geometry::motion_shape_d;
 pub use border_geometry::rrect_spec;
 

@@ -72,7 +72,7 @@ fn corner(d: &mut impl Sink, (rx, ry): (f32, f32), x: f32, y: f32) {
 /// (inset/rect/xywh и голое слово-коробка вместе с её радиусами) и
 /// `svg_path_of` (polygon, `path()`, `shape()`), — а вот круг и эллипс
 /// строит сам вызывающий: у офсет-пути своё начало обхода (самая правая
-/// точка) и своё направление (по часовой), а `border_shape_path` пишет их
+/// точка) и своё направление (по часовой), а `border_commands` задаёт их
 /// от левой точки против часовой. Прямоугольникам менять нечего:
 /// `rrect_d` уже начинает с левого конца верхней стороны и идёт по часовой —
 /// ровно как требует §paths.
@@ -104,12 +104,6 @@ pub fn motion_shape_d(raw: &str, w: f32, h: f32, radius: [(f32, f32); 4]) -> Opt
 /// Пустой `d` — вырожденная фигура (`circle(0%)`, `inset(100px)` шире
 /// коробки): не видно ничего, как в Blink
 /// (border-shape-collapsed-shape-clips-background).
-pub fn border_shape_path(raw: &str, rw: f32, rh: f32) -> Option<(String, &'static str)> {
-    let mut d = String::new();
-    let rule = border_commands(raw, rw, rh, &mut d)?;
-    Some((d.trim_end().to_string(), rule))
-}
-
 pub(super) fn border_commands(
     raw: &str,
     rw: f32,

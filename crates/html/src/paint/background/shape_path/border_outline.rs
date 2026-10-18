@@ -5,6 +5,7 @@ use crate::svg::path_scene::*;
 
 /// Blink BorderShapePainter::PaintOutline: offset the outer path, then
 /// subtract its inner offset. Double outlines paint both bands in one mask.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn border_shape_outline_scene(
     outer: (&str, [f32; 4]),
     single: bool,

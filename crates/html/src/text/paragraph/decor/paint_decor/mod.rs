@@ -10,6 +10,8 @@ impl Paragraph {
     /// Lines of the decorations over `frag` (bytes of one painted fragment;
     /// `x_of` maps a byte to its x, `baseline` is the fragment's baseline in
     /// logical px before device snapping).
+    // Decoration painting needs the fragment range, coordinate mapping and context.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn paint_decor(
         &self,
         frag: std::ops::Range<usize>,

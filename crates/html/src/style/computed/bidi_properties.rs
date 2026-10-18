@@ -4,6 +4,9 @@ use super::Computed;
 
 pub(super) fn apply(style: &mut Computed, key: &str, value: &str) {
     if key == "direction" {
+        if matches!(value.to_ascii_lowercase().as_str(), "ltr" | "rtl") {
+            style.accept_declaration();
+        }
         // CSS Cascade 4 section 7.3.2: inherit replaces the earlier value.
         // The parent direction is resolved by inline::inherit from None.
         style.rtl = match value.to_ascii_lowercase().as_str() {
@@ -31,6 +34,7 @@ pub(super) fn apply(style: &mut Computed, key: &str, value: &str) {
         return;
     }
     // CSS Cascade 4 section 7.3.2: inherit replaces every part of the value.
+    style.accept_declaration();
     style.bidi_inherit = value == "inherit";
     style.bidi_override = Some(matches!(value, "bidi-override" | "isolate-override"));
     style.bidi_isolate = Some(matches!(value, "isolate" | "isolate-override"));

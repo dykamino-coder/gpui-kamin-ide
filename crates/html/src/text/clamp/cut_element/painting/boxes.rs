@@ -1,4 +1,4 @@
-//! Fragmented ancestor edges and collapsed end margins at a clamp point.
+//! Probed clamp boxes and the collapsed end edges of their ancestor chains.
 
 /// A probed block box inside the clamp container, in box-tree preorder.
 #[derive(Debug)]
@@ -49,18 +49,21 @@ impl ClampBox {
 /// overflow-4 §5.3; Blink `LineClampAncestorChain::
 /// InnerFinalLineClampBlockSize`). The clamp container is an independent
 /// BFC, so the margin left over at its end stays inside it.
-pub(super) fn chain_end(point: f32, chain: &[&ClampBox]) -> f32 {
+pub(in crate::text::clamp::cut_element) fn chain_end(point: f32, chain: &[&ClampBox]) -> f32 {
     chain_end_with(point, chain, true)
 }
 
 /// Space the end edges of `chain` take after the point, `min-height` aside
 /// (the line budget of `line-clamp: auto`).
-pub(super) fn chain_extra(chain: &[&ClampBox]) -> f32 {
+pub(in crate::text::clamp::cut_element) fn chain_extra(chain: &[&ClampBox]) -> f32 {
     chain_end_with(0.0, chain, false)
 }
 
 /// Used border-box heights of the boxes of `chain` (see `chain_end`).
-pub(super) fn chain_sizes(point: f32, chain: &[&ClampBox]) -> Vec<(u64, f32)> {
+pub(in crate::text::clamp::cut_element) fn chain_sizes(
+    point: f32,
+    chain: &[&ClampBox],
+) -> Vec<(u64, f32)> {
     (0..chain.len())
         .map(|i| {
             let b = chain[i];

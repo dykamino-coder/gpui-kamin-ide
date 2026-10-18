@@ -2,6 +2,9 @@
 use crate::style::computed::Computed;
 use crate::style::css::{Rule, Selector, parse_decls};
 
+mod svg;
+use svg::foreign_object;
+
 /// HTML rendering §15.3.8: cell nowrap is a presentational hint, with a
 /// nonzero-length width exception in quirks mode. Author CSS takes precedence.
 pub(super) fn nowrap(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
@@ -46,46 +49,6 @@ pub(super) fn rules(
         .chain(super::presentational_legacy::rule(tag, attrs, path))
         .chain(foreign_object(tag, attrs))
         .collect()
-}
-
-/// SVG 2 §6.6 presentation attributes of `<foreignObject>` that style its
-/// HTML formatting context (the box and the inherited text properties of its
-/// content). Like HTML hints they form specificity-0 author rules ahead of
-/// every author sheet. Other SVG elements are painted by the SVG rasterizer,
-/// which reads its own attributes.
-fn foreign_object(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
-    const MAPPED: [&str; 18] = [
-        "color",
-        "direction",
-        "display",
-        "font-family",
-        "font-size",
-        "font-size-adjust",
-        "font-stretch",
-        "font-style",
-        "font-variant",
-        "font-weight",
-        "letter-spacing",
-        "overflow",
-        "text-decoration",
-        "text-overflow",
-        "unicode-bidi",
-        "visibility",
-        "white-space",
-        "word-spacing",
-    ];
-    if !tag.eq_ignore_ascii_case("foreignObject") {
-        return None;
-    }
-    let css: Vec<String> = attrs
-        .iter()
-        .filter(|(k, v)| MAPPED.contains(&k.as_str()) && !v.contains([';', '{', '}']))
-        .map(|(k, v)| format!("{k}: {v}"))
-        .collect();
-    if css.is_empty() {
-        return None;
-    }
-    hint(&css.join("; "))
 }
 
 /// HTML rendering §15.3.4: legacy font colors participate below author CSS.

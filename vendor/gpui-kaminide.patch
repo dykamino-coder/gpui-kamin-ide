@@ -1,4 +1,4 @@
-# KaminIDE patches — gpui-pre 0.3.8 (zed 279fe07)
+# KaminIDE patches — gpui-pre 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
 # 1. CSS layout: pass measured baselines and intrinsic image sizes into Taffy so flex/grid sizing and alignment use text/image metrics.
 # 2. CSS painting: stacking collectors retain DOM order independently of layout; transforms, clipping, gradients and compositing preserve CSS paint contexts.
@@ -5204,14 +5204,169 @@ index bd7e923955bb1e9fc408c627374554a31d9a317c..99b198d7a86ae9e03fbd1f60d3543514
 +version = "0.1"
 diff --git a/vendor/gpui/src/_accessibility.rs b/vendor/gpui/src/_accessibility.rs
 index af14b638cd086c3bf8e2be1888b152d67b8fbfc3..b0f4a2dc5e31d98623fc0803dc30b3eeac3c9593
---- a/vendor/gpui/src/_accessibility.rs
-+++ b/vendor/gpui/src/_accessibility.rs
-@@ -236 +236 @@
--//!     
-+//!
-@@ -240 +240 @@
--//!     
-+//!
+GIT binary patch
+literal 11001
+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
+I^U<UK0z3<@Jpcdz
+
+literal 11011
+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
+KHi`M@(SHGAT(5lq
+
 diff --git a/vendor/gpui/src/app.rs b/vendor/gpui/src/app.rs
 index a921de1aa0358a8672425fa241e14f38b70825ab..60f4eeab84cba3733a111ca4fe29022aecbddc38
 --- a/vendor/gpui/src/app.rs
@@ -5351,7 +5506,7 @@ index 0cca543ea5d4b0cf45d4509bbfe05c227f8b9255..3aae58a3858f7c9224211ec6d4bbde71
 +        // KaminIDE patch: overlay geometry is already in device coordinates.
 +        transformation: Default::default(),
 diff --git a/vendor/gpui/src/element.rs b/vendor/gpui/src/element.rs
-index d6556258e15f7cac891e14861a2cd323fa09f6cf..a2197127da34308ddea077acd97fe52e3723c885
+index d6556258e15f7cac891e14861a2cd323fa09f6cf..8dd9a6960d4284ccf37912991ba417a2c8059eb8
 --- a/vendor/gpui/src/element.rs
 +++ b/vendor/gpui/src/element.rs
 @@ -228,0 +229 @@
@@ -5450,7 +5605,7 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..a2197127da34308ddea077acd97fe52e
 +        }
 +    }
 +
-@@ -629,0 +721,19 @@
+@@ -629,0 +721,20 @@
 +        // KaminIDE patch: собиратель `PaintLast` проходит насквозь только
 +        // обычные коробки и свои метки; любой другой элемент может рисовать
 +        // в особом контексте (фрагменты, подложка, преобразование) — его
@@ -5462,6 +5617,7 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..a2197127da34308ddea077acd97fe52e
 +                || inner.is::<crate::PaintLast>()
 +                || inner.is::<crate::PaintInline>()
 +                || inner.is::<crate::PaintCollect>()
++                || inner.is::<crate::ContextScope>()
 +                // A nested `AnyElement` is a plain holder: its own `paint`
 +                // repeats this check for the element inside.
 +                || inner.is::<AnyElement>();
@@ -5711,8 +5867,122 @@ index d57d2f604166626137403b746656f433a77579f2..8a4b9dab8f5e3a698f5fad95973b6212
 +                bounds
 +            };
 +            (self.paint.take().unwrap())(paint_bounds, prepaint, window, cx)
+diff --git a/vendor/gpui/src/elements/context_scope.rs b/vendor/gpui/src/elements/context_scope.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..d68a0215feccc884a5243ce08d4eb0270c368791
+--- /dev/null
++++ b/vendor/gpui/src/elements/context_scope.rs
+@@ -0,0 +1,108 @@
++// KaminIDE patch: прозрачная обёртка, которая ставит контекст хозяина на
++// фазы своего поддерева.
++//
++// Документ движка HTML держит свои правила и арены в состоянии документа и
++// делает его текущим на время работы с ним; раскладка, подготовка и краска
++// идут после сборки кадра, поэтому обёртка входит в контекст на каждой фазе
++// (`enter` возвращает guard, его сброс — выход). Для раскладки и порядка
++// краски обёртки нет: узел раскладки — узел ребёнка, собиратель `PaintLast`
++// проходит её насквозь (`AnyElement::paint`), второй проход `Div` видит
++// `PaintLast` внутри неё (`is_paint_last`).
++
++use crate::{
++    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
++    LayoutId, Pixels, Window,
++};
++use std::any::Any;
++use std::rc::Rc;
++
++/// Фаза, на которую обёртка входит в контекст.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum ScopePhase {
++    RequestLayout,
++    Prepaint,
++    Paint,
++}
++
++/// Вход в контекст хозяина: guard живёт до конца фазы.
++pub type ScopeEnter = Rc<dyn Fn(ScopePhase) -> Box<dyn Any>>;
++
++/// Обёртка `child` с контекстом `enter`.
++pub struct ContextScope {
++    enter: ScopeEnter,
++    child: AnyElement,
++}
++
++impl ContextScope {
++    pub fn new(enter: ScopeEnter, child: AnyElement) -> Self {
++        ContextScope { enter, child }
++    }
++}
++
++/// `PaintLast` — сам элемент или внутри прозрачных обёрток.
++pub(crate) fn is_paint_last(el: &mut AnyElement) -> bool {
++    if el.downcast_mut::<crate::PaintLast>().is_some() {
++        return true;
++    }
++    el.downcast_mut::<ContextScope>()
++        .is_some_and(|scope| is_paint_last(&mut scope.child))
++}
++
++impl Element for ContextScope {
++    type RequestLayoutState = ();
++    type PrepaintState = ();
++
++    fn id(&self) -> Option<ElementId> {
++        None
++    }
++
++    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
++        None
++    }
++
++    fn request_layout(
++        &mut self,
++        _id: Option<&GlobalElementId>,
++        _inspector_id: Option<&InspectorElementId>,
++        window: &mut Window,
++        cx: &mut App,
++    ) -> (LayoutId, ()) {
++        let _scope = (self.enter)(ScopePhase::RequestLayout);
++        (self.child.request_layout(window, cx), ())
++    }
++
++    fn prepaint(
++        &mut self,
++        _id: Option<&GlobalElementId>,
++        _inspector_id: Option<&InspectorElementId>,
++        _bounds: Bounds<Pixels>,
++        _state: &mut (),
++        window: &mut Window,
++        cx: &mut App,
++    ) {
++        let _scope = (self.enter)(ScopePhase::Prepaint);
++        self.child.prepaint(window, cx);
++    }
++
++    fn paint(
++        &mut self,
++        _id: Option<&GlobalElementId>,
++        _inspector_id: Option<&InspectorElementId>,
++        _bounds: Bounds<Pixels>,
++        _state: &mut (),
++        _prepaint: &mut (),
++        window: &mut Window,
++        cx: &mut App,
++    ) {
++        let _scope = (self.enter)(ScopePhase::Paint);
++        self.child.paint(window, cx);
++    }
++}
++
++impl IntoElement for ContextScope {
++    type Element = Self;
++
++    fn into_element(self) -> Self::Element {
++        self
++    }
++}
 diff --git a/vendor/gpui/src/elements/div.rs b/vendor/gpui/src/elements/div.rs
-index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f9e1d3778586cf231dd1decafcf9bfd598cd952f
+index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..2bd568d85c1377f4503e446aeaed433346de0db0
 --- a/vendor/gpui/src/elements/div.rs
 +++ b/vendor/gpui/src/elements/div.rs
 @@ -1854,0 +1855,4 @@
@@ -5817,7 +6087,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f9e1d3778586cf231dd1decafcf9bfd5
 +                        }
 +                        let mut late = false;
 +                        for child in &mut self.children {
-+                            if child.downcast_mut::<crate::PaintLast>().is_some() {
++                            if super::context_scope::is_paint_last(child) {
 +                                late = true;
 +                                continue;
 +                            }
@@ -5825,7 +6095,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f9e1d3778586cf231dd1decafcf9bfd5
 +                        }
 +                        if late {
 +                            for child in &mut self.children {
-+                                if child.downcast_mut::<crate::PaintLast>().is_some() {
++                                if super::context_scope::is_paint_last(child) {
 +                                    child.paint(window, cx);
 +                                }
 +                            }
@@ -6376,13 +6646,15 @@ index 0000000000000000000000000000000000000000..343803bd62d1ed7585cd58ac191b67b8
 +    }
 +}
 diff --git a/vendor/gpui/src/elements/mod.rs b/vendor/gpui/src/elements/mod.rs
-index 8a2a1b70a7bf28464547009020efa9caff8f0cff..b00aea81512de9289149d1ea4076d0474347b794
+index 8a2a1b70a7bf28464547009020efa9caff8f0cff..b0c786e6c81c637d82a0e7b0be4fb933f7120c1d
 --- a/vendor/gpui/src/elements/mod.rs
 +++ b/vendor/gpui/src/elements/mod.rs
-@@ -9,0 +10,2 @@
+@@ -9,0 +10,3 @@
 +// KaminIDE patch: второй проход краски детей `Div`.
++pub(crate) mod context_scope;
 +pub(crate) mod paint_last;
-@@ -23,0 +26 @@
+@@ -23,0 +27,2 @@
++pub use context_scope::{ContextScope, ScopeEnter, ScopePhase};
 +pub use paint_last::*;
 diff --git a/vendor/gpui/src/elements/paint_last.rs b/vendor/gpui/src/elements/paint_last.rs
 new file mode 100644
@@ -9363,7 +9635,7 @@ index 0000000000000000000000000000000000000000..764ccc5a38e83f418a3a0258164fedc4
 +    }
 +}
 diff --git a/vendor/gpui/src/taffy.rs b/vendor/gpui/src/taffy.rs
-index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..dabeb1eedc325ddfce932a2928abdc524225321a
+index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..ccec413177ae83210dd4f593996c2cc958c1b65b
 --- a/vendor/gpui/src/taffy.rs
 +++ b/vendor/gpui/src/taffy.rs
 @@ -0,0 +1,14 @@
@@ -9479,12 +9751,18 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..dabeb1eedc325ddfce932a2928abdc52
 +                    .map(Into::into),
 +            );
 +        }
-@@ -69,0 +145 @@
+@@ -69 +144,6 @@
+-        let taffy_style = style.to_taffy(rem_size, scale_factor);
++        // KaminIDE: `calc()` pairs of this style belong to this tree (`kamin_calc`).
++        let taffy_style = {
++            let _calc = self.taffy.calc_scope();
++            style.to_taffy(rem_size, scale_factor)
++        };
 +        crate::frame_perf::LAYOUT_NODES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-@@ -90 +166 @@
+@@ -90 +170 @@
 -        measure: impl FnMut(
 +        mut measure: impl FnMut(
-@@ -98,9 +174,31 @@
+@@ -98,9 +178,31 @@
 -        let taffy_style = style.to_taffy(rem_size, scale_factor);
 -        let measure = Box::new(measure) as Box<MeasureFn>;
 -        #[cfg(feature = "stacker")]
@@ -9525,7 +9803,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..dabeb1eedc325ddfce932a2928abdc52
 +                (size, first, None)
 +            },
 +        )
-@@ -139,45 +237,19 @@
+@@ -139,45 +241,19 @@
 -    // Used to understand performance
 -    #[allow(dead_code)]
 -    fn count_all_children(&self, parent: LayoutId) -> anyhow::Result<u32> {
@@ -9590,17 +9868,17 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..dabeb1eedc325ddfce932a2928abdc52
 +            let (size, first, last) = measure(known, available, window, cx);
 +            (size, first, last, None)
 +        })
-@@ -186,0 +259,2 @@
+@@ -186,0 +263,2 @@
 +    // KaminIDE patch: счётчики раскладки (`frame_perf`) — по ним видно, что
 +    // кадр дорог не рисованием, а числом узлов и замеров.
-@@ -204,0 +279 @@
+@@ -204,0 +283 @@
 +        crate::frame_perf::LAYOUT_RUNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-@@ -210 +285 @@
+@@ -210 +289 @@
 -                self.absolute_outer_origins.remove(&id);
 +                self.absolute_unrounded.remove(&id);
-@@ -234,0 +310 @@
+@@ -234,0 +314 @@
 +        let _taffy_started = std::time::Instant::now();
-@@ -239,26 +315,2 @@
+@@ -239,26 +319,2 @@
 -                |known_dimensions, available_space, _id, node_context, _style| {
 -                    let Some(node_context) = node_context else {
 -                        return taffy::geometry::Size::default();
@@ -9629,7 +9907,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..dabeb1eedc325ddfce932a2928abdc52
 -                    snap_measured_size_to_device_pixels(measured_size, scale_factor).into()
 +                |inputs, _id, node_context, style| {
 +                    measurement::leaf(inputs, node_context, style, scale_factor, window, cx)
-@@ -267,0 +320,110 @@
+@@ -267,0 +324,110 @@
 +        crate::frame_perf::TAFFY_US.fetch_add(
 +            _taffy_started.elapsed().as_micros() as u32,
 +            std::sync::atomic::Ordering::Relaxed,
@@ -9740,7 +10018,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..dabeb1eedc325ddfce932a2928abdc52
 +            .copied()
 +            .unwrap_or((0.0, 0.0));
 +        Some(((ax / scale_factor, ay / scale_factor), cols, rows))
-@@ -350,6 +512,8 @@
+@@ -350,6 +516,8 @@
 -        let layout = self.taffy.layout(id.into()).expect(EXPECT_MESSAGE);
 -        let layout_location = layout.location;
 -        let layout_size = layout.size;
@@ -9755,7 +10033,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..dabeb1eedc325ddfce932a2928abdc52
 +        // ошибка не копится по глубине. Размер считается как разность
 +        // округлённых краёв — иначе соседние блоки расходились бы щелью.
 +        let (parent_x, parent_y) = match self.taffy.parent(id.0) {
-@@ -357,7 +521,9 @@
+@@ -357,7 +525,9 @@
 -                let parent_id = LayoutId::from(parent_id);
 -                self.layout_bounds(parent_id, scale_factor);
 -                let parent_origin = *self
@@ -9772,11 +10050,11 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..dabeb1eedc325ddfce932a2928abdc52
 +                // KaminIDE patch: content of a `vertical-align: baseline`
 +                // table cell sits lower than its box (taffy `content_shift`).
 +                (px, py + self.taffy.content_shift(parent_id))
-@@ -365 +531,2 @@
+@@ -365 +535,2 @@
 -            None => Point::from(layout_location),
 +            // KaminIDE patch: корень с заданным местом (`set_root_origin`).
 +            None => self.root_origins.get(&id).copied().unwrap_or((0.0, 0.0)),
-@@ -367,10 +534,15 @@
+@@ -367,10 +538,15 @@
 -        self.absolute_outer_origins
 -            .insert(id, absolute_outer_origin);
 -
@@ -9802,7 +10080,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..dabeb1eedc325ddfce932a2928abdc52
 +                Pixels(((ay + layout.size.height).round() - ry) / scale_factor),
 +            ),
 +        };
-@@ -412,14 +584,12 @@
+@@ -412,14 +588,12 @@
 -fn snap_measured_size_to_device_pixels(size: Size<Pixels>, scale_factor: f32) -> Size<f32> {
 -    size.map(|d| ceil_to_device_pixel(d.0.max(0.0), scale_factor))
 -}
@@ -9829,7 +10107,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..dabeb1eedc325ddfce932a2928abdc52
 +    use taffy::style::{ExpandedLengthPercentage, ExpandedLengthPercentageAuto};
 +    let Ok(child) = tree.child_at_index(parent, index) else {
 +        return false;
-@@ -427,6 +597,21 @@
+@@ -427,6 +601,21 @@
 -    TaffyRect {
 -        top: snap(&widths.top),
 -        right: snap(&widths.right),
@@ -9857,7 +10135,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..dabeb1eedc325ddfce932a2928abdc52
 +    }
 +    style.max_size.width = taffy::LengthPercentageAuto::length(inner.max(0.0));
 +    tree.set_style(child, style).is_ok()
-@@ -448,0 +634,105 @@
+@@ -448,0 +638,105 @@
 +            }
 +        }
 +
@@ -9963,19 +10241,19 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..dabeb1eedc325ddfce932a2928abdc52
 +            match to_grid_track::<String>(track, scale_factor) {
 +                taffy::GridTemplateComponent::Single(one) => vec![one],
 +                _ => Default::default(),
-@@ -483 +773 @@
+@@ -483 +777 @@
 -        taffy::style::Style {
 +        let mut out = taffy::style::Style {
-@@ -484,0 +775,3 @@
+@@ -484,0 +779,3 @@
 +            block_flow: self.block_flow.map(|[vertical, block_reverse, inline_reverse]| taffy::BlockFlow {
 +                vertical, block_reverse, inline_reverse,
 +            }),
-@@ -492,0 +786,4 @@
+@@ -492,0 +790,4 @@
 +            aspect_ratio_preferred_size: taffy::Size {
 +                width: self.aspect_ratio_preferred_size[0].map(|v| v * scale_factor),
 +                height: self.aspect_ratio_preferred_size[1].map(|v| v * scale_factor),
 +            },
-@@ -495,5 +792,22 @@
+@@ -495,5 +796,22 @@
 -            border: border_widths_to_taffy(&self.border_widths, rem_size, scale_factor),
 -            align_items: self.align_items.map(|x| x.into()),
 -            align_self: self.align_self.map(|x| x.into()),
@@ -10003,7 +10281,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..dabeb1eedc325ddfce932a2928abdc52
 +                self.safe_alignment.3,
 +            )
 +            .unwrap_or(taffy::JustifyContent::NORMAL),
-@@ -502 +816,64 @@
+@@ -502 +820,64 @@
 -            flex_wrap: self.flex_wrap.into(),
 +            flex_wrap: alignment_adapter::flex_wrap(self.flex_wrap.into(), self.flex_balance_lines),
 +            // KaminIDE patch: `flex-wrap: balance` + `flex-line-count`.
@@ -10069,10 +10347,10 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..dabeb1eedc325ddfce932a2928abdc52
 +            }),
 +            // KaminIDE patch: подсетка (css-grid-2 §9), биты taffy.
 +            subgrid: self.grid_subgrid,
-@@ -503,0 +881,2 @@
+@@ -503,0 +885,2 @@
 +            // KaminIDE patch: пол GRIDMIN у таблицы-элемента.
 +            item_is_table: self.item_is_table,
-@@ -506,2 +885,70 @@
+@@ -506,2 +889,70 @@
 -            grid_template_rows: to_grid_repeat(&self.grid_rows),
 -            grid_template_columns: to_grid_repeat(&self.grid_cols),
 +            // KaminIDE patch: явный список дорожек имеет приоритет — он
@@ -10145,7 +10423,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..dabeb1eedc325ddfce932a2928abdc52
 +                    .collect::<Vec<_>>()
 +                    .into()
 +            },
-@@ -519 +966,132 @@
+@@ -519 +970,132 @@
 -        }
 +        };
 +        if let Some(keyword) = self.sizing_keywords[0] {
@@ -10279,26 +10557,26 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..dabeb1eedc325ddfce932a2928abdc52
 +        && auto(&out.grid_row.end)
 +    {
 +        out.grid_row.end = placement(p);
-@@ -525 +1103,5 @@
+@@ -525 +1107,5 @@
 -        round_to_device_pixel(self.to_pixels(rem_size).0, scale_factor)
 +        // KaminIDE patch: no pre-layout snapping of authored lengths (upstream
 +        // rounds them to device pixels here). CSS layout is fractional; edges
 +        // are snapped once, on absolute coordinates, in `layout_bounds`, and
 +        // border widths by the HTML painter (`border_snap`). See decisions.md.
 +        self.to_pixels(rem_size).0 * scale_factor
-@@ -557,0 +1140,3 @@
+@@ -557,0 +1144,3 @@
 +            DefiniteLength::Calc(add, fraction) => taffy::style::LengthPercentage::calc(
 +                taffy::tree::calc_handle(add * scale_factor, *fraction),
 +            ),
-@@ -568,0 +1154,3 @@
+@@ -568,0 +1158,3 @@
 +            DefiniteLength::Calc(add, fraction) => taffy::style::LengthPercentageAuto::calc(
 +                taffy::tree::calc_handle(add * scale_factor, *fraction),
 +            ),
-@@ -577,0 +1166,3 @@
+@@ -577,0 +1170,3 @@
 +            DefiniteLength::Calc(add, fraction) => taffy::style::Dimension::calc(
 +                taffy::tree::calc_handle(add * scale_factor, *fraction),
 +            ),
-@@ -745,17 +1336,7 @@
+@@ -745,17 +1340,7 @@
 -#[cfg(test)]
 -mod tests {
 -    use super::*;
@@ -10323,7 +10601,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..dabeb1eedc325ddfce932a2928abdc52
 +        crate::frame_perf::MEASURE_US.fetch_add(
 +            self.0.elapsed().as_micros() as u32,
 +            std::sync::atomic::Ordering::Relaxed,
-@@ -763,14 +1344,2 @@
+@@ -763,14 +1348,2 @@
 -        assert_eq!(
 -            taffy_border.right,
 -            taffy::style::LengthPercentage::length(1.0)
@@ -10421,10 +10699,10 @@ index 0000000000000000000000000000000000000000..ac66b037da54050936bd459b0de5e625
 +}
 diff --git a/vendor/gpui/src/taffy/line_baselines.rs b/vendor/gpui/src/taffy/line_baselines.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..b03d3c8005d4ae2f4cc72cb8b38e115bb6c3a84e
+index 0000000000000000000000000000000000000000..24cf6562a547799675fd060be9eebbe60c8fbc70
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/line_baselines.rs
-@@ -0,0 +1,78 @@
+@@ -0,0 +1,83 @@
 +//! Keep complete content line baselines alongside the matching performed native layout.
 +
 +use super::*;
@@ -10463,9 +10741,14 @@ index 0000000000000000000000000000000000000000..b03d3c8005d4ae2f4cc72cb8b38e115b
 +            Size<Option<Pixels>>, Size<AvailableSpace>, &mut Window, &mut App,
 +        ) -> MeasuredContent + 'static,
 +    ) -> LayoutId {
++        // KaminIDE: `calc()` pairs of this style belong to this tree (`kamin_calc`).
++        let taffy_style = {
++            let _calc = self.taffy.calc_scope();
++            style.to_taffy(rem_size, scale_factor)
++        };
 +        self.taffy
 +            .new_leaf_with_context(
-+                style.to_taffy(rem_size, scale_factor),
++                taffy_style,
 +                NodeContext {
 +                    measure: std::rc::Rc::new(std::cell::RefCell::new(StackSafe::new(Box::new(
 +                        measure,
@@ -10621,10 +10904,10 @@ index 0000000000000000000000000000000000000000..ced13914793e71b2a738d460be0294a1
 +}
 diff --git a/vendor/gpui/src/taffy/measurement.rs b/vendor/gpui/src/taffy/measurement.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..756b682af5d756d50bd15a1251f92a65f6150600
+index 0000000000000000000000000000000000000000..1e705dc18f0bc34bf53bfbaf6479b179eb41a2f1
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/measurement.rs
-@@ -0,0 +1,163 @@
+@@ -0,0 +1,165 @@
 +//! Measure a copied native subtree while the Window layout engine is borrowed by a parent.
 +//! Styles and cache state are independent; actual element measurement callbacks are shared.
 +
@@ -10653,6 +10936,8 @@ index 0000000000000000000000000000000000000000..756b682af5d756d50bd15a1251f92a65
 +    pub fn snapshot_measurement(&self, root: LayoutId, scale_factor: f32) -> LayoutMeasurement {
 +        let mut tree = TaffyTree::new();
 +        tree.disable_rounding();
++        // The copied styles carry the engine tree's `calc()` handles.
++        tree.share_calc_registry(&self.taffy);
 +        let root = copy_subtree(&self.taffy, &mut tree, root.into());
 +        LayoutMeasurement {
 +            tree,
@@ -18912,7 +19197,7 @@ index 0000000000000000000000000000000000000000..9ccc43460fdfb21840d3fa74dec75d15
 +Source: https://github.com/zed-industries/zed/tree/279fe070bb389b79652e52065b2f001edcc0b11b/assets/fonts
 diff --git a/vendor/gpui/tests/fonts/ibm-plex-sans-license.txt b/vendor/gpui/tests/fonts/ibm-plex-sans-license.txt
 new file mode 100644
-index 0000000000000000000000000000000000000000..f72f76504cd73cf2c00b140b2743c138320597b6
+index 0000000000000000000000000000000000000000..d008129105e615700e354c9d3ac4d2c08646ab9b
 --- /dev/null
 +++ b/vendor/gpui/tests/fonts/ibm-plex-sans-license.txt
 @@ -0,0 +1,92 @@
@@ -18935,7 +19220,7 @@ index 0000000000000000000000000000000000000000..f72f76504cd73cf2c00b140b2743c138
 +
 +The OFL allows the licensed fonts to be used, studied, modified and
 +redistributed freely as long as they are not sold by themselves. The
-+fonts, including any derivative works, can be bundled, embedded, 
++fonts, including any derivative works, can be bundled, embedded,
 +redistributed and/or sold with any software provided that any reserved
 +names are not used by derivative works. The fonts and derivatives,
 +however, cannot be released under any other type of license. The
@@ -19011,7 +19296,7 @@ index 0000000000000000000000000000000000000000..f72f76504cd73cf2c00b140b2743c138
 \ No newline at end of file
 diff --git a/vendor/gpui/tests/fonts/lilex-OFL.txt b/vendor/gpui/tests/fonts/lilex-OFL.txt
 new file mode 100644
-index 0000000000000000000000000000000000000000..156240bc907aa14571afb18b4b1bde62d3ea33e0
+index 0000000000000000000000000000000000000000..ddf53c3e7fbc56e75e881fed7b19bebdf2449b7b
 --- /dev/null
 +++ b/vendor/gpui/tests/fonts/lilex-OFL.txt
 @@ -0,0 +1,93 @@
@@ -19035,7 +19320,7 @@ index 0000000000000000000000000000000000000000..156240bc907aa14571afb18b4b1bde62
 +
 +The OFL allows the licensed fonts to be used, studied, modified and
 +redistributed freely as long as they are not sold by themselves. The
-+fonts, including any derivative works, can be bundled, embedded, 
++fonts, including any derivative works, can be bundled, embedded,
 +redistributed and/or sold with any software provided that any reserved
 +names are not used by derivative works. The fonts and derivatives,
 +however, cannot be released under any other type of license. The

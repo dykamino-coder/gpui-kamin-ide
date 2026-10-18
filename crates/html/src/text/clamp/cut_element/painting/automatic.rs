@@ -1,8 +1,8 @@
 //! Automatic clamp points at fitting lines and fragmentable ancestor edges.
 
-use super::geometry::ClampGeometry;
+use super::ClampCut;
 
-impl ClampGeometry {
+impl ClampCut {
     pub(crate) fn automatic_cut(
         &self,
         mut cut: Option<f32>,

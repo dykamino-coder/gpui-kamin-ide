@@ -1,4 +1,4 @@
-# KaminIDE patches — gpui-pre-windows 0.3.8 (zed 279fe07)
+# KaminIDE patches — gpui-pre-windows 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
 # 1. DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.
 # 2. DirectX: CSS primitives, images, filters, masks, gradients and frame capture.

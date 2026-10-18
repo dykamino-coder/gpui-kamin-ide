@@ -1,9 +1,9 @@
 //! Counted line budgets and ancestor sizes from probe geometry.
 
+use super::ClampCut;
 use super::ClampEntry;
-use super::geometry::ClampGeometry;
 
-impl ClampGeometry {
+impl ClampCut {
     pub(crate) fn counted_cut(
         &self,
         mut cut: Option<f32>,

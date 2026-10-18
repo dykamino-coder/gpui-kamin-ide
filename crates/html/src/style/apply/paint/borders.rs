@@ -185,7 +185,7 @@ pub(super) fn paint_border_colors(mut d: Div, c: &Computed) -> Div {
     // `grid-gap-decorations-*` с `border-right: 6px solid rgba(…/.5)` темнели
     // до двух слоёв). Полосы красят и стороны без своего цвета — см. там же.
     let strips =
-        !sides.is_empty() && !(sides.len() == 4 && uniform.is_some()) && c.border_shape.is_none();
+        !(sides.is_empty() || sides.len() == 4 && uniform.is_some()) && c.border_shape.is_none();
     if !border_image_on
         && !crate::paint::background::single_corner::eligible(c)
         && !mixed

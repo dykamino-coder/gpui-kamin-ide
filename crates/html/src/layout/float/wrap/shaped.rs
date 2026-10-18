@@ -97,7 +97,8 @@ pub(super) fn wrap_shaped_run(
                     None
                 },
                 ..Computed::default()
-            },
+            }
+            .into(),
             hover: None,
             first_letter: None,
             first_line: None,

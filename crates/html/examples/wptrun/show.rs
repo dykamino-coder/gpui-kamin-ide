@@ -39,6 +39,7 @@ impl Stage {
         prev: Option<Vec<u8>>,
         want_flat: bool,
         source: Option<&str>,
+        print: bool,
     ) -> Option<Shot> {
         let (window, hwnd, note) = (self.window, self.hwnd, &self.trace);
         let mut captures = CaptureCursor::new();
@@ -46,10 +47,13 @@ impl Stage {
             if let Ok(page) = view.downcast::<Page>() {
                 page.update(cx, |page, cx| {
                     page.doc = Rc::new(match source {
-                        Some(path) => {
-                            Document::new_with_path(&html, BROWSER_CSS, std::path::Path::new(path))
-                        }
-                        None => Document::new(&html, BROWSER_CSS),
+                        Some(path) => Document::new_with_path_media(
+                            &html,
+                            BROWSER_CSS,
+                            std::path::Path::new(path),
+                            print,
+                        ),
+                        None => Document::new_media(&html, BROWSER_CSS, print),
                     });
                     page.select = reftest_pages(&html);
                     cx.notify();

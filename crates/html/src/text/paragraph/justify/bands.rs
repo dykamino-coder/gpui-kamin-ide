@@ -58,6 +58,8 @@ impl Paragraph {
 
 impl Paragraph {
     /// Band identity (colour and border) of the run holding byte `at`.
+    // A decoration band independently supplies background and border colors/widths.
+    #[allow(clippy::type_complexity)]
     pub(crate) fn band_at(&self, at: usize) -> Option<(Option<Hsla>, Option<(Hsla, [Pixels; 4])>)> {
         let mut start = 0usize;
         for run in self.runs.iter() {

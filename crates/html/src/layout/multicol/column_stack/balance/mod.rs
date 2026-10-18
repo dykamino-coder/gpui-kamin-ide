@@ -26,6 +26,8 @@ impl ColumnStack {
     /// содержимое по числу записей, а внепоточная в них не участвует.
     /// Возвращать только вместе с разделением «переполнение» и
     /// «балансировка» в самой `balance`.
+    // Balancing returns column geometry with the fragment's continuation metadata.
+    #[allow(clippy::type_complexity)]
     pub(crate) fn balance(
         &self,
         kids: &[Kid],

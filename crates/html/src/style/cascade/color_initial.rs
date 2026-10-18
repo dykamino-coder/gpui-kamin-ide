@@ -13,6 +13,7 @@ pub(super) fn apply(c: &mut Computed, key: &str, value: &str) -> bool {
         return true;
     }
     if value.eq_ignore_ascii_case("inherit") || value.eq_ignore_ascii_case("currentcolor") {
+        c.accept_declaration();
         c.color_initial = false;
         c.color = None;
         return true;

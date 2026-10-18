@@ -1,14 +1,32 @@
-//! Last fitting paragraph and line budget for the automatic clamp point.
+//! Select the last paragraph and its fitting line budget for automatic clamping.
 
 use super::ClampEntry;
 
-pub(super) fn budget(
+// Знак обрыва в АВТО-режиме (`limit == None`). Рисует его НЕ этот
+// слой: сюда возвращается только БЮДЖЕТ строк — номер абзаца в
+// контейнере и сколько его строк остаётся выше среза, — а «…»
+// ставит уже проверенный `lines::clamp_lines`/`paint_line`: в
+// конце ТЕКСТА строки, с выключкой и направлением письма
+// (css-overflow-4: знак «is placed at the end of the line box
+// reducing the space available to the other contents of the
+// line», а для bidi — анонимный строчный с уровнем bidi-абзаца).
+// Так же развязан и Blink: блочный слой отдаёт признак
+// `IsAtClampPoint`, а ширину знака получает разрыватель строк
+// (`inline_layout_algorithm.cc:1247` `SetupLineClampEllipsis` →
+// `SetLineClampEllipsisWidth`). Прежний набросок рисовал знак у
+// ПРАВОГО края коробки — мимо конца текста, мимо выключки и
+// мимо rtl.
+// Числовой предел, который `max-height` перехватил раньше N-й строки
+// (`line-clamp: 4 auto` при `max-height: 3lh`), — та же точка
+// обрыва, что в авто-режиме: §5.3 берёт ПЕРВУЮ из двух точек, и знак
+// встаёт на последнюю строку перед ней (`line-clamp-041`).
+pub(super) fn automatic_para(
     cut: Option<f32>,
     by_count: bool,
     entries: &[ClampEntry],
     empties: &[ClampEntry],
+    fit: impl Fn(&ClampEntry) -> Vec<(f32, f32)>,
     trim_end: f32,
-    fit: &dyn Fn(&ClampEntry) -> Vec<(f32, f32)>,
 ) -> Option<(u32, usize)> {
     cut.filter(|_| !by_count).and_then(|c| {
         // Есть ли что резать. Как только бюджет применён, абзац УЖЕ

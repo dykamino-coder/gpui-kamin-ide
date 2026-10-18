@@ -181,7 +181,7 @@ pub(super) fn scroll_marker_pass(
         anim: None,
         inline: false,
         tag: "::scroll-marker-group".to_string(),
-        style: gstyle,
+        style: gstyle.into(),
         hover: None,
         first_letter: None,
         first_line: None,

@@ -26,8 +26,10 @@ pub(crate) fn decorate_atom(
     // маска и обрезка у атомов живут своими путями, полный стиль
     // применил бы их второй раз.
     let el = if replaced_tag(e) && e.style.blend.is_some_and(|b| b != 0) {
-        let mut only = Computed::default();
-        only.blend = e.style.blend;
+        let only = Computed {
+            blend: e.style.blend,
+            ..Default::default()
+        };
         grouped(el, &only)
     } else {
         el

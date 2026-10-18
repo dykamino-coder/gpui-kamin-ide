@@ -148,7 +148,8 @@ fn spacer_box(id: u64, h: f32) -> Element {
             display: Some(Display::Block),
             height: Some(Len::Px(h)),
             ..Default::default()
-        },
+        }
+        .into(),
         hover: None,
         first_letter: None,
         first_line: None,

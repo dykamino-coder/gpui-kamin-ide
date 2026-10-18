@@ -30,6 +30,8 @@ pub(super) fn border_spacing_of(
     table_spacing(e, opts, inherited, border_spacing)
 }
 
+// Table setup returns row elements with the corresponding column bands.
+#[allow(clippy::type_complexity)]
 pub(super) fn rows_left_and_cols(
     rows: &Vec<(
         &Element,

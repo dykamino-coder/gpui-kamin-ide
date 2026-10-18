@@ -1,4 +1,4 @@
-# KaminIDE patches — gpui-base 0.7.1
+# KaminIDE patches — gpui-base 0.7.1 (longbridge/gpui-kit 87d10ae5e1299d1be18670a37570c5402f952e34)
 #
 # 1. Editor input: minimap/scroll coordinates, incremental highlighting and run traversal.
 # 2. Expose editor integration hooks without duplicating Base's input implementation.

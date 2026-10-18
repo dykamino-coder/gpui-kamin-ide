@@ -28,6 +28,7 @@ pub(crate) fn border_shape_mask_scene(
 
 /// Two shapes use ordered white/black luminance coverage: evenodd would also
 /// paint the part of the inner shape outside the outer one.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn border_shape_ring_scene(
     outer: (&str, [f32; 4]),
     inner: Option<(&str, [f32; 4])>,

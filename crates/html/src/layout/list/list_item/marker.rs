@@ -85,7 +85,7 @@ pub(crate) fn inline_marker(li: &Element, inherited: &Computed, merged: &Compute
 pub(crate) fn node(li: &Element, merged: &Computed, marker: Marker) -> Node {
     let mut span = anon_element("::marker", vec![Node::Text(marker.text)]);
     span.inline = true;
-    span.style = marker.style.unwrap_or_default();
+    span.style = marker.style.unwrap_or_default().into();
     tabular_marker(&mut span.style, merged, li.style.marker_layer.as_deref());
     span.style.content = None;
     span.style.marker_layer = None;

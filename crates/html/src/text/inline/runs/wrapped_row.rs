@@ -26,6 +26,8 @@ use gpui::{AnyElement, ParentElement, Styled};
 /// строка перенести не может — он неделим, и раскладка ужимает его до самого
 /// узкого слова: текст вставал столбиком и налезал на следующий абзац.
 /// Поэтому куски режутся на слова: перенос идёт по ним, как в строке.
+// Inline construction consumes the independently cascaded text and box properties.
+#[allow(clippy::too_many_arguments)]
 pub fn as_wrapped_row(
     pieces: Vec<Piece>,
     align: Option<crate::style::computed::Align>,

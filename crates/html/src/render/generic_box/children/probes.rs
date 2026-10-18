@@ -53,7 +53,7 @@ pub(crate) fn child_probes(
         // `flow-root` под «Line 4»). Флоат и абсолют — не поточные,
         // строчный атом — внутри строки.
         let monolithic = makes_bfc
-            && !merged.float.is_some_and(|f| f != 0)
+            && merged.float.is_none_or(|f| f == 0)
             && !matches!(
                 merged.position,
                 Some(crate::style::computed::Position::Absolute)
@@ -80,7 +80,7 @@ pub(crate) fn child_probes(
         // is probed even without paint (`line-clamp-024`, `-auto-027`).
         let bp_after = side(e.style.borders().bottom) + side(e.style.padding.bottom);
         let in_flow_block = !skip
-            && !merged.float.is_some_and(|f| f != 0)
+            && merged.float.is_none_or(|f| f == 0)
             && !matches!(
                 merged.position,
                 Some(crate::style::computed::Position::Absolute)
@@ -161,7 +161,7 @@ pub(crate) fn child_probes(
                             | Some(crate::style::computed::Position::Fixed)
                     ))
             })
-            && !merged.float.is_some_and(|f| f != 0)
+            && merged.float.is_none_or(|f| f == 0)
             && !matches!(
                 merged.position,
                 Some(crate::style::computed::Position::Absolute)
