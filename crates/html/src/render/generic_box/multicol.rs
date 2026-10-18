@@ -80,7 +80,7 @@ pub(crate) fn multicol_box(
     // Сегментный путь ниже: метка родителя предыдущего спаннера,
     // если между ними не легло ни одного ряда колонок, и выложен
     // ли уже хоть один кусок (для сторожей полей).
-    let span_prev: Option<String> = None;
+    let span_prev: Option<Option<u64>> = None;
     let seg_open = false;
     let hoisted;
     let e = match hoist_spanners(&e.children) {

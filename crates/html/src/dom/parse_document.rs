@@ -13,8 +13,7 @@ use crate::dom::xhtml::*;
 use crate::style::css::{Decls, Media, Rule, parse_keyframes, parse_stylesheet_media};
 use crate::style::select::has::{HAS_MARKS, HasArg, collect_has_args, mark_has, parse_has_arg};
 use crate::style::select::quirks;
-use html5ever::tendril::TendrilSink;
-use markup5ever_rcdom::{Handle, NodeData, RcDom};
+use markup5ever_rcdom::{Handle, NodeData};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -53,12 +52,7 @@ pub(crate) fn parse_current(html: &str, extra_css: &str, mut media: Media) -> Ve
     let dom = if xml {
         super::xml::xml_dom(&html)
     } else {
-        html5ever::parse_document(RcDom::default(), Default::default())
-            .from_utf8()
-            .read_from(&mut html.as_bytes())
-            .unwrap_or_else(|_| {
-                html5ever::parse_document(RcDom::default(), Default::default()).one("")
-            })
+        super::input::html(&html)
     };
     if let Some(dark) = super::page_scheme::preference(&dom.document, media.dark) {
         media.dark = dark;

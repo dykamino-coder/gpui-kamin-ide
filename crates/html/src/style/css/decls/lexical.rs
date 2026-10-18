@@ -150,7 +150,7 @@ pub fn split_args(raw: &str) -> Vec<&str> {
 
 /// Разрезание по разделителю, не заходя внутрь скобок: `rgba(0, 0, 0, .5)`
 /// содержит запятые, а `grid-template: repeat(2, 1fr)` — и запятые, и скобки.
-pub(in crate::style::css) fn split_top_level(raw: &str, sep: char) -> Vec<&str> {
+pub(crate) fn split_top_level(raw: &str, sep: char) -> Vec<&str> {
     let mut out = vec![];
     let mut depth = 0i32;
     let mut start = 0usize;

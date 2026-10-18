@@ -7,7 +7,7 @@ use crate::layout::fragment::clone::{monolith_box, solid_box};
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::{Shape, ShapeCx};
 use crate::style::computed::{Align, Display, FlexDir, Justify};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_auto_zero};
 
 pub(crate) struct RowItem {
     pub(crate) source: usize,
@@ -18,14 +18,6 @@ pub(crate) struct RowItem {
 pub(crate) struct FlexRow {
     pub(crate) items: Vec<RowItem>,
     pub(crate) height: f32,
-}
-
-pub(crate) fn px(value: Option<Len>) -> Option<f32> {
-    match value {
-        None | Some(Len::Auto) => Some(0.0),
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    }
 }
 
 pub(crate) fn row_container(c: &Element) -> bool {
@@ -77,14 +69,17 @@ pub(crate) fn collect_rows(c: &Element, main: f32, depth: u8, cx: ShapeCx) -> Op
                 && item.shape.0 + item.shape.1 + item.shape.2 < row.height - 0.01
             {
                 let b = s.borders();
-                let edges = px(s.padding.top)? + px(s.padding.bottom)? + px(b.top)? + px(b.bottom)?;
+                let edges = px_auto_zero(s.padding.top)?
+                    + px_auto_zero(s.padding.bottom)?
+                    + px_auto_zero(b.top)?
+                    + px_auto_zero(b.bottom)?;
                 let target = row.height - item.shape.1 - item.shape.2;
                 let minimum = if s.border_box == Some(true) {
                     target
                 } else {
                     (target - edges).max(0.0)
                 };
-                s.min_height = Some(Len::Px(minimum.max(px(s.min_height)?)));
+                s.min_height = Some(Len::Px(minimum.max(px_auto_zero(s.min_height)?)));
                 item.shape = item_shape(&item.element, depth, cx)?;
             }
         }

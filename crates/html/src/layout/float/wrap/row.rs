@@ -61,6 +61,7 @@ pub(super) fn push_float_row(
         Node::Text(_) => false,
     });
     let mut column = Element {
+        marks: Default::default(),
         list_item: None,
         node_id: 0,
         anim: None,
@@ -127,11 +128,16 @@ pub(super) fn push_float_row(
         row_children.push(Node::Element(f));
     }
     out.push(Node::Element(Element {
+        // Метка для сборщика дерева: у ряда обтекания текст ещё режется
+        // по нижнему краю плавающего блока (см. `float_flow`). Тег — только
+        // подпись для отладки; путь выбирает `Marks::float_row`.
+        marks: crate::dom::Marks {
+            float_row: true,
+            ..Default::default()
+        },
         list_item: None,
         node_id: 0,
         anim: None,
-        // Метка для сборщика дерева: у ряда обтекания текст ещё режется
-        // по нижнему краю плавающего блока (см. `float_flow`).
         tag: "kamin-float".into(),
         style: Computed {
             display: Some(Display::Flex),

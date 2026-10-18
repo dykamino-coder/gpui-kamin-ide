@@ -24,7 +24,7 @@ pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> A
 }
 
 fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    if e.attr("kamin-outside-block") == Some("1") {
+    if e.marks.outside_block {
         return crate::layout::float::outside_block::render(e, inherited, opts);
     }
     let svg_sized = svg_percentage_size::resolve(e, inherited);

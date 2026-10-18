@@ -1,6 +1,11 @@
 //! Профили ICC (@color-profile): загрузка, теги, матрица и кривые, перевод в sRGB.
 
 use super::*;
+use crate::tolerance::GAMUT_SLACK;
+
+mod resources;
+pub use resources::load_profiles;
+pub(crate) use resources::load_profiles_sheets;
 
 /// Применить вшитый цветовой профиль ICC к готовому образу.
 ///
@@ -48,14 +53,9 @@ pub(crate) fn apply_icc(
             srgb_gamma(srgb[1]),
             srgb_gamma(srgb[2]),
         );
-        // Погрешность пути профиль → D50 → D65 → sRGB (округление колорантов
-        // в профиле, s15Fixed16) выводит чистые цвета чуть за край охвата:
-        // у профиля «sRGB IEC61966-2.1» синий 0000ff выходил (−0.01, 0.003,
-        // 1.0x). Охватное отображение (OKLCh) по такой мелочи сдвигало тон —
-        // 0033e6 вместо 0000ff (`order-of-images`). Вблизи края — простой
-        // зажим; отображение — только настоящему выходу за охват.
-        const SLACK: f32 = 0.02;
-        let near = |v: f32| (-SLACK..=1.0 + SLACK).contains(&v);
+        // Вблизи края охвата — простой зажим; охватное отображение — только
+        // настоящему выходу за охват (почему именно столько — `tolerance`).
+        let near = |v: f32| (-GAMUT_SLACK..=1.0 + GAMUT_SLACK).contains(&v);
         let (r, g, b) = if near(r) && near(g) && near(b) {
             (r.clamp(0.0, 1.0), g.clamp(0.0, 1.0), b.clamp(0.0, 1.0))
         } else {
@@ -77,58 +77,6 @@ pub(super) fn profile(name: &str) -> Option<Vec<u8>> {
         .borrow()
         .get(name)
         .cloned()
-}
-
-/// Разобрать правила `@color-profile` страницы в реестр текущего документа
-/// и загрузить их файлы.
-///
-/// Путь в `url(...)` берётся как есть: адреса в странице уже разрешены.
-pub fn load_profiles(css: &str) {
-    let doc = crate::document::state::current();
-    doc.profiles.borrow_mut().clear();
-    // Комментарии срезаются ДО поиска — как у `@font-face` (fonts::faces).
-    let css = &crate::style::css::strip_comments(css);
-    let lower = css.to_ascii_lowercase();
-    let mut from = 0usize;
-    while let Some(at) = lower[from..].find("@color-profile") {
-        let start = from + at;
-        let Some(open) = css[start..].find('{') else {
-            break;
-        };
-        let name = css[start + "@color-profile".len()..start + open]
-            .trim()
-            .to_string();
-        // Слова `@color-profile` встречаются и в ТЕКСТЕ страницы (заголовок
-        // теста): правилом считается только запись с именем `--…` прямо
-        // перед скобкой.
-        if !name.starts_with("--") || open > 64 {
-            from = start + "@color-profile".len();
-            continue;
-        }
-        let Some(close) = css[start + open..].find('}') else {
-            break;
-        };
-        let block = &css[start + open + 1..start + open + close];
-        from = start + open + close;
-        let Some(src) = block.split(';').find_map(|d| {
-            let (k, v) = d.split_once(':')?;
-            k.trim()
-                .eq_ignore_ascii_case("src")
-                .then(|| v.trim().to_string())
-        }) else {
-            continue;
-        };
-        let Some(path) = crate::style::computed::parse_url(&src) else {
-            continue;
-        };
-        let clean = path.strip_prefix("file:///").unwrap_or(&path);
-        let read = std::fs::read(clean);
-        if let Ok(bytes) = read
-            && name.starts_with("--")
-        {
-            doc.profiles.borrow_mut().insert(name, bytes);
-        }
-    }
 }
 
 /// Прогнать цвет через профиль: кривые -> матрица -> XYZ D50 -> sRGB.

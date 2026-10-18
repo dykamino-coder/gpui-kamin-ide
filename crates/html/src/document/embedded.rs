@@ -59,8 +59,12 @@ pub(crate) fn parse_embedded_sized(
     }
     let state = DocState::new(media);
     let _scope = state.enter();
-    crate::text::fonts::load_faces_additive(html);
-    crate::style::values::color_space::load_profiles(html);
+    let mut sheets = vec![theme_css.to_string()];
+    sheets.extend(crate::dom::style_sources::collect(html, false));
+    for css in &sheets {
+        crate::text::fonts::load_faces_additive(css);
+    }
+    crate::style::values::color_space::load_profiles_sheets(&sheets, None);
     let parsed = crate::dom::parse_current(html, theme_css, media);
     let mut nodes =
         super::viewport::prepare_embedded(parsed, responsive, scheme.map(|s| s.owner_dark));

@@ -1,6 +1,7 @@
 //! Базовые фигуры clip-path/маски (css-shapes-1 §3): polygon(), rect(), xywh(), inset() с правилом заливки и скруглением. Хвост ветви clip-path/mask из Computed::apply_clip_mask.
 
 use super::*;
+use crate::style::computed::FontCx;
 
 impl Computed {
     pub(super) fn clip_basic_shape(&mut self, v: &str) {
@@ -144,15 +145,7 @@ impl Computed {
                 .and_then(|l| match l {
                     Len::Px(v) => Some(v),
                     Len::Pct(p) => Some(p),
-                    l @ (Len::Em(_)
-                    | Len::EmPx(..)
-                    | Len::Ch(_)
-                    | Len::Ic(_)
-                    | Len::Ex(_)
-                    | Len::Lh(_)
-                    | Len::LhPx(..)) => crate::text::metrics::fallback_len_px(l, "", 16.0),
-                    Len::Vw(_) | Len::Vh(_) | Len::Calc(_) | Len::Anchor(_) => None,
-                    Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => None,
+                    l => l.to_px(None, FontCx::FALLBACK),
                 });
             self.clip_round = Some(radius.unwrap_or(0.0));
         }

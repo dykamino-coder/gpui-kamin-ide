@@ -3,7 +3,7 @@
 use crate::dom::{Element, Node};
 use crate::layout::table::is_cell;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_strict};
 use gpui::{ParentElement, Styled, div, px};
 
 pub(super) fn table_grid_box(
@@ -19,16 +19,10 @@ pub(super) fn table_grid_box(
                 .iter()
                 .map(|row| {
                     let cell_h = |c: &Node| match c {
-                        Node::Element(cell) if is_cell(cell) => match cell.style.height {
-                            Some(Len::Px(v)) => Some(v),
-                            _ => None,
-                        },
+                        Node::Element(cell) if is_cell(cell) => px_strict(cell.style.height),
                         _ => None,
                     };
-                    let own = match row.style.height {
-                        Some(Len::Px(v)) => Some(v),
-                        _ => None,
-                    };
+                    let own = px_strict(row.style.height);
                     match own
                         .into_iter()
                         .chain(row.children.iter().filter_map(cell_h))

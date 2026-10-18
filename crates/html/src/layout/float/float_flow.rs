@@ -2,6 +2,7 @@
 // owner: A
 
 use crate::dom::{Element, Node};
+use crate::hooks::IntoHooked;
 use crate::paint::effects::paint_scope::DepthScope;
 use crate::paint::effects::paint_scope::snapshot as defer_depth;
 use crate::render::{
@@ -9,7 +10,7 @@ use crate::render::{
 };
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_strict};
 use crate::text::text_box::normal_fraction;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 
@@ -66,10 +67,7 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
     } else {
         return plain_row(&row.children);
     };
-    let px_of = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    };
+    let px_of = px_strict;
     let (Some(fw), Some(fh)) = (px_of(floater.style.width), px_of(floater.style.height)) else {
         return plain_row(&row.children);
     };
@@ -94,6 +92,7 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
             let mut side = column_style.clone();
             side.display = Some(Display::Block);
             let column_el = Element {
+                marks: Default::default(),
                 list_item: None,
                 node_id: 0,
                 anim: None,
@@ -112,7 +111,9 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
                 vec![Node::Element(column_el), Node::Element(floater.clone())]
             };
             let mut top = row_node.clone();
+            // An ordinary flex row now: no second pass through `float_flow`.
             top.tag = "div".into();
+            top.marks.float_row = false;
             top.children = row_children;
             let mut all = vec![Node::Element(top)];
             all.extend(below);
@@ -144,7 +145,7 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
         size,
         line,
     )
-    .into_any_element();
+    .hooked();
     // Ряд обтекания строится ОТЛОЖЕННО: `build` зовёт `FloatFlow::prepaint`
     // (`float.rs:211`), когда сторож клэмп-контейнера уже снят, поэтому ни
     // флоат, ни строки рядом с ним проб не пишут, и `ClampCut` ряда не видит.

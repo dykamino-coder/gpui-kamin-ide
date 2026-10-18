@@ -196,7 +196,7 @@ pub struct AnchorPlan {
 /// заводит (отдаёт `layout_id` ребёнка, как `LatePlace`), сдвиг считает на
 /// подготовке кадра — к этому моменту якори раньше по дереву уже в реестре.
 pub struct AnchorPlace {
-    child: Option<AnyElement>,
+    child: AnyElement,
     /// Кандидаты: [0] — базовые стили, дальше — `position-try-fallbacks`.
     plans: Vec<AnchorPlan>,
     order: u8,

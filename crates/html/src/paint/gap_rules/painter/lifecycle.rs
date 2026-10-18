@@ -1,35 +1,19 @@
 //! Жизненный цикл GPUI-элемента; отделён от состояния и конструкторов.
 
 mod painting;
+use crate::hooks::Hooks;
 use painting::paint_body;
 
 use super::GapRulePainter;
 use crate::paint::gap_rules::GapLayout;
 use crate::paint::gap_rules::geometry::{GridTracks, uncollapsed};
-use gpui::{
-    App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, LayoutId, Pixels, Window,
-    px,
-};
+use gpui::{App, Bounds, LayoutId, Pixels, Window, px};
 
-impl Element for GapRulePainter {
-    type RequestLayoutState = LayoutId;
-    type PrepaintState = (Bounds<Pixels>, Option<GridTracks>);
+impl Hooks for GapRulePainter {
+    type Layout = LayoutId;
+    type Prepaint = (Bounds<Pixels>, Option<GridTracks>);
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, LayoutId) {
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
         // Художник занимает паддинг-бокс контейнера: от него считается поле
         // содержимого (протяжённость главных промежутков строк и лент).
         let mut style = gpui::Style::default();
@@ -44,13 +28,11 @@ impl Element for GapRulePainter {
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        state: &mut LayoutId,
+        state: &mut Self::Layout,
         window: &mut Window,
         _cx: &mut App,
-    ) -> (Bounds<Pixels>, Option<GridTracks>) {
+    ) -> Self::Prepaint {
         let bounds = Bounds {
             origin: window.layout_origin_unrounded(*state),
             size: window.layout_size_unrounded(*state),
@@ -72,23 +54,12 @@ impl Element for GapRulePainter {
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut LayoutId,
-        prepaint: &mut (Bounds<Pixels>, Option<GridTracks>),
+        _state: &mut Self::Layout,
+        prepaint: &mut Self::Prepaint,
         window: &mut Window,
         _cx: &mut App,
     ) {
-        paint_body(
-            self,
-            _id,
-            _inspector_id,
-            _bounds,
-            _state,
-            prepaint,
-            window,
-            _cx,
-        )
+        paint_body(self, _bounds, _state, prepaint, window, _cx)
     }
 }

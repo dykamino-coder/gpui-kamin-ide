@@ -121,7 +121,7 @@ pub(crate) fn paint_3d(
     }
     let root_3d = group.frame_3d.is_some() && under.is_none();
     let in_context = root_3d || under.is_some();
-    let child = group.child.as_mut().unwrap();
+    let child = &mut group.child;
     // Plane of a 3D rendering context, or a box under true perspective:
     // painted flat into a buffer and composited through its exact map
     // (`plane_spec`), planes of one context BSP-sorted and split by gpui.

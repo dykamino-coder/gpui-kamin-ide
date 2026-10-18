@@ -1,6 +1,6 @@
 //! Сериализация SVG с заданным размером области просмотра.
 
-use super::{escape_attr, escape_text, write_element};
+use super::{escape_attr, escape_text, write_in};
 use crate::dom::{Element, Node};
 use crate::svg::serialize::filters::subtree_has;
 use crate::svg::serialize::filters::untaint_filters;
@@ -19,6 +19,7 @@ pub(crate) fn serialize_sized(e: &Element, w: f32, h: f32, nx: f32, ny: f32) -> 
     } else {
         e
     };
+    let ids = crate::svg::ClipIds::for_document(e);
     let mut out = String::new();
     // Канва с запасом влево/вверх (`nx`, `ny` — переполнение в минус).
     let (cw, ch) = (w + nx, h + ny);
@@ -96,7 +97,7 @@ pub(crate) fn serialize_sized(e: &Element, w: f32, h: f32, nx: f32, ny: f32) -> 
     for child in &e.children {
         match child {
             Node::Text(t) => escape_text(t, &mut out),
-            Node::Element(el) => write_element(el, &mut out),
+            Node::Element(el) => write_in(el, &mut out, &ids),
         }
     }
     out.push_str("</svg>");

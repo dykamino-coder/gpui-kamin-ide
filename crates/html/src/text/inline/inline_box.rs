@@ -13,7 +13,7 @@
 use super::{InlineCb, OverlayAt, Piece};
 use crate::dom::Element;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::IntoElement;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -55,11 +55,7 @@ pub fn clear() {
 }
 
 fn px4(t: Option<Len>, r: Option<Len>, b: Option<Len>, l: Option<Len>) -> [f32; 4] {
-    let v = |x: Option<Len>| match x {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
-    [v(t), v(r), v(b), v(l)]
+    [t, r, b, l].map(px_lossy_zero)
 }
 
 /// Обернуть куски содержимого строчной коробки `e` метками краёв, если она

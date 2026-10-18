@@ -1,6 +1,7 @@
 //! Липкие коробки `position: sticky`.
 // owner: A
 
+use crate::hooks::IntoHooked;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, Styled};
@@ -73,9 +74,9 @@ pub(crate) fn sticky_wrap(
         || wrapper.left.is_some()
         || wrapper.right.is_some();
     if !allowed || !thresholds {
-        return wrapper.into_any_element();
+        return wrapper.hooked();
     }
-    gpui::deferred(wrapper)
+    gpui::deferred(wrapper.into_hooked())
         .with_priority(c.z_index.unwrap_or(0).max(0) as usize)
         .into_any_element()
 }

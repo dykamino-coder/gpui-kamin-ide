@@ -1,111 +1,9 @@
-//! Font faces for fonts; split out to keep the owning module within 250 lines.
+//! Validate and decompress font resources before registering them with the platform.
 
 use super::ensure_windows_names;
 
 pub(super) fn is_quote(c: char) -> bool {
     c == '"' || c == '\''
-}
-
-/// Тела всех правил `@font-face` в таблице.
-pub(super) fn faces(css: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    // Комментарии срезаются ДО поиска: `/* @font-face {...} */` разбирался
-    // как живое правило и грузил чужой файл.
-    let css = &crate::style::css::strip_comments(css);
-    let lower = css.to_ascii_lowercase();
-    let mut from = 0usize;
-    while let Some(at) = lower[from..].find("@font-face") {
-        let start = from + at;
-        let Some(open) = css[start..].find('{') else {
-            break;
-        };
-        let Some(close) = css[start + open..].find('}') else {
-            break;
-        };
-        let body = css[start + open + 1..start + open + close].to_string();
-        from = start + open + close;
-        // Правило внутри ложного `@media`/`@supports` не действует
-        // (css-conditional-3 §2): иначе вторая, «запасная» грань того же
-        // семейства перебивала первую (`at-media-content-002`,
-        // `at-supports-content-002`: `local('Arial')` вместо Ahem). Сюда
-        // приходит вся разметка — стек скобок считается от начала своего
-        // `<style>`.
-        let base = lower[..start].rfind("<style").map_or(0, |s| {
-            lower[s..start].find('>').map_or(start, |g| s + g + 1)
-        });
-        if crate::style::css::in_false_group(
-            &css[base..],
-            start - base,
-            crate::document::state::current().media(),
-        ) {
-            continue;
-        }
-        out.push(body);
-    }
-    out
-}
-
-/// Значение свойства внутри правила.
-pub(super) fn declaration(block: &str, name: &str) -> Option<String> {
-    split_top(block, ';').into_iter().find_map(|decl| {
-        let (key, value) = decl.split_once(':')?;
-        key.trim()
-            .eq_ignore_ascii_case(name)
-            .then(|| value.trim().to_string())
-    })
-}
-
-/// Разрезать по `sep` вне скобок и кавычек: адрес `data:` несёт в себе и
-/// `;` (`;charset=utf-8;base64`), и `,` (перед содержимым), и прежде правило
-/// с таким `src` распадалось на обрывки (`font-synthesis-*-binary`).
-fn split_top(text: &str, sep: char) -> Vec<&str> {
-    let mut out = Vec::new();
-    let (mut depth, mut quote, mut start) = (0i32, None, 0usize);
-    for (i, c) in text.char_indices() {
-        match (quote, c) {
-            (Some(q), _) if c == q => quote = None,
-            (Some(_), _) => {}
-            (None, '"' | '\'') => quote = Some(c),
-            (None, '(') => depth += 1,
-            (None, ')') => depth -= 1,
-            (None, _) if c == sep && depth <= 0 => {
-                out.push(&text[start..i]);
-                start = i + c.len_utf8();
-            }
-            _ => {}
-        }
-    }
-    out.push(&text[start..]);
-    out
-}
-
-/// Первый пригодный файл из `src`: берём тот, чью упаковку умеем открыть.
-pub(super) fn source(block: &str) -> Option<String> {
-    let src = declaration(block, "src")?;
-    let mut fallback = None;
-    for part in split_top(&src, ',') {
-        let Some(open) = part.find("url(") else {
-            continue;
-        };
-        let rest = &part[open + 4..];
-        let Some(close) = rest.find(')') else {
-            continue;
-        };
-        let path = rest[..close].trim().trim_matches(is_quote).to_string();
-        let known = matches!(
-            std::path::Path::new(&path)
-                .extension()
-                .and_then(|e| e.to_str())
-                .map(str::to_ascii_lowercase)
-                .as_deref(),
-            Some("ttf" | "otf" | "woff" | "woff2")
-        );
-        if known {
-            return Some(path);
-        }
-        fallback.get_or_insert(path);
-    }
-    fallback
 }
 
 /// Прочитать файл шрифта и, если он упакован, распаковать.
@@ -128,12 +26,7 @@ pub(super) fn sfnt_ok(bytes: &[u8]) -> bool {
 pub(super) fn read_font(path: &str) -> Option<Vec<u8>> {
     // Адрес `data:` (RFC 2397) — шрифт в самой таблице; упаковку тогда
     // покажет подпись (ветки ниже без расширения).
-    let bytes = if path.starts_with("data:") {
-        crate::paint::background::read_bytes(path)?
-    } else {
-        let path = path.strip_prefix("file:///").unwrap_or(path);
-        std::fs::read(path).ok()?
-    };
+    let bytes = crate::document::resource_url::read(path)?;
     let path = if path.starts_with("data:") { "" } else { path };
     // Упаковку задаёт АДРЕС, а подпись внутри файла — то, что файл о себе
     // заявляет. Их расхождение — отказ (§4.1 WOFF2): файл `.woff2` с

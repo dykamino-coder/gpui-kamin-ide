@@ -2,6 +2,7 @@
 //! CSS Flexbox 1 §9.2/§9.8 and Grid 2 #algo-overview supply definite dimensions.
 
 use crate::dom::Element;
+use crate::hooks::IntoHooked;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Refineable, Styled, StyledImage, px, size};
@@ -144,7 +145,7 @@ pub(super) fn measured(
             ratio,
             measure: None,
         }
-        .into_any_element(),
+        .hooked(),
     )
 }
 

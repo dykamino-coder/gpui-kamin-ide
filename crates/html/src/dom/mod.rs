@@ -7,6 +7,7 @@
 //! ничего не рисуют.
 
 mod direction;
+pub(crate) mod input;
 pub(crate) mod mathml;
 mod mathml_defaults;
 mod mathml_lengths;
@@ -15,6 +16,7 @@ mod mathml_routing;
 mod nth_child_tests;
 mod page_scheme;
 mod parse_document;
+pub(crate) mod style_sources;
 pub(crate) mod xml;
 pub(crate) use xml::parse_current_xml;
 pub use xml::parse_xml;
@@ -70,7 +72,12 @@ use crate::dom::element_style::*;
 pub(super) mod scroll_markers;
 pub(super) mod walk;
 use crate::dom::scroll_markers::*;
+mod marks;
+#[cfg(test)]
+mod marks_tests;
 pub(super) mod pseudo;
+pub use crate::dom::marks::Marks;
+pub(crate) use crate::dom::marks::{BandPath, LeadProbe, ShapeFlow};
 pub(crate) use crate::dom::pseudo::*;
 
 /// Узел документа: либо текст, либо элемент со своими детьми.
@@ -108,6 +115,8 @@ pub struct Element {
     /// Инлайн ли элемент по своей природе (`<span>`, `<code>`, `<a>`): от
     /// этого зависит, попадёт ли он в строку текста или станет блоком.
     pub inline: bool,
+    /// Internal layout marks (`Marks`): set only by layout, never by markup.
+    pub marks: Marks,
 }
 
 impl Element {

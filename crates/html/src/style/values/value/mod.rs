@@ -20,10 +20,12 @@ mod calc_math;
 mod calc_pool;
 mod color;
 mod color_channels;
+mod color_hsl;
 mod color_names;
 mod system_colors;
 pub use system_colors::{SystemColor, system_color};
 mod len;
+mod len_contract;
 mod len_parse;
 mod root_metrics;
 mod units;
@@ -39,6 +41,7 @@ pub use color::Color;
 use color_names::named;
 pub use len::Len;
 pub(crate) use len::css_number;
+pub use len_contract::{px_auto_zero, px_lossy_zero, px_missing_zero, px_strict};
 pub use root_metrics::{
     RootMetrics, root_font_px, root_line_px, set_root_family, set_root_font_view, set_root_metrics,
 };

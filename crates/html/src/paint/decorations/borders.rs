@@ -1,7 +1,7 @@
 //! Слои рамок и цветных сторон коробки.
 
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, Styled, div, px};
 
 #[allow(clippy::too_many_arguments)]
@@ -137,10 +137,7 @@ pub(crate) fn coloured_borders(c: &Computed, out: &mut Vec<AnyElement>) {
     // A one-colour `double` border is painted whole by its rings.
     let rings = crate::style::apply::double_border(c).is_some();
     if !sides.is_empty() && !uniform && !rings && c.border_shape.is_none() {
-        let side_px = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let side_px = px_lossy_zero;
         let bw = c.borders();
         let (t, r, b, l) = (
             side_px(bw.top),

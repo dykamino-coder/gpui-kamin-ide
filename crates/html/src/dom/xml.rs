@@ -54,7 +54,7 @@ pub(crate) fn xml_dom(markup: &str) -> RcDom {
     if let Ok(doc) = roxmltree::Document::parse_with_options(markup, opts) {
         let root = dom.get_document();
         for child in doc.root().children() {
-            append_node(&dom, &root, child);
+            append_node(&dom, &root, child, 1);
         }
     }
     dom
@@ -68,7 +68,10 @@ fn qual(prefix: Option<&str>, ns: Option<&str>, local: &str) -> QualName {
     )
 }
 
-fn append_node(dom: &RcDom, parent: &Handle, node: roxmltree::Node) {
+fn append_node(dom: &RcDom, parent: &Handle, node: roxmltree::Node, depth: usize) {
+    if depth > super::input::MAX_DEPTH {
+        return;
+    }
     match node.node_type() {
         roxmltree::NodeType::Element => {
             let tag = node.tag_name();
@@ -90,7 +93,7 @@ fn append_node(dom: &RcDom, parent: &Handle, node: roxmltree::Node) {
                 .collect();
             let el = dom.create_element(name, attrs, ElementFlags::default());
             for child in node.children() {
-                append_node(dom, &el, child);
+                append_node(dom, &el, child, depth + 1);
             }
             dom.append(parent, NodeOrText::AppendNode(el));
         }

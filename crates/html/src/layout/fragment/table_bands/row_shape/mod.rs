@@ -4,6 +4,7 @@ use super::{RowRef, TableBands, table_row_cuts};
 use crate::dom::Element;
 use crate::layout::fragment::ShapeCx;
 mod captions;
+use crate::tolerance::COORD_EPS;
 pub(super) use captions::caption_slots_shape;
 
 #[allow(clippy::too_many_arguments)]
@@ -76,7 +77,7 @@ pub(super) fn row_band_shape(
     for (i, rs, ch) in spans {
         let last = (i + rs).min(row_box.len()).saturating_sub(1);
         let span_h = row_box[last].0 + row_box[last].1 - row_box[i].0;
-        if ch > span_h + 0.01 {
+        if ch > span_h + COORD_EPS {
             return None;
         }
     }
@@ -99,7 +100,9 @@ pub(super) fn row_band_shape(
     // высота считается content-box: `table-fragmentation-001b-print` —
     // 336 + отбивка + рамка = 432 вместо 336 по border-box (UA-лист
     // css-tables-3 `table { box-sizing: border-box }`), третий пустой лист.
-    let mono_inside = solid.iter().any(|&(a, b)| a > 0.01 || b > top + 0.01);
+    let mono_inside = solid
+        .iter()
+        .any(|&(a, b)| a > COORD_EPS || b > top + COORD_EPS);
     // Заданная высота — ПОЛ коробки рядов. `box-sizing` — та же мерка, что в
     // рисователе (`table()`, `table_border_box`): у ТЕГА `<table>` высота по
     // border-box (UA-правило css-tables-3 `table { box-sizing: border-box }`),
@@ -119,7 +122,7 @@ pub(super) fn row_band_shape(
     // invalidate measured cell cuts unless it actually distributes surplus
     // height to rows. Preserve unbreakable content when the floor is already
     // satisfied by the intrinsic row grid.
-    if mono_inside && !cx.paged && floor_h > content_h + 0.01 {
+    if mono_inside && !cx.paged && floor_h > content_h + COORD_EPS {
         return None;
     }
     let h_box = content_h.max(floor_h);
@@ -130,7 +133,7 @@ pub(super) fn row_band_shape(
     // (css-break-4 §4 «slice»). Снимок `specified-block-size-007`: жёлтый ряд
     // (10,67)..(172,316), голубой (10,317)..(172,566) — раздача у нас РОВНАЯ
     // (200/200) при содержимом 1 и 3, и точки на 1 и 4 были бы ложью.
-    if h_box > content_h + 0.01 {
+    if h_box > content_h + COORD_EPS {
         // Ряды растянуты — измеренные полосы секций тоже неверны.
         bands.head = None;
         bands.foot = None;
@@ -154,7 +157,7 @@ pub(super) fn row_band_shape(
         let end_edge = h_box - bot;
         let glue = solid
             .iter()
-            .filter(|&&(a, b)| a > 0.01 && (b - (end_edge - spacing)).abs() < 0.01)
+            .filter(|&&(a, b)| a > COORD_EPS && (b - (end_edge - spacing)).abs() < COORD_EPS)
             .map(|&(a, _)| a)
             .fold(end_edge, f32::min);
         solid.push((glue, h_box));
@@ -163,8 +166,8 @@ pub(super) fn row_band_shape(
     bands.box_end = h_box;
     // Подписей нет — коробка рядов и есть вся мера, как прежде.
     if caps_top.is_empty() && caps_bot.is_empty() {
-        cuts.retain(|&(need, _)| need > 0.01 && need < h_box - 0.01);
-        forced.retain(|&f| f > 0.01 && f < h_box - 0.01);
+        cuts.retain(|&(need, _)| need > COORD_EPS && need < h_box - COORD_EPS);
+        forced.retain(|&f| f > COORD_EPS && f < h_box - COORD_EPS);
         return Some((h_box, mt, mb, cuts, forced, solid));
     }
     // Обёртка таблицы — обычная блочная стопка: верхние подписи, коробка
