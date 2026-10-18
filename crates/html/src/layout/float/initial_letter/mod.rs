@@ -195,7 +195,7 @@ pub(crate) fn initial_letter_float(
             node_id: 0,
             anim: None,
             tag: tag.into(),
-            style,
+            style: style.into(),
             hover: None,
             first_letter: None,
             first_line: None,

@@ -148,7 +148,7 @@ pub(crate) fn band_kids(
         };
         let mut node = c.clone();
         if first_layer.is_some() {
-            node.first_line = first_layer;
+            node.first_line = first_layer.map(Into::into);
         }
         let inherited = inherited.clone();
         let opts = opts.clone();

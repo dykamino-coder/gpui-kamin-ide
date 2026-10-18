@@ -101,7 +101,8 @@ pub(super) fn unwrap_document(nodes: Vec<Node>) -> (Vec<Node>, crate::style::com
             .map(|n| match n {
                 Node::Element(mut child) => {
                     child.style =
-                        crate::style::cascade::inherit::inherit_unpainted(&e.style, &child.style);
+                        crate::style::cascade::inherit::inherit_unpainted(&e.style, &child.style)
+                            .into();
                     Node::Element(child)
                 }
                 other => other,

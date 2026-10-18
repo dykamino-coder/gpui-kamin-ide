@@ -55,7 +55,7 @@ pub(crate) fn builder(layers: Computed, root: Computed, opts: RenderOpts) -> Can
             tag: "div".to_string(),
             inline: false,
             node_id: 0,
-            style: st,
+            style: st.into(),
             hover: None,
             first_letter: None,
             first_line: None,

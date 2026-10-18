@@ -62,7 +62,7 @@ pub(super) fn fit_local_image(
             &e.style,
         ))
     {
-        let mut style = e.style.clone();
+        let mut style = (*e.style).clone();
         if fills_holder {
             style.object_fit = Some("fill".into());
         }

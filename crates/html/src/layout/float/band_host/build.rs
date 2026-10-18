@@ -156,7 +156,8 @@ pub(crate) fn band_host(
             // Ширина содержащего блока — дальняя стенка полос.
             width: cb_width,
             ..Computed::default()
-        },
+        }
+        .into(),
         hover: None,
         first_letter: None,
         first_line: None,

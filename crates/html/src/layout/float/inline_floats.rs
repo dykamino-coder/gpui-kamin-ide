@@ -112,7 +112,7 @@ fn split(node: Node, parent: &Computed) -> Vec<Node> {
             // CSS 2 sections 9.5 and 10.1: the block remains the containing
             // block, while inherited text properties come through the inline.
             let containing = inherit(parent, &float.style);
-            float.style = inherit(&style, &float.style);
+            float.style = inherit(&style, &float.style).into();
             float.style.cb_height_def = containing.cb_height_def;
             float.style.quirk_pct_base = containing.quirk_pct_base;
             output.push(Node::Element(float));

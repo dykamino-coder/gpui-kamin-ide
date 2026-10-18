@@ -101,7 +101,7 @@ pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32) -> bool {
                 node_id: id ^ 0x5350_4143_4552_0001,
                 anim: None,
                 tag: "div".to_string(),
-                style,
+                style: style.into(),
                 hover: None,
                 first_letter: None,
                 first_line: None,

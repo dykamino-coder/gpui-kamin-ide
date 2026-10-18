@@ -22,8 +22,8 @@ fn has_clearable(nodes: &[Node]) -> bool {
     nodes.iter().any(|n| match n {
         Node::Element(e) => {
             floats(&e.style)
-                || e.first_letter.as_ref().is_some_and(floats)
-                || e.hover.as_ref().is_some_and(floats)
+                || e.first_letter.as_deref().is_some_and(floats)
+                || e.hover.as_deref().is_some_and(floats)
                 || has_clearable(&e.children)
         }
         Node::Text(_) => false,

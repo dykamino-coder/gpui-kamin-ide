@@ -173,7 +173,7 @@ pub(super) fn pseudo_box_named(
                     node_id: 0,
                     anim: None,
                     tag: "img".into(),
-                    style: Computed::default(),
+                    style: Computed::default().into(),
                     hover: None,
                     first_letter: None,
                     first_line: None,
@@ -209,7 +209,7 @@ pub(super) fn pseudo_box_named(
         // it one device row off (`position-anchor-*-pseudo-element-*`).
         inline: !anchor_positioned(&style),
         tag: format!("::{tag}"),
-        style,
+        style: style.into(),
         hover: None,
         first_letter: None,
         first_line: None,
