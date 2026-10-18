@@ -26,6 +26,8 @@ use crate::paint::background::*;
 /// где заливка и обводка перекрываются (border-shape-shadow-semitransparent;
 /// Blink для того же берёт объединение путей). Порядок — от последней тени к
 /// первой (§box-shadow: «the first shadow is on top»).
+// Shadows combine contour geometry, box edges and independent shadow parameters.
+#[allow(clippy::too_many_arguments)]
 pub fn border_shape_shadow_svg(
     outer: (&str, [f32; 4]),
     inner: Option<(&str, [f32; 4])>,

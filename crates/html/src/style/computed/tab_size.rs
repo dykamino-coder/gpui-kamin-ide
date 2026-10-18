@@ -6,6 +6,7 @@ use crate::style::values::value::{Len, css_number};
 pub(super) fn apply(style: &mut Computed, value: &str) {
     if let Some(number) = css_number(value) {
         if number.is_finite() && number >= 0.0 {
+            style.accept_declaration();
             style.tab_size = Some(number);
             style.tab_size_len = None;
         }
@@ -23,6 +24,7 @@ pub(super) fn apply(style: &mut Computed, value: &str) {
             _ => false,
         };
         if valid {
+            style.accept_declaration();
             style.tab_size_len = Some(length);
             style.tab_size = None;
         }

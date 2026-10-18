@@ -10,6 +10,8 @@ pub use crate::text::paragraph::probes::*;
 use gpui::{AnyElement, Bounds, ElementId, Hsla, Pixels, Point, SharedString, TextRun};
 
 /// Абзац со своей раскладкой строк.
+// Paragraph span records retain their text ranges, geometry and decoration state.
+#[allow(clippy::type_complexity)]
 pub struct Paragraph {
     pub(super) scroll_owner: Option<u64>,
     pub(super) text: SharedString,

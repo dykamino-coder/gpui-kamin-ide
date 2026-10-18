@@ -25,6 +25,7 @@ pub(crate) fn geometry_property(c: &mut Computed, key: &str, v: &str) {
     let Some(value) = attribute_value(name, v) else {
         return;
     };
+    c.accept_declaration();
     c.svg_geometry.retain(|(n, _)| *n != name);
     c.svg_geometry.push((name, value));
 }

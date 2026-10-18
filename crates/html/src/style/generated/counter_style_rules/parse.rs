@@ -171,7 +171,8 @@ pub fn register(name: &str, descs: &[(String, Vec<String>)]) {
     if !valid {
         return;
     }
-    registry(&RULES)
-        .get_or_insert_with(HashMap::new)
+    crate::document::state::current()
+        .counter_styles
+        .borrow_mut()
         .insert(name, raw);
 }

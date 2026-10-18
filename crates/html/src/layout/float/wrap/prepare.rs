@@ -221,7 +221,7 @@ pub(super) fn wrap_into_host(
                 .iter()
                 .all(|n| is_blank(n) || matches!(n, Node::Element(c) if out_of_flow(&c.style)))
         {
-            host.first_line = BAND_FL.with(|f| f.borrow().clone());
+            host.first_line = BAND_FL.with(|f| f.borrow().clone()).map(Into::into);
         }
         band_clearance::mark_start(&mut host, cb_top_open, &*out);
         out.push(Node::Element(host));

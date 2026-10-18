@@ -11,6 +11,8 @@ mod len_px;
 pub use len_px::FontCx;
 pub(super) mod image_lengths;
 mod logical;
+#[cfg(test)]
+mod mask_tests;
 
 impl Computed {
     // ПРОБОВАЛИ И ОТКАТИЛИ: блокификация под `float` и абсолютным

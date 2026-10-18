@@ -48,8 +48,7 @@ impl Edges {
     }
 
     pub(super) fn fits(&self, left: f32, right: f32, x: f32, width: f32) -> bool {
-        !(self.has_left && x < left - COORD_EPS)
-            && !(self.has_right && x + width > right + COORD_EPS)
+        !(self.has_left && x < left - COORD_EPS || self.has_right && x + width > right + COORD_EPS)
             && !((self.has_left || self.has_right) && width > right - left + COORD_EPS)
     }
 }

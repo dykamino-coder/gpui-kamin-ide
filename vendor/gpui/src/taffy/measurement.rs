@@ -26,6 +26,8 @@ impl TaffyLayoutEngine {
     pub fn snapshot_measurement(&self, root: LayoutId, scale_factor: f32) -> LayoutMeasurement {
         let mut tree = TaffyTree::new();
         tree.disable_rounding();
+        // The copied styles carry the engine tree's `calc()` handles.
+        tree.share_calc_registry(&self.taffy);
         let root = copy_subtree(&self.taffy, &mut tree, root.into());
         LayoutMeasurement {
             tree,

@@ -2158,7 +2158,7 @@ impl Element for Div {
                         }
                         let mut late = false;
                         for child in &mut self.children {
-                            if child.downcast_mut::<crate::PaintLast>().is_some() {
+                            if super::context_scope::is_paint_last(child) {
                                 late = true;
                                 continue;
                             }
@@ -2166,7 +2166,7 @@ impl Element for Div {
                         }
                         if late {
                             for child in &mut self.children {
-                                if child.downcast_mut::<crate::PaintLast>().is_some() {
+                                if super::context_scope::is_paint_last(child) {
                                     child.paint(window, cx);
                                 }
                             }

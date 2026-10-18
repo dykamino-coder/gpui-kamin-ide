@@ -65,6 +65,8 @@ pub struct ColumnStack {
 }
 
 impl ColumnStack {
+    // Construction keeps the independent CSS column constraints explicit.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         children: Vec<StackChild>,
         count: usize,

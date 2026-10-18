@@ -1,14 +1,16 @@
 //! Сборка StackChild ребёнка стопки колонок: вложенный ряд, монолитность, число копий.
 
 use super::stack_child_of;
-use crate::dom::{Element, Node};
+use crate::dom::Element;
 use crate::layout::fragment::line_shape::nested_rows_box;
 use crate::layout::fragment::probe::{plain_block_tree, size_monolith};
 use crate::layout::page::paged::visible_overflow;
 use crate::layout::positioned::predicates::carries_abspos;
-use crate::render::is_blank;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
+
+mod monolith;
+use monolith::{copy_monolith, has_monolith};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn finish_stack_child(
@@ -180,81 +182,8 @@ pub(super) fn kid_copy_count(
         // Высота неизвестна до раскладки: копий — на
         // переполняющие колонки (css-multicol-1 §8.2).
         Some(per) if measure.is_some() && rows.is_none() && !span && per > 0.0 => {
-            copies.max(8).min(16)
+            copies.clamp(8, 16)
         }
         _ => copies,
     }
-}
-
-/// A monolithic descendant overflows its fragmentainer instead of taking
-/// space in the flow (css-break-3 §4.1), so the unfragmented height no
-/// longer counts the columns the content needs.
-fn has_monolith(c: &Element, depth: u8) -> bool {
-    depth > 0
-        && c.children.iter().any(|n| match n {
-            Node::Element(k) => {
-                crate::layout::fragment::clone::monolith_box(k) || has_monolith(k, depth - 1)
-            }
-            _ => false,
-        })
-}
-
-pub(super) fn copy_monolith(
-    copy: &Element,
-    cuts: &[(f32, f32)],
-    nest_row: Option<f32>,
-) -> (
-    impl Fn(Option<crate::style::computed::Overflow>) -> bool + use<>,
-    bool,
-) {
-    let scrolls = |o: Option<crate::style::computed::Overflow>| {
-        matches!(o, Some(crate::style::computed::Overflow::Scroll))
-    };
-    let block_kid = |n: &Node| {
-        matches!(n, Node::Element(k)
-            if !k.inline || k.style.display == Some(Display::Block))
-    };
-    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): `contain: size` как
-    // монолит (Blink `IsMonolithic`) — срез фрагментации
-    // 469 -> 467 (+1/−3): `single-line-column-flex-
-    // fragmentation-051/063` режутся у Blink иначе (рост
-    // элемента от фрагментации, корень R5 скаута).
-    // Рост лёг `705fd58`; `contain: size` — `size_monolith`,
-    // тот же предикат, что у `solid_box` в мере и пробе
-    // `grow_pushed` (`scout-break-2026-09e.md`).
-    let monolith = nest_row.is_none()
-        && (size_monolith(copy)
-        || copy.style.break_inside_avoid
-        || scrolls(copy.style.overflow_x)
-        || scrolls(copy.style.overflow_y)
-        || matches!(
-            copy.tag.as_str(),
-            "img"
-                | "svg"
-                | "canvas"
-                | "video"
-                | "embed"
-                | "object"
-                | "iframe"
-        )
-        // Таблица и ячейка — не монолиты
-        // (css-break-4 §4.1).
-        || matches!(
-            copy.style.display,
-            Some(Display::InlineBlock)
-                | Some(Display::InlineFlex)
-                | Some(Display::InlineGrid)
-        )
-        // Сплошной СТРОЧНЫЙ набор тоже монолит:
-        // резать его можно лишь между строками, а
-        // строк укладка колонок не видит, и разрез
-        // приходился бы посреди строки.
-        // ПУСТАЯ коробка с высотой режется по своей
-        // высоте (css-break-4 §4.2; корень A3).
-        || (copy.children.iter().any(|n| !is_blank(n))
-            && !copy.children.iter().any(block_kid)
-            // Строки измерены (`line_run_shape`) — режется
-            // между строк, не монолит.
-            && cuts.is_empty()));
-    (scrolls, monolith)
 }

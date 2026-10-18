@@ -29,12 +29,12 @@ mod len_contract;
 mod len_parse;
 mod root_metrics;
 mod units;
-pub use anchor::{AnchorFn, AnchorSide, AnchorSize, anchor_get, anchor_store};
+pub use anchor::{AnchorFn, AnchorId, AnchorSide, AnchorSize, anchor_get, anchor_store};
 use anchor::{parse_anchor, parse_anchor_calc, parse_anchor_minmax};
 use calc::{Calc, Val, eval_calc, parse_calc};
 use calc_pool::fold_simple_calc;
 pub use calc_pool::{
-    calc_get, calc_pct_px, calc_reset, calc_store, fold_zero_percentage, lerp_len, number,
+    CalcId, calc_get, calc_pct_px, calc_store, fold_zero_percentage, lerp_len, number,
 };
 mod scheme;
 pub use color::Color;
@@ -42,11 +42,10 @@ use color_names::named;
 pub use len::Len;
 pub(crate) use len::css_number;
 pub use len_contract::{px_auto_zero, px_lossy_zero, px_missing_zero, px_strict};
-use root_metrics::{ROOT_FONT_VIEW, root_font_unit};
 pub use root_metrics::{
-    reset_root_metrics, root_font_px, root_line_px, set_root_family, set_root_font_view,
-    set_root_metrics,
+    RootMetrics, root_font_px, root_line_px, set_root_family, set_root_font_view, set_root_metrics,
 };
+use root_metrics::{root_font_unit, root_font_view};
 pub use scheme::{dark_scheme, set_dark_scheme};
 pub(crate) use scheme::{
     embedding_dark_scheme, reset_scheme, resolve_scheme, restore_scheme, scheme_state,

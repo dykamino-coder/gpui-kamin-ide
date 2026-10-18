@@ -30,12 +30,11 @@ pub(super) async fn capture_sides(
         // устоявшийся ТЕСТ: его кадр отличается от разделителя, а
         // значит принимается за кадр эталона — и пара получает
         // ложный ноль расхождения.
-        // Разделитель — не печатная страница: флаг печати снимается, иначе
+        // Разделитель — не печатная страница (экранный носитель), иначе
         // он рисуется стопкой листов, `flat()` его не узнаёт и `show`
         // выжидает все 400 шагов (по 6 с на каждый показ разделителя).
-        kamin_html::css::PRINT_MEDIA.store(false, std::sync::atomic::Ordering::Relaxed);
         blank = stage
-            .show(cx, SEPARATOR.into(), None, true, None)
+            .show(cx, SEPARATOR.into(), None, true, None, false)
             .await
             .map(|s| s.2);
         // Печатные пары смотрят печатным носителем: `@media print`
@@ -47,13 +46,10 @@ pub(super) async fn capture_sides(
         // `class="reftest-paged"` на корне — та же печатная пара (Gecko,
         // WPT print-reftests.md), см. `paged::is_paged`.
         let source = std::fs::read_to_string(path).unwrap_or_default();
-        kamin_html::css::PRINT_MEDIA.store(
-            test_paged || is_paged(path, &source),
-            std::sync::atomic::Ordering::Relaxed,
-        );
+        let print = test_paged || is_paged(path, &source);
         let html = resolve_links(&source, path);
         let mut shot = stage
-            .show(cx, html.clone(), blank.clone(), false, Some(path))
+            .show(cx, html.clone(), blank.clone(), false, Some(path), print)
             .await;
         // Страница, не отличившаяся от разделителя, не нарисовалась:
         // повторяем показ, а не записываем пустоту в отчёт.
@@ -76,7 +72,7 @@ pub(super) async fn capture_sides(
                 break;
             }
             shot = stage
-                .show(cx, html.clone(), blank.clone(), false, Some(path))
+                .show(cx, html.clone(), blank.clone(), false, Some(path), print)
                 .await;
         }
         shots.push(shot);

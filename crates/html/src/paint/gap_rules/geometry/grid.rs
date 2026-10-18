@@ -69,6 +69,8 @@ pub(super) fn occupied(
 /// поперечный зазор не перекрыт спаном (Blink: `kIntersection` идёт дальше
 /// только при blocked-before И blocked-after); стык (`joins`) — если там есть
 /// видимая поперечная линейка.
+// Both grid axes contribute gap geometry and intersection metadata.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(crate) fn grid_runs(
     items: &[GapItem],
     gap_a: Option<f32>,

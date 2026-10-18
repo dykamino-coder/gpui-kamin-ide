@@ -130,7 +130,7 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media) -> bool {
         false
     } else if name.starts_with("@page") {
         // Правило с головой (имя, `:first/:left/:right/:blank`,
-        // список) — в пул `PAGE_RULES`, каскад по листу решает
+        // список) — в реестр документа, каскад по листу решает
         // `page_decls_in`. Имя регистрозависимо (css-page-3
         // §using-named-pages) — из ОРИГИНАЛА головы, не из `name`.
         let flat = strip_nested_blocks(body);
@@ -151,8 +151,7 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media) -> bool {
             // значение «13px\u{1}inherit», которое не разбиралось вовсе.
             let list = ordered_decls(&decls);
             if let Some(sels) = parse_page_selectors(&head[5..]) {
-                let mut pages = PAGE_RULES.lock().unwrap_or_else(|error| error.into_inner());
-                pages.push(PageRule {
+                push_page_rule(PageRule {
                     sels,
                     decls: list,
                     margins,
@@ -180,16 +179,14 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media) -> bool {
             && matches!(inherits.as_str(), "true" | "false")
             && (syntax == "*" || initial.is_some())
         {
-            PROPERTY_RULES
-                .lock()
-                .unwrap()
-                .get_or_insert_with(HashMap::new)
-                .entry(ident.to_string())
-                .or_insert(Registered {
+            register_property(
+                ident,
+                Registered {
                     syntax,
                     inherits: inherits == "true",
                     initial,
-                });
+                },
+            );
         }
         false
     } else if name
@@ -219,11 +216,7 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media) -> bool {
         if ident.starts_with("--") {
             let decls = parse_decls(body);
             if !decls.is_empty() {
-                TRY_RULES
-                    .lock()
-                    .unwrap()
-                    .get_or_insert_with(HashMap::new)
-                    .insert(ident.to_string(), decls);
+                insert_try_rule(ident, decls);
             }
         }
         false

@@ -34,6 +34,8 @@ pub(super) fn line_groups(items: &[GapItem]) -> Vec<(f32, f32)> {
 /// `flex-gap-decorations-001/019` 99.00, `-025/031/032/035/065…067`,
 /// `column-gap-decorations-001/003/014/016/019`, `row-gap-decorations-003/010`.
 /// Ряды многоколонника обходятся без него (v99: +11/−0).
+// Gap intersections require both axis geometries and their decoration styles.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn line_runs(
     items: &[GapItem],
     gap_a: Option<f32>,
