@@ -91,10 +91,10 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     // Измеряемый бандовый хост (`band_flow.rs`) — только в БЛОЧНОМ контейнере
     // горизонтального письма: в гибком и сетке `float` не
     // действует (css-flexbox-1 §3, css-grid-1 §6.1).
-    // Хост работает и в вертикальном письме (шаг F10): план в
-    // логических осях, перевод в физику при сборке (`band_flow::VERT`).
-    // Horizontal float sides are physical (CSS 2.1 §9.5.1); paragraphs
-    // handle RTL within those bands. Vertical RTL still needs axis conversion.
+    // Хост работает и в вертикальном письме: план в логических осях,
+    // перевод в физику при сборке. Float sides are line-relative (left =
+    // line-left), independent of `direction` (css-writing-modes-4 §6.3), so
+    // RTL hosts use the same plan; paragraphs handle RTL within the bands.
     // `sideways-rl` — тот же план, что `vertical-rl`: line-left — верх
     // (css-writing-modes-4 §6.3), блоки справа налево. У `sideways-lr`
     // line-left — низ, и плана для него нет.
@@ -115,8 +115,7 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
             Some(Display::Grid) | Some(Display::InlineGrid)
         )
         && (inherited.vertical != Some(true) || vert_host)
-        && (inherited.vertical_rl != Some(true) || vert_host)
-        && (inherited.rtl != Some(true) || inherited.vertical != Some(true));
+        && (inherited.vertical_rl != Some(true) || vert_host);
     let collapsed = replaced_used_style::inline_nodes(collapsed, AVAIL_W.get());
     let collapsed = by_layer(
         wrap_floats(
