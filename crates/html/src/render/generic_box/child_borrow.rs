@@ -4,13 +4,13 @@ use crate::dom::{Element, Node};
 use crate::style::computed::Computed;
 
 pub(super) fn borrowed<'a>(element: &'a Element, merged: &Computed) -> Option<&'a [Node]> {
-    if element.style.grid_areas.is_some() || merged.vertical == Some(true) {
+    if element.style.grid_areas.is_some() || merged.wm().vertical() {
         return None;
     }
     // Horizontal preparation only adjusts non-inline vertical children.
-    if element.children.iter().any(|node| {
-        matches!(node, Node::Element(child) if !child.inline && child.style.vertical == Some(true))
-    }) {
+    if element.children.iter().any(
+        |node| matches!(node, Node::Element(child) if !child.inline && child.style.wm().vertical()),
+    ) {
         return None;
     }
     Some(&element.children)
@@ -33,7 +33,9 @@ mod tests {
             unreachable!()
         };
         child.inline = false;
-        child.style.vertical = Some(true);
+        child.style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true, false, false,
+        ));
         assert!(borrowed(&parent, &merged).is_none());
     }
 
@@ -41,11 +43,13 @@ mod tests {
     fn grid_and_vertical_flow_keep_the_preparation_path() {
         let mut parent = crate::layout::table::anon::anon_element("div", vec![]);
         let mut merged = Computed {
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             ..Computed::default()
         };
         assert!(borrowed(&parent, &merged).is_none());
-        merged.vertical = None;
+        merged.writing_mode = None;
         parent.style.grid_areas = Some(vec![vec!["area".into()]]);
         assert!(borrowed(&parent, &merged).is_none());
     }

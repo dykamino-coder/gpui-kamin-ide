@@ -107,7 +107,7 @@ impl Computed {
     /// То же по ФИЗИЧЕСКИМ осям: при вертикальном письме строчная ось идёт
     /// сверху вниз, и обособление меняется местами.
     pub fn contains_width(&self) -> bool {
-        if self.vertical == Some(true) {
+        if self.wm().vertical() {
             self.contains_block_size()
         } else {
             self.contains_inline_size()
@@ -116,7 +116,7 @@ impl Computed {
 
     /// Обособлена ли высота (физическая ось).
     pub fn contains_height(&self) -> bool {
-        if self.vertical == Some(true) {
+        if self.wm().vertical() {
             self.contains_inline_size()
         } else {
             self.contains_block_size()

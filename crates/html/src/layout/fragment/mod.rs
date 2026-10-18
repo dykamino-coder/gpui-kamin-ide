@@ -14,6 +14,7 @@ pub mod grid_bands;
 pub mod line_shape;
 pub(crate) mod oof_reach;
 pub(crate) mod paginate;
+pub(crate) mod plan;
 pub mod probe;
 pub mod push;
 pub mod shape_contents;

@@ -15,7 +15,7 @@ pub(super) fn only_mixed_text(nodes: &[Node], inherited: &Computed) -> bool {
         nodes.iter().all(|node| match node {
             Node::Text(text) if !text.trim().is_empty() => {
                 *seen = true;
-                style.upright != Some(true)
+                !style.wm().upright()
             }
             Node::Element(element)
                 if crate::render::real_inline(element)
@@ -42,7 +42,8 @@ pub(crate) fn upright_paragraph(
         return stack;
     }
     let mut stack = inherited.clone();
-    stack.vertical = None;
+    stack.flat_mode = stack.flow_mode();
+    stack.writing_mode = None;
     stack.upright_stack = true;
     stack.break_word = Some(true);
     let em = match stack.font_size {

@@ -130,7 +130,7 @@ impl Computed {
         // `ch` — продвижение нуля вдоль оси строки. При стоящих глифах в
         // вертикальном письме строка идёт сверху вниз, и продвижение равно
         // кеглю, а не ширине глифа (CSS Writing Modes §7.4).
-        if self.vertical == Some(true) && self.upright == Some(true) {
+        if self.wm().vertical() && self.wm().upright() {
             ch = used;
         }
         // `ic` меряется по тому же семейству и тем же шагом, что `ch` и `ex`.

@@ -141,7 +141,7 @@ impl Computed {
             | "border-block-end-radius"
             | "border-inline-start-radius"
             | "border-inline-end-radius" => {
-                let rtl = self.rtl == Some(true);
+                let rtl = self.wm().rtl();
                 let (a, b) = match (key, rtl) {
                     ("border-top-radius", _) | ("border-block-start-radius", false) => (0, 1),
                     ("border-block-start-radius", true) => (1, 0),

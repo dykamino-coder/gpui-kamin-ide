@@ -43,7 +43,7 @@ pub(crate) fn group_shape(
                 // Письмо — своё или унаследованное от корня (`html, body {
                 // writing-mode }` снимаются выше, свой стиль ребёнка его не
                 // несёт).
-                let vertical = e.style.vertical.or(root.vertical) == Some(true);
+                let vertical = e.style.vertical_decl().or(root.vertical_decl()) == Some(true);
                 let fold = pad_top > 0.0 || floated;
                 let lead = if vertical {
                     pad_top

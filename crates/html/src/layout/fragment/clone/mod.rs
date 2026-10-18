@@ -36,7 +36,7 @@ pub(crate) fn clone_wrapper_item(w: &Element) -> Option<Element> {
     };
     if w.inline
         || s.webkit_box == Some(true)
-        || s.vertical == Some(true)
+        || s.wm().vertical()
         || s.position.is_some()
         || s.float.is_some_and(|f| f != 0)
         || s.background.is_some()

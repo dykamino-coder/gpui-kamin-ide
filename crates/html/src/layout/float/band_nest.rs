@@ -36,7 +36,7 @@ pub(super) fn cont_indent(e: &mut Element, inherited: &Computed) {
 /// эффектов группы, ни ограничителей высоты; рамка и отступ разрешимы.
 pub(super) fn band_nest_block(c: &Element, em: f32) -> bool {
     // Рамка, поля и высота коробки `Kind::Nest` — физические.
-    BAND_WM.with(std::cell::Cell::get) == 0
+    !BAND_WM.with(std::cell::Cell::get).vertical()
         && block_level_in_flow(c)
         && !own_context(c)
         && !replaced_tag(c)
@@ -137,7 +137,7 @@ pub(super) fn band_seq(nodes: Vec<Node>, em: f32) -> Option<Vec<Node>> {
         // the same BFC. Match the measured host's orthogonal-float gate;
         // a text-free vertical float does not need inline text measurement.
         if open_run
-            || (f.style.vertical == Some(true) && band_float_m(f, em).is_none())
+            || (f.style.wm().vertical() && band_float_m(f, em).is_none())
             || f.style.shape_outside.is_some()
             || band_margins(&f.style, em).is_none()
         {

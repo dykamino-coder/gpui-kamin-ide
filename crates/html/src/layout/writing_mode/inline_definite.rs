@@ -28,7 +28,7 @@ pub(crate) fn resolve_percentages(style: &mut Computed, parent: &Computed) {
     let Some(cb) = parent.inline_definite else {
         return;
     };
-    if parent.vertical != Some(true) || out_of_flow(style) {
+    if !parent.wm().vertical() || out_of_flow(style) {
         return;
     }
     // A float-band piece (`band_flow_host::build_kid`) is laid out in a frame as large as its
@@ -62,7 +62,7 @@ pub(crate) fn resolve_percentages(style: &mut Computed, parent: &Computed) {
 
 /// The box's own content inline size when it is definite and its inline axis is vertical.
 pub(crate) fn own(style: &Computed, parent: &Computed, root: bool, icb_height: f32) -> Option<f32> {
-    if style.vertical != Some(true) || style.contains_height() {
+    if !style.wm().vertical() || style.contains_height() {
         return None;
     }
     let b = style.borders();
@@ -101,7 +101,7 @@ pub(crate) fn own(style: &Computed, parent: &Computed, root: bool, icb_height: f
     }
     let space = if root {
         Some(icb_height)
-    } else if parent.vertical == Some(true) {
+    } else if parent.wm().vertical() {
         parent.inline_definite
     } else {
         stretched_flex_item(style, parent)
@@ -147,7 +147,9 @@ mod tests {
 
     fn vertical() -> Computed {
         Computed {
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             ..Computed::default()
         }
     }

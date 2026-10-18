@@ -11,9 +11,9 @@ impl Computed {
     /// `RelevantSideForBorderShape`). Физические индексы t/r/b/l = 0..3;
     /// без цвета — цвет текста, без него чёрный (`currentColor`).
     pub fn border_shape_stroke(&self) -> (f32, Color) {
-        let vertical = self.vertical == Some(true);
-        let rl = self.vertical_rl == Some(true);
-        let rtl = self.rtl == Some(true);
+        let vertical = self.wm().vertical();
+        let rl = self.wm().block_rl();
+        let rtl = self.wm().rtl();
         let (block_start, block_end) = match (vertical, rl) {
             (false, _) => (0usize, 2usize),
             (true, true) => (1, 3),

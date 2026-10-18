@@ -119,20 +119,17 @@ pub(super) fn build_band_kid(
     // CSS Writing Modes §3.2: changing writing-mode establishes an independent
     // formatting context. Blink block_layout_algorithm.cc:1545 clears its
     // exclusion space; parent bands use different axes and cannot cut its lines.
-    let child_vertical = copy.style.vertical.unwrap_or(vertical);
+    let child_vertical = copy.style.vertical_decl().unwrap_or(vertical);
     let same_writing_mode = child_vertical == vertical
         && (!vertical
-            || copy
-                .style
-                .vertical_rl
-                .unwrap_or(inherited.vertical_rl == Some(true))
-                == (inherited.vertical_rl == Some(true)))
+            || copy.style.rl_decl().unwrap_or(inherited.wm().block_rl())
+                == (inherited.wm().block_rl()))
         && (!vertical
             || copy
                 .style
-                .sideways
-                .unwrap_or(inherited.sideways == Some(true))
-                == (inherited.sideways == Some(true)));
+                .sideways_decl()
+                .unwrap_or(inherited.wm().sideways())
+                == (inherited.wm().sideways()));
     if shapes.is_some() && same_writing_mode {
         copy.style.flow_shapes = shapes;
     }
@@ -156,12 +153,8 @@ pub(super) fn build_band_kid(
             .flow_shapes
             .clone()
             .unwrap_or_else(|| std::sync::Arc::new((Vec::new(), Vec::new())));
-        return crate::layout::fragment::types::FlowRow::new(
-            atoms,
-            shapes,
-            inherited.rtl == Some(true),
-        )
-        .hooked();
+        return crate::layout::fragment::types::FlowRow::new(atoms, shapes, inherited.wm().rtl())
+            .hooked();
     }
     // Замещаемый флоат, кроме `<img>` (`embed`, `object`,
     // `video`…), — своей веткой `element` ниже: каркас блока со
@@ -183,7 +176,7 @@ pub(super) fn build_band_kid(
     // Writing Modes 4 §7.3: the float's own formatting context determines its
     // physical size; placement uses the host's axes (Blink floats_utils.cc:71).
     // element() installs the vertical block axis and containing-block scopes.
-    let own_vertical = copy.style.vertical.or(inherited.vertical) == Some(true);
+    let own_vertical = copy.style.vertical_decl().or(inherited.vertical_decl()) == Some(true);
     if float && !table && !replaced && !vertical && !own_vertical && !list_item {
         // Флоат — блочная коробка (§9.7) каким бы ни был тег: тем
         // же путём, что у статического хоста (`shape_flow`).
