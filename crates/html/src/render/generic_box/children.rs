@@ -129,9 +129,9 @@ pub(crate) fn generic_children(
     // родителя. Пока строятся дети, открыт слой: коробка, чей родитель
     // содержащим блоком не является, переезжает сюда.
     let cb_layer = crate::text::inline::establishes_cb(&merged);
-    if cb_layer {
-        crate::layout::positioned::containing_block::cb_open_with(fixed_cb_layer_box(&merged));
-    }
+    let cb_scope = cb_layer.then(|| {
+        crate::layout::positioned::layer_scope::LayerScope::cb(fixed_cb_layer_box(&merged))
+    });
     // Линейки промежутков (css-gaps-1). Слой заводится ТОЛЬКО когда
     // задан стиль хотя бы одной линейки: начальное `none` означает,
     // что рисовать нечего, и ни одна старая пара сюда не попадает
@@ -146,18 +146,16 @@ pub(crate) fn generic_children(
     // closes. Its padding box still owns the initial containing block
     // (CSS 2.1 §10.1), including absolute descendants below body margins.
     let viewport = e.tag == "html-viewport";
-    if viewport {
-        crate::layout::positioned::containing_block::icb_open();
-    }
+    let viewport_scope = viewport.then(crate::layout::positioned::layer_scope::LayerScope::icb);
     kids.extend(decorated_children(e, &merged, opts, || {
         blocks(&children, &merged, opts)
     }));
-    if viewport {
-        kids.extend(crate::layout::positioned::containing_block::icb_close());
+    if let Some(scope) = viewport_scope {
+        kids.extend(scope.finish());
     }
     let d = crate::text::clamp::hide_box_after_point(d, clamp_outer, clamp_span, &merged, is_clamp);
-    if cb_layer {
-        kids.extend(crate::layout::positioned::containing_block::cb_close());
+    if let Some(scope) = cb_scope {
+        kids.extend(scope.finish());
     }
     if is_clamp {
         // Бюджет среза — высота ПОЛЯ СОДЕРЖИМОГО: при `box-sizing:

@@ -32,10 +32,14 @@ thread_local! {
 /// Prepaint a static-position probe placed in a text line with that line's
 /// box `(top, height, start x)`; the probe takes it (`take_line_box`).
 pub fn with_line_box<R>(line: (Pixels, Pixels, Pixels), f: impl FnOnce() -> R) -> R {
-    let prev = LINE_BOX.with(|c| c.replace(Some(line)));
-    let out = f();
-    LINE_BOX.with(|c| c.set(prev));
-    out
+    struct RestoreLineBox(Option<(Pixels, Pixels, Pixels)>);
+    impl Drop for RestoreLineBox {
+        fn drop(&mut self) {
+            LINE_BOX.with(|c| c.set(self.0));
+        }
+    }
+    let _scope = RestoreLineBox(LINE_BOX.with(|c| c.replace(Some(line))));
+    f()
 }
 
 pub(crate) fn take_line_box() -> Option<(Pixels, Pixels, Pixels)> {
@@ -166,4 +170,49 @@ pub fn cb_push(spot: SpotCell, el: AnyElement, nearest: u16) -> Option<AnyElemen
         }
         None => Some(el),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::px;
+
+    fn line(top: f32) -> (Pixels, Pixels, Pixels) {
+        (px(top), px(12.0), px(3.0))
+    }
+
+    #[test]
+    fn nested_consumption_restores_the_outer_line() {
+        assert_eq!(take_line_box(), None);
+        let answer = with_line_box(line(1.0), || {
+            with_line_box(line(2.0), || {
+                assert_eq!(take_line_box(), Some(line(2.0)));
+                assert_eq!(take_line_box(), None);
+            });
+            assert_eq!(take_line_box(), Some(line(1.0)));
+            42
+        });
+        assert_eq!(answer, 42);
+        assert_eq!(take_line_box(), None);
+    }
+
+    #[test]
+    fn unwind_restores_outer_line_and_absent_context() {
+        assert_eq!(take_line_box(), None);
+        with_line_box(line(1.0), || {
+            let result = std::panic::catch_unwind(|| {
+                with_line_box(line(2.0), || {
+                    assert_eq!(take_line_box(), Some(line(2.0)));
+                    panic!("probe failed");
+                });
+            });
+            assert!(result.is_err());
+            assert_eq!(take_line_box(), Some(line(1.0)));
+        });
+        let result = std::panic::catch_unwind(|| {
+            with_line_box(line(3.0), || panic!("probe failed"));
+        });
+        assert!(result.is_err());
+        assert_eq!(take_line_box(), None);
+    }
 }
