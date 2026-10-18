@@ -7,7 +7,7 @@ use crate::layout::fragment::breaks::{edge_break, oof_reach, page_monolith};
 use crate::layout::fragment::flex_lines::{class_a_box, inline_display};
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::page::names::page_names;
-use crate::layout::page::paged::FIXED_LAYER;
+use crate::layout::page::paged::PagedBuild;
 use crate::layout::page::paged::visible_overflow;
 use crate::render::{RenderOpts, blocks, is_blank, out_of_flow};
 use crate::style::computed::{Computed, Display};
@@ -55,7 +55,9 @@ pub(super) fn page_kids_from_groups(
         first = false;
         let build = |band: bool, slot: &mut Vec<AnyElement>, fixed_slot: &mut Vec<AnyElement>| {
             crate::layout::positioned::containing_block::icb_open();
-            FIXED_LAYER.with(|f| f.borrow_mut().clear());
+            if let Some(paged) = opts.paged_build() {
+                paged.clear_fixed();
+            }
             // Оставленная обёртка (`html`/`body`) с долей высоты считает её от
             // page area — содержащего блока корня (css-page-3 §page-model).
             // A vertical root (`Some(rl)`) flows blocks along x like a
@@ -99,7 +101,9 @@ pub(super) fn page_kids_from_groups(
                 crate::layout::positioned::containing_block::icb_close(),
             ));
             fixed_slot.extend(layer(
-                FIXED_LAYER.with(|f| std::mem::take(&mut *f.borrow_mut())),
+                opts.paged_build()
+                    .map(PagedBuild::take_fixed)
+                    .unwrap_or_default(),
             ));
             el
         };

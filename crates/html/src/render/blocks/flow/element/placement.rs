@@ -6,7 +6,6 @@ pub(super) use route::layer_route;
 use super::finish_element;
 use crate::hooks::IntoHooked;
 use crate::layout::block::struts::margin_px;
-use crate::layout::page::paged::{FIXED_LAYER, PAGED};
 use crate::paint::stacking::layered;
 use crate::render::blocks::flow::BelowRun;
 use crate::render::*;
@@ -33,6 +32,7 @@ pub(crate) fn place_element(
     opts: &RenderOpts,
 ) {
     let (x_set, y_set, fixed, below_icb, to_icb, to_cb, far_fixed) = layer_route(
+        opts.paged_build().is_some(),
         e,
         inherited,
         under_tf,
@@ -77,16 +77,14 @@ pub(crate) fn place_element(
             ..Default::default()
         });
         let mut source_paint = None;
-        let sent = if to_icb && fixed && PAGED.with(|p| p.get()) {
+        let paged = opts.paged_build().filter(|_| to_icb && fixed);
+        let sent = if let Some(paged) = paged {
             // Стопка страниц: фиксированный — в свой слой, по копии
-            // на лист без сдвига (`FIXED_LAYER`). Обёртка `LatePlace`
+            // на лист без сдвига (`PagedBuild::fixed`). Обёртка `LatePlace`
             // та же, что у слоя ICB, — через вложенный слой.
             crate::layout::positioned::containing_block::icb_open();
             let _ = crate::layout::positioned::containing_block::icb_push(spot.clone(), built);
-            FIXED_LAYER.with(|f| {
-                f.borrow_mut()
-                    .extend(crate::layout::positioned::containing_block::icb_close())
-            });
+            paged.push_fixed(crate::layout::positioned::containing_block::icb_close());
             None
         } else {
             // Слой содержащего блока рисуется после его потока, но

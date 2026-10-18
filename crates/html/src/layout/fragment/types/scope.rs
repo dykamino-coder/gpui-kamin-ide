@@ -27,6 +27,8 @@ pub struct FragCx {
     /// раскладкой (`fragment::paginate`): `render::element` оборачивает её
     /// кандидатов в разрыв, и запись узлов их раскладки читает решатель.
     pub(crate) watch: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
+    /// Строятся дети стопки страниц (`PagedBuild`).
+    pub(crate) paged: Option<std::rc::Rc<crate::layout::page::paged::PagedBuild>>,
 }
 
 impl RenderOpts {
