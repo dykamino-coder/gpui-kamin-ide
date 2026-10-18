@@ -75,6 +75,16 @@ pub struct WritingMode {
 }
 
 impl WritingMode {
+    /// `horizontal-tb`, `ltr`, `mixed` — the initial value.
+    pub(crate) const INITIAL: Self = Self {
+        vertical: false,
+        rl: false,
+        sideways: false,
+        turned: false,
+        rtl: false,
+        orientation: TextOrientation::Mixed,
+    };
+
     /// A box laid out in `writing-mode` `vertical`/`rl`/`sideways` with the given direction.
     #[cfg(test)]
     pub(crate) fn new(vertical: bool, rl: bool, sideways: bool, rtl: bool) -> Self {

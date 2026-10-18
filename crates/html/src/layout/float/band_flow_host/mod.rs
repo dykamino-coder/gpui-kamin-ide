@@ -18,10 +18,10 @@ mod build_kid;
 use build_kid::build_band_kid;
 
 thread_local! {
-    /// Письмо содержащего блока, для которого `wrap_floats` собирает хост:
-    /// 0 — горизонтальное, 1 — `vertical-rl`, 2 — `vertical-lr`. Им гейты
+    /// Письмо содержащего блока, для которого `wrap_floats` собирает хост. Им гейты
     /// измеряемого хоста отличают ортогональный поток от своего.
-    pub(crate) static BAND_WM: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
+    pub(crate) static BAND_WM: std::cell::Cell<crate::style::computed::writing_mode::WritingMode> =
+        const { std::cell::Cell::new(crate::style::computed::writing_mode::WritingMode::INITIAL) };
 }
 
 thread_local! {
@@ -74,7 +74,7 @@ impl Drop for BandCbhGuard {
 }
 
 /// Вернуть прежнее письмо хоста по выходе из `blocks()`.
-pub(crate) struct BandWmGuard(pub(crate) u8);
+pub(crate) struct BandWmGuard(pub(crate) crate::style::computed::writing_mode::WritingMode);
 
 impl Drop for BandWmGuard {
     fn drop(&mut self) {
@@ -89,8 +89,10 @@ pub(super) fn band_orthogonal(c: &Computed) -> bool {
     // Письмо наследуется: незаданное у коробки — письмо содержащего блока,
     // ортогональна только коробка, ЗАДАВШАЯ другое.
     let wm = BAND_WM.with(std::cell::Cell::get);
-    c.vertical_decl().is_some_and(|v| v != (wm != 0))
-        || (c.wm().vertical() && c.rl_decl().is_some_and(|r| r != (wm == 1)))
+    c.vertical_decl().is_some_and(|v| v != wm.vertical())
+        || (c.wm().vertical()
+            && c.rl_decl()
+                .is_some_and(|r| r != (wm.vertical() && wm.block_rl())))
 }
 
 /// Есть ли в поддереве непустой текст.

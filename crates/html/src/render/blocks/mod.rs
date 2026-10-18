@@ -134,13 +134,7 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
             _ => None,
         })
     }));
-    let _wm_guard = BandWmGuard(BAND_WM.with(|w| {
-        w.replace(match (inherited.vertical_decl(), inherited.rl_decl()) {
-            (Some(true), Some(true)) => 1,
-            (Some(true), _) => 2,
-            _ => 0,
-        })
-    }));
+    let _wm_guard = BandWmGuard(BAND_WM.with(|w| w.replace(inherited.wm())));
     let collapsed = replaced_used_style::inline_nodes(collapsed, AVAIL_W.get());
     let collapsed = by_layer(
         wrap_floats(
