@@ -13,6 +13,7 @@ pub use rows::Intrinsic;
 pub use rows::Kid;
 pub use rows::Par;
 pub use rows::Rows;
+mod repeat_bands;
 mod stack_child;
 use crate::tolerance::COORD_EPS;
 pub use stack_child::Repeat;

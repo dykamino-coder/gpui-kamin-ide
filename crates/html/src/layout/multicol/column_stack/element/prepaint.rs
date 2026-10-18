@@ -3,7 +3,7 @@
 use crate::layout::fragment::fragment_mask;
 use crate::layout::fragment::types::Frag;
 use crate::layout::multicol::column_stack::ColumnStack;
-use gpui::{AnyElement, App, Bounds, Pixels, Window, point, px, size};
+use gpui::{App, Bounds, Pixels, Window, point, px, size};
 
 impl ColumnStack {
     pub(super) fn paint_column_rules(&mut self, window: &mut Window, bounds: Bounds<Pixels>) {
@@ -118,26 +118,18 @@ impl ColumnStack {
             // Копия та же полная таблица, поднятая так, что её полоса
             // совпадает с местом во фрагменте; видимой полосу делает маска.
             if let Some(r) = kid.repeat.as_mut() {
-                let mut band = |el: Option<&mut AnyElement>, at: f32| {
-                    if let Some(el) = el {
-                        el.layout_as_root_at(
-                            point(x, y + px(at)),
-                            size(
-                                gpui::AvailableSpace::Definite(px(col_w)),
-                                gpui::AvailableSpace::Definite(px(full_h)),
-                            ),
-                            window,
-                            cx,
-                        );
-                        el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
-                    }
-                };
-                if let (Some((src, _)), true) = (r.head, f.head > 0.01 && f.copy > 0) {
-                    band(r.head_els.get_mut(f.copy - 1), -f.head - src);
-                }
-                if let (Some((src, bh)), true) = (r.foot, f.foot > 0.01) {
-                    band(r.foot_els.get_mut(f.copy), f.h + f.foot - bh - src);
-                }
+                r.place_bands(f, |el, at| {
+                    el.layout_as_root_at(
+                        point(x, y + px(at)),
+                        size(
+                            gpui::AvailableSpace::Definite(px(col_w)),
+                            gpui::AvailableSpace::Definite(px(full_h)),
+                        ),
+                        window,
+                        cx,
+                    );
+                    el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
+                });
             }
             let el = if f.copy == 0 {
                 &mut kid.el
