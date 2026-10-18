@@ -131,7 +131,7 @@ pub(crate) fn multicol_box(
                 }
                 spans += 1;
                 let st = inherit(&merged, &sp.style);
-                used += shape_full(sp, 4, ShapeCx::COLUMNS)?.0
+                used += shape_full(sp, 4, ShapeCx::COLUMNS)?.height
                     + px(&st.margin.top)?
                     + px(&st.margin.bottom)?;
             }

@@ -5,6 +5,7 @@ pub(crate) mod absolute_overflow;
 mod absolute_overflow_math;
 pub(crate) mod anchor;
 pub mod containing_block;
+pub(crate) mod layer_scope;
 pub mod predicates;
 pub mod relative;
 mod spot_geometry;

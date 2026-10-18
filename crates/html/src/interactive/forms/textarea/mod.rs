@@ -29,11 +29,11 @@ pub(super) fn textarea(
         .child(div().w_full().child(body));
     // UA dimensions are preferred intrinsic sizes, never authored minima.
     paint.style().min_size =
-        std::mem::take(&mut crate::style::apply::apply(div(), style).style().min_size);
+        std::mem::take(&mut crate::paint::apply::apply(div(), style).style().min_size);
     // The editor owns scroll state; an anonymous viewport would become the
     // flex item and lose the host's growth, basis and intrinsic constraints.
     paint = crate::interactive::scroll_target::attach(paint, e, style);
-    let keywords = crate::style::apply::intrinsic_size::keywords(style)
+    let keywords = crate::paint::apply::intrinsic_size::keywords(style)
         .map(|keyword| keyword.filter(|v| !matches!(v, gpui::CssSizingKeyword::Stretch)));
     paint.style().sizing_keywords = Some(keywords);
     let gutter = gutters(style);

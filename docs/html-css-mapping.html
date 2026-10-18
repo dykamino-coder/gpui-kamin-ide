@@ -330,13 +330,13 @@ div().flex().flex_col().children(elements)</code></pre>
 <p class="why"><b>Тонкость, о которой стоит знать.</b> Обрезка в GPUI — всегда прямоугольник. Поэтому <code>overflow: hidden</code> вместе со скруглением НЕ срежет углы у детей: угол ребёнка вылезет за скруглённый угол родителя. Лечится тем же скруглением на ребёнке.</p>
 
 <h2 class="sec" id="tablica">Полная таблица свойств</h2>
-<p><b>Что это.</b> Каждое свойство CSS, встречающееся в разметке интерфейсов, с вердиктом. Таблица собирается из реестра в коде (<code>crates/html/src/coverage.rs</code>) скриптом <code>scripts/css_coverage_table.py</code> — руками её не правят.</p>
+<p><b>Что это.</b> Каждое свойство CSS, встречающееся в разметке интерфейсов, с вердиктом. Таблица собирается из реестра в коде (<code>crates/html/src/coverage/properties/</code>) скриптом <code>scripts/css_coverage_table.py</code> — руками её не правят.</p>
 <p><b>Зачем именно так.</b> Список поддержанного в документации устаревает молча. Здесь же за каждой строкой стоит тест: пометка «перенесено» означает, что образец значения проверенно меняет разрешённый стиль, иначе сборка падает.</p>
 <div class="metric">
-  <div><b>93%</b><span>покрытие CSS (частичное — за половину)</span></div>
-  <div><b>164</b><span>совпадает с браузером</span></div>
-  <div><b>24</b><span>узнаваемо, но с оговоркой</span></div>
-  <div><b>12</b><span>пустышек и невыразимого</span></div>
+  <div><b>94%</b><span>покрытие CSS (частичное — за половину)</span></div>
+  <div><b>175</b><span>совпадает с браузером</span></div>
+  <div><b>20</b><span>узнаваемо, но с оговоркой</span></div>
+  <div><b>10</b><span>пустышек и невыразимого</span></div>
 </div>
 <h3>Бокс-модель</h3>
 <table><thead><tr><th>Свойство</th><th>Статус</th><th>Примечание</th></tr></thead><tbody>
@@ -379,7 +379,7 @@ div().flex().flex_col().children(elements)</code></pre>
 </tbody></table>
 <h3>Раскладка</h3>
 <table><thead><tr><th>Свойство</th><th>Статус</th><th>Примечание</th></tr></thead><tbody>
-<tr><td><code>display</code></td><td><span class="tag t-part">частично</span></td><td>`list-item` и `flow-root` сводятся к блоку; настоящего строчного бокса нет</td></tr>
+<tr><td><code>display</code></td><td><span class="tag t-part">частично</span></td><td>`list-item` и `flow-root` сводятся к блоку: своего маркера-псевдоэлемента у них нет</td></tr>
 <tr><td><code>flex-direction</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>column</code></td></tr>
 <tr><td><code>flex-wrap</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>wrap</code></td></tr>
 <tr><td><code>flex-flow</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>column wrap</code></td></tr>
@@ -405,6 +405,8 @@ div().flex().flex_col().children(elements)</code></pre>
 <tr><td><code>grid-column-gap</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>8px</code></td></tr>
 <tr><td><code>grid-template-columns</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>120px 1fr</code></td></tr>
 <tr><td><code>grid-template-rows</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>40px auto</code></td></tr>
+<tr><td><code>grid-template</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>40px auto / 120px 1fr</code></td></tr>
+<tr><td><code>grid</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>auto / repeat(4, auto)</code></td></tr>
 <tr><td><code>grid-auto-columns</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>1fr</code></td></tr>
 <tr><td><code>grid-auto-rows</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>40px</code></td></tr>
 <tr><td><code>grid-auto-flow</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>column</code></td></tr>
@@ -416,7 +418,7 @@ div().flex().flex_col().children(elements)</code></pre>
 <tr><td><code>grid-row-end</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4</code></td></tr>
 <tr><td><code>grid-area</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>2 / 1 / 4 / 3</code></td></tr>
 <tr><td><code>grid-template-areas</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>a b</code></td></tr>
-<tr><td><code>position</code></td><td><span class="tag t-part">частично</span></td><td>`sticky` ведёт себя как обычный: смещение ленты элементу неоткуда узнать</td></tr>
+<tr><td><code>position</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>fixed</code></td></tr>
 <tr><td><code>top</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
 <tr><td><code>right</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
 <tr><td><code>bottom</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
@@ -470,7 +472,7 @@ div().flex().flex_col().children(elements)</code></pre>
 <tr><td><code>outline-color</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>#333</code></td></tr>
 <tr><td><code>outline-offset</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>2px</code></td></tr>
 <tr><td><code>box-shadow</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>inset 0 2px 4px #0004</code></td></tr>
-<tr><td><code>backdrop-filter</code></td><td><span class="tag t-part">частично</span></td><td>радиус учитывается ступенями каскада уменьшений, а не точной сигмой</td></tr>
+<tr><td><code>backdrop-filter</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>blur(8px)</code></td></tr>
 </tbody></table>
 <h3>Текст</h3>
 <table><thead><tr><th>Свойство</th><th>Статус</th><th>Примечание</th></tr></thead><tbody>
@@ -483,7 +485,7 @@ div().flex().flex_col().children(elements)</code></pre>
 <tr><td><code>line-height</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>1.4</code></td></tr>
 <tr><td><code>letter-spacing</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>0.5px</code></td></tr>
 <tr><td><code>word-spacing</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>2px</code></td></tr>
-<tr><td><code>text-align</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>center</code></td></tr>
+<tr><td><code>text-align</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>justify</code></td></tr>
 <tr><td><code>text-decoration</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>underline</code></td></tr>
 <tr><td><code>text-decoration-line</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>line-through</code></td></tr>
 <tr><td><code>text-transform</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>uppercase</code></td></tr>
@@ -491,8 +493,9 @@ div().flex().flex_col().children(elements)</code></pre>
 <tr><td><code>text-overflow</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>ellipsis</code></td></tr>
 <tr><td><code>white-space</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>pre-line</code></td></tr>
 <tr><td><code>word-break</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>break-all</code></td></tr>
-<tr><td><code>overflow-wrap</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>anywhere</code></td></tr>
-<tr><td><code>word-wrap</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>break-word</code></td></tr>
+<tr><td><code>line-break</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>anywhere</code></td></tr>
+<tr><td><code>overflow-wrap</code></td><td><span class="tag t-no">нечем</span></td><td>переносчик GPUI рвёт слово, которое иначе не влезает, ВСЕГДА — отличить `normal` от `break-word` нечем, и значение ни на что не влияет</td></tr>
+<tr><td><code>word-wrap</code></td><td><span class="tag t-no">нечем</span></td><td>старое имя `overflow-wrap` — то же ограничение</td></tr>
 <tr><td><code>text-wrap</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>nowrap</code></td></tr>
 <tr><td><code>vertical-align</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>middle</code></td></tr>
 <tr><td><code>-webkit-line-clamp</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>2</code></td></tr>
@@ -508,11 +511,12 @@ div().flex().flex_col().children(elements)</code></pre>
 </tbody></table>
 <h3>Разбирается и ничего не делает</h3>
 <table><thead><tr><th>Свойство</th><th>Статус</th><th>Примечание</th></tr></thead><tbody>
-<tr><td><code>will-change</code></td><td><span class="tag t-part">пустышка</span></td><td>подсказка движку о будущих правках — рисовать нечего</td></tr>
+<tr><td><code>will-change</code></td><td><span class="tag t-part">частично</span></td><td>обещание даёт то же, что само свойство: содержащий блок для absolute/fixed и контекст наложения (css-will-change-1 §2.1); слоёв композитора нет</td></tr>
 <tr><td><code>contain</code></td><td><span class="tag t-part">частично</span></td><td>`paint` и `strict` обрезают содержимое; `size` и `layout` на пересчёт не влияют — он и так по узлу</td></tr>
-<tr><td><code>isolation</code></td><td><span class="tag t-no">нечем</span></td><td>смешивание идёт с уже нарисованным кадром; отдельной группы наложения, которую можно было бы изолировать, в конвейере нет</td></tr>
-<tr><td><code>appearance</code></td><td><span class="tag t-part">пустышка</span></td><td>системного вида у элементов и так нет — рисуем сами</td></tr>
-<tr><td><code>box-decoration-break</code></td><td><span class="tag t-part">пустышка</span></td><td>элемент не разрывается между страницами</td></tr>
+<tr><td><code>container-type</code></td><td><span class="tag t-part">частично</span></td><td>включает обособление размера и стиля, как велит css-conditional-5 §container-type; самого правила `@container` движок пока не разбирает</td></tr>
+<tr><td><code>isolation</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>isolate</code></td></tr>
+<tr><td><code>appearance</code></td><td><span class="tag t-part">частично</span></td><td>`none` снимает нарисованный виджет флажка, переключателя, ползунка, образца цвета и стрелку списка; `base` пока как `auto`</td></tr>
+<tr><td><code>box-decoration-break</code></td><td><span class="tag t-part">частично</span></td><td>`clone` — у блочной коробки, прямого ребёнка многоколоночной стопки; у строчных коробок и на страницах — как `slice`</td></tr>
 <tr><td><code>font-smooth</code></td><td><span class="tag t-part">пустышка</span></td><td>сглаживание задаёт растеризатор шрифта, не стиль</td></tr>
 <tr><td><code>-webkit-font-smoothing</code></td><td><span class="tag t-part">пустышка</span></td><td>то же самое: решает растеризатор</td></tr>
 <tr><td><code>tab-size</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4</code></td></tr>
@@ -523,7 +527,7 @@ div().flex().flex_col().children(elements)</code></pre>
 </tbody></table>
 <h3>Перенести нечем</h3>
 <table><thead><tr><th>Свойство</th><th>Статус</th><th>Примечание</th></tr></thead><tbody>
-<tr><td><code>transform</code></td><td><span class="tag t-part">частично</span></td><td>поворот, масштаб и сдвиг переносятся; скос невыразим, а области попадания курсора остаются на исходном месте</td></tr>
+<tr><td><code>transform</code></td><td><span class="tag t-part">частично</span></td><td>поворот, масштаб, сдвиг и скос точны; области попадания курсора остаются на исходном месте</td></tr>
 <tr><td><code>transform-origin</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>left top</code></td></tr>
 <tr><td><code>rotate</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>45deg</code></td></tr>
 <tr><td><code>scale</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>1.5</code></td></tr>
@@ -531,15 +535,16 @@ div().flex().flex_col().children(elements)</code></pre>
 <tr><td><code>perspective</code></td><td><span class="tag t-part">пустышка</span></td><td>объёмных преобразований нет, а без них перспектива ничего не меняет</td></tr>
 <tr><td><code>transition</code></td><td><span class="tag t-part">частично</span></td><td>плавно меняются цвета и прозрачность; отступы и размеры переключаются на середине пути</td></tr>
 <tr><td><code>animation</code></td><td><span class="tag t-part">частично</span></td><td>интерполируются цвет, прозрачность, размеры и сдвиг; кривые времени и задержка не разбираются</td></tr>
-<tr><td><code>filter</code></td><td><span class="tag t-part">частично</span></td><td>цветовые функции идут по всему поддереву; размытие требует отрисовки в отдельный буфер</td></tr>
-<tr><td><code>mix-blend-mode</code></td><td><span class="tag t-part">частично</span></td><td>аппаратный блендер даёт multiply/screen/darken/lighten и только для заливки узла</td></tr>
-<tr><td><code>clip-path</code></td><td><span class="tag t-part">частично</span></td><td>обрезка прямоугольником со скруглением: `inset()` и круг на квадрате точны, многоугольник невыразим</td></tr>
-<tr><td><code>mask</code></td><td><span class="tag t-part">частично</span></td><td>то же, что `clip-path`; растровых масок нет</td></tr>
-<tr><td><code>float</code></td><td><span class="tag t-part">частично</span></td><td>ряд из двух колонок: текст не заворачивается под плавающий блок, когда тот кончился</td></tr>
+<tr><td><code>filter</code></td><td><span class="tag t-part">частично</span></td><td>цветовые функции и размытие поддерева есть; `drop-shadow` и цветовые матрицы — нет</td></tr>
+<tr><td><code>mix-blend-mode</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>multiply</code></td></tr>
+<tr><td><code>clip-path</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>polygon(50% 0%, 100% 100%, 0% 100%)</code></td></tr>
+<tr><td><code>mask</code></td><td><span class="tag t-part">частично</span></td><td>формы те же, что у `clip-path`; растровой маски из картинки нет</td></tr>
+<tr><td><code>float</code></td><td><span class="tag t-part">частично</span></td><td>текст обтекает блок сбоку и возвращается под него, когда у блока заданы размеры; без них остаётся ряд из двух колонок</td></tr>
 <tr><td><code>clear</code></td><td><span class="tag t-part">частично</span></td><td>прерывает ряд обтекания; настоящего сброса строк нет</td></tr>
-<tr><td><code>columns</code></td><td><span class="tag t-part">частично</span></td><td>колонки набираются из детей, а не из разрезанного потока: абзац поперёк колонок не рвётся</td></tr>
-<tr><td><code>column-count</code></td><td><span class="tag t-part">частично</span></td><td>то же, что `columns`</td></tr>
-<tr><td><code>column-width</code></td><td><span class="tag t-part">частично</span></td><td>то же, что `columns`</td></tr>
+<tr><td><code>columns</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>200px 3</code></td></tr>
+<tr><td><code>column-count</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>3</code></td></tr>
+<tr><td><code>column-width</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>200px</code></td></tr>
+<tr><td><code>zoom</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>2</code></td></tr>
 <tr><td><code>writing-mode</code></td><td><span class="tag t-part">частично</span></td><td>блок поворачивается на четверть оборота; `vertical-rl` и `vertical-lr` не различаются</td></tr>
 <tr><td><code>direction</code></td><td><span class="tag t-part">частично</span></td><td>разворачивает раскладку и прижим текста; перестановка смешанных прогонов — за движком шрифта</td></tr>
 <tr><td><code>counter-reset</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>item 0</code></td></tr>
@@ -549,7 +554,7 @@ div().flex().flex_col().children(elements)</code></pre>
 <tr><td><code>caret-color</code></td><td><span class="tag t-part">частично</span></td><td>каретка рисуется в поле с объявленным фокусом: своего фокуса у документа нет</td></tr>
 <tr><td><code>accent-color</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>#ff0000</code></td></tr>
 <tr><td><code>resize</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>both</code></td></tr>
-<tr><td><code>text-shadow</code></td><td><span class="tag t-part">частично</span></td><td>смещение и цвет точны, размытие набирается копиями, а не гауссовым ядром</td></tr>
+<tr><td><code>text-shadow</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>1px 1px 2px #000</code></td></tr>
 <tr><td><code>font-variant</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>small-caps</code></td></tr>
 <tr><td><code>font-stretch</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>condensed</code></td></tr>
 <tr><td><code>font-feature-settings</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>"tnum" 1</code></td></tr>

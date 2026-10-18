@@ -22,10 +22,7 @@ pub(super) fn clone_plan_of(
     copies: usize,
     fixed: Option<f32>,
     kid_par: &[crate::layout::fragment::types::Par],
-    kids: &[(
-        Element,
-        (f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>),
-    )],
+    kids: &[(Element, crate::layout::fragment::Shape)],
 ) -> Vec<Vec<(f32, f32)>> {
     let clone_plan: Vec<Vec<(f32, f32)>> = if !col_vert
         && kids.iter().any(|(c, _)| clone_dec(c).is_some())
@@ -48,15 +45,15 @@ pub(super) fn clone_plan_of(
                 .filter(|_| {
                     fixed.is_some() && plain_block_tree(&m, 4) && visible_overflow(&m.style)
                 })
-                .filter(|u| u.0 > s.0 + 0.01)
+                .filter(|u| u.height > s.height + 0.01)
                 {
-                    Some(u) => (u.0, u.3, u.4, u.5),
-                    None => (s.0, s.3.clone(), s.4.clone(), s.5.clone()),
+                    Some(u) => (u.height, u.cuts, u.forced, u.solid),
+                    None => (s.height, s.cuts.clone(), s.forced.clone(), s.solid.clone()),
                 };
                 crate::layout::fragment::types::Kid {
-                    h: s.0,
-                    mt: s.1,
-                    mb: s.2,
+                    h: s.height,
+                    mt: s.margin_top,
+                    mb: s.margin_bottom,
                     monolith: solid_box(c),
                     cuts,
                     force_before: edge_break(c, false),

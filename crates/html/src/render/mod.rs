@@ -124,7 +124,7 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     // Слой начального содержащего блока: внепоточные элементы без
     // позиционированного предка дописываются последними детьми документа —
     // их края решает область просмотра (§10.1 п.4).
-    crate::layout::positioned::containing_block::icb_open();
+    let icb_layer = crate::layout::positioned::layer_scope::LayerScope::icb();
     // Корень документа получает ширину области просмотра: от неё цепочка
     // `AVAIL_W` вычитает поля/рамки/отступы `html` и `body`.
     let avail_prev = AVAIL_W.replace(Some(opts.viewport.0).filter(|w| *w > 0.0));
@@ -143,7 +143,7 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     let unkeyed_prev = UNKEYED.replace(unkeyed_positions(nodes));
     let mut out = blocks(nodes, &root, opts);
     AVAIL_W.set(avail_prev);
-    out.extend(crate::layout::positioned::containing_block::icb_close());
+    out.extend(icb_layer.finish());
     UNKEYED.replace(unkeyed_prev);
     RENDER_DEPTH.with(|d| d.set(d.get() - 1));
     let (open, close) = gpui::PaintCollect::pair();
@@ -187,11 +187,11 @@ pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<A
     let root = opts.root_style();
     // Слой ICB закрывается на блок ленты: дальше своего блока внепоточный
     // элемент всё равно не уедет, а без слоя он остался бы на месте.
-    crate::layout::positioned::containing_block::icb_open();
+    let icb_layer = crate::layout::positioned::layer_scope::LayerScope::icb();
     let avail_prev = AVAIL_W.replace(Some(opts.viewport.0).filter(|w| *w > 0.0));
     let out = blocks(std::slice::from_ref(node), &root, opts);
     AVAIL_W.set(avail_prev);
-    let layer = crate::layout::positioned::containing_block::icb_close();
+    let layer = icb_layer.finish();
     let first = out.into_iter().next()?;
     if layer.is_empty() {
         return Some(first);

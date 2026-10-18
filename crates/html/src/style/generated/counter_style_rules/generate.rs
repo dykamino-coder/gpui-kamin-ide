@@ -105,7 +105,7 @@ fn generate(
     // Keep builtin fallback in this document's registry; re-entering repr()
     // would lose this map and recursively acquire the public registry mutex.
     let resolved = || {
-        resolve(rules, name, 0)
+        resolve_counter_style(rules, name, 0)
             .or_else(|| builtin(name).map(|_| super::resolve::builtin_resolved(name)))
     };
     let Some(r) = (depth < 16).then(resolved).flatten() else {
@@ -218,7 +218,7 @@ pub fn custom_marker(v: i64, name: &str, context: Context) -> Option<String> {
     let doc = crate::document::state::current();
     let guard = doc.counter_styles.borrow();
     let rules = &*guard;
-    let r = resolve(rules, name, 0)?;
+    let r = resolve_counter_style(rules, name, 0)?;
     let body = generate(rules, v, name, 0, context);
     Some(format!("{}{body}{}", r.prefix, r.suffix))
 }

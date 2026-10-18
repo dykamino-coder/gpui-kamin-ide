@@ -82,9 +82,9 @@ pub(crate) fn place_element(
             // Стопка страниц: фиксированный — в свой слой, по копии
             // на лист без сдвига (`PagedBuild::fixed`). Обёртка `LatePlace`
             // та же, что у слоя ICB, — через вложенный слой.
-            crate::layout::positioned::containing_block::icb_open();
+            let icb_layer = crate::layout::positioned::layer_scope::LayerScope::icb();
             let _ = crate::layout::positioned::containing_block::icb_push(spot.clone(), built);
-            paged.push_fixed(crate::layout::positioned::containing_block::icb_close());
+            paged.push_fixed(icb_layer.finish());
             None
         } else {
             // Слой содержащего блока рисуется после его потока, но

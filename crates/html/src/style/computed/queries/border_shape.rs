@@ -93,11 +93,12 @@ impl Computed {
         } else {
             self.border_shape_stroke().0
         };
-        let spike = if stroke > 0.0 && crate::paint::background::shape_is_linear(&bs.outer) {
-            stroke * 5.0
-        } else {
-            0.0
-        };
+        let spike =
+            if stroke > 0.0 && crate::style::computed::shape_kind::shape_is_linear(&bs.outer) {
+                stroke * 5.0
+            } else {
+                0.0
+            };
         let mut ext = out.map(|o| o.max(0.0) + stroke / 2.0 + spike);
         // Тени повторяют фигуру (css-borders-4 §border-shape-shadow-interaction)
         // и рисуются растром на той же области (`background::

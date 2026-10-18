@@ -15,10 +15,7 @@ use crate::style::values::value::Len;
 #[allow(clippy::type_complexity)]
 pub(super) fn column_kids(
     merged: &Computed,
-    kids: Vec<(
-        Element,
-        (f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>),
-    )>,
+    kids: Vec<(Element, crate::layout::fragment::Shape)>,
     cols: u16,
     used_gap: f32,
     col_vert: bool,
@@ -29,10 +26,7 @@ pub(super) fn column_kids(
     Vec<Option<Computed>>,
     Vec<usize>,
     Vec<crate::layout::fragment::types::Par>,
-    Vec<(
-        Element,
-        (f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>),
-    )>,
+    Vec<(Element, crate::layout::fragment::Shape)>,
 ) {
     let (kids, kid_par, kid_parent, kid_starts) = if fixed.is_some() && rows.is_none() && !col_vert
     {
@@ -96,10 +90,7 @@ pub(super) fn stack_children(
     fixed: Option<f32>,
     kid_parent: Vec<Option<Computed>>,
     kid_par: Vec<crate::layout::fragment::types::Par>,
-    kids: Vec<(
-        Element,
-        (f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>),
-    )>,
+    kids: Vec<(Element, crate::layout::fragment::Shape)>,
     clone_plan: Vec<Vec<(f32, f32)>>,
 ) -> Vec<crate::layout::fragment::types::StackChild> {
     let balanced_frag: Option<f32> =
@@ -108,10 +99,10 @@ pub(super) fn stack_children(
                 let (c, s) = &kids[0];
                 (nested_rows_box(c)
                     && matches!(c.style.height, Some(Len::Px(_)))
-                    && s.3.is_empty()
-                    && s.1.abs() < 0.01)
+                    && s.cuts.is_empty()
+                    && s.margin_top.abs() < 0.01)
                     .then(|| {
-                        let per = s.0 / cols as f32;
+                        let per = s.height / cols as f32;
                         rows.and_then(|r| r.h).map_or(per, |cap| per.min(cap))
                     })
             })
@@ -122,54 +113,73 @@ pub(super) fn stack_children(
         let mut v = Vec::with_capacity(kids.len());
         let (mut y, mut prev_mb, mut ok) = (0.0f32, 0.0f32, true);
         for (i, (c, s)) in kids.iter().enumerate() {
-            let lead = if i == 0 { s.1 } else { prev_mb.max(s.1) };
+            let lead = if i == 0 {
+                s.margin_top
+            } else {
+                prev_mb.max(s.margin_top)
+            };
             let hh = fixed_nest.unwrap_or(0.0);
             v.push((ok && fixed_nest.is_some() && y + lead < hh - 0.01).then_some(y + lead));
             if edge_break(c, false)
                 || edge_break(c, true)
                 || kid_par.get(i).is_some_and(|p| p.group != 0)
-                || y + lead + s.0 > hh + 0.01
+                || y + lead + s.height > hh + 0.01
             {
                 ok = false;
             }
-            y += lead + s.0;
-            prev_mb = s.2;
+            y += lead + s.height;
+            prev_mb = s.margin_bottom;
         }
         v
     };
     let children: Vec<crate::layout::fragment::types::StackChild> = kids
         .into_iter()
         .enumerate()
-        .map(|(ix, (c, (h, mt, mb, cuts, forced, solid)))| {
-            multicol_stack_child(
+        .map(
+            |(
                 ix,
-                c,
-                h,
-                mt,
-                mb,
-                cuts,
-                forced,
-                solid,
-                e,
-                merged,
-                opts,
-                &clone_plan,
-                &kid_parent,
-                &kid_par,
-                col_vert,
-                col_rl,
-                line_col_w,
-                rows,
-                copies,
-                fixed,
-                fixed_nest,
-                balanced_frag,
-                &nest_at,
-                &nested_auto,
-                &nested_whole,
-                &measured_kids,
-            )
-        })
+                (
+                    c,
+                    crate::layout::fragment::Shape {
+                        height: h,
+                        margin_top: mt,
+                        margin_bottom: mb,
+                        cuts,
+                        forced,
+                        solid,
+                    },
+                ),
+            )| {
+                multicol_stack_child(
+                    ix,
+                    c,
+                    h,
+                    mt,
+                    mb,
+                    cuts,
+                    forced,
+                    solid,
+                    e,
+                    merged,
+                    opts,
+                    &clone_plan,
+                    &kid_parent,
+                    &kid_par,
+                    col_vert,
+                    col_rl,
+                    line_col_w,
+                    rows,
+                    copies,
+                    fixed,
+                    fixed_nest,
+                    balanced_frag,
+                    &nest_at,
+                    &nested_auto,
+                    &nested_whole,
+                    &measured_kids,
+                )
+            },
+        )
         .collect();
     children
 }

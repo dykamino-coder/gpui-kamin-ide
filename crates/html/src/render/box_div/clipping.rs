@@ -97,7 +97,7 @@ pub(crate) fn clip_layer(c: &Computed, opts: &RenderOpts) -> Option<AnyElement> 
         .bottom(px(pad(c.padding.bottom)))
         .left(px(pad(c.padding.left)));
     layer = match (&c.gradient, c.background) {
-        (Some(g), _) => layer.bg(crate::style::apply::fill(g)),
+        (Some(g), _) => layer.bg(crate::paint::apply::fill(g)),
         (None, Some(bg)) => layer.bg(gpui::Background::from(bg.to_hsla())),
         _ => return None,
     };

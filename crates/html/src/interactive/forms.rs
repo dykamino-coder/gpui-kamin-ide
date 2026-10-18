@@ -16,7 +16,7 @@ use indicators::progress;
 use indicators::range;
 
 mod choice;
-mod metrics;
+use crate::style::ua::forms as metrics;
 mod textarea;
 use textarea::textarea;
 mod options;
@@ -24,7 +24,7 @@ use choice::select;
 use choice::toggle;
 
 use crate::dom::Element;
-use crate::style::apply::apply;
+use crate::paint::apply::apply;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
 

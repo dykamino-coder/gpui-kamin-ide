@@ -122,7 +122,7 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
             .sum()
     };
     let bw = st.borders();
-    let (ex, ey) = if crate::style::apply::intrinsic_size::native_content_box(st) {
+    let (ex, ey) = if crate::paint::apply::intrinsic_size::native_content_box(st) {
         (0.0, 0.0)
     } else {
         (
@@ -214,9 +214,9 @@ pub(crate) fn build_embedded(
     // рамки, а не внешней страницы (HTML §4.8.5 «nested browsing context»;
     // `abs-pos-non-replaced-icb-*`: коробка с `right: 80%` улетала в левый
     // верхний угол внешнего документа).
-    crate::layout::positioned::containing_block::icb_open();
+    let icb_layer = crate::layout::positioned::layer_scope::LayerScope::icb();
     let mut kids = blocks(&nodes, &sub.root_style(), &sub);
-    kids.extend(crate::layout::positioned::containing_block::icb_close());
+    kids.extend(icb_layer.finish());
     IFRAME_DEPTH.with(|d| d.set(d.get() - 1));
     drop(scope);
     kids.into_iter()

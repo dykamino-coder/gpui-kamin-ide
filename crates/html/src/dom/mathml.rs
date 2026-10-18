@@ -1,6 +1,6 @@
 //! MathML Core: namespace-aware cascade defaults and presentation hints.
 
-pub(crate) use super::mathml_lengths::length;
+pub(crate) use super::mathml_lengths::parse_mathml_length;
 use crate::style::css::{Rule, Selector, parse_decls};
 use markup5ever_rcdom::{Handle, NodeData};
 
@@ -47,7 +47,7 @@ pub(super) fn hints(handle: &Handle, attrs: &[(String, String)]) -> Vec<Rule> {
         } else if &*name.local == "mpadded"
             && let Some((_, value)) = attrs
                 .iter()
-                .find(|(k, v)| k == "width" && length(v).is_some())
+                .find(|(k, v)| k == "width" && parse_mathml_length(v).is_some())
         {
             rule.decls.insert("width".into(), value.clone());
         }

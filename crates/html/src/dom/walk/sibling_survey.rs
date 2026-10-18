@@ -1,6 +1,6 @@
 //! Survey sibling positions and walk children with their ancestor stack.
 
-use super::walk;
+use super::build_dom_node;
 use crate::dom::*;
 use crate::style::css::{Decls, Keyframes, Rule};
 use crate::style::select::{Ancestor, Sibs, census_of};
@@ -36,7 +36,7 @@ pub(crate) fn walk_children(
             is_elem,
             rc: Some(&all),
         };
-        walk(
+        build_dom_node(
             child, rules, vars, frames, counter, counters, path, *spot, preserve, sibs, &children,
             &spots, idx, out,
         );

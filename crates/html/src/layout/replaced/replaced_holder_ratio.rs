@@ -103,7 +103,7 @@ fn natural_content_box(holder: &mut Div, style: &Computed) -> bool {
         converted[index] = match value {
             None | Some(Len::Auto) => None,
             Some(Len::MinContent | Len::MaxContent | Len::FitContent) => return false,
-            Some(value) if offset == 0.0 => Some(crate::style::apply::len_to_gpui(value).into()),
+            Some(value) if offset == 0.0 => Some(crate::paint::apply::len_to_gpui(value).into()),
             Some(Len::Px(value)) => Some(gpui::px((value - offset).max(0.0)).into()),
             Some(Len::Pct(value)) => Some(DefiniteLength::Calc(-offset, value).into()),
             Some(Len::Calc(index)) => {
@@ -146,7 +146,7 @@ mod tests {
         style.padding.right = Some(Len::Px(10.0));
         style.padding.top = Some(Len::Px(10.0));
         style.padding.bottom = Some(Len::Px(10.0));
-        let mut holder = crate::style::apply::apply(div(), &style);
+        let mut holder = crate::paint::apply::apply(div(), &style);
         assert!(!apply(&mut holder, &style, Some(113.0 / 120.0), false));
         assert_eq!(holder.style().content_box, Some(true));
         assert_eq!(
@@ -170,7 +170,7 @@ mod tests {
         // A percentage size already switches `apply` to the native content
         // box (`intrinsic_size::native_content_box`), so padding is not
         // folded into the bounds there and the holder keeps them.
-        let mut holder = crate::style::apply::apply(div(), &style);
+        let mut holder = crate::paint::apply::apply(div(), &style);
         assert_eq!(holder.style().content_box, Some(true));
         assert_eq!(holder.style().max_size.height, Some(px(100.0).into()));
         assert!(!apply(&mut holder, &style, Some(113.0 / 120.0), false));
@@ -184,7 +184,7 @@ mod tests {
             max_height: Some(Len::Pct(0.5)),
             ..Computed::default()
         };
-        let mut holder = crate::style::apply::apply(div(), &style);
+        let mut holder = crate::paint::apply::apply(div(), &style);
         assert_eq!(holder.style().max_size.height, None);
         assert!(!apply(&mut holder, &style, Some(113.0 / 120.0), false));
         assert_eq!(holder.style().max_size.height, None);
