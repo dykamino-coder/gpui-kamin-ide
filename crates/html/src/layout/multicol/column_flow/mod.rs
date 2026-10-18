@@ -13,6 +13,9 @@ mod text;
 use text::{build_text_columns, css_ws, gather_cols, normalized_text};
 mod blocks;
 use blocks::non_inline_columns;
+mod element;
+pub(crate) use element::ColumnFlow;
+mod measure;
 
 // ★ ЗАМЕРЕНО И ОТКАЧЕНО (11.09, `scout-mctextflow-2026-09.md`, пакет A,
 // 3 хунка): рекурсия `column_flow` переносит `column-gap`/`column-fill`,
@@ -188,7 +191,7 @@ fn column_flow_in(
             )
         });
     Some(
-        crate::layout::float::split_flow::ColumnFlow::new(
+        ColumnFlow::new(
             build,
             SharedString::from(plain),
             count,
