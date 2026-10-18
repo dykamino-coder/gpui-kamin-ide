@@ -100,20 +100,22 @@ pub struct Grouped {
     /// маска группы (`bordershape:`) режет всё содержимое буфера фигурой.
     /// Колбэк строит SVG-разметку по размеру коробки (bw, bh), выносу
     /// (l, t) и холсту (aw, ah) — размеры известны только на отрисовке.
-    pub under: Option<Box<dyn Fn(f32, f32, f32, f32, f32, f32) -> Option<String>>>,
+    pub(crate) under:
+        Option<Box<dyn Fn(f32, f32, f32, f32, f32, f32) -> Option<crate::svg::path_scene::Scene>>>,
     /// Накладка НАД буфером группы, вне его маски: кольцо рамки
     /// `border-shape` у коробки с обрезкой переполнения — содержимое режется
     /// ВНУТРЕННИМ контуром (css-borders-4 §border-shape-overflow-interaction),
     /// а рамка лежит снаружи него и поверх обрезанных детей. Колбэк — как у
     /// `under`.
-    pub over: Vec<Box<dyn Fn(f32, f32, f32, f32, f32, f32) -> Option<String>>>,
+    pub(crate) over:
+        Vec<Box<dyn Fn(f32, f32, f32, f32, f32, f32) -> Option<crate::svg::path_scene::Scene>>>,
     /// Вынос слоёв `under`/`over` за border-box (l t r b) сверх области
     /// группы: тени и контур `corner-shape` лежат снаружи её маски.
     pub deco_ext: [f32; 4],
     /// Заливки по пути (маска `pathdef:` × цвет) под и над буфером:
     /// резкие тени и контур `corner-shape`; колбэк — как у `under`.
-    pub under_fills: Option<FillLayer>,
-    pub over_fills: Option<FillLayer>,
+    pub(crate) under_fills: Option<FillLayer>,
+    pub(crate) over_fills: Option<FillLayer>,
     /// Множитель интринзика плитки маски: у SVG-ребёнка маска живёт в ЕГО
     /// пользовательских единицах (css-masking-1 §7.4 `auto` — размер
     /// картинки в системе координат элемента), и при `viewBox` 50×50
@@ -128,8 +130,19 @@ pub struct Grouped {
 }
 
 /// Слой заливок: записи `pathdef:` в точках слоя и их цвета.
-pub type FillLayer =
-    Box<dyn Fn(f32, f32, f32, f32, f32, f32) -> Vec<(String, crate::style::values::value::Color)>>;
+pub(crate) type FillLayer = Box<
+    dyn Fn(
+        f32,
+        f32,
+        f32,
+        f32,
+        f32,
+        f32,
+    ) -> Vec<(
+        crate::svg::path_scene::Scene,
+        crate::style::values::value::Color,
+    )>,
+>;
 
 impl Grouped {
     pub fn new(child: AnyElement) -> Self {

@@ -2,11 +2,19 @@
 
 use crate::paint::effects::grouped_element::{Grouped, rasterize_mask_def, svg_fragment};
 use crate::paint::effects::mask_size;
+use crate::svg::path_commands::Geometry;
+use crate::svg::path_scene::*;
+
+#[derive(Clone, Copy)]
+pub(crate) enum MaskInput<'a> {
+    Source(&'a str),
+    Scene(&'a Scene),
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn mask_layer(
     i: usize,
-    l: &str,
+    input: MaskInput<'_>,
     group: &Grouped,
     bw: f32,
     bh: f32,
@@ -14,11 +22,20 @@ pub(crate) fn mask_layer(
     pos_of: &impl Fn(usize, f32, f32) -> (f32, f32),
     repeat_of: &impl Fn(usize) -> (bool, bool),
 ) -> Option<crate::paint::background::MaskLayer> {
+    let l = match input {
+        MaskInput::Source(source) => source,
+        MaskInput::Scene(_) => "",
+    };
     let mut space_gap = (0.0, 0.0);
     let mut space_once = (false, false);
     // Ссылка на определение в документе: растр под
     // коробку, светимость вместо альфы.
-    let (image, tile, lum) = if let Some(id) = l.strip_prefix("svgsnap:") {
+    let (image, tile, lum) = if let MaskInput::Scene(scene) = input {
+        let mut scene = scene.clone();
+        scene.width = bw;
+        scene.height = bh;
+        (scene.rasterize()?, [0.0, 0.0, bw * sf, bh * sf], true)
+    } else if let Some(id) = l.strip_prefix("svgsnap:") {
         // css-masking-1 §7.2: `match-source` у ссылки на
         // `<mask>` — его `mask-type` (светимость по
         // умолчанию); явный `mask-mode` главнее.
@@ -64,25 +81,27 @@ pub(crate) fn mask_layer(
             (bw + el + group.poly_expand[1]).max(1.0),
             (bh + et + group.poly_expand[2]).max(1.0),
         );
-        let d = crate::paint::background::shape_to_path(body, fw2, fh2)?;
-        let (dx, dy) = (-el, -et);
-        let markup = format!(
-            r##"<svg xmlns="http://www.w3.org/2000/svg" width="{bw}" height="{bh}"><g transform="translate({dx} {dy})"><path fill="#ffffff" fill-rule="{rule}" d="{d}"/></g></svg>"##
-        );
-        (
-            crate::svg::raster::rasterize(&markup, bw, bh)?,
-            [0.0, 0.0, bw * sf, bh * sf],
-            true,
-        )
+        let mut d = Geometry::default();
+        crate::paint::background::shape_commands(body, fw2, fh2, &mut d)?;
+        let rule = if rule == "evenodd" {
+            FillRule::EvenOdd
+        } else {
+            FillRule::NonZero
+        };
+        let mut scene = coverage(bw, bh, d.finish(), rule);
+        scene.root = translated(scene.root, -el, -et);
+        (scene.rasterize()?, [0.0, 0.0, bw * sf, bh * sf], true)
     } else if let Some(rest) = l.strip_prefix("pathdef:") {
         // Контур `path()`: белая заливка с правилом
         // намотки, светимость = покрытие.
         let (rule, d) = rest.split_once(':')?;
-        let markup = format!(
-            r##"<svg xmlns="http://www.w3.org/2000/svg" width="{bw}" height="{bh}"><path fill="#ffffff" fill-rule="{rule}" d="{d}"/></svg>"##
-        );
+        let rule = if rule == "evenodd" {
+            FillRule::EvenOdd
+        } else {
+            FillRule::NonZero
+        };
         (
-            crate::svg::raster::rasterize(&markup, bw, bh)?,
+            coverage(bw, bh, Geometry::parse(d), rule).rasterize()?,
             [0.0, 0.0, bw * sf, bh * sf],
             true,
         )
@@ -144,3 +163,6 @@ pub(crate) fn mask_layer(
         luminance: lum || group.mask_luminance,
     })
 }
+
+#[cfg(test)]
+mod tests;

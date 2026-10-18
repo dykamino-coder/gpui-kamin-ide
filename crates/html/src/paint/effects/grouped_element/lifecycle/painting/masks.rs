@@ -4,7 +4,9 @@ mod composite;
 pub(super) use composite::composite_mask;
 
 mod layer;
-pub(super) use layer::mask_layer;
+pub(super) use layer::{MaskInput, mask_layer};
+mod path;
+pub(super) use path::{polygon_scene, resolve_scene_mask};
 
 use crate::paint::effects::grouped_element::{Grouped, mask_layer_source};
 use crate::paint::effects::mask_size;
@@ -23,13 +25,14 @@ pub(crate) fn resolve_mask(
     sb: f32,
 ) -> Option<(std::sync::Arc<gpui::RenderImage>, Bounds<Pixels>, u32)> {
     // `border-shape` (css-borders-4): маска — внешний контур рамки,
-    // SVG-растр на РАСШИРЕННУЮ область (обводка выходит за
+    // Растр покрытия на расширенную область (обводка выходит за
     // border-box), одной плиткой без мощения; альфа = покрытие.
     if let Some(spec) = src.strip_prefix("bordershape:") {
         let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
         let (aw, ah) = (bw + sl + sr, bh + st + sb);
-        let markup = crate::paint::background::border_shape_mask_svg(spec, bw, bh, sl, st, aw, ah)?;
-        let img = crate::svg::raster::rasterize(&markup, aw, ah)?;
+        let scene =
+            crate::paint::background::border_shape_mask_scene(spec, bw, bh, sl, st, aw, ah)?;
+        let img = scene.rasterize()?;
         return Some((
             img,
             Bounds {
@@ -76,7 +79,8 @@ pub(crate) fn resolve_mask(
             || (l.contains('#') && l.contains(".svg"))
     });
     if layers.len() > 1 || referenced || !group.mask_repeat_modes.is_empty() {
-        return composite_mask(group, &layers, bounds, bw, bh, ol, ot, window, len);
+        let inputs: Vec<_> = layers.iter().map(|l| MaskInput::Source(l)).collect();
+        return composite_mask(group, &inputs, bounds, bw, bh, ol, ot, window, len);
     }
     let source = group.mask_source(src)?;
     let (img, tw, th) = match &source {

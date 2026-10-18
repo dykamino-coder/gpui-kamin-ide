@@ -81,28 +81,11 @@ pub(super) fn paint_body(
     // растровой маской-путём в системе коробки (clip-path-polygon-004/005).
     // Фигурные углы (`corner-shape`): внешний контур режет группу тем же
     // путём, что эквивалентный `clip-path` — до восьми вершин шейдером
-    // многоугольника, иначе растром SVG-пути.
+    // многоугольника, иначе растром tiny-skia-пути.
     let (polygon, contour_mask, own_mask) = contour::outer(group, _prepaint.1, polygon);
     let poly_mask =
         if (group.mask.is_none() || !own_mask) && (polygon.len() > 8 || group.polygon_evenodd) {
-            let d: Vec<String> = polygon
-                .iter()
-                .enumerate()
-                .map(|(i, p)| {
-                    format!(
-                        "{}{} {}",
-                        if i == 0 { "M" } else { "L" },
-                        f32::from(p.x - bounds.origin.x),
-                        f32::from(p.y - bounds.origin.y)
-                    )
-                })
-                .collect();
-            let rule = if group.polygon_evenodd {
-                "evenodd"
-            } else {
-                "nonzero"
-            };
-            Some(format!("pathdef:{rule}:{} Z", d.join(" ")))
+            masks::polygon_scene(&polygon, bounds, group.polygon_evenodd)
         } else {
             None
         };
@@ -113,11 +96,13 @@ pub(super) fn paint_body(
     };
     let contour_box = crate::paint::effects::corner_clip::mask_box(group, _prepaint.1);
     let mask_prepaint = (_prepaint.0, contour_box);
-    let mask = contour_mask
-        .as_deref()
-        .or(group.mask.as_deref().filter(|_| own_mask))
-        .or(poly_mask.as_deref())
-        .and_then(|src| resolve_mask(src, group, bounds, &mask_prepaint, window, sl, st, sr, sb));
+    let mask = if let Some(scene) = contour_mask.as_ref().or(poly_mask.as_ref()) {
+        masks::resolve_scene_mask(scene, group, contour_box, window)
+    } else {
+        group.mask.as_deref().filter(|_| own_mask).and_then(|src| {
+            resolve_mask(src, group, bounds, &mask_prepaint, window, sl, st, sr, sb)
+        })
+    };
     // Коробка окраски (`mask-clip`): вне её маска не красится — элемент
     // там скрыт (mask-size-contain-clip-padding).
     let mask_clip = polygon_clip::intersect(
@@ -139,8 +124,8 @@ pub(super) fn paint_body(
         fills::paint_fills(&fills(bw, bh, sl, st, aw, ah), layer_at, window);
     }
     if let Some(under) = group.under.as_ref()
-        && let Some(markup) = under(bw, bh, sl, st, aw, ah)
-        && let Some(img) = crate::svg::raster::rasterize(&markup, aw, ah)
+        && let Some(scene) = under(bw, bh, sl, st, aw, ah)
+        && let Some(img) = scene.rasterize()
     {
         let _ = window.paint_image_with_sampling(
             layer_at,
@@ -195,8 +180,8 @@ pub(super) fn paint_body(
         fills::paint_fills(&fills(bw, bh, sl, st, aw, ah), layer_at, window);
     }
     for over in &group.over {
-        if let Some(markup) = over(bw, bh, sl, st, aw, ah)
-            && let Some(img) = crate::svg::raster::rasterize(&markup, aw, ah)
+        if let Some(scene) = over(bw, bh, sl, st, aw, ah)
+            && let Some(img) = scene.rasterize()
         {
             let _ = window.paint_image_with_sampling(
                 layer_at,

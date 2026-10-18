@@ -28,6 +28,7 @@ FIXES = {
         "CSS painting: stacking collectors retain DOM order independently of layout; transforms, clipping, gradients and compositing preserve CSS paint contexts.",
         "Text: retain per-run size, spacing, decorations and vertical layout in shaping/cache keys to prevent reuse across incompatible metrics.",
         "Tests: retain bundled upstream fonts for SVG regression coverage and import the moved image-fit type explicitly.",
+        "Resolved path scenes: share markup rasterization and exact BGRA conversion with typed tiny-skia geometry, avoiding generated SVG text.",
         "Host integration: frame capture, animation clock, opt-in prepaint profiling and identity-transformed profiler overlay.",
     ],
     "gpui-windows": [
@@ -73,6 +74,7 @@ FIXES = {
         "Keep rendering compatible with the paired usvg parser/tree changes; apply usvg first (docs/VENDORING.md).",
     ],
     "usvg": [
+        "Typed path-tree construction: resolve bounds, ordered luminance masks, clipping and linearRGB blur through the existing renderer without XML serialization.",
         "Resource cycles: traverse the cross-resource graph, use chains and gradient href chains; discard closing edges instead of recursing indefinitely.",
         "CSS drop-shadow(): expand the region for the offset and blur support instead of clipping to the default SVG filter region.",
         "Empty geometry: do not create filtered groups for zero-size/empty shapes or images (SVG 2 sections 9-12).",

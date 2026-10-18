@@ -5,7 +5,7 @@
 //! вырезаны выровненные углы (`AddContouredRect` с `CornerClipOutPath`).
 //! Прямолинейный контур (bevel/notch/square) отдаётся многоугольником —
 //! его рисует тот же шейдер, что `clip-path: polygon()`; кривые идут
-//! SVG-путём в тот же растр, что `clip-path: path()`.
+//! tiny-skia-путём в тот же растр, что `clip-path: path()`.
 
 mod aligned;
 mod corner;
@@ -121,21 +121,21 @@ impl Path {
         dedup(&mut out);
         Some(out)
     }
-
-    /// Запись `d` для SVG.
-    pub fn svg_d(&self) -> String {
-        let mut d = format!("M{} {}", self.start.0, self.start.1);
-        for s in &self.segs {
-            match s {
-                Seg::Line(p) => d.push_str(&format!(" L{} {}", p.0, p.1)),
-                Seg::Cubic(a, b, c) => d.push_str(&format!(
-                    " C{} {} {} {} {} {}",
-                    a.0, a.1, b.0, b.1, c.0, c.1
-                )),
+    /// Resolved contour commands shared by masks, shadows and outlines.
+    pub(crate) fn commands(&self, d: &mut impl crate::svg::path_commands::Sink, dx: f32, dy: f32) {
+        use crate::svg::path_commands::Command;
+        let point = |(x, y): P| [x + dx, y + dy];
+        d.command(false, Command::Move(point(self.start)));
+        for segment in &self.segs {
+            match *segment {
+                Seg::Line(p) => d.command(false, Command::Line(point(p))),
+                Seg::Cubic(a, b, c) => {
+                    let ([ax, ay], [bx, by], [cx, cy]) = (point(a), point(b), point(c));
+                    d.command(false, Command::Cubic([ax, ay, bx, by, cx, cy]));
+                }
             }
         }
-        d.push_str(" Z");
-        d
+        d.command(false, Command::Close);
     }
 }
 

@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 pub mod filter;
+// KaminIDE patch: construct renderable path scenes without serializing XML.
+mod path_scene;
+pub use path_scene::*;
 mod geom;
 mod text;
 

@@ -1,6 +1,6 @@
 //! Профиль фигуры обтекания (shape-outside, shape-margin): маска, интервалы, расширение.
 
-mod svg_path;
+pub(super) mod svg_path;
 pub(super) use svg_path::svg_path_of;
 
 mod mask;
