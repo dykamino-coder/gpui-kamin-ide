@@ -40,7 +40,7 @@ pub(super) fn range(e: &Element, style: &Computed, vcx: ValueCx<'_>) -> AnyEleme
             ),
     );
     paint.style().sizing_keywords = Some(crate::paint::apply::intrinsic_size::keywords(style));
-    super::intrinsic::control(
+    super::control(
         paint,
         crate::style::ua::forms::size(crate::style::ua::forms::ControlKind::Range),
     )
@@ -58,7 +58,7 @@ pub(super) fn color_swatch(e: &Element, style: &Computed, vcx: ValueCx<'_>) -> A
     if let Some(c) = color {
         d = d.bg(c);
     }
-    super::intrinsic::control(
+    super::control(
         d,
         crate::style::ua::forms::size(crate::style::ua::forms::ControlKind::Color),
     )

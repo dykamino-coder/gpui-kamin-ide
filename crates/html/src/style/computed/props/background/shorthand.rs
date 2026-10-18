@@ -4,15 +4,7 @@ use super::*;
 use crate::document::state::ValueCx;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_background_shorthand(
-        &mut self,
-        key: &str,
-        val: &str,
-        v: &str,
-        hit: &mut bool,
-        vcx: ValueCx<'_>,
-    ) {
+    pub(super) fn apply_background_shorthand(&mut self, key: &str, v: &str, vcx: ValueCx<'_>) {
         if v == "inherit" {
             self.background_inherit = true;
             // Сокращение наследует ВЕСЬ фон, а не только цвет

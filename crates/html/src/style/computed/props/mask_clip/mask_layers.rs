@@ -4,11 +4,9 @@ use super::*;
 use crate::document::state::ValueCx;
 
 impl Computed {
-    #[allow(unused_variables)]
     pub(super) fn apply_mask_layers(
         &mut self,
         key: &str,
-        val: &str,
         v: &str,
         hit: &mut bool,
         vcx: ValueCx<'_>,
@@ -140,7 +138,7 @@ impl Computed {
                 }
                 self.mask_pos_list = (!list.is_empty()).then_some(list);
             }
-            "clip-path" | "mask" | "mask-image" => self.apply_clip_mask(key, val, v, hit, vcx),
+            "clip-path" | "mask" | "mask-image" => self.apply_clip_mask(key, v, vcx),
             _ => *hit = false,
         }
     }

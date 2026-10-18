@@ -193,18 +193,18 @@ impl Computed {
                 self.bg_lists.set(prop, v.to_string());
             }
         }
-        self.apply_property(key, val, v, vcx);
+        self.apply_property(key, v, vcx);
     }
 
     /// Query the actual property dispatcher, including delegated property groups.
     pub(crate) fn recognizes_property(key: &str, vcx: ValueCx<'_>) -> bool {
-        Self::default().apply_property(key, "", "", vcx)
+        Self::default().apply_property(key, "", vcx)
     }
 
     // The temporary cascade callback borrows the current property and variable state.
     #[allow(clippy::type_complexity)]
-    fn apply_property(&mut self, key: &str, val: &str, v: &str, vcx: ValueCx<'_>) -> bool {
-        let groups: [fn(&mut Self, &str, &str, &str, &mut bool, ValueCx<'_>); 14] = [
+    fn apply_property(&mut self, key: &str, v: &str, vcx: ValueCx<'_>) -> bool {
+        let groups: [fn(&mut Self, &str, &str, &mut bool, ValueCx<'_>); 14] = [
             Self::apply_scroll,
             Self::apply_display_flex,
             Self::apply_grid,
@@ -222,7 +222,7 @@ impl Computed {
         ];
         for group in groups {
             let mut hit = true;
-            group(self, key, val, v, &mut hit, vcx);
+            group(self, key, v, &mut hit, vcx);
             if hit {
                 return true;
             }

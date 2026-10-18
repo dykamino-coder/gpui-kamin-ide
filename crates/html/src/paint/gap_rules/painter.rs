@@ -2,6 +2,7 @@
 // owner: A
 
 mod lifecycle;
+mod painting;
 
 use crate::paint::gap_rules::{GapItems, GapRuleSpec};
 

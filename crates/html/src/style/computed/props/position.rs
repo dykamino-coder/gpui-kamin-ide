@@ -9,15 +9,7 @@ use crate::style::computed::*;
 use crate::style::values::value::Len;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_position(
-        &mut self,
-        key: &str,
-        val: &str,
-        v: &str,
-        hit: &mut bool,
-        vcx: ValueCx<'_>,
-    ) {
+    pub(crate) fn apply_position(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
         match key {
             "position" => {
                 self.position = record_parsed!(

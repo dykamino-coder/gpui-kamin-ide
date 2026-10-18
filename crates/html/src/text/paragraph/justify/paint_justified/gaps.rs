@@ -1,4 +1,4 @@
-//! Gaps for word_paint; split out to keep the owning module within 250 lines.
+//! Покраска промежутков между словами выключенной строки.
 
 use super::JustifiedPaint;
 use super::{Edge, Word};

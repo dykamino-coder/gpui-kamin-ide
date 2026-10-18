@@ -134,5 +134,5 @@ pub(super) fn toggle(e: &Element, style: &Computed, round: bool, vcx: ValueCx<'_
     let paint = apply(div().relative(), style, vcx)
         .overflow_hidden()
         .child(mark);
-    super::intrinsic::control(paint, natural)
+    super::control(paint, natural)
 }

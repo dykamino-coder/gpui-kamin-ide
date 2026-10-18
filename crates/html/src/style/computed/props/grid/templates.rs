@@ -4,11 +4,9 @@ use super::*;
 use crate::document::state::ValueCx;
 
 impl Computed {
-    #[allow(unused_variables)]
     pub(super) fn apply_grid_templates(
         &mut self,
         key: &str,
-        val: &str,
         v: &str,
         hit: &mut bool,
         vcx: ValueCx<'_>,
@@ -121,7 +119,7 @@ impl Computed {
             "grid-gap" => self.apply_one("gap", v, vcx),
             "grid-row-gap" => self.apply_one("row-gap", v, vcx),
             "grid-column-gap" => self.apply_one("column-gap", v, vcx),
-            _ => self.apply_grid_placement(key, val, v, hit, vcx),
+            _ => self.apply_grid_placement(key, v, hit, vcx),
         }
     }
 }

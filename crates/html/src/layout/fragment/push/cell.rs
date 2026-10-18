@@ -4,10 +4,10 @@ use super::pushed_box_at;
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
+use crate::layout::fragment::table_bands::parts::{cell_settings, is_row, ordered_parts};
 use crate::layout::fragment::table_bands::row_geometry;
 use crate::layout::table::anon::fixup_table_children;
 use crate::render::is_blank;
-use crate::style::computed::Display;
 use crate::style::values::value::Len;
 
 /// Распорка в таблице по тегу: та же арифметика рядов, что у `table_shape`
@@ -40,59 +40,13 @@ pub(super) fn pushed_cell_at(
         _ => None,
     };
     let top = px_of(&c.style.padding.top)? + px_of(&c.style.borders().top)?;
-    let attr_px = |name: &str| {
-        c.attr(name)
-            .and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok())
-    };
-    let ua_default = matches!(
-        c.style.border_spacing,
-        Some((Some(Len::Px(2.0)), Some(Len::Px(2.0))))
-    );
-    let spacing = match (attr_px("cellspacing"), ua_default, &c.style.border_spacing) {
-        (Some(v), true, _) | (Some(v), _, None) => v,
-        (_, _, Some((_, y))) => px_of(y)?,
-        _ => 0.0,
-    };
-    let cell_cx = ShapeCx {
-        cell_pad: attr_px("cellpadding"),
-        ..ShapeCx::COLUMNS
-    };
-    let is_row = |e: &Element| e.tag == "tr" || e.style.display == Some(Display::TableRow);
-    let is_group = |e: &Element| {
-        matches!(e.tag.as_str(), "thead" | "tbody" | "tfoot")
-            || e.style.display == Some(Display::TableRowGroup)
-            || e.style.row_group_kind.is_some()
-    };
+    let (spacing, cell_cx) = cell_settings(c, ShapeCx::COLUMNS)?;
     // Щуп разреза ходит по ТОМУ ЖЕ дереву, что мера (Х2) и рисование: иначе
     // `table_shape` посчитает точки по анонимным рядам, а `pushed_cell_at` на
     // тех же детях вернёт `None`, и распорка роста (`grow_pushed`) не найдёт
     // коробку, которую надо дотянуть до низа колонки.
     let fixed = fixup_table_children(&c.children, vcx);
-    let mut parts: Vec<(u8, &Element)> = Vec::new();
-    let (mut head, mut foot) = (false, false);
-    for n in fixed.iter().filter(|n| !is_blank(n)) {
-        let Node::Element(e) = n else { return None };
-        let role = match e.tag.as_str() {
-            "thead" => Some(0u8),
-            "tbody" => Some(1),
-            "tfoot" => Some(2),
-            _ => e.style.row_group_kind,
-        };
-        let kind = match role {
-            Some(0) if !head => {
-                head = true;
-                0
-            }
-            Some(2) if !foot => {
-                foot = true;
-                2
-            }
-            _ if is_row(e) || is_group(e) => 1,
-            _ => return None,
-        };
-        parts.push((kind, e));
-    }
-    parts.sort_by_key(|p| p.0);
+    let parts = ordered_parts(&fixed, |_| false)?;
     let mut rows: Vec<(usize, &Element)> = Vec::new();
     for (group, (_, e)) in parts.iter().enumerate() {
         if is_row(e) {

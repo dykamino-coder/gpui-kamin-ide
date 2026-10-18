@@ -7,11 +7,9 @@ mod flex_items;
 mod gap_place;
 
 impl Computed {
-    #[allow(unused_variables)]
     pub(crate) fn apply_display_flex(
         &mut self,
         key: &str,
-        val: &str,
         v: &str,
         hit: &mut bool,
         vcx: ValueCx<'_>,
@@ -212,7 +210,7 @@ impl Computed {
                 )
                 .or(self.flex_dir)
             }
-            _ => self.apply_flex_items(key, val, v, hit, vcx),
+            _ => self.apply_flex_items(key, v, hit, vcx),
         }
     }
 }

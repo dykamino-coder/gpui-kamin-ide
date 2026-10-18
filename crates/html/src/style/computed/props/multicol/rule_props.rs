@@ -6,11 +6,9 @@ use crate::document::state::ValueCx;
 mod rule_flags;
 
 impl Computed {
-    #[allow(unused_variables)]
     pub(super) fn apply_multicol_rules(
         &mut self,
         key: &str,
-        val: &str,
         v: &str,
         hit: &mut bool,
         vcx: ValueCx<'_>,
@@ -120,7 +118,7 @@ impl Computed {
                     }
                 }
             }
-            _ => self.apply_multicol_rule_flags(key, val, v, hit, vcx),
+            _ => self.apply_multicol_rule_flags(key, v, hit, vcx),
         }
     }
 }

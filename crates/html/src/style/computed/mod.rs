@@ -27,13 +27,15 @@ pub(super) mod font_members;
 mod font_shorthand;
 pub(super) mod font_weight;
 mod gradient_paint;
-mod image_color;
 pub(crate) mod image_function;
 mod radius_mask;
 mod radius_parse;
 mod text_indent;
 mod white_space;
-pub(crate) use image_color::parse as parse_image_color;
+/// Recognize dimensionless color images independently of URL fallback.
+pub(crate) fn parse_image_color<'a>(raw: &'a str, vcx: ValueCx<'_>) -> Option<&'a str> {
+    image_function::color_only(raw, vcx)
+}
 mod content_functions;
 mod counters;
 mod list_style;

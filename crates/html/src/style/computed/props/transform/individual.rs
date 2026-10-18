@@ -6,11 +6,9 @@ use crate::document::state::ValueCx;
 mod perspective;
 
 impl Computed {
-    #[allow(unused_variables)]
     pub(super) fn apply_transform_individual(
         &mut self,
         key: &str,
-        val: &str,
         v: &str,
         hit: &mut bool,
         vcx: ValueCx<'_>,
@@ -145,7 +143,7 @@ impl Computed {
                 // `10px 30px -10px`).
                 self.transform_origin_z = free.next().and_then(px_axis);
             }
-            _ => self.apply_transform_perspective(key, val, v, hit, vcx),
+            _ => self.apply_transform_perspective(key, v, hit, vcx),
         }
     }
 }

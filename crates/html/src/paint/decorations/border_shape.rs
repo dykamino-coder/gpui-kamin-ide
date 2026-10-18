@@ -9,10 +9,10 @@ use gpui::{IntoElement, Styled, px};
 
 pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx: ValueCx<'_>) {
     let values = vcx.keep();
-    // Рамка `border-shape` (css-borders-4 §border-shape): одна фигура — SVG-
+    // Рамка `border-shape` (css-borders-4 §border-shape): одна фигура —
     // обводка толщиной «relevant side» по центру контура, две — заливка между
     // внешней и внутренней. Квад цвета не получает (`apply::apply_paint`),
-    // полосы разных сторон не рисуются (ниже). Слой — растр `svg::rasterize`
+    // полосы разных сторон не рисуются (ниже). Слой — растр типизированной `Scene`
     // на border-box плюс вынос (`Computed::border_shape_ext`) — тот же
     // контур, что у маски группы (`background::border_shape_path`).
     if let Some(bs) = c.border_shape.clone() {
@@ -39,98 +39,78 @@ pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>, 
         if inset.iter().any(|(_, k)| k.a > 0.0) {
             let (bs, outer_out, inner) = (bs.clone(), outer_out, inner.clone());
             let values = values.clone();
-            out.push(
-                gpui::canvas(
-                    |_, _, _| {},
-                    move |bounds, _, window, _| {
-                        let vcx = values.vcx();
-                        let (cw, ch) =
-                            (f32::from(bounds.size.width), f32::from(bounds.size.height));
-                        let (bw, bh) = (cw - ext[3] - ext[1], ch - ext[0] - ext[2]);
-                        let markup = crate::paint::background::border_shape_shadow_scene(
-                            (bs.outer.as_str(), outer_out),
-                            inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
-                            stroke,
-                            &inset,
-                            true,
-                            bw,
-                            bh,
-                            ext[3],
-                            ext[0],
-                            cw,
-                            ch,
-                            vcx,
-                        );
-                        if let Some(markup) = markup
-                            && let Some(img) = markup.rasterize()
-                        {
-                            let _ = window.paint_image_with_sampling(
-                                bounds,
-                                gpui::Corners::default(),
-                                img,
-                                0,
-                                false,
-                                gpui::ImageSampling::Linear,
-                            );
-                        }
-                    },
+            out.push(shape_layer(ext, [t, r, b, l], move |bw, bh, cw, ch| {
+                let vcx = values.vcx();
+                crate::paint::background::border_shape_shadow_scene(
+                    (bs.outer.as_str(), outer_out),
+                    inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
+                    stroke,
+                    &inset,
+                    true,
+                    bw,
+                    bh,
+                    ext[3],
+                    ext[0],
+                    cw,
+                    ch,
+                    vcx,
                 )
-                .absolute()
-                .top(px(-(t + ext[0])))
-                .left(px(-(l + ext[3])))
-                .right(px(-(r + ext[1])))
-                .bottom(px(-(b + ext[2])))
-                .into_any_element(),
-            );
+            }));
         }
         // При обрезке переполнения кольцо уходит НАД буфер группы
         // (`grouped` → `Grouped::over`): здесь оно легло бы под детей.
         if (inner.is_some() || stroke > 0.0) && colour.a > 0.0 && !c.border_shape_clips() {
             let values = values.clone();
-            out.push(
-                gpui::canvas(
-                    |_, _, _| {},
-                    move |bounds, _, window, _| {
-                        let vcx = values.vcx();
-                        let (cw, ch) =
-                            (f32::from(bounds.size.width), f32::from(bounds.size.height));
-                        let (bw, bh) = (cw - ext[3] - ext[1], ch - ext[0] - ext[2]);
-                        let markup = crate::paint::background::border_shape_ring_scene(
-                            (bs.outer.as_str(), outer_out),
-                            inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
-                            stroke,
-                            colour,
-                            bw,
-                            bh,
-                            ext[3],
-                            ext[0],
-                            cw,
-                            ch,
-                            vcx,
-                        );
-                        if let Some(markup) = markup
-                            && let Some(img) = markup.rasterize()
-                        {
-                            let _ = window.paint_image_with_sampling(
-                                bounds,
-                                gpui::Corners::default(),
-                                img,
-                                0,
-                                false,
-                                gpui::ImageSampling::Linear,
-                            );
-                        }
-                    },
+            out.push(shape_layer(ext, [t, r, b, l], move |bw, bh, cw, ch| {
+                let vcx = values.vcx();
+                crate::paint::background::border_shape_ring_scene(
+                    (bs.outer.as_str(), outer_out),
+                    inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
+                    stroke,
+                    colour,
+                    bw,
+                    bh,
+                    ext[3],
+                    ext[0],
+                    cw,
+                    ch,
+                    vcx,
                 )
-                // Абсолютный ребёнок считается от padding-box — слой накрывает
-                // рамку и вынос отрицательными отступами.
-                .absolute()
-                .top(px(-(t + ext[0])))
-                .left(px(-(l + ext[3])))
-                .right(px(-(r + ext[1])))
-                .bottom(px(-(b + ext[2])))
-                .into_any_element(),
-            );
+            }));
         }
     }
+}
+
+/// Оба слоя используют одну область border-box с выносом и одинаковую выборку.
+fn shape_layer(
+    ext: [f32; 4],
+    [t, r, b, l]: [f32; 4],
+    scene: impl Fn(f32, f32, f32, f32) -> Option<crate::svg::path_scene::Scene> + 'static,
+) -> gpui::AnyElement {
+    gpui::canvas(
+        |_, _, _| {},
+        move |bounds, _, window, _| {
+            let (cw, ch) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+            let (bw, bh) = (cw - ext[3] - ext[1], ch - ext[0] - ext[2]);
+            if let Some(scene) = scene(bw, bh, cw, ch)
+                && let Some(img) = scene.rasterize()
+            {
+                let _ = window.paint_image_with_sampling(
+                    bounds,
+                    gpui::Corners::default(),
+                    img,
+                    0,
+                    false,
+                    gpui::ImageSampling::Linear,
+                );
+            }
+        },
+    )
+    // Абсолютный ребёнок считается от padding-box: накрываем рамку и вынос.
+    .absolute()
+    .top(px(-(t + ext[0])))
+    .left(px(-(l + ext[3])))
+    .right(px(-(r + ext[1])))
+    .bottom(px(-(b + ext[2])))
+    .into_any_element()
 }

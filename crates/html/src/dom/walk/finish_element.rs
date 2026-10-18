@@ -1,4 +1,4 @@
-//! Finish element for walk; split out to keep the owning module within 250 lines.
+//! Final element assembly: direction, pseudo boxes, ruby and authored node state.
 
 use crate::document::state::ValueCx;
 use crate::dom::*;
@@ -89,20 +89,7 @@ pub(super) fn finish_element(
     let children = if style.display == Some(Display::Block)
         && style.ruby_role == Some(crate::style::computed::RubyRole::Container)
     {
-        vec![Node::Element(Element {
-            marks: Default::default(),
-            list_item: None,
-            node_id: 0,
-            anim: None,
-            inline: true,
-            tag: "ruby".to_string(),
-            style: Computed::default().into(),
-            hover: None,
-            first_letter: None,
-            first_line: None,
-            children,
-            attrs: vec![],
-        })]
+        vec![anonymous_ruby(children)]
     } else {
         children
     };

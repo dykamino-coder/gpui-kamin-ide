@@ -4,11 +4,9 @@ use super::*;
 use crate::document::state::ValueCx;
 
 impl Computed {
-    #[allow(unused_variables)]
     pub(super) fn apply_border_corners(
         &mut self,
         key: &str,
-        val: &str,
         v: &str,
         hit: &mut bool,
         vcx: ValueCx<'_>,
@@ -180,7 +178,7 @@ impl Computed {
             | "border-bottom-right-radius"
             | "border-bottom-left-radius" => self.apply_radius_corner(key, v, vcx),
 
-            _ => self.apply_border_sides_outline(key, val, v, hit, vcx),
+            _ => self.apply_border_sides_outline(key, v, hit, vcx),
         }
     }
 }

@@ -134,12 +134,20 @@ pub(crate) fn band_host(
         return None;
     }
     let side = floaters[0].style.float.unwrap_or(-1);
-    let mut host = Element {
-        // Сторона первого флоата — только запасной ответ для живого пути
-        // `shape-outside`: у бандового хоста сторона лежит на КАЖДОМ
-        // ребёнке, и `shape_flow` читает её оттуда. Путь `Static` включает
-        // блочную ветку `shape_flow`.
-        marks: crate::dom::Marks {
+    // Сторона первого флоата — только запасной ответ для живого пути
+    // `shape-outside`: у бандового хоста сторона лежит на КАЖДОМ
+    // ребёнке, и `shape_flow` читает её оттуда. Путь `Static` включает
+    // блочную ветку `shape_flow`.
+    let mut host = Element::anonymous(
+        "shape-flow",
+        Computed {
+            // Ширина содержащего блока — дальняя стенка полос.
+            width: cb_width,
+            ..Computed::default()
+        },
+        Vec::new(),
+        false,
+        crate::dom::Marks {
             shape_flow: Some(crate::dom::ShapeFlow {
                 right: side >= 0,
                 count: floaters.len(),
@@ -148,23 +156,7 @@ pub(crate) fn band_host(
             }),
             ..Default::default()
         },
-        list_item: None,
-        node_id: 0,
-        anim: None,
-        tag: "shape-flow".into(),
-        style: Computed {
-            // Ширина содержащего блока — дальняя стенка полос.
-            width: cb_width,
-            ..Computed::default()
-        }
-        .into(),
-        hover: None,
-        first_letter: None,
-        first_line: None,
-        children: Vec::new(),
-        attrs: Vec::new(),
-        inline: false,
-    };
+    );
     host.children = floaters.into_iter().map(Node::Element).collect();
     host.children.extend(rest);
     Some((host, j, lifted))
@@ -209,3 +201,6 @@ pub(crate) fn band_margins(
         band_edge(&c.margin.left, em)?,
     ])
 }
+
+#[cfg(test)]
+mod tests;

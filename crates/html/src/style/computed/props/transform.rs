@@ -11,15 +11,7 @@ use functions::transform_function;
 use functions_3d::transform_function_3d;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_transform(
-        &mut self,
-        key: &str,
-        val: &str,
-        v: &str,
-        hit: &mut bool,
-        vcx: ValueCx<'_>,
-    ) {
+    pub(crate) fn apply_transform(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
         match key {
             // --- Сдвиг и тень текста ------------------------------------------
             "translate" => {
@@ -155,7 +147,7 @@ impl Computed {
                     self.transform = accept_parsed!(self, Some(t));
                 }
             }
-            _ => self.apply_transform_individual(key, val, v, hit, vcx),
+            _ => self.apply_transform_individual(key, v, hit, vcx),
         }
     }
 }

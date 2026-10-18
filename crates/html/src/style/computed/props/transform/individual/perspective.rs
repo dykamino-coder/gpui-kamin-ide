@@ -5,11 +5,9 @@ use crate::document::state::ValueCx;
 use crate::style::values::value::px_strict;
 
 impl Computed {
-    #[allow(unused_variables)]
     pub(super) fn apply_transform_perspective(
         &mut self,
         key: &str,
-        val: &str,
         v: &str,
         hit: &mut bool,
         vcx: ValueCx<'_>,

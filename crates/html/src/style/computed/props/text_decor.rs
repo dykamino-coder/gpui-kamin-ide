@@ -6,11 +6,9 @@ use crate::style::values::value::Color;
 mod emphasis_ruby;
 
 impl Computed {
-    #[allow(unused_variables)]
     pub(crate) fn apply_text_decor(
         &mut self,
         key: &str,
-        val: &str,
         v: &str,
         hit: &mut bool,
         vcx: ValueCx<'_>,
@@ -174,7 +172,7 @@ impl Computed {
                     Some(Some([lens[0], *lens.get(1).unwrap_or(&lens[0])]))
                 );
             }
-            _ => self.apply_text_decor_emphasis_ruby(key, val, v, hit, vcx),
+            _ => self.apply_text_decor_emphasis_ruby(key, v, hit, vcx),
         }
     }
 }

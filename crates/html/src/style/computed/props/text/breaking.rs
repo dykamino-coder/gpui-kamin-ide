@@ -4,11 +4,9 @@ use super::*;
 use crate::document::state::ValueCx;
 
 impl Computed {
-    #[allow(unused_variables)]
     pub(super) fn apply_text_breaking(
         &mut self,
         key: &str,
-        val: &str,
         v: &str,
         hit: &mut bool,
         vcx: ValueCx<'_>,
@@ -225,7 +223,7 @@ impl Computed {
                 // не должна оставаться коротким огрызком.
                 self.balance_lines = Some(v == "balance");
             }
-            _ => self.apply_text_vertical_clamp(key, val, v, hit, vcx),
+            _ => self.apply_text_vertical_clamp(key, v, hit, vcx),
         }
     }
 }

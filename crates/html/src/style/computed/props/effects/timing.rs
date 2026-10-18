@@ -5,11 +5,9 @@ use crate::document::state::ValueCx;
 mod animation_props;
 
 impl Computed {
-    #[allow(unused_variables)]
     pub(super) fn apply_effects_timing(
         &mut self,
         key: &str,
-        val: &str,
         v: &str,
         hit: &mut bool,
         vcx: ValueCx<'_>,
@@ -165,7 +163,7 @@ impl Computed {
                 self.contain_paint = Some(bits.2);
                 self.contain_style = Some(bits.3);
             }
-            _ => self.apply_effects_containment(key, val, v, hit, vcx),
+            _ => self.apply_effects_containment(key, v, hit, vcx),
         }
     }
 }

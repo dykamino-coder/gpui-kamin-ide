@@ -4,11 +4,9 @@ use super::*;
 use crate::document::state::ValueCx;
 
 impl Computed {
-    #[allow(unused_variables)]
     pub(super) fn apply_flex_items(
         &mut self,
         key: &str,
-        val: &str,
         v: &str,
         hit: &mut bool,
         vcx: ValueCx<'_>,
@@ -220,7 +218,7 @@ impl Computed {
                 }
                 self.justify_content_safe = is_safe(v);
             }
-            _ => self.apply_gap_place(key, val, v, hit, vcx),
+            _ => self.apply_gap_place(key, v, hit, vcx),
         }
     }
 }

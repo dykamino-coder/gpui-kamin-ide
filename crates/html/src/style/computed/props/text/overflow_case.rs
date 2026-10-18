@@ -4,11 +4,9 @@ use super::*;
 use crate::document::state::ValueCx;
 
 impl Computed {
-    #[allow(unused_variables)]
     pub(super) fn apply_text_overflow_case(
         &mut self,
         key: &str,
-        val: &str,
         v: &str,
         hit: &mut bool,
         vcx: ValueCx<'_>,
@@ -135,7 +133,7 @@ impl Computed {
                     self.text_transform_flags = flags;
                 }
             }
-            _ => self.apply_text_breaking(key, val, v, hit, vcx),
+            _ => self.apply_text_breaking(key, v, hit, vcx),
         }
     }
 }
