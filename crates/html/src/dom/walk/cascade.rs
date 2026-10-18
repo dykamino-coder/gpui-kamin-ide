@@ -3,6 +3,7 @@
 use super::presentational_hints;
 use crate::dom::tree_index::TreeIndex;
 use crate::dom::*;
+use crate::style::cascade::vars::CascadeCx;
 use crate::style::computed::Computed;
 use crate::style::css::{Decls, Rule, parse_decls};
 use crate::style::select::matching::matches;
@@ -125,19 +126,19 @@ pub(super) fn cascade_element(
         crate::style::values::value::resolve_scheme(&v);
     }
     // Типизированный `attr()` читает атрибуты ЭТОГО элемента
-    // (css-values-5 §7.7): слот ставится только на время его каскада.
-    crate::style::cascade::vars::set_current_attrs(&attrs);
-    crate::style::cascade::vars::set_current_sibling(
-        (spot.index > 0).then_some((spot.index, spot.total)),
-    );
+    // (css-values-5 §7.7), `sibling-index()` — его место среди братьев.
+    let element = CascadeCx {
+        attrs,
+        sibling: (spot.index > 0).then_some((spot.index, spot.total)),
+    };
     let hints = presentational_hints::rules(&tag, &attrs, path);
     matched.extend(hints.iter());
     let math_hints = crate::dom::mathml::hints(handle, attrs);
     matched.extend(math_hints.iter());
-    let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
+    let mut style = Computed::resolve_in(&mut matched, &inline_decls, vars, element);
     if let Some(basic) = super::form_appearance::rule(&tag, &attrs, &style) {
         matched.push(&basic);
-        style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
+        style = Computed::resolve_in(&mut matched, &inline_decls, vars, element);
     }
     style.mathml = crate::dom::mathml::is_mathml(handle);
     if crate::dom::mathml_routing::enabled(handle) {
@@ -159,7 +160,5 @@ pub(super) fn cascade_element(
     });
     content::inherit_generated(&mut style, path.last());
     apply_value_hint(&mut style, &me);
-    crate::style::cascade::vars::clear_current_attrs();
-    crate::style::cascade::vars::set_current_sibling(None);
     (style, own_vars, _scheme, shadow)
 }

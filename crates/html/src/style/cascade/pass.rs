@@ -5,7 +5,13 @@ mod all_reset;
 
 impl Computed {
     /// Один проход: только обычные объявления либо только важные.
-    pub(crate) fn apply_pass<'a>(&mut self, d: &'a Decls, vars: &Decls, important: bool) {
+    pub(crate) fn apply_pass<'a>(
+        &mut self,
+        d: &'a Decls,
+        vars: &Decls,
+        important: bool,
+        cx: CascadeCx,
+    ) {
         // Порядок ЗАПИСИ решает только между СОКРАЩЕНИЕМ и его длинным
         // свойством (`background` и `background-color`, `border` и
         // `border-width`): там он и виден — `background-color: red;
@@ -168,10 +174,10 @@ impl Computed {
                 // Типизированный `attr()` подставляется тем же шагом, что и
                 // `var()` (css-values-5 §7.7): после него значение разбирается
                 // как обычное.
-                let resolved = resolve_sibling(resolve_attrs(
-                    k.as_str(),
-                    &resolve_vars(strip_important(part), vars),
-                ));
+                let resolved = resolve_sibling(
+                    resolve_attrs(k.as_str(), &resolve_vars(strip_important(part), vars), cx),
+                    cx,
+                );
                 // CSS Variables §3: invalid after substitution means unset;
                 // a preceding specified color cannot survive the computed value.
                 if k.as_str() == "color"

@@ -2,7 +2,7 @@
 // owner: B
 
 use crate::style::cascade::defaults::{inherited_property, initial_value};
-use crate::style::cascade::vars::{resolve_attrs, resolve_sibling, resolve_vars};
+use crate::style::cascade::vars::{CascadeCx, resolve_attrs, resolve_sibling, resolve_vars};
 use crate::style::computed::{
     BgListProp, Computed, background_layers, font_members, top_level_comma,
 };
@@ -27,6 +27,17 @@ impl Computed {
 
     /// То же с переменными темы.
     pub fn resolve_with_vars(matched: &mut Vec<&Rule>, inline: &Decls, vars: &Decls) -> Computed {
+        Computed::resolve_in(matched, inline, vars, CascadeCx::NONE)
+    }
+
+    /// То же для элемента `cx`: его атрибуты и место среди братьев видят
+    /// `attr()` и `sibling-index()`.
+    pub fn resolve_in(
+        matched: &mut Vec<&Rule>,
+        inline: &Decls,
+        vars: &Decls,
+        cx: CascadeCx,
+    ) -> Computed {
         // Слой старше специфичности (css-cascade-5 §6.4): у обычных
         // объявлений поздний слой сильнее, у важных — ранний.
         matched.sort_by(|a, b| {
@@ -65,9 +76,9 @@ impl Computed {
         // позднего. Пока проходы шли внутри правила, `!important` действовал
         // только против соседей по тому же блоку.
         for rule in matched.iter() {
-            c.apply_pass(&rule.decls, vars, false);
+            c.apply_pass(&rule.decls, vars, false, cx);
         }
-        c.apply_pass(inline, vars, false);
+        c.apply_pass(inline, vars, false, cx);
         // Важные идут в ОБРАТНОМ порядке происхождений: важное правило агента
         // старше важного авторского (§6.4.4), поэтому применяется последним.
         let mut important: Vec<&&Rule> = matched.iter().collect();
@@ -86,9 +97,9 @@ impl Computed {
                 ))
         });
         for rule in important {
-            c.apply_pass(&rule.decls, vars, true);
+            c.apply_pass(&rule.decls, vars, true, cx);
         }
-        c.apply_pass(inline, vars, true);
+        c.apply_pass(inline, vars, true, cx);
         // `currentColor` в рамке и фоне значит «цвет текста этого элемента» —
         // подставляем уже после того, как цвет стал известен.
         if c.border_color_is_current {
@@ -130,7 +141,7 @@ impl Computed {
         // (`abs-pos-border-offset-001`). Общность меряется числом дефисов:
         // `border` < `border-width` < `border-top-width`.
         for important in [false, true] {
-            self.apply_pass(d, vars, important);
+            self.apply_pass(d, vars, important, CascadeCx::NONE);
         }
     }
 
