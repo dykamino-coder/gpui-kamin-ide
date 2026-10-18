@@ -1,11 +1,9 @@
 //! Measured root padding box for canvas background positioning (CSS Backgrounds 3).
 
+use crate::hooks::{Hooks, IntoHooked};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
-use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Window, px,
-};
+use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, px};
 use std::{
     cell::{Cell, RefCell},
     rc::{Rc, Weak},
@@ -51,7 +49,7 @@ pub(crate) fn record(child: AnyElement, key: u64, style: &Computed, base_size: f
         area,
         border: [side(b.top), side(b.right), side(b.bottom), side(b.left)],
     }
-    .into_any_element()
+    .hooked()
 }
 
 struct RootBox {
@@ -60,37 +58,22 @@ struct RootBox {
     border: [f32; 4],
 }
 
-impl Element for RootBox {
-    type RequestLayoutState = LayoutId;
-    type PrepaintState = ();
+impl Hooks for RootBox {
+    type Layout = LayoutId;
+    type Prepaint = ();
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, LayoutId) {
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
         let layout = self.child.request_layout(window, cx);
         (layout, layout)
     }
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        layout: &mut LayoutId,
+        layout: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> Self::Prepaint {
         let exact = Bounds {
             origin: window.layout_origin_unrounded(*layout),
             size: window.layout_size_unrounded(*layout),
@@ -116,21 +99,12 @@ impl Element for RootBox {
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut LayoutId,
-        _prepaint: &mut (),
+        _state: &mut Self::Layout,
+        _prepaint: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {
         self.child.paint(window, cx);
-    }
-}
-
-impl IntoElement for RootBox {
-    type Element = Self;
-    fn into_element(self) -> Self {
-        self
     }
 }

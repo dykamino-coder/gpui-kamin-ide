@@ -20,7 +20,7 @@ pub(crate) fn multicol_spanner_segments(
     want: Option<usize>,
     lone_span: bool,
     rest_h: Option<f32>,
-    mut span_prev: Option<String>,
+    mut span_prev: Option<Option<u64>>,
     mut seg_open: bool,
     is_span: impl Fn(&Node) -> bool,
 ) -> AnyElement {
@@ -151,9 +151,9 @@ pub(crate) fn multicol_spanner_segments(
             // — многоколоночник сам контекст форматирования, и
             // верхнее поле спаннера сквозь его верх не уходит;
             // (2) между спаннерами РАЗНЫХ исходных предков (метка
-            // `kamin-span-parent`, `spanner_parts`).
-            let key = sp.attr("kamin-span-parent").unwrap_or("").to_string();
-            if !seg_open || span_prev.as_ref().is_some_and(|k| *k != key) {
+            // `Marks::span_parent`, `spanner_parts`).
+            let key = sp.marks.span_parent;
+            if !seg_open || span_prev.is_some_and(|k| k != key) {
                 d = d.child(div().flex());
             }
             seg_open = true;

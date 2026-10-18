@@ -44,6 +44,7 @@ pub(super) fn column_flow_children(cell: &Element) -> Option<Vec<Node>> {
         ..Computed::default()
     };
     let flow = Element {
+        marks: Default::default(),
         list_item: None,
         node_id: cell.node_id ^ 0x0CE1_1C01_0000_0001,
         anim: None,

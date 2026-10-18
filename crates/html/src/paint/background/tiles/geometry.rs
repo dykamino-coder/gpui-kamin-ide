@@ -1,6 +1,7 @@
 //! Размер и начало плитки background image.
 
 use crate::paint::background::*;
+use crate::style::computed::FontCx;
 use crate::style::computed::{BgPos, BgSize, Tiling};
 use crate::style::values::value::Len;
 
@@ -42,25 +43,11 @@ pub(crate) fn tile_size(i: Intrinsic, box_size: (f32, f32), size: BgSize) -> (f3
     }
 }
 
+/// Длина плитки против базы `base` (сторона области); шрифтовые единицы
+/// в записи картинки уже решены в точки (`resolve_image_lengths`), остаток —
+/// запасным контекстом.
 pub(crate) fn len_px(l: Option<Len>, base: f32) -> Option<f32> {
-    match l? {
-        Len::Px(v) => Some(v),
-        Len::Pct(v) => Some(base * v),
-        Len::Calc(i) => {
-            let s = crate::style::values::value::calc_get(i);
-            Some(s.px + base * s.pct)
-        }
-        // Шрифтовые единицы — от запасного кегля, единой точкой.
-        l @ (Len::Em(_)
-        | Len::EmPx(..)
-        | Len::Ch(_)
-        | Len::Ic(_)
-        | Len::Ex(_)
-        | Len::Lh(_)
-        | Len::LhPx(..)) => crate::text::metrics::fallback_len_px(l, "", 16.0),
-        Len::Vw(_) | Len::Vh(_) => None,
-        Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent | Len::Anchor(_) => None,
-    }
+    l?.to_px(Some(base), FontCx::FALLBACK)
 }
 
 /// Смещение первой плитки: проценты считаются от свободного места, как в CSS.

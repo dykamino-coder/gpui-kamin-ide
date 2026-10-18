@@ -180,6 +180,7 @@ fn page_margin_boxes(
                 st.apply_one(k, v);
             }
             let inner = Element {
+                marks: Default::default(),
                 tag: "div".to_string(),
                 inline: false,
                 node_id: 0,

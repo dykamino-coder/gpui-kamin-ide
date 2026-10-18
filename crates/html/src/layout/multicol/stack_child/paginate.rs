@@ -3,7 +3,7 @@
 use super::build::build_copy;
 use crate::dom::Element;
 use crate::layout::fragment::line_shape::side_margin_wrap;
-use crate::layout::fragment::paginate::{MARK, Paginate, apply, avoid_row, candidates, watch};
+use crate::layout::fragment::paginate::{Paginate, apply, avoid_row, candidates, watch};
 use crate::render::RenderOpts;
 use crate::style::computed::Computed;
 
@@ -17,7 +17,7 @@ pub(super) fn paginate_of(
     merged: &Computed,
     copy: &Element,
 ) -> Option<Paginate> {
-    if col_vert || copy.attr(MARK).is_none() {
+    if col_vert || !copy.marks.paginate {
         return None;
     }
     let cands = candidates(copy)?;

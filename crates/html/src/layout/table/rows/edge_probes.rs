@@ -5,7 +5,7 @@ use crate::layout::table::{
     collapsed_col_edges, collapsed_colgroup_edges, collapsed_group_edges, collapsed_row_edges,
 };
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::ParentElement;
 
 #[allow(clippy::too_many_arguments)]
@@ -61,10 +61,7 @@ pub(super) fn cell_edge_probes(
     // неё, а фон полосы идёт по внешним краям (§17.5.1).
     let cell_border = {
         let b = cell.style.borders();
-        let px_of = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let px_of = px_lossy_zero;
         [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)]
     };
     if let Some(rects) = row_rects {

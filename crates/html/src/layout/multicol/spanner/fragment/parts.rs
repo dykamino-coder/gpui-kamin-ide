@@ -106,11 +106,8 @@ pub(crate) fn spanner_parts(kids: &[Node]) -> Vec<SpanPart> {
                             // уже помеченные не трогаются. Читает её сегментный
                             // путь в `element()`.
                             let s = match s {
-                                Node::Element(mut sp) if sp.attr("kamin-span-parent").is_none() => {
-                                    sp.attrs.push((
-                                        "kamin-span-parent".to_string(),
-                                        c.node_id.to_string(),
-                                    ));
+                                Node::Element(mut sp) if sp.marks.span_parent.is_none() => {
+                                    sp.marks.span_parent = Some(c.node_id);
                                     Node::Element(sp)
                                 }
                                 other => other,

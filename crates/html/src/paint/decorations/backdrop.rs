@@ -3,7 +3,7 @@
 
 use crate::paint::effects::mask::{mask_def, svg_filter_matrix};
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::px_lossy_zero;
 use gpui::{IntoElement, Styled, px};
 
 pub(super) fn backdrop_matrix(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
@@ -31,10 +31,7 @@ pub(super) fn backdrop_matrix(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
         })
         .filter(|_| !c.backdrop_root_above);
     if let Some(m) = matrix {
-        let side = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let side = px_lossy_zero;
         let radius = c.backdrop_blur.unwrap_or(0.0);
         // Своя `mask-image` делает элемент группой (`grouped`), а буфер группы
         // рисуется до кадра: подложку поднимает в кадр `paint_backdrop_filter`
@@ -84,10 +81,7 @@ pub(super) fn backdrop_matrix(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
     } else if let Some(radius) = c.backdrop_blur {
         // `backdrop-filter: blur(N)`: размывает то, что под элементом. Рисуется
         // проходом рендера (патч gpui), поэтому это канвас, а не стиль.
-        let corner = match c.radius.tl {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let corner = px_lossy_zero(c.radius.tl);
         out.push(
             gpui::canvas(
                 |_, _, _| {},

@@ -126,14 +126,13 @@ pub(crate) fn band_flow_rest_lift(
             if run.iter().any(has_ruby) {
                 bad = true;
             }
-            let mut attrs = vec![("anon".to_string(), "1".to_string())];
-            if atoms {
-                attrs.push(("atoms".into(), "1".into()));
-            }
-            if cont {
-                attrs.push(("cont".into(), "1".into()));
-            }
             out.push(Node::Element(Element {
+                marks: crate::dom::Marks {
+                    anon: true,
+                    atoms,
+                    cont,
+                    ..Default::default()
+                },
                 list_item: None,
                 node_id: 0,
                 anim: None,
@@ -143,7 +142,7 @@ pub(crate) fn band_flow_rest_lift(
                 first_letter: None,
                 first_line: None,
                 children: std::mem::take(run),
-                attrs,
+                attrs: Vec::new(),
                 inline: false,
             }));
         } else {

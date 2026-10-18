@@ -1,10 +1,8 @@
 //! Позднее размещение (LatePlace): заместитель ждёт места в строке и сдвигается к нему при prepaint.
 
 use super::SpotCell;
-use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Window, px,
-};
+use crate::hooks::Hooks;
+use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, px};
 mod shift;
 pub(super) use shift::late_shift;
 mod spot;
@@ -12,42 +10,26 @@ pub use spot::spot_place;
 pub use spot::spot_probe;
 
 pub struct LatePlace {
-    pub(crate) child: Option<AnyElement>,
+    pub(crate) child: AnyElement,
     pub(crate) spot: SpotCell,
 }
 
-impl Element for LatePlace {
-    type RequestLayoutState = LayoutId;
-    type PrepaintState = ();
+impl Hooks for LatePlace {
+    type Layout = LayoutId;
+    type Prepaint = ();
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, LayoutId) {
-        let layout_id = self.child.as_mut().unwrap().request_layout(window, cx);
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
+        let layout_id = self.child.request_layout(window, cx);
         (layout_id, layout_id)
     }
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        layout_id: &mut LayoutId,
+        layout_id: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> Self::Prepaint {
         let bounds = Bounds {
             origin: window.layout_origin_unrounded(*layout_id),
             size: window.layout_size_unrounded(*layout_id),
@@ -69,33 +51,23 @@ impl Element for LatePlace {
                 shift.y + px(now.free_margin.1)
             },
         );
-        let child = self.child.as_mut().unwrap();
+        let child = &mut self.child;
         window.set_layout_placed_origin(*layout_id, bounds.origin + shift);
         child.prepaint_at(gpui::point(px(0.0), px(0.0)), window, cx);
     }
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _request: &mut LayoutId,
-        _prepaint: &mut (),
+        _request: &mut Self::Layout,
+        _prepaint: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {
         // Заместитель своего контекста краски не заводит (сдвиг — в
         // подготовке): собиратель шага 8 (`gpui::PaintLast`) проходит его
         // насквозь, как обычную коробку.
-        let child = self.child.as_mut().unwrap();
+        let child = &mut self.child;
         gpui::paint_reopen(|| child.paint(window, cx));
-    }
-}
-
-impl IntoElement for LatePlace {
-    type Element = Self;
-
-    fn into_element(self) -> Self {
-        self
     }
 }

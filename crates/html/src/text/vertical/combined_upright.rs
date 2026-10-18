@@ -1,10 +1,8 @@
 //! Combined upright for vertical; split out to keep the owning module within 250 lines.
 
 use super::combined_geometry;
-use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Window, px,
-};
+use crate::hooks::Wrap;
+use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, px};
 
 /// Строка вертикального письма: `writing-mode: vertical-rl` и `vertical-lr`.
 ///
@@ -20,7 +18,7 @@ use gpui::{
 /// СВОЕГО ЦЕНТРА (квадрат кегля переходит в себя) и ужимается по строчной
 /// оси в один кегль (css-writing-modes-3 §9.1).
 pub struct CombinedUpright {
-    pub(crate) child: Option<AnyElement>,
+    pub(crate) child: AnyElement,
     /// Кегль — сторона квадрата, который кусок занимает в строке.
     pub(crate) em: f32,
     /// Сжимать ли содержимое в кегль: у `text-combine-upright` — да, у
@@ -33,7 +31,7 @@ pub struct CombinedUpright {
 impl CombinedUpright {
     pub fn new(child: AnyElement, em: f32) -> Self {
         CombinedUpright {
-            child: Some(child),
+            child,
             em,
             compress: true,
             natural: gpui::Size::default(),
@@ -43,7 +41,7 @@ impl CombinedUpright {
     /// Стоячая коробка без сжатия (см. поле `compress`).
     pub fn upright_box(child: AnyElement, em: f32) -> Self {
         CombinedUpright {
-            child: Some(child),
+            child,
             em,
             compress: false,
             natural: gpui::Size::default(),
@@ -51,66 +49,32 @@ impl CombinedUpright {
     }
 }
 
-impl Element for CombinedUpright {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
-
-    fn id(&self) -> Option<ElementId> {
-        None
+impl Wrap for CombinedUpright {
+    fn child(&mut self) -> &mut AnyElement {
+        &mut self.child
     }
 
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
         let space = gpui::size(
             gpui::AvailableSpace::MaxContent,
             gpui::AvailableSpace::MaxContent,
         );
-        self.natural = self
-            .child
-            .as_mut()
-            .unwrap()
-            .layout_as_root(space, window, cx);
+        self.natural = self.child.layout_as_root(space, window, cx);
         let mut style = gpui::Style::default();
         let side = gpui::Length::Definite(gpui::DefiniteLength::Absolute(
             gpui::AbsoluteLength::Pixels(px(self.em)),
         ));
         style.size.width = side;
         style.size.height = side;
-        (window.request_layout(style, [], cx), ())
+        window.request_layout(style, [], cx)
     }
 
-    fn prepaint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        _state: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        let child = self.child.as_mut().unwrap();
+    fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        let child = &mut self.child;
         child.prepaint_at(bounds.origin, window, cx);
     }
 
-    fn paint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
+    fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let matrix = combined_geometry::transform(
             bounds,
             self.natural,
@@ -119,15 +83,7 @@ impl Element for CombinedUpright {
             window.scale_factor(),
         );
         let matrix = combined_geometry::in_local_space(matrix, window.current_transformation());
-        let child = self.child.as_mut().unwrap();
+        let child = &mut self.child;
         window.with_transformation(matrix, |window| child.paint(window, cx));
-    }
-}
-
-impl IntoElement for CombinedUpright {
-    type Element = Self;
-
-    fn into_element(self) -> Self {
-        self
     }
 }

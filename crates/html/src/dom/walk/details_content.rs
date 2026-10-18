@@ -89,6 +89,7 @@ pub(super) fn wrap(
         out.push(Node::Element(s));
     }
     out.push(Node::Element(Element {
+        marks: Default::default(),
         list_item: None,
         node_id: 0,
         anim: None,

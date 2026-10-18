@@ -47,23 +47,81 @@ impl Computed {
                 self.font_size_adjust = Some((metric, want));
             }
             "font-stretch" => {
-                // Ключевые слова CSS — это проценты от обычной ширины.
-                let pct = match v {
-                    "ultra-condensed" => Some(50),
-                    "extra-condensed" => Some(62),
-                    "condensed" => Some(75),
-                    "semi-condensed" => Some(87),
-                    "normal" => Some(100),
-                    "semi-expanded" => Some(112),
-                    "expanded" => Some(125),
-                    "extra-expanded" => Some(150),
-                    "ultra-expanded" => Some(200),
-                    other => other.trim_end_matches('%').parse::<i32>().ok(),
+                // CSS Fonts 4 §2.3: exact keyword percentages or a
+                // nonnegative percentage, including percentage math.
+                let pct = match v.to_ascii_lowercase().as_str() {
+                    "ultra-condensed" => Some(50.0),
+                    "extra-condensed" => Some(62.5),
+                    "condensed" => Some(75.0),
+                    "semi-condensed" => Some(87.5),
+                    "normal" => Some(100.0),
+                    "semi-expanded" => Some(112.5),
+                    "expanded" => Some(125.0),
+                    "extra-expanded" => Some(150.0),
+                    "ultra-expanded" => Some(200.0),
+                    other
+                        if other.ends_with('%')
+                            || ["calc(", "min(", "max(", "clamp("]
+                                .iter()
+                                .any(|f| other.starts_with(f)) =>
+                    {
+                        match Len::parse(other) {
+                            Some(Len::Pct(p)) if p.is_finite() && p >= 0.0 => Some(p * 100.0),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
                 };
-                self.font_stretch = pct.map(|p| p as f32);
+                if let Some(pct) = pct {
+                    self.font_stretch = Some(pct);
+                }
             }
             "caret-color" => self.caret_color = Color::parse(v),
             _ => *hit = false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stretch_preserves_fractional_percentages_and_keywords() {
+        for (value, expected) in [
+            ("extra-condensed", 62.5),
+            ("semi-condensed", 87.5),
+            ("semi-expanded", 112.5),
+            ("87.5%", 87.5),
+            ("0%", 0.),
+            ("calc(50% + 25%)", 75.),
+        ] {
+            let mut c = Computed::default();
+            c.apply_decls(&crate::style::css::parse_decls(&format!(
+                "font-stretch: {value}"
+            )));
+            assert_eq!(c.font_stretch, Some(expected), "{value}");
+        }
+    }
+
+    #[test]
+    fn invalid_stretch_preserves_previous_declaration() {
+        for value in [
+            "123",
+            "0",
+            "-5%",
+            "100%%",
+            "NaN%",
+            "inf%",
+            "10px",
+            "stretch",
+            "87.5% extra",
+        ] {
+            let mut c = Computed::default();
+            c.apply_decls(&crate::style::css::parse_decls(&format!(
+                "font-stretch: 75%; font-stretch: {value}"
+            )));
+            assert_eq!(c.font_stretch, Some(75.), "{value}");
         }
     }
 }

@@ -1,21 +1,20 @@
 //! Separate a float's physical size from its contribution to normal block sizing.
+
+use crate::hooks::{IntoHooked, Wrap};
 use crate::{
     dom::Element as DomElement,
     render::RenderOpts,
     style::computed::{Align, Computed},
 };
 use gpui::{
-    AnyElement, App, AvailableSpace, Bounds, Element, ElementId, GlobalElementId,
-    InspectorElementId, IntoElement, LayoutId, MeasuredContent, Pixels, Size, Style, Window, point,
-    px, size,
+    AnyElement, App, AvailableSpace, Bounds, LayoutId, MeasuredContent, Pixels, Size, Style,
+    Window, point, px, size,
 };
 use std::{cell::Cell, rc::Rc};
 
 pub(crate) fn render(e: &DomElement, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let mut inner = e.clone();
-    inner
-        .attrs
-        .retain(|(name, _)| name != "kamin-outside-block");
+    inner.marks.outside_block = false;
     let child = crate::render::element(&inner, inherited, opts);
     OutsideBlock {
         child,
@@ -24,7 +23,7 @@ pub(crate) fn render(e: &DomElement, inherited: &Computed, opts: &RenderOpts) ->
         block_rl: inherited.vertical_rl == Some(true),
         align: e.style.align_self,
     }
-    .into_any_element()
+    .hooked()
 }
 
 struct OutsideBlock {
@@ -35,22 +34,12 @@ struct OutsideBlock {
     align: Option<Align>,
 }
 
-impl Element for OutsideBlock {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
-    fn id(&self) -> Option<ElementId> {
-        None
+impl Wrap for OutsideBlock {
+    fn child(&mut self) -> &mut AnyElement {
+        &mut self.child
     }
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
+
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
         let root = self.child.request_layout(window, cx);
         self.root = Some(root);
         let mut snapshot = window.snapshot_layout_measurement(root);
@@ -68,7 +57,7 @@ impl Element for OutsideBlock {
             },
             ..Style::default()
         };
-        let layout = window.request_measured_layout_with_physical_baselines(
+        window.request_measured_layout_with_physical_baselines(
             style,
             move |known, available, window, cx| {
                 let height = known
@@ -102,18 +91,10 @@ impl Element for OutsideBlock {
                     ..measured
                 }
             },
-        );
-        (layout, ())
+        )
     }
-    fn prepaint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        _request: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
+
+    fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let root = self.root.expect("float requested layout");
         let physical = self.physical.get();
         window.compute_layout(
@@ -130,23 +111,5 @@ impl Element for OutsideBlock {
         }
         window.set_layout_root_origin(root, origin);
         self.child.prepaint_at(point(px(0.0), px(0.0)), window, cx);
-    }
-    fn paint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        _bounds: Bounds<Pixels>,
-        _request: &mut (),
-        _prepaint: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        self.child.paint(window, cx);
-    }
-}
-impl IntoElement for OutsideBlock {
-    type Element = Self;
-    fn into_element(self) -> Self {
-        self
     }
 }

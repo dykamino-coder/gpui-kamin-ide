@@ -1,6 +1,7 @@
 //! apply_layout, этап размеров: природный размер холста, абсолютные, гибкие элементы, width/height/min/max с учётом border-box, aspect-ratio как автоминимум.
 
 use super::*;
+use crate::style::values::value::px_strict;
 
 pub(super) fn layout_sizing(mut d: Div, c: &Computed, pad_x: f32, pad_y: f32) -> Div {
     // Природный размер холста под порогами — таблица CSS 2.1 §10.4 для
@@ -18,10 +19,7 @@ pub(super) fn layout_sizing(mut d: Div, c: &Computed, pad_x: f32, pad_y: f32) ->
         && w > 0.0
         && h > 0.0
     {
-        let px_of = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => Some(v),
-            _ => None,
-        };
+        let px_of = px_strict;
         let min_w = px_of(c.min_width).unwrap_or(0.0);
         let min_h = px_of(c.min_height).unwrap_or(0.0);
         // §10.4: «max-width/max-height … less than min-* is treated as min-*».

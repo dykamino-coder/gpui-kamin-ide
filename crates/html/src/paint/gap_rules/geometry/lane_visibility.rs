@@ -10,7 +10,7 @@
 //! (cross) gaps are never filtered: the property only applies to grid-axis
 //! rules in grid lanes.
 
-use super::{GAP_EPS, GapItem};
+use super::{GAP_RULE_EPS, GapItem};
 
 /// Segments `[lo, hi]` of the main gap between `lane0` and `lane1` hidden by
 /// `visibility` (2 `around`, 3 `between`; other values hide nothing).
@@ -23,17 +23,18 @@ pub(super) fn hidden_lane_segments(
     r: (f32, f32),
     visibility: u8,
 ) -> Vec<(f32, f32)> {
-    if visibility < 2 || r.1 - r.0 <= GAP_EPS {
+    if visibility < 2 || r.1 - r.0 <= GAP_RULE_EPS {
         return vec![];
     }
     let mut stops: Vec<f32> = cuts
         .iter()
         .map(|&(lo, hi)| (lo + hi) / 2.0)
-        .filter(|&c| c > r.0 + GAP_EPS && c < r.1 - GAP_EPS)
+        .filter(|&c| c > r.0 + GAP_RULE_EPS && c < r.1 - GAP_RULE_EPS)
         .collect();
     stops.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
-    stops.dedup_by(|x, y| (*x - *y).abs() <= GAP_EPS);
-    let in_lane = |i: &GapItem, (s, e): (f32, f32)| i.a0 < e - GAP_EPS && i.a1 > s + GAP_EPS;
+    stops.dedup_by(|x, y| (*x - *y).abs() <= GAP_RULE_EPS);
+    let in_lane =
+        |i: &GapItem, (s, e): (f32, f32)| i.a0 < e - GAP_RULE_EPS && i.a1 > s + GAP_RULE_EPS;
     let side = |lane: (f32, f32), lo: f32, hi: f32| {
         items.iter().any(|i| in_lane(i, lane) && i.covers_b(lo, hi))
     };
@@ -71,7 +72,7 @@ pub(super) fn lane_entry_block(
     let entry = |cuts: &[(f32, f32)], (s, e): (f32, f32)| {
         let mut row: Vec<_> = items
             .iter()
-            .filter(|v| v.a0 < e - GAP_EPS && v.a1 > s + GAP_EPS)
+            .filter(|v| v.a0 < e - GAP_RULE_EPS && v.a1 > s + GAP_RULE_EPS)
             .collect();
         row.sort_by(|x, y| x.b0.partial_cmp(&y.b0).unwrap_or(std::cmp::Ordering::Equal));
         let index = row.iter().position(|v| std::ptr::eq(*v, i)).unwrap_or(0);
@@ -101,12 +102,13 @@ pub(super) fn cross_window(
     lanes: &[(f32, f32)],
     items: &[GapItem],
 ) -> (f32, f32) {
-    let covers = |i: &GapItem, (s, e): (f32, f32)| i.a0 < e - GAP_EPS && i.a1 > s + GAP_EPS;
+    let covers =
+        |i: &GapItem, (s, e): (f32, f32)| i.a0 < e - GAP_RULE_EPS && i.a1 > s + GAP_RULE_EPS;
     let mut running = f32::NEG_INFINITY;
     for &lane in lanes.iter().filter(|&&l| covers(next, l)) {
         let above = items
             .iter()
-            .filter(|i| !std::ptr::eq(*i, next) && covers(i, lane) && i.b0 < next.b0 - GAP_EPS)
+            .filter(|i| !std::ptr::eq(*i, next) && covers(i, lane) && i.b0 < next.b0 - GAP_RULE_EPS)
             .max_by(|x, y| x.b0.partial_cmp(&y.b0).unwrap_or(std::cmp::Ordering::Equal));
         if let Some(above) = above {
             running = running.max(above.b1 + above.margin_end + g);

@@ -15,13 +15,11 @@ use crate::text::clamp::line_state::{CLAMP_BOXES, CLAMP_EXTENT, CLAMP_NEXT};
 use crate::text::clamp::{CLAMP_CUTS, CLAMP_PARA};
 use chain::{ClampBox, chain_end, chain_extra, chain_sizes};
 use geometry::ClampGeometry;
-use gpui::{App, Bounds, GlobalElementId, InspectorElementId, Pixels, Window};
+use gpui::{App, Bounds, Pixels, Window};
 
 impl ClampCut {
     pub(crate) fn paint_impl(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         _state: &mut (),
         _prepaint: &mut (),

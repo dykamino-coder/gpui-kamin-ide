@@ -4,7 +4,7 @@
 use crate::dom::Element;
 use crate::render::styled_div;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero, px_strict};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, StyledImage, div, px};
 mod with;
 pub(crate) use with::image_with;
@@ -71,10 +71,7 @@ pub(crate) fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
     // padding-top: 25px}` даёт холсту 25, а не 50
     // (`intrinsic-percent-replaced-012/013`).
     let h = if inherited.border_box == Some(true) {
-        let px_of = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let px_of = px_lossy_zero;
         let b = inherited.borders();
         (h - px_of(inherited.padding.top)
             - px_of(inherited.padding.bottom)
@@ -182,10 +179,7 @@ fn view_boxed(e: &Element, vb: (u8, [Len; 4])) -> Option<AnyElement> {
     if !(vw > 0.0 && vh > 0.0) {
         return None;
     }
-    let px_of = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    };
+    let px_of = px_strict;
     let (bw, bh) = if e.style.contains_width() || e.style.contains_height() {
         (
             px_of(e.style.width)
