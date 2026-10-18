@@ -68,6 +68,8 @@ pub fn border_shape_mask_svg(
 /// две — «внешняя минус внутренняя» через `<mask>` (не evenodd: внутренняя
 /// может выходить за внешнюю, Blink берёт разность путей). `None` — рисовать
 /// нечего.
+// The SVG ring combines two contours with independent box and stroke geometry.
+#[allow(clippy::too_many_arguments)]
 pub fn border_shape_ring_svg(
     outer: (&str, [f32; 4]),
     inner: Option<(&str, [f32; 4])>,

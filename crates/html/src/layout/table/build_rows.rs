@@ -9,6 +9,8 @@ use crate::style::values::value::Len;
 use gpui::AnyElement;
 
 #[allow(clippy::too_many_arguments)]
+// Row construction returns its elements and row/column band metadata together.
+#[allow(clippy::type_complexity)]
 pub(super) fn table_rows_with_bands(
     e: &Element,
     opts: &RenderOpts,
@@ -137,6 +139,8 @@ pub(super) fn table_rows_with_bands(
     )
 }
 
+// Column groups retain their original elements alongside measured band geometry.
+#[allow(clippy::type_complexity)]
 pub(super) fn column_bands<'a>(
     e: &'a Element,
     opts: &RenderOpts,
@@ -162,6 +166,10 @@ pub(super) fn column_bands<'a>(
     (grp_els, col_els, grp_rects, col_rects, have_rows)
 }
 
+// Group edges consume the same element/band records as column construction.
+#[allow(clippy::type_complexity)]
+// Row indices also address the independently accumulated edge arrays.
+#[allow(clippy::needless_range_loop)]
 pub(super) fn collect_group_edges<'a>(
     rows: &[(
         &'a Element,

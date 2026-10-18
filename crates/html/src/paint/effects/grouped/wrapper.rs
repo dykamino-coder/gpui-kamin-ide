@@ -36,16 +36,7 @@ pub(crate) fn grouped_wrapper(
         // A mask wrapper can be built from the element's own style before
         // the normal inherited-style resolution. Resolve gradient lengths
         // here too; background and mask images share CSS Values 4 §6.1.1.
-        if raw.contains("gradient(") {
-            let mut own = c.clone();
-            own.bg_image = None;
-            own.gradient_raw = None;
-            own.mask_image = Some(raw);
-            own.resolve_image_lengths();
-            own.mask_image.unwrap()
-        } else {
-            raw
-        }
+        c.resolve_mask_image(raw)
     });
     // Наружные тени коробки с `border-shape` повторяют фигуру и лежат
     // СНАРУЖИ неё — под буфером группы и вне его маски (css-borders-4

@@ -9,8 +9,10 @@ impl ClampCut {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, ()) {
-        let mut style = gpui::Style::default();
-        style.position = gpui::Position::Absolute;
+        let mut style = gpui::Style {
+            position: gpui::Position::Absolute,
+            ..Default::default()
+        };
         style.size.width = gpui::relative(1.0).into();
         style.size.height = gpui::relative(1.0).into();
         (window.request_layout(style, [], cx), ())

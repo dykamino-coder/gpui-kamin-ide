@@ -23,19 +23,20 @@ pub(crate) fn image_layers(s: &Computed) -> Option<Computed> {
     if s.gradient.is_none() && s.bg_image.is_none() {
         return None;
     }
-    let mut take = Computed::default();
-    take.background_rcs = s.background_rcs.clone();
-    take.gradient = s.gradient.clone();
-    take.gradient_raw = s.gradient_raw.clone();
-    take.bg_image = s.bg_image.clone();
-    take.bg_size = s.bg_size;
-    take.bg_pos = s.bg_pos;
-    take.bg_repeat = s.bg_repeat;
-    take.bg_clip = s.bg_clip;
-    take.bg_origin = s.bg_origin;
-    take.bg_fixed = s.bg_fixed;
-    take.bg_lists = s.bg_lists.clone();
-    Some(take)
+    Some(Computed {
+        background_rcs: s.background_rcs.clone(),
+        gradient: s.gradient.clone(),
+        gradient_raw: s.gradient_raw.clone(),
+        bg_image: s.bg_image.clone(),
+        bg_size: s.bg_size,
+        bg_pos: s.bg_pos,
+        bg_repeat: s.bg_repeat,
+        bg_clip: s.bg_clip,
+        bg_origin: s.bg_origin,
+        bg_fixed: s.bg_fixed,
+        bg_lists: s.bg_lists.clone(),
+        ..Default::default()
+    })
 }
 
 /// A builder that lays the image layers out as a `w × h` block.
@@ -54,7 +55,7 @@ pub(crate) fn builder(layers: Computed, root: Computed, opts: RenderOpts) -> Can
             tag: "div".to_string(),
             inline: false,
             node_id: 0,
-            style: st,
+            style: st.into(),
             hover: None,
             first_letter: None,
             first_line: None,

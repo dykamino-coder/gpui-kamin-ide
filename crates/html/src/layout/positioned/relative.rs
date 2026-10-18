@@ -55,7 +55,7 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &Computed) -> Vec<Node>
                     // Hoisting changes the layout parent, never the CSS
                     // inheritance parent (CSS Cascade 4 §7). Resolve inherited
                     // values before passing through the inline ancestor.
-                    k.style = inherit_unpainted(&parent, &k.style);
+                    k.style = inherit_unpainted(&parent, &k.style).into();
                     out.push(Node::Element(k));
                 }
                 Node::Element(mut k) if passable(&k) => {

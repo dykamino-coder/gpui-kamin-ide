@@ -7,6 +7,8 @@
 //! ничего не рисуют.
 
 mod direction;
+mod shared_style;
+pub use shared_style::SharedStyle;
 pub(crate) mod input;
 pub(crate) mod mathml;
 mod mathml_defaults;
@@ -82,6 +84,8 @@ pub(crate) use crate::dom::pseudo::*;
 
 /// Узел документа: либо текст, либо элемент со своими детьми.
 #[derive(Clone, Debug)]
+// Keep tree metadata inline; computed styles already live behind pointers.
+#[allow(clippy::large_enum_variant)]
 pub enum Node {
     Text(String),
     Element(Element),
@@ -98,17 +102,17 @@ pub struct Element {
     /// начинается заново.
     pub node_id: u64,
     /// Кадры анимации, уже разрешённые в стиль: доля времени → стиль.
-    pub anim: Option<Vec<(f32, Computed)>>,
+    pub anim: Option<std::rc::Rc<Vec<(f32, Computed)>>>,
     pub tag: String,
-    pub style: Computed,
+    pub style: Box<Computed>,
     /// Стиль наведения, собранный из правил с `:hover`. Пустой, если таких
     /// правил не было.
-    pub hover: Option<Computed>,
+    pub hover: Option<SharedStyle>,
     /// Стиль первой буквы абзаца (`::first-letter`) — отдельным слоем поверх
     /// базового: это буквица, а не стиль всего блока.
-    pub first_letter: Option<Computed>,
+    pub first_letter: Option<SharedStyle>,
     /// Стиль первой строки абзаца (`::first-line`).
-    pub first_line: Option<Computed>,
+    pub first_line: Option<SharedStyle>,
     pub children: Vec<Node>,
     /// Атрибуты, которые нужны при отрисовке: `src`, `href`, `colspan`.
     pub attrs: Vec<(String, String)>,

@@ -12,6 +12,8 @@ use crate::render::out_of_flow;
 use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
+// The shape pass returns fragments alongside their offsets and break flags.
+#[allow(clippy::type_complexity)]
 pub(super) fn shape_from_kids(
     c: &Element,
     depth: u8,
@@ -112,6 +114,8 @@ pub(super) fn shape_from_kids(
     )
 }
 
+// Break flags consume the same fragment records as the shape pass.
+#[allow(clippy::type_complexity)]
 pub(super) fn kid_break_flags(
     c: &Element,
     cx: ShapeCx,

@@ -1,17 +1,26 @@
 //! Static captures freeze the modern theme at rest; live HTML tracks the pointer.
+#[cfg(any(test, feature = "wpt-harness"))]
 use std::cell::Cell;
+#[cfg(any(test, feature = "wpt-harness"))]
 thread_local! { static CAPTURE: Cell<bool> = const { Cell::new(false) }; }
 
 /// Freeze scrollbar interaction for static captures on this UI thread.
 /// This changes neither appearance nor CSS sizing or authored scrollbar colors.
-#[doc(hidden)]
+#[cfg(any(test, feature = "wpt-harness"))]
 pub fn set_scrollbar_capture_mode(capture: bool) {
     // Reference captures have a fixed at-rest appearance, independent of the
     // desktop pointer.
     CAPTURE.with(|value| value.set(capture));
 }
 pub(super) fn interactive() -> bool {
-    !CAPTURE.with(Cell::get)
+    #[cfg(any(test, feature = "wpt-harness"))]
+    {
+        !CAPTURE.with(Cell::get)
+    }
+    #[cfg(not(any(test, feature = "wpt-harness")))]
+    {
+        true
+    }
 }
 
 #[cfg(test)]

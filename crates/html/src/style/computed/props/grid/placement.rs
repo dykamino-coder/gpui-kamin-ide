@@ -10,14 +10,17 @@ impl Computed {
                 self.subgrid_rows = v.contains("subgrid");
                 self.subgrid = self.subgrid_cols || self.subgrid_rows;
                 self.grid_row_line_names = parse_line_names(v);
-                self.grid_rows = parse_tracks(v);
+                self.grid_rows = record_parsed!(self, parse_tracks(v));
+                if self.subgrid_rows || v == "none" {
+                    self.accept_declaration();
+                }
             }
             "grid-auto-columns" => {
                 // `grid-auto-columns: A B C` задаёт НЕСКОЛЬКО неявных дорожек,
                 // и раскладка их циклит. Пока бралась первая, вторая колонка
                 // получала ширину первой (`grid-support-grid-auto-columns-
                 // rows-002`, `grid-floats-no-intrude-002`).
-                let all = parse_tracks(v).unwrap_or_default();
+                let all = record_parsed!(self, parse_tracks(v)).unwrap_or_default();
                 self.grid_auto_cols_list = if all.len() > 1 {
                     all.clone()
                 } else {
@@ -26,7 +29,7 @@ impl Computed {
                 self.grid_auto_cols = all.into_iter().next();
             }
             "grid-auto-rows" => {
-                let all = parse_tracks(v).unwrap_or_default();
+                let all = record_parsed!(self, parse_tracks(v)).unwrap_or_default();
                 self.grid_auto_rows_list = if all.len() > 1 {
                     all.clone()
                 } else {
@@ -35,6 +38,7 @@ impl Computed {
                 self.grid_auto_rows = all.into_iter().next();
             }
             "grid-auto-flow" => {
+                self.accept_declaration();
                 let dense = v.contains("dense");
                 self.grid_auto_flow = Some(match (v.contains("column"), dense) {
                     (true, true) => AutoFlow::ColDense,
@@ -44,29 +48,33 @@ impl Computed {
                 })
             }
             "grid-column" => {
-                self.grid_col = parse_span(v);
+                self.grid_col = record_parsed!(self, parse_span(v));
                 self.grid_col_named = parse_named_pair(v);
             }
             "grid-row" => {
-                self.grid_row = parse_span(v);
+                self.grid_row = record_parsed!(self, parse_span(v));
                 self.grid_row_named = parse_named_pair(v);
             }
             "grid-column-start" => {
+                self.accept_declaration();
                 let end = self.grid_col.map(|c| c.1).unwrap_or(Placement::Auto);
                 self.grid_col = Some((parse_placement(v), end));
                 self.grid_col_named[0] = parse_named_placement(v);
             }
             "grid-column-end" => {
+                self.accept_declaration();
                 let start = self.grid_col.map(|c| c.0).unwrap_or(Placement::Auto);
                 self.grid_col = Some((start, parse_placement(v)));
                 self.grid_col_named[1] = parse_named_placement(v);
             }
             "grid-row-start" => {
+                self.accept_declaration();
                 let end = self.grid_row.map(|c| c.1).unwrap_or(Placement::Auto);
                 self.grid_row = Some((parse_placement(v), end));
                 self.grid_row_named[0] = parse_named_placement(v);
             }
             "grid-row-end" => {
+                self.accept_declaration();
                 let start = self.grid_row.map(|c| c.0).unwrap_or(Placement::Auto);
                 self.grid_row = Some((start, parse_placement(v)));
                 self.grid_row_named[1] = parse_named_placement(v);
@@ -82,7 +90,10 @@ impl Computed {
                 }
                 // Каждая строка записи — ряд сетки: `"head head" "side main"`.
                 let rows = area_rows(v);
-                self.grid_areas = (!rows.is_empty()).then_some(rows);
+                self.grid_areas = record_parsed!(self, (!rows.is_empty()).then_some(rows));
+                if v == "none" {
+                    self.accept_declaration();
+                }
             }
             // `grid-area: строка / колонка / конец строки / конец колонки`.
             "grid-area" => {
@@ -122,9 +133,11 @@ impl Computed {
                 self.grid_row_named = [row_start, row_end];
                 self.grid_col_named = [col_start, col_end];
                 if parts.len() >= 2 {
+                    self.accept_declaration();
                     self.grid_row = Some((at(0), at(2)));
                     self.grid_col = Some((at(1), at(3)));
                 } else if let Some(name) = parts.first().filter(|n| !n.is_empty()) {
+                    self.accept_declaration();
                     // Одно значение — это ИМЯ области: номера линий для него
                     // знает только контейнер со своей раскладкой имён.
                     self.grid_area_name = Some((*name).to_string());

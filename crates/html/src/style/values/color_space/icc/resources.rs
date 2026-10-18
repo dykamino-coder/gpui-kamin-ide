@@ -1,11 +1,13 @@
 //! Load named ICC resources (`@color-profile`) into the current document's
 //! registry (`document::state`) against the effective document base URL.
 
-pub fn load_profiles(css: &str) {
+#[cfg(test)]
+fn load_profiles(css: &str) {
     load_profiles_with_base(css, None);
 }
 
-pub(crate) fn load_profiles_with_base(css: &str, base: Option<&url::Url>) {
+#[cfg(test)]
+fn load_profiles_with_base(css: &str, base: Option<&url::Url>) {
     load_profiles_sheets(&[css.to_string()], base);
 }
 

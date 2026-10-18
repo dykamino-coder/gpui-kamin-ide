@@ -8,7 +8,7 @@ pub use crate::text::inline::runs::wrapped_row::as_wrapped_row;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Color, Len};
 use crate::text::inline::*;
-use gpui::{FontStyle, FontWeight, HighlightStyle, TextRun, TextStyle, UnderlineStyle};
+use gpui::{FontStyle, FontWeight, TextRun, TextStyle, UnderlineStyle};
 
 /// Можно ли собрать всё в один текстовый блок: одинаковый размер шрифта и ни
 /// одного не-текстового куска.
@@ -206,16 +206,5 @@ pub(super) fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun
                 thickness: gpui::px(1.),
                 color: Some(color),
             }),
-    }
-}
-
-/// Подсветка для куска текста — используется, когда прогоны накладываются на
-/// готовый текст (например, при подсветке кода).
-pub fn highlight_for(style: &Computed) -> HighlightStyle {
-    HighlightStyle {
-        color: style.color.map(Color::to_hsla),
-        font_weight: style.font_weight.map(|w| FontWeight(w as f32)),
-        font_style: style.italic.and_then(|i| i.then_some(FontStyle::Italic)),
-        ..Default::default()
     }
 }

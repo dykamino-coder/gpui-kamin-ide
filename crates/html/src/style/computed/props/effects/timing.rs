@@ -19,6 +19,7 @@ impl Computed {
             }
             "animation-timing-function" => {
                 if let Some(easing) = crate::animation::easing::Easing::parse(v) {
+                    self.accept_declaration();
                     self.animation_easing = Some(easing);
                 }
             }
@@ -26,19 +27,31 @@ impl Computed {
             "transition" | "transition-duration" => {
                 // Из записи перехода нужна только длительность: какие свойства
                 // меняются, видно по разнице стилей.
-                self.transition = v.split_whitespace().find_map(|t| {
-                    t.strip_suffix("ms")
-                        .and_then(|n| n.parse::<f32>().ok())
-                        .map(|ms| ms / 1000.0)
-                        .or_else(|| t.strip_suffix('s').and_then(|n| n.parse::<f32>().ok()))
-                });
+                self.transition = record_parsed!(
+                    self,
+                    v.split_whitespace().find_map(|t| {
+                        t.strip_suffix("ms")
+                            .and_then(|n| n.parse::<f32>().ok())
+                            .map(|ms| ms / 1000.0)
+                            .or_else(|| t.strip_suffix('s').and_then(|n| n.parse::<f32>().ok()))
+                    })
+                );
+                if v == "none" {
+                    self.accept_declaration();
+                }
             }
             "resize" => {
-                self.resize = match v {
-                    "both" => Some((true, true)),
-                    "horizontal" => Some((true, false)),
-                    "vertical" => Some((false, true)),
-                    _ => None,
+                self.resize = record_parsed!(
+                    self,
+                    match v {
+                        "both" => Some((true, true)),
+                        "horizontal" => Some((true, false)),
+                        "vertical" => Some((false, true)),
+                        _ => None,
+                    }
+                );
+                if v == "none" {
+                    self.accept_declaration();
                 }
             }
             "filter" => {
@@ -108,7 +121,7 @@ impl Computed {
                         self.scrollbar_filter_ops.push(one);
                     }
                 }
-                self.filter = Some(f);
+                self.filter = accept_parsed!(self, Some(f));
             }
             "contain" => {
                 // Разбор по словам: подстрочный поиск ловил «size» в
@@ -137,6 +150,7 @@ impl Computed {
                         _ => {}
                     }
                 }
+                self.accept_declaration();
                 self.contain_size = Some(bits.0);
                 self.contain_inline_size = Some(inline_only);
                 self.contain_layout = Some(bits.1);

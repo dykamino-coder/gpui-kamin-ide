@@ -40,6 +40,7 @@ impl Computed {
             "scroll-snap-type" => {
                 let parts: Vec<_> = v.split_whitespace().collect();
                 if parts == ["none"] {
+                    self.accept_declaration();
                     self.snap.inherit &= !bit;
                     self.snap.axis = 0;
                     self.snap.strictness = 0;
@@ -59,6 +60,7 @@ impl Computed {
                     _ => return,
                 };
                 if parts.len() <= 2 {
+                    self.accept_declaration();
                     self.snap.inherit &= !bit;
                     self.snap.axis = axis;
                     self.snap.strictness = strictness;
@@ -77,6 +79,7 @@ impl Computed {
                     && let (Some(block), Some(inline)) =
                         (parse(parts[0]), parse(*parts.get(1).unwrap_or(&parts[0])))
                 {
+                    self.accept_declaration();
                     self.snap.inherit &= !bit;
                     self.snap.align = [block, inline];
                 }
@@ -130,6 +133,7 @@ impl Computed {
                     _ => *hit = false,
                 }
                 if *hit {
+                    self.accept_declaration();
                     self.snap.inherit &= !bit;
                 }
             }

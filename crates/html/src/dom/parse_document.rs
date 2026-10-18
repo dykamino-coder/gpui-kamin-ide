@@ -168,7 +168,7 @@ pub(crate) fn parse_current(html: &str, extra_css: &str, mut media: Media) -> Ve
         &doc.frames,
         &mut counter,
         &mut counters,
-        &[],
+        &mut Vec::new(),
         false,
         &mut out,
     );
