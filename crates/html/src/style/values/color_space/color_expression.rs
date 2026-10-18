@@ -45,6 +45,10 @@ impl ColorExpression {
         self.resolve_mapped(current, true)
     }
 
+    pub(crate) fn resolve_for_interpolation(&self, current: Color) -> Color {
+        self.resolve_mapped(current, self.depends_on_current())
+    }
+
     fn resolve_mapped(&self, current: Color, mapped: bool) -> Color {
         match self {
             Self::Color(color) => *color,
@@ -189,6 +193,17 @@ mod tests {
                 b: 0.0,
                 a: 0.5
             })
+        );
+    }
+    #[test]
+    fn absolute_mix_keeps_unmapped_interpolation_channels() {
+        let raw = "color-mix(in oklch longer hue, red, blue)";
+        let expected = interpolation_color(raw).unwrap();
+        assert_eq!(
+            ColorExpression::parse(raw)
+                .unwrap()
+                .resolve_for_interpolation(Color::default()),
+            expected
         );
     }
 }

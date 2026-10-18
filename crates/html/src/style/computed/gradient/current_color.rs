@@ -16,7 +16,7 @@ pub(crate) fn parse_gradient(raw: &str) -> Option<Gradient> {
 }
 
 pub(crate) fn parse_gradient_with_current(raw: &str, current: Color) -> Option<Gradient> {
-    super::parse::parse_gradient(&resolve_gradient_colors(raw, current))
+    super::parse::parse_gradient(raw, current)
 }
 
 /// Keep the authored expression on the style: inherited currentColor uses
@@ -26,13 +26,37 @@ impl Computed {
         if (self.gradient.is_some()
             || self.background_all_inherit
             || self.inherit_bits & super::inh::BG_IMAGE != 0)
-            && let Some(raw) = self
-                .gradient_raw
-                .as_deref()
-                .or(self.gradient_current.as_deref())
-            && raw.contains("currentcolor")
+            && let Some(template) = self.gradient_current.as_ref()
         {
-            self.gradient = parse_gradient_with_current(raw, self.color.unwrap_or(BLACK));
+            let mut gradient = self.gradient.clone().unwrap_or_else(|| template.clone());
+            gradient.resolve_colors(self.color.unwrap_or(BLACK));
+            self.gradient = Some(gradient);
+        }
+    }
+}
+
+impl Gradient {
+    pub(crate) fn resolve_colors(&mut self, current: Color) {
+        if self.colors.is_empty() {
+            return;
+        }
+        for (index, expression) in self.colors.iter().enumerate() {
+            let color = expression.resolve_for_interpolation(current);
+            if let Some(stop) = self.stops.get_mut(index) {
+                stop.0 = color;
+            }
+            if let Some(stop) = self.stops_px.get_mut(index) {
+                stop.0 = color;
+            }
+            if let Some(stop) = self.stops_raw.get_mut(index) {
+                stop.0 = color;
+            }
+        }
+        if let Some(first) = self.stops.first() {
+            self.from = first.0;
+        }
+        if let Some(last) = self.stops.last() {
+            self.to = last.0;
         }
     }
 }
@@ -147,6 +171,65 @@ mod tests {
             let child = crate::style::cascade::inherit::inherit(&parent, &child);
             assert!(parent.gradient_current.is_none());
             assert!(child.gradient.is_none());
+        }
+    }
+    #[test]
+    fn typed_stop_colors_preserve_double_positions_without_css() {
+        let mut parent = Computed::default();
+        parent.apply_one(
+            "background-image",
+            "linear-gradient(in srgb, currentcolor 20px 30px, blue 100px)",
+        );
+        // The inherited operand must not consult a textual paint source.
+        parent.gradient_raw = Some("not a gradient".into());
+        let mut child = Computed::default();
+        child.apply_one("background-image", "inherit");
+        child.apply_one("color", "red");
+        let child = crate::style::cascade::inherit::inherit(&parent, &child);
+        let g = child.gradient.unwrap();
+        let red = Color::parse("red").unwrap();
+        assert_eq!(
+            g.stops_px,
+            vec![
+                (red, 20.0),
+                (red, 30.0),
+                (Color::parse("blue").unwrap(), 100.0)
+            ]
+        );
+        assert_eq!(
+            g.stops_raw.iter().map(|s| s.2).collect::<Vec<_>>(),
+            vec![Some(20.0), Some(30.0), Some(100.0)]
+        );
+    }
+
+    #[test]
+    fn inherited_template_preserves_computed_font_positions() {
+        let mut own = Computed::default();
+        own.apply_one("font-size", "20px");
+        own.apply_one(
+            "background-image",
+            "linear-gradient(currentcolor 1em, blue 2em)",
+        );
+        let parent = crate::style::cascade::inherit::inherit(&Computed::default(), &own);
+        let mut child = Computed::default();
+        child.apply_one("font-size", "80px");
+        child.apply_one("background-image", "inherit");
+        child.apply_one("color", "green");
+        let child = crate::style::cascade::inherit::inherit(&parent, &child);
+        let g = child.gradient.unwrap();
+        assert_eq!(g.stops_px[0], (Color::parse("green").unwrap(), 20.0));
+        assert_eq!(g.stops_px[1].1, 40.0);
+        assert!(child.gradient_em.is_none());
+    }
+    #[test]
+    fn radial_first_stop_accepts_current_and_relative_colors() {
+        let red = Color::parse("red").unwrap();
+        for token in ["currentcolor", "rgb(from currentcolor r g b)"] {
+            let g = parse_gradient_with_current(&format!("radial-gradient({token}, blue)"), red)
+                .unwrap();
+            assert_eq!(g.stops.len(), 2);
+            assert_eq!(g.from, red);
+            assert_eq!(g.to, Color::parse("blue").unwrap());
         }
     }
 }

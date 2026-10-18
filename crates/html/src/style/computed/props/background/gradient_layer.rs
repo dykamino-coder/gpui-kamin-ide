@@ -61,7 +61,11 @@ impl Computed {
             tiled |= self.bg_repeat.is_some();
         }
         self.gradient = record_parsed!(self, parse_gradient(top));
-        self.gradient_current = top.contains("currentcolor").then(|| top.to_string());
+        self.gradient_current = self
+            .gradient
+            .as_ref()
+            .filter(|g| !g.colors.is_empty())
+            .cloned();
         self.gradient_em = has_font_units(top).then(|| top.to_string());
         // Corner keywords need the concrete image size (CSS Images 3 §3.1).
         // Preserve the existing native route for other untiled shorthand

@@ -80,7 +80,11 @@ impl Computed {
                     // четыре негодных угла обязаны оставить зелёный.
                     if let Some(g) = parse_gradient(v) {
                         self.gradient = accept_parsed!(self, Some(g));
-                        self.gradient_current = v.contains("currentcolor").then(|| v.to_string());
+                        self.gradient_current = self
+                            .gradient
+                            .as_ref()
+                            .filter(|g| !g.colors.is_empty())
+                            .cloned();
                         self.gradient_em = has_font_units(v).then(|| v.to_string());
                         // Сырая запись нужна фону РЯДА таблицы: он рисуется
                         // слоем картинки, и градиент туда идёт источником.

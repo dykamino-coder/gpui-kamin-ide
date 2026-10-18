@@ -81,7 +81,13 @@ pub(super) fn gradient_direction(head: &str, radial: bool, mut idx: usize) -> Op
         // У радиального первым идёт описание формы (`circle at center`) —
         // цветом оно не разбирается, поэтому просто пропускается.
         first
-            if radial && Color::parse(first.split_whitespace().next().unwrap_or("")).is_none() =>
+            if radial
+                && split_outside_parens(first)
+                    .first()
+                    .and_then(|color| {
+                        crate::style::values::color_space::ColorExpression::parse(color)
+                    })
+                    .is_none() =>
         {
             idx = 1;
             180.0

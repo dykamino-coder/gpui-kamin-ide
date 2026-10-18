@@ -71,6 +71,9 @@ impl Computed {
                     a: 1.0,
                 }),
             ) {
+                if self.gradient_current.is_some() {
+                    self.gradient_current = Some(g.clone());
+                }
                 self.gradient = Some(g);
                 if self.gradient_raw.is_some() {
                     self.gradient_raw = Some(px);

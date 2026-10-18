@@ -44,6 +44,8 @@ pub struct Gradient {
     /// Дуга тона для полярных пространств: 0 shorter (умолчание), 1 longer,
     /// 2 increasing, 3 decreasing (css-color-4 §12.4).
     pub hue: u8,
+    /// Parsed stop operands retained for inherited currentColor resolution.
+    pub(crate) colors: Vec<crate::style::values::color_space::ColorExpression>,
 }
 
 /// Пространство интерполяции цвета градиента (css-color-4 §12.2).
