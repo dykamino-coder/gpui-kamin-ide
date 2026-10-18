@@ -1,6 +1,6 @@
 //! Сетка: дорожки, имена линий, размещение элементов, grid_style.
 
-use crate::style::apply::*;
+use crate::paint::apply::*;
 use crate::style::computed::{AutoFlow, Computed, Display, Justify, Placement, Track, TrackSize};
 use crate::style::values::value::Len;
 use gpui::{Div, Styled, px};

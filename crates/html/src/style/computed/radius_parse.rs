@@ -35,7 +35,7 @@ impl Computed {
     }
 
     pub(super) fn apply_radius_corner(&mut self, key: &str, raw: &str) {
-        let tokens = crate::paint::background::split_top(raw);
+        let tokens = crate::style::css::value_tokens::split_top(raw);
         let (x, y) = match tokens.as_slice() {
             [x] => (length(x), length(x)),
             [x, y] => (length(x), length(y)),
@@ -124,7 +124,7 @@ fn length(raw: &str) -> Option<Len> {
 }
 
 fn shorthand(raw: &str) -> Option<Corners> {
-    let tokens = crate::paint::background::split_top(raw);
+    let tokens = crate::style::css::value_tokens::split_top(raw);
     let values: Vec<Len> = tokens.into_iter().map(length).collect::<Option<_>>()?;
     let [tl, tr, br, bl] = match values.as_slice() {
         [a] => [*a; 4],

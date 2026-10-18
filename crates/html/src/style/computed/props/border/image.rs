@@ -37,8 +37,7 @@ impl Computed {
                     // (css-backgrounds-3 §6.1). Запись хранится как есть:
                     // растрирует её загрузчик картинок.
                     image.src = value.to_string();
-                } else if crate::paint::background::filter_image::parse_filter_image(value)
-                    .is_some()
+                } else if crate::style::computed::filter_image::parse_filter_image(value).is_some()
                 {
                     image.src = value.to_string();
                 } else if let Some(url) = parse_url(value) {

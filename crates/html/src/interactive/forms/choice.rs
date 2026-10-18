@@ -2,7 +2,7 @@
 
 use super::{SystemColor, field_box, native_color};
 use crate::dom::Element;
-use crate::style::apply::apply;
+use crate::paint::apply::apply;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
 

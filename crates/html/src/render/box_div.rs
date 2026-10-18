@@ -11,10 +11,10 @@ use crate::layout::multicol::spanner::multicol_container;
 use crate::layout::positioned::absolute_overflow;
 use crate::layout::replaced::limits::auto_clamp_limit;
 use crate::layout::writing_mode::native_intrinsic;
+use crate::paint::apply::{apply, apply_hover};
 use crate::paint::decorations::decorations;
 use crate::paint::effects::mask::mask_def;
 use crate::render::*;
-use crate::style::apply::{apply, apply_hover};
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero, px_strict};
 use gpui::{ParentElement, Styled, div, px};
@@ -71,7 +71,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     let auto_height = margin_height::used_style(e, paint);
     let mut d = apply(div(), auto_height.as_ref().unwrap_or(paint));
     if native_intrinsic::eligible(e) {
-        d.style().sizing_keywords = Some(crate::style::apply::intrinsic_size::keywords(c));
+        d.style().sizing_keywords = Some(crate::paint::apply::intrinsic_size::keywords(c));
     }
     d = crate::interactive::scroll_target::attach(d, e, c);
     if let Some(probe) = crate::interactive::scroll_extent::probe(e.node_id, c) {

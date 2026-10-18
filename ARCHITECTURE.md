@@ -86,6 +86,13 @@ CEF, а не от этого crate. Поэтому WPT changes и Bridge runtime
 ведутся отдельно; текущая граница и условия supersession описаны в
 [RUNTIME_BACKLOG.md](extensions/claude-bridge/RUNTIME_BACKLOG.md#engine-boundary).
 
+В `crates/html` слой `style` вычисляет CSS-значения; адаптер
+`paint/apply` строит из них элементы GPUI и вызывает примитивы покраски.
+Для свёртки постоянных фоновых цветов `style` получает доступность и цвет
+изображения через `BackgroundImageValues`; загрузка и декодирование остаются
+в `paint`. Роли и анонимные обёртки таблиц принадлежат `dom/table_boxes`,
+а измерение и размещение этих коробок — `layout/table`.
+
 ## Правила, которых держимся
 
 * **Файл не длиннее 250 строк.** Проверка:

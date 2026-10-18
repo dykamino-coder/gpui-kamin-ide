@@ -43,7 +43,7 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
                 stop.0 = f.apply(stop.0);
             }
         }
-        layer = layer.bg(crate::style::apply::fill(&g));
+        layer = layer.bg(crate::paint::apply::fill(&g));
     } else if let Some(bg) = e.style.background {
         let bg = root_filter.map_or(bg, |f| f.apply(bg));
         layer = layer.bg(bg.to_hsla());

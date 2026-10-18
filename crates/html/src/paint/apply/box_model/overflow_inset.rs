@@ -24,12 +24,6 @@ fn box_inset(mut d: Div, c: &Computed) -> Div {
     // `vertical-lr` справа, и от `direction` не зависит. Вертикаль — СТРОЧНАЯ:
     // по §10.3.7 при `rtl` отбрасывается её конец, то есть `top` (у
     // `sideways-lr` строка идёт снизу вверх, и конец — верх уже при `ltr`).
-    // Прежнее правило по `cb_rtl` в вертикали угадывало только `vrl`+`rtl`:
-    // `abs-pos-non-replaced-vrl-214/220` (ltr) и `vlr-223/227/229` (rtl)
-    // уезжали на 80, `vlr-093/097`, `vrl-092/096` (rtl, `top`+`bottom`+
-    // `height`) — тоже. Ровно так и в корпусе: `dynamic-offset-vrl-002`
-    // (`left … /* ignored */`), `dynamic-offset-vrl-rtl-002` (`top …
-    // /* ignored */`).
     // Относительный сдвиг решает переопределённую ось по тем же сторонам
     // (§9.4.3 в логических осях, Blink `relative_utils.cc:71-88`):
     // `overconstrained-rel-pos-*-vrl-*`, `-rtl-*-vlr-*`.

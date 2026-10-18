@@ -1,6 +1,6 @@
 //! Раскладка: display/flex/позиционирование/размеры (apply_layout).
 
-use crate::style::apply::*;
+use crate::paint::apply::*;
 use crate::style::computed::{
     Align, Computed, Display, FlexDir, Justify, Overflow, Placement, Position,
 };
@@ -62,9 +62,8 @@ pub(super) fn apply_layout(mut d: Div, c: &Computed) -> Div {
         }),
         // Умолчание `flex-direction: row` в стиле НЕ записано, а ось менять
         // всё равно надо: в вертикальном письме строка идёт сверху вниз,
-        // значит главная ось гибкого ряда — вертикальная. Пока сюда попадало
-        // `None`, контейнер оставался горизонтальным (замерено пробой: ряд в
-        // `vertical-rl` против колонки с прижимом вправо — 5.42%).
+        // значит главная ось гибкого ряда — вертикальная даже без
+        // явно заданного flex-direction.
         (None, true) if matches!(c.display, Some(Display::Flex) | Some(Display::InlineFlex)) => {
             if c.rtl == Some(true) {
                 Some(FlexDir::ColReverse)

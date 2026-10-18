@@ -11,21 +11,21 @@ use crate::style::values::value::Len;
 use gpui::{Div, InteractiveElement, Styled, px, relative};
 mod contained_intrinsic;
 pub(crate) mod intrinsic_size;
-use crate::style::apply::contained_intrinsic::empty_contained_size;
+use crate::paint::apply::contained_intrinsic::empty_contained_size;
 mod flex_cross_default;
 pub(super) mod grid;
 mod grid_flow_axes;
 mod inset_percent;
 mod size_percent;
-pub(crate) use crate::style::apply::grid::*;
+pub(crate) use crate::paint::apply::grid::*;
 pub(super) mod layout;
-use crate::style::apply::layout::*;
+use crate::paint::apply::layout::*;
 pub(super) mod box_model;
-pub use crate::style::apply::box_model::*;
+pub use crate::paint::apply::box_model::*;
 pub(super) mod paint;
-pub(crate) use crate::style::apply::paint::*;
+pub(crate) use crate::paint::apply::paint::*;
 mod text;
-pub use crate::style::apply::text::*;
+pub use crate::paint::apply::text::*;
 use crate::style::computed::FontCx;
 
 /// Ширина/высота/отступ: доля родителя или пиксели.
@@ -53,8 +53,7 @@ pub(crate) fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
             match s.pct_px() {
                 // Доля с точками — настоящий calc раскладки (css-values-4
                 // §10.9): KaminIDE patch `DefiniteLength::Calc` + решатель в
-                // taffy. Прежняя подмена половиной замерена в минус
-                // (`gap-003-ltr`), поэтому только через calc.
+                // taffy: обе составляющие длины должны сохраниться до раскладки.
                 Some((pct, add)) => gpui::DefiniteLength::Calc(add, pct),
                 None if s.pct != 0.0 => relative(s.pct),
                 None => px(s.px).into(),

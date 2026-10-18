@@ -24,7 +24,7 @@ use choice::select;
 use choice::toggle;
 
 use crate::dom::Element;
-use crate::style::apply::apply;
+use crate::paint::apply::apply;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
 

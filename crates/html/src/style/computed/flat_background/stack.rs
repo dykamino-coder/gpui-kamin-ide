@@ -4,7 +4,7 @@
 //! background color, never with the page behind the element. Evaluating a
 //! constant stack for each clip region avoids a rectangular image over glyphs.
 
-use super::{fills::flat_fill, key_exif, over, source};
+use super::{BackgroundImageValues, flat_fill, over};
 use crate::style::computed::{BgClip, Computed};
 use crate::style::values::value::Color;
 
@@ -49,7 +49,7 @@ fn evaluate(c: &Computed) -> Option<[Color; 3]> {
         let unavailable = layer
             .bg_image
             .as_deref()
-            .is_some_and(|image| source(&key_exif(image, layer)).is_none());
+            .is_some_and(|image| !layer.image_available(image));
         // CSS Backgrounds 3 §2.3: an image that cannot be displayed is
         // treated as none. It contributes transparent black to the stack,
         // without suppressing the lower background color or blend modes.

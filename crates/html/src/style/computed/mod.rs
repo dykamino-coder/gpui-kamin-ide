@@ -6,7 +6,12 @@
 //! поддержано, поля нет — свойство игнорируется осознанно, а не потеряно.
 
 mod appearance;
+pub(crate) mod filter_image;
+pub(crate) mod flat_background;
+pub(crate) mod formatting_context;
 pub(crate) mod math_style;
+pub(crate) mod single_corner;
+pub(crate) mod stacking;
 pub use appearance::Appearance;
 mod background_position;
 mod bidi_properties;
@@ -55,6 +60,7 @@ mod filter;
 pub use crate::style::computed::filter::*;
 pub(super) mod gradient;
 pub(crate) use crate::style::computed::gradient::*;
+pub(crate) use gradient::stops::place_stops;
 pub(super) mod grid_tracks;
 pub use crate::style::computed::grid_tracks::*;
 pub(crate) use crate::style::computed::props::border::*;

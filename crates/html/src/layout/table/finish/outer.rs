@@ -115,7 +115,7 @@ pub(super) fn finish_table_outer(
         wrap.position = e.style.position;
         wrap.inset = e.style.inset;
         wrap.z_index = e.style.z_index;
-        let mut wrap = crate::style::apply::apply(div(), &wrap).flex().flex_row();
+        let mut wrap = crate::paint::apply::apply(div(), &wrap).flex().flex_row();
         wrap.style().no_inline_block_baseline = Some(true);
         return wrap.child(outer).into_any_element();
     }

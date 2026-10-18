@@ -40,8 +40,7 @@ pub(super) fn grid_implicit(mut d: Div, c: &Computed, flip: bool) -> Div {
             && r.track_pct.is_none()
             && !body.is_empty()
             // Только тело с дорожкой ПО СОДЕРЖИМОМУ: точечное тело ведут
-            // ветки выше (★ ЗАМЕРЕНО: `row-auto-repeat-014`, тело
-            // `[v] 10px [w] 10px [x] 10px`, 0.00 → 18.83 при отдаче сюда).
+            // ветки выше.
             && body.iter().any(|t| {
                 !matches!(
                     t,

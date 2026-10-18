@@ -1,6 +1,6 @@
 //! Коробка: поля, отступы, рамки по сторонам, скругления (apply_box).
 
-use crate::style::apply::*;
+use crate::paint::apply::*;
 use crate::style::computed::{Computed, Display, Overflow, Position, Sides};
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{Div, Styled, px};

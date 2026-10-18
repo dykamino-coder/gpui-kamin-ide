@@ -1,6 +1,6 @@
 //! Покраска: фон, рамки, двойная рамка, слой рамки (apply_paint).
 
-use crate::style::apply::*;
+use crate::paint::apply::*;
 use crate::style::computed::{Computed, Display, Position};
 use crate::style::values::value::Len;
 use gpui::{Div, Styled, px};
@@ -50,7 +50,7 @@ pub(crate) fn apply_paint(mut d: Div, c: &Computed) -> Div {
     // коробка, а отдельный слой внутри неё (`render::clip_layer`): коробка в
     // раскладке красится целиком, вместе с рамкой и полями.
     if c.color_clip().is_none()
-        && !crate::paint::background::single_corner::eligible(c)
+        && !crate::style::computed::single_corner::eligible(c)
         && crate::paint::effects::corner_clip::insets(c).is_none()
     {
         if let Some(g) = &c.gradient {

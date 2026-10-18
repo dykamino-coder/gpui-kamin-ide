@@ -63,7 +63,7 @@ pub(crate) fn new(c: &Computed, mask: Option<&str>) -> Option<CornerClip> {
         .border_r(px(side(b.right)))
         .border_b(px(side(b.bottom)))
         .border_l(px(side(b.left)));
-    let layer = crate::style::apply::apply_paint(layer, &own)
+    let layer = crate::paint::apply::apply_paint(layer, &own)
         .children(crate::paint::decorations::decorations(&own, false));
     let mut decoration = super::grouped_element::Grouped::new(layer.into_any_element());
     decoration.mask = Some(mask.to_string());

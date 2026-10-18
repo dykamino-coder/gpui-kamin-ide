@@ -14,6 +14,7 @@ use crate::style::css::stylesheet_tokens::find_matching;
 pub(crate) use stylesheet_tokens::next_piece;
 mod component_tokens;
 mod font_family_values;
+pub(crate) mod value_tokens;
 pub(crate) use component_tokens::skip_string;
 mod priority_tokens;
 use crate::style::css::priority_tokens::top_level_bang;

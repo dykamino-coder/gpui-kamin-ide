@@ -8,7 +8,7 @@ use super::*;
 /// ЛОГИЧЕСКИЕ и переставляются при вертикальном письме, как его дорожки
 /// (`grid_style`); у подсеточной оси список — `<line-name-list>`. Грани
 /// элемента идут той же осью, что и его числовые (`grid_location`).
-pub(in crate::style::apply) fn grid_line_names(c: &Computed) -> Option<gpui::GridLineNames> {
+pub(in crate::paint::apply) fn grid_line_names(c: &Computed) -> Option<gpui::GridLineNames> {
     let mut out = gpui::GridLineNames::default();
     let grid = matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid));
     if grid {
@@ -128,11 +128,11 @@ pub(crate) fn grid_item_placement(
 
 /// Элемент вертикальной сетки (и лунок на её пути): его логические грани
 /// ложатся на переставленные физические оси (см. `grid_style`, `flip`).
-pub(in crate::style::apply) fn placement_flip(c: &Computed) -> bool {
+pub(in crate::paint::apply) fn placement_flip(c: &Computed) -> bool {
     c.parent_grid >= 2
 }
 
-pub(in crate::style::apply) fn to_placement(p: Placement) -> gpui::GridPlacement {
+pub(in crate::paint::apply) fn to_placement(p: Placement) -> gpui::GridPlacement {
     match p {
         Placement::Auto => gpui::GridPlacement::Auto,
         Placement::Line(n) => gpui::GridPlacement::Line(n),

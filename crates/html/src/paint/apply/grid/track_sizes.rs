@@ -44,7 +44,7 @@ pub(super) fn track(t: &TrackSize) -> gpui::GridTrack {
 }
 
 /// `justify-content`/`align-content` → распределение GPUI.
-pub(in crate::style::apply) fn to_content(j: Justify) -> gpui::AlignContent {
+pub(in crate::paint::apply) fn to_content(j: Justify) -> gpui::AlignContent {
     match j {
         Justify::Center => gpui::AlignContent::Center,
         Justify::Start => gpui::AlignContent::FlexStart,

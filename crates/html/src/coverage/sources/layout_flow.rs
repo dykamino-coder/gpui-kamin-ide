@@ -132,6 +132,7 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../layout/table/columns/mod.rs"),
     include_str!("../../layout/table/columns/widths.rs"),
     include_str!("../../layout/table/anon/mod.rs"),
+    include_str!("../../dom/table_boxes.rs"),
     include_str!("../../layout/table/anon/fixup.rs"),
     include_str!("../../layout/table/build_rows.rs"),
     include_str!("../../layout/table/col_measure.rs"),

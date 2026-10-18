@@ -174,7 +174,7 @@ pub(crate) fn content_sized(
     // потоки (three-levels-of-orthogonal-flows).
     if let Some(a) = c.align_self.filter(|_| c.vertical != Some(true)) {
         // `anchor-center` без якоря ведёт себя как `center` (css-anchor-position-1 §5.2).
-        wrap.style().align_self = Some(crate::style::apply::self_align(a, c.align_self_last));
+        wrap.style().align_self = Some(crate::paint::apply::self_align(a, c.align_self_last));
     }
     if let Some(col) = col {
         wrap = wrap.grid_template_cols(vec![col]);
@@ -182,7 +182,7 @@ pub(crate) fn content_sized(
     if let Some(row) = row {
         wrap = wrap.grid_template_rows(vec![row]);
     }
-    crate::style::apply::item_metadata::project_wrapper(wrap.style(), item_style);
+    crate::paint::apply::item_metadata::project_wrapper(wrap.style(), item_style);
     // Размещение элемента в сетке родителя — на обёртке (см. вызов).
     let (location, names) = placement;
     if let Some(location) = location {
